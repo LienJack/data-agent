@@ -1,0 +1,7 @@
+{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/prd.md", "reason": "检查实现是否满足产品范围、验收标准和未交付能力边界"}
+{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/design.md", "reason": "检查依赖方向、权威状态、隔离、恢复与双部署契约"}
+{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/implement.md", "reason": "检查实施顺序、阶段门禁、回滚点和范围控制"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查跨层数据流与系统影响"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "检查事务、迁移与共享 Supabase 数据完整性"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端质量与失败关闭行为"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查 UI 与 API 状态语义一致性"}

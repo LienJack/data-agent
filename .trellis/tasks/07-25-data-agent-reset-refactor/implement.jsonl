@@ -1,0 +1,6 @@
+{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/prd.md", "reason": "首版产品范围、R1-R8、验收标准与用户确认的纵向切片决策"}
+{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/design.md", "reason": "架构边界、Artifact 权威链、共享 Supabase、Benchmark 与部署设计"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "实现跨 API、运行时、领域、持久化、UI 与部署层的完整数据流"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库 Schema、事务、Migration、RLS 与恢复实现规范"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量、失败语义与测试要求"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 Run Projection 与 Artifact 类型安全要求"}
