@@ -1,0 +1,39 @@
+{
+  "name": "data-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.33.2",
+  "engines": {
+    "node": ">=24.0.0 <27",
+    "pnpm": ">=10.33.0 <11"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "biome ci .",
+    "format": "biome check --write .",
+    "typecheck": "turbo run typecheck",
+    "test:unit": "tsx scripts/run-workspace-gate.ts test:unit",
+    "test:contract": "tsx scripts/run-workspace-gate.ts test:contract",
+    "test:providers": "tsx scripts/pending-gate.ts test:providers U3",
+    "test:integration": "tsx scripts/pending-gate.ts test:integration U2-U7",
+    "test:tenancy": "tsx scripts/pending-gate.ts test:tenancy U2",
+    "test:sandbox": "tsx scripts/pending-gate.ts test:sandbox U5",
+    "test:e2e": "tsx scripts/pending-gate.ts test:e2e U8",
+    "eval:smoke": "tsx scripts/pending-gate.ts eval:smoke U7",
+    "test:security": "tsx scripts/pending-gate.ts test:security U2",
+    "test:deploy:docker": "tsx scripts/pending-gate.ts test:deploy:docker U9",
+    "test:deploy:hosted": "tsx scripts/pending-gate.ts test:deploy:hosted U9",
+    "capability:probe": "tsx scripts/capability-probe.ts",
+    "verify:release": "tsx scripts/verify-release.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.5",
+    "@types/node": "26.1.1",
+    "tsx": "4.23.1",
+    "turbo": "2.10.6",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10",
+    "zod": "4.4.3"
+  }
+}
