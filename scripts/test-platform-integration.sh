@@ -65,3 +65,4 @@ export DATA_AGENT_TEST_DATABASE_URL="postgresql://$backend_user:$backend_passwor
 export DATA_AGENT_TEST_ADMIN_DATABASE_URL="postgresql://postgres:$database_password@127.0.0.1:$host_port/$database_name"
 
 pnpm --dir "$repo_dir" --filter @data-agent/platform test:integration
+pnpm --dir "$repo_dir" --filter @data-agent/worker test:integration

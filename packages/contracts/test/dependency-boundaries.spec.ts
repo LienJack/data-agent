@@ -132,6 +132,33 @@ describe("Workspace 依赖边界", () => {
     );
   });
 
+  it("领域 Package 不得绕过 Runtime 直接绑定 AI SDK", () => {
+    const research = workspaceModule(
+      "packages/research",
+      "@data-agent/research",
+      "research",
+      [],
+      ["@ai-sdk/openai", "ai"],
+    );
+    const sourcePath = join(research.absolutePath, "src", "agent.ts");
+    const violations = validateWorkspaceModules(
+      [research],
+      [
+        {
+          moduleName: research.name,
+          path: sourcePath,
+          source: 'import { createAnthropic } from "@ai-sdk/anthropic";',
+        },
+      ],
+    );
+
+    expect(
+      violations
+        .filter(({ code }) => code.includes("FORBIDDEN_ROLE"))
+        .map(({ dependency }) => dependency),
+    ).toEqual(["@ai-sdk/openai", "ai", "@ai-sdk/anthropic"]);
+  });
+
   it("contracts runtime allowlist 当前只允许 zod", () => {
     const contracts = workspaceModule(
       "packages/contracts",
@@ -225,6 +252,8 @@ describe("Workspace 依赖边界", () => {
     const modules = discoverWorkspaceModules(repoRoot);
 
     expect(normalizeWorkspaceFilter("contracts", modules)).toBe("@data-agent/contracts");
+    expect(normalizeWorkspaceFilter("runtime", modules)).toBe("@data-agent/agent-runtime");
+    expect(normalizeWorkspaceFilter("persistence", modules)).toBe("@data-agent/platform");
     expect(normalizeWorkspaceFilter("future-package", modules)).toBe("@data-agent/future-package");
     for (const filter of [
       "@data-agent/contracts",

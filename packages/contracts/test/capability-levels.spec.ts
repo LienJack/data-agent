@@ -468,21 +468,21 @@ describe("Provider 与 External Agent 契约", () => {
         resolve: async () => null,
       }),
     ).rejects.toBeInstanceOf(ModelCertificationError);
-    const receipt = await authorizeModelCertificationReceipt(
-      {
-        schema_version: "1.0.0",
-        receipt_ref: receiptReference,
-        profile_id: profile.profile_id,
-        provider: profile.provider,
-        model_id: profile.model_id,
-        profile_version: profile.profile_version,
-        profile_hash: profileHash,
-        probe_hash: hashes.execution,
-        verdict: "PASS",
-      },
-      receiptReference,
-      async () => true,
-    );
+    const claims = {
+      schema_version: "1.0.0",
+      receipt_ref: receiptReference,
+      profile_id: profile.profile_id,
+      provider: profile.provider,
+      model_id: profile.model_id,
+      profile_version: profile.profile_version,
+      profile_hash: profileHash,
+      probe_hash: hashes.execution,
+      verdict: "PASS" as const,
+    };
+    const receipt = await authorizeModelCertificationReceipt(receiptReference, {
+      resolve: async () => claims,
+      verifyCommitted: async () => true,
+    });
     expect(isAuthoritativeModelCertificationReceipt(receipt)).toBe(true);
 
     const available = await authorizeAvailableModelProfile(profile, {
@@ -531,16 +531,21 @@ describe("Provider 与 External Agent 契约", () => {
 
     await expect(
       authorizeModelCertificationReceipt(
-        claims,
         {
           ...receiptReference,
           content_hash: hashes.artifact,
         },
-        async () => true,
+        {
+          resolve: async () => claims,
+          verifyCommitted: async () => true,
+        },
       ),
     ).rejects.toBeInstanceOf(ModelCertificationError);
     await expect(
-      authorizeModelCertificationReceipt(claims, receiptReference, async () => false),
+      authorizeModelCertificationReceipt(receiptReference, {
+        resolve: async () => claims,
+        verifyCommitted: async () => false,
+      }),
     ).rejects.toBeInstanceOf(ModelCertificationError);
 
     const mutatedProfile = modelProfileSchema.parse({

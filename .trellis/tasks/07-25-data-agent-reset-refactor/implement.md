@@ -5,7 +5,8 @@
 - 当前任务状态：`in_progress`。
 - 用户已于 2026-07-25 选择执行方案 2，批准以 `/goal` 运行本实施路线。
 - Trellis 规划清单与 Compound Engineering 文档审查已通过；产品代码按 U1–U9 依赖顺序实施。
-- U1 已完成并固定在 `13824db`；U2 实现与本地验证已经完成，下一实施单元为 U3。
+- U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`；U3 实现与本地
+  验证已经完成，下一实施单元为 U4。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -23,6 +24,28 @@
 - 外部 Secret/Lifecycle 签名验证器、真实固定 IP Socket Adapter 与实际资源删除/恢复
   仍属于后续部署单元；U2 对相关成功终态保持 fail-closed/HOLD，不把合成 Receipt
   误报为真实外部成功。
+
+### U3 关闭证据（2026-07-25）
+
+- `@mastra/core`、七类 Provider SDK 与项目自有 `ModelProviderPort` 完成精确版本锁定；
+  Worker 只暴露项目组合入口，不向领域层或 Package 根泄漏 Mastra 原始构造器。
+- OpenAI、Anthropic/Claude、DeepSeek、GLM、Kimi、Grok、Gemini 的真实 SDK
+  Request Shape、Structured Output、Tool Call、Stream 与 Error Normalization 离线
+  Conformance 通过；Model Router 对未验证的 Context、Region/Privacy、Pricing 与
+  Fallback Constraint 全部失败关闭。
+- 类型化 L2 Team、Scoped Context Projection、Handoff Receipt、Tool Allowlist 与
+  Budget Replay 已实现；Claude Code 保持独立 External Agent Adapter 且默认关闭，
+  不能注册为普通 Model Provider。
+- Credentialed Smoke 采用显式联网命令；只有 production Live Smoke 产生的品牌化
+  Probe/Draft 能经 Worker 内部 PostgreSQL Store 提交、回读和授权为 `AVAILABLE`。
+  Duplicate Provider、伪 Store、raw/spread Claims、任意 Smoke Callback 与测试
+  Authority 子路径均被负例拒绝。
+- `pnpm lint`、`pnpm typecheck`、`pnpm build`、根级 Unit、Contract、Provider、
+  Integration、Security 与 Tenancy 门禁通过；PostgreSQL 17 集成中 Platform 9/9、
+  Worker Credential Receipt 1/1 通过，三路 Codex 冻结复核均无 P0–P2。
+- 当前环境未配置真实 Provider Credential，因此在线认证保持 `NOT_RUN`，七类
+  Provider 均为 `UNVERIFIED`；这不影响 U3 实现边界关闭，但发布决策继续保持
+  `HOLD`，不能声称已有真实 Provider `AVAILABLE` 证据。
 
 ## 2. 执行原则
 
@@ -301,7 +324,7 @@ pnpm test:deploy:hosted
 pnpm verify:release
 ```
 
-这些命令是全局验收契约。U1/U2 对应命令已经接入真实实现；U3–U9 尚未实现的命令必须
+这些命令是全局验收契约。U1–U3 对应命令已经接入真实实现；U4–U9 尚未实现的命令必须
 通过 `pending-gate` 或 `verify:release` 明确返回 `HOLD`/非零退出，不能静默通过。
 
 ## 10. 阶段性证据要求

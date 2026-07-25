@@ -5,6 +5,7 @@ export * from "./outbox/postgres-outbox.js";
 export * from "./persistence/repository.js";
 export * from "./persistence/transaction.js";
 export * from "./secrets/postgres-secret-ref.js";
+export { containsPotentialPlaintextSecret } from "./secrets/secret-ref.js";
 export * from "./storage/namespace.js";
 export type {
   AppCapability,

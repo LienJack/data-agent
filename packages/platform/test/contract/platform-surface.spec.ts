@@ -6,6 +6,7 @@ describe("platform package public surface", () => {
     expect(Object.keys(platform).sort()).toEqual([
       "PersistenceBoundaryError",
       "adaptPgPool",
+      "containsPotentialPlaintextSecret",
       "createCacheNamespace",
       "createPostgresCapabilityAuthority",
       "createPostgresDatasourceEgress",

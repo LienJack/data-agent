@@ -216,21 +216,21 @@ export async function createAuthoritativeReleaseFixture(
     "ModelCertificationReceipt",
     ids.inputArtifact,
   );
-  const modelReceipt = await authorizeModelCertificationReceipt(
-    {
-      schema_version: "1.0.0",
-      receipt_ref: modelReceiptReference,
-      profile_id: ids.artifact,
-      provider: "openai",
-      model_id: "verified-model",
-      profile_version: "1.0.0",
-      profile_hash: hashes.input,
-      probe_hash: hashes.execution,
-      verdict: "PASS",
-    },
-    modelReceiptReference,
-    async () => true,
-  );
+  const modelReceiptClaims = {
+    schema_version: "1.0.0",
+    receipt_ref: modelReceiptReference,
+    profile_id: ids.artifact,
+    provider: "openai",
+    model_id: "verified-model",
+    profile_version: "1.0.0",
+    profile_hash: hashes.input,
+    probe_hash: hashes.execution,
+    verdict: "PASS" as const,
+  };
+  const modelReceipt = await authorizeModelCertificationReceipt(modelReceiptReference, {
+    resolve: async () => modelReceiptClaims,
+    verifyCommitted: async () => true,
+  });
 
   const benchmarkReceiptReference = makeArtifactReference(
     "BenchmarkAdapterReceipt",

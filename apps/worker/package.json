@@ -1,0 +1,36 @@
+{
+  "name": "@data-agent/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:integration": "vitest run test/integration --passWithNoTests=false",
+    "test:providers": "vitest run test/credentialed-provider-certification.spec.ts",
+    "credentialed:smoke": "tsx src/credentialed-provider-smoke-cli.ts"
+  },
+  "dependencies": {
+    "@data-agent/agent-runtime": "workspace:*",
+    "@data-agent/contracts": "workspace:*",
+    "@data-agent/platform": "workspace:*",
+    "pg": "8.22.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/pg": "8.20.0",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

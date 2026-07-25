@@ -1,0 +1,40 @@
+{
+  "name": "@data-agent/agent-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test --exclude 'test/integration/**' --exclude 'test/credentialed/**' --passWithNoTests=false",
+    "test:contract": "vitest run test/provider-conformance.spec.ts test/external-agent-boundary.spec.ts test/team-handoff.spec.ts --passWithNoTests=false",
+    "test:providers": "vitest run test/provider-conformance.spec.ts test/provider-certification.spec.ts test/credentialed-smoke.spec.ts test/model-router.spec.ts test/mastra-model-provider-adapter.spec.ts test/tool-registry.spec.ts --passWithNoTests=false",
+    "test:integration": "vitest run test/integration --passWithNoTests=false",
+    "test:security": "vitest run test/external-agent-boundary.spec.ts test/external-agent-runtime.spec.ts test/mastra-model-provider-adapter.spec.ts test/tool-policy.spec.ts test/untrusted-context.spec.ts --passWithNoTests=false"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "4.0.20",
+    "@ai-sdk/deepseek": "3.0.13",
+    "@ai-sdk/google": "4.0.24",
+    "@ai-sdk/openai": "4.0.20",
+    "@ai-sdk/openai-compatible": "3.0.14",
+    "@ai-sdk/xai": "4.0.18",
+    "@data-agent/contracts": "workspace:*",
+    "@mastra/core": "1.52.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

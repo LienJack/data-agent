@@ -1,8 +1,14 @@
 import { z } from "zod";
-import { artifactReferenceFor, artifactReferenceSchema } from "../artifacts/envelope.js";
+import {
+  type ArtifactReferenceVerifier,
+  artifactReferenceFor,
+  artifactReferenceIdentity,
+  artifactReferenceSchema,
+} from "../artifacts/envelope.js";
 import {
   type AppScope,
   appScopeSchema,
+  contentHashSchema,
   deepFreeze,
   immutableIdSchema,
   timestampSchema,
@@ -18,6 +24,8 @@ import {
 import { assertPortEventCorrelation } from "./event-correlation.js";
 
 export { isCanonicalPosixWorkspaceRoot };
+
+export const EXTERNAL_AGENT_PUBLIC_OUTPUT_DELTA_MAX_CHARACTERS = 100_000;
 
 const canonicalExternalAgentWorkspacePolicySchema = externalAgentWorkspacePolicySchema.superRefine(
   (policy, ctx) => {
@@ -103,7 +111,7 @@ export const externalAgentEventSchema = z
       ...externalAgentEventBase,
       event_type: z.literal("OUTPUT_DELTA"),
       channel: z.enum(["stdout", "stderr"]),
-      delta: z.string().min(1).max(100_000),
+      delta: z.string().min(1).max(EXTERNAL_AGENT_PUBLIC_OUTPUT_DELTA_MAX_CHARACTERS),
     }),
     z.strictObject({
       ...externalAgentEventBase,
@@ -143,14 +151,142 @@ export const externalAgentEventSchema = z
 export const externalAgentCancelRequestSchema = z.strictObject({
   schema_version: versionIdentifierSchema,
   invocation_id: immutableIdSchema,
+  attempt_id: immutableIdSchema,
   scope: appScopeSchema,
   run_id: immutableIdSchema,
   reason_code: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
 });
 
+export const externalAgentCancelConfirmationSchema = z.strictObject({
+  cancelled: z.literal(true),
+  attempt_id: immutableIdSchema,
+});
+
 export type ExternalAgentRequest = z.infer<typeof externalAgentRequestSchema>;
 export type ExternalAgentEvent = z.infer<typeof externalAgentEventSchema>;
 export type ExternalAgentCancelRequest = z.infer<typeof externalAgentCancelRequestSchema>;
+export type ExternalAgentCancelConfirmation = z.infer<typeof externalAgentCancelConfirmationSchema>;
+
+export const externalAgentAuditReceiptSchema = z
+  .strictObject({
+    schema_version: versionIdentifierSchema,
+    receipt_ref: artifactReferenceFor("ExternalAgentAuditReceipt"),
+    scope: appScopeSchema,
+    run_id: immutableIdSchema,
+    invocation_id: immutableIdSchema,
+    attempt_id: immutableIdSchema,
+    profile_id: immutableIdSchema,
+    profile_version: versionIdentifierSchema,
+    adapter: z.string().min(1).max(128),
+    workspace_policy_hash: contentHashSchema,
+    permission_policy_hash: contentHashSchema,
+    action_log_hash: contentHashSchema,
+    output_hash: contentHashSchema,
+    action_count: z.number().int().nonnegative(),
+    output_bytes: z.number().int().nonnegative(),
+    process_terminal: z.literal("EXITED"),
+    terminal: z.literal("COMPLETED"),
+    reason_code: z.literal("EXTERNAL_AGENT_COMPLETED"),
+    completed_at: timestampSchema,
+  })
+  .superRefine((receipt, ctx) => {
+    if (
+      receipt.receipt_ref.app_id !== receipt.scope.app_id ||
+      receipt.receipt_ref.tenant_id !== receipt.scope.tenant_id ||
+      receipt.receipt_ref.environment !== receipt.scope.environment ||
+      receipt.receipt_ref.run_id !== receipt.run_id
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "External Agent Audit Receipt Reference 必须属于同一 Scope/Run。",
+        path: ["receipt_ref"],
+      });
+    }
+  });
+
+export type ExternalAgentAuditReceipt = z.infer<typeof externalAgentAuditReceiptSchema>;
+
+export interface ExternalAgentAuditReceiptExpectation {
+  readonly invocation: ExternalAgentRequest;
+  readonly workspace_policy_hash: `sha256:${string}`;
+  readonly permission_policy_hash: `sha256:${string}`;
+  readonly action_log_hash: `sha256:${string}`;
+  readonly output_hash: `sha256:${string}`;
+  readonly action_count: number;
+  readonly output_bytes: number;
+}
+
+export class ExternalAgentAuditReceiptAuthorityError extends Error {
+  override readonly name = "ExternalAgentAuditReceiptAuthorityError";
+  readonly code = "EXTERNAL_AGENT_AUDIT_RECEIPT_NOT_AUTHORITATIVE";
+}
+
+declare const authoritativeExternalAgentAuditReceipt: unique symbol;
+const authorizedExternalAgentAuditReceipts = new WeakSet<object>();
+
+export type AuthoritativeExternalAgentAuditReceipt = ExternalAgentAuditReceipt & {
+  readonly [authoritativeExternalAgentAuditReceipt]: true;
+};
+
+export interface ExternalAgentAuditReceiptAuthorityContext {
+  resolve(reference: ExternalAgentAuditReceipt["receipt_ref"]): Promise<unknown | null>;
+  verifyCommitted: ArtifactReferenceVerifier;
+}
+
+export async function authorizeExternalAgentAuditReceipt(
+  expectedReference: ExternalAgentAuditReceipt["receipt_ref"],
+  expected: ExternalAgentAuditReceiptExpectation,
+  authority: ExternalAgentAuditReceiptAuthorityContext,
+): Promise<AuthoritativeExternalAgentAuditReceipt> {
+  let receipt: ExternalAgentAuditReceipt;
+  try {
+    receipt = externalAgentAuditReceiptSchema.parse(await authority.resolve(expectedReference));
+  } catch {
+    throw new ExternalAgentAuditReceiptAuthorityError(
+      "External Agent Audit Receipt 无法从持久化 Authority 解析。",
+    );
+  }
+  const invocation = externalAgentRequestSchema.parse(expected.invocation);
+  if (
+    artifactReferenceIdentity(receipt.receipt_ref) !==
+      artifactReferenceIdentity(expectedReference) ||
+    receipt.scope.app_id !== invocation.scope.app_id ||
+    receipt.scope.tenant_id !== invocation.scope.tenant_id ||
+    receipt.scope.environment !== invocation.scope.environment ||
+    receipt.run_id !== invocation.run_id ||
+    receipt.invocation_id !== invocation.invocation_id ||
+    receipt.attempt_id !== invocation.attempt_id ||
+    receipt.profile_id !== invocation.profile_id ||
+    receipt.profile_version !== invocation.profile_version ||
+    receipt.adapter !== invocation.adapter ||
+    receipt.workspace_policy_hash !== expected.workspace_policy_hash ||
+    receipt.permission_policy_hash !== expected.permission_policy_hash ||
+    receipt.action_log_hash !== expected.action_log_hash ||
+    receipt.output_hash !== expected.output_hash ||
+    receipt.action_count !== expected.action_count ||
+    receipt.output_bytes !== expected.output_bytes
+  ) {
+    throw new ExternalAgentAuditReceiptAuthorityError(
+      "External Agent Audit Receipt 未绑定完整调用、Policy、Action Log 与 Output。",
+    );
+  }
+  if (!(await authority.verifyCommitted(expectedReference))) {
+    throw new ExternalAgentAuditReceiptAuthorityError(
+      "External Agent Audit Receipt 尚未由持久化 Authority 提交。",
+    );
+  }
+
+  authorizedExternalAgentAuditReceipts.add(receipt);
+  return deepFreeze(receipt) as AuthoritativeExternalAgentAuditReceipt;
+}
+
+export function isAuthoritativeExternalAgentAuditReceipt(
+  value: unknown,
+): value is AuthoritativeExternalAgentAuditReceipt {
+  return (
+    typeof value === "object" && value !== null && authorizedExternalAgentAuditReceipts.has(value)
+  );
+}
 
 export type ExternalAgentProfileResolver = (input: {
   readonly scope: AppScope;
@@ -285,5 +421,5 @@ export function parseExternalAgentEventForRequest(
 
 export interface ExternalAgentPort {
   stream(input: AuthoritativeExternalAgentInvocation): AsyncIterable<ExternalAgentEvent>;
-  cancel(input: ExternalAgentCancelRequest): Promise<PortResult<{ readonly cancelled: true }>>;
+  cancel(input: ExternalAgentCancelRequest): Promise<PortResult<ExternalAgentCancelConfirmation>>;
 }

@@ -329,8 +329,14 @@ describe("版本化 Adapter Ports", () => {
           adapter: input.adapter,
         });
       },
-      async cancel() {
-        return { ok: true, value: { cancelled: true as const } };
+      async cancel(input) {
+        return {
+          ok: true,
+          value: {
+            cancelled: true as const,
+            attempt_id: input.attempt_id,
+          },
+        };
       },
     } satisfies ExternalAgentPort;
     await expect(collectAsync(adapter.stream(invocation))).resolves.toHaveLength(1);

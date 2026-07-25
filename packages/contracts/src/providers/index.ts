@@ -33,6 +33,83 @@ export const modelCapabilitiesSchema = z.strictObject({
   vision: z.boolean(),
 });
 
+const unverifiedOperationalConstraintSchema = z.strictObject({
+  verification_status: z.literal("UNVERIFIED"),
+});
+
+export const modelContextWindowConstraintSchema = z.discriminatedUnion("verification_status", [
+  unverifiedOperationalConstraintSchema,
+  z
+    .strictObject({
+      verification_status: z.literal("VERIFIED"),
+      max_context_tokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      max_output_tokens: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    })
+    .superRefine((constraint, ctx) => {
+      if (constraint.max_output_tokens > constraint.max_context_tokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: "最大输出 Token 不能超过总 Context Window。",
+          path: ["max_output_tokens"],
+        });
+      }
+    }),
+]);
+
+export const modelRegionPrivacyConstraintSchema = z.discriminatedUnion("verification_status", [
+  unverifiedOperationalConstraintSchema,
+  z.strictObject({
+    verification_status: z.literal("VERIFIED"),
+    processing_regions: z.array(versionIdentifierSchema).min(1).max(64),
+    privacy_tags: z.array(versionIdentifierSchema).max(64),
+  }),
+]);
+
+export const modelPricingConstraintSchema = z.discriminatedUnion("verification_status", [
+  unverifiedOperationalConstraintSchema,
+  z.strictObject({
+    verification_status: z.literal("VERIFIED"),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    input_microunits_per_million_tokens: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER),
+    output_microunits_per_million_tokens: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(Number.MAX_SAFE_INTEGER),
+  }),
+]);
+
+export const modelFallbackCompatibilityConstraintSchema = z.discriminatedUnion(
+  "verification_status",
+  [
+    unverifiedOperationalConstraintSchema,
+    z.strictObject({
+      verification_status: z.literal("VERIFIED"),
+      tags: z.array(versionIdentifierSchema).min(1).max(64),
+    }),
+  ],
+);
+
+export const modelOperationalConstraintsSchema = z.strictObject({
+  context_window: modelContextWindowConstraintSchema,
+  region_privacy: modelRegionPrivacyConstraintSchema,
+  pricing: modelPricingConstraintSchema,
+  fallback_compatibility: modelFallbackCompatibilityConstraintSchema,
+});
+
+export const UNVERIFIED_MODEL_OPERATIONAL_CONSTRAINTS = deepFreeze(
+  modelOperationalConstraintsSchema.parse({
+    context_window: { verification_status: "UNVERIFIED" },
+    region_privacy: { verification_status: "UNVERIFIED" },
+    pricing: { verification_status: "UNVERIFIED" },
+    fallback_compatibility: { verification_status: "UNVERIFIED" },
+  }),
+);
+
 export const modelCertificationReceiptReferenceSchema = artifactReferenceFor(
   "ModelCertificationReceipt",
 );
@@ -45,6 +122,9 @@ export const modelProfileSchema = z
     model_id: z.string().min(1).max(256),
     profile_version: versionIdentifierSchema,
     capabilities: modelCapabilitiesSchema,
+    operational_constraints: modelOperationalConstraintsSchema.default(
+      UNVERIFIED_MODEL_OPERATIONAL_CONSTRAINTS,
+    ),
     certification_status: z.enum(["UNVERIFIED", "AVAILABLE", "UNAVAILABLE"]),
     certification_receipt_ref: modelCertificationReceiptReferenceSchema.optional(),
     certified_model_id: z.string().min(1).max(256).optional(),
@@ -96,6 +176,7 @@ export async function computeModelProfileHash(input: unknown): Promise<`sha256:$
     model_id: profile.model_id,
     profile_version: profile.profile_version,
     capabilities: profile.capabilities,
+    operational_constraints: profile.operational_constraints,
   });
 }
 
@@ -110,6 +191,7 @@ export const modelCertificationClaimsSchema = z.strictObject({
   probe_hash: contentHashSchema,
   verdict: z.literal("PASS"),
 });
+export type ModelCertificationClaims = z.infer<typeof modelCertificationClaimsSchema>;
 
 export interface ModelCertificationAuthorityContext {
   verifyCommitted: ArtifactReferenceVerifier;
@@ -133,21 +215,28 @@ export type AuthoritativeModelCertificationReceipt = z.infer<
 };
 
 export async function authorizeModelCertificationReceipt(
-  input: unknown,
   expectedReference: z.infer<typeof modelCertificationReceiptReferenceSchema>,
-  verifyCommitted: ArtifactReferenceVerifier,
+  authority: ModelCertificationAuthorityContext,
 ): Promise<AuthoritativeModelCertificationReceipt> {
-  const claimsResult = modelCertificationClaimsSchema.safeParse(input);
+  let reference: z.infer<typeof modelCertificationReceiptReferenceSchema>;
+  let resolved: unknown;
+  try {
+    reference = modelCertificationReceiptReferenceSchema.parse(expectedReference);
+    resolved = await authority.resolve(reference);
+  } catch {
+    throw new ModelCertificationError("Model Certification Receipt 无法从持久化 Authority 解析。");
+  }
+  const claimsResult = modelCertificationClaimsSchema.safeParse(resolved);
   if (
     !claimsResult.success ||
     artifactReferenceIdentity(claimsResult.data.receipt_ref) !==
-      artifactReferenceIdentity(expectedReference)
+      artifactReferenceIdentity(reference)
   ) {
     throw new ModelCertificationError(
       "Model Certification Receipt 必须匹配完整的已解析 Artifact Reference。",
     );
   }
-  if (!(await verifyCommitted(expectedReference))) {
+  if (!(await authority.verifyCommitted(reference))) {
     throw new ModelCertificationError("Model Certification Receipt 尚未由持久化 Authority 提交。");
   }
 
@@ -184,9 +273,8 @@ export async function authorizeAvailableModelProfile(
   let receipt: AuthoritativeModelCertificationReceipt;
   try {
     receipt = await authorizeModelCertificationReceipt(
-      await authority.resolve(profile.certification_receipt_ref),
       profile.certification_receipt_ref,
-      (reference) => authority.verifyCommitted(reference),
+      authority,
     );
   } catch {
     throw new ModelCertificationError(

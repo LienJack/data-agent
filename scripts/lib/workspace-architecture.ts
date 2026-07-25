@@ -45,6 +45,7 @@ const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const contractsRuntimeAllowlist = new Set(["zod"]);
 const domainRoles = new Set<WorkspaceRole>(["text2sql", "research", "evals"]);
 const forbiddenDomainRuntimePackages = [
+  "@ai-sdk",
   "@mastra",
   "@redis",
   "@supabase",
@@ -52,8 +53,13 @@ const forbiddenDomainRuntimePackages = [
   "data_agent_sandbox",
   "ioredis",
   "next",
+  "ai",
   "redis",
 ] as const;
+const workspaceFilterAliases: Readonly<Record<string, string>> = {
+  persistence: "@data-agent/platform",
+  runtime: "@data-agent/agent-runtime",
+};
 
 type DependencyField = (typeof allDependencyFields)[number];
 type JsonObject = Record<string, unknown>;
@@ -597,6 +603,14 @@ export function normalizeWorkspaceFilter(
 ): string {
   if (!isBarePackageFilter(filter)) {
     return filter;
+  }
+
+  const aliased = workspaceFilterAliases[filter];
+  if (aliased) {
+    if (!modules.some((module) => module.name === aliased)) {
+      throw new Error(`裸 Filter ${filter} 指向尚未注册的 Workspace Package ${aliased}。`);
+    }
+    return aliased;
   }
 
   const matchingModules = modules.filter(
