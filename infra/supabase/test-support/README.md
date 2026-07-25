@@ -1,0 +1,56 @@
+# Supabase / PostgreSQL 迁移测试
+
+该目录只为普通 PostgreSQL 容器提供最小 `auth`、`storage` Stub、双应用 Fixture 与 SQL
+断言。生产迁移不会创建 Supabase 系统 Schema。
+
+运行：
+
+```bash
+infra/supabase/test-support/run-postgres-smoke.sh
+```
+
+Smoke 固定执行：
+
+1. 禁止 `GRANT ALL`、生产迁移伪造 `auth/storage`、遗漏空 `search_path`；
+2. 校验每个迁移文件的规范化 SHA-256；
+3. 依次执行 Platform 与 Data Agent App 迁移；
+4. 验证双 App、双 Tenant、双环境、RPC/RLS、Demo、Storage、生命周期、SecretRef
+   与 Migration Ledger；
+5. 用两个数据库会话证明同 App Migration Lock 互斥、不同 App Lock 相互独立。
+
+生产约束：
+
+- 首次请求只开放
+  `api.data_agent__accept_run_command(...)`，在一个事务内提交 Run、Command、
+  Idempotency、Initial Event、Outbox 与 Audit；`create_run` 保留但没有客户端权限。
+- 后台直连先调用 `platform.resolve_backend_authority(...)` 获取数据库权威投影，再在同一事务
+  设置 `data_agent.app_id/tenant_id/environment/principal_id/role/deployment_id`；
+  RLS 与敏感函数会通过 `platform.current_backend_authority(...)` 再次核对 Deployment、
+  Membership Version、App/Environment Epoch 与生命周期。生命周期权威固定以
+  `(app_id, environment)` 为主键，冻结 `test` 不得污染同一 App 的 `prod`。跨请求缓存必须调用
+  `platform.revalidate_backend_authority(...)`，成员撤销或生命周期变化会立即令旧投影失效。
+- Outbox Worker 不能直接 `UPDATE` 表，只能通过 `claim_outbox(...)`、
+  `publish_outbox(...)` 与 `retry_outbox(...)` 操作；每次重新领取都会单调递增
+  `lease_token` 与 `attempt_count`，旧 Worker 的 fence 不能发布或重试新 lease。
+- Artifact Object 的 Storage Key 固定为
+  `<app_id>/<tenant_id>/<environment>/<principal_id>/<run_id>/<artifact_kind>/sha256-<digest>`；
+  Key 中的 Principal/Run 还必须和私有 Run 元数据一致。Restrictive Guard 同时约束其他
+  应用误建的宽松 `PUBLIC` Policy，禁止跨 App、Tenant、环境与对象所有者读写。
+- SecretRef 只保存 Provider 引用哈希和状态元数据，不保存明文或 Provider 引用。
+  Rotation/Revoke 使用 Version CAS。缺少真实外部验签器时，`SUCCEEDED` Receipt
+  失败关闭；精确匹配当前 Request/Version/Operation 的 `FAILED` Receipt 可被 Owner
+  显式确认并恢复 `ACTIVE` 以便重试，但不会推进 Version 或 Provider Ref Hash。
+  没有 Receipt 时保持 `ROTATION_PENDING` / `REVOCATION_PENDING`，不会伪造成功。
+- 生命周期的 `DELETE_CONFIRMED` 必须消费 Job Authority 写入的不可变 Resource
+  Manifest 和 Operation Receipt，并要求数据库、Storage、Redis 三类 Residual 全为
+  `0`；Manifest/Receipt 还绑定当前 `(app_id, environment, authority_epoch)`，旧环境或
+  旧生命周期轮次的证据不能重放。
+  当前切片尚未接入真实外部清理与 Ed25519 验签器，因此即便 Receipt 声称零残留，
+  `DELETE_CONFIRMED` 也会返回 `DA_EXTERNAL_DELETE_VERIFIER_UNAVAILABLE`，应用保持
+  `DELETE_PENDING`（HOLD），不会标记 `DELETED`。删除可能已有破坏性副作用，因此
+  不提供无可信恢复证据的 `DELETE_CANCELLED`。签名字段在本阶段只是待验签输入，
+  不能作为已验证结论。
+- 浏览器提供的 App、Tenant、Role Claim 不构成权限；RPC 只把 Deployment/Tenant
+  参数当作待验证的资源选择器，并以 `auth.uid()` 作为 Principal。
+- 生产迁移要求 Supabase 已提供真实 `auth.uid()`、`storage.objects` 与 Storage
+  helper；只有本目录的 Stub 会在普通 PostgreSQL 容器内模拟这些对象。

@@ -5,8 +5,24 @@
 - 当前任务状态：`in_progress`。
 - 用户已于 2026-07-25 选择执行方案 2，批准以 `/goal` 运行本实施路线。
 - Trellis 规划清单与 Compound Engineering 文档审查已通过；产品代码按 U1–U9 依赖顺序实施。
+- U1 已完成并固定在 `13824db`；U2 实现与本地验证已经完成，下一实施单元为 U3。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
+
+### U2 关闭证据（2026-07-25）
+
+- PostgreSQL 17 clean migration、Checksum、双 App×双 Tenant、RLS/Grant、Storage、
+  Lifecycle、Secret、Egress 与 Migration Lock 烟测通过。
+- Browser RPC 与 Backend Repository 对同一命令完成跨入口 Canonical Hash 重放；
+  同 Tenant 不同 Principal 可独立使用相同 Idempotency Key。
+- 冻结后的 READ 保留，WRITE 失败关闭；Policy Revoke 与 Approval Consume 的并发竞态
+  由 Policy Lock 保证撤销优先。
+- `pnpm lint`、`pnpm typecheck`、`pnpm build` 通过。
+- 根级 Unit 157/157、Contract 9/9、Platform Tenancy 19/19、Security 32/32、
+  PostgreSQL Integration 9/9 通过。
+- 外部 Secret/Lifecycle 签名验证器、真实固定 IP Socket Adapter 与实际资源删除/恢复
+  仍属于后续部署单元；U2 对相关成功终态保持 fail-closed/HOLD，不把合成 Receipt
+  误报为真实外部成功。
 
 ## 2. 执行原则
 
@@ -285,7 +301,8 @@ pnpm test:deploy:hosted
 pnpm verify:release
 ```
 
-这些命令属于未来实现的验收契约；当前空仓库尚未创建对应脚本，本轮不执行并不表示失败。
+这些命令是全局验收契约。U1/U2 对应命令已经接入真实实现；U3–U9 尚未实现的命令必须
+通过 `pending-gate` 或 `verify:release` 明确返回 `HOLD`/非零退出，不能静默通过。
 
 ## 10. 阶段性证据要求
 

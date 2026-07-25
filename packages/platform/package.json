@@ -1,0 +1,37 @@
+{
+  "name": "@data-agent/platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test --exclude 'test/integration/**'",
+    "test:contract": "vitest run test/contract",
+    "test:integration": "vitest run test/integration --passWithNoTests=false",
+    "test:tenancy": "vitest run test/tenancy test/storage test/cache test/lifecycle --passWithNoTests=false",
+    "test:security": "vitest run test/datasources test/secrets test/tenancy test/storage test/cache --passWithNoTests=false"
+  },
+  "dependencies": {
+    "@data-agent/contracts": "workspace:*",
+    "@upstash/redis": "1.38.0",
+    "ipaddr.js": "2.4.0",
+    "pg": "8.22.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/pg": "8.20.0",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}
