@@ -626,6 +626,30 @@ flowchart LR
   品牌化 System Store 注入缝，但真实 PostgreSQL Sandbox、Snapshot 数据变换、耐久
   System Store/Migration 与 Streaming Resource Cutoff 尚未交付，不能据此解除
   U5/U9 `HOLD`。
+- **实施进度（2026-07-27，U5 Unit 5 研究冻结）：** RQ091 已在
+  `research/data-agent-system-design` 以 16/16 supported Claim、27 个当前 Evidence、
+  closed Answer Runtime、`validate-ready: true` 和 Codex-only
+  `FullAnswerRecertification` 关闭；未使用 Claude Code 审核。实现必须把 Unit 3
+  “Claim/真实 Operation/完成记录共享一个 SQL transaction”的同库抽象拆成三个本地
+  原子边界：
+  `Authority Claim -> Datasource RR/RO Execute -> Authority CAS Finalize`，明确保留
+  query-finished/finalize-not-committed crash window，不宣称跨库 exactly-once。
+  U5 只实现 `CONTROLLED_REVISION`：完整 schema/data manifest 重算、精确 Relation/OID
+  锁定与 `AsyncRawServerCursor` 查询必须位于同一条连接、同一个
+  `REPEATABLE READ READ ONLY` Snapshot，避免 manifest/query TOCTOU；原生 exported
+  snapshot 只作为失效反例，不实现 keeper。
+  TypeScript Platform 负责 Exact Revision、Claim/Lease/Fence/Cancel Epoch、
+  Execution Grant、Outcome Binding 与 Finalize；`services/sandbox` 使用
+  Psycopg 3.2 `AsyncRawServerCursor`、固定 `fetchmany()`、逐批 Row/Byte/Deadline
+  Cutoff 和干净 Rollback。U5 的本地子进程协议为单 Execution 双向 NDJSON，支持绑定
+  Attempt/Fence/Epoch 的 Cancel Frame；Late Cancel 丢弃候选但不能伪称数据库取消已
+  确认，旧 Attempt Outcome 不能重放到新 Fence。
+  Migration 必须新增专用 append-only `text2sql_system_artifacts`、可变 Claim/Event
+  投影与不可变 Execution Record；Principal 是 Producer/Audience Fact，不进入公开
+  Artifact Reference Identity。三个数据 Mutation 必须各自从同一 Baseline 独立 clone
+  并证明全 Snapshot `after = before + exact delta`；Half-open 只改变查询窗口。
+  本次只冻结 proof-first 实现合同；真实代码、PG17 Integration、Hosted/Docker/Signed
+  Outcome 仍未交付，Release 保持 `HOLD`。
 
 ### U6. 实现 L2 研究循环与 ReportReady 权威
 

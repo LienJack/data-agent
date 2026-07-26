@@ -10,9 +10,10 @@
 - U5 的 Artifact Authority 基线已固定在 `4bc011f`，ACL-first Grounding、Typed IR
   与 PostgreSQL Authority Persistence 已固定在 `3249ea2`；PostgreSQL Dialect
   Compiler、七道 Gate 与受治理执行 Authority 已固定在 `fa3180b`，Bounded Repair
-  已固定在 `029097e`；Metamorphic Result Oracle 已实现并通过完整本地门禁与 Codex
-  复审；本单元完成后继续真实 PostgreSQL Sandbox、Snapshot Protocol 与耐久
-  System Store。
+  已固定在 `029097e`；Metamorphic Result Oracle 已固定在 `60de42d` 并通过完整本地
+  门禁与 Codex 复审。RQ091 已冻结下一单元的真实 PostgreSQL Sandbox、Snapshot
+  Protocol、耐久 System Store、受控 Mutation 与 Streaming Cutoff 合同；当前进入
+  proof-first 实现，Release 仍为 `HOLD`。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -248,6 +249,40 @@
 - Verification：Build、Typecheck、Lint、Unit、Contract、Integration、Tenancy、
   Security、PostgreSQL Smoke 与预期 `HOLD` 均已重新执行；Trellis Check 结论为
   `PASS（U5 Unit 4 范围）`。
+
+### U5 Unit 5 研究冻结（2026-07-27）
+
+- RQ091 当前全文已经绑定 16 个 supported Claim、27 个 Evidence、closed Answer
+  Runtime、`validate-ready: true` 与
+  `RQ091-FULL-ANSWER-EXTENSION@1.0.0` FullAnswerRecertification；两轮 Codex-only
+  文档复审最终 `remaining blockers: NONE`，未调用 Claude Code。
+- 原 Unit 3 的“Claim、真实 Operation 与完成记录共享同一 SQL transaction”只能表示
+  Authority DB 与 Datasource 共用同一连接的演示路径，不能外推到独立 Python
+  Datasource。Unit 5 固定为三个本地事务：
+  `Authority Claim -> Datasource RR/RO Execute -> Authority CAS Finalize`；跨库只保证
+  Authority 本地原子与 Fence/CAS，不声明 exactly-once。
+- `CONTROLLED_REVISION` 是 U5 唯一 `REPLAYABLE` Snapshot Strategy。完整 schema/data
+  manifest、精确 Relation/OID 锁定和查询必须共享同一 RR/RO transaction/snapshot，
+  防止 manifest/query TOCTOU；Owner/Admin 漂移属于 Authority Breach。
+- TypeScript Platform 只拥有 Exact Revision、Claim/Lease/Fence/Cancel Epoch、
+  Grant、Outcome Binding 与 Finalize 权限。Python `services/sandbox` 使用
+  `psycopg>=3.2` 的 `AsyncRawServerCursor` 原生消费 `$1…$n`，固定
+  `fetchmany()`、逐批 Row/Byte/Deadline Cutoff，并以干净 Rollback 结束所有只读
+  Datasource Transaction。
+- U5 本地 Transport 是每进程单 Execution 的双向 NDJSON。Outcome 精确绑定
+  Grant/Input/Execution/Attempt/Fence/SQL/Snapshot；Cancel Epoch 按单调规则核验。
+  late cancel 丢弃候选并进入 `CANCELLED`，不能伪称 query cancel confirmed；旧 Attempt
+  stdout 不能提交到新 Fence。
+- 新 Migration 必须包含专用 append-only System Artifact Store、可恢复 Claim/Event
+  投影与每 Attempt 一条的不可变 Execution Record。领域 Content Hash 与完整 Payload
+  Checksum 分离，通用 `artifacts` 镜像没有 System Authority。
+- 三个数据变换 `FAN_OUT`、`NULL_ANTI_MEMBERSHIP`、
+  `SAME_VALUED_DISTINCT_FACT` 分别从同一 sealed Baseline clone，并用全 Snapshot
+  manifest 证明 exact delta；`HALF_OPEN_ADDITIVE_PARTITION` 只改变查询窗口，不进入
+  数据 Mutation。
+- 本节是研究合同冻结，不是实现关闭证据。PG17 设计期容器日志只标记为
+  `SYNTHETIC_POSTGRESQL_17_PROOF`；在 Python/TypeScript/Migration/Integration Gate
+  全部绿色前，`pnpm test:sandbox` 与 Release 继续保持 `HOLD`。
 
 ## 2. 执行原则
 
