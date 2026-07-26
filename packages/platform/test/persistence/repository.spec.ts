@@ -1,17 +1,26 @@
 import {
+  type ArtifactReference,
+  type AuthoritativeMetamorphicOracleReceipt,
   artifactReferenceIdentity,
   canonicalizeJson,
   computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
   type GroundingAuthorityDocument,
   groundingAuthorityDocumentSchema,
+  isAuthoritativeMetamorphicFixtureReceipt,
+  isAuthoritativeMetamorphicOracleReceipt,
   type L2ArtifactDocument,
   l2ArtifactDocumentSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  createAuthoritativeMetamorphicSandboxFixture,
+  createMetamorphicOracleFixture,
+} from "../../../text2sql/test/support/metamorphic-oracle-fixture.js";
+import {
   createPostgresRepository,
+  createText2SqlBrandedReceiptAuthorityContext,
   type PostgresRepositoryAuthorities,
 } from "../../src/persistence/repository.js";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
@@ -31,6 +40,26 @@ const ids = {
   deployment: "00000000-0000-4000-8000-0000000000d1",
 };
 const canonicalPayloadHash = `sha256:${"a".repeat(64)}`;
+
+void ({
+  // @ts-expect-error Fixture Authority 必须返回不可克隆品牌对象，不能注入 boolean 自证。
+  verifyMetamorphicFixtureReceipt: async () => true,
+} satisfies PostgresRepositoryAuthorities);
+
+void ({
+  // @ts-expect-error Meta Authority 必须按完整 Reference 返回品牌对象，不能注入 boolean 自证。
+  verifyMetamorphicOracleReceipt: async () => true,
+} satisfies PostgresRepositoryAuthorities);
+
+void ({
+  // @ts-expect-error Result Authority 不能退回 raw Receipt + boolean 的旧式自证接口。
+  verifyResultOracleReceipt: async () => true,
+} satisfies PostgresRepositoryAuthorities);
+
+void ({
+  // @ts-expect-error Sandbox Authority 不能退回 raw Receipt/Result + boolean 的旧式自证接口。
+  verifySandboxExecutionEvidence: async () => true,
+} satisfies PostgresRepositoryAuthorities);
 
 function issueCapability(role: "OWNER" | "ANALYST" | "VIEWER" = "ANALYST") {
   const registry = createDeploymentRegistry(
@@ -52,20 +81,49 @@ function issueCapability(role: "OWNER" | "ANALYST" | "VIEWER" = "ANALYST") {
   };
 }
 
+function issueCapabilityForReference(reference: ArtifactReference, principal: string) {
+  const registry = createDeploymentRegistry(
+    [
+      {
+        deployment_id: ids.deployment,
+        app_id: reference.app_id,
+        environment: reference.environment,
+      },
+    ],
+    [
+      {
+        subject: principal,
+        deployment_id: ids.deployment,
+        tenant_id: reference.tenant_id,
+        role: "ANALYST",
+      },
+    ],
+  );
+  const result = registry.resolveForDeployment(ids.deployment, { subject: principal });
+  if (!result.ok) throw new Error("Authoritative Ready fixture Capability 创建失败。");
+  return {
+    capability: result.value,
+    authorizer: asTransactionalTestAuthority(registry.authorizer),
+  };
+}
+
 interface QueryCall {
   readonly text: string;
   readonly values: readonly unknown[];
 }
 
 function scriptedPool(
-  handle: (text: string, values: readonly unknown[]) => SqlQueryResult | undefined,
+  handle: (
+    text: string,
+    values: readonly unknown[],
+  ) => SqlQueryResult | undefined | Promise<SqlQueryResult | undefined>,
 ) {
   const calls: QueryCall[] = [];
   let released = 0;
   const client: SqlClient = {
     async query<Row extends object = Record<string, unknown>>(text: string, values = []) {
       calls.push({ text, values });
-      const handled = handle(text, values);
+      const handled = await handle(text, values);
       if (handled) return handled as SqlQueryResult<Row>;
       if (text.includes("backend_context_matches")) {
         return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
@@ -101,6 +159,19 @@ function commandInput() {
       secret_refs: ["secretref:00000000-0000-4000-8000-000000000801"],
     },
   };
+}
+
+async function createBrandedMetamorphicReceiptFixture() {
+  const sandbox = await createAuthoritativeMetamorphicSandboxFixture();
+  const oracle = await createMetamorphicOracleFixture({
+    sandbox_fixture: sandbox,
+    evaluated_at: "2026-07-26T00:30:00.000Z",
+  });
+  const verification = await oracle.verifier.verify(oracle.receipt.receipt_ref);
+  if (!verification) {
+    throw new Error("Metamorphic test fixture 未获得真实 Fixture/Meta 品牌。");
+  }
+  return verification;
 }
 
 async function committedDocument(input: {
@@ -838,6 +909,350 @@ describe("PostgreSQL authoritative repository", () => {
     expect(fixture.calls.some(({ text }) => text.includes("from artifacts as artifact"))).toBe(
       false,
     );
+  });
+
+  it("L2 提交把 Metamorphic Fixture 与 Oracle Receipt 只路由到专用 System Store", async () => {
+    const fixtureReference = {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+      run_id: ids.run,
+      artifact_id: "00000000-0000-4000-8000-000000000719",
+      artifact_type: "MetamorphicFixtureReceipt",
+      revision: 1,
+      content_hash: `sha256:${"8".repeat(64)}`,
+    } as const;
+    const metamorphicReference = {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+      run_id: ids.run,
+      artifact_id: "00000000-0000-4000-8000-00000000071a",
+      artifact_type: "MetamorphicOracleReceipt",
+      revision: 1,
+      content_hash: `sha256:${"9".repeat(64)}`,
+    } as const;
+    const document = await committedDocument({
+      artifact_id: "00000000-0000-4000-8000-000000000720",
+      artifact_type: "QuestionFrame",
+      input_refs: [fixtureReference, metamorphicReference],
+      payload: {
+        artifact_type: "QuestionFrame",
+        raw_question: "收入为什么下降？",
+        normalized_question: "解释收入下降原因",
+        authorized_datasource_ids: ["00000000-0000-4000-8000-000000000714"],
+        expected_output: "多步研究报告",
+      },
+    });
+    const fixture = scriptedPool((text) => {
+      if (text.includes("lock_owned_run_fence")) {
+        return { rows: [{ active_fence: "0" }], rowCount: 1 };
+      }
+      if (text.includes("select revision, content_hash")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("insert into artifacts")) {
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    const systemReferences: string[] = [];
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer, {
+      ...l2CommitAuthoritiesFor(document),
+      verifyText2SqlSystemArtifactCommitted: async (reference) => {
+        systemReferences.push(artifactReferenceIdentity(reference));
+        return [fixtureReference, metamorphicReference].some(
+          (expected) =>
+            artifactReferenceIdentity(reference) === artifactReferenceIdentity(expected),
+        );
+      },
+    });
+
+    expect(
+      await repository.commitL2Artifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({ ok: true, value: { artifact_type: "QuestionFrame" } });
+    expect(
+      systemReferences.filter(
+        (identity) => identity === artifactReferenceIdentity(fixtureReference),
+      ),
+    ).toHaveLength(2);
+    expect(
+      systemReferences.filter(
+        (identity) => identity === artifactReferenceIdentity(metamorphicReference),
+      ),
+    ).toHaveLength(2);
+    expect(fixture.calls.some(({ text }) => text.includes("from artifacts as artifact"))).toBe(
+      false,
+    );
+  });
+
+  it("缺少 Metamorphic Oracle 专用 commit verifier 时在 insert 前失败关闭", async () => {
+    const metamorphicReference = {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+      run_id: ids.run,
+      artifact_id: "00000000-0000-4000-8000-000000000719",
+      artifact_type: "MetamorphicOracleReceipt",
+      revision: 1,
+      content_hash: `sha256:${"9".repeat(64)}`,
+    } as const;
+    const document = await committedDocument({
+      artifact_id: "00000000-0000-4000-8000-000000000720",
+      artifact_type: "QuestionFrame",
+      input_refs: [metamorphicReference],
+      payload: {
+        artifact_type: "QuestionFrame",
+        raw_question: "收入为什么下降？",
+        normalized_question: "解释收入下降原因",
+        authorized_datasource_ids: ["00000000-0000-4000-8000-000000000714"],
+        expected_output: "多步研究报告",
+      },
+    });
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer, {
+      ...l2CommitAuthoritiesFor(document),
+      resolveText2SqlSystemArtifact: async () => ({ ignored: true }),
+    });
+
+    expect(
+      await repository.commitL2Artifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "L2_ARTIFACT_AUTHORITY_INVALID", retryable: false },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+    expect(fixture.calls.some(({ text }) => text.includes("insert into artifacts"))).toBe(false);
+    expect(fixture.calls.some(({ text }) => text.includes("from artifacts as artifact"))).toBe(
+      false,
+    );
+  });
+
+  it("按完整 Reference、Meta 原对象、Capability 与同一事务 Client 转发品牌", async () => {
+    const verification = await createBrandedMetamorphicReceiptFixture();
+    const fixtureReference = verification.fixture_receipt.receipt_ref;
+    const metamorphicReference = verification.receipt.receipt_ref;
+    const resultReference = {
+      ...metamorphicReference,
+      artifact_id: "50000000-0000-4000-8000-000000009997",
+      artifact_type: "ResultOracleReceipt",
+      content_hash: `sha256:${"d".repeat(64)}`,
+    } as const satisfies ArtifactReference;
+    const authority = issueCapabilityForReference(
+      metamorphicReference,
+      verification.verifier_identity.principal_id,
+    );
+    const sqlFixture = scriptedPool(() => undefined);
+    const client = await sqlFixture.pool.connect();
+    const calls: Array<{
+      kind: "fixture" | "metamorphic" | "result";
+      reference: ArtifactReference;
+      metamorphic?: AuthoritativeMetamorphicOracleReceipt;
+      capability: unknown;
+      client: SqlClient;
+    }> = [];
+    const context = createText2SqlBrandedReceiptAuthorityContext(client, authority.capability, {
+      resolveAuthoritativeMetamorphicFixtureReceipt: async (
+        reference,
+        capability,
+        transactionClient,
+      ) => {
+        calls.push({
+          kind: "fixture",
+          reference,
+          capability,
+          client: transactionClient,
+        });
+        return verification.fixture_receipt;
+      },
+      resolveAuthoritativeMetamorphicOracleReceipt: async (
+        reference,
+        capability,
+        transactionClient,
+      ) => {
+        calls.push({
+          kind: "metamorphic",
+          reference,
+          capability,
+          client: transactionClient,
+        });
+        return verification.receipt;
+      },
+      resolveAuthoritativeResultOracleReceipt: async (
+        reference,
+        metamorphic,
+        capability,
+        transactionClient,
+      ) => {
+        calls.push({
+          kind: "result",
+          reference,
+          metamorphic,
+          capability,
+          client: transactionClient,
+        });
+        return null;
+      },
+    });
+
+    expect(await context.resolveAuthoritativeMetamorphicFixtureReceipt?.(fixtureReference)).toBe(
+      verification.fixture_receipt,
+    );
+    expect(await context.resolveAuthoritativeMetamorphicOracleReceipt?.(metamorphicReference)).toBe(
+      verification.receipt,
+    );
+    expect(
+      await context.resolveAuthoritativeResultOracleReceipt?.(
+        resultReference,
+        verification.receipt,
+      ),
+    ).toBeNull();
+    expect(isAuthoritativeMetamorphicFixtureReceipt(verification.fixture_receipt)).toBe(true);
+    expect(isAuthoritativeMetamorphicOracleReceipt(verification.receipt)).toBe(true);
+    expect(
+      calls.map(({ kind, reference }) => [kind, artifactReferenceIdentity(reference)]),
+    ).toEqual([
+      ["fixture", artifactReferenceIdentity(fixtureReference)],
+      ["metamorphic", artifactReferenceIdentity(metamorphicReference)],
+      ["result", artifactReferenceIdentity(resultReference)],
+    ]);
+    expect(calls.find(({ kind }) => kind === "result")?.metamorphic).toBe(verification.receipt);
+    expect(calls.every(({ capability }) => capability === authority.capability)).toBe(true);
+    expect(calls.every(({ client: observedClient }) => observedClient === client)).toBe(true);
+    expect(
+      new Set([
+        verification.fixture_identity.authority_id,
+        verification.sandbox_identity.authority_id,
+        verification.verifier_identity.authority_id,
+      ]).size,
+    ).toBe(3);
+    expect(
+      new Set([
+        verification.fixture_identity.key_id,
+        verification.sandbox_identity.key_id,
+        verification.verifier_identity.key_id,
+      ]).size,
+    ).toBe(3);
+  });
+
+  it("Fixture/Meta 品牌 resolver 拒绝 Reference A/Payload B 的 type、id、run、revision 与 hash 换绑", async () => {
+    const verification = await createBrandedMetamorphicReceiptFixture();
+    const fixtureReference = verification.fixture_receipt.receipt_ref;
+    const metamorphicReference = verification.receipt.receipt_ref;
+    const authority = issueCapabilityForReference(
+      metamorphicReference,
+      verification.verifier_identity.principal_id,
+    );
+    const client = await scriptedPool(() => undefined).pool.connect();
+    const context = createText2SqlBrandedReceiptAuthorityContext(client, authority.capability, {
+      resolveAuthoritativeMetamorphicFixtureReceipt: async () => verification.fixture_receipt,
+      resolveAuthoritativeMetamorphicOracleReceipt: async () => verification.receipt,
+    });
+    const reboundFixtureReferences = [
+      {
+        ...fixtureReference,
+        artifact_type: "MetamorphicOracleReceipt",
+      },
+      {
+        ...fixtureReference,
+        artifact_id: "50000000-0000-4000-8000-000000009998",
+      },
+      {
+        ...fixtureReference,
+        run_id: "50000000-0000-4000-8000-000000009999",
+      },
+      {
+        ...fixtureReference,
+        revision: fixtureReference.revision + 1,
+      },
+      {
+        ...fixtureReference,
+        content_hash: `sha256:${"f".repeat(64)}`,
+      },
+    ] as const satisfies readonly ArtifactReference[];
+    for (const reboundReference of reboundFixtureReferences) {
+      expect(
+        await context.resolveAuthoritativeMetamorphicFixtureReceipt?.(reboundReference),
+      ).toBeNull();
+    }
+    expect(
+      await context.resolveAuthoritativeMetamorphicOracleReceipt?.({
+        ...metamorphicReference,
+        revision: metamorphicReference.revision + 1,
+      }),
+    ).toBeNull();
+    expect(
+      await context.resolveAuthoritativeMetamorphicOracleReceipt?.({
+        ...metamorphicReference,
+        content_hash: `sha256:${"e".repeat(64)}`,
+      }),
+    ).toBeNull();
+    await expect(
+      context.resolveAuthoritativeMetamorphicFixtureReceipt?.({
+        ...fixtureReference,
+        tenant_id: "50000000-0000-4000-8000-000000009999",
+      }),
+    ).rejects.toMatchObject({ code: "ARTIFACT_SCOPE_DENIED" });
+  });
+
+  it("raw clone、boolean 自证与缺失 Authority 都不能产生 Fixture/Meta 品牌", async () => {
+    const verification = await createBrandedMetamorphicReceiptFixture();
+    const authority = issueCapabilityForReference(
+      verification.receipt.receipt_ref,
+      verification.verifier_identity.principal_id,
+    );
+    const client = await scriptedPool(() => undefined).pool.connect();
+    const rawCloneContext = createText2SqlBrandedReceiptAuthorityContext(
+      client,
+      authority.capability,
+      {
+        resolveAuthoritativeMetamorphicFixtureReceipt: async () =>
+          structuredClone(verification.fixture_receipt),
+        resolveAuthoritativeMetamorphicOracleReceipt: async () =>
+          structuredClone(verification.receipt),
+      } as unknown as PostgresRepositoryAuthorities,
+    );
+    const rawBooleanContext = createText2SqlBrandedReceiptAuthorityContext(
+      client,
+      authority.capability,
+      {
+        verifyResultOracleReceipt: async () => true,
+        verifySandboxExecutionEvidence: async () => true,
+        verifyMetamorphicFixtureReceipt: async () => true,
+        verifyMetamorphicOracleReceipt: async () => true,
+      } as unknown as PostgresRepositoryAuthorities,
+    );
+    const missingAuthorityContext = createText2SqlBrandedReceiptAuthorityContext(
+      client,
+      authority.capability,
+      {},
+    );
+
+    expect(
+      await rawCloneContext.resolveAuthoritativeMetamorphicFixtureReceipt?.(
+        verification.fixture_receipt.receipt_ref,
+      ),
+    ).toBeNull();
+    expect(
+      await rawCloneContext.resolveAuthoritativeMetamorphicOracleReceipt?.(
+        verification.receipt.receipt_ref,
+      ),
+    ).toBeNull();
+    expect(rawBooleanContext.resolveAuthoritativeMetamorphicFixtureReceipt).toBeUndefined();
+    expect(rawBooleanContext.resolveAuthoritativeMetamorphicOracleReceipt).toBeUndefined();
+    expect(rawBooleanContext.resolveAuthoritativeResultOracleReceipt).toBeUndefined();
+    expect(rawBooleanContext.resolveAuthoritativeSandboxExecutionReceipt).toBeUndefined();
+    expect(rawBooleanContext.resolveAuthoritativeSandboxResult).toBeUndefined();
+    expect(missingAuthorityContext.resolveAuthoritativeMetamorphicFixtureReceipt).toBeUndefined();
+    expect(missingAuthorityContext.resolveAuthoritativeMetamorphicOracleReceipt).toBeUndefined();
   });
 
   it("接受非凭据 Snapshot Token，但在语义上游不可解析时拒绝提交 ExecutionReceipt", async () => {

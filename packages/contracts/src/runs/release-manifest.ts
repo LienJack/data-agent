@@ -6,6 +6,7 @@ import {
   artifactReferenceIdentity,
   artifactReferenceSchema,
 } from "../artifacts/envelope.js";
+import { knownArtifactTypeSchema } from "../artifacts/types.js";
 import {
   contentHashSchema,
   deepFreeze,
@@ -15,6 +16,20 @@ import {
 } from "../common/index.js";
 
 const releaseManifestReferenceSchema = artifactReferenceFor("ReleaseManifest");
+
+export const SYNTHETIC_METAMORPHIC_ARTIFACT_TYPES = [
+  "FixtureMutationRecord",
+  "MetamorphicFixtureReceipt",
+  "MetamorphicOracleReceipt",
+] as const;
+
+const productionReleaseEvidenceArtifactTypeSchema = knownArtifactTypeSchema.exclude(
+  SYNTHETIC_METAMORPHIC_ARTIFACT_TYPES,
+);
+
+export const productionReleaseEvidenceReferenceSchema = artifactReferenceSchema.extend({
+  artifact_type: productionReleaseEvidenceArtifactTypeSchema,
+});
 
 export const releaseManifestSchema = z
   .strictObject({
@@ -28,10 +43,10 @@ export const releaseManifestSchema = z
     eval_run_refs: z.array(artifactReferenceFor("EvalRun")).min(1),
     tenancy_evidence_refs: z.array(artifactReferenceSchema).min(1),
     deployment_evidence: z.strictObject({
-      hosted_refs: z.array(artifactReferenceSchema).min(1),
-      docker_refs: z.array(artifactReferenceSchema).min(1),
+      hosted_refs: z.array(productionReleaseEvidenceReferenceSchema).min(1),
+      docker_refs: z.array(productionReleaseEvidenceReferenceSchema).min(1),
     }),
-    signed_outcome_refs: z.array(artifactReferenceSchema).min(1),
+    signed_outcome_refs: z.array(productionReleaseEvidenceReferenceSchema).min(1),
     verdict: z.literal("PASS"),
     created_at: timestampSchema,
     manifest_hash: contentHashSchema,

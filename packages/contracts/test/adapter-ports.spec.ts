@@ -7,6 +7,8 @@ import {
   authorizeSandboxExecutionReceipt,
   authorizeSandboxResult,
   executeAuthorizedSandboxRequest,
+  getAuthoritativeSandboxExecutionIdentity,
+  isAuthoritativeSandboxExecutionIdentity,
   registerSandboxServerAuthority,
   type SandboxServerAuthorityRegistration,
 } from "@data-agent/contracts/server";
@@ -101,6 +103,12 @@ const sandboxBudget = {
   max_rows: 1_000,
   max_bytes: 1_000_000,
   max_memory_mb: 256,
+} as const;
+
+const sandboxAuthorityIdentity = {
+  authority_id: "00000000-0000-4000-8000-000000000701",
+  principal_id: "sandbox-authority-principal",
+  key_id: "sandbox-authority-key@1",
 } as const;
 
 function authorizeSandboxRequestForTest(
@@ -217,6 +225,9 @@ async function createSandboxAuthorityFixture(
   const receiptDraft = {
     schema_version: request.schema_version,
     language: "sql",
+    executor: sandboxAuthorityIdentity,
+    executor_role: "SANDBOX_EXECUTION",
+    authority_role_policy_version: "authority_role_policy@1.0.0",
     receipt_id: ids.receipt,
     receipt_ref: makeArtifactReference("SandboxExecutionReceipt", ids.receipt),
     scope,
@@ -295,6 +306,7 @@ async function createSandboxAuthorityFixture(
     resource_usage: receipt.resource_usage,
   };
   const callbacks = {
+    identity: sandboxAuthorityIdentity,
     resolveCommitted: async (reference: Parameters<typeof artifactReferenceIdentity>[0]) =>
       committed.get(artifactReferenceIdentity(reference)) ?? null,
     verifyCommitted: async (reference: Parameters<typeof artifactReferenceIdentity>[0]) =>
@@ -860,6 +872,12 @@ describe("版本化 Adapter Ports", () => {
     expect(isAuthoritativeSandboxResult(fixture.result)).toBe(false);
     const result = await authorizeSandboxResult(fixture.result.result_ref, fixture.authority);
     expect(isAuthoritativeSandboxResult(result)).toBe(true);
+    const identity = getAuthoritativeSandboxExecutionIdentity(result);
+    expect(isAuthoritativeSandboxExecutionIdentity(identity)).toBe(true);
+    expect(identity?.identity).toEqual(sandboxAuthorityIdentity);
+    expect(Object.isFrozen(identity)).toBe(true);
+    expect(Object.isFrozen(identity?.identity)).toBe(true);
+    expect(getAuthoritativeSandboxExecutionIdentity({ ...result } as typeof result)).toBeNull();
     expect(isAuthoritativeSandboxResult({ ...result })).toBe(false);
     expect(Object.isFrozen(result)).toBe(true);
     expect(Object.isFrozen(result.rows[0])).toBe(true);

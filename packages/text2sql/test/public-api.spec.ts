@@ -63,6 +63,8 @@ describe("@data-agent/text2sql 公共 API", () => {
     expect("registerTrustedGateArtifactAuthority" in publicApi).toBe(false);
     expect("registerTrustedResourceAdmission" in publicApi).toBe(false);
     expect("registerTrustedResultOracleAuthority" in publicApi).toBe(false);
+    expect("registerTrustedMetamorphicFixtureAuthority" in publicApi).toBe(false);
+    expect("registerTrustedMetamorphicOracleVerifier" in publicApi).toBe(false);
     expect("createTrustedGateEvaluation" in publicApi).toBe(false);
   });
 
@@ -75,6 +77,8 @@ describe("@data-agent/text2sql 公共 API", () => {
         "registerAuthoritativeLogicalPlanBinding",
         "registerTrustedGateArtifactAuthority",
         "registerTrustedLogicalPlanCompilerAuthority",
+        "registerTrustedMetamorphicFixtureAuthority",
+        "registerTrustedMetamorphicOracleVerifier",
         "registerTrustedResourceAdmission",
         "registerTrustedRepairAuthority",
         "registerTrustedResultOracleAuthority",

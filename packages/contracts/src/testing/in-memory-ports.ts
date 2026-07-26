@@ -317,6 +317,11 @@ export class InMemorySandboxPort implements SandboxPort {
     } = {},
   ) {
     this.authority = registerSandboxServerAuthority({
+      identity: {
+        authority_id: "00000000-0000-4000-8000-000000000901",
+        principal_id: "in-memory-sandbox-authority",
+        key_id: "in-memory-sandbox-key@1",
+      },
       resolveCommitted: (reference) => this.resolveCommitted(reference),
       verifyCommitted: (reference) => this.verifyCommitted(reference),
       resolveAuthoritativeExecutionPermit: (reference) =>
@@ -619,6 +624,13 @@ export class InMemorySandboxPort implements SandboxPort {
           const receiptDraft = {
             schema_version: request.schema_version,
             language: "sql",
+            executor: {
+              authority_id: "00000000-0000-4000-8000-000000000901",
+              principal_id: "in-memory-sandbox-authority",
+              key_id: "in-memory-sandbox-key@1",
+            },
+            executor_role: "SANDBOX_EXECUTION",
+            authority_role_policy_version: "authority_role_policy@1.0.0",
             receipt_id: receiptId,
             receipt_ref: {
               artifact_id: receiptId,

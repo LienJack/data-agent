@@ -2,23 +2,32 @@ import {
   type ArtifactReference,
   artifactReferenceFor,
   artifactReferenceIdentity,
+  computeFixtureMutationRecordHash,
   computeGateEvaluationHash,
   computeGateInputHash,
   computeGroundingAuthorityDocumentHash,
   computeGroundingHash,
   computeL2ArtifactContentHash,
+  computeMetamorphicFixtureEvidenceHash,
+  computeMetamorphicFixtureReceiptHash,
+  computeMetamorphicOracleEvidenceHash,
+  computeMetamorphicOracleReceiptHash,
+  computeMetamorphicRelationSampleHash,
   computePostgresqlExecutionSettingsHash,
   computeResourceAdmissionReceiptHash,
   computeResourceEstimateHash,
   computeResultOracleEvidenceHash,
   computeResultOracleReceiptHash,
   computeSqlArtifactQueryHash,
+  fixtureMutationRecordSchema,
   type GateReceiptPayload,
   gateReceiptSchema,
   groundingAuthorityDocumentSchema,
   type L2ArtifactDocument,
   type L2ArtifactPersistenceAuthority,
   l2ArtifactDocumentSchema,
+  metamorphicFixtureReceiptSchema,
+  metamorphicOracleReceiptSchema,
   resourceAdmissionReceiptSchema,
   resultOracleReceiptSchema,
   TEXT2SQL_GATE_EVALUATOR_VERSION,
@@ -29,14 +38,26 @@ import {
 import type { L2ArtifactType } from "../src/artifacts/types.js";
 import { canonicalizeJson, sha256ContentHash } from "../src/common/index.js";
 import {
+  authorizeSandboxExecutionReceipt,
+  authorizeSandboxResult,
   computeSandboxExecutionReceiptHash,
   computeSandboxExecutionRequestHash,
   computeSandboxResultBytes,
   computeSandboxResultHash,
+  type SandboxResult,
   sandboxExecutionRequestSchema,
   sandboxResultSchema,
   successfulSandboxExecutionReceiptSchema,
 } from "../src/ports/sandbox.js";
+import {
+  authorizeMetamorphicFixtureReceipt,
+  authorizeMetamorphicOracleReceipt,
+  authorizeResultOracleReceipt,
+  createMetamorphicFixtureAuthority,
+  createMetamorphicOracleAuthority,
+  createResultOracleReceiptAuthority,
+  registerSandboxServerAuthority,
+} from "../src/server.js";
 import { hashes, ids, makeArtifactEnvelope } from "./fixtures.js";
 
 export type GateReceiptDraft = Omit<GateReceiptPayload, "input_hash" | "evaluation_hash">;
@@ -84,6 +105,45 @@ const authorityIds = {
   executionPermit: "00000000-0000-4000-8000-000000000126",
   sandboxReceipt: "00000000-0000-4000-8000-000000000127",
   sandboxResult: "00000000-0000-4000-8000-000000000134",
+  metamorphicOracle: "00000000-0000-4000-8000-000000000138",
+  fanOutCase: "00000000-0000-4000-8000-000000000139",
+  fanOutReceipt: "00000000-0000-4000-8000-000000000140",
+  fanOutResult: "00000000-0000-4000-8000-000000000141",
+  nullAntiCase: "00000000-0000-4000-8000-000000000142",
+  nullAntiReceipt: "00000000-0000-4000-8000-000000000143",
+  nullAntiResult: "00000000-0000-4000-8000-000000000144",
+  partitionCase: "00000000-0000-4000-8000-000000000145",
+  leftPartitionReceipt: "00000000-0000-4000-8000-000000000146",
+  leftPartitionResult: "00000000-0000-4000-8000-000000000147",
+  rightPartitionReceipt: "00000000-0000-4000-8000-000000000148",
+  rightPartitionResult: "00000000-0000-4000-8000-000000000149",
+  distinctFactCase: "00000000-0000-4000-8000-000000000150",
+  distinctFactReceipt: "00000000-0000-4000-8000-000000000151",
+  distinctFactResult: "00000000-0000-4000-8000-000000000152",
+  metamorphicFixture: "00000000-0000-4000-8000-000000000153",
+  fanOutMutation: "00000000-0000-4000-8000-000000000154",
+  nullAntiMutation: "00000000-0000-4000-8000-000000000155",
+  distinctFactMutation: "00000000-0000-4000-8000-000000000156",
+  fanOutProbeReceipt: "00000000-0000-4000-8000-000000000157",
+  fanOutProbeResult: "00000000-0000-4000-8000-000000000158",
+  nullAntiProbeReceipt: "00000000-0000-4000-8000-000000000159",
+  nullAntiProbeResult: "00000000-0000-4000-8000-000000000160",
+  partitionProbeReceipt: "00000000-0000-4000-8000-000000000161",
+  partitionProbeResult: "00000000-0000-4000-8000-000000000162",
+  distinctFactProbeReceipt: "00000000-0000-4000-8000-000000000163",
+  distinctFactProbeResult: "00000000-0000-4000-8000-000000000164",
+  leftPartitionSqlArtifact: "00000000-0000-4000-8000-000000000165",
+  leftPartitionExecutionPermit: "00000000-0000-4000-8000-000000000166",
+  leftPartitionResourceAdmission: "00000000-0000-4000-8000-000000000167",
+  rightPartitionSqlArtifact: "00000000-0000-4000-8000-000000000168",
+  rightPartitionExecutionPermit: "00000000-0000-4000-8000-000000000169",
+  rightPartitionResourceAdmission: "00000000-0000-4000-8000-000000000170",
+  failingMetamorphicOracle: "00000000-0000-4000-8000-000000000171",
+  failingResultOracle: "00000000-0000-4000-8000-000000000172",
+  failingResultGate: "00000000-0000-4000-8000-000000000173",
+  failingMetamorphicFixture: "00000000-0000-4000-8000-000000000174",
+  failingFanOutReceipt: "00000000-0000-4000-8000-000000000175",
+  failingFanOutResult: "00000000-0000-4000-8000-000000000176",
   resultOracle: "00000000-0000-4000-8000-000000000136",
   executionGate: "00000000-0000-4000-8000-000000000128",
   resultGate: "00000000-0000-4000-8000-000000000129",
@@ -97,6 +157,29 @@ const authorityIds = {
   hypothesisRefund: "00000000-0000-4000-8000-000000000202",
   obligationRevenue: "00000000-0000-4000-8000-000000000301",
   obligationRefund: "00000000-0000-4000-8000-000000000302",
+} as const;
+
+const metamorphicAuthorityIdentities = {
+  FIXTURE_MUTATION: {
+    authority_id: "00000000-0000-4000-8000-000000000601",
+    principal_id: "fixture-mutation-principal",
+    key_id: "fixture-mutation-key@1",
+  },
+  SANDBOX_EXECUTION: {
+    authority_id: "00000000-0000-4000-8000-000000000602",
+    principal_id: "sandbox-execution-principal",
+    key_id: "sandbox-execution-key@1",
+  },
+  METAMORPHIC_VERIFIER: {
+    authority_id: "00000000-0000-4000-8000-000000000603",
+    principal_id: "metamorphic-verifier-principal",
+    key_id: "metamorphic-verifier-key@1",
+  },
+  RESULT_PRODUCER: {
+    authority_id: "00000000-0000-4000-8000-000000000604",
+    principal_id: "result-producer-principal",
+    key_id: "result-producer-key@1",
+  },
 } as const;
 
 function referenceFromDocument(document: L2ArtifactDocument): ArtifactReference {
@@ -125,12 +208,73 @@ async function sealGroundingAuthorityDocument(input: unknown) {
   });
 }
 
-export async function createAuthoritativeReadyFixture() {
+export type AuthoritativeReadyFixtureOptions = {
+  readonly authorityPolicyInjection?: "FIXTURE_ALWAYS_TRUE";
+  readonly fixtureIssuedAt?: string;
+  readonly halfOpenQueryVariantBindings?: "DISTINCT" | "REUSE_BASELINE" | "SWAP";
+  readonly mutationRecordBinding?: "EXACT" | "FAN_OUT_WRONG_CASE";
+  readonly metamorphicEvaluatedAt?: string;
+  readonly resultResolverMode?: "REUSE_RESOLVED_META" | "REAUTHORIZE_META";
+  readonly metamorphicSnapshotTokens?: Partial<{
+    readonly baseline: string;
+    readonly fanOut: string;
+    readonly nullAnti: string;
+    readonly leftPartition: string;
+    readonly rightPartition: string;
+    readonly distinctFact: string;
+  }>;
+  readonly selectionProbeSnapshotTokens?: Partial<{
+    readonly fanOut: string;
+    readonly nullAnti: string;
+    readonly partition: string;
+    readonly distinctFact: string;
+  }>;
+};
+
+export async function createAuthoritativeReadyFixture(
+  options: AuthoritativeReadyFixtureOptions = {},
+) {
+  const baselineSnapshotToken = options.metamorphicSnapshotTokens?.baseline ?? "snapshot-1";
+  const metamorphicSnapshotTokens = {
+    baseline: baselineSnapshotToken,
+    fanOut: "snapshot-fan-out",
+    nullAnti: "snapshot-null-anti",
+    leftPartition: baselineSnapshotToken,
+    rightPartition: baselineSnapshotToken,
+    distinctFact: "snapshot-distinct-fact",
+    ...options.metamorphicSnapshotTokens,
+  };
+  const selectionProbeSnapshotTokens = {
+    fanOut: metamorphicSnapshotTokens.fanOut,
+    nullAnti: metamorphicSnapshotTokens.nullAnti,
+    partition: metamorphicSnapshotTokens.baseline,
+    distinctFact: metamorphicSnapshotTokens.distinctFact,
+    ...options.selectionProbeSnapshotTokens,
+  };
+  const halfOpenQueryVariantBindings = options.halfOpenQueryVariantBindings ?? "DISTINCT";
   const documents = new Map<string, L2ArtifactDocument>();
   const groundingAuthorityDocuments = new Map<string, unknown>();
   const systemArtifacts = new Map<string, unknown>();
+  const authorityRevisions = new Map<string, unknown>();
+  const sandboxExecutionRecords = new Map<string, unknown>();
   const persistedReferences = new Set<string>();
   let expectedSqlArtifactPayload: unknown = null;
+  let authoritativeExecutionPermitPayload: unknown = null;
+  let resolveAuthoritativeMetamorphicFixtureReceipt: NonNullable<
+    L2ArtifactPersistenceAuthority["resolveAuthoritativeMetamorphicFixtureReceipt"]
+  > = async () => null;
+  let resolveAuthoritativeMetamorphicOracleReceipt: NonNullable<
+    L2ArtifactPersistenceAuthority["resolveAuthoritativeMetamorphicOracleReceipt"]
+  > = async () => null;
+  let resolveAuthoritativeResultOracleReceipt: NonNullable<
+    L2ArtifactPersistenceAuthority["resolveAuthoritativeResultOracleReceipt"]
+  > = async () => null;
+  let resolveAuthoritativeSandboxExecutionReceipt: NonNullable<
+    L2ArtifactPersistenceAuthority["resolveAuthoritativeSandboxExecutionReceipt"]
+  > = async () => null;
+  let resolveAuthoritativeSandboxResult: NonNullable<
+    L2ArtifactPersistenceAuthority["resolveAuthoritativeSandboxResult"]
+  > = async () => null;
   const authority: L2ArtifactPersistenceAuthority = {
     principalId: "principal-fixture",
     verifyCommitted: async (reference) =>
@@ -153,17 +297,15 @@ export async function createAuthoritativeReadyFixture() {
       );
       return stored.success && canonicalizeJson(stored.data) === canonicalizeJson(receipt);
     },
-    verifyResultOracleReceipt: async (receipt) => {
-      const stored = resultOracleReceiptSchema.safeParse(
-        systemArtifacts.get(artifactReferenceIdentity(receipt.receipt_ref)),
-      );
-      return stored.success && canonicalizeJson(stored.data) === canonicalizeJson(receipt);
-    },
-    verifySandboxExecutionEvidence: async ({ receipt, result }) =>
-      canonicalizeJson(systemArtifacts.get(artifactReferenceIdentity(receipt.receipt_ref))) ===
-        canonicalizeJson(receipt) &&
-      canonicalizeJson(systemArtifacts.get(artifactReferenceIdentity(result.result_ref))) ===
-        canonicalizeJson(result),
+    resolveAuthoritativeMetamorphicFixtureReceipt: (reference) =>
+      resolveAuthoritativeMetamorphicFixtureReceipt(reference),
+    resolveAuthoritativeMetamorphicOracleReceipt: (reference) =>
+      resolveAuthoritativeMetamorphicOracleReceipt(reference),
+    resolveAuthoritativeResultOracleReceipt: (reference, metamorphic) =>
+      resolveAuthoritativeResultOracleReceipt(reference, metamorphic),
+    resolveAuthoritativeSandboxExecutionReceipt: (reference) =>
+      resolveAuthoritativeSandboxExecutionReceipt(reference),
+    resolveAuthoritativeSandboxResult: (reference) => resolveAuthoritativeSandboxResult(reference),
     verifyCommitterCapability: async (claim) =>
       claim.app_id === ids.appA &&
       claim.tenant_id === ids.tenantA &&
@@ -371,7 +513,7 @@ export async function createAuthoritativeReadyFixture() {
         {
           column_id: "orders.net_revenue",
           physical_name: "net_revenue",
-          data_type: "numeric",
+          data_type: "integer",
           nullable: true,
           sensitivity: "INTERNAL",
         },
@@ -628,8 +770,18 @@ export async function createAuthoritativeReadyFixture() {
     compiler_version: "postgresql-compiler@1.0.0",
     ast_hash: hashes.artifact,
     dialect: "postgresql" as const,
-    sql: "SELECT SUM(net_revenue) AS net_revenue FROM orders WHERE region = $1",
-    parameters: { region: "华南" },
+    sql: [
+      'SELECT "orders"."region" AS "dimension.region",',
+      '       SUM("orders"."net_revenue") AS "metric.net_revenue"',
+      'FROM "orders"',
+      'WHERE "orders"."created_at" >= $1::timestamptz',
+      '  AND "orders"."created_at" < $2::timestamptz',
+      'GROUP BY "orders"."region"',
+    ].join("\n"),
+    parameters: {
+      $1: "2025-01-01T00:00:00.000+08:00",
+      $2: "2025-04-01T00:00:00.000+08:00",
+    },
   };
   const queryHash = await computeSqlArtifactQueryHash(sqlPayload);
   expectedSqlArtifactPayload = {
@@ -643,6 +795,10 @@ export async function createAuthoritativeReadyFixture() {
     expectedSqlArtifactPayload,
   );
   const sqlArtifactReference = artifactReferenceFor("SqlArtifact").parse(sqlArtifact.reference);
+  authorityRevisions.set(
+    artifactReferenceIdentity(sqlArtifactReference),
+    structuredClone(expectedSqlArtifactPayload),
+  );
   if (
     queryContract.authorized.payload.artifact_type !== "QueryContract" ||
     logicalPlan.authorized.payload.artifact_type !== "LogicalPlan"
@@ -848,6 +1004,94 @@ export async function createAuthoritativeReadyFixture() {
   const executionPermitReference = artifactReferenceFor("ExecutionPermit").parse(
     executionPermit.reference,
   );
+  authoritativeExecutionPermitPayload = executionPermit.authorized.payload;
+  authorityRevisions.set(
+    artifactReferenceIdentity(executionPermitReference),
+    structuredClone(authoritativeExecutionPermitPayload),
+  );
+  if (executionPermit.authorized.payload.artifact_type !== "ExecutionPermit") {
+    throw new TypeError("权威 Gate Fixture 缺少 ExecutionPermit Payload。");
+  }
+  async function createHalfOpenAuthorityVariant(input: {
+    readonly label: "left-half-open" | "right-half-open";
+    readonly sqlArtifactId: string;
+    readonly executionPermitId: string;
+    readonly resourceAdmissionId: string;
+  }) {
+    const sqlMaterial = {
+      dialect: sqlPayload.dialect,
+      sql: sqlPayload.sql,
+      parameters: {
+        ...sqlPayload.parameters,
+        $1:
+          input.label === "left-half-open"
+            ? "2025-01-01T00:00:00.000+08:00"
+            : "2025-02-01T00:00:00.000+08:00",
+        $2:
+          input.label === "left-half-open"
+            ? "2025-02-01T00:00:00.000+08:00"
+            : "2025-04-01T00:00:00.000+08:00",
+      },
+    } as const;
+    const variantSqlPayload = {
+      ...sqlPayload,
+      ...sqlMaterial,
+      ast_hash: sqlPayload.ast_hash,
+      query_hash: await computeSqlArtifactQueryHash(sqlMaterial),
+    };
+    const variantSqlReference = artifactReferenceFor("SqlArtifact").parse({
+      ...sqlArtifactReference,
+      artifact_id: input.sqlArtifactId,
+      content_hash: await sha256ContentHash(variantSqlPayload),
+    });
+    const variantResourceAdmissionReference = artifactReferenceFor(
+      "ResourceAdmissionReceipt",
+    ).parse({
+      ...resourceAdmission.receipt_ref,
+      artifact_id: input.resourceAdmissionId,
+      content_hash: await sha256ContentHash({
+        baseline_receipt_hash: resourceAdmission.receipt_hash,
+        variant: input.label,
+      }),
+    });
+    const variantExecutionPermitPayload = {
+      ...executionPermit.authorized.payload,
+      sql_artifact_ref: variantSqlReference,
+      resource_admission_ref: variantResourceAdmissionReference,
+    };
+    const variantExecutionPermitReference = artifactReferenceFor("ExecutionPermit").parse({
+      ...executionPermitReference,
+      artifact_id: input.executionPermitId,
+      content_hash: await sha256ContentHash(variantExecutionPermitPayload),
+    });
+    authorityRevisions.set(
+      artifactReferenceIdentity(variantSqlReference),
+      structuredClone(variantSqlPayload),
+    );
+    authorityRevisions.set(
+      artifactReferenceIdentity(variantExecutionPermitReference),
+      structuredClone(variantExecutionPermitPayload),
+    );
+    return {
+      sql_artifact_ref: variantSqlReference,
+      sql_artifact: variantSqlPayload,
+      execution_permit_ref: variantExecutionPermitReference,
+      execution_permit: variantExecutionPermitPayload,
+      resource_admission_ref: variantResourceAdmissionReference,
+    };
+  }
+  const leftHalfOpenVariant = await createHalfOpenAuthorityVariant({
+    label: "left-half-open",
+    sqlArtifactId: authorityIds.leftPartitionSqlArtifact,
+    executionPermitId: authorityIds.leftPartitionExecutionPermit,
+    resourceAdmissionId: authorityIds.leftPartitionResourceAdmission,
+  });
+  const rightHalfOpenVariant = await createHalfOpenAuthorityVariant({
+    label: "right-half-open",
+    sqlArtifactId: authorityIds.rightPartitionSqlArtifact,
+    executionPermitId: authorityIds.rightPartitionExecutionPermit,
+    resourceAdmissionId: authorityIds.rightPartitionResourceAdmission,
+  });
   const sandboxExecutionId = "00000000-0000-4000-8000-000000000137";
   const sandboxRequest = sandboxExecutionRequestSchema.parse({
     schema_version: resourceAdmission.schema_version,
@@ -881,7 +1125,7 @@ export async function createAuthoritativeReadyFixture() {
   const sandboxInputHash = await computeSandboxExecutionRequestHash(sandboxRequest);
   const sandboxResultColumns = [
     { name: "dimension.region", type: "STRING" },
-    { name: "metric.net_revenue", type: "NUMBER" },
+    { name: "metric.net_revenue", type: "INTEGER" },
   ] as const;
   const sandboxResultRows = [["华南", 100]] as const;
   const sandboxResultDraft = sandboxResultSchema.parse({
@@ -924,6 +1168,9 @@ export async function createAuthoritativeReadyFixture() {
   const sandboxReceiptDraft = successfulSandboxExecutionReceiptSchema.parse({
     schema_version: resourceAdmission.schema_version,
     language: "sql",
+    executor: metamorphicAuthorityIdentities.SANDBOX_EXECUTION,
+    executor_role: "SANDBOX_EXECUTION",
+    authority_role_policy_version: "authority_role_policy@1.0.0",
     receipt_id: authorityIds.sandboxReceipt,
     receipt_ref: {
       artifact_id: authorityIds.sandboxReceipt,
@@ -967,7 +1214,7 @@ export async function createAuthoritativeReadyFixture() {
       revalidated_at: "2026-07-25T00:00:00.000Z",
       authority_epoch: 1,
     },
-    snapshot_token: "snapshot-1",
+    snapshot_token: metamorphicSnapshotTokens.baseline,
     watermark: null,
     replay_state: "REPLAYABLE",
     resource_usage: {
@@ -988,6 +1235,76 @@ export async function createAuthoritativeReadyFixture() {
   });
   persistSystemArtifact(sandboxResult.result_ref, sandboxResult);
   persistSystemArtifact(sandboxReceipt.receipt_ref, sandboxReceipt);
+  sandboxExecutionRecords.set(sandboxInputHash, {
+    request: sandboxRequest,
+    started_at: sandboxReceipt.started_at,
+    completed_at: sandboxReceipt.completed_at,
+    result_artifact_ref: sandboxResult.result_ref,
+    datasource_id: sandboxReceipt.datasource_id,
+    schema_version: sandboxReceipt.schema_version,
+    settings_hash: sandboxReceipt.settings_hash,
+    applied_execution_settings: sandboxReceipt.execution_settings,
+    transaction: sandboxReceipt.transaction,
+    authority_revalidation: sandboxReceipt.authority_revalidation,
+    snapshot: {
+      snapshot_token: sandboxReceipt.snapshot_token,
+      watermark: sandboxReceipt.watermark,
+      replay_state: sandboxReceipt.replay_state,
+    },
+    resource_usage: sandboxReceipt.resource_usage,
+  });
+  const resolveAuthorityRevision = async (
+    reference: ArtifactReference,
+  ): Promise<unknown | null> => {
+    const identity = artifactReferenceIdentity(reference);
+    const l2Document = documents.get(identity);
+    return structuredClone(
+      authorityRevisions.get(identity) ??
+        systemArtifacts.get(identity) ??
+        l2Document?.payload ??
+        null,
+    );
+  };
+  const verifyAuthorityRevisionCommitted = async (reference: ArtifactReference): Promise<boolean> =>
+    authorityRevisions.has(artifactReferenceIdentity(reference)) ||
+    systemArtifacts.has(artifactReferenceIdentity(reference)) ||
+    documents.has(artifactReferenceIdentity(reference));
+  const verifyExactAuthorityRevision = async (
+    reference: ArtifactReference,
+    artifact: unknown,
+  ): Promise<boolean> => {
+    const stored = await resolveAuthorityRevision(reference);
+    return stored !== null && canonicalizeJson(stored) === canonicalizeJson(artifact);
+  };
+  const sandboxAuthority = registerSandboxServerAuthority({
+    identity: metamorphicAuthorityIdentities.SANDBOX_EXECUTION,
+    resolveCommitted: resolveAuthorityRevision,
+    verifyCommitted: verifyAuthorityRevisionCommitted,
+    resolveAuthoritativeExecutionPermit: async (reference) =>
+      structuredClone(authorityRevisions.get(artifactReferenceIdentity(reference)) ?? null),
+    resolveAuthoritativeSqlArtifact: async (reference) =>
+      structuredClone(authorityRevisions.get(artifactReferenceIdentity(reference)) ?? null),
+    verifyExactArtifactRevision: verifyExactAuthorityRevision,
+    revalidateExecutionAuthority: async (input) => ({
+      effective_principal_id: input.effective_principal_id,
+      policy_receipt_ref: input.policy_receipt_ref,
+      revalidated_at: input.transaction_started_at,
+      authority_epoch: 1,
+    }),
+    assertAuthorityFence: async () => true,
+    withSqlTransaction: async (operation) => operation(),
+    claimOrLoadExecution: async (_claim, operation) => ({
+      status: "EXECUTED",
+      value: await operation(),
+    }),
+    resolveExecutionRecord: async (inputHash) =>
+      structuredClone(sandboxExecutionRecords.get(inputHash) ?? null),
+    now: () => new Date("2026-07-25T00:00:00.000Z"),
+  });
+  resolveAuthoritativeSandboxExecutionReceipt = (reference) =>
+    authorizeSandboxExecutionReceipt(reference, sandboxAuthority);
+  resolveAuthoritativeSandboxResult = (reference) =>
+    authorizeSandboxResult(reference, sandboxAuthority);
   const sandboxReceiptReference = sandboxReceipt.receipt_ref;
   const sandboxResultReference = sandboxResult.result_ref;
   const execution = await commit(
@@ -1007,7 +1324,7 @@ export async function createAuthoritativeReadyFixture() {
       result_artifact_ref: sandboxResultReference,
       datasource_id: ids.appA,
       schema_version: resourceAdmission.schema_version,
-      snapshot_token: "snapshot-1",
+      snapshot_token: metamorphicSnapshotTokens.baseline,
       watermark: null,
       observed_at: "2026-07-25T00:00:00.002Z",
       query_hash: queryHash,
@@ -1017,14 +1334,641 @@ export async function createAuthoritativeReadyFixture() {
     },
   );
   const executionReference = artifactReferenceFor("ExecutionReceipt").parse(execution.reference);
+
+  async function createMetamorphicSandboxEvidence(input: {
+    readonly receiptId: string;
+    readonly resultId: string;
+    readonly idempotencyKey: string;
+    readonly snapshotToken: string;
+    readonly columns?: SandboxResult["columns"];
+    readonly rows: SandboxResult["rows"];
+    readonly sql_artifact_ref?: ArtifactReference & { readonly artifact_type: "SqlArtifact" };
+    readonly execution_permit_ref?: ArtifactReference & {
+      readonly artifact_type: "ExecutionPermit";
+    };
+    readonly resource_admission_ref?: ArtifactReference & {
+      readonly artifact_type: "ResourceAdmissionReceipt";
+    };
+  }) {
+    const evidenceSqlArtifactReference = input.sql_artifact_ref ?? sqlArtifactReference;
+    const evidenceExecutionPermitReference = input.execution_permit_ref ?? executionPermitReference;
+    const evidenceResourceAdmissionReference =
+      input.resource_admission_ref ?? resourceAdmission.receipt_ref;
+    const evidenceColumns = input.columns ?? sandboxResultColumns;
+    const evidenceParameters =
+      artifactReferenceIdentity(evidenceSqlArtifactReference) ===
+      artifactReferenceIdentity(leftHalfOpenVariant.sql_artifact_ref)
+        ? leftHalfOpenVariant.sql_artifact.parameters
+        : artifactReferenceIdentity(evidenceSqlArtifactReference) ===
+            artifactReferenceIdentity(rightHalfOpenVariant.sql_artifact_ref)
+          ? rightHalfOpenVariant.sql_artifact.parameters
+          : sqlPayload.parameters;
+    const request = sandboxExecutionRequestSchema.parse({
+      ...sandboxRequest,
+      execution_id: input.receiptId,
+      idempotency_key: input.idempotencyKey,
+      payload: {
+        ...sandboxRequest.payload,
+        sql_artifact_ref: evidenceSqlArtifactReference,
+        execution_permit_ref: evidenceExecutionPermitReference,
+        resource_admission_ref: evidenceResourceAdmissionReference,
+        parameters: evidenceParameters,
+      },
+    });
+    const inputHash = await computeSandboxExecutionRequestHash(request);
+    const resultDraft = sandboxResultSchema.parse({
+      schema_version: resourceAdmission.schema_version,
+      result_ref: {
+        artifact_id: input.resultId,
+        artifact_type: "SandboxResult",
+        app_id: ids.appA,
+        tenant_id: ids.tenantA,
+        environment: "test",
+        run_id: ids.run,
+        revision: 1,
+        content_hash: hashes.input,
+      },
+      scope: {
+        app_id: ids.appA,
+        tenant_id: ids.tenantA,
+        environment: "test",
+      },
+      run_id: ids.run,
+      execution_id: input.receiptId,
+      columns: evidenceColumns,
+      rows: input.rows,
+      row_count: input.rows.length,
+      bytes: computeSandboxResultBytes({
+        columns: evidenceColumns,
+        rows: input.rows,
+      }),
+      result_hash: hashes.input,
+    });
+    const resultHash = await computeSandboxResultHash(resultDraft);
+    const result = sandboxResultSchema.parse({
+      ...resultDraft,
+      result_ref: {
+        ...resultDraft.result_ref,
+        content_hash: resultHash,
+      },
+      result_hash: resultHash,
+    });
+    const receiptDraft = successfulSandboxExecutionReceiptSchema.parse({
+      schema_version: resourceAdmission.schema_version,
+      language: "sql",
+      executor: metamorphicAuthorityIdentities.SANDBOX_EXECUTION,
+      executor_role: "SANDBOX_EXECUTION",
+      authority_role_policy_version: "authority_role_policy@1.0.0",
+      receipt_id: input.receiptId,
+      receipt_ref: {
+        artifact_id: input.receiptId,
+        artifact_type: "SandboxExecutionReceipt",
+        app_id: ids.appA,
+        tenant_id: ids.tenantA,
+        environment: "test",
+        run_id: ids.run,
+        revision: 1,
+        content_hash: hashes.input,
+      },
+      scope: {
+        app_id: ids.appA,
+        tenant_id: ids.tenantA,
+        environment: "test",
+      },
+      run_id: ids.run,
+      execution_id: input.receiptId,
+      idempotency_key: input.idempotencyKey,
+      input_hash: inputHash,
+      execution_hash: hashes.input,
+      terminal: "COMPLETED",
+      reason_code: "EXECUTION_COMPLETED",
+      started_at: "2026-07-25T00:00:00.002Z",
+      completed_at: "2026-07-25T00:00:00.003Z",
+      result_artifact_ref: result.result_ref,
+      sql_artifact_ref: evidenceSqlArtifactReference,
+      execution_permit_ref: evidenceExecutionPermitReference,
+      resource_admission_ref: evidenceResourceAdmissionReference,
+      datasource_id: resourceAdmission.datasource_id,
+      settings_hash: resourceAdmission.settings_hash,
+      execution_settings: resourceAdmission.execution_settings,
+      transaction: {
+        transaction_id: input.receiptId,
+        read_only: true,
+        isolation_level: "REPEATABLE_READ",
+      },
+      authority_revalidation: {
+        effective_principal_id: resourceAdmission.principal_id,
+        policy_receipt_ref: resourceAdmission.policy_receipt_ref,
+        revalidated_at: "2026-07-25T00:00:00.002Z",
+        authority_epoch: 1,
+      },
+      snapshot_token: input.snapshotToken,
+      watermark: null,
+      replay_state: "REPLAYABLE",
+      resource_usage: {
+        elapsed_ms: 1,
+        rows: result.row_count,
+        bytes: result.bytes,
+        peak_memory_mb: 1,
+      },
+    });
+    const receiptHash = await computeSandboxExecutionReceiptHash(receiptDraft);
+    const receipt = successfulSandboxExecutionReceiptSchema.parse({
+      ...receiptDraft,
+      receipt_ref: {
+        ...receiptDraft.receipt_ref,
+        content_hash: receiptHash,
+      },
+      execution_hash: receiptHash,
+    });
+    persistSystemArtifact(result.result_ref, result);
+    persistSystemArtifact(receipt.receipt_ref, receipt);
+    sandboxExecutionRecords.set(inputHash, {
+      request,
+      started_at: receipt.started_at,
+      completed_at: receipt.completed_at,
+      result_artifact_ref: result.result_ref,
+      datasource_id: receipt.datasource_id,
+      schema_version: receipt.schema_version,
+      settings_hash: receipt.settings_hash,
+      applied_execution_settings: receipt.execution_settings,
+      transaction: receipt.transaction,
+      authority_revalidation: receipt.authority_revalidation,
+      snapshot: {
+        snapshot_token: receipt.snapshot_token,
+        watermark: receipt.watermark,
+        replay_state: receipt.replay_state,
+      },
+      resource_usage: receipt.resource_usage,
+    });
+    return {
+      evidence: {
+        sandbox_execution_receipt_ref: receipt.receipt_ref,
+        result_artifact_ref: result.result_ref,
+      },
+      input_hash: inputHash,
+    };
+  }
+
+  const fanOutFollowUp = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.fanOutReceipt,
+    resultId: authorityIds.fanOutResult,
+    idempotencyKey: "ready-fixture-metamorphic-fan-out",
+    snapshotToken: metamorphicSnapshotTokens.fanOut,
+    rows: [["华南", 100]],
+  });
+  const nullAntiFollowUp = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.nullAntiReceipt,
+    resultId: authorityIds.nullAntiResult,
+    idempotencyKey: "ready-fixture-metamorphic-null-anti",
+    snapshotToken: metamorphicSnapshotTokens.nullAnti,
+    rows: [["华南", 100]],
+  });
+  const leftPartition = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.leftPartitionReceipt,
+    resultId: authorityIds.leftPartitionResult,
+    idempotencyKey: "ready-fixture-metamorphic-left-partition",
+    snapshotToken: metamorphicSnapshotTokens.leftPartition,
+    rows: [["华南", 40]],
+    ...(halfOpenQueryVariantBindings === "REUSE_BASELINE"
+      ? {}
+      : {
+          sql_artifact_ref:
+            halfOpenQueryVariantBindings === "SWAP"
+              ? rightHalfOpenVariant.sql_artifact_ref
+              : leftHalfOpenVariant.sql_artifact_ref,
+          execution_permit_ref:
+            halfOpenQueryVariantBindings === "SWAP"
+              ? rightHalfOpenVariant.execution_permit_ref
+              : leftHalfOpenVariant.execution_permit_ref,
+          resource_admission_ref:
+            halfOpenQueryVariantBindings === "SWAP"
+              ? rightHalfOpenVariant.resource_admission_ref
+              : leftHalfOpenVariant.resource_admission_ref,
+        }),
+  });
+  const rightPartition = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.rightPartitionReceipt,
+    resultId: authorityIds.rightPartitionResult,
+    idempotencyKey: "ready-fixture-metamorphic-right-partition",
+    snapshotToken: metamorphicSnapshotTokens.rightPartition,
+    rows: [["华南", 60]],
+    ...(halfOpenQueryVariantBindings === "REUSE_BASELINE"
+      ? {}
+      : {
+          sql_artifact_ref:
+            halfOpenQueryVariantBindings === "SWAP"
+              ? leftHalfOpenVariant.sql_artifact_ref
+              : rightHalfOpenVariant.sql_artifact_ref,
+          execution_permit_ref:
+            halfOpenQueryVariantBindings === "SWAP"
+              ? leftHalfOpenVariant.execution_permit_ref
+              : rightHalfOpenVariant.execution_permit_ref,
+          resource_admission_ref:
+            halfOpenQueryVariantBindings === "SWAP"
+              ? leftHalfOpenVariant.resource_admission_ref
+              : rightHalfOpenVariant.resource_admission_ref,
+        }),
+  });
+  const distinctFactFollowUp = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.distinctFactReceipt,
+    resultId: authorityIds.distinctFactResult,
+    idempotencyKey: "ready-fixture-metamorphic-distinct-fact",
+    snapshotToken: metamorphicSnapshotTokens.distinctFact,
+    rows: [["华南", 125]],
+  });
+  const fanOutSelectionProbe = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.fanOutProbeReceipt,
+    resultId: authorityIds.fanOutProbeResult,
+    idempotencyKey: "ready-fixture-selection-fan-out",
+    snapshotToken: selectionProbeSnapshotTokens.fanOut,
+    columns: [
+      { name: "fact_key", type: "STRING" },
+      { name: "dimension.region", type: "STRING" },
+      { name: "measure_minor_units", type: "INTEGER" },
+    ],
+    rows: [["order-100", "华南", 100]],
+  });
+  const nullAntiSelectionProbe = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.nullAntiProbeReceipt,
+    resultId: authorityIds.nullAntiProbeResult,
+    idempotencyKey: "ready-fixture-selection-null-anti",
+    snapshotToken: selectionProbeSnapshotTokens.nullAnti,
+    columns: [
+      { name: "probe_key", type: "STRING" },
+      { name: "dimension.region", type: "STRING" },
+      { name: "measure_minor_units", type: "INTEGER" },
+    ],
+    rows: [["customer-eligible", "华南", 100]],
+  });
+  const partitionSelectionProbe = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.partitionProbeReceipt,
+    resultId: authorityIds.partitionProbeResult,
+    idempotencyKey: "ready-fixture-selection-partition",
+    snapshotToken: selectionProbeSnapshotTokens.partition,
+    columns: [
+      { name: "boundary_fact_key", type: "STRING" },
+      { name: "dimension.region", type: "STRING" },
+      { name: "occurred_at", type: "STRING" },
+      { name: "measure_minor_units", type: "INTEGER" },
+    ],
+    rows: [["order-at-midpoint", "华南", "2025-02-01T00:00:00.000+08:00", 60]],
+  });
+  const distinctFactSelectionProbe = await createMetamorphicSandboxEvidence({
+    receiptId: authorityIds.distinctFactProbeReceipt,
+    resultId: authorityIds.distinctFactProbeResult,
+    idempotencyKey: "ready-fixture-selection-distinct-fact",
+    snapshotToken: selectionProbeSnapshotTokens.distinctFact,
+    columns: [
+      { name: "original_fact_key", type: "STRING" },
+      { name: "dimension.region", type: "STRING" },
+      { name: "occurred_at", type: "STRING" },
+      { name: "measure_minor_units", type: "INTEGER" },
+    ],
+    rows: [["order-original", "华南", "2025-02-10T00:00:00.000+08:00", 25]],
+  });
+  const fixtureWitnesses = {
+    fanOut: {
+      fact_key: "order-100",
+      group_key: '["华南"]',
+      join_path: ["orders.order_items"],
+      original_child_key: "line-100",
+      added_child_key: "line-101",
+      measure_minor_units: 100,
+      baseline_multiplicity: 1,
+      follow_up_multiplicity: 2,
+    },
+    nullAnti: {
+      probe_key: "customer-eligible",
+      inserted_null_row_key: "anti-row-null",
+      group_key: '["华南"]',
+      measure_minor_units: 100,
+    },
+    partition: {
+      group_key: '["华南"]',
+      start_at: "2025-01-01T00:00:00.000+08:00",
+      midpoint_at: "2025-02-01T00:00:00.000+08:00",
+      end_at: "2025-04-01T00:00:00.000+08:00",
+      boundary_fact_key: "order-at-midpoint",
+      boundary_measure_minor_units: 60,
+    },
+    distinctFact: {
+      original_fact_key: "order-original",
+      added_fact_key: "order-same-valued",
+      group_key: '["华南"]',
+      occurred_at: "2025-02-10T00:00:00.000+08:00",
+      measure_minor_units: 25,
+    },
+  } as const;
+  async function persistMutationRecord(
+    artifactId: string,
+    relationKind: "FAN_OUT" | "NULL_ANTI_MEMBERSHIP" | "SAME_VALUED_DISTINCT_FACT",
+    caseId: string,
+    followUpSnapshotId: string,
+    witness: unknown,
+  ) {
+    const record = fixtureMutationRecordSchema.parse({
+      artifact_type: "FixtureMutationRecord",
+      scope: {
+        app_id: ids.appA,
+        tenant_id: ids.tenantA,
+        environment: "test",
+      },
+      run_id: ids.run,
+      relation_kind: relationKind,
+      case_id:
+        options.mutationRecordBinding === "FAN_OUT_WRONG_CASE" && relationKind === "FAN_OUT"
+          ? authorityIds.nullAntiCase
+          : caseId,
+      baseline_snapshot_id: metamorphicSnapshotTokens.baseline,
+      follow_up_snapshot_id: followUpSnapshotId,
+      witness,
+    });
+    const descriptorHash = await computeFixtureMutationRecordHash(record);
+    const reference = artifactReferenceFor("FixtureMutationRecord").parse({
+      artifact_id: artifactId,
+      artifact_type: "FixtureMutationRecord",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: descriptorHash,
+    });
+    persistSystemArtifact(reference, record);
+    return { descriptorHash, reference };
+  }
+  const fanOutMutation = await persistMutationRecord(
+    authorityIds.fanOutMutation,
+    "FAN_OUT",
+    authorityIds.fanOutCase,
+    metamorphicSnapshotTokens.fanOut,
+    fixtureWitnesses.fanOut,
+  );
+  const nullAntiMutation = await persistMutationRecord(
+    authorityIds.nullAntiMutation,
+    "NULL_ANTI_MEMBERSHIP",
+    authorityIds.nullAntiCase,
+    metamorphicSnapshotTokens.nullAnti,
+    fixtureWitnesses.nullAnti,
+  );
+  const distinctFactMutation = await persistMutationRecord(
+    authorityIds.distinctFactMutation,
+    "SAME_VALUED_DISTINCT_FACT",
+    authorityIds.distinctFactCase,
+    metamorphicSnapshotTokens.distinctFact,
+    fixtureWitnesses.distinctFact,
+  );
+  const fixtureEvidence = {
+    sql_artifact_ref: sqlArtifactReference,
+    query_contract_ref: queryContract.reference,
+    grounding_package_ref: groundingPackage.reference,
+    logical_plan_ref: logicalPlan.reference,
+    oracle_id: "additive-integer",
+    oracle_version: "additive-integer@1",
+    fixture_id: "retail-additive",
+    fixture_version: "retail-additive@1",
+    issuer: metamorphicAuthorityIdentities.FIXTURE_MUTATION,
+    issuer_role: "FIXTURE_MUTATION",
+    authority_role_policy_version: "authority_role_policy@1.0.0",
+    applicability_profile: {
+      suite: "ADDITIVE_INTEGER_V1",
+      aggregate_kind: "sum",
+      distinct: false,
+      source_measure_data_type: "integer",
+      result_data_type: "INTEGER",
+      metric_id: "metric.net_revenue",
+      dimension_ids: ["dimension.region"],
+      group_key_arity: 1,
+    },
+    baseline: {
+      snapshot_id: metamorphicSnapshotTokens.baseline,
+      execution_input_hash: sandboxInputHash,
+    },
+    cases: [
+      {
+        relation_kind: "FAN_OUT",
+        case_id: authorityIds.fanOutCase,
+        follow_up_snapshot_id: metamorphicSnapshotTokens.fanOut,
+        follow_up_execution_input_hash: fanOutFollowUp.input_hash,
+        selection_probe: fanOutSelectionProbe.evidence,
+        selection_probe_input_hash: fanOutSelectionProbe.input_hash,
+        mutation_record_ref: fanOutMutation.reference,
+        mutation_descriptor_hash: fanOutMutation.descriptorHash,
+        witness: fixtureWitnesses.fanOut,
+      },
+      {
+        relation_kind: "NULL_ANTI_MEMBERSHIP",
+        case_id: authorityIds.nullAntiCase,
+        follow_up_snapshot_id: metamorphicSnapshotTokens.nullAnti,
+        follow_up_execution_input_hash: nullAntiFollowUp.input_hash,
+        selection_probe: nullAntiSelectionProbe.evidence,
+        selection_probe_input_hash: nullAntiSelectionProbe.input_hash,
+        mutation_record_ref: nullAntiMutation.reference,
+        mutation_descriptor_hash: nullAntiMutation.descriptorHash,
+        witness: fixtureWitnesses.nullAnti,
+      },
+      {
+        relation_kind: "HALF_OPEN_ADDITIVE_PARTITION",
+        case_id: authorityIds.partitionCase,
+        snapshot_id: metamorphicSnapshotTokens.baseline,
+        whole_execution_input_hash: sandboxInputHash,
+        left_execution_input_hash: leftPartition.input_hash,
+        right_execution_input_hash: rightPartition.input_hash,
+        selection_probe: partitionSelectionProbe.evidence,
+        selection_probe_input_hash: partitionSelectionProbe.input_hash,
+        query_variant_hashes: {
+          whole: queryHash,
+          left_half_open: leftHalfOpenVariant.sql_artifact.query_hash,
+          right_half_open: rightHalfOpenVariant.sql_artifact.query_hash,
+        },
+        witness: fixtureWitnesses.partition,
+      },
+      {
+        relation_kind: "SAME_VALUED_DISTINCT_FACT",
+        case_id: authorityIds.distinctFactCase,
+        follow_up_snapshot_id: metamorphicSnapshotTokens.distinctFact,
+        follow_up_execution_input_hash: distinctFactFollowUp.input_hash,
+        selection_probe: distinctFactSelectionProbe.evidence,
+        selection_probe_input_hash: distinctFactSelectionProbe.input_hash,
+        mutation_record_ref: distinctFactMutation.reference,
+        mutation_descriptor_hash: distinctFactMutation.descriptorHash,
+        witness: fixtureWitnesses.distinctFact,
+      },
+    ],
+  } as const;
+  const fixtureEvidenceHash = await computeMetamorphicFixtureEvidenceHash(fixtureEvidence);
+  const fixtureDraft = metamorphicFixtureReceiptSchema.parse({
+    artifact_type: "MetamorphicFixtureReceipt",
+    receipt_ref: {
+      artifact_id: authorityIds.metamorphicFixture,
+      artifact_type: "MetamorphicFixtureReceipt",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hashes.input,
+    },
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    ...fixtureEvidence,
+    evidence_hash: fixtureEvidenceHash,
+    issued_at: options.fixtureIssuedAt ?? "2026-07-25T00:00:00.004Z",
+    receipt_hash: hashes.input,
+  });
+  const fixtureReceiptHash = await computeMetamorphicFixtureReceiptHash(fixtureDraft);
+  const fixtureReceipt = metamorphicFixtureReceiptSchema.parse({
+    ...fixtureDraft,
+    receipt_ref: {
+      ...fixtureDraft.receipt_ref,
+      content_hash: fixtureReceiptHash,
+    },
+    receipt_hash: fixtureReceiptHash,
+  });
+  persistSystemArtifact(fixtureReceipt.receipt_ref, fixtureReceipt);
+  const fixtureAuthorityOptions = {
+    identity: metamorphicAuthorityIdentities.FIXTURE_MUTATION,
+    sandbox_authority: sandboxAuthority,
+    resolveCommitted: resolveAuthorityRevision,
+    verifyCommitted: verifyAuthorityRevisionCommitted,
+    verifyExactArtifactRevision: verifyExactAuthorityRevision,
+    ...(options.authorityPolicyInjection === "FIXTURE_ALWAYS_TRUE"
+      ? { verifyMutationAndSelectionClosure: async () => true }
+      : {}),
+  };
+  const fixtureAuthority = createMetamorphicFixtureAuthority(fixtureAuthorityOptions);
+  resolveAuthoritativeMetamorphicFixtureReceipt = (reference) =>
+    authorizeMetamorphicFixtureReceipt(reference, fixtureAuthority);
+  const relationSampleMaterials = {
+    fanOut: {
+      relation_kind: "FAN_OUT",
+      case_id: authorityIds.fanOutCase,
+      follow_up_snapshot_id: metamorphicSnapshotTokens.fanOut,
+      follow_up: fanOutFollowUp.evidence,
+      witness: fixtureWitnesses.fanOut,
+      verdict: "PASS",
+    },
+    nullAnti: {
+      relation_kind: "NULL_ANTI_MEMBERSHIP",
+      case_id: authorityIds.nullAntiCase,
+      follow_up_snapshot_id: metamorphicSnapshotTokens.nullAnti,
+      follow_up: nullAntiFollowUp.evidence,
+      witness: fixtureWitnesses.nullAnti,
+      verdict: "PASS",
+    },
+    partition: {
+      relation_kind: "HALF_OPEN_ADDITIVE_PARTITION",
+      case_id: authorityIds.partitionCase,
+      whole_source: "METAMORPHIC_BASELINE",
+      snapshot_id: metamorphicSnapshotTokens.baseline,
+      left_partition: leftPartition.evidence,
+      right_partition: rightPartition.evidence,
+      witness: fixtureWitnesses.partition,
+      verdict: "PASS",
+    },
+    distinctFact: {
+      relation_kind: "SAME_VALUED_DISTINCT_FACT",
+      case_id: authorityIds.distinctFactCase,
+      follow_up_snapshot_id: metamorphicSnapshotTokens.distinctFact,
+      follow_up: distinctFactFollowUp.evidence,
+      witness: fixtureWitnesses.distinctFact,
+      verdict: "PASS",
+    },
+  } as const;
+  const relationSamples = [
+    {
+      ...relationSampleMaterials.fanOut,
+      sample_hash: await computeMetamorphicRelationSampleHash(relationSampleMaterials.fanOut),
+    },
+    {
+      ...relationSampleMaterials.nullAnti,
+      sample_hash: await computeMetamorphicRelationSampleHash(relationSampleMaterials.nullAnti),
+    },
+    {
+      ...relationSampleMaterials.partition,
+      sample_hash: await computeMetamorphicRelationSampleHash(relationSampleMaterials.partition),
+    },
+    {
+      ...relationSampleMaterials.distinctFact,
+      sample_hash: await computeMetamorphicRelationSampleHash(relationSampleMaterials.distinctFact),
+    },
+  ] as const;
+  const metamorphicEvidence = {
+    sql_artifact_ref: sqlArtifactReference,
+    fixture_receipt_ref: fixtureReceipt.receipt_ref,
+    verifier: metamorphicAuthorityIdentities.METAMORPHIC_VERIFIER,
+    verifier_role: "METAMORPHIC_VERIFIER",
+    authority_role_policy_version: "authority_role_policy@1.0.0",
+    baseline: {
+      sandbox_execution_receipt_ref: sandboxReceiptReference,
+      result_artifact_ref: sandboxResultReference,
+    },
+    relation_samples: relationSamples,
+    metamorphic_verdict: "PASS" as const,
+  };
+  const metamorphicEvidenceHash = await computeMetamorphicOracleEvidenceHash(metamorphicEvidence);
+  const metamorphicOracleDraft = metamorphicOracleReceiptSchema.parse({
+    artifact_type: "MetamorphicOracleReceipt",
+    receipt_ref: {
+      artifact_id: authorityIds.metamorphicOracle,
+      artifact_type: "MetamorphicOracleReceipt",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hashes.input,
+    },
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    ...metamorphicEvidence,
+    evidence_hash: metamorphicEvidenceHash,
+    evaluated_at: options.metamorphicEvaluatedAt ?? "2026-07-25T00:00:00.005Z",
+    receipt_hash: hashes.input,
+  });
+  const metamorphicOracleHash = await computeMetamorphicOracleReceiptHash(metamorphicOracleDraft);
+  const metamorphicOracle = metamorphicOracleReceiptSchema.parse({
+    ...metamorphicOracleDraft,
+    receipt_ref: {
+      ...metamorphicOracleDraft.receipt_ref,
+      content_hash: metamorphicOracleHash,
+    },
+    receipt_hash: metamorphicOracleHash,
+  });
+  persistSystemArtifact(metamorphicOracle.receipt_ref, metamorphicOracle);
+  const metamorphicAuthority = createMetamorphicOracleAuthority({
+    identity: metamorphicAuthorityIdentities.METAMORPHIC_VERIFIER,
+    fixture_authority: fixtureAuthority,
+    sandbox_authority: sandboxAuthority,
+    resolveCommitted: resolveAuthorityRevision,
+    verifyCommitted: verifyAuthorityRevisionCommitted,
+    verifyExactArtifactRevision: verifyExactAuthorityRevision,
+  });
+  resolveAuthoritativeMetamorphicOracleReceipt = (reference) =>
+    authorizeMetamorphicOracleReceipt(reference, metamorphicAuthority);
+
   const resultInvariantIds = ["non_empty"];
   const resultOracleEvidence = {
+    producer: metamorphicAuthorityIdentities.RESULT_PRODUCER,
+    producer_role: "RESULT_PRODUCER",
+    authority_role_policy_version: "authority_role_policy@1.0.0",
     oracle_version: "result-oracle@1.0.0",
     query_hash: queryHash,
     result_hash: sandboxResult.result_hash,
     result_columns: sandboxResult.columns.map(({ name }) => name),
     row_count: sandboxResult.row_count,
     invariant_verdicts: [{ invariant_id: "non_empty", verdict: "PASS" as const }],
+    metamorphic_oracle_receipt_ref: metamorphicOracle.receipt_ref,
+    metamorphic_verdict: metamorphicOracle.metamorphic_verdict,
     oracle_verdict: "PASS" as const,
     result_artifact_ref: sandboxResultReference,
   };
@@ -1051,7 +1995,7 @@ export async function createAuthoritativeReadyFixture() {
     execution_receipt_ref: executionReference,
     ...resultOracleEvidence,
     evidence_hash: resultOracleEvidenceHash,
-    evaluated_at: "2026-07-25T00:00:00.003Z",
+    evaluated_at: "2026-07-25T00:00:00.006Z",
     receipt_hash: hashes.input,
   });
   const resultOracleHash = await computeResultOracleReceiptHash(resultOracleDraft);
@@ -1064,6 +2008,17 @@ export async function createAuthoritativeReadyFixture() {
     receipt_hash: resultOracleHash,
   });
   persistSystemArtifact(resultOracle.receipt_ref, resultOracle);
+  const resultOracleAuthority = createResultOracleReceiptAuthority({
+    identity: metamorphicAuthorityIdentities.RESULT_PRODUCER,
+    metamorphic_authority: metamorphicAuthority,
+    resolveCommitted: resolveAuthorityRevision,
+    verifyCommitted: verifyAuthorityRevisionCommitted,
+    verifyExactArtifactRevision: verifyExactAuthorityRevision,
+  });
+  resolveAuthoritativeResultOracleReceipt = (reference, metamorphic) =>
+    options.resultResolverMode === "REAUTHORIZE_META"
+      ? authorizeResultOracleReceipt(reference, resultOracleAuthority)
+      : authorizeResultOracleReceipt(reference, resultOracleAuthority, metamorphic);
   const postExecutionGateInputs = [
     {
       gate: "EXECUTION" as const,
@@ -1086,7 +2041,11 @@ export async function createAuthoritativeReadyFixture() {
         invariant_ids: resultInvariantIds,
         oracle_evidence_hash: resultOracle.evidence_hash,
       },
-      evidenceReferences: [sandboxResultReference, resultOracle.receipt_ref],
+      evidenceReferences: [
+        sandboxResultReference,
+        metamorphicOracle.receipt_ref,
+        resultOracle.receipt_ref,
+      ],
     },
   ] as const;
   const postExecutionGates = await Promise.all(
@@ -1108,7 +2067,7 @@ export async function createAuthoritativeReadyFixture() {
           reason_code: TEXT2SQL_GATE_REASON_CODES[gate].PASS[0],
           evidence_refs: [...evidenceReferences],
           observations,
-          evaluated_at: "2026-07-25T00:00:00.004Z",
+          evaluated_at: "2026-07-25T00:00:00.007Z",
         }),
       ),
     ),
@@ -1124,7 +2083,7 @@ export async function createAuthoritativeReadyFixture() {
       execution_receipt_ref: executionReference,
       gate_receipt_refs: allGates.map(({ reference }) => reference),
       validation_version: TEXT2SQL_VALIDATION_VERSION,
-      sealed_at: "2026-07-25T00:00:00.005Z",
+      sealed_at: "2026-07-25T00:00:00.008Z",
     },
   );
   const evidence = await commit(
@@ -1173,6 +2132,163 @@ export async function createAuthoritativeReadyFixture() {
     },
   );
 
+  async function createAuthoritativeMetamorphicFailureResultGate() {
+    const failingFanOut = await createMetamorphicSandboxEvidence({
+      receiptId: authorityIds.failingFanOutReceipt,
+      resultId: authorityIds.failingFanOutResult,
+      idempotencyKey: "ready-fixture-metamorphic-failing-fan-out",
+      snapshotToken: metamorphicSnapshotTokens.fanOut,
+      rows: [["华南", 200]],
+    });
+    const failingFixtureCases = fixtureReceipt.cases.map((fixtureCase, index) =>
+      index === 0 && fixtureCase.relation_kind === "FAN_OUT"
+        ? {
+            ...fixtureCase,
+            follow_up_execution_input_hash: failingFanOut.input_hash,
+          }
+        : fixtureCase,
+    );
+    const failingFixtureEvidence = {
+      ...fixtureEvidence,
+      cases: failingFixtureCases,
+    };
+    const failingFixtureDraft = metamorphicFixtureReceiptSchema.parse({
+      ...fixtureReceipt,
+      receipt_ref: {
+        ...fixtureReceipt.receipt_ref,
+        artifact_id: authorityIds.failingMetamorphicFixture,
+        content_hash: hashes.input,
+      },
+      ...failingFixtureEvidence,
+      evidence_hash: await computeMetamorphicFixtureEvidenceHash(failingFixtureEvidence),
+      receipt_hash: hashes.input,
+    });
+    const failingFixtureHash = await computeMetamorphicFixtureReceiptHash(failingFixtureDraft);
+    const failingFixture = metamorphicFixtureReceiptSchema.parse({
+      ...failingFixtureDraft,
+      receipt_ref: {
+        ...failingFixtureDraft.receipt_ref,
+        content_hash: failingFixtureHash,
+      },
+      receipt_hash: failingFixtureHash,
+    });
+    persistSystemArtifact(failingFixture.receipt_ref, failingFixture);
+
+    const failingRelationSamples = await Promise.all(
+      metamorphicOracle.relation_samples.map(async (sample, index) => {
+        if (index !== 0) return sample;
+        const material = {
+          ...sample,
+          follow_up: failingFanOut.evidence,
+          verdict: "FAIL" as const,
+        };
+        return {
+          ...material,
+          sample_hash: await computeMetamorphicRelationSampleHash(material),
+        };
+      }),
+    );
+    const failingMetamorphicEvidence = {
+      ...metamorphicEvidence,
+      fixture_receipt_ref: failingFixture.receipt_ref,
+      relation_samples: failingRelationSamples,
+      metamorphic_verdict: "FAIL" as const,
+    };
+    const failingMetamorphicDraft = metamorphicOracleReceiptSchema.parse({
+      ...metamorphicOracle,
+      receipt_ref: {
+        ...metamorphicOracle.receipt_ref,
+        artifact_id: authorityIds.failingMetamorphicOracle,
+        content_hash: hashes.input,
+      },
+      ...failingMetamorphicEvidence,
+      evidence_hash: await computeMetamorphicOracleEvidenceHash(failingMetamorphicEvidence),
+      receipt_hash: hashes.input,
+    });
+    const failingMetamorphicHash =
+      await computeMetamorphicOracleReceiptHash(failingMetamorphicDraft);
+    const failingMetamorphic = metamorphicOracleReceiptSchema.parse({
+      ...failingMetamorphicDraft,
+      receipt_ref: {
+        ...failingMetamorphicDraft.receipt_ref,
+        content_hash: failingMetamorphicHash,
+      },
+      receipt_hash: failingMetamorphicHash,
+    });
+    persistSystemArtifact(failingMetamorphic.receipt_ref, failingMetamorphic);
+
+    const failingResultEvidence = {
+      ...resultOracleEvidence,
+      metamorphic_oracle_receipt_ref: failingMetamorphic.receipt_ref,
+      metamorphic_verdict: "FAIL" as const,
+      oracle_verdict: "FAIL" as const,
+    };
+    const failingResultDraft = resultOracleReceiptSchema.parse({
+      ...resultOracle,
+      receipt_ref: {
+        ...resultOracle.receipt_ref,
+        artifact_id: authorityIds.failingResultOracle,
+        content_hash: hashes.input,
+      },
+      ...failingResultEvidence,
+      evidence_hash: await computeResultOracleEvidenceHash(failingResultEvidence),
+      receipt_hash: hashes.input,
+    });
+    const failingResultHash = await computeResultOracleReceiptHash(failingResultDraft);
+    const failingResult = resultOracleReceiptSchema.parse({
+      ...failingResultDraft,
+      receipt_ref: {
+        ...failingResultDraft.receipt_ref,
+        content_hash: failingResultHash,
+      },
+      receipt_hash: failingResultHash,
+    });
+    persistSystemArtifact(failingResult.receipt_ref, failingResult);
+
+    const failingGatePayload = await sealGateReceipt({
+      artifact_type: "GateReceipt",
+      sql_artifact_ref: sqlArtifactReference,
+      execution_receipt_ref: executionReference,
+      gate: "RESULT",
+      gate_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+      evaluator_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+      evaluator_input_hash: hashes.input,
+      evaluator_evaluation_hash: hashes.execution,
+      verdict: "FAIL",
+      reason_code: "RESULT_METAMORPHIC_FAILED",
+      evidence_refs: [
+        sandboxResultReference,
+        failingMetamorphic.receipt_ref,
+        failingResult.receipt_ref,
+      ],
+      observations: {
+        result_hash: failingResult.result_hash,
+        oracle_version: failingResult.oracle_version,
+        invariant_ids: failingResult.invariant_verdicts.map(({ invariant_id }) => invariant_id),
+        oracle_evidence_hash: failingResult.evidence_hash,
+      },
+      evaluated_at: "2026-07-25T00:00:00.007Z",
+    });
+    const gate = await commit(
+      "GateReceipt",
+      authorityIds.failingResultGate,
+      [
+        sqlArtifactReference,
+        executionReference,
+        sandboxResultReference,
+        failingMetamorphic.receipt_ref,
+        failingResult.receipt_ref,
+      ],
+      failingGatePayload,
+    );
+    return {
+      fixture: failingFixture,
+      gate,
+      metamorphic: failingMetamorphic,
+      result: failingResult,
+    };
+  }
+
   return {
     authority,
     commit,
@@ -1192,6 +2308,18 @@ export async function createAuthoritativeReadyFixture() {
       resourceAdmission: resourceAdmission.receipt_ref,
       sandboxReceipt: sandboxReceiptReference,
       sandboxResult: sandboxResultReference,
+      fixtureMutations: [
+        fanOutMutation.reference,
+        nullAntiMutation.reference,
+        distinctFactMutation.reference,
+      ],
+      halfOpenSqlArtifacts: [
+        sqlArtifactReference,
+        leftHalfOpenVariant.sql_artifact_ref,
+        rightHalfOpenVariant.sql_artifact_ref,
+      ],
+      metamorphicFixture: fixtureReceipt.receipt_ref,
+      metamorphicOracle: metamorphicOracle.receipt_ref,
       resultOracle: resultOracle.receipt_ref,
       postExecutionGates: postExecutionGates.map(({ reference }) => reference),
       validation: validation.reference,
@@ -1207,5 +2335,7 @@ export async function createAuthoritativeReadyFixture() {
     },
     certificate: certificate.authorized,
     certificateReference: certificate.reference,
+    authorityCallCounts: {},
+    createAuthoritativeMetamorphicFailureResultGate,
   };
 }

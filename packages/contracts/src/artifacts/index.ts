@@ -20,5 +20,15 @@ export {
 } from "./grounding-authority.js";
 export * from "./l2.js";
 export * from "./text2sql-evidence.js";
+export {
+  type AuthoritativeMetamorphicFixtureReceipt,
+  type AuthoritativeMetamorphicOracleReceipt,
+  type AuthoritativeMetamorphicSandboxEvidence,
+  type AuthoritativeResultOracleReceipt,
+  isAuthoritativeMetamorphicFixtureReceipt,
+  isAuthoritativeMetamorphicOracleReceipt,
+  isAuthoritativeResultOracleReceipt,
+  MetamorphicEvidenceAuthorityError,
+} from "./text2sql-evidence-authority.js";
 export * from "./text2sql-primitives.js";
 export * from "./types.js";

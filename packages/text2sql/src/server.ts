@@ -13,12 +13,22 @@ export {
   registerTrustedLogicalPlanCompilerAuthority,
 } from "./compiler/internal.js";
 export {
+  type ResultOracleAuthorityRegistration,
   registerTrustedGateArtifactAuthority,
   registerTrustedResourceAdmission,
   registerTrustedResultOracleAuthority,
   type TrustedGateArtifactAuthority,
   type TrustedResultOracleAuthority,
 } from "./gates/internal.js";
+export {
+  type MetamorphicFixtureAuthorityRegistration,
+  type MetamorphicOracleVerifierRegistration,
+  registerTrustedMetamorphicFixtureAuthority,
+  registerTrustedMetamorphicOracleVerifier,
+  type TrustedMetamorphicFixtureAuthority,
+  type TrustedMetamorphicOracleVerification,
+  type TrustedMetamorphicOracleVerifier,
+} from "./gates/metamorphic.js";
 export { createBoundedRepairTrace } from "./repair/bounded-repair.js";
 export {
   authorizeRepairTrace,

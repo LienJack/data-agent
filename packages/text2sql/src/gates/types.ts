@@ -1,6 +1,9 @@
 import {
   type ArtifactReference,
-  type AuthoritativeSandboxResult,
+  AUTHORITY_ROLE_POLICY_VERSION,
+  type AuthorityIdentity,
+  artifactReferenceFor,
+  authorityIdentitySchema,
   contentHashSchema,
   EXECUTABLE_QUERY_LIMITS,
   type ExecutionReceiptPayload,
@@ -10,6 +13,7 @@ import {
   type QueryContractPayload,
   type ResourceAdmissionReceipt,
   type ResultOracleReceipt,
+  type SandboxResult,
   type TEXT2SQL_GATE_EVALUATOR_VERSION,
   type TEXT2SQL_GATES,
   type TEXT2SQL_PRE_EXECUTION_GATES,
@@ -112,6 +116,9 @@ export type TrustedResourceAdmission = Readonly<{
 
 export const resultOracleVerdictSchema = z
   .strictObject({
+    producer: authorityIdentitySchema,
+    producer_role: z.literal("RESULT_PRODUCER"),
+    authority_role_policy_version: z.literal(AUTHORITY_ROLE_POLICY_VERSION),
     oracle_version: versionIdentifierSchema,
     query_hash: contentHashSchema,
     result_hash: contentHashSchema,
@@ -128,6 +135,8 @@ export const resultOracleVerdictSchema = z
         }),
       )
       .min(1),
+    metamorphic_oracle_receipt_ref: artifactReferenceFor("MetamorphicOracleReceipt"),
+    metamorphic_verdict: z.enum(["PASS", "FAIL"]),
     oracle_verdict: z.enum(["PASS", "FAIL"]),
     evidence_hash: contentHashSchema,
   })
@@ -140,7 +149,9 @@ export const resultOracleVerdictSchema = z
         path: ["invariant_verdicts"],
       });
     }
-    const hasFailure = verdict.invariant_verdicts.some(({ verdict: state }) => state === "FAIL");
+    const hasFailure =
+      verdict.metamorphic_verdict === "FAIL" ||
+      verdict.invariant_verdicts.some(({ verdict: state }) => state === "FAIL");
     if ((verdict.oracle_verdict === "PASS") === hasFailure) {
       ctx.addIssue({
         code: "custom",
@@ -153,11 +164,12 @@ export const resultOracleVerdictSchema = z
 export type ResultOracleVerdict = z.infer<typeof resultOracleVerdictSchema>;
 
 export interface ResultOracleAuthority {
+  readonly identity: AuthorityIdentity;
   evaluate(
     input: Readonly<{
       query_contract: QueryContractPayload;
       execution_receipt: ExecutionReceiptPayload;
-      sandbox_result: AuthoritativeSandboxResult;
+      sandbox_result: SandboxResult;
     }>,
   ): Promise<ResultOracleReceipt["receipt_ref"] | null>;
 }

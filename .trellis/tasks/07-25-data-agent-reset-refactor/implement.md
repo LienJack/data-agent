@@ -9,8 +9,10 @@
   `2f31e9e`，U4 已完成并固定在 `55a4e24`。
 - U5 的 Artifact Authority 基线已固定在 `4bc011f`，ACL-first Grounding、Typed IR
   与 PostgreSQL Authority Persistence 已固定在 `3249ea2`；PostgreSQL Dialect
-  Compiler、七道 Gate、受治理执行 Authority 与 Bounded Repair 已实现并通过本地
-  门禁；下一单元为 Metamorphic Oracle 与真实 PostgreSQL Sandbox Adapter。
+  Compiler、七道 Gate 与受治理执行 Authority 已固定在 `fa3180b`，Bounded Repair
+  已固定在 `029097e`；Metamorphic Result Oracle 已实现并通过完整本地门禁与 Codex
+  复审；本单元完成后继续真实 PostgreSQL Sandbox、Snapshot Protocol 与耐久
+  System Store。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -163,6 +165,89 @@
   Contract（45/45）门禁通过；其中 Contracts 183/183、Text2SQL 131/131、
   Platform 112/112、Agent Runtime 111/111、Worker 40/40。最终 Codex 复审作为
   本单元提交前门禁。
+
+### U5 Unit 4 关闭证据（2026-07-26）
+
+- 先在 `research/data-agent-system-design` 完成 RQ090，固定
+  `MetamorphicFixtureReceipt -> SandboxResult -> MetamorphicOracleReceipt ->
+  ResultOracleReceipt -> RESULT Gate -> Validation -> QueryEvidence` 的不可自证
+  Authority Chain；实现只消费该研究结论，不把合成验证误写成真实生产证据。
+- `FixtureMutationRecord`、`MetamorphicFixtureReceipt` 与
+  `MetamorphicOracleReceipt` 作为专用 System Artifact。Fixture Authority 从当前已提交
+  的 Query/Grounding/Semantic/Plan/SQL 五段链固定推导 Applicability，不接受
+  `verify(): true` 或 Applicability Callback；Fixture、Meta、Result 三条 Authority
+  的判定算法已下沉到 contracts 固定 kernel，server Composition API 只接收
+  Identity、System Store、Sandbox 与上游 Authority，不暴露 callback-bearing
+  registrar；首版只支持非 DISTINCT 的整数 SUM 与普通 COUNT。
+- Fixture 与 Meta 按固定顺序封存
+  `FAN_OUT`、`NULL_ANTI_MEMBERSHIP`、`HALF_OPEN_ADDITIVE_PARTITION` 与
+  `SAME_VALUED_DISTINCT_FACT` 四类非空 Relation；每项有 kind-specific Witness、
+  `sample_hash`，总 Receipt 有 `evidence_hash/receipt_hash`。三个单变换 Case 必须
+  绑定严格 `relation_kind` 判别的 Mutation Record，Record 的 Scope、Run、Case、
+  Baseline/Follow-up Snapshot 与 Witness 必须逐字段匹配，并绑定恰好一行的 Selection
+  Probe；半开分区以 Meta Baseline 为 whole，left/right 必须绑定同一 Snapshot 上三个
+  互异 SqlArtifact/Permit 的真实 Query/Input Hash。Verifier 还从 QueryContract 与
+  Witness 固定 `[start, midpoint)` 和 `[midpoint, end)`，要求三份编译 SQL、AST、
+  Plan 与参数键一致，只允许两个时间参数按 whole/left/right 语义变化并重算 Query
+  Hash；仅追加注释、复用 Baseline 参数或改动非时间参数均失败。Baseline 与 Follow-up
+  的完整 Sandbox Receipt/Result、Scope/Run、Schema、Execution、Resource Usage、
+  完成时间和 `snapshot_token` 都精确闭合。
+- 服务端 Metamorphic Verifier 从已提交的原始 Sandbox rows 重算关系；SQL 结果按保留
+  重复项的无序 Multiset 比较，`group_key=[]` 可表示全局聚合。分组 SUM/COUNT 的
+  half-open left 可以为空，但仅在 `whole = right` 时成立；空 right 与全局聚合零行
+  均失败关闭。普通对象、结构克隆、未提交引用、Reference A/Payload B、合法双 Hash
+  但错绑 Case/Relation/Snapshot/Witness、空/多行 Probe、伪 Query Variant 与四类
+  Mutant 均不能获得 PASS。每项声明 Verdict 必须等于固定 Verifier 的计算 Verdict，
+  总 Verdict 必须等于四项聚合结果；声明/计算不一致不能被降格为一张“权威 FAIL”。
+- Fixture、Sandbox、Metamorphic Verifier 与 Result Producer 使用四个独立品牌与稳定
+  Identity；`authority_id/principal_id/key_id` 分别两两互异，UUID 大小写先规范化。
+  Fixture 不得晚于 Meta，Meta 不得晚于 Result；L2 单次根核验只解析一次 Meta，并把
+  同一个品牌对象传给 Result Resolver。
+- `ResultOracleReceipt` 必须绑定 Metamorphic Receipt 与其 Verdict；成功 RESULT
+  与 observed FAIL 的 evidence 都精确有序为
+  `[当前 SandboxResult, MetamorphicOracleReceipt, ResultOracleReceipt]`；Meta/普通
+  不变量失败分别映射 `RESULT_METAMORPHIC_FAILED`/`RESULT_INVARIANT_FAILED`。
+  RESULT Gate 只经 Result Authority 自有 System Store 的 Commit/Exact Revision 与
+  fixed kernel 取得品牌；通用 Artifact Store 镜像、Reference A/Payload B 与 Exact
+  Revision 拒绝不能产生 PASS/observed FAIL。只有 Oracle 缺失时才可把
+  `RESULT_ORACLE_UNAVAILABLE` 与单一 `ExecutionReceipt` 投影成 GateReceipt；该路径
+  不能封 Validation 或 QueryEvidence。
+- Platform 在同一提交事务内把 Metamorphic Reference 路由到专用 System Store
+  Resolver，并绑定同一 Capability 与 SQL Client；只接受领域 Authorizer 签发且完整
+  Reference 一致的不可克隆品牌。缺任一 Authority、错 Revision、Resolver 回传普通
+  JSON 或试图查询通用 `artifacts` 镜像都失败关闭。ReleaseManifest 同时显式拒绝
+  Fixture/Metamorphic 合成 Receipt 冒充 Hosted、Docker 或 Signed Outcome Evidence。
+- 根级 `build`（5/5）、`lint`（227 files）、`typecheck`（8/8）、Unit（654/654）与
+  Contract（45/45）门禁通过；其中 Contracts 203/203、Text2SQL 183/183、
+  Platform 117/117、Agent Runtime 111/111、Worker 40/40；Text2SQL Security 5/5
+  另行通过。根级 Integration、Tenancy 与 Security 也在 PostgreSQL 17 容器中通过：
+  Agent Runtime Integration 14/14、Platform Integration 9/9、Worker Integration
+  9/9、Platform Tenancy 19/19、Agent Runtime Security 58/58、Platform Security
+  32/32，并完成两轮 Supabase/PostgreSQL Smoke。
+- 当前关闭的是 Metamorphic Contract、确定性 Verifier、RESULT Authority 与
+  Platform 注入缝；测试 Store 仍是内存 Fixture。真实 PostgreSQL 执行、Append-only
+  耐久 System Store/Migration、受控数据变换生成器与 Streaming Resource Cutoff
+  属于下一 U5 单元，U9 仍需交付类型化部署回执，因此发布判断继续保持 `HOLD`。
+  `pnpm verify:release` 已按预期输出 `RELEASE_EVIDENCE_INCOMPLETE`、缺 U5–U9 并以
+  状态码 2 退出。
+
+#### Trellis 跨层检查
+
+- Contract：严格 Schema、规范 Hash、System Artifact 路由、不可克隆品牌和稳定 Reason
+  Code 已形成唯一真值；普通 Candidate 不能通过 Zod Parse 自签成功。
+- Domain：Text2SQL Verifier 固定推导 Applicability、Selection/Mutation、半开参数分区、
+  Multiset 与 declared/computed Verdict，不接受调用方布尔回调。
+- Persistence：Platform 只在同一事务 Client 与 AppCapability 中转发完整 Reference；
+  Result Resolver 收到的必须是 L2 本次根核验解析出的同一个 Meta 品牌对象。
+- Consumer：RESULT Gate、Validation 与 QueryEvidence 只消费精确三元组，Release
+  Manifest 拒绝将测试 Oracle 当作部署证据；普通 package root 不导出 Registrar 或
+  Authorizer。
+- Failure：缺品牌、错 Scope/Revision、Hash/时间/角色漂移、恒真闭包注入、Mutation
+  错绑、注释伪变体、Resolver 返回结构克隆、通用 Store 镜像或专用 System Store 缺失
+  均失败关闭；没有发现跨层静默降级路径。
+- Verification：Build、Typecheck、Lint、Unit、Contract、Integration、Tenancy、
+  Security、PostgreSQL Smoke 与预期 `HOLD` 均已重新执行；Trellis Check 结论为
+  `PASS（U5 Unit 4 范围）`。
 
 ## 2. 执行原则
 

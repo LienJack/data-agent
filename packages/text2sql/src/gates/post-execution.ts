@@ -1,12 +1,13 @@
 import {
   type ArtifactReference,
+  AUTHORITY_ROLE_POLICY_VERSION,
+  type AuthoritativeResultOracleReceipt,
   type AuthoritativeSandboxExecutionReceipt,
   type AuthoritativeSandboxResult,
   artifactReferenceIdentity,
   artifactReferenceSchema,
   canonicalizeJson,
   computeResultOracleEvidenceHash as computePersistedResultOracleEvidenceHash,
-  computeResultOracleReceiptHash,
   deepFreeze,
   EXECUTABLE_QUERY_LIMITS,
   type ExecutionPermitPayload,
@@ -15,23 +16,37 @@ import {
   executionReceiptSchema,
   isAuthoritativeSandboxExecutionReceipt,
   isAuthoritativeSandboxResult,
+  metamorphicAuthorityRolePolicySchema,
   queryContractSchema,
-  type ResultOracleReceipt,
   resultOracleReceiptSchema,
   type SandboxExecutionRequest,
   sandboxExecutionRequestSchema,
+  sandboxResultSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { isPostgresqlCompilation, type PostgresqlCompilation } from "../compiler/types.js";
 import {
+  authorizeTrustedResultOracleReceipt,
   createTrustedGateEvaluation,
   isTrustedGateArtifactAuthority,
   isTrustedResultOracleAuthority,
   registerTrustedPostExecutionGateSuite,
   resolveCommittedArtifact,
+  resolveTrustedResultOracleArtifact,
   type TrustedGateArtifactAuthority,
   type TrustedResultOracleAuthority,
+  trustedResultOracleAuthorityIdentity,
+  trustedResultOracleAuthoritySource,
 } from "./internal.js";
+import {
+  isTrustedMetamorphicOracleVerification,
+  isTrustedMetamorphicOracleVerifier,
+  type TrustedMetamorphicOracleVerification,
+  type TrustedMetamorphicOracleVerifier,
+  trustedMetamorphicFixtureAuthoritySource,
+  trustedMetamorphicOracleVerifierFixtureAuthority,
+  trustedMetamorphicOracleVerifierSource,
+} from "./metamorphic.js";
 import type { ExecutionGateReasonCode, ResultGateReasonCode } from "./reason-codes.js";
 import type {
   PostExecutionGateSuite,
@@ -51,6 +66,7 @@ export interface EvaluatePostExecutionGatesInput {
   readonly sandbox_receipt: unknown;
   readonly sandbox_result: unknown;
   readonly result_oracle_authority?: unknown;
+  readonly metamorphic_oracle_verifier?: unknown;
 }
 
 interface ParsedPostExecutionInput {
@@ -66,6 +82,7 @@ interface ParsedPostExecutionInput {
   readonly sandboxReceipt: AuthoritativeSandboxExecutionReceipt | null;
   readonly sandboxResult: AuthoritativeSandboxResult | null;
   readonly resultOracleAuthority: TrustedResultOracleAuthority | null;
+  readonly metamorphicOracleVerifier: TrustedMetamorphicOracleVerifier | null;
 }
 
 function asContentHash(value: string): `sha256:${string}` {
@@ -116,20 +133,27 @@ async function parseInput(
     : null;
   return {
     authority,
-    queryContract: safeParse(() => queryContractSchema.parse(input.query_contract)),
+    queryContract: safeParse(() => deepFreeze(queryContractSchema.parse(input.query_contract))),
     compilation: isPostgresqlCompilation(input.compilation) ? input.compilation : null,
     sqlArtifactReference,
     executionReceiptReference,
-    executionPermit: safeParse(() => executionPermitSchema.parse(executionPermitPayload)),
+    executionPermit: safeParse(() =>
+      deepFreeze(executionPermitSchema.parse(executionPermitPayload)),
+    ),
     executionPermitReference,
-    executionReceipt,
-    sandboxRequest: safeParse(() => sandboxExecutionRequestSchema.parse(input.sandbox_request)),
+    executionReceipt: executionReceipt ? deepFreeze(executionReceipt) : null,
+    sandboxRequest: safeParse(() =>
+      deepFreeze(sandboxExecutionRequestSchema.parse(input.sandbox_request)),
+    ),
     sandboxReceipt: isAuthoritativeSandboxExecutionReceipt(input.sandbox_receipt)
       ? input.sandbox_receipt
       : null,
     sandboxResult: isAuthoritativeSandboxResult(input.sandbox_result) ? input.sandbox_result : null,
     resultOracleAuthority: isTrustedResultOracleAuthority(input.result_oracle_authority)
       ? input.result_oracle_authority
+      : null,
+    metamorphicOracleVerifier: isTrustedMetamorphicOracleVerifier(input.metamorphic_oracle_verifier)
+      ? input.metamorphic_oracle_verifier
       : null,
   };
 }
@@ -336,11 +360,33 @@ async function evaluateExecution(
   });
 }
 
+type ResolvedOracleVerdict = Readonly<{
+  receipt: AuthoritativeResultOracleReceipt;
+  metamorphic: TrustedMetamorphicOracleVerification;
+}>;
+
+function hasIndependentOracleAuthorities(parsed: ParsedPostExecutionInput): boolean {
+  const producerSource = trustedResultOracleAuthoritySource(parsed.resultOracleAuthority);
+  const verifierSource = trustedMetamorphicOracleVerifierSource(parsed.metamorphicOracleVerifier);
+  const fixtureAuthority = trustedMetamorphicOracleVerifierFixtureAuthority(
+    parsed.metamorphicOracleVerifier,
+  );
+  const fixtureSource = trustedMetamorphicFixtureAuthoritySource(fixtureAuthority);
+  return (
+    producerSource !== null &&
+    verifierSource !== null &&
+    fixtureSource !== null &&
+    new Set([producerSource, verifierSource, fixtureSource]).size === 3
+  );
+}
+
 async function resolveOracleVerdict(
   parsed: ParsedPostExecutionInput,
-): Promise<ResultOracleReceipt | null> {
+): Promise<ResolvedOracleVerdict | null> {
   if (
     !parsed.resultOracleAuthority ||
+    !parsed.metamorphicOracleVerifier ||
+    !hasIndependentOracleAuthorities(parsed) ||
     !parsed.queryContract ||
     !parsed.executionReceipt ||
     !parsed.sandboxResult
@@ -348,26 +394,66 @@ async function resolveOracleVerdict(
     return null;
   }
   try {
-    const referenceInput = await parsed.resultOracleAuthority.evaluate({
-      query_contract: parsed.queryContract,
-      execution_receipt: parsed.executionReceipt,
-      sandbox_result: parsed.sandboxResult,
-    });
+    const referenceInput = await parsed.resultOracleAuthority.evaluate(
+      deepFreeze({
+        query_contract: queryContractSchema.parse(parsed.queryContract),
+        execution_receipt: executionReceiptSchema.parse(parsed.executionReceipt),
+        sandbox_result: sandboxResultSchema.parse(parsed.sandboxResult),
+      }),
+    );
     const reference = referenceInput
       ? parseTypedReference(referenceInput, "ResultOracleReceipt")
       : null;
     if (!reference) return null;
-    const receipt = resultOracleReceiptSchema.parse(
-      await resolveCommittedArtifact(parsed.authority, reference),
+    const candidate = resultOracleReceiptSchema.parse(
+      await resolveTrustedResultOracleArtifact(parsed.resultOracleAuthority, reference),
     );
+    if (!sameReference(candidate.receipt_ref, reference)) return null;
+    const metamorphicReference = parseTypedReference(
+      candidate.metamorphic_oracle_receipt_ref,
+      "MetamorphicOracleReceipt",
+    );
+    if (!metamorphicReference) return null;
+    const metamorphic = await parsed.metamorphicOracleVerifier.verify(metamorphicReference);
+    const receipt = metamorphic
+      ? await authorizeTrustedResultOracleReceipt(
+          parsed.resultOracleAuthority,
+          parsed.metamorphicOracleVerifier,
+          reference,
+          metamorphic,
+        )
+      : null;
+    const producerIdentity = trustedResultOracleAuthorityIdentity(parsed.resultOracleAuthority);
+    const rolePolicy =
+      receipt && metamorphic && producerIdentity
+        ? metamorphicAuthorityRolePolicySchema.safeParse({
+            policy_version: AUTHORITY_ROLE_POLICY_VERSION,
+            role_identities: {
+              FIXTURE_MUTATION: metamorphic.fixture_identity,
+              SANDBOX_EXECUTION: metamorphic.sandbox_identity,
+              METAMORPHIC_VERIFIER: metamorphic.verifier_identity,
+              RESULT_PRODUCER: producerIdentity,
+            },
+          })
+        : null;
     if (
-      !sameReference(receipt.receipt_ref, reference) ||
-      (await computeResultOracleReceiptHash(receipt)) !== receipt.receipt_hash ||
-      (await computePersistedResultOracleEvidenceHash(receipt)) !== receipt.evidence_hash
+      !receipt ||
+      !metamorphic ||
+      !isTrustedMetamorphicOracleVerification(metamorphic) ||
+      !producerIdentity ||
+      !rolePolicy?.success ||
+      canonicalizeJson(receipt.producer) !== canonicalizeJson(producerIdentity) ||
+      receipt.producer_role !== "RESULT_PRODUCER" ||
+      receipt.authority_role_policy_version !== AUTHORITY_ROLE_POLICY_VERSION ||
+      !sameReference(metamorphic.receipt.receipt_ref, metamorphicReference) ||
+      !sameReference(
+        metamorphic.receipt.fixture_receipt_ref,
+        metamorphic.fixture_receipt.receipt_ref,
+      )
     ) {
       return null;
     }
-    return receipt;
+    return deepFreeze({ receipt, metamorphic });
   } catch {
     return null;
   }
@@ -393,7 +479,10 @@ async function evaluateResult(
   parsed: ParsedPostExecutionInput,
   executionGate: TrustedGateEvaluation<"EXECUTION">,
 ): Promise<TrustedGateEvaluation<"RESULT">> {
-  const oracle = executionGate.verdict === "PASS" ? await resolveOracleVerdict(parsed) : null;
+  const resolvedOracle =
+    executionGate.verdict === "PASS" ? await resolveOracleVerdict(parsed) : null;
+  const oracle = resolvedOracle?.receipt ?? null;
+  const metamorphic = resolvedOracle?.metamorphic ?? null;
   const expectedInvariants = parsed.queryContract?.result_contract.invariant_ids ?? [];
   const observedInvariants =
     oracle?.invariant_verdicts.map(({ invariant_id }) => invariant_id) ?? [];
@@ -402,12 +491,17 @@ async function evaluateResult(
     oracle && parsed.sandboxResult
       ? await computeResultOracleEvidenceHash({
           verdict: {
+            producer: oracle.producer,
+            producer_role: oracle.producer_role,
+            authority_role_policy_version: oracle.authority_role_policy_version,
             oracle_version: oracle.oracle_version,
             query_hash: oracle.query_hash,
             result_hash: oracle.result_hash,
             result_columns: oracle.result_columns,
             row_count: oracle.row_count,
             invariant_verdicts: oracle.invariant_verdicts,
+            metamorphic_oracle_receipt_ref: oracle.metamorphic_oracle_receipt_ref,
+            metamorphic_verdict: oracle.metamorphic_verdict,
             oracle_verdict: oracle.oracle_verdict,
           },
           result_artifact_ref: parsed.sandboxResult.result_ref,
@@ -427,8 +521,34 @@ async function evaluateResult(
     !sameReference(oracle.sql_artifact_ref, parsed.sqlArtifactReference) ||
     !sameReference(oracle.execution_receipt_ref, parsed.executionReceiptReference) ||
     !sameReference(oracle.result_artifact_ref, parsed.sandboxResult.result_ref) ||
+    !metamorphic ||
+    !sameReference(oracle.metamorphic_oracle_receipt_ref, metamorphic.receipt.receipt_ref) ||
+    !sameReference(metamorphic.receipt.sql_artifact_ref, parsed.sqlArtifactReference) ||
+    !sameReference(metamorphic.fixture_receipt.sql_artifact_ref, parsed.sqlArtifactReference) ||
+    !parsed.compilation ||
+    !sameReference(
+      metamorphic.fixture_receipt.logical_plan_ref,
+      parsed.compilation.proof.logical_plan_ref,
+    ) ||
+    !parsed.queryContract ||
+    metamorphic.fixture_receipt.applicability_profile.metric_id !== parsed.queryContract.metric ||
+    !exactStringArray(
+      metamorphic.fixture_receipt.applicability_profile.dimension_ids,
+      parsed.queryContract.dimensions,
+    ) ||
+    !sameReference(
+      metamorphic.receipt.baseline.sandbox_execution_receipt_ref,
+      parsed.sandboxReceipt?.receipt_ref ?? parsed.executionReceiptReference,
+    ) ||
+    !sameReference(
+      metamorphic.receipt.baseline.result_artifact_ref,
+      parsed.sandboxResult.result_ref,
+    ) ||
     Date.parse(oracle.evaluated_at) < Date.parse(parsed.executionReceipt.observed_at) ||
     Date.parse(oracle.evaluated_at) > Date.parse(parsed.authority.now()) ||
+    Date.parse(metamorphic.receipt.evaluated_at) <
+      Date.parse(parsed.executionReceipt.observed_at) ||
+    Date.parse(metamorphic.receipt.evaluated_at) > Date.parse(oracle.evaluated_at) ||
     oracle.query_hash !== parsed.executionReceipt.query_hash ||
     oracle.result_hash !== parsed.executionReceipt.result_hash ||
     oracle.result_hash !== parsed.sandboxResult.result_hash
@@ -457,6 +577,13 @@ async function evaluateResult(
   ) {
     verdict = "FAIL";
     reasonCode = "RESULT_INVARIANT_FAILED";
+  } else if (
+    metamorphic?.computed_verdict !== "PASS" ||
+    metamorphic.receipt.metamorphic_verdict !== "PASS" ||
+    oracle.metamorphic_verdict !== "PASS"
+  ) {
+    verdict = "FAIL";
+    reasonCode = "RESULT_METAMORPHIC_FAILED";
   } else if (oracle.oracle_verdict !== "PASS" || oracle.evidence_hash !== expectedEvidenceHash) {
     verdict = "FAIL";
     reasonCode = "RESULT_ORACLE_FAILED";
@@ -466,8 +593,8 @@ async function evaluateResult(
     sql_artifact_ref: parsed.sqlArtifactReference,
     execution_receipt_ref: parsed.executionReceiptReference,
     evidence_refs:
-      oracle && parsed.sandboxResult
-        ? [parsed.sandboxResult.result_ref, oracle.receipt_ref]
+      oracle && metamorphic && parsed.sandboxResult
+        ? [parsed.sandboxResult.result_ref, metamorphic.receipt.receipt_ref, oracle.receipt_ref]
         : [parsed.executionReceiptReference],
     verdict,
     reason_code: reasonCode,
@@ -476,6 +603,13 @@ async function evaluateResult(
       execution_receipt: parsed.executionReceipt,
       sandbox_result: parsed.sandboxResult,
       result_contract: parsed.queryContract?.result_contract ?? null,
+      metamorphic_oracle: metamorphic?.receipt ?? null,
+      metamorphic_verification: metamorphic
+        ? {
+            computed_verdict: metamorphic.computed_verdict,
+            relation_verifications: metamorphic.relation_verifications,
+          }
+        : null,
       oracle,
     },
     observations: {

@@ -11,6 +11,8 @@ import {
   computeGroundingHash,
   computeL2ArtifactContentHash,
   hasLogicalPlanDataflow,
+  isAuthoritativeMetamorphicOracleReceipt,
+  isAuthoritativeResultOracleReceipt,
   type L2ArtifactDocument,
   type L2ArtifactPersistenceAuthority,
   l2ArtifactDocumentSchema,
@@ -19,6 +21,7 @@ import {
   resultOracleReceiptSchema,
   TEXT2SQL_GATE_EVALUATOR_VERSION,
   TEXT2SQL_GATE_REASON_CODES,
+  TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES,
   TEXT2SQL_VALIDATION_VERSION,
   verifyL2ArtifactDocument,
 } from "../src/artifacts/index.js";
@@ -313,6 +316,10 @@ describe("L2 Artifact Schema", () => {
       "ResultOracleReceipt",
       "00000000-0000-4000-8000-000000000355",
     );
+    const metamorphicOracleReference = makeArtifactReference(
+      "MetamorphicOracleReceipt",
+      "00000000-0000-4000-8000-000000000359",
+    );
     const preExecutionGates = ["INTENT", "SEMANTIC", "STRUCTURAL", "POLICY", "RESOURCE"] as const;
     const preExecutionObservations = {
       INTENT: {
@@ -452,7 +459,7 @@ describe("L2 Artifact Schema", () => {
         evaluation_hash: hashes.execution,
         verdict: "PASS",
         reason_code: "RESULT_VERIFIED",
-        evidence_refs: [sandboxResultReference, resultOracleReference],
+        evidence_refs: [sandboxResultReference, metamorphicOracleReference, resultOracleReference],
         observations: {
           result_hash: hashes.artifact,
           oracle_version: "result-oracle@1.0.0",
@@ -2004,7 +2011,7 @@ describe("L2 Artifact Schema", () => {
       ],
       await sealGateReceipt({
         ...sourceResultGateDraft,
-        evaluated_at: "2026-07-25T00:00:00.003Z",
+        evaluated_at: "2026-07-25T00:00:00.006Z",
       }),
     );
     const reversedGateReferences = [
@@ -2024,7 +2031,7 @@ describe("L2 Artifact Schema", () => {
           execution_receipt_ref: fixture.references.execution,
           gate_receipt_refs: reversedGateReferences,
           validation_version: TEXT2SQL_VALIDATION_VERSION,
-          sealed_at: "2026-07-25T00:00:00.005Z",
+          sealed_at: "2026-07-25T00:00:00.007Z",
         },
       ),
     ).rejects.toThrow("非递减时间");
@@ -2161,6 +2168,168 @@ describe("L2 Artifact Schema", () => {
         result_columns: ["_revenue"],
       }).success,
     ).toBe(true);
+  });
+
+  it("FixtureMutationRecord 输入只走 System verifier，不要求 generic L2 mirror", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const mutationReference = fixture.references.fixtureMutations[0];
+    if (!mutationReference) {
+      throw new Error("权威 Fixture 缺少 FixtureMutationRecord。");
+    }
+    const draft = l2ArtifactDocumentSchema.parse({
+      envelope: {
+        ...makeArtifactEnvelope(),
+        artifact_id: "00000000-0000-4000-8000-000000000459",
+        artifact_type: "QuestionFrame",
+        input_refs: [mutationReference],
+      },
+      payload: {
+        artifact_type: "QuestionFrame",
+        raw_question: "验证 FixtureMutationRecord System route",
+        normalized_question: "验证 FixtureMutationRecord System route",
+        authorized_datasource_ids: [ids.appA],
+        expected_output: "route receipt",
+      },
+    });
+    const document = l2ArtifactDocumentSchema.parse({
+      ...draft,
+      envelope: {
+        ...draft.envelope,
+        content_hash: await computeL2ArtifactContentHash(draft),
+      },
+    });
+    const currentIdentity = artifactReferenceIdentity(referenceFromDocument(document));
+    const genericTypes: string[] = [];
+    const systemTypes: string[] = [];
+    const authority = {
+      ...fixture.authority,
+      verifyCommitted: async (reference: ArtifactReference) => {
+        genericTypes.push(reference.artifact_type);
+        return artifactReferenceIdentity(reference) === currentIdentity
+          ? true
+          : fixture.authority.verifyCommitted(reference);
+      },
+      verifySystemArtifactCommitted: async (reference: ArtifactReference) => {
+        systemTypes.push(reference.artifact_type);
+        return fixture.authority.verifySystemArtifactCommitted?.(reference) ?? false;
+      },
+    };
+
+    expect(TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES).toContain("FixtureMutationRecord");
+    await expect(verifyL2ArtifactDocument(document, authority)).resolves.toBeDefined();
+    expect(systemTypes).toContain("FixtureMutationRecord");
+    expect(genericTypes).not.toContain("FixtureMutationRecord");
+  });
+
+  it("RESULT observed FAIL 仍递归品牌化三证据并拒绝伪造 failure reason", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const resultGateReference = fixture.references.postExecutionGates[1];
+    if (!resultGateReference) {
+      throw new Error("权威 Fixture 缺少 RESULT GateReceipt。");
+    }
+    const source = await resolveL2Document(fixture.authority, resultGateReference);
+    if (
+      source?.payload.artifact_type !== "GateReceipt" ||
+      source.payload.gate !== "RESULT" ||
+      source.payload.execution_receipt_ref === null
+    ) {
+      throw new Error("权威 Fixture 缺少 observed RESULT GateReceipt。");
+    }
+    const {
+      input_hash: _inputHash,
+      evaluation_hash: _evaluationHash,
+      ...gateDraft
+    } = source.payload;
+    const forgedPayload = await sealGateReceipt({
+      ...gateDraft,
+      verdict: "FAIL",
+      reason_code: "RESULT_METAMORPHIC_FAILED",
+    });
+    const draft = l2ArtifactDocumentSchema.parse({
+      envelope: {
+        ...makeArtifactEnvelope(),
+        artifact_id: "00000000-0000-4000-8000-000000000460",
+        artifact_type: "GateReceipt",
+        input_refs: [
+          forgedPayload.sql_artifact_ref,
+          source.payload.execution_receipt_ref,
+          ...forgedPayload.evidence_refs,
+        ],
+      },
+      payload: forgedPayload,
+    });
+    const document = l2ArtifactDocumentSchema.parse({
+      ...draft,
+      envelope: {
+        ...draft.envelope,
+        content_hash: await computeL2ArtifactContentHash(draft),
+      },
+    });
+    const currentIdentity = artifactReferenceIdentity(referenceFromDocument(document));
+    const withCurrentRevision = (authority: L2ArtifactPersistenceAuthority) => ({
+      ...authority,
+      verifyCommitted: async (reference: ArtifactReference) =>
+        artifactReferenceIdentity(reference) === currentIdentity ||
+        authority.verifyCommitted(reference),
+    });
+
+    await expect(
+      verifyL2ArtifactDocument(document, withCurrentRevision(fixture.authority)),
+    ).rejects.toThrow("observed verdict/reason/observations");
+
+    const {
+      resolveAuthoritativeMetamorphicFixtureReceipt: _fixtureResolver,
+      resolveAuthoritativeMetamorphicOracleReceipt: _metamorphicResolver,
+      resolveAuthoritativeResultOracleReceipt: _resultResolver,
+      ...withoutOracleResolvers
+    } = fixture.authority;
+    await expect(
+      verifyL2ArtifactDocument(document, withCurrentRevision(withoutOracleResolvers)),
+    ).rejects.toThrow("MetamorphicOracleReceipt");
+  });
+
+  it("权威 Meta/Result FAIL 三证据可按 RESULT_METAMORPHIC_FAILED 持久化", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const failure = await fixture.createAuthoritativeMetamorphicFailureResultGate();
+    const metamorphic = await fixture.authority.resolveAuthoritativeMetamorphicOracleReceipt?.(
+      failure.metamorphic.receipt_ref,
+    );
+    if (!metamorphic) {
+      throw new Error("测试 Fixture 缺少失败 Meta 品牌。");
+    }
+    const failedFanOut = metamorphic.relation_samples[0];
+    if (failedFanOut.relation_kind !== "FAN_OUT") {
+      throw new Error("测试 Fixture 缺少失败 FAN_OUT sample。");
+    }
+    const failedFanOutResult = await fixture.authority.resolveAuthoritativeSandboxResult?.(
+      failedFanOut.follow_up.result_artifact_ref,
+    );
+    const result = await fixture.authority.resolveAuthoritativeResultOracleReceipt?.(
+      failure.result.receipt_ref,
+      metamorphic,
+    );
+    const document = l2ArtifactDocumentSchema.parse(
+      await fixture.authority.resolveL2(failure.gate.reference),
+    );
+
+    expect(isAuthoritativeMetamorphicOracleReceipt(metamorphic)).toBe(true);
+    expect(isAuthoritativeResultOracleReceipt(result)).toBe(true);
+    expect(metamorphic.relation_samples[0]).toMatchObject({ verdict: "FAIL" });
+    expect(failedFanOutResult?.rows).toEqual([["华南", 200]]);
+    expect(metamorphic.metamorphic_verdict).toBe("FAIL");
+    expect(result?.oracle_verdict).toBe("FAIL");
+    expect(document.payload).toMatchObject({
+      artifact_type: "GateReceipt",
+      gate: "RESULT",
+      verdict: "FAIL",
+      reason_code: "RESULT_METAMORPHIC_FAILED",
+      evidence_refs: [
+        { artifact_type: "SandboxResult" },
+        { artifact_type: "MetamorphicOracleReceipt" },
+        { artifact_type: "ResultOracleReceipt" },
+      ],
+    });
+    await expect(verifyL2ArtifactDocument(document, fixture.authority)).resolves.toBeDefined();
   });
 
   it("Canonical JSON 使用跨 Locale 稳定的 UTF-16 Key 顺序", () => {

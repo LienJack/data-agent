@@ -6,6 +6,7 @@ export * from "./event-correlation.js";
 export * from "./external-agent.js";
 export * from "./model-provider.js";
 export {
+  type AuthoritativeSandboxExecutionIdentity,
   type AuthoritativeSandboxExecutionReceipt,
   type AuthoritativeSandboxResult,
   computeSandboxExecutionReceiptHash,

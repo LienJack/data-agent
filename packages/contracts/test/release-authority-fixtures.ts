@@ -429,8 +429,11 @@ export async function createAuthoritativeReleaseFixture(
     resolveSystemArtifact,
     verifySystemArtifactCommitted,
     verifyResourceAdmissionReceipt,
-    verifyResultOracleReceipt,
-    verifySandboxExecutionEvidence,
+    resolveAuthoritativeMetamorphicFixtureReceipt,
+    resolveAuthoritativeMetamorphicOracleReceipt,
+    resolveAuthoritativeResultOracleReceipt,
+    resolveAuthoritativeSandboxExecutionReceipt,
+    resolveAuthoritativeSandboxResult,
     verifySqlArtifactCompilation,
   } = ready.authority;
   if (
@@ -438,8 +441,11 @@ export async function createAuthoritativeReleaseFixture(
     !resolveSystemArtifact ||
     !verifySystemArtifactCommitted ||
     !verifyResourceAdmissionReceipt ||
-    !verifyResultOracleReceipt ||
-    !verifySandboxExecutionEvidence ||
+    !resolveAuthoritativeMetamorphicFixtureReceipt ||
+    !resolveAuthoritativeMetamorphicOracleReceipt ||
+    !resolveAuthoritativeResultOracleReceipt ||
+    !resolveAuthoritativeSandboxExecutionReceipt ||
+    !resolveAuthoritativeSandboxResult ||
     !verifySqlArtifactCompilation
   ) {
     throw new Error("Release Fixture 缺少完整的 L2/System Artifact Authority。");
@@ -456,8 +462,11 @@ export async function createAuthoritativeReleaseFixture(
     verifySystemArtifactCommitted,
     verifySqlArtifactCompilation,
     verifyResourceAdmissionReceipt,
-    verifyResultOracleReceipt,
-    verifySandboxExecutionEvidence,
+    resolveAuthoritativeMetamorphicFixtureReceipt,
+    resolveAuthoritativeMetamorphicOracleReceipt,
+    resolveAuthoritativeResultOracleReceipt,
+    resolveAuthoritativeSandboxExecutionReceipt,
+    resolveAuthoritativeSandboxResult,
     verifyCommitterCapability: ready.authority.verifyCommitterCapability,
     resolveScoreCard: async (reference) =>
       sameReference(reference, scoreCardArtifactReference) ? scoreCard : null,

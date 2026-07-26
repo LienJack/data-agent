@@ -599,6 +599,33 @@ flowchart LR
   - `packages/text2sql/test/source-snapshot.spec.ts`：Receipt 绑定 Datasource、Schema、Snapshot/Watermark、Observed Time 与 Query Hash；缺少快照能力时重放状态降级。
   - `tests/integration/text2sql/legacy-characterization.spec.ts`：与 `text2sql@c36aca8` 选定 Fixture 比较 Artifact/Terminal，并记录有意收紧差异。
 - **验证：** Text2SQL Suite 产生阶段级 Reason Code/Receipt；Query 只有在七张当前 Gate Receipt 全部有效时才可执行。
+- **实施进度（2026-07-26，U5 Unit 4）：** RQ090 已先在
+  `research/data-agent-system-design` 关闭；实现链为
+  `MetamorphicFixtureReceipt -> Sandbox Evidence -> MetamorphicOracleReceipt ->
+  ResultOracleReceipt -> RESULT -> Validation -> QueryEvidence`。Fixture Authority
+  从当前五段 Text2SQL 权威链推导适用性，只允许非 DISTINCT 整数 SUM 与普通 COUNT；
+  Fixture、Meta、Result 三条 Authority 复用 contracts 内置固定 kernel，server
+  Composition API 不再接收 `verify*Closure`。三个单变换 Case 必须绑定严格
+  `relation_kind` 判别的 Mutation Record，并逐字段闭合 Scope、Run、Case、
+  Baseline/Follow-up Snapshot 与 Witness；每个 Case 还须绑定恰好一行的 Selection
+  Probe。半开分区必须使用同一 Snapshot 上 whole/left/right 三个互异 SQL Artifact
+  的真实 Query/Input Hash，并由 QueryContract/Witness 固定参数化的
+  `[start, midpoint)` 与 `[midpoint, end)`；仅追加注释或复用 Baseline 参数不能冒充
+  查询变体。
+  四类固定 Relation 由独立服务端 Verifier 从品牌化原始结果重算，结果按保留重复项的
+  无序 Multiset 比较；分组 SUM/COUNT 的空 left 在 `whole = right` 时合法，空 right
+  与全局聚合零行仍失败关闭。声明 Verdict 必须与计算 Verdict 完全相同；Fixture、
+  Sandbox、Meta、Result 四角色的 Authority/Principal/Key 均须两两互异。RESULT
+  PASS 与有权威证据的 observed FAIL 都只接受
+  `[SandboxResult, MetamorphicOracleReceipt, ResultOracleReceipt]` 精确三元组；
+  Result Receipt 必须先由 Result Authority 的专用 System Store 完成 Commit/Exact
+  Revision 校验，再与同一个 branded Meta 对象授权；通用 Artifact Store 镜像、
+  Reference A/Payload B 与 Exact Revision 拒绝均只能得到 `UNAVAILABLE`。只有 Oracle
+  不可用时才允许 `[ExecutionReceipt]` 形成可审计 `UNAVAILABLE`，不能形成
+  Validation/QueryEvidence。Platform 已具备同事务、同 Capability、同 SQL Client 的
+  品牌化 System Store 注入缝，但真实 PostgreSQL Sandbox、Snapshot 数据变换、耐久
+  System Store/Migration 与 Streaming Resource Cutoff 尚未交付，不能据此解除
+  U5/U9 `HOLD`。
 
 ### U6. 实现 L2 研究循环与 ReportReady 权威
 

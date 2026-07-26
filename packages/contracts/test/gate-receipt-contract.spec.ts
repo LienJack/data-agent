@@ -121,6 +121,14 @@ function passingObservationsFor(gate: Text2SqlGate): object {
 function passingReceiptCandidate(gate: Text2SqlGate): Record<string, unknown> {
   const sqlArtifactReference = makeArtifactReference("SqlArtifact");
   const requiresExecution = gate === "EXECUTION" || gate === "RESULT";
+  const evidenceReferences =
+    gate === "RESULT"
+      ? [
+          makeArtifactReference("SandboxResult", "00000000-0000-4000-8000-000000000471"),
+          makeArtifactReference("MetamorphicOracleReceipt", "00000000-0000-4000-8000-000000000472"),
+          makeArtifactReference("ResultOracleReceipt", "00000000-0000-4000-8000-000000000473"),
+        ]
+      : [sqlArtifactReference];
   return {
     artifact_type: "GateReceipt",
     sql_artifact_ref: sqlArtifactReference,
@@ -133,7 +141,7 @@ function passingReceiptCandidate(gate: Text2SqlGate): Record<string, unknown> {
     evaluation_hash: hashes.artifact,
     verdict: "PASS",
     reason_code: TEXT2SQL_GATE_REASON_CODES[gate].PASS[0],
-    evidence_refs: [sqlArtifactReference],
+    evidence_refs: evidenceReferences,
     observations: passingObservationsFor(gate),
     evaluated_at: "2026-07-26T00:00:00.000Z",
   };
@@ -153,17 +161,71 @@ describe("GateReceipt persistence contract", () => {
       for (const verdict of TEXT2SQL_GATE_VERDICTS) {
         const allowedReasonCodes = TEXT2SQL_GATE_REASON_CODES[gate][verdict];
         for (const reasonCode of allReasonCodes) {
+          const candidate = passingReceiptCandidate(gate);
           expect(
             gateReceiptSchema.safeParse({
-              ...passingReceiptCandidate(gate),
+              ...candidate,
               verdict,
               reason_code: reasonCode,
+              ...(gate === "RESULT" && verdict === "UNAVAILABLE"
+                ? { evidence_refs: [candidate.execution_receipt_ref] }
+                : {}),
             }).success,
             `${gate}/${verdict} 不应接受 ${reasonCode}`,
           ).toBe(allowedReasonCodes.some((allowed) => allowed === reasonCode));
         }
       }
     }
+  });
+
+  it("RESULT Gate 固定三引用顺序并保留 Metamorphic 失败 Reason Code", () => {
+    const candidate = passingReceiptCandidate("RESULT");
+    const references = candidate.evidence_refs;
+    if (!Array.isArray(references) || references.length !== 3) {
+      throw new Error("RESULT Gate Fixture 缺少固定三引用。");
+    }
+
+    expect(TEXT2SQL_GATE_REASON_CODES.RESULT.FAIL).toContain("RESULT_METAMORPHIC_FAILED");
+    expect(gateReceiptSchema.safeParse(candidate).success).toBe(true);
+    expect(
+      gateReceiptSchema.safeParse({
+        ...candidate,
+        evidence_refs: [references[1], references[0], references[2]],
+      }).success,
+    ).toBe(false);
+    expect(
+      gateReceiptSchema.safeParse({
+        ...candidate,
+        evidence_refs: references.slice(0, 2),
+      }).success,
+    ).toBe(false);
+  });
+
+  it("缺少 Oracle 时仍可持久化 RESULT UNAVAILABLE 与单一 ExecutionReceipt 证据", async () => {
+    const sqlArtifactReference = makeArtifactReference("SqlArtifact");
+    const executionReceiptReference = makeArtifactReference("ExecutionReceipt");
+    const unavailable = await sealGateReceipt({
+      artifact_type: "GateReceipt",
+      sql_artifact_ref: sqlArtifactReference,
+      execution_receipt_ref: executionReceiptReference,
+      gate: "RESULT",
+      gate_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+      evaluator_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+      ...evaluatorAuthorityHashes,
+      verdict: "UNAVAILABLE",
+      reason_code: "RESULT_ORACLE_UNAVAILABLE",
+      evidence_refs: [executionReceiptReference],
+      observations: {
+        result_hash: GATE_OBSERVATION_UNAVAILABLE_HASH,
+        oracle_version: "UNAVAILABLE",
+        invariant_ids: [],
+        oracle_evidence_hash: GATE_OBSERVATION_UNAVAILABLE_HASH,
+      },
+      evaluated_at: "2026-07-26T00:00:00.000Z",
+    });
+
+    expect(gateReceiptSchema.parse(unavailable)).toEqual(unavailable);
+    expect(unavailable.evidence_refs).toEqual([executionReceiptReference]);
   });
 
   it("允许 FAIL/UNAVAILABLE 持久化显式 sentinel，但不把 sentinel 当作 PASS", async () => {
@@ -223,15 +285,15 @@ describe("GateReceipt persistence contract", () => {
     ).toBe(false);
   });
 
-  it("reset-only breaking contract 明确拒绝旧 v1 payload，不提供迁移兼容", async () => {
+  it("reset-only breaking contract 明确拒绝旧 Gate v2 payload，不提供迁移兼容", async () => {
     const receipt = await sealGateReceipt(structuralDraft());
 
-    expect(TEXT2SQL_GATE_EVALUATOR_VERSION).toBe("text2sql-gates@2.0.0");
+    expect(TEXT2SQL_GATE_EVALUATOR_VERSION).toBe("text2sql-gates@3.0.0");
     expect(
       gateReceiptSchema.safeParse({
         ...receipt,
-        gate_version: "text2sql-gates@1.0.0",
-        evaluator_version: "text2sql-gates@1.0.0",
+        gate_version: "text2sql-gates@2.0.0",
+        evaluator_version: "text2sql-gates@2.0.0",
       }).success,
     ).toBe(false);
   });
@@ -263,12 +325,12 @@ describe("GateReceipt persistence contract", () => {
       sealed_at: "2026-07-26T00:00:00.000Z",
     };
 
-    expect(TEXT2SQL_VALIDATION_VERSION).toBe("text2sql-validation@1.0.0");
+    expect(TEXT2SQL_VALIDATION_VERSION).toBe("text2sql-validation@2.0.0");
     expect(validationReceiptSchema.safeParse(receipt).success).toBe(true);
     expect(
       validationReceiptSchema.safeParse({
         ...receipt,
-        validation_version: "text2sql-validation@1.0.1",
+        validation_version: "text2sql-validation@1.0.0",
       }).success,
     ).toBe(false);
   });

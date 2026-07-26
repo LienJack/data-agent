@@ -11,12 +11,14 @@ import {
   versionIdentifierSchema,
 } from "../common/index.js";
 import {
+  type AuthoritativeSandboxExecutionReceipt,
+  type AuthoritativeSandboxResult,
   computeSandboxExecutionReceiptHash,
   computeSandboxResultHash,
+  isAuthoritativeSandboxExecutionReceipt,
+  isAuthoritativeSandboxResult,
   type SandboxResult,
   type SuccessfulSandboxExecutionReceipt,
-  sandboxResultSchema,
-  successfulSandboxExecutionReceiptSchema,
 } from "../ports/sandbox.js";
 import {
   type ArtifactCommitterCapabilityClaim,
@@ -33,17 +35,30 @@ import {
   verifyGroundingAuthorityDocument,
 } from "./grounding-authority.js";
 import {
+  computeMetamorphicFixtureEvidenceHash,
+  computeMetamorphicFixtureReceiptHash,
+  computeMetamorphicOracleEvidenceHash,
+  computeMetamorphicOracleReceiptHash,
+  computeMetamorphicRelationSampleHash,
   computePostgresqlExecutionSettingsHash,
   computeResourceAdmissionReceiptHash,
   computeResourceEstimateHash,
   computeResultOracleEvidenceHash,
   computeResultOracleReceiptHash,
+  type MetamorphicSandboxEvidenceRef,
   postgresqlExecutionSettingsSchema,
   type ResourceAdmissionReceipt,
-  type ResultOracleReceipt,
   resourceAdmissionReceiptSchema,
-  resultOracleReceiptSchema,
 } from "./text2sql-evidence.js";
+import {
+  type AuthoritativeMetamorphicFixtureReceipt,
+  type AuthoritativeMetamorphicOracleReceipt,
+  type AuthoritativeResultOracleReceipt,
+  isAuthoritativeMetamorphicFixtureReceipt,
+  isAuthoritativeMetamorphicOracleReceipt,
+  isAuthoritativeResultOracleReceipt,
+  isAuthoritativeResultOracleReceiptForMetamorphic,
+} from "./text2sql-evidence-brands.js";
 import {
   catalogRelationshipContractSchema,
   catalogTableContractSchema,
@@ -764,6 +779,7 @@ export const TEXT2SQL_GATE_REASON_CODES = {
       "RESULT_SCHEMA_MISMATCH",
       "RESULT_CARDINALITY_MISMATCH",
       "RESULT_INVARIANT_FAILED",
+      "RESULT_METAMORPHIC_FAILED",
       "RESULT_ORACLE_FAILED",
     ],
     UNAVAILABLE: ["RESULT_ORACLE_UNAVAILABLE"],
@@ -780,12 +796,12 @@ export type Text2SqlGateReasonCode<
   : never;
 
 /*
- * reset-only breaking contract：GateReceipt v2 直接替代旧 v1。
- * 旧 v1 payload 必须在 Schema 边界失败；本仓库不提供迁移或兼容解析路径。
+ * reset-only breaking contract：GateReceipt v3 直接替代旧 v2。
+ * 旧 v2 payload 必须在 Schema 边界失败；本仓库不提供迁移或兼容解析路径。
  */
-export const TEXT2SQL_GATE_EVALUATOR_VERSION = "text2sql-gates@2.0.0" as const;
+export const TEXT2SQL_GATE_EVALUATOR_VERSION = "text2sql-gates@3.0.0" as const;
 
-export const TEXT2SQL_VALIDATION_VERSION = "text2sql-validation@1.0.0" as const;
+export const TEXT2SQL_VALIDATION_VERSION = "text2sql-validation@2.0.0" as const;
 
 export const TEXT2SQL_EXECUTION_PERMIT_TTL_MS = 300_000 as const;
 const TEXT2SQL_GATE_RECEIPT_MAX_AGE_MS = 10 * 60 * 1_000;
@@ -930,8 +946,20 @@ const executionGateInputHashMaterialSchema = z.strictObject({
   ...postExecutionGateInputHashShape,
   gate: z.literal("EXECUTION"),
 });
+const resultGateCompleteEvidenceReferencesSchema = z.tuple([
+  artifactReferenceFor("SandboxResult"),
+  artifactReferenceFor("MetamorphicOracleReceipt"),
+  artifactReferenceFor("ResultOracleReceipt"),
+]);
+const resultGateUnavailableEvidenceReferencesSchema = z.tuple([
+  artifactReferenceFor("ExecutionReceipt"),
+]);
 const resultGateInputHashMaterialSchema = z.strictObject({
   ...postExecutionGateInputHashShape,
+  evidence_refs: z.union([
+    resultGateCompleteEvidenceReferencesSchema,
+    resultGateUnavailableEvidenceReferencesSchema,
+  ]),
   gate: z.literal("RESULT"),
 });
 
@@ -1028,11 +1056,55 @@ const executionGateSchemas = createGateEvaluationSchemas(
   executionGateObservationsSchema,
   TEXT2SQL_GATE_REASON_CODES.EXECUTION,
 );
-const resultGateSchemas = createGateEvaluationSchemas(
-  resultGateInputHashMaterialSchema.shape,
-  resultGateObservationsSchema,
-  TEXT2SQL_GATE_REASON_CODES.RESULT,
-);
+const resultGateEvaluationBaseShape = {
+  ...resultGateInputHashMaterialSchema.shape,
+  ...gateReceiptEvaluationHashBaseShape,
+  observations: resultGateObservationsSchema,
+} as const;
+const resultGateObservedShape = {
+  ...resultGateEvaluationBaseShape,
+  evidence_refs: resultGateCompleteEvidenceReferencesSchema,
+} as const;
+const resultGateUnavailableShape = {
+  ...resultGateEvaluationBaseShape,
+  evidence_refs: resultGateUnavailableEvidenceReferencesSchema,
+} as const;
+const resultGatePassShape = {
+  ...resultGateObservedShape,
+  verdict: z.literal("PASS"),
+  reason_code: z.enum(TEXT2SQL_GATE_REASON_CODES.RESULT.PASS),
+} as const;
+const resultGateFailShape = {
+  ...resultGateObservedShape,
+  verdict: z.literal("FAIL"),
+  reason_code: z.enum(TEXT2SQL_GATE_REASON_CODES.RESULT.FAIL),
+} as const;
+const resultGateUnavailableReceiptShape = {
+  ...resultGateUnavailableShape,
+  verdict: z.literal("UNAVAILABLE"),
+  reason_code: z.enum(TEXT2SQL_GATE_REASON_CODES.RESULT.UNAVAILABLE),
+} as const;
+const resultGateSchemas = {
+  evaluationHashMaterialSchema: z.discriminatedUnion("verdict", [
+    z.strictObject(resultGatePassShape),
+    z.strictObject(resultGateFailShape),
+    z.strictObject(resultGateUnavailableReceiptShape),
+  ]),
+  receiptSchema: z.discriminatedUnion("verdict", [
+    z.strictObject({
+      ...resultGatePassShape,
+      evaluation_hash: contentHashSchema,
+    }),
+    z.strictObject({
+      ...resultGateFailShape,
+      evaluation_hash: contentHashSchema,
+    }),
+    z.strictObject({
+      ...resultGateUnavailableReceiptShape,
+      evaluation_hash: contentHashSchema,
+    }),
+  ]),
+};
 
 const intentGateEvaluationHashMaterialSchema = intentGateSchemas.evaluationHashMaterialSchema;
 const semanticGateEvaluationHashMaterialSchema = semanticGateSchemas.evaluationHashMaterialSchema;
@@ -1176,6 +1248,10 @@ function validateGatePassObservations(
     }
     case "RESULT": {
       if (
+        receipt.evidence_refs.length !== 3 ||
+        receipt.evidence_refs[0]?.artifact_type !== "SandboxResult" ||
+        receipt.evidence_refs[1]?.artifact_type !== "MetamorphicOracleReceipt" ||
+        receipt.evidence_refs[2]?.artifact_type !== "ResultOracleReceipt" ||
         receipt.observations.result_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
         receipt.observations.oracle_evidence_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
         receipt.observations.oracle_version === "UNAVAILABLE" ||
@@ -1204,6 +1280,18 @@ const gateReceiptDiscriminatedSchema = z.discriminatedUnion("gate", [
 
 export const gateReceiptSchema = gateReceiptDiscriminatedSchema.superRefine((receipt, ctx) => {
   validateGatePassObservations(receipt, ctx);
+  if (
+    receipt.gate === "RESULT" &&
+    receipt.evidence_refs.length === 1 &&
+    artifactReferenceIdentity(receipt.evidence_refs[0]) !==
+      artifactReferenceIdentity(receipt.execution_receipt_ref)
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "RESULT 缺失 Oracle 时的单一 Evidence 必须是当前 ExecutionReceipt。",
+      path: ["evidence_refs", 0],
+    });
+  }
 });
 
 export const executionPermitSchema = z
@@ -1694,11 +1782,22 @@ export interface L2ArtifactAuthorityContext {
     readonly query_contract: QueryContractPayload;
   }): Promise<boolean>;
   verifyResourceAdmissionReceipt?(receipt: ResourceAdmissionReceipt): Promise<boolean>;
-  verifyResultOracleReceipt?(receipt: ResultOracleReceipt): Promise<boolean>;
-  verifySandboxExecutionEvidence?(input: {
-    readonly receipt: SuccessfulSandboxExecutionReceipt;
-    readonly result: SandboxResult;
-  }): Promise<boolean>;
+  resolveAuthoritativeMetamorphicFixtureReceipt?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeMetamorphicFixtureReceipt | null>;
+  resolveAuthoritativeMetamorphicOracleReceipt?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeMetamorphicOracleReceipt | null>;
+  resolveAuthoritativeResultOracleReceipt?(
+    reference: ArtifactReference,
+    metamorphic: AuthoritativeMetamorphicOracleReceipt,
+  ): Promise<AuthoritativeResultOracleReceipt | null>;
+  resolveAuthoritativeSandboxExecutionReceipt?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeSandboxExecutionReceipt | null>;
+  resolveAuthoritativeSandboxResult?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeSandboxResult | null>;
   verifyCommitterCapability(claim: ArtifactCommitterCapabilityClaim): Promise<boolean>;
 }
 
@@ -1706,6 +1805,9 @@ export type L2ArtifactPersistenceAuthority = L2ArtifactAuthorityContext;
 
 export const TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES = [
   "ResourceAdmissionReceipt",
+  "FixtureMutationRecord",
+  "MetamorphicFixtureReceipt",
+  "MetamorphicOracleReceipt",
   "ResultOracleReceipt",
   "SandboxExecutionReceipt",
   "SandboxResult",
@@ -1731,6 +1833,7 @@ async function verifyInputReferenceCommitted(
 
 interface L2ArtifactVerificationState {
   readonly verified: Map<string, L2ArtifactDocument>;
+  readonly authoritativeSystemArtifacts: Map<string, unknown>;
   readonly path: ReadonlySet<string>;
 }
 
@@ -1781,19 +1884,41 @@ function scopeL2ArtifactAuthority(
             authority.verifyResourceAdmissionReceipt?.(receipt) ?? Promise.resolve(false),
         }
       : {}),
-    ...(authority.verifyResultOracleReceipt
+    ...(authority.resolveAuthoritativeMetamorphicFixtureReceipt
       ? {
-          verifyResultOracleReceipt: (receipt: ResultOracleReceipt) =>
-            authority.verifyResultOracleReceipt?.(receipt) ?? Promise.resolve(false),
+          resolveAuthoritativeMetamorphicFixtureReceipt: (reference: ArtifactReference) =>
+            authority.resolveAuthoritativeMetamorphicFixtureReceipt?.(reference) ??
+            Promise.resolve(null),
         }
       : {}),
-    ...(authority.verifySandboxExecutionEvidence
+    ...(authority.resolveAuthoritativeMetamorphicOracleReceipt
       ? {
-          verifySandboxExecutionEvidence: (
-            input: Parameters<
-              NonNullable<L2ArtifactAuthorityContext["verifySandboxExecutionEvidence"]>
-            >[0],
-          ) => authority.verifySandboxExecutionEvidence?.(input) ?? Promise.resolve(false),
+          resolveAuthoritativeMetamorphicOracleReceipt: (reference: ArtifactReference) =>
+            authority.resolveAuthoritativeMetamorphicOracleReceipt?.(reference) ??
+            Promise.resolve(null),
+        }
+      : {}),
+    ...(authority.resolveAuthoritativeResultOracleReceipt
+      ? {
+          resolveAuthoritativeResultOracleReceipt: (
+            reference: ArtifactReference,
+            metamorphic: AuthoritativeMetamorphicOracleReceipt,
+          ) =>
+            authority.resolveAuthoritativeResultOracleReceipt?.(reference, metamorphic) ??
+            Promise.resolve(null),
+        }
+      : {}),
+    ...(authority.resolveAuthoritativeSandboxExecutionReceipt
+      ? {
+          resolveAuthoritativeSandboxExecutionReceipt: (reference: ArtifactReference) =>
+            authority.resolveAuthoritativeSandboxExecutionReceipt?.(reference) ??
+            Promise.resolve(null),
+        }
+      : {}),
+    ...(authority.resolveAuthoritativeSandboxResult
+      ? {
+          resolveAuthoritativeSandboxResult: (reference: ArtifactReference) =>
+            authority.resolveAuthoritativeSandboxResult?.(reference) ?? Promise.resolve(null),
         }
       : {}),
     verifyCommitterCapability: (claim: ArtifactCommitterCapabilityClaim) =>
@@ -1801,6 +1926,7 @@ function scopeL2ArtifactAuthority(
   });
   l2ArtifactVerificationStates.set(scopedAuthority, {
     verified: state.verified,
+    authoritativeSystemArtifacts: state.authoritativeSystemArtifacts,
     path: new Set([...state.path, currentIdentity]),
   });
   return scopedAuthority;
@@ -1921,26 +2047,262 @@ async function resolveResourceAdmissionReceipt(
   return parsed.data;
 }
 
+async function resolveMetamorphicFixtureReceipt(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<AuthoritativeMetamorphicFixtureReceipt> {
+  const identity = artifactReferenceIdentity(reference);
+  const cache = l2ArtifactVerificationStates.get(authority)?.authoritativeSystemArtifacts;
+  const cached = cache?.get(identity);
+  if (cached && isAuthoritativeMetamorphicFixtureReceipt(cached)) return cached;
+  const fixture = await authority.resolveAuthoritativeMetamorphicFixtureReceipt?.(reference);
+  if (
+    !fixture ||
+    !isAuthoritativeMetamorphicFixtureReceipt(fixture) ||
+    artifactReferenceIdentity(fixture.receipt_ref) !== identity ||
+    (await computeMetamorphicFixtureReceiptHash(fixture)) !== fixture.receipt_hash ||
+    (await computeMetamorphicFixtureEvidenceHash(fixture)) !== fixture.evidence_hash
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "MetamorphicFixtureReceipt 必须由 server-only Fixture Authority 按完整 Reference 品牌化。",
+    );
+  }
+  cache?.set(identity, fixture);
+  return fixture;
+}
+
+async function resolveSandboxResultRevision(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<AuthoritativeSandboxResult> {
+  const identity = artifactReferenceIdentity(reference);
+  const cache = l2ArtifactVerificationStates.get(authority)?.authoritativeSystemArtifacts;
+  const cached = cache?.get(identity);
+  if (cached && isAuthoritativeSandboxResult(cached)) return cached;
+  const result = await authority.resolveAuthoritativeSandboxResult?.(reference);
+  if (
+    !result ||
+    !isAuthoritativeSandboxResult(result) ||
+    artifactReferenceIdentity(result.result_ref) !== identity ||
+    (await computeSandboxResultHash(result)) !== result.result_hash
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "SandboxResult 必须由 server-only Sandbox Authority 按完整 Reference 品牌化。",
+    );
+  }
+  cache?.set(identity, result);
+  return result;
+}
+
+async function resolveSandboxEvidenceBinding(
+  binding: MetamorphicSandboxEvidenceRef,
+  expectedSnapshotId: string | null,
+  sqlArtifactReference: ArtifactReference | null,
+  authority: L2ArtifactAuthorityContext,
+): Promise<{
+  readonly receipt: AuthoritativeSandboxExecutionReceipt;
+  readonly result: AuthoritativeSandboxResult;
+}> {
+  const cache = l2ArtifactVerificationStates.get(authority)?.authoritativeSystemArtifacts;
+  const receiptIdentity = artifactReferenceIdentity(binding.sandbox_execution_receipt_ref);
+  const resultIdentity = artifactReferenceIdentity(binding.result_artifact_ref);
+  const cachedReceipt = cache?.get(receiptIdentity);
+  const [receipt, result] = await Promise.all([
+    cachedReceipt && isAuthoritativeSandboxExecutionReceipt(cachedReceipt)
+      ? Promise.resolve(cachedReceipt)
+      : (authority.resolveAuthoritativeSandboxExecutionReceipt?.(
+          binding.sandbox_execution_receipt_ref,
+        ) ?? Promise.resolve(null)),
+    resolveSandboxResultRevision(binding.result_artifact_ref, authority),
+  ]);
+  if (
+    !receipt ||
+    !isAuthoritativeSandboxExecutionReceipt(receipt) ||
+    artifactReferenceIdentity(receipt.receipt_ref) !== receiptIdentity ||
+    artifactReferenceIdentity(receipt.result_artifact_ref) !== resultIdentity ||
+    artifactReferenceIdentity(result.result_ref) !== resultIdentity ||
+    (sqlArtifactReference !== null &&
+      artifactReferenceIdentity(receipt.sql_artifact_ref) !==
+        artifactReferenceIdentity(sqlArtifactReference)) ||
+    receipt.execution_id !== result.execution_id ||
+    receipt.schema_version !== result.schema_version ||
+    receipt.snapshot_token !== expectedSnapshotId ||
+    receipt.resource_usage.rows !== result.row_count ||
+    receipt.resource_usage.bytes !== result.bytes ||
+    (await computeSandboxExecutionReceiptHash(receipt)) !== receipt.execution_hash
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "Metamorphic Oracle 必须绑定声明的 Snapshot、完整引用、规范 Hash 与品牌化 Sandbox Evidence Authority。",
+    );
+  }
+  cache?.set(receiptIdentity, receipt);
+  cache?.set(resultIdentity, result);
+  return {
+    receipt,
+    result,
+  };
+}
+
+async function resolveMetamorphicOracleReceipt(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<AuthoritativeMetamorphicOracleReceipt> {
+  const identity = artifactReferenceIdentity(reference);
+  const cache = l2ArtifactVerificationStates.get(authority)?.authoritativeSystemArtifacts;
+  const cached = cache?.get(identity);
+  if (cached && isAuthoritativeMetamorphicOracleReceipt(cached)) return cached;
+  const receipt = await authority.resolveAuthoritativeMetamorphicOracleReceipt?.(reference);
+  if (
+    !receipt ||
+    !isAuthoritativeMetamorphicOracleReceipt(receipt) ||
+    artifactReferenceIdentity(receipt.receipt_ref) !== identity ||
+    (await computeMetamorphicOracleReceiptHash(receipt)) !== receipt.receipt_hash ||
+    (await computeMetamorphicOracleEvidenceHash(receipt)) !== receipt.evidence_hash
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "MetamorphicOracleReceipt 必须匹配品牌、完整引用与规范 Evidence/Receipt Hash。",
+    );
+  }
+  const fixture = await resolveMetamorphicFixtureReceipt(receipt.fixture_receipt_ref, authority);
+  if (
+    artifactReferenceIdentity(fixture.sql_artifact_ref) !==
+      artifactReferenceIdentity(receipt.sql_artifact_ref) ||
+    Date.parse(fixture.issued_at) > Date.parse(receipt.evaluated_at)
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "MetamorphicOracleReceipt 必须绑定同一权威 FixtureReceipt/SqlArtifact，且不能早于 Fixture 签发。",
+    );
+  }
+  const sampleHashVerdicts = await Promise.all(
+    receipt.relation_samples.map(
+      async (sample) => (await computeMetamorphicRelationSampleHash(sample)) === sample.sample_hash,
+    ),
+  );
+  if (sampleHashVerdicts.some((verdict) => !verdict)) {
+    throw new ArtifactSemanticAuthorityError(
+      "MetamorphicOracleReceipt 的 RelationSample Hash 与规范内容不匹配。",
+    );
+  }
+  const baseline = await resolveSandboxEvidenceBinding(
+    receipt.baseline,
+    fixture.baseline.snapshot_id,
+    receipt.sql_artifact_ref,
+    authority,
+  );
+  if (
+    baseline.receipt.input_hash !== fixture.baseline.execution_input_hash ||
+    Date.parse(baseline.receipt.completed_at) > Date.parse(receipt.evaluated_at)
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "MetamorphicOracleReceipt Baseline 必须匹配 Fixture Snapshot/Input 并先于 Oracle 完成。",
+    );
+  }
+  for (const [index, sample] of receipt.relation_samples.entries()) {
+    const fixtureCase = fixture.cases[index];
+    if (
+      !fixtureCase ||
+      fixtureCase.relation_kind !== sample.relation_kind ||
+      fixtureCase.case_id !== sample.case_id ||
+      canonicalizeJson(fixtureCase.witness) !== canonicalizeJson(sample.witness)
+    ) {
+      throw new ArtifactSemanticAuthorityError(
+        "Metamorphic RelationSample 必须逐项匹配权威 Fixture Case/Witness。",
+      );
+    }
+    if (
+      fixtureCase.relation_kind === "HALF_OPEN_ADDITIVE_PARTITION" &&
+      sample.relation_kind === "HALF_OPEN_ADDITIVE_PARTITION"
+    ) {
+      const [left, right] = await Promise.all([
+        resolveSandboxEvidenceBinding(
+          sample.left_partition,
+          fixtureCase.snapshot_id,
+          null,
+          authority,
+        ),
+        resolveSandboxEvidenceBinding(
+          sample.right_partition,
+          fixtureCase.snapshot_id,
+          null,
+          authority,
+        ),
+      ]);
+      if (
+        sample.snapshot_id !== fixtureCase.snapshot_id ||
+        baseline.receipt.input_hash !== fixtureCase.whole_execution_input_hash ||
+        left.receipt.input_hash !== fixtureCase.left_execution_input_hash ||
+        right.receipt.input_hash !== fixtureCase.right_execution_input_hash ||
+        [left, right].some(
+          (evidence) =>
+            Date.parse(evidence.receipt.completed_at) > Date.parse(receipt.evaluated_at),
+        )
+      ) {
+        throw new ArtifactSemanticAuthorityError(
+          "Half-open Sample 必须以 Meta Baseline 为 whole，并匹配 left/right Snapshot/Input。",
+        );
+      }
+      continue;
+    }
+    if (
+      fixtureCase.relation_kind === "HALF_OPEN_ADDITIVE_PARTITION" ||
+      sample.relation_kind === "HALF_OPEN_ADDITIVE_PARTITION"
+    ) {
+      throw new ArtifactSemanticAuthorityError("Fixture Case 与 RelationSample 判别不一致。");
+    }
+    const followUp = await resolveSandboxEvidenceBinding(
+      sample.follow_up,
+      fixtureCase.follow_up_snapshot_id,
+      receipt.sql_artifact_ref,
+      authority,
+    );
+    if (
+      sample.follow_up_snapshot_id !== fixtureCase.follow_up_snapshot_id ||
+      followUp.receipt.input_hash !== fixtureCase.follow_up_execution_input_hash ||
+      Date.parse(followUp.receipt.completed_at) > Date.parse(receipt.evaluated_at)
+    ) {
+      throw new ArtifactSemanticAuthorityError(
+        "Single-mutation Sample 必须匹配 Fixture Follow-up Snapshot/Input。",
+      );
+    }
+  }
+  cache?.set(identity, receipt);
+  return receipt;
+}
+
 async function resolveResultOracleReceipt(
   reference: ArtifactReference,
   authority: L2ArtifactAuthorityContext,
-): Promise<ResultOracleReceipt> {
-  const parsed = resultOracleReceiptSchema.safeParse(
-    await resolveCommittedSystemArtifact(reference, authority),
-  );
+  metamorphic: AuthoritativeMetamorphicOracleReceipt,
+): Promise<AuthoritativeResultOracleReceipt> {
+  const identity = artifactReferenceIdentity(reference);
+  const cache = l2ArtifactVerificationStates.get(authority)?.authoritativeSystemArtifacts;
+  const cached = cache?.get(identity);
+  if (cached && isAuthoritativeResultOracleReceiptForMetamorphic(cached, metamorphic)) {
+    return cached;
+  }
+  const receipt = await authority.resolveAuthoritativeResultOracleReceipt?.(reference, metamorphic);
   if (
-    !parsed.success ||
-    artifactReferenceIdentity(parsed.data.receipt_ref) !== artifactReferenceIdentity(reference) ||
-    (await computeResultOracleReceiptHash(parsed.data)) !== parsed.data.receipt_hash ||
-    (await computeResultOracleEvidenceHash(parsed.data)) !== parsed.data.evidence_hash ||
-    !authority.verifyResultOracleReceipt ||
-    !(await authority.verifyResultOracleReceipt(parsed.data))
+    !receipt ||
+    !isAuthoritativeResultOracleReceipt(receipt) ||
+    !isAuthoritativeResultOracleReceiptForMetamorphic(receipt, metamorphic) ||
+    artifactReferenceIdentity(receipt.receipt_ref) !== identity ||
+    artifactReferenceIdentity(receipt.metamorphic_oracle_receipt_ref) !==
+      artifactReferenceIdentity(metamorphic.receipt_ref) ||
+    (await computeResultOracleReceiptHash(receipt)) !== receipt.receipt_hash ||
+    (await computeResultOracleEvidenceHash(receipt)) !== receipt.evidence_hash ||
+    artifactReferenceIdentity(receipt.sql_artifact_ref) !==
+      artifactReferenceIdentity(metamorphic.sql_artifact_ref) ||
+    artifactReferenceIdentity(receipt.result_artifact_ref) !==
+      artifactReferenceIdentity(metamorphic.baseline.result_artifact_ref) ||
+    receipt.metamorphic_verdict !== metamorphic.metamorphic_verdict ||
+    Date.parse(metamorphic.evaluated_at) > Date.parse(receipt.evaluated_at)
   ) {
     throw new ArtifactSemanticAuthorityError(
-      "ResultOracleReceipt 必须匹配完整引用、规范 Hash 与服务端 Result Oracle Authority。",
+      "ResultOracleReceipt 必须匹配品牌、完整引用、规范 Hash 与同一次 Meta 解析。",
     );
   }
-  return parsed.data;
+  cache?.set(identity, receipt);
+  return receipt;
 }
 
 async function resolveSandboxRuntimeEvidence(
@@ -1950,34 +2312,15 @@ async function resolveSandboxRuntimeEvidence(
   readonly receipt: SuccessfulSandboxExecutionReceipt;
   readonly result: SandboxResult;
 }> {
-  const [receiptInput, resultInput] = await Promise.all([
-    resolveCommittedSystemArtifact(execution.sandbox_execution_receipt_ref, authority),
-    resolveCommittedSystemArtifact(execution.result_artifact_ref, authority),
-  ]);
-  const receipt = successfulSandboxExecutionReceiptSchema.safeParse(receiptInput);
-  const result = sandboxResultSchema.safeParse(resultInput);
-  if (
-    !receipt.success ||
-    !result.success ||
-    artifactReferenceIdentity(receipt.data.receipt_ref) !==
-      artifactReferenceIdentity(execution.sandbox_execution_receipt_ref) ||
-    artifactReferenceIdentity(receipt.data.result_artifact_ref) !==
-      artifactReferenceIdentity(execution.result_artifact_ref) ||
-    artifactReferenceIdentity(result.data.result_ref) !==
-      artifactReferenceIdentity(execution.result_artifact_ref) ||
-    (await computeSandboxExecutionReceiptHash(receipt.data)) !== receipt.data.execution_hash ||
-    (await computeSandboxResultHash(result.data)) !== result.data.result_hash ||
-    !authority.verifySandboxExecutionEvidence ||
-    !(await authority.verifySandboxExecutionEvidence({
-      receipt: receipt.data,
-      result: result.data,
-    }))
-  ) {
-    throw new ArtifactSemanticAuthorityError(
-      "ExecutionReceipt 必须绑定内容寻址且可重算的 SandboxExecutionReceipt/SandboxResult。",
-    );
-  }
-  return { receipt: receipt.data, result: result.data };
+  return resolveSandboxEvidenceBinding(
+    {
+      sandbox_execution_receipt_ref: execution.sandbox_execution_receipt_ref,
+      result_artifact_ref: execution.result_artifact_ref,
+    },
+    execution.snapshot_token,
+    execution.sql_artifact_ref,
+    authority,
+  );
 }
 
 function requireArtifactType<T extends L2ArtifactPayload["artifact_type"]>(
@@ -3043,25 +3386,27 @@ function requireSingleGateEvidenceReference<T extends ArtifactReference["artifac
   artifactType: T,
 ): ArtifactReference & { artifact_type: T } {
   const references = gateReceipt.evidence_refs.filter(
-    (reference): reference is ArtifactReference & { artifact_type: T } =>
-      reference.artifact_type === artifactType,
+    (reference) => reference.artifact_type === artifactType,
   );
   if (references.length !== 1 || !references[0]) {
     throw new ArtifactSemanticAuthorityError(
       `${gateReceipt.gate} GateReceipt 必须且只能绑定一份 ${artifactType} 权威证据。`,
     );
   }
-  return references[0];
+  return artifactReferenceFor(artifactType).parse(references[0]);
 }
 
-async function verifyGatePassObservationAuthority(
+async function verifyGateObservationAuthority(
   gateReceipt: GateReceiptPayload,
   sqlArtifact: SqlArtifactPayload,
   queryContract: QueryContractPayload,
   authority: L2ArtifactAuthorityContext,
   execution: ExecutionReceiptPayload | null,
 ): Promise<void> {
-  if (gateReceipt.verdict !== "PASS") {
+  if (
+    gateReceipt.verdict !== "PASS" &&
+    !(gateReceipt.gate === "RESULT" && gateReceipt.verdict === "FAIL")
+  ) {
     return;
   }
   const logicalPlan = requireArtifactType(
@@ -3207,52 +3552,107 @@ async function verifyGatePassObservationAuthority(
       return;
     }
     case "RESULT": {
-      const oracle = await resolveResultOracleReceipt(
-        requireSingleGateEvidenceReference(gateReceipt, "ResultOracleReceipt"),
-        authority,
+      const evidenceReferences = resultGateCompleteEvidenceReferencesSchema.safeParse(
+        gateReceipt.evidence_refs,
       );
-      const runtimeEvidence =
-        execution === null ? null : await resolveSandboxRuntimeEvidence(execution, authority);
-      requireGateObservationAuthority(
+      if (!evidenceReferences.success) {
+        throw new ArtifactSemanticAuthorityError(
+          "RESULT observed verdict 必须按顺序绑定 SandboxResult、MetamorphicOracleReceipt 与 ResultOracleReceipt。",
+        );
+      }
+      const [sandboxResultReference, metamorphicReference, oracleReference] =
+        evidenceReferences.data;
+      const [sandboxResult, metamorphic, runtimeEvidence] = await Promise.all([
+        resolveSandboxResultRevision(sandboxResultReference, authority),
+        resolveMetamorphicOracleReceipt(metamorphicReference, authority),
+        execution === null
+          ? Promise.resolve(null)
+          : resolveSandboxRuntimeEvidence(execution, authority),
+      ]);
+      const oracle = await resolveResultOracleReceipt(oracleReference, authority, metamorphic);
+      const bindingMatches =
         execution !== null &&
-          runtimeEvidence !== null &&
-          artifactReferenceIdentity(oracle.sql_artifact_ref) ===
-            artifactReferenceIdentity(gateReceipt.sql_artifact_ref) &&
-          artifactReferenceIdentity(oracle.execution_receipt_ref) ===
-            artifactReferenceIdentity(gateReceipt.execution_receipt_ref) &&
-          artifactReferenceIdentity(oracle.result_artifact_ref) ===
-            artifactReferenceIdentity(execution.result_artifact_ref) &&
-          oracle.oracle_verdict === "PASS" &&
-          oracle.invariant_verdicts.every(({ verdict }) => verdict === "PASS") &&
-          oracle.query_hash === execution.query_hash &&
-          oracle.result_hash === execution.result_hash &&
-          oracle.result_hash === runtimeEvidence.result.result_hash &&
-          oracle.row_count === execution.row_count &&
-          oracle.row_count === runtimeEvidence.result.row_count &&
-          sameStringArray(oracle.result_columns, queryContract.result_contract.columns) &&
-          sameStringArray(
-            runtimeEvidence.result.columns.map(({ name }) => name),
-            queryContract.result_contract.columns,
-          ) &&
-          gateReceipt.observations.result_hash === execution.result_hash &&
+        runtimeEvidence !== null &&
+        artifactReferenceIdentity(oracle.sql_artifact_ref) ===
+          artifactReferenceIdentity(gateReceipt.sql_artifact_ref) &&
+        artifactReferenceIdentity(oracle.execution_receipt_ref) ===
+          artifactReferenceIdentity(gateReceipt.execution_receipt_ref) &&
+        artifactReferenceIdentity(sandboxResultReference) ===
+          artifactReferenceIdentity(execution.result_artifact_ref) &&
+        artifactReferenceIdentity(sandboxResult.result_ref) ===
+          artifactReferenceIdentity(execution.result_artifact_ref) &&
+        artifactReferenceIdentity(metamorphicReference) ===
+          artifactReferenceIdentity(metamorphic.receipt_ref) &&
+        artifactReferenceIdentity(oracleReference) ===
+          artifactReferenceIdentity(oracle.receipt_ref) &&
+        artifactReferenceIdentity(oracle.metamorphic_oracle_receipt_ref) ===
+          artifactReferenceIdentity(metamorphic.receipt_ref) &&
+        artifactReferenceIdentity(metamorphic.sql_artifact_ref) ===
+          artifactReferenceIdentity(gateReceipt.sql_artifact_ref) &&
+        artifactReferenceIdentity(metamorphic.baseline.sandbox_execution_receipt_ref) ===
+          artifactReferenceIdentity(execution.sandbox_execution_receipt_ref) &&
+        artifactReferenceIdentity(metamorphic.baseline.result_artifact_ref) ===
+          artifactReferenceIdentity(execution.result_artifact_ref) &&
+        artifactReferenceIdentity(oracle.result_artifact_ref) ===
+          artifactReferenceIdentity(execution.result_artifact_ref) &&
+        oracle.metamorphic_verdict === metamorphic.metamorphic_verdict &&
+        oracle.query_hash === execution.query_hash &&
+        oracle.result_hash === execution.result_hash &&
+        oracle.result_hash === runtimeEvidence.result.result_hash &&
+        oracle.result_hash === sandboxResult.result_hash &&
+        Date.parse(execution.observed_at) <= Date.parse(metamorphic.evaluated_at) &&
+        Date.parse(execution.observed_at) <= Date.parse(oracle.evaluated_at) &&
+        Date.parse(metamorphic.evaluated_at) <= Date.parse(oracle.evaluated_at) &&
+        Date.parse(oracle.evaluated_at) <= Date.parse(gateReceipt.evaluated_at);
+      const schemaMatches =
+        sameStringArray(oracle.result_columns, queryContract.result_contract.columns) &&
+        sameStringArray(
+          runtimeEvidence?.result.columns.map(({ name }) => name) ?? [],
+          queryContract.result_contract.columns,
+        );
+      const cardinalityMatches =
+        execution !== null &&
+        runtimeEvidence !== null &&
+        oracle.row_count === execution.row_count &&
+        oracle.row_count === runtimeEvidence.result.row_count;
+      const invariantIdsMatch =
+        sameStringArray(
+          oracle.invariant_verdicts.map(({ invariant_id }) => invariant_id),
+          queryContract.result_contract.invariant_ids,
+        ) &&
+        sameStringArray(
+          gateReceipt.observations.invariant_ids,
+          oracle.invariant_verdicts.map(({ invariant_id }) => invariant_id),
+        );
+      const invariantsPass = oracle.invariant_verdicts.every(({ verdict }) => verdict === "PASS");
+      const metamorphicPass =
+        metamorphic.metamorphic_verdict === "PASS" &&
+        metamorphic.relation_samples.every(({ verdict }) => verdict === "PASS") &&
+        oracle.metamorphic_verdict === "PASS";
+      const expectedOutcome = !bindingMatches
+        ? { verdict: "FAIL", reason_code: "RESULT_BINDING_MISMATCH" }
+        : !schemaMatches
+          ? { verdict: "FAIL", reason_code: "RESULT_SCHEMA_MISMATCH" }
+          : !cardinalityMatches
+            ? { verdict: "FAIL", reason_code: "RESULT_CARDINALITY_MISMATCH" }
+            : !invariantIdsMatch || !invariantsPass
+              ? { verdict: "FAIL", reason_code: "RESULT_INVARIANT_FAILED" }
+              : !metamorphicPass
+                ? { verdict: "FAIL", reason_code: "RESULT_METAMORPHIC_FAILED" }
+                : oracle.oracle_verdict !== "PASS"
+                  ? { verdict: "FAIL", reason_code: "RESULT_ORACLE_FAILED" }
+                  : { verdict: "PASS", reason_code: "RESULT_VERIFIED" };
+      requireGateObservationAuthority(
+        gateReceipt.verdict === expectedOutcome.verdict &&
+          gateReceipt.reason_code === expectedOutcome.reason_code &&
+          gateReceipt.observations.result_hash === oracle.result_hash &&
           gateReceipt.observations.oracle_version === oracle.oracle_version &&
           gateReceipt.observations.oracle_evidence_hash === oracle.evidence_hash &&
-          Date.parse(execution.observed_at) <= Date.parse(oracle.evaluated_at) &&
-          Date.parse(oracle.evaluated_at) <= Date.parse(gateReceipt.evaluated_at) &&
           sameStringArray(
             gateReceipt.observations.invariant_ids,
-            queryContract.result_contract.invariant_ids,
-          ) &&
-          sameStringArray(
             oracle.invariant_verdicts.map(({ invariant_id }) => invariant_id),
-            queryContract.result_contract.invariant_ids,
-          ) &&
-          gateReceipt.evidence_refs.some(
-            (reference) =>
-              artifactReferenceIdentity(reference) ===
-              artifactReferenceIdentity(execution.result_artifact_ref),
           ),
-        "RESULT GateReceipt observations 必须与权威 Result Hash/Invariant Contract 一致。",
+        "RESULT GateReceipt observed verdict/reason/observations 必须与当前品牌化 SandboxResult、MetamorphicOracleReceipt、ResultOracleReceipt 精确闭合。",
       );
       return;
     }
@@ -3296,7 +3696,7 @@ async function verifyGateReceiptSemantics(
       `${gateReceipt.gate} GateReceipt 与 ExecutionReceipt 必须绑定同一 SqlArtifact。`,
     );
   }
-  await verifyGatePassObservationAuthority(
+  await verifyGateObservationAuthority(
     gateReceipt,
     sqlArtifact,
     queryContract,
@@ -3589,9 +3989,14 @@ async function verifyQueryEvidenceSemantics(
   if (resultGate.gate !== "RESULT") {
     throw new ArtifactSemanticAuthorityError("QueryEvidence 的第七道 GateReceipt 必须是 RESULT。");
   }
+  const metamorphic = await resolveMetamorphicOracleReceipt(
+    requireSingleGateEvidenceReference(resultGate, "MetamorphicOracleReceipt"),
+    authority,
+  );
   const oracle = await resolveResultOracleReceipt(
     requireSingleGateEvidenceReference(resultGate, "ResultOracleReceipt"),
     authority,
+    metamorphic,
   );
   const expectedInvariantIds = queryContract.result_contract.invariant_ids;
   if (
@@ -3814,6 +4219,7 @@ export async function verifyL2ArtifactDocument(
   const identity = artifactReferenceIdentity(artifactReferenceFromDocument(document));
   const state = l2ArtifactVerificationStates.get(authority) ?? {
     verified: new Map<string, L2ArtifactDocument>(),
+    authoritativeSystemArtifacts: new Map<string, unknown>(),
     path: new Set<string>(),
   };
   if (state.path.has(identity)) {

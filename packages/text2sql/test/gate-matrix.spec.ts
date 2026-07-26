@@ -1,5 +1,6 @@
 import {
   type ArtifactReference,
+  AUTHORITY_ROLE_POLICY_VERSION,
   artifactReferenceIdentity,
   canonicalizeJson,
   computeGateEvaluationHash,
@@ -39,13 +40,15 @@ import {
   computeResultOracleEvidenceHash,
   computeSqlSandboxInputHash,
   createGateReceiptPayload,
+  createGroundingPackagePayload,
+  createLogicalPlanPayload,
+  createSemanticQueryPayload,
   evaluatePostExecutionGates,
   evaluatePreExecutionGates,
   isPostgresqlCompilation,
   isValidatedLogicalPlan,
   type PostgresqlExplainEstimate,
   type ResourcePolicy,
-  type ResultOracleAuthority,
   resourcePolicySchema,
   sealExecutionPermit,
   sealValidationReceipt,
@@ -69,6 +72,11 @@ import {
   netRevenueContract,
 } from "./support/commerce-fixture.js";
 import { committedLogicalPlanAuthorityFixture } from "./support/compiler-authority-fixture.js";
+import {
+  createAuthoritativeMetamorphicSandboxFixture,
+  createMetamorphicOracleFixture,
+  type MetamorphicRelationRows,
+} from "./support/metamorphic-oracle-fixture.js";
 
 const gateMatrixIds = {
   sqlArtifact: "10000000-0000-4000-8000-000000000101",
@@ -161,6 +169,30 @@ const permitTimes = {
   sealedAt: "2026-07-26T00:02:00.000Z",
 } as const;
 
+const sandboxExecutionIdentity = {
+  authority_id: "10000000-0000-4000-8000-000000000130",
+  principal_id: "gate-matrix-sandbox-authority",
+  key_id: "gate-matrix-sandbox-key@1.0.0",
+} as const;
+
+const resultProducerIdentity = {
+  authority_id: "10000000-0000-4000-8000-000000000131",
+  principal_id: "gate-matrix-result-producer",
+  key_id: "gate-matrix-result-producer-key@1.0.0",
+} as const;
+
+const gateMatrixCatalog = {
+  ...commerceCatalog,
+  tables: commerceCatalog.tables.map((table) => ({
+    ...table,
+    columns: table.columns.map((column) =>
+      column.column_id === "orders.net_amount"
+        ? { ...column, data_type: "integer" as const }
+        : column,
+    ),
+  })),
+};
+
 function gateArtifactStore(initialNow = permitTimes.now) {
   const payloads = new Map<string, unknown>();
   let now: string = initialNow;
@@ -181,6 +213,7 @@ function gateArtifactStore(initialNow = permitTimes.now) {
   return {
     authority,
     sandboxAuthority: {
+      identity: sandboxExecutionIdentity,
       resolveCommitted: async (reference: ArtifactReference) =>
         payloads.get(artifactReferenceIdentity(reference)) ?? null,
       verifyCommitted: async (reference: ArtifactReference) =>
@@ -212,7 +245,7 @@ async function commerceCompilationFixture() {
   const queryContract = netRevenueContract();
   const groundingResult = await groundQueryContract({
     query_contract: queryContract,
-    catalog: commerceCatalog,
+    catalog: gateMatrixCatalog,
     policy: analystPolicy,
     retrieval_candidates: [],
     max_context_objects: 64,
@@ -251,6 +284,30 @@ async function commerceCompilationFixture() {
     throw new Error(`测试 Fixture 必须成功编译 PostgreSQL：${compilationResult.reason_code}`);
   }
 
+  const queryContractReference = artifactReference("QueryContract");
+  const groundingPackageReference = artifactReference("GroundingPackage");
+  const semanticQueryReference = artifactReference("SemanticQuery");
+  const groundingPackage = createGroundingPackagePayload({
+    draft: groundingResult.grounding,
+    query_contract_ref: queryContractReference,
+    semantic_release_ref: artifactReference("SemanticRelease"),
+    schema_snapshot_ref: artifactReference("SchemaSnapshot"),
+    policy_receipt_ref: policyReceiptReference,
+  });
+  const semanticQueryPayload = createSemanticQueryPayload({
+    draft: semanticQuery,
+    query_contract_ref: queryContractReference,
+    grounding_package_ref: groundingPackageReference,
+  });
+  const logicalPlanPayload = createLogicalPlanPayload({
+    draft: logicalPlanValidation.logical_plan,
+    semantic_query_ref: semanticQueryReference,
+  });
+  store.commit(queryContractReference, queryContract);
+  store.commit(groundingPackageReference, groundingPackage);
+  store.commit(semanticQueryReference, semanticQueryPayload);
+  store.commit(logicalPlanAuthority.reference, logicalPlanPayload);
+
   const resourceEstimate: PostgresqlExplainEstimate = {
     query_hash: compilationResult.compilation.sql_artifact.query_hash,
     datasource_id: queryContract.datasource_id,
@@ -270,7 +327,14 @@ async function commerceCompilationFixture() {
     queryContract,
     grounding: groundingResult.grounding,
     semanticQuery,
+    queryContractReference,
+    groundingPackage,
+    groundingPackageReference,
+    semanticQueryPayload,
+    semanticQueryReference,
     logicalPlan: logicalPlanValidation.logical_plan,
+    logicalPlanPayload,
+    logicalPlanReference: logicalPlanAuthority.reference,
     logicalPlanBinding,
     compilation: compilationResult.compilation,
     resourceEstimate,
@@ -462,7 +526,7 @@ async function authoritativeSandboxArtifacts(
 ) {
   const columns = [
     { name: fixture.queryContract.result_contract.columns[0], type: "STRING" },
-    { name: fixture.queryContract.result_contract.columns[1], type: "NUMBER" },
+    { name: fixture.queryContract.result_contract.columns[1], type: "INTEGER" },
   ] as const;
   const rows = options.rows ?? [
     ["new", 120],
@@ -536,6 +600,9 @@ async function authoritativeSandboxArtifacts(
   const receiptDraft = successfulSandboxExecutionReceiptSchema.parse({
     schema_version: request.schema_version,
     language: "sql",
+    executor: sandboxExecutionIdentity,
+    executor_role: "SANDBOX_EXECUTION",
+    authority_role_policy_version: AUTHORITY_ROLE_POLICY_VERSION,
     receipt_id: gateMatrixIds.sandboxReceipt,
     receipt_ref: sandboxReceiptReference,
     scope: fixtureScope,
@@ -669,19 +736,117 @@ async function passingResultOracle(
   overrides: Readonly<{
     result_hash?: `sha256:${string}`;
     authority_time_on_evaluate?: string;
+    metamorphic_relation_rows?: MetamorphicRelationRows;
+    result_store_mode?:
+      | "SYSTEM"
+      | "GENERIC_ONLY"
+      | "EXACT_REVISION_REJECTED"
+      | "REFERENCE_PAYLOAD_MISMATCH";
   }> = {},
-): Promise<ResultOracleAuthority> {
+) {
+  const baselineSnapshot = fixture.sandboxReceipt.snapshot_token;
+  if (!baselineSnapshot) {
+    throw new TypeError("Gate Matrix Metamorphic Baseline 必须可重放。");
+  }
+  const metamorphicStore = {
+    resolveCommitted: (reference: ArtifactReference) =>
+      fixture.store.sandboxAuthority.resolveCommitted(reference),
+    verifyCommitted: (reference: ArtifactReference) =>
+      fixture.store.sandboxAuthority.verifyCommitted(reference),
+    verifyExactArtifactRevision: (reference: ArtifactReference, artifact: unknown) =>
+      fixture.store.sandboxAuthority.verifyExactArtifactRevision(reference, artifact),
+    now: () => fixture.store.authority.now(),
+    commit: (reference: ArtifactReference, payload: unknown) =>
+      fixture.store.commit(reference, payload),
+  };
+  const artifactContext = {
+    query_contract_ref: fixture.queryContractReference,
+    grounding_package_ref: fixture.groundingPackageReference,
+    logical_plan_ref: fixture.logicalPlanReference,
+    applicability_profile: {
+      suite: "ADDITIVE_INTEGER_V1",
+      aggregate_kind: "sum",
+      distinct: false,
+      source_measure_data_type: "integer",
+      result_data_type: "INTEGER",
+      metric_id: fixture.queryContract.metric,
+      dimension_ids: fixture.queryContract.dimensions,
+      group_key_arity: fixture.queryContract.dimensions.length,
+    },
+  } as const;
+  const metamorphicSandbox = await createAuthoritativeMetamorphicSandboxFixture({
+    execution_context: {
+      scope: fixtureScope,
+      run_id: fixtureIds.run,
+      sandbox_identity: sandboxExecutionIdentity,
+      sql_artifact_ref: sqlArtifactReference,
+      sql_artifact: fixture.compilation.sql_artifact,
+      execution_permit_ref: executionPermitReference,
+      execution_permit: fixture.executionPermit,
+      authority_epoch: fixture.sandboxReceipt.authority_revalidation.authority_epoch,
+      artifact_context: artifactContext,
+      baseline: {
+        columns: fixture.sandboxResult.columns,
+        rows: fixture.sandboxResult.rows,
+        snapshot_token: baselineSnapshot,
+        started_at: fixture.sandboxReceipt.started_at,
+        completed_at: fixture.sandboxReceipt.completed_at,
+      },
+    },
+    ...(overrides.metamorphic_relation_rows
+      ? { relation_rows: overrides.metamorphic_relation_rows }
+      : {}),
+  });
+  const metamorphicBaseline = metamorphicSandbox.evidence.baseline;
+  const metamorphicExecutionReceipt = await executionReceipt(fixture, metamorphicBaseline, {
+    observed_at: fixture.executionReceipt.observed_at,
+  });
+  fixture.store.commit(executionReference, metamorphicExecutionReceipt);
+  fixture.store.setNow(metamorphicExecutionReceipt.observed_at);
+  const relationVerdicts = overrides.metamorphic_relation_rows
+    ? {
+        ...(overrides.metamorphic_relation_rows.fan_out !== undefined
+          ? { FAN_OUT: "FAIL" as const }
+          : {}),
+        ...(overrides.metamorphic_relation_rows.null_anti_membership !== undefined
+          ? { NULL_ANTI_MEMBERSHIP: "FAIL" as const }
+          : {}),
+        ...(overrides.metamorphic_relation_rows.left_partition !== undefined ||
+        overrides.metamorphic_relation_rows.right_partition !== undefined
+          ? { HALF_OPEN_ADDITIVE_PARTITION: "FAIL" as const }
+          : {}),
+        ...(overrides.metamorphic_relation_rows.same_valued_distinct_fact !== undefined
+          ? { SAME_VALUED_DISTINCT_FACT: "FAIL" as const }
+          : {}),
+      }
+    : undefined;
+  const metamorphic = await createMetamorphicOracleFixture({
+    sandbox_fixture: metamorphicSandbox,
+    store_adapter: metamorphicStore,
+    artifact_context: artifactContext,
+    evaluated_at: metamorphicExecutionReceipt.observed_at,
+    ...(relationVerdicts ? { relation_verdicts: relationVerdicts } : {}),
+    identity_overrides: {
+      result_producer: resultProducerIdentity,
+    },
+  });
   const verdict = {
+    producer: resultProducerIdentity,
+    producer_role: "RESULT_PRODUCER" as const,
+    authority_role_policy_version: AUTHORITY_ROLE_POLICY_VERSION,
     oracle_version: "commerce-result-oracle@1.0.0",
-    query_hash: fixture.executionReceipt.query_hash,
-    result_hash: overrides.result_hash ?? fixture.sandboxResult.result_hash,
-    result_columns: fixture.sandboxResult.columns.map(({ name }) => name),
-    row_count: fixture.sandboxResult.row_count,
+    query_hash: metamorphicExecutionReceipt.query_hash,
+    result_hash: overrides.result_hash ?? metamorphicBaseline.result.result_hash,
+    result_columns: metamorphicBaseline.result.columns.map(({ name }) => name),
+    row_count: metamorphicBaseline.result.row_count,
     invariant_verdicts: fixture.queryContract.result_contract.invariant_ids.map((invariantId) => ({
       invariant_id: invariantId,
       verdict: "PASS" as const,
     })),
-    oracle_verdict: "PASS" as const,
+    metamorphic_oracle_receipt_ref: metamorphic.receipt.receipt_ref,
+    metamorphic_verdict: metamorphic.receipt.metamorphic_verdict,
+    oracle_verdict:
+      metamorphic.receipt.metamorphic_verdict === "PASS" ? ("PASS" as const) : ("FAIL" as const),
   };
   const baseReference = matrixArtifactReference("ResultOracleReceipt", gateMatrixIds.resultOracle);
   const draft = resultOracleReceiptSchema.parse({
@@ -692,12 +857,12 @@ async function passingResultOracle(
     sql_artifact_ref: sqlArtifactReference,
     execution_receipt_ref: executionReference,
     ...verdict,
-    result_artifact_ref: fixture.sandboxResult.result_ref,
+    result_artifact_ref: metamorphicBaseline.result.result_ref,
     evidence_hash: await computeResultOracleEvidenceHash({
       verdict,
-      result_artifact_ref: fixture.sandboxResult.result_ref,
+      result_artifact_ref: metamorphicBaseline.result.result_ref,
     }),
-    evaluated_at: fixture.executionReceipt.observed_at,
+    evaluated_at: metamorphicExecutionReceipt.observed_at,
     receipt_hash: baseReference.content_hash,
   });
   const receiptHash = await computeResultOracleReceiptHash(draft);
@@ -706,15 +871,48 @@ async function passingResultOracle(
     receipt_ref: { ...baseReference, content_hash: receiptHash },
     receipt_hash: receiptHash,
   });
-  fixture.store.commit(receipt.receipt_ref, receipt);
-  return registerTrustedResultOracleAuthority({
-    async evaluate() {
-      if (overrides.authority_time_on_evaluate) {
-        fixture.store.setNow(overrides.authority_time_on_evaluate);
-      }
-      return receipt.receipt_ref;
+  const evaluatedReference =
+    overrides.result_store_mode === "REFERENCE_PAYLOAD_MISMATCH"
+      ? { ...receipt.receipt_ref, revision: receipt.receipt_ref.revision + 1 }
+      : receipt.receipt_ref;
+  const resultSystemArtifacts = new Map<string, unknown>();
+  const resultOracleStoreAdapter = {
+    async resolveCommitted(reference: ArtifactReference) {
+      return resultSystemArtifacts.get(artifactReferenceIdentity(reference)) ?? null;
     },
-  });
+    async verifyCommitted(reference: ArtifactReference) {
+      return resultSystemArtifacts.has(artifactReferenceIdentity(reference));
+    },
+    async verifyExactArtifactRevision(reference: ArtifactReference, artifact: unknown) {
+      if (overrides.result_store_mode === "EXACT_REVISION_REJECTED") return false;
+      const committed = resultSystemArtifacts.get(artifactReferenceIdentity(reference));
+      return committed !== undefined && canonicalizeJson(committed) === canonicalizeJson(artifact);
+    },
+  };
+  if (overrides.result_store_mode === "GENERIC_ONLY") {
+    fixture.store.commit(receipt.receipt_ref, receipt);
+  } else {
+    resultSystemArtifacts.set(artifactReferenceIdentity(evaluatedReference), receipt);
+  }
+  return {
+    result_oracle_authority: registerTrustedResultOracleAuthority({
+      identity: resultProducerIdentity,
+      ...resultOracleStoreAdapter,
+      async evaluate() {
+        if (overrides.authority_time_on_evaluate) {
+          fixture.store.setNow(overrides.authority_time_on_evaluate);
+        }
+        return evaluatedReference;
+      },
+    }),
+    result_oracle_store_adapter: resultOracleStoreAdapter,
+    result_oracle_receipt_ref: evaluatedReference,
+    metamorphic_oracle_verifier: metamorphic.verifier,
+    sandbox_request: metamorphicBaseline.request,
+    sandbox_receipt: metamorphicBaseline.receipt,
+    sandbox_result: metamorphicBaseline.result,
+    execution_receipt: metamorphicExecutionReceipt,
+  };
 }
 
 async function executableFixture(
@@ -738,7 +936,7 @@ async function executableFixture(
 
 function postExecutionInput(
   fixture: Awaited<ReturnType<typeof executableFixture>>,
-  resultOracleAuthority?: ResultOracleAuthority,
+  oracle?: Awaited<ReturnType<typeof passingResultOracle>>,
 ) {
   const base = {
     artifact_authority: fixture.store.authority,
@@ -750,7 +948,16 @@ function postExecutionInput(
     sandbox_receipt: fixture.sandboxReceipt,
     sandbox_result: fixture.sandboxResult,
   };
-  return resultOracleAuthority ? { ...base, result_oracle_authority: resultOracleAuthority } : base;
+  return oracle
+    ? {
+        ...base,
+        sandbox_request: oracle.sandbox_request,
+        sandbox_receipt: oracle.sandbox_receipt,
+        sandbox_result: oracle.sandbox_result,
+        result_oracle_authority: oracle.result_oracle_authority,
+        metamorphic_oracle_verifier: oracle.metamorphic_oracle_verifier,
+      }
+    : base;
 }
 
 async function expectGateReceiptHashes(receipt: GateReceiptPayload): Promise<void> {
@@ -1364,6 +1571,122 @@ describe("Text2SQL 七道 Gate 矩阵", () => {
     ).toBe(true);
   });
 
+  it("独立 Metamorphic verifier 的权威 FAIL 必须传播到 ResultOracle 与 RESULT Gate", async () => {
+    const fixture = await executableFixture();
+    const suite = await evaluatePostExecutionGates(
+      postExecutionInput(
+        fixture,
+        await passingResultOracle(fixture, {
+          metamorphic_relation_rows: {
+            fan_out: [
+              ["new", 240],
+              ["returning", 80],
+            ],
+          },
+        }),
+      ),
+    );
+
+    expect(suite.gates[0].verdict).toBe("PASS");
+    expect(suite.gates[1]).toMatchObject({
+      gate: "RESULT",
+      verdict: "FAIL",
+      reason_code: "RESULT_METAMORPHIC_FAILED",
+    });
+    expect(suite.validation_eligible).toBe(false);
+  });
+
+  it("缺少或克隆 Metamorphic verifier 时 Result producer 不能单独自签 PASS", async () => {
+    const fixture = await executableFixture();
+    const oracle = await passingResultOracle(fixture);
+    const {
+      metamorphic_oracle_verifier: _metamorphicOracleVerifier,
+      ...inputWithoutMetamorphicVerifier
+    } = {
+      ...postExecutionInput(fixture, oracle),
+      metamorphic_oracle_verifier: oracle.metamorphic_oracle_verifier,
+    };
+    const missing = await evaluatePostExecutionGates({
+      ...inputWithoutMetamorphicVerifier,
+    });
+    const cloned = await evaluatePostExecutionGates({
+      ...inputWithoutMetamorphicVerifier,
+      metamorphic_oracle_verifier: {
+        verify: oracle.metamorphic_oracle_verifier.verify,
+      },
+    });
+
+    for (const suite of [missing, cloned]) {
+      expect(suite.gates[0].verdict).toBe("PASS");
+      expect(suite.gates[1]).toMatchObject({
+        gate: "RESULT",
+        verdict: "UNAVAILABLE",
+        reason_code: "RESULT_ORACLE_UNAVAILABLE",
+      });
+      expect(suite.validation_eligible).toBe(false);
+    }
+  });
+
+  it("通用 Artifact Store 中的 ResultOracle 镜像不能绕过专用 System Store", async () => {
+    const fixture = await executableFixture();
+    const oracle = await passingResultOracle(fixture, {
+      result_store_mode: "GENERIC_ONLY",
+    });
+    const suite = await evaluatePostExecutionGates(postExecutionInput(fixture, oracle));
+
+    expect(suite.gates[0].verdict).toBe("PASS");
+    expect(suite.gates[1]).toMatchObject({
+      gate: "RESULT",
+      verdict: "UNAVAILABLE",
+      reason_code: "RESULT_ORACLE_UNAVAILABLE",
+    });
+    expect(suite.validation_eligible).toBe(false);
+  });
+
+  it.each([
+    ["EXACT_REVISION_REJECTED", "专用 Store 拒绝 exact revision"],
+    ["REFERENCE_PAYLOAD_MISMATCH", "专用 Store 返回 Reference A/Payload B"],
+  ] as const)("%s：%s 时 RESULT 失败关闭", async (resultStoreMode, _description) => {
+    const fixture = await executableFixture();
+    const oracle = await passingResultOracle(fixture, {
+      result_store_mode: resultStoreMode,
+    });
+    const suite = await evaluatePostExecutionGates(postExecutionInput(fixture, oracle));
+
+    expect(suite.gates[0].verdict).toBe("PASS");
+    expect(suite.gates[1]).toMatchObject({
+      gate: "RESULT",
+      verdict: "UNAVAILABLE",
+      reason_code: "RESULT_ORACLE_UNAVAILABLE",
+    });
+    expect(suite.validation_eligible).toBe(false);
+  });
+
+  it("同一 issuer 的不同 wrapper 不能同时充当 Result producer 与 Metamorphic verifier", async () => {
+    const fixture = await executableFixture();
+    const oracle = await passingResultOracle(fixture);
+    const sharedIssuer = {
+      identity: oracle.metamorphic_oracle_verifier.identity,
+      ...oracle.result_oracle_store_adapter,
+      async evaluate() {
+        return oracle.result_oracle_receipt_ref;
+      },
+    };
+    const suite = await evaluatePostExecutionGates({
+      ...postExecutionInput(fixture, oracle),
+      result_oracle_authority: registerTrustedResultOracleAuthority(sharedIssuer),
+      metamorphic_oracle_verifier: oracle.metamorphic_oracle_verifier,
+    });
+
+    expect(suite.gates[0].verdict).toBe("PASS");
+    expect(suite.gates[1]).toMatchObject({
+      gate: "RESULT",
+      verdict: "UNAVAILABLE",
+      reason_code: "RESULT_ORACLE_UNAVAILABLE",
+    });
+    expect(suite.validation_eligible).toBe(false);
+  });
+
   it("缺少 ResultOracle 时 RESULT 为 UNAVAILABLE 且不能封 ValidationReceipt", async () => {
     const fixture = await executableFixture();
     const suite = await evaluatePostExecutionGates(postExecutionInput(fixture));
@@ -1379,6 +1702,17 @@ describe("Text2SQL 七道 Gate 矩阵", () => {
       reason_code: "RESULT_ORACLE_UNAVAILABLE",
     });
     expect(suite.validation_eligible).toBe(false);
+    await expect(
+      createGateReceiptPayload({
+        evaluation: suite.gates[1],
+        sql_artifact_ref: sqlArtifactReference,
+        execution_receipt_ref: executionReference,
+      }),
+    ).resolves.toMatchObject({
+      gate: "RESULT",
+      verdict: "UNAVAILABLE",
+      evidence_refs: [executionReference],
+    });
     fixture.store.setNow(permitTimes.sealedAt);
     await expect(
       sealValidationReceipt({
@@ -1481,24 +1815,23 @@ describe("Text2SQL 七道 Gate 矩阵", () => {
 
   it("ExecutionReceipt 的 Query Hash 或 Sandbox 绑定漂移时 EXECUTION Gate 失败", async () => {
     const fixture = await executableFixture();
-    const sandbox = {
-      request: fixture.sandboxRequest,
-      receipt: fixture.sandboxReceipt,
-      result: fixture.sandboxResult,
-    };
-    const wrongQueryHashReceipt = await executionReceipt(fixture, sandbox, {
+    const hashMismatchOracle = await passingResultOracle(fixture);
+    const wrongQueryHashReceipt = executionReceiptSchema.parse({
+      ...hashMismatchOracle.execution_receipt,
       query_hash: await sha256ContentHash("wrong-query"),
     });
     fixture.store.commit(executionReference, wrongQueryHashReceipt);
     const hashMismatch = await evaluatePostExecutionGates(
-      postExecutionInput(fixture, await passingResultOracle(fixture)),
+      postExecutionInput(fixture, hashMismatchOracle),
     );
     expect(hashMismatch.gates[0]).toMatchObject({
       verdict: "FAIL",
       reason_code: "EXECUTION_HASH_MISMATCH",
     });
 
-    const sandboxBindingMismatch = await executionReceipt(fixture, sandbox, {
+    const bindingMismatchOracle = await passingResultOracle(fixture);
+    const sandboxBindingMismatch = executionReceiptSchema.parse({
+      ...bindingMismatchOracle.execution_receipt,
       sandbox_execution_receipt_ref: matrixArtifactReference(
         "SandboxExecutionReceipt",
         "10000000-0000-4000-8000-000000000108",
@@ -1506,7 +1839,7 @@ describe("Text2SQL 七道 Gate 矩阵", () => {
     });
     fixture.store.commit(executionReference, sandboxBindingMismatch);
     const bindingMismatch = await evaluatePostExecutionGates(
-      postExecutionInput(fixture, await passingResultOracle(fixture)),
+      postExecutionInput(fixture, bindingMismatchOracle),
     );
     expect(bindingMismatch.gates[0]).toMatchObject({
       verdict: "FAIL",
@@ -1599,7 +1932,7 @@ describe("Text2SQL 七道 Gate 矩阵", () => {
       artifact_type: "ValidationReceipt",
       sql_artifact_ref: sqlArtifactReference,
       execution_receipt_ref: executionReference,
-      validation_version: "text2sql-validation@1.0.0",
+      validation_version: "text2sql-validation@2.0.0",
       sealed_at: permitTimes.sealedAt,
     });
     expect(validationReceipt.gate_receipt_refs).toHaveLength(7);
@@ -1608,14 +1941,12 @@ describe("Text2SQL 七道 Gate 矩阵", () => {
 
   it("ValidationReceipt 拒绝时钟回拨形成的 RESULT 早于 EXECUTION Gate", async () => {
     const fixture = await executableFixture();
+    const oracle = await passingResultOracle(fixture, {
+      authority_time_on_evaluate: permitTimes.observedAt,
+    });
     fixture.store.setNow("2026-07-26T00:01:01.000Z");
     const postExecutionSuite = await evaluatePostExecutionGates(
-      postExecutionInput(
-        fixture,
-        await passingResultOracle(fixture, {
-          authority_time_on_evaluate: permitTimes.observedAt,
-        }),
-      ),
+      postExecutionInput(fixture, oracle),
     );
     expect(postExecutionSuite.validation_eligible).toBe(true);
     await persistGateReceipts(

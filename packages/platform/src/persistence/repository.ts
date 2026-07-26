@@ -5,6 +5,7 @@ import {
   ArtifactIntegrityError,
   type ArtifactReference,
   ArtifactSemanticAuthorityError,
+  type AuthoritativeMetamorphicOracleReceipt,
   artifactReferenceIdentity,
   artifactReferenceSchema,
   canonicalizeJson,
@@ -18,17 +19,20 @@ import {
   groundingAuthorityDocumentSchema,
   groundingAuthorityIdentityViolation,
   groundingAuthorityReferenceSchema,
+  isAuthoritativeMetamorphicFixtureReceipt,
+  isAuthoritativeMetamorphicOracleReceipt,
+  isAuthoritativeResultOracleReceipt,
+  isAuthoritativeSandboxExecutionReceipt,
+  isAuthoritativeSandboxResult,
   type L2ArtifactDocument,
+  type L2ArtifactPersistenceAuthority,
   type LogicalPlanPayload,
   l2ArtifactDocumentSchema,
   type PortResult,
   type QueryContractPayload,
   type ResourceAdmissionReceipt,
-  type ResultOracleReceipt,
   runRuntimeEventSchema,
-  type SandboxResult,
   type SqlArtifactPayload,
-  type SuccessfulSandboxExecutionReceipt,
   sha256ContentHash,
   TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES,
   verifyGroundingAuthorityDocument,
@@ -184,17 +188,168 @@ export interface PostgresRepositoryAuthorities {
     receipt: ResourceAdmissionReceipt,
     capability: AppCapability,
   ): Promise<boolean>;
-  verifyResultOracleReceipt?(
-    receipt: ResultOracleReceipt,
+  /** 按完整 Reference 解析已由独立 Fixture/Mutation Authority 品牌化的 Receipt。 */
+  resolveAuthoritativeMetamorphicFixtureReceipt?(
+    reference: ArtifactReference,
     capability: AppCapability,
-  ): Promise<boolean>;
-  verifySandboxExecutionEvidence?(
-    input: {
-      readonly receipt: SuccessfulSandboxExecutionReceipt;
-      readonly result: SandboxResult;
-    },
+    client: SqlClient,
+  ): ReturnType<
+    NonNullable<L2ArtifactPersistenceAuthority["resolveAuthoritativeMetamorphicFixtureReceipt"]>
+  >;
+  /** 按完整 Reference 解析已由独立 Metamorphic Verifier 品牌化的 Receipt。 */
+  resolveAuthoritativeMetamorphicOracleReceipt?(
+    reference: ArtifactReference,
     capability: AppCapability,
-  ): Promise<boolean>;
+    client: SqlClient,
+  ): ReturnType<
+    NonNullable<L2ArtifactPersistenceAuthority["resolveAuthoritativeMetamorphicOracleReceipt"]>
+  >;
+  /** 按完整 Reference 解析已由独立 Result Producer 品牌化的 Receipt。 */
+  resolveAuthoritativeResultOracleReceipt?(
+    reference: ArtifactReference,
+    metamorphic: AuthoritativeMetamorphicOracleReceipt,
+    capability: AppCapability,
+    client: SqlClient,
+  ): ReturnType<
+    NonNullable<L2ArtifactPersistenceAuthority["resolveAuthoritativeResultOracleReceipt"]>
+  >;
+  /** 解析由现有 Sandbox Server Authority 品牌化的执行 Receipt。 */
+  resolveAuthoritativeSandboxExecutionReceipt?(
+    reference: ArtifactReference,
+    capability: AppCapability,
+    client: SqlClient,
+  ): ReturnType<
+    NonNullable<L2ArtifactPersistenceAuthority["resolveAuthoritativeSandboxExecutionReceipt"]>
+  >;
+  /** 解析由现有 Sandbox Server Authority 品牌化的 Result。 */
+  resolveAuthoritativeSandboxResult?(
+    reference: ArtifactReference,
+    capability: AppCapability,
+    client: SqlClient,
+  ): ReturnType<NonNullable<L2ArtifactPersistenceAuthority["resolveAuthoritativeSandboxResult"]>>;
+}
+
+async function resolveExactAuthoritativeRevision<T extends object>(
+  expectedReferenceIdentity: string,
+  resolution: Promise<T | null>,
+  isAuthoritative: (value: unknown) => value is T,
+  referenceOf: (value: T) => ArtifactReference,
+): Promise<T | null> {
+  const resolved = await resolution;
+  if (
+    !isAuthoritative(resolved) ||
+    artifactReferenceIdentity(referenceOf(resolved)) !== expectedReferenceIdentity
+  ) {
+    return null;
+  }
+  return resolved;
+}
+
+/**
+ * @internal
+ *
+ * 将 Platform 事务、Capability 与完整 ArtifactReference 绑定到不可克隆的领域品牌。
+ * Resolver 返回 raw object、结构克隆或 Reference A/Payload B 时统一返回 null。
+ */
+export function createText2SqlBrandedReceiptAuthorityContext(
+  client: SqlClient,
+  capability: AppCapability,
+  authorities: PostgresRepositoryAuthorities,
+) {
+  return {
+    ...(authorities.resolveAuthoritativeMetamorphicFixtureReceipt
+      ? {
+          resolveAuthoritativeMetamorphicFixtureReceipt: async (reference: ArtifactReference) => {
+            assertReferenceScope(reference, capability.scope);
+            const expectedReferenceIdentity = artifactReferenceIdentity(reference);
+            return resolveExactAuthoritativeRevision(
+              expectedReferenceIdentity,
+              authorities.resolveAuthoritativeMetamorphicFixtureReceipt?.(
+                reference,
+                capability,
+                client,
+              ) ?? Promise.resolve(null),
+              isAuthoritativeMetamorphicFixtureReceipt,
+              (receipt) => receipt.receipt_ref,
+            );
+          },
+        }
+      : {}),
+    ...(authorities.resolveAuthoritativeMetamorphicOracleReceipt
+      ? {
+          resolveAuthoritativeMetamorphicOracleReceipt: async (reference: ArtifactReference) => {
+            assertReferenceScope(reference, capability.scope);
+            const expectedReferenceIdentity = artifactReferenceIdentity(reference);
+            return resolveExactAuthoritativeRevision(
+              expectedReferenceIdentity,
+              authorities.resolveAuthoritativeMetamorphicOracleReceipt?.(
+                reference,
+                capability,
+                client,
+              ) ?? Promise.resolve(null),
+              isAuthoritativeMetamorphicOracleReceipt,
+              (receipt) => receipt.receipt_ref,
+            );
+          },
+        }
+      : {}),
+    ...(authorities.resolveAuthoritativeResultOracleReceipt
+      ? {
+          resolveAuthoritativeResultOracleReceipt: async (
+            reference: ArtifactReference,
+            metamorphic: AuthoritativeMetamorphicOracleReceipt,
+          ) => {
+            assertReferenceScope(reference, capability.scope);
+            assertReferenceScope(metamorphic.receipt_ref, capability.scope);
+            const expectedReferenceIdentity = artifactReferenceIdentity(reference);
+            return resolveExactAuthoritativeRevision(
+              expectedReferenceIdentity,
+              authorities.resolveAuthoritativeResultOracleReceipt?.(
+                reference,
+                metamorphic,
+                capability,
+                client,
+              ) ?? Promise.resolve(null),
+              isAuthoritativeResultOracleReceipt,
+              (receipt) => receipt.receipt_ref,
+            );
+          },
+        }
+      : {}),
+    ...(authorities.resolveAuthoritativeSandboxExecutionReceipt
+      ? {
+          resolveAuthoritativeSandboxExecutionReceipt: async (reference: ArtifactReference) => {
+            assertReferenceScope(reference, capability.scope);
+            const expectedReferenceIdentity = artifactReferenceIdentity(reference);
+            return resolveExactAuthoritativeRevision(
+              expectedReferenceIdentity,
+              authorities.resolveAuthoritativeSandboxExecutionReceipt?.(
+                reference,
+                capability,
+                client,
+              ) ?? Promise.resolve(null),
+              isAuthoritativeSandboxExecutionReceipt,
+              (receipt) => receipt.receipt_ref,
+            );
+          },
+        }
+      : {}),
+    ...(authorities.resolveAuthoritativeSandboxResult
+      ? {
+          resolveAuthoritativeSandboxResult: async (reference: ArtifactReference) => {
+            assertReferenceScope(reference, capability.scope);
+            const expectedReferenceIdentity = artifactReferenceIdentity(reference);
+            return resolveExactAuthoritativeRevision(
+              expectedReferenceIdentity,
+              authorities.resolveAuthoritativeSandboxResult?.(reference, capability, client) ??
+                Promise.resolve(null),
+              isAuthoritativeSandboxResult,
+              (result) => result.result_ref,
+            );
+          },
+        }
+      : {}),
+  };
 }
 
 interface ArtifactRevisionCandidate<Reference extends ArtifactReference = ArtifactReference> {
@@ -514,23 +669,7 @@ function l2ArtifactVerificationContext(
             Promise.resolve(false),
         }
       : {}),
-    ...(authorities.verifyResultOracleReceipt
-      ? {
-          verifyResultOracleReceipt: (receipt: ResultOracleReceipt) =>
-            authorities.verifyResultOracleReceipt?.(receipt, capability) ?? Promise.resolve(false),
-        }
-      : {}),
-    ...(authorities.verifySandboxExecutionEvidence
-      ? {
-          verifySandboxExecutionEvidence: (
-            input: Parameters<
-              NonNullable<PostgresRepositoryAuthorities["verifySandboxExecutionEvidence"]>
-            >[0],
-          ) =>
-            authorities.verifySandboxExecutionEvidence?.(input, capability) ??
-            Promise.resolve(false),
-        }
-      : {}),
+    ...createText2SqlBrandedReceiptAuthorityContext(client, capability, authorities),
     verifyCommitterCapability: async (claim: ArtifactCommitterCapabilityClaim) => {
       if (
         claim.app_id !== capability.scope.app_id ||

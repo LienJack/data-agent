@@ -6,6 +6,9 @@ import {
   artifactReferenceSchema,
 } from "../artifacts/envelope.js";
 import {
+  AUTHORITY_ROLE_POLICY_VERSION,
+  type AuthorityIdentity,
+  authorityIdentitySchema,
   computePostgresqlExecutionSettingsHash,
   postgresqlExecutionSettingsSchema,
 } from "../artifacts/text2sql-evidence.js";
@@ -396,6 +399,9 @@ export const sandboxExecutionReceiptReferenceSchema =
 const successfulSandboxExecutionReceiptObjectSchema = z.strictObject({
   ...sandboxExecutionReceiptBaseShape,
   language: z.literal("sql"),
+  executor: authorityIdentitySchema,
+  executor_role: z.literal("SANDBOX_EXECUTION"),
+  authority_role_policy_version: z.literal(AUTHORITY_ROLE_POLICY_VERSION),
   receipt_ref: sandboxExecutionReceiptReferenceSchema,
   terminal: z.literal("COMPLETED"),
   reason_code: z.literal("EXECUTION_COMPLETED"),
@@ -596,6 +602,7 @@ export type SandboxExecutionIdempotencyResolution<T> =
     }>;
 
 export interface SandboxServerAuthorityRegistration {
+  readonly identity: AuthorityIdentity;
   resolveCommitted(reference: ArtifactReference): Promise<unknown | null>;
   verifyCommitted(reference: ArtifactReference): Promise<boolean>;
   resolveAuthoritativeExecutionPermit(reference: ArtifactReference): Promise<unknown | null>;
@@ -633,6 +640,25 @@ export type SandboxServerAuthority = Readonly<{
 
 const registeredSandboxAuthorities = new WeakMap<object, SandboxServerAuthorityRegistration>();
 
+declare const authoritativeSandboxExecutionIdentityBrand: unique symbol;
+
+export type AuthoritativeSandboxExecutionIdentity = Readonly<{
+  identity: AuthorityIdentity;
+  role: "SANDBOX_EXECUTION";
+  authority_role_policy_version: typeof AUTHORITY_ROLE_POLICY_VERSION;
+  readonly [authoritativeSandboxExecutionIdentityBrand]: true;
+}>;
+
+const authoritativeSandboxExecutionIdentities = new WeakSet<object>();
+const registeredSandboxAuthorityIdentities = new WeakMap<
+  object,
+  AuthoritativeSandboxExecutionIdentity
+>();
+const authorizedSandboxValueIdentities = new WeakMap<
+  object,
+  AuthoritativeSandboxExecutionIdentity
+>();
+
 /**
  * 仅供包内服务端适配器注册持久化与执行事实 Authority。
  *
@@ -642,6 +668,7 @@ const registeredSandboxAuthorities = new WeakMap<object, SandboxServerAuthorityR
 export function registerSandboxServerAuthority(
   registration: SandboxServerAuthorityRegistration,
 ): SandboxServerAuthority {
+  const identity = authorityIdentitySchema.parse(registration.identity);
   const callbacks = [
     registration.resolveCommitted,
     registration.verifyCommitted,
@@ -659,7 +686,20 @@ export function registerSandboxServerAuthority(
     throw new TypeError("Sandbox Server Authority 必须提供完整的服务端校验回调。");
   }
   const authority = Object.freeze(Object.create(null)) as SandboxServerAuthority;
-  registeredSandboxAuthorities.set(authority, Object.freeze({ ...registration }));
+  const authoritativeIdentity = deepFreeze({
+    identity,
+    role: "SANDBOX_EXECUTION" as const,
+    authority_role_policy_version: AUTHORITY_ROLE_POLICY_VERSION,
+  }) as AuthoritativeSandboxExecutionIdentity;
+  authoritativeSandboxExecutionIdentities.add(authoritativeIdentity);
+  registeredSandboxAuthorities.set(
+    authority,
+    Object.freeze({
+      ...registration,
+      identity,
+    }),
+  );
+  registeredSandboxAuthorityIdentities.set(authority, authoritativeIdentity);
   return authority;
 }
 
@@ -676,6 +716,37 @@ function resolveRegisteredSandboxAuthority(
     );
   }
   return registration;
+}
+
+function resolveRegisteredSandboxAuthorityIdentity(
+  authority: SandboxServerAuthority,
+): AuthoritativeSandboxExecutionIdentity {
+  const identity =
+    typeof authority === "object" && authority !== null
+      ? registeredSandboxAuthorityIdentities.get(authority)
+      : undefined;
+  if (!identity) {
+    throw new SandboxResultAuthorityError("Sandbox Authority 缺少已注册的稳定执行 Identity。");
+  }
+  return identity;
+}
+
+export function isAuthoritativeSandboxExecutionIdentity(
+  value: unknown,
+): value is AuthoritativeSandboxExecutionIdentity {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    authoritativeSandboxExecutionIdentities.has(value)
+  );
+}
+
+export function getAuthoritativeSandboxExecutionIdentity(
+  value: AuthoritativeSandboxExecutionReceipt | AuthoritativeSandboxResult,
+): AuthoritativeSandboxExecutionIdentity | null {
+  return typeof value === "object" && value !== null
+    ? (authorizedSandboxValueIdentities.get(value) ?? null)
+    : null;
 }
 
 function sameReference(left: ArtifactReference, right: ArtifactReference): boolean {
@@ -894,7 +965,12 @@ export async function authorizeSandboxResult(
   }
 
   authorizedSandboxResults.add(result);
-  return deepFreeze(result) as AuthoritativeSandboxResult;
+  const authoritativeResult = deepFreeze(result) as AuthoritativeSandboxResult;
+  authorizedSandboxValueIdentities.set(
+    authoritativeResult,
+    resolveRegisteredSandboxAuthorityIdentity(authority),
+  );
+  return authoritativeResult;
 }
 
 export function isAuthoritativeSandboxResult(value: unknown): value is AuthoritativeSandboxResult {
@@ -987,6 +1063,7 @@ export async function authorizeSandboxExecutionReceipt(
     );
   }
   const receipt = parsedReceipt.data;
+  const sandboxIdentity = resolveRegisteredSandboxAuthorityIdentity(authority);
   if (!sameReference(receipt.receipt_ref, reference)) {
     throw new SandboxExecutionReceiptAuthorityError(
       "Sandbox Receipt Resolver 返回了不匹配的 Content-Addressed Revision。",
@@ -995,6 +1072,15 @@ export async function authorizeSandboxExecutionReceipt(
   if ((await computeSandboxExecutionReceiptHash(receipt)) !== receipt.execution_hash) {
     throw new SandboxExecutionReceiptAuthorityError(
       "Sandbox Receipt Hash 与规范化执行事实不匹配。",
+    );
+  }
+  if (
+    !sameJson(receipt.executor, sandboxIdentity.identity) ||
+    receipt.executor_role !== sandboxIdentity.role ||
+    receipt.authority_role_policy_version !== sandboxIdentity.authority_role_policy_version
+  ) {
+    throw new SandboxExecutionReceiptAuthorityError(
+      "Sandbox 成功 Receipt 必须绑定当前已注册的稳定 Sandbox Execution Identity。",
     );
   }
   if (!(await registration.verifyCommitted(receipt.receipt_ref))) {
@@ -1086,7 +1172,9 @@ export async function authorizeSandboxExecutionReceipt(
   }
 
   authorizedSandboxExecutionReceipts.add(receipt);
-  return deepFreeze(receipt) as AuthoritativeSandboxExecutionReceipt;
+  const authoritativeReceipt = deepFreeze(receipt) as AuthoritativeSandboxExecutionReceipt;
+  authorizedSandboxValueIdentities.set(authoritativeReceipt, sandboxIdentity);
+  return authoritativeReceipt;
 }
 
 export function isAuthoritativeSandboxExecutionReceipt(

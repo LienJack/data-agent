@@ -1,12 +1,24 @@
 import {
   type ArtifactReference,
+  type AuthoritativeResultOracleReceipt,
   artifactReferenceSchema,
+  authorityIdentitySchema,
   computeResourceAdmissionReceiptHash,
   computeResourceEstimateHash,
   deepFreeze,
   resourceAdmissionReceiptSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
+import {
+  authorizeResultOracleReceipt,
+  createResultOracleReceiptAuthority,
+} from "@data-agent/contracts/server";
+import {
+  isTrustedMetamorphicOracleVerification,
+  type TrustedMetamorphicOracleVerification,
+  type TrustedMetamorphicOracleVerifier,
+  trustedMetamorphicOracleAuthorityToken,
+} from "./metamorphic.js";
 import {
   type GateObservationMap,
   type GateVerdict,
@@ -27,6 +39,11 @@ const trustedPostExecutionGateSuites = new WeakSet<object>();
 const trustedResourceAdmissions = new WeakSet<object>();
 const trustedGateArtifactAuthorities = new WeakSet<object>();
 const trustedResultOracleAuthorities = new WeakSet<object>();
+const trustedResultOracleAuthoritySources = new WeakMap<object, object>();
+const trustedResultOracleAuthorityRegistrations = new WeakMap<
+  object,
+  ResultOracleAuthorityRegistration
+>();
 
 declare const gateArtifactAuthorityBrand: unique symbol;
 declare const resultOracleAuthorityBrand: unique symbol;
@@ -41,6 +58,12 @@ export type TrustedGateArtifactAuthority = Readonly<{
 export type TrustedResultOracleAuthority = ResultOracleAuthority & {
   readonly [resultOracleAuthorityBrand]: true;
 };
+
+export interface ResultOracleAuthorityRegistration extends ResultOracleAuthority {
+  resolveCommitted(reference: ArtifactReference): Promise<unknown | null>;
+  verifyCommitted(reference: ArtifactReference): Promise<boolean>;
+  verifyExactArtifactRevision(reference: ArtifactReference, artifact: unknown): Promise<boolean>;
+}
 
 export async function createTrustedGateEvaluation<G extends Text2SqlGate>(
   authority: TrustedGateArtifactAuthority,
@@ -258,15 +281,33 @@ export async function resolveCommittedArtifact(
 
 /** @internal Result Oracle adapter 注册；普通 callback 或 structuredClone 不具备权威性。 */
 export function registerTrustedResultOracleAuthority(
-  adapter: ResultOracleAuthority,
+  adapter: ResultOracleAuthorityRegistration,
 ): TrustedResultOracleAuthority {
-  if (typeof adapter.evaluate !== "function") {
+  const identity = authorityIdentitySchema.safeParse(adapter.identity);
+  if (
+    !identity.success ||
+    typeof adapter.evaluate !== "function" ||
+    typeof adapter.resolveCommitted !== "function" ||
+    typeof adapter.verifyCommitted !== "function" ||
+    typeof adapter.verifyExactArtifactRevision !== "function"
+  ) {
     throw new TypeError("TEXT2SQL_RESULT_ORACLE_AUTHORITY_INVALID");
   }
+  const evaluate = adapter.evaluate.bind(adapter);
+  const registration = Object.freeze({
+    identity: deepFreeze(identity.data),
+    evaluate,
+    resolveCommitted: adapter.resolveCommitted.bind(adapter),
+    verifyCommitted: adapter.verifyCommitted.bind(adapter),
+    verifyExactArtifactRevision: adapter.verifyExactArtifactRevision.bind(adapter),
+  }) satisfies ResultOracleAuthorityRegistration;
   const authority = Object.freeze({
-    evaluate: (input: Parameters<ResultOracleAuthority["evaluate"]>[0]) => adapter.evaluate(input),
+    identity: registration.identity,
+    evaluate: (input: Parameters<ResultOracleAuthority["evaluate"]>[0]) => evaluate(input),
   }) as TrustedResultOracleAuthority;
   trustedResultOracleAuthorities.add(authority);
+  trustedResultOracleAuthoritySources.set(authority, adapter);
+  trustedResultOracleAuthorityRegistrations.set(authority, registration);
   return authority;
 }
 
@@ -274,4 +315,65 @@ export function isTrustedResultOracleAuthority(
   value: unknown,
 ): value is TrustedResultOracleAuthority {
   return typeof value === "object" && value !== null && trustedResultOracleAuthorities.has(value);
+}
+
+export function trustedResultOracleAuthoritySource(value: unknown): object | null {
+  return typeof value === "object" && value !== null
+    ? (trustedResultOracleAuthoritySources.get(value) ?? null)
+    : null;
+}
+
+export function trustedResultOracleAuthorityIdentity(
+  value: unknown,
+): TrustedResultOracleAuthority["identity"] | null {
+  return isTrustedResultOracleAuthority(value) ? value.identity : null;
+}
+
+export async function resolveTrustedResultOracleArtifact(
+  authority: TrustedResultOracleAuthority,
+  referenceInput: unknown,
+): Promise<unknown | null> {
+  const reference = artifactReferenceSchema.parse(referenceInput);
+  if (
+    reference.artifact_type !== "ResultOracleReceipt" ||
+    !isTrustedResultOracleAuthority(authority)
+  ) {
+    return null;
+  }
+  const registration = trustedResultOracleAuthorityRegistrations.get(authority);
+  if (!registration || !(await registration.verifyCommitted(reference))) return null;
+  const artifact = await registration.resolveCommitted(reference);
+  return artifact !== null && (await registration.verifyExactArtifactRevision(reference, artifact))
+    ? artifact
+    : null;
+}
+
+export async function authorizeTrustedResultOracleReceipt(
+  authority: TrustedResultOracleAuthority,
+  verifier: TrustedMetamorphicOracleVerifier,
+  referenceInput: unknown,
+  metamorphic: TrustedMetamorphicOracleVerification,
+): Promise<AuthoritativeResultOracleReceipt | null> {
+  if (
+    !isTrustedResultOracleAuthority(authority) ||
+    !isTrustedMetamorphicOracleVerification(metamorphic)
+  ) {
+    return null;
+  }
+  const registration = trustedResultOracleAuthorityRegistrations.get(authority);
+  const metamorphicAuthority = trustedMetamorphicOracleAuthorityToken(verifier);
+  if (!registration || !metamorphicAuthority) return null;
+
+  try {
+    const authorityToken = createResultOracleReceiptAuthority({
+      identity: registration.identity,
+      metamorphic_authority: metamorphicAuthority,
+      resolveCommitted: registration.resolveCommitted,
+      verifyCommitted: registration.verifyCommitted,
+      verifyExactArtifactRevision: registration.verifyExactArtifactRevision,
+    });
+    return await authorizeResultOracleReceipt(referenceInput, authorityToken, metamorphic.receipt);
+  } catch {
+    return null;
+  }
 }

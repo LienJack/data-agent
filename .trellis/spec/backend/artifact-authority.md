@@ -28,11 +28,22 @@ interface L2ArtifactAuthorityContext {
     query_contract: QueryContractPayload;
   }): Promise<boolean>;
   verifyResourceAdmissionReceipt?(receipt: ResourceAdmissionReceipt): Promise<boolean>;
-  verifyResultOracleReceipt?(receipt: ResultOracleReceipt): Promise<boolean>;
-  verifySandboxExecutionEvidence?(input: {
-    receipt: SuccessfulSandboxExecutionReceipt;
-    result: SandboxResult;
-  }): Promise<boolean>;
+  resolveAuthoritativeMetamorphicFixtureReceipt?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeMetamorphicFixtureReceipt | null>;
+  resolveAuthoritativeMetamorphicOracleReceipt?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeMetamorphicOracleReceipt | null>;
+  resolveAuthoritativeResultOracleReceipt?(
+    reference: ArtifactReference,
+    metamorphic: AuthoritativeMetamorphicOracleReceipt,
+  ): Promise<AuthoritativeResultOracleReceipt | null>;
+  resolveAuthoritativeSandboxExecutionReceipt?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeSandboxExecutionReceipt | null>;
+  resolveAuthoritativeSandboxResult?(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeSandboxResult | null>;
   verifyCommitterCapability(claim: ArtifactCommitterCapabilityClaim): Promise<boolean>;
 }
 
@@ -146,11 +157,54 @@ issueCapabilityDeliveryReceipt(
   Gate 后才可进入
   Validation/Execution 权威链。Join、Metric、Filter、Grain、Time、Policy、Literal
   或 Result Contract 变化一律路由到 Replan/Clarify/Human。
-- `ResourceAdmissionReceipt`、`ResultOracleReceipt`、`SandboxExecutionReceipt` 与
+- `ResourceAdmissionReceipt`、`FixtureMutationRecord`、`MetamorphicFixtureReceipt`、
+  `MetamorphicOracleReceipt`、`ResultOracleReceipt`、`SandboxExecutionReceipt` 与
   `SandboxResult` 属于专用 System Artifact；L2 Resolver 必须按完整 Reference 取回、
-  重算规范 Hash，并调用对应服务端领域 Authority，不能只接受任意已提交 JSON。
-  PostgreSQL 提交边界也必须按 Artifact Type 把这四类 Input Reference 路由到专用
-  System Store Verifier；不得要求它们镜像进通用 `artifacts` 表。
+  重算规范 Hash，并消费对应服务端 Authority 签发的不可克隆品牌，不能只接受任意已提交
+  JSON。PostgreSQL 提交边界必须按 Artifact Type 把这些 Input Reference 路由到同一
+  事务内的 System Store；不得要求它们镜像进通用 `artifacts` 表，也不得让
+  `FixtureMutationRecord` 落入普通 Artifact 路由。
+- `MetamorphicFixtureReceipt` 与 `MetamorphicOracleReceipt` 只能存在于 System
+  Artifact 白名单，不能进入 `L2_ARTIFACT_TYPES` 或复制字段到 `QueryEvidence`。
+  Fixture Authority 必须从当前已提交的
+  `QueryContract -> GroundingPackage -> SemanticQuery -> LogicalPlan -> SqlArtifact`
+  关闭适用性。Fixture、Meta、Result 三条服务端 Authority 只能调用 contracts 内置的
+  固定 kernel；公开 Composition API 只能接收 Identity、System Store、Sandbox 与上游
+  Authority，不能接收调用方注入的 `verify*Closure` 或 Applicability Callback。
+  首版仅对非 `DISTINCT` 的整数 `SUM` 与普通 `COUNT`、Additive Metric、
+  `HALF_OPEN` 时间语义和精确 Aggregate/Project 形态可用；
+  `AVG/MIN/MAX/COUNT_DISTINCT`、数值但非整数的 `SUM` 与其他计划形态必须返回不可用。
+- Fixture 固定按
+  `FAN_OUT -> NULL_ANTI_MEMBERSHIP -> HALF_OPEN_ADDITIVE_PARTITION ->
+  SAME_VALUED_DISTINCT_FACT` 封存四个 Case。三个单数据变换 Case 必须绑定已提交的
+  `FixtureMutationRecord`；Record 必须由严格的 `relation_kind` 判别 Schema 解析，并将
+  Scope、Run、Case、Baseline/Follow-up Snapshot 与 kind-specific Witness 逐字段绑定，
+  不能只证明自报 JSON 与自报 Hash 一致。每个 Case 还必须有恰好一行的 Selection
+  Probe，精确证明 relation-specific key、Group Key、可选时间与非零整数 Measure。
+  半开分区不是伪造 Follow-up：whole 使用 Meta Baseline，left/right 必须绑定同一
+  Snapshot 上三个互异 `SqlArtifact` 的真实 `query_hash`、三个互异 Input Hash 与两份
+  完整 Sandbox 结果。
+  三者必须复用同一 Compiler/AST/LogicalPlan/SQL 模板和参数键；QueryContract 与
+  Witness 固定 whole=`[start,end)`、left=`[start,midpoint)`、
+  right=`[midpoint,end)`，除上下界参数外其余参数必须逐项相同。仅追加注释、复用
+  Baseline 参数或改动非时间参数均不是有效 Query Variant。
+- Metamorphic Receipt 固定封存四项 RelationSample；每项必须有规范 `sample_hash`、
+  非空 kind-specific witness 和互异的完整 Sandbox Receipt/Result Reference。
+  Resolver 必须重算 sample/evidence/receipt 三层 Hash，逐组品牌化
+  `SandboxExecutionReceipt + SandboxResult`，并验证同一稳定 Sandbox Identity、
+  Scope/Run、Input Hash、Snapshot、完成时间和 Fixture 绑定。SQL 结果按保留重复项的
+  无序 Multiset 比较；空 `group_key=[]` 是合法全局聚合。半开分区用同一 Snapshot 的
+  whole/left/right 原始行重算加法，不信任声明值。分组 `SUM/COUNT` 的 left 可以为空，
+  但必须满足 `whole = right`；right 仍须包含边界事实，全局聚合不能用零行伪装数值
+  `0`。每项 Relation 的声明 Verdict 必须等于固定 Verifier 的计算 Verdict，总 Verdict
+  必须等于四项计算结果的聚合；声明与计算不一致时不得把 Receipt 品牌化为 observed
+  FAIL。
+- `FIXTURE_MUTATION`、`SANDBOX_EXECUTION`、`METAMORPHIC_VERIFIER` 与
+  `RESULT_PRODUCER` 四个角色的 `authority_id/principal_id/key_id` 必须分别两两互异；
+  UUID 在比较前规范为小写，不能用大小写别名绕过角色独立。Fixture 签发时间不得晚于
+  Meta 评估时间，Meta 不得晚于 Result 评估时间。缺少任一品牌、错 Revision、
+  Reference A/Payload B、重复执行引用、伪 Snapshot、空/多行 Probe 或执行晚于
+  `evaluated_at` 都失败关闭。
 - Sandbox 在消费 `ExecutionPermit` 与 `SqlArtifact` 时，必须让完整 Reference 与
   Resolver 返回的精确 Revision Payload 在同一事务快照内闭合；不得把“Reference A
   已提交”和“Payload B 自身 Hash 合法”拼成执行授权。
@@ -168,9 +222,21 @@ issueCapabilityDeliveryReceipt(
   Result、512 MiB 峰值内存；计划估算的行数/字节数属于另一组策略预算，不能混为执行上限。
   PostgreSQL 输出 Alias 必须满足 63-byte ASCII 限制，EXPLAIN Node Type 保留数据库真实
   名称并以唯一、有序列表封存。
-- 执行后必须按 `EXECUTION -> RESULT` 消费权威 Sandbox Evidence 与
-  `ResultOracleReceipt`；Result Oracle 的列顺序、行数、Invariant 和 Query/Result Hash
-  必须与冻结的 QueryContract 和同一执行精确闭合。最终 `ValidationReceipt` 只能按固定
+- 执行后必须按 `EXECUTION -> RESULT` 消费权威 Sandbox Evidence、
+  `MetamorphicOracleReceipt` 与 `ResultOracleReceipt`。RESULT `PASS` 与“已观察到且
+  已授权”的 `FAIL` 都必须精确有序引用
+  `[当前 SandboxResult, MetamorphicOracleReceipt, ResultOracleReceipt]`；L2 在一次根
+  核验内只解析一次 Meta，并把同一个品牌对象交给 Result Resolver，不能以第二次解析
+  替换证据。RESULT Gate 必须经 Result Authority 自有的专用 System Store 校验
+  Commit 与 Exact Revision，再调用固定 Result kernel；通用 Artifact Store 中即使存在
+  Hash 自洽镜像也不能得到品牌。只有 Oracle/Verifier 缺失或无法授权时，
+  `UNAVAILABLE` 才可退化为精确单项 `[当前 ExecutionReceipt]`，以保留可观察失败并供
+  Bounded Repair 消费；该退化形态不得进入 PASS、Validation 或 QueryEvidence 成功闭包。
+  Result Oracle 的列顺序、行数、Invariant、Metamorphic Verdict 和 Query/Result Hash
+  必须与冻结的 QueryContract 和同一执行精确闭合；总 PASS 当且仅当普通 Invariant
+  与四项 Metamorphic Relation 全部 PASS。Meta 计算失败映射
+  `RESULT_METAMORPHIC_FAILED`，普通不变量失败映射 `RESULT_INVARIANT_FAILED`，不能把
+  有权威证据的 FAIL 降级成 `UNAVAILABLE`。最终 `ValidationReceipt` 只能按固定
   七 Gate 顺序封存，前五张引用必须与 Permit 已消费的引用完全相同，且
   `EXECUTION.evaluated_at <= RESULT.evaluated_at`；执行前五 Gate 可并发，不要求彼此时间单调。
 - `QueryEvidence` 至少有一个 Invariant Verdict，并且必须沿 Validation 的 RESULT Gate
@@ -178,7 +244,7 @@ issueCapabilityDeliveryReceipt(
   `SUPPORTED` Claim 只能消费全 PASS Evidence。
 - `READY` 必须绑定同 Scope、经过四道 Evidence Gate 且覆盖 Report 全部 Claim Evidence 的权威 `ReportReadyCertificate`。
 - `GO` 必须绑定同 Scope、同发布策略的版本化 `ReleaseManifest`，并覆盖 `ReportReadyCertificate`、确定性 PASS 且 Safety Counter 全零的 `ScoreCard`、成功终态 `BenchmarkAdapterReceipt`、成功终态 `SandboxExecutionReceipt` 与绑定 Profile Hash 的 `ModelCertificationReceipt`。
-- `ReleaseManifest` 必须内容寻址、已提交，至少各含一项 Hosted 与 Docker Evidence，并聚合 Release Decision 的全部 Evidence；领域 Resolver 返回的对象必须带有对应 Authorizer 在当前进程签发的品牌。
+- `ReleaseManifest` 必须内容寻址、已提交，至少各含一项 Hosted 与 Docker Evidence，并聚合 Release Decision 的全部 Evidence；领域 Resolver 返回的对象必须带有对应 Authorizer 在当前进程签发的品牌。U9 的生产 Deployment Receipt 类型交付前，Hosted/Docker/Signed Outcome 三个入口至少显式拒绝合成的 `MetamorphicOracleReceipt`。
 - `OracleVerdictReceipt` 必须由持久化 Resolver 按完整 Reference 取回，校验 Receipt/Case/EvalRun 已提交，并通过服务端持有的 Suite-Specific Deterministic Oracle Capability 复核；调用方自报 `PASS` 或普通已提交 Evidence 不能获得品牌。
 - `ScoreCard` 必须绑定权威 `OracleVerdictReceipt`，并逐项匹配 Case、EvalRun、Suite、Suite/Dataset/Oracle Version、Oracle Type 与 Deterministic Verdict。
 - `ScoreCard.comparison` 明确区分 `SINGLE` 与 `PAIRED`；`PAIRED` 必须绑定不同的权威且已完成 Baseline/Candidate EvalRun，Candidate 等于当前 ScoreCard EvalRun，并携带版本化 Metric Interval、Confidence、Sample Size 与 Method。
@@ -200,6 +266,7 @@ issueCapabilityDeliveryReceipt(
 | Repair 使用未提交/错 Scope Gate、漂移 Bundle 或普通 callback Authority | `TEXT2SQL_REPAIR_FAILURE_AUTHORITY_REQUIRED` / `TEXT2SQL_REPAIR_FROZEN_BUNDLE_AUTHORITY_REQUIRED` / `TEXT2SQL_REPAIR_AUTHORITY_REQUIRED` |
 | Repair Resolver 为完整 Reference A 返回 Payload B，或持久 Session 闭包无法恢复 | `TEXT2SQL_REPAIR_FAILURE_AUTHORITY_REQUIRED` / `TEXT2SQL_REPAIR_SESSION_REHYDRATION_FAILED` |
 | Resource/Oracle/Sandbox Evidence 缺领域 Authority、Hash 漂移或换绑 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
+| Metamorphic Receipt 缺固定关系、Sandbox 闭包、独立 Authority 或三层 Hash 漂移 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` / RESULT `RESULT_METAMORPHIC_FAILED` |
 | Permit 缺 Gate、顺序/新鲜度错误、预算或 Principal/Policy/Settings 漂移 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Execution/Result/Validation 使用另一执行、另一结果或非当前七 Gate | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Payload Reference 跨 Scope 或未声明 | Document Parse 失败 |
@@ -250,15 +317,27 @@ issueCapabilityDeliveryReceipt(
 - Result Oracle 缺失、伪造自签、列顺序/行数/Invariant/Hash 不一致，以及 Validation
   混用另一轮 Gate、不复用 Permit 的前五 Gate、RESULT 时间早于 EXECUTION，或
   QueryEvidence 改写 Oracle Verdict/顺序时失败。
+- Metamorphic Fixture/Receipt 缺少、重复或乱序四项关系，适用性不是由五段权威链
+  推导，调用方注入恒真闭包，Mutation Record 错绑 Case/Relation/Snapshot/Witness，
+  Mutation/Selection Probe 不闭合，sample/evidence/receipt Hash 漂移，
+  witness 为空或无法证明非平凡性，baseline/follow-up Reference 重复/跨 Scope，
+  HALF_OPEN 复用 Baseline SQL、缺 left/right 任一执行或 Query Variant Hash，
+  Sandbox/Fixture/Meta/Result 四角色任一重用身份或品牌缺失时失败。RESULT
+  PASS/observed FAIL 的三引用缺失、增加、乱序、换绑或 verdict/hash/时间不一致时不能
+  封存；Oracle 不可用只能形成单 `ExecutionReceipt` 的 `UNAVAILABLE`。
+- UUID 大小写别名不能绕过四角色独立；Fixture 晚于 Meta、Meta 晚于 Result、L2
+  Result Resolver 二次解析另一 Meta 对象，以及有权威 Meta/Result FAIL 却缺少三品牌
+  Resolver 时都必须失败关闭。
 - 专用 System Store 已确认运行证据、但通用 `artifacts` 表不存在镜像行时，L2 提交仍成功；
-  两个 Store 都无法确认时失败关闭。
+  只有通用镜像、Exact Revision 被拒绝、Reference A/Payload B 或两个 Store 都无法确认时
+  失败关闭。
 - `REJECTED/SUPERSEDED`、缺 Validation Receipt、空 Invariant、缺 Evidence Gate 时失败。
 - Authoritative 对象及嵌套 Payload 为冻结状态。
 - `READY`、`GO` 与 `DELIVERED` 分别拒绝未验证证据和伪造品牌。
 - Provider 假 Receipt 或不匹配 Capability Hash 不能成为 `AVAILABLE`；EvalCase 不能被重新标为 Demo/Holdout；未完成 EvalRun、未提交 Evidence 或孤立 `PASS ScoreCard` 不能授权。
 - Oracle Receipt 拒绝未提交、Hash 漂移、Reference 不匹配、Suite/Oracle Type 错配和服务端 Oracle 验真失败。
 - ScoreCard 拒绝伪造 Oracle 品牌、自报 PASS、Receipt Verdict/Version/Reference 不匹配；Paired ScoreCard 拒绝 Candidate 漂移、未授权 Baseline 与非法 Interval。
-- `GO` 拒绝失败/不确定 ScoreCard、非零 Safety Counter、领域伪造 Receipt、策略不匹配和未同时覆盖 Hosted/Docker 的 Manifest。
+- `GO` 拒绝失败/不确定 ScoreCard、非零 Safety Counter、领域伪造 Receipt、策略不匹配和未同时覆盖 Hosted/Docker 的 Manifest；`MetamorphicOracleReceipt` 不能冒充 Hosted、Docker 或 Signed Outcome Evidence。
 - L3–L5 不能注册 Workflow、Route、Tool 或签发 Receipt。
 
 ### 7. Wrong vs Correct

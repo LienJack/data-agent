@@ -1,10 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   authorizeReleaseManifest,
   computeReleaseManifestHash,
   isAuthoritativeReleaseManifest,
+  type ReleaseManifest,
   ReleaseManifestAuthorityError,
   releaseManifestSchema,
+  SYNTHETIC_METAMORPHIC_ARTIFACT_TYPES,
 } from "../src/runs/release-manifest.js";
 import { hashes, makeArtifactReference } from "./fixtures.js";
 
@@ -69,6 +71,43 @@ describe("ReleaseManifest 权威契约", () => {
         },
       }).success,
     ).toBe(false);
+  });
+
+  it("在运行时与类型层同时拒绝 Fixture/Meta 产物冒充部署或签名 Outcome Evidence", () => {
+    const draft = makeReleaseManifestDraft();
+    for (const artifactType of SYNTHETIC_METAMORPHIC_ARTIFACT_TYPES) {
+      const syntheticReference = makeArtifactReference(artifactType);
+      for (const candidate of [
+        {
+          ...draft,
+          deployment_evidence: {
+            ...draft.deployment_evidence,
+            hosted_refs: [syntheticReference],
+          },
+        },
+        {
+          ...draft,
+          deployment_evidence: {
+            ...draft.deployment_evidence,
+            docker_refs: [syntheticReference],
+          },
+        },
+        {
+          ...draft,
+          signed_outcome_refs: [syntheticReference],
+        },
+      ]) {
+        expect(releaseManifestSchema.safeParse(candidate).success).toBe(false);
+      }
+    }
+
+    type ReleaseEvidenceArtifactType =
+      ReleaseManifest["signed_outcome_refs"][number]["artifact_type"];
+    type SyntheticReleaseEvidence = Extract<
+      ReleaseEvidenceArtifactType,
+      (typeof SYNTHETIC_METAMORPHIC_ARTIFACT_TYPES)[number]
+    >;
+    expectTypeOf<SyntheticReleaseEvidence>().toEqualTypeOf<never>();
   });
 
   it("Resolver 返回错 Revision、Hash 漂移或未提交 Evidence 时失败关闭", async () => {
