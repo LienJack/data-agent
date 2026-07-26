@@ -11,6 +11,24 @@ export {
 } from "./persistence/repository.js";
 export * from "./persistence/transaction.js";
 export * from "./queue/postgres-run-queue.js";
+export {
+  type ActiveSandboxCancelRequest,
+  type CoordinatedSandboxPort,
+  type CoordinatedSandboxPortOptions,
+  createCoordinatedSandboxPort,
+} from "./sandbox/coordinated-sandbox-port.js";
+export {
+  createPostgresText2SqlSandboxAuthority,
+  type PostgresText2SqlSandboxAuthorityOptions,
+} from "./sandbox/postgres-text2sql-sandbox-authority.js";
+export {
+  createPythonSqlSandboxClient,
+  type PythonSqlSandboxCancelInput,
+  type PythonSqlSandboxClient,
+  type PythonSqlSandboxClientOptions,
+  type PythonSqlSandboxExecutionHandle,
+  PythonSqlSandboxProtocolError,
+} from "./sandbox/python-sql-sandbox.js";
 export * from "./secrets/postgres-secret-ref.js";
 export { containsPotentialPlaintextSecret } from "./secrets/secret-ref.js";
 export * from "./storage/namespace.js";

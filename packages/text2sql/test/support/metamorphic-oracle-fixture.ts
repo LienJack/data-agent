@@ -168,7 +168,7 @@ function deriveHalfOpenPartitionBounds(sqlArtifact: SqlArtifactPayloadContract):
   upper_placeholder: string;
 }> {
   const comparisonPattern =
-    /("(?:[^"]|"")+"\."(?:[^"]|"")+")\s*(>=|<)\s*(\$[1-9][0-9]*)::(?:timestamp|timestamptz)\b/g;
+    /("(?:[^"]|"")+"\."(?:[^"]|"")+")\s*OPERATOR\(pg_catalog\.(>=|<)\)\s*(\$[1-9][0-9]*)::pg_catalog\.(?:timestamp|timestamptz)\b/g;
   const comparisons = [...sqlArtifact.sql.matchAll(comparisonPattern)];
   const candidates = comparisons.flatMap((lower) =>
     comparisons.flatMap((upper) => {
@@ -502,8 +502,8 @@ export async function createAuthoritativeMetamorphicSandboxFixture(
       sql: [
         'SELECT "facts"."metric_value" AS "metric_value"',
         'FROM "governed_metamorphic_result" AS "facts"',
-        'WHERE "facts"."occurred_at" >= $1::timestamptz',
-        '  AND "facts"."occurred_at" < $2::timestamptz',
+        'WHERE "facts"."occurred_at" OPERATOR(pg_catalog.>=) $1::pg_catalog.timestamptz',
+        '  AND "facts"."occurred_at" OPERATOR(pg_catalog.<) $2::pg_catalog.timestamptz',
       ].join("\n"),
       parameters: {
         $1: lineage.query_contract.time_range.start,
@@ -513,7 +513,7 @@ export async function createAuthoritativeMetamorphicSandboxFixture(
     sqlArtifact = sqlArtifactSchema.parse({
       artifact_type: "SqlArtifact",
       logical_plan_ref: logicalPlanReference,
-      compiler_version: "postgresql-compiler@1.0.0",
+      compiler_version: "postgresql-compiler@1.1.0",
       ast_hash: await sha256ContentHash("metamorphic-fixture-ast"),
       ...sqlArtifactMaterial,
       query_hash: await sha256ContentHash(sqlArtifactMaterial),

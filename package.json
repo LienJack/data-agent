@@ -18,7 +18,7 @@
     "test:providers": "tsx scripts/run-workspace-gate.ts test:providers",
     "test:integration": "tsx scripts/run-integration-gate.ts",
     "test:tenancy": "pnpm --filter @data-agent/platform test:tenancy && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",
-    "test:sandbox": "tsx scripts/pending-gate.ts test:sandbox U5",
+    "test:sandbox": "./scripts/test-sandbox.sh",
     "test:e2e": "tsx scripts/pending-gate.ts test:e2e U8",
     "eval:smoke": "tsx scripts/pending-gate.ts eval:smoke U7",
     "test:security": "pnpm --filter @data-agent/agent-runtime test:security && pnpm --filter @data-agent/platform test:security && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",

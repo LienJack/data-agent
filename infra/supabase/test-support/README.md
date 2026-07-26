@@ -16,7 +16,7 @@ Smoke 固定执行：
 3. 按文件名排序执行 Platform 与 Data Agent App 迁移；
 4. 按文件名排序执行全部 `*-assertions.sql`；
 5. 验证双 App、双 Tenant、双环境、RPC/RLS、Demo、Storage、生命周期、SecretRef
-   与 Migration Ledger；当前账本固定为一个 Platform 加十三个 App Migration；
+   与 Migration Ledger；当前账本固定为一个 Platform 加十四个 App Migration；
 6. 在独立数据库逐步执行到 `10500 / 10505 / 10510 / 10560`，证明 Browser 写入口、
    Backend 直写与旧 Outbox/Fence API 在任一中断前缀都失败关闭；
 7. 用两个数据库会话证明同一 Run 只能被一个 Worker Claim，并覆盖
@@ -48,6 +48,7 @@ Runtime SQL 断言保持原始状态依赖顺序：
 → 25 Secret
 → 25z concurrent resume/counter
 → 26 Artifact/Lifecycle
+→ 27 Text2SQL System Store/Claim/Finalize
 ```
 
 生产约束：
@@ -65,6 +66,13 @@ Runtime SQL 断言保持原始状态依赖顺序：
   `claim_run_work(...)`、事件结算、重试与控制窄函数推进；旧
   `claim_outbox(...)`、`publish_outbox(...)`、`retry_outbox(...)` 与
   `advance_run_fence(...)` 已对全部应用角色撤权。
+- U5 SQL Sandbox 的 Claim/Lease/Fence/Cancel 是可变投影；System Artifact、
+  Execution Event 与每 Attempt Execution Record 使用独立 append-only 表。
+  Backend 只能经 FORCE RLS 直读这四张 Authority 表，并调用窄
+  `SECURITY DEFINER` 函数；不能直接 DML。`SandboxResult` 与
+  `SandboxExecutionReceipt` 必须和 Claim 终态、ExecutionRecord、终态 Event 在
+  同一 Authority 数据库事务中原子提交。领域 `content_hash` 不得替代完整保存体
+  `payload_checksum`。
 - Artifact Object 的 Storage Key 固定为
   `<app_id>/<tenant_id>/<environment>/<principal_id>/<run_id>/<artifact_kind>/sha256-<digest>`；
   Key 中的 Principal/Run 还必须和私有 Run 元数据一致。Restrictive Guard 同时约束其他

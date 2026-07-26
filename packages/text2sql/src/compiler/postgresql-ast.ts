@@ -39,14 +39,21 @@ function renderIdentifier(identifier: PostgresqlIdentifier): string {
 function renderDataType(expression: Extract<PostgresqlExpression, { kind: "parameter" }>): string {
   switch (expression.data_type) {
     case "boolean":
+      return "pg_catalog.bool";
     case "date":
+      return "pg_catalog.date";
     case "integer":
+      return "pg_catalog.int4";
     case "numeric":
+      return "pg_catalog.numeric";
     case "text":
+      return "pg_catalog.text";
     case "timestamp":
+      return "pg_catalog.timestamp";
     case "timestamptz":
+      return "pg_catalog.timestamptz";
     case "uuid":
-      return expression.data_type;
+      return "pg_catalog.uuid";
     default:
       return assertNever(expression.data_type);
   }
@@ -63,7 +70,7 @@ function renderExpression(expression: PostgresqlExpression): string {
       return `${expression.placeholder}::${renderDataType(expression)}`;
     case "aggregate": {
       const distinct = expression.distinct ? "DISTINCT " : "";
-      return `${expression.function}(${distinct}${renderExpression(expression.argument)})`;
+      return `pg_catalog.${expression.function}(${distinct}${renderExpression(expression.argument)})`;
     }
     case "coalesce-zero":
       return `COALESCE(${renderExpression(expression.expression)}, 0)`;
@@ -77,17 +84,17 @@ function renderComparisonOperator(
 ): string {
   switch (operator) {
     case "eq":
-      return "=";
+      return "OPERATOR(pg_catalog.=)";
     case "neq":
-      return "<>";
+      return "OPERATOR(pg_catalog.<>)";
     case "gt":
-      return ">";
+      return "OPERATOR(pg_catalog.>)";
     case "gte":
-      return ">=";
+      return "OPERATOR(pg_catalog.>=)";
     case "lt":
-      return "<";
+      return "OPERATOR(pg_catalog.<)";
     case "lte":
-      return "<=";
+      return "OPERATOR(pg_catalog.<=)";
     default:
       return assertNever(operator);
   }
@@ -97,8 +104,16 @@ function renderCondition(condition: PostgresqlCondition): string {
   switch (condition.kind) {
     case "comparison":
       return `${renderExpression(condition.left)} ${renderComparisonOperator(condition.operator)} ${renderExpression(condition.right)}`;
-    case "membership":
-      return `${renderExpression(condition.field)} IN (${condition.values.map(renderExpression).join(", ")})`;
+    case "membership": {
+      if (condition.values.length === 0) {
+        throw new TypeError("POSTGRESQL_MEMBERSHIP_VALUES_EMPTY");
+      }
+      const field = renderExpression(condition.field);
+      const equality = renderComparisonOperator("eq");
+      return `(${condition.values
+        .map((value) => `${field} ${equality} ${renderExpression(value)}`)
+        .join(" OR ")})`;
+    }
     case "null-check":
       return `${renderExpression(condition.field)} ${condition.operator === "is_null" ? "IS NULL" : "IS NOT NULL"}`;
     default:

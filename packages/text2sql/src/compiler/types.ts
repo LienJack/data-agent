@@ -2,7 +2,7 @@ import type { SqlArtifactPayloadContract } from "@data-agent/contracts";
 import type { GroundingPackageDraft } from "../grounding/types.js";
 import type { AuthoritativeLogicalPlanBinding } from "./internal.js";
 
-export const POSTGRESQL_COMPILER_VERSION = "postgresql-compiler@1.0.0" as const;
+export const POSTGRESQL_COMPILER_VERSION = "postgresql-compiler@1.1.0" as const;
 
 export const POSTGRESQL_COMPILATION_REASON_CODES = [
   "UNSUPPORTED_DIALECT",

@@ -11,9 +11,10 @@
   与 PostgreSQL Authority Persistence 已固定在 `3249ea2`；PostgreSQL Dialect
   Compiler、七道 Gate 与受治理执行 Authority 已固定在 `fa3180b`，Bounded Repair
   已固定在 `029097e`；Metamorphic Result Oracle 已固定在 `60de42d` 并通过完整本地
-  门禁与 Codex 复审。RQ091 已冻结下一单元的真实 PostgreSQL Sandbox、Snapshot
-  Protocol、耐久 System Store、受控 Mutation 与 Streaming Cutoff 合同；当前进入
-  proof-first 实现，Release 仍为 `HOLD`。
+  门禁与 Codex 复审。RQ091 已冻结并指导完成真实 PostgreSQL Sandbox、Snapshot
+  Protocol、耐久 System Store、受控 Mutation 与 Streaming Cutoff；U5 Unit 5
+  已完成实现并闭合真实 PostgreSQL 全链验证。Release 仍为 `HOLD`：尚缺已签名的本地
+  门禁证据，且 U6–U9 尚未完成，不能用未签名测试日志或 U5 局部门禁替代发布证据。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -283,6 +284,50 @@
 - 本节是研究合同冻结，不是实现关闭证据。PG17 设计期容器日志只标记为
   `SYNTHETIC_POSTGRESQL_17_PROOF`；在 Python/TypeScript/Migration/Integration Gate
   全部绿色前，`pnpm test:sandbox` 与 Release 继续保持 `HOLD`。
+
+### U5 Unit 5 实现关闭证据（2026-07-27）
+
+- Contracts 已交付严格版本化的 `ExecutionGrant`、`SandboxExecutionOutcome`、
+  Claim/Transition/Cancel/Recovery Schema 与服务端
+  `prepareSandboxExecution`、`finalizeSandboxExecution`、
+  `failSandboxExecution`、`cancelSandboxExecution` Authority API；成功 Outcome
+  的行数、规范字节、当前批次和保留字节必须与 `SandboxResult` 精确一致。
+- Platform 已交付 PostgreSQL Authority Adapter、三段式 Coordinator、单 Execution
+  双向 NDJSON Python Client 和 PostgreSQL AST 失败关闭门禁。SqlArtifact 必须使用
+  `postgresql-compiler@1.1.0`，编译产物中的所有 SQL Primitive、Operator 与 Cast
+  都显式限定到 `pg_catalog`；多语句、DML CTE、危险函数、子查询、越界关系、自定义
+  Operator/Cast 与非参数化业务常量都会在创建 Claim、启动子进程或连接 Datasource
+  之前被拒绝。
+- PostgreSQL 17 Migration 已交付 append-only `text2sql_system_artifacts`、可恢复
+  Claim/Event Projection 与每 Attempt 唯一的不可变 Execution Record。Backend 仅有
+  同 Scope 读取和窄函数执行权限；Browser 角色无权读取或写入。Idempotency 只绑定
+  不变请求身份，Lease Recovery 使用 PostgreSQL 数据库时钟，Worker 的未来时间不能
+  抢占尚未到期的 Lease。`FAILED/CANCELLED` 与 `COMPLETED` 一样在 Authority 重启后
+  稳定重放且不会再次执行 Datasource；同键异输入仍在 Datasource Operation 前冲突。
+- Python `services/sandbox` 已在同一 `REPEATABLE READ READ ONLY` Transaction 内重算
+  完整 schema/data manifest、锁定 Relation/OID、按原生 `$1…$n` 执行查询，并以
+  增量 O(n) 规范化、固定 `fetchmany()`、Row/Byte/Deadline Cutoff 和干净 Rollback
+  形成 Outcome。完整 Snapshot Manifest 使用真正的 PostgreSQL named server-side
+  cursor，并受独立固定 Runtime Ceiling 约束：最多 256 个 Relation、每 Relation
+  256 列、跨全部 Relation 合计 10,000 行与 64 MiB JCS Digest Material；它与
+  Request 的 Result Budget 分离，不能被调用方放大。执行器强制
+  `NONE = [pg_catalog]`、
+  `CONTROLLED_REVISION = [sealed_schema,pg_catalog]`，并在连接后、事务前通过
+  `data_agent_sandbox_control.datasource_identity` 核对实际
+  `datasource_id/fingerprint`。Authority Prepare 重验证时间允许早于 Datasource
+  `started_at` 但不能晚于它；Permit 仍按实际 `started_at` 验证。JSON/JSONB 递归值、
+  int8/numeric、列/行/字节边界、Cancel 与 Snapshot Mutation 均有真实 PG17 反例。
+- 真实端到端测试已覆盖
+  `Coordinator -> PostgreSQL Authority -> Python child -> 同一 PostgreSQL Datasource
+  -> 耐久 Receipt/Result -> Authority 重启后 replay`，并断言重放不会第二次启动
+  Python。提交前最终 `pnpm test:sandbox` 已通过：Contracts 220/220、Platform Unit
+  185/185、PostgreSQL/Supabase Smoke、Platform Integration 11/11、Worker
+  Integration 9/9、Python PG17 70/70、TypeScript↔Python Process Integration 1/1。
+- U5 只交付可运行、可验证的本地 Sandbox，不把逻辑峰值内存估计冒充 cgroup 硬隔离。
+  `cgroup_memory_limit_enforced=false` 是当前真实观测；Hosted/Docker OCI、CPU/Memory/
+  Filesystem/Network 硬隔离与签名部署 Outcome 仍属 U9。`pnpm verify:release` 必须因
+  已签名本地门禁证据缺失及 U6–U9 未完成，以
+  `RELEASE_EVIDENCE_INCOMPLETE` 和状态码 2 返回 `HOLD`。
 
 ## 2. 执行原则
 
@@ -561,7 +606,7 @@ pnpm test:deploy:hosted
 pnpm verify:release
 ```
 
-这些命令是全局验收契约。U1–U4 对应命令已经接入真实实现；U5–U9 尚未实现的命令必须
+这些命令是全局验收契约。U1–U5 对应命令已经接入真实实现；U6–U9 尚未实现的命令必须
 通过 `pending-gate` 或 `verify:release` 明确返回 `HOLD`/非零退出，不能静默通过。
 
 ## 10. 阶段性证据要求

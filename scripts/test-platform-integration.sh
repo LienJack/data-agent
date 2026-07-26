@@ -4,11 +4,13 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 support_dir="$repo_dir/infra/supabase/test-support"
 infra_dir="$repo_dir/infra/supabase"
+sandbox_dir="$repo_dir/services/sandbox"
 container_name="data-agent-platform-integration-$$"
 database_name="data_agent_platform_integration"
 database_password="data-agent-postgres-test"
 backend_user="data_agent_test_backend"
 backend_password="data-agent-backend-test"
+sandbox_reader_password="data-agent-platform-sandbox-reader"
 
 cleanup() {
   status=$?
@@ -68,12 +70,15 @@ apply_sql "$support_dir/10-fixtures.sql"
 
 docker exec "$container_name" \
   psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
-  -c "create role $backend_user login inherit password '$backend_password'; grant data_agent_backend to $backend_user;" \
+  -c "create role $backend_user login inherit password '$backend_password'; grant data_agent_backend to $backend_user; create role sandbox_reader login password '$sandbox_reader_password' nosuperuser nocreatedb nocreaterole noinherit; alter role sandbox_reader set default_transaction_read_only = on; create schema data_agent_sandbox_control; create table data_agent_sandbox_control.datasource_identity (singleton boolean primary key default true check (singleton), datasource_id uuid not null, datasource_fingerprint text not null); insert into data_agent_sandbox_control.datasource_identity (datasource_id, datasource_fingerprint) values ('00000000-0000-4000-8000-00000000d101', 'postgresql-test-datasource@1.0.0'); revoke all on schema data_agent_sandbox_control from public; revoke all on data_agent_sandbox_control.datasource_identity from public; grant usage on schema data_agent_sandbox_control to sandbox_reader; grant select on data_agent_sandbox_control.datasource_identity to sandbox_reader;" \
   >/dev/null
 
 host_port=$(docker port "$container_name" 5432/tcp | sed -E 's/.*:([0-9]+)$/\1/')
 export DATA_AGENT_TEST_DATABASE_URL="postgresql://$backend_user:$backend_password@127.0.0.1:$host_port/$database_name"
 export DATA_AGENT_TEST_ADMIN_DATABASE_URL="postgresql://postgres:$database_password@127.0.0.1:$host_port/$database_name"
+export DATA_AGENT_SANDBOX_DSN="postgresql://sandbox_reader:$sandbox_reader_password@127.0.0.1:$host_port/$database_name"
+export DATA_AGENT_SANDBOX_PROCESS_INTEGRATION=1
 
+uv sync --project "$sandbox_dir" --dev
 pnpm --dir "$repo_dir" --filter @data-agent/platform test:integration
 pnpm --dir "$repo_dir" --filter @data-agent/worker test:integration

@@ -22,9 +22,24 @@ const decision = releaseDecisionSchema.parse({
 process.stdout.write(
   `${JSON.stringify(
     {
-      verification_contract_version: "1.0.0",
+      verification_contract_version: "1.1.0",
       ...decision,
-      missing_units: ["U5", "U6", "U7", "U8", "U9"],
+      implemented_units: ["U1", "U2", "U3", "U4", "U5"],
+      missing_units: ["U6", "U7", "U8", "U9"],
+      missing_evidence: [
+        {
+          unit: "U5",
+          evidence_type: "LOCAL_GATE_RECEIPT",
+          required_command: "pnpm test:sandbox",
+          reason_code: "RELEASE_GATE_NOT_ATTESTED",
+        },
+        {
+          unit: "U9",
+          evidence_type: "SIGNED_RELEASE_MANIFEST",
+          required_command: "pnpm verify:release",
+          reason_code: "RELEASE_MANIFEST_NOT_IMPLEMENTED",
+        },
+      ],
     },
     null,
     2,

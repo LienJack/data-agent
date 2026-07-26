@@ -345,7 +345,7 @@ export async function createAuthoritativeReleaseFixture(
       artifact_type: "LogicalPlan",
       content_hash: hashes.artifact,
     },
-    compiler_version: "postgresql-compiler@1.0.0",
+    compiler_version: "postgresql-compiler@1.1.0",
     ast_hash: hashes.artifact,
     ...sandboxSqlArtifactMaterial,
     query_hash: await sha256ContentHash(sandboxSqlArtifactMaterial),

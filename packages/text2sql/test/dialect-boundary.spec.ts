@@ -114,7 +114,7 @@ describe("PostgreSQL Dialect Compiler", () => {
       first.compilation.sql_artifact,
     );
     expect(first.compilation.proof).toMatchObject({
-      compiler_version: "postgresql-compiler@1.0.0",
+      compiler_version: "postgresql-compiler@1.1.0",
       dialect: "postgresql",
       logical_plan_ref: input.logical_plan_binding.reference,
       logical_plan_hash: await sha256ContentHash(fixture.logicalPlan),
@@ -164,9 +164,14 @@ describe("PostgreSQL Dialect Compiler", () => {
       $4: fixture.queryContract.time_range.end,
     });
     expect(first.compilation.sql_artifact.sql).toContain('FROM "orders" AS "source"');
-    expect(first.compilation.sql_artifact.sql).toContain("$1::text");
-    expect(first.compilation.sql_artifact.sql).toMatch(/>= \$3::timestamptz/);
-    expect(first.compilation.sql_artifact.sql).toMatch(/< \$4::timestamptz/);
+    expect(first.compilation.sql_artifact.sql).toContain("$1::pg_catalog.text");
+    expect(first.compilation.sql_artifact.sql).toMatch(
+      /OPERATOR\(pg_catalog\.>=\) \$3::pg_catalog\.timestamptz/,
+    );
+    expect(first.compilation.sql_artifact.sql).toMatch(
+      /OPERATOR\(pg_catalog\.<\) \$4::pg_catalog\.timestamptz/,
+    );
+    expect(first.compilation.sql_artifact.sql).toContain("pg_catalog.SUM(");
     expect(first.compilation.sql_artifact.sql).not.toContain("paid");
     expect(first.compilation.sql_artifact.sql).not.toContain("BETWEEN");
     expect(first.compilation.sql_artifact.sql).not.toContain("NATURAL JOIN");
@@ -572,6 +577,27 @@ describe("PostgreSQL Dialect Compiler", () => {
     ]);
   });
 
+  it("membership 使用括号 OR + qualified equality，不生成可被 search_path 劫持的 IN", async () => {
+    const fixture = await readyFixture(
+      netRevenueContract({
+        filters: [{ field: "orders.status", operator: "in", value: ["paid", "refunded"] }],
+      }),
+    );
+    const result = await compilePostgresqlLogicalPlan(await compilerInput(fixture));
+    if (result.state !== "COMPILED") {
+      throw new Error(`Membership Fixture 编译失败：${result.reason_code}`);
+    }
+
+    expect(result.compilation.sql_artifact.sql).toMatch(
+      /\("source"\."field_[0-9]+" OPERATOR\(pg_catalog\.=\) \$1::pg_catalog\.text OR "source"\."field_[0-9]+" OPERATOR\(pg_catalog\.=\) \$2::pg_catalog\.text\)/,
+    );
+    expect(result.compilation.sql_artifact.sql).not.toMatch(/\sIN\s*\(/);
+    expect(result.compilation.parameter_order.slice(0, 2)).toMatchObject([
+      { parameter_key: "literal.status.1", placeholder: "$1", data_type: "text" },
+      { parameter_key: "literal.status.2", placeholder: "$2", data_type: "text" },
+    ]);
+  });
+
   it("mandatory policy NULL-check 覆盖忽略无意义 parameter_key，但 operator 篡改仍失败", async () => {
     const nullPolicy = {
       ...analystPolicy,
@@ -671,7 +697,7 @@ describe("PostgreSQL Dialect Compiler", () => {
 
     expect(result.compilation.sql_artifact.sql).toContain("LEFT JOIN");
     expect(result.compilation.sql_artifact.sql).toMatch(
-      /ON\n\s+"left_source"\."field_[0-9]+" = "right_source"\."field_[0-9]+"\n\s+AND "left_source"\."field_[0-9]+" = "right_source"\."field_[0-9]+"/,
+      /ON\n\s+"left_source"\."field_[0-9]+" OPERATOR\(pg_catalog\.=\) "right_source"\."field_[0-9]+"\n\s+AND "left_source"\."field_[0-9]+" OPERATOR\(pg_catalog\.=\) "right_source"\."field_[0-9]+"/,
     );
     const join = result.compilation.ast.ctes.find(({ operation }) => operation === "join");
     expect(join?.query.joins[0]).toMatchObject({
@@ -741,6 +767,6 @@ describe("PostgreSQL Dialect Compiler", () => {
 
     expect(result.compilation.sql_artifact.parameters.$1).toBe(injected);
     expect(result.compilation.sql_artifact.sql).not.toContain(injected);
-    expect(result.compilation.sql_artifact.sql).toContain("$1::text");
+    expect(result.compilation.sql_artifact.sql).toContain("$1::pg_catalog.text");
   });
 });

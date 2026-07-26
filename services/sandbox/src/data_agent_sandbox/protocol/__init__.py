@@ -1,0 +1,1 @@
+"""Versioned NDJSON protocol models."""

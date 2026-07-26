@@ -1,9 +1,29 @@
 import { randomUUID } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import {
+  type ArtifactReference,
+  computeL2ArtifactContentHash,
+  computeOrderedSandboxSqlParametersHash,
+  computePostgresqlExecutionSettingsHash,
+  computeSandboxExecutionRequestHash,
+  l2ArtifactDocumentSchema,
+  sandboxExecutionRequestSchema,
+  sha256ContentHash,
+} from "@data-agent/contracts";
+import {
+  authorizeSandboxResult,
+  computeSnapshotDescriptorHash,
+  type SnapshotDescriptor,
+  sandboxExecutionImmutableIdentitySchema,
+} from "@data-agent/contracts/server";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { createPostgresDatasourceEgress } from "../../src/datasources/postgres-datasource-egress.js";
 import { createPostgresRepository } from "../../src/persistence/repository.js";
 import { adaptPgPool, withAppTransaction } from "../../src/persistence/transaction.js";
+import { createCoordinatedSandboxPort } from "../../src/sandbox/coordinated-sandbox-port.js";
+import { createPostgresText2SqlSandboxAuthority } from "../../src/sandbox/postgres-text2sql-sandbox-authority.js";
+import { createPythonSqlSandboxClient } from "../../src/sandbox/python-sql-sandbox.js";
 import { createPostgresSecretRefRepository } from "../../src/secrets/postgres-secret-ref.js";
 import { createPostgresCapabilityAuthority } from "../../src/tenancy/postgres-authority.js";
 
@@ -13,9 +33,17 @@ const TENANT_ONE = "00000000-0000-4000-8000-00000000aa11";
 const TENANT_TWO = "00000000-0000-4000-8000-00000000aa22";
 const OWNER_ONE = "00000000-0000-4000-8000-000000001001";
 const OWNER_TWO = "00000000-0000-4000-8000-000000001003";
+const SANDBOX_DATASOURCE_ID = "00000000-0000-4000-8000-00000000d101";
+const SANDBOX_DATASOURCE_FINGERPRINT = "postgresql-test-datasource@1.0.0";
 
 const databaseUrl = process.env.DATA_AGENT_TEST_DATABASE_URL;
 const adminDatabaseUrl = process.env.DATA_AGENT_TEST_ADMIN_DATABASE_URL;
+const sandboxDsn = process.env.DATA_AGENT_SANDBOX_DSN;
+const sandboxProcessEnabled = process.env.DATA_AGENT_SANDBOX_PROCESS_INTEGRATION === "1";
+const sandboxDirectory = fileURLToPath(new URL("../../../../services/sandbox/", import.meta.url));
+const pythonExecutable = fileURLToPath(
+  new URL("../../../../services/sandbox/.venv/bin/python", import.meta.url),
+);
 
 describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
   "PostgreSQL authority + repository + runtime queue vertical slice",
@@ -125,6 +153,466 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
         queue_sequence: "1",
       });
     });
+
+    it.skipIf(!sandboxProcessEnabled || !sandboxDsn)(
+      "drives Coordinator -> PostgreSQL Authority -> Python Sandbox -> PostgreSQL and replays",
+      async () => {
+        const capability = await authorityOne.resolveForServerContext({
+          deployment_id: DEPLOYMENT_ID,
+          tenant_id: TENANT_ONE,
+          principal_id: OWNER_ONE,
+          access: "WRITE",
+        });
+        if (!capability.ok) throw new Error(capability.error.code);
+
+        const runId = "00000000-0000-4000-8000-00000000a101";
+
+        const scope = {
+          app_id: APP_ID,
+          tenant_id: TENANT_ONE,
+          environment: "test",
+        } as const;
+        const artifactReference = (
+          artifactType: ArtifactReference["artifact_type"],
+          artifactId: string,
+          contentHash: string,
+        ): ArtifactReference => ({
+          artifact_id: artifactId,
+          artifact_type: artifactType,
+          ...scope,
+          run_id: runId,
+          revision: 1,
+          content_hash: contentHash,
+        });
+        const committedDocument = async (
+          artifactId: string,
+          artifactType: ArtifactReference["artifact_type"],
+          payload: Record<string, unknown>,
+          inputRefs: readonly ArtifactReference[],
+        ) => {
+          const draft = l2ArtifactDocumentSchema.parse({
+            envelope: {
+              artifact_id: artifactId,
+              artifact_type: artifactType,
+              ...scope,
+              run_id: runId,
+              revision: 1,
+              parent_ref: null,
+              attempt_id: randomUUID(),
+              producer: { kind: "deterministic", id: "postgres-sandbox-integration" },
+              input_refs: inputRefs,
+              schema_version: "1.0.0",
+              semantic_version: "1.0.0",
+              policy_version: "1.0.0",
+              model_profile_version: "integration",
+              content_hash: `sha256:${"0".repeat(64)}`,
+              status: "COMMITTED",
+              created_at: new Date().toISOString(),
+            },
+            payload,
+          });
+          return l2ArtifactDocumentSchema.parse({
+            ...draft,
+            envelope: {
+              ...draft.envelope,
+              content_hash: await computeL2ArtifactContentHash(draft),
+            },
+          });
+        };
+
+        const settings = {
+          database_role: "sandbox_reader",
+          search_path: ["pg_catalog"],
+          plan_cache_mode: "force_custom_plan",
+          statement_timeout_ms: 5_000,
+          lock_timeout_ms: 100,
+        } as const;
+        const budget = {
+          timeout_ms: 5_000,
+          lock_timeout_ms: 100,
+          max_rows: 100,
+          max_bytes: 1_000_000,
+          max_memory_mb: 128,
+        } as const;
+        const parameters = { $1: "south" };
+        const logicalPlanRef = artifactReference(
+          "LogicalPlan",
+          randomUUID(),
+          `sha256:${"1".repeat(64)}`,
+        );
+        const sqlMaterial = {
+          dialect: "postgresql" as const,
+          sql: "select $1::pg_catalog.text as region",
+          parameters,
+        };
+        const queryHash = await sha256ContentHash(sqlMaterial);
+        const sqlArtifactId = randomUUID();
+        const sqlDocument = await committedDocument(
+          sqlArtifactId,
+          "SqlArtifact",
+          {
+            artifact_type: "SqlArtifact",
+            logical_plan_ref: logicalPlanRef,
+            compiler_version: "postgresql-compiler@1.1.0",
+            ast_hash: `sha256:${"2".repeat(64)}`,
+            ...sqlMaterial,
+            query_hash: queryHash,
+          },
+          [logicalPlanRef],
+        );
+        const sqlArtifactRef = artifactReference(
+          "SqlArtifact",
+          sqlArtifactId,
+          sqlDocument.envelope.content_hash,
+        );
+        const resourceAdmissionRef = artifactReference(
+          "ResourceAdmissionReceipt",
+          randomUUID(),
+          `sha256:${"3".repeat(64)}`,
+        );
+        const policyReceiptRef = artifactReference(
+          "PolicyReceipt",
+          randomUUID(),
+          `sha256:${"4".repeat(64)}`,
+        );
+        const gateReceiptRefs = [1, 2, 3, 4, 5].map((index) =>
+          artifactReference("GateReceipt", randomUUID(), `sha256:${String(index).repeat(64)}`),
+        );
+        const issuedAt = new Date(Date.now() - 1_000);
+        const expiresAt = new Date(issuedAt.getTime() + 300_000);
+        const settingsHash = await computePostgresqlExecutionSettingsHash(settings);
+        const datasourceId = SANDBOX_DATASOURCE_ID;
+        const permitId = randomUUID();
+        const permitDocument = await committedDocument(
+          permitId,
+          "ExecutionPermit",
+          {
+            artifact_type: "ExecutionPermit",
+            sql_artifact_ref: sqlArtifactRef,
+            resource_admission_ref: resourceAdmissionRef,
+            gate_receipt_refs: gateReceiptRefs,
+            datasource_id: datasourceId,
+            schema_version: "1.0.0",
+            settings_hash: settingsHash,
+            execution_settings: settings,
+            principal_id: OWNER_ONE,
+            policy_receipt_ref: policyReceiptRef,
+            budget,
+            issued_at: issuedAt.toISOString(),
+            expires_at: expiresAt.toISOString(),
+          },
+          [sqlArtifactRef, resourceAdmissionRef, ...gateReceiptRefs, policyReceiptRef],
+        );
+        const executionPermitRef = artifactReference(
+          "ExecutionPermit",
+          permitId,
+          permitDocument.envelope.content_hash,
+        );
+        const executionId = randomUUID();
+        const idempotencyKey = `sandbox-execution-${randomUUID()}`;
+        const request = sandboxExecutionRequestSchema.parse({
+          schema_version: "1.0.0",
+          scope,
+          run_id: runId,
+          execution_id: executionId,
+          idempotency_key: idempotencyKey,
+          language: "sql",
+          payload: {
+            dialect: "postgresql",
+            sql_artifact_ref: sqlArtifactRef,
+            execution_permit_ref: executionPermitRef,
+            resource_admission_ref: resourceAdmissionRef,
+            datasource_id: datasourceId,
+            settings_hash: settingsHash,
+            execution_settings: settings,
+            snapshot_requirement: { mode: "ALLOW_UNAVAILABLE" },
+            parameters,
+          },
+          budget,
+        });
+        if (request.language !== "sql") throw new Error("Sandbox request fixture must be SQL.");
+        const identity = sandboxExecutionImmutableIdentitySchema.parse({
+          protocol_version: "sandbox-execution-identity@1.0.0",
+          scope,
+          scope_hash: await sha256ContentHash(scope),
+          run_id: runId,
+          execution_id: executionId,
+          principal_id: OWNER_ONE,
+          idempotency_key: idempotencyKey,
+          input_hash: await computeSandboxExecutionRequestHash(request),
+          sql_artifact_ref: sqlArtifactRef,
+          execution_permit_ref: executionPermitRef,
+          execution_permit_expires_at: expiresAt.toISOString(),
+          resource_admission_ref: resourceAdmissionRef,
+          policy_receipt_ref: policyReceiptRef,
+          query_hash: queryHash,
+          parameters_hash: await sha256ContentHash(parameters),
+          ordered_parameters_hash: await computeOrderedSandboxSqlParametersHash(parameters),
+          datasource_id: datasourceId,
+          schema_version: request.schema_version,
+          settings_hash: settingsHash,
+          budget,
+          snapshot_requirement: request.payload.snapshot_requirement,
+        });
+        const observedAt = new Date();
+        const descriptorDraft = {
+          protocol_version: "postgresql-snapshot@1.0.0" as const,
+          scope_hash: identity.scope_hash,
+          run_id: runId,
+          execution_id: executionId,
+          principal_id: OWNER_ONE,
+          datasource_id: datasourceId,
+          datasource_fingerprint: SANDBOX_DATASOURCE_FINGERPRINT,
+          schema_version: request.schema_version,
+          strategy: "NONE" as const,
+          intent: "RESOLVE" as const,
+          snapshot_token: null,
+          schema_manifest_hash: null,
+          data_manifest_hash: null,
+          fixture_manifest_hash: null,
+          observed_at: observedAt.toISOString(),
+          replay_state: "REPLAY_UNAVAILABLE" as const,
+          descriptor_hash: `sha256:${"0".repeat(64)}`,
+        };
+        const descriptor: SnapshotDescriptor = {
+          ...descriptorDraft,
+          descriptor_hash: await computeSnapshotDescriptorHash(descriptorDraft),
+        };
+
+        for (const document of [sqlDocument, permitDocument]) {
+          await adminPool.query(
+            `insert into app_data_agent.artifacts (
+             app_id,
+             tenant_id,
+             environment,
+             run_id,
+             artifact_id,
+             artifact_type,
+             revision,
+             content_hash,
+             document_json,
+             worker_fence,
+             is_active
+           )
+           values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, 0, true)`,
+            [
+              document.envelope.app_id,
+              document.envelope.tenant_id,
+              document.envelope.environment,
+              document.envelope.run_id,
+              document.envelope.artifact_id,
+              document.envelope.artifact_type,
+              document.envelope.revision,
+              document.envelope.content_hash,
+              document,
+            ],
+          );
+        }
+
+        const authorityIdentity = {
+          authority_id: randomUUID(),
+          principal_id: "postgres-sandbox-integration",
+          key_id: "postgres-sandbox-integration@1",
+        } as const;
+        const sandboxAuthority = createPostgresText2SqlSandboxAuthority({
+          pool: sqlPool,
+          authorizer: authorityOne.authorizer,
+          capability: capability.value,
+          identity: authorityIdentity,
+          owner_id: "postgres-sandbox-worker-a",
+          snapshot_descriptors: [descriptor],
+          snapshot_relation_manifests: [
+            {
+              snapshot_descriptor_hash: descriptor.descriptor_hash,
+              sealed_schema: null,
+              allowed_relations: [],
+            },
+          ],
+          now: () => observedAt,
+        });
+        const realPythonClient = createPythonSqlSandboxClient({
+          command: pythonExecutable,
+          datasource_id: datasourceId,
+          datasource_fingerprint: SANDBOX_DATASOURCE_FINGERPRINT,
+          args: ["-m", "data_agent_sandbox"],
+          cwd: sandboxDirectory,
+          server_environment: {
+            ...process.env,
+            DATA_AGENT_SANDBOX_DSN: sandboxDsn,
+            PYTHONUNBUFFERED: "1",
+          },
+        });
+        let pythonStartCount = 0;
+        let observedPythonOutcome: unknown;
+        let observedPythonError: unknown;
+        const trackedPythonClient = {
+          async start(input: unknown) {
+            pythonStartCount += 1;
+            const handle = await realPythonClient.start(input);
+            return {
+              ...handle,
+              outcome: handle.outcome.then(
+                (outcome) => {
+                  observedPythonOutcome = outcome;
+                  return outcome;
+                },
+                (error: unknown) => {
+                  observedPythonError = error;
+                  throw error;
+                },
+              ),
+            };
+          },
+        };
+        const coordinatedSandbox = createCoordinatedSandboxPort({
+          authority: sandboxAuthority,
+          python: trackedPythonClient,
+          resolve_operation: () => ({
+            sql: {
+              dialect: "postgresql",
+              datasource_id: datasourceId,
+              schema_version: request.schema_version,
+              sql_artifact_hash: sqlArtifactRef.content_hash,
+              query: sqlMaterial.sql,
+              parameters,
+              ordered_parameters: [parameters.$1],
+              query_hash: queryHash,
+            },
+            snapshot: {
+              strategy: "NONE",
+              scope,
+              run_id: runId,
+              principal_id: OWNER_ONE,
+              datasource_id: datasourceId,
+              snapshot_token: null,
+              schema_name: null,
+              schema_manifest_hash: null,
+              data_manifest_hash: null,
+              fixture_manifest_hash: null,
+              relations: [],
+            },
+            settings: {
+              ...settings,
+              idle_in_transaction_session_timeout_ms: 6_000,
+            },
+            budget,
+          }),
+        });
+        const execution = await coordinatedSandbox.execute(request);
+        if (!execution.ok) {
+          if (observedPythonError instanceof Error) {
+            throw observedPythonError;
+          }
+          throw new Error(
+            `${execution.error.code}: ${execution.error.message}; Python outcome=${JSON.stringify(
+              observedPythonOutcome,
+            )}`,
+          );
+        }
+        const authorizedReceipt = execution.value;
+        if (authorizedReceipt.terminal !== "COMPLETED") {
+          throw new Error(`Sandbox completed with ${authorizedReceipt.terminal}.`);
+        }
+        expect(authorizedReceipt).toMatchObject({
+          execution_id: executionId,
+          terminal: "COMPLETED",
+          snapshot_token: null,
+          replay_state: "REPLAY_UNAVAILABLE",
+          transaction: {
+            read_only: true,
+            isolation_level: "REPEATABLE_READ",
+          },
+        });
+        await expect(
+          authorizeSandboxResult(authorizedReceipt.result_artifact_ref, sandboxAuthority),
+        ).resolves.toMatchObject({
+          columns: [{ name: "region", type: "STRING" }],
+          rows: [["south"]],
+          row_count: 1,
+        });
+        expect(pythonStartCount).toBe(1);
+
+        const persisted = await adminPool.query(
+          `select
+           (
+             select count(*)::int
+             from app_data_agent.text2sql_sandbox_claims
+             where run_id = $1 and execution_id = $2 and state = 'COMPLETED'
+           ) as claims,
+           (
+             select count(*)::int
+             from app_data_agent.text2sql_sandbox_execution_events
+             where run_id = $1 and execution_id = $2
+           ) as events,
+           (
+             select count(*)::int
+             from app_data_agent.text2sql_sandbox_execution_records
+             where run_id = $1
+               and execution_id = $2
+               and authority_state_at_record = 'COMPLETED'
+           ) as records,
+           (
+             select count(*)::int
+             from app_data_agent.text2sql_system_artifacts
+             where run_id = $1
+               and artifact_type in ('SandboxResult', 'SandboxExecutionReceipt')
+           ) as system_artifacts,
+           (
+             select count(*)::int
+             from app_data_agent.artifacts
+             where run_id = $1
+               and artifact_type in ('SandboxResult', 'SandboxExecutionReceipt')
+           ) as generic_sandbox_artifacts`,
+          [runId, executionId],
+        );
+        expect(persisted.rows[0]).toEqual({
+          claims: 1,
+          events: 3,
+          records: 1,
+          system_artifacts: 2,
+          generic_sandbox_artifacts: 0,
+        });
+
+        const restartedCapabilityAuthority = createPostgresCapabilityAuthority(
+          adaptPgPool(backendPool),
+        );
+        const restartedCapability = await restartedCapabilityAuthority.resolveForServerContext({
+          deployment_id: DEPLOYMENT_ID,
+          tenant_id: TENANT_ONE,
+          principal_id: OWNER_ONE,
+          access: "WRITE",
+        });
+        if (!restartedCapability.ok) throw new Error(restartedCapability.error.code);
+        const restartedSandboxAuthority = createPostgresText2SqlSandboxAuthority({
+          pool: adaptPgPool(backendPool),
+          authorizer: restartedCapabilityAuthority.authorizer,
+          capability: restartedCapability.value,
+          identity: authorityIdentity,
+          owner_id: "postgres-sandbox-worker-a",
+          snapshot_descriptors: [descriptor],
+          snapshot_relation_manifests: [
+            {
+              snapshot_descriptor_hash: descriptor.descriptor_hash,
+              sealed_schema: null,
+              allowed_relations: [],
+            },
+          ],
+          now: () => new Date(observedAt.getTime() + 100),
+        });
+        const replayPort = createCoordinatedSandboxPort({
+          authority: restartedSandboxAuthority,
+          python: trackedPythonClient,
+          resolve_operation: () => {
+            throw new Error("Replay must not resolve or start another datasource operation.");
+          },
+        });
+        await expect(replayPort.execute(request)).resolves.toEqual({
+          ok: true,
+          value: authorizedReceipt,
+        });
+        expect(pythonStartCount).toBe(1);
+      },
+    );
 
     it("prevents cross-tenant reads and forged capabilities on a privileged pool", async () => {
       const tenantTwo = await authorityOne.resolveForServerContext({

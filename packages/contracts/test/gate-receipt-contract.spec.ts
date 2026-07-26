@@ -46,7 +46,7 @@ function structuralDraft(overrides: Partial<GateReceiptDraft> = {}): GateReceipt
     reason_code: "STRUCTURAL_VERIFIED",
     evidence_refs: [sqlArtifactReference],
     observations: {
-      compiler_version: "postgresql-compiler@1.0.0",
+      compiler_version: "postgresql-compiler@1.1.0",
       ast_hash: hashes.artifact,
       query_hash: hashes.execution,
       parameter_count: 1,
@@ -73,7 +73,7 @@ function passingObservationsFor(gate: Text2SqlGate): object {
       };
     case "STRUCTURAL":
       return {
-        compiler_version: "postgresql-compiler@1.0.0",
+        compiler_version: "postgresql-compiler@1.1.0",
         ast_hash: hashes.artifact,
         query_hash: hashes.execution,
         parameter_count: 1,
@@ -351,7 +351,7 @@ describe("GateReceipt persistence contract", () => {
         verdict: "FAIL",
         reason_code: "STRUCTURAL_NOT_READ_ONLY",
         observations: {
-          compiler_version: "postgresql-compiler@1.0.0",
+          compiler_version: "postgresql-compiler@1.1.0",
           ast_hash: hashes.artifact,
           query_hash: hashes.execution,
           parameter_count: 1,

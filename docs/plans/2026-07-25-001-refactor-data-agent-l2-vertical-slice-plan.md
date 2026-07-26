@@ -583,10 +583,14 @@ flowchart LR
   - `packages/text2sql/src/repair/`
   - `packages/text2sql/src/execution/`
   - `packages/text2sql/test/`
+  - `packages/contracts/src/ports/sandbox.ts`
+  - `packages/platform/src/sandbox/`
+  - `infra/supabase/apps/data-agent/migrations/*_app_data_agent_text2sql_system_store.sql`
   - `services/sandbox/pyproject.toml`
   - `services/sandbox/src/data_agent_sandbox/protocol/`
   - `services/sandbox/src/data_agent_sandbox/sql/`
   - `services/sandbox/tests/test_sql_execution.py`
+  - `scripts/test-sandbox.sh`
   - `tests/fixtures/text2sql/legacy-characterization/`
 - **方法：** 落地 KTD8/KTD10/KTD14；通过 Characterization Fixture 迁移旧 QueryContract、Receipt、Oracle 与 Release Semantic；实现类型化 Logical Plan 与首版 PostgreSQL Dialect Compiler；Grounding 先做 ACL，再做 Join Closure；七道 Gate 分别可观察；Repair 只能保持语义。U5 同时交付最小可运行 SQL Sandbox 与 Snapshot Protocol，U9 只负责生产部署和资源加固，避免 U5/U7 反向依赖最终部署单元。
 - **测试场景：**
@@ -650,6 +654,44 @@ flowchart LR
   并证明全 Snapshot `after = before + exact delta`；Half-open 只改变查询窗口。
   本次只冻结 proof-first 实现合同；真实代码、PG17 Integration、Hosted/Docker/Signed
   Outcome 仍未交付，Release 保持 `HOLD`。
+- **实施进度（2026-07-27，U5 Unit 5 实现关闭）：** RQ091 冻结合同已转成可运行链路。
+  Contracts 提供严格 `ExecutionGrant/Outcome/Claim/Transition` Schema 与
+  `prepare/finalize/fail/cancel` 服务端 Authority API；Platform 提供 PostgreSQL
+  Authority Adapter、三段式 Coordinator、单 Execution 双向 NDJSON Python Client
+  与 PostgreSQL AST 失败关闭门禁。`SqlArtifact` 固定
+  `postgresql-compiler@1.1.0`，所有 SQL Primitive、Operator 与 Cast 都显式限定到
+  `pg_catalog`。执行顺序固定为
+  `Authority Prepare -> Datasource RR/RO Execute -> Authority CAS Finalize`，只声明
+  各本地事务原子、Lease/Fence/CAS 与 Recovery，不声明跨库 exactly-once。
+  Python 在同一个 `REPEATABLE READ READ ONLY` Transaction 内重算完整 manifest、
+  锁定 Relation/OID、原生绑定 `$1…$n`、增量计算精确 Result Bytes，并按固定批次执行
+  Row/Byte/Deadline Cutoff 和 Rollback。Snapshot Manifest 使用真正的 PostgreSQL
+  named server-side cursor，且受独立固定 Runtime Ceiling 约束：最多 256 个
+  Relation、每 Relation 256 列、跨全部 Relation 合计 10,000 行与 64 MiB JCS Digest
+  Material；它与 Request Result Budget 分离，也不是可由调用方放大的签名字段。
+  `NONE` 的 `search_path` 固定为
+  `[pg_catalog]`，`CONTROLLED_REVISION` 固定为 `[sealed_schema,pg_catalog]`。
+  Python 连接成功后、事务开始前通过
+  `data_agent_sandbox_control.datasource_identity` 核对数据库实际
+  `datasource_id/fingerprint`，不信任连接字符串或调用方自报身份。Authority Prepare
+  的重验证时间可以早于 Datasource 实际 `started_at`，但不能晚于它；Permit 仍按实际
+  `started_at` 验证。三个 Mutation 独立从 Baseline clone。
+  PostgreSQL 17 Migration 已交付 append-only System Artifact、可恢复 Claim/Event
+  Projection 和不可变 Execution Record，并以最小角色权限、幂等重放、Cancel CAS、
+  双连接竞态及 Authority 重启重放验证。Lease Recovery 以 PostgreSQL 数据库时钟为
+  权威；Worker 未来时间不能提前抢占。`FAILED/CANCELLED` 与 `COMPLETED` 一样可在
+  Authority 重启后稳定重放，不再次执行 Datasource。
+  真实端到端测试已覆盖
+  `Coordinator -> PostgreSQL Authority -> Python child -> 同一 PostgreSQL Datasource
+  -> 耐久 Receipt/Result -> Authority 重启后 replay`，并断言 replay 不会第二次启动
+  Python。提交前最终 `pnpm test:sandbox` 已通过：Contracts 220/220、Platform Unit
+  185/185、PostgreSQL/Supabase Smoke、Platform Integration 11/11、Worker
+  Integration 9/9、Python PG17 70/70、TypeScript↔Python Process Integration 1/1。
+  U5 实现已经完成；实际 RSS 高水位只作为观测事实，
+  `cgroup_memory_limit_enforced=false` 明确表示当前没有 cgroup 硬隔离。
+  Hosted/Docker OCI、CPU/Memory/Filesystem/Network 硬隔离和签名部署 Outcome 仍由
+  U9 交付；由于尚缺已签名的本地门禁证据，且 U6–U9 尚未完成，Release 必须继续保持
+  `HOLD`。
 
 ### U6. 实现 L2 研究循环与 ReportReady 权威
 

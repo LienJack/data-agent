@@ -6,9 +6,11 @@ describe("platform package public surface", () => {
     expect(Object.keys(platform).sort()).toEqual([
       "PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL",
       "PersistenceBoundaryError",
+      "PythonSqlSandboxProtocolError",
       "adaptPgPool",
       "containsPotentialPlaintextSecret",
       "createCacheNamespace",
+      "createCoordinatedSandboxPort",
       "createPostgresCapabilityAuthority",
       "createPostgresDatasourceEgress",
       "createPostgresRepository",
@@ -16,6 +18,8 @@ describe("platform package public surface", () => {
       "createPostgresRunEventStore",
       "createPostgresRunQueue",
       "createPostgresSecretRefRepository",
+      "createPostgresText2SqlSandboxAuthority",
+      "createPythonSqlSandboxClient",
       "createScopedUpstashCache",
       "createStorageNamespace",
       "withAppTransaction",
@@ -30,5 +34,6 @@ describe("platform package public surface", () => {
     expect(platform).not.toHaveProperty("createDatasourceEgressPolicyRegistry");
     expect(platform).not.toHaveProperty("createUpstashRedisRestClient");
     expect(platform).not.toHaveProperty("createUpstashRedisRestClientFromEnv");
+    expect(platform).not.toHaveProperty("startSingleExecutionNdjsonProcess");
   });
 });

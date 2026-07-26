@@ -689,7 +689,7 @@ async function verifyHalfOpenQueryVariantClosure(
   }
 
   const comparisonPattern =
-    /("(?:[^"]|"")+"\."(?:[^"]|"")+")\s*(>=|<)\s*(\$[1-9][0-9]*)::(?:timestamp|timestamptz)\b/g;
+    /("(?:[^"]|"")+"\."(?:[^"]|"")+")\s*OPERATOR\(pg_catalog\.(>=|<)\)\s*(\$[1-9][0-9]*)::pg_catalog\.(?:timestamp|timestamptz)\b/g;
   const comparisons = [...whole.data.sql.matchAll(comparisonPattern)];
   const lowerCandidates = comparisons.filter(
     ([, , operator, placeholder]) =>

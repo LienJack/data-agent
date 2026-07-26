@@ -119,7 +119,7 @@ function authorizeSandboxRequestForTest(
 }
 
 async function createSandboxAuthorityFixture(
-  options: { readonly resultSchemaVersion?: string } = {},
+  options: { readonly authorityRevalidatedAt?: string; readonly resultSchemaVersion?: string } = {},
 ) {
   const sqlArtifactReference = makeArtifactReference("SqlArtifact");
   const executionPermitReference = makeArtifactReference("ExecutionPermit", ids.decision);
@@ -218,7 +218,7 @@ async function createSandboxAuthorityFixture(
   const authorityRevalidation = {
     effective_principal_id: permit.principal_id,
     policy_receipt_ref: permit.policy_receipt_ref,
-    revalidated_at: "2026-07-25T00:00:00.000Z",
+    revalidated_at: options.authorityRevalidatedAt ?? "2026-07-25T00:00:00.000Z",
     authority_epoch: 7,
   } as const;
 
@@ -280,7 +280,7 @@ async function createSandboxAuthorityFixture(
       artifact_type: "LogicalPlan",
       content_hash: hashes.artifact,
     },
-    compiler_version: "postgresql-compiler@1.0.0",
+    compiler_version: "postgresql-compiler@1.1.0",
     ast_hash: hashes.artifact,
     ...sqlArtifactMaterial,
     query_hash: await sha256ContentHash(sqlArtifactMaterial),
@@ -1147,7 +1147,7 @@ describe("版本化 Adapter Ports", () => {
           payload: {
             ...fixture.request.payload,
             parameters: {
-              tenant_id: ids.tenantB,
+              $1: ids.tenantB,
             },
           },
         },
@@ -1423,6 +1423,34 @@ describe("版本化 Adapter Ports", () => {
     await expect(
       authorizeSandboxExecutionReceipt(schemaDrift.receipt.receipt_ref, schemaDrift.authority),
     ).rejects.toThrow("Schema");
+  });
+
+  it("Sandbox Receipt 接受早于 Datasource Start 的 Authority Prepare，但拒绝晚到的重验证", async () => {
+    const preparedBeforeDatasourceStart = await createSandboxAuthorityFixture({
+      authorityRevalidatedAt: "2026-07-24T23:59:59.999Z",
+    });
+
+    await expect(
+      authorizeSandboxExecutionReceipt(
+        preparedBeforeDatasourceStart.receipt.receipt_ref,
+        preparedBeforeDatasourceStart.authority,
+      ),
+    ).resolves.toMatchObject({
+      started_at: "2026-07-25T00:00:00.000Z",
+      authority_revalidation: {
+        revalidated_at: "2026-07-24T23:59:59.999Z",
+      },
+    });
+
+    const revalidatedAfterDatasourceStart = await createSandboxAuthorityFixture({
+      authorityRevalidatedAt: "2026-07-25T00:00:00.001Z",
+    });
+    await expect(
+      authorizeSandboxExecutionReceipt(
+        revalidatedAfterDatasourceStart.receipt.receipt_ref,
+        revalidatedAfterDatasourceStart.authority,
+      ),
+    ).rejects.toThrow("Authority Prepare 时间");
   });
 
   it("In-Memory Sandbox 并发同键同输入只执行一次并重放同一 Receipt", async () => {

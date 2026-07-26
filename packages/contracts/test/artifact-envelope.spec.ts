@@ -332,7 +332,7 @@ describe("L2 Artifact Schema", () => {
         grounding_hash: hashes.artifact,
       },
       STRUCTURAL: {
-        compiler_version: "postgresql-compiler@1.0.0",
+        compiler_version: "postgresql-compiler@1.1.0",
         ast_hash: hashes.artifact,
         query_hash: hashes.execution,
         parameter_count: 1,
@@ -1525,7 +1525,7 @@ describe("L2 Artifact Schema", () => {
         {
           artifact_type: "SqlArtifact",
           logical_plan_ref: fixture.references.logicalPlan,
-          compiler_version: "postgresql-compiler@1.0.0",
+          compiler_version: "postgresql-compiler@1.1.0",
           ast_hash: hashes.artifact,
           dialect: "postgresql",
           sql: "SELECT SUM(net_revenue) FROM orders",

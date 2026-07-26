@@ -1,0 +1,153 @@
+{
+  "protocol_version": "data-agent-sql-sandbox@1.0.0",
+  "frame_type": "EXECUTE",
+  "grant": {
+    "protocol_version": "sandbox-execution-grant@1.0.0",
+    "identity": {
+      "protocol_version": "sandbox-execution-identity@1.0.0",
+      "scope": {
+        "app_id": "00000000-0000-4000-8000-00000000da01",
+        "tenant_id": "00000000-0000-4000-8000-00000000aa11",
+        "environment": "test"
+      },
+      "scope_hash": "sha256:7bf28470f1f47243a7c14a748fd5879ad52f8bcea2b0c6f333fe01b2715b2c5e",
+      "run_id": "00000000-0000-4000-8000-00000000a101",
+      "execution_id": "00000000-0000-4000-8000-00000000e101",
+      "principal_id": "00000000-0000-4000-8000-000000001001",
+      "idempotency_key": "sandbox-test-execution",
+      "input_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "sql_artifact_ref": {
+        "artifact_id": "00000000-0000-4000-8000-00000000f001",
+        "artifact_type": "SqlArtifact",
+        "app_id": "00000000-0000-4000-8000-00000000da01",
+        "tenant_id": "00000000-0000-4000-8000-00000000aa11",
+        "environment": "test",
+        "run_id": "00000000-0000-4000-8000-00000000a101",
+        "revision": 1,
+        "content_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "execution_permit_ref": {
+        "artifact_id": "00000000-0000-4000-8000-00000000f002",
+        "artifact_type": "ExecutionPermit",
+        "app_id": "00000000-0000-4000-8000-00000000da01",
+        "tenant_id": "00000000-0000-4000-8000-00000000aa11",
+        "environment": "test",
+        "run_id": "00000000-0000-4000-8000-00000000a101",
+        "revision": 1,
+        "content_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      },
+      "execution_permit_expires_at": "2099-07-27T00:05:00.000Z",
+      "resource_admission_ref": {
+        "artifact_id": "00000000-0000-4000-8000-00000000f003",
+        "artifact_type": "ResourceAdmissionReceipt",
+        "app_id": "00000000-0000-4000-8000-00000000da01",
+        "tenant_id": "00000000-0000-4000-8000-00000000aa11",
+        "environment": "test",
+        "run_id": "00000000-0000-4000-8000-00000000a101",
+        "revision": 1,
+        "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "policy_receipt_ref": {
+        "artifact_id": "00000000-0000-4000-8000-00000000f004",
+        "artifact_type": "PolicyReceipt",
+        "app_id": "00000000-0000-4000-8000-00000000da01",
+        "tenant_id": "00000000-0000-4000-8000-00000000aa11",
+        "environment": "test",
+        "run_id": "00000000-0000-4000-8000-00000000a101",
+        "revision": 1,
+        "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+      },
+      "query_hash": "sha256:5b7f5f021948995b279942f7d26ce860bfb367b59639c258931fcdfa0dcda558",
+      "parameters_hash": "sha256:7ecc7d442b4f7257463ef7420150e92505a6709436a26fc9f577121d2f650fac",
+      "ordered_parameters_hash": "sha256:589ffd3acf522ae81192579f297589e93b0c41f748b224d1b4bb5c857a2f70cb",
+      "datasource_id": "00000000-0000-4000-8000-00000000d101",
+      "schema_version": "commerce@1.0.0",
+      "settings_hash": "sha256:b8741a3cbdc9ad5686a85dbecb88daaddf7a96f462796b136c44274659793e0f",
+      "snapshot_requirement": { "mode": "ALLOW_UNAVAILABLE" },
+      "budget": {
+        "timeout_ms": 2000,
+        "lock_timeout_ms": 200,
+        "max_rows": 100,
+        "max_bytes": 65536,
+        "max_memory_mb": 64
+      }
+    },
+    "attempt_id": "00000000-0000-4000-8000-00000000b101",
+    "attempt": 1,
+    "fencing_token": 7,
+    "lease_id": "00000000-0000-4000-8000-00000000ce01",
+    "lease_expires_at": "2099-07-27T00:05:00.000Z",
+    "cancel_epoch": 0,
+    "snapshot_descriptor": {
+      "protocol_version": "postgresql-snapshot@1.0.0",
+      "scope_hash": "sha256:7bf28470f1f47243a7c14a748fd5879ad52f8bcea2b0c6f333fe01b2715b2c5e",
+      "run_id": "00000000-0000-4000-8000-00000000a101",
+      "execution_id": "00000000-0000-4000-8000-00000000e101",
+      "principal_id": "00000000-0000-4000-8000-000000001001",
+      "datasource_id": "00000000-0000-4000-8000-00000000d101",
+      "datasource_fingerprint": "postgresql-test-datasource@1.0.0",
+      "schema_version": "commerce@1.0.0",
+      "strategy": "NONE",
+      "intent": "RESOLVE",
+      "snapshot_token": null,
+      "schema_manifest_hash": null,
+      "data_manifest_hash": null,
+      "fixture_manifest_hash": null,
+      "observed_at": "2099-07-27T00:00:00.000Z",
+      "replay_state": "REPLAY_UNAVAILABLE",
+      "descriptor_hash": "sha256:f0b959abda1323c6d89c4f31e82a769632690293084e92ec8e1ba6d78fee99d8"
+    },
+    "fixture_manifest_hash": null,
+    "budget": {
+      "timeout_ms": 2000,
+      "lock_timeout_ms": 200,
+      "max_rows": 100,
+      "max_bytes": 65536,
+      "max_memory_mb": 64
+    },
+    "issued_at": "2099-07-27T00:00:00.000Z",
+    "grant_hash": "sha256:f7560a28cf9b4098b90ba54fe18b975f46a4728f7a4525c4330dbb91a9cee486"
+  },
+  "sql": {
+    "dialect": "postgresql",
+    "datasource_id": "00000000-0000-4000-8000-00000000d101",
+    "schema_version": "commerce@1.0.0",
+    "sql_artifact_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "query": "select $1::pg_catalog.int4 as result",
+    "parameters": { "$1": 7 },
+    "ordered_parameters": [7],
+    "query_hash": "sha256:5b7f5f021948995b279942f7d26ce860bfb367b59639c258931fcdfa0dcda558"
+  },
+  "snapshot": {
+    "scope": {
+      "app_id": "00000000-0000-4000-8000-00000000da01",
+      "tenant_id": "00000000-0000-4000-8000-00000000aa11",
+      "environment": "test"
+    },
+    "run_id": "00000000-0000-4000-8000-00000000a101",
+    "principal_id": "00000000-0000-4000-8000-000000001001",
+    "datasource_id": "00000000-0000-4000-8000-00000000d101",
+    "strategy": "NONE",
+    "snapshot_token": null,
+    "schema_name": null,
+    "schema_manifest_hash": null,
+    "data_manifest_hash": null,
+    "fixture_manifest_hash": null,
+    "relations": []
+  },
+  "settings": {
+    "database_role": "sandbox_reader",
+    "search_path": ["pg_catalog"],
+    "plan_cache_mode": "force_custom_plan",
+    "statement_timeout_ms": 2000,
+    "lock_timeout_ms": 200,
+    "idle_in_transaction_session_timeout_ms": 3000
+  },
+  "budget": {
+    "timeout_ms": 2000,
+    "lock_timeout_ms": 200,
+    "max_rows": 100,
+    "max_bytes": 65536,
+    "max_memory_mb": 64
+  }
+}

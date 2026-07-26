@@ -767,15 +767,15 @@ export async function createAuthoritativeReadyFixture(
   const sqlPayload = {
     artifact_type: "SqlArtifact" as const,
     logical_plan_ref: logicalPlan.reference,
-    compiler_version: "postgresql-compiler@1.0.0",
+    compiler_version: "postgresql-compiler@1.1.0",
     ast_hash: hashes.artifact,
     dialect: "postgresql" as const,
     sql: [
       'SELECT "orders"."region" AS "dimension.region",',
-      '       SUM("orders"."net_revenue") AS "metric.net_revenue"',
+      '       pg_catalog.SUM("orders"."net_revenue") AS "metric.net_revenue"',
       'FROM "orders"',
-      'WHERE "orders"."created_at" >= $1::timestamptz',
-      '  AND "orders"."created_at" < $2::timestamptz',
+      'WHERE "orders"."created_at" OPERATOR(pg_catalog.>=) $1::pg_catalog.timestamptz',
+      '  AND "orders"."created_at" OPERATOR(pg_catalog.<) $2::pg_catalog.timestamptz',
       'GROUP BY "orders"."region"',
     ].join("\n"),
     parameters: {
@@ -907,7 +907,7 @@ export async function createAuthoritativeReadyFixture(
       "STRUCTURAL",
       authorityIds.structuralGate,
       {
-        compiler_version: "postgresql-compiler@1.0.0",
+        compiler_version: "postgresql-compiler@1.1.0",
         ast_hash: sqlPayload.ast_hash,
         query_hash: queryHash,
         parameter_count: Object.keys(sqlPayload.parameters).length,

@@ -257,8 +257,8 @@ function makeSandboxRequest(input?: {
         mode: "REQUIRE_REPLAYABLE",
       },
       parameters: input?.parameters ?? {
-        limit: 10,
-        region: "south",
+        $1: "south",
+        $2: 10,
       },
     },
     budget: sandboxBudget,
@@ -522,8 +522,8 @@ export const PORT_CONFORMANCE_CASES: readonly PortConformanceCase[] = Object.fre
 
     const reorderedRequest = makeSandboxRequest({
       parameters: {
-        region: "south",
-        limit: 10,
+        $2: 10,
+        $1: "south",
       },
     });
     assertPortValue(
@@ -548,8 +548,8 @@ export const PORT_CONFORMANCE_CASES: readonly PortConformanceCase[] = Object.fre
           execution_id: ids.executionB,
           idempotency_key: "sandbox-parameter-tamper",
           parameters: {
-            limit: 11,
-            region: "south",
+            $1: "south",
+            $2: 11,
           },
         }),
       ),
