@@ -1,0 +1,31 @@
+{
+  "schema_version": "data-agent-release-semantics/v1",
+  "cases": [
+    {
+      "case_id": "sanitized-only",
+      "evidence_kind": "synthetic",
+      "expected_decision": "HOLD"
+    },
+    {
+      "case_id": "mixed-version",
+      "evidence_kind": "real",
+      "version_tuple_consistent": false,
+      "expected_decision": "HOLD"
+    },
+    {
+      "case_id": "verified-paired-real-outcome",
+      "evidence_kind": "real",
+      "version_tuple_consistent": true,
+      "paired_outcome_verified": true,
+      "safety_counter": 0,
+      "expected_decision": "GO_ELIGIBLE"
+    },
+    {
+      "case_id": "safety-regression",
+      "evidence_kind": "real",
+      "safety_counter": 1,
+      "expected_decision": "NO_GO_OR_ROLLBACK"
+    }
+  ],
+  "public_projection_forbidden_fields": ["setup_sql", "expected_rows", "external_root_path"]
+}

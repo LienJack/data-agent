@@ -10,6 +10,8 @@ export const L2_ARTIFACT_TYPES = [
   "SemanticQuery",
   "LogicalPlan",
   "SqlArtifact",
+  "GateReceipt",
+  "ExecutionPermit",
   "ValidationReceipt",
   "ExecutionReceipt",
   "QueryEvidence",

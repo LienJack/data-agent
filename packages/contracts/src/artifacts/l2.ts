@@ -93,7 +93,7 @@ const evidencePlanSchema = z
     }
   });
 
-const queryContractSchema = z.strictObject({
+export const queryContractSchema = z.strictObject({
   artifact_type: z.literal("QueryContract"),
   evidence_plan_ref: artifactReferenceFor("EvidencePlan"),
   metric: versionIdentifierSchema,
@@ -119,7 +119,7 @@ const queryContractSchema = z.strictObject({
   }),
 });
 
-const groundingPackageSchema = z.strictObject({
+export const groundingPackageSchema = z.strictObject({
   artifact_type: z.literal("GroundingPackage"),
   query_contract_ref: artifactReferenceFor("QueryContract"),
   semantic_release: versionIdentifierSchema,
@@ -133,7 +133,7 @@ const groundingPackageSchema = z.strictObject({
   ),
 });
 
-const semanticQuerySchema = z.strictObject({
+export const semanticQuerySchema = z.strictObject({
   artifact_type: z.literal("SemanticQuery"),
   query_contract_ref: artifactReferenceFor("QueryContract"),
   grounding_package_ref: artifactReferenceFor("GroundingPackage"),
@@ -208,13 +208,13 @@ const logicalOperationSchema = z.discriminatedUnion("operation", [
   }),
 ]);
 
-const logicalPlanSchema = z.strictObject({
+export const logicalPlanSchema = z.strictObject({
   artifact_type: z.literal("LogicalPlan"),
   semantic_query_ref: artifactReferenceFor("SemanticQuery"),
   operations: z.array(logicalOperationSchema).min(1),
 });
 
-const sqlArtifactSchema = z.strictObject({
+export const sqlArtifactSchema = z.strictObject({
   artifact_type: z.literal("SqlArtifact"),
   logical_plan_ref: artifactReferenceFor("LogicalPlan"),
   dialect: z.literal("postgresql"),
@@ -233,54 +233,126 @@ export const TEXT2SQL_GATES = [
   "RESULT",
 ] as const;
 
-const validationReceiptSchema = z
+export const TEXT2SQL_PRE_EXECUTION_GATES = [
+  "INTENT",
+  "SEMANTIC",
+  "STRUCTURAL",
+  "POLICY",
+  "RESOURCE",
+] as const;
+
+const gateVerdictSchema = z.enum(["PASS", "FAIL", "UNAVAILABLE"]);
+
+export const gateReceiptSchema = z
   .strictObject({
-    artifact_type: z.literal("ValidationReceipt"),
+    artifact_type: z.literal("GateReceipt"),
     sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
-    gates: z.array(
-      z.strictObject({
-        gate: z.enum(TEXT2SQL_GATES),
-        verdict: z.enum(["PASS", "FAIL"]),
-        reason_code: z
-          .string()
-          .min(1)
-          .max(128)
-          .regex(/^[A-Z][A-Z0-9_]*$/),
-      }),
-    ),
+    execution_receipt_ref: artifactReferenceFor("ExecutionReceipt").nullable(),
+    gate: z.enum(TEXT2SQL_GATES),
+    gate_version: versionIdentifierSchema,
+    verdict: gateVerdictSchema,
+    reason_code: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Z][A-Z0-9_]*$/),
+    evidence_refs: z.array(artifactReferenceSchema).min(1),
+    evaluated_at: timestampSchema,
   })
   .superRefine((receipt, ctx) => {
-    const observed = new Set(receipt.gates.map(({ gate }) => gate));
-    if (
-      receipt.gates.length !== TEXT2SQL_GATES.length ||
-      observed.size !== TEXT2SQL_GATES.length ||
-      TEXT2SQL_GATES.some((gate) => !observed.has(gate))
-    ) {
+    const executionBound = receipt.execution_receipt_ref !== null;
+    const requiresExecution = receipt.gate === "EXECUTION" || receipt.gate === "RESULT";
+    if (executionBound !== requiresExecution) {
       ctx.addIssue({
         code: "custom",
-        message: "ValidationReceipt 必须且只能包含七道当前 Gate。",
-        path: ["gates"],
+        message: requiresExecution
+          ? "EXECUTION/RESULT GateReceipt 必须绑定真实 ExecutionReceipt。"
+          : "执行前 GateReceipt 不能绑定尚未发生的 ExecutionReceipt。",
+        path: ["execution_receipt_ref"],
       });
     }
   });
 
-const executionReceiptSchema = z.strictObject({
-  artifact_type: z.literal("ExecutionReceipt"),
-  sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
-  validation_receipt_ref: artifactReferenceFor("ValidationReceipt"),
-  datasource_id: immutableIdSchema,
-  schema_version: versionIdentifierSchema,
-  snapshot_token: versionIdentifierSchema.nullable(),
-  watermark: versionIdentifierSchema.nullable(),
-  observed_at: timestampSchema,
-  query_hash: contentHashSchema,
-  replay_state: z.enum(["REPLAYABLE", "LIMITED", "REPLAY_UNAVAILABLE"]),
-  row_count: z.number().int().nonnegative(),
-});
+export const executionPermitSchema = z
+  .strictObject({
+    artifact_type: z.literal("ExecutionPermit"),
+    sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
+    gate_receipt_refs: z.array(artifactReferenceFor("GateReceipt")).length(5),
+    budget: z.strictObject({
+      timeout_ms: z.number().int().positive().max(300_000),
+      max_rows: z.number().int().positive().max(100_000),
+      max_bytes: z.number().int().positive().max(100_000_000),
+    }),
+    expires_at: timestampSchema,
+  })
+  .superRefine((permit, ctx) => {
+    const observed = new Set(permit.gate_receipt_refs.map(artifactReferenceIdentity));
+    if (observed.size !== permit.gate_receipt_refs.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "ExecutionPermit 不能重复消费同一个 GateReceipt。",
+        path: ["gate_receipt_refs"],
+      });
+    }
+  });
 
-const queryEvidenceSchema = z.strictObject({
+export const executionReceiptSchema = z
+  .strictObject({
+    artifact_type: z.literal("ExecutionReceipt"),
+    sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
+    execution_permit_ref: artifactReferenceFor("ExecutionPermit"),
+    sandbox_execution_receipt_ref: artifactReferenceFor("SandboxExecutionReceipt"),
+    datasource_id: immutableIdSchema,
+    schema_version: versionIdentifierSchema,
+    snapshot_token: versionIdentifierSchema.nullable(),
+    watermark: versionIdentifierSchema.nullable(),
+    observed_at: timestampSchema,
+    query_hash: contentHashSchema,
+    result_hash: contentHashSchema,
+    replay_state: z.enum(["REPLAYABLE", "LIMITED", "REPLAY_UNAVAILABLE"]),
+    row_count: z.number().int().nonnegative(),
+  })
+  .superRefine((receipt, ctx) => {
+    if (receipt.replay_state === "REPLAYABLE" && receipt.snapshot_token === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "REPLAYABLE ExecutionReceipt 必须绑定 Snapshot Token。",
+        path: ["snapshot_token"],
+      });
+    }
+    if (receipt.replay_state === "LIMITED" && receipt.watermark === null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "LIMITED ExecutionReceipt 必须绑定 Watermark。",
+        path: ["watermark"],
+      });
+    }
+  });
+
+export const validationReceiptSchema = z
+  .strictObject({
+    artifact_type: z.literal("ValidationReceipt"),
+    sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
+    execution_receipt_ref: artifactReferenceFor("ExecutionReceipt"),
+    gate_receipt_refs: z.array(artifactReferenceFor("GateReceipt")).length(7),
+    validation_version: versionIdentifierSchema,
+    sealed_at: timestampSchema,
+  })
+  .superRefine((receipt, ctx) => {
+    const observed = new Set(receipt.gate_receipt_refs.map(artifactReferenceIdentity));
+    if (observed.size !== receipt.gate_receipt_refs.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "ValidationReceipt 不能重复消费同一个 GateReceipt。",
+        path: ["gate_receipt_refs"],
+      });
+    }
+  });
+
+export const queryEvidenceSchema = z.strictObject({
   artifact_type: z.literal("QueryEvidence"),
   execution_receipt_ref: artifactReferenceFor("ExecutionReceipt"),
+  validation_receipt_ref: artifactReferenceFor("ValidationReceipt"),
   result_hash: contentHashSchema,
   invariant_verdicts: z
     .array(
@@ -368,8 +440,10 @@ export const l2ArtifactPayloadSchema = z.discriminatedUnion("artifact_type", [
   semanticQuerySchema,
   logicalPlanSchema,
   sqlArtifactSchema,
-  validationReceiptSchema,
+  gateReceiptSchema,
+  executionPermitSchema,
   executionReceiptSchema,
+  validationReceiptSchema,
   queryEvidenceSchema,
   atomicClaimSchema,
   evidenceRelationSchema,
@@ -380,6 +454,16 @@ export const l2ArtifactPayloadSchema = z.discriminatedUnion("artifact_type", [
 type L2ArtifactPayload = z.infer<typeof l2ArtifactPayloadSchema>;
 
 type SqlArtifactPayload = Extract<L2ArtifactPayload, { artifact_type: "SqlArtifact" }>;
+export type QueryContractPayload = z.infer<typeof queryContractSchema>;
+export type GroundingPackagePayload = z.infer<typeof groundingPackageSchema>;
+export type SemanticQueryPayload = z.infer<typeof semanticQuerySchema>;
+export type LogicalPlanPayload = z.infer<typeof logicalPlanSchema>;
+export type SqlArtifactPayloadContract = z.infer<typeof sqlArtifactSchema>;
+export type GateReceiptPayload = z.infer<typeof gateReceiptSchema>;
+export type ExecutionPermitPayload = z.infer<typeof executionPermitSchema>;
+export type ExecutionReceiptPayload = z.infer<typeof executionReceiptSchema>;
+export type ValidationReceiptPayload = z.infer<typeof validationReceiptSchema>;
+export type QueryEvidencePayload = z.infer<typeof queryEvidenceSchema>;
 
 export async function computeSqlArtifactQueryHash(
   sqlArtifact: Pick<SqlArtifactPayload, "dialect" | "sql" | "parameters">,
@@ -409,12 +493,28 @@ function payloadArtifactReferences(payload: L2ArtifactPayload): ArtifactReferenc
       return [payload.semantic_query_ref];
     case "SqlArtifact":
       return [payload.logical_plan_ref];
-    case "ValidationReceipt":
-      return [payload.sql_artifact_ref];
+    case "GateReceipt":
+      return [
+        payload.sql_artifact_ref,
+        ...(payload.execution_receipt_ref ? [payload.execution_receipt_ref] : []),
+        ...payload.evidence_refs,
+      ];
+    case "ExecutionPermit":
+      return [payload.sql_artifact_ref, ...payload.gate_receipt_refs];
     case "ExecutionReceipt":
-      return [payload.sql_artifact_ref, payload.validation_receipt_ref];
+      return [
+        payload.sql_artifact_ref,
+        payload.execution_permit_ref,
+        payload.sandbox_execution_receipt_ref,
+      ];
+    case "ValidationReceipt":
+      return [
+        payload.sql_artifact_ref,
+        payload.execution_receipt_ref,
+        ...payload.gate_receipt_refs,
+      ];
     case "QueryEvidence":
-      return [payload.execution_receipt_ref];
+      return [payload.execution_receipt_ref, payload.validation_receipt_ref];
     case "AtomicClaim":
       return payload.evidence_refs;
     case "EvidenceRelation":
@@ -569,16 +669,6 @@ function requireArtifactType<T extends L2ArtifactPayload["artifact_type"]>(
   return document.payload as Extract<L2ArtifactPayload, { artifact_type: T }>;
 }
 
-function requirePassingValidationReceipt(
-  receipt: Extract<L2ArtifactPayload, { artifact_type: "ValidationReceipt" }>,
-): void {
-  if (receipt.gates.some(({ verdict }) => verdict !== "PASS")) {
-    throw new ArtifactSemanticAuthorityError(
-      "ExecutionReceipt 只能消费七道 Gate 全部 PASS 的验证单。",
-    );
-  }
-}
-
 async function requirePassingEvidence(
   evidenceReference: ArtifactReference,
   authority: L2ArtifactAuthorityContext,
@@ -593,11 +683,7 @@ async function requirePassingEvidence(
     );
   }
 
-  const execution = requireArtifactType(
-    await resolveAuthoritativeL2(evidence.execution_receipt_ref, authority),
-    "ExecutionReceipt",
-  );
-  await verifyExecutionReceiptSemantics(execution, authority);
+  await verifyQueryEvidenceSemantics(evidence, authority);
 }
 
 function requireSameReference(
@@ -678,23 +764,87 @@ async function verifySqlArtifactLineage(
   return verifySemanticQueryLineage(semanticQuery, authority);
 }
 
+async function verifyGateReceiptSemantics(
+  gateReceipt: GateReceiptPayload,
+  authority: L2ArtifactAuthorityContext,
+): Promise<SqlArtifactPayload> {
+  const sqlArtifact = requireArtifactType(
+    await resolveAuthoritativeL2(gateReceipt.sql_artifact_ref, authority),
+    "SqlArtifact",
+  );
+  await verifySqlArtifactLineage(sqlArtifact, authority);
+  if (gateReceipt.execution_receipt_ref) {
+    const execution = requireArtifactType(
+      await resolveAuthoritativeL2(gateReceipt.execution_receipt_ref, authority),
+      "ExecutionReceipt",
+    );
+    await verifyExecutionReceiptSemantics(execution, authority);
+    requireSameReference(
+      execution.sql_artifact_ref,
+      gateReceipt.sql_artifact_ref,
+      `${gateReceipt.gate} GateReceipt 与 ExecutionReceipt 必须绑定同一 SqlArtifact。`,
+    );
+  }
+  return sqlArtifact;
+}
+
+async function verifyExecutionPermitSemantics(
+  permit: ExecutionPermitPayload,
+  authority: L2ArtifactAuthorityContext,
+): Promise<SqlArtifactPayload> {
+  const sqlArtifact = requireArtifactType(
+    await resolveAuthoritativeL2(permit.sql_artifact_ref, authority),
+    "SqlArtifact",
+  );
+  await verifySqlArtifactLineage(sqlArtifact, authority);
+  const gateReceipts = await Promise.all(
+    permit.gate_receipt_refs.map(async (reference) => {
+      const receipt = requireArtifactType(
+        await resolveAuthoritativeL2(reference, authority),
+        "GateReceipt",
+      );
+      await verifyGateReceiptSemantics(receipt, authority);
+      return receipt;
+    }),
+  );
+  const observedGates = new Set(gateReceipts.map(({ gate }) => gate));
+  if (
+    gateReceipts.length !== TEXT2SQL_PRE_EXECUTION_GATES.length ||
+    observedGates.size !== TEXT2SQL_PRE_EXECUTION_GATES.length ||
+    TEXT2SQL_PRE_EXECUTION_GATES.some((gate) => !observedGates.has(gate))
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ExecutionPermit 必须且只能消费五道执行前 GateReceipt。",
+    );
+  }
+  for (const receipt of gateReceipts) {
+    requireSameReference(
+      receipt.sql_artifact_ref,
+      permit.sql_artifact_ref,
+      "ExecutionPermit 的全部 GateReceipt 必须绑定同一 SqlArtifact。",
+    );
+    if (receipt.verdict !== "PASS") {
+      throw new ArtifactSemanticAuthorityError(
+        "ExecutionPermit 只能消费五道全部 PASS 的执行前 GateReceipt。",
+      );
+    }
+  }
+  return sqlArtifact;
+}
+
 async function verifyExecutionReceiptSemantics(
-  execution: Extract<L2ArtifactPayload, { artifact_type: "ExecutionReceipt" }>,
+  execution: ExecutionReceiptPayload,
   authority: L2ArtifactAuthorityContext,
 ): Promise<void> {
-  const validation = requireArtifactType(
-    await resolveAuthoritativeL2(execution.validation_receipt_ref, authority),
-    "ValidationReceipt",
+  const permit = requireArtifactType(
+    await resolveAuthoritativeL2(execution.execution_permit_ref, authority),
+    "ExecutionPermit",
   );
-  requirePassingValidationReceipt(validation);
+  const sqlArtifact = await verifyExecutionPermitSemantics(permit, authority);
   requireSameReference(
-    validation.sql_artifact_ref,
+    permit.sql_artifact_ref,
     execution.sql_artifact_ref,
-    "ExecutionReceipt 与 ValidationReceipt 必须绑定同一 SqlArtifact。",
-  );
-  const sqlArtifact = requireArtifactType(
-    await resolveAuthoritativeL2(execution.sql_artifact_ref, authority),
-    "SqlArtifact",
+    "ExecutionReceipt 与 ExecutionPermit 必须绑定同一 SqlArtifact。",
   );
   const queryContract = await verifySqlArtifactLineage(sqlArtifact, authority);
   if (execution.query_hash !== sqlArtifact.query_hash) {
@@ -705,6 +855,86 @@ async function verifyExecutionReceiptSemantics(
   if (execution.datasource_id !== queryContract.datasource_id) {
     throw new ArtifactSemanticAuthorityError(
       "ExecutionReceipt.datasource_id 必须与上游 QueryContract.datasource_id 一致。",
+    );
+  }
+}
+
+async function verifyValidationReceiptSemantics(
+  validation: ValidationReceiptPayload,
+  authority: L2ArtifactAuthorityContext,
+): Promise<ExecutionReceiptPayload> {
+  const execution = requireArtifactType(
+    await resolveAuthoritativeL2(validation.execution_receipt_ref, authority),
+    "ExecutionReceipt",
+  );
+  await verifyExecutionReceiptSemantics(execution, authority);
+  requireSameReference(
+    execution.sql_artifact_ref,
+    validation.sql_artifact_ref,
+    "ValidationReceipt 与 ExecutionReceipt 必须绑定同一 SqlArtifact。",
+  );
+  const gateReceipts = await Promise.all(
+    validation.gate_receipt_refs.map(async (reference) => {
+      const receipt = requireArtifactType(
+        await resolveAuthoritativeL2(reference, authority),
+        "GateReceipt",
+      );
+      await verifyGateReceiptSemantics(receipt, authority);
+      return receipt;
+    }),
+  );
+  const observedGates = new Set(gateReceipts.map(({ gate }) => gate));
+  if (
+    gateReceipts.length !== TEXT2SQL_GATES.length ||
+    observedGates.size !== TEXT2SQL_GATES.length ||
+    TEXT2SQL_GATES.some((gate) => !observedGates.has(gate))
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ValidationReceipt 必须且只能消费七道当前 GateReceipt。",
+    );
+  }
+  for (const receipt of gateReceipts) {
+    requireSameReference(
+      receipt.sql_artifact_ref,
+      validation.sql_artifact_ref,
+      "ValidationReceipt 的全部 GateReceipt 必须绑定同一 SqlArtifact。",
+    );
+    if (receipt.verdict !== "PASS") {
+      throw new ArtifactSemanticAuthorityError(
+        "ValidationReceipt 只能在七道 Gate 全部 PASS 后封口。",
+      );
+    }
+    if (
+      (receipt.gate === "EXECUTION" || receipt.gate === "RESULT") &&
+      receipt.execution_receipt_ref &&
+      artifactReferenceIdentity(receipt.execution_receipt_ref) !==
+        artifactReferenceIdentity(validation.execution_receipt_ref)
+    ) {
+      throw new ArtifactSemanticAuthorityError(
+        `${receipt.gate} GateReceipt 必须绑定当前 ValidationReceipt 的 ExecutionReceipt。`,
+      );
+    }
+  }
+  return execution;
+}
+
+async function verifyQueryEvidenceSemantics(
+  evidence: QueryEvidencePayload,
+  authority: L2ArtifactAuthorityContext,
+): Promise<void> {
+  const validation = requireArtifactType(
+    await resolveAuthoritativeL2(evidence.validation_receipt_ref, authority),
+    "ValidationReceipt",
+  );
+  const execution = await verifyValidationReceiptSemantics(validation, authority);
+  requireSameReference(
+    validation.execution_receipt_ref,
+    evidence.execution_receipt_ref,
+    "QueryEvidence 与 ValidationReceipt 必须绑定同一 ExecutionReceipt。",
+  );
+  if (evidence.result_hash !== execution.result_hash) {
+    throw new ArtifactSemanticAuthorityError(
+      "QueryEvidence.result_hash 必须与 ExecutionReceipt.result_hash 一致。",
     );
   }
 }
@@ -753,26 +983,20 @@ async function verifyArtifactSuccessSemantics(
     case "SqlArtifact":
       await verifySqlArtifactLineage(document.payload, authority);
       return;
-    case "ValidationReceipt":
-      await verifySqlArtifactLineage(
-        requireArtifactType(
-          await resolveAuthoritativeL2(document.payload.sql_artifact_ref, authority),
-          "SqlArtifact",
-        ),
-        authority,
-      );
+    case "GateReceipt":
+      await verifyGateReceiptSemantics(document.payload, authority);
+      return;
+    case "ExecutionPermit":
+      await verifyExecutionPermitSemantics(document.payload, authority);
       return;
     case "ExecutionReceipt":
       await verifyExecutionReceiptSemantics(document.payload, authority);
       return;
+    case "ValidationReceipt":
+      await verifyValidationReceiptSemantics(document.payload, authority);
+      return;
     case "QueryEvidence":
-      await verifyExecutionReceiptSemantics(
-        requireArtifactType(
-          await resolveAuthoritativeL2(document.payload.execution_receipt_ref, authority),
-          "ExecutionReceipt",
-        ),
-        authority,
-      );
+      await verifyQueryEvidenceSemantics(document.payload, authority);
       return;
     case "AtomicClaim": {
       if (document.payload.support_state === "SUPPORTED") {

@@ -412,26 +412,34 @@ describe("PostgreSQL authoritative repository", () => {
       revision: 1,
       content_hash: `sha256:${"b".repeat(64)}`,
     };
-    const validationReference = {
+    const executionPermitReference = {
       ...sqlReference,
       artifact_id: "00000000-0000-4000-8000-000000000712",
-      artifact_type: "ValidationReceipt",
+      artifact_type: "ExecutionPermit",
       content_hash: `sha256:${"c".repeat(64)}`,
+    };
+    const sandboxReceiptReference = {
+      ...sqlReference,
+      artifact_id: "00000000-0000-4000-8000-000000000715",
+      artifact_type: "SandboxExecutionReceipt",
+      content_hash: `sha256:${"e".repeat(64)}`,
     };
     const document = await committedDocument({
       artifact_id: "00000000-0000-4000-8000-000000000713",
       artifact_type: "ExecutionReceipt",
-      input_refs: [sqlReference, validationReference],
+      input_refs: [sqlReference, executionPermitReference, sandboxReceiptReference],
       payload: {
         artifact_type: "ExecutionReceipt",
         sql_artifact_ref: sqlReference,
-        validation_receipt_ref: validationReference,
+        execution_permit_ref: executionPermitReference,
+        sandbox_execution_receipt_ref: sandboxReceiptReference,
         datasource_id: "00000000-0000-4000-8000-000000000714",
         schema_version: "schema-1",
         snapshot_token: "snapshot-1",
         watermark: "watermark-1",
         observed_at: "2026-07-25T00:00:00.000Z",
         query_hash: `sha256:${"d".repeat(64)}`,
+        result_hash: `sha256:${"f".repeat(64)}`,
         replay_state: "REPLAYABLE",
         row_count: 3,
       },

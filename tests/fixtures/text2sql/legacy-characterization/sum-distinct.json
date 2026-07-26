@@ -1,0 +1,32 @@
+{
+  "schema_version": "data-agent-text2sql-case/v1",
+  "case_id": "ae1-sum-distinct",
+  "question": "支付表中的总支付金额是多少？",
+  "semantic_intent": {
+    "metric": "total_payment_amount",
+    "aggregation": "sum",
+    "unit": "CNY",
+    "grain": "payment"
+  },
+  "baseline_sql": "SELECT SUM(amount) AS total_amount FROM payments",
+  "mutant_sql": "SELECT SUM(DISTINCT amount) AS total_amount FROM payments",
+  "oracle": {
+    "kind": "golden_result",
+    "mandatory": true,
+    "ordered": false
+  },
+  "fixtures": [
+    {
+      "fixture_id": "unique-amounts",
+      "rows": [{ "amount": 10 }, { "amount": 20 }],
+      "expected_rows": [{ "total_amount": 30 }],
+      "mutant_detected": false
+    },
+    {
+      "fixture_id": "duplicate-amounts",
+      "rows": [{ "amount": 10 }, { "amount": 10 }, { "amount": 20 }],
+      "expected_rows": [{ "total_amount": 40 }],
+      "mutant_detected": true
+    }
+  ]
+}

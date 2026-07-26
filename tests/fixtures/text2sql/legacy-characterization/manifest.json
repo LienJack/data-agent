@@ -1,0 +1,46 @@
+{
+  "schema_version": "data-agent-legacy-characterization/v1",
+  "source": {
+    "repository": "text2sql",
+    "commit": "c36aca8977697ce7d7a67cbea8e77d67aee1676b"
+  },
+  "assets": [
+    {
+      "id": "query-contract",
+      "source_path": "packages/shared-types/src/api.ts",
+      "source_sha256": "f1bc4f55ec82dad5419385d56b690598befcba96af5a27883f6a56e2ec1fe19e",
+      "local_fixture": "query-contract.json",
+      "disposition": "tightened"
+    },
+    {
+      "id": "sum-distinct",
+      "source_path": "apps/backend/test/fixtures/text2sql-accuracy/sanitized-reference-slice.json",
+      "source_sha256": "31c36a1eb99cb07ac0caa7cf8b47d216aa760d8f46f4a441a01d82995e62ba33",
+      "local_fixture": "sum-distinct.json",
+      "disposition": "tightened"
+    },
+    {
+      "id": "gate-sealing",
+      "source_path": "apps/backend/test/unit/text2sql-accuracy-contract.spec.ts",
+      "source_sha256": "9e6dbb3cc8ede7862cb714f30aeee6cb7bfe26967bc50d456a28f9454a6e8f52",
+      "local_fixture": "gate-sealing.json",
+      "disposition": "preserved"
+    },
+    {
+      "id": "semantic-ambiguity",
+      "source_path": "apps/backend/test/unit/text2sql-v2-semantic-plan.spec.ts",
+      "source_sha256": "224194edb7f2779f0bcbc15f133a91e5f9fded3999a1db9b1cd6c3d28a8740ff",
+      "local_fixture": "semantic-ambiguity.json",
+      "disposition": "tightened"
+    },
+    {
+      "id": "release-semantics",
+      "source_path": "apps/backend/test/unit/text2sql-accuracy-evaluation.spec.ts",
+      "source_sha256": "218be861a46a4b2b26b30438accda75694ec6064d485865a81ce2f7d03a017ce",
+      "local_fixture": "release-semantics.json",
+      "disposition": "preserved"
+    }
+  ],
+  "rejected_framework_shapes": ["langgraph-stage", "nestjs-module", "sync-stream-run-view"],
+  "new_u5_coverage": ["fan-out", "null-semantics", "half-open-time-boundary"]
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": "data-agent-gate-sealing/v1",
+  "legacy_gate_mapping": {
+    "intent": "INTENT",
+    "semantic": "SEMANTIC",
+    "structural": "STRUCTURAL",
+    "policy": "POLICY",
+    "resource": "RESOURCE",
+    "sandbox": "EXECUTION",
+    "result": "RESULT"
+  },
+  "pre_execution_gates": ["INTENT", "SEMANTIC", "STRUCTURAL", "POLICY", "RESOURCE"],
+  "sequence": [
+    "GateReceipt",
+    "ExecutionPermit",
+    "SandboxExecutionReceipt",
+    "ExecutionReceipt",
+    "GateReceipt:EXECUTION",
+    "GateReceipt:RESULT",
+    "ValidationReceipt",
+    "QueryEvidence"
+  ],
+  "invariants": [
+    "missing-gate-denies-permit",
+    "non-pass-gate-denies-permit",
+    "sql-hash-change-invalidates-permit",
+    "execution-and-result-bind-the-same-execution",
+    "final-validation-requires-seven-pass-receipts"
+  ]
+}

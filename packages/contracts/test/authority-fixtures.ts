@@ -22,6 +22,15 @@ const authorityIds = {
   semanticQuery: "00000000-0000-4000-8000-000000000117",
   logicalPlan: "00000000-0000-4000-8000-000000000118",
   sqlArtifact: "00000000-0000-4000-8000-000000000119",
+  intentGate: "00000000-0000-4000-8000-000000000121",
+  semanticGate: "00000000-0000-4000-8000-000000000122",
+  structuralGate: "00000000-0000-4000-8000-000000000123",
+  policyGate: "00000000-0000-4000-8000-000000000124",
+  resourceGate: "00000000-0000-4000-8000-000000000125",
+  executionPermit: "00000000-0000-4000-8000-000000000126",
+  sandboxReceipt: "00000000-0000-4000-8000-000000000127",
+  executionGate: "00000000-0000-4000-8000-000000000128",
+  resultGate: "00000000-0000-4000-8000-000000000129",
   validation: "00000000-0000-4000-8000-000000000101",
   execution: "00000000-0000-4000-8000-000000000102",
   evidence: "00000000-0000-4000-8000-000000000103",
@@ -242,46 +251,125 @@ export async function createAuthoritativeReadyFixture() {
       query_hash: queryHash,
     },
   );
-  const validation = await commit(
-    "ValidationReceipt",
-    authorityIds.validation,
-    [sqlArtifact.reference],
+  const preExecutionGateInputs = [
+    ["INTENT", authorityIds.intentGate],
+    ["SEMANTIC", authorityIds.semanticGate],
+    ["STRUCTURAL", authorityIds.structuralGate],
+    ["POLICY", authorityIds.policyGate],
+    ["RESOURCE", authorityIds.resourceGate],
+  ] as const;
+  const preExecutionGates = await Promise.all(
+    preExecutionGateInputs.map(([gate, artifactId]) =>
+      commit("GateReceipt", artifactId, [sqlArtifact.reference], {
+        artifact_type: "GateReceipt",
+        sql_artifact_ref: sqlArtifact.reference,
+        execution_receipt_ref: null,
+        gate,
+        gate_version: "text2sql-gates@1.0.0",
+        verdict: "PASS",
+        reason_code: `${gate}_PASSED`,
+        evidence_refs: [sqlArtifact.reference],
+        evaluated_at: "2026-07-25T00:00:00.000Z",
+      }),
+    ),
+  );
+  const executionPermit = await commit(
+    "ExecutionPermit",
+    authorityIds.executionPermit,
+    [sqlArtifact.reference, ...preExecutionGates.map(({ reference }) => reference)],
     {
-      artifact_type: "ValidationReceipt",
+      artifact_type: "ExecutionPermit",
       sql_artifact_ref: sqlArtifact.reference,
-      gates: ["INTENT", "SEMANTIC", "STRUCTURAL", "POLICY", "RESOURCE", "EXECUTION", "RESULT"].map(
-        (gate) => ({
-          gate,
-          verdict: "PASS",
-          reason_code: "VALIDATION_PASSED",
-        }),
-      ),
+      gate_receipt_refs: preExecutionGates.map(({ reference }) => reference),
+      budget: {
+        timeout_ms: 5_000,
+        max_rows: 1_000,
+        max_bytes: 1_000_000,
+      },
+      expires_at: "2026-07-25T00:05:00.000Z",
     },
   );
+  const sandboxReceiptReference: ArtifactReference = {
+    artifact_id: authorityIds.sandboxReceipt,
+    artifact_type: "SandboxExecutionReceipt",
+    app_id: ids.appA,
+    tenant_id: ids.tenantA,
+    environment: "test",
+    run_id: ids.run,
+    revision: 1,
+    content_hash: hashes.execution,
+  };
+  persistedReferences.add(artifactReferenceIdentity(sandboxReceiptReference));
   const execution = await commit(
     "ExecutionReceipt",
     authorityIds.execution,
-    [sqlArtifact.reference, validation.reference],
+    [sqlArtifact.reference, executionPermit.reference, sandboxReceiptReference],
     {
       artifact_type: "ExecutionReceipt",
       sql_artifact_ref: sqlArtifact.reference,
-      validation_receipt_ref: validation.reference,
+      execution_permit_ref: executionPermit.reference,
+      sandbox_execution_receipt_ref: sandboxReceiptReference,
       datasource_id: ids.appA,
       schema_version: "1.0.0",
       snapshot_token: "snapshot-1",
       watermark: "watermark-1",
       observed_at: "2026-07-25T00:00:00.000Z",
       query_hash: queryHash,
+      result_hash: hashes.execution,
       replay_state: "REPLAYABLE",
       row_count: 1,
     },
   );
-  const evidence = await commit("QueryEvidence", authorityIds.evidence, [execution.reference], {
-    artifact_type: "QueryEvidence",
-    execution_receipt_ref: execution.reference,
-    result_hash: hashes.execution,
-    invariant_verdicts: [{ invariant_id: "non-empty", verdict: "PASS" }],
-  });
+  const postExecutionGateInputs = [
+    ["EXECUTION", authorityIds.executionGate, "EXECUTION_PASSED"],
+    ["RESULT", authorityIds.resultGate, "RESULT_ORACLE_PASSED"],
+  ] as const;
+  const postExecutionGates = await Promise.all(
+    postExecutionGateInputs.map(([gate, artifactId, reasonCode]) =>
+      commit(
+        "GateReceipt",
+        artifactId,
+        [sqlArtifact.reference, execution.reference, sandboxReceiptReference],
+        {
+          artifact_type: "GateReceipt",
+          sql_artifact_ref: sqlArtifact.reference,
+          execution_receipt_ref: execution.reference,
+          gate,
+          gate_version: "text2sql-gates@1.0.0",
+          verdict: "PASS",
+          reason_code: reasonCode,
+          evidence_refs: [sandboxReceiptReference],
+          evaluated_at: "2026-07-25T00:00:01.000Z",
+        },
+      ),
+    ),
+  );
+  const allGates = [...preExecutionGates, ...postExecutionGates];
+  const validation = await commit(
+    "ValidationReceipt",
+    authorityIds.validation,
+    [sqlArtifact.reference, execution.reference, ...allGates.map(({ reference }) => reference)],
+    {
+      artifact_type: "ValidationReceipt",
+      sql_artifact_ref: sqlArtifact.reference,
+      execution_receipt_ref: execution.reference,
+      gate_receipt_refs: allGates.map(({ reference }) => reference),
+      validation_version: "text2sql-validation@1.0.0",
+      sealed_at: "2026-07-25T00:00:02.000Z",
+    },
+  );
+  const evidence = await commit(
+    "QueryEvidence",
+    authorityIds.evidence,
+    [execution.reference, validation.reference],
+    {
+      artifact_type: "QueryEvidence",
+      execution_receipt_ref: execution.reference,
+      validation_receipt_ref: validation.reference,
+      result_hash: hashes.execution,
+      invariant_verdicts: [{ invariant_id: "non-empty", verdict: "PASS" }],
+    },
+  );
   const claim = await commit("AtomicClaim", authorityIds.claim, [evidence.reference], {
     artifact_type: "AtomicClaim",
     claim_id: authorityIds.claim,
@@ -330,6 +418,10 @@ export async function createAuthoritativeReadyFixture() {
       semanticQuery: semanticQuery.reference,
       logicalPlan: logicalPlan.reference,
       sqlArtifact: sqlArtifact.reference,
+      preExecutionGates: preExecutionGates.map(({ reference }) => reference),
+      executionPermit: executionPermit.reference,
+      sandboxReceipt: sandboxReceiptReference,
+      postExecutionGates: postExecutionGates.map(({ reference }) => reference),
       validation: validation.reference,
       execution: execution.reference,
       evidence: evidence.reference,

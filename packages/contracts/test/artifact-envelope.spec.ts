@@ -239,7 +239,7 @@ describe("L2 Artifact Schema", () => {
     ).toBe(false);
   });
 
-  it("ValidationReceipt 的七道 Gate 必须各出现且只出现一次", () => {
+  it("ValidationReceipt 必须引用七张不同的 GateReceipt", () => {
     const sqlArtifactReference = artifactReferenceSchema.parse({
       artifact_id: ids.inputArtifact,
       artifact_type: "SqlArtifact",
@@ -250,27 +250,145 @@ describe("L2 Artifact Schema", () => {
       revision: 1,
       content_hash: hashes.input,
     });
-    const gates = [
-      "INTENT",
-      "SEMANTIC",
-      "STRUCTURAL",
-      "POLICY",
-      "RESOURCE",
-      "EXECUTION",
-      "RESULT",
-      "RESULT",
-    ].map((gate) => ({
-      gate,
-      verdict: "PASS",
-      reason_code: "VALIDATION_PASSED",
-    }));
+    const duplicateGateReference = {
+      ...makeArtifactReference(),
+      artifact_type: "GateReceipt",
+    };
 
     expect(
       l2ArtifactPayloadSchema.safeParse({
         artifact_type: "ValidationReceipt",
         sql_artifact_ref: sqlArtifactReference,
-        gates,
+        execution_receipt_ref: makeArtifactReference("ExecutionReceipt"),
+        gate_receipt_refs: Array.from({ length: 7 }, () => duplicateGateReference),
+        validation_version: "text2sql-validation@1.0.0",
+        sealed_at: "2026-07-26T00:00:00.000Z",
       }).success,
+    ).toBe(false);
+  });
+
+  it("Text2SQL 权威链必须按五门禁、执行许可、真实执行、七门禁封口的因果顺序", () => {
+    const sqlArtifactReference = makeArtifactReference("SqlArtifact");
+    const executionReference = {
+      ...makeArtifactReference(),
+      artifact_id: "00000000-0000-4000-8000-000000000351",
+      artifact_type: "ExecutionReceipt",
+    };
+    const sandboxReceiptReference = makeArtifactReference(
+      "SandboxExecutionReceipt",
+      "00000000-0000-4000-8000-000000000352",
+    );
+    const preExecutionGates = ["INTENT", "SEMANTIC", "STRUCTURAL", "POLICY", "RESOURCE"] as const;
+    const gateReferences = [...preExecutionGates, "EXECUTION", "RESULT"].map((_gate, index) => ({
+      ...makeArtifactReference(),
+      artifact_id: `00000000-0000-4000-8000-${String(360 + index).padStart(12, "0")}`,
+      artifact_type: "GateReceipt",
+      content_hash: `sha256:${String(index + 1).repeat(64)}`,
+    }));
+    const executionPermitReference = {
+      ...makeArtifactReference(),
+      artifact_id: "00000000-0000-4000-8000-000000000353",
+      artifact_type: "ExecutionPermit",
+    };
+
+    for (const [index, gate] of preExecutionGates.entries()) {
+      expect(
+        l2ArtifactPayloadSchema.safeParse({
+          artifact_type: "GateReceipt",
+          sql_artifact_ref: sqlArtifactReference,
+          execution_receipt_ref: null,
+          gate,
+          gate_version: "text2sql-gates@1.0.0",
+          verdict: "PASS",
+          reason_code: "GATE_PASSED",
+          evidence_refs: [sqlArtifactReference],
+          evaluated_at: "2026-07-26T00:00:00.000Z",
+        }).success,
+        `第 ${index + 1} 个执行前 GateReceipt 应能独立封存`,
+      ).toBe(true);
+    }
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "ExecutionPermit",
+        sql_artifact_ref: sqlArtifactReference,
+        gate_receipt_refs: gateReferences.slice(0, 5),
+        budget: {
+          timeout_ms: 5_000,
+          max_rows: 1_000,
+          max_bytes: 1_000_000,
+        },
+        expires_at: "2026-07-26T00:05:00.000Z",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "ExecutionReceipt",
+        sql_artifact_ref: sqlArtifactReference,
+        execution_permit_ref: executionPermitReference,
+        sandbox_execution_receipt_ref: sandboxReceiptReference,
+        datasource_id: ids.appA,
+        schema_version: "1.0.0",
+        snapshot_token: "snapshot-1",
+        watermark: "watermark-1",
+        observed_at: "2026-07-26T00:00:01.000Z",
+        query_hash: hashes.execution,
+        result_hash: hashes.artifact,
+        replay_state: "REPLAYABLE",
+        row_count: 1,
+      }).success,
+    ).toBe(true);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "GateReceipt",
+        sql_artifact_ref: sqlArtifactReference,
+        execution_receipt_ref: executionReference,
+        gate: "RESULT",
+        gate_version: "text2sql-gates@1.0.0",
+        verdict: "PASS",
+        reason_code: "RESULT_ORACLE_PASSED",
+        evidence_refs: [sandboxReceiptReference],
+        evaluated_at: "2026-07-26T00:00:02.000Z",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "ValidationReceipt",
+        sql_artifact_ref: sqlArtifactReference,
+        execution_receipt_ref: executionReference,
+        gate_receipt_refs: gateReferences,
+        validation_version: "text2sql-validation@1.0.0",
+        sealed_at: "2026-07-26T00:00:03.000Z",
+      }).success,
+    ).toBe(true);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "QueryEvidence",
+        execution_receipt_ref: executionReference,
+        validation_receipt_ref: {
+          ...makeArtifactReference(),
+          artifact_type: "ValidationReceipt",
+        },
+        result_hash: hashes.artifact,
+        invariant_verdicts: [{ invariant_id: "non-empty", verdict: "PASS" }],
+      }).success,
+    ).toBe(true);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "ValidationReceipt",
+        sql_artifact_ref: sqlArtifactReference,
+        gates: [...preExecutionGates, "EXECUTION", "RESULT"].map((gate) => ({
+          gate,
+          verdict: "PASS",
+          reason_code: "VALIDATION_PASSED",
+        })),
+      }).success,
+      "旧结构会在执行前伪造 EXECUTION/RESULT PASS，必须拒绝",
     ).toBe(false);
   });
 
@@ -279,12 +397,14 @@ describe("L2 Artifact Schema", () => {
       l2ArtifactPayloadSchema.safeParse({
         artifact_type: "ExecutionReceipt",
         sql_artifact_ref: makeArtifactReference("SqlArtifact"),
+        sandbox_execution_receipt_ref: makeArtifactReference("SandboxExecutionReceipt"),
         datasource_id: ids.appA,
         schema_version: "1.0.0",
         snapshot_token: "snapshot-1",
         watermark: "watermark-1",
         observed_at: "2026-07-25T00:00:00.000Z",
         query_hash: hashes.execution,
+        result_hash: hashes.artifact,
         replay_state: "REPLAYABLE",
         row_count: 1,
       }).success,
@@ -293,6 +413,7 @@ describe("L2 Artifact Schema", () => {
       l2ArtifactPayloadSchema.safeParse({
         artifact_type: "QueryEvidence",
         execution_receipt_ref: makeArtifactReference("ExecutionReceipt"),
+        validation_receipt_ref: makeArtifactReference("ValidationReceipt"),
         result_hash: hashes.execution,
         invariant_verdicts: [],
       }).success,
@@ -810,17 +931,23 @@ describe("L2 Artifact Schema", () => {
       fixture.commit(
         "ExecutionReceipt",
         "00000000-0000-4000-8000-000000000421",
-        [fixture.references.sqlArtifact, fixture.references.validation],
+        [
+          fixture.references.sqlArtifact,
+          fixture.references.executionPermit,
+          fixture.references.sandboxReceipt,
+        ],
         {
           artifact_type: "ExecutionReceipt",
           sql_artifact_ref: fixture.references.sqlArtifact,
-          validation_receipt_ref: fixture.references.validation,
+          execution_permit_ref: fixture.references.executionPermit,
+          sandbox_execution_receipt_ref: fixture.references.sandboxReceipt,
           datasource_id: ids.appA,
           schema_version: "1.0.0",
           snapshot_token: "snapshot-1",
           watermark: "watermark-1",
           observed_at: "2026-07-25T00:00:00.000Z",
           query_hash: hashes.artifact,
+          result_hash: hashes.execution,
           replay_state: "REPLAYABLE",
           row_count: 1,
         },
@@ -830,22 +957,173 @@ describe("L2 Artifact Schema", () => {
       fixture.commit(
         "ExecutionReceipt",
         "00000000-0000-4000-8000-000000000422",
-        [fixture.references.sqlArtifact, fixture.references.validation],
+        [
+          fixture.references.sqlArtifact,
+          fixture.references.executionPermit,
+          fixture.references.sandboxReceipt,
+        ],
         {
           artifact_type: "ExecutionReceipt",
           sql_artifact_ref: fixture.references.sqlArtifact,
-          validation_receipt_ref: fixture.references.validation,
+          execution_permit_ref: fixture.references.executionPermit,
+          sandbox_execution_receipt_ref: fixture.references.sandboxReceipt,
           datasource_id: ids.appB,
           schema_version: "1.0.0",
           snapshot_token: "snapshot-1",
           watermark: "watermark-1",
           observed_at: "2026-07-25T00:00:00.000Z",
           query_hash: fixture.queryHash,
+          result_hash: hashes.execution,
           replay_state: "REPLAYABLE",
           row_count: 1,
         },
       ),
     ).rejects.toThrow("必须与上游 QueryContract.datasource_id 一致");
+  });
+
+  it("ExecutionPermit 对缺失或失败的执行前 Gate 一律失败关闭", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const firstPreExecutionGate = fixture.references.preExecutionGates[0];
+    if (!firstPreExecutionGate) {
+      throw new Error("权威 Fixture 缺少 INTENT GateReceipt。");
+    }
+    const failedResourceGate = await fixture.commit(
+      "GateReceipt",
+      "00000000-0000-4000-8000-000000000423",
+      [fixture.references.sqlArtifact],
+      {
+        artifact_type: "GateReceipt",
+        sql_artifact_ref: fixture.references.sqlArtifact,
+        execution_receipt_ref: null,
+        gate: "RESOURCE",
+        gate_version: "text2sql-gates@1.0.0",
+        verdict: "FAIL",
+        reason_code: "ROW_LIMIT_UNBOUNDED",
+        evidence_refs: [fixture.references.sqlArtifact],
+        evaluated_at: "2026-07-26T00:00:00.000Z",
+      },
+    );
+
+    await expect(
+      fixture.commit(
+        "ExecutionPermit",
+        "00000000-0000-4000-8000-000000000424",
+        [
+          fixture.references.sqlArtifact,
+          ...fixture.references.preExecutionGates.slice(0, 4),
+          failedResourceGate.reference,
+        ],
+        {
+          artifact_type: "ExecutionPermit",
+          sql_artifact_ref: fixture.references.sqlArtifact,
+          gate_receipt_refs: [
+            ...fixture.references.preExecutionGates.slice(0, 4),
+            failedResourceGate.reference,
+          ],
+          budget: {
+            timeout_ms: 5_000,
+            max_rows: 1_000,
+            max_bytes: 1_000_000,
+          },
+          expires_at: "2026-07-26T00:05:00.000Z",
+        },
+      ),
+    ).rejects.toThrow("五道全部 PASS");
+
+    await expect(
+      fixture.commit(
+        "ExecutionPermit",
+        "00000000-0000-4000-8000-000000000425",
+        [
+          fixture.references.sqlArtifact,
+          ...fixture.references.preExecutionGates.slice(0, 4),
+          firstPreExecutionGate,
+        ],
+        {
+          artifact_type: "ExecutionPermit",
+          sql_artifact_ref: fixture.references.sqlArtifact,
+          gate_receipt_refs: [
+            ...fixture.references.preExecutionGates.slice(0, 4),
+            firstPreExecutionGate,
+          ],
+          budget: {
+            timeout_ms: 5_000,
+            max_rows: 1_000,
+            max_bytes: 1_000_000,
+          },
+          expires_at: "2026-07-26T00:05:00.000Z",
+        },
+      ),
+    ).rejects.toThrow("不能重复消费同一个 GateReceipt");
+  });
+
+  it("最终 Validation 必须消费七种 Gate，QueryEvidence 必须绑定同一结果摘要", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const executionGate = fixture.references.postExecutionGates[0];
+    if (!executionGate) {
+      throw new Error("权威 Fixture 缺少 EXECUTION GateReceipt。");
+    }
+    const duplicateExecutionGate = await fixture.commit(
+      "GateReceipt",
+      "00000000-0000-4000-8000-000000000426",
+      [
+        fixture.references.sqlArtifact,
+        fixture.references.execution,
+        fixture.references.sandboxReceipt,
+      ],
+      {
+        artifact_type: "GateReceipt",
+        sql_artifact_ref: fixture.references.sqlArtifact,
+        execution_receipt_ref: fixture.references.execution,
+        gate: "EXECUTION",
+        gate_version: "text2sql-gates@1.0.0",
+        verdict: "PASS",
+        reason_code: "EXECUTION_PASSED",
+        evidence_refs: [fixture.references.sandboxReceipt],
+        evaluated_at: "2026-07-26T00:00:01.000Z",
+      },
+    );
+
+    await expect(
+      fixture.commit(
+        "ValidationReceipt",
+        "00000000-0000-4000-8000-000000000427",
+        [
+          fixture.references.sqlArtifact,
+          fixture.references.execution,
+          ...fixture.references.preExecutionGates,
+          executionGate,
+          duplicateExecutionGate.reference,
+        ],
+        {
+          artifact_type: "ValidationReceipt",
+          sql_artifact_ref: fixture.references.sqlArtifact,
+          execution_receipt_ref: fixture.references.execution,
+          gate_receipt_refs: [
+            ...fixture.references.preExecutionGates,
+            executionGate,
+            duplicateExecutionGate.reference,
+          ],
+          validation_version: "text2sql-validation@1.0.0",
+          sealed_at: "2026-07-26T00:00:02.000Z",
+        },
+      ),
+    ).rejects.toThrow("七道当前 GateReceipt");
+
+    await expect(
+      fixture.commit(
+        "QueryEvidence",
+        "00000000-0000-4000-8000-000000000428",
+        [fixture.references.execution, fixture.references.validation],
+        {
+          artifact_type: "QueryEvidence",
+          execution_receipt_ref: fixture.references.execution,
+          validation_receipt_ref: fixture.references.validation,
+          result_hash: hashes.artifact,
+          invariant_verdicts: [{ invariant_id: "non-empty", verdict: "PASS" }],
+        },
+      ),
+    ).rejects.toThrow("必须与 ExecutionReceipt.result_hash 一致");
   });
 
   it("Canonical JSON 使用跨 Locale 稳定的 UTF-16 Key 顺序", () => {
