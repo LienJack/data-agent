@@ -114,6 +114,38 @@ issueCapabilityDeliveryReceipt(
   `LogicalPlan + GroundingPackage + QueryContract` 重编译并逐字匹配；重新计算
   `query_hash` 只能证明 SQL 自洽，不能证明它是权威计划的编译结果。持久化载荷还要
   固定 `compiler_version` 与 `ast_hash`，STRUCTURAL Gate 必须逐项回显这些权威字段。
+- Bounded Repair 只能消费服务端解析的失败 `GateReceipt` 和冻结的
+  `QueryContract/GroundingPackage/SemanticQuery/LogicalPlan/root SqlArtifact`
+  完整 Reference、Payload Hash、Principal、Policy 与 Semantic Signature。`failed_gate`
+  和 `failure_code` 不能由调用者用两个字符串重新标注。
+- Repair Session 由 `@data-agent/text2sql/server` 创建；Episode 只由
+  Scope/Run 与冻结 Query/Grounding/Semantic/Plan/Policy 内容身份派生，不把
+  `repair_id`、Principal 或可重发的 Root Reference 当作 Salt，从而保证同一冻结问题
+  只能有一个预算账本；当前 Parent 必须沿同一
+  SqlArtifact 的连续 Revision 前进。每次 CAS 必须原子持久化完整 Trace、
+  Receipt 与 Candidate，而不是只保存 Hash；`loadCurrentRepairSession` 重启恢复时
+  必须重新授权 Compiler Input，并重放 deterministic compiler、Patch Derivation、
+  Gate→Outcome 状态机和整条 History；只同步重算公开 SHA 不能重新品牌化伪造
+  Candidate。新建 repair_id、复制 Root Artifact、切换 Principal、把 Child Revision
+  重新封成 Root、复用旧 Head、未授权 JSON 或并发分叉都不能重置两次 Attempt 上限。
+- Repair 的 `compiler_input` 必须保留同进程 `AuthoritativeLogicalPlanBinding` 品牌，
+  拒绝 Accessor，并对解析后的 Grounding 内容重新计算 `grounding_hash`；校验、History
+  重放与 live compile 必须复用同一份深冻结规范快照。clone/plain/Schema 非法输入或
+  “内容漂移但复用旧声明 Hash”必须在 Attempt/CAS 前失败关闭，不能折叠为
+  `REPAIR_COMPILER_UNAVAILABLE`、消费预算或写入终态。`RepairReceipt` 的
+  Candidate/Route/Terminal 字段必须穷尽互斥，`REPAIR_SESSION_TERMINATED` 只表示
+  Trace 吸收态，不能伪造成持久 Attempt Receipt。
+- Frozen Artifact、当前 Parent 与失败 Gate 都必须调用服务端
+  `verifyExactArtifactRevision(reference, payload)`；不能把“Reference A 已提交”
+  和 Resolver 返回的“Payload B 自洽”拼成 Repair Authority。CAS loser 与过期 Head
+  只返回可恢复的 `STALE_HEAD`，不能伪造权威 `TERMINAL`。
+- 当前可证明的 Repair 只把当前 Parent SqlArtifact 的 SQL/参数、Compiler Metadata 和
+  Query Hash 恢复为同一冻结 LogicalPlan 的 deterministic PostgreSQL compilation，
+  每轮最多四个无值 Patch Op。输出状态只能是
+  `CANDIDATE + NEEDS_FULL_REVALIDATION`，不能自称 `REPAIRED`；必须重新通过七道
+  Gate 后才可进入
+  Validation/Execution 权威链。Join、Metric、Filter、Grain、Time、Policy、Literal
+  或 Result Contract 变化一律路由到 Replan/Clarify/Human。
 - `ResourceAdmissionReceipt`、`ResultOracleReceipt`、`SandboxExecutionReceipt` 与
   `SandboxResult` 属于专用 System Artifact；L2 Resolver 必须按完整 Reference 取回、
   重算规范 Hash，并调用对应服务端领域 Authority，不能只接受任意已提交 JSON。
@@ -164,6 +196,9 @@ issueCapabilityDeliveryReceipt(
 | Input Reference 不存在或未提交 | `ARTIFACT_INPUT_NOT_COMMITTED` |
 | 成功链无法解析权威上游文档或 Gate 失败 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | SQL 仅 Hash 自洽但不匹配确定性 Compiler 输出 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
+| Repair Episode 已存在、旧 Trace Head 或并发 CAS 分叉 | `TEXT2SQL_REPAIR_SESSION_ALREADY_EXISTS` / `STALE_HEAD + REPAIR_CONCURRENT_TRANSITION` |
+| Repair 使用未提交/错 Scope Gate、漂移 Bundle 或普通 callback Authority | `TEXT2SQL_REPAIR_FAILURE_AUTHORITY_REQUIRED` / `TEXT2SQL_REPAIR_FROZEN_BUNDLE_AUTHORITY_REQUIRED` / `TEXT2SQL_REPAIR_AUTHORITY_REQUIRED` |
+| Repair Resolver 为完整 Reference A 返回 Payload B，或持久 Session 闭包无法恢复 | `TEXT2SQL_REPAIR_FAILURE_AUTHORITY_REQUIRED` / `TEXT2SQL_REPAIR_SESSION_REHYDRATION_FAILED` |
 | Resource/Oracle/Sandbox Evidence 缺领域 Authority、Hash 漂移或换绑 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Permit 缺 Gate、顺序/新鲜度错误、预算或 Principal/Policy/Settings 漂移 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Execution/Result/Validation 使用另一执行、另一结果或非当前七 Gate | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
@@ -196,6 +231,16 @@ issueCapabilityDeliveryReceipt(
 - SqlArtifact Query Hash、Execution Query Hash 或 Datasource 与上游不一致时失败。
 - Plan A 搭配 Ref B、未提交/合成 LogicalPlan、SQL 换写后重算 Hash、输出 Alias 与
   QueryContract 列不一致，或 STRUCTURAL 回显伪造 Compiler/AST 时失败。
+- Repair 新建 repair_id 或把 Child Revision 重新封成 Root 不能重置同一 episode；
+  当前 Parent 只允许沿 Root Artifact 的连续 Revision 前进；同一 Trace 的两个并发
+  Attempt 只能有一个 CAS 成功，loser/旧 Head 只能返回 `STALE_HEAD`。完整
+  Trace/Receipt/Candidate 必须原子保存并能在重启后恢复；Frozen Artifact 与失败 Gate
+  的 Reference A/Payload B 换绑必须失败。Policy 失败不能重标为 Structural；
+  No-progress、Compiler Unavailable 与非机械 Gate 路由必须留下内容寻址 Receipt；
+  clone/plain/Schema 非法 Compiler Input，以及 Grounding 内容漂移却复用旧声明 Hash，
+  必须在写入前失败且保持 Attempt/History 不变；
+  第二次 Attempt 形成的终态必须吸收后续重放，不能再追加或覆写终态。Candidate 必须
+  明确要求七门重验证且没有 Gate/Permit/Validation 字段。
 - 五张执行前 Gate 缺失、重复、乱序、过期或刷新时间，Resource Admission 的 Principal、
   PolicyReceipt、Settings 与五维预算漂移时不能签发 Permit。
 - Sandbox 在 Permit Seal 后撤权、实际 Datasource/Schema/Settings/Snapshot 与 Request

@@ -19,3 +19,16 @@ export {
   type TrustedGateArtifactAuthority,
   type TrustedResultOracleAuthority,
 } from "./gates/internal.js";
+export { createBoundedRepairTrace } from "./repair/bounded-repair.js";
+export {
+  authorizeRepairTrace,
+  loadCurrentRepairSession,
+  type RepairSessionStoreAdapter,
+  registerTrustedRepairAuthority,
+} from "./repair/internal.js";
+export type {
+  RepairSessionCreateClaim,
+  RepairSessionSnapshot,
+  RepairSessionTransition,
+  RepairSessionTransitionClaim,
+} from "./repair/types.js";

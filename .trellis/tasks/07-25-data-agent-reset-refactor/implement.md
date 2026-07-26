@@ -9,8 +9,8 @@
   `2f31e9e`，U4 已完成并固定在 `55a4e24`。
 - U5 的 Artifact Authority 基线已固定在 `4bc011f`，ACL-first Grounding、Typed IR
   与 PostgreSQL Authority Persistence 已固定在 `3249ea2`；PostgreSQL Dialect
-  Compiler、七道 Gate 与受治理执行 Authority 单元已实现并通过本地门禁，下一单元为
-  Bounded Repair、Metamorphic Oracle 与真实 PostgreSQL Sandbox Adapter。
+  Compiler、七道 Gate、受治理执行 Authority 与 Bounded Repair 已实现并通过本地
+  门禁；下一单元为 Metamorphic Oracle 与真实 PostgreSQL Sandbox Adapter。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -136,8 +136,33 @@
 - 当前单元关闭的是 Compiler、Gate、System Evidence 与 Sandbox Authority Contract，
   不是生产数据库执行器。首次 Artifact 提交绑定 PostgreSQL `transaction_timestamp()`
   的新鲜度强化、超过 9 个占位符的 JSONB→Driver 顺序测试、真实 EXPLAIN/SQL Adapter、
-  大字段在物化前的 Streaming Byte/Memory 截断、Bounded Repair 与 Metamorphic Oracle
-  属于下一单元；因此发布判断继续保持 `HOLD`。
+  大字段在物化前的 Streaming Byte/Memory 截断与 Metamorphic Oracle 属于后续单元；
+  因此发布判断继续保持 `HOLD`。
+- Bounded Repair 已收窄为冻结 Artifact Bundle 上的 deterministic recompilation：
+  只允许恢复 SQL/参数、Compiler Metadata 与 Query Hash 四类实现字段，最多两次
+  Attempt、每次最多四个无值 Patch Op；语义、权限与结果合同变化直接路由。
+- Repair Episode 只由 Scope/Run 与冻结 Query/Grounding/Semantic/Plan/Policy 内容
+  身份派生，不以 repair_id、Principal 或 Root Reference 加盐；服务端 Session Store
+  对 `episode_hash + trace_hash + attempt_count` 执行 CAS，阻止复制 Root、换
+  Principal、Child Revision 重封 Root、旧 Head 重放与并发分叉。Root Artifact 固定
+  revision 1，当前 Parent 只沿同一 Artifact 的连续 Revision 前进。
+- CAS 原子保存完整 Trace/Receipt/Candidate；重启恢复必须重新授权 Compiler Input，
+  重放 deterministic compiler、Patch Derivation、Gate→Outcome 状态机与完整
+  History，只同步重算公开 SHA 不能重新品牌化任意 SQL。第二次 Attempt 形成的终态
+  吸收后续重放；loser/旧 Head 只返回 `STALE_HEAD`。
+- Compiler Input 必须保留同进程 LogicalPlan Authority 品牌、拒绝 Accessor，并对解析后
+  的 Grounding 内容重算 `grounding_hash`；重放与 live compile 复用同一深冻结规范快照。
+  clone/plain/Schema 非法输入与“内容漂移但复用旧声明 Hash”都在 Attempt/CAS 前失败
+  关闭，不能伪装成 Compiler Unavailable、消费预算或写终态；Receipt 的 Candidate、
+  Route 与 Terminal 字段穷尽互斥，Session 吸收原因不能持久成新的 Attempt Receipt。
+- Frozen Artifact、当前 Parent 与失败 Gate 都通过服务端 Exact Revision Verifier
+  闭合，Reference A 不能为 Payload B 背书。失败来源只能是已提交且 Hash 可重算的
+  FAIL/UNAVAILABLE GateReceipt。输出只叫 `CANDIDATE/NEEDS_FULL_REVALIDATION`，
+  不能签发 Gate PASS、Permit 或 Validation。
+- 根级 `build`（5/5）、`lint`（219 files）、`typecheck`（8/8）、Unit（577/577）与
+  Contract（45/45）门禁通过；其中 Contracts 183/183、Text2SQL 131/131、
+  Platform 112/112、Agent Runtime 111/111、Worker 40/40。最终 Codex 复审作为
+  本单元提交前门禁。
 
 ## 2. 执行原则
 

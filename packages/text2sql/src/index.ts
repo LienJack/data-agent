@@ -108,5 +108,28 @@ export {
   type ValidatedLogicalPlan,
   validateLogicalPlan,
 } from "./planning/validate-logical-plan.js";
+export {
+  attemptBoundedRepair,
+  BOUNDED_REPAIR_LIMITS,
+  BOUNDED_REPAIR_VERSION,
+  type BoundedRepairResult,
+  computeRepairEpisodeHash,
+  computeRepairFrozenBundleHash,
+  computeRepairPatchScriptHash,
+  computeRepairReceiptHash,
+  computeRepairTraceHash,
+  type RepairFrozenBundle,
+  type RepairFrozenBundleInput,
+  type RepairPatchOperation,
+  type RepairReceipt,
+  type RepairRoute,
+  type RepairTerminalReasonCode,
+  type RepairTrace,
+  repairFrozenBundleSchema,
+  repairPatchOperationSchema,
+  repairReceiptSchema,
+  repairTraceSchema,
+  sealRepairFrozenBundle,
+} from "./repair/index.js";
 export { buildSemanticQuery } from "./semantic/build-semantic-query.js";
 export type { SemanticQueryDraft } from "./semantic/types.js";
