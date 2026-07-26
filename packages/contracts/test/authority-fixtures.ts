@@ -1,18 +1,66 @@
 import {
   type ArtifactReference,
+  artifactReferenceFor,
   artifactReferenceIdentity,
+  computeGateEvaluationHash,
+  computeGateInputHash,
   computeGroundingAuthorityDocumentHash,
   computeGroundingHash,
   computeL2ArtifactContentHash,
+  computePostgresqlExecutionSettingsHash,
+  computeResourceAdmissionReceiptHash,
+  computeResourceEstimateHash,
+  computeResultOracleEvidenceHash,
+  computeResultOracleReceiptHash,
   computeSqlArtifactQueryHash,
+  type GateReceiptPayload,
+  gateReceiptSchema,
   groundingAuthorityDocumentSchema,
   type L2ArtifactDocument,
   type L2ArtifactPersistenceAuthority,
   l2ArtifactDocumentSchema,
+  resourceAdmissionReceiptSchema,
+  resultOracleReceiptSchema,
+  TEXT2SQL_GATE_EVALUATOR_VERSION,
+  TEXT2SQL_GATE_REASON_CODES,
+  TEXT2SQL_VALIDATION_VERSION,
   verifyL2ArtifactDocument,
 } from "../src/artifacts/index.js";
 import type { L2ArtifactType } from "../src/artifacts/types.js";
+import { canonicalizeJson, sha256ContentHash } from "../src/common/index.js";
+import {
+  computeSandboxExecutionReceiptHash,
+  computeSandboxExecutionRequestHash,
+  computeSandboxResultBytes,
+  computeSandboxResultHash,
+  sandboxExecutionRequestSchema,
+  sandboxResultSchema,
+  successfulSandboxExecutionReceiptSchema,
+} from "../src/ports/sandbox.js";
 import { hashes, ids, makeArtifactEnvelope } from "./fixtures.js";
+
+export type GateReceiptDraft = Omit<GateReceiptPayload, "input_hash" | "evaluation_hash">;
+
+export async function sealGateReceipt(draft: GateReceiptDraft): Promise<GateReceiptPayload> {
+  const inputHash = await computeGateInputHash({
+    artifact_type: draft.artifact_type,
+    sql_artifact_ref: draft.sql_artifact_ref,
+    execution_receipt_ref: draft.execution_receipt_ref,
+    gate: draft.gate,
+    gate_version: draft.gate_version,
+    evaluator_version: draft.evaluator_version,
+    evidence_refs: draft.evidence_refs,
+  });
+  const evaluationInput = {
+    ...draft,
+    input_hash: inputHash,
+  };
+
+  return gateReceiptSchema.parse({
+    ...evaluationInput,
+    evaluation_hash: await computeGateEvaluationHash(evaluationInput),
+  });
+}
 
 const authorityIds = {
   questionFrame: "00000000-0000-4000-8000-000000000111",
@@ -32,8 +80,11 @@ const authorityIds = {
   structuralGate: "00000000-0000-4000-8000-000000000123",
   policyGate: "00000000-0000-4000-8000-000000000124",
   resourceGate: "00000000-0000-4000-8000-000000000125",
+  resourceAdmission: "00000000-0000-4000-8000-000000000135",
   executionPermit: "00000000-0000-4000-8000-000000000126",
   sandboxReceipt: "00000000-0000-4000-8000-000000000127",
+  sandboxResult: "00000000-0000-4000-8000-000000000134",
+  resultOracle: "00000000-0000-4000-8000-000000000136",
   executionGate: "00000000-0000-4000-8000-000000000128",
   resultGate: "00000000-0000-4000-8000-000000000129",
   validation: "00000000-0000-4000-8000-000000000101",
@@ -77,7 +128,9 @@ async function sealGroundingAuthorityDocument(input: unknown) {
 export async function createAuthoritativeReadyFixture() {
   const documents = new Map<string, L2ArtifactDocument>();
   const groundingAuthorityDocuments = new Map<string, unknown>();
+  const systemArtifacts = new Map<string, unknown>();
   const persistedReferences = new Set<string>();
+  let expectedSqlArtifactPayload: unknown = null;
   const authority: L2ArtifactPersistenceAuthority = {
     principalId: "principal-fixture",
     verifyCommitted: async (reference) =>
@@ -87,6 +140,30 @@ export async function createAuthoritativeReadyFixture() {
       structuredClone(
         groundingAuthorityDocuments.get(artifactReferenceIdentity(reference)) ?? null,
       ),
+    resolveSystemArtifact: async (reference) =>
+      structuredClone(systemArtifacts.get(artifactReferenceIdentity(reference)) ?? null),
+    verifySystemArtifactCommitted: async (reference) =>
+      systemArtifacts.has(artifactReferenceIdentity(reference)),
+    verifySqlArtifactCompilation: async ({ sql_artifact }) =>
+      expectedSqlArtifactPayload !== null &&
+      canonicalizeJson(sql_artifact) === canonicalizeJson(expectedSqlArtifactPayload),
+    verifyResourceAdmissionReceipt: async (receipt) => {
+      const stored = resourceAdmissionReceiptSchema.safeParse(
+        systemArtifacts.get(artifactReferenceIdentity(receipt.receipt_ref)),
+      );
+      return stored.success && canonicalizeJson(stored.data) === canonicalizeJson(receipt);
+    },
+    verifyResultOracleReceipt: async (receipt) => {
+      const stored = resultOracleReceiptSchema.safeParse(
+        systemArtifacts.get(artifactReferenceIdentity(receipt.receipt_ref)),
+      );
+      return stored.success && canonicalizeJson(stored.data) === canonicalizeJson(receipt);
+    },
+    verifySandboxExecutionEvidence: async ({ receipt, result }) =>
+      canonicalizeJson(systemArtifacts.get(artifactReferenceIdentity(receipt.receipt_ref))) ===
+        canonicalizeJson(receipt) &&
+      canonicalizeJson(systemArtifacts.get(artifactReferenceIdentity(result.result_ref))) ===
+        canonicalizeJson(result),
     verifyCommitterCapability: async (claim) =>
       claim.app_id === ids.appA &&
       claim.tenant_id === ids.tenantA &&
@@ -130,6 +207,11 @@ export async function createAuthoritativeReadyFixture() {
       persistedReferences.delete(referenceIdentity);
       throw error;
     }
+  }
+
+  function persistSystemArtifact(reference: ArtifactReference, payload: unknown): void {
+    const identity = artifactReferenceIdentity(reference);
+    systemArtifacts.set(identity, structuredClone(payload));
   }
 
   const questionFrame = await commit("QuestionFrame", authorityIds.questionFrame, [], {
@@ -543,110 +625,491 @@ export async function createAuthoritativeReadyFixture() {
   const sqlPayload = {
     artifact_type: "SqlArtifact" as const,
     logical_plan_ref: logicalPlan.reference,
+    compiler_version: "postgresql-compiler@1.0.0",
+    ast_hash: hashes.artifact,
     dialect: "postgresql" as const,
     sql: "SELECT SUM(net_revenue) AS net_revenue FROM orders WHERE region = $1",
     parameters: { region: "华南" },
   };
   const queryHash = await computeSqlArtifactQueryHash(sqlPayload);
+  expectedSqlArtifactPayload = {
+    ...sqlPayload,
+    query_hash: queryHash,
+  };
   const sqlArtifact = await commit(
     "SqlArtifact",
     authorityIds.sqlArtifact,
     [logicalPlan.reference],
-    {
-      ...sqlPayload,
-      query_hash: queryHash,
-    },
+    expectedSqlArtifactPayload,
   );
+  const sqlArtifactReference = artifactReferenceFor("SqlArtifact").parse(sqlArtifact.reference);
+  if (
+    queryContract.authorized.payload.artifact_type !== "QueryContract" ||
+    logicalPlan.authorized.payload.artifact_type !== "LogicalPlan"
+  ) {
+    throw new TypeError("权威 Gate Fixture 缺少 QueryContract/LogicalPlan。");
+  }
+  const logicalPlanPayload = logicalPlan.authorized.payload;
+  const queryContractObservationHash = await sha256ContentHash(queryContract.authorized.payload);
+  const intentSignatureHash = await sha256ContentHash(logicalPlanPayload.semantic_signature);
+  const logicalPlanObservationHash = await sha256ContentHash({
+    operations: logicalPlanPayload.operations,
+    root_operation_id: logicalPlanPayload.root_operation_id,
+    parameters: logicalPlanPayload.parameters,
+    grounding_hash: logicalPlanPayload.grounding_hash,
+    semantic_signature: logicalPlanPayload.semantic_signature,
+  });
+  const semanticObservationHash = await sha256ContentHash(semanticContent);
+  const groundingObservationHash = await sha256ContentHash(groundingContent);
+  const executionSettings = {
+    database_role: "analyst",
+    search_path: ["app_data_agent", "pg_catalog"],
+    plan_cache_mode: "force_custom_plan" as const,
+    statement_timeout_ms: 5_000,
+    lock_timeout_ms: 1_000,
+  };
+  const settingsHash = await computePostgresqlExecutionSettingsHash(executionSettings);
+  const resourceEstimate = {
+    query_hash: queryHash,
+    datasource_id: ids.appA,
+    schema_version: "retail-schema@1.0.0",
+    settings_hash: settingsHash,
+    total_cost: 10,
+    plan_rows: 1,
+    plan_width: 16,
+    node_types: ["Aggregate", "Seq Scan"],
+    relation_names: ["orders"],
+    has_cartesian_join: false,
+  };
+  const resourceEstimateHash = await computeResourceEstimateHash(resourceEstimate);
+  const resourceAdmissionDraft = resourceAdmissionReceiptSchema.parse({
+    artifact_type: "ResourceAdmissionReceipt",
+    receipt_ref: {
+      artifact_id: authorityIds.resourceAdmission,
+      artifact_type: "ResourceAdmissionReceipt",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hashes.input,
+    },
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    sql_artifact_ref: sqlArtifactReference,
+    principal_id: "principal-fixture",
+    policy_receipt_ref: groundingSourceReferences.policyReceipt,
+    ...resourceEstimate,
+    execution_settings: executionSettings,
+    estimate_hash: resourceEstimateHash,
+    policy_version: "resource-policy@1.0.0",
+    forbidden_node_types: ["Nested Loop"],
+    max_total_cost: 1_000,
+    max_plan_rows: 1_000,
+    max_plan_bytes: 1_000_000,
+    lock_timeout_ms: 1_000,
+    timeout_ms: 5_000,
+    max_rows: 1_000,
+    max_bytes: 1_000_000,
+    max_memory_mb: 512,
+    evaluated_at: "2026-07-25T00:00:00.000Z",
+    receipt_hash: hashes.input,
+  });
+  const resourceAdmissionHash = await computeResourceAdmissionReceiptHash(resourceAdmissionDraft);
+  const resourceAdmission = resourceAdmissionReceiptSchema.parse({
+    ...resourceAdmissionDraft,
+    receipt_ref: {
+      ...resourceAdmissionDraft.receipt_ref,
+      content_hash: resourceAdmissionHash,
+    },
+    receipt_hash: resourceAdmissionHash,
+  });
+  persistSystemArtifact(resourceAdmission.receipt_ref, resourceAdmission);
   const preExecutionGateInputs = [
-    ["INTENT", authorityIds.intentGate],
-    ["SEMANTIC", authorityIds.semanticGate],
-    ["STRUCTURAL", authorityIds.structuralGate],
-    ["POLICY", authorityIds.policyGate],
-    ["RESOURCE", authorityIds.resourceGate],
+    [
+      "INTENT",
+      authorityIds.intentGate,
+      {
+        query_contract_hash: queryContractObservationHash,
+        intent_signature_hash: intentSignatureHash,
+      },
+    ],
+    [
+      "SEMANTIC",
+      authorityIds.semanticGate,
+      {
+        logical_plan_hash: logicalPlanObservationHash,
+        semantic_hash: semanticObservationHash,
+        grounding_hash: groundingObservationHash,
+      },
+    ],
+    [
+      "STRUCTURAL",
+      authorityIds.structuralGate,
+      {
+        compiler_version: "postgresql-compiler@1.0.0",
+        ast_hash: sqlPayload.ast_hash,
+        query_hash: queryHash,
+        parameter_count: Object.keys(sqlPayload.parameters).length,
+        statement_kind: "SELECT",
+        read_only: true,
+      },
+    ],
+    [
+      "POLICY",
+      authorityIds.policyGate,
+      {
+        policy_version: "default-policy@1.0.0",
+        mandatory_predicate_count: groundingContent.mandatory_predicates.length,
+        resolved_binding_count: groundingContent.mandatory_predicates.length,
+      },
+    ],
+    [
+      "RESOURCE",
+      authorityIds.resourceGate,
+      {
+        estimate_hash: resourceEstimateHash,
+        policy_version: "resource-policy@1.0.0",
+        total_cost: 10,
+        plan_rows: 1,
+        plan_width: 16,
+        planned_bytes: 16,
+        lock_timeout_ms: 1_000,
+        timeout_ms: 5_000,
+        max_rows: 1_000,
+        max_bytes: 1_000_000,
+        max_memory_mb: 512,
+      },
+    ],
   ] as const;
   const preExecutionGates = await Promise.all(
-    preExecutionGateInputs.map(([gate, artifactId]) =>
-      commit("GateReceipt", artifactId, [sqlArtifact.reference], {
-        artifact_type: "GateReceipt",
-        sql_artifact_ref: sqlArtifact.reference,
-        execution_receipt_ref: null,
-        gate,
-        gate_version: "text2sql-gates@1.0.0",
-        verdict: "PASS",
-        reason_code: `${gate}_PASSED`,
-        evidence_refs: [sqlArtifact.reference],
-        evaluated_at: "2026-07-25T00:00:00.000Z",
-      }),
-    ),
+    preExecutionGateInputs.map(async ([gate, artifactId, observations]) => {
+      const evidenceReferences =
+        gate === "RESOURCE"
+          ? [sqlArtifactReference, resourceAdmission.receipt_ref]
+          : [sqlArtifactReference];
+      return commit(
+        "GateReceipt",
+        artifactId,
+        evidenceReferences,
+        await sealGateReceipt({
+          artifact_type: "GateReceipt",
+          sql_artifact_ref: sqlArtifactReference,
+          execution_receipt_ref: null,
+          gate,
+          gate_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+          evaluator_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+          evaluator_input_hash: hashes.input,
+          evaluator_evaluation_hash: hashes.execution,
+          verdict: "PASS",
+          reason_code: TEXT2SQL_GATE_REASON_CODES[gate].PASS[0],
+          evidence_refs: evidenceReferences,
+          observations,
+          evaluated_at: "2026-07-25T00:00:00.000Z",
+        }),
+      );
+    }),
   );
   const executionPermit = await commit(
     "ExecutionPermit",
     authorityIds.executionPermit,
-    [sqlArtifact.reference, ...preExecutionGates.map(({ reference }) => reference)],
+    [
+      sqlArtifactReference,
+      resourceAdmission.receipt_ref,
+      groundingSourceReferences.policyReceipt,
+      ...preExecutionGates.map(({ reference }) => reference),
+    ],
     {
       artifact_type: "ExecutionPermit",
-      sql_artifact_ref: sqlArtifact.reference,
+      sql_artifact_ref: sqlArtifactReference,
+      resource_admission_ref: resourceAdmission.receipt_ref,
       gate_receipt_refs: preExecutionGates.map(({ reference }) => reference),
+      principal_id: "principal-fixture",
+      policy_receipt_ref: groundingSourceReferences.policyReceipt,
+      datasource_id: ids.appA,
+      schema_version: resourceAdmission.schema_version,
+      settings_hash: resourceAdmission.settings_hash,
+      execution_settings: resourceAdmission.execution_settings,
       budget: {
         timeout_ms: 5_000,
+        lock_timeout_ms: 1_000,
         max_rows: 1_000,
         max_bytes: 1_000_000,
+        max_memory_mb: 512,
       },
+      issued_at: "2026-07-25T00:00:00.000Z",
       expires_at: "2026-07-25T00:05:00.000Z",
     },
   );
-  const sandboxReceiptReference: ArtifactReference = {
-    artifact_id: authorityIds.sandboxReceipt,
-    artifact_type: "SandboxExecutionReceipt",
-    app_id: ids.appA,
-    tenant_id: ids.tenantA,
-    environment: "test",
+  const executionPermitReference = artifactReferenceFor("ExecutionPermit").parse(
+    executionPermit.reference,
+  );
+  const sandboxExecutionId = "00000000-0000-4000-8000-000000000137";
+  const sandboxRequest = sandboxExecutionRequestSchema.parse({
+    schema_version: resourceAdmission.schema_version,
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
     run_id: ids.run,
-    revision: 1,
-    content_hash: hashes.execution,
-  };
-  persistedReferences.add(artifactReferenceIdentity(sandboxReceiptReference));
+    execution_id: sandboxExecutionId,
+    idempotency_key: "ready-fixture-execution",
+    budget:
+      executionPermit.authorized.payload.artifact_type === "ExecutionPermit"
+        ? executionPermit.authorized.payload.budget
+        : null,
+    language: "sql",
+    payload: {
+      dialect: "postgresql",
+      sql_artifact_ref: sqlArtifactReference,
+      execution_permit_ref: executionPermitReference,
+      resource_admission_ref: resourceAdmission.receipt_ref,
+      datasource_id: resourceAdmission.datasource_id,
+      settings_hash: resourceAdmission.settings_hash,
+      execution_settings: resourceAdmission.execution_settings,
+      snapshot_requirement: {
+        mode: "REQUIRE_REPLAYABLE",
+      },
+      parameters: sqlPayload.parameters,
+    },
+  });
+  const sandboxInputHash = await computeSandboxExecutionRequestHash(sandboxRequest);
+  const sandboxResultColumns = [
+    { name: "dimension.region", type: "STRING" },
+    { name: "metric.net_revenue", type: "NUMBER" },
+  ] as const;
+  const sandboxResultRows = [["华南", 100]] as const;
+  const sandboxResultDraft = sandboxResultSchema.parse({
+    schema_version: resourceAdmission.schema_version,
+    result_ref: {
+      artifact_id: authorityIds.sandboxResult,
+      artifact_type: "SandboxResult",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hashes.input,
+    },
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    execution_id: sandboxExecutionId,
+    columns: sandboxResultColumns,
+    rows: sandboxResultRows,
+    row_count: 1,
+    bytes: computeSandboxResultBytes({
+      columns: sandboxResultColumns,
+      rows: sandboxResultRows,
+    }),
+    result_hash: hashes.input,
+  });
+  const sandboxResultHash = await computeSandboxResultHash(sandboxResultDraft);
+  const sandboxResult = sandboxResultSchema.parse({
+    ...sandboxResultDraft,
+    result_ref: {
+      ...sandboxResultDraft.result_ref,
+      content_hash: sandboxResultHash,
+    },
+    result_hash: sandboxResultHash,
+  });
+  const sandboxReceiptDraft = successfulSandboxExecutionReceiptSchema.parse({
+    schema_version: resourceAdmission.schema_version,
+    language: "sql",
+    receipt_id: authorityIds.sandboxReceipt,
+    receipt_ref: {
+      artifact_id: authorityIds.sandboxReceipt,
+      artifact_type: "SandboxExecutionReceipt",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hashes.input,
+    },
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    execution_id: sandboxExecutionId,
+    idempotency_key: sandboxRequest.idempotency_key,
+    input_hash: sandboxInputHash,
+    execution_hash: hashes.input,
+    terminal: "COMPLETED",
+    reason_code: "EXECUTION_COMPLETED",
+    started_at: "2026-07-25T00:00:00.000Z",
+    completed_at: "2026-07-25T00:00:00.001Z",
+    result_artifact_ref: sandboxResult.result_ref,
+    sql_artifact_ref: sqlArtifactReference,
+    execution_permit_ref: executionPermitReference,
+    resource_admission_ref: resourceAdmission.receipt_ref,
+    datasource_id: resourceAdmission.datasource_id,
+    settings_hash: resourceAdmission.settings_hash,
+    execution_settings: resourceAdmission.execution_settings,
+    transaction: {
+      transaction_id: sandboxExecutionId,
+      read_only: true,
+      isolation_level: "REPEATABLE_READ",
+    },
+    authority_revalidation: {
+      effective_principal_id: resourceAdmission.principal_id,
+      policy_receipt_ref: resourceAdmission.policy_receipt_ref,
+      revalidated_at: "2026-07-25T00:00:00.000Z",
+      authority_epoch: 1,
+    },
+    snapshot_token: "snapshot-1",
+    watermark: null,
+    replay_state: "REPLAYABLE",
+    resource_usage: {
+      elapsed_ms: 1,
+      rows: sandboxResult.row_count,
+      bytes: sandboxResult.bytes,
+      peak_memory_mb: 1,
+    },
+  });
+  const sandboxReceiptHash = await computeSandboxExecutionReceiptHash(sandboxReceiptDraft);
+  const sandboxReceipt = successfulSandboxExecutionReceiptSchema.parse({
+    ...sandboxReceiptDraft,
+    receipt_ref: {
+      ...sandboxReceiptDraft.receipt_ref,
+      content_hash: sandboxReceiptHash,
+    },
+    execution_hash: sandboxReceiptHash,
+  });
+  persistSystemArtifact(sandboxResult.result_ref, sandboxResult);
+  persistSystemArtifact(sandboxReceipt.receipt_ref, sandboxReceipt);
+  const sandboxReceiptReference = sandboxReceipt.receipt_ref;
+  const sandboxResultReference = sandboxResult.result_ref;
   const execution = await commit(
     "ExecutionReceipt",
     authorityIds.execution,
-    [sqlArtifact.reference, executionPermit.reference, sandboxReceiptReference],
+    [
+      sqlArtifactReference,
+      executionPermit.reference,
+      sandboxReceiptReference,
+      sandboxResultReference,
+    ],
     {
       artifact_type: "ExecutionReceipt",
-      sql_artifact_ref: sqlArtifact.reference,
+      sql_artifact_ref: sqlArtifactReference,
       execution_permit_ref: executionPermit.reference,
       sandbox_execution_receipt_ref: sandboxReceiptReference,
+      result_artifact_ref: sandboxResultReference,
       datasource_id: ids.appA,
-      schema_version: "1.0.0",
+      schema_version: resourceAdmission.schema_version,
       snapshot_token: "snapshot-1",
-      watermark: "watermark-1",
-      observed_at: "2026-07-25T00:00:00.000Z",
+      watermark: null,
+      observed_at: "2026-07-25T00:00:00.002Z",
       query_hash: queryHash,
-      result_hash: hashes.execution,
+      result_hash: sandboxResult.result_hash,
       replay_state: "REPLAYABLE",
       row_count: 1,
     },
   );
+  const executionReference = artifactReferenceFor("ExecutionReceipt").parse(execution.reference);
+  const resultInvariantIds = ["non_empty"];
+  const resultOracleEvidence = {
+    oracle_version: "result-oracle@1.0.0",
+    query_hash: queryHash,
+    result_hash: sandboxResult.result_hash,
+    result_columns: sandboxResult.columns.map(({ name }) => name),
+    row_count: sandboxResult.row_count,
+    invariant_verdicts: [{ invariant_id: "non_empty", verdict: "PASS" as const }],
+    oracle_verdict: "PASS" as const,
+    result_artifact_ref: sandboxResultReference,
+  };
+  const resultOracleEvidenceHash = await computeResultOracleEvidenceHash(resultOracleEvidence);
+  const resultOracleDraft = resultOracleReceiptSchema.parse({
+    artifact_type: "ResultOracleReceipt",
+    receipt_ref: {
+      artifact_id: authorityIds.resultOracle,
+      artifact_type: "ResultOracleReceipt",
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hashes.input,
+    },
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    sql_artifact_ref: sqlArtifactReference,
+    execution_receipt_ref: executionReference,
+    ...resultOracleEvidence,
+    evidence_hash: resultOracleEvidenceHash,
+    evaluated_at: "2026-07-25T00:00:00.003Z",
+    receipt_hash: hashes.input,
+  });
+  const resultOracleHash = await computeResultOracleReceiptHash(resultOracleDraft);
+  const resultOracle = resultOracleReceiptSchema.parse({
+    ...resultOracleDraft,
+    receipt_ref: {
+      ...resultOracleDraft.receipt_ref,
+      content_hash: resultOracleHash,
+    },
+    receipt_hash: resultOracleHash,
+  });
+  persistSystemArtifact(resultOracle.receipt_ref, resultOracle);
   const postExecutionGateInputs = [
-    ["EXECUTION", authorityIds.executionGate, "EXECUTION_PASSED"],
-    ["RESULT", authorityIds.resultGate, "RESULT_ORACLE_PASSED"],
+    {
+      gate: "EXECUTION" as const,
+      artifactId: authorityIds.executionGate,
+      observations: {
+        query_hash: queryHash,
+        sandbox_execution_hash: sandboxReceipt.execution_hash,
+        elapsed_ms: sandboxReceipt.resource_usage.elapsed_ms,
+        rows: sandboxResult.row_count,
+        bytes: sandboxResult.bytes,
+      },
+      evidenceReferences: [sandboxReceiptReference, sandboxResultReference],
+    },
+    {
+      gate: "RESULT" as const,
+      artifactId: authorityIds.resultGate,
+      observations: {
+        result_hash: sandboxResult.result_hash,
+        oracle_version: resultOracle.oracle_version,
+        invariant_ids: resultInvariantIds,
+        oracle_evidence_hash: resultOracle.evidence_hash,
+      },
+      evidenceReferences: [sandboxResultReference, resultOracle.receipt_ref],
+    },
   ] as const;
   const postExecutionGates = await Promise.all(
-    postExecutionGateInputs.map(([gate, artifactId, reasonCode]) =>
+    postExecutionGateInputs.map(async ({ gate, artifactId, observations, evidenceReferences }) =>
       commit(
         "GateReceipt",
         artifactId,
-        [sqlArtifact.reference, execution.reference, sandboxReceiptReference],
-        {
+        [sqlArtifactReference, executionReference, ...evidenceReferences],
+        await sealGateReceipt({
           artifact_type: "GateReceipt",
-          sql_artifact_ref: sqlArtifact.reference,
-          execution_receipt_ref: execution.reference,
+          sql_artifact_ref: sqlArtifactReference,
+          execution_receipt_ref: executionReference,
           gate,
-          gate_version: "text2sql-gates@1.0.0",
+          gate_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+          evaluator_version: TEXT2SQL_GATE_EVALUATOR_VERSION,
+          evaluator_input_hash: hashes.input,
+          evaluator_evaluation_hash: hashes.execution,
           verdict: "PASS",
-          reason_code: reasonCode,
-          evidence_refs: [sandboxReceiptReference],
-          evaluated_at: "2026-07-25T00:00:01.000Z",
-        },
+          reason_code: TEXT2SQL_GATE_REASON_CODES[gate].PASS[0],
+          evidence_refs: [...evidenceReferences],
+          observations,
+          evaluated_at: "2026-07-25T00:00:00.004Z",
+        }),
       ),
     ),
   );
@@ -654,14 +1117,14 @@ export async function createAuthoritativeReadyFixture() {
   const validation = await commit(
     "ValidationReceipt",
     authorityIds.validation,
-    [sqlArtifact.reference, execution.reference, ...allGates.map(({ reference }) => reference)],
+    [sqlArtifactReference, executionReference, ...allGates.map(({ reference }) => reference)],
     {
       artifact_type: "ValidationReceipt",
-      sql_artifact_ref: sqlArtifact.reference,
-      execution_receipt_ref: execution.reference,
+      sql_artifact_ref: sqlArtifactReference,
+      execution_receipt_ref: executionReference,
       gate_receipt_refs: allGates.map(({ reference }) => reference),
-      validation_version: "text2sql-validation@1.0.0",
-      sealed_at: "2026-07-25T00:00:02.000Z",
+      validation_version: TEXT2SQL_VALIDATION_VERSION,
+      sealed_at: "2026-07-25T00:00:00.005Z",
     },
   );
   const evidence = await commit(
@@ -672,7 +1135,7 @@ export async function createAuthoritativeReadyFixture() {
       artifact_type: "QueryEvidence",
       execution_receipt_ref: execution.reference,
       validation_receipt_ref: validation.reference,
-      result_hash: hashes.execution,
+      result_hash: sandboxResult.result_hash,
       invariant_verdicts: [{ invariant_id: "non_empty", verdict: "PASS" }],
     },
   );
@@ -726,7 +1189,10 @@ export async function createAuthoritativeReadyFixture() {
       sqlArtifact: sqlArtifact.reference,
       preExecutionGates: preExecutionGates.map(({ reference }) => reference),
       executionPermit: executionPermit.reference,
+      resourceAdmission: resourceAdmission.receipt_ref,
       sandboxReceipt: sandboxReceiptReference,
+      sandboxResult: sandboxResultReference,
+      resultOracle: resultOracle.receipt_ref,
       postExecutionGates: postExecutionGates.map(({ reference }) => reference),
       validation: validation.reference,
       execution: execution.reference,

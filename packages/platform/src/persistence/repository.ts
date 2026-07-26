@@ -7,21 +7,30 @@ import {
   ArtifactSemanticAuthorityError,
   artifactReferenceIdentity,
   artifactReferenceSchema,
-  assertGroundingAuthorityBundleConsistency,
   canonicalizeJson,
   computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
   type GroundingAuthorityDocument,
   GroundingAuthorityError,
   type GroundingAuthorityReference,
+  type GroundingAuthorityVerificationContext,
+  type GroundingPackagePayload,
   groundingAuthorityDocumentSchema,
   groundingAuthorityIdentityViolation,
   groundingAuthorityReferenceSchema,
   type L2ArtifactDocument,
+  type LogicalPlanPayload,
   l2ArtifactDocumentSchema,
   type PortResult,
+  type QueryContractPayload,
+  type ResourceAdmissionReceipt,
+  type ResultOracleReceipt,
   runRuntimeEventSchema,
+  type SandboxResult,
+  type SqlArtifactPayload,
+  type SuccessfulSandboxExecutionReceipt,
   sha256ContentHash,
+  TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES,
   verifyGroundingAuthorityDocument,
   verifyL2ArtifactDocument,
 } from "@data-agent/contracts";
@@ -68,6 +77,8 @@ const artifactCommitOptionsSchema = z.strictObject({
   expected_active_revision: z.number().int().nonnegative(),
   worker_fence: z.number().int().nonnegative().safe(),
 });
+
+const text2SqlRuntimeSystemArtifactTypes = new Set<string>(TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES);
 
 export type CommandAcceptance = Readonly<{
   created: boolean;
@@ -131,6 +142,57 @@ export interface PostgresRepositoryAuthorities {
    */
   verifyL2ArtifactCommitterCapability?(
     claim: ArtifactCommitterCapabilityClaim,
+    capability: AppCapability,
+  ): Promise<boolean>;
+  /** 服务端确定性 Compiler 的逐字输出核验；缺失时 SqlArtifact 提交失败关闭。 */
+  verifySqlArtifactCompilation?(
+    input: {
+      readonly sql_artifact: SqlArtifactPayload;
+      readonly logical_plan: LogicalPlanPayload;
+      readonly grounding: GroundingPackagePayload;
+      readonly query_contract: QueryContractPayload;
+    },
+    capability: AppCapability,
+  ): Promise<boolean>;
+  /**
+   * 专用服务端 Deterministic Policy Authority。
+   *
+   * 查询键只包含目标 Content Address、当前 Capability 与已解析的
+   * SemanticRelease/SchemaSnapshot 发行事实；
+   * 候选 PolicyReceipt 的 issuer、policy_version、AllowedSchema 和 MandatoryPredicate
+   * 不会传入 resolver，resolver 必须返回完整的 content-addressed 发行修订。
+   */
+  resolveDeterministicPolicyReceiptIssuance?(
+    input: Parameters<
+      NonNullable<GroundingAuthorityVerificationContext["resolvePolicyReceiptIssuance"]>
+    >[0],
+    capability: AppCapability,
+    client: SqlClient,
+  ): Promise<unknown | null>;
+  /** 解析由 Sandbox/EXPLAIN/Oracle 专用 Store 提交的非 L2 运行证据。 */
+  resolveText2SqlSystemArtifact?(
+    reference: ArtifactReference,
+    capability: AppCapability,
+    client: SqlClient,
+  ): Promise<unknown | null>;
+  verifyText2SqlSystemArtifactCommitted?(
+    reference: ArtifactReference,
+    capability: AppCapability,
+    client: SqlClient,
+  ): Promise<boolean>;
+  verifyResourceAdmissionReceipt?(
+    receipt: ResourceAdmissionReceipt,
+    capability: AppCapability,
+  ): Promise<boolean>;
+  verifyResultOracleReceipt?(
+    receipt: ResultOracleReceipt,
+    capability: AppCapability,
+  ): Promise<boolean>;
+  verifySandboxExecutionEvidence?(
+    input: {
+      readonly receipt: SuccessfulSandboxExecutionReceipt;
+      readonly result: SandboxResult;
+    },
     capability: AppCapability,
   ): Promise<boolean>;
 }
@@ -324,11 +386,24 @@ function assertGroundingAuthorityCommitIdentity(
   );
 }
 
-function groundingAuthorityVerificationContext(client: SqlClient, capability: AppCapability) {
-  return {
+function groundingAuthorityVerificationContext(
+  client: SqlClient,
+  capability: AppCapability,
+  authorities: PostgresRepositoryAuthorities,
+  pendingDocument?: GroundingAuthorityDocument,
+): GroundingAuthorityVerificationContext {
+  const pendingIdentity = pendingDocument
+    ? artifactReferenceIdentity(pendingDocument.artifact_ref)
+    : null;
+  const committedByIdentity = new Map<string, Promise<boolean>>();
+  const context: GroundingAuthorityVerificationContext = {
     principalId: capability.principal,
+    requirePolicyReceiptIssuance: true,
     resolveCommitted: async (reference: GroundingAuthorityReference) => {
       assertReferenceScope(reference, capability.scope);
+      if (artifactReferenceIdentity(reference) === pendingIdentity) {
+        return pendingDocument ?? null;
+      }
       const resolved = await resolveArtifactDocument(client, reference, capability.principal);
       const parsed = groundingAuthorityDocumentSchema.safeParse(resolved);
       if (parsed.success) {
@@ -338,9 +413,27 @@ function groundingAuthorityVerificationContext(client: SqlClient, capability: Ap
     },
     verifyCommitted: async (reference: ArtifactReference) => {
       assertReferenceScope(reference, capability.scope);
-      return referenceExists(client, reference, capability.principal);
+      const identity = artifactReferenceIdentity(reference);
+      if (identity === pendingIdentity) return true;
+      const existing = committedByIdentity.get(identity);
+      if (existing) return existing;
+      const verification = referenceExists(client, reference, capability.principal);
+      committedByIdentity.set(identity, verification);
+      return verification;
     },
+    ...(authorities.resolveDeterministicPolicyReceiptIssuance
+      ? {
+          resolvePolicyReceiptIssuance: (
+            input: Parameters<
+              NonNullable<GroundingAuthorityVerificationContext["resolvePolicyReceiptIssuance"]>
+            >[0],
+          ) =>
+            authorities.resolveDeterministicPolicyReceiptIssuance?.(input, capability, client) ??
+            Promise.resolve(null),
+        }
+      : {}),
   };
+  return context;
 }
 
 function l2ArtifactVerificationContext(
@@ -377,8 +470,67 @@ function l2ArtifactVerificationContext(
     },
     resolveGroundingAuthority: async (reference: GroundingAuthorityReference) => {
       assertReferenceScope(reference, capability.scope);
-      return resolveArtifactDocument(client, reference, capability.principal);
+      return verifyGroundingAuthorityDocument(
+        reference,
+        groundingAuthorityVerificationContext(client, capability, authorities),
+      );
     },
+    ...(authorities.resolveText2SqlSystemArtifact
+      ? {
+          resolveSystemArtifact: (reference: ArtifactReference) => {
+            assertReferenceScope(reference, capability.scope);
+            return (
+              authorities.resolveText2SqlSystemArtifact?.(reference, capability, client) ??
+              Promise.resolve(null)
+            );
+          },
+        }
+      : {}),
+    ...(authorities.verifyText2SqlSystemArtifactCommitted
+      ? {
+          verifySystemArtifactCommitted: (reference: ArtifactReference) => {
+            assertReferenceScope(reference, capability.scope);
+            return (
+              authorities.verifyText2SqlSystemArtifactCommitted?.(reference, capability, client) ??
+              Promise.resolve(false)
+            );
+          },
+        }
+      : {}),
+    ...(authorities.verifySqlArtifactCompilation
+      ? {
+          verifySqlArtifactCompilation: (
+            input: Parameters<
+              NonNullable<PostgresRepositoryAuthorities["verifySqlArtifactCompilation"]>
+            >[0],
+          ) =>
+            authorities.verifySqlArtifactCompilation?.(input, capability) ?? Promise.resolve(false),
+        }
+      : {}),
+    ...(authorities.verifyResourceAdmissionReceipt
+      ? {
+          verifyResourceAdmissionReceipt: (receipt: ResourceAdmissionReceipt) =>
+            authorities.verifyResourceAdmissionReceipt?.(receipt, capability) ??
+            Promise.resolve(false),
+        }
+      : {}),
+    ...(authorities.verifyResultOracleReceipt
+      ? {
+          verifyResultOracleReceipt: (receipt: ResultOracleReceipt) =>
+            authorities.verifyResultOracleReceipt?.(receipt, capability) ?? Promise.resolve(false),
+        }
+      : {}),
+    ...(authorities.verifySandboxExecutionEvidence
+      ? {
+          verifySandboxExecutionEvidence: (
+            input: Parameters<
+              NonNullable<PostgresRepositoryAuthorities["verifySandboxExecutionEvidence"]>
+            >[0],
+          ) =>
+            authorities.verifySandboxExecutionEvidence?.(input, capability) ??
+            Promise.resolve(false),
+        }
+      : {}),
     verifyCommitterCapability: async (claim: ArtifactCommitterCapabilityClaim) => {
       if (
         claim.app_id !== capability.scope.app_id ||
@@ -405,6 +557,11 @@ export function createPostgresRepository(
     transactionPolicy: Readonly<{
       allowed_roles?: readonly ["OWNER"];
       validate_document?: (capability: AppCapability, client: SqlClient) => void | Promise<void>;
+      verify_input_reference?: (
+        reference: ArtifactReference,
+        capability: AppCapability,
+        client: SqlClient,
+      ) => boolean | Promise<boolean>;
     }> = {},
   ): Promise<PortResult<Reference>> {
     return withAppTransaction(
@@ -464,7 +621,10 @@ export function createPostgresRepository(
 
         for (const inputReference of candidate.input_refs) {
           assertReferenceScope(inputReference, capability.scope);
-          if (!(await referenceExists(client, inputReference, capability.principal))) {
+          const inputCommitted = transactionPolicy.verify_input_reference
+            ? await transactionPolicy.verify_input_reference(inputReference, capability, client)
+            : await referenceExists(client, inputReference, capability.principal);
+          if (!inputCommitted) {
             throw new PersistenceBoundaryError(
               "ARTIFACT_INPUT_NOT_COMMITTED",
               "Artifact 引用了尚未持久提交的 Parent 或 Input Revision。",
@@ -757,6 +917,15 @@ export function createPostgresRepository(
               throw error;
             }
           },
+          verify_input_reference: async (reference, capability, client) => {
+            if (!text2SqlRuntimeSystemArtifactTypes.has(reference.artifact_type)) {
+              return referenceExists(client, reference, capability.principal);
+            }
+            return (
+              authorities.verifyText2SqlSystemArtifactCommitted?.(reference, capability, client) ??
+              Promise.resolve(false)
+            );
+          },
         },
       );
     },
@@ -799,38 +968,15 @@ export function createPostgresRepository(
           validate_document: async (capability, client) => {
             assertGroundingAuthorityCommitIdentity(document, capability);
             try {
-              const verification = groundingAuthorityVerificationContext(client, capability);
-              if (document.parent_ref) {
-                const parent = await verifyGroundingAuthorityDocument(
-                  document.parent_ref,
-                  verification,
-                );
-                if (parent.artifact_type !== document.artifact_type) {
-                  throw new GroundingAuthorityError(
-                    "Grounding Authority Parent 必须是同 Artifact Type 的权威 Revision。",
-                  );
-                }
-              }
-              if (document.artifact_type !== "PolicyReceipt") return;
-
-              const [semanticRelease, schemaSnapshot] = await Promise.all([
-                verifyGroundingAuthorityDocument(document.semantic_release_ref, verification),
-                verifyGroundingAuthorityDocument(document.schema_snapshot_ref, verification),
-              ]);
-              if (
-                semanticRelease.artifact_type !== "SemanticRelease" ||
-                schemaSnapshot.artifact_type !== "SchemaSnapshot"
-              ) {
-                throw new GroundingAuthorityError(
-                  "PolicyReceipt 的固定上游必须是 SemanticRelease 与 SchemaSnapshot。",
-                );
-              }
-              assertGroundingAuthorityBundleConsistency(document, semanticRelease, schemaSnapshot);
+              await verifyGroundingAuthorityDocument(
+                document.artifact_ref,
+                groundingAuthorityVerificationContext(client, capability, authorities, document),
+              );
             } catch (error) {
               if (error instanceof GroundingAuthorityError) {
                 throw new PersistenceBoundaryError(
                   error.code,
-                  "PolicyReceipt 与已提交的 SemanticRelease/SchemaSnapshot 不一致。",
+                  "Grounding Authority Artifact 与服务端发行事实或已提交上游不一致。",
                 );
               }
               throw error;
@@ -893,7 +1039,11 @@ export function createPostgresRepository(
           assertReferenceScope(parsed.data, capability.scope);
 
           try {
-            const verification = groundingAuthorityVerificationContext(client, capability);
+            const verification = groundingAuthorityVerificationContext(
+              client,
+              capability,
+              authorities,
+            );
             const root = await verification.resolveCommitted(parsed.data);
             if (root === null) return null;
             const rootIdentity = artifactReferenceIdentity(parsed.data);

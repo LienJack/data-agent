@@ -7,9 +7,10 @@
 - Trellis 规划清单与 Compound Engineering 文档审查已通过；产品代码按 U1–U9 依赖顺序实施。
 - U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`，U3 已完成并固定在
   `2f31e9e`，U4 已完成并固定在 `55a4e24`。
-- U5 的 Artifact Authority 基线已固定在 `4bc011f`；ACL-first Grounding、Typed IR
-  与 PostgreSQL Authority Persistence 单元已实现并通过本地门禁，下一单元为
-  PostgreSQL Dialect Compiler 与执行前 Gate。
+- U5 的 Artifact Authority 基线已固定在 `4bc011f`，ACL-first Grounding、Typed IR
+  与 PostgreSQL Authority Persistence 已固定在 `3249ea2`；PostgreSQL Dialect
+  Compiler、七道 Gate 与受治理执行 Authority 单元已实现并通过本地门禁，下一单元为
+  Bounded Repair、Metamorphic Oracle 与真实 PostgreSQL Sandbox Adapter。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -101,6 +102,42 @@
   属于后续 U5 单元。当前 OWNER-only Authority Persistence 已证明失败关闭，但普通
   ANALYST 请求所需的服务端 PolicyReceipt Issuer/Store 组合尚未接入；在该集成完成前
   不声明 Analyst 端到端 Text2SQL 已交付。
+
+### U5 Unit 3 关闭证据（2026-07-26）
+
+- 确定性 PostgreSQL Compiler 只消费同进程品牌化、已提交且与当前 Principal/Scope
+  精确绑定的 LogicalPlan；服务端重编译并逐字核验 SQL、Parameters、Compiler Version、
+  AST Hash 与 Query Hash。最终输出 Alias 精确等于 QueryContract，标识符只来自
+  Grounding Physical Name，所有 Literal/Policy/Time 值参数化。
+- `INTENT -> SEMANTIC -> STRUCTURAL -> POLICY -> RESOURCE -> EXECUTION -> RESULT`
+  七道 Gate 形成固定 Authority Chain。前五道 PASS 才能签发绑定 PolicyReceipt、
+  ResourceAdmission、Datasource/Schema/Settings 与五维预算的 ExecutionPermit；
+  后两道只接受权威 Sandbox Evidence 与 ResultOracleReceipt，Validation 不能混用
+  另一轮 Gate 或改写时间、证据与结果。
+- PolicyReceipt 改由服务端 Issuer/Store 签发；ResourceAdmission、ResultOracle、
+  SandboxExecutionReceipt 与 SandboxResult 走专用 System Store Verifier，不要求在
+  通用 Artifact Store 制造镜像行。Compiler/Gate/Oracle 与 Sandbox 的高权入口分别只从
+  `@data-agent/text2sql/server`、`@data-agent/contracts/server` 暴露，普通根 API
+  继续拒绝结构 callback、clone 与自签品牌。
+- Sandbox Request 精确绑定 Permit、SqlArtifact、Parameters、Admission 与 Settings；
+  Resolver 返回的 Payload 必须通过 Reference Exact Revision Verifier，Reference A
+  不能为 Payload B 背书。事务开始时重验证 Principal/Policy、Authority Epoch 与 Fence，
+  Claim、Fence 和真实 Operation 必须处于同一事务。
+- Sandbox 幂等键按 `App/Tenant/Environment/Principal/Key` 原子 Claim/Load：同输入
+  并发只执行一次并重放结果，异输入在 Operation 前冲突，不同 Principal 互不碰撞。
+  Pending 撤权立即阻断新事务，已越过 Fence 的旧事务仍可在预算内完成。
+- Permit 以事务开始时刻判断有效；到期前开始的事务允许跨过 `expires_at`，但权威墙钟
+  跨度和服务端 `elapsed_ms` 都必须受 Timeout Budget 约束。Query/Gate/Sandbox/Oracle
+  共享 256 列、10,000 行、64 MiB Result、512 MiB 峰值内存上限与 PostgreSQL
+  63-byte ASCII Alias；EXPLAIN 保留真实、唯一、有序的 Node Type。
+- 根级 `lint`（213 files）、`build`（5/5）、`typecheck`（8/8）、Unit（563/563）与
+  Contract（45/45）门禁通过；其中 Contracts 183/183、Text2SQL 117/117、
+  Platform 112/112、Agent Runtime 111/111、Worker 40/40。
+- 当前单元关闭的是 Compiler、Gate、System Evidence 与 Sandbox Authority Contract，
+  不是生产数据库执行器。首次 Artifact 提交绑定 PostgreSQL `transaction_timestamp()`
+  的新鲜度强化、超过 9 个占位符的 JSONB→Driver 顺序测试、真实 EXPLAIN/SQL Adapter、
+  大字段在物化前的 Streaming Byte/Memory 截断、Bounded Repair 与 Metamorphic Oracle
+  属于下一单元；因此发布判断继续保持 `HOLD`。
 
 ## 2. 执行原则
 

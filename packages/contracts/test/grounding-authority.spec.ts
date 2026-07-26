@@ -247,6 +247,71 @@ describe("Grounding System Authority 契约", () => {
     }
   });
 
+  it("受治理边界缺少专用 Policy Authority 时对 PolicyReceipt 失败关闭", async () => {
+    const { authority, policyReceipt } = await authorityFixture();
+
+    await expect(
+      verifyGroundingAuthorityDocument(policyReceipt.artifact_ref, {
+        ...authority,
+        requirePolicyReceiptIssuance: true,
+      }),
+    ).rejects.toThrow("缺少服务端 Deterministic Policy Authority");
+  });
+
+  it("Policy Authority 仅按当前 Principal 与权威上游查询，并精确匹配完整发行修订", async () => {
+    const { authority, policyReceipt, schemaSnapshot, semanticRelease } = await authorityFixture();
+    let lookup: unknown = null;
+
+    await expect(
+      verifyGroundingAuthorityDocument(policyReceipt.artifact_ref, {
+        ...authority,
+        requirePolicyReceiptIssuance: true,
+        resolvePolicyReceiptIssuance: async (input) => {
+          lookup = input;
+          return structuredClone(policyReceipt);
+        },
+      }),
+    ).resolves.toEqual(policyReceipt);
+    expect(lookup).toEqual({
+      scope: semanticRelease.scope,
+      run_id: semanticRelease.run_id,
+      principal_id: "analyst@example.test",
+      datasource_id: semanticRelease.datasource_id,
+      catalog_version: semanticRelease.catalog_version,
+      policy_receipt_ref: policyReceipt.artifact_ref,
+      semantic_release_ref: semanticRelease.artifact_ref,
+      schema_snapshot_ref: schemaSnapshot.artifact_ref,
+    });
+    expect(lookup).not.toHaveProperty("policy_version");
+    expect(lookup).not.toHaveProperty("allowed_schema");
+    expect(lookup).not.toHaveProperty("mandatory_predicates");
+    expect(lookup).not.toHaveProperty("authority");
+  });
+
+  it("Policy Authority 拒绝与服务端发行 ACL/Predicate 不同的自报 PolicyReceipt", async () => {
+    const { authority, policyReceipt } = await authorityFixture();
+    const issued = await sealDocument({
+      ...policyReceipt,
+      allowed_schema: {
+        tables: [
+          {
+            table_id: "orders",
+            column_ids: ["orders.customer_id"],
+          },
+        ],
+      },
+      mandatory_predicates: policyReceipt.mandatory_predicates,
+    });
+
+    await expect(
+      verifyGroundingAuthorityDocument(policyReceipt.artifact_ref, {
+        ...authority,
+        requirePolicyReceiptIssuance: true,
+        resolvePolicyReceiptIssuance: async () => issued,
+      }),
+    ).rejects.toThrow("逐字匹配");
+  });
+
   it("公开分支 Schema 与联合 Schema 使用同一 Authority/唯一性约束", () => {
     expect(
       semanticReleaseDocumentSchema.safeParse({

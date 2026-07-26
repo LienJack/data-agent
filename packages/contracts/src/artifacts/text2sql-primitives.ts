@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { versionIdentifierSchema } from "../common/index.js";
+import { postgresqlOutputAliasSchema, versionIdentifierSchema } from "../common/index.js";
 
 export const qualifiedColumnIdSchema = versionIdentifierSchema.refine(
   (value) => /^[A-Za-z0-9][A-Za-z0-9_:@/+~-]*\.[A-Za-z0-9][A-Za-z0-9_:@/+~-]*$/.test(value),
@@ -124,7 +124,7 @@ export function joinTypeForPreservedTable(
 
 export const metricBindingSchema = z
   .strictObject({
-    metric_id: versionIdentifierSchema,
+    metric_id: postgresqlOutputAliasSchema,
     aliases: z.array(z.string().min(1).max(128)).min(1),
     table_id: versionIdentifierSchema,
     column_id: qualifiedColumnIdSchema,
@@ -171,7 +171,7 @@ export const metricBindingSchema = z
 
 export const dimensionBindingSchema = z
   .strictObject({
-    dimension_id: versionIdentifierSchema,
+    dimension_id: postgresqlOutputAliasSchema,
     aliases: z.array(z.string().min(1).max(128)).min(1),
     table_id: versionIdentifierSchema,
     column_id: qualifiedColumnIdSchema,

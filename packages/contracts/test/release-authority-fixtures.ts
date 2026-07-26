@@ -3,6 +3,8 @@ import {
   artifactReferenceFor,
   artifactReferenceIdentity,
 } from "../src/artifacts/envelope.js";
+import { computePostgresqlExecutionSettingsHash } from "../src/artifacts/text2sql-evidence.js";
+import { sha256ContentHash } from "../src/common/index.js";
 import {
   authorizeEvalRegistryAssignment,
   authorizeEvalRun,
@@ -20,10 +22,7 @@ import {
   scoreCardReference,
   scoreCardSchema,
 } from "../src/evals/index.js";
-import {
-  authorizeBenchmarkAdapterReceipt,
-  authorizeSandboxExecutionReceipt,
-} from "../src/ports/index.js";
+import { authorizeBenchmarkAdapterReceipt } from "../src/ports/index.js";
 import { authorizeModelCertificationReceipt } from "../src/providers/index.js";
 import {
   authorizeReleaseManifest,
@@ -31,6 +30,7 @@ import {
   type ReleaseAuthorityContext,
   type ReleaseDecision,
 } from "../src/runs/index.js";
+import { InMemorySandboxPort, ManualClock } from "../src/testing/index.js";
 import { createAuthoritativeReadyFixture } from "./authority-fixtures.js";
 import { environments, hashes, ids, makeArtifactReference } from "./fixtures.js";
 
@@ -262,42 +262,111 @@ export async function createAuthoritativeReleaseFixture(
     async () => true,
   );
 
-  const sandboxReceiptReference = makeArtifactReference(
-    "SandboxExecutionReceipt",
-    ids.inputArtifact,
+  const sandboxScope = {
+    app_id: ids.appA,
+    tenant_id: ids.tenantA,
+    environment: environments.test,
+  } as const;
+  const sandboxExecutionSettings = {
+    database_role: "analyst",
+    search_path: ["app_data_agent", "pg_catalog"] as string[],
+    plan_cache_mode: "force_custom_plan" as const,
+    statement_timeout_ms: 1_000,
+    lock_timeout_ms: 100,
+  };
+  const sandboxSettingsHash =
+    await computePostgresqlExecutionSettingsHash(sandboxExecutionSettings);
+  const sandboxBudget = {
+    timeout_ms: 1_000,
+    lock_timeout_ms: 100,
+    max_rows: 1_000,
+    max_bytes: 1_000_000,
+    max_memory_mb: 256,
+  } as const;
+  const sandboxSqlReference = makeArtifactReference("SqlArtifact", ids.artifact);
+  const sandboxResourceAdmissionReference = makeArtifactReference(
+    "ResourceAdmissionReceipt",
+    ids.assignment,
   );
-  const sandboxReceipt = await authorizeSandboxExecutionReceipt(
-    {
-      schema_version: "1.0.0",
-      receipt_id: sandboxReceiptReference.artifact_id,
-      receipt_ref: sandboxReceiptReference,
-      scope: {
-        app_id: ids.appA,
-        tenant_id: ids.tenantA,
-        environment: environments.test,
+  const sandboxExecutionPermitReference = makeArtifactReference("ExecutionPermit", ids.command);
+  const sandboxExecutionPermit = {
+    artifact_type: "ExecutionPermit",
+    sql_artifact_ref: sandboxSqlReference,
+    resource_admission_ref: sandboxResourceAdmissionReference,
+    gate_receipt_refs: [
+      makeArtifactReference("GateReceipt", "00000000-0000-4000-8000-000000000201"),
+      makeArtifactReference("GateReceipt", "00000000-0000-4000-8000-000000000202"),
+      makeArtifactReference("GateReceipt", "00000000-0000-4000-8000-000000000203"),
+      makeArtifactReference("GateReceipt", "00000000-0000-4000-8000-000000000204"),
+      makeArtifactReference("GateReceipt", "00000000-0000-4000-8000-000000000205"),
+    ],
+    datasource_id: ids.tenantA,
+    schema_version: "1.0.0",
+    settings_hash: sandboxSettingsHash,
+    execution_settings: sandboxExecutionSettings,
+    principal_id: "release-analyst@example.test",
+    policy_receipt_ref: makeArtifactReference("PolicyReceipt", ids.snapshot),
+    budget: sandboxBudget,
+    issued_at: "2026-07-24T23:59:00.000Z",
+    expires_at: "2026-07-25T00:04:00.000Z",
+  } as const;
+  const sandboxRequest = {
+    schema_version: sandboxExecutionPermit.schema_version,
+    scope: sandboxScope,
+    run_id: ids.run,
+    execution_id: ids.decision,
+    idempotency_key: "release-fixture",
+    language: "sql",
+    payload: {
+      dialect: "postgresql",
+      sql_artifact_ref: sandboxSqlReference,
+      execution_permit_ref: sandboxExecutionPermitReference,
+      resource_admission_ref: sandboxResourceAdmissionReference,
+      datasource_id: sandboxExecutionPermit.datasource_id,
+      settings_hash: sandboxSettingsHash,
+      execution_settings: sandboxExecutionSettings,
+      snapshot_requirement: {
+        mode: "REQUIRE_REPLAYABLE",
       },
-      run_id: ids.run,
-      execution_id: ids.decision,
-      idempotency_key: "release-fixture",
-      input_hash: hashes.input,
-      execution_hash: hashes.execution,
-      terminal: "COMPLETED",
-      reason_code: "EXECUTION_COMPLETED",
-      resource_usage: {
-        elapsed_ms: 100,
-        rows: 1,
-        bytes: 128,
-        peak_memory_mb: 32,
-      },
+      parameters: {},
     },
-    async () => true,
+    budget: sandboxBudget,
+  } as const;
+  const sandbox = new InMemorySandboxPort(new ManualClock("2026-07-25T00:00:00.000Z"));
+  const sandboxSqlArtifactMaterial = {
+    dialect: "postgresql",
+    sql: "select 1 as result",
+    parameters: sandboxRequest.payload.parameters,
+  } as const;
+  sandbox.commitAuthoritativeSqlArtifact(sandboxSqlReference, {
+    artifact_type: "SqlArtifact",
+    logical_plan_ref: {
+      ...sandboxSqlReference,
+      artifact_type: "LogicalPlan",
+      content_hash: hashes.artifact,
+    },
+    compiler_version: "postgresql-compiler@1.0.0",
+    ast_hash: hashes.artifact,
+    ...sandboxSqlArtifactMaterial,
+    query_hash: await sha256ContentHash(sandboxSqlArtifactMaterial),
+  });
+  sandbox.commitAuthoritativeExecutionPermit(
+    sandboxExecutionPermitReference,
+    sandboxExecutionPermit,
+  );
+  const sandboxExecution = await sandbox.execute(sandboxRequest);
+  if (!sandboxExecution.ok || sandboxExecution.value.terminal !== "COMPLETED") {
+    throw new Error("Release Fixture 的 Sandbox Request 必须由有效 Permit 成功执行。");
+  }
+  const sandboxReceipt = await sandbox.authorizeExecutionReceipt(
+    sandboxExecution.value.receipt_ref,
   );
 
   const decisionEvidenceReferences = [
     readyCertificateReference,
     scoreCardArtifactReference,
     benchmarkReceiptReference,
-    sandboxReceiptReference,
+    sandboxReceipt.receipt_ref,
     modelReceiptReference,
   ] as const;
   const manifestDraft = {
@@ -355,9 +424,25 @@ export async function createAuthoritativeReleaseFixture(
     decided_at: "2026-07-25T00:03:00.000Z",
   };
 
-  const resolveGroundingAuthority = ready.authority.resolveGroundingAuthority;
-  if (!resolveGroundingAuthority) {
-    throw new Error("Release Fixture 缺少 Grounding Authority Resolver。");
+  const {
+    resolveGroundingAuthority,
+    resolveSystemArtifact,
+    verifySystemArtifactCommitted,
+    verifyResourceAdmissionReceipt,
+    verifyResultOracleReceipt,
+    verifySandboxExecutionEvidence,
+    verifySqlArtifactCompilation,
+  } = ready.authority;
+  if (
+    !resolveGroundingAuthority ||
+    !resolveSystemArtifact ||
+    !verifySystemArtifactCommitted ||
+    !verifyResourceAdmissionReceipt ||
+    !verifyResultOracleReceipt ||
+    !verifySandboxExecutionEvidence ||
+    !verifySqlArtifactCompilation
+  ) {
+    throw new Error("Release Fixture 缺少完整的 L2/System Artifact Authority。");
   }
   const authority: ReleaseAuthorityContext = {
     principalId: ready.authority.principalId,
@@ -367,13 +452,19 @@ export async function createAuthoritativeReleaseFixture(
         : true,
     resolveL2: ready.authority.resolveL2,
     resolveGroundingAuthority,
+    resolveSystemArtifact,
+    verifySystemArtifactCommitted,
+    verifySqlArtifactCompilation,
+    verifyResourceAdmissionReceipt,
+    verifyResultOracleReceipt,
+    verifySandboxExecutionEvidence,
     verifyCommitterCapability: ready.authority.verifyCommitterCapability,
     resolveScoreCard: async (reference) =>
       sameReference(reference, scoreCardArtifactReference) ? scoreCard : null,
     resolveBenchmarkAdapterReceipt: async (reference) =>
       sameReference(reference, benchmarkReceiptReference) ? benchmarkReceipt : null,
     resolveSandboxExecutionReceipt: async (reference) =>
-      sameReference(reference, sandboxReceiptReference) ? sandboxReceipt : null,
+      sameReference(reference, sandboxReceipt.receipt_ref) ? sandboxReceipt : null,
     resolveModelCertificationReceipt: async (reference) =>
       sameReference(reference, modelReceiptReference) ? modelReceipt : null,
     resolveReleaseManifest: async (reference) =>

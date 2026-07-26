@@ -1,3 +1,4 @@
+import { SANDBOX_RESULT_LIMITS } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   compileQueryContract,
@@ -163,6 +164,98 @@ describe("QueryContract 编译", () => {
         result_contract: {
           ...completeResolution.result_contract,
           columns: ["metric.net_revenue", "metric.net_revenue"],
+        },
+      }),
+    ).rejects.toThrow();
+  });
+
+  it.each(["1metric", "metric/revenue", "metric+revenue", "m".repeat(64)])(
+    "在 QueryContract 边界拒绝不可跨 PostgreSQL/Sandbox 保真的输出 Alias：%s",
+    async (metric) => {
+      await expect(
+        compileResolution({
+          ...completeResolution,
+          metric_candidates: [metric],
+          result_contract: {
+            ...completeResolution.result_contract,
+            columns: [...completeResolution.dimensions, metric],
+          },
+        }),
+      ).rejects.toThrow();
+    },
+  );
+
+  it("接受恰好 63 字节的可移植输出 Alias", async () => {
+    const metric = `m${"a".repeat(62)}`;
+    const result = await compileResolution({
+      ...completeResolution,
+      metric_candidates: [metric],
+      result_contract: {
+        ...completeResolution.result_contract,
+        columns: [...completeResolution.dimensions, metric],
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "READY",
+      query_contract: {
+        metric,
+        result_contract: {
+          columns: [...completeResolution.dimensions, metric],
+        },
+      },
+    });
+  });
+
+  it("接受 PostgreSQL 可保真的前导下划线输出 Alias", async () => {
+    const result = await compileResolution({
+      ...completeResolution,
+      metric_candidates: ["_revenue"],
+      result_contract: {
+        ...completeResolution.result_contract,
+        columns: [...completeResolution.dimensions, "_revenue"],
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "READY",
+      query_contract: {
+        metric: "_revenue",
+        result_contract: {
+          columns: [...completeResolution.dimensions, "_revenue"],
+        },
+      },
+    });
+  });
+
+  it("QueryContract 的最大输出列数与 SandboxResult 使用同一可执行上限", async () => {
+    const dimensions = Array.from(
+      { length: SANDBOX_RESULT_LIMITS.max_columns - 1 },
+      (_, index) => `dimension_${index}`,
+    );
+    const metric = "metric_total";
+
+    await expect(
+      compileResolution({
+        ...completeResolution,
+        metric_candidates: [metric],
+        dimensions,
+        result_contract: {
+          ...completeResolution.result_contract,
+          columns: [...dimensions, metric],
+        },
+      }),
+    ).resolves.toMatchObject({ state: "READY" });
+
+    const tooManyDimensions = [...dimensions, "dimension_overflow"];
+    await expect(
+      compileResolution({
+        ...completeResolution,
+        metric_candidates: [metric],
+        dimensions: tooManyDimensions,
+        result_contract: {
+          ...completeResolution.result_contract,
+          columns: [...tooManyDimensions, metric],
         },
       }),
     ).rejects.toThrow();

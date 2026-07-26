@@ -46,11 +46,22 @@ const ids = {
   executionA: "00000000-0000-4000-8000-000000000008",
   executionB: "00000000-0000-4000-8000-000000000009",
   sqlArtifact: "00000000-0000-4000-8000-000000000010",
+  resourceAdmission: "00000000-0000-4000-8000-000000000011",
+  executionPermit: "00000000-0000-4000-8000-000000000012",
+  gateReceipts: [
+    "00000000-0000-4000-8000-000000000013",
+    "00000000-0000-4000-8000-000000000014",
+    "00000000-0000-4000-8000-000000000015",
+    "00000000-0000-4000-8000-000000000016",
+    "00000000-0000-4000-8000-000000000017",
+  ],
+  policyReceipt: "00000000-0000-4000-8000-000000000018",
 } as const;
 
 const hashes = {
   artifact: `sha256:${"a".repeat(64)}`,
   input: `sha256:${"b".repeat(64)}`,
+  settings: "sha256:e8c18066dd4107ec552128071abd289b5cccd337c58eef1313ec258ab64f830c",
 } as const;
 
 const scope = {
@@ -130,6 +141,90 @@ function makeSqlArtifactReference(targetScope: AppScope, contentHash: string = h
   } as const satisfies ArtifactReference;
 }
 
+function makeScopedArtifactReference<
+  const T extends "ExecutionPermit" | "GateReceipt" | "PolicyReceipt" | "ResourceAdmissionReceipt",
+>(targetScope: AppScope, artifactType: T, artifactId: string) {
+  return {
+    artifact_id: artifactId,
+    artifact_type: artifactType,
+    app_id: targetScope.app_id,
+    tenant_id: targetScope.tenant_id,
+    environment: targetScope.environment,
+    run_id: ids.run,
+    revision: 1,
+    content_hash: hashes.artifact,
+  } as const;
+}
+
+const sandboxExecutionSettings = {
+  database_role: "analyst",
+  search_path: ["app_data_agent", "pg_catalog"] as string[],
+  plan_cache_mode: "force_custom_plan",
+  statement_timeout_ms: 1_000,
+  lock_timeout_ms: 100,
+} as const;
+
+const sandboxBudget = {
+  timeout_ms: 1_000,
+  lock_timeout_ms: 100,
+  max_rows: 10,
+  max_bytes: 1_024,
+  max_memory_mb: 64,
+} as const;
+
+function makeSandboxPermitFixture(targetScope: AppScope) {
+  const resourceAdmissionReference = makeScopedArtifactReference(
+    targetScope,
+    "ResourceAdmissionReceipt",
+    ids.resourceAdmission,
+  );
+  const reference = makeScopedArtifactReference(
+    targetScope,
+    "ExecutionPermit",
+    ids.executionPermit,
+  );
+  const permit = {
+    artifact_type: "ExecutionPermit",
+    sql_artifact_ref: makeSqlArtifactReference(targetScope),
+    resource_admission_ref: resourceAdmissionReference,
+    gate_receipt_refs: ids.gateReceipts.map((artifactId) =>
+      makeScopedArtifactReference(targetScope, "GateReceipt", artifactId),
+    ),
+    datasource_id: ids.tenantA,
+    schema_version: "1.0.0",
+    settings_hash: hashes.settings,
+    execution_settings: sandboxExecutionSettings,
+    principal_id: "analyst@example.test",
+    policy_receipt_ref: makeScopedArtifactReference(
+      targetScope,
+      "PolicyReceipt",
+      ids.policyReceipt,
+    ),
+    budget: sandboxBudget,
+    issued_at: "2026-07-24T23:59:00.000Z",
+    expires_at: "2026-07-25T00:04:00.000Z",
+  } as const;
+  return {
+    reference,
+    resourceAdmissionReference,
+    permit,
+  };
+}
+
+const appASandboxPermit = makeSandboxPermitFixture(scope);
+const appBSandboxPermit = makeSandboxPermitFixture(otherScope);
+
+export const PORT_CONFORMANCE_SANDBOX_PERMITS = Object.freeze([
+  Object.freeze({
+    reference: appASandboxPermit.reference,
+    permit: appASandboxPermit.permit,
+  }),
+  Object.freeze({
+    reference: appBSandboxPermit.reference,
+    permit: appBSandboxPermit.permit,
+  }),
+]);
+
 function makeSandboxRequest(input?: {
   readonly scope?: AppScope;
   readonly execution_id?: string;
@@ -147,17 +242,26 @@ function makeSandboxRequest(input?: {
     payload: {
       dialect: "postgresql",
       sql_artifact_ref: makeSqlArtifactReference(requestScope),
+      execution_permit_ref:
+        requestScope.app_id === otherScope.app_id
+          ? appBSandboxPermit.reference
+          : appASandboxPermit.reference,
+      resource_admission_ref:
+        requestScope.app_id === otherScope.app_id
+          ? appBSandboxPermit.resourceAdmissionReference
+          : appASandboxPermit.resourceAdmissionReference,
+      datasource_id: ids.tenantA,
+      settings_hash: hashes.settings,
+      execution_settings: sandboxExecutionSettings,
+      snapshot_requirement: {
+        mode: "REQUIRE_REPLAYABLE",
+      },
       parameters: input?.parameters ?? {
         limit: 10,
         region: "south",
       },
     },
-    budget: {
-      timeout_ms: 1_000,
-      max_rows: 10,
-      max_bytes: 1_024,
-      max_memory_mb: 64,
-    },
+    budget: sandboxBudget,
   };
 }
 
@@ -431,14 +535,26 @@ export const PORT_CONFORMANCE_CASES: readonly PortConformanceCase[] = Object.fre
     assertErrorCode(
       await sandbox.execute(
         makeSandboxRequest({
+          execution_id: ids.executionB,
+        }),
+      ),
+      "SANDBOX_IDEMPOTENCY_CONFLICT",
+      "Sandbox 同键不同输入冲突",
+    );
+
+    assertErrorCode(
+      await sandbox.execute(
+        makeSandboxRequest({
+          execution_id: ids.executionB,
+          idempotency_key: "sandbox-parameter-tamper",
           parameters: {
             limit: 11,
             region: "south",
           },
         }),
       ),
-      "SANDBOX_IDEMPOTENCY_CONFLICT",
-      "Sandbox 同键不同输入冲突",
+      "SANDBOX_EXECUTION_NOT_AUTHORIZED",
+      "Sandbox 拒绝与权威 SqlArtifact 不一致的参数",
     );
 
     const distinctReceipt = unwrap(
@@ -446,10 +562,6 @@ export const PORT_CONFORMANCE_CASES: readonly PortConformanceCase[] = Object.fre
         makeSandboxRequest({
           execution_id: ids.executionB,
           idempotency_key: "sandbox-twice",
-          parameters: {
-            limit: 11,
-            region: "south",
-          },
         }),
       ),
       "Sandbox 不同输入执行",

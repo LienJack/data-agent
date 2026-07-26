@@ -127,4 +127,36 @@ describe("Text2SQL 基础契约的 Column/Table 所有权", () => {
       }).success,
     ).toBe(false);
   });
+
+  it.each(["1metric", "metric/revenue", "metric+revenue", "m".repeat(64)])(
+    "SemanticRelease 的 Metric/Dimension ID 拒绝不可跨 PostgreSQL 保真的 Alias：%s",
+    (semanticId) => {
+      expect(metricBindingSchema.safeParse({ ...metric, metric_id: semanticId }).success).toBe(
+        false,
+      );
+      expect(
+        dimensionBindingSchema.safeParse({
+          dimension_id: semanticId,
+          aliases: ["客户"],
+          table_id: "orders",
+          column_id: "orders.customer_id",
+          grain: "order",
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("SemanticRelease 的 Metric/Dimension ID 接受恰好 63 字节与前导下划线 Alias", () => {
+    const maxLengthId = `m${"a".repeat(62)}`;
+    expect(metricBindingSchema.safeParse({ ...metric, metric_id: maxLengthId }).success).toBe(true);
+    expect(
+      dimensionBindingSchema.safeParse({
+        dimension_id: "_customer",
+        aliases: ["客户"],
+        table_id: "orders",
+        column_id: "orders.customer_id",
+        grain: "order",
+      }).success,
+    ).toBe(true);
+  });
 });

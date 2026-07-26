@@ -5,7 +5,38 @@ export * from "./benchmark-suite.js";
 export * from "./event-correlation.js";
 export * from "./external-agent.js";
 export * from "./model-provider.js";
-export * from "./sandbox.js";
+export {
+  type AuthoritativeSandboxExecutionReceipt,
+  type AuthoritativeSandboxResult,
+  computeSandboxExecutionReceiptHash,
+  computeSandboxExecutionRequestHash,
+  computeSandboxResultBytes,
+  computeSandboxResultHash,
+  isAuthoritativeSandboxExecutionReceipt,
+  isAuthoritativeSandboxResult,
+  SANDBOX_RESULT_COLUMN_TYPES,
+  SANDBOX_RESULT_LIMITS,
+  type SandboxExecutionReceipt,
+  SandboxExecutionReceiptAuthorityError,
+  type SandboxExecutionRequest,
+  SandboxExecutionRequestAuthorityError,
+  type SandboxPort,
+  type SandboxResult,
+  SandboxResultAuthorityError,
+  type SqlSandboxExecutionRequest,
+  type SuccessfulSandboxExecutionReceipt,
+  sandboxAuthorityRevalidationSchema,
+  sandboxExecutionReceiptReferenceSchema,
+  sandboxExecutionReceiptSchema,
+  sandboxExecutionRequestSchema,
+  sandboxResultColumnSchema,
+  sandboxResultColumnTypeSchema,
+  sandboxResultReferenceSchema,
+  sandboxResultSchema,
+  sandboxSnapshotBindingSchema,
+  sandboxSnapshotRequirementSchema,
+  successfulSandboxExecutionReceiptSchema,
+} from "./sandbox.js";
 
 export interface StoragePut {
   readonly scope: AppScope;

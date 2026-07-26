@@ -19,5 +19,6 @@ export {
   verifyGroundingAuthorityDocument,
 } from "./grounding-authority.js";
 export * from "./l2.js";
+export * from "./text2sql-evidence.js";
 export * from "./text2sql-primitives.js";
 export * from "./types.js";

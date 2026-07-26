@@ -3,11 +3,21 @@ import {
   canonicalizeJson,
   contentHashSchema,
   deepFreeze,
+  EXECUTABLE_QUERY_LIMITS,
   immutableIdSchema,
+  postgresqlOutputAliasSchema,
   sha256ContentHash,
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
+import {
+  computeSandboxExecutionReceiptHash,
+  computeSandboxResultHash,
+  type SandboxResult,
+  type SuccessfulSandboxExecutionReceipt,
+  sandboxResultSchema,
+  successfulSandboxExecutionReceiptSchema,
+} from "../ports/sandbox.js";
 import {
   type ArtifactCommitterCapabilityClaim,
   type ArtifactReference,
@@ -22,6 +32,18 @@ import {
   type GroundingAuthorityReference,
   verifyGroundingAuthorityDocument,
 } from "./grounding-authority.js";
+import {
+  computePostgresqlExecutionSettingsHash,
+  computeResourceAdmissionReceiptHash,
+  computeResourceEstimateHash,
+  computeResultOracleEvidenceHash,
+  computeResultOracleReceiptHash,
+  postgresqlExecutionSettingsSchema,
+  type ResourceAdmissionReceipt,
+  type ResultOracleReceipt,
+  resourceAdmissionReceiptSchema,
+  resultOracleReceiptSchema,
+} from "./text2sql-evidence.js";
 import {
   catalogRelationshipContractSchema,
   catalogTableContractSchema,
@@ -136,8 +158,8 @@ export const queryContractSchema = z
   .strictObject({
     artifact_type: z.literal("QueryContract"),
     evidence_plan_ref: artifactReferenceFor("EvidencePlan"),
-    metric: versionIdentifierSchema,
-    dimensions: z.array(versionIdentifierSchema),
+    metric: postgresqlOutputAliasSchema,
+    dimensions: z.array(postgresqlOutputAliasSchema).max(EXECUTABLE_QUERY_LIMITS.max_columns - 1),
     grain: versionIdentifierSchema,
     time_range: z.strictObject({
       start: timestampSchema,
@@ -149,7 +171,7 @@ export const queryContractSchema = z
     filters: z.array(queryFilterSchema),
     datasource_id: immutableIdSchema,
     result_contract: z.strictObject({
-      columns: z.array(versionIdentifierSchema).min(1),
+      columns: z.array(postgresqlOutputAliasSchema).min(1).max(EXECUTABLE_QUERY_LIMITS.max_columns),
       invariant_ids: z.array(versionIdentifierSchema).min(1),
     }),
   })
@@ -522,10 +544,10 @@ export const semanticQuerySchema = z
   .superRefine(validateSemanticQueryIdentities);
 
 const measureSchema = z.strictObject({
-  metric_id: versionIdentifierSchema,
+  metric_id: postgresqlOutputAliasSchema,
   function: z.enum(["sum", "count", "count_distinct", "avg", "min", "max"]),
   field: fieldReferenceSchema,
-  alias: versionIdentifierSchema,
+  alias: postgresqlOutputAliasSchema,
   unit: versionIdentifierSchema,
   null_policy: z.enum(["preserve", "coalesce-zero", "exclude"]),
   distinct: z.boolean(),
@@ -578,7 +600,7 @@ export const logicalOperationSchema = z
           z.strictObject({
             source_kind: z.enum(["group", "measure"]),
             source_id: versionIdentifierSchema,
-            alias: versionIdentifierSchema,
+            alias: postgresqlOutputAliasSchema,
           }),
         )
         .min(1),
@@ -621,8 +643,8 @@ export const logicalPlanContentSchema = z.strictObject({
   parameters: z.record(versionIdentifierSchema, boundParameterSchema),
   grounding_hash: contentHashSchema,
   semantic_signature: z.strictObject({
-    metric_id: versionIdentifierSchema,
-    dimension_ids: z.array(versionIdentifierSchema),
+    metric_id: postgresqlOutputAliasSchema,
+    dimension_ids: z.array(postgresqlOutputAliasSchema),
     grain: versionIdentifierSchema,
     unit: versionIdentifierSchema,
     time_semantics: z.literal("HALF_OPEN"),
@@ -638,6 +660,8 @@ export const logicalPlanSchema = z.strictObject({
 export const sqlArtifactSchema = z.strictObject({
   artifact_type: z.literal("SqlArtifact"),
   logical_plan_ref: artifactReferenceFor("LogicalPlan"),
+  compiler_version: versionIdentifierSchema,
+  ast_hash: contentHashSchema,
   dialect: z.literal("postgresql"),
   sql: z.string().min(1).max(100_000),
   parameters: z.record(z.string(), z.json()),
@@ -662,48 +686,546 @@ export const TEXT2SQL_PRE_EXECUTION_GATES = [
   "RESOURCE",
 ] as const;
 
-const gateVerdictSchema = z.enum(["PASS", "FAIL", "UNAVAILABLE"]);
+export type Text2SqlGate = (typeof TEXT2SQL_GATES)[number];
 
-export const gateReceiptSchema = z
+export const TEXT2SQL_GATE_VERDICTS = ["PASS", "FAIL", "UNAVAILABLE"] as const;
+
+export type Text2SqlGateVerdict = (typeof TEXT2SQL_GATE_VERDICTS)[number];
+
+type NonEmptyGateReasonCodeList = readonly [string, ...string[]];
+type Text2SqlGateReasonCodeTable = {
+  readonly [Gate in Text2SqlGate]: {
+    readonly [Verdict in Text2SqlGateVerdict]: NonEmptyGateReasonCodeList;
+  };
+};
+
+/**
+ * 七道 Gate 的 Verdict ↔ Reason Code 单一真值源。
+ *
+ * 每个 Reason Code 只属于一个 Gate/Verdict 组合；Receipt Schema 与消费者类型都必须
+ * 从本表派生，不能再接受任意大写字符串或用名称后缀猜测 Verdict。
+ */
+export const TEXT2SQL_GATE_REASON_CODES = {
+  INTENT: {
+    PASS: ["INTENT_VERIFIED"],
+    FAIL: ["INTENT_CONTRACT_MISMATCH", "INTENT_LINEAGE_MISMATCH"],
+    UNAVAILABLE: ["INTENT_INPUT_UNAVAILABLE"],
+  },
+  SEMANTIC: {
+    PASS: ["SEMANTIC_VERIFIED"],
+    FAIL: ["SEMANTIC_PLAN_MISMATCH", "SEMANTIC_PREDICATE_MISMATCH", "SEMANTIC_FANOUT_UNSAFE"],
+    UNAVAILABLE: ["SEMANTIC_INPUT_UNAVAILABLE"],
+  },
+  STRUCTURAL: {
+    PASS: ["STRUCTURAL_VERIFIED"],
+    FAIL: [
+      "STRUCTURAL_NOT_READ_ONLY",
+      "STRUCTURAL_REFERENCE_UNRESOLVED",
+      "STRUCTURAL_PARAMETER_MISMATCH",
+      "STRUCTURAL_HASH_MISMATCH",
+    ],
+    UNAVAILABLE: ["STRUCTURAL_COMPILER_UNAVAILABLE"],
+  },
+  POLICY: {
+    PASS: ["POLICY_VERIFIED"],
+    FAIL: [
+      "POLICY_SCOPE_MISMATCH",
+      "POLICY_OBJECT_DENIED",
+      "POLICY_PREDICATE_MISSING",
+      "POLICY_VERSION_MISMATCH",
+    ],
+    UNAVAILABLE: ["POLICY_RECEIPT_UNAVAILABLE"],
+  },
+  RESOURCE: {
+    PASS: ["RESOURCE_VERIFIED"],
+    FAIL: [
+      "RESOURCE_BUDGET_EXCEEDED",
+      "RESOURCE_PLAN_SHAPE_FORBIDDEN",
+      "RESOURCE_LIMITS_MISSING",
+      "RESOURCE_ESTIMATE_MISMATCH",
+    ],
+    UNAVAILABLE: ["RESOURCE_EXPLAIN_UNAVAILABLE"],
+  },
+  EXECUTION: {
+    PASS: ["EXECUTION_VERIFIED"],
+    FAIL: [
+      "EXECUTION_PERMIT_INVALID",
+      "EXECUTION_HASH_MISMATCH",
+      "EXECUTION_TIMEOUT",
+      "EXECUTION_RESULT_CAP_EXCEEDED",
+      "EXECUTION_FAILED",
+    ],
+    UNAVAILABLE: ["EXECUTION_SANDBOX_UNAVAILABLE"],
+  },
+  RESULT: {
+    PASS: ["RESULT_VERIFIED"],
+    FAIL: [
+      "RESULT_BINDING_MISMATCH",
+      "RESULT_SCHEMA_MISMATCH",
+      "RESULT_CARDINALITY_MISMATCH",
+      "RESULT_INVARIANT_FAILED",
+      "RESULT_ORACLE_FAILED",
+    ],
+    UNAVAILABLE: ["RESULT_ORACLE_UNAVAILABLE"],
+  },
+} as const satisfies Text2SqlGateReasonCodeTable;
+
+export type Text2SqlGateReasonCode<
+  Gate extends Text2SqlGate = Text2SqlGate,
+  Verdict extends Text2SqlGateVerdict = Text2SqlGateVerdict,
+> = Gate extends Text2SqlGate
+  ? Verdict extends Text2SqlGateVerdict
+    ? (typeof TEXT2SQL_GATE_REASON_CODES)[Gate][Verdict][number]
+    : never
+  : never;
+
+/*
+ * reset-only breaking contract：GateReceipt v2 直接替代旧 v1。
+ * 旧 v1 payload 必须在 Schema 边界失败；本仓库不提供迁移或兼容解析路径。
+ */
+export const TEXT2SQL_GATE_EVALUATOR_VERSION = "text2sql-gates@2.0.0" as const;
+
+export const TEXT2SQL_VALIDATION_VERSION = "text2sql-validation@1.0.0" as const;
+
+export const TEXT2SQL_EXECUTION_PERMIT_TTL_MS = 300_000 as const;
+const TEXT2SQL_GATE_RECEIPT_MAX_AGE_MS = 10 * 60 * 1_000;
+
+export const GATE_OBSERVATION_UNAVAILABLE_HASH =
+  "sha256:74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b" as const;
+
+const intentGateObservationsSchema = z.strictObject({
+  query_contract_hash: contentHashSchema,
+  intent_signature_hash: contentHashSchema,
+});
+
+const semanticGateObservationsSchema = z.strictObject({
+  logical_plan_hash: contentHashSchema,
+  semantic_hash: contentHashSchema,
+  grounding_hash: contentHashSchema,
+});
+
+const structuralGateObservationsSchema = z.strictObject({
+  compiler_version: versionIdentifierSchema,
+  ast_hash: contentHashSchema,
+  query_hash: contentHashSchema,
+  parameter_count: z.number().int().nonnegative(),
+  statement_kind: z.enum(["SELECT", "UNAVAILABLE"]),
+  read_only: z.boolean(),
+});
+
+const policyGateObservationsSchema = z.strictObject({
+  policy_version: versionIdentifierSchema,
+  mandatory_predicate_count: z.number().int().nonnegative(),
+  resolved_binding_count: z.number().int().nonnegative(),
+});
+
+const resourceGateObservationsSchema = z.strictObject({
+  estimate_hash: contentHashSchema,
+  policy_version: versionIdentifierSchema,
+  total_cost: z.number().nonnegative(),
+  plan_rows: z.number().int().nonnegative(),
+  plan_width: z.number().int().nonnegative(),
+  planned_bytes: z.number().int().nonnegative(),
+  lock_timeout_ms: z.number().int().nonnegative().max(300_000),
+  timeout_ms: z.number().int().nonnegative().max(300_000),
+  max_rows: z.number().int().nonnegative().max(EXECUTABLE_QUERY_LIMITS.max_rows),
+  max_bytes: z.number().int().nonnegative().max(EXECUTABLE_QUERY_LIMITS.max_bytes),
+  max_memory_mb: z.number().int().nonnegative().max(EXECUTABLE_QUERY_LIMITS.max_memory_mb),
+});
+
+const executionGateObservationsSchema = z.strictObject({
+  query_hash: contentHashSchema,
+  sandbox_execution_hash: contentHashSchema,
+  elapsed_ms: z.number().int().nonnegative(),
+  rows: z.number().int().nonnegative(),
+  bytes: z.number().int().nonnegative(),
+});
+
+const resultGateObservationsSchema = z
   .strictObject({
-    artifact_type: z.literal("GateReceipt"),
-    sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
-    execution_receipt_ref: artifactReferenceFor("ExecutionReceipt").nullable(),
-    gate: z.enum(TEXT2SQL_GATES),
-    gate_version: versionIdentifierSchema,
-    verdict: gateVerdictSchema,
-    reason_code: z
-      .string()
-      .min(1)
-      .max(128)
-      .regex(/^[A-Z][A-Z0-9_]*$/),
-    evidence_refs: z.array(artifactReferenceSchema).min(1),
-    evaluated_at: timestampSchema,
+    result_hash: contentHashSchema,
+    oracle_version: versionIdentifierSchema,
+    invariant_ids: z.array(versionIdentifierSchema),
+    oracle_evidence_hash: contentHashSchema,
   })
-  .superRefine((receipt, ctx) => {
-    const executionBound = receipt.execution_receipt_ref !== null;
-    const requiresExecution = receipt.gate === "EXECUTION" || receipt.gate === "RESULT";
-    if (executionBound !== requiresExecution) {
+  .superRefine((observations, ctx) => {
+    if (new Set(observations.invariant_ids).size !== observations.invariant_ids.length) {
       ctx.addIssue({
         code: "custom",
-        message: requiresExecution
-          ? "EXECUTION/RESULT GateReceipt 必须绑定真实 ExecutionReceipt。"
-          : "执行前 GateReceipt 不能绑定尚未发生的 ExecutionReceipt。",
-        path: ["execution_receipt_ref"],
+        message: "RESULT GateReceipt 的 invariant_ids 必须唯一。",
+        path: ["invariant_ids"],
       });
     }
   });
+
+const preExecutionGateEvidenceReferenceSchema = artifactReferenceSchema.refine(
+  (reference) =>
+    [
+      "QuestionFrame",
+      "ResearchBrief",
+      "HypothesisSet",
+      "EvidencePlan",
+      "QueryContract",
+      "SemanticRelease",
+      "SchemaSnapshot",
+      "PolicyReceipt",
+      "GroundingPackage",
+      "SemanticQuery",
+      "LogicalPlan",
+      "SqlArtifact",
+      "ResourceAdmissionReceipt",
+    ].includes(reference.artifact_type),
+  {
+    message: "执行前 GateReceipt 不能引用 ExecutionPermit 或执行后 Artifact 作为 Evidence。",
+  },
+);
+
+const gateReceiptInputHashBaseShape = {
+  artifact_type: z.literal("GateReceipt"),
+  sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
+  gate_version: z.literal(TEXT2SQL_GATE_EVALUATOR_VERSION),
+  evaluator_version: z.literal(TEXT2SQL_GATE_EVALUATOR_VERSION),
+} as const;
+
+const gateReceiptEvaluationHashBaseShape = {
+  input_hash: contentHashSchema,
+  evaluator_input_hash: contentHashSchema,
+  evaluator_evaluation_hash: contentHashSchema,
+  evaluated_at: timestampSchema,
+} as const;
+
+const preExecutionGateInputHashShape = {
+  ...gateReceiptInputHashBaseShape,
+  execution_receipt_ref: z.null(),
+  evidence_refs: z.array(preExecutionGateEvidenceReferenceSchema).min(1),
+} as const;
+
+const postExecutionGateInputHashShape = {
+  ...gateReceiptInputHashBaseShape,
+  execution_receipt_ref: artifactReferenceFor("ExecutionReceipt"),
+  evidence_refs: z.array(artifactReferenceSchema).min(1),
+} as const;
+
+const intentGateInputHashMaterialSchema = z.strictObject({
+  ...preExecutionGateInputHashShape,
+  gate: z.literal("INTENT"),
+});
+const semanticGateInputHashMaterialSchema = z.strictObject({
+  ...preExecutionGateInputHashShape,
+  gate: z.literal("SEMANTIC"),
+});
+const structuralGateInputHashMaterialSchema = z.strictObject({
+  ...preExecutionGateInputHashShape,
+  gate: z.literal("STRUCTURAL"),
+});
+const policyGateInputHashMaterialSchema = z.strictObject({
+  ...preExecutionGateInputHashShape,
+  gate: z.literal("POLICY"),
+});
+const resourceGateInputHashMaterialSchema = z.strictObject({
+  ...preExecutionGateInputHashShape,
+  gate: z.literal("RESOURCE"),
+});
+const executionGateInputHashMaterialSchema = z.strictObject({
+  ...postExecutionGateInputHashShape,
+  gate: z.literal("EXECUTION"),
+});
+const resultGateInputHashMaterialSchema = z.strictObject({
+  ...postExecutionGateInputHashShape,
+  gate: z.literal("RESULT"),
+});
+
+const gateReceiptInputHashMaterialSchema = z.discriminatedUnion("gate", [
+  intentGateInputHashMaterialSchema,
+  semanticGateInputHashMaterialSchema,
+  structuralGateInputHashMaterialSchema,
+  policyGateInputHashMaterialSchema,
+  resourceGateInputHashMaterialSchema,
+  executionGateInputHashMaterialSchema,
+  resultGateInputHashMaterialSchema,
+]);
+
+function createGateEvaluationSchemas<
+  const InputShape extends z.core.$ZodShape,
+  ObservationsSchema extends z.ZodType,
+  const ReasonCodes extends {
+    readonly PASS: NonEmptyGateReasonCodeList;
+    readonly FAIL: NonEmptyGateReasonCodeList;
+    readonly UNAVAILABLE: NonEmptyGateReasonCodeList;
+  },
+>(inputShape: InputShape, observationsSchema: ObservationsSchema, reasonCodes: ReasonCodes) {
+  const evaluationBaseShape = {
+    ...inputShape,
+    ...gateReceiptEvaluationHashBaseShape,
+    observations: observationsSchema,
+  } as const;
+  const passShape = {
+    ...evaluationBaseShape,
+    verdict: z.literal("PASS"),
+    reason_code: z.enum(reasonCodes.PASS),
+  } as const;
+  const failShape = {
+    ...evaluationBaseShape,
+    verdict: z.literal("FAIL"),
+    reason_code: z.enum(reasonCodes.FAIL),
+  } as const;
+  const unavailableShape = {
+    ...evaluationBaseShape,
+    verdict: z.literal("UNAVAILABLE"),
+    reason_code: z.enum(reasonCodes.UNAVAILABLE),
+  } as const;
+
+  return {
+    evaluationHashMaterialSchema: z.discriminatedUnion("verdict", [
+      z.strictObject(passShape),
+      z.strictObject(failShape),
+      z.strictObject(unavailableShape),
+    ]),
+    receiptSchema: z.discriminatedUnion("verdict", [
+      z.strictObject({
+        ...passShape,
+        evaluation_hash: contentHashSchema,
+      }),
+      z.strictObject({
+        ...failShape,
+        evaluation_hash: contentHashSchema,
+      }),
+      z.strictObject({
+        ...unavailableShape,
+        evaluation_hash: contentHashSchema,
+      }),
+    ]),
+  };
+}
+
+const intentGateSchemas = createGateEvaluationSchemas(
+  intentGateInputHashMaterialSchema.shape,
+  intentGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.INTENT,
+);
+const semanticGateSchemas = createGateEvaluationSchemas(
+  semanticGateInputHashMaterialSchema.shape,
+  semanticGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.SEMANTIC,
+);
+const structuralGateSchemas = createGateEvaluationSchemas(
+  structuralGateInputHashMaterialSchema.shape,
+  structuralGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.STRUCTURAL,
+);
+const policyGateSchemas = createGateEvaluationSchemas(
+  policyGateInputHashMaterialSchema.shape,
+  policyGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.POLICY,
+);
+const resourceGateSchemas = createGateEvaluationSchemas(
+  resourceGateInputHashMaterialSchema.shape,
+  resourceGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.RESOURCE,
+);
+const executionGateSchemas = createGateEvaluationSchemas(
+  executionGateInputHashMaterialSchema.shape,
+  executionGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.EXECUTION,
+);
+const resultGateSchemas = createGateEvaluationSchemas(
+  resultGateInputHashMaterialSchema.shape,
+  resultGateObservationsSchema,
+  TEXT2SQL_GATE_REASON_CODES.RESULT,
+);
+
+const intentGateEvaluationHashMaterialSchema = intentGateSchemas.evaluationHashMaterialSchema;
+const semanticGateEvaluationHashMaterialSchema = semanticGateSchemas.evaluationHashMaterialSchema;
+const structuralGateEvaluationHashMaterialSchema =
+  structuralGateSchemas.evaluationHashMaterialSchema;
+const policyGateEvaluationHashMaterialSchema = policyGateSchemas.evaluationHashMaterialSchema;
+const resourceGateEvaluationHashMaterialSchema = resourceGateSchemas.evaluationHashMaterialSchema;
+const executionGateEvaluationHashMaterialSchema = executionGateSchemas.evaluationHashMaterialSchema;
+const resultGateEvaluationHashMaterialSchema = resultGateSchemas.evaluationHashMaterialSchema;
+
+const gateReceiptEvaluationHashMaterialSchema = z.discriminatedUnion("gate", [
+  intentGateEvaluationHashMaterialSchema,
+  semanticGateEvaluationHashMaterialSchema,
+  structuralGateEvaluationHashMaterialSchema,
+  policyGateEvaluationHashMaterialSchema,
+  resourceGateEvaluationHashMaterialSchema,
+  executionGateEvaluationHashMaterialSchema,
+  resultGateEvaluationHashMaterialSchema,
+]);
+
+const intentGateReceiptSchema = intentGateSchemas.receiptSchema;
+const semanticGateReceiptSchema = semanticGateSchemas.receiptSchema;
+const structuralGateReceiptSchema = structuralGateSchemas.receiptSchema;
+const policyGateReceiptSchema = policyGateSchemas.receiptSchema;
+const resourceGateReceiptSchema = resourceGateSchemas.receiptSchema;
+const executionGateReceiptSchema = executionGateSchemas.receiptSchema;
+const resultGateReceiptSchema = resultGateSchemas.receiptSchema;
+
+function addGatePassObservationIssue(
+  ctx: z.RefinementCtx,
+  message: string,
+  path: PropertyKey[],
+): void {
+  ctx.addIssue({
+    code: "custom",
+    message,
+    path: ["observations", ...path],
+  });
+}
+
+function validateGatePassObservations(
+  receipt: z.infer<typeof gateReceiptDiscriminatedSchema>,
+  ctx: z.RefinementCtx,
+): void {
+  if (receipt.verdict !== "PASS") {
+    return;
+  }
+
+  switch (receipt.gate) {
+    case "INTENT": {
+      if (
+        receipt.observations.query_contract_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        receipt.observations.intent_signature_hash === GATE_OBSERVATION_UNAVAILABLE_HASH
+      ) {
+        addGatePassObservationIssue(ctx, "INTENT PASS 不能使用不可用 Hash sentinel。", []);
+      }
+      return;
+    }
+    case "SEMANTIC": {
+      if (
+        receipt.observations.logical_plan_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        receipt.observations.semantic_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        receipt.observations.grounding_hash === GATE_OBSERVATION_UNAVAILABLE_HASH
+      ) {
+        addGatePassObservationIssue(ctx, "SEMANTIC PASS 不能使用不可用 Hash sentinel。", []);
+      }
+      return;
+    }
+    case "STRUCTURAL": {
+      const observations = receipt.observations;
+      if (
+        observations.compiler_version === "UNAVAILABLE" ||
+        observations.ast_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        observations.query_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        observations.parameter_count === 0 ||
+        observations.statement_kind !== "SELECT" ||
+        !observations.read_only
+      ) {
+        addGatePassObservationIssue(
+          ctx,
+          "STRUCTURAL PASS 必须绑定可用 Compiler/AST/Query、非零参数并证明只读 SELECT。",
+          [],
+        );
+      }
+      return;
+    }
+    case "POLICY": {
+      if (
+        receipt.observations.policy_version === "UNAVAILABLE" ||
+        receipt.observations.resolved_binding_count < receipt.observations.mandatory_predicate_count
+      ) {
+        addGatePassObservationIssue(
+          ctx,
+          "POLICY PASS 必须绑定可用 Policy，并解析全部 Mandatory Predicate Binding。",
+          [],
+        );
+      }
+      return;
+    }
+    case "RESOURCE": {
+      const observations = receipt.observations;
+      const observedPlannedBytes = observations.plan_rows * observations.plan_width;
+      if (
+        observations.estimate_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        observations.policy_version === "UNAVAILABLE" ||
+        observations.total_cost <= 0 ||
+        observations.plan_rows <= 0 ||
+        observations.plan_width <= 0 ||
+        observations.planned_bytes <= 0 ||
+        !Number.isSafeInteger(observedPlannedBytes) ||
+        observations.planned_bytes !== observedPlannedBytes ||
+        observations.lock_timeout_ms <= 0 ||
+        observations.timeout_ms <= 0 ||
+        observations.lock_timeout_ms >= observations.timeout_ms ||
+        observations.max_rows <= 0 ||
+        observations.max_bytes <= 0 ||
+        observations.max_memory_mb <= 0 ||
+        observations.plan_rows > observations.max_rows ||
+        observations.planned_bytes > observations.max_bytes
+      ) {
+        addGatePassObservationIssue(
+          ctx,
+          "RESOURCE PASS 必须绑定有效估算、Policy 和非零限制，planned_bytes 必须等于安全的 plan_rows*plan_width，Lock Timeout 必须小于执行 Timeout，且计划不得越过行数/字节预算。",
+          [],
+        );
+      }
+      return;
+    }
+    case "EXECUTION": {
+      if (
+        receipt.observations.query_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        receipt.observations.sandbox_execution_hash === GATE_OBSERVATION_UNAVAILABLE_HASH
+      ) {
+        addGatePassObservationIssue(
+          ctx,
+          "EXECUTION PASS 不能使用不可用 Query/Sandbox Hash sentinel。",
+          [],
+        );
+      }
+      return;
+    }
+    case "RESULT": {
+      if (
+        receipt.observations.result_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        receipt.observations.oracle_evidence_hash === GATE_OBSERVATION_UNAVAILABLE_HASH ||
+        receipt.observations.oracle_version === "UNAVAILABLE" ||
+        receipt.observations.invariant_ids.length === 0
+      ) {
+        addGatePassObservationIssue(
+          ctx,
+          "RESULT PASS 必须绑定可用 Result Hash、Oracle Version 和至少一个 Invariant。",
+          [],
+        );
+      }
+      return;
+    }
+  }
+}
+
+const gateReceiptDiscriminatedSchema = z.discriminatedUnion("gate", [
+  intentGateReceiptSchema,
+  semanticGateReceiptSchema,
+  structuralGateReceiptSchema,
+  policyGateReceiptSchema,
+  resourceGateReceiptSchema,
+  executionGateReceiptSchema,
+  resultGateReceiptSchema,
+]);
+
+export const gateReceiptSchema = gateReceiptDiscriminatedSchema.superRefine((receipt, ctx) => {
+  validateGatePassObservations(receipt, ctx);
+});
 
 export const executionPermitSchema = z
   .strictObject({
     artifact_type: z.literal("ExecutionPermit"),
     sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
+    resource_admission_ref: artifactReferenceFor("ResourceAdmissionReceipt"),
     gate_receipt_refs: z.array(artifactReferenceFor("GateReceipt")).length(5),
+    principal_id: z.string().min(1).max(256),
+    policy_receipt_ref: artifactReferenceFor("PolicyReceipt"),
+    datasource_id: immutableIdSchema,
+    schema_version: versionIdentifierSchema,
+    settings_hash: contentHashSchema,
+    execution_settings: postgresqlExecutionSettingsSchema,
     budget: z.strictObject({
       timeout_ms: z.number().int().positive().max(300_000),
-      max_rows: z.number().int().positive().max(100_000),
-      max_bytes: z.number().int().positive().max(100_000_000),
+      lock_timeout_ms: z.number().int().positive().max(300_000),
+      max_rows: z.number().int().positive().max(EXECUTABLE_QUERY_LIMITS.max_rows),
+      max_bytes: z.number().int().positive().max(EXECUTABLE_QUERY_LIMITS.max_bytes),
+      max_memory_mb: z.number().int().positive().max(EXECUTABLE_QUERY_LIMITS.max_memory_mb),
     }),
+    issued_at: timestampSchema,
     expires_at: timestampSchema,
   })
   .superRefine((permit, ctx) => {
@@ -715,6 +1237,46 @@ export const executionPermitSchema = z
         path: ["gate_receipt_refs"],
       });
     }
+    const issuedAt = Date.parse(permit.issued_at);
+    const expiresAt = Date.parse(permit.expires_at);
+    if (
+      !Number.isFinite(issuedAt) ||
+      !Number.isFinite(expiresAt) ||
+      expiresAt - issuedAt !== TEXT2SQL_EXECUTION_PERMIT_TTL_MS
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "ExecutionPermit 必须使用服务端签发时间与固定五分钟 TTL。",
+        path: ["expires_at"],
+      });
+    }
+    if (
+      permit.execution_settings.statement_timeout_ms !== permit.budget.timeout_ms ||
+      permit.execution_settings.lock_timeout_ms !== permit.budget.lock_timeout_ms ||
+      permit.budget.lock_timeout_ms >= permit.budget.timeout_ms
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "ExecutionPermit 的 PostgreSQL Settings 必须与 Resource Budget 精确一致。",
+        path: ["execution_settings"],
+      });
+    }
+    const scopeReference = permit.sql_artifact_ref;
+    if (
+      [permit.resource_admission_ref, permit.policy_receipt_ref].some(
+        (reference) =>
+          reference.app_id !== scopeReference.app_id ||
+          reference.tenant_id !== scopeReference.tenant_id ||
+          reference.environment !== scopeReference.environment ||
+          reference.run_id !== scopeReference.run_id,
+      )
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "ExecutionPermit 的 Resource Admission 必须与 SqlArtifact 属于同一 Scope/Run。",
+        path: ["resource_admission_ref"],
+      });
+    }
   });
 
 export const executionReceiptSchema = z
@@ -723,6 +1285,7 @@ export const executionReceiptSchema = z
     sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
     execution_permit_ref: artifactReferenceFor("ExecutionPermit"),
     sandbox_execution_receipt_ref: artifactReferenceFor("SandboxExecutionReceipt"),
+    result_artifact_ref: artifactReferenceFor("SandboxResult"),
     datasource_id: immutableIdSchema,
     schema_version: versionIdentifierSchema,
     snapshot_token: versionIdentifierSchema.nullable(),
@@ -731,9 +1294,28 @@ export const executionReceiptSchema = z
     query_hash: contentHashSchema,
     result_hash: contentHashSchema,
     replay_state: z.enum(["REPLAYABLE", "LIMITED", "REPLAY_UNAVAILABLE"]),
-    row_count: z.number().int().nonnegative(),
+    row_count: z.number().int().nonnegative().max(EXECUTABLE_QUERY_LIMITS.max_rows),
   })
   .superRefine((receipt, ctx) => {
+    const scopeReference = receipt.sql_artifact_ref;
+    for (const [field, reference] of [
+      ["execution_permit_ref", receipt.execution_permit_ref],
+      ["sandbox_execution_receipt_ref", receipt.sandbox_execution_receipt_ref],
+      ["result_artifact_ref", receipt.result_artifact_ref],
+    ] as const) {
+      if (
+        reference.app_id !== scopeReference.app_id ||
+        reference.tenant_id !== scopeReference.tenant_id ||
+        reference.environment !== scopeReference.environment ||
+        reference.run_id !== scopeReference.run_id
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "ExecutionReceipt 的 Permit、Sandbox Receipt 与 Result 必须同属一个 Scope/Run。",
+          path: [field],
+        });
+      }
+    }
     if (receipt.replay_state === "REPLAYABLE" && receipt.snapshot_token === null) {
       ctx.addIssue({
         code: "custom",
@@ -756,7 +1338,7 @@ export const validationReceiptSchema = z
     sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
     execution_receipt_ref: artifactReferenceFor("ExecutionReceipt"),
     gate_receipt_refs: z.array(artifactReferenceFor("GateReceipt")).length(7),
-    validation_version: versionIdentifierSchema,
+    validation_version: z.literal(TEXT2SQL_VALIDATION_VERSION),
     sealed_at: timestampSchema,
   })
   .superRefine((receipt, ctx) => {
@@ -888,13 +1470,17 @@ export const l2ArtifactPayloadSchema = z.discriminatedUnion("artifact_type", [
 
 type L2ArtifactPayload = z.infer<typeof l2ArtifactPayloadSchema>;
 
-type SqlArtifactPayload = Extract<L2ArtifactPayload, { artifact_type: "SqlArtifact" }>;
+export type SqlArtifactPayload = Extract<L2ArtifactPayload, { artifact_type: "SqlArtifact" }>;
 export type QueryContractPayload = z.infer<typeof queryContractSchema>;
 export type GroundingPackagePayload = z.infer<typeof groundingPackageSchema>;
 export type SemanticQueryPayload = z.infer<typeof semanticQuerySchema>;
 export type LogicalPlanPayload = z.infer<typeof logicalPlanSchema>;
 export type SqlArtifactPayloadContract = z.infer<typeof sqlArtifactSchema>;
 export type GateReceiptPayload = z.infer<typeof gateReceiptSchema>;
+export type GateReceiptInputHashMaterial = z.infer<typeof gateReceiptInputHashMaterialSchema>;
+export type GateReceiptEvaluationHashMaterial = z.infer<
+  typeof gateReceiptEvaluationHashMaterialSchema
+>;
 export type ExecutionPermitPayload = z.infer<typeof executionPermitSchema>;
 export type ExecutionReceiptPayload = z.infer<typeof executionReceiptSchema>;
 export type ValidationReceiptPayload = z.infer<typeof validationReceiptSchema>;
@@ -911,6 +1497,41 @@ export async function computeSqlArtifactQueryHash(
     dialect: sqlArtifact.dialect,
     sql: sqlArtifact.sql,
     parameters: sqlArtifact.parameters,
+  });
+}
+
+export async function computeGateInputHash(input: unknown): Promise<`sha256:${string}`> {
+  return sha256ContentHash(gateReceiptInputHashMaterialSchema.parse(input));
+}
+
+export async function computeGateEvaluationHash(input: unknown): Promise<`sha256:${string}`> {
+  return sha256ContentHash(gateReceiptEvaluationHashMaterialSchema.parse(input));
+}
+
+function gateReceiptInputHashMaterial(receipt: GateReceiptPayload): GateReceiptInputHashMaterial {
+  return gateReceiptInputHashMaterialSchema.parse({
+    artifact_type: receipt.artifact_type,
+    sql_artifact_ref: receipt.sql_artifact_ref,
+    execution_receipt_ref: receipt.execution_receipt_ref,
+    gate: receipt.gate,
+    gate_version: receipt.gate_version,
+    evaluator_version: receipt.evaluator_version,
+    evidence_refs: receipt.evidence_refs,
+  });
+}
+
+function gateReceiptEvaluationHashMaterial(
+  receipt: GateReceiptPayload,
+): GateReceiptEvaluationHashMaterial {
+  return gateReceiptEvaluationHashMaterialSchema.parse({
+    ...gateReceiptInputHashMaterial(receipt),
+    input_hash: receipt.input_hash,
+    evaluator_input_hash: receipt.evaluator_input_hash,
+    evaluator_evaluation_hash: receipt.evaluator_evaluation_hash,
+    verdict: receipt.verdict,
+    reason_code: receipt.reason_code,
+    observations: receipt.observations,
+    evaluated_at: receipt.evaluated_at,
   });
 }
 
@@ -944,12 +1565,18 @@ function payloadArtifactReferences(payload: L2ArtifactPayload): ArtifactReferenc
         ...payload.evidence_refs,
       ];
     case "ExecutionPermit":
-      return [payload.sql_artifact_ref, ...payload.gate_receipt_refs];
+      return [
+        payload.sql_artifact_ref,
+        payload.resource_admission_ref,
+        payload.policy_receipt_ref,
+        ...payload.gate_receipt_refs,
+      ];
     case "ExecutionReceipt":
       return [
         payload.sql_artifact_ref,
         payload.execution_permit_ref,
         payload.sandbox_execution_receipt_ref,
+        payload.result_artifact_ref,
       ];
     case "ValidationReceipt":
       return [
@@ -1058,10 +1685,49 @@ export interface L2ArtifactAuthorityContext {
   verifyCommitted(reference: ArtifactReference): Promise<boolean>;
   resolveL2(reference: ArtifactReference): Promise<unknown | null>;
   resolveGroundingAuthority?(reference: GroundingAuthorityReference): Promise<unknown | null>;
+  resolveSystemArtifact?(reference: ArtifactReference): Promise<unknown | null>;
+  verifySystemArtifactCommitted?(reference: ArtifactReference): Promise<boolean>;
+  verifySqlArtifactCompilation?(input: {
+    readonly sql_artifact: SqlArtifactPayload;
+    readonly logical_plan: LogicalPlanPayload;
+    readonly grounding: GroundingPackagePayload;
+    readonly query_contract: QueryContractPayload;
+  }): Promise<boolean>;
+  verifyResourceAdmissionReceipt?(receipt: ResourceAdmissionReceipt): Promise<boolean>;
+  verifyResultOracleReceipt?(receipt: ResultOracleReceipt): Promise<boolean>;
+  verifySandboxExecutionEvidence?(input: {
+    readonly receipt: SuccessfulSandboxExecutionReceipt;
+    readonly result: SandboxResult;
+  }): Promise<boolean>;
   verifyCommitterCapability(claim: ArtifactCommitterCapabilityClaim): Promise<boolean>;
 }
 
 export type L2ArtifactPersistenceAuthority = L2ArtifactAuthorityContext;
+
+export const TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES = [
+  "ResourceAdmissionReceipt",
+  "ResultOracleReceipt",
+  "SandboxExecutionReceipt",
+  "SandboxResult",
+] as const satisfies readonly ArtifactReference["artifact_type"][];
+
+const text2SqlRuntimeSystemArtifactTypeSet = new Set<ArtifactReference["artifact_type"]>(
+  TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES,
+);
+
+function isText2SqlRuntimeSystemArtifact(reference: ArtifactReference): boolean {
+  return text2SqlRuntimeSystemArtifactTypeSet.has(reference.artifact_type);
+}
+
+async function verifyInputReferenceCommitted(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<boolean> {
+  if (!isText2SqlRuntimeSystemArtifact(reference)) {
+    return authority.verifyCommitted(reference);
+  }
+  return authority.verifySystemArtifactCommitted?.(reference) ?? false;
+}
 
 interface L2ArtifactVerificationState {
   readonly verified: Map<string, L2ArtifactDocument>;
@@ -1086,6 +1752,48 @@ function scopeL2ArtifactAuthority(
       ? {
           resolveGroundingAuthority: (reference: GroundingAuthorityReference) =>
             authority.resolveGroundingAuthority?.(reference) ?? Promise.resolve(null),
+        }
+      : {}),
+    ...(authority.resolveSystemArtifact
+      ? {
+          resolveSystemArtifact: (reference: ArtifactReference) =>
+            authority.resolveSystemArtifact?.(reference) ?? Promise.resolve(null),
+        }
+      : {}),
+    ...(authority.verifySystemArtifactCommitted
+      ? {
+          verifySystemArtifactCommitted: (reference: ArtifactReference) =>
+            authority.verifySystemArtifactCommitted?.(reference) ?? Promise.resolve(false),
+        }
+      : {}),
+    ...(authority.verifySqlArtifactCompilation
+      ? {
+          verifySqlArtifactCompilation: (
+            input: Parameters<
+              NonNullable<L2ArtifactAuthorityContext["verifySqlArtifactCompilation"]>
+            >[0],
+          ) => authority.verifySqlArtifactCompilation?.(input) ?? Promise.resolve(false),
+        }
+      : {}),
+    ...(authority.verifyResourceAdmissionReceipt
+      ? {
+          verifyResourceAdmissionReceipt: (receipt: ResourceAdmissionReceipt) =>
+            authority.verifyResourceAdmissionReceipt?.(receipt) ?? Promise.resolve(false),
+        }
+      : {}),
+    ...(authority.verifyResultOracleReceipt
+      ? {
+          verifyResultOracleReceipt: (receipt: ResultOracleReceipt) =>
+            authority.verifyResultOracleReceipt?.(receipt) ?? Promise.resolve(false),
+        }
+      : {}),
+    ...(authority.verifySandboxExecutionEvidence
+      ? {
+          verifySandboxExecutionEvidence: (
+            input: Parameters<
+              NonNullable<L2ArtifactAuthorityContext["verifySandboxExecutionEvidence"]>
+            >[0],
+          ) => authority.verifySandboxExecutionEvidence?.(input) ?? Promise.resolve(false),
         }
       : {}),
     verifyCommitterCapability: (claim: ArtifactCommitterCapabilityClaim) =>
@@ -1165,6 +1873,111 @@ async function resolveAuthoritativeGroundingSource<
     }
     throw error;
   }
+}
+
+async function resolveCommittedSystemArtifact(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<unknown> {
+  if (
+    !authority.resolveSystemArtifact ||
+    !authority.verifySystemArtifactCommitted ||
+    !(await authority.verifySystemArtifactCommitted(reference))
+  ) {
+    throw new ArtifactInputAuthorityError(
+      `${reference.artifact_type} 必须由服务端 System Artifact Store 按完整 Reference 提交。`,
+    );
+  }
+  const resolved = await authority.resolveSystemArtifact(reference);
+  if (resolved === null) {
+    throw new ArtifactSemanticAuthorityError(
+      `${reference.artifact_type} 没有匹配的权威 System Artifact。`,
+    );
+  }
+  return resolved;
+}
+
+async function resolveResourceAdmissionReceipt(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<ResourceAdmissionReceipt> {
+  const parsed = resourceAdmissionReceiptSchema.safeParse(
+    await resolveCommittedSystemArtifact(reference, authority),
+  );
+  if (
+    !parsed.success ||
+    artifactReferenceIdentity(parsed.data.receipt_ref) !== artifactReferenceIdentity(reference) ||
+    (await computeResourceAdmissionReceiptHash(parsed.data)) !== parsed.data.receipt_hash ||
+    (await computeResourceEstimateHash(parsed.data)) !== parsed.data.estimate_hash ||
+    (await computePostgresqlExecutionSettingsHash(parsed.data.execution_settings)) !==
+      parsed.data.settings_hash ||
+    !authority.verifyResourceAdmissionReceipt ||
+    !(await authority.verifyResourceAdmissionReceipt(parsed.data))
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ResourceAdmissionReceipt 必须匹配完整引用、规范 Hash 与服务端 EXPLAIN Authority。",
+    );
+  }
+  return parsed.data;
+}
+
+async function resolveResultOracleReceipt(
+  reference: ArtifactReference,
+  authority: L2ArtifactAuthorityContext,
+): Promise<ResultOracleReceipt> {
+  const parsed = resultOracleReceiptSchema.safeParse(
+    await resolveCommittedSystemArtifact(reference, authority),
+  );
+  if (
+    !parsed.success ||
+    artifactReferenceIdentity(parsed.data.receipt_ref) !== artifactReferenceIdentity(reference) ||
+    (await computeResultOracleReceiptHash(parsed.data)) !== parsed.data.receipt_hash ||
+    (await computeResultOracleEvidenceHash(parsed.data)) !== parsed.data.evidence_hash ||
+    !authority.verifyResultOracleReceipt ||
+    !(await authority.verifyResultOracleReceipt(parsed.data))
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ResultOracleReceipt 必须匹配完整引用、规范 Hash 与服务端 Result Oracle Authority。",
+    );
+  }
+  return parsed.data;
+}
+
+async function resolveSandboxRuntimeEvidence(
+  execution: ExecutionReceiptPayload,
+  authority: L2ArtifactAuthorityContext,
+): Promise<{
+  readonly receipt: SuccessfulSandboxExecutionReceipt;
+  readonly result: SandboxResult;
+}> {
+  const [receiptInput, resultInput] = await Promise.all([
+    resolveCommittedSystemArtifact(execution.sandbox_execution_receipt_ref, authority),
+    resolveCommittedSystemArtifact(execution.result_artifact_ref, authority),
+  ]);
+  const receipt = successfulSandboxExecutionReceiptSchema.safeParse(receiptInput);
+  const result = sandboxResultSchema.safeParse(resultInput);
+  if (
+    !receipt.success ||
+    !result.success ||
+    artifactReferenceIdentity(receipt.data.receipt_ref) !==
+      artifactReferenceIdentity(execution.sandbox_execution_receipt_ref) ||
+    artifactReferenceIdentity(receipt.data.result_artifact_ref) !==
+      artifactReferenceIdentity(execution.result_artifact_ref) ||
+    artifactReferenceIdentity(result.data.result_ref) !==
+      artifactReferenceIdentity(execution.result_artifact_ref) ||
+    (await computeSandboxExecutionReceiptHash(receipt.data)) !== receipt.data.execution_hash ||
+    (await computeSandboxResultHash(result.data)) !== result.data.result_hash ||
+    !authority.verifySandboxExecutionEvidence ||
+    !(await authority.verifySandboxExecutionEvidence({
+      receipt: receipt.data,
+      result: result.data,
+    }))
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ExecutionReceipt 必须绑定内容寻址且可重算的 SandboxExecutionReceipt/SandboxResult。",
+    );
+  }
+  return { receipt: receipt.data, result: result.data };
 }
 
 function requireArtifactType<T extends L2ArtifactPayload["artifact_type"]>(
@@ -2139,20 +2952,340 @@ async function verifySqlArtifactLineage(
     await resolveAuthoritativeL2(sqlArtifact.logical_plan_ref, authority),
     "LogicalPlan",
   );
-  return verifyLogicalPlanLineage(logicalPlan, authority);
+  const queryContract = await verifyLogicalPlanLineage(logicalPlan, authority);
+  const semanticQuery = requireArtifactType(
+    await resolveAuthoritativeL2(logicalPlan.semantic_query_ref, authority),
+    "SemanticQuery",
+  );
+  const grounding = requireArtifactType(
+    await resolveAuthoritativeL2(semanticQuery.grounding_package_ref, authority),
+    "GroundingPackage",
+  );
+  if (
+    !authority.verifySqlArtifactCompilation ||
+    !(await authority.verifySqlArtifactCompilation({
+      sql_artifact: sqlArtifact,
+      logical_plan: logicalPlan,
+      grounding,
+      query_contract: queryContract,
+    }))
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "SqlArtifact 必须逐字匹配服务端确定性 PostgreSQL Compiler 对当前权威 LogicalPlan 的输出。",
+    );
+  }
+  return queryContract;
+}
+
+function groundingObservationMaterial(
+  grounding: GroundingPackagePayload,
+): z.infer<typeof groundingContentSchema> {
+  return groundingContentSchema.parse({
+    catalog_version: grounding.catalog_version,
+    policy_version: grounding.policy_version,
+    datasource_id: grounding.datasource_id,
+    allowed_schema: grounding.allowed_schema,
+    metric: grounding.metric,
+    dimensions: grounding.dimensions,
+    required_column_ids: grounding.required_column_ids,
+    mandatory_predicates: grounding.mandatory_predicates,
+    join_closure: grounding.join_closure,
+    accepted_candidate_ids: grounding.accepted_candidate_ids,
+    conflict_set: grounding.conflict_set,
+    grounding_hash: grounding.grounding_hash,
+  });
+}
+
+function semanticQueryObservationMaterial(
+  semanticQuery: SemanticQueryPayload,
+): z.infer<typeof semanticQueryContentSchema> {
+  return semanticQueryContentSchema.parse({
+    metric: semanticQuery.metric,
+    dimensions: semanticQuery.dimensions,
+    predicates: semanticQuery.predicates,
+    time_predicate: semanticQuery.time_predicate,
+    parameters: semanticQuery.parameters,
+    grounding_hash: semanticQuery.grounding_hash,
+    result_contract: semanticQuery.result_contract,
+  });
+}
+
+function logicalPlanObservationMaterial(
+  logicalPlan: LogicalPlanPayload,
+): z.infer<typeof logicalPlanContentSchema> {
+  return logicalPlanContentSchema.parse({
+    operations: logicalPlan.operations,
+    root_operation_id: logicalPlan.root_operation_id,
+    parameters: logicalPlan.parameters,
+    grounding_hash: logicalPlan.grounding_hash,
+    semantic_signature: logicalPlan.semantic_signature,
+  });
+}
+
+function policyPredicateOccurrenceCount(logicalPlan: LogicalPlanPayload): number {
+  return logicalPlan.operations.reduce(
+    (count, operation) =>
+      operation.operation === "filter"
+        ? count + operation.predicates.filter(({ authority }) => authority === "policy").length
+        : count,
+    0,
+  );
+}
+
+function requireGateObservationAuthority(condition: boolean, message: string): void {
+  if (!condition) {
+    throw new ArtifactSemanticAuthorityError(message);
+  }
+}
+
+function requireSingleGateEvidenceReference<T extends ArtifactReference["artifact_type"]>(
+  gateReceipt: GateReceiptPayload,
+  artifactType: T,
+): ArtifactReference & { artifact_type: T } {
+  const references = gateReceipt.evidence_refs.filter(
+    (reference): reference is ArtifactReference & { artifact_type: T } =>
+      reference.artifact_type === artifactType,
+  );
+  if (references.length !== 1 || !references[0]) {
+    throw new ArtifactSemanticAuthorityError(
+      `${gateReceipt.gate} GateReceipt 必须且只能绑定一份 ${artifactType} 权威证据。`,
+    );
+  }
+  return references[0];
+}
+
+async function verifyGatePassObservationAuthority(
+  gateReceipt: GateReceiptPayload,
+  sqlArtifact: SqlArtifactPayload,
+  queryContract: QueryContractPayload,
+  authority: L2ArtifactAuthorityContext,
+  execution: ExecutionReceiptPayload | null,
+): Promise<void> {
+  if (gateReceipt.verdict !== "PASS") {
+    return;
+  }
+  const logicalPlan = requireArtifactType(
+    await resolveAuthoritativeL2(sqlArtifact.logical_plan_ref, authority),
+    "LogicalPlan",
+  );
+  const semanticQuery = requireArtifactType(
+    await resolveAuthoritativeL2(logicalPlan.semantic_query_ref, authority),
+    "SemanticQuery",
+  );
+  const grounding = requireArtifactType(
+    await resolveAuthoritativeL2(semanticQuery.grounding_package_ref, authority),
+    "GroundingPackage",
+  );
+
+  switch (gateReceipt.gate) {
+    case "INTENT": {
+      const [queryContractHash, intentSignatureHash] = await Promise.all([
+        sha256ContentHash(queryContract),
+        sha256ContentHash(logicalPlan.semantic_signature),
+      ]);
+      requireGateObservationAuthority(
+        gateReceipt.observations.query_contract_hash === queryContractHash &&
+          gateReceipt.observations.intent_signature_hash === intentSignatureHash,
+        "INTENT GateReceipt observations 必须与权威 QueryContract/Intent Signature 一致。",
+      );
+      return;
+    }
+    case "SEMANTIC": {
+      const [logicalPlanHash, semanticHash, groundingHash] = await Promise.all([
+        sha256ContentHash(logicalPlanObservationMaterial(logicalPlan)),
+        sha256ContentHash(semanticQueryObservationMaterial(semanticQuery)),
+        sha256ContentHash(groundingObservationMaterial(grounding)),
+      ]);
+      requireGateObservationAuthority(
+        gateReceipt.observations.logical_plan_hash === logicalPlanHash &&
+          gateReceipt.observations.semantic_hash === semanticHash &&
+          gateReceipt.observations.grounding_hash === groundingHash,
+        "SEMANTIC GateReceipt observations 必须与权威 LogicalPlan/SemanticQuery/GroundingPackage 一致。",
+      );
+      return;
+    }
+    case "STRUCTURAL":
+      requireGateObservationAuthority(
+        gateReceipt.observations.compiler_version === sqlArtifact.compiler_version &&
+          gateReceipt.observations.ast_hash === sqlArtifact.ast_hash &&
+          gateReceipt.observations.query_hash === sqlArtifact.query_hash &&
+          gateReceipt.observations.parameter_count === Object.keys(sqlArtifact.parameters).length,
+        "STRUCTURAL GateReceipt observations 必须与权威 SqlArtifact Compiler/AST/Query/Parameter 一致。",
+      );
+      return;
+    case "POLICY":
+      requireGateObservationAuthority(
+        gateReceipt.observations.policy_version === grounding.policy_version &&
+          gateReceipt.observations.mandatory_predicate_count ===
+            grounding.mandatory_predicates.length &&
+          gateReceipt.observations.resolved_binding_count ===
+            policyPredicateOccurrenceCount(logicalPlan),
+        "POLICY GateReceipt observations 必须按权威 Mandatory Predicate occurrence 闭合。",
+      );
+      return;
+    case "RESOURCE": {
+      const admission = await resolveResourceAdmissionReceipt(
+        requireSingleGateEvidenceReference(gateReceipt, "ResourceAdmissionReceipt"),
+        authority,
+      );
+      const policyReceipt = await resolveAuthoritativeGroundingSource(
+        grounding.policy_receipt_ref,
+        "PolicyReceipt",
+        authority,
+      );
+      const expectedRelations = grounding.join_closure.table_ids
+        .map(
+          (tableId) =>
+            grounding.allowed_schema.tables.find(({ table_id }) => table_id === tableId)
+              ?.physical_name,
+        )
+        .filter((value): value is string => value !== undefined)
+        .sort();
+      const plannedBytes = admission.plan_rows * admission.plan_width;
+      requireGateObservationAuthority(
+        artifactReferenceIdentity(admission.sql_artifact_ref) ===
+          artifactReferenceIdentity(gateReceipt.sql_artifact_ref) &&
+          admission.query_hash === sqlArtifact.query_hash &&
+          admission.datasource_id === queryContract.datasource_id &&
+          admission.principal_id === policyReceipt.principal_id &&
+          artifactReferenceIdentity(admission.policy_receipt_ref) ===
+            artifactReferenceIdentity(grounding.policy_receipt_ref) &&
+          sameStringArray(admission.relation_names, expectedRelations) &&
+          admission.total_cost <= admission.max_total_cost &&
+          admission.plan_rows <= admission.max_plan_rows &&
+          Number.isSafeInteger(plannedBytes) &&
+          plannedBytes <= admission.max_plan_bytes &&
+          !admission.has_cartesian_join &&
+          admission.node_types.every(
+            (nodeType) => !admission.forbidden_node_types.includes(nodeType),
+          ) &&
+          gateReceipt.observations.estimate_hash === admission.estimate_hash &&
+          gateReceipt.observations.policy_version === admission.policy_version &&
+          gateReceipt.observations.total_cost === admission.total_cost &&
+          gateReceipt.observations.plan_rows === admission.plan_rows &&
+          gateReceipt.observations.plan_width === admission.plan_width &&
+          gateReceipt.observations.planned_bytes === plannedBytes &&
+          gateReceipt.observations.lock_timeout_ms === admission.lock_timeout_ms &&
+          gateReceipt.observations.timeout_ms === admission.timeout_ms &&
+          gateReceipt.observations.max_rows === admission.max_rows &&
+          gateReceipt.observations.max_bytes === admission.max_bytes &&
+          gateReceipt.observations.max_memory_mb === admission.max_memory_mb &&
+          Date.parse(admission.evaluated_at) <= Date.parse(gateReceipt.evaluated_at) &&
+          Date.parse(gateReceipt.evaluated_at) - Date.parse(admission.evaluated_at) <=
+            TEXT2SQL_GATE_RECEIPT_MAX_AGE_MS,
+        "RESOURCE GateReceipt 必须与权威 EXPLAIN、Relation Closure 与 ResourcePolicy 精确一致。",
+      );
+      return;
+    }
+    case "EXECUTION": {
+      const runtimeEvidence =
+        execution === null ? null : await resolveSandboxRuntimeEvidence(execution, authority);
+      requireGateObservationAuthority(
+        execution !== null &&
+          runtimeEvidence !== null &&
+          gateReceipt.observations.query_hash === sqlArtifact.query_hash &&
+          gateReceipt.observations.query_hash === execution.query_hash &&
+          gateReceipt.observations.sandbox_execution_hash ===
+            runtimeEvidence.receipt.execution_hash &&
+          gateReceipt.observations.elapsed_ms ===
+            runtimeEvidence.receipt.resource_usage.elapsed_ms &&
+          gateReceipt.observations.rows === execution.row_count &&
+          gateReceipt.observations.rows === runtimeEvidence.result.row_count &&
+          gateReceipt.observations.bytes === runtimeEvidence.result.bytes &&
+          gateReceipt.evidence_refs.some(
+            (reference) =>
+              artifactReferenceIdentity(reference) ===
+              artifactReferenceIdentity(execution.sandbox_execution_receipt_ref),
+          ) &&
+          gateReceipt.evidence_refs.some(
+            (reference) =>
+              artifactReferenceIdentity(reference) ===
+              artifactReferenceIdentity(execution.result_artifact_ref),
+          ),
+        "EXECUTION GateReceipt observations 必须与权威 Query/Execution/Sandbox Receipt 一致。",
+      );
+      return;
+    }
+    case "RESULT": {
+      const oracle = await resolveResultOracleReceipt(
+        requireSingleGateEvidenceReference(gateReceipt, "ResultOracleReceipt"),
+        authority,
+      );
+      const runtimeEvidence =
+        execution === null ? null : await resolveSandboxRuntimeEvidence(execution, authority);
+      requireGateObservationAuthority(
+        execution !== null &&
+          runtimeEvidence !== null &&
+          artifactReferenceIdentity(oracle.sql_artifact_ref) ===
+            artifactReferenceIdentity(gateReceipt.sql_artifact_ref) &&
+          artifactReferenceIdentity(oracle.execution_receipt_ref) ===
+            artifactReferenceIdentity(gateReceipt.execution_receipt_ref) &&
+          artifactReferenceIdentity(oracle.result_artifact_ref) ===
+            artifactReferenceIdentity(execution.result_artifact_ref) &&
+          oracle.oracle_verdict === "PASS" &&
+          oracle.invariant_verdicts.every(({ verdict }) => verdict === "PASS") &&
+          oracle.query_hash === execution.query_hash &&
+          oracle.result_hash === execution.result_hash &&
+          oracle.result_hash === runtimeEvidence.result.result_hash &&
+          oracle.row_count === execution.row_count &&
+          oracle.row_count === runtimeEvidence.result.row_count &&
+          sameStringArray(oracle.result_columns, queryContract.result_contract.columns) &&
+          sameStringArray(
+            runtimeEvidence.result.columns.map(({ name }) => name),
+            queryContract.result_contract.columns,
+          ) &&
+          gateReceipt.observations.result_hash === execution.result_hash &&
+          gateReceipt.observations.oracle_version === oracle.oracle_version &&
+          gateReceipt.observations.oracle_evidence_hash === oracle.evidence_hash &&
+          Date.parse(execution.observed_at) <= Date.parse(oracle.evaluated_at) &&
+          Date.parse(oracle.evaluated_at) <= Date.parse(gateReceipt.evaluated_at) &&
+          sameStringArray(
+            gateReceipt.observations.invariant_ids,
+            queryContract.result_contract.invariant_ids,
+          ) &&
+          sameStringArray(
+            oracle.invariant_verdicts.map(({ invariant_id }) => invariant_id),
+            queryContract.result_contract.invariant_ids,
+          ) &&
+          gateReceipt.evidence_refs.some(
+            (reference) =>
+              artifactReferenceIdentity(reference) ===
+              artifactReferenceIdentity(execution.result_artifact_ref),
+          ),
+        "RESULT GateReceipt observations 必须与权威 Result Hash/Invariant Contract 一致。",
+      );
+      return;
+    }
+  }
 }
 
 async function verifyGateReceiptSemantics(
   gateReceipt: GateReceiptPayload,
   authority: L2ArtifactAuthorityContext,
 ): Promise<SqlArtifactPayload> {
+  const observedInputHash = await computeGateInputHash(gateReceiptInputHashMaterial(gateReceipt));
+  if (observedInputHash !== gateReceipt.input_hash) {
+    throw new ArtifactSemanticAuthorityError(
+      "GateReceipt.input_hash 与 Gate/Evaluator/Input Reference 的规范内容不匹配。",
+    );
+  }
+  const observedEvaluationHash = await computeGateEvaluationHash(
+    gateReceiptEvaluationHashMaterial(gateReceipt),
+  );
+  if (observedEvaluationHash !== gateReceipt.evaluation_hash) {
+    throw new ArtifactSemanticAuthorityError(
+      "GateReceipt.evaluation_hash 与 Verdict/Reason/Observations 的规范内容不匹配。",
+    );
+  }
+
   const sqlArtifact = requireArtifactType(
     await resolveAuthoritativeL2(gateReceipt.sql_artifact_ref, authority),
     "SqlArtifact",
   );
-  await verifySqlArtifactLineage(sqlArtifact, authority);
+  const queryContract = await verifySqlArtifactLineage(sqlArtifact, authority);
+  let execution: ExecutionReceiptPayload | null = null;
   if (gateReceipt.execution_receipt_ref) {
-    const execution = requireArtifactType(
+    execution = requireArtifactType(
       await resolveAuthoritativeL2(gateReceipt.execution_receipt_ref, authority),
       "ExecutionReceipt",
     );
@@ -2163,6 +3296,13 @@ async function verifyGateReceiptSemantics(
       `${gateReceipt.gate} GateReceipt 与 ExecutionReceipt 必须绑定同一 SqlArtifact。`,
     );
   }
+  await verifyGatePassObservationAuthority(
+    gateReceipt,
+    sqlArtifact,
+    queryContract,
+    authority,
+    execution,
+  );
   return sqlArtifact;
 }
 
@@ -2174,7 +3314,7 @@ async function verifyExecutionPermitSemantics(
     await resolveAuthoritativeL2(permit.sql_artifact_ref, authority),
     "SqlArtifact",
   );
-  await verifySqlArtifactLineage(sqlArtifact, authority);
+  const queryContract = await verifySqlArtifactLineage(sqlArtifact, authority);
   const gateReceipts = await Promise.all(
     permit.gate_receipt_refs.map(async (reference) => {
       const receipt = requireArtifactType(
@@ -2186,13 +3326,20 @@ async function verifyExecutionPermitSemantics(
     }),
   );
   const observedGates = new Set(gateReceipts.map(({ gate }) => gate));
+  const issuedAt = Date.parse(permit.issued_at);
   if (
     gateReceipts.length !== TEXT2SQL_PRE_EXECUTION_GATES.length ||
     observedGates.size !== TEXT2SQL_PRE_EXECUTION_GATES.length ||
-    TEXT2SQL_PRE_EXECUTION_GATES.some((gate) => !observedGates.has(gate))
+    TEXT2SQL_PRE_EXECUTION_GATES.some(
+      (gate, index) => !observedGates.has(gate) || gateReceipts[index]?.gate !== gate,
+    ) ||
+    gateReceipts.some((receipt) => {
+      const evaluatedAt = Date.parse(receipt.evaluated_at);
+      return evaluatedAt > issuedAt || issuedAt - evaluatedAt > TEXT2SQL_GATE_RECEIPT_MAX_AGE_MS;
+    })
   ) {
     throw new ArtifactSemanticAuthorityError(
-      "ExecutionPermit 必须且只能消费五道执行前 GateReceipt。",
+      "ExecutionPermit 必须按固定顺序消费五道新鲜且不晚于 issued_at 的 GateReceipt。",
     );
   }
   for (const receipt of gateReceipts) {
@@ -2206,6 +3353,38 @@ async function verifyExecutionPermitSemantics(
         "ExecutionPermit 只能消费五道全部 PASS 的执行前 GateReceipt。",
       );
     }
+  }
+  const resourceReceipt = gateReceipts.find(({ gate }) => gate === "RESOURCE");
+  const resourceAdmissionReference =
+    resourceReceipt?.gate === "RESOURCE"
+      ? requireSingleGateEvidenceReference(resourceReceipt, "ResourceAdmissionReceipt")
+      : null;
+  const resourceAdmission =
+    resourceAdmissionReference === null
+      ? null
+      : await resolveResourceAdmissionReceipt(resourceAdmissionReference, authority);
+  if (
+    resourceReceipt?.gate !== "RESOURCE" ||
+    resourceAdmission === null ||
+    permit.datasource_id !== queryContract.datasource_id ||
+    artifactReferenceIdentity(permit.resource_admission_ref) !==
+      artifactReferenceIdentity(resourceAdmission.receipt_ref) ||
+    permit.principal_id !== resourceAdmission.principal_id ||
+    artifactReferenceIdentity(permit.policy_receipt_ref) !==
+      artifactReferenceIdentity(resourceAdmission.policy_receipt_ref) ||
+    permit.datasource_id !== resourceAdmission.datasource_id ||
+    permit.schema_version !== resourceAdmission.schema_version ||
+    permit.settings_hash !== resourceAdmission.settings_hash ||
+    !sameCanonicalJson(permit.execution_settings, resourceAdmission.execution_settings) ||
+    resourceReceipt.observations.timeout_ms !== permit.budget.timeout_ms ||
+    resourceReceipt.observations.lock_timeout_ms !== permit.budget.lock_timeout_ms ||
+    resourceReceipt.observations.max_rows !== permit.budget.max_rows ||
+    resourceReceipt.observations.max_bytes !== permit.budget.max_bytes ||
+    resourceReceipt.observations.max_memory_mb !== permit.budget.max_memory_mb
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ExecutionPermit Budget 必须与 RESOURCE GateReceipt 的权威限制一致。",
+    );
   }
   return sqlArtifact;
 }
@@ -2225,14 +3404,64 @@ async function verifyExecutionReceiptSemantics(
     "ExecutionReceipt 与 ExecutionPermit 必须绑定同一 SqlArtifact。",
   );
   const queryContract = await verifySqlArtifactLineage(sqlArtifact, authority);
+  if (Date.parse(execution.observed_at) < Date.parse(permit.issued_at)) {
+    throw new ArtifactSemanticAuthorityError(
+      "ExecutionReceipt.observed_at 不能早于 ExecutionPermit.issued_at。",
+    );
+  }
+  const runtimeEvidence = await resolveSandboxRuntimeEvidence(execution, authority);
   if (execution.query_hash !== sqlArtifact.query_hash) {
     throw new ArtifactSemanticAuthorityError(
       "ExecutionReceipt.query_hash 必须与已验证 SqlArtifact.query_hash 一致。",
     );
   }
-  if (execution.datasource_id !== queryContract.datasource_id) {
+  if (
+    execution.datasource_id !== queryContract.datasource_id ||
+    execution.datasource_id !== permit.datasource_id ||
+    execution.schema_version !== permit.schema_version
+  ) {
     throw new ArtifactSemanticAuthorityError(
-      "ExecutionReceipt.datasource_id 必须与上游 QueryContract.datasource_id 一致。",
+      "ExecutionReceipt 的 Datasource/Schema 必须与上游 QueryContract 和 ExecutionPermit 一致。",
+    );
+  }
+  if (
+    runtimeEvidence.receipt.schema_version !== execution.schema_version ||
+    artifactReferenceIdentity(runtimeEvidence.receipt.sql_artifact_ref) !==
+      artifactReferenceIdentity(execution.sql_artifact_ref) ||
+    artifactReferenceIdentity(runtimeEvidence.receipt.execution_permit_ref) !==
+      artifactReferenceIdentity(execution.execution_permit_ref) ||
+    artifactReferenceIdentity(runtimeEvidence.receipt.resource_admission_ref) !==
+      artifactReferenceIdentity(permit.resource_admission_ref) ||
+    runtimeEvidence.receipt.datasource_id !== permit.datasource_id ||
+    runtimeEvidence.receipt.settings_hash !== permit.settings_hash ||
+    !sameCanonicalJson(runtimeEvidence.receipt.execution_settings, permit.execution_settings) ||
+    runtimeEvidence.receipt.authority_revalidation.effective_principal_id !== permit.principal_id ||
+    artifactReferenceIdentity(runtimeEvidence.receipt.authority_revalidation.policy_receipt_ref) !==
+      artifactReferenceIdentity(permit.policy_receipt_ref) ||
+    runtimeEvidence.receipt.authority_revalidation.revalidated_at !==
+      runtimeEvidence.receipt.started_at ||
+    runtimeEvidence.receipt.snapshot_token !== execution.snapshot_token ||
+    runtimeEvidence.receipt.watermark !== execution.watermark ||
+    runtimeEvidence.receipt.replay_state !== execution.replay_state ||
+    runtimeEvidence.result.schema_version !== execution.schema_version ||
+    runtimeEvidence.receipt.execution_id !== runtimeEvidence.result.execution_id ||
+    runtimeEvidence.receipt.resource_usage.rows !== execution.row_count ||
+    runtimeEvidence.result.row_count !== execution.row_count ||
+    runtimeEvidence.result.result_hash !== execution.result_hash ||
+    runtimeEvidence.receipt.resource_usage.bytes !== runtimeEvidence.result.bytes ||
+    Date.parse(runtimeEvidence.receipt.started_at) < Date.parse(permit.issued_at) ||
+    Date.parse(runtimeEvidence.receipt.started_at) >= Date.parse(permit.expires_at) ||
+    Date.parse(runtimeEvidence.receipt.completed_at) > Date.parse(execution.observed_at) ||
+    runtimeEvidence.receipt.resource_usage.elapsed_ms > permit.budget.timeout_ms ||
+    Date.parse(runtimeEvidence.receipt.completed_at) -
+      Date.parse(runtimeEvidence.receipt.started_at) >
+      permit.budget.timeout_ms ||
+    runtimeEvidence.receipt.resource_usage.rows > permit.budget.max_rows ||
+    runtimeEvidence.receipt.resource_usage.bytes > permit.budget.max_bytes ||
+    runtimeEvidence.receipt.resource_usage.peak_memory_mb > permit.budget.max_memory_mb
+  ) {
+    throw new ArtifactSemanticAuthorityError(
+      "ExecutionReceipt 必须逐字段匹配同一执行的权威 Sandbox Receipt/Result、Schema、时间、行数与 Hash。",
     );
   }
 }
@@ -2262,13 +3491,40 @@ async function verifyValidationReceiptSemantics(
     }),
   );
   const observedGates = new Set(gateReceipts.map(({ gate }) => gate));
+  const sealedAt = Date.parse(validation.sealed_at);
+  const observedAt = Date.parse(execution.observed_at);
+  const permit = requireArtifactType(
+    await resolveAuthoritativeL2(execution.execution_permit_ref, authority),
+    "ExecutionPermit",
+  );
+  const issuedAt = Date.parse(permit.issued_at);
+  const gateEvaluatedAt = gateReceipts.map((receipt) => Date.parse(receipt.evaluated_at));
   if (
     gateReceipts.length !== TEXT2SQL_GATES.length ||
     observedGates.size !== TEXT2SQL_GATES.length ||
-    TEXT2SQL_GATES.some((gate) => !observedGates.has(gate))
+    TEXT2SQL_GATES.some(
+      (gate, index) => !observedGates.has(gate) || gateReceipts[index]?.gate !== gate,
+    ) ||
+    permit.gate_receipt_refs.some(
+      (reference, index) =>
+        !gateReceipts[index] ||
+        artifactReferenceIdentity(reference) !==
+          artifactReferenceIdentity(validation.gate_receipt_refs[index] as ArtifactReference),
+    ) ||
+    observedAt > sealedAt ||
+    (gateEvaluatedAt[6] ?? Number.NaN) < (gateEvaluatedAt[5] ?? Number.NaN) ||
+    gateEvaluatedAt.some((evaluatedAt, index) => {
+      return (
+        evaluatedAt > sealedAt ||
+        sealedAt - evaluatedAt > TEXT2SQL_GATE_RECEIPT_MAX_AGE_MS ||
+        (index < TEXT2SQL_PRE_EXECUTION_GATES.length
+          ? evaluatedAt > issuedAt
+          : evaluatedAt < observedAt)
+      );
+    })
   ) {
     throw new ArtifactSemanticAuthorityError(
-      "ValidationReceipt 必须且只能消费七道当前 GateReceipt。",
+      "ValidationReceipt 必须按固定顺序消费七道、保持 EXECUTION 到 RESULT 的非递减时间，并与 Permit/Execution 因果一致且仍新鲜。",
     );
   }
   for (const receipt of gateReceipts) {
@@ -2320,16 +3576,38 @@ async function verifyQueryEvidenceSemantics(
     "SqlArtifact",
   );
   const queryContract = await verifySqlArtifactLineage(sqlArtifact, authority);
-  const expectedInvariantIds = new Set(queryContract.result_contract.invariant_ids);
-  const observedInvariantIds = new Set(
-    evidence.invariant_verdicts.map(({ invariant_id }) => invariant_id),
+  const resultGateReference = validation.gate_receipt_refs[6];
+  if (!resultGateReference) {
+    throw new ArtifactSemanticAuthorityError(
+      "QueryEvidence 缺少 ValidationReceipt 的 RESULT GateReceipt。",
+    );
+  }
+  const resultGate = requireArtifactType(
+    await resolveAuthoritativeL2(resultGateReference, authority),
+    "GateReceipt",
   );
+  if (resultGate.gate !== "RESULT") {
+    throw new ArtifactSemanticAuthorityError("QueryEvidence 的第七道 GateReceipt 必须是 RESULT。");
+  }
+  const oracle = await resolveResultOracleReceipt(
+    requireSingleGateEvidenceReference(resultGate, "ResultOracleReceipt"),
+    authority,
+  );
+  const expectedInvariantIds = queryContract.result_contract.invariant_ids;
   if (
-    observedInvariantIds.size !== expectedInvariantIds.size ||
-    [...expectedInvariantIds].some((invariantId) => !observedInvariantIds.has(invariantId))
+    evidence.invariant_verdicts.length !== oracle.invariant_verdicts.length ||
+    !sameStringArray(
+      evidence.invariant_verdicts.map(({ invariant_id }) => invariant_id),
+      expectedInvariantIds,
+    ) ||
+    evidence.invariant_verdicts.some(
+      (verdict, index) =>
+        verdict.invariant_id !== oracle.invariant_verdicts[index]?.invariant_id ||
+        verdict.verdict !== oracle.invariant_verdicts[index]?.verdict,
+    )
   ) {
     throw new ArtifactSemanticAuthorityError(
-      "QueryEvidence.invariant_verdicts 必须与上游 QueryContract.result_contract.invariant_ids 精确闭合。",
+      "QueryEvidence.invariant_verdicts 必须按顺序逐项匹配权威 ResultOracleReceipt 与 QueryContract。",
     );
   }
 }
@@ -2513,7 +3791,7 @@ async function verifyL2ArtifactDocumentRevision(
     ...document.envelope.input_refs,
   ];
   const inputVerdicts = await Promise.all(
-    authorityReferences.map((reference) => authority.verifyCommitted(reference)),
+    authorityReferences.map((reference) => verifyInputReferenceCommitted(reference, authority)),
   );
   if (inputVerdicts.some((verdict) => !verdict)) {
     throw new ArtifactInputAuthorityError("Artifact 引用了未提交或不存在的输入。");

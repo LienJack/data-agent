@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   appScopeSchema,
+  canonicalizeJson,
   contentHashSchema,
   deepFreeze,
   immutableIdSchema,
@@ -385,6 +386,36 @@ export interface GroundingAuthorityVerificationContext {
   readonly principalId: string;
   resolveCommitted(reference: GroundingAuthorityReference): Promise<unknown | null>;
   verifyCommitted: ArtifactReferenceVerifier;
+  /**
+   * 由服务端 Deterministic Policy Authority 按目标 Content Address、当前 Principal
+   * 与已解析的上游发行事实查询。
+   *
+   * 查询条件刻意不包含候选 PolicyReceipt 的 issuer、policy_version、allowed_schema 或
+   * mandatory_predicates，避免调用方把自报事实反射成“权威结果”。
+   */
+  resolvePolicyReceiptIssuance?(
+    input: Readonly<{
+      scope: z.infer<typeof appScopeSchema>;
+      run_id: string;
+      principal_id: string;
+      datasource_id: string;
+      catalog_version: string;
+      policy_receipt_ref: Extract<GroundingAuthorityReference, { artifact_type: "PolicyReceipt" }>;
+      semantic_release_ref: Extract<
+        GroundingAuthorityReference,
+        { artifact_type: "SemanticRelease" }
+      >;
+      schema_snapshot_ref: Extract<
+        GroundingAuthorityReference,
+        { artifact_type: "SchemaSnapshot" }
+      >;
+    }>,
+  ): Promise<unknown | null>;
+  /**
+   * 持久化提交与受治理读取边界必须设为 true；缺少专用 Policy Authority 时失败关闭。
+   * 纯结构契约检查可以省略，以便校验尚未接入发行服务的离线文档。
+   */
+  readonly requirePolicyReceiptIssuance?: boolean;
 }
 
 export class GroundingAuthorityError extends Error {
@@ -478,6 +509,56 @@ export function assertGroundingAuthorityBundleConsistency(
   }
 }
 
+async function verifyDeterministicPolicyReceiptIssuance(
+  candidate: PolicyReceiptDocument,
+  semanticRelease: SemanticReleaseDocument,
+  schemaSnapshot: SchemaSnapshotDocument,
+  authority: GroundingAuthorityVerificationContext,
+): Promise<void> {
+  const resolver = authority.resolvePolicyReceiptIssuance;
+  if (!resolver) {
+    if (authority.requirePolicyReceiptIssuance === true) {
+      throw new GroundingAuthorityError(
+        "PolicyReceipt 缺少服务端 Deterministic Policy Authority 发行事实。",
+      );
+    }
+    return;
+  }
+
+  let resolved: unknown;
+  try {
+    resolved = await resolver({
+      scope: semanticRelease.scope,
+      run_id: semanticRelease.run_id,
+      principal_id: authority.principalId,
+      datasource_id: semanticRelease.datasource_id,
+      catalog_version: semanticRelease.catalog_version,
+      policy_receipt_ref: candidate.artifact_ref,
+      semantic_release_ref: semanticRelease.artifact_ref,
+      schema_snapshot_ref: schemaSnapshot.artifact_ref,
+    });
+  } catch {
+    throw new GroundingAuthorityError(
+      "PolicyReceipt 无法从服务端 Deterministic Policy Authority 解析。",
+    );
+  }
+
+  const issuance = policyReceiptDocumentSchema.safeParse(resolved);
+  if (
+    !issuance.success ||
+    groundingAuthorityIdentityViolation(issuance.data, authority.principalId) !== null ||
+    artifactReferenceIdentity(issuance.data.artifact_ref) !==
+      artifactReferenceIdentity(candidate.artifact_ref) ||
+    (await computeGroundingAuthorityDocumentHash(issuance.data)) !== issuance.data.document_hash ||
+    canonicalizeJson(issuance.data) !== canonicalizeJson(candidate)
+  ) {
+    throw new GroundingAuthorityError(
+      "PolicyReceipt 必须逐字匹配服务端发行的 Content-Addressed Policy Revision。",
+    );
+  }
+  assertGroundingAuthorityBundleConsistency(issuance.data, semanticRelease, schemaSnapshot);
+}
+
 async function verifyGroundingAuthorityDocumentRevision(
   referenceInput: unknown,
   authority: GroundingAuthorityVerificationContext,
@@ -551,6 +632,12 @@ async function verifyGroundingAuthorityDocumentRevision(
       );
     }
     assertGroundingAuthorityBundleConsistency(document, semanticRelease, schemaSnapshot);
+    await verifyDeterministicPolicyReceiptIssuance(
+      document,
+      semanticRelease,
+      schemaSnapshot,
+      authority,
+    );
   }
 
   const references: ArtifactReference[] = [

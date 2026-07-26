@@ -5,6 +5,25 @@
 
 ---
 
+## 2026-07-26：U5 Unit 3 — PostgreSQL Compiler、七道 Gate 与执行 Authority
+
+- 建立确定性 PostgreSQL Compiler 与不可伪造 LogicalPlan Binding；SqlArtifact 固定
+  Compiler Version、AST Hash、参数与 Query Hash，最终列名严格闭合 QueryContract。
+- 建立七道 Gate、ExecutionPermit、ValidationReceipt、System Artifact Store 路由和
+  ResultOracle/QueryEvidence 闭环；PolicyReceipt 由服务端 Issuer/Store 提交。
+- Codex 对抗复审先后关闭真实 PostgreSQL Node Type、63-byte Alias、跨层资源上限、
+  Gate 时钟新鲜度、Permit transaction-start 语义、墙钟超时低报、Reference A/Payload B
+  换绑、并发幂等重复执行、跨 Principal Key 冲突与 Pending 撤权窗口。
+- 服务端组合能力迁移到显式 `@data-agent/contracts/server` 与
+  `@data-agent/text2sql/server` 子路径；真实 package specifier 验收证明
+  register→bind→compile→gate→seal 与 Sandbox authorize 可组合，普通根入口仍不暴露
+  Registrar/Authorizer。
+- 验证：Lint 213 files、Build 5/5、Typecheck 8/8、Unit 563/563、Contract 45/45
+  全部通过。
+- 边界：真实 PostgreSQL Sandbox/EXPLAIN Adapter、Bounded Repair、Metamorphic Oracle、
+  首次提交数据库可信时钟、十位以上参数顺序证据和大字段物化前的 Streaming
+  Byte/Memory 截断继续留在下一单元；当前发布状态仍为 `HOLD`。
+
 ## 2026-07-26：U5 Unit 2 — ACL-first Grounding 与 Typed IR
 
 - 从旧 Text2SQL Characterization 固定 QueryContract 输入与差异边界，新增

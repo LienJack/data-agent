@@ -1,4 +1,5 @@
 import {
+  artifactReferenceIdentity,
   canonicalizeJson,
   computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
@@ -428,11 +429,64 @@ async function groundingAuthorityBundle(
     { artifact_type: "SemanticRelease" }
   >;
   const schemaSnapshot = await schemaSnapshotDocument(schemaOverrides);
-  const policyReceipt = await policyReceiptDocument(principalId, {
+  const policyReceipt = (await policyReceiptDocument(principalId, {
     semantic_release_ref: semanticRelease.artifact_ref,
     schema_snapshot_ref: schemaSnapshot.artifact_ref,
-  });
+  })) as Extract<GroundingAuthorityDocument, { artifact_type: "PolicyReceipt" }>;
   return { policyReceipt, schemaSnapshot, semanticRelease };
+}
+
+async function resealPolicyReceipt(
+  source: Extract<GroundingAuthorityDocument, { artifact_type: "PolicyReceipt" }>,
+  overrides: Record<string, unknown>,
+) {
+  const zeroHash = `sha256:${"0".repeat(64)}` as const;
+  const draft = groundingAuthorityDocumentSchema.parse({
+    ...source,
+    ...overrides,
+    artifact_ref: {
+      ...source.artifact_ref,
+      content_hash: zeroHash,
+    },
+    document_hash: zeroHash,
+  });
+  const documentHash = await computeGroundingAuthorityDocumentHash(draft);
+  return groundingAuthorityDocumentSchema.parse({
+    ...draft,
+    artifact_ref: {
+      ...draft.artifact_ref,
+      content_hash: documentHash,
+    },
+    document_hash: documentHash,
+  }) as Extract<GroundingAuthorityDocument, { artifact_type: "PolicyReceipt" }>;
+}
+
+function deterministicPolicyAuthorityFor(
+  issuance: Extract<GroundingAuthorityDocument, { artifact_type: "PolicyReceipt" }>,
+  observe?: (
+    input: Parameters<
+      NonNullable<PostgresRepositoryAuthorities["resolveDeterministicPolicyReceiptIssuance"]>
+    >[0],
+  ) => void,
+): PostgresRepositoryAuthorities {
+  return {
+    resolveDeterministicPolicyReceiptIssuance: async (input, capability) => {
+      observe?.(input);
+      if (
+        input.principal_id !== capability.principal ||
+        input.principal_id !== issuance.principal_id ||
+        artifactReferenceIdentity(input.policy_receipt_ref) !==
+          artifactReferenceIdentity(issuance.artifact_ref) ||
+        artifactReferenceIdentity(input.semantic_release_ref) !==
+          artifactReferenceIdentity(issuance.semantic_release_ref) ||
+        artifactReferenceIdentity(input.schema_snapshot_ref) !==
+          artifactReferenceIdentity(issuance.schema_snapshot_ref)
+      ) {
+        return null;
+      }
+      return structuredClone(issuance);
+    },
+  };
 }
 
 describe("PostgreSQL authoritative repository", () => {
@@ -729,6 +783,63 @@ describe("PostgreSQL authoritative repository", () => {
     expect(fixture.calls.some(({ text }) => text.includes("insert into artifacts"))).toBe(false);
   });
 
+  it("L2 提交把运行证据输入路由到专用 System Store，而不要求镜像进 artifacts 表", async () => {
+    const systemReference = {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+      run_id: ids.run,
+      artifact_id: "00000000-0000-4000-8000-000000000717",
+      artifact_type: "SandboxResult",
+      revision: 1,
+      content_hash: `sha256:${"7".repeat(64)}`,
+    } as const;
+    const document = await committedDocument({
+      artifact_id: "00000000-0000-4000-8000-000000000718",
+      artifact_type: "QuestionFrame",
+      input_refs: [systemReference],
+      payload: {
+        artifact_type: "QuestionFrame",
+        raw_question: "收入为什么下降？",
+        normalized_question: "解释收入下降原因",
+        authorized_datasource_ids: ["00000000-0000-4000-8000-000000000714"],
+        expected_output: "多步研究报告",
+      },
+    });
+    const fixture = scriptedPool((text) => {
+      if (text.includes("lock_owned_run_fence")) {
+        return { rows: [{ active_fence: "0" }], rowCount: 1 };
+      }
+      if (text.includes("select revision, content_hash")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("insert into artifacts")) {
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    let systemVerificationCount = 0;
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer, {
+      ...l2CommitAuthoritiesFor(document),
+      verifyText2SqlSystemArtifactCommitted: async (reference) => {
+        systemVerificationCount += 1;
+        return artifactReferenceIdentity(reference) === artifactReferenceIdentity(systemReference);
+      },
+    });
+
+    expect(
+      await repository.commitL2Artifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({ ok: true, value: { artifact_type: "QuestionFrame" } });
+    expect(systemVerificationCount).toBe(2);
+    expect(fixture.calls.some(({ text }) => text.includes("from artifacts as artifact"))).toBe(
+      false,
+    );
+  });
+
   it("接受非凭据 Snapshot Token，但在语义上游不可解析时拒绝提交 ExecutionReceipt", async () => {
     const sqlReference = {
       app_id: ids.app,
@@ -752,15 +863,27 @@ describe("PostgreSQL authoritative repository", () => {
       artifact_type: "SandboxExecutionReceipt",
       content_hash: `sha256:${"e".repeat(64)}`,
     };
+    const sandboxResultReference = {
+      ...sqlReference,
+      artifact_id: "00000000-0000-4000-8000-000000000716",
+      artifact_type: "SandboxResult",
+      content_hash: `sha256:${"f".repeat(64)}`,
+    };
     const document = await committedDocument({
       artifact_id: "00000000-0000-4000-8000-000000000713",
       artifact_type: "ExecutionReceipt",
-      input_refs: [sqlReference, executionPermitReference, sandboxReceiptReference],
+      input_refs: [
+        sqlReference,
+        executionPermitReference,
+        sandboxReceiptReference,
+        sandboxResultReference,
+      ],
       payload: {
         artifact_type: "ExecutionReceipt",
         sql_artifact_ref: sqlReference,
         execution_permit_ref: executionPermitReference,
         sandbox_execution_receipt_ref: sandboxReceiptReference,
+        result_artifact_ref: sandboxResultReference,
         datasource_id: "00000000-0000-4000-8000-000000000714",
         schema_version: "schema-1",
         snapshot_token: "snapshot-1",
@@ -1012,7 +1135,49 @@ describe("PostgreSQL authoritative repository", () => {
     expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
   });
 
-  it("allows an OWNER to commit a PolicyReceipt for the same principal", async () => {
+  it("rejects an OWNER PolicyReceipt when the server composition omits Policy Authority", async () => {
+    const {
+      policyReceipt: document,
+      schemaSnapshot,
+      semanticRelease,
+    } = await groundingAuthorityBundle();
+    const documents = new Map<string, GroundingAuthorityDocument>(
+      [semanticRelease, schemaSnapshot].map((candidate) => [
+        candidate.artifact_ref.artifact_type,
+        candidate,
+      ]),
+    );
+    const fixture = scriptedPool((text, values) => {
+      if (text.includes("select artifact.document_json")) {
+        const candidate = documents.get(String(values[5]));
+        return candidate
+          ? { rows: [{ document_json: structuredClone(candidate) }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 5,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GROUNDING_DOCUMENT_NOT_AUTHORITATIVE",
+        retryable: false,
+      },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+  });
+
+  it("allows an OWNER to commit only the exact server-issued PolicyReceipt", async () => {
     const {
       policyReceipt: document,
       schemaSnapshot,
@@ -1046,7 +1211,14 @@ describe("PostgreSQL authoritative repository", () => {
       return undefined;
     });
     const authority = issueCapability("OWNER");
-    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+    let issuanceLookup: unknown = null;
+    const repository = createPostgresRepository(
+      fixture.pool,
+      authority.authorizer,
+      deterministicPolicyAuthorityFor(document, (input) => {
+        issuanceLookup = input;
+      }),
+    );
 
     expect(
       await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
@@ -1059,6 +1231,105 @@ describe("PostgreSQL authoritative repository", () => {
     );
     expect(referenceChecks).toHaveLength(4);
     expect(referenceChecks.every(({ values }) => values.at(-1) === ids.principal)).toBe(true);
+    expect(issuanceLookup).toEqual({
+      scope: semanticRelease.scope,
+      run_id: semanticRelease.run_id,
+      principal_id: ids.principal,
+      datasource_id: semanticRelease.datasource_id,
+      catalog_version: semanticRelease.catalog_version,
+      policy_receipt_ref: document.artifact_ref,
+      semantic_release_ref: semanticRelease.artifact_ref,
+      schema_snapshot_ref: schemaSnapshot.artifact_ref,
+    });
+    expect(issuanceLookup).not.toHaveProperty("allowed_schema");
+    expect(issuanceLookup).not.toHaveProperty("mandatory_predicates");
+    expect(issuanceLookup).not.toHaveProperty("policy_version");
+    expect(issuanceLookup).not.toHaveProperty("authority");
+  });
+
+  it("rejects an OWNER that broadens ACL, drops predicates, or changes the policy epoch", async () => {
+    const {
+      policyReceipt: issuance,
+      schemaSnapshot,
+      semanticRelease,
+    } = await groundingAuthorityBundle();
+    const candidates = [
+      {
+        label: "broaden AllowedSchema",
+        document: await resealPolicyReceipt(issuance, {
+          allowed_schema: {
+            tables: [
+              {
+                table_id: "orders",
+                column_ids: ["orders.tenant_id", "orders.net_amount"],
+              },
+            ],
+          },
+        }),
+      },
+      {
+        label: "drop MandatoryPredicate",
+        document: await resealPolicyReceipt(issuance, {
+          mandatory_predicates: [],
+        }),
+      },
+      {
+        label: "change policy epoch",
+        document: await resealPolicyReceipt(issuance, {
+          policy_version: "default-policy@2.0.0",
+          authority: {
+            kind: "deterministic",
+            id: "policy-authority",
+            policy_version: "default-policy@2.0.0",
+          },
+        }),
+      },
+    ];
+
+    for (const { document, label } of candidates) {
+      const documents = new Map<string, GroundingAuthorityDocument>(
+        [semanticRelease, schemaSnapshot].map((candidate) => [
+          candidate.artifact_ref.artifact_type,
+          candidate,
+        ]),
+      );
+      const fixture = scriptedPool((text, values) => {
+        if (text.includes("select artifact.document_json")) {
+          const candidate = documents.get(String(values[5]));
+          return candidate
+            ? { rows: [{ document_json: structuredClone(candidate) }], rowCount: 1 }
+            : { rows: [], rowCount: 0 };
+        }
+        if (text.includes("select 1")) {
+          return { rows: [{ present: 1 }], rowCount: 1 };
+        }
+        return undefined;
+      });
+      const authority = issueCapability("OWNER");
+      const repository = createPostgresRepository(
+        fixture.pool,
+        authority.authorizer,
+        deterministicPolicyAuthorityFor(issuance),
+      );
+
+      expect(
+        await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+          expected_active_revision: 0,
+          worker_fence: 5,
+        }),
+        label,
+      ).toMatchObject({
+        ok: false,
+        error: {
+          code: "GROUNDING_DOCUMENT_NOT_AUTHORITATIVE",
+          retryable: false,
+        },
+      });
+      expect(
+        fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence")),
+        label,
+      ).toBe(false);
+    }
   });
 
   it("rejects an inconsistent PolicyReceipt before locking or replacing Active Revision", async () => {

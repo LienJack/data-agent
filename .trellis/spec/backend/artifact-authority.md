@@ -19,6 +19,20 @@ interface L2ArtifactAuthorityContext {
   resolveGroundingAuthority?(
     reference: GroundingAuthorityReference,
   ): Promise<unknown | null>;
+  resolveSystemArtifact?(reference: ArtifactReference): Promise<unknown | null>;
+  verifySystemArtifactCommitted?(reference: ArtifactReference): Promise<boolean>;
+  verifySqlArtifactCompilation?(input: {
+    sql_artifact: SqlArtifactPayload;
+    logical_plan: LogicalPlanPayload;
+    grounding: GroundingPackagePayload;
+    query_contract: QueryContractPayload;
+  }): Promise<boolean>;
+  verifyResourceAdmissionReceipt?(receipt: ResourceAdmissionReceipt): Promise<boolean>;
+  verifyResultOracleReceipt?(receipt: ResultOracleReceipt): Promise<boolean>;
+  verifySandboxExecutionEvidence?(input: {
+    receipt: SuccessfulSandboxExecutionReceipt;
+    result: SandboxResult;
+  }): Promise<boolean>;
   verifyCommitterCapability(claim: ArtifactCommitterCapabilityClaim): Promise<boolean>;
 }
 
@@ -96,7 +110,40 @@ issueCapabilityDeliveryReceipt(
 - 多路检索可以重复命中同一已授权对象；Grounding 必须按分数降序后以 `object_id` 稳定去重、保留最高分命中，不能因为重复 Hit 抛出 Schema 异常。
 - 对外导出的 `SemanticRelease`、`SchemaSnapshot`、`PolicyReceipt` 分支 Schema 必须与联合 Schema 承载相同的 Scope、Revision、Hash、唯一性和分支语义约束，不能把分支 Schema 当作绕过 Authority Refinement 的形状解析器。
 - `SqlArtifact.query_hash` 必须由 Dialect、SQL 与 Parameters 的规范内容计算；`ExecutionReceipt` 必须绑定同一 SqlArtifact、同一 Query Hash、同一 Datasource，并消费七道 Gate 全部 PASS 的 `ValidationReceipt`。
-- `QueryEvidence` 至少有一个 Invariant Verdict；`SUPPORTED` Claim 只能消费全 PASS Evidence。
+- `SqlArtifact` 提交时必须由服务端确定性 PostgreSQL Compiler 对当前权威
+  `LogicalPlan + GroundingPackage + QueryContract` 重编译并逐字匹配；重新计算
+  `query_hash` 只能证明 SQL 自洽，不能证明它是权威计划的编译结果。持久化载荷还要
+  固定 `compiler_version` 与 `ast_hash`，STRUCTURAL Gate 必须逐项回显这些权威字段。
+- `ResourceAdmissionReceipt`、`ResultOracleReceipt`、`SandboxExecutionReceipt` 与
+  `SandboxResult` 属于专用 System Artifact；L2 Resolver 必须按完整 Reference 取回、
+  重算规范 Hash，并调用对应服务端领域 Authority，不能只接受任意已提交 JSON。
+  PostgreSQL 提交边界也必须按 Artifact Type 把这四类 Input Reference 路由到专用
+  System Store Verifier；不得要求它们镜像进通用 `artifacts` 表。
+- Sandbox 在消费 `ExecutionPermit` 与 `SqlArtifact` 时，必须让完整 Reference 与
+  Resolver 返回的精确 Revision Payload 在同一事务快照内闭合；不得把“Reference A
+  已提交”和“Payload B 自身 Hash 合法”拼成执行授权。
+- 执行前必须按 `INTENT -> SEMANTIC -> STRUCTURAL -> POLICY -> RESOURCE` 固定顺序消费
+  五张新鲜 PASS GateReceipt；`ExecutionPermit` 直接绑定同一 Resource Admission、
+  Principal、PolicyReceipt、Datasource、Schema、PostgreSQL Settings 和
+  Timeout/Lock/Rows/Bytes/Memory 五维预算。
+- `ExecutionReceipt` 必须逐字段匹配同一 Permit 与 Sandbox 的实际执行事实，包括只读事务、
+  事务开始时 Principal/Policy 重验证、Datasource/Schema/Settings、Snapshot/Watermark、
+  Result Hash、行数、字节数、内存与时间顺序。Permit 的有效性以事务开始时刻判断；
+  已合法开始的事务可以跨过 `expires_at` 完成，但权威 `completed_at - started_at` 与
+  服务端记录的 `elapsed_ms` 都不得超过 Timeout Budget。
+- QueryContract、ResourcePolicy、ResourceAdmission、ExecutionPermit、Sandbox 与 Result
+  Oracle 必须复用单一 `EXECUTABLE_QUERY_LIMITS`：最多 256 列、10,000 行、64 MiB
+  Result、512 MiB 峰值内存；计划估算的行数/字节数属于另一组策略预算，不能混为执行上限。
+  PostgreSQL 输出 Alias 必须满足 63-byte ASCII 限制，EXPLAIN Node Type 保留数据库真实
+  名称并以唯一、有序列表封存。
+- 执行后必须按 `EXECUTION -> RESULT` 消费权威 Sandbox Evidence 与
+  `ResultOracleReceipt`；Result Oracle 的列顺序、行数、Invariant 和 Query/Result Hash
+  必须与冻结的 QueryContract 和同一执行精确闭合。最终 `ValidationReceipt` 只能按固定
+  七 Gate 顺序封存，前五张引用必须与 Permit 已消费的引用完全相同，且
+  `EXECUTION.evaluated_at <= RESULT.evaluated_at`；执行前五 Gate 可并发，不要求彼此时间单调。
+- `QueryEvidence` 至少有一个 Invariant Verdict，并且必须沿 Validation 的 RESULT Gate
+  解析同一权威 ResultOracleReceipt，按 QueryContract 顺序逐项匹配 ID 与 Verdict；
+  `SUPPORTED` Claim 只能消费全 PASS Evidence。
 - `READY` 必须绑定同 Scope、经过四道 Evidence Gate 且覆盖 Report 全部 Claim Evidence 的权威 `ReportReadyCertificate`。
 - `GO` 必须绑定同 Scope、同发布策略的版本化 `ReleaseManifest`，并覆盖 `ReportReadyCertificate`、确定性 PASS 且 Safety Counter 全零的 `ScoreCard`、成功终态 `BenchmarkAdapterReceipt`、成功终态 `SandboxExecutionReceipt` 与绑定 Profile Hash 的 `ModelCertificationReceipt`。
 - `ReleaseManifest` 必须内容寻址、已提交，至少各含一项 Hosted 与 Docker Evidence，并聚合 Release Decision 的全部 Evidence；领域 Resolver 返回的对象必须带有对应 Authorizer 在当前进程签发的品牌。
@@ -116,6 +163,10 @@ issueCapabilityDeliveryReceipt(
 | Payload 或 Version Tuple 与 Hash 不符 | `ARTIFACT_CONTENT_HASH_MISMATCH` |
 | Input Reference 不存在或未提交 | `ARTIFACT_INPUT_NOT_COMMITTED` |
 | 成功链无法解析权威上游文档或 Gate 失败 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
+| SQL 仅 Hash 自洽但不匹配确定性 Compiler 输出 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
+| Resource/Oracle/Sandbox Evidence 缺领域 Authority、Hash 漂移或换绑 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
+| Permit 缺 Gate、顺序/新鲜度错误、预算或 Principal/Policy/Settings 漂移 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
+| Execution/Result/Validation 使用另一执行、另一结果或非当前七 Gate | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Payload Reference 跨 Scope 或未声明 | Document Parse 失败 |
 | `READY/GO` Reference 未提交 | `AUTHORITY_EVIDENCE_NOT_COMMITTED` |
 | `GO` 收到未品牌化、失败终态、证据不匹配或不完整 Manifest | `AUTHORITY_EVIDENCE_NOT_COMMITTED` |
@@ -143,6 +194,19 @@ issueCapabilityDeliveryReceipt(
 - Aggregate/Preaggregate 复制 Measure、或 Preaggregation 重复 Group Column 时在 LogicalPlan Schema 边界失败。
 - 同一授权对象以不同分数重复返回时只进入一次 `accepted_candidate_ids`，且仍返回确定性的 GroundingResult。
 - SqlArtifact Query Hash、Execution Query Hash 或 Datasource 与上游不一致时失败。
+- Plan A 搭配 Ref B、未提交/合成 LogicalPlan、SQL 换写后重算 Hash、输出 Alias 与
+  QueryContract 列不一致，或 STRUCTURAL 回显伪造 Compiler/AST 时失败。
+- 五张执行前 Gate 缺失、重复、乱序、过期或刷新时间，Resource Admission 的 Principal、
+  PolicyReceipt、Settings 与五维预算漂移时不能签发 Permit。
+- Sandbox 在 Permit Seal 后撤权、实际 Datasource/Schema/Settings/Snapshot 与 Request
+  回显不同、Result Hash/Bytes/Schema/Execution 换绑、真实墙钟跨度超时却低报
+  `elapsed_ms` 时失败；事务开始前过期必须拒绝，开始后跨过过期点但仍在 Timeout Budget
+  内完成则允许。
+- Result Oracle 缺失、伪造自签、列顺序/行数/Invariant/Hash 不一致，以及 Validation
+  混用另一轮 Gate、不复用 Permit 的前五 Gate、RESULT 时间早于 EXECUTION，或
+  QueryEvidence 改写 Oracle Verdict/顺序时失败。
+- 专用 System Store 已确认运行证据、但通用 `artifacts` 表不存在镜像行时，L2 提交仍成功；
+  两个 Store 都无法确认时失败关闭。
 - `REJECTED/SUPERSEDED`、缺 Validation Receipt、空 Invariant、缺 Evidence Gate 时失败。
 - Authoritative 对象及嵌套 Payload 为冻结状态。
 - `READY`、`GO` 与 `DELIVERED` 分别拒绝未验证证据和伪造品牌。

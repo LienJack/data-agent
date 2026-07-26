@@ -11,6 +11,10 @@
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "import": "./dist/testing/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
     }
   },
   "files": [
@@ -19,7 +23,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "vitest run test",
+    "test:unit": "vitest run test --testTimeout=15000",
     "test:contract": "vitest run test/port-conformance.spec.ts"
   },
   "dependencies": {

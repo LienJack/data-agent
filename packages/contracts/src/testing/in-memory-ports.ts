@@ -1,6 +1,8 @@
+import { type ArtifactReference, artifactReferenceIdentity } from "../artifacts/envelope.js";
 import {
   type ContentHash,
   canonicalizeJson,
+  deepFreeze,
   type PortResult,
   sha256ContentHash,
 } from "../common/index.js";
@@ -8,15 +10,37 @@ import type {
   AppScope,
   CachePort,
   QueuePort,
-  SandboxExecutionReceipt,
   SandboxExecutionRequest,
   SandboxPort,
+  SqlSandboxExecutionRequest,
   StoragePort,
   StoragePut,
 } from "../ports/index.js";
-import { sandboxExecutionReceiptSchema, sandboxExecutionRequestSchema } from "../ports/index.js";
+import {
+  computeSandboxExecutionReceiptHash,
+  computeSandboxExecutionRequestHash,
+  computeSandboxResultBytes,
+  computeSandboxResultHash,
+  sandboxExecutionReceiptSchema,
+  sandboxResultSchema,
+} from "../ports/index.js";
+import {
+  type AuthoritativeSandboxExecutionReceipt,
+  type AuthoritativeSandboxResult,
+  authorizeSandboxExecutionReceipt,
+  authorizeSandboxResult,
+  executeAuthorizedSandboxRequest,
+  registerSandboxServerAuthority,
+  type SandboxExecutionIdempotencyClaim,
+  SandboxExecutionIdempotencyConflictError,
+  type SandboxExecutionIdempotencyResolution,
+  type SandboxServerAuthority,
+} from "../ports/sandbox.js";
 import { type Clock, ManualClock } from "./manual-clock.js";
-import type { PortConformanceHarness } from "./port-conformance.js";
+import {
+  PORT_CONFORMANCE_SANDBOX_PERMITS,
+  type PortConformanceHarness,
+} from "./port-conformance.js";
 
 function success<T>(value: T): PortResult<T> {
   return { ok: true, value };
@@ -250,7 +274,12 @@ export class InMemoryCachePort implements CachePort {
 
 interface SandboxReplayRecord {
   readonly input_hash: ContentHash;
-  readonly receipt: SandboxExecutionReceipt;
+  readonly canonical_output: string;
+}
+
+interface SandboxInFlightExecution {
+  readonly input_hash: ContentHash;
+  readonly completion: Promise<string>;
 }
 
 function contentHashToUuid(contentHash: ContentHash): string {
@@ -266,54 +295,414 @@ function contentHashToUuid(contentHash: ContentHash): string {
 
 export class InMemorySandboxPort implements SandboxPort {
   private readonly executions = new Map<string, SandboxReplayRecord>();
+  private readonly inFlightExecutions = new Map<string, SandboxInFlightExecution>();
+  private readonly committedArtifacts = new Map<string, string>();
+  private readonly authoritativeExecutionPermits = new Set<string>();
+  private readonly authoritativeSqlArtifacts = new Set<string>();
+  private readonly revokedExecutionPermits = new Set<string>();
+  private readonly executionRecords = new Map<ContentHash, string>();
+  private readonly authority: SandboxServerAuthority;
+  private readonly pendingExecutionAuthorityRevocations = new Set<string>();
+  private activeSqlTransactions = 0;
+  private authorityEpoch = 0;
 
-  async execute(input: SandboxExecutionRequest): ReturnType<SandboxPort["execute"]> {
-    const request = sandboxExecutionRequestSchema.parse(input);
-    const inputHash = await sha256ContentHash(request);
-    const key = scopedKey(request.scope, request.idempotency_key);
+  constructor(
+    private readonly clock: Clock = new ManualClock(),
+    private readonly options: {
+      readonly snapshot_capability?: "REPLAYABLE" | "LIMITED" | "REPLAY_UNAVAILABLE";
+      /**
+       * 仅供并发契约测试控制真实 Operation 的进入点；回调位于幂等 Claim 之后。
+       */
+      readonly before_execution?: (request: SqlSandboxExecutionRequest) => Promise<void> | void;
+    } = {},
+  ) {
+    this.authority = registerSandboxServerAuthority({
+      resolveCommitted: (reference) => this.resolveCommitted(reference),
+      verifyCommitted: (reference) => this.verifyCommitted(reference),
+      resolveAuthoritativeExecutionPermit: (reference) =>
+        this.resolveAuthoritativeExecutionPermit(reference),
+      resolveAuthoritativeSqlArtifact: (reference) =>
+        this.resolveAuthoritativeSqlArtifact(reference),
+      revalidateExecutionAuthority: (input) => {
+        const permitIdentity = artifactReferenceIdentity(input.execution_permit_ref);
+        if (
+          this.revokedExecutionPermits.has(permitIdentity) ||
+          this.pendingExecutionAuthorityRevocations.has(permitIdentity)
+        ) {
+          return Promise.resolve(null);
+        }
+        return Promise.resolve({
+          effective_principal_id: input.effective_principal_id,
+          policy_receipt_ref: input.policy_receipt_ref,
+          revalidated_at: input.transaction_started_at,
+          authority_epoch: this.authorityEpoch,
+        });
+      },
+      assertAuthorityFence: async (input) => {
+        const permitIdentity = artifactReferenceIdentity(input.execution_permit_ref);
+        return (
+          input.authority_epoch === this.authorityEpoch &&
+          !this.revokedExecutionPermits.has(permitIdentity) &&
+          !this.pendingExecutionAuthorityRevocations.has(permitIdentity)
+        );
+      },
+      withSqlTransaction: async (operation) => {
+        this.activeSqlTransactions += 1;
+        try {
+          return await operation();
+        } finally {
+          this.activeSqlTransactions -= 1;
+          if (this.activeSqlTransactions === 0) {
+            for (const identity of this.pendingExecutionAuthorityRevocations) {
+              this.revokedExecutionPermits.add(identity);
+              this.authorityEpoch += 1;
+            }
+            this.pendingExecutionAuthorityRevocations.clear();
+          }
+        }
+      },
+      claimOrLoadExecution: (claim, operation) => this.claimOrLoadExecution(claim, operation),
+      resolveExecutionRecord: (inputHash) => this.resolveExecutionRecord(inputHash),
+      verifyExactArtifactRevision: (reference, artifact) =>
+        this.verifyExactArtifactRevision(reference, artifact),
+      now: () => this.clock.now(),
+    });
+  }
+
+  private async resolveCommitted(reference: ArtifactReference): Promise<unknown | null> {
+    const canonicalArtifact = this.committedArtifacts.get(artifactReferenceIdentity(reference));
+    return canonicalArtifact ? cloneCanonicalJson(canonicalArtifact) : null;
+  }
+
+  private async verifyCommitted(reference: ArtifactReference): Promise<boolean> {
+    return this.committedArtifacts.has(artifactReferenceIdentity(reference));
+  }
+
+  private async verifyExactArtifactRevision(
+    reference: ArtifactReference,
+    artifact: unknown,
+  ): Promise<boolean> {
+    const committed = this.committedArtifacts.get(artifactReferenceIdentity(reference));
+    return committed !== undefined && committed === canonicalizeJson(artifact);
+  }
+
+  private async resolveAuthoritativeExecutionPermit(
+    reference: ArtifactReference,
+  ): Promise<unknown | null> {
+    if (!this.authoritativeExecutionPermits.has(artifactReferenceIdentity(reference))) {
+      return null;
+    }
+    return this.resolveCommitted(reference);
+  }
+
+  private async resolveAuthoritativeSqlArtifact(
+    reference: ArtifactReference,
+  ): Promise<unknown | null> {
+    if (!this.authoritativeSqlArtifacts.has(artifactReferenceIdentity(reference))) {
+      return null;
+    }
+    return this.resolveCommitted(reference);
+  }
+
+  private async resolveExecutionRecord(inputHash: ContentHash): Promise<unknown | null> {
+    const canonicalRecord = this.executionRecords.get(inputHash);
+    return canonicalRecord ? cloneCanonicalJson(canonicalRecord) : null;
+  }
+
+  private async claimOrLoadExecution<T>(
+    claim: SandboxExecutionIdempotencyClaim,
+    operation: () => Promise<T>,
+  ): Promise<SandboxExecutionIdempotencyResolution<T>> {
+    const key = canonicalizeJson([
+      scopeIdentifier(claim.scope),
+      claim.principal_id,
+      claim.idempotency_key,
+    ]);
     const existing = this.executions.get(key);
     if (existing) {
-      if (existing.input_hash !== inputHash) {
-        return failure(
-          "SANDBOX_IDEMPOTENCY_CONFLICT",
-          "同一个 Sandbox Idempotency Key 不能绑定不同规范输入。",
-        );
+      if (existing.input_hash !== claim.input_hash) {
+        return {
+          status: "CONFLICT",
+          existing_input_hash: existing.input_hash,
+        };
       }
-      return success(sandboxExecutionReceiptSchema.parse(existing.receipt));
+      return {
+        status: "REPLAYED",
+        value: deepFreeze(cloneCanonicalJson(existing.canonical_output)) as T,
+      };
     }
 
-    const terminal = "COMPLETED" as const;
-    const reasonCode = "EXECUTION_COMPLETED";
-    const resourceUsage = {
-      elapsed_ms: 0,
-      rows: 0,
-      bytes: 0,
-      peak_memory_mb: 0,
+    const inFlight = this.inFlightExecutions.get(key);
+    if (inFlight) {
+      if (inFlight.input_hash !== claim.input_hash) {
+        return {
+          status: "CONFLICT",
+          existing_input_hash: inFlight.input_hash,
+        };
+      }
+      return {
+        status: "REPLAYED",
+        value: deepFreeze(cloneCanonicalJson(await inFlight.completion)) as T,
+      };
+    }
+
+    // 先发布 Claim，再在下一 Microtask 进入真实 Operation，避免两个并发调用都越过检查。
+    const completion = Promise.resolve()
+      .then(operation)
+      .then((value) => {
+        const canonicalOutput = canonicalizeJson(value);
+        this.executions.set(key, {
+          input_hash: claim.input_hash,
+          canonical_output: canonicalOutput,
+        });
+        return canonicalOutput;
+      });
+    const claimed: SandboxInFlightExecution = {
+      input_hash: claim.input_hash,
+      completion,
     };
-    const executionHash = await sha256ContentHash({
-      input_hash: inputHash,
-      terminal,
-      reason_code: reasonCode,
-      resource_usage: resourceUsage,
-    });
-    const receipt = sandboxExecutionReceiptSchema.parse({
-      schema_version: request.schema_version,
-      receipt_id: contentHashToUuid(executionHash),
-      scope: request.scope,
-      run_id: request.run_id,
-      execution_id: request.execution_id,
-      idempotency_key: request.idempotency_key,
-      input_hash: inputHash,
-      execution_hash: executionHash,
-      terminal,
-      reason_code: reasonCode,
-      resource_usage: resourceUsage,
-    });
-    this.executions.set(key, {
-      input_hash: inputHash,
-      receipt,
-    });
-    return success(sandboxExecutionReceiptSchema.parse(receipt));
+    this.inFlightExecutions.set(key, claimed);
+    try {
+      return {
+        status: "EXECUTED",
+        value: deepFreeze(cloneCanonicalJson(await completion)) as T,
+      };
+    } finally {
+      if (this.inFlightExecutions.get(key) === claimed) {
+        this.inFlightExecutions.delete(key);
+      }
+    }
+  }
+
+  /**
+   * 测试适配器的受控 Seed 入口。它只存在于 `@data-agent/contracts/testing`，
+   * 不会把生产 Authority 注册器暴露到 contracts root。
+   */
+  commitAuthoritativeExecutionPermit(reference: ArtifactReference, permit: unknown): void {
+    if (reference.artifact_type !== "ExecutionPermit") {
+      throw new TypeError("In-Memory Sandbox 只能以 ExecutionPermit Reference 注册 Permit。");
+    }
+    const identity = artifactReferenceIdentity(reference);
+    this.committedArtifacts.set(identity, canonicalizeJson(permit));
+    this.authoritativeExecutionPermits.add(identity);
+  }
+
+  commitAuthoritativeSqlArtifact(reference: ArtifactReference, artifact: unknown): void {
+    if (reference.artifact_type !== "SqlArtifact") {
+      throw new TypeError("In-Memory Sandbox 只能以 SqlArtifact Reference 注册 SQL Artifact。");
+    }
+    const identity = artifactReferenceIdentity(reference);
+    this.committedArtifacts.set(identity, canonicalizeJson(artifact));
+    this.authoritativeSqlArtifacts.add(identity);
+  }
+
+  revokeExecutionAuthority(reference: ArtifactReference): void {
+    if (reference.artifact_type !== "ExecutionPermit") {
+      throw new TypeError("In-Memory Sandbox 只能撤销 ExecutionPermit Authority。");
+    }
+    const identity = artifactReferenceIdentity(reference);
+    if (this.activeSqlTransactions > 0) {
+      this.pendingExecutionAuthorityRevocations.add(identity);
+      return;
+    }
+    this.authorityEpoch += 1;
+    this.revokedExecutionPermits.add(identity);
+  }
+
+  authorizeResult(reference: ArtifactReference): Promise<AuthoritativeSandboxResult> {
+    return authorizeSandboxResult(reference, this.authority);
+  }
+
+  authorizeExecutionReceipt(
+    reference: ArtifactReference,
+  ): Promise<AuthoritativeSandboxExecutionReceipt> {
+    return authorizeSandboxExecutionReceipt(reference, this.authority);
+  }
+
+  private issueSnapshot(): {
+    readonly snapshot_token: string | null;
+    readonly watermark: string | null;
+    readonly replay_state: "REPLAYABLE" | "LIMITED" | "REPLAY_UNAVAILABLE";
+  } {
+    switch (this.options.snapshot_capability ?? "REPLAYABLE") {
+      case "REPLAYABLE":
+        return {
+          snapshot_token: "in-memory-snapshot@1.0.0",
+          watermark: null,
+          replay_state: "REPLAYABLE",
+        };
+      case "LIMITED":
+        return {
+          snapshot_token: null,
+          watermark: "in-memory-watermark@1.0.0",
+          replay_state: "LIMITED",
+        };
+      case "REPLAY_UNAVAILABLE":
+        return {
+          snapshot_token: null,
+          watermark: null,
+          replay_state: "REPLAY_UNAVAILABLE",
+        };
+    }
+  }
+
+  async execute(input: SandboxExecutionRequest): ReturnType<SandboxPort["execute"]> {
+    try {
+      return await executeAuthorizedSandboxRequest(
+        input,
+        this.authority,
+        async (executionStart) => {
+          const request = executionStart.request;
+          const permit = executionStart.permit;
+          const authorityRevalidation = executionStart.authority_revalidation;
+          await this.options.before_execution?.(request);
+          const inputHash = await computeSandboxExecutionRequestHash(request);
+
+          const columns = [{ name: "result", type: "JSON" }] as const;
+          const rows: [] = [];
+          const resultDraft = {
+            schema_version: request.schema_version,
+            result_ref: {
+              artifact_id: contentHashToUuid(inputHash),
+              artifact_type: "SandboxResult",
+              app_id: request.scope.app_id,
+              tenant_id: request.scope.tenant_id,
+              environment: request.scope.environment,
+              run_id: request.run_id,
+              revision: 1,
+              content_hash: inputHash,
+            },
+            scope: request.scope,
+            run_id: request.run_id,
+            execution_id: request.execution_id,
+            columns,
+            rows,
+            row_count: rows.length,
+            bytes: computeSandboxResultBytes({ columns, rows }),
+            result_hash: inputHash,
+          } as const;
+          const resultHash = await computeSandboxResultHash(resultDraft);
+          const result = sandboxResultSchema.parse({
+            ...resultDraft,
+            result_ref: {
+              ...resultDraft.result_ref,
+              content_hash: resultHash,
+            },
+            result_hash: resultHash,
+          });
+          const resourceUsage = {
+            elapsed_ms: 0,
+            rows: result.row_count,
+            bytes: result.bytes,
+            peak_memory_mb: 0,
+          };
+          const receiptId = contentHashToUuid(inputHash);
+          const observedAt = executionStart.transaction_started_at;
+          const snapshot = this.issueSnapshot();
+          if (
+            (request.payload.snapshot_requirement.mode === "REQUIRE_REPLAYABLE" &&
+              snapshot.replay_state !== "REPLAYABLE") ||
+            (request.payload.snapshot_requirement.mode === "ALLOW_LIMITED" &&
+              snapshot.replay_state === "REPLAY_UNAVAILABLE")
+          ) {
+            return failure(
+              "SANDBOX_SNAPSHOT_REQUIREMENT_UNSATISFIED",
+              "数据库 Snapshot 能力不能满足当前 Request 的最小重放要求。",
+            );
+          }
+          const transaction = {
+            transaction_id: receiptId,
+            read_only: true,
+            isolation_level:
+              snapshot.replay_state === "REPLAYABLE" ? "REPEATABLE_READ" : "READ_COMMITTED",
+          } as const;
+          const receiptDraft = {
+            schema_version: request.schema_version,
+            language: "sql",
+            receipt_id: receiptId,
+            receipt_ref: {
+              artifact_id: receiptId,
+              artifact_type: "SandboxExecutionReceipt",
+              app_id: request.scope.app_id,
+              tenant_id: request.scope.tenant_id,
+              environment: request.scope.environment,
+              run_id: request.run_id,
+              revision: 1,
+              content_hash: inputHash,
+            },
+            scope: request.scope,
+            run_id: request.run_id,
+            execution_id: request.execution_id,
+            idempotency_key: request.idempotency_key,
+            input_hash: inputHash,
+            execution_hash: inputHash,
+            terminal: "COMPLETED",
+            reason_code: "EXECUTION_COMPLETED",
+            started_at: observedAt,
+            completed_at: observedAt,
+            result_artifact_ref: result.result_ref,
+            sql_artifact_ref: permit.sql_artifact_ref,
+            execution_permit_ref: request.payload.execution_permit_ref,
+            resource_admission_ref: permit.resource_admission_ref,
+            datasource_id: permit.datasource_id,
+            settings_hash: permit.settings_hash,
+            execution_settings: permit.execution_settings,
+            transaction,
+            authority_revalidation: authorityRevalidation,
+            snapshot_token: snapshot.snapshot_token,
+            watermark: snapshot.watermark,
+            replay_state: snapshot.replay_state,
+            resource_usage: resourceUsage,
+          } as const;
+          const executionHash = await computeSandboxExecutionReceiptHash(receiptDraft);
+          const receipt = sandboxExecutionReceiptSchema.parse({
+            ...receiptDraft,
+            receipt_ref: {
+              ...receiptDraft.receipt_ref,
+              content_hash: executionHash,
+            },
+            execution_hash: executionHash,
+          });
+          this.committedArtifacts.set(
+            artifactReferenceIdentity(result.result_ref),
+            canonicalizeJson(result),
+          );
+          if (receipt.terminal !== "COMPLETED") {
+            throw new TypeError("In-Memory Sandbox 成功路径必须生成 COMPLETED Receipt。");
+          }
+          this.committedArtifacts.set(
+            artifactReferenceIdentity(receipt.receipt_ref),
+            canonicalizeJson(receipt),
+          );
+          this.executionRecords.set(
+            inputHash,
+            canonicalizeJson({
+              request,
+              started_at: receipt.started_at,
+              completed_at: receipt.completed_at,
+              result_artifact_ref: result.result_ref,
+              datasource_id: permit.datasource_id,
+              schema_version: permit.schema_version,
+              settings_hash: permit.settings_hash,
+              applied_execution_settings: permit.execution_settings,
+              transaction,
+              authority_revalidation: authorityRevalidation,
+              snapshot,
+              resource_usage: resourceUsage,
+            }),
+          );
+          return success(sandboxExecutionReceiptSchema.parse(receipt));
+        },
+      );
+    } catch (error) {
+      if (error instanceof SandboxExecutionIdempotencyConflictError) {
+        return failure(error.code, error.message);
+      }
+      return failure(
+        "SANDBOX_EXECUTION_NOT_AUTHORIZED",
+        error instanceof Error ? error.message : "Sandbox Request 未通过服务端 Authority。",
+      );
+    }
   }
 }
 
@@ -322,16 +711,44 @@ export interface InMemoryPortConformanceOptions {
   readonly lease_duration_ms?: number;
 }
 
-export function createInMemoryPortConformanceHarness(
+export async function createInMemoryPortConformanceHarness(
   options: InMemoryPortConformanceOptions = {},
-): PortConformanceHarness {
+): Promise<PortConformanceHarness> {
   const clock = new ManualClock(options.initial_time);
   const leaseDurationMs = options.lease_duration_ms ?? 30_000;
+  const sandbox = new InMemorySandboxPort(clock);
+  for (const { reference, permit } of PORT_CONFORMANCE_SANDBOX_PERMITS) {
+    sandbox.commitAuthoritativeExecutionPermit(reference, permit);
+    const sqlArtifact = {
+      artifact_type: "SqlArtifact",
+      logical_plan_ref: {
+        ...permit.sql_artifact_ref,
+        artifact_type: "LogicalPlan",
+        content_hash: permit.sql_artifact_ref.content_hash,
+      },
+      compiler_version: "postgresql-compiler@1.0.0",
+      ast_hash: permit.sql_artifact_ref.content_hash,
+      dialect: "postgresql",
+      sql: "select * from governed_result where region = $1 limit $2",
+      parameters: {
+        limit: 10,
+        region: "south",
+      },
+    } as const;
+    sandbox.commitAuthoritativeSqlArtifact(permit.sql_artifact_ref, {
+      ...sqlArtifact,
+      query_hash: await sha256ContentHash({
+        dialect: sqlArtifact.dialect,
+        sql: sqlArtifact.sql,
+        parameters: sqlArtifact.parameters,
+      }),
+    });
+  }
   return {
     storage: new InMemoryStoragePort(),
     queue: new InMemoryQueuePort(clock, leaseDurationMs),
     cache: new InMemoryCachePort(clock),
-    sandbox: new InMemorySandboxPort(),
+    sandbox,
     lease_duration_ms: leaseDurationMs,
     now: () => clock.now(),
     advanceTimeBy: (milliseconds) => clock.advanceBy(milliseconds),
