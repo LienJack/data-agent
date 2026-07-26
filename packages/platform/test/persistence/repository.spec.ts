@@ -1,12 +1,18 @@
 import {
   canonicalizeJson,
+  computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
+  type GroundingAuthorityDocument,
+  groundingAuthorityDocumentSchema,
   type L2ArtifactDocument,
   l2ArtifactDocumentSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { createPostgresRepository } from "../../src/persistence/repository.js";
+import {
+  createPostgresRepository,
+  type PostgresRepositoryAuthorities,
+} from "../../src/persistence/repository.js";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
 import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
@@ -25,7 +31,7 @@ const ids = {
 };
 const canonicalPayloadHash = `sha256:${"a".repeat(64)}`;
 
-function issueCapability() {
+function issueCapability(role: "OWNER" | "ANALYST" | "VIEWER" = "ANALYST") {
   const registry = createDeploymentRegistry(
     [{ deployment_id: ids.deployment, app_id: ids.app, environment: "test" }],
     [
@@ -33,7 +39,7 @@ function issueCapability() {
         subject: ids.principal,
         deployment_id: ids.deployment,
         tenant_id: ids.tenant,
-        role: "ANALYST",
+        role,
       },
     ],
   );
@@ -134,6 +140,299 @@ async function committedDocument(input: {
       content_hash: await computeL2ArtifactContentHash(draft),
     },
   });
+}
+
+function l2CommitAuthoritiesFor(
+  ...documents: readonly L2ArtifactDocument[]
+): PostgresRepositoryAuthorities {
+  return {
+    verifyL2ArtifactCommitterCapability: async (claim, capability) =>
+      capability.principal === ids.principal &&
+      claim.app_id === capability.scope.app_id &&
+      claim.tenant_id === capability.scope.tenant_id &&
+      claim.environment === capability.scope.environment &&
+      documents.some(
+        ({ envelope }) =>
+          claim.run_id === envelope.run_id &&
+          claim.attempt_id === envelope.attempt_id &&
+          claim.artifact_type === envelope.artifact_type &&
+          claim.producer_id === envelope.producer.id &&
+          claim.policy_version === envelope.policy_version,
+      ),
+  };
+}
+
+async function groundingAuthorityDocument(
+  overrides: Readonly<{
+    artifact_id?: string;
+    revision?: number;
+    parent_ref?: Record<string, unknown> | null;
+    catalog_version?: string;
+    metric_alias?: string;
+    producer_id?: string;
+    authority_id?: string;
+    authority_policy_version?: string;
+  }> = {},
+): Promise<GroundingAuthorityDocument> {
+  const artifactReference = {
+    app_id: ids.app,
+    tenant_id: ids.tenant,
+    environment: "test" as const,
+    run_id: ids.run,
+    artifact_id: overrides.artifact_id ?? "00000000-0000-4000-8000-000000000731",
+    artifact_type: "SemanticRelease" as const,
+    revision: overrides.revision ?? 1,
+    content_hash: `sha256:${"0".repeat(64)}` as const,
+  };
+  const draft = groundingAuthorityDocumentSchema.parse({
+    schema_version: "data-agent-grounding-authority/v1",
+    artifact_type: "SemanticRelease",
+    artifact_ref: artifactReference,
+    scope: {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+    },
+    run_id: ids.run,
+    parent_ref: overrides.parent_ref ?? null,
+    producer: {
+      kind: "deterministic",
+      id: overrides.producer_id ?? "grounding-registry",
+    },
+    authority: {
+      kind: "deterministic",
+      id: overrides.authority_id ?? "grounding-authority",
+      policy_version: overrides.authority_policy_version ?? "grounding-authority@1.0.0",
+    },
+    created_at: "2026-07-26T00:00:00.000Z",
+    document_hash: artifactReference.content_hash,
+    semantic_release_version: "commerce-semantic@1.0.0",
+    catalog_version: overrides.catalog_version ?? "commerce-catalog@1.0.0",
+    datasource_id: ids.app,
+    metrics: [
+      {
+        metric_id: "metric.net_revenue",
+        aliases: [overrides.metric_alias ?? "净收入"],
+        table_id: "orders",
+        column_id: "orders.net_amount",
+        aggregation: "sum",
+        grain: "order",
+        unit: "CNY",
+        time_column_id: "orders.created_at",
+        additivity: "additive",
+        null_policy: "coalesce-zero",
+        dependency_column_ids: ["orders.net_amount"],
+        fanout_policy: "preaggregate",
+      },
+    ],
+    dimensions: [],
+  });
+  const documentHash = await computeGroundingAuthorityDocumentHash(draft);
+  return groundingAuthorityDocumentSchema.parse({
+    ...draft,
+    artifact_ref: {
+      ...draft.artifact_ref,
+      content_hash: documentHash,
+    },
+    document_hash: documentHash,
+  });
+}
+
+async function schemaSnapshotDocument(
+  overrides: Readonly<{
+    catalog_version?: string;
+    producer_id?: string;
+    authority_id?: string;
+    authority_policy_version?: string;
+  }> = {},
+): Promise<Extract<GroundingAuthorityDocument, { artifact_type: "SchemaSnapshot" }>> {
+  const artifactReference = {
+    app_id: ids.app,
+    tenant_id: ids.tenant,
+    environment: "test" as const,
+    run_id: ids.run,
+    artifact_id: "00000000-0000-4000-8000-000000000734",
+    artifact_type: "SchemaSnapshot" as const,
+    revision: 1,
+    content_hash: `sha256:${"0".repeat(64)}` as const,
+  };
+  const draft = groundingAuthorityDocumentSchema.parse({
+    schema_version: "data-agent-grounding-authority/v1",
+    artifact_type: "SchemaSnapshot",
+    artifact_ref: artifactReference,
+    scope: {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+    },
+    run_id: ids.run,
+    parent_ref: null,
+    producer: {
+      kind: "deterministic",
+      id: overrides.producer_id ?? "grounding-registry",
+    },
+    authority: {
+      kind: "deterministic",
+      id: overrides.authority_id ?? "grounding-authority",
+      policy_version: overrides.authority_policy_version ?? "grounding-authority@1.0.0",
+    },
+    created_at: "2026-07-26T00:00:00.000Z",
+    document_hash: artifactReference.content_hash,
+    schema_snapshot_version: "commerce-schema@1.0.0",
+    catalog_version: overrides.catalog_version ?? "commerce-catalog@1.0.0",
+    datasource_id: ids.app,
+    tables: [
+      {
+        table_id: "orders",
+        physical_name: "orders",
+        columns: [
+          {
+            column_id: "orders.tenant_id",
+            physical_name: "tenant_id",
+            data_type: "uuid",
+            nullable: false,
+            sensitivity: "INTERNAL",
+          },
+          {
+            column_id: "orders.net_amount",
+            physical_name: "net_amount",
+            data_type: "numeric",
+            nullable: true,
+            sensitivity: "INTERNAL",
+          },
+          {
+            column_id: "orders.created_at",
+            physical_name: "created_at",
+            data_type: "timestamptz",
+            nullable: false,
+            sensitivity: "INTERNAL",
+          },
+        ],
+      },
+    ],
+    relationships: [],
+  });
+  const documentHash = await computeGroundingAuthorityDocumentHash(draft);
+  return groundingAuthorityDocumentSchema.parse({
+    ...draft,
+    artifact_ref: {
+      ...draft.artifact_ref,
+      content_hash: documentHash,
+    },
+    document_hash: documentHash,
+  }) as Extract<GroundingAuthorityDocument, { artifact_type: "SchemaSnapshot" }>;
+}
+
+async function policyReceiptDocument(
+  principalId: string,
+  overrides: Readonly<{
+    producer_id?: string;
+    authority_id?: string;
+    authority_policy_version?: string;
+    semantic_release_ref?: Extract<
+      GroundingAuthorityDocument,
+      { artifact_type: "SemanticRelease" }
+    >["artifact_ref"];
+    schema_snapshot_ref?: Extract<
+      GroundingAuthorityDocument,
+      { artifact_type: "SchemaSnapshot" }
+    >["artifact_ref"];
+  }> = {},
+): Promise<GroundingAuthorityDocument> {
+  const artifactReference = {
+    app_id: ids.app,
+    tenant_id: ids.tenant,
+    environment: "test" as const,
+    run_id: ids.run,
+    artifact_id: "00000000-0000-4000-8000-000000000735",
+    artifact_type: "PolicyReceipt" as const,
+    revision: 1,
+    content_hash: `sha256:${"0".repeat(64)}` as const,
+  };
+  const policyVersion = "default-policy@1.0.0";
+  const draft = groundingAuthorityDocumentSchema.parse({
+    schema_version: "data-agent-grounding-authority/v1",
+    artifact_type: "PolicyReceipt",
+    artifact_ref: artifactReference,
+    scope: {
+      app_id: ids.app,
+      tenant_id: ids.tenant,
+      environment: "test",
+    },
+    run_id: ids.run,
+    parent_ref: null,
+    producer: {
+      kind: "deterministic",
+      id: overrides.producer_id ?? "grounding-registry",
+    },
+    authority: {
+      kind: "deterministic",
+      id: overrides.authority_id ?? "policy-authority",
+      policy_version: overrides.authority_policy_version ?? policyVersion,
+    },
+    created_at: "2026-07-26T00:00:00.000Z",
+    document_hash: artifactReference.content_hash,
+    policy_version: policyVersion,
+    datasource_id: ids.app,
+    principal_id: principalId,
+    semantic_release_ref:
+      overrides.semantic_release_ref ??
+      ({
+        ...artifactReference,
+        artifact_id: "00000000-0000-4000-8000-000000000731",
+        artifact_type: "SemanticRelease",
+        content_hash: `sha256:${"a".repeat(64)}`,
+      } as const),
+    schema_snapshot_ref:
+      overrides.schema_snapshot_ref ??
+      ({
+        ...artifactReference,
+        artifact_id: "00000000-0000-4000-8000-000000000734",
+        artifact_type: "SchemaSnapshot",
+        content_hash: `sha256:${"b".repeat(64)}`,
+      } as const),
+    allowed_schema: {
+      tables: [
+        {
+          table_id: "orders",
+          column_ids: ["orders.tenant_id"],
+        },
+      ],
+    },
+    mandatory_predicates: [
+      {
+        table_id: "orders",
+        column_id: "orders.tenant_id",
+        operator: "eq",
+        parameter_key: "tenant_id",
+      },
+    ],
+  });
+  const documentHash = await computeGroundingAuthorityDocumentHash(draft);
+  return groundingAuthorityDocumentSchema.parse({
+    ...draft,
+    artifact_ref: {
+      ...draft.artifact_ref,
+      content_hash: documentHash,
+    },
+    document_hash: documentHash,
+  });
+}
+
+async function groundingAuthorityBundle(
+  principalId = ids.principal,
+  schemaOverrides: Parameters<typeof schemaSnapshotDocument>[0] = {},
+) {
+  const semanticRelease = (await groundingAuthorityDocument()) as Extract<
+    GroundingAuthorityDocument,
+    { artifact_type: "SemanticRelease" }
+  >;
+  const schemaSnapshot = await schemaSnapshotDocument(schemaOverrides);
+  const policyReceipt = await policyReceiptDocument(principalId, {
+    semantic_release_ref: semanticRelease.artifact_ref,
+    schema_snapshot_ref: schemaSnapshot.artifact_ref,
+  });
+  return { policyReceipt, schemaSnapshot, semanticRelease };
 }
 
 describe("PostgreSQL authoritative repository", () => {
@@ -401,7 +700,36 @@ describe("PostgreSQL authoritative repository", () => {
     expect(query?.values.at(-1)).toBe(ids.principal);
   });
 
-  it("commits a valid ExecutionReceipt carrying a non-credential snapshot token", async () => {
+  it("未配置服务端 L2 Committer Authority 时在 Run Fence 前失败关闭", async () => {
+    const document = await committedDocument({
+      artifact_id: "00000000-0000-4000-8000-000000000710",
+      artifact_type: "QuestionFrame",
+      payload: {
+        artifact_type: "QuestionFrame",
+        raw_question: "收入为什么下降？",
+        normalized_question: "解释收入下降原因",
+        authorized_datasource_ids: ["00000000-0000-4000-8000-000000000714"],
+        expected_output: "多步研究报告",
+      },
+    });
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitL2Artifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "L2_ARTIFACT_AUTHORITY_INVALID", retryable: false },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+    expect(fixture.calls.some(({ text }) => text.includes("insert into artifacts"))).toBe(false);
+  });
+
+  it("接受非凭据 Snapshot Token，但在语义上游不可解析时拒绝提交 ExecutionReceipt", async () => {
     const sqlReference = {
       app_id: ids.app,
       tenant_id: ids.tenant,
@@ -460,7 +788,11 @@ describe("PostgreSQL authoritative repository", () => {
       return undefined;
     });
     const authority = issueCapability();
-    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+    const repository = createPostgresRepository(
+      fixture.pool,
+      authority.authorizer,
+      l2CommitAuthoritiesFor(document),
+    );
 
     expect(
       await repository.commitL2Artifact(authority.capability, document, {
@@ -468,15 +800,11 @@ describe("PostgreSQL authoritative repository", () => {
         worker_fence: 0,
       }),
     ).toMatchObject({
-      ok: true,
-      value: {
-        artifact_type: "ExecutionReceipt",
-        content_hash: document.envelope.content_hash,
-      },
+      ok: false,
+      error: { code: "L2_ARTIFACT_AUTHORITY_INVALID", retryable: false },
     });
-    const fenceLock = fixture.calls.find(({ text }) => text.includes("lock_owned_run_fence"));
-    expect(fenceLock?.values).toEqual([ids.run]);
-    expect(fenceLock?.text).not.toContain("from runs");
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+    expect(fixture.calls.some(({ text }) => text.includes("insert into artifacts"))).toBe(false);
   });
 
   it("commits a continuous revision one to revision two ancestry", async () => {
@@ -539,7 +867,11 @@ describe("PostgreSQL authoritative repository", () => {
       return undefined;
     });
     const authority = issueCapability();
-    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+    const repository = createPostgresRepository(
+      fixture.pool,
+      authority.authorizer,
+      l2CommitAuthoritiesFor(revisionOne, revisionTwo),
+    );
 
     expect(
       await repository.commitL2Artifact(authority.capability, revisionOne, {
@@ -553,5 +885,437 @@ describe("PostgreSQL authoritative repository", () => {
         worker_fence: 0,
       }),
     ).toMatchObject({ ok: true, value: { revision: 2 } });
+  });
+
+  it("commits a content-addressed Grounding Authority revision through the owned Run fence", async () => {
+    const document = await groundingAuthorityDocument();
+    const fixture = scriptedPool((text) => {
+      if (text.includes("lock_owned_run_fence")) {
+        return { rows: [{ active_fence: "7" }], rowCount: 1 };
+      }
+      if (text.includes("select revision, content_hash")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("insert into artifacts")) {
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 7,
+      }),
+    ).toEqual({
+      ok: true,
+      value: document.artifact_ref,
+    });
+    const fenceLock = fixture.calls.find(({ text }) => text.includes("lock_owned_run_fence"));
+    expect(fenceLock?.values).toEqual([ids.run]);
+    const insert = fixture.calls.find(({ text }) => text.includes("insert into artifacts"));
+    expect(insert?.values[5]).toBe("SemanticRelease");
+    expect(insert?.values[8]).toBe(canonicalizeJson(document));
+  });
+
+  it("denies an ANALYST before opening a Grounding Authority commit transaction", async () => {
+    const document = await groundingAuthorityDocument();
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability("ANALYST");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "PERSISTENCE_WRITE_DENIED", retryable: false },
+    });
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it.each([
+    {
+      label: "producer",
+      overrides: { producer_id: "attacker-registry" },
+    },
+    {
+      label: "authority id",
+      overrides: { authority_id: "attacker-authority" },
+    },
+    {
+      label: "authority version",
+      overrides: { authority_policy_version: "grounding-authority@9.9.9" },
+    },
+  ])("rejects a spoofed Grounding $label inside the OWNER transaction", async ({ overrides }) => {
+    const document = await groundingAuthorityDocument(overrides);
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "GROUNDING_AUTHORITY_IDENTITY_DENIED", retryable: false },
+    });
+    expect(fixture.calls[0]?.text).toBe("BEGIN");
+    expect(fixture.calls.at(-1)?.text).toBe("ROLLBACK");
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+  });
+
+  it("rejects a PolicyReceipt that is not authorized by policy-authority", async () => {
+    const document = await policyReceiptDocument(ids.principal, {
+      authority_id: "attacker-policy-authority",
+    });
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "GROUNDING_AUTHORITY_IDENTITY_DENIED", retryable: false },
+    });
+    expect(fixture.calls[0]?.text).toBe("BEGIN");
+    expect(fixture.calls.at(-1)?.text).toBe("ROLLBACK");
+  });
+
+  it("rejects a PolicyReceipt whose principal differs from the transaction capability", async () => {
+    const document = await policyReceiptDocument("00000000-0000-4000-8000-000000000999");
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "GROUNDING_POLICY_PRINCIPAL_MISMATCH", retryable: false },
+    });
+    expect(fixture.calls[0]?.text).toBe("BEGIN");
+    expect(fixture.calls.at(-1)?.text).toBe("ROLLBACK");
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+  });
+
+  it("allows an OWNER to commit a PolicyReceipt for the same principal", async () => {
+    const {
+      policyReceipt: document,
+      schemaSnapshot,
+      semanticRelease,
+    } = await groundingAuthorityBundle();
+    const documents = new Map<string, GroundingAuthorityDocument>(
+      [semanticRelease, schemaSnapshot].map((candidate) => [
+        candidate.artifact_ref.artifact_type,
+        candidate,
+      ]),
+    );
+    const fixture = scriptedPool((text, values) => {
+      if (text.includes("lock_owned_run_fence")) {
+        return { rows: [{ active_fence: "5" }], rowCount: 1 };
+      }
+      if (text.includes("select revision, content_hash")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("select artifact.document_json")) {
+        const candidate = documents.get(String(values[5]));
+        return candidate
+          ? { rows: [{ document_json: structuredClone(candidate) }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      }
+      if (text.includes("from artifacts as artifact")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      if (text.includes("insert into artifacts")) {
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 5,
+      }),
+    ).toEqual({ ok: true, value: document.artifact_ref });
+    const referenceChecks = fixture.calls.filter(({ text }) =>
+      text.trimStart().startsWith("select 1"),
+    );
+    expect(referenceChecks).toHaveLength(4);
+    expect(referenceChecks.every(({ values }) => values.at(-1) === ids.principal)).toBe(true);
+  });
+
+  it("rejects an inconsistent PolicyReceipt before locking or replacing Active Revision", async () => {
+    const {
+      policyReceipt: document,
+      schemaSnapshot,
+      semanticRelease,
+    } = await groundingAuthorityBundle(ids.principal, {
+      catalog_version: "commerce-catalog@2.0.0",
+    });
+    const documents = new Map<string, GroundingAuthorityDocument>(
+      [semanticRelease, schemaSnapshot].map((candidate) => [
+        candidate.artifact_ref.artifact_type,
+        candidate,
+      ]),
+    );
+    const fixture = scriptedPool((text, values) => {
+      if (text.includes("select artifact.document_json")) {
+        const candidate = documents.get(String(values[5]));
+        return candidate
+          ? { rows: [{ document_json: structuredClone(candidate) }], rowCount: 1 }
+          : { rows: [], rowCount: 0 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 0,
+        worker_fence: 5,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GROUNDING_DOCUMENT_NOT_AUTHORITATIVE",
+        retryable: false,
+      },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
+    expect(fixture.calls.some(({ text }) => text.includes("select revision, content_hash"))).toBe(
+      false,
+    );
+    expect(fixture.calls.some(({ text }) => text.includes("update artifacts"))).toBe(false);
+    expect(fixture.calls.some(({ text }) => text.includes("insert into artifacts"))).toBe(false);
+  });
+
+  it("rejects Grounding Authority hash drift and plaintext credentials before database I/O", async () => {
+    const document = await groundingAuthorityDocument();
+    const credentialDocument = await groundingAuthorityDocument({
+      artifact_id: "00000000-0000-4000-8000-000000000732",
+      metric_alias: "postgresql://admin:hunter2@db.example.test/warehouse",
+    });
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(
+        authority.capability,
+        {
+          ...document,
+          catalog_version: "commerce-catalog@2.0.0",
+        },
+        {
+          expected_active_revision: 0,
+          worker_fence: 0,
+        },
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "PERSISTENCE_INPUT_INVALID", retryable: false },
+    });
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, credentialDocument, {
+        expected_active_revision: 0,
+        worker_fence: 0,
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "PERSISTENCE_INPUT_INVALID", retryable: false },
+    });
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it("derives continuous Grounding Authority ancestry from the locked active revision", async () => {
+    const artifactId = "00000000-0000-4000-8000-000000000733";
+    const parent = await groundingAuthorityDocument({ artifact_id: artifactId });
+    const activeHash = parent.document_hash;
+    const document = await groundingAuthorityDocument({
+      artifact_id: artifactId,
+      revision: 2,
+      parent_ref: parent.artifact_ref,
+      catalog_version: "commerce-catalog@2.0.0",
+    });
+    const fixture = scriptedPool((text) => {
+      if (text.includes("select artifact.document_json")) {
+        return { rows: [{ document_json: structuredClone(parent) }], rowCount: 1 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      if (text.includes("lock_owned_run_fence")) {
+        return { rows: [{ active_fence: "3" }], rowCount: 1 };
+      }
+      if (text.includes("select revision, content_hash")) {
+        return { rows: [{ revision: 1, content_hash: activeHash }], rowCount: 1 };
+      }
+      if (text.includes("update artifacts") || text.includes("insert into artifacts")) {
+        return { rows: [], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability("OWNER");
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.commitGroundingAuthorityArtifact(authority.capability, document, {
+        expected_active_revision: 1,
+        worker_fence: 3,
+      }),
+    ).toMatchObject({ ok: true, value: { revision: 2 } });
+    const insert = fixture.calls.find(({ text }) => text.includes("insert into artifacts"));
+    expect(insert?.values[10]).toBe(1);
+    expect(insert?.values[11]).toBe(activeHash);
+  });
+
+  it("returns raw persistence reads unchanged and contextually verified reads deeply frozen", async () => {
+    const document = await groundingAuthorityDocument();
+    const fixture = scriptedPool((text) => {
+      if (text.includes("select artifact.document_json")) {
+        return { rows: [{ document_json: structuredClone(document) }], rowCount: 1 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    const raw = await repository.resolveArtifact(authority.capability, document.artifact_ref);
+    expect(raw).toMatchObject({ ok: true });
+    expect(raw.ok && Object.isFrozen(raw.value)).toBe(false);
+
+    const authorized = await repository.resolveGroundingAuthorityArtifact(
+      authority.capability,
+      document.artifact_ref,
+    );
+    expect(authorized).toMatchObject({ ok: true });
+    expect(authorized.ok && Object.isFrozen(authorized.value)).toBe(true);
+    expect(
+      authorized.ok && authorized.value !== null && Object.isFrozen(authorized.value.artifact_ref),
+    ).toBe(true);
+  });
+
+  it.each([
+    {
+      label: "伪造 producer",
+      create: () => groundingAuthorityDocument({ producer_id: "legacy-attacker" }),
+      expected_code: "GROUNDING_AUTHORITY_IDENTITY_DENIED",
+    },
+    {
+      label: "错误 Policy principal",
+      create: () => policyReceiptDocument("00000000-0000-4000-8000-000000000999"),
+      expected_code: "GROUNDING_POLICY_PRINCIPAL_MISMATCH",
+    },
+  ])("revalidates $label on every contextual Grounding read", async ({ create, expected_code }) => {
+    const document = await create();
+    const fixture = scriptedPool((text) => {
+      if (text.includes("select artifact.document_json")) {
+        return { rows: [{ document_json: structuredClone(document) }], rowCount: 1 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.resolveGroundingAuthorityArtifact(
+        authority.capability,
+        document.artifact_ref,
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: expected_code,
+        retryable: false,
+      },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("select 1"))).toBe(false);
+  });
+
+  it("rejects a raw Grounding document whose exact reference is not committed", async () => {
+    const document = await groundingAuthorityDocument();
+    const fixture = scriptedPool((text) => {
+      if (text.includes("select artifact.document_json")) {
+        return { rows: [{ document_json: structuredClone(document) }], rowCount: 1 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.resolveGroundingAuthorityArtifact(
+        authority.capability,
+        document.artifact_ref,
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GROUNDING_DOCUMENT_NOT_AUTHORITATIVE",
+        retryable: false,
+      },
+    });
+  });
+
+  it("rejects Grounding document_json whose embedded reference differs from the request", async () => {
+    const requested = await groundingAuthorityDocument();
+    const mismatched = await groundingAuthorityDocument({
+      artifact_id: "00000000-0000-4000-8000-000000000734",
+    });
+    const fixture = scriptedPool((text) => {
+      if (text.includes("select artifact.document_json")) {
+        return { rows: [{ document_json: structuredClone(mismatched) }], rowCount: 1 };
+      }
+      if (text.includes("select 1")) {
+        return { rows: [{ present: 1 }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.resolveGroundingAuthorityArtifact(
+        authority.capability,
+        requested.artifact_ref,
+      ),
+    ).toMatchObject({
+      ok: false,
+      error: {
+        code: "GROUNDING_DOCUMENT_NOT_AUTHORITATIVE",
+        retryable: false,
+      },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("select 1"))).toBe(false);
   });
 });

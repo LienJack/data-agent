@@ -2,15 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   ArtifactAuthorityError,
   ArtifactIntegrityError,
+  type ArtifactReference,
   artifactEnvelopeSchema,
   artifactReferenceIdentity,
   artifactReferenceSchema,
-  authorizeL2ArtifactDocument,
+  type CatalogRelationshipContract,
+  computeGroundingHash,
   computeL2ArtifactContentHash,
+  hasLogicalPlanDataflow,
   type L2ArtifactDocument,
   type L2ArtifactPersistenceAuthority,
   l2ArtifactDocumentSchema,
   l2ArtifactPayloadSchema,
+  logicalOperationSchema,
+  verifyL2ArtifactDocument,
 } from "../src/artifacts/index.js";
 import { canonicalizeJson } from "../src/common/index.js";
 import { createAuthoritativeReadyFixture } from "./authority-fixtures.js";
@@ -35,6 +40,14 @@ function referenceFromDocument(document: L2ArtifactDocument) {
   });
 }
 
+async function resolveL2Document(
+  authority: L2ArtifactPersistenceAuthority,
+  reference: ArtifactReference,
+): Promise<L2ArtifactDocument | null> {
+  const parsed = l2ArtifactDocumentSchema.safeParse(await authority.resolveL2(reference));
+  return parsed.success ? parsed.data : null;
+}
+
 function authorityFor(
   document: L2ArtifactDocument,
   options: {
@@ -46,6 +59,7 @@ function authorityFor(
 ): L2ArtifactPersistenceAuthority {
   const currentIdentity = artifactReferenceIdentity(referenceFromDocument(document));
   return {
+    principalId: "principal-fixture",
     verifyCommitted: async (reference) => {
       options.observedReferences?.push(
         `${reference.artifact_type}:${reference.artifact_id}:${reference.revision}`,
@@ -431,31 +445,202 @@ describe("L2 Artifact Schema", () => {
     ).toBe(false);
   });
 
-  it("LogicalPlan 的每类 Operation 使用独立参数契约", () => {
+  it("LogicalPlan 首版没有 QueryContract order/limit 语义，公开契约拒绝 Sort/Limit", () => {
     expect(
-      l2ArtifactPayloadSchema.safeParse({
-        artifact_type: "LogicalPlan",
-        semantic_query_ref: makeArtifactReference("SemanticQuery"),
-        operations: [
-          {
-            operation: "limit",
-            join_type: "cross",
-          },
-        ],
+      logicalOperationSchema.safeParse({
+        operation: "sort",
+        operation_id: "sort_result",
+        input_id: "project_result",
+        keys: [{ source_id: "metric.net_revenue", direction: "desc" }],
       }).success,
     ).toBe(false);
     expect(
-      l2ArtifactPayloadSchema.safeParse({
-        artifact_type: "LogicalPlan",
-        semantic_query_ref: makeArtifactReference("SemanticQuery"),
-        operations: [
+      logicalOperationSchema.safeParse({
+        operation: "limit",
+        operation_id: "limit_result",
+        input_id: "project_result",
+        count: 100,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("LogicalPlan Join 按子树 lineage 与 preserved side 接受正常 INNER/LEFT", () => {
+    const innerRelationship: CatalogRelationshipContract = {
+      relationship_id: "relationship.orders_customers_inner",
+      left_table_id: "orders",
+      left_column_ids: ["orders.customer_id"],
+      right_table_id: "customers",
+      right_column_ids: ["customers.id"],
+      cardinality: "many-to-one",
+      left_row_match: "required",
+      right_row_match: "required",
+    };
+    expect(
+      hasLogicalPlanDataflow(
+        [
           {
-            operation: "limit",
-            count: 100,
+            operation: "scan",
+            operation_id: "scan_orders",
+            table_id: "orders",
+            alias: "orders",
+            column_ids: ["orders.customer_id"],
+          },
+          {
+            operation: "scan",
+            operation_id: "scan_customers",
+            table_id: "customers",
+            alias: "customers",
+            column_ids: ["customers.id"],
+          },
+          {
+            operation: "join",
+            operation_id: "join_customers",
+            left_input_id: "scan_orders",
+            right_input_id: "scan_customers",
+            relationship: innerRelationship,
+            join_type: "inner",
           },
         ],
-      }).success,
+        "orders",
+      ),
     ).toBe(true);
+
+    const optionalRelationship: CatalogRelationshipContract = {
+      ...innerRelationship,
+      relationship_id: "relationship.orders_customers_left",
+      left_row_match: "optional",
+    };
+    expect(
+      hasLogicalPlanDataflow(
+        [
+          {
+            operation: "scan",
+            operation_id: "scan_orders",
+            table_id: "orders",
+            alias: "orders",
+            column_ids: ["orders.customer_id"],
+          },
+          {
+            operation: "scan",
+            operation_id: "scan_customers",
+            table_id: "customers",
+            alias: "customers",
+            column_ids: ["customers.id"],
+          },
+          {
+            operation: "join",
+            operation_id: "join_customers",
+            left_input_id: "scan_orders",
+            right_input_id: "scan_customers",
+            relationship: optionalRelationship,
+            join_type: "left",
+          },
+        ],
+        "orders",
+      ),
+    ).toBe(true);
+    expect(
+      hasLogicalPlanDataflow(
+        [
+          {
+            operation: "scan",
+            operation_id: "scan_orders",
+            table_id: "orders",
+            alias: "orders",
+            column_ids: ["orders.customer_id"],
+          },
+          {
+            operation: "scan",
+            operation_id: "scan_customers",
+            table_id: "customers",
+            alias: "customers",
+            column_ids: ["customers.id"],
+          },
+          {
+            operation: "join",
+            operation_id: "join_customers",
+            left_input_id: "scan_orders",
+            right_input_id: "scan_customers",
+            relationship: optionalRelationship,
+            join_type: "inner",
+          },
+        ],
+        "orders",
+      ),
+      "preserved orders 的匹配可选时不能降级成 INNER JOIN",
+    ).toBe(false);
+  });
+
+  it("LogicalPlan Dataflow 拒绝重复消费关系后用 endpoint presence 绕过 preserved side", () => {
+    const optionalRelationship: CatalogRelationshipContract = {
+      relationship_id: "relationship.orders_customers",
+      left_table_id: "orders",
+      left_column_ids: ["orders.customer_id"],
+      right_table_id: "customers",
+      right_column_ids: ["customers.id"],
+      cardinality: "many-to-one",
+      left_row_match: "optional",
+      right_row_match: "required",
+    };
+    expect(
+      hasLogicalPlanDataflow(
+        [
+          {
+            operation: "scan",
+            operation_id: "scan_orders_a",
+            table_id: "orders",
+            alias: "orders_a",
+            column_ids: ["orders.customer_id"],
+          },
+          {
+            operation: "scan",
+            operation_id: "scan_customers_a",
+            table_id: "customers",
+            alias: "customers_a",
+            column_ids: ["customers.id"],
+          },
+          {
+            operation: "join",
+            operation_id: "left_subtree_a",
+            left_input_id: "scan_orders_a",
+            right_input_id: "scan_customers_a",
+            relationship: optionalRelationship,
+            join_type: "left",
+          },
+          {
+            operation: "scan",
+            operation_id: "scan_orders_b",
+            table_id: "orders",
+            alias: "orders_b",
+            column_ids: ["orders.customer_id"],
+          },
+          {
+            operation: "scan",
+            operation_id: "scan_customers_b",
+            table_id: "customers",
+            alias: "customers_b",
+            column_ids: ["customers.id"],
+          },
+          {
+            operation: "join",
+            operation_id: "left_subtree_b",
+            left_input_id: "scan_orders_b",
+            right_input_id: "scan_customers_b",
+            relationship: optionalRelationship,
+            join_type: "left",
+          },
+          {
+            operation: "join",
+            operation_id: "endpoint_presence_bypass",
+            left_input_id: "left_subtree_a",
+            right_input_id: "left_subtree_b",
+            relationship: optionalRelationship,
+            join_type: "inner",
+          },
+        ],
+        "orders",
+      ),
+    ).toBe(false);
   });
 
   it("拒绝 Payload Reference 用错误 artifact_type 冒充已声明输入", () => {
@@ -495,6 +680,243 @@ describe("L2 Artifact Schema", () => {
     ).toBe(false);
   });
 
+  it("GroundingPackage、SemanticQuery 与 LogicalPlan 只接受 ACL 绑定和类型化 IR", () => {
+    const queryContractReference = makeArtifactReference("QueryContract");
+    const groundingReference = makeArtifactReference("GroundingPackage");
+    const semanticReleaseReference = {
+      ...makeArtifactReference(),
+      artifact_type: "SemanticRelease",
+    };
+    const schemaSnapshotReference = {
+      ...makeArtifactReference(),
+      artifact_type: "SchemaSnapshot",
+    };
+    const policyReceiptReference = {
+      ...makeArtifactReference(),
+      artifact_type: "PolicyReceipt",
+    };
+    const metric = {
+      metric_id: "metric.net_revenue",
+      aliases: ["净收入"],
+      table_id: "orders",
+      column_id: "orders.net_amount",
+      aggregation: "sum",
+      grain: "order",
+      unit: "CNY",
+      time_column_id: "orders.created_at",
+      additivity: "additive",
+      null_policy: "coalesce-zero",
+      dependency_column_ids: ["orders.net_amount"],
+      fanout_policy: "preaggregate",
+    };
+    const groundingPayload = {
+      artifact_type: "GroundingPackage",
+      query_contract_ref: queryContractReference,
+      semantic_release_ref: semanticReleaseReference,
+      schema_snapshot_ref: schemaSnapshotReference,
+      policy_receipt_ref: policyReceiptReference,
+      catalog_version: "commerce-catalog@1.0.0",
+      policy_version: "analyst-policy@1.0.0",
+      datasource_id: ids.appA,
+      allowed_schema: {
+        tables: [
+          {
+            table_id: "orders",
+            physical_name: "orders",
+            columns: [
+              {
+                column_id: "orders.net_amount",
+                physical_name: "net_amount",
+                data_type: "numeric",
+                nullable: true,
+                sensitivity: "INTERNAL",
+              },
+              {
+                column_id: "orders.created_at",
+                physical_name: "created_at",
+                data_type: "timestamptz",
+                nullable: false,
+                sensitivity: "INTERNAL",
+              },
+            ],
+          },
+        ],
+      },
+      metric,
+      dimensions: [],
+      required_column_ids: ["orders.created_at", "orders.net_amount"],
+      mandatory_predicates: [],
+      join_closure: {
+        root_table_id: "orders",
+        table_ids: ["orders"],
+        edges: [],
+        preaggregations: [],
+      },
+      accepted_candidate_ids: ["metric.net_revenue"],
+      conflict_set: [],
+      grounding_hash: hashes.artifact,
+    };
+    expect(l2ArtifactPayloadSchema.safeParse(groundingPayload).success).toBe(true);
+
+    const closureRelationship = {
+      relationship_id: "relationship.orders_customers",
+      left_table_id: "orders",
+      left_column_ids: ["orders.customer_id"],
+      right_table_id: "customers",
+      right_column_ids: ["customers.id"],
+      cardinality: "many-to-one",
+      left_row_match: "optional",
+      right_row_match: "required",
+    } as const;
+    const groundingWithRelationship = {
+      ...groundingPayload,
+      join_closure: {
+        ...groundingPayload.join_closure,
+        table_ids: ["orders", "customers"],
+        edges: [closureRelationship],
+      },
+    };
+    expect(l2ArtifactPayloadSchema.safeParse(groundingWithRelationship).success).toBe(true);
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        ...groundingWithRelationship,
+        join_closure: {
+          ...groundingWithRelationship.join_closure,
+          edges: [closureRelationship, closureRelationship],
+        },
+      }).success,
+      "同一个 relationship_id 不能作为两条 Join Closure edge 重复授权",
+    ).toBe(false);
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        ...groundingWithRelationship,
+        join_closure: {
+          ...groundingWithRelationship.join_closure,
+          edges: [
+            closureRelationship,
+            {
+              relationship_id: "relationship.customers_orders_alias",
+              left_table_id: closureRelationship.right_table_id,
+              left_column_ids: closureRelationship.right_column_ids,
+              right_table_id: closureRelationship.left_table_id,
+              right_column_ids: closureRelationship.left_column_ids,
+              cardinality: "one-to-many",
+              left_row_match: closureRelationship.right_row_match,
+              right_row_match: closureRelationship.left_row_match,
+            },
+          ],
+        },
+      }).success,
+      "不同 relationship_id 也不能反向重复授权同一组 Join Key",
+    ).toBe(false);
+
+    const semanticPayload = {
+      artifact_type: "SemanticQuery",
+      query_contract_ref: queryContractReference,
+      grounding_package_ref: groundingReference,
+      metric,
+      dimensions: [],
+      predicates: [
+        {
+          kind: "comparison",
+          left: { table_id: "orders", column_id: "orders.created_at" },
+          operator: "gte",
+          right: { parameter_key: "time.start" },
+          authority: "time",
+        },
+      ],
+      time_predicate: {
+        field: { table_id: "orders", column_id: "orders.created_at" },
+        lower: { parameter_key: "time.start", inclusive: true },
+        upper: { parameter_key: "time.end", inclusive: false },
+        timezone: "Asia/Shanghai",
+      },
+      parameters: {
+        "time.start": { source: "time", value: "2026-06-01T00:00:00.000+08:00" },
+        "time.end": { source: "time", value: "2026-07-01T00:00:00.000+08:00" },
+      },
+      grounding_hash: hashes.artifact,
+      result_contract: {
+        columns: ["metric.net_revenue"],
+        invariant_ids: ["non_negative_revenue"],
+      },
+    };
+    expect(l2ArtifactPayloadSchema.safeParse(semanticPayload).success).toBe(true);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "SemanticQuery",
+        query_contract_ref: queryContractReference,
+        grounding_package_ref: groundingReference,
+        metric_ref: "metric.net_revenue",
+        dimension_refs: [],
+        filter_expressions: ["orders.created_at BETWEEN :start AND :end"],
+      }).success,
+      "自由 SQL Predicate 不能进入权威 SemanticQuery",
+    ).toBe(false);
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        artifact_type: "LogicalPlan",
+        semantic_query_ref: makeArtifactReference("SemanticQuery"),
+        operations: [
+          {
+            operation: "scan",
+            operation_id: "scan_orders",
+            table_id: "orders",
+            alias: "t_orders",
+            column_ids: ["orders.created_at", "orders.net_amount"],
+          },
+          {
+            operation: "filter",
+            operation_id: "filter_time",
+            input_id: "scan_orders",
+            predicates: semanticPayload.predicates,
+          },
+          {
+            operation: "aggregate",
+            operation_id: "aggregate_metric",
+            input_id: "filter_time",
+            group_by: [],
+            measures: [
+              {
+                metric_id: "metric.net_revenue",
+                function: "sum",
+                field: { table_id: "orders", column_id: "orders.net_amount" },
+                alias: "metric.net_revenue",
+                unit: "CNY",
+                null_policy: "coalesce-zero",
+                distinct: false,
+              },
+            ],
+          },
+          {
+            operation: "project",
+            operation_id: "project_result",
+            input_id: "aggregate_metric",
+            columns: [
+              {
+                source_kind: "measure",
+                source_id: "metric.net_revenue",
+                alias: "metric.net_revenue",
+              },
+            ],
+          },
+        ],
+        root_operation_id: "project_result",
+        parameters: semanticPayload.parameters,
+        grounding_hash: hashes.artifact,
+        semantic_signature: {
+          metric_id: "metric.net_revenue",
+          dimension_ids: [],
+          grain: "order",
+          unit: "CNY",
+          time_semantics: "HALF_OPEN",
+        },
+      }).success,
+    ).toBe(true);
+  });
+
   it("确定性授权入口把 content_hash 绑定到 Payload 和 Version Tuple", async () => {
     const draft = l2ArtifactDocumentSchema.parse({
       envelope: makeArtifactEnvelope(),
@@ -517,12 +939,12 @@ describe("L2 Artifact Schema", () => {
 
     const parsedCommitted = l2ArtifactDocumentSchema.parse(committed);
     const authority = authorityFor(parsedCommitted);
-    const authorized = await authorizeL2ArtifactDocument(parsedCommitted, authority);
+    const authorized = await verifyL2ArtifactDocument(parsedCommitted, authority);
     expect(authorized).toMatchObject(committed);
     expect(Object.isFrozen(authorized)).toBe(true);
     expect(Object.isFrozen(authorized.payload)).toBe(true);
     await expect(
-      authorizeL2ArtifactDocument(
+      verifyL2ArtifactDocument(
         {
           ...committed,
           payload: {
@@ -556,7 +978,7 @@ describe("L2 Artifact Schema", () => {
     const contentHash = await computeL2ArtifactContentHash(candidate);
 
     await expect(
-      authorizeL2ArtifactDocument(
+      verifyL2ArtifactDocument(
         {
           ...candidate,
           envelope: {
@@ -588,7 +1010,7 @@ describe("L2 Artifact Schema", () => {
       const contentHash = await computeL2ArtifactContentHash(document);
 
       await expect(
-        authorizeL2ArtifactDocument(
+        verifyL2ArtifactDocument(
           {
             ...document,
             envelope: {
@@ -642,7 +1064,7 @@ describe("L2 Artifact Schema", () => {
     });
 
     await expect(
-      authorizeL2ArtifactDocument(committed, authorityFor(committed, { inputsCommitted: false })),
+      verifyL2ArtifactDocument(committed, authorityFor(committed, { inputsCommitted: false })),
     ).rejects.toThrow("未提交或不存在的输入");
   });
 
@@ -677,7 +1099,7 @@ describe("L2 Artifact Schema", () => {
     });
 
     await expect(
-      authorizeL2ArtifactDocument(
+      verifyL2ArtifactDocument(
         committed,
         authorityFor(committed, {
           inputsCommitted: false,
@@ -711,8 +1133,36 @@ describe("L2 Artifact Schema", () => {
     });
 
     await expect(
-      authorizeL2ArtifactDocument(committed, authorityFor(committed, { currentCommitted: false })),
+      verifyL2ArtifactDocument(committed, authorityFor(committed, { currentCommitted: false })),
     ).rejects.toBeInstanceOf(ArtifactAuthorityError);
+  });
+
+  it("单次根校验缓存不能跨调用复用已撤销的持久化结论", async () => {
+    const draft = l2ArtifactDocumentSchema.parse({
+      envelope: makeArtifactEnvelope(),
+      payload: {
+        artifact_type: "QuestionFrame",
+        raw_question: "收入为什么下降？",
+        normalized_question: "解释收入下降原因",
+        authorized_datasource_ids: [ids.appA],
+        expected_output: "多步研究报告",
+      },
+    });
+    const committed = l2ArtifactDocumentSchema.parse({
+      ...draft,
+      envelope: {
+        ...draft.envelope,
+        content_hash: await computeL2ArtifactContentHash(draft),
+      },
+    });
+    const persistenceState = { currentCommitted: true };
+    const authority = authorityFor(committed, persistenceState);
+
+    await expect(verifyL2ArtifactDocument(committed, authority)).resolves.toEqual(committed);
+    persistenceState.currentCommitted = false;
+    await expect(verifyL2ArtifactDocument(committed, authority)).rejects.toBeInstanceOf(
+      ArtifactAuthorityError,
+    );
   });
 
   it("当前 Revision 已持久化但服务端提交者能力不匹配时拒绝授权", async () => {
@@ -735,10 +1185,7 @@ describe("L2 Artifact Schema", () => {
     });
 
     await expect(
-      authorizeL2ArtifactDocument(
-        committed,
-        authorityFor(committed, { committerAuthorized: false }),
-      ),
+      verifyL2ArtifactDocument(committed, authorityFor(committed, { committerAuthorized: false })),
     ).rejects.toThrow("服务端提交者能力无效或不匹配");
   });
 
@@ -805,12 +1252,13 @@ describe("L2 Artifact Schema", () => {
         start: "2025-01-01T00:00:00.000+08:00",
         end: "2025-04-01T00:00:00.000+08:00",
         timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
       },
       unit: "CNY",
       filters: [],
       datasource_id: ids.appA,
       result_contract: {
-        columns: ["net_revenue"],
+        columns: ["region", "net_revenue"],
         invariant_ids: ["non_empty"],
       },
     };
@@ -822,9 +1270,42 @@ describe("L2 Artifact Schema", () => {
       artifact_type: "SemanticQuery" as const,
       query_contract_ref: makeArtifactReference("QueryContract"),
       grounding_package_ref: makeArtifactReference("GroundingPackage"),
-      metric_ref: "net_revenue",
-      dimension_refs: ["region"],
-      filter_expressions: [],
+      metric: {
+        metric_id: "net_revenue",
+        aliases: ["净收入"],
+        table_id: "orders",
+        column_id: "orders.net_revenue",
+        aggregation: "sum",
+        grain: "order",
+        unit: "CNY",
+        time_column_id: "orders.created_at",
+        additivity: "additive",
+        null_policy: "coalesce-zero",
+        dependency_column_ids: ["orders.net_revenue"],
+        fanout_policy: "preaggregate",
+      },
+      dimensions: [
+        {
+          dimension_id: "region",
+          aliases: ["地区"],
+          table_id: "orders",
+          column_id: "orders.region",
+          grain: "order",
+        },
+      ],
+      predicates: [],
+      time_predicate: {
+        field: { table_id: "orders", column_id: "orders.created_at" },
+        lower: { parameter_key: "time.start", inclusive: true },
+        upper: { parameter_key: "time.end", inclusive: false },
+        timezone: "Asia/Shanghai",
+      },
+      parameters: {
+        "time.start": { source: "time", value: queryContract.time_range.start },
+        "time.end": { source: "time", value: queryContract.time_range.end },
+      },
+      grounding_hash: hashes.artifact,
+      result_contract: queryContract.result_contract,
     };
     const { grounding_package_ref: _groundingPackageRef, ...semanticQueryWithoutGrounding } =
       semanticQuery;
@@ -866,7 +1347,7 @@ describe("L2 Artifact Schema", () => {
       },
     });
     await expect(
-      authorizeL2ArtifactDocument(hypothesisDocument, authorityFor(hypothesisDocument)),
+      verifyL2ArtifactDocument(hypothesisDocument, authorityFor(hypothesisDocument)),
     ).rejects.toThrow("没有匹配的权威 L2 文档");
 
     const fixture = await createAuthoritativeReadyFixture();
@@ -908,6 +1389,28 @@ describe("L2 Artifact Schema", () => {
         },
       ),
     ).rejects.toThrow("每个竞争假设定义至少一项证据义务");
+  });
+
+  it("QueryContract 只能使用冻结 QuestionFrame 授权的数据源", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const source = await resolveL2Document(fixture.authority, fixture.references.queryContract);
+    if (source?.payload.artifact_type !== "QueryContract") {
+      throw new Error("测试 Fixture 缺少 QueryContract。");
+    }
+
+    await expect(
+      fixture.commit(
+        "QueryContract",
+        "00000000-0000-4000-8000-000000000440",
+        [source.payload.evidence_plan_ref],
+        {
+          ...source.payload,
+          datasource_id: ids.appB,
+        },
+      ),
+    ).rejects.toThrow(
+      "QueryContract.datasource_id 必须属于上游 QuestionFrame.authorized_datasource_ids",
+    );
   });
 
   it("ExecutionReceipt 必须绑定规范 SQL Hash 与 QueryContract Datasource", async () => {
@@ -979,6 +1482,229 @@ describe("L2 Artifact Schema", () => {
         },
       ),
     ).rejects.toThrow("必须与上游 QueryContract.datasource_id 一致");
+  });
+
+  it("GroundingPackage authority 拒绝与 QueryContract 漂移的 Datasource 和内容 Hash", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const source = await resolveL2Document(fixture.authority, fixture.references.groundingPackage);
+    if (source?.payload.artifact_type !== "GroundingPackage") {
+      throw new Error("测试 Fixture 缺少 GroundingPackage。");
+    }
+
+    await expect(
+      fixture.commit(
+        "GroundingPackage",
+        "00000000-0000-4000-8000-000000000431",
+        [
+          source.payload.query_contract_ref,
+          source.payload.semantic_release_ref,
+          source.payload.schema_snapshot_ref,
+          source.payload.policy_receipt_ref,
+        ],
+        {
+          ...source.payload,
+          datasource_id: ids.appB,
+        },
+      ),
+    ).rejects.toThrow("GroundingPackage.datasource_id");
+
+    await expect(
+      fixture.commit(
+        "GroundingPackage",
+        "00000000-0000-4000-8000-000000000432",
+        [
+          source.payload.query_contract_ref,
+          source.payload.semantic_release_ref,
+          source.payload.schema_snapshot_ref,
+          source.payload.policy_receipt_ref,
+        ],
+        {
+          ...source.payload,
+          accepted_candidate_ids: ["metric.drifted"],
+        },
+      ),
+    ).rejects.toThrow("GroundingPackage.grounding_hash");
+
+    const expandedPayload = {
+      ...source.payload,
+      allowed_schema: {
+        tables: source.payload.allowed_schema.tables.map((table) => ({
+          ...table,
+          columns: [
+            ...table.columns,
+            {
+              column_id: "orders.secret_salary",
+              physical_name: "secret_salary",
+              data_type: "numeric" as const,
+              nullable: false,
+              sensitivity: "SECRET" as const,
+            },
+          ],
+        })),
+      },
+    };
+    const {
+      artifact_type: _artifactType,
+      query_contract_ref: _queryContractRef,
+      semantic_release_ref: _semanticReleaseRef,
+      schema_snapshot_ref: _schemaSnapshotRef,
+      policy_receipt_ref: _policyReceiptRef,
+      grounding_hash: _groundingHash,
+      ...expandedGroundingMaterial
+    } = expandedPayload;
+    await expect(
+      fixture.commit(
+        "GroundingPackage",
+        "00000000-0000-4000-8000-000000000439",
+        [
+          source.payload.query_contract_ref,
+          source.payload.semantic_release_ref,
+          source.payload.schema_snapshot_ref,
+          source.payload.policy_receipt_ref,
+        ],
+        {
+          ...expandedPayload,
+          grounding_hash: await computeGroundingHash(expandedGroundingMaterial),
+        },
+      ),
+    ).rejects.toThrow("Allowed Column");
+  });
+
+  it("SemanticQuery authority 拒绝与 GroundingPackage/QueryContract 漂移的语义", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const source = await resolveL2Document(fixture.authority, fixture.references.semanticQuery);
+    if (source?.payload.artifact_type !== "SemanticQuery") {
+      throw new Error("测试 Fixture 缺少 SemanticQuery。");
+    }
+
+    await expect(
+      fixture.commit(
+        "SemanticQuery",
+        "00000000-0000-4000-8000-000000000433",
+        [source.payload.query_contract_ref, source.payload.grounding_package_ref],
+        {
+          ...source.payload,
+          metric: {
+            ...source.payload.metric,
+            metric_id: "metric.drifted",
+          },
+        },
+      ),
+    ).rejects.toThrow("SemanticQuery.metric");
+
+    const firstPredicate = source.payload.predicates[0];
+    if (firstPredicate?.kind !== "comparison") {
+      throw new Error("测试 Fixture 缺少 QueryContract Comparison Predicate。");
+    }
+    await expect(
+      fixture.commit(
+        "SemanticQuery",
+        "00000000-0000-4000-8000-000000000436",
+        [source.payload.query_contract_ref, source.payload.grounding_package_ref],
+        {
+          ...source.payload,
+          predicates: [
+            {
+              ...firstPredicate,
+              left: {
+                table_id: "customers",
+                column_id: firstPredicate.left.column_id,
+              },
+            },
+          ],
+        },
+      ),
+    ).rejects.toThrow("Field Reference 的 column_id 必须属于其 table_id");
+  });
+
+  it("LogicalPlan authority 拒绝与 SemanticQuery 漂移的 Grounding 和结果签名", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const source = await resolveL2Document(fixture.authority, fixture.references.logicalPlan);
+    if (source?.payload.artifact_type !== "LogicalPlan") {
+      throw new Error("测试 Fixture 缺少 LogicalPlan。");
+    }
+
+    await expect(
+      fixture.commit(
+        "LogicalPlan",
+        "00000000-0000-4000-8000-000000000434",
+        [source.payload.semantic_query_ref],
+        {
+          ...source.payload,
+          grounding_hash: hashes.input,
+        },
+      ),
+    ).rejects.toThrow("LogicalPlan.grounding_hash");
+
+    await expect(
+      fixture.commit(
+        "LogicalPlan",
+        "00000000-0000-4000-8000-000000000435",
+        [source.payload.semantic_query_ref],
+        {
+          ...source.payload,
+          semantic_signature: {
+            ...source.payload.semantic_signature,
+            unit: "USD",
+          },
+        },
+      ),
+    ).rejects.toThrow("LogicalPlan.semantic_signature");
+
+    const aggregate = source.payload.operations.find(
+      (operation) => operation.operation === "aggregate",
+    );
+    if (aggregate?.operation !== "aggregate" || !aggregate.measures[0]) {
+      throw new Error("测试 Fixture 缺少 Aggregate Measure。");
+    }
+    await expect(
+      fixture.commit(
+        "LogicalPlan",
+        "00000000-0000-4000-8000-000000000437",
+        [source.payload.semantic_query_ref],
+        {
+          ...source.payload,
+          operations: source.payload.operations.map((operation) =>
+            operation.operation === "aggregate"
+              ? {
+                  ...operation,
+                  measures: [
+                    {
+                      ...operation.measures[0],
+                      field: {
+                        table_id: "orders",
+                        column_id: "orders.created_at",
+                      },
+                    },
+                  ],
+                }
+              : operation,
+          ),
+        },
+      ),
+    ).rejects.toThrow("LogicalPlan Measure");
+
+    const scan = source.payload.operations.find((operation) => operation.operation === "scan");
+    if (scan?.operation !== "scan") {
+      throw new Error("测试 Fixture 缺少 Scan。");
+    }
+    await expect(
+      fixture.commit(
+        "LogicalPlan",
+        "00000000-0000-4000-8000-000000000438",
+        [source.payload.semantic_query_ref],
+        {
+          ...source.payload,
+          operations: [
+            ...source.payload.operations,
+            {
+              ...scan,
+              operation_id: "scan_dead_branch",
+            },
+          ],
+        },
+      ),
+    ).rejects.toThrow("LogicalPlan DAG");
   });
 
   it("ExecutionPermit 对缺失或失败的执行前 Gate 一律失败关闭", async () => {
@@ -1124,6 +1850,84 @@ describe("L2 Artifact Schema", () => {
         },
       ),
     ).rejects.toThrow("必须与 ExecutionReceipt.result_hash 一致");
+  });
+
+  it("QueryEvidence 不变量必须与 QueryContract 精确闭合，伪造 PASS 不能支持 Claim", async () => {
+    const fixture = await createAuthoritativeReadyFixture();
+    const forgedEvidenceId = "00000000-0000-4000-8000-000000000441";
+    const forgedPayload = {
+      artifact_type: "QueryEvidence" as const,
+      execution_receipt_ref: fixture.references.execution,
+      validation_receipt_ref: fixture.references.validation,
+      result_hash: hashes.execution,
+      invariant_verdicts: [{ invariant_id: "made_up", verdict: "PASS" as const }],
+    };
+    const forgedDraft = l2ArtifactDocumentSchema.parse({
+      envelope: {
+        ...makeArtifactEnvelope(),
+        artifact_id: forgedEvidenceId,
+        artifact_type: "QueryEvidence",
+        input_refs: [fixture.references.execution, fixture.references.validation],
+      },
+      payload: forgedPayload,
+    });
+    const forgedDocument = l2ArtifactDocumentSchema.parse({
+      ...forgedDraft,
+      envelope: {
+        ...forgedDraft.envelope,
+        content_hash: await computeL2ArtifactContentHash(forgedDraft),
+      },
+    });
+    const forgedReference = referenceFromDocument(forgedDocument);
+
+    await expect(
+      fixture.commit(
+        "QueryEvidence",
+        forgedEvidenceId,
+        [fixture.references.execution, fixture.references.validation],
+        forgedPayload,
+      ),
+    ).rejects.toThrow(
+      "QueryEvidence.invariant_verdicts 必须与上游 QueryContract.result_contract.invariant_ids 精确闭合",
+    );
+
+    await expect(
+      fixture.commit(
+        "QueryEvidence",
+        "00000000-0000-4000-8000-000000000442",
+        [fixture.references.execution, fixture.references.validation],
+        {
+          ...forgedPayload,
+          invariant_verdicts: [
+            { invariant_id: "non_empty", verdict: "PASS" },
+            { invariant_id: "made_up", verdict: "PASS" },
+          ],
+        },
+      ),
+    ).rejects.toThrow(
+      "QueryEvidence.invariant_verdicts 必须与上游 QueryContract.result_contract.invariant_ids 精确闭合",
+    );
+
+    expect(
+      l2ArtifactPayloadSchema.safeParse({
+        ...forgedPayload,
+        invariant_verdicts: [
+          { invariant_id: "non_empty", verdict: "PASS" },
+          { invariant_id: "non_empty", verdict: "PASS" },
+        ],
+      }).success,
+    ).toBe(false);
+
+    await expect(
+      fixture.commit("AtomicClaim", "00000000-0000-4000-8000-000000000443", [forgedReference], {
+        artifact_type: "AtomicClaim",
+        claim_id: "00000000-0000-4000-8000-000000000443",
+        statement: "伪造不变量也能支持结论。",
+        evidence_refs: [forgedReference],
+        support_state: "SUPPORTED",
+        limitations: [],
+      }),
+    ).rejects.toThrow("未提交或不存在的输入");
   });
 
   it("Canonical JSON 使用跨 Locale 稳定的 UTF-16 Key 顺序", () => {

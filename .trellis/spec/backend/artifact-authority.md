@@ -13,11 +13,12 @@
 
 ```ts
 interface L2ArtifactAuthorityContext {
+  principalId: string;
   verifyCommitted(reference: ArtifactReference): Promise<boolean>;
-  resolveL2(reference: ArtifactReference): Promise<AuthoritativeL2ArtifactDocument | null>;
-}
-
-interface L2ArtifactPersistenceAuthority extends L2ArtifactAuthorityContext {
+  resolveL2(reference: ArtifactReference): Promise<unknown | null>;
+  resolveGroundingAuthority?(
+    reference: GroundingAuthorityReference,
+  ): Promise<unknown | null>;
   verifyCommitterCapability(claim: ArtifactCommitterCapabilityClaim): Promise<boolean>;
 }
 
@@ -38,10 +39,10 @@ interface ReleaseAuthorityContext extends L2ArtifactAuthorityContext {
 }
 
 computeL2ArtifactContentHash(document: L2ArtifactDocument): Promise<ContentHash>;
-authorizeL2ArtifactDocument(
+verifyL2ArtifactDocument(
   input: unknown,
-  authority: L2ArtifactPersistenceAuthority,
-): Promise<AuthoritativeL2ArtifactDocument>;
+  authority: L2ArtifactAuthorityContext,
+): Promise<L2ArtifactDocument>;
 
 authorizeRunTerminal(
   input: unknown,
@@ -76,16 +77,24 @@ issueCapabilityDeliveryReceipt(
 
 ### 3. 契约
 
-- 只有 `COMMITTED` Revision 能取得权威品牌；`CANDIDATE`、`REJECTED`、`SUPERSEDED` 都不能成为当前权威。
+- 只有 `COMMITTED` Revision 能通过当前持久化上下文的递归核验；返回值只是本次调用内的深冻结快照，不携带可跨事务复用的 L2 权威品牌。
 - `content_hash` 对规范化 Envelope 版本元组、Scope、Input Reference 与 Payload 计算；不包含可变的 `status`、`created_at` 和 `content_hash` 本身。
 - Canonical JSON 的对象 Key 使用 UTF-16 代码单元顺序，不允许 `localeCompare`。
-- 当前 Revision 必须已由持久化 Authority 提交；调用方在 Candidate 中自报 `COMMITTED` 不能取得权威品牌。
+- 当前 Revision 必须已由持久化 Authority 提交；调用方在 Candidate 中自报 `COMMITTED` 不能通过核验。
 - `verifyCommitterCapability` 必须由服务端持有，并校验 Scope、Run、Attempt、Artifact Type、Producer 与 Policy Version；不得接受 Candidate 自带的布尔授权结论。
+- `resolveL2` 只能返回原始持久化文档；每次消费都必须在当前 Authority Context 中按完整 Reference、Hash、Committer 与语义上游重新核验。
+- 单次根核验可以缓存已经完成全部验证的 Content-Addressed Snapshot，但缓存不能跨根调用、事务或 Authority Context；递归分支必须独立检测循环。
 - Payload 中的引用必须使用字段对应的 `artifact_type`，与 Envelope 属于同一 `app_id/tenant_id/environment/run_id`，并完整出现在 `input_refs`。
 - 首个 Revision 的 `parent_ref` 为 `null`；后续 Revision 必须引用同 Scope、同 Artifact、前一 Revision 的完整 Content-Addressed Reference，Authorizer 还要验证父 Revision 已提交。
 - Reference 身份由 App、Tenant、Environment、Run、Artifact ID、Artifact Type、Revision 与 Content Hash 共同决定。
 - Authorizer 必须验证所有 Reference 已提交；Execution、Supported Claim 与 Ready Certificate 还必须解析已授权的上游 L2 文档，不能把 `isCommitted=true` 当作成功语义。
 - L2 研究链必须按 `ResearchBrief -> HypothesisSet -> EvidencePlan -> QueryContract -> GroundingPackage -> SemanticQuery -> LogicalPlan -> SqlArtifact` 解析权威上游；每个竞争假设都必须被 Evidence Obligation 覆盖。
+- ACL-first Grounding 的 Catalog、Semantic Binding、Policy AllowedSchema、Mandatory Predicate、Join Closure、Preaggregation 与 LogicalPlan Scan 统一使用 `<table_id>.<column_id>`；凡同时声明 `table_id` 的结构，限定列前缀必须与其完全一致，不能让 ACL 与 SQL 编译器对字段归属产生两种解释。
+- Catalog、Policy 与 Grounding 中会进入 `Map`、`Set` 或 `.find` 的 Table、Column、Metric、Dimension、Relationship、Required Column 与 Candidate 身份必须唯一；重复身份不能依赖覆盖顺序获得 `READY/VALID`。
+- Metric 与 Dimension 共用同一个语义 ID 也属于冲突；SemanticRelease、Catalog、QueryContract、GroundingPackage、SemanticQuery 与 Project 输出必须在跨类型命名空间上互斥。
+- 首版 QueryContract 只有一个 Metric，因此 Aggregate、Preaggregate 与 Grounding Preaggregation Proof 都只能消费一个 Measure；复制同一 Measure 不能借逐项相等检查与 Set 折叠获得 `VALID`。
+- 多路检索可以重复命中同一已授权对象；Grounding 必须按分数降序后以 `object_id` 稳定去重、保留最高分命中，不能因为重复 Hit 抛出 Schema 异常。
+- 对外导出的 `SemanticRelease`、`SchemaSnapshot`、`PolicyReceipt` 分支 Schema 必须与联合 Schema 承载相同的 Scope、Revision、Hash、唯一性和分支语义约束，不能把分支 Schema 当作绕过 Authority Refinement 的形状解析器。
 - `SqlArtifact.query_hash` 必须由 Dialect、SQL 与 Parameters 的规范内容计算；`ExecutionReceipt` 必须绑定同一 SqlArtifact、同一 Query Hash、同一 Datasource，并消费七道 Gate 全部 PASS 的 `ValidationReceipt`。
 - `QueryEvidence` 至少有一个 Invariant Verdict；`SUPPORTED` Claim 只能消费全 PASS Evidence。
 - `READY` 必须绑定同 Scope、经过四道 Evidence Gate 且覆盖 Report 全部 Claim Evidence 的权威 `ReportReadyCertificate`。
@@ -102,7 +111,7 @@ issueCapabilityDeliveryReceipt(
 | 条件 | 稳定失败 |
 | --- | --- |
 | Agent 直接提交 `COMMITTED` | Envelope Parse 失败 |
-| 非 `COMMITTED` Revision 请求权威品牌 | `ARTIFACT_NOT_AUTHORITATIVE` |
+| 非 `COMMITTED` Revision 请求当前权威核验 | `ARTIFACT_NOT_AUTHORITATIVE` |
 | 当前 Revision 未提交或服务端提交者能力不匹配 | `ARTIFACT_NOT_AUTHORITATIVE` |
 | Payload 或 Version Tuple 与 Hash 不符 | `ARTIFACT_CONTENT_HASH_MISMATCH` |
 | Input Reference 不存在或未提交 | `ARTIFACT_INPUT_NOT_COMMITTED` |
@@ -128,6 +137,11 @@ issueCapabilityDeliveryReceipt(
 - 后续 Revision 的完整 `parent_ref` 不存在时失败。
 - 错误 Artifact Type、跨 Scope、未声明 Reference 时失败。
 - 研究链断裂、未知 Hypothesis、Evidence Plan 覆盖不全时失败。
+- `orders` 携带 `customers.id`、Relationship 两侧字段归属漂移、跨表 Metric/Dimension/Policy/Preaggregation 或 Scan 时失败。
+- 重复 Table、Column、Metric、Dimension、Relationship、Required Column 或 Candidate 身份在进入检索与计划前失败。
+- Metric/Dimension 跨类型同名、Project 重复 Alias，以及直接调用 Grounding Authority 分支 Schema 绕过联合约束时失败。
+- Aggregate/Preaggregate 复制 Measure、或 Preaggregation 重复 Group Column 时在 LogicalPlan Schema 边界失败。
+- 同一授权对象以不同分数重复返回时只进入一次 `accepted_candidate_ids`，且仍返回确定性的 GroundingResult。
 - SqlArtifact Query Hash、Execution Query Hash 或 Datasource 与上游不一致时失败。
 - `REJECTED/SUPERSEDED`、缺 Validation Receipt、空 Invariant、缺 Evidence Gate 时失败。
 - Authoritative 对象及嵌套 Payload 为冻结状态。
@@ -151,8 +165,11 @@ return capabilityDeliveryReceiptSchema.parse({ ...input, release_decision: decis
 
 ```ts
 const authority = {
+  principalId: serverPrincipal.id,
   verifyCommitted: artifactStore.isCommitted,
-  resolveL2: artifactStore.resolveAuthoritativeL2,
+  resolveL2: artifactStore.resolveRawL2,
+  resolveGroundingAuthority: groundingStore.resolveRawDocument,
+  verifyCommitterCapability: committerRegistry.verify,
   resolveScoreCard: evalStore.resolveAuthoritativeScoreCard,
   resolveBenchmarkAdapterReceipt: evalStore.resolveAuthoritativeBenchmarkReceipt,
   resolveSandboxExecutionReceipt: sandboxStore.resolveAuthoritativeReceipt,

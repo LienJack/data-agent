@@ -8,9 +8,9 @@ import {
   deterministicAuthoritySchema,
 } from "../artifacts/envelope.js";
 import {
-  type AuthoritativeL2ArtifactDocument,
-  isAuthoritativeL2ArtifactDocument,
   type L2ArtifactAuthorityContext,
+  type L2ArtifactDocument,
+  verifyL2ArtifactDocument,
 } from "../artifacts/l2.js";
 import {
   deepFreeze,
@@ -243,11 +243,17 @@ async function verifyCommittedReferences(
 async function resolveReadyCertificate(
   reference: ArtifactReference,
   authority: L2ArtifactAuthorityContext,
-): Promise<AuthoritativeL2ArtifactDocument> {
-  const certificate = await authority.resolveL2(reference);
+): Promise<L2ArtifactDocument> {
+  const resolved = await authority.resolveL2(reference);
+  let certificate: L2ArtifactDocument;
+  try {
+    certificate = await verifyL2ArtifactDocument(resolved, authority);
+  } catch {
+    throw new AuthorityEvidenceError(
+      "READY/GO 引用了不存在、未授权或不匹配的 ReportReadyCertificate。",
+    );
+  }
   if (
-    !certificate ||
-    !isAuthoritativeL2ArtifactDocument(certificate) ||
     certificate.payload.artifact_type !== "ReportReadyCertificate" ||
     artifactReferenceIdentity({
       artifact_id: certificate.envelope.artifact_id,

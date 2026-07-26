@@ -30,12 +30,25 @@ export interface AppTransactionContext {
   readonly client: SqlClient;
 }
 
-export interface AppTransactionOptions {
-  readonly access: "READ" | "WRITE";
+interface AppTransactionCommonOptions {
   readonly map_database_error?: (error: unknown) => PortResult<never> | null;
   readonly operation_name?: string;
   readonly correlation_id?: string;
 }
+
+export type AppTransactionOptions = AppTransactionCommonOptions &
+  (
+    | {
+        readonly access: "READ";
+        /** 只允许缩小既有 READ 角色集合，不能扩权到 DEMO。 */
+        readonly allowed_roles?: readonly ("OWNER" | "ANALYST" | "VIEWER")[];
+      }
+    | {
+        readonly access: "WRITE";
+        /** 只允许缩小既有 WRITE 角色集合，不能扩权到 VIEWER 或 DEMO。 */
+        readonly allowed_roles?: readonly ("OWNER" | "ANALYST")[];
+      }
+  );
 
 export const PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL =
   "data-agent.platform.persistence.transaction.failure";
@@ -169,11 +182,12 @@ export async function withAppTransaction<T>(
     };
   }
 
-  const preflight = authorizer.requireRole(
-    capabilityInput,
-    options.access === "WRITE" ? ["OWNER", "ANALYST"] : ["OWNER", "ANALYST", "VIEWER"],
-    options.access,
-  );
+  const allowedRoles =
+    options.allowed_roles ??
+    (options.access === "WRITE"
+      ? (["OWNER", "ANALYST"] as const)
+      : (["OWNER", "ANALYST", "VIEWER"] as const));
+  const preflight = authorizer.requireRole(capabilityInput, allowedRoles, options.access);
   if (!preflight.ok) {
     return preflight.error.code === "APP_OPERATION_DENIED"
       ? {
@@ -205,10 +219,6 @@ export async function withAppTransaction<T>(
   try {
     await client.query("BEGIN");
     transactionStarted = true;
-    const allowedRoles =
-      options.access === "WRITE"
-        ? (["OWNER", "ANALYST"] as const)
-        : (["OWNER", "ANALYST", "VIEWER"] as const);
     const required = await revalidateCapabilityInTransaction(
       authorizer,
       capabilityInput,

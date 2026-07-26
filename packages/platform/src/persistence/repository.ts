@@ -1,16 +1,33 @@
 import {
+  ArtifactAuthorityError,
+  type ArtifactCommitterCapabilityClaim,
+  ArtifactInputAuthorityError,
+  ArtifactIntegrityError,
   type ArtifactReference,
+  ArtifactSemanticAuthorityError,
+  artifactReferenceIdentity,
   artifactReferenceSchema,
+  assertGroundingAuthorityBundleConsistency,
   canonicalizeJson,
+  computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
+  type GroundingAuthorityDocument,
+  GroundingAuthorityError,
+  type GroundingAuthorityReference,
+  groundingAuthorityDocumentSchema,
+  groundingAuthorityIdentityViolation,
+  groundingAuthorityReferenceSchema,
   type L2ArtifactDocument,
   l2ArtifactDocumentSchema,
   type PortResult,
   runRuntimeEventSchema,
   sha256ContentHash,
+  verifyGroundingAuthorityDocument,
+  verifyL2ArtifactDocument,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { containsPotentialPlaintextSecret } from "../secrets/secret-ref.js";
+import type { AppCapability } from "../tenancy/capability.js";
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
 import { mapDatabaseRuntimeFailure } from "./runtime-database-errors.js";
 import {
@@ -107,6 +124,25 @@ interface JsonResultRow {
   readonly result: unknown;
 }
 
+export interface PostgresRepositoryAuthorities {
+  /**
+   * 由服务端组合根注入，校验 Attempt、Artifact Type、Producer 与 Policy Version。
+   * 缺失时 L2 提交失败关闭。
+   */
+  verifyL2ArtifactCommitterCapability?(
+    claim: ArtifactCommitterCapabilityClaim,
+    capability: AppCapability,
+  ): Promise<boolean>;
+}
+
+interface ArtifactRevisionCandidate<Reference extends ArtifactReference = ArtifactReference> {
+  readonly reference: Reference;
+  readonly document: unknown;
+  readonly created_at: string;
+  readonly declared_parent_ref: ArtifactReference | null | undefined;
+  readonly input_refs: readonly ArtifactReference[];
+}
+
 function invalidInput<T>(message: string): PortResult<T> {
   return {
     ok: false,
@@ -183,13 +219,50 @@ async function referenceExists(
   return result.rowCount === 1;
 }
 
+async function resolveArtifactDocument(
+  client: SqlClient,
+  reference: ArtifactReference,
+  principalId: string,
+): Promise<unknown | null> {
+  const result = await client.query<ArtifactDocumentRow>(
+    `select artifact.document_json
+     from artifacts as artifact
+     join runs as run
+       on run.app_id = artifact.app_id
+      and run.tenant_id = artifact.tenant_id
+      and run.environment = artifact.environment
+      and run.run_id = artifact.run_id
+     where artifact.app_id = $1
+       and artifact.tenant_id = $2
+       and artifact.environment = $3
+       and artifact.run_id = $4
+       and artifact.artifact_id = $5
+       and artifact.artifact_type = $6
+       and artifact.revision = $7
+       and artifact.content_hash = $8
+       and run.principal_id = $9`,
+    [
+      reference.app_id,
+      reference.tenant_id,
+      reference.environment,
+      reference.run_id,
+      reference.artifact_id,
+      reference.artifact_type,
+      reference.revision,
+      reference.content_hash,
+      principalId,
+    ],
+  );
+  return result.rows[0]?.document_json ?? null;
+}
+
 function validateArtifactAncestry(
-  document: L2ArtifactDocument,
+  candidate: ArtifactRevisionCandidate,
   expectedActiveRevision: number,
   active: ActiveArtifactRow | null,
 ): void {
-  const { envelope } = document;
-  if (envelope.revision !== expectedActiveRevision + 1) {
+  const declaredParent = candidate.declared_parent_ref;
+  if (candidate.reference.revision !== expectedActiveRevision + 1) {
     throw new PersistenceBoundaryError(
       "ARTIFACT_REVISION_CONFLICT",
       "Artifact Revision 与调用方声明的 Active Revision 不连续。",
@@ -197,7 +270,7 @@ function validateArtifactAncestry(
   }
 
   if (expectedActiveRevision === 0) {
-    if (active || envelope.parent_ref !== null) {
+    if (active || (declaredParent !== null && declaredParent !== undefined)) {
       throw new PersistenceBoundaryError(
         "ARTIFACT_REVISION_CONFLICT",
         "首个 Artifact Revision 不能覆盖现有 Active Revision。",
@@ -209,8 +282,10 @@ function validateArtifactAncestry(
   if (
     !active ||
     active.revision !== expectedActiveRevision ||
-    envelope.parent_ref?.revision !== active.revision ||
-    envelope.parent_ref.content_hash !== active.content_hash
+    (declaredParent !== undefined &&
+      (!declaredParent ||
+        declaredParent.revision !== active.revision ||
+        declaredParent.content_hash !== active.content_hash))
   ) {
     throw new PersistenceBoundaryError(
       "ARTIFACT_REVISION_CONFLICT",
@@ -219,10 +294,247 @@ function validateArtifactAncestry(
   }
 }
 
+function groundingAuthorityInputReferences(
+  document: GroundingAuthorityDocument,
+): readonly GroundingAuthorityReference[] {
+  switch (document.artifact_type) {
+    case "SemanticRelease":
+    case "SchemaSnapshot":
+      return [];
+    case "PolicyReceipt":
+      return [document.semantic_release_ref, document.schema_snapshot_ref];
+  }
+}
+
+function assertGroundingAuthorityCommitIdentity(
+  document: GroundingAuthorityDocument,
+  capability: AppCapability,
+): void {
+  const violation = groundingAuthorityIdentityViolation(document, capability.principal);
+  if (violation === null) return;
+  if (violation === "POLICY_PRINCIPAL_MISMATCH") {
+    throw new PersistenceBoundaryError(
+      "GROUNDING_POLICY_PRINCIPAL_MISMATCH",
+      "PolicyReceipt Principal 必须与事务 App Capability Principal 一致。",
+    );
+  }
+  throw new PersistenceBoundaryError(
+    "GROUNDING_AUTHORITY_IDENTITY_DENIED",
+    "Grounding Authority Document 的受信 Producer/Authority Identity 不匹配。",
+  );
+}
+
+function groundingAuthorityVerificationContext(client: SqlClient, capability: AppCapability) {
+  return {
+    principalId: capability.principal,
+    resolveCommitted: async (reference: GroundingAuthorityReference) => {
+      assertReferenceScope(reference, capability.scope);
+      const resolved = await resolveArtifactDocument(client, reference, capability.principal);
+      const parsed = groundingAuthorityDocumentSchema.safeParse(resolved);
+      if (parsed.success) {
+        assertGroundingAuthorityCommitIdentity(parsed.data, capability);
+      }
+      return resolved;
+    },
+    verifyCommitted: async (reference: ArtifactReference) => {
+      assertReferenceScope(reference, capability.scope);
+      return referenceExists(client, reference, capability.principal);
+    },
+  };
+}
+
+function l2ArtifactVerificationContext(
+  client: SqlClient,
+  capability: AppCapability,
+  document: L2ArtifactDocument,
+  authorities: PostgresRepositoryAuthorities,
+) {
+  const candidateReference = artifactReferenceSchema.parse({
+    artifact_id: document.envelope.artifact_id,
+    artifact_type: document.envelope.artifact_type,
+    app_id: document.envelope.app_id,
+    tenant_id: document.envelope.tenant_id,
+    environment: document.envelope.environment,
+    run_id: document.envelope.run_id,
+    revision: document.envelope.revision,
+    content_hash: document.envelope.content_hash,
+  });
+  const candidateIdentity = artifactReferenceIdentity(candidateReference);
+
+  return {
+    principalId: capability.principal,
+    verifyCommitted: async (reference: ArtifactReference) => {
+      assertReferenceScope(reference, capability.scope);
+      return artifactReferenceIdentity(reference) === candidateIdentity
+        ? true
+        : referenceExists(client, reference, capability.principal);
+    },
+    resolveL2: async (reference: ArtifactReference) => {
+      assertReferenceScope(reference, capability.scope);
+      return artifactReferenceIdentity(reference) === candidateIdentity
+        ? document
+        : resolveArtifactDocument(client, reference, capability.principal);
+    },
+    resolveGroundingAuthority: async (reference: GroundingAuthorityReference) => {
+      assertReferenceScope(reference, capability.scope);
+      return resolveArtifactDocument(client, reference, capability.principal);
+    },
+    verifyCommitterCapability: async (claim: ArtifactCommitterCapabilityClaim) => {
+      if (
+        claim.app_id !== capability.scope.app_id ||
+        claim.tenant_id !== capability.scope.tenant_id ||
+        claim.environment !== capability.scope.environment ||
+        claim.run_id !== document.envelope.run_id
+      ) {
+        return false;
+      }
+      return (await authorities.verifyL2ArtifactCommitterCapability?.(claim, capability)) ?? false;
+    },
+  };
+}
+
 export function createPostgresRepository(
   pool: SqlPool,
   authorizer: TransactionalCapabilityAuthorizer,
+  authorities: PostgresRepositoryAuthorities = {},
 ) {
+  async function commitArtifactRevision<Reference extends ArtifactReference>(
+    capabilityInput: unknown,
+    candidate: ArtifactRevisionCandidate<Reference>,
+    options: z.infer<typeof artifactCommitOptionsSchema>,
+    transactionPolicy: Readonly<{
+      allowed_roles?: readonly ["OWNER"];
+      validate_document?: (capability: AppCapability, client: SqlClient) => void | Promise<void>;
+    }> = {},
+  ): Promise<PortResult<Reference>> {
+    return withAppTransaction(
+      pool,
+      authorizer,
+      capabilityInput,
+      {
+        access: "WRITE",
+        ...(transactionPolicy.allowed_roles
+          ? { allowed_roles: transactionPolicy.allowed_roles }
+          : {}),
+      },
+      async ({ capability, client }) => {
+        assertReferenceScope(candidate.reference, capability.scope);
+        await transactionPolicy.validate_document?.(capability, client);
+
+        const run = await client.query<FenceRow>(
+          `select app_data_agent.lock_owned_run_fence(
+             $1::uuid
+           ) as active_fence`,
+          [candidate.reference.run_id],
+        );
+        const activeFence = run.rows[0]?.active_fence;
+        if (activeFence === undefined || activeFence === null) {
+          throw new PersistenceBoundaryError(
+            "RUN_NOT_FOUND_OR_DENIED",
+            "Artifact 所属 Run 不存在或不属于当前 Principal。",
+          );
+        }
+        if (BigInt(activeFence) !== BigInt(options.worker_fence)) {
+          throw new PersistenceBoundaryError(
+            "WORKER_FENCE_STALE",
+            "Worker Fence 已过期，迟到结果不能覆盖当前 Artifact Revision。",
+          );
+        }
+
+        const activeResult = await client.query<ActiveArtifactRow>(
+          `select revision, content_hash
+           from artifacts
+           where app_id = $1
+             and tenant_id = $2
+             and environment = $3
+             and run_id = $4
+             and artifact_id = $5
+             and artifact_type = $6
+             and is_active = true
+           for update`,
+          [
+            ...scopeValues(capability.scope),
+            candidate.reference.run_id,
+            candidate.reference.artifact_id,
+            candidate.reference.artifact_type,
+          ],
+        );
+        const active = activeResult.rows[0] ?? null;
+        validateArtifactAncestry(candidate, options.expected_active_revision, active);
+
+        for (const inputReference of candidate.input_refs) {
+          assertReferenceScope(inputReference, capability.scope);
+          if (!(await referenceExists(client, inputReference, capability.principal))) {
+            throw new PersistenceBoundaryError(
+              "ARTIFACT_INPUT_NOT_COMMITTED",
+              "Artifact 引用了尚未持久提交的 Parent 或 Input Revision。",
+            );
+          }
+        }
+
+        if (active) {
+          await client.query(
+            `update artifacts
+             set is_active = false
+             where app_id = $1
+               and tenant_id = $2
+               and environment = $3
+               and run_id = $4
+               and artifact_id = $5
+               and artifact_type = $6
+               and revision = $7
+               and is_active = true`,
+            [
+              ...scopeValues(capability.scope),
+              candidate.reference.run_id,
+              candidate.reference.artifact_id,
+              candidate.reference.artifact_type,
+              active.revision,
+            ],
+          );
+        }
+
+        const persistedParent =
+          candidate.declared_parent_ref === undefined ? active : candidate.declared_parent_ref;
+        await client.query(
+          `insert into artifacts (
+             app_id,
+             tenant_id,
+             environment,
+             run_id,
+             artifact_id,
+             artifact_type,
+             revision,
+             content_hash,
+             document_json,
+             worker_fence,
+             is_active,
+             parent_revision,
+             parent_content_hash,
+             created_at
+           )
+           values (
+             $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, true, $11, $12, $13
+           )`,
+          [
+            ...scopeValues(capability.scope),
+            candidate.reference.run_id,
+            candidate.reference.artifact_id,
+            candidate.reference.artifact_type,
+            candidate.reference.revision,
+            candidate.reference.content_hash,
+            canonicalizeJson(candidate.document),
+            options.worker_fence,
+            persistedParent?.revision ?? null,
+            persistedParent?.content_hash ?? null,
+            candidate.created_at,
+          ],
+        );
+        return candidate.reference;
+      },
+    );
+  }
+
   return {
     async acceptCommand(
       capabilityInput: unknown,
@@ -410,126 +722,120 @@ export function createPostgresRepository(
         content_hash: document.envelope.content_hash,
       });
 
-      return withAppTransaction(
-        pool,
-        authorizer,
+      return commitArtifactRevision(
         capabilityInput,
-        { access: "WRITE" },
-        async ({ capability, client }) => {
-          assertReferenceScope(reference, capability.scope);
-
-          const run = await client.query<FenceRow>(
-            `select app_data_agent.lock_owned_run_fence(
-               $1::uuid
-             ) as active_fence`,
-            [reference.run_id],
-          );
-          const activeFence = run.rows[0]?.active_fence;
-          if (activeFence === undefined || activeFence === null) {
-            throw new PersistenceBoundaryError(
-              "RUN_NOT_FOUND_OR_DENIED",
-              "Artifact 所属 Run 不存在或不属于当前 Principal。",
-            );
-          }
-          if (BigInt(activeFence) !== BigInt(parsedOptions.data.worker_fence)) {
-            throw new PersistenceBoundaryError(
-              "WORKER_FENCE_STALE",
-              "Worker Fence 已过期，迟到结果不能覆盖当前 Artifact Revision。",
-            );
-          }
-
-          const activeResult = await client.query<ActiveArtifactRow>(
-            `select revision, content_hash
-             from artifacts
-             where app_id = $1
-               and tenant_id = $2
-               and environment = $3
-               and run_id = $4
-               and artifact_id = $5
-               and artifact_type = $6
-               and is_active = true
-             for update`,
-            [
-              ...scopeValues(capability.scope),
-              reference.run_id,
-              reference.artifact_id,
-              reference.artifact_type,
-            ],
-          );
-          const active = activeResult.rows[0] ?? null;
-          validateArtifactAncestry(document, parsedOptions.data.expected_active_revision, active);
-
-          const authorityReferences = [
+        {
+          reference,
+          document,
+          created_at: document.envelope.created_at,
+          declared_parent_ref: document.envelope.parent_ref,
+          input_refs: [
             ...(document.envelope.parent_ref ? [document.envelope.parent_ref] : []),
             ...document.envelope.input_refs,
-          ];
-          for (const inputReference of authorityReferences) {
-            assertReferenceScope(inputReference, capability.scope);
-            if (!(await referenceExists(client, inputReference, capability.principal))) {
-              throw new PersistenceBoundaryError(
-                "ARTIFACT_INPUT_NOT_COMMITTED",
-                "Artifact 引用了尚未持久提交的 Parent 或 Input Revision。",
+          ],
+        },
+        parsedOptions.data,
+        {
+          validate_document: async (capability, client) => {
+            try {
+              await verifyL2ArtifactDocument(
+                document,
+                l2ArtifactVerificationContext(client, capability, document, authorities),
               );
+            } catch (error) {
+              if (
+                error instanceof ArtifactAuthorityError ||
+                error instanceof ArtifactInputAuthorityError ||
+                error instanceof ArtifactIntegrityError ||
+                error instanceof ArtifactSemanticAuthorityError
+              ) {
+                throw new PersistenceBoundaryError(
+                  "L2_ARTIFACT_AUTHORITY_INVALID",
+                  "L2 Artifact 未通过当前事务的提交者、输入与语义权威校验。",
+                );
+              }
+              throw error;
             }
-          }
+          },
+        },
+      );
+    },
 
-          if (active) {
-            await client.query(
-              `update artifacts
-               set is_active = false
-               where app_id = $1
-                 and tenant_id = $2
-                 and environment = $3
-                 and run_id = $4
-                 and artifact_id = $5
-                 and artifact_type = $6
-                 and revision = $7
-                 and is_active = true`,
-              [
-                ...scopeValues(capability.scope),
-                reference.run_id,
-                reference.artifact_id,
-                reference.artifact_type,
-                active.revision,
-              ],
-            );
-          }
+    async commitGroundingAuthorityArtifact(
+      capabilityInput: unknown,
+      documentInput: unknown,
+      optionsInput: unknown,
+    ): Promise<PortResult<GroundingAuthorityReference>> {
+      const parsedDocument = groundingAuthorityDocumentSchema.safeParse(documentInput);
+      const parsedOptions = artifactCommitOptionsSchema.safeParse(optionsInput);
+      if (!parsedDocument.success || !parsedOptions.success) {
+        return invalidInput(
+          "Grounding Authority Commit 输入不符合 System Artifact/Revision 契约。",
+        );
+      }
+      const document = parsedDocument.data;
+      if (containsPotentialPlaintextSecret(document)) {
+        return invalidInput("Grounding Authority Artifact 不能持久化疑似明文 Credential。");
+      }
+      if ((await computeGroundingAuthorityDocumentHash(document)) !== document.document_hash) {
+        return invalidInput("Grounding Authority Content Hash 与规范化内容不一致。");
+      }
 
-          await client.query(
-            `insert into artifacts (
-               app_id,
-               tenant_id,
-               environment,
-               run_id,
-               artifact_id,
-               artifact_type,
-               revision,
-               content_hash,
-               document_json,
-               worker_fence,
-               is_active,
-               parent_revision,
-               parent_content_hash,
-               created_at
-             )
-             values (
-               $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, true, $11, $12, $13
-             )`,
-            [
-              ...scopeValues(capability.scope),
-              reference.run_id,
-              reference.artifact_id,
-              reference.artifact_type,
-              reference.revision,
-              reference.content_hash,
-              canonicalizeJson(document),
-              parsedOptions.data.worker_fence,
-              document.envelope.parent_ref?.revision ?? null,
-              document.envelope.parent_ref?.content_hash ?? null,
-              document.envelope.created_at,
-            ],
-          );
-          return reference;
+      return commitArtifactRevision(
+        capabilityInput,
+        {
+          reference: document.artifact_ref,
+          document,
+          created_at: document.created_at,
+          declared_parent_ref: document.parent_ref,
+          input_refs: [
+            ...(document.parent_ref ? [document.parent_ref] : []),
+            ...groundingAuthorityInputReferences(document),
+          ],
+        },
+        parsedOptions.data,
+        {
+          allowed_roles: ["OWNER"],
+          validate_document: async (capability, client) => {
+            assertGroundingAuthorityCommitIdentity(document, capability);
+            try {
+              const verification = groundingAuthorityVerificationContext(client, capability);
+              if (document.parent_ref) {
+                const parent = await verifyGroundingAuthorityDocument(
+                  document.parent_ref,
+                  verification,
+                );
+                if (parent.artifact_type !== document.artifact_type) {
+                  throw new GroundingAuthorityError(
+                    "Grounding Authority Parent 必须是同 Artifact Type 的权威 Revision。",
+                  );
+                }
+              }
+              if (document.artifact_type !== "PolicyReceipt") return;
+
+              const [semanticRelease, schemaSnapshot] = await Promise.all([
+                verifyGroundingAuthorityDocument(document.semantic_release_ref, verification),
+                verifyGroundingAuthorityDocument(document.schema_snapshot_ref, verification),
+              ]);
+              if (
+                semanticRelease.artifact_type !== "SemanticRelease" ||
+                schemaSnapshot.artifact_type !== "SchemaSnapshot"
+              ) {
+                throw new GroundingAuthorityError(
+                  "PolicyReceipt 的固定上游必须是 SemanticRelease 与 SchemaSnapshot。",
+                );
+              }
+              assertGroundingAuthorityBundleConsistency(document, semanticRelease, schemaSnapshot);
+            } catch (error) {
+              if (error instanceof GroundingAuthorityError) {
+                throw new PersistenceBoundaryError(
+                  error.code,
+                  "PolicyReceipt 与已提交的 SemanticRelease/SchemaSnapshot 不一致。",
+                );
+              }
+              throw error;
+            }
+          },
         },
       );
     },
@@ -565,36 +871,48 @@ export function createPostgresRepository(
         { access: "READ" },
         async ({ capability, client }) => {
           assertReferenceScope(parsed.data, capability.scope);
-          const result = await client.query<ArtifactDocumentRow>(
-            `select artifact.document_json
-             from artifacts as artifact
-             join runs as run
-               on run.app_id = artifact.app_id
-              and run.tenant_id = artifact.tenant_id
-              and run.environment = artifact.environment
-              and run.run_id = artifact.run_id
-             where artifact.app_id = $1
-               and artifact.tenant_id = $2
-               and artifact.environment = $3
-               and artifact.run_id = $4
-               and artifact.artifact_id = $5
-               and artifact.artifact_type = $6
-               and artifact.revision = $7
-               and artifact.content_hash = $8
-               and run.principal_id = $9`,
-            [
-              parsed.data.app_id,
-              parsed.data.tenant_id,
-              parsed.data.environment,
-              parsed.data.run_id,
-              parsed.data.artifact_id,
-              parsed.data.artifact_type,
-              parsed.data.revision,
-              parsed.data.content_hash,
-              capability.principal,
-            ],
-          );
-          return result.rows[0]?.document_json ?? null;
+          return resolveArtifactDocument(client, parsed.data, capability.principal);
+        },
+      );
+    },
+
+    async resolveGroundingAuthorityArtifact(
+      capabilityInput: unknown,
+      referenceInput: unknown,
+    ): Promise<PortResult<GroundingAuthorityDocument | null>> {
+      const parsed = groundingAuthorityReferenceSchema.safeParse(referenceInput);
+      if (!parsed.success) {
+        return invalidInput("Grounding Authority Reference 不符合契约。");
+      }
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        { access: "READ" },
+        async ({ capability, client }) => {
+          assertReferenceScope(parsed.data, capability.scope);
+
+          try {
+            const verification = groundingAuthorityVerificationContext(client, capability);
+            const root = await verification.resolveCommitted(parsed.data);
+            if (root === null) return null;
+            const rootIdentity = artifactReferenceIdentity(parsed.data);
+            return await verifyGroundingAuthorityDocument(parsed.data, {
+              ...verification,
+              resolveCommitted: async (reference) =>
+                artifactReferenceIdentity(reference) === rootIdentity
+                  ? root
+                  : verification.resolveCommitted(reference),
+            });
+          } catch (error) {
+            if (error instanceof GroundingAuthorityError) {
+              throw new PersistenceBoundaryError(
+                error.code,
+                "Grounding Authority Document 未通过持久化与内容寻址授权。",
+              );
+            }
+            throw error;
+          }
         },
       );
     },

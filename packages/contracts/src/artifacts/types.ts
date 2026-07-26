@@ -46,6 +46,9 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "SandboxProgram",
   "SandboxExecutionReceipt",
   "BenchmarkAdapterReceipt",
+  "SemanticRelease",
+  "SchemaSnapshot",
+  "PolicyReceipt",
 ] as const;
 
 export const KNOWN_ARTIFACT_TYPES = [

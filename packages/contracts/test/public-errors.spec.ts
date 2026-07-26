@@ -110,8 +110,10 @@ describe("公开 Run Terminal", () => {
     ).rejects.toBeInstanceOf(AuthorityEvidenceError);
     await expect(
       authorizeRunTerminal(ready, {
+        principalId: "principal-fixture",
         verifyCommitted: async () => true,
         resolveL2: async () => null,
+        verifyCommitterCapability: async () => true,
       }),
     ).rejects.toThrow("不存在、未授权或不匹配");
     await expect(authorizeRunTerminal(ready, fixture.authority)).resolves.toMatchObject({

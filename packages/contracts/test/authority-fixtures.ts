@@ -1,13 +1,15 @@
 import {
   type ArtifactReference,
-  type AuthoritativeL2ArtifactDocument,
   artifactReferenceIdentity,
-  authorizeL2ArtifactDocument,
+  computeGroundingAuthorityDocumentHash,
+  computeGroundingHash,
   computeL2ArtifactContentHash,
   computeSqlArtifactQueryHash,
+  groundingAuthorityDocumentSchema,
   type L2ArtifactDocument,
   type L2ArtifactPersistenceAuthority,
   l2ArtifactDocumentSchema,
+  verifyL2ArtifactDocument,
 } from "../src/artifacts/index.js";
 import type { L2ArtifactType } from "../src/artifacts/types.js";
 import { hashes, ids, makeArtifactEnvelope } from "./fixtures.js";
@@ -22,6 +24,9 @@ const authorityIds = {
   semanticQuery: "00000000-0000-4000-8000-000000000117",
   logicalPlan: "00000000-0000-4000-8000-000000000118",
   sqlArtifact: "00000000-0000-4000-8000-000000000119",
+  semanticRelease: "00000000-0000-4000-8000-000000000131",
+  schemaSnapshot: "00000000-0000-4000-8000-000000000132",
+  policyReceipt: "00000000-0000-4000-8000-000000000133",
   intentGate: "00000000-0000-4000-8000-000000000121",
   semanticGate: "00000000-0000-4000-8000-000000000122",
   structuralGate: "00000000-0000-4000-8000-000000000123",
@@ -56,13 +61,32 @@ function referenceFromDocument(document: L2ArtifactDocument): ArtifactReference 
   };
 }
 
+async function sealGroundingAuthorityDocument(input: unknown) {
+  const draft = groundingAuthorityDocumentSchema.parse(input);
+  const documentHash = await computeGroundingAuthorityDocumentHash(draft);
+  return groundingAuthorityDocumentSchema.parse({
+    ...draft,
+    artifact_ref: {
+      ...draft.artifact_ref,
+      content_hash: documentHash,
+    },
+    document_hash: documentHash,
+  });
+}
+
 export async function createAuthoritativeReadyFixture() {
-  const documents = new Map<string, AuthoritativeL2ArtifactDocument>();
+  const documents = new Map<string, L2ArtifactDocument>();
+  const groundingAuthorityDocuments = new Map<string, unknown>();
   const persistedReferences = new Set<string>();
   const authority: L2ArtifactPersistenceAuthority = {
+    principalId: "principal-fixture",
     verifyCommitted: async (reference) =>
       persistedReferences.has(artifactReferenceIdentity(reference)),
     resolveL2: async (reference) => documents.get(artifactReferenceIdentity(reference)) ?? null,
+    resolveGroundingAuthority: async (reference) =>
+      structuredClone(
+        groundingAuthorityDocuments.get(artifactReferenceIdentity(reference)) ?? null,
+      ),
     verifyCommitterCapability: async (claim) =>
       claim.app_id === ids.appA &&
       claim.tenant_id === ids.tenantA &&
@@ -99,9 +123,9 @@ export async function createAuthoritativeReadyFixture() {
     const referenceIdentity = artifactReferenceIdentity(reference);
     persistedReferences.add(referenceIdentity);
     try {
-      const authorized = await authorizeL2ArtifactDocument(committed, authority);
-      documents.set(referenceIdentity, authorized);
-      return { authorized, reference };
+      const verified = await verifyL2ArtifactDocument(committed, authority);
+      documents.set(referenceIdentity, verified);
+      return { authorized: verified, reference };
     } catch (error) {
       persistedReferences.delete(referenceIdentity);
       throw error;
@@ -182,35 +206,245 @@ export async function createAuthoritativeReadyFixture() {
     {
       artifact_type: "QueryContract",
       evidence_plan_ref: evidencePlan.reference,
-      metric: "net_revenue",
-      dimensions: ["region"],
+      metric: "metric.net_revenue",
+      dimensions: ["dimension.region"],
       grain: "order",
       time_range: {
         start: "2025-01-01T00:00:00.000+08:00",
         end: "2025-04-01T00:00:00.000+08:00",
         timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
       },
       unit: "CNY",
-      filters: [{ field: "region", operator: "eq", value: "华南" }],
+      filters: [{ field: "orders.region", operator: "eq", value: "华南" }],
       datasource_id: ids.appA,
       result_contract: {
-        columns: ["net_revenue"],
+        columns: ["dimension.region", "metric.net_revenue"],
         invariant_ids: ["non_empty"],
       },
     },
   );
+  const metricBinding = {
+    metric_id: "metric.net_revenue",
+    aliases: ["净收入"],
+    table_id: "orders",
+    column_id: "orders.net_revenue",
+    aggregation: "sum",
+    grain: "order",
+    unit: "CNY",
+    time_column_id: "orders.created_at",
+    additivity: "additive",
+    null_policy: "coalesce-zero",
+    dependency_column_ids: ["orders.net_revenue"],
+    fanout_policy: "preaggregate",
+  };
+  const dimensionBinding = {
+    dimension_id: "dimension.region",
+    aliases: ["地区"],
+    table_id: "orders",
+    column_id: "orders.region",
+    grain: "order",
+  };
+  const authorityDocumentBase = {
+    schema_version: "data-agent-grounding-authority/v1",
+    scope: {
+      app_id: ids.appA,
+      tenant_id: ids.tenantA,
+      environment: "test",
+    },
+    run_id: ids.run,
+    parent_ref: null,
+    producer: {
+      kind: "deterministic",
+      id: "grounding-registry",
+    },
+    authority: {
+      kind: "deterministic",
+      id: "grounding-authority",
+      policy_version: "grounding-authority@1.0.0",
+    },
+    created_at: "2026-07-25T00:00:00.000Z",
+    document_hash: hashes.input,
+  } as const;
+  const referenceBase = {
+    app_id: ids.appA,
+    tenant_id: ids.tenantA,
+    environment: "test",
+    run_id: ids.run,
+    revision: 1,
+    content_hash: hashes.input,
+  } as const;
+  const catalogTables = [
+    {
+      table_id: "orders",
+      physical_name: "orders",
+      columns: [
+        {
+          column_id: "orders.created_at",
+          physical_name: "created_at",
+          data_type: "timestamptz",
+          nullable: false,
+          sensitivity: "INTERNAL",
+        },
+        {
+          column_id: "orders.net_revenue",
+          physical_name: "net_revenue",
+          data_type: "numeric",
+          nullable: true,
+          sensitivity: "INTERNAL",
+        },
+        {
+          column_id: "orders.region",
+          physical_name: "region",
+          data_type: "text",
+          nullable: false,
+          sensitivity: "INTERNAL",
+        },
+      ],
+    },
+  ] as const;
+  const semanticReleaseDocument = await sealGroundingAuthorityDocument({
+    ...authorityDocumentBase,
+    artifact_type: "SemanticRelease",
+    artifact_ref: {
+      ...referenceBase,
+      artifact_id: authorityIds.semanticRelease,
+      artifact_type: "SemanticRelease",
+    },
+    semantic_release_version: "retail-semantics@1.0.0",
+    catalog_version: "retail-catalog@1.0.0",
+    datasource_id: ids.appA,
+    metrics: [metricBinding],
+    dimensions: [dimensionBinding],
+  });
+  const schemaSnapshotDocument = await sealGroundingAuthorityDocument({
+    ...authorityDocumentBase,
+    artifact_type: "SchemaSnapshot",
+    artifact_ref: {
+      ...referenceBase,
+      artifact_id: authorityIds.schemaSnapshot,
+      artifact_type: "SchemaSnapshot",
+    },
+    schema_snapshot_version: "retail-schema@1.0.0",
+    catalog_version: "retail-catalog@1.0.0",
+    datasource_id: ids.appA,
+    tables: catalogTables,
+    relationships: [],
+  });
+  const policyReceiptDocument = await sealGroundingAuthorityDocument({
+    ...authorityDocumentBase,
+    artifact_type: "PolicyReceipt",
+    artifact_ref: {
+      ...referenceBase,
+      artifact_id: authorityIds.policyReceipt,
+      artifact_type: "PolicyReceipt",
+    },
+    authority: {
+      kind: "deterministic",
+      id: "policy-authority",
+      policy_version: "default-policy@1.0.0",
+    },
+    policy_version: "default-policy@1.0.0",
+    datasource_id: ids.appA,
+    principal_id: "principal-fixture",
+    semantic_release_ref: semanticReleaseDocument.artifact_ref,
+    schema_snapshot_ref: schemaSnapshotDocument.artifact_ref,
+    allowed_schema: {
+      tables: [
+        {
+          table_id: "orders",
+          column_ids: catalogTables[0].columns.map(({ column_id }) => column_id),
+        },
+      ],
+    },
+    mandatory_predicates: [],
+  });
+  const groundingAuthoritySources = [
+    semanticReleaseDocument,
+    schemaSnapshotDocument,
+    policyReceiptDocument,
+  ];
+  for (const document of groundingAuthoritySources) {
+    const identity = artifactReferenceIdentity(document.artifact_ref);
+    groundingAuthorityDocuments.set(identity, document);
+    persistedReferences.add(identity);
+  }
+  const groundingSourceReferences = {
+    semanticRelease: semanticReleaseDocument.artifact_ref,
+    schemaSnapshot: schemaSnapshotDocument.artifact_ref,
+    policyReceipt: policyReceiptDocument.artifact_ref,
+  };
+  const groundingMaterial = {
+    catalog_version: "retail-catalog@1.0.0",
+    policy_version: "default-policy@1.0.0",
+    datasource_id: ids.appA,
+    allowed_schema: {
+      tables: catalogTables,
+    },
+    metric: metricBinding,
+    dimensions: [dimensionBinding],
+    required_column_ids: ["orders.created_at", "orders.net_revenue", "orders.region"],
+    mandatory_predicates: [],
+    join_closure: {
+      root_table_id: "orders",
+      table_ids: ["orders"],
+      edges: [],
+      preaggregations: [],
+    },
+    accepted_candidate_ids: ["metric.net_revenue", "dimension.region"],
+    conflict_set: [],
+  };
+  const groundingContent = {
+    ...groundingMaterial,
+    grounding_hash: await computeGroundingHash(groundingMaterial),
+  };
   const groundingPackage = await commit(
     "GroundingPackage",
     authorityIds.groundingPackage,
-    [queryContract.reference],
+    [
+      queryContract.reference,
+      groundingSourceReferences.semanticRelease,
+      groundingSourceReferences.schemaSnapshot,
+      groundingSourceReferences.policyReceipt,
+    ],
     {
       artifact_type: "GroundingPackage",
       query_contract_ref: queryContract.reference,
-      semantic_release: "retail-semantics@1.0.0",
-      source_refs: [],
-      join_bridges: [],
+      semantic_release_ref: groundingSourceReferences.semanticRelease,
+      schema_snapshot_ref: groundingSourceReferences.schemaSnapshot,
+      policy_receipt_ref: groundingSourceReferences.policyReceipt,
+      ...groundingContent,
     },
   );
+  const semanticContent = {
+    metric: metricBinding,
+    dimensions: [dimensionBinding],
+    predicates: [
+      {
+        kind: "comparison",
+        left: { table_id: "orders", column_id: "orders.region" },
+        operator: "eq",
+        right: { parameter_key: "literal.region" },
+        authority: "query-contract",
+      },
+    ],
+    time_predicate: {
+      field: { table_id: "orders", column_id: "orders.created_at" },
+      lower: { parameter_key: "time.start", inclusive: true },
+      upper: { parameter_key: "time.end", inclusive: false },
+      timezone: "Asia/Shanghai",
+    },
+    parameters: {
+      "literal.region": { source: "literal", value: "华南" },
+      "time.start": { source: "time", value: "2025-01-01T00:00:00.000+08:00" },
+      "time.end": { source: "time", value: "2025-04-01T00:00:00.000+08:00" },
+    },
+    grounding_hash: groundingContent.grounding_hash,
+    result_contract: {
+      columns: ["dimension.region", "metric.net_revenue"],
+      invariant_ids: ["non_empty"],
+    },
+  };
   const semanticQuery = await commit(
     "SemanticQuery",
     authorityIds.semanticQuery,
@@ -219,9 +453,7 @@ export async function createAuthoritativeReadyFixture() {
       artifact_type: "SemanticQuery",
       query_contract_ref: queryContract.reference,
       grounding_package_ref: groundingPackage.reference,
-      metric_ref: "net_revenue",
-      dimension_refs: ["region"],
-      filter_expressions: ["region = :region"],
+      ...semanticContent,
     },
   );
   const logicalPlan = await commit(
@@ -231,7 +463,81 @@ export async function createAuthoritativeReadyFixture() {
     {
       artifact_type: "LogicalPlan",
       semantic_query_ref: semanticQuery.reference,
-      operations: [{ operation: "scan", source: "orders", alias: "orders" }],
+      operations: [
+        {
+          operation: "scan",
+          operation_id: "scan_orders",
+          table_id: "orders",
+          alias: "t_orders",
+          column_ids: groundingContent.required_column_ids,
+        },
+        {
+          operation: "filter",
+          operation_id: "filter_authorized",
+          input_id: "scan_orders",
+          predicates: [
+            ...semanticContent.predicates,
+            {
+              kind: "comparison",
+              left: { table_id: "orders", column_id: "orders.created_at" },
+              operator: "gte",
+              right: { parameter_key: "time.start" },
+              authority: "time",
+            },
+            {
+              kind: "comparison",
+              left: { table_id: "orders", column_id: "orders.created_at" },
+              operator: "lt",
+              right: { parameter_key: "time.end" },
+              authority: "time",
+            },
+          ],
+        },
+        {
+          operation: "aggregate",
+          operation_id: "aggregate_metric",
+          input_id: "filter_authorized",
+          group_by: [{ table_id: "orders", column_id: "orders.region" }],
+          measures: [
+            {
+              metric_id: "metric.net_revenue",
+              function: "sum",
+              field: { table_id: "orders", column_id: "orders.net_revenue" },
+              alias: "metric.net_revenue",
+              unit: "CNY",
+              null_policy: "coalesce-zero",
+              distinct: false,
+            },
+          ],
+        },
+        {
+          operation: "project",
+          operation_id: "project_result",
+          input_id: "aggregate_metric",
+          columns: [
+            {
+              source_kind: "group",
+              source_id: "orders.region",
+              alias: "dimension.region",
+            },
+            {
+              source_kind: "measure",
+              source_id: "metric.net_revenue",
+              alias: "metric.net_revenue",
+            },
+          ],
+        },
+      ],
+      root_operation_id: "project_result",
+      parameters: semanticContent.parameters,
+      grounding_hash: groundingContent.grounding_hash,
+      semantic_signature: {
+        metric_id: "metric.net_revenue",
+        dimension_ids: ["dimension.region"],
+        grain: "order",
+        unit: "CNY",
+        time_semantics: "HALF_OPEN",
+      },
     },
   );
   const sqlPayload = {
@@ -367,7 +673,7 @@ export async function createAuthoritativeReadyFixture() {
       execution_receipt_ref: execution.reference,
       validation_receipt_ref: validation.reference,
       result_hash: hashes.execution,
-      invariant_verdicts: [{ invariant_id: "non-empty", verdict: "PASS" }],
+      invariant_verdicts: [{ invariant_id: "non_empty", verdict: "PASS" }],
     },
   );
   const claim = await commit("AtomicClaim", authorityIds.claim, [evidence.reference], {

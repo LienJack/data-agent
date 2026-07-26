@@ -355,12 +355,19 @@ export async function createAuthoritativeReleaseFixture(
     decided_at: "2026-07-25T00:03:00.000Z",
   };
 
+  const resolveGroundingAuthority = ready.authority.resolveGroundingAuthority;
+  if (!resolveGroundingAuthority) {
+    throw new Error("Release Fixture 缺少 Grounding Authority Resolver。");
+  }
   const authority: ReleaseAuthorityContext = {
+    principalId: ready.authority.principalId,
     verifyCommitted: async (reference) =>
       reference.artifact_type === "ReportReadyCertificate"
         ? ready.authority.verifyCommitted(reference)
         : true,
     resolveL2: ready.authority.resolveL2,
+    resolveGroundingAuthority,
+    verifyCommitterCapability: ready.authority.verifyCommitterCapability,
     resolveScoreCard: async (reference) =>
       sameReference(reference, scoreCardArtifactReference) ? scoreCard : null,
     resolveBenchmarkAdapterReceipt: async (reference) =>

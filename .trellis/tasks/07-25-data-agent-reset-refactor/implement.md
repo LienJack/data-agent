@@ -6,7 +6,10 @@
 - 用户已于 2026-07-25 选择执行方案 2，批准以 `/goal` 运行本实施路线。
 - Trellis 规划清单与 Compound Engineering 文档审查已通过；产品代码按 U1–U9 依赖顺序实施。
 - U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`，U3 已完成并固定在
-  `2f31e9e`；U4 实现与本地验证已经完成，下一实施单元为 U5。
+  `2f31e9e`，U4 已完成并固定在 `55a4e24`。
+- U5 的 Artifact Authority 基线已固定在 `4bc011f`；ACL-first Grounding、Typed IR
+  与 PostgreSQL Authority Persistence 单元已实现并通过本地门禁，下一单元为
+  PostgreSQL Dialect Compiler 与执行前 Gate。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -69,6 +72,35 @@
 - U4 是 reset-only Runtime Schema；已有生产数据不能原地重放这些 Migration。
   Hosted Migrator、真实 Worker Daemon、OCI/Compose、Backup/Restore 与生产规模
   Autovacuum/锁/WAL 证据仍属 U9，因此发布判断继续保持 `HOLD`。
+
+### U5 Unit 2 关闭证据（2026-07-26）
+
+- `QuestionFrame -> QueryContract -> GroundingPackage -> SemanticQuery -> LogicalPlan`
+  已形成内容寻址、递归上游核验与不可变快照链；L2 公共 API 不暴露可跨事务转移的
+  Authority Brand，Platform 提交在 Run Fence 与 Active Revision 替换前完成完整
+  Committer、Input、Scope、Principal 与语义验证。
+- Catalog、SemanticRelease、SchemaSnapshot 与 PolicyReceipt 固定
+  App/Tenant/Environment/Run/Datasource/Version；ACL-first Grounding 先求
+  AllowedSchema 交集，再选择 Metric、Dimension、Join Path 与 Candidate，高分越权
+  对象不会进入结果、Hash 材料或冲突集。
+- Typed IR 只接受类型化 Field、Predicate、Parameter、Scan、Filter、Join、
+  Preaggregate、Aggregate 与 Project；首版不暴露没有 QueryContract 语义的
+  Sort/Limit。Join Closure 固定事实表 Root、Preserved Side、复合 Key、Cardinality
+  与 Fan-out 失败协议。
+- `<table_id>.<column_id>` 在 Catalog、Metric、Dimension、Relationship、Policy、
+  Grounding Preaggregation 与 Scan 全链强制归属一致；Table/Column/Metric/Dimension/
+  Relationship/Predicate/Candidate/Measure 重复身份、Metric/Dimension 跨类型同名与
+  Project 重复 Alias 全部失败关闭。多路检索的重复 Hit 按最高分稳定去重。
+- Grounding Authority 三个公开分支 Schema 与联合 Schema 共享 Scope、Hash、
+  Revision、唯一性和分支语义 Refinement；PolicyReceipt 必须绑定已提交且一致的
+  SemanticRelease/SchemaSnapshot，并由受信 Producer/Authority/Principal 提交。
+- 根级 `lint`（195 files）、`build`（5/5）、`typecheck`（8/8）、
+  Unit（466/466）、Contract（45/45）与 Text2SQL Security（5/5）门禁通过；
+  三路独立 Codex 正确性/Authority/系统提交复审均为 READY，无剩余 P0/P1。
+- PostgreSQL Compiler、七道 Gate、Bounded Repair、Sandbox 与 ExecutionReceipt
+  属于后续 U5 单元。当前 OWNER-only Authority Persistence 已证明失败关闭，但普通
+  ANALYST 请求所需的服务端 PolicyReceipt Issuer/Store 组合尚未接入；在该集成完成前
+  不声明 Analyst 端到端 Text2SQL 已交付。
 
 ## 2. 执行原则
 
