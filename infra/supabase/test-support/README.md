@@ -13,10 +13,42 @@ Smoke 固定执行：
 
 1. 禁止 `GRANT ALL`、生产迁移伪造 `auth/storage`、遗漏空 `search_path`；
 2. 校验每个迁移文件的规范化 SHA-256；
-3. 依次执行 Platform 与 Data Agent App 迁移；
-4. 验证双 App、双 Tenant、双环境、RPC/RLS、Demo、Storage、生命周期、SecretRef
-   与 Migration Ledger；
-5. 用两个数据库会话证明同 App Migration Lock 互斥、不同 App Lock 相互独立。
+3. 按文件名排序执行 Platform 与 Data Agent App 迁移；
+4. 按文件名排序执行全部 `*-assertions.sql`；
+5. 验证双 App、双 Tenant、双环境、RPC/RLS、Demo、Storage、生命周期、SecretRef
+   与 Migration Ledger；当前账本固定为一个 Platform 加十三个 App Migration；
+6. 在独立数据库逐步执行到 `10500 / 10505 / 10510 / 10560`，证明 Browser 写入口、
+   Backend 直写与旧 Outbox/Fence API 在任一中断前缀都失败关闭；
+7. 用两个数据库会话证明同一 Run 只能被一个 Worker Claim，并覆盖
+   Browser↔Browser、Browser↔Backend、Backend↔Backend 三类并发首写；
+8. 用未来 `occurred_at` 证明 Event 保留调用时间，但数据库 `accept_at` 仍让 Outbox
+   立即可领取；
+9. 用两个数据库会话证明同 App Migration Lock 互斥、不同 App Lock 相互独立。
+
+U4 Runtime Migration 按依赖拆分为：
+
+1. `runtime_foundation`：规范化 Helper、Runtime 表、基础索引，并前移所有旧写入口撤权；
+2. `runtime_api`：前向替换 U2 Browser API，但不提前恢复 Browser 写权限；
+3. `runtime_projection_invariants`：初始 Projection、回填与不可变/Fence 约束；
+4. `runtime_queue_lease`：Claim、Heartbeat 与 `SKIP LOCKED`；
+5. `runtime_event_settlement`：Event Append、Complete 与 Retry；
+6. `runtime_checkpoint_effect`：Snapshot 与 Side Effect Receipt；
+7. `runtime_control`：Cancel/Resume 控制命令；
+8. `runtime_backend_acceptance`：Backend 首写接收；
+9. `runtime_security`：RLS、精确 Revoke 与 Grant。
+
+Runtime SQL 断言保持原始状态依赖顺序：
+
+```text
+20 U2 core
+→ 21 runtime helpers/schema
+→ 22 execution/cancel
+→ 23 resume
+→ 24 retry/takeover
+→ 25 Secret
+→ 25z concurrent resume/counter
+→ 26 Artifact/Lifecycle
+```
 
 生产约束：
 
@@ -29,9 +61,10 @@ Smoke 固定执行：
   Membership Version、App/Environment Epoch 与生命周期。生命周期权威固定以
   `(app_id, environment)` 为主键，冻结 `test` 不得污染同一 App 的 `prod`。跨请求缓存必须调用
   `platform.revalidate_backend_authority(...)`，成员撤销或生命周期变化会立即令旧投影失效。
-- Outbox Worker 不能直接 `UPDATE` 表，只能通过 `claim_outbox(...)`、
-  `publish_outbox(...)` 与 `retry_outbox(...)` 操作；每次重新领取都会单调递增
-  `lease_token` 与 `attempt_count`，旧 Worker 的 fence 不能发布或重试新 lease。
+- U4 Runtime Worker 不能直接 `UPDATE` Outbox、Run 或 Command，只能通过
+  `claim_run_work(...)`、事件结算、重试与控制窄函数推进；旧
+  `claim_outbox(...)`、`publish_outbox(...)`、`retry_outbox(...)` 与
+  `advance_run_fence(...)` 已对全部应用角色撤权。
 - Artifact Object 的 Storage Key 固定为
   `<app_id>/<tenant_id>/<environment>/<principal_id>/<run_id>/<artifact_kind>/sha256-<digest>`；
   Key 中的 Principal/Run 还必须和私有 Run 元数据一致。Restrictive Guard 同时约束其他

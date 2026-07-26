@@ -466,12 +466,14 @@ describe("Team tool policy", () => {
 
     expect(concurrent.filter(({ ok }) => ok)).toHaveLength(1);
     expect(concurrent.filter(({ ok }) => !ok)).toHaveLength(1);
+    const reservedToolCallId = concurrent[0]?.ok ? TOOL_CALL_ID : SECOND_TOOL_CALL_ID;
 
     await expect(
       authorizeTeamToolCall(
         task,
         {
           ...allowedCandidate,
+          tool_call_id: reservedToolCallId,
           arguments: { metric: "profit" },
         },
         sharedSecurity,

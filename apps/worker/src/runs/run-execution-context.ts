@@ -1,0 +1,301 @@
+import {
+  type MastraSnapshotBinding,
+  mastraSnapshotBindingBodySchema,
+  type PortResult,
+  type RunEventStorePort,
+  type RunProjectionRecord,
+  type RunWorkLease,
+  runCheckpointInputSchema,
+  type SideEffectReceipt,
+  sha256ContentHash,
+  sideEffectReceiptSchema,
+} from "@data-agent/contracts";
+import type { RunExecutionContext } from "./run-worker-runner.js";
+import { failure, occurredAt, receiptMatchesRequest, success } from "./run-worker-shared.js";
+
+interface RunExecutionContextDependencies {
+  readonly lease: RunWorkLease;
+  readonly run_signal: AbortSignal;
+  readonly event_store: Pick<
+    RunEventStorePort,
+    "commitSideEffect" | "commitSnapshot" | "findSideEffect"
+  >;
+  readonly now: () => Date;
+  readonly create_id: () => string;
+  readonly side_effect_timeout_ms: number;
+  readonly heartbeat: () => Promise<PortResult<{ readonly expires_at: string }>>;
+  readonly guard_running_lease: (
+    lease: RunWorkLease,
+    expectedProjectionHash?: string,
+  ) => Promise<PortResult<RunProjectionRecord>>;
+  readonly append_checkpoint_event: (
+    binding: MastraSnapshotBinding,
+  ) => Promise<PortResult<unknown>>;
+  readonly append_side_effect_event: (
+    receipt: SideEffectReceipt,
+  ) => Promise<PortResult<SideEffectReceipt>>;
+}
+
+export function createRunExecutionContext({
+  lease,
+  run_signal: runSignal,
+  event_store: eventStore,
+  now,
+  create_id: createId,
+  side_effect_timeout_ms: sideEffectTimeoutMs,
+  heartbeat,
+  guard_running_lease: guardRunningLease,
+  append_checkpoint_event: appendCheckpointEvent,
+  append_side_effect_event: appendSideEffectEvent,
+}: RunExecutionContextDependencies): RunExecutionContext {
+  const inFlightSideEffects = new Map<string, Promise<PortResult<SideEffectReceipt>>>();
+  const aborted = <T>(): PortResult<T> =>
+    failure(
+      "RUN_EXECUTION_ABORTED",
+      "Run 执行已因取消、Heartbeat 失败或 Deadline 到期而中止。",
+      false,
+    );
+
+  return {
+    async heartbeat() {
+      if (runSignal.aborted) return aborted();
+      const guarded = await guardRunningLease(lease);
+      if (!guarded.ok) {
+        return guarded;
+      }
+      return heartbeat();
+    },
+
+    async checkpoint(inputValue) {
+      if (runSignal.aborted) return aborted();
+      const input = runCheckpointInputSchema.safeParse(inputValue);
+      if (!input.success) {
+        return failure(
+          "RUN_CHECKPOINT_INPUT_INVALID",
+          "Executor 返回的 Snapshot 不满足项目 Checkpoint 契约。",
+          false,
+        );
+      }
+      const beforeSnapshot = await guardRunningLease(lease);
+      if (!beforeSnapshot.ok) {
+        return beforeSnapshot;
+      }
+      const body = {
+        schema_version: "1.0.0",
+        authority: "EXECUTION_SNAPSHOT_ONLY",
+        snapshot_id: createId(),
+        scope: lease.scope,
+        run_id: lease.run_id,
+        workflow_id: input.data.workflow_id,
+        workflow_definition_revision: input.data.workflow_definition_revision,
+        mastra_core_version: "1.52.1",
+        mastra_run_id: input.data.mastra_run_id,
+        attempt_id: lease.attempt_id,
+        snapshot_version: input.data.snapshot_version,
+        event_sequence: beforeSnapshot.value.projection.version,
+        worker_fence: lease.worker_fence,
+        active_artifact_ref: input.data.active_artifact_ref,
+        mastra_snapshot: input.data.mastra_snapshot,
+        created_at: occurredAt(now),
+      } as const;
+      const bindingResult = mastraSnapshotBindingBodySchema.safeParse(body);
+      if (!bindingResult.success) {
+        return failure(
+          "RUN_CHECKPOINT_INPUT_INVALID",
+          "Executor 返回的 Snapshot 不满足权威绑定契约。",
+          false,
+        );
+      }
+
+      if (runSignal.aborted) return aborted();
+      const beforeCommit = await guardRunningLease(lease, beforeSnapshot.value.projection_hash);
+      if (!beforeCommit.ok) {
+        return beforeCommit;
+      }
+      const committed = await eventStore.commitSnapshot({
+        lease,
+        binding: bindingResult.data,
+      });
+      if (!committed.ok) {
+        return committed;
+      }
+
+      const appended = await appendCheckpointEvent(committed.value.binding);
+      return appended.ok ? success(committed.value.binding) : appended;
+    },
+
+    async executeSideEffectOnce(input) {
+      if (runSignal.aborted) return aborted();
+      let inputHash: string;
+      try {
+        inputHash = await sha256ContentHash(input.input);
+      } catch {
+        return failure(
+          "RUN_SIDE_EFFECT_INPUT_INVALID",
+          "Side Effect Input 必须是可规范化的 JSON。",
+          false,
+        );
+      }
+
+      const operationKey = `${input.effect_kind}:${inputHash}`;
+      const existingOperation = inFlightSideEffects.get(operationKey);
+      if (existingOperation) {
+        return existingOperation;
+      }
+
+      const operation = (async (): Promise<PortResult<SideEffectReceipt>> => {
+        const found = await eventStore.findSideEffect({
+          scope: lease.scope,
+          run_id: lease.run_id,
+          effect_kind: input.effect_kind,
+          input_hash: inputHash,
+        });
+        if (!found.ok) {
+          return found;
+        }
+        if (found.value) {
+          const parsed = sideEffectReceiptSchema.safeParse(found.value);
+          if (
+            !parsed.success ||
+            !receiptMatchesRequest(parsed.data, lease, input.effect_kind, inputHash)
+          ) {
+            return failure(
+              "RUN_SIDE_EFFECT_RECEIPT_MISMATCH",
+              "已提交 Side Effect Receipt 与当前请求不匹配。",
+              false,
+            );
+          }
+          return appendSideEffectEvent(parsed.data);
+        }
+
+        const beforeEffect = await guardRunningLease(lease);
+        if (!beforeEffect.ok) {
+          return beforeEffect;
+        }
+        if (runSignal.aborted) return aborted();
+        const idempotencyKey = await sha256ContentHash({
+          schema_version: "1.0.0",
+          scope: lease.scope,
+          run_id: lease.run_id,
+          effect_kind: input.effect_kind,
+          input_hash: inputHash,
+        });
+        const effectController = new AbortController();
+        let effectTimedOut = false;
+        const abortEffect = () => effectController.abort(runSignal.reason);
+        runSignal.addEventListener("abort", abortEffect, { once: true });
+        if (runSignal.aborted) abortEffect();
+        const effectDeadlineAt = new Date(now().getTime() + sideEffectTimeoutMs).toISOString();
+        const effectAborted = new Promise<Readonly<{ kind: "ABORTED" }>>((resolve) => {
+          effectController.signal.addEventListener("abort", () => resolve({ kind: "ABORTED" }), {
+            once: true,
+          });
+        });
+        const effectTimer = setTimeout(() => {
+          effectTimedOut = true;
+          effectController.abort(new Error("RUN_SIDE_EFFECT_TIMEOUT"));
+        }, sideEffectTimeoutMs);
+        const effectExecution = Promise.resolve()
+          .then(() =>
+            input.execute({
+              idempotency_key: idempotencyKey,
+              input_hash: inputHash,
+              signal: effectController.signal,
+              deadline_at: effectDeadlineAt,
+            }),
+          )
+          .then(
+            (value) => ({ kind: "RESULT" as const, value }),
+            () => ({ kind: "ERROR" as const }),
+          );
+        const effectOutcome = await Promise.race([effectExecution, effectAborted]);
+        clearTimeout(effectTimer);
+        runSignal.removeEventListener("abort", abortEffect);
+        if (effectOutcome.kind === "ABORTED") {
+          return effectTimedOut
+            ? failure(
+                "RUN_SIDE_EFFECT_TIMEOUT",
+                "Side Effect 超过项目 Deadline，已发送 AbortSignal。",
+                true,
+              )
+            : aborted();
+        }
+        if (effectOutcome.kind === "ERROR") {
+          return failure(
+            "RUN_SIDE_EFFECT_EXECUTION_FAILED",
+            "Side Effect 执行失败，未提交 Receipt。",
+            true,
+          );
+        }
+        const output = effectOutcome.value;
+        let outputHash: string;
+        try {
+          outputHash = await sha256ContentHash(output.output);
+        } catch {
+          return failure(
+            "RUN_SIDE_EFFECT_OUTPUT_INVALID",
+            "Side Effect Output 必须是可规范化的 JSON。",
+            false,
+          );
+        }
+        if (runSignal.aborted) return aborted();
+        const beforeReceipt = await guardRunningLease(lease, beforeEffect.value.projection_hash);
+        if (!beforeReceipt.ok) {
+          return beforeReceipt;
+        }
+
+        const receiptResult = sideEffectReceiptSchema.safeParse({
+          schema_version: "1.0.0",
+          receipt_id: createId(),
+          scope: lease.scope,
+          run_id: lease.run_id,
+          effect_kind: input.effect_kind,
+          input_hash: inputHash,
+          output_hash: outputHash,
+          worker_fence: lease.worker_fence,
+          ...(output.artifact_ref ? { artifact_ref: output.artifact_ref } : {}),
+          committed_at: occurredAt(now),
+        });
+        if (!receiptResult.success) {
+          return failure(
+            "RUN_SIDE_EFFECT_RECEIPT_INVALID",
+            "Worker 无法生成有效的 Side Effect Receipt。",
+            false,
+          );
+        }
+        const committed = await eventStore.commitSideEffect({
+          lease,
+          receipt: receiptResult.data,
+        });
+        if (!committed.ok) {
+          return committed;
+        }
+        const authoritativeReceipt = sideEffectReceiptSchema.safeParse(committed.value.receipt);
+        if (
+          !authoritativeReceipt.success ||
+          !receiptMatchesRequest(authoritativeReceipt.data, lease, input.effect_kind, inputHash)
+        ) {
+          return failure(
+            "RUN_SIDE_EFFECT_RECEIPT_MISMATCH",
+            "持久层返回的 Side Effect Receipt 与当前请求不匹配。",
+            false,
+          );
+        }
+        const afterReceipt = await guardRunningLease(lease, beforeReceipt.value.projection_hash);
+        if (!afterReceipt.ok) {
+          return afterReceipt;
+        }
+        return appendSideEffectEvent(authoritativeReceipt.data);
+      })();
+
+      inFlightSideEffects.set(operationKey, operation);
+      try {
+        return await operation;
+      } finally {
+        if (inFlightSideEffects.get(operationKey) === operation) {
+          inFlightSideEffects.delete(operationKey);
+        }
+      }
+    },
+  };
+}

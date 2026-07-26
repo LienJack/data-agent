@@ -11,8 +11,11 @@ PostgreSQL 回执提交和回读校验后，Provider 才能获得 `AVAILABLE` �
 
 ## 前置条件
 
-- 已运行 U2 Migration，并存在一个属于目标 Principal 的 Run。
-- Run 的当前 `active_fence` 已知，执行身份拥有目标 App/Tenant 的写权限。
+- 已运行 U2/U4 Migration，并存在一个属于目标 Principal 的 Run。
+- Worker 已真实领取该 Run、提交 `run.leased`，且 Run 与最新 Projection 均为
+  `RUNNING`；对应 Attempt/Outbox Lease 仍有效。
+- Run 的当前 `active_fence` 已知，执行身份拥有目标 App/Tenant 的写权限。Owner 不能
+  借角色权限为同租户其他 Principal 的 Run 提交认证回执。
 - 明确选择至少两个 Provider。
 - 为每个所选 Provider 指定当前部署确认过的真实 Model ID。仓库中的默认 Model ID
   仅是 `UNVERIFIED_DEPLOYMENT_DEFAULT`，不能作为在线可用证据。
@@ -29,7 +32,7 @@ PostgreSQL 回执提交和回读校验后，Provider 才能获得 `AVAILABLE` �
 | `DATA_AGENT_TENANT_ID` | 目标 Tenant UUID |
 | `DATA_AGENT_PRINCIPAL_ID` | 目标 Principal UUID |
 | `DATA_AGENT_RUN_ID` | 已存在的 Run UUID |
-| `DATA_AGENT_WORKER_FENCE` | 该 Run 当前 Worker Fence，必须为非负安全整数 |
+| `DATA_AGENT_WORKER_FENCE` | 当前活动 Attempt 的 Worker Fence，必须与 Run、最新 Projection 和未过期 Lease 一致 |
 | `DATA_AGENT_CREDENTIAL_SMOKE_PROVIDERS` | 至少两个、逗号分隔的 Provider，例如 `openai,anthropic` |
 | `DATA_AGENT_MODEL_PROVIDER_OVERRIDES` | JSON 数组；每个所选 Provider 都必须绑定明确的真实 Model ID |
 
@@ -77,8 +80,8 @@ flowchart LR
 ```
 
 五项检查为 Request Shape、Structured Output、强制 Tool Call、Streaming 和错误归一化。
-任一检查失败、响应缺少真实 Model ID、Model ID 与部署覆盖不一致、Fence 过期、回执提交
-失败或回读不一致，都会失败关闭。
+任一检查失败、响应缺少真实 Model ID、Model ID 与部署覆盖不一致、Run 不在
+`RUNNING`、Lease/Fence 过期、回执提交失败或回读不一致，都会失败关闭。
 
 ## 结果解释
 

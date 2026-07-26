@@ -5,8 +5,8 @@
 - 当前任务状态：`in_progress`。
 - 用户已于 2026-07-25 选择执行方案 2，批准以 `/goal` 运行本实施路线。
 - Trellis 规划清单与 Compound Engineering 文档审查已通过；产品代码按 U1–U9 依赖顺序实施。
-- U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`；U3 实现与本地
-  验证已经完成，下一实施单元为 U4。
+- U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`，U3 已完成并固定在
+  `2f31e9e`；U4 实现与本地验证已经完成，下一实施单元为 U5。
 - 云资源写入仍需对应部署单元的明确契约与凭据；缺少托管证据时必须保持 `HOLD`。
 - 实施时以 `docs/plans/2026-07-25-001-refactor-data-agent-l2-vertical-slice-plan.md` 的 U1–U9、Verification Contract 和 Definition of Done 为权威。
 
@@ -46,6 +46,29 @@
 - 当前环境未配置真实 Provider Credential，因此在线认证保持 `NOT_RUN`，七类
   Provider 均为 `UNVERIFIED`；这不影响 U3 实现边界关闭，但发布决策继续保持
   `HOLD`，不能声称已有真实 Provider `AVAILABLE` 证据。
+
+### U4 关闭证据（2026-07-26）
+
+- PostgreSQL Durable Run Runtime 已实现 Command Acceptance、严格每 Run FIFO、
+  Lease/Heartbeat/Fence、Attempt、Event/Projection、Retry/Takeover、Cancel、
+  Resume/Replay、Checkpoint 与内容寻址 Side Effect Receipt；Redis 仍是可丢失的
+  唤醒/缓存层，不承担恢复权威。
+- 同一 Run 的并发接受、Resume/Accept 并发、Claim 后未投影崩溃、第 5 次预算耗尽、
+  Busy Tenant 清理饥饿、Stale Worker、Cancel Race、Receipt 重用与终态原子结算均有
+  PostgreSQL 失败关闭或恢复测试。旧通用 Outbox Claim/Publish/Retry/Fence API 与
+  TypeScript Adapter 已撤权并移除，Worker 只能调用 U4 窄函数。
+- Mastra Snapshot Hash 改为 PostgreSQL Commit/Load 权威签发与重算；测试明确覆盖
+  TypeScript 与 PostgreSQL Canonical Bytes 不同的数值反例，并证明数据库 Hash 在
+  Commit → Checkpoint Event → Load → Resume 全链一致。Checkpoint Event 还严格绑定
+  提交时 Projection Version 与同一 Active Artifact，拒绝 intervening Event 和换绑。
+- `pnpm lint`、`pnpm typecheck`、`pnpm build`、Unit 361/361、Contract 39/39、
+  Provider 59/59、Integration（Agent 14/14、Platform 9/9、Worker 9/9）、
+  Security、Tenancy 与独立 PostgreSQL 17 Smoke 均通过；本地 Projection Reducer、
+  PostgreSQL 并发 Marker 与 Artifact 绑定失败也统一映射为稳定、可判定是否重试的
+  公开错误契约。最终 Codex 多视角复审作为本单元提交前门禁。
+- U4 是 reset-only Runtime Schema；已有生产数据不能原地重放这些 Migration。
+  Hosted Migrator、真实 Worker Daemon、OCI/Compose、Backup/Restore 与生产规模
+  Autovacuum/锁/WAL 证据仍属 U9，因此发布判断继续保持 `HOLD`。
 
 ## 2. 执行原则
 
@@ -324,7 +347,7 @@ pnpm test:deploy:hosted
 pnpm verify:release
 ```
 
-这些命令是全局验收契约。U1–U3 对应命令已经接入真实实现；U4–U9 尚未实现的命令必须
+这些命令是全局验收契约。U1–U4 对应命令已经接入真实实现；U5–U9 尚未实现的命令必须
 通过 `pending-gate` 或 `verify:release` 明确返回 `HOLD`/非零退出，不能静默通过。
 
 ## 10. 阶段性证据要求

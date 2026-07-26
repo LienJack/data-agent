@@ -35,6 +35,13 @@ function run(command: string, args: readonly string[]): void {
 }
 
 const requestedFilter = parseFilter(process.argv.slice(2));
+
+if (requestedFilter === "runtime") {
+  run("pnpm", ["--filter", "@data-agent/agent-runtime", "test:integration"]);
+  run(fileURLToPath(new URL("./test-platform-integration.sh", import.meta.url)), []);
+  process.exit(0);
+}
+
 const filters = requestedFilter
   ? [normalizeWorkspaceFilter(requestedFilter, workspaceModules)]
   : ["@data-agent/agent-runtime", "@data-agent/platform"];

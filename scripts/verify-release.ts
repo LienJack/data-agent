@@ -24,7 +24,7 @@ process.stdout.write(
     {
       verification_contract_version: "1.0.0",
       ...decision,
-      missing_units: ["U4", "U5", "U6", "U7", "U8", "U9"],
+      missing_units: ["U5", "U6", "U7", "U8", "U9"],
     },
     null,
     2,

@@ -3,6 +3,7 @@ import {
   computeL2ArtifactContentHash,
   type L2ArtifactDocument,
   l2ArtifactDocumentSchema,
+  sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { createPostgresRepository } from "../../src/persistence/repository.js";
@@ -18,6 +19,7 @@ const ids = {
   command: "00000000-0000-4000-8000-000000000301",
   event: "00000000-0000-4000-8000-000000000401",
   outbox: "00000000-0000-4000-8000-000000000501",
+  browserOutbox: "00000000-0000-4000-8000-000000000502",
   audit: "00000000-0000-4000-8000-000000000601",
   deployment: "00000000-0000-4000-8000-0000000000d1",
 };
@@ -137,14 +139,21 @@ async function committedDocument(input: {
 describe("PostgreSQL authoritative repository", () => {
   it("accepts command, idempotency, initial event and outbox in one transaction", async () => {
     const fixture = scriptedPool((text) => {
-      if (text.includes("insert into idempotency_records")) {
+      if (text.includes("accept_backend_run_command")) {
         return {
-          rows: [{ command_id: ids.command, payload_hash: "ignored" }],
+          rows: [
+            {
+              result: {
+                created: true,
+                run_id: ids.run,
+                command_id: ids.command,
+                outbox_id: ids.outbox,
+                payload_hash: canonicalPayloadHash,
+              },
+            },
+          ],
           rowCount: 1,
         };
-      }
-      if (text.includes("insert into runs")) {
-        return { rows: [{ run_id: ids.run }], rowCount: 1 };
       }
       return undefined;
     });
@@ -165,35 +174,28 @@ describe("PostgreSQL authoritative repository", () => {
     });
     const statements = fixture.calls.map(({ text }) => text);
     expect(statements[0]).toBe("BEGIN");
-    expect(statements).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("insert into idempotency_records"),
-        expect.stringContaining("insert into runs"),
-        expect.stringContaining("insert into commands"),
-        expect.stringContaining("insert into run_events"),
-        expect.stringContaining("insert into outbox"),
-        expect.stringContaining("insert into audit_log"),
-      ]),
-    );
+    expect(statements).toContainEqual(expect.stringContaining("accept_backend_run_command"));
+    expect(statements.some((text) => text.includes("insert into"))).toBe(false);
     expect(statements.at(-1)).toBe("COMMIT");
     const canonicalHashQuery = fixture.calls.find(({ text }) =>
       text.includes("platform.canonical_sha256"),
     );
     expect(canonicalHashQuery?.values).toEqual([canonicalizeJson(commandInput().payload)]);
-    const advisoryLock = fixture.calls.find(({ text }) => text.includes("pg_advisory_xact_lock"));
-    expect(advisoryLock?.values[0]).toContain(ids.principal);
-    const idempotencyInsert = fixture.calls.find(({ text }) =>
-      text.includes("insert into idempotency_records"),
+    const acceptance = fixture.calls.find(({ text }) =>
+      text.includes("accept_backend_run_command"),
     );
-    expect(idempotencyInsert?.values).toEqual([
-      ids.app,
-      ids.tenant,
-      "test",
-      ids.principal,
-      "request-1",
-      ids.command,
-      canonicalPayloadHash,
-    ]);
+    expect(JSON.parse(String(acceptance?.values[0]))).toEqual(commandInput());
+    expect(acceptance?.values[1]).toBe(canonicalPayloadHash);
+    const initialEvent = JSON.parse(String(acceptance?.values[2]));
+    expect(initialEvent).toMatchObject({
+      event_id: ids.event,
+      event_type: "run.accepted",
+      payload: {
+        command_id: ids.command,
+        payload_hash: canonicalPayloadHash,
+      },
+    });
+    expect(acceptance?.values[3]).toBe(await sha256ContentHash(initialEvent));
     expect(fixture.released()).toBe(1);
   });
 
@@ -208,6 +210,26 @@ describe("PostgreSQL authoritative repository", () => {
         payload: {
           kind: "START_L2_RESEARCH",
           jdbc_url: "jdbc:postgresql://admin:hunter2@db.example.com/warehouse",
+        },
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: { code: "PERSISTENCE_INPUT_INVALID", retryable: false },
+    });
+    expect(fixture.calls).toEqual([]);
+  });
+
+  it("rejects non-initial command kinds before database I/O", async () => {
+    const fixture = scriptedPool(() => undefined);
+    const authority = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+
+    expect(
+      await repository.acceptCommand(authority.capability, {
+        ...commandInput(),
+        payload: {
+          ...commandInput().payload,
+          kind: "RESUME_RUN",
         },
       }),
     ).toMatchObject({
@@ -237,15 +259,17 @@ describe("PostgreSQL authoritative repository", () => {
   it("returns an existing command only when all idempotency bindings match", async () => {
     const input = commandInput();
     const fixture = scriptedPool((text) => {
-      if (text.includes("from idempotency_records as record")) {
+      if (text.includes("accept_backend_run_command")) {
         return {
           rows: [
             {
-              command_id: ids.command,
-              payload_hash: canonicalPayloadHash,
-              run_id: ids.run,
-              question: input.question,
-              outbox_id: ids.outbox,
+              result: {
+                created: false,
+                command_id: ids.command,
+                payload_hash: canonicalPayloadHash,
+                run_id: ids.run,
+                outbox_id: ids.browserOutbox,
+              },
             },
           ],
           rowCount: 1,
@@ -259,32 +283,20 @@ describe("PostgreSQL authoritative repository", () => {
 
     expect(first).toMatchObject({
       ok: true,
-      value: { created: false, command_id: ids.command },
+      value: {
+        created: false,
+        command_id: ids.command,
+        outbox_id: ids.browserOutbox,
+      },
     });
-    expect(fixture.calls.some(({ text }) => text.includes("insert into runs"))).toBe(false);
-    const lookup = fixture.calls.find(({ text }) =>
-      text.includes("from idempotency_records as record"),
-    );
-    expect(lookup?.text).toContain("and record.principal_id = $5::uuid");
-    expect(lookup?.values).toEqual([ids.app, ids.tenant, "test", "request-1", ids.principal]);
+    expect(fixture.calls.some(({ text }) => text.includes("insert into"))).toBe(false);
     expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
   });
 
   it("rolls back a reused idempotency key with a different payload", async () => {
     const fixture = scriptedPool((text) => {
-      if (text.includes("from idempotency_records as record")) {
-        return {
-          rows: [
-            {
-              command_id: ids.command,
-              payload_hash: `sha256:${"0".repeat(64)}`,
-              run_id: ids.run,
-              question: commandInput().question,
-              outbox_id: ids.outbox,
-            },
-          ],
-          rowCount: 1,
-        };
+      if (text.includes("accept_backend_run_command")) {
+        throw new Error("DA_COMMAND_IDEMPOTENCY_CONFLICT");
       }
       return undefined;
     });
@@ -302,22 +314,12 @@ describe("PostgreSQL authoritative repository", () => {
 
   it("rolls back a reused idempotency key with a different question", async () => {
     const input = commandInput();
-    const fixture = scriptedPool((text) =>
-      text.includes("from idempotency_records as record")
-        ? {
-            rows: [
-              {
-                command_id: ids.command,
-                payload_hash: canonicalPayloadHash,
-                run_id: ids.run,
-                question: "另一个分析问题",
-                outbox_id: ids.outbox,
-              },
-            ],
-            rowCount: 1,
-          }
-        : undefined,
-    );
+    const fixture = scriptedPool((text) => {
+      if (text.includes("accept_backend_run_command")) {
+        throw new Error("DA_COMMAND_IDEMPOTENCY_CONFLICT");
+      }
+      return undefined;
+    });
     const authority = issueCapability();
     const repository = createPostgresRepository(fixture.pool, authority.authorizer);
 
@@ -366,6 +368,9 @@ describe("PostgreSQL authoritative repository", () => {
     });
     const query = fixture.calls.find(({ text }) => text.includes("from runs"));
     expect(query?.values).toEqual([ids.app, ids.tenant, "test", ids.run, ids.principal]);
+    expect(query?.text).toContain("left join lateral");
+    expect(query?.text).toContain("candidate.status");
+    expect(query?.text).toContain("order by candidate.version desc");
   });
 
   it("binds artifact existence checks to the owning run principal", async () => {
@@ -432,7 +437,7 @@ describe("PostgreSQL authoritative repository", () => {
       },
     });
     const fixture = scriptedPool((text) => {
-      if (text.includes("select active_fence")) {
+      if (text.includes("lock_owned_run_fence")) {
         return { rows: [{ active_fence: "0" }], rowCount: 1 };
       }
       if (text.includes("select revision, content_hash")) {
@@ -461,6 +466,9 @@ describe("PostgreSQL authoritative repository", () => {
         content_hash: document.envelope.content_hash,
       },
     });
+    const fenceLock = fixture.calls.find(({ text }) => text.includes("lock_owned_run_fence"));
+    expect(fenceLock?.values).toEqual([ids.run]);
+    expect(fenceLock?.text).not.toContain("from runs");
   });
 
   it("commits a continuous revision one to revision two ancestry", async () => {
@@ -501,7 +509,7 @@ describe("PostgreSQL authoritative repository", () => {
     });
     let active: { readonly revision: number; readonly content_hash: string } | null = null;
     const fixture = scriptedPool((text, values) => {
-      if (text.includes("select active_fence")) {
+      if (text.includes("lock_owned_run_fence")) {
         return { rows: [{ active_fence: "0" }], rowCount: 1 };
       }
       if (text.includes("select revision, content_hash")) {

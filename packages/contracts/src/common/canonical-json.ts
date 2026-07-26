@@ -1,5 +1,17 @@
 export type ContentHash = `sha256:${string}`;
 
+/**
+ * Canonical JSON authority follows ECMAScript JSON serialization:
+ *
+ * - numbers use JSON.stringify's finite-number rendering;
+ * - object keys use UTF-16 code-unit ordering;
+ * - the resulting string is hashed as UTF-8.
+ *
+ * This is the TypeScript content-hash contract. PostgreSQL-persisted runtime
+ * envelopes use the database's own canonicalizer and propagate the hash
+ * returned by that authority; callers must not assume byte parity between
+ * ECMAScript NumberToString and PostgreSQL numeric rendering.
+ */
 function canonicalizeNumber(value: number): string {
   if (!Number.isFinite(value)) {
     throw new TypeError("Canonical JSON 不接受 NaN 或 Infinity。");

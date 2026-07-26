@@ -1,3 +1,4 @@
+import { channel } from "node:diagnostics_channel";
 import type { PortResult } from "@data-agent/contracts";
 import type { Pool, QueryResultRow } from "pg";
 import type { AppCapability } from "../tenancy/capability.js";
@@ -31,7 +32,23 @@ export interface AppTransactionContext {
 
 export interface AppTransactionOptions {
   readonly access: "READ" | "WRITE";
+  readonly map_database_error?: (error: unknown) => PortResult<never> | null;
+  readonly operation_name?: string;
+  readonly correlation_id?: string;
 }
+
+export const PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL =
+  "data-agent.platform.persistence.transaction.failure";
+
+export interface PersistenceTransactionDiagnostic {
+  readonly operation_name: string;
+  readonly correlation_id?: string;
+  readonly error_class: string;
+  readonly sqlstate?: string;
+  readonly marker?: string;
+}
+
+const persistenceTransactionDiagnosticChannel = channel(PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL);
 
 export class PersistenceBoundaryError extends Error {
   override readonly name = "PersistenceBoundaryError";
@@ -45,7 +62,7 @@ export class PersistenceBoundaryError extends Error {
   }
 }
 
-function transactionFailure(error: unknown): PortResult<never> {
+function transactionFailure(error: unknown, options: AppTransactionOptions): PortResult<never> {
   if (error instanceof PersistenceBoundaryError) {
     return {
       ok: false,
@@ -56,6 +73,33 @@ function transactionFailure(error: unknown): PortResult<never> {
       },
     };
   }
+  const mappedFailure = options.map_database_error?.(error);
+  if (mappedFailure) return mappedFailure;
+
+  const candidate =
+    typeof error === "object" && error !== null
+      ? (error as { readonly code?: unknown; readonly message?: unknown; readonly name?: unknown })
+      : null;
+  const diagnostic: PersistenceTransactionDiagnostic = {
+    operation_name: options.operation_name?.match(/^[a-z][a-z0-9._:-]{0,127}$/)?.[0] ?? "unknown",
+    ...(options.correlation_id?.match(/^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/)
+      ? { correlation_id: options.correlation_id }
+      : {}),
+    error_class:
+      typeof candidate?.name === "string" && /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(candidate.name)
+        ? candidate.name
+        : error instanceof Error
+          ? "Error"
+          : "UnknownError",
+    ...(typeof candidate?.code === "string" && /^[0-9A-Z]{5}$/.test(candidate.code)
+      ? { sqlstate: candidate.code }
+      : {}),
+    ...(typeof candidate?.message === "string" &&
+    /^DA_[A-Z][A-Z0-9_]{1,126}$/.test(candidate.message)
+      ? { marker: candidate.message }
+      : {}),
+  };
+  persistenceTransactionDiagnosticChannel.publish(diagnostic);
 
   return {
     ok: false,
@@ -191,7 +235,7 @@ export async function withAppTransaction<T>(
         // The original typed failure is more useful; the connection is discarded by release().
       }
     }
-    return transactionFailure(error);
+    return transactionFailure(error, options);
   } finally {
     client.release();
   }

@@ -6,10 +6,13 @@ import {
   type L2ArtifactDocument,
   l2ArtifactDocumentSchema,
   type PortResult,
+  runRuntimeEventSchema,
+  sha256ContentHash,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { containsPotentialPlaintextSecret } from "../secrets/secret-ref.js";
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
+import { mapDatabaseRuntimeFailure } from "./runtime-database-errors.js";
 import {
   PersistenceBoundaryError,
   type SqlClient,
@@ -27,7 +30,7 @@ const commandSecretRef = z
   .string()
   .regex(/^secretref:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
 const commandPayloadSchema = z.strictObject({
-  kind: stableCommandValue,
+  kind: z.literal("START_L2_RESEARCH"),
   mode: z.literal("L2").optional(),
   question_version: stableCommandValue.optional(),
   dataset_id: stableCommandValue.optional(),
@@ -70,14 +73,6 @@ export type PersistedRun = Readonly<{
   updated_at: string;
 }>;
 
-interface ExistingCommandRow {
-  readonly command_id: string;
-  readonly payload_hash: string;
-  readonly run_id: string;
-  readonly question: string;
-  readonly outbox_id: string | null;
-}
-
 interface RunRow {
   readonly app_id: string;
   readonly tenant_id: string;
@@ -97,7 +92,7 @@ interface ActiveArtifactRow {
 }
 
 interface FenceRow {
-  readonly active_fence: string | number;
+  readonly active_fence: string | number | null;
 }
 
 interface ArtifactDocumentRow {
@@ -106,6 +101,10 @@ interface ArtifactDocumentRow {
 
 interface CanonicalPayloadHashRow {
   readonly payload_hash: string;
+}
+
+interface JsonResultRow {
+  readonly result: unknown;
 }
 
 function invalidInput<T>(message: string): PortResult<T> {
@@ -129,46 +128,6 @@ function scopeValues(scope: {
   readonly environment: string;
 }): readonly [string, string, string] {
   return [scope.app_id, scope.tenant_id, scope.environment];
-}
-
-async function loadExistingCommand(
-  client: SqlClient,
-  scope: { readonly app_id: string; readonly tenant_id: string; readonly environment: string },
-  idempotencyKey: string,
-  principalId: string,
-): Promise<ExistingCommandRow | null> {
-  const result = await client.query<ExistingCommandRow>(
-    `select
-       record.command_id,
-       record.payload_hash,
-       command.run_id,
-       run.question,
-       outbox.outbox_id
-     from idempotency_records as record
-     join commands as command
-       on command.app_id = record.app_id
-      and command.tenant_id = record.tenant_id
-      and command.environment = record.environment
-      and command.command_id = record.command_id
-      and command.principal_id = record.principal_id
-     join runs as run
-       on run.app_id = command.app_id
-      and run.tenant_id = command.tenant_id
-      and run.environment = command.environment
-      and run.run_id = command.run_id
-     left join outbox
-       on outbox.app_id = command.app_id
-      and outbox.tenant_id = command.tenant_id
-      and outbox.environment = command.environment
-      and outbox.command_id = command.command_id
-     where record.app_id = $1
-       and record.tenant_id = $2
-       and record.environment = $3
-       and record.idempotency_key = $4
-       and record.principal_id = $5::uuid`,
-    [...scopeValues(scope), idempotencyKey, principalId],
-  );
-  return result.rows[0] ?? null;
 }
 
 function assertReferenceScope(
@@ -283,7 +242,7 @@ export function createPostgresRepository(
         pool,
         authorizer,
         capabilityInput,
-        { access: "WRITE" },
+        { access: "WRITE", map_database_error: mapDatabaseRuntimeFailure },
         async ({ capability, client }) => {
           if (!uuid.safeParse(capability.principal).success) {
             throw new PersistenceBoundaryError(
@@ -308,208 +267,56 @@ export function createPostgresRepository(
               "PostgreSQL 未返回有效的 Canonical Payload Hash。",
             );
           }
+          const initialEvent = runRuntimeEventSchema.parse({
+            schema_version: "1.0.0",
+            event_id: parsed.data.event_id,
+            scope: capability.scope,
+            run_id: parsed.data.run_id,
+            sequence: 1,
+            worker_fence: 0,
+            idempotency_key: `event:${parsed.data.event_id}`,
+            occurred_at: new Date().toISOString(),
+            event_type: "run.accepted",
+            payload: {
+              command_id: parsed.data.command_id,
+              payload_hash: payloadHash,
+            },
+          });
+          const initialEventHash = await sha256ContentHash(initialEvent);
 
-          await client.query(
-            `select pg_catalog.pg_advisory_xact_lock(
-               pg_catalog.hashtextextended($1::text, 0)
-             )`,
+          const accepted = await client.query<JsonResultRow>(
+            `select app_data_agent.accept_backend_run_command(
+               $1::jsonb, $2::text, $3::jsonb, $4::text
+             ) as result`,
             [
-              [
-                "data-agent:idempotency",
-                capability.scope.app_id,
-                capability.scope.tenant_id,
-                capability.scope.environment,
-                capability.principal,
-                parsed.data.idempotency_key,
-              ].join(":"),
+              canonicalizeJson(parsed.data),
+              payloadHash,
+              canonicalizeJson(initialEvent),
+              initialEventHash,
             ],
           );
-
-          const existing = await loadExistingCommand(
-            client,
-            capability.scope,
-            parsed.data.idempotency_key,
-            capability.principal,
-          );
-          if (existing) {
-            if (
-              existing.command_id !== parsed.data.command_id ||
-              existing.payload_hash !== payloadHash ||
-              existing.run_id !== parsed.data.run_id ||
-              existing.question !== parsed.data.question
-            ) {
-              throw new PersistenceBoundaryError(
-                "COMMAND_IDEMPOTENCY_CONFLICT",
-                "同一 Idempotency Key 已绑定不同 Command、Run、Question 或 Payload。",
-              );
-            }
-            return {
-              created: false,
-              run_id: existing.run_id,
-              command_id: existing.command_id,
-              outbox_id: existing.outbox_id,
-              payload_hash: existing.payload_hash,
-            };
-          }
-
-          const insertedRun = await client.query(
-            `insert into runs (
-               app_id,
-               tenant_id,
-               environment,
-               run_id,
-               principal_id,
-               status,
-               active_fence,
-               question
-             )
-             values ($1, $2, $3, $4, $5, 'QUEUED', 0, $6)
-             on conflict (app_id, tenant_id, environment, run_id) do nothing
-             returning run_id`,
-            [
-              ...scopeValues(capability.scope),
-              parsed.data.run_id,
-              capability.principal,
-              parsed.data.question,
-            ],
-          );
-          if (insertedRun.rowCount !== 1) {
+          const result = z
+            .strictObject({
+              created: z.boolean(),
+              run_id: uuid,
+              command_id: uuid,
+              outbox_id: uuid,
+              payload_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+            })
+            .safeParse(accepted.rows[0]?.result);
+          if (
+            !result.success ||
+            result.data.run_id !== parsed.data.run_id ||
+            result.data.command_id !== parsed.data.command_id ||
+            (result.data.created && result.data.outbox_id !== parsed.data.outbox_id) ||
+            result.data.payload_hash !== payloadHash
+          ) {
             throw new PersistenceBoundaryError(
-              "RUN_ALREADY_EXISTS",
-              "Run ID 已存在，不能附带另一个初始 Command。",
+              "PERSISTENCE_DATABASE_CONTRACT_INVALID",
+              "PostgreSQL 返回的 Command Acceptance 与请求不一致。",
             );
           }
-
-          await client.query(
-            `insert into commands (
-               app_id,
-               tenant_id,
-               environment,
-               command_id,
-               run_id,
-               principal_id,
-               idempotency_key,
-               payload_json,
-               payload_hash,
-               status
-             )
-             values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, 'ACCEPTED')`,
-            [
-              ...scopeValues(capability.scope),
-              parsed.data.command_id,
-              parsed.data.run_id,
-              capability.principal,
-              parsed.data.idempotency_key,
-              canonicalPayload,
-              payloadHash,
-            ],
-          );
-          await client.query(
-            `insert into idempotency_records (
-               app_id,
-               tenant_id,
-               environment,
-               principal_id,
-               idempotency_key,
-               command_id,
-               payload_hash
-             )
-             values ($1, $2, $3, $4, $5, $6, $7)`,
-            [
-              ...scopeValues(capability.scope),
-              capability.principal,
-              parsed.data.idempotency_key,
-              parsed.data.command_id,
-              payloadHash,
-            ],
-          );
-          await client.query(
-            `insert into run_events (
-               app_id,
-               tenant_id,
-               environment,
-               event_id,
-               run_id,
-               sequence,
-               event_type,
-               payload_json
-             )
-             values ($1, $2, $3, $4, $5, 1, 'run.accepted', $6::jsonb)`,
-            [
-              ...scopeValues(capability.scope),
-              parsed.data.event_id,
-              parsed.data.run_id,
-              canonicalizeJson({
-                command_id: parsed.data.command_id,
-                payload_hash: payloadHash,
-              }),
-            ],
-          );
-          await client.query(
-            `insert into outbox (
-               app_id,
-               tenant_id,
-               environment,
-               outbox_id,
-               run_id,
-               command_id,
-               topic,
-               payload_json,
-               status,
-               attempt_count,
-               available_at,
-               lease_token
-             )
-             values (
-               $1, $2, $3, $4, $5, $6, 'run.command.accepted', $7::jsonb,
-               'PENDING', 0, pg_catalog.clock_timestamp(), 0
-             )`,
-            [
-              ...scopeValues(capability.scope),
-              parsed.data.outbox_id,
-              parsed.data.run_id,
-              parsed.data.command_id,
-              canonicalizeJson({
-                command_id: parsed.data.command_id,
-                run_id: parsed.data.run_id,
-              }),
-            ],
-          );
-          await client.query(
-            `insert into audit_log (
-               app_id,
-               tenant_id,
-               environment,
-               audit_id,
-               principal_id,
-               action,
-               resource_type,
-               resource_id,
-               details
-             )
-             values (
-               $1, $2, $3, $4, $5, 'RUN_COMMAND_ACCEPTED', 'run', $6, $7::jsonb
-             )`,
-            [
-              ...scopeValues(capability.scope),
-              parsed.data.audit_id,
-              capability.principal,
-              parsed.data.run_id,
-              canonicalizeJson({
-                command_id: parsed.data.command_id,
-                payload_hash: payloadHash,
-                source: "repository",
-              }),
-            ],
-          );
-
-          return {
-            created: true,
-            run_id: parsed.data.run_id,
-            command_id: parsed.data.command_id,
-            outbox_id: parsed.data.outbox_id,
-            payload_hash: payloadHash,
-          };
+          return result.data;
         },
       );
     },
@@ -529,22 +336,32 @@ export function createPostgresRepository(
         async ({ capability, client }) => {
           const result = await client.query<RunRow>(
             `select
-               app_id,
-               tenant_id,
-               environment,
-               run_id,
-               principal_id,
-               status,
-               active_fence,
-               question,
-               created_at,
-               updated_at
-             from runs
-             where app_id = $1
-               and tenant_id = $2
-               and environment = $3
-               and run_id = $4
-               and principal_id = $5`,
+               run.app_id,
+               run.tenant_id,
+               run.environment,
+               run.run_id,
+               run.principal_id,
+               coalesce(projection.status, run.status) as status,
+               run.active_fence,
+               run.question,
+               run.created_at,
+               run.updated_at
+             from runs as run
+             left join lateral (
+               select candidate.status
+               from run_projections as candidate
+               where candidate.app_id = run.app_id
+                 and candidate.tenant_id = run.tenant_id
+                 and candidate.environment = run.environment
+                 and candidate.run_id = run.run_id
+               order by candidate.version desc
+               limit 1
+             ) as projection on true
+             where run.app_id = $1
+               and run.tenant_id = $2
+               and run.environment = $3
+               and run.run_id = $4
+               and run.principal_id = $5`,
             [...scopeValues(capability.scope), parsed.data.run_id, capability.principal],
           );
           const row = result.rows[0];
@@ -602,18 +419,13 @@ export function createPostgresRepository(
           assertReferenceScope(reference, capability.scope);
 
           const run = await client.query<FenceRow>(
-            `select active_fence
-             from runs
-             where app_id = $1
-               and tenant_id = $2
-               and environment = $3
-               and run_id = $4
-               and principal_id = $5
-             for update`,
-            [...scopeValues(capability.scope), reference.run_id, capability.principal],
+            `select app_data_agent.lock_owned_run_fence(
+               $1::uuid
+             ) as active_fence`,
+            [reference.run_id],
           );
           const activeFence = run.rows[0]?.active_fence;
-          if (activeFence === undefined) {
+          if (activeFence === undefined || activeFence === null) {
             throw new PersistenceBoundaryError(
               "RUN_NOT_FOUND_OR_DENIED",
               "Artifact 所属 Run 不存在或不属于当前 Principal。",

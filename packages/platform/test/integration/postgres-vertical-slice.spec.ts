@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { createPostgresDatasourceEgress } from "../../src/datasources/postgres-datasource-egress.js";
-import { createPostgresOutbox } from "../../src/outbox/postgres-outbox.js";
 import { createPostgresRepository } from "../../src/persistence/repository.js";
 import { adaptPgPool, withAppTransaction } from "../../src/persistence/transaction.js";
 import { createPostgresSecretRefRepository } from "../../src/secrets/postgres-secret-ref.js";
@@ -19,7 +18,7 @@ const databaseUrl = process.env.DATA_AGENT_TEST_DATABASE_URL;
 const adminDatabaseUrl = process.env.DATA_AGENT_TEST_ADMIN_DATABASE_URL;
 
 describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
-  "PostgreSQL authority + repository + outbox vertical slice",
+  "PostgreSQL authority + repository + runtime queue vertical slice",
   () => {
     const backendPool = new Pool({ connectionString: databaseUrl });
     const adminPool = new Pool({ connectionString: adminDatabaseUrl });
@@ -30,7 +29,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
       await Promise.all([backendPool.end(), adminPool.end()]);
     });
 
-    it("keeps command acceptance atomic and outbox publication fenced", async () => {
+    it("keeps command acceptance atomic and hands work to the U4 runtime queue", async () => {
       const resolved = await authorityOne.resolveForServerContext({
         deployment_id: DEPLOYMENT_ID,
         tenant_id: TENANT_ONE,
@@ -39,7 +38,6 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
       });
       if (!resolved.ok) throw new Error(resolved.error.code);
       const repository = createPostgresRepository(sqlPool, authorityOne.authorizer);
-      const outbox = createPostgresOutbox(sqlPool, authorityOne.authorizer);
       const command = {
         run_id: randomUUID(),
         command_id: randomUUID(),
@@ -112,29 +110,20 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)(
       );
       expect(rolledBack.rows[0]?.count).toBe(0);
 
-      const published: string[] = [];
-      expect(
-        await outbox.publishOne(
-          resolved.value,
-          { worker_id: "integration-worker", lease_duration_ms: 10_000 },
-          {
-            async publish(message) {
-              published.push(message.idempotency_key);
-            },
-          },
-        ),
-      ).toMatchObject({
-        ok: true,
-        value: { state: "PUBLISHED", outbox_id: command.outbox_id },
-      });
-      expect(published).toEqual([command.outbox_id]);
       const outboxState = await adminPool.query(
-        `select status, lease_token::text as lease_token
+        `select
+           status,
+           lease_token::text as lease_token,
+           queue_sequence::text as queue_sequence
          from app_data_agent.outbox
          where outbox_id = $1`,
         [command.outbox_id],
       );
-      expect(outboxState.rows[0]).toEqual({ status: "PUBLISHED", lease_token: "1" });
+      expect(outboxState.rows[0]).toEqual({
+        status: "PENDING",
+        lease_token: "0",
+        queue_sequence: "1",
+      });
     });
 
     it("prevents cross-tenant reads and forged capabilities on a privileged pool", async () => {

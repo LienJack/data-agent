@@ -2,16 +2,19 @@ import { describe, expect, it } from "vitest";
 import * as platform from "../../src/index.js";
 
 describe("platform package public surface", () => {
-  it("exports only production, scope-aware U2 entry points", () => {
+  it("exports only production, scope-aware U2/U4 entry points", () => {
     expect(Object.keys(platform).sort()).toEqual([
+      "PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL",
       "PersistenceBoundaryError",
       "adaptPgPool",
       "containsPotentialPlaintextSecret",
       "createCacheNamespace",
       "createPostgresCapabilityAuthority",
       "createPostgresDatasourceEgress",
-      "createPostgresOutbox",
       "createPostgresRepository",
+      "createPostgresRunControl",
+      "createPostgresRunEventStore",
+      "createPostgresRunQueue",
       "createPostgresSecretRefRepository",
       "createScopedUpstashCache",
       "createStorageNamespace",

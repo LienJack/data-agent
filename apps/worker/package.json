@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test/credentialed-provider-certification.spec.ts test/runs",
     "test:integration": "vitest run test/integration --passWithNoTests=false",
     "test:providers": "vitest run test/credentialed-provider-certification.spec.ts",
     "credentialed:smoke": "tsx src/credentialed-provider-smoke-cli.ts"

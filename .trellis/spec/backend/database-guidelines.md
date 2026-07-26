@@ -1,6 +1,6 @@
 # 数据库与共享 Supabase 规范
 
-> 本文只记录 U2 已实现并由 PostgreSQL 17 烟测覆盖的约定。
+> 本文记录 U2/U4 已实现并由 PostgreSQL 17 烟测覆盖的约定。
 
 ## 权威边界
 
@@ -64,6 +64,7 @@ app_id + tenant_id + environment + object_id
 
 ```text
 principal-scoped advisory idempotency lock
+  -> app/tenant/environment/run-scoped advisory lock
   -> existing binding check
   -> run
   -> command
@@ -75,27 +76,118 @@ principal-scoped advisory idempotency lock
 
 先写 Command 再写 Idempotency Record，避免 Idempotency 的 SELECT RLS 在
 `RETURNING` 阶段找不到关联 Command。任何一步失败，整个事务回滚。
+同一 Scope 下对同一 `run_id` 的并发首写必须先取得 Run 级事务 Advisory Lock；胜者提交
+后，败者稳定返回非重试的 `DA_RUN_ALREADY_EXISTS`，不能泄漏原生 `23505`，也不能留下
+Command、Idempotency、Event、Outbox 或 Audit 的半成品。
+Browser API 与 Backend Repository 必须构造完全相同的
+`data-agent:run:<app_id>:<tenant_id>:<environment>:<run_id>` 锁键，不能只在单一入口
+内部防重。
 `payload_hash` 统一调用 `platform.canonical_sha256(jsonb)` 计算；Command 表以
 Canonical CHECK 拒绝调用方提供的分歧 Hash，Idempotency Record 通过复合外键绑定同一
 Requester、Command 与 Hash。
 Command Payload 只接受与 TypeScript 相同的严格字段集合：
 `kind/mode/question_version/dataset_id/secret_refs`；未知字段、非规范 SecretRef、
 非 Canonical Hash 均在数据库边界失败关闭。
+首个 Run Command 的 `kind` 只能是 `START_L2_RESEARCH`；`RESUME_RUN` 仅允许由
+`request_run_control` 的 Resume 状态迁移生成，不能经 Browser 或 Repository 初始接收
+入口伪造。
 
-Outbox 调度只能调用以下窄函数，不能给 Backend Role 表级 UPDATE 权限：
+U4 已把 Transactional Outbox 收敛为 Durable Run Queue。旧
+`claim_outbox`、`publish_outbox`、`retry_outbox` 与 `advance_run_fence`
+会绕过 Attempt、Projection 和 Fence 生命周期，因此必须对全部应用角色撤权，也不得再
+导出对应 TypeScript Adapter。
 
-- `app_data_agent.claim_outbox`
-- `app_data_agent.publish_outbox`
-- `app_data_agent.retry_outbox`
+Run 的身份、Question、Status、Fence 与时间线不可直接 UPDATE。Worker 只能通过 U4
+Runtime 窄函数推进；Artifact/Certification 需要锁定本人 Run 时，只能调用完整
+App/Tenant/Environment/Principal 绑定的 `lock_owned_run_fence(run_id)`。
 
-Lease Owner、Lease Token 与过期时间必须同时匹配；Outbox 的 `(command_id, run_id)`
-必须通过复合外键指向同一 Command，不能把别人的 Run 当作待发布载荷；Sink 使用
-`outbox_id` 作为幂等键。
+## 持久 Run 运行时
 
-Run 的身份、Question、Status 与时间线不可直接 UPDATE。Worker Fence 只能通过
-`app_data_agent.advance_run_fence(run_id, expected_fence)` 做单调 CAS；Backend 获得的
-窄列 UPDATE 权限只用于 PostgreSQL `SELECT ... FOR UPDATE`，Trigger 会拒绝绕过函数的
-实际改写。
+U4 继续复用 Transactional Outbox 作为首版 PostgreSQL Run Queue，不引入第二套消息
+权威。`run_attempts`、`run_projections`、`run_checkpoints` 与
+`run_effect_receipts` 都显式带完整 App Scope 和 Run ID。
+
+固定规则：
+
+- 新 Run 的首条 Outbox 固定 `queue_sequence=1`，同时令
+  `runs.next_queue_sequence=2`。已有 Run 的所有入队入口必须先
+  `SELECT ... FOR UPDATE` 锁定完整 Scope 的 `runs` 行，再在同一事务把旧
+  `next_queue_sequence` 写入 Outbox 并只递增一次 Counter。唯一键固定为
+  `(app_id, tenant_id, environment, run_id, queue_sequence)`；
+  `queue_sequence` 不得有 Identity/Sequence Default，Backend 也不得直接 UPDATE
+  Counter 或 INSERT Outbox。
+- Claim 使用 `FOR UPDATE SKIP LOCKED`，在同一事务内创建 Attempt、提升 Lease Token
+  与 `runs.active_fence`；同一 Run 同时最多一个活动 Attempt。已过期且耗尽第 5 次投递
+  预算的 Head 使用独立清理预算收敛为 Dead Letter，不能占用
+  `requested_limit` 的正常领取名额，也不能在持续繁忙流量下永久饥饿。
+- Claim、Heartbeat、Event Append、Checkpoint、Effect Receipt 等 Worker 数据面入口
+  必须精确匹配 `runs.principal_id = current principal_id`。Owner 的同租户跨 Principal
+  权限只属于 Cancel/Resume 等控制面，不得成为领取或提交他人 Run 的数据面旁路。
+- `run.accepted.occurred_at` 可保留规范化调用时间，但 Run、Command、Idempotency、
+  Outbox 与 Audit 的接收元数据必须统一使用 PostgreSQL 签发的 `accept_at`，且 Outbox
+  `available_at=accept_at`。未来 Event 时间不能延迟已接收任务的领取。
+- Worker 可能在 Claim 后、提交 `run.leased` 前崩溃，因此投影的 `attempt_count`
+  必须采用权威 Event Payload 中的 Attempt 编号；不得假设每个 Attempt 都已经投影，
+  也不得用 Projection 当前值加一。
+- Heartbeat、Event Append、Checkpoint 与 Side Effect Commit 必须先按统一顺序锁定
+  Run、Outbox、Attempt 等身份行，再取 `clock_timestamp()` 检查 Outbox 与 Attempt
+  Lease；不得使用等待行锁之前缓存的时间放行已经过期的写入。Heartbeat 时间必须相对
+  两张 Lease 行严格单调，交错调用不能倒退或把另一次合法续租误判为过期。
+- Complete、Retry 也必须同时匹配 Outbox、Attempt、Worker、Lease Token、Fence 与当前
+  Principal。
+- Claim 必须把 `lease_duration_ms` 随 Lease 返回；Runner 在 `run.leased` 后立即续租，
+  后续 Heartbeat 间隔不得大于 Lease Duration 的三分之一。
+- Retry Delay 不得小于 1 秒；Lease 必须区分 Run 全局单调 `attempt_no` 与当前 Outbox
+  的 `delivery_attempt_no`。单个 Outbox 最多自动交付 5 次，显式 Resume 创建新 Outbox
+  并重置交付预算。预算耗尽时必须在同一事务追加 `run.failed`，并把 Projection、Run、
+  Command 和 Outbox 分别结算为 `FAILED / FAILED / FAILED / DEAD_LETTER`，禁止同一
+  Outbox 自动签发第 6 次交付。
+- Run Event 是追加事实；Projection 只能随相同事务中的连续 Event 前进。Event、
+  Projection 与 Snapshot 都保存 Canonical SHA-256，重放结果必须与 Live Projection
+  一致。
+- Cancel 原子追加 `run.cancel_requested` 并提升 Fence；数据库拒绝旧 Worker 的迟到
+  Receipt、Checkpoint、Artifact 和 Completion。
+- `lock_owned_run_fence` 只在本人 Run 与最新 Projection 都是 `RUNNING`、Fence 一致、
+  同 Fence Attempt 为 `ACTIVE`、Outbox 为 `LEASED`，且两张 Lease 均未过期时返回
+  Fence。Retry、Suspend、Terminal、尚未投影 `run.leased` 与过期 Lease 一律返回空；
+  Artifact 与 Model Certification 不得只凭 `runs.active_fence` 提交。
+- Resume 只允许从 `WAITING` 进入 `QUEUED`，创建独立 `RESUME_RUN` Command/Outbox，
+  新 Attempt 使用更高 Fence。
+- Mastra Snapshot 固定标记 `EXECUTION_SNAPSHOT_ONLY`，并绑定 Workflow Definition
+  Revision、Mastra Core Version、Attempt、Event Sequence、Fence 与 Active Artifact；
+  它不能替代 Event/Artifact Authority。持久 Snapshot 的 Hash 只能由 PostgreSQL
+  `commit_run_checkpoint` 对无 Hash 正文计算并返回；Worker 必须原样传播该 Hash，
+  不能用 TypeScript `JSON.stringify` 结果复算或覆盖。读取时同时核对 Binding、持久列与
+  PostgreSQL 重算值。
+- `run.checkpointed` 只能激活与“追加该事件前的当前 Projection Version”完全相同的
+  Snapshot，Event 的 `active_artifact_ref` 还必须与 Snapshot Binding 精确一致；
+  任一不匹配都返回 `DA_RUN_EVENT_TRANSITION_INVALID`，不得激活过期 Snapshot 或换绑
+  Artifact。
+- SQL/Eval Receipt 的内容键是 `run_id + effect_kind + input_hash`。Receipt 已提交而
+  Event 中断时，后继 Attempt 重用 Receipt，并通过完整 Scope、Run 与 Event Dedupe Key
+  的唯一索引精确判断是否需要补 Event；禁止在每次 Side Effect 上扫描整个 Event 历史。
+  外部调用完成但 Receipt 未提交的窗口仍要求目标操作只读或幂等。
+- Worker 已读取的 `RunProjectionRecord` 可以作为 Append 的 Compare-and-Swap 输入，
+  Adapter 必须先校验其 Scope、Run 与 Content Hash；PostgreSQL 仍在同一事务内锁定并
+  复算权威 Projection，不能省略数据库状态机校验。
+- Redis/Upstash 只可作为唤醒和缓存；SSE 断线恢复游标必须使用 PostgreSQL Event
+  Sequence/Projection Version，并按有界批次补洞，不能一次物化无界 Run 历史。
+
+所有 Runtime 写入都通过窄函数完成：
+
+- `app_data_agent.accept_backend_run_command`
+- `app_data_agent.claim_run_work`
+- `app_data_agent.heartbeat_run_work`
+- `app_data_agent.complete_run_work`
+- `app_data_agent.retry_run_work`
+- `app_data_agent.append_run_event`
+- `app_data_agent.commit_run_checkpoint`
+- `app_data_agent.commit_run_effect_receipt`
+- `app_data_agent.request_run_control`
+- `app_data_agent.lock_owned_run_fence`
+
+详细状态机、恢复流程和诊断查询见
+`docs/runbooks/durable-run-runtime.md`。
 
 ## Migration
 

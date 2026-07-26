@@ -60,10 +60,10 @@ select test_support.assert_true(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) = 5
+    select pg_catalog.count(*) = 14
     from platform.migration_ledger
   ),
-  'platform 与四个 app migration 必须分别记账'
+  'platform 与十三个 app migration 必须分别记账'
 );
 
 select test_support.assert_raises(
@@ -203,7 +203,7 @@ select test_support.assert_true(
 );
 
 select test_support.assert_true(
-  pg_catalog.has_column_privilege(
+  not pg_catalog.has_column_privilege(
     'data_agent_backend',
     'app_data_agent.commands',
     'status',
@@ -215,10 +215,10 @@ select test_support.assert_true(
     'payload_json',
     'UPDATE'
   ),
-  '后台只能推进 Command status，不能改写命令身份或 payload'
+  '后台不得直接更新 Command status 或 payload，结算只能经过窄函数'
 );
 select test_support.assert_true(
-  pg_catalog.has_column_privilege(
+  not pg_catalog.has_column_privilege(
     'data_agent_backend',
     'app_data_agent.runs',
     'active_fence',
@@ -230,7 +230,7 @@ select test_support.assert_true(
     'question',
     'UPDATE'
   ),
-  'Run 只保留 SELECT FOR UPDATE 所需的窄列权限，实际 mutation 由 guard 拒绝'
+  '后台不得直接更新 Run fence 或 question，推进只能经过窄函数'
 );
 
 select test_support.assert_true(
@@ -429,7 +429,7 @@ select test_support.assert_raises(
       'viewer must not write'
     )
   $assert$,
-  'row-level security'
+  'permission denied for table runs'
 );
 rollback;
 
@@ -447,8 +447,8 @@ select api.data_agent__accept_run_command(
   '00000000-0000-4000-8000-00000000c201'::uuid,
   'accept-first-run',
   'first atomic question',
-  '{"kind":"start"}'::jsonb,
-  'sha256:a2a5648f53b40c87f31893886a2312b94b1f73c6625406d3152e507ebf854567'
+  '{"kind":"START_L2_RESEARCH"}'::jsonb,
+  'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
 );
 
 select test_support.assert_true(
@@ -460,11 +460,26 @@ select test_support.assert_true(
       '00000000-0000-4000-8000-00000000c201'::uuid,
       'accept-first-run',
       'first atomic question',
-      '{"kind":"start"}'::jsonb,
-      'sha256:a2a5648f53b40c87f31893886a2312b94b1f73c6625406d3152e507ebf854567'
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
     ) ->> 'replayed'
   )::boolean,
   '同 payload 重放必须返回已有原子命令'
+);
+select test_support.assert_true(
+  not (
+    api.data_agent__accept_run_command(
+      '00000000-0000-4000-8000-00000000de01'::uuid,
+      '00000000-0000-4000-8000-00000000aa11'::uuid,
+      '00000000-0000-4000-8000-00000000a201'::uuid,
+      '00000000-0000-4000-8000-00000000c201'::uuid,
+      'accept-first-run',
+      'first atomic question',
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
+    ) -> 'run' ? 'next_queue_sequence'
+  ),
+  'Authenticated Run 响应不得泄露内部 Queue Counter'
 );
 
 select test_support.assert_raises(
@@ -478,6 +493,21 @@ select test_support.assert_raises(
       'this run must not persist',
       '{"nested":[{"password":"plaintext"}]}'::jsonb,
       'sha256:b21d988f027e02085f88dc361fdb7ce86a6a0e477b99a00c4b0ab84e940289aa'
+    )
+  $assert$,
+  'DA_COMMAND_PAYLOAD_INVALID'
+);
+select test_support.assert_raises(
+  $assert$
+    select api.data_agent__accept_run_command(
+      '00000000-0000-4000-8000-00000000de01'::uuid,
+      '00000000-0000-4000-8000-00000000aa11'::uuid,
+      '00000000-0000-4000-8000-00000000a20e'::uuid,
+      '00000000-0000-4000-8000-00000000c20e'::uuid,
+      'reject-resume-as-initial-command',
+      'resume is not an initial command',
+      '{"kind":"RESUME_RUN"}'::jsonb,
+      'sha256:98091ce0aa87efebe56e04c1fbeedce5b53840c1a4185cc59dab39abef0b6c9c'
     )
   $assert$,
   'DA_COMMAND_PAYLOAD_INVALID'
@@ -512,7 +542,39 @@ select test_support.assert_raises(
   $assert$,
   'DA_COMMAND_PAYLOAD_INVALID'
 );
+select test_support.assert_raises(
+  $assert$
+    select api.data_agent__accept_run_command(
+      '00000000-0000-4000-8000-00000000de01'::uuid,
+      '00000000-0000-4000-8000-00000000aa11'::uuid,
+      '00000000-0000-4000-8000-00000000a20d'::uuid,
+      '00000000-0000-4000-8000-00000000c20d'::uuid,
+      'token=sk-browser-idempotency-key-should-not-persist',
+      'suspicious idempotency key must not persist',
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
+    )
+  $assert$,
+  'DA_COMMAND_PAYLOAD_INVALID'
+);
 reset role;
+select test_support.assert_true(
+  (
+    select run.next_queue_sequence = 2
+      and message.queue_sequence = 1
+    from app_data_agent.runs as run
+    join app_data_agent.outbox as message
+      on message.app_id = run.app_id
+     and message.tenant_id = run.tenant_id
+     and message.environment = run.environment
+     and message.run_id = run.run_id
+    where run.run_id =
+        '00000000-0000-4000-8000-00000000a201'::uuid
+      and message.command_id =
+        '00000000-0000-4000-8000-00000000c201'::uuid
+  ),
+  'Browser 首写必须原子落库 qseq=1，并把 Run Counter 推进到 2'
+);
 select test_support.assert_true(
   not exists (
     select 1
@@ -532,6 +594,84 @@ select test_support.assert_true(
   ),
   'Question Credential 或未知 payload 字段被拒后不得留下 Run'
 );
+select test_support.assert_true(
+  not exists (
+    select 1
+    from app_data_agent.runs as run
+    where run.run_id = '00000000-0000-4000-8000-00000000a20e'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.commands as command
+    where command.command_id =
+      '00000000-0000-4000-8000-00000000c20e'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.idempotency_records as record
+    where record.idempotency_key =
+      'reject-resume-as-initial-command'
+  )
+  and not exists (
+    select 1
+    from app_data_agent.run_events as event
+    where event.run_id = '00000000-0000-4000-8000-00000000a20e'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.outbox as message
+    where message.run_id = '00000000-0000-4000-8000-00000000a20e'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.audit_log as audit
+    where audit.resource_id in (
+      '00000000-0000-4000-8000-00000000a20e',
+      '00000000-0000-4000-8000-00000000c20e'
+    )
+  ),
+  'RESUME_RUN 作为初始命令被拒后必须保持零持久化'
+);
+select test_support.assert_true(
+  not exists (
+    select 1
+    from app_data_agent.runs as run
+    where run.run_id = '00000000-0000-4000-8000-00000000a20d'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.commands as command
+    where command.command_id =
+      '00000000-0000-4000-8000-00000000c20d'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.idempotency_records as record
+    where record.idempotency_key =
+      'token=sk-browser-idempotency-key-should-not-persist'
+  )
+  and not exists (
+    select 1
+    from app_data_agent.run_events as event
+    where event.run_id = '00000000-0000-4000-8000-00000000a20d'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.outbox as message
+    where message.run_id = '00000000-0000-4000-8000-00000000a20d'::uuid
+      or message.command_id =
+        '00000000-0000-4000-8000-00000000c20d'::uuid
+  )
+  and not exists (
+    select 1
+    from app_data_agent.audit_log as audit
+    where audit.resource_id in (
+      '00000000-0000-4000-8000-00000000a20d',
+      '00000000-0000-4000-8000-00000000c20d'
+    )
+  ),
+  'Browser 疑似 token 幂等键被拒后必须保持零持久化'
+);
 set role authenticated;
 select pg_catalog.set_config(
   'request.jwt.claims',
@@ -548,8 +688,8 @@ select test_support.assert_raises(
       '00000000-0000-4000-8000-00000000c201'::uuid,
       'accept-first-run',
       'first atomic question',
-      '{"kind":"different"}'::jsonb,
-      'sha256:aa64df940dffc9f37b8e190c026cad047bf056853ef98c04afb64146f8b4c87e'
+      '{"kind":"START_L2_RESEARCH","mode":"L2"}'::jsonb,
+      'sha256:a51cad25baa6916772c6e63149ac066d5059dc6c5d721a66c2d35fa3121bd418'
     )
   $assert$,
   'DA_IDEMPOTENCY_CONFLICT'
@@ -564,8 +704,8 @@ select test_support.assert_raises(
       '00000000-0000-4000-8000-00000000c201'::uuid,
       'accept-first-run',
       'first atomic question',
-      '{"kind":"same-hash-but-different-payload"}'::jsonb,
-      'sha256:a2a5648f53b40c87f31893886a2312b94b1f73c6625406d3152e507ebf854567'
+      '{"kind":"START_L2_RESEARCH","mode":"L2"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
     )
   $assert$,
   'DA_COMMAND_PAYLOAD_INVALID'
@@ -580,11 +720,11 @@ select test_support.assert_raises(
       '00000000-0000-4000-8000-00000000c201'::uuid,
       'must-rollback-after-run-insert',
       'this run must roll back',
-      '{"kind":"forced-command-conflict"}'::jsonb,
-      'sha256:f0c80efdcae6450d7ab5694f5f23443b9ff602c9616c01af142206443b0f33cc'
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
     )
   $assert$,
-  'duplicate key'
+  'DA_COMMAND_IDENTITY_CONFLICT'
 );
 
 select test_support.assert_true(
@@ -596,6 +736,16 @@ select test_support.assert_true(
     ) ->> 'question'
   ) = 'first atomic question',
   '同租户读 RPC 必须返回原子创建的 Run'
+);
+select test_support.assert_true(
+  not (
+    api.data_agent__get_run(
+      '00000000-0000-4000-8000-00000000de01'::uuid,
+      '00000000-0000-4000-8000-00000000aa11'::uuid,
+      '00000000-0000-4000-8000-00000000a201'::uuid
+    ) ? 'next_queue_sequence'
+  ),
+  'Authenticated Run 读取不得暴露内部 Queue Counter'
 );
 
 select pg_catalog.set_config(
@@ -626,7 +776,17 @@ select test_support.assert_raises(
       '00000000-0000-4000-8000-00000000a101'::uuid
     )
   $assert$,
-  'DA_OBJECT_FORBIDDEN'
+  'DA_RUN_NOT_FOUND'
+);
+select test_support.assert_raises(
+  $assert$
+    select api.data_agent__get_run(
+      '00000000-0000-4000-8000-00000000de01'::uuid,
+      '00000000-0000-4000-8000-00000000aa11'::uuid,
+      '00000000-0000-4000-8000-00000000a2ff'::uuid
+    )
+  $assert$,
+  'DA_RUN_NOT_FOUND'
 );
 
 select pg_catalog.set_config(
@@ -648,8 +808,8 @@ select test_support.assert_true(
       '00000000-0000-4000-8000-00000000c208'::uuid,
       'accept-first-run',
       'analyst independent idempotency namespace',
-      '{"kind":"start"}'::jsonb,
-      'sha256:a2a5648f53b40c87f31893886a2312b94b1f73c6625406d3152e507ebf854567'
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
       ) as result
     ) as accepted
   ),
@@ -657,17 +817,26 @@ select test_support.assert_true(
 );
 select test_support.assert_raises(
   $assert$
-    select api.data_agent__submit_command(
+    select api.data_agent__accept_run_command(
       '00000000-0000-4000-8000-00000000de01'::uuid,
       '00000000-0000-4000-8000-00000000aa11'::uuid,
-      '00000000-0000-4000-8000-00000000c206'::uuid,
-      '00000000-0000-4000-8000-00000000a101'::uuid,
-      'analyst-other-principal-run',
-      '{"kind":"inject"}'::jsonb,
-      'sha256:f3aa5ad28d5ee437f0ce40b15b0fea1be2bee3cdbbe77aa61c200b9db2a55538'
+      '00000000-0000-4000-8000-00000000a20f'::uuid,
+      '00000000-0000-4000-8000-00000000c201'::uuid,
+      'cross-principal-command-id-collision',
+      'cross principal collision must stay sanitized',
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
     )
   $assert$,
-  'DA_OBJECT_FORBIDDEN'
+  'DA_COMMAND_IDENTITY_CONFLICT'
+);
+select test_support.assert_true(
+  not pg_catalog.has_function_privilege(
+    'authenticated',
+    'api.data_agent__submit_command(uuid,uuid,uuid,uuid,text,jsonb,text)',
+    'EXECUTE'
+  ),
+  'U4 必须撤销不兼容的 legacy submit_command'
 );
 
 select pg_catalog.set_config(
@@ -711,6 +880,17 @@ select test_support.assert_raises(
 reset role;
 
 select test_support.assert_true(
+  exists (
+    select 1
+    from platform.api_operation_registry as operation
+    where operation.app_id =
+      '00000000-0000-4000-8000-00000000da01'::uuid
+      and operation.operation_name = 'submit_command'
+  ),
+  'Append-only API Registry 必须保留 legacy submit_command 的历史声明'
+);
+
+select test_support.assert_true(
   (
     select pg_catalog.count(*) = 2
       and pg_catalog.count(distinct record.principal_id) = 2
@@ -726,17 +906,23 @@ select test_support.assert_true(
   not exists (
     select 1
     from app_data_agent.runs as run
-    where run.run_id = '00000000-0000-4000-8000-00000000a203'::uuid
+    where run.run_id in (
+      '00000000-0000-4000-8000-00000000a203'::uuid,
+      '00000000-0000-4000-8000-00000000a20f'::uuid
+    )
   ),
-  'accept RPC 后半段失败时不得留下孤儿 Run'
+  '同 Principal 或跨 Principal Command ID 冲突都不得留下孤儿 Run'
 );
 select test_support.assert_true(
   not exists (
     select 1
     from app_data_agent.idempotency_records as record
-    where record.idempotency_key = 'must-rollback-after-run-insert'
+    where record.idempotency_key in (
+      'must-rollback-after-run-insert',
+      'cross-principal-command-id-collision'
+    )
   ),
-  'accept RPC 失败时幂等记录也必须回滚'
+  'Command ID 冲突时幂等记录也必须回滚'
 );
 select test_support.assert_true(
   (
@@ -1068,6 +1254,19 @@ values (
 delete from storage.objects
 where id = '00000000-0000-4000-8000-00000000c305'::uuid;
 
+select test_support.assert_true(
+  app_data_agent.lock_owned_run_fence(
+    '00000000-0000-4000-8000-00000000a201'::uuid
+  ) is null
+  and app_data_agent.lock_owned_run_fence(
+    '00000000-0000-4000-8000-00000000a102'::uuid
+  ) is null
+  and app_data_agent.lock_owned_run_fence(
+    '00000000-0000-4000-8000-00000000a208'::uuid
+  ) is null,
+  'Fence 行锁必须拒绝未领取 Run、跨 Tenant 与同 Tenant 不同 Principal 的 Run'
+);
+
 select test_support.assert_raises(
   $assert$
     update app_data_agent.outbox
@@ -1093,7 +1292,7 @@ select test_support.assert_raises(
     set status = 'SUCCEEDED'
     where command_id = '00000000-0000-4000-8000-00000000c201'::uuid
   $assert$,
-  'DA_COMMAND_STATUS_TRANSITION_INVALID'
+  'permission denied'
 );
 select test_support.assert_raises(
   $assert$
@@ -1101,14 +1300,7 @@ select test_support.assert_raises(
     set active_fence = active_fence + 1
     where run_id = '00000000-0000-4000-8000-00000000a201'::uuid
   $assert$,
-  'DA_RUN_IMMUTABLE'
-);
-select test_support.assert_true(
-  app_data_agent.advance_run_fence(
-    '00000000-0000-4000-8000-00000000a208'::uuid,
-    0
-  ) = 1,
-  'Run fence 只能通过窄 CAS authority 单调推进'
+  'permission denied'
 );
 select test_support.assert_raises(
   $assert$
@@ -1117,7 +1309,7 @@ select test_support.assert_raises(
       0
     )
   $assert$,
-  'DA_RUN_FENCE_STALE_OR_FORBIDDEN'
+  'permission denied for function advance_run_fence'
 );
 select test_support.assert_raises(
   $assert$
@@ -1140,11 +1332,11 @@ select test_support.assert_raises(
       '00000000-0000-4000-8000-00000000a201'::uuid,
       '00000000-0000-4000-8000-000000001006'::uuid,
       'poison-other-requester',
-      '{"kind":"start"}'::jsonb,
-      'sha256:a2a5648f53b40c87f31893886a2312b94b1f73c6625406d3152e507ebf854567'
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
+      'sha256:9b70cc1f348a75528cb84012b2f8b1946594461c0df5f95682e4ea0b5e88dd86'
     )
   $assert$,
-  'row-level security'
+  'permission denied for table commands'
 );
 select test_support.assert_raises(
   $assert$
@@ -1167,11 +1359,11 @@ select test_support.assert_raises(
       '00000000-0000-4000-8000-00000000a201'::uuid,
       '00000000-0000-4000-8000-000000001001'::uuid,
       'forged-payload-hash',
-      '{"kind":"start"}'::jsonb,
+      '{"kind":"START_L2_RESEARCH"}'::jsonb,
       'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
     )
   $assert$,
-  'check constraint'
+  'permission denied for table commands'
 );
 select test_support.assert_raises(
   $assert$
@@ -1196,7 +1388,7 @@ select test_support.assert_raises(
       '{"commandId":"00000000-0000-4000-8000-00000000c208"}'::jsonb
     )
   $assert$,
-  'foreign key constraint'
+  'permission denied for table outbox'
 );
 select test_support.assert_raises(
   $assert$
@@ -1221,7 +1413,7 @@ select test_support.assert_raises(
       '{"password":"plaintext"}'::jsonb
     )
   $assert$,
-  'check constraint'
+  'permission denied for table run_events'
 );
 select test_support.assert_raises(
   $assert$
@@ -1246,7 +1438,7 @@ select test_support.assert_raises(
       '{"password":"plaintext"}'::jsonb
     )
   $assert$,
-  'check constraint'
+  'permission denied for table outbox'
 );
 select test_support.assert_raises(
   $assert$
@@ -1273,7 +1465,7 @@ select test_support.assert_raises(
       '{"password":"plaintext"}'::jsonb
     )
   $assert$,
-  'check constraint'
+  'permission denied for table audit_log'
 );
 select test_support.assert_raises(
   $assert$
@@ -1300,1256 +1492,54 @@ select test_support.assert_raises(
       '{}'::jsonb
     )
   $assert$,
-  'row-level security'
+  'permission denied for table audit_log'
 );
 
 select test_support.assert_raises(
   $assert$
-    select * from app_data_agent.claim_outbox('worker-null-limit', null, 60)
+    select * from app_data_agent.claim_outbox('legacy-worker', 1, 60)
   $assert$,
-  'DA_OUTBOX_LIMIT_INVALID'
+  'permission denied for function claim_outbox'
 );
 select test_support.assert_raises(
   $assert$
-    select * from app_data_agent.claim_outbox(null, 10, 60)
+    select app_data_agent.publish_outbox(
+      '00000000-0000-4000-8000-00000000b201'::uuid,
+      'legacy-worker',
+      1
+    )
   $assert$,
-  'DA_OUTBOX_WORKER_INVALID'
-);
-select test_support.assert_raises(
-  $assert$
-    select * from app_data_agent.claim_outbox('worker-null-lease', 10, null)
-  $assert$,
-  'DA_OUTBOX_LEASE_INVALID'
-);
-select test_support.assert_true(
-  (
-    select pg_catalog.count(*) = 2
-    from app_data_agent.claim_outbox('worker-one', 10, 60)
-  ),
-  'owner outbox worker 必须原子领取本 Tenant 可见的 ready messages'
-);
-select test_support.assert_true(
-  (
-    select message.lease_token = 1
-      and message.attempt_count = 1
-      and message.status = 'LEASED'
-    from app_data_agent.outbox as message
-    where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-  ),
-  '首次 lease 必须把单调 fence 与 attempt 同时递增'
-);
-select test_support.assert_true(
-  not app_data_agent.publish_outbox(
-    (
-      select message.outbox_id
-      from app_data_agent.outbox as message
-      where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-    ),
-    'worker-one',
-    0
-  ),
-  '过期 fence 不得发布 outbox'
-);
-select test_support.assert_true(
-  not app_data_agent.retry_outbox(
-    (
-      select message.outbox_id
-      from app_data_agent.outbox as message
-      where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-    ),
-    'worker-one',
-    0,
-    0
-  ),
-  '过期 fence 不得把 outbox 放回重试队列'
+  'permission denied for function publish_outbox'
 );
 select test_support.assert_raises(
   $assert$
     select app_data_agent.retry_outbox(
-      (
-        select message.outbox_id
-        from app_data_agent.outbox as message
-        where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-      ),
-      'worker-one',
+      '00000000-0000-4000-8000-00000000b201'::uuid,
+      'legacy-worker',
       1,
-      null
+      1000
     )
   $assert$,
-  'DA_OUTBOX_RETRY_DELAY_INVALID'
-);
-select test_support.assert_true(
-  app_data_agent.retry_outbox(
-    (
-      select message.outbox_id
-      from app_data_agent.outbox as message
-      where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-    ),
-    'worker-one',
-    1,
-    0
-  ),
-  '当前 fence 才能把 outbox 放回重试队列'
-);
-select test_support.assert_true(
-  (
-    select message.status = 'PENDING'
-      and message.lease_token = 1
-      and message.attempt_count = 1
-      and message.lease_owner is null
-    from app_data_agent.outbox as message
-    where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-  ),
-  'retry 必须保留单调 fence 和 attempt，并清空 lease'
-);
-select test_support.assert_true(
-  (
-    select pg_catalog.count(*) = 1
-    from app_data_agent.claim_outbox('worker-two', 10, 60)
-  ),
-  'retry 后的 ready message 必须可再次原子领取'
-);
-select test_support.assert_true(
-  (
-    select message.lease_token = 2
-      and message.attempt_count = 2
-      and message.status = 'LEASED'
-      and message.lease_owner = 'worker-two'
-    from app_data_agent.outbox as message
-    where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-  ),
-  '重新领取必须单调递增 fence 与 attempt'
-);
-select test_support.assert_true(
-  not app_data_agent.publish_outbox(
-    (
-      select message.outbox_id
-      from app_data_agent.outbox as message
-      where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-    ),
-    'worker-two',
-    1
-  ),
-  '重试前的 fence 不得发布重新领取的 outbox'
-);
-select test_support.assert_true(
-  app_data_agent.publish_outbox(
-    (
-      select message.outbox_id
-      from app_data_agent.outbox as message
-      where message.run_id = '00000000-0000-4000-8000-00000000a201'::uuid
-    ),
-    'worker-two',
-    2
-  ),
-  '重新领取后的当前 fence 才能发布 outbox'
+  'permission denied for function retry_outbox'
 );
 commit;
 
-select test_support.assert_true(
-  not pg_catalog.has_table_privilege(
-    'data_agent_backend',
-    'app_data_agent.secret_refs',
-    'UPDATE'
-  ),
-  'SecretRef metadata 只能通过 CAS 函数更新'
-);
-select test_support.assert_true(
-  not pg_catalog.has_table_privilege(
-    'data_agent_secret_authority',
-    'app_data_agent.secret_refs',
-    'INSERT'
-  ),
-  'SecretStore authority 只能写 effect receipt，不能改 SecretRef'
-);
 select test_support.assert_true(
   not exists (
     select 1
-    from pg_catalog.pg_attribute as attribute
-    where attribute.attrelid = 'app_data_agent.secret_refs'::pg_catalog.regclass
-      and not attribute.attisdropped
-      and attribute.attname in (
-        'plaintext',
-        'secret_value',
-        'provider_ref',
-        'provider_secret'
+    from app_data_agent.outbox as message
+    join app_data_agent.commands as command
+      on command.app_id = message.app_id
+     and command.tenant_id = message.tenant_id
+     and command.environment = message.environment
+     and command.command_id = message.command_id
+    where message.topic in ('run.command.accepted', 'run.work.resume')
+      and message.status in ('PENDING', 'FAILED', 'LEASED')
+      and (
+        command.payload_json ->> 'kind' is null
+        or command.payload_json ->> 'kind'
+          not in ('START_L2_RESEARCH', 'RESUME_RUN')
       )
   ),
-  'SecretRef authority table 不得包含 plaintext/provider ref 列'
+  '可领取 Runtime Outbox 不得包含未支持的 Command kind'
 );
-
-begin;
-set local role data_agent_backend;
-select pg_catalog.set_config(
-  'data_agent.app_id',
-  '00000000-0000-4000-8000-00000000da01',
-  true
-);
-select pg_catalog.set_config(
-  'data_agent.tenant_id',
-  '00000000-0000-4000-8000-00000000aa11',
-  true
-);
-select pg_catalog.set_config('data_agent.environment', 'test', true);
-select pg_catalog.set_config(
-  'data_agent.principal_id',
-  '00000000-0000-4000-8000-000000001001',
-  true
-);
-select pg_catalog.set_config('data_agent.role', 'owner', true);
-select pg_catalog.set_config(
-  'data_agent.deployment_id',
-  '00000000-0000-4000-8000-00000000de01',
-  true
-);
-
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.register_secret_ref(
-      '00000000-0000-0000-0000-000000000000'::uuid,
-      'nil-secret-ref-must-fail',
-      'sha256:9999999999999999999999999999999999999999999999999999999999999999'
-    )
-  $assert$,
-  'DA_SECRET_REF_ID_INVALID'
-);
-select app_data_agent.register_secret_ref(
-  '00000000-0000-4000-8000-00000000ec01'::uuid,
-  'warehouse-primary',
-  'sha256:1111111111111111111111111111111111111111111111111111111111111111'
-);
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.finalize_secret_provider_effect(
-      '00000000-0000-4000-8000-00000000ec01'::uuid,
-      1,
-      '00000000-0000-4000-8000-00000000ec03'::uuid
-    )
-  $assert$,
-  'DA_SECRET_PROVIDER_RECEIPT_NOT_FOUND'
-);
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.request_secret_provider_effect(
-      '00000000-0000-4000-8000-00000000ec01'::uuid,
-      null,
-      '00000000-0000-4000-8000-00000000ec02'::uuid,
-      'ROTATE'
-    )
-  $assert$,
-  'DA_SECRET_VERSION_STALE'
-);
-select test_support.assert_true(
-  (
-    select secret_ref.status = 'ACTIVE'
-      and secret_ref.version = 1
-      and secret_ref.pending_request_id is null
-    from app_data_agent.secret_refs as secret_ref
-    where secret_ref.secret_ref_id =
-      '00000000-0000-4000-8000-00000000ec01'::uuid
-  ),
-  'NULL expected_version 不得绕过 SecretRef CAS 或产生 pending 状态'
-);
-select app_data_agent.request_secret_provider_effect(
-  '00000000-0000-4000-8000-00000000ec01'::uuid,
-  1,
-  '00000000-0000-4000-8000-00000000ec02'::uuid,
-  'ROTATE'
-);
-select app_data_agent.register_secret_ref(
-  '00000000-0000-4000-8000-00000000ec11'::uuid,
-  'warehouse-revoke-fixture',
-  'sha256:2222222222222222222222222222222222222222222222222222222222222222'
-);
-select app_data_agent.request_secret_provider_effect(
-  '00000000-0000-4000-8000-00000000ec11'::uuid,
-  1,
-  '00000000-0000-4000-8000-00000000ec12'::uuid,
-  'REVOKE'
-);
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.finalize_secret_provider_effect(
-      '00000000-0000-4000-8000-00000000ec11'::uuid,
-      1,
-      '00000000-0000-4000-8000-00000000ec13'::uuid
-    )
-  $assert$,
-  'DA_SECRET_PROVIDER_RECEIPT_NOT_FOUND'
-);
-commit;
-
-set role data_agent_secret_authority;
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.record_secret_provider_effect(
-      '00000000-0000-4000-8000-00000000ec03'::uuid,
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      'test',
-      '00000000-0000-4000-8000-00000000ec01'::uuid,
-      '00000000-0000-4000-8000-00000000ec02'::uuid,
-      'ROTATE',
-      1,
-      'FAILED',
-      null,
-      'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-      'smoke-secret-key-v1',
-      'ed25519:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-    )
-  $assert$,
-  'DA_SECRET_PROVIDER_RECEIPT_HASH_INVALID'
-);
-select app_data_agent.record_secret_provider_effect(
-  '00000000-0000-4000-8000-00000000ec03'::uuid,
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  '00000000-0000-4000-8000-00000000aa11'::uuid,
-  'test',
-  '00000000-0000-4000-8000-00000000ec01'::uuid,
-  '00000000-0000-4000-8000-00000000ec02'::uuid,
-  'ROTATE',
-  1,
-  'FAILED',
-  null,
-  app_data_agent.compute_secret_provider_receipt_hash(
-    '00000000-0000-4000-8000-00000000ec03'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    '00000000-0000-4000-8000-00000000aa11'::uuid,
-    'test',
-    '00000000-0000-4000-8000-00000000ec01'::uuid,
-    '00000000-0000-4000-8000-00000000ec02'::uuid,
-    'ROTATE',
-    1,
-    'FAILED',
-    null
-  ),
-  'smoke-secret-key-v1',
-  'ed25519:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-);
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.record_secret_provider_effect(
-      '00000000-0000-4000-8000-00000000ec13'::uuid,
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      'test',
-      '00000000-0000-4000-8000-00000000ec11'::uuid,
-      '00000000-0000-4000-8000-00000000ec12'::uuid,
-      'REVOKE',
-      1,
-      'SUCCEEDED',
-      null,
-      app_data_agent.compute_secret_provider_receipt_hash(
-        '00000000-0000-4000-8000-00000000ec13'::uuid,
-        '00000000-0000-4000-8000-00000000da01'::uuid,
-        '00000000-0000-4000-8000-00000000aa11'::uuid,
-        'test',
-        '00000000-0000-4000-8000-00000000ec11'::uuid,
-        '00000000-0000-4000-8000-00000000ec12'::uuid,
-        'REVOKE',
-        1,
-        'SUCCEEDED',
-        null
-      ),
-      'smoke-secret-key-v1',
-      'ed25519:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-    )
-  $assert$,
-  'DA_EXTERNAL_SECRET_VERIFIER_UNAVAILABLE'
-);
-reset role;
-
-begin;
-set local role data_agent_backend;
-select pg_catalog.set_config(
-  'data_agent.app_id',
-  '00000000-0000-4000-8000-00000000da01',
-  true
-);
-select pg_catalog.set_config(
-  'data_agent.tenant_id',
-  '00000000-0000-4000-8000-00000000aa11',
-  true
-);
-select pg_catalog.set_config('data_agent.environment', 'test', true);
-select pg_catalog.set_config(
-  'data_agent.principal_id',
-  '00000000-0000-4000-8000-000000001001',
-  true
-);
-select pg_catalog.set_config('data_agent.role', 'owner', true);
-select pg_catalog.set_config(
-  'data_agent.deployment_id',
-  '00000000-0000-4000-8000-00000000de01',
-  true
-);
-select test_support.assert_raises(
-  $assert$
-    select app_data_agent.finalize_secret_provider_effect(
-      '00000000-0000-4000-8000-00000000ec01'::uuid,
-      1,
-      '00000000-0000-4000-8000-00000000ec03'::uuid
-    )
-  $assert$,
-  'DA_SECRET_PROVIDER_EFFECT_FAILED'
-);
-select test_support.assert_true(
-  (
-    select secret_ref.version = 1
-      and secret_ref.status = 'ROTATION_PENDING'
-      and secret_ref.provider_ref_hash =
-        'sha256:1111111111111111111111111111111111111111111111111111111111111111'
-    from app_data_agent.secret_refs as secret_ref
-    where secret_ref.secret_ref_id =
-      '00000000-0000-4000-8000-00000000ec01'::uuid
-  ),
-  'provider FAILED receipt 不得推进 SecretRef version/hash/status'
-);
-select app_data_agent.acknowledge_failed_secret_provider_effect(
-  '00000000-0000-4000-8000-00000000ec01'::uuid,
-  1,
-  '00000000-0000-4000-8000-00000000ec03'::uuid
-);
-select test_support.assert_true(
-  (
-    select secret_ref.version = 1
-      and secret_ref.status = 'ACTIVE'
-      and secret_ref.pending_request_id is null
-      and secret_ref.provider_ref_hash =
-        'sha256:1111111111111111111111111111111111111111111111111111111111111111'
-    from app_data_agent.secret_refs as secret_ref
-    where secret_ref.secret_ref_id =
-      '00000000-0000-4000-8000-00000000ec01'::uuid
-  ),
-  '只有精确 FAILED provider receipt 可清除 pending，且不得推进 version/hash'
-);
-select test_support.assert_true(
-  (
-    select secret_ref.version = 1
-      and secret_ref.status = 'REVOCATION_PENDING'
-      and secret_ref.revoked_at is null
-    from app_data_agent.secret_refs as secret_ref
-    where secret_ref.secret_ref_id =
-      '00000000-0000-4000-8000-00000000ec11'::uuid
-  ),
-  '没有 revoke provider receipt 时必须停在 REVOCATION_PENDING'
-);
-commit;
-
-insert into app_data_agent.artifacts (
-  app_id,
-  tenant_id,
-  environment,
-  run_id,
-  artifact_id,
-  artifact_type,
-  revision,
-  content_hash,
-  document_json,
-  worker_fence
-)
-values (
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  '00000000-0000-4000-8000-00000000aa11'::uuid,
-  'test',
-  '00000000-0000-4000-8000-00000000a101'::uuid,
-  '00000000-0000-4000-8000-00000000f101'::uuid,
-  'ResearchPlan',
-  1,
-  'sha256:1111111111111111111111111111111111111111111111111111111111111111',
-  '{"revision":1}'::jsonb,
-  1
-);
-update app_data_agent.artifacts
-set is_active = false
-where artifact_id = '00000000-0000-4000-8000-00000000f101'::uuid
-  and revision = 1;
-insert into app_data_agent.artifacts (
-  app_id,
-  tenant_id,
-  environment,
-  run_id,
-  artifact_id,
-  artifact_type,
-  revision,
-  content_hash,
-  document_json,
-  worker_fence,
-  parent_revision,
-  parent_content_hash
-)
-values (
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  '00000000-0000-4000-8000-00000000aa11'::uuid,
-  'test',
-  '00000000-0000-4000-8000-00000000a101'::uuid,
-  '00000000-0000-4000-8000-00000000f101'::uuid,
-  'ResearchPlan',
-  2,
-  'sha256:2222222222222222222222222222222222222222222222222222222222222222',
-  '{"revision":2}'::jsonb,
-  2,
-  1,
-  'sha256:1111111111111111111111111111111111111111111111111111111111111111'
-);
-select test_support.assert_raises(
-  $assert$
-    update app_data_agent.artifacts
-    set document_json = '{"tampered":true}'::jsonb
-    where artifact_id = '00000000-0000-4000-8000-00000000f101'::uuid
-      and revision = 2
-  $assert$,
-  'DA_ARTIFACT_REVISION_IMMUTABLE'
-);
-
-select test_support.assert_raises(
-  $assert$
-    select platform.transition_app_lifecycle(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'ACTIVE',
-      'FROZEN',
-      'FREEZE',
-      '00000000-0000-4000-8000-00000000f009'::uuid,
-      platform.compute_lifecycle_receipt_hash(
-        '00000000-0000-4000-8000-00000000f009'::uuid,
-        '00000000-0000-4000-8000-00000000da01'::uuid,
-        'prod',
-        'ACTIVE',
-        'FROZEN',
-        'FREEZE',
-        '{"reason":"cross-environment-replay"}'::jsonb
-      ),
-      '{"reason":"cross-environment-replay"}'::jsonb
-    )
-  $assert$,
-  'DA_BOUNDARY_RECEIPT_HASH_INVALID'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.transition_app_lifecycle(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'ACTIVE',
-      'FROZEN',
-      'FREEZE',
-      '00000000-0000-4000-8000-00000000f000'::uuid,
-      'sha256:3333333333333333333333333333333333333333333333333333333333333333',
-      '{"reason":"forged-hash"}'::jsonb
-    )
-  $assert$,
-  'DA_BOUNDARY_RECEIPT_HASH_INVALID'
-);
-
-select platform.transition_app_lifecycle(
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  'ACTIVE',
-  'FROZEN',
-  'FREEZE',
-  '00000000-0000-4000-8000-00000000f001'::uuid,
-  platform.compute_lifecycle_receipt_hash(
-    '00000000-0000-4000-8000-00000000f001'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    'ACTIVE',
-    'FROZEN',
-    'FREEZE',
-    '{"reason":"smoke-freeze"}'::jsonb
-  ),
-  '{"reason":"smoke-freeze"}'::jsonb
-);
-
-set role authenticated;
-select pg_catalog.set_config(
-  'request.jwt.claims',
-  '{"sub":"00000000-0000-4000-8000-000000001001"}',
-  false
-);
-select test_support.assert_raises(
-  $assert$
-    select api.data_agent__accept_run_command(
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      '00000000-0000-4000-8000-00000000a205'::uuid,
-      '00000000-0000-4000-8000-00000000c205'::uuid,
-      'frozen-write',
-      'frozen app must reject writes',
-      '{"kind":"frozen"}'::jsonb,
-      'sha256:ebb04375de669f2f70fb447117705096dd4a8ea8b1928315def7bf11f5b18e4e'
-    )
-  $assert$,
-  'DA_WRITE_FORBIDDEN'
-);
-reset role;
-
-begin;
-set local role data_agent_backend;
-select test_support.assert_raises(
-  $assert$
-    select *
-    from platform.revalidate_backend_authority(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      'test',
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-000000001001'::uuid,
-      'owner',
-      1,
-      1,
-      true
-    )
-  $assert$,
-  'DA_AUTHORITY_STALE_OR_FORBIDDEN'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.cleanup_scope_authority(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'ENUMERATE'
-    )
-  $assert$,
-  'permission denied'
-);
-rollback;
-
-select platform.transition_app_lifecycle(
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  'FROZEN',
-  'EXPORT_PENDING',
-  'EXPORT_REQUESTED',
-  '00000000-0000-4000-8000-00000000f002'::uuid,
-  platform.compute_lifecycle_receipt_hash(
-    '00000000-0000-4000-8000-00000000f002'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    'FROZEN',
-    'EXPORT_PENDING',
-    'EXPORT_REQUESTED',
-    '{"scope":"all-app-resources"}'::jsonb
-  ),
-  '{"scope":"all-app-resources"}'::jsonb
-);
-
-select test_support.assert_true(
-  not pg_catalog.has_table_privilege(
-    'data_agent_job_authority',
-    'app_data_agent.runs',
-    'DELETE'
-  )
-  and not pg_catalog.has_table_privilege(
-    'data_agent_job_authority',
-    'storage.objects',
-    'DELETE'
-  ),
-  'Job Authority 不能直接写业务表或 Storage'
-);
-set role data_agent_job_authority;
-select test_support.assert_true(
-  (
-    platform.cleanup_scope_authority(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'EXPORT'
-    ) ->> 'capability'
-  ) = 'LIFECYCLE_CLEANUP',
-  'EXPORT_PENDING 只签发窄 cleanup capability'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.cleanup_scope_authority(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'DELETE'
-    )
-  $assert$,
-  'DA_CLEANUP_ACTION_FORBIDDEN'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.record_resource_manifest(
-      '00000000-0000-4000-8000-00000000fb09'::uuid,
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'prod',
-      'EXPORT_PENDING',
-      3,
-      7,
-      2,
-      1,
-      '{"database":["app_data_agent"],"storage":["data-agent-artifacts"],"redis":["data-agent:prod"]}'::jsonb,
-      'sha256:9999999999999999999999999999999999999999999999999999999999999999',
-      '00000000-0000-4000-8000-00000000fa01'::uuid,
-      'smoke-job-key-v1',
-      'ed25519:9999999999999999999999999999999999999999999999999999999999999999'
-    )
-  $assert$,
-  'DA_CLEANUP_ACTION_FORBIDDEN'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.record_resource_manifest(
-      '00000000-0000-4000-8000-00000000fb01'::uuid,
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'EXPORT_PENDING',
-      3,
-      7,
-      2,
-      1,
-      '{"database":["app_data_agent"],"storage":["data-agent-artifacts"],"redis":["data-agent:test"]}'::jsonb,
-      'sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-      '00000000-0000-4000-8000-00000000fa01'::uuid,
-      'smoke-job-key-v1',
-      'ed25519:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-    )
-  $assert$,
-  'DA_JOB_PAYLOAD_HASH_MISMATCH'
-);
-select platform.record_resource_manifest(
-  '00000000-0000-4000-8000-00000000fb01'::uuid,
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  'EXPORT_PENDING',
-  3,
-  7,
-  2,
-  1,
-  '{"database":["app_data_agent"],"storage":["data-agent-artifacts"],"redis":["data-agent:test"]}'::jsonb,
-  platform.compute_resource_manifest_hash(
-    '00000000-0000-4000-8000-00000000fb01'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    'EXPORT_PENDING',
-    3,
-    7,
-    2,
-    1,
-    '{"database":["app_data_agent"],"storage":["data-agent-artifacts"],"redis":["data-agent:test"]}'::jsonb
-  ),
-  '00000000-0000-4000-8000-00000000fa01'::uuid,
-  'smoke-job-key-v1',
-  'ed25519:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.record_resource_operation_receipt(
-      '00000000-0000-4000-8000-00000000fb09'::uuid,
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'prod',
-      3,
-      'EXPORT',
-      'EXPORT_PENDING',
-      'FROZEN',
-      '00000000-0000-4000-8000-00000000fb01'::uuid,
-      null,
-      7,
-      2,
-      1,
-      7,
-      2,
-      1,
-      'sha256:9999999999999999999999999999999999999999999999999999999999999999',
-      '00000000-0000-4000-8000-00000000fa01'::uuid,
-      'smoke-job-key-v1',
-      'ed25519:9999999999999999999999999999999999999999999999999999999999999999'
-    )
-  $assert$,
-  'DA_CLEANUP_ACTION_FORBIDDEN'
-);
-select platform.record_resource_operation_receipt(
-  '00000000-0000-4000-8000-00000000fb02'::uuid,
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  3,
-  'EXPORT',
-  'EXPORT_PENDING',
-  'FROZEN',
-  '00000000-0000-4000-8000-00000000fb01'::uuid,
-  null,
-  7,
-  2,
-  1,
-  7,
-  2,
-  1,
-  platform.compute_resource_operation_hash(
-    '00000000-0000-4000-8000-00000000fb02'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    3,
-    'EXPORT',
-    'EXPORT_PENDING',
-    'FROZEN',
-    '00000000-0000-4000-8000-00000000fb01'::uuid,
-    null,
-    7,
-    2,
-    1,
-    7,
-    2,
-    1
-  ),
-  '00000000-0000-4000-8000-00000000fa01'::uuid,
-  'smoke-job-key-v1',
-  'ed25519:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
-);
-reset role;
-
-select test_support.assert_raises(
-  $assert$
-    select platform.transition_app_lifecycle(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'EXPORT_PENDING',
-      'FROZEN',
-      'EXPORT_COMPLETED',
-      '00000000-0000-4000-8000-00000000f008'::uuid,
-      platform.compute_lifecycle_receipt_hash(
-        '00000000-0000-4000-8000-00000000f008'::uuid,
-        '00000000-0000-4000-8000-00000000da01'::uuid,
-        'test',
-        'EXPORT_PENDING',
-        'FROZEN',
-        'EXPORT_COMPLETED',
-        pg_catalog.jsonb_build_object(
-          'operation_receipt_id',
-          '00000000-0000-4000-8000-00000000fb02',
-          'resource_manifest_hash',
-          (
-            select manifest.payload_hash
-            from platform.resource_manifests as manifest
-            where manifest.manifest_id =
-              '00000000-0000-4000-8000-00000000fb01'::uuid
-          )
-        )
-      ),
-      pg_catalog.jsonb_build_object(
-        'operation_receipt_id',
-        '00000000-0000-4000-8000-00000000fb02',
-        'resource_manifest_hash',
-        (
-          select manifest.payload_hash
-          from platform.resource_manifests as manifest
-          where manifest.manifest_id =
-            '00000000-0000-4000-8000-00000000fb01'::uuid
-        )
-      )
-    )
-  $assert$,
-  'DA_EXTERNAL_EXPORT_VERIFIER_UNAVAILABLE'
-);
-select platform.transition_app_lifecycle(
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  'EXPORT_PENDING',
-  'FROZEN',
-  'EXPORT_CANCELLED',
-  '00000000-0000-4000-8000-00000000f003'::uuid,
-  platform.compute_lifecycle_receipt_hash(
-    '00000000-0000-4000-8000-00000000f003'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    'EXPORT_PENDING',
-    'FROZEN',
-    'EXPORT_CANCELLED',
-    '{"reason":"external-verifier-unavailable"}'::jsonb
-  ),
-  '{"reason":"external-verifier-unavailable"}'::jsonb
-);
-select platform.transition_app_lifecycle(
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  'FROZEN',
-  'DELETE_PENDING',
-  'DELETE_REQUESTED',
-  '00000000-0000-4000-8000-00000000f004'::uuid,
-  platform.compute_lifecycle_receipt_hash(
-    '00000000-0000-4000-8000-00000000f004'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    'FROZEN',
-    'DELETE_PENDING',
-    'DELETE_REQUESTED',
-    '{"reason":"smoke-delete"}'::jsonb
-  ),
-  '{"reason":"smoke-delete"}'::jsonb
-);
-
-set role data_agent_job_authority;
-select test_support.assert_true(
-  (
-    platform.cleanup_scope_authority(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'DELETE'
-    ) ->> 'action'
-  ) = 'DELETE',
-  'DELETE cleanup capability 只能在 DELETE_PENDING 签发'
-);
-select platform.record_resource_manifest(
-  '00000000-0000-4000-8000-00000000fb03'::uuid,
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  'DELETE_PENDING',
-  5,
-  7,
-  2,
-  1,
-  '{"database":["app_data_agent"],"storage":["data-agent-artifacts"],"redis":["data-agent:test"]}'::jsonb,
-  platform.compute_resource_manifest_hash(
-    '00000000-0000-4000-8000-00000000fb03'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    'DELETE_PENDING',
-    5,
-    7,
-    2,
-    1,
-    '{"database":["app_data_agent"],"storage":["data-agent-artifacts"],"redis":["data-agent:test"]}'::jsonb
-  ),
-  '00000000-0000-4000-8000-00000000fa01'::uuid,
-  'smoke-job-key-v1',
-  'ed25519:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
-);
-select platform.record_resource_operation_receipt(
-  '00000000-0000-4000-8000-00000000fb04'::uuid,
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  5,
-  'DELETE',
-  'DELETE_PENDING',
-  'DELETED',
-  '00000000-0000-4000-8000-00000000fb03'::uuid,
-  '00000000-0000-4000-8000-00000000fb02'::uuid,
-  7,
-  2,
-  1,
-  0,
-  1,
-  0,
-  platform.compute_resource_operation_hash(
-    '00000000-0000-4000-8000-00000000fb04'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    5,
-    'DELETE',
-    'DELETE_PENDING',
-    'DELETED',
-    '00000000-0000-4000-8000-00000000fb03'::uuid,
-    '00000000-0000-4000-8000-00000000fb02'::uuid,
-    7,
-    2,
-    1,
-    0,
-    1,
-    0
-  ),
-  '00000000-0000-4000-8000-00000000fa01'::uuid,
-  'smoke-job-key-v1',
-  'ed25519:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
-);
-select platform.record_resource_operation_receipt(
-  '00000000-0000-4000-8000-00000000fb05'::uuid,
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  'test',
-  5,
-  'DELETE',
-  'DELETE_PENDING',
-  'DELETED',
-  '00000000-0000-4000-8000-00000000fb03'::uuid,
-  '00000000-0000-4000-8000-00000000fb02'::uuid,
-  7,
-  2,
-  1,
-  0,
-  0,
-  0,
-  platform.compute_resource_operation_hash(
-    '00000000-0000-4000-8000-00000000fb05'::uuid,
-    '00000000-0000-4000-8000-00000000da01'::uuid,
-    'test',
-    5,
-    'DELETE',
-    'DELETE_PENDING',
-    'DELETED',
-    '00000000-0000-4000-8000-00000000fb03'::uuid,
-    '00000000-0000-4000-8000-00000000fb02'::uuid,
-    7,
-    2,
-    1,
-    0,
-    0,
-    0
-  ),
-  '00000000-0000-4000-8000-00000000fa01'::uuid,
-  'smoke-job-key-v1',
-  'ed25519:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-);
-reset role;
-
-select test_support.assert_raises(
-  $assert$
-    select platform.transition_app_lifecycle(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'DELETE_PENDING',
-      'DELETED',
-      'DELETE_CONFIRMED',
-      '00000000-0000-4000-8000-00000000f005'::uuid,
-      platform.compute_lifecycle_receipt_hash(
-        '00000000-0000-4000-8000-00000000f005'::uuid,
-        '00000000-0000-4000-8000-00000000da01'::uuid,
-        'test',
-        'DELETE_PENDING',
-        'DELETED',
-        'DELETE_CONFIRMED',
-        '{"operation_receipt_id":"00000000-0000-4000-8000-00000000ffff","upstream_export_receipt_id":"00000000-0000-4000-8000-00000000fb02"}'::jsonb
-      ),
-      '{"operation_receipt_id":"00000000-0000-4000-8000-00000000ffff","upstream_export_receipt_id":"00000000-0000-4000-8000-00000000fb02"}'::jsonb
-    )
-  $assert$,
-  'DA_DELETE_OPERATION_RECEIPT_INVALID'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.transition_app_lifecycle(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'DELETE_PENDING',
-      'DELETED',
-      'DELETE_CONFIRMED',
-      '00000000-0000-4000-8000-00000000f005'::uuid,
-      platform.compute_lifecycle_receipt_hash(
-        '00000000-0000-4000-8000-00000000f005'::uuid,
-        '00000000-0000-4000-8000-00000000da01'::uuid,
-        'test',
-        'DELETE_PENDING',
-        'DELETED',
-        'DELETE_CONFIRMED',
-        '{"operation_receipt_id":"00000000-0000-4000-8000-00000000fb04","upstream_export_receipt_id":"00000000-0000-4000-8000-00000000fb02"}'::jsonb
-      ),
-      '{"operation_receipt_id":"00000000-0000-4000-8000-00000000fb04","upstream_export_receipt_id":"00000000-0000-4000-8000-00000000fb02"}'::jsonb
-    )
-  $assert$,
-  'DA_DELETE_OPERATION_RECEIPT_INVALID'
-);
-select test_support.assert_raises(
-  $assert$
-    select platform.transition_app_lifecycle(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      'test',
-      'DELETE_PENDING',
-      'DELETED',
-      'DELETE_CONFIRMED',
-      '00000000-0000-4000-8000-00000000f005'::uuid,
-      platform.compute_lifecycle_receipt_hash(
-        '00000000-0000-4000-8000-00000000f005'::uuid,
-        '00000000-0000-4000-8000-00000000da01'::uuid,
-        'test',
-        'DELETE_PENDING',
-        'DELETED',
-        'DELETE_CONFIRMED',
-        '{"operation_receipt_id":"00000000-0000-4000-8000-00000000fb05","upstream_export_receipt_id":"00000000-0000-4000-8000-00000000fb02"}'::jsonb
-      ),
-      '{"operation_receipt_id":"00000000-0000-4000-8000-00000000fb05","upstream_export_receipt_id":"00000000-0000-4000-8000-00000000fb02"}'::jsonb
-    )
-  $assert$,
-  'DA_EXTERNAL_DELETE_VERIFIER_UNAVAILABLE'
-);
-
-select test_support.assert_true(
-  exists (
-    select 1
-    from app_data_agent.runs
-    where run_id = '00000000-0000-4000-8000-00000000a101'::uuid
-  ),
-  '没有真实零残留 receipt 时不得删除业务数据'
-);
-select test_support.assert_true(
-  (
-    select lifecycle.lifecycle_state = 'DELETE_PENDING'
-      and lifecycle.authority_epoch = 5
-    from platform.app_environment_lifecycle as lifecycle
-    where lifecycle.app_id = '00000000-0000-4000-8000-00000000da01'::uuid
-      and lifecycle.environment = 'test'
-  ),
-  '伪造或非零 residual receipt 必须保持 DELETE_PENDING/HOLD'
-);
-select test_support.assert_true(
-  (
-    select lifecycle.lifecycle_state = 'ACTIVE'
-      and lifecycle.authority_epoch = 1
-    from platform.app_environment_lifecycle as lifecycle
-    where lifecycle.app_id = '00000000-0000-4000-8000-00000000da01'::uuid
-      and lifecycle.environment = 'prod'
-  ),
-  'test 环境的冻结与删除流程不得污染同一 App 的 prod 权威'
-);
-select test_support.assert_true(
-  (
-    select pg_catalog.count(*) = 2
-    from app_fixture_other.records
-  ),
-  'Data Agent 生命周期操作不得影响第二应用'
-);
-select test_support.assert_true(
-  (
-    select lifecycle.lifecycle_state = 'ACTIVE'
-    from platform.app_environment_lifecycle as lifecycle
-    where lifecycle.app_id = '00000000-0000-4000-8000-00000000bb01'::uuid
-      and lifecycle.environment = 'test'
-  ),
-  '第二应用生命周期必须保持独立'
-);
-
-set role authenticated;
-select pg_catalog.set_config(
-  'request.jwt.claims',
-  '{"sub":"00000000-0000-4000-8000-000000001001"}',
-  false
-);
-select test_support.assert_true(
-  (
-    api.data_agent__get_run(
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      '00000000-0000-4000-8000-00000000a101'::uuid
-    ) ->> 'run_id'
-  ) = '00000000-0000-4000-8000-00000000a101',
-  'DELETE_PENDING/HOLD 保留受权只读恢复能力'
-);
-reset role;
-
-select test_support.assert_raises(
-  $assert$
-    update platform.boundary_audit_receipts
-    set details = '{"tampered":true}'::jsonb
-    where receipt_id = '00000000-0000-4000-8000-00000000f001'::uuid
-  $assert$,
-  'DA_IMMUTABLE_RECORD'
-);
-select test_support.assert_raises(
-  $assert$
-    update platform.resource_operation_receipts
-    set storage_residual_count = 0
-    where operation_receipt_id =
-      '00000000-0000-4000-8000-00000000fb04'::uuid
-  $assert$,
-  'DA_IMMUTABLE_RECORD'
-);
-
-select test_support.assert_true(
-  (
-    select lifecycle.lifecycle_state = 'DELETE_PENDING'
-      and lifecycle.authority_epoch = 5
-    from platform.app_environment_lifecycle as lifecycle
-    where lifecycle.app_id = '00000000-0000-4000-8000-00000000da01'::uuid
-      and lifecycle.environment = 'test'
-  ),
-  '缺少外部删除或恢复 verifier 时必须保持 DELETE_PENDING/HOLD'
-);
-
-select test_support.assert_true(
-  (
-    select pg_catalog.count(*) = 4
-    from platform.boundary_audit_receipts as receipt
-    where receipt.app_id = '00000000-0000-4000-8000-00000000da01'::uuid
-      and receipt.environment = 'test'
-  ),
-  '失败的 DELETE_CONFIRMED 不得生成 receipt，成功边界按 environment 留存'
-);
-
-select test_support.assert_true(
-  platform.revoke_membership(
-    '00000000-0000-4000-8000-00000000de01'::uuid,
-    '00000000-0000-4000-8000-00000000aa11'::uuid,
-    '00000000-0000-4000-8000-000000001001'::uuid
-  ),
-  '撤销 membership 必须命中当前有效授权'
-);
-set role data_agent_backend;
-select test_support.assert_raises(
-  $assert$
-    select *
-    from platform.resolve_backend_authority(
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      '00000000-0000-4000-8000-000000001001'::uuid,
-      false
-    )
-  $assert$,
-  'DA_SCOPE_FORBIDDEN'
-);
-reset role;
-
-select (platform.provision_membership(
-  '00000000-0000-4000-8000-00000000de01'::uuid,
-  '00000000-0000-4000-8000-00000000aa11'::uuid,
-  '00000000-0000-4000-8000-000000001001'::uuid,
-  'owner'
-)).principal_id;
-
-set role data_agent_backend;
-select test_support.assert_raises(
-  $assert$
-    select *
-    from platform.revalidate_backend_authority(
-      '00000000-0000-4000-8000-00000000da01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      'test',
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-000000001001'::uuid,
-      'owner',
-      1,
-      1,
-      false
-    )
-  $assert$,
-  'DA_AUTHORITY_STALE_OR_FORBIDDEN'
-);
-select test_support.assert_true(
-  (
-    select authority.membership_version = 3
-      and authority.app_epoch = 5
-      and authority.lifecycle_state = 'DELETE_PENDING'
-      and not authority.can_write
-    from platform.resolve_backend_authority(
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      '00000000-0000-4000-8000-000000001001'::uuid,
-      false
-    ) as authority
-  ),
-  '重新授权后取得新 membership_version，但 DELETE_PENDING 仍禁止写入'
-);
-reset role;
-
-update platform.deployment_mappings
-set is_active = false,
-    revoked_at = pg_catalog.clock_timestamp()
-where deployment_id = '00000000-0000-4000-8000-00000000de01'::uuid;
-select test_support.assert_raises(
-  $assert$
-    update platform.deployment_mappings
-    set is_active = true,
-        revoked_at = null
-    where deployment_id = '00000000-0000-4000-8000-00000000de01'::uuid
-  $assert$,
-  'DA_DEPLOYMENT_REACTIVATION_FORBIDDEN'
-);
-set role data_agent_backend;
-select test_support.assert_raises(
-  $assert$
-    select *
-    from platform.resolve_backend_authority(
-      '00000000-0000-4000-8000-00000000de01'::uuid,
-      '00000000-0000-4000-8000-00000000aa11'::uuid,
-      '00000000-0000-4000-8000-000000001001'::uuid,
-      false
-    )
-  $assert$,
-  'DA_SCOPE_FORBIDDEN'
-);
-reset role;

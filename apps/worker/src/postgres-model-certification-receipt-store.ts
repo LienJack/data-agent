@@ -18,7 +18,7 @@ import {
 import type { ModelCertificationReceiptStore } from "./credentialed-provider-certification.internal.js";
 
 interface FenceRow {
-  readonly active_fence: string | number;
+  readonly active_fence: string | number | null;
 }
 
 interface ExistingReceiptRow {
@@ -111,24 +111,13 @@ export function createPostgresModelCertificationReceiptStore(input: {
           }
 
           const run = await client.query<FenceRow>(
-            `select active_fence
-             from runs
-             where app_id = $1
-               and tenant_id = $2
-               and environment = $3
-               and run_id = $4
-               and principal_id = $5
-             for update`,
-            [
-              capability.scope.app_id,
-              capability.scope.tenant_id,
-              capability.scope.environment,
-              reference.run_id,
-              capability.principal,
-            ],
+            `select app_data_agent.lock_owned_run_fence(
+               $1::uuid
+             ) as active_fence`,
+            [reference.run_id],
           );
           const activeFence = run.rows[0]?.active_fence;
-          if (activeFence === undefined) {
+          if (activeFence === undefined || activeFence === null) {
             throw new PersistenceBoundaryError(
               "RUN_NOT_FOUND_OR_DENIED",
               "Certification Receipt 所属 Run 不存在或不属于当前 Principal。",

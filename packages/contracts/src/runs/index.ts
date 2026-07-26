@@ -40,6 +40,7 @@ import {
 } from "./release-manifest.js";
 
 export * from "./release-manifest.js";
+export * from "./runtime.js";
 
 export const RUN_TERMINAL_REASON_PAIRS = [
   ["READY", "RUN_READY"],

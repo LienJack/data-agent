@@ -11,7 +11,18 @@ backend_user="data_agent_test_backend"
 backend_password="data-agent-backend-test"
 
 cleanup() {
+  status=$?
+  trap - EXIT INT TERM
+  if [ "$status" -ne 0 ]; then
+    echo "PostgreSQL integration failure diagnostics:" >&2
+    docker logs "$container_name" >&2 || true
+    docker exec "$container_name" \
+      psql -X -U postgres -d "$database_name" -c \
+      "select tenant_id, environment, run_id, status, active_fence from app_data_agent.runs order by created_at; select tenant_id, environment, outbox_id, run_id, status, attempt_count, lease_owner, lease_expires_at from app_data_agent.outbox order by created_at;" \
+      >&2 || true
+  fi
   docker rm -f "$container_name" >/dev/null 2>&1 || true
+  exit "$status"
 }
 trap cleanup EXIT INT TERM
 
