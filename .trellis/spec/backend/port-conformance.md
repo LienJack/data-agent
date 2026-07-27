@@ -93,60 +93,26 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
   await contractCase.run(createAdapterHarness);
 }
 
-// U6 目标 Port。capabilityInput 与 strictInput 必须是两个参数；
-// strictInput 中的 scope/principal 只是待比较声明，不能自证 Authority。
-type CapabilityInput = unknown;
-type ArtifactReferenceFor<T extends KnownArtifactType> =
-  ArtifactReference & Readonly<{ artifact_type: T }>;
-type ReadinessRevocationReason =
-  | "SEMANTIC_REVISION_CHANGED"
-  | "SCHEMA_REVISION_CHANGED"
-  | "DATA_SNAPSHOT_STALE"
-  | "POLICY_CHANGED"
-  | "IDENTITY_AUTHORITY_CHANGED"
-  | "EVIDENCE_REVOKED"
-  | "CERTIFICATE_TAMPERED";
-type ResearchAgentRole =
-  | "research-supervisor"
-  | "semantic-sql"
-  | "evidence"
-  | "report-projector";
-
-type ResearchArtifactCommitInput = Readonly<{
-  schema_version: "1.0.0";
-  scope: AppScope;
-  run_id: string;
-  attempt_id: string;
-  worker_fence: number;
-  candidate: L2ArtifactCandidate;
-  expected_parent_ref: ArtifactReference | null;
-}>;
-
-type L2HistoricalDocument = Readonly<{
-  document: L2ArtifactDocument;
-  authority: "HISTORICAL_READ_ONLY";
-  can_authorize_current: false;
-}>;
-
-interface ResearchArtifactAuthorityPort {
-  commitCurrent(
-    capabilityInput: CapabilityInput,
-    input: ResearchArtifactCommitInput,
-  ): Promise<PortResult<ArtifactReference>>;
-
-  // 历史 Reader 不产生 Authority Brand，也不能被 Current/GO 路径调用。
-  readHistorical(
-    capabilityInput: CapabilityInput,
-    reference: ArtifactReference,
-  ): Promise<PortResult<L2HistoricalDocument | null>>;
-}
+// 所有 U6 public Port 的 capabilityInput 固定为 unknown，且与 strictInput 分参；
+// strictInput 的 scope/principal 只是待比较声明，不能自证 Authority。
+// ResearchArtifactAuthorityPort、ResearchArtifactCommitInput、
+// CommittedResearchArtifact 与 historical result 的唯一签名取 Database Surface §2；
+// Conformance Fixture import 同一 strict Schema infer 类型，不在本文件重声明字段。
 
 // U6 平台与资源 Port 不在本文件复制字段：
 // - CurrentReadinessPort / ResearchStopTerminalPort / ResearchVersionFrontierPort
 //   唯一取自 docs/design/u6-research-platform-contract.md；
+// - PostgreSQL Authority/Artifact Committer/RPC exposure/GRANT
+//   唯一取自 docs/design/u6-research-database-surface-contract.md；
+// - 执行域表、nullable CHECK、TTL 与锁序
+//   唯一取自 docs/design/u6-research-execution-storage-contract.md；
+// - Terminal candidate key/FK
+//   唯一取自 docs/design/u6-terminal-reference-graph-contract.md；
 // - ResearchResourceReservationPort / ResearchInvocationPort
 //   唯一取自 docs/design/u6-research-resource-invocation-contract.md；
 // - Invocation 状态迁移唯一取自 docs/design/u6-invocation-state-contract.md。
+// - Terminal Candidate/claim/密文 Command/Decrypt
+//   唯一取自 docs/design/u6-invocation-result-crypto-contract.md。
 // - System Record 生命周期唯一取自
 //   docs/design/u6-system-record-lifecycle-contract.md。
 // 实现由对应 strict Zod Schema infer 类型；Hosted/Docker/In-Memory Adapter 必须直接
@@ -253,6 +219,9 @@ interface ResearchArtifactAuthorityPort {
   Revision。V1、未知元组、Candidate/Rejected/Superseded 一律
   `L2_WIRE_VERSION_WRITE_UNSUPPORTED` 或 Schema 失败；`readHistorical` 只返回未品牌化
   历史文档，不能被 Current Readiness、Run Terminal 或 Release GO 消费。
+  首写返回 `{reference,created:true}`；只有相同 `commit_id`、相同
+  `(S,run_id,principal_id,idempotency_key)` 与相同规范输入可重放
+  `{reference,created:false}`，同键异输入、同键不同 commit 或 commit 换绑均失败。
   PostgreSQL Adapter 还必须在同一事务重新验证 Attempt、Lease、`worker_fence`、
   Exact Parent/Input Revision、Domain Semantic 与窄化 Committer Capability。
 - U6 Domain Terminal/Consumption 使用独立数据库 Authority，不追加既有
@@ -266,7 +235,8 @@ interface ResearchArtifactAuthorityPort {
   Terminal 时，才能用新的 exact Certificate/Frontier 执行 `ABSENT -> CURRENT`、
   `CURRENT -> CURRENT` 或 `REVOKED -> CURRENT` CAS；相同已撤 Certificate 不得复活，
   已有 Terminal 时必须创建新 Run。
-- Publish 每次调用（含同键重放）都先锁 Run/Current/Frontier 并重验 current；同键
+- Publish 每次调用（含同键重放）都按 Database Surface §3 执行共同 Authority prefix
+  与 Root profile，并重验 current；同键
   同载荷且 exact Certificate 仍 CURRENT 才返原结果。Publish 后撤权再重放返回
   `CURRENT_READINESS_REVOKED`，历史 Publication 只供审计。
 - CurrentReadiness、ReportReadGrant 与 RevocationOperation 的返回类型必须是 strict
@@ -277,7 +247,8 @@ interface ResearchArtifactAuthorityPort {
   `DOMAIN_TERMINAL | REPORT_READ`。每次调用，包括相同 idempotency key 重放，都必须
   重新核验 exact current `report-ready@3.0.0` Certificate、四张 Gate、Projection、Stop、
   material Support、Semantic/**Schema**/Data/Policy/Identity Frontier、
-  Authority Epoch 与 current Revocation Head。`DOMAIN_TERMINAL` 只能返回
+  Authority Epoch 与已锁 CurrentReadiness 行内嵌的 revocation seq/receipt。
+  `DOMAIN_TERMINAL` 只能返回
   `READY_COMMITTED | STALE_COMMITTED`；`REPORT_READ` 只能返回
   `GRANT_ISSUED`，不能顺便提交 Terminal。若历史 READY 已存在但 current 已
   `REVOKED`，重放返回 `CURRENT_READINESS_REVOKED` 错误并保留历史 READY，不能伪造
@@ -305,7 +276,8 @@ interface ResearchArtifactAuthorityPort {
   `REVOKED`；Response 先胜出后才允许发送与服务端 Projection 逐字节相等的
   canonical bytes。
 - `CurrentReadinessPort.commitGo` 必须在一个 PostgreSQL 事务内锁定 Current
-  Readiness、五维 Frontier、Revocation Head、同一 exact Certificate 的不可变
+  Readiness、五维 Frontier，在已锁 Current 行上校验内嵌 revocation seq/receipt，
+  再锁同一 exact Certificate 的不可变
   `READY/RUN_READY` Domain Terminal 与 Release Idempotency Row，解析全部 Release
   Evidence，调用 server-only GO Authorizer，并在释放锁前追加不可变
   ReleaseDecision Commit。每次调用（含同键重放）先重验 current 与 READY Terminal，
@@ -505,11 +477,16 @@ interface ResearchArtifactAuthorityPort {
   FAILED/超额三分支、Settle-vs-Cancel 和数据库时钟；每次真实 Model/SQL/Tool 调用前匹配
   Reservation/Seq/Lease/Invocation/Attempt/Fence/Request/Bounds。
 - Invocation State 覆盖 Begin 原子创建 AUTHORIZED、STARTED 在真实 callback 前提交、
-  非法跳转、吸收 Terminal、三类 COMPLETED 零计数、UNKNOWN→ABANDONED→late
-  Terminal→SETTLED 单次入账及跨阶段 Key 冲突。
+  非法跳转、吸收 Terminal、三类 COMPLETED 零计数均拒绝、late path 开放时
+  OUTCOME_UNKNOWN→ABANDONED→late Terminal→SETTLED 单次入账、LATE abort 后固定关闭，
+  以及跨阶段 Key 冲突。
 - System Record Lifecycle 覆盖 Termination exact binding、Permit Issue/Revoke/Expire、
-  DB TTL 边界、Job 延迟仍拒绝 I/O、Result 到期原子 Tombstone、正文不可重放及
-  Expiry/Retention Owner 不可扩权。
+  DB TTL 边界、Job 延迟仍拒绝 I/O、Result 到期 Tombstone、matching subject 提前
+  Erasure、current legal hold、正文不可重放及 Expiry/Retention/Erasure Owner 不可扩权。
+- App Lifecycle Cleanup 覆盖 lifecycle-exclusive Job-only ACL、全部 tenant 的静态
+  cleanup rank、Terminal aggregate 延迟约束、每批 crash/replay、无 PII retained
+  receipt、跨 environment 隔离与 U6 component residual=0；外部 Export/Backup verifier
+  缺失或 Platform 聚合 residual 未归零时仍 HOLD。
 - AgentDataProjection/Model Provider 覆盖 canonical bytes、HMAC、Byte/Token、
   Provider/Profile/Model/Request、Tool Allowlist 与 Input Ref 换绑；失败发生在真实
   Provider callback 之前。Hosted/Docker/In-Memory 共享相同 Case，但 HMAC 与

@@ -3,9 +3,14 @@
 {"file":"docs/design/u6-research-oed-v2-contract.md","reason":"检查 OED v2 exact SQL/Policy 绑定、production replay、Candidate-only assurance 与攻击 Oracle"}
 {"file":"docs/design/u6-research-wire-payload-contract.md","reason":"检查 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Schema 与 Cross-field Refinement"}
 {"file":"docs/design/u6-research-platform-contract.md","reason":"检查 U6 平台事务 strict Wire、固定锁序、幂等重验、状态真值表与窄数据库函数"}
+{"file":"docs/design/u6-research-database-surface-contract.md","reason":"检查数据库 Authority provenance、current Artifact Committer、全局锁入口、RPC exposure、GRANT/DML denylist、10590 与 Schema Inventory"}
+{"file":"docs/design/u6-research-execution-storage-contract.md","reason":"检查 Execution 物理表、非 Terminal 约束、nullable CHECK、TTL、锁序与 safe integer 边界"}
 {"file":"docs/design/u6-research-resource-invocation-contract.md","reason":"检查 Resource/Invocation/System Record 的预算占位、Fence、结果持久化、迟到用量与零旁路 I/O"}
-{"file":"docs/design/u6-invocation-state-contract.md","reason":"检查 Invocation 每条迁移的唯一 Owner、Start-before-I/O、吸收终态、UNKNOWN late CAS、幂等与崩溃恢复"}
-{"file":"docs/design/u6-system-record-lifecycle-contract.md","reason":"检查 Termination、Permit ACTIVE/REVOKED/EXPIRED、Blob AVAILABLE/TOMBSTONED 的唯一 Owner、DB time、幂等与不可复活"}
+{"file":"docs/design/u6-invocation-state-contract.md","reason":"检查 Invocation 每条迁移的唯一 Owner、Start-before-I/O、吸收终态、OUTCOME_UNKNOWN late CAS/关闭、幂等与崩溃恢复"}
+{"file":"docs/design/u6-invocation-result-crypto-contract.md","reason":"检查明文 Candidate/密文 Command 分离、跨实例 claim、锁序、密码向量、Decrypt Authority、旧 Key 与崩溃边界"}
+{"file":"docs/design/u6-result-key-lifecycle-contract.md","reason":"检查 Key 首次 bootstrap、predecessor FK/CAS、唯一 ACTIVE/STAGED、原子 replacement、事故恢复与部署 replay"}
+{"file":"docs/design/u6-system-record-lifecycle-contract.md","reason":"检查 Termination、Permit、Blob 与 Audit Purge strict branch、stored replay、唯一 Owner、DB time、幂等与不可复活"}
+{"file":"docs/design/u6-app-lifecycle-cleanup-contract.md","reason":"检查 DELETE_PENDING/epoch/Manifest/Export/Backup/Legal Hold 在首条破坏性 DML 前失败关闭、retained receipt、限定 FK deferral 与 U6_JOB residual=0"}
 {"file":"docs/design/u6-controlled-fixture-contract.md","reason":"逐项执行两查询真值、14 Mutation、Partial 配对、Response/GO/Frontier/Claim 篡改 Oracle"}
 {"file":"docs/research/u6-rq092-contract-evidence.md","reason":"核对实现没有遗漏 RQ092 核心义务，也没有把 Synthetic Contract Proof 升级为产品证据"}
 {"file":".trellis/spec/backend/error-handling.md","reason":"检查每个 Public Terminal 的唯一 Owner、Reason Code 分层和非 Partial fallback"}
@@ -13,3 +18,5 @@
 {"file":"docs/runbooks/durable-run-runtime.md","reason":"检查 post-READY 撤权不改写历史终态、不追加 lifecycle Event，Grant 响应遵守线性化顺序"}
 {"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查 U6 改动跨层闭合且 App 不拥有领域真值"}
 {"file":".trellis/spec/frontend/type-safety.md","reason":"检查 UI/API 不把历史 READY、当前 REVOKED 或 HOLD 压平为成功"}
+{"file":"docs/design/u6-terminal-reference-graph-contract.md","reason":"检查 U6 Terminal 引用图不存在 active/predicate、literal-kind、conditional FK、MATCH FULL 或跨 Invocation/Result/Blob/Key 换绑"}
+{"file":"docs/design/u6-research-migration-safety-contract.md","reason":"检查 10590 维护窗口、relation 阈值/数据 preflight、NOWAIT DDL、失败零残留及 Hosted/Docker 对等"}

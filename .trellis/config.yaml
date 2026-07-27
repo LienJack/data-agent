@@ -140,10 +140,12 @@ channel:
 #
 # All values are byte counts. `0` disables the corresponding limit.
 #
-# context_injection:
-#   max_file_bytes: 32768        # per implement.jsonl / check.jsonl referenced file
-#   max_artifact_bytes: 65536    # per task artifact (prd.md / design.md / implement.md)
-#   max_total_bytes: 131072      # whole injected payload; overflow degrades to index lines
+context_injection:
+  max_file_bytes: 32768        # per implement.jsonl / check.jsonl referenced file
+  max_artifact_bytes: 65536    # per task artifact (prd.md / design.md / implement.md)
+  # U6 Strict Payload 当前为 22 份合同加 3 份 task artifact；768 KiB 保留确定性余量，
+  # 同时继续以逐文件上限阻止失控单体文档。
+  max_total_bytes: 786432
 
 #-------------------------------------------------------------------------------
 # Per-turn prompt injection

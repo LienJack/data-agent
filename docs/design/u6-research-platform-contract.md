@@ -1,18 +1,25 @@
 # U6 L2 Research Platform、事务与 Port 合同
 
-> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED` · `u6-research-platform@1.0.0`
+> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED` · `u6-research-platform@1.1.0`
 >
 > 上游 Wire：`u6-research-planning-payload-contract.md`、
-> `u6-research-wire-payload-contract.md`；Data Agent 绿地迁移，非旧系统在线升级。
+> `u6-research-wire-payload-contract.md`；U6 领域语义为绿地新增，但 `10590` 可能安装到
+> populated project，生产 DDL 安全只取 Migration Safety。
+> 本文全部新增项仍是待实现设计要求，不是迁移、测试或交付证据。
+> PostgreSQL Authority、Artifact/Readiness Root 锁序、函数面与 GRANT 只取
+> `u6-research-database-surface-contract.md`；执行域表/nullable CHECK/TTL/锁序只取
+> `u6-research-execution-storage-contract.md`，Terminal candidate key/FK 只取
+> `u6-terminal-reference-graph-contract.md`；DELETE_PENDING 环境清理只取
+> `u6-app-lifecycle-cleanup-contract.md`。
 
-Request/Record/迁移/锁序/错误在本文闭合。实现用 strict object、判别联合、DB 约束和
+本文只闭合 Platform 业务 Wire、事务语义和错误。实现用 strict object、DB 约束和
 双连接 Oracle；Parse/Agent/Snapshot/Redis/类型断言均非 Authority。
 
 ## 1. 共同 primitive 与调用边界
 
 ```ts
 type ImmutableId = string; // UUID
-type PrincipalId = string; // 1..256；不要求 UUID
+type PrincipalId = ImmutableId; // U6 PostgreSQL Authority 固定 UUID
 type IdempotencyKey = string; // 1..256
 type Version = string; // 1..128
 type Sha256 = `sha256:${string}`; // 64 个小写 hex
@@ -40,25 +47,8 @@ type PortResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: U6PlatformError };
 
-type CapabilityCommon = {
-  capability_id: ImmutableId; scope: AppScope; principal_id: PrincipalId;
-  role: string; authority_epoch: NonNegativeInt; expires_at: Timestamp;
-};
-type ResolvedU6Capability = CapabilityCommon & (
-  | { authority_kind: "SEMANTIC_FRONTIER_AUTHORITY"; frontier_kind: "SEMANTIC" }
-  | { authority_kind: "SCHEMA_FRONTIER_AUTHORITY"; frontier_kind: "SCHEMA" }
-  | { authority_kind: "DATA_SNAPSHOT_FRONTIER_AUTHORITY"; frontier_kind: "DATA" }
-  | { authority_kind: "POLICY_FRONTIER_AUTHORITY"; frontier_kind: "POLICY" }
-  | { authority_kind: "IDENTITY_FRONTIER_AUTHORITY"; frontier_kind: "IDENTITY" }
-  | { authority_kind: "RESEARCH_STOP_AUTHORITY"; terminal_authority: "RESEARCH_STOP" }
-  | { authority_kind: "CURRENT_READINESS_AUTHORITY" |
-    "SERVICE_REVOCATION_AUTHORITY" | "REPORT_READ_AUTHORITY" |
-    "RESOURCE_AUTHORITY" | "AGENT_DATA_PROJECTION_AUTHORITY" |
-    "MODEL_INVOCATION_AUTHORITY" | "SQL_INVOCATION_AUTHORITY" |
-    "TOOL_INVOCATION_AUTHORITY" | "TOOL_POLICY_AUTHORITY" |
-    "TOOL_POLICY_EXPIRY_AUTHORITY" | "RESULT_RETENTION_AUTHORITY" |
-    "RELEASE_GO_AUTHORITY" }
-);
+type ResolvedU6Capability =
+  ServerOnlyResolvedCapability<U6AuthorityCapabilityBinding>;
 ```
 
 ```ts
@@ -66,9 +56,10 @@ declare function method<T>(
   capabilityInput: unknown, strictInput: StrictObject): Promise<PortResult<T>>;
 ```
 
-Adapter 在事务内解析唯一 capability 分支并比较 strict input；Header/Payload/Agent/
-缓存/自报 Principal 只是声明，未授权与不存在同错。Hash 用 `canonicalizeJson`，禁止
-分隔符身份。`S=(app_id,tenant_id,environment)`，所有 Key/Index/Lock/RLS 均展开 `S`。
+Adapter 按 Database Surface 分册在事务内解析唯一 capability 行并比较 strict input；
+Header/Payload/Agent/缓存/自报 Principal 只是声明，未授权与不存在同错。Hash 用
+`canonicalizeJson`，禁止分隔符身份。`S=(app_id,tenant_id,environment)`，所有
+Key/Index/Lock/RLS 均展开 `S`。
 
 ## 2. Version Frontier Authority
 
@@ -101,6 +92,23 @@ type FrontierValue =
 Token、Schema/Data/Fixture Manifest 全非空且 `REPLAYABLE`；`NONE` 要求四个字段
 全空且 `REPLAY_UNAVAILABLE`。`binding_hash` 覆盖其余字段；Q1/Q2 可有不同 Execution
 Receipt，但映射 Hash 必须相同。
+
+```text
+binding_hash = sha256(
+  UTF8("data-snapshot-binding@1.0.0\0")
+  || UTF8(JCS(DataSnapshotBinding without binding_hash))
+)
+frontier_value_hash = sha256(
+  UTF8("research-frontier-value@1.0.0\0")
+  || UTF8(JCS(FrontierValue))
+)
+```
+
+Golden vector：`datasource_id=11111111-1111-4111-8111-111111111111`、`NONE`、
+四个 nullable 字段全 null、`REPLAY_UNAVAILABLE` 时，
+`binding_hash=sha256:c22bb0a9ca28bffab126885d66d16a80cfc884192ace1fef47abf69c51f2d3d6`，
+对应 DATA `frontier_value_hash=sha256:af18836a8a1aed1124c83949b1ce22476edfccfc7147b8fe7dae2cfa16caeee9`。
+TypeScript 与 PostgreSQL 必须共享该向量并拒绝 caller 自报 Hash。
 
 ### 2.2 五类唯一 Owner
 
@@ -142,16 +150,17 @@ interface ResearchVersionFrontierPort {
 }
 ```
 
-`initialize` 仅无行时写 Version 0；`advance` 锁行匹配 expected Version/Hash 后写
-`version+1`。两者匹配 capability Owner/Kind 与 Value Kind，校验 Ref Scope/Run、Epoch、
-Canonical Hash，按 `S/run/principal/kind/idempotency_key` 幂等；同键异输入冲突。
+`initialize` 仅无行时写 Version 0；`advance` 必须先按 Database Surface 的 Root 顺序
+锁 Run、规范 Artifact identity 与 Current，再按固定五维顺序锁全部 Frontier，匹配
+expected Version/Hash 后写 `version+1`。两者匹配 capability Owner/Kind 与 Value Kind，
+校验 Ref Scope/Run、Epoch、Canonical Hash，按
+`S/run/principal/kind/idempotency_key` 幂等；同键异输入冲突。
 
-成功 advance 同事务检查 Current；漂移则由同一个 security-definer 事务以
-`trigger=FRONTIER_ADVANCE/source_operation_id=Frontier operation_id` 内部创建幂等
-Revocation Operation/Receipt、推进 Head、置 REVOKED、撤销未响应 Grant并写
-Event/Audit，任一步失败全回滚。该固定级联不是向调用方授予
-`SERVICE_REVOCATION_AUTHORITY`，内部 Receipt Writer 不可由应用角色直接执行。无
-Current 时 cascade id=null；Redis Observer 非正确性边界。
+Advance 同一 security-definer 事务检查 Current；漂移则以
+`FRONTIER_ADVANCE/operation_id` 幂等创建 Revocation/Receipt，推进 Current 内嵌的
+revocation seq/receipt、置 REVOKED、撤销未响应 Grant 并写 Event/Audit，任一步失败全
+回滚。此级联不授予
+`SERVICE_REVOCATION_AUTHORITY`，内部 Writer 不公开；无 Current 时 cascade id=null。
 
 ### 2.4 表
 
@@ -164,32 +173,25 @@ Current 时 cascade id=null；Redis Observer 非正确性边界。
 成功/失败 Operation 均 Audit；Event 仅已提交转换。删除/降级/跳号/非 Owner/CAS loser/
 同键异 Hash 均失败关闭。
 
-## 3. PostgreSQL 权威表
+## 3. Platform 业务真值表
 
-除第 2.4 节外，U6 App Schema 必须具有：
+Authority/Root 物理 Schema、函数与 GRANT 只取 Database Surface；执行域表只取
+Execution Storage；本文只闭合 Frontier/Readiness 业务记录：
 
 | 表 | PK / Unique / 状态与必需字段 |
 | --- | --- |
-| `research_current_evidence_relation_keys` | PK `(S,run_id,claim_ref_identity,evidence_ref_identity)`；UQ `(S,run_id,relation_artifact_id)`；exact Relation Ref/值/current Revision/Hash；同 Pair 仅原 ID 做 expected-revision CAS |
 | `current_report_readiness` | PK `(S,run_id)`；`CURRENT|REVOKED`；exact Certificate/Report/Semantic Hash、五维 Version/Hash、Epoch、readiness Version、revocation Seq/Receipt、时间；Seq+Receipt 即 Head |
-| `research_readiness_publications` | PK `(S,publication_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；Input Hash、Certificate/Report、expected/committed Version、Frontier Hash、`CURRENT_PUBLISHED`、时间 |
-| `research_readiness_consumptions` | PK `(S,consumption_id)`；UQ `(S,run_id,principal_id,purpose,idempotency_key)`；Input Hash、Certificate/Report、Readiness/Revocation/Frontier/Epoch、`READY_COMMITTED|STALE_COMMITTED|GRANT_ISSUED`、Terminal/Grant、时间 |
+| `research_readiness_publications` | PK `(S,publication_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；仅成功 append；Input Hash、Certificate/Report、expected/committed Version、Frontier Hash、`CURRENT_PUBLISHED`、时间 |
+| `research_readiness_consumptions` | PK `(S,consumption_id)`；UQ `(S,run_id,principal_id,purpose,idempotency_key)`；仅成功 append；Input Hash、Certificate/Report、Readiness/Revocation/Frontier/Epoch、`READY_COMMITTED|STALE_COMMITTED|GRANT_ISSUED`、strict Terminal/Grant 分支、时间 |
 | `research_domain_terminals` | PK `(S,run_id)`；UQ `(S,terminal_id)`；append-only；Terminal=`READY|STALE|PARTIAL|NEEDS_MORE_RESEARCH|INCONCLUSIVE`；Authority=`CURRENT_READINESS|REVOCATION_CONSUMPTION|RESEARCH_STOP`；Reason、Domain Reasons、exact Refs、nullable Certificate、Input Hash、时间 |
-| `research_stop_terminal_commits` | PK `(S,commit_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；exact Stop/Coverage、Input Hash、Terminal ID、`COMMITTED|REJECTED`、时间 |
+| `research_stop_terminal_commits` | PK `(S,commit_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；仅成功 append；exact Stop/Coverage、Input Hash、Terminal ID、`COMMITTED`、时间 |
 | `research_revocation_operations` | PK `(S,operation_id)`；UQ `(S,run_id,owner_principal_id,idempotency_key)`；strict Trigger/Source Operation/Owner/Reason CHECK、Certificate/Frontier/Epoch、`REQUESTED|COMMITTED|FAILED`、Receipt/Error/time |
 | `report_read_grants` | PK `(S,grant_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；exact Certificate/Report、server immutable Response Wire、Issue Readiness/Revocation/Frontier/Epoch、五态、`terminal_from_status`、阶段 Key/Hash/时间三元组 |
-| `research_resource_run_heads` | PK `(S,run_id)`；Reserve 事务单调 `next_reservation_seq` |
-| `research_resource_reservations` | PK `(S,reservation_id)`；UQ `(S,run_id,reservation_seq)`、`(S,run_id,principal_id,reserve_idempotency_key)`；Kind/Demand 在 Input Hash；见 §7 |
-| `research_resource_transition_operations` | PK `(S,transition_id)`；UQ `(S,reservation_id,principal_id,idempotency_key)`；Transition Kind、独立 Input Hash、old/new State、Outcome、时间 |
-| `research_invocation_commits` | PK `(S,invocation_id)`；UQ `(S,reservation_id)`、`(S,request_id)`；Kind/Reservation/Lease/Attempt/Fence/Request Hash、`AUTHORIZED|STARTED|COMPLETED|FAILED|OUTCOME_UNKNOWN`、Result/Usage/时间 |
-| `research_invocation_request_operations` | PK `(S,invocation_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；Invoke Kind/Input Hash/Request 与派生 Stage IDs/Keys |
-| `research_invocation_transition_operations` | PK `(S,transition_id)`；UQ `(S,invocation_id,principal_id,idempotency_key)`；Transition/expected-old-new State/Input Hash/Version/Outcome/time |
-| `research_system_record_transition_operations` | PK `(S,transition_id)`；UQ `(S,record_kind,record_id,principal_id,idempotency_key)`；Transition/old-new State/Input Hash/Owner/Outcome/time |
-| `research_system_artifacts` | PK `(S,run_id,artifact_id,revision)`；UQ 加 Content Hash；仅 AgentDataProjection Receipt；exact Request/Profile/Reservation/Input/Field/Byte/Token/HMAC/Policy |
-| `research_release_decision_commits` | PK `(S,decision_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；Candidate/Input/Decision Hash、immutable GO、Certificate、Readiness/Revocation/Frontier/Epoch、时间 |
+| `report_read_grant_expiration_operations` | PK `(S,operation_id)`；UQ `(S,grant_id,principal_id,idempotency_key)`；Input Hash、expected/source State、`EXPIRED`、DB time |
+| `research_release_decision_commits` | PK `(S,decision_id)`；UQ `(S,run_id,principal_id,idempotency_key)`；仅成功 append；Candidate/Input/Decision Hash、immutable GO、Certificate、Readiness/Revocation/Frontier/Epoch、时间 |
 
-以下是上表 Record 的 nullable strict 分支，并与全部必需列求交；数据库 `CHECK`
-施加同一约束：
+Current、Grant 与 Revocation 的 nullable strict 分支如下，并与表中全部必需列求交；
+数据库 `CHECK` 施加同一约束：
 
 ```ts
 type CurrentReadinessNullable =
@@ -230,37 +232,46 @@ type RevocationOperationNullable =
   | { state: "COMMITTED";
       receipt_ref: ArtifactReferenceFor<"ReadinessRevocationReceipt">;
       error_code: null; completed_at: Timestamp }
-  | { state: "FAILED"; receipt_ref: null; error_code: string;
+  | { state: "FAILED"; receipt_ref: null; error_code: U6PlatformErrorCode;
       completed_at: Timestamp };
+
+type FrontierOperationNullable =
+  | { outcome: "COMMITTED";
+      committed_frontier_version: NonNegativeInt;
+      committed_frontier_hash: Sha256; event_seq: PositiveInt;
+      cascaded_revocation_operation_id: ImmutableId | null;
+      error_code: null; completed_at: Timestamp }
+  | { outcome: "REJECTED";
+      committed_frontier_version: null; committed_frontier_hash: null;
+      event_seq: null; cascaded_revocation_operation_id: null;
+      error_code: U6PlatformErrorCode; completed_at: Timestamp };
 ```
 
 `REVOKED→CURRENT` 重发布写新 Certificate、递增 `readiness_version`，清空**当前代**
 Receipt/`revoked_at`，但保持 `revocation_seq` 全 Run 单调；历史由 Operation/Receipt/
-Audit 保留。
+Audit 保留；Publish 必须查询历史 Revocation Operation/Receipt，永久拒绝把同一已撤
+Certificate 再发布为 CURRENT。
 
-EvidenceRelation Committer 先锁 `(exact claim_ref_identity,exact evidence_ref_identity)`。
-同 Pair 的不同 `relation_artifact_id` 返回 `EVIDENCE_RELATION_IDENTITY_CONFLICT`，不得借
-SUPPORTS/REFUTES/CONFLICTS 的不同 ID 隐藏冲突。Artifact 保持 append-only，仅 Key 指向
-的 exact Revision 可进入 current Support/Coverage。
+Revocation 的 `REQUESTED` 只在函数事务内可见。预期业务失败使用 PL/pgSQL
+subtransaction：回滚 Current/Grant/Receipt/Event 等业务写，再把 Operation 置 FAILED
+并返回结构化错误；成功置 COMMITTED。不可恢复 SQL/约束异常终止整个外层事务，可能
+不留 FAILED 行，不能用 Operation 表代替运行日志。
+编码顺序固定：Authority 校验 → 外层以
+`INSERT ... ON CONFLICT DO NOTHING` 创建/定位 Operation → 重锁 Operation
+`FOR UPDATE` 并 exact 比较 Input Hash → 内层 `BEGIN ... EXCEPTION` 执行业务写。只捕获
+U6 专用 SQLSTATE 与 constraint-name allowlist；内层回滚后外层写
+FAILED/REJECTED。`deadlock_detected|serialization_failure|query_canceled`、未知
+FK/CHECK/UQ 与所有未列异常必须重新抛出，禁止 `WHEN OTHERS` 吞错。
+Frontier 的预期 CAS/Owner/输入拒绝使用相同 subtransaction 语义写 REJECTED；Event
+只允许 COMMITTED。Publication/Consumption/Stop/GO 只保存成功记录，调用失败没有伪造
+success row。
 
 ## 4. 唯一锁序与状态传播
 
 所有 Publish、Current Consume、Research Stop Commit、Frontier 传播撤权、显式
-Revoke、Grant Consume/Response 和 GO Commit 统一使用：
-
-```text
-runs（无 Current 时也先锁此 Run）
-→ current_report_readiness（Revocation Head 在本行内）
-→ research_version_frontiers：
-  SEMANTIC → SCHEMA → DATA → POLICY → IDENTITY
-→ research_domain_terminals
-→ report_read_grants（按 grant_id）
-→ research_revocation_operations（按 operation_id，需要时）
-→ research_release_decision_commits（按 decision_id，需要时）
-```
-
-不得另建/先锁 Head 表；Advisory 只补 Key Lock，不能替代 `runs` Row Lock。
-Relation、Resource、Invocation 用各自 Key 顺序，持有后不得反向进入此锁序。
+Revoke、Grant Consume/Response/Expire 和 GO Commit 都使用 Database Surface §3 的
+逐行唯一 Root 顺序；本文不复制缩写版。不得另建/先锁 Head 表；Advisory 只补
+absent-key lock，不能替代真实行。Resource/Invocation 持锁后不得反向进入 Root。
 
 状态顺序固定为：
 
@@ -281,10 +292,12 @@ Relation、Resource、Invocation 用各自 Key 顺序，持有后不得反向进
 Publish 验证 Certificate 的 Stop、Report、Projection、四 Gate、material Support 与五维
 Frontier；已撤 Certificate 不得复活，有 Domain Terminal 时不得 Publish。REPORT_READ
 锁定同 Certificate 的 immutable READY；CURRENT/STOP_READY/Certificate 均不能替代。
-Publish 同键重放仍先按唯一锁序重验 Certificate/Current/Frontier/Head；若已撤权返回
-`CURRENT_READINESS_REVOKED`，历史 Publication 仅供审计。
+Publish 同键重放仍先按唯一锁序重验 Certificate/Current/Frontier 与 Current 内嵌的
+revocation seq/receipt；若已撤权返回 `CURRENT_READINESS_REVOKED`，历史 Publication
+仅供审计。
 
-Standalone Revoke 只推进 Current/Head/Receipt、未响应 Grant、Audit，**不创建 STALE**。
+Standalone Revoke 只推进 Current 及其内嵌 seq/receipt、未响应 Grant、Audit，**不创建
+STALE**。
 仅 `DOMAIN_TERMINAL` Consume 与 Revoke/Advance 竞争且后者先胜时，loser 原子追加唯一
 `STALE/RUN_STALE`，不提交 READY/Grant。READY 后撤权保留历史 READY，不更新/追加 STALE
 或 Durable Runtime lifecycle Event。
@@ -314,14 +327,14 @@ type ConsumeCurrentInput =
 type RevokeCurrentInput = StrictCommandBase & {
   operation_id: ImmutableId; certificate_ref: ArtifactReferenceFor<"ReportReadyCertificate">;
   observed_frontier_hash: Sha256;
+  reason: "EVIDENCE_REVOKED" | "CERTIFICATE_TAMPERED";
+};
+type CascadeFrontierRevocationCommand = {
+  trigger: "FRONTIER_ADVANCE"; source_operation_id: ImmutableId;
   reason:
-    | "SEMANTIC_REVISION_CHANGED"
-    | "SCHEMA_REVISION_CHANGED"
-    | "DATA_SNAPSHOT_STALE"
-    | "POLICY_CHANGED"
-    | "IDENTITY_AUTHORITY_CHANGED"
-    | "EVIDENCE_REVOKED"
-    | "CERTIFICATE_TAMPERED";
+    | "SEMANTIC_REVISION_CHANGED" | "SCHEMA_REVISION_CHANGED"
+    | "DATA_SNAPSHOT_STALE" | "POLICY_CHANGED"
+    | "IDENTITY_AUTHORITY_CHANGED";
 };
 
 type CommitResearchStopTerminalInput = StrictCommandBase & {
@@ -386,6 +399,10 @@ type ConsumedReportReadGrant = {
   report_ref: ArtifactReferenceFor<"AnalysisReport">;
   response: CanonicalResponseBinding; consumed_at: Timestamp;
 };
+type ExpiredReportReadGrant = {
+  operation_id: ImmutableId; grant_id: ImmutableId; state: "EXPIRED";
+  terminal_from_status: "ISSUED" | "CONSUMED"; expired_at: Timestamp;
+};
 type CommittedCurrentGo = {
   decision_id: ImmutableId; decision: "GO";
   certificate_ref: ArtifactReferenceFor<"ReportReadyCertificate">;
@@ -402,6 +419,8 @@ interface CurrentReadinessPort {
     Promise<PortResult<CommittedCurrentRevocation>>;
   consumeGrant(capabilityInput: unknown, input: ConsumeReportReadGrantInput):
     Promise<PortResult<ConsumedReportReadGrant>>;
+  expireGrant(capabilityInput: unknown, input: ExpireReportReadGrantInput):
+    Promise<PortResult<ExpiredReportReadGrant>>;
   commitResponse(capabilityInput: unknown, input: CommitReportReadResponseInput):
     Promise<PortResult<CommittedReportReadResponse>>;
   commitGo(capabilityInput: unknown, input: CommitCurrentGoInput):
@@ -424,12 +443,12 @@ interface ResearchStopTerminalPort {
 | `CurrentReadinessPort.consume(REPORT_READ)` | `REPORT_READ_AUTHORITY` |
 | `CurrentReadinessPort.revoke` | `SERVICE_REVOCATION_AUTHORITY` |
 | `CurrentReadinessPort.consumeGrant/commitResponse` | `REPORT_READ_AUTHORITY` |
+| `CurrentReadinessPort.expireGrant` | `REPORT_READ_EXPIRY_AUTHORITY` |
 | `CurrentReadinessPort.commitGo` | `RELEASE_GO_AUTHORITY` |
 | `ResearchStopTerminalPort.commit` | `RESEARCH_STOP_AUTHORITY` |
 
-Adapter 必须在进入锁序前按方法解析 exact 分支；不得因对象实现了同一 Port 就复用另一
-方法的 Capability。Frontier advance 的数据库内级联只接受当前已验证的 matching
-Frontier Authority 和同一 `operation_id`，不能调用 public `revoke` 分支。
+Adapter 入锁前解析方法的 exact Capability；同一 Port 不表示权限互换。Frontier
+级联只继承已验证的 matching Authority/`operation_id`，不能调用 public `revoke`。
 
 Research Stop Authority 只接受 exact、current Stop/Coverage，并固定映射：
 
@@ -439,14 +458,12 @@ Research Stop Authority 只接受 exact、current Stop/Coverage，并固定映�
 | `STOP_NEEDS_MORE_RESEARCH` | `NEEDS_MORE_RESEARCH / EVIDENCE_COVERAGE_INSUFFICIENT` |
 | `STOP_INCONCLUSIVE` | `INCONCLUSIVE / ANALYSIS_INCONCLUSIVE` |
 
-此 Port 仅接受 `RESEARCH_STOP_AUTHORITY` capability 分支；`domain_reason_codes` 精确等于
-Stop 的有界唯一 Reason 集。`commit_research_stop_terminal` 必须使用 §4 Root 锁序，
-在锁内重验 CurrentReadiness 不存在、Domain Terminal 不存在、五维 Frontier 与
-Coverage exact current 且无 STALE；与 Publish/Frontier Advance 竞争只能一方提交。
-它是三个终态唯一写入口；重放仍重验 exact Revision，同键异 Hash 冲突。通用
-`authorizeRunTerminal` 对 READY/STALE
-统一返回 `CURRENT_READY_CONSUMPTION_REQUIRED`，对 PARTIAL/NEEDS_MORE_RESEARCH/
-INCONCLUSIVE 返回 `RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`，无兼容分支。
+Stop Port 仅接受 `RESEARCH_STOP_AUTHORITY`，Reason 集必须 exact。Commit 按 §4
+锁内重验 Current/Terminal 不存在、五维 Frontier/Coverage exact current 且无 STALE；
+与 Publish/Advance 竞争仅一方提交。它是三个终态唯一入口；重放重验 Revision，同键异
+Hash 冲突。通用 `authorizeRunTerminal` 对 READY/STALE 报
+`CURRENT_READY_CONSUMPTION_REQUIRED`，对其余三态报
+`RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`。
 
 ## 6. Grant 的可序列化 Wire
 
@@ -469,6 +486,11 @@ type ConsumeReportReadGrantInput = StrictCommandBase & {
 type CommitReportReadResponseInput = StrictCommandBase & {
   grant_id: ImmutableId;
 };
+type ExpireReportReadGrantInput = StrictCommandBase & {
+  operation_id: ImmutableId; grant_id: ImmutableId;
+  expected_state: "ISSUED" | "CONSUMED";
+  reason_code: "REPORT_READ_GRANT_TTL_EXPIRED";
+};
 
 type CommittedReportReadResponse = {
   grant_id: ImmutableId; state: "RESPONDED";
@@ -486,40 +508,41 @@ sha256(
 )
 ```
 
-Issue/Response 不接收 caller Digest/bytes/Media Type/长度。Issue 用固定
+Issue/Response 不接收 caller Digest/bytes/Media Type/长度。U6 v1 Grant TTL 固定
+`60_000ms`，数据库以 `expires_at=db_now+60s` 签发，调用方不能提交或延长。Issue 用固定
 `ZH_L2_RESEARCH_V1` 从 exact Report 投影并存 immutable Wire；decoded body ≤1,048,576
 bytes，unpadded base64url ≤1,398,102 字符，拒绝非法 alphabet、非最短编码或 re-encode
-不等。Consume 仅 `ISSUED→CONSUMED`。Response 重投影并逐字节匹配 Wire/body/Digest，
-重验 Current、五维 Frontier、READY、Head、TTL、Principal 后 CAS 为 RESPONDED，再返回
-server Wire；CAS 前零字节。Revoke 先胜则未响应 Grant 为 REVOKED。
+不等。Consume 仅 `ISSUED→CONSUMED`。在 `db_now>=expires_at` 时，Consume/Response
+即使 Expiry Job 未运行也固定拒绝；`expire_report_read_grant` 只把
+`ISSUED|CONSUMED→EXPIRED` 持久化，不能读取或响应正文。Response 重投影并逐字节匹配
+Wire/body/Digest，重验 Current、五维 Frontier、READY、Current 内嵌的 revocation
+seq/receipt、TTL、Principal 后 CAS 为 RESPONDED，再返回 server Wire；CAS 前零字节。
+Revoke 先胜则未响应 Grant 为 REVOKED。
 
 ## 7. Resource Reservation 与 Invocation
 
-完整 strict Wire、Port、表、状态机、Active Cancel 证明、Tool Permit、Projection 与
-Oracle 只定义于 `docs/design/u6-research-resource-invocation-contract.md`。本核心保留
-三条跨域不变量：Reservation Seq 每 Run 单调；真实 I/O 前必须持有 exact IN_USE Lease；
-未知 Outcome 不释放预算，late Usage 必须入账。迁移中的 Resource/Invocation 表和窄函数
-必须实现该分册；Invocation 迁移还必须实现唯一
-`docs/design/u6-invocation-state-contract.md`，不能在此处另造兼容状态机。
+Resource/Invocation strict Wire 取 `u6-research-resource-invocation-contract.md`，
+Invocation 状态取 `u6-invocation-state-contract.md`，Result 加密/claim/解密取
+`u6-invocation-result-crypto-contract.md`，函数/GRANT 取 Database Surface 分册。
+跨域不变量：Seq 单调；I/O 前持 exact IN_USE Lease；未知 Outcome 不释放预算，late
+Usage 必须入账。
 
 ## 8. Revocation Receipt 与 Release GO
 
-Public 服务撤权只接受 `SERVICE_REVOCATION_AUTHORITY`；Frontier advance 级联只接受
-其 matching Frontier Authority。两者共享不可公开调用的 Receipt Writer，并分别固定
-`trigger=SERVICE_REQUEST|FRONTIER_ADVANCE`。每次 Operation 必须满足：
+Public Revoke 只接受 `SERVICE_REVOCATION_AUTHORITY`，Frontier 级联只接受 matching
+Authority；两者共享不公开的 Writer，trigger 固定为
+`SERVICE_REQUEST|FRONTIER_ADVANCE`，且：
 
 ```text
 ReadinessRevocationReceipt.envelope.attempt_id = source_operation_id
 artifacts.worker_fence = 0  // SERVICE_OPERATION_FENCE
 ```
 
-`commit_research_revocation_receipt` 仅为数据库内部函数：SERVICE_REQUEST 重验服务
-Capability/operation 且 Reason 只可 `EVIDENCE_REVOKED|CERTIFICATE_TAMPERED`；
-FRONTIER_ADVANCE 重验当前外层 Frontier capability/value/event/operation，Reason 按
-`SEMANTIC|SCHEMA|DATA|POLICY|IDENTITY` 唯一映射同名前缀变化。两分支 CHECK 强制
-Owner/Source/Trigger 互斥且 `source_operation_id` exact。两者都重验 Epoch、
-Certificate/Frontier、Envelope Hash 与 Domain Semantic Hash。普通 Research Committer
-拒绝 Fence 0；两种路径都不能获得 Worker Lease、执行 SQL 或提交其他 Artifact。
+内部 Writer 对 SERVICE 仅收两种服务 Reason；对 FRONTIER 重验外层
+capability/value/event/operation 并按五维唯一映射 Reason。CHECK 强制
+Owner/Source/Trigger 互斥、source id exact；两支均重验 Epoch、Certificate/Frontier、
+Envelope/Domain Hash。普通 Committer 拒绝 Fence 0；两支无 Worker Lease/SQL/其他
+Artifact 权限。
 
 ```ts
 type CommitCurrentGoInput = StrictCommandBase & {
@@ -536,42 +559,22 @@ type CommitCurrentGoInput = StrictCommandBase & {
 };
 ```
 
-`commit_current_release_go` 按 §4 在单一 PG 事务验证 exact V3 Certificate、同证书
-READY/RUN_READY、CURRENT、五维 Frontier/Schema、Head/Epoch、material Claim、Release
-Evidence/签名 Outcome，调用 server-only Authorizer，并在解锁前品牌化、持久化 immutable
-GO/Audit。缺 READY 固定 `RESEARCH_READY_TERMINAL_REQUIRED`。同键重放也先重走锁与全部
-校验；若后来撤权返回 `CURRENT_READINESS_REVOKED`，不得返回历史 GO。禁止事务外
-Readiness Snapshot；旧 `authorizeReleaseDecision(GO)` 返回
+GO 在 §4 单事务锁内验证 exact V3 Certificate、同证书 READY、CURRENT、五维
+Frontier/Schema、Current 内嵌的 revocation seq/receipt、Epoch、material Claim、
+Release Evidence/签名 Outcome，再写 immutable GO/Audit。缺 READY 报
+`RESEARCH_READY_TERMINAL_REQUIRED`；同键重放仍重验，撤权后报
+`CURRENT_READINESS_REVOKED`。禁用事务外 Snapshot；旧 GO API 报
 `CURRENT_RELEASE_COMMIT_REQUIRED`；缺 U7–U9 证据保持 HOLD。
 
-## 9. 窄函数、错误与 V1
+## 9. 错误与历史 tuple
 
-U6 App Migration 只授权 Backend/Service 调用：
-
-```text
-initialize_research_version_frontier(command jsonb)
-advance_research_version_frontier(command jsonb)
-commit_current_l2_artifact(command jsonb)
-commit_research_stop_terminal(command jsonb)
-publish_current_report_readiness(command jsonb)
-consume_current_ready(command jsonb)
-revoke_current_readiness(command jsonb)
-consume_report_read_grant(command jsonb)
-commit_report_read_response(command jsonb)
-commit_current_release_go(command jsonb)
-start_research_invocation(command jsonb)
-mark_research_invocation_outcome_unknown(command jsonb)
-commit_invocation_terminal(command jsonb)
-```
-
-Resource、Invocation State 与 System Record Lifecycle 分册列出的窄 RPC 同属此唯一
-Allowlist。
-`commit_research_revocation_receipt` 只可由 `advance_research_version_frontier` 或
-`revoke_current_readiness` 的同事务内部调用，绝不 GRANT 给 Backend/Service 角色。
+Public mutation、read Resolver、internal-only helper、Capability、GRANT 与 DML
+denylist 的闭合枚举只取 Database Surface 分册；本文不得增加隐式数据库函数。
 
 ```ts
 const U6_ERROR_RETRYABLE = {
   RESEARCH_CAPABILITY_SCOPE_MISMATCH: false,
+  RESEARCH_AUTHORITY_LOCK_CONTENDED: true,
   RESEARCH_FRONTIER_OWNER_MISMATCH: false,
   RESEARCH_FRONTIER_CAS_CONFLICT: true,
   READINESS_REVOCATION_PROPAGATION_FAILED: true,
@@ -588,6 +591,7 @@ const U6_ERROR_RETRYABLE = {
   REPORT_READY_CERTIFICATE_TAMPERED: false,
   REPORT_READ_READY_TERMINAL_REQUIRED: false,
   REPORT_READ_GRANT_NOT_CONSUMABLE: false,
+  REPORT_READ_GRANT_EXPIRED: false,
   REPORT_READ_RESPONSE_DIGEST_MISMATCH: false,
   REPORT_READ_GRANT_REVOKED: false,
   EVIDENCE_RELATION_IDENTITY_CONFLICT: false,
@@ -597,12 +601,18 @@ const U6_ERROR_RETRYABLE = {
   RESEARCH_RESOURCE_LIMIT_EXCEEDED: false,
   RESEARCH_INVOCATION_TRANSITION_CONFLICT: false,
   RESEARCH_INVOCATION_TERMINAL_CONFLICT: false,
+  RESEARCH_INVOCATION_LATE_TERMINAL_CLOSED: false,
   RESEARCH_SYSTEM_RECORD_NOT_ACTIVE: false,
   RESEARCH_SYSTEM_RECORD_BINDING_MISMATCH: false,
   RESEARCH_SYSTEM_RECORD_TRANSITION_CONFLICT: false,
   RESEARCH_RESULT_SIZE_EXCEEDED: false,
   RESEARCH_RESULT_DIGEST_MISMATCH: false,
   RESEARCH_RESULT_GOVERNANCE_REJECTED: false,
+  RESEARCH_RESULT_TERMINAL_PREPARATION_BUSY: true,
+  RESEARCH_RESULT_KEY_ROTATION_CONFLICT: true,
+  RESEARCH_RESULT_DECRYPTION_KEY_UNAVAILABLE: false,
+  RESEARCH_RESULT_INTEGRITY_FAILURE: false,
+  RESEARCH_RESULT_ACCESS_RATE_LIMITED: true,
   REPLAY_SNAPSHOT_UNAVAILABLE: false,
   MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED: false,
   SQL_INVOCATION_NOT_AUTHORIZED: false,
@@ -626,8 +636,9 @@ type U6PlatformError = {
 `RESEARCH_FRONTIER_OWNER_MISMATCH`/`READINESS_FRONTIER_INCOMPLETE`/
 `RESEARCH_FRONTIER_CAS_CONFLICT`；Relation active Pair 冲突使用
 `EVIDENCE_RELATION_IDENTITY_CONFLICT`；GO 缺 READY 使用
-`RESEARCH_READY_TERMINAL_REQUIRED`。其他条件按错误名逐一映射，不得用斜杠候选或自由
-字符串；Resource/Invocation 细项由 §7 分册冻结。
+`RESEARCH_READY_TERMINAL_REQUIRED`；Authority prefix 的 PostgreSQL `55P03` 只映射
+`RESEARCH_AUTHORITY_LOCK_CONTENDED` 并回滚整事务。其他条件按错误名逐一映射，不得用
+斜杠候选或自由字符串；Resource/Invocation/Crypto 细项由 §7 及其分册冻结。
 
 V1 仅能由显式 `readHistorical*` 返回
 `{authority:"HISTORICAL_READ_ONLY",can_authorize_current:false}`；V1 Parser 成功不得取得
@@ -636,24 +647,25 @@ Authority。
 
 ## 10. 必需 Oracle
 
-两个独立 PG 连接必须覆盖：Advance 与 Publish/READY/Grant/GO 的同步 cascade（含 Fixture
-Manifest tamper）；Publish CAS/重放与 Revoke；standalone Revoke 不建 STALE、losing
-DOMAIN consume 仅建一个 STALE、READY 后撤权保留历史；Grant 三阶段各自竞态且 Response
-CAS 前零字节；GO 与 Revoke/撤权后同键重放；五 Owner/CAS/Event/Audit；Relation Pair
-冲突；Stop-vs-Publish 与 Stop-vs-Frontier Advance 两种锁顺序，恰有一个合法提交且绝不
-出现 Current+非 Ready Terminal；canonical Base64url/length/digest/media 换绑；全部
-V1/旧终态入口。Resource/Invocation/System Lifecycle 分册覆盖各自 Oracle。Hosted、
-Docker 与 PG 共用 Case；In-Memory PASS 不替代事务 Oracle。
+双 PG 连接覆盖：Frontier/Publish/READY/Grant/GO cascade、CAS/重放/撤权/tamper；
+Revoke 不建 STALE，losing DOMAIN 仅建一个 STALE，READY 后只留历史；Grant 四阶段竞态
+且 Response CAS 前零字节；Owner/Event/Audit、Relation Pair、Stop-vs-Publish/Advance、
+Base64/digest 与 V1/旧入口。还须证明：根包/通用 Repository 拒绝 U6 元组；Backend
+直接 DML 失败而专用 Committer 成功；Projection 外层 RPC 可用且内部 Writer 直调拒绝；
+DB/日志/Audit/Checkpoint 无明文，nonce/tag/AAD/hash 篡改失败，已提交重放不再加密，
+expired claim 接管最多提交一个 Blob，到期 Tombstone 不可回放。Hosted/Docker/PG 共用
+Case；In-Memory 不替代事务 Oracle。
 
 ## 11. Migration 与部署边界
 
-唯一迁移目录：
+唯一一次性迁移必须是：
 
 ```text
-infra/supabase/apps/data-agent/migrations/
+infra/supabase/apps/data-agent/migrations/20260725010590_app_data_agent_u6_research_authority.sql
 ```
 
-禁止第二迁移链。共享 Supabase 仍按完整 `S` 隔离；Browser 无表写权，Backend 仅获精确
-EXECUTE。迁移登记 Name+SHA-256，同名异 Hash 失败，并做 clean install、中断前缀、权限/
-Checksum Smoke。Redis/Upstash 仅可丢失通知/缓存，不保存 Frontier、Readiness、Grant、
-Resource、Relation Key、GO 真值。
+`10590` 的 Authority/RPC/GRANT/全局入口只取 Database Surface，执行域表/nullable
+CHECK/TTL/锁序只取 Execution Storage，Terminal candidate key/FK 只取 Reference Graph；
+DELETE_PENDING Job 只取 App Lifecycle Cleanup，维护窗口/DDL/恢复只取 Migration
+Safety。Inventory 覆盖五者；共享 Supabase 按 `S` 隔离，Redis/Upstash 只存可丢缓存。
+本节仍是 `NOT_IMPLEMENTED` 门禁。

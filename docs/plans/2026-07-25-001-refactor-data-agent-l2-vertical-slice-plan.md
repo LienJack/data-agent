@@ -278,9 +278,10 @@ QuestionFrame
 → CoverageState / ResearchStopDecision
 → ReportManifest / AnalysisReport@2 / ReportProjectionReceipt
 → 4 × EvidenceGateReceipt
-→ ReportReadyCertificate@2
+→ ReportReadyCertificate@3
+→ publishCurrentReadiness → CurrentReadiness=CURRENT
 → consumeCurrentReady
-→ 历史 RunTerminal=READY + CurrentReadiness=CURRENT / ReportReadGrant
+→ 历史 RunTerminal=READY / ReportReadGrant
 → 可选 ReadinessRevocationReceipt + CurrentReadiness=REVOKED
 ```
 
@@ -721,15 +722,23 @@ flowchart LR
 
 ### U6. 实现 L2 研究循环与 ReportReady 权威
 
-- **设计冻结（2026-07-27）：** RQ092 与
+- **设计冻结（2026-07-28）：** RQ092 与
   `docs/design/u6-research-authority-contract.md`、
   `docs/design/u6-research-planning-payload-contract.md`、
   `docs/design/u6-research-wire-payload-contract.md`、
+  `docs/design/u6-research-oed-v2-contract.md`、
   `docs/design/u6-research-platform-contract.md`、
   `docs/design/u6-research-resource-invocation-contract.md`、
   `docs/design/u6-invocation-state-contract.md`、
-  `docs/design/u6-system-record-lifecycle-contract.md` 与
-  `docs/design/u6-controlled-fixture-contract.md` 已冻结 U6 的 V2 Artifact、Wire
+  `docs/design/u6-system-record-lifecycle-contract.md`、
+  `docs/design/u6-controlled-fixture-contract.md`、
+  `docs/design/u6-research-database-surface-contract.md`、
+  `docs/design/u6-research-migration-safety-contract.md`、
+  `docs/design/u6-research-execution-storage-contract.md`、
+  `docs/design/u6-terminal-reference-graph-contract.md`、
+  `docs/design/u6-invocation-result-crypto-contract.md`、
+  `docs/design/u6-result-key-lifecycle-contract.md` 与
+  `docs/design/u6-app-lifecycle-cleanup-contract.md` 共 16 份分册已冻结 U6 的 V2 Artifact、Wire
   Schema、双 Hash、Authority、终态 Owner、current-ready、撤权、资源和 U6/U7 边界；
   `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md` 是低于
   Trellis 32 KiB 上限的执行闭包，`docs/research/u6-rq092-contract-evidence.md` 是
@@ -755,9 +764,9 @@ flowchart LR
   - `apps/worker/src/workflows/l2-research.workflow.ts`
 - **方法：**
   - 将 `ResearchBrief/HypothesisSet/EvidencePlan/QueryEvidence/AtomicClaim/
-    AnalysisReport/ReportReadyCertificate` 升级为 V2；V1 只允许显式
-    `readHistorical*`，所有 Writer、Authority、current-ready、Grant 与 Release `GO`
-    路径固定拒绝。
+    AnalysisReport` 升级为 V2，将 `ReportReadyCertificate` 升级为 V3；Artifact V1
+    与 Certificate V1/V2 只允许显式 `readHistorical*`，所有 Writer、Authority、
+    current-ready、Grant 与 Release `GO` 路径固定拒绝。
   - 在 Sandbox 前提交 `ObligationExecutionDecision`，逐项重算 metric/formula、
     window/timezone、grain/grouping、join、predicate/cohort、NULL 与授权 Scope；
     SQL 成功不能覆盖语义不一致。
@@ -774,18 +783,21 @@ flowchart LR
   - 从 `ReportManifest` 确定性投影中文报告，并分别提交 Support、Conflict、
     Freshness、Source Independence 四张 Gate Receipt。
   - Readiness Authority 签发 Certificate 后，必须由 PostgreSQL
+    `publishCurrentReadiness` 独占创建或重发布 `CurrentReadiness=CURRENT`；随后
     `consumeCurrentReady` 在同一事务核验 exact Certificate、Version Frontier 与
-    Revocation Head，才能提交历史 `READY`、置 `CurrentReadiness=CURRENT` 或签发单次
-    `ReportReadGrant`。通用 `authorizeRunTerminal` 永久拒绝
+    已锁 CurrentReadiness 行内嵌的 revocation seq/receipt，才能提交历史 `READY` 或
+    签发单次 `ReportReadGrant`。通用 `authorizeRunTerminal` 永久拒绝
     `READY/PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE/STALE`；`READY/STALE` 返回
     `CURRENT_READY_CONSUMPTION_REQUIRED`，三个停止终态返回
     `RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`。
   - Grant Issue 只创建待消费能力；Grant Consume CAS 再核验 CurrentReadiness、
-    Frontier 与 Revocation Head，并只授权服务端物化。Grant Response CAS 第三次重验
+    Frontier 与 Current 行内嵌 revocation seq/receipt，并只授权服务端物化。Grant
+    Response CAS 第三次重验
     current 状态和 exact canonical bytes/Digest，提交为 `RESPONDED` 后才能发送首个
     响应字节。READY 后撤权保留历史 READY、置 `REVOKED` 并阻断所有新读取/下载。
-  - Release `GO` 在决策事务中 current-V2 revalidate Certificate、完整 material
-    Claim/Schema Frontier、CurrentReadiness、Revocation Head 与同一 Certificate 的
+  - Release `GO` 在决策事务中 revalidate current tuple/V3 Certificate、完整 material
+    Claim/Schema Frontier、CurrentReadiness 内嵌 revocation seq/receipt 与同一
+    Certificate 的
     `READY/RUN_READY` Domain Terminal；每次同键重放仍先重验 current，GO 后撤权不能
     重放出历史 GO。
   - `PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE` 只能由 PostgreSQL
@@ -822,7 +834,8 @@ flowchart LR
   Authority 与 Worker Workflow 到达 `READY`；14 个 Mutation 及其预算可执行配对反例
   得到预注册 Owner、终态与 Reason Code；Crash-Recovery SQL 总执行次数保持 2；
   historical READY/CurrentReadiness、Grant 三阶段、current-ready race、V1
-  read-deny、Release current-V2、资源与外发 Oracle 全通过。全局 Release 仍为
+  read-deny、Release current-tuple/V3-Certificate、资源与外发 Oracle 全通过。全局
+  Release 仍为
   `HOLD`。
 
 ### U7. 建立 Benchmark 平台与 Suite Adapter
@@ -972,16 +985,25 @@ U3、U4、U6、U8 还必须执行 Agent 行为评测：验证 Agent/Tool 能力�
 - U6：满足 `docs/design/u6-research-authority-contract.md`、
   `docs/design/u6-research-planning-payload-contract.md`、
   `docs/design/u6-research-wire-payload-contract.md`、
+  `docs/design/u6-research-oed-v2-contract.md`、
   `docs/design/u6-research-platform-contract.md`、
   `docs/design/u6-research-resource-invocation-contract.md`、
   `docs/design/u6-invocation-state-contract.md`、
   `docs/design/u6-system-record-lifecycle-contract.md`、
-  `docs/design/u6-controlled-fixture-contract.md` 与
+  `docs/design/u6-controlled-fixture-contract.md`、
+  `docs/design/u6-research-database-surface-contract.md`、
+  `docs/design/u6-research-migration-safety-contract.md`、
+  `docs/design/u6-research-execution-storage-contract.md`、
+  `docs/design/u6-terminal-reference-graph-contract.md`、
+  `docs/design/u6-invocation-result-crypto-contract.md`、
+  `docs/design/u6-result-key-lifecycle-contract.md`、
+  `docs/design/u6-app-lifecycle-cleanup-contract.md` 与
   `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md`；
   U6-owned Controlled Case 经真实 Research/PostgreSQL/Worker 到达 `READY`；14 个
   Mutation及其预算可执行配对反例、Coverage/Stop、material Claim/Schema Frontier、
   Crash-Recovery、Resource、V1 Read-Deny、旧 READY API 退役、current-ready/Grant
-  Revocation Race 与 Release current-V2 Oracle 全通过；Release 仍为 `HOLD`。
+  Revocation Race 与 Release current-tuple/V3-Certificate Oracle 全通过；Release 仍为
+  `HOLD`。
 - U7：四个 Adapter 通过 Conformance；Smoke 可重放；Holdout 隔离；Release Evidence 如实。
 - U8：Browser Test 覆盖完整 Analyst Workflow、所有交互状态、键盘/Screen Reader 与窄屏；UI 不夸大 `PARTIAL`、`HOLD`、`STALE` 或 Deferred Capability。
 - U9：Sandbox、Clean Docker Flow、Hosted Contract Path、Recovery Rehearsal 与 Release Manifest 在声明的 Evidence Boundary 内通过。

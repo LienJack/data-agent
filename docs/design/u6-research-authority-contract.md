@@ -1,7 +1,7 @@
 # U6 L2 研究循环与 ReportReady 权威契约
 
-> 状态：`FROZEN_DESIGN_CONTRACT`
-> 冻结基线：`data-agent@cb6d3d14512248b1c524b7ed505adb7b83ff5dd2`
+> 状态：`FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED`
+> 再认证基线：`data-agent@6325a69d9d8715a974b1b7c4189e1d5865bb9bfd`
 > 研究来源：`data-agent-system-design/RQ092`，
 > `RUN20260727-070114-u6-l2-research-loop-repo-b73fca`
 > Reader Answer SHA-256：
@@ -10,9 +10,10 @@
 > `6fd834e3e2228bf270c6b3556bb0ca23fdc90336950715e7fc59879a20e89eb9`
 > Synthetic Proof Result SHA-256：
 > `0908d49c91598999e40c3ecebd946b5a72317283dad6368e418ade660ac6df5b`
-> 再认证：
+> RQ092 原始再认证：
 > `synthesis/answer-quality-reviews/RQ092-8d6b6b22f4ed-4a1ab76b73fb-recertification.md`，
 > `decision=closed`，Codex `remaining_p0_p1=[]`
+> U6-B0 数据库/密码补充分册：`CODEX_REVIEWED / remaining_p0_p1=[]`
 > 实现状态：纯 Research Kernel 为 `KERNEL_CANDIDATE_ONLY`；生产 Persistence /
 > Compiler / Policy Authority 为 `NOT_IMPLEMENTED`
 > 发布状态：`HOLD`
@@ -89,8 +90,8 @@ U6 完成后也只代表“L2 证据受限诊断报告”可运行，不代表 L
    `CurrentReadiness=CURRENT | REVOKED` 单独表达当前报告是否仍可读取。Certificate
    签发后，Version Frontier 或 Evidence 撤权必须使新的 current-ready 消费、Grant
    消费和 Release `GO` 复核失败。
-9. **PostgreSQL 是事实源。** Event、Artifact、Attempt、Fence、Receipt 与 Revocation
-   Head 决定恢复；Checkpoint 只加速定位。
+9. **PostgreSQL 是事实源。** Event、Artifact、Attempt、Fence、Receipt 与
+   CurrentReadiness 内嵌的 revocation seq/receipt 决定恢复；Checkpoint 只加速定位。
 10. **Workflow 完成不等于领域完成。** Mastra `finish`、`snapshot.ready` 或 UI
     `ready=true` 不产生任何领域权力。
 11. **来源独立是版本化策略。** 同一 PostgreSQL 的两条查询仍是一个 provenance
@@ -272,12 +273,27 @@ Schema、纯计算和 Candidate 类型。
   Evidence、Proof、Stop、Projection、Certificate 与 Revocation；
 - [`u6-research-platform-contract.md`](./u6-research-platform-contract.md)：
   Frontier、Terminal、Current、Grant、Revocation 与 GO；
+- [`u6-research-database-surface-contract.md`](./u6-research-database-surface-contract.md)：
+  PostgreSQL Authority、Artifact Committer、函数面、GRANT 与一次性 Migration；
+- [`u6-research-migration-safety-contract.md`](./u6-research-migration-safety-contract.md)：
+  `10590` 维护窗口、已有数据 preflight、DDL、整事务回滚与 Hosted/Docker 对等；
+- [`u6-research-execution-storage-contract.md`](./u6-research-execution-storage-contract.md)：
+  Resource/Invocation/System Record/Result/Key metadata 的物理表、非 Terminal 约束、
+  nullable CHECK、TTL 与锁序；
+- [`u6-terminal-reference-graph-contract.md`](./u6-terminal-reference-graph-contract.md)：
+  Invocation/Preparation/Result/Blob/Receipt reference key/FK 与 Audit 五组 nullable FK；
 - [`u6-research-resource-invocation-contract.md`](./u6-research-resource-invocation-contract.md)：
   Resource、Model/SQL/Tool Invocation Wire 与 System Record；
 - [`u6-invocation-state-contract.md`](./u6-invocation-state-contract.md)：
   Invocation 状态迁移、Owner、幂等与 Crash Recovery；
+- [`u6-invocation-result-crypto-contract.md`](./u6-invocation-result-crypto-contract.md)：
+  明文 Candidate、Terminal claim、密文 Command、解密 Authority 与密码向量；
+- [`u6-result-key-lifecycle-contract.md`](./u6-result-key-lifecycle-contract.md)：
+  Key metadata 状态/时间矩阵、predecessor CAS、transition replay 与部署状态机；
 - [`u6-system-record-lifecycle-contract.md`](./u6-system-record-lifecycle-contract.md)：
-  Termination、Tool Permit 与 Result Blob 生命周期；
+  Termination、Tool Permit、Result Blob 与 deployment Audit Purge 生命周期；
+- [`u6-app-lifecycle-cleanup-contract.md`](./u6-app-lifecycle-cleanup-contract.md)：
+  DELETE_PENDING 环境的 Job-only 清理、retained receipt、Legal Hold 与 residual；
 - [`u6-controlled-fixture-contract.md`](./u6-controlled-fixture-contract.md)：
   受控两查询真值、Mutation、配对反例与竞态 Oracle。
 
@@ -550,7 +566,8 @@ CurrentReadiness = CURRENT | REVOKED
 - READY 提交前，只有 `consumeCurrentReady(purpose=DOMAIN_TERMINAL)` 与撤权竞争且
   撤权先胜出时，才能由同一事务下的 Revocation Authority 分支提交唯一 `STALE`
   RunTerminal，且不能同时提交 `READY`。独立 `revokeCurrentReadiness` 只推进
-  CurrentReadiness/Head，不主动占用历史 Terminal。
+  CurrentReadiness 及其内嵌 revocation seq/receipt，不主动占用历史 Terminal；不存在
+  独立 Revocation Head 表或锁。
 - READY 已提交后，后续撤权只把 `CurrentReadiness` 从 `CURRENT` 推进为
   `REVOKED`；不得 UPDATE 历史 READY，也不得在 Durable Runtime 终态后追加
   `run.completed/run.failed` 或新的 Run lifecycle Event。
@@ -580,11 +597,11 @@ BEGIN
   锁 Run
   锁 current_report_readiness
   按固定顺序锁 Semantic/Schema/Data/Policy/Identity Frontier
-  锁 Revocation Head
+  在已锁 current_report_readiness 上核验内嵌 revocation seq/receipt
   核验 exact Certificate、Frontier、Authority Epoch 与 Revocation
   重算 Certificate Semantic Hash
   追加 Consumption Event
-  若提交 Domain Terminal：同事务提交历史 READY，并置 CurrentReadiness=CURRENT
+  若提交 Domain Terminal：同事务提交历史 READY，并确认且保持已锁 CurrentReadiness=CURRENT
   若读取报告：创建绑定 exact report/principal/response digest/短 TTL 的单次 Grant
 COMMIT
 ```
@@ -600,10 +617,12 @@ DOMAIN_TERMINAL 的 READY 插入前胜出时，consumer 只能原子提交唯一
 1. **Issue：** 只创建短 TTL、单次、绑定 exact report/principal/response digest 的
    待消费 Grant；Issue 成功不是“响应已获授权”。
 2. **Consume：** 在 PostgreSQL CAS 事务中再次锁定
-   `current_report_readiness`、排序后的 Frontier 与 Revocation Head。只有仍为
+   `current_report_readiness`、排序后的 Frontier，并在该 Current 行锁下校验内嵌
+   revocation seq/receipt。只有仍为
    `CURRENT` 才把 Grant 标记为 consumed；它只授权服务端物化绑定响应，不授权发送。
 3. **Response：** `commitReportReadResponse` 再次锁定 Current Readiness、Frontier 与
-   Revocation Head，重算 exact canonical response bytes 的 Digest，并 CAS 为
+   Current 行内嵌的 revocation seq/receipt，重算 exact canonical response bytes 的
+   Digest，并 CAS 为
    `RESPONDED`。只有该事务提交后才能发送首个字节；这是外发授权线性化点。此前撤权
    胜出时 Grant 进入 `REVOKED` 且零字节输出，Response 先胜出后已经授权的单次响应
    无法撤回，后续撤权只阻断新的 Issue/Consume/Response。
@@ -615,7 +634,7 @@ DOMAIN_TERMINAL 的 READY 插入前胜出时，consumer 只能原子提交唯一
 Release `GO` 也不能消费历史上曾合法的 Certificate。Release Authority 必须在签发
 `GO` 的同一事务中调用 current tuple revalidation，重新核验 exact
 `ReportReadyCertificate@3`、完整 material Claim/Schema Frontier、当前
-`CurrentReadiness=CURRENT` 与 Revocation Head；V1、`REVOKED` 或只通过
+`CurrentReadiness=CURRENT` 与其内嵌 revocation seq/receipt；V1、`REVOKED` 或只通过
 `resolveReadyCertificate` 的历史对象固定拒绝。
 
 ## 10. PostgreSQL、恢复与缓存边界
@@ -645,11 +664,20 @@ L2 Document 首验 `8`、内核耗时 `<=2000ms`、最大 RSS `<=400MiB` 固化�
 Oracle。该 Oracle 只证明当前固定夹具和本地纯内核预算，不代表生产 SLA、真实数据规模
 或 Platform Authority 已交付。
 
-固定锁顺序为：
+完整锁序唯一取 Database Surface §1/§3；Readiness Root 展开为：
 
 ```text
-Run
-→ current_report_readiness（内含 Revocation Head）
+current backend authority（candidate）
+→ trusted Platform authority helper：
+  lifecycle shared advisory
+  → Deployment → Lifecycle → Membership（各 FOR SHARE NOWAIT）
+→ assignment advisory（Head absent only）
+→ Capability Head → Capability
+→ Run
+→ Outbox → RunAttempt（需要 Worker Fence 时）
+→ Relation Pair keys
+→ Artifact identity → active/exact revisions → parent/input rows
+→ current_report_readiness（内嵌 revocation seq/receipt）
 → research_version_frontiers：
   SEMANTIC → SCHEMA → DATA → POLICY → IDENTITY
 → research_domain_terminals
@@ -658,25 +686,32 @@ Run
 → research_release_decision_commits（GO 时）
 ```
 
+Resource/Invocation/Result 不套用上述 Readiness 后半段，逐函数只取 Execution Storage
+§5 profile；任何 U6 子域持锁后都不得反向进入 Authority prefix 或 Run。
+
 U6 App Migration 统一位于
 `infra/supabase/apps/data-agent/migrations/`。不得在
 `packages/platform/migrations/`、`infra/supabase/platform/migrations/` 或应用代码
-目录建立第二套 U6 Schema 入口；共享 Platform Schema 变更不属于 U6。
+目录建立第二套 U6 Schema 入口。唯一例外是 `10590` 内由 Database Surface 冻结的
+`platform.lock_u6_authority_binding`、`platform.lock_u6_cleanup_platform_evidence`
+与 Lifecycle identity guard；不得拆成 Platform Migration 或私增其他共享 Platform
+Schema 变更。生产安装安全只取 Migration Safety 分册。
 
 ### 10.2 单次 Authority Commit
 
-除撤权外，每个运行中 Commit 在一个 App Transaction 内执行：
+每个运行中 Commit 在一个 App Transaction 内执行：
 
 ```text
-strict parse
-→ lock authenticated scope/run/principal active fence
-→ verify attempt/lease/fence
-→ resolve exact input revisions
-→ recompute envelope hash
-→ run domain verifier
-→ verify narrow committer capability
+strict parse / size preflight（不取业务锁）
+→ current authority candidate
+→ trusted Platform binding locks
+→ Capability Head / Capability
+→ Database Surface §3 exact profile：
+  Run → optional Outbox → RunAttempt → Pair/Artifact/Input locks
+→ all waits 后唯一 db_now，重验 Capability/Lease/TTL
+→ recompute envelope/domain hash + run current verifier
 → append artifact
-→ append audit/event
+→ append operation/audit/event
 → commit
 ```
 
@@ -897,13 +932,15 @@ apps/worker
    `GO` 拒绝 V1。
 2. 实现纯 Research Kernel 与全部确定性单元 Oracle。
 3. 增加 server-only Authority Registrar/Brand 与 Candidate/Authority 反例。
-4. 在 `infra/supabase/apps/data-agent/migrations/` 增加 PostgreSQL Research
-   Committer、`CurrentReadiness=CURRENT|REVOKED`、Revocation、Grant 和 Resource
-   Reservation；退役通用 `authorizeRunTerminal(READY)`。
+4. 一次性生成完整 `10590` 与 Schema Inventory：Research Committer/CurrentReadiness/
+   Resource/Invocation、Terminal FK、Result Crypto/Erasure、Job Cleanup 全部进入同一
+   PostgreSQL 17 迁移；退役通用 `authorizeRunTerminal(READY)`。
 5. 组合 Worker Workflow，验证 Checkpoint 只保存执行位置与精确引用。
-6. 跑 Controlled、14 Mutation 及其预算可执行配对反例、Crash-Recovery、Resource、
-   READY 前后 Revocation Race、Grant Issue/Consume/Response、V1 Read-Deny 与 Release
-   current-tuple 集成测试。
+6. 执行 compact
+   `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md`
+   §11 的全部 Oracle/命令，包括 PG17
+   window、Grant Expire、Crypto claim、Terminal cleanup deferral、subject erasure/
+   legal hold 与 lifecycle cleanup/residual。
 7. 更新 UI/API 之前先冻结 Projection，不让 UI 自行推导 Ready。
 
 ## 16. U6 完成定义
@@ -923,6 +960,10 @@ U6 只有同时满足以下条件才可标记完成：
 - 通用 `authorizeRunTerminal(READY)`、V1 Writer/Authority/GO 与历史 Certificate
   Release GO 旁路全部固定拒绝；
 - Resource 与 Provider Egress Oracle 全通过；
+- 完整 `10590`、Schema Inventory、PG17 transaction window、Terminal FK、密文 Result、
+  subject erasure/legal hold、Job-only cleanup/replay/residual 全部满足
+  `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md`
+  §11/§12；本列表不能替代该 compact 完成门；
 - `pnpm lint`、`pnpm typecheck`、Unit、Integration、Architecture 与
   `pnpm verify:release` 全部运行；
 - `verify:release` 仍诚实返回 `HOLD`，直到 U7–U9 和签名 Outcome Evidence 完成。

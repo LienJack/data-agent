@@ -16,7 +16,7 @@ Payload，因此不存在“Authority 与 Wire 相互指回却没有任何一处
 ```ts
 type ImmutableId = string;      // 复用 immutableIdSchema（UUID）
 type Identifier = string;       // z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]*$/)
-type PrincipalId = string;      // z.string().min(1).max(256)
+type PrincipalId = ImmutableId; // U6 PostgreSQL Authority 固定 UUID
 type IdempotencyKey = string;   // z.string().min(1).max(256)
 type Version = string;          // z.string().min(1).max(128)，复用 versionIdentifierSchema
 type NonEmptyText = string;     // z.string().min(1).max(2_000)

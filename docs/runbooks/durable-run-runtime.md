@@ -64,6 +64,7 @@ Hosted Migrator、OCI 镜像与 Worker Daemon 由 U9 交付；在它们完成真
 | Historical RunTerminal | PostgreSQL，append-only | 记录当时为何 `READY/非 READY` | 当前可读性、缓存状态 |
 | CurrentReadiness | PostgreSQL Current Readiness Authority | `CURRENT | REVOKED` 当前授权 | 历史 READY、UI `ready=true` |
 | ReportReadGrant | PostgreSQL，单次 CAS | 当前报告读取/展示/下载授权 | Certificate、HTTP Session |
+| U6 Lifecycle Cleanup Receipt | PostgreSQL，job-only retained control record | DELETE_PENDING 环境清理批次与 residual 证明 | 单条 Result erasure、应用日志 |
 | Mastra Snapshot | PostgreSQL | opaque 执行恢复数据 | Run/Event/Artifact Authority |
 | SQL/Eval Receipt | PostgreSQL | 内容寻址结果提交与重用 | “函数已经调用过”的进程内标记 |
 | Redis / Upstash | 非权威 | 可丢失的唤醒、缓存与 Projection 加速 | Fence、Replay、发布判断 |
@@ -89,9 +90,10 @@ stateDiagram-v2
 `COMPLETED` 仅表示 Workflow 执行结束，Event 中固定写入
 `completion_kind=WORKFLOW_EXECUTION_ONLY`。它不等价于 `AnalysisReport READY`；
 U6 中的 `STOP_READY` 也不是公共终态。公共 `READY` 必须在四张独立 Evidence Gate
-和 `ReportReadyCertificate@2` 已提交后，由 server-only `consumeCurrentReady` 在同一
+和 `ReportReadyCertificate@3` 已提交后，由 server-only `consumeCurrentReady` 在同一
 PostgreSQL 事务中核验 exact Certificate、current Semantic/Schema/Data/Policy/Identity
-Frontier 与 Revocation Head，随后才能提交。Mastra Checkpoint、Redis Cache、UI
+Frontier，并在已锁 `current_report_readiness` 上校验内嵌 revocation seq/receipt，
+随后才能提交。Mastra Checkpoint、Redis Cache、UI
 携带的 `ready=true` 或历史 Certificate 都不能替代这次原子消费。
 
 U6 不改变本节 Durable Runtime 的“终态之后无 lifecycle Event”规则。历史
@@ -111,7 +113,8 @@ stateDiagram-v2
 - READY 提交前，只有 DOMAIN_TERMINAL consume 与撤权竞争且后者先胜出时，同一事务
   才能提交唯一 `STALE` RunTerminal，且不能提交 READY 或 Grant；独立 revoke 不创建
   Terminal。
-- READY 提交后，只更新 CurrentReadiness、Revocation Head、Receipt 与 Audit；不得改写
+- READY 提交后，只更新 CurrentReadiness 内嵌 revocation seq/receipt，并追加 Receipt
+  与 Audit；不得改写
   历史 READY，也不得在 `run.completed/run.failed` 后追加新的 Run lifecycle Event。
 - API/UI 必须同时投影“历史 READY”和“当前 REVOKED”；REVOKED 禁止新的读取、展示、
   下载和 Release `GO`，不能继续显示为当前成功。
@@ -129,12 +132,20 @@ Writer/Committer/Research Artifact Authority 固定
 `L2_WIRE_VERSION_WRITE_UNSUPPORTED`，current-ready、Grant、RunTerminal 与 Release
 `GO` 固定 `READINESS_PROTOCOL_VERSION_UNSUPPORTED`。
 
+DELETE_PENDING App/Environment 的 U6 资源不能依赖普通 Result Tombstone 逐条删除；
+只能由 job-only cleanup 在 lifecycle-exclusive lock 内重验 epoch、Manifest、
+Export Boundary、Export/Backup Operation evidence 与 Legal Hold，再按静态 rank
+删除。无 PII cleanup operation/batch receipt
+作为 control evidence 保留，不计入 U6 resource residual；它只能证明 U6 component，
+不能冒充全 Database/Storage/Redis 清理完成。
+
 报告读取的线性化顺序固定为：
 
-1. Grant Issue 事务核验 current V2 Certificate 并创建短 TTL、单次待消费 Grant；
-2. Grant Consume CAS 事务再次锁定 CurrentReadiness、排序 Frontier 与 Revocation
-   Head；Consume 只授权服务端物化绑定响应；
-3. Grant Response CAS 再次重验 CurrentReadiness、Frontier、Revocation，并从 exact
+1. Grant Issue 事务核验 current V3 Certificate 并创建短 TTL、单次待消费 Grant；
+2. Grant Consume CAS 事务再次锁定 CurrentReadiness 与排序 Frontier，并验证
+   CurrentReadiness 内嵌的 revocation seq/receipt；Consume 只授权服务端物化绑定响应；
+3. Grant Response CAS 再次重验 CurrentReadiness、Frontier 与其内嵌 revocation
+   seq/receipt，并从 exact
    Report 重跑固定版本 Deterministic Projector，与 Issue 时服务端生成的 immutable
    `canonical-response@1.0.0` Projection 逐字节比较；提交为 `RESPONDED` 后才发送
    绑定字节。Issue/Response 都不接受调用方自报 Digest 或 Bytes。
@@ -142,11 +153,15 @@ Writer/Committer/Research Artifact Authority 固定
 Grant Issue 还必须锁定并验证同 Run、同 Certificate 的不可变
 `READY/RUN_READY` Domain Terminal；仅发布 CURRENT、只有 STOP_READY 或历史
 Certificate 都不能提前读取。
+`db_now>=expires_at` 时 Consume/Response 即使 Expiry Job 未运行也失败；窄
+`REPORT_READ_EXPIRY_AUTHORITY` 只负责把 `ISSUED|CONSUMED` 持久化为 EXPIRED，不能
+读取或响应正文。
 
 撤权在 Response 提交前胜出时，Grant 必须失败且不得发送字节；Response 已提交后的
 单次响应无法撤回，但撤权阻断之后所有新 Issue/Consume/Response。Release `GO` 同样必须在决策事务中
-current-V2 revalidate Certificate、material Claim/Schema Frontier、CurrentReadiness、
-Revocation Head 与绑定同一 Certificate 的 `READY/RUN_READY` Domain Terminal，不能
+current-V3 revalidate Certificate、material Claim/Schema Frontier、CurrentReadiness、
+其内嵌 revocation seq/receipt 与绑定同一 Certificate 的 `READY/RUN_READY` Domain
+Terminal，不能
 只验证历史 Certificate。相同 GO 幂等键重放也先做上述检查；GO 后撤权时历史 GO 只可
 审计读取，重放返回 `CURRENT_READINESS_REVOKED`。
 

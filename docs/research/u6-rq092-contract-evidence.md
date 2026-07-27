@@ -36,7 +36,7 @@
 6. `STOP_PARTIAL` 不是 fallback。只有硬预算封顶、存在可披露受支持子集且没有预算内
    可执行 Query 时才允许；预算仍可执行时必须 `CONTINUE/REPLAN`。
 7. `ReportReadyCertificate` 只证明冻结闭包曾满足 Ready 条件；当前消费还必须原子核验
-   Version Frontier 与 Revocation。
+   Version Frontier 与 CurrentReadiness 内嵌 revocation seq/receipt。
 8. Controlled Fixture 必须由字面 SQL 行和预注册阈值重算，一个 Hypothesis
    `SURVIVED`、一个 `REFUTED`，不能读取 Agent 预填结论。
 9. Crash-after-SQL-receipt 恢复不得重复执行两次依赖查询，旧 Fence 与伪造 Checkpoint
@@ -54,13 +54,37 @@
   `CURRENT_READY_CONSUMPTION_REQUIRED`；
 - V1 只允许 `readHistorical*`，所有 Writer/Authority/current-ready/Grant/GO 拒绝；
 - ReportReadGrant 的 Consume 只完成单次占用；Response CAS 必须再次核验
-  CurrentReadiness/Frontier/Revocation 与 exact bytes/Digest，提交为 `RESPONDED`
+  CurrentReadiness/Frontier/内嵌 revocation seq/receipt 与 exact bytes/Digest，提交为 `RESPONDED`
   后才允许发送首个字节；
-- Release `GO` 必须 current-V2 revalidate Certificate、material Claim/Schema
-  Frontier、CurrentReadiness 与 Revocation；
+- Release `GO` 必须 current-V3 revalidate Certificate、material Claim/Schema
+  Frontier、CurrentReadiness 与其内嵌 revocation seq/receipt；
 - material Claim 与 Certificate 必须绑定同一当前 Schema Frontier；
-- U6 App Migration 只位于
-  `infra/supabase/apps/data-agent/migrations/`。
+- U6 App Migration 只位于 `infra/supabase/apps/data-agent/migrations/`；维护窗口除了
+  `statement_timeout`，还须以 PostgreSQL 17 的 `transaction_timeout` 和提交前数据库
+  时钟重验限制整笔事务，不得让多条短语句跨过窗口；
+- 单条 Result 的保留期删除与 subject erasure 使用各自 Authority；整个
+  DELETE_PENDING App/Environment 只允许 job-only lifecycle-exclusive cleanup，并保留
+  无 PII control receipt。外部 Export/Backup verifier 缺失时继续 `HOLD`。
+
+本次 U6-B0 再认证使用 PostgreSQL 17 官方文档：
+`https://www.postgresql.org/docs/17/runtime-config-client.html`（访问于
+2026-07-28），已归档为 `Wf5529841bd6e`，内容 SHA-256 为
+`49b00fb9f163e6bfd18632d3140f1525147025fbfca8432f68feda47d1215c9f`。该文档明确
+区分整笔事务超时与逐语句超时，并说明 prepared transaction 不受
+`transaction_timeout` 约束；因此 U6 Migration 禁止 prepared transaction。
+
+同时归档 PostgreSQL 官方 Git 镜像 `REL_17_STABLE` 固定提交
+`8434c938598d64f972aceb564104397787a21997` 的
+`src/backend/tcop/postgres.c` 为 `Wfcfbbd00005e`，内容 SHA-256 为
+`04567a0d2692a1218be2dc4cbba7656ca6658035fc11e87597faa5fc34961d54`。源码证明事务内
+active 正值不会被另一个正值重新计时或缩短；runner 因而必须先 disable、再按绝对
+DB window re-arm，并在 re-arm 后复核实际 deadline。
+
+Supabase 官方 Hosted 角色边界也已归档为 `W3bdea3603fcd`，内容 SHA-256
+`35bb8ea389cde1458e38c0734dc5ae64b224d84104a74564437789d49be700f0`。官方文档说明
+Hosted `postgres` 不向用户提供可依赖的 superuser access。因此 U6 Migration 固定
+direct `postgres` identity 并独立断言 `rolbypassrls=true`；`rolsuper` 可随
+Hosted/Docker 不同，但不能替代 FORCE RLS 表的全量可见性门禁。
 
 这些补强属于实现合同澄清，不把合成证明升级为产品、Benchmark、Hosted、Docker 或
 Release Evidence。

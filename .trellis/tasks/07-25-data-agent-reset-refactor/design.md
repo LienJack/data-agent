@@ -21,9 +21,16 @@
   `docs/design/u6-research-oed-v2-contract.md`、
   `docs/design/u6-research-wire-payload-contract.md`；平台事务、资源调用与受控 Oracle
   分别冻结在 `u6-research-platform-contract.md`、
+  `u6-research-database-surface-contract.md`、
+  `u6-research-migration-safety-contract.md`、
+  `u6-research-execution-storage-contract.md`、
+  `u6-terminal-reference-graph-contract.md`、
   `u6-research-resource-invocation-contract.md`、
   `u6-invocation-state-contract.md`、
-  `u6-system-record-lifecycle-contract.md` 与
+  `u6-invocation-result-crypto-contract.md`、
+  `u6-result-key-lifecycle-contract.md`、
+  `u6-system-record-lifecycle-contract.md`、
+  `u6-app-lifecycle-cleanup-contract.md` 与
   `u6-controlled-fixture-contract.md`。
 
 ## 2. 架构目标
@@ -366,7 +373,8 @@ Repair 只能修改实现细节，不能改变 `QueryContract` 中的 Metric、F
 11. Support、Conflict、Freshness、Source Independence 四张 Gate 分别重算并提交。
 12. Readiness Authority 签发 `ReportReadyCertificate@3`。
 13. PostgreSQL `consumeCurrentReady` 在同一事务中核验 Certificate、Version Frontier
-    与 Revocation Head，随后才提交公共 `READY` 或单次 `ReportReadGrant`。
+    并在已锁 Current 行上校验内嵌 revocation seq/receipt，随后才提交公共
+    `READY` 或单次 `ReportReadGrant`。
 
 Writer、Supervisor、普通 Schema Parse、Mastra Checkpoint、Redis Cache，以及
 legacy protocol-null V1、

@@ -637,7 +637,7 @@ type ModelInvocationReservationBinding = {
   resource_lease_id: ImmutableId;
   invocation_id: ImmutableId;
   attempt_id: ImmutableId;
-  worker_fence: NonNegativeInt;
+  worker_fence: PositiveInt;
   request_id: ImmutableId;
   canonical_request_digest: Sha256;
   reserved: {

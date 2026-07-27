@@ -500,10 +500,18 @@ flowchart LR
 `docs/design/u6-research-oed-v2-contract.md`、
 `docs/design/u6-research-wire-payload-contract.md`、
 `docs/design/u6-research-platform-contract.md`、
+`docs/design/u6-research-database-surface-contract.md`、
+`docs/design/u6-research-migration-safety-contract.md`、
+`docs/design/u6-research-execution-storage-contract.md`、
+`docs/design/u6-terminal-reference-graph-contract.md`、
 `docs/design/u6-research-resource-invocation-contract.md`、
 `docs/design/u6-invocation-state-contract.md`、
-`docs/design/u6-system-record-lifecycle-contract.md` 与
-`docs/design/u6-controlled-fixture-contract.md` 冻结。U6-A 纯 Research Kernel 已实现；
+`docs/design/u6-invocation-result-crypto-contract.md`、
+`docs/design/u6-result-key-lifecycle-contract.md`、
+`docs/design/u6-system-record-lifecycle-contract.md`、
+`docs/design/u6-app-lifecycle-cleanup-contract.md` 与
+`docs/design/u6-controlled-fixture-contract.md` 共同约束 U6；其中数据库函数面与
+Result Crypto 的 U6-B0 合同再认证已冻结。U6-A 纯 Research Kernel 已实现；
 PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实现，因此 U6
 整体未完成。
 
@@ -528,7 +536,7 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
    `ReportProjectionReceipt`。
 8. 分别实现 Support、Conflict、Freshness、Source Independence Gate，并由
    server-only Readiness Authority 签发 `ReportReadyCertificate@3`。
-9. 在 PostgreSQL 增加 current readiness、Revocation Head、
+9. 在 PostgreSQL 增加 current readiness（内嵌 revocation seq/receipt）、
    `RevocationOperation`、单次 `ReportReadGrant` 与固定锁序。
 10. 用 `consumeCurrentReady` 在同一事务内核验 exact Certificate、Version Frontier
     与 Revocation，再提交公共 `READY`；相同幂等键重放也必须重新检查撤权。
@@ -547,7 +555,7 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   `0908d49c91598999e40c3ecebd946b5a72317283dad6368e418ade660ac6df5b`，
   Run 为 `RUN20260727-070114-u6-l2-research-loop-repo-b73fca`。合成证明只校验合同，
   不属于产品、Benchmark 或 Release Evidence。
-- Trellis `implement.jsonl` 与 `check.jsonl` 各注入 14 个相同且不重复的文件；
+- 初次冻结时，Trellis `implement.jsonl` 与 `check.jsonl` 各注入 14 个相同且不重复的文件；
   `task.py validate` 无 Warning，所有文件都小于 32768 bytes，最大文件为
   `u6-research-wire-payload-contract.md` 的 32671 bytes。8 个 U6 设计文件中的
   35 个 TypeScript 代码块均通过语法解析，JSONL 与 `git diff --check` 通过。
@@ -592,6 +600,36 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   CurrentReadiness/Revocation/Grant、Resource/Invocation、Mastra Worker 组合、
   Crash-Recovery 与真实部署证据仍为 `NOT_IMPLEMENTED`；`pnpm verify:release`
   必须继续返回 `HOLD / RELEASE_EVIDENCE_INCOMPLETE`。
+
+#### U6-B0 PostgreSQL 生命周期合同再认证证据（2026-07-28）
+
+- 当前完整 source map 为 16 份 U6 设计分册与一个 compact 实施合同；Trellis
+  `implement.jsonl`/`check.jsonl` 各有 22 个同序、唯一且存在的条目，`task.py validate`
+  为 22/22、零 Warning。16 份分册中的 48 个 TypeScript fenced block 均通过
+  TypeScript 7 `--noCheck --noEmit` 语法解析。
+- 最终单文件注入上限为 32768 bytes，实际最大注入文件为
+  `u6-research-platform-contract.md` 的 32427 bytes。真实 Implement/Check Hook 分别
+  生成 514579 / 514579 bytes、各 25 个顶层 block，
+  均低于 786432 bytes，且没有 truncated、not-inlined 或 binary notice。
+- 两轮独立 Codex-only 语义审查与一轮 relation/cleanup inventory 审计最终均为
+  `remaining_p0_p1={"p0":[],"p1":[]}`；覆盖 CurrentReadiness 内嵌撤权、Core RLS
+  locking ACL、Cleanup Platform helper、Terminal 引用图、Key predecessor、Legal
+  Hold、destructive replay 与双连接死锁边界。全程未调用 Claude Code。
+- 外部依据均已进入 RQ092 内容寻址链：PostgreSQL 17 官方文档
+  `Wf5529841bd6e`（SHA-256
+  `49b00fb9f163e6bfd18632d3140f1525147025fbfca8432f68feda47d1215c9f`）、
+  `REL_17_STABLE` 固定源码 `Wfcfbbd00005e`（SHA-256
+  `04567a0d2692a1218be2dc4cbba7656ca6658035fc11e87597faa5fc34961d54`）与
+  Supabase Hosted postgres role 文档 `W3bdea3603fcd`（SHA-256
+  `35bb8ea389cde1458e38c0734dc5ae64b224d84104a74564437789d49be700f0`）。
+- 代码回归门禁通过：`pnpm lint`、`pnpm typecheck`、`pnpm test:contract`、
+  `pnpm test:architecture`、`pnpm test:research`（18 files / 129 tests）、
+  `pnpm test:unit`（9/9 Workspace Tasks）、`pnpm test:integration` 与
+  `pnpm test:security`；`git diff --check` 通过。
+- 本节只冻结设计合同，不是实现证据。`10590` 尚不存在，PostgreSQL Authority、
+  CurrentReadiness、Result Crypto、Hosted Supabase、Docker 与 Worker 组合仍为
+  `NOT_IMPLEMENTED`；`pnpm verify:release` 按预期以 exit 2 返回
+  `HOLD / RELEASE_EVIDENCE_INCOMPLETE`，没有把合同门禁冒充发布证据。
 
 ### U7 工作包
 

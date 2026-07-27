@@ -474,14 +474,15 @@ Evidence。
 | `go-before-ready-terminal` | 已 Publish CURRENT，但尚无同 Certificate 的 `READY/RUN_READY` | `RESEARCH_READY_TERMINAL_REQUIRED`，无 GO Commit |
 | `go-after-revoke` | Historical READY 存在，但 CurrentReadiness=`REVOKED` | `CURRENT_READINESS_REVOKED`，无新 GO |
 | `go-replay-after-revoke` | GO 历史 Commit → Revoke → 同 Key 重放 | 重新核验后拒绝；不得把历史 GO 当新授权返回 |
-| `go-vs-revoke-revoke-first` | Revoke 先取得 Current/Frontier/Head 锁 | 无 GO Commit |
+| `go-vs-revoke-revoke-first` | Revoke 先取得 Current/Frontier 锁并重验 Current 内嵌 revocation seq/receipt | 无 GO Commit |
 | `go-vs-revoke-go-first` | `commitGo` 先持锁并同事务追加 GO | 恰好一张历史 GO；随后撤权使当前状态不可再使用 |
 | `go-history-only-certificate` | 只有历史 V2 Certificate，无 current READY | `AUTHORITY_EVIDENCE_NOT_CURRENT` |
 | `go-v1-certificate` | V1 Certificate | `READINESS_PROTOCOL_VERSION_UNSUPPORTED` |
 `commitGo` 的每次调用（包括相同幂等键重放）都必须先锁定并重验 exact
-`READY/RUN_READY` Domain Terminal、CurrentReadiness、五维 Frontier、Revocation
-Head、Authority Epoch 与 Release Evidence，再在同一事务追加 Decision。普通 readiness
-snapshot、历史 GO 对象或进程内 Brand 不能在锁外签发新 GO。
+`READY/RUN_READY` Domain Terminal、CurrentReadiness、五维 Frontier、Current 中
+内嵌的 revocation seq/receipt、Authority Epoch 与 Release Evidence，再在同一事务追加
+Decision；不存在独立 Revocation Head 表或锁。普通 readiness snapshot、历史 GO
+对象或进程内 Brand 不能在锁外签发新 GO。
 
 ### 6.5 Research Stop Root 竞态
 

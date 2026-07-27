@@ -308,7 +308,7 @@ issueCapabilityDeliveryReceipt(
   `title_hash`，且 forbidden-claim 扫描同时覆盖 Title 与正文。Writer 新增数字、
   实体、比较方向、因果词或行动建议时，Projection Authority 必须返回
   `REPORT_PROJECTION_AUTHORITY_INVALID`。
-- `ReportReadyCertificate@2` 必须消费同 Run 的 `STOP_READY`、Manifest、Report、
+- `ReportReadyCertificate@3` 必须消费同 Run 的 `STOP_READY`、Manifest@2、Report@2、
   Projection Receipt、四张独立 PASS EvidenceGateReceipt、全部 material
   SupportDecision 与精确 Version Frontier。服务端分别重算 Gate Input Hash、
   Input Closure Hash 与 Certificate Semantic Hash；普通 Parse、Supervisor、Writer
@@ -319,7 +319,8 @@ issueCapabilityDeliveryReceipt(
   领域 Hash 必须稳定；新 Attempt 重建等价 Artifact 时 Envelope Hash 可以变化。
 - `READY` 不得由历史上曾经合法的 Certificate 直接授权。server-only
   `CurrentReadinessPort.consume` 必须在同一 PostgreSQL 事务中锁定并核验 exact Certificate、
-  current Semantic/Schema/Data/Policy/Identity Frontier 与 Revocation Head，重算 Certificate
+  current Semantic/Schema/Data/Policy/Identity Frontier，并在已锁 Current 行上校验
+  内嵌 revocation seq/receipt，重算 Certificate
   Authority 后才能提交 DB-local Domain Terminal 或签发绑定 exact
   report/principal/服务端确定性 Report Projection/短 TTL 的单次
   `ReportReadGrant`。Issue/Response 的调用方都不能自报响应 Digest 或 Bytes；相同
@@ -340,12 +341,12 @@ issueCapabilityDeliveryReceipt(
   `CurrentReadiness=CURRENT|REVOKED` 表达。READY 提交前撤权胜出可产生 `STALE`
   Terminal；READY 提交后的撤权只推进 CurrentReadiness，不改写历史 Terminal，也不在
   Durable Runtime 终态后追加 lifecycle Event。
-- U6 Root 事务统一先锁 `runs` 行（Current 缺行时也由它串行），再锁
-  Current/Revocation Head、`SEMANTIC -> SCHEMA -> DATA -> POLICY -> IDENTITY`、
-  Domain Terminal、Grant、Revocation Operation、GO Commit；任何子流程不得省略 Run
-  或从后段反向进入。
+- U6 Root 事务逐行锁序唯一取自
+  `docs/design/u6-research-database-surface-contract.md` §3；任何子流程不得省略共同
+  Authority prefix、Run 或从后段反向进入。
 - `ReportReadGrant` 的 Issue 只创建待消费能力；Consume 是单次占用线性化点，必须在
-  CAS 事务中再次锁定 CurrentReadiness、排序 Frontier 与 Revocation Head，并只授权
+  CAS 事务中再次锁定 CurrentReadiness、排序 Frontier，并在该 Current 行上校验内嵌
+  revocation seq/receipt，只授权
   服务端物化绑定响应。`commitReportReadResponse` 必须第三次重验 current 状态，从
   exact Report 重跑固定版本 Projector 并逐字节匹配 immutable Projection，CAS 为
   `RESPONDED` 后才允许发送首字节；此前撤权胜出则
@@ -361,12 +362,12 @@ issueCapabilityDeliveryReceipt(
 - `READY` 必须绑定同 Scope、经过四道 Evidence Gate 且覆盖 Report 全部 Claim
   Evidence 的权威 `ReportReadyCertificate`，并通过上述 current-ready 原子消费。
 - `GO` 必须绑定同 Scope、同发布策略的版本化 `ReleaseManifest`，并覆盖
-  `ReportReadyCertificate@2`、确定性 PASS 且 Safety Counter 全零的 `ScoreCard`、
+  `ReportReadyCertificate@3`、确定性 PASS 且 Safety Counter 全零的 `ScoreCard`、
   成功终态 `BenchmarkAdapterReceipt`、成功终态 `SandboxExecutionReceipt`、绑定
   Profile Hash 的 `ModelCertificationReceipt` 与同一 exact Certificate 的不可变
   `READY/RUN_READY` Domain Terminal。Release Authority 必须在 GO 事务中
-  current-V2 revalidate Certificate、完整 material Claim/Schema Frontier、
-  `CurrentReadiness=CURRENT` 与 Revocation Head；历史 Resolver PASS、V1 或
+  current-V3 revalidate Certificate、完整 material Claim/Schema Frontier、
+  `CurrentReadiness=CURRENT` 与其内嵌 revocation seq/receipt；历史 Resolver PASS、V1 或
   `REVOKED` 均不能授权 GO。
 - `ReleaseManifest` 必须内容寻址、已提交，至少各含一项 Hosted 与 Docker Evidence，并聚合 Release Decision 的全部 Evidence；领域 Resolver 返回的对象必须带有对应 Authorizer 在当前进程签发的品牌。U9 的生产 Deployment Receipt 类型交付前，Hosted/Docker/Signed Outcome 三个入口至少显式拒绝合成的 `MetamorphicOracleReceipt`。
 - `OracleVerdictReceipt` 必须由持久化 Resolver 按完整 Reference 取回，校验 Receipt/Case/EvalRun 已提交，并通过服务端持有的 Suite-Specific Deterministic Oracle Capability 复核；调用方自报 `PASS` 或普通已提交 Evidence 不能获得品牌。

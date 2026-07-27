@@ -197,16 +197,33 @@ U6 不在本通用指南复制第二套表、状态机、Wire 或函数白名单
 - `docs/design/u6-research-platform-contract.md`：Frontier、Relation Key、Research
   Terminal、Current Readiness、Publication/Consumption、Revocation、Grant、GO、锁序、
   strict Record/DB CHECK、错误码与平台窄函数；
+- `docs/design/u6-research-database-surface-contract.md`：数据库 Authority provenance、
+  current Artifact Committer、全局锁入口、RPC exposure、GRANT/DML denylist、`10590`
+  与 Schema Inventory；
+- `docs/design/u6-research-migration-safety-contract.md`：`10590` 维护窗口、已有 Relation
+  容量/数据 preflight、fail-fast DDL、整事务回滚与 Hosted/Docker 对等；
+- `docs/design/u6-app-lifecycle-cleanup-contract.md`：DELETE_PENDING 下 lifecycle-exclusive
+  Job cleanup、无 PII retained receipt、Terminal aggregate 删除、重放与 residual 闭环；
+- `docs/design/u6-research-execution-storage-contract.md`：Resource/Invocation/System
+  Record/Result/Key metadata 的物理表、非 Terminal 约束、nullable CHECK、TTL、
+  `db_now` 与唯一执行域锁序；
+- `docs/design/u6-terminal-reference-graph-contract.md`：Invocation/Preparation/
+  Result/Blob/Receipt reference key/FK、物理 discriminator 与 Audit 五组 nullable FK；
 - `docs/design/u6-research-resource-invocation-contract.md`：Reservation/Seq/Lease、
   Model/SQL/Tool Invocation Wire、System Record/Result、Retention Blob、用量结算、
   Owner Capability 与资源窄函数；
 - `docs/design/u6-invocation-state-contract.md`：Invocation 状态迁移、Owner、
   Start-before-I/O、Terminal CAS、幂等与 Crash Recovery；
+- `docs/design/u6-invocation-result-crypto-contract.md`：明文 Candidate、跨实例 Terminal
+  claim、密文 Command、Resolver/Decrypt Authority、Key Version 与固定密码向量；
+- `docs/design/u6-result-key-lifecycle-contract.md`：Key metadata 状态/时间矩阵、
+  predecessor exact FK/CAS、transition replay、首次启用/轮换/事故恢复与四个部署函数；
 - `docs/design/u6-system-record-lifecycle-contract.md`：Termination、Tool Permit
-  expiry/revoke、Result Blob tombstone、Owner 与幂等；
-- `docs/design/u6-research-planning-payload-contract.md` 与
+  expiry/revoke、Result Blob tombstone、Audit Purge strict union/replay、Owner 与幂等；
+- `docs/design/u6-research-planning-payload-contract.md`、
+  `docs/design/u6-research-oed-v2-contract.md` 与
   `docs/design/u6-research-wire-payload-contract.md`：落库 Artifact/Reference/
-  Payload 的 strict Schema、版本元组与 Hash；
+  Payload（含 OED v2）的 strict Schema、版本元组与 Hash；
 - `.trellis/spec/backend/artifact-authority.md`：Candidate、Committer、Resolver 与
   Authority Brand 边界。
 
@@ -217,7 +234,7 @@ usage-adjustment 真值、通用 `INVOCATION_AUTHORITY`、standalone revoke 创�
 
 ### U6 Schema inventory gate
 
-Migration 必须从上述 Platform/Resource/Invocation State 合同维护一份机器可读
+Migration 必须从上述全部 U6 权威分册维护一份机器可读
 `u6-schema-inventory@1.0.0`，至少列出每张表、PK、UQ、FK、CHECK、RLS、Index、函数完整
 签名与 Owner Capability。CI 将实际 `pg_catalog` 投影与 Inventory 做规范化 Exact
 Match；缺项、额外兼容表/函数、状态或签名漂移全部失败。Inventory 至少证明：
@@ -229,31 +246,38 @@ Match；缺项、额外兼容表/函数、状态或签名漂移全部失败。In
 - Invocation State 合同列出的 Transition Operation、状态 CHECK、Start/Unknown/
   Terminal CAS 与 Owner 全部存在；
 - System Record Lifecycle 合同列出的 Transition Operation、Permit expiry/revoke、
-  Blob tombstone、DB time 与窄 Owner 全部存在；
-- 窄函数集合严格等于 Platform、Resource、Invocation State 与 System Record
-  Lifecycle 分册声明集合的规范去重并集，不保留
-  本指南中的历史白名单；
-- 所有 Key/FK/Index/RLS 展开
-  `app_id + tenant_id + environment`，共享 Supabase 项目下不可跨 App 解析；
+  Blob tombstone、Audit Purge、DB time 与窄 Owner 全部存在；
+- App Lifecycle Cleanup 合同列出的 retained Operation/Batch Receipt、job-only
+  cleanup function、cleanup rank 与 Terminal deferrability 全部存在；
+- 函数集合严格等于 Database Surface Function Manifest 的 public/internal/Resolver/
+  Provisioner/Platform-helper/JOB_CLEANUP 白名单，并与其他 U6 分册 exact protocol 对齐；
+- 普通 U6 relation 的 Key/FK/Index 与普通 RLS 展开
+  `app_id + tenant_id + environment`，共享 Supabase 项目下不可跨 App 解析。Cleanup
+  Owner 仅可凭四个可信 binding 使用 exact-L destructive policy；两张 retained
+  cleanup table 仍是唯一 scope=L relation，并另限 operation/batch；
 - 所有 `SECURITY DEFINER` 函数 `set search_path = ''`，只授予精确
   `EXECUTE(signature)`，Browser 角色无底表写权。
 
 ### U6 事务与验证
 
-U6 Root 操作只使用 Platform 合同的唯一锁序：
-`runs -> current/head -> SEMANTIC -> SCHEMA -> DATA -> POLICY -> IDENTITY ->
-terminal -> grant -> revocation operation -> GO commit`。Resource/Invocation 使用分册
-Key 顺序，持锁后不得反向进入 Root 锁序。
+U6 Artifact/Readiness Root 只使用 Database Surface §1/§3 的 Authority prefix 与逐行锁序；
+Resource/Invocation/System Record 只使用 Execution Storage §5 的逐行锁序。任一执行域
+取得子锁后不得反向进入 Root。
 
-必须用真实 PostgreSQL 双连接与 clean-install Migration 覆盖三份
-合同列出的全部竞态、幂等重放、Reference A/Payload B、状态 nullable truth table、
+必须用真实 PostgreSQL 双连接与 clean-install Migration 覆盖上述权威分册列出的全部
+竞态、幂等重放、Reference A/Payload B、状态 nullable truth table、
 Owner 冒充、Retention expiry/replay、迟到 Usage 和零旁路 I/O Oracle。In-Memory 通过
 不能替代数据库证据。
 
 ## Migration
 
-- Platform Migration 位于 `infra/supabase/platform/migrations/`。
+- Platform Migration 位于 `infra/supabase/platform/migrations/`；唯一例外是 U6
+  `10590` 内由 Database Surface 冻结的 `platform.lock_u6_authority_binding`、
+  `platform.lock_u6_cleanup_platform_evidence` 与 Lifecycle identity guard，禁止拆出
+  第二条 Platform migration chain。
 - App Migration 位于 `infra/supabase/apps/data-agent/migrations/`。
+- U6 `10590` 的生产安装还必须满足 Migration Safety 分册；clean install 不能替代
+  populated relation、lock contention 与 rollback Oracle。
 - 每个 Migration 必须登记固定 SHA-256 Checksum；同名不同内容失败关闭。
 - Platform 与每个 App 使用独立 Advisory Lock，禁止全 Project 共用一个粗锁。
 - Migration 中所有 `SECURITY DEFINER` 函数必须 `set search_path = ''`，并使用
@@ -312,6 +336,13 @@ Job Authority 只能通过窄函数记录 Resource Manifest 与 Operation Receip
 冒充 Cleanup Job Capability。当前没有外部验签器，`EXPORT_COMPLETED`、
 `DELETE_CONFIRMED` 与 `RESTORE` 都失败关闭。`EXPORT_CANCELLED` 可回到 `FROZEN`；
 删除可能已执行破坏性操作，不得用无可信恢复证据的 `DELETE_CANCELLED` 逃离 HOLD。
+
+U6 额外只允许 Cleanup 分册的 job-only 函数：先持 lifecycle exclusive lock，再清理
+全部 tenant 的 Inventory owner=`U6_JOB` relation；普通 U6 Authority/Backend 无此权限。U6
+component residual=0 仍不能冒充全 Database/Storage/Redis residual=0；两张无 PII
+retained cleanup receipt 与 Platform lifecycle receipt 是 control evidence，不计业务
+资源 residual，也不得被删除来伪造零残留。外部 Export/Backup verifier 不可用时首条
+destructive DML 前即 HOLD。
 
 ## 禁止模式
 
