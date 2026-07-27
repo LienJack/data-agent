@@ -254,10 +254,10 @@ describe("延后能力边界", () => {
       AuthorityEvidenceError,
     );
 
-    const authorizedDecision = await authorizeReleaseDecision(decisionInput, fixture.authority);
-    expect(issueCapabilityDeliveryReceipt(receiptInput, authorizedDecision).state).toBe(
-      "DELIVERED",
-    );
+    await expect(authorizeReleaseDecision(decisionInput, fixture.authority)).rejects.toMatchObject({
+      code: "CURRENT_RELEASE_COMMIT_REQUIRED",
+      retryable: false,
+    });
   });
 
   it("L3–L5 Artifact Contract 可解析但始终不可执行", () => {

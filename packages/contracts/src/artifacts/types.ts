@@ -17,8 +17,18 @@ export const L2_ARTIFACT_TYPES = [
   "QueryEvidence",
   "AtomicClaim",
   "EvidenceRelation",
+  "ObligationExecutionDecision",
+  "EvidenceCheckReceipt",
+  "SupportDecision",
+  "HypothesisAssessment",
+  "CoverageState",
+  "ResearchStopDecision",
+  "ReportManifest",
   "AnalysisReport",
+  "ReportProjectionReceipt",
+  "EvidenceGateReceipt",
   "ReportReadyCertificate",
+  "ReadinessRevocationReceipt",
 ] as const;
 
 export const DEFERRED_ARTIFACT_TYPES = [
@@ -55,6 +65,7 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "SemanticRelease",
   "SchemaSnapshot",
   "PolicyReceipt",
+  "AgentDataProjectionReceipt",
 ] as const;
 
 export const KNOWN_ARTIFACT_TYPES = [

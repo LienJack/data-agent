@@ -35,6 +35,10 @@ import {
   verifyGroundingAuthorityDocument,
 } from "./grounding-authority.js";
 import {
+  isHistoricalOnlyL2ResearchArtifactType,
+  L2ResearchWireError,
+} from "./research/versions.js";
+import {
   computeMetamorphicFixtureEvidenceHash,
   computeMetamorphicFixtureReceiptHash,
   computeMetamorphicOracleEvidenceHash,
@@ -1835,6 +1839,7 @@ interface L2ArtifactVerificationState {
   readonly verified: Map<string, L2ArtifactDocument>;
   readonly authoritativeSystemArtifacts: Map<string, unknown>;
   readonly path: ReadonlySet<string>;
+  readonly mode: L2ArtifactVerificationMode;
 }
 
 const l2ArtifactVerificationStates = new WeakMap<
@@ -1928,6 +1933,7 @@ function scopeL2ArtifactAuthority(
     verified: state.verified,
     authoritativeSystemArtifacts: state.authoritativeSystemArtifacts,
     path: new Set([...state.path, currentIdentity]),
+    mode: state.mode,
   });
   return scopedAuthority;
 }
@@ -4214,13 +4220,28 @@ async function verifyL2ArtifactDocumentRevision(
 export async function verifyL2ArtifactDocument(
   input: unknown,
   authority: L2ArtifactAuthorityContext,
+  options?: {
+    readonly mode?: L2ArtifactVerificationMode;
+  },
 ): Promise<L2ArtifactDocument> {
   const document = l2ArtifactDocumentSchema.parse(input);
+  const inheritedState = l2ArtifactVerificationStates.get(authority);
+  const mode = inheritedState?.mode ?? options?.mode ?? "CURRENT";
+  if (
+    isHistoricalOnlyL2ResearchArtifactType(document.payload.artifact_type) &&
+    (mode === "CURRENT" || document.envelope.schema_version !== "1.0.0")
+  ) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED：V1 Research Artifact 只能以 exact 1.0.0 通过显式 historical read 路径读取。",
+    );
+  }
   const identity = artifactReferenceIdentity(artifactReferenceFromDocument(document));
-  const state = l2ArtifactVerificationStates.get(authority) ?? {
+  const state = inheritedState ?? {
     verified: new Map<string, L2ArtifactDocument>(),
     authoritativeSystemArtifacts: new Map<string, unknown>(),
     path: new Set<string>(),
+    mode,
   };
   if (state.path.has(identity)) {
     throw new ArtifactSemanticAuthorityError("L2 Artifact 的 Parent/Input 引用不能形成循环。");
@@ -4235,4 +4256,5 @@ export async function verifyL2ArtifactDocument(
 }
 
 export type { L2ArtifactPayload };
+export type L2ArtifactVerificationMode = "CURRENT" | "HISTORICAL_READ_ONLY";
 export type L2ArtifactDocument = z.infer<typeof l2ArtifactDocumentSchema>;

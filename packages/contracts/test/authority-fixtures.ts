@@ -342,7 +342,9 @@ export async function createAuthoritativeReadyFixture(
     const referenceIdentity = artifactReferenceIdentity(reference);
     persistedReferences.add(referenceIdentity);
     try {
-      const verified = await verifyL2ArtifactDocument(committed, authority);
+      const verified = await verifyL2ArtifactDocument(committed, authority, {
+        mode: "HISTORICAL_READ_ONLY",
+      });
       documents.set(referenceIdentity, verified);
       return { authorized: verified, reference };
     } catch (error) {

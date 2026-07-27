@@ -32,9 +32,11 @@ describe("Metamorphic authority recursion", () => {
       ...withoutMetamorphicAuthority
     } = fixture.authority;
 
-    await expect(verifyL2ArtifactDocument(evidence, withoutMetamorphicAuthority)).rejects.toThrow(
-      "MetamorphicOracleReceipt",
-    );
+    await expect(
+      verifyL2ArtifactDocument(evidence, withoutMetamorphicAuthority, {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
+    ).rejects.toThrow("MetamorphicOracleReceipt");
   });
 
   it("resolves each branded revision once per recursive verification and deep-freezes it", async () => {
@@ -92,7 +94,11 @@ describe("Metamorphic authority recursion", () => {
       },
     };
 
-    await expect(verifyL2ArtifactDocument(evidence, countedAuthority)).resolves.toBeDefined();
+    await expect(
+      verifyL2ArtifactDocument(evidence, countedAuthority, {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
+    ).resolves.toBeDefined();
     for (const calls of [
       fixtureCalls,
       metaCalls,

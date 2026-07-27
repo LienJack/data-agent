@@ -19,6 +19,7 @@ export {
   verifyGroundingAuthorityDocument,
 } from "./grounding-authority.js";
 export * from "./l2.js";
+export * from "./research/index.js";
 export * from "./text2sql-evidence.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,

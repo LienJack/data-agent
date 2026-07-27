@@ -1166,7 +1166,9 @@ describe("L2 Artifact Schema", () => {
     });
 
     await expect(
-      verifyL2ArtifactDocument(committed, authorityFor(committed, { inputsCommitted: false })),
+      verifyL2ArtifactDocument(committed, authorityFor(committed, { inputsCommitted: false }), {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
     ).rejects.toThrow("未提交或不存在的输入");
   });
 
@@ -1449,7 +1451,9 @@ describe("L2 Artifact Schema", () => {
       },
     });
     await expect(
-      verifyL2ArtifactDocument(hypothesisDocument, authorityFor(hypothesisDocument)),
+      verifyL2ArtifactDocument(hypothesisDocument, authorityFor(hypothesisDocument), {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
     ).rejects.toThrow("没有匹配的权威 L2 文档");
 
     const fixture = await createAuthoritativeReadyFixture();
@@ -2274,7 +2278,9 @@ describe("L2 Artifact Schema", () => {
     });
 
     await expect(
-      verifyL2ArtifactDocument(document, withCurrentRevision(fixture.authority)),
+      verifyL2ArtifactDocument(document, withCurrentRevision(fixture.authority), {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
     ).rejects.toThrow("observed verdict/reason/observations");
 
     const {
@@ -2284,7 +2290,9 @@ describe("L2 Artifact Schema", () => {
       ...withoutOracleResolvers
     } = fixture.authority;
     await expect(
-      verifyL2ArtifactDocument(document, withCurrentRevision(withoutOracleResolvers)),
+      verifyL2ArtifactDocument(document, withCurrentRevision(withoutOracleResolvers), {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
     ).rejects.toThrow("MetamorphicOracleReceipt");
   });
 
@@ -2329,7 +2337,11 @@ describe("L2 Artifact Schema", () => {
         { artifact_type: "ResultOracleReceipt" },
       ],
     });
-    await expect(verifyL2ArtifactDocument(document, fixture.authority)).resolves.toBeDefined();
+    await expect(
+      verifyL2ArtifactDocument(document, fixture.authority, {
+        mode: "HISTORICAL_READ_ONLY",
+      }),
+    ).resolves.toBeDefined();
   });
 
   it("Canonical JSON 使用跨 Locale 稳定的 UTF-16 Key 顺序", () => {

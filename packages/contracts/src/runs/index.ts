@@ -3,15 +3,10 @@ import {
   type ArtifactReference,
   type ArtifactReferenceVerifier,
   artifactReferenceFor,
-  artifactReferenceIdentity,
   artifactReferenceSchema,
   deterministicAuthoritySchema,
 } from "../artifacts/envelope.js";
-import {
-  type L2ArtifactAuthorityContext,
-  type L2ArtifactDocument,
-  verifyL2ArtifactDocument,
-} from "../artifacts/l2.js";
+import type { L2ArtifactAuthorityContext } from "../artifacts/l2.js";
 import {
   deepFreeze,
   environmentSchema,
@@ -19,25 +14,13 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import {
-  type AuthoritativeScoreCard,
-  isAuthoritativeScoreCard,
-  scoreCardReference,
-} from "../evals/index.js";
-import {
-  type AuthoritativeBenchmarkAdapterReceipt,
-  type AuthoritativeSandboxExecutionReceipt,
-  isAuthoritativeBenchmarkAdapterReceipt,
-  isAuthoritativeSandboxExecutionReceipt,
+import type { AuthoritativeScoreCard } from "../evals/index.js";
+import type {
+  AuthoritativeBenchmarkAdapterReceipt,
+  AuthoritativeSandboxExecutionReceipt,
 } from "../ports/index.js";
-import {
-  type AuthoritativeModelCertificationReceipt,
-  isAuthoritativeModelCertificationReceipt,
-} from "../providers/index.js";
-import {
-  type AuthoritativeReleaseManifest,
-  isAuthoritativeReleaseManifest,
-} from "./release-manifest.js";
+import type { AuthoritativeModelCertificationReceipt } from "../providers/index.js";
+import type { AuthoritativeReleaseManifest } from "./release-manifest.js";
 
 export * from "./release-manifest.js";
 export * from "./runtime.js";
@@ -218,6 +201,21 @@ export class AuthorityEvidenceError extends Error {
   readonly code = "AUTHORITY_EVIDENCE_NOT_COMMITTED";
 }
 
+export class CurrentAuthorityProtocolError extends Error {
+  override readonly name = "CurrentAuthorityProtocolError";
+  readonly retryable = false;
+
+  constructor(
+    readonly code:
+      | "CURRENT_READY_CONSUMPTION_REQUIRED"
+      | "RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED"
+      | "CURRENT_RELEASE_COMMIT_REQUIRED",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 declare const authoritativeRunTerminal: unique symbol;
 declare const authoritativeReleaseDecision: unique symbol;
 const authorizedRunTerminals = new WeakSet<object>();
@@ -240,54 +238,28 @@ async function verifyCommittedReferences(
   }
 }
 
-async function resolveReadyCertificate(
-  reference: ArtifactReference,
-  authority: L2ArtifactAuthorityContext,
-): Promise<L2ArtifactDocument> {
-  const resolved = await authority.resolveL2(reference);
-  let certificate: L2ArtifactDocument;
-  try {
-    certificate = await verifyL2ArtifactDocument(resolved, authority);
-  } catch {
-    throw new AuthorityEvidenceError(
-      "READY/GO 引用了不存在、未授权或不匹配的 ReportReadyCertificate。",
-    );
-  }
-  if (
-    certificate.payload.artifact_type !== "ReportReadyCertificate" ||
-    artifactReferenceIdentity({
-      artifact_id: certificate.envelope.artifact_id,
-      artifact_type: certificate.envelope.artifact_type,
-      app_id: certificate.envelope.app_id,
-      tenant_id: certificate.envelope.tenant_id,
-      environment: certificate.envelope.environment,
-      run_id: certificate.envelope.run_id,
-      revision: certificate.envelope.revision,
-      content_hash: certificate.envelope.content_hash,
-    }) !== artifactReferenceIdentity(reference)
-  ) {
-    throw new AuthorityEvidenceError(
-      "READY/GO 引用了不存在、未授权或不匹配的 ReportReadyCertificate。",
-    );
-  }
-  return certificate;
-}
-
 export async function authorizeRunTerminal(
   input: unknown,
   authority: L2ArtifactAuthorityContext,
 ): Promise<AuthoritativeRunTerminal> {
   const terminal = runTerminalSchema.parse(input);
-  await verifyCommittedReferences(terminal.artifact_refs ?? [], authority.verifyCommitted);
-  if (terminal.terminal === "READY") {
-    const certificate = terminal.artifact_refs?.find(
-      (reference) => reference.artifact_type === "ReportReadyCertificate",
+  if (terminal.terminal === "READY" || terminal.terminal === "STALE") {
+    throw new CurrentAuthorityProtocolError(
+      "CURRENT_READY_CONSUMPTION_REQUIRED",
+      "CURRENT_READY_CONSUMPTION_REQUIRED：READY/STALE 只能由 Current Readiness 消费事务提交。",
     );
-    if (!certificate) {
-      throw new AuthorityEvidenceError("READY 缺少 ReportReadyCertificate。");
-    }
-    await resolveReadyCertificate(certificate, authority);
   }
+  if (
+    terminal.terminal === "PARTIAL" ||
+    terminal.terminal === "NEEDS_MORE_RESEARCH" ||
+    terminal.terminal === "INCONCLUSIVE"
+  ) {
+    throw new CurrentAuthorityProtocolError(
+      "RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED",
+      "RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED：Research Stop 终态只能由专用提交事务写入。",
+    );
+  }
+  await verifyCommittedReferences(terminal.artifact_refs ?? [], authority.verifyCommitted);
   authorizedRunTerminals.add(terminal);
   return deepFreeze(terminal) as AuthoritativeRunTerminal;
 }
@@ -308,131 +280,17 @@ export interface ReleaseAuthorityContext extends L2ArtifactAuthorityContext {
   ): Promise<AuthoritativeReleaseManifest | null>;
 }
 
-function requireMatchingReference(
-  actual: ArtifactReference,
-  expected: ArtifactReference,
-  message: string,
-): void {
-  if (artifactReferenceIdentity(actual) !== artifactReferenceIdentity(expected)) {
-    throw new AuthorityEvidenceError(message);
-  }
-}
-
-async function resolveGoEvidence(
-  decision: ReleaseDecision,
-  authority: ReleaseAuthorityContext,
-): Promise<void> {
-  for (const reference of decision.evidence_refs) {
-    switch (reference.artifact_type) {
-      case "ReportReadyCertificate":
-        await resolveReadyCertificate(reference, authority);
-        break;
-      case "ScoreCard": {
-        const scoreCard = await authority.resolveScoreCard(reference);
-        if (
-          !scoreCard ||
-          !isAuthoritativeScoreCard(scoreCard) ||
-          scoreCard.deterministic_verdict !== "PASS" ||
-          scoreCard.safety_counters.some(({ count }) => count !== 0)
-        ) {
-          throw new AuthorityEvidenceError(
-            "GO 只能消费确定性 PASS、Safety Counter 全为零的权威 ScoreCard。",
-          );
-        }
-        requireMatchingReference(
-          scoreCardReference(scoreCard),
-          reference,
-          "GO 的 ScoreCard Resolver 返回了不匹配的 Content-Addressed Revision。",
-        );
-        break;
-      }
-      case "BenchmarkAdapterReceipt": {
-        const receipt = await authority.resolveBenchmarkAdapterReceipt(reference);
-        if (!receipt || !isAuthoritativeBenchmarkAdapterReceipt(receipt)) {
-          throw new AuthorityEvidenceError("GO 只能消费成功终态的权威 BenchmarkAdapterReceipt。");
-        }
-        requireMatchingReference(
-          receipt.receipt_ref,
-          reference,
-          "GO 的 Benchmark Receipt Resolver 返回了不匹配的 Revision。",
-        );
-        break;
-      }
-      case "SandboxExecutionReceipt": {
-        const receipt = await authority.resolveSandboxExecutionReceipt(reference);
-        if (!receipt || !isAuthoritativeSandboxExecutionReceipt(receipt)) {
-          throw new AuthorityEvidenceError("GO 只能消费成功终态的权威 SandboxExecutionReceipt。");
-        }
-        requireMatchingReference(
-          receipt.receipt_ref,
-          reference,
-          "GO 的 Sandbox Receipt Resolver 返回了不匹配的 Revision。",
-        );
-        break;
-      }
-      case "ModelCertificationReceipt": {
-        const receipt = await authority.resolveModelCertificationReceipt(reference);
-        if (!receipt || !isAuthoritativeModelCertificationReceipt(receipt)) {
-          throw new AuthorityEvidenceError(
-            "GO 只能消费经过 Capability Hash 与持久化校验的 ModelCertificationReceipt。",
-          );
-        }
-        requireMatchingReference(
-          receipt.receipt_ref,
-          reference,
-          "GO 的 Model Certification Resolver 返回了不匹配的 Revision。",
-        );
-        break;
-      }
-      case "ExternalAgentAuditReceipt":
-        break;
-    }
-  }
-
-  const manifestReference = decision.release_manifest_ref;
-  if (!manifestReference) {
-    throw new AuthorityEvidenceError("GO 缺少 ReleaseManifest。");
-  }
-  const manifest = await authority.resolveReleaseManifest(manifestReference);
-  if (!manifest || !isAuthoritativeReleaseManifest(manifest)) {
-    throw new AuthorityEvidenceError("GO 只能消费经过双部署与签名结果校验的 ReleaseManifest。");
-  }
-  requireMatchingReference(
-    manifest.manifest_ref,
-    manifestReference,
-    "GO 的 ReleaseManifest Resolver 返回了不匹配的 Revision。",
-  );
-  if (manifest.release_policy_version !== decision.release_policy_version) {
-    throw new AuthorityEvidenceError(
-      "ReleaseManifest 与 ReleaseDecision 必须使用同一 Release Policy Version。",
-    );
-  }
-
-  const manifestEvidence = new Set(
-    [
-      ...manifest.eval_run_refs,
-      ...manifest.tenancy_evidence_refs,
-      ...manifest.deployment_evidence.hosted_refs,
-      ...manifest.deployment_evidence.docker_refs,
-      ...manifest.signed_outcome_refs,
-    ].map(artifactReferenceIdentity),
-  );
-  if (
-    decision.evidence_refs.some(
-      (reference) => !manifestEvidence.has(artifactReferenceIdentity(reference)),
-    )
-  ) {
-    throw new AuthorityEvidenceError(
-      "ReleaseManifest 必须汇总 ReleaseDecision 使用的全部领域 Evidence。",
-    );
-  }
-}
-
 export async function authorizeReleaseDecision(
   input: unknown,
   authority: ReleaseAuthorityContext,
 ): Promise<AuthoritativeReleaseDecision> {
   const decision = releaseDecisionSchema.parse(input);
+  if (decision.decision === "GO") {
+    throw new CurrentAuthorityProtocolError(
+      "CURRENT_RELEASE_COMMIT_REQUIRED",
+      "CURRENT_RELEASE_COMMIT_REQUIRED：GO 只能由 current-ready Release Commit 事务签发。",
+    );
+  }
   await verifyCommittedReferences(
     [
       ...decision.evidence_refs,
@@ -440,9 +298,6 @@ export async function authorizeReleaseDecision(
     ],
     authority.verifyCommitted,
   );
-  if (decision.decision === "GO") {
-    await resolveGoEvidence(decision, authority);
-  }
   authorizedReleaseDecisions.add(decision);
   return deepFreeze(decision) as AuthoritativeReleaseDecision;
 }
