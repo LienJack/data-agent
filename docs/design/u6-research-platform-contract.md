@@ -266,7 +266,7 @@ Relation、Resource、Invocation 用各自 Key 顺序，持有后不得反向进
 
 ```text
 五维 Frontier 已由五类 Owner initialize
-→ ReportReadyCertificate@2 COMMITTED
+→ ReportReadyCertificate@3 COMMITTED
 → publishCurrent: ABSENT/CURRENT/REVOKED -> CURRENT（expected-version CAS）
 → consumeCurrent(DOMAIN_TERMINAL): append READY/RUN_READY
 → consumeCurrent(REPORT_READ): 仅在 exact READY 已存在时 Issue Grant
@@ -536,7 +536,7 @@ type CommitCurrentGoInput = StrictCommandBase & {
 };
 ```
 
-`commit_current_release_go` 按 §4 在单一 PG 事务验证 exact V2 Certificate、同证书
+`commit_current_release_go` 按 §4 在单一 PG 事务验证 exact V3 Certificate、同证书
 READY/RUN_READY、CURRENT、五维 Frontier/Schema、Head/Epoch、material Claim、Release
 Evidence/签名 Outcome，调用 server-only Authorizer，并在解锁前品牌化、持久化 immutable
 GO/Audit。缺 READY 固定 `RESEARCH_READY_TERMINAL_REQUIRED`。同键重放也先重走锁与全部

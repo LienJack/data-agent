@@ -275,13 +275,16 @@ interface ResearchArtifactAuthorityPort {
   `revocation_seq`；任何 schema-valid 但状态不可能的行都失败关闭。
 - `CurrentReadinessPort.consume` 的两个 strict 分支是
   `DOMAIN_TERMINAL | REPORT_READ`。每次调用，包括相同 idempotency key 重放，都必须
-  重新核验 exact `report-ready@2.0.0` Certificate、四张 Gate、Projection、Stop、
+  重新核验 exact current `report-ready@3.0.0` Certificate、四张 Gate、Projection、Stop、
   material Support、Semantic/**Schema**/Data/Policy/Identity Frontier、
   Authority Epoch 与 current Revocation Head。`DOMAIN_TERMINAL` 只能返回
   `READY_COMMITTED | STALE_COMMITTED`；`REPORT_READ` 只能返回
   `GRANT_ISSUED`，不能顺便提交 Terminal。若历史 READY 已存在但 current 已
   `REVOKED`，重放返回 `CURRENT_READINESS_REVOKED` 错误并保留历史 READY，不能伪造
   `STALE_COMMITTED`。
+  `report-ready@2.0.0` 只允许显式 historical read-only，不能进入 consume；V3 的
+  `material_support_decision_refs=[]` 也只允许全反驳报告，且 Authority 必须重算得到
+  非空、exact 的 refuted HypothesisAssessment closure，不能把完全空报告授权为 READY。
   `REPORT_READ` 还必须锁定并验证同 Run、同 Certificate 的不可变
   `READY/RUN_READY` Domain Terminal；仅有 CURRENT row 或 STOP_READY 不能签 Grant。
 - `CurrentReadinessPort.revoke` 使用独立服务级 Revocation Capability，不接受 Worker

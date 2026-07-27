@@ -56,70 +56,140 @@ export const reportManifestSectionSchema = z.strictObject({
   limitation_codes: uniqueIdentifierArraySchema(0, U6_WIRE_LIMITS.max_required_disclosures),
 });
 
-export const reportManifestPayloadSchema = z
-  .strictObject({
-    artifact_type: z.literal("ReportManifest"),
-    protocol_version: z.literal("report-manifest@1.0.0"),
-    brief_ref: researchBriefRefSchema,
-    stop_decision_ref: researchStopDecisionRefSchema,
-    sections: z.array(reportManifestSectionSchema).min(1).max(REPORT_SECTION_IDS.length),
-    material_claim_refs: uniqueArtifactReferences(
-      atomicClaimRefSchema,
-      1,
-      U6_WIRE_LIMITS.max_obligations,
-    ),
-    required_disclosures: uniqueIdentifierArraySchema(1, U6_WIRE_LIMITS.max_required_disclosures),
-    allowed_style_profile: z.literal("ZH_L2_RESEARCH_V1"),
-    manifest_hash: contentHashSchema,
-  })
-  .superRefine((manifest, ctx) => {
-    addUniqueIssues(
-      manifest.sections,
-      ({ section_id }) => section_id,
-      ctx,
-      ["sections"],
-      "Report Section ID 必须唯一。",
-    );
-    const executive = manifest.sections.find(
-      ({ section_id }) => section_id === "EXECUTIVE_SUMMARY",
-    );
-    const supported = manifest.sections.find(
-      ({ section_id }) => section_id === "SUPPORTED_FINDINGS",
-    );
-    if (!executive || !supported) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Manifest 必须同时包含 EXECUTIVE_SUMMARY 与 SUPPORTED_FINDINGS。",
-        path: ["sections"],
-      });
-    } else {
-      const expected = [
-        ...new Set(
-          [...executive.claim_refs, ...supported.claim_refs].map(artifactReferenceIdentity),
-        ),
-      ].sort();
-      const actual = manifest.material_claim_refs.map(artifactReferenceIdentity).sort();
-      if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+function createReportManifestPayloadSchema<const ProtocolVersion extends string>(
+  protocolVersion: ProtocolVersion,
+  minimumMaterialClaims: 0 | 1,
+  allowRefutedOnly: boolean,
+) {
+  return z
+    .strictObject({
+      artifact_type: z.literal("ReportManifest"),
+      protocol_version: z.literal(protocolVersion),
+      brief_ref: researchBriefRefSchema,
+      stop_decision_ref: researchStopDecisionRefSchema,
+      sections: z.array(reportManifestSectionSchema).min(1).max(REPORT_SECTION_IDS.length),
+      material_claim_refs: uniqueArtifactReferences(
+        atomicClaimRefSchema,
+        minimumMaterialClaims,
+        U6_WIRE_LIMITS.max_obligations,
+      ),
+      required_disclosures: uniqueIdentifierArraySchema(1, U6_WIRE_LIMITS.max_required_disclosures),
+      allowed_style_profile: z.literal("ZH_L2_RESEARCH_V1"),
+      manifest_hash: contentHashSchema,
+    })
+    .superRefine((manifest, ctx) => {
+      addUniqueIssues(
+        manifest.sections,
+        ({ section_id }) => section_id,
+        ctx,
+        ["sections"],
+        "Report Section ID 必须唯一。",
+      );
+      const executive = manifest.sections.find(
+        ({ section_id }) => section_id === "EXECUTIVE_SUMMARY",
+      );
+      const supported = manifest.sections.find(
+        ({ section_id }) => section_id === "SUPPORTED_FINDINGS",
+      );
+      const refuted = manifest.sections.find(
+        ({ section_id }) => section_id === "REFUTED_HYPOTHESES",
+      );
+      if (!executive || !supported) {
         ctx.addIssue({
           code: "custom",
-          message: "material_claim_refs 必须等于两个 Material Section 的 Claim 并集。",
-          path: ["material_claim_refs"],
+          message: "Manifest 必须同时包含 EXECUTIVE_SUMMARY 与 SUPPORTED_FINDINGS。",
+          path: ["sections"],
         });
+      } else {
+        const expected = [
+          ...new Set(
+            [...executive.claim_refs, ...supported.claim_refs].map(artifactReferenceIdentity),
+          ),
+        ].sort();
+        const actual = manifest.material_claim_refs.map(artifactReferenceIdentity).sort();
+        if (JSON.stringify(expected) !== JSON.stringify(actual)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "material_claim_refs 必须等于两个 Material Section 的 Claim 并集。",
+            path: ["material_claim_refs"],
+          });
+        }
       }
-    }
-    for (const [index, section] of manifest.sections.entries()) {
       if (
-        !["EXECUTIVE_SUMMARY", "SUPPORTED_FINDINGS"].includes(section.section_id) &&
-        section.claim_refs.length !== 0
+        allowRefutedOnly &&
+        manifest.material_claim_refs.length === 0 &&
+        (refuted?.hypothesis_assessment_refs.length ?? 0) === 0
       ) {
         ctx.addIssue({
           code: "custom",
-          message: "非 Material Section 不能携带 Claim。",
-          path: ["sections", index, "claim_refs"],
+          message:
+            "Manifest 至少需要 material Claim，或在 REFUTED_HYPOTHESES 中包含非空反证 Assessment。",
+          path: ["sections"],
         });
       }
-    }
-  });
+      for (const [index, section] of manifest.sections.entries()) {
+        if (
+          !["EXECUTIVE_SUMMARY", "SUPPORTED_FINDINGS"].includes(section.section_id) &&
+          section.claim_refs.length !== 0
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "非 Material Section 不能携带 Claim。",
+            path: ["sections", index, "claim_refs"],
+          });
+        }
+        if (
+          allowRefutedOnly &&
+          section.section_id !== "REFUTED_HYPOTHESES" &&
+          section.hypothesis_assessment_refs.length !== 0
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "HypothesisAssessment 只能出现在 REFUTED_HYPOTHESES Section。",
+            path: ["sections", index, "hypothesis_assessment_refs"],
+          });
+        }
+        if (
+          allowRefutedOnly &&
+          section.section_id !== "CONFLICTS" &&
+          section.conflict_refs.length !== 0
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Evidence conflict 只能出现在 CONFLICTS Section。",
+            path: ["sections", index, "conflict_refs"],
+          });
+        }
+      }
+    });
+}
+
+/**
+ * Historical tuple retained with its original non-empty material Claim
+ * guarantee. It is read-only in the Research Wire registry.
+ */
+export const reportManifestV1PayloadSchema = createReportManifestPayloadSchema(
+  "report-manifest@1.0.0",
+  1,
+  false,
+);
+
+/**
+ * Current tuple. V2 explicitly adds refuted-only material reports.
+ */
+export const reportManifestV2PayloadSchema = createReportManifestPayloadSchema(
+  "report-manifest@2.0.0",
+  0,
+  true,
+);
+
+/**
+ * Backward-compatible V1 alias. Current Research code must select V2
+ * explicitly so existing consumers do not silently change wire contracts.
+ *
+ * @deprecated Use an explicit versioned schema.
+ */
+export const reportManifestPayloadSchema = reportManifestV1PayloadSchema;
 
 export const analysisReportV2PayloadSchema = z
   .strictObject({
@@ -177,6 +247,9 @@ export const reportProjectionReceiptPayloadSchema = z.strictObject({
 
 export type ReportSectionId = z.infer<typeof reportSectionIdSchema>;
 export type ReportManifestSection = z.infer<typeof reportManifestSectionSchema>;
-export type ReportManifestPayload = z.infer<typeof reportManifestPayloadSchema>;
+export type ReportManifestV1Payload = z.infer<typeof reportManifestV1PayloadSchema>;
+export type ReportManifestV2Payload = z.infer<typeof reportManifestV2PayloadSchema>;
+/** @deprecated Use an explicit versioned payload type. */
+export type ReportManifestPayload = ReportManifestV1Payload;
 export type AnalysisReportV2Payload = z.infer<typeof analysisReportV2PayloadSchema>;
 export type ReportProjectionReceiptPayload = z.infer<typeof reportProjectionReceiptPayloadSchema>;

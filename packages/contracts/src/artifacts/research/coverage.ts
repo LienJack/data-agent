@@ -138,7 +138,7 @@ export const coverageCountsSchema = z.strictObject({
   supporting_stale: nonNegativeIntSchema,
 });
 
-function deriveCoverageCounts(
+export function deriveCoverageCounts(
   obligations: readonly z.infer<typeof obligationCoverageSchema>[],
 ): z.infer<typeof coverageCountsSchema> {
   const counts = {

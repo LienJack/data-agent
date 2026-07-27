@@ -28,10 +28,12 @@ import {
   evidenceGateReceiptPayloadSchema,
   readinessRevocationReceiptPayloadSchema,
   reportReadyCertificateV2PayloadSchema,
+  reportReadyCertificateV3PayloadSchema,
 } from "./readiness.js";
 import {
   analysisReportV2PayloadSchema,
-  reportManifestPayloadSchema,
+  reportManifestV1PayloadSchema,
+  reportManifestV2PayloadSchema,
   reportProjectionReceiptPayloadSchema,
 } from "./reporting.js";
 import { researchStopDecisionPayloadSchema } from "./stop.js";
@@ -42,7 +44,7 @@ const v2PayloadSchemas = new Map<string, z.ZodType>([
   ["HypothesisSet\0" + "2.0.0\0hypothesis-set@2.0.0", hypothesisSetV2PayloadSchema],
   ["EvidencePlan\0" + "2.0.0\0evidence-plan@2.0.0", evidencePlanV2PayloadSchema],
   [
-    "ObligationExecutionDecision\0" + "1.0.0\0obligation-execution@1.0.0",
+    "ObligationExecutionDecision\0" + "2.0.0\0obligation-execution@2.0.0",
     obligationExecutionDecisionPayloadSchema,
   ],
   ["QueryEvidence\0" + "2.0.0\0query-evidence@2.0.0", queryEvidenceV2PayloadSchema],
@@ -56,25 +58,30 @@ const v2PayloadSchemas = new Map<string, z.ZodType>([
   ],
   ["CoverageState\0" + "1.0.0\0coverage-state@1.0.0", coverageStatePayloadSchema],
   ["ResearchStopDecision\0" + "1.0.0\0research-stop@1.0.0", researchStopDecisionPayloadSchema],
-  ["ReportManifest\0" + "1.0.0\0report-manifest@1.0.0", reportManifestPayloadSchema],
+  ["ReportManifest\0" + "2.0.0\0report-manifest@2.0.0", reportManifestV2PayloadSchema],
   ["AnalysisReport\0" + "2.0.0\0analysis-report@2.0.0", analysisReportV2PayloadSchema],
   [
     "ReportProjectionReceipt\0" + "1.0.0\0report-projection@1.0.0",
     reportProjectionReceiptPayloadSchema,
   ],
   ["EvidenceGateReceipt\0" + "1.0.0\0evidence-gate@1.0.0", evidenceGateReceiptPayloadSchema],
-  ["ReportReadyCertificate\0" + "2.0.0\0report-ready@2.0.0", reportReadyCertificateV2PayloadSchema],
+  ["ReportReadyCertificate\0" + "3.0.0\0report-ready@3.0.0", reportReadyCertificateV3PayloadSchema],
   [
     "ReadinessRevocationReceipt\0" + "1.0.0\0readiness-revocation@1.0.0",
     readinessRevocationReceiptPayloadSchema,
   ],
 ]);
 
+const historicalVersionedPayloadSchemas = new Map<string, z.ZodType>([
+  ["ReportManifest\0" + "1.0.0\0report-manifest@1.0.0", reportManifestV1PayloadSchema],
+  ["ReportReadyCertificate\0" + "2.0.0\0report-ready@2.0.0", reportReadyCertificateV2PayloadSchema],
+]);
+
 export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["ResearchBrief", "2.0.0", "research-brief@2.0.0"],
   ["HypothesisSet", "2.0.0", "hypothesis-set@2.0.0"],
   ["EvidencePlan", "2.0.0", "evidence-plan@2.0.0"],
-  ["ObligationExecutionDecision", "1.0.0", "obligation-execution@1.0.0"],
+  ["ObligationExecutionDecision", "2.0.0", "obligation-execution@2.0.0"],
   ["QueryEvidence", "2.0.0", "query-evidence@2.0.0"],
   ["AtomicClaim", "2.0.0", "atomic-claim@2.0.0"],
   ["EvidenceRelation", "2.0.0", "evidence-relation@2.0.0"],
@@ -83,12 +90,17 @@ export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["HypothesisAssessment", "1.0.0", "hypothesis-assessment@1.0.0"],
   ["CoverageState", "1.0.0", "coverage-state@1.0.0"],
   ["ResearchStopDecision", "1.0.0", "research-stop@1.0.0"],
-  ["ReportManifest", "1.0.0", "report-manifest@1.0.0"],
+  ["ReportManifest", "2.0.0", "report-manifest@2.0.0"],
   ["AnalysisReport", "2.0.0", "analysis-report@2.0.0"],
   ["ReportProjectionReceipt", "1.0.0", "report-projection@1.0.0"],
   ["EvidenceGateReceipt", "1.0.0", "evidence-gate@1.0.0"],
-  ["ReportReadyCertificate", "2.0.0", "report-ready@2.0.0"],
+  ["ReportReadyCertificate", "3.0.0", "report-ready@3.0.0"],
   ["ReadinessRevocationReceipt", "1.0.0", "readiness-revocation@1.0.0"],
+] as const);
+
+export const L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES = Object.freeze([
+  ["ReportManifest", "1.0.0", "report-manifest@1.0.0"],
+  ["ReportReadyCertificate", "2.0.0", "report-ready@2.0.0"],
 ] as const);
 
 type V2ResearchPayload =
@@ -104,11 +116,11 @@ type V2ResearchPayload =
   | z.infer<typeof hypothesisAssessmentPayloadSchema>
   | z.infer<typeof coverageStatePayloadSchema>
   | z.infer<typeof researchStopDecisionPayloadSchema>
-  | z.infer<typeof reportManifestPayloadSchema>
+  | z.infer<typeof reportManifestV2PayloadSchema>
   | z.infer<typeof analysisReportV2PayloadSchema>
   | z.infer<typeof reportProjectionReceiptPayloadSchema>
   | z.infer<typeof evidenceGateReceiptPayloadSchema>
-  | z.infer<typeof reportReadyCertificateV2PayloadSchema>
+  | z.infer<typeof reportReadyCertificateV3PayloadSchema>
   | z.infer<typeof readinessRevocationReceiptPayloadSchema>;
 
 export type L2ResearchDocumentCandidate = {
@@ -116,10 +128,28 @@ export type L2ResearchDocumentCandidate = {
   payload: V2ResearchPayload;
 };
 
+const l2ResearchDocumentShapeSchema = z.strictObject({
+  envelope: l2ArtifactEnvelopeSchema,
+  payload: z.unknown(),
+});
+
 export type HistoricalL2ResearchDocument = {
   authority: "HISTORICAL_READ_ONLY";
   can_authorize_current: false;
   document: z.infer<typeof l2ArtifactDocumentSchema>;
+};
+
+type HistoricalVersionedResearchPayload =
+  | z.infer<typeof reportManifestV1PayloadSchema>
+  | z.infer<typeof reportReadyCertificateV2PayloadSchema>;
+
+export type HistoricalVersionedL2ResearchDocument = {
+  readonly authority: "HISTORICAL_READ_ONLY";
+  readonly can_authorize_current: false;
+  readonly document: {
+    readonly envelope: ArtifactEnvelope;
+    readonly payload: HistoricalVersionedResearchPayload;
+  };
 };
 
 function registryKey(
@@ -134,15 +164,243 @@ function protocolVersionOf(payload: unknown): string | null {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
     return null;
   }
-  const value = Reflect.get(payload, "protocol_version");
+  const descriptor = Object.getOwnPropertyDescriptor(payload, "protocol_version");
+  const value =
+    descriptor && Object.hasOwn(descriptor, "value") && descriptor.enumerable
+      ? descriptor.value
+      : undefined;
   return typeof value === "string" ? value : null;
 }
 
-export function parseL2ResearchPayloadForEnvelopeCandidate(
-  envelopeInput: unknown,
+const rawWireTextEncoder = new TextEncoder();
+const MAX_RAW_CONTAINER_ENTRIES = U6_WIRE_LIMITS.max_artifact_input_refs;
+
+function rawWireBytes(value: string): number {
+  return rawWireTextEncoder.encode(value).byteLength;
+}
+
+function isRawPlainObject(value: object): boolean {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function rawArrayLength(value: object): number | null {
+  const descriptor = Object.getOwnPropertyDescriptor(value, "length");
+  if (
+    !descriptor ||
+    !Object.hasOwn(descriptor, "value") ||
+    descriptor.enumerable ||
+    typeof descriptor.value !== "number" ||
+    !Number.isSafeInteger(descriptor.value) ||
+    descriptor.value < 0
+  ) {
+    return null;
+  }
+  return descriptor.value;
+}
+
+function isRawArrayIndex(key: string, length: number): boolean {
+  if (!/^(0|[1-9][0-9]*)$/.test(key)) return false;
+  const index = Number(key);
+  return Number.isSafeInteger(index) && index >= 0 && index < length;
+}
+
+/**
+ * Rejects hostile object graphs before Zod, recursive reference collection, or
+ * canonical JSON can traverse them. This is a wire-resource boundary only; the
+ * strict schemas and the exact canonical-byte check remain authoritative.
+ */
+function preflightRawL2ResearchJsonObject(input: unknown, label: string): void {
+  try {
+    if (
+      typeof input !== "object" ||
+      input === null ||
+      Array.isArray(input) ||
+      !isRawPlainObject(input)
+    ) {
+      throw new L2ResearchWireError(
+        "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+        `L2_WIRE_VERSION_WRITE_UNSUPPORTED：${label} 必须是普通 strict object。`,
+      );
+    }
+
+    type Frame =
+      | { readonly phase: "ENTER"; readonly value: unknown; readonly depth: number }
+      | { readonly phase: "EXIT"; readonly value: object };
+    const states = new WeakMap<object, "VISITING" | "DONE">();
+    const stack: Frame[] = [{ phase: "ENTER", value: input, depth: 0 }];
+    let objectNodes = 0;
+    let observedBytes = 0;
+
+    while (stack.length > 0) {
+      const frame = stack.pop();
+      if (!frame) break;
+      if (frame.phase === "EXIT") {
+        states.set(frame.value, "DONE");
+        continue;
+      }
+
+      const value = frame.value;
+      if (typeof value === "string") {
+        observedBytes += rawWireBytes(value);
+      } else if (typeof value === "number" || typeof value === "boolean") {
+        if (typeof value === "number" && !Number.isFinite(value)) {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 只接受有限 JSON number。",
+          );
+        }
+        observedBytes += rawWireBytes(String(value));
+      } else if (value !== null && typeof value === "object") {
+        const existing = states.get(value);
+        if (existing === "VISITING") {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 禁止循环对象图。",
+          );
+        }
+        if (existing === "DONE") continue;
+        if (frame.depth > U6_WIRE_LIMITS.max_dependency_depth) {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 嵌套深度超过上限。",
+          );
+        }
+        objectNodes += 1;
+        if (objectNodes > U6_WIRE_LIMITS.max_recursive_closure_nodes) {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 节点数量超过上限。",
+          );
+        }
+
+        const isArray = Array.isArray(value);
+        const prototype = Object.getPrototypeOf(value);
+        if (
+          (isArray && prototype !== Array.prototype) ||
+          (!isArray && prototype !== Object.prototype && prototype !== null)
+        ) {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 只接受 inert Array/plain object。",
+          );
+        }
+        const arrayLength = isArray ? rawArrayLength(value) : null;
+        if (isArray && (arrayLength === null || arrayLength > MAX_RAW_CONTAINER_ENTRIES)) {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 数组长度超过上限或 length 非法。",
+          );
+        }
+
+        const ownKeys = Reflect.ownKeys(value);
+        const entryCount = ownKeys.length - (isArray && ownKeys.includes("length") ? 1 : 0);
+        if (
+          entryCount > MAX_RAW_CONTAINER_ENTRIES ||
+          ownKeys.some((key) => typeof key === "symbol")
+        ) {
+          throw new L2ResearchWireError(
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+            "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 字段数量超过上限或包含 Symbol。",
+          );
+        }
+        states.set(value, "VISITING");
+        stack.push({ phase: "EXIT", value });
+
+        for (let index = ownKeys.length - 1; index >= 0; index -= 1) {
+          const key = ownKeys[index];
+          if (typeof key !== "string" || (isArray && key === "length")) continue;
+          if (isArray && !isRawArrayIndex(key, arrayLength ?? 0)) {
+            throw new L2ResearchWireError(
+              "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+              "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 数组只允许范围内索引。",
+            );
+          }
+          const descriptor = Object.getOwnPropertyDescriptor(value, key);
+          if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) {
+            throw new L2ResearchWireError(
+              "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+              "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 只允许 enumerable data property。",
+            );
+          }
+          observedBytes += rawWireBytes(key);
+          stack.push({
+            phase: "ENTER",
+            value: descriptor.value,
+            depth: frame.depth + 1,
+          });
+        }
+      } else if (
+        typeof value === "function" ||
+        typeof value === "symbol" ||
+        typeof value === "bigint" ||
+        typeof value === "undefined"
+      ) {
+        throw new L2ResearchWireError(
+          "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+          "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 只接受 JSON 值。",
+        );
+      }
+
+      if (observedBytes > U6_WIRE_LIMITS.max_artifact_bytes) {
+        throw new L2ResearchWireError(
+          "L2_WIRE_ARTIFACT_TOO_LARGE",
+          "L2_WIRE_ARTIFACT_TOO_LARGE：Research Artifact 原始输入超过 1 MiB。",
+        );
+      }
+    }
+  } catch (error) {
+    if (error instanceof L2ResearchWireError) throw error;
+    throw new L2ResearchWireError(
+      "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+      "L2_WIRE_REFERENCE_CLOSURE_INVALID：Research Wire 不能安全遍历对象。",
+    );
+  }
+}
+
+function parseRegisteredL2ResearchPayloadAfterPreflight(input: unknown): V2ResearchPayload {
+  const artifactTypeDescriptor =
+    typeof input === "object" && input !== null
+      ? Object.getOwnPropertyDescriptor(input, "artifact_type")
+      : undefined;
+  const artifactType =
+    artifactTypeDescriptor &&
+    Object.hasOwn(artifactTypeDescriptor, "value") &&
+    artifactTypeDescriptor.enumerable
+      ? artifactTypeDescriptor.value
+      : undefined;
+  const protocolVersion = protocolVersionOf(input);
+  const matches = [...v2PayloadSchemas.entries()].filter(([key]) => {
+    const [registeredArtifactType, _schemaVersion, registeredProtocolVersion] = key.split("\0");
+    return registeredArtifactType === artifactType && registeredProtocolVersion === protocolVersion;
+  });
+  if (matches.length !== 1) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      `L2_WIRE_VERSION_WRITE_UNSUPPORTED：未注册或歧义的 Research Payload 元组 ${String(
+        artifactType,
+      )}\0${protocolVersion ?? ""}。`,
+    );
+  }
+  const schema = matches[0]?.[1];
+  if (!schema) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED：Research Payload Schema 解析失败。",
+    );
+  }
+  return schema.parse(input) as V2ResearchPayload;
+}
+
+function parseRegisteredL2ResearchPayload(input: unknown): V2ResearchPayload {
+  preflightRawL2ResearchJsonObject(input, "Research Payload");
+  return parseRegisteredL2ResearchPayloadAfterPreflight(input);
+}
+
+function parseL2ResearchPayloadForEnvelopeAfterPreflight(
+  envelope: ArtifactEnvelope,
   payloadInput: unknown,
 ): V2ResearchPayload {
-  const envelope = l2ArtifactEnvelopeSchema.parse(envelopeInput);
   const key = registryKey(
     envelope.artifact_type,
     envelope.schema_version,
@@ -165,6 +423,16 @@ export function parseL2ResearchPayloadForEnvelopeCandidate(
   return payload;
 }
 
+export function parseL2ResearchPayloadForEnvelopeCandidate(
+  envelopeInput: unknown,
+  payloadInput: unknown,
+): V2ResearchPayload {
+  preflightRawL2ResearchJsonObject(envelopeInput, "Research Envelope");
+  preflightRawL2ResearchJsonObject(payloadInput, "Research Payload");
+  const envelope = l2ArtifactEnvelopeSchema.parse(envelopeInput);
+  return parseL2ResearchPayloadForEnvelopeAfterPreflight(envelope, payloadInput);
+}
+
 function collectArtifactReferences(
   value: unknown,
   references: Map<string, ArtifactReference>,
@@ -185,7 +453,37 @@ function collectArtifactReferences(
   }
 }
 
-function assertReferenceClosure(envelope: ArtifactEnvelope, payload: V2ResearchPayload): void {
+/**
+ * Returns the exact Artifact Reference closure of one strict, registered V2
+ * Research Payload in stable full-identity order.
+ *
+ * This is a pure wire helper for constructing and checking Candidate envelopes.
+ * It does not seal an Artifact or grant persistence, current-revision,
+ * COMMITTED, or authority semantics.
+ */
+export function collectL2ResearchPayloadArtifactReferences(
+  payloadInput: unknown,
+): readonly ArtifactReference[] {
+  const payload = parseRegisteredL2ResearchPayload(payloadInput);
+  const references = new Map<string, ArtifactReference>();
+  collectArtifactReferences(payload, references);
+  if (references.size > U6_WIRE_LIMITS.max_artifact_input_refs) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_REFERENCE_CLOSURE_INVALID",
+      "L2_WIRE_REFERENCE_CLOSURE_INVALID：Payload Artifact Reference 数量超过上限。",
+    );
+  }
+  return deepFreeze(
+    [...references.entries()]
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([, reference]) => reference),
+  );
+}
+
+function assertReferenceClosure(
+  envelope: ArtifactEnvelope,
+  payload: V2ResearchPayload | HistoricalVersionedResearchPayload,
+): void {
   const referenced = new Map<string, ArtifactReference>();
   collectArtifactReferences(payload, referenced);
   if (
@@ -223,20 +521,65 @@ function assertReferenceClosure(envelope: ArtifactEnvelope, payload: V2ResearchP
   }
 }
 
+/**
+ * Parses only explicitly retired versioned tuples and brands the result as
+ * historical read-only. These tuples cannot pass the current Candidate writer
+ * registry and cannot authorize current state.
+ */
+export function readHistoricalVersionedL2ResearchDocument(
+  input: unknown,
+): HistoricalVersionedL2ResearchDocument {
+  preflightRawL2ResearchJsonObject(input, "Historical Versioned Research Document");
+  const documentShape = l2ResearchDocumentShapeSchema.parse(input);
+  const key = registryKey(
+    documentShape.envelope.artifact_type,
+    documentShape.envelope.schema_version,
+    protocolVersionOf(documentShape.payload),
+  );
+  const schema = historicalVersionedPayloadSchemas.get(key);
+  if (!schema) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      `L2_WIRE_VERSION_WRITE_UNSUPPORTED：未登记的历史 Research Wire 元组 ${key}。`,
+    );
+  }
+  const payload = schema.parse(documentShape.payload) as HistoricalVersionedResearchPayload;
+  if (payload.artifact_type !== documentShape.envelope.artifact_type) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      "L2_WIRE_VERSION_WRITE_UNSUPPORTED：历史 Envelope 与 Payload Artifact Type 不匹配。",
+    );
+  }
+  assertReferenceClosure(documentShape.envelope, payload);
+  if (
+    rawWireTextEncoder.encode(canonicalizeJson({ envelope: documentShape.envelope, payload }))
+      .byteLength > U6_WIRE_LIMITS.max_artifact_bytes
+  ) {
+    throw new L2ResearchWireError(
+      "L2_WIRE_ARTIFACT_TOO_LARGE",
+      "L2_WIRE_ARTIFACT_TOO_LARGE：历史 Research Artifact 超过 1 MiB。",
+    );
+  }
+  return deepFreeze({
+    authority: "HISTORICAL_READ_ONLY",
+    can_authorize_current: false,
+    document: {
+      envelope: documentShape.envelope,
+      payload,
+    },
+  });
+}
+
 export function parseL2ResearchDocumentCandidate(input: unknown): L2ResearchDocumentCandidate {
-  const documentShape = z
-    .strictObject({
-      envelope: l2ArtifactEnvelopeSchema,
-      payload: z.unknown(),
-    })
-    .parse(input);
-  const payload = parseL2ResearchPayloadForEnvelopeCandidate(
+  preflightRawL2ResearchJsonObject(input, "Research Document");
+  const documentShape = l2ResearchDocumentShapeSchema.parse(input);
+  const payload = parseL2ResearchPayloadForEnvelopeAfterPreflight(
     documentShape.envelope,
     documentShape.payload,
   );
   assertReferenceClosure(documentShape.envelope, payload);
   if (
-    new TextEncoder().encode(canonicalizeJson({ envelope: documentShape.envelope, payload }))
+    rawWireTextEncoder.encode(canonicalizeJson({ envelope: documentShape.envelope, payload }))
       .byteLength > U6_WIRE_LIMITS.max_artifact_bytes
   ) {
     throw new L2ResearchWireError(
@@ -251,6 +594,7 @@ export function parseL2ResearchDocumentCandidate(input: unknown): L2ResearchDocu
 }
 
 export function readHistoricalL2ResearchDocument(input: unknown): HistoricalL2ResearchDocument {
+  preflightRawL2ResearchJsonObject(input, "Historical Research Document");
   const document = l2ArtifactDocumentSchema.parse(input);
   if (
     document.envelope.schema_version !== "1.0.0" ||
@@ -285,13 +629,24 @@ function envelopeContentHashMaterial(document: L2ResearchDocumentCandidate) {
 export async function computeL2ResearchEnvelopeContentHash(
   input: unknown,
 ): Promise<`sha256:${string}`> {
+  return (await parseAndHashL2ResearchDocumentCandidate(input)).content_hash;
+}
+
+export async function parseAndHashL2ResearchDocumentCandidate(input: unknown): Promise<{
+  readonly document: L2ResearchDocumentCandidate;
+  readonly content_hash: `sha256:${string}`;
+}> {
   const document = parseL2ResearchDocumentCandidate(input);
-  return sha256ContentHash(envelopeContentHashMaterial(document));
+  return {
+    document,
+    content_hash: await sha256ContentHash(envelopeContentHashMaterial(document)),
+  };
 }
 
 type L2ResearchSemanticPayload =
   | z.infer<typeof obligationExecutionDecisionPayloadSchema>
   | z.infer<typeof reportReadyCertificateV2PayloadSchema>
+  | z.infer<typeof reportReadyCertificateV3PayloadSchema>
   | z.infer<typeof readinessRevocationReceiptPayloadSchema>;
 
 function compareCanonicalIdentity(left: string, right: string): number {
@@ -299,17 +654,27 @@ function compareCanonicalIdentity(left: string, right: string): number {
 }
 
 function parseL2ResearchSemanticPayload(input: unknown): L2ResearchSemanticPayload {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw new L2ResearchWireError(
-      "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
-      "L2_WIRE_VERSION_WRITE_UNSUPPORTED：领域 Semantic Hash 只接受已登记的语义决策 Payload。",
-    );
-  }
-  switch (Reflect.get(input, "artifact_type")) {
+  preflightRawL2ResearchJsonObject(input, "Research Semantic Payload");
+  const artifactTypeDescriptor =
+    typeof input === "object" && input !== null
+      ? Object.getOwnPropertyDescriptor(input, "artifact_type")
+      : undefined;
+  const artifactType =
+    artifactTypeDescriptor &&
+    Object.hasOwn(artifactTypeDescriptor, "value") &&
+    artifactTypeDescriptor.enumerable
+      ? artifactTypeDescriptor.value
+      : undefined;
+  switch (artifactType) {
     case "ObligationExecutionDecision":
       return obligationExecutionDecisionPayloadSchema.parse(input);
-    case "ReportReadyCertificate":
-      return reportReadyCertificateV2PayloadSchema.parse(input);
+    case "ReportReadyCertificate": {
+      const protocolVersion = protocolVersionOf(input);
+      if (protocolVersion === "report-ready@2.0.0") {
+        return reportReadyCertificateV2PayloadSchema.parse(input);
+      }
+      return reportReadyCertificateV3PayloadSchema.parse(input);
+    }
     case "ReadinessRevocationReceipt":
       return readinessRevocationReceiptPayloadSchema.parse(input);
     default:

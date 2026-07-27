@@ -17,6 +17,15 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
+    "test:research": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:architecture": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
     "test:providers": {
       "cache": false,
       "dependsOn": ["^build"],

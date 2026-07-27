@@ -100,10 +100,11 @@ export const obligationSemanticChecksSchema = z.strictObject({
 export const obligationExecutionDecisionPayloadSchema = z
   .strictObject({
     artifact_type: z.literal("ObligationExecutionDecision"),
-    protocol_version: z.literal("obligation-execution@1.0.0"),
+    protocol_version: z.literal("obligation-execution@2.0.0"),
     brief_ref: researchBriefRefSchema,
     obligation_ref: proofObligationRefSchema,
     query_contract_ref: queryContractRefSchema,
+    sql_artifact_ref: sqlArtifactRefSchema,
     semantic_release_ref: semanticReleaseRefSchema,
     policy_receipt_ref: policyReceiptRefSchema,
     observation_contract_hash: contentHashSchema,

@@ -18,6 +18,7 @@
 - 仓库内冻结投影：
   `docs/design/u6-research-authority-contract.md`、
   `docs/design/u6-research-planning-payload-contract.md` 与
+  `docs/design/u6-research-oed-v2-contract.md`、
   `docs/design/u6-research-wire-payload-contract.md`；平台事务、资源调用与受控 Oracle
   分别冻结在 `u6-research-platform-contract.md`、
   `u6-research-resource-invocation-contract.md`、
@@ -178,7 +179,7 @@ QuestionFrame
 → ResearchBrief@2
 → HypothesisSet@2
 → EvidencePlan@2（逻辑 ProofObligationSet）
-→ QueryContract + ObligationExecutionDecision
+→ QueryContract + ObligationExecutionDecision@2
 → GroundingPackage
 → SemanticQuery
 → LogicalPlan
@@ -189,9 +190,9 @@ QuestionFrame
 → AtomicClaim@2 / EvidenceRelation / EvidenceCheckReceipt
 → SupportDecision / HypothesisAssessment
 → CoverageState / ResearchStopDecision
-→ ReportManifest / AnalysisReport@2 / ReportProjectionReceipt
+→ ReportManifest@2 / AnalysisReport@2 / ReportProjectionReceipt
 → 4 × EvidenceGateReceipt
-→ ReportReadyCertificate@2
+→ ReportReadyCertificate@3
 → consumeCurrentReady
 → READY / ReportReadGrant
 → 可选 ReadinessRevocationReceipt
@@ -267,7 +268,7 @@ Mastra 不负责：
 
 - 决定 SQL 是否语义正确。
 - 决定 Evidence 是否真正支持 Claim。
-- 签发 `ReportReadyCertificate`。
+- 签发 `ReportReadyCertificate@3`。
 - 决定 Release `GO`。
 
 ### 7.2 ModelProviderAdapter
@@ -351,7 +352,7 @@ Repair 只能修改实现细节，不能改变 `QueryContract` 中的 Metric、F
 1. 编译 `ResearchBrief@2`；首版只允许 `QUERY + DETERMINISTIC`。
 2. 建立有界、可区分的 `HypothesisSet@2`，并披露候选宇宙。
 3. 用 `EvidencePlan@2` 物化 Proof Obligation、依赖和 Observation Contract。
-4. 在 Sandbox 前提交 `ObligationExecutionDecision`，证明 QueryContract 没有偷换
+4. 在 Sandbox 前提交 `ObligationExecutionDecision@2`，证明 QueryContract 没有偷换
    metric、window、join、predicate、cohort、NULL 或授权 Scope。
 5. 调用 Text2SQL/Sandbox，将已品牌化结果转为 `QueryEvidence@2`；Q2 必须精确引用
    Q1 Evidence Revision。
@@ -360,16 +361,21 @@ Repair 只能修改实现细节，不能改变 `QueryContract` 中的 Metric、F
 8. 按 `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 重算 Coverage。
 9. 按 Hard Gate、Coverage、合法 Query、外部等待与硬预算顺序提交六分支 Stop
    Decision；禁止无条件 `STOP_PARTIAL`。
-10. 只从已提交 Claim/Assessment/Conflict 投影 `ReportManifest`、
+10. 只从已提交 Claim/Assessment/Conflict 投影 `ReportManifest@2`、
     `AnalysisReport@2` 与 Projection Receipt。
 11. Support、Conflict、Freshness、Source Independence 四张 Gate 分别重算并提交。
-12. Readiness Authority 签发 `ReportReadyCertificate@2`。
+12. Readiness Authority 签发 `ReportReadyCertificate@3`。
 13. PostgreSQL `consumeCurrentReady` 在同一事务中核验 Certificate、Version Frontier
     与 Revocation Head，随后才提交公共 `READY` 或单次 `ReportReadGrant`。
 
-Writer、Supervisor、普通 Schema Parse、Mastra Checkpoint、Redis Cache 或历史 V1
-Certificate 都不能绕过上述链路。`SourceEvidence` 与 Benchmark Adapter 属于后续
-独立单元，不在 U6 首版中预建。
+Writer、Supervisor、普通 Schema Parse、Mastra Checkpoint、Redis Cache，以及
+legacy protocol-null V1、
+`ReportManifest/1.0.0/report-manifest@1.0.0`、
+`ReportReadyCertificate/2.0.0/report-ready@2.0.0` 等 historical tuple 都不能绕过
+上述链路。current-ready 只接受当前
+`ReportReadyCertificate/3.0.0/report-ready@3.0.0`，其闭包中的 Manifest 只能是
+`ReportManifest/2.0.0/report-manifest@2.0.0`。`SourceEvidence` 与 Benchmark Adapter
+属于后续独立单元，不在 U6 首版中预建。
 
 ### 9.1 研究终态 Owner
 

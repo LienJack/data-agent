@@ -1,5 +1,6 @@
 {"file":".trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md","reason":"逐项检查 U6 compact 合同、P0 闭包、必需 Oracle、命令、上下文大小与 Release HOLD"}
 {"file":"docs/design/u6-research-planning-payload-contract.md","reason":"检查 Planning strict Schema、局部/精确 Reference、版本元组与资源上限"}
+{"file":"docs/design/u6-research-oed-v2-contract.md","reason":"检查 OED v2 exact SQL/Policy 绑定、production replay、Candidate-only assurance 与攻击 Oracle"}
 {"file":"docs/design/u6-research-wire-payload-contract.md","reason":"检查 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Schema 与 Cross-field Refinement"}
 {"file":"docs/design/u6-research-platform-contract.md","reason":"检查 U6 平台事务 strict Wire、固定锁序、幂等重验、状态真值表与窄数据库函数"}
 {"file":"docs/design/u6-research-resource-invocation-contract.md","reason":"检查 Resource/Invocation/System Record 的预算占位、Fence、结果持久化、迟到用量与零旁路 I/O"}

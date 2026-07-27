@@ -497,17 +497,23 @@ flowchart LR
 
 设计已通过 RQ092、`docs/design/u6-research-authority-contract.md`、
 `docs/design/u6-research-planning-payload-contract.md` 与
+`docs/design/u6-research-oed-v2-contract.md`、
 `docs/design/u6-research-wire-payload-contract.md`、
 `docs/design/u6-research-platform-contract.md`、
 `docs/design/u6-research-resource-invocation-contract.md`、
 `docs/design/u6-invocation-state-contract.md`、
 `docs/design/u6-system-record-lifecycle-contract.md` 与
-`docs/design/u6-controlled-fixture-contract.md` 冻结；当前状态仅为
-`FROZEN_DESIGN_CONTRACT`，不是实现完成。
+`docs/design/u6-controlled-fixture-contract.md` 冻结。U6-A 纯 Research Kernel 已实现；
+PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实现，因此 U6
+整体未完成。
 
-1. 升级 `ResearchBrief/HypothesisSet/EvidencePlan/QueryEvidence/AtomicClaim/
-   AnalysisReport/ReportReadyCertificate` V2 Schema；V1 只允许历史读取。
-2. 增加 `ObligationExecutionDecision`，在 Sandbox 前逐项验证 QueryContract 与
+1. 实现 current tuple：`ResearchBrief/HypothesisSet/EvidencePlan/QueryEvidence/
+   AtomicClaim/EvidenceRelation/AnalysisReport` 采用 V2；Manifest 固定为
+   `ReportManifest/2.0.0/report-manifest@2.0.0`，Certificate 固定为
+   `ReportReadyCertificate/3.0.0/report-ready@3.0.0`。legacy protocol-null V1、
+   `ReportManifest/1.0.0/report-manifest@1.0.0` 与
+   `ReportReadyCertificate/2.0.0/report-ready@2.0.0` 只允许 historical read。
+2. 增加 `ObligationExecutionDecision@2`，在 Sandbox 前逐项验证 QueryContract 与
    Obligation 的 metric/formula/window/timezone/grain/grouping/join/predicate/cohort/
    null/authorization Scope。
 3. 实现 QUERY-only 的 Proof Obligation、竞争假设与依赖查询；不实现
@@ -518,10 +524,10 @@ flowchart LR
    material conflict 阻断 `SATISFIED/STOP_READY`。
 6. 实现 Stop 六分支；只有硬预算封顶且存在可披露受支持子集才能
    `STOP_PARTIAL`，不提供兜底 Partial。
-7. 从 `ReportManifest` 确定性投影中文 `AnalysisReport@2` 与
+7. 从 `ReportManifest@2` 确定性投影中文 `AnalysisReport@2` 与
    `ReportProjectionReceipt`。
 8. 分别实现 Support、Conflict、Freshness、Source Independence Gate，并由
-   server-only Readiness Authority 签发 `ReportReadyCertificate@2`。
+   server-only Readiness Authority 签发 `ReportReadyCertificate@3`。
 9. 在 PostgreSQL 增加 current readiness、Revocation Head、
    `RevocationOperation`、单次 `ReportReadGrant` 与固定锁序。
 10. 用 `consumeCurrentReady` 在同一事务内核验 exact Certificate、Version Frontier
@@ -550,8 +556,42 @@ flowchart LR
 - 冻结后的仓库门禁通过：`pnpm lint`（243 files）、`pnpm typecheck`（8/8）和
   `pnpm test:contract`（Contracts 7/7、Text2SQL 6/6、Platform 2/2、
   Agent Runtime 30/30）。
-- 本节只关闭设计冻结；代码、Migration、PostgreSQL 竞态、Worker 恢复与 Controlled
-  Case 尚未实现，状态仍是 `NOT_IMPLEMENTED`，Release 必须保持 `HOLD`。
+- 本节记录设计冻结时点；当时代码、Migration、PostgreSQL 竞态、Worker 恢复与
+  Controlled Case 均未实现。后续 U6-A 状态以下一节为准；Release 始终保持 `HOLD`。
+
+#### U6-A 纯 Research Kernel 实施证据（2026-07-27）
+
+- 新增只依赖 `@data-agent/contracts` 的 `packages/research`，实现
+  `ResearchBrief → HypothesisSet → EvidencePlan → OED → QueryEvidence →
+  Claim/Relation/Check/Support/Assessment → Coverage → Stop → Report →
+  四 Gate → ReportReadyCertificate` 的 Document-backed Candidate 链。
+- 当前 Writer tuple 固定为
+  `ReportManifest/2.0.0/report-manifest@2.0.0` 与
+  `ReportReadyCertificate/3.0.0/report-ready@3.0.0`；对应 versioned historical
+  tuple 分别为 Manifest 1 与 Certificate 2，旧无版本公共别名继续绑定 V1。历史文档
+  只能返回 `HISTORICAL_READ_ONLY`，不能进入 current parser/Authority。
+- Controlled mixed/all-refuted 两查询链、14 个 Mutation、16 个 Partial
+  `CONTINUE/REPLAN` 配对和全反驳空 Supported 集合均走同一生产内核；成功结果仍只得到
+  `ReportReady Candidate`，没有持久化、Public `READY`、SQL 执行或 Release 权限。
+- Request-local verified replay 仅以同一请求持有且递归冻结的对象 identity 为 key；
+  成功且冻结后才发布 cache，失败、异常与同步 throw 均可重试。性能门禁固定
+  digest/Document miss、elapsed 与 RSS 上限，`test:research` 禁止 Turbo cache。
+- Evidence 与 Readiness 已按 Artifact owner 拆分；typed Document resolver、
+  Reference identity/value-shape 与 transient OED assurance registry 位于中性 internal
+  层。架构门禁禁止 raw reducer 跨 owner、Evidence 反向依赖 Server、production 使用
+  兼容门面、identity `as never` 及 owner 循环。
+- 最终门禁通过：`pnpm test:research`（18 files / 129 tests）、
+  `pnpm test:architecture`（10/10）、`pnpm test:unit`（9/9 Workspace Tasks）、
+  `pnpm typecheck`（9/9）、`pnpm lint`（314 files）、`pnpm test:contract`（7/7
+  Workspace Tasks）与 `pnpm test:integration`。Trellis 注入验证零 Warning，
+  `git diff --check` 无输出。
+- Compound Engineering 全程仅使用 Codex 多角色复审；Correctness、Maintainability、
+  Testing、Security、Adversarial、Performance、API Contract、Project Standards、
+  Reliability 与 Agent-native 的最终阻塞 Finding 均清零，未调用 Claude Code。
+- 本节只关闭 U6-A 纯内核。Migration、PostgreSQL exact-revision Committer、
+  CurrentReadiness/Revocation/Grant、Resource/Invocation、Mastra Worker 组合、
+  Crash-Recovery 与真实部署证据仍为 `NOT_IMPLEMENTED`；`pnpm verify:release`
+  必须继续返回 `HOLD / RELEASE_EVIDENCE_INCOMPLETE`。
 
 ### U7 工作包
 
@@ -579,7 +619,11 @@ flowchart LR
 - current-ready 与撤权竞态中，撤权先胜出时不提交 READY 或 ReportReadGrant；
   仅正在竞争的 `DOMAIN_TERMINAL` consume 可在同一事务追加唯一
   `STALE/RUN_STALE`。独立 revoke 不创建 Terminal。
-- V1 可历史读取但不能进入 V2 current-ready。
+- legacy protocol-null V1、
+  `ReportManifest/1.0.0/report-manifest@1.0.0` 与
+  `ReportReadyCertificate/2.0.0/report-ready@2.0.0` 只能显式 historical read；
+  current-ready 只接受 `ReportReadyCertificate/3.0.0/report-ready@3.0.0`，并递归
+  要求 `ReportManifest/2.0.0/report-manifest@2.0.0` 和其余 current matrix。
 - Tenant Burst、Provider Cost、SQL Result Amplification 与 Cancel Reservation Leak
   Oracle 全部通过。
 - 四类 Adapter 不丢失 Suite 字段。
@@ -592,7 +636,8 @@ flowchart LR
 - `pnpm test:unit`
 - `pnpm test:integration`
 - `pnpm test:architecture`
-- Controlled、14 Mutation、Coverage/Stop、Crash-Recovery、Resource、V1 Read-Deny、
+- Controlled、14 Mutation、Coverage/Stop、Crash-Recovery、Resource、
+  Historical Tuple Read-Deny、
   current-ready Revocation Race 全通过。
 - `pnpm verify:release`（预期仍为 `HOLD`）
 

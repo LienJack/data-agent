@@ -280,11 +280,10 @@ export const researchStopDecisionPayloadSchema = z
       const rankedExecutable = [...executable].sort((left, right) => {
         const eig =
           right.expected_information_gain_microunits - left.expected_information_gain_microunits;
-        return eig !== 0
-          ? eig
-          : artifactReferenceIdentity(left.query_contract_ref).localeCompare(
-              artifactReferenceIdentity(right.query_contract_ref),
-            );
+        if (eig !== 0) return eig;
+        const leftIdentity = artifactReferenceIdentity(left.query_contract_ref);
+        const rightIdentity = artifactReferenceIdentity(right.query_contract_ref);
+        return leftIdentity < rightIdentity ? -1 : leftIdentity > rightIdentity ? 1 : 0;
       });
       const selected = rankedExecutable[0];
       if (

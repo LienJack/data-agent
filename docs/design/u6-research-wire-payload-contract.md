@@ -3,48 +3,18 @@
 > 状态：`FROZEN_DESIGN_CONTRACT`
 > 上位合同：`docs/design/u6-research-authority-contract.md`
 > Planning Wire：`docs/design/u6-research-planning-payload-contract.md`
-> 实现状态：`NOT_IMPLEMENTED`
+> 实现状态：纯 Research Kernel 为 `KERNEL_CANDIDATE_ONLY`；生产 Authority 为
+> `NOT_IMPLEMENTED`
 
-本文冻结 Obligation Execution 到 Provider Egress 的 strict Payload/Refinement。
-Primitive、Typed Ref、共同 Value 与 Planning Artifact 均由 Planning Wire 定义；
-依赖方向仅为“本文 → Planning Wire”。
-
-所有对象使用 `z.strictObject`，判别联合由 strict Object 分支组成；禁止宽 Parse 后
-Type Assertion。`*Ref` 均为 Planning Wire 的固定目标别名。
+本文冻结 Obligation Execution 到 Provider Egress 的 Payload/Refinement；
+Primitive、Typed Ref 与共同 Value 复用 Planning Wire。对象和判别联合均须 strict，
+禁止宽 Parse 后断言；`*Ref` 使用固定目标别名。
 
 ## 1. Proof 与 Evidence Payload
 
+OED v2 见 `docs/design/u6-research-oed-v2-contract.md`；下文从 QueryEvidence 开始。
+
 ```ts
-type ObligationSemanticCheck =
-  | "metric"
-  | "metric_formula"
-  | "time_window"
-  | "timezone"
-  | "grain"
-  | "dimensions"
-  | "grouping"
-  | "joins"
-  | "canonical_predicates"
-  | "cohort"
-  | "null_semantics"
-  | "authorization_scope";
-
-type ObligationExecutionDecisionPayload = {
-  artifact_type: "ObligationExecutionDecision";
-  protocol_version: "obligation-execution@1.0.0";
-  brief_ref: ResearchBriefRef;
-  obligation_ref: ProofObligationRef;
-  query_contract_ref: QueryContractRef;
-  semantic_release_ref: SemanticReleaseRef;
-  policy_receipt_ref: PolicyReceiptRef;
-  observation_contract_hash: Sha256;
-  verdict: "PASS" | "FAIL";
-  checks: Record<ObligationSemanticCheck, "MATCH" | "MISMATCH">;
-  reason_codes: U6ResearchReasonCode[]; // 0..32，唯一
-  evaluator_version: Version;
-  decision_semantic_hash: Sha256;
-};
-
 type QueryEvidenceV2Payload = {
   artifact_type: "QueryEvidence";
   protocol_version: "query-evidence@2.0.0";
@@ -199,50 +169,34 @@ type HypothesisAssessmentPayload = {
 
 等价 Refinement：
 
-1. OED 必须解析 exact Brief、Obligation、QueryContract、Semantic Release 和 Policy；
-   12 个检查键必须完整且无额外键。`PASS` 要求全部 `MATCH` 且 Reason Code 为空；
-   任一 `MISMATCH` 固定 `FAIL/OBLIGATION_QUERY_SEMANTICS_MISMATCH`；
-2. `observation_contract_hash` 必须等于 Obligation 内重算值；OED Hash 覆盖完整检查输入、
-   Evaluator Version、Verdict 和 Reason Code；
-3. QueryEvidence 只接受 OED `PASS`，且 OED 的唯一 Obligation、QueryContract、
-   Semantic、Policy 必须逐字匹配当前 Payload；一个 Query 同时服务多个 Obligation 时，
-   必须基于同一 Execution 分别提交一张 OED 和一张 QueryEvidence，不能用 A 的 PASS
-   为 B 背书；
-4. Validation、Execution、Sandbox Execution 与 Sandbox Result 必须形成 HEAD 已定义的
-   同一 SQL 执行闭包；Result Hash、Row Count、Schema Hash 与 Provenance Group 均由
-   服务端重算；
-5. 依赖 Obligation 的每条已满足入边都必须在 `dependency_evidence_refs` 中有 exact
-   QueryEvidence；无依赖时数组必须为空，Prompt 文本不能替代 Reference；
-6. AtomicClaim 不得出现 `support_state`、因果或行动模式；Evidence 必须全部为
-   `QueryEvidence@2`。Authority 必须从每张 QueryEvidence 解析 exact SandboxResult，
-   用 `row_key_hash + output_alias` 唯一定位 Cell，重算 `observed_value`、Metric、
-   Unit、时间窗、维度切片与 `result_cell_hash`。`evidence_refs` 必须严格等于
-   `observation_bindings[].evidence_ref` 的规范去重集合；Predicate 引用的 Binding ID
-   必须存在且不得夹带未使用 Binding；
-7. Relation 的 Claim 必须列出其 `evidence_ref`，且 `obligation_ref` 必须逐字等于
-   该 QueryEvidence 的唯一 Obligation 并命中对应 Plan；
-8. `DETERMINISTIC_CHECK` 必须评估 Relation、Claim、Claim 的全部 QueryEvidence/
-   SandboxResult、Metric 与 Observation Contract，重新计算描述值、比较方向、差值、
-   贡献合计或占比，并使用 `claim_renderer_version` 唯一渲染 `statement` 后重算
-   `statement_hash`；Claim 中任一数字、单位、方向或文本与 Predicate 不一致固定
-   `ATOMIC_CLAIM_OBSERVATION_MISMATCH`。`PROVENANCE_CHECK` 还必须评估 QueryContract
-   和完整 Version Frontier；
-9. SupportDecision 的 `relation_refs` 必须与 Claim 的 `evidence_refs` 按 Evidence
-   Reference Identity **严格一一对应**：每个 Evidence 恰有一条同 Claim Relation，
-   不得遗漏 adverse Evidence、重复或夹带其他 Claim。`check_receipt_refs` 必须对每条
-   Relation 恰有一张 PASS `DETERMINISTIC_CHECK` 和一张 PASS
-   `PROVENANCE_CHECK`，不得漏项或用其他 Relation 的 Receipt 替代；
-   Research Committer 还必须保证同一 exact `(claim_ref,evidence_ref)` 在当前水位只有
-   一个 active Relation Identity；第二个不同 Relation ID 或同 Revision 的相反边固定
-   `EVIDENCE_RELATION_IDENTITY_CONFLICT`，不能只把有利边选入 SupportDecision；
-10. `SUPPORTED` 必须基于第 9 条完整闭包派生；`CONTEXT_ONLY`、`REFUTES`、
-    `CONFLICTS`、缺检查、引用存在或 SQL 非空都不能被省略后升级为 `SUPPORTED`；
-11. Hypothesis Assessment 必须覆盖该 Hypothesis 的全部 Obligation；`SURVIVED` 仅表示
-    冻结测试未反证，`REFUTED` 必须有权威 `REFUTED` Decision。`TESTED/REFUTED/
-    SURVIVED` 要求非空 SupportDecision；`UNRESOLVED` 可以为空，但必须把全部未闭合
-    Obligation 精确列入 `unresolved_obligation_refs`，不能伪造占位 Evidence；
-12. 所有引用必须与 Envelope 同 Scope/Run，并全部出现在 Envelope `input_refs`；Hash
-    由 Authority 重算。
+1. Validation、Execution、Sandbox Execution/Result 必须形成 HEAD 定义的同一 SQL
+   闭包；Result Hash、Row Count、Schema Hash、Provenance Group 均由服务端重算。
+2. 每条已满足的依赖入边都要有 exact `dependency_evidence_refs`；无依赖则为空，
+   Prompt 文本不能替代 Reference。
+3. AtomicClaim 禁止 `support_state`、因果与行动模式，Evidence 只能是
+   `QueryEvidence@2`。Authority 从 exact SandboxResult 以
+   `row_key_hash + output_alias` 定位 Cell，重算 `observed_value`、Metric、Unit、时间窗、
+   维度切片与 `result_cell_hash`；`evidence_refs` 等于
+   `observation_bindings[].evidence_ref` 的规范去重集，Predicate 只能引用存在且实际
+   使用的 Binding。
+4. Relation 的 Claim 必须列出其 Evidence；`obligation_ref` 等于该 Evidence 的唯一
+   Obligation 并命中 Plan。
+5. `DETERMINISTIC_CHECK` 覆盖 Relation、Claim、全部 Evidence/Result、Metric 与
+   Observation Contract，重算值、方向、差值、贡献/占比，并按
+   `claim_renderer_version` 唯一渲染 `statement`、重算 `statement_hash`；不一致返回
+   `ATOMIC_CLAIM_OBSERVATION_MISMATCH`。
+   `PROVENANCE_CHECK` 还覆盖 QueryContract 与完整 Frontier。
+6. SupportDecision 的 Relation 与 Claim Evidence 按 Reference Identity 严格一一
+   对应，不得漏 adverse Evidence、重复或夹带；每条 Relation 恰有一张 PASS
+   Deterministic Check 和一张 PASS Provenance Check。当前水位同一 exact
+   `(claim_ref,evidence_ref)` 只能有一个 active Relation Identity，否则返回
+   `EVIDENCE_RELATION_IDENTITY_CONFLICT`，不得只选有利边。
+7. `SUPPORTED` 只能从第 6 条完整闭包派生；Context/Refute/Conflict、缺检查、仅有引用
+   或 SQL 非空均不能升级。
+8. Assessment 覆盖 Hypothesis 全部 Obligation；`SURVIVED` 仅表示未被冻结测试反证，
+   `REFUTED` 要有权威 Refuted Decision。`TESTED/REFUTED/SURVIVED` 要求非空 Decision；
+   `UNRESOLVED` 可为空，但须精确列出全部未闭合 Obligation，不能造占位 Evidence。
+9. 引用与 Envelope 同 Scope/Run、全部列入 `input_refs`；Hash 由 Authority 重算。
 
 ## 2. Coverage 与预算账本
 
@@ -305,28 +259,21 @@ type CoverageStatePayload = {
 
 等价 Refinement：
 
-- `effective_limit` 等于
-  `min(RESEARCH_RUNTIME_LIMITS@1,Tenant Policy,ResearchBrief)`；
-  steps/model/sql/elapsed/provider-token/provider-cost 六个维度分别满足
-  `used + remaining === effective_limit`，其中
-  `used.provider_tokens === used.provider_input_tokens + used.provider_output_tokens`；
-  `source_calls===0`，Ledger Hash 覆盖序号和全部数值；
-- `obligations` 与 exact Plan 中的 Obligation 一一对应，不得缺失、重复或增加；
-- 每项状态只按 `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 派生。`SATISFIED`
-  要求 OED PASS、成功执行、current QueryEvidence、Observation 命中、Support 与
-  Assessment 已提交且无未处理 Conflict；
-- Authority 必须按 Plan、Run 与 `evaluated_through_reservation_seq` 从权威 Store 枚举
-  全部 current OED/QueryEvidence/AtomicClaim/EvidenceRelation，而不是接受 Candidate
-  挑选。每张 QueryEvidence 必须至少进入一个 AtomicClaim；每个 Claim 的
-  Relation/Check 与 Evidence 必须满足第 1 节的一一闭包；
-- 外层 OED/QueryEvidence/Claim/Relation/Support Ref 数组必须严格等于各 Obligation
-  与 SupportDecision 递归闭包的规范去重并集；不得在外层隐藏失败或 adverse 输入；
-- `material_conflict_refs` 必须严格等于完整 Relation 闭包中仍未解决的
-  `CONFLICTS` 集合，不接受调用方删减；
-- `derived_counts` 从 `obligations` 重算，分别满足每个 Materiality 下五态之和等于
-  total；
-- Version Frontier 五维全部重算，包含 `schema_snapshot_ref`；Frontier Hash 与
-  Coverage Input Hash 不信任调用方。
+- `effective_limit=min(RESEARCH_RUNTIME_LIMITS@1,Tenant Policy,ResearchBrief)`；
+  六个预算维度各满足 `used + remaining === effective_limit`，Provider Token 等于
+  Input+Output，`source_calls===0`；Ledger Hash 覆盖序号和全部数值。
+- `obligations` 与 exact Plan 一一对应；状态只按
+  `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 派生。`SATISFIED` 要求 OED PASS、
+  成功执行、current Evidence、Observation 命中、已提交 Support/Assessment 且无未决 Conflict。
+- Authority 按 Plan、Run、`evaluated_through_reservation_seq` 从 Store 枚举全部
+  current OED/QueryEvidence/AtomicClaim/EvidenceRelation，不接受 Candidate 挑选；
+  每张 QueryEvidence 至少进入一项 Claim，且满足第 1 节闭包。
+- 外层 OED/QueryEvidence/Claim/Relation/Support 数组等于各 Obligation 与
+  SupportDecision 递归闭包的规范去重并集；不得隐藏失败或 adverse 输入。
+- `material_conflict_refs` 等于完整 Relation 闭包中的未决 Conflict；
+  `derived_counts` 由 Obligation 重算，五态之和等于各 Materiality total。
+- 五维 Frontier（含 `schema_snapshot_ref`）、Frontier Hash 与 Coverage Input Hash
+  全由 Authority 重算。
 
 ## 3. Research Stop 判别联合
 
@@ -477,13 +424,13 @@ type ReportManifestSection = {
   limitation_codes: Identifier[]; // 0..32，唯一
 };
 
-type ReportManifestPayload = {
+type ReportManifestV2Payload = {
   artifact_type: "ReportManifest";
-  protocol_version: "report-manifest@1.0.0";
+  protocol_version: "report-manifest@2.0.0";
   brief_ref: ResearchBriefRef;
   stop_decision_ref: ResearchStopDecisionRef;
   sections: ReportManifestSection[]; // 1..6，section_id 唯一
-  material_claim_refs: AtomicClaimRef[]; // 1..32，唯一、由章节确定性派生
+  material_claim_refs: AtomicClaimRef[]; // 0..32，唯一、由章节确定性派生
   required_disclosures: Identifier[]; // 1..32，唯一
   allowed_style_profile: "ZH_L2_RESEARCH_V1";
   manifest_hash: Sha256;
@@ -527,6 +474,9 @@ Material Claim 的唯一规则为：
 - 两节必须各存在一次；同一 Claim 可以在两节重复引用，但集合只保留一次；
 - 其他章节不能偷偷承载新的结论 Claim；`REFUTED_HYPOTHESES` 使用 Assessment，
   `CONFLICTS` 使用 Conflict Relation，因此这四节的 `claim_refs` 必须为空；
+- `material_claim_refs` 允许为空，但此时 `REFUTED_HYPOTHESES` 必须包含至少一张
+  current `REFUTED` Assessment，且必须精确覆盖当前闭包的全部反证 Assessment；
+  完全没有受支持 Claim、也没有非空反证闭包的“空报告”失败关闭；
 - 每个 Material Claim 必须属于 StopDecision 的 `supported_subset.claim_refs`；
 - 每个 Material Claim 必须存在唯一、current、`SUPPORTED` 的
   `SupportDecision`；Materiality 不接受 Agent 自报。
@@ -539,6 +489,13 @@ Manifest 必须绑定 `STOP_READY`。Required Disclosures 至少包含 Brief 要
 `title_hash`；`forbidden_claim_mode_scan` 同时扫描 Title 与全部 Statement。Title 或
 正文新增数字、实体、比较方向、因果词或行动建议固定
 `REPORT_PROJECTION_AUTHORITY_INVALID`。
+
+全反驳并不等于“没有研究结论”。当 `STOP_READY.supported_subset` 的 Claim 与
+SupportDecision 均为空时，报告只能沿
+`REFUTED HypothesisAssessment -> REFUTED SupportDecision -> AtomicClaim ->
+REFUTES EvidenceRelation -> PASS EvidenceCheckReceipt -> QueryEvidence`
+形成非空、精确、可重放的反证链；Projector 只能把该链投影到
+`REFUTED_HYPOTHESES`，不能伪造受支持的 Material Claim。
 
 ## 5. Gate、Certificate 与撤权
 
@@ -575,9 +532,9 @@ type EvidenceGateReceiptPayload = {
   gate_input_hash: Sha256;
 };
 
-type ReportReadyCertificateV2Payload = {
+type ReportReadyCertificateV3Payload = {
   artifact_type: "ReportReadyCertificate";
-  protocol_version: "report-ready@2.0.0";
+  protocol_version: "report-ready@3.0.0";
   stop_decision_ref: ResearchStopDecisionRef;
   report_manifest_ref: ReportManifestRef;
   analysis_report_ref: AnalysisReportRef;
@@ -588,7 +545,7 @@ type ReportReadyCertificateV2Payload = {
     freshness: EvidenceGateReceiptRef;
     source_independence: EvidenceGateReceiptRef;
   };
-  material_support_decision_refs: SupportDecisionRef[]; // 1..32，唯一且精确相等
+  material_support_decision_refs: SupportDecisionRef[]; // 0..32，唯一且精确相等
   version_frontier: VersionFrontier;
   input_closure_hash: Sha256;
   certificate_semantic_hash: Sha256;
@@ -620,12 +577,14 @@ type ReadinessRevocationReceiptPayload = {
 Gate-specific Refinement：
 
 - `SUPPORT` 必须覆盖 Manifest 的全部 `material_claim_refs`、对应 Relation/Check 和唯一
-  `SUPPORTED` Decision；
+  `SUPPORTED` Decision；全反驳报告则必须覆盖 Manifest 的全部
+  `REFUTED` Assessment 及其精确 Support/Claim/Relation/Check/QueryEvidence 闭包；
 - `CONFLICT` 必须覆盖全部 Relation、Conflict 与披露；
 - `FRESHNESS` 必须覆盖 Brief、QueryEvidence observed frontier、当前 Semantic、
   **Schema**、Data、Policy、Identity Frontier；
-- `SOURCE_INDEPENDENCE` 必须覆盖全部 QueryEvidence provenance group、Brief policy
-  与限制披露。
+- `SOURCE_INDEPENDENCE` 必须覆盖全部 material QueryEvidence provenance group、
+  Brief policy 与限制披露；material QueryEvidence 同时包含受支持链与全反驳链的
+  Evidence。
 
 Certificate Authority 必须：
 
@@ -634,10 +593,12 @@ Certificate Authority 必须：
 3. 四个 Gate Ref 各自解析为对应 Gate 的唯一 PASS Receipt；
 4. 从 Manifest 的 `material_claim_refs` 重算唯一 SupportDecision 集合，并要求
    `material_support_decision_refs` 与该集合按 Reference Identity **严格相等**，不能是
-   子集或超集；
+   子集或超集；当两者均为空时，必须另外证明 Manifest 非空
+   `REFUTED_HYPOTHESES` 与当前全部 `REFUTED` Assessment/Support/Relation/Check/
+   QueryEvidence 的 exact closure，不能以空集合真值签发；
 5. 重算五维 Version Frontier、四个 Gate Input Hash、Closure Hash、Semantic Hash 与
    Event Watermark；Schema Snapshot 是正式 Frontier 维度；
-6. 未注册 V1/V2 混合、Hash 篡改或历史 V1 Certificate 全部拒绝 current-ready。
+6. 未注册历史/当前 tuple 混合、Hash 篡改或历史 Certificate 全部拒绝 current-ready。
 
 当任一 Frontier 维度变化时，current-ready 立即拒绝；对应 Revocation Reason 必须与
 实际变化维度一致。特别地，`schema_snapshot_ref` 变化固定使用
@@ -645,12 +606,10 @@ Certificate Authority 必须：
 
 ## 6. 平台事务与资源调用权威指针
 
-current-ready、Frontier、Research Stop Terminal、Grant、Revocation、Release GO 的
-strict Wire、状态真值表、锁序、幂等与数据库 Port 只由
-`docs/design/u6-research-platform-contract.md` 定义；Resource Reservation、
-Model/SQL/Tool Invocation 与 System Record 只由
-`docs/design/u6-research-resource-invocation-contract.md` 定义。本文不得复制这些
-平台 Record，避免旧字段形成第二条 Authority。
+current-ready、Frontier、Stop Terminal、Grant、Revocation、GO 的 strict Wire、真值表、
+锁序、幂等与 Port 只见 `docs/design/u6-research-platform-contract.md`；Reservation、
+Invocation 与 System Record 只见
+`docs/design/u6-research-resource-invocation-contract.md`，本文不复制以免形成第二条 Authority。
 
 ## 7. Provider Egress System Receipt
 
@@ -721,24 +680,22 @@ type AgentDataProjectionReceipt = {
 };
 ```
 
-`model_profile_ref` 不是 Artifact Reference；它必须匹配 HEAD 的 Profile
-`profile_id/profile_version/profile_hash`，并绑定 exact、已提交、PASS 的
-`ModelCertificationReceiptRef`。Authority 必须按现有
-`authorizeAvailableModelProfile` 语义重验，不能仅凭 `profile_id` 或版本字符串放行。
+`model_profile_ref` 不是 Artifact Reference；它须匹配 HEAD Profile 的
+`profile_id/profile_version/profile_hash`，绑定 exact、已提交、PASS 的
+`ModelCertificationReceiptRef`，并经 `authorizeAvailableModelProfile` 重验。
 
 `AgentProjectionInputRef` 故意不包含 `SandboxResultRef`、Credential、连接串、原始行或
-其他任意 System Artifact。Role Allowlist、最高 Lineage 分类、Byte/Token 上限、小群组
-抑制、DLP、Redaction 与 Keyed HMAC 必须全部 PASS 后才能提交 Receipt。
-Receipt 与最终 Model Request 必须逐字绑定同一
+任意 System Artifact。Role Allowlist、最高 Lineage 分类、Byte/Token 上限、小群组抑制、
+DLP、Redaction、Keyed HMAC 必须全 PASS。Receipt 与最终 Request 须逐字绑定同一
 `reservation_id/reservation_seq/resource_lease_id/invocation_id/attempt_id/
-worker_fence/request_id/canonical_request_digest/reserved bounds`；缺 Begin、换绑或超出
-Reserved 上限固定 `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED`。
+worker_fence/request_id/canonical_request_digest/reserved bounds`；缺 Begin、换绑或
+超限返回 `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED`。
 
 ## 8. 全局 strict Refinement 与 Registry
 
 | Artifact | Envelope `schema_version` | Payload `protocol_version` |
 | --- | --- | --- |
-| `ObligationExecutionDecision` | `1.0.0` | `obligation-execution@1.0.0` |
+| `ObligationExecutionDecision` | `2.0.0` | `obligation-execution@2.0.0` |
 | `QueryEvidence` V2 | `2.0.0` | `query-evidence@2.0.0` |
 | `AtomicClaim` V2 | `2.0.0` | `atomic-claim@2.0.0` |
 | `EvidenceRelation` V2 | `2.0.0` | `evidence-relation@2.0.0` |
@@ -747,12 +704,22 @@ Reserved 上限固定 `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED`。
 | `HypothesisAssessment` | `1.0.0` | `hypothesis-assessment@1.0.0` |
 | `CoverageState` | `1.0.0` | `coverage-state@1.0.0` |
 | `ResearchStopDecision` | `1.0.0` | `research-stop@1.0.0` |
-| `ReportManifest` | `1.0.0` | `report-manifest@1.0.0` |
+| `ReportManifest` V2 | `2.0.0` | `report-manifest@2.0.0` |
 | `AnalysisReport` V2 | `2.0.0` | `analysis-report@2.0.0` |
 | `ReportProjectionReceipt` | `1.0.0` | `report-projection@1.0.0` |
 | `EvidenceGateReceipt` | `1.0.0` | `evidence-gate@1.0.0` |
-| `ReportReadyCertificate` V2 | `2.0.0` | `report-ready@2.0.0` |
+| `ReportReadyCertificate` V3 | `3.0.0` | `report-ready@3.0.0` |
 | `ReadinessRevocationReceipt` | `1.0.0` | `readiness-revocation@1.0.0` |
+
+当前 exact tuple 分别是 `ReportManifest/2.0.0/report-manifest@2.0.0` 与
+`ReportReadyCertificate/3.0.0/report-ready@3.0.0`。
+`ReportManifest/1.0.0/report-manifest@1.0.0` 与
+`ReportReadyCertificate/2.0.0/report-ready@2.0.0` 保留为
+`HISTORICAL_READ_ONLY`：二者仍要求 material Claim/Support 集合非空，不能通过当前
+Candidate Writer、current-ready 或 Release Authority。全反驳空 Supported 集合只属于
+上述 V2/V3 当前 tuple，不能以旧协议版本重封。
+legacy protocol-null V1 仅允许显式 `readHistoricalL2ResearchDocument`，同样不得进入
+Writer、Committer、current-ready、Grant、RunTerminal 或 Release `GO`。
 
 实现还必须统一执行：
 
@@ -761,7 +728,8 @@ Reserved 上限固定 `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED`。
 3. 每个 `*Ref` 的 `artifact_type` 必须命中其别名目标，Scope/Run 一致、Revision 为
    exact `COMMITTED`，并出现在 Envelope `input_refs`；
 4. Embedded Node 必须存在于 exact Container Revision；
-5. Payload 中不允许裸 `ArtifactReference`、未知字段、V1/V2 混合或未注册元组；
+5. Payload 中不允许裸 `ArtifactReference`、未知字段、historical/current tuple 混合
+   或未注册元组；
 6. `input_refs` 不得夹带 Payload 闭包外输入；
 7. Envelope Content Hash 与领域 Semantic/Input Hash 分别按上位 Authority 合同重算；
 8. `AgentDataProjectionReceipt` 进入 `research_system_artifacts`，不进入 L2 union；
@@ -770,6 +738,11 @@ Reserved 上限固定 `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED`。
 10. 普通 Zod Parse 只产生 Candidate，Registrar、Seal、Committer 与 current-ready
     consumer 仅从 server-only 子路径导出。
 
-Authority 按 Reference Identity 去重所有 direct `*Ref`，证明总数不超过全局上限，
-并要求与 Envelope `input_refs` 严格相等；禁止截断。本文与 Planning Wire 必须同时
-实现。
+public replay boundary 在 Zod/hash/replay 前预检：unique logical node `1024`
+（ordinary + strict Artifact Identity，Array 只作边）、container occurrence `32768`、
+total-value occurrence `262144`、Document `1MiB`、closure `16MiB`。共享 DAG 仍按展开
+累计 occurrence/bytes，inert JSON 副本计不同节点；伪 Document parse 失败后回补普通
+identity 与真实深度。
+
+Authority 按 Reference Identity 去重 direct `*Ref`，总数须在上限内并与 Envelope
+`input_refs` 严格相等；禁止截断。

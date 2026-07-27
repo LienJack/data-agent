@@ -104,24 +104,46 @@ const gateReceiptRefsSchema = z
     );
   });
 
-export const reportReadyCertificateV2PayloadSchema = z.strictObject({
-  artifact_type: z.literal("ReportReadyCertificate"),
-  protocol_version: z.literal("report-ready@2.0.0"),
-  stop_decision_ref: researchStopDecisionRefSchema,
-  report_manifest_ref: reportManifestRefSchema,
-  analysis_report_ref: analysisReportRefSchema,
-  projection_receipt_ref: reportProjectionReceiptRefSchema,
-  gate_receipt_refs: gateReceiptRefsSchema,
-  material_support_decision_refs: uniqueArtifactReferences(
-    supportDecisionRefSchema,
-    1,
-    U6_WIRE_LIMITS.max_obligations,
-  ),
-  version_frontier: versionFrontierSchema,
-  input_closure_hash: contentHashSchema,
-  certificate_semantic_hash: contentHashSchema,
-  evaluated_through_input_event_seq: nonNegativeIntSchema,
-});
+function createReportReadyCertificatePayloadSchema<const ProtocolVersion extends string>(
+  protocolVersion: ProtocolVersion,
+  minimumMaterialSupports: 0 | 1,
+) {
+  return z.strictObject({
+    artifact_type: z.literal("ReportReadyCertificate"),
+    protocol_version: z.literal(protocolVersion),
+    stop_decision_ref: researchStopDecisionRefSchema,
+    report_manifest_ref: reportManifestRefSchema,
+    analysis_report_ref: analysisReportRefSchema,
+    projection_receipt_ref: reportProjectionReceiptRefSchema,
+    gate_receipt_refs: gateReceiptRefsSchema,
+    material_support_decision_refs: uniqueArtifactReferences(
+      supportDecisionRefSchema,
+      minimumMaterialSupports,
+      U6_WIRE_LIMITS.max_obligations,
+    ),
+    version_frontier: versionFrontierSchema,
+    input_closure_hash: contentHashSchema,
+    certificate_semantic_hash: contentHashSchema,
+    evaluated_through_input_event_seq: nonNegativeIntSchema,
+  });
+}
+
+/**
+ * Historical tuple retained with its original non-empty material Support
+ * guarantee. It is read-only in the Research Wire registry.
+ */
+export const reportReadyCertificateV2PayloadSchema = createReportReadyCertificatePayloadSchema(
+  "report-ready@2.0.0",
+  1,
+);
+
+/**
+ * Current tuple. V3 explicitly permits a refuted-only ReportReady closure.
+ */
+export const reportReadyCertificateV3PayloadSchema = createReportReadyCertificatePayloadSchema(
+  "report-ready@3.0.0",
+  0,
+);
 
 export const READINESS_REVOCATION_REASONS = [
   "SEMANTIC_REVISION_CHANGED",
@@ -151,6 +173,7 @@ export const readinessRevocationReceiptReferenceSchema = readinessRevocationRece
 
 export type EvidenceGateReceiptPayload = z.infer<typeof evidenceGateReceiptPayloadSchema>;
 export type ReportReadyCertificateV2Payload = z.infer<typeof reportReadyCertificateV2PayloadSchema>;
+export type ReportReadyCertificateV3Payload = z.infer<typeof reportReadyCertificateV3PayloadSchema>;
 export type ReadinessRevocationReason = z.infer<typeof readinessRevocationReasonSchema>;
 export type ReadinessRevocationReceiptPayload = z.infer<
   typeof readinessRevocationReceiptPayloadSchema

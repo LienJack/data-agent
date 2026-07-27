@@ -13,7 +13,8 @@
 > 再认证：
 > `synthesis/answer-quality-reviews/RQ092-8d6b6b22f4ed-4a1ab76b73fb-recertification.md`，
 > `decision=closed`，Codex `remaining_p0_p1=[]`
-> 实现状态：`NOT_IMPLEMENTED`
+> 实现状态：纯 Research Kernel 为 `KERNEL_CANDIDATE_ONLY`；生产 Persistence /
+> Compiler / Policy Authority 为 `NOT_IMPLEMENTED`
 > 发布状态：`HOLD`
 
 ## 1. 结论
@@ -26,15 +27,15 @@ QuestionFrame
 → ResearchBrief@2
 → HypothesisSet@2
 → EvidencePlan@2（逻辑 ProofObligationSet）
-→ QueryContract + ObligationExecutionDecision
+→ QueryContract + ObligationExecutionDecision@2
 → QueryEvidence@2
 → AtomicClaim@2 + EvidenceRelation + EvidenceCheckReceipt
 → SupportDecision + HypothesisAssessment
 → CoverageState
 → ResearchStopDecision
-→ ReportManifest + AnalysisReport@2 + ReportProjectionReceipt
+→ ReportManifest@2 + AnalysisReport@2 + ReportProjectionReceipt
 → 4 × EvidenceGateReceipt
-→ ReportReadyCertificate@2
+→ ReportReadyCertificate@3
 → publishCurrentReadiness
 → consumeCurrentReady
 → 历史 RunTerminal=READY + CurrentReadiness=CURRENT / ReportReadGrant
@@ -141,7 +142,7 @@ Version Frontier、领域事件水位和输出结论：
 
 ### 4.3 Wire Version 判别
 
-当前 `l2ArtifactPayloadSchema` 只按 `artifact_type` 判别，不能把两个同名 V1/V2
+当前 `l2ArtifactPayloadSchema` 只按 `artifact_type` 判别，不能把同名多版本
 Object 直接并列放入同一个 `z.discriminatedUnion("artifact_type", ...)`。U6 固定改为
 “Envelope Type + Envelope Schema Version + Payload Protocol Version”三级注册：
 
@@ -159,14 +160,15 @@ parseL2PayloadForEnvelope(envelope, payload);
 
 - 当前 HEAD 的同名旧 Payload 归类为 V1：
   `envelope.schema_version="1.0.0"` 且 Payload 没有 `protocol_version`；
-- 同名升级 Artifact 的 V2 Writer 固定写
-  `envelope.schema_version="2.0.0"`，并写精确 `protocol_version`；
-- U6 新增 Artifact 的首个 Envelope Schema 为 `1.0.0`，但 Payload 仍必须写精确
-  `protocol_version`；
+- 同名升级 Artifact 的当前 Writer 固定写版本矩阵指定的
+  `envelope.schema_version` 与精确 `protocol_version`；
+- U6 新增 Artifact 的首个 Envelope Schema 通常为 `1.0.0`，但 Payload 仍必须写精确
+  `protocol_version`；OED 因 reset-only SQL binding breaking 修复直接以 `2.0.0`
+  重置当前 tuple，不保留 current 1.0 reader；
 - Parser 先按 `artifact_type` 定位注册表，再按
   `(envelope_schema_version,payload_protocol_version)` 选择一个 strict Schema；
-- 未注册元组、Envelope/Payload 版本错配或混合 V1/V2 Authority 闭包固定失败；
-- `consumeCurrentReady` 只接受 `report-ready@2.0.0`，并递归要求所有 V2 闭包元组
+- 未注册元组、Envelope/Payload 版本错配或混合历史/当前 Authority 闭包固定失败；
+- `consumeCurrentReady` 只接受 `report-ready@3.0.0`，并递归要求所有当前闭包元组
   命中注册表；
 - V1 只可由名字显式包含 `readHistorical` 的只读 Resolver 返回；Writer/Committer/
   Research Artifact Authority 固定 `L2_WIRE_VERSION_WRITE_UNSUPPORTED`，
@@ -184,7 +186,7 @@ U6 不以文件名、字段猜测或“包含某个新字段”判定版本。
 | `ResearchBrief` | `research-brief@2.0.0` | Supervisor | Brief/Semantic | Question、Policy、Scope、预算 |
 | `HypothesisSet` | `hypothesis-set@2.0.0` | Supervisor | Planning | Brief、机制去重、假设宇宙 |
 | `EvidencePlan` | `evidence-plan@2.0.0` | Supervisor | Planning | Hypothesis、Success Criteria、Observation Contract |
-| `ObligationExecutionDecision` | `obligation-execution@1.0.0` | SQL Worker | Obligation Execution | Brief、Obligation、QueryContract、Semantic/Policy |
+| `ObligationExecutionDecision` | `obligation-execution@2.0.0` | SQL Worker | Obligation Execution | Brief、Obligation、QueryContract、SqlArtifact、Semantic/Policy |
 | `QueryEvidence` | `query-evidence@2.0.0` | SQL Worker | Evidence | OED、Sql/Validation/Execution/Sandbox Result |
 | `AtomicClaim` | `atomic-claim@2.0.0` | Evidence Worker | Claim Structure | QueryEvidence 引用；不含支持态 |
 | `EvidenceRelation` | `evidence-relation@2.0.0` | Evidence Worker | Relation | Claim、Evidence、Obligation |
@@ -193,11 +195,11 @@ U6 不以文件名、字段猜测或“包含某个新字段”判定版本。
 | `HypothesisAssessment` | `hypothesis-assessment@1.0.0` | 无 | Proof | Hypothesis、SupportDecision |
 | `CoverageState` | `coverage-state@1.0.0` | 无 | Coverage | Plan、OED、Evidence、Support、Assessment、Conflict |
 | `ResearchStopDecision` | `research-stop@1.0.0` | Supervisor 可建议 | Research Stop | Coverage、Candidate Query、预算 |
-| `ReportManifest` | `report-manifest@1.0.0` | Report Agent | Projection | Stop、Claim、Assessment、Conflict、Limitation |
+| `ReportManifest` | `report-manifest@2.0.0` | Report Agent | Projection | Stop、Claim、Assessment、Conflict、Limitation |
 | `AnalysisReport` | `analysis-report@2.0.0` | Projector | Projection | Manifest |
 | `ReportProjectionReceipt` | `report-projection@1.0.0` | 无 | Projection | Manifest、Report、Statement Closure |
 | `EvidenceGateReceipt` | `evidence-gate@1.0.0` | 无 | 对应 Gate | Report 闭包、Version Frontier |
-| `ReportReadyCertificate` | `report-ready@2.0.0` | 无 | Readiness | STOP_READY、Projection、四 Gate、Frontier |
+| `ReportReadyCertificate` | `report-ready@3.0.0` | 无 | Readiness | STOP_READY、Projection、四 Gate、Frontier |
 | `ReadinessRevocationReceipt` | `readiness-revocation@1.0.0` | Frontier 级联事务 / 服务观察器 | Revocation | Current Certificate、最新 Frontier、Trigger/Source Operation |
 
 Registrar、Seal、品牌检查和持久化 Committer 只从 server-only 子路径导出；包根只导出
@@ -210,7 +212,7 @@ Schema、纯计算和 Candidate 类型。
 | `ResearchBrief` V2 | `2.0.0` | `research-brief@2.0.0` |
 | `HypothesisSet` V2 | `2.0.0` | `hypothesis-set@2.0.0` |
 | `EvidencePlan` V2 | `2.0.0` | `evidence-plan@2.0.0` |
-| `ObligationExecutionDecision` | `1.0.0` | `obligation-execution@1.0.0` |
+| `ObligationExecutionDecision` | `2.0.0` | `obligation-execution@2.0.0` |
 | `QueryEvidence` V2 | `2.0.0` | `query-evidence@2.0.0` |
 | `AtomicClaim` V2 | `2.0.0` | `atomic-claim@2.0.0` |
 | `EvidenceRelation` V2 | `2.0.0` | `evidence-relation@2.0.0` |
@@ -219,19 +221,25 @@ Schema、纯计算和 Candidate 类型。
 | `HypothesisAssessment` | `1.0.0` | `hypothesis-assessment@1.0.0` |
 | `CoverageState` | `1.0.0` | `coverage-state@1.0.0` |
 | `ResearchStopDecision` | `1.0.0` | `research-stop@1.0.0` |
-| `ReportManifest` | `1.0.0` | `report-manifest@1.0.0` |
+| `ReportManifest` V2 | `2.0.0` | `report-manifest@2.0.0` |
 | `AnalysisReport` V2 | `2.0.0` | `analysis-report@2.0.0` |
 | `ReportProjectionReceipt` | `1.0.0` | `report-projection@1.0.0` |
 | `EvidenceGateReceipt` | `1.0.0` | `evidence-gate@1.0.0` |
-| `ReportReadyCertificate` V2 | `2.0.0` | `report-ready@2.0.0` |
+| `ReportReadyCertificate` V3 | `3.0.0` | `report-ready@3.0.0` |
 | `ReadinessRevocationReceipt` | `1.0.0` | `readiness-revocation@1.0.0` |
 
 `EvidenceGateReceipt` 是研究报告四道 Gate，不能与现有 Text2SQL
 `GateReceipt/text2sql-gates@3.0.0` 共用 Schema 或 Evaluator Version。
 
+`ReportManifest/1.0.0/report-manifest@1.0.0` 与
+`ReportReadyCertificate/2.0.0/report-ready@2.0.0` 是
+`HISTORICAL_READ_ONLY` tuple，并保留 material Claim/Support 非空语义。它们只能经
+显式 historical resolver 读取，不能进入当前 Candidate Writer、current-ready、Grant
+或 Release Authority；全反驳能力只属于当前 ReportManifest V2 / Certificate V3。
+
 ### 5.2 类型与 Store 分类
 
-- 上表 18 个类型进入 `L2_ARTIFACT_TYPES`；同名类型通过 Wire Registry 解析 V1/V2。
+- 上表 18 个类型进入 `L2_ARTIFACT_TYPES`；同名类型通过 Wire Registry 解析历史/当前 tuple。
 - `IdentityBinding` 是认证事务派生的 Value，不是 Artifact。
 - `AgentDataProjectionReceipt` 是 `SYSTEM_ARTIFACT_TYPES` 中的
   `agent-data-projection@1.0.0`，保存在新建的 append-only
@@ -258,6 +266,8 @@ Schema、纯计算和 Candidate 类型。
 
 - [`u6-research-planning-payload-contract.md`](./u6-research-planning-payload-contract.md)：
   primitive、Reference、`ResearchBrief/HypothesisSet/EvidencePlan`；
+- [`u6-research-oed-v2-contract.md`](./u6-research-oed-v2-contract.md)：
+  OED v2 的十二项语义检查、server-only assurance 与执行前失败关闭边界；
 - [`u6-research-wire-payload-contract.md`](./u6-research-wire-payload-contract.md)：
   Evidence、Proof、Stop、Projection、Certificate 与 Revocation；
 - [`u6-research-platform-contract.md`](./u6-research-platform-contract.md)：
@@ -310,6 +320,9 @@ Schema、纯计算和 Candidate 类型。
 第 6 节为准。关键边界是：
 
 - Payload 同时绑定 exact `brief_ref` 与 `hypothesis_set_ref`；
+- public compiler 只接收并重验 exact `ResearchBriefDocument` 与
+  `HypothesisSetDocument`，再由文档派生引用；接受独立 `ref + payload` 的纯 reducer
+  仅保留为包内构建块，不进入 package root 公共面；
 - Obligation 显式引用 Hypothesis、Success Criterion 与全局唯一
   `discriminating_test_ids`；
 - 容器内 `depends_on` 使用 `LocalProofObligationReference`，不得把尚未提交的自身
@@ -322,8 +335,9 @@ Schema、纯计算和 Candidate 类型。
 
 ### 7.1 SQL 前的 Obligation Execution
 
-`ObligationExecutionDecision` 必须在 Sandbox 前从 Brief、Observation Contract、
-Semantic Release、Policy 与 QueryContract 重算：
+`ObligationExecutionDecision@2` 必须在 Sandbox 前绑定 exact Brief、EvidencePlan
+Obligation、QueryContract、**SqlArtifact**、Semantic Release 与 Policy，并由可信
+Compiler/Policy Verifier 的结果重算：
 
 ```text
 metric
@@ -343,12 +357,26 @@ authorization_scope
 任一 `MISMATCH` 都返回 `OBLIGATION_QUERY_SEMANTICS_MISMATCH`。SQL 合法、执行成功、
 结果非空或新鲜都不能补救“回答了错误问题”。
 
+当前纯 Research Kernel 只实现受控 `KERNEL_CANDIDATE_ONLY` profile：server 内部 issuer
+把 exact Brief/Plan/QueryContract/SqlArtifact/Semantic/Policy Reference 与可信 verifier
+结果绑定到进程内 identity token。token 固定声明
+`persistence_authority=NONE`、`can_authorize_execution=false`；WeakMap 身份使
+clone/spread/JSON round-trip 失效。package root 无 issuer，普通 root 调用一律
+fail closed 为 OED `FAIL/MISMATCH`。特别地，SQL alias regex、SQL 注释/字符串和
+同 Scope Policy Ref 都不是 `metric_formula`/`authorization_scope` 证明。
+
+Production 的 SemanticQuery→LogicalPlan→SqlArtifact compiler lineage、Gate Receipt、
+Policy Authority 与 COMMITTED/current 验证仍是 `NOT_IMPLEMENTED`。受控 assurance
+不得持久化，不得授权 SQL 执行，也不得宣传为 production authority。
+
 ### 7.2 `QueryEvidence@2`
 
 QueryEvidence 必须绑定：
 
 - **一个且仅一个**精确 Obligation Node Reference；
-- `ObligationExecutionDecision=PASS`；
+- replay 后与 production derivation canonical exact 相等的
+  `ObligationExecutionDecision=PASS`；
+- OED 的 `sql_artifact_ref` 与当前 QueryEvidence 的 SqlArtifact exact 相等；
 - QueryContract、SqlArtifact、ValidationReceipt、ExecutionReceipt 与 SandboxResult；
 - Semantic、Schema、Data Snapshot、Policy 与 Identity Version Frontier；
 - 服务端推导的 `provenance_group`；
@@ -378,6 +406,8 @@ SUPPORTED | REFUTED | CONFLICTED | INSUFFICIENT | UNSUPPORTED
 ```
 
 引用存在、SQL 非空或文本相似都不能单独得到 `SUPPORTED`。
+每个 `AtomicClaim` 必须恰有一个 `SupportDecision`；缺失、重复或游离 Support 都必须
+在 Coverage 前失败关闭。
 
 ### 7.4 Hypothesis 与 Coverage 派生
 
@@ -410,6 +440,8 @@ Stop Candidate Enumerator 不得只看 `OPEN`：它必须精确覆盖 Coverage �
 `OPEN|BLOCKED|FAILED` 全部 unresolved Obligation。由此失败尝试仍可在预算可用时产生
 `CONTINUE/REPLAN`，BLOCKED 可产生 `WAITING_EXTERNAL_CAPABILITY`，硬预算封顶但语义
 admissible 的 OPEN 可产生 `BUDGET_BLOCKED`；`STALE` 交给 Revocation，不进入 Stop。
+除显式 `REPLAN` 外，Candidate Query 集合不得为空或漏掉任一 unresolved Obligation，
+防止 vacuous `every([])` 或部分枚举伪造 `STOP_INCONCLUSIVE`。
 
 ### 7.5 Material Claim 与 Schema Frontier
 
@@ -421,12 +453,21 @@ Success Criterion，或承载报告主要数字、比较方向的 Atomic Claim�
 精确 `HypothesisAssessment` / `EvidenceRelation` 引用，不伪装成未受支持的 material
 Claim。
 
+`material_claim_refs` 可以为空，但只允许发生在“全反驳”的 `STOP_READY`：
+`supported_subset.claim_refs` 与 `supported_subset.support_decision_refs` 也必须同时
+为空，`REFUTED_HYPOTHESES` 必须非空并精确覆盖当前全部 `REFUTED`
+Assessment。Authority 必须继续重放
+Assessment → REFUTED Support → Claim → REFUTES Relation → PASS Check →
+QueryEvidence 的非空闭包；没有受支持 Claim、也没有反证闭包的空报告固定失败关闭，
+不能利用空集合真值获得 Ready。
+
 每个 material Claim、对应 `SupportDecision`、`QueryEvidence.observed_version` 与
 Certificate `VersionFrontier` 必须绑定同一个精确 `schema_snapshot_ref`。Schema
 Frontier 变化后，即使 SQL 文本、Result Hash 或 Claim 文本没有变化，旧 material
 Support 也必须进入 `STALE`，重新执行 OED、Evidence Check、Coverage、Projection、
 Gate 与 current-ready。Certificate 的 `material_support_decision_refs` 必须与服务端
-重算出的完整 material Claim 集合一一闭合，禁止漏项后签发 Ready。
+重算出的完整 material Claim 集合一一闭合，禁止漏项后签发 Ready；全反驳时该集合
+允许为空，但必须由上一段的非空反证闭包替代，不能签发完全空的 Certificate。
 
 ## 8. Stop、报告与公共终态
 
@@ -485,7 +526,7 @@ Gate Receipt 必须分开提交并分别重算 `gate_input_hash`。
 
 | Public Terminal | 必备 Evidence | 唯一领域所有者 |
 | --- | --- | --- |
-| `READY` | STOP_READY、Projection Receipt、四 Gate、current V2 Certificate | Readiness |
+| `READY` | STOP_READY、Projection Receipt、四 Gate、current V3 Certificate | Readiness |
 | `PARTIAL` | STOP_PARTIAL、Coverage、已披露缺口 | Research Stop |
 | `NEEDS_MORE_RESEARCH` | StopDecision、开放 critical obligation | Research Stop |
 | `INCONCLUSIVE` | StopDecision、无 admissible test | Research Stop |
@@ -519,7 +560,7 @@ CurrentReadiness = CURRENT | REVOKED
 
 ## 9. Certificate、current-ready 与撤权
 
-`ReportReadyCertificate@2` 必须绑定 `STOP_READY`、Report Manifest、Analysis
+`ReportReadyCertificate@3` 必须绑定 `STOP_READY`、Report Manifest、Analysis
 Report、Projection Receipt、四张 PASS Gate、全部 material SupportDecision、
 Version Frontier、Input Closure Hash、Certificate Semantic Hash 与输入事件水位。
 
@@ -528,7 +569,7 @@ Version Frontier、Input Closure Hash、Certificate Semantic Hash 与输入事�
 `ReportReadyCertificate -> authorizeRunTerminal(READY)` 的兼容分支。U6 的唯一
 READY 入口是 server-only `consumeCurrentReady`：
 
-`publishCurrentReadiness` 必须先把 exact V2 Certificate/Report/五维 Frontier 发布为
+`publishCurrentReadiness` 必须先把 exact V3 Certificate/Report/五维 Frontier 发布为
 `CURRENT`。它只在尚无 Domain Terminal 时允许
 `ABSENT -> CURRENT`，或用新 Certificate/Frontier 做
 `CURRENT/REVOKED -> CURRENT` CAS；相同已撤 Certificate 不得复活。已有任意 Domain
@@ -572,8 +613,8 @@ DOMAIN_TERMINAL 的 READY 插入前胜出时，consumer 只能原子提交唯一
 不能获得执行 SQL 或提交其他 Research Artifact 的权力。
 
 Release `GO` 也不能消费历史上曾合法的 Certificate。Release Authority 必须在签发
-`GO` 的同一事务中调用 current V2 revalidation，重新核验 exact
-`ReportReadyCertificate@2`、完整 material Claim/Schema Frontier、当前
+`GO` 的同一事务中调用 current tuple revalidation，重新核验 exact
+`ReportReadyCertificate@3`、完整 material Claim/Schema Frontier、当前
 `CurrentReadiness=CURRENT` 与 Revocation Head；V1、`REVOKED` 或只通过
 `resolveReadyCertificate` 的历史对象固定拒绝。
 
@@ -589,6 +630,20 @@ Release `GO` 也不能消费历史上曾合法的 Certificate。Release Authorit
 | Current Readiness/Revocation/Grant | U6 绿地 PostgreSQL 表与窄函数；状态只允许 `CURRENT | REVOKED` |
 | Mastra Snapshot | `EXECUTION_SNAPSHOT_ONLY` Checkpoint |
 | Redis/Upstash | 通知、唤醒、可丢弃缓存 |
+
+纯 Research 内核可在单次根调用内部使用
+`REQUEST_LOCAL_VERIFIED_REPLAY` 合并重复验证，但它不是 Authority Cache：
+
+- 仅组合器创建的闭包可以登记；登记前拒绝 accessor/cycle，随后递归冻结；
+- 键只使用当前 Context 内的对象身份，不接受 hash、canonical JSON 或结构相等替代；
+- 只缓存完整验证成功的结果；失败与异常立即删除；
+- Context、WeakMap 与命中结果不跨请求，不进入 Checkpoint、Redis 或 PostgreSQL；
+- 未显式接收内部 Context 的公开 API 始终执行完整验证。
+
+Controlled 两查询合成夹具把摘要调用 `<=750`、Research Document 首验 `27`、
+L2 Document 首验 `8`、内核耗时 `<=2000ms`、最大 RSS `<=400MiB` 固化为防退化
+Oracle。该 Oracle 只证明当前固定夹具和本地纯内核预算，不代表生产 SLA、真实数据规模
+或 Platform Authority 已交付。
 
 固定锁顺序为：
 
@@ -676,6 +731,31 @@ sql_statement_timeout_ms=30000
 max_sql_result_rows=10000
 max_sql_result_bytes=8MiB
 ```
+
+资源预检把“逻辑图大小”与“实际展开工作量”分开计量，禁止用同一个数字同时表达两种
+风险：
+
+- `max_recursive_closure_nodes=1024` 约束唯一逻辑节点。进程内普通 derivation object
+  按 object identity 去重；strict Document 按完整 Artifact Reference Identity 去重；
+  Array 只是 adjacency/collection edge，不计逻辑节点。
+- Transport 必须先把不可信输入反序列化成 inert JSON；因此 Wire 中的重复副本没有共享
+  identity，仍会自然计为不同逻辑节点。Proxy 不属于进程内预检的可信输入。
+- Wire/collector 在读取 `protocol_version`、`artifact_type` 等 discriminator 前，只
+  接受 own enumerable data descriptor；禁止 accessor、symbol、custom prototype、
+  `undefined`、BigInt、非有限数、cycle 与其他非 inert JSON 值。
+- Array 必须精确继承 `Array.prototype`，并在调用 `Reflect.ownKeys` 前先从 inert
+  `length` data descriptor 检查 entry 上限；超限数组不能触发代理或继承陷阱。
+- 每个 strict Document 另受 `1024` 个 unique JSON container、`32` 层和 `1MiB`
+  限制；仅有 `{envelope,payload}` 外形但 strict parse 失败的候选，必须把其普通 object
+  identity 和真实深度回补到外层预算，不能借候选外形重置深度。
+- 共享 DAG 的每次实际展开仍累计保守字节数；全局 container occurrence 上限为
+  `1024*32=32768`，包含 primitive 的 total-value occurrence 后备上限为
+  `1024*256=262144`，并同时受 `16MiB`、每容器 `256` entries 与 active-ancestor
+  cycle 拒绝约束。
+
+这些上限是同时生效的防护面，不承诺各字段最大值的笛卡尔积都可被一个内存闭包承载；
+命中任一预算即失败关闭。后续 Platform Authority 应从规范化 Reference Graph 按需解析，
+不能通过抬高纯内核预算来容纳重复展开。
 
 每次 Model/SQL/Tool 调用前必须原子 Reserve tenant/principal/run 预算，完成后结算，
 失败或取消后幂等释放。缺失可靠 Token/Cost 计价的 Provider 必须失败关闭或走显式
@@ -823,7 +903,7 @@ apps/worker
 5. 组合 Worker Workflow，验证 Checkpoint 只保存执行位置与精确引用。
 6. 跑 Controlled、14 Mutation 及其预算可执行配对反例、Crash-Recovery、Resource、
    READY 前后 Revocation Race、Grant Issue/Consume/Response、V1 Read-Deny 与 Release
-   current-V2 集成测试。
+   current-tuple 集成测试。
 7. 更新 UI/API 之前先冻结 Projection，不让 UI 自行推导 Ready。
 
 ## 16. U6 完成定义
