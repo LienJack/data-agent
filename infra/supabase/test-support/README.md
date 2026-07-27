@@ -13,10 +13,11 @@ Smoke 固定执行：
 
 1. 禁止 `GRANT ALL`、生产迁移伪造 `auth/storage`、遗漏空 `search_path`；
 2. 校验每个迁移文件的规范化 SHA-256；
-3. 按文件名排序执行 Platform 与 Data Agent App 迁移；
+3. 按文件名排序执行 Platform 与 Data Agent App 迁移；`10590` 只通过同连接维护窗口
+   runner 设置六个 session binding 与 PostgreSQL 17 `transaction_timeout` 后执行；
 4. 按文件名排序执行全部 `*-assertions.sql`；
 5. 验证双 App、双 Tenant、双环境、RPC/RLS、Demo、Storage、生命周期、SecretRef
-   与 Migration Ledger；当前账本固定为一个 Platform 加十四个 App Migration；
+   与 Migration Ledger；当前账本固定为一个 Platform 加十五个 App Migration；
 6. 在独立数据库逐步执行到 `10500 / 10505 / 10510 / 10560`，证明 Browser 写入口、
    Backend 直写与旧 Outbox/Fence API 在任一中断前缀都失败关闭；
 7. 用两个数据库会话证明同一 Run 只能被一个 Worker Claim，并覆盖
@@ -91,6 +92,15 @@ Runtime SQL 断言保持原始状态依赖顺序：
   `DELETE_PENDING`（HOLD），不会标记 `DELETED`。删除可能已有破坏性副作用，因此
   不提供无可信恢复证据的 `DELETE_CANCELLED`。签名字段在本阶段只是待验签输入，
   不能作为已验证结论。
+- U6 的七个 Deployment Function 在 exact manifest/key/purge wire 尚未闭合前固定为
+  `0A000` fail-closed HOLD：只验证 Provisioner、协议与 request hash，不设置 RLS
+  binding、不执行 DML，也不返回伪造成功；因此当前数据库安装通过不代表部署写路径
+  已交付。
+- U6 的 Coverage Derivation、Candidate Enumeration、Budget Ledger 与 Input Event
+  Watermark 尚无 DB-owned immutable Receipt；所以
+  `commit_research_stop_terminal`、`publish_current_report_readiness` 与
+  `consume_current_ready` 即使 Capability 有效也固定失败关闭。`20z` 数据库断言验证
+  五张 Root 状态表保持空；迁移成功不代表 READY/CurrentReadiness 正向链已交付。
 - 浏览器提供的 App、Tenant、Role Claim 不构成权限；RPC 只把 Deployment/Tenant
   参数当作待验证的资源选择器，并以 `auth.uid()` 作为 Principal。
 - 生产迁移要求 Supabase 已提供真实 `auth.uid()`、`storage.objects` 与 Storage

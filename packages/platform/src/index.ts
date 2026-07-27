@@ -12,6 +12,11 @@ export {
 export * from "./persistence/transaction.js";
 export * from "./queue/postgres-run-queue.js";
 export {
+  createPostgresResearchAuthority,
+  type PostgresResearchAuthority,
+  type PostgresResearchAuthorityOptions,
+} from "./research/postgres-research-authority.js";
+export {
   type ActiveSandboxCancelRequest,
   type CoordinatedSandboxPort,
   type CoordinatedSandboxPortOptions,

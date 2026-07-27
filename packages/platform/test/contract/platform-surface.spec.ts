@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as platform from "../../src/index.js";
 
 describe("platform package public surface", () => {
-  it("exports only production, scope-aware U2/U4 entry points", () => {
+  it("exports only production, scope-aware U2/U4/U6 entry points", () => {
     expect(Object.keys(platform).sort()).toEqual([
       "PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL",
       "PersistenceBoundaryError",
@@ -14,6 +14,7 @@ describe("platform package public surface", () => {
       "createPostgresCapabilityAuthority",
       "createPostgresDatasourceEgress",
       "createPostgresRepository",
+      "createPostgresResearchAuthority",
       "createPostgresRunControl",
       "createPostgresRunEventStore",
       "createPostgresRunQueue",
@@ -35,5 +36,8 @@ describe("platform package public surface", () => {
     expect(platform).not.toHaveProperty("createUpstashRedisRestClient");
     expect(platform).not.toHaveProperty("createUpstashRedisRestClientFromEnv");
     expect(platform).not.toHaveProperty("startSingleExecutionNdjsonProcess");
+    expect(platform).not.toHaveProperty("capabilityInputSchema");
+    expect(platform).not.toHaveProperty("historicalDocumentSchema");
+    expect(platform).not.toHaveProperty("ResearchAuthorityTransportError");
   });
 });

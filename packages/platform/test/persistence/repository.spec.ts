@@ -9,6 +9,9 @@ import {
   groundingAuthorityDocumentSchema,
   isAuthoritativeMetamorphicFixtureReceipt,
   isAuthoritativeMetamorphicOracleReceipt,
+  L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES,
+  L2_RESEARCH_V1_HISTORICAL_ONLY_ARTIFACT_TYPES,
+  L2_RESEARCH_WIRE_VERSION_MATRIX,
   type L2ArtifactDocument,
   l2ArtifactDocumentSchema,
   sha256ContentHash,
@@ -120,6 +123,7 @@ function scriptedPool(
 ) {
   const calls: QueryCall[] = [];
   let released = 0;
+  let connections = 0;
   const client: SqlClient = {
     async query<Row extends object = Record<string, unknown>>(text: string, values = []) {
       calls.push({ text, values });
@@ -140,8 +144,13 @@ function scriptedPool(
       released += 1;
     },
   };
-  const pool: SqlPool = { connect: async () => client };
-  return { calls, pool, released: () => released };
+  const pool: SqlPool = {
+    connect: async () => {
+      connections += 1;
+      return client;
+    },
+  };
+  return { calls, pool, released: () => released, connections: () => connections };
 }
 
 function commandInput() {
@@ -852,6 +861,48 @@ describe("PostgreSQL authoritative repository", () => {
     });
     expect(fixture.calls.some(({ text }) => text.includes("lock_owned_run_fence"))).toBe(false);
     expect(fixture.calls.some(({ text }) => text.includes("insert into artifacts"))).toBe(false);
+  });
+
+  it("通用 L2 Repository 在连接数据库前拒绝全部 U6 current 与 historical 保留元组", async () => {
+    const reservedTuples = [
+      ...L2_RESEARCH_WIRE_VERSION_MATRIX,
+      ...L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES,
+      ...L2_RESEARCH_V1_HISTORICAL_ONLY_ARTIFACT_TYPES.map(
+        (artifactType) => [artifactType, "1.0.0", null] as const,
+      ),
+    ];
+    const authority = issueCapability();
+
+    for (const [artifactType, envelopeVersion, payloadVersion] of reservedTuples) {
+      const fixture = scriptedPool(() => undefined);
+      const repository = createPostgresRepository(fixture.pool, authority.authorizer);
+      const document = {
+        envelope: {
+          artifact_type: artifactType,
+          schema_version: envelopeVersion,
+        },
+        payload: {
+          artifact_type: artifactType,
+          ...(payloadVersion === null ? {} : { protocol_version: payloadVersion }),
+        },
+      };
+
+      expect(
+        await repository.commitL2Artifact(authority.capability, document, {
+          expected_active_revision: 0,
+          worker_fence: 0,
+        }),
+        `${artifactType}/${envelopeVersion}/${payloadVersion ?? "legacy-null"}`,
+      ).toMatchObject({
+        ok: false,
+        error: {
+          code: "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+          retryable: false,
+        },
+      });
+      expect(fixture.connections()).toBe(0);
+      expect(fixture.calls).toHaveLength(0);
+    }
   });
 
   it("L2 提交把运行证据输入路由到专用 System Store，而不要求镜像进 artifacts 表", async () => {

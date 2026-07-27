@@ -44,6 +44,61 @@ apply_sql() {
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" <"$sql_file"
 }
 
+prepare_u6_maintenance_binding() {
+  docker exec "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "
+      insert into platform.app_environment_lifecycle (
+        app_id,
+        environment,
+        lifecycle_state
+      )
+      values (
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        'u6-migration-test',
+        'ACTIVE'
+      )
+      on conflict (app_id, environment) do nothing;
+
+      insert into platform.deployment_mappings (
+        deployment_id,
+        app_id,
+        environment,
+        deployment_key_hash
+      )
+      values (
+        '00000000-0000-4000-8000-00000000de90'::uuid,
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        'u6-migration-test',
+        'sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
+      )
+      on conflict (deployment_id) do nothing;
+
+      do \$u6_binding\$
+      begin
+        if not exists (
+          select 1
+          from platform.deployment_mappings as deployment
+          join platform.app_environment_lifecycle as lifecycle
+            on lifecycle.app_id = deployment.app_id
+           and lifecycle.environment = deployment.environment
+          where deployment.deployment_id =
+              '00000000-0000-4000-8000-00000000de90'::uuid
+            and deployment.app_id =
+              '00000000-0000-4000-8000-00000000da01'::uuid
+            and deployment.environment = 'u6-migration-test'
+            and deployment.is_active
+            and deployment.revoked_at is null
+            and lifecycle.lifecycle_state = 'ACTIVE'
+        ) then
+          raise exception 'U6_TEST_MAINTENANCE_BINDING_INVALID';
+        end if;
+      end
+      \$u6_binding\$;
+    " \
+    >/dev/null
+}
+
 apply_sql_to_database() {
   target_database=$1
   sql_file=$2
@@ -1267,7 +1322,17 @@ for sql_file in $(find "$infra_dir/platform/migrations" -type f -name '*.sql' | 
   apply_sql "$sql_file"
 done
 for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.sql' | sort); do
-  apply_sql "$sql_file"
+  if [ "$(basename "$sql_file")" = \
+    "20260725010590_app_data_agent_u6_research_authority.sql" ]; then
+    prepare_u6_maintenance_binding
+    "$script_dir/run-u6-maintenance-migration.sh" \
+      "$container_name" \
+      "$database_name" \
+      "$sql_file" \
+      "00000000-0000-4000-8000-00000000de90"
+  else
+    apply_sql "$sql_file"
+  fi
 done
 apply_sql "$script_dir/10-fixtures.sql"
 

@@ -24,6 +24,7 @@ import {
   isAuthoritativeResultOracleReceipt,
   isAuthoritativeSandboxExecutionReceipt,
   isAuthoritativeSandboxResult,
+  L2_RESEARCH_WIRE_VERSION_MATRIX,
   type L2ArtifactDocument,
   type L2ArtifactPersistenceAuthority,
   type LogicalPlanPayload,
@@ -83,6 +84,9 @@ const artifactCommitOptionsSchema = z.strictObject({
 });
 
 const text2SqlRuntimeSystemArtifactTypes = new Set<string>(TEXT2SQL_RUNTIME_SYSTEM_ARTIFACT_TYPES);
+const reservedResearchArtifactTypes = new Set<string>(
+  L2_RESEARCH_WIRE_VERSION_MATRIX.map(([artifactType]) => artifactType),
+);
 
 export type CommandAcceptance = Readonly<{
   created: boolean;
@@ -366,6 +370,31 @@ function invalidInput<T>(message: string): PortResult<T> {
     error: {
       code: "PERSISTENCE_INPUT_INVALID",
       message,
+      retryable: false,
+    },
+  };
+}
+
+function rawOwnDataValue(input: unknown, key: string): unknown {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) return undefined;
+  const descriptor = Object.getOwnPropertyDescriptor(input, key);
+  return descriptor?.enumerable && Object.hasOwn(descriptor, "value")
+    ? descriptor.value
+    : undefined;
+}
+
+function isReservedResearchArtifactInput(input: unknown): boolean {
+  const envelope = rawOwnDataValue(input, "envelope");
+  const artifactType = rawOwnDataValue(envelope, "artifact_type");
+  return typeof artifactType === "string" && reservedResearchArtifactTypes.has(artifactType);
+}
+
+function unsupportedResearchWire<T>(): PortResult<T> {
+  return {
+    ok: false,
+    error: {
+      code: "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      message: "U6 Research Artifact 只能通过专用 PostgreSQL Research Authority 提交。",
       retryable: false,
     },
   };
@@ -993,6 +1022,9 @@ export function createPostgresRepository(
       documentInput: unknown,
       optionsInput: unknown,
     ): Promise<PortResult<ArtifactReference>> {
+      if (isReservedResearchArtifactInput(documentInput)) {
+        return unsupportedResearchWire();
+      }
       const parsedDocument = l2ArtifactDocumentSchema.safeParse(documentInput);
       const parsedOptions = artifactCommitOptionsSchema.safeParse(optionsInput);
       if (!parsedDocument.success || !parsedOptions.success) {

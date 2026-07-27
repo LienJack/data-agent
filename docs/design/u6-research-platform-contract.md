@@ -1,11 +1,12 @@
 # U6 L2 Research Platform、事务与 Port 合同
 
-> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED` · `u6-research-platform@1.1.0`
+> `FROZEN_DESIGN_CONTRACT / PARTIAL_IMPLEMENTATION` · `u6-research-platform@1.1.0`
 >
 > 上游 Wire：`u6-research-planning-payload-contract.md`、
 > `u6-research-wire-payload-contract.md`；U6 领域语义为绿地新增，但 `10590` 可能安装到
 > populated project，生产 DDL 安全只取 Migration Safety。
-> 本文全部新增项仍是待实现设计要求，不是迁移、测试或交付证据。
+> `10590` 与 Adapter 已部分实现；exact Catalog、正向 Root、DB receipts、
+> Crypto 与 Worker 待实现。
 > PostgreSQL Authority、Artifact/Readiness Root 锁序、函数面与 GRANT 只取
 > `u6-research-database-surface-contract.md`；执行域表/nullable CHECK/TTL/锁序只取
 > `u6-research-execution-storage-contract.md`，Terminal candidate key/FK 只取
@@ -574,6 +575,9 @@ denylist 的闭合枚举只取 Database Surface 分册；本文不得增加隐�
 ```ts
 const U6_ERROR_RETRYABLE = {
   RESEARCH_CAPABILITY_SCOPE_MISMATCH: false,
+  RESEARCH_DATABASE_AUTHORITY_REQUIRED: false,
+  RESEARCH_DATABASE_CONTRACT_INVALID: false,
+  RESEARCH_PERSISTENCE_UNAVAILABLE: true,
   RESEARCH_AUTHORITY_LOCK_CONTENDED: true,
   RESEARCH_FRONTIER_OWNER_MISMATCH: false,
   RESEARCH_FRONTIER_CAS_CONFLICT: true,
@@ -668,4 +672,6 @@ infra/supabase/apps/data-agent/migrations/20260725010590_app_data_agent_u6_resea
 CHECK/TTL/锁序只取 Execution Storage，Terminal candidate key/FK 只取 Reference Graph；
 DELETE_PENDING Job 只取 App Lifecycle Cleanup，维护窗口/DDL/恢复只取 Migration
 Safety。Inventory 覆盖五者；共享 Supabase 按 `S` 隔离，Redis/Upstash 只存可丢缓存。
-本节仍是 `NOT_IMPLEMENTED` 门禁。
+已安装 `10590`、清理/函数投影、ACL/RLS，并仅激活三个 fail-closed Root RPC；
+exact Catalog、正向/读取 RPC、Crypto 与双连接 Oracle 仍
+`NOT_IMPLEMENTED`。

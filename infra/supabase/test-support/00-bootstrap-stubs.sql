@@ -1,6 +1,9 @@
 \set ON_ERROR_STOP on
 
 -- 仅供普通 PostgreSQL 容器执行迁移测试。生产迁移不得创建或替换 auth/storage 对象。
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+
 do $$
 begin
   if not exists (select 1 from pg_catalog.pg_roles where rolname = 'anon') then

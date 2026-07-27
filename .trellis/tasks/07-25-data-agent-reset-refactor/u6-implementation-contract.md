@@ -1,8 +1,14 @@
 # U6 实施与检查合同
 
-> 状态：`PARTIAL_IMPLEMENTATION / U6_B0_CONTRACT_FROZEN`
-> 未实现：`POSTGRESQL_AUTHORITY / CURRENT_READINESS / RESOURCE_INVOCATION /
-> RESULT_CRYPTO_LIFECYCLE / WORKER_COMPOSITION`
+> 状态：`PARTIAL_IMPLEMENTATION / U6_C1_DATABASE_SURFACE_INSTALLED`
+> 已实现：`PURE_RESEARCH_KERNEL / 10590_MIGRATION /
+> CLEANUP_AND_FUNCTION_INVENTORY_PROJECTION / PG17_INSTALL /
+> OWNER_RLS_DML_GUARDS / HISTORICAL_TUPLE_FILTER_INSTALLED`
+> 安全断点：`commitResearchStopTerminal / publishCurrentReadiness /
+> consumeCurrentReady` 在 PostgreSQL 可完整重放 Research Kernel 前固定失败关闭
+> 未实现：`POSITIVE_POSTGRESQL_ROOT_AUTHORITY / DB_OWNED_DERIVATION_RECEIPTS /
+> FULL_PG_CATALOG_EXACT_INVENTORY / RESULT_CRYPTO_POSITIVE_PATH /
+> BACKEND_POSITIVE_OR_READ_RPC_ACTIVATION / WORKER_COMPOSITION`
 > 单元：`U6 L2 Research Authority`
 > 发布状态：`HOLD`
 > 作用：在 Trellis 单文件 32 KiB 上限内提供实现与检查所需的完整核心闭包
@@ -33,6 +39,13 @@ Warning，都视为 U6 任务门禁失败；不能把 Warning 当成通过，也
 “上下文文件”仅指 `implement.jsonl/check.jsonl` 实际列出的注入文件和任务 Artifact；
 未列入清单的 `.trellis/spec/**` 是可直接读取的补充导航，不参与注入字节门禁，也不能
 替代上述 compact/strict 合同。
+
+当前 `10590` 已能在 PostgreSQL 17 整事务安装，但这只证明 Schema、ACL、RLS、
+Catalog 与回滚边界。Coverage Derivation、Candidate Enumeration、Budget Ledger 和
+Input Event Watermark 尚无 DB-owned immutable Receipt；因此 PostgreSQL 不能从权威
+输入重放 Stop/ReportReady。三个 Root RPC 即使收到有效 Capability 也只返回固定失败，
+且数据库 Oracle 证明不会写入 Current、Terminal、Publication、Consumption 或 Grant。
+不得把“迁移安装通过”解释成 CurrentReadiness 成功路径已交付。
 
 ## 1. 范围
 
@@ -88,6 +101,13 @@ Agent、Model、Supervisor、Writer、普通 Schema Parse、Mastra Snapshot、UI
 只产生 Candidate 或 Projection，不能提交领域成功态。每次根授权必须从 PostgreSQL
 重新解析精确 `COMMITTED` Revision、重算 Envelope Hash、Domain Semantic Hash 和领域
 闭包；裸 ID、最新 Revision、`isCommitted=true` 或跨事务品牌缓存都无权。
+
+所有 public PostgreSQL RPC 返回 strict
+`u6-db-result@1.0.0` 的 `{ok:true,value}|{ok:false,error}`。预期业务拒绝只回滚内部
+业务写并保留 FAILED/REJECTED Operation；`55P03`、超时、死锁、序列化失败及未知
+SQL/约束异常必须重抛、整事务回滚。Historical Research read 只能经显式
+`read_historical_l2_research_artifact(jsonb)` 与 `REPORT_READ_AUTHORITY`，结果固定
+`HISTORICAL_READ_ONLY/can_authorize_current=false`。
 
 ## 3. Historical/Current tuple 与旧 READY 旁路退役
 

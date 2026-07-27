@@ -631,6 +631,32 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   `NOT_IMPLEMENTED`；`pnpm verify:release` 按预期以 exit 2 返回
   `HOLD / RELEASE_EVIDENCE_INCOMPLETE`，没有把合同门禁冒充发布证据。
 
+#### U6-C1 PostgreSQL 数据库 Surface 实施证据（2026-07-28）
+
+- 新增由 15 个有序 source segment 确定性生成的单一 `10590` migration；renderer
+  同时冻结 migration SHA-256、维护窗口 manifest、54 个清理/控制关系和 56 个函数属性，
+  `--verify` 会拒绝生成物、segment 顺序、Owner、函数签名或属性漂移。
+- PostgreSQL 17 clean install、既有 migration smoke、静态 SQL 门禁和平台集成通过；
+  U6 relation 使用精确 Owner、`FORCE RLS`、短政策名与 DML denylist，Browser 角色无
+  底表读写权，Backend/Owner/Provisioner/Cleanup 权限分离。
+- `ResearchArtifactAuthorityPort` 与 PostgreSQL Adapter 已建立 strict input/result
+  契约；current Writer tuple、exact revision/idempotency 与 historical tuple filter
+  已进入数据库函数面，通用 Repository 同时拒绝全部 U6-owned tuple 旁路。
+- C1 只向 `data_agent_backend` 激活三个 fixed fail-closed Root RPC：
+  `commitResearchStopTerminal/publishCurrentReadiness/consumeCurrentReady`。其余
+  mutation/resolver 在 strict DB verifier、正向 PG17 Oracle 与并发证据完成前均无
+  Backend EXECUTE；Dormant SQL 不能计入交付能力。
+- PG17 Oracle 断言调用三个已激活入口后，Domain Terminal、Current Readiness、
+  Publication、Consumption 与 Grant 五类状态表保持零写入。
+- 本检查点通过 `pnpm lint`、`pnpm typecheck`、`pnpm test:contract`、
+  `pnpm test:architecture`、`pnpm test:research`、Platform/Contracts 单测、
+  renderer test、static SQL、PG17 smoke、platform integration、Trellis 22/22 和
+  `git diff --check`；并由三路独立 Codex 审查 SQL、RPC 与 TypeScript/生成链。
+- 本节不把清理/函数投影冒充完整 Schema Inventory。列/default/PK/UQ/FK/CHECK/
+  Index/ACL/RLS/Policy 的 `pg_catalog` exact snapshot、Backend 正向/读取入口、
+  DB-owned receipts、Result Crypto、Worker 与 Hosted/Docker 仍为
+  `NOT_IMPLEMENTED`，Release 继续 `HOLD`。
+
 ### U7 工作包
 
 1. 定义 `EvalCase`、`EvalRun`、`ScoreCard`、`ReleaseDecision`。

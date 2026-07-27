@@ -1,10 +1,12 @@
 # U6 Research PostgreSQL Authority、Artifact Committer 与函数面合同
 
-> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED` · `u6-research-database-surface@1.0.0`
-> 待实现数据库边界；不证明 `10590` Migration 或双连接 Oracle 已交付。
+> `FROZEN_DESIGN_CONTRACT / PARTIAL_IMPLEMENTATION` ·
+> `u6-research-database-surface@1.0.0`
+> 已安装 `10590`、清理/函数投影、ACL/RLS 与 Root fail-close；Backend 正向/读取、
+> exact `pg_catalog`、DB-owned receipts、Result Crypto 未交付。
 
-本文冻结 U6 数据库 Authority、current Artifact、RPC ACL、Migration/Inventory 与全局
-锁入口；业务 Wire/状态取对应分册，Terminal FK 取 Reference Graph。
+本文冻结数据库 Authority、current Artifact、RPC/ACL、Inventory 与锁入口；业务 Wire
+取对应分册，Terminal FK 取 Reference Graph。
 
 ## 1. 数据库可验证的 U6 Authority
 
@@ -51,11 +53,15 @@ type U6DbCommand<T> = {
   authority_capability_id: ImmutableId;
   command: T;
 };
+type U6DbResult<T> =
+  | { protocol_version: "u6-db-result@1.0.0"; ok: true; value: T }
+  | { protocol_version: "u6-db-result@1.0.0"; ok: false;
+      error: U6PlatformError };
 ```
 
-public Port 的 `capabilityInput=unknown`。server-only Adapter strict 解析 exact
-`app_capability/authority_capability_id` 并验证两者；dual-capability wrapper 取 Resource
-分册。解析类型不导出，`U6DbCommand<T>` 只作验证后数据库 envelope。
+public Port 的 `capabilityInput=unknown`；server-only Adapter 验证 exact
+`app_capability/authority_capability_id`。dual-capability 取 Resource 分册，解析类型
+不导出，`U6DbCommand<T>` 只作数据库 envelope。
 
 `research_authority_capabilities`：PK `(S,capability_id)`；partial
 `UNIQUE NULLS NOT DISTINCT (S,principal_id,authority_kind,
@@ -87,6 +93,10 @@ Platform Adapter 验证 `app_capability` 后封装 strict `U6DbCommand<T>`。pub
 mutation/read 均为 `(envelope_json jsonb) RETURNS jsonb`，拒绝 null/额外字段/非 UUID
 Principal/裸 Command，并在同事务重锁 Capability：
 
+所有 public RPC 返回 strict `U6DbResult<T>`。预期业务拒绝在子事务回滚业务写后返回
+`ok=false`，从而保留 FAILED/REJECTED Operation；`55P03`、超时、死锁、序列化失败与
+未列 SQL/约束异常必须重抛并回滚整个事务。
+
 ```text
 platform.current_backend_authority(require_write)（仅 candidate）
 → platform.lock_u6_authority_binding(..., READ|WRITE)
@@ -108,12 +118,11 @@ AND state=ACTIVE
 AND endpoint 固定的 expected Authority/Domain/Kind exact
 ```
 
-Helper 按上序重验并返回 current binding；Command 只声明 `S/principal`，READ/WRITE
-逐字段等值，PROVISION 采用 current Version/Epoch。Helper 归 Platform Lock Owner，
-调用 owner 仅 EXECUTE、无源表 ACL。`55P03` 不得 catch，整事务回滚并映射
-`RESEARCH_AUTHORITY_LOCK_CONTENDED`；Adapter 只以同 envelope/idempotency key 最多
-外层退避 3 次。最后锁业务行，以单一 `db_now` 校验 TTL。public Command 禁止
-Authority/Owner/Epoch/Role；未授权与不存在同一脱敏错误，Resolved type 不从包根导出。
+Helper 按上序返回 locked binding；Command 只声明 `S/principal`，READ/WRITE exact，
+PROVISION 取 current Version/Epoch。Helper Owner 仅有 EXECUTE、无源表 ACL。`55P03`
+整事务回滚为 `RESEARCH_AUTHORITY_LOCK_CONTENDED`；Adapter 用同 envelope/key 最多退避
+3 次。全部业务锁后以单一 `db_now` 校验 TTL。Command 禁止 Authority/Owner/Epoch/Role；
+未授权与不存在同错，Resolved type 不从包根导出。
 
 同目录的 `u6-authority-manifest.json`（`u6-authority-manifest@1.0.0`）保存 exact
 `S/deployment/hash/Principal/Role/Authority domain/kind/expiry`；Provision 锁内重验
@@ -135,11 +144,11 @@ purge_u6_result_ciphertext_access_audits
 
 七函数均为 `app_data_agent.<name>(jsonb) returns jsonb`，归 Provisioner Owner，固定
 `VOLATILE CALLED ON NULL INPUT SECURITY DEFINER SET search_path=''`、全限定对象、
-strict null error 与 `pg_has_role(session_user,'data_agent_u6_provisioner','SET')`；
-登录须先 `SET ROLE`。Manifest 函数只收 strict `protocol_version/operation_id/
-manifest_hash/manifest/request_hash`；Purge 取 System Lifecycle/Execution Storage，
-Key 取 Key Lifecycle。request hash 统一取 Migration Safety codec，stored result 不含
-`created`。Authority 按 assignment bytes 排序并走 PROVISION→Head→old→new；Policy
+strict null 与 `pg_has_role(session_user,'data_agent_u6_provisioner','SET')`；登录先
+`SET ROLE`。Manifest 只收 strict protocol/operation/manifest/request hash；Purge 取
+System Lifecycle/Execution Storage，Key 取 Key Lifecycle。request hash 取 Migration
+Safety codec，stored result 不含 `created`。Authority 按 assignment bytes 排序并走
+PROVISION→Head→old→new；Policy
 按 kind/Ref/version/hash bytes 排序、append-only/Head CAS。仅 metadata/hash，
 Hosted/Docker 同输入；失败整事务回滚。
 
@@ -359,6 +368,7 @@ Crypto `StrictCommandBase`：
 
 ```text
 resolve_invocation_terminal_preparation_recovery_metadata
+read_historical_l2_research_artifact
 resolve_committed_adapter_termination_receipt
 resolve_committed_invocation_outcome_usage
 resolve_current_tool_invocation_permit
@@ -372,6 +382,7 @@ resolve_invocation_result_ciphertext
 | Resolver | matching Capability | strict Result | lock profile |
 | --- | --- | --- | --- |
 | `resolve_invocation_terminal_preparation_recovery_metadata` | matching Invocation kind | `ResolveInvocationTerminalPreparationRecoveryMetadataInput → InvocationTerminalPreparationRecoveryMetadata`（Binding/kind + stage/id/version/state/expiry） | `INVOCATION` |
+| `read_historical_l2_research_artifact` | Report Read | `StrictRefReadInput<ArtifactReference> → HistoricalL2ResearchDocument\|HistoricalVersionedL2ResearchDocument\|null` | `ROOT_READINESS` |
 | `resolve_committed_adapter_termination_receipt` | Resource | `StrictRefReadInput<AdapterTerminationReceiptRef> → AdapterTerminationReceiptPayload` | `RESOURCE_RESERVATION` |
 | `resolve_committed_invocation_outcome_usage` | Resource | `StrictRefReadInput<InvocationOutcomeUsageRef> → InvocationOutcomeUsagePayload` | `RESOURCE_RESERVATION` |
 | `resolve_current_tool_invocation_permit` | Resource 或 Tool Invocation | `StrictRefReadInput<ToolInvocationPermitRef> → Extract<CommittedToolInvocationPermit,{status:"ACTIVE"}>` | `RESOURCE_RESERVATION` |
@@ -381,13 +392,13 @@ resolve_invocation_result_ciphertext
 | `resolve_committed_tool_invocation_result` | Tool Invocation | `StrictRefReadInput<ToolInvocationResultRef> → ToolInvocationResultPayload`（无 ciphertext） | `INVOCATION` |
 | `resolve_invocation_result_ciphertext` | Result Decryption | `ResolveInvocationResultCiphertextInput → EncryptedInvocationResultEnvelope` | `RESULT_LIFECYCLE` |
 
-九个 Resolver 全部是 `VOLATILE CALLED ON NULL INPUT SECURITY DEFINER
-SET search_path=''`；前八个仅返回 metadata/事实，最后一个仅接受
-`RESULT_DECRYPTION_AUTHORITY` 并遵守 Crypto/Lifecycle 的 DB time、AVAILABLE/deletion
-boundary。Browser 无 RPC/table 权限，UI 只经应用 API 获得 Projection。
+十个 Resolver 均为 `VOLATILE CALLED ON NULL INPUT SECURITY DEFINER SET
+search_path=''`；前九个只返历史文档/metadata/事实，最后一个仅接受
+`RESULT_DECRYPTION_AUTHORITY` 并遵守 Crypto/Lifecycle deletion boundary。Browser
+无 RPC/table 权限。
 
-Artifact historical read 使用现有 exact Reference Repository 路径，但不能产生 current
-Authority brand；若实现为新 SQL Resolver，必须先修订本闭合列表，不能私增函数。
+Historical read 只能经上列显式 Resolver 在同一事务验证 Report Read Authority；返回值
+固定 `HISTORICAL_READ_ONLY/can_authorize_current=false`，不能产生 current brand。
 
 ### 5.1 Job-only App Lifecycle cleanup
 
