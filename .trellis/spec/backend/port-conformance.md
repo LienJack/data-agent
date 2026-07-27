@@ -1,6 +1,10 @@
 # Port Conformance
 
 > Hosted、Docker 与 In-Memory Adapter 必须共享 Scope、幂等、终态和错误语义。
+>
+> U6 Research/Readiness Port 状态：
+> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED`；当前 Conformance Fixture 尚未包含下述
+> U6 Port，只有实现与真实 PostgreSQL Adapter 通过后才能标记交付。
 
 ## 场景：实现 Storage、Queue、Cache 或 Sandbox Adapter
 
@@ -88,6 +92,65 @@ createCoordinatedSandboxPort({
 for (const contractCase of PORT_CONFORMANCE_CASES) {
   await contractCase.run(createAdapterHarness);
 }
+
+// U6 目标 Port。capabilityInput 与 strictInput 必须是两个参数；
+// strictInput 中的 scope/principal 只是待比较声明，不能自证 Authority。
+type CapabilityInput = unknown;
+type ArtifactReferenceFor<T extends KnownArtifactType> =
+  ArtifactReference & Readonly<{ artifact_type: T }>;
+type ReadinessRevocationReason =
+  | "SEMANTIC_REVISION_CHANGED"
+  | "SCHEMA_REVISION_CHANGED"
+  | "DATA_SNAPSHOT_STALE"
+  | "POLICY_CHANGED"
+  | "IDENTITY_AUTHORITY_CHANGED"
+  | "EVIDENCE_REVOKED"
+  | "CERTIFICATE_TAMPERED";
+type ResearchAgentRole =
+  | "research-supervisor"
+  | "semantic-sql"
+  | "evidence"
+  | "report-projector";
+
+type ResearchArtifactCommitInput = Readonly<{
+  schema_version: "1.0.0";
+  scope: AppScope;
+  run_id: string;
+  attempt_id: string;
+  worker_fence: number;
+  candidate: L2ArtifactCandidate;
+  expected_parent_ref: ArtifactReference | null;
+}>;
+
+type L2HistoricalDocument = Readonly<{
+  document: L2ArtifactDocument;
+  authority: "HISTORICAL_READ_ONLY";
+  can_authorize_current: false;
+}>;
+
+interface ResearchArtifactAuthorityPort {
+  commitCurrent(
+    capabilityInput: CapabilityInput,
+    input: ResearchArtifactCommitInput,
+  ): Promise<PortResult<ArtifactReference>>;
+
+  // 历史 Reader 不产生 Authority Brand，也不能被 Current/GO 路径调用。
+  readHistorical(
+    capabilityInput: CapabilityInput,
+    reference: ArtifactReference,
+  ): Promise<PortResult<L2HistoricalDocument | null>>;
+}
+
+// U6 平台与资源 Port 不在本文件复制字段：
+// - CurrentReadinessPort / ResearchStopTerminalPort / ResearchVersionFrontierPort
+//   唯一取自 docs/design/u6-research-platform-contract.md；
+// - ResearchResourceReservationPort / ResearchInvocationPort
+//   唯一取自 docs/design/u6-research-resource-invocation-contract.md；
+// - Invocation 状态迁移唯一取自 docs/design/u6-invocation-state-contract.md。
+// - System Record 生命周期唯一取自
+//   docs/design/u6-system-record-lifecycle-contract.md。
+// 实现由对应 strict Zod Schema infer 类型；Hosted/Docker/In-Memory Adapter 必须直接
+// import 同一导出，禁止在 Adapter 内重声明“等价”Request/Result。
 ```
 
 ### 3. 契约
@@ -180,6 +243,100 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
 - Model Provider Port 只接受绑定同 Scope、Profile Version、Model ID 且已经 `AVAILABLE` 授权的调用。
 - External Agent Port 只接受由服务端 Profile Resolver 授权的调用；请求只能收窄 Workspace Root、可写权限、Tool、Command ID 与超时预算，不能自行扩权。
 - Model、External Agent 与 Benchmark 的每个流事件都必须用原始请求校验 Scope、Run、Attempt 及各自的 Request/Invocation/Adapter ID 与版本元组，不能只做孤立 Schema Parse。
+- 所有 U6 Port 固定使用 `method(capabilityInput, strictInput)`。Adapter 先从
+  `capabilityInput` 在同一数据库事务派生 Scope、Principal、Role、Deployment 与
+  Authority Epoch，再逐项比较 `strictInput` 的声明；不得从请求 Header、Payload 或
+  Agent 自报字段直接构造 Authority。公开返回统一为 `PortResult<T>`，错误不得泄漏
+  Capability、SQL、原始 Projection 或数据库内部状态。
+- `ResearchArtifactAuthorityPort.commitCurrent` 的 In-Memory 与 PostgreSQL Adapter
+  都只接受 Wire Registry 中声明为 Current Writer 的严格元组及 `COMMITTED`
+  Revision。V1、未知元组、Candidate/Rejected/Superseded 一律
+  `L2_WIRE_VERSION_WRITE_UNSUPPORTED` 或 Schema 失败；`readHistorical` 只返回未品牌化
+  历史文档，不能被 Current Readiness、Run Terminal 或 Release GO 消费。
+  PostgreSQL Adapter 还必须在同一事务重新验证 Attempt、Lease、`worker_fence`、
+  Exact Parent/Input Revision、Domain Semantic 与窄化 Committer Capability。
+- U6 Domain Terminal/Consumption 使用独立数据库 Authority，不追加既有
+  `run_events`，不经过 Runtime Reducer，也不改变 `run.completed`。历史
+  `RunTerminal` 只追加且每 Run 最多一条；`CurrentReadiness` 是独立的
+  `CURRENT | REVOKED` 可变状态。READY 后撤权只改变 current 状态，不把历史 READY
+  改成 STALE；只有 DOMAIN_TERMINAL consume 与撤权竞争、撤权在 READY 提交前胜出且
+  尚无 Terminal 时，该 consume 才提交唯一 `STALE/RUN_STALE`。单独撤权不创建
+  RunTerminal。
+- `CurrentReadinessPort.publish` 是创建 `CURRENT` 的唯一入口。只有无 Domain
+  Terminal 时，才能用新的 exact Certificate/Frontier 执行 `ABSENT -> CURRENT`、
+  `CURRENT -> CURRENT` 或 `REVOKED -> CURRENT` CAS；相同已撤 Certificate 不得复活，
+  已有 Terminal 时必须创建新 Run。
+- Publish 每次调用（含同键重放）都先锁 Run/Current/Frontier 并重验 current；同键
+  同载荷且 exact Certificate 仍 CURRENT 才返原结果。Publish 后撤权再重放返回
+  `CURRENT_READINESS_REVOKED`，历史 Publication 只供审计。
+- CurrentReadiness、ReportReadGrant 与 RevocationOperation 的返回类型必须是 strict
+  discriminated union，且与数据库 CHECK 使用同一状态/nullable 字段真值表。重发布
+  新 Certificate 时 CURRENT 清空当前代 revocation pointer/time、保留单调
+  `revocation_seq`；任何 schema-valid 但状态不可能的行都失败关闭。
+- `CurrentReadinessPort.consume` 的两个 strict 分支是
+  `DOMAIN_TERMINAL | REPORT_READ`。每次调用，包括相同 idempotency key 重放，都必须
+  重新核验 exact `report-ready@2.0.0` Certificate、四张 Gate、Projection、Stop、
+  material Support、Semantic/**Schema**/Data/Policy/Identity Frontier、
+  Authority Epoch 与 current Revocation Head。`DOMAIN_TERMINAL` 只能返回
+  `READY_COMMITTED | STALE_COMMITTED`；`REPORT_READ` 只能返回
+  `GRANT_ISSUED`，不能顺便提交 Terminal。若历史 READY 已存在但 current 已
+  `REVOKED`，重放返回 `CURRENT_READINESS_REVOKED` 错误并保留历史 READY，不能伪造
+  `STALE_COMMITTED`。
+  `REPORT_READ` 还必须锁定并验证同 Run、同 Certificate 的不可变
+  `READY/RUN_READY` Domain Terminal；仅有 CURRENT row 或 STOP_READY 不能签 Grant。
+- `CurrentReadinessPort.revoke` 使用独立服务级 Revocation Capability，不接受 Worker
+  Lease/Fence 冒充，也不获得提交其他 Research Artifact 或执行 SQL 的权限。它必须
+  创建/重放 `operation_id`；提交 L2 Revocation Receipt 时固定
+  `envelope.attempt_id=operation_id` 且数据库 `worker_fence=0`
+  (`SERVICE_OPERATION_FENCE`)。该值只允许专用 narrow committer 写入，普通 Research
+  Committer 必须拒绝。重复同一规范输入幂等返回同一撤权结果。
+- `ReportReadGrant` 必须绑定 exact Certificate/Report、认证派生 Principal、服务端
+  Deterministic Report Projector 从 exact Report 生成的
+  `canonical-response@1.0.0` immutable Projection/Digest、current readiness version、
+  revocation seq、frontier hash 和短 TTL。Issue strict input 不接受调用方自报的
+  Digest/Bytes；Response 也只读取并重投影已绑定 Report，不接受待发送 Bytes。
+  JSONB 传输使用有界 base64url，Adapter 以域分离 SHA-256 重算。Issue、Consume、
+  Response 是三个独立线性化点：
+  `consumeGrant` 与 `commitResponse` 都重新锁定并核验 current Frontier/Revocation；
+  Response CAS 成功前不得发送任何字节。撤权在 Response 前胜出时 Grant 进入
+  `REVOKED`；Response 先胜出后才允许发送与服务端 Projection 逐字节相等的
+  canonical bytes。
+- `CurrentReadinessPort.commitGo` 必须在一个 PostgreSQL 事务内锁定 Current
+  Readiness、五维 Frontier、Revocation Head、同一 exact Certificate 的不可变
+  `READY/RUN_READY` Domain Terminal 与 Release Idempotency Row，解析全部 Release
+  Evidence，调用 server-only GO Authorizer，并在释放锁前追加不可变
+  ReleaseDecision Commit。每次调用（含同键重放）先重验 current 与 READY Terminal，
+  再读取历史幂等结果；GO 后撤权再重放必须返回 `CURRENT_READINESS_REVOKED`，历史
+  GO 只能用于审计。不得先返回普通 readiness snapshot 再在内存中签 GO。
+  旧 `authorizeReleaseDecision(GO)` 直接调用固定返回
+  `CURRENT_RELEASE_COMMIT_REQUIRED`；尚无 READY Terminal、V1、REVOKED、Frontier
+  漂移或旧 Authority Epoch 均失败关闭。
+- `ResearchResourceReservationPort` 必须完整实现
+  `reserve/begin/settle/cancel/expire/markAbandoned`。Reserve
+  按 `min(server,tenant,ResearchBrief)` 计算有效上限，并在
+  tenant/principal/run 三个维度原子占位；Reservation ID、Resource Kind、请求 Hash、
+  Brief/Policy、Reserved/Actual、TTL 与状态全部持久化。同键同载荷稳定重放，同键异
+  载荷冲突；每次 Model/SQL/Tool 真实调用前必须 Begin 并绑定
+  reservation_seq/lease/invocation/attempt/fence/request hash/bounds。只有未 Begin
+  Reservation 可直接 Expire；IN_USE 到期但 Adapter 未确认终止时进入 ABANDONED 且不
+  释放占位。迟到 Usage 仍 append-only 计费；实际超额记录 `SETTLED_OVER_LIMIT` 并
+  阻断成功 Authority。
+- `ResearchInvocationPort.authorizeAgentDataProjection` 只返回权威 Receipt 加进程内
+  `AuthorizedAgentDataProjection`，不返回原始 Sandbox 行。调用方提供的 canonical
+  Request 只是待验证 Candidate；Receipt 和返回值必须绑定
+  exact Scope/Run/Attempt/Request、Provider/Profile Version/Model、Input References、
+  字段 Allowlist、Lineage 分类、Redaction、小群组抑制、DLP、canonical egress bytes、
+  byte/token count、Provider/Role Policy 与 tenant/scope Keyed HMAC。Profile 使用
+  `profile_id + profile_version + profile_hash + certification_receipt_ref`，并绑定
+  exact Model Reservation/Lease/Invocation；不能伪装成通用 Artifact Reference。
+- `ResearchInvocationPort.invokeModel` 必须重新 canonicalize 最终
+  Model Request 的 messages/tool allowlist，逐项匹配 Projection Receipt 的
+  request/provider/profile/model、byte/token count 与 HMAC 后才调用 Adapter。授权
+  一份 Projection 后替换 messages、增加 Tool、切换 Model 或 Request ID 都必须在
+ 真实 Provider 调用前失败；普通 SHA-256 不能用于低熵敏感值。
+- U6 Port 的 Hosted、Docker 与 In-Memory Conformance 必须共享 Public Terminal 和
+  Domain Reason 语义，但 In-Memory PASS 不能替代 PostgreSQL current-ready race、
+  crash-recovery 或签名部署证据。
 - Benchmark 与 Sandbox 的成功 Receipt 必须处于规定成功终态、引用已提交并经各自
   Authorizer 品牌化；通用 `isCommitted=true` 不能代替领域成功语义。Sandbox 的
   Registrar/Authorizer 只从显式 `@data-agent/contracts/server` 服务端组合子路径导出，
@@ -221,6 +378,26 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
 | External Agent 请求扩大 Workspace/Permission/Budget | `EXTERNAL_AGENT_INVOCATION_NOT_AUTHORIZED` |
 | 流事件与原始请求的 ID、Scope、Run、Attempt 或版本不一致 | `PORT_EVENT_CORRELATION_MISMATCH` |
 | Benchmark/Sandbox 成功 Receipt 未提交或未授权 | 对应领域 Authority Error |
+| U6 strictInput 的 Scope/Principal 与 Capability 不同 | `RESEARCH_CAPABILITY_SCOPE_MISMATCH` |
+| V1/未知 Wire 元组尝试 `commitCurrent` | `L2_WIRE_VERSION_WRITE_UNSUPPORTED` |
+| V1 尝试 current-ready/Grant/RunTerminal/GO | `READINESS_PROTOCOL_VERSION_UNSUPPORTED` |
+| Current Readiness 缺 Semantic/Schema/Data/Policy/Identity 任一 Frontier | `READINESS_FRONTIER_INCOMPLETE` |
+| SchemaSnapshot、Frontier Version/Hash 或 Authority Epoch 漂移 | `READINESS_FRONTIER_STALE` |
+| 撤权先于 DOMAIN_TERMINAL consume 的 READY 提交 | consume 返回 `STALE/RUN_STALE`；不提交 READY/Grant |
+| READY 已提交后撤权 | current=`REVOKED`；历史 READY 不变且不追加 STALE |
+| READY 后撤权再重放 consume | `CURRENT_READINESS_REVOKED`，不把历史 READY 当 current |
+| Grant 过期、已消费、已响应或已撤权 | `REPORT_READ_GRANT_NOT_CONSUMABLE` |
+| Grant Consume 后、Response 前撤权 | `REPORT_READ_GRANT_REVOKED`，零响应字节 |
+| Response canonical bytes 与 Grant Digest 不同 | `REPORT_READ_RESPONSE_DIGEST_MISMATCH` |
+| Worker Fence 冒充服务撤权或 Service Fence 提交普通 L2 | `RESEARCH_AUTHORITY_FENCE_MISMATCH` |
+| Reservation 同键异载荷或重复非法状态迁移 | `RESEARCH_RESOURCE_RESERVATION_CONFLICT` |
+| 实际用量超过 Reservation | 记录 `SETTLED_OVER_LIMIT` 并返回 `RESEARCH_RESOURCE_LIMIT_EXCEEDED` |
+| Active Cancel 解析到 COMPLETED | 不得 `CANCELLED`；写 `SETTLED` |
+| Active Cancel 解析到任一超额 Usage | 不得 `CANCELLED`；写 `SETTLED_OVER_LIMIT` 并返回 Limit Error |
+| Active Cancel 解析到 FAILED、Termination 匹配且未超额 | 唯一允许的 Active `CANCELLED` 分支 |
+| Invocation 非法跳转、跨阶段复用 Key 或不同 Terminal | `RESEARCH_INVOCATION_TRANSITION_CONFLICT` 或 `RESEARCH_INVOCATION_TERMINAL_CONFLICT` |
+| COMPLETED 的对应调用计数为 0 | Strict 拒绝，不释放 Reservation |
+| Projection Receipt 与最终 Request bytes/provider/profile/model/request 不同 | `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED` |
 | Redis/Cache 丢失 | 从 PostgreSQL 权威状态重建 |
 
 ### 5. Good / Base / Bad
@@ -234,6 +411,15 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
   Recovery 明确收敛，不生成成功 Receipt。
 - Sandbox Bad：在 Authority 事务里返回“授权对象”，换一条 Datasource 连接执行任意
   SQL，再把调用方自报行数或期望 Settings 写成成功 Receipt。
+- U6 Good：READY 已提交后撤权，历史 Terminal 保持 READY，current 变为 REVOKED，
+  未响应 Grant 失效；任何路径都不修改 Runtime Event/Projection。
+- U6 Base：同一 REPORT_READ 幂等请求每次都重新比较五维 Frontier 与 Revocation；
+  仍 current 才重放相同 Grant，已撤权则拒绝。
+- U6 Bad：把历史 READY UPDATE 成 STALE、凭历史 Consumption 绕过 current 检查，
+  或在 Issue 时一次授权未来所有 Grant Consume/Response。
+- Egress Good：Projection Authority 返回 exact canonical bytes 与 Receipt，Model
+  Authority 对最终 Request 重算相同 HMAC/Byte/Token 后才调用 Provider。
+- Egress Bad：只审核字段名或 Artifact Ref，随后让 Agent 自行拼接另一份 messages。
 
 ### 6. 必需测试
 
@@ -285,6 +471,46 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
 - Model、External Agent、Benchmark 的事件在所有事件分支上都要拒绝请求关联不一致。
 - Benchmark 的 `CASE_LOADED`、`SCORE_CANDIDATE`、`COMPLETED` 和 Sandbox 的响应引用跨 Scope 时失败。
 - Benchmark/Sandbox 只有成功终态、已提交引用的 Receipt 能取得领域品牌。
+- U6 所有 Port 覆盖伪造 capability、Scope/Principal/Role/Epoch 换绑；strictInput
+  不能自证 Authority，错误不得泄漏其他 Tenant/Principal 是否存在。
+- `commitCurrent` 覆盖 V1 historical read-pass/write-deny、未知 Wire 元组、
+  Candidate/Rejected/Superseded、错误 Parent Hash、旧 Attempt/Lease/worker_fence；
+  Release GO 与 current-ready 也必须拒绝 V1。
+- Current Readiness 在真实 PostgreSQL 双连接覆盖 `READY vs revoke` 两种锁顺序：
+  READY 前撤权只提交唯一 STALE；READY 后撤权保持历史 READY、current=REVOKED，且
+  `run_events`/Runtime Projection 不变化。
+- Research Stop 在真实 PostgreSQL 双连接覆盖 `Stop vs Publish`、`Stop vs Frontier
+  Advance` 两种锁顺序；锁内重验 Current 不存在、Terminal 不存在、Frontier/Coverage
+  exact current 且无 STALE，绝不允许 CURRENT 与非 Ready Terminal 共存。
+- Publication 覆盖 publish/revoke 两种锁顺序及 publish 后撤权的同键重放；不得用
+  历史 Publication 返回伪 CURRENT。
+- Current Readiness 覆盖缺 Semantic/Schema/Data/Policy/Identity 任一 Frontier、
+  SchemaSnapshot 换 Revision、Frontier Hash/Version 和 Authority Epoch 漂移。
+- Release GO 使用真实 PostgreSQL 双连接覆盖 `commitGo vs revoke` 两种锁顺序；只有
+  先取得并持有锁且同事务提交 Decision 的一方可胜出，普通 readiness snapshot 不能
+  在锁外品牌化 GO；另覆盖 GO-before-READY 与
+  `GO committed -> revoke -> same-key replay`，后者不得返回历史 GO。
+- Grant 覆盖 Issue、Consume、Response 三个线性化点，以及 revoke-before-consume、
+  revoke-before-response、response-before-revoke、TTL 边界、重复调用、跨 Principal/
+  Report、Projector/Envelope/Bytes/Digest 换绑及调用方自报任意字节；所有拒绝路径
+  断言 Provider/HTTP 输出为零字节。
+- Revocation 覆盖 `operation_id == envelope.attempt_id`、数据库
+  `worker_fence=0`、同键同载荷重放和同键异载荷冲突；普通 Committer 不可使用 Service
+  Fence，Revoker 不可提交其他 Artifact 或执行 SQL。
+- Resource Port 覆盖 Reserve/Settle/Cancel/Expire、tenant/principal/run 并发、同键
+  重放/冲突、Begin/Abandoned/in-flight expiry/late usage/Cancel Leak、COMPLETED/
+  FAILED/超额三分支、Settle-vs-Cancel 和数据库时钟；每次真实 Model/SQL/Tool 调用前匹配
+  Reservation/Seq/Lease/Invocation/Attempt/Fence/Request/Bounds。
+- Invocation State 覆盖 Begin 原子创建 AUTHORIZED、STARTED 在真实 callback 前提交、
+  非法跳转、吸收 Terminal、三类 COMPLETED 零计数、UNKNOWN→ABANDONED→late
+  Terminal→SETTLED 单次入账及跨阶段 Key 冲突。
+- System Record Lifecycle 覆盖 Termination exact binding、Permit Issue/Revoke/Expire、
+  DB TTL 边界、Job 延迟仍拒绝 I/O、Result 到期原子 Tombstone、正文不可重放及
+  Expiry/Retention Owner 不可扩权。
+- AgentDataProjection/Model Provider 覆盖 canonical bytes、HMAC、Byte/Token、
+  Provider/Profile/Model/Request、Tool Allowlist 与 Input Ref 换绑；失败发生在真实
+  Provider callback 之前。Hosted/Docker/In-Memory 共享相同 Case，但 HMAC 与
+  PostgreSQL race 仍需真实 Adapter 证据。
 
 ### 7. Wrong vs Correct
 
@@ -308,4 +534,34 @@ const outcome = await handle.outcome;
 return outcome.terminal === "FAILED"
   ? failSandboxExecution(outcome, authority)
   : finalizeSandboxExecution(outcome, authority);
+```
+
+#### U6 Wrong
+
+```ts
+const grant = await readiness.consume(request);
+return provider.send(agentBuildsMessagesAfterAuthorization(grant));
+```
+
+#### U6 Correct
+
+```ts
+const candidate = buildCanonicalModelRequest(projectionCandidate);
+const reserved = expectOk(await resourcePort.reserve(resourceCapability, reserveInput));
+const begun = expectOk(await resourcePort.begin(resourceCapability, {
+  ...beginInputFrom(reserved),
+  resource_kind: "MODEL",
+  canonical_request_digest: sha256(candidate),
+}));
+const projection = expectOk(await invocationPort.authorizeAgentDataProjection(
+  projectionCapability,
+  projectionInputFrom(begun, candidate),
+));
+const invocation = expectOk(await invocationPort.invokeModel(
+  modelInvocationCapability,
+  modelInputFrom(begun, projection),
+));
+return invocation.state === "OUTCOME_UNKNOWN"
+  ? resourcePort.markAbandoned(resourceCapability, abandonedInputFrom(invocation))
+  : resourcePort.settle(resourceCapability, settleInputFrom(invocation));
 ```

@@ -1,7 +1,14 @@
-{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/prd.md", "reason": "检查实现是否满足产品范围、验收标准和未交付能力边界"}
-{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/design.md", "reason": "检查依赖方向、权威状态、隔离、恢复与双部署契约"}
-{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/implement.md", "reason": "检查实施顺序、阶段门禁、回滚点和范围控制"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "检查跨层数据流与系统影响"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "检查事务、迁移与共享 Supabase 数据完整性"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查后端质量与失败关闭行为"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "检查 UI 与 API 状态语义一致性"}
+{"file":".trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md","reason":"逐项检查 U6 compact 合同、P0 闭包、必需 Oracle、命令、上下文大小与 Release HOLD"}
+{"file":"docs/design/u6-research-planning-payload-contract.md","reason":"检查 Planning strict Schema、局部/精确 Reference、版本元组与资源上限"}
+{"file":"docs/design/u6-research-wire-payload-contract.md","reason":"检查 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Schema 与 Cross-field Refinement"}
+{"file":"docs/design/u6-research-platform-contract.md","reason":"检查 U6 平台事务 strict Wire、固定锁序、幂等重验、状态真值表与窄数据库函数"}
+{"file":"docs/design/u6-research-resource-invocation-contract.md","reason":"检查 Resource/Invocation/System Record 的预算占位、Fence、结果持久化、迟到用量与零旁路 I/O"}
+{"file":"docs/design/u6-invocation-state-contract.md","reason":"检查 Invocation 每条迁移的唯一 Owner、Start-before-I/O、吸收终态、UNKNOWN late CAS、幂等与崩溃恢复"}
+{"file":"docs/design/u6-system-record-lifecycle-contract.md","reason":"检查 Termination、Permit ACTIVE/REVOKED/EXPIRED、Blob AVAILABLE/TOMBSTONED 的唯一 Owner、DB time、幂等与不可复活"}
+{"file":"docs/design/u6-controlled-fixture-contract.md","reason":"逐项执行两查询真值、14 Mutation、Partial 配对、Response/GO/Frontier/Claim 篡改 Oracle"}
+{"file":"docs/research/u6-rq092-contract-evidence.md","reason":"核对实现没有遗漏 RQ092 核心义务，也没有把 Synthetic Contract Proof 升级为产品证据"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"检查每个 Public Terminal 的唯一 Owner、Reason Code 分层和非 Partial fallback"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查失败关闭、测试断言和证据等级"}
+{"file":"docs/runbooks/durable-run-runtime.md","reason":"检查 post-READY 撤权不改写历史终态、不追加 lifecycle Event，Grant 响应遵守线性化顺序"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"检查 U6 改动跨层闭合且 App 不拥有领域真值"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查 UI/API 不把历史 READY、当前 REVOKED 或 HOLD 压平为成功"}

@@ -11,6 +11,19 @@
 本轮研究依据：
 
 - `/Users/lienli/Documents/work/深度调研/research/data-agent-system-design/answers/RQ080-如何把空白重置仓库规划为以-Mastra-为-Agent-内核-以-L2-多步研究分析师和强-Text2SQL-为首版纵向切片-以内建-Benchmark-驱动开发并兼容托管与.md`
+- `RQ092` Reader Answer SHA-256
+  `8d6b6b22f4edaa53579b7a5f4710421f96967052a0bf7078ad4fb68a65b9df3b`，
+  FullAnswerRecertification 为
+  `RQ092-8d6b6b22f4ed-4a1ab76b73fb-recertification.md`，`decision=closed`。
+- 仓库内冻结投影：
+  `docs/design/u6-research-authority-contract.md`、
+  `docs/design/u6-research-planning-payload-contract.md` 与
+  `docs/design/u6-research-wire-payload-contract.md`；平台事务、资源调用与受控 Oracle
+  分别冻结在 `u6-research-platform-contract.md`、
+  `u6-research-resource-invocation-contract.md`、
+  `u6-invocation-state-contract.md`、
+  `u6-system-record-lifecycle-contract.md` 与
+  `u6-controlled-fixture-contract.md`。
 
 ## 2. 架构目标
 
@@ -162,20 +175,26 @@ flowchart LR
 
 ```text
 QuestionFrame
-→ ResearchBrief
-→ HypothesisSet
-→ EvidencePlan
-→ QueryContract
+→ ResearchBrief@2
+→ HypothesisSet@2
+→ EvidencePlan@2（逻辑 ProofObligationSet）
+→ QueryContract + ObligationExecutionDecision
 → GroundingPackage
 → SemanticQuery
 → LogicalPlan
 → SqlArtifact
 → ValidationReceipt
 → ExecutionReceipt
-→ QueryEvidence
-→ AtomicClaim / EvidenceRelation
-→ AnalysisReport
-→ ReportReadyCertificate
+→ QueryEvidence@2
+→ AtomicClaim@2 / EvidenceRelation / EvidenceCheckReceipt
+→ SupportDecision / HypothesisAssessment
+→ CoverageState / ResearchStopDecision
+→ ReportManifest / AnalysisReport@2 / ReportProjectionReceipt
+→ 4 × EvidenceGateReceipt
+→ ReportReadyCertificate@2
+→ consumeCurrentReady
+→ READY / ReportReadGrant
+→ 可选 ReadinessRevocationReceipt
 ```
 
 ### 6.1 ArtifactEnvelope
@@ -329,18 +348,41 @@ Repair 只能修改实现细节，不能改变 `QueryContract` 中的 Metric、F
 
 研究循环以 Proof Obligation 驱动：
 
-1. 编译 `ResearchBrief`。
-2. 建立多个可区分的 Hypothesis。
-3. 为每个 Hypothesis 建立 Evidence Plan。
-4. 调用 Text2SQL 或其他授权 Source Tool。
-5. 将结果转为 Provenance-Bound Evidence。
-6. 生成 Atomic Claim。
-7. 校验 Support、Conflict、Freshness、Source Independence。
-8. 基于 Coverage、Information Gain、Failure 与 Budget 决定继续或停止。
-9. 只从已提交 Claim 投影 `AnalysisReport`。
-10. 确定性 Gate 签发或拒绝 `ReportReadyCertificate`。
+1. 编译 `ResearchBrief@2`；首版只允许 `QUERY + DETERMINISTIC`。
+2. 建立有界、可区分的 `HypothesisSet@2`，并披露候选宇宙。
+3. 用 `EvidencePlan@2` 物化 Proof Obligation、依赖和 Observation Contract。
+4. 在 Sandbox 前提交 `ObligationExecutionDecision`，证明 QueryContract 没有偷换
+   metric、window、join、predicate、cohort、NULL 或授权 Scope。
+5. 调用 Text2SQL/Sandbox，将已品牌化结果转为 `QueryEvidence@2`；Q2 必须精确引用
+   Q1 Evidence Revision。
+6. 生成 `AtomicClaim@2` 与 Evidence Relation；Claim 不自带支持态。
+7. 从确定性 Check 派生 `SupportDecision` 与 `HypothesisAssessment`。
+8. 按 `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 重算 Coverage。
+9. 按 Hard Gate、Coverage、合法 Query、外部等待与硬预算顺序提交六分支 Stop
+   Decision；禁止无条件 `STOP_PARTIAL`。
+10. 只从已提交 Claim/Assessment/Conflict 投影 `ReportManifest`、
+    `AnalysisReport@2` 与 Projection Receipt。
+11. Support、Conflict、Freshness、Source Independence 四张 Gate 分别重算并提交。
+12. Readiness Authority 签发 `ReportReadyCertificate@2`。
+13. PostgreSQL `consumeCurrentReady` 在同一事务中核验 Certificate、Version Frontier
+    与 Revocation Head，随后才提交公共 `READY` 或单次 `ReportReadGrant`。
 
-Writer 或 Supervisor 不能绕过 Gate 把报告标为 Ready。
+Writer、Supervisor、普通 Schema Parse、Mastra Checkpoint、Redis Cache 或历史 V1
+Certificate 都不能绕过上述链路。`SourceEvidence` 与 Benchmark Adapter 属于后续
+独立单元，不在 U6 首版中预建。
+
+### 9.1 研究终态 Owner
+
+| 分支 | Owner |
+| --- | --- |
+| `READY` | Research Readiness Authority |
+| `PARTIAL / NEEDS_MORE_RESEARCH / INCONCLUSIVE` | Research Stop Authority |
+| `STALE` | Revocation Authority |
+| `NEEDS_CLARIFICATION` | Brief/Semantic Authority |
+| `POLICY_BLOCKED` | Policy Authority |
+| `FAILED / CANCELLED / REPLAY_UNAVAILABLE` | Runtime/Sandbox Authority |
+
+完整冻结合同见 `docs/design/u6-research-authority-contract.md`。
 
 ## 10. Benchmark 架构
 
@@ -376,8 +418,12 @@ Writer 或 Supervisor 不能绕过 Gate 把报告标为 Ready。
 
 - PostgreSQL 合成数据包含订单、退款、促销、商品、区域与履约事件。
 - 问题为“2025 年第一季度华南区净收入同比为什么下降？哪些竞争解释得到数据支持，哪些仍不能确认？”
-- 正向流程至少需要两次互相依赖的查询、一个被反证 Hypothesis、一个被支持 Hypothesis。
-- 失败变体覆盖收入口径歧义、Join Fan-Out、迟到退款、无权限字段、Prompt Injection、Evidence 冲突和 Budget 耗尽。
+- U6-owned protocol fixture 固定两次互相依赖的查询、一个 `REFUTED` 与一个
+  `SURVIVED` Hypothesis，以及字面期望行、阈值、14 个 Mutation、Crash 与
+  Revocation Oracle；只证明 Research Authority 协议。
+- U7 可以复用业务域与数据生成器，但必须拥有独立 Benchmark Manifest、
+  Answer/Oracle、Demo/Holdout 身份与评分；不得用 U6 期望行或阈值冒充 Benchmark
+  真值。
 - L2 只允许贡献分解和证据支持，不得声称因果识别。
 
 ### 10.5 分析工作台
@@ -461,7 +507,9 @@ Repository 只能通过 Registry 白名单选择私有 Schema，并在事务内�
 | Worker 崩溃 | 新 Worker 获取 Fence，从 Snapshot/Artifact 恢复 | Lease 与 Replay Hash |
 | 迟到 Worker 提交 | Active Revision/Fence 拒绝 | Stale Commit Receipt |
 | SQL 执行失败 | 技术重试或有界 Repair | Validation/Execution Receipt |
-| Evidence 不足 | `PARTIAL` 或 `NEEDS_MORE_RESEARCH` | Coverage Decision |
+| 硬预算封顶且存在可披露受支持子集 | `PARTIAL` | ResearchStopDecision |
+| 存在合法路径但等待新预算/权限 | `NEEDS_MORE_RESEARCH` | ResearchStopDecision |
+| 无 admissible distinguishing test | `INCONCLUSIVE` | ResearchStopDecision |
 | Policy/Isolation 不确定 | `POLICY_BLOCKED` | Policy/Isolation Receipt |
 | Hosted 证据缺失 | Release `HOLD` | Missing-Evidence Manifest |
 
@@ -512,5 +560,7 @@ Repository 只能通过 Registry 白名单选择私有 Schema，并在事务内�
 - L3–L5 不存在可执行 Route 或成功状态。
 - Hosted 与 Docker 使用相同公开契约。
 - Benchmark Demo、Tuning、Holdout 不共享 Registry。
-- `retail-revenue-investigation-v1` 同时覆盖 Text2SQL、L2 Research、Eval、UI 与部署 Smoke，并保持非因果边界。
+- `retail-revenue-investigation-v1` 可以共享业务域与生成器；U6 protocol fixture 与
+  U7 Benchmark Manifest/Answer/Oracle 分开，UI/部署只消费各自已提交 Artifact，所有
+  路径保持非因果边界。
 - 所有主要失败都能映射为类型化终态和恢复策略。

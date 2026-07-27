@@ -262,20 +262,26 @@ flowchart TB
 
 ```text
 QuestionFrame
-→ ResearchBrief
-→ HypothesisSet
-→ EvidencePlan
-→ QueryContract
+→ ResearchBrief@2
+→ HypothesisSet@2
+→ EvidencePlan@2（逻辑 ProofObligationSet）
+→ QueryContract + ObligationExecutionDecision
 → GroundingPackage
 → SemanticQuery
 → LogicalPlan
 → SqlArtifact
 → ValidationReceipt
 → ExecutionReceipt
-→ QueryEvidence
-→ AtomicClaim / EvidenceRelation
-→ AnalysisReport
-→ ReportReadyCertificate
+→ QueryEvidence@2
+→ AtomicClaim@2 / EvidenceRelation / EvidenceCheckReceipt
+→ SupportDecision / HypothesisAssessment
+→ CoverageState / ResearchStopDecision
+→ ReportManifest / AnalysisReport@2 / ReportProjectionReceipt
+→ 4 × EvidenceGateReceipt
+→ ReportReadyCertificate@2
+→ consumeCurrentReady
+→ 历史 RunTerminal=READY + CurrentReadiness=CURRENT / ReportReadGrant
+→ 可选 ReadinessRevocationReceipt + CurrentReadiness=REVOKED
 ```
 
 每个 Artifact 使用 `ArtifactEnvelope`，至少包含 `app_id`、`tenant_id`、`run_id`、`revision`、`attempt_id`、`producer`、`input_refs`、Policy/Semantic/Schema/Model Version、Content Hash、Status 与 Timestamp。语义变化必须产生新 Revision；迟到结果可以归档，但不能覆盖 Active Revision。
@@ -311,6 +317,12 @@ compose.yaml
 
 公开 Run 终态为 `READY`、`PARTIAL`、`NEEDS_CLARIFICATION`、`NEEDS_MORE_RESEARCH`、`INCONCLUSIVE`、`POLICY_BLOCKED`、`FAILED`、`CANCELLED`、`STALE`、`REPLAY_UNAVAILABLE`。Release Decision 独立为 `GO`、`HOLD`、`NO_GO`、`ROLLBACK`；一次 Run 成功不等于 Release `GO`。
 
+历史 `RunTerminal=READY` 不可变；当前报告授权由独立
+`CurrentReadiness=CURRENT | REVOKED` 表达。READY 提交前撤权胜出可以得到
+`STALE` Terminal；READY 提交后只推进 CurrentReadiness 和 Revocation Receipt，不
+改写历史 READY，也不在 Durable Runtime 终态后追加 lifecycle Event。UI/API 必须同时
+展示历史结论与当前撤权状态。
+
 Command Acceptance、Idempotency Record、Initial Event 与 Outbox Entry 共用数据库事务。Artifact Commit 在事务内比较 Active Revision 与 Worker Fence，持久提交后才确认 Queue。错误跨层传播时必须携带类型化 Reason Code 与责任 Artifact：
 
 - Provider Failure 可在同一 Task Contract 内重试。
@@ -318,7 +330,10 @@ Command Acceptance、Idempotency Record、Initial Event 与 Outbox Entry 共用�
 - Policy 或 Isolation 不确定时失败关闭。
 - Resource Failure 取消执行。
 - Result Oracle 失败才允许进入有界 SQL Repair。
-- Evidence Gap 进入 `PARTIAL` 或 `NEEDS_MORE_RESEARCH`。
+- Evidence Gap 只有在“硬预算封顶、存在可披露受支持子集且没有预算内可执行的合法
+  Query”时进入 `PARTIAL`；存在
+  明确合法路径但等待新预算/权限时进入 `NEEDS_MORE_RESEARCH`；无 admissible
+  distinguishing test 时进入 `INCONCLUSIVE`。
 - Version Tuple 过期会让 Cache 与 Release Evidence 失效。
 
 ### 共享 Supabase 隔离契约（Shared Supabase Isolation Contract）
@@ -355,7 +370,13 @@ Command Acceptance、Idempotency Record、Initial Event 与 Outbox Entry 共用�
 - **L2 边界：** 允许报告贡献分解、相关变化、证据支持和反证；禁止使用“导致”“因果效应”等 L5 结论。
 - **正向路径：** 至少需要两次互相依赖的查询、一个竞争性 Hypothesis 被反证、一个被支持，并生成完整 `ReportReadyCertificate`。
 - **失败变体：** 收入口径歧义、Join Fan-Out、迟到退款导致 Snapshot 过期、无权限字段、诱导性 Schema Comment、Evidence 冲突与 Budget 耗尽。
-- **评测用途：** 同一 Fixture 同时驱动 Text2SQL Gate、L2 Research、可控归因 Adapter、Browser Demo 与 Docker/Hosted Smoke；Demo Copy 必须注明“合成体验样例”。
+- **U6 协议用途：** U6-owned Fixture 固定 Q1/Q2 字面期望行、竞争假设阈值、14 个
+  Mutation 与 Crash/Revocation Oracle，只证明 Research Authority 协议可判定。
+- **U7 评测用途：** 可以复用业务域和数据生成器，但必须创建独立的 Benchmark
+  Manifest、Answer/Oracle、Demo 资格和 Holdout 身份；不得把 U6 的期望行或阈值冒充
+  InsightBench/DAB/RCAEval/自建归因题集真值或质量分。
+- **U8/U9 用途：** UI 可以展示 U6 已提交的合成 Artifact Trace，部署 Smoke 可以复用
+  同业务域；Demo Copy 必须注明“合成体验样例”，且两者都不能替代 U7 Release Evidence。
 
 ### 实施顺序（Sequencing）
 
@@ -447,6 +468,11 @@ flowchart LR
 ### 来源（Sources）
 
 - RQ080：`data-agent-system-design` 的目标架构、固定源码审计、Benchmark、部署与共享 Supabase 综合结论。
+- RQ092：U6 Query-only Research Loop、Proof/Stop/Projection/Readiness/Revocation
+  Authority、current-ready、Controlled/Mutation/Crash Oracle 与 U6/U7 边界；绑定
+  Reader Answer SHA-256
+  `8d6b6b22f4edaa53579b7a5f4710421f96967052a0bf7078ad4fb68a65b9df3b` 和
+  `RQ092-8d6b6b22f4ed-4a1ab76b73fb-recertification.md`。
 - `mastra@57b032d:packages/core/src/agent/subagent.ts` 与 `packages/core/src/workflows/utils.ts`：Sub-Agent 与 Suspended Snapshot 边界。
 - `text2sql@c36aca8:apps/backend/src/modules/conversation/runtime/langgraph/text2sql-v2-langgraph.graph.ts`：旧固定 Graph 与可迁移 Execution Receipt。
 - `text2sql@c36aca8:apps/backend/src/modules/conversation/runtime/evaluation/text2sql-accuracy-evaluation.service.ts`：Version Tuple、Paired Evidence、Safety Counter 和 Release Decision。
@@ -695,29 +721,109 @@ flowchart LR
 
 ### U6. 实现 L2 研究循环与 ReportReady 权威
 
-- **目标：** 把已验证 Query/Source Evidence 转换为多步、证据受限的分析报告。
+- **设计冻结（2026-07-27）：** RQ092 与
+  `docs/design/u6-research-authority-contract.md`、
+  `docs/design/u6-research-planning-payload-contract.md`、
+  `docs/design/u6-research-wire-payload-contract.md`、
+  `docs/design/u6-research-platform-contract.md`、
+  `docs/design/u6-research-resource-invocation-contract.md`、
+  `docs/design/u6-invocation-state-contract.md`、
+  `docs/design/u6-system-record-lifecycle-contract.md` 与
+  `docs/design/u6-controlled-fixture-contract.md` 已冻结 U6 的 V2 Artifact、Wire
+  Schema、双 Hash、Authority、终态 Owner、current-ready、撤权、资源和 U6/U7 边界；
+  `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md` 是低于
+  Trellis 32 KiB 上限的执行闭包，`docs/research/u6-rq092-contract-evidence.md` 是
+  repo-relative 研究证据快照。
+  该设计证明不等于产品实现；U6 当前仍未交付，Release 保持 `HOLD`。
+- **目标：** 把已验证 `QueryEvidence` 转换为多步、证据受限的分析报告。U6 成功路径
+  只允许 `QUERY + DETERMINISTIC`；`SourceEvidence`、Source Fetch 与 Benchmark
+  Adapter 不在本单元实现。
 - **对应需求：** R2、R3、R4；F1、F2；AE1、AE11、AE12。
 - **依赖：** U3、U4、U5。
 - **文件：**
-  - `packages/research/src/contracts/`
-  - `packages/research/src/planning/`
-  - `packages/research/src/hypotheses/`
-  - `packages/research/src/evidence/`
-  - `packages/research/src/claims/`
-  - `packages/research/src/coverage/`
-  - `packages/research/src/reporting/`
-  - `packages/research/src/release/`
+  - `packages/contracts/src/artifacts/`
+  - `packages/contracts/src/runs/`
+  - `packages/research/src/planning.ts`
+  - `packages/research/src/evidence.ts`
+  - `packages/research/src/coverage.ts`
+  - `packages/research/src/reporting.ts`
+  - `packages/research/src/readiness.ts`
+  - `packages/research/src/server.ts`
   - `packages/research/test/`
+  - `packages/platform/src/research/`
+  - `infra/supabase/apps/data-agent/migrations/`
   - `apps/worker/src/workflows/l2-research.workflow.ts`
-- **方法：** 编译 `ResearchBrief` 与 Proof Obligation；保留竞争性 Hypothesis；把 SQL Result 转成 `QueryEvidence`；验证 Support、Conflict、Freshness、Source Independence；用 Coverage/Budget Decision 可重放地停止；Prose 只从已提交 Claim 投影。Release Gate 独占 `ReportReadyCertificate` 与非 Ready 终态。
+- **方法：**
+  - 将 `ResearchBrief/HypothesisSet/EvidencePlan/QueryEvidence/AtomicClaim/
+    AnalysisReport/ReportReadyCertificate` 升级为 V2；V1 只允许显式
+    `readHistorical*`，所有 Writer、Authority、current-ready、Grant 与 Release `GO`
+    路径固定拒绝。
+  - 在 Sandbox 前提交 `ObligationExecutionDecision`，逐项重算 metric/formula、
+    window/timezone、grain/grouping、join、predicate/cohort、NULL 与授权 Scope；
+    SQL 成功不能覆盖语义不一致。
+  - 从权威 Observation 与预注册阈值派生 `SupportDecision` 和
+    `HypothesisAssessment`；`AtomicClaim@2` 不再自带 `support_state`。
+  - 从报告章节、Critical Success Criterion 与主要数字/比较方向重算 material Claim；
+    Claim、SupportDecision、QueryEvidence 与 Certificate 必须绑定相同精确
+    `schema_snapshot_ref`，Schema Frontier 漂移使旧 Support `STALE`。
+  - 用 `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 重算每项 Coverage；未解决
+    material conflict 必须阻断 `SATISFIED/STOP_READY`。
+  - Stop 固定为六分支；`STOP_PARTIAL` 只允许 Authority 重算得到
+    `hard_budget_cap=true`、`deliverable_supported_subset=true`、
+    `budget_executable_query_count=0`，不存在无条件 fallback。
+  - 从 `ReportManifest` 确定性投影中文报告，并分别提交 Support、Conflict、
+    Freshness、Source Independence 四张 Gate Receipt。
+  - Readiness Authority 签发 Certificate 后，必须由 PostgreSQL
+    `consumeCurrentReady` 在同一事务核验 exact Certificate、Version Frontier 与
+    Revocation Head，才能提交历史 `READY`、置 `CurrentReadiness=CURRENT` 或签发单次
+    `ReportReadGrant`。通用 `authorizeRunTerminal` 永久拒绝
+    `READY/PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE/STALE`；`READY/STALE` 返回
+    `CURRENT_READY_CONSUMPTION_REQUIRED`，三个停止终态返回
+    `RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`。
+  - Grant Issue 只创建待消费能力；Grant Consume CAS 再核验 CurrentReadiness、
+    Frontier 与 Revocation Head，并只授权服务端物化。Grant Response CAS 第三次重验
+    current 状态和 exact canonical bytes/Digest，提交为 `RESPONDED` 后才能发送首个
+    响应字节。READY 后撤权保留历史 READY、置 `REVOKED` 并阻断所有新读取/下载。
+  - Release `GO` 在决策事务中 current-V2 revalidate Certificate、完整 material
+    Claim/Schema Frontier、CurrentReadiness、Revocation Head 与同一 Certificate 的
+    `READY/RUN_READY` Domain Terminal；每次同键重放仍先重验 current，GO 后撤权不能
+    重放出历史 GO。
+  - `PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE` 只能由 PostgreSQL
+    `commitResearchStopTerminal` 消费 exact Strict `ResearchStopDecision` 后按固定
+    Public Terminal/Reason Code 映射提交；
+    `STALE` 由 Revocation Authority 提交；Clarification、Policy、Runtime、Cancel 与
+    Replay 继续由各自既有 Owner 提交。
 - **测试场景：**
   - `packages/research/test/research-brief.spec.ts`：拒绝缺少 Scope、Evidence Policy、Success Criteria 或预算冲突。
   - `packages/research/test/competing-hypotheses.spec.ts`：要求能区分假设的 Evidence，而非重复改写。
+  - `packages/research/test/obligation-execution.spec.ts`：成功但 metric/window/join/
+    predicate/cohort/null 漂移的 SQL 失败关闭。
   - `packages/research/test/claim-evidence.spec.ts`：拒绝只相关但不支持的 Citation、隐藏 Conflict、过期 Evidence 与跨 Revision Reference。
-  - `packages/research/test/coverage-stop.spec.ts`：从 Obligation Coverage、Information Gain、Failure、Budget 重放停止决策。
-  - `packages/research/test/report-ready.spec.ts`：覆盖全部 Ready/Non-Ready Terminal，证明 Writer/Supervisor 无法绕过 Gate。
-  - `tests/integration/research/text2sql-evidence.spec.ts`：`QueryContract` 经 `QueryEvidence` 支持 Atomic Claim；Data/Semantic Version 变化使 Claim 失效。
-- **验证：** Controlled L2 Fixture 到达 `READY`；Mutation Fixture 到达正确非 Ready 终态；删除或篡改关键 Artifact 会使 Certificate 失效。
+  - `packages/research/test/coverage-stop.spec.ts`：Coverage 五态与 Stop 六分支从原始输入
+    重算；每个 Partial Mutation 都有预算可执行的配对反例，后者只能
+    `CONTINUE/REPLAN`，未解决冲突和预算 false-complete 不能 Ready。
+  - `packages/research/test/report-ready.spec.ts`：证明 Writer/Supervisor、普通 Parse、
+    V1 Artifact 与篡改 Hash 无法绕过 Gate；通用
+    `authorizeRunTerminal(READY)` 固定返回 `CURRENT_READY_CONSUMPTION_REQUIRED`。
+  - `tests/integration/research/text2sql-evidence.spec.ts`：`QueryContract` 经
+    `QueryEvidence` 支持 Atomic Claim；Data/Semantic/Schema Version 变化使 material
+    Claim 与旧 Support 失效。
+  - `tests/integration/research/postgres-crash-recovery.spec.ts`：SQL Receipt 提交后崩溃，
+    新 Attempt 不重复执行 SQL且旧 Fence 不能提交。
+  - `tests/integration/research/current-ready-race.spec.ts`：覆盖 READY 前撤权、READY 后
+    撤权、Grant Issue 后 Consume 前撤权、Consume 后/Response 前撤权与 Response
+    CAS 先胜出；前两类不得混写历史 RunTerminal/CurrentReadiness，Response CAS 前
+    被撤权的响应必须零字节。
+  - `tests/integration/research/release-current-ready.spec.ts`：GO 拒绝 V1、REVOKED、
+    Schema Frontier 漂移和只完成历史 Certificate 校验的输入。
+  - `tests/integration/research/resource-admission.spec.ts`：Tenant Burst、Provider Cost、
+    SQL Result Amplification 与 Cancel Reservation Leak 全部失败关闭。
+- **验证：** U6-owned Controlled Fixture 经真实 Research Kernel、PostgreSQL
+  Authority 与 Worker Workflow 到达 `READY`；14 个 Mutation 及其预算可执行配对反例
+  得到预注册 Owner、终态与 Reason Code；Crash-Recovery SQL 总执行次数保持 2；
+  historical READY/CurrentReadiness、Grant 三阶段、current-ready race、V1
+  read-deny、Release current-V2、资源与外发 Oracle 全通过。全局 Release 仍为
+  `HOLD`。
 
 ### U7. 建立 Benchmark 平台与 Suite Adapter
 
@@ -735,7 +841,12 @@ flowchart LR
   - `benchmarks/manifests/`
   - `benchmarks/demo-cases/`
   - `services/sandbox/src/data_agent_sandbox/evals/`
-- **方法：** 落地 KTD9；固定 Suite Source/Dataset Version；统一 Transport，分派到各自 Oracle；Deterministic/Judge Verdict 分开；支持 Paired Run；严格分离 Holdout/Demo Registry。RCAEval 首版提供真实 Adapter Contract 与 Smoke Case，但 Full Release Gate 延后。
+- **方法：** 落地 KTD9；固定 Suite Source/Dataset Version；统一 Transport，分派到各自
+  Oracle；Deterministic/Judge Verdict 分开；支持 Paired Run；严格分离
+  Holdout/Demo Registry。U7 独占 Benchmark Fixture、Manifest、Answer/Oracle、评分与
+  调优资产；可以复用 U6 业务域/生成器，但不能复用 U6 protocol fixture 的字面期望行
+  或阈值冒充 Benchmark 真值。RCAEval 首版提供真实 Adapter Contract 与 Smoke Case，
+  但 Full Release Gate 延后。
 - **测试场景：**
   - `packages/evals/test/adapter-conformance.spec.ts`：每个 Suite 导入一个 Case，标准化为 `EvalCase`，且不丢失 Suite Field/Oracle Type。
   - `packages/evals/test/oracle-separation.spec.ts`：InsightBench Judge Score 不能满足 DAB Result Equivalence 或 RCAEval Root-Cause Ranking。
@@ -743,7 +854,10 @@ flowchart LR
   - `packages/evals/test/holdout-contamination.spec.ts`：Demo/Tuning Asset 与受保护 Holdout Digest 重合时失败。
   - `packages/evals/test/bundle-integrity.spec.ts`：拒绝 Digest 变化、Path Traversal、Executable Unpack Hook、未知 License 与未审核 Demo Eligibility。
   - `packages/evals/test/release-decision.spec.ts`：缺少签名代表性 Pair 时保持 `HOLD`；Safety Zero-Tolerance 先于 Aggregate Metric。
-  - `packages/evals/test/reference-demo-manifest.spec.ts`：固定 `retail-revenue-investigation-v1` 的 Dataset、Semantic、Question、Mutation、Budget、License 与 L2 非因果边界。
+  - `packages/evals/test/reference-demo-manifest.spec.ts`：固定 U7-owned
+    `retail-revenue-investigation-v1` Benchmark Manifest 的 Dataset、Semantic、
+    Question、Answer/Oracle、Mutation、Budget、License 与 L2 非因果边界，并证明它不
+    读取 U6 protocol fixture 的期望行作为质量分。
   - `tests/integration/evals/smoke-suites.spec.ts`：运行固定 DAB、InsightBench、可控归因 Smoke 与 RCAEval Adapter Smoke。
 - **验证：** 四个 Adapter 通过 Conformance；ScoreCard 按 Suite 分离；Paired Output 包含 Cost、Trace、Failure、Interval 与 Release Decision。
 
@@ -762,7 +876,7 @@ flowchart LR
   - `apps/web/src/server/`
   - `apps/web/tests/unit/`
   - `tests/e2e/`
-- **方法：** 工作台围绕 Typed Run Projection，而不是 Chat Message 构建。信息层级固定为：Run Header/权威状态与当前动作 → Question/Scope/Clarification → Report/Claim–Evidence → Hypothesis/SQL/Receipt Trace → Eval Comparison；详情使用渐进展开，不能用一组同权 Dashboard Card 淹没结论。用户可提交问题或 Demo、回答澄清、检查 Hypothesis/SQL/Receipt/Claim–Evidence、Cancel/Resume/Replay、比较 Eval Run；L3–L5 始终显示未交付。每个交互必须定义 Loading、Empty、Error、Partial、Stale、Permission-Denied 状态，并支持键盘、Screen Reader、Focus Recovery、窄屏与触屏。
+- **方法：** 工作台围绕 Typed Run Projection，而不是 Chat Message 构建。信息层级固定为：Run Header/权威状态与当前动作 → Question/Scope/Clarification → Report/Claim–Evidence → Hypothesis/SQL/Receipt Trace → Eval Comparison；详情使用渐进展开，不能用一组同权 Dashboard Card 淹没结论。用户可提交问题或 Demo、回答澄清、检查 Hypothesis/SQL/Receipt/Claim–Evidence、Cancel/Resume/Replay、比较 Eval Run；L3–L5 始终显示未交付。Run Header 必须并列呈现不可变 Historical Terminal 与 CurrentReadiness；历史 READY、当前 REVOKED 时显示撤权原因并禁用读取、展示、下载与 Release 动作，不能压平为成功。每个交互必须定义 Loading、Empty、Error、Partial、Stale、Permission-Denied 状态，并支持键盘、Screen Reader、Focus Recovery、窄屏与触屏。
 - **测试场景：**
   - `apps/web/tests/unit/run-state-rendering.spec.tsx`：渲染全部 Public Terminal，绝不把 `PARTIAL`、`HOLD`、`STALE` 映射为成功。
   - `apps/web/tests/unit/interaction-states.spec.tsx`：Question、Clarification、Artifact、Evidence、Eval 分别覆盖 Loading、Empty、Error、Partial、Stale 与 Permission-Denied。
@@ -855,7 +969,19 @@ U3、U4、U6、U8 还必须执行 Agent 行为评测：验证 Agent/Tool 能力�
 - U3：七类 Provider Capability Routing/Conformance、Typed Team Handoff、Tool Policy、Fallback 与 External Agent Boundary 通过。
 - U4：Duplicate Delivery、Crash/Resume、Cancel Race、Stale Worker 与 Event Replay 确定性通过。
 - U5：七道 Text2SQL Gate 都有正例与失败关闭 Fixture；Legacy Characterization 差异获批准。
-- U6：Controlled L2 Case 到达 `READY`；Mutation Case 到达正确非 Ready 终态；Certificate Tampering 被发现。
+- U6：满足 `docs/design/u6-research-authority-contract.md`、
+  `docs/design/u6-research-planning-payload-contract.md`、
+  `docs/design/u6-research-wire-payload-contract.md`、
+  `docs/design/u6-research-platform-contract.md`、
+  `docs/design/u6-research-resource-invocation-contract.md`、
+  `docs/design/u6-invocation-state-contract.md`、
+  `docs/design/u6-system-record-lifecycle-contract.md`、
+  `docs/design/u6-controlled-fixture-contract.md` 与
+  `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md`；
+  U6-owned Controlled Case 经真实 Research/PostgreSQL/Worker 到达 `READY`；14 个
+  Mutation及其预算可执行配对反例、Coverage/Stop、material Claim/Schema Frontier、
+  Crash-Recovery、Resource、V1 Read-Deny、旧 READY API 退役、current-ready/Grant
+  Revocation Race 与 Release current-V2 Oracle 全通过；Release 仍为 `HOLD`。
 - U7：四个 Adapter 通过 Conformance；Smoke 可重放；Holdout 隔离；Release Evidence 如实。
 - U8：Browser Test 覆盖完整 Analyst Workflow、所有交互状态、键盘/Screen Reader 与窄屏；UI 不夸大 `PARTIAL`、`HOLD`、`STALE` 或 Deferred Capability。
 - U9：Sandbox、Clean Docker Flow、Hosted Contract Path、Recovery Rehearsal 与 Release Manifest 在声明的 Evidence Boundary 内通过。

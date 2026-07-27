@@ -1,6 +1,14 @@
-{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/prd.md", "reason": "首版产品范围、R1-R8、验收标准与用户确认的纵向切片决策"}
-{"file": ".trellis/tasks/07-25-data-agent-reset-refactor/design.md", "reason": "架构边界、Artifact 权威链、共享 Supabase、Benchmark 与部署设计"}
-{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "实现跨 API、运行时、领域、持久化、UI 与部署层的完整数据流"}
-{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "数据库 Schema、事务、Migration、RLS 与恢复实现规范"}
-{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "后端质量、失败语义与测试要求"}
-{"file": ".trellis/spec/frontend/type-safety.md", "reason": "前端 Run Projection 与 Artifact 类型安全要求"}
+{"file":".trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md","reason":"U6 实现与检查的首要 compact 合同；完整承载双状态、旧 READY/GO/V1 旁路退役、Partial 前提、Schema Frontier、迁移路径、测试与 HOLD 门禁"}
+{"file":"docs/design/u6-research-planning-payload-contract.md","reason":"U6 Planning Wire primitive、ResearchBrief/HypothesisSet/EvidencePlan strict Payload 与精确 Reference 合同"}
+{"file":"docs/design/u6-research-wire-payload-contract.md","reason":"U6 下游 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Payload 与 Wire Registry 合同"}
+{"file":"docs/design/u6-research-platform-contract.md","reason":"U6 Frontier、Research Terminal、current-ready、Grant、Revocation、GO 的 strict 平台事务、锁序与状态真值表"}
+{"file":"docs/design/u6-research-resource-invocation-contract.md","reason":"U6 Resource Reservation、Model/SQL/Tool Invocation、System Record、用量与外发失败关闭合同"}
+{"file":"docs/design/u6-invocation-state-contract.md","reason":"U6 Invocation 的 AUTHORIZED/STARTED/OUTCOME_UNKNOWN/Terminal 状态图、Owner、CAS、幂等与 Crash Recovery 唯一合同"}
+{"file":"docs/design/u6-system-record-lifecycle-contract.md","reason":"U6 Adapter Termination、Tool Permit expiry/revoke 与 Result Blob tombstone 的 strict Command、Owner、状态、幂等和恢复唯一合同"}
+{"file":"docs/design/u6-controlled-fixture-contract.md","reason":"U6 受控两查询真值、14 Mutation、Partial 配对、竞态与篡改 Oracle；只证明 Synthetic Protocol"}
+{"file":"docs/research/u6-rq092-contract-evidence.md","reason":"RQ092 的 repo-relative 内容寻址证据快照；保留三个源 Hash、核心义务与证据边界，不依赖用户机器绝对路径"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"公开终态 Owner、公共/领域 Reason Code 分层、禁止 STOP_FAILED/STOP_STALE 与兜底 Partial"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"后端失败关闭、测试质量与真实证据要求"}
+{"file":"docs/runbooks/durable-run-runtime.md","reason":"Durable Runtime 不可变终态与 U6 Historical RunTerminal/CurrentReadiness 双状态、Grant 三阶段运行边界"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"跨 Contract、Research、Platform、Worker、API/UI 与持久化层的完整数据流"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"API/UI 必须如实投影 Historical Terminal、CurrentReadiness 与 Artifact 类型"}

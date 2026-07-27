@@ -189,6 +189,67 @@ U4 继续复用 Transactional Outbox 作为首版 PostgreSQL Run Queue，不引�
 详细状态机、恢复流程和诊断查询见
 `docs/runbooks/durable-run-runtime.md`。
 
+## U6 PostgreSQL 合同的唯一来源
+
+U6 不在本通用指南复制第二套表、状态机、Wire 或函数白名单。实施与 Migration 的唯一
+权威来源固定为：
+
+- `docs/design/u6-research-platform-contract.md`：Frontier、Relation Key、Research
+  Terminal、Current Readiness、Publication/Consumption、Revocation、Grant、GO、锁序、
+  strict Record/DB CHECK、错误码与平台窄函数；
+- `docs/design/u6-research-resource-invocation-contract.md`：Reservation/Seq/Lease、
+  Model/SQL/Tool Invocation Wire、System Record/Result、Retention Blob、用量结算、
+  Owner Capability 与资源窄函数；
+- `docs/design/u6-invocation-state-contract.md`：Invocation 状态迁移、Owner、
+  Start-before-I/O、Terminal CAS、幂等与 Crash Recovery；
+- `docs/design/u6-system-record-lifecycle-contract.md`：Termination、Tool Permit
+  expiry/revoke、Result Blob tombstone、Owner 与幂等；
+- `docs/design/u6-research-planning-payload-contract.md` 与
+  `docs/design/u6-research-wire-payload-contract.md`：落库 Artifact/Reference/
+  Payload 的 strict Schema、版本元组与 Hash；
+- `.trellis/spec/backend/artifact-authority.md`：Candidate、Committer、Resolver 与
+  Authority Brand 边界。
+
+本文件中的通用 Supabase 约束仍适用，但不能覆盖或放宽上述合同。尤其禁止重新引入
+`IN_USE|TERMINATED|UNKNOWN` 旧 Invocation 状态、caller 自报 response/usage、独立
+usage-adjustment 真值、通用 `INVOCATION_AUTHORITY`、standalone revoke 创建 STALE、
+或另一组同名函数。
+
+### U6 Schema inventory gate
+
+Migration 必须从上述 Platform/Resource/Invocation State 合同维护一份机器可读
+`u6-schema-inventory@1.0.0`，至少列出每张表、PK、UQ、FK、CHECK、RLS、Index、函数完整
+签名与 Owner Capability。CI 将实际 `pg_catalog` 投影与 Inventory 做规范化 Exact
+Match；缺项、额外兼容表/函数、状态或签名漂移全部失败。Inventory 至少证明：
+
+- Platform 合同列出的 Frontier Event、Current Evidence Relation Key、Stop Terminal
+  Commit、Publication/Consumption、Grant/Revocation/GO 对象全部存在；
+- Resource 合同列出的 Reservation Head/Transition、Invocation Commit、各 Kind
+  System Record/Result 与 Retention Blob 对象全部存在；
+- Invocation State 合同列出的 Transition Operation、状态 CHECK、Start/Unknown/
+  Terminal CAS 与 Owner 全部存在；
+- System Record Lifecycle 合同列出的 Transition Operation、Permit expiry/revoke、
+  Blob tombstone、DB time 与窄 Owner 全部存在；
+- 窄函数集合严格等于 Platform、Resource、Invocation State 与 System Record
+  Lifecycle 分册声明集合的规范去重并集，不保留
+  本指南中的历史白名单；
+- 所有 Key/FK/Index/RLS 展开
+  `app_id + tenant_id + environment`，共享 Supabase 项目下不可跨 App 解析；
+- 所有 `SECURITY DEFINER` 函数 `set search_path = ''`，只授予精确
+  `EXECUTE(signature)`，Browser 角色无底表写权。
+
+### U6 事务与验证
+
+U6 Root 操作只使用 Platform 合同的唯一锁序：
+`runs -> current/head -> SEMANTIC -> SCHEMA -> DATA -> POLICY -> IDENTITY ->
+terminal -> grant -> revocation operation -> GO commit`。Resource/Invocation 使用分册
+Key 顺序，持锁后不得反向进入 Root 锁序。
+
+必须用真实 PostgreSQL 双连接与 clean-install Migration 覆盖三份
+合同列出的全部竞态、幂等重放、Reference A/Payload B、状态 nullable truth table、
+Owner 冒充、Retention expiry/replay、迟到 Usage 和零旁路 I/O Oracle。In-Memory 通过
+不能替代数据库证据。
+
 ## Migration
 
 - Platform Migration 位于 `infra/supabase/platform/migrations/`。

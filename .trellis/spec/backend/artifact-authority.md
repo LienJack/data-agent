@@ -1,6 +1,11 @@
 # Artifact 权威与内容寻址
 
 > Schema 只证明载荷形状；权威 Artifact、成功终态和发布决策必须再经过确定性授权。
+>
+> U6 条款状态：`FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED`。当前 HEAD 仍是 V1
+> `ReportReadyCertificate -> authorizeRunTerminal` 行为，不能被描述为已经具备
+> current-ready、V2 Support/Coverage/Stop 或撤权权威；U6 必须永久退役这个 READY
+> 分支，不能把它留作兼容入口。U6 实现完成时才转为现行约定。
 
 ## 场景：创建或消费权威 Artifact 与成功态
 
@@ -73,6 +78,13 @@ authorizeRunTerminal(
   input: unknown,
   authority: L2ArtifactAuthorityContext,
 ): Promise<AuthoritativeRunTerminal>;
+// U6 目标契约：拒绝 READY/PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE/STALE。
+// READY/STALE 固定抛 CURRENT_READY_CONSUMPTION_REQUIRED；
+// 三个 Research Stop 终态固定抛 RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED。
+
+// U6 不在本通用文件定义 *AuthorityContext 或复制签名。
+// ResearchStopTerminalPort / CurrentReadinessPort 必须直接 import
+// docs/design/u6-research-platform-contract.md 的 strict Schema infer 类型。
 
 authorizeReleaseDecision(
   input: unknown,
@@ -242,8 +254,120 @@ issueCapabilityDeliveryReceipt(
 - `QueryEvidence` 至少有一个 Invariant Verdict，并且必须沿 Validation 的 RESULT Gate
   解析同一权威 ResultOracleReceipt，按 QueryContract 顺序逐项匹配 ID 与 Verdict；
   `SUPPORTED` Claim 只能消费全 PASS Evidence。
-- `READY` 必须绑定同 Scope、经过四道 Evidence Gate 且覆盖 Report 全部 Claim Evidence 的权威 `ReportReadyCertificate`。
-- `GO` 必须绑定同 Scope、同发布策略的版本化 `ReleaseManifest`，并覆盖 `ReportReadyCertificate`、确定性 PASS 且 Safety Counter 全零的 `ScoreCard`、成功终态 `BenchmarkAdapterReceipt`、成功终态 `SandboxExecutionReceipt` 与绑定 Profile Hash 的 `ModelCertificationReceipt`。
+- U6 V2 成功闭包只允许 `QUERY + DETERMINISTIC`。`EvidencePlan@2` 中的
+  `evidence_kind` 固定为 `QUERY`；V1 `document/benchmark` 只允许历史读取。V2 编译器
+  遇到 `SOURCE/DOCUMENT/BENCHMARK` 必须返回 `UNSUPPORTED_SOURCE_KIND`，不能创建
+  `SourceEvidence`、Source Receipt 或无人消费的 Source System Store。
+- 所有 V1 U6 Artifact 只允许由显式 `readHistorical*` Resolver 返回。Writer/
+  Committer/Research Artifact Authority 收到 V1 固定
+  `L2_WIRE_VERSION_WRITE_UNSUPPORTED`；current-ready、ReportReadGrant、RunTerminal
+  与 Release `GO` 固定 `READINESS_PROTOCOL_VERSION_UNSUPPORTED`；普通
+  `resolveL2` 或 Parser 成功不能把 V1 升级为当前 Authority。
+- U6 容器内的 Hypothesis 与 Proof Obligation 必须使用
+  `EmbeddedNodeReference={container_ref,node_id}`；Envelope `input_refs` 必须包含
+  container 的精确 Content-Addressed Revision。裸 Node ID 或“读取最新容器”不能进入
+  Support、Coverage、Stop 或 Replay。
+- `ObligationExecutionDecision` 必须在 Sandbox 前从 Brief、Observation Contract、
+  Semantic Release、Policy 与 QueryContract 重算 metric/formula、window/timezone、
+  grain/dimension/grouping、join、canonical predicate/cohort、NULL 与授权 Scope。任一
+  不匹配都以 `OBLIGATION_QUERY_SEMANTICS_MISMATCH` 失败关闭；SQL 合法、执行成功、
+  非空或新鲜不能替代语义匹配。
+- `QueryEvidence@2` 必须消费 `ObligationExecutionDecision=PASS`、QueryContract、
+  SqlArtifact、Validation/Execution Receipt、SandboxResult 与当前
+  Semantic/Schema/Data/Policy/Identity Frontier。`provenance_group`、Result Hash、
+  Row Count 与 Schema Hash 由服务端重算；依赖查询必须在 `input_refs` 中精确引用上游
+  QueryEvidence Revision。
+- `AtomicClaim@2` 不包含可权威自报的 `support_state`。V1 字段只允许历史 UI 读取，
+  不得进入 V2 Evidence、Support、Coverage 或 Readiness 闭包；唯一权威支持态来自
+  `SupportDecision`。
+- `SupportDecision` 必须消费 EvidenceRelation 与确定性/Provenance Check Receipt；
+  Citation 存在、SQL 非空或模型语义相关不能单独得到 `SUPPORTED`。模型输出只允许成为
+  `SEMANTIC_CHECK_CANDIDATE`，没有隔离的权威 HumanReviewReceipt 时不得提交成功
+  Semantic Check。
+- `CoverageState` 必须按
+  `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 从 OED、执行、Evidence、
+  SupportDecision、HypothesisAssessment、Conflict 与 Version Frontier 重算；未解决
+  material conflict 必须使对应 Obligation 为 `FAILED`，不得由旧 Support 包装为
+  `SATISFIED`。
+- `ReportManifest.material_claim_refs` 由 Projection Authority重算为 Executive
+  Summary 与 Supported Findings 两节 `claim_refs` 的规范去重并集。用于满足
+  Critical Success Criterion 或承载报告主要数字/比较方向的 Atomic Claim 必须进入
+  这两节之一；被反证假设与冲突分别使用 Assessment/Relation 引用。每个 material
+  Claim、SupportDecision、QueryEvidence 与 Certificate 必须绑定同一个精确
+  `schema_snapshot_ref`；Schema Frontier 变化使旧 material Support `STALE`，并要求
+  OED、Proof、Coverage、Projection、Gate 与 current-ready 全链重算。
+- `ResearchStopDecision` 的六个分支固定为
+  `CONTINUE/REPLAN/STOP_READY/STOP_PARTIAL/STOP_NEEDS_MORE_RESEARCH/
+  STOP_INCONCLUSIVE`。不存在无条件 Partial fallback；只有 Authority 重算得到
+  `hard_budget_cap=true`、`deliverable_supported_subset=true` 且
+  `budget_executable_query_count=0` 才能 `STOP_PARTIAL`。同一失败在仍有预算和合法
+  Query 时只能 `CONTINUE`，需要重编计划时只能 `REPLAN`；输入不一致必须失败关闭。
+- `ReportManifest`、`AnalysisReport@2` 与 `ReportProjectionReceipt` 由确定性中文
+  Projector 从已提交 Claim/Assessment/Conflict/Limitation 生成。Title 只能由
+  `ZH_L2_RESEARCH_TITLE_V1(exact ResearchBrief)` 唯一渲染，Receipt 必须绑定
+  `title_hash`，且 forbidden-claim 扫描同时覆盖 Title 与正文。Writer 新增数字、
+  实体、比较方向、因果词或行动建议时，Projection Authority 必须返回
+  `REPORT_PROJECTION_AUTHORITY_INVALID`。
+- `ReportReadyCertificate@2` 必须消费同 Run 的 `STOP_READY`、Manifest、Report、
+  Projection Receipt、四张独立 PASS EvidenceGateReceipt、全部 material
+  SupportDecision 与精确 Version Frontier。服务端分别重算 Gate Input Hash、
+  Input Closure Hash 与 Certificate Semantic Hash；普通 Parse、Supervisor、Writer
+  或包根导出的构造函数都不能获得 Readiness 品牌。
+- Envelope `content_hash` 继续包含 Attempt、Revision 与精确 `input_refs`；
+  `decision_semantic_hash/certificate_semantic_hash` 排除 Attempt、Fence 和墙钟，只
+  绑定领域输入、Evaluator/Policy、Version Frontier、领域事件水位与输出结论。重启后
+  领域 Hash 必须稳定；新 Attempt 重建等价 Artifact 时 Envelope Hash 可以变化。
+- `READY` 不得由历史上曾经合法的 Certificate 直接授权。server-only
+  `CurrentReadinessPort.consume` 必须在同一 PostgreSQL 事务中锁定并核验 exact Certificate、
+  current Semantic/Schema/Data/Policy/Identity Frontier 与 Revocation Head，重算 Certificate
+  Authority 后才能提交 DB-local Domain Terminal 或签发绑定 exact
+  report/principal/服务端确定性 Report Projection/短 TTL 的单次
+  `ReportReadGrant`。Issue/Response 的调用方都不能自报响应 Digest 或 Bytes；相同
+  idempotency key 重放仍须重新检查撤权。
+- 通用 `authorizeRunTerminal` 永久拒绝 U6 拥有的
+  `READY/PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE/STALE`。`READY/STALE` 返回
+  `CURRENT_READY_CONSUMPTION_REQUIRED`，三个 Research Stop 终态返回
+  `RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`；它不能委托历史 Certificate、
+  StopDecision 或 Revocation Resolver 后补签，也不能从包根导出兼容旁路。
+- `ResearchStopTerminalPort.commit` 是三个研究停止终态的唯一入口；它在同一持锁
+  PostgreSQL 事务中解析 exact Strict `ResearchStopDecision`、重算 Coverage/预算/
+  候选测试闭包，并执行固定映射：
+  `STOP_PARTIAL -> PARTIAL/EVIDENCE_PARTIAL`、
+  `STOP_NEEDS_MORE_RESEARCH -> NEEDS_MORE_RESEARCH/EVIDENCE_COVERAGE_INSUFFICIENT`、
+  `STOP_INCONCLUSIVE -> INCONCLUSIVE/ANALYSIS_INCONCLUSIVE`。每 Run 只追加一条
+  Domain Terminal；空引用、错分支、同键异载荷与已有 Terminal 均失败关闭。
+- 历史 `RunTerminal=READY` 不可变；当前授权由独立
+  `CurrentReadiness=CURRENT|REVOKED` 表达。READY 提交前撤权胜出可产生 `STALE`
+  Terminal；READY 提交后的撤权只推进 CurrentReadiness，不改写历史 Terminal，也不在
+  Durable Runtime 终态后追加 lifecycle Event。
+- U6 Root 事务统一先锁 `runs` 行（Current 缺行时也由它串行），再锁
+  Current/Revocation Head、`SEMANTIC -> SCHEMA -> DATA -> POLICY -> IDENTITY`、
+  Domain Terminal、Grant、Revocation Operation、GO Commit；任何子流程不得省略 Run
+  或从后段反向进入。
+- `ReportReadGrant` 的 Issue 只创建待消费能力；Consume 是单次占用线性化点，必须在
+  CAS 事务中再次锁定 CurrentReadiness、排序 Frontier 与 Revocation Head，并只授权
+  服务端物化绑定响应。`commitReportReadResponse` 必须第三次重验 current 状态，从
+  exact Report 重跑固定版本 Projector 并逐字节匹配 immutable Projection，CAS 为
+  `RESPONDED` 后才允许发送首字节；此前撤权胜出则
+  零字节输出，Response CAS 先胜出后才只阻止新的读取/下载。
+- `ReadinessRevocationReceipt` 追加而不覆盖历史 Certificate；撤权使用独立服务级
+  `RevocationOperation` Attempt 和窄化 Capability，不要求已结束 Worker Fence 仍活动，
+  也不能获得执行 SQL 或提交其他 Research Artifact 的权力。
+- U6 研究终态 Owner 固定：`READY=Readiness`，
+  `PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE=Research Stop`，`STALE=Revocation`；
+  Clarification、Policy、Failed、Cancelled 与 Replay Unavailable 继续由既有
+  Semantic/Policy/Runtime/Sandbox Authority 提交。不得新增万能 Research Terminal
+  Receipt。
+- `READY` 必须绑定同 Scope、经过四道 Evidence Gate 且覆盖 Report 全部 Claim
+  Evidence 的权威 `ReportReadyCertificate`，并通过上述 current-ready 原子消费。
+- `GO` 必须绑定同 Scope、同发布策略的版本化 `ReleaseManifest`，并覆盖
+  `ReportReadyCertificate@2`、确定性 PASS 且 Safety Counter 全零的 `ScoreCard`、
+  成功终态 `BenchmarkAdapterReceipt`、成功终态 `SandboxExecutionReceipt`、绑定
+  Profile Hash 的 `ModelCertificationReceipt` 与同一 exact Certificate 的不可变
+  `READY/RUN_READY` Domain Terminal。Release Authority 必须在 GO 事务中
+  current-V2 revalidate Certificate、完整 material Claim/Schema Frontier、
+  `CurrentReadiness=CURRENT` 与 Revocation Head；历史 Resolver PASS、V1 或
+  `REVOKED` 均不能授权 GO。
 - `ReleaseManifest` 必须内容寻址、已提交，至少各含一项 Hosted 与 Docker Evidence，并聚合 Release Decision 的全部 Evidence；领域 Resolver 返回的对象必须带有对应 Authorizer 在当前进程签发的品牌。U9 的生产 Deployment Receipt 类型交付前，Hosted/Docker/Signed Outcome 三个入口至少显式拒绝合成的 `MetamorphicOracleReceipt`。
 - `OracleVerdictReceipt` 必须由持久化 Resolver 按完整 Reference 取回，校验 Receipt/Case/EvalRun 已提交，并通过服务端持有的 Suite-Specific Deterministic Oracle Capability 复核；调用方自报 `PASS` 或普通已提交 Evidence 不能获得品牌。
 - `ScoreCard` 必须绑定权威 `OracleVerdictReceipt`，并逐项匹配 Case、EvalRun、Suite、Suite/Dataset/Oracle Version、Oracle Type 与 Deterministic Verdict。
@@ -270,8 +394,17 @@ issueCapabilityDeliveryReceipt(
 | Permit 缺 Gate、顺序/新鲜度错误、预算或 Principal/Policy/Settings 漂移 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Execution/Result/Validation 使用另一执行、另一结果或非当前七 Gate | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Payload Reference 跨 Scope 或未声明 | Document Parse 失败 |
+| 通用 `authorizeRunTerminal` 收到 READY | `CURRENT_READY_CONSUMPTION_REQUIRED` |
+| V1 Writer/Committer/Research Artifact Authority | `L2_WIRE_VERSION_WRITE_UNSUPPORTED` |
+| V1 current-ready/Grant/RunTerminal/GO | `READINESS_PROTOCOL_VERSION_UNSUPPORTED` |
+| material Claim 与当前 Schema Frontier 不一致 | `EVIDENCE_REVISION_STALE` |
+| 历史 READY 已撤权后请求新 Issue | `CURRENT_READINESS_REVOKED` |
+| 已撤权 Grant 再 Consume/Response | `REPORT_READ_GRANT_NOT_CONSUMABLE` / `REPORT_READ_GRANT_REVOKED` |
 | `READY/GO` Reference 未提交 | `AUTHORITY_EVIDENCE_NOT_COMMITTED` |
 | `GO` 收到未品牌化、失败终态、证据不匹配或不完整 Manifest | `AUTHORITY_EVIDENCE_NOT_COMMITTED` |
+| `GO` 缺同 Certificate 的 READY/RUN_READY Terminal | `RESEARCH_READY_TERMINAL_REQUIRED` |
+| `GO` 只有历史 Certificate 或 CurrentReadiness 缺失 | `AUTHORITY_EVIDENCE_NOT_CURRENT` |
+| `GO` 的 CurrentReadiness 已撤权 | `CURRENT_READINESS_REVOKED` |
 | Oracle Receipt 未提交、Hash/Reference 漂移或服务端 Oracle 复核失败 | `ORACLE_VERDICT_RECEIPT_NOT_AUTHORITATIVE` |
 | ScoreCard 自报 Verdict、Oracle/Version 不匹配或 Paired Run 不权威 | `SCORECARD_NOT_AUTHORITATIVE` |
 | Receipt Issuer 收到普通 GO 对象 | `AUTHORITY_EVIDENCE_NOT_COMMITTED` |
@@ -334,10 +467,33 @@ issueCapabilityDeliveryReceipt(
 - `REJECTED/SUPERSEDED`、缺 Validation Receipt、空 Invariant、缺 Evidence Gate 时失败。
 - Authoritative 对象及嵌套 Payload 为冻结状态。
 - `READY`、`GO` 与 `DELIVERED` 分别拒绝未验证证据和伪造品牌。
+- 直接把合法 V2 Certificate 传给通用 `authorizeRunTerminal(READY)`，必须稳定返回
+  `CURRENT_READY_CONSUMPTION_REQUIRED`；把合法 StopDecision 直接传给通用入口也必须
+  返回 `RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`。只有真实 PostgreSQL
+  `CurrentReadinessPort.consume` 可以提交 READY，只有
+  `ResearchStopTerminalPort.commit` 可以提交
+  三个 Research Stop 终态。
+- V1 只通过 `readHistorical*` 返回；V1 经 Writer、Committer、Research Artifact
+  Authority 固定 `L2_WIRE_VERSION_WRITE_UNSUPPORTED`，经 current-ready、Grant、
+  RunTerminal 或 GO 固定 `READINESS_PROTOCOL_VERSION_UNSUPPORTED`。
+- READY 提交前撤权胜出得到 `STALE` 且无 READY/Grant；READY 提交后撤权保持历史
+  READY、把 CurrentReadiness 置为 REVOKED，并拒绝新的 Grant Issue/Consume。
+  Grant Issue 后、Response CAS 前撤权（包括 Consume 后/Response 前）都必须使本次
+  响应零字节；只有 Response CAS 先胜出，本次单次响应才可完成，后续新读失败。
+- material Claim 的 `schema_snapshot_ref` 与 Certificate Frontier 换绑时，即使
+  Claim/SQL/Result Hash 不变也必须 `STALE` 并重跑全链。
+- 每个预期 Partial 的 Mutation 都有“预算仍可执行”的成对反例，后者只能
+  `CONTINUE/REPLAN`，不能产生 Public Terminal。
 - Provider 假 Receipt 或不匹配 Capability Hash 不能成为 `AVAILABLE`；EvalCase 不能被重新标为 Demo/Holdout；未完成 EvalRun、未提交 Evidence 或孤立 `PASS ScoreCard` 不能授权。
 - Oracle Receipt 拒绝未提交、Hash 漂移、Reference 不匹配、Suite/Oracle Type 错配和服务端 Oracle 验真失败。
 - ScoreCard 拒绝伪造 Oracle 品牌、自报 PASS、Receipt Verdict/Version/Reference 不匹配；Paired ScoreCard 拒绝 Candidate 漂移、未授权 Baseline 与非法 Interval。
-- `GO` 拒绝失败/不确定 ScoreCard、非零 Safety Counter、领域伪造 Receipt、策略不匹配和未同时覆盖 Hosted/Docker 的 Manifest；`MetamorphicOracleReceipt` 不能冒充 Hosted、Docker 或 Signed Outcome Evidence。
+- `GO` 拒绝失败/不确定 ScoreCard、非零 Safety Counter、领域伪造 Receipt、策略不匹配、
+  未同时覆盖 Hosted/Docker 的 Manifest、尚无同 Certificate READY Terminal、
+  V1/REVOKED Certificate、只做历史
+  Certificate 校验或 material Claim/Schema Frontier 漂移；`MetamorphicOracleReceipt`
+  不能冒充 Hosted、Docker 或 Signed Outcome Evidence。
+- `commitGo` 的同幂等键重放也必须先重验 current/READY/Frontier/Revocation；历史 GO
+  提交后若发生撤权，重放只能返回 `CURRENT_READINESS_REVOKED`，不能复用旧 GO 品牌。
 - L3–L5 不能注册 Workflow、Route、Tool 或签发 Receipt。
 
 ### 7. Wrong vs Correct
@@ -345,25 +501,38 @@ issueCapabilityDeliveryReceipt(
 #### Wrong
 
 ```ts
-const decision = releaseDecisionSchema.parse(raw);
+const historicalCertificate = await resolveReadyCertificate(raw.certificate_ref, authority);
+const decision = releaseDecisionSchema.parse({
+  ...raw,
+  certificate: historicalCertificate,
+});
 return capabilityDeliveryReceiptSchema.parse({ ...input, release_decision: decision });
 ```
 
 #### Correct
 
 ```ts
-const authority = {
-  principalId: serverPrincipal.id,
-  verifyCommitted: artifactStore.isCommitted,
-  resolveL2: artifactStore.resolveRawL2,
-  resolveGroundingAuthority: groundingStore.resolveRawDocument,
-  verifyCommitterCapability: committerRegistry.verify,
-  resolveScoreCard: evalStore.resolveAuthoritativeScoreCard,
-  resolveBenchmarkAdapterReceipt: evalStore.resolveAuthoritativeBenchmarkReceipt,
-  resolveSandboxExecutionReceipt: sandboxStore.resolveAuthoritativeReceipt,
-  resolveModelCertificationReceipt: providerStore.resolveAuthoritativeCertification,
-  resolveReleaseManifest: releaseStore.resolveAuthoritativeManifest,
-};
-const decision = await authorizeReleaseDecision(raw, authority);
-return issueCapabilityDeliveryReceipt(input, decision);
+const currentReadiness = createCurrentReadinessPort({
+  releaseAuthority: {
+    principalId: serverPrincipal.id,
+    verifyCommitted: artifactStore.isCommitted,
+    resolveL2: artifactStore.resolveRawL2,
+    resolveScoreCard: evalStore.resolveAuthoritativeScoreCard,
+    resolveBenchmarkAdapterReceipt: evalStore.resolveAuthoritativeBenchmarkReceipt,
+    resolveSandboxExecutionReceipt: sandboxStore.resolveAuthoritativeReceipt,
+    resolveModelCertificationReceipt: providerStore.resolveAuthoritativeCertification,
+    resolveReleaseManifest: releaseStore.resolveAuthoritativeManifest,
+  },
+});
+const committedGo = await currentReadiness.commitGo(releaseCapabilityInput, {
+  schema_version: "1.0.0",
+  scope: raw.scope,
+  run_id: raw.run_id,
+  certificate_ref: raw.certificate_ref,
+  candidate: raw,
+  idempotency_key: raw.idempotency_key,
+});
+// commitGo 在同一持锁 PostgreSQL 事务内调用 server-only Authorizer 并追加 Decision；
+// 不存在可在锁外复用的 current-readiness snapshot。
+return issueCapabilityDeliveryReceipt(input, committedGo.decision);
 ```

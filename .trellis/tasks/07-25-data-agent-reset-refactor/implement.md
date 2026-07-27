@@ -489,18 +489,69 @@ flowchart LR
 
 ### 目标
 
-完成 U6 与 U7，形成首个真正可演示、可量化、可迭代的纵向切片。
+分别完成 U6 Research Authority 工程单元与 U7 Benchmark 工程单元。U6 单独完成不等于
+首版纵向切片完成；只有 U5–U9 及其签名证据共同闭合，才形成可演示、可量化、可迭代
+的完整纵向切片。
 
 ### U6 工作包
 
-1. 编译 `ResearchBrief` 与 Proof Obligation。
-2. 生成可区分的竞争性 Hypothesis。
-3. 建立 Evidence Plan，调用 Text2SQL/Source Tool。
-4. 建立 `QueryEvidence`、Atomic Claim 与 Evidence Relation。
-5. 实现 Support、Conflict、Freshness、Source Independence Gate。
-6. 实现 Coverage/Information Gain/Budget Stop。
-7. 从已提交 Claim 投影 `AnalysisReport`。
-8. 由独立 Gate 签发 `ReportReadyCertificate`。
+设计已通过 RQ092、`docs/design/u6-research-authority-contract.md`、
+`docs/design/u6-research-planning-payload-contract.md` 与
+`docs/design/u6-research-wire-payload-contract.md`、
+`docs/design/u6-research-platform-contract.md`、
+`docs/design/u6-research-resource-invocation-contract.md`、
+`docs/design/u6-invocation-state-contract.md`、
+`docs/design/u6-system-record-lifecycle-contract.md` 与
+`docs/design/u6-controlled-fixture-contract.md` 冻结；当前状态仅为
+`FROZEN_DESIGN_CONTRACT`，不是实现完成。
+
+1. 升级 `ResearchBrief/HypothesisSet/EvidencePlan/QueryEvidence/AtomicClaim/
+   AnalysisReport/ReportReadyCertificate` V2 Schema；V1 只允许历史读取。
+2. 增加 `ObligationExecutionDecision`，在 Sandbox 前逐项验证 QueryContract 与
+   Obligation 的 metric/formula/window/timezone/grain/grouping/join/predicate/cohort/
+   null/authorization Scope。
+3. 实现 QUERY-only 的 Proof Obligation、竞争假设与依赖查询；不实现
+   `SourceEvidence`、Source Fetch 或 Benchmark Adapter。
+4. 从权威结果与预注册 Observation Contract 派生 `SupportDecision` 和
+   `HypothesisAssessment`，从 `AtomicClaim@2` 删除自报支持态。
+5. 按 `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 重算 Coverage，并让未解决
+   material conflict 阻断 `SATISFIED/STOP_READY`。
+6. 实现 Stop 六分支；只有硬预算封顶且存在可披露受支持子集才能
+   `STOP_PARTIAL`，不提供兜底 Partial。
+7. 从 `ReportManifest` 确定性投影中文 `AnalysisReport@2` 与
+   `ReportProjectionReceipt`。
+8. 分别实现 Support、Conflict、Freshness、Source Independence Gate，并由
+   server-only Readiness Authority 签发 `ReportReadyCertificate@2`。
+9. 在 PostgreSQL 增加 current readiness、Revocation Head、
+   `RevocationOperation`、单次 `ReportReadGrant` 与固定锁序。
+10. 用 `consumeCurrentReady` 在同一事务内核验 exact Certificate、Version Frontier
+    与 Revocation，再提交公共 `READY`；相同幂等键重放也必须重新检查撤权。
+11. 接入 `RESEARCH_RUNTIME_LIMITS@1`、tenant/principal 原子预算 reservation 和
+    `AgentDataProjectionReceipt`。
+12. 在 `apps/worker` 组合 Mastra Team、Research Kernel、Text2SQL、Sandbox 与
+    PostgreSQL Authority；Checkpoint 只保存执行位置和精确引用。
+
+#### U6 设计冻结证据（2026-07-27）
+
+- RQ092 来源链已闭合：Reader Answer
+  `8d6b6b22f4edaa53579b7a5f4710421f96967052a0bf7078ad4fb68a65b9df3b`、
+  Answer Runtime
+  `6fd834e3e2228bf270c6b3556bb0ca23fdc90336950715e7fc59879a20e89eb9`、
+  Synthetic Contract Proof
+  `0908d49c91598999e40c3ecebd946b5a72317283dad6368e418ade660ac6df5b`，
+  Run 为 `RUN20260727-070114-u6-l2-research-loop-repo-b73fca`。合成证明只校验合同，
+  不属于产品、Benchmark 或 Release Evidence。
+- Trellis `implement.jsonl` 与 `check.jsonl` 各注入 14 个相同且不重复的文件；
+  `task.py validate` 无 Warning，所有文件都小于 32768 bytes，最大文件为
+  `u6-research-wire-payload-contract.md` 的 32671 bytes。8 个 U6 设计文件中的
+  35 个 TypeScript 代码块均通过语法解析，JSONL 与 `git diff --check` 通过。
+- 两轮独立 Codex-only 契约审查与最终 Trellis 跨层审查均要求
+  `remaining_p0_p1.p0=[]`、`remaining_p0_p1.p1=[]`；全程未调用 Claude Code。
+- 冻结后的仓库门禁通过：`pnpm lint`（243 files）、`pnpm typecheck`（8/8）和
+  `pnpm test:contract`（Contracts 7/7、Text2SQL 6/6、Platform 2/2、
+  Agent Runtime 30/30）。
+- 本节只关闭设计冻结；代码、Migration、PostgreSQL 竞态、Worker 恢复与 Controlled
+  Case 尚未实现，状态仍是 `NOT_IMPLEMENTED`，Release 必须保持 `HOLD`。
 
 ### U7 工作包
 
@@ -511,25 +562,46 @@ flowchart LR
 5. 建立 Baseline/Candidate Paired Comparison。
 6. 分离 Demo、Tuning、Holdout Registry。
 7. 建立 Bundle Digest、License、Path 与 Hook 安全校验。
-8. 固定 `retail-revenue-investigation-v1` 的合成 Dataset、Semantic Release、主问题、Mutation、Budget 与 L2 非因果边界。
+8. 创建 U7-owned `retail-revenue-investigation-v1` Benchmark Manifest，固定
+   Dataset、Semantic Release、主问题、Answer/Oracle、Mutation、Budget、License、
+   Demo/Holdout 身份与 L2 非因果边界；可以复用 U6 业务域/生成器，禁止读取 U6
+   protocol fixture 的字面期望行或阈值作为 Benchmark 分数。
 
 ### 关键测试
 
 - Controlled L2 Case 到达 `READY`。
-- 删除、过期或篡改任一关键 Artifact，Certificate 失效。
-- Citation 只相关但不支持 Claim 时失败。
-- Conflict 与 Source Dependence 不被隐藏。
+- 两次依赖查询中一个假设 `SURVIVED`、一个 `REFUTED`；Q2 精确引用 Q1 Evidence。
+- Coverage 五态、Stop 六分支和 14 个预注册 Mutation 获得确定 Owner、终态与
+  Reason Code。
+- SQL 成功但 metric/window/join/predicate/cohort/null 语义错误时失败关闭。
+- Citation 只相关、Conflict 隐藏、同源伪装多源或假设宇宙披露缺失时不能 Ready。
+- SQL Receipt 提交后崩溃的恢复不重复执行 SQL；旧 Fence 和伪造 Checkpoint 不能提交。
+- current-ready 与撤权竞态中，撤权先胜出时不提交 READY 或 ReportReadGrant；
+  仅正在竞争的 `DOMAIN_TERMINAL` consume 可在同一事务追加唯一
+  `STALE/RUN_STALE`。独立 revoke 不创建 Terminal。
+- V1 可历史读取但不能进入 V2 current-ready。
+- Tenant Burst、Provider Cost、SQL Result Amplification 与 Cancel Reservation Leak
+  Oracle 全部通过。
 - 四类 Adapter 不丢失 Suite 字段。
 - 一个 Suite 的分数不能满足另一个 Suite 的 Oracle。
 - 缺少签名代表性 Pair 时 Release 只能 `HOLD`。
 
-### Release Gate
+### U6 Contract Gate
 
-- `pnpm test:unit --filter research`
-- `pnpm test:unit --filter evals`
-- `pnpm test:integration --filter research`
-- `pnpm test:integration --filter evals`
+- `pnpm test:research`
+- `pnpm test:unit`
+- `pnpm test:integration`
+- `pnpm test:architecture`
+- Controlled、14 Mutation、Coverage/Stop、Crash-Recovery、Resource、V1 Read-Deny、
+  current-ready Revocation Race 全通过。
+- `pnpm verify:release`（预期仍为 `HOLD`）
+
+### U7 Eval Gate
+
 - `pnpm eval:smoke`
+- 四类 Adapter Conformance、Oracle Separation、Manifest Replay 与 Holdout
+  Contamination 全通过。
+- `pnpm verify:release`（U7 完成后仍应诚实为 `HOLD`）
 
 ### 回滚点
 

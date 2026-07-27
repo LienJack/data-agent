@@ -18,6 +18,10 @@ U4 建立 PostgreSQL Event/Projection 与可恢复的事件序号。HTTP SSE Rou
 ## 2. Reset-only 安装边界
 
 U4 是本项目“彻底重置版”的新 Runtime Schema，不是旧 Text2SQL Runtime 的在线升级包。
+Data Agent 的 U4–U9 App Migration 唯一目录为
+`infra/supabase/apps/data-agent/migrations/`；不得在
+`packages/platform/migrations/` 或 `infra/supabase/platform/migrations/` 建立同一
+App Schema 的第二条迁移链。
 安装 `20260725010500_app_data_agent_runtime_foundation` 前，
 `runs / commands / run_events / outbox` 必须在 Data Agent 私有 Schema 内全局为空；否则
 迁移以 `DA_U4_RESET_REQUIRES_EMPTY_RUNTIME` 失败关闭。共享 Supabase 项目可以保留
@@ -57,6 +61,9 @@ Hosted Migrator、OCI 镜像与 Worker Daemon 由 U9 交付；在它们完成真
 | Run Event | PostgreSQL | 不可变生命周期事实 | 日志、Mastra Event |
 | Run Projection | PostgreSQL，由 Durable Event 推导 | 当前可查询状态 | Chat Message、UI 本地状态 |
 | Artifact Revision | PostgreSQL Metadata + 内容寻址对象 | 分析正确性与证据链 | Mastra Snapshot |
+| Historical RunTerminal | PostgreSQL，append-only | 记录当时为何 `READY/非 READY` | 当前可读性、缓存状态 |
+| CurrentReadiness | PostgreSQL Current Readiness Authority | `CURRENT | REVOKED` 当前授权 | 历史 READY、UI `ready=true` |
+| ReportReadGrant | PostgreSQL，单次 CAS | 当前报告读取/展示/下载授权 | Certificate、HTTP Session |
 | Mastra Snapshot | PostgreSQL | opaque 执行恢复数据 | Run/Event/Artifact Authority |
 | SQL/Eval Receipt | PostgreSQL | 内容寻址结果提交与重用 | “函数已经调用过”的进程内标记 |
 | Redis / Upstash | 非权威 | 可丢失的唤醒、缓存与 Projection 加速 | Fence、Replay、发布判断 |
@@ -81,7 +88,67 @@ stateDiagram-v2
 
 `COMPLETED` 仅表示 Workflow 执行结束，Event 中固定写入
 `completion_kind=WORKFLOW_EXECUTION_ONLY`。它不等价于 `AnalysisReport READY`；
-后者必须由 U6 的独立 Artifact Gate 与 Certificate 决定。
+U6 中的 `STOP_READY` 也不是公共终态。公共 `READY` 必须在四张独立 Evidence Gate
+和 `ReportReadyCertificate@2` 已提交后，由 server-only `consumeCurrentReady` 在同一
+PostgreSQL 事务中核验 exact Certificate、current Semantic/Schema/Data/Policy/Identity
+Frontier 与 Revocation Head，随后才能提交。Mastra Checkpoint、Redis Cache、UI
+携带的 `ready=true` 或历史 Certificate 都不能替代这次原子消费。
+
+U6 不改变本节 Durable Runtime 的“终态之后无 lifecycle Event”规则。历史
+`RunTerminal=READY` 一旦提交便保持不可变；Current Readiness 单独使用
+`CURRENT | REVOKED`：
+
+```mermaid
+stateDiagram-v2
+    [*] --> CURRENT: publishCurrentReadiness
+    CURRENT --> CURRENT: 无 Terminal + 新 Certificate CAS
+    CURRENT --> REVOKED: ReadinessRevocationReceipt
+    REVOKED --> CURRENT: 无 Terminal + 新 Certificate CAS
+    REVOKED --> REVOKED: 幂等撤权
+```
+
+- Publication 只在尚无 Domain Terminal 时允许；相同已撤 Certificate 不得复活。
+- READY 提交前，只有 DOMAIN_TERMINAL consume 与撤权竞争且后者先胜出时，同一事务
+  才能提交唯一 `STALE` RunTerminal，且不能提交 READY 或 Grant；独立 revoke 不创建
+  Terminal。
+- READY 提交后，只更新 CurrentReadiness、Revocation Head、Receipt 与 Audit；不得改写
+  历史 READY，也不得在 `run.completed/run.failed` 后追加新的 Run lifecycle Event。
+- API/UI 必须同时投影“历史 READY”和“当前 REVOKED”；REVOKED 禁止新的读取、展示、
+  下载和 Release `GO`，不能继续显示为当前成功。
+
+通用 `authorizeRunTerminal` 永久拒绝 U6 拥有的
+`READY/PARTIAL/NEEDS_MORE_RESEARCH/INCONCLUSIVE/STALE`；`READY/STALE` 固定返回
+`CURRENT_READY_CONSUMPTION_REQUIRED`，三个 Research Stop 终态固定返回
+`RESEARCH_STOP_TERMINAL_COMMIT_REQUIRED`。三个停止终态只能由
+`commitResearchStopTerminal` 在 PostgreSQL 事务内消费 exact Strict StopDecision，
+按 `STOP_PARTIAL -> PARTIAL/EVIDENCE_PARTIAL`、
+`STOP_NEEDS_MORE_RESEARCH -> NEEDS_MORE_RESEARCH/EVIDENCE_COVERAGE_INSUFFICIENT`、
+`STOP_INCONCLUSIVE -> INCONCLUSIVE/ANALYSIS_INCONCLUSIVE` 提交。V1 只允许显式
+`readHistorical*`；
+Writer/Committer/Research Artifact Authority 固定
+`L2_WIRE_VERSION_WRITE_UNSUPPORTED`，current-ready、Grant、RunTerminal 与 Release
+`GO` 固定 `READINESS_PROTOCOL_VERSION_UNSUPPORTED`。
+
+报告读取的线性化顺序固定为：
+
+1. Grant Issue 事务核验 current V2 Certificate 并创建短 TTL、单次待消费 Grant；
+2. Grant Consume CAS 事务再次锁定 CurrentReadiness、排序 Frontier 与 Revocation
+   Head；Consume 只授权服务端物化绑定响应；
+3. Grant Response CAS 再次重验 CurrentReadiness、Frontier、Revocation，并从 exact
+   Report 重跑固定版本 Deterministic Projector，与 Issue 时服务端生成的 immutable
+   `canonical-response@1.0.0` Projection 逐字节比较；提交为 `RESPONDED` 后才发送
+   绑定字节。Issue/Response 都不接受调用方自报 Digest 或 Bytes。
+
+Grant Issue 还必须锁定并验证同 Run、同 Certificate 的不可变
+`READY/RUN_READY` Domain Terminal；仅发布 CURRENT、只有 STOP_READY 或历史
+Certificate 都不能提前读取。
+
+撤权在 Response 提交前胜出时，Grant 必须失败且不得发送字节；Response 已提交后的
+单次响应无法撤回，但撤权阻断之后所有新 Issue/Consume/Response。Release `GO` 同样必须在决策事务中
+current-V2 revalidate Certificate、material Claim/Schema Frontier、CurrentReadiness、
+Revocation Head 与绑定同一 Certificate 的 `READY/RUN_READY` Domain Terminal，不能
+只验证历史 Certificate。相同 GO 幂等键重放也先做上述检查；GO 后撤权时历史 GO 只可
+审计读取，重放返回 `CURRENT_READINESS_REVOKED`。
 
 ## 5. 正常执行路径
 
