@@ -701,6 +701,36 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   `git diff --check`。raw JSON duplicate-key、PostgreSQL 17 parity、`10600`、
   Receipt/Root 与 Hosted/Docker 仍属于后续切片，不得据此宣称 C2 完成交付。
 
+#### U6-C2 候选迁移作者管线实施证据（2026-07-28）
+
+- 新增独立 C2 maintenance manifest、15 段硬编码闭集与候选 renderer；renderer
+  只在内存中生成候选，不提供写入口。旧 C1 renderer 的默认 CLI 与模块导出均改为
+  verify-only，无法再覆盖 immutable `10590` migration 或 baseline Inventory。
+- C2 checksum 只归零文件 marker 与冻结的最终
+  `platform.assert_migration_checksum` 参数；最终 ledger/`COMMIT` 必须处于可执行
+  SQL 顶层语句边界。lexer 递归检查可执行 `DO`/function dollar body，拒绝
+  `EXPLAIN` 包裹、第二次 ledger 调用、single-quoted executable body，以及 physical
+  descriptor 尚未冻结的 Unicode escaped identifier 与动态 `EXECUTE`；后者只精确
+  放行顶层 ACL 和静态 `CREATE TRIGGER ... EXECUTE FUNCTION/PROCEDURE`。行注释、
+  块注释、普通 `SELECT`、伪 `COMMIT` 与可生成隐藏事务控制的 psql meta-command
+  同样失败关闭；完整 migration 只允许首条 `BEGIN` 和最终 ledger 后的 `COMMIT`。
+  正式 `10600` 进入 migration 目录后，静态门先按完整路径拒绝 Platform 第二链，再走
+  C2 专用 verifier，不使用全文件 Hash 替换算法。
+- baseline Inventory 以完整 canonical hash
+  `sha256:a400586a8bae3b5bc843cda0355b404c444b6a976f56ab7eca0dd05e1f34593e`
+  冻结；C2 manifest hash 固定为
+  `sha256:d28f8ac324e5453961c2636a7741c1feb36709908f84c7f03f9b9454ed87cced`。
+  Candidate Inventory 明示 `installable=false`，固定 `10590→10600`，C2 hash 必须
+  来自同次 segment 渲染；重复 addition、baseline collision、未冻结 replacement
+  与尚未冻结的 constraint/index addition 全部拒绝。
+- 本检查点通过全量 `pnpm lint`、`pnpm typecheck`、30/30 C1+C2 renderer tests、
+  Supabase SQL static checks 与 `git diff --check`；多轮两路 Codex 复审发现的
+  ledger 注释/`EXPLAIN`/dollar-body 绕过、静态 checksum 不兼容、第二迁移链、
+  浅冻结 allowlist、基线删减绕过和测试缺口均已修复并进入负向回归。
+- 该产物只是不可安装的候选作者管线。`migration-sources/10600`、正式 migration、
+  Catalog exact physical descriptor、升级后的 live Inventory、C2a Receipt/Root、
+  PG17 parity 与 Hosted/Docker 仍未实现，Release 保持 `HOLD`。
+
 ### U7 工作包
 
 1. 定义 `EvalCase`、`EvalRun`、`ScoreCard`、`ReleaseDecision`。

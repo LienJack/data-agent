@@ -2,7 +2,8 @@
 
 > `FROZEN_DESIGN_CONTRACT / PARTIAL_IMPLEMENTATION` ·
 > `u6-research-migration-safety@1.1.0`
-> `10590` 已作为本地 PG17 Oracle 基线提交；Hosted/Docker 未验证，C2 `10600` 未实现。
+> `10590` 已作为本地 PG17 Oracle 基线提交；C2 候选作者管线已实现，但正式
+> `10600`、PG17 C2 Oracle 与 Hosted/Docker 尚未实现。
 
 本文是 U6 安装 `10590→10600` 的唯一安全合同。二者位于同一 application forward-only
 迁移链，不是 Platform/App 第二链。对象、函数、ACL/Inventory 取 Database Surface；

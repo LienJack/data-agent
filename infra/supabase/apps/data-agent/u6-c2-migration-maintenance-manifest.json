@@ -1,0 +1,76 @@
+{
+  "protocol_version": "u6-c2-migration-maintenance@1.0.0",
+  "migration_name": "20260725010600_app_data_agent_u6_research_derivation.sql",
+  "deployment_scope": {
+    "app_id": "00000000-0000-4000-8000-00000000da01",
+    "deployment_binding": "SESSION_ACTIVE_MAPPING",
+    "database_binding": "SESSION_DATABASE_IDENTITY"
+  },
+  "maintenance_window": {
+    "window_id": "00000000-0000-4000-8000-000000001600",
+    "max_duration_ms": 600000
+  },
+  "timeouts": {
+    "lock_timeout_ms": 2000,
+    "statement_timeout_ms": 300000,
+    "idle_in_transaction_session_timeout_ms": 60000
+  },
+  "relation_limits": [
+    {
+      "qualified_name": "app_data_agent.artifacts",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.memberships",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.outbox",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.research_artifact_commit_operations",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.research_authority_capabilities",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.research_domain_terminals",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.research_resource_reservations",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.research_resource_run_heads",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.research_stop_terminal_commits",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.run_attempts",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    },
+    {
+      "qualified_name": "app_data_agent.runs",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    }
+  ],
+  "manifest_hash": "sha256:d28f8ac324e5453961c2636a7741c1feb36709908f84c7f03f9b9454ed87cced"
+}

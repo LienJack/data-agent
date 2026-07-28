@@ -1,13 +1,5 @@
 import { createHash } from "node:crypto";
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -479,7 +471,7 @@ function assertStrictKeys(
   );
 }
 
-function validateMaintenanceManifest(raw: unknown): MaintenanceManifest {
+export function validateMaintenanceManifest(raw: unknown): MaintenanceManifest {
   assertCondition(
     typeof raw === "object" && raw !== null && !Array.isArray(raw),
     "U6 maintenance manifest 必须是 object",
@@ -1180,33 +1172,6 @@ export function verifyGeneratedArtifacts(paths: U6RendererPaths): U6MaintenanceS
   };
 }
 
-function atomicWrite(path: string, content: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const temporaryPath = `${path}.tmp-${process.pid}`;
-  try {
-    writeFileSync(temporaryPath, content, { encoding: "utf8", flag: "wx" });
-    renameSync(temporaryPath, path);
-  } finally {
-    rmSync(temporaryPath, { force: true });
-  }
-}
-
-export function renderU6Migration(paths: U6RendererPaths): void {
-  validateMaintenanceManifest(JSON.parse(readFileSync(paths.maintenanceManifestPath, "utf8")));
-  const rendered = renderMigrationFromSegments(paths.sourceDirectory);
-  const inventory = buildSchemaInventory(rendered.content, rendered.checksum);
-  const inventoryContent = `${JSON.stringify(inventory, null, 2)}\n`;
-  const occurrences = checksumOccurrences(rendered.content);
-  assertCondition(
-    occurrences.marker === rendered.checksum &&
-      sha256(occurrences.normalized) === rendered.checksum,
-    "renderer 生成了无效的 U6 checksum",
-  );
-  atomicWrite(paths.migrationPath, rendered.content);
-  atomicWrite(paths.inventoryPath, inventoryContent);
-  verifyGeneratedArtifacts(paths);
-}
-
 export function defaultRendererPaths(repositoryRoot: string): U6RendererPaths {
   const appInfraRoot = resolve(repositoryRoot, "infra/supabase/apps/data-agent");
   return {
@@ -1265,7 +1230,7 @@ if (isMainModule()) {
     verifyGeneratedArtifacts(paths);
     console.log(`U6 migration artifacts verified: ${basename(paths.migrationPath)}`);
   } else {
-    renderU6Migration(paths);
-    console.log(`U6 migration artifacts rendered: ${basename(paths.migrationPath)}`);
+    verifyGeneratedArtifacts(paths);
+    console.log(`U6 immutable 10590 artifacts verified: ${basename(paths.migrationPath)}`);
   }
 }

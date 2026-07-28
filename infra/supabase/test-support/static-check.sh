@@ -13,7 +13,8 @@ if [ -z "$migration_files" ]; then
 fi
 
 pnpm --dir "$repo_dir" exec tsx --test \
-  infra/supabase/test-support/render-u6-migration.test.ts
+  infra/supabase/test-support/render-u6-migration.test.ts \
+  infra/supabase/test-support/render-u6-c2-migration.test.ts
 
 u6_source_dir="$infra_dir/apps/data-agent/migration-sources/10590"
 if [ -d "$u6_source_dir" ] \
@@ -74,9 +75,13 @@ done
 
 zero_hash=$(printf '%064d' 0)
 for migration_file in $migration_files; do
-  if [ "$(basename "$migration_file")" = \
-    "20260725010590_app_data_agent_u6_research_authority.sql" ]; then
+  u6_migration_kind=$(sh "$script_dir/assert-u6-migration-path.sh" "$infra_dir" "$migration_file")
+  if [ "$u6_migration_kind" = "C1" ]; then
     pnpm --dir "$repo_dir" exec tsx scripts/render-u6-migration.ts --verify
+    continue
+  fi
+  if [ "$u6_migration_kind" = "C2" ]; then
+    pnpm --dir "$repo_dir" exec tsx scripts/render-u6-c2-migration.ts --verify-generated
     continue
   fi
   checksum_count=$(rg -o 'sha256:[0-9a-f]{64}' "$migration_file" | wc -l | tr -d ' ')

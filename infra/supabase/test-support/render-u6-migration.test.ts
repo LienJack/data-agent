@@ -11,13 +11,13 @@ import {
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildSchemaInventory,
   renderMigrationFromSegments,
-  renderU6Migration,
   U6_BACKEND_EXECUTE_ENABLED_FUNCTIONS,
   U6_CHECKSUM_PLACEHOLDER,
   U6_EXPECTED_FUNCTIONS,
@@ -25,6 +25,7 @@ import {
   U6_MIGRATION_VERSION,
   U6_SOURCE_SEGMENTS,
   U6_ZERO_CHECKSUM,
+  validateMaintenanceManifest,
   verifyGeneratedArtifacts,
   type U6RendererPaths,
 } from "../../../scripts/render-u6-migration.ts";
@@ -57,6 +58,19 @@ function temporaryRendererPaths(): U6RendererPaths {
     inventoryPath: resolve(root, "u6-schema-inventory.json"),
     maintenanceManifestPath: resolve(root, "u6-migration-maintenance-manifest.json"),
   };
+}
+
+function renderU6MigrationFixture(paths: U6RendererPaths): void {
+  validateMaintenanceManifest(
+    JSON.parse(readFileSync(paths.maintenanceManifestPath, "utf8")),
+  );
+  const rendered = renderMigrationFromSegments(paths.sourceDirectory);
+  const inventory = buildSchemaInventory(rendered.content, rendered.checksum);
+  mkdirSync(dirname(paths.migrationPath), { recursive: true });
+  mkdirSync(dirname(paths.inventoryPath), { recursive: true });
+  writeFileSync(paths.migrationPath, rendered.content);
+  writeFileSync(paths.inventoryPath, `${JSON.stringify(inventory, null, 2)}\n`);
+  verifyGeneratedArtifacts(paths);
 }
 
 function executable(path: string, source: string): void {
@@ -362,6 +376,12 @@ commit;
 }
 
 describe("U6 deterministic migration renderer", () => {
+  test("immutable 10590 生产模块不暴露任何写入入口", async () => {
+    const rendererModule = await import("../../../scripts/render-u6-migration.ts");
+    assert.equal("renderU6Migration" in rendererModule, false);
+    assert.equal("atomicWrite" in rendererModule, false);
+  });
+
   test("固定分段渲染结果稳定，且仅归一化 marker 与对应 ledger checksum", () => {
     const paths = temporaryRendererPaths();
     writeCompleteSources(paths);
@@ -386,12 +406,12 @@ describe("U6 deterministic migration renderer", () => {
     assert.equal(sha256(normalized), first.checksum);
   });
 
-  test("完整渲染原子生成 migration 与 Inventory，并可独立复验", () => {
+  test("测试夹具生成 migration 与 Inventory，并可独立复验", () => {
     const paths = temporaryRendererPaths();
     writeCompleteSources(paths);
     writeManifest(paths.maintenanceManifestPath);
 
-    renderU6Migration(paths);
+    renderU6MigrationFixture(paths);
     verifyGeneratedArtifacts(paths);
 
     const migration = readFileSync(paths.migrationPath, "utf8");
@@ -505,7 +525,7 @@ describe("U6 deterministic migration renderer", () => {
     const paths = temporaryRendererPaths();
     writeCompleteSources(paths);
     writeManifest(paths.maintenanceManifestPath);
-    renderU6Migration(paths);
+    renderU6MigrationFixture(paths);
     const inventory = JSON.parse(readFileSync(paths.inventoryPath, "utf8")) as {
       functions: Array<{
         signature: string;
@@ -531,7 +551,7 @@ describe("U6 deterministic migration renderer", () => {
     writeCompleteSources(paths, { omitFunctionAcl: true });
     writeManifest(paths.maintenanceManifestPath);
 
-    assert.throws(() => renderU6Migration(paths), /Backend EXECUTE ACL/);
+    assert.throws(() => renderU6MigrationFixture(paths), /Backend EXECUTE ACL/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
@@ -541,7 +561,7 @@ describe("U6 deterministic migration renderer", () => {
     writeCompleteSources(paths, { omitBackendRevoke: true });
     writeManifest(paths.maintenanceManifestPath);
 
-    assert.throws(() => renderU6Migration(paths), /Backend EXECUTE ACL/);
+    assert.throws(() => renderU6MigrationFixture(paths), /Backend EXECUTE ACL/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
@@ -551,7 +571,7 @@ describe("U6 deterministic migration renderer", () => {
     writeCompleteSources(paths, { extraWithheldBackendGrant: true });
     writeManifest(paths.maintenanceManifestPath);
 
-    assert.throws(() => renderU6Migration(paths), /Backend EXECUTE ACL/);
+    assert.throws(() => renderU6MigrationFixture(paths), /Backend EXECUTE ACL/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
@@ -843,13 +863,13 @@ exit 0
     writeManifest(paths.maintenanceManifestPath);
     rmSync(resolve(paths.sourceDirectory, U6_SOURCE_SEGMENTS[3]));
 
-    assert.throws(() => renderU6Migration(paths), /source segment 闭集不匹配/);
+    assert.throws(() => renderU6MigrationFixture(paths), /source segment 闭集不匹配/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
 
     writeFileSync(resolve(paths.sourceDirectory, "30-artifact-authority.sql.inc"), "-- restored\n");
     writeFileSync(resolve(paths.sourceDirectory, "85-extra.sql.inc"), "-- forbidden\n");
-    assert.throws(() => renderU6Migration(paths), /source segment 闭集不匹配/);
+    assert.throws(() => renderU6MigrationFixture(paths), /source segment 闭集不匹配/);
     assert.equal(existsSync(paths.migrationPath), false);
   });
 
@@ -880,7 +900,7 @@ exit 0
     writeCompleteSources(paths);
     writeManifest(paths.maintenanceManifestPath, true);
 
-    assert.throws(() => renderU6Migration(paths), /manifest_hash 不匹配/);
+    assert.throws(() => renderU6MigrationFixture(paths), /manifest_hash 不匹配/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
@@ -901,7 +921,7 @@ exit 0
       )}`,
     );
 
-    assert.throws(() => renderU6Migration(paths), /未登记的非 trigger 函数/);
+    assert.throws(() => renderU6MigrationFixture(paths), /未登记的非 trigger 函数/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
@@ -922,7 +942,7 @@ exit 0
       )}\nalter function app_data_agent.orphan_u6_helper(jsonb) owner to data_agent_u6_rpc_owner;\n`,
     );
 
-    assert.throws(() => renderU6Migration(paths), /ALTER FUNCTION OWNER 闭集漂移/);
+    assert.throws(() => renderU6MigrationFixture(paths), /ALTER FUNCTION OWNER 闭集漂移/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
@@ -947,7 +967,7 @@ exit 0
       ),
     );
 
-    assert.throws(() => renderU6Migration(paths), /internal function exact manifest 漂移/);
+    assert.throws(() => renderU6MigrationFixture(paths), /internal function exact manifest 漂移/);
     assert.equal(existsSync(paths.migrationPath), false);
     assert.equal(existsSync(paths.inventoryPath), false);
   });
