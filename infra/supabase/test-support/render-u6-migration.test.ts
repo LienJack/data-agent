@@ -30,6 +30,17 @@ import {
 } from "../../../scripts/render-u6-migration.ts";
 
 const temporaryDirectories: string[] = [];
+const U6_MAINTENANCE_MANIFEST_HASH =
+  "sha256:70b5acaf260521a4b8d8581ca2f33dcebbeb6cd826315d3c246cfa80b35f0723";
+const U6_MAINTENANCE_SESSION_VALUES = [
+  U6_MAINTENANCE_MANIFEST_HASH,
+  "00000000-0000-4000-8000-00000000da01",
+  "00000000-0000-4000-8000-000000001590",
+  "600000",
+  "2000",
+  "300000",
+  "60000",
+].join("\t");
 
 afterEach(() => {
   for (const directory of temporaryDirectories.splice(0)) {
@@ -592,6 +603,129 @@ describe("U6 deterministic migration renderer", () => {
     assert.equal(existsSync(pnpmProbe), false);
   });
 
+  test("maintenance runner 初次验证后不再读取 live manifest", () => {
+    const root = mkdtempSync(resolve(tmpdir(), "u6-runner-manifest-snapshot-"));
+    temporaryDirectories.push(root);
+    const fakeBin = resolve(root, "bin");
+    const supportDirectory = resolve(root, "infra/supabase/test-support");
+    const appInfraDirectory = resolve(root, "infra/supabase/apps/data-agent");
+    const migrationDirectory = resolve(appInfraDirectory, "migrations");
+    const scriptsDirectory = resolve(root, "scripts");
+    const runner = resolve(supportDirectory, "run-u6-maintenance-migration.sh");
+    const canonicalMigration = resolve(migrationDirectory, U6_MIGRATION_NAME);
+    const liveManifest = resolve(
+      appInfraDirectory,
+      "u6-migration-maintenance-manifest.json",
+    );
+    const replacementManifest = resolve(root, "replacement-manifest.json");
+    const pnpmCalls = resolve(root, "pnpm-calls");
+    const dockerCalls = resolve(root, "docker-calls");
+    const capturedSql = resolve(root, "captured-session.sql");
+    const runnerTmp = resolve(root, "runner-tmp");
+    mkdirSync(fakeBin, { recursive: true });
+    mkdirSync(supportDirectory, { recursive: true });
+    mkdirSync(migrationDirectory, { recursive: true });
+    mkdirSync(scriptsDirectory, { recursive: true });
+    mkdirSync(runnerTmp, { recursive: true });
+    copyFileSync(
+      resolve(fileURLToPath(import.meta.url), "../run-u6-maintenance-migration.sh"),
+      runner,
+    );
+    writeManifest(liveManifest);
+    writeManifest(replacementManifest);
+    writeFileSync(
+      replacementManifest,
+      readFileSync(replacementManifest, "utf8")
+        .replace('"lock_timeout_ms": 2000', '"lock_timeout_ms": 4999')
+        .replace(
+          /"manifest_hash": "sha256:[0-9a-f]{64}"/,
+          `"manifest_hash": "sha256:${"f".repeat(64)}"`,
+        ),
+    );
+    writeFileSync(
+      canonicalMigration,
+      `-- u6_migration_checksum: sha256:${"b".repeat(64)}\n`,
+    );
+    executable(
+      resolve(fakeBin, "pnpm"),
+      `#!/bin/sh
+calls=0
+if [ -f "$U6_PNPM_CALLS" ]; then
+  calls=$(cat "$U6_PNPM_CALLS")
+fi
+calls=$((calls + 1))
+printf '%s' "$calls" > "$U6_PNPM_CALLS"
+if [ "$calls" -eq 2 ]; then
+  cp "$U6_REPLACEMENT_MANIFEST" "$U6_LIVE_MANIFEST"
+  printf '%s' '${U6_MAINTENANCE_SESSION_VALUES}'
+fi
+exit 0
+`,
+    );
+    executable(
+      resolve(fakeBin, "docker"),
+      `#!/bin/sh
+calls=0
+if [ -f "$U6_DOCKER_CALLS" ]; then
+  calls=$(cat "$U6_DOCKER_CALLS")
+fi
+calls=$((calls + 1))
+printf '%s' "$calls" > "$U6_DOCKER_CALLS"
+case "$calls" in
+  1)
+    printf '0:\\n'
+    ;;
+  2)
+    cat > "$U6_CAPTURED_SQL"
+    ;;
+  3)
+    printf '1:sha256:${"b".repeat(64)}\\n'
+    ;;
+  *)
+    exit 99
+    ;;
+esac
+`,
+    );
+
+    const result = spawnSync(
+      "/bin/sh",
+      [
+        runner,
+        "fake-container",
+        "fake-database",
+        canonicalMigration,
+        "00000000-0000-4000-8000-00000000de01",
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+          TMPDIR: runnerTmp,
+          U6_CAPTURED_SQL: capturedSql,
+          U6_DOCKER_CALLS: dockerCalls,
+          U6_LIVE_MANIFEST: liveManifest,
+          U6_PNPM_CALLS: pnpmCalls,
+          U6_REPLACEMENT_MANIFEST: replacementManifest,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(pnpmCalls, "utf8"), "2");
+    assert.equal(readFileSync(dockerCalls, "utf8"), "3");
+    assert.ok(
+      readFileSync(liveManifest, "utf8").includes(`sha256:${"f".repeat(64)}`),
+      "测试必须实际替换 live manifest，避免回归用例假绿",
+    );
+    const sessionSql = readFileSync(capturedSql, "utf8");
+    assert.ok(sessionSql.includes(U6_MAINTENANCE_MANIFEST_HASH));
+    assert.ok(sessionSql.includes("'2000ms'"));
+    assert.ok(!sessionSql.includes(`sha256:${"f".repeat(64)}`));
+    assert.ok(!sessionSql.includes("'4999ms'"));
+  });
+
   test("maintenance runner 的 migration producer 失败不能被成功的 psql 消费端掩盖", () => {
     const root = mkdtempSync(resolve(tmpdir(), "u6-runner-producer-"));
     temporaryDirectories.push(root);
@@ -618,7 +752,17 @@ describe("U6 deterministic migration renderer", () => {
       canonicalMigration,
       `-- u6_migration_checksum: sha256:${"b".repeat(64)}\n`,
     );
-    executable(resolve(fakeBin, "pnpm"), "#!/bin/sh\nexit 0\n");
+    executable(
+      resolve(fakeBin, "pnpm"),
+      `#!/bin/sh
+case "$*" in
+  *--print-maintenance-session-values*)
+    printf '%s' '${U6_MAINTENANCE_SESSION_VALUES}'
+    ;;
+esac
+exit 0
+`,
+    );
     executable(
       resolve(fakeBin, "docker"),
       `#!/bin/sh

@@ -252,6 +252,16 @@ type MaintenanceManifest = {
   manifest_hash: string;
 };
 
+export type U6MaintenanceSessionValues = {
+  manifestHash: string;
+  manifestAppId: string;
+  windowId: string;
+  maxDurationMs: number;
+  lockTimeoutMs: number;
+  statementTimeoutMs: number;
+  idleTimeoutMs: number;
+};
+
 export type U6RendererPaths = {
   sourceDirectory: string;
   migrationPath: string;
@@ -1135,8 +1145,10 @@ function checksumOccurrences(migration: string): {
   return { marker, ledger, normalized };
 }
 
-export function verifyGeneratedArtifacts(paths: U6RendererPaths): void {
-  validateMaintenanceManifest(JSON.parse(readFileSync(paths.maintenanceManifestPath, "utf8")));
+export function verifyGeneratedArtifacts(paths: U6RendererPaths): U6MaintenanceSessionValues {
+  const manifest = validateMaintenanceManifest(
+    JSON.parse(readFileSync(paths.maintenanceManifestPath, "utf8")),
+  );
   const rendered = renderMigrationFromSegments(paths.sourceDirectory);
   const migration = readFileSync(paths.migrationPath, "utf8");
   assertCondition(migration === rendered.content, "10590 与固定 source segments 渲染结果不一致");
@@ -1157,6 +1169,15 @@ export function verifyGeneratedArtifacts(paths: U6RendererPaths): void {
     canonicalJson(inventory) === canonicalJson(expectedInventory),
     "Schema Inventory 与 renderer 投影不一致",
   );
+  return {
+    manifestHash: manifest.manifest_hash,
+    manifestAppId: manifest.deployment_scope.app_id,
+    windowId: manifest.maintenance_window.window_id,
+    maxDurationMs: manifest.maintenance_window.max_duration_ms,
+    lockTimeoutMs: manifest.timeouts.lock_timeout_ms,
+    statementTimeoutMs: manifest.timeouts.statement_timeout_ms,
+    idleTimeoutMs: manifest.timeouts.idle_in_transaction_session_timeout_ms,
+  };
 }
 
 function atomicWrite(path: string, content: string): void {
@@ -1208,15 +1229,38 @@ if (isMainModule()) {
   const snapshotFlagIndex = process.argv.indexOf("--verify-migration-snapshot");
   if (snapshotFlagIndex >= 0) {
     const snapshotPath = process.argv[snapshotFlagIndex + 1];
+    const manifestSnapshotFlagIndex = process.argv.indexOf("--maintenance-manifest-snapshot");
+    const manifestSnapshotPath = process.argv[manifestSnapshotFlagIndex + 1];
     assertCondition(
       snapshotPath !== undefined && snapshotPath.length > 0,
       "--verify-migration-snapshot 必须提供 migration snapshot 路径",
     );
-    verifyGeneratedArtifacts({
+    assertCondition(
+      manifestSnapshotFlagIndex >= 0 &&
+        manifestSnapshotPath !== undefined &&
+        manifestSnapshotPath.length > 0,
+      "--verify-migration-snapshot 必须提供 --maintenance-manifest-snapshot 路径",
+    );
+    const sessionValues = verifyGeneratedArtifacts({
       ...paths,
       migrationPath: resolve(snapshotPath),
+      maintenanceManifestPath: resolve(manifestSnapshotPath),
     });
-    console.log(`U6 migration snapshot verified: ${basename(snapshotPath)}`);
+    if (process.argv.includes("--print-maintenance-session-values")) {
+      process.stdout.write(
+        [
+          sessionValues.manifestHash,
+          sessionValues.manifestAppId,
+          sessionValues.windowId,
+          sessionValues.maxDurationMs,
+          sessionValues.lockTimeoutMs,
+          sessionValues.statementTimeoutMs,
+          sessionValues.idleTimeoutMs,
+        ].join("\t"),
+      );
+    } else {
+      console.log(`U6 migration snapshot verified: ${basename(snapshotPath)}`);
+    }
   } else if (process.argv.includes("--verify")) {
     verifyGeneratedArtifacts(paths);
     console.log(`U6 migration artifacts verified: ${basename(paths.migrationPath)}`);

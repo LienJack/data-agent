@@ -48,9 +48,10 @@ pnpm --dir "$repo_dir" exec tsx scripts/render-u6-migration.ts --verify
 
 snapshot_dir=$(mktemp -d "${TMPDIR:-/tmp}/data-agent-u6-migration.XXXXXX")
 snapshot_file="$snapshot_dir/$expected_migration_name"
+snapshot_manifest_file="$snapshot_dir/u6-migration-maintenance-manifest.json"
 execution_file="$snapshot_dir/u6-maintenance-session.sql"
 cleanup_snapshot() {
-  rm -f "$snapshot_file" "$execution_file"
+  rm -f "$snapshot_file" "$snapshot_manifest_file" "$execution_file"
   rmdir "$snapshot_dir" 2>/dev/null || true
 }
 trap cleanup_snapshot 0
@@ -58,31 +59,32 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+chmod 700 "$snapshot_dir"
 cp "$canonical_migration_path" "$snapshot_file"
-chmod 400 "$snapshot_file"
-pnpm --dir "$repo_dir" exec tsx scripts/render-u6-migration.ts \
-  --verify-migration-snapshot "$snapshot_file"
+cp "$manifest_file" "$snapshot_manifest_file"
+chmod 400 "$snapshot_file" "$snapshot_manifest_file"
+manifest_values=$(
+  pnpm --dir "$repo_dir" exec tsx scripts/render-u6-migration.ts \
+    --verify-migration-snapshot "$snapshot_file" \
+    --maintenance-manifest-snapshot "$snapshot_manifest_file" \
+    --print-maintenance-session-values
+)
 migration_file=$snapshot_file
 
-json_value() {
-  requested_path=$1
-  node -e '
-    const fs = require("node:fs");
-    const value = process.argv[2].split(".").reduce(
-      (current, key) => current[key],
-      JSON.parse(fs.readFileSync(process.argv[1], "utf8")),
-    );
-    process.stdout.write(String(value));
-  ' "$manifest_file" "$requested_path"
-}
-
-manifest_hash=$(json_value manifest_hash)
-manifest_app_id=$(json_value deployment_scope.app_id)
-window_id=$(json_value maintenance_window.window_id)
-max_duration_ms=$(json_value maintenance_window.max_duration_ms)
-lock_timeout_ms=$(json_value timeouts.lock_timeout_ms)
-statement_timeout_ms=$(json_value timeouts.statement_timeout_ms)
-idle_timeout_ms=$(json_value timeouts.idle_in_transaction_session_timeout_ms)
+tab=$(printf '\t')
+saved_ifs=$IFS
+IFS=$tab
+read -r \
+  manifest_hash \
+  manifest_app_id \
+  window_id \
+  max_duration_ms \
+  lock_timeout_ms \
+  statement_timeout_ms \
+  idle_timeout_ms <<EOF
+$manifest_values
+EOF
+IFS=$saved_ifs
 
 is_canonical_uuid() {
   printf '%s' "$1" \
