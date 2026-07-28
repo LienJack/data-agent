@@ -3,6 +3,7 @@ import {
   artifactReferenceIdentity,
   type L2ArtifactDocument,
   type L2ResearchDocumentCandidate,
+  orderedDistinctReferencesV2 as orderedDistinctReferencesContractV2,
 } from "@data-agent/contracts";
 
 export type ArtifactReferenceFor<ArtifactType extends ArtifactReference["artifact_type"]> =
@@ -141,4 +142,10 @@ export function orderedUniqueReferences(
   ]
     .sort(([left], [right]) => stableCompare(left, right))
     .map(([, reference]) => reference);
+}
+
+export function orderedDistinctReferencesV2<Reference extends ArtifactReference>(
+  references: readonly Reference[],
+): Reference[] {
+  return orderedDistinctReferencesContractV2(references);
 }

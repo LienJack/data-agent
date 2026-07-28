@@ -1,14 +1,15 @@
 # U6 Research 派生 Hash 与 v2 Wire 合同
 
-> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED` ·
+> `FROZEN_DESIGN_CONTRACT / PARTIALLY_IMPLEMENTED` ·
 > `u6-research-derivation-wire@1.0.0`
 >
 > 本文唯一拥有跨 TypeScript/PostgreSQL Research Hash、Coverage/Stop v2 delta、
 > Receipt hash codec 与 Enumerator Attestation Wire。表、事务、锁与 currentness 取
 > `u6-research-derivation-receipt-contract.md`。
 >
-> 源码审计固定 `data-agent@6f2836c1d05f14d5f70490524afe12a157784596`；下述 v2
-> tuple、helper 与 Attestation 均未实现。
+> 源码审计固定 `data-agent@6f2836c1d05f14d5f70490524afe12a157784596`；TypeScript
+> strict Hash/Reference helper 已实现，PostgreSQL parity、v2 tuple、Receipt 与
+> Attestation 仍待后续切片实现。
 
 ## 1. Research Hash 值域与前像
 
@@ -19,6 +20,12 @@ prototype。key/value string 必须是不含 U+0000 的 Unicode scalar sequence�
 UTF-16 surrogate；该收紧是 PostgreSQL `text/jsonb` 的物理边界。
 Timestamp、UUID、decimal 与大整数用已验证 string；`-0` 规范为 `0`，不做 Unicode
 normalization。
+
+v2 helper 的资源边界继承 `U6_WIRE_LIMITS`：最大嵌套深度 `32`，单容器最大 `256`
+项，展开后的 container/value occurrence 分别不超过 `1024*32` 与 `1024*256`，
+展开后的 canonical JSON 不超过 `16_777_216` bytes。共享 DAG 合法，但同一节点每次
+展开都重新计入 occurrence 与 bytes；任何预算超限都必须在进入 SHA-256 前以
+`TypeError` 失败关闭。
 
 ```text
 research_kernel_sha256(domain, value) =

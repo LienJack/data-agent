@@ -679,6 +679,28 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
 - 当前只完成设计与 RQ122 源码审计；forward-only `10600`、TS v2 Wire、正向 Root、
   PG17 Oracle 与 Hosted/Docker 尚未实现，不得把本检查点标记为产品能力。
 
+#### U6-C2 TypeScript 派生原语实施证据（2026-07-28）
+
+- `@data-agent/contracts` 成为 strict `ResearchHashJson`、Research Hash v2 与
+  `orderedDistinctReferencesV2` 的唯一实现 Owner；Research 只保留 internal facade，
+  root/server 公共导出与 v1 Hash/Map 去重语义不变。
+- v2 Hash 校验完整 `{hash_domain,value}` 前像，只接受 SafeInteger、合法 Unicode
+  scalar sequence、dense Array 与 inert plain object；accessor、Symbol、自定义
+  prototype、cycle、非法反射和 duplicate Reference identity 全部失败关闭。
+- 校验过程从 data descriptor 构建 fresh projection，SHA-256 不再二次读取原始
+  Object/Array；Proxy 的 descriptor/get 视图漂移不能把 float 或 `undefined` 注入
+  strict digest。
+- 资源政策直接复用 `U6_WIRE_LIMITS`：深度、单容器宽度、展开后的
+  container/value occurrence 与 canonical bytes 都在进入 SHA-256 前检查，共享 DAG
+  按每次展开计费。
+- 四组冻结 golden vector、UTF-16 key 排序、v1 last-value-wins compatibility、
+  Object/Array Proxy、深度、共享 DAG、宽度与 bytes 预算均有回归测试；两项 Codex P1
+  finding 经独立验证、修复后 correctness/performance/testing 定向复审全部关闭。
+- 本检查点通过 `pnpm lint`、`pnpm typecheck`、`pnpm test:contract`、
+  `pnpm test:architecture`、`pnpm test:research`、`pnpm test:unit` 与
+  `git diff --check`。raw JSON duplicate-key、PostgreSQL 17 parity、`10600`、
+  Receipt/Root 与 Hosted/Docker 仍属于后续切片，不得据此宣称 C2 完成交付。
+
 ### U7 工作包
 
 1. 定义 `EvalCase`、`EvalRun`、`ScoreCard`、`ReleaseDecision`。

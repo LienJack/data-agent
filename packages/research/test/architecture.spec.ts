@@ -282,6 +282,7 @@ describe("@data-agent/research 架构边界", () => {
   it("Reference identity/Scope/Set 语义只由 internal owner 实现，且不得用 as never 擦除类型", () => {
     const sourceRoot = join(packageRoot, "src");
     const referenceIdentityOwner = join(sourceRoot, "internal/reference-identity.ts");
+    const researchHashOwner = join(sourceRoot, "internal/hash.ts");
     const productionSources = sourceFiles(sourceRoot);
     const duplicateDeclarations = productionSources
       .filter((path) => path !== referenceIdentityOwner)
@@ -305,6 +306,27 @@ describe("@data-agent/research 架构边界", () => {
       erasedIdentityCalls,
       "artifactReferenceIdentity 调用不得用 as never 擦除 typed Reference",
     ).toEqual([]);
+
+    const v2PrimitiveDefinitions = productionSources
+      .flatMap((path) => {
+        const source = readFileSync(path, "utf8");
+        return [
+          ...source.matchAll(
+            /\bfunction\s+(computeResearchKernelHashV2|orderedDistinctReferencesV2)\s*(?:<[^>]+>)?\s*\(/g,
+          ),
+        ].flatMap((match) => (match[1] === undefined ? [] : [{ name: match[1], owner: path }]));
+      })
+      .sort(({ name: left }, { name: right }) => (left < right ? -1 : left > right ? 1 : 0));
+    expect(v2PrimitiveDefinitions).toEqual([
+      { name: "computeResearchKernelHashV2", owner: researchHashOwner },
+      { name: "orderedDistinctReferencesV2", owner: referenceIdentityOwner },
+    ]);
+    expect(readFileSync(researchHashOwner, "utf8")).toContain(
+      "computeResearchKernelHashV2 as computeResearchKernelHashContractV2",
+    );
+    expect(readFileSync(referenceIdentityOwner, "utf8")).toContain(
+      "orderedDistinctReferencesV2 as orderedDistinctReferencesContractV2",
+    );
   });
 
   it("Research owner 依赖只能沿 Planning→Evidence→Coverage→Stop→Reporting→Readiness 单向流动", () => {
