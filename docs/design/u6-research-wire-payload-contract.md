@@ -5,6 +5,9 @@
 > Planning Wire：`docs/design/u6-research-planning-payload-contract.md`
 > 实现状态：纯 Research Kernel 为 `KERNEL_CANDIDATE_ONLY`；生产 Authority 为
 > `NOT_IMPLEMENTED`
+> C1 中下述 Budget/Coverage/Stop v1 只作 Candidate/历史读；C2a 正向 Root 必须采用
+> Derivation Wire/Receipt 冻结的 Receipt-bound v2，未实现前继续
+> fail closed。
 
 本文冻结 Obligation Execution 到 Provider Egress 的 Payload/Refinement；
 Primitive、Typed Ref 与共同 Value 复用 Planning Wire。对象和判别联合均须 strict，
@@ -260,7 +263,7 @@ type CoverageStatePayload = {
 等价 Refinement：
 
 - `effective_limit=min(RESEARCH_RUNTIME_LIMITS@1,Tenant Policy,ResearchBrief)`；
-  六个预算维度各满足 `used + remaining === effective_limit`，Provider Token 等于
+  七个预算维度各满足 `used + remaining === effective_limit`，Provider Token 等于
   Input+Output，`source_calls===0`；Ledger Hash 覆盖序号和全部数值。
 - `obligations` 与 exact Plan 一一对应；状态只按
   `STALE > FAILED > BLOCKED > SATISFIED > OPEN` 派生。`SATISFIED` 要求 OED PASS、
@@ -702,8 +705,8 @@ worker_fence/request_id/canonical_request_digest/reserved bounds`；缺 Begin、
 | `EvidenceCheckReceipt` | `1.0.0` | `evidence-check@1.0.0` |
 | `SupportDecision` | `1.0.0` | `support-decision@1.0.0` |
 | `HypothesisAssessment` | `1.0.0` | `hypothesis-assessment@1.0.0` |
-| `CoverageState` | `1.0.0` | `coverage-state@1.0.0` |
-| `ResearchStopDecision` | `1.0.0` | `research-stop@1.0.0` |
+| `CoverageState` v2 | `2.0.0` | `coverage-state@2.0.0` |
+| `ResearchStopDecision` v2 | `2.0.0` | `research-stop@2.0.0` |
 | `ReportManifest` V2 | `2.0.0` | `report-manifest@2.0.0` |
 | `AnalysisReport` V2 | `2.0.0` | `analysis-report@2.0.0` |
 | `ReportProjectionReceipt` | `1.0.0` | `report-projection@1.0.0` |
@@ -711,13 +714,16 @@ worker_fence/request_id/canonical_request_digest/reserved bounds`；缺 Begin、
 | `ReportReadyCertificate` V3 | `3.0.0` | `report-ready@3.0.0` |
 | `ReadinessRevocationReceipt` | `1.0.0` | `readiness-revocation@1.0.0` |
 
-当前 exact tuple 分别是 `ReportManifest/2.0.0/report-manifest@2.0.0` 与
+当前 exact tuple 包含上表 Coverage/Stop v2、
+`ReportManifest/2.0.0/report-manifest@2.0.0` 与
 `ReportReadyCertificate/3.0.0/report-ready@3.0.0`。
+`CoverageState/1.0.0/coverage-state@1.0.0`、
+`ResearchStopDecision/1.0.0/research-stop@1.0.0`、
 `ReportManifest/1.0.0/report-manifest@1.0.0` 与
 `ReportReadyCertificate/2.0.0/report-ready@2.0.0` 保留为
-`HISTORICAL_READ_ONLY`：二者仍要求 material Claim/Support 集合非空，不能通过当前
-Candidate Writer、current-ready 或 Release Authority。全反驳空 Supported 集合只属于
-上述 V2/V3 当前 tuple，不能以旧协议版本重封。
+`HISTORICAL_READ_ONLY`：后两个旧版仍要求 material Claim/Support 集合非空；四者都不能
+通过当前 Candidate Writer、Stop Root、current-ready 或 Release Authority。全反驳空
+Supported 集合只属于当前 Report/Certificate tuple，不能以旧协议版本重封。
 legacy protocol-null V1 仅允许显式 `readHistoricalL2ResearchDocument`，同样不得进入
 Writer、Committer、current-ready、Grant、RunTerminal 或 Release `GO`。
 

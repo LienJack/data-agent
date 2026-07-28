@@ -499,6 +499,8 @@ flowchart LR
 `docs/design/u6-research-planning-payload-contract.md` 与
 `docs/design/u6-research-oed-v2-contract.md`、
 `docs/design/u6-research-wire-payload-contract.md`、
+`docs/design/u6-research-derivation-wire-contract.md`、
+`docs/design/u6-research-derivation-receipt-contract.md`、
 `docs/design/u6-research-platform-contract.md`、
 `docs/design/u6-research-database-surface-contract.md`、
 `docs/design/u6-research-migration-safety-contract.md`、
@@ -656,6 +658,26 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   Index/ACL/RLS/Policy 的 `pg_catalog` exact snapshot、Backend 正向/读取入口、
   DB-owned receipts、Result Crypto、Worker 与 Hosted/Docker 仍为
   `NOT_IMPLEMENTED`，Release 继续 `HOLD`。
+
+#### U6-C2 派生回执合同冻结（2026-07-28）
+
+- 新建 Derivation Wire/Receipt 两分册，固定 TypeScript/PostgreSQL 共同 Research Hash、
+  拒重排序、v2/Attestation、Budget Event 双水位，以及 DB-owned
+  Budget/Coverage/Candidate/Stop/Input Watermark Receipt。
+- C2a 改为先由 DB 签发有界 Budget Snapshot，Coverage/Stop 只绑定已存在 Snapshot；
+  Root 锁内重验 TTL、elapsed class 与双水位后，同一事务生成 Coverage/Candidate/Stop
+  三张 Receipt 并提交
+  `PARTIAL|NEEDS_MORE_RESEARCH|INCONCLUSIVE`；C2b 的 Input Watermark 与
+  ReportReady Receipt 完成前，Publish/Consume 保持固定 fail closed。
+- 该两阶段切分是为消除预提交 Artifact 无法预知未来 Root `evaluated_at/elapsed_ms` 的
+  不可满足时间环；不是放宽 currentness，过龄/跨预算边界/事件变化都必须新 Snapshot 与
+  Artifact revision。
+- `10600` 的 pre-DDL 必须断言 v2 Operation、StopCommit、non-ready Stop Terminal 为零，
+  不合成历史 Receipt；immutable guard 以 platform→app migration lock 串行、保持 OID，
+  先证明 10590 cleanup RPC 在破坏性写前固定 HOLD，再同事务替换 RPC+guard；仅向
+  Cleanup Owner 的 28 表 DELETE + 四项可信事务 binding 开例外，UPDATE 永拒。
+- 当前只完成设计与 RQ122 源码审计；forward-only `10600`、TS v2 Wire、正向 Root、
+  PG17 Oracle 与 Hosted/Docker 尚未实现，不得把本检查点标记为产品能力。
 
 ### U7 工作包
 

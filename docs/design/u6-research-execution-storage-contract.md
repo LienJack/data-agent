@@ -57,8 +57,9 @@ IMMEDIATE）。TS safe `bigint` CHECK `0..9007199254740991`；PositiveInt 从 1 
 | `research_lifecycle_cleanup_batch_receipts` | PK `(L,batch_id)`；UQ `(L,operation_id,batch_seq)`；op/request hash/count；append-only retained |
 | `research_result_key_versions` | PK、ACTIVE/STAGED partial UQ、state/predecessor 只取 Key Lifecycle |
 | `research_result_key_transition_operations` | PK `(S,operation_id)`；append-only request/result replay receipt 只取 Key Lifecycle |
-| `research_resource_run_heads` | PK `(S,run_id)`；FK Run；`next_reservation_seq` 单调 |
-| `research_resource_reservations` | PK `(S,reservation_id)`；UQ `(S,run_id,reservation_seq)`、`(S,run_id,principal_id,reserve_idempotency_key)`；FK Run/Membership/Brief；该行即 Reserve Operation，保存 strict input hash/outcome |
+| `research_resource_run_heads` | PK `(S,run_id)`；FK Run；reservation/budget-event/step 三个 next seq、budget epoch/state/start/hash |
+| `research_step_operations` | PK `(S,step_operation_id)`；UQ logical step 与 principal/idempotency；FK Run/Membership/Attempt/parent；step/budget seq/hash/time |
+| `research_resource_reservations` | PK `(S,reservation_id)`；UQ run/seq 与 principal/idempotency；FK Run/Membership/Brief/Step；保存 budget epoch/logical step、strict input/outcome |
 | `research_resource_transition_operations` | PK `(S,transition_id)`；UQ `(S,reservation_id,principal_id,idempotency_key)`；FK Reservation |
 | `research_invocation_request_operations` | PK `(S,invocation_id)`；idempotency UQ；完整 `I` cleanup-only FK 到 Invocation.I |
 | `research_invocation_commits` | PK `(S,invocation_id)`；UQ exact `I`/Reservation/Request；FK Reservation/Attempt；nullable RequestOp pointer cleanup-only FK |
@@ -75,13 +76,9 @@ IMMEDIATE）。TS safe `bigint` CHECK `0..9007199254740991`；PositiveInt 从 1 
 | `research_system_record_transition_operations` | PK `(S,transition_id)`；UQ `(S,record_kind,record_id,principal_id,idempotency_key)`；fixed `record_version=1`；FK `(S,record_kind,record_id,record_version)` 到 exact System Identity；Result reason/erasure request nullable CHECK |
 | `research_result_ciphertext_access_audits` | PK `(S,audit_id)`；Index `(S,principal_id,observed_at)`、`(S,attempted_result_identity_hash,observed_at)`、resolved Result identity/time；FK exact retention policy + `delete_after`；三阶段 CHECK/FK；retention 内 append-only |
 
-Tool Permit Policy Limit 的 hash 固定为：
-
-```text
-sha256(UTF8("u6-tool-permit-policy-limit@1.0.0\0") ||
-  UTF8(JCS([app_id,tenant_id,environment,policy_version,
-            tool_permit_max_ttl_ms])))
-```
+Tool Permit Limit Hash 固定为
+`SHA256(UTF8("u6-tool-permit-policy-limit@1.0.0\0") ||
+UTF8(JCS([S,policy_version,tool_permit_max_ttl_ms])))`。
 
 System Identity `record_kind` 只允许
 `ADAPTER_TERMINATION_RECEIPT|INVOCATION_OUTCOME_USAGE|TOOL_INVOCATION_PERMIT|
@@ -107,15 +104,10 @@ Preparation 保存 Crypto 分册的 digestless `StoredTerminalInputCommitmentFac
 Ciphertext Resolver 将其与 locked Request/Invocation/Transition/Result/SQL Receipt/
 OutcomeUsage 逐字段重验后放入 envelope；Decryptor 只补入解密后重算的 digest。
 
-Result Retention Policy 由 current Head 指向 immutable exact Ref。Policy 固定
-`retention_duration_ms=1..31_536_000_000`、`legal_hold=NONE|ACTIVE`；ACTIVE 必须有
-非明文 `hold_ref_hash`，NONE 时该列必须为空。Prepare 只使用 locked current Policy 并
-把 exact Ref、duration 与 DB 计算的 `deletion_due_at` 固化进 Result/Preparation。
-Retention Tombstone 与 Subject Erasure 都锁 current Head 的 exact Policy，再锁 Result
-已绑定的 historical Policy。两种操作都只以 current Head 的 exact Policy 作为当前
-legal-hold authority：current ACTIVE 时零写；row-bound historical Policy 只证明
-immutable duration/hash/deletion time，Head 已 CAS 到 NONE 后，旧 ACTIVE 行不再
-veto。Provisioner 只能追加版本并 CAS Head，不能原地改 hold。
+Result Retention Head 指向 immutable exact Policy（duration `1..31_536_000_000ms`；
+hold ACTIVE 必有非明文 hash，NONE 必为空）。Prepare 锁 current Policy并固化 Ref/
+duration/DB `deletion_due_at`。Tombstone/Erasure 锁 current 再锁 row-bound historical；
+只有 current ACTIVE veto，historical 只证明固化期限。Policy 只能 append + Head CAS。
 
 Ciphertext Access Audit 的 strict Wire：
 
@@ -147,15 +139,10 @@ Audit 物理展开 `resolved_record_kind/id/version` 与 nullable
 Result+Blob+Key cross-binding 只取 Terminal Reference Graph §7；禁止 MATCH FULL、
 predicate/conditional FK。Capability revoke、Tombstone 与 Key retire 保留 target。
 
-Audit 不是无限期日志。创建时锁 current retention head，绑定 exact policy/hash，并以
-`FOR SHARE` 锁 Head、`FOR KEY SHARE` 锁 exact immutable Policy，再以 DB time 计算
-`delete_after`；policy 固定 online retention `1..365d`、erasure SLA
-`1..7d`、backup window `0..35d` 与 `legal_hold=NONE|ACTIVE`（ACTIVE 必须有非明文
-hold ref hash）。在线期内禁止 UPDATE/普通 DELETE；只有 deployment-only
-`purge_u6_result_ciphertext_access_audits` 可删除；strict branch、request hash、
-current-vs-bound hold、eligible cutoff 与 stored/replay result 只取 System Record
-Lifecycle。Hosted/Docker 都必须有 backup-expiry attestation；缺 policy、purge/
-restore Oracle 或 backup window 证据时 Release 保持 HOLD。
+Audit 创建时锁 current retention Head/Policy，以 DB time 固化 `delete_after`；policy
+范围为 online `1..365d`、erasure `1..7d`、backup `0..35d`，hold 规则同上。在线期无
+UPDATE/普通 DELETE，仅 deployment purge；分支/hash/cutoff/replay 取 System Lifecycle。
+Hosted/Docker 缺 policy、purge/restore 或 backup-expiry 证据时 Release HOLD。
 
 ## 3. 可表达的 Result/Blob/SQL 环
 
@@ -277,56 +264,59 @@ Authority helper 持锁的 Membership snapshot 直接复用，profile 不再锁 
 若 input 只有 `attempt_id`，取得 exact Run/domain lock 后才可按完整 `S` 无锁定位
 candidate `outbox_id`；该读只产 locator，不产生 Authority/TTL 事实。随后先锁 exact
 Outbox、再锁 exact RunAttempt，并逐字段重验 composite binding、active attempt 与
-fence；禁止用一次 join lock 把物理锁序交给 planner：
+fence。若只有 `reservation_id`，Run 后也只可无锁读取 Reservation 取得
+outbox/attempt locator，再按 Outbox→Attempt→Resource Head→Reservation 锁定并重验
+binding；两种 locator 都不授权，禁止 join `FOR UPDATE` 把物理顺序交给 planner：
 
 ```text
 Reserve:
-  Run → exact ResearchBrief artifact → Resource Run Head → Reservation
+  Run → exact ResearchBrief artifact → Resource Run Head → Reservation → Budget Event
 
 Reserved Cancel / Expire:
-  Run → Reservation → Resource Transition
+  Run → Resource Run Head → Reservation → Resource Transition → Budget Event
+
+Step Begin:
+  Run → exact Outbox Lease → exact current RunAttempt
+  → Resource Run Head → Step Operation → Budget Event
 
 Begin:
-  Run → Reservation
-  → exact Outbox Lease
-  → exact current RunAttempt
+  Run → exact Outbox Lease → exact current RunAttempt
+  → Resource Run Head → Reservation
   → optional Tool Permit System Identity → optional Tool Permit
   → Invocation identity → Invocation（AUTHORIZED）
-  → Resource Transition
+  → Resource Transition → Budget Event
 
 Projection:
-  Run → Reservation → exact Outbox Lease → exact current RunAttempt
+  Run → exact Outbox Lease → exact current RunAttempt → Reservation
   → Invocation → System Artifact
 
 Start:
-  Run → Reservation → exact Outbox Lease → exact current RunAttempt
+  Run → exact Outbox Lease → exact current RunAttempt → Reservation
   → Request Operation
   → optional Tool Permit System Identity → optional Tool Permit
   → Invocation → Invocation Transition
 
 Outcome Unknown:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → optional TERMINAL_INITIAL Key Version（ENCRYPTION → COMMITMENT）
   → Request Operation → Invocation
   → OutcomeUnknown Transition identity → optional TERMINAL_INITIAL Preparation
 
 Abort Terminal Preparation:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → Key Version（ENCRYPTION → COMMITMENT）
   → Request Operation → Invocation
   → Abort Transition/Recovery Operation identity → exact Preparation
 
 Prepare COMPLETED Terminal:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → Result Retention Policy Head（FOR SHARE）→ exact current Result Retention Policy
   → Key Version（ENCRYPTION → COMMITMENT）
   → Request Operation → Invocation
   → Terminal Transition identity advisory / existing row → Preparation
 
 Completed Terminal:
-  Run → Reservation
-  → exact original Outbox
-  → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → Key Version（ENCRYPTION → COMMITMENT）
   → Request Operation → Invocation
   → Terminal Transition identity advisory / existing row
@@ -337,42 +327,41 @@ Completed Terminal:
   → OutcomeUsage Identity → OutcomeUsage
 
 Failed Terminal from AUTHORIZED（zero I/O）:
-  Run → Reservation
-  → exact original Outbox
-  → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → Invocation
   → Terminal Transition identity advisory / existing row
   → optional matching Preparation
   → OutcomeUsage Identity → OutcomeUsage
 
 Failed Terminal after Start:
-  Run → Reservation
-  → exact original Outbox
-  → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → Request Operation → Invocation
   → Terminal Transition identity advisory / existing row
   → optional matching Preparation
   → OutcomeUsage Identity → OutcomeUsage
 
 Adapter Termination:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → optional Request Operation → Invocation
   → Termination Identity → Termination Receipt → System Transition
 
 Settle:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt
+  → Resource Run Head → Reservation
   → optional Request Operation → Invocation
-  → OutcomeUsage Identity → OutcomeUsage → Resource Transition
+  → OutcomeUsage Identity → OutcomeUsage → Resource Transition → Budget Event
 
 Active Cancel:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt
+  → Resource Run Head → Reservation
   → optional Request Operation → Invocation
   → Termination Identity → Termination Receipt
-  → OutcomeUsage Identity → OutcomeUsage → Resource Transition
+  → OutcomeUsage Identity → OutcomeUsage → Resource Transition → Budget Event
 
 Abandon:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
-  → Request Operation → Invocation → Resource Transition
+  Run → exact original Outbox → exact original RunAttempt
+  → Resource Run Head → Reservation
+  → Request Operation → Invocation → Resource Transition → Budget Event
 
 Permit Issue:
   Run → exact PolicyReceipt → matching Tool Permit Policy Limit → Permit identity advisory
@@ -433,7 +422,7 @@ Public read profile 固定为：
 
 ```text
 Terminal Preparation recovery metadata:
-  Run → Reservation → exact original Outbox → exact original RunAttempt
+  Run → exact original Outbox → exact original RunAttempt → Reservation
   → Request Operation → Invocation → Preparation（FOR KEY SHARE）
 Termination metadata:
   Termination System Identity → Termination Receipt（FOR KEY SHARE）
@@ -566,26 +555,13 @@ App/Service 无 DML；配置变化新增 exact version/hash 行并 CAS Head，�
 
 ## 7. 必需 Oracle
 
-- catalog 证明全部 PK/UQ/FK/CHECK/deferrability 与本表逐字一致；
-- 三类 Result 共用一张物理表，跨 kind Result/Blob/Receipt 换绑失败；
-- 四条 reciprocal FK 在单事务成功、任一步 rollback 零孤儿；普通 public RPC 不
-  defer，除 Terminal Graph §6 明列的 `T` 内 cleanup-only 集合外其余 FK 均
-  NOT DEFERRABLE；
-- stale Worker 不能 Begin/Start；无 ABORTED TERMINAL_LATE 时原 Worker 终态后的 exact
-  late Terminal/Settle 可完成；LATE abort 后任何 Terminal 固定
-  `RESEARCH_INVOCATION_LATE_TERMINAL_CLOSED`；
-- CLAIMED/COMMITTED/TOMBSTONED/ABORTED 每个非法 nullable 组合都被 CHECK 拒绝；
-- Key kind/state/timestamp 非法组合与 ACTIVE UQ 失败；old 先 demote/new 后 promote 不触发
-  `23505`，CLAIMED 阻塞 rotation，双 kind rotation 无锁环；
-- bigint 超 TS safe integer、Fence 0、非 UUID Principal、跨 `S` FK 全部失败；
-- TTL 左闭右开边界、单一 `db_now`、过期 Job 延迟下 Resolver 仍失败关闭；
-- 伪造 PolicyReceipt/Retention Ref、同 identity 异值、跨 `S` policy 与环境变量 fallback
-  全部失败，Hosted/Docker Manifest 产出相同 policy rows；
-- Result/Audit current Head=`ACTIVE` 时零 Tombstone/Purge；追加 NONE 并 CAS Head
-  后，即使 row-bound historical Policy 仍为 ACTIVE，到期与 matching subject erasure
-  也成功；stale/noncurrent NONE 不能绕过 current ACTIVE。Audit RETENTION 无 caller
-  cutoff，SUBJECT_ERASURE 只删 exact source Transition 的同 Principal/cutoff；同
-  request 多 Result 时 source id 固定 cutoff，同输入重放相同，换 source 与旧 operation
-  冲突；超过 provider
-  backup window 的 restore 不含已清 principal/hash，否则 Release 保持 HOLD；
-- production SQL rows 在 PostgreSQL/Audit/Checkpoint/Redis sentinel 检索为零。
+- Catalog 的 PK/UQ/FK/CHECK/deferrability exact；跨 kind/S/Policy/identity 换绑失败；
+- 四 reciprocal FK 单事务闭合、失败零孤儿；除 Graph 明列 cleanup 集合外不 defer；
+- stale Worker 不能 Begin/Start；允许 exact late settle，LATE abort 后 Terminal 永久关闭；
+- 四种 Preparation nullable、Key state/time/UQ、safe bigint/Fence/UUID 非法值均失败；
+- rotation 顺序无 `23505`，CLAIMED 阻塞且双 kind 无锁环；
+- TTL 左闭右开且只用单一 `db_now`，Job 延迟与 env fallback 仍失败关闭；
+- current hold ACTIVE 时零 Tombstone/Purge；CAS 到 NONE 后 historical ACTIVE 不 veto，
+  stale NONE 不能绕过。Purge 仅 exact principal/source/cutoff，重放相同，换 source 冲突；
+- Hosted/Docker policy/Catalog 相同；过 backup window 的 restore 与所有
+  PostgreSQL/Audit/Checkpoint/Redis sentinel 均无已清秘密或 principal/hash。

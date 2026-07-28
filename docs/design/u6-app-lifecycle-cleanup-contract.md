@@ -202,6 +202,58 @@ app.u6_cleanup_batch_id     = input.batch_id
 SET ROLE，Inventory 断言 cleanup owner 不持有其他 SECURITY DEFINER 函数。因此 caller
 预设同名 GUC 不能授权，函数覆盖后的 binding 也只能在本事务内存活。
 
+`10600` 以原 OID `CREATE OR REPLACE platform.reject_immutable_mutation()` 安装
+cleanup-aware guard，既有 trigger 无须 disable/重建。它保持 SECURITY INVOKER 与空
+search path：`UPDATE` 永远拒绝；`DELETE` 仅当 current user 是 NOLOGIN
+`data_agent_u6_cleanup_owner`、四个 binding 均通过 strict parse、`OLD.app_id/environment`
+逐字匹配且 `TG_TABLE_SCHEMA='app_data_agent'`、表名属于以下 exact allowlist 时
+`RETURN OLD`。实现必须先按 `TG_TABLE_SCHEMA/TG_TABLE_NAME/TG_OP` 拒绝，再读取 OLD：
+
+```text
+research_artifact_commit_operations
+research_frontier_events
+research_readiness_publications
+research_readiness_consumptions
+research_domain_terminals
+research_stop_terminal_commits
+research_release_decision_commits
+research_result_key_transition_operations
+research_resource_transition_operations
+research_invocation_request_operations
+research_invocation_transition_operations
+research_system_artifacts
+research_system_record_identities
+research_adapter_termination_receipts
+research_invocation_outcome_usage
+research_result_access_audit_purge_operations
+research_backend_artifact_commit_operations
+research_budget_events
+research_budget_ledger_receipts
+research_budget_policy_versions
+research_candidate_enumeration_receipts
+research_candidate_enumerator_attestations
+research_coverage_derivation_receipts
+research_enumerator_versions
+research_input_events
+research_input_event_watermark_receipts
+research_step_operations
+research_stop_derivation_receipts
+```
+
+其他 schema/table、空或伪造 binding、普通 RPC/Provisioner/Job、以及 Platform 自身 trigger
+仍报 `DA_IMMUTABLE_RECORD`。GUC 单独不授权：Cleanup Owner 无 login/role membership，
+且唯一由它持有的 SECURITY DEFINER 入口是已锁定 Platform evidence、覆盖 binding 后才
+执行静态 DELETE 的 cleanup function。Inventory 冻结 guard source hash/owner/属性与完整
+`tgfoid` dependency set；其中 cleanup-eligible app 子集 replace 前 16 张、postcondition
+后 28 张，Platform/其他 dependency 全部 deny-only。少、多或换绑均失败；Guard 不查表取锁。
+
+安全前提不是“10590 没有 cleanup 入口”。它已有 Job 可调用、Cleanup Owner 持有的
+SECURITY DEFINER RPC，但旧 body 在任何 retained write/DELETE 前无条件返回
+`U6_CLEANUP_EXTERNAL_VERIFIER_UNAVAILABLE`。`10600` pre-DDL 必须按 baseline
+Inventory 验证该 RPC 的 OID/body hash/owner/ACL/`prosecdef=true`/空 search path 与
+destructive-dormant control flow，再在同一事务同时 replace cleanup RPC 与 guard。
+跨越 COMMIT 的旧 invocation 只能继续旧 body 返回 HOLD；新调用才同时看见新 pair。
+
 排他锁先排空所有持 lifecycle shared lock 的 U6/既有写事务；取得后不再调用 Authority
 prefix、Run-first profile 或普通 RPC。每个 batch 提交后锁释放，但 Lifecycle 仍为
 `DELETE_PENDING`，所以新写继续失败。Restore 若在 batch 间获排他锁，下一 batch 必须
@@ -258,25 +310,31 @@ RETAINED_CONTROL =
 
 `CORE_DATABASE` 由外层 core Database cleanup 删除；U6 Job 只先移除 U6 引用。
 `PLATFORM_CONTROL` 由 Platform lifecycle 保留/推进；`RETAINED_CONTROL` 永不进入 U6
-resource residual。其余 41 张 relation 的 owner 必须为 `U6_JOB`，且 exact phase
+resource residual。`10600` 后其余 56 张 relation 的 owner 必须为 `U6_JOB`，且 exact phase
 allowlist 为：
 
 | rank / group / predicate / order | exact relation |
 | --- | --- |
 | `0/AUDIT_LEAF/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_result_ciphertext_access_audits`，随后 `research_result_access_audit_purge_operations` |
-| `1/ROOT_GRAPH/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_release_decision_commits`、`research_readiness_consumptions`、`report_read_grant_expiration_operations`、`report_read_grants`、`research_revocation_operations`、`research_readiness_publications`、`current_report_readiness`、`research_domain_terminals`、`research_frontier_events`、`research_version_frontiers`、`research_frontier_operations`、`research_stop_terminal_commits`、`research_current_evidence_relation_keys`、`research_artifact_commit_operations` |
+| `1/ROOT_GRAPH/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_release_decision_commits`、`research_readiness_consumptions`、`report_read_grant_expiration_operations`、`report_read_grants`、`research_revocation_operations`、`research_readiness_publications`、`current_report_readiness`、`research_stop_terminal_commits`、`research_domain_terminals`、`research_stop_derivation_receipts`、`research_candidate_enumeration_receipts`、`research_candidate_enumerator_attestations`、`research_coverage_derivation_receipts`、`research_artifact_commit_operations`、`research_budget_ledger_receipts`、`research_input_event_watermark_receipts`、`research_input_events`、`research_input_event_heads`、`research_frontier_events`、`research_version_frontiers`、`research_frontier_operations`、`research_current_evidence_relation_keys`、`research_backend_artifact_commit_operations` |
 | `2/SYSTEM_CHILD/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_system_record_transition_operations`、`research_adapter_termination_receipts`、`research_tool_invocation_permits`、`research_system_artifacts` |
 | `3/TERMINAL_T/INVOCATION_AGGREGATE/I_ASC` | `research_invocation_request_operations`、`research_invocation_commits`、`research_invocation_transition_operations`、`research_invocation_terminal_preparations`、`research_invocation_results`、`research_invocation_result_blobs`、`research_secure_sql_execution_receipts`、`research_invocation_outcome_usage` |
 | `4/SYSTEM_IDENTITY/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_system_record_identities` |
-| `5/RESOURCE_GRAPH/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_resource_transition_operations`、`research_resource_reservations`、`research_resource_run_heads` |
+| `5/RESOURCE_EVENT/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_budget_events` |
+| `5/RESOURCE_TRANSITION/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_resource_transition_operations` |
+| `5/RESOURCE_RESERVATION/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_resource_reservations` |
+| `5/STEP_TREE/ALL_SCOPE_ROWS/RUN_STEP_DESC` | `research_step_operations` |
+| `5/RESOURCE_HEAD/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_resource_run_heads` |
 | `6/CAPABILITY_GRAPH/ALL_SCOPE_ROWS/ASSIGNMENT_KEY_ASC` | `research_authority_capability_heads`、`research_authority_capabilities` |
 | `6/KEY_TRANSITION/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_result_key_transition_operations` |
 | `6/KEY_VERSION_CHAIN/ONE_SCOPE_KIND/S_KIND_ASC` | `research_result_key_versions` |
 | `6/TOOL_POLICY/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_tool_permit_policy_limits` |
+| `6/HISTORICAL_DERIVATION_POLICY/NON_CURRENT_VERSION/FULL_PK_ASC` | `research_budget_policy_versions`、`research_enumerator_versions` |
 | `6/HISTORICAL_RETENTION/NON_CURRENT_RESULT_POLICY/FULL_PK_ASC` | `research_result_retention_policies` |
 | `6/HISTORICAL_RETENTION/NON_CURRENT_AUDIT_POLICY/FULL_PK_ASC` | `research_result_access_audit_retention_policies` |
 | `7/TENANT_GOVERNANCE_FINAL/CURRENT_RESULT_POLICY/TENANT_UUID_ASC` | `research_result_retention_policy_heads`、其 exact bound `research_result_retention_policies` |
 | `7/TENANT_GOVERNANCE_FINAL/CURRENT_AUDIT_POLICY/TENANT_UUID_ASC` | `research_result_access_audit_retention_heads`、其 exact bound `research_result_access_audit_retention_policies` |
+| `7/DERIVATION_GOVERNANCE_FINAL/CURRENT_VERSION/FULL_PK_ASC` | `research_budget_policy_heads`、其 bound `research_budget_policy_versions`；`research_enumerator_version_heads`、其 bound `research_enumerator_versions` |
 
 除 Terminal `T` reciprocal/deferred aggregate 与 Key chain 单 statement 外，表内
 relation 顺序就是 child-to-parent delete 顺序。`T` 列表只冻结确定性 DML 顺序，不声称
@@ -284,9 +342,13 @@ relation 顺序就是 child-to-parent delete 顺序。`T` 列表只冻结确定�
 `app_data_agent.`，Inventory 保存全限定名。`FULL_PK_ASC` 按 PK 每个 UUID 的 16 bytes、
 text 的 UTF-8 bytes、整数数值顺序；`I_ASC` 按完整 Invocation `I` 后再按各表 PK；
 `ASSIGNMENT_KEY_ASC` 先 assignment key 再 capability id；不得依赖 locale/collation。
+同 rank 5 必须按表中 group 顺序逐组归零；`RUN_STEP_DESC` 按
+`S,run_id,budget_epoch,step_seq DESC,step_operation_id`。Step 写入约束
+`parent_step_seq < child_step_seq`，因此 Reservation 先删、Step 再按 child-first 删除，
+immediate self-FK 不需 defer。
 每批只处理最小仍有残留的 rank，最多 `batch_limit` 个 aggregate。普通 phase 每行一个
 aggregate；Capability Head+bound Capability、完整 Terminal `T`、KeyVersion 同
-`S+key_kind` 全链、以及 rank 7 每 tenant 的四行治理闭包分别不可拆分。Key chain 只在
+`S+key_kind` 全链、以及 rank 7 每个治理 Head+bound Version 闭包分别不可拆分。Key chain 只在
 Transition Operation 与全部低 rank dependent 已归零后，以一个 DELETE statement 删除
 该 S/kind 全部 version；`S_KIND_ASC` 按 S 后 ENCRYPTION=0/COMMITMENT=1，不能按 version
 猜拓扑或拆批。`batch_limit` 计 aggregate，不计物理行。
@@ -308,7 +370,7 @@ OutcomeUsage aggregate。
 
 所有静态 DML 都显式过滤 binding 的 `app_id+environment` 并与 exact-L cleanup RLS
 双重匹配，跨该 L 的全部 tenants。`CORE_DATABASE`、`PLATFORM_CONTROL` 与 §3 两张
-`RETAINED_CONTROL` 不进入 U6 Job phase；任何 `10590` U6 relation 漏出上述 41+2
+`RETAINED_CONTROL` 不进入 U6 Job phase；任何 `10590/10600` U6 relation 漏出上述 56+2
 closed set、任何非 U6 relation 被标 `U6_JOB`，或任一 predicate/order 漂移，都使
 Inventory/Postcondition 失败。
 
@@ -365,6 +427,9 @@ core Database、Storage 与 Redis 的零残留合并进受签
 - `test` cleanup 不改变同 App `prod`，App A 不改变 App B；所有静态 SQL 都含 exact
   app/environment predicate；caller 预设四个 cleanup GUC 或先调用其他
   SECURITY DEFINER 函数不能越权，事务结束后 binding 不泄漏；
+- 两连接暂停旧 cleanup invocation 跨越 10600 COMMIT：旧调用仍只能 HOLD，新调用才同时
+  看见新 RPC/guard；普通角色、错误 Scope、UPDATE、Platform DELETE 与并发 replacement
+  均失败或按 platform→app advisory 顺序串行；
 - 最终 component residual=0 但 retained receipt 可重放；缺 core/Storage/Redis 任一
   零残留或外部 verifier 时仍 HOLD；
 - 受控 Export/Backup 可在删除前隔离恢复；provider backup window 后的恢复不得含已删

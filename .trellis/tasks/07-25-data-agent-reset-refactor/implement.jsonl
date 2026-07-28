@@ -2,6 +2,8 @@
 {"file":"docs/design/u6-research-planning-payload-contract.md","reason":"U6 Planning Wire primitive、ResearchBrief/HypothesisSet/EvidencePlan strict Payload 与精确 Reference 合同"}
 {"file":"docs/design/u6-research-oed-v2-contract.md","reason":"U6 OED v2 的 12 项语义检查、SqlArtifact exact closure、QueryEvidence replay 与 transient Candidate 边界"}
 {"file":"docs/design/u6-research-wire-payload-contract.md","reason":"U6 下游 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Payload 与 Wire Registry 合同"}
+{"file":"docs/design/u6-research-derivation-wire-contract.md","reason":"U6 跨运行时 Research Hash、Coverage/Stop v2 delta、Enumerator Attestation 与逐 kind exact codec"}
+{"file":"docs/design/u6-research-derivation-receipt-contract.md","reason":"U6 跨运行时 Research Hash、Budget Event 双水位、DB-owned Coverage/Candidate/Stop Receipt 与 Input Watermark 合同"}
 {"file":"docs/design/u6-research-platform-contract.md","reason":"U6 Frontier、Research Terminal、current-ready、Grant、Revocation、GO 的 strict 平台事务、锁序与状态真值表"}
 {"file":"docs/design/u6-research-database-surface-contract.md","reason":"U6 数据库 Authority provenance、current Artifact Committer、全局锁入口、RPC exposure、GRANT/DML denylist、10590 与 Schema Inventory 合同"}
 {"file":"docs/design/u6-research-execution-storage-contract.md","reason":"U6 Resource/Invocation/System Record/Result/Key metadata 的物理表、非 Terminal 约束、nullable CHECK、TTL 与唯一锁序合同"}

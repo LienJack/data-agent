@@ -2,6 +2,8 @@
 {"file":"docs/design/u6-research-planning-payload-contract.md","reason":"检查 Planning strict Schema、局部/精确 Reference、版本元组与资源上限"}
 {"file":"docs/design/u6-research-oed-v2-contract.md","reason":"检查 OED v2 exact SQL/Policy 绑定、production replay、Candidate-only assurance 与攻击 Oracle"}
 {"file":"docs/design/u6-research-wire-payload-contract.md","reason":"检查 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Schema 与 Cross-field Refinement"}
+{"file":"docs/design/u6-research-derivation-wire-contract.md","reason":"检查跨运行时 Hash、v2 delta、Attestation、exact hash projection 与 reject/golden vector"}
+{"file":"docs/design/u6-research-derivation-receipt-contract.md","reason":"检查跨运行时 Hash、Budget 双水位、DB-owned 派生 Receipt、current binding、幂等竞态与 C2a/C2b 失败关闭"}
 {"file":"docs/design/u6-research-platform-contract.md","reason":"检查 U6 平台事务 strict Wire、固定锁序、幂等重验、状态真值表与窄数据库函数"}
 {"file":"docs/design/u6-research-database-surface-contract.md","reason":"检查数据库 Authority provenance、current Artifact Committer、全局锁入口、RPC exposure、GRANT/DML denylist、10590 与 Schema Inventory"}
 {"file":"docs/design/u6-research-execution-storage-contract.md","reason":"检查 Execution 物理表、非 Terminal 约束、nullable CHECK、TTL、锁序与 safe integer 边界"}

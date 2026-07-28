@@ -197,6 +197,10 @@ U6 不在本通用指南复制第二套表、状态机、Wire 或函数白名单
 - `docs/design/u6-research-platform-contract.md`：Frontier、Relation Key、Research
   Terminal、Current Readiness、Publication/Consumption、Revocation、Grant、GO、锁序、
   strict Record/DB CHECK、错误码与平台窄函数；
+- `docs/design/u6-research-derivation-wire-contract.md`：跨运行时 Hash、v2 delta、
+  Enumerator Attestation 与 exact codec；
+- `docs/design/u6-research-derivation-receipt-contract.md`：Budget 双水位、DB-owned
+  派生 Receipt、Input Watermark 与 C2a/C2b 边界；
 - `docs/design/u6-research-database-surface-contract.md`：数据库 Authority provenance、
   current Artifact Committer、全局锁入口、RPC exposure、GRANT/DML denylist、`10590`
   与 Schema Inventory；

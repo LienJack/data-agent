@@ -194,8 +194,8 @@ U6 不以文件名、字段猜测或“包含某个新字段”判定版本。
 | `EvidenceCheckReceipt` | `evidence-check@1.0.0` | 无 | Proof | Relation、Observation Contract、权威结果 |
 | `SupportDecision` | `support-decision@1.0.0` | 无 | Proof | Claim、Relation、Check |
 | `HypothesisAssessment` | `hypothesis-assessment@1.0.0` | 无 | Proof | Hypothesis、SupportDecision |
-| `CoverageState` | `coverage-state@1.0.0` | 无 | Coverage | Plan、OED、Evidence、Support、Assessment、Conflict |
-| `ResearchStopDecision` | `research-stop@1.0.0` | Supervisor 可建议 | Research Stop | Coverage、Candidate Query、预算 |
+| `CoverageState` | `coverage-state@2.0.0` | 无 | Coverage | Plan、OED、Evidence、Support、Assessment、Conflict、Budget v2 |
+| `ResearchStopDecision` | `research-stop@2.0.0` | Supervisor 可建议 | Research Stop | Coverage v2、Candidate Query、预算 |
 | `ReportManifest` | `report-manifest@2.0.0` | Report Agent | Projection | Stop、Claim、Assessment、Conflict、Limitation |
 | `AnalysisReport` | `analysis-report@2.0.0` | Projector | Projection | Manifest |
 | `ReportProjectionReceipt` | `report-projection@1.0.0` | 无 | Projection | Manifest、Report、Statement Closure |
@@ -220,8 +220,8 @@ Schema、纯计算和 Candidate 类型。
 | `EvidenceCheckReceipt` | `1.0.0` | `evidence-check@1.0.0` |
 | `SupportDecision` | `1.0.0` | `support-decision@1.0.0` |
 | `HypothesisAssessment` | `1.0.0` | `hypothesis-assessment@1.0.0` |
-| `CoverageState` | `1.0.0` | `coverage-state@1.0.0` |
-| `ResearchStopDecision` | `1.0.0` | `research-stop@1.0.0` |
+| `CoverageState` | `2.0.0` | `coverage-state@2.0.0` |
+| `ResearchStopDecision` | `2.0.0` | `research-stop@2.0.0` |
 | `ReportManifest` V2 | `2.0.0` | `report-manifest@2.0.0` |
 | `AnalysisReport` V2 | `2.0.0` | `analysis-report@2.0.0` |
 | `ReportProjectionReceipt` | `1.0.0` | `report-projection@1.0.0` |
@@ -232,11 +232,14 @@ Schema、纯计算和 Candidate 类型。
 `EvidenceGateReceipt` 是研究报告四道 Gate，不能与现有 Text2SQL
 `GateReceipt/text2sql-gates@3.0.0` 共用 Schema 或 Evaluator Version。
 
+`CoverageState/1.0.0/coverage-state@1.0.0`、
+`ResearchStopDecision/1.0.0/research-stop@1.0.0`、
 `ReportManifest/1.0.0/report-manifest@1.0.0` 与
 `ReportReadyCertificate/2.0.0/report-ready@2.0.0` 是
-`HISTORICAL_READ_ONLY` tuple，并保留 material Claim/Support 非空语义。它们只能经
-显式 historical resolver 读取，不能进入当前 Candidate Writer、current-ready、Grant
-或 Release Authority；全反驳能力只属于当前 ReportManifest V2 / Certificate V3。
+`HISTORICAL_READ_ONLY` tuple；其中 Report/Certificate 旧版保留 material
+Claim/Support 非空语义。它们只能经显式 historical resolver 读取，不能进入当前
+Candidate Writer、Stop Root、current-ready、Grant 或 Release Authority；全反驳能力只
+属于当前 ReportManifest V2 / Certificate V3。
 
 ### 5.2 类型与 Store 分类
 
@@ -271,6 +274,10 @@ Schema、纯计算和 Candidate 类型。
   OED v2 的十二项语义检查、server-only assurance 与执行前失败关闭边界；
 - [`u6-research-wire-payload-contract.md`](./u6-research-wire-payload-contract.md)：
   Evidence、Proof、Stop、Projection、Certificate 与 Revocation；
+- [`u6-research-derivation-wire-contract.md`](./u6-research-derivation-wire-contract.md)：
+  跨运行时 Research Hash、v2 delta、Attestation 与逐 kind hash codec；
+- [`u6-research-derivation-receipt-contract.md`](./u6-research-derivation-receipt-contract.md)：
+  Budget/Coverage/Candidate/Stop Receipt 表、事务、锁与 Input Watermark；
 - [`u6-research-platform-contract.md`](./u6-research-platform-contract.md)：
   Frontier、Terminal、Current、Grant、Revocation 与 GO；
 - [`u6-research-database-surface-contract.md`](./u6-research-database-surface-contract.md)：

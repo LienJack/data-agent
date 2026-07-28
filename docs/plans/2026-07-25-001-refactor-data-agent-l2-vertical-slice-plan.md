@@ -725,8 +725,10 @@ flowchart LR
 - **设计冻结（2026-07-28）：** RQ092 与
   `docs/design/u6-research-authority-contract.md`、
   `docs/design/u6-research-planning-payload-contract.md`、
-  `docs/design/u6-research-wire-payload-contract.md`、
   `docs/design/u6-research-oed-v2-contract.md`、
+  `docs/design/u6-research-wire-payload-contract.md`、
+  `docs/design/u6-research-derivation-wire-contract.md`、
+  `docs/design/u6-research-derivation-receipt-contract.md`、
   `docs/design/u6-research-platform-contract.md`、
   `docs/design/u6-research-resource-invocation-contract.md`、
   `docs/design/u6-invocation-state-contract.md`、
@@ -738,12 +740,16 @@ flowchart LR
   `docs/design/u6-terminal-reference-graph-contract.md`、
   `docs/design/u6-invocation-result-crypto-contract.md`、
   `docs/design/u6-result-key-lifecycle-contract.md` 与
-  `docs/design/u6-app-lifecycle-cleanup-contract.md` 共 16 份分册已冻结 U6 的 V2 Artifact、Wire
+  `docs/design/u6-app-lifecycle-cleanup-contract.md` 共 18 份分册已冻结 U6 的 V2 Artifact、Wire
   Schema、双 Hash、Authority、终态 Owner、current-ready、撤权、资源和 U6/U7 边界；
   `.trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md` 是低于
   Trellis 32 KiB 上限的执行闭包，`docs/research/u6-rq092-contract-evidence.md` 是
   repo-relative 研究证据快照。
-  该设计证明不等于产品实现；U6 当前仍未交付，Release 保持 `HOLD`。
+	  该设计证明不等于产品实现；U6 当前仍未交付，Release 保持 `HOLD`。
+	- **C2a 派生决策：** DB 先签有 TTL 的 Budget Snapshot，Coverage/Stop 绑定该已存在
+	  Receipt；Stop Root 重验 elapsed class 与事件双水位后，在一个事务内签发
+	  Coverage/Candidate/Stop Receipt 与 non-ready Terminal。此切分避免 Artifact 预知未来
+	  DB 墙钟，任何过龄、跨预算边界或输入变化仍以 stale 失败。
 - **目标：** 把已验证 `QueryEvidence` 转换为多步、证据受限的分析报告。U6 成功路径
   只允许 `QUERY + DETERMINISTIC`；`SourceEvidence`、Source Fetch 与 Benchmark
   Adapter 不在本单元实现。
@@ -984,8 +990,10 @@ U3、U4、U6、U8 还必须执行 Agent 行为评测：验证 Agent/Tool 能力�
 - U5：七道 Text2SQL Gate 都有正例与失败关闭 Fixture；Legacy Characterization 差异获批准。
 - U6：满足 `docs/design/u6-research-authority-contract.md`、
   `docs/design/u6-research-planning-payload-contract.md`、
-  `docs/design/u6-research-wire-payload-contract.md`、
   `docs/design/u6-research-oed-v2-contract.md`、
+  `docs/design/u6-research-wire-payload-contract.md`、
+  `docs/design/u6-research-derivation-wire-contract.md`、
+  `docs/design/u6-research-derivation-receipt-contract.md`、
   `docs/design/u6-research-platform-contract.md`、
   `docs/design/u6-research-resource-invocation-contract.md`、
   `docs/design/u6-invocation-state-contract.md`、

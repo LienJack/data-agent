@@ -1,6 +1,7 @@
 # U6 实施与检查合同
 
-> 状态：`PARTIAL_IMPLEMENTATION / U6_C1_DATABASE_SURFACE_INSTALLED`
+> 状态：`PARTIAL_IMPLEMENTATION / U6_C1_DATABASE_SURFACE_INSTALLED /
+> U6_C2_DERIVATION_CONTRACT_FROZEN`
 > 已实现：`PURE_RESEARCH_KERNEL / 10590_MIGRATION /
 > CLEANUP_AND_FUNCTION_INVENTORY_PROJECTION / PG17_INSTALL /
 > OWNER_RLS_DML_GUARDS / HISTORICAL_TUPLE_FILTER_INSTALLED`
@@ -20,6 +21,8 @@
 - `docs/design/u6-research-planning-payload-contract.md`
 - `docs/design/u6-research-oed-v2-contract.md`
 - `docs/design/u6-research-wire-payload-contract.md`
+- `docs/design/u6-research-derivation-wire-contract.md`
+- `docs/design/u6-research-derivation-receipt-contract.md`
 - `docs/design/u6-research-platform-contract.md`
 - `docs/design/u6-research-database-surface-contract.md`
 - `docs/design/u6-research-migration-safety-contract.md`
@@ -46,6 +49,8 @@ Input Event Watermark 尚无 DB-owned immutable Receipt；因此 PostgreSQL 不�
 输入重放 Stop/ReportReady。三个 Root RPC 即使收到有效 Capability 也只返回固定失败，
 且数据库 Oracle 证明不会写入 Current、Terminal、Publication、Consumption 或 Grant。
 不得把“迁移安装通过”解释成 CurrentReadiness 成功路径已交付。
+Receipt v2/Hash 取 Derivation Wire，Budget Event/事务与 C2a/C2b 取 Derivation
+Receipt；设计冻结不改变上述未实现状态。
 
 ## 1. 范围
 
@@ -239,24 +244,11 @@ CurrentReadiness = CURRENT | REVOKED
   `READY/RUN_READY` Domain Terminal；每次同键重放仍先重验 current。GO 后撤权再重放
   返回 `CURRENT_READINESS_REVOKED`，历史 GO 只作为审计事实。
 
-共同 Authority prefix 完成后的 Platform Root profile suffix：
-
-```text
-Run
-→ exact Outbox Lease（需要时）
-→ exact Attempt/Fence（需要时）
-→ canonical Relation Pair keys
-→ canonical Artifact identity keys
-→ active/exact Artifact revisions
-→ exact parent/input Artifact rows
-→ current_report_readiness（内嵌 revocation seq/receipt）
-→ research_version_frontiers：
-  SEMANTIC → SCHEMA → DATA → POLICY → IDENTITY
-→ research_domain_terminals
-→ report_read_grants（按 grant_id）
-→ research_revocation_operations（需要时）
-→ research_release_decision_commits（GO 时）
-```
+共同 Authority prefix 后的 Platform Root suffix 不在 compact 合同复制。唯一逐项锁序取
+`docs/design/u6-research-database-surface-contract.md` §3 的对应 `ROOT_*` profile；
+实现、测试与 SQL 都必须直接引用它，禁止另建局部 rank 表。尤其不能遗漏或重排 C2 的
+Budget Policy/Resource Head/Reservation/Budget Event、Enumerator/Attestation、
+Input Event Head 与 Receipt semantic/idempotency key 可选 rank。
 
 同一事务解析 exact V3 Certificate、Stop、Projection、四 Gate、material Support
 闭包，重算 Semantic Hash；相同 idempotency key 重放仍重新核验当前 Frontier 与撤权。
@@ -319,14 +311,13 @@ U6 完成后的预期 Release 仍为 `HOLD`。
 
 ## 9. 持久化、恢复与迁移
 
-- U6 只能一次性落在
-  `infra/supabase/apps/data-agent/migrations/20260725010590_app_data_agent_u6_research_authority.sql`。
-  它须在首次提交时包含 Platform/Artifact/Capability/Resource/Invocation/Crypto/
-  Lifecycle 的全部表、约束、索引、RPC、Owner/GRANT、RLS 与 DML 隔离；不得先落残缺
-  `10590` 再改同名 Hash。
+- 已提交的 `20260725010590_app_data_agent_u6_research_authority.sql` 是 immutable
+  baseline；C2 只用同一 application chain 的 forward-only
+  `20260725010600_app_data_agent_u6_research_derivation.sql` 新增 Receipt/Budget/Input
+  Event 与 v2 Root，禁止修改 `10590` 同名 Hash 或另建 Platform migration chain。
 - 维护窗口 Manifest、existing relation 的 `ACCESS EXCLUSIVE NOWAIT`、rows/bytes/data
   preflight、DDL/VALIDATE、整事务回滚与 Hosted/Docker 对等唯一取
-  `u6-research-migration-safety@1.0.0`。
+  `u6-research-migration-safety@1.1.0`。
 - 不得在 `packages/platform/migrations/`、
   `infra/supabase/platform/migrations/` 或应用代码目录建立第二条 U6 迁移链。
 - 维护 `u6-schema-inventory@1.0.0`；clean install 后必须与 `pg_catalog` 的表、列、
@@ -343,6 +334,10 @@ U6 完成后的预期 Release 仍为 `HOLD`。
   Cleanup Owner 无 Platform 表 ACL，五张 evidence 表必须保持 RLS disabled。随后重验
   Legal Hold，只延迟 Terminal Graph 明列的内部 FK，并使 U6_JOB
   residual=0；control operation/batch receipt 按合同保留且不计入 residual。
+- `10600` 保持 immutable guard OID/既有 trigger 不变；platform→app migration lock
+  串行 replacement。UPDATE 永拒，DELETE 只允许 Cleanup Owner + 28 表闭集 + 四项
+  transaction-local binding；pre-DDL 先证明 10590 cleanup RPC exact body 在破坏性写前
+  固定 HOLD，再同事务替换 RPC+guard；旧 invocation 仍只能 HOLD。
 - 18 个 U6 current tuple 中 17 个只能经 `commit_current_l2_artifact`，Revocation
   tuple 只能经 internal Revocation Writer；所有 historical tuple 在 Writer 均只读拒绝。通用
   TypeScript Repository 必须报
@@ -410,11 +405,15 @@ U6 完成后的预期 Release 仍为 `HOLD`。
    Reference closure。
 2. 实现 Research planning/evidence/coverage/reporting/readiness 纯 Kernel。
 3. 实现 server-only Registrar、Brand、Committer 与 Candidate/clone/parse 反例。
-4. 一次性实现完整 `10590`、schema inventory、Research/Readiness/Resource 持久化，
-   并关闭通用 Repository 与 Backend DML 旁路。
+4. 保持 `10590` immutable，以 `10600` + 升级 Inventory 实现
+   Research/Readiness/Resource 派生持久化；pre-DDL 要求 v2 Operation、StopCommit 与
+   non-ready Stop Terminal 为零，禁止合成历史 Receipt，并关闭 Repository/Backend DML 旁路。
 5. 永久退役通用 READY API；实现 current-tuple Release revalidation。
 6. 实现 material Claim/Schema Frontier 闭包与完整性检查。
-7. 实现 Stop 六分支、Partial 三前提和预算可执行配对反例。
+7. 实现 Stop 六分支、Partial 三前提和预算可执行配对反例。C2a 先签 DB-owned Budget
+   Snapshot；Coverage/Stop 绑定它，Root 重验 TTL/elapsed class/双水位后同事务签
+   Coverage/Candidate/Stop 与三种 non-ready terminal。该切分消除未来 DB 墙钟时间环；
+   C2b 完成 Input Watermark/ReportReady Receipt 前 Publish/Consume 固定失败。
 8. 实现 Grant Issue/Consume/Response/Expire 与 READY 前后撤权竞态。
 9. 接入 Resource/Invocation/System Record、密文 Result Blob 与 Projection 外层 RPC；
    内部 Artifact Writer、明文 terminal RPC 和底层 DML 均不可达。

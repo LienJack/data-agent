@@ -2,16 +2,10 @@
 
 > `FROZEN_DESIGN_CONTRACT / PARTIAL_IMPLEMENTATION` · `u6-research-platform@1.1.0`
 >
-> 上游 Wire：`u6-research-planning-payload-contract.md`、
-> `u6-research-wire-payload-contract.md`；U6 领域语义为绿地新增，但 `10590` 可能安装到
-> populated project，生产 DDL 安全只取 Migration Safety。
-> `10590` 与 Adapter 已部分实现；exact Catalog、正向 Root、DB receipts、
-> Crypto 与 Worker 待实现。
-> PostgreSQL Authority、Artifact/Readiness Root 锁序、函数面与 GRANT 只取
-> `u6-research-database-surface-contract.md`；执行域表/nullable CHECK/TTL/锁序只取
-> `u6-research-execution-storage-contract.md`，Terminal candidate key/FK 只取
-> `u6-terminal-reference-graph-contract.md`；DELETE_PENDING 环境清理只取
-> `u6-app-lifecycle-cleanup-contract.md`。
+> Wire 取 Planning/Wire/Derivation Wire；DB-owned Receipt 事务与 C2a/C2b 取
+> Derivation Receipt。SQL 面取 Database Surface，执行表取
+> Execution Storage，Terminal FK 取 Reference Graph，清理/DDL 取 Cleanup/Migration
+> Safety。
 
 本文只闭合 Platform 业务 Wire、事务语义和错误。实现用 strict object、DB 约束和
 双连接 Oracle；Parse/Agent/Snapshot/Redis/类型断言均非 Authority。
@@ -19,45 +13,21 @@
 ## 1. 共同 primitive 与调用边界
 
 ```ts
-type ImmutableId = string; // UUID
-type PrincipalId = ImmutableId; // U6 PostgreSQL Authority 固定 UUID
-type IdempotencyKey = string; // 1..256
-type Version = string; // 1..128
-type Sha256 = `sha256:${string}`; // 64 个小写 hex
-type HmacSha256 = `hmac-sha256:${string}`;
-type Timestamp = string; // ISO-8601 with offset
-type NonNegativeInt = number; // safe integer >=0
-type PositiveInt = number; // safe integer >0
-type ModelProvider = "openai" | "anthropic" | "deepseek" | "glm" |
-  "kimi" | "grok" | "gemini";
-type AppScope = { app_id: ImmutableId; tenant_id: ImmutableId; environment: string };
-
-type ArtifactReferenceFor<T extends KnownArtifactType> = {
-  artifact_id: ImmutableId; artifact_type: T; app_id: ImmutableId;
-  tenant_id: ImmutableId; environment: string; run_id: ImmutableId;
-  revision: PositiveInt; content_hash: Sha256;
-};
-type ArtifactReference = ArtifactReferenceFor<KnownArtifactType>;
-
 type StrictCommandBase = {
   schema_version: "1.0.0"; scope: AppScope; run_id: ImmutableId;
   principal_id: PrincipalId; idempotency_key: IdempotencyKey;
 };
-
 type PortResult<T> =
   | { ok: true; value: T }
   | { ok: false; error: U6PlatformError };
-
 type ResolvedU6Capability =
   ServerOnlyResolvedCapability<U6AuthorityCapabilityBinding>;
 ```
 
-```ts
-declare function method<T>(
-  capabilityInput: unknown, strictInput: StrictObject): Promise<PortResult<T>>;
-```
-
-Adapter 按 Database Surface 分册在事务内解析唯一 capability 行并比较 strict input；
+`ImmutableId/PrincipalId/Version/Sha256/Timestamp/Int/AppScope/ArtifactReference` 只取
+Planning/Wire，不在本文改义。所有 Port 方法形状均为
+`(capabilityInput:unknown, strictInput) => Promise<PortResult<T>>`。Adapter 按 Database
+Surface 在事务内解析唯一 capability 行并比较 strict input；
 Header/Payload/Agent/缓存/自报 Principal 只是声明，未授权与不存在同错。Hash 用
 `canonicalizeJson`，禁止分隔符身份。`S=(app_id,tenant_id,environment)`，所有
 Key/Index/Lock/RLS 均展开 `S`。
@@ -67,19 +37,6 @@ Key/Index/Lock/RLS 均展开 `S`。
 ### 2.1 strict value
 
 ```ts
-type IdentityBinding = {
-  principal_id: PrincipalId; delegation_chain_hash: Sha256;
-  authority_epoch: NonNegativeInt;
-};
-
-type DataSnapshotBinding = {
-  protocol_version: "data-snapshot-binding@1.0.0";
-  datasource_id: ImmutableId; strategy: "CONTROLLED_REVISION" | "NONE";
-  snapshot_token: Version | null; schema_manifest_hash: Sha256 | null;
-  data_manifest_hash: Sha256 | null; fixture_manifest_hash: Sha256 | null;
-  replay_state: "REPLAYABLE" | "REPLAY_UNAVAILABLE"; binding_hash: Sha256;
-};
-
 type FrontierValue =
   | { frontier_kind: "SEMANTIC"; reference: ArtifactReferenceFor<"SemanticRelease"> }
   | { frontier_kind: "SCHEMA"; reference: ArtifactReferenceFor<"SchemaSnapshot"> }
@@ -88,11 +45,9 @@ type FrontierValue =
   | { frontier_kind: "IDENTITY"; identity_binding: IdentityBinding };
 ```
 
-`DataSnapshotBinding` 从 U5 `SnapshotDescriptor` 排除
-`execution_id/observed_at/descriptor_hash` 后规范派生。`CONTROLLED_REVISION` 要求
-Token、Schema/Data/Fixture Manifest 全非空且 `REPLAYABLE`；`NONE` 要求四个字段
-全空且 `REPLAY_UNAVAILABLE`。`binding_hash` 覆盖其余字段；Q1/Q2 可有不同 Execution
-Receipt，但映射 Hash 必须相同。
+`DataSnapshotBinding` 取 Planning：从 U5 Descriptor 排除 execution id/time/hash 后派生；
+controlled 分支四个 binding 非空且 replayable，NONE 分支全空且不可重放。Q1/Q2 可有
+不同 Execution Receipt，但 binding hash 必须相同。
 
 ```text
 binding_hash = sha256(
@@ -105,11 +60,10 @@ frontier_value_hash = sha256(
 )
 ```
 
-Golden vector：`datasource_id=11111111-1111-4111-8111-111111111111`、`NONE`、
-四个 nullable 字段全 null、`REPLAY_UNAVAILABLE` 时，
+Golden vector：datasource=`11111111-1111-4111-8111-111111111111` 的 NONE 分支，
 `binding_hash=sha256:c22bb0a9ca28bffab126885d66d16a80cfc884192ace1fef47abf69c51f2d3d6`，
 对应 DATA `frontier_value_hash=sha256:af18836a8a1aed1124c83949b1ce22476edfccfc7147b8fe7dae2cfa16caeee9`。
-TypeScript 与 PostgreSQL 必须共享该向量并拒绝 caller 自报 Hash。
+TS/PG 必须共享并拒绝 caller Hash。
 
 ### 2.2 五类唯一 Owner
 
@@ -271,8 +225,9 @@ success row。
 
 所有 Publish、Current Consume、Research Stop Commit、Frontier 传播撤权、显式
 Revoke、Grant Consume/Response/Expire 和 GO Commit 都使用 Database Surface §3 的
-逐行唯一 Root 顺序；本文不复制缩写版。不得另建/先锁 Head 表；Advisory 只补
-absent-key lock，不能替代真实行。Resource/Invocation 持锁后不得反向进入 Root。
+逐行唯一 Root 顺序；本文不复制缩写版。Derivation 分册的 Budget/Input Head 只能在其
+固定 rank 取得，其他 Head 禁止；Advisory 只补 absent-key，不能替代真实行。
+Resource/Invocation 持锁后不得反向进入 Root。
 
 状态顺序固定为：
 
@@ -340,15 +295,20 @@ type CascadeFrontierRevocationCommand = {
 
 type CommitResearchStopTerminalInput = StrictCommandBase & {
   commit_id: ImmutableId; terminal_id: ImmutableId;
-  stop_decision_ref: ArtifactReferenceFor<"ResearchStopDecision">;
-  coverage_ref: ArtifactReferenceFor<"CoverageState">;
+  stop_decision_ref: ResearchStopDecisionV2Ref;
+  coverage_ref: CoverageStateV2Ref;
 };
+type DerivationReceiptBinding = { receipt_id: ImmutableId; receipt_hash: Sha256 };
 type ResearchStopTerminalCommon = {
   commit_id: ImmutableId; terminal_id: ImmutableId;
   domain_reason_codes: U6ResearchReasonCode[]; // 1..32，规范身份唯一
   authority_kind: "RESEARCH_STOP"; certificate_ref: null;
   revocation_receipt_ref: null;
-  stop_decision_ref: ArtifactReferenceFor<"ResearchStopDecision">;
+  stop_decision_ref: ResearchStopDecisionV2Ref;
+  derivation_receipts: {
+    budget: DerivationReceiptBinding; coverage: DerivationReceiptBinding;
+    candidate: DerivationReceiptBinding; stop: DerivationReceiptBinding;
+  };
   committed_at: Timestamp;
 };
 type CommittedResearchStopTerminal =
@@ -432,6 +392,24 @@ interface ResearchStopTerminalPort {
   commit(capabilityInput: unknown, input: CommitResearchStopTerminalInput):
     Promise<PortResult<CommittedResearchStopTerminal>>;
 }
+interface ResearchDerivationPort {
+  beginStep(capabilityInput: unknown, input: BeginResearchStepInput):
+    Promise<PortResult<BegunResearchStep>>;
+  issueBudgetSnapshot(capabilityInput: unknown,
+    input: IssueBudgetLedgerSnapshotInput):
+    Promise<PortResult<BudgetLedgerReceipt>>;
+  issueEnumeratorAttestation(capabilityInput: unknown,
+    input: IssueCandidateEnumeratorAttestationInput):
+    Promise<PortResult<CandidateEnumeratorAttestation>>;
+}
+interface RunLockedArtifactCommitPort {
+  commit(appCapabilityInput: unknown, input: RunLockedArtifactCommitInput):
+    Promise<PortResult<RunLockedArtifactCommitResult>>;
+}
+interface U6DerivationProvisionerPort {
+  provision(input: ProvisionDerivationPolicyInput):
+    Promise<PortResult<ProvisionedDerivationPolicy>>;
+}
 ```
 
 方法级 Capability Owner 固定如下；同一 Port 只是接口分组，不表示权限可互换：
@@ -447,11 +425,23 @@ interface ResearchStopTerminalPort {
 | `CurrentReadinessPort.expireGrant` | `REPORT_READ_EXPIRY_AUTHORITY` |
 | `CurrentReadinessPort.commitGo` | `RELEASE_GO_AUTHORITY` |
 | `ResearchStopTerminalPort.commit` | `RESEARCH_STOP_AUTHORITY` |
+| `ResearchDerivationPort.beginStep` | `RESOURCE_AUTHORITY` |
+| `ResearchDerivationPort.issueBudgetSnapshot/issueEnumeratorAttestation` | `RESEARCH_STOP_AUTHORITY` |
+| `RunLockedArtifactCommitPort.commit` | current App WRITE；Grounding 分支另需 OWNER |
+| `U6DerivationProvisionerPort.provision` | deployment-only `data_agent_u6_provisioner` |
+
+Derivation exact Input/Result/Manifest 只取 Derivation Wire §6。Adapter 方法分别一一映射
+Database Surface 同名 RPC；同 operation+Hash 返回 `created=false` 的持久结果，异 Hash
+映射 `RESEARCH_DERIVATION_RECEIPT_CONFLICT`。Snapshot 过龄/水位变化与 Root Artifact
+revision 漂移映射 `RESEARCH_STOP_INPUT_STALE`；App committer 保持现有 Repository/
+ModelCertification 错误码，不伪造 U6 capability。Terminal Result 的 `budget` 是 Artifact
+已绑定 Snapshot，`coverage/candidate/stop` 才是 Root 同事务新建的三张 Receipt。
 
 Adapter 入锁前解析方法的 exact Capability；同一 Port 不表示权限互换。Frontier
 级联只继承已验证的 matching Authority/`operation_id`，不能调用 public `revoke`。
 
-Research Stop Authority 只接受 exact、current Stop/Coverage，并固定映射：
+Research Stop Authority 只接受 exact、current Stop/Coverage v2 绑定的 Budget Snapshot；
+Coverage/Candidate/Stop 三张新 Receipt 与 terminal binding 同事务完成，并固定映射：
 
 | Stop Decision | Public Terminal / Reason |
 | --- | --- |
@@ -600,6 +590,7 @@ const U6_ERROR_RETRYABLE = {
   REPORT_READ_GRANT_REVOKED: false,
   EVIDENCE_RELATION_IDENTITY_CONFLICT: false,
   RESEARCH_RESOURCE_RESERVATION_CONFLICT: false,
+  RESEARCH_DERIVATION_RECEIPT_CONFLICT: false,
   RESEARCH_RESOURCE_OUTCOME_UNCONFIRMED: true,
   RESEARCH_RESOURCE_USAGE_NOT_AUTHORITATIVE: false,
   RESEARCH_RESOURCE_LIMIT_EXCEEDED: false,
@@ -636,13 +627,9 @@ type U6PlatformError = {
 }[U6PlatformErrorCode];
 ```
 
-映射固定：Frontier 非 Owner/缺行/CAS loser 分别是
-`RESEARCH_FRONTIER_OWNER_MISMATCH`/`READINESS_FRONTIER_INCOMPLETE`/
-`RESEARCH_FRONTIER_CAS_CONFLICT`；Relation active Pair 冲突使用
-`EVIDENCE_RELATION_IDENTITY_CONFLICT`；GO 缺 READY 使用
-`RESEARCH_READY_TERMINAL_REQUIRED`；Authority prefix 的 PostgreSQL `55P03` 只映射
-`RESEARCH_AUTHORITY_LOCK_CONTENDED` 并回滚整事务。其他条件按错误名逐一映射，不得用
-斜杠候选或自由字符串；Resource/Invocation/Crypto 细项由 §7 及其分册冻结。
+固定映射：Frontier 非 Owner/缺行/CAS loser 依次用表中三个 Frontier 错误；Relation Pair
+冲突、GO 缺 READY 分别用其同名错误；Authority prefix `55P03` 只映射
+`RESEARCH_AUTHORITY_LOCK_CONTENDED` 并整事务回滚。禁止斜杠候选/自由字符串；执行域取 §7。
 
 V1 仅能由显式 `readHistorical*` 返回
 `{authority:"HISTORICAL_READ_ONLY",can_authorize_current:false}`；V1 Parser 成功不得取得
@@ -651,27 +638,16 @@ Authority。
 
 ## 10. 必需 Oracle
 
-双 PG 连接覆盖：Frontier/Publish/READY/Grant/GO cascade、CAS/重放/撤权/tamper；
-Revoke 不建 STALE，losing DOMAIN 仅建一个 STALE，READY 后只留历史；Grant 四阶段竞态
-且 Response CAS 前零字节；Owner/Event/Audit、Relation Pair、Stop-vs-Publish/Advance、
-Base64/digest 与 V1/旧入口。还须证明：根包/通用 Repository 拒绝 U6 元组；Backend
-直接 DML 失败而专用 Committer 成功；Projection 外层 RPC 可用且内部 Writer 直调拒绝；
-DB/日志/Audit/Checkpoint 无明文，nonce/tag/AAD/hash 篡改失败，已提交重放不再加密，
-expired claim 接管最多提交一个 Blob，到期 Tombstone 不可回放。Hosted/Docker/PG 共用
-Case；In-Memory 不替代事务 Oracle。
+双 PG 连接覆盖 Frontier/Readiness/Grant/GO 的 CAS、重放、撤权、tamper，Stop 与
+Publish/Advance、Relation Pair 及 Grant 四阶段竞态；Revoke 不建 STALE，losing DOMAIN
+只建一个，Response CAS 前零字节。还须证明通用 Repository/raw DML 拒绝 U6、专用
+Committer 成功、internal 直调失败；无明文，crypto/hash 篡改失败，replay 不重复加密，
+claim takeover 最多一 Blob，Tombstone 不可回放。Hosted/Docker 共用 Case；In-Memory
+不替代事务 Oracle。
 
 ## 11. Migration 与部署边界
 
-唯一一次性迁移必须是：
-
-```text
-infra/supabase/apps/data-agent/migrations/20260725010590_app_data_agent_u6_research_authority.sql
-```
-
-`10590` 的 Authority/RPC/GRANT/全局入口只取 Database Surface，执行域表/nullable
-CHECK/TTL/锁序只取 Execution Storage，Terminal candidate key/FK 只取 Reference Graph；
-DELETE_PENDING Job 只取 App Lifecycle Cleanup，维护窗口/DDL/恢复只取 Migration
-Safety。Inventory 覆盖五者；共享 Supabase 按 `S` 隔离，Redis/Upstash 只存可丢缓存。
-已安装 `10590`、清理/函数投影、ACL/RLS，并仅激活三个 fail-closed Root RPC；
-exact Catalog、正向/读取 RPC、Crypto 与双连接 Oracle 仍
-`NOT_IMPLEMENTED`。
+唯一链为 Migration Safety 冻结的 forward-only `10590→10600`；前者已装且 hash
+immutable，后者承载 Derivation/兼容 committer/v2 Root，仍 `NOT_IMPLEMENTED`。对象与
+Inventory Owner 分别取 Database Surface、Execution Storage、Reference Graph、Cleanup；
+共享 Supabase 以 `S` 隔离，Redis/Upstash 仅存可丢缓存。

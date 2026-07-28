@@ -19,8 +19,10 @@
   `docs/design/u6-research-authority-contract.md`、
   `docs/design/u6-research-planning-payload-contract.md` 与
   `docs/design/u6-research-oed-v2-contract.md`、
-  `docs/design/u6-research-wire-payload-contract.md`；平台事务、资源调用与受控 Oracle
-  分别冻结在 `u6-research-platform-contract.md`、
+  `docs/design/u6-research-wire-payload-contract.md`；派生 Wire/回执、平台事务、资源调用与
+  受控 Oracle 分别冻结在 `u6-research-derivation-wire-contract.md`、
+  `u6-research-derivation-receipt-contract.md`、
+  `u6-research-platform-contract.md`、
   `u6-research-database-surface-contract.md`、
   `u6-research-migration-safety-contract.md`、
   `u6-research-execution-storage-contract.md`、

@@ -143,7 +143,7 @@ channel:
 context_injection:
   max_file_bytes: 32768        # per implement.jsonl / check.jsonl referenced file
   max_artifact_bytes: 65536    # per task artifact (prd.md / design.md / implement.md)
-  # U6 Strict Payload 当前为 22 份合同加 3 份 task artifact；768 KiB 保留确定性余量，
+  # U6 上下文当前为 24 份 JSONL 文件加 3 份 task artifact；768 KiB 保留确定性余量，
   # 同时继续以逐文件上限阻止失控单体文档。
   max_total_bytes: 786432
 
