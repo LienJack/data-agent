@@ -709,7 +709,183 @@ function expectedOwner(exposure: Exposure): string {
   }
 }
 
+function uniqueTextArrayConstant(migration: string, constantName: string): string[] {
+  const escapedName = constantName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches = [
+    ...migration.matchAll(
+      new RegExp(
+        `\\b${escapedName}\\s+constant\\s+text\\[\\]\\s*:=\\s*array\\[([\\s\\S]*?)\\]\\s*;`,
+        "gi",
+      ),
+    ),
+  ];
+  assertCondition(
+    matches.length === 1,
+    `U6 Backend EXECUTE ACL 常量必须且只能声明一次：${constantName}`,
+  );
+  const arraySource = matches[0]?.[1] ?? "";
+  const values = [...arraySource.matchAll(/'([^']+)'/g)].map((match) => match[1] ?? "");
+  assertCondition(
+    arraySource.replace(/'[^']*'/g, "").replace(/[\s,]/g, "") === "",
+    `U6 Backend EXECUTE ACL 常量只允许 string literal：${constantName}`,
+  );
+  assertCondition(
+    values.length > 0 && values.every((value) => value.length > 0),
+    `U6 Backend EXECUTE ACL 常量不能为空：${constantName}`,
+  );
+  assertCondition(
+    new Set(values).size === values.length,
+    `U6 Backend EXECUTE ACL 常量不得重复：${constantName}`,
+  );
+  return values;
+}
+
+function normalizedSql(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function exactFunctionAclLoop(migration: string, constantName: string): string {
+  const escapedName = constantName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches = [
+    ...migration.matchAll(
+      new RegExp(
+        `foreach\\s+function_(?:name|signature)\\s+in\\s+array\\s+${escapedName}\\s+loop([\\s\\S]*?)end\\s+loop\\s*;`,
+        "gi",
+      ),
+    ),
+  ];
+  assertCondition(
+    matches.length === 1,
+    `U6 Backend EXECUTE ACL loop 必须且只能出现一次：${constantName}`,
+  );
+  return matches[0]?.[1] ?? "";
+}
+
+function assertPostconditionPrivilegeLoop(
+  migration: string,
+  constantName: string,
+  backendMustExecute: boolean,
+): void {
+  const loop = exactFunctionAclLoop(migration, constantName);
+  const backendPrivilege =
+    /pg_catalog\.has_function_privilege\(\s*'data_agent_backend'\s*,\s*function_signature\s*,\s*'EXECUTE'\s*\)/i;
+  const publicPrivilege =
+    /pg_catalog\.has_function_privilege\(\s*'public'\s*,\s*function_signature\s*,\s*'EXECUTE'\s*\)/i;
+  assertCondition(
+    backendPrivilege.test(loop) && publicPrivilege.test(loop),
+    `U6 Backend EXECUTE ACL postcondition 未同时检查 Backend/PUBLIC：${constantName}`,
+  );
+  const normalizedLoop = normalizedSql(loop);
+  const backendExpression =
+    "pg_catalog.has_function_privilege( 'data_agent_backend', function_signature, 'execute' )";
+  const backendIndex = normalizedLoop.indexOf(backendExpression);
+  assertCondition(
+    backendIndex >= 0,
+    `U6 Backend EXECUTE ACL postcondition 无法定位 Backend 检查：${constantName}`,
+  );
+  const prefix = normalizedLoop.slice(Math.max(0, backendIndex - 8), backendIndex);
+  assertCondition(
+    backendMustExecute ? /\bnot\s*$/.test(prefix) : !/\bnot\s*$/.test(prefix),
+    `U6 Backend EXECUTE ACL postcondition 极性错误：${constantName}`,
+  );
+}
+
+function parseBackendExecuteAcl(migration: string): ReadonlySet<string> {
+  const publicSignatures = [...PUBLIC_MUTATION_FUNCTIONS, ...PUBLIC_RESOLVER_FUNCTIONS];
+  const publicNames = publicSignatures.map((item) => item.slice(0, item.indexOf("(")));
+  const actualPublicNames = uniqueTextArrayConstant(migration, "public_functions");
+  assertCondition(
+    JSON.stringify([...actualPublicNames].sort()) === JSON.stringify([...publicNames].sort()),
+    `U6 Backend EXECUTE ACL public function 闭集漂移：actual=${actualPublicNames.join(",")}`,
+  );
+
+  const enabledNames = uniqueTextArrayConstant(migration, "backend_enabled_functions");
+  assertCondition(
+    enabledNames.every((name) => publicNames.includes(name)),
+    `U6 Backend EXECUTE ACL 包含非 public function：${enabledNames.join(",")}`,
+  );
+  const enabledSignatures = enabledNames.map((name) => `${name}(jsonb)`);
+  assertCondition(
+    JSON.stringify([...enabledSignatures].sort()) ===
+      JSON.stringify([...U6_BACKEND_EXECUTE_ENABLED_FUNCTIONS].sort()),
+    `U6 Backend EXECUTE ACL 激活闭集漂移：actual=${enabledSignatures.join(",")}`,
+  );
+
+  const aclLoop = exactFunctionAclLoop(migration, "public_functions");
+  const dynamicAclStatements = [
+    ...aclLoop.matchAll(
+      /'((?:grant|revoke)\s+[^']*on\s+function\s+app_data_agent\.%I\(jsonb\)[^']*)'/gi,
+    ),
+  ].map((match) => normalizedSql(match[1] ?? ""));
+  const expectedRevoke =
+    "revoke all privileges on function app_data_agent.%i(jsonb) from public, anon, authenticated, service_role, data_agent_backend, data_agent_job_authority, data_agent_u6_provisioner";
+  const expectedGrant = "grant execute on function app_data_agent.%i(jsonb) to data_agent_backend";
+  assertCondition(
+    dynamicAclStatements.length === 2 &&
+      dynamicAclStatements.filter((statement) => statement === expectedRevoke).length === 1 &&
+      dynamicAclStatements.filter((statement) => statement === expectedGrant).length === 1,
+    "U6 Backend EXECUTE ACL 必须精确包含一条全量 REVOKE 与一条条件 Backend GRANT",
+  );
+  const globalBackendGrantStatements = [
+    ...migration.matchAll(
+      /'grant\s+execute\s+on\s+function\s+app_data_agent\.%I\(jsonb\)\s+to\s+data_agent_backend'/gi,
+    ),
+  ];
+  assertCondition(
+    globalBackendGrantStatements.length === 1,
+    "U6 Backend EXECUTE ACL 不得出现额外动态 Backend GRANT",
+  );
+  assertCondition(
+    normalizedSql(aclLoop).includes(expectedRevoke) &&
+      /if\s+function_name\s*=\s*any\s*\(\s*backend_enabled_functions\s*\)\s+then[\s\S]*grant execute on function app_data_agent\.%i\(jsonb\) to data_agent_backend[\s\S]*end if\s*;/i.test(
+        normalizedSql(aclLoop),
+      ),
+    "U6 Backend EXECUTE ACL 必须在 public 闭集 loop 中先 REVOKE 再按 enabled 闭集 GRANT",
+  );
+
+  const publicNamePattern = publicNames
+    .map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const directAclStatements = [
+    ...migration.matchAll(
+      new RegExp(
+        `\\b(?:grant|revoke)\\b[^;]*\\bon\\s+function\\s+app_data_agent\\.(${publicNamePattern})\\s*\\(\\s*jsonb\\s*\\)[^;]*;`,
+        "gi",
+      ),
+    ),
+  ];
+  assertCondition(
+    directAclStatements.length === 0,
+    `U6 Backend EXECUTE ACL 不得出现绕过闭集 loop 的额外 public function ACL：${directAclStatements
+      .map((match) => match[1] ?? "")
+      .join(",")}`,
+  );
+
+  const postconditionEnabled = uniqueTextArrayConstant(
+    migration,
+    "backend_enabled_function_signatures",
+  );
+  const postconditionWithheld = uniqueTextArrayConstant(
+    migration,
+    "backend_withheld_function_signatures",
+  );
+  const expectedEnabled = enabledSignatures.map((item) => `app_data_agent.${item}`).sort();
+  const expectedWithheld = publicSignatures
+    .filter((item) => !enabledSignatures.includes(item))
+    .map((item) => `app_data_agent.${item}`)
+    .sort();
+  assertCondition(
+    JSON.stringify([...postconditionEnabled].sort()) === JSON.stringify(expectedEnabled) &&
+      JSON.stringify([...postconditionWithheld].sort()) === JSON.stringify(expectedWithheld),
+    "U6 Backend EXECUTE ACL 与 postcondition enabled/withheld 闭集不一致",
+  );
+  assertPostconditionPrivilegeLoop(migration, "backend_enabled_function_signatures", true);
+  assertPostconditionPrivilegeLoop(migration, "backend_withheld_function_signatures", false);
+  return new Set(enabledSignatures);
+}
+
 export function parseInventoryFunctions(migration: string): InventoryFunction[] {
+  const backendExecuteEnabled = parseBackendExecuteAcl(migration);
   const ownerBySignature = new Map<string, string>();
   const alterPattern =
     /alter\s+function\s+(app_data_agent|platform)\.([a-z][a-z0-9_]*)\s*\(([\s\S]*?)\)\s+owner\s+to\s+([a-z][a-z0-9_]*)\s*;/gi;
@@ -776,8 +952,7 @@ export function parseInventoryFunctions(migration: string): InventoryFunction[] 
       security_definer: securityDefiner,
       search_path: "",
       backend_execute_enabled:
-        schema === "app_data_agent" &&
-        U6_BACKEND_EXECUTE_ENABLED_FUNCTIONS.includes(functionSignature as never),
+        schema === "app_data_agent" && backendExecuteEnabled.has(functionSignature),
     });
   }
 

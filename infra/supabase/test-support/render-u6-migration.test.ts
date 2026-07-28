@@ -210,7 +210,121 @@ revoke all privileges on function platform.u6_lifecycle_identity_immutable_guard
   ].join("\n");
 }
 
-function writeCompleteSources(paths: U6RendererPaths): void {
+type CompleteSourceOptions = {
+  omitFunctionAcl?: boolean;
+  omitBackendRevoke?: boolean;
+  extraWithheldBackendGrant?: boolean;
+};
+
+function sqlStringList(values: readonly string[]): string {
+  return values.map((value) => `    '${value}'`).join(",\n");
+}
+
+function functionAclSql(options: CompleteSourceOptions): string {
+  const publicNames = [
+    ...U6_EXPECTED_FUNCTIONS.publicMutation,
+    ...U6_EXPECTED_FUNCTIONS.publicResolver,
+  ].map((item) => item.slice(0, item.indexOf("(")));
+  const enabledNames = U6_BACKEND_EXECUTE_ENABLED_FUNCTIONS.map((item) =>
+    item.slice(0, item.indexOf("(")),
+  );
+  const revoke = options.omitBackendRevoke
+    ? ""
+    : `    execute pg_catalog.format(
+      'revoke all privileges on function app_data_agent.%I(jsonb) from public, anon, authenticated, service_role, data_agent_backend, data_agent_job_authority, data_agent_u6_provisioner',
+      function_name
+    );
+`;
+  const extraGrant = options.extraWithheldBackendGrant
+    ? `
+grant execute on function app_data_agent.initialize_research_version_frontier(jsonb)
+to data_agent_backend;
+`
+    : "";
+  return `
+do $u6_function_ownership_and_acl$
+declare
+  function_name text;
+  public_functions constant text[] := array[
+${sqlStringList(publicNames)}
+  ];
+  backend_enabled_functions constant text[] := array[
+${sqlStringList(enabledNames)}
+  ];
+begin
+  foreach function_name in array public_functions
+  loop
+${revoke}    if function_name = any(backend_enabled_functions) then
+      execute pg_catalog.format(
+        'grant execute on function app_data_agent.%I(jsonb) to data_agent_backend',
+        function_name
+      );
+    end if;
+  end loop;
+end
+$u6_function_ownership_and_acl$;
+${extraGrant}`;
+}
+
+function functionAclPostconditionsSql(): string {
+  const publicSignatures = [
+    ...U6_EXPECTED_FUNCTIONS.publicMutation,
+    ...U6_EXPECTED_FUNCTIONS.publicResolver,
+  ].map((item) => `app_data_agent.${item}`);
+  const enabledSignatures = U6_BACKEND_EXECUTE_ENABLED_FUNCTIONS.map(
+    (item) => `app_data_agent.${item}`,
+  );
+  const withheldSignatures = publicSignatures.filter(
+    (item) => !enabledSignatures.includes(item as never),
+  );
+  return `
+do $u6_catalog_postconditions$
+declare
+  function_signature text;
+  backend_enabled_function_signatures constant text[] := array[
+${sqlStringList(enabledSignatures)}
+  ];
+  backend_withheld_function_signatures constant text[] := array[
+${sqlStringList(withheldSignatures)}
+  ];
+begin
+  foreach function_signature in array backend_enabled_function_signatures
+  loop
+    if not pg_catalog.has_function_privilege(
+      'data_agent_backend',
+      function_signature,
+      'EXECUTE'
+    ) or pg_catalog.has_function_privilege(
+      'public',
+      function_signature,
+      'EXECUTE'
+    ) then
+      raise exception using message = 'U6_MIGRATION_BACKEND_FUNCTION_ACL_MISMATCH';
+    end if;
+  end loop;
+  foreach function_signature in array backend_withheld_function_signatures
+  loop
+    if pg_catalog.has_function_privilege(
+      'data_agent_backend',
+      function_signature,
+      'EXECUTE'
+    ) or pg_catalog.has_function_privilege(
+      'public',
+      function_signature,
+      'EXECUTE'
+    ) then
+      raise exception using message = 'U6_MIGRATION_WITHHELD_FUNCTION_ACL_MISMATCH';
+    end if;
+  end loop;
+end
+$u6_catalog_postconditions$;
+`;
+}
+
+function writeCompleteSources(
+  paths: U6RendererPaths,
+  options: CompleteSourceOptions = {},
+): void {
   mkdirSync(paths.sourceDirectory, { recursive: true });
   for (const segment of U6_SOURCE_SEGMENTS) {
     let content = `-- ${segment}\n`;
@@ -218,8 +332,12 @@ function writeCompleteSources(paths: U6RendererPaths): void {
       content += allFunctionSql();
       content += `select 'sha256:${"1".repeat(64)}'::text;\n`;
     }
+    if (segment === "90-rls-owner-grants.sql.inc" && !options.omitFunctionAcl) {
+      content += functionAclSql(options);
+    }
     if (segment === "99-postconditions-commit.sql.inc") {
-      content += `select platform.assert_migration_checksum(
+      content += `${functionAclPostconditionsSql()}
+select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '${U6_MIGRATION_VERSION}',
@@ -395,6 +513,36 @@ describe("U6 deterministic migration renderer", () => {
       () => verifyGeneratedArtifacts(paths),
       /Schema Inventory 与 renderer 投影不一致/,
     );
+  });
+
+  test("缺少 public/backend Function ACL 时 renderer 失败关闭", () => {
+    const paths = temporaryRendererPaths();
+    writeCompleteSources(paths, { omitFunctionAcl: true });
+    writeManifest(paths.maintenanceManifestPath);
+
+    assert.throws(() => renderU6Migration(paths), /Backend EXECUTE ACL/);
+    assert.equal(existsSync(paths.migrationPath), false);
+    assert.equal(existsSync(paths.inventoryPath), false);
+  });
+
+  test("public Function ACL 缺少 Backend REVOKE 时 renderer 失败关闭", () => {
+    const paths = temporaryRendererPaths();
+    writeCompleteSources(paths, { omitBackendRevoke: true });
+    writeManifest(paths.maintenanceManifestPath);
+
+    assert.throws(() => renderU6Migration(paths), /Backend EXECUTE ACL/);
+    assert.equal(existsSync(paths.migrationPath), false);
+    assert.equal(existsSync(paths.inventoryPath), false);
+  });
+
+  test("withheld RPC 获得额外 Backend GRANT 时 renderer 失败关闭", () => {
+    const paths = temporaryRendererPaths();
+    writeCompleteSources(paths, { extraWithheldBackendGrant: true });
+    writeManifest(paths.maintenanceManifestPath);
+
+    assert.throws(() => renderU6Migration(paths), /Backend EXECUTE ACL/);
+    assert.equal(existsSync(paths.migrationPath), false);
+    assert.equal(existsSync(paths.inventoryPath), false);
   });
 
   test("maintenance runner 在调用任何工具前拒绝外部同名 migration", () => {
