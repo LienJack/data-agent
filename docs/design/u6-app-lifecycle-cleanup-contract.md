@@ -227,16 +227,21 @@ research_adapter_termination_receipts
 research_invocation_outcome_usage
 research_result_access_audit_purge_operations
 research_backend_artifact_commit_operations
+research_budget_ledger_input_bindings
 research_budget_events
 research_budget_ledger_receipts
 research_budget_policy_versions
+research_candidate_attestation_ref_bindings
+research_candidate_enumeration_ref_bindings
 research_candidate_enumeration_receipts
 research_candidate_enumerator_attestations
+research_coverage_derivation_ref_bindings
 research_coverage_derivation_receipts
 research_enumerator_versions
 research_input_events
 research_input_event_watermark_receipts
 research_step_operations
+research_stop_derivation_ref_bindings
 research_stop_derivation_receipts
 ```
 
@@ -245,7 +250,7 @@ research_stop_derivation_receipts
 且唯一由它持有的 SECURITY DEFINER 入口是已锁定 Platform evidence、覆盖 binding 后才
 执行静态 DELETE 的 cleanup function。Inventory 冻结 guard source hash/owner/属性与完整
 `tgfoid` dependency set；其中 cleanup-eligible app 子集 replace 前 16 张、postcondition
-后 28 张，Platform/其他 dependency 全部 deny-only。少、多或换绑均失败；Guard 不查表取锁。
+后 33 张，Platform/其他 dependency 全部 deny-only。少、多或换绑均失败；Guard 不查表取锁。
 
 安全前提不是“10590 没有 cleanup 入口”。它已有 Job 可调用、Cleanup Owner 持有的
 SECURITY DEFINER RPC，但旧 body 在任何 retained write/DELETE 前无条件返回
@@ -310,13 +315,13 @@ RETAINED_CONTROL =
 
 `CORE_DATABASE` 由外层 core Database cleanup 删除；U6 Job 只先移除 U6 引用。
 `PLATFORM_CONTROL` 由 Platform lifecycle 保留/推进；`RETAINED_CONTROL` 永不进入 U6
-resource residual。`10600` 后其余 56 张 relation 的 owner 必须为 `U6_JOB`，且 exact phase
+resource residual。`10600` 后其余 61 张 relation 的 owner 必须为 `U6_JOB`，且 exact phase
 allowlist 为：
 
 | rank / group / predicate / order | exact relation |
 | --- | --- |
 | `0/AUDIT_LEAF/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_result_ciphertext_access_audits`，随后 `research_result_access_audit_purge_operations` |
-| `1/ROOT_GRAPH/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_release_decision_commits`、`research_readiness_consumptions`、`report_read_grant_expiration_operations`、`report_read_grants`、`research_revocation_operations`、`research_readiness_publications`、`current_report_readiness`、`research_stop_terminal_commits`、`research_domain_terminals`、`research_stop_derivation_receipts`、`research_candidate_enumeration_receipts`、`research_candidate_enumerator_attestations`、`research_coverage_derivation_receipts`、`research_artifact_commit_operations`、`research_budget_ledger_receipts`、`research_input_event_watermark_receipts`、`research_input_events`、`research_input_event_heads`、`research_frontier_events`、`research_version_frontiers`、`research_frontier_operations`、`research_current_evidence_relation_keys`、`research_backend_artifact_commit_operations` |
+| `1/ROOT_GRAPH/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_release_decision_commits`、`research_readiness_consumptions`、`report_read_grant_expiration_operations`、`report_read_grants`、`research_revocation_operations`、`research_readiness_publications`、`current_report_readiness`、`research_stop_terminal_commits`、`research_domain_terminals`、`research_stop_derivation_ref_bindings`、`research_stop_derivation_receipts`、`research_candidate_enumeration_ref_bindings`、`research_candidate_enumeration_receipts`、`research_candidate_attestation_ref_bindings`、`research_candidate_enumerator_attestations`、`research_coverage_derivation_ref_bindings`、`research_coverage_derivation_receipts`、`research_artifact_commit_operations`、`research_budget_ledger_input_bindings`、`research_budget_ledger_receipts`、`research_input_event_watermark_receipts`、`research_input_events`、`research_input_event_heads`、`research_frontier_events`、`research_version_frontiers`、`research_frontier_operations`、`research_current_evidence_relation_keys`、`research_backend_artifact_commit_operations` |
 | `2/SYSTEM_CHILD/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_system_record_transition_operations`、`research_adapter_termination_receipts`、`research_tool_invocation_permits`、`research_system_artifacts` |
 | `3/TERMINAL_T/INVOCATION_AGGREGATE/I_ASC` | `research_invocation_request_operations`、`research_invocation_commits`、`research_invocation_transition_operations`、`research_invocation_terminal_preparations`、`research_invocation_results`、`research_invocation_result_blobs`、`research_secure_sql_execution_receipts`、`research_invocation_outcome_usage` |
 | `4/SYSTEM_IDENTITY/ALL_SCOPE_ROWS/FULL_PK_ASC` | `research_system_record_identities` |
@@ -370,7 +375,7 @@ OutcomeUsage aggregate。
 
 所有静态 DML 都显式过滤 binding 的 `app_id+environment` 并与 exact-L cleanup RLS
 双重匹配，跨该 L 的全部 tenants。`CORE_DATABASE`、`PLATFORM_CONTROL` 与 §3 两张
-`RETAINED_CONTROL` 不进入 U6 Job phase；任何 `10590/10600` U6 relation 漏出上述 56+2
+`RETAINED_CONTROL` 不进入 U6 Job phase；任何 `10590/10600` U6 relation 漏出上述 61+2
 closed set、任何非 U6 relation 被标 `U6_JOB`，或任一 predicate/order 漂移，都使
 Inventory/Postcondition 失败。
 

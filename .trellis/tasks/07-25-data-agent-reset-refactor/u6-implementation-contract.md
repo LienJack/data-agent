@@ -1,12 +1,14 @@
 # U6 实施与检查合同
 
 > 状态：`PARTIAL_IMPLEMENTATION / U6_C1_DATABASE_SURFACE_INSTALLED /
-> U6_C2_DERIVATION_CONTRACT_FROZEN / U6_C2_TYPESCRIPT_WIRE_IMPLEMENTED`
+> U6_C2_DERIVATION_CONTRACT_FROZEN / U6_C2_TYPESCRIPT_WIRE_IMPLEMENTED /
+> U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR_FROZEN`
 > 已实现：`PURE_RESEARCH_KERNEL / 10590_MIGRATION /
 > CLEANUP_AND_FUNCTION_INVENTORY_PROJECTION / PG17_INSTALL /
 > OWNER_RLS_DML_GUARDS / HISTORICAL_TUPLE_FILTER_INSTALLED /
 > RESEARCH_HASH_V2 / COVERAGE_STOP_V2_REGISTRY /
-> DERIVATION_RECEIPT_CODEC / ENUMERATOR_ATTESTATION_CODEC`
+> DERIVATION_RECEIPT_CODEC / ENUMERATOR_ATTESTATION_CODEC /
+> C2_PHYSICAL_SCHEMA_DESCRIPTOR`
 > 安全断点：`commitResearchStopTerminal / publishCurrentReadiness /
 > consumeCurrentReady` 在 PostgreSQL 可完整重放 Research Kernel 前固定失败关闭
 > 未实现：`POSITIVE_POSTGRESQL_ROOT_AUTHORITY / DB_OWNED_DERIVATION_RECEIPTS /
@@ -28,6 +30,7 @@
 - `docs/design/u6-research-platform-contract.md`
 - `docs/design/u6-research-database-surface-contract.md`
 - `docs/design/u6-research-migration-safety-contract.md`
+- `docs/design/u6-c2-physical-schema-descriptor-contract.md`
 - `docs/design/u6-research-execution-storage-contract.md`
 - `docs/design/u6-research-resource-invocation-contract.md`
 - `docs/design/u6-invocation-state-contract.md`
@@ -38,12 +41,9 @@
 - `docs/design/u6-terminal-reference-graph-contract.md`
 - `docs/design/u6-controlled-fixture-contract.md`
 
-研究证据摘要固定为 `docs/research/u6-rq092-contract-evidence.md`。上述任一必需文件
-缺失、超过 `context_injection.max_file_bytes=32768`、被截断或 `task.py validate` 出现
-Warning，都视为 U6 任务门禁失败；不能把 Warning 当成通过，也不能从记忆补全合同。
-“上下文文件”仅指 `implement.jsonl/check.jsonl` 实际列出的注入文件和任务 Artifact；
-未列入清单的 `.trellis/spec/**` 是可直接读取的补充导航，不参与注入字节门禁，也不能
-替代上述 compact/strict 合同。
+研究证据摘要为 `docs/research/u6-rq092-contract-evidence.md`。任一 Strict Payload
+缺失、超过 32768 bytes、截断或 `task.py validate` Warning 均失败，不得从记忆补全。
+上下文指 `implement.jsonl/check.jsonl` 注入项；`.trellis/spec/**` 只作导航。
 
 当前 `10590` 已能在 PostgreSQL 17 整事务安装，但这只证明 Schema、ACL、RLS、
 Catalog 与回滚边界。Coverage Derivation、Candidate Enumeration、Budget Ledger 和
@@ -59,6 +59,9 @@ Coverage/Budget 换绑。所有公开 `unknown` 入口先复制 inert JSON；Bud
 重建 Snapshot command hash，Coverage verifier 校验 Frontier 三项引用的 Scope/Run，
 Reservation 按资源轴与 actual/reserved 关系判定 Settled 状态。这不改变 DB-owned
 Receipt、PostgreSQL parity 和正向 Root 仍未实现的状态。
+Descriptor 已冻结 15 core + 5 companion、11 mutation、Inventory v2 与
+hash；为 `installable=false`，`10600`、函数/preflight hash、PG17
+Catalog 和 Hosted/Docker parity 未实现。
 每个 `no_candidate` 还必须由规范排序、逐 Obligation 一一对应的
 `NoCandidateAssessment(reason_codes,constraint_closure_hash,assessment_hash)` 闭合；
 旧 `u6-candidate-set@1` 保持兼容域，新数组由 Stop decision、Attestation 与 Candidate
@@ -352,7 +355,7 @@ U6 完成后的预期 Release 仍为 `HOLD`。
   Legal Hold，只延迟 Terminal Graph 明列的内部 FK，并使 U6_JOB
   residual=0；control operation/batch receipt 按合同保留且不计入 residual。
 - `10600` 保持 immutable guard OID/既有 trigger 不变；platform→app migration lock
-  串行 replacement。UPDATE 永拒，DELETE 只允许 Cleanup Owner + 28 表闭集 + 四项
+  串行 replacement。UPDATE 永拒，DELETE 只允许 Cleanup Owner + 33 表闭集 + 四项
   transaction-local binding；pre-DDL 先证明 10590 cleanup RPC exact body 在破坏性写前
   固定 HOLD，再同事务替换 RPC+guard；旧 invocation 仍只能 HOLD。
 - 18 个 U6 current tuple 中 17 个只能经 `commit_current_l2_artifact`，Revocation

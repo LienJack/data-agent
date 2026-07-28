@@ -9,6 +9,24 @@ import {
   type U6RendererPaths,
   verifyGeneratedArtifacts,
 } from "./render-u6-migration.js";
+import {
+  type DeepReadonly,
+  deriveU6C2InventoryReplacementAllowlist,
+  deriveU6C2InventorySurfaceDelta,
+  U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH,
+  U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR,
+  type U6C2InventorySurfaceDelta,
+  type U6C2InventorySurfaceEntry,
+  type U6C2InventorySurfaceKind,
+  validateU6C2PhysicalSchemaDescriptor,
+} from "./u6-c2-physical-schema.js";
+
+export type {
+  DeepReadonly,
+  U6C2InventorySurfaceDelta,
+  U6C2InventorySurfaceEntry,
+  U6C2InventorySurfaceKind,
+} from "./u6-c2-physical-schema.js";
 
 export const U6_C1_FROZEN_MIGRATION_CHECKSUM =
   "sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678";
@@ -57,8 +75,8 @@ export const U6_C2_EXISTING_RELATIONS = [
 
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 const C2_MANIFEST_PROTOCOL = "u6-c2-migration-maintenance@1.0.0";
-const C2_CANDIDATE_INVENTORY_PROTOCOL = "u6-schema-inventory-candidate@1.0.0";
-const TARGET_INVENTORY_PROTOCOL = "u6-schema-inventory@1.0.0";
+const C2_CANDIDATE_INVENTORY_PROTOCOL = "u6-schema-inventory-candidate@2.0.0";
+const BASELINE_INVENTORY_PROTOCOL = "u6-schema-inventory@1.0.0";
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -98,20 +116,8 @@ export type U6C2CandidatePaths = {
   c2MigrationPath: string;
 };
 
-export type U6C2InventorySurfaceKind = "relation" | "function" | "constraint" | "index";
-
-export type U6C2InventorySurfaceEntry = {
-  identity: string;
-  descriptor: JsonRecord;
-};
-
-export type U6C2InventorySurfaceDelta = {
-  additions: Record<U6C2InventorySurfaceKind, U6C2InventorySurfaceEntry[]>;
-  replacements: Record<U6C2InventorySurfaceKind, U6C2InventorySurfaceEntry[]>;
-};
-
 type BaselineInventory = {
-  protocol_version: typeof TARGET_INVENTORY_PROTOCOL;
+  protocol_version: typeof BASELINE_INVENTORY_PROTOCOL;
   migration: {
     name: typeof U6_MIGRATION_NAME;
     sha256: typeof U6_C1_FROZEN_MIGRATION_CHECKSUM;
@@ -128,11 +134,12 @@ type MigrationProjection = {
   source_segments: string[];
 };
 
-export type U6C2CandidateInventory = {
+export type U6C2CandidateInventory = DeepReadonly<{
   protocol_version: typeof C2_CANDIDATE_INVENTORY_PROTOCOL;
-  target_protocol_version: typeof TARGET_INVENTORY_PROTOCOL;
+  target_protocol_version: typeof U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR.target_inventory_protocol;
   installable: false;
   baseline_inventory_hash: `sha256:${string}`;
+  physical_descriptor_hash: typeof U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH;
   migrations: [MigrationProjection, MigrationProjection];
   runtime: JsonRecord;
   baseline_surface: {
@@ -140,19 +147,16 @@ export type U6C2CandidateInventory = {
     functions: JsonRecord[];
   };
   surface_delta: U6C2InventorySurfaceDelta;
-};
+}>;
 
 /**
- * Replacements stay closed until the physical-schema descriptor is reviewed.
- * Populating this allowlist and producing the live Inventory belong to the
- * final C2a migration task, not to this candidate authoring pipeline.
+ * Candidate replacements can only be derived from the reviewed frozen
+ * physical-schema descriptor. Producing the installable live Inventory still
+ * belongs to the final C2a migration task.
  */
-export const U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST = Object.freeze({
-  relation: Object.freeze([] as string[]),
-  function: Object.freeze([] as string[]),
-  constraint: Object.freeze([] as string[]),
-  index: Object.freeze([] as string[]),
-});
+export const U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST = deepFreeze(
+  deriveU6C2InventoryReplacementAllowlist(),
+);
 
 function assertCondition(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -219,8 +223,29 @@ function canonicalJson(value: JsonValue): string {
     .join(",")}}`;
 }
 
+function deepFreeze<T>(value: T): DeepReadonly<T> {
+  if (typeof value !== "object" || value === null || Object.isFrozen(value)) {
+    return value as DeepReadonly<T>;
+  }
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    deepFreeze(child);
+  }
+  return Object.freeze(value) as DeepReadonly<T>;
+}
+
 function compareUtf8Bytes(left: string, right: string): number {
   return Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
+}
+
+function validateFrozenU6C2PhysicalSchemaDescriptor(): void {
+  validateU6C2PhysicalSchemaDescriptor(U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR, {
+    baseline_migration_name: U6_MIGRATION_NAME,
+    baseline_migration_sha256: U6_C1_FROZEN_MIGRATION_CHECKSUM,
+    baseline_inventory_hash: U6_C1_FROZEN_INVENTORY_HASH,
+    c2_migration_name: U6_C2_MIGRATION_NAME,
+    c2_source_segments: U6_C2_SOURCE_SEGMENTS,
+    existing_relations: U6_C2_EXISTING_RELATIONS,
+  });
 }
 
 function assertSafeIntegerInRange(
@@ -753,7 +778,7 @@ export function validateU6C2MaintenanceManifest(raw: unknown): U6C2MaintenanceMa
 export function assertFrozenU6C1InventoryProjection(raw: unknown): BaselineInventory {
   assertCondition(isPlainRecord(raw), "U6 C1 baseline Inventory 必须是 object");
   assertCondition(
-    raw.protocol_version === TARGET_INVENTORY_PROTOCOL,
+    raw.protocol_version === BASELINE_INVENTORY_PROTOCOL,
     "U6 C1 baseline Inventory protocol 漂移",
   );
   assertCondition(isPlainRecord(raw.migration), "U6 C1 baseline migration projection 缺失");
@@ -776,7 +801,9 @@ export function assertFrozenU6C1InventoryProjection(raw: unknown): BaselineInven
   assertCondition(Array.isArray(raw.relations), "U6 C1 relation Inventory 缺失");
   assertCondition(Array.isArray(raw.functions), "U6 C1 function Inventory 缺失");
   assertJsonValue(raw, "U6 C1 baseline Inventory");
-  const inventoryHash = sha256(`${TARGET_INVENTORY_PROTOCOL}\0${canonicalJson(raw as JsonValue)}`);
+  const inventoryHash = sha256(
+    `${BASELINE_INVENTORY_PROTOCOL}\0${canonicalJson(raw as JsonValue)}`,
+  );
   assertCondition(
     inventoryHash === U6_C1_FROZEN_INVENTORY_HASH,
     "U6 C1 baseline Inventory 完整投影漂移",
@@ -838,7 +865,23 @@ function validateSurfaceEntries(
       descriptor: entry.descriptor as JsonRecord,
     };
   });
-  return validated.sort((left, right) => compareUtf8Bytes(left.identity, right.identity));
+  const expectedOrder = [...validated].map(({ identity }) => identity).sort(compareUtf8Bytes);
+  assertCondition(
+    JSON.stringify(validated.map(({ identity }) => identity)) === JSON.stringify(expectedOrder),
+    `${label}.${kind} 必须按 identity UTF-8 bytes 升序`,
+  );
+  return validated;
+}
+
+type MutableSurfaceMap = Record<U6C2InventorySurfaceKind, U6C2InventorySurfaceEntry[]>;
+
+function emptyMutableSurfaceMap(): MutableSurfaceMap {
+  return {
+    relation: [],
+    function: [],
+    constraint: [],
+    index: [],
+  };
 }
 
 function baselineSurfaceIdentities(
@@ -878,8 +921,8 @@ function validateSurfaceDelta(
   assertStrictKeys(raw.additions, kinds, "surface additions");
   assertStrictKeys(raw.replacements, kinds, "surface replacements");
   const baselineIdentities = baselineSurfaceIdentities(baseline);
-  const additions = {} as U6C2InventorySurfaceDelta["additions"];
-  const replacements = {} as U6C2InventorySurfaceDelta["replacements"];
+  const additions = emptyMutableSurfaceMap();
+  const replacements = emptyMutableSurfaceMap();
   for (const kind of kinds) {
     assertCondition(Array.isArray(raw.additions[kind]), `surface additions.${kind} 必须是 array`);
     assertCondition(
@@ -888,13 +931,13 @@ function validateSurfaceDelta(
     );
     additions[kind] = validateSurfaceEntries(kind, raw.additions[kind], "additions");
     replacements[kind] = validateSurfaceEntries(kind, raw.replacements[kind], "replacements");
-    if (kind === "constraint" || kind === "index") {
-      assertCondition(
-        additions[kind].length === 0,
-        `U6 C2 ${kind} addition 尚未由 physical descriptor 冻结`,
-      );
-    }
-    const replacementAllowlist = new Set(U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST[kind]);
+    const expectedReplacementIdentities = U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST[kind];
+    assertCondition(
+      JSON.stringify(replacements[kind].map(({ identity }) => identity)) ===
+        JSON.stringify(expectedReplacementIdentities),
+      `U6 C2 ${kind} replacement 与 physical descriptor allowlist 不一致`,
+    );
+    const replacementAllowlist = new Set(expectedReplacementIdentities);
     for (const entry of replacements[kind]) {
       assertCondition(
         replacementAllowlist.has(entry.identity),
@@ -914,38 +957,43 @@ function validateSurfaceDelta(
         );
       }
     }
+    if (kind === "relation" || kind === "function") {
+      for (const entry of replacements[kind]) {
+        assertCondition(
+          baselineIdentities[kind].has(entry.identity),
+          `U6 C2 replacement 不在 baseline：${kind}:${entry.identity}`,
+        );
+      }
+    }
   }
   return { additions, replacements };
-}
-
-export function emptyU6C2InventorySurfaceDelta(): U6C2InventorySurfaceDelta {
-  return {
-    additions: { relation: [], function: [], constraint: [], index: [] },
-    replacements: { relation: [], function: [], constraint: [], index: [] },
-  };
 }
 
 export function buildU6C2CandidateInventory(input: {
   baselineInventory: unknown;
   c2SourceDirectory: string;
-  surfaceDelta: U6C2InventorySurfaceDelta;
 }): U6C2CandidateInventory {
+  assertCondition(isPlainRecord(input), "U6 C2 Candidate builder input 必须是 object");
+  assertStrictKeys(
+    input as unknown as Record<string, unknown>,
+    ["baselineInventory", "c2SourceDirectory"],
+    "U6 C2 Candidate builder input",
+  );
   const baseline = assertFrozenU6C1InventoryProjection(input.baselineInventory);
+  validateFrozenU6C2PhysicalSchemaDescriptor();
   const c2Checksum = renderU6C2MigrationCandidateFromSegments(input.c2SourceDirectory).checksum;
   assertCondition(
     c2Checksum !== U6_C1_FROZEN_MIGRATION_CHECKSUM,
     "U6 C2 checksum 不得复用 immutable 10590 checksum",
   );
-  const surfaceDelta = validateSurfaceDelta(baseline, input.surfaceDelta);
+  const surfaceDelta = validateSurfaceDelta(baseline, deriveU6C2InventorySurfaceDelta());
   assertJsonValue(baseline, "U6 C1 baseline Inventory");
-  const baselineHash = sha256(
-    `${TARGET_INVENTORY_PROTOCOL}\0${canonicalJson(baseline as unknown as JsonValue)}`,
-  );
-  return {
+  const candidate: U6C2CandidateInventory = {
     protocol_version: C2_CANDIDATE_INVENTORY_PROTOCOL,
-    target_protocol_version: TARGET_INVENTORY_PROTOCOL,
+    target_protocol_version: U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR.target_inventory_protocol,
     installable: false,
-    baseline_inventory_hash: baselineHash,
+    baseline_inventory_hash: U6_C1_FROZEN_INVENTORY_HASH,
+    physical_descriptor_hash: U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH,
     migrations: [
       {
         name: U6_MIGRATION_NAME,
@@ -958,19 +1006,21 @@ export function buildU6C2CandidateInventory(input: {
         source_segments: [...U6_C2_SOURCE_SEGMENTS],
       },
     ],
-    runtime: baseline.runtime,
+    runtime: structuredClone(baseline.runtime),
     baseline_surface: {
-      relations: baseline.relations,
-      functions: baseline.functions,
+      relations: structuredClone(baseline.relations),
+      functions: structuredClone(baseline.functions),
     },
     surface_delta: surfaceDelta,
   };
+  return deepFreeze(candidate);
 }
 
 export function verifyU6C2AuthoringInputs(paths: U6C2CandidatePaths): {
   baselineInventory: BaselineInventory;
   manifest: U6C2MaintenanceManifest;
 } {
+  validateFrozenU6C2PhysicalSchemaDescriptor();
   const baselineInventory = verifyImmutableU6C1Baseline(paths.c1);
   const manifest = validateU6C2MaintenanceManifest(
     JSON.parse(readFileSync(paths.c2MaintenanceManifestPath, "utf8")),

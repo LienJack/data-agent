@@ -10,7 +10,6 @@ import {
   assertFrozenU6C1InventoryProjection,
   buildU6C2CandidateInventory,
   defaultU6C2CandidatePaths,
-  emptyU6C2InventorySurfaceDelta,
   renderU6C2MigrationCandidateFromSegments,
   U6_C1_FROZEN_MIGRATION_CHECKSUM,
   U6_C1_FROZEN_INVENTORY_HASH,
@@ -25,6 +24,11 @@ import {
   verifyImmutableU6C1Baseline,
   verifyU6C2AuthoringInputs,
 } from "../../../scripts/render-u6-c2-migration.ts";
+import {
+  deriveU6C2InventoryReplacementAllowlist,
+  deriveU6C2InventorySurfaceDelta,
+  U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH,
+} from "../../../scripts/u6-c2-physical-schema.ts";
 
 const temporaryDirectories: string[] = [];
 const testSupportDirectory = resolve(fileURLToPath(import.meta.url), "..");
@@ -624,12 +628,16 @@ execute function app_data_agent.some_candidate_trigger();
     const candidate = buildU6C2CandidateInventory({
       baselineInventory: baseline,
       c2SourceDirectory: sourceDirectory,
-      surfaceDelta: emptyU6C2InventorySurfaceDelta(),
     });
 
     assert.equal(candidate.installable, false);
-    assert.equal(candidate.protocol_version, "u6-schema-inventory-candidate@1.0.0");
-    assert.equal(candidate.target_protocol_version, "u6-schema-inventory@1.0.0");
+    assert.equal(candidate.protocol_version, "u6-schema-inventory-candidate@2.0.0");
+    assert.equal(candidate.target_protocol_version, "u6-schema-inventory@2.0.0");
+    assert.equal(
+      candidate.physical_descriptor_hash,
+      U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH,
+    );
+    assert.deepEqual(candidate.surface_delta, deriveU6C2InventorySurfaceDelta());
     assert.deepEqual(
       candidate.migrations.map(({ name }) => name),
       [
@@ -645,65 +653,98 @@ execute function app_data_agent.some_candidate_trigger();
       () => assertFrozenU6C1InventoryProjection(candidate),
       /baseline Inventory protocol 漂移/,
     );
+    assert.ok(Object.isFrozen(candidate));
+    assert.ok(Object.isFrozen(candidate.surface_delta));
+    assert.ok(Object.isFrozen(candidate.surface_delta.additions.relation));
+    assert.ok(Object.isFrozen(candidate.migrations));
+    assert.ok(Object.isFrozen(candidate.migrations[0].source_segments));
+    assert.ok(Object.isFrozen(candidate.baseline_surface.relations));
+    const frozenRelationCount = candidate.surface_delta.additions.relation.length;
+    assert.throws(() => {
+      // @ts-expect-error Candidate Inventory 的公开合同必须在编译期拒绝 mutation。
+      candidate.surface_delta.additions.relation.push(
+        candidate.surface_delta.additions.relation[0]!,
+      );
+    }, /object is not extensible|read only|frozen/i);
+    assert.equal(candidate.surface_delta.additions.relation.length, frozenRelationCount);
+    assert.throws(() => {
+      // @ts-expect-error Candidate migration tuple 必须在编译期递归 readonly。
+      candidate.migrations[0].source_segments.push("forbidden.sql.inc");
+    }, /object is not extensible|read only|frozen/i);
+
+    const baselineRuntime = baseline.runtime as Record<string, unknown>;
+    const candidateRuntime = candidate.runtime as Record<string, unknown>;
+    const originalRuntime = structuredClone(candidateRuntime);
+    baselineRuntime.executor_identity = "forbidden_mutation";
+    assert.deepEqual(candidateRuntime, originalRuntime);
   });
 
-  test("surface delta 先 duplicate-fail，且不允许覆盖 baseline 或未冻结 replacement", () => {
+  test("surface delta 只能由物理描述符闭集派生，拒绝调用方注入", () => {
     const baseline = readBaselineInventory();
     const sourceDirectory = resolve(temporaryDirectory("u6-c2-delta-"), "sources");
     writeCandidateSources(sourceDirectory);
-    const delta = emptyU6C2InventorySurfaceDelta();
-    delta.additions.relation.push(
-      {
-        identity: "app_data_agent.research_budget_events",
-        descriptor: { source_segment: "20-budget-policy-events.sql.inc" },
+    const injected = {
+      baselineInventory: baseline,
+      c2SourceDirectory: sourceDirectory,
+      surfaceDelta: {
+        additions: {
+          relation: [],
+          function: [],
+          constraint: [],
+          index: [],
+        },
+        replacements: {
+          relation: [],
+          function: [],
+          constraint: [],
+          index: [],
+        },
       },
-      {
-        identity: "app_data_agent.research_budget_events",
-        descriptor: { source_segment: "20-budget-policy-events.sql.inc" },
-      },
-    );
+    };
     assert.throws(
       () =>
-        buildU6C2CandidateInventory({
-          baselineInventory: baseline,
-          c2SourceDirectory: sourceDirectory,
-          surfaceDelta: delta,
-        }),
-      /重复 identity/,
+        buildU6C2CandidateInventory(
+          injected as unknown as Parameters<typeof buildU6C2CandidateInventory>[0],
+        ),
+      /字段不闭合/,
     );
 
-    const collision = emptyU6C2InventorySurfaceDelta();
-    collision.additions.relation.push({
-      identity: "app_data_agent.research_resource_run_heads",
-      descriptor: { forbidden: true },
-    });
-    assert.throws(
-      () =>
-        buildU6C2CandidateInventory({
-          baselineInventory: baseline,
-          c2SourceDirectory: sourceDirectory,
-          surfaceDelta: collision,
-        }),
-      /与 baseline 冲突/,
-    );
+    const delta = deriveU6C2InventorySurfaceDelta();
+    const allowlist = deriveU6C2InventoryReplacementAllowlist();
+    const kinds = ["relation", "function", "constraint", "index"] as const;
+    for (const kind of kinds) {
+      const additions = delta.additions[kind].map(({ identity }) => identity);
+      const replacements = delta.replacements[kind].map(({ identity }) => identity);
+      assert.deepEqual(replacements, allowlist[kind]);
+      assert.deepEqual(
+        additions,
+        [...additions].sort((left, right) =>
+          Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+        ),
+      );
+      assert.deepEqual(
+        replacements,
+        [...replacements].sort((left, right) =>
+          Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8")),
+        ),
+      );
+      assert.equal(new Set(additions).size, additions.length);
+      assert.equal(new Set(replacements).size, replacements.length);
+      assert.deepEqual(
+        additions.filter((identity) => replacements.includes(identity)),
+        [],
+      );
+    }
 
-    const replacement = emptyU6C2InventorySurfaceDelta();
-    replacement.replacements.function.push({
-      identity: "app_data_agent.commit_research_stop_terminal(jsonb)",
-      descriptor: { candidate_body_hash: `sha256:${"c".repeat(64)}` },
-    });
-    assert.throws(
-      () =>
-        buildU6C2CandidateInventory({
-          baselineInventory: baseline,
-          c2SourceDirectory: sourceDirectory,
-          surfaceDelta: replacement,
-        }),
-      /尚未由 physical descriptor 冻结/,
-    );
+    assert.ok(Object.isFrozen(U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST));
+    for (const entries of Object.values(U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST)) {
+      assert.ok(Object.isFrozen(entries));
+    }
 
     const driftedBaseline = structuredClone(baseline);
-    driftedBaseline.relations = (driftedBaseline.relations as Array<Record<string, unknown>>).filter(
+    driftedBaseline.relations = (
+      driftedBaseline.relations as Array<Record<string, unknown>>
+    ).filter(
       (relation) =>
         relation.qualified_name !== "app_data_agent.research_resource_run_heads",
     );
@@ -712,29 +753,8 @@ execute function app_data_agent.some_candidate_trigger();
         buildU6C2CandidateInventory({
           baselineInventory: driftedBaseline,
           c2SourceDirectory: sourceDirectory,
-          surfaceDelta: collision,
         }),
       /完整投影漂移/,
-    );
-
-    assert.ok(Object.isFrozen(U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST));
-    for (const entries of Object.values(U6_C2_INVENTORY_REPLACEMENT_ALLOWLIST)) {
-      assert.ok(Object.isFrozen(entries));
-    }
-
-    const prematureIndex = emptyU6C2InventorySurfaceDelta();
-    prematureIndex.additions.index.push({
-      identity: "app_data_agent.research_budget_events_idx",
-      descriptor: { forbidden_before_descriptor: true },
-    });
-    assert.throws(
-      () =>
-        buildU6C2CandidateInventory({
-          baselineInventory: baseline,
-          c2SourceDirectory: sourceDirectory,
-          surfaceDelta: prematureIndex,
-        }),
-      /index addition 尚未由 physical descriptor 冻结/,
     );
   });
 

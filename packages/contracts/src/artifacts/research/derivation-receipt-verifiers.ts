@@ -109,7 +109,7 @@ function assertDerivationReceiptInputProjectionBinding(
       }
       return;
     }
-    case "candidate-enumeration-receipt@1.0.0": {
+    case "candidate-enumeration-receipt@2.0.0": {
       const material = parseInertWireInput(
         candidateEnumerationInputHashMaterialSchema,
         inputHashMaterial,
@@ -121,6 +121,7 @@ function assertDerivationReceiptInputProjectionBinding(
         material.budget_receipt.receipt_hash !== receipt.budget_receipt_hash ||
         material.enumerator_attestation_id !== receipt.enumerator_attestation_id ||
         material.enumerator_attestation_hash !== receipt.enumerator_attestation_hash ||
+        material.enumerator_head_version !== receipt.enumerator_head_version ||
         material.enumerator_version !== receipt.enumerator_version ||
         material.eig_policy_version !== receipt.eig_policy_version ||
         !sameJson(material.query_contract_universe_refs, receipt.query_contract_universe_refs)
@@ -129,7 +130,7 @@ function assertDerivationReceiptInputProjectionBinding(
       }
       return;
     }
-    case "research-stop-derivation-receipt@1.0.0": {
+    case "research-stop-derivation-receipt@2.0.0": {
       const material = parseInertWireInput(
         stopDerivationInputHashMaterialSchema,
         inputHashMaterial,
@@ -194,6 +195,9 @@ async function verifyBudgetReceiptSecondaryMaterials(
     ({ state }) => state === "RESERVED" || state === "IN_USE",
   ).length;
   const outcomeUnknownCount = outstandingReservations.filter(
+    ({ outcome_unknown_hash }) => outcome_unknown_hash !== null,
+  ).length;
+  const abandonedCount = outstandingReservations.filter(
     ({ state }) => state === "ABANDONED",
   ).length;
   const expectedEffectiveLimit = {
@@ -252,7 +256,7 @@ async function verifyBudgetReceiptSecondaryMaterials(
     outstandingSetHash !== material.outstanding_set_hash ||
     activeCount !== receipt.active_count ||
     outcomeUnknownCount !== receipt.outcome_unknown_count ||
-    outcomeUnknownCount !== receipt.abandoned_count
+    abandonedCount !== receipt.abandoned_count
   ) {
     throw new TypeError("Budget Receipt 二级 Hash/计数未绑定 exact 原始 material。");
   }
@@ -306,7 +310,7 @@ async function verifyCandidateReceiptSecondaryMaterials(
 
 async function verifyStopReceiptSecondaryMaterials(
   receipt: z.infer<typeof derivationReceiptSchema> & {
-    protocol_version: "research-stop-derivation-receipt@1.0.0";
+    protocol_version: "research-stop-derivation-receipt@2.0.0";
   },
   contextInput: unknown,
 ): Promise<void> {
@@ -316,7 +320,7 @@ async function verifyStopReceiptSecondaryMaterials(
     context.candidate_input_material,
     context.candidate_context,
   );
-  if (candidateReceipt.protocol_version !== "candidate-enumeration-receipt@1.0.0") {
+  if (candidateReceipt.protocol_version !== "candidate-enumeration-receipt@2.0.0") {
     throw new TypeError("Stop Receipt context 必须提供 Candidate Receipt。");
   }
   const coverageReceipt = await verifyDerivationReceiptSelfHash(
@@ -385,9 +389,9 @@ async function verifyDerivationReceiptSecondaryMaterials(
   switch (receipt.protocol_version) {
     case "research-budget-ledger-receipt@2.0.0":
       return verifyBudgetReceiptSecondaryMaterials(receipt, inputHashMaterial, contextInput);
-    case "candidate-enumeration-receipt@1.0.0":
+    case "candidate-enumeration-receipt@2.0.0":
       return verifyCandidateReceiptSecondaryMaterials(receipt, contextInput);
-    case "research-stop-derivation-receipt@1.0.0":
+    case "research-stop-derivation-receipt@2.0.0":
       return verifyStopReceiptSecondaryMaterials(receipt, contextInput);
     default:
       if (contextInput !== undefined) {

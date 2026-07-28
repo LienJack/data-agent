@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "scripts/u6-c2-physical-schema.ts",
+    "scripts/render-u6-c2-migration.ts",
+    "infra/supabase/test-support/u6-c2-physical-schema.test.ts",
+    "infra/supabase/test-support/render-u6-c2-migration.test.ts"
+  ]
+}

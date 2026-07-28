@@ -8,7 +8,8 @@
 本文是 U6 安装 `10590→10600` 的唯一安全合同。二者位于同一 application forward-only
 迁移链，不是 Platform/App 第二链。对象、函数、ACL/Inventory 取 Database Surface；
 Receipt/Hash 取 Derivation，Terminal FK 取 Reference Graph，执行表取 Execution
-Storage，Key/deployment state 取 Result Key Lifecycle。
+Storage，Key/deployment state 取 Result Key Lifecycle；C2 exact 20-addition/11-existing
+tuple 与 Catalog facets 取 `u6-c2-physical-schema-descriptor-contract.md`。
 
 ## 1. 唯一产物与可维护源码
 
@@ -67,19 +68,19 @@ Maintenance Manifest hash 是
 99-postconditions-ledger-commit.sql.inc
 ```
 
-多、少、重名、大小写变化或顺序变化任一 segment 都失败；renderer 不得按目录排序推断
-闭集。现有 renderer 对 `10590` 只允许 verify；C2 renderer 只生成唯一 `10600`、升级后的
-`u6-schema-inventory` 与 `10600` 的 `sha256:<64hex>` ledger，同时验证升级 Inventory
-仍含上述 immutable `10590` name/hash。`.inc` 不进 runner。禁止
+segment 多/少/重名/大小写/顺序漂移均失败，禁止目录推断。10590 renderer 只 verify；
+C2 只生成唯一 `10600`、
+`u6-schema-inventory-candidate@2.0.0`、升级后的
+`u6-schema-inventory@2.0.0` 和 `sha256:<64hex>` ledger，并验证 plural `migrations`
+保留 immutable 10590 name/hash；Candidate v2 绑定 reviewed
+`physical_descriptor_hash`。`.inc` 不进 runner；禁止
 `CONCURRENTLY`、autocommit、`\i`、远程 fetch、动态文件发现、修改已登记 Migration，
 或在 `packages/platform/migrations`/`infra/supabase/platform/migrations` 建第二链。
 
-`10600` 必须先逐字验证已登记 `10590` name/hash 与 baseline Inventory，再以一个显式事务
-完成 additive Receipt/Budget/Input Event 表、v2 tuple、函数替换、Artifact Run-first
-guard、Owner/RLS/ACL/Inventory。现有预算 Head 不猜测回填：标为
-`LEGACY_BUDGET_EPOCH_UNPROVABLE`，正向 Root 失败。它复用本文 executor、timeout、
-maintenance lock、preflight、rollback/restore 与 Hosted/Docker 双连接 Gate；任何环境若
-尚未安装 `10590`，runner 仍按 `10590→10600` 顺序安装，禁止 squash 同名旧 hash。
+`10600` 先验 10590 name/hash 与 baseline Inventory，再单事务安装 Receipt/Budget/Input
+Event、v2 tuple、函数、Run-first guard、Owner/RLS/ACL/Inventory。旧 Budget Head 标
+`LEGACY_BUDGET_EPOCH_UNPROVABLE`，正向 Root 失败；复用本文 executor/timeout/lock/
+preflight/rollback/Hosted-Docker Gate。缺 10590 时仍按 10590→10600，禁止 squash。
 
 ## 2. Maintenance Manifest
 
@@ -87,39 +88,38 @@ maintenance lock、preflight、rollback/restore 与 Hosted/Docker 双连接 Gate
 `infra/supabase/apps/data-agent/u6-migration-maintenance-manifest.json`：
 
 ```ts
-type ExistingU6C1Relation =
-  | "app_data_agent.artifacts"
-  | "app_data_agent.memberships"
-  | "app_data_agent.outbox"
-  | "app_data_agent.run_attempts"
-  | "app_data_agent.runs"
-  | "platform.app_environment_lifecycle"
-  | "platform.deployment_mappings";
-type U6C1MigrationMaintenanceManifest = {
-  protocol_version: "u6-migration-maintenance@1.0.0";
-  migration_name:
-    "20260725010590_app_data_agent_u6_research_authority.sql";
+type RelationLimit<Name extends string> = {
+  qualified_name: Name;
+  approved_max_rows: number;
+  approved_max_total_bytes: number;
+};
+type MaintenanceManifest<P extends string, N extends string, R extends string> = {
+  protocol_version: P;
+  migration_name: N;
   deployment_scope: {
     app_id: ImmutableId;
     deployment_binding: "SESSION_ACTIVE_MAPPING";
     database_binding: "SESSION_DATABASE_IDENTITY";
   };
-  maintenance_window: {
-    window_id: ImmutableId;
-    max_duration_ms: number;
-  };
+  maintenance_window: { window_id: ImmutableId; max_duration_ms: number };
   timeouts: {
     lock_timeout_ms: number;
     statement_timeout_ms: number;
     idle_in_transaction_session_timeout_ms: number;
   };
-  relation_limits: ReadonlyArray<{
-    qualified_name: ExistingU6C1Relation;
-    approved_max_rows: number;
-    approved_max_total_bytes: number;
-  }>;
+  relation_limits: ReadonlyArray<RelationLimit<R>>;
   manifest_hash: Sha256;
 };
+type ExistingU6C1Relation =
+  | "app_data_agent.artifacts" | "app_data_agent.memberships"
+  | "app_data_agent.outbox" | "app_data_agent.run_attempts"
+  | "app_data_agent.runs" | "platform.app_environment_lifecycle"
+  | "platform.deployment_mappings";
+type U6C1MigrationMaintenanceManifest = MaintenanceManifest<
+  "u6-migration-maintenance@1.0.0",
+  "20260725010590_app_data_agent_u6_research_authority.sql",
+  ExistingU6C1Relation
+>;
 ```
 
 `10600` 使用独立
@@ -128,8 +128,7 @@ type U6C1MigrationMaintenanceManifest = {
 
 ```ts
 type ExistingU6C2Relation =
-  | "app_data_agent.artifacts"
-  | "app_data_agent.memberships"
+  | "app_data_agent.artifacts" | "app_data_agent.memberships"
   | "app_data_agent.outbox"
   | "app_data_agent.research_artifact_commit_operations"
   | "app_data_agent.research_authority_capabilities"
@@ -137,87 +136,46 @@ type ExistingU6C2Relation =
   | "app_data_agent.research_resource_reservations"
   | "app_data_agent.research_resource_run_heads"
   | "app_data_agent.research_stop_terminal_commits"
-  | "app_data_agent.run_attempts"
-  | "app_data_agent.runs";
-type RelationLimit<Name extends ExistingU6C2Relation> = {
-  qualified_name: Name;
-  approved_max_rows: number;
-  approved_max_total_bytes: number;
-};
-type U6C2MigrationMaintenanceManifest = {
-  protocol_version: "u6-c2-migration-maintenance@1.0.0";
-  migration_name:
-    "20260725010600_app_data_agent_u6_research_derivation.sql";
-  deployment_scope: {
-    app_id: ImmutableId;
-    deployment_binding: "SESSION_ACTIVE_MAPPING";
-    database_binding: "SESSION_DATABASE_IDENTITY";
-  };
-  maintenance_window: {
-    window_id: ImmutableId;
-    max_duration_ms: number;
-  };
-  timeouts: {
-    lock_timeout_ms: number;
-    statement_timeout_ms: number;
-    idle_in_transaction_session_timeout_ms: number;
-  };
-  relation_limits: readonly [
-    RelationLimit<"app_data_agent.artifacts">,
-    RelationLimit<"app_data_agent.memberships">,
-    RelationLimit<"app_data_agent.outbox">,
-    RelationLimit<"app_data_agent.research_artifact_commit_operations">,
-    RelationLimit<"app_data_agent.research_authority_capabilities">,
-    RelationLimit<"app_data_agent.research_domain_terminals">,
-    RelationLimit<"app_data_agent.research_resource_reservations">,
-    RelationLimit<"app_data_agent.research_resource_run_heads">,
-    RelationLimit<"app_data_agent.research_stop_terminal_commits">,
-    RelationLimit<"app_data_agent.run_attempts">,
-    RelationLimit<"app_data_agent.runs">,
-  ];
-  manifest_hash: Sha256;
-};
+  | "app_data_agent.run_attempts" | "app_data_agent.runs";
+type U6C2MigrationMaintenanceManifest = MaintenanceManifest<
+  "u6-c2-migration-maintenance@1.0.0",
+  "20260725010600_app_data_agent_u6_research_derivation.sql",
+  ExistingU6C2Relation
+>;
 ```
 
-C2 exact set 就是上述十一张：实际 ALTER/ACL/function row/FK existing parent 的闭包。
+C2 existing exact set 就是上述十一张 ALTER/ACL/function-lock/FK-parent 闭包：
 `artifacts/runs/outbox/run_attempts` 服务 owner committer、吸收态与 ACL；
 `memberships/research_authority_capabilities` 是 Receipt parent；
 `research_artifact_commit_operations` 增加 Snapshot binding；其余四张承载
-Budget/Terminal 变更。新表另由 Inventory closed set 断言；新增 existing parent 必须先
-修订合同、Manifest、rank 与 Oracle。
+Budget/Terminal 变更。新增 relation 另由 Physical Schema Descriptor 断言为 15 张 core
+semantic + 5 张 parent-specific companion 的 exact 20，与 15 个 source segments
+独立验证。新增 existing parent 必须先修订合同、Manifest、rank 与 Oracle。
 
-`10600` 还以同签名 `CREATE OR REPLACE` 升级
-`platform.reject_immutable_mutation()`，不得 ALTER/重建既有 trigger。执行前后
-`pg_proc.oid` 必须相同；完整 `tgfoid` dependency set 取 Cleanup 分册，其中可 cleanup 的
-app 子集由 16 增至 28，其他 dependency deny-only。除十一集已有三表外，其余 13 张
-existing eligible relation 禁止 ALTER/ACL/policy/trigger DDL，故锁集不变。Inventory
-冻结 signature/body hash/owner/ACL/`prosecdef=false`/language/volatility/空
-search path/dependency set。
+`10600` 以同签名 `CREATE OR REPLACE platform.reject_immutable_mutation()`，不得
+ALTER/重建 trigger；前后 `pg_proc.oid` 相同，Cleanup 分册的 `tgfoid` 可清理 app 子集
+16→28，其余 deny-only。除十一集已有三表外，另 13 张 eligible existing relation 禁止
+ALTER/ACL/policy/trigger，锁集不变。Inventory 冻结函数 signature/body hash/owner/ACL/
+`prosecdef=false`/language/volatility/空 search path/dependency set。
 
-两个 Manifest 均 strict，不能交换 protocol/name/relation set。C1 七张、C2 十一张各
-出现一次，按 qualified-name UTF-8 bytes 升序。row/byte 上限为
-`0..9007199254740991`。
-`max_duration_ms=60000..7200000`，
-`lock_timeout_ms=100..5000`，
-`statement_timeout_ms=30000..1800000`，
-`idle_in_transaction_session_timeout_ms=30000..300000`。Manifest 跨 Hosted/Docker
-稳定，禁止运行时 deployment/database/window identity 及 secret/KMS/key material。
+两个 Manifest strict 且 protocol/name/relation set 不可交换；C1 七张、C2 十一张各一次，
+按 qualified-name UTF-8 bytes 升序。row/byte 为 `0..9007199254740991`；
+`max_duration_ms=60000..7200000`、`lock_timeout_ms=100..5000`、
+`statement_timeout_ms=30000..1800000`、
+`idle_in_transaction_session_timeout_ms=30000..300000`。它们跨 Hosted/Docker 稳定，
+不得含运行时 deployment/database/window identity 或 secret/KMS/key material。
 
-唯一 migration executor identity 固定为 direct connection 的 PostgreSQL role
-`postgres`；连接后到 COMMIT 前始终要求
+唯一 executor 是 direct `postgres`；连接至 COMMIT 始终
 `session_user=current_user='postgres'`，禁止 `SET ROLE`、impersonation、pooler
-transaction mode 或 SECURITY DEFINER preflight。Runner 与所选 Migration 都在任何
-advisory/table lock、用户表读取或 DDL 前查 `pg_roles`，要求 exact 一行、
-`rolcanlogin=true`、`rolbypassrls=true`。`rolsuper` 在 Hosted 可为 false、Docker
-可为 true，但不能替代 BYPASSRLS。对 target 的 exact existing relation set 逐张断言
-当前 role 有 SELECT 且对 relowner
-`pg_has_role(...,'USAGE')=true`：C1 是七张，C2 是十一张。任一不满足立即报
-`U6_MIGRATION_EXECUTOR_UNSAFE`，且必须发生在 maintenance advisory/table locks 与
-DDL 前；禁止关闭 RLS、改 policy 或以 filtered count 继续。凭据只由部署 secret 注入。
+transaction mode、SECURITY DEFINER preflight。Runner 与 Migration 在任何用户表读取、
+锁或 DDL 前查 `pg_roles` exact 一行且 `rolcanlogin/rolbypassrls=true`，并逐张断言 target
+existing set（C1 七张/C2 十一张）的 SELECT 与 relowner
+`pg_has_role(...,'USAGE')=true`。Hosted `rolsuper=false`、Docker `true` 均不能替代
+BYPASSRLS；失败即在 maintenance lock 前报 `U6_MIGRATION_EXECUTOR_UNSAFE`，不得关闭
+RLS、改 policy 或用 filtered count 继续。凭据仅由部署 secret 注入。
 
-U6 的运行基线固定为 PostgreSQL 17；Inventory 必须断言
-`server_version_num=170000..179999`。`transaction_timeout` 不由 Manifest 重复声明；
-绝对时限只取已签 maintenance window。Renderer 固化
+U6 固定 PostgreSQL 17，Inventory 断言 `server_version_num=170000..179999`；
+`transaction_timeout` 不进 Manifest，绝对时限只取已签 window。Renderer 固化
 `U6_MIGRATION_ARM_SAFETY_MS=5000` 与
 `U6_MIGRATION_MIN_EFFECTIVE_BUDGET_MS=30000`，两者进入 Inventory/hash。
 PostgreSQL 16 及以下、未知 major 或不能设置该 GUC 的连接一律拒绝安装。
@@ -280,53 +238,46 @@ sha256(
 最后一项必须来自 ledger 中 exact
 `20260725000100_platform_foundation`，同名异 checksum 先失败。
 
-runner 只接受 target 参数 `"10590" | "10600"`，并从编译期 closed descriptor 选择
-`migration_name/protocol/manifest path/migration path/source segment list/exact relation
-set/expected checksum/prior migration`；不得接受调用方文件路径、name、hash、relation
-override 或以目录 latest 推断 target。选择与 ledger 状态固定为：
+runner 只接受 `"10590"|"10600"`，从编译期 closed descriptor 取
+`migration name/protocol/manifest+migration path/segments/relation set/checksum/prior`；
+禁止 caller override 或目录 latest。令
+`H10590=sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678`：
 
 ```text
 target=10590:
-  10590 absent -> verify immutable renderer/manifest bytes, then execute 10590
-  10590 exact sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678
-    -> SKIP_EXACT
-  10590 same name/different hash -> fail
+  absent -> verify immutable renderer/manifest bytes -> execute
+  exact H10590 -> SKIP_EXACT
+  same name/different hash -> fail
 target=10600:
-  require 10590 exact
-    sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678
-    and baseline Inventory exact
-  10600 absent -> verify C2 renderer/manifest bytes, then execute 10600
-  10600 same name/exact compiled hash -> SKIP_EXACT
-  10600 same name/different hash or 10590 absent/mismatched -> fail
+  require 10590 exact H10590 + baseline Inventory exact
+  absent -> verify C2 renderer/manifest bytes -> execute
+  same name/exact compiled hash -> SKIP_EXACT
+  same name/different hash or bad 10590 -> fail
 ```
 
-clean install orchestrator 只能显式依次调用 `target=10590`、`target=10600`；populated C1
-upgrade 只调用 `target=10600`。无论 target 如何，runner 都不得修改或重新 render
-`10590`。renderer strict 解析并把全部策略、排序后的 target limits 与 hash 固化进对应
-Migration；运行时文件与固化值任一差异即失败。
+clean install 依次调用 10590→10600，populated C1 只调用 10600；均不得改写/render
+10590。renderer 将 strict 策略、排序 limits 与 hash 固化进 Migration，运行时漂移失败。
 
-受控 runner 只能使用 dedicated、非池化连接，并先断言 libpq transaction
-status=`IDLE`。跳过判定完成后，它对所选 target 在事务外按固定协议执行：
+runner 仅用 dedicated 非池化连接，先断言 libpq status=`IDLE`；skip 判定后在事务外执行：
 
 ```text
 SET SESSION transaction_timeout=0；pg_settings(setting=0,unit='ms') 回读
 → 设置 session-scope app.u6_maintenance_manifest_hash/window_id/
   window_expires_at/deployment_id/database_identity_hash
-→ 用同一数据库 clock_timestamp() 计算 remaining_at_probe_ms
-→ session_arm_ms = remaining_at_probe_ms - 5000
+→ 同一 DB clock_timestamp() 计算 remaining_at_probe_ms；
+  session_arm_ms=remaining_at_probe_ms-5000
 → 要求 session_arm_ms>=30000 且 remaining_at_probe_ms<=max_duration_ms
 → 设置 app.u6_maintenance_session_arm_ms=session_arm_ms
 → SET SESSION transaction_timeout=session_arm_ms；pg_settings 逐数值回读
-→ 不插入任何其他 SQL，立即执行所选 Migration 的 BEGIN 与 bootstrap
+→ 无其他 SQL，立即 Migration BEGIN/bootstrap
 ```
 
-这六个 maintenance GUC 都只是操作意图，不是授权；授权仍来自上述 exact executor、
-ledger checksum 与连接边界。window id 必须等于固化值；expiry 必须在 DB time 后且
-不超过 `max_duration_ms`。
+六个 GUC 仅表达意图，不授权；仍须 exact executor/ledger/connection。window id 等于
+固化值，expiry 在 DB time 后且不超过 `max_duration_ms`。
 
-`10590` 与 `10600` 的 `BEGIN` 后第一条语句都只能是无 DDL/用户表锁的 bootstrap。它先断言
-`pg_settings` 中已激活的 `transaction_timeout` 数值等于
-`app.u6_maintenance_session_arm_ms`，捕获单一 `arm_now=clock_timestamp()`，再计算：
+两 target 的 BEGIN 首句只能是零 DDL/用户锁 bootstrap：先断言激活的
+`transaction_timeout=app.u6_maintenance_session_arm_ms`，取单一
+`arm_now=clock_timestamp()` 并计算：
 
 ```text
 effective_transaction_budget_ms =
@@ -335,11 +286,10 @@ effective_transaction_budget_ms =
   )) * 1000) - U6_MIGRATION_ARM_SAFETY_MS
 ```
 
-预算须为 `30000..max_duration_ms`。Bootstrap 随后严格执行
-`set_config('transaction_timeout','0',true)` 并验证 0，再执行
-`set_config('transaction_timeout',effective_transaction_budget_ms||'ms',true)` 并从
-`pg_settings(setting,unit='ms')` 数值回读；两步之间不得执行其他语句。正值回读后立即
-捕获 `rearm_verified_at=clock_timestamp()`，并在任何锁/DDL 前断言：
+预算须为 `30000..max_duration_ms`；随后连续执行并数值回读
+`set_config('transaction_timeout','0',true)`、再
+`set_config('transaction_timeout',effective_transaction_budget_ms||'ms',true)`。
+正值后立即取 `rearm_verified_at=clock_timestamp()`，锁/DDL 前断言：
 
 ```text
 rearm_verified_at
@@ -347,83 +297,81 @@ rearm_verified_at
   <= window_expires_at
 ```
 
-进程若在取 `arm_now` 与 re-arm 之间停顿超过安全余量，该断言必须回滚。PostgreSQL 17
-在事务中把一个正值改成另一个正值时不会缩短已激活 timer，因此禁止省略“先 0、再正值”
-或声称 timer 自动回溯至事务起点。有效 timer 从 re-arm 时刻起算，但因预算来自绝对
-DB window、预扣 `U6_MIGRATION_ARM_SAFETY_MS=5000` 且通过上述 deadline 断言，必须
-先于窗口到期；最终 DB-clock 复验仍是第二道提交门。
-`statement_timeout` 只约束单条语句，不能替代它。Runner 与 SQL 均禁止
-`PREPARE TRANSACTION`/两阶段提交。
+arm→re-arm 停顿超余量即回滚。PG17 正值覆盖正值不会缩短 active timer，故必须先 0 再
+正值；timer 从 re-arm 起算，绝对 DB window、预扣 5000ms、deadline 与最终 DB-clock
+共同保证到期前终止。`statement_timeout` 不可替代；Runner/SQL 禁止
+`PREPARE TRANSACTION`/2PC。
 
 ## 3. 单事务、超时与锁
 
-两个 target 的共同规则是：每次只执行一个显式事务；bootstrap、timeout、executor、
-database/deployment/window、advisory lock、目标 relation 容量检查、最终 DB-clock 复验
-和 ledger-last 规则相同。relation 数量、preflight、DDL 与 postcondition 只取所选
-descriptor，不存在“共同七表”。C1 `10590` 的 immutable 顺序仍固定为：
+每个 target 只执行一个显式事务；bootstrap、timeout、executor、database/deployment/
+window、advisory lock、容量、最终 DB-clock 与 ledger-last 规则相同。relation、
+preflight、DDL、postcondition 只取所选 descriptor，不存在“共同七表”。C1 顺序固定为：
 
 ```text
 BEGIN
-→ 首条 bootstrap 验证 session arm，并按 clock_timestamp/window_expires_at
-  将 transaction_timeout 精确 disable/re-arm
-→ SET LOCAL lock_timeout / statement_timeout /
-  idle_in_transaction_session_timeout（取固化 Manifest）
-→ 校验 exact postgres/BYPASSRLS/七表 SELECT+owner membership、database identity、ledger、
-  六项 maintenance GUC、PG17、窗口 DB time 与 active deployment mapping
+→ 首条 bootstrap 验证 arm，按 DB window disable/re-arm transaction_timeout
+→ SET LOCAL 三个 timeout（固化 Manifest）
+→ 验证 postgres/BYPASSRLS、七表 SELECT+owner membership、database/deployment/window、
+  ledger、六项 GUC、PG17
 → 取得既有 data-agent migration advisory lock
-→ 对七张 existing relation 按 qualified-name UTF-8 bytes 升序，
-  在一个 LOCK TABLE 列表中 ACCESS EXCLUSIVE NOWAIT
+→ 七表按 qualified-name UTF-8 升序一次 ACCESS EXCLUSIVE NOWAIT
 → 锁后重验 deployment/window/ledger
-→ Relation 容量与已有数据 preflight
-→ existing-table DDL
-→ 新表、约束、函数、RLS、Owner 与 GRANT
-→ Catalog/Inventory/postcondition exact assertion
-→ 使用新的 clock_timestamp() 最终重验 window、deployment、database、Manifest 与 ledger
-→ 最后写 Migration ledger
+→ 容量/data preflight → existing DDL → 新表/constraint/function/RLS/Owner/GRANT
+→ Catalog/Inventory/postcondition exact
+→ 新 clock_timestamp() 终验 window/deployment/database/Manifest/ledger
+→ ledger-last
 → COMMIT
 ```
 
-`10600` 不从 C1 流程删减或插入隐式阶段；它的 exact 顺序固定为：
+`10600` 不删减 C1 安全阶段或插入隐式阶段，顺序固定为：
 
 ```text
 BEGIN
-→ 首条 C2 bootstrap 验证 target=10600 session arm，按 DB window disable/re-arm
-  transaction_timeout
-→ SET LOCAL lock_timeout / statement_timeout /
-  idle_in_transaction_session_timeout（只取 C2 Manifest）
-→ 在任何用户表读取/锁/DDL 前校验 exact postgres/BYPASSRLS、C2 protocol/name/hash、
-  十一表 SELECT+owner membership、database identity、六项 GUC、PG17、active deployment，
-  并逐字校验 10590 ledger checksum sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678
+→ 首条 bootstrap 验证 target=10600 arm，按 DB window disable/re-arm transaction_timeout
+→ SET LOCAL 三个 timeout（C2 Manifest）
+→ 读表/锁/DDL 前验证 postgres/BYPASSRLS、C2 protocol/name/hash、十一表 SELECT+owner
+  membership、database/deployment、六项 GUC、PG17、10590 ledger
+  sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678
   与 baseline Inventory
-→ 依次调用既有 migration lock：`('platform',NULL)` 再 `('app',data-agent app_id)`；
-  所有可替换 immutable guard 的 migration 同序持有到 COMMIT
-→ 在一个 LOCK TABLE 列表中按 UTF-8 bytes 升序对 C2 exact 十一表执行
-  ACCESS EXCLUSIVE NOWAIT
-→ 锁后重验 deployment/window/database、C2 Manifest 与 immutable 10590 ledger/Inventory
-→ 十一表依次做 bytes-before-count 容量 preflight，再执行 C2 Inventory 登记的全部
-  data preflight；锁内 `runs` closed set 同时成为 pre-10600 Run 分类集合，任一失败时
-  尚无 DDL
-→ 按独立 10600 source segments 执行 existing columns/checks，并把该集合的每个 Run
-  原子分类为 LEGACY Budget Head；给 Coverage/Stop v2 Artifact Commit Operation 增加
-  exact Budget Snapshot binding，并把既有 Reservation 分类为 legacy epoch；随后建立
-  Budget Policy/Event、
-  Derivation Receipt、Input Event/Watermark、Terminal Receipt link、新 FK/index/trigger
+→ migration lock `('platform',NULL)` → `('app',data-agent app_id)`，持至 COMMIT
+→ 十一表按 UTF-8 升序一次 ACCESS EXCLUSIVE NOWAIT
+→ 锁后重验 deployment/window/database/C2 Manifest/10590 ledger+Inventory
+→ 十一表 bytes-before-count，再执行 Inventory data preflight；锁内 runs 即 pre-10600
+  分类闭集，失败时零 DDL
+→ 按 10600 segments 安装 existing columns/checks，原子分类 LEGACY Head/Reservation，
+  给 Coverage/Stop v2 Artifact Operation 加 Wire protocol+Budget Snapshot binding，再建
+  exact 20 relation（15 core+5 companion）、Terminal Receipt link、FK/index/trigger
 → 同事务 replace cleanup RPC + immutable guard，再替换其余 internal/Artifact/
   Resource/Stop/Resolver/Provisioner；安装 Owner、FORCE RLS、policy、ACL/GRANT
-→ 对升级后的 Catalog 与 u6-schema-inventory 做 exact postcondition，并断言 C2 新表闭集、
-  十一张 existing relation 的 alter/ACL/function-lock/FK-parent 闭包、新列/CHECK/FK、
-  函数/trigger/ACL、
-  immutable 10590 ledger exact、
-  10600 ledger 尚不存在，以及升级 Inventory 的 10590+10600 migration 投影 exact
-→ 用新的 clock_timestamp() 最终重验 window、deployment、database、C2 Manifest、
-  immutable 10590 checksum 与 baseline Inventory
-→ 事务最后一条业务写仅插入 10600 name+renderer checksum 到既有 Migration ledger
+→ Catalog+v2 Inventory exact postcondition：新表闭集、十一表 maintenance 闭包、新列/
+  CHECK/FK/function/trigger/ACL、10590 exact、10600 ledger absent、双 migration 投影 exact
+→ 新 clock_timestamp() 终验 window/deployment/database/C2 Manifest/10590/Inventory
+→ ledger-last：仅插入 10600 name+renderer checksum
 → COMMIT
 ```
 
 `10600` 的 preflight 前不得撤销 ACL、创建表或加列；postcondition 与 ledger 之间只能做
 最终只读复验和上述单条 ledger INSERT。不得把 legacy Head 标记、函数替换或 GRANT 放到
 事务外，也不得让 `10600` ledger 先于 postcondition 可见。
+
+existing ALTER 的 exact branch 必须在同一事务闭合：
+
+- `research_artifact_commit_operations.wire_protocol_version` 从
+  `candidate_json #>> '{payload,protocol_version}'` 回填、设 NOT NULL，之后由 RPC
+  显式写入；
+  禁止 generated JSON column。`budget_receipt_id/hash` 只能 both-null 或
+  both-present，Coverage/Stop v2 必须 present，legacy/v1 与其他 tuple 必须 null；
+- `research_resource_run_heads` 完成 backfill 后所有 seq/epoch 列均无长期 default，
+  新 RPC 显式写整行；
+- Reservation 的 ACTIVE MODEL/SQL 必须 exact Step；ACTIVE TOOL 可为 NULL，非 NULL
+  时仍须 exact Step；legacy epoch 0 只允许 NULL；
+- StopCommit 的 Stop Receipt ID/Hash 在 zero-row preflight 后固定 NOT NULL +
+  both-present；DomainTerminal 使用 separately named both-or-neither 与
+  authority/terminal branch CHECK，不能只依赖 Root function。
+
+正式 constraint 名称、表达式与 exact FK 只取 Physical Schema Descriptor；自动命名或
+实现后反向接受 live Catalog 均不允许。
 
 Legacy 分类没有 nil-path 例外。取得十一表锁后，`runs` 的 exact locked rows 是迁移开始时的
 pre-10600 Run set；迁移持锁期间不能新增 Run。对已有
@@ -445,24 +393,20 @@ budget_started_at = null
 last_budget_event_hash = null
 ```
 
-max 计算只允许读取已锁 C2 relation，并须通过 safe-integer/连续性 preflight；“无 Head
-但有 Reservation”虽是异常旧形态，也按该公式分类，不能假定不存在、丢弃 Reservation 或
-猜测起始时间。postcondition 要求 pre-10600 Run set 与 LEGACY Head 一一对应，且 epoch/
-step seq/event seq/time/hash exact；多、少或 ACTIVE 任一行都回滚。`next_step_seq` 固定
-`bigint NOT NULL`、无 default、CHECK `1..9007199254740991`，并进入 Inventory/Catalog
-postcondition；迁移前没有 Step 表，所有
-existing/missing-Head backfill 只能为 1，禁止从 Run/Attempt/Reservation 猜历史 step。
-所有 pre-10600 Run 永久不得
-进入 positive Root，调用方必须新建 Run，之后由首个 current `ResearchBrief@2` 事务创建
-`ACTIVE` epoch 与 `BUDGET_OPENED`，并显式初始化 `next_step_seq=1`，不得把 legacy Head
-原地激活。
+max 仅读已锁 C2 relation，并过 safe-integer/连续性 preflight；“无 Head 有 Reservation”
+也按公式分类，不丢弃或猜 started_at。postcondition 要求 pre-10600 Run 与 LEGACY Head
+一一对应，epoch/step/event/time/hash exact，出现多/少/ACTIVE 即回滚。`next_step_seq`
+为 `bigint NOT NULL`、无 default、CHECK `1..9007199254740991`；回填后
+`next_reservation_seq/next_step_seq/next_budget_event_seq/budget_epoch` 均无长期 default，
+ACTIVE/LEGACY RPC 显式写入。迁移前无 Step 表，step backfill 只能为 1，不从
+Run/Attempt/Reservation 猜历史。pre-10600 Run 永久拒绝 positive Root；新 Run 首个
+current `ResearchBrief@2` 事务才建 `ACTIVE` epoch、`BUDGET_OPENED`、
+`next_step_seq=1`，禁止原地激活 legacy Head。
 
-所有 locked existing `research_resource_reservations` 同事务新增并 backfill
-`budget_epoch=0/logical_step_id=NULL`；这是 legacy 标记，不得反推 Step。两列进入
-Inventory/Catalog：`budget_epoch bigint NOT NULL CHECK 0..9007199254740991`，
-`logical_step_id uuid NULL`。新 ACTIVE epoch 的 MODEL/SQL Reservation 必须
-`budget_epoch>=1`、`logical_step_id` 非空并以完整 `S/run/budget_epoch/logical_step_id`
-exact FK 到 Step；TOOL 可为 null。legacy epoch 0 只能搭配 null。
+locked Reservation 同事务回填 `budget_epoch=0/logical_step_id=NULL`，不得反推 Step；
+Inventory/Catalog 固定 `budget_epoch bigint NOT NULL CHECK 0..9007199254740991`、
+`logical_step_id uuid NULL`。ACTIVE MODEL/SQL 要求 epoch≥1、非空 exact Step FK；
+ACTIVE TOOL 可空，非空也须 exact FK；legacy epoch 0 只配 null。
 
 Relation 锁竞争保留 SQLSTATE `55P03`，runner 报
 `U6_MIGRATION_LOCK_CONTENDED` 并停止；Migration 内不得 catch 后继续。超时分别报
@@ -482,8 +426,9 @@ Relation 锁竞争保留 SQLSTATE `55P03`，runner 报
 `U6_MIGRATION_RELATION_LIMIT_EXCEEDED`，且不执行 `count(*)`。未超限才执行 exact
 `count(*)`，超过 approved rows 同样失败。禁止用 `reltuples`、采样或环境默认值代替。
 
-`u6-schema-inventory@1.0.0` 必须为所选 target 的每张 existing relation 列出非空
-`maintenance_reasons[]`，值域仅
+immutable `u6-schema-inventory@1.0.0` 只描述已提交 10590 baseline；C2 target
+`u6-schema-inventory@2.0.0` 必须以 plural `migrations=[10590,10600]` 保留其逐字投影，
+并为 10600 的每张 existing relation 列出非空 `maintenance_reasons[]`，值域仅
 `ALTER|ACL|FUNCTION_LOCK|IMMEDIATE_FK_PARENT`，并为其变更或 parent closure 列出
 `preflight_check_id/query_hash/expected_count=0`。renderer 生成全限定、无调用方输入的
 SQL，并至少覆盖：
@@ -498,6 +443,12 @@ SQL，并至少覆盖：
 - C2 pre-DDL 断言 Coverage/Stop v2 Artifact Operation、全部 StopCommit、RESEARCH_STOP
   non-ready DomainTerminal 均为零，禁止合成历史 Receipt；v1 Operation 保留，DDL 后新
   Snapshot 列必须为 null，再由 postcondition 验证新列/CHECK/FK；
+- Artifact Operation 的 `wire_protocol_version` 只从 strict
+  `candidate_json #>> '{payload,protocol_version}'` 回填，null/unknown/与 Registry
+  tuple 不一致失败；
+  Budget Receipt ID/Hash、Stop Receipt ID/Hash 任一 half-pair 均失败；
+- exact 20 张新增 relation 的 parent/Ref candidate key、companion path/ordinal
+  duplicate/null/orphan 与 JSON/展开列换绑；JSONB 不能被计作 FK；
 - 既有 Artifact current tuple、Relation pair identity 与 Membership UUID/type 漂移；
 - 旧 cleanup RPC 的 OID/body hash/owner/ACL/prosecdef/空 search path exact，且在
   retained write/DELETE 前无条件 HOLD；其余 role/schema/object 无未知漂移；
@@ -509,20 +460,19 @@ check id/count，不回显业务行。C1 preflight 在其七张表锁定后执�
 
 ## 5. Existing-table DDL 规则
 
-- 新表直接建立完整 PK/UQ/FK/CHECK，不使用 `NOT VALID`。
+- exact 20 张新表直接建立完整 PK/UQ/FK/CHECK，不使用 `NOT VALID`；15 张 core
+  semantic table 与 5 张 companion 分别验证，不能由 15 个 source segments 推断。
 - Existing table 的 UQ 先在维护锁内执行普通 `CREATE UNIQUE INDEX`，再
   `ADD CONSTRAINT ... UNIQUE USING INDEX`；禁止 `CREATE INDEX CONCURRENTLY`。
 - Existing table 的 FK/CHECK 可先 `NOT VALID`，但必须在同一事务
   `VALIDATE CONSTRAINT` 后才能进入 postcondition；不得提交未验证约束。
 - Existing NOT NULL 只在 zero-null preflight 后设置；不得以长期弱 CHECK 冒充。
-- Platform Schema 只允许 Database Surface 冻结的 Authority helper 与 Lifecycle
-  identity immutable guard，以及 Cleanup 分册冻结的 cleanup evidence lock helper；
-  Postcondition 对其他 Platform 对象差异失败。
-- Inventory 逐字断言 cleanup helper 的 signature/owner/ACL/空 search path/zero-DML
-  lock set、Platform Lock Owner 对五表的 SELECT 与逐表唯一 lock-column UPDATE、对应
-  immutable guard/trigger、Cleanup Owner 的 Platform USAGE，及五表
-  `relrowsecurity=false/relforcerowsecurity=false`；
-  任一表已启用 RLS 必须在锁/DDL 前 HOLD，不得由 `10590` 暗加 policy 或关闭 RLS。
+- Platform Schema 仅允许 Database Surface 的 Authority/Lifecycle immutable helper 与
+  Cleanup evidence-lock helper；其他对象差异 postcondition 失败。
+- Inventory 逐字断言 cleanup helper signature/owner/ACL/空 search path/zero-DML lock、
+  Lock Owner 对五表的 SELECT+逐表 lock-column UPDATE、guard/trigger、Cleanup Owner
+  Platform USAGE，及五表 `relrowsecurity/relforcerowsecurity=false`；已启用 RLS 须在
+  锁/DDL 前 HOLD，不得由 10590 暗加/关闭。
 - Inventory 还须逐字匹配 Database Surface 冻结的三张 FORCE-RLS core lock 表之
   column grant、六条 RPC Owner policy，以及
   `backend_run_object_matches(uuid,uuid,text,uuid,boolean)` EXECUTE；不得放宽为 table
@@ -532,11 +482,14 @@ check id/count，不回显业务行。C1 preflight 在其七张表锁定后执�
   `cleanup_rank/cleanup_group/static_predicate_id/identity_order`，并逐条列出 Terminal
   aggregate 的 runtime/cleanup deferrability；`84-lifecycle-cleanup` 只能生成
   Cleanup 分册冻结的两张 retained receipt 表与唯一 job-only 函数。
-- Catalog 必须逐字匹配 Inventory 的 column/default、PK/UQ/FK/CHECK/deferrability、
+- Catalog 必须逐字匹配 Physical Schema Descriptor 与 v2 Inventory 的
+  column/default、PK/UQ/FK/CHECK/deferrability、
   index/predicate、function signature/attributes/owner、ACL/RLS/policy、trigger/sequence、
   executor identity/BYPASSRLS/所选 target exact relation visibility、PG major、
   extension schema/version 与
-  Migration name/hash。
+  plural Migration name/hash。Candidate Inventory protocol 固定
+  `u6-schema-inventory-candidate@2.0.0` 并绑定 `physical_descriptor_hash`；C1 live v1
+  Inventory 在 C2 COMMIT 前保持 immutable。
 
 所有 SQL 使用 schema-qualified 名称和空 search path；禁止 `CASCADE`、`GRANT ALL`、
 default-privilege 扩权、临时关闭 RLS/trigger/constraint 或 `session_replication_role`
@@ -547,7 +500,8 @@ default-privilege 扩权、临时关闭 RLS/trigger/constraint 或 `session_repl
 任何 Manifest、窗口、锁、容量、数据、DDL、VALIDATE、Catalog、ACL 或 postcondition
 失败都必须回滚整个 target 事务。C1 失败时无 `10590` ledger/U6 对象/constraint/index/
 trigger/role membership/GRANT/policy 残留；C2 失败时 `10590` baseline 逐字保留，且无
-`10600` ledger、新对象、alter、legacy classification、函数替换或 ACL 残留。COMMIT 后
+`10600` ledger、20 张新增 relation、existing alter、legacy classification、函数替换或
+ACL 残留；live Inventory 仍为 immutable v1。COMMIT 后
 runner 只在同名同 hash 时跳过；同名异 hash 失败关闭，禁止 checksum override 或直跑
 SQL。
 
@@ -568,6 +522,14 @@ relation 超限时必须拒绝安装，不能把 Docker clean install 当生产�
   clean install 必须显式走 `10590→10600`，C2 不得 render/覆盖 immutable 10590；
 - 10600 source segment 多、少、重名或重排时 renderer 失败；中断 C2 任一 segment 或
   ledger 前均完整恢复 10590 baseline，无 10600 ledger/对象/ACL 残留；
+- Candidate Inventory 不是 `u6-schema-inventory-candidate@2.0.0`、缺
+  `physical_descriptor_hash`、target 不是 `u6-schema-inventory@2.0.0` plural
+  migrations，或 exact additions 不是 15 core + 5 companion 时，均在执行 SQL 前失败；
+  15 source segments 与 15 core tables 不得按 ordinal 一一映射；
+- 任一 variable-length Artifact Ref 只存 JSON、companion 缺/重/乱序、strict Ref JSON
+  与展开 identity/type/revision/hash 或 exact Artifact FK 不一致时失败；Budget historical
+  input replay 必须使用已存 Event chain/Reservation projection，不读取当前 state 冒充
+  历史输入；
 - populated C1 中同时覆盖“已有 Head”“无 Head 无 Reservation”“无 Head 有锁定
   Reservation”三种 Run：升级后每个 pre-10600 Run 恰有一个按公式生成的 LEGACY Head，
   started/hash 均为 null、step/event seq 均为 1，既有 Reservation 均为
@@ -582,6 +544,9 @@ relation 超限时必须拒绝安装，不能把 Docker clean install 当生产�
 - 任一 existing relation 有 writer 锁时 `NOWAIT` 失败，无死锁、无无限等待、无部分 DDL；
 - bytes/rows 等于阈值成功，大于阈值失败；失败错误不泄露业务行；
 - normal unique index、`NOT VALID → VALIDATE` 在同一事务闭合，Catalog exact；
+- Artifact Operation protocol 回填/null/branch、Budget Receipt pair、Resource Head
+  no-default、ACTIVE TOOL nullable-or-exact-Step、Stop/Domain Receipt pair 的每个正反例
+  均在 PG17 Catalog/constraint Oracle 通过；
 - Cleanup function/owner/ACL/retained receipt/deferrability exact；guard replacement
   必须 platform→app lock 串行、OID 不变、`tgfoid` 16→28 exact。伪 GUC、UPDATE、
   Platform DELETE、并发 replacement 与 cleanup rank/FK 漂移均失败；
@@ -598,5 +563,16 @@ relation 超限时必须拒绝安装，不能把 Docker clean install 当生产�
   均失败；最终 clock 复验不能冒充对窗口外锁持有的预防；
 - 同名同 hash 重跑只跳过，同名异 hash、Manifest/GUC/hash/window/deployment/database
   换绑失败；
+- Candidate Receipt
+  `candidate-enumeration-receipt@2.0.0`/`u6-candidate-enumeration-receipt@2` 在 Head
+  advance 前后可逐字 replay `enumerator_head_version`；缺字段、v1 冒充或 DB-only
+  隐藏列失败；
+- Stop Receipt 只接受
+  `research-stop-derivation-receipt@2.0.0`/`u6-stop-derivation-receipt@2` 与 Candidate
+  v2 subordinate graph；Stop v1 discriminant 冒充新父图失败；
 - Hosted 与 Docker clean install、populated accepted install、contention 与 rollback
-  Oracle 结果同构；两侧 Catalog 与 Inventory exact。
+  Oracle 结果同构；两侧 Catalog 与 v2 Inventory exact。
+
+正式 `10600` checksum、function body hash/preflight query hash、PG17 live Catalog 与
+rollback、Hosted Supabase/Docker parity 未产生前，状态保持
+`FROZEN_TABLE_SURFACE / installable=false / Release=HOLD`。

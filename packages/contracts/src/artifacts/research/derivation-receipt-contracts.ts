@@ -160,12 +160,13 @@ export const coverageDerivationReceiptSchema = z
   });
 
 const candidateEnumerationReceiptObjectSchema = z.strictObject({
-  protocol_version: z.literal("candidate-enumeration-receipt@1.0.0"),
+  protocol_version: z.literal("candidate-enumeration-receipt@2.0.0"),
   ...derivationReceiptCommonShape,
   coverage_receipt_id: immutableIdSchema,
   coverage_receipt_hash: contentHashSchema,
   budget_receipt_id: immutableIdSchema,
   budget_receipt_hash: contentHashSchema,
+  enumerator_head_version: nonNegativeIntSchema,
   enumerator_version: versionIdentifierSchema,
   eig_policy_version: versionIdentifierSchema,
   enumerator_capability_id: immutableIdSchema,
@@ -231,7 +232,7 @@ export const candidateEnumerationReceiptSchema =
 
 export const researchStopDerivationReceiptSchema = z
   .strictObject({
-    protocol_version: z.literal("research-stop-derivation-receipt@1.0.0"),
+    protocol_version: z.literal("research-stop-derivation-receipt@2.0.0"),
     ...derivationReceiptCommonShape,
     stop_ref: researchStopDecisionV2RefSchema,
     coverage_ref: coverageStateV2RefSchema,
@@ -323,8 +324,8 @@ export const derivationReceiptSchema = z.discriminatedUnion("protocol_version", 
 const derivationReceiptHashDomains = {
   "research-budget-ledger-receipt@2.0.0": "u6-budget-ledger-receipt@2",
   "coverage-derivation-receipt@1.0.0": "u6-coverage-derivation-receipt@1",
-  "candidate-enumeration-receipt@1.0.0": "u6-candidate-enumeration-receipt@1",
-  "research-stop-derivation-receipt@1.0.0": "u6-stop-derivation-receipt@1",
+  "candidate-enumeration-receipt@2.0.0": "u6-candidate-enumeration-receipt@2",
+  "research-stop-derivation-receipt@2.0.0": "u6-stop-derivation-receipt@2",
   "research-input-watermark-receipt@1.0.0": "u6-input-watermark-receipt@1",
 } as const;
 
@@ -346,9 +347,9 @@ export async function computeDerivationReceiptInputHash(
       return computeBudgetLedgerInputHash(input);
     case "coverage-derivation-receipt@1.0.0":
       return computeCoverageDerivationInputHash(input);
-    case "candidate-enumeration-receipt@1.0.0":
+    case "candidate-enumeration-receipt@2.0.0":
       return computeCandidateEnumerationInputHash(input);
-    case "research-stop-derivation-receipt@1.0.0":
+    case "research-stop-derivation-receipt@2.0.0":
       return computeStopDerivationInputHash(input);
     case "research-input-watermark-receipt@1.0.0":
       return computeInputWatermarkInputHash(input);
@@ -420,10 +421,10 @@ async function verifyReceiptSubordinateHashes(
       }
       return;
     }
-    case "candidate-enumeration-receipt@1.0.0":
+    case "candidate-enumeration-receipt@2.0.0":
       await verifyCandidateReceiptDerivedHashes(receipt);
       return;
-    case "research-stop-derivation-receipt@1.0.0": {
+    case "research-stop-derivation-receipt@2.0.0": {
       if (
         receipt.supported_subset.claim_refs.length !==
         receipt.supported_subset.support_decision_refs.length

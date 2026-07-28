@@ -9,6 +9,9 @@
 > U6-C2 已实现 TypeScript Research Hash v2、Budget/Receipt/Attestation strict
 > codec 与完整 verifier；这只证明内存载荷闭包，不证明 DB-owned Receipt、currentness
 > 或 Root Authority，后者仍保持 `NOT_IMPLEMENTED`。
+> U6-C2 物理 Schema Descriptor 另已冻结 15 core + 5 companion、11 existing
+> mutation 与 Candidate/target Inventory v2；其 `installable=false`，在正式
+> `10600`、PG17 Catalog 与双部署 Oracle 完成前仍不构成数据库 Authority。
 
 ## 场景：创建或消费权威 Artifact 与成功态
 
@@ -326,7 +329,7 @@ issueCapabilityDeliveryReceipt(
   `unresolved/candidateQueries/noCandidateRefs`；NoCandidate Assessment 由
   Attestation、Stop decision 与 Candidate Receipt 的外层 Hash 绑定，不能静默改变旧域。
 - `verifyDerivationReceipt` 不能把 Stop Receipt 当作只需 self-hash 的叶节点。
-  `research-stop-derivation-receipt@1.0.0` 必须携带 `STOP` subordinate context：
+  `research-stop-derivation-receipt@2.0.0` 必须携带 `STOP` subordinate context：
   exact Stop decision、Candidate Receipt、Candidate input material，以及 Candidate 的
   Attestation、Coverage Receipt 与 Budget Receipt context。验证顺序固定递归为
   `Stop Receipt -> Candidate Receipt -> Attestation -> Coverage/Budget`，随后 exact

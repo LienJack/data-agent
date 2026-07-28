@@ -12,9 +12,12 @@ if [ -z "$migration_files" ]; then
   exit 1
 fi
 
+pnpm --dir "$repo_dir" typecheck:u6-c2
+
 pnpm --dir "$repo_dir" exec tsx --test \
   infra/supabase/test-support/render-u6-migration.test.ts \
-  infra/supabase/test-support/render-u6-c2-migration.test.ts
+  infra/supabase/test-support/render-u6-c2-migration.test.ts \
+  infra/supabase/test-support/u6-c2-physical-schema.test.ts
 
 u6_source_dir="$infra_dir/apps/data-agent/migration-sources/10590"
 if [ -d "$u6_source_dir" ] \

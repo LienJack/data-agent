@@ -519,7 +519,7 @@ async function buildIntegrityGraph() {
   };
   const candidateInputHash = await computeCandidateEnumerationInputHash(candidateInput);
   const candidateReceiptDraft = {
-    protocol_version: "candidate-enumeration-receipt@1.0.0" as const,
+    protocol_version: "candidate-enumeration-receipt@2.0.0" as const,
     receipt_id: uuid(161),
     scope,
     run_id: runId,
@@ -535,6 +535,7 @@ async function buildIntegrityGraph() {
     coverage_receipt_hash: candidateInput.coverage_receipt.receipt_hash,
     budget_receipt_id: candidateInput.budget_receipt.receipt_id,
     budget_receipt_hash: candidateInput.budget_receipt.receipt_hash,
+    enumerator_head_version: candidateInput.enumerator_head_version,
     enumerator_version: enumeratorVersion,
     eig_policy_version: eigPolicyVersion,
     enumerator_capability_id: capabilityId,
@@ -630,7 +631,7 @@ async function buildIntegrityGraph() {
   };
   const stopInputHash = await computeStopDerivationInputHash(stopInput);
   const stopReceiptDraft = {
-    protocol_version: "research-stop-derivation-receipt@1.0.0" as const,
+    protocol_version: "research-stop-derivation-receipt@2.0.0" as const,
     receipt_id: uuid(173),
     scope,
     run_id: runId,
@@ -746,6 +747,17 @@ describe("U6 derivation wire integrity", () => {
     ).rejects.toThrow(/snapshot_command_hash/);
   });
 
+  it("Stop Receipt v2 使用独立 golden digest 冻结 hash domain", async () => {
+    const { stopReceipt } = await buildIntegrityGraph();
+    const goldenDigest = "sha256:18d4dc9c00193d7fb5cd3531b6c92a5a6b05518a0171075d8a8674d0d114b9f6";
+    expect(stopReceipt.receipt_hash).toBe(goldenDigest);
+
+    const { receipt_hash: _receiptHash, ...v2Material } = stopReceipt;
+    expect(await computeResearchKernelHashV2("u6-stop-derivation-receipt@1", v2Material)).not.toBe(
+      goldenDigest,
+    );
+  });
+
   it("公开 unknown 入口先复制 inert JSON，拒绝 accessor/custom prototype/异常 Proxy", async () => {
     let getterCalls = 0;
     const accessorInput = {};
@@ -805,7 +817,18 @@ describe("U6 derivation wire integrity", () => {
         },
         graph.candidateContext,
       ),
-    ).rejects.toThrow(/input_hash/);
+    ).rejects.toThrow(/Candidate Receipt|input_hash/);
+    const reboundCandidateReceipt = await rehashReceipt({
+      ...graph.candidateReceipt,
+      enumerator_head_version: graph.candidateReceipt.enumerator_head_version + 1,
+    });
+    await expect(
+      verifyDerivationReceipt(
+        reboundCandidateReceipt,
+        graph.candidateInput,
+        graph.candidateContext,
+      ),
+    ).rejects.toThrow(/Candidate Receipt/);
     await expect(
       verifyDerivationReceipt(
         graph.stopReceipt,

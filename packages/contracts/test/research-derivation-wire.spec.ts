@@ -558,7 +558,7 @@ async function verifiedEmptyCandidateReceiptFixture() {
   };
   const candidateInputHash = await computeCandidateEnumerationInputHash(candidateInput);
   const candidateReceiptDraft = {
-    protocol_version: "candidate-enumeration-receipt@1.0.0" as const,
+    protocol_version: "candidate-enumeration-receipt@2.0.0" as const,
     receipt_id: uuid(653),
     scope,
     run_id: runId,
@@ -574,6 +574,7 @@ async function verifiedEmptyCandidateReceiptFixture() {
     coverage_receipt_hash: coverageReceipt.receipt_hash,
     budget_receipt_id: budgetReceipt.receipt_id,
     budget_receipt_hash: budgetReceipt.receipt_hash,
+    enumerator_head_version: candidateInput.enumerator_head_version,
     enumerator_version: enumeratorVersion,
     eig_policy_version: eigPolicyVersion,
     enumerator_capability_id: capabilityId,
@@ -1448,13 +1449,14 @@ describe("U6 Research derivation v2 wire", () => {
     };
     const closure = candidateClosure();
     const candidateReceipt = {
-      protocol_version: "candidate-enumeration-receipt@1.0.0",
+      protocol_version: "candidate-enumeration-receipt@2.0.0",
       ...common,
       output_hash: hash("a"),
       coverage_receipt_id: coverage.receipt_id,
       coverage_receipt_hash: coverage.receipt_hash,
       budget_receipt_id: budget.receipt_id,
       budget_receipt_hash: budget.receipt_hash,
+      enumerator_head_version: 1,
       enumerator_version: "enumerator@1",
       eig_policy_version: "eig@1",
       enumerator_capability_id: capabilityId,
@@ -1466,7 +1468,7 @@ describe("U6 Research derivation v2 wire", () => {
       candidate_set_hash: hash("a"),
     };
     const stop = {
-      protocol_version: "research-stop-derivation-receipt@1.0.0",
+      protocol_version: "research-stop-derivation-receipt@2.0.0",
       ...common,
       output_hash: hash("d"),
       stop_ref: ref("ResearchStopDecision", 804, hash("d")),
@@ -1551,9 +1553,26 @@ describe("U6 Research derivation v2 wire", () => {
       }).success,
     ).toBe(false);
     expect(
+      candidateEnumerationReceiptSchema.safeParse({
+        ...candidateReceipt,
+        protocol_version: "candidate-enumeration-receipt@1.0.0",
+      }).success,
+    ).toBe(false);
+    const { enumerator_head_version: _enumeratorHeadVersion, ...candidateWithoutHeadVersion } =
+      candidateReceipt;
+    expect(candidateEnumerationReceiptSchema.safeParse(candidateWithoutHeadVersion).success).toBe(
+      false,
+    );
+    expect(
       researchStopDerivationReceiptSchema.safeParse({
         ...stop,
         extra_key: true,
+      }).success,
+    ).toBe(false);
+    expect(
+      researchStopDerivationReceiptSchema.safeParse({
+        ...stop,
+        protocol_version: "research-stop-derivation-receipt@1.0.0",
       }).success,
     ).toBe(false);
   });
@@ -1950,6 +1969,24 @@ describe("U6 Research derivation v2 wire", () => {
       verifyDerivationReceipt(receipt, inputMaterial, verificationContext),
     ).resolves.toEqual(receipt);
 
+    for (const [outcomeUnknownCount, abandonedCount] of [
+      [1, 0],
+      [0, 1],
+    ] as const) {
+      const forgedCountDraft = {
+        ...receipt,
+        outcome_unknown_count: outcomeUnknownCount,
+        abandoned_count: abandonedCount,
+      };
+      const forgedCountReceipt = {
+        ...forgedCountDraft,
+        receipt_hash: await computeDerivationReceiptHash(forgedCountDraft),
+      };
+      await expect(
+        verifyDerivationReceipt(forgedCountReceipt, inputMaterial, verificationContext),
+      ).rejects.toThrow(/计数/);
+    }
+
     const forgedLedger = {
       ...receipt.ledger,
       top_up_allowed: !receipt.ledger.top_up_allowed,
@@ -1968,6 +2005,25 @@ describe("U6 Research derivation v2 wire", () => {
     await expect(
       verifyDerivationReceipt(forgedReceipt, inputMaterial, verificationContext),
     ).rejects.toThrow(/ledger_hash/);
+  });
+
+  it("Candidate Receipt v2 使用独立 golden digest 冻结 domain 与 Head version", async () => {
+    const { candidateReceipt } = await verifiedEmptyCandidateReceiptFixture();
+    const goldenDigest = "sha256:6b5cc6d065098e76e96efc385e846dc2ea2faaafa8fbd33ea66b8cfc4877b0c4";
+    expect(candidateReceipt.receipt_hash).toBe(goldenDigest);
+
+    const { receipt_hash: _receiptHash, ...v2Material } = candidateReceipt;
+    expect(
+      await computeResearchKernelHashV2("u6-candidate-enumeration-receipt@1", v2Material),
+    ).not.toBe(goldenDigest);
+    const { enumerator_head_version: _enumeratorHeadVersion, ...materialWithoutHeadVersion } =
+      v2Material;
+    expect(
+      await computeResearchKernelHashV2(
+        "u6-candidate-enumeration-receipt@2",
+        materialWithoutHeadVersion,
+      ),
+    ).not.toBe(goldenDigest);
   });
 
   it("Candidate Receipt context 拒绝跨 Scope/Run 与 Coverage/Budget 换绑", async () => {

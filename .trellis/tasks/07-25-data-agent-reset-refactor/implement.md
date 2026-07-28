@@ -675,7 +675,8 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
 - `10600` 的 pre-DDL 必须断言 v2 Operation、StopCommit、non-ready Stop Terminal 为零，
   不合成历史 Receipt；immutable guard 以 platform→app migration lock 串行、保持 OID，
   先证明 10590 cleanup RPC 在破坏性写前固定 HOLD，再同事务替换 RPC+guard；仅向
-  Cleanup Owner 的 28 表 DELETE + 四项可信事务 binding 开例外，UPDATE 永拒。
+  Cleanup Owner 的 33 表 DELETE + 四项可信事务 binding 开例外，UPDATE 永拒；其中
+  后增的 5 张是 variable Reference parent-specific companion。
 - 当前只完成设计与 RQ122 源码审计；forward-only `10600`、TS v2 Wire、正向 Root、
   PG17 Oracle 与 Hosted/Docker 尚未实现，不得把本检查点标记为产品能力。
 
@@ -781,6 +782,28 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   Authority；`ArtifactReference` 的 exact version 仍由 Registry/DB resolver 证明。
   `10600`、DB-owned Receipt 表、PG17 parity、C2a Root、Hosted/Docker 仍未实现，
   Release 保持 `HOLD`。
+
+#### U6-C2 物理 Schema Descriptor 冻结证据（2026-07-28）
+
+- `u6-c2-physical-schema-descriptor@1.0.0` 已冻结 15 张语义核心表、5 张
+  parent-specific variable-reference companion 表，以及 11 张 existing relation 的
+  ALTER/ACL/FK/lock maintenance 投影；15 张 SQL source segment 与 15 张语义表明确是
+  两个独立闭集。
+- Descriptor 同时冻结列与真实 `attnum`、PK/UQ/FK/CHECK、backing/supporting index、
+  immutable trigger、FORCE RLS、Policy、ACL、cleanup rank 和 replay requirement。
+  五张 companion 均以 parent id+hash exact FK 绑定父 Receipt/Attestation，并以完整
+  Artifact identity exact FK 绑定 `artifacts`；Candidate 两张 companion 的
+  `binding_group` 同时区分 Query Contract 与 Embedded Reference identity。
+- Candidate/target Inventory 固定为 v2；renderer 不再接受调用方注入
+  `surface_delta/replacement_allowlist`，只能从已校验且深冻结的 descriptor 确定性派生。
+  Candidate Receipt 升级为 v2 并持久绑定 `enumerator_head_version`；Budget companion
+  的 Artifact 字段在 EVENT/RESERVATION 分支保持可空。
+- strict parser 先拒绝顶层与递归 shape/闭集漂移，再验证语义不变量；随后分别校验 raw
+  内嵌 hash 和独立 committed frozen hash。当前物理描述符 hash 为
+  `sha256:b848930cc4cd97148cf5209983b1d4637f8550c219d697be08fe0dd2c657f8d9`。
+- 该检查点仍是 `installable=false / HOLD`：正式 `10600` bytes、函数签名/body hash、
+  preflight query hash、PG17 live Catalog 和 Hosted/Docker parity 尚未闭合，不能把
+  frozen table surface 冒充已安装数据库能力。
 
 ### U7 工作包
 
