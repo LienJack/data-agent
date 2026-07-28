@@ -1,38 +1,32 @@
 # U6 Research 派生回执与输入水位合同
 
-> `FROZEN_DESIGN_CONTRACT / NOT_IMPLEMENTED` ·
+> `FROZEN_DESIGN_CONTRACT / TYPESCRIPT_WIRE_IMPLEMENTED` ·
 > `u6-research-derivation-receipt@1.0.0`
 >
-> 本文唯一拥有五类 Receipt 的表、事务、锁与 currentness；它们的 exact Hash/v2 Wire 取
+> 本文拥有五类 Receipt 的表、事务、锁与 currentness；exact Hash/v2 Wire 取
 > `u6-research-derivation-wire-contract.md`，业务 v1 Wire 取
-> `u6-research-wire-payload-contract.md`，事务结果与错误取
-> `u6-research-platform-contract.md`，SQL 暴露面、Owner、RLS、GRANT 与 Inventory 取
-> `u6-research-database-surface-contract.md`。
+> `u6-research-wire-payload-contract.md`。平台结果/错误与 SQL
+> Owner/RLS/GRANT/Inventory 分别取 Platform、Database Surface 合同。
 >
-> 源码审计固定 `data-agent@6f2836c1d05f14d5f70490524afe12a157784596`。
-> 该版本三个 Readiness Root 仍固定 fail closed；本文冻结的是 C2 目标合同，不是生产完成
-> 证据。
+> 实施基线固定 `data-agent@fe212f1`。TypeScript Wire 已实现；DB 表、`10600`、PG17
+> parity 与三个正向 Readiness Root 尚未实现，不能视作生产完成。
 
 ## 1. 问题、范围与不变量
 
-当前 TypeScript Research Kernel 使用
-`SHA256(UTF8(canonicalizeJson({hash_domain,value})))`，而 PostgreSQL
-`u6_domain_sha256` 使用 `domain || NUL || canonical payload`。此外，当前
-`CoverageState.budget_ledger` 只有结构与算术校验，Candidate Set Hash 不绑定
-`enumerator_version`，Certificate 的 `evaluated_through_input_event_seq` 也没有数据库
-Event Head。删除 Root 中的固定拒绝会把 caller 自报 JSON 升级为不可变领域终态。
+现行 TypeScript/PostgreSQL Hash 前像不同；Coverage Budget 只有结构校验，Candidate
+Hash 不绑定 Enumerator 版本，Certificate event seq 也无 DB Head。直接删除 Root 的
+固定拒绝，会把 caller JSON 升级为不可变终态。
 
 本文固定五条不变量：
 
 1. Agent、Mastra Workflow、API、Checkpoint、Redis 与进程内 brand 都不是派生真值；
-2. TypeScript 与 PostgreSQL 对 Research Hash 必须消费相同 UTF-8 bytes，并共享 golden
-   vector；
+2. TypeScript/PostgreSQL Research Hash 消费相同 UTF-8 bytes 与 golden vector；
 3. Receipt 由数据库持久化、约束、排序、重算和控制 currentness；调用方不能直接
    INSERT/UPDATE/DELETE，也不能选择一个较有利的历史 Receipt；
 4. C2a 只开放 `PARTIAL|NEEDS_MORE_RESEARCH|INCONCLUSIVE`。`STOP_READY`、Publish 与
    Consume 不因 C2a 可达；
-5. 设计、Synthetic Oracle、PostgreSQL 实现与真实业务证据分层报告。本文通过不代表
-   Migration、Hosted/Docker 或产品演示通过。
+5. 设计、Synthetic Oracle、PostgreSQL 与业务证据分层；本文通过不代表 Migration、
+   Hosted/Docker 或产品通过。
 
 ## 2. Hash 与 v2 Wire 路由
 
@@ -74,11 +68,9 @@ Derivation Wire §6，数据库列不得省略、改名或接受额外字段。
 helper 也不向它们 GRANT EXECUTE。所有表 `ENABLE + FORCE RLS`，策略只允许 exact Owner
 Scope；RLS 不代替 FK、CHECK 或函数内 Authority。
 
-语义派生仍由版本化 deterministic Research Kernel/Enumerator 完成；数据库负责重放
-canonical bytes、strict schema、引用闭包、cross-field equation、decision branch、
-Authority provenance 与 currentness。统计 EIG 等无法由 SQL 从原始数据重新估计的值，必须
-来自隔离的 `RESEARCH_STOP_AUTHORITY` Enumerator，并由 Candidate Receipt 固定版本和完整
-输入宇宙；Agent 自报值无效。
+语义派生仍由版本化 deterministic Research Kernel/Enumerator 完成；数据库只负责
+canonical replay、引用/跨字段/分支校验、Authority provenance 与 currentness。EIG 等
+SQL 无法重算的值统一走 §5.2 的受控 Enumerator/Attestation；Agent 自报无效。
 
 ## 4. BudgetLedgerReceipt
 
@@ -101,10 +93,10 @@ budget_started_at timestamptz|null
 last_budget_event_hash Sha256|null
 ```
 
-`ACTIVE` 当且仅当 `budget_epoch>=1`、time/hash 非空；legacy 当且仅当 epoch=0、time/hash
-为空，任何 Receipt/positive Root 都拒绝 legacy。`10600` 把迁移开始时所有 existing Run
-分类为 legacy：已有 Head 原位标记，无 Head 则插入 seq=1 的 legacy Head；不猜历史开始
-时间。只有迁移后创建的新 Run 可由首个 current `ResearchBrief@2` 初始化 active epoch。
+`ACTIVE` 要求 `budget_epoch>=1` 且 time/hash 非空；legacy 要求 epoch=0 且二者为空，
+任何 Receipt/positive Root 均拒绝。`10600` 把既有 Run 分类为 legacy：Head 原位标记，
+缺 Head 则插入 seq=1 的 legacy Head，不猜历史时间。仅新 Run 可由首个 current
+`ResearchBrief@2` 初始化 active epoch。
 
 并新增 append-only `research_budget_events`。`BUDGET_OPENED` 以及每个
 Reserve/Begin/Settle/Cancel/Expire/Abandon/`STEP_BEGIN` 都必须与原业务 mutation 在同一
@@ -121,9 +113,7 @@ previous/event hash 与 DB time。Receipt 同时绑定：
 
 Head 不再由首次 Reserve 懒创建。第一个 current `ResearchBrief@2` 提交事务在锁住 Run 后
 创建 `budget_epoch=1`、`budget_started_at=transaction_timestamp()` 的 Head 与
-`BUDGET_OPENED` genesis event；无 Reservation 的 Stop 因而仍有 DB 时间起点。C2 migration
-前已有 Head/Reservation 的 Run 标为 `LEGACY_BUDGET_EPOCH_UNPROVABLE`，不得回填猜测时间并
-进入正向 Root；它必须新建 Run。
+`BUDGET_OPENED` genesis event；无 Reservation 的 Stop 也有 DB 时间起点。
 
 `begin_research_step(jsonb)` 的 exact Input/Result 取 Derivation Wire §6；它要求 active
 Attempt/Fence，UQ `(S,run_id,logical_step_id)` 与
@@ -156,6 +146,11 @@ strict IssueBudgetLedgerSnapshotInput)`。函数先按 operation/idempotency 查
 semantic input hash。固定 `U6_BUDGET_SNAPSHOT_MAX_AGE_MS=60000` 进入 Inventory/hash；若 snapshot
 仍在 elapsed limit 内，`valid_until=min(evaluated_at+60000ms,budget deadline)`，若已经
 EXHAUSTED 则为 `evaluated_at+60000ms`。
+
+TypeScript full verifier 不得只把 `snapshot_command_hash` 当作 self-hash 中的一段 opaque
+字符串；它必须用 Receipt 的 Scope/Run、issuer principal、idempotency、receipt ID 与
+ResearchBrief Ref 重建 strict command，再按同一 domain 重算。即使攻击者同步重算外层
+Receipt Hash，command hash 漂移仍必须失败。
 
 事务锁定 exact current Brief、Policy Head/Version、Resource Budget Head，并按事件 seq
 重放，再按 `reservation_seq,reservation_id` 重验当前行。跳号、重复、Head 在锁后变化、
@@ -216,7 +211,8 @@ Provider cost 的含义是“受信 Adapter 提交的 usage cost”，不是 pro
   或受控 resolution；只允许导出带 `OUTCOME_RECONCILIATION_REQUIRED` 的
   `STOP_NEEDS_MORE_RESEARCH`，不得导出 PARTIAL/INCONCLUSIVE；
 - `SETTLED|SETTLED_OVER_LIMIT` 释放 hold、记完整 actual 与 overage；
-- pre-I/O `CANCELLED|EXPIRED` actual 为 0；post-I/O CANCELLED 记 committed actual；
+- pre-I/O `CANCELLED|EXPIRED` actual 为 0；post-I/O CANCELLED 只在 within-limit 时记
+  committed actual，任一轴超额必须归 `SETTLED_OVER_LIMIT`；
 - OutcomeUsage 已提交但 Reservation transition 未提交时仍保持 hold；actual/hold 切换与
   Resource Transition、Budget Event 必须同事务。
 
@@ -251,6 +247,9 @@ exact `RESEARCH_ARTIFACT_AUTHORITY(COVERAGE)` provenance；它从数据库 activ
 - Budget Ledger 与 exact Budget Receipt 逐字相等；
 - Frontier、Reference ordering、Coverage input/domain/envelope hash。
 
+其中 Scope/Run 校验必须覆盖 Frontier 中的 `semantic_release_ref`、
+`schema_snapshot_ref` 与 `policy_receipt_ref`，不能只校验 Coverage 主闭包引用。
+
 任一输入不是 active exact revision、Budget Receipt 不 current、闭包多/少一项或 Coverage
 Candidate 不逐字相等，都不写 Receipt。
 
@@ -260,38 +259,40 @@ Budget Receipt；Stop v2 必须绑定同一 Snapshot。
 
 ### 5.2 CandidateEnumerationReceipt
 
-统计 EIG、semantic admissibility 与 no-candidate reason 不能从现有 QueryContract 由 SQL
-凭空推导。Provisioner 因此维护 immutable `research_enumerator_versions` 与 current
-Head，固定 `enumerator_version/eig_policy_version/input_schema_version/
-implementation_digest`。server-only Enumerator 先经
-`issue_research_candidate_enumerator_attestation(jsonb)` 写 immutable strict
-`candidate-enumerator-attestation@1.0.0`：它绑定 exact Coverage v2、Budget input hash、
-完整 current QueryContract universe、每项 Assessment/no-candidate closure、两个版本及
-调用者 `RESEARCH_STOP_AUTHORITY` capability/epoch。
-表另有 UQ `(S,run_id,issuer_principal_id,idempotency_key)`；ID/command Hash replay 规则
-取 Derivation Wire §4。
+SQL 不能推导 EIG、semantic admissibility 或 no-candidate reason。Provisioner 维护
+immutable `research_enumerator_versions` 与 current Head，固定
+`enumerator_version/eig_policy_version/input_schema_version/implementation_digest`。
+server-only Enumerator 经
+`issue_research_candidate_enumerator_attestation(jsonb)` 写 strict Attestation，绑定
+exact Coverage v2、Budget input hash、current QueryContract universe、全部
+Assessment/no-candidate closure、版本及 Root caller capability/epoch。表的 UQ
+`(S,run_id,issuer_principal_id,idempotency_key)` 与 replay 规则取 Derivation Wire §4。
 
-该窄入口和随后 Root 必须使用同一 principal/capability/epoch；Root 不再锁第二套
-Coverage/Enumerator capability bundle。Coverage Artifact 的历史 commit operation 另行
-证明它当时由 `RESEARCH_ARTIFACT_AUTHORITY(COVERAGE)` 提交；Coverage Receipt 的 issuer
-仍是当前 Root 的 Stop Authority。Root 不接收 Attestation ID，而是从 Stop v2 的完整
-candidate projection 唯一定位并锁定 exact Attestation，再枚举数据库 QueryContract
-universe、重算所有结构/hash/分支。由此 DB 证明的是“受控 Enumerator 对完整输入的版本化
-声明 + DB exact replay”，不是 SQL 自己重新估计统计 EIG；Agent 自报或任一字段 mutation
-因找不到 exact Attestation 而失败。
-
-Receipt 的 `enumerator_capability_id/authority_epoch` 必须逐字等于共同 issuer 字段；不得
-借 Attestation 引入第二个 caller-selected Capability。
+Attestation 与 Root 必须使用同一 principal/capability/epoch；Coverage 历史 operation
+另证其由 `RESEARCH_ARTIFACT_AUTHORITY(COVERAGE)` 提交。Root 不接收 Attestation ID，
+而从 Stop v2 candidate projection 唯一锁定 Attestation，枚举 DB universe 并重算全部
+结构/hash/分支。因此 DB 证明“版本化 Enumerator 声明 + exact replay”，不声称 SQL
+重估 EIG；Agent mutation 因无 exact Attestation 而失败。
+`enumerator_capability_id/authority_epoch` 必须等于共同 issuer，不得引入第二个
+caller-selected Capability。
 
 `research_candidate_enumeration_receipts` 保存 Coverage Receipt、Budget Receipt、
 `enumerator_version`、`eig_policy_version`、Enumerator Authority capability/epoch、
-规范排序的 unresolved/no-candidate refs、完整 Candidate Assessment、可形成 Candidate
-的 current QueryContract 宇宙及其 `enumeration_universe_hash`、现行
+规范排序的 unresolved/no-candidate refs、与每个 no-candidate obligation 一一对应且
+带 reason/constraint closure/self-hash 的 `NoCandidateAssessment`、完整 Candidate
+Assessment、可形成 Candidate 的 current QueryContract 宇宙及其
+`enumeration_universe_hash`、现行
 `candidate_set_hash` 与 Receipt Hash。
+
+Candidate full verifier 必须同时取得 exact Attestation、Coverage 与 Budget Receipt；
+四者同 Scope/Run，Coverage 逐字绑定同一 Budget。空 QueryContract universe 也不得掩盖
+跨 Scope/Run 或预算换绑。
 
 现行 Wire `candidate_set_hash` 继续按 `u6-candidate-set@1` 重算
 `{unresolved,candidateQueries,noCandidateRefs}`；版本不被偷偷加入旧 hash domain。
-Receipt Hash 必须额外绑定 `enumerator_version`、`eig_policy_version` 与完整 universe，
+Receipt Hash 必须额外绑定 `enumerator_version`、`eig_policy_version`、完整 universe 与
+规范排序的 `NoCandidateAssessment`；Attestation command/input/final Hash 和 Stop
+`decision_input_hash` 也逐字绑定同一数组，
 Root 又要求 Stop 的两个版本和 candidate set 逐字匹配该 Receipt，因此 version swap 不可达。
 该 kind 的共同 `output_hash` 等于已重算的 `candidate_set_hash`。
 
@@ -305,6 +306,16 @@ Root 又要求 Stop 的两个版本和 candidate set 逐字匹配该 Receipt，�
 `research_stop_derivation_receipts` 保存 exact Stop v2/Coverage v2 Ref、Coverage/Candidate/
 Budget Receipt ID 与 Hash、Support subset、required disclosures、pre-stop readiness
 closure、kernel/enumerator/EIG policy version、决策分支与 `decision_input_hash`。
+
+TypeScript `verifyResearchStopDecisionV2` 先重验 Budget Receipt，再重算 Candidate 与
+NoCandidate Assessment、兼容域 `candidate_set_hash` 和 `u6-stop-decision@1`。
+`verifyDerivationReceipt` 的 Stop full context 还必须递归完整验证 exact Candidate
+Receipt/Attestation/Coverage/Budget，并把 Stop 的 candidate projection、issuer、版本、
+Supported Subset、decision 与上游 Receipt identity/hash 逐字闭合。即使攻击者修改
+`constraint_closure_hash` 后重算 assessment、decision、Stop Ref/Input 与 Stop Receipt
+的全部无密钥 Hash，只要 Candidate Receipt 未同步改变，full verifier 仍必须拒绝。
+Stop Ref 的 Artifact content hash 与 committed exact revision 仍由 Registry/数据库
+resolver 证明，不能由 payload-only verifier 冒充持久化 Authority。
 
 签发函数要求 `RESEARCH_STOP_AUTHORITY`，重放 TypeScript 的互斥优先级：
 
@@ -323,23 +334,17 @@ STOP_READY
 `content_hash`；数据库还须独立重算 payload 的 `decision_input_hash` 并逐字匹配，不能
 混淆 Artifact content hash 与决策输入 hash。
 
-C2a `commit_research_stop_terminal` 只接受 Receipt decision：
+C2a `commit_research_stop_terminal` 仅接受
+`STOP_PARTIAL→PARTIAL`、`STOP_NEEDS_MORE_RESEARCH→NEEDS_MORE_RESEARCH`、
+`STOP_INCONCLUSIVE→INCONCLUSIVE`；其余分支 typed refusal、零 terminal。Root command
+只带 Stop/Coverage Ref，并从两者解析同一 Snapshot；锁内要求 Budget
+Event/Reservation/Policy/Brief 水位未变、`evaluated_at <= root_db_now <= valid_until`，
+且两时点对 elapsed limit 同为 `IN_BUDGET` 或同为 `EXHAUSTED`。随后同事务、同 Run
+lock/DB-time 截面生成三张 Receipt 与 terminal；过龄、跨预算边界或水位变化均 stale，
+须重签 Snapshot 与 Artifact revision。
 
-- `STOP_PARTIAL → PARTIAL`；
-- `STOP_NEEDS_MORE_RESEARCH → NEEDS_MORE_RESEARCH`；
-- `STOP_INCONCLUSIVE → INCONCLUSIVE`。
-
-`STOP_READY|CONTINUE|REPLAN` 均返回 typed refusal 且零 terminal。Root command 仍只携带
-Stop/Coverage Ref，不增加 caller selector。它从两者解析同一 Budget Snapshot，要求锁内
-Budget Event/Reservation/Policy/Brief 水位未变，且
-`evaluated_at <= root_db_now <= valid_until`，并且 `root_db_now` 与 `evaluated_at` 对
-elapsed limit 同为 `IN_BUDGET` 或同为 `EXHAUSTED`。随后在同一事务、Run lock 与 root DB
-time 截面生成 Coverage/Candidate/Stop 三张 Receipt；过龄、跨预算边界或任一水位变化返回
-stale，须重新签发 Snapshot 与 Artifact revision。
-
-现有 `research-stop@1.0.0` 只可历史读取；C2a Root 只接受
-`research-stop@2.0.0`，并要求其 Coverage v2、Ledger、Candidate/EIG projection 与本事务
-三张新 Receipt及已绑定 Budget Snapshot 完整匹配。
+`research-stop@1.0.0` 仅供历史读取；C2a 只接受 `research-stop@2.0.0`，其 Coverage v2、
+Ledger、Candidate/EIG projection 必须与本事务三张 Receipt 及 Snapshot 完整匹配。
 
 ## 6. Input Event Head 与 WatermarkReceipt
 
@@ -373,25 +378,19 @@ append；相同 operation replay 或 no-op 不推进 seq：
 2. `RESOURCE_LEDGER_CHANGED`：Budget Open/Step Begin/Reserve/Begin/Settle/Cancel/Expire/Abandon；
 3. `VERSION_FRONTIER_CHANGED`：五维 Frontier Initialize/Advance。
 
-通用 Repository 也能提交部分 L2 current Artifact；实现必须用受控 DB trigger，或把全部
-readiness-affecting commit 收敛到同一专用函数。只改
-`commit_current_l2_artifact` 而允许另一入口绕过 Event Head，Gate 固定失败。
+通用 Repository 也能提交 L2 current Artifact，因此不能依赖 TypeScript repository，
+也不能让 UPDATE 后的 trigger 反向补锁 Run。`10600` 必须撤销
+Backend/`service_role` 的通用 Artifact DML；QueryContract 与全部 L2 写入统一走先锁
+exact Run 的 owner security-definer committer，U6 reserved tuple 仍走专用 committer。
+Trigger 只在已持 Run 的函数内做 terminal/type 防御与 C2b Event append，不承担锁序
+Authority；任一旁路存在时 Gate 失败，ACL/function/trigger/raw-DML 双连接反例进入
+Inventory/Oracle。
 
-C2a 不能只依赖 TypeScript repository，也不能让 row trigger 在 UPDATE 已锁 Artifact 后再
-反向补锁 Run。`10600` 必须撤销 Backend/`service_role` 对 `artifacts` 的通用
-INSERT/UPDATE；QueryContract 与全部 L2 写入改走先锁 exact Run 的 owner
-security-definer committer，U6 reserved tuple 仍走专用 committer。Trigger 只在这些已持
-Run 的函数内做 terminal/type 防御和 C2b Event append，绝不是锁序 Authority。ACL、
-function allowlist、trigger definition 与 raw DML 两连接反例进入 Inventory/Oracle；通用
-DML 未撤销时 Stop Root 继续固定 fail closed。
-
-`commit_artifact_revision_run_locked(jsonb)` 保持现有 `commitL2Artifact` 与
-`commitGroundingAuthorityArtifact`，以及 worker
-`createPostgresModelCertificationReceiptStore.commit` 的 TypeScript
-strict/authority/secret/hash characterization；exact 三分支 Input/Result 取 Derivation
-Wire §6。DB 再执行 current Backend WRITE（Grounding 还要求 OWNER）、
-`Run→Artifact`、parent CAS/input FK/terminal absent 与幂等写。它拒绝 U6 reserved tuple，
-后者仍只走 `commit_current_l2_artifact`。三个现有 Adapter 只替换最终 DML，返回与错误不变。
+`commit_artifact_revision_run_locked(jsonb)` 保留 `commitL2Artifact`、
+`commitGroundingAuthorityArtifact` 和 model-certification worker 的 TypeScript
+strict/authority/secret/hash 语义，三分支 Input/Result 取 Derivation Wire §6。DB 再校验
+Backend WRITE（Grounding 还需 OWNER）、`Run→Artifact`、parent CAS/input FK/terminal
+absent 与幂等写，并拒绝 reserved tuple。三个 Adapter 只替换最终 DML，返回/错误不变。
 
 新增 append-only `research_backend_artifact_commit_operations`：PK `(S,operation_id)`，
 UQ `(S,run_id,principal_id,idempotency_key)`，保存 mode/command hash、expected revision/
@@ -424,12 +423,11 @@ Watermark Receipt 要求 Certificate 的
 seq/hash；任一新 input event 令旧 Certificate stale。只比较 caller seq、自哈希或
 Checkpoint 值无效。
 
-C2a 不依赖 Input Event Head：Stop Root 与所有 U6 source writer 都先锁 exact Run；Root
-在同一事务内再锁并重验 active Artifact、Budget Snapshot/Policy、Resource/Budget Head、
-事件与 Reservation，生成三张新 Receipt，最后写吸收态 non-ready terminal。因 Run 串行化且
-non-ready terminal 永久禁止 Publish，当前性不跨事务悬空。C2b 的 Certificate 派生、
-Publish 与 Consume 分处不同事务，才必须加入 Event Head/Watermark 和单独的
-ReportReady Derivation Receipt；该 Receipt 未冻结/实现前两个 Root 继续 fail closed。
+C2a 不依赖 Input Event Head：Stop Root 与 source writer 由 exact Run lock 串行；Root
+同事务重验 Artifact、Budget/Policy/Resource/Event/Reservation，生成三张 Receipt 后写
+吸收态 non-ready terminal，currentness 不跨事务悬空且 Publish 永久不可达。C2b 的
+Certificate/Publish/Consume 跨事务，才引入 Event Head/Watermark 与 ReportReady
+Derivation Receipt；未冻结/实现前两个 Root 保持 fail closed。
 
 ## 7. FK 与 Cleanup 子图
 

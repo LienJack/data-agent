@@ -1013,6 +1013,7 @@ async function resolveResearchStopDecisionDocumentResolutionUncached(
     !document.ok ||
     !derived.ok ||
     document.value.document.payload.artifact_type !== "ResearchStopDecision" ||
+    document.value.document.payload.protocol_version !== "research-stop@1.0.0" ||
     canonicalizeJson(document.value.document.payload) !== canonicalizeJson(derived.value)
   ) {
     return invalidStopCandidate(

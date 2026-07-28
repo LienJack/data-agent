@@ -1,15 +1,15 @@
 # U6 Research 派生 Hash 与 v2 Wire 合同
 
-> `FROZEN_DESIGN_CONTRACT / PARTIALLY_IMPLEMENTED` ·
+> `FROZEN_DESIGN_CONTRACT / TYPESCRIPT_IMPLEMENTED` ·
 > `u6-research-derivation-wire@1.0.0`
 >
 > 本文唯一拥有跨 TypeScript/PostgreSQL Research Hash、Coverage/Stop v2 delta、
 > Receipt hash codec 与 Enumerator Attestation Wire。表、事务、锁与 currentness 取
 > `u6-research-derivation-receipt-contract.md`。
 >
-> 源码审计固定 `data-agent@6f2836c1d05f14d5f70490524afe12a157784596`；TypeScript
-> strict Hash/Reference helper 已实现，PostgreSQL parity、v2 tuple、Receipt 与
-> Attestation 仍待后续切片实现。
+> 实施基线起点为 `data-agent@fe212f1`；TypeScript strict Hash/Reference、v2 tuple、
+> 五类 Receipt、Budget Ledger 与 Enumerator Attestation 已实现。PG17 parity、
+> DB-owned 表/Authority 与 C2a Root 未实现，不代表数据库或产品交付。
 
 ## 1. Research Hash 值域与前像
 
@@ -26,6 +26,11 @@ v2 helper 的资源边界继承 `U6_WIRE_LIMITS`：最大嵌套深度 `32`，单
 展开后的 canonical JSON 不超过 `16_777_216` bytes。共享 DAG 合法，但同一节点每次
 展开都重新计入 occurrence 与 bytes；任何预算超限都必须在进入 SHA-256 前以
 `TypeError` 失败关闭。
+
+所有接收 `unknown` 的公开 compute/verify/binder 入口必须先用同一 descriptor、
+prototype 与容器预算规则复制为 inert JSON，再把该副本交给 Zod。不得先让 Zod 读取原
+对象；accessor 必须在 getter 零调用时失败，自定义 prototype 与反射异常的 Proxy 也必须
+失败，避免校验与 Hash 之间出现可变对象视图。
 
 ```text
 research_kernel_sha256(domain, value) =
@@ -66,6 +71,11 @@ set/closure 先生成完整 Identity，duplicate 失败，再按 Identity 升序
 C2 新增 `orderedDistinctReferencesV2`。Embedded Ref 先按 container identity，再按 strict
 `node_id`。
 
+`SupportedSubsetBinding.claim_refs[i] ↔ support_decision_refs[i]` 是一一映射的 zipped
+relation，不是两个可独立排序的 set。规范顺序固定按 `support_decision_refs` 的完整
+Identity 升序；`claim_refs` 只拒绝 duplicate 并保留配对位置。两数组必须等长；分别排序
+会破坏 Claim/SupportDecision 配对，必须失败关闭。
+
 ## 3. Coverage/Stop v2 exact delta
 
 ```ts
@@ -92,12 +102,24 @@ type CoverageStateV2Ref =
   ArtifactReferenceFor<"CoverageState","2.0.0","coverage-state@2.0.0">;
 type ResearchStopDecisionV2Ref =
   ArtifactReferenceFor<"ResearchStopDecision","2.0.0","research-stop@2.0.0">;
+type NoCandidateAssessment = {
+  obligation_ref: ProofObligationRef;
+  reason_codes: U6ResearchReasonCode[];
+  constraint_closure_hash: Sha256;
+  assessment_hash: Sha256;
+};
 type ResearchStopCommonV2 =
-  Omit<ResearchStopCommon,"protocol_version"|"coverage_ref"|"budget_ledger"> & {
+  Omit<
+    ResearchStopCommon,
+    "protocol_version"|"coverage_ref"|"budget_ledger"|"candidate_set"
+  > & {
     protocol_version: "research-stop@2.0.0";
     coverage_ref: CoverageStateV2Ref;
     budget_receipt: ReceiptBinding;
     budget_ledger: ResearchBudgetLedgerBindingV2;
+    candidate_set: ResearchStopCommon["candidate_set"] & {
+      no_candidate_assessments: NoCandidateAssessment[];
+    };
   };
 type ResearchStopDecisionPayloadV2 =
   | (ResearchStopCommonV2 & {
@@ -127,10 +149,21 @@ type ResearchStopDecisionPayloadV2 =
 ```
 
 未列字段、数组上限、strict object、联合分支与 refinement 继承 Wire 分册 §2–§3。
+`NoCandidateAssessment` 按完整 Obligation identity 升序，与
+`no_candidate_obligation_refs` 严格一一对应；`reason_codes` 非空，
+`assessment_hash=research_kernel_sha256("u6-no-candidate-assessment@1",
+{obligation_ref,reason_codes,constraint_closure_hash})`。`constraint_closure_hash` 是受控
+Enumerator 对确定性约束闭包的权威摘要，C2a Root 必须从 immutable Enumerator
+version/输入宇宙重放或解析该闭包。现行 `u6-candidate-set@1` 为兼容旧域，仍只覆盖
+`{unresolved,candidateQueries,noCandidateRefs}`；新闭包由 Stop `decision_input_hash`、
+Attestation 与 Candidate Receipt self-hash 额外绑定。
 Registry 新增
 `CoverageState/2.0.0/coverage-state@2.0.0` 与
-`ResearchStopDecision/2.0.0/research-stop@2.0.0`；v1 转
-`HISTORICAL_READ_ONLY`。
+`ResearchStopDecision/2.0.0/research-stop@2.0.0`。当前纯 Research Kernel 在 C2a
+DB-owned Snapshot/Receipt 路径接通前仍产生两项 v1，所以它们只暂存于显式
+`L2_RESEARCH_TRANSITIONAL_WRITABLE_TUPLES`；C2a 必须同步切换 Kernel/Root 后再把 v1
+原子转为 `HISTORICAL_READ_ONLY`。过渡 writer 不能进入 v2 Root，也不能获得数据库
+Authority。
 
 v2 Artifact 只绑定已存在的 DB-owned Budget Snapshot Receipt，不引用未来
 Coverage/Candidate/Stop Receipt。Artifact Writer 先提交普通 content-addressed Candidate；
@@ -166,6 +199,7 @@ type CandidateEnumeratorAttestation = {
   query_contract_universe_refs: QueryContractRef[];
   unresolved_obligation_refs: ProofObligationRef[];
   no_candidate_obligation_refs: ProofObligationRef[];
+  no_candidate_assessments: NoCandidateAssessment[];
   candidate_queries: CandidateQueryAssessment[];
   enumeration_universe_hash: Sha256;
   candidate_set_hash: Sha256;
@@ -282,7 +316,17 @@ type StrictReceiptHashMaterial<T extends { receipt_hash: Sha256 }> =
 ```
 
 上述类型是 exact key/nesting 合同：无 optional key；空集合为 `[]`，不存在的判别字段由
-对应 strict union 排除而不是写 `undefined`。Reference 和 hash array 依 §2 排序。
+对应 strict union 排除而不是写 `undefined`。Reference set/closure 依 §2 拒重排序；
+`ordered_budget_event_hashes` 是 Event Chain，必须按 `budget_event_seq` 保序、拒重并让
+末项等于 Head，不能把随机 digest 改成字典序。
+
+`ReservationBudgetStateProjection` 只描述一次受控资源调用，不拥有 `steps` 或
+`elapsed_ms`：MODEL 只允许 `model_calls` 与 provider token/cost 分量，SQL 只允许
+`sql_executions`，当前 `NON_SOURCE` TOOL 的九字段 Usage 必须全零。MODEL/SQL
+`reserved_usage` 的主调用轴必须恰好为 `1`。`SETTLED` 要求所有 actual 维度不超过
+reserved；`SETTLED_OVER_LIMIT` 要求至少一个 actual 维度严格超过 reserved。post-I/O
+`CANCELLED` 仍按 committed OutcomeUsage 记 actual，但必须保持 within-limit；一旦任一轴
+超额，唯一合法终态是 `SETTLED_OVER_LIMIT`。
 
 四个被主 input 引用的二级 Hash 也必须独立重算，不能信任存储列：
 
@@ -471,6 +515,7 @@ type CandidateEnumerationReceipt = DerivationReceiptCommon & {
   enumerator_attestation_hash: Sha256;
   unresolved_obligation_refs: ProofObligationRef[];
   no_candidate_obligation_refs: ProofObligationRef[];
+  no_candidate_assessments: NoCandidateAssessment[];
   candidate_queries: CandidateQueryAssessment[];
   query_contract_universe_refs: QueryContractRef[];
   enumeration_universe_hash: Sha256;
@@ -535,6 +580,7 @@ type IssueCandidateEnumeratorAttestationInput = StrictCommandBase & {
   query_contract_universe_refs: QueryContractRef[];
   unresolved_obligation_refs: ProofObligationRef[];
   no_candidate_obligation_refs: ProofObligationRef[];
+  no_candidate_assessments: NoCandidateAssessment[];
   candidate_queries: CandidateQueryAssessment[];
   enumeration_universe_hash: Sha256;
   candidate_set_hash: Sha256;
@@ -612,7 +658,7 @@ type U6DerivationPolicyManifest = {
   manifest_hash: Sha256;
 };
 type ProvisionDerivationPolicyInput = {
-  schema_version: "1.0.0";
+  protocol_version: "u6-derivation-policy-manifest@1.0.0";
   operation_id: ImmutableId;
   manifest: U6DerivationPolicyManifest;
   request_hash: Sha256;
@@ -636,3 +682,45 @@ input_schema_version,implementation_digest}`）重算；manifest 按
 `BUDGET_POLICY→ENUMERATOR`、再按 version UTF-8 bytes 锁旧 Head/exact version，
 append immutable version 后 CAS Head。空/重复、回退、同 version 异 Hash 或跨 Scope/
 deployment 全失败。
+
+## 7. TypeScript 实施边界与验证入口
+
+`@data-agent/contracts` 当前提供：
+
+- `computeResearchBudgetLedgerV2Hash` /
+  `verifyResearchBudgetLedgerBindingV2`，按
+  `u6-research-budget-ledger@2` 重算完整 Ledger；
+- 五类 `compute*InputHash`、`computeDerivationReceiptHash`、
+  `verifyDerivationReceipt(receipt,inputMaterial,subordinateContext)`，后者同时检查
+  strict input projection 与 Receipt 重复字段、二级派生 Hash 和 Receipt self-hash；
+  Budget Receipt 还从 Receipt 固定字段重建 strict Snapshot command 并重算
+  `snapshot_command_hash`；Coverage Receipt 把 Frontier 的三项 Artifact Reference
+  一并纳入同 Scope/Run 校验；
+  Budget 必须提供 Runtime Limits/Tenant Policy material 与 Brief Budget，重算三者逐轴
+  最小 `effective_limit` 并从 Reservation 投影重建 Outstanding Set；Candidate 必须
+  提供 exact Attestation、Budget Receipt 与 Coverage Receipt，并重验四者
+  Scope/Run 一致及 Coverage→同一 Budget 的绑定；Stop 必须提供 exact Stop v2、
+  Candidate Receipt 及 Candidate full-verification context，递归重验
+  Attestation/Coverage/Budget 后，把 Candidate Query、unresolved/no-candidate ref、
+  `NoCandidateAssessment`、版本、issuer、Supported Subset、decision 与三张上游 Receipt
+  逐字闭合；Coverage 与 Input Watermark 拒绝多余 context；
+- `verifyCandidateEnumeratorAttestation(attestation,budgetReceipt)`，第二参数必填，
+  先验证 Budget Receipt/Ledger self-hash 与 exact binding，再逐项重算
+  `u6-candidate-assessment@1`、`u6-no-candidate-assessment@1` 及 Attestation 五层
+  Hash；
+- `verifyResearchStopDecisionV2(stop,budgetReceipt)` 逐项重算 Candidate/no-candidate
+  Assessment、兼容域 `u6-candidate-set@1` 与 `u6-stop-decision@1`；该 verifier 证明
+  Stop 自洽，只有再经 Stop Receipt full context 与 exact Candidate Receipt 闭合后，
+  才能证明 Stop 没有换掉 Enumerator 的 candidate projection；
+- Registry 已接受
+  `CoverageState/2.0.0/coverage-state@2.0.0` 与
+  `ResearchStopDecision/2.0.0/research-stop@2.0.0`。现有 Research Kernel 在 C2a
+  DB-owned Snapshot/Receipt 接通前仍产出对应 v1 tuple，因此 v1 暂列显式
+  `L2_RESEARCH_TRANSITIONAL_WRITABLE_TUPLES`；C2a 必须同步切换 Kernel/Root 后再把它们
+  原子降为 historical-only，不能提前破坏现有 Research Gate。
+
+TypeScript verifier 只证明 strict bytes/Hash closure；无密钥 Hash 不证明数据库
+Authority。调用方仍须从 PostgreSQL exact FK/Registry resolver 取得 Receipt 与
+versioned Reference；`ArtifactReference` 本身不携带 schema/protocol version。
+PG17 parity、Authority/currentness、锁与正向 Root Oracle 归 `10600`；缺证据时
+Release=`HOLD`。

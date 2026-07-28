@@ -1,10 +1,12 @@
 # U6 实施与检查合同
 
 > 状态：`PARTIAL_IMPLEMENTATION / U6_C1_DATABASE_SURFACE_INSTALLED /
-> U6_C2_DERIVATION_CONTRACT_FROZEN`
+> U6_C2_DERIVATION_CONTRACT_FROZEN / U6_C2_TYPESCRIPT_WIRE_IMPLEMENTED`
 > 已实现：`PURE_RESEARCH_KERNEL / 10590_MIGRATION /
 > CLEANUP_AND_FUNCTION_INVENTORY_PROJECTION / PG17_INSTALL /
-> OWNER_RLS_DML_GUARDS / HISTORICAL_TUPLE_FILTER_INSTALLED`
+> OWNER_RLS_DML_GUARDS / HISTORICAL_TUPLE_FILTER_INSTALLED /
+> RESEARCH_HASH_V2 / COVERAGE_STOP_V2_REGISTRY /
+> DERIVATION_RECEIPT_CODEC / ENUMERATOR_ATTESTATION_CODEC`
 > 安全断点：`commitResearchStopTerminal / publishCurrentReadiness /
 > consumeCurrentReady` 在 PostgreSQL 可完整重放 Research Kernel 前固定失败关闭
 > 未实现：`POSITIVE_POSTGRESQL_ROOT_AUTHORITY / DB_OWNED_DERIVATION_RECEIPTS /
@@ -50,7 +52,22 @@ Input Event Watermark 尚无 DB-owned immutable Receipt；因此 PostgreSQL 不�
 且数据库 Oracle 证明不会写入 Current、Terminal、Publication、Consumption 或 Grant。
 不得把“迁移安装通过”解释成 CurrentReadiness 成功路径已交付。
 Receipt v2/Hash 取 Derivation Wire，Budget Event/事务与 C2a/C2b 取 Derivation
-Receipt；设计冻结不改变上述未实现状态。
+Receipt。TypeScript 已实现 v2 Registry、Budget/Receipt/Attestation strict
+codec 与 verifier；SupportedSubset 按 SupportDecision identity 保持 zipped
+Claim/Decision 配对，Candidate subordinate closure 拒绝跨 Scope/Run 和
+Coverage/Budget 换绑。所有公开 `unknown` 入口先复制 inert JSON；Budget verifier
+重建 Snapshot command hash，Coverage verifier 校验 Frontier 三项引用的 Scope/Run，
+Reservation 按资源轴与 actual/reserved 关系判定 Settled 状态。这不改变 DB-owned
+Receipt、PostgreSQL parity 和正向 Root 仍未实现的状态。
+每个 `no_candidate` 还必须由规范排序、逐 Obligation 一一对应的
+`NoCandidateAssessment(reason_codes,constraint_closure_hash,assessment_hash)` 闭合；
+旧 `u6-candidate-set@1` 保持兼容域，新数组由 Stop decision、Attestation 与 Candidate
+Receipt 的外层 Hash 绑定。
+Stop Receipt full context 固定为 exact Stop decision、Candidate Receipt/input
+material/subordinate context；验证链递归重验 Candidate → Attestation →
+Coverage/Budget，即使重算 Stop/Ref/input/Receipt Hash，换绑仍须拒绝。
+模块按 Budget、Decision、Receipt Contract、Receipt Verifier 单向分层；聚合器只显式
+重导出既有符号。
 
 ## 1. 范围
 

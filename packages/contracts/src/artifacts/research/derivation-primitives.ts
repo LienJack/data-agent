@@ -274,8 +274,12 @@ function projectValue(
   }
 }
 
+export function projectResearchHashJson(value: unknown): ResearchHashJson {
+  return projectValue(value, new WeakSet<object>(), createResearchHashBudget(), 0);
+}
+
 export function assertResearchHashJson(value: unknown): asserts value is ResearchHashJson {
-  projectValue(value, new WeakSet<object>(), createResearchHashBudget(), 0);
+  projectResearchHashJson(value);
 }
 
 export async function computeResearchKernelHashV2(

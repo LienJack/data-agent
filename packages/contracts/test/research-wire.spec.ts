@@ -9,6 +9,7 @@ import {
   deriveCoverageCounts,
   knownArtifactTypeSchema,
   L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES,
+  L2_RESEARCH_TRANSITIONAL_WRITABLE_TUPLES,
   L2_RESEARCH_V1_HISTORICAL_ONLY_ARTIFACT_TYPES,
   L2_RESEARCH_WIRE_VERSION_MATRIX,
   l2ArtifactTypeSchema,
@@ -193,6 +194,208 @@ function makeStopCommon(
     eig_policy_version: "eig@1.0.0",
     decision_input_hash: hashes.execution,
   } as const;
+}
+
+function makeV2BudgetLedger() {
+  const usage = {
+    steps: 0,
+    model_calls: 0,
+    sql_executions: 0,
+    source_calls: 0,
+    elapsed_ms: 0,
+    provider_input_tokens: 0,
+    provider_output_tokens: 0,
+    provider_tokens: 0,
+    provider_cost_microusd: 0,
+  } as const;
+  return {
+    ledger_version: "research-budget-ledger@2.0.0",
+    evaluated_through_reservation_seq: 0,
+    evaluated_through_budget_event_seq: 0,
+    effective_limit: {
+      max_steps: 1,
+      max_model_calls: 1,
+      max_sql_executions: 1,
+      max_source_calls: 0,
+      max_elapsed_ms: 1,
+      max_provider_input_tokens_per_call: 1,
+      max_provider_output_tokens_per_call: 1,
+      max_provider_tokens_per_run: 2,
+      max_provider_cost_microusd_per_run: 1,
+    },
+    actual_used: usage,
+    unresolved_hold: usage,
+    charged_used: usage,
+    remaining: {
+      steps: 1,
+      model_calls: 1,
+      sql_executions: 1,
+      source_calls: 0,
+      elapsed_ms: 1,
+      provider_tokens: 2,
+      provider_cost_microusd: 1,
+    },
+    overage: {
+      steps: 0,
+      model_calls: 0,
+      sql_executions: 0,
+      source_calls: 0,
+      elapsed_ms: 0,
+      provider_tokens: 0,
+      provider_cost_microusd: 0,
+    },
+    top_up_allowed: false,
+    ledger_hash: hashes.artifact,
+  } as const;
+}
+
+function makeCoverageStateV2Payload() {
+  const evidencePlanRef = makeArtifactReference("EvidencePlan");
+  return {
+    artifact_type: "CoverageState",
+    protocol_version: "coverage-state@2.0.0",
+    evidence_plan_ref: evidencePlanRef,
+    obligation_execution_decision_refs: [],
+    query_evidence_refs: [],
+    atomic_claim_refs: [],
+    evidence_relation_refs: [],
+    support_decision_refs: [],
+    hypothesis_assessment_refs: [
+      makeArtifactReference("HypothesisAssessment", "00000000-0000-4000-8000-000000000011"),
+      makeArtifactReference("HypothesisAssessment", "00000000-0000-4000-8000-000000000012"),
+    ],
+    obligations: [
+      {
+        obligation_ref: {
+          container_ref: evidencePlanRef,
+          node_id: "o1",
+        },
+        materiality: "CRITICAL",
+        state: "OPEN",
+        obligation_execution_decision_refs: [],
+        query_evidence_refs: [],
+        support_decision_refs: [],
+        conflict_refs: [],
+        reason_codes: ["EVIDENCE_COVERAGE_INSUFFICIENT"],
+      },
+    ],
+    derived_counts: {
+      critical_total: 1,
+      critical_open: 1,
+      critical_satisfied: 0,
+      critical_blocked: 0,
+      critical_failed: 0,
+      critical_stale: 0,
+      supporting_total: 0,
+      supporting_open: 0,
+      supporting_satisfied: 0,
+      supporting_blocked: 0,
+      supporting_failed: 0,
+      supporting_stale: 0,
+    },
+    material_conflict_refs: [],
+    budget_receipt: {
+      receipt_id: "00000000-0000-4000-8000-000000000013",
+      receipt_hash: hashes.input,
+    },
+    budget_ledger: makeV2BudgetLedger(),
+    version_frontier: {
+      semantic_release_ref: makeArtifactReference("SemanticRelease"),
+      schema_snapshot_ref: makeArtifactReference("SchemaSnapshot"),
+      data_snapshot: {
+        protocol_version: "data-snapshot-binding@1.0.0",
+        datasource_id: "00000000-0000-4000-8000-000000000014",
+        strategy: "CONTROLLED_REVISION",
+        snapshot_token: "snapshot@1",
+        schema_manifest_hash: hashes.artifact,
+        data_manifest_hash: hashes.input,
+        fixture_manifest_hash: hashes.execution,
+        replay_state: "REPLAYABLE",
+        binding_hash: hashes.artifact,
+      },
+      policy_receipt_ref: makeArtifactReference("PolicyReceipt"),
+      identity_binding: {
+        principal_id: "researcher",
+        delegation_chain_hash: hashes.input,
+        authority_epoch: 1,
+      },
+    },
+    version_frontier_hash: hashes.artifact,
+    coverage_input_hash: hashes.execution,
+  } as const;
+}
+
+function makeResearchStopDecisionV2Payload() {
+  const coverageRef = makeArtifactReference("CoverageState");
+  const obligationRef = {
+    container_ref: makeArtifactReference("EvidencePlan"),
+    node_id: "o1",
+  } as const;
+  return {
+    artifact_type: "ResearchStopDecision",
+    protocol_version: "research-stop@2.0.0",
+    coverage_ref: coverageRef,
+    budget_receipt: {
+      receipt_id: "00000000-0000-4000-8000-000000000015",
+      receipt_hash: hashes.input,
+    },
+    budget_ledger: makeV2BudgetLedger(),
+    candidate_queries: [
+      {
+        query_contract_ref: makeArtifactReference("QueryContract"),
+        obligation_refs: [obligationRef],
+        admissibility: "INADMISSIBLE",
+        expected_information_gain_microunits: 0,
+        required_budget: {
+          steps: 1,
+          model_calls: 0,
+          sql_executions: 0,
+          source_calls: 0,
+          elapsed_ms: 0,
+          provider_tokens: 0,
+          provider_cost_microusd: 0,
+        },
+        waiting_on_codes: [],
+        reason_codes: ["ANALYSIS_INCONCLUSIVE"],
+        assessment_hash: hashes.artifact,
+      },
+    ],
+    candidate_set: {
+      enumerator_version: "candidate-enumerator@1.0.0",
+      unresolved_obligation_refs: [obligationRef],
+      no_candidate_obligation_refs: [],
+      no_candidate_assessments: [],
+      candidate_set_hash: hashes.input,
+    },
+    supported_subset: {
+      claim_refs: [],
+      support_decision_refs: [],
+      required_disclosures: [],
+      subset_hash: hashes.execution,
+    },
+    reason_codes: ["ANALYSIS_INCONCLUSIVE"],
+    eig_policy_version: "eig@1.0.0",
+    decision_input_hash: hashes.artifact,
+    decision: "STOP_INCONCLUSIVE",
+    non_ready_terminal: "INCONCLUSIVE",
+    inadmissibility_summary_hash: hashes.input,
+  } as const;
+}
+
+function makeCurrentV2Document(
+  payload:
+    | ReturnType<typeof makeCoverageStateV2Payload>
+    | ReturnType<typeof makeResearchStopDecisionV2Payload>,
+) {
+  return {
+    envelope: {
+      ...makeArtifactEnvelope(),
+      artifact_type: payload.artifact_type,
+      schema_version: "2.0.0",
+      input_refs: collectL2ResearchPayloadArtifactReferences(payload),
+    },
+    payload,
+  };
 }
 
 const obligationRef = {
@@ -420,7 +623,7 @@ describe("U6 Research Wire", () => {
   });
 
   it("V1 只能显式作为 historical read，未知版本元组失败", () => {
-    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toHaveLength(18);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toHaveLength(20);
     expect(new Set(L2_RESEARCH_WIRE_VERSION_MATRIX.map((tuple) => tuple.join("\0"))).size).toBe(
       L2_RESEARCH_WIRE_VERSION_MATRIX.length,
     );
@@ -450,6 +653,91 @@ describe("U6 Research Wire", () => {
     ).toThrow("L2_WIRE_VERSION_WRITE_UNSUPPORTED");
   });
 
+  it("CoverageState 与 ResearchStopDecision v2 canonical payload/envelope 已进入 writer Registry", () => {
+    const currentDocuments = [
+      makeCurrentV2Document(makeCoverageStateV2Payload()),
+      makeCurrentV2Document(makeResearchStopDecisionV2Payload()),
+    ];
+
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toContainEqual([
+      "CoverageState",
+      "2.0.0",
+      "coverage-state@2.0.0",
+    ]);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toContainEqual([
+      "ResearchStopDecision",
+      "2.0.0",
+      "research-stop@2.0.0",
+    ]);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toContainEqual([
+      "CoverageState",
+      "1.0.0",
+      "coverage-state@1.0.0",
+    ]);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toContainEqual([
+      "ResearchStopDecision",
+      "1.0.0",
+      "research-stop@1.0.0",
+    ]);
+
+    for (const document of currentDocuments) {
+      expect(
+        parseL2ResearchPayloadForEnvelopeCandidate(document.envelope, document.payload),
+      ).toEqual(document.payload);
+      expect(parseL2ResearchDocumentCandidate(document)).toEqual(document);
+    }
+  });
+
+  it("CoverageState 与 ResearchStopDecision v1 在 C2a 原子切换前仅作显式过渡 writer", () => {
+    expect(L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES).toEqual([
+      ["ReportManifest", "1.0.0", "report-manifest@1.0.0"],
+      ["ReportReadyCertificate", "2.0.0", "report-ready@2.0.0"],
+    ]);
+    expect(L2_RESEARCH_TRANSITIONAL_WRITABLE_TUPLES).toEqual([
+      ["CoverageState", "1.0.0", "coverage-state@1.0.0"],
+      ["ResearchStopDecision", "1.0.0", "research-stop@1.0.0"],
+    ]);
+
+    const v2Coverage = makeCoverageStateV2Payload();
+    const { budget_receipt: _budgetReceipt, ...legacyCoveragePayload } = {
+      ...v2Coverage,
+      protocol_version: "coverage-state@1.0.0" as const,
+      budget_ledger: makeBudgetLedger(),
+    };
+    const legacyCoverageDocument = {
+      envelope: {
+        ...makeArtifactEnvelope(),
+        artifact_type: "CoverageState" as const,
+        schema_version: "1.0.0",
+        input_refs: collectL2ResearchPayloadArtifactReferences(legacyCoveragePayload),
+      },
+      payload: legacyCoveragePayload,
+    };
+    const legacyStopPayload = {
+      ...makeStopCommon(),
+      decision: "STOP_READY" as const,
+    };
+    const legacyStopDocument = {
+      envelope: {
+        ...makeArtifactEnvelope(),
+        artifact_type: "ResearchStopDecision" as const,
+        schema_version: "1.0.0",
+        input_refs: collectL2ResearchPayloadArtifactReferences(legacyStopPayload),
+      },
+      payload: legacyStopPayload,
+    };
+
+    for (const document of [legacyCoverageDocument, legacyStopDocument]) {
+      expect(
+        parseL2ResearchPayloadForEnvelopeCandidate(document.envelope, document.payload),
+      ).toEqual(document.payload);
+      expect(parseL2ResearchDocumentCandidate(document)).toEqual(document);
+      expect(() => readHistoricalVersionedL2ResearchDocument(document)).toThrow(
+        "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
+      );
+    }
+  });
+
   it("旧 Report tuple 保留原非空语义且只能 historical read；当前 tuple 显式升级", () => {
     expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toContainEqual([
       "ReportManifest",
@@ -461,9 +749,15 @@ describe("U6 Research Wire", () => {
       "3.0.0",
       "report-ready@3.0.0",
     ]);
-    expect(L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES).toEqual([
-      ["ReportManifest", "1.0.0", "report-manifest@1.0.0"],
-      ["ReportReadyCertificate", "2.0.0", "report-ready@2.0.0"],
+    expect(L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES).toContainEqual([
+      "ReportManifest",
+      "1.0.0",
+      "report-manifest@1.0.0",
+    ]);
+    expect(L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES).toContainEqual([
+      "ReportReadyCertificate",
+      "2.0.0",
+      "report-ready@2.0.0",
     ]);
 
     const briefRef = makeArtifactReference("ResearchBrief");

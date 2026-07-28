@@ -6,6 +6,9 @@
 > `ReportReadyCertificate -> authorizeRunTerminal` 行为，不能被描述为已经具备
 > current-ready、V2 Support/Coverage/Stop 或撤权权威；U6 必须永久退役这个 READY
 > 分支，不能把它留作兼容入口。U6 实现完成时才转为现行约定。
+> U6-C2 已实现 TypeScript Research Hash v2、Budget/Receipt/Attestation strict
+> codec 与完整 verifier；这只证明内存载荷闭包，不证明 DB-owned Receipt、currentness
+> 或 Root Authority，后者仍保持 `NOT_IMPLEMENTED`。
 
 ## 场景：创建或消费权威 Artifact 与成功态
 
@@ -73,6 +76,20 @@ verifyL2ArtifactDocument(
   input: unknown,
   authority: L2ArtifactAuthorityContext,
 ): Promise<L2ArtifactDocument>;
+
+verifyDerivationReceipt(
+  input: unknown,
+  inputHashMaterial: unknown,
+  subordinateContext?: unknown,
+): Promise<DerivationReceipt>;
+verifyCandidateEnumeratorAttestation(
+  input: unknown,
+  budgetReceiptInput: unknown,
+): Promise<CandidateEnumeratorAttestation>;
+verifyResearchStopDecisionV2(
+  input: unknown,
+  budgetReceiptInput: unknown,
+): Promise<ResearchStopDecisionPayloadV2>;
 
 authorizeRunTerminal(
   input: unknown,
@@ -302,6 +319,26 @@ issueCapabilityDeliveryReceipt(
   `hard_budget_cap=true`、`deliverable_supported_subset=true` 且
   `budget_executable_query_count=0` 才能 `STOP_PARTIAL`。同一失败在仍有预算和合法
   Query 时只能 `CONTINUE`，需要重编计划时只能 `REPLAN`；输入不一致必须失败关闭。
+- Candidate Enumerator 与 Stop v2 中的每个 `no_candidate_obligation_ref` 必须按完整
+  Obligation identity 规范排序，并与恰好一项
+  `NoCandidateAssessment={obligation_ref,reason_codes,constraint_closure_hash,
+  assessment_hash}` 一一对应。旧 `u6-candidate-set@1` 只继续哈希
+  `unresolved/candidateQueries/noCandidateRefs`；NoCandidate Assessment 由
+  Attestation、Stop decision 与 Candidate Receipt 的外层 Hash 绑定，不能静默改变旧域。
+- `verifyDerivationReceipt` 不能把 Stop Receipt 当作只需 self-hash 的叶节点。
+  `research-stop-derivation-receipt@1.0.0` 必须携带 `STOP` subordinate context：
+  exact Stop decision、Candidate Receipt、Candidate input material，以及 Candidate 的
+  Attestation、Coverage Receipt 与 Budget Receipt context。验证顺序固定递归为
+  `Stop Receipt -> Candidate Receipt -> Attestation -> Coverage/Budget`，随后 exact
+  绑定 candidate projection、issuer/capability/epoch、Enumerator/EIG version、
+  Supported Subset、decision 和三张上游 Receipt ID/Hash。
+- 所有公开 `unknown` 验证入口必须先复制为 inert JSON，再读取 discriminator 或字段；
+  Accessor、自定义 prototype、Proxy、稀疏数组与超限容器不能在验证前执行调用方行为。
+  self-hash 成功只允许作为完整 verifier 的一个步骤，不能替代 subordinate closure。
+- Research derivation 的包根只从短 facade 显式重导出稳定 API；Budget、Decision、
+  Receipt Contract 与 Receipt Verifier 叶模块保持单向依赖。兼容 facade 禁止
+  `export *`，叶模块禁止回指 facade、`wire`、`platform` 或 `index`，避免私有 helper
+  意外成为公共协议或形成循环。
 - `ReportManifest`、`AnalysisReport@2` 与 `ReportProjectionReceipt` 由确定性中文
   Projector 从已提交 Claim/Assessment/Conflict/Limitation 生成。Title 只能由
   `ZH_L2_RESEARCH_TITLE_V1(exact ResearchBrief)` 唯一渲染，Receipt 必须绑定
@@ -395,6 +432,10 @@ issueCapabilityDeliveryReceipt(
 | Permit 缺 Gate、顺序/新鲜度错误、预算或 Principal/Policy/Settings 漂移 | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Execution/Result/Validation 使用另一执行、另一结果或非当前七 Gate | `ARTIFACT_SEMANTIC_AUTHORITY_INVALID` |
 | Payload Reference 跨 Scope 或未声明 | Document Parse 失败 |
+| Stop Receipt 缺 `STOP` context、Candidate/Coverage/Budget 换绑或版本/issuer 不一致 | `TypeError`，不得返回已验证 Receipt |
+| NoCandidate 引用缺失、重复、乱序、reason/constraint closure 漂移或 assessment hash 不符 | `TypeError`，不得返回已验证 Attestation/Stop |
+| 只重算 Stop decision、Stop Ref、input/receipt outer hash，但 Candidate Receipt 仍是旧闭包 | `TypeError`，在 subordinate exact binding 失败 |
+| `unknown` 输入携带 Accessor、自定义 prototype、Proxy、稀疏/超限数组 | inert-copy/strict parse `TypeError`，不得读取业务 discriminator |
 | 通用 `authorizeRunTerminal` 收到 READY | `CURRENT_READY_CONSUMPTION_REQUIRED` |
 | V1 Writer/Committer/Research Artifact Authority | `L2_WIRE_VERSION_WRITE_UNSUPPORTED` |
 | V1 current-ready/Grant/RunTerminal/GO | `READINESS_PROTOCOL_VERSION_UNSUPPORTED` |
@@ -415,6 +456,12 @@ issueCapabilityDeliveryReceipt(
 - Good：确定性编译器生成 Candidate，计算 Hash，验证全部输入，再提交不可变权威对象。
 - Base：普通消费者只解析 Candidate，用于诊断或展示，不把它写成成功态。
 - Bad：`schema.parse(raw) as CapabilityDeliveryReceipt` 后直接显示“已交付”。
+- Good（Research Stop）：调用统一 full verifier，并提供与 Stop Receipt exact 的
+  Candidate input/context；验证器递归关闭 Attestation、Coverage 与 Budget。
+- Base（Research Stop）：只通过 self-hash 的 Receipt 可用于完整性诊断，但不能授权
+  terminal 或标成 DB-owned。
+- Bad（Research Stop）：篡改 NoCandidate constraint closure 后重算所有可见外层 Hash，
+  再省略 Candidate subordinate context，试图把“自洽”升级成“同一权威闭包”。
 
 ### 6. 必需测试
 
@@ -485,6 +532,18 @@ issueCapabilityDeliveryReceipt(
   Claim/SQL/Result Hash 不变也必须 `STALE` 并重跑全链。
 - 每个预期 Partial 的 Mutation 都有“预算仍可执行”的成对反例，后者只能
   `CONTINUE/REPLAN`，不能产生 Public Terminal。
+- Stop Receipt 正路径必须从 Candidate Receipt 递归重验 Attestation、Coverage 与
+  Budget；缺任一 context、跨 Scope/Run、Receipt ID/Hash、issuer/capability/epoch、
+  Enumerator/EIG version、Supported Subset 或 decision 换绑均失败。
+- NoCandidate 必须覆盖空集合与非空集合；非空时测试缺失、重复、乱序 Obligation，
+  reason code/constraint closure/assessment hash 漂移，以及篡改内层后同时重算
+  Stop decision、Stop Ref、input hash 与 Receipt hash 的攻击，最后一种仍必须因
+  Candidate Receipt 不匹配而失败。
+- 对所有 Research derivation 公共 `unknown` 入口复用 hostile-object vectors：
+  getter、自定义 prototype、Proxy trap、稀疏/超长 Array 都必须在业务字段读取前拒绝。
+- 模块拆分后必须保持包根 API、旧 `u6-candidate-set@1` golden hash 与 4 个 focused
+  derivation 测试文件不变，并用静态导入扫描证明叶模块无 facade/index/wire/platform
+  回指。
 - Provider 假 Receipt 或不匹配 Capability Hash 不能成为 `AVAILABLE`；EvalCase 不能被重新标为 Demo/Holdout；未完成 EvalRun、未提交 Evidence 或孤立 `PASS ScoreCard` 不能授权。
 - Oracle Receipt 拒绝未提交、Hash 漂移、Reference 不匹配、Suite/Oracle Type 错配和服务端 Oracle 验真失败。
 - ScoreCard 拒绝伪造 Oracle 品牌、自报 PASS、Receipt Verdict/Version/Reference 不匹配；Paired ScoreCard 拒绝 Candidate 漂移、未授权 Baseline 与非法 Interval。
@@ -536,4 +595,24 @@ const committedGo = await currentReadiness.commitGo(releaseCapabilityInput, {
 // commitGo 在同一持锁 PostgreSQL 事务内调用 server-only Authorizer 并追加 Decision；
 // 不存在可在锁外复用的 current-readiness snapshot。
 return issueCapabilityDeliveryReceipt(input, committedGo.decision);
+```
+
+#### Research Stop Receipt：错误与正确
+
+```ts
+// Wrong：self-hash 只能证明外层自洽，不能证明 Stop 与 Candidate closure 相同。
+const stopReceipt = await verifyDerivationReceiptSelfHash(raw.stopReceipt);
+
+// Correct：统一 full verifier 递归关闭 Candidate -> Attestation -> Coverage/Budget。
+const stopReceipt = await verifyDerivationReceipt(
+  raw.stopReceipt,
+  raw.stopInputMaterial,
+  {
+    kind: "STOP",
+    stop_decision: raw.stopDecision,
+    candidate_receipt: raw.candidateReceipt,
+    candidate_input_material: raw.candidateInputMaterial,
+    candidate_context: raw.candidateContext,
+  },
+);
 ```

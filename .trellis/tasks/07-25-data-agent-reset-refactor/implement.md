@@ -731,6 +731,57 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
   Catalog exact physical descriptor、升级后的 live Inventory、C2a Receipt/Root、
   PG17 parity 与 Hosted/Docker 仍未实现，Release 保持 `HOLD`。
 
+#### U6-C2 TypeScript v2 Wire、Budget Snapshot 与 Attestation 实施证据（2026-07-28）
+
+- Research Registry 已新增
+  `CoverageState/2.0.0/coverage-state@2.0.0` 与
+  `ResearchStopDecision/2.0.0/research-stop@2.0.0`。现有 Research Kernel 在 C2a
+  DB-owned Snapshot/Receipt 接通前仍产出对应 v1，因此两项 v1 暂列显式
+  `L2_RESEARCH_TRANSITIONAL_WRITABLE_TUPLES`；C2a 必须同步切换 Kernel/Root 后再原子
+  退役，避免用“Registry 先升级”破坏全量 Research Gate。
+- `ResearchBudgetLedgerBindingV2` 闭合九字段 Usage、七轴
+  actual/hold/charged/remaining/overage 方程并提供 exact ledger hash verifier。
+  Budget input 拒绝超过单容器 256 项、重复 reservation ID/seq、seq/watermark 缺口、
+  Event Head 不匹配，以及无权威 OutcomeUsage 的非零 CANCELLED actual；Event Hash Chain
+  按 event seq 保序，不按随机 digest 字典序重排。
+- 五类 Receipt 均有 strict schema、逐 kind input domain、receipt domain 与统一
+  `verifyDerivationReceipt(receipt,inputMaterial,subordinateContext)`；verifier 同时检查
+  input projection 重复字段、Budget Ledger、Runtime Limits/Tenant Policy/Brief
+  `effective_limit`/Outstanding Set、Candidate Attestation/Assessment/Universe/Set、
+  Version Frontier、Supported Subset 与 Receipt self-hash。Budget、Candidate、Stop 的
+  subordinate context 必填；Stop verifier 递归重验 Candidate Receipt →
+  Attestation → Coverage/Budget，并 exact 绑定 Stop candidate projection、issuer、
+  version、decision 与三张上游 Receipt。其余 kind 拒绝多余 context。DB-owned 时间
+  固定为 UTC RFC3339 六位小数，issuer principal 固定 UUID。
+- `verifyCandidateEnumeratorAttestation` 的 Budget Receipt 参数改为必填；验证链先重算
+  Budget Ledger/Receipt，再检查 Receipt ID/Hash、Budget input hash、Scope/Run，最后逐项
+  重算 Candidate Assessment、逐 Obligation 一一对应的 NoCandidate Assessment，以及
+  command/universe/candidate-set/input/attestation 五层 Hash。旧
+  `u6-candidate-set@1` 三字段兼容域保持不变；仅重算外层 Hash 不能掩盖内层
+  Assessment mutation。
+- Codex 可维护性复审要求把版本化领域和完整验证路径继续拆开：当前
+  `derivation-contracts.ts`/`derivation-receipts.ts` 只保留 32/38 行显式兼容导出；
+  Budget、Decision、Receipt Contract、Receipt Verifier 分别为 415/641/472/608 行
+  单向叶模块。无 `export *`，包根公开 API 与既有 import path 不变，叶模块不回指
+  facade、`wire`、`platform` 或 `index`。
+- Derivation Policy 明确分开两个 codec：Manifest 使用
+  `research_kernel_sha256("u6-derivation-policy-manifest@1",...)`；Provision request
+  使用部署统一 codec
+  `SHA256(protocol_version || NUL || JCS(strict command without request_hash))`，顶层
+  字段固定为 `protocol_version`。
+- focused Contracts 回归当前为 4 files / 59 tests，Contracts unit 为
+  22 files / 331 tests；workspace typecheck 9/9、build 6/6、lint、contract、
+  architecture、research 19 files / 133 tests 与
+  `git diff --check` 均通过。攻击测试覆盖 256/257 边界、Reservation 七态/重复、
+  Stop admissibility/resume、SupportedSubset 成对顺序、Manifest 子 Hash、
+  Receipt/Ledger mutation、Candidate 跨 Scope/Run/预算换绑、Attestation Budget
+  substitution、内层 Hash substitution，以及“同时重算所有外层 Hash”仍无法把
+  篡改后的 NoCandidate/Stop closure 换绑到另一张 Candidate Receipt。
+- 本检查点只交付 TypeScript codec/verifier 与 Registry。无密钥 Hash 不证明数据库
+  Authority；`ArtifactReference` 的 exact version 仍由 Registry/DB resolver 证明。
+  `10600`、DB-owned Receipt 表、PG17 parity、C2a Root、Hosted/Docker 仍未实现，
+  Release 保持 `HOLD`。
+
 ### U7 工作包
 
 1. 定义 `EvalCase`、`EvalRun`、`ScoreCard`、`ReleaseDecision`。

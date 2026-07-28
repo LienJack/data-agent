@@ -1,6 +1,7 @@
 export * from "./controlled-fixture.js";
 export * from "./coverage.js";
 export * from "./derivation-primitives.js";
+export * from "./derivation-wire.js";
 export * from "./planning.js";
 export * from "./platform.js";
 export * from "./primitives.js";

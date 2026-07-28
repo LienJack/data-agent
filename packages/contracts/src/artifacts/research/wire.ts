@@ -10,6 +10,10 @@ import {
 import { l2ArtifactDocumentSchema } from "../l2.js";
 import { coverageStatePayloadSchema } from "./coverage.js";
 import {
+  coverageStatePayloadV2Schema,
+  researchStopDecisionPayloadV2Schema,
+} from "./derivation-wire.js";
+import {
   evidencePlanV2PayloadSchema,
   hypothesisSetV2PayloadSchema,
   researchBriefV2PayloadSchema,
@@ -39,7 +43,7 @@ import {
 import { researchStopDecisionPayloadSchema } from "./stop.js";
 import { isHistoricalOnlyL2ResearchArtifactType, L2ResearchWireError } from "./versions.js";
 
-const v2PayloadSchemas = new Map<string, z.ZodType>([
+const writableVersionedPayloadSchemas = new Map<string, z.ZodType>([
   ["ResearchBrief\0" + "2.0.0\0research-brief@2.0.0", researchBriefV2PayloadSchema],
   ["HypothesisSet\0" + "2.0.0\0hypothesis-set@2.0.0", hypothesisSetV2PayloadSchema],
   ["EvidencePlan\0" + "2.0.0\0evidence-plan@2.0.0", evidencePlanV2PayloadSchema],
@@ -57,7 +61,9 @@ const v2PayloadSchemas = new Map<string, z.ZodType>([
     hypothesisAssessmentPayloadSchema,
   ],
   ["CoverageState\0" + "1.0.0\0coverage-state@1.0.0", coverageStatePayloadSchema],
+  ["CoverageState\0" + "2.0.0\0coverage-state@2.0.0", coverageStatePayloadV2Schema],
   ["ResearchStopDecision\0" + "1.0.0\0research-stop@1.0.0", researchStopDecisionPayloadSchema],
+  ["ResearchStopDecision\0" + "2.0.0\0research-stop@2.0.0", researchStopDecisionPayloadV2Schema],
   ["ReportManifest\0" + "2.0.0\0report-manifest@2.0.0", reportManifestV2PayloadSchema],
   ["AnalysisReport\0" + "2.0.0\0analysis-report@2.0.0", analysisReportV2PayloadSchema],
   [
@@ -89,7 +95,9 @@ export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["SupportDecision", "1.0.0", "support-decision@1.0.0"],
   ["HypothesisAssessment", "1.0.0", "hypothesis-assessment@1.0.0"],
   ["CoverageState", "1.0.0", "coverage-state@1.0.0"],
+  ["CoverageState", "2.0.0", "coverage-state@2.0.0"],
   ["ResearchStopDecision", "1.0.0", "research-stop@1.0.0"],
+  ["ResearchStopDecision", "2.0.0", "research-stop@2.0.0"],
   ["ReportManifest", "2.0.0", "report-manifest@2.0.0"],
   ["AnalysisReport", "2.0.0", "analysis-report@2.0.0"],
   ["ReportProjectionReceipt", "1.0.0", "report-projection@1.0.0"],
@@ -98,12 +106,23 @@ export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["ReadinessRevocationReceipt", "1.0.0", "readiness-revocation@1.0.0"],
 ] as const);
 
+/**
+ * Temporary writer compatibility while the Research Kernel and C2a
+ * DB-owned Budget Snapshot/Receipt path move to the v2 tuples atomically.
+ * These tuples must be retired together with that cutover, never silently
+ * treated as v2 authority.
+ */
+export const L2_RESEARCH_TRANSITIONAL_WRITABLE_TUPLES = Object.freeze([
+  ["CoverageState", "1.0.0", "coverage-state@1.0.0"],
+  ["ResearchStopDecision", "1.0.0", "research-stop@1.0.0"],
+] as const);
+
 export const L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES = Object.freeze([
   ["ReportManifest", "1.0.0", "report-manifest@1.0.0"],
   ["ReportReadyCertificate", "2.0.0", "report-ready@2.0.0"],
 ] as const);
 
-type V2ResearchPayload =
+type WritableResearchPayload =
   | z.infer<typeof researchBriefV2PayloadSchema>
   | z.infer<typeof hypothesisSetV2PayloadSchema>
   | z.infer<typeof evidencePlanV2PayloadSchema>
@@ -115,7 +134,9 @@ type V2ResearchPayload =
   | z.infer<typeof supportDecisionPayloadSchema>
   | z.infer<typeof hypothesisAssessmentPayloadSchema>
   | z.infer<typeof coverageStatePayloadSchema>
+  | z.infer<typeof coverageStatePayloadV2Schema>
   | z.infer<typeof researchStopDecisionPayloadSchema>
+  | z.infer<typeof researchStopDecisionPayloadV2Schema>
   | z.infer<typeof reportManifestV2PayloadSchema>
   | z.infer<typeof analysisReportV2PayloadSchema>
   | z.infer<typeof reportProjectionReceiptPayloadSchema>
@@ -125,7 +146,7 @@ type V2ResearchPayload =
 
 export type L2ResearchDocumentCandidate = {
   envelope: ArtifactEnvelope;
-  payload: V2ResearchPayload;
+  payload: WritableResearchPayload;
 };
 
 const l2ResearchDocumentShapeSchema = z.strictObject({
@@ -358,7 +379,7 @@ function preflightRawL2ResearchJsonObject(input: unknown, label: string): void {
   }
 }
 
-function parseRegisteredL2ResearchPayloadAfterPreflight(input: unknown): V2ResearchPayload {
+function parseRegisteredL2ResearchPayloadAfterPreflight(input: unknown): WritableResearchPayload {
   const artifactTypeDescriptor =
     typeof input === "object" && input !== null
       ? Object.getOwnPropertyDescriptor(input, "artifact_type")
@@ -370,7 +391,7 @@ function parseRegisteredL2ResearchPayloadAfterPreflight(input: unknown): V2Resea
       ? artifactTypeDescriptor.value
       : undefined;
   const protocolVersion = protocolVersionOf(input);
-  const matches = [...v2PayloadSchemas.entries()].filter(([key]) => {
+  const matches = [...writableVersionedPayloadSchemas.entries()].filter(([key]) => {
     const [registeredArtifactType, _schemaVersion, registeredProtocolVersion] = key.split("\0");
     return registeredArtifactType === artifactType && registeredProtocolVersion === protocolVersion;
   });
@@ -389,10 +410,10 @@ function parseRegisteredL2ResearchPayloadAfterPreflight(input: unknown): V2Resea
       "L2_WIRE_VERSION_WRITE_UNSUPPORTED：Research Payload Schema 解析失败。",
     );
   }
-  return schema.parse(input) as V2ResearchPayload;
+  return schema.parse(input) as WritableResearchPayload;
 }
 
-function parseRegisteredL2ResearchPayload(input: unknown): V2ResearchPayload {
+function parseRegisteredL2ResearchPayload(input: unknown): WritableResearchPayload {
   preflightRawL2ResearchJsonObject(input, "Research Payload");
   return parseRegisteredL2ResearchPayloadAfterPreflight(input);
 }
@@ -400,20 +421,20 @@ function parseRegisteredL2ResearchPayload(input: unknown): V2ResearchPayload {
 function parseL2ResearchPayloadForEnvelopeAfterPreflight(
   envelope: ArtifactEnvelope,
   payloadInput: unknown,
-): V2ResearchPayload {
+): WritableResearchPayload {
   const key = registryKey(
     envelope.artifact_type,
     envelope.schema_version,
     protocolVersionOf(payloadInput),
   );
-  const schema = v2PayloadSchemas.get(key);
+  const schema = writableVersionedPayloadSchemas.get(key);
   if (!schema) {
     throw new L2ResearchWireError(
       "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
       `L2_WIRE_VERSION_WRITE_UNSUPPORTED：未注册或不可写的 Research Wire 元组 ${key}。`,
     );
   }
-  const payload = schema.parse(payloadInput) as V2ResearchPayload;
+  const payload = schema.parse(payloadInput) as WritableResearchPayload;
   if (payload.artifact_type !== envelope.artifact_type) {
     throw new L2ResearchWireError(
       "L2_WIRE_VERSION_WRITE_UNSUPPORTED",
@@ -426,7 +447,7 @@ function parseL2ResearchPayloadForEnvelopeAfterPreflight(
 export function parseL2ResearchPayloadForEnvelopeCandidate(
   envelopeInput: unknown,
   payloadInput: unknown,
-): V2ResearchPayload {
+): WritableResearchPayload {
   preflightRawL2ResearchJsonObject(envelopeInput, "Research Envelope");
   preflightRawL2ResearchJsonObject(payloadInput, "Research Payload");
   const envelope = l2ArtifactEnvelopeSchema.parse(envelopeInput);
@@ -482,7 +503,7 @@ export function collectL2ResearchPayloadArtifactReferences(
 
 function assertReferenceClosure(
   envelope: ArtifactEnvelope,
-  payload: V2ResearchPayload | HistoricalVersionedResearchPayload,
+  payload: WritableResearchPayload | HistoricalVersionedResearchPayload,
 ): void {
   const referenced = new Map<string, ArtifactReference>();
   collectArtifactReferences(payload, referenced);
