@@ -15,11 +15,13 @@ language: zh-CN
 
 ## 目标胶囊（Goal Capsule）
 
-- **目标：** 在不重做已完成 U5、不改写已冻结 U6 V2/C2 引用协议的前提下，把 RQ208
-  和 RQ297 定义的可治理语义层加入 L2 纵向切片，使业务本体、指标、关系、物理绑定、
-  Agent 提案、确定性验证、人工审批、发布和回滚形成完整控制平面。
+- **目标：** 在不重做已完成 U5、不改写已冻结 U6 V2/C2 引用协议的前提下，把 RQ208、
+  RQ297 与 RQ310 定义的可治理语义层加入 L2 纵向切片，使业务本体、指标、关系、物理
+  绑定、Agent 提案、确定性验证、人工审批、发布、回滚，以及受 Ontology 约束的简单
+  描述性贡献形成完整控制平面。
 - **修订地位：** 本文是原计划的待审修订候选。用户批准后，它新增
-  R9a/R9b/R9c、A7–A10、F8、AE13–AE37、KTD16–KTD42、U10–U11，并替换原计划中
+  R9a/R9b/R9c/R9d、A7–A10、F8–F9、AE13–AE45、KTD16–KTD48、U10–U11 与 U13，
+  并替换原计划中
   A2 的发布职责以及 U3–U9 的语义层衔接说明；批准前本文和原计划都不授权继续实施，
   当前任务停在用户审核门禁。
 - **兼容不变量：** 现有 U5 `SemanticReleaseDocument`、`SchemaSnapshotDocument`、
@@ -37,7 +39,8 @@ language: zh-CN
   不属于 L2 部署、发布或正确性的必需依赖。
 - **停止条件：** 若实现要求重写 U5 Grounding Authority、扩展 U6 V2
   `VersionFrontier`、把 Candidate 暴露给运行时、允许 Agent 自批/发布、让缺失
-  Reviewer 自动通过，或让 Neo4j 成为第二权威，则停止并返回本计划复审。
+  Reviewer 自动通过、把 BusinessRelationship/贡献闭合冒充 causal edge，允许 LLM
+  生成贡献数值，或让 Neo4j 成为第二权威，则停止并返回本计划复审。
 - **用户审核门禁：** 本文完成 Codex 评审和独立提交后停止；只有用户明确批准才开始
   U10，且每个大任务完成后独立 Git commit。
 
@@ -54,7 +57,9 @@ Diff 与影响，但只有经过确定性校验、具名人工审批和 PostgreS
 
 这次修订不改变首版产品仍是“L2 多步研究分析师 + 强 Text2SQL + 评测闭环”。因此把
 语义工作拆成两个里程碑：R9a 先证明 U5-compatible 语义能改善或保持完整 L2 用户结果；
-只有该 Evidence Gate 通过，才进入 R9b 的完整治理控制面。它为后续 L3–L5 提供稳定
+R9d 同时用一个预声明、U5-compatible 的描述性贡献 Case 证明 Ontology 不只用于消歧，
+还能约束候选并形成精确对账。只有该 Evidence Gate 通过，才进入 R9b 的完整治理控制面。
+它为后续 L3–L5 提供稳定
 业务对象、指标、关系和版本基础，但不会把 L3 统计、L4 主动观察或 L5 因果识别伪装
 为已经交付。
 
@@ -107,6 +112,15 @@ metric、dimension 和 physical binding。原计划没有独立建模以下问�
 - A10. **Grounding Bundle Coordinator：** 只验证三份 sealed issuer draft 的 scope、
   currentness、lineage 和 capability receipt，并在同库事务中提交完整 U5 bundle 与
   bridge；它不能创建、修订或重新签署任一 Authority payload。
+- A11. **U13 Attribution Governance Authorities：** 不是一个全能服务，而是
+  `PropertyOwnerMap Resolver`、`Contribution Release Signer`、`Conclusion Signer` 与
+  `Conclusion Use Verifier` 四个分离的 NOLOGIN/narrow-RPC service principal。A3 只按
+  approved policy 配置 capability assignment，A2 审核 owner-map/Conclusion Policy 内容，A8
+  在 Source Release 事务中只发布 source-bound profile child；owner-map、签名 key/policy 与
+  assignment 通过 10620 各自 reviewed、fenced、append-only 的 Authority transaction 发布，
+  不要求为 key rotation 重发 Semantic Source。A6 校验 rule/proof；A11 不能产生数值、自批
+  policy、给自己授权或变更 active pointer。M1 只使用 checked-in、
+  fixture-scoped 的同结构 Authority，不复用 production credential。
 
 ### 新增需求（Requirements）
 
@@ -133,12 +147,34 @@ metric、dimension 和 physical binding。原计划没有独立建模以下问�
   Receipt、隔离缓存/会话和不重叠 hidden holdout 形成可归因证据。
   `END_TO_END_PRODUCT` 与 `AUTHORIZATION_PRODUCT` 使用各自预注册 treatment，不受
   “只改变 grounding source”约束。production v1 不对跨库 fence 作能力承诺。
+- R9d. **Ontology-guided 描述性贡献纵切：** 系统必须把 `BusinessOntology` 限定为
+  业务意义和候选范围 Authority，不得替代指标公式、分析 Join、物理绑定、数据质量、
+  Policy、贡献计算或 causal graph。M1 只消费同一 `SemanticSourceBundle@1` 编译出的
+  `DescriptiveContributionProfileProjection`：profile 必须为 outcome、每个有界 driver
+  与 independently observed residual 固定 additive metric ref、predicate AST/hash、
+  baseline/follow-up Query Template、expected cell、同 unit/grain/time/snapshot 约束；
+  `decomposition_kind` 判别 `ROW_PARTITION | FORMULA_IDENTITY`。前者以
+  `RowPartitionWitness` 证明同一 canonical measure 与 declared universe 上谓词互斥完备，
+  后者以 `FormulaEquivalenceWitness` 证明 canonical FormulaAST 的带符号代数恒等；未知、
+  混合或未证明类型拒绝。每个 endpoint 继续走现有 U5→U6 QueryEvidence 链，确定性 U13
+  Kernel 只计算 delta，并以
+  `computed_closure_error=Δoutcome-ΣΔdriver-Δobserved_residual` 验证 signed closure；
+  computed error 不得回写 residual，一次数值闭合也不得替代 accounting identity witness；
+  任意 grouped-row、动态双窗口差分、ratio/PVM/LMDI/Shapley、topology RCA 与因果升级
+  在当前 IR 下必须 typed refusal 或 `DEFERRED/HOLD`。结论等级固定为
+  `CHANGE → CONTRIBUTION → ASSOCIATED_DRIVER → ROOT_CAUSE_CANDIDATE → CAUSAL_SUPPORT`，
+  U13.1 仅在受控 Fixture 输出 `KERNEL_CANDIDATE_ONLY/HOLD`，不能发布产品结论；U10.3
+  之后的 U13.2 才能消费 PostgreSQL active exact release 并发布最高为
+  `CONTRIBUTION` 的 `ContributionItemSet`。Topology/event/anomaly 等调查线索进入未来
+  独立 `InvestigationCandidateSet`，不能按贡献绝对值排序或自动成为根因候选；任何层级
+  都不能使用“导致、已证实根因、反事实、应当行动”等越权文案。
 
-下文为简洁使用 `R9` 时，表示 R9a、R9b 与 R9c 的共同约束；涉及里程碑顺序时必须明确
-写 R9a、R9b 或 R9c，不能用统称掩盖 M1/M2 边界。
+下文为简洁使用 `R9` 时，表示 R9a、R9b、R9c 与 R9d 的共同约束；涉及里程碑顺序时必须
+明确写 R9a、R9b、R9c 或 R9d，不能用统称掩盖 M1/M2 边界。
 
-R9a 与 R4、R6、R7、R8 共同形成 **M1 L2 Evidence Gate**；M1 可以内部演示和量化，
-但 Release Manifest 仍是 `HOLD`。M1 固定给出 `ExecutionValueVerdict`、
+R9a 与 R4、R6、R7、R8 形成 **M1-Core L2 Evidence Gate**；R9d 形成并行的 **M1-F9
+Attribution Feasibility Gate**，两者共享地基但互不作为进入条件。两条分支都可内部演示和量化，
+但 Release Manifest 仍是 `HOLD`。M1-Core 固定给出 `ExecutionValueVerdict`、
 `GovernanceNeedVerdict` 与 `IRCapabilityVerdict`：前者决定语义功能是否值得继续，
 第二个只判断已识别 Authority 缺口是否仍需实施、不能声称尚未实现的治理已 READY，
 第三个区分“没有价值”与“当前 U5 IR 过窄”。U10.0 生产 Authority 缺口以及已识别的
@@ -170,7 +206,8 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
        `RuntimeRestrictionProjection`，验证 Formula type、grain、unit、time
        domain、additivity、bounded relationship closure、binding、全依赖
        `LowerabilityProof` 与 U5 compatibility；
-    5. 冻结 `SemanticReviewPacket`，绑定三个 projection digest、relationship lowering
+    5. 冻结 `SemanticReviewPacket`，绑定三个核心 projection digest、有序 profile child
+       ref/digest manifest、relationship lowering
        proof、catalog fence、platform policy/review policy revision、eligible reviewer membership
        version、quorum/veto、decision expiry 与 publish expiry；
     6. A2 通过 human session 对 exact packet digest 批准或拒绝；Decision RPC 必须
@@ -184,7 +221,8 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
        随后按固定锁序只消费已 `CLOSED+APPROVED` 的 Decision window，在事务内重验
        base、packet、current membership、review policy、decision、quorum、catalog
        fence、compiler/dependency pointer 与 attempt digest，再原子发布 Source Release、
-       semantic/relationship/runtime-restriction 三个 Projection、Active Pointer 和
+       semantic/relationship/runtime-restriction 三个核心 Projection、有序的
+       content-addressed contribution-profile child manifest、Active Pointer 和
        Outbox；rollback window OPEN 时同事务提交 current
        `LegacyEquivalenceAttempt`、legacy mirror/receipt，CLOSED 时改验独立 closure
        authorization digest。A8 不能自行关闭 Decision 或 legacy rollback window；
@@ -203,6 +241,68 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
     发布崩溃全有或全无；旧 Run 保留精确旧版本可重放；跨库 datasource 或无法证明
     DDL/epoch 顺序的 adapter 不能进入 `PUBLISHED_ONLY`。
   - **覆盖：** R4、R5、R6、R7、R9。
+
+- F9. **受治理的描述性贡献研究流**
+  - **共享入口与触发：** F9 产品分支在标准 L2 工作台旁提供不执行贡献的
+    `AttributionCapabilityDirectory@1/list_attribution_capabilities`，只在 server-resolved
+    principal 的 app/tenant/environment/domain/datasource/policy scope 内显示可见支持面，
+    并对猜测 ref、未授权、不存在或 policy 不确定的对象采用外部等价的
+    `UNAVAILABLE_FOR_PRINCIPAL`：先按六轴鉴权再查找，不返回 object ref/name/count、精确
+    原因或可区分 timing。用户提交
+    “为什么变化”后先冻结原问题/身份/scope，再生成
+    `AttributionEligibilityDecision@1`。只有全局 `Attribution F9=GO`、当前 release 存在
+    exact profile 且 Decision=`SUPPORTED` 时才进入 U13.2 execution Route；
+    `F9_NOT_REGISTERED | NO_PROFILE | NOT_LOWERABLE | STALE | UNAVAILABLE_FOR_PRINCIPAL`
+    都保留原问题并返回稳定 `next_actions`。Directory、Eligibility、ProfileRequest 与
+    recovery 都属于 U8/U11/U9 的 **F9 delta**，不是 M2-Core 的完成条件；M1 Fixture
+    feasibility 不注册 F9 execution Route。
+  - **参与者：** A1、A4、A5、A6；A7 只负责 profile Candidate 维护，不能改变当前 Run。
+  - **步骤：**
+    1. 将原问题冻结为 `AttributionQuestionContract`，明确 subject、outcome、scope、
+       时间、允许结论等级和预算；Eligibility Decision 同时固定 question ref、
+       capability directory digest、profile/release 或 typed unavailable reason 与 `next_actions`；
+    2. `SUPPORTED` 后，published-only resolver 解析 exact SemanticRelease/Profile，冻结
+       `SemanticAttributionContext`，并验证 Ontology、metric、Join、binding、policy、
+       DataSnapshot 和 profile digest；
+    3. U13 确定性 enumerator 只展开 profile 中预声明的 outcome、driver 与 independently
+       observed residual 静态 endpoint template 并为当前 Run 生成 binding；每个 binding
+       只有在 static capacity proof 与当前 `RunDriverBudgetAdmission@1` 同时通过后，才分别执行 baseline/follow-up 的
+       现有 U5 QueryContract→QueryEvidence，全部绑定同一可覆盖两窗的
+       `CONTROLLED_REVISION` visibility；
+    4. 独立 lowering verifier 先依据 exact `EndpointLoweringRuleSet@1` 验证每端
+       source/target node correspondence；Kernel 再从两窗 QueryEvidence 构造
+       `DerivedDeltaObservationSet@1`，冻结 baseline/follow-up evidence+cell hash、减法方向、
+       unit、derived delta 和 derivation image。Compiler 按 `decomposition_kind` 验证
+       `RowPartitionWitness` 或 `FormulaEquivalenceWitness`。只有 kind-specific witness PASS 且
+       `computed_closure_error=Δoutcome-ΣΔdriver-Δobserved_residual=0` 才产生 PASS
+       `ContributionClosureReceipt`，不得用一次数值 closure 或 balancing residual 冒充
+       accounting identity proof；
+    5. Receipt subject hash 闭合 exact profile/release、endpoint templates/runtime bindings、
+       static capacity/run admission、逐端 lowering certificates/rule-set、两端 evidence/
+       DerivedDelta、accounting proof、owner-map release、method/kernel/compiler/verifier image、完整
+       frontier、principal/scope 与 `closure_verdict=PASS | HOLD | REFUSE`；该字段不表示
+       Attribution Feasibility。签发和消费按 origin 重验 currentness：Fixture
+       看 immutable fixture manifest，Published
+       才看 current active release/status
+       ledger。只有 U13.2 的 PASS Receipt 可投影 `ContributionItemSet`；
+       它只含同一 accounting identity
+       的 signed item，按 absolute contribution、profile stable order、stable ID 排序；
+       topology/event/anomaly/association 不进入该集合；
+    6. A4 只能从已验签且 current 的 `ConclusionPolicyDecisionEnvelope@1`
+       subject 闭合的判别联合
+       `ASSERT { claim_ast } | ABSTAIN { reason_codes, unresolved_fields } | REFUSE {
+       reason_codes, violated_policy }` 生成 authoritative report；只有 ASSERT ClaimAST 有
+       Claim Authority。自由 LLM prose、引文、retrieved text、table/code 标为
+       non-authoritative commentary。任何新关系/modality、checker abstention、越权因果
+       文案、数字改写、候选越界或 Receipt subject 缺失都返回 typed refusal。
+       完整 F9 Authority 留在 U13 sidecar；当结论被嵌入现有 U6 AnalysisReport 时，
+       必须另有 `ConclusionProjectionBinding@1` 绑定 exact AtomicClaim/ReportManifest/
+       segment hash、Decision Envelope 与 current `AttributionConclusionUseDecision@1`，否则只能显示为
+       non-authoritative commentary；现有 AtomicClaim@2 不宣称无损承载双窗 delta。
+  - **结果：** 用户得到可重放的 signed contribution、observed residual、closure error、
+    Contribution Item、Ontology/Metric 路径和非根因/非因果披露；unsupported formula 或
+    profile drift 诚实拒绝。
+  - **覆盖：** R3、R4、R6、R7、R9d。
 
 ### 新增验收示例（Acceptance Examples）
 
@@ -265,7 +365,7 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
   `PolicyReceipt`；permissive RLS、owner、`BYPASSRLS`、service role、sensitive column
   与 policy drift mutation 都证明最终集合不会大于任一输入集合。restriction 的
   exact ref/hash/source/compiler/generation 必须进入 ReviewPacket/PublishAttempt，并
-  与 SourceRelease、三个 projection、pointer 同事务可见。
+  与 SourceRelease、三个核心 projection、profile child manifest、pointer 同事务可见。
 - AE30. 覆盖 R4、R6、R9：B0/B1/B2 各通过 typed adapter 生成 schema-valid 的 benchmark
   grounding draft 或预注册 rejection；B0/B1 无法读取 B2 Source、alias、compiled
   relationship、cache 或 conversation。运行顺序平衡、hidden holdout 一次性且与
@@ -309,6 +409,111 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
 - AE37. 覆盖 R4、R9：Query resolver 重验 catalog token 后、actual sandbox SQL 前注入
   受管 DDL；shared Query fence 与 exclusive DDL fence 只允许完整旧执行后 DDL，或 DDL
   先行并使 Query typed stale，不能执行 stale SQL。
+- AE38. 覆盖 R4、R9d：M1 profile 必须判别为 `ROW_PARTITION | FORMULA_IDENTITY`，并为
+  outcome、每个 driver 和 independently observed residual 固定可进入 semantic digest 的
+  baseline/follow-up `EndpointExecutionTemplate`：同 datasource、`aggregation=sum`、
+  `additivity=additive`、safe integer/minor unit、metric、predicate AST/hash、window、
+  unit/grain 与 expected row0 cell 均冻结。每次 Run 再生成 `EndpointExecutionBinding`，
+  绑定 exact QueryContract instance、snapshot/PolicyReceipt/principal 与五轴 VersionFrontier；
+  `SameFrontierWitness` 要求所有运行时 binding 的五轴相同，但不进入静态 profile digest。每端各用一条当前 U5
+  QueryContract，并由独立 verifier 为 canonical predicate/FormulaAST → QueryContract →
+  GroundingPackage/LogicalPlan → SqlArtifact/parameters → QueryEvidence 签发逐次
+  `EndpointLoweringCertificate@1`。未知/混合 kind、ratio/avg/min/max、grouped-row、单 Query 动态双窗或
+  非线性 post-aggregate formula 稳定返回 typed refusal。
+- AE39. 覆盖 R6、R9d：`ROW_PARTITION` 的 outcome/driver/residual 必须使用同一 canonical
+  metric/formula、aggregation、grain、unit、null policy；Compiler 对 Region explicit
+  universe 签发 `RowPartitionWitness`，证明 driver + residual predicates 两两不交且并集
+  覆盖，并冻结 NULL/UNKNOWN、cast、collation、开放枚举与 `OTHER/complement`。`FORMULA_IDENTITY`
+  则对 canonical FormulaAST 签发带 sign/unit/grain 的 `FormulaEquivalenceWitness`。不同
+  metric 恰好闭合、下一 snapshot 失配、overlap、gap、NULL 漏行、alias/collation/cast/
+  predicate mutation、generator 同时产出自洽但错误的 witness/template、certificate 与实际
+  SqlArtifact/parameter 不一致，以及把 closure 当 identity/lowering proof 均失败。Formula
+  leaf/formula-role 到 exact metric binding/endpoint 必须完整且无重复遗漏。给定两窗后计算 driver delta `+20/-15`、
+  observed residual delta `0`、outcome delta `+5`，`computed_closure_error=0`；重复、遗漏、
+  符号翻转、balancing residual 或 Agent 改数均不能 PASS。
+- AE40. 覆盖 R4、R5、R9d：profile digest、release generation、principal/policy、
+  schema/data snapshot、visibility token、unit/grain/time 或任一 QueryEvidence 漂移时，
+  整组贡献进入 typed stale；不同 snapshot 的单项不能拼成 closure。
+  先构造单一 `ContributionSubjectManifest@1`，其 canonical digest 才是
+  `ContributionReceiptSubject@1`；Manifest 必须覆盖 exact profile/release、endpoint template/runtime
+  binding hash、每端 lowering certificate、两端 evidence ref/result hash、accounting proof ref/content hash/version、
+  method/kernel/compiler/verifier image、完整 frontier、principal/scope、input/output hash 与
+  `closure_verdict=PASS | HOLD | REFUSE`（非 Attribution Feasibility），并冻结数组顺序、
+  duplicate rejection 和 exact decimal encoding。调用方替换任一 subject、stale/revoked/
+  superseded/wrong-scope/rollback generation 均拒绝；旧 Receipt 只保留审计效力，不能因
+  rollback 到相同 release hash 自动复活。
+  Profile 的 template digest 在 M1/M2 保持一致，两阶段不同的 Binding/frontier 只能进入各自
+  lowering certificate/subject；把运行时 frontier 混入 profile digest 或从 digest 排除未声明字段均失败。
+- AE41. 覆盖 R6、R9d：同一个 outcome 同时存在 Region 与 Channel profile 时，一次 Run
+  只能选择一个 exact profile；把两个 partition axis 的贡献相加、把图召回的新节点塞入
+  `ContributionItemSet` 或超过 driver/depth/budget 上限都失败。Topology/event/anomaly
+  只能进入按 kind 独立准入的 `InvestigationCandidateSet`，不能用 absolute contribution
+  或 path length 与 accounting item 统一排序。
+- AE42. 覆盖 R3、R6、R9d：产品固定展示
+  `CHANGE/CONTRIBUTION/ASSOCIATED_DRIVER/ROOT_CAUSE_CANDIDATE/CAUSAL_SUPPORT` 等级；
+  authoritative content 只能由已验签且 current 的 `ConclusionPolicyDecisionEnvelope@1`
+  subject 内闭合的 typed
+  `ConclusionPayload` 生成，terminal 判别为
+  `ASSERT | ABSTAIN | REFUSE`；`ASSERT` 的嵌套 `ClaimAST` 冻结 subject/predicate/object、
+  relation/direction、span/scope、polarity、modality/realis、source chain/quotation、
+  conditional/counterfactual、channel、level 与 evidence selector/ref。LLM prose、引文、
+  retrieved text、table/code 只能是 non-authoritative commentary，且不能再解析回 Authority。
+  `ConclusionSubjectManifest@1` 绑定 ContributionReceiptSubject、完整 payload/AST、policy
+  release/digest、rule/model/data/verifier image、全部 input/evidence selectors、terminal/
+  decision、principal/scope、render mapping 与 activation sequence；consumer 从 frozen owner
+  map 校验 exact active policy、允许的 signer/verifier pair、currentness/revocation/
+  supersession/rollback，且不得接受调用方另传 payload。Decision 必须位于可验签
+  `ConclusionPolicyDecisionEnvelope@1`，冻结 signer principal/capability、key id/algorithm/
+  signature bytes、verifier identity/image、issued-at/expiry/nonce 与 activation sequence；
+  forged signature、wrong-role、replay、expired/rotated key 或 status lookup 不可用均失败。Checker 冻结独立 owner、schema、
+  rules/model/data version、abstain/refuse 与争议流程；contrast set 覆盖显式/隐式因果、否定、
+  引述、反驳、跨句、中文同义/委婉、表格/code 与 prompt injection，并按 domain/language
+  在独立 holdout/red-team 上以预注册 false-negative 上界判定。把有限样本 known misses=0
+  当总体保证，或将 Contribution Top-1 写成唯一根因时，Case 失败。
+- AE43. 覆盖 R6、R9d：U7 自建 `retail-revenue-contribution-v1` 将真值判别为
+  `ArithmeticPartitionTruth | InjectedFaultTruth | ExpertInvestigationPriorityLabel |
+  SCMCausalTruth`，分别绑定 provenance、适用域和 conclusion ceiling；描述性 Case 不含
+  causal truth。RCAEval 只报告其原生 fault/service/indicator Top-k，DAB/InsightBench
+  继续报告端到端分析质量，不跨域合并为根因真值或不可解释总分。
+- AE44. 覆盖 R3、R8、R9d：“为什么华南净收入下降”Demo 展示 exact metric/profile、
+  Ontology path、QueryEvidence、signed waterfall、residual、alternatives/evidence gaps 与
+  `描述性贡献 / 非根因 / 非因果结论` badge；M1 明示 Fixture feasibility/HOLD，M2 才
+  展示 published-only 产品能力；用户可切换公开测试题并查看 Oracle、Trace 和拒绝原因。
+- AE45. 覆盖 R5、R9d：PostgreSQL-only 的 F9、Hosted/Docker parity 和回滚可完整通过；
+  Upstash 全丢失只导致重建缓存，Neo4j 缺失/stale/down/digest mismatch 不改变 profile、
+  closure、ContributionItem ordering 或 conclusion level。
+- AE46. 覆盖 R3、R5、R8、R9d：Web/API/Agent 对等提供两阶段能力入口。
+  提问前的 `AttributionCapabilityDirectory@1/list_attribution_capabilities` 是 F9 产品分支安装后
+  从标准 L2 工作台可达、
+  principal/app/tenant/environment/domain/datasource/policy-filtered 的支持面目录；冻结原问题后的
+  `AttributionEligibilityDecision@1` 才校验 exact release/profile/window/grain/freshness。
+  Eligibility 先按同一六轴鉴权再查找；只有已授权可见 metric 才能返回
+  `NO_PROFILE | NOT_LOWERABLE | STALE` 与 exact ref，猜测 ref、未授权、不存在或 policy
+  不确定统一返回无 object ref/name/count、精确原因或 timing 差异的外部等价
+  `UNAVAILABLE_FOR_PRINCIPAL`。`SUPPORTED` 才启动 F9；`F9_NOT_REGISTERED |
+  NO_PROFILE | NOT_LOWERABLE | STALE | UNAVAILABLE_FOR_PRINCIPAL` 保留 exact question ref，
+  并返回标准 L2、重试/刷新、缩小 scope、创建 `AttributionProfileRequest@1` 或取消中允许的
+  稳定 `next_actions`。
+- AE47. 覆盖 R3、R6、R9d：独立 `ATTRIBUTION_USER_VALUE` Lane 在同一受支持问题上以标准
+  L2 AnalysisReport 为 baseline、Published F9 为 candidate，预注册主贡献项识别、证据导航
+  完成率、time-to-insight、非因果边界理解、合理下一步选择、信心校准和拒绝后任务恢复；
+  样本量、最小效应、阈值、CI 与停止规则在看结果前冻结，至少一次目标用户/领域专家盲测。
+  参与者只通过邀请制、participant-scoped、短 TTL 的 `AttributionEvaluationSession@1` 查看
+  带 `NON_AUTHORITATIVE_EVALUATION_ONLY` 标记的不可导出 candidate preview；该 Session 不属于
+  产品 Route，不能调用产品 Tool 或写入 U6 权威 Report。该 Gate 与 arithmetic/safety 分栏，
+  任一失败即 F9 `HOLD`，但不阻断 M2-Core。
+- AE48. 覆盖 R3、R5、R8、R9d：产品状态不再使用单一 Product Release badge，
+  而分别展示 `Core L2` 和 `Attribution F9` 的 `NOT_REGISTERED | HOLD | DEFERRED |
+  GO`、scope、reason 与 next action；E2E 覆盖 M1 Fixture、Core GO/F9 HOLD 与
+  Core GO/F9 GO。`AttributionProfileRequest@1` 绑定 original_question_ref，状态机只覆盖
+  `DRAFT | SUBMITTED | DEDUPED | TRIAGED | LINKED | DECLINED | CLOSED | EXPIRED | WITHDRAWN`，
+  LINKED 后只投影既有 U10 Candidate/Review/Publish 状态，不复制治理状态机。明确
+  requester/Request Authority/profile-owner/A7/expiry-sweeper 独占 actor、A7/owner routing、
+  U11 Inbox、撤回、通知与去重；`DEDUPED` 只生成 requester-scoped opaque subscription，
+  raw canonical/question/requester/lineage 受 FORCE RLS + request-read capability 隔离；不给
+  requester approve/publish 权限，并提供
+  “重新检查能力并重放原问题”。所有 Contribution/Receipt/Conclusion reason code 都在
+  Web/API/Tool 对等映射为必显解释、输入保留规则和允许的 `next_actions`。
 
 ### 成功标准（Success Criteria）
 
@@ -324,6 +529,9 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
   Agent 对 approve/publish/rollback/policy mutation 没有 Tool 也没有数据库权限。
 - PostgreSQL-only 能完成 semantic search、受 `SemanticClosurePolicy` 限制的关系
   闭包、发布、当前验证后的回滚、L2 Query 和 benchmark slice；超限失败关闭。
+- PostgreSQL-only 能从 published Ontology/Profile 生成有界贡献计划，复用 U5 scalar
+  QueryEvidence 验证 exact signed closure，并发布最高为 `CONTRIBUTION` 的非因果报告；
+  任意公式、动态分组或跨 snapshot 越界都以稳定 Reason Code 拒绝。
 - `GROUNDING_CAUSAL` 的 B0/B1/B2 通过隔离的 typed adapter 使用相同 Case、Data
   Snapshot、canonical effective-policy content/digest、Model/Profile/Budget 与盲评
   Oracle；只有 grounding information manifest 不同，每臂 run-scoped Receipt 独立。
@@ -335,14 +543,36 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
 
 里程碑口径：
 
-- **M1 / L2 Evidence Slice：** U10.0、U10.1a、C2a、U6 remainder、U7/U8 base 与
+- **M1-Core / L2 Evidence Slice：** U10.0、U10.1a、C2a、U6 remainder、U7/U8 base 与
   B2-fixture 完成；固定输出 `ExecutionValueVerdict`、`GovernanceNeedVerdict` 和
-  `IRCapabilityVerdict`，允许内部 Demo/量化，Release Manifest 仍 `HOLD`。
-- **M2 / Governed L2 Release：** M1
+  `IRCapabilityVerdict`。它不等待 U13.0/U13.1 或 `AttributionFeasibilityVerdict`。
+- **M1-F9 / Attribution Feasibility（独立分支）：** 在共享 U10.1a、C2a/U6 base 之后，
+  独立完成 U13.0、前置 U7 Attribution Truth Contract、U13.1 Kernel Candidate、后置 U7
+  Attribution Eval 与 U8 attribution fixture，输出 `AttributionFeasibilityVerdict`。该 Verdict 最高为
+  `FEASIBLE_FOR_PUBLISHED_INTEGRATION`，不注册 F9 Route、不消费 Candidate 作为运行时
+  真值、不声称产品安全或 READY；内部 Demo/量化继续显示 Release Manifest `HOLD`。
+- **M2-Core / Governed L2 Release：** M1-Core
   `ExecutionValueVerdict=GO + GovernanceNeedVerdict=REQUIRED` 并经用户复审后完成
   U10.1b、U10.2/U10.3、Human Review、Agent Maintenance、B2-published parity 和 U9
   pre-activation smoke；随后 `GovernanceReadinessVerdict=READY` 才允许 activation，
   activate/application-rollback/reactivate 的 post-ready smoke 通过后才能最终 `GO`。
+- **M2-F9 / Published Attribution（独立 Gate）：** 只有
+  `AttributionFeasibilityVerdict=FEASIBLE_FOR_PUBLISHED_INTEGRATION` 才进入 U13.2；
+  `NARROW_SCOPE | EXPAND_IR | STOP` 只让 F9 保持 `HOLD/DEFERRED`，不阻断 M2-Core。U13.2
+  还必须同时通过独立 Safety Gate 与 `ATTRIBUTION_USER_VALUE` Gate，才能在 M2-Core 上注册
+  F9；未通过时仍回退标准 L2 Research Report。
+
+对外状态以能力级矩阵表达，不再使用一个含义模糊的 `Product Release`：
+
+| 阶段 | Core L2 | Attribution F9 | 必显边界 |
+| --- | --- | --- | --- |
+| M1-Core | `HOLD` | `NOT_REGISTERED` | Core evidence 不等待贡献分支 |
+| M1-F9 | `HOLD` | `NOT_REGISTERED` + Fixture Evidence | 只是 Kernel 可行性，没有产品归因 Route |
+| M2-Core | `GO` | `NOT_REGISTERED/HOLD/DEFERRED` | 可用标准 L2，不声称贡献功能已通过 |
+| M2-F9 | `GO` | `GO` | 只对 Capability/Eligibility 支持的 exact scope 执行 |
+
+每个格子都携带 scope、reason、evidence digest 和 `next_actions`，Web/API/Agent 不得将
+Core GO 折叠成 F9 GO。
 - **停止条件：** M1 若出现新增 material Claim/Hypothesis 错误、不可解释覆盖下降或
   预算越界，停止语义功能激活并返回本计划复审；U10.0 和已确认的 Authority/安全缺口
   仍须修复。若失败主要来自 `NOT_LOWERABLE_TO_U5`，按预注册 decision tree 在扩 IR、
@@ -356,6 +586,8 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
 - 确定性 Formula/Relationship/Binding/Compatibility compiler；
 - A7 typed tools、持久维护 Run、Human Review Workspace；
 - U5/U6 兼容桥、B0/B1/B2 与语义治理 mutation；
+- 预声明 additive scalar contribution profile、确定性 closure、受控归因数据集与
+  明示非因果的产品 Demo；
 - shared Supabase/Docker 的 role、RLS、migration 和 contract tests。
 
 #### 延后实现
@@ -363,6 +595,8 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
 - Neo4j production projection、Cypher query port、projection rebuild service；
 - 自动把 Agent 建议批量发布，无论置信度多高；
 - L3 统计实验、L4 主动观察、L5 因果识别内核；
+- 任意维度 grouped-row/dynamic-window contribution、ratio/PVM/LMDI/Shapley、
+  topology RCA、causal graph、counterfactual 与干预建议；
 - 跨数据源 distributed join 与无限深图遍历；
 - 复合度量、ratio post-aggregate expression 与其他需要扩展 U5 IR 的 Formula 执行；
 - 第三方语义层双向同步或把外部 manifest 作为本项目写入权威。
@@ -526,7 +760,7 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
 - KTD37. **M1 不是第二套 Source。** U10.1a 先冻结完整 `SemanticSourceBundle@1`
   envelope 与 `U5_EXECUTABLE_SUBSET` capability profile；M1 fixture 只是该同一只读
   Source contract 的 immutable subset。U10.1b 激活其余六平面能力但不另建可写 schema，
-  且须重现 M1 的 executable content digest。约束 R4、R6、R9a、R9b。
+  且须重现 M1 的 executable content digest。约束 R4、R6、R9a、R9b、R9d。
 - KTD38. **Benchmark arm 通过 typed adapter 进入同一 U5 边界。** B0/B1/B2 分别产出
   `ArmGroundingDraft + ArmInformationManifest` 或预注册 typed rejection，再由同一
   benchmark-scoped Grounding Authority 物化现有三份 U5 Artifact；B0/B1 Artifact
@@ -534,7 +768,7 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
   conversation 与 operator visibility。约束 R6、R9c。
 - KTD39. **允许应用回退就必须持续维护 legacy 等价性。** rollback window 内的每次
   governed publish 都必须先生成 target-generation
-  `LegacyEquivalenceAttempt`，再与 release、三个 projection、mirror、receipt 和
+  `LegacyEquivalenceAttempt`，再与 release、三个核心 projection、profile child manifest、mirror、receipt 和
   pointer 同事务提交；Receipt 只证明 hash-pinned suite，不声称普遍等价。无法安全
   预计算时冻结 publish 或先按 current quorum 关闭 rollback window。Query Command
   固定 activation generation、release generation 与 minimum reader/materializer
@@ -565,6 +799,156 @@ post-ready smoke 才能进入 M2 Release，不能形成自依赖。
   connection 执行 sandbox SQL；受管 DDL 取得冲突的 exclusive fence 并推进 epoch。
   resolver 前置检查不能替代该执行期锁，timeout/连接切换/unmanaged DDL 全部失败关闭。
   约束 R4、R5、R9c。
+- KTD43. **Ontology 是业务意义骨架，不是万能语义层。** `BusinessOntology` 只拥有
+  Domain、BusinessEntityType、BusinessEventType、BusinessTerm、typed
+  BusinessRelationship、稳定逻辑 ID/alias/owner/lifecycle 与少量稳定 reference instance；
+  `FormulaAST/Grain/Unit/TimeDomain/Additivity` 属于 AnalyticalSemantics，Join 安全属于
+  RelationshipRegistry，表列坐标属于 PhysicalBinding，数据正确性属于 Catalog/Data
+  Oracle，Policy 与 causal graph 各有独立 Authority。Canonical property-path matrix 为每个
+  path 只分配一个 owner capability：业务 name/domain/range/identity alias 属于 Ontology，
+  formula/unit/grain/time/additivity 属于 AnalyticalSemantics，join key/cardinality/grain
+  transition/fanout proof 属于 RelationshipRegistry，table/column/expression 属于
+  PhysicalBinding，constraint/schema epoch/data snapshot/currentness 属于 CatalogGovernance，
+  `ProvenanceAuthority` 拥有 used/generated/derived trace、PROV 只作交换投影；
+  contribution profile 的 identity/eligibility/driver refs 归 BusinessOntology，decomposition/
+  measure AST/formula/unit/grain/witness 归 AnalyticalSemantics，partition/join safety 归
+  RelationshipRegistry，endpoint coordinates 归 PhysicalBinding，snapshot/currentness 归
+  CatalogGovernance，principal restriction 归 RuntimeAuthorization；其 Projection 只是跨平面
+  编译产物。`contribution_method.*`、`contribution_receipt.*`、`conclusion_policy.*` 与未来
+  `investigation_profile.*` 分别映射到 ContributionMethodAuthority/
+  ContributionReleaseAuthority/ConclusionPolicyAuthority/InvestigationPolicyAuthority，Topology 与 Causal Edge 属于未来
+  独立 Authority。这些治理 owner 不新增语义平面或 VersionFrontier 轴。Alias/rename 先规范
+  到 canonical target 再判冲突。跨平面晋级必须生成链式
+  `RelationshipPromotionReceipt`，绑定 canonical source/target paths、owner-map release/
+  digest、source/target release refs+hashes、promotion/verifier image、proof refs+hashes、
+  required signer roles、actual signer/verifier pairs、parent/sequence、projection release/
+  digest 与 validity/revocation/supersession。Consumer 必须从 target path 反查 target owner，
+  分别重验 source release authority、target owner 和 proof/rule verifier，不能相信 Receipt
+  自报 capability。Shared owner、delegation、quorum、rotation/emergency rollback 使用单调
+  activation sequence；旧 delegation、alias collision、缺 proof、stale/revoked/superseded
+  或 rollback generation 不允许后写/fallback 覆盖。
+  约束 R4、R9b、R9d。
+- KTD44. **OWL 推理、闭合验证与权限判定分权。** OWL 采用开放世界且无 Unique Name
+  Assumption，只可形成带 axiom/reasoner/profile/provenance 的 derived candidate；SHACL
+  只对 exact candidate/data graph、冻结 entailment regime 与 processor/version 产生
+  conformance receipt，不证明数据值或业务事实为真；Runtime Policy 仍由 principal ×
+  scope × action × resource × current policy 的默认拒绝 Authority 决定。约束 R5、R9d。
+- KTD45. **贡献能力是发布时有界 endpoint profile，不是动态分析 DSL。**
+  `DescriptiveContributionProfileProjection` 为 outcome、每个 driver 和 independently
+  observed residual 固定静态 `EndpointExecutionTemplate`：additive metric、predicate
+  AST/hash、baseline/follow-up Query Template、expected row0 cell、stable order/
+  declared max drivers、同 datasource/unit/grain/time 约束与 exact closure equation，并判别
+  `ROW_PARTITION | FORMULA_IDENTITY`；`SameFrontierWitness` 防止跨 IDENTITY/principal
+  拼接。每次 Run 把 template 实例化为 `EndpointExecutionBinding`，其中 exact QueryContract、
+  snapshot/PolicyReceipt/principal 与五轴 frontier 只进入 lowering certificate/Contribution
+  subject，不进入静态 profile digest。前者签 `SameMeasureWitness + RowPartitionWitness`，冻结同一 canonical measure
+  AST/hash、aggregation algebra、grain/unit/null policy/universe hash 与含
+  NULL/UNKNOWN/cast/collation/OTHER 的 explicit universe；后者签
+  `FormulaEquivalenceWitness`，证明 canonical FormulaAST 的 sign/unit/grain 恒等。Residual
+  必须是显式 complement endpoint 或 FormulaAST 独立项。每个 endpoint 逐个通过现有 U5
+  单 metric/单 row 证据链，并由独立 verifier 以 `EndpointLoweringCertificate@1` 逐端绑定
+  canonical AST、QueryContract、GroundingPackage/LogicalPlan、SqlArtifact/parameters 和实际
+  QueryEvidence 后，Kernel 才可计算 delta；Formula leaf-role 映射必须完整、无重复遗漏；
+  一次 closure 不替代 accounting 或 lowering proof。预算证明分为两层：进入静态
+  profile digest 的 `StaticDriverCapacityProof@1` 只绑定 U6 固定 obligation/DIAGNOSTIC
+  binding/artifact-input 上限、每 endpoint 成本模型、declared bound 和 compiler version；
+  `RunDriverBudgetAdmission@1` 才绑定当前 Run 剩余/预留 SQL 预算、实际 driver 数和
+  run fence、question/profile hash、reservation id/idempotency key、admission sequence/expiry
+  与 `RESERVED | CONSUMED | RELEASED | EXPIRED`，只进入 EndpointExecutionBinding/Receipt
+  subject；reserve/consume/release 与 U4 lease/fence、Budget Ledger 同事务。运行时至少满足
+  `2 * (driver_count + 2) <= reserved_sql_executions`。当前最宽的 16 SQL 预算下绝对上限
+  为 6 drivers，实际值取两层证明和 profile 声明的最小值；
+  超限 typed refusal，不截断或分批伪装闭合。
+  约束 R4、R6、R9d。
+- KTD46. **方法注册不等于执行准入。** M1 只在受控 Fixture 以 safe integer/minor-unit、
+  tolerance 0 验证 endpoint-delta Kernel，并固定
+  `KERNEL_CANDIDATE_ONLY/HOLD`；它不是 published runtime。grouped-row、单 Query
+  paired-window delta、ratio、PVM、LMDI、Shapley 与任意 post-aggregate expression 因
+  当前 U5 IR 不可 lower 而 typed refusal。U13.2 必须晚于 U10.3，只消费 PostgreSQL
+  active exact release 后才可注册 F9。
+  后续算法只有同时具备可执行 Formula Authority、方法适用性证明、exact/scale-aware
+  closure Oracle、预算与独立批准时才能从 `DEFERRED/HOLD` 激活。约束 R4、R9d。
+- KTD47. **贡献、候选与因果使用不可晋级类型。** `DESCRIPTIVE_ACCOUNTING` 是
+  `ContributionClosureReceipt` 的 authority class，不属于结论等级枚举；`ContributionItemSet` 只含同一
+  accounting identity 下的 signed item，按 absolute contribution → profile stable order
+  → stable ID 排序，最高为 `CONTRIBUTION`。Topology/event/anomaly/association 进入按
+  `candidate_kind` 独立资格、score 和不确定性的 `InvestigationCandidateSet`；不可比较
+  类别分栏，不用贡献绝对值或 path length 统一排序。Ontology link、FormulaDependency、
+  Lineage、topology score 或 contribution closure 都不能自动生成 causal edge；
+  `CAUSAL_SUPPORT` 需要独立 causal
+  model、identification、estimation、support、sensitivity/refutation。权威报告只能由
+  `ConclusionPolicyDecisionEnvelope@1` 闭合的 typed
+  `ConclusionPayload(ASSERT | ABSTAIN | REFUSE)` 生成；Decision subject 绑定 exact
+  ContributionReceiptSubject、完整 payload/ClaimAST、policy/verifier/inputs/result、render
+  mapping 与 current activation。只有该嵌套 `ClaimAST` 拥有 Claim Authority，调用方不能
+  另传 payload；LLM commentary、引文、检索文本、table/code 不拥有 Authority，任何
+  新关系/modality、source/scope/polarity 未解析、subject 替换或 checker abstention 都降级/
+  拒绝。约束
+  R3、R6、R9d。
+- KTD48. **贡献 profile 是同一发布内容且不增加版本轴。** U10.1a 把 profile 编译进
+  content-addressed `descriptive_contribution_profile_projection`；它作为
+  `semantic_executable_projection` 的受管子投影，其 ID/digest 由
+  `semantic_source_release` 在同一发布事务绑定，不增加第四个 active pointer。
+  static template、accounting witness 和 `StaticDriverCapacityProof@1` 进入 semantic
+  executable content digest；运行时通过 exact SemanticRelease 间接固定
+  Ontology/Profile，不给 U6 `VersionFrontier` 增字段。单一
+  `ContributionSubjectManifest@1` 对 exact profile projection/release、endpoint templates 与每次 Run 的
+  endpoint bindings/`RunDriverBudgetAdmission@1`、`StaticDriverCapacityProof@1`、逐端 lowering
+  certificates/rule-set、QueryEvidence/`DerivedDeltaObservationSet@1`、accounting proof、
+  `U13PropertyOwnerMapRelease@1`、method/kernel/compiler/verifier image、完整 frontier、principal/scope、input/
+  output/`closure_verdict=PASS | HOLD | REFUSE` 形成 canonical hash，并成为
+  `ContributionReceiptSubject@1`；该字段不表示 Attribution Feasibility，Verifier 只能
+  从该 closure 重放，签发和消费都重验 current active release、activation sequence 与
+  status ledger。`ConclusionSubjectManifest@1` 再链到该 Receipt subject，并把 exact payload/
+  policy/verifier/inputs/result 作为唯一 Decision subject；`ConclusionPolicyDecisionEnvelope@1`
+  另冻结 signer principal/capability、key/algorithm/signature、verifier、issued-at/expiry/nonce
+  和 activation sequence，Published 消费时从 append-only Decision status ledger 重验 key
+  rotation/revocation/supersession/rollback。贡献与结论两个层次的 Currentness Authority 任一
+  不可用都失败关闭。
+  PostgreSQL 保存唯一 Source、Review、Release 与 exact driver closure；Neo4j 只能返回
+  candidate ID，必须回 PostgreSQL 重验，且保持 `U12 / DEFERRED`。约束 R5、R9b、R9d。
+- KTD49. **F9 是 Core L2 上的独立发布分支。** `ExecutionValueVerdict=GO` 与
+  `GovernanceNeedVerdict=REQUIRED` 控制 U10/Core；`AttributionFeasibilityVerdict` 只控制
+  U13.2/F9。`NARROW_SCOPE | EXPAND_IR | STOP` 令 F9 `HOLD/DEFERRED`，不得阻断已闭合的
+  多步研究、Text2SQL 与治理主线。约束 R3、R9d。
+- KTD50. **可计算、安全与用户价值是三个不可互抵 Gate。** F9 产品分支先提供
+  principal-filtered `AttributionCapabilityDirectory@1`，冻结问题后由
+  `AttributionEligibilityDecision@1` 判定 exact support；非 `SUPPORTED` 保留原问题并返回
+  canonical enum
+  `CONTINUE_L2 | REFRESH_ELIGIBILITY | NARROW_SCOPE | REQUEST_PROFILE |
+  REPLAY_ORIGINAL_QUESTION | VIEW_EVIDENCE | VIEW_REQUEST_STATUS |
+  WITHDRAW_OWN_REQUEST | WITHDRAW_SUBSCRIPTION | ABANDON` 中按 reason/principal 允许的 `next_actions`。发布 F9 还需
+  独立 Safety 与预注册 `ATTRIBUTION_USER_VALUE` 盲测。任一失败只保持 F9
+  `HOLD`。约束 R3、R5、R6、R8、R9d。
+- KTD51. **双窗 delta 不伪装成现有 U6 observation。** `DerivedDeltaObservationSet@1`
+  是 U13-owned sidecar，逐项绑定 baseline/follow-up QueryEvidence+cell hash、减法方向、unit、
+  derived delta、frontier 和 derivation image；Contribution Closure 直接消费它。现有
+  AtomicClaim@2 没有 operand-pair/delta binding，只能作显式标注的有损兼容摘要，
+  不拥有 F9 closure Authority。若 U13 结论嵌入 U6 Report，
+  `ConclusionProjectionBinding@1` 必须绑定 exact AtomicClaim/ReportManifest/report segment hash、
+  Decision Envelope 和同时重验 Receipt/Conclusion status 的 current
+  `AttributionConclusionUseDecision@1`；缺失时降级 non-authoritative commentary。约束 R4、R6、R9d。
+- KTD52. **Lowering 证书消费规则而不只比 hash。**
+  `EndpointLoweringRuleSet@1` 逐类冻结 source AST node 到 QueryContract filter、SemanticQuery
+  TypedPredicate、LogicalPlan operation 和 SQL parameter binding 的允许映射，包含
+  canonicalization/version、NULL/cast/collation/timezone、rule ID 和完整 node correspondence。
+  Certificate 绑定 exact rule-set digest，mutation 按 rule 翻转。约束 R4、R9d。
+- KTD53. **Owner 和结论验签都有可寻址 Authority 状态。**
+  `U13PropertyOwnerMapRelease@1` 把 canonical path/pattern 映射到唯一 owner capability、
+  required signer roles/quorum、proof-verifier role 和 delegation policy，带 active pointer、
+  activation sequence 与 append-only status；`RelationshipPromotionReceipt` 绑定 exact map release。
+  `ConclusionSignatureAuthority@1` 冻结 domain-separated canonical signing message、
+  ConclusionPolicyRelease、SignerAssignment、VerificationKeyRevision/trust root、algorithm policy
+  与 nonce state，只服务 M2 Published。M1 不搭建第二套签名 Authority，只用 checked-in
+  `FixtureConclusionPolicyManifest@1` 检查 typed candidate，并由后置 U7 生成内容寻址
+  `FixtureConclusionDecisionSeal@1`；Seal 不含 key/nonce/rotation，也不是产品消费授权。M2
+  才在 PostgreSQL 事务中完成 currentness/验签/nonce check-and-consume。约束 R5、R9b、R9d。
+- KTD54. **发布状态、ProfileRequest 和恢复动作都是能力级状态机。**
+  Core L2 与 Attribution F9 分别展示 `NOT_REGISTERED/HOLD/DEFERRED/GO`。
+  `AttributionProfileRequest@1` 绑定 original_question_ref、dedupe key、owner/U11 Inbox、
+  candidate/release lineage、撤回/过期/通知和重放出口；requester 永不获得 approve/publish。
+  每个 U13 reason code 都映射到稳定 UI state、必显解释、输入保留规则和
+  Web/API/Tool 对等 `next_actions`。约束 R3、R5、R8、R9d。
 
 ### 高层技术设计（High-Level Technical Design）
 
@@ -625,9 +1009,10 @@ flowchart TB
 SemanticSourceBundle
 ├── BusinessOntology
 │   ├── Domain
-│   ├── BusinessEntity
-│   ├── BusinessEvent
+│   ├── BusinessEntityType
+│   ├── BusinessEventType
 │   ├── BusinessTerm
+│   ├── BusinessRelationshipType
 │   └── Invariant
 ├── AnalyticalSemantics
 │   ├── Measure
@@ -644,6 +1029,12 @@ SemanticSourceBundle
 ├── CatalogGovernance
 └── RuntimeAuthorization
 ```
+
+`BusinessOntology` 的 OWL/RDF export 是版本化交换与推理投影，不是第二写 Authority；
+canonical Source Revision 仍在 PostgreSQL。OWL 的开放世界语义不能泄漏到 Join、DQ、
+Policy 或“没查到即不存在”的业务结论。U10.1b 可以保存 exact ontology/version IRI、
+axiom、reasoner/profile、SHACL shapes、entailment regime 与 PROV lineage，但推理结果只
+能作为 derived proposal，经同一 Review/Publish 才可进入 executable release。
 
 Metric 与 Formula compiler 至少传播：
 
@@ -692,6 +1083,55 @@ Source Revision 的 canonical immutable JSONB 是唯一写入权威；按对象�
 `FormulaAST` 的 ratio、复合 measure 与 post-aggregate expression 属于第三类；本计划
 不通过 sidecar 让运行时绕过 U5 IR。
 
+M1 在同一 Source 中额外允许一个最小 `DescriptiveContributionProfile` 子集：
+
+```text
+subject_metric_ref
+declared_universe_ref
+decomposition_kind = ROW_PARTITION | FORMULA_IDENTITY
+baseline_window_spec / followup_window_spec
+outcome = EndpointExecutionTemplate(metric_ref, predicate_ast_hash, expected_cell)
+driver[] = {
+  ontology_ref,
+  endpoint_template(metric_ref, predicate_ast_hash, expected_cell),
+  stable_order
+}
+observed_residual = EndpointExecutionTemplate(metric_ref, predicate_ast_hash, expected_cell)
+accounting_identity_witness =
+  RowPartitionWitness(canonical_measure, aggregation, null/cast/collation/complement semantics)
+  | FormulaEquivalenceWitness(canonical_formula_ast, signed_terms, unit/grain proof)
+declared_max_drivers
+static_driver_capacity_proof = StaticDriverCapacityProof@1(
+  declared_max_drivers,
+  U6 obligation/DIAGNOSTIC-binding/artifact-input capacity,
+  fixed U6 max_sql_executions,
+  endpoint cost model = 2 * (driver_count + 2),
+  semantic/compiler version
+)
+expected = delta(outcome) == sum(delta(driver)) + delta(observed_residual)
+computed_closure_error = delta(outcome) - sum(delta(driver)) - delta(observed_residual)
+numeric_profile = SAFE_INTEGER_MINOR_UNIT_TOLERANCE_ZERO
+conclusion_ceiling = CONTRIBUTION
+```
+
+Compiler 只把通过 Ontology identity、Relationship、lowerability、unit/grain/time、policy
+以及 kind-specific accounting identity witness 的 closure 放入
+`DescriptiveContributionProfileProjection`。两窗在运行时绑定同一个可覆盖两期的 exact
+DataSnapshot/visibility；`observed_residual` 有自己的 endpoint evidence，不能由
+computed error 事后补齐。运行时不重新做开放世界推理，也不接受 LLM/Graph 临时追加
+driver。静态 `EndpointExecutionTemplate` 进入 executable semantic digest；每次 Run 的
+`EndpointExecutionBinding` 才绑定 instantiated QueryContract、principal、PolicyReceipt、
+snapshot/visibility 和 U6 五轴，只进入 lowering certificate 与 Receipt subject。静态
+`StaticDriverCapacityProof@1` 只证明 profile 在已冻结 U6 capacity 与 endpoint cost model
+下的理论上限，并进入 semantic content digest；每个 Run 另生成
+`RunDriverBudgetAdmission@1`，绑定该 Run 的 `remaining_sql_executions`、为非贡献步骤保留的
+SQL、实际 driver/endpoint 数、U6 binding/input capacity、run fence、question/profile hash、
+reservation/idempotency/sequence/expiry/state 与 admission verdict，只进入 runtime binding/
+lowering certificate/Receipt subject。同 fence retry 幂等；crash-before-consume 可恢复/过期
+释放，crash-after-consume 保持计费；新 fence 重新准入，不得双扣。当前 `max_sql_executions=16` 且每
+endpoint 一条 SQL 时，静态绝对上限为 6 drivers；运行时剩余预算只可进一步收紧。M1
+只用该结构跑 Fixture feasibility；U10.3 后的 U13.2 才消费 published profile。
+
 ### Source 到 U5 的兼容编译契约
 
 ```text
@@ -704,6 +1144,7 @@ compileSemanticSource(
   executable_semantic_projection,
   executable_relationship_projection,
   runtime_restriction_projection,
+  descriptive_contribution_profile_projections[],
   executable_semantic_content_digest,
   lowerability_proof,
   validation_receipt,
@@ -757,6 +1198,10 @@ commitPublishedGroundingBundleV2(
 
 - `executable_semantic_projection` 只包含现有 `SemanticReleaseDocument` 的
   `semantic_release_version/catalog_version/datasource_id/metrics/dimensions` payload；
+- 每个 `descriptive_contribution_profile_projection` 是 executable semantic projection
+  的 content-addressed child；父 projection 冻结有序的 child ref/content digest，
+  `semantic_source_release` 在同一发布事务绑定父 digest 与全部 child digest。它没有独立
+  active pointer，也不能脱离父 release 被覆盖、热修或单独激活；
 - `source_revision_version` 是 canonical Source 内容地址；`semantic_release_version`
   则从 `source_revision_digest + compiler_bundle_digest + catalog_fence_digest +
   closure_policy_digest + target_generation` 确定性派生，再写入 U5 payload。两个版本
@@ -884,11 +1329,12 @@ membership/role writer 无需在运行时枚举可能不存在的新 domain；do
 | `semantic_validation_receipt` | compiler/gate/impact 结果 | exact candidate + catalog + compiler |
 | `semantic_review_task` | Candidate/rollback/legacy-closure 通用 exact packet、Decision window 与 outcome | `packet_kind=CANDIDATE_REVIEW/ROLLBACK_REVIEW/LEGACY_CLOSURE_REVIEW`；typed payload/digest/expiry 不可变；`decision_window_status=OPEN/CLOSED` 与 `review_outcome=PENDING/APPROVED/VETOED/EXPIRED` 正交 |
 | `semantic_review_decision` | 三类 packet 的 human approve/reject | `(packet, principal, semantic_role)` 唯一、不可变；reject veto；packet kind 必须匹配 |
-| `semantic_publish_attempt` | A8 持久化的耐久发布尝试 | identity 与 exact scope/packet/candidate/三个 projection/dependency/target generation/idempotency digest 创建后不可变；OPEN window 时内嵌 sealed conditional-legacy plan（planned content-addressed id、canonical bytes、digest），它是 value commitment、不是未落库 Attempt 的 FK；仅 state 可按 `PREPARED→COMMITTED/STALE` 单向 CAS，terminal code/detail digest、committed release refs/actual legacy-attempt ref 只能随首次 terminal CAS 填充 |
-| `semantic_source_release` | 已批准 Source | immutable；exact packet/quorum；绑定三个 projection digest |
+| `semantic_publish_attempt` | A8 持久化的耐久发布尝试 | identity 与 exact scope/packet/candidate/三个核心 projection、profile child manifest/dependency/target generation/idempotency digest 创建后不可变；OPEN window 时内嵌 sealed conditional-legacy plan（planned content-addressed id、canonical bytes、digest），它是 value commitment、不是未落库 Attempt 的 FK；仅 state 可按 `PREPARED→COMMITTED/STALE` 单向 CAS，terminal code/detail digest、committed release refs/actual legacy-attempt ref 只能随首次 terminal CAS 填充 |
+| `semantic_source_release` | 已批准 Source | immutable；exact packet/quorum；绑定三个核心 projection digest 与有序 profile child ref/digest manifest |
 | `semantic_executable_projection` | U5 metric/dimension payload | deterministic hash；属于一个 source release |
 | `semantic_relationship_projection` | U5 relationship sidecar | exact release/datasource/catalog/digest |
 | `semantic_runtime_restriction_projection` | DENY/RESTRICT policy input | exact source/platform policy/compiler/generation/digest；不可 grant；与 release 原子发布 |
+| `semantic_descriptive_contribution_profile_projection` | U13 可执行 profile child | content-addressed；exact parent projection/release；只能随父 release 原子发布，无独立 pointer |
 | `semantic_active_pointer` | scope 的 current release | genesis null/0；后续单行 generation CAS |
 | `semantic_grounding_issuer_draft` | 三类 issuer sealed input | kind/issuer/capability/input/currentness/hash 不可变；非 READY 不可消费 |
 | `semantic_runtime_projection_binding` | source 到 U5 run lineage | exact source/projection/run/U5 refs/hash |
@@ -1402,7 +1848,7 @@ generation 一律 typed refusal：
 
 ### Neo4j 条件准入契约
 
-Neo4j 不属于 U10/U11；后续单元暂记 `U12 / DEFERRED`。准入必须同时通过：
+Neo4j 不属于 U10/U11/U13；后续单元暂记 `U12 / DEFERRED`。准入必须同时通过：
 
 1. 固定 deep-path/impact workload 相对 PostgreSQL B2 有稳定、显著收益；
 2. PostgreSQL 与 Neo4j 在 Golden/Mutation 上结果语义等价；
@@ -1562,6 +2008,56 @@ AND result_oracle_passed
 任何 AND 项失败都不能被平均分抵消。真实 paired evidence 或预注册 decision policy
 缺失时，B2 保持“待验证设计”，Release Manifest 为 `HOLD`。
 
+#### 描述性贡献评测 Lane
+
+`DESCRIPTIVE_CONTRIBUTION_PRODUCT` 不复用 `GROUNDING_CAUSAL` 名称，也不把产品“归因”
+误写成因果处理效应。U7 自建 `retail-revenue-contribution-v1`，冻结：
+
+- `ArithmeticPartitionTruth`：两窗 endpoint、decomposition kind、kind-specific accounting
+  witness、declared universe/FormulaAST、signed driver、independently observed residual 和
+  expected closure；
+- `InjectedFaultTruth`：fault/service/indicator、注入方式与生成 provenance；
+- `ExpertInvestigationPriorityLabel`：专家优先级、分歧与适用业务域；
+- `SCMCausalTruth`：仅在独立 SCM/干预 Case 中保存 estimand、机制与 causal provenance；
+- published profile 中 eligible/ineligible Ontology path 与 stable driver ordering；
+- exact semantic/schema/data/policy snapshot 和 expected typed failures；
+- public calibration、hidden holdout 与 M2 governance case 的不重叠 manifest；
+- 上述 truth kind 不允许跨域转换或平均；普通描述性 Case 的 causal truth 明确为 absent。
+
+硬不变量至少覆盖 endpoint 重算、decomposition-kind witness、逐端 lowering certificate、tolerance-zero closure、
+signed cancellation、profile 单轴、partition NULL/UNKNOWN/overlap/gap/OTHER/cast/collation/
+开放枚举、formula sign/equivalence、不同 metric 偶然闭合/下一 snapshot 失配、time
+reversal、scale、dummy=0、Receipt subject 替换/stale/revoked/superseded/rollback、
+unsupported formula refusal、Agent 不可修改数字/排序/closure。权威报告只来自 typed
+`ConclusionPayload`，且必须由 `ConclusionSubjectManifest@1 →
+ConclusionPolicyDecisionEnvelope@1` 绑定 exact Receipt subject、payload/policy/verifier/inputs/result；
+Envelope 还必须绑定 signer/key/algorithm/signature/issued-at/expiry/nonce/activation sequence。
+Conclusion Policy Authority
+冻结独立 owner、允许的 signer/verifier pair、clause/span、relation、modality、speaker/
+quotation、negation/counterfactual、rule/model/data version 和 abstain/refuse Receipt。
+Contrast set 覆盖显式/隐式因果、否定、引述、反驳、跨句、中文同义/
+委婉、表格/code 与 prompt injection；按 domain/language 在独立 holdout/red-team 上以
+预注册 false-negative 上界判定，不能用有限样本 known misses=0 或一次 regex 宣称零越权。
+贡献数值误差、valid coverage、typed refusal correctness、RCAEval Top-k、DAB/InsightBench
+端到端质量必须分栏报告，不能平均成一个总分。
+
+M1 新增
+`AttributionFeasibilityVerdict = FEASIBLE_FOR_PUBLISHED_INTEGRATION | NARROW_SCOPE |
+EXPAND_IR | STOP`。即使第一项成立，也只证明 Fixture endpoint/kind-specific accounting
+witness/closure Kernel
+值得在 U10.3 后接入，不能标记 F9 或产品 READY；失败不能用 B0/B1/B2 的 grounding uplift
+抵消。M2 的 U13.2 另行生成 `PublishedAttributionSafetyVerdict=GO | HOLD | STOP`，要求
+active exact release、published-only resolver、同 snapshot QueryEvidence、conclusion
+checker 与 Hosted/Docker parity。RCAEval 只校准其原生 injected-fault Top-k，不进入
+U13.1 Gate，也不提供业务 `ROOT_CAUSE_CANDIDATE` 真值。
+
+U13.2 另设不可与 Safety 平均的 `ATTRIBUTION_USER_VALUE` Lane：对相同受支持问题，标准
+L2 `AnalysisReport` 为 baseline、Published F9 为 candidate；在看结果前冻结目标角色、样本
+量、最小效应、阈值、CI 与停止规则，至少一次目标用户/领域专家盲测主贡献项识别正确率、
+证据导航完成率、time-to-insight、非因果边界理解率、合理下一步选择率、信心校准和拒绝后
+任务恢复率。缺少预注册、样本不足或任一 primary endpoint 未达阈值时，F9 保持 `HOLD`；
+M2-Core 不受该结果阻断。
+
 ### 对现有 U3–U9 的修订矩阵
 
 | 单元 | 保留 | 新增/修改 | 禁止 |
@@ -1569,10 +2065,10 @@ AND result_oracle_passed
 | U3 | Provider、Team、typed tool policy | semantic read/propose/compile/validate/impact/submit/status/rebase/explain | approve/publish/rollback/raw DB/graph |
 | U4 | persistent run、lease、outbox、resume | Semantic Maintenance Run；Decision 同事务复用完整 U4 resume protocol | 用 HTTP/Worker 生命周期或第二套语义 outbox 等待人工 |
 | U5 | 已实现 schema/verifier/Grounding/IR/SQL/Gate/Sandbox | 补齐 production materializer；消费 semantic/relationship/restriction 三个编译输入 | 重写 Artifact schema、假称测试 helper 是生产 factory 或读取 Draft |
-| U6 | V2 Artifact、VersionFrontier、C2 descriptor | published-only integration assertion 与 source release lineage query | frontier 扩字段、偷改 10600 |
-| U7 | Suite Adapter、Oracle separation、paired run | B0/B1/B2、Grounding/Product/Authorization 三 Lane、semantic/governance mutations | 用单一总分证明正确 |
-| U8 | Typed Run Projection、Evidence、Demo | Review Inbox、Diff/Impact/Lineage、current vs pending | 仅 UI 才能完成的隐藏操作 |
-| U9 | sandbox、hosted/docker parity、release manifest | 10610 migrations、roles/RLS、semantic contract suite | Neo4j 作为首发必需服务 |
+| U6 | V2 Artifact、VersionFrontier、C2 descriptor | published-only integration assertion、source release lineage query；U13 复用 ResearchBrief/Hypothesis/EvidencePlan/QueryEvidence 输入，完整双窗 delta/Decision 保留在 U13 sidecar；嵌入报告时用 ProjectionBinding | frontier 扩字段、偷改 10600、宣称 AtomicClaim 无损承载双窗 delta 或另造无迁移的 U6 wire evidence |
+| U7 | Suite Adapter、Oracle separation、paired run | B0/B1/B2、Grounding/Product/Authorization 三 Lane；独立 contribution fixture/oracle/mutation 与 ATTRIBUTION_USER_VALUE | 用单一总分证明正确、用户价值或把 arithmetic truth 当 causal truth |
+| U8 | Typed Run Projection、Evidence、Demo | Core：Review Inbox、Diff/Impact/Lineage；F9 delta：Capability/Fallback/Profile Request、Contribution Trace/Residual/Alternatives/Conclusion Badge | 让任一 F9 delta 成为 M2-Core Gate、仅 UI 才能完成的隐藏操作、拒绝后丢失原任务或展示未验证贡献数值 |
+| U9 | sandbox、hosted/docker parity、release manifest | Core：10610 semantic migrations/roles/RLS 与 PostgreSQL-only contract；F9 delta：10620 contribution Authority 与独立 parity | 让 10620/F9 parity 阻断 M2-Core、Neo4j 作为首发必需服务或 Upstash 保存权威 Receipt |
 
 ### 目标仓库增量（Planned Repository Delta）
 
@@ -1588,6 +2084,16 @@ packages/
 │   ├── src/validation/
 │   ├── src/impact/
 │   └── test/
+├── research/src/contribution/
+│   ├── enumerate-ontology-candidates.ts
+│   ├── compile-contribution-plan.ts
+│   ├── verify-contribution-closure.ts
+│   ├── conclusion-policy-verifier.ts
+│   └── deterministic-conclusion-renderer.ts
+├── evals/src/adapters/
+│   └── attribution-user-value.ts
+├── platform/src/contribution/
+│   └── postgres-contribution-authority.ts
 ├── platform/src/semantic/
 │   ├── postgres-semantic-authority.ts
 │   ├── semantic-bootstrap-authority.ts
@@ -1602,18 +2108,25 @@ packages/
 apps/
 ├── worker/src/agents/semantic-maintenance.agent.ts
 ├── worker/src/workflows/semantic-maintenance.workflow.ts
+├── worker/src/runs/descriptive-contribution-runner.ts
 └── web/src/
     ├── app/semantic/
-    └── components/semantic/
+    ├── components/semantic/
+    ├── components/analysis/ContributionTrace.tsx
+    └── features/attribution/capability-view.tsx
 
 infra/supabase/apps/data-agent/
 ├── migration-sources/10610/
+├── migration-sources/10620/
 ├── migrations/20260725010610_app_data_agent_semantic_control_plane.sql
+├── migrations/*_contribution_authority.sql
 └── semantic-migration-maintenance-manifest.json
 
 tests/
 ├── integration/semantic/
+├── integration/descriptive-contribution/
 ├── e2e/semantic-review/
+├── e2e/descriptive-contribution/
 └── deployment/semantic-authority/
 ```
 
@@ -1626,22 +2139,36 @@ flowchart LR
     U101A --> Compat["四项兼容门禁"]
     Compat --> C2a["恢复并完成原 U6-C2a / 10600"]
     C2a --> U6R["完成原 U6 remainder"]
+    U101A --> U130["U13.0 Contribution Contract/Profile Registry"]
     U6R --> U7B["完成原 U7 base"]
     U101A --> U7D1["U7 B0/B1/B2 Fixture 增量"]
+    U130 --> U7AT["U7 Attribution Truth Fixture/Oracle/Mutation Contract"]
+    U7AT --> U131["U13.1 Fixture Endpoint Kernel Candidate"]
+    U6R --> U131
+    U131 --> U7AV["U7 Attribution Feasibility Eval Verdict"]
     U7B --> U8B["完成原 U8 base"]
     U7D1 --> U8B
-    U8B --> U8F["U8 M1 Fixture Evidence Demo 增量"]
-    U8F --> M1["M1 Execution / Need / IR 三 Verdict"]
-    M1 -->|"Execution GO + Governance REQUIRED"| U101B["U10.1b 六平面能力激活与 Closure Policy"]
-    M1 -->|"Execution NO_GO/HOLD"| Replan["停止功能激活；复审 IR/Scope"]
-    M1 -->|"Authority 缺口"| Repair["继续 U10.0/安全正确性修复"]
+    U8B --> M1Core["M1-Core Execution / Need / IR"]
+    U8B --> U8F["U8 M1-F9 Fixture Evidence Demo 增量"]
+    U7AV --> U8F
+    U8F --> M1Attr["M1-F9 Attribution Feasibility"]
+    M1Core -->|"Execution GO + Governance REQUIRED"| U101B["U10.1b 六平面能力激活与 Closure Policy"]
+    M1Attr --> AttrGate{"Attribution Feasibility"}
+    AttrGate -->|"FEASIBLE"| AttrReady["允许 U13.2 等待 U10.3"]
+    AttrGate -->|"NARROW/EXPAND/STOP"| F9Hold["F9 HOLD；Core 继续"]
+    M1Core -->|"Execution NO_GO/HOLD"| Replan["停止功能激活；复审 IR/Scope"]
+    M1Core -->|"Authority 缺口"| Repair["继续 U10.0/安全正确性修复"]
     U101B --> U102["U10.2 PostgreSQL Governance Authority / 10610"]
     U102 --> U103["U10.3 Published-only Bridge + Shared API"]
-    U103 --> U111["U11.1 Agent Maintenance / 可并行"]
-    U103 --> U112["U11.2 Human Review Workspace / 可并行"]
-    U112 --> U8D["U8 Demo/Review 增量"]
-    U103 --> U7D2["U7 Published Governance 增量"]
-    U8D --> U9Pre["U9 Pre-activation Smoke / 无 Published-only 切流"]
+    U102 --> U10620["10620 F9 Authority Foundation / 独立"]
+    U103 --> U132["U13.2 Governed Attribution Experience"]
+    U10620 --> U132
+    AttrReady --> U132
+    U103 --> U111["U11-Core Agent Maintenance / 可并行"]
+    U103 --> U112["U11-Core Human Review Workspace / 可并行"]
+    U112 --> U8D["U8-Core Demo/Review 增量"]
+    U103 --> U7D2["U7 Published Core Governance 增量"]
+    U8D --> U9Pre["U9-Core Pre-activation Smoke / 无 Published-only 切流"]
     U103 --> U9Pre
     U7D2 --> GReady["Governance Readiness Verdict"]
     U9Pre --> GReady
@@ -1651,6 +2178,11 @@ flowchart LR
     U9Post --> Release["M2 Governed L2 Release Verification"]
     U111 --> Release
     U8D --> Release
+    U132 --> U7F9["U7 Attribution Safety + User Value"]
+    U132 --> U8F9["U8 Capability/Fallback/F9 Trace"]
+    U7F9 --> F9Ready["M2-F9 独立 Release Gate"]
+    U8F9 --> F9Ready
+    Release --> F9Ready
 ```
 
 恢复 C2a 的四项门禁只依赖 U10.0/U10.1a：
@@ -1663,13 +2195,17 @@ flowchart LR
 3. U5 全量 regression green；
 4. U6 V2 `VersionFrontier`、research wire hashes 和 C2 descriptor 零 schema diff。
 
-M1 固定 `B2-fixture`：使用 checked-in、hash-pinned 的 Source Fixture，经 U10.1a 编译
+M1-Core 固定 `B2-fixture`，M1-F9 固定独立 attribution fixture；二者使用 checked-in、hash-pinned 的 Source
+Fixture，经 U10.1a 编译
 并由 U10.0 物化；它证明语义正确性效果，不宣称 Candidate/Review 已治理。M2 使用
 `B2-published`：同一 Source/payload 经 U10.2/U10.3 发布，必须与 B2-fixture 结果零
 差异且 `ExecutableSemanticContentDigest` 相同；context-bound version/fence/hash
-预期不同并单独验证，再单独证明治理与安全。M1 以独立
-`ExecutionValueVerdict/GovernanceNeedVerdict/IRCapabilityVerdict` 判定：只有前两者
-分别达到 GO/REQUIRED 才能在用户复审后进入 R9b；执行价值失败停止功能激活，但不能
+预期不同并单独验证，再单独证明治理与安全。M1-Core 以
+`ExecutionValueVerdict/GovernanceNeedVerdict/IRCapabilityVerdict` 判定；M1-F9 以独立
+`AttributionFeasibilityVerdict` 判定。`Execution=GO` 与 `Need=REQUIRED` 控制用户复审后
+是否进入 R9b/Core 治理实现；M1-F9 可并行或稍后完成，Attribution 只控制 U13.2/F9，不作为 U10.1b、U10.2 或
+M2-Core 的依赖。执行价值失败会停止 Core 功能激活；贡献可行性失败只会缩窄、扩 IR 或
+停止 F9，不会
 取消 U10.0 production Authority 和已确认的安全/正确性修复。若主因是当前 IR 的
 NOT_LOWERABLE，则按预注册 decision tree 返回扩 IR、缩 scope 或停止，而非归结为语义
 层无价值。`GovernanceReadinessVerdict` 到 U10.2/U10.3、U11.1/U11.2、U7
@@ -1678,9 +2214,12 @@ published governance/真实 mutation 与 U9 Hosted/Docker pre-activation smoke �
 activate/application-rollback/reactivate smoke，不能形成循环依赖。
 
 Demo 必须防止把 M1 的质量证据误说成治理已完成：全局 Header 持续显示
-`M1/M2`、`B2-fixture/B2-published`，并分开显示
-`Evidence Gate: GO/NO_GO` 与 `Product Release: HOLD/GO/NO_GO`。M1 即使 Evidence
-Gate=GO，Product Release 也必须是 HOLD。第一层展示完整 L2 结论和 material Claim
+`M1/M2`、`B2-fixture/B2-published`、`Evidence Gate: GO/NO_GO`，并使用能力矩阵分别展示
+`Core L2: NOT_REGISTERED/HOLD/DEFERRED/GO` 与
+`Attribution F9: NOT_REGISTERED/HOLD/DEFERRED/GO`。M1 即使 Evidence Gate=GO，Core 仍是
+`HOLD`，Attribution F9 仍为 `NOT_REGISTERED` 且 Fixture Evidence 为 `HOLD`，execution
+Route 不存在；M2-Core 可以为 `GO` 而 F9 继续
+`HOLD/DEFERRED`。第一层展示完整 L2 结论和 material Claim
 变化；第二层分栏展示 correctness、coverage、rejection、latency、cost；第三层才展示
 exact semantic lineage。M1 固定提示“尚未证明 Candidate/Review/Publish 治理”；M2
 单独展示 packet、decision、publish、activation 与 rollback evidence，不宣称它比相同
@@ -1689,8 +2228,9 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
 ### 系统级影响（System-Wide Impact）
 
 - **数据流：** schema/catalog 与业务定义进入 Source Candidate；审批前编译
-  semantic、relationship、runtime-restriction 三个 candidate projection 并由 Packet
-  绑定，A8 发布时重算同 digest 后持久化 published projection；Query 仍走 U5/U6 原链。
+  semantic、relationship、runtime-restriction 三个核心 candidate projection 与有序的
+  content-addressed contribution-profile children，并由 Packet 绑定；A8 发布时重算同
+  digest 后在同一事务持久化 published projection/release/pointer；Query 仍走 U5/U6 原链。
 - **错误传播：** semantic validation/review/publish 错误在 Query 前失败关闭；运行时
   schema drift 继续由 U5/U6 stale/error 语义承接。
 - **状态生命周期：** 新增长期 Source/Release 与短期 Maintenance Run；WAITING_REVIEW
@@ -1702,12 +2242,25 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
   compiled payload 和 runtime `semantic_release_ref`。
 - **部署：** 在 10600 完成后增加 10610 migration/role/RLS；不增加首发基础设施种类。
 - **评测：** U7 新增语义与治理 slice，但不改变各 Benchmark 自己的 Oracle。
+- **归因数据流：** M1 只从 hash-pinned Fixture profile 解析有界 driver closure，并为
+  outcome、每个 driver 和 independently observed residual 的 baseline/follow-up endpoint
+  分别复用 U5→U6 QueryEvidence；它只产出 `KERNEL_CANDIDATE_ONLY/HOLD` 可行性证据。
+  U10.3 后，U13.2 才从 published profile 重放同一静态 endpoint template、生成新的
+  runtime binding、验证 closure/排序并
+  投影非因果 Report；两阶段都不产生第二套 SQL 或 Evidence Authority。
+- **缓存与图：** Upstash 可缓存 exact-release resolver 结果但可全部丢失；Neo4j/U12
+  仍是条件投影，不能影响 profile eligibility、数值、排序或结论等级。
 
 ### 风险与缓解（Risks and Mitigations）
 
 | 风险 | 影响 | 缓解与 Oracle |
 | --- | --- | --- |
 | Source Model 过度抽象，U5 无法消费 | 计划长期停在建模 | U10.1a 先做 current U5 payload compatibility；不支持对象不得进入首发 |
+| Ontology 膨胀为 data+logic+action+security 全平台 | L2 主链被平台化工作拖垮 | KTD43 六 Authority 分权；M1 只发布稳定业务意义与有界 profile |
+| OWL 开放世界泄漏到 Join/DQ/负事实 | “没查到”被误判为不存在或不可 Join | KTD44；开放推理只产 candidate，SHACL/SQL-DQ/Policy 分别签 Receipt |
+| 多个维度贡献被重复相加 | 同一 outcome 被解释多次 | 一次 Run 只绑定一个 exact profile；cross-profile composition typed refusal、AE41 |
+| 贡献 closure 被包装成根因/因果 | 用户把描述性对账当决策证据 | conclusion ceiling、禁词/语义 validator、alternatives/evidence gaps、AE42 |
+| 当前 U5 IR 被 sidecar 绕过 | 无权威 dynamic delta/ratio 数值进入报告 | 预声明 baseline/follow-up endpoint template，运行时绑定 exact QueryEvidence；grouped/dynamic/formula typed refusal、AE38 |
 | Candidate 被误当生产配置 | 未审批语义污染 Query | published-only resolver、独立 schema/RPC、AE17 |
 | Agent confused deputy | 自批、伪造 scope/reviewer | 无危险 Tool、server session principal、DB role/RLS、AE14–AE18 |
 | stale approval | 新 base 上复用旧判断 | packet digest + active generation CAS、AE16 |
@@ -1742,7 +2295,10 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
 - RQ298：固定 `data-agent@85c333e` 核对 U5/U6-C2，补充 dbt、PostgreSQL recursive
   CTE/transaction/RLS/SECURITY DEFINER/runtime limit、Supabase function/Data API、
   Neo4j bookmark 与 OpenMetadata approval 的当前一方文档，并形成兼容修订。
-- 本计划中的 U10/U11、10610 schema、工具、评测和阈值是待实现目标，不是生产事实。
+- RQ310：新增 OWL 2/SHACL 一手证据并复用 PROV-O、MetricFlow、贡献分解、PyRCA、
+  RCAEval 与因果识别边界；结合当前 HEAD 确认 M1 必须使用预声明 additive scalar
+  profile，而不能实现任意 grouped/dynamic contribution。
+- 本计划中的 U10/U11/U13、10610 schema、工具、评测和阈值是待实现目标，不是生产事实。
 
 ---
 
@@ -1808,7 +2364,7 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
   metric、dimension、physical/analytical relationship、binding、U5 可表达的最小
   RuntimeAuthorization 子集与 deterministic refusal，形成 semantic、relationship、
   runtime-restriction 三个 projection，尽快闭合 L2 Evidence Slice。
-- **对应需求：** R4、R6、R7、R9a、R9b；F2；AE13、AE17、AE19、AE29、AE31、AE32、
+- **对应需求：** R4、R6、R7、R9a、R9b、R9d；F2；AE13、AE17、AE19、AE29、AE31、AE32、
   AE35。
 - **依赖：** U1、已完成 U5、U10.0。
 - **文件：**
@@ -1827,6 +2383,22 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
     Nullability；
   - `LowerabilityProof` 遍历所有可达 Formula/dimension/join/grain/binding；只把证明
     `LOWERABLE_TO_U5` 的 Formula 输出到 U5 metric payload，其他 Formula 阻断发布；
+  - 编译 `DescriptiveContributionProfileProjection`：只允许 profile 为 outcome、每个
+    driver 与 independently observed residual 固定静态 `EndpointExecutionTemplate`；每个 template
+    分别绑定 LOWERABLE additive metric ref、baseline/follow-up QueryContract template、
+    fixed predicate AST/hash、expected row0 cell、Ontology identity 与同 datasource/unit/
+    grain/time/filter/snapshot 约束。Profile 必须判别为 `ROW_PARTITION | FORMULA_IDENTITY`：
+    前者另签 `SameMeasureWitness + RowPartitionWitness`，绑定同一 canonical measure AST/
+    hash、aggregation algebra、grain/unit/null policy/universe hash，并证明含
+    NULL/UNKNOWN/cast/collation/OTHER 的 explicit universe 上 driver + residual
+    predicates 互斥完备；后者另签带 sign/unit/grain 的 `FormulaEquivalenceWitness`。未知/
+    混合 kind、不同 metric 偶然相等或 residual 非显式 complement/formula term 均拒绝。
+    Profile 同时固定 stable ordering/declared max bound，并生成只绑定 U6 固定
+    obligation/DIAGNOSTIC binding/artifact-input 上限、固定 `max_sql_executions`、endpoint
+    cost model 与 compiler version 的 `StaticDriverCapacityProof@1`。只有
+    template/accounting/static capacity proof 纳入
+    `ExecutableSemanticContentDigest`；运行时 `EndpointExecutionBinding` 的 principal、snapshot、
+    PolicyReceipt 和五轴不得混入 profile digest。这一步只准备 U13，不自行执行贡献；
   - 在同一 `U5_EXECUTABLE_SUBSET` 中编译最小 `RuntimeAuthorization`：table/column
     DENY/RESTRICT，以及可逐字规范化为当前 `mandatory_predicates` 的 comparison/null
     predicate；输出 immutable `RuntimeRestrictionProjection` 与 source/compiler/
@@ -1880,7 +2452,14 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
     purpose/masking/复杂 ABAC/grant 稳定 typed HOLD，policy/source/compiler/generation
     任一 mutation 改变 digest 或失败关闭；
   - `semantic-content-digest.spec.ts`：相同 executable content 在 fixture/published
-    context digest 相同；metric/relation/binding mutation 必须改变 digest；
+    context digest 相同；metric/relation/binding/contribution-profile mutation 必须改变
+    digest；
+  - `descriptive-contribution-lowering.spec.ts`：完整 endpoint templates/runtime bindings、independently
+    observed residual 与 kind-specific witness 可编译；缺任一 baseline/follow-up template、
+    predicate hash、expected cell、same-measure/null/collation/complement/partition witness 或
+    FormulaAST sign/equivalence witness，或出现未知/混合 kind、不同 metrics 偶然闭合、
+    grouped/dynamic/ratio/nonlinear post-aggregate、cross-unit/grain/time 与不稳定 closure 时
+    固定拒绝；
   - `semantic-source-subset.spec.ts`：M1 fixture 只能是同一 SourceBundle exact subset，
     禁止第二个可写 source；M2 compiler 必须重现 subset content digest；
   - `semantic-impact.spec.ts`：metric/relation/binding 影响可重放且 hash-stable；
@@ -1896,9 +2475,9 @@ payload 的 M1 又产生一次质量提升。状态组合、文案和层级由 U
 - **目标：** M1 execution/need verdict 通过后，启用 U10.1a 已冻结的
   `SemanticSourceBundle@1` 六平面、五类关系与完整 FormulaAST 能力，并冻结生产关系
   闭包资源合同；不另建 Source schema，不扩现有 U5 可执行 IR。
-- **对应需求：** R4、R7、R9b；F8；AE13、AE19。
+- **对应需求：** R4、R7、R9b、R9d；F8；AE13、AE19、AE38–AE40。
 - **依赖：** `ExecutionValueVerdict=GO`、`GovernanceNeedVerdict=REQUIRED`、用户复审
-  与 U10.1a。
+  与 U10.1a。`AttributionFeasibilityVerdict` 不属于 U10.1b/Core 依赖。
 - **文件：**
   - `packages/contracts/src/artifacts/semantic-governance.ts`
   - `packages/semantic/src/model/`
@@ -2269,11 +2848,351 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
   - `feat(web): add semantic governance workspace`
   - `test(e2e): cover semantic review and rollback flows`
 
+### U13. Ontology-guided Descriptive Contribution
+
+#### U13.0 Contribution Contract、Profile Registry 与兼容门禁
+
+- **目标：** 冻结 R9d 的内部值合同、Reason Code、method applicability、conclusion
+  level 和 `DescriptiveContributionProfileProjection`，不修改现有 U5/U6 wire。
+- **对应需求：** R3、R4、R6、R9d；F9；AE38–AE43。
+- **依赖：** U10.1a Source/Compiler contract；可以与 C2a 并行，但不能激活运行时。
+- **文件：**
+  - `packages/contracts/src/artifacts/semantic-governance.ts`
+  - `packages/contracts/src/artifacts/descriptive-contribution.ts`
+  - `packages/contracts/src/artifacts/conclusion-authority.ts`
+  - `packages/semantic/src/model/descriptive-contribution-profile.ts`
+  - `packages/semantic/src/model/endpoint-lowering-rule-set.ts`
+  - `packages/semantic/src/model/u13-property-owner-map.ts`
+  - `packages/semantic/src/compiler/compile-descriptive-contribution-profile.ts`
+  - `packages/semantic/src/validation/descriptive-contribution-lowerability.ts`
+  - `packages/contracts/test/semantic-governance-wire.spec.ts`
+  - `packages/semantic/test/descriptive-contribution-profile.spec.ts`
+  - `packages/semantic/test/descriptive-contribution-lowering.spec.ts`
+- **方法：**
+  - profile 是同一 `SemanticSourceBundle@1` 的受治理子结构；compiler 生成
+    content-addressed `descriptive_contribution_profile_projection` child，父 executable
+    semantic projection 的 canonical manifest 覆盖全部 child ref/digest，Source Release
+    事务原子绑定二者。它不是第二个 Source/active pointer/version axis，也不能脱离父
+    release 被单独覆盖或激活；
+  - compiler 在 publish 前把 Ontology traversal 固定为有界 driver closure；outcome、每个
+    driver 与 independently observed residual 一一对应 U5-compatible
+    `EndpointExecutionTemplate`，每个 template 只包含 baseline/follow-up QueryContract template、
+    fixed predicate AST/hash、expected row0 cell 与静态 datasource/unit/grain/time contract；
+    runtime 才创建 `EndpointExecutionBinding`，实例化 QueryContract、principal/scope、
+    snapshot/PolicyReceipt 与 exact `SEMANTIC × SCHEMA × DATA × POLICY × IDENTITY`
+    frontier，只进入 certificate/Receipt subject 而不进入 profile digest；residual 不可省略且不得由
+    closure error 回填；
+  - profile 判别 `ROW_PARTITION | FORMULA_IDENTITY` 并冻结 kind-specific accounting
+    witness；Row Partition 证明同 canonical measure 与含 NULL/UNKNOWN/OTHER 的 explicit
+    universe，Formula Identity 证明 canonical FormulaAST signed equivalence。Accounting
+    witness 与数值 closure 相互独立，任一缺失都不可执行；
+  - compiler 生成 `StaticDriverCapacityProof@1`：只绑定 declared bound、U6 固定
+    obligations/DIAGNOSTIC bindings/artifact inputs、固定 `max_sql_executions`、endpoint cost
+    model `2 * (driver_count + 2)` 与 semantic/compiler version；该证明进入 profile digest。
+    每个 Run 的实际剩余/预留 SQL 预算由 `RunDriverBudgetAdmission@1` 另行判断并只进入
+    runtime subject；它绑定 fence/idempotency/reservation/expiry，并与 U4 lease/fence、Budget
+    Ledger 同事务维护 `RESERVED→CONSUMED | RELEASED | EXPIRED`；当前 16 SQL 的静态绝对上限
+    为 6 drivers，运行时只能收紧；
+  - 冻结 `EndpointLoweringRuleSet@1`：按 node kind 规定 source predicate/FormulaAST 到
+    QueryContract filter、SemanticQuery TypedPredicate、LogicalPlan operation 与 SQL parameter
+    binding 的允许映射，包含 canonicalization/version、NULL/cast/collation/timezone、rule ID
+    与完整 node correspondence；`EndpointLoweringCertificate@1` 逐端绑定 exact rule-set
+    digest、canonical predicate/FormulaAST path、
+    QueryContract instance、GroundingPackage/LogicalPlan、SqlArtifact/parameters、NULL/cast/
+    collation/time 语义与实际 QueryEvidence；生成 compiler 不得自行关闭 Gate，必须由独立
+    verifier capability/image 或可由独立小 checker 重放的 certificate 验证；
+  - 冻结 `ContributionSubjectManifest@1` canonicalization，并把其单一 digest 作为
+    `ContributionReceiptSubject@1`：覆盖 exact profile/release、endpoint template/runtime binding hashes、
+    static capacity/run budget admission、逐端 lowering certificates/rule-set、两端
+    QueryEvidence refs/result hashes、`DerivedDeltaObservationSet`、accounting proof
+    ref/content hash/version、owner-map release、method/kernel/compiler/verifier image、
+    完整 frontier、principal/scope、input/output hash 与
+    `closure_verdict=PASS | HOLD | REFUSE`，同时冻结数组顺序、重复项
+    拒绝与 exact decimal encoding；signer/verifier 只从该 closure 重放，消费时按 origin
+    重验 currentness：Fixture 只验证 immutable fixture manifest exact digest 且禁止读
+    production active pointer，Published 才验证 active release/status ledger/
+    supersession/activation sequence；对应 lookup 失败即 `HOLD`；
+  - 冻结 `U13PropertyOwnerMapRelease@1` 与 `ConclusionSignatureAuthority@1` contract。前者
+    把 canonical property path/pattern 映射到唯一 owner capability、required signer
+    roles/quorum、proof-verifier role 与 delegation policy，并定义 active pointer、activation
+    sequence、append-only status 和 `RelationshipPromotionReceipt` subject；后者冻结
+    domain-separated canonical signing bytes、`ConclusionPolicyRelease`、`SignerAssignment`、
+    `VerificationKeyRevision`/trust root、algorithm policy、single-use nonce 与 currentness
+    contract。U13.0 只定义 wire/canonicalization；M1 使用 checked-in
+    `FixtureConclusionPolicyManifest@1` 与后置 U7 `FixtureConclusionDecisionSeal@1`，不实现
+    key/nonce/rotation 或消费授权；M2 才由 10620 PostgreSQL Authority 持久化；
+  - 冻结
+    `ConclusionSubjectManifest@1 → ConclusionPolicyDecisionEnvelope@1`：Decision subject 绑定 exact
+    ContributionReceiptSubject、完整 payload/ClaimAST、policy release/digest、verifier/rule/
+    model/data image、inputs/evidence selectors、terminal/result、principal/scope、render mapping
+    与 activation sequence；Envelope 另冻结 signer principal/capability、key id/algorithm/
+    signature bytes、verifier identity/image、issued-at/expiry/nonce 和 owner-map/policy activation
+    sequence；consumer 从 target path/owner-map 推导 authority，校验允许的 signer/verifier
+    pair、验签结果与 currentness，不接受 Receipt 自报 owner 或调用方另传 payload；
+  - 冻结 `AttributionQuestionContractValue`、`SemanticAttributionContextValue`、
+    `DescriptiveContributionPlanValue` 和 `ContributionClosureValue` 纯值；它们不是新的
+    U6 wire Artifact。U13 复用现有
+    `ResearchBrief@2 → HypothesisSet@2 → EvidencePlan@2 → QueryEvidence@2` 作为查询与原始
+    cell 证据输入；完整双窗差值另由 U13-owned `DerivedDeltaObservationSet@1` 逐项绑定
+    baseline/follow-up QueryEvidence+cell hash、减法方向、unit、derived delta、五轴 frontier
+    与 derivation image。现有 `AtomicClaim@2` 不具 operand-pair/delta binding，不能宣称
+    无损承载 contribution closure；它最多生成明确标注为有损的兼容摘要。若 authoritative
+    F9 结论嵌入 U6 AnalysisReport，必须另有 `ConclusionProjectionBinding@1` 绑定 exact
+    AtomicClaim、ReportManifest/report segment hash、Decision Envelope 与 current
+    `AttributionConclusionUseDecision@1`，否则仅为 non-authoritative commentary。全链保留
+    `L2_NON_CAUSAL`、`BOUNDED_HYPOTHESIS_UNIVERSE`；
+  - Reason Code 至少包含 `CONTRIBUTION_FORMULA_NOT_LOWERABLE`、
+    `CONTRIBUTION_METHOD_NOT_APPLICABLE`、`CONTRIBUTION_PROFILE_STALE`、
+    `CONTRIBUTION_ENDPOINT_BUNDLE_INCOMPLETE`、`CONTRIBUTION_PARTITION_NOT_CLOSED`、
+    `CONTRIBUTION_PARTITION_PROOF_INVALID`、`CONTRIBUTION_GRAIN_OR_UNIT_MISMATCH`、
+    `CONTRIBUTION_SNAPSHOT_MISMATCH`、`CONTRIBUTION_CLOSURE_FAILED`、
+    `CONTRIBUTION_DECOMPOSITION_KIND_UNSUPPORTED`、
+    `CONTRIBUTION_ACCOUNTING_IDENTITY_UNPROVEN`、
+    `CONTRIBUTION_NULL_OR_COLLATION_SEMANTICS_UNPROVEN`、
+    `CONTRIBUTION_LOWERING_EQUIVALENCE_UNPROVEN`、
+    `CONTRIBUTION_LOWERING_RULE_SET_STALE`、
+    `CONTRIBUTION_LOWERING_SUBJECT_MISMATCH`、
+    `CONTRIBUTION_DRIVER_BUDGET_EXCEEDED`、
+    `CONTRIBUTION_RUN_BUDGET_ADMISSION_FAILED`、
+    `CONTRIBUTION_RECEIPT_SUBJECT_MISMATCH`、`CONTRIBUTION_RECEIPT_STALE_OR_REVOKED`、
+    `CONCLUSION_POLICY_SUBJECT_MISMATCH`、`CONCLUSION_POLICY_STALE_OR_REVOKED`、
+    `CONCLUSION_SIGNER_VERIFIER_NOT_ALLOWED`、
+    `CONCLUSION_KEY_NOT_CURRENT`、`CONCLUSION_NONCE_REPLAYED`、
+    `CONCLUSION_PROJECTION_BINDING_INVALID`、
+    `CONTRIBUTION_CAUSAL_CLAIM_FORBIDDEN`；
+  - 方法注册表可描述 Kitagawa/PVM/LMDI/Shapley/topology RCA 的 eligibility 和拒绝，
+    但 activation 固定为 `DEFERRED/HOLD`，不得提供可绕过 U5 的 executor。
+- **测试场景：** stable ID/alias、OWL open-world negative、SHACL processor/entailment
+  version、profile canonical hash/release binding、driver ordering/static capacity/run admission、完整 endpoint template/runtime binding、
+  independently observed residual、Row Partition same-measure/null/collation/complement 与
+  Formula Identity sign/equivalence witness、逐端 lowering rule-set translation validation、U13
+  owner-map/pointer/delegation/signer/key/nonce negative、DerivedDelta/ProjectionBinding、
+  Receipt/Conclusion subject canonicalization/currentness、同
+  datasource/unit/grain/time/filter/snapshot、base aggregate endpoint lowerability、ratio/
+  grouped/dynamic refusal、U5/U6 schema/hash zero diff。
+- **验证：** semantic contract/unit、U5 projection compatibility 和 U6 wire fixture
+  全绿；没有新增 U6 Artifact type、VersionFrontier 字段或 10600 migration。
+- **Commit：** `feat(semantic): add u5-compatible contribution profiles`
+
+#### U13.1 Fixture Endpoint Kernel Feasibility
+
+- **目标：** 只在 M1 受控 Fixture 验证确定性 profile enumeration、endpoint evidence
+  composition、partition/closure verifier 与结论边界，输出
+  `KERNEL_CANDIDATE_ONLY/HOLD` 与可供 U7 独立判定的 `AttributionKernelEvidence@1`；本单元
+  不自行签发 `AttributionFeasibilityVerdict`，不注册 F9，也不生成可供用户依赖的产品
+  归因结论。
+- **对应需求：** R3、R4、R6、R9d；F9 feasibility（非产品注册）；AE38–AE44。
+- **依赖：** U10.0、U10.1a、U13.0、C2a、U6 base/remainder，以及先于本单元冻结的 U7
+  `retail-revenue-contribution-v1` Truth Fixture/Oracle/Mutation Contract；M1 只消费
+  hash-pinned `origin=FIXTURE` profile；Core L2 保持 `HOLD`，Attribution F9 保持
+  `NOT_REGISTERED`，Fixture Evidence 保持 `HOLD`。
+- **文件：**
+  - `packages/research/src/contribution/enumerate-ontology-candidates.ts`
+  - `packages/research/src/contribution/compile-contribution-plan.ts`
+  - `packages/research/src/contribution/verify-endpoint-lowering.ts`
+  - `packages/research/src/contribution/derive-delta-observations.ts`
+  - `packages/research/src/contribution/verify-contribution-closure.ts`
+  - `packages/research/src/contribution/fixture-conclusion-policy-checker.ts`
+  - `packages/research/src/contribution/fixture-conclusion-decision-sealer.ts`
+  - `packages/research/src/contribution/conclusion-policy-verifier.ts`
+  - `packages/research/src/contribution/deterministic-conclusion-renderer.ts`
+  - `packages/research/test/contribution-enumerator.spec.ts`
+  - `packages/research/test/contribution-plan.spec.ts`
+  - `packages/research/test/contribution-closure.spec.ts`
+  - `packages/research/test/derived-delta-observation.spec.ts`
+  - `packages/research/test/conclusion-policy.spec.ts`
+  - `apps/worker/src/runs/descriptive-contribution-runner.ts`
+  - `apps/worker/test/runs/descriptive-contribution-runner.spec.ts`
+- **方法：**
+  - enumerator 只读取 exact profile closure，不能调用 raw ontology/graph search，也不能
+    接受 Agent 提供数字或新 driver；
+  - Fixture runner 为 outcome、每个 driver 和 independently observed residual，分别按
+    frozen `EndpointExecutionTemplate` 创建当前 U5 能表达的 baseline 与 follow-up 单
+    metric QueryContract，并生成运行时 `EndpointExecutionBinding`；
+    每端 expected row0 cell、predicate AST/hash、semantic/schema/data/policy refs 必须逐字
+    对齐，并以 `SameFrontierWitness` 证明五轴（含 IDENTITY）完全相同；全部 actual SQL 绑定
+    exact scope、fixture release、policy 与同一 U6
+    `CONTROLLED_REVISION` snapshot/visibility；
+  - 运行前先验证 profile 的 `StaticDriverCapacityProof@1`，再生成
+    `RunDriverBudgetAdmission@1`，绑定 Run 开始时可用 SQL、为非贡献步骤保留的 SQL、实际
+    endpoint/driver 数、U6 obligation/DIAGNOSTIC binding/artifact-input capacity、run fence、
+    question/profile hash、reservation/idempotency/sequence/expiry/state 与 verdict；reserve/
+    consume/release 和 U4 lease/fence、Budget Ledger 同事务，crash-before-consume 可幂等恢复或
+    过期释放，crash-after-consume 保持计费，新 fence 必须重新准入；
+    整个 Run 有 16 SQL 可用的最宽情况下 driver 不得超过 6，任一预算被其他步骤占用时
+    继续收紧；超限不分批，直接 `CONTRIBUTION_RUN_BUDGET_ADMISSION_FAILED`；
+  - 独立 lowering verifier 消费 current `EndpointLoweringRuleSet@1`，为每端签发
+    `EndpointLoweringCertificate@1`，逐 node 证明 canonical
+    AST、QueryContract、LogicalPlan/SqlArtifact、参数和实际 QueryEvidence 等价；generator
+    自洽但语义错误、大小写/collation、NULL complement、predicate parameter 或 artifact
+    digest 漂移时，即使 closure=0 也失败；
+  - Kernel 只能从两端 `QueryEvidence` 计算 signed delta；Agent、Ontology 或 Profile 不得
+    直接提供数值。每项差值写入 `DerivedDeltaObservationSet@1`，绑定两端 evidence/cell
+    hash、运算方向、unit、frontier 与 derivation image；closure verifier 只消费该 sidecar。
+    `RowPartitionWitness | FormulaEquivalenceWitness` 必须先独立通过，数值 closure 不能替代
+    accounting identity；现有 AtomicClaim 只允许可选、有损、非 F9-authoritative 摘要；
+  - safe integer/minor unit、tolerance 0 验证
+    `computed_closure_error = Δoutcome - ΣΔdriver - Δindependently_observed_residual`；
+    closure PASS 要求 error 为 0。computed error、observed residual 与
+    `unexplained_remainder` 是三个不同字段，任何路径不得用前者回填后两者；JS `number`
+    之外的数值或未来 decimal policy 不在 M1 猜测，直接 typed refusal；
+  - `ContributionItemSet` 只容纳同一 accounting identity 的 signed items，并按 absolute
+    contribution、profile stable order、stable ID 排序；topology/event/anomaly/association
+    不得混入该集合，而应进入未来按 kind 独立准入、独立 score 的
+    `InvestigationCandidateSet`；一次 Run 只绑定一个 profile，保留 alternatives 与 gaps；
+  - Receipt subject 对 profile/template/binding/evidence/proof/image/frontier/principal/scope 与
+    `closure_verdict=PASS | HOLD | REFUSE` 形成 canonical hash；该字段不是 Attribution
+    Feasibility。Verifier 不接受调用方注入替代 evidence，stale/revoked/
+    superseded/wrong-scope/rollback generation 都拒绝；
+  - M1 使用 checked-in、hash-pinned、`origin=FIXTURE` 的
+    `FixtureConclusionPolicyManifest@1` 校验 U13.1 typed `FixtureConclusionCandidate@1`；后置
+    U7 才把 exact Truth Contract、Kernel Evidence、candidate 与 checker version seal 为内容
+    寻址 `FixtureConclusionDecisionSeal@1`。Seal 不含 key/nonce/rotation，不生成 UseDecision，
+    也不能连接 10620、production active pointer 或 F9 Route；
+  - M1 只从该 Seal 展示非产品 Fixture evidence；Published authoritative content 才来自
+    `ConclusionPolicyDecisionEnvelope@1` subject 闭合的 typed 判别联合。只有
+    `ASSERT.claim_ast` 有 Claim Authority，ABSTAIN/REFUSE 不携带可渲染 ClaimAST。M1 对
+    manifest/candidate/seal 逐字段替换失败。生产 payload/policy/signer/verifier/currentness、
+    伪造签名、wrong-role、nonce replay、expired/rotated key 与 Decision status 测试全部移入
+    U13.2/10620，不得在 U13.1 搭建替身。LLM prose、引文、retrieved text、table/code 是
+    non-authoritative commentary；M1 只生成 Fixture feasibility artifact，不能发布产品
+    `ContributionItemSet`。数字、符号、排序、truth-kind 转换、新 relation/modality、checker
+    abstention 或越权文案变化都使 feasibility Case 失败。
+- **测试场景：** `+20/-15/residual 0/outcome +5`、cancellation、unknown/mixed kind、不同
+  metrics 偶然闭合与下一 snapshot 失配、NULL/UNKNOWN/overlap/gap/OTHER/cast/collation/
+  open enum、FormulaAST sign/equivalence、lowering generator-correlated/self-consistent wrong
+  template、missing/duplicate/sign flip/extra driver、driver budget boundary/+1、wrong row/
+  reservation crash-before/after-consume、same/new-fence retry、expiry/release、wrong row/snapshot、
+  Receipt subject 替换/stale/revoked/superseded/rollback/wrong-scope、fixture manifest/candidate/
+  seal tamper/mismatch、cross-profile
+  double count、stable tie、graph candidate injection、显式/隐式/否定/引述/反驳/跨句因果
+  语言与 Agent number mutation。
+- **验证：** 本提交只要求 Research/Worker unit + integration、existing Artifact 的有损兼容
+  投影测试、U5/U6 regression，以及对预冻结 U7 Truth Fixture/Oracle/Mutation Contract 的
+  Kernel evidence 全绿；输出仍为 `KERNEL_CANDIDATE_ONLY/HOLD`。随后由独立 U7 提交消费
+  `AttributionKernelEvidence@1` 并签发 `AttributionFeasibilityVerdict`，再由 U8 E2E 展示；
+  Core L2 保持 `HOLD`，Attribution F9 保持 `NOT_REGISTERED`，Fixture Evidence 保持
+  `HOLD`，F9 Route 必须不存在。
+- **Commit：** `feat(research): add deterministic ontology contribution kernel`
+
+#### U13.2 Governed Attribution Experience
+
+- **目标：** 在 M2 把同一 profile 从 Fixture 切到 `B2-published`，补齐 PostgreSQL
+  current resolver、Agent Tool、真实 mutation、Trace、Demo 和 Hosted/Docker parity。
+- **对应需求：** R3、R5、R6、R9b、R9c、R9d；F8–F9；AE40–AE47。
+- **依赖：** M1 的 Execution/Need/IR/Attribution Feasibility 四 Verdict 与用户复审、
+  U10.2/U10.3、U13.1；只有 Attribution Feasibility=`FEASIBLE_FOR_PUBLISHED_INTEGRATION`
+  才进入本单元。它必须晚于 published-only bridge，可与 U11.1/U11.2 并行，但失败只令 F9
+  `HOLD`，不阻断 M2-Core。
+- **文件：**
+  - `infra/supabase/apps/data-agent/migration-sources/10620/`
+  - `infra/supabase/apps/data-agent/migrations/*_contribution_authority.sql`
+  - `packages/platform/src/contribution/postgres-contribution-authority.ts`
+  - `packages/platform/src/contribution/attribution-capability-directory.ts`
+  - `packages/platform/src/contribution/attribution-profile-request-authority.ts`
+  - `packages/research/src/contribution/conclusion-policy-verifier.ts`
+  - `packages/research/src/contribution/deterministic-conclusion-renderer.ts`
+  - `packages/evals/src/adapters/attribution-user-value.ts`
+  - `apps/web/src/features/attribution/capability-view.tsx`
+- **方法：**
+  - published resolver 只返回 current exact release/profile；Draft/Rejected/Stale 与图
+    candidate 永不进入运行时；
+  - Agent 只获 `plan_contribution/get_contribution_status/explain_receipt` 等窄 Tool，
+    不获 profile mutation、approve/publish、数字编辑、raw SQL/Cypher；
+  - F9 产品分支在标准 L2 工作台旁对 Web/API/Agent 对等提供
+    `AttributionCapabilityDirectory@1/list_attribution_capabilities`。Directory 必须按
+    server-resolved principal 的 app/tenant/environment/domain/datasource/policy scope 过滤；
+    未授权 metric/profile 不可枚举。用户提交“为什么
+    变化”后冻结 original question/identity/scope，再生成
+    `AttributionEligibilityDecision@1`；它重新绑定六轴与 Directory ref/hash，先鉴权后查找，
+    只有已授权可见 metric 才能返回 `NO_PROFILE | NOT_LOWERABLE | STALE` 与 exact ref；猜测
+    ref、未授权、不存在或 policy 不确定统一返回无 object ref/name/count、精确原因或可区分
+    timing 的外部等价 `UNAVAILABLE_FOR_PRINCIPAL`。只有全局 `Attribution F9=GO`、current exact profile
+    可见且 Decision=`SUPPORTED` 才调用 U13.2 execution Route。`F9_NOT_REGISTERED |
+    NO_PROFILE | NOT_LOWERABLE | STALE | UNAVAILABLE_FOR_PRINCIPAL` 均保留原问题并返回
+    稳定 next action；
+  - 为避免 Release Gate 自循环，U13.2 的 Safety/User Value/Hosted-Docker 验证通过独立
+    `attribution_release_candidate_evaluator` capability 调用 hash-pinned release candidate，
+    其 principal 不属于 Web/API/Agent 产品 scope，结果只能写 Release Evidence，不能注册
+    Route 或生成用户可见权威结论；目标用户只经 `AttributionEvaluationSession@1` 的
+    participant-scoped、watermarked、不可导出 preview 完成盲测，Session 绑定 protocol、
+    candidate/data/policy digest、TTL 与审计且禁止产品 Tool/U6 authority projection；所有 Gate 通过并把 F9 状态原子切为 `GO` 后，产品
+    execution Route 才接受 `SUPPORTED` Decision；
+  - `AttributionProfileRequest@1` 不是一次性表单，也不是第二套治理状态机：它绑定 original
+    question ref/hash、dedupe key、requester scope 与 owner/U11 Inbox，状态仅为
+    `DRAFT | SUBMITTED | DEDUPED | TRIAGED | LINKED | DECLINED | CLOSED | EXPIRED | WITHDRAWN`。
+    requester `DRAFT→SUBMITTED`；Request Authority `SUBMITTED→DEDUPED|TRIAGED`；profile owner
+    独占 `TRIAGED→DECLINED`；A7 通过既有 U10 API 独占 `TRIAGED→LINKED`；Request Authority
+    只在消费 U10 terminal receipt 后 `LINKED→CLOSED`。expiry/withdraw 只终结 request，不撤销
+    Candidate。`DEDUPED/DECLINED/CLOSED/EXPIRED/WITHDRAWN` 为终态；DEDUPED 只生成
+    requester-scoped opaque subscription，普通 requester 只能读取脱敏状态，raw canonical、
+    requester/question/reason/lineage 由 FORCE RLS + request-read capability 保护。所有迁移
+    expected-state CAS，与 Outbox 原子提交，交叉 actor、非法倒退/冲突 retry 拒绝，exact retry
+    幂等；requester 不能 approve/publish；
+  - 每个 U13 reason code 冻结 `UI state + 必显解释 + 输入保留规则 + Web/API/Tool
+    next_actions` 映射：可选动作只能来自继续标准 L2 Report、刷新 currentness、缩窄
+    metric/window、提交 ProfileRequest、稍后重放或取消；不可执行动作不显示；
+  - 以独立 10620 migration（编号实现前复核 registry）持久化不可变
+    `U13PropertyOwnerMapRelease/Pointer/Status`、owner/signer/verifier capability assignment、
+    `RelationshipPromotionReceipt`、`ContributionClosureReceipt`/status、
+    `DerivedDeltaObservationSet`、`ConclusionPolicyRelease`、`SignerAssignment`、
+    `VerificationKeyRevision`/trust-root/status、`ConclusionPolicyDecisionEnvelope`/status、
+    nonce consumption、`ConclusionProjectionBinding` 与 `AttributionProfileRequest`/status；
+    所有对象都绑定 exact scope/release/generation/content digest，并由独立 A11 narrow RPC
+    管理，service role/runtime resolver 无 DML；
+  - `ConclusionSignatureAuthority@1` 使用 domain-separated canonical bytes，按 current
+    ConclusionPolicyRelease、SignerAssignment、VerificationKeyRevision/trust root 与 algorithm
+    policy 验签；消费 RPC 在同一 PostgreSQL transaction/authority fence 下完成 Decision/
+    Receipt currentness、key status、activation sequence、single-use nonce check-and-consume，
+    并生成单一 `AttributionConclusionUseDecision@1`。它必须同时绑定 Contribution Receipt 与
+    Conclusion Decision 的 current status sequence、server-resolved principal、app/tenant/
+    environment/domain/datasource、run、report/segment 或 response hash、route、purpose、audience、
+    issued-at/expiry 与 nonce-consumption transaction；它不是 bearer authorization，每次权威渲染
+    重新鉴权，跨上下文或撤权后重放拒绝。任一 lookup unavailable、
+    wrong role、revoked/rotated key、重复 nonce 或 stale sequence 均失败关闭；
+  - `B2-published` 必须重现 M1 的静态 template/profile content digest、closure 与
+    ordering；runtime `EndpointExecutionBinding` 的 context/frontier ref/hash/version 按预期不同、
+    有 lineage 且只进入各自 certificate/subject；
+  - 只有本单元可以注册 F9，并生成
+    `PublishedAttributionSafetyVerdict=GO | HOLD | STOP`；产品结论最高为
+    `CONTRIBUTION`，`InvestigationCandidateSet` 与 causal support 仍不在本单元准入范围；
+  - F9 authoritative content 保留在 U13 sidecar；若嵌入标准 U6 AnalysisReport，必须生成
+    `ConclusionProjectionBinding@1`，绑定 exact AtomicClaim/ReportManifest/report segment
+    hash、Decision Envelope 与同次 current `AttributionConclusionUseDecision@1`。该 Decision
+    同时闭合 Contribution Receipt/Conclusion currentness；原生 F9 response 也绑定 exact response
+    hash。缺失或 stale 时，该
+    segment 必须降级为 non-authoritative commentary，不能借 AtomicClaim 获得 F9 Authority；
+  - Web 展示 Core L2 与 Attribution F9 两个独立 release status，并展示 metric/profile、
+    Ontology path、QueryEvidence、signed waterfall、residual、
+    alternatives/gaps、conclusion badge 与题目/Oracle/Trace；所有信息也能经 API/Tool 获得；
+  - PostgreSQL-only 是 READY 基线；Upstash 丢失重建，Neo4j/U12 缺失不影响能力；
+  - 独立 `ATTRIBUTION_USER_VALUE` Lane 以标准 L2 报告为 baseline，目标用户/领域专家盲测
+    主贡献项识别、证据导航、time-to-insight、非因果边界理解、下一步选择、校准与拒绝后
+    恢复；预注册阈值/CI/停止规则，不能用 Safety 分数抵消。
+- **测试场景：** published/draft/stale/rollback、cross-scope/RLS、profile generation drift、
+  forged Decision signature、wrong-role、nonce replay、expired/rotated key、Decision status unavailable、
+  cache loss、Neo4j stale/down/divergent、principal-filtered capability discovery/不可枚举泄漏、
+  F9-not-registered/unsupported/stale eligibility、L2 fallback、profile request 去重/撤回/过期/
+  发布后原问题重放、reason-code/next-action 对等、ProjectionBinding segment/status mutation、
+  user-value blind test、Hosted/Docker parity、键盘/读屏/窄屏和禁词。
+- **Commits：**
+  - `feat(worker): compose published descriptive contribution runs`
+  - `test(evals): add descriptive contribution oracle and mutations`
+  - `feat(web): expose non-causal contribution evidence`
+  - `test(deploy): verify postgres-only contribution parity`
+
+#### U13.3 Advanced Decomposition 与 RCA（DEFERRED/HOLD）
+
+不属于 M1/M2 完成条件。只有独立计划扩展 U5 或引入同等受治理的确定性 Formula
+Execution Authority，并证明 method applicability、hybrid-state validity、closure、预算、
+不确定性和因果边界后，才可分别激活 ratio/Kitagawa、PVM、LMDI、exact/approximate
+Shapley 与 topology RCA。该单元不能借“注册表已有条目”跳过重新批准。
+
 ### U7/U8/U9 增量提交
 
-- **U7 对应需求：** R4、R6、R9a、R9c；AE19、AE30、AE32、AE35。
-- **U8 对应需求：** R3、R6、R8、R9；AE19、AE25。
-- **U9 对应需求：** R5、R9；AE20、AE23、AE25、AE28、AE33–AE34。
+- **U7 对应需求：** R4、R6、R9a、R9c、R9d；AE19、AE30、AE32、AE35、AE38–AE43。
+- **U8 对应需求：** R3、R6、R8、R9；AE19、AE25、AE42–AE44。
+- **U9 对应需求：** R5、R9；AE20、AE23、AE25、AE28、AE33–AE34、AE45。
 - **U7 方法与验证：**
   - 定义 `ArmGroundingOutcome`、`ArmInformationManifest@1` 和三个 adapter；B0/B1
     repository dependency injection 不提供 B2 port，benchmark capability 不能
@@ -2286,7 +3205,19 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
     不得作 grounding 单处理变量归因；
   - calibration/public、hidden holdout 与 M2 governance case set 不重叠；每臂独立
     cache/session/process namespace，顺序随机或平衡，盲评保存完整 transcript；
-  - M1 固定输出 Execution Value、Governance Need、IR Capability 三份 verdict；
+  - 独立建立 `retail-revenue-contribution-v1` Suite，不复用 U6 controlled fixture 充当
+    Benchmark/Release Evidence；以判别联合分别保存 `ArithmeticPartitionTruth`、
+    `InjectedFaultTruth`、`ExpertInvestigationPriorityLabel`、`SCMCausalTruth`，并为每类
+    冻结 provenance、适用域、label owner、uncertainty 与 conclusion ceiling；普通描述性
+    Case 明确 causal truth absent。执行 closure/metamorphic/non-causal-language Oracle；
+    contribution error、RCAEval Top-k 与 DAB/InsightBench product score 分开输出。该 Suite
+    的 hash-pinned Truth Fixture、Oracle contract、Mutation catalog 与 evaluator interface
+    必须在 U13.1 前独立提交；U13.1 只能消费它们，不能改写 expected truth。U13.1 产生
+    `AttributionKernelEvidence@1` 后，再由后置 U7 Eval 盲化运行 Oracle/mutation 并签发
+    `AttributionFeasibilityVerdict`，Kernel 不能自评通过；
+  - M1-Core 独立输出 Execution Value、Governance Need、IR Capability；M1-F9 独立输出
+    Attribution Feasibility，不能合并成一个四项全过才继续的 Gate。Attribution 即使可行也只为
+    `FEASIBLE_FOR_PUBLISHED_INTEGRATION/KERNEL_CANDIDATE_ONLY/HOLD`，不注册 F9；
     U10.2/U10.3、U11.1/U11.2、U7 published governance/真实 mutation 与 U9
     Hosted/Docker pre-activation smoke 全部完成后再输出 Governance Readiness；
     该 smoke 禁止切到 `PUBLISHED_ONLY`。READY 后的 activation/rollback/reactivation
@@ -2301,14 +3232,27 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
   - `test(evals): add isolated semantic arm adapters`
   - `test(evals): separate grounding causal and product lanes`
   - `test(evals): add semantic governance zero-tolerance mutations`
+  - `test(evals): freeze descriptive contribution truth oracle contract`（U13.1 前置）
+  - `test(evals): evaluate descriptive contribution kernel evidence`（U13.1 后置）
 - **U8 M1 Fixture Demo Commit（M1 前置）：**
   `feat(web): expose m1 semantic fixture evidence states`，只展示
-  M1/M2、B2-fixture、Execution/Need/IR verdict 与 Product Release HOLD，不依赖 U11.2。
+  M1/M2、B2-fixture、Execution/Need/IR/Attribution Feasibility verdict、endpoint evidence、
+  kind-specific `SameMeasureWitness / RowPartitionWitness | FormulaEquivalenceWitness`、逐端
+  lowering certificate、SameFrontierWitness、Fixture Receipt subject/manifest digest、
+  observed residual/closure error、typed refusal，并分别显示
+  `Core L2: HOLD`、`Attribution F9: NOT_REGISTERED`、`Fixture Evidence: HOLD`；M1 只展示
+  `FixtureConclusionDecisionSeal@1` 标记的非产品 Evidence，不渲染 Published authoritative
+  content；只有 M2 Published 才允许来自已验签且 current 的
+  `ConclusionPolicyDecisionEnvelope@1` 闭合判别联合，且只有 ASSERT ClaimAST 有
+  Authority；F9
+  Route、产品 `ContributionItemSet` 和可操作归因
+  结论必须不存在，不依赖 U11.2。
 - **U8 M2 Demo/Review Commit：** 若不在 U11.2 一并闭合，则
   `feat(web): expose published semantic governance lineage`
 - **U9 Pre-activation Commit：**
   `feat(deploy): add semantic authority pre-activation parity`，只覆盖
-  expand/bootstrap/SHADOW parity 与 failure recovery，不切 `PUBLISHED_ONLY`。
+  expand/bootstrap/SHADOW parity、PostgreSQL-only contribution parity 与 failure
+  recovery，不切 `PUBLISHED_ONLY`；Upstash/Neo4j 缺失不影响通过。
 - **U9 Post-ready Commit：**
   `test(deploy): verify semantic activation rollback parity`，只在
   `GovernanceReadinessVerdict=READY` 后覆盖
@@ -2324,17 +3268,18 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
 
 | Gate | 命令/套件 | 覆盖 | 通过条件 |
 | --- | --- | --- | --- |
-| 格式 | `pnpm lint` | U10–U11 | 无 Biome/Markdown 格式错误 |
-| 类型 | `pnpm typecheck` | U10–U11、U6 C2 | 新包、现有 U5/U6 与 C2 typecheck 全绿 |
+| 格式 | `pnpm lint` | U10–U13 | 无 Biome/Markdown 格式错误 |
+| 类型 | `pnpm typecheck` | U10–U13、U6 C2 | 新包、现有 U5/U6 与 C2 typecheck 全绿 |
 | U5 Materializer | text2sql/platform materializer suites | U10.0、U10.3 | 三 issuer 分权、restrictive Policy issuance、同库 atomic bundle、bridge 幂等与逐写点 crash 全绿 |
 | Semantic Unit | `pnpm --filter @data-agent/semantic test:unit` | U10.1a–U10.1b | Source/Formula/Lowerability/Relationship/Closure 全绿 |
-| Contract | `pnpm test:contract` | U10–U11 | Artifact/Port/Reason Code/Tool schema 全绿 |
+| Contribution Unit | research/worker contribution suites | U13.0–U13.2 | endpoint template/binding/rule-set lowerability、decomposition-kind accounting witness、static capacity/run budget admission、DerivedDelta、Receipt/owner/key/nonce currentness、observed residual 与 closure error 分离、tolerance-zero closure、ProjectionBinding、typed set/conclusion payload 全绿 |
+| Contract | `pnpm test:contract` | U10–U13 | Artifact/Port/Reason Code/Tool schema 全绿且 U5/U6 wire zero diff |
 | U5 Regression | `pnpm --filter @data-agent/text2sql test:unit && pnpm test:integration` | U10.3 | 现有 U5 行为无未批准差异 |
-| PostgreSQL | `./infra/supabase/test-support/run-postgres-smoke.sh` | U10.2–U10.3 | 10600→10610、bootstrap tombstone、Decision linearization、same-db fence、RLS、CAS、Outbox、rollback equivalence 与 isolated test-domain transition contract 全绿；不改变真实部署域为 `PUBLISHED_ONLY` |
-| Tenancy/Security | `pnpm test:tenancy && pnpm test:security` | U10–U11 | cross-scope、SoD、injection、role bypass 全拒绝 |
+| PostgreSQL | `./infra/supabase/test-support/run-postgres-smoke.sh` | Core：U10.2–U10.3；F9：10620/U13.2 | Core 只要求 10600→10610、bootstrap tombstone、Decision linearization、same-db fence、RLS、CAS、Outbox 与 rollback equivalence；F9 独立追加 10620、owner/signature Authority、nonce 原子消费、request lifecycle 与 isolated test-domain transition contract。F9 失败不改变 Core 结果；两者的 pre-activation smoke 都不改变真实部署域为 `PUBLISHED_ONLY` |
+| Tenancy/Security | `pnpm test:tenancy && pnpm test:security` | U10–U13 | cross-scope、SoD、injection、role bypass 全拒绝 |
 | Agent Behavior | semantic maintenance integration suite | U11.1 | 可 propose/submit；不可 approve/publish/rollback |
-| Browser E2E | `pnpm test:e2e` | U8 M1 delta + U11.2 | M1/B2-fixture/Evidence Gate/Product Release HOLD 状态组合，以及 M2 Inbox、人工修订、全状态矩阵、review/rollback/accessibility 全绿 |
-| Eval | `pnpm eval:smoke` | U7 delta | typed arm/信息隔离、三 Lane；GROUNDING_CAUSAL 的 canonical effective-policy digest 相同且 run-scoped Receipt 独立；其他 Lane 使用预注册 treatment；hidden holdout、M1 三 verdict、M2 readiness、B2 parity 与零容忍 mutation 有效 |
+| Browser E2E | `pnpm test:e2e` | Core：U8/U11.2；F9：U8-F9/U11-F9/U13.2 | Core 锁定标准 L2、review/rollback/accessibility；F9 独立锁定 M1/B2-fixture/Evidence Gate、Core HOLD、F9 NOT_REGISTERED、Fixture Evidence HOLD 且无 F9 Route/产品 ContributionItemSet，以及 F9 GO 后的 Contribution Trace、residual、alternatives、non-causal badge、Inbox、recovery/replay。F9 套件失败不改变 Core Gate |
+| Eval | `pnpm eval:smoke` | U7 delta | typed arm/信息隔离、三 Lane；独立 contribution Lane 的 endpoint/kind-specific accounting witness/Receipt currentness/closure/metamorphic/typed refusal/权威结论零越权；四类 truth 不跨域；hidden holdout、M1 四 verdict、M2 readiness 与 B2 parity 有效 |
 | Docker Pre-activation | `pnpm test:deploy:docker -- --phase pre-activation` | U9 pre | PostgreSQL-only clean start/expand/bootstrap/SHADOW parity；断言未切 `PUBLISHED_ONLY` |
 | Hosted Pre-activation | `pnpm test:deploy:hosted -- --phase pre-activation` | U9 pre | 同一 pre-activation contract；缺真实资源则签名 HOLD |
 | Docker Post-ready | `pnpm test:deploy:docker -- --phase post-ready` | U9 post | 仅接受 READY input；activate/query/application rollback/reactivate 全绿 |
@@ -2394,12 +3339,14 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
 14. **Runtime Restriction Oracle：** Policy Authority 的最终 allowlist/predicate 集合不
     大于 platform policy 或 RuntimeRestriction 任一输入；restriction exact ref/hash/
     source/compiler/generation/platform-policy 必须在 ReviewPacket、PublishAttempt、
-    release、issuer sealed input 与 bridge 对齐，三个 projection/release/pointer 原子
+    release、issuer sealed input 与 bridge 对齐，三个核心 projection/profile child
+    manifest/release/pointer 原子
     可见。unsupported purpose/masking/ABAC 返回 HOLD，默认 permissive RLS、
     owner/BYPASSRLS/service-role mutation 不扩权。
 15. **Legacy Compatibility Oracle：** rollback window 内每个 current release 都有
     publish 前生成的 valid `LegacyEquivalenceAttempt`，并在同一事务得到 release、
-    三个 projection、attempt、legacy mirror、`LegacyEquivalenceReceipt` 与 pointer；
+    三个核心 projection、profile child manifest、attempt、legacy mirror、
+    `LegacyEquivalenceReceipt` 与 pointer；
     Receipt 只声明 hash-pinned suite。缺 attempt/receipt、旧 reader/materializer、
     stale mode cache、publish/rollback race 均失败。只有实例/流量/outbox/receipt
     证据齐全才可使 `rollback_window_status=CLOSED +
@@ -2408,13 +3355,84 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
     U6 `CONTROLLED_REVISION` ref/hash、visibility/snapshot token、manifest、expiry
     exact match；认证后 duplicate/late-row/SCD/delete-reinsert 只能 typed fail-close
     或进入独立证明的保守 plan。`NONE` 与 mutable visibility 不能 production activate。
+17. **Ontology Authority Oracle：** OWL inference 只产生带 exact axiom/reasoner/profile/
+    release provenance 的 candidate；SHACL receipt 绑定 exact shapes/data graph、processor
+    与 entailment regime；Catalog/DQ、Policy 和 causal Authority 不可互换。缺失关系不被
+    当 false，`owl:sameAs`/alias 不能未经 identity proof 合并业务实体。
+18. **Contribution Profile Oracle：** exact published/fixture profile 判别
+    `ROW_PARTITION | FORMULA_IDENTITY`，并为 outcome、每个
+    driver 与 independently observed residual 固定完整静态 `EndpointExecutionTemplate`；每个
+    template 的 additive metric、baseline/follow-up QueryContract template、predicate AST/hash 和
+    expected row0 cell 均可由当前 U5 执行。每次 Run 的 `EndpointExecutionBinding` 再绑定
+    instantiated QueryContract、snapshot/PolicyReceipt/principal 与 exact 五轴 VersionFrontier，
+    `SameFrontierWitness` 防止跨 IDENTITY/principal 拼接。Row Partition 必须绑定
+    `SameMeasureWitness` 的 canonical measure AST/hash、aggregation algebra、grain/unit/
+    null policy/universe hash，
+    并以 `RowPartitionWitness` 证明含 NULL/UNKNOWN/cast/collation/open enum/OTHER 的 explicit
+    universe 上 driver + residual predicates 互斥完备；Formula Identity 必须以
+    `FormulaEquivalenceWitness` 证明 canonical AST 的 signed/unit/grain 恒等。每端另由独立
+    verifier 签发 AST→QueryContract→LogicalPlan/SqlArtifact→QueryEvidence 的
+    `EndpointLoweringCertificate@1`；Certificate 必须绑定 current
+    `EndpointLoweringRuleSet@1` 与完整 node correspondence。Residual 只可
+    是显式 complement endpoint 或 formula term。`StaticDriverCapacityProof@1` 证明
+    `2 * (driver_count + 2)` 不超过固定 U6 最大 SQL/capacity；每次执行的
+    `RunDriverBudgetAdmission@1` 再绑定 Run 剩余与预留 SQL 并收紧上限。当前 16 SQL 的
+    静态绝对 driver 上限为 6。任一
+    template/binding/witness 缺失、超限、未知/混合 kind、
+    不同 metric 偶然闭合，或 grouped/dynamic/ratio/nonlinear post-aggregate 都 typed refusal。
+    profile 是 parent executable semantic projection 的 content-addressed child，随
+    Source Release 同事务绑定；静态 template/capacity digest 进入 executable semantic
+    content digest；运行时 binding/frontier/admission
+    只进入 lowering certificate 与 Receipt subject。
+19. **Contribution Closure Oracle：** baseline/follow-up 的全部 QueryEvidence 绑定同一 exact
+    `CONTROLLED_REVISION` snapshot/visibility 后，Kernel 只能由两端 subtraction 得到 delta，
+    并写入 `DerivedDeltaObservationSet@1`，逐项绑定 operand evidence/cell hash、方向、unit、
+    frontier 和 derivation image；现有 AtomicClaim 不作为 lossless delta Authority。Kernel
+    以 safe integer/minor unit、tolerance 0 验证
+    `computed_closure_error = Δoutcome - ΣΔdriver - Δindependently_observed_residual = 0`。
+    computed error、observed residual、unexplained remainder 不可互相回填；missing endpoint、
+    time swap、duplicate/sign flip/extra driver、反算 residual、wrong row/snapshot/profile 或
+    Agent 数字改写均不能生成 PASS Claim/Report。
+20. **Receipt 与 Conclusion Authority Oracle：** `ContributionSubjectManifest@1` canonical
+    hash 覆盖 exact profile/release、endpoint templates/runtime bindings、static capacity/run admission、
+    逐端 lowering certificates/rule-set、两端 QueryEvidence refs/result hashes、
+    DerivedDelta set、accounting proof ref/content hash/version、owner-map release、method/kernel/compiler/
+    verifier image、完整 frontier、principal/
+    scope、input/output/`closure_verdict=PASS | HOLD | REFUSE`，并作为唯一
+    `ContributionReceiptSubject@1`；该 verdict 不是 Attribution Feasibility，Verifier 只从
+    closure 重放，签发/消费按 origin 重验 Fixture manifest/status 或 Published active/status
+    ledger/currentness，二者不可互换。
+    任一 subject 替换、currentness unavailable 或 rollback generation 失败关闭。U13.1 只生成
+    `KERNEL_CANDIDATE_ONLY/HOLD + AttributionKernelEvidence@1`；Evidence 必须显式绑定 exact
+    `ContributionClosureReceipt` ref/hash/subject digest、closure verdict，并声明
+    `explicit_absence=attribution_feasibility_verdict`；后置 U7 Eval 才可签发
+    `AttributionFeasibilityVerdict`，两者都没有 F9 Route；U13.2 产品
+    最高为 `CONTRIBUTION`。`ContributionItemSet` 只按 accounting contribution 排序；
+    `InvestigationCandidateSet` 按 kind 独立准入，closure、Ontology path、Lineage 或 Top-k
+    都不能升级 causal。Authoritative report 只来自 `ConclusionSubjectManifest@1 →
+    ConclusionPolicyDecisionEnvelope@1` 闭合的判别联合；只有 ASSERT ClaimAST 有 Authority，
+    且 exact Receipt/payload/policy/signer-verifier/inputs/result/currentness 任一替换都失败。
+    `U13PropertyOwnerMapRelease@1` 必须经 current pointer/status 解析 exact owner、required signer
+    roles/quorum、proof verifier 与 delegation，RelationshipPromotionReceipt 绑定该 map release。
+    Published Envelope 必须按 `ConclusionSignatureAuthority@1` 的 domain-separated canonical bytes 可验签，
+    并绑定 current ConclusionPolicyRelease、SignerAssignment、VerificationKeyRevision/trust root、
+    key/algorithm/signature/issued-at/expiry/nonce/activation sequence；
+    forged signature、wrong-role、replay、expired/rotated key 或 status unavailable 均失败。
+    若 Published 报告嵌入 U6，另要求 current `ConclusionProjectionBinding@1` 精确绑定 Claim/
+    Manifest/segment/Decision/`AttributionConclusionUseDecision@1`；否则只可显示为
+    non-authoritative commentary。自由 prose、引文、
+    retrieved text、table/code 是 non-authoritative；versioned checker 以 clause/span/
+    relation/direction/polarity/modality/realis/source-chain/channel/counterfactual schema、
+    abstain/refuse、跨语言 contrast set 与独立
+    holdout/red-team 的预注册 false-negative 上界判定，不能以 known misses=0 代替总体
+    保证。UI/API/Agent 出现 unsupported 关系或越权结论时 Case 失败。
 
 ### Codex 审核门禁
 
 - 本计划只使用 Codex 独立 reviewer，不调用 Claude Code 审核；
 - 对 Significant/High-Risk 结论执行 correctness、security、data integrity、
   reliability、scope/coherence 的文档级审查；
-- reviewer 建议必须回到本地代码、RQ298 Evidence 或当前一方文档核验，不能把评审意见
+- reviewer 建议必须回到本地代码、RQ298/RQ310 Evidence 或当前一方文档核验，不能把评审意见
   当事实证据；
 - unresolved blocker 必须保留在计划中并阻止用户审核后的实现启动。
 
@@ -2424,16 +3442,20 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
 
 ### 本次“方案修订”完成
 
-- RQ298 候选答案完成独立 GPT-5.6 xhigh + AnySearch 对抗评审；
+- RQ298 保留既有闭环；RQ310 完成三轮独立 GPT-5.6 xhigh + AnySearch 对抗评审上限，第三轮
+  `needs_learning` 的缺口已由补充研究与 Codex 文档审查修复，learning cycle 诚实记为
+  `loop_capped`，不宣称获得 GPT adversarial PASS；
 - 本计划完成 Codex 文档审查，没有未处理 blocker；
 - 方案文档以独立 Git commit 提交；
 - 最终向用户明确列出：采用项、拒绝项、U5/U6 不变量、Neo4j HOLD、实施顺序与待批准
   决策；
-- 停在用户审核，不实施 U10/U11，不恢复 C2a。
+- 停在用户审核，不实施 U10/U11/U13，不恢复 C2a。
 
-### 用户批准后的 M1 完成
+### 用户批准后的 M1-Core 与 M1-F9 完成
 
-- R9a、U10.0、U10.1a、原 C2a/U6 remainder、U7/U8 base 全部闭合；
+- M1-Core 的 R9a、U10.0、U10.1a、原 C2a/U6 remainder 与 U7/U8 base 按 Core 顺序闭合；
+  M1-F9 的 R9d、U13.0、U7 Attribution Truth Contract、U13.1 Kernel 与 U7/U8 attribution
+  fixture 按自己的分支顺序闭合；后者不是前者的进入条件；
 - 三 issuer sealed facts、同库 U5 transactional bundle、U5 regression 与 U6/C2
   zero-diff 通过；
 - `GROUNDING_CAUSAL` 的 B0/B1/B2-fixture 只改变 grounding source；
@@ -2441,8 +3463,15 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
   PolicyReceipt envelope/ref/hash 独立且可验证；`END_TO_END_PRODUCT` 与
   `AUTHORIZATION_PRODUCT` 独立报告。typed adapter/信息隔离/hidden holdout/预注册
   阈值均产生可复验 L2 Evidence Report；
-- Demo 明示 `M1 / B2-fixture / Evidence Gate verdict / Product Release: HOLD`，不宣称
-  Candidate/Review 已治理；
+- Demo 分别明示 `M1-Core/M1-F9 / B2-fixture / Evidence Gate verdict / Core L2: HOLD /
+  Attribution F9: NOT_REGISTERED / Fixture Evidence: HOLD`，不宣称 Candidate/Review 已治理；
+- M1-F9 attribution fixture 通过 endpoint template/runtime binding/rule-set lowerability、
+  static capacity/run admission、decomposition-kind accounting witness、Receipt/owner manifest
+  exact digest、同 snapshot baseline/follow-up evidence 与 `DerivedDeltaObservationSet@1`、
+  independently observed residual/closure error 分离、signed closure、metamorphic、typed
+  refusal 与 typed `FixtureConclusionDecisionSeal@1`；Demo 明示
+  `KERNEL_CANDIDATE_ONLY/HOLD`，`AttributionFeasibilityVerdict` 只能决定后续集成/缩域/扩
+  IR/停止，F9 Route 和产品 `ContributionItemSet` 不存在；
 - `ExecutionValueVerdict=GO` 且 `GovernanceNeedVerdict=REQUIRED` 才可在用户再次确认后
   启动 R9b；否则停止功能激活并按 `IRCapabilityVerdict` 复审，但不撤销 Authority/
   安全正确性修复。`GovernanceReadinessVerdict` 只在 U10.2/U10.3、U11.1/U11.2、
@@ -2451,11 +3480,14 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
   activate/application-rollback/reactivate smoke 必须通过才可最终 M2 release，不能以
   activation 或“M2 已完成”作 readiness 的循环前提。
 
-### 用户批准后的 M2 完成
+### 用户批准后的 M2-Core 完成
 
-- R9b/R9c、F8、AE13–AE21 与 AE23–AE37 全部追踪到通过证据；AE22 追踪到 U12 并保持
-  `DEFERRED/HOLD`；
+- R9b/R9c、F8、AE13–AE21、AE23–AE37 全部追踪到通过证据；AE22 追踪到 U12 并保持
+  `DEFERRED/HOLD`。R9d/F9/AE38–AE47 若未通过只保持独立 `HOLD`，不能伪装成 Core 能力，
+  也不阻断已经闭合的 Governed L2；
 - 六平面、五类 relationship、typed formula/source model 与 bounded closure 已实现；
+- 标准 L2 Research Report 的 Agent/API/UI 等价、PostgreSQL-only Hosted/Docker parity
+  已实现；U13.2 若未独立通过则 F9 Route 不存在，U13.3 继续 `DEFERRED/HOLD`；
 - Agent proposal、human multi-sign review 与 deterministic publish/rollback 权限分离；
 - 10610 bootstrap tombstone、Decision linearization、same-database catalog fence、
   all-writer scope authority fence、Query shared/DDL exclusive execution fence、
@@ -2466,6 +3498,19 @@ publishing 和 reconnect 更新通过 live status 公告；re-auth 成功、取�
   结果；context-bound version/fence/hash 差异有明确 lineage Oracle；
 - Hosted/Docker contract 对等；Neo4j 缺失不影响 GO 条件；
 - 每个大任务都有独立、测试闭合的 Git commit。
+
+### M2-F9 独立完成
+
+- `AttributionFeasibilityVerdict=FEASIBLE_FOR_PUBLISHED_INTEGRATION`，且 U13.2 只消费
+  PostgreSQL active exact release/profile；
+- AE38–AE47、Contribution Safety、Hosted/Docker parity 与独立
+  `ATTRIBUTION_USER_VALUE` 盲测全部通过；机器正确性分数不能抵消用户价值 Gate；
+- F9 产品分支的 `AttributionCapabilityDirectory@1` 在 Web/API/Agent 对等、按 principal/policy
+  过滤且不枚举越权对象；冻结原问题后的 `AttributionEligibilityDecision@1` 只有
+  `SUPPORTED` 才可进入已注册 F9。NO_PROFILE/NOT_LOWERABLE/STALE/F9_NOT_REGISTERED 后可
+  继续标准 L2 Report、刷新/缩 scope 或创建具备去重、撤回、过期、通知、Candidate/Release
+  lineage 与原问题重放的 `AttributionProfileRequest@1`；
+- 只有此时注册 F9，产品最高为 `CONTRIBUTION`；任何缺口只令 F9 `HOLD`，不回滚 M2-Core。
 
 ### 恢复之前任务的条件
 
