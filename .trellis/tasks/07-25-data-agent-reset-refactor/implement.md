@@ -1609,3 +1609,33 @@ pnpm verify:release
     通过 `withAppTransaction` 5 参数调用，已从 `packages/platform/src/index.ts` 导出
   - ✅ PostgreSQL migration 表（`u6_research_fixture_contracts`、`u6_research_fixture_case_evaluations`）已完成
 
+
+#### U6-C2a/10600 增量更新（2026-08-04，提交 dd16de0）
+
+- 新增 `protocol_version` 和 `input_hash` 列到所有 Receipt 表（`research_budget_ledger_receipts`、
+  `research_coverage_derivation_receipts`、`research_candidate_enumeration_receipts`、
+  `research_stop_derivation_receipts`），以及 `protocol_version` 到 `research_candidate_enumerator_attestations`
+  - 将部分唯一约束拆分为独立索引，提高 PG17 兼容性
+- 在 `10-existing-relation-preflight-alterations.sql.inc` 中新增：
+  - `operation_json` 列到 `research_stop_terminal_commits`（预检所需）
+  - `document_json` 列到 `research_artifact_commit_operations`（预检所需）
+  - 从 `candidate_json` 回填 `document_json`
+  - 修复索引/约束查询的 PG17 系统目录适配（移除 `CONCURRENTLY`，修复 `pg_index` 连接）
+- 更新 `00-preamble.sql.inc` 中的维护清单 hash 为 `sha256:d28f8ac324e5453961c2636a7741c1feb36709908f84c7f03f9b9454ed87cced`
+- 重新渲染 `20260725010600_app_data_agent_u6_research_derivation.sql`（226632 bytes，checksum 已验证）
+- 新增 `scripts/render-10600-write.ts` 渲染脚本
+- 所有门禁验证通过：
+  - ✅ C2 作者管线输入验证
+  - ✅ C2 生成迁移验证（checksum: `sha256:c527872ae90041cb8750ae1c4a6e6df4f224e03de8c70c547d5242649a833704`）
+  - ✅ `pnpm typecheck`（11 successful）
+  - ✅ `pnpm test:unit`（40 passed）
+  - ✅ `pnpm test:contract`（37 passed）
+  - ⚠️ `pnpm lint` 43 errors（均为已有问题，在 `packages/semantic` 和 `packages/contracts`，与本次变更无关）
+- 提交：`dd16de0 feat(u6-c2a): update preflight hash, add protocol_version/input_hash, fix PG17 index queries`
+
+**仍为 `installable=false / HOLD`，尚未闭合：**
+1. PG17 live Catalog parity — 需要运行 PostgreSQL Smoke 测试验证 10600 在真实 PG17 上可安装
+2. Hosted/Docker parity — 需要验证迁移在 Docker 和 Hosted 环境中对等
+3. 检查点中的 `DB-owned Receipt/Root` 和 `CurrentReadiness/Revocation/Grant` 的 SQL 函数已实现
+   （`73-stop-root-rpcs`、`74-resolvers-provisioner`、`71-run-locked-artifact-rpcs` 均包含所需函数）
+   但未经过真实 PostgreSQL 运行验证

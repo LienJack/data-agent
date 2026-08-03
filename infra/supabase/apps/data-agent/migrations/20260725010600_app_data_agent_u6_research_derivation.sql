@@ -1,4 +1,4 @@
--- u6_c2_migration_checksum: sha256:c527872ae90041cb8750ae1c4a6e6df4f224e03de8c70c547d5242649a833704
+-- u6_c2_migration_checksum: sha256:b435ef8e3a918b9e99781b6fd49767d7ea21ff5df781ddd7efe78a122b50ba6d
 begin;
 
 do $bootstrap$
@@ -4644,14 +4644,14 @@ begin
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'INVALID_COMMAND'));
   end if;
 
-  select grant.*
+  select g.*
   into v_grant
-  from app_data_agent.research_readiness_grants as grant
-  where grant.app_id = s_app_id
-    and grant.tenant_id = s_tenant_id
-    and grant.environment = s_environment
-    and grant.run_id = v_run_id
-    and grant.grant_id = v_grant_id
+  from app_data_agent.research_readiness_grants as g
+  where g.app_id = s_app_id
+    and g.tenant_id = s_tenant_id
+    and g.environment = s_environment
+    and g.run_id = v_run_id
+    and g.grant_id = v_grant_id
   for update;
   if not found then
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'GRANT_NOT_FOUND'));
@@ -4679,15 +4679,15 @@ begin
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'READINESS_NOT_CURRENT'));
   end if;
 
-  update app_data_agent.research_readiness_grants as grant
+  update app_data_agent.research_readiness_grants as g
   set state = 'CONSUMED',
       responded_at = v_now
-  where grant.app_id = s_app_id
-    and grant.tenant_id = s_tenant_id
-    and grant.environment = s_environment
-    and grant.run_id = v_run_id
-    and grant.grant_id = v_grant_id
-    and grant.state = 'ISSUED';
+  where g.app_id = s_app_id
+    and g.tenant_id = s_tenant_id
+    and g.environment = s_environment
+    and g.run_id = v_run_id
+    and g.grant_id = v_grant_id
+    and g.state = 'ISSUED';
 
   return jsonb_build_object('ok', true, 'value', jsonb_build_object(
     'grant_id', v_grant_id,
@@ -4741,14 +4741,14 @@ begin
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'INVALID_COMMAND'));
   end if;
 
-  select grant.*
+  select g.*
   into v_grant
-  from app_data_agent.research_readiness_grants as grant
-  where grant.app_id = s_app_id
-    and grant.tenant_id = s_tenant_id
-    and grant.environment = s_environment
-    and grant.run_id = v_run_id
-    and grant.grant_id = v_grant_id
+  from app_data_agent.research_readiness_grants as g
+  where g.app_id = s_app_id
+    and g.tenant_id = s_tenant_id
+    and g.environment = s_environment
+    and g.run_id = v_run_id
+    and g.grant_id = v_grant_id
   for update;
   if not found then
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'GRANT_NOT_FOUND'));
@@ -4776,15 +4776,15 @@ begin
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'READINESS_NOT_CURRENT'));
   end if;
 
-  update app_data_agent.research_readiness_grants as grant
+  update app_data_agent.research_readiness_grants as g
   set state = 'RESPONDED',
       responded_at = v_now
-  where grant.app_id = s_app_id
-    and grant.tenant_id = s_tenant_id
-    and grant.environment = s_environment
-    and grant.run_id = v_run_id
-    and grant.grant_id = v_grant_id
-    and grant.state = 'CONSUMED';
+  where g.app_id = s_app_id
+    and g.tenant_id = s_tenant_id
+    and g.environment = s_environment
+    and g.run_id = v_run_id
+    and g.grant_id = v_grant_id
+    and g.state = 'CONSUMED';
 
   return jsonb_build_object('ok', true, 'value', jsonb_build_object(
     'grant_id', v_grant_id,
@@ -4838,16 +4838,16 @@ begin
 
   v_now := pg_catalog.clock_timestamp();
 
-  update app_data_agent.research_readiness_grants as grant
+  update app_data_agent.research_readiness_grants as g
   set state = 'EXPIRED',
       expired_at = v_now
-  where grant.app_id = s_app_id
-    and grant.tenant_id = s_tenant_id
-    and grant.environment = s_environment
-    and grant.run_id = v_run_id
-    and grant.grant_id = v_grant_id
-    and grant.state in ('ISSUED', 'CONSUMED')
-    and grant.expires_at <= v_now;
+  where g.app_id = s_app_id
+    and g.tenant_id = s_tenant_id
+    and g.environment = s_environment
+    and g.run_id = v_run_id
+    and g.grant_id = v_grant_id
+    and g.state in ('ISSUED', 'CONSUMED')
+    and g.expires_at <= v_now;
 
   if not found then
     return jsonb_build_object('ok', false, 'error', jsonb_build_object('code', 'GRANT_NOT_FOUND_OR_ACTIVE'));
@@ -5461,7 +5461,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010600_app_data_agent_u6_research_derivation',
-  'sha256:c527872ae90041cb8750ae1c4a6e6df4f224e03de8c70c547d5242649a833704'
+  'sha256:b435ef8e3a918b9e99781b6fd49767d7ea21ff5df781ddd7efe78a122b50ba6d'
 );
 
 commit;

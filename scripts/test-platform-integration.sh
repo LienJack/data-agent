@@ -59,6 +59,103 @@ apply_sql() {
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" <"$sql_file"
 }
 
+prepare_u6_c2_maintenance_binding() {
+  docker exec "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "
+      insert into platform.deployment_mappings (
+        deployment_id,
+        app_id,
+        environment,
+        deployment_key_hash
+      )
+      values (
+        'a0000000-0000-4000-8000-000000000001'::uuid,
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        'u6-migration-test',
+        'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'
+      )
+      on conflict (deployment_id) do nothing;
+    " \
+    >/dev/null
+}
+
+apply_u6_c2_migration() {
+  sql_file=$1
+  echo "Applying U6 C2 migration $(basename "$sql_file")"
+  cat > /tmp/apply-10600-full.sql << 'PRELUDE_EOF'
+set session transaction_timeout = 0;
+select pg_catalog.set_config('lock_timeout', '2000ms', false);
+select pg_catalog.set_config('statement_timeout', '300000ms', false);
+select pg_catalog.set_config('idle_in_transaction_session_timeout', '60000ms', false);
+select pg_catalog.set_config('app.u6_maintenance_manifest_hash', 'sha256:d28f8ac324e5453961c2636a7741c1feb36709908f84c7f03f9b9454ed87cced', false);
+select pg_catalog.set_config('app.u6_maintenance_window_id', '00000000-0000-4000-8000-000000001600', false);
+select pg_catalog.set_config('app.u6_maintenance_deployment_id', 'a0000000-0000-4000-8000-000000000001', false);
+select pg_catalog.set_config('app.u6_maintenance_window_expires_at', (pg_catalog.clock_timestamp() + 600000::bigint * interval '1 millisecond')::text, false);
+
+do $u6_c2_prelude$
+declare
+  active_mapping_count bigint;
+  expected_database_identity_hash text;
+  remaining_ms bigint;
+  arm_ms bigint;
+  baseline_checksum text;
+begin
+  select pg_catalog.count(*) into active_mapping_count
+  from platform.deployment_mappings as deployment
+  join platform.app_environment_lifecycle as lifecycle
+    on lifecycle.app_id = deployment.app_id and lifecycle.environment = deployment.environment
+  where deployment.deployment_id = 'a0000000-0000-4000-8000-000000000001'::uuid
+    and deployment.app_id = '00000000-0000-4000-8000-00000000da01'::uuid
+    and deployment.is_active and deployment.revoked_at is null
+    and lifecycle.lifecycle_state = 'ACTIVE';
+  if active_mapping_count <> 1 then
+    raise exception using errcode = 'P0001', message = 'U6_MIGRATION_DEPLOYMENT_BINDING_INVALID';
+  end if;
+
+  select ledger.migration_checksum into baseline_checksum
+  from platform.migration_ledger as ledger
+  where ledger.owner_kind = 'app' and ledger.app_id = '00000000-0000-4000-8000-00000000da01'::uuid
+    and ledger.migration_version = '20260725010590_app_data_agent_u6_research_authority';
+  if not found then
+    raise exception using errcode = 'P0001', message = 'U6_MIGRATION_BASELINE_MISSING';
+  end if;
+
+  expected_database_identity_hash :=
+    'sha256:' || pg_catalog.encode(
+      extensions.digest(
+        pg_catalog.convert_to('u6-migration-database@1.0.0', 'UTF8')
+        || pg_catalog.decode('00', 'hex')
+        || pg_catalog.convert_to(
+          app_data_agent.runtime_canonical_json(
+            pg_catalog.jsonb_build_array(
+              pg_catalog.current_database(),
+              '00000000-0000-4000-8000-00000000da01',
+              'a0000000-0000-4000-8000-000000000001',
+              baseline_checksum
+            )
+          ),
+          'UTF8'
+        ),
+        'sha256'
+      ),
+      'hex'
+    );
+  perform pg_catalog.set_config('app.u6_maintenance_database_identity_hash', expected_database_identity_hash, false);
+
+  remaining_ms := pg_catalog.floor(pg_catalog.date_part('epoch', pg_catalog.current_setting('app.u6_maintenance_window_expires_at')::timestamptz - pg_catalog.clock_timestamp()) * 1000)::bigint;
+  arm_ms := remaining_ms - 5000;
+  if arm_ms < 30000 then raise exception using errcode = '57014', message = 'U6_MIGRATION_TRANSACTION_TIMEOUT'; end if;
+  perform pg_catalog.set_config('app.u6_maintenance_session_arm_ms', arm_ms::text, false);
+  perform pg_catalog.set_config('transaction_timeout', arm_ms::text || 'ms', false);
+end
+$u6_c2_prelude$;
+PRELUDE_EOF
+  cat "$sql_file" >> /tmp/apply-10600-full.sql
+  docker exec -i "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" < /tmp/apply-10600-full.sql
+}
+
 prepare_u6_maintenance_binding() {
   docker exec "$container_name" \
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
@@ -127,6 +224,10 @@ for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.
       "$database_name" \
       "$sql_file" \
       "00000000-0000-4000-8000-00000000de90"
+  elif [ "$(basename "$sql_file")" = \
+    "20260725010600_app_data_agent_u6_research_derivation.sql" ]; then
+    prepare_u6_c2_maintenance_binding
+    apply_u6_c2_migration "$sql_file"
   else
     apply_sql "$sql_file"
   fi
@@ -147,3 +248,4 @@ export DATA_AGENT_SANDBOX_PROCESS_INTEGRATION=1
 uv sync --project "$sandbox_dir" --dev
 pnpm --dir "$repo_dir" --filter @data-agent/platform test:integration
 pnpm --dir "$repo_dir" --filter @data-agent/worker test:integration
+
