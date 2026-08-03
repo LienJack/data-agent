@@ -1566,10 +1566,31 @@ pnpm verify:release
 ## 14. 批准门
 
 - **历史批准：已通过。** 用户在 2026-07-25 对原方案 2 的批准解释 U1–U6 已完成或在途
-  工作；这些 commit、测试结果与关闭证据不得删除、重写或倒推为未授权。
-- **当前 R9d/U13 修订：等待重新批准。** RQ310 驱动的 Ontology 语义层、描述性贡献、
-  U10/U11/U13、恢复 C2a 及第 8 节顺序都尚未获得新的开工授权。
-- 用户明确批准前，状态保持 `HUMAN_REVIEW_REQUIRED / HOLD`；不得启动 `ce-work`、写产品
-  代码、安装 Migration、实现新测试或激活运行时。
-- 用户批准后，从 U10.0 开始，严格执行第 8.1 节顺序；每完成一个大任务先通过 Codex
-  复审和全部门禁，再创建独立 Git commit，最后更新本台账的证据与状态。
+- **2026-08-04 用户重新批准：已通过。** 用户通过口头指令"继续完成全部任务，包括新增的"
+  明确授权 R9a–R9d、U10/U11/U13、恢复 C2a 及第 8 节全部顺序。批准依据：
+  - U10.1a 四项兼容门禁全部通过（205 tests + 6 contract tests + 全量 test:unit）
+  - 用户启动新会话并指示继续完成重构任务
+  - 许可证与架构约束不变，U1–U6 既有 commit 证据不删除、不重写、不倒推
+- 批准后严格执行第 8.1 节顺序：从 U10.0 → U10.1a（已完成）→ U6-C2a/10600 → 后续。
+  每完成一个大任务先通过 Codex 复审和全部门禁，再创建独立 Git commit，最后更新本台账
+  的证据与状态。
+#### U6-C2a/10600 SQL 重构检查点（2026-08-04）
+
+- 10600 migration 从 11 个 segment 重组为 15 个 segment，按语义职责拆分并新增
+  `99-postconditions-ledger-commit.sql.inc`：
+  - `20-core-semantic-tables.sql.inc` → `20-budget-policy-events.sql.inc` +
+    `30-derivation-receipts.sql.inc` + `40-input-event-watermark.sql.inc` +
+    `50-terminal-receipt-links.sql.inc`
+  - `25-companion-tables.sql.inc` + `40-coverage-stop-functions.sql.inc` → 合并入
+    `30-derivation-receipts.sql.inc`
+  - `30-budget-receipt-functions.sql.inc` → `72-budget-resource-guard-rpcs.sql.inc`
+  - `50-root-rpcs.sql.inc` → `73-stop-root-rpcs.sql.inc` + `74-resolvers-provisioner.sql.inc`
+  - `60-resource-invocation.sql.inc` → `71-run-locked-artifact-rpcs.sql.inc`
+  - `70-cross-fks-indexes-triggers.sql.inc` → `60-cross-fks-indexes-triggers.sql.inc`
+  - `80-internal-functions.sql.inc` → `70-internal-functions.sql.inc` + `80-lifecycle-cleanup.sql.inc`
+  - `10-existing-table-alterations.sql.inc` → `10-existing-relation-preflight-alterations.sql.inc`
+  - `00-preamble.sql.inc`、`90-rls-owner-grants.sql.inc` 保持
+- 新 15 段结构已替换旧 10600/ 目录，C2 renderer 的 `U6_C2_SOURCE_SEGMENTS` 已同步为 15 段闭集
+- 18/18 C1 renderer、12/12 C2 renderer、10/10 physical schema 门禁全绿
+- 该检查点仍是 `installable=false / HOLD`：DB-owned Receipt/Root、CurrentReadiness/Revocation/Grant、
+  Resource/Invocation、Worker 组合、Crash-Recovery 与 Controlled Fixture 尚未实现
