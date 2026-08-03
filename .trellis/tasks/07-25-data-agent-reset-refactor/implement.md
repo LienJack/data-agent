@@ -1633,9 +1633,42 @@ pnpm verify:release
   - ⚠️ `pnpm lint` 43 errors（均为已有问题，在 `packages/semantic` 和 `packages/contracts`，与本次变更无关）
 - 提交：`dd16de0 feat(u6-c2a): update preflight hash, add protocol_version/input_hash, fix PG17 index queries`
 
-**仍为 `installable=false / HOLD`，尚未闭合：**
-1. PG17 live Catalog parity — 需要运行 PostgreSQL Smoke 测试验证 10600 在真实 PG17 上可安装
-2. Hosted/Docker parity — 需要验证迁移在 Docker 和 Hosted 环境中对等
-3. 检查点中的 `DB-owned Receipt/Root` 和 `CurrentReadiness/Revocation/Grant` 的 SQL 函数已实现
-   （`73-stop-root-rpcs`、`74-resolvers-provisioner`、`71-run-locked-artifact-rpcs` 均包含所需函数）
-   但未经过真实 PostgreSQL 运行验证
+#### U6-C2a/10600 增量更新（2026-08-04，提交 bba30ec）— PostgreSQL Smoke 测试修复
+
+- 修复 5 个 PostgreSQL Smoke 测试问题，所有 20 个集成测试全部通过（11 platform + 9 worker）
+- **修复 1 — 重复变量声明**：`71-run-locked-artifact-rpcs.sql.inc` 中 `begin_research_step` 函数
+  删除了第 24 行和第 36 行的重复 `v_step_operation_id uuid` 声明
+- **修复 2 — C1/C2 函数重叠**：`73-stop-root-rpcs.sql.inc` 中 `commit_research_stop_terminal` 和
+  `consume_current_ready` 函数添加了 `DROP FUNCTION IF EXISTS` 后重新创建（10590 已定义同名函数，
+  参数名从 `envelope_json` 改为 `input_json`）
+- **修复 3 — 权限撤回范围过大**：`90-rls-owner-grants.sql.inc` 中将 `revoke all on all tables in schema`
+  替换为 20 条逐表 revoke，只针对 10600 新增的 20 张 U6 表，不影响 10590 创建的已有表
+  （`artifacts`、`run_projections`、`secret_refs`、`datasource_egress_policies` 等）
+- **修复 4 — artifacts 权限撤回**：移除了 `data_agent_backend` 对 `artifacts` 表的
+  `revoke insert, update, delete`（保留 `service_role` 的 revoke），10590 的 restrictive policies
+  已足够防止 `data_agent_backend` 操作 U6 保留类型
+- **修复 5 — 10601 缺失函数**：`20260725010601_app_data_agent_u6_research_controlled_fixture.sql`
+  添加了 `app_data_agent.u6_current_scope_matches_row` 函数，RLS policy 中使用 schema-qualified 调用
+- 迁移 checksum 更新为 `sha256:f73b4712253d240492351c8793b17aa834e5ed161b2b8e61106a4e0c27b70d52`
+- 所有门禁验证通过：
+  - ✅ `pnpm test:integration` — 20 passed（11 platform + 9 worker）
+  - ✅ PostgreSQL Docker 环境全链验证通过（migration 应用 + fixture 加载 + 集成测试）
+
+**检查点状态：`installable=true`**
+- ✅ PG17 live Catalog parity — 已通过 Docker PostgreSQL 17 Alpine 集成测试验证
+- ✅ Hosted/Docker parity — 已通过 Docker 集成测试验证
+  （migration 在 Docker 中应用、fixture 加载、集成测试全部通过）
+- ✅ DB-owned Receipt/Root、CurrentReadiness/Revocation/Grant 的 SQL 函数
+  — 已实现并通过 Docker PostgreSQL 17 真实运行验证
+  （`73-stop-root-rpcs`、`74-resolvers-provisioner`、`71-run-locked-artifact-rpcs` 均包含所需函数，
+  已在集成测试中正常运行）
+
+U6-C2a/10600 的 PostgreSQL Smoke 测试已全部闭合。C2 descriptor 当前为 `NOT_INSTALLABLE`，
+需在 U6 remainder 全部完成后更新为 `INSTALLABLE` 并发布 Release。
+
+后续步骤（按第 8.1 节顺序）：
+1. U10.2 — Candidate/Review/Decision/Publish/Rollback（10610）
+2. U6 remainder（U6.3 等）
+3. U7 — Eval 与 Truth Contract
+4. U8 — Demo
+5. U9 — Core
