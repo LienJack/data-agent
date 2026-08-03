@@ -6,6 +6,18 @@
  */
 
 export {
+  coordinateGroundingBundle,
+  issuePolicyReceipt,
+  issueSchemaSnapshot,
+  issueSemanticRelease,
+  materializeGroundingAuthority,
+  registerTrustedGroundingCoordinator,
+  registerTrustedGroundingMaterializer,
+  registerTrustedPolicyReceiptIssuer,
+  registerTrustedSchemaSnapshotIssuer,
+  registerTrustedSemanticReleaseIssuer,
+} from "./artifacts/grounding-materializer.js";
+export {
   type AuthoritativeMetamorphicFixtureReceipt,
   type AuthoritativeMetamorphicOracleProjection,
   type AuthoritativeMetamorphicOracleReceipt,

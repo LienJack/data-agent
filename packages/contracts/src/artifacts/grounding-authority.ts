@@ -37,6 +37,21 @@ export const groundingAuthorityReferenceSchema = z.discriminatedUnion("artifact_
   policyReceiptReferenceSchema,
 ]);
 
+/**
+ * Fixture 与 Published origin 的判别联合。
+ *
+ * - `fixture`: 使用 checked-in、hash-pinned 的测试权威，不查询 production pointer。
+ * - `published`: 使用 PostgreSQL 权威发布的生产 Source。
+ *
+ * 两者互斥且失败关闭：缺少 origin 或 origin 不匹配的文档不能通过核验。
+ */
+export const groundingAuthorityOriginSchema = z.discriminatedUnion("origin", [
+  z.strictObject({ origin: z.literal("fixture"), fixture_version: versionIdentifierSchema }),
+  z.strictObject({ origin: z.literal("published"), published_version: versionIdentifierSchema }),
+]);
+
+export type GroundingAuthorityOrigin = z.infer<typeof groundingAuthorityOriginSchema>;
+
 const deterministicProducerSchema = artifactProducerSchema.extend({
   kind: z.literal("deterministic"),
 });
@@ -44,6 +59,7 @@ const deterministicProducerSchema = artifactProducerSchema.extend({
 const groundingAuthorityBaseShape = {
   schema_version: versionIdentifierSchema,
   scope: appScopeSchema,
+  origin: groundingAuthorityOriginSchema,
   run_id: immutableIdSchema,
   parent_ref: groundingAuthorityReferenceSchema.nullable(),
   producer: deterministicProducerSchema,
@@ -666,4 +682,40 @@ export async function verifyGroundingAuthorityDocument(
   authority: GroundingAuthorityVerificationContext,
 ): Promise<GroundingAuthorityDocument> {
   return verifyGroundingAuthorityDocumentRevision(referenceInput, authority, new Set());
+}
+
+/**
+ * 判别 origin 依赖：Fixture 文档不能引用 Published 上游，反之亦然。
+ *
+ * 在 coordinator 核验 bundle 时，必须确保所有文档的 origin 一致。
+ * published 文档必须使用相同的 published_version。
+ */
+export function assertGroundingAuthorityOriginConsistency(
+  documents: readonly GroundingAuthorityDocument[],
+): void {
+  if (documents.length < 2) return;
+  const firstOrigin = (documents[0] as GroundingAuthorityDocument).origin;
+  if (firstOrigin.origin === "published") {
+    for (const document of documents.slice(1)) {
+      const docOrigin = document.origin;
+      if (docOrigin.origin !== "published") {
+        throw new GroundingAuthorityError(
+          "Grounding Authority Bundle 中的所有 Document 必须使用相同 origin（fixture 或 published）。",
+        );
+      }
+      if (docOrigin.published_version !== firstOrigin.published_version) {
+        throw new GroundingAuthorityError(
+          "Grounding Authority Bundle 中所有 published Document 必须使用相同的 published_version。",
+        );
+      }
+    }
+  } else {
+    for (const document of documents.slice(1)) {
+      if (document.origin.origin !== "fixture") {
+        throw new GroundingAuthorityError(
+          "Grounding Authority Bundle 中的所有 Document 必须使用相同 origin（fixture 或 published）。",
+        );
+      }
+    }
+  }
 }

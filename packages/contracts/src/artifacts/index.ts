@@ -1,14 +1,17 @@
 export * from "./envelope.js";
 export {
   assertGroundingAuthorityBundleConsistency,
+  assertGroundingAuthorityOriginConsistency,
   computeGroundingAuthorityDocumentHash,
   type GroundingAuthorityDocument,
   GroundingAuthorityError,
   type GroundingAuthorityIdentityViolation,
+  type GroundingAuthorityOrigin,
   type GroundingAuthorityReference,
   type GroundingAuthorityVerificationContext,
   groundingAuthorityDocumentSchema,
   groundingAuthorityIdentityViolation,
+  groundingAuthorityOriginSchema,
   groundingAuthorityReferenceSchema,
   type PolicyReceiptDocument,
   policyReceiptDocumentSchema,
@@ -18,6 +21,20 @@ export {
   semanticReleaseDocumentSchema,
   verifyGroundingAuthorityDocument,
 } from "./grounding-authority.js";
+export {
+  type AuthoritativeGroundingBundle,
+  type AuthoritativePolicyReceipt,
+  type AuthoritativeSchemaSnapshot,
+  type AuthoritativeSemanticRelease,
+  isAuthoritativeGroundingBundle,
+  isAuthoritativePolicyReceipt,
+  isAuthoritativeSchemaSnapshot,
+  isAuthoritativeSemanticRelease,
+  type MaterializationResult,
+  type PolicyReceiptIssuerAdapter,
+  type SchemaSnapshotIssuerAdapter,
+  type SemanticReleaseIssuerAdapter,
+} from "./grounding-materializer.js";
 export * from "./l2.js";
 export * from "./research/index.js";
 export * from "./text2sql-evidence.js";

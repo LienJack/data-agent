@@ -100,9 +100,9 @@ describe("Research Hash v2", () => {
     ["U+0000 value", { value: "a\u0000b" }],
     ["isolated high surrogate value", { value: "\uD83D" }],
     ["isolated low surrogate value", { value: "\uDE00" }],
-    ["U+0000 key", { ["bad\u0000key"]: true }],
-    ["isolated high surrogate key", { ["bad\uD83D"]: true }],
-    ["isolated low surrogate key", { ["bad\uDE00"]: true }],
+    ["U+0000 key", { "bad\u0000key": true }],
+    ["isolated high surrogate key", { "bad\uD83D": true }],
+    ["isolated low surrogate key", { "bad\uDE00": true }],
   ])("拒绝非法 Unicode scalar sequence：%s", (_label, value) => {
     expect(() => assertResearchHashJson(value)).toThrow(TypeError);
   });

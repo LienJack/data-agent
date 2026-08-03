@@ -30,6 +30,10 @@ function authorityBase<const T extends "SemanticRelease" | "SchemaSnapshot" | "P
     artifact_type: artifactType,
     artifact_ref: makeArtifactReference(artifactType),
     scope,
+    origin: {
+      origin: "published" as const,
+      published_version: "test-fixture@1.0.0",
+    },
     run_id: ids.run,
     parent_ref: null,
     producer: {

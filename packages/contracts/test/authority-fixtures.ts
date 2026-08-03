@@ -478,6 +478,10 @@ export async function createAuthoritativeReadyFixture(
       tenant_id: ids.tenantA,
       environment: "test",
     },
+    origin: {
+      origin: "published",
+      published_version: "test-fixture@1.0.0",
+    },
     run_id: ids.run,
     parent_ref: null,
     producer: {

@@ -274,6 +274,7 @@ async function groundingAuthorityDocument(
       tenant_id: ids.tenant,
       environment: "test",
     },
+    origin: { origin: "fixture", fixture_version: "test-fixture@1.0.0" },
     run_id: ids.run,
     parent_ref: overrides.parent_ref ?? null,
     producer: {
@@ -346,6 +347,7 @@ async function schemaSnapshotDocument(
       tenant_id: ids.tenant,
       environment: "test",
     },
+    origin: { origin: "fixture", fixture_version: "test-fixture@1.0.0" },
     run_id: ids.run,
     parent_ref: null,
     producer: {
@@ -440,6 +442,7 @@ async function policyReceiptDocument(
       tenant_id: ids.tenant,
       environment: "test",
     },
+    origin: { origin: "fixture", fixture_version: "test-fixture@1.0.0" },
     run_id: ids.run,
     parent_ref: null,
     producer: {
