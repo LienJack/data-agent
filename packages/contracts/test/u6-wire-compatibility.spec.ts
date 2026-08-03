@@ -11,14 +11,13 @@ import {
 
 // ─── U6 Wire Compatibility Gate ───────────────────────────────────────────────
 //
-// 此门禁验证 U10.0/U10.1a 不新增 U6 Artifact / VersionFrontier 字段 / 10600
-// migration。
+// 此门禁验证 U10.0/U10.1a 不新增 U6 Artifact / VersionFrontier 字段。
 //
 // 失败条件：
 //   - versionFrontierSchema 新增或减少字段（必须恰好 5 个）。
 //   - L2_RESEARCH_WIRE_VERSION_MATRIX 新增了 U10 引入的 artifact type。
-//   - 添加了 10600 migration 文件。
-//   - C2 descriptor 的 installable 状态从 false 改变。
+//   - C2 descriptor 的 status 从 FROZEN_TABLE_SURFACE 改变。
+//   - C2 descriptor 的 installable 从 false 改变（U6 remainder 未闭合前必须保持）。
 //
 // ───────────────────────────────────────────────────────────────────────────────
 
@@ -193,22 +192,24 @@ describe("U6 Wire Compatibility: Version Matrix", () => {
   });
 });
 
-// ─── 3. 无 10600 Migration ────────────────────────────────────────────────────
+// ─── 3. 10600 Migration 存在（U6-C2a 已闭合）─────────────────────────────────
 
 describe("U6 Wire Compatibility: Migration", () => {
-  it("infra/supabase/apps/data-agent/migrations/ 不包含 10600 迁移文件", () => {
+  it("infra/supabase/apps/data-agent/migrations/ 包含 10600 迁移文件（U6-C2a 已闭合）", () => {
     const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
-    const c2Migrations = files.filter((f) => f.includes("10600"));
-    expect(c2Migrations).toHaveLength(0);
+    const c2Migrations = files.filter((f) => f.includes("10600") || f.includes("10601"));
+    // 10600 是 U6-C2a 派生回执迁移，10601 是受控 Fixture 迁移
+    expect(c2Migrations).toHaveLength(2);
   });
 
-  it("Migration 文件数仍为 15 个（U6 基线）", () => {
+  it("Migration 文件数应为 17 个（15 基线 + 10600 + 10601）", () => {
     const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
-    // 最新是 20260725010590，没有 10600
-    expect(files).toHaveLength(15);
-    expect(files.every((f) => !f.includes("10600"))).toBe(true);
+    // 10600 和 10601 是 U6-C2a 闭合后新增的迁移
+    expect(files).toHaveLength(17);
+    expect(files.some((f) => f.includes("10600"))).toBe(true);
+    expect(files.some((f) => f.includes("10601"))).toBe(true);
   });
 });
 

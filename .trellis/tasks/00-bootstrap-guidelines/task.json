@@ -19,7 +19,7 @@
   "pr_url": null,
   "subtasks": [],
   "children": [],
-  "parent": null,
+  "parent": "07-25-data-agent-reset-refactor",
   "relatedFiles": [
     ".trellis/spec/backend/",
     ".trellis/spec/frontend/"
