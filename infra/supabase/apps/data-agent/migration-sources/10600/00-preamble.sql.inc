@@ -39,7 +39,7 @@ begin
   end if;
 
   if pg_catalog.current_setting('app.u6_maintenance_manifest_hash', true)
-       is distinct from 'sha256:a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b'
+       is distinct from 'sha256:d28f8ac324e5453961c2636a7741c1feb36709908f84c7f03f9b9454ed87cced'
     or pg_catalog.current_setting('app.u6_maintenance_window_id', true)
        is distinct from '00000000-0000-4000-8000-000000001600'
   then

@@ -12,6 +12,9 @@ create table app_data_agent.research_budget_ledger_receipts (
   receipt_id uuid not null,
   receipt_hash text not null
     check (receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
+  protocol_version text not null,
+  input_hash text not null
+    check (input_hash ~ '^sha256:[0-9a-f]{64}$'),
   snapshot_command_hash text not null
     check (snapshot_command_hash ~ '^sha256:[0-9a-f]{64}$'),
   runtime_limits_version bigint not null
@@ -50,11 +53,10 @@ create table app_data_agent.research_budget_ledger_receipts (
   research_brief_content_hash text not null,
   committed_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (app_id, tenant_id, environment, run_id, receipt_id),
-  unique (app_id, tenant_id, environment, run_id, receipt_id, receipt_hash),
-  unique (app_id, tenant_id, environment, run_id, protocol_version, input_hash)
-    where protocol_version = 'budget-ledger-receipt@1.0.0'
+  unique (app_id, tenant_id, environment, run_id, receipt_id, receipt_hash)
 );
-
+create unique index if not exists uq_budget_ledger_receipt_protocol_version
+  on app_data_agent.research_budget_ledger_receipts (app_id, tenant_id, environment, run_id, input_hash);
 -- 8. research_coverage_derivation_receipts: common Receipt
 create table app_data_agent.research_coverage_derivation_receipts (
   app_id uuid not null
@@ -66,6 +68,9 @@ create table app_data_agent.research_coverage_derivation_receipts (
   receipt_id uuid not null,
   receipt_hash text not null
     check (receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
+  protocol_version text not null,
+  input_hash text not null
+    check (input_hash ~ '^sha256:[0-9a-f]{64}$'),
   budget_receipt_id uuid not null,
   budget_receipt_hash text not null
     check (budget_receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
@@ -78,11 +83,10 @@ create table app_data_agent.research_coverage_derivation_receipts (
   kernel_version text not null,
   committed_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (app_id, tenant_id, environment, run_id, receipt_id),
-  unique (app_id, tenant_id, environment, run_id, receipt_id, receipt_hash),
-  unique (app_id, tenant_id, environment, run_id, protocol_version, coverage_input_hash)
-    where protocol_version = 'coverage-derivation-receipt@1.0.0'
+  unique (app_id, tenant_id, environment, run_id, receipt_id, receipt_hash)
 );
-
+create unique index if not exists uq_coverage_derivation_receipt_protocol_version
+  on app_data_agent.research_coverage_derivation_receipts (app_id, tenant_id, environment, run_id, coverage_input_hash);
 -- 9. research_candidate_enumerator_attestations: append Attestation
 create table app_data_agent.research_candidate_enumerator_attestations (
   app_id uuid not null
@@ -94,6 +98,7 @@ create table app_data_agent.research_candidate_enumerator_attestations (
   attestation_id uuid not null,
   attestation_hash text not null
     check (attestation_hash ~ '^sha256:[0-9a-f]{64}$'),
+  protocol_version text not null,
   issuer_principal_id uuid not null,
   issuer_capability_id uuid not null,
   issuer_authority_epoch bigint not null
@@ -126,7 +131,7 @@ create table app_data_agent.research_candidate_enumerator_attestations (
   primary key (app_id, tenant_id, environment, run_id, attestation_id),
   unique (app_id, tenant_id, environment, run_id, attestation_id, attestation_hash),
   unique (app_id, tenant_id, environment, run_id, issuer_principal_id, idempotency_key),
-  unique (app_id, tenant_id, environment, run_id, coverage_ref_identity,
+  unique (app_id, tenant_id, environment, run_id,
           budget_receipt_id, budget_receipt_hash, enumerator_version,
           eig_policy_version, enumeration_universe_hash)
 );
@@ -142,6 +147,9 @@ create table app_data_agent.research_candidate_enumeration_receipts (
   receipt_id uuid not null,
   receipt_hash text not null
     check (receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
+  protocol_version text not null,
+  input_hash text not null
+    check (input_hash ~ '^sha256:[0-9a-f]{64}$'),
   coverage_receipt_id uuid not null,
   coverage_receipt_hash text not null,
   budget_receipt_id uuid not null,
@@ -183,6 +191,9 @@ create table app_data_agent.research_stop_derivation_receipts (
   receipt_id uuid not null,
   receipt_hash text not null
     check (receipt_hash ~ '^sha256:[0-9a-f]{64}$'),
+  protocol_version text not null,
+  input_hash text not null
+    check (input_hash ~ '^sha256:[0-9a-f]{64}$'),
   coverage_receipt_id uuid not null,
   coverage_receipt_hash text not null,
   candidate_receipt_id uuid not null,

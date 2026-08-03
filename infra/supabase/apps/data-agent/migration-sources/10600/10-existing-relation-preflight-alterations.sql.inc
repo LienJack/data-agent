@@ -2,6 +2,48 @@
 -- 10600: Existing table alterations (11 tables, 6 DDL changes)
 -- ============================================================
 
+-- Preflight: Add operation_json to research_stop_terminal_commits (needed by preflight check and RPCs)
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_catalog.pg_attribute as attribute
+    join pg_catalog.pg_class as relation on relation.oid = attribute.attrelid
+    join pg_catalog.pg_namespace as namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'app_data_agent'
+      and relation.relname = 'research_stop_terminal_commits'
+      and attribute.attname = 'operation_json'
+  ) then
+    alter table app_data_agent.research_stop_terminal_commits
+      add column operation_json jsonb;
+  end if;
+end $$;
+
+-- Preflight: Add document_json to research_artifact_commit_operations (needed by preflight check and backfill)
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_catalog.pg_attribute as attribute
+    join pg_catalog.pg_class as relation on relation.oid = attribute.attrelid
+    join pg_catalog.pg_namespace as namespace on namespace.oid = relation.relnamespace
+    where namespace.nspname = 'app_data_agent'
+      and relation.relname = 'research_artifact_commit_operations'
+      and attribute.attname = 'document_json'
+  ) then
+    alter table app_data_agent.research_artifact_commit_operations
+      add column document_json jsonb;
+  end if;
+end $$;
+
+-- Backfill document_json from candidate_json for existing rows
+do $$
+begin
+  update app_data_agent.research_artifact_commit_operations as operation
+  set document_json = operation.candidate_json
+  where operation.document_json is null;
+end $$;
+
 do $capacity_and_data_preflight$
 declare
   violation_count bigint;
@@ -95,12 +137,12 @@ begin
     from pg_catalog.pg_index as idx
     join pg_catalog.pg_class as relation on relation.oid = idx.indrelid
     join pg_catalog.pg_namespace as namespace on namespace.oid = relation.relnamespace
+    join pg_catalog.pg_class as index_class on index_class.oid = idx.indexrelid
     where namespace.nspname = 'app_data_agent'
       and relation.relname = 'outbox'
-      and idx.indisunique
-      and idx.indisprimary = false
+      and index_class.relname = 'uq_outbox_outbox_id_run_id'
   ) then
-    create unique index concurrently if not exists
+    create unique index if not exists
       uq_outbox_outbox_id_run_id
       on app_data_agent.outbox (app_id, tenant_id, environment, outbox_id, run_id);
   end if;
@@ -110,13 +152,13 @@ do $$
 begin
   if not exists (
     select 1
-    from pg_catalog.pg_constraint as constraint
-    join pg_catalog.pg_class as relation on relation.oid = constraint.conrelid
+    from pg_catalog.pg_constraint as con
+    join pg_catalog.pg_class as relation on relation.oid = con.conrelid
     join pg_catalog.pg_namespace as namespace on namespace.oid = relation.relnamespace
     where namespace.nspname = 'app_data_agent'
       and relation.relname = 'outbox'
-      and constraint.contype = 'u'
-      and constraint.conname = 'uq_outbox_outbox_id_run_id'
+      and con.contype = 'u'
+      and con.conname = 'uq_outbox_outbox_id_run_id'
   ) then
     alter table app_data_agent.outbox
       add constraint uq_outbox_outbox_id_run_id
@@ -230,11 +272,11 @@ begin
     where reservation.budget_epoch is null;
 
     -- Add UQs
-    create unique index concurrently if not exists
+    create unique index if not exists
       uq_reservation_budget_epoch
       on app_data_agent.research_resource_reservations (app_id, tenant_id, environment, run_id, reservation_id, budget_epoch);
 
-    create unique index concurrently if not exists
+    create unique index if not exists
       uq_reservation_budget_epoch_step
       on app_data_agent.research_resource_reservations (app_id, tenant_id, environment, run_id, reservation_id, budget_epoch, logical_step_id);
   end if;
