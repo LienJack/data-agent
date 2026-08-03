@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { artifactReferenceIdentity } from "../src/artifacts/envelope.js";
 import {
+  assertGroundingAuthorityOriginConsistency,
   computeGroundingAuthorityDocumentHash,
   type GroundingAuthorityDocument,
   GroundingAuthorityError,
   type GroundingAuthorityReference,
   type GroundingAuthorityVerificationContext,
   groundingAuthorityDocumentSchema,
+  groundingAuthorityOriginSchema,
   policyReceiptDocumentSchema,
   schemaSnapshotDocumentSchema,
   semanticReleaseDocumentSchema,
@@ -587,4 +589,217 @@ describe("Grounding System Authority 契约", () => {
       }),
     ).rejects.toBeInstanceOf(GroundingAuthorityError);
   });
+});
+
+// ─── Fixture/Published Isolation ─────────────────────────────────────────────
+
+describe("Fixture/Published Isolation", () => {
+  // ─── assertGroundingAuthorityOriginConsistency 测试 ────────────────────────
+
+  it("全部 fixture origin 的文档通过一致性检查", () => {
+    const docs = [
+      { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
+      { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
+      { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
+    ] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).not.toThrow();
+  });
+
+  it("全部 published origin 的文档通过一致性检查", () => {
+    const docs = [
+      { origin: { origin: "published" as const, published_version: "production@1.0.0" } },
+      { origin: { origin: "published" as const, published_version: "production@1.0.0" } },
+      { origin: { origin: "published" as const, published_version: "production@1.0.0" } },
+    ] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).not.toThrow();
+  });
+
+  it("fixture 与 published origin 混合的 bundle 被拒绝", () => {
+    const docs = [
+      { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
+      { origin: { origin: "published" as const, published_version: "production@1.0.0" } },
+    ] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
+      "必须使用相同 origin",
+    );
+  });
+
+  it("published version 不一致的 bundle 被拒绝", () => {
+    const docs = [
+      { origin: { origin: "published" as const, published_version: "production@1.0.0" } },
+      { origin: { origin: "published" as const, published_version: "production@2.0.0" } },
+    ] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
+      "必须使用相同的 published_version",
+    );
+  });
+
+  it("fixture version 不同但 origin 一致时通过（fixture 不要求 version 一致）", () => {
+    const docs = [
+      { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
+      { origin: { origin: "fixture" as const, fixture_version: "test-fixture@2.0.0" } },
+    ] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).not.toThrow();
+  });
+
+  it("单文档通过一致性检查（边界情况）", () => {
+    expect(() =>
+      assertGroundingAuthorityOriginConsistency([
+        { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
+      ] as unknown as GroundingAuthorityDocument[]),
+    ).not.toThrow();
+  });
+
+  it("空文档数组通过一致性检查（边界情况）", () => {
+    expect(() => assertGroundingAuthorityOriginConsistency([])).not.toThrow();
+  });
+
+  // ─── origin 判别联合的 schema 验证 ────────────────────────────────────────
+
+  it("fixture origin 必须包含 fixture_version", () => {
+    const result = groundingAuthorityOriginSchema.safeParse({
+      origin: "fixture",
+      fixture_version: "test-fixture@1.0.0",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("fixture origin 不能包含 published_version", () => {
+    const result = groundingAuthorityOriginSchema.safeParse({
+      origin: "fixture",
+      fixture_version: "test-fixture@1.0.0",
+      published_version: "production@1.0.0",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("published origin 必须包含 published_version", () => {
+    const result = groundingAuthorityOriginSchema.safeParse({
+      origin: "published",
+      published_version: "production@1.0.0",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("published origin 不能包含 fixture_version", () => {
+    const result = groundingAuthorityOriginSchema.safeParse({
+      origin: "published",
+      published_version: "production@1.0.0",
+      fixture_version: "test-fixture@1.0.0",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("缺少 origin 字段被拒绝", () => {
+    const result = groundingAuthorityOriginSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  it("未知 origin 值被拒绝", () => {
+    const result = groundingAuthorityOriginSchema.safeParse({
+      origin: "unknown",
+      version: "v1",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // ─── 生产环境 resolver 拒绝 fixture ref ───────────────────────────────────
+
+  it("production resolver 拒绝 fixture-origin 文档的引用", async () => {
+    const fixtureSr = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" },
+    });
+
+    // production resolver 只 resolve published 文档，不 resolve fixture
+    const productionResolver: GroundingAuthorityVerificationContext = {
+      principalId: "production-resolver",
+      resolveCommitted: async () => null,
+      verifyCommitted: async () => false,
+    };
+
+    // fixture-origin 文档不在 production resolver 中
+    await expect(
+      verifyGroundingAuthorityDocument(fixtureSr.artifact_ref, productionResolver),
+    ).rejects.toBeInstanceOf(GroundingAuthorityError);
+  });
+
+  it("production resolver 通过 published-origin 文档的引用", async () => {
+    const publishedSr = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "published" as const, published_version: "production@1.0.0" },
+    });
+    const byReference = new Map([
+      [artifactReferenceIdentity(publishedSr.artifact_ref), publishedSr],
+    ]);
+
+    const productionResolver: GroundingAuthorityVerificationContext = {
+      principalId: "production-resolver",
+      resolveCommitted: async (reference) =>
+        byReference.get(artifactReferenceIdentity(reference)) ?? null,
+      verifyCommitted: async (reference) =>
+        byReference.has(artifactReferenceIdentity(reference)),
+    };
+
+    await expect(
+      verifyGroundingAuthorityDocument(publishedSr.artifact_ref, productionResolver),
+    ).resolves.toBeDefined();
+  });
+
+  it("fixture-only resolver 不能访问 published 文档", async () => {
+    const publishedSr = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "published" as const, published_version: "production@1.0.0" },
+    });
+
+    // fixture-only resolver 不 resolve published 文档
+    const fixtureResolver: GroundingAuthorityVerificationContext = {
+      principalId: "fixture-resolver",
+      resolveCommitted: async () => null,
+      verifyCommitted: async () => false,
+    };
+
+    await expect(
+      verifyGroundingAuthorityDocument(publishedSr.artifact_ref, fixtureResolver),
+    ).rejects.toBeInstanceOf(GroundingAuthorityError);
+  });
+
+  // ─── 跨文档 origin 隔离 ──────────────────────────────────────────────────
+
+  it("fixture 文档不能与 published 文档在同一 bundle（coordinator 层拒绝）", async () => {
+    const fixtureDoc = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" },
+    });
+    const publishedDoc = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "published" as const, published_version: "production@1.0.0" },
+    });
+
+    // 即使两个文档都是有效的，放在同一 bundle 中 origin 不一致会被拒绝
+    const docs = [fixtureDoc, publishedDoc] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
+      "必须使用相同 origin",
+    );
+  });
+
+  it("published 文档不能与 fixture 文档在同一 bundle", async () => {
+    const publishedDoc = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "published" as const, published_version: "production@1.0.0" },
+    });
+    const fixtureDoc = await sealDocument({
+      ...semanticReleaseDraft(),
+      origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" },
+    });
+
+    const docs = [publishedDoc, fixtureDoc] as unknown as GroundingAuthorityDocument[];
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
+      "必须使用相同 origin",
+    );
+  });
+
+  // ─── 完整 materializer 流程中的 origin 隔离 ───────────────────────────────
+
+
 });

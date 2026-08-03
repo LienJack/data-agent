@@ -3,10 +3,12 @@ import {
   GroundingAuthorityError,
   type GroundingAuthorityOrigin,
   type GroundingAuthorityReference,
+  type GroundingAuthorityVerificationContext,
   groundingAuthorityOriginSchema,
   type PolicyReceiptDocument,
   type SchemaSnapshotDocument,
   type SemanticReleaseDocument,
+  verifyGroundingAuthorityDocument,
 } from "../src/artifacts/grounding-authority.js";
 import {
   type AuthoritativePolicyReceipt,
@@ -668,5 +670,178 @@ describe("Grounding Authority Materializer", () => {
         }),
       ).rejects.toThrow("GROUNDING_MATERIALIZER_REQUIRED");
     });
+  });
+});
+
+// ─── Fixture/Published Isolation in Materializer ──────────────────────────────
+
+describe("Fixture/Published Isolation in Materializer", () => {
+  it("materializeGroundingAuthority 使用 fixture origin 时所有文档 origin 一致", async () => {
+    const srAdapter = createMockAdapter();
+    const ssAdapter = createMockAdapter();
+    const prAdapter = createMockAdapter();
+    const srIssuer = registerTrustedSemanticReleaseIssuer(srAdapter);
+    const ssIssuer = registerTrustedSchemaSnapshotIssuer(ssAdapter);
+    const prIssuer = registerTrustedPolicyReceiptIssuer(prAdapter);
+    const coordinator = registerTrustedGroundingCoordinator({ principal_id: "coordinator" });
+    const materializer = registerTrustedGroundingMaterializer({ principal_id: "materializer" });
+
+    const srDraft = makeSemanticReleaseDraft();
+    const ssDraft = makeSchemaSnapshotDraft();
+    const prDraft = makePolicyReceiptDraft({
+      semanticReleaseRef: makeArtifactReference("SemanticRelease"),
+      schemaSnapshotRef: makeArtifactReference("SchemaSnapshot"),
+    });
+
+    const result = await materializeGroundingAuthority({
+      materializer,
+      semanticReleaseIssuer: srIssuer,
+      schemaSnapshotIssuer: ssIssuer,
+      policyReceiptIssuer: prIssuer,
+      coordinator,
+      semanticRelease: srDraft,
+      schemaSnapshot: ssDraft,
+      policyReceipt: prDraft,
+      origin: fixtureOrigin,
+    });
+
+    // 所有文档的 origin 应该一致，都是 fixture
+    expect(result.origin.origin).toBe("fixture");
+    expect(result.bundle.semanticRelease.document.origin.origin).toBe("fixture");
+    expect(result.bundle.schemaSnapshot.document.origin.origin).toBe("fixture");
+    expect(result.bundle.policyReceipt.document.origin.origin).toBe("fixture");
+  });
+
+  it("materializeGroundingAuthority 使用 published origin 时所有文档 origin 一致", async () => {
+    const srAdapter = createMockAdapter();
+    const ssAdapter = createMockAdapter();
+    const prAdapter = createMockAdapter();
+    const srIssuer = registerTrustedSemanticReleaseIssuer(srAdapter);
+    const ssIssuer = registerTrustedSchemaSnapshotIssuer(ssAdapter);
+    const prIssuer = registerTrustedPolicyReceiptIssuer(prAdapter);
+    const coordinator = registerTrustedGroundingCoordinator({ principal_id: "coordinator" });
+    const materializer = registerTrustedGroundingMaterializer({ principal_id: "materializer" });
+
+    const srDraft = makeSemanticReleaseDraft();
+    const ssDraft = makeSchemaSnapshotDraft();
+    const prDraft = makePolicyReceiptDraft({
+      semanticReleaseRef: makeArtifactReference("SemanticRelease"),
+      schemaSnapshotRef: makeArtifactReference("SchemaSnapshot"),
+    });
+
+    const result = await materializeGroundingAuthority({
+      materializer,
+      semanticReleaseIssuer: srIssuer,
+      schemaSnapshotIssuer: ssIssuer,
+      policyReceiptIssuer: prIssuer,
+      coordinator,
+      semanticRelease: srDraft,
+      schemaSnapshot: ssDraft,
+      policyReceipt: prDraft,
+      origin: publishedOrigin,
+    });
+
+    // 所有文档的 origin 应该一致，都是 published
+    expect(result.origin.origin).toBe("published");
+    expect(result.bundle.semanticRelease.document.origin.origin).toBe("published");
+    expect(result.bundle.schemaSnapshot.document.origin.origin).toBe("published");
+    expect(result.bundle.policyReceipt.document.origin.origin).toBe("published");
+  });
+
+  it("coordinateGroundingBundle 拒绝 fixture/published 混合 origin", async () => {
+    const srAdapter = createMockAdapter();
+    const ssAdapter = createMockAdapter();
+    const prAdapter = createMockAdapter();
+    const srIssuer = registerTrustedSemanticReleaseIssuer(srAdapter);
+    const ssIssuer = registerTrustedSchemaSnapshotIssuer(ssAdapter);
+    const prIssuer = registerTrustedPolicyReceiptIssuer(prAdapter);
+    const coordinator = registerTrustedGroundingCoordinator({ principal_id: "test-coordinator" });
+
+    // 签发 SR 和 SS 为 fixture
+    const sr = await issueSemanticRelease({
+      issuer: srIssuer,
+      document: makeSemanticReleaseDraft(),
+      origin: fixtureOrigin,
+    });
+    const ss = await issueSchemaSnapshot({
+      issuer: ssIssuer,
+      document: makeSchemaSnapshotDraft(),
+      origin: fixtureOrigin,
+    });
+
+    // 用不同的 adapter 签发 PR 为 published
+    const prAdapter2 = createMockAdapter();
+    const prIssuer2 = registerTrustedPolicyReceiptIssuer(prAdapter2);
+    const pr = await issuePolicyReceipt({
+      issuer: prIssuer2,
+      document: makePolicyReceiptDraft({
+        semanticReleaseRef: sr.reference,
+        schemaSnapshotRef: ss.reference,
+        origin: publishedOrigin,
+      }),
+      origin: publishedOrigin,
+    });
+
+    // coordinator 应该拒绝混合 origin 的 bundle
+    await expect(
+      coordinateGroundingBundle({
+        coordinator,
+        semanticRelease: sr,
+        schemaSnapshot: ss,
+        policyReceipt: pr,
+      }),
+    ).rejects.toThrow(GroundingAuthorityError);
+  });
+
+  it("fixture-origin 文档不能被 published coordinator 消费", async () => {
+    const srAdapter = createMockAdapter();
+    const ssAdapter = createMockAdapter();
+    const prAdapter = createMockAdapter();
+    const srIssuer = registerTrustedSemanticReleaseIssuer(srAdapter);
+    const ssIssuer = registerTrustedSchemaSnapshotIssuer(ssAdapter);
+    const prIssuer = registerTrustedPolicyReceiptIssuer(prAdapter);
+    const coordinator = registerTrustedGroundingCoordinator({ principal_id: "coordinator" });
+
+    // 签发 fixture-origin 文档
+    const sr = await issueSemanticRelease({
+      issuer: srIssuer,
+      document: makeSemanticReleaseDraft(),
+      origin: fixtureOrigin,
+    });
+    const ss = await issueSchemaSnapshot({
+      issuer: ssIssuer,
+      document: makeSchemaSnapshotDraft(),
+      origin: fixtureOrigin,
+    });
+    const prDraft = makePolicyReceiptDraft({
+      semanticReleaseRef: sr.reference,
+      schemaSnapshotRef: ss.reference,
+    });
+    const pr = await issuePolicyReceipt({
+      issuer: prIssuer,
+      document: prDraft,
+      origin: fixtureOrigin,
+    });
+
+    // fixture-origin 文档可以被 fixture coordinator 消费
+    const bundle = await coordinateGroundingBundle({
+      coordinator,
+      semanticRelease: sr,
+      schemaSnapshot: ss,
+      policyReceipt: pr,
+    });
+    expect(bundle.origin.origin).toBe("fixture");
+
+    // 但 fixture-origin 文档不能通过 published resolver 验证
+    const productionResolver = {
+      principalId: "production-resolver",
+      resolveCommitted: async () => null,
+      verifyCommitted: async () => false,
+    };
+
+    // fixture-origin 文档在 production resolver 中不存在
+    await expect(
+      verifyGroundingAuthorityDocument(sr.document.artifact_ref, productionResolver),
+    ).rejects.toBeInstanceOf(GroundingAuthorityError);
   });
 });
