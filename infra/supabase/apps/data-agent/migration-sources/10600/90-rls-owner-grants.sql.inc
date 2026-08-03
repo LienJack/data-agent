@@ -420,6 +420,9 @@ revoke all on all tables in schema app_data_agent from authenticated;
 revoke all on all tables in schema app_data_agent from service_role;
 revoke all on all tables in schema app_data_agent from data_agent_backend;
 
+-- Restore SELECT on app_data_agent.runs for data_agent_backend (revoked by
+-- the schema-level revoke above, which affects tables from prior migrations)
+grant select on app_data_agent.runs to data_agent_backend;
 -- ============================================================
 -- Part 8: Revoke artifacts INSERT/UPDATE/DELETE from backend
 -- ============================================================

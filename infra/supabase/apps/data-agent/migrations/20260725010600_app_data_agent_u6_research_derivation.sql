@@ -1,4 +1,4 @@
--- u6_c2_migration_checksum: sha256:b435ef8e3a918b9e99781b6fd49767d7ea21ff5df781ddd7efe78a122b50ba6d
+-- u6_c2_migration_checksum: sha256:9436df7d436838fc928e2aefad5a0f84a8e750b3b3f7f9eb8e0932d777f38e74
 begin;
 
 do $bootstrap$
@@ -5447,6 +5447,9 @@ revoke all on all tables in schema app_data_agent from authenticated;
 revoke all on all tables in schema app_data_agent from service_role;
 revoke all on all tables in schema app_data_agent from data_agent_backend;
 
+-- Restore SELECT on app_data_agent.runs for data_agent_backend (revoked by
+-- the schema-level revoke above, which affects tables from prior migrations)
+grant select on app_data_agent.runs to data_agent_backend;
 -- ============================================================
 -- Part 8: Revoke artifacts INSERT/UPDATE/DELETE from backend
 -- ============================================================
@@ -5461,7 +5464,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010600_app_data_agent_u6_research_derivation',
-  'sha256:b435ef8e3a918b9e99781b6fd49767d7ea21ff5df781ddd7efe78a122b50ba6d'
+  'sha256:9436df7d436838fc928e2aefad5a0f84a8e750b3b3f7f9eb8e0932d777f38e74'
 );
 
 commit;

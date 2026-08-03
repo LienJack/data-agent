@@ -1,6 +1,9 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { renderU6C2MigrationCandidateFromSegments, defaultU6C2CandidatePaths } from "./render-u6-c2-migration.js";
+import {
+  defaultU6C2CandidatePaths,
+  renderU6C2MigrationCandidateFromSegments,
+} from "./render-u6-c2-migration.js";
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const paths = defaultU6C2CandidatePaths(repoRoot);
