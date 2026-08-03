@@ -465,7 +465,7 @@ export function validateWorkspaceModules(
       }
     }
 
-    if (!kernelRoles.has(module.role)) {
+    if (!module.role || !kernelRoles.has(module.role)) {
       if (module.role && domainRoles.has(module.role)) {
         for (const dependency of module.runtimeDependencies) {
           if (!isForbiddenDomainRuntimePackage(dependency)) {
@@ -546,7 +546,7 @@ export function validateWorkspaceModules(
       }
 
       if (
-        kernelRoles.has(module.role) &&
+        module.role && kernelRoles.has(module.role) &&
         !isLocalSpecifier(specifier) &&
         !isBuiltin(specifier) &&
         !contractsRuntimeAllowlist.has(packageNameFromSpecifier(specifier))

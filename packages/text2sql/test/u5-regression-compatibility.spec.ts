@@ -330,7 +330,7 @@ describe("U5 Regression: PostgreSQL Compiler", () => {
       logical_plan_binding: logicalPlanBinding,
       grounding: groundingResult.grounding,
     });
-    expect(isPostgresqlCompilation(compileResult.compilation)).toBe(true);
+    expect(compileResult.state === "COMPILED" && isPostgresqlCompilation(compileResult.compilation)).toBe(true);
     expect(isPostgresqlCompilation({ dialect: "postgresql", state: "FAILED", reasonCode: "COMPILATION_FAILED" })).toBe(false);
   });
 });

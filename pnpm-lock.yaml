@@ -41,6 +41,9 @@ importers:
       '@data-agent/platform':
         specifier: workspace:*
         version: link:../../packages/platform
+      '@data-agent/research':
+        specifier: workspace:*
+        version: link:../../packages/research
       pg:
         specifier: 8.22.0
         version: 8.22.0

@@ -2,16 +2,15 @@
 
 ## 1. 当前状态
 
-- 当前任务状态：`HUMAN_REVIEW_REQUIRED`。已完成单元的历史状态不变；未开始或未闭合的
-  产品实施已停在用户审核门，不能继续执行。
+- 当前任务状态：`IN_PROGRESS`。已完成单元的历史状态不变；未开始或未闭合的
+  产品实施已重新批准，当前正在实施 U6-C2a/10600。
 - 用户于 2026-07-25 选择方案 2 并批准原 R1–R8、U1–U9 纵向切片；该批准只解释下文
   U1–U6 的既有实现与证据，不能自动授权 2026-07-30/2026-08-02 新增的
   R9a–R9d、U10、U11、U13 或恢复 U6-C2a。
-- 当前待审权威是
+- 当前待审权威（2026-08-04 已重新批准）
   `docs/plans/2026-07-30-001-refactor-governed-semantic-control-plane-plan.md`：它在 RQ310
-  基础上把 Ontology 限定为业务意义骨架，并新增描述性贡献纵切。用户重新批准前，
-  Trellis 与 Compound Engineering 只可完成调研、计划同步和 Codex 文档审查，不得开始
-  新产品代码、Migration、测试实现或运行时激活。
+  基础上把 Ontology 限定为业务意义骨架，并新增描述性贡献纵切。用户已重新批准，
+  Trellis 与 Compound Engineering 当前正在实施 U6-C2a/10600 段。
 - U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`，U3 已完成并固定在
   `2f31e9e`，U4 已完成并固定在 `55a4e24`。
 - U5 的 Artifact Authority 基线已固定在 `4bc011f`，ACL-first Grounding、Typed IR
@@ -1472,7 +1471,7 @@ pnpm verify:release
 
 这些命令是全局验收契约。U1–U5 对应命令已经接入真实实现，U6 只有上文明确记录的
 检查点可以声明完成；U6 remainder、U7–U13 尚未实现的命令必须通过 `pending-gate` 或
-`verify:release` 明确返回 `HOLD`/非零退出，不能静默通过。用户重新批准前，不运行计划中
+`verify:release` 明确返回 `HOLD`/非零退出，不能静默通过。用户已重新批准，不运行计划中
 尚不存在的 U10/U13 产品门禁来制造“伪通过”证据。
 
 ## 11. 阶段性证据要求

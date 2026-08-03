@@ -280,7 +280,7 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
     const bundle = createValidBundle();
     const mutated = {
       ...bundle,
-      metrics: [bundle.metrics[0], bundle.metrics[0]],
+      metrics: [bundle.metrics[0]!, bundle.metrics[0]!],
     };
     expect(() => assertSemanticSourceBundleInvariants(mutated)).toThrow("重复的 Metric ID");
   });
@@ -289,7 +289,7 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
     const bundle = createValidBundle();
     const mutated = {
       ...bundle,
-      dimensions: [bundle.dimensions[0], bundle.dimensions[0]],
+      dimensions: [bundle.dimensions[0]!, bundle.dimensions[0]!],
     };
     expect(() => assertSemanticSourceBundleInvariants(mutated)).toThrow("重复的 Dimension ID");
   });
@@ -299,11 +299,12 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
     const mutated = {
       ...bundle,
       contribution_profile: {
-        profile_version: "descriptive-contribution@1",
-        description: "test",
-        endpoints: [],
-        binding_rules: [],
-        capacity_proofs: [],
+        profile_id: "descriptive-contribution-profile@1",
+        targets: [],
+        witnesses: [],
+        static_driver_capacity: [],
+        stable_ordering: [],
+        declared_max_bound: 1,
       },
     };
     expect(() => assertM1SubsetRestriction(mutated)).toThrow("M1 不允许 DescriptiveContributionProfile");

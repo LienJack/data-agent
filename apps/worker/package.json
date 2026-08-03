@@ -23,6 +23,7 @@
   "dependencies": {
     "@data-agent/agent-runtime": "workspace:*",
     "@data-agent/contracts": "workspace:*",
+    "@data-agent/research": "workspace:*",
     "@data-agent/platform": "workspace:*",
     "pg": "8.22.0",
     "zod": "4.4.3"

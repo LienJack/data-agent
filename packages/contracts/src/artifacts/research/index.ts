@@ -1,4 +1,5 @@
 export * from "./controlled-fixture.js";
+export { databaseUtcTimestampSchema } from "./derivation-wire-shared.js";
 export * from "./coverage.js";
 export * from "./derivation-primitives.js";
 export * from "./derivation-wire.js";
