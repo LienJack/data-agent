@@ -12,6 +12,11 @@ export {
 export * from "./persistence/transaction.js";
 export * from "./queue/postgres-run-queue.js";
 export {
+  createPostgresControlledFixture,
+  type PostgresControlledFixture,
+  type PostgresControlledFixtureOptions,
+} from "./research/postgres-controlled-fixture.js";
+export {
   createPostgresResearchAuthority,
   type PostgresResearchAuthority,
   type PostgresResearchAuthorityOptions,
@@ -21,11 +26,6 @@ export {
   type PostgresResearchResourceInvocation,
   type PostgresResearchResourceInvocationOptions,
 } from "./research/postgres-research-resource-invocation.js";
-export {
-  createPostgresControlledFixture,
-  type PostgresControlledFixture,
-  type PostgresControlledFixtureOptions,
-} from "./research/postgres-controlled-fixture.js";
 export {
   type ActiveSandboxCancelRequest,
   type CoordinatedSandboxPort,

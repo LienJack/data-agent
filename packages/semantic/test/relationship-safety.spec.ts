@@ -1,14 +1,26 @@
+import { SEMANTIC_SOURCE_BUNDLE_VERSION, U5_EXECUTABLE_SUBSET } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { lowerRelationship, lowerAllRelationships, assertNoRelationshipIdCollision } from "../src/compiler/relationship-lowering.js";
-import { U5_EXECUTABLE_SUBSET, SEMANTIC_SOURCE_BUNDLE_VERSION } from "@data-agent/contracts";
+import {
+  assertNoRelationshipIdCollision,
+  lowerAllRelationships,
+  lowerRelationship,
+} from "../src/compiler/relationship-lowering.js";
 
 const baseMetadata = {
   bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION,
   capability_profile: U5_EXECUTABLE_SUBSET,
   bundle_id: "00000000-0000-1000-8000-000000000003",
-  scope: { app_id: "00000000-0000-1000-8000-000000000004", tenant_id: "00000000-0000-1000-8000-000000000005", environment: "test" },
+  scope: {
+    app_id: "00000000-0000-1000-8000-000000000004",
+    tenant_id: "00000000-0000-1000-8000-000000000005",
+    environment: "test",
+  },
   producer: { kind: "deterministic" as const, id: "semantic-compiler" },
-  authority: { kind: "deterministic" as const, id: "semantic-authority", policy_version: "semantic-authority@1.0.0" },
+  authority: {
+    kind: "deterministic" as const,
+    id: "semantic-authority",
+    policy_version: "semantic-authority@1.0.0",
+  },
   created_at: "2026-08-04T00:00:00Z",
 };
 
@@ -123,22 +135,42 @@ describe("Relationship Safety", () => {
 
   it("assertNoRelationshipIdCollision detects duplicate IDs", () => {
     const edges = [
-      lowerRelationship({
-        relationship_id: "rel-duplicate", name: "Dup1", kind: "analytical",
-        left_table_id: "a", left_column_ids: ["a.id"],
-        right_table_id: "b", right_column_ids: ["b.id"],
-        cardinality: "one-to-one", left_row_preservation: "required" as const,
-        right_row_preservation: "required" as const, proof_kind: "DDL_ENFORCED" as const,
-        proof_detail: null, tags: [],
-      }, "catalog"),
-      lowerRelationship({
-        relationship_id: "rel-duplicate", name: "Dup2", kind: "analytical",
-        left_table_id: "c", left_column_ids: ["c.id"],
-        right_table_id: "d", right_column_ids: ["d.id"],
-        cardinality: "one-to-one", left_row_preservation: "required" as const,
-        right_row_preservation: "required" as const, proof_kind: "DDL_ENFORCED" as const,
-        proof_detail: null, tags: [],
-      }, "catalog"),
+      lowerRelationship(
+        {
+          relationship_id: "rel-duplicate",
+          name: "Dup1",
+          kind: "analytical",
+          left_table_id: "a",
+          left_column_ids: ["a.id"],
+          right_table_id: "b",
+          right_column_ids: ["b.id"],
+          cardinality: "one-to-one",
+          left_row_preservation: "required" as const,
+          right_row_preservation: "required" as const,
+          proof_kind: "DDL_ENFORCED" as const,
+          proof_detail: null,
+          tags: [],
+        },
+        "catalog",
+      ),
+      lowerRelationship(
+        {
+          relationship_id: "rel-duplicate",
+          name: "Dup2",
+          kind: "analytical",
+          left_table_id: "c",
+          left_column_ids: ["c.id"],
+          right_table_id: "d",
+          right_column_ids: ["d.id"],
+          cardinality: "one-to-one",
+          left_row_preservation: "required" as const,
+          right_row_preservation: "required" as const,
+          proof_kind: "DDL_ENFORCED" as const,
+          proof_detail: null,
+          tags: [],
+        },
+        "catalog",
+      ),
     ];
     expect(() => assertNoRelationshipIdCollision(edges)).toThrow();
   });

@@ -1,8 +1,8 @@
-import {
-  type SemanticSourceBundle,
-  type SemanticMetric,
-  type SemanticDimension,
-  type SemanticRelationship,
+import type {
+  SemanticDimension,
+  SemanticMetric,
+  SemanticRelationship,
+  SemanticSourceBundle,
 } from "@data-agent/contracts";
 
 /**

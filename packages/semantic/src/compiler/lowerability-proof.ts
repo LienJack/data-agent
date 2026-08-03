@@ -1,9 +1,9 @@
 import {
   type FormulaSignature,
-  type SemanticMetric,
-  type SemanticSourceBundle,
-  type SemanticRelationship,
   SemanticGovernanceError,
+  type SemanticMetric,
+  type SemanticRelationship,
+  type SemanticSourceBundle,
 } from "@data-agent/contracts";
 
 /**
@@ -127,9 +127,7 @@ function isRelationshipCardinalityU5Lowerable(cardinality: string): boolean {
  * 遍历所有可达 Formula 和 Relationship，生成每项的降级证明。
  * 整体 `overallLowerable` 只在所有项都降级时为 true。
  */
-export function computeLowerabilityProof(
-  bundle: SemanticSourceBundle,
-): LowerabilityResult {
+export function computeLowerabilityProof(bundle: SemanticSourceBundle): LowerabilityResult {
   const proofs: LowerabilityProof[] = [];
   const unlowerableFormulaIds: string[] = [];
 
@@ -190,9 +188,10 @@ export function computeLowerabilityProof(
 
     proofs.push({
       formulaId: formula.formula_id,
-      status: reasons.length === 0
-        ? LowerabilityStatus.LOWERABLE_TO_U5
-        : LowerabilityStatus.NOT_LOWERABLE,
+      status:
+        reasons.length === 0
+          ? LowerabilityStatus.LOWERABLE_TO_U5
+          : LowerabilityStatus.NOT_LOWERABLE,
       reasonCode: reasons.length > 0 ? reasons.join("; ") : null,
       unreachableFormulaIds,
       unreachableDimensionIds,
@@ -237,9 +236,10 @@ export function computeLowerabilityProof(
 
     proofs.push({
       formulaId: metric.metric_id,
-      status: reasons.length === 0
-        ? LowerabilityStatus.LOWERABLE_TO_U5
-        : LowerabilityStatus.NOT_LOWERABLE,
+      status:
+        reasons.length === 0
+          ? LowerabilityStatus.LOWERABLE_TO_U5
+          : LowerabilityStatus.NOT_LOWERABLE,
       reasonCode: reasons.length > 0 ? reasons.join("; ") : null,
       unreachableFormulaIds: [],
       unreachableDimensionIds: [],

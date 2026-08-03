@@ -1,7 +1,7 @@
 import {
+  SemanticGovernanceError,
   type SemanticRelationship,
   type SemanticSourceBundle,
-  SemanticGovernanceError,
 } from "@data-agent/contracts";
 
 /**
@@ -64,16 +64,16 @@ function resolveRowPreservation(
   return "full";
 }
 
-function resolveDirection(cardinality: string): "left-to-right" | "right-to-left" | "bidirectional" {
+function resolveDirection(
+  cardinality: string,
+): "left-to-right" | "right-to-left" | "bidirectional" {
   if (cardinality === "one-to-one") return "bidirectional";
   if (cardinality === "one-to-many") return "left-to-right";
   if (cardinality === "many-to-one") return "right-to-left";
   return "bidirectional";
 }
 
-function resolveFanoutGrainProof(
-  relationship: SemanticRelationship,
-): string | null {
+function resolveFanoutGrainProof(relationship: SemanticRelationship): string | null {
   if (relationship.cardinality === "one-to-many" || relationship.cardinality === "many-to-many") {
     return `FANOUT_WARNING: ${relationship.left_table_id} -> ${relationship.right_table_id}`;
   }
@@ -131,9 +131,7 @@ export function assertNoRelationshipIdCollision(
   const seen = new Set<string>();
   for (const edge of edges) {
     if (seen.has(edge.relationshipId)) {
-      throw new SemanticGovernanceError(
-        `Relationship ID 冲突: ${edge.relationshipId}。`,
-      );
+      throw new SemanticGovernanceError(`Relationship ID 冲突: ${edge.relationshipId}。`);
     }
     seen.add(edge.relationshipId);
   }

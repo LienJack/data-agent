@@ -105,7 +105,6 @@ const fixtureCaseEvaluationRecordSchema = z.strictObject({
   created_at: databaseUtcTimestampSchema,
 });
 
-
 const fixtureCaseEvaluationsResultSchema = z.strictObject({
   evaluations: z.array(fixtureCaseEvaluationRecordSchema),
 });
@@ -223,7 +222,8 @@ export function createPostgresControlledFixture(
         );
 
         if (existingResult.rows.length > 0) {
-          const fixtureHash = (existingResult.rows[0] as { fixture_hash: string }).fixture_hash as `sha256:${string}`;
+          const fixtureHash = (existingResult.rows[0] as { fixture_hash: string })
+            .fixture_hash as `sha256:${string}`;
           return {
             created: false,
             fixture_hash: fixtureHash,

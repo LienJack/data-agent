@@ -619,9 +619,7 @@ describe("Fixture/Published Isolation", () => {
       { origin: { origin: "fixture" as const, fixture_version: "test-fixture@1.0.0" } },
       { origin: { origin: "published" as const, published_version: "production@1.0.0" } },
     ] as unknown as GroundingAuthorityDocument[];
-    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
-      "必须使用相同 origin",
-    );
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow("必须使用相同 origin");
   });
 
   it("published version 不一致的 bundle 被拒绝", () => {
@@ -737,8 +735,7 @@ describe("Fixture/Published Isolation", () => {
       principalId: "production-resolver",
       resolveCommitted: async (reference) =>
         byReference.get(artifactReferenceIdentity(reference)) ?? null,
-      verifyCommitted: async (reference) =>
-        byReference.has(artifactReferenceIdentity(reference)),
+      verifyCommitted: async (reference) => byReference.has(artifactReferenceIdentity(reference)),
     };
 
     await expect(
@@ -778,9 +775,7 @@ describe("Fixture/Published Isolation", () => {
 
     // 即使两个文档都是有效的，放在同一 bundle 中 origin 不一致会被拒绝
     const docs = [fixtureDoc, publishedDoc] as unknown as GroundingAuthorityDocument[];
-    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
-      "必须使用相同 origin",
-    );
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow("必须使用相同 origin");
   });
 
   it("published 文档不能与 fixture 文档在同一 bundle", async () => {
@@ -794,12 +789,8 @@ describe("Fixture/Published Isolation", () => {
     });
 
     const docs = [publishedDoc, fixtureDoc] as unknown as GroundingAuthorityDocument[];
-    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow(
-      "必须使用相同 origin",
-    );
+    expect(() => assertGroundingAuthorityOriginConsistency(docs)).toThrow("必须使用相同 origin");
   });
 
   // ─── 完整 materializer 流程中的 origin 隔离 ───────────────────────────────
-
-
 });

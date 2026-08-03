@@ -1,9 +1,9 @@
 import {
-  type SemanticSourceBundle,
-  type SemanticMetric,
   type SemanticDimension,
-  type SemanticRelationship,
   SemanticGovernanceError,
+  type SemanticMetric,
+  type SemanticRelationship,
+  type SemanticSourceBundle,
   U5_EXECUTABLE_SUBSET,
 } from "@data-agent/contracts";
 
@@ -44,9 +44,7 @@ export interface ValidationResult {
  * - Relationship 引用完整性
  * - 字段唯一性
  */
-export function validateSourceBundle(
-  bundle: SemanticSourceBundle,
-): ValidationResult {
+export function validateSourceBundle(bundle: SemanticSourceBundle): ValidationResult {
   const issues: ValidationIssue[] = [];
 
   // 1. 检查 bundle 版本

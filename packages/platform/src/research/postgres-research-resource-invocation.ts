@@ -1,6 +1,7 @@
 import {
   type AppScope,
   appScopeSchema,
+  artifactReferenceSchema,
   contentHashSchema,
   createU6DbResultSchema,
   databaseUtcTimestampSchema,
@@ -13,7 +14,6 @@ import {
   type U6PlatformError,
   versionIdentifierSchema,
 } from "@data-agent/contracts";
-import { artifactReferenceSchema } from "@data-agent/contracts";
 import { z } from "zod";
 import {
   type AppTransactionOptions,
@@ -180,7 +180,9 @@ export const verifyBudgetSnapshotReceiptInputSchema = z.strictObject({
   expected_binding_count: nonNegativeIntSchema.nullable(),
 });
 
-export type VerifyBudgetSnapshotReceiptInput = z.infer<typeof verifyBudgetSnapshotReceiptInputSchema>;
+export type VerifyBudgetSnapshotReceiptInput = z.infer<
+  typeof verifyBudgetSnapshotReceiptInputSchema
+>;
 
 export const verifiedBudgetSnapshotReceiptResultSchema = z.strictObject({
   receipt_id: immutableIdSchema,
@@ -363,7 +365,9 @@ function u6Failure(
   };
 }
 
-function databaseFailure(error: unknown): { ok: false; error: { code: string; message: string; retryable: boolean } } | null {
+function databaseFailure(
+  error: unknown,
+): { ok: false; error: { code: string; message: string; retryable: boolean } } | null {
   const candidate =
     typeof error === "object" && error !== null
       ? (error as { readonly code?: unknown; readonly message?: unknown })

@@ -1,20 +1,28 @@
-import { describe, expect, it } from "vitest";
 import {
-  semanticSourceBundleSchema,
-  semanticSourceBundleMetadataSchema,
-  semanticMetricSchema,
-  semanticDimensionSchema,
-  semanticRelationshipSchema,
-  runtimeAuthSchema,
   grainSchema,
-  unitSchema,
+  runtimeAuthSchema,
+  SEMANTIC_SOURCE_BUNDLE_VERSION,
+  semanticDimensionSchema,
+  semanticMetricSchema,
+  semanticRelationshipSchema,
+  semanticSourceBundleMetadataSchema,
+  semanticSourceBundleSchema,
   timeDomainSchema,
   U5_EXECUTABLE_SUBSET,
-  SEMANTIC_SOURCE_BUNDLE_VERSION,
+  unitSchema,
 } from "@data-agent/contracts";
+import { describe, expect, it } from "vitest";
 
-const validGrain = { grain_id: "00000000-0000-1000-8000-000000000001", granularity: "day" as const };
-const validUnit = { unit_id: "00000000-0000-1000-8000-000000000006", dimension: "currency" as const, base_unit: null, conversion_factor: null };
+const validGrain = {
+  grain_id: "00000000-0000-1000-8000-000000000001",
+  granularity: "day" as const,
+};
+const validUnit = {
+  unit_id: "00000000-0000-1000-8000-000000000006",
+  dimension: "currency" as const,
+  base_unit: null,
+  conversion_factor: null,
+};
 const validTimeDomain = {
   time_domain_id: "00000000-0000-1000-8000-000000000007",
   calendar: "gregorian" as const,
@@ -57,9 +65,17 @@ const validMetadata = {
   bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION,
   capability_profile: U5_EXECUTABLE_SUBSET,
   bundle_id: "00000000-0000-1000-8000-000000000003",
-  scope: { app_id: "00000000-0000-1000-8000-000000000004", tenant_id: "00000000-0000-1000-8000-000000000005", environment: "test" },
+  scope: {
+    app_id: "00000000-0000-1000-8000-000000000004",
+    tenant_id: "00000000-0000-1000-8000-000000000005",
+    environment: "test",
+  },
   producer: { kind: "deterministic" as const, id: "semantic-compiler" },
-  authority: { kind: "deterministic" as const, id: "semantic-authority", policy_version: "semantic-authority@1.0.0" },
+  authority: {
+    kind: "deterministic" as const,
+    id: "semantic-authority",
+    policy_version: "semantic-authority@1.0.0",
+  },
   created_at: "2026-08-04T00:00:00Z",
 };
 const validBundle = {
@@ -76,46 +92,88 @@ describe("SemanticSourceBundle Schema", () => {
     expect(semanticSourceBundleSchema.safeParse(validBundle).success).toBe(true);
   });
   it("rejects empty metrics", () => {
-    expect(semanticSourceBundleSchema.safeParse({ ...validBundle, metrics: [] }).success).toBe(false);
+    expect(semanticSourceBundleSchema.safeParse({ ...validBundle, metrics: [] }).success).toBe(
+      false,
+    );
   });
   it("rejects wrong capability_profile", () => {
-    expect(semanticSourceBundleSchema.safeParse({ ...validBundle, metadata: { ...validMetadata, capability_profile: "UNKNOWN" } }).success).toBe(false);
+    expect(
+      semanticSourceBundleSchema.safeParse({
+        ...validBundle,
+        metadata: { ...validMetadata, capability_profile: "UNKNOWN" },
+      }).success,
+    ).toBe(false);
   });
   it("rejects unknown relation discriminator", () => {
-    expect(semanticRelationshipSchema.safeParse({
-      relationship_id: "00000000-0000-1000-8000-000000000030", name: "R", kind: "invalid",
-      left_table_id: "00000000-0000-1000-8000-000000000001", left_column_ids: ["a.id"],
-      right_table_id: "00000000-0000-1000-8000-000000000040", right_column_ids: ["b.id"],
-      cardinality: "one-to-one", left_row_preservation: "required" as const,
-      right_row_preservation: "required" as const, proof_kind: "DDL_ENFORCED" as const,
-      proof_detail: null, tags: [],
-    }).success).toBe(false);
+    expect(
+      semanticRelationshipSchema.safeParse({
+        relationship_id: "00000000-0000-1000-8000-000000000030",
+        name: "R",
+        kind: "invalid",
+        left_table_id: "00000000-0000-1000-8000-000000000001",
+        left_column_ids: ["a.id"],
+        right_table_id: "00000000-0000-1000-8000-000000000040",
+        right_column_ids: ["b.id"],
+        cardinality: "one-to-one",
+        left_row_preservation: "required" as const,
+        right_row_preservation: "required" as const,
+        proof_kind: "DDL_ENFORCED" as const,
+        proof_detail: null,
+        tags: [],
+      }).success,
+    ).toBe(false);
   });
   it("rejects wrong granularity", () => {
-    expect(grainSchema.safeParse({ grain_id: "g", granularity: "millennium" as const }).success).toBe(false);
+    expect(
+      grainSchema.safeParse({ grain_id: "g", granularity: "millennium" as const }).success,
+    ).toBe(false);
   });
   it("rejects wrong aggregation", () => {
-    expect(semanticMetricSchema.safeParse({ ...validMetric, aggregation: "stdev" }).success).toBe(false);
+    expect(semanticMetricSchema.safeParse({ ...validMetric, aggregation: "stdev" }).success).toBe(
+      false,
+    );
   });
   it("rejects wrong additivity", () => {
-    expect(semanticMetricSchema.safeParse({ ...validMetric, additivity: "invalid" }).success).toBe(false);
+    expect(semanticMetricSchema.safeParse({ ...validMetric, additivity: "invalid" }).success).toBe(
+      false,
+    );
   });
   it("rejects wrong data_type", () => {
-    expect(semanticDimensionSchema.safeParse({ ...validDimension, data_type: "blob" }).success).toBe(false);
+    expect(
+      semanticDimensionSchema.safeParse({ ...validDimension, data_type: "blob" }).success,
+    ).toBe(false);
   });
   it("rejects wrong proof_kind", () => {
-    expect(semanticRelationshipSchema.safeParse({
-      relationship_id: "00000000-0000-1000-8000-000000000050", name: "R", kind: "analytical",
-      left_table_id: "00000000-0000-1000-8000-000000000001", left_column_ids: ["a.id"],
-      right_table_id: "00000000-0000-1000-8000-000000000040", right_column_ids: ["b.id"],
-      cardinality: "one-to-one", left_row_preservation: "required" as const,
-      right_row_preservation: "required" as const, proof_kind: "invalid" as const,
-      proof_detail: null, tags: [],
-    }).success).toBe(false);
+    expect(
+      semanticRelationshipSchema.safeParse({
+        relationship_id: "00000000-0000-1000-8000-000000000050",
+        name: "R",
+        kind: "analytical",
+        left_table_id: "00000000-0000-1000-8000-000000000001",
+        left_column_ids: ["a.id"],
+        right_table_id: "00000000-0000-1000-8000-000000000040",
+        right_column_ids: ["b.id"],
+        cardinality: "one-to-one",
+        left_row_preservation: "required" as const,
+        right_row_preservation: "required" as const,
+        proof_kind: "invalid" as const,
+        proof_detail: null,
+        tags: [],
+      }).success,
+    ).toBe(false);
   });
   it("rejects wrong action", () => {
-    expect(runtimeAuthSchema.safeParse({
-      table_rules: [{ table_id: "00000000-0000-1000-8000-000000000001", action: "GRANT", column_ids: ["t.c"], predicates: [] }],
-    }).success).toBe(false);
+    expect(
+      runtimeAuthSchema.safeParse({
+        table_rules: [
+          {
+            table_id: "00000000-0000-1000-8000-000000000001",
+            action: "GRANT",
+            column_ids: ["t.c"],
+            predicates: [],
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 });

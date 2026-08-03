@@ -1,14 +1,26 @@
+import {
+  computeExecutableSemanticDigest,
+  computeSemanticSourceBundleHash,
+  SEMANTIC_SOURCE_BUNDLE_VERSION,
+  U5_EXECUTABLE_SUBSET,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { computeExecutableSemanticDigest, computeSemanticSourceBundleHash } from "@data-agent/contracts";
-import { U5_EXECUTABLE_SUBSET, SEMANTIC_SOURCE_BUNDLE_VERSION } from "@data-agent/contracts";
 
 const baseMetadata = {
   bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION,
   capability_profile: U5_EXECUTABLE_SUBSET,
   bundle_id: "00000000-0000-1000-8000-000000000003",
-  scope: { app_id: "00000000-0000-1000-8000-000000000004", tenant_id: "00000000-0000-1000-8000-000000000005", environment: "test" },
+  scope: {
+    app_id: "00000000-0000-1000-8000-000000000004",
+    tenant_id: "00000000-0000-1000-8000-000000000005",
+    environment: "test",
+  },
   producer: { kind: "deterministic" as const, id: "semantic-compiler" },
-  authority: { kind: "deterministic" as const, id: "semantic-authority", policy_version: "semantic-authority@1.0.0" },
+  authority: {
+    kind: "deterministic" as const,
+    id: "semantic-authority",
+    policy_version: "semantic-authority@1.0.0",
+  },
   created_at: "2026-08-04T00:00:00Z",
 };
 
@@ -21,8 +33,19 @@ const baseMetric = {
   aggregation: "sum" as const,
   formula: null,
   grain: { grain_id: "grain-day", granularity: "day" as const },
-  unit: { unit_id: "unit-usd", dimension: "currency" as const, base_unit: null, conversion_factor: null },
-  time_domain: { time_domain_id: "td-utc", calendar: "gregorian" as const, timezone: "UTC" as const, min_time: null, max_time: null },
+  unit: {
+    unit_id: "unit-usd",
+    dimension: "currency" as const,
+    base_unit: null,
+    conversion_factor: null,
+  },
+  time_domain: {
+    time_domain_id: "td-utc",
+    calendar: "gregorian" as const,
+    timezone: "UTC" as const,
+    min_time: null,
+    max_time: null,
+  },
   time_column_id: "orders.order_date",
   additivity: "additive" as const,
   null_policy: "coalesce-zero" as const,
@@ -70,33 +93,44 @@ describe("Semantic Content Digest", () => {
       formulas: [],
       metrics: [baseMetric],
       dimensions: [],
-      relationships: [{
-        relationship_id: "rel-1", name: "R1", kind: "analytical" as const,
-        left_table_id: "a", left_column_ids: ["a.id"],
-        right_table_id: "b", right_column_ids: ["b.id"],
-        cardinality: "one-to-one" as const, left_row_preservation: "required" as const,
-        right_row_preservation: "required" as const, proof_kind: "DDL_ENFORCED" as const,
-        proof_detail: null, tags: [],
-      }],
+      relationships: [
+        {
+          relationship_id: "rel-1",
+          name: "R1",
+          kind: "analytical" as const,
+          left_table_id: "a",
+          left_column_ids: ["a.id"],
+          right_table_id: "b",
+          right_column_ids: ["b.id"],
+          cardinality: "one-to-one" as const,
+          left_row_preservation: "required" as const,
+          right_row_preservation: "required" as const,
+          proof_kind: "DDL_ENFORCED" as const,
+          proof_detail: null,
+          tags: [],
+        },
+      ],
       runtime_authorization: undefined,
     };
     const bundle2 = {
       ...bundle1,
-      relationships: [{
-        relationship_id: "rel-2",
-        kind: "business" as const,
-        left_table_id: "a",
-        left_column_ids: ["a.id"],
-        name: "test-rel",
-        right_table_id: "b",
-        right_column_ids: ["b.id"],
-        cardinality: "one-to-one" as const,
-        left_row_preservation: "required" as const,
-        right_row_preservation: "required" as const,
-        proof_kind: "DDL_ENFORCED" as const,
-        proof_detail: null,
-        tags: [] as string[],
-      }],
+      relationships: [
+        {
+          relationship_id: "rel-2",
+          kind: "business" as const,
+          left_table_id: "a",
+          left_column_ids: ["a.id"],
+          name: "test-rel",
+          right_table_id: "b",
+          right_column_ids: ["b.id"],
+          cardinality: "one-to-one" as const,
+          left_row_preservation: "required" as const,
+          right_row_preservation: "required" as const,
+          proof_kind: "DDL_ENFORCED" as const,
+          proof_detail: null,
+          tags: [] as string[],
+        },
+      ],
     };
     const digest1 = computeExecutableSemanticDigest(bundle1);
     const digest2 = computeExecutableSemanticDigest(bundle2);
@@ -110,11 +144,29 @@ describe("Semantic Content Digest", () => {
       metrics: [baseMetric],
       dimensions: [],
       relationships: [],
-      runtime_authorization: { table_rules: [{ table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount"], predicates: [] }] },
+      runtime_authorization: {
+        table_rules: [
+          {
+            table_id: "orders",
+            action: "DENY" as const,
+            column_ids: ["orders.amount"],
+            predicates: [],
+          },
+        ],
+      },
     };
     const bundle2 = {
       ...bundle1,
-      runtime_authorization: { table_rules: [{ table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount", "orders.customer_id"], predicates: [] }] },
+      runtime_authorization: {
+        table_rules: [
+          {
+            table_id: "orders",
+            action: "DENY" as const,
+            column_ids: ["orders.amount", "orders.customer_id"],
+            predicates: [],
+          },
+        ],
+      },
     };
     const digest1 = computeExecutableSemanticDigest(bundle1);
     const digest2 = computeExecutableSemanticDigest(bundle2);

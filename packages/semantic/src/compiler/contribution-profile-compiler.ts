@@ -1,14 +1,14 @@
 import {
+  computeExecutableSemanticDigest,
+  contentHashSchema,
   type DescriptiveContributionProfile,
   type EndpointExecutionTemplate,
-  type SemanticSourceBundle,
-  type SemanticMetric,
-  type RowPartitionWitness,
   type FormulaEquivalenceWitness,
-  type StaticDriverCapacityProof,
-  contentHashSchema,
+  type RowPartitionWitness,
   SemanticGovernanceError,
-  computeExecutableSemanticDigest,
+  type SemanticMetric,
+  type SemanticSourceBundle,
+  type StaticDriverCapacityProof,
 } from "@data-agent/contracts";
 import { z } from "zod";
 
@@ -34,12 +34,12 @@ export interface DescriptiveContributionLoweringResult {
 /**
  * 检查 EndpointTemplate 是否完整。
  */
-function validateEndpointTemplate(
-  template: EndpointExecutionTemplate,
-): string | null {
+function validateEndpointTemplate(template: EndpointExecutionTemplate): string | null {
   if (!template.metric_ref) return `METRIC_REF_MISSING: ${template.endpoint_id}`;
-  if (!template.baseline_query_contract_template_hash) return `BASELINE_HASH_MISSING: ${template.endpoint_id}`;
-  if (!template.followup_query_contract_template_hash) return `FOLLOWUP_HASH_MISSING: ${template.endpoint_id}`;
+  if (!template.baseline_query_contract_template_hash)
+    return `BASELINE_HASH_MISSING: ${template.endpoint_id}`;
+  if (!template.followup_query_contract_template_hash)
+    return `FOLLOWUP_HASH_MISSING: ${template.endpoint_id}`;
   if (!template.fixed_predicate_ast_hash) return `PREDICATE_HASH_MISSING: ${template.endpoint_id}`;
   if (!template.expected_row0_cell) return `EXPECTED_CELL_MISSING: ${template.endpoint_id}`;
   if (!template.ontology_identity) return `ONTOLOGY_IDENTITY_MISSING: ${template.endpoint_id}`;
@@ -95,7 +95,9 @@ export function lowerDescriptiveContributionProfile(
 
     // 检查 grain 一致性
     if (template.grain_ref !== metric.grain.grain_id) {
-      reasons.push(`GRAIN_MISMATCH: template ${template.grain_ref} vs metric ${metric.grain.grain_id}`);
+      reasons.push(
+        `GRAIN_MISMATCH: template ${template.grain_ref} vs metric ${metric.grain.grain_id}`,
+      );
       continue;
     }
 
@@ -157,9 +159,10 @@ export function lowerDescriptiveContributionProfile(
   }
 
   return {
-    status: reasons.length === 0
-      ? ContributionLoweringStatus.LOWERED
-      : ContributionLoweringStatus.NOT_LOWERABLE,
+    status:
+      reasons.length === 0
+        ? ContributionLoweringStatus.LOWERED
+        : ContributionLoweringStatus.NOT_LOWERABLE,
     loweredTemplates,
     loweredWitnesses,
     loweredCapacityProofs,

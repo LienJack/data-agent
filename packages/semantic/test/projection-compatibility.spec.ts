@@ -1,13 +1,13 @@
-import { describe, expect, it } from "vitest";
 import {
-  semanticSourceBundleSchema,
+  assertM1SubsetRestriction,
+  assertSemanticSourceBundleInvariants,
   computeExecutableSemanticDigest,
   computeSemanticSourceBundleHash,
-  assertSemanticSourceBundleInvariants,
-  assertM1SubsetRestriction,
   SEMANTIC_SOURCE_BUNDLE_VERSION,
+  semanticSourceBundleSchema,
   U5_EXECUTABLE_SUBSET,
 } from "@data-agent/contracts";
+import { describe, expect, it } from "vitest";
 
 // ─── Shared test fixtures ─────────────────────────────────────────────────────
 
@@ -21,7 +21,11 @@ const baseMetadata = {
     environment: "test" as const,
   },
   producer: { kind: "deterministic" as const, id: "semantic-compiler" },
-  authority: { kind: "deterministic" as const, id: "semantic-authority", policy_version: "semantic-authority@1.0.0" },
+  authority: {
+    kind: "deterministic" as const,
+    id: "semantic-authority",
+    policy_version: "semantic-authority@1.0.0",
+  },
   created_at: "2026-08-04T00:00:00Z",
 };
 
@@ -34,8 +38,19 @@ const baseMetric = {
   aggregation: "sum" as const,
   formula: null,
   grain: { grain_id: "grain-day", granularity: "day" as const },
-  unit: { unit_id: "unit-usd", dimension: "currency" as const, base_unit: null, conversion_factor: null },
-  time_domain: { time_domain_id: "td-utc", calendar: "gregorian" as const, timezone: "UTC" as const, min_time: null, max_time: null },
+  unit: {
+    unit_id: "unit-usd",
+    dimension: "currency" as const,
+    base_unit: null,
+    conversion_factor: null,
+  },
+  time_domain: {
+    time_domain_id: "td-utc",
+    calendar: "gregorian" as const,
+    timezone: "UTC" as const,
+    min_time: null,
+    max_time: null,
+  },
   time_column_id: "orders.order_date",
   additivity: "additive" as const,
   null_policy: "coalesce-zero" as const,
@@ -166,7 +181,10 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
 
   it("metric 内容变化改变 digest（digest 绑定可执行内容而非 metadata）", async () => {
     const bundle1 = createValidBundle();
-    const bundle2 = { ...createValidBundle(), metrics: [{ ...baseMetric, aggregation: "count" as const }] };
+    const bundle2 = {
+      ...createValidBundle(),
+      metrics: [{ ...baseMetric, aggregation: "count" as const }],
+    };
     const digest1 = await computeExecutableSemanticDigest(bundle1);
     const digest2 = await computeExecutableSemanticDigest(bundle2);
     expect(digest1).not.toBe(digest2);
@@ -185,11 +203,13 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
     const bundle1 = createValidBundle();
     const bundle2 = {
       ...bundle1,
-      relationships: [{
-        ...baseRelationship,
-        relationship_id: "rel-orders-customers-v2",
-        cardinality: "one-to-one" as const,
-      }],
+      relationships: [
+        {
+          ...baseRelationship,
+          relationship_id: "rel-orders-customers-v2",
+          cardinality: "one-to-one" as const,
+        },
+      ],
     };
     const digest1 = await computeExecutableSemanticDigest(bundle1);
     const digest2 = await computeExecutableSemanticDigest(bundle2);
@@ -202,7 +222,12 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
       ...bundle1,
       runtime_authorization: {
         table_rules: [
-          { table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount", "orders.customer_id"], predicates: [] },
+          {
+            table_id: "orders",
+            action: "DENY" as const,
+            column_ids: ["orders.amount", "orders.customer_id"],
+            predicates: [],
+          },
         ],
       },
     };
@@ -307,6 +332,8 @@ describe("U10.1a Projection Compatibility — U10 projection 经 U10.0 物化后
         declared_max_bound: 1,
       },
     };
-    expect(() => assertM1SubsetRestriction(mutated)).toThrow("M1 不允许 DescriptiveContributionProfile");
+    expect(() => assertM1SubsetRestriction(mutated)).toThrow(
+      "M1 不允许 DescriptiveContributionProfile",
+    );
   });
 });

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import {
   type ArtifactReference,
+  computeSandboxResultBytes,
   type GateReceiptPayload,
   gateReceiptSchema,
   type QueryContractPayload,
@@ -8,7 +8,6 @@ import {
   sandboxExecutionRequestSchema,
   sandboxResultSchema,
   sqlArtifactSchema,
-  computeSandboxResultBytes,
 } from "@data-agent/contracts";
 import {
   buildLogicalPlan,
@@ -26,6 +25,9 @@ import {
   registerTrustedGateArtifactAuthority,
   registerTrustedLogicalPlanCompilerAuthority,
 } from "@data-agent/text2sql/server";
+import { describe, expect, it } from "vitest";
+import { groundQueryContract } from "../src/grounding/ground-query-contract.js";
+import { catalogSnapshotSchema } from "../src/grounding/types.js";
 import {
   analystPolicy,
   artifactReference,
@@ -37,8 +39,6 @@ import {
   questionFrameAuthority,
   verifiedQuestionFrame,
 } from "./support/commerce-fixture.js";
-import { groundQueryContract } from "../src/grounding/ground-query-contract.js";
-import { catalogSnapshotSchema } from "../src/grounding/types.js";
 import { committedLogicalPlanAuthorityFixture } from "./support/compiler-authority-fixture.js";
 
 // ─── U5 Regression Compatibility Gate ─────────────────────────────────────────
@@ -154,12 +154,10 @@ describe("U5 Regression: Grounding pipeline", () => {
     expect(
       catalogSnapshotSchema.safeParse({
         ...commerceCatalog,
-        dimensions: commerceCatalog.dimensions.map(
-          (dim: { dimension_id: string }) => ({
-            ...dim,
-            dimension_id: "metric.net_revenue",
-          }),
-        ),
+        dimensions: commerceCatalog.dimensions.map((dim: { dimension_id: string }) => ({
+          ...dim,
+          dimension_id: "metric.net_revenue",
+        })),
       }).success,
     ).toBe(false);
   });
@@ -220,9 +218,9 @@ describe("U5 Regression: Typed IR", () => {
   it("LogicalPlan 仍只包含类型化操作，无自由 SQL", async () => {
     const { logicalPlan } = await readyFixture();
     expect(logicalPlan.root_operation_id).toBe("project_result");
-    expect(
-      logicalPlan.operations.map((o: { operation: string }) => o.operation),
-    ).toEqual(expect.arrayContaining(["scan", "filter", "join", "aggregate", "project"]));
+    expect(logicalPlan.operations.map((o: { operation: string }) => o.operation)).toEqual(
+      expect.arrayContaining(["scan", "filter", "join", "aggregate", "project"]),
+    );
   });
 
   it("validateLogicalPlan 仍对有效 Fixture 返回 VALID", async () => {
@@ -268,9 +266,7 @@ describe("U5 Regression: PostgreSQL Compiler", () => {
       grounding: groundingResult.grounding,
     });
     if (compileResult.state !== "COMPILED") {
-      throw new Error(
-        `Compilation 必须成功: ${compileResult.reason_code}`,
-      );
+      throw new Error(`Compilation 必须成功: ${compileResult.reason_code}`);
     }
     return {
       queryContract,
@@ -282,7 +278,8 @@ describe("U5 Regression: PostgreSQL Compiler", () => {
 
   it("compilePostgresqlLogicalPlan 仍对有效 LogicalPlan 产生有效 SQL", async () => {
     const { compilation } = await compilerFixture();
-    const sqlArtifact = (compilation as { sql_artifact: { sql: string; query_hash: string } }).sql_artifact;
+    const sqlArtifact = (compilation as { sql_artifact: { sql: string; query_hash: string } })
+      .sql_artifact;
     expect(sqlArtifact.sql).toBeTruthy();
     expect(sqlArtifact.sql).toContain("SELECT");
     expect(sqlArtifact.query_hash).toBeDefined();
@@ -291,9 +288,7 @@ describe("U5 Regression: PostgreSQL Compiler", () => {
   it("编译 SQL 仍为 pg_catalog 限定，不含 DML CTE", async () => {
     const { compilation } = await compilerFixture();
     const sqlArtifact = (compilation as { sql_artifact: { sql: string } }).sql_artifact;
-    expect(sqlArtifact.sql).not.toMatch(
-      /\bDELETE\b|\bINSERT\b|\bUPDATE\b|\bCREATE\b|\bDROP\b/i,
-    );
+    expect(sqlArtifact.sql).not.toMatch(/\bDELETE\b|\bINSERT\b|\bUPDATE\b|\bCREATE\b|\bDROP\b/i);
     expect(sqlArtifact.sql).toContain("net_amount");
   });
 
@@ -330,8 +325,16 @@ describe("U5 Regression: PostgreSQL Compiler", () => {
       logical_plan_binding: logicalPlanBinding,
       grounding: groundingResult.grounding,
     });
-    expect(compileResult.state === "COMPILED" && isPostgresqlCompilation(compileResult.compilation)).toBe(true);
-    expect(isPostgresqlCompilation({ dialect: "postgresql", state: "FAILED", reasonCode: "COMPILATION_FAILED" })).toBe(false);
+    expect(
+      compileResult.state === "COMPILED" && isPostgresqlCompilation(compileResult.compilation),
+    ).toBe(true);
+    expect(
+      isPostgresqlCompilation({
+        dialect: "postgresql",
+        state: "FAILED",
+        reasonCode: "COMPILATION_FAILED",
+      }),
+    ).toBe(false);
   });
 });
 
@@ -356,7 +359,9 @@ describe("U5 Regression: Sandbox contracts", () => {
   it("sandboxExecutionRequestSchema 仍要求有效 SQL 执行请求", () => {
     const ref = artifactReference("ExecutionPermit") as unknown as ArtifactReference;
     const sqlRef = artifactReference("SqlArtifact") as unknown as ArtifactReference;
-    const resourceRef = artifactReference("ResourceAdmissionReceipt") as unknown as ArtifactReference;
+    const resourceRef = artifactReference(
+      "ResourceAdmissionReceipt",
+    ) as unknown as ArtifactReference;
     // 当前 schema 使用 discriminated union（language）
     const validRequest = {
       scope: fixtureScope,
@@ -402,7 +407,10 @@ describe("U5 Regression: Sandbox contracts", () => {
       run_id: fixtureIds.run,
     } as unknown as ArtifactReference;
     const resultBytes = computeSandboxResultBytes({
-      columns: [{ name: "col1", type: "STRING" }, { name: "col2", type: "INTEGER" }],
+      columns: [
+        { name: "col1", type: "STRING" },
+        { name: "col2", type: "INTEGER" },
+      ],
       rows: [["a", 1]],
     });
     const resultHash = "sha256:0000000000000000000000000000000000000000000000000000000000000001";

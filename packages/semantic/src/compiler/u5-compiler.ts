@@ -1,37 +1,37 @@
 import {
-  type SemanticSourceBundle,
-  type SemanticMetric,
-  type SemanticDimension,
-  type SemanticRelationship,
-  type RuntimeAuth,
-  type DescriptiveContributionProfile,
-  SemanticGovernanceError,
   assertSemanticSourceBundleInvariants,
   computeExecutableSemanticDigest,
   computeSemanticSourceBundleHash,
+  type DescriptiveContributionProfile,
+  type RuntimeAuth,
+  type SemanticDimension,
+  SemanticGovernanceError,
+  type SemanticMetric,
+  type SemanticRelationship,
+  type SemanticSourceBundle,
   semanticSourceBundleSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
+import {
+  ContributionLoweringStatus,
+  type DescriptiveContributionLoweringResult,
+  lowerDescriptiveContributionProfile,
+} from "./contribution-profile-compiler.js";
 import {
   computeLowerabilityProof,
   type LowerabilityResult,
   LowerabilityStatus,
 } from "./lowerability-proof.js";
 import {
-  lowerAllRelationships,
-  type ExecutableRelationshipEdge,
   assertNoRelationshipIdCollision,
+  type ExecutableRelationshipEdge,
+  lowerAllRelationships,
 } from "./relationship-lowering.js";
 import {
   lowerRuntimeAuthorization,
   type RuntimeAuthLoweringResult,
   RuntimeAuthLoweringStatus,
 } from "./runtime-auth-lowering.js";
-import {
-  lowerDescriptiveContributionProfile,
-  type DescriptiveContributionLoweringResult,
-  ContributionLoweringStatus,
-} from "./contribution-profile-compiler.js";
 
 // ─── Error codes ──────────────────────────────────────────────────────────────
 
@@ -113,9 +113,23 @@ export async function compileU5Projection(
       details: [],
     });
     return {
-      semantic: { metrics: [], dimensions: [], formulas: [], sourceDigest: "", lowerabilityResult: { proofs: [], overallLowerable: false, unlowerableFormulaIds: [] } },
+      semantic: {
+        metrics: [],
+        dimensions: [],
+        formulas: [],
+        sourceDigest: "",
+        lowerabilityResult: { proofs: [], overallLowerable: false, unlowerableFormulaIds: [] },
+      },
       relationship: { edges: [], sourceDigest: "" },
-      restriction: { lowered: { status: RuntimeAuthLoweringStatus.NOT_EXPRESSIBLE_IN_U5, loweredRules: [], notExpressibleReasons: ["Bundle 校验失败"] }, sourceDigest: "", restrictionDigest: "" },
+      restriction: {
+        lowered: {
+          status: RuntimeAuthLoweringStatus.NOT_EXPRESSIBLE_IN_U5,
+          loweredRules: [],
+          notExpressibleReasons: ["Bundle 校验失败"],
+        },
+        sourceDigest: "",
+        restrictionDigest: "",
+      },
       bundleHash: "",
       executableDigest: "",
       errors,
@@ -128,9 +142,7 @@ export async function compileU5Projection(
     errors.push({
       code: CompilationErrorCode.NOT_LOWERABLE,
       message: `部分 Formula/metric 不可降级到 U5。`,
-      details: lowerabilityResult.unlowerableFormulaIds.map(
-        (id) => `NOT_LOWERABLE: ${id}`,
-      ),
+      details: lowerabilityResult.unlowerableFormulaIds.map((id) => `NOT_LOWERABLE: ${id}`),
     });
   }
 
@@ -200,13 +212,16 @@ export async function compileU5Projection(
     sourceDigest: bundleHash,
   };
 
-  const restrictionDigest = restrictionResult.loweredRules.length > 0
-    ? JSON.stringify(restrictionResult.loweredRules.map((r) => ({
-        tableId: r.tableId,
-        action: r.action,
-        columnIds: [...r.columnIds].sort(),
-      })))
-    : "no-restrictions";
+  const restrictionDigest =
+    restrictionResult.loweredRules.length > 0
+      ? JSON.stringify(
+          restrictionResult.loweredRules.map((r) => ({
+            tableId: r.tableId,
+            action: r.action,
+            columnIds: [...r.columnIds].sort(),
+          })),
+        )
+      : "no-restrictions";
 
   const restriction: U5RuntimeRestrictionProjection = {
     lowered: restrictionResult,

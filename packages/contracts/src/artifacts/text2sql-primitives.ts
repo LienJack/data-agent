@@ -233,5 +233,14 @@ export const METRIC_AGGREGATION = ["sum", "count", "count_distinct", "avg", "min
 export const METRIC_ADDITIVITY = ["additive", "semi-additive", "non-additive"] as const;
 export const METRIC_NULL_POLICY = ["preserve", "coalesce-zero", "exclude"] as const;
 export const METRIC_FANOUT_POLICY = ["preaggregate", "reject"] as const;
-export const DATA_TYPE = ["boolean", "date", "integer", "numeric", "text", "timestamp", "timestamptz", "uuid"] as const;
+export const DATA_TYPE = [
+  "boolean",
+  "date",
+  "integer",
+  "numeric",
+  "text",
+  "timestamp",
+  "timestamptz",
+  "uuid",
+] as const;
 export const SENSITIVITY_LEVEL = ["PUBLIC", "INTERNAL", "RESTRICTED", "SECRET"] as const;

@@ -9,8 +9,20 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import { artifactReferenceFor, artifactReferenceSchema, artifactProducerSchema, deterministicAuthoritySchema } from "./envelope.js";
-import { METRIC_AGGREGATION, METRIC_ADDITIVITY, METRIC_NULL_POLICY, METRIC_FANOUT_POLICY, DATA_TYPE, SENSITIVITY_LEVEL } from "./text2sql-primitives.js";
+import {
+  artifactProducerSchema,
+  artifactReferenceFor,
+  artifactReferenceSchema,
+  deterministicAuthoritySchema,
+} from "./envelope.js";
+import {
+  DATA_TYPE,
+  METRIC_ADDITIVITY,
+  METRIC_AGGREGATION,
+  METRIC_FANOUT_POLICY,
+  METRIC_NULL_POLICY,
+  SENSITIVITY_LEVEL,
+} from "./text2sql-primitives.js";
 
 // ─── Version constant ─────────────────────────────────────────────────────────
 
@@ -151,7 +163,18 @@ export const runtimeAuthActionSchema = z.enum(["DENY", "RESTRICT"]);
 export const runtimeAuthPredicateSchema = z.strictObject({
   table_id: versionIdentifierSchema,
   column_id: z.string().min(1).max(256),
-  operator: z.enum(["eq", "neq", "lt", "lte", "gt", "gte", "in", "between", "is_null", "is_not_null"]),
+  operator: z.enum([
+    "eq",
+    "neq",
+    "lt",
+    "lte",
+    "gt",
+    "gte",
+    "in",
+    "between",
+    "is_null",
+    "is_not_null",
+  ]),
   parameter_key: z.string().min(1).max(128),
 });
 
@@ -283,20 +306,22 @@ export type FormulaEquivalenceWitness = z.infer<typeof formulaEquivalenceWitness
 
 // ─── Content digest ───────────────────────────────────────────────────────────
 
-export async function computeExecutableSemanticDigest(bundle: SemanticSourceBundle): Promise<`sha256:${string}`> {
+export async function computeExecutableSemanticDigest(
+  bundle: SemanticSourceBundle,
+): Promise<`sha256:${string}`> {
   const { metadata: _metadata, ...executableContent } = bundle;
   return await sha256ContentHash(executableContent);
 }
 
-export async function computeSemanticSourceBundleHash(bundle: SemanticSourceBundle): Promise<`sha256:${string}`> {
+export async function computeSemanticSourceBundleHash(
+  bundle: SemanticSourceBundle,
+): Promise<`sha256:${string}`> {
   return sha256ContentHash(bundle);
 }
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
-export function assertSemanticSourceBundleInvariants(
-  bundle: SemanticSourceBundle,
-): void {
+export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundle): void {
   if (bundle.metrics.length === 0) {
     throw new SemanticGovernanceError("SemanticSourceBundle 必须包含至少一个 Metric。");
   }
@@ -347,7 +372,11 @@ export type SemanticSourceBundleReference = z.infer<typeof semanticSourceBundleR
 export const M1_ALLOWED_CAPABILITY_PROFILES = [U5_EXECUTABLE_SUBSET] as const;
 
 export function assertM1SubsetRestriction(bundle: SemanticSourceBundle): void {
-  if (!M1_ALLOWED_CAPABILITY_PROFILES.includes(bundle.metadata.capability_profile as typeof U5_EXECUTABLE_SUBSET)) {
+  if (
+    !M1_ALLOWED_CAPABILITY_PROFILES.includes(
+      bundle.metadata.capability_profile as typeof U5_EXECUTABLE_SUBSET,
+    )
+  ) {
     throw new SemanticGovernanceError("M1 只允许 U5_EXECUTABLE_SUBSET 能力子集。");
   }
   if (bundle.contribution_profile) {

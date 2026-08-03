@@ -1,11 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { lowerRuntimeAuthorization, RuntimeAuthLoweringStatus, computeRestrictionProjectionDigest } from "../src/compiler/runtime-auth-lowering.js";
+import {
+  computeRestrictionProjectionDigest,
+  lowerRuntimeAuthorization,
+  RuntimeAuthLoweringStatus,
+} from "../src/compiler/runtime-auth-lowering.js";
 
 describe("Runtime Restriction U5 Lowering", () => {
   it("table/column deny is lowerable", () => {
     const auth = {
       table_rules: [
-        { table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount", "orders.customer_id"], predicates: [] },
+        {
+          table_id: "orders",
+          action: "DENY" as const,
+          column_ids: ["orders.amount", "orders.customer_id"],
+          predicates: [],
+        },
       ],
     };
     const result = lowerRuntimeAuthorization(auth);
@@ -18,9 +27,17 @@ describe("Runtime Restriction U5 Lowering", () => {
     const auth = {
       table_rules: [
         {
-          table_id: "orders", action: "RESTRICT" as const,
+          table_id: "orders",
+          action: "RESTRICT" as const,
           column_ids: ["orders.amount", "orders.customer_id"],
-          predicates: [{ table_id: "orders", column_id: "orders.amount", operator: "gte" as const, parameter_key: "param_min_amount" }],
+          predicates: [
+            {
+              table_id: "orders",
+              column_id: "orders.amount",
+              operator: "gte" as const,
+              parameter_key: "param_min_amount",
+            },
+          ],
         },
       ],
     };
@@ -33,8 +50,18 @@ describe("Runtime Restriction U5 Lowering", () => {
   it("deny-all is lowerable", () => {
     const auth = {
       table_rules: [
-        { table_id: "employees", action: "DENY" as const, column_ids: ["employees.salary", "employees.ssn"], predicates: [] },
-        { table_id: "employees", action: "DENY" as const, column_ids: ["employees.bonus"], predicates: [] },
+        {
+          table_id: "employees",
+          action: "DENY" as const,
+          column_ids: ["employees.salary", "employees.ssn"],
+          predicates: [],
+        },
+        {
+          table_id: "employees",
+          action: "DENY" as const,
+          column_ids: ["employees.bonus"],
+          predicates: [],
+        },
       ],
     };
     const result = lowerRuntimeAuthorization(auth);
@@ -45,12 +72,22 @@ describe("Runtime Restriction U5 Lowering", () => {
   it("canonical ordering produces stable digest", () => {
     const auth1 = {
       table_rules: [
-        { table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount", "orders.customer_id"], predicates: [] },
+        {
+          table_id: "orders",
+          action: "DENY" as const,
+          column_ids: ["orders.amount", "orders.customer_id"],
+          predicates: [],
+        },
       ],
     };
     const auth2 = {
       table_rules: [
-        { table_id: "orders", action: "DENY" as const, column_ids: ["orders.customer_id", "orders.amount"], predicates: [] },
+        {
+          table_id: "orders",
+          action: "DENY" as const,
+          column_ids: ["orders.customer_id", "orders.amount"],
+          predicates: [],
+        },
       ],
     };
     const result1 = lowerRuntimeAuthorization(auth1);
@@ -64,9 +101,17 @@ describe("Runtime Restriction U5 Lowering", () => {
     const auth = {
       table_rules: [
         {
-          table_id: "users", action: "RESTRICT" as const,
+          table_id: "users",
+          action: "RESTRICT" as const,
           column_ids: ["users.email"],
-          predicates: [{ table_id: "users", column_id: "users.email", operator: "purpose_eq" as any, parameter_key: "marketing" }],
+          predicates: [
+            {
+              table_id: "users",
+              column_id: "users.email",
+              operator: "purpose_eq" as any,
+              parameter_key: "marketing",
+            },
+          ],
         },
       ],
     };
@@ -79,9 +124,17 @@ describe("Runtime Restriction U5 Lowering", () => {
     const auth = {
       table_rules: [
         {
-          table_id: "documents", action: "RESTRICT" as const,
+          table_id: "documents",
+          action: "RESTRICT" as const,
           column_ids: ["documents.content"],
-          predicates: [{ table_id: "documents", column_id: "documents.content", operator: "abac_match" as any, parameter_key: "role_department" }],
+          predicates: [
+            {
+              table_id: "documents",
+              column_id: "documents.content",
+              operator: "abac_match" as any,
+              parameter_key: "role_department",
+            },
+          ],
         },
       ],
     };
@@ -92,7 +145,12 @@ describe("Runtime Restriction U5 Lowering", () => {
   it("any grant is not expressible in U5", () => {
     const auth = {
       table_rules: [
-        { table_id: "public_data", action: "GRANT" as any, column_ids: ["public_data.id"], predicates: [] },
+        {
+          table_id: "public_data",
+          action: "GRANT" as any,
+          column_ids: ["public_data.id"],
+          predicates: [],
+        },
       ],
     };
     const result = lowerRuntimeAuthorization(auth);
@@ -102,12 +160,22 @@ describe("Runtime Restriction U5 Lowering", () => {
   it("mutation of policy/source/compiler/generation changes digest", () => {
     const auth = {
       table_rules: [
-        { table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount"], predicates: [] },
+        {
+          table_id: "orders",
+          action: "DENY" as const,
+          column_ids: ["orders.amount"],
+          predicates: [],
+        },
       ],
     };
     const authModified = {
       table_rules: [
-        { table_id: "orders", action: "DENY" as const, column_ids: ["orders.amount", "orders.customer_id"], predicates: [] },
+        {
+          table_id: "orders",
+          action: "DENY" as const,
+          column_ids: ["orders.amount", "orders.customer_id"],
+          predicates: [],
+        },
       ],
     };
     const result1 = lowerRuntimeAuthorization(auth);

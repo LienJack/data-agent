@@ -1,13 +1,13 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR } from "../../../scripts/u6-c2-physical-schema.js";
 import {
-  L2_RESEARCH_WIRE_VERSION_MATRIX,
   knownArtifactTypeSchema,
+  L2_RESEARCH_WIRE_VERSION_MATRIX,
   l2ArtifactTypeSchema,
   versionFrontierSchema,
 } from "../src/artifacts/index.js";
-import { U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR } from "../../../scripts/u6-c2-physical-schema.js";
-import { readdirSync } from "node:fs";
-import { join } from "node:path";
 
 // ─── U6 Wire Compatibility Gate ───────────────────────────────────────────────
 //
@@ -85,7 +85,8 @@ describe("U6 Wire Compatibility: VersionFrontier schema", () => {
       },
       identity_binding: {
         principal_id: "test-principal",
-        delegation_chain_hash: "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        delegation_chain_hash:
+          "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
         authority_epoch: 1,
       },
     };
@@ -122,11 +123,11 @@ describe("U6 Wire Compatibility: Version Matrix", () => {
     "ReadinessRevocationReceipt",
   ] as const;
 
- it("L2_RESEARCH_WIRE_VERSION_MATRIX 的 artifact types 不超出冻结基线", () => {
+  it("L2_RESEARCH_WIRE_VERSION_MATRIX 的 artifact types 不超出冻结基线", () => {
     const currentTypes = L2_RESEARCH_WIRE_VERSION_MATRIX.map((entry) => entry[0]);
     const uniqueTypes = [...new Set(currentTypes)];
     for (const artifactType of currentTypes) {
-      expect(frozenTypes.includes(artifactType as typeof frozenTypes[number])).toBe(true);
+      expect(frozenTypes.includes(artifactType as (typeof frozenTypes)[number])).toBe(true);
     }
     expect(uniqueTypes).toHaveLength(frozenTypes.length);
     expect(uniqueTypes.sort()).toEqual([...frozenTypes].sort());
@@ -167,7 +168,7 @@ describe("U6 Wire Compatibility: Version Matrix", () => {
     }
   });
 
- it("knownArtifactTypeSchema 正确包含系统级 U10 类型（这些是合法系统类型，非 L2 研究类型）", () => {
+  it("knownArtifactTypeSchema 正确包含系统级 U10 类型（这些是合法系统类型，非 L2 研究类型）", () => {
     const u10GroundingTypes = [
       "SemanticRelease",
       "SchemaSnapshot",
@@ -196,20 +197,14 @@ describe("U6 Wire Compatibility: Version Matrix", () => {
 
 describe("U6 Wire Compatibility: Migration", () => {
   it("infra/supabase/apps/data-agent/migrations/ 不包含 10600 迁移文件", () => {
-    const migrationDir = join(
-      __dirname,
-      "../../../infra/supabase/apps/data-agent/migrations",
-    );
+    const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
     const c2Migrations = files.filter((f) => f.includes("10600"));
     expect(c2Migrations).toHaveLength(0);
   });
 
   it("Migration 文件数仍为 15 个（U6 基线）", () => {
-    const migrationDir = join(
-      __dirname,
-      "../../../infra/supabase/apps/data-agent/migrations",
-    );
+    const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
     // 最新是 20260725010590，没有 10600
     expect(files).toHaveLength(15);

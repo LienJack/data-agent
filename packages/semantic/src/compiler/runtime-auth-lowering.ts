@@ -1,9 +1,9 @@
 import {
   type RuntimeAuth,
-  type RuntimeAuthTableRule,
   type RuntimeAuthPredicate,
-  type SemanticSourceBundle,
+  type RuntimeAuthTableRule,
   SemanticGovernanceError,
+  type SemanticSourceBundle,
 } from "@data-agent/contracts";
 import { z } from "zod";
 
@@ -49,7 +49,16 @@ export interface LoweredAuthPredicate {
  * U5 可表达的 operator 集合。
  */
 const U5_EXPRESSIBLE_OPERATORS = new Set([
-  "eq", "neq", "lt", "lte", "gt", "gte", "in", "between", "is_null", "is_not_null",
+  "eq",
+  "neq",
+  "lt",
+  "lte",
+  "gt",
+  "gte",
+  "in",
+  "between",
+  "is_null",
+  "is_not_null",
 ]);
 
 /**
@@ -68,9 +77,7 @@ const U5_EXPRESSIBLE_ACTIONS = new Set(["DENY", "RESTRICT"]);
  * - 任意 grant
  * - 无法逐字表达的 predicate
  */
-export function lowerRuntimeAuthorization(
-  auth: RuntimeAuth,
-): RuntimeAuthLoweringResult {
+export function lowerRuntimeAuthorization(auth: RuntimeAuth): RuntimeAuthLoweringResult {
   const loweredRules: LoweredAuthRule[] = [];
   const notExpressibleReasons: string[] = [];
 
@@ -103,9 +110,7 @@ export function lowerRuntimeAuthorization(
     }
 
     if (hasNonExpressiblePredicate) {
-      notExpressibleReasons.push(
-        `TABLE_HAS_NON_EXPRESSIBLE_PREDICATE: ${rule.table_id}`,
-      );
+      notExpressibleReasons.push(`TABLE_HAS_NON_EXPRESSIBLE_PREDICATE: ${rule.table_id}`);
     }
 
     // 稳定排序 canonical ordering
@@ -128,9 +133,10 @@ export function lowerRuntimeAuthorization(
   loweredRules.sort((a, b) => a.tableId.localeCompare(b.tableId));
 
   return {
-    status: notExpressibleReasons.length === 0
-      ? RuntimeAuthLoweringStatus.LOWERED
-      : RuntimeAuthLoweringStatus.NOT_EXPRESSIBLE_IN_U5,
+    status:
+      notExpressibleReasons.length === 0
+        ? RuntimeAuthLoweringStatus.LOWERED
+        : RuntimeAuthLoweringStatus.NOT_EXPRESSIBLE_IN_U5,
     loweredRules,
     notExpressibleReasons,
   };
@@ -153,9 +159,7 @@ export function checkRestrictionCompatibility(
 /**
  * 从 U5 可表达的规则计算 Canonical Digest。
  */
-export function computeRestrictionProjectionDigest(
-  rules: readonly LoweredAuthRule[],
-): string {
+export function computeRestrictionProjectionDigest(rules: readonly LoweredAuthRule[]): string {
   const canonical = JSON.stringify({
     rules: rules.map((r) => ({
       tableId: r.tableId,
@@ -173,7 +177,7 @@ export function computeRestrictionProjectionDigest(
   let hash = 0;
   for (let i = 0; i < canonical.length; i++) {
     const char = canonical.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash |= 0;
   }
   return `restriction-digest-${Math.abs(hash).toString(16)}`;
