@@ -1,15 +1,13 @@
+import type { PortResult } from "@data-agent/contracts";
 import {
-  type AppScope,
   appScopeSchema,
   type ControlledFixtureContract,
-  controlledFixtureContractSchema,
   contentHashSchema,
+  controlledFixtureContractSchema,
   databaseUtcTimestampSchema,
   idempotencyKeySchema,
   immutableIdSchema,
-  nonNegativeIntSchema,
 } from "@data-agent/contracts";
-import type { ContractError, PortResult } from "@data-agent/contracts";
 import { z } from "zod";
 import {
   type AppTransactionOptions,
@@ -24,9 +22,9 @@ import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional
 // 1. Zod Schemas for fixture storage & retrieval
 // ──────────────────────────────────────────────────
 
-const DEFAULT_LOCK_RETRY_DELAYS_MS = Object.freeze([10, 25, 50] as const);
+const _DEFAULT_LOCK_RETRY_DELAYS_MS = Object.freeze([10, 25, 50] as const);
 
-const lockRetryDelaysSchema = z
+const _lockRetryDelaysSchema = z
   .array(z.number().int().positive())
   .min(1)
   .max(10)
@@ -107,7 +105,6 @@ const fixtureCaseEvaluationRecordSchema = z.strictObject({
   created_at: databaseUtcTimestampSchema,
 });
 
-type FixtureCaseEvaluationRecord = z.infer<typeof fixtureCaseEvaluationRecordSchema>;
 
 const fixtureCaseEvaluationsResultSchema = z.strictObject({
   evaluations: z.array(fixtureCaseEvaluationRecordSchema),
@@ -161,11 +158,14 @@ export interface PostgresControlledFixture {
 // 3. Internal helpers
 // ──────────────────────────────────────────────────
 
-function sleepWithTimer(delayMs: number): Promise<void> {
+function _sleepWithTimer(delayMs: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
-function makeTransactionOptions(operationName: string, correlationId: string): AppTransactionOptions {
+function makeTransactionOptions(
+  operationName: string,
+  correlationId: string,
+): AppTransactionOptions {
   return {
     access: "WRITE",
     operation_name: operationName,
@@ -173,7 +173,10 @@ function makeTransactionOptions(operationName: string, correlationId: string): A
   };
 }
 
-function makeReadTransactionOptions(operationName: string, correlationId: string): AppTransactionOptions {
+function makeReadTransactionOptions(
+  operationName: string,
+  correlationId: string,
+): AppTransactionOptions {
   return {
     access: "READ",
     operation_name: operationName,
@@ -220,7 +223,7 @@ export function createPostgresControlledFixture(
         );
 
         if (existingResult.rows.length > 0) {
-          const fixtureHash = existingResult.rows[0]!.fixture_hash as `sha256:${string}`;
+          const fixtureHash = (existingResult.rows[0] as { fixture_hash: string }).fixture_hash as `sha256:${string}`;
           return {
             created: false,
             fixture_hash: fixtureHash,
@@ -288,7 +291,7 @@ export function createPostgresControlledFixture(
         }
 
         const contract = controlledFixtureContractSchema.parse(
-          JSON.parse(result.rows[0]!.contract_json),
+          JSON.parse((result.rows[0] as { contract_json: string }).contract_json),
         );
         return contract;
       },
@@ -328,7 +331,7 @@ export function createPostgresControlledFixture(
         if (existingResult.rows.length > 0) {
           return {
             created: false,
-            evaluation_id: existingResult.rows[0]!.evaluation_id as `{${string}}`,
+            evaluation_id: existingResult.rows[0]?.evaluation_id as `{${string}}`,
           };
         }
 
