@@ -17,6 +17,16 @@ export {
   type PostgresResearchAuthorityOptions,
 } from "./research/postgres-research-authority.js";
 export {
+  createPostgresResearchResourceInvocation,
+  type PostgresResearchResourceInvocation,
+  type PostgresResearchResourceInvocationOptions,
+} from "./research/postgres-research-resource-invocation.js";
+export {
+  createPostgresControlledFixture,
+  type PostgresControlledFixture,
+  type PostgresControlledFixtureOptions,
+} from "./research/postgres-controlled-fixture.js";
+export {
   type ActiveSandboxCancelRequest,
   type CoordinatedSandboxPort,
   type CoordinatedSandboxPortOptions,

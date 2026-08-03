@@ -484,7 +484,9 @@ export function validateWorkspaceModules(
       for (const dependency of module.runtimeDependencies) {
         if (
           moduleByName.has(dependency) ||
-          (module.role && kernelRoles.has(module.role) && contractsRuntimeAllowlist.has(packageNameFromSpecifier(dependency)))
+          (module.role &&
+            kernelRoles.has(module.role) &&
+            contractsRuntimeAllowlist.has(packageNameFromSpecifier(dependency)))
         ) {
           continue;
         }
@@ -546,7 +548,8 @@ export function validateWorkspaceModules(
       }
 
       if (
-        module.role && kernelRoles.has(module.role) &&
+        module.role &&
+        kernelRoles.has(module.role) &&
         !isLocalSpecifier(specifier) &&
         !isBuiltin(specifier) &&
         !contractsRuntimeAllowlist.has(packageNameFromSpecifier(specifier))

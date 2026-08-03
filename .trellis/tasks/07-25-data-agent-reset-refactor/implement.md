@@ -873,7 +873,12 @@ PostgreSQL Authority、CurrentReadiness、资源事务与 Worker 组合仍未实
 - strict parser 先拒绝顶层与递归 shape/闭集漂移，再验证语义不变量；随后分别校验 raw
   内嵌 hash 和独立 committed frozen hash。当前物理描述符 hash 为
   `sha256:b848930cc4cd97148cf5209983b1d4637f8550c219d697be08fe0dd2c657f8d9`。
-- 该检查点仍是 `installable=false / HOLD`：正式 `10600` bytes、函数签名/body hash、
+- 该检查点仍是 `installable=false / HOLD`：DB-owned Receipt/Root、CurrentReadiness/Revocation/Grant、
+  Resource/Invocation、Worker 组合、Crash-Recovery 与 Controlled Fixture 尚未实现
+- Controlled Fixture 进展：
+  - ✅ TypeScript 适配器（`postgres-controlled-fixture.ts`）已完成：使用 `PortResult` + `SqlClient.query` 模式，
+    通过 `withAppTransaction` 5 参数调用，已从 `packages/platform/src/index.ts` 导出
+  - ✅ PostgreSQL migration 表（`u6_research_fixture_contracts`、`u6_research_fixture_case_evaluations`）已完成
   preflight query hash、PG17 live Catalog 和 Hosted/Docker parity 尚未闭合，不能把
   frozen table surface 冒充已安装数据库能力。
 
@@ -1592,4 +1597,9 @@ pnpm verify:release
 - 新 15 段结构已替换旧 10600/ 目录，C2 renderer 的 `U6_C2_SOURCE_SEGMENTS` 已同步为 15 段闭集
 - 18/18 C1 renderer、12/12 C2 renderer、10/10 physical schema 门禁全绿
 - 该检查点仍是 `installable=false / HOLD`：DB-owned Receipt/Root、CurrentReadiness/Revocation/Grant、
+  Resource/Invocation、Worker 组合、Crash-Recovery 与 Controlled Fixture 尚未实现
+- Controlled Fixture 进展：
+  - ✅ TypeScript 适配器（`postgres-controlled-fixture.ts`）已完成：使用 `PortResult` + `SqlClient.query` 模式，
+    通过 `withAppTransaction` 5 参数调用，已从 `packages/platform/src/index.ts` 导出
+  - ✅ PostgreSQL migration 表（`u6_research_fixture_contracts`、`u6_research_fixture_case_evaluations`）已完成
   Resource/Invocation、Worker 组合、Crash-Recovery 与 Controlled Fixture 尚未实现

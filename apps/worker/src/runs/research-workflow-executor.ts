@@ -5,26 +5,18 @@ import {
   type CurrentReadinessPort,
   type L2ResearchDocumentCandidate,
   type MastraSnapshotBinding,
-  type PortResult,
   type ResearchArtifactAuthorityPort,
   type ResearchStopTerminalPort,
   type ResearchVersionFrontierPort,
-  type RunWorkLease,
-  type U6DbResult,
-  deepFreeze,
-  immutableIdSchema,
-  parseL2ResearchDocumentCandidate,
   researchArtifactCommitInputSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
-  runControlledProtocolKernel,
   type ControlledResearchProtocolInput,
-  type ResearchProtocolInput,
-  type ResearchProtocolEvaluation,
-} from "@data-agent/research/server";
-import {
   createResearchKernelCandidateAuthority,
+  type ResearchProtocolEvaluation,
+  type ResearchProtocolInput,
+  runControlledProtocolKernel,
   sealKernelVerifiedReportReadyCandidate,
 } from "@data-agent/research/server";
 import { z } from "zod";
@@ -92,10 +84,7 @@ function checkpointInputFromState(
   });
 }
 
-function researchErrorResult(
-  errorCode: string,
-  retryable: boolean,
-): RunExecutorResult {
+function researchErrorResult(errorCode: string, retryable: boolean): RunExecutorResult {
   return runExecutorResultSchema.parse(
     retryable
       ? {
@@ -113,7 +102,7 @@ function researchErrorResult(
 export function createResearchWorkflowExecutor(
   deps: ResearchWorkflowExecutorDependencies,
 ): RunWorkflowExecutorPort {
-  const { research_authority: authority, create_id, now } = deps;
+  const { research_authority: authority, create_id } = deps;
 
   async function executeResearchStep(
     state: ResearchWorkflowState,
@@ -121,7 +110,7 @@ export function createResearchWorkflowExecutor(
     scope: AppScope,
     runId: string,
     principalId: string,
-    context: RunExecutionContext,
+    _context: RunExecutionContext,
   ): Promise<ResearchWorkflowState> {
     const kernelAuthority = createResearchKernelCandidateAuthority();
     const controlledInput = protocolInput as ControlledResearchProtocolInput;
@@ -158,10 +147,7 @@ export function createResearchWorkflowExecutor(
         if (result.ok && result.value.created) {
           committedRefs.push(result.value.reference);
         }
-      } catch (error) {
-        // Continue with other artifacts on individual failure
-        continue;
-      }
+      } catch (_error) {}
     }
 
     // Step 3: Create checkpoint
@@ -205,11 +191,7 @@ export function createResearchWorkflowExecutor(
       }
 
       // Checkpoint progress
-      const checkpointInput = checkpointInputFromState(
-        state,
-        scope,
-        runId,
-      );
+      const checkpointInput = checkpointInputFromState(state, scope, runId);
       const checkpointResult = await context.checkpoint(checkpointInput);
       if (!checkpointResult.ok) {
         return researchErrorResult("CHECKPOINT_FAILED", true);
@@ -253,9 +235,18 @@ export function createResearchWorkflowExecutor(
 
   return {
     async execute(input) {
-      const { lease, restored_snapshot: restoredSnapshot, context, signal, deadline_at: _deadline } = input;
+      const {
+        lease,
+        restored_snapshot: restoredSnapshot,
+        context,
+        signal,
+        deadline_at: _deadline,
+      } = input;
 
-      const payload = lease.payload as { readonly kind: "START_L2_RESEARCH"; readonly protocol_input?: unknown };
+      const payload = lease.payload as {
+        readonly kind: "START_L2_RESEARCH";
+        readonly protocol_input?: unknown;
+      };
       if (payload.kind !== "START_L2_RESEARCH") {
         return researchErrorResult("UNKNOWN_COMMAND_KIND", false);
       }
@@ -318,7 +309,15 @@ export function createResearchWorkflowExecutor(
         },
       };
 
-      return executeWorkflow(protocolInput, lease.scope, lease.run_id, principal_id, restoredSnapshot ?? null, context, signal);
+      return executeWorkflow(
+        protocolInput,
+        lease.scope,
+        lease.run_id,
+        principal_id,
+        restoredSnapshot ?? null,
+        context,
+        signal,
+      );
     },
   };
 }
