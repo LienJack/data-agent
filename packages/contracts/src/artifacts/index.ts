@@ -37,6 +37,7 @@ export {
 } from "./grounding-materializer.js";
 export * from "./l2.js";
 export * from "./research/index.js";
+export * from "./semantic-governance.js";
 export * from "./text2sql-evidence.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,

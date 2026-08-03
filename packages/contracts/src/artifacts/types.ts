@@ -62,6 +62,7 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "SandboxResult",
   "SandboxExecutionReceipt",
   "BenchmarkAdapterReceipt",
+  "SemanticSourceBundle",
   "SemanticRelease",
   "SchemaSnapshot",
   "PolicyReceipt",

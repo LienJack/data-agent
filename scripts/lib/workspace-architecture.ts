@@ -6,6 +6,7 @@ import { createScanner, LanguageVariant, SyntaxKind } from "typescript/unstable/
 export type WorkspaceRole =
   | "contracts"
   | "text2sql"
+  | "semantic"
   | "research"
   | "evals"
   | "agent-runtime"
@@ -15,6 +16,7 @@ export type WorkspaceRole =
 export const WORKSPACE_ROLE_BY_DIRECTORY: Readonly<Record<string, WorkspaceRole>> = {
   "packages/contracts": "contracts",
   "packages/text2sql": "text2sql",
+  "packages/semantic": "semantic",
   "packages/research": "research",
   "packages/evals": "evals",
   "packages/agent-runtime": "agent-runtime",
@@ -26,6 +28,7 @@ export const WORKSPACE_ROLE_BY_DIRECTORY: Readonly<Record<string, WorkspaceRole>
 export const ALLOWED_ROLE_DEPENDENCIES: Readonly<Record<WorkspaceRole, readonly WorkspaceRole[]>> =
   {
     contracts: [],
+    semantic: ["contracts"],
     text2sql: ["contracts"],
     research: ["contracts"],
     evals: ["contracts"],
@@ -43,6 +46,7 @@ const runtimeDependencyFields = [
 const allDependencyFields = [...runtimeDependencyFields, "devDependencies"] as const;
 const sourceExtensions = new Set([".ts", ".tsx", ".mts", ".cts"]);
 const contractsRuntimeAllowlist = new Set(["zod"]);
+const kernelRoles = new Set<WorkspaceRole>(["contracts", "semantic"]);
 const domainRoles = new Set<WorkspaceRole>(["text2sql", "research", "evals"]);
 const forbiddenDomainRuntimePackages = [
   "@ai-sdk",
@@ -461,7 +465,7 @@ export function validateWorkspaceModules(
       }
     }
 
-    if (module.role !== "contracts") {
+    if (!kernelRoles.has(module.role)) {
       if (module.role && domainRoles.has(module.role)) {
         for (const dependency of module.runtimeDependencies) {
           if (!isForbiddenDomainRuntimePackage(dependency)) {
@@ -476,11 +480,11 @@ export function validateWorkspaceModules(
           });
         }
       }
-    } else {
+    } else if (module.role) {
       for (const dependency of module.runtimeDependencies) {
         if (
           moduleByName.has(dependency) ||
-          contractsRuntimeAllowlist.has(packageNameFromSpecifier(dependency))
+          (module.role && kernelRoles.has(module.role) && contractsRuntimeAllowlist.has(packageNameFromSpecifier(dependency)))
         ) {
           continue;
         }
@@ -488,7 +492,7 @@ export function validateWorkspaceModules(
           code: "CONTRACTS_RUNTIME_DEPENDENCY",
           dependency,
           file: module.manifestPath,
-          message: `contracts 的第三方 runtime dependency 仅允许 zod，发现 ${dependency}。`,
+          message: `kernel 包 (${module.role}) 的第三方 runtime dependency 仅允许 zod，发现 ${dependency}。`,
           module: module.name,
         });
       }
@@ -542,7 +546,7 @@ export function validateWorkspaceModules(
       }
 
       if (
-        module.role === "contracts" &&
+        kernelRoles.has(module.role) &&
         !isLocalSpecifier(specifier) &&
         !isBuiltin(specifier) &&
         !contractsRuntimeAllowlist.has(packageNameFromSpecifier(specifier))
@@ -551,7 +555,7 @@ export function validateWorkspaceModules(
           code: "CONTRACTS_SOURCE_DEPENDENCY",
           dependency: specifier,
           file: source.path,
-          message: `contracts 源码仅可导入 zod 或 Node builtin，发现 ${specifier}。`,
+          message: `kernel 包源码仅可导入 zod 或 Node builtin，发现 ${specifier}。`,
           module: module.name,
         });
       } else if (
