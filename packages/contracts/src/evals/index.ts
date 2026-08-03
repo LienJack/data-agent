@@ -953,3 +953,206 @@ export type EvalRegistryAssignment = z.infer<typeof evalRegistryAssignmentSchema
 export type EvalRun = z.infer<typeof evalRunSchema>;
 export type OracleVerdictReceipt = z.infer<typeof oracleVerdictReceiptSchema>;
 export type ScoreCard = z.infer<typeof scoreCardSchema>;
+
+export const evalReleaseDecisionVerdictSchema = z.enum(["GO", "HOLD", "STOP"]);
+
+export const evalReleaseDecisionConditionSchema = z.strictObject({
+  condition_id: versionIdentifierSchema,
+  description: z.string().min(1).max(2048),
+  condition_type: z.enum([
+    "SCORE_THRESHOLD",
+    "REGRESSION_CHECK",
+    "SAFETY_COUNTER",
+    "HOLDOUT_CONTAMINATION",
+    "BUNDLE_INTEGRITY",
+    "LICENSE_COMPLIANCE",
+    "PATH_BOUNDARY",
+    "HOOK_VERIFICATION",
+  ]),
+  status: z.enum(["PASS", "FAIL", "WAIVED"]),
+  required_ref: artifactReferenceFor("EvalCase").nullable(),
+});
+
+export const evalReleaseDecisionSchema = z
+  .strictObject({
+    decision_id: immutableIdSchema,
+    decision_version: z.number().int().positive(),
+    verdict: evalReleaseDecisionVerdictSchema,
+    conditions: z.array(evalReleaseDecisionConditionSchema).min(1),
+    scorecard_ref: artifactReferenceFor("ScoreCard"),
+    safety_counters: z.array(scoreCardSafetyCounterSchema).min(1),
+    failure_taxonomy: z.array(scoreCardFailureTaxonomySchema),
+    decision_hash: contentHashSchema,
+    eval_run_ref: artifactReferenceFor("EvalRun"),
+    decided_at: timestampSchema,
+    reason: z.string().max(4096).nullable(),
+  })
+  .superRefine((decision, ctx) => {
+    if (decision.verdict === "GO" && decision.conditions.some((c) => c.status === "FAIL")) {
+      ctx.addIssue({
+        code: "custom",
+        message: "GO 决策不能包含 FAIL 状态的条件。",
+        path: ["verdict"],
+      });
+    }
+    if (decision.verdict === "STOP" && decision.conditions.every((c) => c.status === "PASS")) {
+      ctx.addIssue({
+        code: "custom",
+        message: "STOP 决策需要至少一个 FAIL 条件。",
+        path: ["verdict"],
+      });
+    }
+    if (
+      decision.scorecard_ref.app_id !== decision.eval_run_ref.app_id ||
+      decision.scorecard_ref.tenant_id !== decision.eval_run_ref.tenant_id ||
+      decision.scorecard_ref.environment !== decision.eval_run_ref.environment ||
+      decision.scorecard_ref.run_id !== decision.eval_run_ref.run_id
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "EvalReleaseDecision 的 ScoreCard 与 EvalRun 必须属于同一 Scope。",
+        path: ["scorecard_ref"],
+      });
+    }
+    const safetyCounterIds = new Set(decision.safety_counters.map(({ counter_id }) => counter_id));
+    if (safetyCounterIds.size !== decision.safety_counters.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "EvalReleaseDecision 的 Safety Counter ID 不能重复。",
+        path: ["safety_counters"],
+      });
+    }
+    const failureCodes = new Set(
+      decision.failure_taxonomy.map(({ failure_code }) => failure_code),
+    );
+    if (failureCodes.size !== decision.failure_taxonomy.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "EvalReleaseDecision 的 Failure Taxonomy Code 不能重复。",
+        path: ["failure_taxonomy"],
+      });
+    }
+    const conditionIds = new Set(decision.conditions.map(({ condition_id }) => condition_id));
+    if (conditionIds.size !== decision.conditions.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "EvalReleaseDecision 的 Condition ID 不能重复。",
+        path: ["conditions"],
+      });
+    }
+  });
+
+export async function computeEvalReleaseDecisionHash(
+  input: unknown,
+): Promise<`sha256:${string}`> {
+  const decision = evalReleaseDecisionSchema.parse(input);
+  const { decision_hash: _decisionHash, ...material } = decision;
+  return sha256ContentHash(material);
+}
+
+export interface EvalReleaseDecisionAuthorityContext {
+  verifyCommitted(reference: ArtifactReference): Promise<boolean>;
+  resolveScoreCard(reference: ArtifactReference): Promise<unknown | null>;
+  resolveEvalRun(reference: ArtifactReference): Promise<unknown | null>;
+  verifyConditionRef(reference: ArtifactReference): Promise<boolean>;
+}
+
+export class EvalReleaseDecisionAuthorityError extends Error {
+  override readonly name = "EvalReleaseDecisionAuthorityError";
+  readonly code = "EVAL_RELEASE_DECISION_NOT_AUTHORITATIVE";
+}
+
+declare const authoritativeEvalReleaseDecision: unique symbol;
+const authorizedEvalReleaseDecisions = new WeakSet<object>();
+
+export type AuthoritativeEvalReleaseDecision = EvalReleaseDecision & {
+  readonly [authoritativeEvalReleaseDecision]: true;
+};
+
+export async function authorizeEvalReleaseDecision(
+  input: unknown,
+  authority: EvalReleaseDecisionAuthorityContext,
+): Promise<AuthoritativeEvalReleaseDecision> {
+  const decision = evalReleaseDecisionSchema.parse(input);
+  if ((await computeEvalReleaseDecisionHash(decision)) !== decision.decision_hash) {
+    throw new EvalReleaseDecisionAuthorityError("EvalReleaseDecision Hash 与规范化内容不匹配。");
+  }
+  if (!(await authority.verifyCommitted(evalReleaseDecisionReference(decision)))) {
+    throw new EvalReleaseDecisionAuthorityError("EvalReleaseDecision 尚未由持久化 Authority 提交。");
+  }
+  const scoreCard = await authority.resolveScoreCard(decision.scorecard_ref);
+  if (!isAuthoritativeScoreCard(scoreCard)) {
+    throw new EvalReleaseDecisionAuthorityError(
+      "EvalReleaseDecision 只能消费完整 Reference 匹配的权威 ScoreCard。",
+    );
+  }
+  if (
+    artifactReferenceIdentity(scoreCardReference(scoreCard)) !==
+      artifactReferenceIdentity(decision.scorecard_ref) ||
+    artifactReferenceIdentity(scoreCard.eval_run_ref) !==
+      artifactReferenceIdentity(decision.eval_run_ref)
+  ) {
+    throw new EvalReleaseDecisionAuthorityError(
+      "EvalReleaseDecision 的 ScoreCard 与 EvalRun 必须匹配权威证据。",
+    );
+  }
+  const evalRun = await authority.resolveEvalRun(decision.eval_run_ref);
+  if (!isAuthoritativeEvalRun(evalRun)) {
+    throw new EvalReleaseDecisionAuthorityError(
+      "EvalReleaseDecision 只能消费权威 EvalRun。",
+    );
+  }
+  if (evalRun.status !== "COMPLETED") {
+    throw new EvalReleaseDecisionAuthorityError(
+      "EvalReleaseDecision 只能消费 COMPLETED EvalRun。",
+    );
+  }
+  const conditionRefs = decision.conditions
+    .map((c) => c.required_ref)
+    .filter((ref): ref is NonNullable<typeof ref> => ref !== null);
+  if (conditionRefs.length > 0) {
+    const verdicts = await Promise.all(
+      conditionRefs.map((reference) => authority.verifyConditionRef(reference)),
+    );
+    if (verdicts.some((v) => !v)) {
+      throw new EvalReleaseDecisionAuthorityError(
+        "EvalReleaseDecision 引用了未提交的 Condition Reference。",
+      );
+    }
+  }
+
+  authorizedEvalReleaseDecisions.add(decision);
+  return deepFreeze(decision) as AuthoritativeEvalReleaseDecision;
+}
+
+export function isAuthoritativeEvalReleaseDecision(
+  value: unknown,
+): value is AuthoritativeEvalReleaseDecision {
+  return typeof value === "object" && value !== null && authorizedEvalReleaseDecisions.has(value);
+}
+
+export function evalReleaseDecisionReference(decision: EvalReleaseDecision): ArtifactReference {
+  return {
+    artifact_id: decision.decision_id,
+    artifact_type: "EvalReleaseDecision",
+    app_id: decision.scorecard_ref.app_id,
+    tenant_id: decision.scorecard_ref.tenant_id,
+    environment: decision.scorecard_ref.environment,
+    run_id: decision.scorecard_ref.run_id,
+    revision: decision.decision_version,
+    content_hash: decision.decision_hash,
+  };
+}
+
+export function evalReleaseDecisionInputIdentity(decision: EvalReleaseDecision): string {
+  return [
+    artifactReferenceIdentity(decision.scorecard_ref),
+    artifactReferenceIdentity(decision.eval_run_ref),
+    decision.verdict,
+  ].join("|");
+}
+
+export type EvalReleaseDecision = z.infer<typeof evalReleaseDecisionSchema>;
+export type EvalReleaseDecisionCondition = z.infer<typeof evalReleaseDecisionConditionSchema>;
+export type EvalReleaseDecisionVerdict = z.infer<typeof evalReleaseDecisionVerdictSchema>;
+export * from "./manifest.js";

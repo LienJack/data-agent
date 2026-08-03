@@ -23,7 +23,7 @@
     "test:tenancy": "pnpm --filter @data-agent/platform test:tenancy && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",
     "test:sandbox": "./scripts/test-sandbox.sh",
     "test:e2e": "tsx scripts/pending-gate.ts test:e2e U8",
-    "eval:smoke": "tsx scripts/pending-gate.ts eval:smoke U7",
+    "eval:smoke": "tsx scripts/eval-smoke.ts",
     "test:security": "pnpm --filter @data-agent/agent-runtime test:security && pnpm --filter @data-agent/platform test:security && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",
     "test:deploy:docker": "tsx scripts/pending-gate.ts test:deploy:docker U9",
     "test:deploy:hosted": "tsx scripts/pending-gate.ts test:deploy:hosted U9",
