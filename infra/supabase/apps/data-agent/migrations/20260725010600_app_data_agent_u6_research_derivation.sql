@@ -1,4 +1,4 @@
--- u6_c2_migration_checksum: sha256:9436df7d436838fc928e2aefad5a0f84a8e750b3b3f7f9eb8e0932d777f38e74
+-- u6_c2_migration_checksum: sha256:f73b4712253d240492351c8793b17aa834e5ed161b2b8e61106a4e0c27b70d52
 begin;
 
 do $bootstrap$
@@ -2985,7 +2985,6 @@ declare
   v_worker_fence bigint;
   v_principal_id uuid;
   v_idempotency_key text;
-  v_step_operation_id uuid;
   v_head record;
   v_existing record;
   v_now timestamptz;
@@ -4041,7 +4040,8 @@ $$;
 -- 10600: Stop Root RPCs
 -- ============================================================
 
-create function app_data_agent.commit_research_stop_terminal(
+drop function if exists app_data_agent.commit_research_stop_terminal(jsonb);
+create or replace function app_data_agent.commit_research_stop_terminal(
   input_json jsonb
 ) returns jsonb
 language plpgsql
@@ -4375,7 +4375,8 @@ $$;
 --    Validates CURRENT state, creates READY domain terminal, marks consumed
 -- ============================================================
 
-create function app_data_agent.consume_current_ready(
+drop function if exists app_data_agent.consume_current_ready(jsonb);
+create or replace function app_data_agent.consume_current_ready(
   input_json jsonb
 ) returns jsonb
 language plpgsql
@@ -5445,16 +5446,36 @@ revoke all on all tables in schema app_data_agent from public;
 revoke all on all tables in schema app_data_agent from anon;
 revoke all on all tables in schema app_data_agent from authenticated;
 revoke all on all tables in schema app_data_agent from service_role;
-revoke all on all tables in schema app_data_agent from data_agent_backend;
+-- Only revoke on the 20 new U6 tables, not on tables from prior migrations
+revoke all on app_data_agent.research_budget_policy_versions from data_agent_backend;
+revoke all on app_data_agent.research_budget_policy_heads from data_agent_backend;
+revoke all on app_data_agent.research_enumerator_versions from data_agent_backend;
+revoke all on app_data_agent.research_enumerator_version_heads from data_agent_backend;
+revoke all on app_data_agent.research_budget_events from data_agent_backend;
+revoke all on app_data_agent.research_step_operations from data_agent_backend;
+revoke all on app_data_agent.research_budget_ledger_receipts from data_agent_backend;
+revoke all on app_data_agent.research_coverage_derivation_receipts from data_agent_backend;
+revoke all on app_data_agent.research_candidate_enumerator_attestations from data_agent_backend;
+revoke all on app_data_agent.research_candidate_enumeration_receipts from data_agent_backend;
+revoke all on app_data_agent.research_stop_derivation_receipts from data_agent_backend;
+revoke all on app_data_agent.research_input_event_heads from data_agent_backend;
+revoke all on app_data_agent.research_input_events from data_agent_backend;
+revoke all on app_data_agent.research_input_event_watermark_receipts from data_agent_backend;
+revoke all on app_data_agent.research_backend_artifact_commit_operations from data_agent_backend;
+revoke all on app_data_agent.research_budget_ledger_input_bindings from data_agent_backend;
+revoke all on app_data_agent.research_coverage_derivation_ref_bindings from data_agent_backend;
+revoke all on app_data_agent.research_candidate_attestation_ref_bindings from data_agent_backend;
+revoke all on app_data_agent.research_candidate_enumeration_ref_bindings from data_agent_backend;
+revoke all on app_data_agent.research_stop_derivation_ref_bindings from data_agent_backend;
 
--- Restore SELECT on app_data_agent.runs for data_agent_backend (revoked by
--- the schema-level revoke above, which affects tables from prior migrations)
-grant select on app_data_agent.runs to data_agent_backend;
+-- Note: data_agent_backend retains permissions on tables from prior migrations
+-- (artifacts, run_projections, secret_refs, datasource_egress_policies, etc.)
+-- as granted by 10590 migration.
+
 -- ============================================================
 -- Part 8: Revoke artifacts INSERT/UPDATE/DELETE from backend
 -- ============================================================
 
-revoke insert, update, delete on app_data_agent.artifacts from data_agent_backend;
 revoke insert, update, delete on app_data_agent.artifacts from service_role;
 -- ============================================================
 -- 10600: Post-conditions, ledger checksum, and commit
@@ -5464,7 +5485,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010600_app_data_agent_u6_research_derivation',
-  'sha256:9436df7d436838fc928e2aefad5a0f84a8e750b3b3f7f9eb8e0932d777f38e74'
+  'sha256:f73b4712253d240492351c8793b17aa834e5ed161b2b8e61106a4e0c27b70d52'
 );
 
 commit;

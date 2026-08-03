@@ -33,7 +33,6 @@ declare
   v_worker_fence bigint;
   v_principal_id uuid;
   v_idempotency_key text;
-  v_step_operation_id uuid;
   v_head record;
   v_existing record;
   v_now timestamptz;

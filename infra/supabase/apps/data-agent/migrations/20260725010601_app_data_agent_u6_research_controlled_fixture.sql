@@ -4,7 +4,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010601_app_data_agent_u6_research_controlled_fixture',
-  'sha256:9cec7aef09632b982da8d6873aa100f7b19afa971ae02139579e0c1dece1e39f'
+  'sha256:2d649ec965fbd9e63f8be85b8aebfa25e3127c9073d2a6c1d1a7dbaba5eeb05b'
 );
 
 -- ============================================================
@@ -79,8 +79,28 @@ create index u6_research_fixture_evaluations_lookup
   on app_data_agent.u6_research_fixture_case_evaluations (app_id, tenant_id, environment, fixture_id, case_id, mutation_id, created_at desc);
 
 -- ============================================================
+-- Scope matching helper for RLS policies
+-- ============================================================
+
+create or replace function app_data_agent.u6_current_scope_matches_row(
+  p_app_id uuid,
+  p_tenant_id uuid,
+  p_environment text
+)
+returns boolean
+language sql
+stable
+as $$
+  select
+    p_app_id = nullif(pg_catalog.current_setting('data_agent.app_id', true), '')::uuid
+    and p_tenant_id = nullif(pg_catalog.current_setting('data_agent.tenant_id', true), '')::uuid
+    and p_environment = pg_catalog.current_setting('data_agent.environment', true)
+$$;
+
+-- ============================================================
 -- RLS
 -- ============================================================
+
 
 alter table app_data_agent.u6_research_fixture_contracts enable row level security;
 alter table app_data_agent.u6_research_fixture_case_evaluations enable row level security;
@@ -90,15 +110,15 @@ create policy u6_research_fixture_contracts_rpc_pol
   on app_data_agent.u6_research_fixture_contracts
   for all
   to data_agent_u6_rpc_owner
-  using (u6_current_scope_matches_row(app_id, tenant_id, environment))
-  with check (u6_current_scope_matches_row(app_id, tenant_id, environment));
+  using (app_data_agent.u6_current_scope_matches_row(app_id, tenant_id, environment))
+  with check (app_data_agent.u6_current_scope_matches_row(app_id, tenant_id, environment));
 
 create policy u6_research_fixture_evaluations_rpc_pol
   on app_data_agent.u6_research_fixture_case_evaluations
   for all
   to data_agent_u6_rpc_owner
-  using (u6_current_scope_matches_row(app_id, tenant_id, environment))
-  with check (u6_current_scope_matches_row(app_id, tenant_id, environment));
+  using (app_data_agent.u6_current_scope_matches_row(app_id, tenant_id, environment))
+  with check (app_data_agent.u6_current_scope_matches_row(app_id, tenant_id, environment));
 
 -- ============================================================
 -- Append-only triggers (reject UPDATE/DELETE)

@@ -2,7 +2,8 @@
 -- 10600: Stop Root RPCs
 -- ============================================================
 
-create function app_data_agent.commit_research_stop_terminal(
+drop function if exists app_data_agent.commit_research_stop_terminal(jsonb);
+create or replace function app_data_agent.commit_research_stop_terminal(
   input_json jsonb
 ) returns jsonb
 language plpgsql
@@ -336,7 +337,8 @@ $$;
 --    Validates CURRENT state, creates READY domain terminal, marks consumed
 -- ============================================================
 
-create function app_data_agent.consume_current_ready(
+drop function if exists app_data_agent.consume_current_ready(jsonb);
+create or replace function app_data_agent.consume_current_ready(
   input_json jsonb
 ) returns jsonb
 language plpgsql
