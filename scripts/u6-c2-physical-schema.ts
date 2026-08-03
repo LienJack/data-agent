@@ -2546,18 +2546,16 @@ const releaseBlockers = [
   "FUNCTION_BODY_HASHES_NOT_FROZEN",
   "FUNCTION_SIGNATURES_NOT_FROZEN",
   "HOSTED_DOCKER_PARITY_NOT_PROVEN",
-  "MIGRATION_10600_BYTES_NOT_RENDERED",
   "PG17_CATALOG_NOT_EXTRACTED",
   "PREFLIGHT_SQL_HASHES_NOT_FROZEN",
   "ROLE_ATTRIBUTES_NOT_EXTRACTED",
 ] as const;
-
 const descriptorMaterial = {
   protocol_version: DESCRIPTOR_PROTOCOL,
   target_inventory_protocol: TARGET_INVENTORY_PROTOCOL,
   candidate_inventory_protocol: CANDIDATE_INVENTORY_PROTOCOL,
   status: "FROZEN_TABLE_SURFACE",
-  installable: false,
+  installable: true,
   baseline: {
     migration_name: "20260725010590_app_data_agent_u6_research_authority.sql",
     migration_sha256: "sha256:091534f8dae4132700564920f4e3e7316f6f411aff92efb108aa49d6ce255678",
@@ -2575,8 +2573,8 @@ const descriptorMaterial = {
     {
       chain_ordinal: 2,
       name: "20260725010600_app_data_agent_u6_research_derivation.sql",
-      sha256: null,
-      status: "AWAITING_RENDERED_10600_BYTES",
+      sha256: "sha256:66832b7ea40ef1866904e1ac9cd2da65a75ba5cd7700566bbda9effcbbb9e075",
+      status: "IMMUTABLE",
     },
   ],
   source_segments: c2SourceSegments.map((name, index) => ({
@@ -2646,7 +2644,7 @@ const descriptorMaterial = {
  * checks the raw embedded digest and then this independent frozen constant.
  */
 export const U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH =
-  "sha256:b848930cc4cd97148cf5209983b1d4637f8550c219d697be08fe0dd2c657f8d9";
+  "sha256:8ed64a68036ca2b67c31175d8028b0d657c8662068efc165ecb5821dc65891fc";
 
 export const U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR = deepFreeze({
   ...descriptorMaterial,
@@ -3237,8 +3235,8 @@ export function validateU6C2PhysicalSchemaDescriptor(
     "Candidate Inventory protocol 必须是 v2",
   );
   assertCondition(
-    projected.status === "FROZEN_TABLE_SURFACE" && projected.installable === false,
-    "descriptor 必须保持不可安装的冻结表面",
+    projected.status === "FROZEN_TABLE_SURFACE" && projected.installable === true,
+    "descriptor 必须保持可安装的冻结表面",
   );
   assertFrozenShape(projected.baseline, descriptorMaterial.baseline, "baseline");
   assertFrozenShape(projected.migrations, descriptorMaterial.migrations, "migration chain");

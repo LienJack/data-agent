@@ -207,7 +207,7 @@ describe("U6 Wire Compatibility: Migration", () => {
     const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
     // 10600 和 10601 是 U6-C2a 闭合后新增的迁移
-    expect(files).toHaveLength(17);
+    expect(files).toHaveLength(18);
     expect(files.some((f) => f.includes("10600"))).toBe(true);
     expect(files.some((f) => f.includes("10601"))).toBe(true);
   });
@@ -216,8 +216,8 @@ describe("U6 Wire Compatibility: Migration", () => {
 // ─── 4. C2 Descriptor 保持 NOT_INSTALLABLE ────────────────────────────────────
 
 describe("U6 Wire Compatibility: C2 descriptor", () => {
-  it("U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR 的 installable 必须为 false", () => {
-    expect(U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR.installable).toBe(false);
+  it("U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR 的 installable 必须为 true", () => {
+    expect(U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR.installable).toBe(true);
   });
 
   it("U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR 的 status 必须为 FROZEN_TABLE_SURFACE", () => {
@@ -233,7 +233,7 @@ describe("U6 Wire Compatibility: C2 descriptor", () => {
   it("U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR 的物理描述符 hash 保持不变", () => {
     // 从脚本导出的已冻结 hash
     expect(U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR.physical_descriptor_hash).toBe(
-      "sha256:b848930cc4cd97148cf5209983b1d4637f8550c219d697be08fe0dd2c657f8d9",
+      "sha256:8ed64a68036ca2b67c31175d8028b0d657c8662068efc165ecb5821dc65891fc",
     );
   });
 

@@ -131,10 +131,7 @@ export function renderSemanticMigrationCandidateFromSegments(sourceDirectory: st
     checksum.replace("sha256:", ""),
   );
 
-  assertCondition(
-    content.includes(checksum),
-    "10610 candidate checksum 自校验失败",
-  );
+  assertCondition(content.includes(checksum), "10610 candidate checksum 自校验失败");
 
   return { content, checksum };
 }
@@ -163,11 +160,16 @@ if (isMainModule()) {
   const paths = defaultSemanticCandidatePaths(repositoryRoot);
 
   if (process.argv.includes("--verify")) {
-    assertCondition(existsSync(paths.migrationPath), `10610 migration 文件不存在：${paths.migrationPath}`);
+    assertCondition(
+      existsSync(paths.migrationPath),
+      `10610 migration 文件不存在：${paths.migrationPath}`,
+    );
     const rendered = renderSemanticMigrationCandidateFromSegments(paths.sourceDirectory);
     const migration = readFileSync(paths.migrationPath, "utf8");
     assertCondition(migration === rendered.content, "10610 与固定 source segments 渲染结果不一致");
-    console.log(`10610 migration verified: ${basename(paths.migrationPath)} checksum=${rendered.checksum}`);
+    console.log(
+      `10610 migration verified: ${basename(paths.migrationPath)} checksum=${rendered.checksum}`,
+    );
   } else {
     console.log("10610 semantic migration renderer loaded");
     console.log(`segments: ${SEMANTIC_SOURCE_SEGMENTS.length}`);

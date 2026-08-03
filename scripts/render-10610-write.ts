@@ -1,8 +1,8 @@
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
-  renderSemanticMigrationCandidateFromSegments,
   defaultSemanticCandidatePaths,
+  renderSemanticMigrationCandidateFromSegments,
 } from "./render-semantic-migration.js";
 
 const repoRoot = resolve(import.meta.dirname, "..");

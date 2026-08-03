@@ -113,7 +113,7 @@ describe("U6-C2 physical schema descriptor", () => {
       },
     );
 
-    assert.equal(descriptor.installable, false);
+    assert.equal(descriptor.installable, true);
     assert.equal(descriptor.status, "FROZEN_TABLE_SURFACE");
     assert.equal(
       descriptor.target_inventory_protocol,
