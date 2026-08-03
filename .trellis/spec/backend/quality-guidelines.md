@@ -69,3 +69,37 @@ if (!parsed.success) {
   return contractFailure("INVALID_RUN_EVENT", parsed.error);
 }
 ```
+
+### 新增 Eval 包（`packages/evals`）
+
+**模式**：Eval 评测系统使用 Adapter 接口 + Runner 组合模式：
+
+```typescript
+// Adapter 负责运行单个 EvalCase
+interface EvalAdapter {
+  readonly suite: BenchmarkSuite;       // insightbench | dab | rcaeval | controlled-attribution
+  readonly suite_version: string;
+  readonly oracle_type: string;
+  run(evalCase: AuthoritativeEvalCase, context: EvalAdapterContext): Promise<EvalAdapterResult>;
+  oracle(evalRun: AuthoritativeEvalRun, context: EvalAdapterContext): Promise<AuthoritativeOracleVerdictReceipt>;
+}
+
+// Runner 组合 Adapter + Oracle + ManifestReplay + PairedComparison + Safety
+class EvalRunner {
+  async runSingle(evalCase): Promise<EvalRunResult>;
+  async runPaired(baseline, candidate): Promise<{ baseline, candidate, comparison }>;
+}
+```
+
+**新增 Eval 门禁脚本**：在 `scripts/` 下创建独立脚本，不使用 `pending-gate.ts` 占位符。
+脚本应输出结构化 JSON（含 `gate`, `release_decision`, `implemented_units`, `missing_units`），
+`HOLD` 时以非零退出码退出。
+
+**新增 Eval 合约类型**：在 `packages/contracts/src/evals/` 下定义 schema/hash/reference/authority，
+并注册到 `packages/contracts/src/artifacts/types.ts` 的 `SYSTEM_ARTIFACT_TYPES`。
+
+**关键规则**：
+- `EvalReleaseDecision` 使用 `scoreCardReference()` 函数获取 `ScoreCard` 的 `ArtifactReference`，不直接访问 `scorecard_ref` 属性（该属性属于 `EvalReleaseDecision` 本身，不属于 `ScoreCard`）。
+- `BenchmarkManifest` 使用 `artifactReferenceFor("EvalCase")` 引用其所属 Case。
+- 所有新类型必须先通过 `pnpm --filter @data-agent/contracts build` 生成 `dist/*.d.ts`，依赖包才能引用。
+- `eval:smoke` 脚本在 `package.json` 中指向 `scripts/eval-smoke.ts`。
