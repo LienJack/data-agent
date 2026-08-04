@@ -189,6 +189,99 @@ export const runtimeAuthSchema = z.strictObject({
   table_rules: z.array(runtimeAuthTableRuleSchema).min(1),
 });
 
+// ─── BusinessOntology ─────────────────────────────────────────────────────────
+
+export const businessEntityRelationshipTypeSchema = z.strictObject({
+  relationship_type: z.string().min(1).max(128),
+  target_entity_id: versionIdentifierSchema,
+  description: z.string().max(512).optional(),
+});
+
+export const businessEntitySchema = z.strictObject({
+  entity_id: versionIdentifierSchema,
+  name: z.string().min(1).max(256),
+  description: z.string().max(1024).optional(),
+  aliases: z.array(z.string().min(1).max(128)).default([]),
+  domain: z.string().min(1).max(128),
+  owner: z.string().min(1).max(128),
+  lifecycle: z.enum(["active", "deprecated", "archived"]).default("active"),
+  business_relationship_types: z.array(businessEntityRelationshipTypeSchema).default([]),
+});
+
+export const businessEventSchema = z.strictObject({
+  event_id: versionIdentifierSchema,
+  name: z.string().min(1).max(256),
+  description: z.string().max(1024).optional(),
+  domain: z.string().min(1).max(128),
+  subject_entity_id: versionIdentifierSchema,
+  event_type: z.string().min(1).max(128),
+});
+
+export const businessTermSchema = z.strictObject({
+  term_id: versionIdentifierSchema,
+  name: z.string().min(1).max(256),
+  definition: z.string().min(1).max(2048),
+  domain: z.string().min(1).max(128),
+  aliases: z.array(z.string().min(1).max(128)).default([]),
+});
+
+export const businessOntologySchema = z.strictObject({
+  domain: z.string().min(1).max(128),
+  entities: z.array(businessEntitySchema).default([]),
+  events: z.array(businessEventSchema).default([]),
+  terms: z.array(businessTermSchema).default([]),
+  owner: z.string().min(1).max(128),
+  lifecycle: z.enum(["active", "draft", "deprecated", "archived"]).default("active"),
+});
+
+// ─── CatalogGovernance ────────────────────────────────────────────────────────
+
+export const columnGovernanceSchema = z.strictObject({
+  column_id: z.string().min(1).max(256),
+  nullable: z.boolean(),
+  data_type: z.string().min(1).max(64),
+  constraint_refs: z.array(z.string().min(1).max(256)).default([]),
+  description: z.string().max(1024).optional(),
+});
+
+export const tableGovernanceSchema = z.strictObject({
+  table_id: versionIdentifierSchema,
+  table_name: z.string().min(1).max(256),
+  description: z.string().max(1024).optional(),
+  columns: z.array(columnGovernanceSchema).min(1),
+  snapshot_currentness: z.strictObject({
+    snapshot_timestamp: z.string().nullable(),
+    staleness_threshold_seconds: z.number().int().positive().nullable(),
+  }),
+  catalog_fence: z.string().min(1).max(128).nullable(),
+});
+
+export const catalogGovernanceSchema = z.strictObject({
+  tables: z.array(tableGovernanceSchema).min(1),
+  data_quality_oracle_refs: z.array(artifactReferenceSchema).default([]),
+});
+
+// ─── PhysicalBinding ──────────────────────────────────────────────────────────
+
+export const bindingLifecycleSchema = z.enum(["active", "pending", "deprecated", "archived"]);
+
+export const physicalBindingEntrySchema = z.strictObject({
+  logical_object_id: versionIdentifierSchema,
+  logical_object_type: z.enum(["metric", "dimension", "table", "column", "relationship"]),
+  datasource_id: immutableIdSchema,
+  schema_name: z.string().min(1).max(256),
+  table_name: z.string().min(1).max(256),
+  column_name: z.string().min(1).max(256).nullable(),
+  binding_lifecycle: bindingLifecycleSchema,
+  valid_from: z.string().nullable(),
+  valid_until: z.string().nullable(),
+});
+
+export const physicalBindingSchema = z.strictObject({
+  entries: z.array(physicalBindingEntrySchema).min(1),
+  default_datasource_id: immutableIdSchema.nullable(),
+});
+
 // ─── Descriptive Contribution Profile ─────────────────────────────────────────
 
 export const endpointTemplateKindSchema = z.enum(["ROW_PARTITION", "FORMULA_IDENTITY"]);
@@ -282,6 +375,9 @@ export const semanticSourceBundleSchema = z.strictObject({
   metrics: z.array(semanticMetricSchema).min(1),
   dimensions: z.array(semanticDimensionSchema).default([]),
   relationships: z.array(semanticRelationshipSchema).default([]),
+  business_ontology: businessOntologySchema.optional(),
+  physical_binding: physicalBindingSchema.optional(),
+  catalog_governance: catalogGovernanceSchema.optional(),
   runtime_authorization: runtimeAuthSchema.optional(),
   contribution_profile: descriptiveContributionProfileSchema.optional(),
 });
@@ -297,6 +393,17 @@ export type RuntimeAuthPredicate = z.infer<typeof runtimeAuthPredicateSchema>;
 export type FormulaSignature = z.infer<typeof formulaSignatureSchema>;
 export type Grain = z.infer<typeof grainSchema>;
 export type Unit = z.infer<typeof unitSchema>;
+export type BusinessOntology = z.infer<typeof businessOntologySchema>;
+export type BusinessEntity = z.infer<typeof businessEntitySchema>;
+export type BusinessEvent = z.infer<typeof businessEventSchema>;
+export type BusinessTerm = z.infer<typeof businessTermSchema>;
+export type BusinessEntityRelationshipType = z.infer<typeof businessEntityRelationshipTypeSchema>;
+export type CatalogGovernance = z.infer<typeof catalogGovernanceSchema>;
+export type TableGovernance = z.infer<typeof tableGovernanceSchema>;
+export type ColumnGovernance = z.infer<typeof columnGovernanceSchema>;
+export type PhysicalBinding = z.infer<typeof physicalBindingSchema>;
+export type PhysicalBindingEntry = z.infer<typeof physicalBindingEntrySchema>;
+export type BindingLifecycle = z.infer<typeof bindingLifecycleSchema>;
 export type TimeDomain = z.infer<typeof timeDomainSchema>;
 export type EndpointExecutionTemplate = z.infer<typeof endpointExecutionTemplateSchema>;
 export type DescriptiveContributionProfile = z.infer<typeof descriptiveContributionProfileSchema>;
@@ -355,6 +462,92 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
   const formulaIds = new Set(bundle.formulas.map((f) => f.formula_id));
   if (formulaIds.size !== bundle.formulas.length) {
     throw new SemanticGovernanceError("SemanticSourceBundle 不能包含重复的 Formula ID。");
+  }
+  // ─── BusinessOntology 校验 ────────────────────────────────────────────────
+  if (bundle.business_ontology) {
+    const ontology = bundle.business_ontology;
+    const entityIds = new Set(ontology.entities.map((e) => e.entity_id));
+    if (entityIds.size !== ontology.entities.length) {
+      throw new SemanticGovernanceError("BusinessOntology 不能包含重复的 Entity ID。");
+    }
+    const eventIds = new Set(ontology.events.map((e) => e.event_id));
+    if (eventIds.size !== ontology.events.length) {
+      throw new SemanticGovernanceError("BusinessOntology 不能包含重复的 Event ID。");
+    }
+    const termIds = new Set(ontology.terms.map((t) => t.term_id));
+    if (termIds.size !== ontology.terms.length) {
+      throw new SemanticGovernanceError("BusinessOntology 不能包含重复的 Term ID。");
+    }
+    // 交叉引用校验：entity / event / term ID 互斥
+    for (const entityId of entityIds) {
+      if (eventIds.has(entityId)) {
+        throw new SemanticGovernanceError("Entity ID 与 Event ID 必须互斥。");
+      }
+      if (termIds.has(entityId)) {
+        throw new SemanticGovernanceError("Entity ID 与 Term ID 必须互斥。");
+      }
+    }
+    for (const eventId of eventIds) {
+      if (termIds.has(eventId)) {
+        throw new SemanticGovernanceError("Event ID 与 Term ID 必须互斥。");
+      }
+    }
+    // 校验事件引用的 subject_entity_id 在实体中存在
+    for (const event of ontology.events) {
+      if (!entityIds.has(event.subject_entity_id)) {
+        throw new SemanticGovernanceError(
+          `Event ${event.event_id} 引用不存在的 subject_entity_id: ${event.subject_entity_id}。`,
+        );
+      }
+    }
+    // 校验实体业务关系引用的 target_entity_id 在实体中存在
+    for (const entity of ontology.entities) {
+      for (const rel of entity.business_relationship_types) {
+        if (!entityIds.has(rel.target_entity_id)) {
+          throw new SemanticGovernanceError(
+            `Entity ${entity.entity_id} 的业务关系引用不存在的 target_entity_id: ${rel.target_entity_id}。`,
+          );
+        }
+      }
+    }
+  }
+
+  // ─── CatalogGovernance 校验 ────────────────────────────────────────────────
+  if (bundle.catalog_governance) {
+    const catalog = bundle.catalog_governance;
+    const tableIds = new Set(catalog.tables.map((t) => t.table_id));
+    if (tableIds.size !== catalog.tables.length) {
+      throw new SemanticGovernanceError("CatalogGovernance 不能包含重复的 Table ID。");
+    }
+    for (const table of catalog.tables) {
+      const columnIds = new Set(table.columns.map((c) => c.column_id));
+      if (columnIds.size !== table.columns.length) {
+        throw new SemanticGovernanceError(
+          `CatalogGovernance 表 ${table.table_id} 不能包含重复的 Column ID。`,
+        );
+      }
+    }
+  }
+
+  // ─── PhysicalBinding 校验 ──────────────────────────────────────────────────
+  if (bundle.physical_binding) {
+    const binding = bundle.physical_binding;
+    const logicalObjectIds = new Set(binding.entries.map((e) => e.logical_object_id));
+    if (logicalObjectIds.size !== binding.entries.length) {
+      throw new SemanticGovernanceError("PhysicalBinding 不能包含重复的 Logical Object ID。");
+    }
+  }
+
+  // ─── Bounded closure 校验：所有引用指向 bundle 内的有效对象 ──────────────
+  if (bundle.physical_binding && bundle.physical_binding.entries.length > 0) {
+    const allLogicalIds = new Set([...metricIds, ...dimensionIds, ...relationshipIds]);
+    for (const entry of bundle.physical_binding.entries) {
+      if (!allLogicalIds.has(entry.logical_object_id)) {
+        throw new SemanticGovernanceError(
+          `PhysicalBinding 条目引用不存在的逻辑对象 ID: ${entry.logical_object_id}。`,
+        );
+      }
+    }
   }
 }
 
