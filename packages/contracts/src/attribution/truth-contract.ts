@@ -32,7 +32,7 @@ export const contributionTruthContractSchema = z.strictObject({
       ),
       truth_metadata: z.record(z.string(), z.unknown()).default({}),
     }),
-  ),
+  ).min(1),
   created_at: timestampSchema,
   expires_at: timestampSchema.optional(),
 });

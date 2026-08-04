@@ -18,3 +18,4 @@ export * from "./signer-assignment.js";
 export * from "./static-driver-capacity-proof.js";
 export * from "./truth-contract.js";
 export * from "./verification-key.js";
+export * from "./truth-types.js";
