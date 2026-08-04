@@ -1,11 +1,18 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AuthoritativeEvalRun,
-  AuthoritativeScoreCard,
-  BenchmarkManifest,
-  ScoreCard,
+import {
+  type AuthoritativeEvalRun,
+  type BenchmarkManifest,
+  type BenchmarkSuite,
+  computeEvalRunHash,
 } from "@data-agent/contracts";
 import type { EvalAdapterContext, ManifestReplayResult } from "./index.js";
+
+const ORACLE_TYPE_BY_SUITE: Record<BenchmarkSuite, string> = {
+  insightbench: "ANALYSIS_REPORT_QUALITY",
+  dab: "RESULT_EQUIVALENCE",
+  rcaeval: "ROOT_CAUSE_RANKING",
+  "controlled-attribution": "ATTRIBUTION_MATCH",
+};
 
 export class ManifestReplayer {
   async replay(
@@ -20,16 +27,16 @@ export class ManifestReplayer {
       case_ref: manifest.case_ref,
       registry_assignment_ref: {
         artifact_id: manifest.case_ref.artifact_id,
-        artifact_type: "EvalRegistryAssignment",
+        artifact_type: "EvalRegistryAssignment" as const,
         app_id: manifest.case_ref.app_id,
         tenant_id: manifest.case_ref.tenant_id,
         environment: manifest.case_ref.environment,
         run_id: manifest.case_ref.run_id,
         revision: 1,
-        content_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+        content_hash: manifest.manifest_hash,
       },
       suite: manifest.suite,
-      oracle_type: "ANALYSIS_REPORT_QUALITY",
+      oracle_type: ORACLE_TYPE_BY_SUITE[manifest.suite],
       suite_version: manifest.manifest_version,
       dataset_version: manifest.dataset.dataset_version,
       oracle_version: manifest.manifest_version,
@@ -50,14 +57,18 @@ export class ManifestReplayer {
         budget: manifest.budget,
         trace: {
           trace_id: `trace-${manifest.manifest_id}`,
-          trace_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+          trace_hash: manifest.manifest_hash,
         },
       },
       started_at: now,
       completed_at: now,
-      status: "COMPLETED",
-      eval_run_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      status: "COMPLETED" as const,
+      eval_run_hash: "" as `sha256:${string}`,
     };
+
+    // 计算 EvalRun 内容哈希
+    const evalRunHash = await computeEvalRunHash(replayedEvalRun);
+    replayedEvalRun.eval_run_hash = evalRunHash;
 
     return {
       replay: replayedEvalRun.replay,
