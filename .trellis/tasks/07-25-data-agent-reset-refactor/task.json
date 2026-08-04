@@ -23,6 +23,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "M2-Core 治理发布完成：U9 manifest hash 已认证（sha256:40dd1765694b045aa23d589131b051a4a9e500006901dd4d2ae3637838e7a640），verify:release.ts 已更新为治理范围感知（v1.3.0，Core=GO, F9=NOT_REGISTERED），M2-Core 发布文档已创建。U5 沙箱门禁保持 informative（不阻断 Core）。F9 泳道未注册：10620、U13.0-U13.2、CapabilityDirectory、Eligibility、ProfileRequest 均未实现。整体状态：Core L2=GO, F9=NOT_REGISTERED。",
+  "notes": "Core 泳道全部完成（M2-Core=GO, commit 88de18e）。F9 泳道：U13.0（PostgreSQL 部分）已完成 ✅，U13.1（Fixture Endpoint Kernel）已完成 ✅（typecheck + 448 contracts tests + 133 research tests 全部通过）。待完成：U7 Truth Contract、U13.1 U7 Eval Verdict、U8 M1-F9 Demo、M1-F9 复审、10620 Authority Foundation、U13.2 Published F9、M2-F9 Release Gate。当前 HEAD: 88de18e，分支: codex/data-agent-l2-vertical-slice。",
   "meta": {}
 }

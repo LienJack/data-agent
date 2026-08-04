@@ -8,7 +8,7 @@ import {
   SemanticGovernanceError,
   type SemanticMetric,
   type SemanticSourceBundle,
-  type StaticDriverCapacityProof,
+  type DriverCapacityConstraint,
 } from "@data-agent/contracts";
 import { z } from "zod";
 
@@ -27,7 +27,7 @@ export interface DescriptiveContributionLoweringResult {
   readonly status: ContributionLoweringStatus;
   readonly loweredTemplates: readonly EndpointExecutionTemplate[];
   readonly loweredWitnesses: readonly (RowPartitionWitness | FormulaEquivalenceWitness)[];
-  readonly loweredCapacityProofs: readonly StaticDriverCapacityProof[];
+  readonly loweredCapacityProofs: readonly DriverCapacityConstraint[];
   readonly reasons: readonly string[];
 }
 
@@ -65,7 +65,7 @@ export function lowerDescriptiveContributionProfile(
   const reasons: string[] = [];
   const loweredTemplates: EndpointExecutionTemplate[] = [];
   const loweredWitnesses: (RowPartitionWitness | FormulaEquivalenceWitness)[] = [];
-  const loweredCapacityProofs: StaticDriverCapacityProof[] = [];
+  const loweredCapacityProofs: DriverCapacityConstraint[] = [];
 
   const metricMap = new Map<string, SemanticMetric>();
   for (const metric of bundle.metrics) {

@@ -8,6 +8,7 @@ import {
   type SemanticRelationship,
   type SemanticSourceBundle,
   U5_EXECUTABLE_SUBSET,
+  U13_EXECUTABLE_SUBSET,
 } from "@data-agent/contracts";
 
 /**
@@ -64,11 +65,11 @@ export function validateSourceBundle(bundle: SemanticSourceBundle): ValidationRe
   }
 
   // 2. 检查 capability profile
-  if (bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET) {
+  if (bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET && bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET) {
     issues.push({
       severity: ValidationSeverity.ERROR,
       code: "INVALID_CAPABILITY_PROFILE",
-      message: `Capability Profile 必须为 ${U5_EXECUTABLE_SUBSET}，当前为 ${bundle.metadata.capability_profile}。`,
+      message: `Capability Profile 必须为 ${U5_EXECUTABLE_SUBSET} 或 ${U13_EXECUTABLE_SUBSET}，当前为 ${bundle.metadata.capability_profile}。`,
       path: "metadata.capability_profile",
     });
   }
@@ -193,7 +194,7 @@ export function validateSourceBundle(bundle: SemanticSourceBundle): ValidationRe
   }
 
   // 7. 检查 M1 子集限制
-  if (bundle.contribution_profile) {
+  if (bundle.metadata.capability_profile === U5_EXECUTABLE_SUBSET && bundle.contribution_profile) {
     issues.push({
       severity: ValidationSeverity.WARNING,
       code: "M1_CONTRIBUTION_PROFILE_NOT_ALLOWED",

@@ -207,7 +207,7 @@ describe("U6 Wire Compatibility: Migration", () => {
     const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
     // 10600/10601: U6-C2a，10610: U10.2 semantic control plane，10615: U10.3 published bridge
-    expect(files).toHaveLength(19);
+    expect(files).toHaveLength(20);
     expect(files.some((f) => f.includes("10600"))).toBe(true);
     expect(files.some((f) => f.includes("10601"))).toBe(true);
     expect(files.some((f) => f.includes("10615"))).toBe(true);

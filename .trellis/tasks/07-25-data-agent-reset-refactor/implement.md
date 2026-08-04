@@ -1690,9 +1690,9 @@ C2 关闭证据已提交。PostgreSQL 17 集成测试全通过（11 platform + 9
 14. ⏳ M2-Core — 最终 Release
 
 F9 泳道（F9 失败不阻断 Core）：
-1. ⏳ U13.0 — 贡献合同与 Profile 门禁
+1. ✅ U13.0 — 贡献合同与 Profile 门禁
 2. ⏳ U7 retail-revenue-contribution-v1 Truth Contract
-3. ⏳ U13.1 — Fixture Endpoint Kernel Feasibility
+3. ✅ U13.1 — Fixture Endpoint Kernel Feasibility
 4. ⏳ U7 Attribution Eval Verdict
 5. ⏳ U8 M1-F9 — Fixture Evidence Demo
 6. ⏳ M1-F9 Feasibility 复审

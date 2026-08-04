@@ -1,4 +1,4 @@
--- semantic_migration_checksum: sha256:1d5db0ef11adbff5b699f6ea01fbdc7eae055045fe0005164d49124f5026c464
+-- semantic_migration_checksum: sha256:dc7ec2f69c4feaa4fee583f40395b312cd050bcae9ec2bab2fcf76fc150392c9
 begin;
 
 do $bootstrap$
@@ -40,7 +40,7 @@ begin
   end if;
 
   if pg_catalog.current_setting('app.semantic_maintenance_manifest_hash', true)
-       is distinct from 'sha256:1d5db0ef11adbff5b699f6ea01fbdc7eae055045fe0005164d49124f5026c464'
+       is distinct from 'sha256:dc7ec2f69c4feaa4fee583f40395b312cd050bcae9ec2bab2fcf76fc150392c9'
     or pg_catalog.current_setting('app.semantic_maintenance_window_id', true)
        is distinct from '00000000-0000-4000-8000-000000001610'
   then
@@ -1713,6 +1713,7 @@ create or replace function semantic.commit_publish_attempt(
   p_relationship_projection_hash text,
   p_runtime_restriction_projection_ref uuid,
   p_runtime_restriction_projection_hash text,
+  p_profile_child_manifest jsonb default null,
   p_committed_legacy_attempt_ref uuid default null
 ) returns jsonb
   language plpgsql
@@ -1802,6 +1803,7 @@ begin
     executable_projection_ref, executable_projection_hash,
     relationship_projection_ref, relationship_projection_hash,
     runtime_restriction_projection_ref, runtime_restriction_projection_hash,
+    profile_child_manifest,
     decision_set_digest, published_by
   ) select
     p_app_id, p_tenant_id, p_environment, p_semantic_domain,
@@ -1810,6 +1812,7 @@ begin
     p_executable_projection_ref, p_executable_projection_hash,
     p_relationship_projection_ref, p_relationship_projection_hash,
     p_runtime_restriction_projection_ref, p_runtime_restriction_projection_hash,
+    p_profile_child_manifest,
     v_decision_set_digest, pg_catalog.session_user
   from semantic.semantic_publish_attempt as attempt
   where attempt.attempt_id = p_attempt_id;
@@ -2572,7 +2575,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010610_app_data_agent_semantic_control_plane',
-  'sha256:1d5db0ef11adbff5b699f6ea01fbdc7eae055045fe0005164d49124f5026c464'
+  'sha256:dc7ec2f69c4feaa4fee583f40395b312cd050bcae9ec2bab2fcf76fc150392c9'
 );
 
 commit;

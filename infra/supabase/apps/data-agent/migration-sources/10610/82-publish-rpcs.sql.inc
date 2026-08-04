@@ -110,6 +110,7 @@ create or replace function semantic.commit_publish_attempt(
   p_relationship_projection_hash text,
   p_runtime_restriction_projection_ref uuid,
   p_runtime_restriction_projection_hash text,
+  p_profile_child_manifest jsonb default null,
   p_committed_legacy_attempt_ref uuid default null
 ) returns jsonb
   language plpgsql
@@ -199,6 +200,7 @@ begin
     executable_projection_ref, executable_projection_hash,
     relationship_projection_ref, relationship_projection_hash,
     runtime_restriction_projection_ref, runtime_restriction_projection_hash,
+    profile_child_manifest,
     decision_set_digest, published_by
   ) select
     p_app_id, p_tenant_id, p_environment, p_semantic_domain,
@@ -207,6 +209,7 @@ begin
     p_executable_projection_ref, p_executable_projection_hash,
     p_relationship_projection_ref, p_relationship_projection_hash,
     p_runtime_restriction_projection_ref, p_runtime_restriction_projection_hash,
+    p_profile_child_manifest,
     v_decision_set_digest, pg_catalog.session_user
   from semantic.semantic_publish_attempt as attempt
   where attempt.attempt_id = p_attempt_id;

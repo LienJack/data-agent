@@ -26,7 +26,10 @@ import {
 
 export const SEMANTIC_SOURCE_BUNDLE_VERSION = "semantic-source-bundle@1" as const;
 export const U5_EXECUTABLE_SUBSET = "U5_EXECUTABLE_SUBSET" as const;
-export type CapabilityProfile = typeof U5_EXECUTABLE_SUBSET;
+export const U13_EXECUTABLE_SUBSET = "U13_EXECUTABLE_SUBSET" as const;
+export type CapabilityProfile =
+  | typeof U5_EXECUTABLE_SUBSET
+  | typeof U13_EXECUTABLE_SUBSET;
 
 // ─── Grain / Unit / TimeDomain ────────────────────────────────────────────────
 
@@ -332,7 +335,7 @@ export const endpointWitnessSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("FORMULA_IDENTITY"), witness: formulaEquivalenceWitnessSchema }),
 ]);
 
-export const staticDriverCapacityProofSchema = z.strictObject({
+export const driverCapacityConstraintSchema = z.strictObject({
   obligation_id: versionIdentifierSchema,
   max_sql_executions: z.number().int().positive(),
   endpoint_cost_model: z.string().max(256),
@@ -345,7 +348,7 @@ export const descriptiveContributionProfileSchema = z.strictObject({
   profile_id: versionIdentifierSchema,
   targets: z.array(endpointExecutionTemplateSchema).min(1),
   witnesses: z.array(endpointWitnessSchema).min(1),
-  static_driver_capacity: z.array(staticDriverCapacityProofSchema).min(1),
+  static_driver_capacity: z.array(driverCapacityConstraintSchema).min(1),
   stable_ordering: z.array(z.string().min(1).max(256)),
   declared_max_bound: z.number().int().positive(),
 });
@@ -354,7 +357,7 @@ export const descriptiveContributionProfileSchema = z.strictObject({
 
 export const semanticSourceBundleMetadataSchema = z.strictObject({
   bundle_version: z.literal(SEMANTIC_SOURCE_BUNDLE_VERSION),
-  capability_profile: z.literal(U5_EXECUTABLE_SUBSET),
+  capability_profile: z.union([z.literal(U5_EXECUTABLE_SUBSET), z.literal(U13_EXECUTABLE_SUBSET)]),
   bundle_id: immutableIdSchema,
   scope: z.strictObject({
     app_id: immutableIdSchema,
@@ -405,7 +408,7 @@ export type BindingLifecycle = z.infer<typeof bindingLifecycleSchema>;
 export type TimeDomain = z.infer<typeof timeDomainSchema>;
 export type EndpointExecutionTemplate = z.infer<typeof endpointExecutionTemplateSchema>;
 export type DescriptiveContributionProfile = z.infer<typeof descriptiveContributionProfileSchema>;
-export type StaticDriverCapacityProof = z.infer<typeof staticDriverCapacityProofSchema>;
+export type DriverCapacityConstraint = z.infer<typeof driverCapacityConstraintSchema>;
 export type RowPartitionWitness = z.infer<typeof rowPartitionWitnessSchema>;
 export type FormulaEquivalenceWitness = z.infer<typeof formulaEquivalenceWitnessSchema>;
 
@@ -447,8 +450,8 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
   if (bundle.metrics.length === 0) {
     throw new SemanticGovernanceError("SemanticSourceBundle 必须包含至少一个 Metric。");
   }
-  if (bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET) {
-    throw new SemanticGovernanceError("CapabilityProfile 必须为 U5_EXECUTABLE_SUBSET。");
+  if (bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET && bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET) {
+    throw new SemanticGovernanceError("CapabilityProfile 必须为 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET。");
   }
   if (bundle.metadata.bundle_version !== SEMANTIC_SOURCE_BUNDLE_VERSION) {
     throw new SemanticGovernanceError("BundleVersion 必须为 semantic-source-bundle@1。");
@@ -583,11 +586,11 @@ export function assertM1SubsetRestriction(bundle: SemanticSourceBundle): void {
   if (
     !M1_ALLOWED_CAPABILITY_PROFILES.includes(
       bundle.metadata.capability_profile as typeof U5_EXECUTABLE_SUBSET,
-    )
+    ) && bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET
   ) {
-    throw new SemanticGovernanceError("M1 只允许 U5_EXECUTABLE_SUBSET 能力子集。");
+    throw new SemanticGovernanceError("M1 只允许 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET 能力子集。");
   }
-  if (bundle.contribution_profile) {
+  if (bundle.metadata.capability_profile === U5_EXECUTABLE_SUBSET && bundle.contribution_profile) {
     throw new SemanticGovernanceError("M1 不允许 DescriptiveContributionProfile。");
   }
 }

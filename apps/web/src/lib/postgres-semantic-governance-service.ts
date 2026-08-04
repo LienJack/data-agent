@@ -822,7 +822,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
         `SELECT semantic.commit_publish_attempt(
           $1::uuid, $2::uuid, $3, $4,
           $5::uuid, $6::uuid, $7, $8::uuid,
-          $9, $10::uuid, $11, $12::uuid
+          $9, $10::uuid, $11, $12::jsonb, $13::uuid
         )`,
         [
           scope.appId,
@@ -836,7 +836,8 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           projectionHash,
           projectionRef,
           projectionHash,
-          null,
+          null,  // p_profile_child_manifest
+          null,  // p_committed_legacy_attempt_ref
         ],
       );
 

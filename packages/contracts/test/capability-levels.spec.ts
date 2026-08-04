@@ -571,6 +571,7 @@ describe("Benchmark Oracle 分离", () => {
       "dab",
       "rcaeval",
       "controlled-attribution",
+      "governance",
     ]);
     expect(
       benchmarkOracleSchema.safeParse({

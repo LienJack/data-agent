@@ -1,4 +1,5 @@
 export * from "./artifacts/index.js";
+export * from "./attribution/index.js";
 export * from "./capabilities/index.js";
 export * from "./common/index.js";
 export * from "./evals/index.js";
