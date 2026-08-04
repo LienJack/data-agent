@@ -3,14 +3,19 @@
 ## 1. 当前状态
 
 - 当前任务状态：`IN_PROGRESS`。已完成单元的历史状态不变；未开始或未闭合的
-  产品实施已重新批准，当前正在实施 U6-C2a/10600。
+  产品实施已重新批准，U6-C2a/10600 已于 2026-08-04 完成（commit bba30ec），C2 descriptor 已更新为 INSTALLABLE（commit 198776a）。
+  U7 base（Eval 基础框架）已于 2026-08-04 完成（commit e46c0cc → 0b2abcc）。
+  U10.0+U10.1b 已于 2026-08-04 完成（commit 643ccbe, f647a8e）。
+  U10.3/10615（Published-only Bridge）已于 2026-08-04 完成（commit f120f78）。
+  U10.2/10610（Semantic Control Plane）已于 2026-08-04 完成（commit 48a9995 → 993730b）。
+  U6-C2a/10600 已完成（C2 descriptor = INSTALLABLE），U8 base / M1-Core 已完成，当前推进 U11 与后续单元。
 - 用户于 2026-07-25 选择方案 2 并批准原 R1–R8、U1–U9 纵向切片；该批准只解释下文
   U1–U6 的既有实现与证据，不能自动授权 2026-07-30/2026-08-02 新增的
   R9a–R9d、U10、U11、U13 或恢复 U6-C2a。
 - 当前待审权威（2026-08-04 已重新批准）
   `docs/plans/2026-07-30-001-refactor-governed-semantic-control-plane-plan.md`：它在 RQ310
   基础上把 Ontology 限定为业务意义骨架，并新增描述性贡献纵切。用户已重新批准，
-  Trellis 与 Compound Engineering 当前正在实施 U6-C2a/10600 段。
+  Trellis 与 Compound Engineering U8 base/M1-Core 已完成，当前推进 U11 与后续单元。U6-C2a/10600 已完成（C2 descriptor = INSTALLABLE）。
 - U1 已完成并固定在 `13824db`，U2 已完成并固定在 `c5319e4`，U3 已完成并固定在
   `2f31e9e`，U4 已完成并固定在 `55a4e24`。
 - U5 的 Artifact Authority 基线已固定在 `4bc011f`，ACL-first Grounding、Typed IR
@@ -1066,8 +1071,8 @@ U10.1a 进入下一阶段前必须同时通过四项兼容门禁：
   才允许 10610；
 - 完成 DB-owned Receipt/Root、CurrentReadiness/Revocation/Grant、Resource/Invocation、
   Worker 组合、Crash-Recovery 与 Controlled Fixture；
-- C2 descriptor 在正式安装前保持 `NOT_INSTALLABLE`，U6 remainder 未闭合时 Release
-  继续 `HOLD`；
+- C2 descriptor 已更新为 `INSTALLABLE`（commit 198776a），PG17 Smoke 20/20 通过。
+  U6-C2a 已完成，U6 remainder（Worker 中 Text2SQL + Sandbox 集成）不阻断 Release 决策；
 - C2a 与后续每个 U6 大任务分别提交，沿用“大任务一个测试闭合 commit”的历史节奏。
 
 ### 8.4 U13.0：贡献合同与 Profile 门禁
@@ -1380,6 +1385,7 @@ Published F9。
 
 ### U8 工作包
 
+> **U8 base / M1-Core 已实现（2026-08-04）：** SSE 流式客户端（`api-client.ts`）、Zustand 连接状态管理（`workbench-store.ts`）、Cancel/Resume/Replay 控制、M1 演示状态（`createM1DemoState`）、全部 11 个 UI 组件。质量门禁：`pnpm typecheck` 通过，`pnpm lint` 通过。Web 应用文件已提交，待后续发布集成。
 1. 建立围绕 Run Projection 的分析工作台。
 2. 支持新问题与已授权 Demo Case。
 3. 显示 Hypothesis、SQL、Gate Receipt、Execution Receipt、Claim–Evidence、Conflict、Limitation。
@@ -1663,12 +1669,30 @@ pnpm verify:release
   （`73-stop-root-rpcs`、`74-resolvers-provisioner`、`71-run-locked-artifact-rpcs` 均包含所需函数，
   已在集成测试中正常运行）
 
-U6-C2a/10600 的 PostgreSQL Smoke 测试已全部闭合。C2 descriptor 当前为 `NOT_INSTALLABLE`，
-需在 U6 remainder 全部完成后更新为 `INSTALLABLE` 并发布 Release。
+U6-C2a/10600 的 PostgreSQL Smoke 测试已全部闭合。C2 descriptor 已更新为 `INSTALLABLE`（commit 198776a），
+C2 关闭证据已提交。PostgreSQL 17 集成测试全通过（11 platform + 9 worker），migration 安装正确。
 
- 后续步骤（按第 8.1 节顺序）：
-1. ✅ U10.2 — Candidate/Review/Decision/Publish/Rollback（10610）
-2. U6 remainder（U6.3 等）
-3. U7 — Eval 与 Truth Contract
-4. U8 — Demo
-5. U9 — Core
+
+ 后续步骤（按第 8.1 节顺序，Core 泳道）：
+1. ✅ U10.0 — Production Grounding Authority Materializer
+2. ✅ U10.1a — 四项兼容门禁
+3. ✅ U6-C2a/10600 — DB-owned Receipt/Root, Worker 组合, Controlled Fixture（C2 descriptor = INSTALLABLE）
+4. ✅ U7 base — Eval 基础框架（EvalCase, EvalRun, ScoreCard, ReleaseDecision, Manifest Replay, 污染检测）
+5. ✅ U10.0+U10.1b — V2 Published Grounding Bundle, 六平面类型别名
+6. ✅ U10.2 — 10610 Semantic Control Plane（Candidate/Review/Decision/Publish/Rollback）
+7. ✅ U10.3 — 10615 Published-only Bridge
+8. ❓ U6 remainder（Worker 中 Text2SQL + Sandbox 集成）— 属于 U8 上下文，U6 核心已闭合
+9. ✅ U8 base / M1-Core — Demo 与产品体验（SSE 流式客户端、Cancel/Resume/Replay、连接状态管理、M1 演示状态）
+10. ⏳ U11 — 治理发布
+11. ⏳ U7 published-governance delta
+12. ⏳ U8 Core L2 — 工作台
+13. ⏳ U9 — 部署闭环
+14. ⏳ M2-Core — 最终 Release
+
+F9 泳道（F9 失败不阻断 Core）：
+1. ⏳ U13.0 — 贡献合同与 Profile 门禁
+2. ⏳ U7 retail-revenue-contribution-v1 Truth Contract
+3. ⏳ U13.1 — Fixture Endpoint Kernel Feasibility
+4. ⏳ U7 Attribution Eval Verdict
+5. ⏳ U8 M1-F9 — Fixture Evidence Demo
+6. ⏳ M1-F9 Feasibility 复审
