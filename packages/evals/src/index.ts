@@ -1,8 +1,8 @@
 import {
   type ArtifactReference,
   type AuthoritativeEvalCase,
-  type AuthoritativeEvalRun,
   type AuthoritativeEvalReleaseDecision,
+  type AuthoritativeEvalRun,
   type AuthoritativeOracleVerdictReceipt,
   type AuthoritativeScoreCard,
   type BenchmarkManifest,
@@ -81,10 +81,7 @@ export interface OracleRunnerResult {
 }
 
 export interface OracleRunner {
-  run(
-    evalRun: AuthoritativeEvalRun,
-    context: EvalAdapterContext,
-  ): Promise<OracleRunnerResult>;
+  run(evalRun: AuthoritativeEvalRun, context: EvalAdapterContext): Promise<OracleRunnerResult>;
 }
 
 // ============================================================
@@ -98,10 +95,7 @@ export interface ManifestReplayResult {
 }
 
 export interface ManifestReplayer {
-  replay(
-    manifest: BenchmarkManifest,
-    context: EvalAdapterContext,
-  ): Promise<ManifestReplayResult>;
+  replay(manifest: BenchmarkManifest, context: EvalAdapterContext): Promise<ManifestReplayResult>;
 }
 
 // ============================================================
@@ -113,6 +107,7 @@ export interface PairedComparisonResult {
   candidateScoreCard: AuthoritativeScoreCard;
   pairedScoreCard: AuthoritativeScoreCard;
   interval: {
+    interval_version: string;
     metric: string;
     confidence_level: number;
     lower: number;
@@ -197,10 +192,7 @@ export interface SafetyChecker {
     artifact: ArtifactReference,
     context: SafetyCheckContext,
   ): Promise<PathBoundaryCheckResult>;
-  checkHook(
-    hookName: string,
-    context: SafetyCheckContext,
-  ): Promise<HookVerificationResult>;
+  checkHook(hookName: string, context: SafetyCheckContext): Promise<HookVerificationResult>;
 }
 
 // ============================================================
@@ -306,8 +298,8 @@ export class EvalRunner {
 
 export type {
   AuthoritativeEvalCase,
-  AuthoritativeEvalRun,
   AuthoritativeEvalReleaseDecision,
+  AuthoritativeEvalRun,
   AuthoritativeOracleVerdictReceipt,
   AuthoritativeScoreCard,
   BenchmarkManifest,

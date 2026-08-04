@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { createRetailRevenueInvestigationV1Case } from "../packages/contracts/src/evals/manifest.js";
 import {
-  evalReleaseDecisionSchema,
   type EvalReleaseDecision,
+  evalReleaseDecisionSchema,
 } from "../packages/contracts/src/evals/index.js";
+import { createRetailRevenueInvestigationV1Case } from "../packages/contracts/src/evals/manifest.js";
 
 /**
  * eval:smoke — U7 Eval 门禁烟测
@@ -29,8 +29,12 @@ async function main(): Promise<number> {
   const suite = evalCase.suite;
 
   // 简单完整性检查：case_hash 不能是占位符
-  if (evalCase.case_hash === "sha256:0000000000000000000000000000000000000000000000000000000000000000") {
-    process.stderr.write("FATAL: retail-revenue-investigation-v1 case_hash 为占位符，未正确计算。\n");
+  if (
+    evalCase.case_hash === "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  ) {
+    process.stderr.write(
+      "FATAL: retail-revenue-investigation-v1 case_hash 为占位符，未正确计算。\n",
+    );
     return 3;
   }
 

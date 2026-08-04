@@ -12,11 +12,7 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import {
-  benchmarkSuiteSchema,
-  evalCaseSchema,
-  type EvalCase,
-} from "./index.js";
+import { benchmarkSuiteSchema, type EvalCase, evalCaseSchema } from "./index.js";
 
 export const benchmarkDatasetReferenceSchema = z.strictObject({
   dataset_id: immutableIdSchema,
@@ -80,9 +76,7 @@ export const benchmarkManifestSchema = z.strictObject({
   created_at: timestampSchema,
 });
 
-export async function computeBenchmarkManifestHash(
-  input: unknown,
-): Promise<`sha256:${string}`> {
+export async function computeBenchmarkManifestHash(input: unknown): Promise<`sha256:${string}`> {
   const manifest = benchmarkManifestSchema.parse(input);
   const { manifest_hash: _manifestHash, ...material } = manifest;
   return sha256ContentHash(material);
@@ -126,7 +120,8 @@ export const RETAIL_REVENUE_INVESTIGATION_V1_DATASET = {
   dataset_description:
     "包含 2024Q1-2025Q1 华南区（广东、福建、广西、海南）门店级别订单、退款、促销、商品、区域与履约数据。",
   dialect: "postgresql" as const,
-  schema_digest: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  schema_digest:
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
   row_count: 50000,
   parameters: {
     table_count: 8,
@@ -227,7 +222,8 @@ export async function createRetailRevenueInvestigationV1Case(): Promise<EvalCase
       ],
     },
     license: "CC-BY-4.0",
-    case_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+    case_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
   };
   const { case_hash: _, ...material } = caseInput;
   const hash = await sha256ContentHash(material);
@@ -261,7 +257,8 @@ export function createRetailRevenueInvestigationV1Manifest(
     budget: RETAIL_REVENUE_INVESTIGATION_V1_BUDGET,
     demo_holdout_identity: RETAIL_REVENUE_INVESTIGATION_V1_DEMO_HOLDOUT,
     l2_non_causal_boundary: RETAIL_REVENUE_INVESTIGATION_V1_L2_BOUNDARY,
-    manifest_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+    manifest_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
     created_at: new Date().toISOString(),
   };
 }

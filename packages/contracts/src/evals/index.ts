@@ -1022,9 +1022,7 @@ export const evalReleaseDecisionSchema = z
         path: ["safety_counters"],
       });
     }
-    const failureCodes = new Set(
-      decision.failure_taxonomy.map(({ failure_code }) => failure_code),
-    );
+    const failureCodes = new Set(decision.failure_taxonomy.map(({ failure_code }) => failure_code));
     if (failureCodes.size !== decision.failure_taxonomy.length) {
       ctx.addIssue({
         code: "custom",
@@ -1042,9 +1040,7 @@ export const evalReleaseDecisionSchema = z
     }
   });
 
-export async function computeEvalReleaseDecisionHash(
-  input: unknown,
-): Promise<`sha256:${string}`> {
+export async function computeEvalReleaseDecisionHash(input: unknown): Promise<`sha256:${string}`> {
   const decision = evalReleaseDecisionSchema.parse(input);
   const { decision_hash: _decisionHash, ...material } = decision;
   return sha256ContentHash(material);
@@ -1078,7 +1074,9 @@ export async function authorizeEvalReleaseDecision(
     throw new EvalReleaseDecisionAuthorityError("EvalReleaseDecision Hash 与规范化内容不匹配。");
   }
   if (!(await authority.verifyCommitted(evalReleaseDecisionReference(decision)))) {
-    throw new EvalReleaseDecisionAuthorityError("EvalReleaseDecision 尚未由持久化 Authority 提交。");
+    throw new EvalReleaseDecisionAuthorityError(
+      "EvalReleaseDecision 尚未由持久化 Authority 提交。",
+    );
   }
   const scoreCard = await authority.resolveScoreCard(decision.scorecard_ref);
   if (!isAuthoritativeScoreCard(scoreCard)) {
@@ -1098,14 +1096,10 @@ export async function authorizeEvalReleaseDecision(
   }
   const evalRun = await authority.resolveEvalRun(decision.eval_run_ref);
   if (!isAuthoritativeEvalRun(evalRun)) {
-    throw new EvalReleaseDecisionAuthorityError(
-      "EvalReleaseDecision 只能消费权威 EvalRun。",
-    );
+    throw new EvalReleaseDecisionAuthorityError("EvalReleaseDecision 只能消费权威 EvalRun。");
   }
   if (evalRun.status !== "COMPLETED") {
-    throw new EvalReleaseDecisionAuthorityError(
-      "EvalReleaseDecision 只能消费 COMPLETED EvalRun。",
-    );
+    throw new EvalReleaseDecisionAuthorityError("EvalReleaseDecision 只能消费 COMPLETED EvalRun。");
   }
   const conditionRefs = decision.conditions
     .map((c) => c.required_ref)
