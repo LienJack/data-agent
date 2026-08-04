@@ -1,69 +1,75 @@
 import { describe, expect, it } from "vitest";
 import {
-  // DerivedDeltaObservationSet
-  derivedDeltaObservationSetSchema,
-  deltaObservationSchema,
-  deltaObservationKindSchema,
-  validateDeltaObservationSet,
-  type DerivedDeltaObservationSet,
-  type DeltaObservation,
-  // StaticDriverCapacityProof
-  staticDriverCapacityProofSchema,
-  computeStaticDriverCapacityProof,
-  MAX_DRIVER_LIMIT,
-  MAX_SQL_LIMIT,
-  type CapacityCheckInput,
-  // RunDriverBudgetAdmission
-  runDriverBudgetAdmissionSchema,
-  budgetAdmissionStatusSchema,
-  checkAndReserveBudget,
-  transitionBudgetAdmission,
-  isBudgetAdmissionExpired,
-  type BudgetState,
-  type BudgetAdmissionReservation,
-  // SameFrontierWitness
-  sameFrontierWitnessSchema,
-  fiveAxisFrontierSchema,
-  frontierAxisSchema,
-  witnessSameFrontier,
-  computeFrontierIdentityDigest,
-  checkCrossAxisMismatch,
-  type FiveAxisFrontier,
-  type FrontierAxis,
-  // ContributionClosureReceipt
-  contributionClosureReceiptSchema,
-  deriveContributionClosureReceipt,
-  type ClosureInput,
-  // FixtureConclusionPolicyManifest
-  fixtureConclusionPolicyManifestSchema,
-  checkConclusionCandidateAgainstManifest,
-  type ManifestCheckInput,
   type AssertionType,
-  // FixtureConclusionDecisionSeal
-  fixtureConclusionDecisionSealSchema,
-  sealFixtureConclusionDecision,
-  verifyFixtureConclusionDecisionSeal,
-  type SealInput,
+  type AttributionKernelEvidence,
+  attributionActivePointerSchema,
+  attributionCapabilityDirectorySchema,
+  attributionEligibilityDecisionSchema,
   // AttributionKernelEvidence
   attributionKernelEvidenceSchema,
-  fixtureConclusionCandidateSchema,
-  type AttributionKernelEvidence,
-  type F9Status,
   // 10620 Authority Foundation
   attributionOwnerMapReleaseSchema,
-  ownerMapEntrySchema,
-  attributionActivePointerSchema,
   attributionPointerTypeSchema,
-  conclusionPolicyReleaseSchema,
+  attributionProfileProjectionSchema,
+  attributionProfileRequestSchema,
+  type BudgetAdmissionReservation,
+  type BudgetState,
+  budgetAdmissionStatusSchema,
+  type CapacityCheckInput,
+  type ClosureInput,
+  type ClosureVerdict,
+  checkAndReserveBudget,
+  checkConclusionCandidateAgainstManifest,
+  checkCrossAxisMismatch,
+  computeFrontierIdentityDigest,
+  computeStaticDriverCapacityProof,
   conclusionPolicyDecisionEnvelopeSchema,
-  signerAssignmentSchema,
-  verificationKeyRevisionSchema,
-  relationshipPromotionReceiptSchema,
-  nonceLedgerEntrySchema,
-  conclusionSubjectManifestSchema,
+  conclusionPolicyReleaseSchema,
   conclusionReceiptSubjectSchema,
   conclusionSignatureAuthoritySchema,
-  type ClosureVerdict,
+  conclusionSubjectManifestSchema,
+  // ContributionClosureReceipt
+  contributionClosureReceiptSchema,
+  type DeltaObservation,
+  type DerivedDeltaObservationSet,
+  deltaObservationKindSchema,
+  deltaObservationSchema,
+  deriveContributionClosureReceipt,
+  // DerivedDeltaObservationSet
+  derivedDeltaObservationSetSchema,
+  type F9Status,
+  type FiveAxisFrontier,
+  type FrontierAxis,
+  fiveAxisFrontierSchema,
+  fixtureConclusionCandidateSchema,
+  // FixtureConclusionDecisionSeal
+  fixtureConclusionDecisionSealSchema,
+  // FixtureConclusionPolicyManifest
+  fixtureConclusionPolicyManifestSchema,
+  frontierAxisSchema,
+  isBudgetAdmissionExpired,
+  MAX_DRIVER_LIMIT,
+  MAX_SQL_LIMIT,
+  type ManifestCheckInput,
+  nonceLedgerEntrySchema,
+  ownerMapEntrySchema,
+  // U13.2 Published F9
+  publishedAttributionSafetyVerdictSchema,
+  relationshipPromotionReceiptSchema,
+  // RunDriverBudgetAdmission
+  runDriverBudgetAdmissionSchema,
+  type SealInput,
+  // SameFrontierWitness
+  sameFrontierWitnessSchema,
+  sealFixtureConclusionDecision,
+  signerAssignmentSchema,
+  // StaticDriverCapacityProof
+  staticDriverCapacityProofSchema,
+  transitionBudgetAdmission,
+  validateDeltaObservationSet,
+  verificationKeyRevisionSchema,
+  verifyFixtureConclusionDecisionSeal,
+  witnessSameFrontier,
 } from "../src/attribution/index.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -383,9 +389,7 @@ describe("SameFrontierWitness", () => {
     });
 
     expect(witness.witness_status).toBe("IDENTICAL");
-    expect(witness.frontier_identity_digest).toBe(
-      computeFrontierIdentityDigest(baseline),
-    );
+    expect(witness.frontier_identity_digest).toBe(computeFrontierIdentityDigest(baseline));
   });
 
   it("returns CROSS_AXIS_MISMATCH when frontiers differ", () => {
@@ -720,12 +724,18 @@ describe("AttributionKernelEvidence", () => {
       contribution_truth_hash: testHash,
       version_frontier_refs: {
         baseline: {
-          identity_ref: testUUID, principal_ref: testUUID, scope_ref: testUUID,
-          time_window_ref: testUUID, classification_ref: testUUID,
+          identity_ref: testUUID,
+          principal_ref: testUUID,
+          scope_ref: testUUID,
+          time_window_ref: testUUID,
+          classification_ref: testUUID,
         },
         follow_up: {
-          identity_ref: testUUID, principal_ref: testUUID, scope_ref: testUUID,
-          time_window_ref: testUUID, classification_ref: testUUID,
+          identity_ref: testUUID,
+          principal_ref: testUUID,
+          scope_ref: testUUID,
+          time_window_ref: testUUID,
+          classification_ref: testUUID,
         },
       },
       endpoint_binding_refs: [testUUID],
@@ -740,8 +750,10 @@ describe("AttributionKernelEvidence", () => {
         contribution_verdict: "CONFIRMED",
         evidence_links: [],
         fixture_metadata: {
-          fixture_id: "fixture-001", fixture_version: "1.0.0",
-          generated_at: testTimestamp, fixture_confidence: 0.9,
+          fixture_id: "fixture-001",
+          fixture_version: "1.0.0",
+          generated_at: testTimestamp,
+          fixture_confidence: 0.9,
         },
         signed_at: testTimestamp,
       },
@@ -758,8 +770,10 @@ describe("AttributionKernelEvidence", () => {
         contribution_verdict: "CONFIRMED",
         evidence_links: [],
         fixture_metadata: {
-          fixture_id: "fixture-001", fixture_version: "1.0.0",
-          generated_at: testTimestamp, fixture_confidence: 0.9,
+          fixture_id: "fixture-001",
+          fixture_version: "1.0.0",
+          generated_at: testTimestamp,
+          fixture_confidence: 0.9,
         },
         signed_at: testTimestamp,
       },
@@ -783,12 +797,18 @@ describe("AttributionKernelEvidence", () => {
       contribution_truth_hash: testHash,
       version_frontier_refs: {
         baseline: {
-          identity_ref: testUUID, principal_ref: testUUID, scope_ref: testUUID,
-          time_window_ref: testUUID, classification_ref: testUUID,
+          identity_ref: testUUID,
+          principal_ref: testUUID,
+          scope_ref: testUUID,
+          time_window_ref: testUUID,
+          classification_ref: testUUID,
         },
         follow_up: {
-          identity_ref: testUUID, principal_ref: testUUID, scope_ref: testUUID,
-          time_window_ref: testUUID, classification_ref: testUUID,
+          identity_ref: testUUID,
+          principal_ref: testUUID,
+          scope_ref: testUUID,
+          time_window_ref: testUUID,
+          classification_ref: testUUID,
         },
       },
       endpoint_binding_refs: [testUUID],
@@ -803,8 +823,10 @@ describe("AttributionKernelEvidence", () => {
         contribution_verdict: "CONFIRMED",
         evidence_links: [],
         fixture_metadata: {
-          fixture_id: "fixture-001", fixture_version: "1.0.0",
-          generated_at: testTimestamp, fixture_confidence: 0.9,
+          fixture_id: "fixture-001",
+          fixture_version: "1.0.0",
+          generated_at: testTimestamp,
+          fixture_confidence: 0.9,
         },
         signed_at: testTimestamp,
       },
@@ -821,8 +843,10 @@ describe("AttributionKernelEvidence", () => {
         contribution_verdict: "CONFIRMED",
         evidence_links: [],
         fixture_metadata: {
-          fixture_id: "fixture-001", fixture_version: "1.0.0",
-          generated_at: testTimestamp, fixture_confidence: 0.9,
+          fixture_id: "fixture-001",
+          fixture_version: "1.0.0",
+          generated_at: testTimestamp,
+          fixture_confidence: 0.9,
         },
         signed_at: testTimestamp,
       },
@@ -839,9 +863,7 @@ describe("AttributionKernelEvidence", () => {
       subject_id: "truth-001",
       source_identity: "fixture-001",
       contribution_verdict: "CONFIRMED",
-      evidence_links: [
-        { link_type: "test", link_hash: testHash, link_ref: "ref-001" },
-      ],
+      evidence_links: [{ link_type: "test", link_hash: testHash, link_ref: "ref-001" }],
       fixture_metadata: {
         fixture_id: "fixture-001",
         fixture_version: "1.0.0",
@@ -1358,5 +1380,606 @@ describe("ConclusionSignatureAuthority (10620)", () => {
       const result = conclusionSignatureAuthoritySchema.safeParse(authority);
       expect(result.success).toBe(true);
     }
+  });
+});
+
+// ─── U13.2 Published F9 Type Tests ───────────────────────────────────────────
+
+describe("PublishedAttributionSafetyVerdict (U13.2)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a GO safety verdict", () => {
+    const verdict = {
+      verdict_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      run_id: testId,
+      evidence_id: testId,
+      verdict: "GO",
+      verdict_reason: "All safety checks passed",
+      verdict_dimensions: [
+        {
+          dimension_name: "data_quality",
+          dimension_result: "PASS",
+          dimension_details: "All data quality checks passed",
+          dimension_score: 0.95,
+        },
+        {
+          dimension_name: "model_convergence",
+          dimension_result: "PASS",
+          dimension_score: 0.88,
+        },
+      ],
+      determined_by: "attribution-release-candidate-evaluator",
+      determined_at: testTimestamp,
+      evidence_hash: testHash,
+      auto_approve: false,
+      ttl_seconds: 3600,
+    };
+    const result = publishedAttributionSafetyVerdictSchema.safeParse(verdict);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a HOLD safety verdict", () => {
+    const verdict = {
+      verdict_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      run_id: testId,
+      evidence_id: testId,
+      verdict: "HOLD",
+      verdict_reason: "Data quality checks failed",
+      verdict_dimensions: [
+        {
+          dimension_name: "data_quality",
+          dimension_result: "FAIL",
+          dimension_details: "Missing required fields",
+          dimension_score: 0.45,
+        },
+      ],
+      determined_by: "attribution-release-candidate-evaluator",
+      determined_at: testTimestamp,
+      evidence_hash: testHash,
+      ttl_seconds: 3600,
+    };
+    const result = publishedAttributionSafetyVerdictSchema.safeParse(verdict);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a STOP safety verdict", () => {
+    const verdict = {
+      verdict_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      run_id: testId,
+      evidence_id: testId,
+      verdict: "STOP",
+      verdict_reason: "Critical safety violation detected",
+      verdict_dimensions: [
+        {
+          dimension_name: "security",
+          dimension_result: "FAIL",
+          dimension_details: "Unauthorized access pattern detected",
+        },
+      ],
+      determined_by: "attribution-release-candidate-evaluator",
+      determined_at: testTimestamp,
+      evidence_hash: testHash,
+      ttl_seconds: 3600,
+    };
+    const result = publishedAttributionSafetyVerdictSchema.safeParse(verdict);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid verdict value", () => {
+    const verdict = {
+      verdict_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      run_id: testId,
+      evidence_id: testId,
+      verdict: "INVALID",
+      verdict_reason: "Test",
+      verdict_dimensions: [],
+      determined_by: "test",
+      determined_at: testTimestamp,
+      evidence_hash: testHash,
+      ttl_seconds: 3600,
+    };
+    const result = publishedAttributionSafetyVerdictSchema.safeParse(verdict);
+    expect(result.success).toBe(false);
+  });
+
+  it("validates all dimension results", () => {
+    for (const dr of ["PASS", "WARN", "FAIL", "SKIP"]) {
+      const verdict = {
+        verdict_id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        run_id: testId,
+        evidence_id: testId,
+        verdict: "GO",
+        verdict_reason: "Test",
+        verdict_dimensions: [
+          {
+            dimension_name: "test",
+            dimension_result: dr,
+          },
+        ],
+        determined_by: "test",
+        determined_at: testTimestamp,
+        evidence_hash: testHash,
+        ttl_seconds: 3600,
+      };
+      const result = publishedAttributionSafetyVerdictSchema.safeParse(verdict);
+      expect(result.success).toBe(true);
+    }
+  });
+});
+
+describe("AttributionCapabilityDirectory (U13.2)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete capability directory", () => {
+    const directory = {
+      directory_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      capabilities: [
+        {
+          capability_id: testId,
+          capability_name: "owner-map-review",
+          capability_type: "OWNER_MAP",
+          is_available: true,
+          min_required_role: "A2-domain-owner",
+          version: "1.0.0",
+          description: "Review owner map entries",
+        },
+        {
+          capability_id: testId,
+          capability_name: "conclusion-signing",
+          capability_type: "CONCLUSION_AUTHORITY",
+          is_available: true,
+          min_required_role: "A6-verifier",
+          version: "1.0.0",
+          anti_enumeration_hash: testHash,
+        },
+      ],
+      published_at: testTimestamp,
+      directory_hash: testHash,
+    };
+    const result = attributionCapabilityDirectorySchema.safeParse(directory);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all capability types", () => {
+    const types = [
+      "OWNER_MAP",
+      "RELATIONSHIP_PROMOTION",
+      "CONCLUSION_POLICY",
+      "SIGNER_ASSIGNMENT",
+      "VERIFICATION_KEY",
+      "NONCE_LEDGER",
+      "ACTIVE_POINTER",
+      "EVIDENCE_KERNEL",
+      "PROFILE_PROJECTION",
+      "CONCLUSION_AUTHORITY",
+      "ELIGIBILITY",
+    ];
+    for (const capType of types) {
+      const directory = {
+        directory_id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        capabilities: [
+          {
+            capability_id: testId,
+            capability_name: `${capType.toLowerCase()}-capability`,
+            capability_type: capType,
+            is_available: false,
+            min_required_role: "A6-verifier",
+            version: "1.0.0",
+          },
+        ],
+        published_at: testTimestamp,
+        directory_hash: testHash,
+      };
+      const result = attributionCapabilityDirectorySchema.safeParse(directory);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects unknown capability type", () => {
+    const directory = {
+      directory_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      capabilities: [
+        {
+          capability_id: testId,
+          capability_name: "unknown",
+          capability_type: "UNKNOWN",
+          is_available: true,
+          min_required_role: "admin",
+          version: "1.0.0",
+        },
+      ],
+      published_at: testTimestamp,
+      directory_hash: testHash,
+    };
+    const result = attributionCapabilityDirectorySchema.safeParse(directory);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("AttributionEligibilityDecision (U13.2)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates an ELIGIBLE decision", () => {
+    const decision = {
+      decision_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      request_id: testId,
+      subject_id: "retail-revenue-v1",
+      eligibility_criteria: [
+        {
+          criterion_id: "profile-available",
+          criterion_name: "Profile Available",
+          is_satisfied: true,
+          reason: "Profile exists and is current",
+        },
+        {
+          criterion_id: "principal-authorized",
+          criterion_name: "Principal Authorized",
+          is_satisfied: true,
+        },
+      ],
+      overall_eligible: true,
+      decision: "ELIGIBLE",
+      decided_by: "attribution-eligibility-service",
+      decided_at: testTimestamp,
+      frozen_question_hash: testHash,
+    };
+    const result = attributionEligibilityDecisionSchema.safeParse(decision);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all decision values", () => {
+    for (const d of ["ELIGIBLE", "INELIGIBLE", "DEFERRED"]) {
+      const decision = {
+        decision_id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        request_id: testId,
+        subject_id: "test-subject",
+        eligibility_criteria: [
+          {
+            criterion_id: "test-criterion",
+            criterion_name: "Test",
+            is_satisfied: d === "ELIGIBLE",
+          },
+        ],
+        overall_eligible: d === "ELIGIBLE",
+        decision: d,
+        decided_by: "test",
+        decided_at: testTimestamp,
+        frozen_question_hash: testHash,
+      };
+      const result = attributionEligibilityDecisionSchema.safeParse(decision);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("validates eligibility with optional expires_at", () => {
+    const decision = {
+      decision_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      request_id: testId,
+      subject_id: "retail-revenue-v1",
+      eligibility_criteria: [],
+      overall_eligible: true,
+      decision: "ELIGIBLE",
+      decided_by: "test",
+      decided_at: testTimestamp,
+      expires_at: testTimestamp,
+      frozen_question_hash: testHash,
+    };
+    const result = attributionEligibilityDecisionSchema.safeParse(decision);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid decision value", () => {
+    const decision = {
+      decision_id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      request_id: testId,
+      subject_id: "test",
+      eligibility_criteria: [],
+      overall_eligible: false,
+      decision: "INVALID",
+      decided_by: "test",
+      decided_at: testTimestamp,
+      frozen_question_hash: testHash,
+    };
+    const result = attributionEligibilityDecisionSchema.safeParse(decision);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("AttributionProfileProjection (U13.2)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete profile projection", () => {
+    const projection = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      profile_id: testId,
+      source_release_id: testId,
+      profile_name: "retail-revenue-profile-v1",
+      profile_version: "1.0.0",
+      lowering_rule_set: {
+        rule_id: testId,
+        lowering_strategy: "STRICT",
+        allowed_endpoint_patterns: ["/api/v1/revenue/*"],
+        default_lowering_depth: 0,
+      },
+      contribution_endpoints: [
+        {
+          endpoint_id: testId,
+          endpoint_url: "/api/v1/revenue/summary",
+          endpoint_type: "REST",
+        },
+      ],
+      is_active: true,
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionProfileProjectionSchema.safeParse(projection);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates profile with lowering certificate", () => {
+    const projection = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      profile_id: testId,
+      source_release_id: testId,
+      profile_name: "retail-revenue-profile-v2",
+      profile_version: "2.0.0",
+      lowering_rule_set: {
+        rule_id: testId,
+        lowering_strategy: "PERMISSIVE",
+        allowed_endpoint_patterns: ["/api/v1/*"],
+        denied_endpoint_patterns: ["/api/v1/admin/*"],
+        default_lowering_depth: 1,
+        custom_rules: [
+          {
+            source_pattern: "/api/v1/revenue/*",
+            target_pattern: "/api/v1/revenue/summary",
+            preserve_headers: ["x-request-id"],
+          },
+        ],
+      },
+      contribution_endpoints: [
+        {
+          endpoint_id: testId,
+          endpoint_url: "/api/v1/revenue/summary",
+          endpoint_type: "REST",
+          lowering_certificate: {
+            certificate_id: testId,
+            rule_set_hash: testHash,
+            canonical_ast_hash: testHash,
+            query_contract_hash: testHash,
+            grounding_package_hash: testHash,
+            logical_plan_hash: testHash,
+            sql_artifact_hash: testHash,
+            parameter_hash: testHash,
+            evidence_hash: testHash,
+            lowering_chain: [
+              { step: "parse", input_hash: testHash, output_hash: testHash },
+              { step: "lower", input_hash: testHash, output_hash: testHash },
+            ],
+            original_endpoint: "/api/v1/revenue/details",
+            lowered_endpoint: "/api/v1/revenue/summary",
+            certified_by: "lowering-service",
+            certified_at: testTimestamp,
+          },
+        },
+      ],
+      is_active: true,
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionProfileProjectionSchema.safeParse(projection);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all lowering strategies", () => {
+    for (const strategy of ["STRICT", "PERMISSIVE", "CUSTOM"]) {
+      const projection = {
+        id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        profile_id: testId,
+        source_release_id: testId,
+        profile_name: "test-profile",
+        profile_version: "1.0.0",
+        lowering_rule_set: {
+          rule_id: testId,
+          lowering_strategy: strategy,
+          allowed_endpoint_patterns: ["/test/*"],
+          default_lowering_depth: 0,
+        },
+        contribution_endpoints: [],
+        is_active: true,
+        created_at: testTimestamp,
+        updated_at: testTimestamp,
+      };
+      const result = attributionProfileProjectionSchema.safeParse(projection);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("validates all endpoint types", () => {
+    for (const ept of ["REST", "RPC", "EVENT", "STREAM"]) {
+      const projection = {
+        id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        profile_id: testId,
+        source_release_id: testId,
+        profile_name: "test-profile",
+        profile_version: "1.0.0",
+        lowering_rule_set: {
+          rule_id: testId,
+          lowering_strategy: "STRICT",
+          allowed_endpoint_patterns: ["/test/*"],
+          default_lowering_depth: 0,
+        },
+        contribution_endpoints: [
+          {
+            endpoint_id: testId,
+            endpoint_url: "/test/endpoint",
+            endpoint_type: ept,
+          },
+        ],
+        is_active: true,
+        created_at: testTimestamp,
+        updated_at: testTimestamp,
+      };
+      const result = attributionProfileProjectionSchema.safeParse(projection);
+      expect(result.success).toBe(true);
+    }
+  });
+});
+
+describe("AttributionProfileRequest (U13.2)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a DRAFT profile request", () => {
+    const request = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      request_id: testId,
+      subject_id: "retail-revenue-v1",
+      requester: "user-001",
+      request_type: "PROFILE_ACCESS",
+      status: "DRAFT",
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionProfileRequestSchema.safeParse(request);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates SUBMITTED profile request", () => {
+    const request = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      request_id: testId,
+      subject_id: "retail-revenue-v1",
+      requester: "user-001",
+      request_type: "PROFILE_ACCESS",
+      status: "SUBMITTED",
+      request_reason: "Need profile for attribution analysis",
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionProfileRequestSchema.safeParse(request);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all profile request statuses", () => {
+    const statuses = [
+      "DRAFT",
+      "SUBMITTED",
+      "DEDUPED",
+      "TRIAGED",
+      "LINKED",
+      "DECLINED",
+      "CLOSED",
+      "EXPIRED",
+      "WITHDRAWN",
+    ];
+    for (const status of statuses) {
+      const request = {
+        id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        request_id: testId,
+        subject_id: "retail-revenue-v1",
+        requester: "user-001",
+        request_type: "PROFILE_ACCESS",
+        status,
+        created_at: testTimestamp,
+        updated_at: testTimestamp,
+      };
+      const result = attributionProfileRequestSchema.safeParse(request);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects invalid profile request status", () => {
+    const request = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      request_id: testId,
+      subject_id: "retail-revenue-v1",
+      requester: "user-001",
+      request_type: "PROFILE_ACCESS",
+      status: "INVALID",
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionProfileRequestSchema.safeParse(request);
+    expect(result.success).toBe(false);
   });
 });
