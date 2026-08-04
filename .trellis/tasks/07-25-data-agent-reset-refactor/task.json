@@ -1,7 +1,7 @@
 {
   "id": "data-agent-reset-refactor",
   "name": "data-agent-reset-refactor",
-  "title": "Data Agent \u5f7b\u5e95\u91cd\u7f6e\u91cd\u6784\u89c4\u5212",
+  "title": "Data Agent 彻底重置重构规划",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -15,7 +15,7 @@
   "branch": "codex/data-agent-l2-vertical-slice",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": "993730b",
+  "commit": "dc1a12f",
   "pr_url": null,
   "subtasks": [],
   "children": [
@@ -23,6 +23,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "U10.0, U10.1a, U10.1b, U10.2, U10.3, U6-C2a, U7 completed",
+  "notes": "U6-C2a/10600 completed (C2 descriptor = INSTALLABLE). U8 base/M1-Core completed (SSE streaming, Cancel/Resume/Replay, connection state, M1 demo, all 11 UI components). Next: U11 governance release.",
   "meta": {}
 }
