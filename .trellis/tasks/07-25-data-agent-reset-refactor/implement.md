@@ -1666,8 +1666,8 @@ pnpm verify:release
 U6-C2a/10600 的 PostgreSQL Smoke 测试已全部闭合。C2 descriptor 当前为 `NOT_INSTALLABLE`，
 需在 U6 remainder 全部完成后更新为 `INSTALLABLE` 并发布 Release。
 
-后续步骤（按第 8.1 节顺序）：
-1. U10.2 — Candidate/Review/Decision/Publish/Rollback（10610）
+ 后续步骤（按第 8.1 节顺序）：
+1. ✅ U10.2 — Candidate/Review/Decision/Publish/Rollback（10610）
 2. U6 remainder（U6.3 等）
 3. U7 — Eval 与 Truth Contract
 4. U8 — Demo
