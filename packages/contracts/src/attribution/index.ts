@@ -1,3 +1,4 @@
+export * from "./attribution-feasibility-verdict.js";
 export * from "./active-pointer.js";
 export * from "./capability.js";
 export * from "./conclusion.js";
