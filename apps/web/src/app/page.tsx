@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect } from "react";
-import { AuthorityStatusBar } from "@/components/authority-status-bar";
-import { ClarificationDialog } from "@/components/clarification-dialog";
-import { EvalSection } from "@/components/eval-section";
-import { HypothesisSection } from "@/components/hypothesis-section";
-import { QueryInputSection } from "@/components/query-input-section";
-import { ReportSection } from "@/components/report-section";
+import { AuthorityStatusBar } from "@/components/workbench/authority-status-bar";
+import { ClarificationDialog } from "@/components/workbench/clarification-dialog";
+import { EvalSection } from "@/components/workbench/eval-section";
+import { HypothesisSection } from "@/components/workbench/hypothesis-section";
+import { QueryInputSection } from "@/components/workbench/query-input-section";
+import { ReportSection } from "@/components/workbench/report-section";
 import {
   commandRun,
   createRun,

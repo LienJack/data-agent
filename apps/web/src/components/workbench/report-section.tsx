@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ClaimEvidenceTree } from "@/components/claim-evidence-tree";
-import { WorkbenchSection } from "@/components/workbench-section";
+import { ClaimEvidenceTree } from "./claim-evidence-tree";
+import { WorkbenchSection } from "./workbench-section";
 import type { Report } from "@/lib/run-projection";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 

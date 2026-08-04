@@ -1,7 +1,7 @@
 "use client";
 
-import { PairedComparison } from "@/components/paired-comparison";
-import { WorkbenchSection } from "@/components/workbench-section";
+import { PairedComparison } from "./paired-comparison";
+import { WorkbenchSection } from "./workbench-section";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 
 const verdictLabel: Record<string, string> = {
