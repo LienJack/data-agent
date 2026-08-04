@@ -1,7 +1,7 @@
 {
   "id": "data-agent-reset-refactor",
   "name": "data-agent-reset-refactor",
-  "title": "Data Agent 彻底重置重构规划",
+  "title": "Data Agent \u5f7b\u5e95\u91cd\u7f6e\u91cd\u6784\u89c4\u5212",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -15,7 +15,7 @@
   "branch": "codex/data-agent-l2-vertical-slice",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": "f120f78",
+  "commit": "993730b",
   "pr_url": null,
   "subtasks": [],
   "children": [
