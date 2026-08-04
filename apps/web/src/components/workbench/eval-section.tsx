@@ -32,57 +32,37 @@ export function EvalSection() {
   return (
     <WorkbenchSection title="评测 · 对比" status={sectionStatus}>
       <div className="space-y-4">
-        {/* 评测概览 */}
-        <div className="flex items-center gap-4 rounded-lg bg-[var(--color-bg-secondary)] p-3">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-[var(--color-text-tertiary)]">评测集:</span>
-            <span className="text-sm font-mono font-medium">{evalResult.suite}</span>
-          </div>
+        {/* 总体判定 */}
+        <div className="flex items-center justify-between rounded-lg bg-[var(--color-bg-secondary)] p-3">
+          <span className="text-sm font-medium">评测套件: {evalResult.suite}</span>
           <span className={verdictColor[evalResult.verdict]}>
             {verdictLabel[evalResult.verdict]}
           </span>
-          {evalResult.scoreCard && (
-            <span className="text-xs text-[var(--color-text-tertiary)]">
-              {evalResult.scoreCard.passed}/{evalResult.scoreCard.total} 通过
-            </span>
-          )}
         </div>
 
         {/* 评分卡 */}
         {evalResult.scoreCard && (
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-              评分卡
-            </h4>
-            <div className="flex gap-4">
-              <div className="flex-1 rounded-lg border border-[var(--color-border)] p-3 text-center">
-                <p className="text-2xl font-bold text-[var(--color-success)]">
-                  {evalResult.scoreCard.passed}
-                </p>
-                <p className="text-xs text-[var(--color-text-tertiary)]">通过</p>
-              </div>
-              <div className="flex-1 rounded-lg border border-[var(--color-border)] p-3 text-center">
-                <p className="text-2xl font-bold text-[var(--color-error)]">
-                  {evalResult.scoreCard.failed}
-                </p>
-                <p className="text-xs text-[var(--color-text-tertiary)]">失败</p>
-              </div>
-              <div className="flex-1 rounded-lg border border-[var(--color-border)] p-3 text-center">
-                <p className="text-2xl font-bold">{evalResult.scoreCard.total}</p>
-                <p className="text-xs text-[var(--color-text-tertiary)]">总数</p>
-              </div>
-            </div>
+          <div className="flex items-center gap-4 text-sm" aria-label="评分卡">
+            <span className="text-[var(--color-text-tertiary)]">
+              通过: <span className="font-medium text-[var(--color-success)]">{evalResult.scoreCard.passed}</span>
+            </span>
+            <span className="text-[var(--color-text-tertiary)]">
+              失败: <span className="font-medium text-[var(--color-error)]">{evalResult.scoreCard.failed}</span>
+            </span>
+            <span className="text-[var(--color-text-tertiary)]">
+              总计: <span className="font-medium">{evalResult.scoreCard.total}</span>
+            </span>
           </div>
         )}
 
-        {/* 对比视图 */}
+        {/* 成对对比 */}
         {evalResult.pairedComparison && (
-          <div>
-            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-              对比评估
-            </h4>
-            <PairedComparison {...evalResult.pairedComparison} />
-          </div>
+          <PairedComparison
+            baseline={evalResult.pairedComparison.baseline}
+            candidate={evalResult.pairedComparison.candidate}
+            improvement={evalResult.pairedComparison.improvement}
+            metrics={evalResult.pairedComparison.metrics}
+          />
         )}
       </div>
     </WorkbenchSection>

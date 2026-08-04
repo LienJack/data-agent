@@ -429,11 +429,11 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
              AND candidate_id = $5::uuid`,
           [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, task.candidate_id],
         );
-        if (candResult.rows.length > 0) {
-          candidateStatus = candResult.rows[0]?.candidate_status;
-          proposerPrincipal = candResult.rows[0]?.proposer_principal;
-        }
-      }
+       if (candResult.rows.length > 0) {
+          candidateStatus = candResult.rows[0]?.candidate_status ?? null;
+          proposerPrincipal = candResult.rows[0]?.proposer_principal ?? proposerPrincipal;
+       }
+     }
 
       // 3. Get decisions
       const decResult = await client.query<ReviewDecisionRow>(
@@ -506,7 +506,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
 
       const packet: SemanticReviewPacket = {
         id: task.packet_id,
-        version: revisions.length > 0 ? revisions.at(-1)?.version : 1,
+        version: revisions.length > 0 ? (revisions.at(-1)?.version ?? 1) : 1,
         title: pluckString(payload, "title", "未命名提案"),
         description: pluckString(payload, "description"),
         domain: scope.semanticDomain,

@@ -1,7 +1,7 @@
 {
   "id": "data-agent-reset-refactor",
   "name": "data-agent-reset-refactor",
-  "title": "Data Agent \u5f7b\u5e95\u91cd\u7f6e\u91cd\u6784\u89c4\u5212",
+  "title": "Data Agent 彻底重置重构规划",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -15,7 +15,7 @@
   "branch": "codex/data-agent-l2-vertical-slice",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": "dc1a12f",
+  "commit": "2dab02e",
   "pr_url": null,
   "subtasks": [],
   "children": [
@@ -23,6 +23,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "U6-C2a/10600, U8 M1-Core completed. U11.1 Service layer created. U11.2 API routes (7 files) + frontend API client updated. U11.3 Permission separation UI completed (fixed duplicate types, hooks ordering, Zod schema, API client structure). TypeScript clean. Next: U11.4 PostgreSQL service.",
+  "notes": "U6-C2a/10600, U8 base/M1-Core, U10.0-U10.3, U11-Core, U7 Published Governance Delta completed. U8-Core L2 workbench enhancement completed (keyboard nav, screen reader, focus recovery, narrow screen, touch screen, aria-live, aria-expanded, focus trap, Enter key submit, full accessibility). Next: U9-Core PostgreSQL-only Hosted/Docker parity, compose.yaml, verify:release.",
   "meta": {}
 }

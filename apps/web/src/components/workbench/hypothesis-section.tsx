@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { Hypothesis } from "@/lib/run-projection";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 import { SqlReceiptCard } from "./sql-receipt-card";
@@ -29,14 +29,41 @@ const hypothesisStatusColor: Record<string, string> = {
 
 function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
   const [expanded, setExpanded] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setExpanded((prev) => !prev);
+      }
+      // 箭头键导航 — 在兄弟卡片间移动焦点
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const siblings = cardRef.current
+          ?.closest("[role='list']")
+          ?.querySelectorAll<HTMLButtonElement>("[role='listitem'] > button");
+        if (!siblings) return;
+        const currentIndex = Array.from(siblings).indexOf(e.currentTarget);
+        const nextIndex =
+          e.key === "ArrowDown"
+            ? Math.min(currentIndex + 1, siblings.length - 1)
+            : Math.max(currentIndex - 1, 0);
+        siblings[nextIndex]?.focus();
+      }
+    },
+    [],
+  );
 
   return (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)]">
+    <div ref={cardRef} role="listitem" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)]">
       <button
         type="button"
-        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--color-bg-secondary)]"
+        className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--color-bg-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
         onClick={() => setExpanded(!expanded)}
+        onKeyDown={handleKeyDown}
         aria-expanded={expanded}
+        aria-controls={`hypothesis-content-${hypothesis.id}`}
       >
         <div className="flex items-center gap-3 min-w-0">
           <span className={hypothesisStatusColor[hypothesis.status]}>
@@ -44,13 +71,18 @@ function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
           </span>
           <span className="text-sm font-medium truncate">{hypothesis.statement}</span>
         </div>
-        <span className="text-xs text-[var(--color-text-tertiary)] shrink-0">
+        <span className="text-xs text-[var(--color-text-tertiary)] shrink-0" aria-hidden="true">
           {expanded ? "收起" : "展开"}
         </span>
       </button>
 
       {expanded && (
-        <div className="border-t border-[var(--color-border)] px-4 py-3 space-y-4">
+        <div
+          id={`hypothesis-content-${hypothesis.id}`}
+          className="border-t border-[var(--color-border)] px-4 py-3 space-y-4"
+          role="region"
+          aria-label={`${hypothesis.statement} 详情`}
+        >
           {/* SQL */}
           {hypothesis.sql && <SqlReceiptCard hypothesis={hypothesis} />}
 
@@ -146,7 +178,7 @@ export function HypothesisSection() {
 
   return (
     <WorkbenchSection title="假设 · 探索" status={sectionStatus}>
-      <div className="space-y-3">
+      <div className="space-y-3" role="list" aria-label="假设列表">
         {hypotheses.map((hypothesis) => (
           <HypothesisCard key={hypothesis.id} hypothesis={hypothesis} />
         ))}

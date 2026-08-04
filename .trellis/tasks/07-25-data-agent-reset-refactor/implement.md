@@ -1685,7 +1685,7 @@ C2 关闭证据已提交。PostgreSQL 17 集成测试全通过（11 platform + 9
 9. ✅ U8 base / M1-Core — Demo 与产品体验（SSE 流式客户端、Cancel/Resume/Replay、连接状态管理、M1 演示状态）
 10. ⏳ U11 — 治理发布
 11. ⏳ U7 published-governance delta
-12. ⏳ U8 Core L2 — 工作台
+12. ✅ U8 Core L2 — 工作台
 13. ⏳ U9 — 部署闭环
 14. ⏳ M2-Core — 最终 Release
 

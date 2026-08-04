@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { Hypothesis } from "@/lib/run-projection";
 
 interface SqlReceiptCardProps {
@@ -9,6 +9,16 @@ interface SqlReceiptCardProps {
 
 export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
   const [showSql, setShowSql] = useState(false);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLButtonElement>) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setShowSql((prev) => !prev);
+      }
+    },
+    [],
+  );
 
   return (
     <div className="space-y-3">
@@ -20,14 +30,22 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
           </h4>
           <button
             type="button"
-            className="text-xs text-[var(--color-accent)] hover:underline"
+            className="text-xs text-[var(--color-accent)] hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
             onClick={() => setShowSql(!showSql)}
+            onKeyDown={handleKeyDown}
+            aria-expanded={showSql}
+            aria-controls="sql-content"
           >
             {showSql ? "隐藏 SQL" : "显示 SQL"}
           </button>
         </div>
         {showSql && hypothesis.sql && (
-          <pre className="mt-2 overflow-x-auto rounded-lg bg-[var(--color-bg-tertiary)] p-3 text-xs leading-relaxed">
+          <pre
+            id="sql-content"
+            className="mt-2 overflow-x-auto rounded-lg bg-[var(--color-bg-tertiary)] p-3 text-xs leading-relaxed"
+            role="region"
+            aria-label="SQL 查询内容"
+          >
             <code>{hypothesis.sql}</code>
           </pre>
         )}
@@ -37,31 +55,29 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
       {hypothesis.gateReceipts && hypothesis.gateReceipts.length > 0 && (
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-            门禁回执
+            门禁校验
           </h4>
-          <div className="space-y-1.5">
-            {hypothesis.gateReceipts.map((receipt, _i) => (
+          <div className="space-y-1">
+            {hypothesis.gateReceipts.map((receipt, i) => (
               <div
-                key={receipt.gate}
-                className="flex items-center justify-between rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] px-3 py-2"
+                key={receipt.gate + i}
+                className="flex items-center justify-between rounded-md bg-[var(--color-bg-secondary)] px-3 py-1.5"
               >
                 <div className="flex items-center gap-2">
                   <span
                     className={`size-2 rounded-full ${
-                      receipt.passed ? "bg-[var(--color-success)]" : "bg-[var(--color-error)]"
+                      receipt.passed ? "bg-emerald-500" : "bg-red-500"
                     }`}
+                    aria-hidden="true"
                   />
-                  <span className="text-xs font-medium">{receipt.gate}</span>
-                  {receipt.issuer && (
-                    <span className="text-xs text-[var(--color-text-tertiary)]">
-                      {receipt.issuer}
-                    </span>
-                  )}
+                  <span className="text-xs text-[var(--color-text-secondary)]">
+                    {receipt.gate}
+                  </span>
                 </div>
-                <div className="flex items-center gap-2 text-xs text-[var(--color-text-tertiary)]">
-                  {receipt.reason && <span>{receipt.reason}</span>}
-                  {receipt.durationMs != null && <span>{receipt.durationMs}ms</span>}
-                </div>
+                <span className="text-xs text-[var(--color-text-tertiary)]">
+                  {receipt.reason ?? (receipt.passed ? "通过" : "未通过")}
+                  {receipt.durationMs != null && ` · ${receipt.durationMs}ms`}
+                </span>
               </div>
             ))}
           </div>
@@ -72,29 +88,24 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
       {hypothesis.executionReceipts && hypothesis.executionReceipts.length > 0 && (
         <div>
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-            执行回执
+            执行记录
           </h4>
-          <div className="space-y-2">
-            {hypothesis.executionReceipts.map((receipt) => (
+          <div className="space-y-1">
+            {hypothesis.executionReceipts.map((receipt, i) => (
               <div
-                key={receipt.queryId}
-                className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3"
+                key={receipt.queryId + i}
+                className="rounded-md bg-[var(--color-bg-secondary)] px-3 py-1.5"
               >
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-mono text-[var(--color-text-tertiary)]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-mono text-[var(--color-text-secondary)]">
                     {receipt.queryId}
                   </span>
-                  <span className="text-[var(--color-text-tertiary)]">
+                  <span className="text-xs text-[var(--color-text-tertiary)]">
                     {receipt.durationMs}ms · {receipt.rowCount} 行
                   </span>
                 </div>
-                {receipt.astHash && (
-                  <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">
-                    AST Hash: <code className="font-mono">{receipt.astHash}</code>
-                  </p>
-                )}
                 {receipt.error && (
-                  <p className="mt-1 text-xs text-[var(--color-error)]">错误: {receipt.error}</p>
+                  <p className="mt-0.5 text-xs text-red-500" role="alert">{receipt.error}</p>
                 )}
               </div>
             ))}
