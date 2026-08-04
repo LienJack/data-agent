@@ -1,0 +1,80 @@
+# =============================================================================
+# Data Agent — Docker Compose
+# One-click startup for local development and self-hosted deployment.
+# Starts PostgreSQL 17, runs migrations, then launches web and worker.
+# =============================================================================
+name: data-agent
+
+services:
+  # ---------- PostgreSQL 17 (single instance, shared Supabase-style) ----------
+  postgres:
+    image: postgres:17-alpine
+    container_name: data-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: data_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/supabase:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d data_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------- Migration runner (one-shot init container) ----------
+  migration:
+    image: postgres:17-alpine
+    container_name: data-agent-migration
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+    volumes:
+      - ./infra/docker/init-db.sh:/init-db.sh:ro
+      - ./infra/supabase:/migrations:ro
+    command: ["sh", "/init-db.sh"]
+    profiles:
+      - migrate
+
+  # ---------- Web app (Next.js) ----------
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+    container_name: data-agent-web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3000:3000"
+
+  # ---------- Durable Worker (Node.js) ----------
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker
+    container_name: data-agent-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      NODE_ENV: production
+
+volumes:
+  pgdata:

@@ -1,0 +1,79 @@
+{
+  "protocol_version": "u9-semantic-migration-maintenance@1.0.0",
+  "deployment_scope": {
+    "app_id": "00000000-0000-4000-8000-00000000da01",
+    "deployment_binding": "SESSION_ACTIVE_MAPPING",
+    "database_binding": "SESSION_DATABASE_IDENTITY"
+  },
+  "maintenance_window": {
+    "window_id": "00000000-0000-4000-8000-000000001610",
+    "max_duration_ms": 600000
+  },
+  "timeouts": {
+    "lock_timeout_ms": 2000,
+    "statement_timeout_ms": 300000,
+    "idle_in_transaction_session_timeout_ms": 60000
+  },
+  "migrations": [
+    {
+      "name": "20260725010610_app_data_agent_semantic_control_plane.sql",
+      "manifest_hash": "sha256:PENDING",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 268435456,
+      "new_relations": [
+        "app_data_agent.semantic_review_decisions",
+        "app_data_agent.semantic_candidates",
+        "app_data_agent.semantic_published_releases",
+        "app_data_agent.semantic_source_revisions",
+        "app_data_agent.semantic_active_pointer",
+        "app_data_agent.semantic_rollback_ledger",
+        "app_data_agent.semantic_outbox",
+        "app_data_agent.semantic_domain_registry",
+        "app_data_agent.semantic_review_policy",
+        "app_data_agent.semantic_catalog_fence"
+      ],
+      "review_required": true,
+      "rollback_strategy": "REVERT_BY_MIGRATION"
+    },
+    {
+      "name": "20260725010615_app_data_agent_semantic_published_bridge.sql",
+      "manifest_hash": "sha256:PENDING",
+      "approved_max_rows": 10000,
+      "approved_max_total_bytes": 67108864,
+      "new_relations": [
+        "app_data_agent.semantic_activation_ledger",
+        "app_data_agent.semantic_published_bridge_state"
+      ],
+      "review_required": true,
+      "rollback_strategy": "REVERT_BY_MIGRATION"
+    }
+  ],
+  "relation_limits": [
+    {
+      "qualified_name": "app_data_agent.semantic_candidates",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 268435456
+    },
+    {
+      "qualified_name": "app_data_agent.semantic_review_decisions",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 268435456
+    },
+    {
+      "qualified_name": "app_data_agent.semantic_published_releases",
+      "approved_max_rows": 10000,
+      "approved_max_total_bytes": 67108864
+    },
+    {
+      "qualified_name": "app_data_agent.semantic_rollback_ledger",
+      "approved_max_rows": 10000,
+      "approved_max_total_bytes": 67108864
+    },
+    {
+      "qualified_name": "app_data_agent.semantic_outbox",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 268435456
+    }
+  ],
+  "manifest_hash": "sha256:PENDING"
+}

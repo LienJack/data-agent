@@ -1,7 +1,7 @@
 {
   "id": "data-agent-reset-refactor",
   "name": "data-agent-reset-refactor",
-  "title": "Data Agent 彻底重置重构规划",
+  "title": "Data Agent \u5f7b\u5e95\u91cd\u7f6e\u91cd\u6784\u89c4\u5212",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -23,6 +23,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "U6-C2a/10600, U8 base/M1-Core, U10.0-U10.3, U11-Core, U7 Published Governance Delta completed. U8-Core L2 workbench enhancement completed (keyboard nav, screen reader, focus recovery, narrow screen, touch screen, aria-live, aria-expanded, focus trap, Enter key submit, full accessibility). Next: U9-Core PostgreSQL-only Hosted/Docker parity, compose.yaml, verify:release.",
+  "notes": "U6-C2a/10600, U8 base/M1-Core, U10.0-U10.3, U11-Core, U7 Published Governance Delta completed. U8-Core L2 workbench enhancement completed. U9-Core PostgreSQL-only Hosted/Docker parity deployed: compose.yaml, Dockerfile.web, Dockerfile.worker, init-db.sh, u9-semantic-migration-maintenance-manifest.json, verify-release.ts updated, pending-gate.ts updated, deployment-operations.md runbook, test-deploy-docker.sh, test-deploy-hosted.sh. Next: U9-F9 (10620 contribution authority migration), M2-Core final release decision.",
   "meta": {}
 }
