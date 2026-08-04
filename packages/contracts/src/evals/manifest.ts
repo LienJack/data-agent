@@ -11,7 +11,8 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import { benchmarkSuiteSchema, type EvalCase } from "./index.js";
+import { benchmarkSuiteSchema } from "./schemas.js";
+import type { EvalCase } from "./schemas.js";
 
 export const benchmarkDatasetReferenceSchema = z.strictObject({
   dataset_id: immutableIdSchema,
