@@ -1696,6 +1696,7 @@ F9 泳道（F9 失败不阻断 Core）：
 4. ✅ U7 Attribution Eval Verdict（commit c0d4761）
 5. ✅ U8 M1-F9 — Fixture Evidence Demo（组件已集成到 page.tsx，typecheck + build 通过）
 6. ✅ M1-F9 Feasibility 复审（PASS — FEASIBLE）
+7. ✅ 10620 Authority Foundation（迁移 + TypeScript 类型 + 测试 52 个全部通过）
 
 #### M1-F9 Feasibility 复审（2026-08-04）
 
@@ -1757,3 +1758,56 @@ F9 泳道（F9 失败不阻断 Core）：
 
 **复审结果：PASS — FEASIBLE**
 **后续步骤：** 10620 Authority Foundation → U13.2 Published F9 → M2-F9 Release Gate
+
+#### 10620 Authority Foundation（2026-08-04）
+
+**状态：COMPLETED — Authority Ready, F9 仍 NOT_REGISTERED**
+
+**实施证据：**
+
+| 组件 | 文件 | 状态 |
+|------|------|------|
+| PostgreSQL Migration | `infra/supabase/apps/data-agent/migrations/20260725010620_app_data_agent_contribution_authority.sql`（1351 行） | ✅ |
+| Migration 源码 | `infra/supabase/apps/data-agent/migration-sources/10620/`（11 个 .inc 文件） | ✅ |
+| Migration Checksum | `sha256:c2403b07f7cba81cfce9d4f4ed1aa7ffef636e14eb606f47906dbadf8452bc19` | ✅ |
+| TypeScript 类型 | `packages/contracts/src/attribution/` — 7 个文件 | ✅ |
+| 单元测试 | `test/attribution-schemas.spec.ts` — 52 个测试（含 40 个 10620 新增） | ✅ |
+
+**10620 迁移表：**
+
+| 表 | 用途 |
+|----|------|
+| `attribution_owner_map_release` | 不可变 OwnerMap 发布（PROVISIONED → ACTIVE → SUPERSEDED → RETIRED） |
+| `attribution_relationship_promotion_receipt` | 追加式关系晋级收据（COMMITTED → VERIFIED → FAILED） |
+| `attribution_conclusion_policy` | 不可变结论政策发布与决策信封 |
+| `attribution_signer_assignment` | 签署人角色与配额分配 |
+| `attribution_verification_key_revision` | 验证密钥版本（STAGED → ACTIVE → COMPROMISED → RETIRED） |
+| `attribution_active_pointer` | 单行 CAS 活跃指针（OWNER_MAP / POLICY / SIGNER_ASSIGNMENT / VERIFICATION_KEY） |
+| `attribution_nonce_ledger` | 原子 nonce 检查与消费账本 |
+
+**10620 RPC 函数：**
+
+| 函数 | 用途 |
+|------|------|
+| `provision_owner_map_release` / `activate_owner_map_release` / `retire_owner_map_release` | OwnerMap 生命周期 |
+| `commit_relationship_promotion_receipt` / `verify_relationship_promotion` | 关系晋级 |
+| `provision_conclusion_policy` / `activate_conclusion_policy` / `retire_conclusion_policy` | 结论政策生命周期 |
+| `provision_signer_assignment` / `activate_signer_assignment` / `retire_signer_assignment` | 签署人分配生命周期 |
+| `stage_verification_key` / `activate_verification_key` / `compromise_verification_key` / `retire_verification_key` | 验证密钥生命周期 |
+| `get_active_pointer` / `set_active_pointer` | 活跃指针读写 |
+| `check_and_consume_nonce` | 原子 nonce 消费 |
+
+**验证检查清单：**
+
+1. **Migration 完整性：** 迁移文件包含完整 bootstrap、7 张表、RPC 函数、RLS 策略、角色与权限授予 ✅
+2. **依赖关系：** 依赖 10615 Published Bridge，迁移前已检查 ✅
+3. **并行安装：** 10620 不与 Source Release 共用 active pointer 或 transaction ✅
+4. **F9 未注册：** 10620 保存不可变 Authority 数据，但不注册 F9（`attribution_f9` 仍为 `NOT_REGISTERED`）✅
+5. **PostgreSQL 唯一权威：** Upstash/Neo4j 不能提交或覆盖这些状态 ✅
+6. **TypeScript 类型完整性：** `attributionOwnerMapReleaseSchema`、`attributionActivePointerSchema`、`conclusionPolicyReleaseSchema`、`signerAssignmentSchema`、`verificationKeyRevisionSchema`、`relationshipPromotionReceiptSchema`、`nonceLedgerEntrySchema`、`conclusionSubjectManifestSchema`、`conclusionReceiptSubjectSchema`、`conclusionSignatureAuthoritySchema` 全部从 `packages/contracts/src/attribution/index.ts` 导出 ✅
+7. **单元测试：** 52 个测试全部通过（含正例验证、负例拒绝、枚举值边界检查）✅
+8. **TypeScript 门禁：** `pnpm typecheck` 通过 ✅
+
+**结论：** 10620 Authority Foundation 迁移已完整实施。OwnerMap 发布、关系晋级、结论政策、签署人分配、验证密钥管理与 nonce 消费的 PostgreSQL 权威基础设施已就绪，F9 保持 `NOT_REGISTERED`。授权进入 U13.2 Published F9。
+
+**后续步骤：** U13.2 Published F9 → M2-F9 Release Gate

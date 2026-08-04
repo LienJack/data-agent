@@ -49,6 +49,20 @@ import {
   fixtureConclusionCandidateSchema,
   type AttributionKernelEvidence,
   type F9Status,
+  // 10620 Authority Foundation
+  attributionOwnerMapReleaseSchema,
+  ownerMapEntrySchema,
+  attributionActivePointerSchema,
+  attributionPointerTypeSchema,
+  conclusionPolicyReleaseSchema,
+  conclusionPolicyDecisionEnvelopeSchema,
+  signerAssignmentSchema,
+  verificationKeyRevisionSchema,
+  relationshipPromotionReceiptSchema,
+  nonceLedgerEntrySchema,
+  conclusionSubjectManifestSchema,
+  conclusionReceiptSubjectSchema,
+  conclusionSignatureAuthoritySchema,
   type ClosureVerdict,
 } from "../src/attribution/index.js";
 
@@ -838,5 +852,511 @@ describe("AttributionKernelEvidence", () => {
     };
     const result = fixtureConclusionCandidateSchema.safeParse(candidate);
     expect(result.success).toBe(true);
+  });
+});
+
+// ─── 10620 Authority Foundation Type Tests ─────────────────────────────────────
+
+describe("AttributionOwnerMapRelease (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete owner map release", () => {
+    const release = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      release_id: testId,
+      owner_map: [
+        {
+          canonical_path: "identity.retail.customer",
+          owner_capability: "semantic.owner_map.review",
+          required_signer_roles: ["A2-domain-owner"],
+          quorum: 1,
+          proof_verifier_roles: ["A6-verifier"],
+        },
+      ],
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = attributionOwnerMapReleaseSchema.safeParse(release);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid owner map status", () => {
+    const release = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      release_id: testId,
+      owner_map: [
+        {
+          canonical_path: "identity.retail.customer",
+          owner_capability: "semantic.owner_map.review",
+        },
+      ],
+      status: "INVALID",
+      created_at: testTimestamp,
+    };
+    const result = attributionOwnerMapReleaseSchema.safeParse(release);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("AttributionActivePointer (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete active pointer", () => {
+    const pointer = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      pointer_type: "OWNER_MAP",
+      active_id: testId,
+      status: "ACTIVE",
+      version: 1,
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionActivePointerSchema.safeParse(pointer);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all pointer types", () => {
+    for (const pointerType of ["OWNER_MAP", "POLICY", "SIGNER_ASSIGNMENT", "VERIFICATION_KEY"]) {
+      const pointer = {
+        id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        pointer_type: pointerType,
+        active_id: testId,
+        status: "ACTIVE",
+        version: 1,
+        created_at: testTimestamp,
+        updated_at: testTimestamp,
+      };
+      const result = attributionActivePointerSchema.safeParse(pointer);
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("rejects unknown pointer type", () => {
+    const pointer = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      pointer_type: "UNKNOWN_TYPE",
+      active_id: testId,
+      status: "ACTIVE",
+      version: 1,
+      created_at: testTimestamp,
+      updated_at: testTimestamp,
+    };
+    const result = attributionActivePointerSchema.safeParse(pointer);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("ConclusionPolicyRelease (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete conclusion policy release", () => {
+    const release = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      policy_id: testId,
+      policy: {
+        algorithm_policy: {
+          allowed_algorithms: ["ECDSA", "RSA"],
+          min_key_length: 2048,
+          hash_algorithm: "SHA256",
+        },
+        signer_requirements: {
+          min_signers: 1,
+          allowed_signer_roles: ["A6-verifier"],
+          require_physical_presence: false,
+          signature_ttl_seconds: 3600,
+        },
+        verification_constraints: {
+          allow_trust_root_only: false,
+          required_trust_chain_depth: 0,
+          verify_against_revocation_list: true,
+        },
+      },
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = conclusionPolicyReleaseSchema.safeParse(release);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects policy with empty allowed algorithms", () => {
+    const release = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      policy_id: testId,
+      policy: {
+        algorithm_policy: {
+          allowed_algorithms: [],
+          min_key_length: 2048,
+          hash_algorithm: "SHA256",
+        },
+        signer_requirements: {
+          min_signers: 1,
+          allowed_signer_roles: ["A6-verifier"],
+        },
+        verification_constraints: {
+          allow_trust_root_only: false,
+          required_trust_chain_depth: 0,
+          verify_against_revocation_list: true,
+        },
+      },
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = conclusionPolicyReleaseSchema.safeParse(release);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("SignerAssignment (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete signer assignment", () => {
+    const assignment = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      assignment_id: testId,
+      policy_id: testId,
+      signer_role: "A6-verifier",
+      required_signers: 2,
+      proof_verifier_roles: ["A6-verifier"],
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = signerAssignmentSchema.safeParse(assignment);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates signer assignment with delegation config", () => {
+    const assignment = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      assignment_id: testId,
+      policy_id: testId,
+      signer_role: "A2-domain-owner",
+      required_signers: 1,
+      delegation_config: {
+        allow_subdelegation: true,
+        max_delegation_depth: 3,
+        delegation_ttl_seconds: 7200,
+      },
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = signerAssignmentSchema.safeParse(assignment);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("VerificationKeyRevision (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete verification key revision", () => {
+    const revision = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      key_id: testId,
+      key_algorithm: "ECDSA",
+      public_key: "04c0ffee...",
+      trust_root: false,
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = verificationKeyRevisionSchema.safeParse(revision);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates trust root key revision", () => {
+    const revision = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      key_id: testId,
+      key_algorithm: "RSA",
+      public_key: "3082...",
+      trust_root: true,
+      status: "ACTIVE",
+      created_at: testTimestamp,
+    };
+    const result = verificationKeyRevisionSchema.safeParse(revision);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid key status", () => {
+    const revision = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      key_id: testId,
+      key_algorithm: "ECDSA",
+      public_key: "04c0ffee...",
+      trust_root: false,
+      status: "INVALID",
+      created_at: testTimestamp,
+    };
+    const result = verificationKeyRevisionSchema.safeParse(revision);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("RelationshipPromotionReceipt (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a committed relationship promotion receipt", () => {
+    const receipt = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      receipt_id: testId,
+      source_release_id: testId,
+      target_release_id: testId,
+      promotion_type: "PROMOTE",
+      status: "COMMITTED",
+      created_at: testTimestamp,
+    };
+    const result = relationshipPromotionReceiptSchema.safeParse(receipt);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates a verified relationship promotion receipt", () => {
+    const receipt = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      receipt_id: testId,
+      source_release_id: testId,
+      target_release_id: testId,
+      promotion_type: "PROMOTE",
+      status: "VERIFIED",
+      created_at: testTimestamp,
+      verified_at: testTimestamp,
+    };
+    const result = relationshipPromotionReceiptSchema.safeParse(receipt);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all promotion types", () => {
+    for (const promoType of ["PROMOTE", "DEMOTE", "RECONCILE"]) {
+      const receipt = {
+        id: testId,
+        app_id: testAppId,
+        tenant_id: testTenantId,
+        environment: "development",
+        receipt_id: testId,
+        source_release_id: testId,
+        target_release_id: testId,
+        promotion_type: promoType,
+        status: "COMMITTED",
+        created_at: testTimestamp,
+      };
+      const result = relationshipPromotionReceiptSchema.safeParse(receipt);
+      expect(result.success).toBe(true);
+    }
+  });
+});
+
+describe("NonceLedgerEntry (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testAppId = "00000000-0000-4000-8000-000000000002";
+  const testTenantId = "00000000-0000-4000-8000-000000000003";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete nonce ledger entry", () => {
+    const entry = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      nonce: "nonce-abc-123",
+      purpose: "conclusion-signing",
+      consumed_at: testTimestamp,
+      expires_at: testTimestamp,
+    };
+    const result = nonceLedgerEntrySchema.safeParse(entry);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates nonce with origin", () => {
+    const entry = {
+      id: testId,
+      app_id: testAppId,
+      tenant_id: testTenantId,
+      environment: "development",
+      nonce: "nonce-xyz-789",
+      purpose: "owner-map-publish",
+      consumed_at: testTimestamp,
+      expires_at: testTimestamp,
+      origin: "api-server-01",
+    };
+    const result = nonceLedgerEntrySchema.safeParse(entry);
+    expect(result.success).toBe(true);
+  });
+});
+
+describe("ConclusionSubjectManifest (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a complete conclusion subject manifest", () => {
+    const manifest = {
+      subject_id: "contribution-001",
+      subject_type: "CONTRIBUTION",
+      subject_version: "1.0.0",
+      subject_hash: testHash,
+      reference_chain: [
+        {
+          ref_type: "truth_contract",
+          ref_id: testId,
+          ref_hash: testHash,
+        },
+      ],
+    };
+    const result = conclusionSubjectManifestSchema.safeParse(manifest);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all subject types", () => {
+    for (const subjectType of ["CONTRIBUTION", "ENDPOINT", "PROFILE", "EVIDENCE", "AGGREGATE"]) {
+      const manifest = {
+        subject_id: "test-001",
+        subject_type: subjectType,
+        subject_version: "1.0.0",
+        subject_hash: testHash,
+        reference_chain: [],
+      };
+      const result = conclusionSubjectManifestSchema.safeParse(manifest);
+      expect(result.success).toBe(true);
+    }
+  });
+});
+
+describe("ConclusionReceiptSubject (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testHash = "sha256:abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234abcd1234";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates an approved conclusion receipt subject", () => {
+    const receipt = {
+      receipt_id: testId,
+      subject_manifest: {
+        subject_id: "contribution-001",
+        subject_type: "CONTRIBUTION",
+        subject_version: "1.0.0",
+        subject_hash: testHash,
+        reference_chain: [],
+      },
+      conclusion_verdict: "APPROVED",
+      conclusion_reason: "All checks passed",
+      concluded_by: "A6-verifier-01",
+      concluded_at: testTimestamp,
+    };
+    const result = conclusionReceiptSubjectSchema.safeParse(receipt);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all conclusion verdicts", () => {
+    for (const verdict of ["APPROVED", "REJECTED", "ABSTAINED", "ESCALATED"]) {
+      const receipt = {
+        receipt_id: testId,
+        subject_manifest: {
+          subject_id: "test-001",
+          subject_type: "CONTRIBUTION",
+          subject_version: "1.0.0",
+          subject_hash: testHash,
+          reference_chain: [],
+        },
+        conclusion_verdict: verdict,
+        conclusion_reason: `Reason for ${verdict}`,
+        concluded_by: "A6-verifier-01",
+        concluded_at: testTimestamp,
+      };
+      const result = conclusionReceiptSubjectSchema.safeParse(receipt);
+      expect(result.success).toBe(true);
+    }
+  });
+});
+
+describe("ConclusionSignatureAuthority (10620)", () => {
+  const testId = "00000000-0000-4000-8000-000000000001";
+  const testTimestamp = "2026-08-04T12:00:00.000Z";
+
+  it("validates a primary signature authority", () => {
+    const authority = {
+      authority_id: testId,
+      authority_name: "primary-conclusion-authority",
+      authority_public_key: "04c0ffee...",
+      key_algorithm: "ECDSA",
+      authority_role: "PRIMARY",
+      is_active: true,
+      registered_at: testTimestamp,
+      issued_conclusions: 42,
+    };
+    const result = conclusionSignatureAuthoritySchema.safeParse(authority);
+    expect(result.success).toBe(true);
+  });
+
+  it("validates all authority roles", () => {
+    for (const role of ["PRIMARY", "BACKUP", "WITNESS"]) {
+      const authority = {
+        authority_id: testId,
+        authority_name: `${role.toLowerCase()}-authority`,
+        authority_public_key: "3082...",
+        key_algorithm: "RSA",
+        authority_role: role,
+        is_active: true,
+        registered_at: testTimestamp,
+        issued_conclusions: 0,
+      };
+      const result = conclusionSignatureAuthoritySchema.safeParse(authority);
+      expect(result.success).toBe(true);
+    }
   });
 });
