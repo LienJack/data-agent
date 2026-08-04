@@ -157,7 +157,7 @@ begin
   );
 
   -- Create catalog fence (epoch 0)
-  get diagnostics v_fence_epoch = pg_current_xact_id;
+  v_fence_epoch := pg_catalog.pg_current_xact_id()::bigint;
   insert into semantic.semantic_catalog_fence (
     app_id, tenant_id, environment, semantic_domain,
     catalog_epoch, catalog_digest, schema_digest

@@ -191,6 +191,18 @@ grant execute on function semantic.expire_stale_bootstrap_packets(uuid, uuid, te
 -- ============================================================
 -- Part 5: Schema USAGE grants
 -- ============================================================
+do $semantic_roles$
+begin
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'data_agent_u6_web_role') then
+    create role data_agent_u6_web_role
+      nologin nosuperuser nocreatedb nocreaterole noreplication noinherit nobypassrls;
+  end if;
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'data_agent_u6_worker_role') then
+    create role data_agent_u6_worker_role
+      nologin nosuperuser nocreatedb nocreaterole noreplication noinherit nobypassrls;
+  end if;
+end
+$semantic_roles$;
 
 grant usage on schema semantic to data_agent_u6_rpc_owner;
 grant usage on schema semantic to data_agent_u6_web_role;

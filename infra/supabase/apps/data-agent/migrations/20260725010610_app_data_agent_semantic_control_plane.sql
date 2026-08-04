@@ -1,4 +1,4 @@
--- semantic_migration_checksum: sha256:e1eef9743e07a5dc9d91092aacd0d16c23e9ee805c6c6bf1368be4d7330b0a2c
+-- semantic_migration_checksum: sha256:1d5db0ef11adbff5b699f6ea01fbdc7eae055045fe0005164d49124f5026c464
 begin;
 
 do $bootstrap$
@@ -40,7 +40,7 @@ begin
   end if;
 
   if pg_catalog.current_setting('app.semantic_maintenance_manifest_hash', true)
-       is distinct from 'sha256:e1eef9743e07a5dc9d91092aacd0d16c23e9ee805c6c6bf1368be4d7330b0a2c'
+       is distinct from 'sha256:1d5db0ef11adbff5b699f6ea01fbdc7eae055045fe0005164d49124f5026c464'
     or pg_catalog.current_setting('app.semantic_maintenance_window_id', true)
        is distinct from '00000000-0000-4000-8000-000000001610'
   then
@@ -172,37 +172,6 @@ declare
   relation_owner name;
 begin
   foreach qualified_name in array array[
-    'semantic.semantic_domain_registry',
-    'semantic.semantic_domain_bootstrap',
-    'semantic.semantic_authority_fence',
-    'semantic.semantic_reviewer_policy_revision',
-    'semantic.semantic_reviewer_assignment',
-    'semantic.semantic_reviewer_policy_pointer',
-    'semantic.semantic_catalog_fence',
-    'semantic.semantic_dependency_pointer',
-    'semantic.semantic_source_revision',
-    'semantic.semantic_candidate',
-    'semantic.semantic_candidate_revision',
-    'semantic.semantic_validation_receipt',
-    'semantic.semantic_review_task',
-    'semantic.semantic_review_decision',
-    'semantic.semantic_publish_attempt',
-    'semantic.semantic_source_release',
-    'semantic.semantic_executable_projection',
-    'semantic.semantic_relationship_projection',
-    'semantic.semantic_runtime_restriction_projection',
-    'semantic.semantic_descriptive_contribution_profile_projection',
-    'semantic.semantic_active_pointer',
-    'semantic.semantic_grounding_issuer_draft',
-    'semantic.semantic_runtime_projection_binding',
-    'semantic.semantic_runtime_activation',
-    'semantic.semantic_legacy_equivalence_attempt',
-    'semantic.semantic_legacy_compatible_mirror',
-    'semantic.semantic_legacy_equivalence_receipt',
-    'semantic.semantic_legacy_closure_authorization',
-    'semantic.semantic_rollback_authorization',
-    'semantic.semantic_rollback_receipt',
-    'semantic.semantic_outbox',
     'platform.app_environment_lifecycle',
     'platform.deployment_mappings',
     'app_data_agent.memberships',
@@ -233,37 +202,6 @@ select platform.acquire_migration_lock(
 );
 
 lock table
-  semantic.semantic_domain_registry,
-  semantic.semantic_domain_bootstrap,
-  semantic.semantic_authority_fence,
-  semantic.semantic_reviewer_policy_revision,
-  semantic.semantic_reviewer_assignment,
-  semantic.semantic_reviewer_policy_pointer,
-  semantic.semantic_catalog_fence,
-  semantic.semantic_dependency_pointer,
-  semantic.semantic_source_revision,
-  semantic.semantic_candidate,
-  semantic.semantic_candidate_revision,
-  semantic.semantic_validation_receipt,
-  semantic.semantic_review_task,
-  semantic.semantic_review_decision,
-  semantic.semantic_publish_attempt,
-  semantic.semantic_source_release,
-  semantic.semantic_executable_projection,
-  semantic.semantic_relationship_projection,
-  semantic.semantic_runtime_restriction_projection,
-  semantic.semantic_descriptive_contribution_profile_projection,
-  semantic.semantic_active_pointer,
-  semantic.semantic_grounding_issuer_draft,
-  semantic.semantic_runtime_projection_binding,
-  semantic.semantic_runtime_activation,
-  semantic.semantic_legacy_equivalence_attempt,
-  semantic.semantic_legacy_compatible_mirror,
-  semantic.semantic_legacy_equivalence_receipt,
-  semantic.semantic_legacy_closure_authorization,
-  semantic.semantic_rollback_authorization,
-  semantic.semantic_rollback_receipt,
-  semantic.semantic_outbox,
   platform.app_environment_lifecycle,
   platform.deployment_mappings,
   app_data_agent.memberships,
@@ -1376,7 +1314,7 @@ create or replace function semantic.semantic_sha256(
   strict
   set search_path = ''
 as $function$
-  select 'sha256:' || extensions.encode(
+  select 'sha256:' || pg_catalog.encode(
     extensions.digest(
       p_input || '|' || app_data_agent.runtime_canonical_json(p_salt),
       'sha256'
@@ -2214,7 +2152,7 @@ begin
   );
 
   -- Create catalog fence (epoch 0)
-  get diagnostics v_fence_epoch = pg_current_xact_id;
+  v_fence_epoch := pg_catalog.pg_current_xact_id()::bigint;
   insert into semantic.semantic_catalog_fence (
     app_id, tenant_id, environment, semantic_domain,
     catalog_epoch, catalog_digest, schema_digest
@@ -2610,6 +2548,18 @@ grant execute on function semantic.expire_stale_bootstrap_packets(uuid, uuid, te
 -- ============================================================
 -- Part 5: Schema USAGE grants
 -- ============================================================
+do $semantic_roles$
+begin
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'data_agent_u6_web_role') then
+    create role data_agent_u6_web_role
+      nologin nosuperuser nocreatedb nocreaterole noreplication noinherit nobypassrls;
+  end if;
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'data_agent_u6_worker_role') then
+    create role data_agent_u6_worker_role
+      nologin nosuperuser nocreatedb nocreaterole noreplication noinherit nobypassrls;
+  end if;
+end
+$semantic_roles$;
 
 grant usage on schema semantic to data_agent_u6_rpc_owner;
 grant usage on schema semantic to data_agent_u6_web_role;
@@ -2622,7 +2572,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010610_app_data_agent_semantic_control_plane',
-  'sha256:e1eef9743e07a5dc9d91092aacd0d16c23e9ee805c6c6bf1368be4d7330b0a2c'
+  'sha256:1d5db0ef11adbff5b699f6ea01fbdc7eae055045fe0005164d49124f5026c464'
 );
 
 commit;

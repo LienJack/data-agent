@@ -107,7 +107,7 @@ create or replace function semantic.semantic_sha256(
   strict
   set search_path = ''
 as $function$
-  select 'sha256:' || extensions.encode(
+  select 'sha256:' || pg_catalog.encode(
     extensions.digest(
       p_input || '|' || app_data_agent.runtime_canonical_json(p_salt),
       'sha256'
