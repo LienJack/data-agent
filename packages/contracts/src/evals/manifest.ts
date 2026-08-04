@@ -6,13 +6,12 @@ import {
 } from "../artifacts/envelope.js";
 import {
   contentHashSchema,
-  deepFreeze,
   immutableIdSchema,
   sha256ContentHash,
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import { benchmarkSuiteSchema, type EvalCase, evalCaseSchema } from "./index.js";
+import { benchmarkSuiteSchema, type EvalCase } from "./index.js";
 
 export const benchmarkDatasetReferenceSchema = z.strictObject({
   dataset_id: immutableIdSchema,

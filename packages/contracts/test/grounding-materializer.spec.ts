@@ -3,7 +3,6 @@ import {
   GroundingAuthorityError,
   type GroundingAuthorityOrigin,
   type GroundingAuthorityReference,
-  type GroundingAuthorityVerificationContext,
   groundingAuthorityOriginSchema,
   type PolicyReceiptDocument,
   type SchemaSnapshotDocument,
@@ -754,7 +753,7 @@ describe("Fixture/Published Isolation in Materializer", () => {
     const prAdapter = createMockAdapter();
     const srIssuer = registerTrustedSemanticReleaseIssuer(srAdapter);
     const ssIssuer = registerTrustedSchemaSnapshotIssuer(ssAdapter);
-    const prIssuer = registerTrustedPolicyReceiptIssuer(prAdapter);
+    const _prIssuer = registerTrustedPolicyReceiptIssuer(prAdapter);
     const coordinator = registerTrustedGroundingCoordinator({ principal_id: "test-coordinator" });
 
     // 签发 SR 和 SS 为 fixture

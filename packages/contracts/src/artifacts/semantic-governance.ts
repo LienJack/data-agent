@@ -1,8 +1,6 @@
 import { z } from "zod";
 import {
-  canonicalizeJson,
   contentHashSchema,
-  deepFreeze,
   environmentSchema,
   immutableIdSchema,
   sha256ContentHash,
@@ -411,6 +409,23 @@ export type StaticDriverCapacityProof = z.infer<typeof staticDriverCapacityProof
 export type RowPartitionWitness = z.infer<typeof rowPartitionWitnessSchema>;
 export type FormulaEquivalenceWitness = z.infer<typeof formulaEquivalenceWitnessSchema>;
 
+/**
+ * AnalyticalSemantics 平面 — 分析语义，包含指标、维度和公式。
+ * 在 SemanticSourceBundle 中对应 metrics、dimensions 和 formulas 字段。
+ */
+export type AnalyticalSemantics = {
+  metrics: SemanticMetric[];
+  dimensions: SemanticDimension[];
+  formulas: FormulaSignature[];
+};
+
+/** RelationshipRegistry 平面 — 关系注册表，包含语义关系。 */
+export type RelationshipRegistry = {
+  relationships: SemanticRelationship[];
+};
+
+/** RuntimeAuthorization 平面 — 运行时授权（RuntimeAuth 的别名）。 */
+export type RuntimeAuthorization = RuntimeAuth;
 // ─── Content digest ───────────────────────────────────────────────────────────
 
 export async function computeExecutableSemanticDigest(

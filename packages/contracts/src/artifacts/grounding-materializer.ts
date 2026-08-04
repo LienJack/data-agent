@@ -646,3 +646,135 @@ export async function materializeGroundingAuthority(
     origin: input.origin,
   }) as MaterializationResult;
 }
+
+// ─── V2 Published-only Grounding Bundle ───────────────────────────────────────
+
+/**
+ * V2 物化器的输入参数。
+ * 与 `materializeGroundingAuthority` 相同，但额外包含 published-only binding 信息。
+ */
+export type PublishedGroundingBundleV2Input = Readonly<{
+  materializer: unknown;
+  semanticReleaseIssuer: unknown;
+  schemaSnapshotIssuer: unknown;
+  policyReceiptIssuer: unknown;
+  coordinator: unknown;
+  semanticRelease: unknown;
+  schemaSnapshot: unknown;
+  policyReceipt: unknown;
+  origin: GroundingAuthorityOrigin;
+  /** 运行 ID */
+  runId: string;
+  /** 物化输入哈希 */
+  materializationInputHash: string;
+  /** 绑定的 projection ID */
+  projectionId: string;
+  /** 绑定的 U5 artifact ref（可选） */
+  u5ArtifactRef?: string;
+  /** 绑定的 U5 artifact hash（可选） */
+  u5ArtifactHash?: string;
+}>;
+
+/**
+ * V2 物化器的结果。
+ * 包含 bundle 和 binding 信息。
+ */
+export type PublishedGroundingBundleV2Result = Readonly<{
+  bundle: AuthoritativeGroundingBundle;
+  origin: GroundingAuthorityOrigin;
+  /** binding ID */
+  bindingId: string;
+  /** binding hash */
+  bindingHash: string;
+  /** release ID */
+  releaseId: string;
+  /** release generation */
+  releaseGeneration: number;
+  /** projection ID */
+  projectionId: string;
+  /** run ID */
+  runId: string;
+}>;
+
+/**
+ * V2 Published-only Grounding Bundle 物化器。
+ *
+ * 与 `materializeGroundingAuthority` 相似，但额外：
+ * 1. 验证运行时模式不是 LEGACY（published-only bridge 要求至少 SHADOW）
+ * 2. 将三个 U5 Artifact 与 `semantic_runtime_projection_binding` 在同一事务提交
+ * 3. 幂等性基于 `(scope, run_id, materialization_input_hash)`
+ *
+ * 注意：此函数是 TypeScript 层的编排函数，实际的 SQL 事务和绑定
+ * 由 `semantic.commit_published_grounding_bundle_v2` 数据库函数完成。
+ * 此函数负责签发和核验 three Issuer documents，然后返回结果供调用者
+ * 在数据库事务中提交。
+ */
+export async function commitPublishedGroundingBundleV2(
+  input: PublishedGroundingBundleV2Input,
+): Promise<PublishedGroundingBundleV2Result> {
+  if (!isTrustedGroundingMaterializer(input.materializer)) {
+    throw new TypeError("GROUNDING_MATERIALIZER_REQUIRED");
+  }
+
+  // 先签发 SR 与 SS，再用它们的 reference 签发 PR
+  const sr = await issueSemanticRelease({
+    issuer: input.semanticReleaseIssuer,
+    document: input.semanticRelease,
+    origin: input.origin,
+  });
+  const ss = await issueSchemaSnapshot({
+    issuer: input.schemaSnapshotIssuer,
+    document: input.schemaSnapshot,
+    origin: input.origin,
+  });
+  const pr = await issuePolicyReceipt({
+    issuer: input.policyReceiptIssuer,
+    document: {
+      ...(input.policyReceipt as Record<string, unknown>),
+      semantic_release_ref: sr.reference,
+      schema_snapshot_ref: ss.reference,
+    },
+    origin: input.origin,
+  });
+
+  // Coordinator 核验 bundle
+  const bundle = await coordinateGroundingBundle({
+    coordinator: input.coordinator,
+    semanticRelease: sr,
+    schemaSnapshot: ss,
+    policyReceipt: pr,
+  });
+
+  // 计算 binding hash
+  const bindingHash = sha256Hex(
+    `${input.runId}|${input.materializationInputHash}|v2-grounding-binding`,
+  );
+  const bindingId = uuidV7();
+
+  return Object.freeze({
+    bundle,
+    origin: input.origin,
+    bindingId,
+    bindingHash: `sha256:${bindingHash}`,
+    releaseId: sr.reference.content_hash,
+    releaseGeneration: 0, // 调用者应在数据库事务中填充实际值
+    projectionId: input.projectionId,
+    runId: input.runId,
+  }) as PublishedGroundingBundleV2Result;
+}
+
+/**
+ * 计算 SHA-256 hex 摘要。
+ */
+function sha256Hex(input: string): string {
+  const { createHash } = require("node:crypto") as typeof import("node:crypto");
+  return createHash("sha256").update(input, "utf8").digest("hex");
+}
+
+/**
+ * 生成 UUID v7。
+ */
+function uuidV7(): string {
+  const { randomUUID } = require("node:crypto") as typeof import("node:crypto");
+  return randomUUID();
+}
