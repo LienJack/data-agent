@@ -1,7 +1,7 @@
 {
   "id": "data-agent-reset-refactor",
   "name": "data-agent-reset-refactor",
-  "title": "Data Agent \u5f7b\u5e95\u91cd\u7f6e\u91cd\u6784\u89c4\u5212",
+  "title": "Data Agent 彻底重置重构规划",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -15,7 +15,7 @@
   "branch": "codex/data-agent-l2-vertical-slice",
   "base_branch": "main",
   "worktree_path": null,
-  "commit": "f3fd893",
+  "commit": "3acac97",
   "pr_url": null,
   "subtasks": [],
   "children": [
@@ -23,6 +23,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "U6-C2a/10600, U8 base/M1-Core, U10.0-U10.3, U11-Core, U7 Published Governance Delta completed. U8-Core L2 workbench enhancement completed. U9-Core PostgreSQL-only Hosted/Docker parity deployed: compose.yaml, Dockerfile.web, Dockerfile.worker, init-db.sh, u9-semantic-migration-maintenance-manifest.json, verify-release.ts updated, pending-gate.ts updated, deployment-operations.md runbook, test-deploy-docker.sh, test-deploy-hosted.sh. Next: U9-F9 (10620 contribution authority migration), M2-Core final release decision.",
+  "notes": "M2-Core 治理发布完成：U9 manifest hash 已认证（sha256:40dd1765694b045aa23d589131b051a4a9e500006901dd4d2ae3637838e7a640），verify:release.ts 已更新为治理范围感知（v1.3.0，Core=GO, F9=NOT_REGISTERED），M2-Core 发布文档已创建。U5 沙箱门禁保持 informative（不阻断 Core）。F9 泳道未注册：10620、U13.0-U13.2、CapabilityDirectory、Eligibility、ProfileRequest 均未实现。整体状态：Core L2=GO, F9=NOT_REGISTERED。",
   "meta": {}
 }

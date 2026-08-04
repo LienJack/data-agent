@@ -17,7 +17,7 @@
   "migrations": [
     {
       "name": "20260725010610_app_data_agent_semantic_control_plane.sql",
-      "manifest_hash": "sha256:PENDING",
+      "manifest_hash": "sha256:963a61342cb93310d65cef7c88002594eafbe30db76ced0e0e9ac0b482f0082c",
       "approved_max_rows": 100000,
       "approved_max_total_bytes": 268435456,
       "new_relations": [
@@ -37,7 +37,7 @@
     },
     {
       "name": "20260725010615_app_data_agent_semantic_published_bridge.sql",
-      "manifest_hash": "sha256:PENDING",
+      "manifest_hash": "sha256:65aed8896079a58fd908d8ff7ce532ee6cd9dfecae5e3424d928e44b87a0ed2d",
       "approved_max_rows": 10000,
       "approved_max_total_bytes": 67108864,
       "new_relations": [
@@ -75,5 +75,5 @@
       "approved_max_total_bytes": 268435456
     }
   ],
-  "manifest_hash": "sha256:PENDING"
+  "manifest_hash": "sha256:40dd1765694b045aa23d589131b051a4a9e500006901dd4d2ae3637838e7a640"
 }
