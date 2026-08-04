@@ -1,3 +1,4 @@
+export * from "./semantic-control-plane.js";
 export * from "./envelope.js";
 export {
   assertGroundingAuthorityBundleConsistency,
