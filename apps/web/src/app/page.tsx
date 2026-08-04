@@ -4,6 +4,7 @@ import { useCallback, useEffect } from "react";
 import { AuthorityStatusBar } from "@/components/workbench/authority-status-bar";
 import { ClarificationDialog } from "@/components/workbench/clarification-dialog";
 import { EvalSection } from "@/components/workbench/eval-section";
+import { FixtureEvidenceSection } from "@/components/workbench/fixture-evidence-section";
 import { HypothesisSection } from "@/components/workbench/hypothesis-section";
 import { QueryInputSection } from "@/components/workbench/query-input-section";
 import { ReportSection } from "@/components/workbench/report-section";
@@ -252,6 +253,9 @@ export default function AnalysisWorkbenchPage() {
           <HypothesisSection />
           <EvalSection />
         </div>
+
+        {/* 信息层级 5: F9 Fixture Evidence — 符合 implement.md §8.7 要求 */}
+        <FixtureEvidenceSection />
 
         {/* M1 固定信息 — 符合 implement.md §8.7 要求 */}
         <M1StateFooter
