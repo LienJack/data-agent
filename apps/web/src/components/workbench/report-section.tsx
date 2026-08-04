@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ClaimEvidenceTree } from "./claim-evidence-tree";
-import { WorkbenchSection } from "./workbench-section";
 import type { Report } from "@/lib/run-projection";
 import { useWorkbenchStore } from "@/lib/workbench-store";
+import { ClaimEvidenceTree } from "./claim-evidence-tree";
+import { WorkbenchSection } from "./workbench-section";
 
 function ReportCard({ report }: { report: Report }) {
   const [expanded, setExpanded] = useState(false);

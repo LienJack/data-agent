@@ -35,9 +35,15 @@ importers:
       '@data-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@data-agent/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       next:
         specifier: ^16.3.0
         version: 16.3.0(@types/node@26.1.1)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      pg:
+        specifier: 8.22.0
+        version: 8.22.0
       react:
         specifier: ^19.1.0
         version: 19.2.8
@@ -60,6 +66,9 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
       '@types/react':
         specifier: ^19.1.2
         version: 19.2.18

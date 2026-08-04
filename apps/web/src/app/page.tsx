@@ -229,7 +229,7 @@ export default function AnalysisWorkbenchPage() {
   // ── 渲染 ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen">
+    <div>
       <AuthorityStatusBar
         authorityState={state.authorityState}
         coreL2Status={state.coreL2Verdict}

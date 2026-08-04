@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { SqlReceiptCard } from "./sql-receipt-card";
-import { WorkbenchSection } from "./workbench-section";
 import type { Hypothesis } from "@/lib/run-projection";
 import { useWorkbenchStore } from "@/lib/workbench-store";
+import { SqlReceiptCard } from "./sql-receipt-card";
+import { WorkbenchSection } from "./workbench-section";
 
 const hypothesisStatusLabel: Record<string, string> = {
   PROPOSED: "待验证",

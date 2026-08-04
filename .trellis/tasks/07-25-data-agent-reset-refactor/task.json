@@ -1,7 +1,7 @@
 {
   "id": "data-agent-reset-refactor",
   "name": "data-agent-reset-refactor",
-  "title": "Data Agent 彻底重置重构规划",
+  "title": "Data Agent \u5f7b\u5e95\u91cd\u7f6e\u91cd\u6784\u89c4\u5212",
   "description": "",
   "status": "in_progress",
   "dev_type": null,
@@ -23,6 +23,6 @@
   ],
   "parent": null,
   "relatedFiles": [],
-  "notes": "U6-C2a/10600 completed (C2 descriptor = INSTALLABLE). U8 base/M1-Core completed (SSE streaming, Cancel/Resume/Replay, connection state, M1 demo, all 11 UI components). Next: U11 governance release.",
+  "notes": "U6-C2a/10600, U8 M1-Core completed. U11.1 Service layer created. U11.2 API routes (7 files) + frontend API client updated. U11.3 Permission separation UI completed (fixed duplicate types, hooks ordering, Zod schema, API client structure). TypeScript clean. Next: U11.4 PostgreSQL service.",
   "meta": {}
 }
