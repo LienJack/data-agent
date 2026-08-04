@@ -23,6 +23,7 @@ import { createRetailRevenueInvestigationV1Case } from "../packages/contracts/sr
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const EVALS_SRC = resolve(__dirname, "../packages/evals/src");
+const CONTRACTS_SRC = resolve(__dirname, "../packages/contracts/src");
 
 interface ImplementationStatus {
   implemented: boolean;
@@ -40,6 +41,20 @@ function checkImplementation(
   return {
     implemented,
     file: relativePath,
+    description: implemented ? description : `${description}（文件不存在）`,
+  };
+}
+
+function checkContractsImplementation(
+  unitName: string,
+  relativePath: string,
+  description: string,
+): ImplementationStatus {
+  const fullPath = resolve(CONTRACTS_SRC, relativePath);
+  const implemented = existsSync(fullPath);
+  return {
+    implemented,
+    file: `../../contracts/src/${relativePath}`,
     description: implemented ? description : `${description}（文件不存在）`,
   };
 }
@@ -71,6 +86,11 @@ function detectImplementedUnits(): {
       "controlled-attribution-adapter.ts",
       "Controlled Attribution Adapter 实现",
     ),
+    "U7-adapter-governance": checkImplementation(
+      "U7-adapter-governance",
+      "governance-adapter.ts",
+      "Governance Adapter 实现",
+    ),
     "U7-oracle-runner": checkImplementation(
       "U7-oracle-runner",
       "oracle-runner.ts",
@@ -100,6 +120,16 @@ function detectImplementedUnits(): {
       "U7-truth-contract",
       "../../contracts/src/evals/manifest.ts",
       "Truth Contract 定义（BenchmarkManifest、retail-revenue-investigation-v1）",
+    ),
+    "U7-truth-contract-governance": checkContractsImplementation(
+      "U7-truth-contract-governance",
+      "evals/truth-types.ts",
+      "Governance Truth 类型定义（ArithmeticPartition、InjectedFault、ExpertPriority、SCMCausal）",
+    ),
+    "U7-governance-eval-case": checkContractsImplementation(
+      "U7-governance-eval-case",
+      "evals/manifest.ts",
+      "Governance Eval Case 定义（semantic-review、domain-coverage、role-permission）",
     ),
     "U7-eval-verdict": {
       implemented: false,
@@ -144,7 +174,7 @@ async function main(): Promise<number> {
     {
       condition_id: "adapter-impl-v1",
       condition_type: "SCORE_THRESHOLD" as const,
-      description: "四类 Suite Adapter 完整实现",
+      description: "五类 Suite Adapter 完整实现（含 governance）",
       required_ref: null,
     },
     {
@@ -175,6 +205,12 @@ async function main(): Promise<number> {
       condition_id: "truth-contract-v1",
       condition_type: "SCORE_THRESHOLD" as const,
       description: "Truth Contract 冻结",
+      required_ref: null,
+    },
+    {
+      condition_id: "governance-adapter-v1",
+      condition_type: "SCORE_THRESHOLD" as const,
+      description: "Governance Adapter 与 Truth 类型实现",
       required_ref: null,
     },
     {
@@ -256,6 +292,33 @@ async function main(): Promise<number> {
         affected_conditions: ["truth-contract-v1"],
       });
     }
+
+    if (missingUnits.includes("U7-adapter-governance")) {
+      failureTaxonomy.push({
+        code: "GOVERNANCE_ADAPTER_NOT_IMPLEMENTED",
+        severity: "HIGH",
+        description: "Governance Adapter 尚未实现",
+        affected_conditions: ["governance-adapter-v1"],
+      });
+    }
+
+    if (missingUnits.includes("U7-truth-contract-governance")) {
+      failureTaxonomy.push({
+        code: "GOVERNANCE_TRUTH_TYPES_NOT_IMPLEMENTED",
+        severity: "HIGH",
+        description: "Governance Truth 类型定义尚未创建",
+        affected_conditions: ["governance-adapter-v1"],
+      });
+    }
+
+    if (missingUnits.includes("U7-governance-eval-case")) {
+      failureTaxonomy.push({
+        code: "GOVERNANCE_EVAL_CASE_NOT_IMPLEMENTED",
+        severity: "MEDIUM",
+        description: "Governance Eval Case 定义尚未完整",
+        affected_conditions: ["governance-adapter-v1"],
+      });
+    }
   }
 
   // ── 4. 安全计数器 ─────────────────────────────────────────
@@ -287,18 +350,23 @@ async function main(): Promise<number> {
   ];
 
   // ── 5. 签发 EvalReleaseDecision ───────────────────────────
-  const allAdapterImplemented = ["insightbench", "dab", "rcaeval", "controlled-attribution"].every(
+  const allAdapterImplemented = [
+    "insightbench", "dab", "rcaeval", "controlled-attribution", "governance",
+  ].every(
     (name) => implementedUnits.includes(`U7-adapter-${name}`),
   );
 
-  // 核心实现就绪：adapter + oracle + manifest + paired + contamination
+  // 核心实现就绪：adapter + oracle + manifest + paired + contamination + governance
   const coreReady =
     allAdapterImplemented &&
     implementedUnits.includes("U7-oracle-runner") &&
     implementedUnits.includes("U7-manifest-replay") &&
     implementedUnits.includes("U7-paired-comparison") &&
     implementedUnits.includes("U7-holdout-contamination") &&
-    implementedUnits.includes("U7-safety-checks");
+    implementedUnits.includes("U7-safety-checks") &&
+    implementedUnits.includes("U7-adapter-governance") &&
+    implementedUnits.includes("U7-truth-contract-governance") &&
+    implementedUnits.includes("U7-governance-eval-case");
 
   // 完整 U7 就绪：core + truth contract + eval verdict
   const u7Complete =
@@ -320,8 +388,8 @@ async function main(): Promise<number> {
     reasonCode = "U7_CORE_READY_TRUTH_CONTRACT_PENDING";
     reason =
       "U7 核心实现（Adapter、Oracle Runner、Manifest Replay、Paired Comparison、" +
-      "Contamination Check、Safety Checks）已就绪，但 Truth Contract 与 Eval Verdict " +
-      "尚未完成，不满足完整发布条件。";
+      "Contamination Check、Safety Checks、Governance）已就绪，但 Truth Contract 与 " +
+      "Eval Verdict 尚未完成，不满足完整发布条件。";
   } else {
     verdict = "HOLD";
     reasonCode = "RELEASE_EVIDENCE_INCOMPLETE";

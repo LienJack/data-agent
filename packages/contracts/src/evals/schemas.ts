@@ -10,6 +10,7 @@ export const benchmarkSuiteSchema = z.enum([
   "dab",
   "rcaeval",
   "controlled-attribution",
+  "governance",
 ]);
 
 export const benchmarkOracleSchema = z.discriminatedUnion("suite", [
@@ -33,6 +34,11 @@ export const benchmarkOracleSchema = z.discriminatedUnion("suite", [
     oracle_type: z.literal("ATTRIBUTION_MATCH"),
     expected: z.array(z.string().min(1)).min(1),
   }),
+  z.strictObject({
+    suite: z.literal("governance"),
+    oracle_type: z.literal("GOVERNANCE_SERVICE_QUALITY"),
+    expected: z.array(z.string().min(1)).min(1),
+  }),
 ]);
 
 export const ORACLE_TYPE_BY_SUITE = {
@@ -40,6 +46,7 @@ export const ORACLE_TYPE_BY_SUITE = {
   dab: "RESULT_EQUIVALENCE",
   rcaeval: "ROOT_CAUSE_RANKING",
   "controlled-attribution": "ATTRIBUTION_MATCH",
+  "governance": "GOVERNANCE_SERVICE_QUALITY",
 } as const;
 
 const evalCaseObjectSchema = z.strictObject({
@@ -125,3 +132,24 @@ export const scoreCardIntervalSchema = z
 export type BenchmarkSuite = z.infer<typeof benchmarkSuiteSchema>;
 export type BenchmarkOracle = z.infer<typeof benchmarkOracleSchema>;
 export type EvalCase = z.infer<typeof evalCaseSchema>;
+
+/**
+ * Eval Lane 类型 — 用于区分不同评测维度的泳道。
+ * 每个 Benchmark Suite 绑定一个固定的 Lane。
+ */
+export const evalLaneSchema = z.enum([
+  "grounding",
+  "end-to-end-product",
+  "authorization",
+  "contribution",
+]);
+
+export const LANE_BY_SUITE = {
+  insightbench: "grounding",
+  dab: "end-to-end-product",
+  rcaeval: "grounding",
+  "controlled-attribution": "contribution",
+  "governance": "authorization",
+} as const satisfies Record<BenchmarkSuite, EvalLane>;
+
+export type EvalLane = z.infer<typeof evalLaneSchema>;

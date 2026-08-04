@@ -71,6 +71,11 @@ export interface ControlledAttributionAdapter extends EvalAdapter {
   readonly oracle_type: "ATTRIBUTION_MATCH";
 }
 
+export interface GovernanceAdapter extends EvalAdapter {
+  readonly suite: "governance";
+  readonly oracle_type: "GOVERNANCE_SERVICE_QUALITY";
+}
+
 // ============================================================
 // Oracle Runner 基础设施
 // ============================================================

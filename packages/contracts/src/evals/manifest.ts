@@ -268,3 +268,414 @@ export type BenchmarkDatasetReference = z.infer<typeof benchmarkDatasetReference
 export type BenchmarkMutationDefinition = z.infer<typeof benchmarkMutationDefinitionSchema>;
 export type BenchmarkBudget = z.infer<typeof benchmarkBudgetSchema>;
 export type BenchmarkDemoHoldoutIdentity = z.infer<typeof benchmarkDemoHoldoutIdentitySchema>;
+
+// === governance-semantic-review-v1 具体定义 ===
+
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_SUITE = "governance" as const;
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_QUESTION =
+  "治理系统能否正确执行语义治理审核流程（候选提交→审核→决策→发布→回滚），" +
+  "并确保审核决策一致性、角色权限分离、发布/回滚流程正确性和审核超时处理？";
+
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_DATASET = {
+  dataset_id: "governance-semantic-review-v1",
+  dataset_version: "1.0.0",
+  dataset_name: "语义治理审核流程测试数据集",
+  dataset_description:
+    "包含治理候选、审核记录、决策记录、发布/回滚操作的模拟数据，覆盖完整治理生命周期。",
+  dialect: "postgresql" as const,
+  schema_digest:
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  row_count: 1000,
+  parameters: {
+    table_count: 6,
+    candidate_count: 50,
+    reviewer_count: 5,
+    scenario_count: 4,
+  },
+};
+
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_MUTATIONS = [
+  {
+    mutation_id: "GSR-001",
+    description: "审核决策一致性：相同候选在不同审核轮次中应获得一致决策",
+    mutation_type: "COMPARISON_BENCHMARK" as const,
+    expected_impact: "相同候选的审核决策一致性应达到 90% 以上",
+    severity: "HIGH" as const,
+    oracle_expectation: "审核决策一致性 ≥ 90%，不一致的决策应有明确的理由记录",
+  },
+  {
+    mutation_id: "GSR-002",
+    description: "角色权限分离：proposer 不能同时担任 reviewer，reviewer 不能发布自己的审核结果",
+    mutation_type: "DATA_FILTER" as const,
+    expected_impact: "角色权限分离违规应被系统拒绝并记录审计日志",
+    severity: "CRITICAL" as const,
+    oracle_expectation: "所有角色权限分离违规均被系统拒绝，审计日志完整可追溯",
+  },
+  {
+    mutation_id: "GSR-003",
+    description: "发布/回滚流程正确性：已发布的治理配置应可回滚，回滚后状态与发布前一致",
+    mutation_type: "COMPARISON_BENCHMARK" as const,
+    expected_impact: "发布/回滚操作应保持状态一致性，回滚后系统状态与发布前一致",
+    severity: "HIGH" as const,
+    oracle_expectation: "回滚后系统状态与发布前完全一致，状态差异为零",
+  },
+  {
+    mutation_id: "GSR-004",
+    description: "审核超时处理：超过审核时限的候选应自动进入升级流程",
+    mutation_type: "TIME_PERIOD_SHIFT" as const,
+    expected_impact: "超时候选应产生升级通知，且升级流程不能绕过正常审核",
+    severity: "MEDIUM" as const,
+    oracle_expectation: "超时候选正确触发升级流程，升级后的审核仍遵循角色权限分离规则",
+  },
+];
+
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_BUDGET = {
+  max_cases: 1,
+  max_duration_ms: 600000,
+  max_cost_micros: 50000000,
+  max_sql_queries: 16,
+  max_drivers: 6,
+};
+
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_DEMO_HOLDOUT = {
+  demo_registry: "HOLDOUT" as const,
+  demo_policy_version: "1.0.0",
+  holdout_fraction: 0.15,
+  holdout_seed: 42,
+  demo_license: "CC-BY-4.0",
+};
+
+export const GOVERNANCE_SEMANTIC_REVIEW_V1_L2_BOUNDARY =
+  "本案例仅评估语义治理审核流程的正确性和一致性，不评估治理候选的内容质量、不评估归因贡献数值的准确性、不评估因果推断。治理评测专注于流程正确性而非业务结果。";
+
+export async function createGovernanceSemanticReviewV1Case(): Promise<EvalCase> {
+  const caseInput = {
+    case_id: "governance-semantic-review-v1" as const,
+    suite: "governance" as const,
+    suite_version: "1.0.0",
+    dataset_version: "1.0.0",
+    oracle_version: "1.0.0",
+    source_commit: "0000000000000000000000000000000000000000",
+    question: GOVERNANCE_SEMANTIC_REVIEW_V1_QUESTION,
+    oracle: {
+      suite: "governance" as const,
+      oracle_type: "GOVERNANCE_SERVICE_QUALITY" as const,
+      expected: [
+        "审核决策一致性 ≥ 90%",
+        "角色权限分离违规被系统拒绝",
+        "发布/回滚操作保持状态一致性",
+        "超时候选正确触发升级流程",
+      ],
+    },
+    license: "CC-BY-4.0",
+    case_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  };
+  const { case_hash: _, ...material } = caseInput;
+  const hash = await sha256ContentHash(material);
+  return {
+    ...caseInput,
+    case_hash: hash,
+  };
+}
+
+export function createGovernanceSemanticReviewV1Manifest(
+  evalCase: EvalCase,
+): z.infer<typeof benchmarkManifestSchema> {
+  return {
+    manifest_id: `manifest-${evalCase.case_id}`,
+    manifest_version: "1.0.0",
+    manifest_revision: 1,
+    case_ref: {
+      artifact_id: evalCase.case_id,
+      artifact_type: "EvalCase",
+      app_id: evalCase.case_id,
+      tenant_id: "default",
+      environment: "research",
+      run_id: evalCase.case_id,
+      revision: 1,
+      content_hash: evalCase.case_hash,
+    },
+    suite: "governance",
+    dataset: GOVERNANCE_SEMANTIC_REVIEW_V1_DATASET,
+    semantic_release_ref: null,
+    mutation_definitions: GOVERNANCE_SEMANTIC_REVIEW_V1_MUTATIONS,
+    budget: GOVERNANCE_SEMANTIC_REVIEW_V1_BUDGET,
+    demo_holdout_identity: GOVERNANCE_SEMANTIC_REVIEW_V1_DEMO_HOLDOUT,
+    l2_non_causal_boundary: GOVERNANCE_SEMANTIC_REVIEW_V1_L2_BOUNDARY,
+    manifest_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// === governance-domain-coverage-v1 具体定义 ===
+
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_SUITE = "governance" as const;
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_QUESTION =
+  "治理系统能否覆盖多个语义领域（零售、金融、医疗、制造），确保领域边界隔离，并支持新领域注册？";
+
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_DATASET = {
+  dataset_id: "governance-domain-coverage-v1",
+  dataset_version: "1.0.0",
+  dataset_name: "语义治理领域覆盖完整性测试数据集",
+  dataset_description:
+    "包含四个语义领域（零售、金融、医疗、制造）的治理候选和审核数据，覆盖跨领域和领域边界隔离场景。",
+  dialect: "postgresql" as const,
+  schema_digest:
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  row_count: 2000,
+  parameters: {
+    table_count: 8,
+    domain_count: 4,
+    candidate_count: 80,
+    cross_domain_scenario: true,
+  },
+};
+
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_MUTATIONS = [
+  {
+    mutation_id: "GDC-001",
+    description: "多领域覆盖：治理系统应能同时管理零售、金融、医疗、制造四个领域的语义治理",
+    mutation_type: "COMPARISON_BENCHMARK" as const,
+    expected_impact: "四个领域的治理候选均能独立通过审核流程，领域间不干扰",
+    severity: "HIGH" as const,
+    oracle_expectation: "每个领域的治理候选均完成独立审核流程，领域间无状态串扰",
+  },
+  {
+    mutation_id: "GDC-002",
+    description: "领域边界隔离：跨领域引用应被系统识别并标记，不允许直接引用其他领域的治理配置",
+    mutation_type: "DATA_FILTER" as const,
+    expected_impact: "跨领域引用被系统正确标记，非授权的跨领域引用被拒绝",
+    severity: "HIGH" as const,
+    oracle_expectation: "所有跨领域引用被正确标记，非授权引用被系统拒绝",
+  },
+  {
+    mutation_id: "GDC-003",
+    description: "新领域注册：治理系统应支持注册新的语义领域并立即生效",
+    mutation_type: "AGGREGATION_CHANGE" as const,
+    expected_impact: "新领域注册后，用户可以立即在该领域提交治理候选和审核",
+    severity: "MEDIUM" as const,
+    oracle_expectation: "新领域注册后零延迟生效，治理候选和审核流程正常运行",
+  },
+];
+
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_BUDGET = {
+  max_cases: 1,
+  max_duration_ms: 600000,
+  max_cost_micros: 50000000,
+  max_sql_queries: 16,
+  max_drivers: 6,
+};
+
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_DEMO_HOLDOUT = {
+  demo_registry: "HOLDOUT" as const,
+  demo_policy_version: "1.0.0",
+  holdout_fraction: 0.15,
+  holdout_seed: 42,
+  demo_license: "CC-BY-4.0",
+};
+
+export const GOVERNANCE_DOMAIN_COVERAGE_V1_L2_BOUNDARY =
+  "本案例仅评估治理系统对多领域覆盖的完整性，不评估各领域内治理候选的内容质量或领域特定的语义正确性。领域覆盖评测专注于治理系统的跨领域能力而非单个领域的治理深度。";
+
+export async function createGovernanceDomainCoverageV1Case(): Promise<EvalCase> {
+  const caseInput = {
+    case_id: "governance-domain-coverage-v1" as const,
+    suite: "governance" as const,
+    suite_version: "1.0.0",
+    dataset_version: "1.0.0",
+    oracle_version: "1.0.0",
+    source_commit: "0000000000000000000000000000000000000000",
+    question: GOVERNANCE_DOMAIN_COVERAGE_V1_QUESTION,
+    oracle: {
+      suite: "governance" as const,
+      oracle_type: "GOVERNANCE_SERVICE_QUALITY" as const,
+      expected: [
+        "四个领域独立完成审核流程，无状态串扰",
+        "跨领域引用被正确标记",
+        "非授权跨领域引用被系统拒绝",
+        "新领域注册零延迟生效",
+      ],
+    },
+    license: "CC-BY-4.0",
+    case_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  };
+  const { case_hash: _, ...material } = caseInput;
+  const hash = await sha256ContentHash(material);
+  return {
+    ...caseInput,
+    case_hash: hash,
+  };
+}
+
+export function createGovernanceDomainCoverageV1Manifest(
+  evalCase: EvalCase,
+): z.infer<typeof benchmarkManifestSchema> {
+  return {
+    manifest_id: `manifest-${evalCase.case_id}`,
+    manifest_version: "1.0.0",
+    manifest_revision: 1,
+    case_ref: {
+      artifact_id: evalCase.case_id,
+      artifact_type: "EvalCase",
+      app_id: evalCase.case_id,
+      tenant_id: "default",
+      environment: "research",
+      run_id: evalCase.case_id,
+      revision: 1,
+      content_hash: evalCase.case_hash,
+    },
+    suite: "governance",
+    dataset: GOVERNANCE_DOMAIN_COVERAGE_V1_DATASET,
+    semantic_release_ref: null,
+    mutation_definitions: GOVERNANCE_DOMAIN_COVERAGE_V1_MUTATIONS,
+    budget: GOVERNANCE_DOMAIN_COVERAGE_V1_BUDGET,
+    demo_holdout_identity: GOVERNANCE_DOMAIN_COVERAGE_V1_DEMO_HOLDOUT,
+    l2_non_causal_boundary: GOVERNANCE_DOMAIN_COVERAGE_V1_L2_BOUNDARY,
+    manifest_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+    created_at: new Date().toISOString(),
+  };
+}
+
+// === governance-role-permission-v1 具体定义 ===
+
+export const GOVERNANCE_ROLE_PERMISSION_V1_SUITE = "governance" as const;
+export const GOVERNANCE_ROLE_PERMISSION_V1_QUESTION =
+  "治理系统能否正确实施 proposer/reviewer/admin/publisher 四类角色的权限隔离，防止越权操作？";
+
+export const GOVERNANCE_ROLE_PERMISSION_V1_DATASET = {
+  dataset_id: "governance-role-permission-v1",
+  dataset_version: "1.0.0",
+  dataset_name: "治理角色权限分离测试数据集",
+  dataset_description:
+    "包含四类角色（proposer、reviewer、admin、publisher）的权限边界测试数据，覆盖正常操作和越权操作场景。",
+  dialect: "postgresql" as const,
+  schema_digest:
+    "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  row_count: 800,
+  parameters: {
+    table_count: 5,
+    role_count: 4,
+    scenario_count: 4,
+    user_count: 12,
+  },
+};
+
+export const GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS = [
+  {
+    mutation_id: "GRP-001",
+    description: "proposer 越权：proposer 不能审核自己的候选、不能发布治理配置、不能批准其他 proposer 的候选",
+    mutation_type: "DATA_FILTER" as const,
+    expected_impact: "proposer 的所有越权操作被系统拒绝",
+    severity: "CRITICAL" as const,
+    oracle_expectation: "proposer 越权操作全部被拒绝，审计日志记录完整",
+  },
+  {
+    mutation_id: "GRP-002",
+    description: "reviewer 越权：reviewer 不能发布自己审核的候选、不能修改候选内容、不能跳过审核流程",
+    mutation_type: "DATA_FILTER" as const,
+    expected_impact: "reviewer 的所有越权操作被系统拒绝",
+    severity: "CRITICAL" as const,
+    oracle_expectation: "reviewer 越权操作全部被拒绝，审核流程完整性保持",
+  },
+  {
+    mutation_id: "GRP-003",
+    description: "admin 越权：admin 不能绕过审核直接发布、不能修改审核记录、不能删除已发布的治理配置",
+    mutation_type: "COMPARISON_BENCHMARK" as const,
+    expected_impact: "admin 的越权发布和修改操作被系统拒绝",
+    severity: "HIGH" as const,
+    oracle_expectation: "admin 越权操作被拒绝，操作日志记录完整",
+  },
+  {
+    mutation_id: "GRP-004",
+    description: "publisher 权限：publisher 可以发布已审核的候选、可以回滚已发布的配置、不能修改候选内容",
+    mutation_type: "COMPARISON_BENCHMARK" as const,
+    expected_impact: "publisher 的合法操作成功执行，越权操作被拒绝",
+    severity: "HIGH" as const,
+    oracle_expectation: "publisher 合法发布/回滚操作成功，内容修改操作被拒绝",
+  },
+];
+
+export const GOVERNANCE_ROLE_PERMISSION_V1_BUDGET = {
+  max_cases: 1,
+  max_duration_ms: 600000,
+  max_cost_micros: 50000000,
+  max_sql_queries: 16,
+  max_drivers: 6,
+};
+
+export const GOVERNANCE_ROLE_PERMISSION_V1_DEMO_HOLDOUT = {
+  demo_registry: "HOLDOUT" as const,
+  demo_policy_version: "1.0.0",
+  holdout_fraction: 0.15,
+  holdout_seed: 42,
+  demo_license: "CC-BY-4.0",
+};
+
+export const GOVERNANCE_ROLE_PERMISSION_V1_L2_BOUNDARY =
+  "本案例仅评估治理系统的角色权限分离机制，不评估治理候选的内容质量、不评估归因贡献数值、不评估审核决策的合理性。权限评测专注于存取控制而非治理流程的业务正确性。";
+
+export async function createGovernanceRolePermissionV1Case(): Promise<EvalCase> {
+  const caseInput = {
+    case_id: "governance-role-permission-v1" as const,
+    suite: "governance" as const,
+    suite_version: "1.0.0",
+    dataset_version: "1.0.0",
+    oracle_version: "1.0.0",
+    source_commit: "0000000000000000000000000000000000000000",
+    question: GOVERNANCE_ROLE_PERMISSION_V1_QUESTION,
+    oracle: {
+      suite: "governance" as const,
+      oracle_type: "GOVERNANCE_SERVICE_QUALITY" as const,
+      expected: [
+        "proposer 越权操作全部被拒绝",
+        "reviewer 越权操作全部被拒绝",
+        "admin 越权操作被拒绝",
+        "publisher 合法发布/回滚操作成功",
+        "publisher 内容修改操作被拒绝",
+      ],
+    },
+    license: "CC-BY-4.0",
+    case_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+  };
+  const { case_hash: _, ...material } = caseInput;
+  const hash = await sha256ContentHash(material);
+  return {
+    ...caseInput,
+    case_hash: hash,
+  };
+}
+
+export function createGovernanceRolePermissionV1Manifest(
+  evalCase: EvalCase,
+): z.infer<typeof benchmarkManifestSchema> {
+  return {
+    manifest_id: `manifest-${evalCase.case_id}`,
+    manifest_version: "1.0.0",
+    manifest_revision: 1,
+    case_ref: {
+      artifact_id: evalCase.case_id,
+      artifact_type: "EvalCase",
+      app_id: evalCase.case_id,
+      tenant_id: "default",
+      environment: "research",
+      run_id: evalCase.case_id,
+      revision: 1,
+      content_hash: evalCase.case_hash,
+    },
+    suite: "governance",
+    dataset: GOVERNANCE_ROLE_PERMISSION_V1_DATASET,
+    semantic_release_ref: null,
+    mutation_definitions: GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS,
+    budget: GOVERNANCE_ROLE_PERMISSION_V1_BUDGET,
+    demo_holdout_identity: GOVERNANCE_ROLE_PERMISSION_V1_DEMO_HOLDOUT,
+    l2_non_causal_boundary: GOVERNANCE_ROLE_PERMISSION_V1_L2_BOUNDARY,
+    manifest_hash:
+      "sha256:0000000000000000000000000000000000000000000000000000000000000000" as `sha256:${string}`,
+    created_at: new Date().toISOString(),
+  };
+}

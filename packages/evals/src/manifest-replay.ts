@@ -12,6 +12,7 @@ const ORACLE_TYPE_BY_SUITE: Record<BenchmarkSuite, string> = {
   dab: "RESULT_EQUIVALENCE",
   rcaeval: "ROOT_CAUSE_RANKING",
   "controlled-attribution": "ATTRIBUTION_MATCH",
+  "governance": "GOVERNANCE_SERVICE_QUALITY",
 };
 
 export class ManifestReplayer {
