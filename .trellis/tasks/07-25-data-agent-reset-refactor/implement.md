@@ -1695,4 +1695,65 @@ F9 泳道（F9 失败不阻断 Core）：
 3. ✅ U13.1 — Fixture Endpoint Kernel Feasibility
 4. ✅ U7 Attribution Eval Verdict（commit c0d4761）
 5. ✅ U8 M1-F9 — Fixture Evidence Demo（组件已集成到 page.tsx，typecheck + build 通过）
-6. ⏳ M1-F9 Feasibility 复审
+6. ✅ M1-F9 Feasibility 复审（PASS — FEASIBLE）
+
+#### M1-F9 Feasibility 复审（2026-08-04）
+
+**复审状态：PASS — FEASIBLE**
+
+**复审对象：** M1-F9 泳道全部五个单元
+
+| # | 单元 | Commit | 状态 |
+|---|------|--------|------|
+| 1 | U13.0 — 贡献合同与 Profile 门禁 | `4b1ca80` | ✅ |
+| 2 | U7 retail-revenue-contribution-v1 Truth Contract | `90930d6` | ✅ |
+| 3 | U13.1 — Fixture Endpoint Kernel Feasibility | `4b1ca80` | ✅ |
+| 4 | U7 Attribution Eval Verdict | `c0d4761` | ✅ |
+| 5 | U8 M1-F9 Fixture Evidence Demo | `9e825ef` | ✅ |
+
+**证据检查清单：**
+
+1. **M1-F9 顺序正确：** U7 Truth Contract → U13.1 Kernel → U7 Eval Verdict → U8 Demo ✅
+   - Truth Contract 先于 Kernel 存在（commit 90930d6 < 4b1ca80 的父级）
+   - Kernel 输出 `AttributionKernelEvidence@1` 含 `explicit_absence=attribution_feasibility_verdict`
+   - Eval Verdict 后置签发 `AttributionFeasibilityVerdict`（commit c0d4761）
+   - Demo 最后交付（commit 9e825ef）
+
+2. **AttributionFeasibilityVerdict = FEASIBLE_FOR_PUBLISHED_INTEGRATION** ✅
+   - 模式：`attribution-feasibility-verdict@1`
+   - Oracle Check: PASS（3/3 patterns, 5/5 evidence）
+   - Mutation Check: PASS（100% detection rate, 3/3 mutations）
+   - Holdout Check: PASS（2/2 holdout pass）
+   - Reason Codes: `["ALL_CHECKS_PASSED"]`
+
+3. **三状态固定约束符合 implement.md §8.7：** ✅
+   - Core L2 = `HOLD`（`text-[var(--color-warning)]`）
+   - Attribution F9 = `NOT_REGISTERED`（`text-[var(--color-text-tertiary)]`）
+   - Fixture Evidence = `HOLD`（`text-[var(--color-warning)]`）
+
+4. **未提前注册 F9：** ✅
+   - `f9StatusSchema` 固定 `attribution_f9: z.literal("NOT_REGISTERED")`
+   - 页面三状态摘要明确显示 `NOT_REGISTERED`
+   - 无 `PublishedAttributionSafetyVerdict` 渲染
+   - 无产品 ContributionItemSet 渲染
+
+5. **U13.1 Kernel 未自行签发 Verdict：** ✅
+   - Kernel 输出中的 `explicit_absence: "attribution_feasibility_verdict"` 明确表明 Verdict 由后置 U7 签发
+   - FixtureEvidenceSection 的 Kernel Evidence 面板显示 `explicit_absence: attribution_feasibility_verdict`
+
+6. **U13.1 Kernel 未注册 F9：** ✅
+   - `attributionKernelEvidenceSchema` 中 `f9_status` 字段为 `attribution_f9: z.literal("NOT_REGISTERED")`
+   - 无 F9 Route 暴露
+
+7. **M1-F9 不阻断 Core：** ✅
+   - F9 泳道独立于 Core 泳道
+   - F9 失败只保持自身 `HOLD`，不影响 M2-Core
+
+8. **TypeScript 门禁：** ✅
+   - `pnpm typecheck` — 通过
+   - `pnpm build` — 通过（Next.js build 成功，libpg-query wasm 错误为已知问题，不影响功能）
+
+**结论：** M1-F9 泳道全部五个单元已按正确顺序完成，所有证据检查通过，约束条件满足。Attribution Feasibility 为 `FEASIBLE_FOR_PUBLISHED_INTEGRATION`，授权进入后续 10620 Authority Foundation 与 U13.2 Published F9。
+
+**复审结果：PASS — FEASIBLE**
+**后续步骤：** 10620 Authority Foundation → U13.2 Published F9 → M2-F9 Release Gate
