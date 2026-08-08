@@ -8,64 +8,74 @@
  * @server-only
  */
 
-import pg from "pg";
-import { PostgresSemanticGovernanceService } from "./postgres-semantic-governance-service";
+import {
+  type SemanticCandidateCreateResult,
+  type SemanticCandidateDraft,
+  type SemanticCommitPublishInput,
+  type SemanticDecisionInput,
+  type SemanticPreparePublishInput,
+  type SemanticRollbackInput,
+  sha256ContentHash,
+} from "@data-agent/contracts";
 import "server-only";
-import type {
-  InboxGroup,
-  InboxItem,
-  ReviewDecision,
-  SemanticReviewPacket,
-  SemanticRole,
-} from "./semantic-types";
+import type { SemanticAuthorityContext } from "./semantic-authority";
+import {
+  publicSemanticGovernanceError,
+  SemanticGovernanceError,
+} from "./semantic-governance-error";
+import type { InboxGroup, InboxItem, SemanticReviewPacket, SemanticRole } from "./semantic-types";
 
 // ─── 错误类型 ──────────────────────────────────────────────────────────────────
 
-export class SemanticGovernanceError extends Error {
-  override readonly name = "SemanticGovernanceError";
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly status: number = 400,
-  ) {
-    super(message);
-  }
-}
+export { SemanticGovernanceError } from "./semantic-governance-error";
 
 // ─── 服务层类型 ────────────────────────────────────────────────────────────────
 
 export interface SemanticGovernanceService {
   /** 获取指定域的语义域列表 */
-  listDomains(scope: SemanticScope): Promise<DomainInfo[]>;
+  listDomains(authority: SemanticAuthorityContext): Promise<DomainInfo[]>;
 
   /** 获取收件箱条目（按分组） */
-  getInboxItems(scope: SemanticScope, group: InboxGroup): Promise<InboxItem[]>;
+  getInboxItems(authority: SemanticAuthorityContext, group: InboxGroup): Promise<InboxItem[]>;
 
   /** 获取审核包详情 */
-  getPacketDetail(scope: SemanticScope, packetId: string): Promise<SemanticReviewPacket>;
+  getPacketDetail(
+    authority: SemanticAuthorityContext,
+    packetId: string,
+  ): Promise<SemanticReviewPacket>;
 
   /** 提交审核决策 */
-  submitDecision(scope: SemanticScope, input: DecisionInput): Promise<DecisionResult>;
+  submitDecision(
+    authority: SemanticAuthorityContext,
+    input: SemanticDecisionInput,
+  ): Promise<DecisionResult>;
 
   /** 创建新提案（Candidate） */
-  createCandidate(scope: SemanticScope, input: CreateCandidateInput): Promise<{ packetId: string }>;
+  createCandidate(
+    authority: SemanticAuthorityContext,
+    input: SemanticCandidateDraft,
+  ): Promise<SemanticCandidateCreateResult>;
 
   /** 准备发布 */
-  preparePublish(scope: SemanticScope, packetId: string): Promise<{ attemptId: string }>;
+  preparePublish(
+    authority: SemanticAuthorityContext,
+    input: SemanticPreparePublishInput,
+  ): Promise<{ attemptId: string }>;
 
   /** 执行发布 */
-  commitPublish(scope: SemanticScope, packetId: string): Promise<{ releaseId: string }>;
+  commitPublish(
+    authority: SemanticAuthorityContext,
+    input: SemanticCommitPublishInput,
+  ): Promise<{ releaseId: string }>;
 
   /** 执行回滚 */
-  executeRollback(scope: SemanticScope, packetId: string): Promise<{ receiptId: string }>;
+  executeRollback(
+    authority: SemanticAuthorityContext,
+    input: SemanticRollbackInput,
+  ): Promise<{ receiptId: string }>;
 }
 
-export interface SemanticScope {
-  appId: string;
-  tenantId: string;
-  environment: string;
-  semanticDomain: string;
-}
+export type SemanticScope = SemanticAuthorityContext["scope"];
 
 export interface DomainInfo {
   domain: string;
@@ -74,14 +84,6 @@ export interface DomainInfo {
   datasourceId: string;
   isActive: boolean;
   domainVersion: number;
-}
-
-export interface DecisionInput {
-  packetId: string;
-  principal: string;
-  semanticRole: string;
-  decision: ReviewDecision;
-  decisionReason?: string;
 }
 
 export interface DecisionResult {
@@ -94,24 +96,6 @@ export interface DecisionResult {
   requiredApprovals?: number;
   decisionSetDigest?: string;
 }
-
-export interface CreateCandidateInput {
-  title: string;
-  description: string;
-  domain: string;
-  changeClass: string;
-  riskLevel: string;
-  diff: string;
-}
-
-// ─── 默认 scope ────────────────────────────────────────────────────────────────
-
-const _DEFAULT_SCOPE: SemanticScope = {
-  appId: "00000000-0000-0000-0000-000000000001",
-  tenantId: "00000000-0000-0000-0000-000000000001",
-  environment: "development",
-  semanticDomain: "revenue",
-};
 
 // ─── 模拟数据 ──────────────────────────────────────────────────────────────────
 
@@ -317,96 +301,115 @@ const mockPacketDetail: SemanticReviewPacket = {
 
 // ─── 服务实现（M1 演示阶段）────────────────────────────────────────────────────
 
-class MockSemanticGovernanceService implements SemanticGovernanceService {
-  async listDomains(scope: SemanticScope): Promise<DomainInfo[]> {
+export class MockSemanticGovernanceService implements SemanticGovernanceService {
+  async listDomains(authority: SemanticAuthorityContext): Promise<DomainInfo[]> {
     await delay(200);
     return mockDomains.filter(
-      (d) => scope.semanticDomain === "all" || d.domain === scope.semanticDomain,
+      (domain) =>
+        authority.allowedDomains.includes(domain.domain) &&
+        (authority.scope.semanticDomain === "all" ||
+          domain.domain === authority.scope.semanticDomain),
     );
   }
 
-  async getInboxItems(_scope: SemanticScope, group: InboxGroup): Promise<InboxItem[]> {
+  async getInboxItems(
+    _authority: SemanticAuthorityContext,
+    group: InboxGroup,
+  ): Promise<InboxItem[]> {
     await delay(300);
     return mockInboxItems.filter((item) => item.group === group);
   }
 
-  async getPacketDetail(_scope: SemanticScope, packetId: string): Promise<SemanticReviewPacket> {
+  async getPacketDetail(
+    _authority: SemanticAuthorityContext,
+    packetId: string,
+  ): Promise<SemanticReviewPacket> {
     await delay(400);
     if (packetId === "pkt-001") return mockPacketDetail;
     const found = mockInboxItems.find((i) => i.packetId === packetId);
     if (!found) {
-      throw new SemanticGovernanceError("PACKET_NOT_FOUND", "审核包不存在", 404);
+      throw publicSemanticGovernanceError("SEMANTIC_PACKET_NOT_FOUND");
     }
     return mockPacketDetail;
   }
 
-  async submitDecision(_scope: SemanticScope, input: DecisionInput): Promise<DecisionResult> {
+  async submitDecision(
+    authority: SemanticAuthorityContext,
+    input: SemanticDecisionInput,
+  ): Promise<DecisionResult> {
     // 权限验证
     const packet = mockPacketDetail;
-    assertCanDecide(input.semanticRole as SemanticRole, input.principal, packet);
+    const role = authority.semanticRole === "demo" ? "admin" : authority.semanticRole;
+    assertCanDecide(role as SemanticRole, authority.principal, packet);
 
     await delay(500);
+    const decisionId = crypto.randomUUID();
+    const decisionDigest = await sha256ContentHash({
+      decisionId,
+      input,
+      authority: "NON_AUTHORITATIVE_MOCK",
+    });
     return {
-      decisionId: crypto.randomUUID(),
-      decisionDigest: `sha256:mock-${Date.now()}`,
+      decisionId,
+      decisionDigest,
       packetClosed: true,
       outcome: "APPROVED",
       totalApprovals: 1,
       totalRejections: 0,
       requiredApprovals: 2,
-      decisionSetDigest: `sha256:decision-set-${Date.now()}`,
+      decisionSetDigest: decisionDigest,
     };
   }
 
   async createCandidate(
-    _scope: SemanticScope,
-    _input: CreateCandidateInput,
-  ): Promise<{ packetId: string }> {
+    _authority: SemanticAuthorityContext,
+    input: SemanticCandidateDraft,
+  ): Promise<SemanticCandidateCreateResult> {
     await delay(600);
-    return { packetId: `pkt-new-${Date.now()}` };
+    const digest = await sha256ContentHash(input);
+    return {
+      schema_version: "semantic-candidate-create-result@1.0.0",
+      authority: "NON_AUTHORITATIVE_MOCK",
+      candidate_id: crypto.randomUUID(),
+      revision_id: crypto.randomUUID(),
+      source_revision_id: crypto.randomUUID(),
+      source_digest: digest,
+      revision_digest: digest,
+      idempotency_digest: await sha256ContentHash({ idempotency_key: input.idempotency_key }),
+      candidate_status: "DRAFT",
+      created: true,
+    };
   }
 
-  async preparePublish(_scope: SemanticScope, _packetId: string): Promise<{ attemptId: string }> {
-    assertCanPublish("human-reviewer" as SemanticRole, "approved-not-published");
+  async preparePublish(
+    authority: SemanticAuthorityContext,
+    _input: SemanticPreparePublishInput,
+  ): Promise<{ attemptId: string }> {
+    const role = authority.semanticRole === "demo" ? "admin" : authority.semanticRole;
+    assertCanPublish(role as SemanticRole, "approved-not-published");
     await delay(300);
-    return { attemptId: `attempt-${Date.now()}` };
+    return { attemptId: crypto.randomUUID() };
   }
 
-  async commitPublish(_scope: SemanticScope, _packetId: string): Promise<{ releaseId: string }> {
-    assertCanPublish("human-reviewer" as SemanticRole, "approved-not-published");
+  async commitPublish(
+    authority: SemanticAuthorityContext,
+    _input: SemanticCommitPublishInput,
+  ): Promise<{ releaseId: string }> {
+    const role = authority.semanticRole === "demo" ? "admin" : authority.semanticRole;
+    assertCanPublish(role as SemanticRole, "approved-not-published");
     await delay(500);
-    return { releaseId: `release-${Date.now()}` };
+    return { releaseId: crypto.randomUUID() };
   }
 
-  async executeRollback(_scope: SemanticScope, _packetId: string): Promise<{ receiptId: string }> {
-    assertCanPublish("human-reviewer" as SemanticRole, "approved-not-published");
+  async executeRollback(
+    authority: SemanticAuthorityContext,
+    _input: SemanticRollbackInput,
+  ): Promise<{ receiptId: string }> {
+    const role = authority.semanticRole === "demo" ? "admin" : authority.semanticRole;
+    assertCanPublish(role as SemanticRole, "approved-not-published");
     await delay(400);
-    return { receiptId: `receipt-${Date.now()}` };
+    return { receiptId: crypto.randomUUID() };
   }
-}
-
-// ─── 单例 ──────────────────────────────────────────────────────────────────────
-
-let serviceInstance: SemanticGovernanceService | null = null;
-
-export function getSemanticGovernanceService(): SemanticGovernanceService {
-  if (!serviceInstance) {
-    if (process.env.USE_POSTGRES_SERVICE === "true") {
-      const connectionString = process.env.DATABASE_URL;
-      if (!connectionString) {
-        throw new SemanticGovernanceError(
-          "DATABASE_URL_REQUIRED",
-          "USE_POSTGRES_SERVICE 为 true 但未设置 DATABASE_URL 环境变量",
-          500,
-        );
-      }
-      const pool = new pg.Pool({ connectionString });
-      serviceInstance = new PostgresSemanticGovernanceService(pool);
-    } else {
-      serviceInstance = new MockSemanticGovernanceService();
-    }
-  }
-  return serviceInstance;
 }
 
 // ─── 工具函数 ──────────────────────────────────────────────────────────────────

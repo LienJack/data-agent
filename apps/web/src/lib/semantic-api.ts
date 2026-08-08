@@ -5,6 +5,7 @@
  * 通过 Next.js API Routes 与服务层通信。
  */
 
+import type { SemanticCandidateCreateResult } from "@data-agent/contracts";
 import type {
   ChangeClass,
   InboxGroup,
@@ -13,29 +14,10 @@ import type {
   RiskLevel,
   SemanticReviewPacket,
 } from "./semantic-types";
-import { type CurrentUser, MOCK_CURRENT_USER } from "./semantic-types";
 
 // ─── API 基础路径 ──────────────────────────────────────────────────────────────
 
 const API_BASE = "/api/semantic/governance";
-
-// ─── 当前用户上下文 ────────────────────────────────────────────────────────────
-
-/**
- * 当前用户身份。
- * M1 阶段使用模拟用户；后续替换为真实认证上下文。
- */
-let currentUser: CurrentUser = MOCK_CURRENT_USER;
-
-/** 设置当前用户（供认证系统集成） */
-export function setCurrentUser(user: CurrentUser): void {
-  currentUser = user;
-}
-
-/** 获取当前用户 */
-export function getCurrentUser(): CurrentUser {
-  return currentUser;
-}
 
 // ─── 通用请求封装 ──────────────────────────────────────────────────────────────
 
@@ -95,17 +77,20 @@ export async function submitDecision(
   packetId: string,
   decision: ReviewDecision,
   comment?: string,
+  semanticDomain = "revenue",
 ): Promise<{ success: boolean }> {
-  const user = getCurrentUser();
+  if (decision === "pending") {
+    throw new SemanticApiError("INVALID_DECISION", "待处理状态不能作为审核决策提交。", 400);
+  }
   const response = await fetch(`${API_BASE}/decisions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      packetId,
-      principal: user.id,
-      semanticRole: user.role,
-      decision,
-      decisionReason: comment,
+      schema_version: "semantic-decision@1.0.0",
+      semantic_domain: semanticDomain,
+      packet_id: packetId,
+      decision: decision === "approved" ? "APPROVE" : "REJECT",
+      ...(comment ? { decision_reason: comment } : {}),
     }),
   });
   const result = await handleResponse<{
@@ -125,12 +110,54 @@ export async function createProposal(data: {
   changeClass: ChangeClass;
   riskLevel: RiskLevel;
   diff: string;
-}): Promise<{ packetId: string }> {
-  const _user = getCurrentUser();
+}): Promise<SemanticCandidateCreateResult> {
+  let content: Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(data.diff) as unknown;
+    content =
+      typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : { definition: parsed };
+  } catch {
+    content = { definition: data.diff };
+  }
+  const changeClass =
+    data.changeClass === "binding"
+      ? "RUNTIME_AUTHORIZATION"
+      : data.changeClass === "governance"
+        ? "SECURITY"
+        : data.changeClass === "other"
+          ? "MINOR"
+          : "MAJOR";
   const response = await fetch(`${API_BASE}/candidates`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
+    body: JSON.stringify({
+      schema_version: "semantic-candidate-draft@1.0.0",
+      title: data.title,
+      description: data.description,
+      semantic_domain: data.domain,
+      change_class: changeClass,
+      risk_level: data.riskLevel.toUpperCase(),
+      idempotency_key: crypto.randomUUID(),
+      source_payload: {
+        schema_version: "semantic-source-payload@1.0.0",
+        source_kind: "MANUAL",
+        content,
+      },
+      diff: {
+        schema_version: "semantic-diff@1.0.0",
+        summary: data.description,
+        operations: [
+          {
+            path: "semantic_model",
+            change_type: "MODIFY",
+            before: {},
+            after: content,
+          },
+        ],
+      },
+    }),
   });
-  return handleResponse<{ packetId: string }>(response);
+  return handleResponse<SemanticCandidateCreateResult>(response);
 }

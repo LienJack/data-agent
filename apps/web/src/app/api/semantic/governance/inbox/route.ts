@@ -8,16 +8,13 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  getSemanticGovernanceService,
-  SemanticGovernanceError,
-} from "@/lib/semantic-governance-service";
+  resolveSemanticRouteAuthority,
+  semanticRouteErrorResponse,
+} from "@/lib/semantic-governance-route";
 
 // ─── 查询参数验证 ──────────────────────────────────────────────────────────────
 
-const querySchema = z.object({
-  appId: z.string().default("00000000-0000-0000-0000-000000000001"),
-  tenantId: z.string().default("00000000-0000-0000-0000-000000000001"),
-  environment: z.string().default("development"),
+const querySchema = z.strictObject({
   semanticDomain: z.string().default("all"),
   group: z
     .union([
@@ -33,44 +30,15 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const query = querySchema.parse({
-      appId: searchParams.get("appId") ?? undefined,
-      tenantId: searchParams.get("tenantId") ?? undefined,
-      environment: searchParams.get("environment") ?? undefined,
-      semanticDomain: searchParams.get("semanticDomain") ?? undefined,
-      group: searchParams.get("group") ?? undefined,
-    });
-
-    const service = getSemanticGovernanceService();
-    const items = await service.getInboxItems(
-      {
-        appId: query.appId,
-        tenantId: query.tenantId,
-        environment: query.environment,
-        semanticDomain: query.semanticDomain,
-      },
-      query.group,
+    const query = querySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
+    const { runtime, authority } = await resolveSemanticRouteAuthority(
+      "READ",
+      query.semanticDomain,
     );
+    const items = await runtime.service.getInboxItems(authority, query.group);
 
-    return NextResponse.json({ data: items });
+    return NextResponse.json({ data: items, meta: { authority: authority.authority } });
   } catch (error) {
-    if (error instanceof SemanticGovernanceError) {
-      return NextResponse.json(
-        { error: { code: error.code, message: error.message } },
-        { status: error.status },
-      );
-    }
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: { code: "INVALID_PARAMS", message: "请求参数无效", details: error.issues } },
-        { status: 400 },
-      );
-    }
-    console.error("[inbox] Unexpected error:", error);
-    return NextResponse.json(
-      { error: { code: "INTERNAL_ERROR", message: "服务器内部错误" } },
-      { status: 500 },
-    );
+    return semanticRouteErrorResponse(error, "INVALID_PARAMS");
   }
 }

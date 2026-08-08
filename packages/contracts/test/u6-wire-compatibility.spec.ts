@@ -203,14 +203,14 @@ describe("U6 Wire Compatibility: Migration", () => {
     expect(c2Migrations).toHaveLength(2);
   });
 
-  it("Migration 文件数应为 19 个（15 基线 + 10600 + 10601 + 10610 + 10615）", () => {
+  it("Migration 目录包含 M0 所需兼容迁移与 Candidate Draft authority", () => {
     const migrationDir = join(__dirname, "../../../infra/supabase/apps/data-agent/migrations");
     const files = readdirSync(migrationDir);
-    // 10600/10601: U6-C2a，10610: U10.2 semantic control plane，10615: U10.3 published bridge
-    expect(files).toHaveLength(20);
-    expect(files.some((f) => f.includes("10600"))).toBe(true);
-    expect(files.some((f) => f.includes("10601"))).toBe(true);
-    expect(files.some((f) => f.includes("10615"))).toBe(true);
+    const requiredMigrationIds = ["10600", "10601", "10609", "10615", "10619", "10620", "10622"];
+
+    for (const migrationId of requiredMigrationIds) {
+      expect(files.some((file) => file.includes(migrationId))).toBe(true);
+    }
   });
 });
 

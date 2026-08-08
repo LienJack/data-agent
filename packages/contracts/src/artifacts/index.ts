@@ -1,4 +1,3 @@
-export * from "./semantic-control-plane.js";
 export * from "./envelope.js";
 export {
   assertGroundingAuthorityBundleConsistency,
@@ -41,7 +40,9 @@ export {
 } from "./grounding-materializer.js";
 export * from "./l2.js";
 export * from "./research/index.js";
+export * from "./semantic-control-plane.js";
 export * from "./semantic-governance.js";
+export * from "./semantic-governance-requests.js";
 export * from "./text2sql-evidence.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,

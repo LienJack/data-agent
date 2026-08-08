@@ -1,9 +1,33 @@
 import "server-only";
-import { adaptPgPool, type SqlClient, type SqlPool } from "@data-agent/platform";
-import type pg from "pg";
 import type {
-  CreateCandidateInput,
-  DecisionInput,
+  PortResult,
+  SemanticCandidateDraft,
+  SemanticCommitPublishInput,
+  SemanticDecisionInput,
+  SemanticPreparePublishInput,
+  SemanticRollbackInput,
+} from "@data-agent/contracts";
+import {
+  type SemanticCandidateCreateResult,
+  semanticCandidateCreateResultSchema,
+} from "@data-agent/contracts";
+import {
+  type AppCapability,
+  type AppCapabilityRole,
+  adaptPgPool,
+  type SqlClient,
+  type SqlPool,
+  type TransactionalCapabilityAuthorizer,
+  withAppTransaction,
+} from "@data-agent/platform";
+import type pg from "pg";
+import type { SemanticAuthorityContext } from "./semantic-authority";
+import {
+  isPublicSemanticGovernanceErrorCode,
+  type PublicSemanticGovernanceErrorCode,
+  publicSemanticGovernanceError,
+} from "./semantic-governance-error";
+import type {
   DecisionResult,
   DomainInfo,
   SemanticGovernanceService,
@@ -94,11 +118,7 @@ function mapToInboxStatus(dbStatus: string): ReviewPacketStatus {
  * semantic.* 表的 RLS 使用 app.app_id 和 app.tenant_id。
  * 注意：SET LOCAL 仅在当前事务中有效。
  */
-async function setScopeContext(
-  client: SqlClient,
-  scope: SemanticScope,
-  principal?: string,
-): Promise<void> {
+async function setSemanticScopeContext(client: SqlClient, scope: SemanticScope): Promise<void> {
   await client.query("SELECT pg_catalog.set_config('app.app_id', $1, true)", [scope.appId]);
   await client.query("SELECT pg_catalog.set_config('app.tenant_id', $1, true)", [scope.tenantId]);
   await client.query("SELECT pg_catalog.set_config('app.environment', $1, true)", [
@@ -107,18 +127,6 @@ async function setScopeContext(
   await client.query("SELECT pg_catalog.set_config('app.semantic_domain', $1, true)", [
     scope.semanticDomain,
   ]);
-  await client.query("SELECT pg_catalog.set_config('data_agent.app_id', $1, true)", [scope.appId]);
-  await client.query("SELECT pg_catalog.set_config('data_agent.tenant_id', $1, true)", [
-    scope.tenantId,
-  ]);
-  await client.query("SELECT pg_catalog.set_config('data_agent.environment', $1, true)", [
-    scope.environment,
-  ]);
-  if (principal) {
-    await client.query("SELECT pg_catalog.set_config('data_agent.principal_id', $1, true)", [
-      principal,
-    ]);
-  }
 }
 
 // ─── 行类型 ────────────────────────────────────────────────────────────────────
@@ -133,6 +141,7 @@ interface DomainRow {
 }
 
 interface ReviewTaskRow {
+  semantic_domain: string;
   packet_id: string;
   packet_kind: string;
   packet_payload: Record<string, unknown>;
@@ -190,65 +199,204 @@ function pluckStringArray(payload: Record<string, unknown>, key: string): string
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : [];
 }
 
+function assertAuthorityMatches(
+  authority: SemanticAuthorityContext,
+  capability: AppCapability,
+): void {
+  if (
+    capability.scope.app_id !== authority.scope.appId ||
+    capability.scope.tenant_id !== authority.scope.tenantId ||
+    capability.scope.environment !== authority.scope.environment ||
+    capability.deployment_id !== authority.deploymentId ||
+    capability.principal !== authority.principal ||
+    (authority.scope.semanticDomain !== "all" &&
+      !authority.allowedDomains.includes(authority.scope.semanticDomain))
+  ) {
+    throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+  }
+}
+
+function assertInputDomainMatches(
+  authority: SemanticAuthorityContext,
+  semanticDomain: string,
+): void {
+  if (authority.scope.semanticDomain !== semanticDomain) {
+    throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+  }
+}
+
+function authorizedReadDomains(authority: SemanticAuthorityContext): readonly string[] {
+  return authority.scope.semanticDomain === "all"
+    ? authority.allowedDomains
+    : [authority.scope.semanticDomain];
+}
+
+function mapSemanticDatabaseError(error: unknown): PortResult<never> | null {
+  if (error instanceof SemanticGovernanceError) {
+    const code = isPublicSemanticGovernanceErrorCode(error.code)
+      ? error.code
+      : "SEMANTIC_GOVERNANCE_UNAVAILABLE";
+    return {
+      ok: false,
+      error: {
+        code,
+        message: publicSemanticGovernanceError(code).message,
+        retryable: error.retryable,
+      },
+    };
+  }
+
+  const candidate =
+    typeof error === "object" && error !== null
+      ? (error as { readonly code?: unknown; readonly message?: unknown })
+      : null;
+  const marker =
+    typeof candidate?.message === "string"
+      ? candidate.message.match(/SEMANTIC_[A-Z][A-Z0-9_]{1,126}/)?.[0]
+      : undefined;
+  const markerMapping: Record<string, readonly [PublicSemanticGovernanceErrorCode, boolean]> = {
+    SEMANTIC_CANDIDATE_INVALID: ["SEMANTIC_CANDIDATE_INVALID", false],
+    SEMANTIC_CANDIDATE_IDEMPOTENCY_CONFLICT: ["SEMANTIC_CANDIDATE_CONFLICT", false],
+    SEMANTIC_SCOPE_FORBIDDEN: ["SEMANTIC_SCOPE_FORBIDDEN", false],
+    SEMANTIC_REVIEWER_REQUIRED: ["SEMANTIC_SCOPE_FORBIDDEN", false],
+    SEMANTIC_PUBLISH_CONFLICT: ["SEMANTIC_PUBLISH_CONFLICT", true],
+    SEMANTIC_ROLLBACK_CONFLICT: ["SEMANTIC_PUBLISH_CONFLICT", true],
+    SEMANTIC_CANDIDATE_NOT_PUBLISHED: ["SEMANTIC_PUBLISH_CONFLICT", true],
+    SEMANTIC_CANDIDATE_DIGEST_COLLISION: ["SEMANTIC_GOVERNANCE_UNAVAILABLE", true],
+  };
+  const markerMappingEntry = marker ? markerMapping[marker] : undefined;
+  if (markerMappingEntry) {
+    const [code, retryable] = markerMappingEntry;
+    const mapped = publicSemanticGovernanceError(code, retryable);
+    return {
+      ok: false,
+      error: { code: mapped.code, message: mapped.message, retryable },
+    };
+  }
+  if (candidate?.code === "40001") {
+    const mapped = publicSemanticGovernanceError("SEMANTIC_PUBLISH_CONFLICT");
+    return {
+      ok: false,
+      error: { code: mapped.code, message: mapped.message, retryable: true },
+    };
+  }
+  if (candidate?.code === "42501") {
+    const mapped = publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+    return {
+      ok: false,
+      error: { code: mapped.code, message: mapped.message, retryable: false },
+    };
+  }
+  return null;
+}
+
 // ─── 服务实现 ──────────────────────────────────────────────────────────────────
 
 export class PostgresSemanticGovernanceService implements SemanticGovernanceService {
   private readonly pool: SqlPool;
 
-  constructor(poolOrPgPool: SqlPool | pg.Pool) {
+  constructor(
+    poolOrPgPool: SqlPool | pg.Pool,
+    private readonly authorizer: TransactionalCapabilityAuthorizer,
+  ) {
     this.pool = "connect" in poolOrPgPool ? poolOrPgPool : adaptPgPool(poolOrPgPool);
+  }
+
+  private async transaction<T>(
+    authority: SemanticAuthorityContext,
+    access: "READ" | "WRITE",
+    allowedRoles: readonly AppCapabilityRole[],
+    operationName: string,
+    work: (client: SqlClient, scope: SemanticScope, capability: AppCapability) => Promise<T>,
+  ): Promise<T> {
+    if (authority.authority !== "POSTGRESQL") {
+      throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+    }
+
+    const transaction = await withAppTransaction(
+      this.pool,
+      this.authorizer,
+      authority.capabilityInput,
+      {
+        access,
+        operation_name: operationName,
+        map_database_error: mapSemanticDatabaseError,
+      },
+      async ({ client, capability }) => {
+        assertAuthorityMatches(authority, capability);
+        if (!allowedRoles.includes(capability.role)) {
+          throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+        }
+        await setSemanticScopeContext(client, authority.scope);
+        return work(client, authority.scope, capability);
+      },
+    );
+
+    if (!transaction.ok) {
+      if (isPublicSemanticGovernanceErrorCode(transaction.error.code)) {
+        throw publicSemanticGovernanceError(transaction.error.code, transaction.error.retryable);
+      }
+      throw publicSemanticGovernanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE", true);
+    }
+    return transaction.value;
   }
 
   // ── listDomains ───────────────────────────────────────────────────────────────
 
-  async listDomains(scope: SemanticScope): Promise<DomainInfo[]> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope);
-
-      const _filterAll = scope.semanticDomain === "all";
-      const result = await client.query<DomainRow>(
-        `SELECT semantic_domain, domain_display_name, domain_description,
+  async listDomains(authority: SemanticAuthorityContext): Promise<DomainInfo[]> {
+    return this.transaction(
+      authority,
+      "READ",
+      ["OWNER", "ANALYST", "VIEWER"],
+      "semantic.list-domains",
+      async (client, scope) => {
+        const result = await client.query<DomainRow>(
+          `SELECT semantic_domain, domain_display_name, domain_description,
                 datasource_id::text, is_active, domain_version
          FROM semantic.semantic_domain_registry
          WHERE app_id = $1::uuid
            AND tenant_id = $2::uuid
            AND environment = $3
            AND ($4 = 'all' OR semantic_domain = $4)`,
-        [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain],
-      );
+          [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain],
+        );
 
-      return result.rows.map((row) => ({
-        domain: row.semantic_domain,
-        displayName: row.domain_display_name,
-        description: row.domain_description ?? "",
-        datasourceId: row.datasource_id,
-        isActive: row.is_active,
-        domainVersion: row.domain_version,
-      }));
-    } catch (error) {
-      throw wrapError(error, "LIST_DOMAINS_FAILED");
-    } finally {
-      client.release();
-    }
+        return result.rows
+          .filter((row) => authority.allowedDomains.includes(row.semantic_domain))
+          .map((row) => ({
+            domain: row.semantic_domain,
+            displayName: row.domain_display_name,
+            description: row.domain_description ?? "",
+            datasourceId: row.datasource_id,
+            isActive: row.is_active,
+            domainVersion: row.domain_version,
+          }));
+      },
+    );
   }
 
   // ── getInboxItems ─────────────────────────────────────────────────────────────
 
-  async getInboxItems(scope: SemanticScope, group: InboxGroup): Promise<InboxItem[]> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope);
+  async getInboxItems(
+    authority: SemanticAuthorityContext,
+    group: InboxGroup,
+  ): Promise<InboxItem[]> {
+    return this.transaction(
+      authority,
+      "READ",
+      ["OWNER", "ANALYST", "VIEWER"],
+      "semantic.get-inbox-items",
+      async (client, scope) => {
+        let items: InboxItem[];
+        const semanticDomains = authorizedReadDomains(authority);
 
-      let items: InboxItem[];
-
-      switch (group) {
-        case "my-decision": {
-          // OPEN packets where the user hasn't decided yet
-          const result = await client.query<
-            ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-          >(
-            `SELECT task.packet_id, task.packet_kind, task.packet_payload,
+        switch (group) {
+          case "my-decision": {
+            // OPEN packets where the user hasn't decided yet
+            const result = await client.query<
+              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
+            >(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
@@ -265,20 +413,20 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
              WHERE task.app_id = $1::uuid
                AND task.tenant_id = $2::uuid
                AND task.environment = $3
-               AND task.semantic_domain = $4
+               AND task.semantic_domain = ANY($4::text[])
                AND task.decision_window_status = 'OPEN'
              ORDER BY task.created_at DESC`,
-            [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain],
-          );
-          items = result.rows.map((row) => buildInboxItem(row, "my-decision"));
-          break;
-        }
-        case "waiting-others": {
-          // OPEN packets with at least one decision
-          const result = await client.query<
-            ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-          >(
-            `SELECT task.packet_id, task.packet_kind, task.packet_payload,
+              [scope.appId, scope.tenantId, scope.environment, semanticDomains],
+            );
+            items = result.rows.map((row) => buildInboxItem(row, "my-decision"));
+            break;
+          }
+          case "waiting-others": {
+            // OPEN packets with at least one decision
+            const result = await client.query<
+              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
+            >(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
@@ -295,7 +443,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
              WHERE task.app_id = $1::uuid
                AND task.tenant_id = $2::uuid
                AND task.environment = $3
-               AND task.semantic_domain = $4
+               AND task.semantic_domain = ANY($4::text[])
                AND task.decision_window_status = 'OPEN'
                AND task.review_outcome = 'PENDING'
                AND EXISTS (
@@ -307,17 +455,17 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
                    AND dec.packet_id = task.packet_id
                )
              ORDER BY task.created_at DESC`,
-            [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain],
-          );
-          items = result.rows.map((row) => buildInboxItem(row, "waiting-others"));
-          break;
-        }
-        case "expiring": {
-          // OPEN packets expiring within 24 hours
-          const result = await client.query<
-            ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-          >(
-            `SELECT task.packet_id, task.packet_kind, task.packet_payload,
+              [scope.appId, scope.tenantId, scope.environment, semanticDomains],
+            );
+            items = result.rows.map((row) => buildInboxItem(row, "waiting-others"));
+            break;
+          }
+          case "expiring": {
+            // OPEN packets expiring within 24 hours
+            const result = await client.query<
+              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
+            >(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
@@ -334,21 +482,21 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
              WHERE task.app_id = $1::uuid
                AND task.tenant_id = $2::uuid
                AND task.environment = $3
-               AND task.semantic_domain = $4
+               AND task.semantic_domain = ANY($4::text[])
                AND task.decision_window_status = 'OPEN'
                AND task.decision_expires_at < NOW() + INTERVAL '24 hours'
              ORDER BY task.decision_expires_at ASC`,
-            [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain],
-          );
-          items = result.rows.map((row) => buildInboxItem(row, "expiring"));
-          break;
-        }
-        case "completed": {
-          // CLOSED packets
-          const result = await client.query<
-            ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
-          >(
-            `SELECT task.packet_id, task.packet_kind, task.packet_payload,
+              [scope.appId, scope.tenantId, scope.environment, semanticDomains],
+            );
+            items = result.rows.map((row) => buildInboxItem(row, "expiring"));
+            break;
+          }
+          case "completed": {
+            // CLOSED packets
+            const result = await client.query<
+              ReviewTaskRow & { proposer_principal: string | null; candidate_status: string | null }
+            >(
+              `SELECT task.semantic_domain, task.packet_id, task.packet_kind, task.packet_payload,
                     task.candidate_id, task.decision_window_status,
                     task.review_outcome, task.decision_expires_at,
                     task.publish_expires_at, task.created_at,
@@ -365,36 +513,39 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
              WHERE task.app_id = $1::uuid
                AND task.tenant_id = $2::uuid
                AND task.environment = $3
-               AND task.semantic_domain = $4
+               AND task.semantic_domain = ANY($4::text[])
                AND task.decision_window_status = 'CLOSED'
              ORDER BY task.closed_at DESC`,
-            [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain],
-          );
-          items = result.rows.map((row) => buildInboxItem(row, "completed"));
-          break;
+              [scope.appId, scope.tenantId, scope.environment, semanticDomains],
+            );
+            items = result.rows.map((row) => buildInboxItem(row, "completed"));
+            break;
+          }
+          default:
+            items = [];
         }
-        default:
-          items = [];
-      }
 
-      return items;
-    } catch (error) {
-      throw wrapError(error, "GET_INBOX_ITEMS_FAILED");
-    } finally {
-      client.release();
-    }
+        return items;
+      },
+    );
   }
 
   // ── getPacketDetail ───────────────────────────────────────────────────────────
 
-  async getPacketDetail(scope: SemanticScope, packetId: string): Promise<SemanticReviewPacket> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope);
-
-      // 1. Get review task
-      const taskResult = await client.query<ReviewTaskRow>(
-        `SELECT packet_id, packet_kind, packet_payload,
+  async getPacketDetail(
+    authority: SemanticAuthorityContext,
+    packetId: string,
+  ): Promise<SemanticReviewPacket> {
+    return this.transaction(
+      authority,
+      "READ",
+      ["OWNER", "ANALYST", "VIEWER"],
+      "semantic.get-packet-detail",
+      async (client, scope) => {
+        const semanticDomains = authorizedReadDomains(authority);
+        // 1. Get review task
+        const taskResult = await client.query<ReviewTaskRow>(
+          `SELECT semantic_domain, packet_id, packet_kind, packet_payload,
                 candidate_id, decision_window_status,
                 review_outcome, decision_expires_at,
                 publish_expires_at, created_at,
@@ -403,41 +554,47 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
          WHERE app_id = $1::uuid
            AND tenant_id = $2::uuid
            AND environment = $3
-           AND semantic_domain = $4
-           AND packet_id = $5::uuid`,
-        [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, packetId],
-      );
+           AND semantic_domain = ANY($4::text[])
+           AND packet_id = $5::uuid
+         ORDER BY semantic_domain
+         LIMIT 2`,
+          [scope.appId, scope.tenantId, scope.environment, semanticDomains, packetId],
+        );
 
-      if (taskResult.rows.length === 0) {
-        throw new SemanticGovernanceError("PACKET_NOT_FOUND", "审核包不存在", 404);
-      }
+        if (taskResult.rows.length === 0) {
+          throw publicSemanticGovernanceError("SEMANTIC_PACKET_NOT_FOUND");
+        }
+        if (taskResult.rows.length !== 1) {
+          throw publicSemanticGovernanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE");
+        }
 
-      const task = taskResult.rows[0] as NonNullable<(typeof taskResult.rows)[0]>;
-      const payload = task.packet_payload;
+        const task = taskResult.rows[0] as NonNullable<(typeof taskResult.rows)[0]>;
+        const semanticDomain = task.semantic_domain;
+        const payload = task.packet_payload;
 
-      // 2. Get candidate info if available
-      let candidateStatus: string | null = null;
-      let proposerPrincipal = task.created_by;
-      if (task.candidate_id) {
-        const candResult = await client.query<CandidateRow>(
-          `SELECT candidate_id, proposer_principal, candidate_status, current_revision_id, created_at, updated_at
+        // 2. Get candidate info if available
+        let candidateStatus: string | null = null;
+        let proposerPrincipal = task.created_by;
+        if (task.candidate_id) {
+          const candResult = await client.query<CandidateRow>(
+            `SELECT candidate_id, proposer_principal, candidate_status, current_revision_id, created_at, updated_at
            FROM semantic.semantic_candidate
            WHERE app_id = $1::uuid
              AND tenant_id = $2::uuid
              AND environment = $3
              AND semantic_domain = $4
              AND candidate_id = $5::uuid`,
-          [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, task.candidate_id],
-        );
-       if (candResult.rows.length > 0) {
-          candidateStatus = candResult.rows[0]?.candidate_status ?? null;
-          proposerPrincipal = candResult.rows[0]?.proposer_principal ?? proposerPrincipal;
-       }
-     }
+            [scope.appId, scope.tenantId, scope.environment, semanticDomain, task.candidate_id],
+          );
+          if (candResult.rows.length > 0) {
+            candidateStatus = candResult.rows[0]?.candidate_status ?? null;
+            proposerPrincipal = candResult.rows[0]?.proposer_principal ?? proposerPrincipal;
+          }
+        }
 
-      // 3. Get decisions
-      const decResult = await client.query<ReviewDecisionRow>(
-        `SELECT decision_id, packet_id, principal, semantic_role,
+        // 3. Get decisions
+        const decResult = await client.query<ReviewDecisionRow>(
+          `SELECT decision_id, packet_id, principal, semantic_role,
                 decision, decision_reason, decision_digest, created_at
          FROM semantic.semantic_review_decision
          WHERE app_id = $1::uuid
@@ -446,14 +603,14 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
            AND semantic_domain = $4
            AND packet_id = $5::uuid
          ORDER BY created_at ASC`,
-        [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, packetId],
-      );
+          [scope.appId, scope.tenantId, scope.environment, semanticDomain, packetId],
+        );
 
-      // 4. Get candidate revisions if available
-      let revisions: RevisionRecord[] = [];
-      if (task.candidate_id) {
-        const revResult = await client.query<CandidateRevisionRow>(
-          `SELECT revision_id, revision_number, revision_payload,
+        // 4. Get candidate revisions if available
+        let revisions: RevisionRecord[] = [];
+        if (task.candidate_id) {
+          const revResult = await client.query<CandidateRevisionRow>(
+            `SELECT revision_id, revision_number, revision_payload,
                   author_principal, change_description, change_class, created_at
            FROM semantic.semantic_candidate_revision
            WHERE app_id = $1::uuid
@@ -462,437 +619,358 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
              AND semantic_domain = $4
              AND candidate_id = $5::uuid
            ORDER BY revision_number ASC`,
-          [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, task.candidate_id],
-        );
-        revisions = revResult.rows.map((row) => ({
-          version: row.revision_number,
-          author: row.author_principal,
-          authorId: row.author_principal,
-          comment: row.change_description ?? "",
-          createdAt: row.created_at,
-          diff: buildDiff(row.revision_payload),
+            [scope.appId, scope.tenantId, scope.environment, semanticDomain, task.candidate_id],
+          );
+          revisions = revResult.rows.map((row) => ({
+            version: row.revision_number,
+            author: row.author_principal,
+            authorId: row.author_principal,
+            comment: row.change_description ?? "",
+            createdAt: row.created_at,
+            diff: buildDiff(row.revision_payload),
+          }));
+        }
+
+        // 5. Build packet detail
+        const status = candidateStatus
+          ? mapCandidateStatus(candidateStatus)
+          : mapReviewOutcome(task.review_outcome) === "approved"
+            ? "approved-not-published"
+            : "candidate";
+
+        const decisions: ReviewDecisionRecord[] = decResult.rows.map((row) => ({
+          reviewerId: row.principal,
+          reviewerName: row.principal,
+          decision: row.decision === "APPROVE" ? "approved" : "rejected",
+          decidedAt: row.created_at,
+          comment: row.decision_reason ?? undefined,
+          reauthenticated: false,
         }));
-      }
 
-      // 5. Build packet detail
-      const status = candidateStatus
-        ? mapCandidateStatus(candidateStatus)
-        : mapReviewOutcome(task.review_outcome) === "approved"
-          ? "approved-not-published"
-          : "candidate";
+        const reviewers: Reviewer[] = [
+          // Deduplicate: reviewers from decision rows + any from payload
+          ...decisions.map((d) => ({
+            id: d.reviewerId,
+            name: d.reviewerName,
+            decision: d.decision,
+            decidedAt: d.decidedAt,
+            comment: d.comment,
+          })),
+        ];
 
-      const decisions: ReviewDecisionRecord[] = decResult.rows.map((row) => ({
-        reviewerId: row.principal,
-        reviewerName: row.principal,
-        decision: row.decision === "APPROVE" ? "approved" : "rejected",
-        decidedAt: row.created_at,
-        comment: row.decision_reason ?? undefined,
-        reauthenticated: false,
-      }));
+        const diff = buildDiff(payload);
+        const impact = buildImpact(payload);
 
-      const reviewers: Reviewer[] = [
-        // Deduplicate: reviewers from decision rows + any from payload
-        ...decisions.map((d) => ({
-          id: d.reviewerId,
-          name: d.reviewerName,
-          decision: d.decision,
-          decidedAt: d.decidedAt,
-          comment: d.comment,
-        })),
-      ];
+        const packet: SemanticReviewPacket = {
+          id: task.packet_id,
+          version: revisions.length > 0 ? (revisions.at(-1)?.version ?? 1) : 1,
+          title: pluckString(payload, "title", "未命名提案"),
+          description: pluckString(payload, "description"),
+          domain: semanticDomain,
+          changeClass: pluckString(payload, "changeClass", "other") as ChangeClass,
+          riskLevel: pluckString(payload, "riskLevel", "medium") as RiskLevel,
+          status,
+          createdAt: task.created_at,
+          updatedAt: task.closed_at ?? task.created_at,
+          expiresAt: task.decision_expires_at,
+          proposer: {
+            id: proposerPrincipal,
+            name: proposerPrincipal,
+          },
+          reviewers,
+          quorum: {
+            required: (task.packet_payload.quorumRequired as number) ?? 2,
+            current: (task.packet_payload.quorumCurrent as number) ?? 0,
+          },
+          decisions,
+          diff,
+          impact,
+          lineage: buildLineage(task, candidateStatus),
+          revisions,
+        };
 
-      const diff = buildDiff(payload);
-      const impact = buildImpact(payload);
-
-      const packet: SemanticReviewPacket = {
-        id: task.packet_id,
-        version: revisions.length > 0 ? (revisions.at(-1)?.version ?? 1) : 1,
-        title: pluckString(payload, "title", "未命名提案"),
-        description: pluckString(payload, "description"),
-        domain: scope.semanticDomain,
-        changeClass: pluckString(payload, "changeClass", "other") as ChangeClass,
-        riskLevel: pluckString(payload, "riskLevel", "medium") as RiskLevel,
-        status,
-        createdAt: task.created_at,
-        updatedAt: task.closed_at ?? task.created_at,
-        expiresAt: task.decision_expires_at,
-        proposer: {
-          id: proposerPrincipal,
-          name: proposerPrincipal,
-        },
-        reviewers,
-        quorum: {
-          required: (task.packet_payload.quorumRequired as number) ?? 2,
-          current: (task.packet_payload.quorumCurrent as number) ?? 0,
-        },
-        decisions,
-        diff,
-        impact,
-        lineage: buildLineage(task, candidateStatus),
-        revisions,
-      };
-
-      return packet;
-    } catch (error) {
-      if (error instanceof SemanticGovernanceError) throw error;
-      throw wrapError(error, "GET_PACKET_DETAIL_FAILED");
-    } finally {
-      client.release();
-    }
+        return packet;
+      },
+    );
   }
 
   // ── submitDecision ────────────────────────────────────────────────────────────
 
-  async submitDecision(scope: SemanticScope, input: DecisionInput): Promise<DecisionResult> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope, input.principal);
+  async submitDecision(
+    authority: SemanticAuthorityContext,
+    input: SemanticDecisionInput,
+  ): Promise<DecisionResult> {
+    assertInputDomainMatches(authority, input.semantic_domain);
+    return this.transaction(
+      authority,
+      "WRITE",
+      ["OWNER", "ANALYST"],
+      "semantic.submit-decision",
+      async (client, scope, capability) => {
+        // Map frontend decision to DB decision
+        const dbDecision = input.decision;
+        const dbRole = capability.role === "OWNER" ? "admin_reviewer" : "domain_reviewer";
 
-      // Map frontend decision to DB decision
-      const dbDecision = input.decision === "approved" ? "APPROVE" : "REJECT";
-      const dbRole =
-        input.semanticRole === "human-reviewer"
-          ? "domain_reviewer"
-          : input.semanticRole === "admin"
-            ? "admin_reviewer"
-            : "domain_reviewer";
-
-      const result = await client.query<{ record_review_decision: Record<string, unknown> }>(
-        `SELECT semantic.record_review_decision(
+        const result = await client.query<{ record_review_decision: Record<string, unknown> }>(
+          `SELECT semantic.record_review_decision(
           $1::uuid, $2::uuid, $3, $4,
           $5::uuid, $6, $7, $8, $9
         )`,
-        [
-          scope.appId,
-          scope.tenantId,
-          scope.environment,
-          scope.semanticDomain,
-          input.packetId,
-          input.principal,
-          dbRole,
-          dbDecision,
-          input.decisionReason ?? null,
-        ],
-      );
+          [
+            scope.appId,
+            scope.tenantId,
+            scope.environment,
+            scope.semanticDomain,
+            input.packet_id,
+            capability.principal,
+            dbRole,
+            dbDecision,
+            input.decision_reason ?? null,
+          ],
+        );
 
-      const rpcResult = result.rows[0]?.record_review_decision;
-      if (!rpcResult) {
-        throw new SemanticGovernanceError("RPC_FAILED", "审核决策 RPC 调用失败", 500);
-      }
+        const rpcResult = result.rows[0]?.record_review_decision;
+        if (!rpcResult) {
+          throw new SemanticGovernanceError("RPC_FAILED", "审核决策 RPC 调用失败", 500);
+        }
 
-      return {
-        decisionId: rpcResult.decision_id as string,
-        decisionDigest: rpcResult.decision_digest as string,
-        packetClosed: (rpcResult.packet_closed ?? false) as boolean,
-        outcome: (rpcResult.outcome ?? "PENDING") as "APPROVED" | "VETOED" | "PENDING",
-        totalApprovals: (rpcResult.total_approvals as number) ?? 0,
-        totalRejections: (rpcResult.total_rejections as number) ?? 0,
-        requiredApprovals: rpcResult.required_approvals as number | undefined,
-        decisionSetDigest: rpcResult.decision_set_digest as string | undefined,
-      };
-    } catch (error) {
-      if (error instanceof SemanticGovernanceError) throw error;
-      throw wrapError(error, "SUBMIT_DECISION_FAILED");
-    } finally {
-      client.release();
-    }
+        return {
+          decisionId: rpcResult.decision_id as string,
+          decisionDigest: rpcResult.decision_digest as string,
+          packetClosed: (rpcResult.packet_closed ?? false) as boolean,
+          outcome: (rpcResult.outcome ?? "PENDING") as "APPROVED" | "VETOED" | "PENDING",
+          totalApprovals: (rpcResult.total_approvals as number) ?? 0,
+          totalRejections: (rpcResult.total_rejections as number) ?? 0,
+          requiredApprovals: rpcResult.required_approvals as number | undefined,
+          decisionSetDigest: rpcResult.decision_set_digest as string | undefined,
+        };
+      },
+    );
   }
 
   // ── createCandidate ───────────────────────────────────────────────────────────
 
   async createCandidate(
-    scope: SemanticScope,
-    input: CreateCandidateInput,
-  ): Promise<{ packetId: string }> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope, "agent-proposer");
-
-      const candidateId = crypto.randomUUID();
-      const revisionId = crypto.randomUUID();
-      const packetId = crypto.randomUUID();
-
-      // Build packet payload
-      const packetPayload = {
-        title: input.title,
-        description: input.description,
-        domain: input.domain,
-        changeClass: input.changeClass,
-        riskLevel: input.riskLevel,
-        diff: input.diff,
-        quorumRequired: 2,
-        quorumCurrent: 0,
-      };
-
-      // Build revision payload
-      const revisionPayload = {
-        summary: `初始提案: ${input.title}`,
-        additions: [],
-        modifications: [],
-        deletions: [],
-      };
-
-      // Begin transaction
-      await client.query("BEGIN");
-
-      try {
-        // Insert candidate
-        await client.query(
-          `INSERT INTO semantic.semantic_candidate (
-            app_id, tenant_id, environment, semantic_domain,
-            candidate_id, proposer_principal, current_revision_id, candidate_status
-          ) VALUES ($1::uuid, $2::uuid, $3, $4, $5::uuid, $6, $7::uuid, 'DRAFT')`,
+    authority: SemanticAuthorityContext,
+    input: SemanticCandidateDraft,
+  ): Promise<SemanticCandidateCreateResult> {
+    assertInputDomainMatches(authority, input.semantic_domain);
+    return this.transaction(
+      authority,
+      "WRITE",
+      ["OWNER", "ANALYST"],
+      "semantic.create-candidate",
+      async (client, scope, capability) => {
+        const result = await client.query<{ create_candidate_draft: unknown }>(
+          `select semantic.create_candidate_draft(
+             $1::uuid, $2::uuid, $3::text, $4::text,
+             $5::text, $6::uuid, $7::text, $8::text,
+             $9::text, $10::text, $11::jsonb, $12::jsonb
+           )`,
           [
             scope.appId,
             scope.tenantId,
             scope.environment,
             scope.semanticDomain,
-            candidateId,
-            "agent-proposer",
-            revisionId,
-          ],
-        );
-
-        // Insert candidate revision
-        await client.query(
-          `INSERT INTO semantic.semantic_candidate_revision (
-            app_id, tenant_id, environment, semantic_domain,
-            candidate_id, revision_id, revision_number, source_revision_id,
-            revision_payload, revision_digest, author_principal,
-            change_description, change_class
-          ) VALUES (
-            $1::uuid, $2::uuid, $3, $4,
-            $5::uuid, $6::uuid, 1, $6::uuid,
-            $7::jsonb, $8, $9, $10, $11
-          )`,
-          [
-            scope.appId,
-            scope.tenantId,
-            scope.environment,
-            scope.semanticDomain,
-            candidateId,
-            revisionId,
-            JSON.stringify(revisionPayload),
-            `sha256:${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
-            "agent-proposer",
+            capability.principal,
+            input.idempotency_key,
+            input.title,
             input.description,
-            input.changeClass === "formula" ? "MAJOR" : "MINOR",
+            input.change_class,
+            input.risk_level,
+            JSON.stringify(input.source_payload),
+            JSON.stringify(input.diff),
           ],
         );
-
-        // Insert review task
-        await client.query(
-          `INSERT INTO semantic.semantic_review_task (
-            app_id, tenant_id, environment, semantic_domain,
-            packet_id, packet_kind, packet_digest, packet_payload,
-            candidate_id, decision_window_status, review_outcome,
-            decision_expires_at, quorum_rules_snapshot, veto_rules_snapshot,
-            exclusion_set, created_by
-          ) VALUES (
-            $1::uuid, $2::uuid, $3, $4,
-            $5::uuid, 'CANDIDATE_REVIEW', $6, $7::jsonb,
-            $8::uuid, 'OPEN', 'PENDING',
-            NOW() + INTERVAL '7 days', $9::jsonb, $10::jsonb,
-            $11::jsonb, $12
-          )`,
-          [
-            scope.appId,
-            scope.tenantId,
-            scope.environment,
-            scope.semanticDomain,
-            packetId,
-            `sha256:${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
-            JSON.stringify(packetPayload),
-            candidateId,
-            JSON.stringify({ required_approvals: 2, min_reviewers: 2 }),
-            JSON.stringify({ min_veto_count: 1 }),
-            JSON.stringify(["agent-proposer"]),
-            "agent-proposer",
-          ],
-        );
-
-        await client.query("COMMIT");
-        return { packetId };
-      } catch (error) {
-        await client.query("ROLLBACK");
-        throw error;
-      }
-    } catch (error) {
-      if (error instanceof SemanticGovernanceError) throw error;
-      throw wrapError(error, "CREATE_CANDIDATE_FAILED");
-    } finally {
-      client.release();
-    }
+        const rpcResult = result.rows[0]?.create_candidate_draft;
+        const parsed = semanticCandidateCreateResultSchema.safeParse({
+          ...(typeof rpcResult === "object" && rpcResult !== null ? rpcResult : {}),
+          schema_version: "semantic-candidate-create-result@1.0.0",
+          authority: "POSTGRESQL",
+        });
+        if (!parsed.success) {
+          throw publicSemanticGovernanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE", true);
+        }
+        return parsed.data;
+      },
+    );
   }
 
   // ── preparePublish ────────────────────────────────────────────────────────────
 
-  async preparePublish(scope: SemanticScope, packetId: string): Promise<{ attemptId: string }> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope, "publisher");
-
-      // Get candidate_id from the review task
-      const taskResult = await client.query<{ candidate_id: string | null }>(
-        `SELECT candidate_id
+  async preparePublish(
+    authority: SemanticAuthorityContext,
+    input: SemanticPreparePublishInput,
+  ): Promise<{ attemptId: string }> {
+    assertInputDomainMatches(authority, input.semantic_domain);
+    return this.transaction(
+      authority,
+      "WRITE",
+      ["OWNER"],
+      "semantic.prepare-publish",
+      async (client, scope) => {
+        // Get candidate_id from the review task
+        const taskResult = await client.query<{ candidate_id: string | null }>(
+          `SELECT candidate_id
          FROM semantic.semantic_review_task
          WHERE app_id = $1::uuid
            AND tenant_id = $2::uuid
            AND environment = $3
            AND semantic_domain = $4
            AND packet_id = $5::uuid`,
-        [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, packetId],
-      );
+          [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, input.packet_id],
+        );
 
-      if (taskResult.rows.length === 0) {
-        throw new SemanticGovernanceError("PACKET_NOT_FOUND", "审核包不存在", 404);
-      }
+        if (taskResult.rows.length === 0) {
+          throw new SemanticGovernanceError("PACKET_NOT_FOUND", "审核包不存在", 404);
+        }
 
-      const candidateId = taskResult.rows[0]?.candidate_id;
-      if (!candidateId) {
-        throw new SemanticGovernanceError("NO_CANDIDATE", "审核包没有关联的提案", 400);
-      }
+        const candidateId = taskResult.rows[0]?.candidate_id;
+        if (!candidateId) {
+          throw new SemanticGovernanceError("NO_CANDIDATE", "审核包没有关联的提案", 400);
+        }
 
-      const result = await client.query<{ prepare_publish_attempt: Record<string, unknown> }>(
-        `SELECT semantic.prepare_publish_attempt(
+        const result = await client.query<{ prepare_publish_attempt: Record<string, unknown> }>(
+          `SELECT semantic.prepare_publish_attempt(
           $1::uuid, $2::uuid, $3, $4,
-          $5::uuid, $6::uuid, $7, $8::bigint,
-          $9::bigint, $10::bigint, $11
+          $5::uuid, $6::uuid, $7::text, $8::bigint,
+          $9::bigint, $10::bigint, $11::text, $12::jsonb
         )`,
-        [
-          scope.appId,
-          scope.tenantId,
-          scope.environment,
-          scope.semanticDomain,
-          packetId,
-          candidateId,
-          `sha256:${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
-          1,
-          1,
-          1,
-          `sha256:${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
-        ],
-      );
+          [
+            scope.appId,
+            scope.tenantId,
+            scope.environment,
+            scope.semanticDomain,
+            input.packet_id,
+            candidateId,
+            input.compiler_bundle_digest,
+            input.catalog_epoch,
+            input.dependency_generation,
+            input.target_generation,
+            input.idempotency_digest,
+            input.conditional_legacy_plan ? JSON.stringify(input.conditional_legacy_plan) : null,
+          ],
+        );
 
-      const rpcResult = result.rows[0]?.prepare_publish_attempt;
-      if (!rpcResult) {
-        throw new SemanticGovernanceError("RPC_FAILED", "准备发布 RPC 调用失败", 500);
-      }
+        const rpcResult = result.rows[0]?.prepare_publish_attempt;
+        if (!rpcResult) {
+          throw new SemanticGovernanceError("RPC_FAILED", "准备发布 RPC 调用失败", 500);
+        }
 
-      return { attemptId: rpcResult.attempt_id as string };
-    } catch (error) {
-      if (error instanceof SemanticGovernanceError) throw error;
-      throw wrapError(error, "PREPARE_PUBLISH_FAILED");
-    } finally {
-      client.release();
-    }
+        return { attemptId: rpcResult.attempt_id as string };
+      },
+    );
   }
 
   // ── commitPublish ─────────────────────────────────────────────────────────────
 
-  async commitPublish(scope: SemanticScope, packetId: string): Promise<{ releaseId: string }> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope, "publisher");
-
-      // Get the latest PREPARED attempt for this packet
-      const attemptResult = await client.query<{ attempt_id: string }>(
-        `SELECT attempt_id
+  async commitPublish(
+    authority: SemanticAuthorityContext,
+    input: SemanticCommitPublishInput,
+  ): Promise<{ releaseId: string }> {
+    assertInputDomainMatches(authority, input.semantic_domain);
+    return this.transaction(
+      authority,
+      "WRITE",
+      ["OWNER"],
+      "semantic.commit-publish",
+      async (client, scope) => {
+        // Verify the exact PREPARED attempt belongs to this packet.
+        const attemptResult = await client.query<{ attempt_id: string }>(
+          `SELECT attempt_id
          FROM semantic.semantic_publish_attempt
          WHERE app_id = $1::uuid
            AND tenant_id = $2::uuid
            AND environment = $3
            AND semantic_domain = $4
            AND packet_id = $5::uuid
+           AND attempt_id = $6::uuid
            AND attempt_state = 'PREPARED'
-         ORDER BY created_at DESC
          LIMIT 1`,
-        [scope.appId, scope.tenantId, scope.environment, scope.semanticDomain, packetId],
-      );
+          [
+            scope.appId,
+            scope.tenantId,
+            scope.environment,
+            scope.semanticDomain,
+            input.packet_id,
+            input.attempt_id,
+          ],
+        );
 
-      if (attemptResult.rows.length === 0) {
-        throw new SemanticGovernanceError("NO_ATTEMPT", "没有找到准备好的发布尝试", 400);
-      }
+        if (attemptResult.rows.length === 0) {
+          throw new SemanticGovernanceError("NO_ATTEMPT", "没有找到准备好的发布尝试", 400);
+        }
 
-      const attemptId = attemptResult.rows[0]?.attempt_id;
-      const projectionRef = crypto.randomUUID();
-      const projectionHash = `sha256:${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`;
-
-      const result = await client.query<{ commit_publish_attempt: Record<string, unknown> }>(
-        `SELECT semantic.commit_publish_attempt(
+        const result = await client.query<{ commit_publish_attempt: Record<string, unknown> }>(
+          `SELECT semantic.commit_publish_attempt(
           $1::uuid, $2::uuid, $3, $4,
           $5::uuid, $6::uuid, $7, $8::uuid,
           $9, $10::uuid, $11, $12::jsonb, $13::uuid
         )`,
-        [
-          scope.appId,
-          scope.tenantId,
-          scope.environment,
-          scope.semanticDomain,
-          attemptId,
-          projectionRef,
-          projectionHash,
-          projectionRef,
-          projectionHash,
-          projectionRef,
-          projectionHash,
-          null,  // p_profile_child_manifest
-          null,  // p_committed_legacy_attempt_ref
-        ],
-      );
+          [
+            scope.appId,
+            scope.tenantId,
+            scope.environment,
+            scope.semanticDomain,
+            input.attempt_id,
+            input.executable_projection_ref,
+            input.executable_projection_hash,
+            input.relationship_projection_ref,
+            input.relationship_projection_hash,
+            input.runtime_restriction_projection_ref,
+            input.runtime_restriction_projection_hash,
+            input.profile_child_manifest ? JSON.stringify(input.profile_child_manifest) : null,
+            input.committed_legacy_attempt_ref ?? null,
+          ],
+        );
 
-      const rpcResult = result.rows[0]?.commit_publish_attempt;
-      if (!rpcResult) {
-        throw new SemanticGovernanceError("RPC_FAILED", "执行发布 RPC 调用失败", 500);
-      }
+        const rpcResult = result.rows[0]?.commit_publish_attempt;
+        if (!rpcResult) {
+          throw new SemanticGovernanceError("RPC_FAILED", "执行发布 RPC 调用失败", 500);
+        }
 
-      return { releaseId: rpcResult.release_id as string };
-    } catch (error) {
-      if (error instanceof SemanticGovernanceError) throw error;
-      throw wrapError(error, "COMMIT_PUBLISH_FAILED");
-    } finally {
-      client.release();
-    }
+        return { releaseId: rpcResult.release_id as string };
+      },
+    );
   }
 
   // ── executeRollback ───────────────────────────────────────────────────────────
 
-  async executeRollback(scope: SemanticScope, _packetId: string): Promise<{ receiptId: string }> {
-    const client = await this.pool.connect();
-    try {
-      await setScopeContext(client, scope, "publisher");
-
-      const authorizationId = crypto.randomUUID();
-      const nonce = crypto.randomUUID();
-
-      const result = await client.query<{ execute_rollback: Record<string, unknown> }>(
-        `SELECT semantic.execute_rollback(
+  async executeRollback(
+    authority: SemanticAuthorityContext,
+    input: SemanticRollbackInput,
+  ): Promise<{ receiptId: string }> {
+    assertInputDomainMatches(authority, input.semantic_domain);
+    return this.transaction(
+      authority,
+      "WRITE",
+      ["OWNER"],
+      "semantic.execute-rollback",
+      async (client, scope) => {
+        const result = await client.query<{ execute_rollback: Record<string, unknown> }>(
+          `SELECT semantic.execute_rollback(
           $1::uuid, $2::uuid, $3, $4,
           $5::uuid, $6::uuid, $7
         )`,
-        [
-          scope.appId,
-          scope.tenantId,
-          scope.environment,
-          scope.semanticDomain,
-          authorizationId,
-          nonce,
-          "手动回滚",
-        ],
-      );
+          [
+            scope.appId,
+            scope.tenantId,
+            scope.environment,
+            scope.semanticDomain,
+            input.authorization_id,
+            input.authorization_nonce,
+            input.rollback_reason,
+          ],
+        );
 
-      const rpcResult = result.rows[0]?.execute_rollback;
-      if (!rpcResult) {
-        throw new SemanticGovernanceError("RPC_FAILED", "执行回滚 RPC 调用失败", 500);
-      }
+        const rpcResult = result.rows[0]?.execute_rollback;
+        if (!rpcResult) {
+          throw new SemanticGovernanceError("RPC_FAILED", "执行回滚 RPC 调用失败", 500);
+        }
 
-      return { receiptId: rpcResult.receipt_id as string };
-    } catch (error) {
-      if (error instanceof SemanticGovernanceError) throw error;
-      throw wrapError(error, "EXECUTE_ROLLBACK_FAILED");
-    } finally {
-      client.release();
-    }
+        return { receiptId: rpcResult.receipt_id as string };
+      },
+    );
   }
 }
 
@@ -908,7 +986,7 @@ function buildInboxItem(
   return {
     packetId: row.packet_id,
     title: pluckString(payload, "title", "未命名提案"),
-    domain: pluckString(payload, "domain", "未知"),
+    domain: row.semantic_domain,
     changeClass: pluckString(payload, "changeClass", "other") as ChangeClass,
     riskLevel: pluckString(payload, "riskLevel", "medium") as RiskLevel,
     status,
@@ -996,18 +1074,6 @@ function buildLineage(task: ReviewTaskRow, candidateStatus: string | null): Line
   }
 
   return lineage;
-}
-
-/** 包装数据库错误为 SemanticGovernanceError */
-function wrapError(error: unknown, fallbackCode: string): SemanticGovernanceError {
-  if (error instanceof SemanticGovernanceError) return error;
-  const message = error instanceof Error ? error.message : "未知数据库错误";
-  const pgCode =
-    error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
-  if (pgCode === "42501" || (typeof message === "string" && message.includes("SEMANTIC_"))) {
-    return new SemanticGovernanceError(fallbackCode, message, 403);
-  }
-  return new SemanticGovernanceError(fallbackCode, message, 500);
 }
 
 // ─── 重新导出用于类型检查的辅助函数 ────────────────────────────────────────────
