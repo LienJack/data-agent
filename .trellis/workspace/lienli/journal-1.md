@@ -40,3 +40,25 @@
   剩余 P0/P1。
 - 边界：本单元不包含 PostgreSQL Compiler、七道 Gate、Repair、Sandbox，也尚未组合
   面向普通 ANALYST 的受信 PolicyReceipt Issuer。下一步继续 U5 Compiler + Gate。
+
+
+## Session 1: Semantic Layer Studio M0 authority foundation
+
+**Date**: 2026-08-08
+**Task**: Semantic Layer Studio M0 authority foundation
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Committed the Published F9 prerequisite and M0 fail-closed semantic authority, canonical candidate draft, publish and rollback material, datasource SecretRef boundary, verification evidence, and PostgreSQL integration gates.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2040b3e` | (see git log) |
+| `b820f03` | (see git log) |
+
+### Status
+
+[OK] **Completed**
