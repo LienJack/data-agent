@@ -22,6 +22,7 @@ describe("platform package public surface", () => {
       "createPostgresRunQueue",
       "createPostgresSecretRefRepository",
       "createPostgresText2SqlSandboxAuthority",
+      "createPublishedF9LifecycleService",
       "createPythonSqlSandboxClient",
       "createScopedUpstashCache",
       "createStorageNamespace",
