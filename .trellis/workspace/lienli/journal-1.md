@@ -104,3 +104,24 @@ Implemented and verified deterministic read-only PostgreSQL catalog snapshots, d
 ### Status
 
 [OK] **Completed**
+
+
+## Session 4: M2.1 Neo4j Relationship Index
+
+**Date**: 2026-08-09
+**Task**: M2.1 Neo4j Relationship Index
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Delivered a PostgreSQL-fenced, rebuildable Neo4j relationship index with 10625 authority operations, independent indexer, shared Web and Agent search, rich graph UI, fallback safety, real PG17 and Neo4j proof, Docker health, and 10k benchmark evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `34226d8` | (see git log) |
+
+### Status
+
+[OK] **Completed**
