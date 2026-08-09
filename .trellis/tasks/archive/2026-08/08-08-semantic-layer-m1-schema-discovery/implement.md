@@ -49,7 +49,7 @@
       `trellis-check`。
 - [x] 静态证明没有 datasource DML/DDL、LLM、Candidate/Review/Release mutation。
 - [x] 记录 evidence、rollback 和 scoped commit manifest。
-- [ ] 取得 M1 scoped commit 批准并归档；归档后才能创建 M2。
+- [x] 取得 M1 scoped commit 批准，完成 `4cee083` 并归档；归档后才能创建 M2。
 
 ## Commit boundary
 

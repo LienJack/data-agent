@@ -1,7 +1,7 @@
 # M1 Verification and Commit Boundary
 
 Date: 2026-08-09
-Status: implementation verified; scoped commit approved
+Status: implementation verified and committed; ready to archive
 
 ## Evidence
 
@@ -19,6 +19,7 @@ Status: implementation verified; scoped commit approved
 | Full migration chain + M1 authority assertions | PASS |
 | Next 16 production build | PASS; M1 page and four dynamic API routes emitted |
 | Headed browser visual/interaction pass | PASS; page/forms rendered, browser console clean, missing runtime failed closed with redacted 503 |
+| Scoped work commit | PASS; `4cee083 feat(semantic): deliver M1 PostgreSQL schema discovery` |
 
 `pnpm lint` remains red because the dirty worktree contains 142 pre-existing errors in untracked or
 unrelated DataFoundry and release files. M1's exact file set passes Biome. No unrelated lint file was

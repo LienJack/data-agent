@@ -68,7 +68,7 @@
 - [x] Snapshot/scan/drift 持久化具备 scope isolation、immutable、replay/conflict 和 ledger 证据。
 - [x] API 无 Authority/credential 覆盖；UI 的 tree/selector/diff 使用同一 snapshot identity。
 - [x] 扫描与 drift 不创建 Candidate、ReviewPacket、Release 或 active pointer mutation。
-- [ ] 只提交 M1 owned files；既有 DataFoundry 与其他脏文件保持原样。
+- [x] 只提交 M1 owned files；既有 DataFoundry 与其他脏文件保持原样。
 
 部署说明：M1 提供 strict metadata/egress/SecretRef/connector 组合器；没有部署侧 Secret Provider、
 egress approval 与 metadata resolver 绑定时，默认 Web runtime 返回脱敏 503。这是显式 fail-closed
