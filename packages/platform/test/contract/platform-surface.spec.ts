@@ -4,14 +4,19 @@ import * as platform from "../../src/index.js";
 describe("platform package public surface", () => {
   it("exports only production, scope-aware U2/U4/U6 entry points", () => {
     expect(Object.keys(platform).sort()).toEqual([
+      "CatalogContractError",
       "PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL",
       "PersistenceBoundaryError",
       "PythonSqlSandboxProtocolError",
+      "adaptPgCatalogPool",
       "adaptPgPool",
+      "comparePhysicalSchemaSnapshots",
       "containsPotentialPlaintextSecret",
       "createCacheNamespace",
       "createCoordinatedSandboxPort",
+      "createPhysicalSchemaSnapshot",
       "createPostgresCapabilityAuthority",
+      "createPostgresCatalogScanner",
       "createPostgresControlledFixture",
       "createPostgresDatasourceEgress",
       "createPostgresRepository",
@@ -20,6 +25,7 @@ describe("platform package public surface", () => {
       "createPostgresRunControl",
       "createPostgresRunEventStore",
       "createPostgresRunQueue",
+      "createPostgresSchemaSnapshotStore",
       "createPostgresSecretRefRepository",
       "createPostgresText2SqlSandboxAuthority",
       "createPublishedF9LifecycleService",

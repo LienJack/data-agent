@@ -1,6 +1,21 @@
 export * from "./attribution/published-f9-lifecycle.js";
 export * from "./cache/namespace.js";
 export * from "./cache/scoped-upstash.js";
+export * from "./catalog/physical-schema.js";
+export {
+  adaptPgCatalogPool,
+  createPostgresCatalogScanner,
+  type PostgresCatalogClient,
+  type PostgresCatalogConnector,
+  type PostgresCatalogQuery,
+  type PostgresCatalogScanner,
+} from "./catalog/postgres-catalog.js";
+export {
+  createPostgresSchemaSnapshotStore,
+  type PostgresSchemaSnapshotStore,
+  type SchemaScanFailureInput,
+} from "./catalog/postgres-snapshot-store.js";
+export * from "./catalog/schema-drift.js";
 export * from "./datasources/postgres-datasource-egress.js";
 export * from "./events/postgres-run-control.js";
 export * from "./events/postgres-run-event-store.js";

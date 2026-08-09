@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Keep catalog contracts, platform adapter and Web composition in their owning layers."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Apply zero-write datasource transactions, full scope, RLS, migration ledger and SecretRef rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Use stable scan terminals and redact driver/database failures."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Keep physical observations as evidence rather than published semantic Authority."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Require strict Zod, failing tests, PG17 evidence and malicious fixtures."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Prevent DSN, credential, SQL and raw connector errors from leaking."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Render only parsed snapshot/drift projections with explicit non-authoritative states."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Keep contract, adapter, persistence, API and UI snapshot identities aligned."}
+{"file":".trellis/tasks/08-08-semantic-layer-studio/research/m1-schema-discovery-baseline.md","reason":"Use the approved M1 architecture and non-reuse boundaries."}

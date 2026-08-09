@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify read-only transaction order, scope, RLS, grants, migration and SecretRef boundaries."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify stable public scan terminals and fail-closed redaction."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Challenge any path that promotes catalog facts to semantic Authority."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify strict contracts, edge cases, PG17 tests and zero-write evidence."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Audit API, scan run and diagnostics for DSN or credential leakage."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify UI projections share exact snapshot identity and non-authoritative state."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace snapshot and drift identity through every layer."}
+{"file":".trellis/tasks/08-08-semantic-layer-studio/research/m1-schema-discovery-baseline.md","reason":"Check implementation against the approved M1 baseline and exclusions."}

@@ -331,6 +331,7 @@ for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.
   fi
 done
 apply_sql "$script_dir/10-fixtures.sql"
+apply_sql "$script_dir/28-schema-discovery-authority-assertions.sql"
 
 app_id="00000000-0000-4000-8000-00000000da01"
 tenant_id="00000000-0000-4000-8000-00000000aa22"
