@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 1
-- **Last Active**: 2026-08-08
+- **Total Sessions**: 2
+- **Last Active**: 2026-08-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~64 | Active |
+| `journal-1.md` | ~85 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 2 | 2026-08-09 | Deliver M1 PostgreSQL Schema Discovery | `4cee083` | `feat/datafoundry-platform-modules` |
 | 1 | 2026-08-08 | Semantic Layer Studio M0 authority foundation | `2040b3e`, `b820f03` | `feat/datafoundry-platform-modules` |
 <!-- @@@/auto:session-history -->
 
