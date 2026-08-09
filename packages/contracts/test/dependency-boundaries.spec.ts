@@ -159,6 +159,34 @@ describe("Workspace 依赖边界", () => {
     ).toEqual(["@ai-sdk/openai", "ai", "@ai-sdk/anthropic"]);
   });
 
+  it("App 组合根可消费 Semantic kernel，但 Semantic 不得反向依赖 App", () => {
+    const web = workspaceModule(
+      "apps/web",
+      "@data-agent/web",
+      "app",
+      ["@data-agent/semantic"],
+      ["@data-agent/semantic"],
+    );
+    const semanticKernel = workspaceModule("packages/semantic", "@data-agent/semantic", "semantic");
+    const reverseSemantic = workspaceModule(
+      "packages/semantic",
+      "@data-agent/semantic",
+      "semantic",
+      ["@data-agent/web"],
+      ["@data-agent/web"],
+    );
+    const appShell = workspaceModule("apps/web", "@data-agent/web", "app");
+
+    expect(validateWorkspaceModules([web, semanticKernel])).toEqual([]);
+    expect(validateWorkspaceModules([reverseSemantic, appShell])).toEqual([
+      expect.objectContaining({
+        code: "FORBIDDEN_ROLE_DEPENDENCY",
+        dependency: "@data-agent/web",
+        module: "@data-agent/semantic",
+      }),
+    ]);
+  });
+
   it("contracts runtime allowlist 当前只允许 zod", () => {
     const contracts = workspaceModule(
       "packages/contracts",

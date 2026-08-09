@@ -1,27 +1,21 @@
 import {
   assertSemanticSourceBundleInvariants,
   computeExecutableSemanticDigest,
+  computeSemanticExplorerSidecarDigest,
   computeSemanticSourceBundleHash,
-  type DescriptiveContributionProfile,
-  type RuntimeAuth,
+  SEMANTIC_EXPLORER_SIDECAR_VERSION,
   type SemanticDimension,
-  SemanticGovernanceError,
+  type SemanticExplorerSidecar,
+  type SemanticExplorerSidecarMaterial,
   type SemanticMetric,
-  type SemanticRelationship,
   type SemanticSourceBundle,
   semanticSourceBundleSchema,
 } from "@data-agent/contracts";
-import { z } from "zod";
 import {
   ContributionLoweringStatus,
-  type DescriptiveContributionLoweringResult,
   lowerDescriptiveContributionProfile,
 } from "./contribution-profile-compiler.js";
-import {
-  computeLowerabilityProof,
-  type LowerabilityResult,
-  LowerabilityStatus,
-} from "./lowerability-proof.js";
+import { computeLowerabilityProof, type LowerabilityResult } from "./lowerability-proof.js";
 import {
   assertNoRelationshipIdCollision,
   type ExecutableRelationshipEdge,
@@ -59,6 +53,7 @@ export interface U5SemanticProjection {
   readonly formulas: readonly string[];
   readonly sourceDigest: string;
   readonly lowerabilityResult: LowerabilityResult;
+  readonly explorer_sidecar?: SemanticExplorerSidecar;
 }
 
 export interface U5RelationshipProjection {
@@ -83,6 +78,98 @@ export interface U5Projection {
 
 export type LowerabilityVerdict = "LOWERABLE_TO_U5" | "NOT_LOWERABLE" | "PARTIALLY_LOWERABLE";
 
+function compareStable(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function deriveSidecarMaterial(bundle: SemanticSourceBundle): SemanticExplorerSidecarMaterial {
+  return {
+    schema_version: SEMANTIC_EXPLORER_SIDECAR_VERSION,
+    business_ontology: bundle.business_ontology
+      ? {
+          ...bundle.business_ontology,
+          entities: [...bundle.business_ontology.entities]
+            .sort((left, right) => compareStable(left.entity_id, right.entity_id))
+            .map((entity) => ({
+              ...entity,
+              aliases: [...entity.aliases].sort(compareStable),
+              business_relationship_types: [...entity.business_relationship_types].sort(
+                (left, right) =>
+                  compareStable(
+                    `${left.relationship_type}\0${left.target_entity_id}`,
+                    `${right.relationship_type}\0${right.target_entity_id}`,
+                  ),
+              ),
+            })),
+          events: [...bundle.business_ontology.events].sort((left, right) =>
+            compareStable(left.event_id, right.event_id),
+          ),
+          terms: [...bundle.business_ontology.terms]
+            .sort((left, right) => compareStable(left.term_id, right.term_id))
+            .map((term) => ({ ...term, aliases: [...term.aliases].sort(compareStable) })),
+        }
+      : null,
+    relationships: [...bundle.relationships]
+      .sort((left, right) => compareStable(left.relationship_id, right.relationship_id))
+      .map((relationship) => ({
+        ...relationship,
+        tags: [...relationship.tags].sort(compareStable),
+      })),
+    formula_signatures: [...bundle.formulas]
+      .sort((left, right) => compareStable(left.formula_id, right.formula_id))
+      .map((formula) => ({
+        ...formula,
+        dependency_formula_ids: [...formula.dependency_formula_ids].sort(compareStable),
+      })),
+    physical_binding: bundle.physical_binding
+      ? {
+          ...bundle.physical_binding,
+          entries: [...bundle.physical_binding.entries].sort((left, right) =>
+            compareStable(
+              `${left.logical_object_type}\0${left.logical_object_id}\0${left.datasource_id}`,
+              `${right.logical_object_type}\0${right.logical_object_id}\0${right.datasource_id}`,
+            ),
+          ),
+        }
+      : null,
+    catalog_governance: bundle.catalog_governance
+      ? {
+          ...bundle.catalog_governance,
+          tables: [...bundle.catalog_governance.tables]
+            .sort((left, right) => compareStable(left.table_id, right.table_id))
+            .map((table) => ({
+              ...table,
+              columns: [...table.columns]
+                .sort((left, right) => compareStable(left.column_id, right.column_id))
+                .map((column) => ({
+                  ...column,
+                  constraint_refs: [...column.constraint_refs].sort(compareStable),
+                })),
+            })),
+          data_quality_oracle_refs: [...bundle.catalog_governance.data_quality_oracle_refs].sort(
+            (left, right) =>
+              compareStable(
+                `${left.artifact_type}\0${left.artifact_id}\0${left.revision}`,
+                `${right.artifact_type}\0${right.artifact_id}\0${right.revision}`,
+              ),
+          ),
+        }
+      : null,
+  };
+}
+
+export async function deriveSemanticExplorerSidecar(
+  bundle: SemanticSourceBundle,
+): Promise<SemanticExplorerSidecar> {
+  const validatedBundle = semanticSourceBundleSchema.parse(bundle);
+  assertSemanticSourceBundleInvariants(validatedBundle);
+  const material = deriveSidecarMaterial(validatedBundle);
+  return {
+    ...material,
+    sidecar_digest: await computeSemanticExplorerSidecarDigest(material),
+  };
+}
+
 // ─── Main compiler ────────────────────────────────────────────────────────────
 
 /**
@@ -102,10 +189,12 @@ export async function compileU5Projection(
   catalogFence: string = "default-catalog-fence",
 ): Promise<U5Projection> {
   const errors: CompilationError[] = [];
+  let validatedBundle: SemanticSourceBundle;
 
   // Step 1: 校验 Bundle
   try {
-    assertSemanticSourceBundleInvariants(bundle);
+    validatedBundle = semanticSourceBundleSchema.parse(bundle);
+    assertSemanticSourceBundleInvariants(validatedBundle);
   } catch (error) {
     errors.push({
       code: CompilationErrorCode.INVALID_BUNDLE,
@@ -137,7 +226,7 @@ export async function compileU5Projection(
   }
 
   // Step 2: 计算 LowerabilityProof
-  const lowerabilityResult = computeLowerabilityProof(bundle);
+  const lowerabilityResult = computeLowerabilityProof(validatedBundle);
   if (!lowerabilityResult.overallLowerable) {
     errors.push({
       code: CompilationErrorCode.NOT_LOWERABLE,
@@ -149,7 +238,7 @@ export async function compileU5Projection(
   // Step 3: 降级 Relationship
   let edges: readonly ExecutableRelationshipEdge[] = [];
   try {
-    edges = lowerAllRelationships(bundle, catalogFence);
+    edges = lowerAllRelationships(validatedBundle, catalogFence);
     assertNoRelationshipIdCollision(edges);
   } catch (error) {
     errors.push({
@@ -165,8 +254,8 @@ export async function compileU5Projection(
     loweredRules: [],
     notExpressibleReasons: [],
   };
-  if (bundle.runtime_authorization) {
-    restrictionResult = lowerRuntimeAuthorization(bundle.runtime_authorization);
+  if (validatedBundle.runtime_authorization) {
+    restrictionResult = lowerRuntimeAuthorization(validatedBundle.runtime_authorization);
     if (restrictionResult.status === RuntimeAuthLoweringStatus.NOT_EXPRESSIBLE_IN_U5) {
       errors.push({
         code: CompilationErrorCode.RUNTIME_AUTH_NOT_LOWERABLE,
@@ -177,8 +266,11 @@ export async function compileU5Projection(
   }
 
   // Step 5: 降级 Contribution Profile（如果存在）
-  if (bundle.contribution_profile) {
-    const contribResult = lowerDescriptiveContributionProfile(bundle, bundle.contribution_profile);
+  if (validatedBundle.contribution_profile) {
+    const contribResult = lowerDescriptiveContributionProfile(
+      validatedBundle,
+      validatedBundle.contribution_profile,
+    );
     if (contribResult.status === ContributionLoweringStatus.NOT_LOWERABLE) {
       errors.push({
         code: CompilationErrorCode.CONTRIBUTION_NOT_LOWERABLE,
@@ -189,22 +281,24 @@ export async function compileU5Projection(
   }
 
   // Step 6: 计算 Content Digest
-  const bundleHash = await computeSemanticSourceBundleHash(bundle);
-  const executableDigest = await computeExecutableSemanticDigest(bundle);
+  const bundleHash = await computeSemanticSourceBundleHash(validatedBundle);
+  const executableDigest = await computeExecutableSemanticDigest(validatedBundle);
+  const explorerSidecar = await deriveSemanticExplorerSidecar(validatedBundle);
 
   // Step 7: 构建结果
   const semantic: U5SemanticProjection = {
-    metrics: bundle.metrics.map((m) => ({
+    metrics: validatedBundle.metrics.map((m) => ({
       ...m,
       tags: [...m.tags],
     })),
-    dimensions: bundle.dimensions.map((d) => ({
+    dimensions: validatedBundle.dimensions.map((d) => ({
       ...d,
       tags: [...d.tags],
     })),
-    formulas: bundle.formulas.map((f) => f.formula_id),
+    formulas: validatedBundle.formulas.map((f) => f.formula_id),
     sourceDigest: bundleHash,
     lowerabilityResult,
+    explorer_sidecar: explorerSidecar,
   };
 
   const relationship: U5RelationshipProjection = {

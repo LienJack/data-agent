@@ -1,0 +1,30 @@
+{
+  "id": "semantic-layer-m2-explorer",
+  "name": "semantic-layer-m2-explorer",
+  "title": "M2 Semantic Explorer",
+  "description": "Deliver a PostgreSQL-authoritative Semantic Explorer whose tree, table, graph, detail, diff and lineage share one exact active release identity.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "packages/contracts,packages/semantic,packages/platform,apps/web,infra/supabase semantic explorer read path",
+  "package": null,
+  "priority": "P1",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-09",
+  "completedAt": null,
+  "branch": "feat/datafoundry-platform-modules",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-08-semantic-layer-studio",
+  "relatedFiles": [
+    "docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md",
+    ".trellis/tasks/08-08-semantic-layer-studio",
+    ".trellis/tasks/archive/2026-08/08-08-semantic-layer-m1-schema-discovery"
+  ],
+  "notes": "M2 implementation and verification completed on 2026-08-09. User approved the exact M2 commit boundary; M2.1 Neo4j relationship indexing remains a separate follow-up.",
+  "meta": {}
+}

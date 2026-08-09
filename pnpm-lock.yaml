@@ -38,6 +38,9 @@ importers:
       '@data-agent/platform':
         specifier: workspace:*
         version: link:../../packages/platform
+      '@data-agent/semantic':
+        specifier: workspace:*
+        version: link:../../packages/semantic
       mysql2:
         specifier: ^3.23.2
         version: 3.23.2(@types/node@26.1.1)

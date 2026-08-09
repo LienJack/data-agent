@@ -27,6 +27,7 @@ describe("platform package public surface", () => {
       "createPostgresRunQueue",
       "createPostgresSchemaSnapshotStore",
       "createPostgresSecretRefRepository",
+      "createPostgresSemanticExplorerReader",
       "createPostgresText2SqlSandboxAuthority",
       "createPublishedF9LifecycleService",
       "createPythonSqlSandboxClient",

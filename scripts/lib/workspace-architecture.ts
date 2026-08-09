@@ -34,7 +34,7 @@ export const ALLOWED_ROLE_DEPENDENCIES: Readonly<Record<WorkspaceRole, readonly 
     evals: ["contracts"],
     "agent-runtime": ["contracts"],
     platform: ["contracts"],
-    app: ["contracts", "agent-runtime", "platform", "text2sql", "research", "evals"],
+    app: ["contracts", "agent-runtime", "platform", "semantic", "text2sql", "research", "evals"],
   };
 
 const workspaceRoots = ["apps", "packages"] as const;

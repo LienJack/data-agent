@@ -41,6 +41,7 @@ export {
 export * from "./l2.js";
 export * from "./research/index.js";
 export * from "./semantic-control-plane.js";
+export * from "./semantic-explorer.js";
 export * from "./semantic-governance.js";
 export * from "./semantic-governance-requests.js";
 export * from "./text2sql-evidence.js";

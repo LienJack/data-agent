@@ -62,6 +62,13 @@ export {
 } from "./sandbox/python-sql-sandbox.js";
 export * from "./secrets/postgres-secret-ref.js";
 export { containsPotentialPlaintextSecret } from "./secrets/secret-ref.js";
+export {
+  createPostgresSemanticExplorerReader,
+  type PostgresSemanticExplorerReader,
+  type SemanticExplorerCandidateComparisonInput,
+  type SemanticExplorerExactReleaseInput,
+  type SemanticExplorerReleasePageInput,
+} from "./semantic/postgres-semantic-explorer.js";
 export * from "./storage/namespace.js";
 export type {
   AppCapability,
