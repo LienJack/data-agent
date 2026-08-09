@@ -8,6 +8,8 @@ import type {
   SemanticExplorerObjectIdentity,
   SemanticExplorerReleaseTimeline,
   SemanticExplorerSnapshot,
+  SemanticRelationshipEdgeCategory,
+  SemanticRelationshipSearchResult,
 } from "@data-agent/contracts";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
@@ -19,10 +21,9 @@ import {
   getExplorerRelease,
   getExplorerTimeline,
   SemanticExplorerApiError,
+  searchExplorerRelationships,
 } from "@/lib/semantic-explorer-api";
-import { BoundedGraph } from "./bounded-graph";
 import { CategoryTree } from "./category-tree";
-import { deriveBoundedExplorerGraph } from "./graph";
 import {
   createLatestExplorerOperationGate,
   type LatestExplorerOperationGate,
@@ -30,6 +31,7 @@ import {
 } from "./latest-operation";
 import { ObjectDetail } from "./object-detail";
 import { ObjectTable } from "./object-table";
+import { RelationshipGraph } from "./relationship-graph";
 import { ReleaseControls } from "./release-controls";
 import { initialExplorerState, semanticExplorerReducer } from "./state";
 import { explorerIdentityKey, selectExplorerObjectWindow } from "./view-model";
@@ -68,9 +70,21 @@ export function ExplorerWorkspace() {
   const [lineageError, setLineageError] = useState<string | null>(null);
   const [auxiliaryBusy, setAuxiliaryBusy] = useState(false);
   const [lineageBusy, setLineageBusy] = useState(false);
+  const [relationshipResult, setRelationshipResult] =
+    useState<SemanticRelationshipSearchResult | null>(null);
+  const [relationshipError, setRelationshipError] = useState<string | null>(null);
+  const [relationshipBusy, setRelationshipBusy] = useState(false);
+  const [relationshipCategories, setRelationshipCategories] = useState<
+    readonly SemanticRelationshipEdgeCategory[]
+  >(["BIZ", "JOIN", "FORMULA", "BIND", "GOVERN"]);
+  const [relationshipDirection, setRelationshipDirection] = useState<
+    "upstream" | "downstream" | "both"
+  >("both");
+  const [relationshipHops, setRelationshipHops] = useState(3);
   const requestEpoch = useRef(0);
   const pointerGenerationFence = useRef(new Map<string, number>());
   const snapshotController = useRef<AbortController | null>(null);
+  const relationshipController = useRef<AbortController | null>(null);
   const lineageGate = useRef<LatestExplorerOperationGate | null>(null);
   const auxiliaryGate = useRef<LatestExplorerOperationGate | null>(null);
   lineageGate.current ??= createLatestExplorerOperationGate();
@@ -94,6 +108,10 @@ export function ExplorerWorkspace() {
   const loadSnapshot = useCallback(
     async (domain: string, releaseId: string | null) => {
       snapshotController.current?.abort();
+      relationshipController.current?.abort();
+      setRelationshipResult(null);
+      setRelationshipError(null);
+      setRelationshipBusy(false);
       cancelLineageOperation();
       cancelAuxiliaryOperation();
       const controller = new AbortController();
@@ -178,6 +196,7 @@ export function ExplorerWorkspace() {
     return () => {
       controller.abort();
       snapshotController.current?.abort();
+      relationshipController.current?.abort();
       lineageGate.current?.cancel();
       auxiliaryGate.current?.cancel();
     };
@@ -210,13 +229,58 @@ export function ExplorerWorkspace() {
       null
     );
   }, [selectedIdentity, snapshot]);
-  const graph = useMemo(
-    () =>
-      snapshot
-        ? deriveBoundedExplorerGraph(snapshot, selectedIdentity)
-        : { nodes: [], edges: [], truncated: false },
-    [selectedIdentity, snapshot],
-  );
+
+  const loadRelationships = useCallback(async () => {
+    if (!snapshot || !state.domain || state.view !== "graph") return;
+    relationshipController.current?.abort();
+    const controller = new AbortController();
+    relationshipController.current = controller;
+    setRelationshipBusy(true);
+    setRelationshipError(null);
+    try {
+      const term = state.search.trim();
+      const result = await searchExplorerRelationships(
+        {
+          schema_version: "semantic-relationship-search-request@1.0.0",
+          semantic_domain: state.domain,
+          release: {
+            kind: "HISTORICAL",
+            release_id: snapshot.release_identity.release_id,
+          },
+          root: term.length > 0 ? null : selectedIdentity,
+          term: term.length > 0 ? term : null,
+          categories: [...relationshipCategories],
+          direction: relationshipDirection,
+          hop_limit: relationshipHops,
+          node_limit: 250,
+          edge_limit: 500,
+        },
+        controller.signal,
+      );
+      if (!controller.signal.aborted) setRelationshipResult(result);
+    } catch (error) {
+      if (!wasAborted(error) && !controller.signal.aborted) {
+        setRelationshipError(publicError(error).message);
+      }
+    } finally {
+      if (!controller.signal.aborted) setRelationshipBusy(false);
+    }
+  }, [
+    relationshipCategories,
+    relationshipDirection,
+    relationshipHops,
+    selectedIdentity,
+    snapshot,
+    state.domain,
+    state.search,
+    state.view,
+  ]);
+
+  useEffect(() => {
+    if (state.view !== "graph" || relationshipCategories.length === 0) return;
+    const timeout = window.setTimeout(() => void loadRelationships(), 180);
+    return () => window.clearTimeout(timeout);
+  }, [loadRelationships, relationshipCategories.length, state.view]);
 
   function selectObject(selected: SemanticExplorerObjectIdentity) {
     cancelLineageOperation();
@@ -524,7 +588,102 @@ export function ExplorerWorkspace() {
               onSelect={selectObject}
             />
           ) : (
-            <BoundedGraph graph={graph} selected={selectedIdentity} onSelect={selectObject} />
+            <div>
+              <div className="flex flex-wrap items-end gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-bg-secondary)]/45 px-3 py-2.5">
+                <fieldset className="flex flex-wrap gap-1.5">
+                  <legend className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                    Edge categories
+                  </legend>
+                  {(["BIZ", "JOIN", "FORMULA", "BIND", "GOVERN"] as const).map((category) => {
+                    const enabled = relationshipCategories.includes(category);
+                    return (
+                      <label
+                        key={category}
+                        className={`cursor-pointer rounded border px-2 py-1 text-[10px] font-semibold ${
+                          enabled
+                            ? "border-[var(--color-accent)] bg-[var(--color-accent)]/10 text-[var(--color-accent)]"
+                            : "border-[var(--color-border-default)] text-[var(--color-text-tertiary)]"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={enabled}
+                          onChange={() =>
+                            setRelationshipCategories((current) =>
+                              current.includes(category)
+                                ? current.filter((item) => item !== category)
+                                : [...current, category],
+                            )
+                          }
+                        />
+                        {category}
+                      </label>
+                    );
+                  })}
+                </fieldset>
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                  Direction
+                  <select
+                    value={relationshipDirection}
+                    onChange={(event) =>
+                      setRelationshipDirection(
+                        event.target.value as "upstream" | "downstream" | "both",
+                      )
+                    }
+                    className="mt-1 block rounded border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2 py-1.5 text-xs normal-case tracking-normal text-[var(--color-text-secondary)]"
+                  >
+                    <option value="both">Both</option>
+                    <option value="upstream">Upstream</option>
+                    <option value="downstream">Downstream</option>
+                  </select>
+                </label>
+                <label className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-tertiary)]">
+                  Hop limit
+                  <select
+                    value={relationshipHops}
+                    onChange={(event) => setRelationshipHops(Number(event.target.value))}
+                    className="mt-1 block rounded border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2 py-1.5 text-xs normal-case tracking-normal text-[var(--color-text-secondary)]"
+                  >
+                    {[1, 2, 3, 4, 5, 6].map((hop) => (
+                      <option key={hop} value={hop}>
+                        {hop}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => void loadRelationships()}
+                  disabled={relationshipBusy || relationshipCategories.length === 0}
+                  className="rounded border border-[var(--color-border-default)] px-3 py-1.5 text-xs text-[var(--color-text-secondary)] disabled:opacity-50"
+                >
+                  {relationshipBusy ? "查询中…" : "刷新关系"}
+                </button>
+              </div>
+              {relationshipCategories.length === 0 ? (
+                <p className="flex min-h-72 items-center justify-center text-sm text-[var(--color-text-secondary)]">
+                  至少选择一种关系类别。
+                </p>
+              ) : relationshipError ? (
+                <div className="m-4 rounded-md border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
+                  <p>{relationshipError}</p>
+                  <button
+                    type="button"
+                    onClick={() => void loadRelationships()}
+                    className="mt-2 rounded border border-current px-2 py-1 text-xs"
+                  >
+                    重试
+                  </button>
+                </div>
+              ) : relationshipResult ? (
+                <RelationshipGraph result={relationshipResult} onSelectObject={selectObject} />
+              ) : (
+                <div className="flex min-h-72 items-center justify-center text-sm text-[var(--color-text-secondary)]">
+                  正在查询发布关系图…
+                </div>
+              )}
+            </div>
           )}
         </section>
 

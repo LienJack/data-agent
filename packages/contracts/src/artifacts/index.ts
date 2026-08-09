@@ -44,6 +44,7 @@ export * from "./semantic-control-plane.js";
 export * from "./semantic-explorer.js";
 export * from "./semantic-governance.js";
 export * from "./semantic-governance-requests.js";
+export * from "./semantic-relationship-index.js";
 export * from "./text2sql-evidence.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,

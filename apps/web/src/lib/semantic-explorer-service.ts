@@ -10,12 +10,19 @@ import type {
   SemanticExplorerObjectIdentity,
   SemanticExplorerReleaseTimeline,
   SemanticExplorerSnapshot,
+  SemanticRelationshipSearchRequest,
+  SemanticRelationshipSearchResult,
 } from "@data-agent/contracts";
-import type { PostgresSemanticExplorerReader } from "@data-agent/platform";
+import type {
+  PostgresRelationshipIndexStore,
+  PostgresSemanticExplorerReader,
+  SemanticRelationshipGraphAdapter,
+} from "@data-agent/platform";
 import {
   buildSemanticExplorerCandidateComparison,
   buildSemanticExplorerLineage,
   buildSemanticExplorerReadModel,
+  createSemanticRelationshipSearchService,
   diffSemanticExplorerSnapshots,
   SemanticExplorerKernelError,
   semanticExplorerIdentityKey,
@@ -71,6 +78,10 @@ export interface SemanticExplorerService {
     candidateId: string,
     revisionId: string,
   ): Promise<PortResult<SemanticExplorerCandidateComparison>>;
+  searchRelationships(
+    authority: SemanticAuthorityContext,
+    request: SemanticRelationshipSearchRequest,
+  ): Promise<PortResult<SemanticRelationshipSearchResult>>;
 }
 
 function kernelFailure(error: unknown): PortResult<never> {
@@ -118,6 +129,11 @@ async function buildSnapshot(
 
 export function createSemanticExplorerService(
   reader: PostgresSemanticExplorerReader,
+  relationshipOptions: {
+    readonly store?: PostgresRelationshipIndexStore | null;
+    readonly graph?: SemanticRelationshipGraphAdapter | null;
+    readonly disabledReason?: "INDEX_DISABLED" | "INDEX_NOT_CONFIGURED";
+  } = {},
 ): SemanticExplorerService {
   const getRelease = async (
     authority: SemanticAuthorityContext,
@@ -131,6 +147,26 @@ export function createSemanticExplorerService(
       }),
     );
 
+  const getActive = async (authority: SemanticAuthorityContext, semanticDomain: string) =>
+    buildSnapshot(await reader.getActiveSource(authority.capabilityInput, semanticDomain));
+
+  const relationshipSearch = createSemanticRelationshipSearchService({
+    snapshots: {
+      getActive: async (capabilityInput, semanticDomain) =>
+        buildSnapshot(await reader.getActiveSource(capabilityInput, semanticDomain)),
+      getRelease: async (capabilityInput, semanticDomain, releaseId) =>
+        buildSnapshot(
+          await reader.getReleaseSource(capabilityInput, {
+            semantic_domain: semanticDomain,
+            release_id: releaseId,
+          }),
+        ),
+    },
+    checkpoints: relationshipOptions.store ?? null,
+    graph: relationshipOptions.graph ?? null,
+    disabled_reason: relationshipOptions.disabledReason ?? "INDEX_DISABLED",
+  });
+
   const service: SemanticExplorerService = {
     async listDomains(authority) {
       const domains = await reader.listDomains(authority.capabilityInput, authority.allowedDomains);
@@ -143,7 +179,7 @@ export function createSemanticExplorerService(
     },
 
     async getActive(authority, semanticDomain) {
-      return buildSnapshot(await reader.getActiveSource(authority.capabilityInput, semanticDomain));
+      return getActive(authority, semanticDomain);
     },
 
     getRelease,
@@ -208,6 +244,23 @@ export function createSemanticExplorerService(
       } catch (error) {
         return kernelFailure(error);
       }
+    },
+
+    async searchRelationships(authority, request) {
+      if (!authority.allowedDomains.includes(request.semantic_domain)) {
+        return objectNotVisible();
+      }
+      return relationshipSearch.search(
+        {
+          capability_input: authority.capabilityInput,
+          scope: {
+            app_id: authority.scope.appId,
+            tenant_id: authority.scope.tenantId,
+            environment: authority.scope.environment,
+          },
+        },
+        request,
+      );
     },
   };
   return Object.freeze(service);

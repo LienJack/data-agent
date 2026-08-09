@@ -35,7 +35,7 @@ export const SEMANTIC_EXPLORER_CANDIDATE_COMPARISON_VERSION =
 export const SEMANTIC_EXPLORER_CANDIDATE_SOURCE_VERSION =
   "semantic-explorer-candidate-source@1.0.0" as const;
 
-const semanticDomainSchema = z
+export const semanticExplorerDomainSchema = z
   .string()
   .min(1)
   .max(64)
@@ -72,7 +72,7 @@ export const semanticExplorerProjectionIdentitySchema = z.strictObject({
 });
 
 export const semanticExplorerReleaseIdentitySchema = z.strictObject({
-  semantic_domain: semanticDomainSchema,
+  semantic_domain: semanticExplorerDomainSchema,
   release_id: immutableIdSchema,
   release_generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   release_digest: contentHashSchema,
@@ -456,7 +456,7 @@ export const semanticExplorerReleaseSummarySchema = z.strictObject({
 export const semanticExplorerReleaseTimelineSchema = z
   .strictObject({
     schema_version: z.literal(SEMANTIC_EXPLORER_RELEASE_TIMELINE_VERSION),
-    semantic_domain: semanticDomainSchema,
+    semantic_domain: semanticExplorerDomainSchema,
     pointer_observation: semanticExplorerPointerObservationSchema,
     releases: z.array(semanticExplorerReleaseSummarySchema),
     next_generation_cursor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).nullable(),
@@ -485,7 +485,7 @@ export const semanticExplorerReleaseTimelineSchema = z
 export const semanticExplorerDomainSummarySchema = z
   .strictObject({
     schema_version: z.literal(SEMANTIC_EXPLORER_DOMAIN_SUMMARY_VERSION),
-    semantic_domain: semanticDomainSchema,
+    semantic_domain: semanticExplorerDomainSchema,
     display_name: z.string().min(1).max(256),
     description: z.string().max(1024).nullable(),
     datasource_id: immutableIdSchema,
@@ -568,7 +568,7 @@ export const semanticExplorerCandidateComparisonStateSchema = z.discriminatedUni
 
 export const semanticExplorerCandidateComparisonSchema = z.strictObject({
   schema_version: z.literal(SEMANTIC_EXPLORER_CANDIDATE_COMPARISON_VERSION),
-  semantic_domain: semanticDomainSchema,
+  semantic_domain: semanticExplorerDomainSchema,
   candidate_id: immutableIdSchema,
   revision_id: immutableIdSchema,
   revision_number: z.number().int().min(1).max(2_147_483_647),
@@ -582,7 +582,7 @@ export const semanticExplorerCandidateComparisonSchema = z.strictObject({
 
 export const semanticExplorerRawCandidateComparisonSchema = z.strictObject({
   schema_version: z.literal(SEMANTIC_EXPLORER_CANDIDATE_SOURCE_VERSION),
-  semantic_domain: semanticDomainSchema,
+  semantic_domain: semanticExplorerDomainSchema,
   candidate_id: immutableIdSchema,
   revision_id: immutableIdSchema,
   revision_number: z.number().int().min(1).max(2_147_483_647),
@@ -594,7 +594,7 @@ export const semanticExplorerRawCandidateComparisonSchema = z.strictObject({
 });
 
 const rawPointerSchema = z.strictObject({
-  semantic_domain: semanticDomainSchema,
+  semantic_domain: semanticExplorerDomainSchema,
   current_release_id: immutableIdSchema.nullable(),
   current_release_generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   current_release_digest: contentHashSchema.nullable(),
@@ -603,7 +603,7 @@ const rawPointerSchema = z.strictObject({
 });
 
 const rawReleaseSchema = z.strictObject({
-  semantic_domain: semanticDomainSchema,
+  semantic_domain: semanticExplorerDomainSchema,
   release_id: immutableIdSchema,
   release_generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   release_digest: contentHashSchema,

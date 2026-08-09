@@ -63,6 +63,18 @@ export {
 export * from "./secrets/postgres-secret-ref.js";
 export { containsPotentialPlaintextSecret } from "./secrets/secret-ref.js";
 export {
+  createInMemoryRelationshipGraphAdapter,
+  createNeo4jRelationshipGraphAdapter,
+  createNeo4jRelationshipGraphAdapterFromEnvironment,
+  Neo4jRelationshipIndexError,
+  type SemanticRelationshipGraphAdapter,
+  type SemanticRelationshipGraphSlice,
+} from "./semantic/neo4j-relationship-index.js";
+export {
+  createPostgresRelationshipIndexStore,
+  type PostgresRelationshipIndexStore,
+} from "./semantic/postgres-relationship-index.js";
+export {
   createPostgresSemanticExplorerReader,
   type PostgresSemanticExplorerReader,
   type SemanticExplorerCandidateComparisonInput,

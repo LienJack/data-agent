@@ -5,6 +5,7 @@ describe("platform package public surface", () => {
   it("exports only production, scope-aware U2/U4/U6 entry points", () => {
     expect(Object.keys(platform).sort()).toEqual([
       "CatalogContractError",
+      "Neo4jRelationshipIndexError",
       "PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL",
       "PersistenceBoundaryError",
       "PythonSqlSandboxProtocolError",
@@ -14,11 +15,15 @@ describe("platform package public surface", () => {
       "containsPotentialPlaintextSecret",
       "createCacheNamespace",
       "createCoordinatedSandboxPort",
+      "createInMemoryRelationshipGraphAdapter",
+      "createNeo4jRelationshipGraphAdapter",
+      "createNeo4jRelationshipGraphAdapterFromEnvironment",
       "createPhysicalSchemaSnapshot",
       "createPostgresCapabilityAuthority",
       "createPostgresCatalogScanner",
       "createPostgresControlledFixture",
       "createPostgresDatasourceEgress",
+      "createPostgresRelationshipIndexStore",
       "createPostgresRepository",
       "createPostgresResearchAuthority",
       "createPostgresResearchResourceInvocation",

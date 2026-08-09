@@ -27,6 +27,31 @@ services:
       retries: 10
       start_period: 30s
 
+  # ---------- Optional, rebuildable semantic relationship projection ----------
+  neo4j:
+    image: neo4j:2026.06.0
+    container_name: data-agent-neo4j
+    profiles: ["relationship-index"]
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-data-agent-neo4j}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4jdata:/data
+      - neo4jlogs:/logs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "password=$${NEO4J_AUTH#*/}; cypher-shell -u neo4j -p \"$$password\" 'RETURN 1' >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
   # ---------- Migration runner (one-shot init container) ----------
   migration:
     image: postgres:17-alpine
@@ -59,6 +84,11 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
+      SEMANTIC_RELATIONSHIP_INDEX_ENABLED: ${SEMANTIC_RELATIONSHIP_INDEX_ENABLED:-false}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-data-agent-neo4j}
+      NEO4J_DATABASE: neo4j
     ports:
       - "3000:3000"
 
@@ -76,5 +106,46 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
       NODE_ENV: production
 
+  # ---------- Optional relationship projection indexer ----------
+  relationship-indexer:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker
+    container_name: data-agent-relationship-indexer
+    profiles: ["relationship-index"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    command: ["node", "apps/worker/dist/semantic/relationship-indexer-cli.js"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      SEMANTIC_RELATIONSHIP_INDEX_ENABLED: "true"
+      SEMANTIC_DEPLOYMENT_ID: ${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}
+      SEMANTIC_TENANT_ID: ${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}
+      SEMANTIC_PRINCIPAL_ID: ${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
+      SEMANTIC_RELATIONSHIP_DOMAINS: ${SEMANTIC_RELATIONSHIP_DOMAINS:-sales}
+      SEMANTIC_RELATIONSHIP_INDEX_HEALTH_PORT: "9090"
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-data-agent-neo4j}
+      NEO4J_DATABASE: neo4j
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:9090/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
 volumes:
   pgdata:
+  neo4jdata:
+  neo4jlogs:

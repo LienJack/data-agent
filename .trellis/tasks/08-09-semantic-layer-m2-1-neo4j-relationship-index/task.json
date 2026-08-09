@@ -1,0 +1,30 @@
+{
+  "id": "semantic-layer-m2-1-neo4j-relationship-index",
+  "name": "semantic-layer-m2-1-neo4j-relationship-index",
+  "title": "M2.1 Neo4j Relationship Index",
+  "description": "Add a PostgreSQL-fenced, rebuildable Neo4j relationship index, shared Web/Agent search and rich semantic graph interaction without creating a second semantic authority.",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "packages/contracts,packages/semantic,packages/platform,packages/agent-runtime,apps/worker,apps/web,infra/supabase 10625,compose",
+  "package": null,
+  "priority": "P1",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-09",
+  "completedAt": null,
+  "branch": "feat/datafoundry-platform-modules",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    ".trellis/tasks/archive/2026-08/08-09-semantic-layer-m2-explorer",
+    "docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md",
+    "/Users/lienli/Documents/work/深度调研/research/data-agent-system-design/questions/RQ297-以-PostgreSQL-为语义权威库-Neo4j-为关系图投影-Agent-维护候选而由人工审批发布的语义层是否可行-如何实现初始化扫描-指标编译-关系确认.md"
+  ],
+  "notes": "User approved implementation on 2026-08-09. PostgreSQL remains sole semantic authority; Neo4j is rebuildable and fallback-safe.",
+  "meta": {}
+}

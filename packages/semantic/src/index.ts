@@ -112,6 +112,18 @@ export {
   type ImpactResult,
 } from "./impact/impact-analyzer.js";
 export {
+  buildSemanticRelationshipGraphManifest,
+  createSemanticRelationshipSearchService,
+  type SemanticRelationshipCheckpointReader,
+  type SemanticRelationshipGraphSearchPort,
+  SemanticRelationshipIndexKernelError,
+  type SemanticRelationshipIndexKernelErrorCode,
+  type SemanticRelationshipSearchAuthority,
+  type SemanticRelationshipSearchService,
+  type SemanticRelationshipSnapshotReader,
+  searchSemanticRelationshipGraphFallback,
+} from "./relationship-index/index.js";
+export {
   type ValidationIssue,
   type ValidationResult,
   ValidationSeverity,

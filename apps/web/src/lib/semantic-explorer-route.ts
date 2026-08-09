@@ -5,6 +5,7 @@ import {
   immutableIdSchema,
   semanticExplorerErrorCodeSchema,
   semanticExplorerObjectKindSchema,
+  semanticRelationshipSearchRequestSchema,
   versionIdentifierSchema,
 } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
@@ -184,6 +185,25 @@ export async function handleListExplorerDomains(
       semanticDomain: "all",
     });
     return resultResponse(await enabled.service.listDomains(authority));
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function handleSearchExplorerRelationships(
+  request: NextRequest,
+  runtime?: SemanticExplorerRuntime,
+): Promise<NextResponse> {
+  try {
+    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
+    const body = semanticRelationshipSearchRequestSchema.parse(await request.json());
+    const enabled = enabledRuntime(resolvedRuntime);
+    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const authority = await enabled.authorityResolver.resolve({
+      access: "READ",
+      semanticDomain: body.semantic_domain,
+    });
+    return resultResponse(await enabled.service.searchRelationships(authority, body));
   } catch (error) {
     return errorResponse(error);
   }

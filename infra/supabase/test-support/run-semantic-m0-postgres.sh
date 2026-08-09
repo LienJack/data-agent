@@ -751,5 +751,6 @@ if [ "$surface" != "true:false:true:false:true:1:1:1:0:true:0:true:true" ]; then
 fi
 
 apply_sql "$script_dir/29-semantic-explorer-authority-assertions.sql"
+apply_sql "$script_dir/30-semantic-relationship-index-authority-assertions.sql"
 
 echo "Semantic M0 PostgreSQL authority checks passed: state=$state surface=$surface"

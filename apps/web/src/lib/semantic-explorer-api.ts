@@ -6,12 +6,15 @@ import {
   type SemanticExplorerObjectIdentity,
   type SemanticExplorerReleaseTimeline,
   type SemanticExplorerSnapshot,
+  type SemanticRelationshipSearchRequest,
+  type SemanticRelationshipSearchResult,
   semanticExplorerCandidateComparisonSchema,
   semanticExplorerDiffSchema,
   semanticExplorerDomainSummarySchema,
   semanticExplorerLineageSchema,
   semanticExplorerReleaseTimelineSchema,
   semanticExplorerSnapshotSchema,
+  semanticRelationshipSearchResultSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 
@@ -42,6 +45,48 @@ async function getData<T>(path: string, schema: z.ZodType<T>, signal?: AbortSign
   const timeoutSignal = AbortSignal.timeout(EXPLORER_FETCH_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
   const response = await fetch(path, { cache: "no-store", signal: requestSignal });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = errorEnvelopeSchema.safeParse(body);
+    throw new SemanticExplorerApiError(
+      error.success ? error.data.error.code : "SEMANTIC_EXPLORER_UNAVAILABLE",
+      error.success ? error.data.error.message : "语义 Explorer 暂时不可用。",
+      error.success ? error.data.error.retryable : true,
+      response.status,
+    );
+  }
+  const envelope = z
+    .strictObject({
+      data: schema,
+      meta: z.strictObject({ authority: z.literal("POSTGRESQL") }),
+    })
+    .safeParse(body);
+  if (!envelope.success) {
+    throw new SemanticExplorerApiError(
+      "SEMANTIC_EXPLORER_INVALID_SOURCE_ENVELOPE",
+      "语义 Explorer 响应不符合公开契约。",
+      false,
+      503,
+    );
+  }
+  return envelope.data.data;
+}
+
+async function postData<T>(
+  path: string,
+  payload: unknown,
+  schema: z.ZodType<T>,
+  signal?: AbortSignal,
+): Promise<T> {
+  const timeoutSignal = AbortSignal.timeout(EXPLORER_FETCH_TIMEOUT_MS);
+  const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+  const response = await fetch(path, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    signal: requestSignal,
+  });
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const error = errorEnvelopeSchema.safeParse(body);
@@ -170,6 +215,18 @@ export function getExplorerCandidateComparison(
       revisionId,
     })}`,
     semanticExplorerCandidateComparisonSchema,
+    signal,
+  );
+}
+
+export function searchExplorerRelationships(
+  request: SemanticRelationshipSearchRequest,
+  signal?: AbortSignal,
+): Promise<SemanticRelationshipSearchResult> {
+  return postData(
+    "/api/semantic/relationships/search",
+    request,
+    semanticRelationshipSearchResultSchema,
     signal,
   );
 }

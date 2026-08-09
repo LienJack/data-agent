@@ -2,9 +2,13 @@ import "server-only";
 
 import {
   adaptPgPool,
+  createNeo4jRelationshipGraphAdapterFromEnvironment,
   createPostgresCapabilityAuthority,
+  createPostgresRelationshipIndexStore,
   createPostgresSemanticExplorerReader,
+  type PostgresRelationshipIndexStore,
   type PostgresSemanticExplorerReader,
+  type SemanticRelationshipGraphAdapter,
   type SqlPool,
   type TransactionalCapabilityAuthorizer,
 } from "@data-agent/platform";
@@ -21,6 +25,7 @@ import {
 interface SemanticExplorerEnvironment extends NodeJS.ProcessEnv {
   readonly SEMANTIC_EXPLORER_ENABLED?: string;
   readonly SEMANTIC_EXPLORER_DATABASE_URL?: string;
+  readonly SEMANTIC_RELATIONSHIP_INDEX_ENABLED?: string;
   readonly DATABASE_URL?: string;
   readonly SEMANTIC_DEPLOYMENT_ID?: string;
   readonly SEMANTIC_TENANT_ID?: string;
@@ -43,6 +48,8 @@ export interface SemanticExplorerRuntimeDependencies {
   readonly transactionalAuthorizer?: TransactionalCapabilityAuthorizer;
   readonly authorityResolver?: SemanticAuthorityResolver;
   readonly reader?: PostgresSemanticExplorerReader;
+  readonly relationshipIndexStore?: PostgresRelationshipIndexStore;
+  readonly relationshipGraph?: SemanticRelationshipGraphAdapter;
 }
 
 export class SemanticExplorerRuntimeError extends Error {
@@ -130,10 +137,32 @@ export function createSemanticExplorerRuntime(
     reader = createPostgresSemanticExplorerReader({ pool: sqlPool, authorizer });
   }
 
+  const relationshipIndexEnabled = featureEnabled(environment.SEMANTIC_RELATIONSHIP_INDEX_ENABLED);
+  let relationshipIndexStore = dependencies.relationshipIndexStore;
+  let relationshipGraph = dependencies.relationshipGraph;
+  if (relationshipIndexEnabled) {
+    const authorizer = dependencies.transactionalAuthorizer ?? postgresAuthority?.authorizer;
+    if (!relationshipIndexStore) {
+      if (!sqlPool || !authorizer) {
+        throw new SemanticExplorerRuntimeError("SEMANTIC_EXPLORER_CONFIG_INVALID");
+      }
+      relationshipIndexStore = createPostgresRelationshipIndexStore({ pool: sqlPool, authorizer });
+    }
+    relationshipGraph ??=
+      createNeo4jRelationshipGraphAdapterFromEnvironment(environment) ?? undefined;
+    if (!relationshipGraph) {
+      throw new SemanticExplorerRuntimeError("SEMANTIC_EXPLORER_CONFIG_INVALID");
+    }
+  }
+
   return Object.freeze({
     enabled: true as const,
     authorityResolver,
-    service: createSemanticExplorerService(reader),
+    service: createSemanticExplorerService(reader, {
+      store: relationshipIndexStore ?? null,
+      graph: relationshipGraph ?? null,
+      disabledReason: relationshipIndexEnabled ? "INDEX_NOT_CONFIGURED" : "INDEX_DISABLED",
+    }),
   });
 }
 

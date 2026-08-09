@@ -4,6 +4,7 @@ import {
   type SemanticExplorerDomainSummary,
   type SemanticExplorerLineage,
   type SemanticExplorerReleaseTimeline,
+  type SemanticRelationshipSearchResult,
   semanticExplorerSnapshotSchema,
 } from "@data-agent/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +29,7 @@ import {
   handleGetExplorerRelease,
   handleListExplorerDomains,
   handleListExplorerReleases,
+  handleSearchExplorerRelationships,
 } from "../src/lib/semantic-explorer-route";
 import type { SemanticExplorerRuntime } from "../src/lib/semantic-explorer-runtime";
 import type { SemanticExplorerService } from "../src/lib/semantic-explorer-service";
@@ -212,6 +214,31 @@ function enabledRuntime() {
       ],
     },
   };
+  const relationshipResult: SemanticRelationshipSearchResult = {
+    schema_version: "semantic-relationship-search-result@1.0.0",
+    release_identity: snapshot.release_identity,
+    pointer_observation: snapshot.pointer_observation,
+    is_active: true,
+    source: "POSTGRESQL_FALLBACK",
+    index_state: "DISABLED",
+    index_reason_code: "INDEX_DISABLED",
+    manifest_digest: `sha256:${"f".repeat(64)}`,
+    root: null,
+    term: null,
+    categories: ["BIZ", "JOIN", "FORMULA", "BIND", "GOVERN"],
+    nodes: [],
+    edges: [],
+    truncated: false,
+    truncation_reasons: [],
+    explanation: {
+      summary: "PostgreSQL fallback exact release relationship search.",
+      requested_hop_limit: 3,
+      traversed_hops: 0,
+      categories: ["BIZ", "JOIN", "FORMULA", "BIND", "GOVERN"],
+      authority_revalidated: true,
+      fallback_reason: "INDEX_DISABLED",
+    },
+  };
   const listDomains = vi.fn<SemanticExplorerService["listDomains"]>(async () => ({
     ok: true as const,
     value: [domainSummary],
@@ -237,6 +264,7 @@ function enabledRuntime() {
     getObject,
     getLineage: vi.fn(async () => ({ ok: true as const, value: lineage })),
     getCandidateComparison: vi.fn(async () => ({ ok: true as const, value: comparison })),
+    searchRelationships: vi.fn(async () => ({ ok: true as const, value: relationshipResult })),
   };
   const authorityResolver: SemanticAuthorityResolver = {
     resolve: vi.fn(async () => authority),
@@ -268,6 +296,41 @@ describe("Semantic Explorer routes", () => {
       data: {
         release_identity: { release_id: ids.release },
         pointer_observation: { pointer_generation: 2 },
+      },
+      meta: { authority: "POSTGRESQL" },
+    });
+  });
+
+  it("routes the strict relationship DTO through the same service and authority", async () => {
+    const test = enabledRuntime();
+    const request = {
+      schema_version: "semantic-relationship-search-request@1.0.0",
+      semantic_domain: "revenue",
+      release: { kind: "ACTIVE" },
+      root: null,
+      term: null,
+      categories: ["BIZ", "JOIN", "FORMULA", "BIND", "GOVERN"],
+      direction: "both",
+      hop_limit: 3,
+      node_limit: 250,
+      edge_limit: 500,
+    } as const;
+    const response = await handleSearchExplorerRelationships(
+      new NextRequest("http://localhost/api/semantic/relationships/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+      }),
+      test.value,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
+    expect(test.service.searchRelationships).toHaveBeenCalledWith(test.authority, request);
+    await expect(response.json()).resolves.toMatchObject({
+      data: {
+        schema_version: "semantic-relationship-search-result@1.0.0",
+        source: "POSTGRESQL_FALLBACK",
       },
       meta: { authority: "POSTGRESQL" },
     });
