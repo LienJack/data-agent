@@ -125,3 +125,24 @@ Delivered a PostgreSQL-fenced, rebuildable Neo4j relationship index with 10625 a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 5: 完成本地开发与 Docker 部署双模式
+
+**Date**: 2026-08-10
+**Task**: 完成本地开发与 Docker 部署双模式
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+实现开发环境仅容器化 PostgreSQL/Neo4j、Web/Worker/Indexer 本地 watch；生产 deploy profile 启动完整五服务栈；补齐显式迁移、健康门禁、测试、运行手册和物理 smoke 验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `9cbf213` | (see git log) |
+
+### Status
+
+[OK] **Completed**
