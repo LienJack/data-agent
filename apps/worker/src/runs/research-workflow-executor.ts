@@ -8,6 +8,7 @@ import {
   type ResearchArtifactAuthorityPort,
   type ResearchStopTerminalPort,
   type ResearchVersionFrontierPort,
+  type RunWorkLease,
   researchArtifactCommitInputSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -50,6 +51,22 @@ export interface ResearchWorkflowExecutorDependencies {
     ResearchStopTerminalPort;
   readonly create_id: () => string;
   readonly now: () => Date;
+  readonly principal_id: string;
+  readonly authority_capability_input: Readonly<{
+    app_capability: unknown;
+    authority_capability_id: string;
+  }> | null;
+}
+
+class ResearchWorkflowAuthorityError extends Error {
+  override readonly name = "ResearchWorkflowAuthorityError";
+
+  constructor(
+    readonly code: string,
+    readonly retryable: boolean,
+  ) {
+    super(code);
+  }
 }
 
 interface ResearchWorkflowState {
@@ -107,9 +124,7 @@ export function createResearchWorkflowExecutor(
   async function executeResearchStep(
     state: ResearchWorkflowState,
     protocolInput: ResearchProtocolInput,
-    scope: AppScope,
-    runId: string,
-    principalId: string,
+    lease: RunWorkLease,
     _context: RunExecutionContext,
   ): Promise<ResearchWorkflowState> {
     const kernelAuthority = createResearchKernelCandidateAuthority();
@@ -130,24 +145,32 @@ export function createResearchWorkflowExecutor(
         const document = candidate as unknown as L2ResearchDocumentCandidate;
         const commitInput = researchArtifactCommitInputSchema.parse({
           schema_version: "1.0.0",
-          scope,
-          run_id: runId,
-          principal_id: principalId,
-          idempotency_key: `${runId}:${kind}:${state.step}`,
+          scope: lease.scope,
+          run_id: lease.run_id,
+          principal_id: deps.principal_id,
+          idempotency_key: `${lease.run_id}:${kind}:${state.step}`,
           commit_id: create_id(),
-          attempt_id: create_id(),
-          worker_fence: 1,
+          attempt_id: lease.attempt_id,
+          worker_fence: lease.worker_fence,
           candidate: document,
           expected_parent_ref: committedRefs[committedRefs.length - 1] ?? null,
         });
-        const result = await authority.commitCurrent(
-          { app_capability: {}, authority_capability_id: create_id() },
-          commitInput,
-        );
-        if (result.ok && result.value.created) {
-          committedRefs.push(result.value.reference);
+        const capabilityInput = deps.authority_capability_input;
+        if (!capabilityInput) {
+          throw new ResearchWorkflowAuthorityError(
+            "RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED",
+            false,
+          );
         }
-      } catch (_error) {}
+        const result = await authority.commitCurrent(capabilityInput, commitInput);
+        if (!result.ok) {
+          throw new ResearchWorkflowAuthorityError(result.error.code, result.error.retryable);
+        }
+        committedRefs.push(result.value.reference);
+      } catch (error) {
+        if (error instanceof ResearchWorkflowAuthorityError) throw error;
+        throw new ResearchWorkflowAuthorityError("RESEARCH_ARTIFACT_COMMIT_FAILED", true);
+      }
     }
 
     // Step 3: Create checkpoint
@@ -168,9 +191,7 @@ export function createResearchWorkflowExecutor(
 
   async function executeWorkflow(
     protocolInput: ResearchProtocolInput,
-    scope: AppScope,
-    runId: string,
-    principalId: string,
+    lease: RunWorkLease,
     restoredSnapshot: MastraSnapshotBinding | null,
     context: RunExecutionContext,
     signal: AbortSignal,
@@ -184,14 +205,14 @@ export function createResearchWorkflowExecutor(
 
     try {
       // Run the research kernel
-      state = await executeResearchStep(state, protocolInput, scope, runId, principalId, context);
+      state = await executeResearchStep(state, protocolInput, lease, context);
 
       if (signal.aborted) {
         return researchErrorResult("EXECUTION_ABORTED", true);
       }
 
       // Checkpoint progress
-      const checkpointInput = checkpointInputFromState(state, scope, runId);
+      const checkpointInput = checkpointInputFromState(state, lease.scope, lease.run_id);
       const checkpointResult = await context.checkpoint(checkpointInput);
       if (!checkpointResult.ok) {
         return researchErrorResult("CHECKPOINT_FAILED", true);
@@ -225,11 +246,14 @@ export function createResearchWorkflowExecutor(
           return researchErrorResult("UNKNOWN_RESEARCH_OUTCOME", false);
       }
     } catch (error) {
+      if (error instanceof ResearchWorkflowAuthorityError) {
+        return researchErrorResult(error.code, error.retryable);
+      }
       const errorMessage = error instanceof Error ? error.message : "UNKNOWN_ERROR";
       if (errorMessage.startsWith("RESEARCH_KERNEL_FAILED:")) {
         return researchErrorResult(errorMessage.replace("RESEARCH_KERNEL_FAILED: ", ""), false);
       }
-      return researchErrorResult(errorMessage, true);
+      return researchErrorResult("RESEARCH_WORKFLOW_EXECUTION_FAILED", true);
     }
   }
 
@@ -243,6 +267,10 @@ export function createResearchWorkflowExecutor(
         deadline_at: _deadline,
       } = input;
 
+      if (!deps.authority_capability_input) {
+        return researchErrorResult("RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED", false);
+      }
+
       const payload = lease.payload as {
         readonly kind: "START_L2_RESEARCH";
         readonly protocol_input?: unknown;
@@ -251,7 +279,6 @@ export function createResearchWorkflowExecutor(
         return researchErrorResult("UNKNOWN_COMMAND_KIND", false);
       }
 
-      const principal_id = String(lease.payload.principal_id ?? lease.scope.tenant_id);
       const protocolInput: ResearchProtocolInput = {
         observations: {
           q1: {
@@ -309,15 +336,7 @@ export function createResearchWorkflowExecutor(
         },
       };
 
-      return executeWorkflow(
-        protocolInput,
-        lease.scope,
-        lease.run_id,
-        principal_id,
-        restoredSnapshot ?? null,
-        context,
-        signal,
-      );
+      return executeWorkflow(protocolInput, lease, restoredSnapshot ?? null, context, signal);
     },
   };
 }

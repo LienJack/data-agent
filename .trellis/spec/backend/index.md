@@ -20,6 +20,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Artifact 权威与内容寻址](./artifact-authority.md) | Candidate、Hash、Reference 与成功态授权 | 已建立 |
 | [Port Conformance](./port-conformance.md) | Scope、幂等、Lease/Fence 与非权威 Cache | 已建立 |
 | [Semantic Relationship Index](./semantic-relationship-index.md) | PostgreSQL 权威、Neo4j 投影、搜索回退与索引器闭环 | 已建立 |
+| [本地开发与 Docker 运行模式](./local-runtime-modes.md) | 数据库容器、本地 watch、完整部署与迁移门禁 | 已建立 |
 | [质量规范](./quality-guidelines.md) | 类型、测试、边界与审查门禁 | 已建立 |
 | [日志、审计与脱敏](./logging-guidelines.md) | Structured Log、Audit 与 Secret Boundary | 已建立 |
 

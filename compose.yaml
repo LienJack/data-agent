@@ -1,7 +1,7 @@
 # =============================================================================
 # Data Agent — Docker Compose
-# One-click startup for local development and self-hosted deployment.
-# Starts PostgreSQL 17, runs migrations, then launches web and worker.
+# Default mode starts only PostgreSQL and Neo4j for local development.
+# Use the deploy profile for the complete self-hosted application stack.
 # =============================================================================
 name: data-agent
 
@@ -27,11 +27,10 @@ services:
       retries: 10
       start_period: 30s
 
-  # ---------- Optional, rebuildable semantic relationship projection ----------
+  # ---------- Rebuildable semantic relationship projection database ----------
   neo4j:
     image: neo4j:2026.06.0
     container_name: data-agent-neo4j
-    profiles: ["relationship-index"]
     restart: unless-stopped
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-data-agent-neo4j}
@@ -75,6 +74,7 @@ services:
       context: .
       dockerfile: infra/docker/Dockerfile.web
     container_name: data-agent-web
+    profiles: ["deploy"]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -84,13 +84,33 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
-      SEMANTIC_RELATIONSHIP_INDEX_ENABLED: ${SEMANTIC_RELATIONSHIP_INDEX_ENABLED:-false}
+      SEMANTIC_GOVERNANCE_BACKEND: ${SEMANTIC_GOVERNANCE_BACKEND:-postgres}
+      SEMANTIC_EXPLORER_ENABLED: ${SEMANTIC_EXPLORER_ENABLED:-true}
+      SEMANTIC_DEPLOYMENT_ID: ${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}
+      SEMANTIC_TENANT_ID: ${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}
+      SEMANTIC_PRINCIPAL_ID: ${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
+      SEMANTIC_ALLOWED_DOMAINS: ${SEMANTIC_ALLOWED_DOMAINS:-revenue,customer,marketing,sales}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
+      SEMANTIC_RELATIONSHIP_INDEX_ENABLED: ${SEMANTIC_RELATIONSHIP_INDEX_ENABLED:-true}
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USERNAME: neo4j
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-data-agent-neo4j}
       NEO4J_DATABASE: neo4j
     ports:
       - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
 
   # ---------- Durable Worker (Node.js) ----------
   worker:
@@ -98,6 +118,7 @@ services:
       context: .
       dockerfile: infra/docker/Dockerfile.worker
     container_name: data-agent-worker
+    profiles: ["deploy"]
     restart: unless-stopped
     depends_on:
       postgres:
@@ -105,14 +126,39 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
       NODE_ENV: production
+      WORKER_DEPLOYMENT_ID: ${WORKER_DEPLOYMENT_ID:-${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}}
+      WORKER_TENANT_ID: ${WORKER_TENANT_ID:-${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}}
+      WORKER_PRINCIPAL_ID: ${WORKER_PRINCIPAL_ID:-${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}}
+      WORKER_ID: ${WORKER_ID:-worker-docker}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1000}
+      WORKER_LEASE_DURATION_MS: ${WORKER_LEASE_DURATION_MS:-30000}
+      WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-10000}
+      WORKER_EXECUTION_TIMEOUT_MS: ${WORKER_EXECUTION_TIMEOUT_MS:-300000}
+      WORKER_SIDE_EFFECT_TIMEOUT_MS: ${WORKER_SIDE_EFFECT_TIMEOUT_MS:-60000}
+      WORKER_HEALTH_PORT: "9091"
+      WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID: ${WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:9091/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
 
-  # ---------- Optional relationship projection indexer ----------
+  # ---------- Relationship projection indexer ----------
   relationship-indexer:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.worker
     container_name: data-agent-relationship-indexer
-    profiles: ["relationship-index"]
+    profiles: ["deploy"]
     restart: unless-stopped
     depends_on:
       postgres:

@@ -51,4 +51,4 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate && \
 
 USER worker
 
-CMD ["node", "apps/worker/dist/index.js"]
+CMD ["node", "apps/worker/dist/run-worker-cli.js"]

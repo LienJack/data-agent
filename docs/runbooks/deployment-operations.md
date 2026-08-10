@@ -15,33 +15,38 @@
 - 至少 2 GB 可用内存
 - 端口 5432 (PostgreSQL) 和 3000 (Web) 未被占用
 
-### 1.2 一键启动
+### 1.2 显式迁移与完整启动
 
 ```bash
-# 从项目根目录启动
-docker compose up -d
+# 从项目根目录显式应用尚未登记的迁移并验证 Ledger
+pnpm docker:migrate
+
+# 构建并启动 deploy profile 的完整五服务栈
+pnpm docker:up
 
 # 查看启动日志
-docker compose logs -f
-
-# 等待 PostgreSQL 健康检查通过后，手动运行迁移
-docker compose --profile migrate run migration
+docker compose --profile deploy logs -f
 ```
+
+裸 `docker compose up -d` 只启动 PostgreSQL 与 Neo4j，属于本地开发基础设施模式，
+不会启动 Web、Worker 或 Relationship Indexer。完整部署必须使用 `deploy` profile。
 
 ### 1.3 组件
 
 | 组件 | 容器名 | 端口 | 说明 |
 |------|--------|------|------|
 | PostgreSQL 17 | `data-agent-postgres` | 5432 | 主数据库，承载所有权威数据 |
+| Neo4j | `data-agent-neo4j` | 7474/7687 | 可重建的语义关系投影 |
 | Web App | `data-agent-web` | 3000 | Next.js 前端与 API |
-| Worker | `data-agent-worker` | — | 异步 Durable Worker |
+| Worker | `data-agent-worker` | 容器内 9091 | 异步 Durable Worker 与 `/live` |
+| Relationship Indexer | `data-agent-relationship-indexer` | 容器内 9090 | PostgreSQL 到 Neo4j 的投影 Worker |
 | Migration | `data-agent-migration` | — | 一次性迁移初始化容器 |
 
 ### 1.4 健康检查
 
 ```bash
 # 检查所有容器状态
-docker compose ps
+docker compose --profile deploy ps
 
 # 检查 PostgreSQL 连接
 docker compose exec postgres pg_isready -U postgres -d data_agent
@@ -50,7 +55,13 @@ docker compose exec postgres pg_isready -U postgres -d data_agent
 curl -s -o /dev/null -w "%{http_code}" http://localhost:3000
 
 # 检查 Worker 日志
-docker compose logs worker --tail=50
+docker compose --profile deploy logs worker --tail=50
+
+# 检查 Worker 与 Indexer 容器内存活端点
+docker compose --profile deploy exec -T worker node -e \
+  "fetch('http://127.0.0.1:9091/live').then(async r=>{console.log(await r.text());if(!r.ok)process.exit(1)})"
+docker compose --profile deploy exec -T relationship-indexer node -e \
+  "fetch('http://127.0.0.1:9090/live').then(async r=>{console.log(await r.text());if(!r.ok)process.exit(1)})"
 ```
 
 ### 1.5 数据持久化
@@ -71,11 +82,10 @@ docker volume inspect data-agent_pgdata
 ### 1.6 停止与清理
 
 ```bash
-# 停止服务（保留数据）
-docker compose down
+# 停止服务和容器（保留命名数据卷）
+pnpm docker:down
 
-# 完全清理（删除数据卷）
-docker compose down -v
+# 永久删除数据卷是破坏性操作，只能在明确确认数据不再需要时另行执行。
 ```
 
 ---
@@ -145,23 +155,21 @@ pnpm test:contract
 pnpm test:integration
 pnpm test:deploy:docker
 
-# 3. Docker 部署
-docker compose build --no-cache
-docker compose up -d
-docker compose --profile migrate run migration
+# 3. Docker 部署：迁移成功后再启动应用
+pnpm docker:migrate
+pnpm docker:up
 ```
 
 ### 3.2 回滚流程
 
 ```bash
 # 1. 停止当前版本
-docker compose down
+pnpm docker:down
 
 # 2. 回滚到上一版本（使用 git checkout 或保留的旧镜像）
 git checkout <previous-release-tag>
-docker compose build --no-cache
-docker compose up -d
-docker compose --profile migrate run migration
+pnpm docker:migrate
+pnpm docker:up
 ```
 
 ### 3.3 语义发布回滚
@@ -180,10 +188,10 @@ docker compose --profile migrate run migration
 
 ```bash
 # 重启 Worker
-docker compose restart worker
+docker compose --profile deploy restart worker
 
 # 查看重启后的恢复日志
-docker compose logs worker --tail=50
+docker compose --profile deploy logs worker --tail=50
 ```
 
 Worker 重启后自动从 PostgreSQL 恢复未完成的 Run：
@@ -268,11 +276,11 @@ curl -s https://data-agent.vercel.app/api/health
 
 ```bash
 # 实时日志
-docker compose logs -f --tail=100
+docker compose --profile deploy logs -f --tail=100
 
 # 按服务过滤
-docker compose logs -f web
-docker compose logs -f worker
+docker compose --profile deploy logs -f web
+docker compose --profile deploy logs -f worker
 docker compose logs -f postgres
 ```
 
@@ -299,10 +307,10 @@ Worker 是[无状态](/docs/runbooks/durable-run-runtime.md)设计，所有状�
 
 ```bash
 # 重启 Worker
-docker compose restart worker
+docker compose --profile deploy restart worker
 
 # 检查恢复的 Run
-docker compose logs worker --tail=50 | grep -i "recover\|resume\|restart"
+docker compose --profile deploy logs worker --tail=50 | grep -i "recover\|resume\|restart"
 ```
 
 ### 7.3 迁移失败恢复
@@ -312,7 +320,7 @@ docker compose logs worker --tail=50 | grep -i "recover\|resume\|restart"
 docker compose logs migration --tail=50
 
 # 修复后重新运行迁移
-docker compose --profile migrate run --rm migration
+pnpm docker:migrate
 ```
 
 ---
@@ -331,8 +339,8 @@ docker compose exec postgres psql -U postgres -c "ALTER USER postgres PASSWORD '
 ### 8.2 网络策略
 
 - Web 服务暴露 3000 端口
-- PostgreSQL 默认不对外暴露（仅内部通信）
-- Worker 不暴露端口
+- 当前自托管 Compose 将 PostgreSQL 5432 映射到宿主机；生产主机必须用防火墙限制访问。
+- Worker 与 Relationship Indexer 的健康端口只在 Compose 网络内使用，不映射到宿主机。
 
 ---
 

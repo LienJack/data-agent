@@ -14,6 +14,9 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --clear-screen=false src/run-worker-cli.ts",
+    "dev:indexer": "tsx watch --clear-screen=false src/semantic/relationship-indexer-cli.ts",
+    "start": "node dist/run-worker-cli.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:unit": "vitest run test/credentialed-provider-certification.spec.ts test/semantic-relationship-indexer.spec.ts test/runs",
     "test:integration": "vitest run test/integration --passWithNoTests=false",

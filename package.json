@@ -9,6 +9,18 @@
     "pnpm": ">=10.33.0 <11"
   },
   "scripts": {
+    "dev": "tsx scripts/local-dev-runtime.ts dev",
+    "dev:infra": "tsx scripts/local-dev-runtime.ts infra",
+    "dev:migrate": "tsx scripts/local-dev-runtime.ts migrate",
+    "dev:check": "tsx scripts/local-dev-runtime.ts check",
+    "dev:apps": "tsx scripts/local-dev-runtime.ts apps",
+    "dev:web": "tsx scripts/local-dev-runtime.ts web",
+    "dev:worker": "tsx scripts/local-dev-runtime.ts worker",
+    "dev:indexer": "tsx scripts/local-dev-runtime.ts indexer",
+    "docker:migrate": "tsx scripts/local-dev-runtime.ts docker-migrate",
+    "docker:up": "tsx scripts/local-dev-runtime.ts docker-up",
+    "docker:down": "tsx scripts/local-dev-runtime.ts docker-down",
+    "test:dev-runtime": "vitest run tests/local-dev-runtime.spec.ts",
     "build": "turbo run build",
     "lint": "biome ci .",
     "format": "biome check --write .",
