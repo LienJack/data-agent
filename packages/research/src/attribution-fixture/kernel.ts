@@ -1,37 +1,37 @@
 import {
   type AttributionKernelEvidence,
   type AttributionProfileProjection,
-  type ContributionTruthContract,
-  type FixtureConclusionCandidate,
-  type FixtureConclusionPolicyManifest,
-  type StaticDriverCapacityProof,
-  type RunDriverBudgetAdmission,
-  type SameFrontierWitness,
-  type EndpointLoweringCertificate,
-  type FiveAxisFrontier,
-  type FrontierAxis,
-  type DerivedDeltaObservationSet,
-  type DeltaObservation,
-  type ContributionClosureReceipt,
-  type FixtureConclusionDecisionSeal,
-  type ClosureVerdict,
-  type CapacityCheckInput,
   type BudgetAdmissionReservation,
   type BudgetState,
+  type CapacityCheckInput,
+  type ClosureInput,
+  type ClosureVerdict,
+  type ContributionClosureReceipt,
+  type ContributionTruthContract,
+  checkAndReserveBudget,
+  checkConclusionCandidateAgainstManifest,
+  computeFrontierIdentityDigest,
+  computeStaticDriverCapacityProof,
+  type SealInput as DecisionSealInput,
+  type DeltaObservation,
+  type DerivedDeltaObservationSet,
+  deepFreeze,
+  deriveContributionClosureReceipt,
+  type EndpointLoweringCertificate,
+  type FiveAxisFrontier,
+  type FixtureConclusionCandidate,
+  type FixtureConclusionDecisionSeal,
+  type FixtureConclusionPolicyManifest,
+  type FrontierAxis,
+  type FrontierWitnessInput,
   type ManifestCheckInput,
   type ManifestCheckResult,
+  type RunDriverBudgetAdmission,
+  type SameFrontierWitness,
   type SealInput,
-  computeStaticDriverCapacityProof,
-  checkAndReserveBudget,
-  witnessSameFrontier,
-  type FrontierWitnessInput,
-  computeFrontierIdentityDigest,
-  deriveContributionClosureReceipt,
-  type ClosureInput,
-  checkConclusionCandidateAgainstManifest,
+  type StaticDriverCapacityProof,
   sealFixtureConclusionDecision,
-  type SealInput as DecisionSealInput,
-  deepFreeze,
+  witnessSameFrontier,
 } from "@data-agent/contracts";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -248,12 +248,36 @@ function stepLoweringCertificates(
         parameter_hash: `sha256:${"f".repeat(64)}` as `sha256:${string}`,
         evidence_hash: `sha256:${"g".repeat(64)}` as `sha256:${string}`,
         lowering_chain: [
-          { step: "canonical_ast", input_hash: `sha256:${"a".repeat(64)}` as `sha256:${string}`, output_hash: `sha256:${"b".repeat(64)}` as `sha256:${string}` },
-          { step: "query_contract", input_hash: `sha256:${"b".repeat(64)}` as `sha256:${string}`, output_hash: `sha256:${"c".repeat(64)}` as `sha256:${string}` },
-          { step: "grounding_package", input_hash: `sha256:${"c".repeat(64)}` as `sha256:${string}`, output_hash: `sha256:${"d".repeat(64)}` as `sha256:${string}` },
-          { step: "logical_plan", input_hash: `sha256:${"d".repeat(64)}` as `sha256:${string}`, output_hash: `sha256:${"e".repeat(64)}` as `sha256:${string}` },
-          { step: "sql_artifact", input_hash: `sha256:${"e".repeat(64)}` as `sha256:${string}`, output_hash: `sha256:${"f".repeat(64)}` as `sha256:${string}` },
-          { step: "parameters", input_hash: `sha256:${"f".repeat(64)}` as `sha256:${string}`, output_hash: `sha256:${"g".repeat(64)}` as `sha256:${string}` },
+          {
+            step: "canonical_ast",
+            input_hash: `sha256:${"a".repeat(64)}` as `sha256:${string}`,
+            output_hash: `sha256:${"b".repeat(64)}` as `sha256:${string}`,
+          },
+          {
+            step: "query_contract",
+            input_hash: `sha256:${"b".repeat(64)}` as `sha256:${string}`,
+            output_hash: `sha256:${"c".repeat(64)}` as `sha256:${string}`,
+          },
+          {
+            step: "grounding_package",
+            input_hash: `sha256:${"c".repeat(64)}` as `sha256:${string}`,
+            output_hash: `sha256:${"d".repeat(64)}` as `sha256:${string}`,
+          },
+          {
+            step: "logical_plan",
+            input_hash: `sha256:${"d".repeat(64)}` as `sha256:${string}`,
+            output_hash: `sha256:${"e".repeat(64)}` as `sha256:${string}`,
+          },
+          {
+            step: "sql_artifact",
+            input_hash: `sha256:${"e".repeat(64)}` as `sha256:${string}`,
+            output_hash: `sha256:${"f".repeat(64)}` as `sha256:${string}`,
+          },
+          {
+            step: "parameters",
+            input_hash: `sha256:${"f".repeat(64)}` as `sha256:${string}`,
+            output_hash: `sha256:${"g".repeat(64)}` as `sha256:${string}`,
+          },
         ],
         original_endpoint: endpoint.endpoint_url,
         lowered_endpoint: endpoint.endpoint_url,
@@ -336,7 +360,9 @@ function stepDeltaObservation(
   // Compute closure: the outcome delta should equal sum of driver deltas + residual
   const outcomeDelta = observations.find((o) => o.observation_kind === "OUTCOME");
   const driverDeltas = observations.filter((o) => o.observation_kind === "DRIVER");
-  const residual = observations.find((o) => o.observation_kind === "INDEPENDENTLY_OBSERVED_RESIDUAL");
+  const residual = observations.find(
+    (o) => o.observation_kind === "INDEPENDENTLY_OBSERVED_RESIDUAL",
+  );
 
   const sumDriverDeltas = driverDeltas.reduce((sum, d) => sum + d.signed_delta, 0);
   const residualDelta = residual?.signed_delta ?? 0;
@@ -640,16 +666,30 @@ export function runAttributionFixtureKernel(
 
     // Step 9: FixtureConclusionCandidate
     const candidateResult = stepConclusionCandidate(
-      input, deltaSet, closureReceipt, manifestResult.value,
-      bindingRefs, certificates, witness, budgetAdmission, capacityProof,
+      input,
+      deltaSet,
+      closureReceipt,
+      manifestResult.value,
+      bindingRefs,
+      certificates,
+      witness,
+      budgetAdmission,
+      capacityProof,
     );
     if (!candidateResult.ok) return candidateResult;
     const candidate = candidateResult.value;
 
     // Step 10: Seal to AttributionKernelEvidence
     const finalResult = stepSealEvidence(
-      input, candidate, bindingRefs, certificates, witness,
-      budgetAdmission, capacityProof, deltaSet, closureReceipt,
+      input,
+      candidate,
+      bindingRefs,
+      certificates,
+      witness,
+      budgetAdmission,
+      capacityProof,
+      deltaSet,
+      closureReceipt,
       closureReceipt.closure_verdict,
     );
     if (!finalResult.ok) return finalResult;

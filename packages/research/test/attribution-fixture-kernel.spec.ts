@@ -1,21 +1,21 @@
+import {
+  type AttributionProfileProjection,
+  type BudgetState,
+  type ContributionTruthContract,
+  deepFreeze,
+  type FiveAxisFrontier,
+  type FixtureConclusionPolicyManifest,
+  type FrontierAxis,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   type AttributionFixtureKernelInput,
   type AttributionKernelEvidence,
-  runAttributionFixtureKernel,
-  sealFixtureConclusionCandidate,
   BudgetLifecycleManager,
   createAttributionBudgetReservation,
+  runAttributionFixtureKernel,
+  sealFixtureConclusionCandidate,
 } from "../src/attribution-fixture/index.js";
-import {
-  type AttributionProfileProjection,
-  type ContributionTruthContract,
-  type FixtureConclusionPolicyManifest,
-  type FiveAxisFrontier,
-  type FrontierAxis,
-  type BudgetState,
-  deepFreeze,
-} from "@data-agent/contracts";
 
 // ─── Test constants ────────────────────────────────────────────────────────────
 
@@ -106,7 +106,11 @@ function makeTestTruthContract(): ContributionTruthContract {
         source_identity: "promotion",
         expected_verdict: "CONFIRMED",
         evidence_requirements: [
-          { required_link_type: "endpoint_binding", required_link_ref_pattern: "revenue/promotion", min_confidence: 0.7 },
+          {
+            required_link_type: "endpoint_binding",
+            required_link_ref_pattern: "revenue/promotion",
+            min_confidence: 0.7,
+          },
         ],
         truth_metadata: {},
       },
@@ -116,7 +120,11 @@ function makeTestTruthContract(): ContributionTruthContract {
         source_identity: "refund",
         expected_verdict: "CONFIRMED",
         evidence_requirements: [
-          { required_link_type: "endpoint_binding", required_link_ref_pattern: "revenue/refunds", min_confidence: 0.7 },
+          {
+            required_link_type: "endpoint_binding",
+            required_link_ref_pattern: "revenue/refunds",
+            min_confidence: 0.7,
+          },
         ],
         truth_metadata: {},
       },
@@ -254,9 +262,7 @@ describe("AttributionFixtureKernel", () => {
       subject_id: "truth-001",
       source_identity: "fixture-001",
       contribution_verdict: "CONFIRMED" as const,
-      evidence_links: [
-        { link_type: "test", link_hash: testHash, link_ref: "ref-001" },
-      ],
+      evidence_links: [{ link_type: "test", link_hash: testHash, link_ref: "ref-001" }],
       fixture_metadata: {
         fixture_id: "fixture-001",
         fixture_version: "1.0.0",
@@ -267,7 +273,13 @@ describe("AttributionFixtureKernel", () => {
     };
 
     const evidence = sealFixtureConclusionCandidate(
-      candidate, testUUID, testUUID2, "test", "run-001", testHash, testHash,
+      candidate,
+      testUUID,
+      testUUID2,
+      "test",
+      "run-001",
+      testHash,
+      testHash,
     );
 
     expect(evidence.origin).toBe("FIXTURE");
@@ -351,7 +363,12 @@ describe("BudgetLifecycleManager", () => {
     const second = manager.reserve(reservation);
     expect(second.ok).toBe(true);
     if (second.ok) {
-      expect(second.admission.idempotency_key).toBe(first.ok ? (first as { ok: true; admission: { idempotency_key: string } }).admission.idempotency_key : "");
+      expect(second.admission.idempotency_key).toBe(
+        first.ok
+          ? (first as { ok: true; admission: { idempotency_key: string } }).admission
+              .idempotency_key
+          : "",
+      );
     }
   });
 });

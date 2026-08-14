@@ -1,12 +1,12 @@
 import {
-  type RunDriverBudgetAdmission,
   type BudgetAdmissionReservation,
   type BudgetState,
   checkAndReserveBudget,
-  transitionBudgetAdmission,
   isBudgetAdmissionExpired,
   MAX_DRIVER_LIMIT,
   MAX_SQL_LIMIT,
+  type RunDriverBudgetAdmission,
+  transitionBudgetAdmission,
 } from "@data-agent/contracts";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
@@ -53,9 +53,12 @@ export class BudgetLifecycleManager {
    *
    * Idempotent: same idempotency_key returns existing reservation.
    */
-  reserve(reservation: BudgetAdmissionReservation): {
-    ok: true; admission: RunDriverBudgetAdmission
-  } | { ok: false; reason: string } {
+  reserve(reservation: BudgetAdmissionReservation):
+    | {
+        ok: true;
+        admission: RunDriverBudgetAdmission;
+      }
+    | { ok: false; reason: string } {
     // Check idempotency
     const existing = this.reservations.get(reservation.idempotency_key);
     if (existing) {
@@ -95,9 +98,12 @@ export class BudgetLifecycleManager {
    * Consume a reserved budget.
    * Transitions status from RESERVED to CONSUMED.
    */
-  consume(idempotencyKey: string): {
-    ok: true; admission: RunDriverBudgetAdmission
-  } | { ok: false; reason: string } {
+  consume(idempotencyKey: string):
+    | {
+        ok: true;
+        admission: RunDriverBudgetAdmission;
+      }
+    | { ok: false; reason: string } {
     const existing = this.reservations.get(idempotencyKey);
     if (!existing) {
       return { ok: false, reason: "No reservation found for key" };
@@ -118,9 +124,12 @@ export class BudgetLifecycleManager {
    * Release a reserved budget.
    * Transitions status from RESERVED to RELEASED and returns budget.
    */
-  release(idempotencyKey: string): {
-    ok: true; admission: RunDriverBudgetAdmission
-  } | { ok: false; reason: string } {
+  release(idempotencyKey: string):
+    | {
+        ok: true;
+        admission: RunDriverBudgetAdmission;
+      }
+    | { ok: false; reason: string } {
     const existing = this.reservations.get(idempotencyKey);
     if (!existing) {
       return { ok: false, reason: "No reservation found for key" };

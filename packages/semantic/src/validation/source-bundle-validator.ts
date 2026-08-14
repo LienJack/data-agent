@@ -65,7 +65,10 @@ export function validateSourceBundle(bundle: SemanticSourceBundle): ValidationRe
   }
 
   // 2. 检查 capability profile
-  if (bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET && bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET) {
+  if (
+    bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET &&
+    bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET
+  ) {
     issues.push({
       severity: ValidationSeverity.ERROR,
       code: "INVALID_CAPABILITY_PROFILE",

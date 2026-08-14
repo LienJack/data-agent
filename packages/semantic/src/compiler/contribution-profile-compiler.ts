@@ -2,13 +2,13 @@ import {
   computeExecutableSemanticDigest,
   contentHashSchema,
   type DescriptiveContributionProfile,
+  type DriverCapacityConstraint,
   type EndpointExecutionTemplate,
   type FormulaEquivalenceWitness,
   type RowPartitionWitness,
   SemanticGovernanceError,
   type SemanticMetric,
   type SemanticSourceBundle,
-  type DriverCapacityConstraint,
 } from "@data-agent/contracts";
 import { z } from "zod";
 
