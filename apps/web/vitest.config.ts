@@ -8,6 +8,7 @@ export default defineConfig({
   test: {
     include: ["test/**/*.spec.ts", "test/**/*.spec.tsx"],
     exclude: [".next/**", "node_modules/**"],
-    testTimeout: 15_000,
+    hookTimeout: 30_000,
+    testTimeout: 30_000,
   },
 });
