@@ -3,11 +3,16 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Separator, Spinner, Tabs } from "@/components/ui";
 import { EmptyState } from "@/components/ui/empty-state";
+import {
+  useCanDecideOnPacket,
+  useCurrentUser,
+  useCurrentUserId,
+  useSemanticRole,
+} from "@/hooks/use-semantic-auth";
 import { fetchPacketDetail, submitDecision } from "@/lib/semantic-api";
 import { useSemanticStore } from "@/lib/semantic-store";
 import type { ReviewDecision, SemanticReviewPacket } from "@/lib/semantic-types";
 import { SEMANTIC_ROLE_LABELS } from "@/lib/semantic-types";
-import { useCanDecideOnPacket, useCurrentUser, useCurrentUserId, useSemanticRole } from "@/hooks/use-semantic-auth";
 import { formatDateTime } from "@/lib/utils";
 
 interface ReviewDetailProps {
@@ -267,7 +272,9 @@ export function ReviewDetail({ packetId, onBack }: ReviewDetailProps) {
             <h4 className="mb-1 text-sm font-medium">受影响查询</h4>
             <ul className="space-y-1">
               {packet.impact.affectedQueries.map((q) => (
-                <li key={q} className="text-sm text-[var(--color-text-secondary)]">{q}</li>
+                <li key={q} className="text-sm text-[var(--color-text-secondary)]">
+                  {q}
+                </li>
               ))}
             </ul>
           </div>
@@ -275,7 +282,9 @@ export function ReviewDetail({ packetId, onBack }: ReviewDetailProps) {
             <h4 className="mb-1 text-sm font-medium">受影响评测</h4>
             <ul className="space-y-1">
               {packet.impact.affectedEvals.map((e) => (
-                <li key={e} className="text-sm text-[var(--color-text-secondary)]">{e}</li>
+                <li key={e} className="text-sm text-[var(--color-text-secondary)]">
+                  {e}
+                </li>
               ))}
             </ul>
           </div>
@@ -390,7 +399,10 @@ export function ReviewDetail({ packetId, onBack }: ReviewDetailProps) {
           ) : (
             <EmptyState
               title="无权决策"
-              description={cannotDecideReason ?? (isReviewer ? "你不是该审核包的审核人" : "当前角色无权审批此提案")}
+              description={
+                cannotDecideReason ??
+                (isReviewer ? "你不是该审核包的审核人" : "当前角色无权审批此提案")
+              }
             />
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 
 export interface WorkbenchSectionProps {
   title: string;
@@ -58,13 +58,7 @@ export function WorkbenchSection({
       <h2 className="section-header">{title}</h2>
 
       {/* 用于读屏软件的状态播报（不可见） */}
-      <div
-        ref={liveRef}
-        className="sr-only"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-      />
+      <div ref={liveRef} className="sr-only" role="status" aria-live="polite" aria-atomic="true" />
 
       {status !== "ready" ? (
         <div

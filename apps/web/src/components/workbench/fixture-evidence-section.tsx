@@ -18,8 +18,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 const FIXED_STATES = {
   coreL2: { label: "Core L2", value: "HOLD" as const, color: "text-[var(--color-warning)]" },
-  attributionF9: { label: "归因 F9", value: "NOT_REGISTERED" as const, color: "text-[var(--color-text-tertiary)]" },
-  fixtureEvidence: { label: "Fixture Evidence", value: "HOLD" as const, color: "text-[var(--color-warning)]" },
+  attributionF9: {
+    label: "归因 F9",
+    value: "NOT_REGISTERED" as const,
+    color: "text-[var(--color-text-tertiary)]",
+  },
+  fixtureEvidence: {
+    label: "Fixture Evidence",
+    value: "HOLD" as const,
+    color: "text-[var(--color-warning)]",
+  },
 } as const;
 
 // ─── Truth Contract 数据 ────────────────────────────────────────────────────
@@ -28,7 +36,8 @@ const TRUTH_CONTRACT = {
   id: "retail-revenue-v1",
   name: "Retail Revenue Contribution v1",
   version: "attribution-truth-contract@1",
-  description: "Ground truth for retail revenue decomposition: promotion discount impact, late refund adjustments, and base revenue change",
+  description:
+    "Ground truth for retail revenue decomposition: promotion discount impact, late refund adjustments, and base revenue change",
   fixture: {
     id: "retail-fixture-v1",
     version: "1.0.0",
@@ -150,7 +159,10 @@ export function FixtureEvidenceSection() {
             </span>
           </button>
           {expandedContract && (
-            <div id="fixture-truth-contract-details" className="border-t border-[var(--color-border)] px-3 py-2">
+            <div
+              id="fixture-truth-contract-details"
+              className="border-t border-[var(--color-border)] px-3 py-2"
+            >
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">ID</span>
@@ -162,17 +174,26 @@ export function FixtureEvidenceSection() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Fixture</span>
-                  <span className="font-mono text-[var(--color-text)]">{TRUTH_CONTRACT.fixture.id} v{TRUTH_CONTRACT.fixture.version}</span>
+                  <span className="font-mono text-[var(--color-text)]">
+                    {TRUTH_CONTRACT.fixture.id} v{TRUTH_CONTRACT.fixture.version}
+                  </span>
                 </div>
                 <p className="text-[var(--color-text-tertiary)]">{TRUTH_CONTRACT.description}</p>
                 <div className="pt-1">
-                  <p className="mb-1 font-medium text-[var(--color-text-tertiary)]">Contribution Patterns</p>
+                  <p className="mb-1 font-medium text-[var(--color-text-tertiary)]">
+                    Contribution Patterns
+                  </p>
                   {TRUTH_CONTRACT.patterns.map((pattern) => (
-                    <div key={pattern.id} className="flex items-center gap-2 rounded bg-[var(--color-bg-secondary)] p-1.5">
+                    <div
+                      key={pattern.id}
+                      className="flex items-center gap-2 rounded bg-[var(--color-bg-secondary)] p-1.5"
+                    >
                       <span className="font-medium text-[var(--color-text)]">{pattern.name}</span>
                       <span className="text-[var(--color-text-tertiary)]">→</span>
                       <span className="text-[var(--color-success)]">{pattern.expected}</span>
-                      <span className="ml-auto font-mono text-[var(--color-text-tertiary)]">{pattern.partition}</span>
+                      <span className="ml-auto font-mono text-[var(--color-text-tertiary)]">
+                        {pattern.partition}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -196,7 +217,10 @@ export function FixtureEvidenceSection() {
             </span>
           </button>
           {expandedEvidence && (
-            <div id="fixture-kernel-evidence-details" className="border-t border-[var(--color-border)] px-3 py-2">
+            <div
+              id="fixture-kernel-evidence-details"
+              className="border-t border-[var(--color-border)] px-3 py-2"
+            >
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Version</span>
@@ -208,19 +232,27 @@ export function FixtureEvidenceSection() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Closure Verdict</span>
-                  <span className="text-[var(--color-success)]">{KERNEL_EVIDENCE.closure_verdict}</span>
+                  <span className="text-[var(--color-success)]">
+                    {KERNEL_EVIDENCE.closure_verdict}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Conclusion</span>
-                  <span className="text-[var(--color-success)]">{KERNEL_EVIDENCE.conclusion.contribution_verdict}</span>
+                  <span className="text-[var(--color-success)]">
+                    {KERNEL_EVIDENCE.conclusion.contribution_verdict}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Confidence</span>
-                  <span className="text-[var(--color-text)]">{KERNEL_EVIDENCE.conclusion.fixture_confidence}</span>
+                  <span className="text-[var(--color-text)]">
+                    {KERNEL_EVIDENCE.conclusion.fixture_confidence}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Evidence Links</span>
-                  <span className="text-[var(--color-text)]">{KERNEL_EVIDENCE.conclusion.evidence_links}</span>
+                  <span className="text-[var(--color-text)]">
+                    {KERNEL_EVIDENCE.conclusion.evidence_links}
+                  </span>
                 </div>
                 <div className="rounded bg-[var(--color-bg-secondary)] p-1.5 font-mono text-[var(--color-text-tertiary)]">
                   explicit_absence: {KERNEL_EVIDENCE.explicit_absence}
@@ -245,7 +277,10 @@ export function FixtureEvidenceSection() {
             </span>
           </button>
           {expandedVerdict && (
-            <div id="fixture-feasibility-verdict-details" className="border-t border-[var(--color-border)] px-3 py-2">
+            <div
+              id="fixture-feasibility-verdict-details"
+              className="border-t border-[var(--color-border)] px-3 py-2"
+            >
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Version</span>
@@ -253,23 +288,37 @@ export function FixtureEvidenceSection() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Verdict</span>
-                  <span className="font-medium text-[var(--color-success)]">{FEASIBILITY_VERDICT.verdict}</span>
+                  <span className="font-medium text-[var(--color-success)]">
+                    {FEASIBILITY_VERDICT.verdict}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Oracle Check</span>
-                  <span className="text-[var(--color-success)]">{FEASIBILITY_VERDICT.oracle_check.status} ({FEASIBILITY_VERDICT.oracle_check.pattern_match})</span>
+                  <span className="text-[var(--color-success)]">
+                    {FEASIBILITY_VERDICT.oracle_check.status} (
+                    {FEASIBILITY_VERDICT.oracle_check.pattern_match})
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Mutation Check</span>
-                  <span className="text-[var(--color-success)]">{FEASIBILITY_VERDICT.mutation_check.status} ({FEASIBILITY_VERDICT.mutation_check.detection_rate})</span>
+                  <span className="text-[var(--color-success)]">
+                    {FEASIBILITY_VERDICT.mutation_check.status} (
+                    {FEASIBILITY_VERDICT.mutation_check.detection_rate})
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[var(--color-text-tertiary)]">Holdout Check</span>
-                  <span className="text-[var(--color-success)]">{FEASIBILITY_VERDICT.holdout_check.status} ({FEASIBILITY_VERDICT.holdout_check.holdout_pass})</span>
+                  <span className="text-[var(--color-success)]">
+                    {FEASIBILITY_VERDICT.holdout_check.status} (
+                    {FEASIBILITY_VERDICT.holdout_check.holdout_pass})
+                  </span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {FEASIBILITY_VERDICT.reason_codes.map((code) => (
-                    <span key={code} className="rounded bg-[var(--color-bg-secondary)] px-1.5 py-0.5 font-mono text-[var(--color-text-tertiary)]">
+                    <span
+                      key={code}
+                      className="rounded bg-[var(--color-bg-secondary)] px-1.5 py-0.5 font-mono text-[var(--color-text-tertiary)]"
+                    >
                       {code}
                     </span>
                   ))}
