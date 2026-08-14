@@ -33,6 +33,7 @@ describe("platform package public surface", () => {
       "createPostgresCreditLedgerRepository",
       "createPostgresDatasourceEgress",
       "createPostgresModelBillingRepository",
+      "createPostgresOperationsAdminRepository",
       "createPostgresPricingControlRepository",
       "createPostgresRelationshipIndexStore",
       "createPostgresRepository",
