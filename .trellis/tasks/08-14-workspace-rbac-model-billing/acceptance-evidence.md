@@ -52,6 +52,9 @@
   计费模式切换及冻结释放全部使用站内审计原因对话框；管理产品路径中的原生
   `window.prompt / confirm / alert` 已归零，并由 `legacy-workspace-characterization.spec.ts` 固化。
   对话框复用原生 modal focus/escape 语义，窄屏自适应，并在失败时保留原因供安全重试。
+- 价格控制面复审：模型草稿、目录状态、价格/汇率候选补齐响应式层级、字段标签、空/错/
+  loading/成功状态和不可变版本影响说明；`/admin/pricing` 在 Server Component 内重新验证会话，
+  未登录跳转登录、非超级管理员直接 404，页面边界 3 项测试通过。
 - 视觉证据：
   `/Users/lienli/.codex/visualizations/2026/08/14/019fff6b-8633-72c1-ac95-e8f739243566/phase7-operations-console.png`。
 
