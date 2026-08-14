@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review SQL authority, atomicity, RLS and grants"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"Review workspace isolation and role enforcement"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Review export and audit secret boundaries"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Review strict schemas and adversarial tests"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review discriminated UI states and boundary parsing"}

@@ -88,6 +88,10 @@ export {
   type SemanticExplorerExactReleaseInput,
   type SemanticExplorerReleasePageInput,
 } from "./semantic/postgres-semantic-explorer.js";
+export {
+  createPostgresSemanticPortabilityRepository,
+  type PostgresSemanticPortabilityRepository,
+} from "./semantic/postgres-semantic-portability.js";
 export * from "./storage/namespace.js";
 export type {
   AppCapability,

@@ -8,7 +8,6 @@ import {
   modelBillSchema,
   modelPriceCandidateSchema,
   semanticImportJobSchema,
-  semanticWorkspaceExportSchema,
   workspaceAccessProjectionSchema,
   workspaceSchema,
 } from "../src/index.js";
@@ -219,12 +218,16 @@ describe("price, FX and credit contracts", () => {
 });
 
 describe("semantic workspace portability contracts", () => {
-  it("exports portable published semantics without a source workspace identifier", () => {
-    const exported = {
+  it("requires explicit datasource mappings before READY", () => {
+    const base = {
+      schema_version: "semantic-import-job@1.0.0",
+      import_id: ids.operation,
+      workspace_id: ids.workspace,
+      file_name: "semantic.json",
+      byte_size: 128,
+      upload_hash: hash,
+      document_content_hash: hash,
       format: "semantic-workspace-export@1.0.0",
-      exported_at: at,
-      source_release_version: "semantic-release@1.0.0",
-      content_hash: hash,
       datasource_refs: [
         {
           logical_ref: "warehouse-primary",
@@ -233,34 +236,48 @@ describe("semantic workspace portability contracts", () => {
           schema_fingerprint: hash,
         },
       ],
-      compatibility: {
-        semantic_protocol_version: "semantic@1.0.0",
-        minimum_importer_version: "data-agent@0.1.0",
-      },
-      published_semantic: { metrics: [] },
-    } as const;
-    expect(semanticWorkspaceExportSchema.parse(exported)).toEqual(exported);
-    expectUnknownFieldRejected(semanticWorkspaceExportSchema, exported);
-    expect(JSON.stringify(exported)).not.toContain(ids.workspace);
-  });
-
-  it("requires explicit datasource mappings before READY", () => {
-    const base = {
-      schema_version: "semantic-import-job@1.0.0",
-      import_id: ids.operation,
-      workspace_id: ids.workspace,
-      upload_hash: hash,
+      preview: null,
       created_at: at,
       updated_at: at,
     } as const;
     expect(
-      semanticImportJobSchema.safeParse({ ...base, state: "READY", mappings: [] }).success,
+      semanticImportJobSchema.safeParse({
+        ...base,
+        state: "READY",
+        mappings: [],
+        reason_code: null,
+        candidates: [],
+        receipt_id: null,
+      }).success,
     ).toBe(false);
     expect(
       semanticImportJobSchema.safeParse({
         ...base,
         state: "READY",
-        mappings: [{ logical_ref: "warehouse-primary", target_datasource_id: ids.candidate }],
+        mappings: [
+          {
+            logical_ref: "warehouse-primary",
+            target_datasource_id: ids.candidate,
+            target_semantic_domain: "revenue",
+          },
+        ],
+        preview: {
+          schema_version: "semantic-import-preview@1.0.0",
+          compatible: true,
+          missing_logical_refs: [],
+          conflicts: [],
+          domains: [
+            {
+              source_semantic_domain: "revenue",
+              target_semantic_domain: "revenue",
+              target_datasource_id: ids.candidate,
+              change_kind: "CREATE_DRAFT",
+            },
+          ],
+        },
+        reason_code: null,
+        candidates: [],
+        receipt_id: null,
       }).success,
     ).toBe(true);
   });

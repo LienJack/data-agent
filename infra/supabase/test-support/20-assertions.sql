@@ -62,11 +62,11 @@ select test_support.assert_true(
   (
     select pg_catalog.count(*) >= 32
       and pg_catalog.bool_or(
-        migration_version = '20260725010631_app_data_agent_model_billing_settlement'
+        migration_version = '20260725010632_app_data_agent_semantic_json_portability'
       )
     from platform.migration_ledger
   ),
-  'Phase 5 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
+  'Phase 6 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
 );
 
 select test_support.assert_raises(

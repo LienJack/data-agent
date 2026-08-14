@@ -23,7 +23,8 @@
     "08-14-workspace-data-isolation",
     "08-14-model-price-fx-control-plane",
     "08-14-credit-ledger",
-    "08-14-model-billing-settlement"
+    "08-14-model-billing-settlement",
+    "08-14-semantic-json-portability"
   ],
   "parent": null,
   "relatedFiles": [],
