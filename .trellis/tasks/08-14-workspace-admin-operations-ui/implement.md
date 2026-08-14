@@ -61,3 +61,8 @@ git diff --check
   `packages/contracts/src/evals/index.ts` 仍有 2 个未提交 lint error，且未跟踪的
   `packages/evals/test/model-analysis-agent.spec.ts:334` 仍有 1 个 typecheck error。在仓库
   全绿前保持 `SHADOW`，不启用 `ENFORCED`。
+- 2026-08-15 继续执行最终门禁：`pnpm test:unit` 15/15 tasks、`pnpm test:contract`
+  10/10 tasks、`static-check.sh` 和完整 `run-postgres-smoke.sh` 再次通过；实时六项 health gate
+  均为 `PASS`，reconciliation 的 missing/duplicate/review/hold mismatch 均为 0，且
+  `ready_for_enforced = true`。共享工作区的上述 2 个 lint error 与 1 个 typecheck error
+  仍原样存在，因此 AC7 保持未勾选。

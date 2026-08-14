@@ -41,6 +41,10 @@
   `ENFORCED -> SHADOW` 回滚演练通过。
 - `platform.read_operations_health`：`SHADOW`、epoch 1，六个运营门禁均为 `PASS` 且
   count 为 0，`SHADOW_RECONCILIATION_CLEAR`。
+- 2026-08-15 继续执行后再次复跑全量非浏览器门：unit 15/15 tasks、contract 10/10 tasks、
+  SQL static check 与完整 PostgreSQL smoke 全部通过；实时 reconciliation 再次返回
+  `ready_for_enforced = true`，`missing_bills`、`duplicate_bills`、`open_review_findings` 和
+  `hold_ledger_mismatches` 均为 0。
 - 请求边界复审：`/api/admin/**` 全部先执行数据库重验后的 `SUPER_ADMIN` 守卫；旧 datasource、
   Q&A 与 tests 无作用域入口返回 `WORKSPACE_ROUTE_REQUIRED`（410）；兼容 semantic URL 统一进入
   Cookie session + workspace capability guard，不接受客户端自报 principal/role。
