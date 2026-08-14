@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
 import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
-import { getCurrentWorkspaceSession } from "@/lib/workspace-identity";
+import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
+import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
 
 /**
  * Settings 设置页面 — 模型配置管理。
@@ -23,6 +24,8 @@ export default async function SettingsPage() {
     );
   }
   const isSuperAdmin = session.value.system_role === "SUPER_ADMIN";
+  const workspaceAccess = await listSessionWorkspaces(session.value);
+  const workspaces = workspaceAccess.ok ? workspaceAccess.value : [];
   return (
     <div className="h-full overflow-y-auto">
       <div className="workspace-container">
@@ -49,6 +52,10 @@ export default async function SettingsPage() {
 
         <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
           <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
+        </div>
+
+        <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
+          <SemanticPortabilityPanel workspaces={workspaces} />
         </div>
 
         {isSuperAdmin && (
