@@ -21,7 +21,8 @@
   "children": [
     "08-14-workspace-identity-rbac",
     "08-14-workspace-data-isolation",
-    "08-14-model-price-fx-control-plane"
+    "08-14-model-price-fx-control-plane",
+    "08-14-credit-ledger"
   ],
   "parent": null,
   "relatedFiles": [],

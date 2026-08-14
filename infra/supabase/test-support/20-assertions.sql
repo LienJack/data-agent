@@ -60,13 +60,13 @@ select test_support.assert_true(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) >= 31
+    select pg_catalog.count(*) >= 32
       and pg_catalog.bool_or(
-        migration_version = '20260725010629_app_data_agent_model_price_fx_control'
+        migration_version = '20260725010630_app_data_agent_credit_ledger'
       )
     from platform.migration_ledger
   ),
-  'Phase 3 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
+  'Phase 4 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
 );
 
 select test_support.assert_raises(

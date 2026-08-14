@@ -405,6 +405,77 @@ run_concurrent_claim_probe() {
   rm -r -- "$claim_probe_dir"
 }
 
+run_credit_concurrency_probe() {
+  credit_deployment="00000000-0000-4000-8000-00000000de01"
+  credit_admin="00000000-0000-4000-8000-00000000b411"
+  credit_user="00000000-0000-4000-8000-00000000b412"
+  credit_workspace="00000000-0000-4000-8000-00000000aa11"
+  credit_probe_dir=$(mktemp -d)
+
+  run_credit_adjustment_session() {
+    suffix=$1
+    operation_id=$2
+    docker exec "$container_name" \
+      psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "begin; set local role data_agent_backend; select app_data_agent.apply_credit_adjustment('$credit_deployment'::uuid, '$credit_admin'::uuid, jsonb_build_object('schema_version','credit-adjustment@1.0.0','operation_id','$operation_id','idempotency_key','credit-concurrent-adjust-$suffix','target_principal_id','$credit_user','signed_microcredits','10000000','reason','concurrent adjustment probe','expected_account_version',6)); select pg_catalog.pg_sleep(1); commit;" \
+      >"$credit_probe_dir/adjust-$suffix.log" 2>&1
+  }
+
+  run_credit_adjustment_session a "00000000-0000-4000-8000-00000000b433" &
+  credit_adjust_a_pid=$!
+  run_credit_adjustment_session b "00000000-0000-4000-8000-00000000b434" &
+  credit_adjust_b_pid=$!
+  if wait "$credit_adjust_a_pid"; then credit_adjust_a_status=0; else credit_adjust_a_status=$?; fi
+  if wait "$credit_adjust_b_pid"; then credit_adjust_b_status=0; else credit_adjust_b_status=$?; fi
+  if [ $((credit_adjust_a_status + credit_adjust_b_status)) -eq 0 ] \
+    || [ "$credit_adjust_a_status" -ne 0 ] && [ "$credit_adjust_b_status" -ne 0 ]; then
+    echo "Concurrent credit adjustments did not produce exactly one winner." >&2
+    cat "$credit_probe_dir"/adjust-*.log >&2
+    exit 1
+  fi
+
+  run_credit_hold_session() {
+    suffix=$1
+    operation_id=$2
+    hold_id=$3
+    invocation_id=$4
+    docker exec "$container_name" \
+      psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "begin; set local role data_agent_backend; select app_data_agent.reserve_credit_hold('$credit_deployment'::uuid, '$credit_user'::uuid, jsonb_build_object('schema_version','credit-hold-reserve@1.0.0','operation_id','$operation_id','idempotency_key','credit-concurrent-hold-$suffix','hold_id','$hold_id','invocation_id','$invocation_id','workspace_id','$credit_workspace','reserved_microcredits','6000000','expected_account_version',7)); select pg_catalog.pg_sleep(1); commit;" \
+      >"$credit_probe_dir/hold-$suffix.log" 2>&1
+  }
+
+  run_credit_hold_session a \
+    "00000000-0000-4000-8000-00000000b435" \
+    "00000000-0000-4000-8000-00000000b436" \
+    "00000000-0000-4000-8000-00000000b437" &
+  credit_hold_a_pid=$!
+  run_credit_hold_session b \
+    "00000000-0000-4000-8000-00000000b438" \
+    "00000000-0000-4000-8000-00000000b439" \
+    "00000000-0000-4000-8000-00000000b440" &
+  credit_hold_b_pid=$!
+  if wait "$credit_hold_a_pid"; then credit_hold_a_status=0; else credit_hold_a_status=$?; fi
+  if wait "$credit_hold_b_pid"; then credit_hold_b_status=0; else credit_hold_b_status=$?; fi
+  if [ $((credit_hold_a_status + credit_hold_b_status)) -eq 0 ] \
+    || [ "$credit_hold_a_status" -ne 0 ] && [ "$credit_hold_b_status" -ne 0 ]; then
+    echo "Concurrent credit holds did not produce exactly one winner." >&2
+    cat "$credit_probe_dir"/hold-*.log >&2
+    exit 1
+  fi
+
+  credit_state=$(
+    docker exec "$container_name" \
+      psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "select settled_microcredits || ':' || active_held_microcredits || ':' || available_microcredits || ':' || version from app_data_agent.credit_accounts where principal_id = '$credit_user'::uuid;"
+  )
+  if [ "$credit_state" != "10000000:6000000:4000000:8" ]; then
+    echo "Concurrent credit mutation produced an invalid projection: $credit_state" >&2
+    exit 1
+  fi
+  rm -r -- "$credit_probe_dir"
+}
+
 run_concurrent_accept_probe() {
   accept_app="00000000-0000-4000-8000-00000000da01"
   accept_tenant="00000000-0000-4000-8000-00000000aa22"
@@ -1438,6 +1509,9 @@ for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | so
   esac
   apply_sql "$assertion_file"
   case "$assertion_file" in
+    *"/19zz-credit-ledger-assertions.sql")
+      run_credit_concurrency_probe
+      ;;
     *"/25-secret-lifecycle-assertions.sql")
       run_concurrent_claim_probe
       run_concurrent_accept_probe

@@ -45,12 +45,7 @@ export const globalModelCredentialRefSchema = z.strictObject({
   credential_ref_id: immutableIdSchema,
   secret_ref_id: immutableIdSchema,
   secret_version: z.number().int().positive(),
-  rotation_state: z.enum([
-    "ACTIVE",
-    "ROTATION_PENDING",
-    "REVOCATION_PENDING",
-    "REVOKED",
-  ]),
+  rotation_state: z.enum(["ACTIVE", "ROTATION_PENDING", "REVOCATION_PENDING", "REVOKED"]),
 });
 
 export const modelCatalogEntrySchema = z.strictObject({
@@ -96,7 +91,6 @@ export const modelCatalogStatusInputSchema = z.strictObject({
   status: z.enum(["ACTIVE", "DISABLED", "UNBILLABLE"]),
   expected_config_version: z.number().int().positive(),
 });
-
 
 export const modelPriceCandidateSchema = z.strictObject({
   schema_version: z.literal("model-price-candidate@1.0.0"),
@@ -164,7 +158,10 @@ export const pricingSyncOperationSchema = z.strictObject({
   fetched_at: timestampSchema,
   raw_evidence_bytes: z.number().int().nonnegative().max(65_536),
   candidate_ids: z.array(immutableIdSchema).max(1_000),
-  error_code: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/).nullable(),
+  error_code: z
+    .string()
+    .regex(/^[A-Z][A-Z0-9_]{0,127}$/)
+    .nullable(),
 });
 
 const pricingSyncEvidenceSchema = {
@@ -231,7 +228,6 @@ export const pricingCandidateDecisionInputSchema = z
     }
   });
 
-
 export const creditAccountSchema = z.strictObject({
   schema_version: z.literal("credit-account@1.0.0"),
   app_id: immutableIdSchema,
@@ -256,11 +252,16 @@ export const creditLedgerEntrySchema = z.strictObject({
   actor_principal_id: immutableIdSchema,
   reason: z.string().min(1).max(500),
   idempotency_key: z.string().min(8).max(128),
+  balance_before_microcredits: nonNegativeIntegerStringSchema,
+  balance_after_microcredits: nonNegativeIntegerStringSchema,
+  account_version: z.number().int().positive(),
   created_at: timestampSchema,
 });
 
 export const creditHoldSchema = z.strictObject({
   schema_version: z.literal("credit-hold@1.0.0"),
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
   hold_id: immutableIdSchema,
   invocation_id: immutableIdSchema,
   principal_id: immutableIdSchema,
@@ -269,6 +270,95 @@ export const creditHoldSchema = z.strictObject({
   state: z.enum(["ACTIVE", "SETTLED", "RELEASED", "REVIEW_REQUIRED"]),
   created_at: timestampSchema,
   closed_at: timestampSchema.nullable(),
+});
+
+export const creditAdjustmentInputSchema = z
+  .strictObject({
+    schema_version: z.literal("credit-adjustment@1.0.0"),
+    operation_id: immutableIdSchema,
+    idempotency_key: z.string().min(8).max(128),
+    target_principal_id: immutableIdSchema,
+    signed_microcredits: signedIntegerStringSchema,
+    reason: z.string().min(1).max(500),
+    expected_account_version: z.number().int().nonnegative(),
+  })
+  .refine((value) => value.signed_microcredits !== "0", {
+    path: ["signed_microcredits"],
+    message: "调账金额不能为零",
+  });
+
+export const creditHoldReservationInputSchema = z.strictObject({
+  schema_version: z.literal("credit-hold-reserve@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  hold_id: immutableIdSchema,
+  invocation_id: immutableIdSchema,
+  workspace_id: immutableIdSchema,
+  reserved_microcredits: nonNegativeIntegerStringSchema.refine((value) => value !== "0", {
+    message: "冻结金额必须大于零",
+  }),
+  expected_account_version: z.number().int().nonnegative(),
+});
+
+export const creditHoldReleaseInputSchema = z.strictObject({
+  schema_version: z.literal("credit-hold-release@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  hold_id: immutableIdSchema,
+  reason: z.string().min(1).max(500),
+  expected_account_version: z.number().int().positive(),
+});
+
+export const creditProjectionRebuildInputSchema = z.strictObject({
+  schema_version: z.literal("credit-projection-rebuild@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  target_principal_id: immutableIdSchema,
+  reason: z.string().min(1).max(500),
+  expected_account_version: z.number().int().positive(),
+});
+
+export const creditReconciliationReceiptSchema = z.strictObject({
+  schema_version: z.literal("credit-reconciliation@1.0.0"),
+  principal_id: immutableIdSchema,
+  projected_settled_microcredits: nonNegativeIntegerStringSchema,
+  ledger_settled_microcredits: nonNegativeIntegerStringSchema,
+  projected_held_microcredits: nonNegativeIntegerStringSchema,
+  active_holds_microcredits: nonNegativeIntegerStringSchema,
+  consistent: z.boolean(),
+  account_version: z.number().int().nonnegative(),
+  checked_at: timestampSchema,
+});
+
+export const creditAdjustmentReceiptSchema = z.strictObject({
+  operation_id: immutableIdSchema,
+  account: creditAccountSchema,
+});
+
+export const creditHoldMutationReceiptSchema = z.strictObject({
+  operation_id: immutableIdSchema,
+  account: creditAccountSchema,
+  hold: creditHoldSchema,
+});
+
+export const creditProjectionRebuildReceiptSchema = z.strictObject({
+  operation_id: immutableIdSchema,
+  changed: z.boolean(),
+  account: creditAccountSchema,
+});
+
+export const billingAuditEntrySchema = z.strictObject({
+  schema_version: z.literal("billing-audit-entry@1.0.0"),
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
+  audit_id: nonNegativeIntegerStringSchema,
+  operation_id: immutableIdSchema,
+  actor_principal_id: immutableIdSchema,
+  target_principal_id: immutableIdSchema,
+  action: z.enum(["ADJUST_CREDIT", "RESERVE_HOLD", "RELEASE_HOLD", "REBUILD_PROJECTION"]),
+  reason: z.string().min(1).max(500),
+  details: z.record(z.string(), z.unknown()),
+  created_at: timestampSchema,
 });
 
 export const modelUsageSchema = z.strictObject({
@@ -320,4 +410,13 @@ export type PricingCandidateDecisionInput = z.infer<typeof pricingCandidateDecis
 export type CreditAccount = z.infer<typeof creditAccountSchema>;
 export type CreditLedgerEntry = z.infer<typeof creditLedgerEntrySchema>;
 export type CreditHold = z.infer<typeof creditHoldSchema>;
+export type CreditAdjustmentInput = z.infer<typeof creditAdjustmentInputSchema>;
+export type CreditHoldReservationInput = z.infer<typeof creditHoldReservationInputSchema>;
+export type CreditHoldReleaseInput = z.infer<typeof creditHoldReleaseInputSchema>;
+export type CreditProjectionRebuildInput = z.infer<typeof creditProjectionRebuildInputSchema>;
+export type CreditReconciliationReceipt = z.infer<typeof creditReconciliationReceiptSchema>;
+export type CreditAdjustmentReceipt = z.infer<typeof creditAdjustmentReceiptSchema>;
+export type CreditHoldMutationReceipt = z.infer<typeof creditHoldMutationReceiptSchema>;
+export type CreditProjectionRebuildReceipt = z.infer<typeof creditProjectionRebuildReceiptSchema>;
+export type BillingAuditEntry = z.infer<typeof billingAuditEntrySchema>;
 export type ModelBill = z.infer<typeof modelBillSchema>;

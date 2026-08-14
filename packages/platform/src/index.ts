@@ -1,4 +1,6 @@
 export * from "./attribution/published-f9-lifecycle.js";
+export * from "./billing/microcredits.js";
+export * from "./billing/postgres-credit-ledger.js";
 export * from "./cache/namespace.js";
 export * from "./cache/scoped-upstash.js";
 export * from "./catalog/physical-schema.js";

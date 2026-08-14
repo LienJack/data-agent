@@ -6,6 +6,10 @@
 可独立验收的子阶段实施。每个阶段先提交契约和失败测试，再提交 migration/adapter/UI；
 未通过当前阶段门禁不进入下一阶段。实施前由用户明确批准本计划。
 
+所有阶段采用“后端权威 + 可操作前端 + 一次截图验收”的完成标准。管理与操作界面可参考
+new-api 的计费管理信息密度、DeepSeek Harness 的运行状态反馈、WrenAI 的数据产品信息架构，
+但必须复用本项目既有组件、设计令牌和中文产品语言；不得把 API 存在等同于功能完成。
+
 ## Phase 0：冻结契约与迁移基线
 
 目标：先定义唯一术语、DTO、错误语义和当前行为基线，防止各层自行发明 workspace、
@@ -83,14 +87,14 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 
 目标：提供无支付的管理员积分分配和可证明一致的用户余额。
 
-- [ ] 建立 `credit_accounts`、append-only ledger、holds、billing operations 和审计 migration；
+- [x] 建立 `credit_accounts`、append-only ledger、holds、billing operations 和审计 migration；
   trigger 禁止更新/删除账本。
-- [ ] 实现 bigint/microcredit 金额库、CNY 换算、reservation ceil、settlement rounding 和
+- [x] 实现 bigint/microcredit 金额库、CNY 换算、reservation ceil、settlement rounding 和
   overflow/underflow 测试。
-- [ ] 实现超级管理员调增/调减命令，要求 reason、idempotency key、expected account
+- [x] 实现超级管理员调增/调减命令，要求 reason、idempotency key、expected account
   version；调减不得使 available 小于零。
-- [ ] 实现用户余额/冻结额/个人流水查询和超级管理员全局账户/调账审计页面。
-- [ ] 实现账本到余额投影重建与对账命令，证明缓存投影可从账本恢复。
+- [x] 实现用户余额/冻结额/个人流水查询和超级管理员全局账户/调账审计页面。
+- [x] 实现账本到余额投影重建与对账命令，证明缓存投影可从账本恢复。
 
 验收门禁：并发调账与冻结不产生负 available；同键重放稳定、异载荷冲突；普通用户不能
 读取他人账户；100 积分与 1 CNY 的所有边界换算可重算。
