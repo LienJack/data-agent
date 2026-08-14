@@ -45,6 +45,9 @@
   SQL static check 与完整 PostgreSQL smoke 全部通过；实时 reconciliation 再次返回
   `ready_for_enforced = true`，`missing_bills`、`duplicate_bills`、`open_review_findings` 和
   `hold_ledger_mismatches` 均为 0。
+- detached clean worktree 对提交 `930a9eb` 的复核中，`pnpm lint` 通过；`pnpm typecheck`
+  因已提交 Web 调用方引用尚未提交的 Test Center、Semantic Candidate 和 UI 组件而失败。
+  这证明当前发布提交也在等待并行任务的原子提交，不能绕过共享门禁启用 `ENFORCED`。
 - 请求边界复审：`/api/admin/**` 全部先执行数据库重验后的 `SUPER_ADMIN` 守卫；旧 datasource、
   Q&A 与 tests 无作用域入口返回 `WORKSPACE_ROUTE_REQUIRED`（410）；兼容 semantic URL 统一进入
   Cookie session + workspace capability guard，不接受客户端自报 principal/role。

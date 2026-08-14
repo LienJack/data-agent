@@ -66,3 +66,6 @@ git diff --check
   均为 `PASS`，reconciliation 的 missing/duplicate/review/hold mismatch 均为 0，且
   `ready_for_enforced = true`。共享工作区的上述 2 个 lint error 与 1 个 typecheck error
   仍原样存在，因此 AC7 保持未勾选。
+- 对提交 `930a9eb` 的 detached clean worktree 复核显示 `pnpm lint` 通过，但 `pnpm typecheck`
+  仍因已提交 Web 调用方依赖尚未提交的 Test Center、Semantic Candidate 与 UI 组件而失败；
+  因此当前分支的发布工件本身也尚不能独立构建，不能把门禁失败仅视为脏工作树噪声。
