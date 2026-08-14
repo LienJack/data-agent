@@ -11,6 +11,7 @@ import type {
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ReasonDialog } from "@/components/ui/reason-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface ModelBillingPanelProps {
@@ -161,6 +162,10 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
   const [selectedReview, setSelectedReview] = useState<ModelBillingBill>();
   const [verifiedUsage, setVerifiedUsage] = useState<ModelUsage>(emptyUsage);
   const [reviewReason, setReviewReason] = useState("");
+  const [modeDecisionTarget, setModeDecisionTarget] = useState<"SHADOW" | "ENFORCED">();
+  const [modeDecisionReason, setModeDecisionReason] = useState("");
+  const [releaseReviewBill, setReleaseReviewBill] = useState<ModelBillingBill>();
+  const [releaseReason, setReleaseReason] = useState("");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -190,15 +195,15 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
 
   const totalCost = useMemo(() => sumCny(costs.map((row) => row.cny_cost)), [costs]);
 
-  async function decideMode() {
+  function requestModeDecision() {
     if (!runtime) return;
     const target = runtime.mode === "SHADOW" ? "ENFORCED" : "SHADOW";
-    const reason = window.prompt(
-      target === "ENFORCED"
-        ? "请输入启用强制计费的审批原因。仅在 Shadow 对账通过后生效。"
-        : "请输入退回 Shadow 的原因。历史账单不会删除。",
-    );
-    if (!reason?.trim()) return;
+    setModeDecisionReason("");
+    setModeDecisionTarget(target);
+  }
+
+  async function decideMode(reason: string) {
+    if (!runtime || !modeDecisionTarget) return;
     setPending(true);
     setError(undefined);
     try {
@@ -208,11 +213,13 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
           schema_version: "billing-mode-decision@1.0.0",
           operation_id: crypto.randomUUID(),
           idempotency_key: operationKey("billing-mode"),
-          target_mode: target,
+          target_mode: modeDecisionTarget,
           expected_epoch: runtime.epoch,
-          reason: reason.trim(),
+          reason,
         }),
       });
+      setModeDecisionTarget(undefined);
+      setModeDecisionReason("");
       setRuntime(receipt.state);
       setReconciliation(receipt.reconciliation);
       setNotice(`计费模式已切换为 ${receipt.state.mode}。`);
@@ -223,10 +230,9 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
     }
   }
 
-  async function releaseReview(bill: ModelBillingBill) {
-    const reason = window.prompt("请输入释放冻结的复核依据。此操作会写入不可变审计记录。");
-    if (!reason?.trim()) return;
-    await submitReview(bill, "RELEASE", null, reason.trim());
+  function requestReleaseReview(bill: ModelBillingBill) {
+    setReleaseReason("");
+    setReleaseReviewBill(bill);
   }
 
   async function submitReview(
@@ -254,6 +260,8 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
       setSelectedReview(undefined);
       setReviewReason("");
       setVerifiedUsage(emptyUsage);
+      setReleaseReviewBill(undefined);
+      setReleaseReason("");
       await reload();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "账单复核失败");
@@ -324,7 +332,7 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
                   {runtime.mode === "ENFORCED" ? "强制扣费" : "影子计费"}
                 </Badge>
               </div>
-              <Button className="mt-5" loading={pending} onClick={() => void decideMode()}>
+              <Button className="mt-5" loading={pending} onClick={requestModeDecision}>
                 {runtime.mode === "SHADOW" ? "审批启用 Enforced" : "退回 Shadow"}
               </Button>
             </div>
@@ -410,7 +418,7 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
                         <Button variant="ghost" onClick={() => setSelectedReview(bill)}>
                           核实用量
                         </Button>
-                        <Button loading={pending} onClick={() => void releaseReview(bill)}>
+                        <Button loading={pending} onClick={() => requestReleaseReview(bill)}>
                           释放
                         </Button>
                       </div>
@@ -465,6 +473,50 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
             )}
           </section>
         </div>
+      )}
+
+      {modeDecisionTarget && (
+        <ReasonDialog
+          eyebrow="Billing mode decision"
+          title={modeDecisionTarget === "ENFORCED" ? "启用强制计费" : "退回影子计费"}
+          description={
+            modeDecisionTarget === "ENFORCED"
+              ? "启用后，模型调用将冻结并结算用户积分。数据库会再次验证 Shadow 对账、价格审批、余额一致性及全部上线门禁。"
+              : "退回后停止新的积分扣减，历史账单、审计记录与既有余额变动不会被删除或回滚。"
+          }
+          reasonLabel="审批原因"
+          confirmLabel={modeDecisionTarget === "ENFORCED" ? "确认启用 Enforced" : "确认退回 Shadow"}
+          destructive={modeDecisionTarget === "ENFORCED"}
+          reason={modeDecisionReason}
+          pending={pending}
+          error={error}
+          onReasonChange={setModeDecisionReason}
+          onCancel={() => {
+            setModeDecisionTarget(undefined);
+            setModeDecisionReason("");
+          }}
+          onConfirm={(reason) => void decideMode(reason)}
+        />
+      )}
+
+      {releaseReviewBill && (
+        <ReasonDialog
+          eyebrow="Release billing hold"
+          title="释放待复核账单的积分冻结"
+          description={`账单 ${releaseReviewBill.bill_id.slice(0, 8)}… 将不再结算用户积分；释放依据会永久写入账务审计。`}
+          reasonLabel="复核依据"
+          confirmLabel="确认释放冻结"
+          destructive
+          reason={releaseReason}
+          pending={pending}
+          error={error}
+          onReasonChange={setReleaseReason}
+          onCancel={() => {
+            setReleaseReviewBill(undefined);
+            setReleaseReason("");
+          }}
+          onConfirm={(reason) => void submitReview(releaseReviewBill, "RELEASE", null, reason)}
+        />
       )}
     </section>
   );
