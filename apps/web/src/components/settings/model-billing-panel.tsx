@@ -324,11 +324,7 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
                   {runtime.mode === "ENFORCED" ? "强制扣费" : "影子计费"}
                 </Badge>
               </div>
-              <Button
-                className="mt-5"
-                loading={pending}
-                onClick={() => void decideMode()}
-              >
+              <Button className="mt-5" loading={pending} onClick={() => void decideMode()}>
                 {runtime.mode === "SHADOW" ? "审批启用 Enforced" : "退回 Shadow"}
               </Button>
             </div>
@@ -414,10 +410,7 @@ export function ModelBillingPanel({ isSuperAdmin }: ModelBillingPanelProps) {
                         <Button variant="ghost" onClick={() => setSelectedReview(bill)}>
                           核实用量
                         </Button>
-                        <Button
-                          loading={pending}
-                          onClick={() => void releaseReview(bill)}
-                        >
+                        <Button loading={pending} onClick={() => void releaseReview(bill)}>
                           释放
                         </Button>
                       </div>

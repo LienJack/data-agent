@@ -19,7 +19,9 @@ const tablePattern =
   /create table(?: if not exists)?\s+((?:app_data_agent|semantic|catalog)\.[a-z0-9_]+)\s*\((.*?)\n\);/gs;
 
 const discovered = new Map<string, "WORKSPACE" | "APP_GLOBAL">();
-for (const entry of readdirSync(migrationDirectory).filter((name) => name.endsWith(".sql")).sort()) {
+for (const entry of readdirSync(migrationDirectory)
+  .filter((name) => name.endsWith(".sql"))
+  .sort()) {
   const sql = readFileSync(resolve(migrationDirectory, entry), "utf8");
   for (const match of sql.matchAll(tablePattern)) {
     const tableName = match[1];

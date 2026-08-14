@@ -82,7 +82,8 @@ describe("official pricing source adapters", () => {
   });
 
   it("fails closed for unknown dimensions and oversized evidence", () => {
-    const adapter = OFFICIAL_MODEL_PRICE_ADAPTERS[0]!;
+    const adapter = OFFICIAL_MODEL_PRICE_ADAPTERS[0];
+    if (!adapter) throw new Error("MODEL_PRICE_ADAPTER_FIXTURE_MISSING");
     expect(() =>
       adapter.parse({
         operation_id: operation,

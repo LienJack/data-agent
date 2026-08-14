@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { OFFICIAL_MODEL_PRICE_ADAPTERS } from "../../src/pricing/official-source-adapters.js";
 import {
   createPricingSyncCycle,
   createPricingSyncScheduler,
 } from "../../src/pricing/pricing-sync-cycle.js";
-import { OFFICIAL_MODEL_PRICE_ADAPTERS } from "../../src/pricing/official-source-adapters.js";
 
 const context = {
   deployment_id: "00000000-0000-4000-8000-00000000de01",
@@ -17,12 +17,17 @@ describe("pricing sync cycle", () => {
       submitFxSync: vi.fn(),
       recordSyncFailure: vi.fn().mockResolvedValue({ ok: true, value: {} }),
     };
-    const source = OFFICIAL_MODEL_PRICE_ADAPTERS[0]!;
+    const source = OFFICIAL_MODEL_PRICE_ADAPTERS[0];
+    if (!source) throw new Error("MODEL_PRICE_ADAPTER_FIXTURE_MISSING");
     const cycle = createPricingSyncCycle({
       repository: repository as never,
       context,
       sources: [source],
-      fetcher: { async fetch() { return "not-json"; } },
+      fetcher: {
+        async fetch() {
+          return "not-json";
+        },
+      },
       now: () => new Date("2026-08-14T00:00:00.000Z"),
       operation_id: () => "00000000-0000-4000-8000-00000000a411",
     });

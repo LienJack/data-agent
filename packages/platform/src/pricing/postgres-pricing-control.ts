@@ -1,24 +1,24 @@
 import {
-  fxRateCandidateSchema,
   type FxRateCandidate,
-  modelCatalogEntrySchema,
+  fxRateCandidateSchema,
   type ModelCatalogEntry,
+  type ModelCatalogStatusInput,
+  type ModelPriceCandidate,
+  modelCatalogEntrySchema,
   modelCatalogStatusInputSchema,
   modelPriceCandidateSchema,
-  type ModelPriceCandidate,
+  type PricingCandidateDecisionInput,
   pricingCandidateDecisionInputSchema,
-  submitFxRateSyncInputSchema,
-  submitModelPriceSyncInputSchema,
   type SubmitFxRateSyncInput,
   type SubmitModelPriceSyncInput,
-  upsertModelCatalogEntryInputSchema,
-  type ModelCatalogStatusInput,
-  type PricingCandidateDecisionInput,
+  submitFxRateSyncInputSchema,
+  submitModelPriceSyncInputSchema,
   type UpsertModelCatalogEntryInput,
+  upsertModelCatalogEntryInputSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
-import { failure, type BoundaryResult } from "../tenancy/capability.js";
 import type { SqlClient, SqlPool } from "../persistence/transaction.js";
+import { type BoundaryResult, failure } from "../tenancy/capability.js";
 
 const adminContextSchema = z.strictObject({
   deployment_id: z.uuid(),
@@ -224,11 +224,7 @@ export function createPostgresPricingControlRepository(pool: SqlPool) {
       return withClient(pool, async (client) => {
         const result = await client.query<{ readonly result: ModelCatalogRow }>(
           "select app_data_agent.apply_model_catalog_command($1::uuid,$2::uuid,$3::jsonb) as result",
-          [
-            parsedContext.value.deployment_id,
-            parsedContext.value.principal_id,
-            parsedCommand.data,
-          ],
+          [parsedContext.value.deployment_id, parsedContext.value.principal_id, parsedCommand.data],
         );
         const row = result.rows[0];
         if (!row) throw new Error("MODEL_CATALOG_RECEIPT_MISSING");
@@ -263,11 +259,7 @@ export function createPostgresPricingControlRepository(pool: SqlPool) {
       return withClient(pool, async (client) => {
         const result = await client.query<{ readonly result: unknown }>(
           "select app_data_agent.record_pricing_sync_failure($1::uuid,$2::uuid,$3::jsonb) as result",
-          [
-            parsedContext.value.deployment_id,
-            parsedContext.value.principal_id,
-            parsedFailure.data,
-          ],
+          [parsedContext.value.deployment_id, parsedContext.value.principal_id, parsedFailure.data],
         );
         return result.rows[0]?.result ?? {};
       });

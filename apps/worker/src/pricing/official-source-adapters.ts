@@ -4,10 +4,10 @@ import {
   modelProviderSchema,
   priceComponentKindSchema,
   priceUnitSchema,
-  submitFxRateSyncInputSchema,
-  submitModelPriceSyncInputSchema,
   type SubmitFxRateSyncInput,
   type SubmitModelPriceSyncInput,
+  submitFxRateSyncInputSchema,
+  submitModelPriceSyncInputSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 
@@ -18,8 +18,14 @@ const fixtureComponentSchema = z.strictObject({
   unit: priceUnitSchema,
   unit_price: z.string().regex(/^(0|[1-9][0-9]*)(\.[0-9]+)?$/),
   currency: z.string().regex(/^[A-Z]{3}$/),
-  tier_min_inclusive: z.string().regex(/^(0|[1-9][0-9]*)$/).nullable(),
-  tier_max_exclusive: z.string().regex(/^(0|[1-9][0-9]*)$/).nullable(),
+  tier_min_inclusive: z
+    .string()
+    .regex(/^(0|[1-9][0-9]*)$/)
+    .nullable(),
+  tier_max_exclusive: z
+    .string()
+    .regex(/^(0|[1-9][0-9]*)$/)
+    .nullable(),
 });
 
 const modelFixtureSchema = z.strictObject({
@@ -188,10 +194,7 @@ export const OFFICIAL_MODEL_PRICE_ADAPTERS = Object.freeze([
 
 export const OFFICIAL_FX_RATE_ADAPTERS = Object.freeze([
   fxAdapter("CFETS", "https://www.chinamoney.com.cn/chinese/bkccpr/index.html?tab=2"),
-  fxAdapter(
-    "PBOC",
-    "https://www.pbc.gov.cn/zhengcehuobisi/125207/125217/125925/17105-2.html",
-  ),
+  fxAdapter("PBOC", "https://www.pbc.gov.cn/zhengcehuobisi/125207/125217/125925/17105-2.html"),
 ]);
 
 export type OfficialPricingSourceAdapter = ModelPriceSourceAdapter | FxRateSourceAdapter;

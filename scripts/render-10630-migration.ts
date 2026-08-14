@@ -27,8 +27,11 @@ const repoRoot = resolve(import.meta.dirname, "..");
 const appRoot = resolve(repoRoot, "infra/supabase/apps/data-agent");
 const sourceDirectory = resolve(appRoot, "migration-sources/10630");
 const migrationPath = resolve(appRoot, "migrations", MIGRATION_NAME);
-if (!existsSync(sourceDirectory)) throw new Error(`10630 source directory missing: ${sourceDirectory}`);
-const actual = readdirSync(sourceDirectory).filter((entry) => entry.endsWith(".sql.inc")).sort();
+if (!existsSync(sourceDirectory))
+  throw new Error(`10630 source directory missing: ${sourceDirectory}`);
+const actual = readdirSync(sourceDirectory)
+  .filter((entry) => entry.endsWith(".sql.inc"))
+  .sort();
 if (JSON.stringify(actual) !== JSON.stringify([...SOURCE_SEGMENTS].sort())) {
   throw new Error(`10630 source segment closure mismatch: actual=${actual.join(",")}`);
 }

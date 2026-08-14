@@ -24,7 +24,10 @@ const ids = {
 } as const;
 const at = "2026-08-14T10:00:00.000Z";
 
-function rejectsUnknown(schema: { safeParse(value: unknown): { success: boolean } }, value: object) {
+function rejectsUnknown(
+  schema: { safeParse(value: unknown): { success: boolean } },
+  value: object,
+) {
   expect(schema.safeParse({ ...value, caller_role: "SUPER_ADMIN" }).success).toBe(false);
 }
 

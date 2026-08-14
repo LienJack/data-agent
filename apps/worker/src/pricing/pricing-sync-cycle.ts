@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type {
+  createPostgresPricingControlRepository,
   PricingAdminContext,
   PricingSyncFailure,
-  createPostgresPricingControlRepository,
 } from "@data-agent/platform";
 import {
   MAX_PRICING_EVIDENCE_BYTES,
@@ -92,7 +92,11 @@ export function createPricingSyncCycle(dependencies: {
             error_code: errorCode,
           };
           await dependencies.repository.recordSyncFailure(dependencies.context, failure);
-          results.push({ adapter: source.adapter_version, status: "FAILED", error_code: errorCode });
+          results.push({
+            adapter: source.adapter_version,
+            status: "FAILED",
+            error_code: errorCode,
+          });
         }
       }
       return Object.freeze(results);

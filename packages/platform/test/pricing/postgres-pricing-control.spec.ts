@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createPostgresPricingControlRepository } from "../../src/pricing/postgres-pricing-control.js";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
+import { createPostgresPricingControlRepository } from "../../src/pricing/postgres-pricing-control.js";
 
 const ids = {
   deployment: "00000000-0000-4000-8000-00000000de01",

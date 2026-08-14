@@ -70,7 +70,9 @@ const commandPayloadSchema = z
     datasource_id: uuid.optional(),
     conversation_id: uuid.optional(),
   })
-  .refine((payload) => payload.conversation_id === undefined || payload.datasource_id !== undefined);
+  .refine(
+    (payload) => payload.conversation_id === undefined || payload.datasource_id !== undefined,
+  );
 const commandInputSchema = z.strictObject({
   run_id: uuid,
   command_id: uuid,
