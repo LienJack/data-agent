@@ -1,6 +1,19 @@
 \set ON_ERROR_STOP on
 
 begin;
+insert into app_data_agent.datasource_connections (
+  app_id, tenant_id, environment, datasource_id, name, datasource_type,
+  file_path, created_by_principal_id
+) values (
+  '00000000-0000-4000-8000-00000000da01',
+  '00000000-0000-4000-8000-00000000aa22',
+  'test',
+  '00000000-0000-4000-8000-00000000d228',
+  'schema-discovery-fixture',
+  'sqlite',
+  '/tmp/schema-discovery-fixture.db',
+  '00000000-0000-4000-8000-000000001003'
+);
 set local role data_agent_backend;
 
 select * from platform.revalidate_backend_authority(
@@ -40,7 +53,7 @@ begin
     'captured_at', '2026-08-09T00:00:00.000Z',
     'content', pg_catalog.jsonb_build_object(
       'schema_version', 'physical-schema-content@1.0.0',
-      'datasource_id', 'warehouse-primary',
+      'datasource_id', '00000000-0000-4000-8000-00000000d228',
       'datasource_fingerprint', 'sha256:' || pg_catalog.repeat('f', 64),
       'engine', 'postgresql',
       'engine_version', pg_catalog.jsonb_build_object('major', 17, 'minor', 10),
@@ -57,7 +70,7 @@ begin
     '00000000-0000-4000-8000-00000000aa22'::uuid,
     'test',
     '00000000-0000-4000-8000-000000001003'::uuid,
-    'warehouse-primary',
+    '00000000-0000-4000-8000-00000000d228',
     '00000000-0000-4000-8000-000000003301'::uuid,
     'sha256:' || pg_catalog.repeat('1', 64),
     first_snapshot
@@ -67,7 +80,7 @@ begin
     '00000000-0000-4000-8000-00000000aa22'::uuid,
     'test',
     '00000000-0000-4000-8000-000000001003'::uuid,
-    'warehouse-primary',
+    '00000000-0000-4000-8000-00000000d228',
     '00000000-0000-4000-8000-000000003301'::uuid,
     'sha256:' || pg_catalog.repeat('1', 64),
     first_snapshot
@@ -85,7 +98,7 @@ begin
       '00000000-0000-4000-8000-00000000aa22'::uuid,
       'test',
       '00000000-0000-4000-8000-000000001003'::uuid,
-      'warehouse-primary',
+      '00000000-0000-4000-8000-00000000d228',
       '00000000-0000-4000-8000-000000003301'::uuid,
       'sha256:' || pg_catalog.repeat('2', 64),
       first_snapshot
@@ -116,7 +129,7 @@ begin
     '00000000-0000-4000-8000-00000000aa22'::uuid,
     'test',
     '00000000-0000-4000-8000-000000001003'::uuid,
-    'warehouse-primary',
+    '00000000-0000-4000-8000-00000000d228',
     '00000000-0000-4000-8000-000000003302'::uuid,
     'sha256:' || pg_catalog.repeat('2', 64),
     second_snapshot
@@ -127,7 +140,7 @@ begin
     '00000000-0000-4000-8000-00000000aa22'::uuid,
     'test',
     '00000000-0000-4000-8000-000000001003'::uuid,
-    'warehouse-primary',
+    '00000000-0000-4000-8000-00000000d228',
     'sha256:' || pg_catalog.repeat('f', 64),
     '00000000-0000-4000-8000-000000003203'::uuid,
     '00000000-0000-4000-8000-000000003303'::uuid,
@@ -142,7 +155,7 @@ begin
   drift_event := pg_catalog.jsonb_build_object(
     'schema_version', 'schema-drift-event@1.0.0',
     'drift_event_id', '00000000-0000-4000-8000-000000003401',
-    'datasource_id', 'warehouse-primary',
+    'datasource_id', '00000000-0000-4000-8000-00000000d228',
     'datasource_fingerprint', 'sha256:' || pg_catalog.repeat('f', 64),
     'base_snapshot_content_hash', 'sha256:' || pg_catalog.repeat('a', 64),
     'current_snapshot_content_hash', 'sha256:' || pg_catalog.repeat('b', 64),
@@ -177,7 +190,7 @@ begin
       '00000000-0000-4000-8000-00000000aa22'::uuid,
       'test',
       '00000000-0000-4000-8000-000000001003'::uuid,
-      'warehouse-primary',
+      '00000000-0000-4000-8000-00000000d228',
       '00000000-0000-4000-8000-000000003401'::uuid
     ) <> drift_event
   then

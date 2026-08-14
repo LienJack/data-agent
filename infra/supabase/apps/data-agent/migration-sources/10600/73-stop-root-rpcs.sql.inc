@@ -409,7 +409,7 @@ begin
   -- Lock and verify current readiness
   select readiness.*
   into v_readiness
-  from app_data_agent.research_current_readiness as readiness
+  from app_data_agent.current_report_readiness as readiness
   where readiness.app_id = s_app_id
     and readiness.tenant_id = s_tenant_id
     and readiness.environment = s_environment
@@ -472,4 +472,3 @@ $$;
 -- ============================================================
 -- 4. grant_issue: Issue a Report Read Grant
 -- ============================================================
-

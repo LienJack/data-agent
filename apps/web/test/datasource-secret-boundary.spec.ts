@@ -154,9 +154,8 @@ describe("datasource secret-reference boundary", () => {
   it("keeps password-bearing fields out of datasource persistence and UI state", () => {
     const paths = [
       "../src/lib/datasource-types.ts",
-      "../src/lib/datasource-repository.ts",
-      "../src/app/api/datasources/route.ts",
-      "../src/app/api/datasources/[id]/route.ts",
+      "../src/app/api/workspaces/[workspaceId]/datasources/route.ts",
+      "../../../packages/platform/src/persistence/workspace-data-repository.ts",
       "../src/components/data-sources/connection-form.tsx",
     ];
 

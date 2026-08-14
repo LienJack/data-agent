@@ -1,4 +1,4 @@
--- u6_c2_migration_checksum: sha256:f73b4712253d240492351c8793b17aa834e5ed161b2b8e61106a4e0c27b70d52
+-- u6_c2_migration_checksum: sha256:5027cff89a3dd09ba96025559adde4250bcf6a24f22e45d7f8bf87b246741d46
 begin;
 
 do $bootstrap$
@@ -4447,7 +4447,7 @@ begin
   -- Lock and verify current readiness
   select readiness.*
   into v_readiness
-  from app_data_agent.research_current_readiness as readiness
+  from app_data_agent.current_report_readiness as readiness
   where readiness.app_id = s_app_id
     and readiness.tenant_id = s_tenant_id
     and readiness.environment = s_environment
@@ -5485,7 +5485,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010600_app_data_agent_u6_research_derivation',
-  'sha256:f73b4712253d240492351c8793b17aa834e5ed161b2b8e61106a4e0c27b70d52'
+  'sha256:5027cff89a3dd09ba96025559adde4250bcf6a24f22e45d7f8bf87b246741d46'
 );
 
 commit;

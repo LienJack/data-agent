@@ -4,7 +4,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010601_app_data_agent_u6_research_controlled_fixture',
-  'sha256:2d649ec965fbd9e63f8be85b8aebfa25e3127c9073d2a6c1d1a7dbaba5eeb05b'
+  'sha256:b7f32a53bb037de8f5fb383527d38d7b52ed70c249fe2f8ac2d5a710e03b57d8'
 );
 
 -- ============================================================

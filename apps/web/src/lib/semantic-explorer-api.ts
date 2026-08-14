@@ -17,6 +17,7 @@ import {
   semanticRelationshipSearchResultSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
+import { workspaceRequestHeaders } from "./api-client";
 
 const errorEnvelopeSchema = z.strictObject({
   error: z.strictObject({
@@ -44,7 +45,11 @@ export class SemanticExplorerApiError extends Error {
 async function getData<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
   const timeoutSignal = AbortSignal.timeout(EXPLORER_FETCH_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
-  const response = await fetch(path, { cache: "no-store", signal: requestSignal });
+  const response = await fetch(path, {
+    cache: "no-store",
+    headers: workspaceRequestHeaders(),
+    signal: requestSignal,
+  });
   const body: unknown = await response.json().catch(() => null);
   if (!response.ok) {
     const error = errorEnvelopeSchema.safeParse(body);
@@ -83,7 +88,7 @@ async function postData<T>(
   const response = await fetch(path, {
     method: "POST",
     cache: "no-store",
-    headers: { "Content-Type": "application/json" },
+    headers: workspaceRequestHeaders(),
     body: JSON.stringify(payload),
     signal: requestSignal,
   });

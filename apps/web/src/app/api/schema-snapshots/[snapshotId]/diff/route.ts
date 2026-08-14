@@ -1,5 +1,12 @@
 import { handleGetSchemaDiff } from "@/lib/schema-discovery-route";
+import { getWorkspaceSchemaDiscoveryRuntime } from "@/lib/workspace-semantic-runtime";
 
-export function GET(request: Request, context: { params: Promise<{ snapshotId: string }> }) {
-  return handleGetSchemaDiff(request, context.params);
+export async function GET(
+  request: import("next/server").NextRequest,
+  context: { params: Promise<{ snapshotId: string }> },
+) {
+  const resolved = await getWorkspaceSchemaDiscoveryRuntime(request, "READ");
+  return resolved.ok
+    ? handleGetSchemaDiff(request, context.params, resolved.runtime)
+    : resolved.response;
 }

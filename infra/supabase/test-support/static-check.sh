@@ -87,6 +87,26 @@ for migration_file in $migration_files; do
     pnpm --dir "$repo_dir" exec tsx scripts/render-u6-c2-migration.ts --verify-generated
     continue
   fi
+  case "$(basename "$migration_file")" in
+    20260725010609_*) renderer="scripts/render-10609-migration.ts" ;;
+    20260725010610_*) renderer="scripts/render-semantic-migration.ts" ;;
+    20260725010615_*) renderer="scripts/render-10615-migration.ts" ;;
+    20260725010619_*) renderer="scripts/render-10619-migration.ts" ;;
+    20260725010620_*) renderer="scripts/render-u20-migration.ts" ;;
+    20260725010621_*) renderer="scripts/render-10621-migration.ts" ;;
+    20260725010622_*) renderer="scripts/render-10622-migration.ts" ;;
+    20260725010623_*) renderer="scripts/render-10623-migration.ts" ;;
+    20260725010624_*) renderer="scripts/render-10624-migration.ts" ;;
+    20260725010625_*) renderer="scripts/render-10625-migration.ts" ;;
+    20260725010626_*) renderer="scripts/render-10626-migration.ts" ;;
+    20260725010627_*) renderer="scripts/render-10627-migration.ts" ;;
+    20260725010628_*) renderer="scripts/render-10628-migration.ts" ;;
+    *) renderer="" ;;
+  esac
+  if [ -n "$renderer" ]; then
+    pnpm --dir "$repo_dir" exec tsx "$renderer" --verify
+    continue
+  fi
   checksum_count=$(rg -o 'sha256:[0-9a-f]{64}' "$migration_file" | wc -l | tr -d ' ')
   if [ "$checksum_count" -ne 1 ]; then
     echo "Expected exactly one self-checksum literal: $migration_file" >&2

@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const parsed = parseSemanticRollbackRequest(body);
     const { runtime, authority } = await resolveSemanticRouteAuthority(
+      request,
       "WRITE",
       parsed.semantic_domain,
     );

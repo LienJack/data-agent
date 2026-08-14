@@ -23,15 +23,22 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "";
 
 // ─── Workspace Context ─────────────────────────────────────────────────────
 
-/** 从 sessionStorage / query param / env 解析工作空间 ID */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** 从 /w/:workspaceId 路由或会话选择解析工作空间 ID。 */
 export function resolveWorkspaceId(): string {
   if (typeof window !== "undefined") {
+    const routed = window.location.pathname.match(
+      /^\/w\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\/|$)/i,
+    )?.[1];
+    if (routed) {
+      window.sessionStorage.setItem("data-agent.activeWorkspaceId", routed);
+      return routed;
+    }
     const stored = window.sessionStorage.getItem("data-agent.activeWorkspaceId")?.trim();
-    if (stored) return stored;
-    const queried = new URLSearchParams(window.location.search).get("workspaceId")?.trim();
-    if (queried) return queried;
+    if (stored && UUID_PATTERN.test(stored)) return stored;
   }
-  return process.env.NEXT_PUBLIC_WORKSPACE_ID?.trim() ?? "";
+  return "";
 }
 
 // ─── Auth Headers ──────────────────────────────────────────────────────────
@@ -40,10 +47,12 @@ function authHeaders(workspaceId?: string): HeadersInit {
   const resolved = workspaceId?.trim() || resolveWorkspaceId();
   return {
     "Content-Type": "application/json",
-    "x-user-role": process.env.NEXT_PUBLIC_DEV_USER_ROLE?.trim() || "admin",
-    "x-user-id": process.env.NEXT_PUBLIC_DEV_USER_ID?.trim() || "data-agent-ui",
     ...(resolved ? { "x-workspace-id": resolved } : {}),
   };
+}
+
+export function workspaceRequestHeaders(workspaceId?: string): HeadersInit {
+  return authHeaders(workspaceId);
 }
 
 // ─── URL Composition ───────────────────────────────────────────────────────
@@ -70,22 +79,42 @@ async function request<T>(path: string, init: RequestInit = {}, workspaceId?: st
 // ─── Run API ───────────────────────────────────────────────────────────────
 
 /** 创建新的分析 Run */
-export async function createRun(question: string, workspaceId?: string): Promise<RunProjection> {
+export async function createRun(
+  question: string,
+  workspaceId?: string,
+  datasourceId?: string,
+  conversationId?: string,
+): Promise<RunProjection> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace || !datasourceId || !conversationId) {
+    throw new Error("Run 必须显式绑定工作空间、数据源和对话");
+  }
   const idempotencyKey = crypto.randomUUID();
   return request<RunProjection>(
-    "/api/v1/runs",
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/runs`,
     {
       method: "POST",
       headers: { "x-idempotency-key": idempotencyKey },
-      body: JSON.stringify({ question, idempotencyKey }),
+      body: JSON.stringify({
+        question,
+        idempotencyKey,
+        datasourceId,
+        conversationId,
+      }),
     },
-    workspaceId,
+    resolvedWorkspace,
   );
 }
 
 /** 获取 Run 的当前投影 */
 export async function getRun(runId: string, workspaceId?: string): Promise<RunProjection> {
-  return request<RunProjection>(`/api/v1/runs/${encodeURIComponent(runId)}`, {}, workspaceId);
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  return request<RunProjection>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/runs/${encodeURIComponent(runId)}`,
+    {},
+    resolvedWorkspace,
+  );
 }
 
 /** 向 Run 发送命令（start/pause/resume/cancel/replay） */
@@ -96,7 +125,7 @@ export async function commandRun(
   workspaceId?: string,
 ): Promise<void> {
   await request(
-    `/api/v1/runs/${encodeURIComponent(runId)}/commands`,
+    `/api/workspaces/${encodeURIComponent(workspaceId?.trim() || resolveWorkspaceId())}/runs/${encodeURIComponent(runId)}/commands`,
     {
       method: "POST",
       body: JSON.stringify({
@@ -121,7 +150,7 @@ export async function streamRunEvents(input: {
 }): Promise<void> {
   const response = await fetch(
     composeUrl(
-      `/api/v1/runs/${encodeURIComponent(input.runId)}/events/stream?cursor=${input.cursor}`,
+      `/api/workspaces/${encodeURIComponent(input.workspaceId)}/runs/${encodeURIComponent(input.runId)}/events/stream?cursor=${input.cursor}`,
     ),
     { headers: authHeaders(input.workspaceId), signal: input.signal },
   );

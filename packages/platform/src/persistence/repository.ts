@@ -60,13 +60,17 @@ const stableCommandValue = z
 const commandSecretRef = z
   .string()
   .regex(/^secretref:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-const commandPayloadSchema = z.strictObject({
-  kind: z.literal("START_L2_RESEARCH"),
-  mode: z.literal("L2").optional(),
-  question_version: stableCommandValue.optional(),
-  dataset_id: stableCommandValue.optional(),
-  secret_refs: z.array(commandSecretRef).min(1).max(32).optional(),
-});
+const commandPayloadSchema = z
+  .strictObject({
+    kind: z.literal("START_L2_RESEARCH"),
+    mode: z.literal("L2").optional(),
+    question_version: stableCommandValue.optional(),
+    dataset_id: stableCommandValue.optional(),
+    secret_refs: z.array(commandSecretRef).min(1).max(32).optional(),
+    datasource_id: uuid.optional(),
+    conversation_id: uuid.optional(),
+  })
+  .refine((payload) => payload.conversation_id === undefined || payload.datasource_id !== undefined);
 const commandInputSchema = z.strictObject({
   run_id: uuid,
   command_id: uuid,
@@ -955,6 +959,54 @@ export function createPostgresRepository(
               "PERSISTENCE_DATABASE_CONTRACT_INVALID",
               "PostgreSQL 返回的 Command Acceptance 与请求不一致。",
             );
+          }
+          if (parsed.data.payload.datasource_id) {
+            const binding = await client.query<{
+              readonly datasource_id: string;
+              readonly conversation_id: string | null;
+              readonly principal_id: string;
+            }>(
+              `insert into workspace_run_bindings (
+                 app_id, tenant_id, environment, run_id, datasource_id,
+                 conversation_id, principal_id
+               ) values ($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::uuid, $7::uuid)
+               on conflict (app_id, tenant_id, environment, run_id) do nothing
+               returning datasource_id, conversation_id, principal_id`,
+              [
+                capability.scope.app_id,
+                capability.scope.tenant_id,
+                capability.scope.environment,
+                parsed.data.run_id,
+                parsed.data.payload.datasource_id,
+                parsed.data.payload.conversation_id ?? null,
+                capability.principal,
+              ],
+            );
+            const persistedBinding =
+              binding.rows[0] ??
+              (
+                await client.query<{
+                  readonly datasource_id: string;
+                  readonly conversation_id: string | null;
+                  readonly principal_id: string;
+                }>(
+                  `select datasource_id, conversation_id, principal_id
+                   from workspace_run_bindings
+                   where run_id = $1::uuid`,
+                  [parsed.data.run_id],
+                )
+              ).rows[0];
+            if (
+              !persistedBinding ||
+              persistedBinding.datasource_id !== parsed.data.payload.datasource_id ||
+              persistedBinding.conversation_id !== (parsed.data.payload.conversation_id ?? null) ||
+              persistedBinding.principal_id !== capability.principal
+            ) {
+              throw new PersistenceBoundaryError(
+                "RUN_DATASOURCE_BINDING_INVALID",
+                "Run 的数据源与对话归因不一致。",
+              );
+            }
           }
           return result.data;
         },

@@ -8,6 +8,22 @@ set -eu
 MIGRATIONS_DIR="/migrations"
 DB_URL="${DATABASE_URL:-postgres://postgres:postgres@localhost:5432/data_agent}"
 
+bootstrap_local_postgres_compatibility() {
+  compatibility_ready="$(
+    psql -X -q -A -t "$DB_URL" -v ON_ERROR_STOP=1 \
+      -c "select pg_catalog.to_regprocedure('auth.uid()') is not null
+                 and pg_catalog.to_regclass('storage.objects') is not null
+                 and exists (select 1 from pg_catalog.pg_roles where rolname = 'anon')
+                 and exists (select 1 from pg_catalog.pg_roles where rolname = 'authenticated')
+                 and exists (select 1 from pg_catalog.pg_roles where rolname = 'service_role')"
+  )"
+  if [ "$compatibility_ready" != "t" ]; then
+    echo "Bootstrapping local PostgreSQL Supabase compatibility objects"
+    psql -X "$DB_URL" -f "$MIGRATIONS_DIR/test-support/00-bootstrap-stubs.sql" \
+      -v ON_ERROR_STOP=1
+  fi
+}
+
 ledger_exists() {
   psql -X -q -A -t "$DB_URL" -v ON_ERROR_STOP=1 \
     -c "select pg_catalog.to_regclass('platform.migration_ledger') is not null"
@@ -86,8 +102,25 @@ apply_migration() {
     return
   fi
 
+  maintenance_prelude=""
+  case "$migration_version" in
+    20260725010590_app_data_agent_u6_research_authority)
+      maintenance_prelude="$MIGRATIONS_DIR/apps/data-agent/migration-support/10590-local-maintenance-prelude.sql"
+      ;;
+    20260725010600_app_data_agent_u6_research_derivation)
+      maintenance_prelude="$MIGRATIONS_DIR/apps/data-agent/migration-support/10600-local-maintenance-prelude.sql"
+      ;;
+    20260725010610_app_data_agent_semantic_control_plane)
+      maintenance_prelude="$MIGRATIONS_DIR/apps/data-agent/migration-support/10610-local-maintenance-prelude.sql"
+      ;;
+  esac
+
   echo "Applying: $migration_version"
-  psql -X "$DB_URL" -f "$migration_file" -v ON_ERROR_STOP=1
+  if [ -n "$maintenance_prelude" ]; then
+    psql -X "$DB_URL" -f "$maintenance_prelude" -f "$migration_file" -v ON_ERROR_STOP=1
+  else
+    psql -X "$DB_URL" -f "$migration_file" -v ON_ERROR_STOP=1
+  fi
   applied_checksum="$(ledger_checksum "$owner_kind" "$app_id" "$migration_version")"
   if [ "$applied_checksum" != "$checksum" ]; then
     echo "Migration ledger verification failed: $migration_version" >&2
@@ -95,6 +128,8 @@ apply_migration() {
   fi
   echo "  ✓ $migration_version"
 }
+
+bootstrap_local_postgres_compatibility
 
 echo "=== Applying platform migrations ==="
 for migration_file in "$MIGRATIONS_DIR"/platform/migrations/*.sql; do

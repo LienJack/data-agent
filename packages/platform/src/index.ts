@@ -26,6 +26,7 @@ export {
   type PostgresRepositoryAuthorities,
 } from "./persistence/repository.js";
 export * from "./persistence/transaction.js";
+export * from "./persistence/workspace-data-repository.js";
 export * from "./queue/postgres-run-queue.js";
 export {
   createPostgresControlledFixture,
@@ -91,4 +92,5 @@ export type {
   CapabilityQueryClient,
 } from "./tenancy/capability.js";
 export * from "./tenancy/postgres-authority.js";
+export * from "./tenancy/postgres-workspace-authority.js";
 export type { TransactionalCapabilityAuthorizer } from "./tenancy/transactional-authority.internal.js";

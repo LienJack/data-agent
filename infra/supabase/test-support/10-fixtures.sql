@@ -121,6 +121,36 @@ values
     'other-app-tenant-two'
   );
 
+insert into app_data_agent.workspaces (
+  app_id,
+  workspace_id,
+  environment,
+  slug,
+  display_name
+)
+values
+  (
+    '00000000-0000-4000-8000-00000000da01'::uuid,
+    '00000000-0000-4000-8000-00000000aa11'::uuid,
+    'test',
+    'smoke-aa11-test',
+    'Smoke workspace AA11 test'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000da01'::uuid,
+    '00000000-0000-4000-8000-00000000aa22'::uuid,
+    'test',
+    'smoke-aa22-test',
+    'Smoke workspace AA22 test'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000da01'::uuid,
+    '00000000-0000-4000-8000-00000000aa11'::uuid,
+    'prod',
+    'smoke-aa11-prod',
+    'Smoke workspace AA11 prod'
+  );
+
 insert into app_data_agent.memberships (
   app_id,
   tenant_id,

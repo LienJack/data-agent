@@ -6,6 +6,7 @@
  */
 
 import type { SemanticCandidateCreateResult } from "@data-agent/contracts";
+import { workspaceRequestHeaders } from "./api-client";
 import type {
   ChangeClass,
   InboxGroup,
@@ -55,13 +56,17 @@ async function handleResponse<T>(response: Response): Promise<T> {
 /** 获取收件箱条目 */
 export async function fetchInboxItems(group: InboxGroup): Promise<InboxItem[]> {
   const params = new URLSearchParams({ group });
-  const response = await fetch(`${API_BASE}/inbox?${params}`);
+  const response = await fetch(`${API_BASE}/inbox?${params}`, {
+    headers: workspaceRequestHeaders(),
+  });
   return handleResponse<InboxItem[]>(response);
 }
 
 /** 获取审核包详情 */
 export async function fetchPacketDetail(packetId: string): Promise<SemanticReviewPacket | null> {
-  const response = await fetch(`${API_BASE}/packets/${encodeURIComponent(packetId)}`);
+  const response = await fetch(`${API_BASE}/packets/${encodeURIComponent(packetId)}`, {
+    headers: workspaceRequestHeaders(),
+  });
   try {
     return await handleResponse<SemanticReviewPacket>(response);
   } catch (err) {
@@ -84,7 +89,7 @@ export async function submitDecision(
   }
   const response = await fetch(`${API_BASE}/decisions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: workspaceRequestHeaders(),
     body: JSON.stringify({
       schema_version: "semantic-decision@1.0.0",
       semantic_domain: semanticDomain,
@@ -131,7 +136,7 @@ export async function createProposal(data: {
           : "MAJOR";
   const response = await fetch(`${API_BASE}/candidates`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: workspaceRequestHeaders(),
     body: JSON.stringify({
       schema_version: "semantic-candidate-draft@1.0.0",
       title: data.title,

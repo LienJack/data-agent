@@ -32,6 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     const query = querySchema.parse(Object.fromEntries(request.nextUrl.searchParams));
     const { runtime, authority } = await resolveSemanticRouteAuthority(
+      request,
       "READ",
       query.semanticDomain,
     );

@@ -1,7 +1,10 @@
 import "server-only";
 
 import { dataSourceCredentialRefSchema, sha256ContentHash } from "@data-agent/contracts";
-import type { PostgresCatalogConnector } from "@data-agent/platform";
+import type {
+  PostgresCatalogConnector,
+  PostgresWorkspaceDataRepository,
+} from "@data-agent/platform";
 import { z } from "zod";
 import type { SchemaDiscoveryAuthorityContext } from "./schema-discovery-authority";
 import type {
@@ -76,6 +79,45 @@ export interface SchemaDiscoveryConnectorFactory {
       ssl: SchemaDiscoveryDatasourceMetadata["ssl"];
     }>,
   ): PostgresCatalogConnector;
+}
+
+export function createWorkspaceDatasourceMetadataResolver(
+  repository: PostgresWorkspaceDataRepository,
+): SchemaDiscoveryDatasourceMetadataResolver {
+  return Object.freeze({
+    async resolve(
+      datasourceId: string,
+      authority: SchemaDiscoveryAuthorityContext,
+    ): Promise<SchemaDiscoveryDatasourceMetadata> {
+      const result = await repository.getDatasource(authority.capabilityInput, datasourceId);
+      if (!result.ok) throw new Error("schema discovery datasource metadata unavailable");
+      const value = result.value;
+      if (
+        !value ||
+        value.workspace_id !== authority.scope.tenantId ||
+        value.type !== "postgresql" ||
+        value.status !== "ACTIVE" ||
+        !value.host ||
+        !value.port ||
+        !value.database ||
+        !value.username ||
+        !value.credential_ref
+      ) {
+        throw new Error("schema discovery datasource metadata unavailable");
+      }
+      return datasourceMetadataSchema.parse({
+        schema_version: "schema-discovery-datasource-metadata@1.0.0",
+        datasource_id: value.datasource_id,
+        type: value.type,
+        host: value.host,
+        port: value.port,
+        database: value.database,
+        username: value.username,
+        ssl: value.ssl,
+        credential_ref: value.credential_ref,
+      });
+    },
+  });
 }
 
 export function createSchemaDiscoveryDatasourceResolver(

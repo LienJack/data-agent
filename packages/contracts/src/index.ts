@@ -7,3 +7,4 @@ export * from "./evals/index.js";
 export * from "./ports/index.js";
 export * from "./providers/index.js";
 export * from "./runs/index.js";
+export * from "./workspaces/index.js";

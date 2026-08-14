@@ -1,6 +1,3 @@
-import type { NextRequest } from "next/server";
-import { handleStartSchemaScan } from "@/lib/schema-discovery-route";
+import { workspaceRouteRequiredResponse } from "@/lib/workspace-request";
 
-export function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  return handleStartSchemaScan(request, context.params);
-}
+export const POST = workspaceRouteRequiredResponse;

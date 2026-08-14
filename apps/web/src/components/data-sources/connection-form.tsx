@@ -11,6 +11,8 @@ import type {
   TestConnectionInput,
 } from "@/lib/datasource-types";
 import { DATABASE_TYPE_CONFIGS, DATABASE_TYPES, SSL_OPTIONS } from "@/lib/datasource-types";
+import { cn } from "@/lib/utils";
+import { DataSourceMark } from "./data-source-mark";
 
 const FIELD_LABELS: Record<ConnectionField, string> = {
   host: "主机",
@@ -165,28 +167,62 @@ export function ConnectionForm() {
             该连接必须绑定 Secret Provider 凭据引用；M0 在 Provider 接入前保持失败关闭。
           </div>
         )}
-        {/* 数据库类型选择 */}
+        {/* 数据库类型卡片 */}
         <div>
-          <span className="mb-1 block text-xs font-medium text-[var(--color-text-secondary)]">
-            数据库类型
-          </span>
-          <div className="flex flex-wrap gap-2">
-            {DATABASE_TYPES.map((dbType) => (
-              <button
-                key={dbType}
-                type="button"
-                onClick={() => handleTypeChange(dbType)}
-                className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
-                  type === dbType
-                    ? "bg-[var(--color-accent)] text-white"
-                    : "border border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
-                }`}
-              >
-                {DATABASE_TYPE_CONFIGS[dbType].label}
-              </button>
-            ))}
+          <div className="mb-2 flex items-end justify-between gap-3">
+            <div>
+              <span className="block text-xs font-medium text-[var(--color-text-secondary)]">
+                选择数据源类型
+              </span>
+              <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">
+                选择后将显示该类型需要的连接字段
+              </p>
+            </div>
+            <span className="text-[10px] text-[var(--color-text-muted)]">
+              {DATABASE_TYPES.length} 种连接器
+            </span>
           </div>
-          <p className="mt-1 text-xs text-[var(--color-text-muted)]">{config.description}</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {DATABASE_TYPES.map((dbType) => {
+              const item = DATABASE_TYPE_CONFIGS[dbType];
+              const selected = type === dbType;
+              return (
+                <button
+                  key={dbType}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => handleTypeChange(dbType)}
+                  className={cn(
+                    "relative min-h-28 rounded-xl border p-3 text-left transition-all",
+                    selected
+                      ? "border-[var(--color-border-focused)] bg-[var(--color-selection-selected-bg)] shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_10%,transparent)]"
+                      : "border-[var(--color-border-default)] bg-white hover:-translate-y-0.5 hover:border-[var(--color-border-focused)] hover:shadow-[0_8px_18px_rgb(23_26_24_/_0.07)]",
+                  )}
+                >
+                  <span className="flex items-start gap-2.5">
+                    <DataSourceMark type={dbType} size="md" />
+                    <span className="min-w-0">
+                      <span className="block text-xs font-semibold text-[var(--color-text-primary)]">
+                        {item.label}
+                      </span>
+                      <span className="mt-1 block text-[10px] leading-4 text-[var(--color-text-muted)]">
+                        {item.description}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="mt-2 flex items-center gap-2 text-[9px] uppercase tracking-[0.06em] text-[var(--color-text-muted)]">
+                    <span>{item.category}</span>
+                    {item.defaultPort && <span>端口 {item.defaultPort}</span>}
+                  </span>
+                  {selected && (
+                    <span className="absolute right-2.5 top-2.5 flex h-4 w-4 items-center justify-center rounded-full bg-[var(--color-accent)] text-[9px] text-white">
+                      ✓
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* 连接名称 */}

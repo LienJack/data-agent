@@ -60,10 +60,10 @@ select test_support.assert_true(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) = 17
+    select pg_catalog.count(*) = 32
     from platform.migration_ledger
   ),
-  'platform 与十六个 app migration 必须分别记账'
+  'platform 与三十一个 app migration 必须分别记账'
 );
 
 select test_support.assert_raises(

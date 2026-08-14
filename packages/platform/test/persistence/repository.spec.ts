@@ -635,6 +635,74 @@ describe("PostgreSQL authoritative repository", () => {
     expect(fixture.released()).toBe(1);
   });
 
+  it("accepts a run and persists its datasource attribution in the same transaction", async () => {
+    const datasourceId = "00000000-0000-4000-8000-000000000711";
+    const conversationId = "00000000-0000-4000-8000-000000000712";
+    const fixture = scriptedPool((text) => {
+      if (text.includes("accept_backend_run_command")) {
+        return {
+          rows: [
+            {
+              result: {
+                created: true,
+                run_id: ids.run,
+                command_id: ids.command,
+                outbox_id: ids.outbox,
+                payload_hash: canonicalPayloadHash,
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("insert into workspace_run_bindings")) {
+        return {
+          rows: [
+            {
+              datasource_id: datasourceId,
+              conversation_id: conversationId,
+              principal_id: ids.principal,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+    const issued = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, issued.authorizer);
+    const input = {
+      ...commandInput(),
+      payload: {
+        ...commandInput().payload,
+        datasource_id: datasourceId,
+        conversation_id: conversationId,
+      },
+    };
+
+    expect(await repository.acceptCommand(issued.capability, input)).toMatchObject({
+      ok: true,
+      value: { created: true, run_id: ids.run },
+    });
+    const acceptanceIndex = fixture.calls.findIndex(({ text }) =>
+      text.includes("accept_backend_run_command"),
+    );
+    const bindingIndex = fixture.calls.findIndex(({ text }) =>
+      text.includes("insert into workspace_run_bindings"),
+    );
+    expect(bindingIndex).toBeGreaterThan(acceptanceIndex);
+    expect(fixture.calls[bindingIndex]?.values).toEqual([
+      ids.app,
+      ids.tenant,
+      "test",
+      ids.run,
+      datasourceId,
+      conversationId,
+      ids.principal,
+    ]);
+    expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
+  });
+
   it("rejects unknown or opaque credential payload fields before database I/O", async () => {
     const fixture = scriptedPool(() => undefined);
     const authority = issueCapability();

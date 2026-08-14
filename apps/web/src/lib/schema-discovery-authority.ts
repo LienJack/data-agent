@@ -100,6 +100,30 @@ export function createPostgresSchemaDiscoveryAuthorityResolver(
   });
 }
 
+export function createCapabilitySchemaDiscoveryAuthorityResolver(
+  capability: AppCapability,
+): SchemaDiscoveryAuthorityResolver {
+  return Object.freeze({
+    async resolve(input: unknown): Promise<SchemaDiscoveryAuthorityContext> {
+      const request = authorityRequestSchema.safeParse(input);
+      if (!request.success || (request.data.access === "WRITE" && capability.role === "VIEWER")) {
+        throw new SchemaDiscoveryAuthorityError("SCHEMA_SCAN_SCOPE_FORBIDDEN", false);
+      }
+      return Object.freeze({
+        authority: "POSTGRESQL" as const,
+        capabilityInput: capability,
+        scope: Object.freeze({
+          appId: capability.scope.app_id,
+          tenantId: capability.scope.tenant_id,
+          environment: capability.scope.environment,
+        }),
+        deploymentId: capability.deployment_id,
+        principal: capability.principal,
+      });
+    },
+  });
+}
+
 export function unavailableSchemaDiscoveryAuthorityResolver(): SchemaDiscoveryAuthorityResolver {
   return Object.freeze({
     async resolve() {

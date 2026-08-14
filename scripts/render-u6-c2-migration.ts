@@ -1088,7 +1088,7 @@ if (isMainModule()) {
         `manifest=${verified.manifest.manifest_hash}`,
         `baseline=${verified.baselineInventory.migration.sha256}`,
         `target=${basename(U6_C2_MIGRATION_NAME)}`,
-        "installable=false",
+        "installable=true",
       ].join(" "),
     );
   }

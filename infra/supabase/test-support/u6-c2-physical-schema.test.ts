@@ -144,10 +144,13 @@ describe("U6-C2 physical schema descriptor", () => {
     );
     assert.equal(descriptor.existing_relation_mutations.length, 11);
     assert.equal(descriptor.migrations[0].status, "IMMUTABLE");
-    assert.equal(descriptor.migrations[1].sha256, null);
+    assert.equal(
+      descriptor.migrations[1].sha256,
+      "sha256:5027cff89a3dd09ba96025559adde4250bcf6a24f22e45d7f8bf87b246741d46",
+    );
     assert.equal(
       descriptor.migrations[1].status,
-      "AWAITING_RENDERED_10600_BYTES",
+      "IMMUTABLE",
     );
   });
 

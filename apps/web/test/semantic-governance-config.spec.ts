@@ -68,4 +68,17 @@ describe("semantic governance backend selection", () => {
       ),
     ).toBe("SEMANTIC_AUTHORITY_NOT_CONFIGURED");
   });
+
+  it("selects postgres when the database and server authority are explicit", () => {
+    expect(
+      parseSemanticGovernanceBackend(
+        {
+          SEMANTIC_GOVERNANCE_BACKEND: "postgres",
+          DATABASE_URL: "postgresql://db/app",
+          NODE_ENV: "production",
+        },
+        { hasAuthorityResolver: true },
+      ),
+    ).toEqual({ backend: "postgres", connectionString: "postgresql://db/app" });
+  });
 });

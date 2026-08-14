@@ -5,14 +5,21 @@ import {
   semanticPreparePublishInputSchema,
   semanticRollbackInputSchema,
 } from "@data-agent/contracts";
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   publicSemanticGovernanceError,
   redactSemanticGovernanceError,
   SemanticGovernanceError,
 } from "./semantic-governance-error";
-import { getSemanticGovernanceRuntime } from "./semantic-governance-runtime";
+import { getWorkspaceSemanticGovernanceRuntime } from "./workspace-semantic-runtime";
+
+class WorkspaceSemanticRouteError extends Error {
+  override readonly name = "WorkspaceSemanticRouteError";
+  constructor(readonly response: NextResponse) {
+    super("Workspace semantic request authority failed.");
+  }
+}
 
 const semanticPublishRequestSchema = z.discriminatedUnion("action", [
   z.strictObject({ action: z.literal("prepare"), input: semanticPreparePublishInputSchema }),
@@ -44,10 +51,13 @@ export function parseSemanticRollbackRequest(input: unknown) {
 }
 
 export async function resolveSemanticRouteAuthority(
+  request: NextRequest,
   access: "READ" | "WRITE",
   semanticDomain: string,
 ) {
-  const runtime = getSemanticGovernanceRuntime();
+  const resolved = await getWorkspaceSemanticGovernanceRuntime(request, access);
+  if (!resolved.ok) throw new WorkspaceSemanticRouteError(resolved.response);
+  const runtime = resolved.runtime;
   const authority = await runtime.authorityResolver.resolve({
     access,
     semanticDomain,
@@ -59,6 +69,7 @@ export function semanticRouteErrorResponse(
   error: unknown,
   invalidCode: "INVALID_PARAMS" | "INVALID_BODY",
 ): NextResponse {
+  if (error instanceof WorkspaceSemanticRouteError) return error.response;
   if (error instanceof z.ZodError) {
     return NextResponse.json(
       { error: { code: invalidCode, message: "请求内容不符合语义治理契约。" } },

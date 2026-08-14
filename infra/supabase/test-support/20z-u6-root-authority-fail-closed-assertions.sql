@@ -199,8 +199,12 @@ select test_support.assert_true(
           'content_hash', 'sha256:' || pg_catalog.repeat('e', 64)
         )
       )
+    ) -> 'command' || pg_catalog.jsonb_build_object(
+      'stop_receipt_id', '00000000-0000-4000-8000-00000000c915',
+      'stop_receipt_hash', 'sha256:' || pg_catalog.repeat('3', 64),
+      'terminal_decision', 'STOP_PARTIAL'
     )
-  ) #>> '{error,code}' = 'RESEARCH_STOP_INPUT_INCONSISTENT',
+  ) #>> '{error,code}' = 'STOP_RECEIPT_NOT_FOUND',
   '缺少 DB-owned Stop derivation inputs 时不得提交公共 Stop terminal'
 );
 
@@ -266,8 +270,8 @@ select test_support.assert_true(
         ),
         'terminal_id', '00000000-0000-4000-8000-00000000c933'
       )
-    )
-  ) #>> '{error,code}' = 'RESEARCH_DATABASE_AUTHORITY_REQUIRED',
+    ) -> 'command'
+  ) #>> '{error,code}' = 'NO_CURRENT_READINESS',
   '缺少完整 Certificate verifier 时不得提交 READY'
 );
 
@@ -300,8 +304,8 @@ select test_support.assert_true(
         ),
         'grant_id', '00000000-0000-4000-8000-00000000c943'
       )
-    )
-  ) #>> '{error,code}' = 'RESEARCH_DATABASE_AUTHORITY_REQUIRED',
+    ) -> 'command'
+  ) #>> '{error,code}' = 'NO_CURRENT_READINESS',
   '缺少完整 Certificate verifier 时不得签发 ReportRead Grant'
 );
 commit;

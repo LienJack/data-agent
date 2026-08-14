@@ -2573,7 +2573,7 @@ const descriptorMaterial = {
     {
       chain_ordinal: 2,
       name: "20260725010600_app_data_agent_u6_research_derivation.sql",
-      sha256: "sha256:66832b7ea40ef1866904e1ac9cd2da65a75ba5cd7700566bbda9effcbbb9e075",
+      sha256: "sha256:5027cff89a3dd09ba96025559adde4250bcf6a24f22e45d7f8bf87b246741d46",
       status: "IMMUTABLE",
     },
   ],
@@ -2644,7 +2644,7 @@ const descriptorMaterial = {
  * checks the raw embedded digest and then this independent frozen constant.
  */
 export const U6_C2_FROZEN_PHYSICAL_SCHEMA_HASH =
-  "sha256:8ed64a68036ca2b67c31175d8028b0d657c8662068efc165ecb5821dc65891fc";
+  "sha256:f404abca017479c92103aa85ee58a38865bfe89b0e4d7038829f9629bfcf0a30";
 
 export const U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR = deepFreeze({
   ...descriptorMaterial,

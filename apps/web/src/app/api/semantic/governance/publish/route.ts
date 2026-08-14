@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     const parsed = parseSemanticPublishRequest(body);
 
     const { runtime, authority } = await resolveSemanticRouteAuthority(
+      request,
       "WRITE",
       parsed.input.semantic_domain,
     );

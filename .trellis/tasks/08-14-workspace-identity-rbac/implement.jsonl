@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"实施 workspace 唯一术语、RBAC 矩阵、事务重验、幂等命令与 clean-install 边界。"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"实施 PostgreSQL migration、窄函数、GRANT、RLS、锁序与账本证据。"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"保持身份、权限与幂等冲突 reason code 稳定且失败关闭。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Web 只消费 strict session/workspace projection，不信任客户端角色。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"核对 Contracts、PostgreSQL、Platform 与 Web 的 authority 数据流。"}
+{"file":".trellis/tasks/08-14-workspace-identity-rbac/research/better-auth-compatibility.md","reason":"锁定并审查 Better Auth 1.6.23 的 schema、许可和运行时兼容性。"}

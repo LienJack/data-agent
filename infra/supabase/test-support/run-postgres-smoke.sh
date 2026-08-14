@@ -44,6 +44,14 @@ apply_sql() {
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" <"$sql_file"
 }
 
+apply_sql_with_prelude() {
+  prelude_file=$1
+  sql_file=$2
+  echo "Applying ${sql_file#"$infra_dir"/} with ${prelude_file#"$infra_dir"/}"
+  awk '1' "$prelude_file" "$sql_file" | docker exec -i "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name"
+}
+
 prepare_u6_maintenance_binding() {
   docker exec "$container_name" \
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
@@ -95,6 +103,35 @@ prepare_u6_maintenance_binding() {
         end if;
       end
       \$u6_binding\$;
+    " \
+    >/dev/null
+}
+
+prepare_local_maintenance_binding() {
+  docker exec "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "
+      insert into platform.app_environment_lifecycle (
+        app_id,
+        environment,
+        lifecycle_state
+      ) values (
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        'local',
+        'ACTIVE'
+      ) on conflict (app_id, environment) do nothing;
+
+      insert into platform.deployment_mappings (
+        deployment_id,
+        app_id,
+        environment,
+        deployment_key_hash
+      ) values (
+        '00000000-0000-4000-8000-000000000001'::uuid,
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        'local',
+        'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd'
+      ) on conflict (deployment_id) do nothing;
     " \
     >/dev/null
 }
@@ -1322,19 +1359,33 @@ for sql_file in $(find "$infra_dir/platform/migrations" -type f -name '*.sql' | 
   apply_sql "$sql_file"
 done
 for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.sql' | sort); do
-  if [ "$(basename "$sql_file")" = \
-    "20260725010590_app_data_agent_u6_research_authority.sql" ]; then
-    prepare_u6_maintenance_binding
-    "$script_dir/run-u6-maintenance-migration.sh" \
-      "$container_name" \
-      "$database_name" \
-      "$sql_file" \
-      "00000000-0000-4000-8000-00000000de90"
-  else
-    apply_sql "$sql_file"
-  fi
+  case "$(basename "$sql_file")" in
+    20260725010590_app_data_agent_u6_research_authority.sql)
+      prepare_u6_maintenance_binding
+      "$script_dir/run-u6-maintenance-migration.sh" \
+        "$container_name" \
+        "$database_name" \
+        "$sql_file" \
+        "00000000-0000-4000-8000-00000000de90"
+      ;;
+    20260725010600_app_data_agent_u6_research_derivation.sql)
+      prepare_local_maintenance_binding
+      apply_sql_with_prelude \
+        "$infra_dir/apps/data-agent/migration-support/10600-local-maintenance-prelude.sql" \
+        "$sql_file"
+      ;;
+    20260725010610_app_data_agent_semantic_control_plane.sql)
+      apply_sql_with_prelude \
+        "$infra_dir/apps/data-agent/migration-support/10610-local-maintenance-prelude.sql" \
+        "$sql_file"
+      ;;
+    *)
+      apply_sql "$sql_file"
+      ;;
+  esac
 done
 apply_sql "$script_dir/10-fixtures.sql"
+apply_sql "$script_dir/28-schema-discovery-authority-assertions.sql"
 
 lifecycle_app="00000000-0000-4000-8000-00000000da01"
 lifecycle_tenant="00000000-0000-4000-8000-00000000aa11"
@@ -1375,6 +1426,16 @@ if [ "$lifecycle_state" != "ACTIVE:1" ]; then
 fi
 
 for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | sort); do
+  case "$(basename "$assertion_file")" in
+    28-schema-discovery-authority-assertions.sql)
+      continue
+      ;;
+    29-semantic-explorer-authority-assertions.sql|30-semantic-relationship-index-authority-assertions.sql)
+      # These consume the candidate/release state created by the dedicated
+      # semantic M0 runner and are verified there.
+      continue
+      ;;
+  esac
   apply_sql "$assertion_file"
   case "$assertion_file" in
     *"/25-secret-lifecycle-assertions.sql")

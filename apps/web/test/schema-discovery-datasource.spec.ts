@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { createSchemaDiscoveryDatasourceResolver } from "../src/lib/schema-discovery-datasource";
+import {
+  createSchemaDiscoveryDatasourceResolver,
+  createWorkspaceDatasourceMetadataResolver,
+} from "../src/lib/schema-discovery-datasource";
 
 const ids = {
   app: "00000000-0000-4000-8000-000000000001",
@@ -94,6 +97,66 @@ function fixture(metadataValue: unknown = metadata()) {
 }
 
 describe("schema discovery datasource composition", () => {
+  it("loads active PostgreSQL metadata through the workspace repository", async () => {
+    const getDatasource = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        schema_version: "workspace-datasource@1.0.0" as const,
+        workspace_id: ids.tenant,
+        datasource_id: "00000000-0000-4000-8000-000000000007",
+        name: "Warehouse",
+        type: "postgresql" as const,
+        host: "warehouse.internal",
+        port: 5432,
+        database: "warehouse",
+        username: "catalog_reader",
+        credential_ref: metadata().credential_ref,
+        ssl: "verify-full" as const,
+        path: null,
+        catalog: null,
+        schema: null,
+        status: "ACTIVE" as const,
+        last_tested_at: null,
+        created_by_principal_id: ids.principal,
+        created_at: "2026-08-14T00:00:00.000Z",
+        updated_at: "2026-08-14T00:00:00.000Z",
+      },
+    }));
+    const resolver = createWorkspaceDatasourceMetadataResolver({
+      getDatasource,
+    } as never);
+
+    await expect(
+      resolver.resolve("00000000-0000-4000-8000-000000000007", authority),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        datasource_id: "00000000-0000-4000-8000-000000000007",
+        credential_ref: expect.objectContaining({ tenant_id: ids.tenant }),
+      }),
+    );
+    expect(getDatasource).toHaveBeenCalledWith(
+      authority.capabilityInput,
+      "00000000-0000-4000-8000-000000000007",
+    );
+  });
+
+  it("rejects disabled, cross-workspace or incomplete repository metadata", async () => {
+    for (const value of [
+      null,
+      { workspace_id: ids.tenant, type: "postgresql", status: "DISABLED" },
+      {
+        workspace_id: "00000000-0000-4000-8000-000000000099",
+        type: "postgresql",
+        status: "ACTIVE",
+      },
+    ]) {
+      const resolver = createWorkspaceDatasourceMetadataResolver({
+        getDatasource: vi.fn(async () => ({ ok: true as const, value })),
+      } as never);
+      await expect(resolver.resolve("warehouse-primary", authority)).rejects.toBeInstanceOf(Error);
+    }
+  });
+
   it("authorizes egress before resolving a short-lived SecretRef credential", async () => {
     const test = fixture();
     const result = await test.resolver.resolve("warehouse-primary", authority);

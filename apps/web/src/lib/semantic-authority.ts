@@ -131,6 +131,51 @@ export function createPostgresSemanticAuthorityResolver(
   });
 }
 
+/** Build a semantic resolver from a capability already issued by the request guard. */
+export function createCapabilitySemanticAuthorityResolver(
+  capability: AppCapability,
+  configuredDomains?: readonly string[],
+): SemanticAuthorityResolver {
+  const allowedDomains = configuredDomains?.length
+    ? normalizeAllowedDomains(configuredDomains)
+    : null;
+  return Object.freeze({
+    async resolve(input: unknown): Promise<SemanticAuthorityContext> {
+      const parsed = semanticAuthorityRequestSchema.safeParse(input);
+      if (!parsed.success) {
+        throw publicSemanticGovernanceError("SEMANTIC_UNAUTHENTICATED");
+      }
+      if (parsed.data.access === "WRITE" && parsed.data.semanticDomain === "all") {
+        throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+      }
+      if (
+        allowedDomains &&
+        parsed.data.semanticDomain !== "all" &&
+        !allowedDomains.includes(parsed.data.semanticDomain)
+      ) {
+        throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+      }
+      if (parsed.data.access === "WRITE" && capability.role === "VIEWER") {
+        throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+      }
+      return Object.freeze({
+        authority: "POSTGRESQL" as const,
+        capabilityInput: capability,
+        scope: Object.freeze({
+          appId: capability.scope.app_id,
+          tenantId: capability.scope.tenant_id,
+          environment: capability.scope.environment,
+          semanticDomain: parsed.data.semanticDomain,
+        }),
+        deploymentId: capability.deployment_id,
+        principal: capability.principal,
+        semanticRole: semanticRoleForCapability(capability.role),
+        allowedDomains: allowedDomains ?? Object.freeze([]),
+      });
+    },
+  });
+}
+
 export function createExplicitMockSemanticAuthorityResolver(
   allowedDomains: readonly string[],
 ): SemanticAuthorityResolver {
