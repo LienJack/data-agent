@@ -193,8 +193,10 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 - AC1-AC20 的功能证据已通过 contracts/platform/Web/PostgreSQL 自动化与关键截图复核。
 - `pnpm test:unit`、`pnpm test:contract`、Next.js production build、Supabase static check、完整
   PostgreSQL smoke 与 release drill 通过。
-- 当前共享工作区中，全局 `pnpm typecheck` 仅被另一个未跟踪 eval 测试的
-  `attempt_index` 类型错误阻断；全局 `pnpm lint` 被其他未提交文件阻断。本任务
-  237 个干净已跟踪文件的 Biome 门禁通过。
+- 实时运营健康为 `SHADOW`、epoch 1；身份副作用、价格同步/复核、账务复核、余额完整性
+  和 shadow reconciliation 六项 gate 均为 `PASS`、count 0。
+- 最新干净 HEAD 的 Biome 检查为 0 error；当前共享工作区中，全局 `pnpm typecheck` 仅被
+  另一个未跟踪 eval 测试的 `attempt_index` 类型错误阻断，全局 `pnpm lint` 被
+  `packages/contracts/src/evals/index.ts` 的 2 个未提交错误阻断。
 - 因最后仓库门未全绿，`workspace-admin-operations-ui` 与父任务仍保持
   `in_progress`，本地部署保持 `SHADOW`，未启用 `ENFORCED`。

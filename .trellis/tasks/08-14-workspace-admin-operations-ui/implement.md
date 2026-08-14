@@ -50,11 +50,14 @@ git diff --check
 
 - 10633 和 operations assertions 已纳入完整 PostgreSQL smoke；clean install、shadow
   reconciliation、`ENFORCED -> SHADOW` 回滚、备份/恢复演练全部通过。
+- 2026-08-15 再次执行 `static-check.sh` 与 `run-postgres-smoke.sh`，两者均通过；实时
+  `operations-health@1.0.0` 显示 `SHADOW`、epoch 1，六个 gate 均为 `PASS`、count 0。
 - Contracts 29 项、Platform 37 项、Web 管理专项 35 项定向测试通过；根级
   `pnpm test:unit` 15/15 tasks 和 `pnpm test:contract` 10/10 tasks 通过。
 - Next.js production build 通过；关键截图：
   `/Users/lienli/.codex/visualizations/2026/08/14/019fff6b-8633-72c1-ac95-e8f739243566/phase7-operations-console.png`。
 - 按用户要求，角色和越权以 route/component/PostgreSQL 自动化为权威，浏览器仅保留一张桌面+窄屏截图。
-- 最后发布门仍未勾选：当前共享工作区的全局 lint/typecheck 仍被其他未提交功能
-  文件阻断。本任务 237 个干净已跟踪文件的 Biome 检查通过，但在仓库全绿前
-  保持 `SHADOW`，不启用 `ENFORCED`。
+- 最新干净 HEAD 的 Biome 检查为 0 error；最后发布门仍未勾选，因为共享工作区的
+  `packages/contracts/src/evals/index.ts` 仍有 2 个未提交 lint error，且未跟踪的
+  `packages/evals/test/model-analysis-agent.spec.ts:334` 仍有 1 个 typecheck error。在仓库
+  全绿前保持 `SHADOW`，不启用 `ENFORCED`。

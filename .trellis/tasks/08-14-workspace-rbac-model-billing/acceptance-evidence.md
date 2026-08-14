@@ -29,17 +29,24 @@
 
 - `pnpm test:unit`：15/15 Turbo tasks 通过。
 - `pnpm test:contract`：10/10 Turbo tasks 通过。
+- `pnpm lint`：最新干净 HEAD 为 0 error、63 个非阻断 warning；共享工作区仍被
+  `packages/contracts/src/evals/index.ts` 的 2 个未提交格式/导出排序错误阻断。
+- `pnpm typecheck`：已提交 contracts/text2sql 干净检出的自身导出构建前置；共享工作区
+  当前只剩未跟踪的 `packages/evals/test/model-analysis-agent.spec.ts:334` 中
+  `attempt_index` 类型错误。
 - 定向门：Contracts 29、Platform 37、Web 管理 35 项测试通过。
 - `pnpm --filter @data-agent/web build`：生产构建通过。
-- `run-postgres-smoke.sh`：完整 assertions 通过；clean install、shadow 对账、备份/恢复和
+- `static-check.sh`：10627-10633 migration checksum 与 SQL 静态门禁通过。
+- `run-postgres-smoke.sh`：2026-08-15 完整 assertions 复跑通过；clean install、shadow 对账、备份/恢复和
   `ENFORCED -> SHADOW` 回滚演练通过。
-- 本任务 237 个干净已跟踪文件的 Biome 门禁通过。
+- `platform.read_operations_health`：`SHADOW`、epoch 1，六个运营门禁均为 `PASS` 且
+  count 为 0，`SHADOW_RECONCILIATION_CLEAR`。
 - 视觉证据：
   `/Users/lienli/.codex/visualizations/2026/08/14/019fff6b-8633-72c1-ac95-e8f739243566/phase7-operations-console.png`。
 
 ## 发布状态
 
-功能 AC 已全部通过，但父任务尚未达到“完成”定义：当前共享工作区的全局
-`pnpm lint` 被其他未提交文件阻断，全局 `pnpm typecheck` 仅被未跟踪的
-`packages/evals/test/model-analysis-agent.spec.ts:334` 中 `attempt_index` 字段错误阻断。
-因此部署继续保持 `SHADOW`，不启用 `ENFORCED`。
+功能 AC 与数据库六项运营门禁已全部通过，但父任务尚未达到“完成”定义：当前共享工作区
+的全局 `pnpm lint` 被其他未提交文件的 2 个错误阻断，全局 `pnpm typecheck` 仅被未跟踪的
+`packages/evals/test/model-analysis-agent.spec.ts:334` 中 `attempt_index` 字段错误阻断。因此
+部署继续保持 `SHADOW`，不绕过最后仓库门启用 `ENFORCED`。
