@@ -7,6 +7,7 @@ import {
   getOperationsAdminRepository,
   getWorkspaceDeploymentId,
   getWorkspaceSessionFromHeaders,
+  resolveSessionWorkspaceCapability,
 } from "./workspace-identity";
 
 export type OperationsAdminRequest = Readonly<{
@@ -76,6 +77,25 @@ export async function authorizeWorkspaceMembersRequest(
     return {
       ok: false,
       response: NextResponse.json({ error: session.error }, { status: 401 }),
+    };
+  }
+  const capability = await resolveSessionWorkspaceCapability(session.value, workspaceId, "WRITE");
+  if (!capability.ok || capability.value.role !== "OWNER") {
+    const retryable = !capability.ok && capability.error.retryable;
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: {
+            code: "WORKSPACE_MEMBER_MANAGE_REQUIRED",
+            message: retryable
+              ? "工作空间成员权限暂时无法验证。"
+              : "当前用户不能管理该工作空间成员。",
+            retryable,
+          },
+        },
+        { status: retryable ? 503 : 403 },
+      ),
     };
   }
   return {
