@@ -11,6 +11,7 @@ import {
   type BoundaryResult,
   createPostgresCreditLedgerRepository,
   createPostgresModelBillingRepository,
+  createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
   createPostgresSemanticPortabilityRepository,
   createPostgresWorkspaceAuthority,
@@ -40,6 +41,7 @@ interface WorkspaceIdentityRuntimeState {
   pricingControlRepository?: ReturnType<typeof createPostgresPricingControlRepository>;
   creditLedgerRepository?: ReturnType<typeof createPostgresCreditLedgerRepository>;
   modelBillingRepository?: ReturnType<typeof createPostgresModelBillingRepository>;
+  operationsAdminRepository?: ReturnType<typeof createPostgresOperationsAdminRepository>;
   semanticPortabilityRepository?: ReturnType<typeof createPostgresSemanticPortabilityRepository>;
 }
 
@@ -141,6 +143,14 @@ export function getModelBillingRepository() {
   const runtime = state();
   runtime.modelBillingRepository ??= createPostgresModelBillingRepository(getWorkspaceSqlPool());
   return runtime.modelBillingRepository;
+}
+
+export function getOperationsAdminRepository() {
+  const runtime = state();
+  runtime.operationsAdminRepository ??= createPostgresOperationsAdminRepository(
+    getWorkspaceSqlPool(),
+  );
+  return runtime.operationsAdminRepository;
 }
 
 export function getSemanticPortabilityRepository() {
