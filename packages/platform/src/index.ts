@@ -27,6 +27,7 @@ export {
 } from "./persistence/repository.js";
 export * from "./persistence/transaction.js";
 export * from "./persistence/workspace-data-repository.js";
+export * from "./pricing/postgres-pricing-control.js";
 export * from "./queue/postgres-run-queue.js";
 export {
   createPostgresControlledFixture,

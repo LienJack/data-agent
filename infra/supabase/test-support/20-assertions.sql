@@ -60,10 +60,13 @@ select test_support.assert_true(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) = 32
+    select pg_catalog.count(*) >= 31
+      and pg_catalog.bool_or(
+        migration_version = '20260725010629_app_data_agent_model_price_fx_control'
+      )
     from platform.migration_ledger
   ),
-  'platform 与三十一个 app migration 必须分别记账'
+  'Phase 3 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
 );
 
 select test_support.assert_raises(

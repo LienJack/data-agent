@@ -23,6 +23,7 @@ describe("platform package public surface", () => {
       "createPostgresCatalogScanner",
       "createPostgresControlledFixture",
       "createPostgresDatasourceEgress",
+      "createPostgresPricingControlRepository",
       "createPostgresRelationshipIndexStore",
       "createPostgresRepository",
       "createPostgresResearchAuthority",

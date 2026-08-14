@@ -9,6 +9,7 @@ import {
   type AppCapability,
   adaptPgPool,
   type BoundaryResult,
+  createPostgresPricingControlRepository,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
   type ResolvedSessionPrincipal,
@@ -33,6 +34,7 @@ interface WorkspaceIdentityRuntimeState {
   pool?: pg.Pool;
   authority?: ReturnType<typeof createPostgresWorkspaceAuthority>;
   workspaceDataRepository?: ReturnType<typeof createPostgresWorkspaceDataRepository>;
+  pricingControlRepository?: ReturnType<typeof createPostgresPricingControlRepository>;
 }
 
 interface SessionResolutionDependencies {
@@ -113,6 +115,14 @@ export function getWorkspaceDataRepository() {
     getWorkspaceAuthority().authorizer,
   );
   return runtime.workspaceDataRepository;
+}
+
+export function getPricingControlRepository() {
+  const runtime = state();
+  runtime.pricingControlRepository ??= createPostgresPricingControlRepository(
+    getWorkspaceSqlPool(),
+  );
+  return runtime.pricingControlRepository;
 }
 
 export async function resolveWorkspaceSession(

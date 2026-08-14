@@ -66,14 +66,14 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 
 目标：只有超级管理员能够维护模型，并形成可审计、不可变的计费输入。
 
-- [ ] 建立 model catalog/config version、price candidate/version/component、FX candidate/version
+- [x] 建立 model catalog/config version、price candidate/version/component、FX candidate/version
   和同步 operation 表及约束。
-- [ ] 把当前 model Map 迁移为 PostgreSQL repository；SecretRef 继续走现有 secret provider。
-- [ ] 实现 OpenAI、Anthropic、Gemini、DeepSeek、xAI、Kimi、GLM 独立价格来源适配器；
+- [x] 把当前 model Map 迁移为 PostgreSQL repository；SecretRef 继续走现有 secret provider。
+- [x] 实现 OpenAI、Anthropic、Gemini、DeepSeek、xAI、Kimi、GLM 独立价格来源适配器；
   按实际启用 provider 分批交付，未实现的 provider 保持不可计费。
-- [ ] 实现 CFETS/PBOC 汇率适配器、内容哈希幂等、异常 diff 和最近有效版本策略。
-- [ ] 建立 worker 定时同步、raw evidence 限额存储、解析 fixture、候选审批和版本激活 UI。
-- [ ] 扩展现有 pricing contract，支持缓存、阶梯、工具等明确维度；不能表达的价格形态失败
+- [x] 实现 CFETS/PBOC 汇率适配器、内容哈希幂等、异常 diff 和最近有效版本策略。
+- [x] 建立 worker 定时同步、raw evidence 限额存储、解析 fixture、候选审批和版本激活 UI。
+- [x] 扩展现有 pricing contract，支持缓存、阶梯、工具等明确维度；不能表达的价格形态失败
   关闭。
 
 验收门禁：非超级管理员 API/UI 均不能变更；抓取失败不覆盖 active；时间区间不重叠；

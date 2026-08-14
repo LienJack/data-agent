@@ -6,6 +6,7 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/primitives.js";
+import { modelCapabilitiesSchema, modelProviderSchema } from "../providers/index.js";
 
 export const decimalStringSchema = z
   .string()
@@ -35,6 +36,65 @@ export const modelPriceComponentSchema = z.strictObject({
   currency: currencyCodeSchema,
   tier_min_inclusive: nonNegativeIntegerStringSchema.nullable(),
   tier_max_exclusive: nonNegativeIntegerStringSchema.nullable(),
+});
+
+export const globalModelCredentialRefSchema = z.strictObject({
+  schema_version: z.literal("global-model-credential-ref@1.0.0"),
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
+  credential_ref_id: immutableIdSchema,
+  secret_ref_id: immutableIdSchema,
+  secret_version: z.number().int().positive(),
+  rotation_state: z.enum([
+    "ACTIVE",
+    "ROTATION_PENDING",
+    "REVOCATION_PENDING",
+    "REVOKED",
+  ]),
+});
+
+export const modelCatalogEntrySchema = z.strictObject({
+  schema_version: z.literal("model-catalog-entry@1.0.0"),
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
+  model_profile_id: immutableIdSchema,
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  display_name: z.string().min(1).max(255),
+  base_url: z.url().max(2048),
+  capabilities: modelCapabilitiesSchema,
+  credential_ref: globalModelCredentialRefSchema.nullable(),
+  status: z.enum(["DRAFT", "ACTIVE", "DISABLED", "UNBILLABLE"]),
+  config_version: z.number().int().positive(),
+  is_system_default: z.boolean(),
+  created_by: immutableIdSchema,
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
+export const upsertModelCatalogEntryInputSchema = z.strictObject({
+  schema_version: z.literal("model-catalog-upsert@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  model_profile_id: immutableIdSchema,
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  display_name: z.string().min(1).max(255),
+  base_url: z.url().max(2048),
+  capabilities: modelCapabilitiesSchema,
+  credential_ref: globalModelCredentialRefSchema.nullable(),
+  status: z.enum(["DRAFT", "ACTIVE", "DISABLED", "UNBILLABLE"]),
+  is_system_default: z.boolean().default(false),
+  expected_config_version: z.number().int().nonnegative(),
+});
+
+export const modelCatalogStatusInputSchema = z.strictObject({
+  schema_version: z.literal("model-catalog-status@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  model_profile_id: immutableIdSchema,
+  status: z.enum(["ACTIVE", "DISABLED", "UNBILLABLE"]),
+  expected_config_version: z.number().int().positive(),
 });
 
 
@@ -91,6 +151,85 @@ export const fxRateVersionSchema = z.strictObject({
   effective_from: timestampSchema,
   effective_to: timestampSchema.nullable(),
 });
+
+export const pricingSyncOperationSchema = z.strictObject({
+  schema_version: z.literal("pricing-sync-operation@1.0.0"),
+  operation_id: immutableIdSchema,
+  source_kind: z.enum(["MODEL_PRICE", "FX_RATE"]),
+  source_adapter: versionIdentifierSchema,
+  source_url: z.url().max(2048),
+  evidence_hash: contentHashSchema.nullable(),
+  parser_version: versionIdentifierSchema,
+  status: z.enum(["SUCCEEDED", "FAILED"]),
+  fetched_at: timestampSchema,
+  raw_evidence_bytes: z.number().int().nonnegative().max(65_536),
+  candidate_ids: z.array(immutableIdSchema).max(1_000),
+  error_code: z.string().regex(/^[A-Z][A-Z0-9_]{0,127}$/).nullable(),
+});
+
+const pricingSyncEvidenceSchema = {
+  operation_id: immutableIdSchema,
+  source_adapter: versionIdentifierSchema,
+  source_url: z.url().max(2048),
+  evidence_hash: contentHashSchema,
+  parser_version: versionIdentifierSchema,
+  fetched_at: timestampSchema,
+  raw_evidence: z.string().max(65_536),
+} as const;
+
+export const submitModelPriceSyncInputSchema = z.strictObject({
+  schema_version: z.literal("model-price-sync-submit@1.0.0"),
+  ...pricingSyncEvidenceSchema,
+  candidates: z
+    .array(
+      z.strictObject({
+        candidate_id: immutableIdSchema,
+        provider: modelProviderSchema,
+        model_id: z.string().min(1).max(256),
+        risk: z.enum(["NORMAL", "HIGH"]),
+        components: z.array(modelPriceComponentSchema).min(1).max(32),
+      }),
+    )
+    .min(1)
+    .max(1_000),
+});
+
+export const submitFxRateSyncInputSchema = z.strictObject({
+  schema_version: z.literal("fx-rate-sync-submit@1.0.0"),
+  ...pricingSyncEvidenceSchema,
+  candidates: z
+    .array(
+      z.strictObject({
+        candidate_id: immutableIdSchema,
+        base_currency: currencyCodeSchema,
+        quote_currency: currencyCodeSchema,
+        rate: decimalStringSchema.refine((rate) => rate !== "0", "汇率必须大于零"),
+        official_date: z.iso.date(),
+      }),
+    )
+    .min(1)
+    .max(256),
+});
+
+export const pricingCandidateDecisionInputSchema = z
+  .strictObject({
+    schema_version: z.literal("pricing-candidate-decision@1.0.0"),
+    operation_id: immutableIdSchema,
+    idempotency_key: z.string().min(8).max(128),
+    candidate_id: immutableIdSchema,
+    decision: z.enum(["APPROVE", "REJECT"]),
+    reason: z.string().min(1).max(500),
+    effective_from: timestampSchema.nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.decision === "APPROVE" && value.effective_from === null) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["effective_from"],
+        message: "批准候选时必须指定生效时间",
+      });
+    }
+  });
 
 
 export const creditAccountSchema = z.strictObject({
@@ -170,6 +309,14 @@ export type ModelPriceCandidate = z.infer<typeof modelPriceCandidateSchema>;
 export type ModelPriceVersion = z.infer<typeof modelPriceVersionSchema>;
 export type FxRateCandidate = z.infer<typeof fxRateCandidateSchema>;
 export type FxRateVersion = z.infer<typeof fxRateVersionSchema>;
+export type GlobalModelCredentialRef = z.infer<typeof globalModelCredentialRefSchema>;
+export type ModelCatalogEntry = z.infer<typeof modelCatalogEntrySchema>;
+export type UpsertModelCatalogEntryInput = z.infer<typeof upsertModelCatalogEntryInputSchema>;
+export type ModelCatalogStatusInput = z.infer<typeof modelCatalogStatusInputSchema>;
+export type PricingSyncOperation = z.infer<typeof pricingSyncOperationSchema>;
+export type SubmitModelPriceSyncInput = z.infer<typeof submitModelPriceSyncInputSchema>;
+export type SubmitFxRateSyncInput = z.infer<typeof submitFxRateSyncInputSchema>;
+export type PricingCandidateDecisionInput = z.infer<typeof pricingCandidateDecisionInputSchema>;
 export type CreditAccount = z.infer<typeof creditAccountSchema>;
 export type CreditLedgerEntry = z.infer<typeof creditLedgerEntrySchema>;
 export type CreditHold = z.infer<typeof creditHoldSchema>;
