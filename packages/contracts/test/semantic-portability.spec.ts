@@ -62,6 +62,12 @@ describe("semantic portability", () => {
         domains: [{ ...document.domains[0], semantic: { metrics: [] } }],
       }),
     ).rejects.toThrow("SEMANTIC_IMPORT_CONTENT_HASH_MISMATCH");
+    expect(
+      semanticWorkspaceExportSchema.safeParse({
+        ...document,
+        format: "semantic-workspace-export@2.0.0",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects dangling and duplicate logical datasource references", async () => {
@@ -80,6 +86,22 @@ describe("semantic portability", () => {
     );
     await expect(verifySemanticWorkspaceExport(dangling)).rejects.toThrow(
       "SEMANTIC_IMPORT_DATASOURCE_REF_MISSING",
+    );
+
+    const duplicate = {
+      ...document,
+      datasource_refs: [document.datasource_refs[0], document.datasource_refs[0]],
+    };
+    duplicate.content_hash = await sha256ContentHash(
+      semanticWorkspaceExportHashMaterialSchema.parse({
+        format: duplicate.format,
+        compatibility: duplicate.compatibility,
+        datasource_refs: duplicate.datasource_refs,
+        domains: duplicate.domains,
+      }),
+    );
+    await expect(verifySemanticWorkspaceExport(duplicate)).rejects.toThrow(
+      "SEMANTIC_IMPORT_DUPLICATE_DATASOURCE_REF",
     );
   });
 

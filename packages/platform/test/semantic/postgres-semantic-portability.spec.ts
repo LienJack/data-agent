@@ -176,6 +176,45 @@ describe("PostgreSQL semantic portability repository", () => {
     expect(scripted.calls).toHaveLength(0);
   });
 
+  it("rejects suspected plaintext credentials before persistence", async () => {
+    const access = authority();
+    const scripted = scriptedPool(() => undefined);
+    const safe = await document();
+    const material = {
+      format: safe.format,
+      compatibility: safe.compatibility,
+      datasource_refs: safe.datasource_refs,
+      domains: [
+        {
+          ...safe.domains[0],
+          semantic: { connection: { password: "plaintext-credential" } },
+        },
+      ],
+    };
+    const unsafe = semanticWorkspaceExportSchema.parse({
+      ...material,
+      exported_at: safe.exported_at,
+      content_hash: await sha256ContentHash(material),
+    });
+    const result = await createPostgresSemanticPortabilityRepository(
+      scripted.pool,
+      access.authorizer,
+    ).upload(access.capability, {
+      schema_version: "semantic-import-upload@1.0.0",
+      operation_id: ids.import,
+      idempotency_key: ids.idempotency,
+      file_name: "semantic.json",
+      byte_size: 4096,
+      document: unsafe,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "SEMANTIC_IMPORT_SECRET_DETECTED" },
+    });
+    expect(scripted.calls).toHaveLength(0);
+  });
+
   it("rolls back every candidate when one draft creation fails", async () => {
     const access = authority();
     const sourceDocument = await document(["commerce", "finance"]);
