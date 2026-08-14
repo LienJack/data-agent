@@ -29,7 +29,8 @@ environment，调用人状态和角色在同一数据库调用内验证。
 
 ## 3. API 与权限
 
-全局路由位于 `/api/admin/identity/**`，统一验证 `SUPER_ADMIN`。成员路由位于
+全局路由位于 `/api/admin/operations/users/**` 和 `/api/admin/operations/workspaces/**`，
+统一验证 `SUPER_ADMIN`。成员路由位于
 `/api/workspaces/:workspaceId/members/**`，统一验证当前空间 `MEMBER_MANAGE` 对应写 capability；
 Repository 内的数据库 RPC 再验证角色，防止路由误配。
 

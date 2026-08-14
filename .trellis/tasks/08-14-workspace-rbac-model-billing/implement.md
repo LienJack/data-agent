@@ -138,12 +138,13 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 
 目标：补齐可运营性并证明端到端行为。
 
-- [ ] 完成全局管理员的用户、工作空间、模型、价格、汇率、积分、账单和 review queue。
-- [ ] 完成工作空间成员、数据源、语义、对话、归因和成本视图；普通用户只看个人消费。
-- [ ] 增加结构化日志、失败同步/账务复核/余额异常指标与告警；日志统一深度脱敏。
-- [ ] 增加浏览器 E2E 角色矩阵、工作空间切换、直接 URL 越权、长文本/移动端布局测试。
-- [ ] 运行 clean-install 重建演练、shadow billing 对账、回滚演练、备份恢复和安全审查。
-- [ ] 更新运维文档：首个管理员、用户停用、价格审批、积分调账、review 处理和灾难恢复。
+- [x] 完成全局管理员的用户、工作空间、模型、价格、汇率、积分、账单和 review queue。
+- [x] 完成工作空间成员、数据源、语义、对话、归因和成本视图；普通用户只看个人消费。
+- [x] 增加结构化日志、失败同步/账务复核/余额异常指标与告警；日志统一深度脱敏。
+- [x] 按用户要求以 route/component/PostgreSQL 自动化覆盖角色矩阵、工作空间切换、
+  直接 URL 越权和长文本/移动端布局；浏览器只保留一张关键截图。
+- [x] 运行 clean-install 重建演练、shadow billing 对账、回滚演练、备份恢复和安全审查。
+- [x] 更新运维文档：首个管理员、用户停用、价格审批、积分调账、review 处理和灾难恢复。
 
 验收门禁：PRD AC1-AC20 全部有自动化或明确人工证据；`pnpm lint`、`pnpm typecheck`、
 `pnpm test:unit`、`pnpm test:contract` 和相关 E2E 全部通过；无 P0/P1 安全或数据完整性
@@ -186,3 +187,14 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 
 父任务只有在全部子任务完成、迁移与回滚证据齐全、PRD AC1-AC20 全部满足、shadow
 账单与实际 usage 对账通过，并由超级管理员显式启用 enforced billing 后才能结束。
+
+## 2026-08-15 最终验收进度
+
+- AC1-AC20 的功能证据已通过 contracts/platform/Web/PostgreSQL 自动化与关键截图复核。
+- `pnpm test:unit`、`pnpm test:contract`、Next.js production build、Supabase static check、完整
+  PostgreSQL smoke 与 release drill 通过。
+- 当前共享工作区中，全局 `pnpm typecheck` 仅被另一个未跟踪 eval 测试的
+  `attempt_index` 类型错误阻断；全局 `pnpm lint` 被其他未提交文件阻断。本任务
+  237 个干净已跟踪文件的 Biome 门禁通过。
+- 因最后仓库门未全绿，`workspace-admin-operations-ui` 与父任务仍保持
+  `in_progress`，本地部署保持 `SHADOW`，未启用 `ENFORCED`。

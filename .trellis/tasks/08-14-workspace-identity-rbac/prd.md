@@ -51,7 +51,7 @@ PostgreSQL 事务内重验的权限链，使登录用户只能取得其当前有
   可见切换控件，归档 workspace 不出现在普通列表。
 - [x] bootstrap CLI 能在受控环境创建首个 active superadmin，并拒绝在已有 active
   superadmin 时无条件重复创建；至少保留一条系统恢复路径。
-- [ ] 聚焦 unit/contract/typecheck、migration static check 与相关 PostgreSQL authority
+- [x] 聚焦 unit/contract/typecheck、migration static check 与相关 PostgreSQL authority
   验证通过；Phase 2 之前旧业务 route 的匿名访问风险被明确记录为未完成项而非静默通过。
 
 ## Notes
@@ -60,7 +60,6 @@ PostgreSQL 事务内重验的权限链，使登录用户只能取得其当前有
 - 本任务只交付父计划 Phase 0/1；Phase 2-7 仍由后续独立子任务承担。
 - 项目尚未承载需保留的生产数据；允许重建数据库以换取开发效率，不设计在线升级、旧数据
   回填或无损迁移路径。
-- 2026-08-14：本任务定向 gate 与真实 PG17 clean install 已通过；全量 Web lint 仍包含现有
-  QA/Data Link 文件的 78 个错误，仓库级 static/smoke 仍被既有
-  `u6-c2-physical-schema.test.ts:147` 冻结描述符断言阻断，因此最后一条综合验收保持未勾选，
-  不能进入 finish/commit。
+- 2026-08-15：聚焦 contracts/platform/Web 类型检查与身份/空间定向测试通过；
+  全量 PostgreSQL 17 clean install、10627-10633 迁移、authority assertions 与恢复演练通过。
+  产品路由的 workspace authority 由 Cookie session 和数据库 capability 解析，最后一条综合验收已收口。
