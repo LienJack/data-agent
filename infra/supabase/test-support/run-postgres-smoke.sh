@@ -1422,6 +1422,122 @@ SQL
   fi
 }
 
+operations_release_fingerprint() {
+  target_database=$1
+  docker exec "$container_name" \
+    psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$target_database" \
+    -c "
+      select 'migration_ledger=' || pg_catalog.count(*) || ':' ||
+        pg_catalog.md5(pg_catalog.string_agg(
+          owner_kind || ':' || coalesce(app_id::text, '-') || ':' ||
+          migration_version || ':' || migration_checksum,
+          '|' order by owner_kind, app_id, migration_version
+        ))
+      from platform.migration_ledger
+      union all
+      select 'identity=' ||
+        (select pg_catalog.count(*) from app_data_agent.app_users) || ':' ||
+        (select pg_catalog.count(*) from app_data_agent.workspaces) || ':' ||
+        (select pg_catalog.count(*) from app_data_agent.memberships) || ':' ||
+        (select pg_catalog.count(*) from app_data_agent.identity_operation_receipts)
+      union all
+      select 'credits=' || pg_catalog.count(*) || ':' ||
+        coalesce(pg_catalog.sum(signed_microcredits), 0)
+      from app_data_agent.credit_ledger_entries
+      union all
+      select 'billing=' || pg_catalog.count(*) || ':' ||
+        coalesce(pg_catalog.sum(charged_microcredits), 0)
+      from app_data_agent.model_bills;
+    "
+}
+
+run_operations_release_drill() {
+  restore_database="${database_name}_operations_restore"
+  backup_path="/tmp/data-agent-operations-release.dump"
+  source_fingerprint=$(operations_release_fingerprint "$database_name")
+
+  docker exec "$container_name" \
+    pg_dump -U postgres -d "$database_name" -F c -f "$backup_path"
+  docker exec "$container_name" \
+    createdb -U postgres "$restore_database"
+  docker exec "$container_name" \
+    pg_restore -U postgres -d "$restore_database" --exit-on-error --no-owner "$backup_path"
+
+  restored_fingerprint=$(operations_release_fingerprint "$restore_database")
+  if [ "$source_fingerprint" != "$restored_fingerprint" ]; then
+    echo "Backup/restore changed authority state." >&2
+    echo "source: $source_fingerprint" >&2
+    echo "restored: $restored_fingerprint" >&2
+    exit 1
+  fi
+
+  health_gate_count=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
+      -c "
+        select pg_catalog.jsonb_array_length(health -> 'gates')
+        from platform.read_operations_health(
+          '00000000-0000-4000-8000-00000000de01',
+          '00000000-0000-4000-8000-00000000b411'
+        ) as health;
+      "
+  )
+  if [ "$health_gate_count" != "6" ]; then
+    echo "Restored operations health projection is invalid: $health_gate_count" >&2
+    exit 1
+  fi
+
+  reconciliation_ready=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
+      -c "
+        select result ->> 'ready_for_enforced'
+        from app_data_agent.reconcile_model_billing(
+          '00000000-0000-4000-8000-00000000de01',
+          '00000000-0000-4000-8000-00000000b411'
+        ) as result;
+      "
+  )
+  if [ "$reconciliation_ready" != "true" ]; then
+    echo "Shadow reconciliation is not ready for enforced: $reconciliation_ready" >&2
+    exit 1
+  fi
+
+  billing_epoch=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
+      -c "
+        select epoch from app_data_agent.billing_runtime_state
+        where deployment_id = '00000000-0000-4000-8000-00000000de01';
+      "
+  )
+  rollback_mode=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
+      -c "
+        select result #>> '{state,mode}'
+        from app_data_agent.decide_billing_mode(
+          '00000000-0000-4000-8000-00000000de01',
+          '00000000-0000-4000-8000-00000000b411',
+          pg_catalog.jsonb_build_object(
+            'schema_version', 'billing-mode-decision@1.0.0',
+            'operation_id', '00000000-0000-4000-8000-00000000d7a1',
+            'idempotency_key', 'phase-seven-rollback-drill',
+            'target_mode', 'SHADOW',
+            'expected_epoch', $billing_epoch,
+            'reason', 'phase seven rollback rehearsal'
+          )
+        ) as result;
+      "
+  )
+  if [ "$rollback_mode" != "SHADOW" ]; then
+    echo "Billing rollback rehearsal did not return to SHADOW: $rollback_mode" >&2
+    exit 1
+  fi
+
+  echo "Operations release drill passed: clean install, reconciliation, backup/restore, rollback."
+}
+
 run_reset_only_guard_probe
 run_runtime_prefix_fail_closed_probe
 
@@ -1511,6 +1627,9 @@ for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | so
   case "$assertion_file" in
     *"/19zz-credit-ledger-assertions.sql")
       run_credit_concurrency_probe
+      ;;
+    *"/19zzzzz-operations-admin-assertions.sql")
+      run_operations_release_drill
       ;;
     *"/25-secret-lifecycle-assertions.sql")
       run_concurrent_claim_probe
