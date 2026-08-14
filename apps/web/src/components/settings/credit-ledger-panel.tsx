@@ -8,6 +8,7 @@ import type {
 } from "@data-agent/contracts";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ReasonDialog } from "@/components/ui/reason-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface CreditLedgerPanelProps {
@@ -158,6 +159,8 @@ export function CreditLedgerPanel({ isSuperAdmin }: CreditLedgerPanelProps) {
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
   const [reconciliation, setReconciliation] = useState<CreditReconciliationReceipt>();
+  const [rebuildTarget, setRebuildTarget] = useState<CreditAccount>();
+  const [rebuildReason, setRebuildReason] = useState("");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -243,23 +246,29 @@ export function CreditLedgerPanel({ isSuperAdmin }: CreditLedgerPanelProps) {
     }
   }
 
-  async function rebuildProjection(target: CreditAccount) {
-    const rebuildReason = window.prompt("请输入投影重建原因。该操作会写入审计记录。");
-    if (!rebuildReason?.trim()) return;
+  function requestProjectionRebuild(target: CreditAccount) {
+    setRebuildReason("");
+    setRebuildTarget(target);
+  }
+
+  async function rebuildProjection(reason: string) {
+    if (!rebuildTarget) return;
     setPending(true);
     setError(undefined);
     try {
-      await api(`/api/admin/credits/${encodeURIComponent(target.principal_id)}/rebuild`, {
+      await api(`/api/admin/credits/${encodeURIComponent(rebuildTarget.principal_id)}/rebuild`, {
         method: "POST",
         body: JSON.stringify({
           schema_version: "credit-projection-rebuild@1.0.0",
           operation_id: crypto.randomUUID(),
           idempotency_key: operationKey("credit-rebuild"),
-          target_principal_id: target.principal_id,
-          reason: rebuildReason.trim(),
-          expected_account_version: target.version,
+          target_principal_id: rebuildTarget.principal_id,
+          reason,
+          expected_account_version: rebuildTarget.version,
         }),
       });
+      setRebuildTarget(undefined);
+      setRebuildReason("");
       setNotice("账户投影已按不可变账本重建。");
       setReconciliation(undefined);
       await reload();
@@ -477,7 +486,7 @@ export function CreditLedgerPanel({ isSuperAdmin }: CreditLedgerPanelProps) {
                       type="button"
                       variant="ghost"
                       disabled={pending}
-                      onClick={() => void rebuildProjection(selected)}
+                      onClick={() => requestProjectionRebuild(selected)}
                     >
                       重建投影
                     </Button>
@@ -524,6 +533,26 @@ export function CreditLedgerPanel({ isSuperAdmin }: CreditLedgerPanelProps) {
             </div>
           </details>
         </section>
+      )}
+
+      {rebuildTarget && (
+        <ReasonDialog
+          eyebrow="Rebuild projection"
+          title="从不可变账本重建账户投影"
+          description={`将重新计算账户 ${rebuildTarget.principal_id.slice(0, 8)}… 的余额与冻结汇总；不会修改或删除任何账本流水。`}
+          reasonLabel="重建原因"
+          confirmLabel="确认重建"
+          destructive
+          reason={rebuildReason}
+          pending={pending}
+          error={error}
+          onReasonChange={setRebuildReason}
+          onCancel={() => {
+            setRebuildTarget(undefined);
+            setRebuildReason("");
+          }}
+          onConfirm={(reason) => void rebuildProjection(reason)}
+        />
       )}
     </section>
   );
