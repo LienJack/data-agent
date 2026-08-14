@@ -38,4 +38,20 @@ describe("workspace-scoped business authority", () => {
     expect(source).not.toMatch(/new Map\s*</);
     expect(source).not.toMatch(/__qaConversations|__datasourceCredentialRefConnections/);
   });
+
+  it("keeps audited management actions inside the product interface", () => {
+    const paths = [
+      "../src/components/settings/operations-admin-panel.tsx",
+      "../src/components/settings/pricing-control-panel.tsx",
+      "../src/components/settings/credit-ledger-panel.tsx",
+      "../src/components/settings/model-billing-panel.tsx",
+      "../src/components/workspaces/workspace-members-panel.tsx",
+    ];
+
+    for (const path of paths) {
+      const source = readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8");
+      expect(source).not.toMatch(/window\.(?:prompt|confirm|alert)\s*\(/);
+      expect(source).toContain("<ReasonDialog");
+    }
+  });
 });
