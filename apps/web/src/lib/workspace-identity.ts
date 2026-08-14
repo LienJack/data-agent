@@ -12,6 +12,7 @@ import {
   createPostgresCreditLedgerRepository,
   createPostgresModelBillingRepository,
   createPostgresPricingControlRepository,
+  createPostgresSemanticPortabilityRepository,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
   type ResolvedSessionPrincipal,
@@ -39,6 +40,7 @@ interface WorkspaceIdentityRuntimeState {
   pricingControlRepository?: ReturnType<typeof createPostgresPricingControlRepository>;
   creditLedgerRepository?: ReturnType<typeof createPostgresCreditLedgerRepository>;
   modelBillingRepository?: ReturnType<typeof createPostgresModelBillingRepository>;
+  semanticPortabilityRepository?: ReturnType<typeof createPostgresSemanticPortabilityRepository>;
 }
 
 interface SessionResolutionDependencies {
@@ -139,6 +141,15 @@ export function getModelBillingRepository() {
   const runtime = state();
   runtime.modelBillingRepository ??= createPostgresModelBillingRepository(getWorkspaceSqlPool());
   return runtime.modelBillingRepository;
+}
+
+export function getSemanticPortabilityRepository() {
+  const runtime = state();
+  runtime.semanticPortabilityRepository ??= createPostgresSemanticPortabilityRepository(
+    getWorkspaceSqlPool(),
+    getWorkspaceAuthority().authorizer,
+  );
+  return runtime.semanticPortabilityRepository;
 }
 
 export async function resolveWorkspaceSession(
