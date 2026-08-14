@@ -23,6 +23,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [本地开发与 Docker 运行模式](./local-runtime-modes.md) | 数据库容器、本地 watch、完整部署与迁移门禁 | 已建立 |
 | [质量规范](./quality-guidelines.md) | 类型、测试、边界与审查门禁 | 已建立 |
 | [日志、审计与脱敏](./logging-guidelines.md) | Structured Log、Audit 与 Secret Boundary | 已建立 |
+| [Run 公开事件流](./run-event-streaming.md) | Durable SSE、公开事件 DTO、对话轨迹与前端装配 | 已建立 |
 
 ---
 

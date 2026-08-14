@@ -1,6 +1,7 @@
 import {
   type AppScope,
   type ContractError,
+  canonicalizeJson,
   runCheckpointInputSchema as contractRunCheckpointInputSchema,
   type MastraSnapshotBinding,
   mastraSnapshotBindingSchema,
@@ -12,6 +13,7 @@ import {
   type RunQueuePort,
   type RunRuntimeEvent,
   type RunWorkLease,
+  redactPublicDisplayText,
   retryDelayMsSchema,
   runWorkLeaseSchema,
   type SideEffectReceipt,
@@ -53,6 +55,52 @@ export const runExecutorResultSchema = z.discriminatedUnion("kind", [
 export type RunCheckpointInput = z.infer<typeof runCheckpointInputSchema>;
 export type RunExecutorResult = z.infer<typeof runExecutorResultSchema>;
 
+const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("progress"),
+    key: z.string().min(1).max(128),
+    phase: z.string().min(1).max(128),
+    title: z.string().min(1).max(128),
+    summary: z.string().min(1).max(100_000),
+    status: z.enum(["RUNNING", "COMPLETED"]),
+  }),
+  z.strictObject({
+    kind: z.literal("tool_started"),
+    key: z.string().min(1).max(128),
+    call_id: z.string().min(1).max(256),
+    tool_name: z.string().min(1).max(128),
+    title: z.string().min(1).max(128),
+    summary: z.string().min(1).max(100_000),
+    input: z.string().max(100_000).nullable(),
+  }),
+  z.strictObject({
+    kind: z.literal("tool_completed"),
+    key: z.string().min(1).max(128),
+    call_id: z.string().min(1).max(256),
+    tool_name: z.string().min(1).max(128),
+    summary: z.string().min(1).max(100_000),
+    output: z.string().max(200_000).nullable(),
+    duration_ms: z.number().int().nonnegative().safe(),
+  }),
+  z.strictObject({
+    kind: z.literal("tool_failed"),
+    key: z.string().min(1).max(128),
+    call_id: z.string().min(1).max(256),
+    tool_name: z.string().min(1).max(128),
+    summary: z.string().min(1).max(100_000),
+    error_code: stableReasonCodeSchema,
+    output: z.string().max(200_000).nullable(),
+    duration_ms: z.number().int().nonnegative().safe(),
+  }),
+  z.strictObject({
+    kind: z.literal("answer_delta"),
+    key: z.string().min(1).max(128),
+    delta: z.string().min(1).max(100_000),
+  }),
+]);
+
+export type RunDisplayEventInput = z.infer<typeof runDisplayEventInputSchema>;
+
 export interface RunSideEffectExecutionIdentity {
   readonly idempotency_key: string;
   readonly input_hash: string;
@@ -91,6 +139,9 @@ export interface RunExecutionContext {
       }>
     >;
   }): Promise<PortResult<SideEffectReceipt>>;
+  emitDisplayEvent?(
+    input: RunDisplayEventInput,
+  ): Promise<PortResult<{ readonly sequence: number }>>;
 }
 
 export interface RunWorkflowExecutorPort {
@@ -407,6 +458,57 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
     return appended.ok ? success(receipt) : appended;
   }
 
+  async function appendDisplayEvent(
+    lease: RunWorkLease,
+    inputValue: RunDisplayEventInput,
+  ): Promise<PortResult<{ readonly sequence: number }>> {
+    const parsed = runDisplayEventInputSchema.safeParse(inputValue);
+    if (!parsed.success) {
+      return failure("RUN_DISPLAY_EVENT_INPUT_INVALID", "显示事件不满足项目契约。", false);
+    }
+    const { key, kind, ...rawPayload } = parsed.data;
+    const payload = Object.fromEntries(
+      Object.entries(rawPayload).map(([field, value]) => [
+        field,
+        typeof value === "string" ? redactPublicDisplayText(value) : value,
+      ]),
+    );
+    const eventType = `run.${kind}` as const;
+    const idempotencyKey = eventIdempotencyKey(lease, "display", `${lease.attempt_id}:${key}`);
+    const existing = await dependencies.event_store.findEventByIdempotencyKey({
+      scope: lease.scope,
+      run_id: lease.run_id,
+      idempotency_key: idempotencyKey,
+    });
+    if (!existing.ok) return existing;
+    if (existing.value) {
+      if (
+        existing.value.event_type !== eventType ||
+        canonicalizeJson(existing.value.payload) !== canonicalizeJson(payload)
+      ) {
+        return failure(
+          "RUN_DISPLAY_EVENT_REPLAY_MISMATCH",
+          "同一显示事件幂等键对应了不同载荷。",
+          false,
+        );
+      }
+      return success({ sequence: existing.value.sequence });
+    }
+    const appended = await appendWhileRunning(lease, (record) => ({
+      schema_version: "1.0.0",
+      event_id: createId(),
+      event_type: eventType,
+      scope: lease.scope,
+      run_id: lease.run_id,
+      sequence: record.projection.version + 1,
+      worker_fence: lease.worker_fence,
+      idempotency_key: idempotencyKey,
+      occurred_at: occurredAt(now),
+      payload,
+    }));
+    return appended.ok ? success({ sequence: appended.value.event.sequence }) : appended;
+  }
+
   function createExecutionContext(
     lease: RunWorkLease,
     runSignal: AbortSignal,
@@ -441,6 +543,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           },
         })),
       append_side_effect_event: (receipt) => appendSideEffectEvent(lease, receipt),
+      append_display_event: (input) => appendDisplayEvent(lease, input),
     });
   }
 

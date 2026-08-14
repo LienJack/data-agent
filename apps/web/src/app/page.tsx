@@ -109,6 +109,7 @@ export default function AnalysisWorkbenchPage() {
     const workspaceId = resolveWorkspaceId();
     let cursor = useWorkbenchStore.getState().projectionVersion;
     let attempt = 0;
+    let terminalSeen = false;
 
     void (async () => {
       while (!stopped) {
@@ -122,25 +123,23 @@ export default function AnalysisWorkbenchPage() {
             signal: controller.signal,
             onEvent: (event: RunEvent) => {
               cursor = Math.max(cursor, event.sequence);
-              if (event.type === "projection" || event.type === "terminal") {
-                const store = useWorkbenchStore.getState();
-                if (event.payload) {
-                  const updated = event.payload as Partial<RunProjection>;
-                  const merged = { ...store.projection, ...updated } as RunProjection;
-                  store.setProjection(merged);
-                  store.setProjectionVersion(cursor);
-                  if (event.type === "terminal" || isRunTerminal(merged.status)) {
-                    store.setConnection("closed");
-                    store.setCurrentAction("分析完成");
-                  }
-                }
-              } else if (event.type === "error") {
-                const store = useWorkbenchStore.getState();
-                store.setError(typeof event.payload === "string" ? event.payload : "分析过程出错");
+              const store = useWorkbenchStore.getState();
+              store.setProjectionVersion(cursor);
+              if (event.type === "progress" || event.type === "tool") {
+                store.setCurrentAction(event.payload.summary);
               }
+              if (event.type === "terminal") terminalSeen = true;
             },
           });
           if (stopped) return;
+          if (terminalSeen) {
+            const updated = await getRun(activeRunId, workspaceId);
+            const store = useWorkbenchStore.getState();
+            store.setProjection(updated);
+            store.setConnection("closed");
+            store.setCurrentAction(updated.status === "COMPLETED" ? "分析完成" : "分析已终止");
+            return;
+          }
           // 流正常闭合 → 检查终态
           const store = useWorkbenchStore.getState();
           const p = store.projection;

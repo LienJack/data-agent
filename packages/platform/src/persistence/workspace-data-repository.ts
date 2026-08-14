@@ -9,21 +9,17 @@ import {
   updateWorkspaceConversationModelInputSchema,
   type WorkspaceConversation,
   type WorkspaceConversationMessage,
+  type WorkspaceDatasource,
+  type WorkspaceRunBinding,
   workspaceConversationMessageSchema,
   workspaceConversationSchema,
-  type WorkspaceDatasource,
   workspaceDatasourceSchema,
-  type WorkspaceRunBinding,
   workspaceRunBindingSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { containsPotentialPlaintextSecret } from "../secrets/secret-ref.js";
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
-import {
-  PersistenceBoundaryError,
-  type SqlPool,
-  withAppTransaction,
-} from "./transaction.js";
+import { PersistenceBoundaryError, type SqlPool, withAppTransaction } from "./transaction.js";
 
 const idInputSchema = z.strictObject({ id: z.uuid() });
 
@@ -243,7 +239,9 @@ export interface PostgresWorkspaceDataRepository {
     input: unknown,
   ): Promise<PortResult<WorkspaceDatasource>>;
   disableDatasource(capabilityInput: unknown, datasourceId: unknown): Promise<PortResult<boolean>>;
-  listConversations(capabilityInput: unknown): Promise<PortResult<readonly WorkspaceConversation[]>>;
+  listConversations(
+    capabilityInput: unknown,
+  ): Promise<PortResult<readonly WorkspaceConversation[]>>;
   getConversation(
     capabilityInput: unknown,
     conversationId: unknown,
@@ -262,7 +260,10 @@ export interface PostgresWorkspaceDataRepository {
     conversationId: unknown,
     input: unknown,
   ): Promise<PortResult<WorkspaceConversation>>;
-  deleteConversation(capabilityInput: unknown, conversationId: unknown): Promise<PortResult<boolean>>;
+  deleteConversation(
+    capabilityInput: unknown,
+    conversationId: unknown,
+  ): Promise<PortResult<boolean>>;
   listMessages(
     capabilityInput: unknown,
     conversationId: unknown,
@@ -277,6 +278,10 @@ export interface PostgresWorkspaceDataRepository {
     capabilityInput: unknown,
     runId: unknown,
   ): Promise<PortResult<WorkspaceRunBinding | null>>;
+  listRunBindingsForConversation(
+    capabilityInput: unknown,
+    conversationId: unknown,
+  ): Promise<PortResult<readonly WorkspaceRunBinding[]>>;
 }
 
 export function createPostgresWorkspaceDataRepository(
@@ -780,6 +785,44 @@ export function createPostgresWorkspaceDataRepository(
             [parsed.data.id],
           );
           return result.rows[0] ? runBinding(result.rows[0]) : null;
+        },
+      );
+    },
+
+    async listRunBindingsForConversation(capabilityInput, conversationId) {
+      const parsed = idInputSchema.safeParse({ id: conversationId });
+      if (!parsed.success) {
+        return invalid("CONVERSATION_INPUT_INVALID", "对话标识无效。");
+      }
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          operation_name: "workspace.run.bindings_by_conversation",
+          ...transactionOptions,
+        },
+        async ({ client }) => {
+          const current = await client.query(
+            "select 1 from qa_conversations where conversation_id = $1::uuid",
+            [parsed.data.id],
+          );
+          if (current.rowCount !== 1) {
+            throw new PersistenceBoundaryError(
+              "CONVERSATION_NOT_FOUND_OR_DENIED",
+              "对话不存在或无权访问。",
+            );
+          }
+          const result = await client.query<RunBindingRow>(
+            `select app_id, tenant_id, environment, run_id, datasource_id,
+                    conversation_id, principal_id, created_at
+             from workspace_run_bindings
+             where conversation_id = $1::uuid
+             order by created_at, run_id`,
+            [parsed.data.id],
+          );
+          return result.rows.map(runBinding);
         },
       );
     },

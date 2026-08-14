@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  type ConversationTrajectory,
+  conversationTrajectorySchema,
+  type PublicRunEvent,
+  publicRunEventSchema,
+} from "@data-agent/contracts";
 import type { RunProjection } from "./run-projection";
 
 // ─── Connection State ──────────────────────────────────────────────────────
@@ -9,13 +15,7 @@ export type RunConnectionState = "idle" | "connecting" | "live" | "reconnecting"
 
 // ─── Run Event Types ───────────────────────────────────────────────────────
 
-export interface RunEvent {
-  runId: string;
-  sequence: number;
-  type: "projection" | "hypothesis" | "report" | "eval" | "error" | "terminal";
-  payload: unknown;
-  timestamp: string;
-}
+export type RunEvent = PublicRunEvent;
 
 // ─── Configuration ─────────────────────────────────────────────────────────
 
@@ -152,7 +152,14 @@ export async function streamRunEvents(input: {
     composeUrl(
       `/api/workspaces/${encodeURIComponent(input.workspaceId)}/runs/${encodeURIComponent(input.runId)}/events/stream?cursor=${input.cursor}`,
     ),
-    { headers: authHeaders(input.workspaceId), signal: input.signal },
+    {
+      headers: {
+        ...authHeaders(input.workspaceId),
+        Accept: "text/event-stream",
+        ...(input.cursor > 0 ? { "Last-Event-ID": String(input.cursor) } : {}),
+      },
+      signal: input.signal,
+    },
   );
   if (!response.ok || !response.body) {
     throw new Error(`事件流不可用 (${response.status})`);
@@ -178,37 +185,61 @@ export async function streamRunEvents(input: {
 }
 
 /** 解析 SSE 事件块中的 JSON 数据 */
-function parseEventBlock(block: string): RunEvent | null {
+export function parseEventBlock(block: string): RunEvent | null {
   const data = block
     .split("\n")
     .filter((line) => line.startsWith("data:"))
     .map((line) => line.slice(5).trimStart())
     .join("\n");
   if (!data) return null;
-  return JSON.parse(data) as RunEvent;
+  return publicRunEventSchema.parse(JSON.parse(data));
 }
 
 // ─── Event Merging ─────────────────────────────────────────────────────────
 
 /** 合并新旧事件列表，按 sequence 去重排序 */
 export function mergeRunEvents(current: RunEvent[], incoming: RunEvent[]): RunEvent[] {
-  const merged = new Map(current.map((event) => [`${event.runId}:${event.sequence}`, event]));
+  const merged = new Map(current.map((event) => [`${event.run_id}:${event.sequence}`, event]));
   for (const event of incoming) {
-    const key = `${event.runId}:${event.sequence}`;
+    const key = `${event.run_id}:${event.sequence}`;
     if (!merged.has(key)) {
       merged.set(key, event);
     }
   }
   return Array.from(merged.values()).sort((a, b) => {
-    if (a.runId !== b.runId) return a.runId.localeCompare(b.runId);
+    if (a.run_id !== b.run_id) return a.run_id.localeCompare(b.run_id);
     return a.sequence - b.sequence;
   });
+}
+
+/** 读取整个对话的持久化轨迹。 */
+export async function fetchConversationTrajectory(
+  conversationId: string,
+  workspaceId?: string,
+): Promise<ConversationTrajectory> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  const response = await request<{ data: unknown }>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/qa/conversations/${encodeURIComponent(conversationId)}/trajectory`,
+    {},
+    resolvedWorkspace,
+  );
+  return conversationTrajectorySchema.parse(response.data);
 }
 
 // ─── Exponential Backoff ───────────────────────────────────────────────────
 
 /** 指数退避等待（最多 30 秒） */
-export async function waitWithBackoff(attempt: number): Promise<void> {
+export async function waitWithBackoff(attempt: number, signal?: AbortSignal): Promise<void> {
   const delay = Math.min(30_000, 500 * 2 ** Math.min(attempt, 6));
-  await new Promise((resolve) => setTimeout(resolve, delay));
+  await new Promise<void>((resolve) => {
+    if (signal?.aborted) return resolve();
+    const timeout = setTimeout(done, delay);
+    function done() {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done, { once: true });
+  });
 }
