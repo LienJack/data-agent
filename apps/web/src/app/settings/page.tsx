@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
 import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
+import { OperationsAdminPanel } from "@/components/settings/operations-admin-panel";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
 import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
@@ -46,7 +47,15 @@ export default async function SettingsPage() {
           </div>
         </header>
 
-        <div className="mt-8 workspace-section">
+        {isSuperAdmin && (
+          <div className="mt-8 workspace-section">
+            <OperationsAdminPanel currentPrincipalId={session.value.principal_id} />
+          </div>
+        )}
+
+        <div
+          className={`${isSuperAdmin ? "mt-12 border-t border-[var(--color-border-default)] pt-8" : "mt-8"} workspace-section`}
+        >
           <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
         </div>
 
