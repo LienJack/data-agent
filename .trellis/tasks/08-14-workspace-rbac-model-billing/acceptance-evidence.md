@@ -41,6 +41,13 @@
   `ENFORCED -> SHADOW` 回滚演练通过。
 - `platform.read_operations_health`：`SHADOW`、epoch 1，六个运营门禁均为 `PASS` 且
   count 为 0，`SHADOW_RECONCILIATION_CLEAR`。
+- 请求边界复审：`/api/admin/**` 全部先执行数据库重验后的 `SUPER_ADMIN` 守卫；旧 datasource、
+  Q&A 与 tests 无作用域入口返回 `WORKSPACE_ROUTE_REQUIRED`（410）；兼容 semantic URL 统一进入
+  Cookie session + workspace capability guard，不接受客户端自报 principal/role。
+- 全目录固定身份扫描：已提交的 Phase 2 产品路径无 `workspaceId="default"`；共享工作区中另一个
+  未提交的 Semantic Candidate 任务仍在 `semantic-candidate-runtime.ts` 保留固定 tenant/principal
+  兼容 fallback。现有 workspace semantic route 会显式注入 request-scoped resolver，不会进入该
+  fallback，但在其所属任务收口前，不能宣称当前整个工作区静态扫描零命中。
 - 视觉证据：
   `/Users/lienli/.codex/visualizations/2026/08/14/019fff6b-8633-72c1-ac95-e8f739243566/phase7-operations-console.png`。
 
