@@ -48,6 +48,10 @@
 - detached clean worktree 对提交 `930a9eb` 的复核中，`pnpm lint` 通过；`pnpm typecheck`
   因已提交 Web 调用方引用尚未提交的 Test Center、Semantic Candidate 和 UI 组件而失败。
   这证明当前发布提交也在等待并行任务的原子提交，不能绕过共享门禁启用 `ENFORCED`。
+- 复制全部共享改动到临时集成 worktree 后，两个不改变产品行为的候选修复使 lint、typecheck、
+  unit 15/15 tasks 和 contract 10/10 tasks 全绿：对 Eval 合约入口执行 Biome 格式/导出排序，
+  并删除 SQL reflection 测试中不属于 `BenchmarkSqlAgentInvocationContext` 的
+  `attempt_index`。候选修复只用于隔离验证，未写回或提交其他任务的源文件。
 - 请求边界复审：`/api/admin/**` 全部先执行数据库重验后的 `SUPER_ADMIN` 守卫；旧 datasource、
   Q&A 与 tests 无作用域入口返回 `WORKSPACE_ROUTE_REQUIRED`（410）；兼容 semantic URL 统一进入
   Cookie session + workspace capability guard，不接受客户端自报 principal/role。

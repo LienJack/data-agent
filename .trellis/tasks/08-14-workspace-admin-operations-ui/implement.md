@@ -69,3 +69,8 @@ git diff --check
 - 对提交 `930a9eb` 的 detached clean worktree 复核显示 `pnpm lint` 通过，但 `pnpm typecheck`
   仍因已提交 Web 调用方依赖尚未提交的 Test Center、Semantic Candidate 与 UI 组件而失败；
   因此当前分支的发布工件本身也尚不能独立构建，不能把门禁失败仅视为脏工作树噪声。
+- 临时集成 worktree 复刻全部 119 项共享改动后，仅恢复
+  `packages/contracts/src/evals/index.ts` 的 Biome 格式/导出顺序，并从 SQL reflection 测试的
+  `BenchmarkSqlAgentInvocationContext` 删除不受支持的 `attempt_index`，即可通过 lint、
+  typecheck、unit 15/15 tasks 与 contract 10/10 tasks。该验证未修改源工作树，证明最终阻断
+  已缩小为两个并行任务应随自身原子提交带入的机械修复。
