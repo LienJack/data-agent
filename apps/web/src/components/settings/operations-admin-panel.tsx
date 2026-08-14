@@ -8,7 +8,7 @@ import type {
   OperationsHealthProjection,
 } from "@data-agent/contracts";
 import Link from "next/link";
-import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
 interface OperationsAdminPanelProps {
@@ -27,6 +27,18 @@ interface IdentityRetryRequest {
   readonly body: string;
   readonly label: string;
 }
+
+type AdminActionRequest =
+  | {
+      readonly kind: "USER";
+      readonly user: AdminUserProjection;
+      readonly action: "DISABLE" | "ENABLE" | "RESET_PASSWORD";
+    }
+  | {
+      readonly kind: "WORKSPACE";
+      readonly workspace: AdminWorkspaceProjection;
+      readonly action: "ARCHIVE" | "RESTORE";
+    };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -92,6 +104,55 @@ function gateTone(status: OperationsHealthGate["status"]) {
   };
 }
 
+function adminActionCopy(request: AdminActionRequest) {
+  if (request.kind === "WORKSPACE") {
+    return request.action === "ARCHIVE"
+      ? {
+          eyebrow: "Archive workspace",
+          title: `归档「${request.workspace.display_name}」`,
+          description: "归档后将立即拒绝该工作空间的新写入和模型调用，历史数据仍可审计。",
+          reasonLabel: "归档原因",
+          confirmLabel: "确认归档",
+          destructive: true,
+        }
+      : {
+          eyebrow: "Restore workspace",
+          title: `恢复「${request.workspace.display_name}」`,
+          description: "恢复后，原成员仍需按最新权限版本重新通过数据库授权。",
+          reasonLabel: "恢复原因",
+          confirmLabel: "确认恢复",
+          destructive: false,
+        };
+  }
+  if (request.action === "RESET_PASSWORD") {
+    return {
+      eyebrow: "Reset credentials",
+      title: `重置「${request.user.display_name}」的密码`,
+      description: "系统将生成新的一次性密码，并撤销该用户的全部现有会话。",
+      reasonLabel: "重置原因",
+      confirmLabel: "确认重置",
+      destructive: true,
+    };
+  }
+  return request.action === "DISABLE"
+    ? {
+        eyebrow: "Disable account",
+        title: `停用「${request.user.display_name}」`,
+        description: "停用会立即提高授权版本并撤销现有会话，用户将无法继续访问工作空间。",
+        reasonLabel: "停用原因",
+        confirmLabel: "确认停用",
+        destructive: true,
+      }
+    : {
+        eyebrow: "Enable account",
+        title: `恢复「${request.user.display_name}」`,
+        description: "恢复凭证账号后，应用身份仍会由 PostgreSQL 重新验证。",
+        reasonLabel: "恢复原因",
+        confirmLabel: "确认恢复",
+        destructive: false,
+      };
+}
+
 function Metric(props: {
   readonly label: string;
   readonly value: string;
@@ -124,6 +185,8 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
   const [userRole, setUserRole] = useState<"USER" | "SUPER_ADMIN">("USER");
   const [workspaceName, setWorkspaceName] = useState("");
   const [workspaceSlug, setWorkspaceSlug] = useState("");
+  const [adminAction, setAdminAction] = useState<AdminActionRequest>();
+  const [actionReason, setActionReason] = useState("");
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -188,52 +251,83 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
     }
   }
 
-  async function actOnUser(
+  function requestUserAction(
     user: AdminUserProjection,
     action: "DISABLE" | "ENABLE" | "RESET_PASSWORD",
   ) {
-    const reason = window.prompt(
-      action === "RESET_PASSWORD" ? "请输入密码重置原因" : "请输入状态变更原因",
-    );
-    if (!reason?.trim()) return;
+    setActionReason("");
+    setAdminAction({ kind: "USER", user, action });
+  }
+
+  async function confirmAdminAction(event: FormEvent) {
+    event.preventDefault();
+    const reason = actionReason.trim();
+    if (!adminAction || !reason) return;
     setPending(true);
     setError(undefined);
     setNotice(undefined);
     setOneTimePassword(undefined);
     setIdentityRetry(undefined);
     try {
-      const path = `/api/admin/operations/users/${encodeURIComponent(user.principal_id)}`;
-      const body = JSON.stringify({
-        schema_version: "admin-user-action@1.0.0",
-        operation_id: crypto.randomUUID(),
-        idempotency_key: operationKey(`admin-user-${action.toLowerCase()}`),
-        principal_id: user.principal_id,
-        expected_version: user.authz_epoch,
-        action,
-        reason: reason.trim(),
-      });
-      const result = await api<UserMutationResult>(path, { method: "PATCH", body });
-      if (result.receipt.status === "RETRY_REQUIRED") {
-        setIdentityRetry({
-          path,
-          body,
-          label: action === "RESET_PASSWORD" ? "密码与会话副作用" : "封禁与会话副作用",
+      if (adminAction.kind === "USER") {
+        const { action, user } = adminAction;
+        const path = `/api/admin/operations/users/${encodeURIComponent(user.principal_id)}`;
+        const body = JSON.stringify({
+          schema_version: "admin-user-action@1.0.0",
+          operation_id: crypto.randomUUID(),
+          idempotency_key: operationKey(`admin-user-${action.toLowerCase()}`),
+          principal_id: user.principal_id,
+          expected_version: user.authz_epoch,
+          action,
+          reason,
         });
-        setNotice("应用授权已安全失效，但认证服务副作用尚未完成；请恢复认证服务后重试原操作。");
+        const result = await api<UserMutationResult>(path, { method: "PATCH", body });
+        setAdminAction(undefined);
+        setActionReason("");
+        if (result.receipt.status === "RETRY_REQUIRED") {
+          setIdentityRetry({
+            path,
+            body,
+            label: action === "RESET_PASSWORD" ? "密码与会话副作用" : "封禁与会话副作用",
+          });
+          setNotice("应用授权已安全失效，但认证服务副作用尚未完成；请恢复认证服务后重试原操作。");
+          await reload();
+          return;
+        }
+        if (result.one_time_password) setOneTimePassword(result.one_time_password);
+        setNotice(
+          action === "RESET_PASSWORD"
+            ? "密码已重置，所有旧会话已撤销。"
+            : action === "DISABLE"
+              ? "用户已停用，授权版本与会话均已失效。"
+              : "用户已恢复使用。",
+        );
         await reload();
         return;
       }
-      if (result.one_time_password) setOneTimePassword(result.one_time_password);
-      setNotice(
-        action === "RESET_PASSWORD"
-          ? "密码已重置，所有旧会话已撤销。"
-          : action === "DISABLE"
-            ? "用户已停用，授权版本与会话均已失效。"
-            : "用户已恢复使用。",
+
+      const { action, workspace } = adminAction;
+      await api<IdentityOperationReceipt>(
+        `/api/admin/operations/workspaces/${encodeURIComponent(workspace.workspace_id)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            schema_version: "admin-workspace-action@1.0.0",
+            operation_id: crypto.randomUUID(),
+            idempotency_key: operationKey(`admin-workspace-${action.toLowerCase()}`),
+            workspace_id: workspace.workspace_id,
+            expected_version: workspace.lifecycle_version,
+            action,
+            reason,
+          }),
+        },
       );
+      setAdminAction(undefined);
+      setActionReason("");
+      setNotice(action === "ARCHIVE" ? "工作空间已归档。" : "工作空间已恢复。");
       await reload();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "用户操作失败");
+      setError(requestError instanceof Error ? requestError.message : "管理操作失败");
     } finally {
       setPending(false);
     }
@@ -293,36 +387,10 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
     }
   }
 
-  async function actOnWorkspace(workspace: AdminWorkspaceProjection) {
+  function requestWorkspaceAction(workspace: AdminWorkspaceProjection) {
     const action = workspace.lifecycle === "ACTIVE" ? "ARCHIVE" : "RESTORE";
-    const reason = window.prompt(action === "ARCHIVE" ? "请输入归档原因" : "请输入恢复原因");
-    if (!reason?.trim()) return;
-    setPending(true);
-    setError(undefined);
-    setNotice(undefined);
-    try {
-      await api<IdentityOperationReceipt>(
-        `/api/admin/operations/workspaces/${encodeURIComponent(workspace.workspace_id)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            schema_version: "admin-workspace-action@1.0.0",
-            operation_id: crypto.randomUUID(),
-            idempotency_key: operationKey(`admin-workspace-${action.toLowerCase()}`),
-            workspace_id: workspace.workspace_id,
-            expected_version: workspace.lifecycle_version,
-            action,
-            reason: reason.trim(),
-          }),
-        },
-      );
-      setNotice(action === "ARCHIVE" ? "工作空间已归档。" : "工作空间已恢复。");
-      await reload();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "工作空间操作失败");
-    } finally {
-      setPending(false);
-    }
+    setActionReason("");
+    setAdminAction({ kind: "WORKSPACE", workspace, action });
   }
 
   return (
@@ -395,9 +463,11 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
         ).map(([value, label]) => (
           <button
             key={value}
+            id={`operations-${value}-tab`}
             type="button"
             role="tab"
             aria-selected={tab === value}
+            aria-controls={`operations-${value}-panel`}
             onClick={() => setTab(value)}
             className={`border-b-2 px-4 py-2.5 text-xs font-medium transition ${
               tab === value
@@ -460,39 +530,141 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
         </div>
       )}
 
-      {loading && !health ? (
-        <div className="rounded-xl border border-dashed border-[var(--color-border-default)] py-12 text-center text-sm text-[var(--color-text-muted)]">
-          正在读取数据库权威状态…
-        </div>
-      ) : tab === "overview" ? (
-        <HealthOverview health={health} onNavigate={setTab} />
-      ) : tab === "users" ? (
-        <UsersPanel
-          users={users}
-          currentPrincipalId={currentPrincipalId}
+      <div id={`operations-${tab}-panel`} role="tabpanel" aria-labelledby={`operations-${tab}-tab`}>
+        {loading && !health ? (
+          <div className="rounded-xl border border-dashed border-[var(--color-border-default)] py-12 text-center text-sm text-[var(--color-text-muted)]">
+            正在读取数据库权威状态…
+          </div>
+        ) : tab === "overview" ? (
+          <HealthOverview health={health} onNavigate={setTab} />
+        ) : tab === "users" ? (
+          <UsersPanel
+            users={users}
+            currentPrincipalId={currentPrincipalId}
+            pending={pending}
+            email={userEmail}
+            name={userName}
+            role={userRole}
+            onEmailChange={setUserEmail}
+            onNameChange={setUserName}
+            onRoleChange={setUserRole}
+            onCreate={createUser}
+            onAction={requestUserAction}
+          />
+        ) : (
+          <WorkspacesPanel
+            workspaces={workspaces}
+            pending={pending}
+            name={workspaceName}
+            slug={workspaceSlug}
+            onNameChange={setWorkspaceName}
+            onSlugChange={setWorkspaceSlug}
+            onCreate={createWorkspace}
+            onAction={requestWorkspaceAction}
+          />
+        )}
+      </div>
+
+      {adminAction && (
+        <AdminActionDialog
+          request={adminAction}
+          reason={actionReason}
+          error={error}
           pending={pending}
-          email={userEmail}
-          name={userName}
-          role={userRole}
-          onEmailChange={setUserEmail}
-          onNameChange={setUserName}
-          onRoleChange={setUserRole}
-          onCreate={createUser}
-          onAction={actOnUser}
-        />
-      ) : (
-        <WorkspacesPanel
-          workspaces={workspaces}
-          pending={pending}
-          name={workspaceName}
-          slug={workspaceSlug}
-          onNameChange={setWorkspaceName}
-          onSlugChange={setWorkspaceSlug}
-          onCreate={createWorkspace}
-          onAction={actOnWorkspace}
+          onReasonChange={setActionReason}
+          onCancel={() => {
+            setAdminAction(undefined);
+            setActionReason("");
+          }}
+          onConfirm={confirmAdminAction}
         />
       )}
     </section>
+  );
+}
+
+function AdminActionDialog(props: {
+  readonly request: AdminActionRequest;
+  readonly reason: string;
+  readonly error?: string;
+  readonly pending: boolean;
+  readonly onReasonChange: (value: string) => void;
+  readonly onCancel: () => void;
+  readonly onConfirm: (event: FormEvent) => void;
+}) {
+  const copy = adminActionCopy(props.request);
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (dialog && !dialog.open) dialog.showModal();
+    return () => {
+      if (dialog?.open) dialog.close();
+    };
+  }, []);
+  return (
+    <dialog
+      ref={dialogRef}
+      aria-labelledby="admin-action-dialog-title"
+      aria-describedby="admin-action-dialog-description"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!props.pending) props.onCancel();
+      }}
+      className="m-auto w-[calc(100%-1.5rem)] max-w-md rounded-2xl border border-[var(--color-border-default)] bg-white p-5 text-[var(--color-text-primary)] shadow-2xl shadow-slate-950/10 backdrop:bg-slate-950/25 backdrop:backdrop-blur-[2px]"
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-accent)]">
+        {copy.eyebrow}
+      </p>
+      <h3 id="admin-action-dialog-title" className="mt-2 text-lg font-semibold tracking-[-0.02em]">
+        {copy.title}
+      </h3>
+      <p
+        id="admin-action-dialog-description"
+        className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]"
+      >
+        {copy.description}
+      </p>
+      {props.error && (
+        <div
+          role="alert"
+          className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700"
+        >
+          {props.error}
+        </div>
+      )}
+      <form onSubmit={props.onConfirm}>
+        <label className="mt-5 block text-[11px] font-medium">
+          {copy.reasonLabel}
+          <textarea
+            required
+            rows={3}
+            maxLength={500}
+            value={props.reason}
+            onChange={(event) => props.onReasonChange(event.target.value)}
+            className="mt-1.5 w-full resize-none rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs leading-5 outline-none focus:border-[var(--color-border-focused)]"
+            placeholder="说明本次操作的业务原因，便于后续审计"
+          />
+        </label>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="ghost" disabled={props.pending} onClick={props.onCancel}>
+            取消
+          </Button>
+          <Button
+            type="submit"
+            variant={copy.destructive ? "danger" : "primary"}
+            className={
+              copy.destructive
+                ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100"
+                : undefined
+            }
+            loading={props.pending}
+            disabled={!props.reason.trim()}
+          >
+            {copy.confirmLabel}
+          </Button>
+        </div>
+      </form>
+    </dialog>
   );
 }
 
