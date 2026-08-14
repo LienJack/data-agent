@@ -8,6 +8,7 @@ import type {
 } from "@data-agent/contracts";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ReasonDialog } from "@/components/ui/reason-dialog";
 
 interface WorkspaceMembersPanelProps {
   readonly workspaceId: string;
@@ -121,6 +122,8 @@ export function WorkspaceMembersPanel({
   const [pendingPrincipalId, setPendingPrincipalId] = useState<string>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [revokeTarget, setRevokeTarget] = useState<AdminWorkspaceMemberProjection>();
+  const [revokeReason, setRevokeReason] = useState("");
 
   const reload = useCallback(async () => {
     if (!canManage) return;
@@ -204,10 +207,14 @@ export function WorkspaceMembersPanel({
     await upsertMember(selectedPrincipalId, selectedRole);
   }
 
-  async function revokeMember(member: AdminWorkspaceMemberProjection) {
-    const reason = window.prompt("请输入撤销成员资格的原因");
-    if (!reason?.trim()) return;
-    setPendingPrincipalId(member.principal_id);
+  function requestMemberRevocation(member: AdminWorkspaceMemberProjection) {
+    setRevokeReason("");
+    setRevokeTarget(member);
+  }
+
+  async function revokeMember(reason: string) {
+    if (!revokeTarget) return;
+    setPendingPrincipalId(revokeTarget.principal_id);
     setError(undefined);
     setNotice(undefined);
     try {
@@ -219,12 +226,14 @@ export function WorkspaceMembersPanel({
             schema_version: "workspace-member-action@1.0.0",
             operation_id: crypto.randomUUID(),
             idempotency_key: operationKey("revoke"),
-            principal_id: member.principal_id,
+            principal_id: revokeTarget.principal_id,
             action: "REVOKE",
-            reason: reason.trim(),
+            reason,
           }),
         },
       );
+      setRevokeTarget(undefined);
+      setRevokeReason("");
       setNotice("成员资格已撤销，相关授权版本已同步提升。");
       await reload();
     } catch (requestError) {
@@ -458,7 +467,7 @@ export function WorkspaceMembersPanel({
                               variant="ghost"
                               className="text-red-700 hover:bg-red-50 hover:text-red-800"
                               disabled={busy || isSelf || isSystem || !!member.revoked_at}
-                              onClick={() => void revokeMember(member)}
+                              onClick={() => requestMemberRevocation(member)}
                             >
                               撤销
                             </Button>
@@ -522,7 +531,7 @@ export function WorkspaceMembersPanel({
                         variant="ghost"
                         className="text-red-700 hover:bg-red-50 hover:text-red-800"
                         disabled={busy || isSelf || isSystem || !!member.revoked_at}
-                        onClick={() => void revokeMember(member)}
+                        onClick={() => requestMemberRevocation(member)}
                       >
                         撤销资格
                       </Button>
@@ -534,6 +543,26 @@ export function WorkspaceMembersPanel({
           </>
         )}
       </div>
+
+      {revokeTarget && (
+        <ReasonDialog
+          eyebrow="Revoke membership"
+          title={`撤销「${revokeTarget.display_name}」的成员资格`}
+          description={`撤销后，该用户对「${workspaceName}」的旧 capability 将立即失效；账号本身及其其他工作空间成员资格不受影响。`}
+          reasonLabel="撤销原因"
+          confirmLabel="确认撤销资格"
+          destructive
+          reason={revokeReason}
+          pending={pendingPrincipalId === revokeTarget.principal_id}
+          error={error}
+          onReasonChange={setRevokeReason}
+          onCancel={() => {
+            setRevokeTarget(undefined);
+            setRevokeReason("");
+          }}
+          onConfirm={(reason) => void revokeMember(reason)}
+        />
+      )}
     </section>
   );
 }
