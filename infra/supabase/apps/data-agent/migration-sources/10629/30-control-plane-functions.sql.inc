@@ -97,7 +97,7 @@ begin
   return query
   select pg_catalog.jsonb_build_object(
     'candidate', pg_catalog.to_jsonb(price_candidate),
-    'components', pg_catalog.coalesce((
+    'components', coalesce((
       select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(component) order by component.kind, component.component_id)
       from app_data_agent.model_price_candidate_components as component
       where component.app_id = price_candidate.app_id

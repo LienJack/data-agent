@@ -1,4 +1,4 @@
--- model_price_fx_control_migration_checksum: sha256:b7447d0e2c052dfa809b7b0702ea6e515417891ad8f1bf4c22af472868f4df78
+-- model_price_fx_control_migration_checksum: sha256:4be4799b20dc19d4e6e2d563529b4160f64bf5e3b191904345e69dec63c0a096
 -- ============================================================
 -- 10629: App-global model, price and FX control plane
 -- ============================================================
@@ -442,7 +442,7 @@ begin
   return query
   select pg_catalog.jsonb_build_object(
     'candidate', pg_catalog.to_jsonb(price_candidate),
-    'components', pg_catalog.coalesce((
+    'components', coalesce((
       select pg_catalog.jsonb_agg(pg_catalog.to_jsonb(component) order by component.kind, component.component_id)
       from app_data_agent.model_price_candidate_components as component
       where component.app_id = price_candidate.app_id
@@ -1138,7 +1138,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010629_app_data_agent_model_price_fx_control',
-  'sha256:b7447d0e2c052dfa809b7b0702ea6e515417891ad8f1bf4c22af472868f4df78'
+  'sha256:4be4799b20dc19d4e6e2d563529b4160f64bf5e3b191904345e69dec63c0a096'
 );
 
 commit;

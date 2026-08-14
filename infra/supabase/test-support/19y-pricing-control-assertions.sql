@@ -24,6 +24,17 @@ insert into app_data_agent.app_users (
 
 set local role data_agent_backend;
 
+select test_support.assert_true(
+  (
+    select pg_catalog.count(*) = 0
+    from platform.list_model_price_candidates(
+      '00000000-0000-4000-8000-00000000de01',
+      '00000000-0000-4000-8000-00000000a511'
+    )
+  ),
+  '空库价格候选列表必须返回空集合而不是失败'
+);
+
 select app_data_agent.apply_model_catalog_command(
   '00000000-0000-4000-8000-00000000de01',
   '00000000-0000-4000-8000-00000000a511',
