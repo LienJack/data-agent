@@ -6,7 +6,11 @@
       "outputs": ["dist/**"]
     },
     "typecheck": {
-      "dependsOn": ["build", "^build", "^typecheck"],
+      "dependsOn": ["^build", "^typecheck"],
+      "outputs": []
+    },
+    "@data-agent/contracts#typecheck": {
+      "dependsOn": ["build"],
       "outputs": []
     },
     "test:unit": {
