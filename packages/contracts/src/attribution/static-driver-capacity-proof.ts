@@ -1,12 +1,7 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
-export const STATIC_DRIVER_CAPACITY_PROOF_VERSION =
-  "static-driver-capacity-proof@1" as const;
+export const STATIC_DRIVER_CAPACITY_PROOF_VERSION = "static-driver-capacity-proof@1" as const;
 
 export const MAX_DRIVER_LIMIT = 6 as const;
 export const MAX_SQL_LIMIT = 16 as const;

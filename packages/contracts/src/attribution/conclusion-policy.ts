@@ -31,7 +31,9 @@ export const conclusionPolicyDecisionEnvelopeSchema = z.strictObject({
   }),
 });
 
-export type ConclusionPolicyDecisionEnvelope = z.infer<typeof conclusionPolicyDecisionEnvelopeSchema>;
+export type ConclusionPolicyDecisionEnvelope = z.infer<
+  typeof conclusionPolicyDecisionEnvelopeSchema
+>;
 
 /**
  * Conclusion policy release: PROVISIONED → ACTIVE → SUPERSEDED | RETIRED.

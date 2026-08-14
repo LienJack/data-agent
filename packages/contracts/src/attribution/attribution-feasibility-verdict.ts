@@ -1,5 +1,5 @@
-import { z } from "zod";
 import crypto from "node:crypto";
+import { z } from "zod";
 import {
   contentHashSchema,
   immutableIdSchema,
@@ -7,8 +7,7 @@ import {
   versionIdentifierSchema,
 } from "../common/index.js";
 
-export const ATTRIBUTION_FEASIBILITY_VERDICT_VERSION =
-  "attribution-feasibility-verdict@1" as const;
+export const ATTRIBUTION_FEASIBILITY_VERDICT_VERSION = "attribution-feasibility-verdict@1" as const;
 
 /**
  * Verdict values for the U7 Attribution Feasibility Verdict.
@@ -27,7 +26,9 @@ export const attributionFeasibilityVerdictValueSchema = z.enum([
   "EXPAND_IR",
   "STOP",
 ]);
-export type AttributionFeasibilityVerdictValue = z.infer<typeof attributionFeasibilityVerdictValueSchema>;
+export type AttributionFeasibilityVerdictValue = z.infer<
+  typeof attributionFeasibilityVerdictValueSchema
+>;
 
 /**
  * Oracle check result schema.
@@ -41,13 +42,15 @@ export const oracleCheckResultSchema = z.strictObject({
   evidence_match_count: z.number().int().nonnegative(),
   evidence_total_count: z.number().int().positive(),
   closure_verdict: z.enum(["PASS", "HOLD", "REFUSE"]),
-  details: z.array(
-    z.strictObject({
-      pattern_id: z.string().min(1).max(128),
-      status: z.enum(["PASS", "PARTIAL", "FAIL", "SKIP"]),
-      message: z.string().min(1).max(1024),
-    }),
-  ).min(1),
+  details: z
+    .array(
+      z.strictObject({
+        pattern_id: z.string().min(1).max(128),
+        status: z.enum(["PASS", "PARTIAL", "FAIL", "SKIP"]),
+        message: z.string().min(1).max(1024),
+      }),
+    )
+    .min(1),
 });
 export type OracleCheckResult = z.infer<typeof oracleCheckResultSchema>;
 

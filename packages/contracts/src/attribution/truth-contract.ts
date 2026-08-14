@@ -17,22 +17,24 @@ export const contributionTruthContractSchema = z.strictObject({
     fixture_version: z.string().min(1).max(64),
     fixture_origin: z.literal("FIXTURE"),
   }),
-  contribution_patterns: z.array(
-    z.object({
-      pattern_id: z.string().min(1).max(128),
-      pattern_name: z.string().min(1).max(256),
-      source_identity: z.string().min(1).max(256),
-      expected_verdict: z.enum(["CONFIRMED", "REJECTED", "INCONCLUSIVE"]),
-      evidence_requirements: z.array(
-        z.object({
-          required_link_type: z.string().min(1).max(64),
-          required_link_ref_pattern: z.string().min(1).max(512),
-          min_confidence: z.number().min(0).max(1).default(0.0),
-        }),
-      ),
-      truth_metadata: z.record(z.string(), z.unknown()).default({}),
-    }),
-  ).min(1),
+  contribution_patterns: z
+    .array(
+      z.object({
+        pattern_id: z.string().min(1).max(128),
+        pattern_name: z.string().min(1).max(256),
+        source_identity: z.string().min(1).max(256),
+        expected_verdict: z.enum(["CONFIRMED", "REJECTED", "INCONCLUSIVE"]),
+        evidence_requirements: z.array(
+          z.object({
+            required_link_type: z.string().min(1).max(64),
+            required_link_ref_pattern: z.string().min(1).max(512),
+            min_confidence: z.number().min(0).max(1).default(0.0),
+          }),
+        ),
+        truth_metadata: z.record(z.string(), z.unknown()).default({}),
+      }),
+    )
+    .min(1),
   created_at: timestampSchema,
   expires_at: timestampSchema.optional(),
 });

@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertM1SubsetRestriction,
+  assertSemanticSourceBundleInvariants,
+  type CapabilityProfile,
+  computeExecutableSemanticDigest,
   SEMANTIC_SOURCE_BUNDLE_VERSION,
+  SemanticGovernanceError,
+  type SemanticSourceBundle,
+  semanticSourceBundleSchema,
   U5_EXECUTABLE_SUBSET,
   U13_EXECUTABLE_SUBSET,
-  type CapabilityProfile,
-  semanticSourceBundleSchema,
-  assertSemanticSourceBundleInvariants,
-  assertM1SubsetRestriction,
-  SemanticGovernanceError,
-  computeExecutableSemanticDigest,
-  type SemanticSourceBundle,
 } from "../src/artifacts/semantic-governance.js";
-import { ids, environments, hashes } from "./fixtures.js";
+import { environments, hashes, ids } from "./fixtures.js";
 
 const scope = {
   app_id: ids.appA,
@@ -225,7 +225,9 @@ describe("assertSemanticSourceBundleInvariants", () => {
   });
 
   it("U13 profile 含 contribution_profile 校验通过", () => {
-    const bundle = buildU13Bundle({ contribution_profile: makeContributionProfile() }) as SemanticSourceBundle;
+    const bundle = buildU13Bundle({
+      contribution_profile: makeContributionProfile(),
+    }) as SemanticSourceBundle;
     expect(() => assertSemanticSourceBundleInvariants(bundle)).not.toThrow();
   });
 
@@ -251,13 +253,19 @@ describe("assertM1SubsetRestriction", () => {
   });
 
   it("U5 profile 含 contribution_profile 被拒绝", () => {
-    const bundle = buildU5Bundle({ contribution_profile: makeContributionProfile() }) as SemanticSourceBundle;
+    const bundle = buildU5Bundle({
+      contribution_profile: makeContributionProfile(),
+    }) as SemanticSourceBundle;
     expect(() => assertM1SubsetRestriction(bundle)).toThrow(SemanticGovernanceError);
   });
 
   it("U5 profile 含 contribution_profile 错误消息正确", () => {
-    const bundle = buildU5Bundle({ contribution_profile: makeContributionProfile() }) as SemanticSourceBundle;
-    expect(() => assertM1SubsetRestriction(bundle)).toThrow("M1 不允许 DescriptiveContributionProfile");
+    const bundle = buildU5Bundle({
+      contribution_profile: makeContributionProfile(),
+    }) as SemanticSourceBundle;
+    expect(() => assertM1SubsetRestriction(bundle)).toThrow(
+      "M1 不允许 DescriptiveContributionProfile",
+    );
   });
 
   it("U13 profile 不含 contribution_profile 通过", () => {
@@ -266,7 +274,9 @@ describe("assertM1SubsetRestriction", () => {
   });
 
   it("U13 profile 含 contribution_profile 通过", () => {
-    const bundle = buildU13Bundle({ contribution_profile: makeContributionProfile() }) as SemanticSourceBundle;
+    const bundle = buildU13Bundle({
+      contribution_profile: makeContributionProfile(),
+    }) as SemanticSourceBundle;
     expect(() => assertM1SubsetRestriction(bundle)).not.toThrow();
   });
 
@@ -287,7 +297,9 @@ describe("assertM1SubsetRestriction", () => {
 
 describe("computeExecutableSemanticDigest", () => {
   it("U13 bundle 的 digest 包含 contribution_profile", async () => {
-    const bundleWithProfile = buildU13Bundle({ contribution_profile: makeContributionProfile() }) as SemanticSourceBundle;
+    const bundleWithProfile = buildU13Bundle({
+      contribution_profile: makeContributionProfile(),
+    }) as SemanticSourceBundle;
     const bundleWithoutProfile = buildU13Bundle() as SemanticSourceBundle;
     // Re-parse through Zod to get defaults filled in
     const parsedWith = semanticSourceBundleSchema.parse(bundleWithProfile);
@@ -301,7 +313,9 @@ describe("computeExecutableSemanticDigest", () => {
   });
 
   it("U13 bundle 的 digest 格式正确", async () => {
-    const bundle = buildU13Bundle({ contribution_profile: makeContributionProfile() }) as SemanticSourceBundle;
+    const bundle = buildU13Bundle({
+      contribution_profile: makeContributionProfile(),
+    }) as SemanticSourceBundle;
     const parsed = semanticSourceBundleSchema.parse(bundle);
     const digest = await computeExecutableSemanticDigest(parsed);
     expect(digest).toMatch(/^sha256:[a-f0-9]{64}$/);

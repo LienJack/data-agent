@@ -1,10 +1,6 @@
-import { z } from "zod";
 import crypto from "node:crypto";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { z } from "zod";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 export const SAME_FRONTIER_WITNESS_VERSION = "same-frontier-witness@1" as const;
 
@@ -26,11 +22,7 @@ export const fiveAxisFrontierSchema = z.strictObject({
 
 export type FiveAxisFrontier = z.infer<typeof fiveAxisFrontierSchema>;
 
-export const frontierWitnessStatusSchema = z.enum([
-  "IDENTICAL",
-  "CROSS_AXIS_MISMATCH",
-  "STALE",
-]);
+export const frontierWitnessStatusSchema = z.enum(["IDENTICAL", "CROSS_AXIS_MISMATCH", "STALE"]);
 export type FrontierWitnessStatus = z.infer<typeof frontierWitnessStatusSchema>;
 
 export const sameFrontierWitnessSchema = z.strictObject({
@@ -64,9 +56,7 @@ export function computeFrontierIdentityDigest(frontier: FiveAxisFrontier): `sha2
   return `sha256:${hash}` as `sha256:${string}`;
 }
 
-export function witnessSameFrontier(
-  input: FrontierWitnessInput,
-): SameFrontierWitness {
+export function witnessSameFrontier(input: FrontierWitnessInput): SameFrontierWitness {
   const baselineDigest = computeFrontierIdentityDigest(input.baseline);
   const followUpDigest = computeFrontierIdentityDigest(input.follow_up);
 
@@ -89,9 +79,7 @@ export function witnessSameFrontier(
   };
 }
 
-export function checkCrossAxisMismatch(
-  witness: SameFrontierWitness,
-): string[] {
+export function checkCrossAxisMismatch(witness: SameFrontierWitness): string[] {
   const errors: string[] = [];
   const axes: Array<{ name: string; axis: FrontierAxis }> = [
     ["identity", witness.baseline_frontier.identity_ref],
@@ -116,7 +104,9 @@ export function checkCrossAxisMismatch(
 
   for (let i = 0; i < baselineKeys.length; i++) {
     if (baselineKeys[i] !== followUpKeys[i]) {
-      errors.push(`Axis mismatch at position ${i}: baseline=${baselineKeys[i]}, follow_up=${followUpKeys[i]}`);
+      errors.push(
+        `Axis mismatch at position ${i}: baseline=${baselineKeys[i]}, follow_up=${followUpKeys[i]}`,
+      );
     }
   }
   return errors;

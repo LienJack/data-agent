@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 export const ATTRIBUTION_CONCLUSION_VERSION = "attribution-conclusion@1" as const;
 

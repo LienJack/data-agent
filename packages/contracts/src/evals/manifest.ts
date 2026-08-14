@@ -11,8 +11,8 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import { benchmarkSuiteSchema } from "./schemas.js";
 import type { EvalCase } from "./schemas.js";
+import { benchmarkSuiteSchema } from "./schemas.js";
 
 export const benchmarkDatasetReferenceSchema = z.strictObject({
   dataset_id: immutableIdSchema,
@@ -567,7 +567,8 @@ export const GOVERNANCE_ROLE_PERMISSION_V1_DATASET = {
 export const GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS = [
   {
     mutation_id: "GRP-001",
-    description: "proposer 越权：proposer 不能审核自己的候选、不能发布治理配置、不能批准其他 proposer 的候选",
+    description:
+      "proposer 越权：proposer 不能审核自己的候选、不能发布治理配置、不能批准其他 proposer 的候选",
     mutation_type: "DATA_FILTER" as const,
     expected_impact: "proposer 的所有越权操作被系统拒绝",
     severity: "CRITICAL" as const,
@@ -575,7 +576,8 @@ export const GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS = [
   },
   {
     mutation_id: "GRP-002",
-    description: "reviewer 越权：reviewer 不能发布自己审核的候选、不能修改候选内容、不能跳过审核流程",
+    description:
+      "reviewer 越权：reviewer 不能发布自己审核的候选、不能修改候选内容、不能跳过审核流程",
     mutation_type: "DATA_FILTER" as const,
     expected_impact: "reviewer 的所有越权操作被系统拒绝",
     severity: "CRITICAL" as const,
@@ -583,7 +585,8 @@ export const GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS = [
   },
   {
     mutation_id: "GRP-003",
-    description: "admin 越权：admin 不能绕过审核直接发布、不能修改审核记录、不能删除已发布的治理配置",
+    description:
+      "admin 越权：admin 不能绕过审核直接发布、不能修改审核记录、不能删除已发布的治理配置",
     mutation_type: "COMPARISON_BENCHMARK" as const,
     expected_impact: "admin 的越权发布和修改操作被系统拒绝",
     severity: "HIGH" as const,
@@ -591,7 +594,8 @@ export const GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS = [
   },
   {
     mutation_id: "GRP-004",
-    description: "publisher 权限：publisher 可以发布已审核的候选、可以回滚已发布的配置、不能修改候选内容",
+    description:
+      "publisher 权限：publisher 可以发布已审核的候选、可以回滚已发布的配置、不能修改候选内容",
     mutation_type: "COMPARISON_BENCHMARK" as const,
     expected_impact: "publisher 的合法操作成功执行，越权操作被拒绝",
     severity: "HIGH" as const,

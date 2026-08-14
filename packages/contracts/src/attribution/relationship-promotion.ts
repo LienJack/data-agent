@@ -6,7 +6,8 @@ import {
   timestampSchema,
 } from "../common/index.js";
 
-export const ATTRIBUTION_RELATIONSHIP_PROMOTION_VERSION = "attribution-relationship-promotion@1" as const;
+export const ATTRIBUTION_RELATIONSHIP_PROMOTION_VERSION =
+  "attribution-relationship-promotion@1" as const;
 
 /**
  * Relationship promotion receipt: tracks promotion of relationships

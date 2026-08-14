@@ -5,14 +5,10 @@ import {
   immutableIdSchema,
   timestampSchema,
 } from "../common/index.js";
+import { type ClosureVerdict, closureVerdictSchema } from "./contribution-closure-receipt.js";
 import { fixtureConclusionCandidateSchema } from "./truth-contract.js";
-import {
-  closureVerdictSchema,
-  type ClosureVerdict,
-} from "./contribution-closure-receipt.js";
 
 export const ATTRIBUTION_KERNEL_EVIDENCE_VERSION = "attribution-kernel-evidence@1" as const;
-
 
 export const f9StatusSchema = z.strictObject({
   core_l2: z.literal("HOLD"),

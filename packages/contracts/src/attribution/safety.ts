@@ -34,7 +34,12 @@ export const publishedAttributionSafetyVerdictSchema = z.strictObject({
   evidence_hash: contentHashSchema,
   supersedes_verdict_id: immutableIdSchema.optional(),
   auto_approve: z.boolean().default(false),
-  ttl_seconds: z.number().int().min(60).max(86400 * 30).default(3600),
+  ttl_seconds: z
+    .number()
+    .int()
+    .min(60)
+    .max(86400 * 30)
+    .default(3600),
 });
 
 export type PublishedAttributionSafetyVerdict = z.infer<

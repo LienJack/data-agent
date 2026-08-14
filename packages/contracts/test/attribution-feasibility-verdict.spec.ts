@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
-  attributionFeasibilityVerdictSchema,
   type AttributionFeasibilityVerdict,
   type AttributionFeasibilityVerdictValue,
+  attributionFeasibilityVerdictSchema,
   attributionFeasibilityVerdictValueSchema,
-  oracleCheckResultSchema,
-  type OracleCheckResult,
-  mutationCheckResultSchema,
-  type MutationCheckResult,
-  holdoutCheckResultSchema,
-  type HoldoutCheckResult,
   computeVerdictHash,
   determineAttributionFeasibilityVerdict,
+  type HoldoutCheckResult,
+  holdoutCheckResultSchema,
+  type MutationCheckResult,
+  mutationCheckResultSchema,
+  type OracleCheckResult,
+  oracleCheckResultSchema,
 } from "../src/index.js";
 
 // ─── Test constants ────────────────────────────────────────────────────────────
@@ -86,8 +86,18 @@ function makeHoldoutCheckResult(overrides?: Partial<HoldoutCheckResult>): Holdou
     holdout_pass_count: 2,
     holdout_fail_count: 0,
     details: [
-      { dataset_id: "retail-revenue-v1-dataset", split: "DEMO", status: "PASS", message: "Demo data OK" },
-      { dataset_id: "retail-revenue-v1-dataset", split: "HOLDOUT", status: "PASS", message: "Holdout data OK" },
+      {
+        dataset_id: "retail-revenue-v1-dataset",
+        split: "DEMO",
+        status: "PASS",
+        message: "Demo data OK",
+      },
+      {
+        dataset_id: "retail-revenue-v1-dataset",
+        split: "HOLDOUT",
+        status: "PASS",
+        message: "Holdout data OK",
+      },
     ],
     ...overrides,
   };
@@ -393,8 +403,18 @@ describe("U7 Attribution Feasibility Verdict", () => {
       const mutation = makeMutationCheckResult();
       const holdout = makeHoldoutCheckResult();
 
-      const hash1 = computeVerdictHash({ verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION", oracle_check: oracle, mutation_check: mutation, holdout_check: holdout });
-      const hash2 = computeVerdictHash({ verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION", oracle_check: oracle, mutation_check: mutation, holdout_check: holdout });
+      const hash1 = computeVerdictHash({
+        verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION",
+        oracle_check: oracle,
+        mutation_check: mutation,
+        holdout_check: holdout,
+      });
+      const hash2 = computeVerdictHash({
+        verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION",
+        oracle_check: oracle,
+        mutation_check: mutation,
+        holdout_check: holdout,
+      });
 
       expect(hash1).toBe(hash2);
     });
@@ -404,8 +424,18 @@ describe("U7 Attribution Feasibility Verdict", () => {
       const mutation = makeMutationCheckResult();
       const holdout = makeHoldoutCheckResult();
 
-      const hash1 = computeVerdictHash({ verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION", oracle_check: oracle, mutation_check: mutation, holdout_check: holdout });
-      const hash2 = computeVerdictHash({ verdict: "STOP", oracle_check: oracle, mutation_check: mutation, holdout_check: holdout });
+      const hash1 = computeVerdictHash({
+        verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION",
+        oracle_check: oracle,
+        mutation_check: mutation,
+        holdout_check: holdout,
+      });
+      const hash2 = computeVerdictHash({
+        verdict: "STOP",
+        oracle_check: oracle,
+        mutation_check: mutation,
+        holdout_check: holdout,
+      });
 
       expect(hash1).not.toBe(hash2);
     });

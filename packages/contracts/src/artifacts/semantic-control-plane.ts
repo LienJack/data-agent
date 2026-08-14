@@ -1,10 +1,10 @@
 import { z } from "zod";
 import {
   contentHashSchema,
+  environmentSchema,
   immutableIdSchema,
   sha256ContentHash,
   timestampSchema,
-  environmentSchema,
 } from "../common/index.js";
 import { SemanticGovernanceError } from "./semantic-governance.js";
 
@@ -248,12 +248,7 @@ export type DependencyPointer = z.infer<typeof dependencyPointerSchema>;
 
 // ─── Source Revision ──────────────────────────────────────────────────────────
 
-export const changeClassSchema = z.enum([
-  "MINOR",
-  "MAJOR",
-  "RUNTIME_AUTHORIZATION",
-  "SECURITY",
-]);
+export const changeClassSchema = z.enum(["MINOR", "MAJOR", "RUNTIME_AUTHORIZATION", "SECURITY"]);
 
 export const sourceRevisionSchema = z.strictObject({
   app_id: immutableIdSchema,

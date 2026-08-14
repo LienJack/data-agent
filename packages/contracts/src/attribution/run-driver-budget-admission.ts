@@ -1,19 +1,9 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
-export const RUN_DRIVER_BUDGET_ADMISSION_VERSION =
-  "run-driver-budget-admission@1" as const;
+export const RUN_DRIVER_BUDGET_ADMISSION_VERSION = "run-driver-budget-admission@1" as const;
 
-export const budgetAdmissionStatusSchema = z.enum([
-  "RESERVED",
-  "CONSUMED",
-  "RELEASED",
-  "EXPIRED",
-]);
+export const budgetAdmissionStatusSchema = z.enum(["RESERVED", "CONSUMED", "RELEASED", "EXPIRED"]);
 export type BudgetAdmissionStatus = z.infer<typeof budgetAdmissionStatusSchema>;
 
 export const runDriverBudgetAdmissionSchema = z.strictObject({
@@ -79,11 +69,15 @@ export function checkAndReserveBudget(
     reservation_id: crypto.randomUUID(),
     idempotency_key: reservation.idempotency_key,
     admission_sequence: 1,
-    admission_expiry: new Date(Date.now() + reservation.reservation_ttl_ms).toISOString() as unknown as string,
+    admission_expiry: new Date(
+      Date.now() + reservation.reservation_ttl_ms,
+    ).toISOString() as unknown as string,
     status: "RESERVED",
     remaining_sql_budget: state.remaining_sql_budget - reservation.requested_sql,
-    remaining_obligation_budget: state.remaining_obligation_budget - reservation.requested_obligations,
-    remaining_artifact_input_budget: state.remaining_artifact_input_budget - reservation.requested_artifact_inputs,
+    remaining_obligation_budget:
+      state.remaining_obligation_budget - reservation.requested_obligations,
+    remaining_artifact_input_budget:
+      state.remaining_artifact_input_budget - reservation.requested_artifact_inputs,
     admitted_at: new Date().toISOString() as unknown as string,
   };
   return { ok: true, admission };
@@ -103,8 +97,6 @@ export function transitionBudgetAdmission(
   };
 }
 
-export function isBudgetAdmissionExpired(
-  admission: RunDriverBudgetAdmission,
-): boolean {
+export function isBudgetAdmissionExpired(admission: RunDriverBudgetAdmission): boolean {
   return new Date(admission.admission_expiry) < new Date();
 }

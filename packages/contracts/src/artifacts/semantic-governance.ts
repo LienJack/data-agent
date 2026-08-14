@@ -27,9 +27,7 @@ import {
 export const SEMANTIC_SOURCE_BUNDLE_VERSION = "semantic-source-bundle@1" as const;
 export const U5_EXECUTABLE_SUBSET = "U5_EXECUTABLE_SUBSET" as const;
 export const U13_EXECUTABLE_SUBSET = "U13_EXECUTABLE_SUBSET" as const;
-export type CapabilityProfile =
-  | typeof U5_EXECUTABLE_SUBSET
-  | typeof U13_EXECUTABLE_SUBSET;
+export type CapabilityProfile = typeof U5_EXECUTABLE_SUBSET | typeof U13_EXECUTABLE_SUBSET;
 
 // ─── Grain / Unit / TimeDomain ────────────────────────────────────────────────
 
@@ -450,8 +448,13 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
   if (bundle.metrics.length === 0) {
     throw new SemanticGovernanceError("SemanticSourceBundle 必须包含至少一个 Metric。");
   }
-  if (bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET && bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET) {
-    throw new SemanticGovernanceError("CapabilityProfile 必须为 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET。");
+  if (
+    bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET &&
+    bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET
+  ) {
+    throw new SemanticGovernanceError(
+      "CapabilityProfile 必须为 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET。",
+    );
   }
   if (bundle.metadata.bundle_version !== SEMANTIC_SOURCE_BUNDLE_VERSION) {
     throw new SemanticGovernanceError("BundleVersion 必须为 semantic-source-bundle@1。");
@@ -586,9 +589,12 @@ export function assertM1SubsetRestriction(bundle: SemanticSourceBundle): void {
   if (
     !M1_ALLOWED_CAPABILITY_PROFILES.includes(
       bundle.metadata.capability_profile as typeof U5_EXECUTABLE_SUBSET,
-    ) && bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET
+    ) &&
+    bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET
   ) {
-    throw new SemanticGovernanceError("M1 只允许 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET 能力子集。");
+    throw new SemanticGovernanceError(
+      "M1 只允许 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET 能力子集。",
+    );
   }
   if (bundle.metadata.capability_profile === U5_EXECUTABLE_SUBSET && bundle.contribution_profile) {
     throw new SemanticGovernanceError("M1 不允许 DescriptiveContributionProfile。");

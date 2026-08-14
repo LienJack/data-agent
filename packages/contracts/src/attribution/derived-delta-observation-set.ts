@@ -1,12 +1,7 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
-export const DERIVED_DELTA_OBSERVATION_SET_VERSION =
-  "derived-delta-observation-set@1" as const;
+export const DERIVED_DELTA_OBSERVATION_SET_VERSION = "derived-delta-observation-set@1" as const;
 
 export const deltaObservationKindSchema = z.enum([
   "OUTCOME",
@@ -53,9 +48,7 @@ export const derivedDeltaObservationSetSchema = z.strictObject({
 
 export type DerivedDeltaObservationSet = z.infer<typeof derivedDeltaObservationSetSchema>;
 
-export function validateDeltaObservationSet(
-  set: DerivedDeltaObservationSet,
-): string[] {
+export function validateDeltaObservationSet(set: DerivedDeltaObservationSet): string[] {
   const errors: string[] = [];
   for (const obs of set.observations) {
     const expectedDelta = obs.follow_up_level - obs.baseline_level;
@@ -74,9 +67,7 @@ export function validateDeltaObservationSet(
         `computed_closure_error - independently_observed_residual_delta (${expectedUnexplained})`,
     );
   }
-  const outcomeCount = set.observations.filter(
-    (o) => o.observation_kind === "OUTCOME",
-  ).length;
+  const outcomeCount = set.observations.filter((o) => o.observation_kind === "OUTCOME").length;
   if (outcomeCount === 0) {
     errors.push("Delta observation set must contain at least one OUTCOME observation");
   }

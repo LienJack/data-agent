@@ -1,21 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
-  contributionTruthContractSchema,
-  type ContributionTruthContract,
-  truthContractReadyReceiptSchema,
-  type TruthContractReadyReceipt,
-  contributionArithmeticPartitionTruthSchema,
   type ContributionArithmeticPartitionTruth,
-  contributionInjectedFaultTruthSchema,
-  type ContributionInjectedFaultTruth,
-  contributionExpertPriorityTruthSchema,
   type ContributionExpertPriorityTruth,
-  truthKindSchema,
-  oracleMutationProtocolSchema,
-  type OracleMutationProtocol,
-  demoHoldoutIdentitySchema,
+  type ContributionInjectedFaultTruth,
+  type ContributionTruthContract,
+  contributionArithmeticPartitionTruthSchema,
+  contributionExpertPriorityTruthSchema,
+  contributionInjectedFaultTruthSchema,
+  contributionTruthContractSchema,
   type DemoHoldoutIdentity,
   deepFreeze,
+  demoHoldoutIdentitySchema,
+  type OracleMutationProtocol,
+  oracleMutationProtocolSchema,
+  type TruthContractReadyReceipt,
+  truthContractReadyReceiptSchema,
+  truthKindSchema,
 } from "../src/index.js";
 
 // ─── Test constants ────────────────────────────────────────────────────────────
@@ -30,14 +30,14 @@ const testTimestamp = "2026-08-04T00:00:00.000Z";
 
 /**
  * retail-revenue-contribution-v1 truth contract fixture.
- * 
+ *
  * This truth contract defines the ground truth for a retail revenue decomposition
  * scenario where total revenue decline is driven by three factors:
  * 1. Promotion discount impact (negative - revenue loss from promotions)
  * 2. Late refund adjustments (negative - revenue loss from refunds)
  * 3. Base revenue change (the residual / independently observed trend)
- * 
- * The truth is an ARITHMETIC_PARTITION: total_revenue_change = 
+ *
+ * The truth is an ARITHMETIC_PARTITION: total_revenue_change =
  *   sum(promotion_discount_impact, late_refund_impact, base_revenue_change)
  */
 function makeRetailRevenueTruthContract(): ContributionTruthContract {
@@ -45,7 +45,8 @@ function makeRetailRevenueTruthContract(): ContributionTruthContract {
     contract_version: "attribution-truth-contract@1",
     truth_id: "retail-revenue-v1",
     truth_name: "Retail Revenue Contribution v1",
-    description: "Ground truth for retail revenue decomposition: promotion discount impact, late refund adjustments, and base revenue change",
+    description:
+      "Ground truth for retail revenue decomposition: promotion discount impact, late refund adjustments, and base revenue change",
     fixture_identity: {
       fixture_id: "retail-fixture-v1",
       fixture_version: "1.0.0",
@@ -58,7 +59,11 @@ function makeRetailRevenueTruthContract(): ContributionTruthContract {
         source_identity: "promotion",
         expected_verdict: "CONFIRMED",
         evidence_requirements: [
-          { required_link_type: "endpoint_binding", required_link_ref_pattern: "revenue/promotion", min_confidence: 0.7 },
+          {
+            required_link_type: "endpoint_binding",
+            required_link_ref_pattern: "revenue/promotion",
+            min_confidence: 0.7,
+          },
         ],
         truth_metadata: {
           arith_partition: "promotion_discount_impact",
@@ -71,7 +76,11 @@ function makeRetailRevenueTruthContract(): ContributionTruthContract {
         source_identity: "refund",
         expected_verdict: "CONFIRMED",
         evidence_requirements: [
-          { required_link_type: "endpoint_binding", required_link_ref_pattern: "revenue/refunds", min_confidence: 0.7 },
+          {
+            required_link_type: "endpoint_binding",
+            required_link_ref_pattern: "revenue/refunds",
+            min_confidence: 0.7,
+          },
         ],
         truth_metadata: {
           arith_partition: "late_refund_impact",
@@ -84,7 +93,11 @@ function makeRetailRevenueTruthContract(): ContributionTruthContract {
         source_identity: "base",
         expected_verdict: "CONFIRMED",
         evidence_requirements: [
-          { required_link_type: "endpoint_binding", required_link_ref_pattern: "revenue/base", min_confidence: 0.7 },
+          {
+            required_link_type: "endpoint_binding",
+            required_link_ref_pattern: "revenue/base",
+            min_confidence: 0.7,
+          },
         ],
         truth_metadata: {
           arith_partition: "base_revenue_change",
@@ -103,10 +116,12 @@ function makeArithmeticPartitionTruth(): ContributionArithmeticPartitionTruth {
     truth_id: testUUID,
     kind: "ARITHMETIC_PARTITION",
     label: "Retail Revenue Decomposition",
-    description: "Total revenue change = promotion discount impact + late refund impact + base revenue change",
+    description:
+      "Total revenue change = promotion discount impact + late refund impact + base revenue change",
     outcome_metric: "total_revenue_change",
     driver_metrics: ["promotion_discount_impact", "late_refund_impact", "base_revenue_change"],
-    partition_expression: "total_revenue_change = promotion_discount_impact + late_refund_impact + base_revenue_change",
+    partition_expression:
+      "total_revenue_change = promotion_discount_impact + late_refund_impact + base_revenue_change",
     expected_closure: "SUM_EQUALS",
     tolerance: 0.001,
     metadata: {
@@ -216,7 +231,10 @@ describe("U7 Truth Contract — retail-revenue-contribution-v1", () => {
     it("rejects truth contract with invalid fixture_origin", () => {
       const invalid = {
         ...makeRetailRevenueTruthContract(),
-        fixture_identity: { ...makeRetailRevenueTruthContract().fixture_identity, fixture_origin: "PRODUCTION" },
+        fixture_identity: {
+          ...makeRetailRevenueTruthContract().fixture_identity,
+          fixture_origin: "PRODUCTION",
+        },
       } as unknown as ContributionTruthContract;
       const parsed = contributionTruthContractSchema.safeParse(invalid);
       expect(parsed.success).toBe(false);
@@ -315,7 +333,11 @@ describe("U7 Truth Contract — retail-revenue-contribution-v1", () => {
     });
 
     it("rejects holdout identity with negative row_count", () => {
-      const invalid = { ...makeDemoHoldoutIdentity(), split: "HOLDOUT", row_count: -1 } as unknown as DemoHoldoutIdentity;
+      const invalid = {
+        ...makeDemoHoldoutIdentity(),
+        split: "HOLDOUT",
+        row_count: -1,
+      } as unknown as DemoHoldoutIdentity;
       const parsed = demoHoldoutIdentitySchema.safeParse(invalid);
       expect(parsed.success).toBe(false);
     });
@@ -332,7 +354,10 @@ describe("U7 Truth Contract — retail-revenue-contribution-v1", () => {
 
     it("produces different hash for different contracts", () => {
       const contract = makeRetailRevenueTruthContract();
-      const modified = { ...contract, truth_name: "Modified" } as unknown as ContributionTruthContract;
+      const modified = {
+        ...contract,
+        truth_name: "Modified",
+      } as unknown as ContributionTruthContract;
       const hash1 = computeTruthContractDigest(contract);
       const hash2 = computeTruthContractDigest(modified);
       expect(hash1).not.toBe(hash2);
@@ -341,7 +366,12 @@ describe("U7 Truth Contract — retail-revenue-contribution-v1", () => {
 
   describe("TruthKind Enum", () => {
     it("accepts all valid truth kinds", () => {
-      const validKinds = ["ARITHMETIC_PARTITION", "INJECTED_FAULT", "EXPERT_PRIORITY", "SCM_CAUSAL"];
+      const validKinds = [
+        "ARITHMETIC_PARTITION",
+        "INJECTED_FAULT",
+        "EXPERT_PRIORITY",
+        "SCM_CAUSAL",
+      ];
       for (const kind of validKinds) {
         const parsed = truthKindSchema.safeParse(kind);
         expect(parsed.success).toBe(true);
@@ -363,7 +393,7 @@ function computeTruthContractDigest(contract: ContributionTruthContract): string
   let hash = 0;
   for (let i = 0; i < json.length; i++) {
     const char = json.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
+    hash = (hash << 5) - hash + char;
     hash |= 0; // Convert to 32bit integer
   }
   return `sha256:${Math.abs(hash).toString(16).padStart(64, "0")}` as const;

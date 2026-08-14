@@ -46,7 +46,7 @@ export const ORACLE_TYPE_BY_SUITE = {
   dab: "RESULT_EQUIVALENCE",
   rcaeval: "ROOT_CAUSE_RANKING",
   "controlled-attribution": "ATTRIBUTION_MATCH",
-  "governance": "GOVERNANCE_SERVICE_QUALITY",
+  governance: "GOVERNANCE_SERVICE_QUALITY",
 } as const;
 
 const evalCaseObjectSchema = z.strictObject({
@@ -149,7 +149,7 @@ export const LANE_BY_SUITE = {
   dab: "end-to-end-product",
   rcaeval: "grounding",
   "controlled-attribution": "contribution",
-  "governance": "authorization",
+  governance: "authorization",
 } as const satisfies Record<BenchmarkSuite, EvalLane>;
 
 export type EvalLane = z.infer<typeof evalLaneSchema>;

@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 export const FIXTURE_CONCLUSION_POLICY_MANIFEST_VERSION =
   "fixture-conclusion-policy-manifest@1" as const;

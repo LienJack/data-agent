@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 // ─── Truth Kind ────────────────────────────────────────────────────────────────
 
@@ -44,7 +40,9 @@ export const contributionArithmeticPartitionTruthSchema = z.strictObject({
   tolerance: z.number().min(0).max(1).default(0.001),
   metadata: z.record(z.string(), z.unknown()).default({}),
 });
-export type ContributionArithmeticPartitionTruth = z.infer<typeof contributionArithmeticPartitionTruthSchema>;
+export type ContributionArithmeticPartitionTruth = z.infer<
+  typeof contributionArithmeticPartitionTruthSchema
+>;
 
 // ─── InjectedFaultTruth ────────────────────────────────────────────────────────
 
@@ -142,16 +140,18 @@ export const oracleMutationProtocolSchema = z.strictObject({
   protocol_id: immutableIdSchema,
   protocol_version: z.literal("oracle-mutation-protocol@1"),
   truth_contract_id: z.string().min(1).max(128),
-  mutations: z.array(
-    z.object({
-      mutation_id: immutableIdSchema,
-      mutation_type: z.enum(["ROW_DELETION", "ROW_INSERTION", "VALUE_CHANGE", "AGGREGATE_SHIFT"]),
-      target_table: z.string().min(1).max(256),
-      target_column: z.string().min(1).max(256).optional(),
-      mutation_parameters: z.record(z.string(), z.unknown()).default({}),
-      expected_oracle_response: z.enum(["PASS", "HOLD", "REFUSE"]),
-    }),
-  ).min(1),
+  mutations: z
+    .array(
+      z.object({
+        mutation_id: immutableIdSchema,
+        mutation_type: z.enum(["ROW_DELETION", "ROW_INSERTION", "VALUE_CHANGE", "AGGREGATE_SHIFT"]),
+        target_table: z.string().min(1).max(256),
+        target_column: z.string().min(1).max(256).optional(),
+        mutation_parameters: z.record(z.string(), z.unknown()).default({}),
+        expected_oracle_response: z.enum(["PASS", "HOLD", "REFUSE"]),
+      }),
+    )
+    .min(1),
   budget: z.object({
     max_mutations_per_run: z.number().int().positive().default(10),
     max_rows_affected: z.number().int().positive().default(100),

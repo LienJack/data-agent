@@ -1,12 +1,7 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
-export const CONTRIBUTION_CLOSURE_RECEIPT_VERSION =
-  "contribution-closure-receipt@1" as const;
+export const CONTRIBUTION_CLOSURE_RECEIPT_VERSION = "contribution-closure-receipt@1" as const;
 
 export const closureVerdictSchema = z.enum(["PASS", "HOLD", "REFUSE"]);
 export type ClosureVerdict = z.infer<typeof closureVerdictSchema>;
@@ -39,9 +34,7 @@ export interface ClosureInput {
   readonly closure_verifier_version: string;
 }
 
-export function deriveContributionClosureReceipt(
-  input: ClosureInput,
-): ContributionClosureReceipt {
+export function deriveContributionClosureReceipt(input: ClosureInput): ContributionClosureReceipt {
   const expectedUnexplained =
     input.computed_closure_error - input.independently_observed_residual_delta;
   const isConsistent = Math.abs(input.unexplained_remainder - expectedUnexplained) < 0.0001;

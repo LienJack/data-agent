@@ -1,10 +1,6 @@
-import { z } from "zod";
 import crypto from "node:crypto";
-import {
-  contentHashSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { z } from "zod";
+import { contentHashSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 export const FIXTURE_CONCLUSION_DECISION_SEAL_VERSION =
   "fixture-conclusion-decision-seal@1" as const;
@@ -55,9 +51,7 @@ export function computeSealHash(input: SealInput): `sha256:${string}` {
   return `sha256:${hash}` as `sha256:${string}`;
 }
 
-export function sealFixtureConclusionDecision(
-  input: SealInput,
-): FixtureConclusionDecisionSeal {
+export function sealFixtureConclusionDecision(input: SealInput): FixtureConclusionDecisionSeal {
   const seal_hash = computeSealHash(input);
   return {
     protocol_version: "fixture-conclusion-decision-seal@1",

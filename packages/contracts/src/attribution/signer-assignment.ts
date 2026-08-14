@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  environmentSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { environmentSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 export const ATTRIBUTION_SIGNER_ASSIGNMENT_VERSION = "attribution-signer-assignment@1" as const;
 

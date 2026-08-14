@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  environmentSchema,
-  immutableIdSchema,
-  timestampSchema,
-} from "../common/index.js";
+import { environmentSchema, immutableIdSchema, timestampSchema } from "../common/index.js";
 
 export const ATTRIBUTION_VERIFICATION_KEY_VERSION = "attribution-verification-key@1" as const;
 
