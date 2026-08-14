@@ -112,7 +112,10 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 - [x] 处理成功、失败有 usage、取消未开始、outcome unknown、actual 超限和重复 terminal
   callback 的所有状态转换。
 - [x] 实现 `SYSTEM_FUNDED` 超级管理员账单和 workspace/run/conversation 成本统计。
-- [x] 先以 `SHADOW` 模式运行对账，验证无遗漏/重复后通过部署审批切换 `ENFORCED`。
+- [x] 先以 `SHADOW` 模式运行对账，验证无遗漏/重复，并实现只有超级管理员可调用的部署
+  模式审批命令与回滚路径。
+- [ ] 全部父任务门禁通过后，由超级管理员显式批准当前部署从 `SHADOW` 切换为
+  `ENFORCED`。
 
 验收门禁：任何真实普通用户 provider 调用前已有足额 hold；每个 terminal invocation 恰好
 对应 `SETTLED/RELEASED/REVIEW_REQUIRED`；crash recovery 不重复扣费；账单快照可独立
