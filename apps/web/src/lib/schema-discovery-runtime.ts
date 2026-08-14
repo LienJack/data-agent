@@ -9,7 +9,6 @@ import {
 } from "@data-agent/platform";
 import pg from "pg";
 import {
-  createPostgresSchemaDiscoveryAuthorityResolver,
   type SchemaDiscoveryAuthorityResolver,
   unavailableSchemaDiscoveryAuthorityResolver,
 } from "./schema-discovery-authority";
@@ -23,9 +22,6 @@ import {
 interface SchemaDiscoveryEnvironment extends NodeJS.ProcessEnv {
   readonly SCHEMA_DISCOVERY_DATABASE_URL?: string;
   readonly DATABASE_URL?: string;
-  readonly SCHEMA_DISCOVERY_DEPLOYMENT_ID?: string;
-  readonly SCHEMA_DISCOVERY_TENANT_ID?: string;
-  readonly SCHEMA_DISCOVERY_PRINCIPAL_ID?: string;
 }
 
 export interface SchemaDiscoveryRuntime {
@@ -48,7 +44,10 @@ export function createSchemaDiscoveryRuntime(
   const environment = dependencies.environment ?? process.env;
   const connectionString =
     environment.SCHEMA_DISCOVERY_DATABASE_URL ?? environment.DATABASE_URL ?? null;
-  if (!connectionString && (!dependencies.sqlPool || !dependencies.transactionalAuthorizer)) {
+  if (
+    (!connectionString && (!dependencies.sqlPool || !dependencies.transactionalAuthorizer)) ||
+    !dependencies.authorityResolver
+  ) {
     const unavailableStore = createUnavailableStore();
     return Object.freeze({
       authorityResolver:
@@ -68,14 +67,7 @@ export function createSchemaDiscoveryRuntime(
   const postgresAuthority = createPostgresCapabilityAuthority(sqlPool);
   const authorizer = dependencies.transactionalAuthorizer ?? postgresAuthority.authorizer;
   return Object.freeze({
-    authorityResolver:
-      dependencies.authorityResolver ??
-      createPostgresSchemaDiscoveryAuthorityResolver({
-        authority: postgresAuthority,
-        deploymentId: environment.SCHEMA_DISCOVERY_DEPLOYMENT_ID ?? "",
-        tenantId: environment.SCHEMA_DISCOVERY_TENANT_ID ?? "",
-        principalId: environment.SCHEMA_DISCOVERY_PRINCIPAL_ID ?? "",
-      }),
+    authorityResolver: dependencies.authorityResolver,
     service: createSchemaDiscoveryService({
       store: createPostgresSchemaSnapshotStore({ pool: sqlPool, authorizer }),
       datasourceResolver:

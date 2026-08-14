@@ -13,10 +13,7 @@ import {
   type TransactionalCapabilityAuthorizer,
 } from "@data-agent/platform";
 import pg from "pg";
-import {
-  createPostgresSemanticAuthorityResolver,
-  type SemanticAuthorityResolver,
-} from "./semantic-authority";
+import type { SemanticAuthorityResolver } from "./semantic-authority";
 import {
   createSemanticExplorerService,
   type SemanticExplorerService,
@@ -27,10 +24,6 @@ interface SemanticExplorerEnvironment extends NodeJS.ProcessEnv {
   readonly SEMANTIC_EXPLORER_DATABASE_URL?: string;
   readonly SEMANTIC_RELATIONSHIP_INDEX_ENABLED?: string;
   readonly DATABASE_URL?: string;
-  readonly SEMANTIC_DEPLOYMENT_ID?: string;
-  readonly SEMANTIC_TENANT_ID?: string;
-  readonly SEMANTIC_PRINCIPAL_ID?: string;
-  readonly SEMANTIC_ALLOWED_DOMAINS?: string;
 }
 
 export type SemanticExplorerRuntime =
@@ -66,22 +59,6 @@ function featureEnabled(value: string | undefined): boolean {
   throw new SemanticExplorerRuntimeError("SEMANTIC_EXPLORER_CONFIG_INVALID");
 }
 
-function configuredAllowedDomains(environment: SemanticExplorerEnvironment): readonly string[] {
-  return (environment.SEMANTIC_ALLOWED_DOMAINS ?? "")
-    .split(",")
-    .map((domain) => domain.trim())
-    .filter((domain) => domain.length > 0);
-}
-
-function hasFixedAuthority(environment: SemanticExplorerEnvironment): boolean {
-  return Boolean(
-    environment.SEMANTIC_DEPLOYMENT_ID &&
-      environment.SEMANTIC_TENANT_ID &&
-      environment.SEMANTIC_PRINCIPAL_ID &&
-      configuredAllowedDomains(environment).length > 0,
-  );
-}
-
 export function createSemanticExplorerRuntime(
   dependencies: SemanticExplorerRuntimeDependencies = {},
 ): SemanticExplorerRuntime {
@@ -89,7 +66,7 @@ export function createSemanticExplorerRuntime(
   if (!featureEnabled(environment.SEMANTIC_EXPLORER_ENABLED)) {
     return Object.freeze({ enabled: false as const });
   }
-  if (!dependencies.authorityResolver && !hasFixedAuthority(environment)) {
+  if (!dependencies.authorityResolver) {
     throw new SemanticExplorerRuntimeError("SEMANTIC_EXPLORER_CONFIG_INVALID");
   }
 
@@ -114,19 +91,7 @@ export function createSemanticExplorerRuntime(
             }),
         ));
   const postgresAuthority = sqlPool ? createPostgresCapabilityAuthority(sqlPool) : null;
-  let authorityResolver = dependencies.authorityResolver;
-  if (!authorityResolver) {
-    if (!postgresAuthority) {
-      throw new SemanticExplorerRuntimeError("SEMANTIC_EXPLORER_CONFIG_INVALID");
-    }
-    authorityResolver = createPostgresSemanticAuthorityResolver({
-      authority: postgresAuthority,
-      deploymentId: environment.SEMANTIC_DEPLOYMENT_ID ?? "",
-      tenantId: environment.SEMANTIC_TENANT_ID ?? "",
-      principalId: environment.SEMANTIC_PRINCIPAL_ID ?? "",
-      allowedDomains: configuredAllowedDomains(environment),
-    });
-  }
+  const authorityResolver = dependencies.authorityResolver;
 
   let reader = dependencies.reader;
   if (!reader) {

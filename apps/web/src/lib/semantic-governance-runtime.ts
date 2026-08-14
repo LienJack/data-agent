@@ -9,10 +9,10 @@ import pg from "pg";
 import { PostgresSemanticGovernanceService } from "./postgres-semantic-governance-service";
 import {
   createExplicitMockSemanticAuthorityResolver,
-  createPostgresSemanticAuthorityResolver,
   type SemanticAuthorityResolver,
 } from "./semantic-authority";
 import { parseSemanticGovernanceBackend } from "./semantic-governance-config";
+import { publicSemanticGovernanceError } from "./semantic-governance-error";
 import {
   MockSemanticGovernanceService,
   type SemanticGovernanceService,
@@ -26,9 +26,6 @@ export interface SemanticGovernanceRuntime {
 
 interface RuntimeEnvironment extends NodeJS.ProcessEnv {
   readonly SEMANTIC_GOVERNANCE_BACKEND?: string;
-  readonly SEMANTIC_DEPLOYMENT_ID?: string;
-  readonly SEMANTIC_TENANT_ID?: string;
-  readonly SEMANTIC_PRINCIPAL_ID?: string;
   readonly SEMANTIC_ALLOWED_DOMAINS?: string;
 }
 
@@ -47,21 +44,11 @@ function configuredAllowedDomains(environment: RuntimeEnvironment): readonly str
     .filter((domain) => domain.length > 0);
 }
 
-function hasFixedPostgresAuthorityContext(environment: RuntimeEnvironment): boolean {
-  return Boolean(
-    environment.SEMANTIC_DEPLOYMENT_ID &&
-      environment.SEMANTIC_TENANT_ID &&
-      environment.SEMANTIC_PRINCIPAL_ID &&
-      configuredAllowedDomains(environment).length > 0,
-  );
-}
-
 export function createSemanticGovernanceRuntime(
   dependencies: SemanticGovernanceRuntimeDependencies = {},
 ): SemanticGovernanceRuntime {
   const environment = dependencies.environment ?? process.env;
-  const hasAuthorityResolver =
-    dependencies.authorityResolver !== undefined || hasFixedPostgresAuthorityContext(environment);
+  const hasAuthorityResolver = dependencies.authorityResolver !== undefined;
   const backend = parseSemanticGovernanceBackend(environment, { hasAuthorityResolver });
 
   if (backend.backend === "mock") {
@@ -81,15 +68,10 @@ export function createSemanticGovernanceRuntime(
     dependencies.sqlPool ??
     adaptPgPool(dependencies.pool ?? new pg.Pool({ connectionString: backend.connectionString }));
   const postgresAuthority = createPostgresCapabilityAuthority(sqlPool);
-  const authorityResolver =
-    dependencies.authorityResolver ??
-    createPostgresSemanticAuthorityResolver({
-      authority: postgresAuthority,
-      deploymentId: environment.SEMANTIC_DEPLOYMENT_ID ?? "",
-      tenantId: environment.SEMANTIC_TENANT_ID ?? "",
-      principalId: environment.SEMANTIC_PRINCIPAL_ID ?? "",
-      allowedDomains: configuredAllowedDomains(environment),
-    });
+  const authorityResolver = dependencies.authorityResolver;
+  if (!authorityResolver) {
+    throw publicSemanticGovernanceError("SEMANTIC_AUTHORITY_NOT_CONFIGURED");
+  }
 
   return Object.freeze({
     backend: "postgres" as const,
