@@ -102,7 +102,10 @@ create table app_data_agent.identity_operations (
   completed_at timestamptz,
   primary key (app_id, environment, actor_principal_id, idempotency_key),
   unique (app_id, environment, operation_id),
-  check ((status = 'PENDING' and completed_at is null) or (status <> 'PENDING' and completed_at is not null))
+  check (
+    (status in ('PENDING', 'RETRY_REQUIRED') and completed_at is null)
+    or (status in ('SUCCEEDED', 'FAILED') and completed_at is not null)
+  )
 );
 
 create table app_data_agent.identity_operation_receipts (

@@ -1,4 +1,4 @@
--- workspace_identity_migration_checksum: sha256:5f451046c00eb2963850e5985eaa3f3d991cc7addeba21bdce6c2f33283bd2f1
+-- workspace_identity_migration_checksum: sha256:cf08be336326e3f00cc2bd1806cf3081cd05908ec5ec05ddb32e3e328f51fc02
 -- ============================================================
 -- 10627: Workspace identity, RBAC and closed-account bootstrap
 -- ============================================================
@@ -243,7 +243,10 @@ create table app_data_agent.identity_operations (
   completed_at timestamptz,
   primary key (app_id, environment, actor_principal_id, idempotency_key),
   unique (app_id, environment, operation_id),
-  check ((status = 'PENDING' and completed_at is null) or (status <> 'PENDING' and completed_at is not null))
+  check (
+    (status in ('PENDING', 'RETRY_REQUIRED') and completed_at is null)
+    or (status in ('SUCCEEDED', 'FAILED') and completed_at is not null)
+  )
 );
 
 create table app_data_agent.identity_operation_receipts (
@@ -1115,14 +1118,20 @@ begin
     'result_version', '1',
     'reason_code', reason_code,
     'created_at', now_at,
-    'completed_at', now_at
+    'completed_at', case
+      when operation_status = 'SUCCEEDED' then pg_catalog.to_jsonb(now_at)
+      else 'null'::jsonb
+    end
   );
   update app_data_agent.identity_operations as identity_operation
   set target_principal_id = apply_identity_command.target_principal_id,
       workspace_id = apply_identity_command.workspace_id,
       status = apply_identity_command.operation_status,
       result_payload = apply_identity_command.result_payload,
-      completed_at = now_at
+      completed_at = case
+        when apply_identity_command.operation_status = 'SUCCEEDED' then now_at
+        else null
+      end
   where identity_operation.app_id = resolved_app_id
     and identity_operation.environment = resolved_environment
     and identity_operation.operation_id = apply_identity_command.operation_id;
@@ -1194,9 +1203,9 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED';
   end if;
-  final_status := case when succeeded then 'SUCCEEDED' else 'FAILED' end;
-  if operation.status in ('SUCCEEDED', 'FAILED') then
-    if operation.status <> final_status then
+  final_status := case when succeeded then 'SUCCEEDED' else 'RETRY_REQUIRED' end;
+  if operation.status = 'SUCCEEDED' then
+    if not succeeded then
       raise exception using errcode = '23505', message = 'IDENTITY_OPERATION_CONFLICT';
     end if;
     return operation.result_payload;
@@ -1208,13 +1217,13 @@ begin
   final_result := operation.result_payload || pg_catalog.jsonb_build_object(
     'status', final_status,
     'reason_code', requested_reason_code,
-    'completed_at', now_at
+    'completed_at', case when succeeded then pg_catalog.to_jsonb(now_at) else 'null'::jsonb end
   );
   update app_data_agent.identity_operations
   set status = final_status,
       result_payload = final_result,
       result_version = result_version + 1,
-      completed_at = now_at
+      completed_at = case when succeeded then now_at else null end
   where app_id = resolved_app_id and environment = resolved_environment
     and operation_id = requested_operation_id;
   insert into app_data_agent.identity_operation_receipts (
@@ -1552,7 +1561,7 @@ select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010627_app_data_agent_workspace_identity',
-  'sha256:5f451046c00eb2963850e5985eaa3f3d991cc7addeba21bdce6c2f33283bd2f1'
+  'sha256:cf08be336326e3f00cc2bd1806cf3081cd05908ec5ec05ddb32e3e328f51fc02'
 );
 
 commit;

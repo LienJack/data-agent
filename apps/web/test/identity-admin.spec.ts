@@ -57,8 +57,9 @@ function targetUser() {
 }
 
 function commandKind(input: unknown): IdentityOperationReceipt["command_kind"] {
-  return (input as { readonly command: { readonly kind: IdentityOperationReceipt["command_kind"] } })
-    .command.kind;
+  return (
+    input as { readonly command: { readonly kind: IdentityOperationReceipt["command_kind"] } }
+  ).command.kind;
 }
 
 function sideEffectSucceeded(input: unknown): boolean {
@@ -119,9 +120,11 @@ describe("identity admin service", () => {
     const base = dependencies(calls);
     const service = createIdentityAdminService({
       ...base,
-      directory: { async listUsers() {
-        return { ok: true, value: [] };
-      } },
+      directory: {
+        async listUsers() {
+          return { ok: true, value: [] };
+        },
+      },
     });
     const result = await service.createUser(ids.actor, {
       schema_version: "admin-user-create@1.0.0",
@@ -157,9 +160,11 @@ describe("identity admin service", () => {
     const base = dependencies(calls);
     const service = createIdentityAdminService({
       ...base,
-      directory: { async listUsers() {
-        return { ok: true, value: [] };
-      } },
+      directory: {
+        async listUsers() {
+          return { ok: true, value: [] };
+        },
+      },
       authority: {
         ...base.authority,
         async applyIdentityCommand() {
@@ -208,11 +213,53 @@ describe("identity admin service", () => {
         reason: "security review",
       }),
     ).resolves.toMatchObject({ ok: true, value: { one_time_password: null } });
+    expect(calls).toEqual(["db:DISABLE_USER", "auth:ban", "auth:revoke-sessions", "complete:true"]);
+  });
+
+  it("keeps a failed auth side effect retryable without returning a password", async () => {
+    const calls: string[] = [];
+    const base = dependencies(calls);
+    const service = createIdentityAdminService({
+      ...base,
+      authority: {
+        ...base.authority,
+        async applyIdentityCommand(input) {
+          calls.push(`db:${commandKind(input)}`);
+          return { ok: true, value: receipt("DISABLE_USER", "RETRY_REQUIRED") };
+        },
+        async completeIdentitySideEffect(input) {
+          calls.push(`complete:${sideEffectSucceeded(input)}`);
+          return { ok: true, value: receipt("DISABLE_USER", "RETRY_REQUIRED") };
+        },
+      },
+      auth: {
+        ...base.auth,
+        async revokeUserSessions() {
+          calls.push("auth:revoke-sessions");
+          throw new Error("auth service unavailable");
+        },
+      },
+    });
+
+    await expect(
+      service.actOnUser(ids.actor, {
+        schema_version: "admin-user-action@1.0.0",
+        operation_id: ids.operation,
+        idempotency_key: "disable-user-retry",
+        principal_id: ids.principal,
+        expected_version: 1,
+        action: "DISABLE",
+        reason: "security review",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { receipt: { status: "RETRY_REQUIRED" }, one_time_password: null },
+    });
     expect(calls).toEqual([
       "db:DISABLE_USER",
       "auth:ban",
       "auth:revoke-sessions",
-      "complete:true",
+      "complete:false",
     ]);
   });
 

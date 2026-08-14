@@ -116,6 +116,59 @@ $assert_viewer_denied$;
 
 select test_support.assert_true(
   (
+    select receipt ->> 'status' = 'RETRY_REQUIRED'
+      and receipt ->> 'completed_at' is null
+    from app_data_agent.apply_identity_command(
+      '00000000-0000-4000-8000-00000000de01',
+      '00000000-0000-4000-8000-00000000b411',
+      null,
+      pg_catalog.jsonb_build_object(
+        'schema_version', 'identity-command@1.0.0',
+        'operation_id', '00000000-0000-4000-8000-00000000d799',
+        'idempotency_key', 'phase-seven-side-effect-retry',
+        'kind', 'DISABLE_USER',
+        'principal_id', '00000000-0000-4000-8000-000000001002',
+        'reason', 'phase seven retry proof'
+      )
+    ) as receipt
+  ),
+  'disable must enter retry-required before the auth side effect'
+);
+
+select test_support.assert_true(
+  (
+    select receipt ->> 'status' = 'RETRY_REQUIRED'
+      and receipt ->> 'reason_code' = 'IDENTITY_AUTH_SIDE_EFFECT_FAILED'
+      and receipt ->> 'completed_at' is null
+    from app_data_agent.complete_identity_side_effect(
+      '00000000-0000-4000-8000-00000000de01',
+      '00000000-0000-4000-8000-00000000b411',
+      '00000000-0000-4000-8000-00000000d799',
+      false,
+      'IDENTITY_AUTH_SIDE_EFFECT_FAILED'
+    ) as receipt
+  ),
+  'failed auth side effect must remain retryable and incomplete'
+);
+
+select test_support.assert_true(
+  (
+    select receipt ->> 'status' = 'SUCCEEDED'
+      and receipt ->> 'reason_code' = 'IDENTITY_AUTH_SIDE_EFFECT_SUCCEEDED'
+      and receipt ->> 'completed_at' is not null
+    from app_data_agent.complete_identity_side_effect(
+      '00000000-0000-4000-8000-00000000de01',
+      '00000000-0000-4000-8000-00000000b411',
+      '00000000-0000-4000-8000-00000000d799',
+      true,
+      'IDENTITY_AUTH_SIDE_EFFECT_SUCCEEDED'
+    ) as receipt
+  ),
+  'retryable auth side effect must be completable by a later successful attempt'
+);
+
+select test_support.assert_true(
+  (
     select health ->> 'schema_version' = 'operations-health@1.0.0'
       and health ->> 'billing_mode' in ('SHADOW', 'ENFORCED')
       and pg_catalog.jsonb_array_length(health -> 'gates') = 6

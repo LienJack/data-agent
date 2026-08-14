@@ -435,14 +435,20 @@ begin
     'result_version', '1',
     'reason_code', reason_code,
     'created_at', now_at,
-    'completed_at', now_at
+    'completed_at', case
+      when operation_status = 'SUCCEEDED' then pg_catalog.to_jsonb(now_at)
+      else 'null'::jsonb
+    end
   );
   update app_data_agent.identity_operations as identity_operation
   set target_principal_id = apply_identity_command.target_principal_id,
       workspace_id = apply_identity_command.workspace_id,
       status = apply_identity_command.operation_status,
       result_payload = apply_identity_command.result_payload,
-      completed_at = now_at
+      completed_at = case
+        when apply_identity_command.operation_status = 'SUCCEEDED' then now_at
+        else null
+      end
   where identity_operation.app_id = resolved_app_id
     and identity_operation.environment = resolved_environment
     and identity_operation.operation_id = apply_identity_command.operation_id;
@@ -514,9 +520,9 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'WORKSPACE_ACCESS_DENIED';
   end if;
-  final_status := case when succeeded then 'SUCCEEDED' else 'FAILED' end;
-  if operation.status in ('SUCCEEDED', 'FAILED') then
-    if operation.status <> final_status then
+  final_status := case when succeeded then 'SUCCEEDED' else 'RETRY_REQUIRED' end;
+  if operation.status = 'SUCCEEDED' then
+    if not succeeded then
       raise exception using errcode = '23505', message = 'IDENTITY_OPERATION_CONFLICT';
     end if;
     return operation.result_payload;
@@ -528,13 +534,13 @@ begin
   final_result := operation.result_payload || pg_catalog.jsonb_build_object(
     'status', final_status,
     'reason_code', requested_reason_code,
-    'completed_at', now_at
+    'completed_at', case when succeeded then pg_catalog.to_jsonb(now_at) else 'null'::jsonb end
   );
   update app_data_agent.identity_operations
   set status = final_status,
       result_payload = final_result,
       result_version = result_version + 1,
-      completed_at = now_at
+      completed_at = case when succeeded then now_at else null end
   where app_id = resolved_app_id and environment = resolved_environment
     and operation_id = requested_operation_id;
   insert into app_data_agent.identity_operation_receipts (
