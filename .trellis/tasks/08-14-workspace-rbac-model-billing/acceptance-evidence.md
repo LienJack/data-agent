@@ -48,6 +48,10 @@
   未提交的 Semantic Candidate 任务仍在 `semantic-candidate-runtime.ts` 保留固定 tenant/principal
   兼容 fallback。现有 workspace semantic route 会显式注入 request-scoped resolver，不会进入该
   fallback，但在其所属任务收口前，不能宣称当前整个工作区静态扫描零命中。
+- 前端交互复审：用户停用/密码重置、工作空间归档与成员撤销、价格/汇率审批、积分投影重建、
+  计费模式切换及冻结释放全部使用站内审计原因对话框；管理产品路径中的原生
+  `window.prompt / confirm / alert` 已归零，并由 `legacy-workspace-characterization.spec.ts` 固化。
+  对话框复用原生 modal focus/escape 语义，窄屏自适应，并在失败时保留原因供安全重试。
 - 视觉证据：
   `/Users/lienli/.codex/visualizations/2026/08/14/019fff6b-8633-72c1-ac95-e8f739243566/phase7-operations-console.png`。
 
