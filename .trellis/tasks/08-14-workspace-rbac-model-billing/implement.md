@@ -122,14 +122,14 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 
 目标：提供安全、可迁移且不绕过治理的语义交换格式。
 
-- [ ] 在 contracts 定义 `semantic-workspace-export@1.0.0`、数据源逻辑引用、内容哈希和
+- [x] 在 contracts 定义 `semantic-workspace-export@1.0.0`、数据源逻辑引用、内容哈希和
   各导入状态 DTO。
-- [ ] 实现当前 published release 导出，验证不含 workspace 标识、SecretRef locator、
+- [x] 实现当前 published release 导出，验证不含 workspace 标识、SecretRef locator、
   凭证和成员/审核身份。
-- [ ] 实现上传限额、schema/hash 校验、持久化导入任务和显式 datasource mapping。
-- [ ] 实现 `READY -> DRAFT_CREATED` 原子命令，生成 import receipt 和 audit，并接入现有
+- [x] 实现上传限额、schema/hash 校验、持久化导入任务和显式 datasource mapping。
+- [x] 实现 `READY -> DRAFT_CREATED` 原子命令，生成 import receipt 和 audit，并接入现有
   semantic governance。
-- [ ] 增加导入预览、映射、暂停/继续、失败原因和导出入口。
+- [x] 增加导入预览、映射、暂停/继续、失败原因和导出入口。
 
 验收门禁：恶意/超限/未知版本 JSON 失败关闭；映射不能跨 workspace；失败无部分草稿；
 成功导入永远不是 published；导出再导入 round-trip 通过。

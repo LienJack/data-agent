@@ -19,15 +19,15 @@
 
 ## Acceptance Criteria
 
-- [ ] AC1：当前 published release 可 round-trip 导出、严格验证并在目标工作空间创建 DRAFT 候选。
-- [ ] AC2：导出 JSON 不包含 workspace/app ID、principal/reviewer、SecretRef locator、host、username、database、path 或 credential 字段。
-- [ ] AC3：文件超限、未知版本、未知字段、哈希不匹配和疑似 secret 均不创建导入任务或草稿。
-- [ ] AC4：缺少/重复/跨工作空间 datasource mapping 时任务保持暂停或失败，不能 READY。
-- [ ] AC5：成功导入的所有候选均为 DRAFT，继续复用既有审核、发布和回滚流程。
-- [ ] AC6：草稿、receipt 与 audit 原子提交；故障注入证明无部分状态。
-- [ ] AC7：相同内容与规范映射幂等重放，同键异载荷失败关闭且不覆盖已发布历史。
-- [ ] AC8：contracts、平台 repository、真实 PostgreSQL smoke、Route Handler 与前端类型/单测通过。
-- [ ] AC9：一张关键截图证明导入导出界面与项目既有低饱和绿色、紧凑工作台设计语言一致。
+- [x] AC1：当前 published release 可 round-trip 导出、严格验证并在目标工作空间创建 DRAFT 候选。
+- [x] AC2：导出 JSON 不包含 workspace/app ID、principal/reviewer、SecretRef locator、host、username、database、path 或 credential 字段。
+- [x] AC3：文件超限、未知版本、未知字段、哈希不匹配和疑似 secret 均不创建导入任务或草稿。
+- [x] AC4：缺少/重复/跨工作空间 datasource mapping 时任务保持暂停或失败，不能 READY。
+- [x] AC5：成功导入的所有候选均为 DRAFT，继续复用既有审核、发布和回滚流程。
+- [x] AC6：草稿、receipt 与 audit 原子提交；故障注入证明无部分状态。
+- [x] AC7：相同内容与规范映射幂等重放，同键异载荷失败关闭且不覆盖已发布历史。
+- [x] AC8：contracts、平台 repository、真实 PostgreSQL smoke、Route Handler 与前端类型/单测通过。
+- [x] AC9：一张关键截图证明导入导出界面与项目既有低饱和绿色、紧凑工作台设计语言一致。
 
 ## Constraints
 
