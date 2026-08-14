@@ -1,0 +1,4 @@
+{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/workspace-identity-billing.md", "reason": "复核 hold、bill、usage、SYSTEM_FUNDED 和权限"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "复核 RLS、并发、不可变、真实 PostgreSQL 证据"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "复核 UI 状态与边界解析"}

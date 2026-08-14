@@ -103,16 +103,16 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 
 目标：把钱包、价格快照与现有模型 invocation/usage 权威链连接起来。
 
-- [ ] 定义 Billing Port，绑定 AppScope、principal、run/conversation、datasource、model
+- [x] 定义 Billing Port，绑定 AppScope、principal、run/conversation、datasource、model
   profile version、invocation id、价格版本、FX 版本和请求预算。
-- [ ] 在 provider 调用前解析可计费上限并原子创建 bill reservation + credit hold；余额或
+- [x] 在 provider 调用前解析可计费上限并原子创建 bill reservation + credit hold；余额或
   价格链不足时不创建真实 invocation。
-- [ ] 复用 `research_resource_reservations`、`research_invocation_commits` 和 immutable
+- [x] 复用 `research_resource_reservations`、`research_invocation_commits` 和 immutable
   outcome usage，按实际维度结算并释放差额。
-- [ ] 处理成功、失败有 usage、取消未开始、outcome unknown、actual 超限和重复 terminal
+- [x] 处理成功、失败有 usage、取消未开始、outcome unknown、actual 超限和重复 terminal
   callback 的所有状态转换。
-- [ ] 实现 `SYSTEM_FUNDED` 超级管理员账单和 workspace/run/conversation 成本统计。
-- [ ] 先以 `SHADOW` 模式运行对账，验证无遗漏/重复后通过部署审批切换 `ENFORCED`。
+- [x] 实现 `SYSTEM_FUNDED` 超级管理员账单和 workspace/run/conversation 成本统计。
+- [x] 先以 `SHADOW` 模式运行对账，验证无遗漏/重复后通过部署审批切换 `ENFORCED`。
 
 验收门禁：任何真实普通用户 provider 调用前已有足额 hold；每个 terminal invocation 恰好
 对应 `SETTLED/RELEASED/REVIEW_REQUIRED`；crash recovery 不重复扣费；账单快照可独立

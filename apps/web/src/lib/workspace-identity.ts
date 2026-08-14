@@ -10,6 +10,7 @@ import {
   adaptPgPool,
   type BoundaryResult,
   createPostgresCreditLedgerRepository,
+  createPostgresModelBillingRepository,
   createPostgresPricingControlRepository,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
@@ -37,6 +38,7 @@ interface WorkspaceIdentityRuntimeState {
   workspaceDataRepository?: ReturnType<typeof createPostgresWorkspaceDataRepository>;
   pricingControlRepository?: ReturnType<typeof createPostgresPricingControlRepository>;
   creditLedgerRepository?: ReturnType<typeof createPostgresCreditLedgerRepository>;
+  modelBillingRepository?: ReturnType<typeof createPostgresModelBillingRepository>;
 }
 
 interface SessionResolutionDependencies {
@@ -131,6 +133,12 @@ export function getCreditLedgerRepository() {
   const runtime = state();
   runtime.creditLedgerRepository ??= createPostgresCreditLedgerRepository(getWorkspaceSqlPool());
   return runtime.creditLedgerRepository;
+}
+
+export function getModelBillingRepository() {
+  const runtime = state();
+  runtime.modelBillingRepository ??= createPostgresModelBillingRepository(getWorkspaceSqlPool());
+  return runtime.modelBillingRepository;
 }
 
 export async function resolveWorkspaceSession(

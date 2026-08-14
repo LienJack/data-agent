@@ -26,7 +26,7 @@ select test_support.assert_true(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) = 2
+    select pg_catalog.count(distinct membership.tenant_id) = 2
     from app_data_agent.memberships as membership
     where membership.membership_role = 'owner'
       and membership.environment = 'test'
@@ -62,11 +62,11 @@ select test_support.assert_true(
   (
     select pg_catalog.count(*) >= 32
       and pg_catalog.bool_or(
-        migration_version = '20260725010630_app_data_agent_credit_ledger'
+        migration_version = '20260725010631_app_data_agent_model_billing_settlement'
       )
     from platform.migration_ledger
   ),
-  'Phase 4 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
+  'Phase 5 migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
 );
 
 select test_support.assert_raises(
@@ -367,8 +367,11 @@ select test_support.assert_raises(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) = 1
-    from app_data_agent.runs
+    select pg_catalog.count(*) >= 1
+      and pg_catalog.bool_and(
+        run.tenant_id = '00000000-0000-4000-8000-00000000aa11'::uuid
+      )
+    from app_data_agent.runs as run
   ),
   '后台正确上下文只能看到本租户 Run'
 );

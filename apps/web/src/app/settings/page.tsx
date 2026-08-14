@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
+import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { getCurrentWorkspaceSession } from "@/lib/workspace-identity";
 
@@ -44,6 +45,10 @@ export default async function SettingsPage() {
 
         <div className="mt-8 workspace-section">
           <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
+        </div>
+
+        <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
+          <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
         </div>
 
         {isSuperAdmin && (

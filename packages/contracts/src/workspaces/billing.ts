@@ -395,6 +395,186 @@ export const modelBillSchema = z.strictObject({
   settled_at: timestampSchema.nullable(),
 });
 
+export const billingModeSchema = z.enum(["SHADOW", "ENFORCED"]);
+export const modelBillFundingTypeSchema = z.enum(["USER_CREDITS", "SYSTEM_FUNDED"]);
+export const modelBillStateSchema = z.enum(["RESERVED", "SETTLED", "RELEASED", "REVIEW_REQUIRED"]);
+
+export const modelBillingBudgetSchema = z.strictObject({
+  input_tokens: nonNegativeIntegerStringSchema,
+  output_tokens: nonNegativeIntegerStringSchema,
+  cache_read_tokens: nonNegativeIntegerStringSchema,
+  cache_write_tokens: nonNegativeIntegerStringSchema,
+  tool_calls: nonNegativeIntegerStringSchema,
+});
+
+export const modelBillPriceComponentSnapshotSchema = z.strictObject({
+  component_id: immutableIdSchema,
+  kind: priceComponentKindSchema,
+  unit: priceUnitSchema,
+  unit_price: decimalStringSchema,
+  currency: currencyCodeSchema,
+  tier_min_inclusive: nonNegativeIntegerStringSchema.nullable(),
+  tier_max_exclusive: nonNegativeIntegerStringSchema.nullable(),
+});
+
+export const modelBillingAuthorizeInputSchema = z.strictObject({
+  schema_version: z.literal("model-billing-authorize@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  bill_id: immutableIdSchema,
+  invocation_id: immutableIdSchema,
+  reservation_id: immutableIdSchema,
+  workspace_id: immutableIdSchema,
+  run_id: immutableIdSchema,
+  conversation_id: immutableIdSchema.nullable(),
+  datasource_id: immutableIdSchema,
+  model_profile_id: immutableIdSchema,
+  expected_model_config_version: z.number().int().positive(),
+  request_budget: modelBillingBudgetSchema,
+  expected_account_version: z.number().int().nonnegative(),
+});
+
+export const modelBillingFinalizeInputSchema = z
+  .strictObject({
+    schema_version: z.literal("model-billing-finalize@1.0.0"),
+    operation_id: immutableIdSchema,
+    idempotency_key: z.string().min(8).max(128),
+    bill_id: immutableIdSchema,
+    terminal_kind: z.enum([
+      "COMPLETED",
+      "FAILED_WITH_USAGE",
+      "CANCELLED_BEFORE_START",
+      "OUTCOME_UNKNOWN",
+    ]),
+    outcome_usage_record_id: immutableIdSchema.nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const usageRequired =
+      value.terminal_kind === "COMPLETED" || value.terminal_kind === "FAILED_WITH_USAGE";
+    if (usageRequired !== (value.outcome_usage_record_id !== null)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["outcome_usage_record_id"],
+        message: usageRequired ? "该终态必须绑定实际 usage" : "该终态不能伪造 usage 引用",
+      });
+    }
+  });
+
+export const modelBillingReviewInputSchema = z.strictObject({
+  schema_version: z.literal("model-billing-review@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  bill_id: immutableIdSchema,
+  decision: z.enum(["SETTLE_VERIFIED", "RELEASE"]),
+  verified_usage: modelUsageSchema.nullable(),
+  reason: z.string().min(1).max(500),
+});
+
+export const billingModeDecisionInputSchema = z.strictObject({
+  schema_version: z.literal("billing-mode-decision@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  target_mode: billingModeSchema,
+  expected_epoch: z.number().int().positive(),
+  reason: z.string().min(1).max(500),
+});
+
+export const billingRuntimeStateSchema = z.strictObject({
+  schema_version: z.literal("billing-runtime-state@1.0.0"),
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
+  deployment_id: immutableIdSchema,
+  mode: billingModeSchema,
+  epoch: z.number().int().positive(),
+  approved_by: immutableIdSchema.nullable(),
+  approved_at: timestampSchema.nullable(),
+  updated_at: timestampSchema,
+});
+
+export const modelBillingBillSchema = z.strictObject({
+  schema_version: z.literal("model-billing-bill@1.0.0"),
+  bill_id: immutableIdSchema,
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
+  principal_id: immutableIdSchema,
+  workspace_id: immutableIdSchema,
+  invocation_id: immutableIdSchema,
+  reservation_id: immutableIdSchema,
+  run_id: immutableIdSchema,
+  conversation_id: immutableIdSchema.nullable(),
+  datasource_id: immutableIdSchema,
+  model_profile_id: immutableIdSchema,
+  model_config_version: z.number().int().positive(),
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  funding_type: modelBillFundingTypeSchema,
+  billing_mode: billingModeSchema,
+  state: modelBillStateSchema,
+  hold_id: immutableIdSchema.nullable(),
+  price_version_id: immutableIdSchema,
+  fx_version_id: immutableIdSchema.nullable(),
+  official_currency: currencyCodeSchema,
+  fx_rate: decimalStringSchema,
+  request_budget: modelBillingBudgetSchema,
+  reserved_microcredits: nonNegativeIntegerStringSchema,
+  usage: modelUsageSchema.nullable(),
+  official_cost: decimalStringSchema,
+  cny_cost: decimalStringSchema,
+  charged_microcredits: nonNegativeIntegerStringSchema,
+  rounding_delta_microcredits: signedIntegerStringSchema,
+  formula_version: z.literal("model-billing-formula@1.0.0"),
+  review_reason: z.string().min(1).max(500).nullable(),
+  created_at: timestampSchema,
+  settled_at: timestampSchema.nullable(),
+});
+
+export const modelBillingAuthorizationReceiptSchema = z.strictObject({
+  operation_id: immutableIdSchema,
+  bill: modelBillingBillSchema,
+  provider_call_allowed: z.boolean(),
+  hold: creditHoldSchema.nullable(),
+  account: creditAccountSchema.nullable(),
+});
+
+export const modelBillingTerminalReceiptSchema = z.strictObject({
+  operation_id: immutableIdSchema,
+  bill: modelBillingBillSchema,
+  hold: creditHoldSchema.nullable(),
+  account: creditAccountSchema.nullable(),
+});
+
+export const modelBillingCostSummarySchema = z.strictObject({
+  schema_version: z.literal("model-billing-cost-summary@1.0.0"),
+  workspace_id: immutableIdSchema,
+  run_id: immutableIdSchema.nullable(),
+  conversation_id: immutableIdSchema.nullable(),
+  funding_type: modelBillFundingTypeSchema,
+  bill_count: nonNegativeIntegerStringSchema,
+  settled_count: nonNegativeIntegerStringSchema,
+  review_count: nonNegativeIntegerStringSchema,
+  cny_cost: decimalStringSchema,
+  charged_microcredits: nonNegativeIntegerStringSchema,
+});
+
+export const billingReconciliationReceiptSchema = z.strictObject({
+  schema_version: z.literal("model-billing-reconciliation@1.0.0"),
+  mode: billingModeSchema,
+  terminal_model_invocations: nonNegativeIntegerStringSchema,
+  terminal_bills: nonNegativeIntegerStringSchema,
+  missing_bills: nonNegativeIntegerStringSchema,
+  duplicate_bills: nonNegativeIntegerStringSchema,
+  open_review_findings: nonNegativeIntegerStringSchema,
+  hold_ledger_mismatches: nonNegativeIntegerStringSchema,
+  ready_for_enforced: z.boolean(),
+  checked_at: timestampSchema,
+});
+
+export const billingModeDecisionReceiptSchema = z.strictObject({
+  operation_id: immutableIdSchema,
+  state: billingRuntimeStateSchema,
+  reconciliation: billingReconciliationReceiptSchema,
+});
+
 export type ModelPriceCandidate = z.infer<typeof modelPriceCandidateSchema>;
 export type ModelPriceVersion = z.infer<typeof modelPriceVersionSchema>;
 export type FxRateCandidate = z.infer<typeof fxRateCandidateSchema>;
@@ -419,4 +599,21 @@ export type CreditAdjustmentReceipt = z.infer<typeof creditAdjustmentReceiptSche
 export type CreditHoldMutationReceipt = z.infer<typeof creditHoldMutationReceiptSchema>;
 export type CreditProjectionRebuildReceipt = z.infer<typeof creditProjectionRebuildReceiptSchema>;
 export type BillingAuditEntry = z.infer<typeof billingAuditEntrySchema>;
+export type ModelUsage = z.infer<typeof modelUsageSchema>;
 export type ModelBill = z.infer<typeof modelBillSchema>;
+export type BillingMode = z.infer<typeof billingModeSchema>;
+export type ModelBillingBudget = z.infer<typeof modelBillingBudgetSchema>;
+export type ModelBillPriceComponentSnapshot = z.infer<typeof modelBillPriceComponentSnapshotSchema>;
+export type ModelBillingAuthorizeInput = z.infer<typeof modelBillingAuthorizeInputSchema>;
+export type ModelBillingFinalizeInput = z.infer<typeof modelBillingFinalizeInputSchema>;
+export type ModelBillingReviewInput = z.infer<typeof modelBillingReviewInputSchema>;
+export type BillingModeDecisionInput = z.infer<typeof billingModeDecisionInputSchema>;
+export type BillingRuntimeState = z.infer<typeof billingRuntimeStateSchema>;
+export type ModelBillingBill = z.infer<typeof modelBillingBillSchema>;
+export type ModelBillingAuthorizationReceipt = z.infer<
+  typeof modelBillingAuthorizationReceiptSchema
+>;
+export type ModelBillingTerminalReceipt = z.infer<typeof modelBillingTerminalReceiptSchema>;
+export type ModelBillingCostSummary = z.infer<typeof modelBillingCostSummarySchema>;
+export type BillingReconciliationReceipt = z.infer<typeof billingReconciliationReceiptSchema>;
+export type BillingModeDecisionReceipt = z.infer<typeof billingModeDecisionReceiptSchema>;
