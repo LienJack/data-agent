@@ -1,15 +1,40 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { WorkspaceMembersPanel } from "@/components/workspaces/workspace-members-panel";
+import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
 
-export default function WorkspaceMembersPage() {
+export default async function WorkspaceMembersPage({
+  params,
+}: {
+  params: Promise<{ workspaceId: string }>;
+}) {
+  const { workspaceId } = await params;
+  const session = await getCurrentWorkspaceSession();
+  if (!session.ok) redirect("/login");
+  const workspaces = await listSessionWorkspaces(session.value);
+  if (!workspaces.ok) redirect("/workspaces");
+  const access = workspaces.value.find(
+    (candidate) => candidate.workspace.workspace_id === workspaceId,
+  );
+  if (!access) redirect("/workspaces");
+
   return (
-    <section className="mx-auto max-w-5xl p-6">
-      <h1 className="text-lg font-semibold">工作空间成员</h1>
-      <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
-        成员角色由 PostgreSQL identity authority 管理；当前入口只接受已有用户，不开放自主注册。
-      </p>
-      <Link href="/settings" className="mt-4 inline-block text-sm text-blue-600 hover:underline">
-        打开管理员设置
-      </Link>
-    </section>
+    <div className="px-4 py-6 sm:px-6 lg:py-8">
+      <div className="mx-auto max-w-7xl">
+        <WorkspaceMembersPanel
+          workspaceId={workspaceId}
+          workspaceName={access.workspace.display_name}
+          currentPrincipalId={session.value.principal_id}
+          canManage={access.allowed_actions.includes("MEMBER_MANAGE")}
+          isSuperAdmin={session.value.system_role === "SUPER_ADMIN"}
+        />
+        <Link
+          href={`/w/${workspaceId}`}
+          className="mt-5 inline-flex text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+        >
+          ← 返回工作空间概览
+        </Link>
+      </div>
+    </div>
   );
 }
