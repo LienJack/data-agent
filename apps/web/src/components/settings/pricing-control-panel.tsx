@@ -8,6 +8,7 @@ import type {
 } from "@data-agent/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ReasonDialog } from "@/components/ui/reason-dialog";
 
 const providers: readonly ModelProvider[] = [
   "openai",
@@ -38,6 +39,12 @@ function operationKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
 }
 
+interface PricingDecisionRequest {
+  readonly kind: "prices" | "fx";
+  readonly candidateId: string;
+  readonly decision: "APPROVE" | "REJECT";
+}
+
 export function PricingControlPanel() {
   const [models, setModels] = useState<readonly ModelCatalogEntry[]>([]);
   const [prices, setPrices] = useState<readonly ModelPriceCandidate[]>([]);
@@ -48,6 +55,9 @@ export function PricingControlPanel() {
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
+  const [decisionRequest, setDecisionRequest] = useState<PricingDecisionRequest>();
+  const [decisionReason, setDecisionReason] = useState("");
+  const [decisionPending, setDecisionPending] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -131,30 +141,43 @@ export function PricingControlPanel() {
     }
   };
 
-  const decide = async (
+  const requestDecision = (
     kind: "prices" | "fx",
     candidateId: string,
     decision: "APPROVE" | "REJECT",
   ) => {
-    const reason = window.prompt(decision === "APPROVE" ? "请输入批准原因" : "请输入拒绝原因");
-    if (!reason?.trim()) return;
+    setDecisionReason("");
+    setDecisionRequest({ kind, candidateId, decision });
+  };
+
+  const confirmDecision = async (reason: string) => {
+    if (!decisionRequest) return;
     setError(null);
+    setDecisionPending(true);
     try {
-      await api(`/api/admin/${kind}/${encodeURIComponent(candidateId)}/decision`, {
-        method: "POST",
-        body: JSON.stringify({
-          schema_version: "pricing-candidate-decision@1.0.0",
-          operation_id: crypto.randomUUID(),
-          idempotency_key: operationKey(`${kind}-decision`),
-          candidate_id: candidateId,
-          decision,
-          reason: reason.trim(),
-          effective_from: decision === "APPROVE" ? new Date().toISOString() : null,
-        }),
-      });
+      await api(
+        `/api/admin/${decisionRequest.kind}/${encodeURIComponent(decisionRequest.candidateId)}/decision`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            schema_version: "pricing-candidate-decision@1.0.0",
+            operation_id: crypto.randomUUID(),
+            idempotency_key: operationKey(`${decisionRequest.kind}-decision`),
+            candidate_id: decisionRequest.candidateId,
+            decision: decisionRequest.decision,
+            reason,
+            effective_from:
+              decisionRequest.decision === "APPROVE" ? new Date().toISOString() : null,
+          }),
+        },
+      );
+      setDecisionRequest(undefined);
+      setDecisionReason("");
       await reload();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "审批失败");
+    } finally {
+      setDecisionPending(false);
     }
   };
 
@@ -252,7 +275,7 @@ export function PricingControlPanel() {
           label: `${candidate.provider} / ${candidate.model_id} · ${candidate.components.length} 个维度`,
           status: candidate.status,
         }))}
-        onDecide={(id, decision) => decide("prices", id, decision)}
+        onDecide={(id, decision) => requestDecision("prices", id, decision)}
       />
       <CandidateSection
         title="汇率候选"
@@ -261,8 +284,32 @@ export function PricingControlPanel() {
           label: `${candidate.base_currency}/${candidate.quote_currency} ${candidate.rate} · ${candidate.official_date}`,
           status: candidate.status,
         }))}
-        onDecide={(id, decision) => decide("fx", id, decision)}
+        onDecide={(id, decision) => requestDecision("fx", id, decision)}
       />
+
+      {decisionRequest && (
+        <ReasonDialog
+          eyebrow={decisionRequest.kind === "prices" ? "Price review" : "FX review"}
+          title={`${decisionRequest.decision === "APPROVE" ? "批准" : "拒绝"}${decisionRequest.kind === "prices" ? "价格" : "汇率"}候选`}
+          description={
+            decisionRequest.decision === "APPROVE"
+              ? "批准后会生成不可变的生效版本；已有账单仍绑定其原始价格与汇率快照。"
+              : "拒绝只关闭当前候选，不会改变现有生效版本或历史账单。"
+          }
+          reasonLabel={decisionRequest.decision === "APPROVE" ? "批准原因" : "拒绝原因"}
+          confirmLabel={decisionRequest.decision === "APPROVE" ? "确认批准" : "确认拒绝"}
+          destructive={decisionRequest.decision === "REJECT"}
+          reason={decisionReason}
+          pending={decisionPending}
+          error={error ?? undefined}
+          onReasonChange={setDecisionReason}
+          onCancel={() => {
+            setDecisionRequest(undefined);
+            setDecisionReason("");
+          }}
+          onConfirm={(reason) => void confirmDecision(reason)}
+        />
+      )}
     </div>
   );
 }
