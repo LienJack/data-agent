@@ -351,10 +351,12 @@ async function main(): Promise<number> {
 
   // ── 5. 签发 EvalReleaseDecision ───────────────────────────
   const allAdapterImplemented = [
-    "insightbench", "dab", "rcaeval", "controlled-attribution", "governance",
-  ].every(
-    (name) => implementedUnits.includes(`U7-adapter-${name}`),
-  );
+    "insightbench",
+    "dab",
+    "rcaeval",
+    "controlled-attribution",
+    "governance",
+  ].every((name) => implementedUnits.includes(`U7-adapter-${name}`));
 
   // 核心实现就绪：adapter + oracle + manifest + paired + contamination + governance
   const coreReady =

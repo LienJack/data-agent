@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,16 +38,10 @@ function checkGate(gate: string, unit: string): GateResult {
     case "test:e2e": {
       // U8 E2E gate — check if workbench components exist
       const webComponentsExist = existsSync(
-        resolve(
-          rootDir,
-          "apps/web/src/components/workbench/workbench-section.tsx",
-        ),
+        resolve(rootDir, "apps/web/src/components/workbench/workbench-section.tsx"),
       );
       const semanticComponentsExist = existsSync(
-        resolve(
-          rootDir,
-          "apps/web/src/components/semantic/review-inbox.tsx",
-        ),
+        resolve(rootDir, "apps/web/src/components/semantic/review-inbox.tsx"),
       );
       if (webComponentsExist && semanticComponentsExist) {
         return {
@@ -75,15 +69,9 @@ function checkGate(gate: string, unit: string): GateResult {
     case "test:deploy:docker": {
       // U9 Docker deploy gate — check compose.yaml and Dockerfiles
       const composeExists = existsSync(resolve(rootDir, "compose.yaml"));
-      const dockerWebExists = existsSync(
-        resolve(rootDir, "infra/docker/Dockerfile.web"),
-      );
-      const dockerWorkerExists = existsSync(
-        resolve(rootDir, "infra/docker/Dockerfile.worker"),
-      );
-      const initDbExists = existsSync(
-        resolve(rootDir, "infra/docker/init-db.sh"),
-      );
+      const dockerWebExists = existsSync(resolve(rootDir, "infra/docker/Dockerfile.web"));
+      const dockerWorkerExists = existsSync(resolve(rootDir, "infra/docker/Dockerfile.worker"));
+      const initDbExists = existsSync(resolve(rootDir, "infra/docker/init-db.sh"));
       if (composeExists && dockerWebExists && dockerWorkerExists) {
         return {
           ...base,

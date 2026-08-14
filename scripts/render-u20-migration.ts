@@ -306,9 +306,7 @@ export function verifyGeneratedArtifacts(
   );
   // Validate checksum self-consistency
   const markerMatches = [
-    ...migration.matchAll(
-      new RegExp(`^-- u20_migration_checksum: (${CHECKSUM_PATTERN})$`, "gm"),
-    ),
+    ...migration.matchAll(new RegExp(`^-- u20_migration_checksum: (${CHECKSUM_PATTERN})$`, "gm")),
   ];
   assertCondition(markerMatches.length === 1, "U20 must have exactly one checksum marker");
   const marker = markerMatches[0]?.[1] ?? "";
@@ -339,20 +337,14 @@ export function defaultRendererPaths(repositoryRoot: string): {
   return {
     sourceDirectory: resolve(appInfraRoot, "migration-sources/10620"),
     migrationPath: resolve(appInfraRoot, "migrations", U20_MIGRATION_NAME),
-    maintenanceManifestPath: resolve(
-      appInfraRoot,
-      "u20-migration-maintenance-manifest.json",
-    ),
+    maintenanceManifestPath: resolve(appInfraRoot, "u20-migration-maintenance-manifest.json"),
   };
 }
 
 // ============================================================
 // CLI entry point
 // ============================================================
-if (
-  process.argv[1] !== undefined &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   const paths = defaultRendererPaths(repositoryRoot);
 
