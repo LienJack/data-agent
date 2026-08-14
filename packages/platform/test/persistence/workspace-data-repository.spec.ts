@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createPostgresWorkspaceDataRepository } from "../../src/persistence/workspace-data-repository.js";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
+import { createPostgresWorkspaceDataRepository } from "../../src/persistence/workspace-data-repository.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
 import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
 
@@ -12,6 +12,7 @@ const ids = {
   deployment: "00000000-0000-4000-8000-00000000de01",
   datasource: "00000000-0000-4000-8000-00000000d211",
   conversation: "00000000-0000-4000-8000-00000000c211",
+  run: "00000000-0000-4000-8000-00000000f211",
 } as const;
 
 function authority(role: "OWNER" | "ANALYST" | "VIEWER" = "OWNER") {
@@ -130,7 +131,9 @@ describe("PostgreSQL workspace data repository", () => {
         created_by_principal_id: ids.principal,
       },
     });
-    const insert = fixture.calls.find(({ text }) => text.includes("insert into datasource_connections"));
+    const insert = fixture.calls.find(({ text }) =>
+      text.includes("insert into datasource_connections"),
+    );
     expect(insert?.values.slice(0, 4)).toEqual([ids.app, ids.tenant, "test", ids.datasource]);
     expect(insert?.values.at(-1)).toBe(ids.principal);
     expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
@@ -218,6 +221,43 @@ describe("PostgreSQL workspace data repository", () => {
       error: { code: "CONVERSATION_INPUT_INVALID", retryable: false },
     });
     expect(fixture.connections()).toBe(0);
+  });
+
+  it("lets a Workspace READ member list only the current conversation Run bindings", async () => {
+    const fixture = scriptedPool((text) => {
+      if (text.includes("select 1 from qa_conversations")) {
+        return { rows: [{ allowed: true }], rowCount: 1 };
+      }
+      if (text.includes("from workspace_run_bindings") && text.includes("conversation_id")) {
+        return {
+          rows: [
+            {
+              app_id: ids.app,
+              tenant_id: ids.tenant,
+              environment: "test",
+              run_id: ids.run,
+              datasource_id: ids.datasource,
+              conversation_id: ids.conversation,
+              principal_id: ids.principal,
+              created_at: "2026-08-14T00:00:00.000Z",
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+    const issued = authority("VIEWER");
+    const repository = createPostgresWorkspaceDataRepository(fixture.pool, issued.authorizer);
+
+    await expect(
+      repository.listRunBindingsForConversation(issued.capability, ids.conversation),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: [{ run_id: ids.run, conversation_id: ids.conversation }],
+    });
+    const list = fixture.calls.find(({ text }) => text.includes("from workspace_run_bindings"));
+    expect(list?.values).toEqual([ids.conversation]);
   });
 
   it("maps datasource-freeze markers to the stable public reason code", async () => {

@@ -194,6 +194,39 @@ describe("Run Worker Runner", () => {
     expect(runtime.heartbeats).toHaveLength(3);
   });
 
+  it("持久化脱敏后的展示事件，并在同一 Attempt 内幂等复用", async () => {
+    const executor: RunWorkflowExecutorPort = {
+      async execute({ context }) {
+        const displayEvent = {
+          kind: "tool_started" as const,
+          key: "research-start",
+          call_id: "call-1",
+          tool_name: "research.kernel",
+          title: "Research Kernel",
+          summary: "执行研究协议",
+          input: "dataset=orders api_key=sk_123456789012345",
+        };
+        expect((await context.emitDisplayEvent?.(displayEvent))?.ok).toBe(true);
+        expect((await context.emitDisplayEvent?.(displayEvent))?.ok).toBe(true);
+        return { kind: "COMPLETED" };
+      },
+    };
+    const { runtime, runner } = await harness(executor);
+    runtime.enqueueLease(lease(1, 1));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { final_event_sequence: 4 },
+    });
+    const displayEvents = runtime
+      .eventsFor(runId)
+      .filter(({ event_type }) => event_type === "run.tool_started");
+    expect(displayEvents).toHaveLength(1);
+    expect(displayEvents[0]).toMatchObject({
+      payload: { input: "dataset=orders [REDACTED]" },
+    });
+  });
+
   it("Receipt 已提交但 Event 追加失败后，下一 Attempt 复用 Receipt 且不重复外部副作用", async () => {
     const effect = vi.fn(async () => ({
       output: {

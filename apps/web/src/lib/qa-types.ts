@@ -50,6 +50,13 @@ export interface SendMessageInput {
   content: string;
 }
 
+export type QAView = "conversation" | "trajectory";
+
+export interface TrajectoryFocus {
+  runId: string;
+  sequence: number;
+}
+
 /** 对话列表项 */
 export interface ConversationListItem {
   id: string;

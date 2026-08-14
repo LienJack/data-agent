@@ -1,10 +1,14 @@
 "use client";
 
+import type { PublicRunEvent } from "@data-agent/contracts";
+import { assembleProcessRows } from "@/lib/qa-event-assembler";
 import type { Message } from "@/lib/qa-types";
 import { formatDateTime } from "@/lib/utils";
+import { ProcessDisclosure } from "./process-disclosure";
 
 interface ChatMessageProps {
   message: Message;
+  events?: PublicRunEvent[];
 }
 
 /**
@@ -13,13 +17,17 @@ interface ChatMessageProps {
  * 用户消息右对齐，Agent 消息左对齐。
  * 支持不同类型消息的展示：text、error、report、hypothesis。
  */
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({ message, events = [] }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const processRows = message.runId ? assembleProcessRows(events, message.runId) : [];
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3`}>
+    <div
+      id={message.runId ? `chat-run-${message.runId}` : undefined}
+      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3 scroll-m-20`}
+    >
       <div
-        className={`max-w-[80%] rounded-lg px-3 py-2 ${
+        className={`${isUser ? "max-w-[80%]" : "w-full max-w-3xl"} rounded-lg px-3 py-2 ${
           isUser
             ? "bg-[var(--color-accent)] text-white"
             : message.type === "error"
@@ -27,13 +35,23 @@ export function ChatMessage({ message }: ChatMessageProps) {
               : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
         }`}
       >
+        {processRows.length > 0 && (
+          <fieldset className="mb-3 space-y-0.5">
+            <legend className="sr-only">执行过程</legend>
+            {processRows.map((row) => (
+              <ProcessDisclosure key={row.id} row={row} />
+            ))}
+          </fieldset>
+        )}
         {/* 消息内容 */}
         {message.type === "report" ? (
           <ReportContent message={message} />
         ) : message.type === "hypothesis" ? (
           <HypothesisContent message={message} />
         ) : (
-          <div className="whitespace-pre-wrap text-sm">{message.content}</div>
+          <div className="whitespace-pre-wrap text-sm">
+            {message.content || (message.runId ? "正在生成回答…" : "")}
+          </div>
         )}
 
         {/* 时间戳 */}

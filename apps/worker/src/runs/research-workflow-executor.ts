@@ -23,6 +23,7 @@ import {
 import { z } from "zod";
 import {
   type RunCheckpointInput,
+  type RunDisplayEventInput,
   type RunExecutionContext,
   type RunExecutorResult,
   type RunWorkflowExecutorPort,
@@ -66,6 +67,16 @@ class ResearchWorkflowAuthorityError extends Error {
     readonly retryable: boolean,
   ) {
     super(code);
+  }
+}
+
+async function emitDisplayEvent(
+  context: RunExecutionContext,
+  input: RunDisplayEventInput,
+): Promise<void> {
+  const result = await context.emitDisplayEvent?.(input);
+  if (result && !result.ok) {
+    throw new ResearchWorkflowAuthorityError(result.error.code, result.error.retryable);
   }
 }
 
@@ -125,22 +136,72 @@ export function createResearchWorkflowExecutor(
     state: ResearchWorkflowState,
     protocolInput: ResearchProtocolInput,
     lease: RunWorkLease,
-    _context: RunExecutionContext,
+    context: RunExecutionContext,
   ): Promise<ResearchWorkflowState> {
     const kernelAuthority = createResearchKernelCandidateAuthority();
     const controlledInput = protocolInput as ControlledResearchProtocolInput;
+
+    const kernelCallId = `${lease.attempt_id}:research-kernel:${state.step}`;
+    const kernelStartedAt = deps.now().getTime();
+    await emitDisplayEvent(context, {
+      kind: "progress",
+      key: `kernel-progress-start:${state.step}`,
+      phase: "research.kernel",
+      title: "分析问题",
+      summary: "正在运行确定性研究内核并核验证据边界",
+      status: "RUNNING",
+    });
+    await emitDisplayEvent(context, {
+      kind: "tool_started",
+      key: `kernel-tool-start:${state.step}`,
+      call_id: kernelCallId,
+      tool_name: "research.kernel",
+      title: "Research Kernel",
+      summary: "执行研究协议与证据门禁",
+      input: "受控研究协议输入（敏感值不进入执行轨迹）",
+    });
 
     // Step 1: Run the research kernel
     const evaluation = await runControlledProtocolKernel(controlledInput);
     const sealed = sealKernelVerifiedReportReadyCandidate(kernelAuthority, evaluation);
     if (!sealed.ok) {
+      await emitDisplayEvent(context, {
+        kind: "tool_failed",
+        key: `kernel-tool-failed:${state.step}`,
+        call_id: kernelCallId,
+        tool_name: "research.kernel",
+        summary: "研究内核未通过确定性门禁",
+        error_code: sealed.error.code,
+        output: null,
+        duration_ms: Math.max(0, deps.now().getTime() - kernelStartedAt),
+      });
       throw new Error(`RESEARCH_KERNEL_FAILED: ${sealed.error.code}`);
     }
+    await emitDisplayEvent(context, {
+      kind: "tool_completed",
+      key: `kernel-tool-complete:${state.step}`,
+      call_id: kernelCallId,
+      tool_name: "research.kernel",
+      summary: "研究内核已完成",
+      output: `结果：${evaluation.kernel_outcome.kind}`,
+      duration_ms: Math.max(0, deps.now().getTime() - kernelStartedAt),
+    });
 
     // Step 2: Commit artifacts via PostgreSQL Authority
     const committedRefs: ArtifactReference[] = [];
     for (const [kind, candidate] of Object.entries(evaluation.artifact_candidates)) {
       if (!candidate) continue;
+      const commitCallId = `${lease.attempt_id}:artifact-commit:${kind}`;
+      const commitStartedAt = deps.now().getTime();
+      await emitDisplayEvent(context, {
+        kind: "tool_started",
+        key: `artifact-start:${state.step}:${kind}`,
+        call_id: commitCallId,
+        tool_name: "artifact.commit",
+        title: "Artifact Commit",
+        summary: `提交 ${kind} 到 PostgreSQL Authority`,
+        input: `artifact_type=${kind}`,
+      });
       try {
         const document = candidate as unknown as L2ResearchDocumentCandidate;
         const commitInput = researchArtifactCommitInputSchema.parse({
@@ -167,7 +228,30 @@ export function createResearchWorkflowExecutor(
           throw new ResearchWorkflowAuthorityError(result.error.code, result.error.retryable);
         }
         committedRefs.push(result.value.reference);
+        await emitDisplayEvent(context, {
+          kind: "tool_completed",
+          key: `artifact-complete:${state.step}:${kind}`,
+          call_id: commitCallId,
+          tool_name: "artifact.commit",
+          summary: `${kind} 已提交`,
+          output: `artifact_id=${result.value.reference.artifact_id}`,
+          duration_ms: Math.max(0, deps.now().getTime() - commitStartedAt),
+        });
       } catch (error) {
+        const errorCode =
+          error instanceof ResearchWorkflowAuthorityError
+            ? error.code
+            : "RESEARCH_ARTIFACT_COMMIT_FAILED";
+        await emitDisplayEvent(context, {
+          kind: "tool_failed",
+          key: `artifact-failed:${state.step}:${kind}`,
+          call_id: commitCallId,
+          tool_name: "artifact.commit",
+          summary: `${kind} 提交失败`,
+          error_code: errorCode,
+          output: null,
+          duration_ms: Math.max(0, deps.now().getTime() - commitStartedAt),
+        });
         if (error instanceof ResearchWorkflowAuthorityError) throw error;
         throw new ResearchWorkflowAuthorityError("RESEARCH_ARTIFACT_COMMIT_FAILED", true);
       }
@@ -179,6 +263,14 @@ export function createResearchWorkflowExecutor(
       step: state.step + 1,
       evaluation: evaluation.kernel_outcome,
       committed_refs: committedRefs.length,
+    });
+    await emitDisplayEvent(context, {
+      kind: "progress",
+      key: `kernel-progress-complete:${state.step}`,
+      phase: "research.kernel",
+      title: "分析完成",
+      summary: `研究内核完成，已提交 ${committedRefs.length} 个权威 Artifact`,
+      status: "COMPLETED",
     });
 
     return {
@@ -225,16 +317,28 @@ export function createResearchWorkflowExecutor(
 
       const outcome = state.evaluation.kernel_outcome;
       switch (outcome.kind) {
-        case "REPORT_READY_CANDIDATE":
+        case "REPORT_READY_CANDIDATE": {
+          await emitDisplayEvent(context, {
+            kind: "answer_delta",
+            key: `answer:${state.step}:${outcome.kind}`,
+            delta: `分析执行完成。研究结果：${outcome.kind}；已提交 ${state.committed_refs.length} 个权威 Artifact。`,
+          });
           return runExecutorResultSchema.parse({
             kind: "COMPLETED",
           });
-        case "RESEARCH_STOP_CANDIDATE":
+        }
+        case "RESEARCH_STOP_CANDIDATE": {
+          await emitDisplayEvent(context, {
+            kind: "answer_delta",
+            key: `answer:${state.step}:${outcome.kind}`,
+            delta: `分析已暂停：${outcome.reason_code}。`,
+          });
           return runExecutorResultSchema.parse({
             kind: "SUSPENDED",
             reason_code: outcome.reason_code,
             checkpoint: checkpointInput,
           });
+        }
         case "REJECTED":
         case "READINESS_REJECTED":
           return researchErrorResult(outcome.reason_code, false);

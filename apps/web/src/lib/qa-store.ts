@@ -1,17 +1,31 @@
 "use client";
 
-import type { WorkspaceConversation, WorkspaceConversationMessage } from "@data-agent/contracts";
+import type {
+  PublicRunEvent,
+  WorkspaceConversation,
+  WorkspaceConversationMessage,
+} from "@data-agent/contracts";
 import { create } from "zustand";
-import { createRun, getRun, resolveWorkspaceId, streamRunEvents } from "./api-client";
+import {
+  createRun,
+  fetchConversationTrajectory,
+  getRun,
+  resolveWorkspaceId,
+  streamRunEvents,
+  waitWithBackoff,
+} from "./api-client";
 import { fetchDataSources } from "./datasource-api";
 import type { DataSourceConnection } from "./datasource-types";
+import { answerText, mergePublicRunEvents } from "./qa-event-assembler";
 import type {
   Conversation,
   CreateConversationInput,
   Message,
+  QAView,
+  TrajectoryFocus,
   UpdateConversationResourcesInput,
 } from "./qa-types";
-import type { RunProjection } from "./run-projection";
+import type { RunConnectionState, RunProjection } from "./run-projection";
 
 /**
  * Q&A 状态管理。
@@ -26,6 +40,11 @@ interface QAState {
   activeConversationId: string | null;
   /** 当前对话的消息列表 */
   messages: Message[];
+  /** 当前对话从持久化 Run 事件恢复出的同源过程与轨迹。 */
+  events: PublicRunEvent[];
+  view: QAView;
+  trajectoryFocus: TrajectoryFocus | null;
+  connection: RunConnectionState;
   /** 可用数据源列表 */
   dataSources: DataSourceConnection[];
   /** 加载状态 */
@@ -47,6 +66,10 @@ interface QAActions {
   selectConversation: (id: string) => Promise<void>;
   /** 加载消息 */
   loadMessages: (conversationId: string) => Promise<void>;
+  loadTrajectory: (conversationId: string) => Promise<void>;
+  setView: (view: QAView) => void;
+  openTrajectory: (focus: TrajectoryFocus) => void;
+  openConversation: (focus: TrajectoryFocus) => void;
   /** 发送消息 */
   sendMessage: (content: string) => Promise<void>;
   /** 加载数据源列表 */
@@ -65,6 +88,10 @@ const initialState: QAState = {
   conversations: [],
   activeConversationId: null,
   messages: [],
+  events: [],
+  view: "conversation",
+  trajectoryFocus: null,
+  connection: "idle",
   dataSources: [],
   loading: false,
   sending: false,
@@ -99,6 +126,18 @@ function messageFromContract(value: WorkspaceConversationMessage): Message {
     metadata: value.metadata,
     createdAt: value.created_at,
   };
+}
+
+function replaceMessage(messages: Message[], id: string, patch: Partial<Message>): Message[] {
+  return messages.map((message) => (message.id === id ? { ...message, ...patch } : message));
+}
+
+function terminalAnswer(projection: RunProjection | null): string {
+  const summaries = projection?.reports?.map((report) => report.summary).filter(Boolean) ?? [];
+  if (summaries.length > 0) return summaries.join("\n\n");
+  if (projection?.status === "FAILED") return "分析执行失败，请展开执行过程查看失败节点。";
+  if (projection?.status === "CANCELLED") return "分析已取消。";
+  return "分析执行完成。";
 }
 
 export const useQAStore = create<QAStore>((set, get) => ({
@@ -136,6 +175,9 @@ export const useQAStore = create<QAStore>((set, get) => ({
         conversations: [conversation, ...state.conversations],
         activeConversationId: conversation.id,
         messages: [],
+        events: [],
+        view: "conversation",
+        trajectoryFocus: null,
       }));
       return conversation;
     } catch (err) {
@@ -152,38 +194,78 @@ export const useQAStore = create<QAStore>((set, get) => ({
       });
       if (!response.ok) throw new Error("删除对话失败");
       set((state) => {
+        const deletingActive = state.activeConversationId === id;
         const conversations = state.conversations.filter((c) => c.id !== id);
-        const activeConversationId =
-          state.activeConversationId === id
-            ? (conversations[0]?.id ?? null)
-            : state.activeConversationId;
-        return { conversations, activeConversationId };
+        const activeConversationId = deletingActive
+          ? (conversations[0]?.id ?? null)
+          : state.activeConversationId;
+        return {
+          conversations,
+          activeConversationId,
+          ...(deletingActive ? { messages: [], events: [], trajectoryFocus: null } : {}),
+        };
       });
-      // 如果删除了当前对话，清空消息
-      if (get().activeConversationId === id) {
-        set({ messages: [] });
-      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "删除对话失败" });
     }
   },
 
   selectConversation: async (id) => {
-    set({ activeConversationId: id, messages: [] });
+    set({ activeConversationId: id, messages: [], events: [], trajectoryFocus: null });
     await get().loadMessages(id);
   },
 
   loadMessages: async (conversationId) => {
     set({ loading: true, error: undefined });
     try {
-      const response = await fetch(
-        workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}/messages`),
-      );
+      const [response, trajectory] = await Promise.all([
+        fetch(workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}/messages`)),
+        fetchConversationTrajectory(conversationId),
+      ]);
       if (!response.ok) throw new Error("加载消息失败");
       const json = (await response.json()) as { data: WorkspaceConversationMessage[] };
-      set({ messages: json.data.map(messageFromContract), loading: false });
+      if (get().activeConversationId === conversationId) {
+        set({
+          messages: json.data.map(messageFromContract),
+          events: trajectory.events,
+          loading: false,
+        });
+      }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "加载消息失败", loading: false });
+    }
+  },
+
+  loadTrajectory: async (conversationId) => {
+    try {
+      const trajectory = await fetchConversationTrajectory(conversationId);
+      if (get().activeConversationId === conversationId) set({ events: trajectory.events });
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : "加载轨迹失败" });
+    }
+  },
+
+  setView: (view) => set({ view }),
+
+  openTrajectory: (focus) => {
+    set({ view: "trajectory", trajectoryFocus: focus });
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "trajectory");
+      url.searchParams.set("run", focus.runId);
+      url.searchParams.set("event", String(focus.sequence));
+      window.history.replaceState(null, "", url);
+    }
+  },
+
+  openConversation: (focus) => {
+    set({ view: "conversation", trajectoryFocus: focus });
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("tab", "conversation");
+      url.searchParams.set("run", focus.runId);
+      url.searchParams.set("event", String(focus.sequence));
+      window.history.replaceState(null, "", url);
     }
   },
 
@@ -251,70 +333,130 @@ export const useQAStore = create<QAStore>((set, get) => ({
         conversationId,
       );
 
-      // 等待 Run 完成（简化版 — 从事件流获取结果）
+      const agentMessageId = `local-agent-${Date.now()}`;
+      const agentMessage: Message = {
+        id: agentMessageId,
+        conversationId,
+        role: "agent",
+        content: "",
+        type: "text",
+        runId: run.runId,
+        createdAt: new Date().toISOString(),
+      };
+      set((current) => ({
+        messages: [...current.messages, agentMessage],
+        connection: "connecting",
+      }));
+
+      // sequence 是断线补发、去重和恢复的唯一游标。
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000);
-
+      const timeout = setTimeout(() => controller.abort(), 10 * 60_000);
       let finalProjection: RunProjection | null = null;
-
+      let cursor = 0;
+      let terminal = false;
+      let reconnectAttempt = 0;
+      let streamError: unknown;
       try {
-        await streamRunEvents({
-          runId: run.runId,
-          workspaceId,
-          cursor: 0,
-          signal: controller.signal,
-          onEvent: (event) => {
-            if (event.type === "projection" || event.type === "terminal") {
-              finalProjection = event.payload as RunProjection;
-            }
-          },
-        });
-      } catch {
-        // 流可能被终止，尝试获取最终结果
-        finalProjection = await getRun(run.runId, workspaceId);
+        while (!terminal && !controller.signal.aborted) {
+          try {
+            set({ connection: reconnectAttempt === 0 ? "connecting" : "reconnecting" });
+            await streamRunEvents({
+              runId: run.runId,
+              workspaceId,
+              cursor,
+              signal: controller.signal,
+              onEvent: (event) => {
+                cursor = Math.max(cursor, event.sequence);
+                terminal ||= event.type === "terminal";
+                set((current) => {
+                  const events = mergePublicRunEvents(current.events, [event]);
+                  const content = answerText(events, run.runId);
+                  return {
+                    events,
+                    connection: "live",
+                    messages: replaceMessage(current.messages, agentMessageId, {
+                      content,
+                      type: "text",
+                    }),
+                  };
+                });
+              },
+            });
+            reconnectAttempt = terminal ? reconnectAttempt : reconnectAttempt + 1;
+          } catch (error) {
+            if (controller.signal.aborted) break;
+            reconnectAttempt += 1;
+            if (reconnectAttempt > 8) throw error;
+          }
+          if (!terminal) await waitWithBackoff(reconnectAttempt, controller.signal);
+        }
+      } catch (error) {
+        streamError = error;
       } finally {
         clearTimeout(timeout);
       }
 
-      // 构建 Agent 消息
-      const agentMessage: Message = {
-        id: `local-agent-${Date.now()}`,
-        conversationId,
-        role: "agent",
-        content: finalProjection?.question ?? "分析完成",
-        type: finalProjection?.reports?.length ? "report" : "text",
-        runId: run.runId,
-        metadata: finalProjection ? { projection: finalProjection } : undefined,
-        createdAt: new Date().toISOString(),
-      };
+      finalProjection = await getRun(run.runId, workspaceId);
+      if (!terminal && !["COMPLETED", "FAILED", "CANCELLED"].includes(finalProjection.status)) {
+        if (streamError instanceof Error) throw streamError;
+        throw new Error("事件流连接超时，Run 仍在执行，可稍后从轨迹恢复");
+      }
+      const streamedAnswer = answerText(get().events, run.runId);
+      const finalContent = streamedAnswer || terminalAnswer(finalProjection);
+      const finalType: Message["type"] = finalProjection.reports?.length ? "report" : "text";
+      set((current) => ({
+        messages: replaceMessage(current.messages, agentMessageId, {
+          content: finalContent,
+          type: finalType,
+          metadata: { event_sequence: cursor },
+        }),
+        sending: false,
+        connection: "closed",
+      }));
 
-      set((s) => ({ messages: [...s.messages, agentMessage], sending: false }));
-
-      await fetch(
+      const persisted = await fetch(
         workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}/messages`),
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             schema_version: "workspace-conversation-message-append@1.0.0",
+            message_id: run.runId,
             role: "agent",
-            content: agentMessage.content,
-            type: agentMessage.type,
-            run_id: agentMessage.runId,
-            metadata: agentMessage.metadata,
+            content: finalContent,
+            type: finalType,
+            run_id: run.runId,
+            metadata: { event_sequence: cursor },
           }),
         },
       );
+      if (!persisted.ok) throw new Error("最终回答持久化失败");
+      await get().loadTrajectory(conversationId);
     } catch (err) {
-      const errorMessage: Message = {
-        id: `local-err-${Date.now()}`,
-        conversationId,
-        role: "agent",
-        content: err instanceof Error ? err.message : "分析请求失败",
-        type: "error",
-        createdAt: new Date().toISOString(),
-      };
-      set((s) => ({ messages: [...s.messages, errorMessage], sending: false }));
+      const errorContent = err instanceof Error ? err.message : "分析请求失败";
+      set((current) => {
+        const pending = [...current.messages]
+          .reverse()
+          .find((message) => message.role === "agent" && message.runId && !message.content);
+        return {
+          messages: pending
+            ? replaceMessage(current.messages, pending.id, { content: errorContent, type: "error" })
+            : [
+                ...current.messages,
+                {
+                  id: `local-err-${Date.now()}`,
+                  conversationId,
+                  role: "agent" as const,
+                  content: errorContent,
+                  type: "error" as const,
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+          sending: false,
+          connection: "closed",
+          error: errorContent,
+        };
+      });
     }
   },
 
@@ -371,6 +513,10 @@ export const useQAStore = create<QAStore>((set, get) => ({
 export const useQAConversations = () => useQAStore((s) => s.conversations);
 export const useQAActiveConversationId = () => useQAStore((s) => s.activeConversationId);
 export const useQAMessages = () => useQAStore((s) => s.messages);
+export const useQAEvents = () => useQAStore((s) => s.events);
+export const useQAView = () => useQAStore((s) => s.view);
+export const useQATrajectoryFocus = () => useQAStore((s) => s.trajectoryFocus);
+export const useQAConnection = () => useQAStore((s) => s.connection);
 export const useQADataSources = () => useQAStore((s) => s.dataSources);
 export const useQALoading = () => useQAStore((s) => s.loading);
 export const useQASending = () => useQAStore((s) => s.sending);

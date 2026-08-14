@@ -40,6 +40,9 @@ const runtimeEventFields = {
   occurred_at: runtimeTimestampSchema,
 } as const;
 
+const displayTextSchema = z.string().trim().min(1).max(100_000);
+const displayCallIdSchema = z.string().trim().min(1).max(256);
+
 const runAcceptedEventSchema = z.strictObject({
   ...runtimeEventFields,
   event_type: z.literal("run.accepted"),
@@ -83,6 +86,62 @@ const runSideEffectCommittedEventSchema = z.strictObject({
     effect_kind: z.enum(["SQL", "EVAL"]),
     input_hash: contentHashSchema,
     output_hash: contentHashSchema,
+  }),
+});
+
+const runProgressEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.progress"),
+  payload: z.strictObject({
+    phase: runtimeIdentifierSchema,
+    title: z.string().trim().min(1).max(128),
+    summary: displayTextSchema,
+    status: z.enum(["RUNNING", "COMPLETED"]),
+  }),
+});
+
+const runToolStartedEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.tool_started"),
+  payload: z.strictObject({
+    call_id: displayCallIdSchema,
+    tool_name: versionIdentifierSchema,
+    title: z.string().trim().min(1).max(128),
+    summary: displayTextSchema,
+    input: z.string().max(100_000).nullable(),
+  }),
+});
+
+const runToolCompletedEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.tool_completed"),
+  payload: z.strictObject({
+    call_id: displayCallIdSchema,
+    tool_name: versionIdentifierSchema,
+    summary: displayTextSchema,
+    output: z.string().max(200_000).nullable(),
+    duration_ms: nonNegativeSafeIntegerSchema,
+  }),
+});
+
+const runToolFailedEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.tool_failed"),
+  payload: z.strictObject({
+    call_id: displayCallIdSchema,
+    tool_name: versionIdentifierSchema,
+    summary: displayTextSchema,
+    error_code: runtimeIdentifierSchema,
+    output: z.string().max(200_000).nullable(),
+    duration_ms: nonNegativeSafeIntegerSchema,
+  }),
+});
+
+const runAnswerDeltaEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.answer_delta"),
+  payload: z.strictObject({
+    delta: z.string().min(1).max(100_000),
   }),
 });
 
@@ -144,6 +203,11 @@ export const runRuntimeEventSchema = z
     runLeasedEventSchema,
     runCheckpointedEventSchema,
     runSideEffectCommittedEventSchema,
+    runProgressEventSchema,
+    runToolStartedEventSchema,
+    runToolCompletedEventSchema,
+    runToolFailedEventSchema,
+    runAnswerDeltaEventSchema,
     runSuspendedEventSchema,
     runResumedEventSchema,
     runRetryScheduledEventSchema,
@@ -170,6 +234,11 @@ export const workerRunRuntimeEventSchema = z
     runLeasedEventSchema,
     runCheckpointedEventSchema,
     runSideEffectCommittedEventSchema,
+    runProgressEventSchema,
+    runToolStartedEventSchema,
+    runToolCompletedEventSchema,
+    runToolFailedEventSchema,
+    runAnswerDeltaEventSchema,
     runSuspendedEventSchema,
     runRetryScheduledEventSchema,
     runCompletedEventSchema,
@@ -376,6 +445,15 @@ export function reduceRunProjection(
       next = updateProjection(previous, event, {
         last_side_effect_receipt_id: event.payload.receipt_id,
       });
+      break;
+    case "run.progress":
+    case "run.tool_started":
+    case "run.tool_completed":
+    case "run.tool_failed":
+    case "run.answer_delta":
+      requireCurrentFence(previous, event);
+      requireState(previous, ["RUNNING"], event);
+      next = updateProjection(previous, event, {});
       break;
     case "run.suspended":
       requireCurrentFence(previous, event);

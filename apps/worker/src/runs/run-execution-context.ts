@@ -10,7 +10,7 @@ import {
   sha256ContentHash,
   sideEffectReceiptSchema,
 } from "@data-agent/contracts";
-import type { RunExecutionContext } from "./run-worker-runner.js";
+import type { RunDisplayEventInput, RunExecutionContext } from "./run-worker-runner.js";
 import { failure, occurredAt, receiptMatchesRequest, success } from "./run-worker-shared.js";
 
 interface RunExecutionContextDependencies {
@@ -34,6 +34,9 @@ interface RunExecutionContextDependencies {
   readonly append_side_effect_event: (
     receipt: SideEffectReceipt,
   ) => Promise<PortResult<SideEffectReceipt>>;
+  readonly append_display_event: (
+    input: RunDisplayEventInput,
+  ) => Promise<PortResult<{ readonly sequence: number }>>;
 }
 
 export function createRunExecutionContext({
@@ -47,6 +50,7 @@ export function createRunExecutionContext({
   guard_running_lease: guardRunningLease,
   append_checkpoint_event: appendCheckpointEvent,
   append_side_effect_event: appendSideEffectEvent,
+  append_display_event: appendDisplayEvent,
 }: RunExecutionContextDependencies): RunExecutionContext {
   const inFlightSideEffects = new Map<string, Promise<PortResult<SideEffectReceipt>>>();
   const aborted = <T>(): PortResult<T> =>
@@ -57,6 +61,11 @@ export function createRunExecutionContext({
     );
 
   return {
+    async emitDisplayEvent(input) {
+      if (runSignal.aborted) return aborted();
+      return appendDisplayEvent(input);
+    },
+
     async heartbeat() {
       if (runSignal.aborted) return aborted();
       const guarded = await guardRunningLease(lease);
