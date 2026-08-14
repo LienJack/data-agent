@@ -7,7 +7,7 @@ import type {
   CapabilityQueryClient,
 } from "./capability.js";
 
-export const revalidateInTransaction = Symbol("data-agent.revalidate-in-transaction");
+export const revalidateInTransaction = Symbol.for("data-agent.revalidate-in-transaction");
 
 export interface TransactionalCapabilityAuthorizer extends CapabilityAuthorizer {
   [revalidateInTransaction](
