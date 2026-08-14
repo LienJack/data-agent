@@ -74,7 +74,10 @@ export function AuthorityStatusBar({
       </div>
 
       <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-        <div className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-2 text-xs sm:gap-6" aria-label="系统状态指示器">
+        <section
+          className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-2 text-xs sm:gap-6"
+          aria-label="系统状态指示器"
+        >
           <div className="flex items-center gap-2">
             <span className="text-[var(--color-text-tertiary)]">Core L2:</span>
             <span className={verdictColors[coreL2Status]}>{verdictLabels[coreL2Status]}</span>
@@ -91,7 +94,7 @@ export function AuthorityStatusBar({
               {verdictLabels[fixtureEvidenceStatus]}
             </span>
           </div>
-        </div>
+        </section>
       </div>
     </header>
   );

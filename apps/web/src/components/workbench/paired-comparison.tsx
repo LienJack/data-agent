@@ -18,7 +18,7 @@ export function PairedComparison({
   metrics,
 }: PairedComparisonProps) {
   return (
-    <div className="space-y-4" aria-label="成对对比">
+    <section className="space-y-4" aria-label="成对对比">
       <div className="flex items-center justify-between rounded-lg bg-[var(--color-bg-secondary)] p-3">
         <div className="text-center">
           <p className="text-xs text-[var(--color-text-tertiary)]">基线</p>
@@ -29,10 +29,11 @@ export function PairedComparison({
             className={`text-lg font-bold ${
               improvement ? "text-[var(--color-success)]" : "text-[var(--color-error)]"
             }`}
-            aria-label={improvement ? "对比结果: 改善" : "对比结果: 退步"}
+            aria-hidden="true"
           >
             {improvement ? "↑" : "↓"}
           </span>
+          <span className="sr-only">{improvement ? "对比结果: 改善" : "对比结果: 退步"}</span>
         </div>
         <div className="text-center">
           <p className="text-xs text-[var(--color-text-tertiary)]">候选</p>
@@ -41,7 +42,7 @@ export function PairedComparison({
       </div>
 
       {metrics && metrics.length > 0 && (
-        <div className="space-y-2" aria-label="指标详情">
+        <section className="space-y-2" aria-label="指标详情">
           {metrics.map((metric) => (
             <div
               key={metric.name}
@@ -69,8 +70,8 @@ export function PairedComparison({
               </div>
             </div>
           ))}
-        </div>
+        </section>
       )}
-    </div>
+    </section>
   );
 }

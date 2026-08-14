@@ -10,15 +10,12 @@ interface SqlReceiptCardProps {
 export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
   const [showSql, setShowSql] = useState(false);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        setShowSql((prev) => !prev);
-      }
-    },
-    [],
-  );
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setShowSql((prev) => !prev);
+    }
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -40,14 +37,11 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
           </button>
         </div>
         {showSql && hypothesis.sql && (
-          <pre
-            id="sql-content"
-            className="mt-2 overflow-x-auto rounded-lg bg-[var(--color-bg-tertiary)] p-3 text-xs leading-relaxed"
-            role="region"
-            aria-label="SQL 查询内容"
-          >
-            <code>{hypothesis.sql}</code>
-          </pre>
+          <section id="sql-content" aria-label="SQL 查询内容">
+            <pre className="mt-2 overflow-x-auto rounded-lg bg-[var(--color-bg-tertiary)] p-3 text-xs leading-relaxed">
+              <code>{hypothesis.sql}</code>
+            </pre>
+          </section>
         )}
       </div>
 
@@ -58,9 +52,9 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
             门禁校验
           </h4>
           <div className="space-y-1">
-            {hypothesis.gateReceipts.map((receipt, i) => (
+            {hypothesis.gateReceipts.map((receipt) => (
               <div
-                key={receipt.gate + i}
+                key={receipt.gate}
                 className="flex items-center justify-between rounded-md bg-[var(--color-bg-secondary)] px-3 py-1.5"
               >
                 <div className="flex items-center gap-2">
@@ -70,9 +64,7 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
                     }`}
                     aria-hidden="true"
                   />
-                  <span className="text-xs text-[var(--color-text-secondary)]">
-                    {receipt.gate}
-                  </span>
+                  <span className="text-xs text-[var(--color-text-secondary)]">{receipt.gate}</span>
                 </div>
                 <span className="text-xs text-[var(--color-text-tertiary)]">
                   {receipt.reason ?? (receipt.passed ? "通过" : "未通过")}
@@ -91,9 +83,9 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
             执行记录
           </h4>
           <div className="space-y-1">
-            {hypothesis.executionReceipts.map((receipt, i) => (
+            {hypothesis.executionReceipts.map((receipt) => (
               <div
-                key={receipt.queryId + i}
+                key={receipt.queryId}
                 className="rounded-md bg-[var(--color-bg-secondary)] px-3 py-1.5"
               >
                 <div className="flex items-center justify-between">
@@ -105,7 +97,9 @@ export function SqlReceiptCard({ hypothesis }: SqlReceiptCardProps) {
                   </span>
                 </div>
                 {receipt.error && (
-                  <p className="mt-0.5 text-xs text-red-500" role="alert">{receipt.error}</p>
+                  <p className="mt-0.5 text-xs text-red-500" role="alert">
+                    {receipt.error}
+                  </p>
                 )}
               </div>
             ))}

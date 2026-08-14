@@ -42,17 +42,23 @@ export function EvalSection() {
 
         {/* 评分卡 */}
         {evalResult.scoreCard && (
-          <div className="flex items-center gap-4 text-sm" aria-label="评分卡">
+          <section className="flex items-center gap-4 text-sm" aria-label="评分卡">
             <span className="text-[var(--color-text-tertiary)]">
-              通过: <span className="font-medium text-[var(--color-success)]">{evalResult.scoreCard.passed}</span>
+              通过:{" "}
+              <span className="font-medium text-[var(--color-success)]">
+                {evalResult.scoreCard.passed}
+              </span>
             </span>
             <span className="text-[var(--color-text-tertiary)]">
-              失败: <span className="font-medium text-[var(--color-error)]">{evalResult.scoreCard.failed}</span>
+              失败:{" "}
+              <span className="font-medium text-[var(--color-error)]">
+                {evalResult.scoreCard.failed}
+              </span>
             </span>
             <span className="text-[var(--color-text-tertiary)]">
               总计: <span className="font-medium">{evalResult.scoreCard.total}</span>
             </span>
-          </div>
+          </section>
         )}
 
         {/* 成对对比 */}

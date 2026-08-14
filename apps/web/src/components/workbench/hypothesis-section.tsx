@@ -29,34 +29,34 @@ const hypothesisStatusColor: Record<string, string> = {
 
 function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
   const [expanded, setExpanded] = useState(false);
-  const cardRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLLIElement>(null);
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLButtonElement>) => {
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        setExpanded((prev) => !prev);
-      }
-      // 箭头键导航 — 在兄弟卡片间移动焦点
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        const siblings = cardRef.current
-          ?.closest("[role='list']")
-          ?.querySelectorAll<HTMLButtonElement>("[role='listitem'] > button");
-        if (!siblings) return;
-        const currentIndex = Array.from(siblings).indexOf(e.currentTarget);
-        const nextIndex =
-          e.key === "ArrowDown"
-            ? Math.min(currentIndex + 1, siblings.length - 1)
-            : Math.max(currentIndex - 1, 0);
-        siblings[nextIndex]?.focus();
-      }
-    },
-    [],
-  );
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setExpanded((prev) => !prev);
+    }
+    // 箭头键导航 — 在兄弟卡片间移动焦点
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const siblings = cardRef.current
+        ?.closest("ul")
+        ?.querySelectorAll<HTMLButtonElement>(":scope > li > button");
+      if (!siblings) return;
+      const currentIndex = Array.from(siblings).indexOf(e.currentTarget);
+      const nextIndex =
+        e.key === "ArrowDown"
+          ? Math.min(currentIndex + 1, siblings.length - 1)
+          : Math.max(currentIndex - 1, 0);
+      siblings[nextIndex]?.focus();
+    }
+  }, []);
 
   return (
-    <div ref={cardRef} role="listitem" className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)]">
+    <li
+      ref={cardRef}
+      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)]"
+    >
       <button
         type="button"
         className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-[var(--color-bg-secondary)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
@@ -77,10 +77,9 @@ function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
       </button>
 
       {expanded && (
-        <div
+        <section
           id={`hypothesis-content-${hypothesis.id}`}
           className="border-t border-[var(--color-border)] px-4 py-3 space-y-4"
-          role="region"
           aria-label={`${hypothesis.statement} 详情`}
         >
           {/* SQL */}
@@ -166,9 +165,9 @@ function HypothesisCard({ hypothesis }: { hypothesis: Hypothesis }) {
               </ul>
             </div>
           )}
-        </div>
+        </section>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -178,11 +177,11 @@ export function HypothesisSection() {
 
   return (
     <WorkbenchSection title="假设 · 探索" status={sectionStatus}>
-      <div className="space-y-3" role="list" aria-label="假设列表">
+      <ul className="space-y-3" aria-label="假设列表">
         {hypotheses.map((hypothesis) => (
           <HypothesisCard key={hypothesis.id} hypothesis={hypothesis} />
         ))}
-      </div>
+      </ul>
     </WorkbenchSection>
   );
 }

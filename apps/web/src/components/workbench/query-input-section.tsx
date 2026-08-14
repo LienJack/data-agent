@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { isRunTerminal } from "@/lib/run-projection";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 
@@ -68,7 +68,10 @@ export function QueryInputSection({
     return (
       <div className="card">
         <h2 className="section-header">分析查询</h2>
-        <div className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12" role="alert">
+        <div
+          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12"
+          role="alert"
+        >
           <div className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]">
             <span className="inline-block size-4 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)]" />
             正在加载工作空间…
@@ -82,7 +85,10 @@ export function QueryInputSection({
     return (
       <div className="card">
         <h2 className="section-header">分析查询</h2>
-        <div className="flex items-center justify-center rounded-lg border border-dashed border-red-200 bg-red-50 py-12 dark:border-red-800 dark:bg-red-900/20" role="alert">
+        <div
+          className="flex items-center justify-center rounded-lg border border-dashed border-red-200 bg-red-50 py-12 dark:border-red-800 dark:bg-red-900/20"
+          role="alert"
+        >
           <div className="text-center">
             <p className="text-sm text-red-700 dark:text-red-400">加载失败，请重试</p>
             <button
@@ -105,7 +111,10 @@ export function QueryInputSection({
     return (
       <div className="card">
         <h2 className="section-header">分析查询</h2>
-        <div className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12" role="alert">
+        <div
+          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12"
+          role="alert"
+        >
           <p className="text-sm text-[var(--color-text-tertiary)]">
             权限不足 · 需要 ANALYST 或更高角色
           </p>
@@ -118,7 +127,10 @@ export function QueryInputSection({
     return (
       <div className="card">
         <h2 className="section-header">分析查询</h2>
-        <div className="flex items-center justify-center rounded-lg border border-dashed border-amber-200 bg-amber-50 py-12 dark:border-amber-800 dark:bg-amber-900/20" role="alert">
+        <div
+          className="flex items-center justify-center rounded-lg border border-dashed border-amber-200 bg-amber-50 py-12 dark:border-amber-800 dark:bg-amber-900/20"
+          role="alert"
+        >
           <p className="text-sm text-amber-700 dark:text-amber-400">数据已过期 · 需要重新查询</p>
         </div>
       </div>
@@ -140,7 +152,10 @@ export function QueryInputSection({
 
       {/* 连接状态指示器 */}
       {activeRunId && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-tertiary)]" aria-live="polite">
+        <div
+          className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-tertiary)]"
+          aria-live="polite"
+        >
           <span
             className={`inline-block size-2 rounded-full ${
               connection === "live"
@@ -205,7 +220,8 @@ export function QueryInputSection({
 
       {/* 取消/恢复/重播按钮 — 仅在活跃 Run 时显示 */}
       {activeRunId && (
-        <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label="运行控制">
+        <fieldset className="mt-3 flex flex-wrap items-center gap-2 border-0 p-0">
+          <legend className="sr-only">运行控制</legend>
           {isActive && (
             <button
               type="button"
@@ -233,18 +249,24 @@ export function QueryInputSection({
             </button>
           )}
           {/* 运行状态标签 */}
-          <span className="ml-auto text-xs font-medium text-[var(--color-text-tertiary)]" aria-live="polite">
+          <span
+            className="ml-auto text-xs font-medium text-[var(--color-text-tertiary)]"
+            aria-live="polite"
+          >
             {runStatus === "QUEUED" && "排队中"}
             {runStatus === "RUNNING" && "运行中"}
             {runStatus === "COMPLETED" && "已完成"}
             {runStatus === "FAILED" && "失败"}
             {runStatus === "CANCELLED" && "已取消"}
           </span>
-        </div>
+        </fieldset>
       )}
 
       {projection?.scope && (
-        <div className="mt-3 flex flex-wrap gap-3 text-xs text-[var(--color-text-tertiary)]" aria-label="工作空间上下文">
+        <section
+          className="mt-3 flex flex-wrap gap-3 text-xs text-[var(--color-text-tertiary)]"
+          aria-label="工作空间上下文"
+        >
           <span>
             工作空间:{" "}
             <code className="rounded bg-[var(--color-bg-secondary)] px-1 py-0.5 font-mono">
@@ -263,10 +285,10 @@ export function QueryInputSection({
               {projection.scope.dialect ?? "—"}
             </code>
           </span>
-        </div>
+        </section>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-2 text-xs" aria-label="能力标签">
+      <section className="mt-2 flex flex-wrap gap-2 text-xs" aria-label="能力标签">
         <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
           L2 多步研究分析师
         </span>
@@ -285,9 +307,9 @@ export function QueryInputSection({
             L5 因果决策
           </span>
         )}
-      </div>
+      </section>
 
-      <p className="mt-2 text-xs text-[var(--color-text-tertiary)]" aria-label="版本信息">
+      <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
         {projection?.demoLicense ?? "Demo v1.0.0"} · 仅体验用途
         {l2Only && " · 仅 L2 能力"}
       </p>

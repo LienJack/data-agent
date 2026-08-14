@@ -25,12 +25,18 @@ export function ClaimEvidenceTree({ claims }: ClaimEvidenceTreeProps) {
   }
 
   return (
-    <div className="space-y-3" role="list" aria-label="声明与证据列表">
-      {claims.map((claim, i) => (
-        <div key={claim.statement} className="relative pl-4" role="listitem">
+    <ul className="space-y-3" aria-label="声明与证据列表">
+      {claims.map((claim) => (
+        <li key={claim.statement} className="relative pl-4">
           {/* 连接线 */}
-          <div className="absolute left-0 top-0 h-full w-px bg-[var(--color-border)]" aria-hidden="true" />
-          <div className="absolute left-0 top-3 size-2 -translate-x-[3px] rounded-full border-2 border-[var(--color-accent)] bg-[var(--color-bg-primary)]" aria-hidden="true" />
+          <div
+            className="absolute left-0 top-0 h-full w-px bg-[var(--color-border)]"
+            aria-hidden="true"
+          />
+          <div
+            className="absolute left-0 top-3 size-2 -translate-x-[3px] rounded-full border-2 border-[var(--color-accent)] bg-[var(--color-bg-primary)]"
+            aria-hidden="true"
+          />
 
           <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-3">
             <div className="flex items-start justify-between gap-2">
@@ -41,7 +47,7 @@ export function ClaimEvidenceTree({ claims }: ClaimEvidenceTreeProps) {
             </div>
             <p className="mt-1 text-xs text-[var(--color-text-tertiary)]">{claim.evidence}</p>
             {claim.supportingSources && claim.supportingSources.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1" aria-label="支撑来源">
+              <section className="mt-2 flex flex-wrap gap-1" aria-label="支撑来源">
                 {claim.supportingSources.map((src) => (
                   <span
                     key={src}
@@ -50,11 +56,11 @@ export function ClaimEvidenceTree({ claims }: ClaimEvidenceTreeProps) {
                     {src}
                   </span>
                 ))}
-              </div>
+              </section>
             )}
           </div>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
