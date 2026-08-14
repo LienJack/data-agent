@@ -22,6 +22,12 @@ interface UserMutationResult {
   readonly one_time_password: string | null;
 }
 
+interface IdentityRetryRequest {
+  readonly path: string;
+  readonly body: string;
+  readonly label: string;
+}
+
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     cache: "no-store",
@@ -86,7 +92,11 @@ function gateTone(status: OperationsHealthGate["status"]) {
   };
 }
 
-function Metric(props: { readonly label: string; readonly value: string; readonly detail: string }) {
+function Metric(props: {
+  readonly label: string;
+  readonly value: string;
+  readonly detail: string;
+}) {
   return (
     <div className="border-r border-[var(--color-border-default)] px-5 py-4 first:pl-0 last:border-r-0 last:pr-0">
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
@@ -108,6 +118,7 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [oneTimePassword, setOneTimePassword] = useState<string>();
+  const [identityRetry, setIdentityRetry] = useState<IdentityRetryRequest>();
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
   const [userRole, setUserRole] = useState<"USER" | "SUPER_ADMIN">("USER");
@@ -151,6 +162,7 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
     setError(undefined);
     setNotice(undefined);
     setOneTimePassword(undefined);
+    setIdentityRetry(undefined);
     try {
       const operationId = crypto.randomUUID();
       const result = await api<UserMutationResult>("/api/admin/operations/users", {
@@ -188,22 +200,29 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
     setError(undefined);
     setNotice(undefined);
     setOneTimePassword(undefined);
+    setIdentityRetry(undefined);
     try {
-      const result = await api<UserMutationResult>(
-        `/api/admin/operations/users/${encodeURIComponent(user.principal_id)}`,
-        {
-          method: "PATCH",
-          body: JSON.stringify({
-            schema_version: "admin-user-action@1.0.0",
-            operation_id: crypto.randomUUID(),
-            idempotency_key: operationKey(`admin-user-${action.toLowerCase()}`),
-            principal_id: user.principal_id,
-            expected_version: user.authz_epoch,
-            action,
-            reason: reason.trim(),
-          }),
-        },
-      );
+      const path = `/api/admin/operations/users/${encodeURIComponent(user.principal_id)}`;
+      const body = JSON.stringify({
+        schema_version: "admin-user-action@1.0.0",
+        operation_id: crypto.randomUUID(),
+        idempotency_key: operationKey(`admin-user-${action.toLowerCase()}`),
+        principal_id: user.principal_id,
+        expected_version: user.authz_epoch,
+        action,
+        reason: reason.trim(),
+      });
+      const result = await api<UserMutationResult>(path, { method: "PATCH", body });
+      if (result.receipt.status === "RETRY_REQUIRED") {
+        setIdentityRetry({
+          path,
+          body,
+          label: action === "RESET_PASSWORD" ? "密码与会话副作用" : "封禁与会话副作用",
+        });
+        setNotice("应用授权已安全失效，但认证服务副作用尚未完成；请恢复认证服务后重试原操作。");
+        await reload();
+        return;
+      }
       if (result.one_time_password) setOneTimePassword(result.one_time_password);
       setNotice(
         action === "RESET_PASSWORD"
@@ -215,6 +234,32 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
       await reload();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "用户操作失败");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function retryIdentitySideEffect() {
+    if (!identityRetry) return;
+    setPending(true);
+    setError(undefined);
+    setNotice(undefined);
+    setOneTimePassword(undefined);
+    try {
+      const result = await api<UserMutationResult>(identityRetry.path, {
+        method: "PATCH",
+        body: identityRetry.body,
+      });
+      if (result.receipt.status === "RETRY_REQUIRED") {
+        setNotice("认证副作用仍未完成；原 operation 保持 RETRY_REQUIRED，可继续安全重试。");
+      } else {
+        setIdentityRetry(undefined);
+        if (result.one_time_password) setOneTimePassword(result.one_time_password);
+        setNotice("认证副作用已完成，原 operation 已转为 SUCCEEDED。");
+      }
+      await reload();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "认证副作用重试失败");
     } finally {
       setPending(false);
     }
@@ -290,7 +335,10 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
               Organization & operations
             </p>
           </div>
-          <h2 id="operations-admin-heading" className="mt-2 text-xl font-semibold tracking-[-0.03em]">
+          <h2
+            id="operations-admin-heading"
+            className="mt-2 text-xl font-semibold tracking-[-0.03em]"
+          >
             组织与运维
           </h2>
           <p className="mt-1 max-w-2xl text-sm text-[var(--color-text-muted)]">
@@ -300,17 +348,27 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
         <div className="flex items-center gap-3">
           {health && (
             <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
-              {health.billing_mode} · epoch {health.billing_epoch} · {formatTime(health.generated_at)}
+              {health.billing_mode} · epoch {health.billing_epoch} ·{" "}
+              {formatTime(health.generated_at)}
             </p>
           )}
-          <Button size="sm" variant="ghost" onClick={() => void reload()} disabled={loading || pending}>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => void reload()}
+            disabled={loading || pending}
+          >
             刷新状态
           </Button>
         </div>
       </header>
 
       <div className="grid grid-cols-2 rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-5 sm:grid-cols-4">
-        <Metric label="Active users" value={String(summary.activeUsers)} detail={`${users.length} 个全局账户`} />
+        <Metric
+          label="Active users"
+          value={String(summary.activeUsers)}
+          detail={`${users.length} 个全局账户`}
+        />
         <Metric
           label="Workspaces"
           value={String(summary.activeWorkspaces)}
@@ -324,12 +382,17 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
         />
       </div>
 
-      <div className="flex items-center gap-1 border-b border-[var(--color-border-default)]" role="tablist">
-        {([
-          ["overview", "运行概览"],
-          ["users", `用户 ${users.length}`],
-          ["workspaces", `工作空间 ${workspaces.length}`],
-        ] as const).map(([value, label]) => (
+      <div
+        className="flex items-center gap-1 border-b border-[var(--color-border-default)]"
+        role="tablist"
+      >
+        {(
+          [
+            ["overview", "运行概览"],
+            ["users", `用户 ${users.length}`],
+            ["workspaces", `工作空间 ${workspaces.length}`],
+          ] as const
+        ).map(([value, label]) => (
           <button
             key={value}
             type="button"
@@ -348,7 +411,10 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
       </div>
 
       {error && (
-        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">
+        <div
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700"
+        >
           {error}
         </div>
       )}
@@ -357,12 +423,32 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
           {notice}
         </div>
       )}
+      {identityRetry && (
+        <div className="flex flex-col justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-xs font-semibold text-amber-900">待重试：{identityRetry.label}</p>
+            <p className="mt-1 text-[10px] leading-5 text-amber-800">
+              将精确重放同一 operation_id 与 idempotency_key，不会重复修改应用用户状态。
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={pending}
+            onClick={() => void retryIdentitySideEffect()}
+          >
+            重试认证副作用
+          </Button>
+        </div>
+      )}
       {oneTimePassword && (
         <div className="flex flex-col justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 sm:flex-row sm:items-center">
           <div>
             <p className="text-xs font-semibold text-amber-900">一次性密码</p>
             <p className="mt-1 font-mono text-sm text-amber-950">{oneTimePassword}</p>
-            <p className="mt-1 text-[10px] text-amber-700">关闭或刷新后不再显示，请通过安全渠道交付。</p>
+            <p className="mt-1 text-[10px] text-amber-700">
+              关闭或刷新后不再显示，请通过安全渠道交付。
+            </p>
           </div>
           <Button
             size="sm"
@@ -424,15 +510,22 @@ function HealthOverview({
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold">上线健康门</h3>
-            <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">六项检查共享同一权威快照</p>
+            <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+              六项检查共享同一权威快照
+            </p>
           </div>
-          <span className="font-mono text-[10px] text-[var(--color-text-muted)]">6 / 6 observed</span>
+          <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
+            6 / 6 observed
+          </span>
         </div>
         <div className="divide-y divide-[var(--color-border-default)]">
           {health.gates.map((gate) => {
             const tone = gateTone(gate.status);
             return (
-              <div key={gate.key} className="grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-3 hover:bg-[var(--color-bg-canvas)]">
+              <div
+                key={gate.key}
+                className="grid grid-cols-[1fr_auto] items-center gap-4 px-4 py-3 hover:bg-[var(--color-bg-canvas)]"
+              >
                 <div className="flex min-w-0 items-center gap-3">
                   <span className={`size-2 shrink-0 rounded-full ${tone.dot}`} />
                   <div className="min-w-0">
@@ -443,8 +536,12 @@ function HealthOverview({
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs tabular-nums text-[var(--color-text-muted)]">{gate.count}</span>
-                  <span className={`min-w-12 rounded-full border px-2 py-0.5 text-center text-[9px] font-semibold ${tone.badge}`}>
+                  <span className="text-xs tabular-nums text-[var(--color-text-muted)]">
+                    {gate.count}
+                  </span>
+                  <span
+                    className={`min-w-12 rounded-full border px-2 py-0.5 text-center text-[9px] font-semibold ${tone.badge}`}
+                  >
                     {tone.label}
                   </span>
                 </div>
@@ -455,16 +552,29 @@ function HealthOverview({
       </div>
 
       <aside className="rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">Quick actions</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
+          Quick actions
+        </p>
         <h3 className="mt-2 text-sm font-semibold">常用管理入口</h3>
         <div className="mt-4 space-y-2">
-          <button type="button" onClick={() => onNavigate("users")} className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]">
+          <button
+            type="button"
+            onClick={() => onNavigate("users")}
+            className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]"
+          >
             创建或停用用户 <span aria-hidden="true">→</span>
           </button>
-          <button type="button" onClick={() => onNavigate("workspaces")} className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]">
+          <button
+            type="button"
+            onClick={() => onNavigate("workspaces")}
+            className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]"
+          >
             管理工作空间 <span aria-hidden="true">→</span>
           </button>
-          <Link href="/admin/pricing" className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]">
+          <Link
+            href="/admin/pricing"
+            className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]"
+          >
             审批价格候选 <span aria-hidden="true">→</span>
           </Link>
         </div>
@@ -499,11 +609,16 @@ function UsersPanel(props: {
       <div className="overflow-hidden rounded-xl border border-[var(--color-border-default)]">
         <div className="border-b border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-4 py-3">
           <h3 className="text-sm font-semibold">全局用户目录</h3>
-          <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">账号全局唯一，积分账户不随工作空间复制</p>
+          <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
+            账号全局唯一，积分账户不随工作空间复制
+          </p>
         </div>
         <div className="divide-y divide-[var(--color-border-default)]">
           {props.users.map((user) => (
-            <div key={user.principal_id} className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center">
+            <div
+              key={user.principal_id}
+              className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center"
+            >
               <div className="flex min-w-0 flex-1 items-center gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--color-bg-tertiary)] text-xs font-semibold">
                   {user.display_name.slice(0, 1).toUpperCase()}
@@ -512,21 +627,38 @@ function UsersPanel(props: {
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="truncate text-xs font-semibold">{user.display_name}</p>
                     {user.system_role === "SUPER_ADMIN" && (
-                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">SUPER ADMIN</span>
+                      <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[9px] font-semibold text-violet-700">
+                        SUPER ADMIN
+                      </span>
                     )}
-                    <span className={`size-1.5 rounded-full ${user.status === "ACTIVE" ? "bg-emerald-500" : "bg-slate-400"}`} />
+                    <span
+                      className={`size-1.5 rounded-full ${user.status === "ACTIVE" ? "bg-emerald-500" : "bg-slate-400"}`}
+                    />
                   </div>
-                  <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-muted)]">{user.email} · {shortId(user.principal_id)}</p>
+                  <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-muted)]">
+                    {user.email} · {shortId(user.principal_id)}
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 pl-12 lg:pl-0">
-                <span className="mr-1 text-[10px] text-[var(--color-text-muted)]">{user.active_memberships} 空间 · epoch {user.authz_epoch}</span>
-                <Button size="sm" variant="ghost" disabled={props.pending} onClick={() => props.onAction(user, "RESET_PASSWORD")}>重置密码</Button>
+                <span className="mr-1 text-[10px] text-[var(--color-text-muted)]">
+                  {user.active_memberships} 空间 · epoch {user.authz_epoch}
+                </span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={props.pending}
+                  onClick={() => props.onAction(user, "RESET_PASSWORD")}
+                >
+                  重置密码
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"
                   disabled={props.pending || user.principal_id === props.currentPrincipalId}
-                  onClick={() => props.onAction(user, user.status === "ACTIVE" ? "DISABLE" : "ENABLE")}
+                  onClick={() =>
+                    props.onAction(user, user.status === "ACTIVE" ? "DISABLE" : "ENABLE")
+                  }
                 >
                   {user.status === "ACTIVE" ? "停用" : "恢复"}
                 </Button>
@@ -536,26 +668,55 @@ function UsersPanel(props: {
         </div>
       </div>
 
-      <form onSubmit={props.onCreate} className="h-fit rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">Invite by admin</p>
+      <form
+        onSubmit={props.onCreate}
+        className="h-fit rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] p-4"
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">
+          Invite by admin
+        </p>
         <h3 className="mt-1 text-sm font-semibold">创建全局用户</h3>
-        <p className="mt-1 text-[11px] leading-5 text-[var(--color-text-muted)]">首期不开放自主注册。系统生成一次性初始密码。</p>
+        <p className="mt-1 text-[11px] leading-5 text-[var(--color-text-muted)]">
+          首期不开放自主注册。系统生成一次性初始密码。
+        </p>
         <label className="mt-4 block text-[11px] font-medium">
           显示名称
-          <input value={props.name} onChange={(event) => props.onNameChange(event.target.value)} required maxLength={128} className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]" placeholder="例如：陈分析师" />
+          <input
+            value={props.name}
+            onChange={(event) => props.onNameChange(event.target.value)}
+            required
+            maxLength={128}
+            className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]"
+            placeholder="例如：陈分析师"
+          />
         </label>
         <label className="mt-3 block text-[11px] font-medium">
           邮箱
-          <input type="email" value={props.email} onChange={(event) => props.onEmailChange(event.target.value)} required className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]" placeholder="analyst@example.com" />
+          <input
+            type="email"
+            value={props.email}
+            onChange={(event) => props.onEmailChange(event.target.value)}
+            required
+            className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]"
+            placeholder="analyst@example.com"
+          />
         </label>
         <label className="mt-3 block text-[11px] font-medium">
           全局角色
-          <select value={props.role} onChange={(event) => props.onRoleChange(event.target.value as "USER" | "SUPER_ADMIN")} className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]">
+          <select
+            value={props.role}
+            onChange={(event) => props.onRoleChange(event.target.value as "USER" | "SUPER_ADMIN")}
+            className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]"
+          >
             <option value="USER">普通用户</option>
             <option value="SUPER_ADMIN">超级管理员</option>
           </select>
         </label>
-        <Button className="mt-4 w-full" type="submit" disabled={props.pending || !props.email.trim() || !props.name.trim()}>
+        <Button
+          className="mt-4 w-full"
+          type="submit"
+          disabled={props.pending || !props.email.trim() || !props.name.trim()}
+        >
           {props.pending ? "正在创建…" : "创建用户"}
         </Button>
       </form>
@@ -577,39 +738,93 @@ function WorkspacesPanel(props: {
     <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
       <div className="grid gap-3 sm:grid-cols-2">
         {props.workspaces.map((workspace) => (
-          <article key={workspace.workspace_id} className="rounded-xl border border-[var(--color-border-default)] p-4">
+          <article
+            key={workspace.workspace_id}
+            className="rounded-xl border border-[var(--color-border-default)] p-4"
+          >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <h3 className="truncate text-sm font-semibold">{workspace.display_name}</h3>
-                <p className="mt-1 font-mono text-[10px] text-[var(--color-text-muted)]">{workspace.slug} · {shortId(workspace.workspace_id)}</p>
+                <p className="mt-1 font-mono text-[10px] text-[var(--color-text-muted)]">
+                  {workspace.slug} · {shortId(workspace.workspace_id)}
+                </p>
               </div>
-              <span className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${workspace.lifecycle === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}>{workspace.lifecycle}</span>
+              <span
+                className={`rounded-full px-2 py-0.5 text-[9px] font-semibold ${workspace.lifecycle === "ACTIVE" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"}`}
+              >
+                {workspace.lifecycle}
+              </span>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3 border-y border-[var(--color-border-default)] py-3">
-              <div><p className="text-lg font-semibold tabular-nums">{workspace.active_members}</p><p className="text-[10px] text-[var(--color-text-muted)]">活跃成员</p></div>
-              <div><p className="text-lg font-semibold tabular-nums">{workspace.total_members}</p><p className="text-[10px] text-[var(--color-text-muted)]">历史成员</p></div>
+              <div>
+                <p className="text-lg font-semibold tabular-nums">{workspace.active_members}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">活跃成员</p>
+              </div>
+              <div>
+                <p className="text-lg font-semibold tabular-nums">{workspace.total_members}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">历史成员</p>
+              </div>
             </div>
             <div className="mt-3 flex items-center justify-between">
-              <Link href={`/w/${workspace.workspace_id}/members`} className="text-[11px] font-medium text-[var(--color-accent)] hover:underline">管理成员 →</Link>
-              <Button size="sm" variant="ghost" disabled={props.pending} onClick={() => props.onAction(workspace)}>{workspace.lifecycle === "ACTIVE" ? "归档" : "恢复"}</Button>
+              <Link
+                href={`/w/${workspace.workspace_id}/members`}
+                className="text-[11px] font-medium text-[var(--color-accent)] hover:underline"
+              >
+                管理成员 →
+              </Link>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={props.pending}
+                onClick={() => props.onAction(workspace)}
+              >
+                {workspace.lifecycle === "ACTIVE" ? "归档" : "恢复"}
+              </Button>
             </div>
           </article>
         ))}
       </div>
 
-      <form onSubmit={props.onCreate} className="h-fit rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] p-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">Workspace provisioning</p>
+      <form
+        onSubmit={props.onCreate}
+        className="h-fit rounded-xl border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] p-4"
+      >
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-accent)]">
+          Workspace provisioning
+        </p>
         <h3 className="mt-1 text-sm font-semibold">创建工作空间</h3>
-        <p className="mt-1 text-[11px] leading-5 text-[var(--color-text-muted)]">项目即工作空间；创建后再从成员页分配角色。</p>
+        <p className="mt-1 text-[11px] leading-5 text-[var(--color-text-muted)]">
+          项目即工作空间；创建后再从成员页分配角色。
+        </p>
         <label className="mt-4 block text-[11px] font-medium">
           空间名称
-          <input value={props.name} onChange={(event) => props.onNameChange(event.target.value)} required maxLength={128} className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]" placeholder="增长分析" />
+          <input
+            value={props.name}
+            onChange={(event) => props.onNameChange(event.target.value)}
+            required
+            maxLength={128}
+            className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]"
+            placeholder="增长分析"
+          />
         </label>
         <label className="mt-3 block text-[11px] font-medium">
           Slug
-          <input value={props.slug} onChange={(event) => props.onSlugChange(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))} required pattern="[a-z][a-z0-9-]*[a-z0-9]" className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 font-mono text-xs outline-none focus:border-[var(--color-border-focused)]" placeholder="growth-analytics" />
+          <input
+            value={props.slug}
+            onChange={(event) =>
+              props.onSlugChange(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))
+            }
+            required
+            pattern="[a-z][a-z0-9-]*[a-z0-9]"
+            className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 font-mono text-xs outline-none focus:border-[var(--color-border-focused)]"
+            placeholder="growth-analytics"
+          />
         </label>
-        <Button className="mt-4 w-full" type="submit" disabled={props.pending || !props.name.trim() || !props.slug.trim()}>
+        <Button
+          className="mt-4 w-full"
+          type="submit"
+          disabled={props.pending || !props.name.trim() || !props.slug.trim()}
+        >
           {props.pending ? "正在创建…" : "创建工作空间"}
         </Button>
       </form>
