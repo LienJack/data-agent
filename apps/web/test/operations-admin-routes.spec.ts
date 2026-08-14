@@ -49,9 +49,7 @@ beforeAll(async () => {
   ({ PATCH: patchWorkspace } = await import(
     "../src/app/api/admin/operations/workspaces/[workspaceId]/route"
   ));
-  ({ PATCH: patchMember } = await import(
-    "../src/app/api/workspaces/[workspaceId]/members/route"
-  ));
+  ({ PATCH: patchMember } = await import("../src/app/api/workspaces/[workspaceId]/members/route"));
 });
 
 beforeEach(() => {

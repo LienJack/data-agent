@@ -1,10 +1,7 @@
 import { createAdminUserInputSchema } from "@data-agent/contracts";
 import type { NextRequest } from "next/server";
 import { getIdentityAdminService } from "@/lib/identity-admin";
-import {
-  authorizeOperationsAdminRequest,
-  operationsResultResponse,
-} from "@/lib/operations-admin";
+import { authorizeOperationsAdminRequest, operationsResultResponse } from "@/lib/operations-admin";
 
 export const runtime = "nodejs";
 

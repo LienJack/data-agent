@@ -3,17 +3,17 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import {
   type AdminUserActionInput,
+  type AdminWorkspaceActionInput,
   adminUserActionInputSchema,
+  adminWorkspaceActionInputSchema,
   type CreateAdminUserInput,
-  createAdminUserInputSchema,
   type CreateAdminWorkspaceInput,
+  createAdminUserInputSchema,
   createAdminWorkspaceInputSchema,
   type IdentityCommand,
   type IdentityOperationReceipt,
   type WorkspaceMemberActionInput,
   workspaceMemberActionInputSchema,
-  type AdminWorkspaceActionInput,
-  adminWorkspaceActionInputSchema,
 } from "@data-agent/contracts";
 import type { BoundaryResult } from "@data-agent/platform";
 import { getDataAgentAuth, getDataAgentAuthPool } from "./auth";
@@ -122,20 +122,15 @@ export function createIdentityAdminService(dependencies: IdentityAdminServiceDep
       const existing = await findTargetUser(actorPrincipalId, parsed.data.operation_id);
       if (existing.ok) {
         const replay = await dependencies.authority.applyIdentityCommand(
-          identityInput(
-            dependencies.deploymentId,
-            actorPrincipalId,
-            existing.value.auth_user_id,
-            {
-              schema_version: "identity-command@1.0.0",
-              operation_id: parsed.data.operation_id,
-              idempotency_key: parsed.data.idempotency_key,
-              kind: "CREATE_USER",
-              email: parsed.data.email,
-              display_name: parsed.data.display_name,
-              system_role: parsed.data.system_role,
-            },
-          ),
+          identityInput(dependencies.deploymentId, actorPrincipalId, existing.value.auth_user_id, {
+            schema_version: "identity-command@1.0.0",
+            operation_id: parsed.data.operation_id,
+            idempotency_key: parsed.data.idempotency_key,
+            kind: "CREATE_USER",
+            email: parsed.data.email,
+            display_name: parsed.data.display_name,
+            system_role: parsed.data.system_role,
+          }),
         );
         return replay.ok
           ? { ok: true, value: { receipt: replay.value, one_time_password: null } }

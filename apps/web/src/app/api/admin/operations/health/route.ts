@@ -1,8 +1,5 @@
 import type { NextRequest } from "next/server";
-import {
-  authorizeOperationsAdminRequest,
-  operationsResultResponse,
-} from "@/lib/operations-admin";
+import { authorizeOperationsAdminRequest, operationsResultResponse } from "@/lib/operations-admin";
 
 export const runtime = "nodejs";
 

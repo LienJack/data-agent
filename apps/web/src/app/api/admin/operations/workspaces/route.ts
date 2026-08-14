@@ -1,10 +1,7 @@
 import { createAdminWorkspaceInputSchema } from "@data-agent/contracts";
 import type { NextRequest } from "next/server";
 import { getIdentityAdminService } from "@/lib/identity-admin";
-import {
-  authorizeOperationsAdminRequest,
-  operationsResultResponse,
-} from "@/lib/operations-admin";
+import { authorizeOperationsAdminRequest, operationsResultResponse } from "@/lib/operations-admin";
 
 export const runtime = "nodejs";
 
@@ -20,9 +17,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const authorized = await authorizeOperationsAdminRequest(request);
   if (!authorized.ok) return authorized.response;
-  const parsed = createAdminWorkspaceInputSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+  const parsed = createAdminWorkspaceInputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return operationsResultResponse({
       ok: false,

@@ -1,10 +1,7 @@
 import { workspaceMemberActionInputSchema } from "@data-agent/contracts";
 import type { NextRequest } from "next/server";
 import { getIdentityAdminService } from "@/lib/identity-admin";
-import {
-  authorizeWorkspaceMembersRequest,
-  operationsResultResponse,
-} from "@/lib/operations-admin";
+import { authorizeWorkspaceMembersRequest, operationsResultResponse } from "@/lib/operations-admin";
 
 export const runtime = "nodejs";
 
@@ -24,9 +21,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
   const { workspaceId } = await context.params;
   const authorized = await authorizeWorkspaceMembersRequest(request, workspaceId);
   if (!authorized.ok) return authorized.response;
-  const parsed = workspaceMemberActionInputSchema.safeParse(
-    await request.json().catch(() => null),
-  );
+  const parsed = workspaceMemberActionInputSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return operationsResultResponse({
       ok: false,

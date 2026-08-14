@@ -1,16 +1,16 @@
 import {
   type AdminUserProjection,
-  adminUserProjectionSchema,
   type AdminWorkspaceMemberProjection,
-  adminWorkspaceMemberProjectionSchema,
   type AdminWorkspaceProjection,
+  adminUserProjectionSchema,
+  adminWorkspaceMemberProjectionSchema,
   adminWorkspaceProjectionSchema,
   type OperationsHealthProjection,
   operationsHealthProjectionSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import type { SqlClient, SqlPool } from "../persistence/transaction.js";
-import { failure, type BoundaryResult } from "./capability.js";
+import { type BoundaryResult, failure } from "./capability.js";
 
 const operationsAdminContextSchema = z.strictObject({
   deployment_id: z.uuid(),
@@ -76,10 +76,7 @@ function membersContext(input: unknown): BoundaryResult<WorkspaceMembersContext>
     : failure("WORKSPACE_MEMBERS_CONTEXT_INVALID", "成员管理上下文不符合严格契约。");
 }
 
-function projections<T>(
-  rows: readonly ProjectionRow[],
-  schema: z.ZodType<T>,
-): readonly T[] {
+function projections<T>(rows: readonly ProjectionRow[], schema: z.ZodType<T>): readonly T[] {
   return Object.freeze(rows.map((row) => schema.parse(row.projection)));
 }
 
@@ -119,11 +116,7 @@ export function createPostgresOperationsAdminRepository(pool: SqlPool) {
       return withClient(pool, async (client) => {
         const result = await client.query<ProjectionRow>(
           "select * from platform.list_workspace_members($1::uuid,$2::uuid,$3::uuid)",
-          [
-            parsed.value.deployment_id,
-            parsed.value.principal_id,
-            parsed.value.workspace_id,
-          ],
+          [parsed.value.deployment_id, parsed.value.principal_id, parsed.value.workspace_id],
         );
         return projections(result.rows, adminWorkspaceMemberProjectionSchema);
       });
