@@ -61,6 +61,7 @@ export {
   unitSchema,
 } from "@data-agent/contracts";
 export * from "./authoring/index.js";
+export * from "./read-model/index.js";
 export {
   ContributionLoweringStatus,
   type DescriptiveContributionLoweringResult,

@@ -446,6 +446,7 @@ export const semanticGraphReleaseBindingSchema = z.strictObject({
 });
 
 export type SemanticNodeType = z.infer<typeof semanticNodeTypeSchema>;
+export type SemanticEdgeFamily = z.infer<typeof semanticEdgeFamilySchema>;
 export type SemanticNodeTypeDefinition = z.infer<typeof semanticNodeTypeDefinitionSchema>;
 export type SemanticEdgeTypeDefinition = z.infer<typeof semanticEdgeTypeDefinitionSchema>;
 export type SemanticEvidence = z.infer<typeof semanticEvidenceSchema>;
