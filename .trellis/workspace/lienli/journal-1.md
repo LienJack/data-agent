@@ -146,3 +146,25 @@ Delivered a PostgreSQL-fenced, rebuildable Neo4j relationship index with 10625 a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 6: 完成工作空间 RBAC 与模型计费上线
+
+**Date**: 2026-08-15
+**Task**: 完成工作空间 RBAC 与模型计费上线
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+完成 Phase 7 全量门禁，权威切换本地计费到 ENFORCED epoch 2，归档 Phase 7 与父任务。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5289cf2` | (see git log) |
+| `6e69384` | (see git log) |
+
+### Status
+
+[OK] **Completed**

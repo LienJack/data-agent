@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 5
-- **Last Active**: 2026-08-10
+- **Total Sessions**: 6
+- **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~148 | Active |
+| `journal-1.md` | ~170 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 6 | 2026-08-15 | 完成工作空间 RBAC 与模型计费上线 | `5289cf2`, `6e69384` | `feat/datafoundry-platform-modules` |
 | 5 | 2026-08-10 | 完成本地开发与 Docker 部署双模式 | `9cbf213` | `feat/datafoundry-platform-modules` |
 | 4 | 2026-08-09 | M2.1 Neo4j Relationship Index | `34226d8` | `feat/datafoundry-platform-modules` |
 | 3 | 2026-08-09 | 交付 M2 Semantic Explorer | `3cb4646` | `feat/datafoundry-platform-modules` |
