@@ -34,11 +34,11 @@
 
 ## Acceptance Criteria
 
-- [ ] 严格合同覆盖六种 Node identity、Edge registry、Formula AST slot 与 graph patch。
-- [ ] intrinsic-only linter 拒绝 Metric 内嵌 formula/table/column/dependency，拒绝悬空或非法 Edge。
-- [ ] Formula slot 未绑定、重复绑定、类型/unit/grain/cycle/fanout 冲突失败关闭。
-- [ ] 同一 Graph v2 fixture 多次编译得到相同 canonical digest 和 runtime projection。
-- [ ] Graph v2 正例可被现有 Query Runtime 消费，Graph v1 fixtures 保持兼容。
-- [ ] 超出现有 runtime compatibility profile 的多义关系失败关闭，不静默挑选一条 Edge。
-- [ ] 新增业务 Node/Edge 不需要新业务列或数据库 enum migration。
-- [ ] migration/RLS/RPC 测试证明只有服务端候选路径可以写 projection/revision。
+- [x] 严格合同覆盖六种 Node identity、Edge registry、Formula AST slot 与 graph patch。
+- [x] intrinsic-only linter 拒绝 Metric 内嵌 formula/table/column/dependency，拒绝悬空或非法 Edge。
+- [x] Formula slot 未绑定、重复绑定、类型/unit/grain/cycle/fanout 冲突失败关闭。
+- [x] 同一 Graph v2 fixture 多次编译得到相同 canonical digest 和 runtime projection。
+- [x] Graph v2 正例可被现有 Query Runtime 消费，Graph v1 fixtures 保持兼容。
+- [x] 超出现有 runtime compatibility profile 的多义关系失败关闭，不静默挑选一条 Edge。
+- [x] 新增业务 Node/Edge 不需要新业务列或数据库 enum migration。
+- [x] migration/RLS/RPC 测试证明只有服务端候选路径可以写 projection/revision。

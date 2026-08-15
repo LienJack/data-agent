@@ -65,6 +65,11 @@ export {
   type DescriptiveContributionLoweringResult,
   lowerDescriptiveContributionProfile,
 } from "./compiler/contribution-profile-compiler.js";
+export * from "./graph-v2/canonicalize.js";
+export * from "./graph-v2/compiler.js";
+export * from "./graph-v2/errors.js";
+export * from "./graph-v2/patch-reducer.js";
+export * from "./graph-v2/validator.js";
 export {
   computeLowerabilityProof,
   type LowerabilityProof,

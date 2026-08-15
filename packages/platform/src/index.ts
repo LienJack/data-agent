@@ -95,6 +95,12 @@ export {
   type SemanticExplorerReleasePageInput,
 } from "./semantic/postgres-semantic-explorer.js";
 export {
+  createPostgresSemanticGraphStore,
+  type PostgresSemanticGraphStore,
+  type SemanticGraphProjectionCommitInput,
+  type SemanticGraphReleaseBindingInput,
+} from "./semantic/postgres-semantic-graph.js";
+export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";

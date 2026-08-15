@@ -1,4 +1,5 @@
 export * from "./artifacts/index.js";
+export * from "./artifacts/semantic-graph-v2.js";
 export * from "./attribution/index.js";
 export * from "./capabilities/index.js";
 export * from "./catalog/index.js";
