@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 6
+- **Total Sessions**: 7
 - **Last Active**: 2026-08-15
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~170 | Active |
+| `journal-1.md` | ~191 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 7 | 2026-08-15 | 完成 Semantic Graph v2 核心 | `46785d7` | `feat/datafoundry-platform-modules` |
 | 6 | 2026-08-15 | 完成工作空间 RBAC 与模型计费上线 | `5289cf2`, `6e69384` | `feat/datafoundry-platform-modules` |
 | 5 | 2026-08-10 | 完成本地开发与 Docker 部署双模式 | `9cbf213` | `feat/datafoundry-platform-modules` |
 | 4 | 2026-08-09 | M2.1 Neo4j Relationship Index | `34226d8` | `feat/datafoundry-platform-modules` |
