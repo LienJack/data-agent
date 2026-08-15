@@ -140,8 +140,12 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       const instance = new Graph({
         container,
         data: g6Data,
-        autoFit: { type: "view", options: { when: "always", direction: "both" } },
+        autoFit:
+          props.mode === "local"
+            ? { type: "center" }
+            : { type: "view", options: { when: "always", direction: "both" } },
         padding: props.mode === "local" ? [80, 44, 58, 44] : [92, 82, 82, 82],
+        zoom: props.mode === "local" ? 0.72 : 1,
         zoomRange: [0.18, 1.8],
         animation: false,
         behaviors: [
@@ -234,7 +238,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                 rankdir: "LR",
                 align: "UL",
                 nodesep: 26,
-                ranksep: 72,
+                ranksep: 38,
                 nodeSize: [150, 58],
                 ranker: "network-simplex",
                 controlPoints: false,
