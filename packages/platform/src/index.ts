@@ -101,6 +101,10 @@ export {
   type SemanticGraphReleaseBindingInput,
 } from "./semantic/postgres-semantic-graph.js";
 export {
+  createPostgresSemanticAuthoringStore,
+  type PostgresSemanticAuthoringStoreOptions,
+} from "./semantic/postgres-semantic-authoring.js";
+export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";

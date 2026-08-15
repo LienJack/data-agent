@@ -1,11 +1,16 @@
 import {
+  SEMANTIC_GRAPH_PATCH_VERSION,
   type SemanticGraphEdge,
   type SemanticGraphNode,
+  type SemanticGraphPatch,
+  type SemanticGraphPatchOperation,
   type SemanticGraphSource,
+  semanticGraphPatchOperationSchema,
   semanticGraphPatchSchema,
   semanticGraphSourceSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
+import { z } from "zod";
 import { canonicalizeSemanticGraph, computeSemanticGraphDigest } from "./canonicalize.js";
 import { SemanticGraphError, SemanticGraphErrorCode } from "./errors.js";
 import { validateSemanticGraph } from "./validator.js";
@@ -42,32 +47,12 @@ function assertAgentManagedEdge(graph: SemanticGraphSource, edge: SemanticGraphE
   }
 }
 
-export async function applySemanticGraphPatch(
-  currentInput: unknown,
-  patchInput: unknown,
+async function reduceSemanticGraphOperations(
+  current: SemanticGraphSource,
+  operations: readonly SemanticGraphPatchOperation[],
+  validateResult = true,
 ): Promise<SemanticGraphSource> {
-  const current = semanticGraphSourceSchema.parse(currentInput);
-  const patch = semanticGraphPatchSchema.parse(patchInput);
-  if (patch.graph_id !== current.metadata.graph_id) {
-    throw new SemanticGraphError(
-      SemanticGraphErrorCode.PATCH_CONFLICT,
-      "Graph patch graph_id 与当前 Graph 不一致。",
-    );
-  }
-  if (patch.to_working_revision !== patch.from_working_revision + 1) {
-    throw new SemanticGraphError(
-      SemanticGraphErrorCode.PATCH_CONFLICT,
-      "Graph patch working revision 必须连续递增。",
-    );
-  }
-  if ((await computeSemanticGraphDigest(current)) !== patch.before_digest) {
-    throw new SemanticGraphError(
-      SemanticGraphErrorCode.PATCH_CONFLICT,
-      "Graph patch before_digest 与当前 Graph 不一致。",
-    );
-  }
-
-  for (const operation of patch.operations) {
+  for (const operation of operations) {
     if (operation.operation === "ADD_NODE") assertAgentManagedNode(current, operation.node);
     if (operation.operation === "UPDATE_NODE") assertAgentManagedNode(current, operation.node);
     if (operation.operation === "ADD_EDGE") assertAgentManagedEdge(current, operation.edge);
@@ -92,7 +77,7 @@ export async function applySemanticGraphPatch(
   }
 
   const working = semanticGraphSourceSchema.parse(current);
-  for (const operation of patch.operations) {
+  for (const operation of operations) {
     switch (operation.operation) {
       case "ADD_EDGE_TYPE": {
         if (
@@ -236,7 +221,7 @@ export async function applySemanticGraphPatch(
       }
     }
   }
-  const validationIssues = validateSemanticGraph(working);
+  const validationIssues = validateResult ? validateSemanticGraph(working) : [];
   if (validationIssues.length > 0) {
     const first = validationIssues.at(0);
     if (first === undefined) {
@@ -248,6 +233,71 @@ export async function applySemanticGraphPatch(
     throw new SemanticGraphError(first.code, first.message, first.details);
   }
   const canonical = canonicalizeSemanticGraph(working);
+  return canonical;
+}
+
+export async function createSemanticGraphPatch(
+  currentInput: unknown,
+  input: {
+    readonly patch_id: string;
+    readonly candidate_id: string;
+    readonly from_working_revision: number;
+    readonly operations: readonly SemanticGraphPatchOperation[];
+    readonly validate_result?: boolean;
+  },
+): Promise<{ readonly patch: SemanticGraphPatch; readonly next_graph: SemanticGraphSource }> {
+  const current = semanticGraphSourceSchema.parse(currentInput);
+  const operations = z.array(semanticGraphPatchOperationSchema).min(1).parse(input.operations);
+  const beforeDigest = await computeSemanticGraphDigest(current);
+  const nextGraph = await reduceSemanticGraphOperations(
+    current,
+    operations,
+    input.validate_result ?? true,
+  );
+  const patchMaterial = {
+    patch_version: SEMANTIC_GRAPH_PATCH_VERSION,
+    patch_id: input.patch_id,
+    graph_id: current.metadata.graph_id,
+    candidate_id: input.candidate_id,
+    from_working_revision: input.from_working_revision,
+    to_working_revision: input.from_working_revision + 1,
+    before_digest: beforeDigest,
+    after_digest: await computeSemanticGraphDigest(nextGraph),
+    operations,
+  };
+  const patch = semanticGraphPatchSchema.parse({
+    ...patchMaterial,
+    patch_digest: await sha256ContentHash(patchMaterial),
+  });
+  return { patch, next_graph: nextGraph };
+}
+
+export async function applySemanticGraphPatch(
+  currentInput: unknown,
+  patchInput: unknown,
+): Promise<SemanticGraphSource> {
+  const current = semanticGraphSourceSchema.parse(currentInput);
+  const patch = semanticGraphPatchSchema.parse(patchInput);
+  if (patch.graph_id !== current.metadata.graph_id) {
+    throw new SemanticGraphError(
+      SemanticGraphErrorCode.PATCH_CONFLICT,
+      "Graph patch graph_id 与当前 Graph 不一致。",
+    );
+  }
+  if (patch.to_working_revision !== patch.from_working_revision + 1) {
+    throw new SemanticGraphError(
+      SemanticGraphErrorCode.PATCH_CONFLICT,
+      "Graph patch working revision 必须连续递增。",
+    );
+  }
+  if ((await computeSemanticGraphDigest(current)) !== patch.before_digest) {
+    throw new SemanticGraphError(
+      SemanticGraphErrorCode.PATCH_CONFLICT,
+      "Graph patch before_digest 与当前 Graph 不一致。",
+    );
+  }
+
+  const canonical = await reduceSemanticGraphOperations(current, patch.operations);
   if ((await computeSemanticGraphDigest(canonical)) !== patch.after_digest) {
     throw new SemanticGraphError(
       SemanticGraphErrorCode.PATCH_DIGEST_MISMATCH,
