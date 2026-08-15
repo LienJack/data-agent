@@ -150,7 +150,7 @@ describe("PostgreSQL semantic authoring store", () => {
   it("starts through the bound scope/domain RPC without direct table access", async () => {
     const current = authority();
     const fixture = scriptedPool((text) =>
-      text.includes("semantic.start_semantic_authoring")
+      text.includes("semantic.start_semantic_studio_authoring")
         ? { rows: [{ value: state }], rowCount: 1 }
         : undefined,
     );
@@ -175,7 +175,7 @@ describe("PostgreSQL semantic authoring store", () => {
       idempotency_key: "semantic-authoring-platform-test",
     };
     await expect(store.start(input)).resolves.toEqual({ ok: true, value: state });
-    const rpc = fixture.calls.find((item) => item.text.includes("start_semantic_authoring"));
+    const rpc = fixture.calls.find((item) => item.text.includes("start_semantic_studio_authoring"));
     expect(rpc?.values).toEqual([ids.app, ids.tenant, "test", ids.principal, "ecommerce", input]);
     expect(fixture.calls.some((item) => /insert\s+into\s+semantic\./iu.test(item.text))).toBe(
       false,

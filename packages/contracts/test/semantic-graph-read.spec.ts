@@ -4,6 +4,7 @@ import {
   semanticGraphFullQuerySchema,
   semanticGraphNeighborhoodQuerySchema,
   semanticGraphNodeListQuerySchema,
+  semanticGraphStudioSourceSchema,
 } from "../src/index.js";
 
 describe("Semantic Graph read contracts", () => {
@@ -24,5 +25,9 @@ describe("Semantic Graph read contracts", () => {
       }),
     ).toThrow();
     expect(() => semanticGraphFullQuerySchema.parse({ glyph_limit: 501 })).toThrow();
+  });
+
+  it("requires Graph v2 source and projection to travel together at the studio boundary", () => {
+    expect(() => semanticGraphStudioSourceSchema.parse({ semantic_domain: "ecommerce" })).toThrow();
   });
 });

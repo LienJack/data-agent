@@ -3,7 +3,7 @@
   "name": "semantic-studio-graph-ux",
   "title": "Semantic Studio 图编辑体验",
   "description": "实现默认 Node List、局部图、全图、持久 Agent Composer 和实时候选 overlay。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": "Semantic Studio shell, Node List, local/full graph, Agent Composer and live candidate overlay",
   "package": null,
@@ -21,6 +21,6 @@
   "children": [],
   "parent": "08-15-agent-semantic-graph-authoring",
   "relatedFiles": [],
-  "notes": "",
+  "notes": "Node List/local/full graph/inspector/Agent Composer/SSE overlay implemented; validations recorded in implement.md. Final close requires scoped commit and archive.",
   "meta": {}
 }

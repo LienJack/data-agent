@@ -169,4 +169,89 @@ describe("PostgreSQL semantic graph projection store", () => {
     }).get(current.capability, "ecommerce", ids.projection);
     expect(result).toEqual({ ok: true, value: projection });
   });
+
+  it("reads the active Studio source through one scoped RPC", async () => {
+    const current = authority();
+    const source = {
+      semantic_domain: "ecommerce",
+      release_id: ids.release,
+      release_generation: 3,
+      pointer_generation: 4,
+      projection_id: ids.projection,
+      source_revision_id: ids.source,
+      projection,
+      source_graph: {
+        metadata: {
+          graph_version: "semantic-graph-source@2",
+          graph_id: ids.graph,
+          domain_id: "ecommerce",
+          base_release_id: null,
+          capability_profile: "U5_EXECUTABLE_SUBSET",
+          scope: { app_id: ids.app, tenant_id: ids.tenant, environment: "test" },
+          producer: { kind: "deterministic", id: "test" },
+          authority: { kind: "deterministic", id: "test", policy_version: "test@1" },
+          created_at: "2026-08-15T00:00:00.000Z",
+        },
+        node_type_registry: [
+          {
+            node_type: "BUSINESS_SUBJECT",
+            display_name: "业务主体",
+            authoring_policy: "AGENT_AUTHORED",
+          },
+          { node_type: "DIMENSION", display_name: "维度", authoring_policy: "AGENT_AUTHORED" },
+          { node_type: "METRIC", display_name: "指标", authoring_policy: "AGENT_AUTHORED" },
+          { node_type: "FORMULA", display_name: "公式", authoring_policy: "AGENT_AUTHORED" },
+          {
+            node_type: "PHYSICAL_TABLE",
+            display_name: "物理表",
+            authoring_policy: "SYSTEM_MANAGED",
+          },
+          {
+            node_type: "PHYSICAL_COLUMN",
+            display_name: "物理列",
+            authoring_policy: "SYSTEM_MANAGED",
+          },
+        ],
+        edge_type_registry: [
+          {
+            edge_type: "RELATES_TO",
+            display_name: "业务关系",
+            family: "BUSINESS",
+            source_node_types: ["BUSINESS_SUBJECT"],
+            target_node_types: ["BUSINESS_SUBJECT"],
+            direction: "DIRECTED",
+            parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
+            authoring_policy: "AGENT_AUTHORED",
+            attribute_kind: "BUSINESS_RELATION",
+          },
+        ],
+        evidence: [],
+        nodes: [
+          {
+            node_id: "subject-order",
+            node_version: 1,
+            node_type: "BUSINESS_SUBJECT",
+            name: "订单",
+            aliases: [],
+            owner_ref: "data-team",
+            lifecycle: "ACTIVE",
+            evidence_refs: [],
+            tags: [],
+            domain: "ecommerce",
+          },
+        ],
+        edges: [],
+      },
+    } as const;
+    const fixture = scriptedPool((text) =>
+      text.includes("semantic.get_active_semantic_graph_studio")
+        ? { rows: [{ value: source }], rowCount: 1 }
+        : undefined,
+    );
+    const result = await createPostgresSemanticGraphStore({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+    }).getActive(current.capability, "ecommerce");
+    expect(result).toEqual({ ok: true, value: source });
+  });
 });

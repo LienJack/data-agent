@@ -4,9 +4,11 @@ import {
   type SemanticGraphProjection,
   type SemanticGraphProjectionReceipt,
   type SemanticGraphReleaseBinding,
+  type SemanticGraphStudioSource,
   semanticGraphProjectionReceiptSchema,
   semanticGraphProjectionSchema,
   semanticGraphReleaseBindingSchema,
+  semanticGraphStudioSourceSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
@@ -60,6 +62,10 @@ export interface PostgresSemanticGraphStore {
     semanticDomain: string,
     projectionId: string,
   ): Promise<PortResult<SemanticGraphProjection | null>>;
+  getActive(
+    capability: unknown,
+    semanticDomain: string,
+  ): Promise<PortResult<SemanticGraphStudioSource | null>>;
   bindRelease(
     capability: unknown,
     input: SemanticGraphReleaseBindingInput,
@@ -233,6 +239,32 @@ export function createPostgresSemanticGraphStore(
           );
           const value = oneValue(result.rows);
           return value === null ? null : parseValue(semanticGraphProjectionSchema, value);
+        },
+      );
+    },
+
+    async getActive(capability, semanticDomainInput) {
+      const semanticDomain = semanticDomainSchema.parse(semanticDomainInput);
+      return transaction(
+        capability,
+        "READ",
+        "semantic.get_active_semantic_graph_studio",
+        semanticDomain,
+        async ({ capability: current, client }) => {
+          const result = await client.query<JsonValueRow>(
+            `select semantic.get_active_semantic_graph_studio(
+               $1::uuid, $2::uuid, $3::text, $4::uuid, $5::text
+             ) as value`,
+            [
+              current.scope.app_id,
+              current.scope.tenant_id,
+              current.scope.environment,
+              current.principal,
+              semanticDomain,
+            ],
+          );
+          const value = oneValue(result.rows);
+          return value === null ? null : parseValue(semanticGraphStudioSourceSchema, value);
         },
       );
     },

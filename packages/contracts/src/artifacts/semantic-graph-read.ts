@@ -4,6 +4,8 @@ import {
   semanticEdgeFamilySchema,
   semanticGraphEdgeSchema,
   semanticGraphNodeSchema,
+  semanticGraphProjectionSchema,
+  semanticGraphSourceSchema,
   semanticLifecycleSchema,
   semanticNodeTypeSchema,
 } from "./semantic-graph-v2.js";
@@ -132,6 +134,21 @@ export const semanticGraphFullResultSchema = z.strictObject({
   omitted_glyph_count: z.number().int().nonnegative(),
 });
 
+export const semanticGraphStudioSourceSchema = z.strictObject({
+  semantic_domain: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
+  release_id: immutableIdSchema,
+  release_generation: z.number().int().positive().safe(),
+  pointer_generation: z.number().int().positive().safe(),
+  projection_id: immutableIdSchema,
+  source_revision_id: immutableIdSchema,
+  projection: semanticGraphProjectionSchema,
+  source_graph: semanticGraphSourceSchema,
+});
+
 export type SemanticGraphEntryStatus = z.infer<typeof semanticGraphEntryStatusSchema>;
 export type SemanticGraphReadNode = z.infer<typeof semanticGraphReadNodeSchema>;
 export type SemanticGraphReadEdge = z.infer<typeof semanticGraphReadEdgeSchema>;
@@ -146,3 +163,4 @@ export type SemanticGraphImpactResult = z.infer<typeof semanticGraphImpactResult
 export type SemanticGraphCluster = z.infer<typeof semanticGraphClusterSchema>;
 export type SemanticGraphFullQuery = z.infer<typeof semanticGraphFullQuerySchema>;
 export type SemanticGraphFullResult = z.infer<typeof semanticGraphFullResultSchema>;
+export type SemanticGraphStudioSource = z.infer<typeof semanticGraphStudioSourceSchema>;

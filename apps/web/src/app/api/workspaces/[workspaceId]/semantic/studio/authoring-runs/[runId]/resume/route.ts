@@ -1,0 +1,13 @@
+import type { NextRequest } from "next/server";
+import { handleResumeSemanticAuthoring } from "@/lib/semantic-studio-route";
+import { getSemanticStudioRuntime } from "@/lib/semantic-studio-runtime";
+
+type RouteContext = { params: Promise<{ workspaceId: string; runId: string }> };
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  const { workspaceId, runId } = await context.params;
+  const runtime = await getSemanticStudioRuntime(request, workspaceId, "WRITE");
+  return runtime.ok
+    ? handleResumeSemanticAuthoring(request, runId, runtime.service)
+    : runtime.response;
+}

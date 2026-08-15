@@ -167,9 +167,9 @@ export function createPostgresSemanticAuthoringStore(
         };
       }
       return stateResult(
-        "semantic.start_semantic_authoring",
+        "semantic.start_semantic_studio_authoring",
         [parsed],
-        `select semantic.start_semantic_authoring(
+        `select semantic.start_semantic_studio_authoring(
            $1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb
          ) as value`,
       );
