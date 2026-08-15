@@ -25,7 +25,10 @@ import {
   type TransactionalCapabilityAuthorizer,
   withAppTransaction,
 } from "@data-agent/platform";
-import { semanticAuthoringModelToolCatalog } from "@data-agent/semantic";
+import {
+  semanticAuthoringModelToolCatalog,
+  semanticAuthoringToolCatalog,
+} from "@data-agent/semantic";
 import { z } from "zod";
 
 const SEMANTIC_AGENT_RESPONSE_SCHEMA_VERSION = "semantic-agent-turn@1.0.0";
@@ -196,6 +199,7 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
     },
   ]);
   const tools = semanticAuthoringModelToolCatalog();
+  const tokenCountTools = semanticAuthoringToolCatalog();
   const modelProvider = createModelProviderPort({
     credential_resolver: {
       resolve: async (request) =>
@@ -219,7 +223,9 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
           : null,
     },
     response_schema_registry: responseSchemas,
-    input_token_counter: { count: async (context) => trustedInputTokenUpperBound(context) },
+    input_token_counter: {
+      count: async (context) => trustedInputTokenUpperBound({ ...context, tools: tokenCountTools }),
+    },
     tools,
   });
 

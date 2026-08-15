@@ -128,13 +128,27 @@ function mutationOperation(call: SemanticAuthoringToolCall): SemanticGraphPatchO
     case "create_semantic_node":
       return { operation: "ADD_NODE", node: call.arguments.node };
     case "update_semantic_node":
-      return { operation: "UPDATE_NODE", ...call.arguments };
+      return {
+        operation: "UPDATE_NODE",
+        ...call.arguments,
+        node: {
+          ...call.arguments.node,
+          node_version: call.arguments.expected_node_version + 1,
+        },
+      };
     case "retire_semantic_node":
       return { operation: "RETIRE_NODE", ...call.arguments };
     case "create_semantic_edge":
       return { operation: "ADD_EDGE", edge: call.arguments.edge };
     case "update_semantic_edge":
-      return { operation: "UPDATE_EDGE", ...call.arguments };
+      return {
+        operation: "UPDATE_EDGE",
+        ...call.arguments,
+        edge: {
+          ...call.arguments.edge,
+          edge_version: call.arguments.expected_edge_version + 1,
+        },
+      };
     case "retire_semantic_edge":
       return { operation: "RETIRE_EDGE", ...call.arguments };
     case "propose_semantic_edge_type":
@@ -213,10 +227,29 @@ async function validationReceipt(
   });
 }
 
-function readResult(
+async function entryDigestMap(
+  entries: readonly (
+    | SemanticAuthoringState["working_graph"]["nodes"][number]
+    | SemanticAuthoringState["working_graph"]["edges"][number]
+  )[],
+): Promise<Readonly<Record<string, `sha256:${string}`>>> {
+  return Object.fromEntries(
+    await Promise.all(
+      entries.map(
+        async (entry) =>
+          [
+            "node_id" in entry ? entry.node_id : entry.edge_id,
+            await sha256ContentHash(entry),
+          ] as const,
+      ),
+    ),
+  );
+}
+
+async function readResult(
   state: SemanticAuthoringState,
   call: SemanticAuthoringToolCall,
-): { readonly result: unknown; readonly checkpoint: SemanticAuthoringCheckpoint } {
+): Promise<{ readonly result: unknown; readonly checkpoint: SemanticAuthoringCheckpoint }> {
   const graph = state.working_graph;
   switch (call.tool_name) {
     case "list_semantic_types":
@@ -251,7 +284,10 @@ function readResult(
     case "read_semantic_node": {
       const node = graph.nodes.find((entry) => entry.node_id === call.arguments.node_id) ?? null;
       return {
-        result: { node },
+        result: {
+          node,
+          entry_digest: node === null ? null : await sha256ContentHash(node),
+        },
         checkpoint: checkpointWith(state.checkpoint, {
           read_node_ids: unique([...state.checkpoint.read_node_ids, call.arguments.node_id]),
         }),
@@ -260,7 +296,10 @@ function readResult(
     case "read_semantic_edge": {
       const edge = graph.edges.find((entry) => entry.edge_id === call.arguments.edge_id) ?? null;
       return {
-        result: { edge },
+        result: {
+          edge,
+          entry_digest: edge === null ? null : await sha256ContentHash(edge),
+        },
         checkpoint: checkpointWith(state.checkpoint, {
           read_edge_ids: unique([...state.checkpoint.read_edge_ids, call.arguments.edge_id]),
         }),
@@ -282,8 +321,14 @@ function readResult(
       const nodeIds = unique(
         edges.flatMap((edge) => [edge.source_node_id, edge.target_node_id, call.arguments.node_id]),
       );
+      const nodes = graph.nodes.filter((node) => nodeIds.includes(node.node_id));
       return {
-        result: { nodes: graph.nodes.filter((node) => nodeIds.includes(node.node_id)), edges },
+        result: {
+          nodes,
+          edges,
+          node_entry_digests: await entryDigestMap(nodes),
+          edge_entry_digests: await entryDigestMap(edges),
+        },
         checkpoint: checkpointWith(state.checkpoint, {
           read_node_ids: unique([...state.checkpoint.read_node_ids, ...nodeIds]),
           read_edge_ids: unique([
@@ -310,8 +355,14 @@ function readResult(
           ].includes(edge.edge_type),
       );
       const nodeIds = unique(edges.flatMap((edge) => [edge.source_node_id, edge.target_node_id]));
+      const nodes = graph.nodes.filter((node) => nodeIds.includes(node.node_id));
       return {
-        result: { edges, nodes: graph.nodes.filter((node) => nodeIds.includes(node.node_id)) },
+        result: {
+          edges,
+          nodes,
+          node_entry_digests: await entryDigestMap(nodes),
+          edge_entry_digests: await entryDigestMap(edges),
+        },
         checkpoint: checkpointWith(state.checkpoint, {
           read_node_ids: unique([...state.checkpoint.read_node_ids, ...nodeIds]),
           read_edge_ids: unique([
@@ -335,7 +386,12 @@ function readResult(
         ...edges.map((edge) => edge.target_node_id),
       ]);
       return {
-        result: { formula: formula ?? null, edges },
+        result: {
+          formula: formula ?? null,
+          edges,
+          formula_entry_digest: formula === undefined ? null : await sha256ContentHash(formula),
+          edge_entry_digests: await entryDigestMap(edges),
+        },
         checkpoint: checkpointWith(state.checkpoint, {
           read_node_ids: unique([...state.checkpoint.read_node_ids, ...nodeIds]),
           read_edge_ids: unique([
@@ -452,7 +508,7 @@ export async function executeSemanticAuthoringTool(
     validation = latest;
     result = { summary: call.arguments.summary, validation_receipt: latest };
   } else {
-    const read = readResult(state, call);
+    const read = await readResult(state, call);
     result = read.result;
     checkpoint = read.checkpoint;
   }

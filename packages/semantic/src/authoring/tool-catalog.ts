@@ -15,10 +15,12 @@ const descriptions: Readonly<Record<SemanticAuthoringToolName, string>> = {
   read_formula_dependencies: "读取 Formula 的主体、维度、slots、字段引用与公式依赖 Edge。",
   read_candidate_diff: "读取本次 authoring run 相对 base Graph 的 patch 摘要。",
   create_semantic_node: "在当前 candidate 创建业务主体、维度、指标、公式或术语 Node。",
-  update_semantic_node: "以版本和摘要 CAS 更新一个已读取的业务 Node。",
+  update_semantic_node:
+    "使用读取结果中的 entry_digest 和当前版本 CAS 更新完整业务 Node；服务端会把 node_version 原子递增。",
   retire_semantic_node: "以版本和摘要 CAS 退役一个已读取的业务 Node。",
   create_semantic_edge: "在当前 candidate 创建显式 Edge；物理事实 Edge 禁止修改。",
-  update_semantic_edge: "以版本和摘要 CAS 更新一个已读取的 Edge。",
+  update_semantic_edge:
+    "使用读取结果中的 entry_digest 和当前版本 CAS 更新完整 Edge；服务端会把 edge_version 原子递增。",
   retire_semantic_edge: "以版本和摘要 CAS 退役一个已读取的 Edge。",
   propose_semantic_edge_type: "向 candidate 注册一个 Agent-authored Edge type。",
   validate_semantic_graph: "确定性校验结构、公式与本体关系覆盖，并返回绑定到精确摘要的回执。",

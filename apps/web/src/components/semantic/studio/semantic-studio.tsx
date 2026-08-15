@@ -202,6 +202,7 @@ export function SemanticStudio({
         onAuthoring: (result) => {
           setAuthoringState(result.state);
           setEvents((current) => mergeAuthoringEvents(current, result.events));
+          if (!runIsOpen(result.state)) setError(null);
           const newestPatch = [...result.events]
             .reverse()
             .find((event) => event.type === "graph_patch");
@@ -241,15 +242,20 @@ export function SemanticStudio({
       }),
     [lifecycle, nodeDomain, nodeType, owner, search, snapshot?.list.items, status],
   );
-  const candidateCount =
-    snapshot?.list.items.filter((item) => item.status !== "PUBLISHED").length ?? 0;
-  const nodeTypeCounts = useMemo(() => {
+  const graphSummary = useMemo(() => {
     const counts = new Map<SemanticNodeType, number>(NODE_TYPES.map((type) => [type, 0]));
-    for (const item of snapshot?.list.items ?? []) {
-      counts.set(item.node.node_type, (counts.get(item.node.node_type) ?? 0) + 1);
+    let nodeCount = 0;
+    let candidateCount = 0;
+    for (const cluster of snapshot?.full.clusters ?? []) {
+      nodeCount += cluster.node_count;
+      candidateCount += cluster.candidate_count;
+      for (const type of NODE_TYPES) {
+        counts.set(type, (counts.get(type) ?? 0) + (cluster.node_type_counts[type] ?? 0));
+      }
     }
-    return counts;
-  }, [snapshot?.list.items]);
+    return { nodeCount, candidateCount, nodeTypeCounts: counts };
+  }, [snapshot?.full.clusters]);
+  const candidateCount = graphSummary.candidateCount;
 
   async function selectAndLoadNode(node: SemanticGraphReadNode, openGraph: boolean) {
     setSelectedNode(node);
@@ -560,7 +566,7 @@ export function SemanticStudio({
               >
                 {(
                   [
-                    ["nodes", "节点目录", snapshot.list.total, ListBullets],
+                    ["nodes", "节点目录", graphSummary.nodeCount, ListBullets],
                     ["local", "局部关系", snapshot.local?.nodes.length ?? 0, ShareNetwork],
                     ["full", "全局本体", snapshot.full.glyph_count, CirclesThree],
                   ] as const
@@ -616,7 +622,7 @@ export function SemanticStudio({
                         />
                         <span>{presentation.label}</span>
                         <span className="ml-auto font-mono text-[10px]">
-                          {nodeTypeCounts.get(item) ?? 0}
+                          {graphSummary.nodeTypeCounts.get(item) ?? 0}
                         </span>
                       </button>
                     );

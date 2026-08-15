@@ -228,7 +228,7 @@ export function createPostgresSemanticAuthoringStore(
           input.expected_turn,
           input.request_digest,
           input.checkpoint,
-          input.events,
+          JSON.stringify(input.events),
         ],
         `select semantic.begin_semantic_authoring_turn(
            $1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::uuid,
@@ -247,7 +247,7 @@ export function createPostgresSemanticAuthoringStore(
           input.request_digest,
           input.response_digest,
           input.checkpoint,
-          input.events,
+          JSON.stringify(input.events),
         ],
         `select semantic.commit_semantic_authoring_turn(
            $1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::uuid,
@@ -292,7 +292,7 @@ export function createPostgresSemanticAuthoringStore(
           input.receipt,
           input.next_graph,
           input.checkpoint,
-          input.events,
+          JSON.stringify(input.events),
         ],
         `select semantic.commit_semantic_authoring_tool(
            $1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::uuid,

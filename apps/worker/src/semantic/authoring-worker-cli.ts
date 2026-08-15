@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import type { AvailableModelProfile } from "@data-agent/contracts";
 import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
@@ -14,6 +15,28 @@ import { createSemanticAuthoringWorkerCycleRunner } from "./authoring-worker-run
 const LOCAL_DEPLOYMENT_ID = "00000000-0000-4000-8000-000000000001";
 const LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000002";
 const LOCAL_PRINCIPAL_ID = "00000000-0000-4000-8000-000000000003";
+const AUTHORING_INPUT_TOKEN_CEILING = 128_000;
+const AUTHORING_OUTPUT_TOKEN_CEILING = 8_000;
+
+function authoringProviderBudget(profile: AvailableModelProfile) {
+  const context = profile.operational_constraints.context_window;
+  if (context.verification_status !== "VERIFIED") {
+    return {
+      timeout_ms: 60_000,
+      max_input_tokens: 32_000,
+      max_output_tokens: AUTHORING_OUTPUT_TOKEN_CEILING,
+    };
+  }
+  const maxOutputTokens = Math.min(AUTHORING_OUTPUT_TOKEN_CEILING, context.max_output_tokens);
+  return {
+    timeout_ms: 60_000,
+    max_input_tokens: Math.min(
+      AUTHORING_INPUT_TOKEN_CEILING,
+      context.max_context_tokens - maxOutputTokens,
+    ),
+    max_output_tokens: maxOutputTokens,
+  };
+}
 
 const configurationSchema = z.strictObject({
   database_url: z.string().min(1),
@@ -160,6 +183,7 @@ export async function runSemanticAuthoringWorkerProcess(
                 capability,
                 semantic_domain: semanticDomain,
               },
+              provider_budget: authoringProviderBudget(activeModelRuntime.profile),
               before_step: heartbeat,
             }),
         });

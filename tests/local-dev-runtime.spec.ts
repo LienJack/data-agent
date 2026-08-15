@@ -104,7 +104,7 @@ describe("local development runtime modes", () => {
 
   it("从每个迁移的固定 ledger 声明读取版本与 checksum", () => {
     const migrations = readExpectedMigrations(repositoryRoot);
-    expect(migrations).toHaveLength(29);
+    expect(migrations).toHaveLength(49);
     expect(migrations[0]).toMatchObject({
       owner_kind: "platform",
       app_id: null,
@@ -113,7 +113,7 @@ describe("local development runtime modes", () => {
     expect(migrations.at(-1)).toMatchObject({
       owner_kind: "app",
       app_id: "00000000-0000-4000-8000-00000000da01",
-      migration_version: "20260725010625_app_data_agent_semantic_relationship_index",
+      migration_version: "20260725010645_app_data_agent_semantic_authoring_review",
     });
   });
 });

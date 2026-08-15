@@ -1,15 +1,26 @@
 "use client";
 
-import type {
-  SemanticAuthoringPublicEvent,
-  SemanticAuthoringState,
-  SemanticGraphEntryStatus,
-  SemanticGraphFullResult,
-  SemanticGraphNeighborhoodResult,
-  SemanticGraphNodeListResult,
-  SemanticNodeType,
+import {
+  type SemanticAuthoringPublicEvent,
+  type SemanticAuthoringState,
+  type SemanticGraphEntryStatus,
+  type SemanticGraphFullResult,
+  type SemanticGraphNeighborhoodResult,
+  type SemanticGraphNodeListResult,
+  type SemanticNodeType,
+  semanticAuthoringPublicEventSchema,
+  semanticAuthoringStateSchema,
 } from "@data-agent/contracts";
-import { workspacePath } from "./workspace-routes";
+import { z } from "zod";
+
+/*
+ * The SSE stream is a browser boundary, so it must parse the same strict
+ * contracts used by the Worker instead of trusting a TypeScript assertion.
+ */
+const semanticStudioStartResultSchema = z.strictObject({
+  state: semanticAuthoringStateSchema,
+  events: z.array(semanticAuthoringPublicEventSchema),
+});
 
 export interface SemanticStudioReleaseIdentity {
   readonly release_id: string;
@@ -79,7 +90,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function studioApiBase(workspaceId: string): string {
-  return `/api${workspacePath(workspaceId, "semantic/studio")}`;
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}/semantic/studio`;
 }
 
 export function loadSemanticStudio(
@@ -175,7 +186,14 @@ export function subscribeSemanticAuthoringEvents(
   );
   source.addEventListener("authoring", (event) => {
     try {
-      handlers.onAuthoring(JSON.parse(event.data) as SemanticStudioStartResult);
+      const result = semanticStudioStartResultSchema.parse(JSON.parse(event.data));
+      handlers.onAuthoring(result);
+      if (
+        result.state.run.status !== "RUNNING" &&
+        result.state.run.status !== "WAITING_CLARIFICATION"
+      ) {
+        source.close();
+      }
     } catch {
       handlers.onError("Agent 事件流返回了无效数据，正在重新连接。");
     }

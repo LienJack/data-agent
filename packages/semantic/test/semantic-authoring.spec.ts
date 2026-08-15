@@ -294,7 +294,8 @@ describe("Semantic authoring Agent tool loop", () => {
     const expectedDigest = await sha256ContentHash(formula);
     const updated = {
       ...formula,
-      node_version: 2,
+      // Agent sends the version it just read; the tool boundary owns the atomic bump.
+      node_version: formula.node_version,
       expression: {
         ...formula.expression,
         filter: {
@@ -312,14 +313,24 @@ describe("Semantic authoring Agent tool loop", () => {
             formula_node_id: "formula-product-count",
           }),
         ]),
-      () =>
-        toolResult([
+      (request) => {
+        const lastRead = [...request.messages]
+          .reverse()
+          .find(
+            (message) =>
+              message.role === "tool" && message.tool_name === "read_formula_dependencies",
+          );
+        if (lastRead?.role !== "tool") throw new Error("formula dependency read missing");
+        const parsed = JSON.parse(lastRead.content) as { formula_entry_digest: string };
+        expect(parsed.formula_entry_digest).toBe(expectedDigest);
+        return toolResult([
           call("update-formula", "update_semantic_node", {
             node: updated,
             expected_node_version: 1,
-            expected_entry_digest: expectedDigest,
+            expected_entry_digest: parsed.formula_entry_digest,
           }),
-        ]),
+        ]);
+      },
       () =>
         toolResult([
           call("impact", "analyze_semantic_impact", {}),

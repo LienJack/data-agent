@@ -32,6 +32,11 @@ export function createWorkerSemanticAuthoringRunner(input: {
   readonly new_id?: () => string;
   readonly now?: () => string;
   readonly compiler_version?: string;
+  readonly provider_budget?: {
+    readonly timeout_ms: number;
+    readonly max_input_tokens: number;
+    readonly max_output_tokens: number;
+  };
   readonly before_step?: (state: SemanticAuthoringState) => Promise<PortResult<void>>;
 }): WorkerSemanticAuthoringRunner {
   const agent = new ModelProviderAgentTurnAdapter({
@@ -45,6 +50,7 @@ export function createWorkerSemanticAuthoringRunner(input: {
     ...(input.new_id === undefined ? {} : { new_id: input.new_id }),
     ...(input.now === undefined ? {} : { now: input.now }),
     ...(input.compiler_version === undefined ? {} : { compiler_version: input.compiler_version }),
+    ...(input.provider_budget === undefined ? {} : { provider_budget: input.provider_budget }),
     ...(input.before_step === undefined ? {} : { before_step: input.before_step }),
   });
   return Object.freeze({

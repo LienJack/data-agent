@@ -184,6 +184,51 @@ describe("PostgreSQL semantic authoring store", () => {
     );
   });
 
+  it("serializes top-level event arrays as JSON for PostgreSQL jsonb parameters", async () => {
+    const current = authority();
+    const fixture = scriptedPool((text) =>
+      text.includes("semantic.begin_semantic_authoring_turn")
+        ? { rows: [{ value: state }], rowCount: 1 }
+        : undefined,
+    );
+    const store = createPostgresSemanticAuthoringStore({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+      capability: current.capability,
+      semantic_domain: "ecommerce",
+    });
+    const events = [
+      {
+        schema_version: "semantic-authoring-public-event@1.0.0" as const,
+        event_id: "00000000-0000-4000-8000-000000000408",
+        run_id: ids.run,
+        sequence: 1,
+        occurred_at: timestamp,
+        type: "stage" as const,
+        payload: {
+          phase: "AGENT_TURN" as const,
+          summary: "开始 Agent turn 1",
+          status: "RUNNING" as const,
+        },
+      },
+    ];
+
+    await expect(
+      store.beginTurn({
+        authoring_run_id: ids.run,
+        expected_writer_fence: 1,
+        expected_turn: 0,
+        request_digest: state.run.graph_digest,
+        checkpoint: state.checkpoint,
+        events,
+      }),
+    ).resolves.toEqual({ ok: true, value: state });
+    const rpc = fixture.calls.find((item) =>
+      item.text.includes("semantic.begin_semantic_authoring_turn"),
+    );
+    expect(rpc?.values?.at(-1)).toBe(JSON.stringify(events));
+  });
+
   it("maps stale fenced writes to a retryable redacted conflict", async () => {
     const current = authority();
     const fixture = scriptedPool((text) => {

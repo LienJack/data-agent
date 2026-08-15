@@ -8,6 +8,7 @@ import {
   semanticAuthoringRunSchema,
   semanticAuthoringToolCallSchema,
 } from "../src/artifacts/semantic-authoring.js";
+import { knownArtifactTypeSchema } from "../src/artifacts/types.js";
 
 const scope = {
   app_id: "00000000-0000-4000-8000-00000000da01",
@@ -16,6 +17,10 @@ const scope = {
 };
 
 describe("semantic authoring contracts", () => {
+  it("registers the Agent-authored graph candidate as an auditable system artifact", () => {
+    expect(knownArtifactTypeSchema.parse("SemanticGraphCandidate")).toBe("SemanticGraphCandidate");
+  });
+
   it("brands an exact server-owned AgentTurn request", () => {
     const request = authorizeAgentTurnRequest(
       {
