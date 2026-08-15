@@ -1,0 +1,12 @@
+{
+  "schema_version": "python-sandbox-attestation@1.0.0",
+  "python_version": "3.12.10",
+  "sdk_version": "data-agent-sandbox-sdk@1.0.0",
+  "policy_version": "python-policy@1.0.0",
+  "base_image_digest": "sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
+  "dependency_lock_digest": "sha256:6896730ae912ccb5a5e434f39921de0e6dd718cf070dc4ee18f253422ecf62cf",
+  "requirements_lock_digest": "sha256:01d14aff09f223e4f53538640e85ec0ae80d2b652140a653d3bf79071ffb9bfe",
+  "runtime_digest": "sha256:fb87dca4ebb60441f626c11504270c1fce2e30dc3f9ab52f0443c81024766841",
+  "hardening_profile": "network-none,read-only-root,no-new-privileges,cap-kill,setgid,setuid,ipc-setgid-v1",
+  "image_attestation_digest": "sha256:c71118b58f7778eaca279ab89805b8dbb58430472005e308ba89ecebf7836957"
+}

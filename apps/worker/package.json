@@ -21,7 +21,8 @@
     "test:unit": "vitest run test/credentialed-provider-certification.spec.ts test/semantic-relationship-indexer.spec.ts test/runs",
     "test:integration": "vitest run test/integration --passWithNoTests=false",
     "test:providers": "vitest run test/credentialed-provider-certification.spec.ts",
-    "credentialed:smoke": "tsx src/credentialed-provider-smoke-cli.ts"
+    "credentialed:smoke": "tsx src/credentialed-provider-smoke-cli.ts",
+    "system-models:certify": "tsx src/system-model-certification-cli.ts"
   },
   "dependencies": {
     "@data-agent/agent-runtime": "workspace:*",
@@ -29,6 +30,7 @@
     "@data-agent/platform": "workspace:*",
     "@data-agent/research": "workspace:*",
     "@data-agent/semantic": "workspace:*",
+    "@next/env": "16.3.0",
     "pg": "8.22.0",
     "zod": "4.4.3"
   },

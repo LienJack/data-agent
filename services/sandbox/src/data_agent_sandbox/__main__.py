@@ -16,6 +16,12 @@ async def _main() -> None:
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "python-server":
+        from data_agent_sandbox.python_runtime.server import main as python_server_main
+
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+        python_server_main()
+        return
     logging.basicConfig(stream=sys.stderr, level=logging.INFO)
     asyncio.run(_main())
 

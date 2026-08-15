@@ -97,6 +97,39 @@ describe("七类 Model Provider 离线 Conformance", () => {
     ).toThrow();
   });
 
+  it("部署可冻结已验证运行约束，并把它们纳入后续 Profile Hash", () => {
+    const operationalConstraints = {
+      context_window: {
+        verification_status: "VERIFIED" as const,
+        max_context_tokens: 128_000,
+        max_output_tokens: 8_192,
+      },
+      region_privacy: { verification_status: "UNVERIFIED" as const },
+      pricing: {
+        verification_status: "VERIFIED" as const,
+        currency: "USD",
+        input_microunits_per_million_tokens: 1_000,
+        output_microunits_per_million_tokens: 2_000,
+      },
+      fallback_compatibility: { verification_status: "UNVERIFIED" as const },
+    };
+    const bindings = createModelProviderBindings([
+      {
+        provider: "openai",
+        model_id: "deployment-frozen-openai",
+        operational_constraints: operationalConstraints,
+      },
+    ]);
+
+    expect(getModelProviderBinding("openai", bindings).operational_constraints).toEqual(
+      operationalConstraints,
+    );
+    expect(createUnverifiedModelProfiles(modelFixtureScope, bindings)[0]).toMatchObject({
+      certification_status: "UNVERIFIED",
+      operational_constraints: operationalConstraints,
+    });
+  });
+
   it("即使 Server Binding Resolver 被误配，也不会把凭据发送到非受信兼容端点", () => {
     const glm = getModelProviderBinding("glm");
 

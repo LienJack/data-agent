@@ -1,7 +1,7 @@
 import "server-only";
 
 import { basename, resolve } from "node:path";
-import { loadEnvConfig } from "@next/env";
+import nextEnvironment from "@next/env";
 
 const ROOT_ENV_STATE = Symbol.for("data-agent.root-env-state");
 
@@ -37,7 +37,7 @@ function promoteAlias(standardName: string, aliasName: string): void {
 export function ensureRootEnvironmentLoaded(): void {
   const current = state();
   if (!current.loaded) {
-    loadEnvConfig(resolveRepositoryRoot(), process.env.NODE_ENV !== "production");
+    nextEnvironment.loadEnvConfig(resolveRepositoryRoot(), process.env.NODE_ENV !== "production");
     current.loaded = true;
   }
 

@@ -35,7 +35,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 RUN addgroup --system --gid 1001 worker && \
-    adduser --system --uid 1001 worker
+    adduser --system --uid 1001 worker && \
+    addgroup --system --gid 10010 sandbox-ipc && \
+    addgroup worker sandbox-ipc
 
 COPY --from=builder --chown=worker:worker /app/apps/worker/dist ./apps/worker/dist
 COPY --from=builder --chown=worker:worker /app/packages ./packages

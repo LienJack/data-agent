@@ -147,6 +147,59 @@ function createNoNetworkOpenAITransport() {
   return { fetch, bodies };
 }
 
+function createForcedToolChatTransport(modelId: string) {
+  const bodies: Record<string, unknown>[] = [];
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
+    const body = JSON.parse(
+      typeof init?.body === "string"
+        ? init.body
+        : input instanceof Request
+          ? await input.clone().text()
+          : "{}",
+    ) as Record<string, unknown>;
+    bodies.push(body);
+    if (bodies.length === 3) {
+      return new Response(
+        JSON.stringify({
+          id: "chatcmpl-tool-smoke",
+          object: "chat.completion",
+          created: 1,
+          model: modelId,
+          choices: [
+            {
+              index: 0,
+              message: {
+                role: "assistant",
+                content: null,
+                tool_calls: [
+                  {
+                    id: "call-tool-smoke",
+                    type: "function",
+                    function: {
+                      name: "credentialed_smoke_tool",
+                      arguments: JSON.stringify({ probe: "tool-ok" }),
+                    },
+                  },
+                ],
+              },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(
+      JSON.stringify({
+        error: { message: "safe test failure", type: "invalid_request_error" },
+      }),
+      { status: 400, headers: { "content-type": "application/json" } },
+    );
+  });
+  return { fetch, bodies };
+}
+
 describe("显式 Provider Credentialed Smoke", () => {
   it("注入 Fetch 可离线覆盖真实 SDK 的请求、结构化输出、强制 Tool、流与脱敏路径", async () => {
     const binding = getModelProviderBinding("openai");
@@ -176,6 +229,11 @@ describe("显式 Provider Credentialed Smoke", () => {
     expect(JSON.stringify(transport.bodies[2])).toContain("credentialed_smoke_tool");
     expect(JSON.stringify(transport.bodies[2])).toContain("tool_choice");
     expect(transport.bodies[3]).toMatchObject({ stream: true });
+    expect(
+      transport.bodies
+        .slice(0, 4)
+        .every((body) => (body as Record<string, unknown>).max_output_tokens === 256),
+    ).toBe(true);
     expect(JSON.stringify(observation)).not.toContain(credentialMarker);
     expect(JSON.stringify(observation)).not.toContain("credentialed-smoke-remote-secret-marker");
     expect(observation).not.toHaveProperty("actual_model_id");
@@ -206,6 +264,22 @@ describe("显式 Provider Credentialed Smoke", () => {
     expect(testOnlySmoke).not.toHaveBeenCalled();
     expect(transport.fetch).not.toHaveBeenCalled();
   });
+
+  it.each(["deepseek", "kimi"] as const)(
+    "%s 强制工具调用会在请求边界关闭 thinking",
+    async (provider) => {
+      const binding = getModelProviderBinding(provider);
+      const transport = createForcedToolChatTransport(binding.default_model_id);
+
+      const observation = await runProviderTransportSmokeForTesting(
+        { binding, credential: credentialMarker },
+        { fetch: transport.fetch },
+      );
+
+      expect(observation.checks.tool_calling).toBe(true);
+      expect(transport.bodies[2]).toMatchObject({ thinking: { type: "disabled" } });
+    },
+  );
 
   it("包装 Live Executor 会丢失 WeakSet Authority，且不会触发网络请求", async () => {
     const binding = getModelProviderBinding("openai");

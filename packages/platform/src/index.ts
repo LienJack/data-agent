@@ -56,6 +56,12 @@ export {
   createCoordinatedSandboxPort,
 } from "./sandbox/coordinated-sandbox-port.js";
 export {
+  assertEcommerceBenchmarkReadOnlySql,
+  createPostgresEcommerceBenchmarkExecutor,
+  type EcommerceBenchmarkQueryExecutor,
+  type EcommerceBenchmarkQueryResult,
+} from "./sandbox/postgres-ecommerce-benchmark-executor.js";
+export {
   createPostgresText2SqlSandboxAuthority,
   type PostgresText2SqlSandboxAuthorityOptions,
 } from "./sandbox/postgres-text2sql-sandbox-authority.js";

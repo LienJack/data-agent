@@ -4,9 +4,14 @@ version = "0.1.0"
 description = "Data Agent U5 PostgreSQL SQL sandbox"
 requires-python = ">=3.12"
 dependencies = [
+  "matplotlib==3.10.3",
+  "numpy==2.2.6",
+  "pandas==2.2.3",
   "psycopg[binary]>=3.2,<4",
+  "pyarrow==20.0.0",
   "pydantic>=2,<3",
   "rfc8785==0.1.4",
+  "scipy==1.15.3",
 ]
 
 [dependency-groups]

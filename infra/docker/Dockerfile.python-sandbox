@@ -1,0 +1,37 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
+
+ARG PYTHON_SANDBOX_RUNTIME_DIGEST=sha256:fb87dca4ebb60441f626c11504270c1fce2e30dc3f9ab52f0443c81024766841
+ARG PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=sha256:6896730ae912ccb5a5e434f39921de0e6dd718cf070dc4ee18f253422ecf62cf
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHON_SANDBOX_RUNTIME_DIGEST=${PYTHON_SANDBOX_RUNTIME_DIGEST} \
+    PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=${PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST} \
+    PYTHON_SANDBOX_POLICY_VERSION=python-policy@1.0.0 \
+    PYTHON_SANDBOX_EXECUTOR_UID=65532 \
+    PYTHON_SANDBOX_EXECUTOR_GID=65532 \
+    PYTHON_SANDBOX_SOCKET_GID=10010 \
+    PYTHON_SANDBOX_CONTAINER_ATTESTED=1 \
+    PYTHON_SANDBOX_NETWORK_NONE=1 \
+    PYTHON_SANDBOX_READ_ONLY_ROOT=1
+
+COPY infra/docker/python-sandbox-requirements.lock /tmp/requirements.lock
+RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock && \
+    rm /tmp/requirements.lock && \
+    groupadd --gid 10010 sandbox-ipc && \
+    groupadd --gid 65532 sandbox-executor && \
+    useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin sandbox-executor && \
+    install -d -m 0755 -o root -g root /tmp/data-agent-python-jobs && \
+    install -d -m 2770 -o root -g sandbox-ipc /run/data-agent-python
+
+COPY services/sandbox/src/data_agent_sandbox /usr/local/lib/python3.12/site-packages/data_agent_sandbox
+
+ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:c71118b58f7778eaca279ab89805b8dbb58430472005e308ba89ecebf7836957
+ENV PYTHON_SANDBOX_IMAGE_DIGEST=${PYTHON_SANDBOX_IMAGE_DIGEST}
+
+WORKDIR /var/empty
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=5s --timeout=2s --retries=12 --start-period=10s \
+  CMD ["python", "-c", "import os; raise SystemExit(0 if os.path.exists('/run/data-agent-python/sandbox.sock') else 1)"]
+CMD ["python", "-m", "data_agent_sandbox", "python-server"]

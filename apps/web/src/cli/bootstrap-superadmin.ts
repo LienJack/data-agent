@@ -4,6 +4,10 @@ import nextEnvironment from "@next/env";
 import { hashPassword } from "better-auth/crypto";
 import { Client } from "pg";
 import { z } from "zod";
+import {
+  attachEcommerceDemoToWorkspace,
+  resolveEcommerceDemoConnectionConfiguration,
+} from "../lib/ecommerce-demo-bootstrap";
 
 const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_SUPERADMIN_BOOTSTRAP";
 
@@ -152,6 +156,19 @@ async function main(): Promise<void> {
         idempotencyKey,
       ],
     );
+    const ecommerceDemo = await attachEcommerceDemoToWorkspace(
+      client,
+      {
+        appId: deployment.rows[0].app_id,
+        workspaceId,
+        environment: deployment.rows[0].environment,
+        principalId,
+      },
+      resolveEcommerceDemoConnectionConfiguration(
+        process.env,
+        deployment.rows[0].environment,
+      ),
+    );
     await client.query("commit");
     report({
       schema_version: "superadmin-bootstrap-result@1.0.0",
@@ -163,6 +180,7 @@ async function main(): Promise<void> {
       workspace_slug: configuration.data.workspaceSlug,
       email: configuration.data.email,
       receipt: bootstrapped.rows[0]?.result ?? null,
+      ecommerce_demo: ecommerceDemo,
     });
   } catch {
     await client.query("rollback").catch(() => undefined);

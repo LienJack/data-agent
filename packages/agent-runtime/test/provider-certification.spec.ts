@@ -93,6 +93,7 @@ describe("Model Provider 认证诚实性", () => {
     });
     expect(failedCheck.certification_status).toBe("UNAVAILABLE");
     expect(failedCheck.reason_code).toBe("CREDENTIAL_SMOKE_FAILED");
+    expect(failedCheck).toMatchObject({ checks: { tool_calling: false } });
   });
 
   it("Smoke PASS 只生成待提交 Receipt Claims，不直接赋予 AVAILABLE 品牌", async () => {

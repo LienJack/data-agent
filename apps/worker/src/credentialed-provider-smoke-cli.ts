@@ -3,6 +3,7 @@ import {
   type AppScope,
   MODEL_PROVIDERS,
   type ModelProvider,
+  modelOperationalConstraintsSchema,
   modelProviderSchema,
 } from "@data-agent/contracts";
 import { adaptPgPool, createPostgresCapabilityAuthority } from "@data-agent/platform";
@@ -26,6 +27,7 @@ const confirmedEnvironmentSchema = z.strictObject({
       z.strictObject({
         provider: modelProviderSchema,
         model_id: z.string().min(1).max(256),
+        operational_constraints: modelOperationalConstraintsSchema.optional(),
       }),
     )
     .min(2)

@@ -22,14 +22,15 @@ const prompt = (text: string) => [
 
 const requestOptions = {
   prompt: prompt(`Reply with only ${REQUEST_MARKER}.`),
-  maxOutputTokens: 32,
+  // Reasoning models spend part of this budget on hidden reasoning_content.
+  maxOutputTokens: 256,
 };
 
 const structuredOutputOptions = {
   prompt: prompt(
     `Return JSON with exactly {"credentialed_smoke":"${STRUCTURED_MARKER}"} and no other fields.`,
   ),
-  maxOutputTokens: 64,
+  maxOutputTokens: 256,
   responseFormat: {
     type: "json" as const,
     name: "credentialed_smoke",
@@ -49,7 +50,7 @@ const structuredOutputOptions = {
 
 const toolOptions = {
   prompt: prompt("Call credentialed_smoke_tool with probe set to tool-ok."),
-  maxOutputTokens: 64,
+  maxOutputTokens: 256,
   tools: [
     {
       type: "function" as const,
@@ -74,9 +75,20 @@ const toolOptions = {
   },
 };
 
+function forcedToolProviderOptions(binding: ModelProviderBinding) {
+  if (binding.provider === "deepseek") {
+    return { deepseek: { thinking: { type: "disabled" as const } } };
+  }
+  if (binding.provider === "kimi") {
+    // createOpenAICompatible derives this key from the fixed provider name `data-agent.kimi`.
+    return { "data-agent": { thinking: { type: "disabled" as const } } };
+  }
+  return undefined;
+}
+
 const streamOptions = {
   prompt: prompt("Reply with a short non-empty acknowledgement."),
-  maxOutputTokens: 32,
+  maxOutputTokens: 256,
 };
 
 type ProviderCredentialedSmokeResult = Awaited<ReturnType<ProviderCredentialedSmoke>>;
@@ -205,8 +217,10 @@ async function executeProviderSmoke(
   });
 
   const toolCalling = await evaluate(async () => {
+    const providerOptions = forcedToolProviderOptions(input.binding);
     const result = await model.doGenerate({
       ...toolOptions,
+      ...(providerOptions ? { providerOptions } : {}),
       abortSignal: callSignal(timeoutMs),
     });
     return result.content.some(

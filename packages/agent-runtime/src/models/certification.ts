@@ -65,6 +65,7 @@ export type ProviderProbeResult =
         | "CREDENTIAL_SMOKE_NOT_AUTHORIZED"
         | "CREDENTIAL_SMOKE_FAILED"
         | "PROVIDER_SMOKE_ERROR";
+      readonly checks?: z.infer<typeof smokeResultSchema>["checks"];
     })
   | (ProviderProbeBase & {
       readonly certification_status: "PENDING_RECEIPT_COMMIT";
@@ -161,6 +162,7 @@ export async function probeModelProvider(input: ProviderProbeInput): Promise<Pro
       ...base,
       certification_status: "UNAVAILABLE",
       reason_code: "CREDENTIAL_SMOKE_FAILED",
+      checks: smoke.checks,
     });
   }
 

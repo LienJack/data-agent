@@ -69,6 +69,13 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "AgentDataProjectionReceipt",
   "EvalReleaseDecision",
   "BenchmarkManifest",
+  "BenchmarkDatasetSnapshot",
+  "BenchmarkImportReceipt",
+  "EvalBatchRun",
+  "EvalCaseRun",
+  "EvalAttempt",
+  "ReflectionReceipt",
+  "BatchScoreCard",
 ] as const;
 
 export const KNOWN_ARTIFACT_TYPES = [

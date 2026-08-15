@@ -3,6 +3,12 @@ import "server-only";
 import type { NextRequest } from "next/server";
 import { createCapabilitySchemaDiscoveryAuthorityResolver } from "./schema-discovery-authority";
 import {
+  createEcommerceDemoConnectorFactory,
+  createEcommerceDemoEgressAuthorizer,
+  createEcommerceDemoSecretResolver,
+  ecommerceDemoRuntimeEnvironment,
+} from "./ecommerce-demo-datasource-runtime";
+import {
   createSchemaDiscoveryDatasourceResolver,
   createWorkspaceDatasourceMetadataResolver,
 } from "./schema-discovery-datasource";
@@ -94,30 +100,19 @@ export async function getWorkspaceSchemaDiscoveryRuntime(
 ): Promise<WorkspaceSemanticRuntimeResult<SchemaDiscoveryRuntime>> {
   const dependencies = await requestDependencies(request, access);
   if (!dependencies.ok) return dependencies;
+  const runtimeEnvironment = ecommerceDemoRuntimeEnvironment(process.env);
   return {
     ok: true,
     runtime: createSchemaDiscoveryRuntime({
-      environment: process.env,
+      environment: runtimeEnvironment,
       sqlPool: dependencies.sqlPool,
       transactionalAuthorizer: dependencies.authorizer,
       authorityResolver: createCapabilitySchemaDiscoveryAuthorityResolver(dependencies.capability),
       datasourceResolver: createSchemaDiscoveryDatasourceResolver({
         metadataResolver: createWorkspaceDatasourceMetadataResolver(getWorkspaceDataRepository()),
-        egressAuthorizer: {
-          async authorize() {
-            throw new Error("schema discovery egress approval required");
-          },
-        },
-        secretResolver: {
-          async resolve() {
-            throw new Error("schema discovery secret provider unavailable");
-          },
-        },
-        connectorFactory: {
-          create() {
-            throw new Error("schema discovery connector unavailable");
-          },
-        },
+        egressAuthorizer: createEcommerceDemoEgressAuthorizer(runtimeEnvironment),
+        secretResolver: createEcommerceDemoSecretResolver(runtimeEnvironment),
+        connectorFactory: createEcommerceDemoConnectorFactory(),
       }),
     }),
   };

@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "PostgreSQL schema isolation, migration, grants, receipts and safe rollback"}
+{"file": ".trellis/spec/backend/benchmark-test-center.md", "reason": "Suite identity, public/sealed cases, deterministic Oracle and ScoreCard boundaries"}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "Content-addressed SQL, source, output and sandbox receipt authority"}
+{"file": ".trellis/spec/backend/run-event-streaming.md", "reason": "Durable redacted SQL and Python sandbox event replay"}
+{"file": ".trellis/spec/backend/semantic-relationship-index.md", "reason": "PostgreSQL semantic authority and bounded Neo4j projection"}
+{"file": ".trellis/spec/backend/workspace-identity-billing.md", "reason": "Workspace capability, SecretRef, model certification and cost isolation"}
+{"file": ".trellis/spec/backend/local-runtime-modes.md", "reason": "Standard startup topology and explicit Python sandbox service health"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend contract, failure and integration quality gates"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer database, worker, sandbox, API and UI closure"}
+{"file": ".trellis/tasks/08-15-agenticdatabench-production-demo/research/agenticdatabench-dataset-audit.md", "reason": "Fixed upstream dataset, table, question and slice evidence"}
+{"file": ".trellis/spec/backend/python-sandbox-execution.md", "reason": "Executable CPython sandbox request, receipt, isolation, failure and test contract"}

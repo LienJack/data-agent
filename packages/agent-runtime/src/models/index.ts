@@ -8,3 +8,4 @@ export {
   type ProviderRuntimeModelInspection,
 } from "./provider-model-factory.js";
 export * from "./router.js";
+export * from "./system-deployments.js";

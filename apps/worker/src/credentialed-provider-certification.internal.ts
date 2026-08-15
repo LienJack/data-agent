@@ -39,6 +39,7 @@ export type CredentialedProviderAttempt =
       readonly model_id: string;
       readonly certification_status: "UNVERIFIED" | "UNAVAILABLE";
       readonly reason_code: string;
+      readonly failed_checks?: readonly string[];
     }
   | {
       readonly kind: "PENDING_RECEIPT_COMMIT";
@@ -56,6 +57,7 @@ export interface CredentialedProviderCertificationEntry {
   readonly model_id: string;
   readonly certification_status: "AVAILABLE" | "UNVERIFIED" | "UNAVAILABLE";
   readonly reason_code: string;
+  readonly failed_checks?: readonly string[];
   readonly receipt_ref?: ArtifactReference;
 }
 
@@ -249,6 +251,7 @@ export async function runCredentialedProviderCertificationCore(
           model_id: binding.default_model_id,
           certification_status: attempt.certification_status,
           reason_code: attempt.reason_code,
+          ...(attempt.failed_checks ? { failed_checks: attempt.failed_checks } : {}),
         }),
       );
       continue;

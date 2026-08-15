@@ -5,6 +5,7 @@ export * from "./benchmark-suite.js";
 export * from "./event-correlation.js";
 export * from "./external-agent.js";
 export * from "./model-provider.js";
+export * from "./python-sandbox.js";
 export * from "./research-authority.js";
 export {
   type AuthoritativeSandboxExecutionIdentity,

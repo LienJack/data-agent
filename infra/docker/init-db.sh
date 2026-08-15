@@ -144,3 +144,7 @@ for migration_file in "$MIGRATIONS_DIR"/apps/data-agent/migrations/*.sql; do
 done
 
 echo "=== Migration complete ==="
+
+echo "=== Importing bundled AgenticDataBench E-commerce Demo ==="
+sh /import-agenticdatabench-ecommerce.sh
+echo "=== AgenticDataBench E-commerce Demo ready ==="

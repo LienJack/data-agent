@@ -58,6 +58,13 @@ export async function runCredentialedProviderCertification(
         model_id: binding.default_model_id,
         certification_status: probe.certification_status,
         reason_code: probe.reason_code,
+        ...("checks" in probe && probe.checks
+          ? {
+              failed_checks: Object.entries(probe.checks)
+                .filter(([, passed]) => !passed)
+                .map(([check]) => check),
+            }
+          : {}),
       };
     }
 

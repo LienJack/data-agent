@@ -86,10 +86,10 @@ export default function TestCenterPage() {
   const [installing, setInstalling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const runnableSuites = useMemo(() => suites.filter((suite) => suite.runnable), [suites]);
+  const previewableSuites = useMemo(() => suites.filter((suite) => suite.previewable), [suites]);
   const activeSuite = useMemo(
-    () => runnableSuites.find((suite) => suite.suite_id === activeSuiteId) ?? null,
-    [activeSuiteId, runnableSuites],
+    () => previewableSuites.find((suite) => suite.suite_id === activeSuiteId) ?? null,
+    [activeSuiteId, previewableSuites],
   );
   const activeCase = useMemo(
     () => cases.find((testCase) => testCase.case_id === activeCaseId) ?? null,
@@ -143,7 +143,10 @@ export default function TestCenterPage() {
         );
         if (cancelled) return;
         setSuites(loaded);
-        const initial = loaded.find((suite) => suite.runnable) ?? null;
+        const initial =
+          loaded.find((suite) => suite.suite_id === "ecommerce-production" && suite.previewable) ??
+          loaded.find((suite) => suite.runnable) ??
+          null;
         setActiveSuiteId(initial?.suite_id ?? null);
         if (initial) await loadCases(initial.suite_id);
         else setLoading(false);
@@ -165,7 +168,7 @@ export default function TestCenterPage() {
       setActiveSuiteId(suite.suite_id);
       setRun(null);
       setSql("");
-      if (suite.runnable) {
+      if (suite.previewable) {
         void loadCases(suite.suite_id);
       } else {
         setCases([]);
@@ -205,6 +208,10 @@ export default function TestCenterPage() {
   const execute = useCallback(
     async (mode: "single-baseline" | "batch-baseline" | "submitted") => {
       if (!activeSuite || !activeCase) return;
+      if (!activeSuite.runnable) {
+        setError(activeSuite.status_reason ?? "该题库当前只能预览，尚不可运行。");
+        return;
+      }
       const caseIds = mode === "batch-baseline" ? [...selectedCaseIds] : [activeCase.case_id];
       if (caseIds.length === 0) {
         setError("请至少选择一道题目。");
@@ -308,7 +315,7 @@ export default function TestCenterPage() {
         </header>
 
         <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="题库选择">
-          {runnableSuites.map((suite) => (
+          {previewableSuites.map((suite) => (
             <button
               type="button"
               key={suite.suite_id}
@@ -402,6 +409,7 @@ export default function TestCenterPage() {
                         type="checkbox"
                         aria-label={`选择第 ${testCase.ordinal + 1} 题`}
                         checked={selectedCaseIds.has(testCase.case_id)}
+                        disabled={!activeSuite?.runnable}
                         onChange={() => toggleCase(testCase.case_id)}
                         className="mt-0.5 accent-[#527c70]"
                       />
@@ -444,6 +452,12 @@ export default function TestCenterPage() {
             <div className="rounded-xl border border-[var(--color-border-default)] bg-white p-5">
               {activeCase ? (
                 <>
+                  {!activeSuite?.runnable && (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                      <span className="font-semibold">预览模式：</span>
+                      {activeSuite?.status_reason}
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-muted)]">
                       <span>题目 #{activeCase.ordinal + 1}</span>
@@ -455,7 +469,7 @@ export default function TestCenterPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        disabled={running}
+                        disabled={running || !activeSuite?.runnable}
                         onClick={() => void execute("single-baseline")}
                         className="rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium hover:bg-[var(--color-bg-canvas)] disabled:opacity-50"
                       >
@@ -463,7 +477,7 @@ export default function TestCenterPage() {
                       </button>
                       <button
                         type="button"
-                        disabled={running || selectedCaseIds.size === 0}
+                        disabled={running || selectedCaseIds.size === 0 || !activeSuite?.runnable}
                         onClick={() => void execute("batch-baseline")}
                         className="rounded-lg bg-[#171a18] px-3 py-2 text-xs font-semibold text-white hover:bg-black disabled:opacity-50"
                       >
@@ -554,11 +568,12 @@ export default function TestCenterPage() {
                           onChange={(event) => setSql(event.target.value)}
                           placeholder="SELECT ..."
                           spellCheck={false}
+                          disabled={!activeSuite?.runnable}
                           className="mt-2 h-40 w-full resize-y rounded-lg border border-[var(--color-border-default)] bg-[#111513] p-3 font-mono text-xs leading-5 text-[#d9e3de] placeholder:text-[#6d7772]"
                         />
                         <button
                           type="button"
-                          disabled={running || !sql.trim()}
+                          disabled={running || !sql.trim() || !activeSuite?.runnable}
                           onClick={() => void execute("submitted")}
                           className="mt-2 w-full rounded-lg border border-[#527c70] px-3 py-2 text-xs font-semibold text-[#42685e] hover:bg-[#edf2ef] disabled:opacity-50"
                         >

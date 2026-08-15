@@ -1,6 +1,6 @@
 # 本地开发与 Docker 运行模式
 
-> 开发时只容器化数据库；部署时才容器化全部长期服务。
+> 开发时容器化数据库与不可信代码执行边界；部署时再容器化全部长期应用服务。
 
 ## 场景：修改本地启动、Worker 入口或 Compose 拓扑
 
@@ -12,7 +12,7 @@
 ### 2. 签名
 
 ```text
-pnpm dev:infra     # 只保留 PostgreSQL + Neo4j 容器
+pnpm dev:infra     # 当前 PostgreSQL + Neo4j；Sandbox 落地后再加入 python-sandbox
 pnpm dev:migrate   # 显式应用缺失迁移并核验 Ledger
 pnpm dev:check     # 只读健康、Ledger、Authority 和端口门禁
 pnpm dev           # dev:infra -> dev:check -> 三个本地 watch 进程
@@ -22,12 +22,18 @@ pnpm docker:down   # 移除容器，保留命名数据卷
 
 GET worker:9091/live
 GET relationship-indexer:9090/live
+python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 TCP 端口
 ```
 
 ### 3. 契约
 
-- Compose 默认服务集合精确为 `postgres, neo4j`；`deploy` profile 再加
-  `web, worker, relationship-indexer`，`migrate` 仍是一次性服务。
+- 在 Python Sandbox 实现前，Compose 默认服务集合仍精确为 `postgres, neo4j`，`deploy`
+  profile 再加 `web, worker, relationship-indexer`。完成该能力时，默认集合改为
+  `postgres, neo4j, python-sandbox`，`deploy` 再加三个应用服务，`migrate` 仍是一次性服务；
+  对应 Contract 测试必须与功能提交原子更新，不能提前宣称第六个服务健康。
+- `python-sandbox` 无数据库连接、无公共 TCP、无外网和宿主项目/数据/Secret 挂载；仅允许
+  专用 IPC socket 目录。宿主 Worker 与容器 Worker 必须使用同一版本协议，executor OS
+  身份不能读取 supervisor socket。
 - 本地 Web 使用 Next/Turbopack，Worker 和 Indexer 使用 `tsx watch`。Worker 的
   watch 与 Docker CMD 必须执行同一个 `run-worker-cli` 组合入口。
 - 宿主机 DSN 使用 `127.0.0.1`；容器 DSN 使用 Compose 服务名
@@ -65,12 +71,16 @@ GET relationship-indexer:9090/live
 ### 6. 必需测试
 
 - Compose Contract：断言 default 只有两个数据库，`deploy` 精确为五个长期服务。
+- Python Sandbox 落地时同步把 Compose Contract 更新为 default 三个基础设施服务、deploy
+  六个长期服务，并断言 sandbox 无网络/数据库 Secret/公共端口、只读 root 与硬资源限制。
 - Worker Unit/Integration：严格 env、IDLE 退避、日志脱敏、Lease/Heartbeat/Fence/终态。
 - Migration：已应用版本跳过，缺失版本应用，checksum 漂移非零退出。
 - 在执行过 Next/Docker 生产构建的工作区运行根级 Vitest 时，命令必须显式使用
   `--exclude '**/.next/**'`，避免把 `.next/standalone` 中复制的测试文件当作源码重复执行。
-- 物理 Smoke：三个本地应用热更新；五容器 healthy；停 Neo4j 时 Web/Explorer/Governance
-  仍可用且关系搜索返回稳定 fallback reason。
+- 物理 Smoke：三个本地应用热更新；当前五容器 healthy；Python Sandbox 落地后六容器
+  分别 healthy；停 Neo4j 时 Web/Explorer/Governance 仍可用且关系搜索返回稳定 fallback
+  reason。Sandbox 不健康时 SQL-only 路径可用，但 Python case 与 Production Readiness
+  必须失败关闭。
 
 ### 7. Wrong vs Correct
 

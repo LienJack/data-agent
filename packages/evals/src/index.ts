@@ -15,6 +15,8 @@ import {
   scoreCardReference,
 } from "@data-agent/contracts";
 
+export * from "./test-center/index.js";
+
 // ============================================================
 // Adapter 基础接口
 // ============================================================

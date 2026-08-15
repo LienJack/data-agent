@@ -34,10 +34,14 @@ import {
   loadBirdMiniDevDataset,
   loadBladeDataset,
   loadDrSpiderDataset,
+  loadEcommerceProductionPreview,
+  loadEcommerceProductionSqlDataset,
   loadInsightBenchDataset,
+  PostgresResultOracle,
   PublishedBirdBaselineAgent,
   SubmittedAnswerAgent,
 } from "@data-agent/evals";
+import { createPostgresEcommerceBenchmarkExecutor } from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
 import { ensureRootEnvironmentLoaded } from "./root-env";
@@ -414,7 +418,7 @@ export async function listPublicTestCases(suiteId: string) {
   if (!suite) {
     throw new TestCenterRuntimeError("TEST_CENTER_SUITE_NOT_FOUND", "未找到指定题库。", 404);
   }
-  if (!suite.runnable) {
+  if (!suite.previewable) {
     throw new TestCenterRuntimeError(
       "TEST_CENTER_SUITE_NOT_READY",
       suite.status_reason ?? "该题库当前不可运行。",
@@ -425,6 +429,9 @@ export async function listPublicTestCases(suiteId: string) {
   if (suite.suite_id === "dr-spider") return (await loadDrSpiderDataset()).public_cases;
   if (suite.suite_id === "insightbench") return (await loadInsightBenchDataset()).public_cases;
   if (suite.suite_id === "blade") return (await loadBladeDataset()).public_cases;
+  if (suite.suite_id === "ecommerce-production") {
+    return (await loadEcommerceProductionPreview()).public_cases;
+  }
   throw new TestCenterRuntimeError(
     "TEST_CENTER_SUITE_NOT_READY",
     "该题库的公开题目 Adapter 尚未注册。",
@@ -494,11 +501,103 @@ function completedBatchRun(input: {
   });
 }
 
+/**
+ * Server-only acceptance seam for the fixed E-commerce snapshot. It deliberately bypasses the
+ * public catalog's HOLD flag, but still requires a certified model, sealed assets, the database
+ * reader role, deterministic Oracle evaluation and authoritative ScoreCard persistence.
+ */
+export async function executeEcommerceSqlAcceptance(input: {
+  readonly case_id: string;
+  readonly idempotency_key: string;
+  readonly reflection_enabled?: boolean;
+}): Promise<BenchmarkEvalBatchRun> {
+  const dataset = await loadEcommerceProductionSqlDataset();
+  const testCase = dataset.public_cases.find((candidate) => candidate.case_id === input.case_id);
+  if (!testCase || testCase.capabilities.includes("PYTHON_ANALYSIS")) {
+    throw new TestCenterRuntimeError(
+      "TEST_CENTER_SUITE_NOT_READY",
+      "当前验收入口只接受已具备确定性结果 Oracle 的 E-commerce SQL Case。",
+      409,
+    );
+  }
+  const budget = {
+    max_cases: 1,
+    max_attempts_per_case: input.reflection_enabled ? 2 : 1,
+    max_case_duration_ms: 120_000,
+    max_batch_duration_ms: 240_000,
+    max_output_tokens_per_attempt: 4_096,
+    max_cost_micros: 2_000_000,
+    concurrency: 1,
+  } as const;
+  const runtime = await modelRuntime();
+  if (!runtime.available) {
+    throw new TestCenterRuntimeError(
+      "TEST_CENTER_AGENT_UNSUPPORTED",
+      runtime.sql_descriptor.unavailable_reason ?? "认证 SQL 模型 Agent 尚不可用。",
+      409,
+    );
+  }
+  const executor = createPostgresEcommerceBenchmarkExecutor({ pool: pool() });
+  const batchRunId = randomUUID();
+  const execution = await executeSqlBenchmarkBatch({
+    dataset,
+    suite: {
+      suite_id: "ecommerce-production",
+      suite_version: "1.0.0",
+      dataset_version: "adb-ecommerce-bounded-v1",
+      source_commit: "61bb0d6be3439797d2c75a6ede198b0b296cc226",
+      oracle_version: "ecommerce-postgres-result-equivalence@1.0.0",
+      prompt_version: "ecommerce-certified-sql-agent@1.0.0",
+      workflow_version: "test-center-case-runner@1.0.0",
+      evaluator_version: "ecommerce-postgres-evaluator@1.0.0",
+      aggregator_version: "test-center-aggregator@1.0.0",
+    },
+    case_ids: [input.case_id],
+    agent: runtime.createSqlAgent(budget),
+    reflection_enabled: input.reflection_enabled ?? true,
+    budget,
+    seed: 20260815,
+    batch_run_id: batchRunId,
+    oracle: new PostgresResultOracle({
+      executor,
+      timeout_ms: budget.max_case_duration_ms,
+      max_rows: 100_000,
+      oracle_version: "ecommerce-postgres-result-equivalence@1.0.0",
+    }),
+  });
+  const run = completedBatchRun({
+    batchRunId,
+    reflectionEnabled: input.reflection_enabled ?? true,
+    execution,
+  });
+  const requestHash = await sha256ContentHash({
+    acceptance_version: "ecommerce-sql-acceptance@1.0.0",
+    case_id: input.case_id,
+    agent: runtime.sql_descriptor,
+    reflection_enabled: input.reflection_enabled ?? true,
+    budget,
+  });
+  const persisted = await persistRun({
+    idempotencyKey: input.idempotency_key,
+    requestHash,
+    run,
+  });
+  return getPersistedTestRun(persisted.batch_run_id);
+}
+
 export async function executeTestCenterRun(
   untrustedInput: unknown,
   idempotencyKey: string,
 ): Promise<BenchmarkEvalBatchRun> {
   const request = createBenchmarkRunInputSchema.parse(untrustedInput);
+  const suite = await getBenchmarkCatalogEntry(request.suite_id);
+  if (!suite?.runnable) {
+    throw new TestCenterRuntimeError(
+      "TEST_CENTER_SUITE_NOT_READY",
+      suite?.status_reason ?? "该题库当前不可运行。",
+      409,
+    );
+  }
   const requestHash = await sha256ContentHash(request);
   const existing = await withScopedClient(async (client) =>
     findByIdempotencyKey(client, idempotencyKey),

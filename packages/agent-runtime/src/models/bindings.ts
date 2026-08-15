@@ -37,6 +37,7 @@ export type ModelProviderBinding = z.infer<typeof providerBindingSchema>;
 const providerBindingOverrideSchema = z.strictObject({
   provider: modelProviderSchema,
   model_id: z.string().min(1).max(256),
+  operational_constraints: modelOperationalConstraintsSchema.optional(),
 });
 
 export type ModelProviderBindingOverride = z.infer<typeof providerBindingOverrideSchema>;
@@ -177,6 +178,8 @@ export function createModelProviderBindings(
         providerBindingSchema.parse({
           ...input,
           default_model_id: override?.model_id ?? input.default_model_id,
+          operational_constraints:
+            override?.operational_constraints ?? input.operational_constraints,
           profile_version: "1.0.0",
           adapter_version: "1.0.0",
         }),

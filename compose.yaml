@@ -63,10 +63,44 @@ services:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
     volumes:
       - ./infra/docker/init-db.sh:/init-db.sh:ro
+      - ./infra/docker/import-agenticdatabench-ecommerce.sh:/import-agenticdatabench-ecommerce.sh:ro
       - ./infra/supabase:/migrations:ro
+      - ./infra/agenticdatabench/ecommerce-v1:/agenticdatabench/ecommerce-v1:ro
     command: ["sh", "/init-db.sh"]
     profiles:
       - migrate
+
+  # ---------- Isolated CPython analysis execution (UDS only, no network) ----------
+  python-sandbox:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.python-sandbox
+    container_name: data-agent-python-sandbox
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    init: true
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "KILL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 40
+    mem_limit: 1200m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1100m,mode=1777
+    volumes:
+      - python_sandbox_ipc:/run/data-agent-python
+    environment:
+      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
+      PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
+      PYTHON_SANDBOX_MAX_WALL_MS: ${PYTHON_SANDBOX_MAX_WALL_MS:-120000}
+      PYTHON_SANDBOX_MAX_CPU_SECONDS: ${PYTHON_SANDBOX_MAX_CPU_SECONDS:-60}
+      PYTHON_SANDBOX_MAX_MEMORY_BYTES: ${PYTHON_SANDBOX_MAX_MEMORY_BYTES:-1073741824}
+      PYTHON_SANDBOX_MAX_INPUT_BYTES: ${PYTHON_SANDBOX_MAX_INPUT_BYTES:-268435456}
+      PYTHON_SANDBOX_MAX_OUTPUT_BYTES: ${PYTHON_SANDBOX_MAX_OUTPUT_BYTES:-67108864}
+      PYTHON_SANDBOX_MAX_PIDS: ${PYTHON_SANDBOX_MAX_PIDS:-32}
+      PYTHON_SANDBOX_MAX_OPEN_FILES: ${PYTHON_SANDBOX_MAX_OPEN_FILES:-128}
 
   # ---------- Web app (Next.js) ----------
   web:
@@ -90,6 +124,13 @@ services:
       SEMANTIC_TENANT_ID: ${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}
       SEMANTIC_PRINCIPAL_ID: ${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
       SEMANTIC_ALLOWED_DOMAINS: ${SEMANTIC_ALLOWED_DOMAINS:-revenue,customer,marketing,sales}
+      TEST_CENTER_TENANT_ID: ${TEST_CENTER_TENANT_ID:-00000000-0000-4000-8000-000000000002}
+      TEST_CENTER_PRINCIPAL_ID: ${TEST_CENTER_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
+      TEST_CENTER_ENVIRONMENT: ${TEST_CENTER_ENVIRONMENT:-local}
+      DATA_AGENT_ECOMMERCE_HOST: ${DATA_AGENT_ECOMMERCE_HOST:-postgres}
+      DATA_AGENT_ECOMMERCE_PORT: ${DATA_AGENT_ECOMMERCE_PORT:-5432}
+      DATA_AGENT_ECOMMERCE_DATABASE: ${DATA_AGENT_ECOMMERCE_DATABASE:-data_agent}
+      DATA_AGENT_ECOMMERCE_READER_PASSWORD: ${DATA_AGENT_ECOMMERCE_READER_PASSWORD:-data-agent-ecommerce-demo-change-me}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
       SEMANTIC_RELATIONSHIP_INDEX_ENABLED: ${SEMANTIC_RELATIONSHIP_INDEX_ENABLED:-true}
@@ -123,6 +164,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      python-sandbox:
+        condition: service_healthy
+    group_add:
+      - "10010"
+    volumes:
+      - python_sandbox_ipc:/run/data-agent-python
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
       NODE_ENV: production
@@ -137,6 +184,12 @@ services:
       WORKER_SIDE_EFFECT_TIMEOUT_MS: ${WORKER_SIDE_EFFECT_TIMEOUT_MS:-60000}
       WORKER_HEALTH_PORT: "9091"
       WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID: ${WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID:-}
+      PYTHON_SANDBOX_ENABLED: ${PYTHON_SANDBOX_ENABLED:-true}
+      PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
+      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
+      PYTHON_SANDBOX_RUNTIME_DIGEST: sha256:fb87dca4ebb60441f626c11504270c1fce2e30dc3f9ab52f0443c81024766841
+      PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST: sha256:6896730ae912ccb5a5e434f39921de0e6dd718cf070dc4ee18f253422ecf62cf
+      PYTHON_SANDBOX_POLICY_VERSION: python-policy@1.0.0
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
     healthcheck:
@@ -195,3 +248,4 @@ volumes:
   pgdata:
   neo4jdata:
   neo4jlogs:
+  python_sandbox_ipc:

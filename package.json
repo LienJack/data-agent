@@ -9,6 +9,7 @@
     "pnpm": ">=10.33.0 <11"
   },
   "scripts": {
+    "benchmark:ecommerce:acceptance": "pnpm --filter @data-agent/web ecommerce:agent:acceptance",
     "dev": "tsx scripts/local-dev-runtime.ts dev",
     "dev:infra": "tsx scripts/local-dev-runtime.ts infra",
     "dev:migrate": "tsx scripts/local-dev-runtime.ts migrate",
@@ -36,11 +37,21 @@
     "test:sandbox": "./scripts/test-sandbox.sh",
     "test:e2e": "tsx scripts/pending-gate.ts test:e2e U8",
     "eval:smoke": "tsx scripts/eval-smoke.ts",
+    "benchmark:install": "tsx scripts/install-benchmark.ts",
+    "benchmark:smoke": "tsx scripts/benchmark-smoke.ts",
+    "benchmark:status": "tsx scripts/install-benchmark.ts status",
+    "benchmark:ecommerce:build": "tsx scripts/build-agenticdatabench-ecommerce-bundle.ts",
+    "benchmark:ecommerce:verify": "tsx scripts/verify-agenticdatabench-ecommerce-bundle.ts",
+    "benchmark:ecommerce:semantic": "tsx scripts/build-ecommerce-semantic-bundle.ts",
+    "benchmark:ecommerce:suite": "tsx scripts/build-ecommerce-production-suite.ts",
+    "sandbox:python:attest": "tsx scripts/verify-python-sandbox-attestation.ts",
+    "bootstrap:ecommerce-demo": "tsx apps/web/src/cli/bootstrap-ecommerce-demo.ts",
     "test:security": "pnpm --filter @data-agent/agent-runtime test:security && pnpm --filter @data-agent/platform test:security && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",
     "test:deploy:docker": "tsx scripts/pending-gate.ts test:deploy:docker U9",
     "test:deploy:hosted": "tsx scripts/pending-gate.ts test:deploy:hosted U9",
     "capability:probe": "tsx scripts/capability-probe.ts",
     "capability:probe:credentialed": "pnpm --filter @data-agent/worker credentialed:smoke",
+    "model:certify:local": "pnpm --filter @data-agent/worker system-models:certify",
     "verify:release": "tsx scripts/verify-release.ts"
   },
   "devDependencies": {

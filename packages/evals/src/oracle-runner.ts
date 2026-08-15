@@ -15,7 +15,7 @@ export class OracleRunner {
     const oracleReceiptId = randomUUID();
     const now = new Date().toISOString();
 
-    // 解析 EvalCase 获取 oracle 期望值
+    // 解析 EvalCase 只能确认 Case 引用可用；它不是判分结果。
     const evalCase = await context.resolveEvalCase(evalRun.case_ref);
 
     // 计算 EvalRun 内容哈希
@@ -50,9 +50,9 @@ export class OracleRunner {
       suite_version: evalRun.suite_version,
       dataset_version: evalRun.dataset_version,
       oracle_version: evalRun.oracle_version,
-      deterministic_verdict: evalCase
-        ? "PASS"
-        : ("INCONCLUSIVE" as "PASS" | "FAIL" | "INCONCLUSIVE"),
+      // 没有经过真实 Oracle 执行和结果比对时，必须失败关闭。
+      // “Case 存在”绝不能被解释为“Agent 答对”。
+      deterministic_verdict: "INCONCLUSIVE" as const,
       oracle_result_hash: evalRunHash,
       evaluated_at: now,
       receipt_hash: "" as `sha256:${string}`,
@@ -69,6 +69,8 @@ export class OracleRunner {
         content_hash: receiptHash,
       },
     };
+
+    void evalCase;
 
     return {
       oracleReceipt: finalReceipt as unknown as AuthoritativeOracleVerdictReceipt,
