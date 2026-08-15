@@ -334,8 +334,11 @@ function validateFormulaSemantics(
         );
       }
     }
-    for (const slot of bindingsBySlot.keys()) {
-      if (!slots.has(slot)) {
+    for (const [slot, slotBindings] of bindingsBySlot) {
+      const isTimeContext = slotBindings.every(
+        (edge) => edge.attributes.kind === "SLOT_BINDING" && edge.attributes.role === "TIME",
+      );
+      if (!slots.has(slot) && !isTimeContext) {
         issues.push(
           issue(
             SemanticGraphErrorCode.FORMULA_SLOT_UNUSED,

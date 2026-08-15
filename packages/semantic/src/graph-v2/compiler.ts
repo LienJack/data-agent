@@ -257,17 +257,21 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
       const references = activeEdges(graph, "REFERENCES").filter(
         (edge) => edge.source_node_id === formula.node_id,
       );
-      const dependencyColumnIds = references.map((edge) => {
-        const dependencyColumn = requireNode(nodesById, edge.target_node_id, "PHYSICAL_COLUMN");
-        const dependencyTableId = tableByColumn.get(dependencyColumn.node_id);
-        if (dependencyTableId !== table.node_id) {
-          throw new SemanticGraphError(
-            SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
-            `Metric ${metric.node_id} 的当前 runtime projection 不支持跨表 dependency。`,
-          );
-        }
-        return qualifiedColumnId(table, dependencyColumn);
-      });
+      const dependencyColumnIds = references
+        .filter(
+          (edge) => edge.attributes.kind !== "SLOT_BINDING" || edge.attributes.role !== "TIME",
+        )
+        .map((edge) => {
+          const dependencyColumn = requireNode(nodesById, edge.target_node_id, "PHYSICAL_COLUMN");
+          const dependencyTableId = tableByColumn.get(dependencyColumn.node_id);
+          if (dependencyTableId !== table.node_id) {
+            throw new SemanticGraphError(
+              SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+              `Metric ${metric.node_id} 的当前 runtime projection 不支持跨表 dependency。`,
+            );
+          }
+          return qualifiedColumnId(table, dependencyColumn);
+        });
       const timeReference = references.find(
         (edge) => edge.attributes.kind === "SLOT_BINDING" && edge.attributes.role === "TIME",
       );
