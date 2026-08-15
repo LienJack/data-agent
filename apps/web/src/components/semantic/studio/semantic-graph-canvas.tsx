@@ -89,8 +89,17 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     let cancelled = false;
     let mountedGraph: G6Graph | null = null;
     let resizeObserver: ResizeObserver | null = null;
+    let renderSettled = false;
+    let destroyed = false;
     setReady(false);
     setRenderError(null);
+
+    function destroyMountedGraph() {
+      if (destroyed) return;
+      destroyed = true;
+      if (graphRef.current === mountedGraph) graphRef.current = null;
+      mountedGraph?.destroy();
+    }
 
     async function mountGraph() {
       const container = containerRef.current;
@@ -179,8 +188,9 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       });
 
       await instance.render();
+      renderSettled = true;
       if (cancelled) {
-        instance.destroy();
+        destroyMountedGraph();
         return;
       }
       for (const canvas of container.querySelectorAll("canvas")) {
@@ -188,11 +198,15 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         canvas.setAttribute("aria-hidden", "true");
       }
       setReady(true);
-      resizeObserver = new ResizeObserver(() => instance.resize());
+      resizeObserver = new ResizeObserver(() => {
+        if (!cancelled) instance.resize();
+      });
       resizeObserver.observe(container);
     }
 
     void mountGraph().catch((error: unknown) => {
+      renderSettled = true;
+      destroyMountedGraph();
       if (cancelled) return;
       setRenderError(error instanceof Error ? error.message : "G6 图谱渲染失败");
     });
@@ -200,8 +214,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     return () => {
       cancelled = true;
       resizeObserver?.disconnect();
-      if (graphRef.current === mountedGraph) graphRef.current = null;
-      mountedGraph?.destroy();
+      if (renderSettled) destroyMountedGraph();
     };
   }, [clusterById, edgeById, empty, g6Data, nodeById, props.mode]);
 

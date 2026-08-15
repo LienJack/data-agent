@@ -9,17 +9,20 @@ import { semanticStudioPreviewSnapshot } from "../src/lib/semantic-studio-previe
 describe("semantic G6 graph model", () => {
   it("maps the bounded neighborhood to typed G6 nodes and directed edges", () => {
     const snapshot = semanticStudioPreviewSnapshot();
-    const selectedNodeId = snapshot.local.nodes[0]?.node.node_id ?? null;
-    const data = buildLocalG6Data(snapshot.local, selectedNodeId, null);
+    const local = snapshot.local;
+    expect(local).not.toBeNull();
+    if (!local) throw new Error("preview local graph is required");
+    const selectedNodeId = local.nodes[0]?.node.node_id ?? null;
+    const data = buildLocalG6Data(local, selectedNodeId, null);
 
-    expect(data.nodes).toHaveLength(snapshot.local.nodes.length);
-    expect(data.edges).toHaveLength(snapshot.local.edges.length);
+    expect(data.nodes).toHaveLength(local.nodes.length);
+    expect(data.edges).toHaveLength(local.edges.length);
     expect(data.nodes?.find((node) => node.id === selectedNodeId)?.states).toContain("selected");
     expect(semanticG6SourceId(data.nodes?.[0]?.data)?.kind).toBe("semantic-node");
     expect(semanticG6SourceId(data.edges?.[0]?.data)?.kind).toBe("semantic-edge");
     expect(data.edges?.[0]).toMatchObject({
-      source: snapshot.local.edges[0]?.edge.source_node_id,
-      target: snapshot.local.edges[0]?.edge.target_node_id,
+      source: local.edges[0]?.edge.source_node_id,
+      target: local.edges[0]?.edge.target_node_id,
     });
   });
 
