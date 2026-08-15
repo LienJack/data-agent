@@ -1,4 +1,4 @@
--- semantic_graph_studio_migration_checksum: sha256:c5fb8ac4426ecfbce593005b220d07e45c38b66ee44991d767c5b2e953c4482d
+-- semantic_graph_studio_migration_checksum: sha256:a82e3b4a0a780bd7b6b88aa68a80c499cf9018741a85acc4e3870df86c4a783a
 -- ============================================================
 -- 10640: Semantic Graph Studio read and authoring entrypoints
 -- ============================================================
@@ -216,16 +216,11 @@ begin
   end if;
 end
 $postconditions$;
-insert into platform.migration_ledger (
-  owner_kind,
-  app_id,
-  migration_version,
-  migration_checksum
-) values (
+select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010640_app_data_agent_semantic_graph_studio',
-  'sha256:c5fb8ac4426ecfbce593005b220d07e45c38b66ee44991d767c5b2e953c4482d'
+  'sha256:a82e3b4a0a780bd7b6b88aa68a80c499cf9018741a85acc4e3870df86c4a783a'
 );
 
 commit;

@@ -1,7 +1,17 @@
 export {
+  resolveSemanticAuthoringModelRuntime,
+  type SemanticAuthoringModelRuntime,
+} from "./authoring-model-runtime.js";
+export {
   createWorkerSemanticAuthoringRunner,
   type WorkerSemanticAuthoringRunner,
 } from "./authoring-runner.js";
+export {
+  createSemanticAuthoringWorkerCycleRunner,
+  type SemanticAuthoringWorkerCycleOutcome,
+  type SemanticAuthoringWorkerCycleRunner,
+  type WorkerSemanticAuthoringRunnerFactoryHeartbeat,
+} from "./authoring-worker-runner.js";
 export {
   createSemanticRelationshipIndexer,
   type RelationshipIndexerRunResult,

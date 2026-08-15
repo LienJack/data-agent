@@ -4,7 +4,7 @@ import {
   canonicalizeJson,
   type ModelProvider,
 } from "@data-agent/contracts";
-import { Agent } from "@mastra/core/agent";
+import { Agent, type AgentExecutionOptionsBase } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
 import {
@@ -318,6 +318,19 @@ function isStructuredOutputValidationError(input: unknown): boolean {
   }
 }
 
+function structuredOutputProviderOptions(
+  binding: ModelProviderBinding,
+): NonNullable<AgentExecutionOptionsBase<unknown>["providerOptions"]> | undefined {
+  if (binding.provider === "deepseek") {
+    return { deepseek: { thinking: { type: "disabled" as const } } };
+  }
+  if (binding.provider === "kimi") {
+    // createOpenAICompatible derives this key from the fixed provider name `data-agent.kimi`.
+    return { "data-agent": { thinking: { type: "disabled" as const } } };
+  }
+  return undefined;
+}
+
 function canonicalizeStructuredOutput(
   responseSchema: RegisteredServerModelResponseSchema,
   input: unknown,
@@ -428,19 +441,30 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       tools: mastraTools,
       maxRetries: 0,
     });
-    const output = await agent.stream(projected.messages, {
+    const providerOptions = structuredOutputProviderOptions(binding);
+    const usesToolCalling = descriptors.length > 0;
+    const commonExecutionOptions = {
       abortSignal: input.signal,
       activeTools: descriptors.map((descriptor) => descriptor.tool_name),
       maxSteps: 1,
       modelSettings: {
         maxOutputTokens: input.request.budget.max_output_tokens,
       },
+      ...(providerOptions ? { providerOptions } : {}),
       runId: input.request.run_id,
-      structuredOutput: {
-        schema: responseSchema.schema,
-      },
-      toolChoice: descriptors.length === 0 ? "none" : "auto",
-    });
+    };
+    const output = usesToolCalling
+      ? await agent.stream(projected.messages, {
+          ...commonExecutionOptions,
+          toolChoice: "auto",
+        })
+      : await agent.stream(projected.messages, {
+          ...commonExecutionOptions,
+          structuredOutput: {
+            schema: responseSchema.schema,
+          },
+          toolChoice: "none",
+        });
 
     let observedToolCalls = 0;
     const reader = output.fullStream.getReader();
@@ -536,7 +560,9 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     }
 
     const usage = normalizeUsage(fullOutput.totalUsage);
-    const outputText = canonicalizeStructuredOutput(responseSchema, fullOutput.object);
+    const outputText = usesToolCalling
+      ? (fullOutput.text ?? "")
+      : canonicalizeStructuredOutput(responseSchema, fullOutput.object);
     yield {
       chunk_type: "COMPLETED",
       output_text: outputText,

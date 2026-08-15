@@ -11,6 +11,7 @@ import {
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresSemanticAuthoringStore } from "../../src/semantic/postgres-semantic-authoring.js";
+import { createPostgresSemanticAuthoringQueue } from "../../src/semantic/postgres-semantic-authoring-queue.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
 import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
 
@@ -22,6 +23,7 @@ const ids = {
   graph: "00000000-0000-4000-8000-000000000405",
   candidate: "00000000-0000-4000-8000-000000000406",
   run: "00000000-0000-4000-8000-000000000407",
+  lease: "00000000-0000-4000-8000-000000000409",
 } as const;
 const digest = `sha256:${"a".repeat(64)}` as const;
 const timestamp = "2026-08-15T00:00:00.000Z";
@@ -219,6 +221,123 @@ describe("PostgreSQL semantic authoring store", () => {
       error: {
         code: "SEMANTIC_AUTHORING_CONFLICT",
         message: "语义创作状态已变化，请从最新 checkpoint 恢复。",
+        retryable: true,
+      },
+    });
+  });
+});
+
+describe("PostgreSQL semantic authoring queue", () => {
+  const claimedState: SemanticAuthoringState = {
+    ...state,
+    run: { ...state.run, writer_fence: 2 },
+  };
+  const lease = {
+    schema_version: "semantic-authoring-lease@1.0.0" as const,
+    scope: graph.metadata.scope,
+    semantic_domain: "ecommerce",
+    authoring_run_id: ids.run,
+    principal_id: ids.principal,
+    worker_id: "semantic-worker-test",
+    lease_token: ids.lease,
+    writer_fence: 2,
+    claimed_at: timestamp,
+    expires_at: "2026-08-15T00:05:00.000Z",
+  };
+
+  it("claims through one principal-bound RPC and returns the incremented writer fence", async () => {
+    const current = authority();
+    const fixture = scriptedPool((text) =>
+      text.includes("semantic.claim_semantic_authoring_run")
+        ? { rows: [{ value: { lease, state: claimedState } }], rowCount: 1 }
+        : undefined,
+    );
+    const queue = createPostgresSemanticAuthoringQueue({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+      capability: current.capability,
+      semantic_domain: "ecommerce",
+    });
+
+    await expect(
+      queue.claimNext({
+        scope: graph.metadata.scope,
+        worker_id: "semantic-worker-test",
+        lease_duration_ms: 300_000,
+      }),
+    ).resolves.toEqual({ ok: true, value: { lease, state: claimedState } });
+    const rpc = fixture.calls.find((item) => item.text.includes("claim_semantic_authoring_run"));
+    expect(rpc?.values).toEqual([
+      ids.app,
+      ids.tenant,
+      "test",
+      ids.principal,
+      "ecommerce",
+      "semantic-worker-test",
+      300_000,
+    ]);
+    expect(fixture.calls.some((item) => /update\s+semantic\./iu.test(item.text))).toBe(false);
+  });
+
+  it("heartbeats and releases only the exact opaque lease", async () => {
+    const current = authority();
+    const fixture = scriptedPool((text) => {
+      if (text.includes("semantic.heartbeat_semantic_authoring_run")) {
+        return { rows: [{ value: lease }], rowCount: 1 };
+      }
+      if (text.includes("semantic.release_semantic_authoring_run")) {
+        return { rows: [{ value: true }], rowCount: 1 };
+      }
+      return undefined;
+    });
+    const queue = createPostgresSemanticAuthoringQueue({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+      capability: current.capability,
+      semantic_domain: "ecommerce",
+    });
+
+    await expect(queue.heartbeat({ lease, lease_duration_ms: 300_000 })).resolves.toEqual({
+      ok: true,
+      value: lease,
+    });
+    await expect(queue.release({ lease })).resolves.toEqual({ ok: true, value: null });
+    expect(
+      fixture.calls.find((item) => item.text.includes("heartbeat_semantic_authoring_run"))?.values,
+    ).toEqual([
+      ids.app,
+      ids.tenant,
+      "test",
+      ids.principal,
+      "ecommerce",
+      ids.run,
+      "semantic-worker-test",
+      ids.lease,
+      2,
+      300_000,
+    ]);
+  });
+
+  it("maps stale lease takeover to one retryable public error", async () => {
+    const current = authority();
+    const fixture = scriptedPool((text) => {
+      if (text.includes("semantic.heartbeat_semantic_authoring_run")) {
+        throw new Error("SEMANTIC_AUTHORING_LEASE_STALE");
+      }
+      return undefined;
+    });
+    const queue = createPostgresSemanticAuthoringQueue({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+      capability: current.capability,
+      semantic_domain: "ecommerce",
+    });
+
+    await expect(queue.heartbeat({ lease, lease_duration_ms: 300_000 })).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "SEMANTIC_AUTHORING_LEASE_STALE",
+        message: "语义创作租约已失效，Worker 必须停止写入并重新领取。",
         retryable: true,
       },
     });

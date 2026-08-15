@@ -75,6 +75,7 @@ export interface SemanticAuthoringOrchestratorOptions {
     readonly max_input_tokens: number;
     readonly max_output_tokens: number;
   };
+  readonly before_step?: (state: SemanticAuthoringState) => Promise<PortResult<void>>;
 }
 
 export interface SemanticAuthoringOrchestrator {
@@ -195,6 +196,10 @@ export function createSemanticAuthoringOrchestrator(
   ): Promise<PortResult<SemanticAuthoringState>> => {
     let state = initialState;
     outer: while (state.run.status === "RUNNING") {
+      if (options.before_step) {
+        const ready = await options.before_step(state);
+        if (!ready.ok) return ready;
+      }
       const lastMessage = state.checkpoint.messages.at(-1);
       if (lastMessage?.role === "tool" && lastMessage.tool_name === "complete_authoring_run") {
         try {

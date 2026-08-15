@@ -88,6 +88,14 @@ export {
   type PostgresRelationshipIndexStore,
 } from "./semantic/postgres-relationship-index.js";
 export {
+  createPostgresSemanticAuthoringStore,
+  type PostgresSemanticAuthoringStoreOptions,
+} from "./semantic/postgres-semantic-authoring.js";
+export {
+  createPostgresSemanticAuthoringQueue,
+  type PostgresSemanticAuthoringQueueOptions,
+} from "./semantic/postgres-semantic-authoring-queue.js";
+export {
   createPostgresSemanticExplorerReader,
   type PostgresSemanticExplorerReader,
   type SemanticExplorerCandidateComparisonInput,
@@ -100,10 +108,6 @@ export {
   type SemanticGraphProjectionCommitInput,
   type SemanticGraphReleaseBindingInput,
 } from "./semantic/postgres-semantic-graph.js";
-export {
-  createPostgresSemanticAuthoringStore,
-  type PostgresSemanticAuthoringStoreOptions,
-} from "./semantic/postgres-semantic-authoring.js";
 export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,

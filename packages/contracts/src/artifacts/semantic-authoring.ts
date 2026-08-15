@@ -45,6 +45,11 @@ const stableReasonCodeSchema = z
 const toolCallIdSchema = z.string().min(1).max(256);
 const safePositiveIntegerSchema = z.number().int().positive().safe();
 const safeNonNegativeIntegerSchema = z.number().int().nonnegative().safe();
+const semanticAuthoringWorkerIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:@/-]*$/);
 
 export const semanticAuthoringToolNameSchema = z.enum([
   "list_semantic_types",
@@ -545,6 +550,24 @@ export const semanticAuthoringStateSchema = z.strictObject({
   event_sequence: safeNonNegativeIntegerSchema,
 });
 
+export const semanticAuthoringLeaseSchema = z.strictObject({
+  schema_version: z.literal("semantic-authoring-lease@1.0.0"),
+  scope: appScopeSchema,
+  semantic_domain: semanticDomainSchema,
+  authoring_run_id: immutableIdSchema,
+  principal_id: immutableIdSchema,
+  worker_id: semanticAuthoringWorkerIdSchema,
+  lease_token: immutableIdSchema,
+  writer_fence: safePositiveIntegerSchema,
+  claimed_at: timestampSchema,
+  expires_at: timestampSchema,
+});
+
+export const semanticAuthoringClaimSchema = z.strictObject({
+  lease: semanticAuthoringLeaseSchema,
+  state: semanticAuthoringStateSchema,
+});
+
 export type SemanticAuthoringCheckpoint = z.infer<typeof semanticAuthoringCheckpointSchema>;
 export type SemanticAuthoringRun = z.infer<typeof semanticAuthoringRunSchema>;
 export type SemanticAuthoringRunStatus = z.infer<typeof semanticAuthoringRunStatusSchema>;
@@ -555,6 +578,8 @@ export type SemanticAuthoringValidationReceipt = z.infer<
 export type SemanticAuthoringPublicEvent = z.infer<typeof semanticAuthoringPublicEventSchema>;
 export type SemanticAuthoringStartInput = z.infer<typeof semanticAuthoringStartInputSchema>;
 export type SemanticAuthoringState = z.infer<typeof semanticAuthoringStateSchema>;
+export type SemanticAuthoringLease = z.infer<typeof semanticAuthoringLeaseSchema>;
+export type SemanticAuthoringClaim = z.infer<typeof semanticAuthoringClaimSchema>;
 
 export interface SemanticAuthoringCommitTurnInput {
   readonly authoring_run_id: string;
@@ -633,6 +658,23 @@ export interface SemanticAuthoringStorePort {
     readonly after_sequence?: number;
     readonly limit?: number;
   }): Promise<PortResult<readonly SemanticAuthoringPublicEvent[]>>;
+}
+
+/**
+ * Worker-only queue boundary. Web may create a RUNNING row, but only a claimed,
+ * fenced Worker lease may advance its Agent/tool checkpoint.
+ */
+export interface SemanticAuthoringQueuePort {
+  claimNext(input: {
+    readonly scope: AppScope;
+    readonly worker_id: string;
+    readonly lease_duration_ms: number;
+  }): Promise<PortResult<SemanticAuthoringClaim | null>>;
+  heartbeat(input: {
+    readonly lease: SemanticAuthoringLease;
+    readonly lease_duration_ms: number;
+  }): Promise<PortResult<SemanticAuthoringLease>>;
+  release(input: { readonly lease: SemanticAuthoringLease }): Promise<PortResult<null>>;
 }
 
 export class SemanticAuthoringContractError extends Error {

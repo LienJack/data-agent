@@ -23,32 +23,46 @@ export type SemanticAgentTurnInvocationFactory = (
   input: SemanticAgentTurnInvocationMaterial,
 ) => Promise<AuthoritativeModelProviderInvocation>;
 
+const SEMANTIC_AUTHORING_SYSTEM_INSTRUCTIONS = `你是受治理的语义本体创作 Agent。你只能提出服务端允许的工具调用，不能直接发布、执行 SQL 或修改物理 schema。
+
+本体规则：业务主体、维度、指标、公式、术语、物理表和物理字段都是独立 Node；它们之间的含义、依赖、粒度、绑定、Join 和术语映射必须表达为显式 Edge，禁止把表名、字段名或公式文本塞进业务主体属性冒充关系。
+
+关系最低要求：业务主体要显式关联相关主体、适用维度和代表它的表/标识字段；指标要关联主体和定义公式；公式要关联指标、主体、维度上下文以及引用的物理字段。Table→Column 与外键属于系统管理的物理事实，不能由你伪造；外键也不能自动当成业务关系或安全分析 Join。遇到重名、未知字段、状态值歧义、粒度/单位不清或 fanout 风险时，必须请求澄清。
+
+工作顺序：先搜索和读取现有 Node/Edge/绑定，再创建或更新；每次修改后运行确定性校验和影响分析；只有 exact graph digest 与 validation receipt 均有效时才调用 complete_authoring_run。不要输出思维过程。`;
+
 function providerMessages(messages: readonly AgentTurnMessage[]): ModelProviderRequest["messages"] {
-  return messages.map((message) => {
-    switch (message.role) {
-      case "user":
-        return { role: "user", content: message.content };
-      case "assistant":
-        return {
-          role: "assistant",
-          content: JSON.stringify({
-            text: message.content,
-            tool_calls: message.tool_calls,
-          }),
-        };
-      case "tool":
-        return {
-          role: "tool",
-          content: JSON.stringify({
-            tool_name: message.tool_name,
-            result: message.content,
-            is_error: message.is_error,
-          }),
-          tool_call_id: message.tool_call_id,
-        };
-    }
-    throw new Error("Unsupported AgentTurn message role.");
-  });
+  return [
+    { role: "system" as const, content: SEMANTIC_AUTHORING_SYSTEM_INSTRUCTIONS },
+    ...messages.map((message): ModelProviderRequest["messages"][number] => {
+      switch (message.role) {
+        case "user":
+          return { role: "user", content: message.content };
+        case "assistant":
+          return {
+            role: "assistant",
+            content: JSON.stringify({
+              text: message.content,
+              tool_calls: message.tool_calls,
+            }),
+          };
+        case "tool":
+          return {
+            // The project Model Port intentionally does not replay native provider tool
+            // frames. Preserve the exact server-owned receipt as a normal user message.
+            role: "user" as const,
+            content: JSON.stringify({
+              kind: "SERVER_TOOL_RESULT",
+              tool_name: message.tool_name,
+              tool_call_id: message.tool_call_id,
+              result: message.content,
+              is_error: message.is_error,
+            }),
+          };
+      }
+      throw new Error("Unsupported AgentTurn message role.");
+    }),
+  ];
 }
 
 function exactInvocation(
@@ -99,7 +113,7 @@ export class ModelProviderAgentTurnAdapter implements AgentTurnPort {
         retryable: false,
       };
     }
-    if (input.messages.length > 256) {
+    if (input.messages.length > 255) {
       return {
         terminal: "FAILED",
         reason_code: "SEMANTIC_AGENT_CONTEXT_LIMIT_EXCEEDED",

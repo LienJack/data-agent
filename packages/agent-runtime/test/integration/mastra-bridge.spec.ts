@@ -162,6 +162,7 @@ describe("Mastra execution bridge integration", () => {
     let receivedMaxOutputTokens: number | undefined;
     let receivedBinding: ModelProviderBinding | undefined;
     let receivedResponseFormat: unknown;
+    let receivedProviderOptions: unknown;
     let preflightContext: Parameters<TrustedModelInputTokenCounter["count"]>[0] | undefined;
     let streamCalls = 0;
     const fakeModel = {
@@ -174,11 +175,13 @@ describe("Mastra execution bridge integration", () => {
       },
       doStream: async (options: {
         readonly maxOutputTokens?: number;
+        readonly providerOptions?: unknown;
         readonly responseFormat?: unknown;
       }) => {
         streamCalls += 1;
         receivedMaxOutputTokens = options.maxOutputTokens;
         receivedResponseFormat = options.responseFormat;
+        receivedProviderOptions = options.providerOptions;
         return {
           stream: new ReadableStream({
             start(controller) {
@@ -263,6 +266,7 @@ describe("Mastra execution bridge integration", () => {
         type: "object",
       },
     });
+    expect(receivedProviderOptions).toBeUndefined();
     expect(preflightContext).toMatchObject({
       binding: {
         default_model_id: "gpt-deployment-frozen",
@@ -286,6 +290,44 @@ describe("Mastra execution bridge integration", () => {
         tool_calls: 0,
       },
     });
+  });
+
+  it.each([
+    ["deepseek", { deepseek: { thinking: { type: "disabled" } } }],
+    ["kimi", { "data-agent": { thinking: { type: "disabled" } } }],
+  ] as const)("disables %s thinking for structured output", async (provider, expectedOptions) => {
+    const binding = getModelProviderBinding(provider);
+    let receivedProviderOptions: unknown;
+    const fakeModel = {
+      ...createOfflineStructuredModel(binding, {
+        output_text: '{"summary":"structured","confidence":0.75}',
+        usage: validProviderUsage,
+      }),
+      doStream: async (options: { readonly providerOptions?: unknown }) => {
+        receivedProviderOptions = options.providerOptions;
+        return createOfflineStructuredModel(binding, {
+          output_text: '{"summary":"structured","confidence":0.75}',
+          usage: validProviderUsage,
+        }).doStream(options as never);
+      },
+    } as unknown as ReturnType<typeof createProviderRuntimeModel>;
+    const bridge = createMastraModelExecutionBridgeForTesting({
+      credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+      binding_resolver: { resolve: async () => binding },
+      response_schema_registry: responseSchemaRegistry,
+      input_token_counter: trustedInputTokenCounter,
+      runtime_model_factory: (() => fakeModel) as typeof createProviderRuntimeModel,
+    });
+
+    const events = [];
+    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
+      await makeInvocation(binding),
+    )) {
+      events.push(event);
+    }
+
+    expect(events.at(-1)?.event_type).toBe("COMPLETED");
+    expect(receivedProviderOptions).toEqual(expectedOptions);
   });
 
   it("rejects a server binding that does not exactly match the authorized profile", async () => {
@@ -575,6 +617,7 @@ describe("Mastra execution bridge integration", () => {
 
   it("projects an offline Mastra tool call as a candidate without executing it", async () => {
     const binding = getModelProviderBinding("openai");
+    let receivedResponseFormat: unknown = "not-called";
     const fakeModel = {
       specificationVersion: "v4",
       provider: "offline-test",
@@ -583,56 +626,59 @@ describe("Mastra execution bridge integration", () => {
       doGenerate: async () => {
         throw new Error("The integration uses streaming only.");
       },
-      doStream: async () => ({
-        stream: new ReadableStream({
-          start(controller) {
-            controller.enqueue({
-              type: "stream-start",
-              warnings: [],
-            });
-            controller.enqueue({
-              type: "tool-call",
-              toolCallId: "tool-call-1",
-              toolName: "semantic-query@1",
-              input: JSON.stringify({ metric: "revenue" }),
-            });
-            controller.enqueue({
-              type: "text-start",
-              id: "text-1",
-            });
-            controller.enqueue({
-              type: "text-delta",
-              id: "text-1",
-              delta: '{"summary":"需要工具候选","confidence":0.5}',
-            });
-            controller.enqueue({
-              type: "text-end",
-              id: "text-1",
-            });
-            controller.enqueue({
-              type: "finish",
-              usage: {
-                inputTokens: {
-                  total: 8,
-                  noCache: 8,
-                  cacheRead: 0,
-                  cacheWrite: 0,
+      doStream: async (options: { readonly responseFormat?: unknown }) => {
+        receivedResponseFormat = options.responseFormat;
+        return {
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({
+                type: "stream-start",
+                warnings: [],
+              });
+              controller.enqueue({
+                type: "tool-call",
+                toolCallId: "tool-call-1",
+                toolName: "semantic-query@1",
+                input: JSON.stringify({ metric: "revenue" }),
+              });
+              controller.enqueue({
+                type: "text-start",
+                id: "text-1",
+              });
+              controller.enqueue({
+                type: "text-delta",
+                id: "text-1",
+                delta: '{"summary":"需要工具候选","confidence":0.5}',
+              });
+              controller.enqueue({
+                type: "text-end",
+                id: "text-1",
+              });
+              controller.enqueue({
+                type: "finish",
+                usage: {
+                  inputTokens: {
+                    total: 8,
+                    noCache: 8,
+                    cacheRead: 0,
+                    cacheWrite: 0,
+                  },
+                  outputTokens: {
+                    total: 4,
+                    text: 0,
+                    reasoning: 0,
+                  },
                 },
-                outputTokens: {
-                  total: 4,
-                  text: 0,
-                  reasoning: 0,
+                finishReason: {
+                  unified: "tool-calls",
+                  raw: "tool-calls",
                 },
-              },
-              finishReason: {
-                unified: "tool-calls",
-                raw: "tool-calls",
-              },
-            });
-            controller.close();
-          },
-        }),
-      }),
+              });
+              controller.close();
+            },
+          }),
+        };
+      },
     } as unknown as ReturnType<typeof createProviderRuntimeModel>;
     const bridge = createMastraModelExecutionBridgeForTesting({
       credential_resolver: {
@@ -672,6 +718,11 @@ describe("Mastra execution bridge integration", () => {
       tool_call_id: "tool-call-1",
       tool_name: "semantic-query@1",
       arguments: { metric: "revenue" },
+    });
+    expect(receivedResponseFormat).toBeUndefined();
+    expect(events.at(-1)).toMatchObject({
+      event_type: "COMPLETED",
+      output_text: '{"summary":"需要工具候选","confidence":0.5}',
     });
   });
 });

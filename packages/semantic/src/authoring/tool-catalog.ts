@@ -1,4 +1,9 @@
-import type { AgentTurnToolDescriptor, SemanticAuthoringToolName } from "@data-agent/contracts";
+import {
+  type AgentTurnToolDescriptor,
+  type SemanticAuthoringToolName,
+  semanticAuthoringToolCallSchema,
+} from "@data-agent/contracts";
+import { z } from "zod";
 
 const descriptions: Readonly<Record<SemanticAuthoringToolName, string>> = {
   list_semantic_types: "列出当前 Graph 注册的 Node 与 Edge 类型。",
@@ -26,10 +31,35 @@ export const SEMANTIC_AUTHORING_TOOL_NAMES = Object.freeze(
   Object.keys(descriptions) as SemanticAuthoringToolName[],
 );
 
+const argumentSchemas = new Map<SemanticAuthoringToolName, z.ZodType>(
+  semanticAuthoringToolCallSchema.options.map((option) => [
+    option.shape.tool_name.value,
+    option.shape.arguments,
+  ]),
+);
+
+export function semanticAuthoringToolArgumentSchema(name: SemanticAuthoringToolName): z.ZodType {
+  const schema = argumentSchemas.get(name);
+  if (!schema) throw new Error(`Semantic authoring tool schema missing: ${name}`);
+  return schema;
+}
+
 export function semanticAuthoringToolCatalog(): readonly AgentTurnToolDescriptor[] {
   return SEMANTIC_AUTHORING_TOOL_NAMES.map((name) => ({
     name,
     description: descriptions[name],
-    input_schema: { type: "object", additionalProperties: false },
+    input_schema: z.toJSONSchema(semanticAuthoringToolArgumentSchema(name)) as Record<
+      string,
+      z.infer<ReturnType<typeof z.json>>
+    >,
+  }));
+}
+
+export function semanticAuthoringModelToolCatalog() {
+  return SEMANTIC_AUTHORING_TOOL_NAMES.map((name) => ({
+    tool_name: name,
+    description: descriptions[name],
+    input_schema: semanticAuthoringToolArgumentSchema(name),
+    network_access: { mode: "DENY" as const },
   }));
 }
