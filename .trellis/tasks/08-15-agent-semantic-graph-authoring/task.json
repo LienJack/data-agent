@@ -1,0 +1,32 @@
+{
+  "id": "agent-semantic-graph-authoring",
+  "name": "agent-semantic-graph-authoring",
+  "title": "Agent 原生 Node/Edge 语义图设计与编辑",
+  "description": "将语义层重构为独立 Node/Edge，并以 Agent-only 候选工具循环驱动公式与关系编辑、局部图和全图展示。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "semantic graph v2 contracts, agent authoring, formula candidate workflow, explorer UX and governance",
+  "package": null,
+  "priority": "P1",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-15",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "packages/contracts/src/artifacts/semantic-governance.ts",
+    "packages/contracts/src/artifacts/semantic-explorer.ts",
+    "packages/semantic/src/explorer/builder.ts",
+    "packages/semantic/src/candidate-generation/agent.ts",
+    "apps/web/src/components/semantic/physical-schema-browser.tsx"
+  ],
+  "notes": "",
+  "meta": {}
+}
