@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/benchmark-test-center.md","reason":"复核 Gold 泄漏、Oracle 分类、Attempt 0/1 和 Holdout 门禁"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"复核跨 Workspace 隔离、角色权限和受保护 route"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"复核真实 PostgreSQL 只读执行、schema allowlist、超时与 authority revalidation"}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/db-gpt-falcon-integration-audit.md","reason":"复核 DB-GPT 仅为参考且未引入共享 SQLite/宽松判分回归"}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/falcon-demo-candidate-audit.md","reason":"复核主 Demo 达到多表复杂度门槛且已处理候选域的数据质量风险"}

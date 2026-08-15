@@ -120,7 +120,11 @@ export default function TestCenterPage() {
       setAgents(loadedAgents);
       setSelectedAgentId(loadedAgents.find((agent) => agent.available)?.agent_id ?? null);
       setActiveCaseId(loadedCases[0]?.case_id ?? null);
-      setSelectedCaseIds(new Set(loadedCases.map((testCase) => testCase.case_id)));
+      setSelectedCaseIds(
+        new Set(
+          loadedCases.filter((testCase) => testCase.runnable).map((testCase) => testCase.case_id),
+        ),
+      );
       setRun(null);
     } catch (cause) {
       setCases([]);
@@ -372,14 +376,20 @@ export default function TestCenterPage() {
                   type="button"
                   onClick={() =>
                     setSelectedCaseIds(
-                      selectedCaseIds.size === cases.length
+                      selectedCaseIds.size === cases.filter((testCase) => testCase.runnable).length
                         ? new Set()
-                        : new Set(cases.map((testCase) => testCase.case_id)),
+                        : new Set(
+                            cases
+                              .filter((testCase) => testCase.runnable)
+                              .map((testCase) => testCase.case_id),
+                          ),
                     )
                   }
                   className="text-[11px] font-medium text-[#527c70]"
                 >
-                  {selectedCaseIds.size === cases.length ? "取消全选" : "全选"}
+                  {selectedCaseIds.size === cases.filter((testCase) => testCase.runnable).length
+                    ? "取消全选"
+                    : "全选可运行题"}
                 </button>
               )}
             </div>
@@ -409,7 +419,7 @@ export default function TestCenterPage() {
                         type="checkbox"
                         aria-label={`选择第 ${testCase.ordinal + 1} 题`}
                         checked={selectedCaseIds.has(testCase.case_id)}
-                        disabled={!activeSuite?.runnable}
+                        disabled={!activeSuite?.runnable || !testCase.runnable}
                         onChange={() => toggleCase(testCase.case_id)}
                         className="mt-0.5 accent-[#527c70]"
                       />
@@ -425,6 +435,11 @@ export default function TestCenterPage() {
                           <span className="text-[10px] font-medium text-[var(--color-text-muted)]">
                             #{testCase.ordinal + 1} · {difficultyLabels[testCase.difficulty]}
                           </span>
+                          {!testCase.runnable && (
+                            <span className="text-[10px] font-semibold text-amber-700">
+                              PYTHON HOLD
+                            </span>
+                          )}
                           {caseResult && (
                             <span
                               className={
@@ -458,6 +473,12 @@ export default function TestCenterPage() {
                       {activeSuite?.status_reason}
                     </div>
                   )}
+                  {!activeCase.runnable && (
+                    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+                      <span className="font-semibold">题目门禁：</span>
+                      {activeCase.status_reason}
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-muted)]">
                       <span>题目 #{activeCase.ordinal + 1}</span>
@@ -469,7 +490,7 @@ export default function TestCenterPage() {
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
-                        disabled={running || !activeSuite?.runnable}
+                        disabled={running || !activeSuite?.runnable || !activeCase.runnable}
                         onClick={() => void execute("single-baseline")}
                         className="rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium hover:bg-[var(--color-bg-canvas)] disabled:opacity-50"
                       >
@@ -568,12 +589,14 @@ export default function TestCenterPage() {
                           onChange={(event) => setSql(event.target.value)}
                           placeholder="SELECT ..."
                           spellCheck={false}
-                          disabled={!activeSuite?.runnable}
+                          disabled={!activeSuite?.runnable || !activeCase.runnable}
                           className="mt-2 h-40 w-full resize-y rounded-lg border border-[var(--color-border-default)] bg-[#111513] p-3 font-mono text-xs leading-5 text-[#d9e3de] placeholder:text-[#6d7772]"
                         />
                         <button
                           type="button"
-                          disabled={running || !sql.trim() || !activeSuite?.runnable}
+                          disabled={
+                            running || !sql.trim() || !activeSuite?.runnable || !activeCase.runnable
+                          }
                           onClick={() => void execute("submitted")}
                           className="mt-2 w-full rounded-lg border border-[#527c70] px-3 py-2 text-xs font-semibold text-[#42685e] hover:bg-[#edf2ef] disabled:opacity-50"
                         >

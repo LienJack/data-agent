@@ -26,6 +26,7 @@ import {
   executeInsightBenchBatch,
   executeMultipleChoiceBenchmarkBatch,
   executeSqlBenchmarkBatch,
+  FalconResultOracle,
   getBenchmarkCatalog,
   getBenchmarkCatalogEntry,
   installBladeSmokeSlice,
@@ -36,12 +37,18 @@ import {
   loadDrSpiderDataset,
   loadEcommerceProductionPreview,
   loadEcommerceProductionSqlDataset,
+  loadFalconDevDataset,
+  loadFalconPreview,
   loadInsightBenchDataset,
   PostgresResultOracle,
   PublishedBirdBaselineAgent,
   SubmittedAnswerAgent,
+  toFalconSqlBenchmarkDataset,
 } from "@data-agent/evals";
-import { createPostgresEcommerceBenchmarkExecutor } from "@data-agent/platform";
+import {
+  createPostgresEcommerceBenchmarkExecutor,
+  createPostgresFalconBenchmarkExecutor,
+} from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
 import { ensureRootEnvironmentLoaded } from "./root-env";
@@ -378,6 +385,9 @@ export async function listTestCenterAgents(
   if (suiteId === "blade") {
     return Object.freeze([(await modelRuntime()).multiple_choice_descriptor]);
   }
+  if (suiteId === "falcon") {
+    return Object.freeze([(await modelRuntime()).sql_descriptor]);
+  }
   const suite = await getBenchmarkCatalogEntry(suiteId);
   if (!suite) {
     throw new TestCenterRuntimeError("TEST_CENTER_SUITE_NOT_FOUND", "未找到指定题库。", 404);
@@ -432,6 +442,7 @@ export async function listPublicTestCases(suiteId: string) {
   if (suite.suite_id === "ecommerce-production") {
     return (await loadEcommerceProductionPreview()).public_cases;
   }
+  if (suite.suite_id === "falcon") return (await loadFalconPreview()).public_cases;
   throw new TestCenterRuntimeError(
     "TEST_CENTER_SUITE_NOT_READY",
     "该题库的公开题目 Adapter 尚未注册。",
@@ -623,7 +634,74 @@ export async function executeTestCenterRun(
   }
   const batchRunId = randomUUID();
   let execution: Awaited<ReturnType<typeof executeBirdBenchmarkBatch>>;
-  if (request.suite_id === "bird-mini-dev") {
+  if (request.suite_id === "falcon") {
+    const sourceDataset = await loadFalconDevDataset();
+    const dataset = await toFalconSqlBenchmarkDataset(sourceDataset);
+    const selectedCases = request.case_ids.map((caseId) =>
+      dataset.public_cases.find((testCase) => testCase.case_id === caseId),
+    );
+    if (selectedCases.some((testCase) => !testCase?.runnable)) {
+      throw new TestCenterRuntimeError(
+        "TEST_CENTER_SUITE_NOT_READY",
+        "官方 TEST 只能生成提交包；当前运行入口只执行具备密封 Oracle 的 DEV 题目。",
+        409,
+      );
+    }
+    let agent: BenchmarkEvalAgent;
+    if (request.agent_id === CERTIFIED_MODEL_SQL_AGENT_ID) {
+      const runtime = await modelRuntime();
+      if (!runtime.available) {
+        throw new TestCenterRuntimeError(
+          "TEST_CENTER_AGENT_UNSUPPORTED",
+          runtime.sql_descriptor.unavailable_reason ?? "认证 SQL 模型 Agent 尚不可用。",
+          409,
+        );
+      }
+      agent = runtime.createSqlAgent(request.budget);
+    } else if (request.agent_id === SUBMITTED_ANSWER_AGENT_ID) {
+      agent = new SubmittedAnswerAgent(request.submitted_answers ?? {});
+    } else {
+      throw new TestCenterRuntimeError(
+        "TEST_CENTER_AGENT_UNSUPPORTED",
+        "Falcon 当前只注册认证模型 SQL Agent 与提交答案 Agent。",
+        409,
+      );
+    }
+    if (request.reflection_enabled && !agent.descriptor.supports_reflection) {
+      throw new TestCenterRuntimeError(
+        "TEST_CENTER_REFLECTION_UNSUPPORTED",
+        "所选 Agent 不支持受 Oracle 反馈约束的自反省重试。",
+        409,
+      );
+    }
+    execution = await executeSqlBenchmarkBatch({
+      dataset,
+      suite: {
+        suite_id: "falcon",
+        suite_version: "1.0.0",
+        dataset_version: "falcon-fixed-8ff29caa-postgres-v1",
+        source_commit: "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+        oracle_version: "falcon-postgres-expected-result@1.0.0",
+        prompt_version: "falcon-certified-sql-agent@1.0.0",
+        workflow_version: "test-center-case-runner@1.0.0",
+        evaluator_version: "falcon-postgres-evaluator@1.0.0",
+        aggregator_version: "test-center-aggregator@1.0.0",
+      },
+      case_ids: request.case_ids,
+      agent,
+      reflection_enabled: request.reflection_enabled,
+      budget: request.budget,
+      seed: request.seed,
+      batch_run_id: batchRunId,
+      oracle: new FalconResultOracle({
+        executor: createPostgresFalconBenchmarkExecutor({ pool: pool() }),
+        sealed_cases: sourceDataset.sealed_cases,
+        timeout_ms: request.budget.max_case_duration_ms,
+        max_rows: 100_000,
+        oracle_version: "falcon-postgres-expected-result@1.0.0",
+      }),
+    });
+  } else if (request.suite_id === "bird-mini-dev") {
     const dataset = await loadBirdMiniDevDataset();
     let agent: PublishedBirdBaselineAgent | SubmittedAnswerAgent | BenchmarkEvalAgent;
     if (request.agent_id === PUBLISHED_BASELINE_AGENT_ID) {

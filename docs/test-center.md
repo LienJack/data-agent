@@ -1,5 +1,8 @@
 # 能力测试（Test Center）
 
+Falcon 28 库内置 Demo、固定 seed、工作空间绑定、本体候选、批量运行与 TEST submission 的完整
+操作见 [Falcon 运行手册](./runbooks/falcon-demo.md)。
+
 能力测试模块提供公开题库目录、公开题面浏览、单题/批量执行、确定性判分和不可变成绩单。
 当前可运行切片包括 BIRD Mini-Dev `superhero` SQLite 10 题、InsightBench 业务分析 5 题、
 Dr.Spider 跨数据库 DB-content 扰动 10 题，以及 BLADE 跨数据集 MCQ 10 题。BIRD-Critic、

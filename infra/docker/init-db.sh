@@ -148,3 +148,7 @@ echo "=== Migration complete ==="
 echo "=== Importing bundled AgenticDataBench E-commerce Demo ==="
 sh /import-agenticdatabench-ecommerce.sh
 echo "=== AgenticDataBench E-commerce Demo ready ==="
+
+echo "=== Importing bundled Falcon fixed snapshot ==="
+sh /import-falcon.sh
+echo "=== Falcon fixed snapshot ready ==="

@@ -1162,6 +1162,7 @@ export function evalReleaseDecisionInputIdentity(decision: EvalReleaseDecision):
 export type EvalReleaseDecision = z.infer<typeof evalReleaseDecisionSchema>;
 export type EvalReleaseDecisionCondition = z.infer<typeof evalReleaseDecisionConditionSchema>;
 export type EvalReleaseDecisionVerdict = z.infer<typeof evalReleaseDecisionVerdictSchema>;
+export * from "./falcon.js";
 export * from "./manifest.js";
 
 /**

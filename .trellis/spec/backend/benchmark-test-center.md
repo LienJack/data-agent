@@ -209,3 +209,20 @@ const evaluation = await deterministicOracle.evaluate({
 });
 return persistScorecard(aggregate(publicCase, answer, evaluation));
 ```
+
+## 场景：Falcon 固定快照评测
+
+- Falcon v1 固定为上游 commit `8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5`、28 库、
+  DEV 309 和 TEST 191；seed 随仓库分发并由标准迁移离线导入现有 `data_agent`。
+- 28 个 db_id 必须分别映射到 `falcon_db_01` 至 `falcon_db_28`；禁止增加第二个 PostgreSQL
+  service/database/volume，也禁止把 Gold 或 registry 写入业务 schema。
+- `falcon_demo_reader` 默认只读且不能读取控制面；executor 另外冻结当前 case schema、单语句、
+  timeout 和结果预算。
+- 公共 API 隐藏 5 个 `LOCAL_HOLDOUT`，TEST 191 全部不可本地判分；submission receipt 的
+  `local_accuracy` 必须为 null。
+- db24 是主 Demo，db14 仅作 smoke。db24 本体候选必须显式关联主体、维度、指标、公式、物理表、
+  物理列、Join 证据和中文术语；两个库存快照不能自动合并。
+- Agent 只能生成 `REVIEW_REQUIRED` Candidate；人工 Review/Publish 前不能把候选冒充 active
+  semantic release。
+- pipeline probe 只证明 32/17/309 case 执行与分类完成，不是模型准确率。真实成绩必须由
+  certified model/Data Agent 作答并由严格 result-equivalence Oracle 产生。

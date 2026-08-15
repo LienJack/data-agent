@@ -23,6 +23,7 @@ export const benchmarkTestSuiteIdSchema = z.enum([
   "spreadsheetbench-2",
   "agenticdatabench-ecommerce",
   "ecommerce-production",
+  "falcon",
 ]);
 
 export const benchmarkDatasetStatusSchema = z.enum([
@@ -125,7 +126,13 @@ export const benchmarkCatalogEntrySchema = z
   });
 
 export const benchmarkCaseDifficultySchema = z.enum(["simple", "moderate", "challenging"]);
-export const benchmarkRegistrySchema = z.enum(["DEMO", "TUNING", "HOLDOUT"]);
+export const benchmarkRegistrySchema = z.enum([
+  "DEMO",
+  "TUNING",
+  "HOLDOUT",
+  "LOCAL_HOLDOUT",
+  "OFFICIAL_TEST_BLIND",
+]);
 
 export const benchmarkColumnSchema = z.strictObject({
   name: z.string().min(1).max(128),
@@ -140,21 +147,33 @@ export const benchmarkTableSchema = z.strictObject({
 });
 
 /** This is the only case shape allowed across the browser/agent boundary. */
-export const publicBenchmarkCaseSchema = z.strictObject({
-  case_id: immutableIdSchema,
-  suite_id: benchmarkTestSuiteIdSchema,
-  suite_version: versionIdentifierSchema,
-  dataset_version: versionIdentifierSchema,
-  ordinal: z.number().int().nonnegative(),
-  database_id: z.string().min(1).max(128),
-  question: z.string().min(1).max(20_000),
-  evidence: z.string().min(1).max(20_000).nullable(),
-  difficulty: benchmarkCaseDifficultySchema,
-  capabilities: z.array(benchmarkCapabilitySchema).min(1).max(16),
-  registry: benchmarkRegistrySchema,
-  schema: z.array(benchmarkTableSchema).max(256),
-  public_case_hash: contentHashSchema,
-});
+export const publicBenchmarkCaseSchema = z
+  .strictObject({
+    case_id: immutableIdSchema,
+    suite_id: benchmarkTestSuiteIdSchema,
+    suite_version: versionIdentifierSchema,
+    dataset_version: versionIdentifierSchema,
+    ordinal: z.number().int().nonnegative(),
+    database_id: z.string().min(1).max(128),
+    question: z.string().min(1).max(20_000),
+    evidence: z.string().min(1).max(20_000).nullable(),
+    difficulty: benchmarkCaseDifficultySchema,
+    capabilities: z.array(benchmarkCapabilitySchema).min(1).max(16),
+    registry: benchmarkRegistrySchema,
+    schema: z.array(benchmarkTableSchema).max(256),
+    runnable: z.boolean().default(true),
+    status_reason: z.string().min(1).max(1_024).nullable().default(null),
+    public_case_hash: contentHashSchema,
+  })
+  .superRefine((testCase, context) => {
+    if (testCase.runnable === (testCase.status_reason !== null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["status_reason"],
+        message: "不可运行题目必须给出原因，可运行题目不能携带 HOLD 原因。",
+      });
+    }
+  });
 
 /** Server-only case material. Never serialize this shape from a public route. */
 export const sealedBenchmarkCaseSchema = z.strictObject({
@@ -212,7 +231,7 @@ export const benchmarkAgentDescriptorSchema = z.strictObject({
 });
 
 export const benchmarkRunBudgetSchema = z.strictObject({
-  max_cases: z.number().int().positive().max(100),
+  max_cases: z.number().int().positive().max(500),
   max_attempts_per_case: z.number().int().min(1).max(2),
   max_case_duration_ms: z.number().int().positive().max(600_000),
   max_batch_duration_ms: z.number().int().positive().max(3_600_000),
@@ -225,7 +244,7 @@ export const createBenchmarkRunInputSchema = z
   .strictObject({
     suite_id: benchmarkTestSuiteIdSchema,
     suite_version: versionIdentifierSchema,
-    case_ids: z.array(immutableIdSchema).min(1).max(100),
+    case_ids: z.array(immutableIdSchema).min(1).max(500),
     agent_id: immutableIdSchema,
     reflection_enabled: z.boolean(),
     seed: z.number().int().nonnegative().max(2_147_483_647),
@@ -270,7 +289,7 @@ export const benchmarkFrozenManifestSchema = z.strictObject({
   workflow_version: versionIdentifierSchema,
   evaluator_version: versionIdentifierSchema,
   aggregator_version: versionIdentifierSchema,
-  case_ids: z.array(immutableIdSchema).min(1).max(100),
+  case_ids: z.array(immutableIdSchema).min(1).max(500),
   seed: z.number().int().nonnegative(),
   budget: benchmarkRunBudgetSchema,
   frozen_at: timestampSchema,
@@ -482,7 +501,7 @@ export const benchmarkEvalBatchRunSchema = z.strictObject({
   infra_failed_cases: z.number().int().nonnegative(),
   cancelled_cases: z.number().int().nonnegative(),
   event_cursor: z.number().int().nonnegative(),
-  case_runs: z.array(benchmarkEvalCaseRunSchema).max(100),
+  case_runs: z.array(benchmarkEvalCaseRunSchema).max(500),
   scorecard: benchmarkBatchScorecardSchema.nullable(),
   created_at: timestampSchema,
   started_at: timestampSchema.nullable(),

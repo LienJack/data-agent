@@ -6,6 +6,9 @@ import {
   type BenchmarkCatalogEntry,
   benchmarkCatalogEntrySchema,
   contentHashSchema,
+  FALCON_CASE_COUNT,
+  FALCON_DATASET_VERSION,
+  FALCON_SOURCE_COMMIT,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
@@ -30,6 +33,7 @@ import {
   type DrSpiderImportReceipt,
   drSpiderImportReceiptSchema,
 } from "./dr-spider-source.js";
+import { verifyFalconBundle } from "./falcon-dataset.js";
 import {
   INSIGHTBENCH_DATASET_VERSION,
   INSIGHTBENCH_REPOSITORY_COMMIT,
@@ -336,6 +340,28 @@ async function insightBenchInstallationState(root: string): Promise<{
         digest: null,
         reason: "InsightBench 安装目录存在，但 Import Receipt 或文件摘要不一致。",
       };
+}
+
+async function falconInstallationState(): Promise<{
+  readonly status: "READY" | "INVALID";
+  readonly reason: string;
+  readonly digest: `sha256:${string}` | null;
+}> {
+  try {
+    const bundle = await verifyFalconBundle();
+    return {
+      status: "READY",
+      reason:
+        "28 个隔离 PostgreSQL schema 已绑定严格 expected-result Oracle；DEV 309 题可判分，TEST 191 题仅生成提交包。",
+      digest: bundle.installed_digest,
+    };
+  } catch {
+    return {
+      status: "INVALID",
+      reason: "Falcon 固定数据、公开题面或密封 DEV Oracle 摘要校验失败。",
+      digest: null,
+    };
+  }
 }
 
 function fixedCatalogEntries(
@@ -666,6 +692,35 @@ function fixedCatalogEntries(
       supports_reflection: true,
       updated_at: now,
     },
+    {
+      suite_id: "falcon",
+      suite_version: "1.0.0",
+      name: "Falcon Text2SQL",
+      description:
+        "固定上游快照的 28 库、500 题 Text2SQL 套件；db24 为多表主 Demo，db14 为快速 smoke。",
+      source: {
+        repository_url: "https://github.com/eosphoros-ai/Falcon",
+        source_commit: FALCON_SOURCE_COMMIT,
+        dataset_version: FALCON_DATASET_VERSION,
+        download_url: null,
+        archive_sha256: null,
+        archive_bytes: null,
+      },
+      license: {
+        spdx_id: "Apache-2.0",
+        name: "Apache License 2.0",
+        attribution_required: true,
+        redistribution_allowed: true,
+        source_url: `https://github.com/eosphoros-ai/Falcon/blob/${FALCON_SOURCE_COMMIT}/LICENSE`,
+      },
+      capabilities: ["TEXT_TO_SQL", "DATA_AGENT_END_TO_END"],
+      oracle_kind: "SQL_RESULT_EQUIVALENCE",
+      oracle_version: "falcon-postgres-expected-result@1.0.0",
+      case_count: FALCON_CASE_COUNT,
+      smoke_case_count: 32,
+      supports_reflection: true,
+      updated_at: now,
+    },
   ];
 }
 
@@ -677,6 +732,7 @@ export async function getBenchmarkCatalog(
   const insightBenchState = await insightBenchInstallationState(root);
   const drSpiderState = await drSpiderInstallationState(root);
   const bladeState = await bladeInstallationState(root);
+  const falconState = await falconInstallationState();
   return Object.freeze(
     fixedCatalogEntries(now).map((entry) => {
       if (entry.suite_id === "bird-mini-dev") {
@@ -758,6 +814,16 @@ export async function getBenchmarkCatalog(
           previewable: false,
           runnable: false,
           installed_digest: null,
+        });
+      }
+      if (entry.suite_id === "falcon") {
+        return benchmarkCatalogEntrySchema.parse({
+          ...entry,
+          dataset_status: falconState.status,
+          status_reason: falconState.reason,
+          previewable: falconState.status === "READY",
+          runnable: falconState.status === "READY",
+          installed_digest: falconState.digest,
         });
       }
       if (

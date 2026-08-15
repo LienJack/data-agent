@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/benchmark-test-center.md","reason":"Falcon public/sealed case、确定性 Oracle、Reflection 与本地发布门禁规范"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"Demo Workspace、RBAC、AppCapability 与 datasource 管理边界"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"PostgreSQL sandbox、datasource fingerprint、执行许可与真实端口一致性"}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/falcon-upstream-audit.md","reason":"固定 Falcon 快照、题目/数据库计数、文件摘要与数据结构"}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/db-gpt-falcon-integration-audit.md","reason":"本地 DB-GPT Falcon 参考流程、可借鉴模式与禁止照搬的边界"}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/falcon-demo-candidate-audit.md","reason":"主 Demo 数据域的表数、列数、题目复杂度、业务叙事与数据质量选型依据"}

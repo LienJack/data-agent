@@ -62,6 +62,13 @@ export {
   type EcommerceBenchmarkQueryResult,
 } from "./sandbox/postgres-ecommerce-benchmark-executor.js";
 export {
+  assertFalconBenchmarkReadOnlySql,
+  assertFalconDatabaseSchema,
+  createPostgresFalconBenchmarkExecutor,
+  type FalconBenchmarkQueryExecutor,
+  type FalconBenchmarkQueryResult,
+} from "./sandbox/postgres-falcon-benchmark-executor.js";
+export {
   createPostgresText2SqlSandboxAuthority,
   type PostgresText2SqlSandboxAuthorityOptions,
 } from "./sandbox/postgres-text2sql-sandbox-authority.js";
