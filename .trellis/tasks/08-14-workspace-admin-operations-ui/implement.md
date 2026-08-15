@@ -32,7 +32,7 @@
 - [x] 运行 clean-install、完整 PostgreSQL smoke、shadow billing 对账和回滚演练。
 - [x] 完成数据库备份/恢复演练并验证 migration ledger、账本与身份记录。
 - [x] 新增管理员运营 runbook 和 `ENFORCED` Go/No-Go checklist。
-- [ ] 运行全量 lint/typecheck/unit/contract，更新父 PRD AC1-AC20 与 Phase 7 状态。
+- [x] 运行全量 lint/typecheck/unit/contract，更新父 PRD AC1-AC20 与 Phase 7 状态。
 
 ## Validation commands
 
@@ -74,3 +74,9 @@ git diff --check
   `BenchmarkSqlAgentInvocationContext` 删除不受支持的 `attempt_index`，即可通过 lint、
   typecheck、unit 15/15 tasks 与 contract 10/10 tasks。该验证未修改源工作树，证明最终阻断
   已缩小为两个并行任务应随自身原子提交带入的机械修复。
+- 2026-08-15 最终复核将上述两个机械修复写回其所属共享改动后，全量 Biome lint 0 error、
+  typecheck 16/16、unit 15/15、contract 10/10、Web production build、SQL static check 和完整
+  PostgreSQL smoke 全部通过。切换前六项 operations gate 均为 `PASS`，reconciliation
+  `ready_for_enforced=true` 且四类差异均为 0；权威 `decide_billing_mode` 操作
+  `3a2be274-560d-45ff-842d-53c8d7f38ae2` 已把本地部署切换为 `ENFORCED`、epoch 2，切换后
+  六项 gate 仍全为 `PASS`。Phase 7 AC1-AC8 全部完成。

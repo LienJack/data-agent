@@ -91,3 +91,67 @@ owner override，但不能绕过 workspace scope 或审计。
   deployment/database/window 绑定；不得删掉迁移自身的 executor、checksum 或维护窗口校验。
 - 发现开发库 schema/ledger 漂移时直接重建明确的 PostgreSQL 数据卷，不实现旧数据 backfill
   或在线升级；Neo4j 等可重建投影应与 PostgreSQL authority 分开处理。
+
+## 8. Scenario: `SHADOW -> ENFORCED` 计费发布
+
+### 1. Scope / Trigger
+
+- 只要部署准备从影子计费切换为真实冻结与扣费，就必须使用本节发布契约。
+- UI、CLI 和运维脚本都不能直接更新 `billing_runtime_state`。
+
+### 2. Signatures
+
+```sql
+app_data_agent.decide_billing_mode(
+  requested_deployment_id uuid,
+  requested_actor_principal_id uuid,
+  command jsonb
+) returns jsonb
+```
+
+### 3. Contracts
+
+- `command.schema_version = billing-mode-decision@1.0.0`。
+- `operation_id` 是 UUID；`idempotency_key` 长度为 8..128。
+- `reason` 去空白后长度为 1..500；`target_mode` 只能是 `SHADOW | ENFORCED`。
+- `expected_epoch` 必须等于当前部署 epoch；成功后 epoch 原子加一。
+- 返回值包含 `state`、切换前事务内生成的 `reconciliation` 和 `operation_id`。
+- 只有 active `SUPER_ADMIN` 可以执行；批准人、原因、输入哈希与结果写入不可变 operation receipt。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| payload 版本、字段或 reason 非法 | `BILLING_MODE_DECISION_INVALID` |
+| 非 active `SUPER_ADMIN` | authority reason code，失败关闭 |
+| 同幂等键异载荷 | `MODEL_BILLING_OPERATION_CONFLICT` |
+| `expected_epoch` 过期 | `BILLING_MODE_EPOCH_CONFLICT` |
+| 启用 `ENFORCED` 时 reconciliation 非全绿 | `BILLING_RECONCILIATION_REQUIRED` |
+
+### 5. Good / Base / Bad Cases
+
+- Good：全量代码门、数据库门和六项运营 gate 通过，`ready_for_enforced=true`，以当前 epoch
+  切换到 `ENFORCED`，返回 epoch+1。
+- Base：同一幂等键、同一 payload 重放，返回原结果，不重复提升 epoch。
+- Bad：跳过门禁直接 `UPDATE billing_runtime_state`，或用旧 epoch 覆盖另一位管理员的决定。
+
+### 6. Tests Required
+
+- PostgreSQL smoke 覆盖 `SHADOW -> ENFORCED -> SHADOW`、epoch 竞争、非超级管理员和对账失败。
+- 发布前运行 lint、typecheck、unit、contract、Web production build、SQL static check 和完整
+  PostgreSQL smoke；随后读取 `platform.read_operations_health`，确认六项 gate 全为 `PASS`。
+- 切换后反查 `platform.get_billing_runtime_state`，断言 mode、epoch、approved_by 和 approved_at。
+
+### 7. Wrong vs Correct
+
+```sql
+-- Wrong: 绕过 authority、对账、epoch 和 operation receipt。
+update app_data_agent.billing_runtime_state set mode = 'ENFORCED';
+
+-- Correct: 由超级管理员携带当前 epoch 调用权威命令；函数在事务内重跑 reconciliation。
+select app_data_agent.decide_billing_mode(
+  :deployment_id,
+  :super_admin_principal_id,
+  :billing_mode_decision_json
+);
+```

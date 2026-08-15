@@ -35,7 +35,7 @@ Phase 7：补齐全局与工作空间运营界面、观测指标、角色矩阵�
 - [x] AC5：角色矩阵和直接 URL 自动化证明 PRD AC1、AC2、AC5、AC11、AC12、AC17、AC20。
 - [x] AC6：clean-install、PostgreSQL smoke、shadow 对账、回滚与备份恢复演练有可复现命令和
   结果证据；只有全部门禁通过才允许启用 `ENFORCED`。
-- [ ] AC7：全量 lint、typecheck、unit、contract、数据库 smoke 和相关 E2E 通过，无 P0/P1
+- [x] AC7：全量 lint、typecheck、unit、contract、数据库 smoke 和相关 E2E 通过，无 P0/P1
   安全或数据完整性问题。
 - [x] AC8：一张关键截图证明桌面与窄屏层级、长文本和操作状态符合项目既有紧凑低饱和设计。
 
