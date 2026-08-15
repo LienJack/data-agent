@@ -2,6 +2,7 @@
 
 import type { Graph as G6Graph, IElementEvent } from "@antv/g6";
 import type {
+  SemanticEdgeFamily,
   SemanticGraphCluster,
   SemanticGraphFullResult,
   SemanticGraphNeighborhoodResult,
@@ -19,6 +20,7 @@ import {
 
 interface SemanticGraphCanvasProps {
   readonly mode: "local" | "full";
+  readonly families: readonly SemanticEdgeFamily[];
   readonly local: SemanticGraphNeighborhoodResult | null;
   readonly full: SemanticGraphFullResult;
   readonly selectedNodeId: string | null;
@@ -40,19 +42,47 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   const [renderError, setRenderError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
-  const graph = props.mode === "local" ? props.local : props.full;
+  const localGraph = useMemo(() => {
+    if (props.local === null || props.families.length === 0) return props.local;
+    const edges = props.local.edges.filter((item) => props.families.includes(item.edge.family));
+    const visibleNodeIds = new Set<string>([props.local.center_node_id]);
+    for (const { edge } of edges) {
+      visibleNodeIds.add(edge.source_node_id);
+      visibleNodeIds.add(edge.target_node_id);
+    }
+    return {
+      ...props.local,
+      nodes: props.local.nodes.filter((item) => visibleNodeIds.has(item.node.node_id)),
+      edges,
+    };
+  }, [props.families, props.local]);
+  const fullGraph = useMemo(() => {
+    if (props.families.length === 0) return props.full;
+    const edges = props.full.edges.filter((item) => props.families.includes(item.edge.family));
+    const visibleNodeIds = new Set<string>();
+    for (const { edge } of edges) {
+      visibleNodeIds.add(edge.source_node_id);
+      visibleNodeIds.add(edge.target_node_id);
+    }
+    return {
+      ...props.full,
+      nodes: props.full.nodes.filter((item) => visibleNodeIds.has(item.node.node_id)),
+      edges,
+    };
+  }, [props.families, props.full]);
+  const graph = props.mode === "local" ? localGraph : fullGraph;
   const empty =
     props.mode === "local"
-      ? !props.local || props.local.nodes.length === 0
-      : props.full.clusters.length + props.full.nodes.length === 0;
+      ? !localGraph || localGraph.nodes.length === 0
+      : fullGraph.clusters.length + fullGraph.nodes.length === 0;
   const g6Data = useMemo(() => {
     if (props.mode === "local") {
-      return props.local
-        ? buildLocalG6Data(props.local, props.selectedNodeId, props.selectedEdgeId)
+      return localGraph
+        ? buildLocalG6Data(localGraph, props.selectedNodeId, props.selectedEdgeId)
         : { nodes: [], edges: [] };
     }
-    return buildFullG6Data(props.full, props.selectedNodeId, props.selectedEdgeId);
-  }, [props.full, props.local, props.mode, props.selectedEdgeId, props.selectedNodeId]);
+    return buildFullG6Data(fullGraph, props.selectedNodeId, props.selectedEdgeId);
+  }, [fullGraph, localGraph, props.mode, props.selectedEdgeId, props.selectedNodeId]);
   const nodeById = useMemo(
     () =>
       new Map(
@@ -111,6 +141,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         container,
         data: g6Data,
         autoFit: "view",
+        zoomRange: [0.2, 1.25],
         animation: false,
         behaviors: [
           "drag-canvas",

@@ -13,12 +13,14 @@ import {
   businessSubjectNodeSchema,
   dimensionNodeSchema,
   formulaNodeSchema,
+  glossaryTermNodeSchema,
   metricNodeSchema,
   semanticEdgeTypeDefinitionSchema,
   semanticGraphEdgeSchema,
   type semanticGraphNodeSchema,
   semanticGraphPatchSchema,
   semanticGraphSourceSchema,
+  semanticNodeTypeSchema,
 } from "./semantic-graph-v2.js";
 
 export const SEMANTIC_AGENT_TURN_VERSION = "semantic-agent-turn@1.0.0" as const;
@@ -210,6 +212,7 @@ const agentManagedSemanticNodeSchema = z.discriminatedUnion("node_type", [
   dimensionNodeSchema,
   metricNodeSchema,
   formulaNodeSchema,
+  glossaryTermNodeSchema,
 ]);
 
 const toolCallBase = { tool_call_id: toolCallIdSchema } as const;
@@ -226,7 +229,7 @@ export const semanticAuthoringToolCallSchema = z.discriminatedUnion("tool_name",
     tool_name: z.literal("search_semantic_nodes"),
     arguments: z.strictObject({
       query: z.string().trim().min(1).max(256),
-      node_types: z.array(z.enum(["BUSINESS_SUBJECT", "DIMENSION", "METRIC", "FORMULA"])).max(4),
+      node_types: z.array(semanticNodeTypeSchema).max(7),
       limit: z.number().int().min(1).max(50),
     }),
   }),

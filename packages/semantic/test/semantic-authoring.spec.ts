@@ -180,6 +180,7 @@ describe("Semantic authoring Agent tool loop", () => {
           call("read-column", "read_semantic_node", {
             node_id: "column-order-item-product-id",
           }),
+          call("read-dimension", "read_semantic_node", { node_id: "dimension-product" }),
         ]),
       () =>
         toolResult([
@@ -239,6 +240,19 @@ describe("Semantic authoring Agent tool loop", () => {
               evidence_refs: [],
             },
           }),
+          call("edge-formula-dimension", "create_semantic_edge", {
+            edge: {
+              edge_id: "edge-formula-dimension",
+              edge_version: 1,
+              edge_type: "USES_DIMENSION",
+              family: "FORMULA",
+              source_node_id: "formula-product-count",
+              target_node_id: "dimension-product",
+              lifecycle: "ACTIVE",
+              attributes: { kind: "DIMENSION_USE", role: "GROUP_BY" },
+              evidence_refs: [],
+            },
+          }),
         ]),
       () => toolResult([call("validate", "validate_semantic_graph", {})]),
       completionFromRequest,
@@ -256,7 +270,7 @@ describe("Semantic authoring Agent tool loop", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.run.status).toBe("READY_FOR_REVIEW");
-    expect(result.value.run.working_revision).toBe(6);
+    expect(result.value.run.working_revision).toBe(7);
     expect(result.value.working_graph.nodes.map((node) => node.node_id)).toContain(
       "metric-product-count",
     );
@@ -269,7 +283,7 @@ describe("Semantic authoring Agent tool loop", () => {
       authoring_run_id: startInput(base).authoring_run_id,
     });
     expect(events.ok && events.value.filter((entry) => entry.type === "graph_patch")).toHaveLength(
-      6,
+      7,
     );
   });
 

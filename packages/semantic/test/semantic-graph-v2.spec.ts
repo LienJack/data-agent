@@ -13,7 +13,11 @@ import {
 import { compileSemanticGraphV2 } from "../src/graph-v2/compiler.js";
 import { SemanticGraphErrorCode } from "../src/graph-v2/errors.js";
 import { applySemanticGraphPatch } from "../src/graph-v2/patch-reducer.js";
-import { validateSemanticGraph } from "../src/graph-v2/validator.js";
+import {
+  createSemanticOntologyCoverageReceipt,
+  validateSemanticGraph,
+  validateSemanticOntologyCoverage,
+} from "../src/graph-v2/validator.js";
 import { createSemanticGraphV2Fixture } from "./fixtures/semantic-graph-v2.js";
 
 function activeEdges(graph: ReturnType<typeof createSemanticGraphV2Fixture>) {
@@ -50,7 +54,7 @@ describe("Semantic Graph v2 kernel", () => {
       column_id: "table-order-item.column-order-item-product-id",
       aggregation: "count_distinct",
     });
-    expect(first.native_projection.node_count).toBe(6);
+    expect(first.native_projection.node_count).toBe(7);
     expect(first.u5_projection.errors).toEqual([]);
   });
 
@@ -364,5 +368,41 @@ describe("Semantic Graph v2 kernel", () => {
   it("keeps active relation selection explicit", () => {
     const graph = createSemanticGraphV2Fixture();
     expect(activeEdges(graph).every((edge) => edge.lifecycle === "ACTIVE")).toBe(true);
+  });
+
+  it("proves subject, dimension, formula, physical-field, and terminology coverage", async () => {
+    const graph = createSemanticGraphV2Fixture();
+    expect(validateSemanticOntologyCoverage(graph)).toEqual([]);
+
+    const checkedAt = "2026-08-15T12:00:00Z";
+    const first = await createSemanticOntologyCoverageReceipt(graph, checkedAt);
+    const second = await createSemanticOntologyCoverageReceipt(
+      { ...graph, nodes: [...graph.nodes].reverse(), edges: [...graph.edges].reverse() },
+      checkedAt,
+    );
+    expect(first).toEqual(second);
+    expect(first).toMatchObject({
+      valid: true,
+      active_node_counts: { GLOSSARY_TERM: 1 },
+      active_edge_family_counts: { TERMINOLOGY: 1 },
+      issues: [],
+    });
+  });
+
+  it("fails ontology coverage when relationships are embedded or omitted", () => {
+    const graph = createSemanticGraphV2Fixture();
+    graph.edges = graph.edges.filter(
+      (edge) =>
+        !["REPRESENTED_BY", "IDENTIFIED_BY", "USES_DIMENSION", "DENOTES"].includes(edge.edge_type),
+    );
+    expect(validateSemanticGraph(graph)).toEqual([]);
+    expect(validateSemanticOntologyCoverage(graph).map((entry) => entry.code)).toEqual(
+      expect.arrayContaining([
+        "SUBJECT_PHYSICAL_TABLE_MISSING",
+        "SUBJECT_IDENTIFIER_MISSING",
+        "FORMULA_DIMENSION_MISSING",
+        "GLOSSARY_TERM_UNLINKED",
+      ]),
+    );
   });
 });

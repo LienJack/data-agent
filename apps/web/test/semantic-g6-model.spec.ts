@@ -4,7 +4,10 @@ import {
   buildLocalG6Data,
   semanticG6SourceId,
 } from "../src/lib/semantic-g6-model";
-import { semanticStudioPreviewSnapshot } from "../src/lib/semantic-studio-preview";
+import {
+  semanticStudioPreviewExpandedFullGraph,
+  semanticStudioPreviewSnapshot,
+} from "../src/lib/semantic-studio-preview";
 
 describe("semantic G6 graph model", () => {
   it("maps the bounded neighborhood to typed G6 nodes and directed edges", () => {
@@ -37,6 +40,59 @@ describe("semantic G6 graph model", () => {
       sourceId: snapshot.full.clusters[0]?.cluster_id,
     });
     expect(cluster?.style?.labelText).toContain("节点");
+  });
+
+  it("shows the complete ontology chain instead of embedding physical fields", () => {
+    const local = semanticStudioPreviewSnapshot().local;
+    if (!local) throw new Error("preview local graph is required");
+    expect([...new Set(local.nodes.map((item) => item.node.node_type))]).toEqual(
+      expect.arrayContaining([
+        "BUSINESS_SUBJECT",
+        "DIMENSION",
+        "METRIC",
+        "FORMULA",
+        "PHYSICAL_TABLE",
+        "PHYSICAL_COLUMN",
+        "GLOSSARY_TERM",
+      ]),
+    );
+    expect(new Set(local.edges.map((item) => item.edge.family))).toEqual(
+      new Set([
+        "BUSINESS",
+        "ANALYTICAL",
+        "FORMULA",
+        "PHYSICAL",
+        "JOIN",
+        "PROVENANCE",
+        "TERMINOLOGY",
+      ]),
+    );
+    expect(local.edges.map((item) => item.edge.edge_type)).toEqual(
+      expect.arrayContaining([
+        "REPRESENTED_BY",
+        "IDENTIFIED_BY",
+        "USES_DIMENSION",
+        "REFERENCES",
+        "CONTAINS_COLUMN",
+        "FOREIGN_KEY_TO",
+        "JOINABLE_VIA",
+        "DENOTES",
+      ]),
+    );
+  });
+
+  it("expands a GraphRAG cluster to its own members and internal edges", () => {
+    const terminology = semanticStudioPreviewExpandedFullGraph("cluster:terminology:zh-cn");
+    expect(terminology.nodes).toHaveLength(11);
+    expect(terminology.nodes.every((item) => item.node.node_type === "GLOSSARY_TERM")).toBe(true);
+    expect(
+      terminology.edges.every(
+        (item) =>
+          item.edge.family === "TERMINOLOGY" &&
+          terminology.nodes.some((node) => node.node.node_id === item.edge.source_node_id) &&
+          terminology.nodes.some((node) => node.node.node_id === item.edge.target_node_id),
+      ),
+    ).toBe(true);
   });
 
   it("does not trust arbitrary G6 custom data as a semantic identity", () => {

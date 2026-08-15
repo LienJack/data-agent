@@ -1,5 +1,6 @@
 import type {
   SemanticAuthoringPublicEvent,
+  SemanticEdgeFamily,
   SemanticGraphCluster,
   SemanticGraphEntryStatus,
   SemanticGraphNode,
@@ -20,6 +21,20 @@ export const SEMANTIC_NODE_PRESENTATION: Record<
   FORMULA: { label: "公式", short: "公式", fill: "#815716", text: "#ffffff" },
   PHYSICAL_TABLE: { label: "物理表", short: "表", fill: "#66736d", text: "#ffffff" },
   PHYSICAL_COLUMN: { label: "物理列", short: "列", fill: "#88918d", text: "#ffffff" },
+  GLOSSARY_TERM: { label: "术语", short: "术", fill: "#55745f", text: "#ffffff" },
+};
+
+export const SEMANTIC_EDGE_FAMILY_PRESENTATION: Record<
+  SemanticEdgeFamily,
+  { readonly label: string; readonly description: string; readonly color: string }
+> = {
+  BUSINESS: { label: "业务", description: "主体之间的领域关系", color: "#a94c3a" },
+  ANALYTICAL: { label: "分析", description: "主体、维度、指标与粒度", color: "#397b91" },
+  FORMULA: { label: "公式", description: "定义、依赖、维度与字段引用", color: "#9b6c19" },
+  PHYSICAL: { label: "物理", description: "表、字段与数据库外键事实", color: "#68736e" },
+  JOIN: { label: "Join", description: "带基数与行保留证明的分析连接", color: "#765f8f" },
+  PROVENANCE: { label: "溯源", description: "语义对象的证据与派生链", color: "#517466" },
+  TERMINOLOGY: { label: "术语", description: "术语指代、上下位与相关关系", color: "#7d6b4d" },
 };
 
 export const SEMANTIC_STATUS_PRESENTATION: Record<
@@ -44,6 +59,7 @@ export function semanticNodeSearchText(item: SemanticGraphReadNode): string {
     node.name,
     node.description ?? "",
     node.owner_ref,
+    node.node_type === "GLOSSARY_TERM" ? node.definition : "",
     ...node.aliases,
     ...node.tags,
   ]

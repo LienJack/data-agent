@@ -156,7 +156,7 @@ Owned task：`08-15-semantic-studio-graph-ux`
 - [ ] 建立一个按 release/candidate key 的 normalized graph store；List/Local/Full/Diff 共享 identity、
       selection 和 status tokens。
 - [ ] Node List 实现服务端筛选、搜索、排序、分页/虚拟化；行内只显示固有摘要和关系计数。
-- [ ] 增加术语视图与 GlossaryTerm 检查器；新增/修改/关联术语只生成 Agent Composer 意图。
+- [x] 增加术语视图与 GlossaryTerm 检查器；新增/修改/关联术语只生成 Agent Composer 意图。
 
 #### 4.2 Local / Full graph
 
@@ -166,7 +166,7 @@ Owned task：`08-15-semantic-studio-graph-ux`
   Minimap、选择和稳定服务端初始位置。
 - [ ] 补齐 cluster 收起、最短路径高亮与 500 glyph / 10k benchmark；搜索、筛选、回到当前选择
   和 candidate overlay 已接入共享 store。
-- [ ] 补齐业务、分析、公式、物理、Join、溯源、术语七类关系筛选；业务主体可追到其他主体、
+- [x] 补齐业务、分析、公式、物理、Join、溯源、术语七类关系筛选；业务主体可追到其他主体、
       维度、指标、物理表/列，Formula 可追到 Metric、主体、维度和物理字段。
 
 #### 4.3 Persistent Agent Composer
@@ -191,14 +191,14 @@ glyph、10,000 Node list、Agent mutation live overlay，以及“没有直接 J
 
 Owned task：`08-15-semantic-graph-migration-rollout`
 
-- [ ] 扩展 Graph v2 Node/Edge registry：GlossaryTerm，以及主体物理映射、公式维度上下文和术语关系。
-- [ ] 从 schema snapshot 确定性建立 Table → Column 与 FK；Agent 基于证据提出业务关系、主体—维度、
+- [x] 扩展 Graph v2 Node/Edge registry：GlossaryTerm，以及主体物理映射、公式维度上下文和术语关系。
+- [x] 从 schema snapshot 确定性建立 Table → Column 与 FK；Agent 基于证据提出业务关系、主体—维度、
       主体—Table/Column、Formula—主体/Dimension/Column 和 Join Proof 候选。
-- [ ] 实现关系 coverage validator 与 receipt；缺失、非法方向、无证据、FK 冒充业务关系、无 fanout
+- [x] 实现关系 coverage validator 与 receipt；缺失、非法方向、无证据、FK 冒充业务关系、无 fanout
       proof 的 Join 均失败关闭或要求显式 NOT_APPLICABLE。
-- [ ] 为业务主体、粒度、可加性、基数、扇出、行保留、物理绑定、分析 Join、Candidate、Active
+- [x] 为业务主体、粒度、可加性、基数、扇出、行保留、物理绑定、分析 Join、Candidate、Active
       Release 建立首批中文术语候选与映射。
-- [ ] 用电商完整关系 fixture 验证从 BusinessSubject/Formula 出发均能追到分析和物理证据链。
+- [x] 用电商完整关系 fixture 验证从 BusinessSubject/Formula 出发均能追到分析和物理证据链。
 
 只有本阶段关系覆盖回执全绿，才进入真实 Worker、迁移治理和 Falcon。
 

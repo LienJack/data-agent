@@ -15,7 +15,7 @@ import {
 } from "@data-agent/contracts";
 import { computeSemanticGraphDigest } from "../graph-v2/canonicalize.js";
 import { createSemanticGraphPatch } from "../graph-v2/patch-reducer.js";
-import { validateSemanticGraph } from "../graph-v2/validator.js";
+import { validateSemanticGraph, validateSemanticOntologyCoverage } from "../graph-v2/validator.js";
 
 export class SemanticAuthoringToolError extends Error {
   override readonly name = "SemanticAuthoringToolError";
@@ -188,11 +188,18 @@ async function validationReceipt(
   context: SemanticAuthoringToolExecutionContext,
 ): Promise<SemanticAuthoringValidationReceipt> {
   const graphDigest = await computeSemanticGraphDigest(state.working_graph);
-  const issues = validateSemanticGraph(state.working_graph).map((issue) => ({
-    code: issue.code,
-    message: issue.message,
-    ...(issue.entry_id === undefined ? {} : { subject_id: issue.entry_id }),
-  }));
+  const issues = [
+    ...validateSemanticGraph(state.working_graph).map((issue) => ({
+      code: issue.code,
+      message: issue.message,
+      ...(issue.entry_id === undefined ? {} : { subject_id: issue.entry_id }),
+    })),
+    ...validateSemanticOntologyCoverage(state.working_graph).map((issue) => ({
+      code: issue.code,
+      message: issue.message,
+      subject_id: issue.entry_id,
+    })),
+  ];
   const material = {
     receipt_version: "semantic-authoring-validation@1.0.0" as const,
     graph_digest: graphDigest,
@@ -227,9 +234,7 @@ function readResult(
         .filter(
           (node) =>
             node.lifecycle === "ACTIVE" &&
-            allowed.has(
-              node.node_type as "BUSINESS_SUBJECT" | "DIMENSION" | "METRIC" | "FORMULA",
-            ) &&
+            allowed.has(node.node_type) &&
             [node.name, ...node.aliases].some((name) => normalized(name).includes(query)),
         )
         .slice(0, call.arguments.limit);
@@ -293,7 +298,16 @@ function readResult(
         (edge) =>
           (edge.source_node_id === call.arguments.node_id ||
             edge.target_node_id === call.arguments.node_id) &&
-          ["BOUND_TO", "REFERENCES", "SUPPORTED_BY", "JOINABLE_VIA"].includes(edge.edge_type),
+          [
+            "REPRESENTED_BY",
+            "IDENTIFIED_BY",
+            "BOUND_TO",
+            "REFERENCES",
+            "CONTAINS_COLUMN",
+            "FOREIGN_KEY_TO",
+            "SUPPORTED_BY",
+            "JOINABLE_VIA",
+          ].includes(edge.edge_type),
       );
       const nodeIds = unique(edges.flatMap((edge) => [edge.source_node_id, edge.target_node_id]));
       return {
@@ -314,7 +328,7 @@ function readResult(
       const edges = graph.edges.filter(
         (edge) =>
           edge.source_node_id === call.arguments.formula_node_id &&
-          ["REFERENCES", "DEPENDS_ON"].includes(edge.edge_type),
+          ["REFERENCES", "DEPENDS_ON", "AT_GRAIN", "USES_DIMENSION"].includes(edge.edge_type),
       );
       const nodeIds = unique([
         call.arguments.formula_node_id,
@@ -350,7 +364,9 @@ function readResult(
           formula_dependencies: graph.edges.filter((edge) => edge.edge_type === "DEPENDS_ON")
             .length,
           physical_bindings: graph.edges.filter((edge) =>
-            ["BOUND_TO", "REFERENCES", "SUPPORTED_BY"].includes(edge.edge_type),
+            ["REPRESENTED_BY", "IDENTIFIED_BY", "BOUND_TO", "REFERENCES", "SUPPORTED_BY"].includes(
+              edge.edge_type,
+            ),
           ).length,
         },
         checkpoint: state.checkpoint,

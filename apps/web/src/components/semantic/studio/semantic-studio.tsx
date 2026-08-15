@@ -3,6 +3,7 @@
 import type {
   SemanticAuthoringPublicEvent,
   SemanticAuthoringState,
+  SemanticEdgeFamily,
   SemanticGraphCluster,
   SemanticGraphEntryStatus,
   SemanticGraphNode,
@@ -34,6 +35,7 @@ import {
 import {
   filterSemanticNodes,
   mergeAuthoringEvents,
+  SEMANTIC_EDGE_FAMILY_PRESENTATION,
   SEMANTIC_NODE_PRESENTATION,
   SEMANTIC_STATUS_PRESENTATION,
   type SemanticStudioView,
@@ -50,7 +52,18 @@ const NODE_TYPES = [
   "FORMULA",
   "PHYSICAL_TABLE",
   "PHYSICAL_COLUMN",
+  "GLOSSARY_TERM",
 ] as const satisfies readonly SemanticNodeType[];
+
+const EDGE_FAMILIES = [
+  "BUSINESS",
+  "ANALYTICAL",
+  "FORMULA",
+  "PHYSICAL",
+  "JOIN",
+  "PROVENANCE",
+  "TERMINOLOGY",
+] as const satisfies readonly SemanticEdgeFamily[];
 
 const STATUSES = [
   "PUBLISHED",
@@ -81,6 +94,7 @@ export function SemanticStudio({
   const [search, setSearch] = useState("");
   const [nodeType, setNodeType] = useState<SemanticNodeType | "ALL">("ALL");
   const [status, setStatus] = useState<SemanticGraphEntryStatus | "ALL">("ALL");
+  const [edgeFamily, setEdgeFamily] = useState<SemanticEdgeFamily | "ALL">("ALL");
   const [owner, setOwner] = useState("");
   const [nodeDomain, setNodeDomain] = useState("");
   const [lifecycle, setLifecycle] = useState<SemanticGraphNode["lifecycle"] | "ALL">("ALL");
@@ -287,14 +301,12 @@ export function SemanticStudio({
   async function expandCluster(cluster: SemanticGraphCluster) {
     if (!snapshot) return;
     if (preview) {
+      const { semanticStudioPreviewExpandedFullGraph } = await import(
+        "@/lib/semantic-studio-preview"
+      );
       setSnapshot({
         ...snapshot,
-        full: {
-          ...snapshot.full,
-          clusters: snapshot.full.clusters.filter((item) => item.cluster_id !== cluster.cluster_id),
-          nodes: snapshot.list.items.slice(0, Math.min(cluster.node_count, 8)),
-          glyph_count: Math.min(cluster.node_count, 8) + snapshot.full.clusters.length - 1,
-        },
+        full: semanticStudioPreviewExpandedFullGraph(cluster.cluster_id),
       });
       return;
     }
@@ -759,6 +771,32 @@ export function SemanticStudio({
                   </div>
                 ) : null}
 
+                {view !== "nodes" ? (
+                  <div className="flex flex-wrap items-center gap-1.5 border-b border-[#d7ddd9] bg-white px-3 py-2">
+                    <span className="mr-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7b8781]">
+                      关系家族
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEdgeFamily("ALL")}
+                      className={`border px-2 py-1 text-[9px] transition-colors ${edgeFamily === "ALL" ? "border-[#7fa293] bg-[#e7f0eb] font-semibold text-[#285b4b]" : "border-[#d8dfdb] text-[#6f7b75] hover:border-[#aebbb4]"}`}
+                    >
+                      全部
+                    </button>
+                    {EDGE_FAMILIES.map((family) => (
+                      <button
+                        key={family}
+                        type="button"
+                        title={SEMANTIC_EDGE_FAMILY_PRESENTATION[family].description}
+                        onClick={() => setEdgeFamily(family)}
+                        className={`border px-2 py-1 text-[9px] transition-colors ${edgeFamily === family ? "border-[#7fa293] bg-[#e7f0eb] font-semibold text-[#285b4b]" : "border-[#d8dfdb] text-[#6f7b75] hover:border-[#aebbb4]"}`}
+                      >
+                        {SEMANTIC_EDGE_FAMILY_PRESENTATION[family].label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+
                 <div className="min-w-0">
                   {view === "nodes" ? (
                     <SemanticNodeList
@@ -775,6 +813,7 @@ export function SemanticStudio({
                   ) : (
                     <SemanticGraphCanvas
                       mode={view}
+                      families={edgeFamily === "ALL" ? [] : [edgeFamily]}
                       local={snapshot.local}
                       full={snapshot.full}
                       selectedNodeId={selectedNode?.node.node_id ?? null}

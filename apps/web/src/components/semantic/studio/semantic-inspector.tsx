@@ -118,7 +118,9 @@ export function SemanticInspector({
                     定义
                   </p>
                   <p className="mt-2 text-[11px] leading-5 text-[#59665f]">
-                    {node.node.description || "尚未补充定义"}
+                    {node.node.node_type === "GLOSSARY_TERM"
+                      ? node.node.definition
+                      : node.node.description || "尚未补充定义"}
                   </p>
                 </div>
 
@@ -144,6 +146,22 @@ export function SemanticInspector({
                       {node.node.owner_ref}
                     </dd>
                   </div>
+                  {node.node.node_type === "GLOSSARY_TERM" ? (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <dt className="uppercase tracking-wide text-[#7b8781]">术语类别</dt>
+                        <dd className="mt-1 font-mono text-[11px] text-[#48554f]">
+                          {node.node.term_kind}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="uppercase tracking-wide text-[#7b8781]">语言</dt>
+                        <dd className="mt-1 font-mono text-[11px] text-[#48554f]">
+                          {node.node.language}
+                        </dd>
+                      </div>
+                    </div>
+                  ) : null}
                   <div>
                     <dt className="uppercase tracking-wide text-[#7b8781]">稳定 ID</dt>
                     <dd className="mt-1 break-all font-mono leading-4 text-[#5e6a64]">

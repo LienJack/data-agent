@@ -145,6 +145,7 @@ function emptyFamilyCounts(): Record<SemanticEdgeFamily, number> {
     PHYSICAL: 0,
     JOIN: 0,
     PROVENANCE: 0,
+    TERMINOLOGY: 0,
   };
 }
 
@@ -156,6 +157,7 @@ function emptyNodeTypeCounts(): Record<SemanticGraphNode["node_type"], number> {
     FORMULA: 0,
     PHYSICAL_TABLE: 0,
     PHYSICAL_COLUMN: 0,
+    GLOSSARY_TERM: 0,
   };
 }
 

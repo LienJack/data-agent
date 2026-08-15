@@ -121,13 +121,23 @@ function validGraph() {
         nullable: false,
         sensitivity: "PUBLIC" as const,
       },
+      {
+        ...common,
+        node_id: "term-order-line",
+        node_type: "GLOSSARY_TERM" as const,
+        name: "订单明细",
+        definition: "订单中以商品行为粒度的业务事实。",
+        language: "zh-CN",
+        term_kind: "BUSINESS" as const,
+        abbreviation: null,
+      },
     ],
     edges: [],
   };
 }
 
 describe("SemanticGraphSource@2 contract", () => {
-  it("accepts six independent node identities and a slot-based Formula AST", () => {
+  it("accepts ontology node identities and a slot-based Formula AST", () => {
     const parsed = semanticGraphSourceSchema.parse(validGraph());
     expect(new Set(parsed.nodes.map((node) => node.node_type))).toEqual(
       new Set([
@@ -137,8 +147,27 @@ describe("SemanticGraphSource@2 contract", () => {
         "FORMULA",
         "PHYSICAL_TABLE",
         "PHYSICAL_COLUMN",
+        "GLOSSARY_TERM",
       ]),
     );
+  });
+
+  it("defines subject, formula, physical, and terminology relationships as typed edges", () => {
+    const definitions = new Map(
+      BUILTIN_SEMANTIC_EDGE_TYPES.map((definition) => [definition.edge_type, definition]),
+    );
+    expect(definitions.get("REPRESENTED_BY")).toMatchObject({
+      source_node_types: ["BUSINESS_SUBJECT"],
+      target_node_types: ["PHYSICAL_TABLE"],
+      attribute_kind: "BINDING",
+    });
+    expect(definitions.get("IDENTIFIED_BY")?.target_node_types).toEqual(["PHYSICAL_COLUMN"]);
+    expect(definitions.get("USES_DIMENSION")).toMatchObject({
+      source_node_types: ["FORMULA"],
+      target_node_types: ["DIMENSION"],
+      attribute_kind: "DIMENSION_USE",
+    });
+    expect(definitions.get("DENOTES")?.family).toBe("TERMINOLOGY");
   });
 
   it.each(["table_id", "column_id", "formula", "dependency_node_ids"])(

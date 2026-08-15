@@ -1,10 +1,18 @@
 import {
+  SEMANTIC_ONTOLOGY_COVERAGE_RECEIPT_VERSION,
+  type SemanticEdgeFamily,
   type SemanticFormulaExpression,
   type SemanticGraphEdge,
   type SemanticGraphNode,
   type SemanticGraphSource,
+  type SemanticNodeType,
+  type SemanticOntologyCoverageIssue,
+  type SemanticOntologyCoverageReceipt,
   semanticGraphSourceSchema,
+  semanticOntologyCoverageReceiptSchema,
+  sha256ContentHash,
 } from "@data-agent/contracts";
+import { computeSemanticGraphDigest } from "./canonicalize.js";
 import { SemanticGraphErrorCode, type SemanticGraphValidationIssue } from "./errors.js";
 
 function issue(
@@ -584,4 +592,370 @@ export function validateSemanticGraph(input: unknown): SemanticGraphValidationIs
   issues.push(...validateFormulaSemantics(graph, nodesById));
   issues.push(...validateCompatibility(graph));
   return issues;
+}
+
+export const SEMANTIC_ONTOLOGY_COVERAGE_VALIDATOR_VERSION =
+  "semantic-ontology-coverage-validator@1.0.0" as const;
+
+function coverageIssue(
+  code: SemanticOntologyCoverageIssue["code"],
+  entryId: string,
+  message: string,
+  relatedEntryIds: readonly string[] = [],
+): SemanticOntologyCoverageIssue {
+  return {
+    code,
+    entry_id: entryId,
+    message,
+    related_entry_ids: [...new Set(relatedEntryIds)].sort(),
+  };
+}
+
+function activeNodesOfType<T extends SemanticNodeType>(
+  graph: SemanticGraphSource,
+  nodeType: T,
+): Extract<SemanticGraphNode, { node_type: T }>[] {
+  return graph.nodes.filter(
+    (node): node is Extract<SemanticGraphNode, { node_type: T }> =>
+      node.lifecycle === "ACTIVE" && node.node_type === nodeType,
+  );
+}
+
+function activeOutgoingEdges(
+  graph: SemanticGraphSource,
+  nodeId: string,
+  edgeType: string,
+): SemanticGraphEdge[] {
+  return activeEdges(graph, edgeType).filter((edge) => edge.source_node_id === nodeId);
+}
+
+function activeIncomingEdges(
+  graph: SemanticGraphSource,
+  nodeId: string,
+  edgeType: string,
+): SemanticGraphEdge[] {
+  return activeEdges(graph, edgeType).filter((edge) => edge.target_node_id === nodeId);
+}
+
+function isSafeJoinProof(edge: SemanticGraphEdge): boolean {
+  return (
+    edge.edge_type === "JOINABLE_VIA" &&
+    edge.attributes.kind === "JOIN_PROOF" &&
+    edge.attributes.proof_kind !== "DECLARED_ONLY" &&
+    edge.evidence_refs.length > 0
+  );
+}
+
+function reachableColumn(
+  starts: ReadonlySet<string>,
+  target: string,
+  joinEdges: readonly SemanticGraphEdge[],
+): boolean {
+  if (starts.has(target)) return true;
+  const adjacency = new Map<string, string[]>();
+  for (const edge of joinEdges.filter(isSafeJoinProof)) {
+    const sourceTargets = adjacency.get(edge.source_node_id) ?? [];
+    sourceTargets.push(edge.target_node_id);
+    adjacency.set(edge.source_node_id, sourceTargets);
+    const targetSources = adjacency.get(edge.target_node_id) ?? [];
+    targetSources.push(edge.source_node_id);
+    adjacency.set(edge.target_node_id, targetSources);
+  }
+  const visited = new Set(starts);
+  const queue = [...starts];
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index];
+    if (current === undefined) continue;
+    for (const neighbor of adjacency.get(current) ?? []) {
+      if (neighbor === target) return true;
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        queue.push(neighbor);
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Strict ontology rollout gate. This deliberately goes beyond graph-schema validity:
+ * an executable graph may be structurally valid while still omitting the relationships
+ * needed to explain business meaning, formula context, and physical evidence.
+ */
+export function validateSemanticOntologyCoverage(input: unknown): SemanticOntologyCoverageIssue[] {
+  const graph = semanticGraphSourceSchema.parse(input);
+  const issues: SemanticOntologyCoverageIssue[] = [];
+  const subjects = activeNodesOfType(graph, "BUSINESS_SUBJECT");
+  const dimensions = activeNodesOfType(graph, "DIMENSION");
+  const metrics = activeNodesOfType(graph, "METRIC");
+  const formulas = activeNodesOfType(graph, "FORMULA");
+  const glossaryTerms = activeNodesOfType(graph, "GLOSSARY_TERM");
+  const containsEdges = activeEdges(graph, "CONTAINS_COLUMN");
+  const joinEdges = activeEdges(graph, "JOINABLE_VIA");
+
+  const tableColumns = new Map<string, Set<string>>();
+  for (const edge of containsEdges) {
+    const columns = tableColumns.get(edge.source_node_id) ?? new Set<string>();
+    columns.add(edge.target_node_id);
+    tableColumns.set(edge.source_node_id, columns);
+  }
+
+  for (const subject of subjects) {
+    const businessRelations = activeEdges(graph, "RELATES_TO").filter(
+      (edge) => edge.source_node_id === subject.node_id || edge.target_node_id === subject.node_id,
+    );
+    if (subjects.length > 1 && businessRelations.length === 0) {
+      issues.push(
+        coverageIssue(
+          "SUBJECT_RELATION_MISSING",
+          subject.node_id,
+          `业务主体 ${subject.node_id} 未与其他业务主体建立显式 RELATES_TO。`,
+        ),
+      );
+    }
+    const dimensionEdges = activeOutgoingEdges(graph, subject.node_id, "HAS_DIMENSION");
+    if (dimensionEdges.length === 0) {
+      issues.push(
+        coverageIssue(
+          "SUBJECT_DIMENSION_MISSING",
+          subject.node_id,
+          `业务主体 ${subject.node_id} 缺少 HAS_DIMENSION。`,
+        ),
+      );
+    }
+    const represented = activeOutgoingEdges(graph, subject.node_id, "REPRESENTED_BY");
+    if (represented.length === 0) {
+      issues.push(
+        coverageIssue(
+          "SUBJECT_PHYSICAL_TABLE_MISSING",
+          subject.node_id,
+          `业务主体 ${subject.node_id} 缺少 REPRESENTED_BY 物理表映射。`,
+        ),
+      );
+    }
+    const identifiers = activeOutgoingEdges(graph, subject.node_id, "IDENTIFIED_BY");
+    if (identifiers.length === 0) {
+      issues.push(
+        coverageIssue(
+          "SUBJECT_IDENTIFIER_MISSING",
+          subject.node_id,
+          `业务主体 ${subject.node_id} 缺少 IDENTIFIED_BY 物理字段映射。`,
+        ),
+      );
+    }
+    const representedColumns = new Set(
+      represented.flatMap((edge) => [...(tableColumns.get(edge.target_node_id) ?? [])]),
+    );
+    for (const identifier of identifiers) {
+      if (!representedColumns.has(identifier.target_node_id)) {
+        issues.push(
+          coverageIssue(
+            "SUBJECT_IDENTIFIER_OUTSIDE_TABLE",
+            identifier.edge_id,
+            `主体标识字段 ${identifier.target_node_id} 不属于该主体 REPRESENTED_BY 的物理表。`,
+            [
+              subject.node_id,
+              identifier.target_node_id,
+              ...represented.map((edge) => edge.target_node_id),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  for (const dimension of dimensions) {
+    if (activeIncomingEdges(graph, dimension.node_id, "HAS_DIMENSION").length === 0) {
+      issues.push(
+        coverageIssue(
+          "DIMENSION_SUBJECT_MISSING",
+          dimension.node_id,
+          `维度 ${dimension.node_id} 未关联任何业务主体。`,
+        ),
+      );
+    }
+    const primaryBindings = activeOutgoingEdges(graph, dimension.node_id, "BOUND_TO").filter(
+      (edge) => edge.attributes.kind === "BINDING" && edge.attributes.role === "PRIMARY",
+    );
+    if (primaryBindings.length !== 1) {
+      issues.push(
+        coverageIssue(
+          "DIMENSION_BINDING_MISSING",
+          dimension.node_id,
+          `维度 ${dimension.node_id} 必须且只能有一个 PRIMARY BOUND_TO 物理字段。`,
+          primaryBindings.map((edge) => edge.edge_id),
+        ),
+      );
+    }
+  }
+
+  for (const metric of metrics) {
+    if (activeIncomingEdges(graph, metric.node_id, "HAS_METRIC").length === 0) {
+      issues.push(
+        coverageIssue(
+          "METRIC_SUBJECT_MISSING",
+          metric.node_id,
+          `指标 ${metric.node_id} 未关联任何业务主体。`,
+        ),
+      );
+    }
+    if (activeOutgoingEdges(graph, metric.node_id, "DEFINED_BY").length !== 1) {
+      issues.push(
+        coverageIssue(
+          "METRIC_FORMULA_MISSING",
+          metric.node_id,
+          `指标 ${metric.node_id} 必须且只能由一个 Formula 定义。`,
+        ),
+      );
+    }
+  }
+
+  for (const formula of formulas) {
+    const grainEdges = activeOutgoingEdges(graph, formula.node_id, "AT_GRAIN");
+    if (grainEdges.length !== 1) {
+      issues.push(
+        coverageIssue(
+          "FORMULA_SUBJECT_MISSING",
+          formula.node_id,
+          `公式 ${formula.node_id} 必须且只能关联一个计算主体。`,
+          grainEdges.map((edge) => edge.target_node_id),
+        ),
+      );
+    }
+    if (activeOutgoingEdges(graph, formula.node_id, "USES_DIMENSION").length === 0) {
+      issues.push(
+        coverageIssue(
+          "FORMULA_DIMENSION_MISSING",
+          formula.node_id,
+          `公式 ${formula.node_id} 缺少 USES_DIMENSION 上下文。`,
+        ),
+      );
+    }
+    const references = activeOutgoingEdges(graph, formula.node_id, "REFERENCES");
+    if (references.length === 0) {
+      issues.push(
+        coverageIssue(
+          "FORMULA_COLUMN_MISSING",
+          formula.node_id,
+          `公式 ${formula.node_id} 未引用任何物理字段。`,
+        ),
+      );
+    }
+
+    const subjectTableIds = new Set(
+      grainEdges.flatMap((grain) =>
+        activeOutgoingEdges(graph, grain.target_node_id, "REPRESENTED_BY").map(
+          (edge) => edge.target_node_id,
+        ),
+      ),
+    );
+    const subjectColumns = new Set(
+      [...subjectTableIds].flatMap((tableId) => [...(tableColumns.get(tableId) ?? [])]),
+    );
+    for (const reference of references) {
+      if (
+        subjectColumns.size > 0 &&
+        !reachableColumn(subjectColumns, reference.target_node_id, joinEdges)
+      ) {
+        issues.push(
+          coverageIssue(
+            "FORMULA_REFERENCE_UNREACHABLE",
+            reference.edge_id,
+            `公式引用字段 ${reference.target_node_id} 无法从计算主体的物理表通过安全 Join 到达。`,
+            [formula.node_id, reference.target_node_id, ...subjectTableIds],
+          ),
+        );
+      }
+    }
+  }
+
+  for (const edge of joinEdges) {
+    if (!isSafeJoinProof(edge)) {
+      issues.push(
+        coverageIssue(
+          "JOIN_PROOF_INSUFFICIENT",
+          edge.edge_id,
+          `分析 Join ${edge.edge_id} 缺少非 DECLARED_ONLY 的可验证证据。`,
+          [edge.source_node_id, edge.target_node_id],
+        ),
+      );
+    }
+  }
+
+  for (const term of glossaryTerms) {
+    const terminologyLinks = activeEdges(graph).filter(
+      (edge) =>
+        edge.family === "TERMINOLOGY" &&
+        (edge.source_node_id === term.node_id || edge.target_node_id === term.node_id),
+    );
+    if (terminologyLinks.length === 0) {
+      issues.push(
+        coverageIssue(
+          "GLOSSARY_TERM_UNLINKED",
+          term.node_id,
+          `术语 ${term.node_id} 未通过 DENOTES/BROADER_THAN/RELATED_TERM 接入本体。`,
+        ),
+      );
+    }
+  }
+
+  return issues.sort(
+    (left, right) =>
+      left.code.localeCompare(right.code) || left.entry_id.localeCompare(right.entry_id),
+  );
+}
+
+function emptyCoverageNodeCounts(): Record<SemanticNodeType, number> {
+  return {
+    BUSINESS_SUBJECT: 0,
+    DIMENSION: 0,
+    METRIC: 0,
+    FORMULA: 0,
+    PHYSICAL_TABLE: 0,
+    PHYSICAL_COLUMN: 0,
+    GLOSSARY_TERM: 0,
+  };
+}
+
+function emptyCoverageFamilyCounts(): Record<SemanticEdgeFamily, number> {
+  return {
+    BUSINESS: 0,
+    ANALYTICAL: 0,
+    FORMULA: 0,
+    PHYSICAL: 0,
+    JOIN: 0,
+    PROVENANCE: 0,
+    TERMINOLOGY: 0,
+  };
+}
+
+export async function createSemanticOntologyCoverageReceipt(
+  input: unknown,
+  checkedAt: string,
+): Promise<SemanticOntologyCoverageReceipt> {
+  const graph = semanticGraphSourceSchema.parse(input);
+  const issues = validateSemanticOntologyCoverage(graph);
+  const activeNodeCounts = emptyCoverageNodeCounts();
+  for (const node of graph.nodes) {
+    if (node.lifecycle === "ACTIVE") activeNodeCounts[node.node_type] += 1;
+  }
+  const activeEdgeFamilyCounts = emptyCoverageFamilyCounts();
+  for (const edge of graph.edges) {
+    if (edge.lifecycle === "ACTIVE") activeEdgeFamilyCounts[edge.family] += 1;
+  }
+  const body = {
+    receipt_version: SEMANTIC_ONTOLOGY_COVERAGE_RECEIPT_VERSION,
+    graph_id: graph.metadata.graph_id,
+    source_digest: await computeSemanticGraphDigest(graph),
+    validator_version: SEMANTIC_ONTOLOGY_COVERAGE_VALIDATOR_VERSION,
+    valid: issues.length === 0,
+    checked_at: checkedAt,
+    active_node_counts: activeNodeCounts,
+    active_edge_family_counts: activeEdgeFamilyCounts,
+    issues,
+  } as const;
+  return semanticOntologyCoverageReceiptSchema.parse({
+    ...body,
+    receipt_digest: await sha256ContentHash(body),
+  });
 }

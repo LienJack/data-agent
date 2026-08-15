@@ -94,6 +94,44 @@ describe("semantic authoring contracts", () => {
     ).toThrow();
   });
 
+  it("lets Agent search physical evidence and author glossary terms", () => {
+    expect(
+      semanticAuthoringToolCallSchema.parse({
+        tool_call_id: "call-search-ontology",
+        tool_name: "search_semantic_nodes",
+        arguments: {
+          query: "product_id",
+          node_types: ["PHYSICAL_TABLE", "PHYSICAL_COLUMN", "GLOSSARY_TERM"],
+          limit: 20,
+        },
+      }).tool_name,
+    ).toBe("search_semantic_nodes");
+    expect(
+      semanticAuthoringToolCallSchema.parse({
+        tool_call_id: "call-create-term",
+        tool_name: "create_semantic_node",
+        arguments: {
+          node: {
+            node_id: "term-fanout",
+            node_version: 1,
+            node_type: "GLOSSARY_TERM",
+            name: "扇出",
+            description: "Join 后事实行被复制的风险。",
+            aliases: ["fanout"],
+            owner_ref: "semantic-agent",
+            lifecycle: "ACTIVE",
+            evidence_refs: [],
+            tags: ["分析术语"],
+            definition: "Join 后一行事实被复制为多行并导致指标重复累计的风险。",
+            language: "zh-CN",
+            term_kind: "ANALYTICAL",
+            abbreviation: null,
+          },
+        },
+      }).tool_name,
+    ).toBe("create_semantic_node");
+  });
+
   it("keeps READY_FOR_REVIEW separate from publish authority", () => {
     const run = semanticAuthoringRunSchema.parse({
       schema_version: SEMANTIC_AUTHORING_RUN_VERSION,

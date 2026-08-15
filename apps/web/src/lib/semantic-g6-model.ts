@@ -10,6 +10,7 @@ import {
   edgeLabel,
   fullGraphClusterPoint,
   localGraphLayout,
+  SEMANTIC_EDGE_FAMILY_PRESENTATION,
   SEMANTIC_NODE_PRESENTATION,
   SEMANTIC_STATUS_PRESENTATION,
 } from "./semantic-studio-model";
@@ -76,6 +77,8 @@ function semanticNodeDatum(item: SemanticGraphReadNode, selectedNodeId: string |
 function semanticEdgeDatum(item: SemanticGraphReadEdge, selectedEdgeId: string | null): EdgeData {
   const selected = item.edge.edge_id === selectedEdgeId;
   const status = SEMANTIC_STATUS_PRESENTATION[item.status];
+  const family = SEMANTIC_EDGE_FAMILY_PRESENTATION[item.edge.family];
+  const stroke = item.status === "PUBLISHED" ? family.color : status.color;
   return {
     id: item.edge.edge_id,
     source: item.edge.source_node_id,
@@ -87,12 +90,12 @@ function semanticEdgeDatum(item: SemanticGraphReadEdge, selectedEdgeId: string |
       sourceId: item.edge.edge_id,
     } satisfies SemanticG6ElementData,
     style: {
-      stroke: selected ? "#294f45" : status.color,
+      stroke: selected ? "#294f45" : stroke,
       lineWidth: selected ? 3 : 1.6,
       lineDash: statusDash(item.status),
       opacity: selected ? 1 : 0.76,
       endArrow: true,
-      endArrowFill: selected ? "#294f45" : status.color,
+      endArrowFill: selected ? "#294f45" : stroke,
       labelText: truncate(edgeLabel(item), 20),
       labelFontSize: 9,
       labelFill: "#5f6964",

@@ -2,9 +2,9 @@
 
 1. 已完成：将局部图/全图切换为 AntV G6 v5，提供缩放、拖拽、Minimap、选择和无障碍 fallback。
 2. 已完成：使用 `design-taste-frontend` 重构 Studio 为不对称三栏工作台和移动端单列布局，统一视觉层级与交互状态。
-3. 扩展本体 Node/Edge registry 与 GlossaryTerm，补齐主体—主体/维度/指标/表/列、Formula—Metric/主体/
+3. 已完成：扩展本体 Node/Edge registry 与 GlossaryTerm，补齐主体—主体/维度/指标/表/列、Formula—Metric/主体/
    Dimension/Column、Table—Column—FK—Join Proof 和术语关系。
-4. 建立完整电商 ontology fixture、关系 coverage validator/receipt 与缺失/错误方向/无证据负例。
+4. 已完成：建立完整电商 ontology fixture、关系 coverage validator/receipt 与缺失/错误方向/无证据负例。
 5. 补齐真实 Worker 对 semantic authoring run 的 claim/recovery/Agent tool loop，禁止 Web 执行工具。
 6. 建立 v1 representative fixtures、expected Graph v2 snapshots 和 unresolved taxonomy。
 7. 实现 converter/report，保证 deterministic identity 和 no-guessing。

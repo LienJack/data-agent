@@ -20,6 +20,7 @@ export const SEMANTIC_GRAPH_SOURCE_VERSION = "semantic-graph-source@2" as const;
 export const SEMANTIC_FORMULA_AST_VERSION = "semantic-formula-ast@1" as const;
 export const SEMANTIC_GRAPH_PATCH_VERSION = "semantic-graph-patch@1" as const;
 export const SEMANTIC_GRAPH_PROJECTION_VERSION = "semantic-graph-projection@1" as const;
+export const SEMANTIC_ONTOLOGY_COVERAGE_RECEIPT_VERSION = "semantic-ontology-coverage@1" as const;
 
 export const semanticNodeTypeSchema = z.enum([
   "BUSINESS_SUBJECT",
@@ -28,6 +29,7 @@ export const semanticNodeTypeSchema = z.enum([
   "FORMULA",
   "PHYSICAL_TABLE",
   "PHYSICAL_COLUMN",
+  "GLOSSARY_TERM",
 ]);
 export const semanticLifecycleSchema = z.enum(["ACTIVE", "DEPRECATED", "RETIRED"]);
 export const semanticAuthoringPolicySchema = z.enum(["AGENT_AUTHORED", "SYSTEM_MANAGED"]);
@@ -38,6 +40,7 @@ export const semanticEdgeFamilySchema = z.enum([
   "PHYSICAL",
   "JOIN",
   "PROVENANCE",
+  "TERMINOLOGY",
 ]);
 export const semanticEdgeAttributeKindSchema = z.enum([
   "NONE",
@@ -48,6 +51,8 @@ export const semanticEdgeAttributeKindSchema = z.enum([
   "JOIN_PROOF",
   "PHYSICAL_FACT",
   "PROVENANCE",
+  "DIMENSION_USE",
+  "TERM_LINK",
 ]);
 
 export const semanticNodeTypeDefinitionSchema = z.strictObject({
@@ -259,6 +264,14 @@ export const physicalColumnNodeSchema = z.strictObject({
   nullable: z.boolean(),
   sensitivity: z.enum(SENSITIVITY_LEVEL).default("PUBLIC"),
 });
+export const glossaryTermNodeSchema = z.strictObject({
+  ...semanticNodeCommonShape,
+  node_type: z.literal("GLOSSARY_TERM"),
+  definition: z.string().min(1).max(2048),
+  language: z.string().min(2).max(35).default("zh-CN"),
+  term_kind: z.enum(["BUSINESS", "ANALYTICAL", "PHYSICAL", "GOVERNANCE"]),
+  abbreviation: z.string().min(1).max(64).nullable().default(null),
+});
 
 export const semanticGraphNodeSchema = z.discriminatedUnion("node_type", [
   businessSubjectNodeSchema,
@@ -267,6 +280,7 @@ export const semanticGraphNodeSchema = z.discriminatedUnion("node_type", [
   formulaNodeSchema,
   physicalTableNodeSchema,
   physicalColumnNodeSchema,
+  glossaryTermNodeSchema,
 ]);
 
 export const semanticEdgeAttributesSchema = z.discriminatedUnion("kind", [
@@ -305,6 +319,14 @@ export const semanticEdgeAttributesSchema = z.discriminatedUnion("kind", [
     kind: z.literal("PROVENANCE"),
     derivation_kind: z.enum(["DERIVED", "SUPPORTED", "MIGRATED"]),
     note: z.string().max(1024).nullable(),
+  }),
+  z.strictObject({
+    kind: z.literal("DIMENSION_USE"),
+    role: z.enum(["GROUP_BY", "FILTER", "TIME_CONTEXT"]),
+  }),
+  z.strictObject({
+    kind: z.literal("TERM_LINK"),
+    lexical_role: z.enum(["PREFERRED", "SYNONYM", "ABBREVIATION", "RELATED"]),
   }),
 ]);
 
@@ -445,6 +467,44 @@ export const semanticGraphReleaseBindingSchema = z.strictObject({
   created: z.boolean(),
 });
 
+export const semanticOntologyCoverageCodeSchema = z.enum([
+  "SUBJECT_RELATION_MISSING",
+  "SUBJECT_DIMENSION_MISSING",
+  "SUBJECT_PHYSICAL_TABLE_MISSING",
+  "SUBJECT_IDENTIFIER_MISSING",
+  "SUBJECT_IDENTIFIER_OUTSIDE_TABLE",
+  "DIMENSION_SUBJECT_MISSING",
+  "DIMENSION_BINDING_MISSING",
+  "METRIC_SUBJECT_MISSING",
+  "METRIC_FORMULA_MISSING",
+  "FORMULA_SUBJECT_MISSING",
+  "FORMULA_DIMENSION_MISSING",
+  "FORMULA_COLUMN_MISSING",
+  "FORMULA_REFERENCE_UNREACHABLE",
+  "JOIN_PROOF_INSUFFICIENT",
+  "GLOSSARY_TERM_UNLINKED",
+]);
+
+export const semanticOntologyCoverageIssueSchema = z.strictObject({
+  code: semanticOntologyCoverageCodeSchema,
+  message: z.string().min(1).max(1024),
+  entry_id: versionIdentifierSchema,
+  related_entry_ids: z.array(versionIdentifierSchema).default([]),
+});
+
+export const semanticOntologyCoverageReceiptSchema = z.strictObject({
+  receipt_version: z.literal(SEMANTIC_ONTOLOGY_COVERAGE_RECEIPT_VERSION),
+  graph_id: immutableIdSchema,
+  source_digest: contentHashSchema,
+  validator_version: versionIdentifierSchema,
+  valid: z.boolean(),
+  checked_at: timestampSchema,
+  active_node_counts: z.record(semanticNodeTypeSchema, z.number().int().nonnegative()),
+  active_edge_family_counts: z.record(semanticEdgeFamilySchema, z.number().int().nonnegative()),
+  issues: z.array(semanticOntologyCoverageIssueSchema),
+  receipt_digest: contentHashSchema,
+});
+
 export type SemanticNodeType = z.infer<typeof semanticNodeTypeSchema>;
 export type SemanticEdgeFamily = z.infer<typeof semanticEdgeFamilySchema>;
 export type SemanticNodeTypeDefinition = z.infer<typeof semanticNodeTypeDefinitionSchema>;
@@ -458,6 +518,9 @@ export type SemanticGraphPatchOperation = z.infer<typeof semanticGraphPatchOpera
 export type SemanticGraphProjection = z.infer<typeof semanticGraphProjectionSchema>;
 export type SemanticGraphProjectionReceipt = z.infer<typeof semanticGraphProjectionReceiptSchema>;
 export type SemanticGraphReleaseBinding = z.infer<typeof semanticGraphReleaseBindingSchema>;
+export type SemanticOntologyCoverageCode = z.infer<typeof semanticOntologyCoverageCodeSchema>;
+export type SemanticOntologyCoverageIssue = z.infer<typeof semanticOntologyCoverageIssueSchema>;
+export type SemanticOntologyCoverageReceipt = z.infer<typeof semanticOntologyCoverageReceiptSchema>;
 
 export const BUILTIN_SEMANTIC_NODE_TYPES: readonly SemanticNodeTypeDefinition[] = [
   { node_type: "BUSINESS_SUBJECT", display_name: "业务主体", authoring_policy: "AGENT_AUTHORED" },
@@ -466,6 +529,7 @@ export const BUILTIN_SEMANTIC_NODE_TYPES: readonly SemanticNodeTypeDefinition[] 
   { node_type: "FORMULA", display_name: "公式", authoring_policy: "AGENT_AUTHORED" },
   { node_type: "PHYSICAL_TABLE", display_name: "物理表", authoring_policy: "SYSTEM_MANAGED" },
   { node_type: "PHYSICAL_COLUMN", display_name: "物理列", authoring_policy: "SYSTEM_MANAGED" },
+  { node_type: "GLOSSARY_TERM", display_name: "术语", authoring_policy: "AGENT_AUTHORED" },
 ];
 
 export const BUILTIN_SEMANTIC_EDGE_TYPES: readonly SemanticEdgeTypeDefinition[] = [
@@ -580,6 +644,28 @@ export const BUILTIN_SEMANTIC_EDGE_TYPES: readonly SemanticEdgeTypeDefinition[] 
     attribute_kind: "BINDING",
   },
   {
+    edge_type: "REPRESENTED_BY",
+    display_name: "主体由物理表承载",
+    family: "ANALYTICAL",
+    source_node_types: ["BUSINESS_SUBJECT"],
+    target_node_types: ["PHYSICAL_TABLE"],
+    direction: "DIRECTED",
+    parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
+    authoring_policy: "AGENT_AUTHORED",
+    attribute_kind: "BINDING",
+  },
+  {
+    edge_type: "IDENTIFIED_BY",
+    display_name: "主体标识字段",
+    family: "ANALYTICAL",
+    source_node_types: ["BUSINESS_SUBJECT"],
+    target_node_types: ["PHYSICAL_COLUMN"],
+    direction: "DIRECTED",
+    parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
+    authoring_policy: "AGENT_AUTHORED",
+    attribute_kind: "BINDING",
+  },
+  {
     edge_type: "REFERENCES",
     display_name: "公式引用",
     family: "FORMULA",
@@ -589,6 +675,17 @@ export const BUILTIN_SEMANTIC_EDGE_TYPES: readonly SemanticEdgeTypeDefinition[] 
     parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
     authoring_policy: "AGENT_AUTHORED",
     attribute_kind: "SLOT_BINDING",
+  },
+  {
+    edge_type: "USES_DIMENSION",
+    display_name: "公式使用维度",
+    family: "FORMULA",
+    source_node_types: ["FORMULA"],
+    target_node_types: ["DIMENSION"],
+    direction: "DIRECTED",
+    parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
+    authoring_policy: "AGENT_AUTHORED",
+    attribute_kind: "DIMENSION_USE",
   },
   {
     edge_type: "JOINABLE_VIA",
@@ -622,5 +719,45 @@ export const BUILTIN_SEMANTIC_EDGE_TYPES: readonly SemanticEdgeTypeDefinition[] 
     parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
     authoring_policy: "AGENT_AUTHORED",
     attribute_kind: "PROVENANCE",
+  },
+  {
+    edge_type: "DENOTES",
+    display_name: "术语指代",
+    family: "TERMINOLOGY",
+    source_node_types: ["GLOSSARY_TERM"],
+    target_node_types: [
+      "BUSINESS_SUBJECT",
+      "DIMENSION",
+      "METRIC",
+      "FORMULA",
+      "PHYSICAL_TABLE",
+      "PHYSICAL_COLUMN",
+    ],
+    direction: "DIRECTED",
+    parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
+    authoring_policy: "AGENT_AUTHORED",
+    attribute_kind: "TERM_LINK",
+  },
+  {
+    edge_type: "BROADER_THAN",
+    display_name: "上位术语",
+    family: "TERMINOLOGY",
+    source_node_types: ["GLOSSARY_TERM"],
+    target_node_types: ["GLOSSARY_TERM"],
+    direction: "DIRECTED",
+    parallel_policy: "FORBID",
+    authoring_policy: "AGENT_AUTHORED",
+    attribute_kind: "NONE",
+  },
+  {
+    edge_type: "RELATED_TERM",
+    display_name: "相关术语",
+    family: "TERMINOLOGY",
+    source_node_types: ["GLOSSARY_TERM"],
+    target_node_types: ["GLOSSARY_TERM"],
+    direction: "DIRECTED",
+    parallel_policy: "FORBID",
+    authoring_policy: "AGENT_AUTHORED",
+    attribute_kind: "NONE",
   },
 ];
