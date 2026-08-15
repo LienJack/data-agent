@@ -7,7 +7,7 @@
 - [x] 实现 persistent Composer、authoring run timeline、clarification 和 SSE patch replay。
 - [x] 移除 JSON textarea/JSON.parse/direct mutation 路径，将所有编辑入口路由至 Composer。
 - [x] 完成无障碍、responsive、断线、10k/list、250/500/500 模型与浏览器验证。
-- [ ] 完成 scoped commit 并归档 child。
+- [x] 完成 scoped commit；代码提交为 `14bc1f9`。归档由 Trellis finish-work 执行。
 
 ```bash
 pnpm --filter @data-agent/web typecheck
