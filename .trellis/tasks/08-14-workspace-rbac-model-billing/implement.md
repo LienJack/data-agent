@@ -114,7 +114,7 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 - [x] 实现 `SYSTEM_FUNDED` 超级管理员账单和 workspace/run/conversation 成本统计。
 - [x] 先以 `SHADOW` 模式运行对账，验证无遗漏/重复，并实现只有超级管理员可调用的部署
   模式审批命令与回滚路径。
-- [ ] 全部父任务门禁通过后，由超级管理员显式批准当前部署从 `SHADOW` 切换为
+- [x] 全部父任务门禁通过后，由超级管理员显式批准当前部署从 `SHADOW` 切换为
   `ENFORCED`。
 
 验收门禁：任何真实普通用户 provider 调用前已有足额 hold；每个 terminal invocation 恰好
@@ -191,15 +191,16 @@ role/workspace 无效；直接对象 ID 越权不泄露；停用用户立即失�
 父任务只有在全部子任务完成、迁移与回滚证据齐全、PRD AC1-AC20 全部满足、shadow
 账单与实际 usage 对账通过，并由超级管理员显式启用 enforced billing 后才能结束。
 
-## 2026-08-15 最终验收进度
+## 2026-08-15 最终验收结果
 
 - AC1-AC20 的功能证据已通过 contracts/platform/Web/PostgreSQL 自动化与关键截图复核。
 - `pnpm test:unit`、`pnpm test:contract`、Next.js production build、Supabase static check、完整
   PostgreSQL smoke 与 release drill 通过。
-- 实时运营健康为 `SHADOW`、epoch 1；身份副作用、价格同步/复核、账务复核、余额完整性
-  和 shadow reconciliation 六项 gate 均为 `PASS`、count 0。
-- 最新干净 HEAD 的 Biome 检查为 0 error；当前共享工作区中，全局 `pnpm typecheck` 仅被
-  另一个未跟踪 eval 测试的 `attempt_index` 类型错误阻断，全局 `pnpm lint` 被
-  `packages/contracts/src/evals/index.ts` 的 2 个未提交错误阻断。
-- 因最后仓库门未全绿，`workspace-admin-operations-ui` 与父任务仍保持
-  `in_progress`，本地部署保持 `SHADOW`，未启用 `ENFORCED`。
+- 全量 Biome lint 0 error、typecheck 16/16、unit 15/15、contract 10/10、Next.js production
+  build、Supabase static check、完整 PostgreSQL smoke 与 release drill 全部通过。
+- 切换前身份副作用、价格同步/复核、账务复核、余额完整性和 shadow reconciliation 六项
+  gate 均为 `PASS`、count 0；reconciliation 为 `ready_for_enforced=true`，四类差异均为 0。
+- 超级管理员已通过权威 `decide_billing_mode` 操作
+  `3a2be274-560d-45ff-842d-53c8d7f38ae2` 显式启用本地 `ENFORCED`；反查状态为 epoch 2、
+  批准人 `f95bcdcf-ffe8-4677-8d5a-b57175a821e8`，切换后六项 gate 仍全为 `PASS`。
+- 全部七个子任务和父 PRD AC1-AC20 均已满足完成定义。

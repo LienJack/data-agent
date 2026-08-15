@@ -29,11 +29,8 @@
 
 - `pnpm test:unit`：15/15 Turbo tasks 通过。
 - `pnpm test:contract`：10/10 Turbo tasks 通过。
-- `pnpm lint`：最新干净 HEAD 为 0 error、63 个非阻断 warning；共享工作区仍被
-  `packages/contracts/src/evals/index.ts` 的 2 个未提交格式/导出排序错误阻断。
-- `pnpm typecheck`：已提交 contracts/text2sql 干净检出的自身导出构建前置；共享工作区
-  当前只剩未跟踪的 `packages/evals/test/model-analysis-agent.spec.ts:334` 中
-  `attempt_index` 类型错误。
+- `pnpm lint`：全量 Biome 检查 880 个文件，0 error。
+- `pnpm typecheck`：Turbo 16/16 tasks 与 U6 C2 typecheck 全部通过。
 - 定向门：Contracts 29、Platform 37、Web 管理 35 项测试通过。
 - `pnpm --filter @data-agent/web build`：生产构建通过。
 - `static-check.sh`：10627-10633 migration checksum 与 SQL 静态门禁通过。
@@ -71,7 +68,9 @@
 
 ## 发布状态
 
-功能 AC 与数据库六项运营门禁已全部通过，但父任务尚未达到“完成”定义：当前共享工作区
-的全局 `pnpm lint` 被其他未提交文件的 2 个错误阻断，全局 `pnpm typecheck` 仅被未跟踪的
-`packages/evals/test/model-analysis-agent.spec.ts:334` 中 `attempt_index` 字段错误阻断。因此
-部署继续保持 `SHADOW`，不绕过最后仓库门启用 `ENFORCED`。
+父 PRD AC1-AC20、全量代码门、Web production build、数据库门、备份恢复和回滚演练全部通过。
+切换前六项运营 gate 全为 `PASS`，reconciliation `ready_for_enforced=true` 且四类差异均为 0。
+超级管理员通过权威 `decide_billing_mode` 操作
+`3a2be274-560d-45ff-842d-53c8d7f38ae2` 显式批准本地部署从 `SHADOW` 切换为 `ENFORCED`；
+状态反查为 epoch 2，批准人 `f95bcdcf-ffe8-4677-8d5a-b57175a821e8`，切换后六项 gate 仍全部
+`PASS`。父任务达到完成定义。
