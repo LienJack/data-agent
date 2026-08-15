@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/port-conformance.md", "reason": "Additive AgentTurnPort 和 provider adapter 边界"}
+{"file": ".trellis/spec/backend/run-event-streaming.md", "reason": "durable authoring events、replay、dedupe 和 terminal"}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "Agent candidate-only、人工发布 Authority"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "工具、provider、stale 和 clarification 稳定终态"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "工具审计、prompt evidence 和 secret/CoT 脱敏"}

@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "旧 release 不改写、candidate/publish/rollback Authority"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "migration ledger、RLS、feature flag 与回滚"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "dual compile、E2E、rebuild 和环境验证"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "迁移、发布、回滚观测与脱敏"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "最终 Studio 浏览器与 10k 性能验收"}

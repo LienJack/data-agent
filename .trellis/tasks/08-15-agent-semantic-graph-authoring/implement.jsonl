@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/index.md", "reason": "跨包后端边界、端口和验证入口"}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "PostgreSQL source、candidate、release 和投影 Authority"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "migration、RLS、RPC、receipt 和并发安全"}
+{"file": ".trellis/spec/backend/run-event-streaming.md", "reason": "持久化 authoring event、cursor replay 和脱敏"}
+{"file": ".trellis/spec/backend/semantic-relationship-index.md", "reason": "图索引只返回 key 并由 PostgreSQL 重新授权"}
+{"file": ".trellis/spec/frontend/index.md", "reason": "Semantic Studio 前端总体规范"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "release projection 与 candidate patch 共享 store"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Graph v2 合同、Worker、API 和 UI 的跨层一致性"}

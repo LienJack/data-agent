@@ -5,7 +5,7 @@
 - 状态：`planning`
 - 优先级：`P1`
 - 产品范围：Semantic Layer Studio / Explorer / Agent Authoring / Candidate Governance
-- 本轮交付：PRD；不启动实现
+- 本轮交付：PRD、`design.md`、`implement.md` 与子任务拆分；不启动产品代码实现
 - 目标用户：语义建模人员、数据分析师、数据治理审核人
 
 ## 2. Goal
@@ -129,7 +129,7 @@ PostgreSQL 业务列。
 | 物理结构 | `CONTAINS_COLUMN`、`FOREIGN_KEY_TO` | 订单明细表 —包含→ product_id | 只表达 schema 事实，不冒充业务语义 |
 | 物理绑定 | `BOUND_TO`、`REFERENCES` | 商品维度 —绑定到→ product_id；公式 —引用→ product_id | 绑定必须固定 datasource/schema snapshot identity |
 | 分析 Join | `JOINABLE_VIA` | 订单明细表 —可分析连接→ 商品维表 | 需要 cardinality、row preservation 和 fanout proof |
-| 证据与溯源 | `SUPPORTED_BY`、`DERIVED_FROM` | 候选关系 —证据来自→ FK/文档/人工声明 | 证据存在不等于自动批准关系 |
+| 证据与溯源 | `SUPPORTED_BY`、`DERIVED_FROM` | 公式 —派生自→ 基础指标；维度 —受支持于→ 物理列 | 只连接 Node；Edge 自身证据使用 evidence ref，证据存在不等于自动批准 |
 
 关系注册表首版名称可在技术设计中统一，但上述家族、方向和不可混用边界属于产品硬约束。
 
@@ -195,7 +195,9 @@ Agent 输入修改意图，由 Agent 生成新的候选 revision。
 
 ### R3 — Agent-only semantic authoring
 
-- Node/Edge 的 create、update、retire、link、unlink、rebind 均只能由 Agent 候选工具执行。
+- 业务、分析、公式和语义绑定层 Node/Edge 的 create、update、retire、link、unlink、rebind 均
+  只能由 Agent 候选工具执行。Schema ingestion 对 system-managed PhysicalTable/PhysicalColumn 和
+  物理结构 Edge 的确定性同步不属于语义创作，也不能被前端或 Agent 直接编辑。
 - Node/Edge 详情页的“编辑”只负责把当前对象、版本和选区传入 Agent Composer。
 - 移除候选 JSON textarea 和任何直接提交任意 JSON Patch 的产品路径。
 - 图上的拖拽、连线、删除手势只表达上下文或生成 Agent 意图草稿，不能直接持久化语义。
@@ -215,6 +217,8 @@ Agent 输入修改意图，由 Agent 生成新的候选 revision。
 
 - Agent 必须能够读取 Node/Edge 类型注册表、搜索 Node、读取详情、读取局部图、读取物理
   schema/binding、读取 Formula 依赖和当前 candidate diff。
+- PhysicalTable、PhysicalColumn、`CONTAINS_COLUMN` 和 `FOREIGN_KEY_TO` 由受信 schema snapshot
+  确定性同步，Agent 只读这些物理事实并创建语义绑定；不能伪造、改名或退役物理 catalog identity。
 - Agent 必须具备原子、可组合的 candidate-only create/read/update/retire/link/unlink 能力；
   每次工具调用都有 typed input/output、scope、idempotency 和稳定失败终态。
 - 在创建对象前必须搜索并复用可证明相同的稳定身份；名称相似只能触发候选或澄清，不能
@@ -398,8 +402,8 @@ Agent Composer 在前三个创作视图保持可用，并共享同一个 authori
 - 首版实现通用 OWL/SHACL reasoner、实例级时态事实图、完整 RDF 三元组平台或自动
   `owl:sameAs` 身份合并。
 - 把物理 FK、名称相似度、Embedding 相似度或 LLM 推断直接发布为业务关系/安全 Join。
-- 本 PRD 阶段选择具体图渲染库、布局算法、Formula DSL parser 或数据库 migration 编号；
-  这些在后续 `design.md` 中决定，但不得改变本 PRD 的产品边界。
+- 把图渲染库、community/layout 算法、Formula 解析实现或 migration 编号当作产品能力；这些
+  属于技术设计与实施时预检，不能改变本 PRD 的 Node/Edge、Agent 和 Authority 边界。
 
 ## 12. Dependencies and Delivery Boundaries
 
@@ -407,18 +411,18 @@ Agent Composer 在前三个创作视图保持可用，并共享同一个 authori
 - 复用现有 PhysicalSchemaSnapshot、Schema Drift、活动 SemanticRelease、Explorer、Diff 和
   Lineage；本需求是当前 M3 之后的 Graph v2 / Agent Semantic Authoring 范围，并吸收原父任务
   M4 Formula Authoring 的产品目标。
-- 后续技术设计应拆分为可独立验证的交付面：Graph v2 合同与迁移、Agent authoring runtime、
-  Formula 编译与验证、Node List/局部图/全图、Candidate live events、治理与 E2E。
-- 本任务当前保持 `planning`。实现前必须补齐 `design.md` 与 `implement.md`，再次向用户展示
-  最终规划摘要，并在用户明确批准后才能进入 `in_progress`。
+- 技术设计已拆分为五个可独立验证的子任务：Graph v2 核心、Agent authoring runtime、统一
+  read/community projection、Studio 图体验、迁移/治理/E2E 收口。
+- 本任务当前保持 `planning`。`design.md` 与 `implement.md` 已补齐；向用户展示最终规划摘要并
+  获得后续明确批准后，才启动第一个子任务并进入产品代码实现。
 
 ## 13. Risks and Deferred Decisions
 
-- 大图布局、community 计算和增量 overlay 可能产生视觉漂移；技术设计必须给出稳定 identity、
-  稳定 layout key、性能基准和降级路径。
+- 大图布局、community 计算和增量 overlay 仍可能产生视觉漂移；技术设计已采用 release-bound
+  seeded community、稳定 layout key、分层预算和无图索引降级，实施时必须用 10,000 Node 基准验证。
 - Formula AST 从内嵌结构迁到独立 Node 时可能暴露历史 identity 歧义；迁移必须保守地进入
   unresolved candidate，不能自动合并。
-- Agent 多工具循环会增加重试、幂等、断线恢复和成本治理复杂度；这些属于设计阶段必须
-  关闭的实现风险，不改变“Agent-only candidate authoring”产品决策。
-- 首版 Edge registry 的具体命名和图渲染技术尚待设计，但 Node/Edge 分离、四类关系不可混用、
-  Candidate/Publish Authority 和三种前端视图不存在阻塞性开放问题。
+- Agent 多工具循环会增加重试、幂等、断线恢复和成本治理复杂度；设计已用 server-side tool
+  loop、working patch/receipt、checkpoint 和 explicit complete 收敛，实施负例仍必须证明至多一次。
+- 首版采用 versioned Edge registry、Sigma/Graphology、seeded Louvain 和 ForceAtlas2 worker；这些
+  是可替换投影实现，不改变 Node/Edge 分离、关系平面、Candidate/Publish Authority 和三种视图。

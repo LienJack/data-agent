@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/semantic-relationship-index.md", "reason": "bounded graph search、sealed index 和 PostgreSQL hydration"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "projection、RLS、rebuild 和聚合权限"}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "community/layout/index 只作可重建投影"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "10k benchmark、budget 和一致性测试"}

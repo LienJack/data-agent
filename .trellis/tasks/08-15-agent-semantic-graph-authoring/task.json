@@ -18,7 +18,13 @@
   "commit": null,
   "pr_url": null,
   "subtasks": [],
-  "children": [],
+  "children": [
+    "08-15-semantic-graph-v2-core",
+    "08-15-semantic-agent-authoring-runtime",
+    "08-15-semantic-graph-read-models",
+    "08-15-semantic-studio-graph-ux",
+    "08-15-semantic-graph-migration-rollout"
+  ],
   "parent": null,
   "relatedFiles": [
     "packages/contracts/src/artifacts/semantic-governance.ts",

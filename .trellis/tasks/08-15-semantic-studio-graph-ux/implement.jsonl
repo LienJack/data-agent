@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Semantic Studio 前端规范入口"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Studio shell、Composer、List 和 Graph 组件边界"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "共享 graph store、SSE patch 和 selection 状态"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Graph v2 API/event 的 strict 客户端边界"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "无障碍、响应式、浏览器和性能验收"}

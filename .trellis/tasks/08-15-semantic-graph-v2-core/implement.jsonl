@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "Graph v2 source/release/projection Authority 和 digest 约束"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Graph projection migration、RLS、RPC 与 CAS"}
+{"file": ".trellis/spec/backend/port-conformance.md", "reason": "版本化 contracts 和 compiler port 兼容"}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Graph/Formula validation stable failures"}

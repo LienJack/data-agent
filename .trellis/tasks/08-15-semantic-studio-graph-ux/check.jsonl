@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "交互、无障碍、性能和断线恢复审查"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "SSE/patch/API 边界与去重检查"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "List/Local/Full/Diff 共享 identity/status 检查"}
