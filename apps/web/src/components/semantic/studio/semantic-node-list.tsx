@@ -1,6 +1,7 @@
 "use client";
 
 import type { SemanticGraphReadNode } from "@data-agent/contracts";
+import { ArrowRight, CaretLeft, CaretRight, CirclesThree } from "@phosphor-icons/react";
 import { useMemo, useRef, useState } from "react";
 import {
   SEMANTIC_NODE_PRESENTATION,
@@ -26,7 +27,7 @@ export function SemanticNodeList({
   readonly nextCursor: number | null;
   readonly onPage: (cursor: number) => void;
 }) {
-  const rowHeight = 65;
+  const rowHeight = 72;
   const overscan = 6;
   const viewportRows = 11;
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -39,14 +40,14 @@ export function SemanticNodeList({
   const from = total === 0 ? 0 : cursor + 1;
   const to = Math.min(total, cursor + nodes.length);
   return (
-    <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-white">
+    <div className="overflow-hidden bg-white">
       <div
         ref={viewportRef}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-        className="max-h-[min(68vh,720px)] overflow-auto"
+        className="max-h-[min(70vh,760px)] overflow-auto"
       >
         <table className="w-full table-fixed text-left sm:min-w-[760px]">
-          <thead className="sticky top-0 z-10 border-b border-[var(--color-border-default)] bg-[#f7f9f7] text-[10px] uppercase tracking-[0.12em] text-[var(--color-text-secondary)]">
+          <thead className="sticky top-0 z-10 border-b border-[#d7ddd9] bg-[#f8faf8] text-[9px] uppercase tracking-[0.15em] text-[#76817c]">
             <tr>
               <th className="w-[64%] px-4 py-3 font-semibold sm:w-[38%]">节点</th>
               <th className="w-[36%] px-3 py-3 font-semibold sm:w-[14%]">类型</th>
@@ -70,7 +71,7 @@ export function SemanticNodeList({
               return (
                 <tr
                   key={item.node.node_id}
-                  className={`border-b border-[var(--color-border-default)] last:border-b-0 ${selected ? "bg-[#edf2ef]" : "hover:bg-[#fafbfa]"}`}
+                  className={`border-b border-[#e1e6e3] last:border-b-0 transition-colors ${selected ? "bg-[#eaf1ed] shadow-[inset_2px_0_0_#356b5a]" : "hover:bg-[#fafbfa]"}`}
                 >
                   <td className="px-4 py-3">
                     <button
@@ -85,21 +86,19 @@ export function SemanticNodeList({
                         {type.short}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-semibold text-[var(--color-text-primary)]">
+                        <span className="block truncate text-[13px] font-semibold tracking-[-0.01em] text-[#28332e]">
                           {item.node.name}
                         </span>
-                        <span className="mt-0.5 block truncate text-[11px] text-[var(--color-text-secondary)]">
+                        <span className="mt-1 block truncate text-[10px] text-[#77827d]">
                           {item.node.description || item.node.node_id}
                         </span>
                       </span>
                     </button>
                   </td>
-                  <td className="px-3 py-3 text-xs text-[var(--color-text-secondary)]">
-                    {type.label}
-                  </td>
+                  <td className="px-3 py-3 text-[11px] text-[#5e6b65]">{type.label}</td>
                   <td className="hidden px-3 py-3 sm:table-cell">
                     <span
-                      className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-[10px] font-medium"
+                      className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium"
                       style={{ color: status.color, backgroundColor: status.surface }}
                     >
                       <span
@@ -109,16 +108,19 @@ export function SemanticNodeList({
                       {status.label}
                     </span>
                   </td>
-                  <td className="hidden px-3 py-3 text-right font-mono text-xs text-[var(--color-text-secondary)] md:table-cell">
-                    {item.relation_count.total}
+                  <td className="hidden px-3 py-3 text-right md:table-cell">
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-[#5e6b65]">
+                      <CirclesThree className="size-3.5 text-[#82908a]" aria-hidden="true" />
+                      {item.relation_count.total}
+                    </span>
                   </td>
                   <td className="hidden px-4 py-3 text-right sm:table-cell">
                     <button
                       type="button"
                       onClick={() => onOpenGraph(item)}
-                      className="rounded border border-[var(--color-border-default)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--color-text-secondary)] hover:border-[var(--color-border-focused)] hover:text-[var(--color-accent)]"
+                      className="inline-flex items-center gap-1.5 border border-[#d2dad5] px-2.5 py-1.5 text-[10px] font-medium text-[#59665f] transition-colors hover:border-[#7fa293] hover:text-[#285b4b]"
                     >
-                      查看关系
+                      查看关系 <ArrowRight className="size-3" aria-hidden="true" />
                     </button>
                   </td>
                 </tr>
@@ -133,11 +135,13 @@ export function SemanticNodeList({
         </table>
       </div>
       {nodes.length === 0 ? (
-        <div className="px-4 py-16 text-center text-sm text-[var(--color-text-secondary)]">
-          没有符合当前筛选的节点
+        <div className="px-4 py-20 text-center">
+          <CirclesThree className="mx-auto size-6 text-[#99a39e]" aria-hidden="true" />
+          <p className="mt-3 text-sm font-medium text-[#3d4943]">没有符合当前筛选的节点</p>
+          <p className="mt-1 text-[10px] text-[#7b8781]">调整类型、状态或关键词后重试</p>
         </div>
       ) : null}
-      <div className="flex items-center justify-between border-t border-[var(--color-border-default)] bg-[#fafbfa] px-4 py-2 text-[11px] text-[var(--color-text-secondary)]">
+      <div className="flex items-center justify-between border-t border-[#d7ddd9] bg-[#f8faf8] px-4 py-2 text-[10px] text-[#6e7a74]">
         <span>
           {from}–{to} / {total} · 可视窗口仅渲染当前行
         </span>
@@ -146,17 +150,19 @@ export function SemanticNodeList({
             type="button"
             disabled={cursor === 0}
             onClick={() => onPage(Math.max(0, cursor - 250))}
-            className="rounded border border-[var(--color-border-default)] bg-white px-2.5 py-1 disabled:opacity-40"
+            className="inline-flex h-7 items-center gap-1 border border-[#d2dad5] bg-white px-2 text-[10px] transition-colors hover:border-[#9aaba3] disabled:opacity-40"
           >
+            <CaretLeft className="size-3" aria-hidden="true" />
             上一页
           </button>
           <button
             type="button"
             disabled={nextCursor === null}
             onClick={() => nextCursor !== null && onPage(nextCursor)}
-            className="rounded border border-[var(--color-border-default)] bg-white px-2.5 py-1 disabled:opacity-40"
+            className="inline-flex h-7 items-center gap-1 border border-[#d2dad5] bg-white px-2 text-[10px] transition-colors hover:border-[#9aaba3] disabled:opacity-40"
           >
             下一页
+            <CaretRight className="size-3" aria-hidden="true" />
           </button>
         </div>
       </div>

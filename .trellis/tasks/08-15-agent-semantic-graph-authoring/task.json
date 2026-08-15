@@ -33,6 +33,6 @@
     "packages/semantic/src/candidate-generation/agent.ts",
     "apps/web/src/components/semantic/physical-schema-browser.tsx"
   ],
-  "notes": "",
+  "notes": "执行顺序：G6 已完成；先做 design-taste Studio 重构，再补齐本体关系与 GlossaryTerm/coverage receipt，再接真实 Worker 和迁移治理。只有语义层全绿后才能执行 08-15-falcon-demo-eval；28 库、db24 主 Demo、db14 smoke、DEV 309、TEST 191 submission 及 Falcon 全部回归未全绿前不得完成父任务。",
   "meta": {}
 }

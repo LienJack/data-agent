@@ -2,10 +2,10 @@
 
 ## 1. 文档状态
 
-- 状态：`planning`
+- 状态：`in_progress`
 - 优先级：`P1`
 - 产品范围：Semantic Layer Studio / Explorer / Agent Authoring / Candidate Governance
-- 本轮交付：PRD、`design.md`、`implement.md` 与子任务拆分；不启动产品代码实现
+- 本轮交付：Graph v2、Agent authoring、统一读取模型、Semantic Studio、迁移治理与 Falcon 后置验收
 - 目标用户：语义建模人员、数据分析师、数据治理审核人
 
 ## 2. Goal
@@ -114,6 +114,11 @@ Node List、节点详情、局部图和全图必须读取同一发布图与同�
 `PhysicalColumn` 支撑身份。它在产品导航中从属于 PhysicalTable，不作为第六个一级业务
 分类；当某列参与公式、维度绑定、Join 或证据链时，可在图中按需展开为节点。
 
+`GlossaryTerm`（术语）同样是支撑 Node，而不是把定义文本复制进每一种业务 Node。它保存规范名、
+定义、别名、语言、适用域和来源；通过 `DENOTES`、`BROADER_THAN`、`RELATED_TERM` 等 Edge 连接业务
+主体、维度、指标、公式与其他术语。首批专业术语至少覆盖业务主体、粒度、可加性、基数、扇出、
+行保留、物理绑定、分析 Join、候选图和活动发布，并明确物理外键、业务关系、分析 Join 三者不等价。
+
 ### 5.2 Edge 的统一合同
 
 每条 Edge 至少具有稳定 ID、关系类型、源 Node、目标 Node、规范方向、生命周期、版本、
@@ -133,8 +138,11 @@ PostgreSQL 业务列。
 | 维度层级 | `ROLLS_UP_TO` | 城市 —汇总到→ 地区 | 必须检查方向、环和类型兼容性 |
 | 物理结构 | `CONTAINS_COLUMN`、`FOREIGN_KEY_TO` | 订单明细表 —包含→ product_id | 只表达 schema 事实，不冒充业务语义 |
 | 物理绑定 | `BOUND_TO`、`REFERENCES` | 商品维度 —绑定到→ product_id；公式 —引用→ product_id | 绑定必须固定 datasource/schema snapshot identity |
+| 主体物理映射 | `REPRESENTED_BY`、`IDENTIFIED_BY` | 订单明细 —承载于→ fact_order_item；订单 —由→ order_id 标识 | 表级承载和字段级身份必须分开；不能只画表而省略列 |
+| 公式上下文 | `AT_GRAIN`、`USES_DIMENSION` | 去重公式 —计算于→ 订单明细；公式 —使用维度→ 商品 | 主体表示计算粒度，维度边必须声明 GROUP/FILTER/TIME 等角色 |
 | 分析 Join | `JOINABLE_VIA` | 订单明细表 —可分析连接→ 商品维表 | 需要 cardinality、row preservation 和 fanout proof |
 | 证据与溯源 | `SUPPORTED_BY`、`DERIVED_FROM` | 公式 —派生自→ 基础指标；维度 —受支持于→ 物理列 | 只连接 Node；Edge 自身证据使用 evidence ref，证据存在不等于自动批准 |
+| 术语 | `DENOTES`、`BROADER_THAN`、`RELATED_TERM` | “扇出” —指称→ fanout policy；“成交额” —指称→ 商品销售额 | 术语解释概念，不替代业务/分析/物理关系或查询编译合同 |
 
 关系注册表首版名称可在技术设计中统一，但上述家族、方向和不可混用边界属于产品硬约束。
 
@@ -197,6 +205,23 @@ Agent 输入修改意图，由 Agent 生成新的候选 revision。
 - 业务主体、维度、指标、公式和物理表可以在一张关系图中连通，但各自的 Authority、验证和
   生命周期边界保持独立。
 - Formula 作为独立 Node；Metric 与 Formula 通过 `DEFINED_BY` 关系关联。
+- 业务主体必须可通过 `HAS_DIMENSION`、领域业务关系、`REPRESENTED_BY` 和 `IDENTIFIED_BY` 分别连接
+  维度、其他主体、物理表和身份字段；不得用一条无属性的泛化边替代四种含义。
+- Formula 必须通过 `AT_GRAIN` 连接业务主体、通过 `USES_DIMENSION` 连接参与分组/筛选/时间语义的
+  Dimension，并通过 `REFERENCES` 连接实际物理字段；Metric 仍通过 `DEFINED_BY` 指向 Formula。
+- 物理表必须展开 `CONTAINS_COLUMN`，列间 `FOREIGN_KEY_TO` 与人工验证的 `JOINABLE_VIA` 同时可见；
+  只有 FK 没有业务/分析关系，或只有语义边没有物理证据，均视为关系覆盖不完整。
+
+### R2.1 — Ontology relation completeness
+
+- 关系不是按页面示例手工凑数，而是由 competency questions 驱动的类型注册表、端点约束、方向、
+  基数、属性 schema、证据和 Authority 共同定义。
+- 发布候选必须生成关系覆盖回执，至少检查每个活动业务主体的主体关系、维度、指标、物理承载与
+  身份字段，每个 Formula 的指标定义、计算主体、维度上下文、物理引用和依赖，以及每张参与分析
+  的表的列、FK 与 Join Proof。
+- 不适用的关系必须有显式 `NOT_APPLICABLE` 原因；缺失且没有豁免的关系阻止发布，不能靠前端隐藏。
+- GlossaryTerm 的定义、别名和概念映射进入同一 candidate/review/release 生命周期；新增或编辑术语
+  也只能由 Agent 生成候选操作。
 
 ### R3 — Agent-only semantic authoring
 
@@ -328,6 +353,7 @@ Agent 输入修改意图，由 Agent 生成新的候选 revision。
 3. `全图`：community/semantic zoom 全局图。
 4. `候选与审核`：Graph Diff、校验、评论、批准/拒绝和发布。
 5. `版本与血缘`：release、rollback、Node/Edge 历史与影响范围。
+6. `术语`：专业术语、别名、定义、适用域及其关联的语义 Node。
 
 Agent Composer 在前三个创作视图保持可用，并共享同一个 authoring run。
 
@@ -366,6 +392,9 @@ Agent Composer 在前三个创作视图保持可用，并共享同一个 authori
 - [ ] Edge registry 校验 source/target、方向和关系家族；悬空、重复、跨 scope 和非法 Edge
       失败关闭。
 - [ ] 新增“商品维度”演示只新增/复用 Node 和 Edge，不执行语义数据库 DDL。
+- [ ] 业务主体—主体、主体—维度、主体—物理表/字段、Formula—主体/维度/物理字段，以及
+      Table—Column—FK—Join Proof 均有可验证、可见且方向正确的 Edge。
+- [ ] GlossaryTerm 具有稳定 identity，专业术语可以通过 Agent 候选关联到语义对象且不复制为业务列。
 
 ### AC2 — Agent authoring
 
@@ -383,6 +412,10 @@ Agent Composer 在前三个创作视图保持可用，并共享同一个 authori
 - [ ] Added/Modified/Retired/Published 在列表、局部图、全图和 Diff 中使用一致且无障碍的视觉状态。
 - [ ] Agent 每次 mutation 后，候选图在同一 run 中增量更新；刷新后可重放且不重复 mutation。
 - [ ] UI 不存在可直接提交 Node/Edge JSON、任意 JSON Patch 或图拖拽写语义的路径。
+- [ ] Semantic Studio 按 `design-taste-frontend` 重构为非对称工作台：清晰区分导航、主画布、上下文
+      检查器和 Agent Composer；desktop/mobile、loading/empty/error、键盘和响应式布局均通过验收。
+- [ ] 局部图和全图可以按业务、分析、公式、物理、Join、溯源和术语关系家族筛选，并能从任意
+      Formula 追到 Metric、BusinessSubject、Dimension、PhysicalColumn 和证据。
 
 ### AC4 — Governance and compatibility
 

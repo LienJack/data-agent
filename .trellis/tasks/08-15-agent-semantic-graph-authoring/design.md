@@ -98,6 +98,7 @@ type SemanticGraphSourceV2 = {
 - `FORMULA`
 - `PHYSICAL_TABLE`
 - `PHYSICAL_COLUMN`（PhysicalTable 下的支撑身份，不作为第六个一级业务导航）
+- `GLOSSARY_TERM`（支撑术语身份，独立导航但不参与 SQL lowering）
 
 Node type registry 在 Graph v2 release 中以完整版本快照保存以便重放，但 MVP 的 Node union 由
 compiler 版本管理，Agent 不能动态创造任意 Node kind；将来增加 Node kind 需要新合同版本但不需要
@@ -115,6 +116,7 @@ PhysicalTable/PhysicalColumn 是由可信 schema snapshot 确定性同步的 `SY
 - Dimension：logical data type、sensitivity、filter semantics。
 - Formula：规范化 AST、return type、formula language/version。
 - PhysicalTable/Column：固定 datasource/schema snapshot identity 与物理名称。
+- GlossaryTerm：规范名、定义、aliases、language、scope、source；不保存被解释 Node 的 ID。
 
 ### 4.3 Edge 与 Edge Registry
 
@@ -152,8 +154,9 @@ Edge 只能由新 schema snapshot/drift 流程变更。
 
 首版内建类型覆盖 PRD 的 `RELATES_TO`、`HAS_DIMENSION`、`HAS_METRIC`、`DEFINED_BY`、
 `DEPENDS_ON`、`AT_GRAIN`、`ROLLS_UP_TO`、`CONTAINS_COLUMN`、`FOREIGN_KEY_TO`、`BOUND_TO`、
-`REFERENCES`、`JOINABLE_VIA`、`SUPPORTED_BY`、`DERIVED_FROM`。领域关系可注册新 type，不需要 DDL，
-但仍需候选、验证和审核。
+`REFERENCES`、`JOINABLE_VIA`、`SUPPORTED_BY`、`DERIVED_FROM`，并补充 `REPRESENTED_BY`、
+`IDENTIFIED_BY`、`USES_DIMENSION`、`DENOTES`、`BROADER_THAN`、`RELATED_TERM`。领域关系可注册新
+type，不需要 DDL，但仍需候选、验证和审核。
 
 `CONTAINS_COLUMN`、`FOREIGN_KEY_TO` 等物理事实同样是 `SYSTEM_MANAGED` Edge；Agent 可提出
 `BOUND_TO`、`JOINABLE_VIA`、业务/分析/Formula Edge，但不能把自己的推断写成物理 schema 事实。
@@ -462,9 +465,15 @@ cluster 或“候选变更”cluster；发布/索引流水线再异步重建正�
 3. `全图`：community + semantic zoom；
 4. `候选与审核`：保留并整合现有 Review Workspace；
 5. `版本与血缘`：保留 release/diff/lineage。
+6. `术语`：展示 GlossaryTerm、定义/别名和指向业务、分析、公式对象的概念关系。
 
 现有 Explorer 和 Review 能力不删除，改为 shell 内的读取/治理视图。Workspace-scoped route 使用
 同一组件与 server-resolved context。
+
+Studio 采用不对称三栏工作台：左侧为紧凑视图/类型导航，中间为唯一主任务面（Node List 或 G6
+画布），右侧为选中 Node/Edge/GlossaryTerm 的上下文检查器；Agent Composer 是跨视图持久命令区，
+不与检查器争夺主画布。页面只使用一个低饱和翡翠绿 accent，依靠边界、留白和排版建立层级，避免
+满屏同权重卡片。移动端严格退化为单列：导航、主任务、检查器、Composer 按任务顺序堆叠。
 
 ### 10.2 Composer 与编辑入口
 
@@ -496,6 +505,17 @@ selected Node/Edge 和 viewport scope。用户可移除显式上下文。所有�
 
 颜色不是唯一信息；Node List、Local、Full、Detail 和 Diff 使用同一 status tokens。局部图/全图
 选择只改变上下文，不触发 mutation。
+
+### 10.5 关系可见性与完备性
+
+图默认显示有业务价值的业务/分析/公式边，但必须允许独立打开物理、Join、溯源和术语层；“简洁”
+只能通过筛选和 semantic zoom 实现，不能删掉权威 Edge。选中 BusinessSubject 时，局部图优先形成
+`主体关系 → 维度/指标 → Formula → PhysicalColumn → PhysicalTable/FK/Join` 可追踪链；选中 Formula
+时必须同时看见 `DEFINED_BY` 的反向 Metric、`AT_GRAIN` 主体、`USES_DIMENSION` 上下文和
+`REFERENCES` 字段。右侧检查器显示关系的方向、基数、fanout/row-preservation proof、证据和状态。
+
+发布前由确定性 coverage validator 生成 per-node 缺口；UI 只负责呈现回执，不能自行推断“已经
+完整”。GlossaryTerm 可通过 `DENOTES` 进入同一局部图，但默认不参与 community 权重与 SQL lowering。
 
 ## 11. Graph v1 兼容与迁移
 

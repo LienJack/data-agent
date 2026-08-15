@@ -151,9 +151,12 @@ Owned task：`08-15-semantic-studio-graph-ux`
 #### 4.1 Studio shell 和共享 store
 
 - [ ] 把 `/semantic` 变为 Studio shell，默认 Node List，保留 Review/Version/Lineage 入口。
+- [x] 使用 `design-taste-frontend` 重构为不对称三栏工作台；统一 typography、spacing、单一 accent、
+      hover/focus/active、loading/empty/error，并验证 desktop/mobile 单列退化。
 - [ ] 建立一个按 release/candidate key 的 normalized graph store；List/Local/Full/Diff 共享 identity、
-  selection 和 status tokens。
+      selection 和 status tokens。
 - [ ] Node List 实现服务端筛选、搜索、排序、分页/虚拟化；行内只显示固有摘要和关系计数。
+- [ ] 增加术语视图与 GlossaryTerm 检查器；新增/修改/关联术语只生成 Agent Composer 意图。
 
 #### 4.2 Local / Full graph
 
@@ -163,6 +166,8 @@ Owned task：`08-15-semantic-studio-graph-ux`
   Minimap、选择和稳定服务端初始位置。
 - [ ] 补齐 cluster 收起、最短路径高亮与 500 glyph / 10k benchmark；搜索、筛选、回到当前选择
   和 candidate overlay 已接入共享 store。
+- [ ] 补齐业务、分析、公式、物理、Join、溯源、术语七类关系筛选；业务主体可追到其他主体、
+      维度、指标、物理表/列，Formula 可追到 Metric、主体、维度和物理字段。
 
 #### 4.3 Persistent Agent Composer
 
@@ -182,25 +187,46 @@ pnpm --filter @data-agent/web test:unit
 浏览器验收覆盖 desktop/mobile、键盘操作、颜色非唯一状态、断线恢复、1/2-hop、full graph 500
 glyph、10,000 Node list、Agent mutation live overlay，以及“没有直接 JSON/拖拽写入”。
 
-### Phase 5 — v1 迁移、治理与上线收口
+### Phase 5 — 本体关系与术语完备性
 
 Owned task：`08-15-semantic-graph-migration-rollout`
 
-#### 5.1 Converter 与 dual compile
+- [ ] 扩展 Graph v2 Node/Edge registry：GlossaryTerm，以及主体物理映射、公式维度上下文和术语关系。
+- [ ] 从 schema snapshot 确定性建立 Table → Column 与 FK；Agent 基于证据提出业务关系、主体—维度、
+      主体—Table/Column、Formula—主体/Dimension/Column 和 Join Proof 候选。
+- [ ] 实现关系 coverage validator 与 receipt；缺失、非法方向、无证据、FK 冒充业务关系、无 fanout
+      proof 的 Join 均失败关闭或要求显式 NOT_APPLICABLE。
+- [ ] 为业务主体、粒度、可加性、基数、扇出、行保留、物理绑定、分析 Join、Candidate、Active
+      Release 建立首批中文术语候选与映射。
+- [ ] 用电商完整关系 fixture 验证从 BusinessSubject/Formula 出发均能追到分析和物理证据链。
+
+只有本阶段关系覆盖回执全绿，才进入真实 Worker、迁移治理和 Falcon。
+
+### Phase 6 — 真实 Agent Worker、v1 迁移、治理与上线收口
+
+Owned task：`08-15-semantic-graph-migration-rollout`
+
+#### 6.1 Worker claim/recovery 与 Agent tool loop
+
+- [ ] Worker 独占 claim semantic authoring run，执行多轮 read/mutate/validate/complete 工具循环；Web 只入队。
+- [ ] 支持 lease、heartbeat、recovery、cancel、clarification resume、幂等 terminal 和 SSE replay。
+- [ ] 工具允许表严格区分 system-managed 物理事实与 Agent-authored 候选，不允许 Agent 伪造 Table/Column/FK。
+
+#### 6.2 Converter 与 dual compile
 
 - [ ] 实现 v1 embedded fields → Graph v2 Node/Edge 的确定性 converter 和 migration report。
 - [ ] 同稳定 identity 才复用；名称相似、关系方向、依赖或 binding 歧义进入 unresolved candidate。
 - [ ] 对代表性发布 fixture 运行 v1/v2 dual compile，比较 runtime projection 和 query result。
 - [ ] 证明旧 source/release/query run digest 不被修改。
 
-#### 5.2 治理集成
+#### 6.3 治理集成
 
 - [ ] Review/validation receipt 绑定 exact Graph v2 candidate/base release/compiler/policy。
 - [ ] stale-base/rebase、并发 publish、reject、rollback 和 active pointer 继续失败关闭。
 - [ ] Query Grounding 只读 active release；candidate overlay 不进入运行时。
 - [ ] 审计覆盖 prompt evidence、tool receipts、before/after/patch digest、validation 和 terminal。
 
-#### 5.3 Feature flags、观测与回滚
+#### 6.4 Feature flags、观测与回滚
 
 - [ ] 按 read adapter → dual compile → allowlisted authoring → publish → full graph 分阶段启用。
 - [ ] 增加 migration/projection lag、authoring failures、clarification、validation、SSE replay、community
@@ -208,7 +234,7 @@ Owned task：`08-15-semantic-graph-migration-rollout`
 - [ ] 演练关闭 flags、继续服务 last active release、重建 graph/community/Neo4j 投影。
 - [ ] 不使用破坏性 down migration；保留候选、revision、receipt 和旧 release。
 
-#### 5.4 端到端业务验收
+#### 6.5 端到端业务验收
 
 - [ ] 新增“成交商品数”：Metric + Formula + HAS_METRIC + DEFINED_BY + REFERENCES/DEPENDS_ON。
 - [ ] 修改为“仅统计已支付订单”：Formula/Edge patch、影响分析和 live overlay。
@@ -216,7 +242,7 @@ Owned task：`08-15-semantic-graph-migration-rollout`
 - [ ] 重名、未知列、含糊状态值、cycle、unit/grain、unsafe fanout 均澄清或失败关闭。
 - [ ] 人工审核后才进入 active Explorer/Query Grounding；rollback 恢复上一 active release。
 
-#### Phase 5 验证
+#### Phase 6 验证
 
 ```bash
 pnpm typecheck
@@ -231,11 +257,11 @@ pnpm build
 再执行 PostgreSQL authority/RLS、Worker/SSE、浏览器 E2E、10,000 Node 性能和投影 rebuild 的
 环境级验证；记录命令、版本、receipt/digest 与 Go/No-Go 结果。
 
-### Phase 6 — Falcon 全量运行与最终完成门禁
+### Phase 7 — Falcon 全量运行与最终完成门禁
 
 依赖任务：`08-15-falcon-demo-eval`
 
-- [ ] 只有 Phase 1–5 的语义层、Agent authoring、Studio 和发布治理全部通过后，才启动 Falcon
+- [ ] 只有 Phase 1–6 的语义层、本体关系 coverage、术语、Agent authoring、Studio 和发布治理全部通过后，才启动 Falcon
   最终验收；Falcon 不得反向绕过 active semantic release 或 sealed Oracle 边界。
 - [ ] 按固定 Falcon 快照完成 28 个 PostgreSQL schema 的导入、摘要、行数、权限和幂等回执验证。
 - [ ] 以 db24 作为多表主 Demo，db14 作为 smoke；完成语义发布、Workspace datasource、真实
@@ -246,7 +272,7 @@ pnpm build
   migration/import/Worker run；任何失败均阻止父任务完成。
 - [ ] 保存 ScoreCard、失败分类、submission receipt、服务健康、浏览器截图和可复现 runbook 证据。
 
-最终 Go/No-Go：只有语义层 Phase 1–5 全绿，且 `08-15-falcon-demo-eval` 的全量数据、运行、评测、
+最终 Go/No-Go：只有语义层 Phase 1–6 全绿，且 `08-15-falcon-demo-eval` 的全量数据、运行、评测、
 提交与浏览器验收全部通过，才能把本父任务标记为完成。Falcon 任一范围未跑、未完成或失败时，
 父任务保持 `in_progress`。
 

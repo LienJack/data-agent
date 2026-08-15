@@ -8,6 +8,7 @@ import type {
   SemanticGraphReadEdge,
   SemanticGraphReadNode,
 } from "@data-agent/contracts";
+import { CornersOut, Minus, Plus } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildFullG6Data, buildLocalG6Data, semanticG6SourceId } from "@/lib/semantic-g6-model";
 import {
@@ -221,54 +222,57 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   return (
     <section
       id={props.mode === "full" ? "semantic-full-graph" : undefined}
-      className="relative min-h-[560px] overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[#fbfcfb]"
+      className="relative min-h-[520px] overflow-hidden bg-[#f8faf8]"
       aria-label={props.mode === "local" ? "节点局部关系图" : "语义全图"}
     >
-      <div className="pointer-events-none absolute left-4 top-4 z-10 flex flex-wrap gap-2 text-[10px] text-[var(--color-text-secondary)]">
+      <div className="pointer-events-none absolute left-2 right-2 top-3 z-10 flex flex-wrap gap-1.5 text-[9px] text-[#68756e] sm:left-4 sm:right-auto sm:top-4 sm:max-w-[calc(100%-140px)]">
         {Object.entries(SEMANTIC_STATUS_PRESENTATION).map(([status, item]) => (
           <span
             key={status}
-            className="inline-flex items-center gap-1.5 rounded bg-white/90 px-2 py-1 shadow-sm"
+            className="inline-flex items-center gap-1.5 border border-[#dbe1dd] bg-white/92 px-2 py-1 shadow-sm"
           >
             <span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />
             {item.label}
           </span>
         ))}
       </div>
-      <div className="absolute right-4 top-4 z-10 flex items-center gap-1 rounded border border-[var(--color-border-default)] bg-white/92 p-1 shadow-sm">
+      <div className="absolute right-2 top-14 z-10 flex items-center gap-0.5 border border-[#d4dbd7] bg-white/94 p-1 shadow-sm sm:right-4 sm:top-4">
         <button
           type="button"
           aria-label="放大关系图"
           onClick={() => void graphRef.current?.zoomBy(1.2)}
-          className="grid size-7 place-items-center rounded text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]"
+          className="grid size-7 place-items-center text-[#627069] transition-colors hover:bg-[#edf1ee] hover:text-[#285b4b]"
+          title="放大"
         >
-          +
+          <Plus className="size-3.5" weight="bold" aria-hidden="true" />
         </button>
         <button
           type="button"
           aria-label="缩小关系图"
           onClick={() => void graphRef.current?.zoomBy(0.8)}
-          className="grid size-7 place-items-center rounded text-sm text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]"
+          className="grid size-7 place-items-center text-[#627069] transition-colors hover:bg-[#edf1ee] hover:text-[#285b4b]"
+          title="缩小"
         >
-          −
+          <Minus className="size-3.5" weight="bold" aria-hidden="true" />
         </button>
         <button
           type="button"
           aria-label="适应关系图视图"
           onClick={() => void graphRef.current?.fitView()}
-          className="rounded px-2 py-1.5 text-[10px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)]"
+          className="grid size-7 place-items-center text-[#627069] transition-colors hover:bg-[#edf1ee] hover:text-[#285b4b]"
+          title="适应视图"
         >
-          适应
+          <CornersOut className="size-3.5" aria-hidden="true" />
         </button>
       </div>
       {props.mode === "local" && props.local?.truncated ? (
-        <div className="absolute right-32 top-4 z-10 rounded border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] text-amber-800">
+        <div className="absolute right-32 top-4 z-10 border-l-2 border-amber-500 bg-amber-50 px-3 py-1.5 text-[10px] text-amber-800">
           已按预算截断：省略 {props.local.omitted_node_count} 节点 /{" "}
           {props.local.omitted_edge_count} 关系
         </div>
       ) : null}
       {empty ? (
-        <div className="flex min-h-[560px] items-center justify-center text-sm text-[var(--color-text-secondary)]">
+        <div className="flex min-h-[520px] items-center justify-center text-sm text-[#6d7973]">
           当前范围没有可见节点
         </div>
       ) : (
@@ -281,10 +285,10 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                 ? "AntV G6 绘制的选中节点局部关系图"
                 : "AntV G6 绘制的 GraphRAG 风格分群语义全图"
             }
-            className="h-[min(68vh,720px)] min-h-[560px] w-full bg-[radial-gradient(circle_at_1px_1px,#dfe4e1_1px,transparent_0)] bg-[length:24px_24px]"
+            className="h-[calc(100dvh-430px)] min-h-[520px] max-h-[720px] w-full bg-[radial-gradient(circle_at_1px_1px,#dce2de_1px,transparent_0)] bg-[length:28px_28px]"
           />
           {!ready && !renderError ? (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-[var(--color-text-secondary)]">
+            <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-[#6d7973]">
               正在初始化 AntV G6 图谱…
             </div>
           ) : null}
@@ -296,8 +300,8 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         </>
       )}
       {graph ? (
-        <details className="border-t border-[var(--color-border-default)] bg-white px-4 py-2 text-xs">
-          <summary className="cursor-pointer font-medium text-[var(--color-text-secondary)]">
+        <details className="border-t border-[#d7ddd9] bg-white px-4 py-2 text-xs">
+          <summary className="cursor-pointer font-medium text-[#65716b]">
             键盘与读屏表格视图
           </summary>
           <div className="mt-3 max-h-56 overflow-auto">
