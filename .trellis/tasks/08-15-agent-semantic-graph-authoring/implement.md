@@ -157,11 +157,12 @@ Owned task：`08-15-semantic-studio-graph-ux`
 
 #### 4.2 Local / Full graph
 
-- [ ] 改造现有 SVG local graph 消费 Graph v2 store，支持 1-hop/2-hop、family/direction filter、
+- [x] 使用 AntV G6 v5 改造 local graph 消费 Graph v2 store，支持 1-hop/2-hop、direction、
   truncation 和无障碍 table fallback。
-- [ ] 引入 `sigma` + `graphology` 的 client-only adapter，按 cluster hierarchy semantic zoom；布局在
-  Web Worker 中执行，服务端 seed 保证稳定起点。
-- [ ] 支持 cluster 展开/收起、搜索定位、最短路径、筛选、回到当前选择与 candidate overlay。
+- [x] 使用 AntV G6 v5 client-only adapter，按 cluster hierarchy semantic zoom，提供缩放、拖拽、
+  Minimap、选择和稳定服务端初始位置。
+- [ ] 补齐 cluster 收起、最短路径高亮与 500 glyph / 10k benchmark；搜索、筛选、回到当前选择
+  和 candidate overlay 已接入共享 store。
 
 #### 4.3 Persistent Agent Composer
 
@@ -229,6 +230,25 @@ pnpm build
 
 再执行 PostgreSQL authority/RLS、Worker/SSE、浏览器 E2E、10,000 Node 性能和投影 rebuild 的
 环境级验证；记录命令、版本、receipt/digest 与 Go/No-Go 结果。
+
+### Phase 6 — Falcon 全量运行与最终完成门禁
+
+依赖任务：`08-15-falcon-demo-eval`
+
+- [ ] 只有 Phase 1–5 的语义层、Agent authoring、Studio 和发布治理全部通过后，才启动 Falcon
+  最终验收；Falcon 不得反向绕过 active semantic release 或 sealed Oracle 边界。
+- [ ] 按固定 Falcon 快照完成 28 个 PostgreSQL schema 的导入、摘要、行数、权限和幂等回执验证。
+- [ ] 以 db24 作为多表主 Demo，db14 作为 smoke；完成语义发布、Workspace datasource、真实
+  Agent/Worker、PostgreSQL executor、严格 Oracle 和浏览器客户路径。
+- [ ] 跑通单题、db14 32 题、主 Demo 全量题、DEV 309 题与 TEST 191 题 submission；TEST 只生成
+  提交产物，不伪造本地准确率。
+- [ ] 执行项目中所有 Falcon 相关 contract/unit/integration/tenancy/security/browser 测试，以及真实
+  migration/import/Worker run；任何失败均阻止父任务完成。
+- [ ] 保存 ScoreCard、失败分类、submission receipt、服务健康、浏览器截图和可复现 runbook 证据。
+
+最终 Go/No-Go：只有语义层 Phase 1–5 全绿，且 `08-15-falcon-demo-eval` 的全量数据、运行、评测、
+提交与浏览器验收全部通过，才能把本父任务标记为完成。Falcon 任一范围未跑、未完成或失败时，
+父任务保持 `in_progress`。
 
 ## 3. 跨子任务接口冻结点
 

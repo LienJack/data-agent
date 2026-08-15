@@ -476,17 +476,16 @@ selected Node/Edge 和 viewport scope。用户可移除显式上下文。所有�
 ### 10.3 渲染选择
 
 - Node List：服务端分页/筛选 + 客户端虚拟化。
-- Local graph：可先复用现有 SVG 交互组件，但改为消费统一 Graph v2 projection/store，并保留
-  无障碍表格 fallback。
-- Full graph：采用 `sigma` + `graphology` 的 client-only vanilla adapter。Sigma 使用 WebGL，
-  适合数千节点的交互图；Graphology ForceAtlas2 提供 Web Worker 运行方式，避免主线程布局。
+- Local graph 与 Full graph：统一采用 AntV G6 v5 的 client-only adapter，消费同一 Graph v2
+  projection/store。Local 使用有向 force 邻域；Full 使用 GraphRAG 风格 cluster-first、semantic
+  zoom、Minimap 和按需展开。Canvas/WebGL 图同时保留键盘与读屏表格 fallback。
 - 服务端 cluster hierarchy、release-bound layout projection 与 stable seed 决定初始位置；worker 只在
   cluster 展开后做固定预算的局部松弛，不拥有或回写语义/布局 Authority。Candidate 新 Node 初始
   放在已绑定 cluster/邻居质心附近，并用 `node_id` hash 产生稳定微偏移，避免每次 patch 全图跳动。
 - React 只管理选择、筛选和生命周期，不为每个图元素创建 DOM/React component。
 
-参考：[Sigma.js 官方文档](https://www.sigmajs.org/docs/)、
-[Graphology ForceAtlas2](https://graphology.github.io/standard-library/layout-forceatlas2.html)。
+参考：[AntV G6 官方文档](https://g6.antv.antgroup.com/en/manual/introduction)、
+[AntV G6 Gallery](https://g6.antv.antgroup.com/en/examples)。
 
 ### 10.4 候选视觉状态
 

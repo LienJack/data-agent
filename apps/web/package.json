@@ -13,6 +13,7 @@
     "ecommerce:agent:acceptance": "NODE_OPTIONS=--conditions=react-server tsx src/cli/ecommerce-agent-acceptance.ts"
   },
   "dependencies": {
+    "@antv/g6": "^5.1.1",
     "@data-agent/agent-runtime": "workspace:*",
     "@data-agent/contracts": "workspace:*",
     "@data-agent/evals": "workspace:*",

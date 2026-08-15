@@ -25,6 +25,11 @@ Agent 根据自然语言意图执行到候选图；前端在 Agent 执行过程�
 3. 用户可以用自然语言表达“新增这个指标”或“修改这条公式”，由 Agent 完成结构化建模。
 4. Agent 可以高效维护候选语义，但不能绕过校验、审核和发布 Authority。
 
+本需求的最终完成标准还包括后置 Falcon 门禁：语义层全部完成后，必须继续执行
+`08-15-falcon-demo-eval`，跑通项目内 Falcon 固定快照的 28 库导入、db24 主 Demo、db14 smoke、
+DEV 309 题、TEST 191 题提交产物以及相关真实 Worker、PostgreSQL、Oracle 和浏览器验证。Falcon
+未全绿时，本需求不得宣告完成。
+
 ## 3. Background and Confirmed Facts
 
 ### 3.1 当前问题
@@ -281,6 +286,8 @@ Agent 输入修改意图，由 Agent 生成新的候选 revision。
   被聚合对象数量和筛选结果的可解释性。
 - community 只用于导航、布局和检索，不自动产生发布业务含义；LLM/GraphRAG 抽取出的节点
   和边仍只能进入 Candidate Plane。
+- 局部图和全图统一使用 AntV G6 v5 渲染；使用其 Canvas/WebGL、聚类布局、缩放拖拽、选择、
+  Minimap 和大图优化能力实现 GraphRAG 风格导航，但拖拽与连线只改变视图，不直接写语义。
 
 ### R11 — Review, validation and publication governance
 
@@ -424,5 +431,5 @@ Agent Composer 在前三个创作视图保持可用，并共享同一个 authori
   unresolved candidate，不能自动合并。
 - Agent 多工具循环会增加重试、幂等、断线恢复和成本治理复杂度；设计已用 server-side tool
   loop、working patch/receipt、checkpoint 和 explicit complete 收敛，实施负例仍必须证明至多一次。
-- 首版采用 versioned Edge registry、Sigma/Graphology、seeded Louvain 和 ForceAtlas2 worker；这些
+- 首版采用 versioned Edge registry、AntV G6 v5、seeded community 和分层 cluster projection；这些
   是可替换投影实现，不改变 Node/Edge 分离、关系平面、Candidate/Publish Authority 和三种视图。
