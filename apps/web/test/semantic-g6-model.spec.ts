@@ -20,13 +20,19 @@ describe("semantic G6 graph model", () => {
 
     expect(data.nodes).toHaveLength(local.nodes.length);
     expect(data.edges).toHaveLength(local.edges.length);
-    expect(data.nodes?.find((node) => node.id === selectedNodeId)?.states).toContain("selected");
+    expect(data.nodes?.find((node) => node.id === selectedNodeId)).toMatchObject({
+      type: "rect",
+      states: ["selected"],
+      style: { labelPlacement: "center" },
+    });
     expect(semanticG6SourceId(data.nodes?.[0]?.data)?.kind).toBe("semantic-node");
     expect(semanticG6SourceId(data.edges?.[0]?.data)?.kind).toBe("semantic-edge");
     expect(data.edges?.[0]).toMatchObject({
       source: local.edges[0]?.edge.source_node_id,
       target: local.edges[0]?.edge.target_node_id,
+      type: "cubic-horizontal",
     });
+    expect(data.edges?.[0]?.style?.labelText).toBeUndefined();
   });
 
   it("keeps GraphRAG clusters as first-class clickable summary glyphs", () => {
@@ -38,7 +44,13 @@ describe("semantic G6 graph model", () => {
     expect(semanticG6SourceId(cluster?.data)).toEqual({
       kind: "cluster",
       sourceId: snapshot.full.clusters[0]?.cluster_id,
+      label: snapshot.full.clusters[0]?.label,
     });
+    expect(cluster?.type).toBe("donut");
+    expect(cluster?.style?.donuts).toHaveLength(
+      Object.values(snapshot.full.clusters[0]?.node_type_counts ?? {}).filter((count) => count > 0)
+        .length,
+    );
     expect(cluster?.style?.labelText).toContain("节点");
   });
 

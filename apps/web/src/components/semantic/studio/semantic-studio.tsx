@@ -546,7 +546,7 @@ export function SemanticStudio({
             onResume={(answer) => void resume(answer)}
           />
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[190px_minmax(0,1fr)] xl:grid-cols-[210px_minmax(0,1fr)_318px]">
+          <div className="mt-4 grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)] xl:grid-cols-[184px_minmax(0,1fr)_286px]">
             <aside
               className="border-b border-[#d7ddd9] pb-3 lg:sticky lg:top-3 lg:self-start lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
               aria-label="语义工作台导航"
