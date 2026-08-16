@@ -1,20 +1,28 @@
-import { createModelProviderBindings, type ModelProviderBinding } from "@data-agent/agent-runtime";
+import {
+  createGoalPreflightExecutionCertificationReceiptDraftFromEvidence,
+  createModelProviderBindings,
+  type ModelProviderBinding,
+} from "@data-agent/agent-runtime";
 import {
   type AppScope,
   type ArtifactReference,
   artifactReferenceIdentity,
   computeModelProfileHash,
-  type ModelCertificationClaims,
   modelCertificationClaimsSchema,
+  modelExecutionProfileSchema,
   modelProfileSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import type {
   AppCapability,
   SqlPool,
+  SqlQueryResult,
   TransactionalCapabilityAuthorizer,
 } from "@data-agent/platform";
 import { describe, expect, it, vi } from "vitest";
+import { authorizeGoalPreflightEvidence } from "../../../packages/agent-runtime/dist/models/goal-preflight-evidence.internal.js";
+import { createDeploymentRegistry } from "../../../packages/platform/src/tenancy/capability.js";
+import { asTransactionalTestAuthority } from "../../../packages/platform/test/support/transactional-authority.js";
 import {
   type CredentialedProviderAttempt,
   type ModelCertificationReceiptStore,
@@ -120,7 +128,7 @@ function inMemoryReceiptStore(
     readonly verify?: "PASS" | "FAIL";
   } = {},
 ): ModelCertificationReceiptStore {
-  const receipts = new Map<string, ModelCertificationClaims>();
+  const receipts = new Map<string, unknown>();
   return {
     async commit(claims) {
       if (options.commit === "FAIL") {
@@ -352,5 +360,234 @@ describe("Credentialed Provider Certification Worker", () => {
       error: { code: "PERSISTENCE_INPUT_INVALID" },
     });
     expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("PostgreSQL Receipt Store 在接触数据库前拒绝伪造的 execution claims clone", async () => {
+    const connect = vi.fn();
+    const store = createPostgresModelCertificationReceiptStore({
+      pool: { connect } as SqlPool,
+      authorizer: {} as TransactionalCapabilityAuthorizer,
+      capability: {} as AppCapability,
+    });
+    const binding = firstBinding();
+    const profile = modelExecutionProfileSchema.parse({
+      profile_id: binding.profile_id,
+      scope,
+      provider: binding.provider,
+      model_id: binding.default_model_id,
+      model_config_version: 7,
+      profile_version: "model-profile@7",
+      adapter_version: "model-provider-adapter@1.0.0",
+      recovery_capabilities: ["INVOCATION_RECONCILIATION"],
+      connection: {
+        kind: "SYSTEM_DEPLOYMENT",
+        deployment_id: "70000000-0000-4000-8000-000000000020",
+        deployment_revision: 1,
+        deployment_hash: `sha256:${"a".repeat(64)}`,
+      },
+      capabilities: binding.capabilities,
+      operational_constraints: {
+        context_window: {
+          verification_status: "VERIFIED",
+          max_context_tokens: 16_000,
+          max_output_tokens: 4_000,
+        },
+        region_privacy: {
+          verification_status: "VERIFIED",
+          processing_regions: ["cn"],
+          privacy_tags: [],
+        },
+        pricing: { verification_status: "UNVERIFIED" },
+        fallback_compatibility: { verification_status: "UNVERIFIED" },
+      },
+      certification_status: "UNVERIFIED",
+    });
+    const certificationBasis = {
+      kind: "GOAL_PREFLIGHT_ATTESTATION" as const,
+      goal_execution_id: "70000000-0000-4000-8000-000000000022",
+      plan_commit: "abcdef1",
+      plan_hash: `sha256:${"1".repeat(64)}` as const,
+      manifest_hash: `sha256:${"2".repeat(64)}` as const,
+      checkpoint_hash: `sha256:${"3".repeat(64)}` as const,
+      preflight_evidence_hash: `sha256:${"4".repeat(64)}` as const,
+      observed_provider: binding.provider,
+      observed_model_id: binding.default_model_id,
+      checks: {
+        request_shape: true as const,
+        structured_output: true as const,
+        tool_calling: true as const,
+        streaming: true as const,
+        error_normalization: true as const,
+      },
+    };
+    const evidence = await authorizeGoalPreflightEvidence(certificationBasis, {
+      resolve_committed: async () => certificationBasis,
+    });
+    const claims = await createGoalPreflightExecutionCertificationReceiptDraftFromEvidence({
+      profile,
+      receipt_ref: {
+        artifact_id: "70000000-0000-4000-8000-000000000021",
+        artifact_type: "ModelCertificationReceipt",
+        ...scope,
+        run_id: runId,
+        revision: 1,
+        content_hash: `sha256:${"0".repeat(64)}`,
+      },
+      evidence,
+    });
+
+    await expect(store.commit({ ...claims }, { worker_fence: 4 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "PERSISTENCE_INPUT_INVALID" },
+    });
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("PostgreSQL Receipt Store 提交并精确重放 genuine execution certification", async () => {
+    const deploymentId = "70000000-0000-4000-8000-000000000030";
+    const registry = createDeploymentRegistry(
+      [{ deployment_id: deploymentId, app_id: scope.app_id, environment: "test" }],
+      [
+        {
+          subject: "70000000-0000-4000-8000-000000000031",
+          deployment_id: deploymentId,
+          tenant_id: scope.tenant_id,
+          role: "ANALYST",
+        },
+      ],
+    );
+    const resolved = registry.resolveForDeployment(deploymentId, {
+      subject: "70000000-0000-4000-8000-000000000031",
+    });
+    if (!resolved.ok) throw new Error("fixture authority missing");
+    const binding = firstBinding();
+    const profile = modelExecutionProfileSchema.parse({
+      profile_id: binding.profile_id,
+      scope,
+      provider: binding.provider,
+      model_id: binding.default_model_id,
+      model_config_version: 7,
+      profile_version: "model-profile@7",
+      adapter_version: "model-provider-adapter@1.0.0",
+      recovery_capabilities: ["INVOCATION_RECONCILIATION"],
+      connection: {
+        kind: "SYSTEM_DEPLOYMENT",
+        deployment_id: deploymentId,
+        deployment_revision: 1,
+        deployment_hash: `sha256:${"a".repeat(64)}`,
+      },
+      capabilities: binding.capabilities,
+      operational_constraints: {
+        context_window: {
+          verification_status: "VERIFIED",
+          max_context_tokens: 16_000,
+          max_output_tokens: 4_000,
+        },
+        region_privacy: {
+          verification_status: "VERIFIED",
+          processing_regions: ["cn"],
+          privacy_tags: [],
+        },
+        pricing: { verification_status: "UNVERIFIED" },
+        fallback_compatibility: { verification_status: "UNVERIFIED" },
+      },
+      certification_status: "UNVERIFIED",
+    });
+    const certificationBasis = {
+      kind: "GOAL_PREFLIGHT_ATTESTATION" as const,
+      goal_execution_id: "70000000-0000-4000-8000-000000000033",
+      plan_commit: "abcdef1",
+      plan_hash: `sha256:${"1".repeat(64)}` as const,
+      manifest_hash: `sha256:${"2".repeat(64)}` as const,
+      checkpoint_hash: `sha256:${"3".repeat(64)}` as const,
+      preflight_evidence_hash: `sha256:${"4".repeat(64)}` as const,
+      observed_provider: binding.provider,
+      observed_model_id: binding.default_model_id,
+      checks: {
+        request_shape: true as const,
+        structured_output: true as const,
+        tool_calling: true as const,
+        streaming: true as const,
+        error_normalization: true as const,
+      },
+    };
+    const evidence = await authorizeGoalPreflightEvidence(certificationBasis, {
+      resolve_committed: async () => certificationBasis,
+    });
+    const claims = await createGoalPreflightExecutionCertificationReceiptDraftFromEvidence({
+      profile,
+      receipt_ref: {
+        artifact_id: "70000000-0000-4000-8000-000000000032",
+        artifact_type: "ModelCertificationReceipt",
+        ...scope,
+        run_id: runId,
+        revision: 1,
+        content_hash: `sha256:${"0".repeat(64)}`,
+      },
+      evidence,
+    });
+    let persisted: { content_hash: string; document_json: unknown } | null = null;
+    let inserts = 0;
+    const pool: SqlPool = {
+      async connect() {
+        return {
+          async query<Row extends object = Record<string, unknown>>(
+            text: string,
+            values: readonly unknown[] = [],
+          ) {
+            let rows: readonly object[] = [];
+            if (text.includes("backend_context_matches")) rows = [{ allowed: true }];
+            else if (text.includes("lock_owned_run_fence")) rows = [{ active_fence: 4 }];
+            else if (text.includes("select content_hash, document_json")) {
+              rows = persisted ? [persisted] : [];
+            } else if (text.includes("insert into artifacts")) {
+              inserts += 1;
+              persisted = {
+                content_hash: String(values[5]),
+                document_json: JSON.parse(String(values[6])),
+              };
+            }
+            return { rows, rowCount: rows.length } as SqlQueryResult<Row>;
+          },
+          release() {},
+        };
+      },
+    };
+    const transactionalAuthorizer = asTransactionalTestAuthority(
+      registry.authorizer,
+    ) as unknown as TransactionalCapabilityAuthorizer;
+    const unauthorizedStore = createPostgresModelCertificationReceiptStore({
+      pool,
+      // Vitest resolves Platform source while Worker package types resolve the
+      // built declaration's private symbol; this is the same test-only adapter.
+      authorizer: transactionalAuthorizer,
+      capability: resolved.value,
+    });
+    const unauthorized = await unauthorizedStore.commit(claims, { worker_fence: 4 });
+    expect(unauthorized).toMatchObject({
+      ok: false,
+      error: { code: "MODEL_CERTIFICATION_GOAL_EVIDENCE_NOT_COMMITTED" },
+    });
+    expect(inserts).toBe(0);
+
+    const store = createPostgresModelCertificationReceiptStore({
+      pool,
+      authorizer: transactionalAuthorizer,
+      capability: resolved.value,
+      goal_preflight_evidence_authority: {
+        resolveCommitted: async ({ goal_execution_id, plan_commit }) =>
+          goal_execution_id === certificationBasis.goal_execution_id &&
+          plan_commit === certificationBasis.plan_commit
+            ? certificationBasis
+            : null,
+      },
+    });
+
+    const first = await store.commit(claims, { worker_fence: 4 });
+    const replay = await store.commit(claims, { worker_fence: 4 });
+
+    expect(first).toEqual({ ok: true, value: claims.receipt_ref });
+    expect(replay).toEqual(first);
+    expect(inserts).toBe(1);
   });
 });

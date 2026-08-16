@@ -24,6 +24,9 @@
     "test:integration": "vitest run test/integration --passWithNoTests=false",
     "test:providers": "vitest run test/credentialed-provider-certification.spec.ts",
     "credentialed:smoke": "tsx src/credentialed-provider-smoke-cli.ts",
+    "provider:recover-stale": "tsx src/provider-stale-marker-recovery-cli.ts",
+    "provider:smoke": "tsx src/provider-invocation-smoke-cli.ts",
+    "provider:classify-unknown": "tsx src/provider-unknown-classification-cli.ts",
     "system-models:certify": "tsx src/system-model-certification-cli.ts"
   },
   "dependencies": {

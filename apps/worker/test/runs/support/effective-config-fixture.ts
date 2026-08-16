@@ -101,7 +101,7 @@ export async function buildWorkerEffectiveConfigFixture(input: {
       ...resource(ids.model, 2, H2),
       provider: "deepseek",
       model_id: "deepseek-v4-flash",
-      profile_version: "profile@2",
+      profile_version: "model-profile@2",
     },
     datasource: resource(ids.datasource, 3, H3),
     semantic_release: {

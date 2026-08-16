@@ -104,7 +104,7 @@ begin
   );
   return pg_catalog.jsonb_build_object(
     'resolution',resolution_document || pg_catalog.jsonb_build_object(
-      'resolution_hash',platform.canonical_sha256(resolution_document)),
+      'resolution_hash',app_data_agent.u2_canonical_sha256(resolution_document)),
     'effective_config',null);
 end
 $function$;
@@ -158,7 +158,7 @@ begin
   request_hash := requested_config ->> 'request_hash';
   defaults_ref := requested_config -> 'defaults_ref';
   datasource_selection := requested_config #> '{overrides,datasource}';
-  if request_hash <> platform.canonical_sha256(requested_config - 'request_hash') then
+  if request_hash <> app_data_agent.u2_canonical_sha256(requested_config - 'request_hash') then
     raise exception using errcode = '22023', message = 'EFFECTIVE_CONFIG_REQUEST_INVALID';
   end if;
   resource_bindings := app_data_agent.build_requested_optional_resource_bindings(requested_config);
@@ -179,7 +179,7 @@ begin
     'authz_epoch',app_user_record.authz_epoch,'membership_version',authority.membership_version,
     'workspace_lifecycle_version',workspace_record.lifecycle_version,
     'route_resolution_id',requested_job_id,
-    'route_resolution_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+    'route_resolution_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
       'schema_version','effective-config-route-resolution@1.0.0','route_resolution_id',requested_job_id,
       'scope',scope_document,'operation','SEMANTIC_BOOTSTRAP_JOB','request_hash',request_hash)),
     'resolver_policy_version','effective-config-resolver@1.0.0');
@@ -250,7 +250,7 @@ begin
     if not found then blocked_reason := 'RESOURCE_NOT_FOUND_OR_FORBIDDEN';
     elsif datasource_record.status <> 'ACTIVE' then blocked_reason := 'RESOURCE_DISABLED';
     else
-      datasource_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      datasource_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'datasource_id',datasource_record.datasource_id,'datasource_type',datasource_record.datasource_type,
         'status',datasource_record.status,'resource_version',datasource_record.resource_version));
       if selected_datasource_revision <> datasource_record.resource_version
@@ -394,7 +394,7 @@ begin
       'trigger_question_run_id',(requested_config ->> 'trigger_question_run_id')::uuid);
   end if;
   return resolution_document || pg_catalog.jsonb_build_object(
-    'resolution_hash',platform.canonical_sha256(resolution_document));
+    'resolution_hash',app_data_agent.u2_canonical_sha256(resolution_document));
 end
 $function$;
 
@@ -514,7 +514,7 @@ begin
   requested_idempotency_key := requested_config ->> 'idempotency_key';
   request_hash := requested_config ->> 'request_hash';
   defaults_ref := requested_config -> 'defaults_ref';
-  if request_hash <> platform.canonical_sha256(requested_config - 'request_hash')
+  if request_hash <> app_data_agent.u2_canonical_sha256(requested_config - 'request_hash')
     or requested_command ->> 'run_id' <> requested_run_id::text
     or requested_command ->> 'idempotency_key' <> requested_idempotency_key
     or app_data_agent.contains_potential_plaintext_secret(requested_command)
@@ -560,7 +560,7 @@ begin
   scope_document := pg_catalog.jsonb_build_object(
     'app_id',authority.app_id,'tenant_id',authority.tenant_id,'environment',authority.environment,
     'workspace_id',authority.tenant_id,'principal_id',authority.principal_id);
-  route_resolution_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+  route_resolution_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
     'schema_version','effective-config-route-resolution@1.0.0',
     'route_resolution_id',requested_config_id,'scope',scope_document,
     'operation','QUESTION_RUN','request_hash',request_hash));
@@ -781,7 +781,7 @@ begin
           datasource_selection,selected_datasource_reference,'DATASOURCE','RESOURCE_DISABLED'));
       mandatory_blocked_reason := 'RESOURCE_DISABLED';
     else
-      datasource_revision_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      datasource_revision_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'datasource_id',datasource_record.datasource_id,'datasource_type',datasource_record.datasource_type,
         'status',datasource_record.status,'resource_version',datasource_record.resource_version));
       if datasource_expected_revision <> datasource_record.resource_version
@@ -834,7 +834,7 @@ begin
           model_selection,selected_model_reference,'MODEL_PROFILE','MODEL_NOT_AVAILABLE'));
       mandatory_blocked_reason := coalesce(mandatory_blocked_reason,'MODEL_NOT_AVAILABLE');
     else
-      model_revision_hash := platform.canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref');
+      model_revision_hash := app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref');
       if model_selection ->> 'mode' = 'INHERIT_DEFAULT'
         and selected_model_reference ->> 'resource_hash' <> model_revision_hash then
         resource_bindings := resource_bindings || pg_catalog.jsonb_build_array(
@@ -1060,7 +1060,7 @@ begin
     'optional_selection_evaluations',app_data_agent.build_optional_selection_evaluations(
       requested_config,defaults_ref,resource_bindings),
     'effective_egress',effective_egress);
-  config_hash := platform.canonical_sha256(config_document);
+  config_hash := app_data_agent.u2_canonical_sha256(config_document);
   config_ref := pg_catalog.jsonb_build_object(
     'config_id',requested_config_id,'config_revision',1,'config_hash',config_hash);
 
@@ -1115,7 +1115,7 @@ begin
     'provider',model_record.provider,'audiences',effective_egress -> 'allowed_audiences',
     'classification',effective_egress ->> 'classification','resource_refs',context_resource_refs,
     'consumed_at',app_data_agent.runtime_iso_timestamp(commit_at));
-  context_hash := platform.canonical_sha256(context_document);
+  context_hash := app_data_agent.u2_canonical_sha256(context_document);
   insert into app_data_agent.effective_config_context_receipts (
     app_id,tenant_id,environment,context_receipt_id,config_id,config_revision,config_hash,run_id,
     principal_id,consumer_kind,consumer_id,outbox_id,command_id,worker_fence,

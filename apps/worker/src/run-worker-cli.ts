@@ -1,17 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
-import { effectiveConfigRunLeasePayloadSchema } from "@data-agent/contracts";
+import { pathToFileURL } from "node:url";
+import {
+  effectiveConfigRunLeasePayloadSchema,
+  type PortResult,
+  type RunQueuePort,
+  type RunWorkLease,
+} from "@data-agent/contracts";
 import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
   createPostgresEffectiveConfigResolver,
   createPostgresOperationsAdminRepository,
+  createPostgresProviderInvocationSmokeJob,
   createPostgresResearchAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
+  providerInvocationSmokeClaimSchema,
 } from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
+import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
+import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
+import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
 import {
   createMultiPrincipalRunWorkerRunner,
   isRunnableWorkspaceMember,
@@ -32,6 +43,36 @@ class RunWorkerStartupError extends Error {
   constructor(readonly code: string) {
     super(code);
   }
+}
+
+export function requireCompletedProviderSmokeCycle(result: {
+  readonly ok: boolean;
+  readonly value?: { readonly kind?: string };
+  readonly error?: { readonly code?: string };
+}): void {
+  if (result.ok !== true || result.value?.kind !== "COMPLETED") {
+    throw new RunWorkerStartupError("PROVIDER_INVOCATION_SMOKE_NOT_COMPLETED");
+  }
+}
+
+export function targetProviderSmokeQueue(
+  queue: RunQueuePort,
+  claimTarget: (
+    input: Parameters<RunQueuePort["lease"]>[0],
+  ) => Promise<PortResult<{ readonly lease: RunWorkLease } | null>>,
+): RunQueuePort {
+  let attempted = false;
+  return Object.freeze({
+    ...queue,
+    async lease(input: Parameters<RunQueuePort["lease"]>[0]): ReturnType<RunQueuePort["lease"]> {
+      if (attempted) return { ok: true, value: null };
+      attempted = true;
+      const claimed = await claimTarget(input);
+      return claimed.ok
+        ? { ok: true, value: claimed.value?.lease ?? null }
+        : { ok: false, error: claimed.error };
+    },
+  });
 }
 
 function writeLog(record: WorkerCycleLogRecord): void {
@@ -95,7 +136,21 @@ async function closeServer(server: Server): Promise<void> {
 export async function runWorkerProcess(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  if (
+    environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES" &&
+    environment.DATA_AGENT_U3_PROVIDER_SMOKE_CONFIRM !== "YES"
+  ) {
+    throw new RunWorkerStartupError("EXPLICIT_CONFIRMATION_REQUIRED");
+  }
+  environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
+  const smokeTarget =
+    environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
+      ? z.strictObject({ run_id: z.uuid(), command_id: z.uuid() }).parse({
+          run_id: environment.DATA_AGENT_U3_PROVIDER_SMOKE_RUN_ID,
+          command_id: environment.DATA_AGENT_U3_PROVIDER_SMOKE_COMMAND_ID,
+        })
+      : null;
   const pool = new pg.Pool({
     connectionString: config.database_url,
     connectionTimeoutMillis: 5_000,
@@ -103,7 +158,20 @@ export async function runWorkerProcess(
     statement_timeout: 12_000,
     idle_in_transaction_session_timeout: 15_000,
   });
+  const smokeJobPool = smokeTarget
+    ? new pg.Pool({
+        connectionString: z.string().min(1).parse(environment.DATA_AGENT_JOB_DATABASE_URL),
+        connectionTimeoutMillis: 5_000,
+        query_timeout: 15_000,
+        statement_timeout: 12_000,
+        idle_in_transaction_session_timeout: 15_000,
+      })
+    : null;
   const sqlPool = adaptPgPool(pool);
+  let smokeJob: ReturnType<typeof createPostgresProviderInvocationSmokeJob> | null = null;
+  const smokeClaimState: {
+    value: z.infer<typeof providerInvocationSmokeClaimSchema> | null;
+  } = { value: null };
   const capabilityAuthority = createPostgresCapabilityAuthority(sqlPool);
   const controller = new AbortController();
   const health = createInitialWorkerHealth(config.research_authority_capability_id !== null);
@@ -122,6 +190,13 @@ export async function runWorkerProcess(
     if (!resolved.ok) throw new RunWorkerStartupError(resolved.error.code);
 
     const appCapability = resolved.value;
+    if (smokeJobPool) {
+      smokeJob = createPostgresProviderInvocationSmokeJob({
+        pool: adaptPgPool(smokeJobPool),
+        authorizer: capabilityAuthority.authorizer,
+        capability: appCapability,
+      });
+    }
     const operations = createPostgresOperationsAdminRepository(sqlPool);
     const researchAuthority = createPostgresResearchAuthority({
       pool: sqlPool,
@@ -133,6 +208,9 @@ export async function runWorkerProcess(
     });
     const runner = createMultiPrincipalRunWorkerRunner({
       listPrincipals: async () => {
+        if (smokeTarget) {
+          return { ok: true, value: [{ principal_id: config.principal_id }] };
+        }
         const members = await operations.listWorkspaceMembers({
           deployment_id: config.deployment_id,
           principal_id: config.principal_id,
@@ -155,30 +233,55 @@ export async function runWorkerProcess(
         });
         if (!principalCapability.ok) return principalCapability;
         const capability = principalCapability.value;
-        const executor = createResearchWorkflowExecutor({
-          research_authority: researchAuthority,
-          authority_capability_input: config.research_authority_capability_id
-            ? {
-                app_capability: capability,
-                authority_capability_id: config.research_authority_capability_id,
-              }
-            : null,
-          principal_id: principalId,
-          create_id: randomUUID,
-          now: () => new Date(),
+        const providerDispatch = createProductionRunBoundProviderDispatcher({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+          capability,
+          environment,
         });
+        const executor = smokeTarget
+          ? createProviderSmokeExecutor()
+          : createResearchWorkflowExecutor({
+              research_authority: researchAuthority,
+              authority_capability_input: config.research_authority_capability_id
+                ? {
+                    app_capability: capability,
+                    authority_capability_id: config.research_authority_capability_id,
+                  }
+                : null,
+              principal_id: principalId,
+              create_id: randomUUID,
+              now: () => new Date(),
+            });
+        const queue = createPostgresRunQueue(sqlPool, capabilityAuthority.authorizer, capability, {
+          lease_duration_ms: config.lease_duration_ms,
+        });
+        const eventStore = createPostgresRunEventStore(
+          sqlPool,
+          capabilityAuthority.authorizer,
+          capability,
+        );
         return {
           ok: true,
           value: createRunWorkerRunner({
-            queue: createPostgresRunQueue(sqlPool, capabilityAuthority.authorizer, capability, {
-              lease_duration_ms: config.lease_duration_ms,
-            }),
-            event_store: createPostgresRunEventStore(
-              sqlPool,
-              capabilityAuthority.authorizer,
-              capability,
-            ),
+            queue: smokeTarget
+              ? targetProviderSmokeQueue(queue, async ({ worker_id: workerId }) => {
+                  if (!smokeJob) {
+                    throw new RunWorkerStartupError("PROVIDER_INVOCATION_SMOKE_JOB_REQUIRED");
+                  }
+                  const claimed = await smokeJob.claim({
+                    worker_id: workerId,
+                    lease_duration_ms: config.lease_duration_ms,
+                    expected_run_id: smokeTarget.run_id,
+                    expected_command_id: smokeTarget.command_id,
+                  });
+                  if (claimed.ok) smokeClaimState.value = claimed.value;
+                  return claimed;
+                })
+              : queue,
+            event_store: eventStore,
             executor,
+            provider_dispatch: providerDispatch,
             effective_config_loader: (lease) => {
               const payload = effectiveConfigRunLeasePayloadSchema.safeParse(lease.payload);
               if (!payload.success || lease.command_kind !== "START_L2_RESEARCH") {
@@ -209,6 +312,67 @@ export async function runWorkerProcess(
       },
     });
 
+    if (environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES") {
+      const result = await runner.runOnce({
+        scope: appCapability.scope,
+        worker_id: config.worker_id,
+      });
+      writeLog(
+        result.ok
+          ? {
+              level: "info",
+              event_name: "run_worker_cycle",
+              cycle_kind: result.value.kind,
+              ...(result.value.kind === "IDLE"
+                ? {}
+                : {
+                    run_id: result.value.run_id,
+                    final_event_sequence:
+                      "final_event_sequence" in result.value
+                        ? result.value.final_event_sequence
+                        : result.value.observed_event_sequence,
+                  }),
+            }
+          : {
+              level: result.error.retryable ? "warn" : "error",
+              event_name: "run_worker_cycle_failed",
+              reason_code: result.error.code,
+              retryable: result.error.retryable,
+            },
+      );
+      requireCompletedProviderSmokeCycle(result);
+      if (!smokeJob || !smokeClaimState.value) {
+        throw new RunWorkerStartupError("PROVIDER_INVOCATION_SMOKE_PRECONDITION_MISSING");
+      }
+      const smokeClaim = providerInvocationSmokeClaimSchema.parse(smokeClaimState.value);
+      const proof = await smokeJob.verifyCompleted({
+        run_id: smokeClaim.lease.run_id,
+        command_id: smokeClaim.lease.command_id,
+        attempt_id: smokeClaim.lease.attempt_id,
+        worker_fence: smokeClaim.lease.worker_fence,
+      });
+      if (!proof.ok) throw new RunWorkerStartupError(proof.error.code);
+      console.info(
+        JSON.stringify({
+          event_name: "provider_invocation_smoke_proved",
+          status: proof.value.outcome_status,
+          run_id: proof.value.run_id,
+          command_id: proof.value.command_id,
+          invocation_id: proof.value.logical_invocation_id,
+          intent_id: proof.value.intent_id,
+          permit_id: proof.value.permit_id,
+          marker_id: proof.value.marker_id,
+          outcome_id: proof.value.outcome_id,
+          usage_receipt_id: proof.value.usage_receipt_id,
+          response_artifact_ref: {
+            artifact_id: proof.value.response_artifact_ref.artifact_id,
+            content_hash: proof.value.response_artifact_ref.content_hash,
+          },
+        }),
+      );
+      return;
+    }
+
     health.initialized = true;
     await listen(healthServer, config.health_port);
     writeLog({
@@ -231,23 +395,26 @@ export async function runWorkerProcess(
     health.initialized = false;
     controller.abort();
     await closeServer(healthServer);
+    await smokeJobPool?.end();
     await pool.end();
     process.off("SIGINT", stop);
     process.off("SIGTERM", stop);
   }
 }
 
-void runWorkerProcess().catch((error: unknown) => {
-  console.error(
-    JSON.stringify({
-      event_name: "run_worker_stopped",
-      reason_code:
-        error instanceof z.ZodError
-          ? "WORKER_CONFIG_INVALID"
-          : error instanceof RunWorkerStartupError
-            ? error.code
-            : "WORKER_STARTUP_FAILED",
-    }),
-  );
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void runWorkerProcess().catch((error: unknown) => {
+    console.error(
+      JSON.stringify({
+        event_name: "run_worker_stopped",
+        reason_code:
+          error instanceof z.ZodError
+            ? "WORKER_CONFIG_INVALID"
+            : error instanceof RunWorkerStartupError
+              ? error.code
+              : "WORKER_STARTUP_FAILED",
+      }),
+    );
+    process.exitCode = 1;
+  });
+}

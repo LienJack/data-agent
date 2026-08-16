@@ -21,6 +21,7 @@ import {
   type ModelCertificationClaims,
   type ModelProviderPort,
   modelProviderSchema,
+  semanticAgentCandidateOutputSchema,
 } from "@data-agent/contracts";
 import {
   CertifiedModelAnalysisAgent,
@@ -287,6 +288,10 @@ export async function resolveTestCenterModelRuntime(input: {
       response_schema_version: MULTIPLE_CHOICE_RESPONSE_SCHEMA_VERSION,
       schema: modelMultipleChoiceResponseSchema,
     },
+    {
+      response_schema_version: "semantic-agent-candidate-output@1.0.0",
+      schema: semanticAgentCandidateOutputSchema,
+    },
   ]);
   const modelProvider = createModelProviderPort({
     credential_resolver: {
@@ -313,6 +318,11 @@ export async function resolveTestCenterModelRuntime(input: {
     response_schema_registry: responseSchemaRegistry,
     input_token_counter: {
       count: async (context) => trustedInputTokenUpperBound(context),
+    },
+    dispatch_marker: {
+      // Test Center remains an isolated evaluator: the marker is deterministic
+      // and performs no network or persistence work.
+      mark_dispatched: async () => {},
     },
   });
   const descriptor = benchmarkAgentDescriptorSchema.parse({

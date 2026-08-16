@@ -226,6 +226,13 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
     input_token_counter: {
       count: async (context) => trustedInputTokenUpperBound({ ...context, tools: tokenCountTools }),
     },
+    dispatch_marker: {
+      // Semantic authoring has no PostgreSQL provider-invocation marker yet.
+      // Keep this legacy composition unable to cross the network.
+      mark_dispatched: async () => {
+        throw new Error("PROVIDER_PERSISTENT_DISPATCH_MARKER_REQUIRED");
+      },
+    },
     tools,
   });
 

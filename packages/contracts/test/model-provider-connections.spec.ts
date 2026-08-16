@@ -119,7 +119,7 @@ describe("model provider connection contracts", () => {
         {
           model_profile_id: "30000000-0000-4000-8000-000000000003",
           provider: "deepseek",
-          model_id: "deepseek-v4-pro",
+          model_id: "deepseek-v4-flash",
           display_name: "DeepSeek 系统模型",
           base_url: "https://api.deepseek.com",
           capabilities,

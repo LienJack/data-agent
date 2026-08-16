@@ -114,13 +114,13 @@ returns jsonb language sql immutable set search_path = '' as $function$
   select case policy_kind
     when 'CONTEXT_POLICY' then pg_catalog.jsonb_build_object(
       'resource_id','00000000-0000-4000-8000-0000000053c1'::uuid,'resource_revision',1,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'schema_version','effective-context-policy@1.0.0','max_context_tokens',128000,
         'max_resource_bindings',1024)),
       'max_context_tokens',128000,'max_resource_bindings',1024)
     when 'EGRESS_POLICY' then pg_catalog.jsonb_build_object(
       'resource_id','00000000-0000-4000-8000-0000000053e1'::uuid,'resource_revision',1,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'schema_version','effective-egress-policy@1.0.0',
         'allowed_providers',pg_catalog.jsonb_build_array('deepseek','gemini','glm','grok','kimi','openai'),
         'allowed_audiences',pg_catalog.jsonb_build_array('PRIVATE','WORKSPACE'),
@@ -130,7 +130,7 @@ returns jsonb language sql immutable set search_path = '' as $function$
       'classification','INTERNAL')
     when 'EXECUTION_SAFETY_POLICY' then pg_catalog.jsonb_build_object(
       'resource_id','00000000-0000-4000-8000-0000000053f1'::uuid,'resource_revision',1,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'schema_version','effective-execution-safety-policy@1.0.0','max_tool_calls',10000,
         'max_provider_calls',10000,'max_elapsed_ms',9007199254740991)),
       'max_tool_calls',10000,'max_provider_calls',10000,'max_elapsed_ms',9007199254740991)

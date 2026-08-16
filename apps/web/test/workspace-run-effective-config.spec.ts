@@ -37,6 +37,7 @@ const mocks = vi.hoisted(() => ({
   getEffectiveConfig: vi.fn(),
   getConversation: vi.fn(),
   getRun: vi.fn(),
+  resolveSelections: vi.fn(),
   runProjection: vi.fn(),
 }));
 
@@ -59,6 +60,9 @@ vi.mock("@/lib/workspace-identity", () => ({
     getEffectiveConfig: mocks.getEffectiveConfig,
   }),
   getWorkspaceAuthority: () => ({ authorizer: {} }),
+  getProviderInvocationStore: () => ({
+    resolveConversationRunSelections: mocks.resolveSelections,
+  }),
   getWorkspaceDataRepository: () => ({ getConversation: mocks.getConversation }),
   getWorkspaceSqlPool: () => ({}),
 }));
@@ -172,6 +176,18 @@ beforeEach(async () => {
   mocks.getRun.mockResolvedValue({
     ok: true,
     value: { run_id: ids.run },
+  });
+  mocks.resolveSelections.mockResolvedValue({
+    ok: true,
+    value: {
+      schema_version: "conversation-run-selections@1.0.0",
+      conversation_id: ids.conversation,
+      conversation_resource_version: 3,
+      model_profile_id: ids.model,
+      model_config_version: 2,
+      datasource_id: ids.datasource,
+      datasource_resource_version: 3,
+    },
   });
   mocks.runProjection.mockReturnValue({ runId: ids.run, status: "QUEUED" });
 });
@@ -330,8 +346,14 @@ describe("workspace Effective Config routes", () => {
       mentions: [],
     });
     expect(qaRequest.overrides).toEqual({
-      model: { mode: "INHERIT_DEFAULT" },
-      datasource: { mode: "INHERIT_DEFAULT" },
+      model: {
+        mode: "RESOURCE_IDS",
+        resources: [{ resource_id: ids.model, expected_revision: 2 }],
+      },
+      datasource: {
+        mode: "RESOURCE_IDS",
+        resources: [{ resource_id: ids.datasource, expected_revision: 3 }],
+      },
       files: { mode: "INHERIT_DEFAULT" },
       knowledge: { mode: "INHERIT_DEFAULT" },
       mcp_servers: { mode: "INHERIT_DEFAULT" },

@@ -21,6 +21,7 @@ export {
 export {
   MastraModelProviderAdapter,
   type ModelProviderAdapterClock,
+  type ProviderDispatchMarker,
 } from "./model-provider-adapter.js";
 export {
   EMPTY_SERVER_MODEL_RESPONSE_SCHEMA_REGISTRY,

@@ -25,6 +25,54 @@ export const MODEL_PROVIDERS = [
 
 export const modelProviderSchema = z.enum(MODEL_PROVIDERS);
 
+export const modelProfileRecoveryCapabilitiesSchema = z
+  .array(
+    z.enum([
+      "IDEMPOTENT_REQUEST",
+      "INVOCATION_STATUS_QUERY",
+      "INVOCATION_RECONCILIATION",
+      "AT_LEAST_ONCE_ONLY",
+    ]),
+  )
+  .min(1)
+  .max(3)
+  .superRefine((capabilities, ctx) => {
+    const order = [
+      "IDEMPOTENT_REQUEST",
+      "INVOCATION_STATUS_QUERY",
+      "INVOCATION_RECONCILIATION",
+      "AT_LEAST_ONCE_ONLY",
+    ];
+    capabilities.forEach((capability, index) => {
+      const previous = capabilities[index - 1];
+      if (previous && order.indexOf(previous) >= order.indexOf(capability)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Recovery capability 必须唯一且规范排序。",
+          path: [index],
+        });
+      }
+    });
+    if (capabilities.includes("AT_LEAST_ONCE_ONLY") && capabilities.length !== 1) {
+      ctx.addIssue({ code: "custom", message: "AT_LEAST_ONCE_ONLY 必须独占。" });
+    }
+  });
+
+export const modelProfileConnectionProofSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("SYSTEM_DEPLOYMENT"),
+    deployment_id: immutableIdSchema,
+    deployment_revision: z.number().int().positive().safe(),
+    deployment_hash: contentHashSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("MANAGED_CONNECTION"),
+    provider_connection_id: immutableIdSchema,
+    config_version: z.number().int().positive().safe(),
+    connection_hash: contentHashSchema,
+  }),
+]);
+
 export const modelCapabilitiesSchema = z.strictObject({
   structured_output: z.boolean(),
   tool_calling: z.boolean(),
@@ -166,6 +214,240 @@ export const modelProfileSchema = z
       });
     }
   });
+
+export const modelExecutionProfileSchema = modelProfileSchema
+  .safeExtend({
+    model_config_version: z.number().int().positive().safe(),
+    adapter_version: versionIdentifierSchema,
+    recovery_capabilities: modelProfileRecoveryCapabilitiesSchema,
+    connection: modelProfileConnectionProofSchema,
+  })
+  .superRefine((profile, ctx) => {
+    if (profile.profile_version !== `model-profile@${profile.model_config_version}`) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Execution Profile Version 必须精确绑定 config_version。",
+        path: ["profile_version"],
+      });
+    }
+    if (profile.operational_constraints.context_window.verification_status !== "VERIFIED") {
+      ctx.addIssue({
+        code: "custom",
+        message: "Execution Profile 必须具备 VERIFIED context window。",
+        path: ["operational_constraints", "context_window"],
+      });
+    }
+  });
+
+export const modelExecutionProfileSnapshotSchema = z.strictObject({
+  profile_id: immutableIdSchema,
+  scope: appScopeSchema,
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  model_config_version: z.number().int().positive().safe(),
+  profile_version: versionIdentifierSchema,
+  adapter_version: versionIdentifierSchema,
+  recovery_capabilities: modelProfileRecoveryCapabilitiesSchema,
+  connection: modelProfileConnectionProofSchema,
+  capabilities: modelCapabilitiesSchema,
+  context_window: modelContextWindowConstraintSchema.refine(
+    (
+      context,
+    ): context is Extract<
+      z.infer<typeof modelContextWindowConstraintSchema>,
+      { verification_status: "VERIFIED" }
+    > => context.verification_status === "VERIFIED",
+    "Execution Profile context window 必须 VERIFIED。",
+  ),
+  region_privacy: modelRegionPrivacyConstraintSchema,
+  fallback_compatibility: modelFallbackCompatibilityConstraintSchema,
+});
+
+export function projectModelExecutionProfileSnapshot(input: unknown) {
+  const profile = modelExecutionProfileSchema.parse(input);
+  return modelExecutionProfileSnapshotSchema.parse({
+    profile_id: profile.profile_id,
+    scope: profile.scope,
+    provider: profile.provider,
+    model_id: profile.model_id,
+    model_config_version: profile.model_config_version,
+    profile_version: profile.profile_version,
+    adapter_version: profile.adapter_version,
+    recovery_capabilities: profile.recovery_capabilities,
+    connection: profile.connection,
+    capabilities: profile.capabilities,
+    context_window: profile.operational_constraints.context_window,
+    region_privacy: profile.operational_constraints.region_privacy,
+    fallback_compatibility: profile.operational_constraints.fallback_compatibility,
+  });
+}
+
+export async function computeModelExecutionProfileHash(
+  input: unknown,
+): Promise<`sha256:${string}`> {
+  const profile = modelExecutionProfileSchema.parse(input);
+  return sha256ContentHash(projectModelExecutionProfileSnapshot(profile));
+}
+
+export const modelExecutionCertificationBasisSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("CREDENTIAL_SMOKE"),
+    probe_hash: contentHashSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("GOAL_PREFLIGHT_ATTESTATION"),
+    goal_execution_id: immutableIdSchema,
+    plan_commit: z.string().regex(/^[0-9a-f]{7,64}$/),
+    plan_hash: contentHashSchema,
+    manifest_hash: contentHashSchema,
+    checkpoint_hash: contentHashSchema,
+    preflight_evidence_hash: contentHashSchema,
+    observed_provider: modelProviderSchema,
+    observed_model_id: z.string().min(1).max(256),
+    checks: z.strictObject({
+      request_shape: z.literal(true),
+      structured_output: z.literal(true),
+      tool_calling: z.literal(true),
+      streaming: z.literal(true),
+      error_normalization: z.literal(true),
+    }),
+  }),
+]);
+
+const modelExecutionCertificationReferenceDraftSchema =
+  modelCertificationReceiptReferenceSchema.omit({ content_hash: true });
+
+const modelExecutionCertificationClaimsDraftSchema = z.strictObject({
+  schema_version: z.literal("model-execution-certification@1.0.0"),
+  receipt_ref: modelExecutionCertificationReferenceDraftSchema,
+  profile_id: immutableIdSchema,
+  model_config_version: z.number().int().positive().safe(),
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  profile_version: versionIdentifierSchema,
+  adapter_version: versionIdentifierSchema,
+  execution_profile_hash: contentHashSchema,
+  execution_profile_snapshot: modelExecutionProfileSnapshotSchema,
+  recovery_capabilities: modelProfileRecoveryCapabilitiesSchema,
+  connection: modelProfileConnectionProofSchema,
+  certification_basis: modelExecutionCertificationBasisSchema,
+  verdict: z.literal("PASS"),
+});
+
+export const modelExecutionCertificationClaimsSchema =
+  modelExecutionCertificationClaimsDraftSchema.safeExtend({
+    receipt_ref: modelCertificationReceiptReferenceSchema,
+  });
+
+function projectModelExecutionCertificationClaimsDraft(input: unknown) {
+  const claims = modelExecutionCertificationClaimsSchema.safeParse(input);
+  if (claims.success) {
+    const { content_hash: _contentHash, ...receiptRef } = claims.data.receipt_ref;
+    return modelExecutionCertificationClaimsDraftSchema.parse({
+      ...claims.data,
+      receipt_ref: receiptRef,
+    });
+  }
+  return modelExecutionCertificationClaimsDraftSchema.parse(input);
+}
+
+export async function computeModelExecutionCertificationContentHash(
+  input: unknown,
+): Promise<`sha256:${string}`> {
+  return sha256ContentHash(projectModelExecutionCertificationClaimsDraft(input));
+}
+
+export async function buildModelExecutionCertificationClaims(input: unknown) {
+  const claims = projectModelExecutionCertificationClaimsDraft(input);
+  return modelExecutionCertificationClaimsSchema.parse({
+    ...claims,
+    receipt_ref: {
+      ...claims.receipt_ref,
+      content_hash: await computeModelExecutionCertificationContentHash(claims),
+    },
+  });
+}
+
+export async function verifyModelExecutionCertificationClaims(input: unknown) {
+  const claims = modelExecutionCertificationClaimsSchema.parse(input);
+  if (
+    (await computeModelExecutionCertificationContentHash(claims)) !==
+      claims.receipt_ref.content_hash ||
+    (await sha256ContentHash(claims.execution_profile_snapshot)) !==
+      claims.execution_profile_hash ||
+    claims.execution_profile_snapshot.profile_id !== claims.profile_id ||
+    claims.execution_profile_snapshot.model_config_version !== claims.model_config_version ||
+    claims.execution_profile_snapshot.provider !== claims.provider ||
+    claims.execution_profile_snapshot.model_id !== claims.model_id ||
+    claims.execution_profile_snapshot.profile_version !== claims.profile_version ||
+    claims.execution_profile_snapshot.adapter_version !== claims.adapter_version ||
+    JSON.stringify(claims.execution_profile_snapshot.recovery_capabilities) !==
+      JSON.stringify(claims.recovery_capabilities) ||
+    JSON.stringify(claims.execution_profile_snapshot.connection) !==
+      JSON.stringify(claims.connection)
+  ) {
+    throw new ModelCertificationError("Execution Certification snapshot/hash 不一致。");
+  }
+  if (
+    claims.certification_basis.kind === "GOAL_PREFLIGHT_ATTESTATION" &&
+    (claims.certification_basis.observed_provider !== claims.provider ||
+      claims.certification_basis.observed_model_id !== claims.model_id)
+  ) {
+    throw new ModelCertificationError("Goal preflight observation 与认证模型不一致。");
+  }
+  return claims;
+}
+
+declare const availableExecutionModelProfile: unique symbol;
+const availableExecutionModelProfiles = new WeakSet<object>();
+
+export type AvailableExecutionModelProfile = z.infer<typeof modelExecutionProfileSchema> & {
+  readonly certification_status: "AVAILABLE";
+  readonly [availableExecutionModelProfile]: true;
+};
+
+export async function authorizeAvailableExecutionModelProfile(
+  input: unknown,
+  authority: ModelCertificationAuthorityContext,
+): Promise<AvailableExecutionModelProfile> {
+  const profile = modelExecutionProfileSchema.parse(input);
+  if (profile.certification_status !== "AVAILABLE" || !profile.certification_receipt_ref) {
+    throw new ModelCertificationError("Execution Model Profile 尚未声明为 AVAILABLE。");
+  }
+  const resolved = await verifyModelExecutionCertificationClaims(
+    await authority.resolve(profile.certification_receipt_ref),
+  );
+  if (!(await authority.verifyCommitted(profile.certification_receipt_ref))) {
+    throw new ModelCertificationError("Execution Certification Receipt 尚未提交。");
+  }
+  const executionProfileHash = await computeModelExecutionProfileHash(profile);
+  if (
+    artifactReferenceIdentity(resolved.receipt_ref) !==
+      artifactReferenceIdentity(profile.certification_receipt_ref) ||
+    resolved.profile_id !== profile.profile_id ||
+    resolved.model_config_version !== profile.model_config_version ||
+    resolved.provider !== profile.provider ||
+    resolved.model_id !== profile.model_id ||
+    resolved.profile_version !== profile.profile_version ||
+    resolved.adapter_version !== profile.adapter_version ||
+    resolved.execution_profile_hash !== executionProfileHash ||
+    JSON.stringify(resolved.execution_profile_snapshot) !==
+      JSON.stringify(projectModelExecutionProfileSnapshot(profile)) ||
+    JSON.stringify(resolved.recovery_capabilities) !==
+      JSON.stringify(profile.recovery_capabilities) ||
+    JSON.stringify(resolved.connection) !== JSON.stringify(profile.connection)
+  ) {
+    throw new ModelCertificationError("Execution Certification Claims 与 exact Profile 不一致。");
+  }
+  availableExecutionModelProfiles.add(profile);
+  return deepFreeze(profile) as AvailableExecutionModelProfile;
+}
+
+export function isAvailableExecutionModelProfile(
+  input: unknown,
+): input is AvailableExecutionModelProfile {
+  return typeof input === "object" && input !== null && availableExecutionModelProfiles.has(input);
+}
 
 export async function computeModelProfileHash(input: unknown): Promise<`sha256:${string}`> {
   const profile = modelProfileSchema.parse(input);
@@ -359,4 +641,7 @@ export const externalAgentProfileSchema = z.strictObject({
 
 export type ModelProvider = z.infer<typeof modelProviderSchema>;
 export type ModelProfile = z.infer<typeof modelProfileSchema>;
+export type ModelExecutionProfile = z.infer<typeof modelExecutionProfileSchema>;
 export type ExternalAgentProfile = z.infer<typeof externalAgentProfileSchema>;
+
+export * from "./provider-invocation.js";

@@ -22,6 +22,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Test Center 与系统模型](./benchmark-test-center.md) | 环境模型、题库安装、密封 Oracle、反省与 Holdout 发布门禁 | 已建立 |
 | [Semantic Relationship Index](./semantic-relationship-index.md) | PostgreSQL 权威、Neo4j 投影、搜索回退与索引器闭环 | 已建立 |
 | [Q&A 对话资源绑定](./qa-conversation-resource-binding.md) | Composer、Conversation 冻结、Run 快照与 Worker 发布门禁 | 已建立，真实执行 HOLD |
+| [Provider Invocation Authority](./provider-invocation-authority.md) | U2 配置到 Provider Intent、Dispatch、Response、Usage 的持久权威链 | 已建立 |
 | [本地开发与 Docker 运行模式](./local-runtime-modes.md) | 数据库容器、本地 watch、完整部署与迁移门禁 | 已建立 |
 | [Python Sandbox 执行](./python-sandbox-execution.md) | 模型 Python 源码、隔离运行、资源预算、Receipt 与失败关闭 | 设计冻结，未实现 |
 | [质量规范](./quality-guidelines.md) | 类型、测试、边界与审查门禁 | 已建立 |

@@ -9,6 +9,10 @@ import {
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createRunWorkerRunner, type RunWorkflowExecutorPort } from "../../src/runs/index.js";
+import {
+  hasRunProviderDispatchCapability,
+  type RunBoundProviderDispatcher,
+} from "../../src/runs/run-execution-context.js";
 import { InMemoryRunRuntime } from "./support/in-memory-run-runtime.js";
 
 const ids = {
@@ -295,6 +299,7 @@ async function runHarness(input: {
   workerLease: RunWorkLease;
   loader: (lease: RunWorkLease) => Promise<PortResult<unknown>>;
   executor?: RunWorkflowExecutorPort;
+  providerDispatch?: RunBoundProviderDispatcher;
 }) {
   const runtime = new InMemoryRunRuntime();
   await runtime.seed(acceptedEvent());
@@ -311,6 +316,7 @@ async function runHarness(input: {
     event_store: runtime,
     executor,
     effective_config_loader: input.loader,
+    ...(input.providerDispatch ? { provider_dispatch: input.providerDispatch } : {}),
     now: () => new Date("2026-08-16T10:01:00.000Z"),
     create_id: vi.fn(() => crypto.randomUUID()),
   });
@@ -319,6 +325,51 @@ async function runHarness(input: {
 }
 
 describe("U2 Worker effective config boundary", () => {
+  it("injects only an opaque audited dispatch capability after config/context verification", async () => {
+    const config = await effectiveConfig();
+    const workerLease = lease(config);
+    const loaded = await consumption(workerLease, config);
+    const providerDispatch = {
+      invoke: vi.fn(async () => ({
+        ok: false as const,
+        error: { code: "PROVIDER_FAKE_TERMINAL", message: "fake", retryable: false },
+      })),
+    } satisfies RunBoundProviderDispatcher;
+    const executor: RunWorkflowExecutorPort = {
+      async execute({ context }) {
+        const capability = context.getProviderDispatchCapability();
+        expect(hasRunProviderDispatchCapability(capability)).toBe(true);
+        expect(capability).not.toHaveProperty("transport");
+        expect(capability).not.toHaveProperty("invocation_store");
+        expect(hasRunProviderDispatchCapability({ invoke: vi.fn() })).toBe(false);
+        if (!capability) throw new Error("provider capability missing");
+        await capability.invoke({ logical_call_id: ids.command });
+        await expect(capability.invoke({ logical_call_id: ids.command })).resolves.toMatchObject({
+          ok: false,
+          error: { code: "PROVIDER_CALL_LIMIT_EXCEEDED", retryable: false },
+        });
+        return { kind: "COMPLETED" };
+      },
+    };
+
+    const { result } = await runHarness({
+      workerLease,
+      loader: async () => ({ ok: true, value: loaded }),
+      executor,
+      providerDispatch,
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { kind: "COMPLETED" } });
+    expect(providerDispatch.invoke).toHaveBeenCalledOnce();
+    expect(providerDispatch.invoke).toHaveBeenCalledWith({
+      signal: expect.any(AbortSignal),
+      lease: workerLease,
+      effective_config: config,
+      context_receipt: loaded.context_receipt,
+      logical_call_id: ids.command,
+    });
+  });
+
   it("revalidates before reading projection or settling a terminal queue row", async () => {
     const config = await effectiveConfig();
     const workerLease = lease(config);

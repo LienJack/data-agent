@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { appScopeSchema } from "../../common/index.js";
-import { artifactReferenceIdentity } from "../envelope.js";
+import { appScopeSchema, sha256ContentHash } from "../../common/index.js";
+import { artifactReferenceIdentity, artifactReferenceSchema } from "../envelope.js";
 import { modelProfileReferenceSchema } from "./planning.js";
 import {
   addUniqueIssues,
@@ -155,3 +155,101 @@ export type ModelInvocationReservationBinding = z.infer<
   typeof modelInvocationReservationBindingSchema
 >;
 export type AgentDataProjectionReceipt = z.infer<typeof agentDataProjectionReceiptSchema>;
+
+const agentDataProjectionReceiptV2DraftSchema = z
+  .strictObject({
+    artifact_type: z.literal("AgentDataProjectionReceipt"),
+    protocol_version: z.literal("agent-data-projection@2.0.0"),
+    receipt_id: immutableIdSchema,
+    scope: appScopeSchema,
+    run_id: immutableIdSchema,
+    request_id: immutableIdSchema,
+    principal_id: principalIdSchema,
+    model_execution_profile_hash: contentHashSchema,
+    input_refs: z.array(artifactReferenceSchema).min(1).max(64),
+    approved_fields: z.array(nonEmptyTextSchema).min(1).max(256),
+    classification: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED", "SECRET"]),
+    payload_hash: contentHashSchema,
+    token_bound_policy_version: z.literal("utf8-byte-upper-bound@1.0.0"),
+    trusted_input_token_upper_bound: nonNegativeIntSchema,
+    redaction: z.strictObject({
+      count: nonNegativeIntSchema,
+      policy_version: versionIdentifierSchema,
+    }),
+    dlp: z.strictObject({
+      status: z.literal("PASS"),
+      policy_version: versionIdentifierSchema,
+    }),
+    taint: z.strictObject({
+      policy_version: versionIdentifierSchema,
+      taint_hash: contentHashSchema,
+    }),
+  })
+  .superRefine((receipt, ctx) => {
+    if (receipt.receipt_id !== receipt.request_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Projection v2 receipt_id 必须等于 logical Provider invocation request_id。",
+        path: ["receipt_id"],
+      });
+    }
+    receipt.input_refs.forEach((reference, index) => {
+      const identity = artifactReferenceIdentity(reference);
+      const previous = receipt.input_refs[index - 1];
+      if (previous && artifactReferenceIdentity(previous) >= identity) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Projection input refs 必须唯一且规范排序。",
+          path: ["input_refs", index],
+        });
+      }
+      if (
+        reference.app_id !== receipt.scope.app_id ||
+        reference.tenant_id !== receipt.scope.tenant_id ||
+        reference.environment !== receipt.scope.environment ||
+        reference.run_id !== receipt.run_id
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Projection input ref 必须同 Scope/Run。",
+          path: ["input_refs", index],
+        });
+      }
+    });
+    receipt.approved_fields.forEach((field, index) => {
+      const previous = receipt.approved_fields[index - 1];
+      if (previous !== undefined && previous >= field) {
+        ctx.addIssue({
+          code: "custom",
+          message: "approved_fields 必须唯一且规范排序。",
+          path: ["approved_fields", index],
+        });
+      }
+    });
+  });
+
+export const agentDataProjectionReceiptV2Schema =
+  agentDataProjectionReceiptV2DraftSchema.safeExtend({ receipt_hash: contentHashSchema });
+
+export async function computeAgentDataProjectionReceiptV2Hash(input: unknown) {
+  return sha256ContentHash(agentDataProjectionReceiptV2DraftSchema.parse(input));
+}
+
+export async function buildAgentDataProjectionReceiptV2Candidate(input: unknown) {
+  const receipt = agentDataProjectionReceiptV2DraftSchema.parse(input);
+  return agentDataProjectionReceiptV2Schema.parse({
+    ...receipt,
+    receipt_hash: await computeAgentDataProjectionReceiptV2Hash(receipt),
+  });
+}
+
+export async function verifyAgentDataProjectionReceiptV2Candidate(input: unknown) {
+  const receipt = agentDataProjectionReceiptV2Schema.parse(input);
+  const { receipt_hash: _receiptHash, ...draft } = receipt;
+  if ((await computeAgentDataProjectionReceiptV2Hash(draft)) !== receipt.receipt_hash) {
+    throw new TypeError("AGENT_DATA_PROJECTION_RECEIPT_HASH_MISMATCH");
+  }
+  return receipt;
+}
+
+export type AgentDataProjectionReceiptV2 = z.infer<typeof agentDataProjectionReceiptV2Schema>;

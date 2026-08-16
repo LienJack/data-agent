@@ -6,6 +6,7 @@ import {
   authorizeAvailableModelProfile,
   type ModelCertificationClaims,
   modelCertificationClaimsSchema,
+  type modelExecutionCertificationClaimsSchema,
   modelProfileSchema,
   type PortResult,
 } from "@data-agent/contracts";
@@ -25,7 +26,7 @@ const coreInputSchema = z.strictObject({
 
 export interface ModelCertificationReceiptStore {
   commit(
-    claims: ModelCertificationClaims,
+    claims: ModelCertificationClaims | z.infer<typeof modelExecutionCertificationClaimsSchema>,
     options: { readonly worker_fence: number },
   ): Promise<PortResult<ArtifactReference>>;
   resolve(reference: ArtifactReference): Promise<PortResult<unknown | null>>;

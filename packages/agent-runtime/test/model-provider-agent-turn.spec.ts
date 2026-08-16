@@ -89,7 +89,14 @@ describe("ModelProviderAgentTurnAdapter", () => {
           event_type: "COMPLETED",
           output_text: "",
           response_hash: hash,
-          usage: { input_tokens: 10, output_tokens: 5, tool_calls: 1 },
+          usage: {
+            availability: "AVAILABLE",
+            source: "PROVIDER_REPORTED",
+            input_tokens: 10,
+            output_tokens: 5,
+            tool_calls: 1,
+            unavailable_reason: null,
+          },
         },
       ]),
       async create_invocation(material) {

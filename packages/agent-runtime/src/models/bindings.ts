@@ -1,9 +1,12 @@
 import {
+  contentHashSchema,
   MODEL_PROVIDERS,
   type ModelProvider,
   modelCapabilitiesSchema,
   modelOperationalConstraintsSchema,
   modelProviderSchema,
+  providerInvocationConnectionProofSchema,
+  providerInvocationRecoveryCapabilitiesSchema,
   UNVERIFIED_MODEL_OPERATIONAL_CONSTRAINTS,
   versionIdentifierSchema,
 } from "@data-agent/contracts";
@@ -33,6 +36,60 @@ const providerBindingSchema = z.strictObject({
 });
 
 export type ModelProviderBinding = z.infer<typeof providerBindingSchema>;
+
+export const modelProviderExecutionBindingSchema = providerBindingSchema
+  .safeExtend({
+    model_config_version: z.number().int().positive().safe(),
+    profile_version: versionIdentifierSchema,
+    model_resource_hash: contentHashSchema,
+    execution_profile_hash: contentHashSchema,
+    recovery_capabilities: providerInvocationRecoveryCapabilitiesSchema,
+    connection: providerInvocationConnectionProofSchema,
+  })
+  .superRefine((binding, ctx) => {
+    if (binding.profile_version !== `model-profile@${binding.model_config_version}`) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Execution binding 必须绑定 exact Catalog config version。",
+        path: ["profile_version"],
+      });
+    }
+    if (
+      binding.connection.kind === "SYSTEM_DEPLOYMENT" &&
+      binding.connection.deployment_id === binding.profile_id
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "System deployment identity 不能由 profile_id 冒充。",
+        path: ["connection", "deployment_id"],
+      });
+    }
+  });
+
+export type ModelProviderExecutionBinding = z.infer<typeof modelProviderExecutionBindingSchema>;
+
+export function createModelProviderExecutionBinding(input: {
+  readonly template: ModelProviderBinding;
+  readonly model_config_version: number;
+  readonly model_id: string;
+  readonly model_resource_hash: string;
+  readonly execution_profile_hash: string;
+  readonly recovery_capabilities: readonly string[];
+  readonly connection: unknown;
+  readonly operational_constraints: unknown;
+}): ModelProviderExecutionBinding {
+  return modelProviderExecutionBindingSchema.parse({
+    ...input.template,
+    model_config_version: input.model_config_version,
+    default_model_id: input.model_id,
+    profile_version: `model-profile@${input.model_config_version}`,
+    model_resource_hash: input.model_resource_hash,
+    execution_profile_hash: input.execution_profile_hash,
+    recovery_capabilities: input.recovery_capabilities,
+    connection: input.connection,
+    operational_constraints: input.operational_constraints,
+  });
+}
 
 const providerBindingOverrideSchema = z.strictObject({
   provider: modelProviderSchema,
@@ -78,7 +135,7 @@ const bindingInputs = [
     profile_id: "30000000-0000-4000-8000-000000000003",
     sdk_package: "@ai-sdk/deepseek",
     credential_env: "DEEPSEEK_API_KEY",
-    default_model_id: "deepseek-v4-pro",
+    default_model_id: "deepseek-v4-flash",
     base_url: "https://api.deepseek.com",
     capabilities: {
       structured_output: true,

@@ -4,78 +4,53 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 const ids = {
+  app: "00000000-0000-4000-8000-00000000da01",
   workspace: "00000000-0000-4000-8000-00000000aa01",
   principal: "00000000-0000-4000-8000-000000001001",
   deployment: "00000000-0000-4000-8000-00000000de01",
   profile: "30000000-0000-4000-8000-000000000003",
+  certification: "30000000-0000-4000-8000-000000000004",
+  certificationRun: "30000000-0000-4000-8000-000000000005",
 } as const;
 
-const systemModel = {
-  profile: {
-    id: ids.profile,
-    name: "DeepSeek 系统模型",
-    vendorId: "deepseek" as const,
-    provider: "deepseek" as const,
-    modelName: "deepseek-v4-pro",
-    source: "environment" as const,
-    isSystemModel: true,
-    isSystemDefault: true,
-    connectionStatus: "configured" as const,
-    apiKeyMasked: "由环境变量托管",
-    baseUrl: "https://api.deepseek.com",
-    createdAt: "2026-08-16T00:00:00.000Z",
-    updatedAt: "2026-08-16T00:00:00.000Z",
-  },
-  capabilities: {
-    structured_output: true,
-    tool_calling: true,
-    streaming: true,
-    reasoning: true,
-    vision: false,
-  },
-  credential: "must-never-cross-route-boundary",
-};
-
-const catalogModel = {
-  schema_version: "model-catalog-entry@1.0.0" as const,
-  app_id: "00000000-0000-4000-8000-00000000da01",
-  environment: "local",
+const hash = (value: string) => `sha256:${value.repeat(64)}` as const;
+const executionProfile = {
   model_profile_id: ids.profile,
+  model_config_version: 1,
+  resource_hash: hash("a"),
+  profile_version: "model-profile@1",
   provider: "deepseek" as const,
-  model_id: "deepseek-v4-pro",
-  display_name: "DeepSeek 系统模型",
-  base_url: "https://api.deepseek.com",
-  capabilities: systemModel.capabilities,
-  credential_ref: null,
-  status: "ACTIVE" as const,
-  config_version: 1,
-  is_system_default: true,
-  created_by: ids.principal,
-  created_at: "2026-08-16T00:00:00.000Z",
-  updated_at: "2026-08-16T00:00:00.000Z",
+  model_id: "deepseek-v4-flash",
+  display_name: "DeepSeek V4 Flash",
+  adapter_version: "model-provider-adapter@1.0.0",
+  certification_receipt_ref: {
+    artifact_id: ids.certification,
+    artifact_type: "ModelCertificationReceipt" as const,
+    app_id: ids.app,
+    tenant_id: ids.workspace,
+    environment: "test",
+    run_id: ids.certificationRun,
+    revision: 1,
+    content_hash: hash("b"),
+  },
+  execution_profile_hash: hash("c"),
+  recovery_capabilities: ["INVOCATION_RECONCILIATION" as const],
+  connection: {
+    kind: "SYSTEM_DEPLOYMENT" as const,
+    deployment_id: ids.deployment,
+    deployment_revision: 1,
+    deployment_hash: hash("d"),
+  },
+  effective_context_ceiling_tokens: 16_000,
+  effective_output_ceiling_tokens: 4_000,
+  readiness: "AVAILABLE" as const,
+  selectable: true as const,
+  unavailable_reason: null,
 };
 
 const mocks = vi.hoisted(() => ({
-  syncEnvironmentModels: vi.fn(),
+  listExecutionProfiles: vi.fn(),
   listDatasources: vi.fn(),
-}));
-
-vi.mock("@/lib/system-models", () => ({
-  resolveSystemModelsFromProcess: () => [systemModel],
-  createEnvironmentModelCatalogSyncInput: () => ({
-    schema_version: "environment-model-catalog-sync@1.0.0",
-    models: [
-      {
-        model_profile_id: systemModel.profile.id,
-        provider: systemModel.profile.provider,
-        model_id: systemModel.profile.modelName,
-        display_name: systemModel.profile.name,
-        base_url: systemModel.profile.baseUrl,
-        capabilities: systemModel.capabilities,
-        is_system_default: true,
-      },
-    ],
-  }),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -90,11 +65,10 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
-  getPricingControlRepository: () => ({
-    syncEnvironmentModels: mocks.syncEnvironmentModels,
+  getProviderInvocationStore: () => ({
+    listExecutionProfiles: mocks.listExecutionProfiles,
   }),
   getWorkspaceDataRepository: () => ({ listDatasources: mocks.listDatasources }),
-  getWorkspaceDeploymentId: () => ids.deployment,
 }));
 
 let GET: typeof import("../src/app/api/workspaces/[workspaceId]/qa/resources/route").GET;
@@ -104,14 +78,14 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
-  mocks.syncEnvironmentModels.mockReset();
+  mocks.listExecutionProfiles.mockReset();
   mocks.listDatasources.mockReset();
-  mocks.syncEnvironmentModels.mockResolvedValue({ ok: true, value: [catalogModel] });
+  mocks.listExecutionProfiles.mockResolvedValue({ ok: true, value: [executionProfile] });
   mocks.listDatasources.mockResolvedValue({ ok: true, value: [] });
 });
 
 describe("Q&A resource route", () => {
-  it("syncs environment profiles before returning a runnable secret-free model", async () => {
+  it("returns the pricing-free PostgreSQL execution readiness projection", async () => {
     const response = await GET(
       new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/qa/resources`),
       { params: Promise.resolve({ workspaceId: ids.workspace }) },
@@ -122,14 +96,12 @@ describe("Q&A resource route", () => {
     expect(payload.data.models).toEqual([
       expect.objectContaining({
         model_profile_id: ids.profile,
-        readiness: "RUNNABLE",
+        model_id: "deepseek-v4-flash",
+        readiness: "AVAILABLE",
         selectable: true,
       }),
     ]);
-    expect(mocks.syncEnvironmentModels).toHaveBeenCalledOnce();
-    expect(JSON.stringify(mocks.syncEnvironmentModels.mock.calls)).not.toContain(
-      systemModel.credential,
-    );
-    expect(JSON.stringify(payload)).not.toContain(systemModel.credential);
+    expect(mocks.listExecutionProfiles).toHaveBeenCalledOnce();
+    expect(JSON.stringify(payload)).not.toMatch(/credential|pricing|billing|credit/iu);
   });
 });

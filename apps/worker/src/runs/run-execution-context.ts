@@ -1,5 +1,6 @@
 import {
   type ContextReceiptBinding,
+  canonicalImmutableIdSchema,
   type EffectiveRunConfigReceiptCandidate,
   type MastraSnapshotBinding,
   mastraSnapshotBindingBodySchema,
@@ -12,6 +13,7 @@ import {
   sha256ContentHash,
   sideEffectReceiptSchema,
 } from "@data-agent/contracts";
+import type { AuditedModelProviderResult } from "../providers/audited-model-provider.js";
 import type { RunDisplayEventInput, RunExecutionContext } from "./run-worker-runner.js";
 import { failure, occurredAt, receiptMatchesRequest, success } from "./run-worker-shared.js";
 
@@ -21,6 +23,31 @@ export type RunExecutionContextProvenance = Readonly<{
 }>;
 
 const trustedRunExecutionContexts = new WeakSet<object>();
+const trustedProviderDispatchCapabilities = new WeakSet<object>();
+
+export interface RunProviderDispatchCapability {
+  invoke(input: {
+    readonly logical_call_id: string;
+  }): Promise<PortResult<AuditedModelProviderResult>>;
+}
+
+export interface RunBoundProviderDispatcher {
+  invoke(input: {
+    readonly lease: RunWorkLease;
+    readonly effective_config: EffectiveRunConfigReceiptCandidate;
+    readonly context_receipt: ContextReceiptBinding;
+    readonly logical_call_id: string;
+    readonly signal: AbortSignal;
+  }): Promise<PortResult<AuditedModelProviderResult>>;
+}
+
+export function hasRunProviderDispatchCapability(
+  input: unknown,
+): input is RunProviderDispatchCapability {
+  return (
+    typeof input === "object" && input !== null && trustedProviderDispatchCapabilities.has(input)
+  );
+}
 
 export function hasRunExecutionContextProvenance(input: unknown): input is RunExecutionContext {
   return typeof input === "object" && input !== null && trustedRunExecutionContexts.has(input);
@@ -38,6 +65,7 @@ interface RunExecutionContextDependencies {
   readonly now: () => Date;
   readonly create_id: () => string;
   readonly side_effect_timeout_ms: number;
+  readonly provider_dispatch: RunBoundProviderDispatcher | null;
   readonly heartbeat: () => Promise<PortResult<{ readonly expires_at: string }>>;
   readonly guard_running_lease: (
     lease: RunWorkLease,
@@ -63,6 +91,7 @@ export function createRunExecutionContext({
   now,
   create_id: createId,
   side_effect_timeout_ms: sideEffectTimeoutMs,
+  provider_dispatch: providerDispatch,
   heartbeat,
   guard_running_lease: guardRunningLease,
   append_checkpoint_event: appendCheckpointEvent,
@@ -76,6 +105,44 @@ export function createRunExecutionContext({
       "Run 执行已因取消、Heartbeat 失败或 Deadline 到期而中止。",
       false,
     );
+  let providerDispatchUsed = false;
+  const providerDispatchCapability = providerDispatch
+    ? Object.freeze({
+        invoke(input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) {
+          if (runSignal.aborted) return Promise.resolve(aborted<AuditedModelProviderResult>());
+          const logicalCallId = canonicalImmutableIdSchema.safeParse(input.logical_call_id);
+          if (!logicalCallId.success) {
+            return Promise.resolve(
+              failure(
+                "PROVIDER_LOGICAL_CALL_ID_INVALID",
+                "Provider logical call ID 必须是 canonical immutable ID。",
+                false,
+              ),
+            );
+          }
+          if (providerDispatchUsed) {
+            return Promise.resolve(
+              failure(
+                "PROVIDER_CALL_LIMIT_EXCEEDED",
+                "当前 Run Execution Context 只允许一次 Provider logical call。",
+                false,
+              ),
+            );
+          }
+          providerDispatchUsed = true;
+          return providerDispatch.invoke({
+            lease,
+            effective_config: effectiveConfig,
+            context_receipt: contextReceipt,
+            logical_call_id: logicalCallId.data,
+            signal: runSignal,
+          });
+        },
+      })
+    : null;
+  if (providerDispatchCapability) {
+    trustedProviderDispatchCapabilities.add(providerDispatchCapability);
+  }
 
   const context = {
     getEffectiveConfig() {
@@ -84,6 +151,10 @@ export function createRunExecutionContext({
 
     getContextReceipt() {
       return contextReceipt;
+    },
+
+    getProviderDispatchCapability() {
+      return providerDispatchCapability;
     },
 
     async emitDisplayEvent(input) {

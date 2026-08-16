@@ -1,5 +1,5 @@
-import { versionIdentifierSchema } from "@data-agent/contracts";
-import type { z } from "zod";
+import { canonicalizeJson, versionIdentifierSchema } from "@data-agent/contracts";
+import { z } from "zod";
 
 export type ServerModelStructuredOutput = Record<string, unknown>;
 
@@ -11,6 +11,7 @@ export interface ServerModelResponseSchemaDescriptor {
 export interface RegisteredServerModelResponseSchema {
   readonly response_schema_version: string;
   readonly schema: z.ZodType<ServerModelStructuredOutput>;
+  readonly canonical_schema_bytes: number;
 }
 
 function parseDescriptor(
@@ -24,9 +25,17 @@ function parseDescriptor(
     throw new TypeError("Server Response Schema Descriptor 必须提供可执行的 Zod Schema。");
   }
 
+  let canonicalSchema: string;
+  try {
+    canonicalSchema = canonicalizeJson(z.toJSONSchema(input.schema));
+  } catch {
+    throw new TypeError("Server Response Schema 必须可确定性转换为 JSON Schema 后才能注册。");
+  }
+
   return Object.freeze({
     response_schema_version: versionIdentifierSchema.parse(input.response_schema_version),
     schema: input.schema,
+    canonical_schema_bytes: Buffer.byteLength(canonicalSchema, "utf8"),
   });
 }
 

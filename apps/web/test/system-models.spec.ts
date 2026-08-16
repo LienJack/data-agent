@@ -28,7 +28,7 @@ describe("environment system models", () => {
     expect(models.map((model) => model.profile.provider)).toEqual(["deepseek", "kimi"]);
     expect(models[0]?.profile).toMatchObject({
       id: "30000000-0000-4000-8000-000000000003",
-      modelName: "deepseek-v4-pro",
+      modelName: "deepseek-v4-flash",
       isSystemDefault: true,
       apiKeyMasked: "由环境变量托管",
     });
@@ -83,16 +83,16 @@ describe("environment system models", () => {
     configureSystemModelRuntimeEnvironment(environment);
 
     expect(environment.TEST_CENTER_MODEL_PROVIDER).toBe("deepseek");
-    expect(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES).toContain("deepseek-v4-pro");
+    expect(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES).toContain("deepseek-v4-flash");
     expect(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES).toContain("kimi-k3");
     expect(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES).not.toContain("secret");
     const overrides = JSON.parse(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES ?? "[]") as Array<{
       provider: string;
-      operational_constraints?: { pricing: { currency: string } };
+      operational_constraints?: { pricing: { verification_status: string } };
     }>;
     expect(overrides[0]).toMatchObject({
       provider: "deepseek",
-      operational_constraints: { pricing: { currency: "USD" } },
+      operational_constraints: { pricing: { verification_status: "UNVERIFIED" } },
     });
   });
 
@@ -107,7 +107,7 @@ describe("environment system models", () => {
     expect(command.models.map((model) => model.provider)).toEqual(["deepseek", "kimi"]);
     expect(command.models[0]).toMatchObject({
       model_profile_id: "30000000-0000-4000-8000-000000000003",
-      model_id: "deepseek-v4-pro",
+      model_id: "deepseek-v4-flash",
       is_system_default: true,
     });
     expect(JSON.stringify(command)).not.toContain("deepseek-secret");
@@ -125,7 +125,7 @@ describe("environment system models", () => {
         name: "重复的 DeepSeek 目录模型",
         vendorId: "deepseek",
         provider: "deepseek",
-        modelName: "deepseek-v4-pro",
+        modelName: "deepseek-v4-flash",
         source: "manual",
         isSystemModel: false,
         isSystemDefault: true,

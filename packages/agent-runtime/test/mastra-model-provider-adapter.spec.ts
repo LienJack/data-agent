@@ -59,6 +59,7 @@ async function makeInvocation(input?: {
 function bridgeFrom(chunks: readonly ModelExecutionChunk[]): ModelExecutionBridge {
   return {
     async *stream() {
+      yield { chunk_type: "DISPATCH_READY" };
       for (const chunk of chunks) {
         yield chunk;
       }
@@ -72,6 +73,10 @@ function createAdapter(bridge: ModelExecutionBridge): MastraModelProviderAdapter
     clock: {
       now: () => observedAt,
     },
+    dispatch_marker: {
+      mark_dispatched: async () => undefined,
+    },
+    authorization: "LEGACY_TEST_ONLY",
   });
 }
 
@@ -106,9 +111,10 @@ describe("MastraModelProviderAdapter", () => {
             chunk_type: "COMPLETED",
             output_text: "结论",
             usage: {
+              availability: "AVAILABLE",
               input_tokens: 12,
               output_tokens: 2,
-              tool_calls: 1,
+              observed_tool_calls: 1,
             },
           },
         ]),
@@ -127,6 +133,105 @@ describe("MastraModelProviderAdapter", () => {
       events.filter((event) => event.event_type === "COMPLETED" || event.event_type === "FAILED"),
     ).toHaveLength(1);
     expect(events.every((event) => event.request_id === invocation.request_id)).toBe(true);
+  });
+
+  it("completes successfully with explicit UNAVAILABLE usage when Provider omits counts", async () => {
+    const invocation = await makeInvocation();
+    const events = await collect(
+      createAdapter(
+        bridgeFrom([
+          {
+            chunk_type: "COMPLETED",
+            output_text: "仍可提交的结果",
+            usage: {
+              availability: "UNAVAILABLE",
+              reason: "PROVIDER_DID_NOT_REPORT_USAGE",
+              observed_tool_calls: 0,
+            },
+          },
+        ]),
+      ),
+      invocation,
+    );
+
+    expect(events.at(-1)).toMatchObject({
+      event_type: "COMPLETED",
+      usage: {
+        availability: "UNAVAILABLE",
+        source: "UNAVAILABLE",
+        input_tokens: null,
+        output_tokens: null,
+        tool_calls: null,
+        unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE",
+      },
+    });
+  });
+
+  it("does not resume the transport bridge until durable dispatch marking succeeds", async () => {
+    const invocation = await makeInvocation();
+    let networkCalls = 0;
+    let releaseMarker: (() => void) | undefined;
+    const marker = new Promise<void>((resolve) => {
+      releaseMarker = resolve;
+    });
+    const adapter = new MastraModelProviderAdapter({
+      bridge: {
+        async *stream() {
+          yield { chunk_type: "DISPATCH_READY" };
+          networkCalls += 1;
+          yield {
+            chunk_type: "COMPLETED",
+            output_text: "ok",
+            usage: {
+              availability: "AVAILABLE",
+              input_tokens: 1,
+              output_tokens: 1,
+              observed_tool_calls: 0,
+            },
+          };
+        },
+      },
+      clock: { now: () => observedAt },
+      dispatch_marker: { mark_dispatched: async () => marker },
+      authorization: "LEGACY_TEST_ONLY",
+    });
+    const iterator = adapter.stream(invocation)[Symbol.asyncIterator]();
+    const firstEventPromise = iterator.next();
+    await Promise.resolve();
+    expect(networkCalls).toBe(0);
+    releaseMarker?.();
+    const first = await firstEventPromise;
+    expect(first.value).toMatchObject({ event_type: "STARTED" });
+    expect(networkCalls).toBe(0);
+    const second = await iterator.next();
+    expect(second.value).toMatchObject({ event_type: "COMPLETED" });
+    expect(networkCalls).toBe(1);
+  });
+
+  it("keeps network calls at zero when durable dispatch marking fails", async () => {
+    const invocation = await makeInvocation();
+    let networkCalls = 0;
+    const adapter = new MastraModelProviderAdapter({
+      bridge: {
+        async *stream() {
+          yield { chunk_type: "DISPATCH_READY" };
+          networkCalls += 1;
+        },
+      },
+      dispatch_marker: {
+        mark_dispatched: async () => {
+          throw new Error("db unavailable");
+        },
+      },
+      authorization: "LEGACY_TEST_ONLY",
+    });
+    const events = await collect(adapter, invocation);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      event_type: "FAILED",
+      delivery_certainty: "NOT_DISPATCHED",
+    });
+    expect(networkCalls).toBe(0);
   });
 
   it("fails closed when the model requests a tool outside the allowlist", async () => {
@@ -202,9 +307,10 @@ describe("MastraModelProviderAdapter", () => {
             chunk_type: "COMPLETED",
             output_text: "超出预算",
             usage: {
+              availability: "AVAILABLE",
               input_tokens: 1,
               output_tokens: 4,
-              tool_calls: 0,
+              observed_tool_calls: 0,
             },
           },
         ]),
@@ -228,9 +334,10 @@ describe("MastraModelProviderAdapter", () => {
             chunk_type: "COMPLETED",
             output_text: "候选",
             usage: {
+              availability: "AVAILABLE",
               input_tokens: 1,
               output_tokens: 1,
-              tool_calls: 0,
+              observed_tool_calls: 0,
             },
           },
           { chunk_type: "TEXT_DELTA", delta: "迟到数据" },
@@ -285,7 +392,7 @@ describe("MastraModelProviderAdapter", () => {
     };
     const events = await collect(createAdapter(bridge), invocation);
 
-    expect(events[1]).toMatchObject({
+    expect(events[0]).toMatchObject({
       event_type: "FAILED",
       reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
       retryable: false,
@@ -312,7 +419,7 @@ describe("MastraModelProviderAdapter", () => {
 
     const events = await collect(createAdapter(bridge), invocation);
 
-    expect(events[1]).toMatchObject({
+    expect(events[0]).toMatchObject({
       event_type: "FAILED",
       reason_code: "MODEL_PROVIDER_TIMEOUT",
       retryable: true,
@@ -332,13 +439,38 @@ describe("MastraModelProviderAdapter", () => {
     const events = await collect(createAdapter(bridge), invocation);
     const serialized = JSON.stringify(events);
 
-    expect(events[1]).toMatchObject({
+    expect(events[0]).toMatchObject({
       event_type: "FAILED",
       reason_code: "MODEL_PROVIDER_EXECUTION_FAILED",
       retryable: true,
     });
     expect(serialized).not.toContain("sk-private-value");
     expect(serialized).not.toContain("Authorization");
+  });
+
+  it("classifies an explicit provider 429 as THROTTLED with known delivery", async () => {
+    const invocation = await makeInvocation();
+    const bridge: ModelExecutionBridge = {
+      async *stream() {
+        yield { chunk_type: "DISPATCH_READY" };
+        throw {
+          [Symbol.for("vercel.ai.error.AI_APICallError")]: true,
+          statusCode: 429,
+          isRetryable: true,
+          retryAfterMs: 2_000,
+          responseBody: "secret provider body",
+        };
+      },
+    };
+    const events = await collect(createAdapter(bridge), invocation);
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      event_type: "THROTTLED",
+      reason_code: "MODEL_PROVIDER_THROTTLED",
+      delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+      retry_after_ms: 2_000,
+    });
+    expect(JSON.stringify(events)).not.toContain("secret provider body");
   });
 
   it("rejects runtime casts that did not pass invocation authorization", async () => {
@@ -353,9 +485,10 @@ describe("MastraModelProviderAdapter", () => {
               chunk_type: "COMPLETED",
               output_text: "",
               usage: {
+                availability: "AVAILABLE",
                 input_tokens: 0,
                 output_tokens: 0,
-                tool_calls: 0,
+                observed_tool_calls: 0,
               },
             },
           ]),
@@ -365,5 +498,24 @@ describe("MastraModelProviderAdapter", () => {
     ).rejects.toMatchObject({
       code: "MODEL_PROVIDER_REQUEST_NOT_AUTHORIZED",
     });
+  });
+
+  it("production authorization rejects even a legacy-authorized request without persistent permit", async () => {
+    const legacyInvocation = await makeInvocation();
+    let bridgeCalls = 0;
+    const adapter = new MastraModelProviderAdapter({
+      bridge: {
+        async *stream() {
+          bridgeCalls += 1;
+          yield { chunk_type: "DISPATCH_READY" };
+        },
+      },
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "PERSISTENT_PERMIT",
+    });
+    await expect(collect(adapter, legacyInvocation)).rejects.toMatchObject({
+      code: "MODEL_PROVIDER_REQUEST_NOT_AUTHORIZED",
+    });
+    expect(bridgeCalls).toBe(0);
   });
 });

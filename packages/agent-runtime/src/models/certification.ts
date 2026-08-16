@@ -2,17 +2,27 @@ import {
   type AppScope,
   type ArtifactReference,
   appScopeSchema,
+  buildModelExecutionCertificationClaims,
+  computeModelExecutionProfileHash,
   computeModelProfileHash,
   deepFreeze,
   type ModelCertificationClaims,
+  type ModelExecutionProfile,
   type ModelProfile,
   modelCertificationClaimsSchema,
+  type modelExecutionCertificationClaimsSchema,
+  modelExecutionProfileSchema,
   modelProfileSchema,
+  projectModelExecutionProfileSnapshot,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { z } from "zod";
-import type { ModelProviderBinding } from "./bindings.js";
+import type { ModelProviderBinding, ModelProviderExecutionBinding } from "./bindings.js";
 import { isAuthorizedProviderCredentialedSmoke } from "./credentialed-smoke-authority.js";
+import {
+  type AuthoritativeGoalPreflightEvidence,
+  isAuthoritativeGoalPreflightEvidence,
+} from "./goal-preflight-evidence.internal.js";
 
 export const PROVIDER_CONFORMANCE_CHECKS = [
   "request_shape",
@@ -241,5 +251,153 @@ export function isAuthoritativeModelCertificationReceiptDraft(
     typeof input === "object" &&
     input !== null &&
     authoritativeModelCertificationReceiptDrafts.has(input)
+  );
+}
+
+const authoritativeExecutionProviderProbes = new WeakSet<object>();
+declare const authoritativeExecutionCertificationReceiptDraft: unique symbol;
+const authoritativeExecutionCertificationReceiptDrafts = new WeakSet<object>();
+
+export type ExecutionProviderProbeResult = Readonly<{
+  certification_status: "PENDING_RECEIPT_COMMIT";
+  reason_code: "CREDENTIAL_SMOKE_PASSED";
+  execution_profile: ModelExecutionProfile;
+  execution_profile_hash: `sha256:${string}`;
+  probe_hash: `sha256:${string}`;
+  checks: z.infer<typeof smokeResultSchema>["checks"];
+}>;
+
+function createExecutionUnverifiedProfile(
+  binding: ModelProviderExecutionBinding,
+  scope: AppScope,
+): ModelExecutionProfile {
+  return modelExecutionProfileSchema.parse({
+    profile_id: binding.profile_id,
+    scope,
+    provider: binding.provider,
+    model_id: binding.default_model_id,
+    model_config_version: binding.model_config_version,
+    profile_version: binding.profile_version,
+    adapter_version: binding.adapter_version,
+    recovery_capabilities: binding.recovery_capabilities,
+    connection: binding.connection,
+    capabilities: binding.capabilities,
+    operational_constraints: binding.operational_constraints,
+    certification_status: "UNVERIFIED",
+  });
+}
+
+export async function probeExecutionModelProvider(input: {
+  readonly binding: ModelProviderExecutionBinding;
+  readonly scope: AppScope;
+  readonly resolve_credential: ProviderCredentialResolver;
+  readonly smoke: ProviderCredentialedSmoke;
+}): Promise<ProviderProbeResult | ExecutionProviderProbeResult> {
+  const base = await probeModelProvider(input);
+  if (base.certification_status !== "PENDING_RECEIPT_COMMIT") return base;
+  const executionProfile = createExecutionUnverifiedProfile(input.binding, input.scope);
+  const executionProfileHash = await computeModelExecutionProfileHash(executionProfile);
+  const result = deepFreeze({
+    certification_status: "PENDING_RECEIPT_COMMIT" as const,
+    reason_code: "CREDENTIAL_SMOKE_PASSED" as const,
+    execution_profile: executionProfile,
+    execution_profile_hash: executionProfileHash,
+    probe_hash: await sha256ContentHash({
+      probe_version: "model-execution-probe@1.0.0",
+      provider: input.binding.provider,
+      model_id: input.binding.default_model_id,
+      model_config_version: input.binding.model_config_version,
+      execution_profile_hash: executionProfileHash,
+      checks: base.checks,
+    }),
+    checks: base.checks,
+  });
+  authoritativeExecutionProviderProbes.add(result);
+  return result;
+}
+
+export type AuthoritativeExecutionCertificationReceiptDraft = z.infer<
+  typeof modelExecutionCertificationClaimsSchema
+> & { readonly [authoritativeExecutionCertificationReceiptDraft]: true };
+
+export async function createExecutionModelCertificationReceiptDraft(input: {
+  readonly probe: ExecutionProviderProbeResult;
+  readonly receipt_ref: ArtifactReference;
+}): Promise<AuthoritativeExecutionCertificationReceiptDraft> {
+  if (!authoritativeExecutionProviderProbes.has(input.probe)) {
+    throw new Error("Execution Certification 只接受本进程 exact credential smoke probe。");
+  }
+  const profile = modelExecutionProfileSchema.parse(input.probe.execution_profile);
+  const { content_hash: _callerContentHash, ...receiptReference } = input.receipt_ref;
+  const draft = deepFreeze(
+    await buildModelExecutionCertificationClaims({
+      schema_version: "model-execution-certification@1.0.0",
+      receipt_ref: receiptReference,
+      profile_id: profile.profile_id,
+      model_config_version: profile.model_config_version,
+      provider: profile.provider,
+      model_id: profile.model_id,
+      profile_version: profile.profile_version,
+      adapter_version: profile.adapter_version,
+      execution_profile_hash: input.probe.execution_profile_hash,
+      execution_profile_snapshot: projectModelExecutionProfileSnapshot(profile),
+      recovery_capabilities: profile.recovery_capabilities,
+      connection: profile.connection,
+      certification_basis: { kind: "CREDENTIAL_SMOKE", probe_hash: input.probe.probe_hash },
+      verdict: "PASS",
+    }),
+  );
+  authoritativeExecutionCertificationReceiptDrafts.add(draft);
+  return draft as AuthoritativeExecutionCertificationReceiptDraft;
+}
+
+export async function createGoalPreflightExecutionCertificationReceiptDraftFromEvidence(input: {
+  readonly profile: ModelExecutionProfile;
+  readonly receipt_ref: ArtifactReference;
+  readonly evidence: AuthoritativeGoalPreflightEvidence;
+}): Promise<AuthoritativeExecutionCertificationReceiptDraft> {
+  const profile = modelExecutionProfileSchema.parse(input.profile);
+  if (!isAuthoritativeGoalPreflightEvidence(input.evidence)) {
+    throw new Error("Execution Certification 只接受 authoritative Goal preflight evidence。");
+  }
+  const basis = input.evidence;
+  if (
+    basis.kind !== "GOAL_PREFLIGHT_ATTESTATION" ||
+    basis.observed_provider !== profile.provider ||
+    basis.observed_model_id !== profile.model_id
+  ) {
+    throw new Error("Goal preflight attestation 与 exact execution profile 不一致。");
+  }
+  const executionProfileHash = await computeModelExecutionProfileHash(profile);
+  const { content_hash: _callerContentHash, ...receiptReference } = input.receipt_ref;
+  const draft = deepFreeze(
+    await buildModelExecutionCertificationClaims({
+      schema_version: "model-execution-certification@1.0.0",
+      receipt_ref: receiptReference,
+      profile_id: profile.profile_id,
+      model_config_version: profile.model_config_version,
+      provider: profile.provider,
+      model_id: profile.model_id,
+      profile_version: profile.profile_version,
+      adapter_version: profile.adapter_version,
+      execution_profile_hash: executionProfileHash,
+      execution_profile_snapshot: projectModelExecutionProfileSnapshot(profile),
+      recovery_capabilities: profile.recovery_capabilities,
+      connection: profile.connection,
+      certification_basis: basis,
+      verdict: "PASS",
+    }),
+  );
+  authoritativeExecutionCertificationReceiptDrafts.add(draft);
+  return draft as AuthoritativeExecutionCertificationReceiptDraft;
+}
+
+export function isAuthoritativeExecutionCertificationReceiptDraft(
+  input: unknown,
+): input is AuthoritativeExecutionCertificationReceiptDraft {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    authoritativeExecutionCertificationReceiptDrafts.has(input)
   );
 }

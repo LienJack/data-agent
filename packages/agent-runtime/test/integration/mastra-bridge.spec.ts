@@ -151,6 +151,108 @@ const validProviderUsage = {
 };
 
 describe("Mastra execution bridge integration", () => {
+  it("keeps the real AI SDK doStream call suspended until durable dispatch marking completes", async () => {
+    const binding = getModelProviderBinding("openai");
+    let streamCalls = 0;
+    let markerEnteredResolve: (() => void) | undefined;
+    let releaseMarker: (() => void) | undefined;
+    const markerEntered = new Promise<void>((resolve) => {
+      markerEnteredResolve = resolve;
+    });
+    const markerRelease = new Promise<void>((resolve) => {
+      releaseMarker = resolve;
+    });
+    const fakeModel = {
+      ...createOfflineStructuredModel(binding, {
+        output_text: '{"summary":"deferred","confidence":0.9}',
+        usage: validProviderUsage,
+      }),
+      doStream: async (options: unknown) => {
+        streamCalls += 1;
+        return createOfflineStructuredModel(binding, {
+          output_text: '{"summary":"deferred","confidence":0.9}',
+          usage: validProviderUsage,
+        }).doStream(options as never);
+      },
+    } as unknown as ReturnType<typeof createProviderRuntimeModel>;
+    const bridge = createMastraModelExecutionBridgeForTesting({
+      credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+      response_schema_registry: responseSchemaRegistry,
+      input_token_counter: trustedInputTokenCounter,
+      runtime_model_factory: (() => fakeModel) as typeof createProviderRuntimeModel,
+    });
+    const adapter = new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: {
+        mark_dispatched: async () => {
+          markerEnteredResolve?.();
+          await markerRelease;
+        },
+      },
+      authorization: "LEGACY_TEST_ONLY",
+    });
+    const iterator = adapter.stream(await makeInvocation(binding))[Symbol.asyncIterator]();
+
+    const firstEvent = iterator.next();
+    await markerEntered;
+    expect(streamCalls).toBe(0);
+    releaseMarker?.();
+    await expect(firstEvent).resolves.toMatchObject({
+      value: { event_type: "STARTED" },
+      done: false,
+    });
+    expect(streamCalls).toBe(0);
+    await iterator.next();
+    expect(streamCalls).toBe(1);
+    await iterator.return?.();
+  });
+
+  it("preserves AI SDK 429 metadata through the real Mastra bridge", async () => {
+    const binding = getModelProviderBinding("openai");
+    const throttled = Object.assign(new Error("must-not-leak"), {
+      [Symbol.for("vercel.ai.error.AI_APICallError")]: true,
+      statusCode: 429,
+      isRetryable: true,
+      retryAfterMs: 3_000,
+      responseBody: "must-not-leak",
+    });
+    const fakeModel = {
+      specificationVersion: "v4",
+      provider: "offline-test",
+      modelId: binding.default_model_id,
+      supportedUrls: {},
+      doGenerate: async () => {
+        throw new Error("The integration uses streaming only.");
+      },
+      doStream: async () => {
+        throw throttled;
+      },
+    } as unknown as ReturnType<typeof createProviderRuntimeModel>;
+    const bridge = createMastraModelExecutionBridgeForTesting({
+      credential_resolver: { resolve: async () => "offline-placeholder-credential" },
+      response_schema_registry: responseSchemaRegistry,
+      input_token_counter: trustedInputTokenCounter,
+      runtime_model_factory: (() => fakeModel) as typeof createProviderRuntimeModel,
+    });
+    const events = [];
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(await makeInvocation(binding))) {
+      events.push(event);
+    }
+
+    expect(events).toHaveLength(2);
+    expect(events[1]).toMatchObject({
+      event_type: "THROTTLED",
+      reason_code: "MODEL_PROVIDER_THROTTLED",
+      delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+      retry_after_ms: 3_000,
+    });
+    expect(JSON.stringify(events)).not.toContain("must-not-leak");
+  });
+
   it("runs the pinned @mastra/core Agent with an offline AI SDK v4 model", async () => {
     const deploymentBindings = createModelProviderBindings([
       {
@@ -247,7 +349,11 @@ describe("Mastra execution bridge integration", () => {
         return fakeModel;
       }) as typeof createProviderRuntimeModel,
     });
-    const adapter = new MastraModelProviderAdapter({ bridge });
+    const adapter = new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    });
     const invocation = await makeInvocation(deploymentBinding);
 
     const events = [];
@@ -285,9 +391,12 @@ describe("Mastra execution bridge integration", () => {
       event_type: "COMPLETED",
       output_text: '{"confidence":0.75,"summary":"离线 Mastra 候选结论"}',
       usage: {
+        availability: "AVAILABLE",
+        source: "PROVIDER_REPORTED",
         input_tokens: 8,
         output_tokens: 5,
         tool_calls: 0,
+        unavailable_reason: null,
       },
     });
   });
@@ -320,9 +429,11 @@ describe("Mastra execution bridge integration", () => {
     });
 
     const events = [];
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
-      await makeInvocation(binding),
-    )) {
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(await makeInvocation(binding))) {
       events.push(event);
     }
 
@@ -356,7 +467,11 @@ describe("Mastra execution bridge integration", () => {
         return createProviderRuntimeModel(binding, credential);
       }) as typeof createProviderRuntimeModel,
     });
-    const adapter = new MastraModelProviderAdapter({ bridge });
+    const adapter = new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    });
     const events = [];
 
     for await (const event of adapter.stream(await makeInvocation(authorizedBinding))) {
@@ -364,8 +479,8 @@ describe("Mastra execution bridge integration", () => {
     }
 
     expect(modelFactoryCalled).toBe(false);
-    expect(events.map((event) => event.event_type)).toEqual(["STARTED", "FAILED"]);
-    expect(events[1]).toMatchObject({
+    expect(events.map((event) => event.event_type)).toEqual(["FAILED"]);
+    expect(events[0]).toMatchObject({
       reason_code: "MODEL_PROVIDER_BINDING_MISMATCH",
       retryable: false,
     });
@@ -396,7 +511,11 @@ describe("Mastra execution bridge integration", () => {
     });
     const events = [];
 
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(
       await makeInvocation(binding, {
         response_schema_version: "9.9.9",
       }),
@@ -406,8 +525,8 @@ describe("Mastra execution bridge integration", () => {
 
     expect(counterCalled).toBe(false);
     expect(modelFactoryCalled).toBe(false);
-    expect(events.map((event) => event.event_type)).toEqual(["STARTED", "FAILED"]);
-    expect(events[1]).toMatchObject({
+    expect(events.map((event) => event.event_type)).toEqual(["FAILED"]);
+    expect(events[0]).toMatchObject({
       reason_code: "MODEL_STREAM_PROTOCOL_VIOLATION",
       retryable: false,
     });
@@ -431,15 +550,17 @@ describe("Mastra execution bridge integration", () => {
     });
     const events = [];
 
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
-      await makeInvocation(binding),
-    )) {
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(await makeInvocation(binding))) {
       events.push(event);
     }
 
     expect(modelFactoryCalled).toBe(false);
-    expect(events.map((event) => event.event_type)).toEqual(["STARTED", "FAILED"]);
-    expect(events[1]).toMatchObject({
+    expect(events.map((event) => event.event_type)).toEqual(["FAILED"]);
+    expect(events[0]).toMatchObject({
       reason_code: "MODEL_USAGE_MISMATCH",
       retryable: false,
     });
@@ -471,9 +592,11 @@ describe("Mastra execution bridge integration", () => {
     });
     const events = [];
 
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
-      await makeInvocation(binding),
-    )) {
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(await makeInvocation(binding))) {
       events.push(event);
     }
 
@@ -506,7 +629,11 @@ describe("Mastra execution bridge integration", () => {
     });
     const events = [];
 
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(
       await makeInvocation(binding, {
         max_input_tokens: 100,
       }),
@@ -538,9 +665,11 @@ describe("Mastra execution bridge integration", () => {
     });
     const events = [];
 
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
-      await makeInvocation(binding),
-    )) {
+    for await (const event of new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    }).stream(await makeInvocation(binding))) {
       events.push(event);
     }
 
@@ -586,34 +715,45 @@ describe("Mastra execution bridge integration", () => {
         },
       },
     ],
-  ])("fails closed when provider %s token usage is returned", async (_label, usage) => {
-    const binding = getModelProviderBinding("openai");
-    const bridge = createMastraModelExecutionBridgeForTesting({
-      credential_resolver: {
-        resolve: async () => "offline-placeholder-credential",
-      },
-      response_schema_registry: responseSchemaRegistry,
-      input_token_counter: trustedInputTokenCounter,
-      runtime_model_factory: (() =>
-        createOfflineStructuredModel(binding, {
-          output_text: '{"summary":"usage 校验","confidence":0.8}',
-          usage,
-        })) as typeof createProviderRuntimeModel,
-    });
-    const events = [];
+  ])(
+    "completes with UNAVAILABLE usage when provider %s token usage is returned",
+    async (_label, usage) => {
+      const binding = getModelProviderBinding("openai");
+      const bridge = createMastraModelExecutionBridgeForTesting({
+        credential_resolver: {
+          resolve: async () => "offline-placeholder-credential",
+        },
+        response_schema_registry: responseSchemaRegistry,
+        input_token_counter: trustedInputTokenCounter,
+        runtime_model_factory: (() =>
+          createOfflineStructuredModel(binding, {
+            output_text: '{"summary":"usage 校验","confidence":0.8}',
+            usage,
+          })) as typeof createProviderRuntimeModel,
+      });
+      const events = [];
 
-    for await (const event of new MastraModelProviderAdapter({ bridge }).stream(
-      await makeInvocation(binding),
-    )) {
-      events.push(event);
-    }
+      for await (const event of new MastraModelProviderAdapter({
+        bridge,
+        dispatch_marker: { mark_dispatched: async () => undefined },
+        authorization: "LEGACY_TEST_ONLY",
+      }).stream(await makeInvocation(binding))) {
+        events.push(event);
+      }
 
-    expect(events.at(-1)).toMatchObject({
-      event_type: "FAILED",
-      reason_code: "MODEL_USAGE_MISMATCH",
-      retryable: false,
-    });
-  });
+      expect(events.at(-1)).toMatchObject({
+        event_type: "COMPLETED",
+        usage: {
+          availability: "UNAVAILABLE",
+          source: "UNAVAILABLE",
+          input_tokens: null,
+          output_tokens: null,
+          tool_calls: null,
+          unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE",
+        },
+      });
+    },
+  );
 
   it("projects an offline Mastra tool call as a candidate without executing it", async () => {
     const binding = getModelProviderBinding("openai");
@@ -695,7 +835,11 @@ describe("Mastra execution bridge integration", () => {
       input_token_counter: trustedInputTokenCounter,
       runtime_model_factory: (() => fakeModel) as typeof createProviderRuntimeModel,
     });
-    const adapter = new MastraModelProviderAdapter({ bridge });
+    const adapter = new MastraModelProviderAdapter({
+      bridge,
+      dispatch_marker: { mark_dispatched: async () => undefined },
+      authorization: "LEGACY_TEST_ONLY",
+    });
     const events = [];
 
     for await (const event of adapter.stream(

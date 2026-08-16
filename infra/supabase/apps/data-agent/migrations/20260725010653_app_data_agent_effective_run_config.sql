@@ -1,4 +1,4 @@
--- effective_run_config_migration_checksum: sha256:9782a7b7a906e5f2c8bc79419609cabf7911487987c08ba0da926cd0df7dd146
+-- effective_run_config_migration_checksum: sha256:4c3420240df8d70b58aeb2339358249e254640de3c8e9b4e9e34f7097f0af8d8
 -- ============================================================
 -- 10653: Greenfield Effective Run Config PostgreSQL authority
 -- Depends on: 20260725010652_app_data_agent_environment_model_sync_concurrency
@@ -36,6 +36,170 @@ set local lock_timeout = '2000ms';
 set local statement_timeout = '300000ms';
 set local idle_in_transaction_session_timeout = '60000ms';
 select platform.acquire_migration_lock('app', '00000000-0000-4000-8000-00000000da01'::uuid);
+
+-- U2/U3 wire hashes match packages/contracts canonicalizeJson. JSON sent by a
+-- JS builder already contains ECMAScript's shortest decimal; jsonb expands that
+-- decimal without changing its value. Normalize the exact decimal rather than
+-- round-tripping through float8, whose shortest tie can differ from V8.
+create function app_data_agent.u2_utf16_sort_key(p_value text)
+returns bytea
+language plpgsql
+immutable
+strict
+security invoker
+set search_path = ''
+as $function$
+declare
+  result bytea := ''::bytea;
+  code_point integer;
+  supplementary integer;
+  high_surrogate integer;
+  low_surrogate integer;
+  position integer;
+begin
+  for position in 1..pg_catalog.char_length(p_value) loop
+    code_point := pg_catalog.ascii(pg_catalog.substr(p_value,position,1));
+    if code_point <= 65535 then
+      result := result || pg_catalog.decode(
+        pg_catalog.lpad(pg_catalog.to_hex(code_point),4,'0'),'hex');
+    else
+      supplementary := code_point - 65536;
+      high_surrogate := 55296 + supplementary / 1024;
+      low_surrogate := 56320 + supplementary % 1024;
+      result := result || pg_catalog.decode(
+        pg_catalog.lpad(pg_catalog.to_hex(high_surrogate),4,'0') ||
+        pg_catalog.lpad(pg_catalog.to_hex(low_surrogate),4,'0'),'hex');
+    end if;
+  end loop;
+  return result;
+end
+$function$;
+
+create function app_data_agent.u2_ecmascript_number(p_payload jsonb)
+returns text
+language plpgsql
+immutable
+strict
+security invoker
+set search_path = ''
+as $function$
+declare
+  rendered text;
+  sign_prefix text := '';
+  integer_part text;
+  fraction_part text;
+  exponent_value integer;
+  digits text;
+  leading_zero_count integer;
+  decimal_position integer;
+begin
+  if pg_catalog.jsonb_typeof(p_payload) <> 'number' then
+    raise exception using errcode = '22023', message = 'U2_CANONICAL_JSON_NUMBER_INVALID';
+  end if;
+  rendered := p_payload::text;
+  if pg_catalog.left(rendered,1) = '-' then
+    sign_prefix := '-';
+    rendered := pg_catalog.substr(rendered,2);
+  end if;
+  if pg_catalog.strpos(rendered,'.') = 0 then
+    integer_part := rendered;
+    fraction_part := '';
+  else
+    integer_part := pg_catalog.split_part(rendered,'.',1);
+    fraction_part := pg_catalog.split_part(rendered,'.',2);
+  end if;
+  digits := integer_part || fraction_part;
+  leading_zero_count := pg_catalog.length(digits) -
+    pg_catalog.length(pg_catalog.ltrim(digits,'0'));
+  digits := pg_catalog.rtrim(pg_catalog.ltrim(digits,'0'),'0');
+  if digits = '' then
+    return '0';
+  end if;
+  decimal_position := pg_catalog.length(integer_part) - leading_zero_count;
+  exponent_value := decimal_position - 1;
+  if exponent_value >= 21 or exponent_value <= -7 then
+    return sign_prefix || pg_catalog.left(digits,1) ||
+      case when pg_catalog.length(digits) > 1
+        then '.' || pg_catalog.substr(digits,2) else '' end ||
+      'e' || case when exponent_value >= 0 then '+' else '' end || exponent_value::text;
+  end if;
+  if decimal_position <= 0 then
+    return sign_prefix || '0.' || pg_catalog.repeat('0',-decimal_position) || digits;
+  end if;
+  if decimal_position >= pg_catalog.length(digits) then
+    return sign_prefix || digits ||
+      pg_catalog.repeat('0',decimal_position - pg_catalog.length(digits));
+  end if;
+  return sign_prefix || pg_catalog.substr(digits,1,decimal_position) || '.' ||
+    pg_catalog.substr(digits,decimal_position + 1);
+end
+$function$;
+
+create function app_data_agent.u2_contract_canonical_json(p_payload jsonb)
+returns text
+language plpgsql
+immutable
+strict
+security invoker
+set search_path = ''
+as $function$
+declare
+  payload_type text := pg_catalog.jsonb_typeof(p_payload);
+  result text;
+begin
+  if payload_type = 'number' then
+    return app_data_agent.u2_ecmascript_number(p_payload);
+  end if;
+  if payload_type in ('null','boolean','string') then
+    return app_data_agent.attribution_canonical_json(p_payload);
+  end if;
+  if payload_type = 'array' then
+    select '[' || coalesce(pg_catalog.string_agg(
+      app_data_agent.u2_contract_canonical_json(item.value),
+      ',' order by item.ordinality
+    ), '') || ']'
+    into result
+    from pg_catalog.jsonb_array_elements(p_payload) with ordinality
+      as item(value, ordinality);
+    return result;
+  end if;
+  if payload_type = 'object' then
+    select '{' || coalesce(pg_catalog.string_agg(
+      pg_catalog.to_json(object_entry.key)::text || ':' ||
+        app_data_agent.u2_contract_canonical_json(object_entry.value),
+      ',' order by app_data_agent.u2_utf16_sort_key(object_entry.key)
+    ), '') || '}'
+    into result
+    from pg_catalog.jsonb_each(p_payload) as object_entry(key, value);
+    return result;
+  end if;
+  raise exception using errcode = '22023', message = 'U2_CANONICAL_JSON_DOMAIN_INVALID';
+end
+$function$;
+
+-- Keep this separate from platform.canonical_sha256: older authorities depend
+-- on PostgreSQL jsonb::text formatting and cannot be rewritten in place.
+create function app_data_agent.u2_canonical_sha256(p_payload jsonb)
+returns text
+language sql
+immutable
+strict
+security definer
+set search_path = ''
+as $function$
+  select 'sha256:' || pg_catalog.encode(
+    pg_catalog.sha256(pg_catalog.convert_to(
+      app_data_agent.u2_contract_canonical_json(p_payload),
+      'UTF8'
+    )),
+    'hex'
+  )
+$function$;
+
+revoke all on function app_data_agent.u2_utf16_sort_key(text) from public;
+revoke all on function app_data_agent.u2_ecmascript_number(jsonb) from public;
+revoke all on function app_data_agent.u2_contract_canonical_json(jsonb) from public;
+revoke all on function app_data_agent.u2_canonical_sha256(jsonb) from public;
 -- Mutable workspace pointer. Revision bodies are append-only below.
 -- Greenfield Datasource Authority revision. U2 callers must bind the current
 -- monotonic version rather than relying on an implicit revision constant.
@@ -116,7 +280,7 @@ create table app_data_agent.workspace_run_default_revisions (
   ),
   defaults_hash text not null check (
     defaults_hash ~ '^sha256:[0-9a-f]{64}$'
-    and defaults_hash = platform.canonical_sha256(revision_document)
+    and defaults_hash = app_data_agent.u2_canonical_sha256(revision_document)
   ),
   membership_version bigint not null check (membership_version >= 1),
   user_authz_epoch bigint not null check (user_authz_epoch >= 1),
@@ -192,7 +356,7 @@ create table app_data_agent.effective_run_config_receipts (
   effective_config_json jsonb not null check (
     pg_catalog.jsonb_typeof(effective_config_json) = 'object'
     and not app_data_agent.contains_potential_plaintext_secret(effective_config_json)
-    and config_hash = platform.canonical_sha256(effective_config_json)
+    and config_hash = app_data_agent.u2_canonical_sha256(effective_config_json)
   ),
   committed_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (app_id, tenant_id, environment, config_id, config_revision),
@@ -301,7 +465,7 @@ create table app_data_agent.effective_config_context_receipts (
   ),
   receipt_hash text not null check (
     receipt_hash ~ '^sha256:[0-9a-f]{64}$'
-    and receipt_hash = platform.canonical_sha256(receipt_json)
+    and receipt_hash = app_data_agent.u2_canonical_sha256(receipt_json)
   ),
   consumed_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (app_id, tenant_id, environment, context_receipt_id),
@@ -458,13 +622,13 @@ returns jsonb language sql immutable set search_path = '' as $function$
   select case policy_kind
     when 'CONTEXT_POLICY' then pg_catalog.jsonb_build_object(
       'resource_id','00000000-0000-4000-8000-0000000053c1'::uuid,'resource_revision',1,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'schema_version','effective-context-policy@1.0.0','max_context_tokens',128000,
         'max_resource_bindings',1024)),
       'max_context_tokens',128000,'max_resource_bindings',1024)
     when 'EGRESS_POLICY' then pg_catalog.jsonb_build_object(
       'resource_id','00000000-0000-4000-8000-0000000053e1'::uuid,'resource_revision',1,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'schema_version','effective-egress-policy@1.0.0',
         'allowed_providers',pg_catalog.jsonb_build_array('deepseek','gemini','glm','grok','kimi','openai'),
         'allowed_audiences',pg_catalog.jsonb_build_array('PRIVATE','WORKSPACE'),
@@ -474,7 +638,7 @@ returns jsonb language sql immutable set search_path = '' as $function$
       'classification','INTERNAL')
     when 'EXECUTION_SAFETY_POLICY' then pg_catalog.jsonb_build_object(
       'resource_id','00000000-0000-4000-8000-0000000053f1'::uuid,'resource_revision',1,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'schema_version','effective-execution-safety-policy@1.0.0','max_tool_calls',10000,
         'max_provider_calls',10000,'max_elapsed_ms',9007199254740991)),
       'max_tool_calls',10000,'max_provider_calls',10000,'max_elapsed_ms',9007199254740991)
@@ -980,7 +1144,7 @@ begin
   requested_idempotency_key := command ->> 'idempotency_key';
   requested_hash := command ->> 'request_hash';
   requested_defaults := command -> 'defaults';
-  computed_request_hash := platform.canonical_sha256(command - 'request_hash');
+  computed_request_hash := app_data_agent.u2_canonical_sha256(command - 'request_hash');
   if requested_expected_revision < 0
     or pg_catalog.length(requested_idempotency_key) not between 8 and 128
     or requested_idempotency_key !~ '^[A-Za-z0-9][A-Za-z0-9._:@/-]*$'
@@ -1090,7 +1254,7 @@ begin
     end if;
     model_reference := pg_catalog.jsonb_build_object(
       'resource_id',model_record.model_profile_id,'resource_revision',model_record.config_version,
-      'resource_hash',platform.canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref'));
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref'));
   end if;
 
   if requested_defaults -> 'datasource' <> 'null'::jsonb then
@@ -1111,7 +1275,7 @@ begin
     datasource_reference := pg_catalog.jsonb_build_object(
       'resource_id',datasource_record.datasource_id,
       'resource_revision',datasource_record.resource_version,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'datasource_id',datasource_record.datasource_id,'datasource_type',datasource_record.datasource_type,
         'status',datasource_record.status,'resource_version',datasource_record.resource_version)));
   end if;
@@ -1222,7 +1386,7 @@ begin
     'defaults',requested_defaults,'created_by_principal_id',authority.principal_id,
     'created_at',app_data_agent.runtime_iso_timestamp(commit_at)
   );
-  computed_defaults_hash := platform.canonical_sha256(revision_document);
+  computed_defaults_hash := app_data_agent.u2_canonical_sha256(revision_document);
   insert into app_data_agent.workspace_run_default_revisions (
     app_id,tenant_id,environment,defaults_id,defaults_revision,revision_id,principal_id,
     idempotency_key,request_hash,defaults_json,revision_document,defaults_hash,membership_version,
@@ -1400,7 +1564,7 @@ begin
   );
   return pg_catalog.jsonb_build_object(
     'resolution',resolution_document || pg_catalog.jsonb_build_object(
-      'resolution_hash',platform.canonical_sha256(resolution_document)),
+      'resolution_hash',app_data_agent.u2_canonical_sha256(resolution_document)),
     'effective_config',null);
 end
 $function$;
@@ -1454,7 +1618,7 @@ begin
   request_hash := requested_config ->> 'request_hash';
   defaults_ref := requested_config -> 'defaults_ref';
   datasource_selection := requested_config #> '{overrides,datasource}';
-  if request_hash <> platform.canonical_sha256(requested_config - 'request_hash') then
+  if request_hash <> app_data_agent.u2_canonical_sha256(requested_config - 'request_hash') then
     raise exception using errcode = '22023', message = 'EFFECTIVE_CONFIG_REQUEST_INVALID';
   end if;
   resource_bindings := app_data_agent.build_requested_optional_resource_bindings(requested_config);
@@ -1475,7 +1639,7 @@ begin
     'authz_epoch',app_user_record.authz_epoch,'membership_version',authority.membership_version,
     'workspace_lifecycle_version',workspace_record.lifecycle_version,
     'route_resolution_id',requested_job_id,
-    'route_resolution_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+    'route_resolution_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
       'schema_version','effective-config-route-resolution@1.0.0','route_resolution_id',requested_job_id,
       'scope',scope_document,'operation','SEMANTIC_BOOTSTRAP_JOB','request_hash',request_hash)),
     'resolver_policy_version','effective-config-resolver@1.0.0');
@@ -1546,7 +1710,7 @@ begin
     if not found then blocked_reason := 'RESOURCE_NOT_FOUND_OR_FORBIDDEN';
     elsif datasource_record.status <> 'ACTIVE' then blocked_reason := 'RESOURCE_DISABLED';
     else
-      datasource_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      datasource_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'datasource_id',datasource_record.datasource_id,'datasource_type',datasource_record.datasource_type,
         'status',datasource_record.status,'resource_version',datasource_record.resource_version));
       if selected_datasource_revision <> datasource_record.resource_version
@@ -1690,7 +1854,7 @@ begin
       'trigger_question_run_id',(requested_config ->> 'trigger_question_run_id')::uuid);
   end if;
   return resolution_document || pg_catalog.jsonb_build_object(
-    'resolution_hash',platform.canonical_sha256(resolution_document));
+    'resolution_hash',app_data_agent.u2_canonical_sha256(resolution_document));
 end
 $function$;
 
@@ -1810,7 +1974,7 @@ begin
   requested_idempotency_key := requested_config ->> 'idempotency_key';
   request_hash := requested_config ->> 'request_hash';
   defaults_ref := requested_config -> 'defaults_ref';
-  if request_hash <> platform.canonical_sha256(requested_config - 'request_hash')
+  if request_hash <> app_data_agent.u2_canonical_sha256(requested_config - 'request_hash')
     or requested_command ->> 'run_id' <> requested_run_id::text
     or requested_command ->> 'idempotency_key' <> requested_idempotency_key
     or app_data_agent.contains_potential_plaintext_secret(requested_command)
@@ -1856,7 +2020,7 @@ begin
   scope_document := pg_catalog.jsonb_build_object(
     'app_id',authority.app_id,'tenant_id',authority.tenant_id,'environment',authority.environment,
     'workspace_id',authority.tenant_id,'principal_id',authority.principal_id);
-  route_resolution_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+  route_resolution_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
     'schema_version','effective-config-route-resolution@1.0.0',
     'route_resolution_id',requested_config_id,'scope',scope_document,
     'operation','QUESTION_RUN','request_hash',request_hash));
@@ -2077,7 +2241,7 @@ begin
           datasource_selection,selected_datasource_reference,'DATASOURCE','RESOURCE_DISABLED'));
       mandatory_blocked_reason := 'RESOURCE_DISABLED';
     else
-      datasource_revision_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      datasource_revision_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'datasource_id',datasource_record.datasource_id,'datasource_type',datasource_record.datasource_type,
         'status',datasource_record.status,'resource_version',datasource_record.resource_version));
       if datasource_expected_revision <> datasource_record.resource_version
@@ -2130,7 +2294,7 @@ begin
           model_selection,selected_model_reference,'MODEL_PROFILE','MODEL_NOT_AVAILABLE'));
       mandatory_blocked_reason := coalesce(mandatory_blocked_reason,'MODEL_NOT_AVAILABLE');
     else
-      model_revision_hash := platform.canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref');
+      model_revision_hash := app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref');
       if model_selection ->> 'mode' = 'INHERIT_DEFAULT'
         and selected_model_reference ->> 'resource_hash' <> model_revision_hash then
         resource_bindings := resource_bindings || pg_catalog.jsonb_build_array(
@@ -2356,7 +2520,7 @@ begin
     'optional_selection_evaluations',app_data_agent.build_optional_selection_evaluations(
       requested_config,defaults_ref,resource_bindings),
     'effective_egress',effective_egress);
-  config_hash := platform.canonical_sha256(config_document);
+  config_hash := app_data_agent.u2_canonical_sha256(config_document);
   config_ref := pg_catalog.jsonb_build_object(
     'config_id',requested_config_id,'config_revision',1,'config_hash',config_hash);
 
@@ -2411,7 +2575,7 @@ begin
     'provider',model_record.provider,'audiences',effective_egress -> 'allowed_audiences',
     'classification',effective_egress ->> 'classification','resource_refs',context_resource_refs,
     'consumed_at',app_data_agent.runtime_iso_timestamp(commit_at));
-  context_hash := platform.canonical_sha256(context_document);
+  context_hash := app_data_agent.u2_canonical_sha256(context_document);
   insert into app_data_agent.effective_config_context_receipts (
     app_id,tenant_id,environment,context_receipt_id,config_id,config_revision,config_hash,run_id,
     principal_id,consumer_kind,consumer_id,outbox_id,command_id,worker_fence,
@@ -2508,7 +2672,7 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'EFFECTIVE_CONFIG_RECEIPT_NOT_FOUND_OR_FORBIDDEN';
   end if;
-  if receipt.config_hash <> platform.canonical_sha256(receipt.effective_config_json) then
+  if receipt.config_hash <> app_data_agent.u2_canonical_sha256(receipt.effective_config_json) then
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_TAMPERED';
   end if;
 
@@ -2568,7 +2732,7 @@ begin
   if not found then
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_REVOKED';
   end if;
-  datasource_current_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+  datasource_current_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
     'datasource_id',datasource_record.datasource_id,
     'datasource_type',datasource_record.datasource_type,
     'status',datasource_record.status,
@@ -2590,7 +2754,7 @@ begin
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_REVOKED';
   end if;
   if receipt.effective_config_json #>> '{model,resource_hash}' <>
-      platform.canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref')
+      app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref')
     or not (receipt.effective_config_json #> '{effective_egress,allowed_providers}') ? model_record.provider
   then
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_REVOKED';
@@ -2814,7 +2978,7 @@ begin
     'resource_refs',context_resource_refs,
     'consumed_at',app_data_agent.runtime_iso_timestamp(consumed_at)
   );
-  receipt_hash := platform.canonical_sha256(receipt_document);
+  receipt_hash := app_data_agent.u2_canonical_sha256(receipt_document);
   insert into app_data_agent.effective_config_context_receipts (
     app_id,tenant_id,environment,context_receipt_id,config_id,config_revision,
     config_hash,run_id,principal_id,consumer_kind,consumer_id,attempt_id,worker_id,
@@ -2843,6 +3007,14 @@ alter table app_data_agent.effective_run_config_resource_bindings owner to data_
 alter table app_data_agent.effective_config_context_receipts owner to data_agent_effective_config_rpc_owner;
 
 alter function app_data_agent.reject_effective_config_authority_mutation()
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_utf16_sort_key(text)
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_ecmascript_number(jsonb)
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_contract_canonical_json(jsonb)
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_canonical_sha256(jsonb)
   owner to data_agent_effective_config_rpc_owner;
 alter function app_data_agent.guard_datasource_resource_version_update()
   owner to data_agent_effective_config_rpc_owner;
@@ -3152,6 +3324,16 @@ grant execute on function platform.current_backend_authority(boolean)
   to data_agent_effective_config_rpc_owner;
 grant execute on function platform.canonical_sha256(jsonb)
   to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.attribution_canonical_json(jsonb)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_utf16_sort_key(text)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_ecmascript_number(jsonb)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_contract_canonical_json(jsonb)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_canonical_sha256(jsonb)
+  to data_agent_effective_config_rpc_owner;
 grant execute on function platform.list_active_model_catalog(uuid,uuid)
   to data_agent_effective_config_rpc_owner;
 grant execute on function app_data_agent.contains_potential_plaintext_secret(jsonb,text)
@@ -3341,13 +3523,45 @@ begin
   ) then
     raise exception using errcode = 'P0001', message = 'EFFECTIVE_CONFIG_FUNCTION_GRANTS_UNSAFE';
   end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as procedure
+    join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'app_data_agent'
+      and procedure.proname = 'u2_canonical_sha256'
+      and procedure.prosecdef
+      and pg_catalog.pg_get_userbyid(procedure.proowner) = 'data_agent_effective_config_rpc_owner'
+      and 'search_path=""' = any(procedure.proconfig)
+  ) or not pg_catalog.has_function_privilege(
+    'data_agent_effective_config_rpc_owner',
+    'app_data_agent.u2_canonical_sha256(jsonb)','EXECUTE'
+  ) or not pg_catalog.has_function_privilege(
+    'data_agent_effective_config_rpc_owner',
+    'app_data_agent.attribution_canonical_json(jsonb)','EXECUTE'
+  ) or exists (
+    select 1
+    from pg_catalog.pg_proc as procedure
+    join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(procedure.proacl,pg_catalog.acldefault('f',procedure.proowner))
+    ) as privilege
+    where namespace.nspname = 'app_data_agent'
+      and procedure.proname = 'u2_canonical_sha256'
+      and privilege.grantee = 0
+      and privilege.privilege_type = 'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'data_agent_backend','app_data_agent.u2_canonical_sha256(jsonb)','EXECUTE'
+  ) then
+    raise exception using errcode = 'P0001', message = 'U2_CANONICAL_HASH_AUTHORITY_UNSAFE';
+  end if;
 end
 $postconditions$;
 select platform.assert_migration_checksum(
   'app',
   '00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010653_app_data_agent_effective_run_config',
-  'sha256:9782a7b7a906e5f2c8bc79419609cabf7911487987c08ba0da926cd0df7dd146'
+  'sha256:4c3420240df8d70b58aeb2339358249e254640de3c8e9b4e9e34f7097f0af8d8'
 );
 
 commit;

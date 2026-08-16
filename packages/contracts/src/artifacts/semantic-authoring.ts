@@ -121,11 +121,24 @@ export const agentTurnRequestSchema = z.strictObject({
   }),
 });
 
-const agentTurnUsageSchema = z.strictObject({
-  input_tokens: safeNonNegativeIntegerSchema,
-  output_tokens: safeNonNegativeIntegerSchema,
-  tool_calls: safeNonNegativeIntegerSchema,
-});
+const agentTurnUsageSchema = z.discriminatedUnion("availability", [
+  z.strictObject({
+    availability: z.literal("AVAILABLE"),
+    source: z.literal("PROVIDER_REPORTED"),
+    input_tokens: safeNonNegativeIntegerSchema,
+    output_tokens: safeNonNegativeIntegerSchema,
+    tool_calls: safeNonNegativeIntegerSchema,
+    unavailable_reason: z.null(),
+  }),
+  z.strictObject({
+    availability: z.literal("UNAVAILABLE"),
+    source: z.literal("UNAVAILABLE"),
+    input_tokens: z.null(),
+    output_tokens: z.null(),
+    tool_calls: z.null(),
+    unavailable_reason: z.literal("PROVIDER_DID_NOT_REPORT_USAGE"),
+  }),
+]);
 
 export const agentTurnResultSchema = z.discriminatedUnion("terminal", [
   z.strictObject({

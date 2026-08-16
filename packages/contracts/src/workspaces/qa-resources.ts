@@ -1,24 +1,140 @@
 import { z } from "zod";
-import { immutableIdSchema, timestampSchema } from "../common/index.js";
-import { modelProviderSchema } from "../providers/index.js";
+import {
+  contentHashSchema,
+  immutableIdSchema,
+  timestampSchema,
+  versionIdentifierSchema,
+} from "../common/index.js";
+import {
+  modelCertificationReceiptReferenceSchema,
+  modelProviderSchema,
+  providerInvocationConnectionProofSchema,
+  providerInvocationRecoveryCapabilitiesSchema,
+  providerInvocationScopeSchema,
+} from "../providers/index.js";
 import { runConfigRequestSchema } from "../runs/effective-config.js";
 import { workspaceConversationSchema, workspaceDatasourceTypeSchema } from "./data-isolation.js";
 
 export const qaModelReadinessSchema = z.enum([
-  "RUNNABLE",
+  "AVAILABLE",
   "CERTIFICATION_REQUIRED",
   "CREDENTIAL_UNAVAILABLE",
-  "UNBILLABLE",
+  "CONTEXT_WINDOW_UNVERIFIED",
+  "DISABLED",
+  "STALE",
 ]);
 
-export const qaModelResourceSchema = z.strictObject({
+export const qaModelResourceSchema = z
+  .strictObject({
+    model_profile_id: immutableIdSchema,
+    config_version: z.number().int().positive().safe(),
+    profile_version: versionIdentifierSchema,
+    provider: modelProviderSchema,
+    model_id: z.string().trim().min(1).max(256),
+    display_name: z.string().trim().min(1).max(255),
+    certification_receipt_ref: modelCertificationReceiptReferenceSchema.nullable(),
+    effective_context_ceiling_tokens: z.number().int().positive().safe().nullable(),
+    effective_output_ceiling_tokens: z.number().int().positive().safe().nullable(),
+    readiness: qaModelReadinessSchema,
+    selectable: z.boolean(),
+  })
+  .superRefine((model, ctx) => {
+    if (model.profile_version !== `model-profile@${model.config_version}`) {
+      ctx.addIssue({
+        code: "custom",
+        message: "QA Model Profile Version 必须精确绑定 Catalog config_version。",
+        path: ["profile_version"],
+      });
+    }
+    const hasCompleteExecutionAuthority =
+      model.certification_receipt_ref !== null &&
+      model.effective_context_ceiling_tokens !== null &&
+      model.effective_output_ceiling_tokens !== null;
+    const hasAnyExecutionAuthority =
+      model.certification_receipt_ref !== null ||
+      model.effective_context_ceiling_tokens !== null ||
+      model.effective_output_ceiling_tokens !== null;
+    if (
+      model.readiness === "AVAILABLE"
+        ? !model.selectable || !hasCompleteExecutionAuthority
+        : model.selectable || hasAnyExecutionAuthority
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "QA Model 只有 AVAILABLE 分支可选且携带完整执行认证与技术上限。",
+        path: ["readiness"],
+      });
+    }
+  });
+
+const providerExecutionProfileCommonShape = {
   model_profile_id: immutableIdSchema,
-  config_version: z.number().int().positive().safe(),
+  model_config_version: z.number().int().positive().safe(),
+  resource_hash: contentHashSchema,
+  profile_version: versionIdentifierSchema,
   provider: modelProviderSchema,
   model_id: z.string().trim().min(1).max(256),
   display_name: z.string().trim().min(1).max(255),
-  readiness: qaModelReadinessSchema,
-  selectable: z.boolean(),
+} as const;
+
+const availableProviderExecutionProfileSchema = z.strictObject({
+  ...providerExecutionProfileCommonShape,
+  adapter_version: versionIdentifierSchema,
+  certification_receipt_ref: modelCertificationReceiptReferenceSchema,
+  execution_profile_hash: contentHashSchema,
+  recovery_capabilities: providerInvocationRecoveryCapabilitiesSchema,
+  connection: providerInvocationConnectionProofSchema,
+  effective_context_ceiling_tokens: z.number().int().positive().safe(),
+  effective_output_ceiling_tokens: z.number().int().positive().safe(),
+  readiness: z.literal("AVAILABLE"),
+  selectable: z.literal(true),
+  unavailable_reason: z.null(),
+});
+
+function unavailableProviderExecutionProfileSchema<
+  TStatus extends Exclude<z.infer<typeof qaModelReadinessSchema>, "AVAILABLE">,
+  TReason extends string,
+>(status: TStatus, reason: TReason) {
+  return z.strictObject({
+    ...providerExecutionProfileCommonShape,
+    readiness: z.literal(status),
+    selectable: z.literal(false),
+    unavailable_reason: z.literal(reason),
+  });
+}
+
+export const providerExecutionProfileSchema = z
+  .discriminatedUnion("readiness", [
+    availableProviderExecutionProfileSchema,
+    unavailableProviderExecutionProfileSchema(
+      "CERTIFICATION_REQUIRED",
+      "MODEL_CERTIFICATION_REQUIRED",
+    ),
+    unavailableProviderExecutionProfileSchema(
+      "CREDENTIAL_UNAVAILABLE",
+      "MODEL_CREDENTIAL_UNAVAILABLE",
+    ),
+    unavailableProviderExecutionProfileSchema(
+      "CONTEXT_WINDOW_UNVERIFIED",
+      "MODEL_CONTEXT_WINDOW_UNVERIFIED",
+    ),
+    unavailableProviderExecutionProfileSchema("DISABLED", "MODEL_PROFILE_DISABLED"),
+    unavailableProviderExecutionProfileSchema("STALE", "MODEL_PROFILE_STALE"),
+  ])
+  .superRefine((profile, ctx) => {
+    if (profile.profile_version !== `model-profile@${profile.model_config_version}`) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Execution Profile Version 必须精确绑定 Catalog config_version。",
+        path: ["profile_version"],
+      });
+    }
+  });
+
+export const providerExecutionProfileListResultSchema = z.strictObject({
+  schema_version: z.literal("provider-execution-profile-list@1.0.0"),
+  scope: providerInvocationScopeSchema,
+  profiles: z.array(providerExecutionProfileSchema).max(256),
 });
 
 export const qaDatasourceResourceSchema = z.strictObject({
@@ -107,6 +223,7 @@ export const qaRunStartInputV2Schema = z
 
 export type QaModelReadiness = z.infer<typeof qaModelReadinessSchema>;
 export type QaModelResource = z.infer<typeof qaModelResourceSchema>;
+export type ProviderExecutionProfile = z.infer<typeof providerExecutionProfileSchema>;
 export type QaDatasourceResource = z.infer<typeof qaDatasourceResourceSchema>;
 export type QaResourceCatalog = z.infer<typeof qaResourceCatalogSchema>;
 export type QaConversationResourceSwitchInput = z.infer<

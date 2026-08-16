@@ -97,7 +97,8 @@ begin
   join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
   where namespace.nspname = 'app_data_agent'
     and procedure.proname = 'effective_config_request_is_valid';
-  if accept_definition not like '%platform.canonical_sha256%'
+  if accept_definition not like '%app_data_agent.u2_canonical_sha256%'
+    or accept_definition not like '%platform.canonical_sha256%'
     or accept_definition not like '%BOOTSTRAP_REQUIRED%'
     or accept_definition not like '%accept_backend_run_command%'
     or accept_definition not like '%effective_config_ref%'
@@ -124,6 +125,7 @@ begin
     or defaults_definition not like '%requested_defaults := resolved_defaults%'
     or defaults_definition not like '%WORKSPACE_RUN_DEFAULTS_RESOURCE_NOT_AVAILABLE%'
     or defaults_definition not like '%datasource_record.resource_version%'
+    or defaults_definition not like '%app_data_agent.u2_canonical_sha256%'
     or worker_definition not like '%lock_owned_run_fence%'
     or worker_definition not like '%EFFECTIVE_CONFIG_WORKER_FENCE_STALE%'
     or worker_definition not like '%consumer_id%requested_consumer_id%'
@@ -222,6 +224,69 @@ begin
 end
 $surface$;
 commit;
+
+begin;
+set local role data_agent_effective_config_rpc_owner;
+do $contract_hash$
+declare
+  command_without_hash jsonb := '{
+    "schema_version":"workspace-defaults-cas-update@1.0.0",
+    "operation_id":"00000000-0000-4000-8000-000000000010",
+    "workspace_id":"00000000-0000-4000-8000-000000000003",
+    "expected_defaults_revision":0,
+    "idempotency_key":"defaults:first",
+    "defaults":{
+      "model":{"resource_id":"00000000-0000-4000-8000-000000000008","expected_revision":1},
+      "datasource":{"resource_id":"00000000-0000-4000-8000-000000000009","expected_revision":1},
+      "files":[{"resource_id":"00000000-0000-4000-8000-00000000000a","expected_revision":1}],
+      "knowledge":[],"mcp_servers":[],"skills":[],
+      "semantic_release":{"resource_id":"00000000-0000-4000-8000-00000000000b","expected_revision":3},
+      "schema_snapshot":{"resource_id":"00000000-0000-4000-8000-00000000000c","expected_revision":7},
+      "context_policy":{"resource_id":"00000000-0000-4000-8000-00000000000d","expected_revision":2},
+      "egress_policy":{"resource_id":"00000000-0000-4000-8000-00000000000e","expected_revision":4},
+      "execution_safety_policy":{"resource_id":"00000000-0000-4000-8000-00000000000f","expected_revision":6}
+    }
+  }'::jsonb;
+  full_json_fixture jsonb := pg_catalog.jsonb_build_object(
+    U&'\+010000','supp',U&'\E000','bmp',
+    'fraction',1.5,'small',1e-7::numeric,'threshold',1e-6::numeric,
+    'big',1e20::numeric,'exponent',1e21::numeric,
+    'precise',1.2345678901234567::numeric,
+    'sum',0.30000000000000004::numeric,'tiny',5e-324::numeric,
+    'max',1.7976931348623157e308::numeric,
+    'largeInteger',140751465587434200::numeric,'negativeZero',-0.0::numeric,
+    'string',U&'quote" slash\\ control\000A emoji\+01F600 line\2028separator');
+begin
+  if app_data_agent.u2_canonical_sha256(command_without_hash) <>
+    'sha256:f8063ee530e5b8692939fbf265aab438af58f802ab5bd05ecc2430b14a3c2a15'
+  then
+    raise exception 'U2_CONTRACT_CANONICAL_HASH_FIXTURE_MISMATCH';
+  end if;
+  if app_data_agent.u2_contract_canonical_json('1.0'::jsonb) <> '1'
+    or app_data_agent.u2_contract_canonical_json('-0.0'::jsonb) <> '0'
+    or app_data_agent.u2_contract_canonical_json('0.000001'::jsonb) <> '0.000001'
+    or app_data_agent.u2_contract_canonical_json('0.0000001'::jsonb) <> '1e-7'
+    or app_data_agent.u2_contract_canonical_json('100000000000000000000'::jsonb) <>
+      '100000000000000000000'
+    or app_data_agent.u2_contract_canonical_json('1000000000000000000000'::jsonb) <> '1e+21'
+  then
+    raise exception 'U2_CONTRACT_CANONICAL_NUMBER_RENDERING_MISMATCH';
+  end if;
+  if app_data_agent.u2_canonical_sha256(full_json_fixture) <>
+    'sha256:95bd3a69717839cfafdc376ce4b64b3c6c0d9eefd17f07f94891451c42e4b706'
+  then
+    raise exception 'U2_CONTRACT_CANONICAL_FULL_JSON_FIXTURE_MISMATCH:%',
+      app_data_agent.u2_contract_canonical_json(full_json_fixture);
+  end if;
+  if app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
+      'n',1e-7::numeric,U&'\+010000','supplementary',U&'\E000','bmp'
+    )) <> 'sha256:dc67784b5dab2ea74956f3c1c916cf497cfcc2895565d16ef2138dceb8e951ac'
+  then
+    raise exception 'U2_CONTRACT_CANONICAL_UTF16_FIXTURE_MISMATCH';
+  end if;
+end
+$contract_hash$;
+rollback;
 
 do $strict_candidate_contract$
 begin

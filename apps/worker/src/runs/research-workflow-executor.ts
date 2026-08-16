@@ -284,6 +284,7 @@ export function createResearchWorkflowExecutor(
 
   async function executeWorkflow(
     protocolInput: ResearchProtocolInput,
+    providerOutput: string,
     lease: RunWorkLease,
     restoredSnapshot: MastraSnapshotBinding | null,
     context: RunExecutionContext,
@@ -322,7 +323,7 @@ export function createResearchWorkflowExecutor(
           await emitDisplayEvent(context, {
             kind: "answer_delta",
             key: `answer:${state.step}:${outcome.kind}`,
-            delta: `分析执行完成。研究结果：${outcome.kind}；已提交 ${state.committed_refs.length} 个权威 Artifact。`,
+            delta: providerOutput,
           });
           return runExecutorResultSchema.parse({
             kind: "COMPLETED",
@@ -406,6 +407,46 @@ export function createResearchWorkflowExecutor(
         duration_ms: 0,
       });
 
+      const providerDispatch = context.getProviderDispatchCapability();
+      if (!providerDispatch) {
+        return researchErrorResult("PROVIDER_DISPATCH_AUTHORITY_NOT_CONFIGURED", false);
+      }
+      const providerCallId = `${lease.attempt_id}:provider:${lease.command_id}`;
+      const providerStartedAt = deps.now().getTime();
+      await emitDisplayEvent(context, {
+        kind: "progress",
+        key: "provider-authority-prepare",
+        phase: "provider.authority.prepare",
+        title: "核验模型调用权限",
+        summary: "正在核验冻结配置、数据投影与持久化调用权限",
+        status: "RUNNING",
+      });
+      const providerResult = await providerDispatch.invoke({
+        logical_call_id: lease.command_id,
+      });
+      if (!providerResult.ok) {
+        await emitDisplayEvent(context, {
+          kind: "tool_failed",
+          key: "provider-dispatch-failed",
+          call_id: providerCallId,
+          tool_name: "provider.dispatch",
+          summary: "审计 Provider 调用未形成可释放结果",
+          error_code: providerResult.error.code,
+          output: null,
+          duration_ms: Math.max(0, deps.now().getTime() - providerStartedAt),
+        });
+        return researchErrorResult(providerResult.error.code, providerResult.error.retryable);
+      }
+      await emitDisplayEvent(context, {
+        kind: "tool_completed",
+        key: "provider-dispatch-complete",
+        call_id: providerCallId,
+        tool_name: "provider.dispatch",
+        summary: "Provider terminal receipt 与 protected response 已提交",
+        output: `invocation=${providerResult.value.projection.invocation_id}; status=${providerResult.value.projection.status}`,
+        duration_ms: Math.max(0, deps.now().getTime() - providerStartedAt),
+      });
+
       const protocolInput: ResearchProtocolInput = {
         observations: {
           q1: {
@@ -463,7 +504,14 @@ export function createResearchWorkflowExecutor(
         },
       };
 
-      return executeWorkflow(protocolInput, lease, restoredSnapshot ?? null, context, signal);
+      return executeWorkflow(
+        protocolInput,
+        providerResult.value.output_text,
+        lease,
+        restoredSnapshot ?? null,
+        context,
+        signal,
+      );
     },
   };
 }

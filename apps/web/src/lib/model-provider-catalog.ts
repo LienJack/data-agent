@@ -98,7 +98,7 @@ export const MODEL_PROVIDER_CATALOG = [
     modelIdPlaceholder: "如 deepseek-chat",
     models: [
       {
-        id: "deepseek-v4-pro",
+        id: "deepseek-v4-flash",
         capabilities: UNIVERSAL_CAPABILITIES,
         description: "当前部署注册的 DeepSeek 默认模型",
       },

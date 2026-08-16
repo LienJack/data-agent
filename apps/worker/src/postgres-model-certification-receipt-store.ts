@@ -1,13 +1,21 @@
-import { isAuthoritativeModelCertificationReceiptDraft } from "@data-agent/agent-runtime";
+import {
+  isAuthoritativeExecutionCertificationReceiptDraft,
+  isAuthoritativeModelCertificationReceiptDraft,
+} from "@data-agent/agent-runtime";
 import {
   type ArtifactReference,
   canonicalizeJson,
+  computeModelExecutionCertificationContentHash,
   type ModelCertificationClaims,
   modelCertificationClaimsSchema,
+  modelExecutionCertificationBasisSchema,
+  modelExecutionCertificationClaimsSchema,
   type PortResult,
+  verifyModelExecutionCertificationClaims,
 } from "@data-agent/contracts";
 import {
   type AppCapability,
+  type CapabilityQueryClient,
   containsPotentialPlaintextSecret,
   createPostgresRepository,
   PersistenceBoundaryError,
@@ -24,6 +32,25 @@ interface FenceRow {
 interface ExistingReceiptRow {
   readonly content_hash: string;
   readonly document_json: unknown;
+}
+
+type ModelExecutionCertificationClaims = Awaited<
+  ReturnType<typeof verifyModelExecutionCertificationClaims>
+>;
+
+export interface CommittedGoalPreflightEvidenceAuthority {
+  resolveCommitted(
+    input: Readonly<{
+      scope: AppCapability["scope"];
+      run_id: string;
+      goal_execution_id: string;
+      plan_commit: string;
+    }>,
+    context: Readonly<{
+      capability: AppCapability;
+      client: CapabilityQueryClient;
+    }>,
+  ): Promise<unknown | null>;
 }
 
 function invalidInput(message: string): PortResult<never> {
@@ -66,34 +93,54 @@ export function createPostgresModelCertificationReceiptStore(input: {
   readonly pool: SqlPool;
   readonly authorizer: TransactionalCapabilityAuthorizer;
   readonly capability: AppCapability;
+  readonly goal_preflight_evidence_authority?: CommittedGoalPreflightEvidenceAuthority;
 }): AuthoritativeModelCertificationReceiptStore {
   const repository = createPostgresRepository(input.pool, input.authorizer);
   const store: ModelCertificationReceiptStore = Object.freeze({
     async commit(
-      claimsInput: ModelCertificationClaims,
+      claimsInput: ModelCertificationClaims | ModelExecutionCertificationClaims,
       options: { readonly worker_fence: number },
     ): Promise<PortResult<ArtifactReference>> {
-      if (!isAuthoritativeModelCertificationReceiptDraft(claimsInput)) {
+      const legacyDraft = isAuthoritativeModelCertificationReceiptDraft(claimsInput);
+      const executionDraft = isAuthoritativeExecutionCertificationReceiptDraft(claimsInput);
+      if (!legacyDraft && !executionDraft) {
         return invalidInput(
-          "Model Certification Receipt 只接受真实 Credential Smoke 生成的权威 Draft。",
+          "Model Certification Receipt 只接受真实 Smoke/Preflight 生成的权威 Draft。",
         );
       }
-      const parsed = modelCertificationClaimsSchema.safeParse(claimsInput);
-      if (
-        !parsed.success ||
-        !Number.isSafeInteger(options.worker_fence) ||
-        options.worker_fence < 0
-      ) {
+      if (!Number.isSafeInteger(options.worker_fence) || options.worker_fence < 0) {
         return invalidInput("Model Certification Receipt Commit 输入不符合契约。");
       }
-      const claims = parsed.data;
+      let claims: ModelCertificationClaims | ModelExecutionCertificationClaims;
+      let expectedContentHash: string;
+      if (legacyDraft) {
+        const parsed = modelCertificationClaimsSchema.safeParse(claimsInput);
+        if (!parsed.success) {
+          return invalidInput("Legacy Certification Claims 不符合严格合同。");
+        }
+        claims = parsed.data;
+        expectedContentHash = claims.probe_hash;
+      } else {
+        const parsed = modelExecutionCertificationClaimsSchema.safeParse(claimsInput);
+        if (!parsed.success) {
+          return invalidInput("Execution Certification Claims 不符合严格合同。");
+        }
+        try {
+          claims = await verifyModelExecutionCertificationClaims(parsed.data);
+          expectedContentHash = await computeModelExecutionCertificationContentHash(claims);
+        } catch {
+          return invalidInput("Execution Certification Claims 的 profile snapshot/hash 不一致。");
+        }
+      }
       const reference = claims.receipt_ref;
       if (
         reference.revision !== 1 ||
-        reference.content_hash !== claims.probe_hash ||
+        reference.content_hash !== expectedContentHash ||
         containsPotentialPlaintextSecret(claims)
       ) {
-        return invalidInput("Model Certification Receipt 必须无明文凭据，并绑定真实 Probe Hash。");
+        return invalidInput(
+          "Model Certification Receipt 必须无明文凭据，并绑定 canonical Claims Hash。",
+        );
       }
       const canonicalClaims = canonicalizeJson(claims);
 
@@ -107,6 +154,17 @@ export function createPostgresModelCertificationReceiptStore(input: {
             throw new PersistenceBoundaryError(
               "MODEL_CERTIFICATION_SCOPE_MISMATCH",
               "Model Certification Receipt 与 Authority Scope 不一致。",
+            );
+          }
+          if (
+            "execution_profile_snapshot" in claims &&
+            (claims.execution_profile_snapshot.scope.app_id !== capability.scope.app_id ||
+              claims.execution_profile_snapshot.scope.tenant_id !== capability.scope.tenant_id ||
+              claims.execution_profile_snapshot.scope.environment !== capability.scope.environment)
+          ) {
+            throw new PersistenceBoundaryError(
+              "MODEL_CERTIFICATION_SCOPE_MISMATCH",
+              "Execution Certification snapshot 与 Authority Scope 不一致。",
             );
           }
 
@@ -128,6 +186,40 @@ export function createPostgresModelCertificationReceiptStore(input: {
               "WORKER_FENCE_STALE",
               "Worker Fence 已过期，不能提交 Model Certification Receipt。",
             );
+          }
+
+          if (
+            "certification_basis" in claims &&
+            claims.certification_basis.kind === "GOAL_PREFLIGHT_ATTESTATION"
+          ) {
+            const authority = input.goal_preflight_evidence_authority;
+            let resolvedEvidence: unknown = null;
+            if (authority) {
+              try {
+                resolvedEvidence = await authority.resolveCommitted(
+                  {
+                    scope: capability.scope,
+                    run_id: reference.run_id,
+                    goal_execution_id: claims.certification_basis.goal_execution_id,
+                    plan_commit: claims.certification_basis.plan_commit,
+                  },
+                  { capability, client },
+                );
+              } catch {
+                resolvedEvidence = null;
+              }
+            }
+            const committed = modelExecutionCertificationBasisSchema.safeParse(resolvedEvidence);
+            if (
+              !committed.success ||
+              committed.data.kind !== "GOAL_PREFLIGHT_ATTESTATION" ||
+              canonicalizeJson(committed.data) !== canonicalizeJson(claims.certification_basis)
+            ) {
+              throw new PersistenceBoundaryError(
+                "MODEL_CERTIFICATION_GOAL_EVIDENCE_NOT_COMMITTED",
+                "Goal Preflight Certification 必须精确绑定已提交的 plan/manifest/checkpoint evidence。",
+              );
+            }
           }
 
           const existing = await client.query<ExistingReceiptRow>(

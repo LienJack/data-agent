@@ -35,7 +35,7 @@ describe("Test Center runtime configuration", () => {
     ).toThrow("能力测试持久化尚未配置。");
   });
 
-  it("rejects direct execution of a preview-only E-commerce suite before persistence", async () => {
+  it("requires authoritative persistence before executing the ready E-commerce suite", async () => {
     await expect(
       executeTestCenterRun(
         {
@@ -58,8 +58,8 @@ describe("Test Center runtime configuration", () => {
             "ec100000-0000-4000-8000-000000000001": "select 1",
           },
         },
-        "preview-only-test",
+        "ecommerce-ready-test",
       ),
-    ).rejects.toMatchObject({ code: "TEST_CENTER_SUITE_NOT_READY", status: 409 });
+    ).rejects.toMatchObject({ code: "TEST_CENTER_CONFIG_INVALID", status: 503 });
   });
 });

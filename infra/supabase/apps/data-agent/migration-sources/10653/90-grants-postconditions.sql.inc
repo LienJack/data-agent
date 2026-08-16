@@ -6,6 +6,14 @@ alter table app_data_agent.effective_config_context_receipts owner to data_agent
 
 alter function app_data_agent.reject_effective_config_authority_mutation()
   owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_utf16_sort_key(text)
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_ecmascript_number(jsonb)
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_contract_canonical_json(jsonb)
+  owner to data_agent_effective_config_rpc_owner;
+alter function app_data_agent.u2_canonical_sha256(jsonb)
+  owner to data_agent_effective_config_rpc_owner;
 alter function app_data_agent.guard_datasource_resource_version_update()
   owner to data_agent_effective_config_rpc_owner;
 alter function app_data_agent.guard_workspace_run_defaults_update()
@@ -314,6 +322,16 @@ grant execute on function platform.current_backend_authority(boolean)
   to data_agent_effective_config_rpc_owner;
 grant execute on function platform.canonical_sha256(jsonb)
   to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.attribution_canonical_json(jsonb)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_utf16_sort_key(text)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_ecmascript_number(jsonb)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_contract_canonical_json(jsonb)
+  to data_agent_effective_config_rpc_owner;
+grant execute on function app_data_agent.u2_canonical_sha256(jsonb)
+  to data_agent_effective_config_rpc_owner;
 grant execute on function platform.list_active_model_catalog(uuid,uuid)
   to data_agent_effective_config_rpc_owner;
 grant execute on function app_data_agent.contains_potential_plaintext_secret(jsonb,text)
@@ -502,6 +520,38 @@ begin
     'EXECUTE'
   ) then
     raise exception using errcode = 'P0001', message = 'EFFECTIVE_CONFIG_FUNCTION_GRANTS_UNSAFE';
+  end if;
+
+  if not exists (
+    select 1
+    from pg_catalog.pg_proc as procedure
+    join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    where namespace.nspname = 'app_data_agent'
+      and procedure.proname = 'u2_canonical_sha256'
+      and procedure.prosecdef
+      and pg_catalog.pg_get_userbyid(procedure.proowner) = 'data_agent_effective_config_rpc_owner'
+      and 'search_path=""' = any(procedure.proconfig)
+  ) or not pg_catalog.has_function_privilege(
+    'data_agent_effective_config_rpc_owner',
+    'app_data_agent.u2_canonical_sha256(jsonb)','EXECUTE'
+  ) or not pg_catalog.has_function_privilege(
+    'data_agent_effective_config_rpc_owner',
+    'app_data_agent.attribution_canonical_json(jsonb)','EXECUTE'
+  ) or exists (
+    select 1
+    from pg_catalog.pg_proc as procedure
+    join pg_catalog.pg_namespace as namespace on namespace.oid = procedure.pronamespace
+    cross join lateral pg_catalog.aclexplode(
+      coalesce(procedure.proacl,pg_catalog.acldefault('f',procedure.proowner))
+    ) as privilege
+    where namespace.nspname = 'app_data_agent'
+      and procedure.proname = 'u2_canonical_sha256'
+      and privilege.grantee = 0
+      and privilege.privilege_type = 'EXECUTE'
+  ) or pg_catalog.has_function_privilege(
+    'data_agent_backend','app_data_agent.u2_canonical_sha256(jsonb)','EXECUTE'
+  ) then
+    raise exception using errcode = 'P0001', message = 'U2_CANONICAL_HASH_AUTHORITY_UNSAFE';
   end if;
 end
 $postconditions$;

@@ -14,6 +14,7 @@ import {
   createPostgresModelBillingRepository,
   createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
+  createPostgresProviderInvocationStore,
   createPostgresSemanticPortabilityRepository,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
@@ -45,6 +46,7 @@ interface WorkspaceIdentityRuntimeState {
   operationsAdminRepository?: ReturnType<typeof createPostgresOperationsAdminRepository>;
   semanticPortabilityRepository?: ReturnType<typeof createPostgresSemanticPortabilityRepository>;
   effectiveConfigResolver?: ReturnType<typeof createPostgresEffectiveConfigResolver>;
+  providerInvocationStore?: ReturnType<typeof createPostgresProviderInvocationStore>;
 }
 
 interface SessionResolutionDependencies {
@@ -134,6 +136,15 @@ export function getEffectiveConfigResolver() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.effectiveConfigResolver;
+}
+
+export function getProviderInvocationStore() {
+  const runtime = state();
+  runtime.providerInvocationStore ??= createPostgresProviderInvocationStore({
+    pool: getWorkspaceSqlPool(),
+    authorizer: getWorkspaceAuthority().authorizer,
+  });
+  return runtime.providerInvocationStore;
 }
 
 export function getPricingControlRepository() {

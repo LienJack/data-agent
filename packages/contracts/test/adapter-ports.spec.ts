@@ -450,7 +450,14 @@ describe("版本化 Adapter Ports", () => {
         event_type: "COMPLETED",
         output_text: "{}",
         response_hash: hashes.execution,
-        usage: { input_tokens: 1, output_tokens: 1, tool_calls: 0 },
+        usage: {
+          availability: "AVAILABLE",
+          source: "PROVIDER_REPORTED",
+          input_tokens: 1,
+          output_tokens: 1,
+          tool_calls: 0,
+          unavailable_reason: null,
+        },
       }).success,
     ).toBe(true);
 

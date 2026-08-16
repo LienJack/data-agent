@@ -2,6 +2,7 @@ import {
   type AppScope,
   type AuthoritativeModelProviderInvocation,
   canonicalizeJson,
+  isAuthoritativePersistedModelProviderInvocation,
   type ModelProvider,
 } from "@data-agent/contracts";
 import { Agent, type AgentExecutionOptionsBase } from "@mastra/core/agent";
@@ -65,7 +66,9 @@ export interface TrustedModelInputTokenCounterContext {
 }
 
 /**
- * Server-deployed token counter for the exact provider/profile input context.
+ * Server-deployed deterministic token upper-bound calculator for the exact
+ * provider/profile input context. U3 uses a policy-versioned UTF-8 byte bound;
+ * this is deliberately not an exact Provider tokenizer.
  *
  * The bridge validates the return value at runtime. An absent counter, a
  * counter error, or any non-integer result fails closed before provider setup.
@@ -98,7 +101,7 @@ const defaultBindingResolver: ServerModelProviderBindingResolver = {
 
 const failClosedInputTokenCounter: TrustedModelInputTokenCounter = {
   count: async () => {
-    throw new Error("Trusted input-token counter is not deployed.");
+    throw new Error("Trusted input-token upper-bound calculator is not deployed.");
   },
 };
 
@@ -224,13 +227,13 @@ function parseToolArguments(input: unknown): z.infer<ReturnType<typeof z.json>> 
   return parsed.data;
 }
 
-function normalizeUsage(input: {
-  readonly inputTokens?: unknown;
-  readonly outputTokens?: unknown;
-}): {
-  readonly input_tokens: number;
-  readonly output_tokens: number;
-} {
+function normalizeUsage(input: { readonly inputTokens?: unknown; readonly outputTokens?: unknown }):
+  | {
+      readonly availability: "AVAILABLE";
+      readonly input_tokens: number;
+      readonly output_tokens: number;
+    }
+  | { readonly availability: "UNAVAILABLE"; readonly reason: "PROVIDER_DID_NOT_REPORT_USAGE" } {
   if (
     typeof input.inputTokens !== "number" ||
     !Number.isSafeInteger(input.inputTokens) ||
@@ -239,14 +242,11 @@ function normalizeUsage(input: {
     !Number.isSafeInteger(input.outputTokens) ||
     input.outputTokens < 0
   ) {
-    throw new MastraExecutionError(
-      "MODEL_USAGE_MISMATCH",
-      false,
-      "Model Provider 必须返回完整的非负整数 Token Usage。",
-    );
+    return { availability: "UNAVAILABLE", reason: "PROVIDER_DID_NOT_REPORT_USAGE" };
   }
 
   return {
+    availability: "AVAILABLE",
     input_tokens: input.inputTokens,
     output_tokens: input.outputTokens,
   };
@@ -280,29 +280,39 @@ async function assertTrustedInputTokenBudget(
   counter: TrustedModelInputTokenCounter,
   context: TrustedModelInputTokenCounterContext,
 ): Promise<void> {
-  let inputTokens: number;
+  let inputTokenUpperBound: number;
   try {
-    inputTokens = await counter.count(context);
+    inputTokenUpperBound = await counter.count(context);
   } catch {
     throw new MastraExecutionError(
       "MODEL_USAGE_MISMATCH",
       false,
-      "Trusted Input Token Preflight 不可用。",
+      "Trusted Input Token Upper-Bound Preflight 不可用。",
     );
   }
 
-  if (!Number.isSafeInteger(inputTokens) || inputTokens < 0) {
+  if (!Number.isSafeInteger(inputTokenUpperBound) || inputTokenUpperBound < 0) {
     throw new MastraExecutionError(
       "MODEL_USAGE_MISMATCH",
       false,
-      "Trusted Input Token Preflight 必须返回非负整数。",
+      "Trusted Input Token Upper-Bound Preflight 必须返回非负整数。",
     );
   }
-  if (inputTokens > context.request.budget.max_input_tokens) {
+  if (
+    isAuthoritativePersistedModelProviderInvocation(context.request) &&
+    inputTokenUpperBound !== context.request.trusted_input_token_upper_bound
+  ) {
+    throw new MastraExecutionError(
+      "MODEL_USAGE_MISMATCH",
+      false,
+      "Trusted Input Token Upper-Bound Preflight 必须与 committed dispatch envelope 精确一致。",
+    );
+  }
+  if (inputTokenUpperBound > context.request.budget.max_input_tokens) {
     throw new MastraExecutionError(
       "MODEL_INPUT_TOKEN_BUDGET_EXCEEDED",
       false,
-      "Trusted Input Token Preflight 超过授权预算。",
+      "Trusted Input Token Upper-Bound Preflight 超过授权预算。",
     );
   }
 }
@@ -385,6 +395,13 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     readonly request: AuthoritativeModelProviderInvocation;
     readonly signal: AbortSignal;
   }): AsyncIterable<ModelExecutionChunk> {
+    if (input.signal.aborted) {
+      throw new MastraExecutionError(
+        "MODEL_PROVIDER_EXECUTION_FAILED",
+        false,
+        "Run 已在 Provider local preflight 前中止。",
+      );
+    }
     const responseSchema = resolveResponseSchema(
       this.#responseSchemaRegistry,
       input.request.response_schema_version,
@@ -453,6 +470,17 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       ...(providerOptions ? { providerOptions } : {}),
       runId: input.request.run_id,
     };
+    if (input.signal.aborted) {
+      throw new MastraExecutionError(
+        "MODEL_PROVIDER_EXECUTION_FAILED",
+        false,
+        "Run 已在 Provider dispatch marker 前中止。",
+      );
+    }
+    // This yield is the real transport suspension point: every local validation,
+    // credential lookup and model construction has completed, while agent.stream
+    // (the first operation allowed to open a provider connection) has not run.
+    yield { chunk_type: "DISPATCH_READY" };
     const output = usesToolCalling
       ? await agent.stream(projected.messages, {
           ...commonExecutionOptions,
@@ -514,11 +542,9 @@ class MastraExecutionBridge implements ModelExecutionBridge {
                 "Mastra Structured Output 未通过服务端 Schema 校验。",
               );
             }
-            throw new MastraExecutionError(
-              "MODEL_PROVIDER_EXECUTION_FAILED",
-              true,
-              "Mastra Stream 返回执行错误。",
-            );
+            // Preserve the opaque error object for the private adapter so it can
+            // read AI SDK's non-secret status/retry metadata (not body/message).
+            throw chunk.payload.error;
           default:
             break;
         }
@@ -545,11 +571,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
           "Mastra Structured Output 未通过服务端 Schema 校验。",
         );
       }
-      throw new MastraExecutionError(
-        "MODEL_PROVIDER_EXECUTION_FAILED",
-        true,
-        "Mastra Full Output 返回执行错误。",
-      );
+      throw fullOutput.error;
     }
     if (fullOutput.finishReason === "error" || fullOutput.finishReason === "content-filter") {
       throw new MastraExecutionError(
@@ -568,7 +590,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       output_text: outputText,
       usage: {
         ...usage,
-        tool_calls: observedToolCalls,
+        observed_tool_calls: observedToolCalls,
       },
     };
   }

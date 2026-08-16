@@ -1,6 +1,7 @@
 import {
   type AuthoritativeModelProviderInvocation,
   isAuthoritativeModelProviderInvocation,
+  isAuthoritativePersistedModelProviderInvocation,
   type ModelProviderEvent,
   type ModelProviderPort,
   parseModelProviderEventForRequest,
@@ -17,6 +18,10 @@ export interface ModelProviderAdapterClock {
   now(): Date;
 }
 
+export interface ProviderDispatchMarker {
+  mark_dispatched(input: AuthoritativeModelProviderInvocation): Promise<void>;
+}
+
 const systemClock: ModelProviderAdapterClock = {
   now: () => new Date(),
 };
@@ -30,14 +35,20 @@ function assertUsageWithinBudget(
   completion: Extract<ModelExecutionChunk, { chunk_type: "COMPLETED" }>,
   observedToolCalls: number,
 ): void {
-  if (completion.usage.input_tokens > request.budget.max_input_tokens) {
+  if (
+    completion.usage.availability === "AVAILABLE" &&
+    completion.usage.input_tokens > request.budget.max_input_tokens
+  ) {
     throw new MastraExecutionError(
       "MODEL_INPUT_TOKEN_BUDGET_EXCEEDED",
       false,
       "Model Provider 返回的 Input Token Usage 超过授权预算。",
     );
   }
-  if (completion.usage.output_tokens > request.budget.max_output_tokens) {
+  if (
+    completion.usage.availability === "AVAILABLE" &&
+    completion.usage.output_tokens > request.budget.max_output_tokens
+  ) {
     throw new MastraExecutionError(
       "MODEL_OUTPUT_TOKEN_BUDGET_EXCEEDED",
       false,
@@ -45,11 +56,11 @@ function assertUsageWithinBudget(
     );
   }
   if (
-    completion.usage.tool_calls !== observedToolCalls ||
-    completion.usage.tool_calls > request.budget.max_tool_calls
+    completion.usage.observed_tool_calls !== observedToolCalls ||
+    completion.usage.observed_tool_calls > request.budget.max_tool_calls
   ) {
     throw new MastraExecutionError(
-      completion.usage.tool_calls === observedToolCalls
+      completion.usage.observed_tool_calls === observedToolCalls
         ? "MODEL_TOOL_CALL_BUDGET_EXCEEDED"
         : "MODEL_USAGE_MISMATCH",
       false,
@@ -75,16 +86,36 @@ function nextSequenceEvent(
         readonly event_type: "COMPLETED";
         readonly output_text: string;
         readonly response_hash: `sha256:${string}`;
-        readonly usage: {
-          readonly input_tokens: number;
-          readonly output_tokens: number;
-          readonly tool_calls: number;
-        };
+        readonly usage:
+          | {
+              readonly availability: "AVAILABLE";
+              readonly source: "PROVIDER_REPORTED";
+              readonly input_tokens: number;
+              readonly output_tokens: number;
+              readonly tool_calls: number;
+              readonly unavailable_reason: null;
+            }
+          | {
+              readonly availability: "UNAVAILABLE";
+              readonly source: "UNAVAILABLE";
+              readonly input_tokens: null;
+              readonly output_tokens: null;
+              readonly tool_calls: null;
+              readonly unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE";
+            };
       }
     | {
         readonly event_type: "FAILED";
         readonly reason_code: string;
         readonly retryable: boolean;
+        readonly delivery_certainty: "NOT_DISPATCHED" | "DISPATCHED_OUTCOME_UNKNOWN";
+      }
+    | {
+        readonly event_type: "THROTTLED";
+        readonly reason_code: "MODEL_PROVIDER_THROTTLED";
+        readonly retryable: true;
+        readonly delivery_certainty: "DISPATCHED_OUTCOME_KNOWN";
+        readonly retry_after_ms: number | null;
       },
 ): ModelProviderEvent {
   return parseModelProviderEventForRequest(request, {
@@ -108,12 +139,23 @@ function failedEvent(
   clock: ModelProviderAdapterClock,
   sequence: number,
   error: unknown,
+  dispatchMarked: boolean,
 ): ModelProviderEvent {
   const normalized = normalizeMastraExecutionError(error);
+  if (dispatchMarked && normalized.terminal_status === "THROTTLED") {
+    return nextSequenceEvent(request, clock, sequence, {
+      event_type: "THROTTLED",
+      reason_code: "MODEL_PROVIDER_THROTTLED",
+      retryable: true,
+      delivery_certainty: "DISPATCHED_OUTCOME_KNOWN",
+      retry_after_ms: normalized.retry_after_ms,
+    });
+  }
   return nextSequenceEvent(request, clock, sequence, {
     event_type: "FAILED",
     reason_code: normalized.reason_code,
     retryable: normalized.retryable,
+    delivery_certainty: dispatchMarked ? "DISPATCHED_OUTCOME_UNKNOWN" : "NOT_DISPATCHED",
   });
 }
 
@@ -126,17 +168,30 @@ function failedEvent(
 export class MastraModelProviderAdapter implements ModelProviderPort {
   readonly #bridge: ModelExecutionBridge;
   readonly #clock: ModelProviderAdapterClock;
+  readonly #dispatchMarker: ProviderDispatchMarker;
+  readonly #authorization: "PERSISTENT_PERMIT" | "LEGACY_TEST_ONLY";
+  readonly #abortSignal: AbortSignal | undefined;
 
   constructor(options: {
     readonly bridge: ModelExecutionBridge;
     readonly clock?: ModelProviderAdapterClock;
+    readonly dispatch_marker: ProviderDispatchMarker;
+    readonly authorization: "PERSISTENT_PERMIT" | "LEGACY_TEST_ONLY";
+    readonly abort_signal?: AbortSignal;
   }) {
     this.#bridge = options.bridge;
     this.#clock = options.clock ?? systemClock;
+    this.#dispatchMarker = options.dispatch_marker;
+    this.#authorization = options.authorization;
+    this.#abortSignal = options.abort_signal;
   }
 
   async *stream(input: AuthoritativeModelProviderInvocation): AsyncIterable<ModelProviderEvent> {
-    if (!isAuthoritativeModelProviderInvocation(input)) {
+    if (
+      (this.#authorization === "PERSISTENT_PERMIT" &&
+        !isAuthoritativePersistedModelProviderInvocation(input)) ||
+      (this.#authorization === "LEGACY_TEST_ONLY" && !isAuthoritativeModelProviderInvocation(input))
+    ) {
       throw new MastraExecutionError(
         "MODEL_PROVIDER_REQUEST_NOT_AUTHORIZED",
         false,
@@ -145,10 +200,12 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
     }
 
     let sequence = 0;
-    yield nextSequenceEvent(input, this.#clock, sequence, { event_type: "STARTED" });
-    sequence += 1;
+    let dispatchMarked = false;
 
     const controller = new AbortController();
+    const abortFromRun = () => controller.abort();
+    if (this.#abortSignal?.aborted) controller.abort();
+    this.#abortSignal?.addEventListener("abort", abortFromRun, { once: true });
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
     let iterator: AsyncIterator<ModelExecutionChunk> | undefined;
     const timeout = new Promise<never>((_resolve, reject) => {
@@ -199,7 +256,27 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
         }
 
         switch (chunk.chunk_type) {
+          case "DISPATCH_READY":
+            if (dispatchMarked) {
+              throw new MastraExecutionError(
+                "MODEL_STREAM_PROTOCOL_VIOLATION",
+                false,
+                "Model Execution Bridge 重复声明 dispatch suspension。",
+              );
+            }
+            await this.#dispatchMarker.mark_dispatched(input);
+            dispatchMarked = true;
+            yield nextSequenceEvent(input, this.#clock, sequence, { event_type: "STARTED" });
+            sequence += 1;
+            break;
           case "TEXT_DELTA":
+            if (!dispatchMarked) {
+              throw new MastraExecutionError(
+                "MODEL_STREAM_PROTOCOL_VIOLATION",
+                false,
+                "Provider 数据不能出现在 durable dispatch marker 之前。",
+              );
+            }
             yield nextSequenceEvent(input, this.#clock, sequence, {
               event_type: "TEXT_DELTA",
               delta: chunk.delta,
@@ -207,6 +284,13 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
             sequence += 1;
             break;
           case "TOOL_CALL_CANDIDATE":
+            if (!dispatchMarked) {
+              throw new MastraExecutionError(
+                "MODEL_STREAM_PROTOCOL_VIOLATION",
+                false,
+                "Provider Tool Candidate 不能出现在 durable dispatch marker 之前。",
+              );
+            }
             if (!input.tool_allowlist.includes(chunk.tool_name)) {
               throw new MastraExecutionError(
                 "MODEL_TOOL_NOT_ALLOWED",
@@ -244,6 +328,13 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
             sequence += 1;
             break;
           case "COMPLETED":
+            if (!dispatchMarked) {
+              throw new MastraExecutionError(
+                "MODEL_STREAM_PROTOCOL_VIOLATION",
+                false,
+                "Provider completion 不能出现在 durable dispatch marker 之前。",
+              );
+            }
             completion = chunk;
             break;
         }
@@ -266,7 +357,24 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
         event_type: "COMPLETED",
         output_text: completion.output_text,
         response_hash: responseHash,
-        usage: completion.usage,
+        usage:
+          completion.usage.availability === "AVAILABLE"
+            ? {
+                availability: "AVAILABLE",
+                source: "PROVIDER_REPORTED",
+                input_tokens: completion.usage.input_tokens,
+                output_tokens: completion.usage.output_tokens,
+                tool_calls: completion.usage.observed_tool_calls,
+                unavailable_reason: null,
+              }
+            : {
+                availability: "UNAVAILABLE",
+                source: "UNAVAILABLE",
+                input_tokens: null,
+                output_tokens: null,
+                tool_calls: null,
+                unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE",
+              },
       });
     } catch (error) {
       const normalizedError =
@@ -277,12 +385,13 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
               "Model Provider 调用超过授权超时预算。",
             )
           : error;
-      yield failedEvent(input, this.#clock, sequence, normalizedError);
+      yield failedEvent(input, this.#clock, sequence, normalizedError, dispatchMarked);
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);
       }
       controller.abort();
+      this.#abortSignal?.removeEventListener("abort", abortFromRun);
       if (iterator?.return) {
         void iterator.return().catch(() => undefined);
       }

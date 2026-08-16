@@ -46,7 +46,7 @@ begin
   if not found then
     raise exception using errcode = '42501', message = 'EFFECTIVE_CONFIG_RECEIPT_NOT_FOUND_OR_FORBIDDEN';
   end if;
-  if receipt.config_hash <> platform.canonical_sha256(receipt.effective_config_json) then
+  if receipt.config_hash <> app_data_agent.u2_canonical_sha256(receipt.effective_config_json) then
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_TAMPERED';
   end if;
 
@@ -106,7 +106,7 @@ begin
   if not found then
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_REVOKED';
   end if;
-  datasource_current_hash := platform.canonical_sha256(pg_catalog.jsonb_build_object(
+  datasource_current_hash := app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
     'datasource_id',datasource_record.datasource_id,
     'datasource_type',datasource_record.datasource_type,
     'status',datasource_record.status,
@@ -128,7 +128,7 @@ begin
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_REVOKED';
   end if;
   if receipt.effective_config_json #>> '{model,resource_hash}' <>
-      platform.canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref')
+      app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref')
     or not (receipt.effective_config_json #> '{effective_egress,allowed_providers}') ? model_record.provider
   then
     raise exception using errcode = '55000', message = 'EFFECTIVE_CONFIG_RECEIPT_REVOKED';
@@ -352,7 +352,7 @@ begin
     'resource_refs',context_resource_refs,
     'consumed_at',app_data_agent.runtime_iso_timestamp(consumed_at)
   );
-  receipt_hash := platform.canonical_sha256(receipt_document);
+  receipt_hash := app_data_agent.u2_canonical_sha256(receipt_document);
   insert into app_data_agent.effective_config_context_receipts (
     app_id,tenant_id,environment,context_receipt_id,config_id,config_revision,
     config_hash,run_id,principal_id,consumer_kind,consumer_id,attempt_id,worker_id,

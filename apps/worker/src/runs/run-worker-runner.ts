@@ -29,7 +29,9 @@ import {
 import { z } from "zod";
 import {
   createRunExecutionContext,
+  type RunBoundProviderDispatcher,
   type RunExecutionContextProvenance,
+  type RunProviderDispatchCapability,
 } from "./run-execution-context.js";
 import { createRunExecutionSupervisor } from "./run-execution-supervisor.js";
 import { failure, occurredAt, scopesMatch, success } from "./run-worker-shared.js";
@@ -139,6 +141,7 @@ export type RunWorkerCycleOutcome =
 export interface RunExecutionContext extends RunExecutionContextProvenance {
   getEffectiveConfig(): EffectiveRunConfigReceiptCandidate;
   getContextReceipt(): ContextReceiptBinding;
+  getProviderDispatchCapability(): RunProviderDispatchCapability | null;
   heartbeat(): Promise<PortResult<{ readonly expires_at: string }>>;
   checkpoint(input: RunCheckpointInput): Promise<PortResult<MastraSnapshotBinding>>;
   executeSideEffectOnce(input: {
@@ -178,6 +181,7 @@ export interface RunWorkerRunnerDependencies {
   readonly event_store: RunEventStorePort;
   readonly executor: RunWorkflowExecutorPort;
   readonly effective_config_loader: (lease: RunWorkLease) => Promise<PortResult<unknown>>;
+  readonly provider_dispatch?: RunBoundProviderDispatcher;
   readonly now?: () => Date;
   readonly create_id?: () => string;
   readonly execution_timeout_ms?: number;
@@ -583,6 +587,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       now,
       create_id: createId,
       side_effect_timeout_ms: timing.side_effect_timeout_ms,
+      provider_dispatch: dependencies.provider_dispatch ?? null,
       heartbeat: () => dependencies.queue.heartbeat({ lease }),
       guard_running_lease: guardRunningLease,
       append_checkpoint_event: (binding) =>

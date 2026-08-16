@@ -31,6 +31,13 @@ export function createWorkerMastraComposition(input: {
     model_provider: createModelProviderPort({
       ...input,
       tools: input.tools ?? [],
+      dispatch_marker: {
+        // The legacy composition is not the audited U3 path. Keep it unable to
+        // cross the network without a durable PostgreSQL dispatch marker.
+        mark_dispatched: async () => {
+          throw new Error("PROVIDER_PERSISTENT_DISPATCH_MARKER_REQUIRED");
+        },
+      },
     }),
   });
 }

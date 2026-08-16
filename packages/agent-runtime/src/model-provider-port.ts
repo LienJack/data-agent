@@ -4,6 +4,7 @@ import {
   MastraModelProviderAdapter,
   type ModelCredentialResolver,
   type ModelProviderAdapterClock,
+  type ProviderDispatchMarker,
   type ServerModelProviderBindingResolver,
   type ServerModelResponseSchemaDescriptor,
   ServerModelResponseSchemaRegistry,
@@ -32,6 +33,8 @@ export interface ModelProviderPortCompositionInput {
   readonly binding_resolver: DeploymentModelProviderBindingResolver;
   readonly response_schema_registry: ServerModelResponseSchemaRegistry;
   readonly input_token_counter: TrustedModelInputTokenCounter;
+  readonly dispatch_marker: ProviderDispatchMarker;
+  readonly abort_signal?: AbortSignal;
   readonly tools?: readonly ServerOwnedToolDescriptor[];
   readonly clock?: ModelProviderAdapterClock;
 }
@@ -55,6 +58,9 @@ export function createModelProviderPort(
 
   return new MastraModelProviderAdapter({
     bridge,
+    dispatch_marker: input.dispatch_marker,
+    authorization: "PERSISTENT_PERMIT",
+    ...(input.abort_signal ? { abort_signal: input.abort_signal } : {}),
     ...(input.clock ? { clock: input.clock } : {}),
   });
 }

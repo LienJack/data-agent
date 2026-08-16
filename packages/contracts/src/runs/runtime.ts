@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { type ArtifactReference, artifactReferenceSchema } from "../artifacts/index.js";
+import { type ArtifactReference, artifactReferenceSchema } from "../artifacts/envelope.js";
 import {
   type AppScope,
   appScopeSchema,

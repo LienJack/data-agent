@@ -2,6 +2,7 @@ import { MODEL_PROVIDERS, modelProfileSchema } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   createModelProviderBindings,
+  createModelProviderExecutionBinding,
   createUnverifiedModelProfiles,
   getModelProviderBinding,
   inspectProviderRuntimeModel,
@@ -12,6 +13,19 @@ import {
   runOfflineProviderBehaviorConformance,
 } from "../src/models/offline-conformance.js";
 import { modelFixtureScope } from "./model-fixtures.js";
+
+function operationalConstraintsFixture() {
+  return {
+    context_window: {
+      verification_status: "VERIFIED" as const,
+      max_context_tokens: 128_000,
+      max_output_tokens: 8_192,
+    },
+    region_privacy: { verification_status: "UNVERIFIED" as const },
+    pricing: { verification_status: "UNVERIFIED" as const },
+    fallback_compatibility: { verification_status: "UNVERIFIED" as const },
+  };
+}
 
 describe("七类 Model Provider 离线 Conformance", () => {
   it("Registry 完整、唯一并固定真实 SDK/端点/凭据引用", () => {
@@ -36,6 +50,46 @@ describe("七类 Model Provider 离线 Conformance", () => {
       ).toBe(true);
       expect(getModelProviderBinding(binding.provider)).toEqual(binding);
     }
+    expect(getModelProviderBinding("deepseek").default_model_id).toBe("deepseek-v4-flash");
+    expect(JSON.stringify(MODEL_PROVIDER_BINDINGS)).not.toContain("deepseek-v4-pro");
+  });
+
+  it("从U2 exact config动态构造execution binding且deployment不能由profile冒充", () => {
+    const template = getModelProviderBinding("deepseek");
+    const binding = createModelProviderExecutionBinding({
+      template,
+      model_config_version: 7,
+      model_id: "deepseek-v4-flash",
+      model_resource_hash: `sha256:${"1".repeat(64)}`,
+      execution_profile_hash: `sha256:${"2".repeat(64)}`,
+      recovery_capabilities: ["INVOCATION_RECONCILIATION"],
+      connection: {
+        kind: "SYSTEM_DEPLOYMENT",
+        deployment_id: "40000000-0000-4000-8000-000000000001",
+        deployment_revision: 3,
+        deployment_hash: `sha256:${"3".repeat(64)}`,
+      },
+      operational_constraints: operationalConstraintsFixture(),
+    });
+    expect(binding.profile_version).toBe("model-profile@7");
+    expect(binding.model_config_version).toBe(7);
+    expect(() =>
+      createModelProviderExecutionBinding({
+        template,
+        model_config_version: 7,
+        model_id: "deepseek-v4-flash",
+        model_resource_hash: `sha256:${"1".repeat(64)}`,
+        execution_profile_hash: `sha256:${"2".repeat(64)}`,
+        recovery_capabilities: ["INVOCATION_RECONCILIATION"],
+        connection: {
+          kind: "SYSTEM_DEPLOYMENT",
+          deployment_id: template.profile_id,
+          deployment_revision: 3,
+          deployment_hash: `sha256:${"3".repeat(64)}`,
+        },
+        operational_constraints: operationalConstraintsFixture(),
+      }),
+    ).toThrow("deployment identity");
   });
 
   it("离线配置只能创建 UNVERIFIED Profile，绝不伪装为 AVAILABLE", () => {

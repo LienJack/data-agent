@@ -9,6 +9,7 @@ import { z } from "zod";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
   getEffectiveConfigResolver,
+  getProviderInvocationStore,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
   getWorkspaceSqlPool,
@@ -75,8 +76,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const resolver = getEffectiveConfigResolver();
-  const defaults = await resolver.getWorkspaceDefaults(authorized.value.capability);
+  const [defaults, selections] = await Promise.all([
+    resolver.getWorkspaceDefaults(authorized.value.capability),
+    getProviderInvocationStore().resolveConversationRunSelections(authorized.value.capability, {
+      conversation_id: conversation.value.conversation_id,
+      expected_resource_version: conversationVersion.data,
+    }),
+  ]);
   if (!defaults.ok) return workspaceErrorResponse(defaults.error);
+  if (!selections.ok) return workspaceErrorResponse(selections.error);
   if (!defaults.value) {
     return workspaceErrorResponse({
       code: "WORKSPACE_DEFAULTS_NOT_CONFIGURED",
@@ -103,8 +111,24 @@ export async function POST(request: NextRequest, context: RouteContext) {
     },
     defaults_ref: defaults.value.defaults_ref,
     overrides: {
-      model: inherited,
-      datasource: inherited,
+      model: {
+        mode: "RESOURCE_IDS",
+        resources: [
+          {
+            resource_id: selections.value.model_profile_id,
+            expected_revision: selections.value.model_config_version,
+          },
+        ],
+      },
+      datasource: {
+        mode: "RESOURCE_IDS",
+        resources: [
+          {
+            resource_id: selections.value.datasource_id,
+            expected_revision: selections.value.datasource_resource_version,
+          },
+        ],
+      },
       files: inherited,
       knowledge: inherited,
       mcp_servers: inherited,

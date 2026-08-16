@@ -3,6 +3,9 @@ import { z } from "zod";
 
 export const modelExecutionChunkSchema = z.discriminatedUnion("chunk_type", [
   z.strictObject({
+    chunk_type: z.literal("DISPATCH_READY"),
+  }),
+  z.strictObject({
     chunk_type: z.literal("TEXT_DELTA"),
     delta: z.string().min(1).max(100_000),
   }),
@@ -15,11 +18,19 @@ export const modelExecutionChunkSchema = z.discriminatedUnion("chunk_type", [
   z.strictObject({
     chunk_type: z.literal("COMPLETED"),
     output_text: z.string().max(1_000_000),
-    usage: z.strictObject({
-      input_tokens: z.number().int().nonnegative(),
-      output_tokens: z.number().int().nonnegative(),
-      tool_calls: z.number().int().nonnegative(),
-    }),
+    usage: z.discriminatedUnion("availability", [
+      z.strictObject({
+        availability: z.literal("AVAILABLE"),
+        input_tokens: z.number().int().nonnegative(),
+        output_tokens: z.number().int().nonnegative(),
+        observed_tool_calls: z.number().int().nonnegative(),
+      }),
+      z.strictObject({
+        availability: z.literal("UNAVAILABLE"),
+        reason: z.literal("PROVIDER_DID_NOT_REPORT_USAGE"),
+        observed_tool_calls: z.number().int().nonnegative(),
+      }),
+    ]),
   }),
 ]);
 

@@ -78,7 +78,7 @@ create table app_data_agent.workspace_run_default_revisions (
   ),
   defaults_hash text not null check (
     defaults_hash ~ '^sha256:[0-9a-f]{64}$'
-    and defaults_hash = platform.canonical_sha256(revision_document)
+    and defaults_hash = app_data_agent.u2_canonical_sha256(revision_document)
   ),
   membership_version bigint not null check (membership_version >= 1),
   user_authz_epoch bigint not null check (user_authz_epoch >= 1),
@@ -154,7 +154,7 @@ create table app_data_agent.effective_run_config_receipts (
   effective_config_json jsonb not null check (
     pg_catalog.jsonb_typeof(effective_config_json) = 'object'
     and not app_data_agent.contains_potential_plaintext_secret(effective_config_json)
-    and config_hash = platform.canonical_sha256(effective_config_json)
+    and config_hash = app_data_agent.u2_canonical_sha256(effective_config_json)
   ),
   committed_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (app_id, tenant_id, environment, config_id, config_revision),
@@ -263,7 +263,7 @@ create table app_data_agent.effective_config_context_receipts (
   ),
   receipt_hash text not null check (
     receipt_hash ~ '^sha256:[0-9a-f]{64}$'
-    and receipt_hash = platform.canonical_sha256(receipt_json)
+    and receipt_hash = app_data_agent.u2_canonical_sha256(receipt_json)
   ),
   consumed_at timestamptz not null default pg_catalog.clock_timestamp(),
   primary key (app_id, tenant_id, environment, context_receipt_id),

@@ -75,7 +75,7 @@ begin
   requested_idempotency_key := command ->> 'idempotency_key';
   requested_hash := command ->> 'request_hash';
   requested_defaults := command -> 'defaults';
-  computed_request_hash := platform.canonical_sha256(command - 'request_hash');
+  computed_request_hash := app_data_agent.u2_canonical_sha256(command - 'request_hash');
   if requested_expected_revision < 0
     or pg_catalog.length(requested_idempotency_key) not between 8 and 128
     or requested_idempotency_key !~ '^[A-Za-z0-9][A-Za-z0-9._:@/-]*$'
@@ -185,7 +185,7 @@ begin
     end if;
     model_reference := pg_catalog.jsonb_build_object(
       'resource_id',model_record.model_profile_id,'resource_revision',model_record.config_version,
-      'resource_hash',platform.canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref'));
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.to_jsonb(model_record) - 'credential_ref'));
   end if;
 
   if requested_defaults -> 'datasource' <> 'null'::jsonb then
@@ -206,7 +206,7 @@ begin
     datasource_reference := pg_catalog.jsonb_build_object(
       'resource_id',datasource_record.datasource_id,
       'resource_revision',datasource_record.resource_version,
-      'resource_hash',platform.canonical_sha256(pg_catalog.jsonb_build_object(
+      'resource_hash',app_data_agent.u2_canonical_sha256(pg_catalog.jsonb_build_object(
         'datasource_id',datasource_record.datasource_id,'datasource_type',datasource_record.datasource_type,
         'status',datasource_record.status,'resource_version',datasource_record.resource_version)));
   end if;
@@ -317,7 +317,7 @@ begin
     'defaults',requested_defaults,'created_by_principal_id',authority.principal_id,
     'created_at',app_data_agent.runtime_iso_timestamp(commit_at)
   );
-  computed_defaults_hash := platform.canonical_sha256(revision_document);
+  computed_defaults_hash := app_data_agent.u2_canonical_sha256(revision_document);
   insert into app_data_agent.workspace_run_default_revisions (
     app_id,tenant_id,environment,defaults_id,defaults_revision,revision_id,principal_id,
     idempotency_key,request_hash,defaults_json,revision_document,defaults_hash,membership_version,

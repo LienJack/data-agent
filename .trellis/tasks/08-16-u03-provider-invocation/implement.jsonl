@@ -1,1 +1,11 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Respect package ownership and dependency direction."}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "PostgreSQL invocation authority, RLS, RPC and ledger requirements."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Stable provider failures and fail-closed public behavior."}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "Candidate, hash, receipt and protected artifact boundaries."}
+{"file": ".trellis/spec/backend/port-conformance.md", "reason": "Scope, idempotency, fence, recovery and authority-port rules."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Prevent prompt, response and credential leakage."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Backend tests and validation requirements."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Strict selector and route DTO boundaries."}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Model selector async and persisted state rules."}
+{"file": ".trellis/tasks/08-16-u03-provider-invocation/research/u03-research-summary.md", "reason": "Repository-specific provider, worker, selector and dirty-tree findings."}
+{"file": ".trellis/spec/backend/provider-invocation-authority.md", "reason": "U3 exact Provider lifecycle, RPC, hash, replay and privacy contract"}

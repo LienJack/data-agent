@@ -3,7 +3,7 @@
   "name": "u03-provider-invocation",
   "title": "U3 真实模型切换 Provider Invocation 与 Usage Telemetry",
   "description": "冻结计划对应 U3 的独立实施、验证与 scoped commit。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
