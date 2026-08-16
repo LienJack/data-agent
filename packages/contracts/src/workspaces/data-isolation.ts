@@ -59,6 +59,8 @@ export const workspaceConversationSchema = z.strictObject({
   title: z.string().trim().min(1).max(255),
   datasource_id: immutableIdSchema.nullable(),
   model_id: versionIdentifierSchema.nullable(),
+  model_profile_id: immutableIdSchema.nullable().optional(),
+  resource_version: z.number().int().positive().safe().optional(),
   message_count: z.number().int().nonnegative().safe(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
@@ -70,6 +72,7 @@ export const createWorkspaceConversationInputSchema = z.strictObject({
   title: workspaceConversationSchema.shape.title,
   datasource_id: immutableIdSchema.nullable().default(null),
   model_id: versionIdentifierSchema.nullable().default(null),
+  model_profile_id: immutableIdSchema.nullable().optional(),
 });
 
 export const bindWorkspaceConversationDatasourceInputSchema = z.strictObject({

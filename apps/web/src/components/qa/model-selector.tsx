@@ -1,69 +1,80 @@
 "use client";
 
-import type { ModelProvider } from "@data-agent/contracts";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { ProviderMark } from "@/components/settings/provider-mark";
 import type { ModelVendorId } from "@/lib/model-types";
-import { useQAActiveConversationId, useQAConversations, useQAStore } from "@/lib/qa-store";
+import {
+  useQAActiveConversationId,
+  useQAConversations,
+  useQAResourceCatalog,
+  useQAResourceCatalogState,
+  useQAResourceError,
+  useQAResourceSwitching,
+  useQASending,
+  useQAStore,
+} from "@/lib/qa-store";
 import { ResourceCardPicker } from "./resource-card-picker";
 
-interface ModelOption {
-  id: string;
-  name: string;
-  modelName: string;
-  baseUrl: string;
-  vendorId: ModelVendorId;
-  provider: ModelProvider;
-  isSystemDefault: boolean;
-}
+const readinessLabels = {
+  RUNNABLE: "可运行",
+  CERTIFICATION_REQUIRED: "待认证",
+  CREDENTIAL_UNAVAILABLE: "缺少凭据",
+  UNBILLABLE: "不可计费",
+} as const;
 
-/**
- * 模型选择器。
- *
- * 下拉菜单，从 Model Settings 获取可用模型。
- * 选择后更新当前对话的模型绑定。
- */
-export function ModelSelector() {
-  const [models, setModels] = useState<ModelOption[]>([]);
+export function ModelSelector({
+  placement = "top",
+  compact = true,
+}: {
+  placement?: "top" | "bottom";
+  compact?: boolean;
+} = {}) {
+  const catalog = useQAResourceCatalog();
+  const catalogState = useQAResourceCatalogState();
+  const resourceError = useQAResourceError();
+  const switching = useQAResourceSwitching();
   const conversations = useQAConversations();
   const activeId = useQAActiveConversationId();
+  const sending = useQASending();
+  const loadCatalog = useQAStore((state) => state.loadResourceCatalog);
   const updateResources = useQAStore((state) => state.updateActiveConversationResources);
 
   useEffect(() => {
-    const loadModels = async () => {
-      try {
-        const response = await fetch("/api/models");
-        if (response.ok) {
-          const json = (await response.json()) as { data: ModelOption[] };
-          setModels(
-            [...json.data].sort(
-              (left, right) => Number(right.isSystemDefault) - Number(left.isSystemDefault),
-            ),
-          );
-        }
-      } catch {
-        // 静默失败
-      }
-    };
-    loadModels();
-  }, []);
+    if (catalogState === "idle") loadCatalog();
+  }, [catalogState, loadCatalog]);
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeId);
-  const activeModelId = activeConversation?.modelId ?? "";
+  const options = useMemo(
+    () =>
+      (catalog?.models ?? []).map((model) => ({
+        id: model.model_profile_id,
+        title: model.display_name,
+        description: `${model.provider} · ${model.model_id}`,
+        mark: <ProviderMark vendorId={model.provider as ModelVendorId} size="sm" />,
+        badge: readinessLabels[model.readiness],
+        disabled: !model.selectable,
+        disabledReason: model.selectable
+          ? undefined
+          : `${readinessLabels[model.readiness]}，暂不能用于新分析`,
+      })),
+    [catalog],
+  );
 
   return (
     <ResourceCardPicker
       label="模型"
-      value={activeModelId}
-      placeholder="系统默认模型"
-      options={models.map((model) => ({
-        id: model.id,
-        title: model.name,
-        description: model.modelName,
-        mark: <ProviderMark vendorId={model.vendorId} size="sm" />,
-        badge: model.isSystemDefault ? "默认" : undefined,
-      }))}
-      onChange={(modelId) => updateResources({ modelId })}
+      value={activeConversation?.modelProfileId ?? ""}
+      placeholder="选择模型"
+      options={options}
+      onChange={(modelProfileId) => updateResources({ modelProfileId })}
+      placement={placement}
+      align="right"
+      compact={compact}
+      disabled={sending}
+      pending={switching}
+      status={catalogState}
+      error={resourceError}
+      onRetry={loadCatalog}
     />
   );
 }

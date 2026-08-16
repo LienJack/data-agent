@@ -69,9 +69,21 @@ const commandPayloadSchema = z
     secret_refs: z.array(commandSecretRef).min(1).max(32).optional(),
     datasource_id: uuid.optional(),
     conversation_id: uuid.optional(),
+    message_id: uuid.optional(),
+    model_profile_id: uuid.optional(),
+    model_config_version: z.number().int().positive().safe().optional(),
+    provider: stableCommandValue.optional(),
+    model_id: z.string().min(1).max(256).optional(),
+    datasource_binding_hash: z
+      .string()
+      .regex(/^sha256:[0-9a-f]{64}$/)
+      .optional(),
   })
   .refine(
-    (payload) => payload.conversation_id === undefined || payload.datasource_id !== undefined,
+    (payload) =>
+      payload.conversation_id === undefined ||
+      payload.datasource_id !== undefined ||
+      payload.message_id !== undefined,
   );
 const commandInputSchema = z.strictObject({
   run_id: uuid,
@@ -897,7 +909,67 @@ export function createPostgresRepository(
             );
           }
 
-          const canonicalPayload = canonicalizeJson(parsed.data.payload);
+          let acceptedCommand = parsed.data;
+          if (parsed.data.payload.message_id) {
+            const resolved = await client.query<{
+              readonly datasource_id: string;
+              readonly model_profile_id: string;
+              readonly config_version: number | string;
+              readonly provider: string;
+              readonly model_id: string;
+              readonly datasource_binding_hash: string;
+            }>(
+              `select conversation.datasource_id,
+                      conversation.model_profile_id,
+                      catalog.config_version,
+                      catalog.provider,
+                      catalog.model_id,
+                      platform.canonical_sha256(pg_catalog.jsonb_build_object(
+                        'datasource_id', datasource.datasource_id,
+                        'updated_at', datasource.updated_at,
+                        'credential_ref_id', datasource.credential_ref_id,
+                        'secret_ref_id', datasource.secret_ref_id,
+                        'secret_version', datasource.secret_version
+                      )) as datasource_binding_hash
+                 from qa_conversations as conversation
+                 join datasource_connections as datasource
+                   on datasource.app_id = conversation.app_id
+                  and datasource.tenant_id = conversation.tenant_id
+                  and datasource.environment = conversation.environment
+                  and datasource.datasource_id = conversation.datasource_id
+                  and datasource.status = 'ACTIVE'
+                 join platform.list_active_model_catalog($3::uuid, $2::uuid) as catalog
+                   on catalog.app_id = conversation.app_id
+                  and catalog.environment = conversation.environment
+                  and catalog.model_profile_id = conversation.model_profile_id
+                  and catalog.status = 'ACTIVE'
+                where conversation.conversation_id = $1::uuid
+                  and conversation.owner_principal_id = $2::uuid
+                for update of conversation`,
+              [parsed.data.payload.conversation_id, capability.principal, capability.deployment_id],
+            );
+            const binding = resolved.rows[0];
+            if (!binding) {
+              throw new PersistenceBoundaryError(
+                "CONVERSATION_RESOURCES_REQUIRED",
+                "对话必须绑定可运行模型与可用数据源。",
+              );
+            }
+            acceptedCommand = {
+              ...parsed.data,
+              payload: {
+                ...parsed.data.payload,
+                datasource_id: binding.datasource_id,
+                model_profile_id: binding.model_profile_id,
+                model_config_version: Number(binding.config_version),
+                provider: binding.provider,
+                model_id: binding.model_id,
+                datasource_binding_hash: binding.datasource_binding_hash,
+              },
+            };
+          }
+
+          const canonicalPayload = canonicalizeJson(acceptedCommand.payload);
           const canonicalHash = await client.query<CanonicalPayloadHashRow>(
             "select platform.canonical_sha256($1::jsonb) as payload_hash",
             [canonicalPayload],
@@ -915,16 +987,16 @@ export function createPostgresRepository(
           }
           const initialEvent = runRuntimeEventSchema.parse({
             schema_version: "1.0.0",
-            event_id: parsed.data.event_id,
+            event_id: acceptedCommand.event_id,
             scope: capability.scope,
-            run_id: parsed.data.run_id,
+            run_id: acceptedCommand.run_id,
             sequence: 1,
             worker_fence: 0,
-            idempotency_key: `event:${parsed.data.event_id}`,
+            idempotency_key: `event:${acceptedCommand.event_id}`,
             occurred_at: new Date().toISOString(),
             event_type: "run.accepted",
             payload: {
-              command_id: parsed.data.command_id,
+              command_id: acceptedCommand.command_id,
               payload_hash: payloadHash,
             },
           });
@@ -935,7 +1007,7 @@ export function createPostgresRepository(
                $1::jsonb, $2::text, $3::jsonb, $4::text
              ) as result`,
             [
-              canonicalizeJson(parsed.data),
+              canonicalizeJson(acceptedCommand),
               payloadHash,
               canonicalizeJson(initialEvent),
               initialEventHash,
@@ -952,9 +1024,9 @@ export function createPostgresRepository(
             .safeParse(accepted.rows[0]?.result);
           if (
             !result.success ||
-            result.data.run_id !== parsed.data.run_id ||
-            result.data.command_id !== parsed.data.command_id ||
-            (result.data.created && result.data.outbox_id !== parsed.data.outbox_id) ||
+            result.data.run_id !== acceptedCommand.run_id ||
+            result.data.command_id !== acceptedCommand.command_id ||
+            (result.data.created && result.data.outbox_id !== acceptedCommand.outbox_id) ||
             result.data.payload_hash !== payloadHash
           ) {
             throw new PersistenceBoundaryError(
@@ -962,51 +1034,97 @@ export function createPostgresRepository(
               "PostgreSQL 返回的 Command Acceptance 与请求不一致。",
             );
           }
-          if (parsed.data.payload.datasource_id) {
-            const binding = await client.query<{
+          if (acceptedCommand.payload.datasource_id) {
+            type PersistedBinding = {
               readonly datasource_id: string;
               readonly conversation_id: string | null;
               readonly principal_id: string;
-            }>(
-              `insert into workspace_run_bindings (
-                 app_id, tenant_id, environment, run_id, datasource_id,
-                 conversation_id, principal_id
-               ) values ($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::uuid, $7::uuid)
-               on conflict (app_id, tenant_id, environment, run_id) do nothing
-               returning datasource_id, conversation_id, principal_id`,
-              [
-                capability.scope.app_id,
-                capability.scope.tenant_id,
-                capability.scope.environment,
-                parsed.data.run_id,
-                parsed.data.payload.datasource_id,
-                parsed.data.payload.conversation_id ?? null,
-                capability.principal,
-              ],
-            );
+              readonly model_profile_id?: string | null;
+              readonly model_config_version?: number | string | null;
+            };
+            const baseBindingValues = [
+              capability.scope.app_id,
+              capability.scope.tenant_id,
+              capability.scope.environment,
+              acceptedCommand.run_id,
+              acceptedCommand.payload.datasource_id,
+              acceptedCommand.payload.conversation_id ?? null,
+              capability.principal,
+            ];
+            const binding = acceptedCommand.payload.model_profile_id
+              ? await client.query<PersistedBinding>(
+                  `insert into workspace_run_bindings (
+                     app_id, tenant_id, environment, run_id, datasource_id,
+                     conversation_id, principal_id, model_profile_id, model_config_version,
+                     provider, model_id, datasource_binding_hash
+                   ) values (
+                     $1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::uuid, $7::uuid,
+                     $8::uuid, $9::bigint, $10::text, $11::text, $12::text
+                   )
+                   on conflict (app_id, tenant_id, environment, run_id) do nothing
+                   returning datasource_id, conversation_id, principal_id,
+                             model_profile_id, model_config_version`,
+                  [
+                    ...baseBindingValues,
+                    acceptedCommand.payload.model_profile_id,
+                    acceptedCommand.payload.model_config_version,
+                    acceptedCommand.payload.provider,
+                    acceptedCommand.payload.model_id,
+                    acceptedCommand.payload.datasource_binding_hash,
+                  ],
+                )
+              : await client.query<PersistedBinding>(
+                  `insert into workspace_run_bindings (
+                     app_id, tenant_id, environment, run_id, datasource_id,
+                     conversation_id, principal_id
+                   ) values ($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::uuid, $7::uuid)
+                   on conflict (app_id, tenant_id, environment, run_id) do nothing
+                   returning datasource_id, conversation_id, principal_id`,
+                  baseBindingValues,
+                );
             const persistedBinding =
               binding.rows[0] ??
               (
-                await client.query<{
-                  readonly datasource_id: string;
-                  readonly conversation_id: string | null;
-                  readonly principal_id: string;
-                }>(
-                  `select datasource_id, conversation_id, principal_id
+                await client.query<PersistedBinding>(
+                  `select datasource_id, conversation_id, principal_id,
+                          model_profile_id, model_config_version
                    from workspace_run_bindings
                    where run_id = $1::uuid`,
-                  [parsed.data.run_id],
+                  [acceptedCommand.run_id],
                 )
               ).rows[0];
             if (
               !persistedBinding ||
-              persistedBinding.datasource_id !== parsed.data.payload.datasource_id ||
-              persistedBinding.conversation_id !== (parsed.data.payload.conversation_id ?? null) ||
-              persistedBinding.principal_id !== capability.principal
+              persistedBinding.datasource_id !== acceptedCommand.payload.datasource_id ||
+              persistedBinding.conversation_id !==
+                (acceptedCommand.payload.conversation_id ?? null) ||
+              persistedBinding.principal_id !== capability.principal ||
+              (persistedBinding.model_profile_id ?? null) !==
+                (acceptedCommand.payload.model_profile_id ?? null) ||
+              Number(persistedBinding.model_config_version ?? 0) !==
+                (acceptedCommand.payload.model_config_version ?? 0)
             ) {
               throw new PersistenceBoundaryError(
                 "RUN_DATASOURCE_BINDING_INVALID",
                 "Run 的数据源与对话归因不一致。",
+              );
+            }
+            if (result.data.created && acceptedCommand.payload.message_id) {
+              await client.query(
+                `insert into qa_messages (
+                   app_id, tenant_id, environment, conversation_id, message_id,
+                   owner_principal_id, role, content, message_type, run_id, metadata
+                 ) values (
+                   $1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid,
+                   $6::uuid, 'user', $7::text, 'text', null, '{}'::jsonb
+                 )`,
+                [
+                  ...scopeValues(capability.scope),
+                  acceptedCommand.payload.conversation_id,
+                  acceptedCommand.payload.message_id,
+                  capability.principal,
+                  acceptedCommand.question,
+                ],
               );
             }
           }

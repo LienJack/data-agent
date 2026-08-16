@@ -5,6 +5,10 @@ import {
   bindWorkspaceRunInputSchema,
   createWorkspaceConversationInputSchema,
   createWorkspaceDatasourceInputSchema,
+  qaConversationResourceSwitchInputSchema,
+  qaConversationResourceSwitchResultSchema,
+  qaResourceCatalogSchema,
+  qaRunBindingSchema,
   workspaceConversationMessageSchema,
   workspaceConversationSchema,
   workspaceDatasourceSchema,
@@ -159,5 +163,97 @@ describe("workspace conversation and run binding contracts", () => {
         conversation_id: ids.conversation,
       }).run_id,
     ).toBe(ids.run);
+  });
+});
+
+describe("Q&A immutable resource contracts", () => {
+  const modelProfile = "30000000-0000-4000-8000-000000000003";
+
+  it("keeps the public resource catalog strict and credential-free", () => {
+    const catalog = {
+      schema_version: "qa-resource-catalog@1.0.0",
+      models: [
+        {
+          model_profile_id: modelProfile,
+          config_version: 2,
+          provider: "deepseek",
+          model_id: "deepseek-v4-pro",
+          display_name: "DeepSeek",
+          readiness: "RUNNABLE",
+          selectable: true,
+        },
+      ],
+      datasources: [
+        {
+          datasource_id: ids.datasource,
+          display_name: "Warehouse",
+          type: "postgresql",
+          status: "ACTIVE",
+          selectable: true,
+        },
+      ],
+    } as const;
+    expect(qaResourceCatalogSchema.parse(catalog)).toEqual(catalog);
+    expect(
+      qaResourceCatalogSchema.safeParse({
+        ...catalog,
+        models: [{ ...catalog.models[0], api_key: "forbidden" }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("distinguishes in-place updates from replacement conversations", () => {
+    expect(
+      qaConversationResourceSwitchInputSchema.parse({
+        schema_version: "qa-conversation-resource-switch@1.0.0",
+        model_profile_id: modelProfile,
+        datasource_id: ids.datasource,
+        expected_resource_version: 3,
+        idempotency_key: "switch-resource-001",
+      }).expected_resource_version,
+    ).toBe(3);
+
+    const projection = {
+      schema_version: "workspace-conversation@1.0.0",
+      workspace_id: ids.workspace,
+      conversation_id: ids.conversation,
+      owner_principal_id: ids.principal,
+      title: "Revenue analysis",
+      datasource_id: ids.datasource,
+      model_id: modelProfile,
+      model_profile_id: modelProfile,
+      resource_version: 1,
+      message_count: 0,
+      created_at: at,
+      updated_at: at,
+    } as const;
+    expect(
+      qaConversationResourceSwitchResultSchema.parse({
+        kind: "CREATED_REPLACEMENT",
+        conversation: projection,
+        replaced_id: "00000000-0000-4000-8000-00000000c002",
+      }).kind,
+    ).toBe("CREATED_REPLACEMENT");
+  });
+
+  it("requires a complete, credential-free Run resource snapshot", () => {
+    const binding = {
+      schema_version: "qa-run-binding@1.0.0",
+      workspace_id: ids.workspace,
+      run_id: ids.run,
+      conversation_id: ids.conversation,
+      principal_id: ids.principal,
+      datasource_id: ids.datasource,
+      datasource_binding_hash: `sha256:${"0".repeat(64)}`,
+      model_profile_id: modelProfile,
+      model_config_version: 2,
+      provider: "deepseek",
+      model_id: "deepseek-v4-pro",
+      created_at: at,
+    } as const;
+    expect(qaRunBindingSchema.parse(binding)).toEqual(binding);
+    expect(
+      qaRunBindingSchema.safeParse({ ...binding, secret_ref: "secretref:value" }).success,
+    ).toBe(false);
   });
 });

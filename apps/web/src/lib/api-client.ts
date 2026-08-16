@@ -106,6 +106,30 @@ export async function createRun(
   );
 }
 
+/** 从服务端权威 Conversation 绑定原子创建问答 Run 和用户消息。 */
+export async function createQaRun(
+  question: string,
+  conversationId: string,
+  workspaceId?: string,
+): Promise<RunProjection> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace || !conversationId) {
+    throw new Error("Run 必须绑定工作空间和对话");
+  }
+  return request<RunProjection>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/qa/conversations/${encodeURIComponent(conversationId)}/runs`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        schema_version: "qa-run-start@1.0.0",
+        question,
+        idempotency_key: crypto.randomUUID(),
+      }),
+    },
+    resolvedWorkspace,
+  );
+}
+
 /** 获取 Run 的当前投影 */
 export async function getRun(runId: string, workspaceId?: string): Promise<RunProjection> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
@@ -120,8 +144,7 @@ export async function getRun(runId: string, workspaceId?: string): Promise<RunPr
 /** 向 Run 发送命令（start/pause/resume/cancel/replay） */
 export async function commandRun(
   runId: string,
-  command: "start" | "pause" | "resume" | "cancel" | "replay",
-  expectedVersion: number,
+  command: "resume" | "cancel",
   workspaceId?: string,
 ): Promise<void> {
   await request(
@@ -131,7 +154,6 @@ export async function commandRun(
       body: JSON.stringify({
         commandId: crypto.randomUUID(),
         type: command,
-        expectedRunVersion: expectedVersion,
       }),
     },
     workspaceId,

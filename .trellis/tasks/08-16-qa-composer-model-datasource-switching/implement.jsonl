@@ -1,0 +1,8 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Composer 组件边界和单服务端 Projection 规范"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"资源目录 Conversation 与 Run DTO 严格解析规范"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"Workspace capability principal model billing 与 Secret authority 边界"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"真实 Worker 工具过程回答与终态公开事件规范"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Conversation 冻结 Run binding migration RLS 与原子 RPC 规范"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"资源切换 readiness 和执行失败稳定 reason code"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Composer 到 Conversation Run Worker Provider Datasource 全链路检查"}
+{"file":".trellis/tasks/08-16-qa-composer-model-datasource-switching/research/current-baseline.md","reason":"现状断点、复用入口与文件证据"}

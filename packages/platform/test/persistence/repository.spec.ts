@@ -703,6 +703,101 @@ describe("PostgreSQL authoritative repository", () => {
     expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
   });
 
+  it("resolves Q&A model and datasource snapshots from the frozen conversation", async () => {
+    const datasourceId = "00000000-0000-4000-8000-000000000711";
+    const conversationId = "00000000-0000-4000-8000-000000000712";
+    const messageId = "00000000-0000-4000-8000-000000000713";
+    const modelProfileId = "30000000-0000-4000-8000-000000000003";
+    const datasourceBindingHash = `sha256:${"b".repeat(64)}`;
+    const fixture = scriptedPool((text) => {
+      if (text.includes("from qa_conversations as conversation")) {
+        return {
+          rows: [
+            {
+              datasource_id: datasourceId,
+              model_profile_id: modelProfileId,
+              config_version: 7,
+              provider: "deepseek",
+              model_id: "deepseek-v4-pro",
+              datasource_binding_hash: datasourceBindingHash,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("accept_backend_run_command")) {
+        return {
+          rows: [
+            {
+              result: {
+                created: true,
+                run_id: ids.run,
+                command_id: ids.command,
+                outbox_id: ids.outbox,
+                payload_hash: canonicalPayloadHash,
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      if (text.includes("insert into workspace_run_bindings")) {
+        return {
+          rows: [
+            {
+              datasource_id: datasourceId,
+              conversation_id: conversationId,
+              principal_id: ids.principal,
+              model_profile_id: modelProfileId,
+              model_config_version: 7,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+    const issued = issueCapability();
+    const repository = createPostgresRepository(fixture.pool, issued.authorizer);
+    const input = {
+      ...commandInput(),
+      payload: {
+        kind: "START_L2_RESEARCH",
+        mode: "L2",
+        conversation_id: conversationId,
+        message_id: messageId,
+      },
+    };
+
+    expect(await repository.acceptCommand(issued.capability, input)).toMatchObject({
+      ok: true,
+      value: { created: true, run_id: ids.run },
+    });
+    const resolver = fixture.calls.find(({ text }) =>
+      text.includes("from qa_conversations as conversation"),
+    );
+    expect(resolver?.text).toContain("platform.list_active_model_catalog($3::uuid, $2::uuid)");
+    expect(resolver?.values).toEqual([conversationId, ids.principal, ids.deployment]);
+    const acceptance = fixture.calls.find(({ text }) =>
+      text.includes("accept_backend_run_command"),
+    );
+    expect(JSON.parse(String(acceptance?.values[0]))).toMatchObject({
+      payload: {
+        kind: "START_L2_RESEARCH",
+        conversation_id: conversationId,
+        message_id: messageId,
+        datasource_id: datasourceId,
+        model_profile_id: modelProfileId,
+        model_config_version: 7,
+        provider: "deepseek",
+        model_id: "deepseek-v4-pro",
+        datasource_binding_hash: datasourceBindingHash,
+      },
+    });
+    expect(fixture.calls.some(({ text }) => text.includes("insert into qa_messages"))).toBe(true);
+    expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
+  });
+
   it("rejects unknown or opaque credential payload fields before database I/O", async () => {
     const fixture = scriptedPool(() => undefined);
     const authority = issueCapability();

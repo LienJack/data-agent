@@ -2,12 +2,18 @@
 
 import type {
   PublicRunEvent,
+  QaResourceCatalog,
   WorkspaceConversation,
   WorkspaceConversationMessage,
 } from "@data-agent/contracts";
+import {
+  qaConversationResourceSwitchResultSchema,
+  qaResourceCatalogSchema,
+} from "@data-agent/contracts";
 import { create } from "zustand";
 import {
-  createRun,
+  commandRun,
+  createQaRun,
   fetchConversationTrajectory,
   getRun,
   resolveWorkspaceId,
@@ -47,6 +53,13 @@ interface QAState {
   connection: RunConnectionState;
   /** 可用数据源列表 */
   dataSources: DataSourceConnection[];
+  /** 服务端安全资源目录，是 Composer 唯一可选资源来源。 */
+  resourceCatalog: QaResourceCatalog | null;
+  resourceCatalogState: "idle" | "loading" | "ready" | "empty" | "error";
+  resourceSwitching: boolean;
+  resourceError: string | undefined;
+  resourceNotice: string | undefined;
+  activeRunId: string | null;
   /** 加载状态 */
   loading: boolean;
   /** 消息发送中 */
@@ -71,13 +84,17 @@ interface QAActions {
   openTrajectory: (focus: TrajectoryFocus) => void;
   openConversation: (focus: TrajectoryFocus) => void;
   /** 发送消息 */
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string) => Promise<boolean>;
+  stopMessage: () => Promise<void>;
+  loadResourceCatalog: () => Promise<void>;
   /** 加载数据源列表 */
   loadDataSources: () => Promise<void>;
   /** 更新当前对话的数据源或模型绑定 */
   updateActiveConversationResources: (input: UpdateConversationResourcesInput) => Promise<void>;
   /** 清除错误 */
   clearError: () => void;
+  /** 清除当前工作空间的全部客户端状态 */
+  reset: () => void;
   /** 获取当前对话 */
   getActiveConversation: () => Conversation | null;
 }
@@ -93,6 +110,12 @@ const initialState: QAState = {
   trajectoryFocus: null,
   connection: "idle",
   dataSources: [],
+  resourceCatalog: null,
+  resourceCatalogState: "idle",
+  resourceSwitching: false,
+  resourceError: undefined,
+  resourceNotice: undefined,
+  activeRunId: null,
   loading: false,
   sending: false,
   error: undefined,
@@ -109,7 +132,9 @@ function conversationFromContract(value: WorkspaceConversation): Conversation {
     id: value.conversation_id,
     title: value.title,
     dataSourceId: value.datasource_id ?? undefined,
-    modelId: value.model_id ?? undefined,
+    modelProfileId: value.model_profile_id ?? value.model_id ?? undefined,
+    resourceVersion: value.resource_version ?? 1,
+    messageCount: value.message_count,
     createdAt: value.created_at,
     updatedAt: value.updated_at,
   };
@@ -140,6 +165,8 @@ function terminalAnswer(projection: RunProjection | null): string {
   return "分析执行完成。";
 }
 
+let activeStreamController: AbortController | null = null;
+
 export const useQAStore = create<QAStore>((set, get) => ({
   ...initialState,
 
@@ -158,14 +185,21 @@ export const useQAStore = create<QAStore>((set, get) => ({
   createConversation: async (input) => {
     set({ error: undefined });
     try {
+      const catalog = get().resourceCatalog;
+      const dataSourceId =
+        input.dataSourceId ??
+        catalog?.datasources.find((source) => source.selectable)?.datasource_id;
+      const modelProfileId =
+        input.modelProfileId ?? catalog?.models.find((model) => model.selectable)?.model_profile_id;
       const response = await fetch(workspaceQaPath("/conversations"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           schema_version: "workspace-conversation-create@1.0.0",
           title: input.title,
-          datasource_id: input.dataSourceId ?? null,
-          model_id: input.modelId ?? null,
+          datasource_id: dataSourceId ?? null,
+          model_id: modelProfileId ?? null,
+          ...(modelProfileId ? { model_profile_id: modelProfileId } : {}),
         }),
       });
       if (!response.ok) throw new Error("创建对话失败");
@@ -178,6 +212,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
         events: [],
         view: "conversation",
         trajectoryFocus: null,
+        resourceNotice: undefined,
       }));
       return conversation;
     } catch (err) {
@@ -269,22 +304,54 @@ export const useQAStore = create<QAStore>((set, get) => ({
     }
   },
 
+  loadResourceCatalog: async () => {
+    set({ resourceCatalogState: "loading", resourceError: undefined });
+    try {
+      const response = await fetch(workspaceQaPath("/resources"));
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(body?.error?.message ?? "加载模型和数据源失败");
+      }
+      const json = (await response.json()) as { data: unknown };
+      const catalog = qaResourceCatalogSchema.parse(json.data);
+      const selectableModels = catalog.models.filter((model) => model.selectable);
+      const selectableDatasources = catalog.datasources.filter((source) => source.selectable);
+      set({
+        resourceCatalog: catalog,
+        resourceCatalogState:
+          selectableModels.length > 0 && selectableDatasources.length > 0 ? "ready" : "empty",
+      });
+    } catch (error) {
+      set({
+        resourceCatalog: null,
+        resourceCatalogState: "error",
+        resourceError: error instanceof Error ? error.message : "加载模型和数据源失败",
+      });
+    }
+  },
+
   sendMessage: async (content) => {
     const state = get();
     let conversationId = state.activeConversationId;
 
     // 如果没有活跃对话，自动创建一个
     if (!conversationId) {
-      const defaultDatasource = state.dataSources.find((source) => source.status === "active");
-      if (!defaultDatasource) {
-        set({ error: "发送消息前请先创建并选择一个可用数据源" });
-        return;
+      const defaultDatasource = state.resourceCatalog?.datasources.find(
+        (source) => source.selectable,
+      );
+      const defaultModel = state.resourceCatalog?.models.find((model) => model.selectable);
+      if (!defaultDatasource || !defaultModel) {
+        set({ error: "发送消息前请先选择可运行模型和可用数据源" });
+        return false;
       }
       const conv = await get().createConversation({
         title: content.slice(0, 50) + (content.length > 50 ? "..." : ""),
-        dataSourceId: defaultDatasource.id,
+        dataSourceId: defaultDatasource.datasource_id,
+        modelProfileId: defaultModel.model_profile_id,
       });
-      if (!conv) return;
+      if (!conv) return false;
       conversationId = conv.id;
     }
 
@@ -301,37 +368,17 @@ export const useQAStore = create<QAStore>((set, get) => ({
     };
     set((s) => ({ messages: [...s.messages, userMessage] }));
 
+    let runAccepted = false;
     try {
       const workspaceId = resolveWorkspaceId();
       const activeConversation = get().conversations.find((item) => item.id === conversationId);
       if (!workspaceId) throw new Error("请先选择工作空间");
       if (!activeConversation?.dataSourceId) throw new Error("发送消息前请先选择数据源");
+      if (!activeConversation.modelProfileId) throw new Error("发送消息前请先选择模型");
 
-      await fetch(
-        workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}/messages`),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            schema_version: "workspace-conversation-message-append@1.0.0",
-            role: "user",
-            content,
-            type: "text",
-            run_id: null,
-            metadata: {},
-          }),
-        },
-      ).then((response) => {
-        if (!response.ok) throw new Error("用户消息持久化失败");
-      });
-
-      // 调用现有分析能力，并显式携带不可变的数据源/对话归因。
-      const run = await createRun(
-        content,
-        workspaceId,
-        activeConversation.dataSourceId,
-        conversationId,
-      );
+      // 服务端在一个事务中从 Conversation 冻结资源、写入用户消息并创建 Run。
+      const run = await createQaRun(content, conversationId, workspaceId);
+      runAccepted = true;
 
       const agentMessageId = `local-agent-${Date.now()}`;
       const agentMessage: Message = {
@@ -346,10 +393,12 @@ export const useQAStore = create<QAStore>((set, get) => ({
       set((current) => ({
         messages: [...current.messages, agentMessage],
         connection: "connecting",
+        activeRunId: run.runId,
       }));
 
       // sequence 是断线补发、去重和恢复的唯一游标。
       const controller = new AbortController();
+      activeStreamController = controller;
       const timeout = setTimeout(() => controller.abort(), 10 * 60_000);
       let finalProjection: RunProjection | null = null;
       let cursor = 0;
@@ -394,6 +443,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
         streamError = error;
       } finally {
         clearTimeout(timeout);
+        if (activeStreamController === controller) activeStreamController = null;
       }
 
       finalProjection = await getRun(run.runId, workspaceId);
@@ -412,6 +462,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
         }),
         sending: false,
         connection: "closed",
+        activeRunId: null,
       }));
 
       const persisted = await fetch(
@@ -432,6 +483,14 @@ export const useQAStore = create<QAStore>((set, get) => ({
       );
       if (!persisted.ok) throw new Error("最终回答持久化失败");
       await get().loadTrajectory(conversationId);
+      set((current) => ({
+        conversations: current.conversations.map((conversation) =>
+          conversation.id === conversationId
+            ? { ...conversation, messageCount: conversation.messageCount + 2 }
+            : conversation,
+        ),
+      }));
+      return true;
     } catch (err) {
       const errorContent = err instanceof Error ? err.message : "分析请求失败";
       set((current) => {
@@ -439,7 +498,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
           .reverse()
           .find((message) => message.role === "agent" && message.runId && !message.content);
         return {
-          messages: pending
+          messages: (pending
             ? replaceMessage(current.messages, pending.id, { content: errorContent, type: "error" })
             : [
                 ...current.messages,
@@ -451,12 +510,30 @@ export const useQAStore = create<QAStore>((set, get) => ({
                   type: "error" as const,
                   createdAt: new Date().toISOString(),
                 },
-              ],
+              ]
+          ).filter((message) => runAccepted || message.id !== userMessage.id),
           sending: false,
           connection: "closed",
+          activeRunId: null,
           error: errorContent,
         };
       });
+      return runAccepted;
+    }
+  },
+
+  stopMessage: async () => {
+    const runId = get().activeRunId;
+    if (!runId) return;
+    const workspaceId = resolveWorkspaceId();
+    if (!workspaceId) return;
+    set({ connection: "closed" });
+    try {
+      await commandRun(runId, "cancel", workspaceId);
+      activeStreamController?.abort();
+      set({ sending: false, activeRunId: null, resourceNotice: "已请求停止当前分析" });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "停止分析失败" });
     }
   },
 
@@ -470,37 +547,97 @@ export const useQAStore = create<QAStore>((set, get) => ({
   },
 
   updateActiveConversationResources: async (input) => {
-    const conversationId = get().activeConversationId;
-    if (!conversationId) return;
+    const current = get();
+    const conversationId = current.activeConversationId;
+    const activeConversation = current.conversations.find(
+      (conversation) => conversation.id === conversationId,
+    );
+    if (!conversationId || !activeConversation) {
+      const created = await get().createConversation({
+        title: "新业务问题",
+        ...(input.dataSourceId ? { dataSourceId: input.dataSourceId } : {}),
+        ...(input.modelProfileId ? { modelProfileId: input.modelProfileId } : {}),
+      });
+      if (!created) set({ resourceError: "创建新对话后才能选择资源" });
+      return;
+    }
+    const dataSourceId =
+      input.dataSourceId ??
+      activeConversation.dataSourceId ??
+      current.resourceCatalog?.datasources.find((source) => source.selectable)?.datasource_id;
+    const modelProfileId =
+      input.modelProfileId ??
+      activeConversation.modelProfileId ??
+      current.resourceCatalog?.models.find((model) => model.selectable)?.model_profile_id;
+    if (!dataSourceId || !modelProfileId) {
+      set({ resourceError: "必须同时选择可运行模型和可用数据源" });
+      return;
+    }
+    if (
+      dataSourceId === activeConversation.dataSourceId &&
+      modelProfileId === activeConversation.modelProfileId
+    ) {
+      return;
+    }
 
-    set({ error: undefined });
+    set({ resourceSwitching: true, resourceError: undefined, resourceNotice: undefined });
     try {
       const response = await fetch(
-        workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}`),
+        workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}/resources`),
         {
-          method: "PATCH",
+          method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            schema_version: "workspace-conversation-patch@1.0.0",
-            ...(input.dataSourceId ? { datasource_id: input.dataSourceId } : {}),
-            ...(input.modelId !== undefined ? { model_id: input.modelId || null } : {}),
+            schema_version: "qa-conversation-resource-switch@1.0.0",
+            datasource_id: dataSourceId,
+            model_profile_id: modelProfileId,
+            expected_resource_version: activeConversation.resourceVersion,
+            idempotency_key: crypto.randomUUID(),
           }),
         },
       );
-      if (!response.ok) throw new Error("更新对话资源失败");
-      const json = (await response.json()) as { data: WorkspaceConversation };
-      const updated = conversationFromContract(json.data);
-      set((state) => ({
-        conversations: state.conversations.map((conversation) =>
-          conversation.id === updated.id ? updated : conversation,
-        ),
-      }));
+      const json = (await response.json().catch(() => null)) as {
+        data?: unknown;
+        error?: { message?: string };
+      } | null;
+      if (!response.ok) throw new Error(json?.error?.message ?? "更新对话资源失败");
+      const result = qaConversationResourceSwitchResultSchema.parse(json?.data);
+      const updated = conversationFromContract(result.conversation);
+      set((state) => {
+        if (result.kind === "CREATED_REPLACEMENT") {
+          return {
+            conversations: [updated, ...state.conversations],
+            activeConversationId: updated.id,
+            messages: [],
+            events: [],
+            trajectoryFocus: null,
+            resourceSwitching: false,
+            resourceNotice: "已为新资源创建独立对话，原对话与执行证据保持不变",
+          };
+        }
+        return {
+          conversations: state.conversations.map((conversation) =>
+            conversation.id === updated.id ? updated : conversation,
+          ),
+          resourceSwitching: false,
+          resourceNotice: "对话资源已更新",
+        };
+      });
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : "更新对话资源失败" });
+      set({
+        resourceSwitching: false,
+        resourceError: err instanceof Error ? err.message : "更新对话资源失败",
+      });
     }
   },
 
   clearError: () => set({ error: undefined }),
+
+  reset: () => {
+    activeStreamController?.abort();
+    activeStreamController = null;
+    set(initialState);
+  },
 
   getActiveConversation: () => {
     const { conversations, activeConversationId } = get();
@@ -518,6 +655,12 @@ export const useQAView = () => useQAStore((s) => s.view);
 export const useQATrajectoryFocus = () => useQAStore((s) => s.trajectoryFocus);
 export const useQAConnection = () => useQAStore((s) => s.connection);
 export const useQADataSources = () => useQAStore((s) => s.dataSources);
+export const useQAResourceCatalog = () => useQAStore((s) => s.resourceCatalog);
+export const useQAResourceCatalogState = () => useQAStore((s) => s.resourceCatalogState);
+export const useQAResourceSwitching = () => useQAStore((s) => s.resourceSwitching);
+export const useQAResourceError = () => useQAStore((s) => s.resourceError);
+export const useQAResourceNotice = () => useQAStore((s) => s.resourceNotice);
+export const useQAActiveRunId = () => useQAStore((s) => s.activeRunId);
 export const useQALoading = () => useQAStore((s) => s.loading);
 export const useQASending = () => useQAStore((s) => s.sending);
 export const useQAError = () => useQAStore((s) => s.error);

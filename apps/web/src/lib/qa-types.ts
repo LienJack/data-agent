@@ -13,7 +13,9 @@ export interface Conversation {
   id: string;
   title: string;
   dataSourceId?: string;
-  modelId?: string;
+  modelProfileId?: string;
+  resourceVersion: number;
+  messageCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,13 +38,13 @@ export interface Message {
 export interface CreateConversationInput {
   title: string;
   dataSourceId?: string;
-  modelId?: string;
+  modelProfileId?: string;
 }
 
-/** 更新当前对话绑定的运行资源。空字符串表示恢复为系统自动解析。 */
+/** 更新当前对话绑定的运行资源。另一项从当前权威投影或可运行目录默认值补齐。 */
 export interface UpdateConversationResourcesInput {
   dataSourceId?: string;
-  modelId?: string;
+  modelProfileId?: string;
 }
 
 /** 发送消息请求 */
@@ -63,7 +65,7 @@ export interface ConversationListItem {
   title: string;
   lastMessage?: string;
   dataSourceId?: string;
-  modelId?: string;
+  modelProfileId?: string;
   createdAt: string;
   updatedAt: string;
 }

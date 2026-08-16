@@ -43,6 +43,19 @@ const RESEARCH_EXECUTOR_OPTIONS_SCHEMA = z.strictObject({
   protocol_input: z.unknown(),
 });
 
+const QA_EXECUTION_BINDING_SCHEMA = z.strictObject({
+  kind: z.literal("START_L2_RESEARCH"),
+  mode: z.literal("L2").optional(),
+  conversation_id: z.uuid(),
+  message_id: z.uuid(),
+  datasource_id: z.uuid(),
+  model_profile_id: z.uuid(),
+  model_config_version: z.number().int().positive().safe(),
+  provider: z.enum(["openai", "anthropic", "deepseek", "glm", "kimi", "grok", "gemini"]),
+  model_id: z.string().min(1).max(256),
+  datasource_binding_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+});
+
 export type ResearchExecutorOptions = z.infer<typeof RESEARCH_EXECUTOR_OPTIONS_SCHEMA>;
 
 export interface ResearchWorkflowExecutorDependencies {
@@ -371,6 +384,10 @@ export function createResearchWorkflowExecutor(
         deadline_at: _deadline,
       } = input;
 
+      if (lease.principal_id !== deps.principal_id) {
+        return researchErrorResult("RUN_PRINCIPAL_MISMATCH", false);
+      }
+
       if (!deps.authority_capability_input) {
         return researchErrorResult("RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED", false);
       }
@@ -381,6 +398,32 @@ export function createResearchWorkflowExecutor(
       };
       if (payload.kind !== "START_L2_RESEARCH") {
         return researchErrorResult("UNKNOWN_COMMAND_KIND", false);
+      }
+
+      const qaBinding = QA_EXECUTION_BINDING_SCHEMA.safeParse(lease.payload);
+      if (typeof lease.payload.model_profile_id === "string" && !qaBinding.success) {
+        return researchErrorResult("QA_RUN_BINDING_INVALID", false);
+      }
+      if (qaBinding.success) {
+        const callId = `${lease.attempt_id}:resource-binding`;
+        await emitDisplayEvent(context, {
+          kind: "tool_started",
+          key: "qa-resource-binding-start",
+          call_id: callId,
+          tool_name: "resource.binding.verify",
+          title: "运行资源绑定",
+          summary: "核验对话冻结的模型与数据源快照",
+          input: `model_profile=${qaBinding.data.model_profile_id}; datasource=${qaBinding.data.datasource_id}`,
+        });
+        await emitDisplayEvent(context, {
+          kind: "tool_completed",
+          key: "qa-resource-binding-complete",
+          call_id: callId,
+          tool_name: "resource.binding.verify",
+          summary: `已冻结 ${qaBinding.data.provider}/${qaBinding.data.model_id} 与当前数据源`,
+          output: `model_config_version=${qaBinding.data.model_config_version}; datasource_binding=${qaBinding.data.datasource_binding_hash.slice(0, 15)}…`,
+          duration_ms: 0,
+        });
       }
 
       const protocolInput: ResearchProtocolInput = {

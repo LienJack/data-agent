@@ -13,6 +13,7 @@ const ids = {
   datasource: "00000000-0000-4000-8000-00000000d211",
   conversation: "00000000-0000-4000-8000-00000000c211",
   run: "00000000-0000-4000-8000-00000000f211",
+  model: "30000000-0000-4000-8000-000000000003",
 } as const;
 
 function authority(role: "OWNER" | "ANALYST" | "VIEWER" = "OWNER") {
@@ -283,5 +284,61 @@ describe("PostgreSQL workspace data repository", () => {
       error: { code: "CONVERSATION_DATASOURCE_FROZEN", retryable: false },
     });
     expect(fixture.calls.at(-1)?.text).toBe("ROLLBACK");
+  });
+
+  it("switches frozen resources through one PostgreSQL authority operation", async () => {
+    const fixture = scriptedPool((text) => {
+      if (text.includes("switch_qa_conversation_resources")) {
+        return {
+          rows: [
+            {
+              result: {
+                kind: "UPDATED_CURRENT",
+                conversation: {
+                  schema_version: "workspace-conversation@1.0.0",
+                  workspace_id: ids.tenant,
+                  conversation_id: ids.conversation,
+                  owner_principal_id: ids.principal,
+                  title: "Revenue analysis",
+                  datasource_id: ids.datasource,
+                  model_id: ids.model,
+                  model_profile_id: ids.model,
+                  resource_version: 2,
+                  message_count: 0,
+                  created_at: "2026-08-16T00:00:00.000Z",
+                  updated_at: "2026-08-16T00:00:00.000Z",
+                },
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+    const issued = authority("ANALYST");
+    const repository = createPostgresWorkspaceDataRepository(fixture.pool, issued.authorizer);
+
+    await expect(
+      repository.switchConversationResources(issued.capability, ids.conversation, {
+        schema_version: "qa-conversation-resource-switch@1.0.0",
+        datasource_id: ids.datasource,
+        model_profile_id: ids.model,
+        expected_resource_version: 1,
+        idempotency_key: "switch-resource-001",
+      }),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "UPDATED_CURRENT", conversation: { resource_version: 2 } },
+    });
+    const switchCall = fixture.calls.find(({ text }) =>
+      text.includes("switch_qa_conversation_resources"),
+    );
+    expect(switchCall?.values[0]).toMatchObject({
+      conversation_id: ids.conversation,
+      datasource_id: ids.datasource,
+      model_profile_id: ids.model,
+    });
+    expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
   });
 });

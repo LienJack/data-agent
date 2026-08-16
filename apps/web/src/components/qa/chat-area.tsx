@@ -4,7 +4,6 @@ import { useEffect, useRef } from "react";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   useQAActiveConversationId,
-  useQAConnection,
   useQAConversations,
   useQAEvents,
   useQALoading,
@@ -13,21 +12,16 @@ import {
   useQATrajectoryFocus,
 } from "@/lib/qa-store";
 import { ChatMessage } from "./chat-message";
-import { DataSourceSelector } from "./data-source-selector";
 import { LoadingIndicator } from "./loading-indicator";
-import { ModelSelector } from "./model-selector";
 
 /**
  * 对话区域 — 右侧消息展示区。
  *
- * 顶部：数据源和模型选择器
- * 中间：消息列表（自动滚动到底部）
- * 底部：由 ChatInput 处理
+ * 消息列表自动滚动到底部；资源选择与连接状态统一由 ChatInput Composer 展示。
  */
 export function ChatArea() {
   const messages = useQAMessages();
   const sending = useQASending();
-  const connection = useQAConnection();
   const events = useQAEvents();
   const loading = useQALoading();
   const conversations = useQAConversations();
@@ -67,26 +61,6 @@ export function ChatArea() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* 选择器栏 */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-4 py-3">
-        <div>
-          <p className="text-xs font-semibold text-[var(--color-text-primary)]">本次对话资源</p>
-          <p className="mt-0.5 text-[10px] text-[var(--color-text-muted)]">选择会保存到当前对话</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {sending && (
-            <span
-              className="rounded-full bg-[var(--color-bg-tertiary)] px-2 py-1 text-[10px] text-[var(--color-text-muted)]"
-              aria-live="polite"
-            >
-              {connection === "reconnecting" ? "正在恢复事件流…" : "实时接收中"}
-            </span>
-          )}
-          <DataSourceSelector />
-          <ModelSelector />
-        </div>
-      </div>
-
       {/* 消息列表 */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         {loading && messages.length === 0 ? (

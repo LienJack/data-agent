@@ -6,6 +6,9 @@ import {
   createWorkspaceConversationInputSchema,
   createWorkspaceDatasourceInputSchema,
   type PortResult,
+  type QaConversationResourceSwitchResult,
+  qaConversationResourceSwitchInputSchema,
+  qaConversationResourceSwitchResultSchema,
   updateWorkspaceConversationModelInputSchema,
   type WorkspaceConversation,
   type WorkspaceConversationMessage,
@@ -62,6 +65,8 @@ interface ConversationRow {
   readonly title: string;
   readonly datasource_id: string | null;
   readonly model_id: string | null;
+  readonly model_profile_id: string | null;
+  readonly resource_version: string | number;
   readonly message_count: string | number;
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
@@ -101,7 +106,8 @@ const datasourceColumns = `
 const conversationColumns = `
   conversation.app_id, conversation.tenant_id, conversation.environment,
   conversation.conversation_id, conversation.owner_principal_id, conversation.title,
-  conversation.datasource_id, conversation.model_id, conversation.created_at,
+  conversation.datasource_id, conversation.model_id, conversation.model_profile_id,
+  conversation.resource_version, conversation.created_at,
   conversation.updated_at,
   (select pg_catalog.count(*) from qa_messages as message
    where message.app_id = conversation.app_id
@@ -168,6 +174,8 @@ function conversation(row: ConversationRow): WorkspaceConversation {
     title: row.title,
     datasource_id: row.datasource_id,
     model_id: row.model_id,
+    model_profile_id: row.model_profile_id,
+    resource_version: Number(row.resource_version),
     message_count: Number(row.message_count),
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
@@ -209,6 +217,18 @@ function mapWorkspaceDataDatabaseError(error: unknown): PortResult<never> | null
   const marker = typeof candidate?.message === "string" ? candidate.message : "";
   if (marker.includes("CONVERSATION_DATASOURCE_FROZEN")) {
     return invalid("CONVERSATION_DATASOURCE_FROZEN", "对话的数据源在写入消息后不可变更。");
+  }
+  if (marker.includes("CONVERSATION_RESOURCES_FROZEN")) {
+    return invalid("CONVERSATION_RESOURCES_FROZEN", "已有消息的对话资源不可原地变更。");
+  }
+  if (marker.includes("CONVERSATION_RESOURCE_VERSION_CONFLICT")) {
+    return invalid("CONVERSATION_RESOURCE_VERSION_CONFLICT", "对话资源版本已变化，请刷新后重试。");
+  }
+  if (marker.includes("MODEL_PROFILE_NOT_AVAILABLE")) {
+    return invalid("MODEL_PROFILE_NOT_AVAILABLE", "所选模型当前不可运行。");
+  }
+  if (marker.includes("CONVERSATION_RESOURCES_REQUIRED")) {
+    return invalid("CONVERSATION_RESOURCES_REQUIRED", "发送消息前必须选择模型和数据源。");
   }
   if (marker.includes("CONVERSATION_DATASOURCE_REQUIRED")) {
     return invalid("CONVERSATION_DATASOURCE_REQUIRED", "发送消息前必须选择当前工作空间的数据源。");
@@ -260,6 +280,11 @@ export interface PostgresWorkspaceDataRepository {
     conversationId: unknown,
     input: unknown,
   ): Promise<PortResult<WorkspaceConversation>>;
+  switchConversationResources(
+    capabilityInput: unknown,
+    conversationId: unknown,
+    input: unknown,
+  ): Promise<PortResult<QaConversationResourceSwitchResult>>;
   deleteConversation(
     capabilityInput: unknown,
     conversationId: unknown,
@@ -511,8 +536,8 @@ export function createPostgresWorkspaceDataRepository(
             `with inserted as (
                insert into qa_conversations (
                  app_id, tenant_id, environment, conversation_id, owner_principal_id,
-                 title, datasource_id, model_id
-               ) values ($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::text, $7::uuid, $8::text)
+                 title, datasource_id, model_id, model_profile_id
+               ) values ($1::uuid, $2::uuid, $3::text, $4::uuid, $5::uuid, $6::text, $7::uuid, $8::text, $9::uuid)
                returning *
              )
              select inserted.*, 0::bigint as message_count from inserted`,
@@ -524,7 +549,8 @@ export function createPostgresWorkspaceDataRepository(
               capability.principal,
               parsed.data.title,
               parsed.data.datasource_id,
-              parsed.data.model_id,
+              parsed.data.model_profile_id?.toString() ?? parsed.data.model_id,
+              parsed.data.model_profile_id ?? null,
             ],
           );
           return conversation(
@@ -617,6 +643,37 @@ export function createPostgresWorkspaceDataRepository(
               "对话不存在或无权访问。",
             ),
           );
+        },
+      );
+    },
+
+    async switchConversationResources(capabilityInput, conversationId, input) {
+      const parsedId = idInputSchema.safeParse({ id: conversationId });
+      const parsed = qaConversationResourceSwitchInputSchema.safeParse(input);
+      if (!parsedId.success || !parsed.success) {
+        return invalid("CONVERSATION_INPUT_INVALID", "对话资源切换请求不符合契约。");
+      }
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          operation_name: "workspace.conversation.resources.switch",
+          ...transactionOptions,
+        },
+        async ({ client }) => {
+          const result = await client.query<{ readonly result: unknown }>(
+            "select app_data_agent.switch_qa_conversation_resources($1::jsonb) as result",
+            [
+              {
+                ...parsed.data,
+                operation_id: randomUUID(),
+                conversation_id: parsedId.data.id,
+              },
+            ],
+          );
+          return qaConversationResourceSwitchResultSchema.parse(result.rows[0]?.result);
         },
       );
     },
