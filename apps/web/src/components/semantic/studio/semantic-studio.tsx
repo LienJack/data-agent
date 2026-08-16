@@ -811,6 +811,10 @@ export function SemanticStudio({
                         setSelectedEdge(edge);
                         setSelectedNode(null);
                       }}
+                      onClearSelection={() => {
+                        setSelectedNode(null);
+                        setSelectedEdge(null);
+                      }}
                     />
                   )}
                 </div>

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildFullG6Data,
   buildLocalG6Data,
+  semanticFullFocusStates,
   semanticFullForceLayout,
   semanticG6SourceId,
 } from "@/lib/semantic-g6-model";
@@ -31,9 +32,13 @@ interface SemanticGraphCanvasProps {
   readonly selectedEdgeId: string | null;
   readonly onSelectNode: (node: SemanticGraphReadNode) => void;
   readonly onSelectEdge: (edge: SemanticGraphReadEdge) => void;
+  readonly onClearSelection: () => void;
 }
 
-type GraphCallbacks = Pick<SemanticGraphCanvasProps, "onSelectNode" | "onSelectEdge">;
+type GraphCallbacks = Pick<
+  SemanticGraphCanvasProps,
+  "onSelectNode" | "onSelectEdge" | "onClearSelection"
+>;
 
 const FULL_GRAPH_VIEW_ZOOM = 0.29;
 
@@ -77,14 +82,15 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     props.mode === "local"
       ? !localGraph || localGraph.nodes.length === 0
       : fullGraph.nodes.length === 0;
-  const g6Data = useMemo(() => {
-    if (props.mode === "local") {
-      return localGraph
+  const localG6Data = useMemo(
+    () =>
+      localGraph
         ? buildLocalG6Data(localGraph, props.selectedNodeId, props.selectedEdgeId)
-        : { nodes: [], edges: [] };
-    }
-    return buildFullG6Data(fullGraph, props.selectedNodeId, props.selectedEdgeId);
-  }, [fullGraph, localGraph, props.mode, props.selectedEdgeId, props.selectedNodeId]);
+        : { nodes: [], edges: [] },
+    [localGraph, props.selectedEdgeId, props.selectedNodeId],
+  );
+  const fullG6Data = useMemo(() => buildFullG6Data(fullGraph, null, null), [fullGraph]);
+  const g6Data = props.mode === "local" ? localG6Data : fullG6Data;
   const fullForceLayout = useMemo(
     () => semanticFullForceLayout(fullGraph.nodes.length),
     [fullGraph.nodes.length],
@@ -92,6 +98,10 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   const fullGraphTypeCount = useMemo(
     () => new Set(fullGraph.nodes.map((item) => item.node.node_type)).size,
     [fullGraph.nodes],
+  );
+  const fullFocus = useMemo(
+    () => semanticFullFocusStates(fullGraph, props.selectedNodeId, props.selectedEdgeId),
+    [fullGraph, props.selectedEdgeId, props.selectedNodeId],
   );
   const nodeById = useMemo(
     () =>
@@ -116,6 +126,12 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   }, [props]);
 
   useEffect(() => {
+    const instance = graphRef.current;
+    if (props.mode !== "full" || !ready || !instance) return;
+    void instance.setElementState(fullFocus.elements, false);
+  }, [fullFocus, props.mode, ready]);
+
+  useEffect(() => {
     if (empty || !containerRef.current) return;
     let cancelled = false;
     let mountedGraph: G6Graph | null = null;
@@ -135,7 +151,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     async function mountGraph() {
       const container = containerRef.current;
       if (!container) return;
-      const { EdgeEvent, Graph, NodeEvent } = await import("@antv/g6");
+      const { CanvasEvent, EdgeEvent, Graph, NodeEvent } = await import("@antv/g6");
       if (cancelled) return;
       const instance = new Graph({
         container,
@@ -148,7 +164,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         behaviors: [
           "drag-canvas",
           "zoom-canvas",
-          { type: "click-select", multiple: false },
+          ...(props.mode === "local" ? [{ type: "click-select", multiple: false }] : []),
           "drag-element",
           { type: "hover-activate", degree: 1 },
         ],
@@ -174,13 +190,37 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
             : [],
         node: {
           state: {
-            selected: {
-              lineWidth: 3,
-              stroke: "#244f43",
-              shadowColor: "rgba(36, 79, 67, 0.2)",
-              shadowBlur: 20,
-              shadowOffsetY: 7,
-            },
+            selected:
+              props.mode === "full"
+                ? (datum) => ({
+                    opacity: 1,
+                    lineWidth: 3,
+                    stroke: "#244f43",
+                    shadowColor: "rgba(36, 79, 67, 0.24)",
+                    shadowBlur: 20,
+                    shadowOffsetY: 7,
+                    labelText:
+                      typeof datum.data?.label === "string" ? datum.data.label : "语义节点",
+                    labelPlacement: "bottom",
+                    labelOffsetY: 14,
+                    labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
+                    labelFontSize: 36,
+                    labelFontWeight: 720,
+                    labelFill: "#15241e",
+                    labelBackground: true,
+                    labelBackgroundFill: "rgba(250, 252, 251, 0.99)",
+                    labelBackgroundStroke: "#87a49a",
+                    labelBackgroundLineWidth: 1.5,
+                    labelBackgroundRadius: 6,
+                    labelPadding: [4, 9],
+                  })
+                : {
+                    lineWidth: 3,
+                    stroke: "#244f43",
+                    shadowColor: "rgba(36, 79, 67, 0.2)",
+                    shadowBlur: 20,
+                    shadowOffsetY: 7,
+                  },
             active:
               props.mode === "full"
                 ? (datum) => ({
@@ -209,7 +249,13 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                     shadowColor: "rgba(36, 79, 67, 0.14)",
                     shadowBlur: 14,
                   },
-            inactive: { opacity: 0.16 },
+            related: {
+              opacity: 1,
+              lineWidth: 1.75,
+              shadowColor: "rgba(36, 79, 67, 0.12)",
+              shadowBlur: 8,
+            },
+            inactive: { opacity: 0.08 },
           },
           animation: false,
         },
@@ -245,7 +291,8 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               labelBackgroundRadius: 5,
               labelPadding: [2, 5],
             }),
-            inactive: { opacity: 0.07 },
+            related: { opacity: 0.86, lineWidth: 1.6 },
+            inactive: { opacity: 0.025 },
           },
           animation: false,
         },
@@ -282,6 +329,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         const edge = edgeById.get(source.sourceId);
         if (edge) callbacksRef.current.onSelectEdge(edge);
       });
+      instance.on(CanvasEvent.CLICK, () => callbacksRef.current.onClearSelection());
 
       await instance.render();
       renderSettled = true;
@@ -295,7 +343,9 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       }
       setReady(true);
       resizeObserver = new ResizeObserver(() => {
-        if (!cancelled) instance.resize();
+        if (cancelled) return;
+        instance.resize();
+        if (props.mode === "full") void instance.fitCenter();
       });
       resizeObserver.observe(container);
     }
@@ -322,6 +372,8 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       data-layout-height={props.mode === "full" ? fullForceLayout.height : undefined}
       data-layout-clusters={props.mode === "full" ? fullGraphTypeCount : undefined}
       data-layout-zoom={props.mode === "full" ? FULL_GRAPH_VIEW_ZOOM : undefined}
+      data-focus-node-count={props.mode === "full" ? fullFocus.focusedNodeIds.size : undefined}
+      data-focus-edge-count={props.mode === "full" ? fullFocus.focusedEdgeIds.size : undefined}
       className="relative min-h-[560px] overflow-hidden bg-[#f7f9f7]"
       aria-label={props.mode === "local" ? "节点局部关系图" : "语义全图"}
     >
@@ -332,7 +384,9 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         <p className="mt-0.5 text-[9px] text-[#74807a]">
           {props.mode === "local"
             ? "按语义方向分层 · 悬停显示关系名"
-            : `${fullGraph.nodes.length} Node · ${fullGraphTypeCount} 类社区 · 同类聚合扩散`}
+            : props.selectedNodeId
+              ? `${Math.max(0, fullFocus.focusedNodeIds.size - 1)} 关联 Node · ${fullFocus.focusedEdgeIds.size} Edge · 点击空白恢复`
+              : `${fullGraph.nodes.length} Node · ${fullGraphTypeCount} 类社区 · 点击节点聚焦`}
         </p>
       </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-white/80 bg-white/90 p-1 shadow-[0_8px_24px_rgba(38,52,45,0.08)] backdrop-blur-sm sm:right-4 sm:top-4">

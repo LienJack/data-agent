@@ -47,6 +47,12 @@ export interface SemanticFullForceLayout {
   readonly distanceThresholdMode: "max";
 }
 
+export interface SemanticFullFocusStates {
+  readonly elements: Record<string, string[]>;
+  readonly focusedNodeIds: ReadonlySet<string>;
+  readonly focusedEdgeIds: ReadonlySet<string>;
+}
+
 const FULL_FORCE_NODE_SIZE = 28;
 const FULL_FORCE_NODE_SPACING = 34;
 const FULL_FORCE_NODE_PITCH = FULL_FORCE_NODE_SIZE + FULL_FORCE_NODE_SPACING;
@@ -291,7 +297,7 @@ function forceNodeDatum(
     data: {
       kind: "semantic-node",
       sourceId: item.node.node_id,
-      label: item.node.name,
+      label: nodeLabel(item, selected),
       nodeType: item.node.node_type,
     } satisfies SemanticG6ElementData,
     style: {
@@ -409,6 +415,59 @@ export function buildFullG6Data(
     }),
     edges: semanticEdges(graph.edges, selectedEdgeId, "line", true),
   };
+}
+
+export function semanticFullFocusStates(
+  graph: SemanticGraphFullResult,
+  selectedNodeId: string | null,
+  selectedEdgeId: string | null,
+): SemanticFullFocusStates {
+  const focusedNodeIds = new Set<string>();
+  const focusedEdgeIds = new Set<string>();
+
+  if (selectedNodeId) {
+    focusedNodeIds.add(selectedNodeId);
+    for (const { edge } of graph.edges) {
+      if (edge.source_node_id !== selectedNodeId && edge.target_node_id !== selectedNodeId) {
+        continue;
+      }
+      focusedEdgeIds.add(edge.edge_id);
+      focusedNodeIds.add(edge.source_node_id);
+      focusedNodeIds.add(edge.target_node_id);
+    }
+  } else if (selectedEdgeId) {
+    const selected = graph.edges.find((item) => item.edge.edge_id === selectedEdgeId);
+    if (selected) {
+      focusedEdgeIds.add(selected.edge.edge_id);
+      focusedNodeIds.add(selected.edge.source_node_id);
+      focusedNodeIds.add(selected.edge.target_node_id);
+    }
+  }
+
+  const focused = focusedNodeIds.size > 0 || focusedEdgeIds.size > 0;
+  const elements: Record<string, string[]> = {};
+  for (const { node } of graph.nodes) {
+    elements[node.node_id] =
+      node.node_id === selectedNodeId
+        ? ["selected"]
+        : focusedNodeIds.has(node.node_id)
+          ? ["related"]
+          : focused
+            ? ["inactive"]
+            : [];
+  }
+  for (const { edge } of graph.edges) {
+    elements[edge.edge_id] =
+      edge.edge_id === selectedEdgeId
+        ? ["selected"]
+        : focusedEdgeIds.has(edge.edge_id)
+          ? ["related"]
+          : focused
+            ? ["inactive"]
+            : [];
+  }
+
+  return { elements, focusedNodeIds, focusedEdgeIds };
 }
 
 export function semanticG6SourceId(data: unknown): SemanticG6ElementData | null {

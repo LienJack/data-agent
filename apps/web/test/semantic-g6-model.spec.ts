@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFullG6Data,
   buildLocalG6Data,
+  semanticFullFocusStates,
   semanticFullForceLayout,
   semanticG6SourceId,
 } from "../src/lib/semantic-g6-model";
@@ -92,6 +93,38 @@ describe("semantic G6 graph model", () => {
     expect(dense.nodeStrength).toBeGreaterThan(0);
     expect(dense.linkDistance).toBeGreaterThan(dense.nodeSize + dense.nodeSpacing);
     expect(dense.nodeClusterBy({ id: "metric", data: { nodeType: "METRIC" } })).toBe("METRIC");
+  });
+
+  it("focuses a selected node and its one-hop neighborhood", () => {
+    const full = semanticStudioPreviewSnapshot().full;
+    const selectedNodeId = full.edges[0]?.edge.source_node_id;
+    if (!selectedNodeId) throw new Error("preview focus edge is required");
+
+    const focus = semanticFullFocusStates(full, selectedNodeId, null);
+    const relatedEdges = full.edges.filter(
+      ({ edge }) =>
+        edge.source_node_id === selectedNodeId || edge.target_node_id === selectedNodeId,
+    );
+    const relatedNodeId = relatedEdges
+      .flatMap(({ edge }) => [edge.source_node_id, edge.target_node_id])
+      .find((nodeId) => nodeId !== selectedNodeId);
+    const unrelatedNode = full.nodes.find(({ node }) => !focus.focusedNodeIds.has(node.node_id));
+    const unrelatedEdge = full.edges.find(({ edge }) => !focus.focusedEdgeIds.has(edge.edge_id));
+
+    expect(focus.elements[selectedNodeId]).toEqual(["selected"]);
+    expect(relatedNodeId ? focus.elements[relatedNodeId] : undefined).toEqual(["related"]);
+    expect(relatedEdges.every(({ edge }) => focus.elements[edge.edge_id]?.[0] === "related")).toBe(
+      true,
+    );
+    expect(unrelatedNode ? focus.elements[unrelatedNode.node.node_id] : undefined).toEqual([
+      "inactive",
+    ]);
+    expect(unrelatedEdge ? focus.elements[unrelatedEdge.edge.edge_id] : undefined).toEqual([
+      "inactive",
+    ]);
+
+    const reset = semanticFullFocusStates(full, null, null);
+    expect(Object.values(reset.elements).every((states) => states.length === 0)).toBe(true);
   });
 
   it("shows the complete ontology chain instead of embedding physical fields", () => {
