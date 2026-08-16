@@ -4,7 +4,12 @@ import {
   getModelProviderBinding,
   SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
 } from "@data-agent/agent-runtime";
-import type { ModelProvider } from "@data-agent/contracts";
+import {
+  type ModelCatalogEntry,
+  type ModelProvider,
+  type SyncEnvironmentModelCatalogInput,
+  syncEnvironmentModelCatalogInputSchema,
+} from "@data-agent/contracts";
 import type { ModelConfigListItem } from "./model-types";
 import { ensureRootEnvironmentLoaded } from "./root-env";
 
@@ -18,6 +23,7 @@ interface SystemModelDefinition {
 
 export interface ResolvedSystemModel {
   profile: ModelConfigListItem;
+  capabilities: ModelCatalogEntry["capabilities"];
   credential: string;
 }
 
@@ -84,6 +90,7 @@ export function discoverSystemModels(
           createdAt: now,
           updatedAt: now,
         },
+        capabilities: binding.capabilities,
         credential,
       },
     ];
@@ -125,6 +132,23 @@ export function mergeSystemModelsWithCatalog(
       }),
     );
   return Object.freeze([...systemProfiles, ...catalogProfiles]);
+}
+
+export function createEnvironmentModelCatalogSyncInput(
+  models: readonly ResolvedSystemModel[],
+): SyncEnvironmentModelCatalogInput {
+  return syncEnvironmentModelCatalogInputSchema.parse({
+    schema_version: "environment-model-catalog-sync@1.0.0",
+    models: models.map((model) => ({
+      model_profile_id: model.profile.id,
+      provider: model.profile.provider,
+      model_id: model.profile.modelName,
+      display_name: model.profile.name,
+      base_url: model.profile.baseUrl,
+      capabilities: model.capabilities,
+      is_system_default: model.profile.isSystemDefault,
+    })),
+  });
 }
 
 export function resolveSystemModelsFromProcess(): readonly ResolvedSystemModel[] {

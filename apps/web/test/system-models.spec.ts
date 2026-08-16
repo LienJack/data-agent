@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 let discoverSystemModels: typeof import("../src/lib/system-models").discoverSystemModels;
 let configureSystemModelRuntimeEnvironment: typeof import("../src/lib/system-models").configureSystemModelRuntimeEnvironment;
+let createEnvironmentModelCatalogSyncInput: typeof import("../src/lib/system-models").createEnvironmentModelCatalogSyncInput;
 let mergeSystemModelsWithCatalog: typeof import("../src/lib/system-models").mergeSystemModelsWithCatalog;
 let resolveSystemModelCredential: typeof import("../src/lib/system-models").resolveSystemModelCredential;
 
@@ -11,6 +12,7 @@ beforeAll(async () => {
   ({
     discoverSystemModels,
     configureSystemModelRuntimeEnvironment,
+    createEnvironmentModelCatalogSyncInput,
     mergeSystemModelsWithCatalog,
     resolveSystemModelCredential,
   } = await import("../src/lib/system-models"));
@@ -92,6 +94,24 @@ describe("environment system models", () => {
       provider: "deepseek",
       operational_constraints: { pricing: { currency: "USD" } },
     });
+  });
+
+  it("projects configured environment models into a secret-free database sync command", () => {
+    const models = discoverSystemModels({
+      DEEPSEEK_API_KEY: "deepseek-secret",
+      MOONSHOT_API_KEY: "kimi-secret",
+    });
+
+    const command = createEnvironmentModelCatalogSyncInput(models);
+
+    expect(command.models.map((model) => model.provider)).toEqual(["deepseek", "kimi"]);
+    expect(command.models[0]).toMatchObject({
+      model_profile_id: "30000000-0000-4000-8000-000000000003",
+      model_id: "deepseek-v4-pro",
+      is_system_default: true,
+    });
+    expect(JSON.stringify(command)).not.toContain("deepseek-secret");
+    expect(JSON.stringify(command)).not.toContain("kimi-secret");
   });
 
   it("keeps DeepSeek as the only default when environment and catalog models are merged", () => {

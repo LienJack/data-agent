@@ -129,6 +129,47 @@ export const modelProviderSelectionInputSchema = z.strictObject({
   models: z.array(modelProviderSelectionItemSchema).min(1).max(1000),
 });
 
+export const environmentModelCatalogEntrySchema = z.strictObject({
+  model_profile_id: immutableIdSchema,
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  display_name: z.string().min(1).max(255),
+  base_url: z
+    .url()
+    .max(2048)
+    .refine((value) => value.startsWith("https://"), "环境模型 Base URL 必须使用 HTTPS"),
+  capabilities: modelCapabilitiesSchema,
+  is_system_default: z.boolean(),
+});
+
+export const syncEnvironmentModelCatalogInputSchema = z
+  .strictObject({
+    schema_version: z.literal("environment-model-catalog-sync@1.0.0"),
+    models: z.array(environmentModelCatalogEntrySchema).max(7),
+  })
+  .superRefine((value, ctx) => {
+    const profileIds = new Set<string>();
+    let defaultCount = 0;
+    for (const [index, model] of value.models.entries()) {
+      if (profileIds.has(model.model_profile_id)) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["models", index, "model_profile_id"],
+          message: "环境模型 Profile ID 不能重复",
+        });
+      }
+      profileIds.add(model.model_profile_id);
+      if (model.is_system_default) defaultCount += 1;
+    }
+    if (defaultCount > 1) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["models"],
+        message: "环境模型最多只能有一个系统默认模型",
+      });
+    }
+  });
+
 export const modelCatalogEntrySchema = z.strictObject({
   schema_version: z.literal("model-catalog-entry@1.0.0"),
   app_id: immutableIdSchema,
@@ -672,6 +713,10 @@ export type ArchiveModelProviderConnectionInput = z.infer<
   typeof archiveModelProviderConnectionInputSchema
 >;
 export type ModelProviderSelectionInput = z.infer<typeof modelProviderSelectionInputSchema>;
+export type EnvironmentModelCatalogEntry = z.infer<typeof environmentModelCatalogEntrySchema>;
+export type SyncEnvironmentModelCatalogInput = z.infer<
+  typeof syncEnvironmentModelCatalogInputSchema
+>;
 export type ModelCatalogEntry = z.infer<typeof modelCatalogEntrySchema>;
 export type UpsertModelCatalogEntryInput = z.infer<typeof upsertModelCatalogEntryInputSchema>;
 export type ModelCatalogStatusInput = z.infer<typeof modelCatalogStatusInputSchema>;

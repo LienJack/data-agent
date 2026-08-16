@@ -178,4 +178,41 @@ describe("PostgreSQL pricing control repository", () => {
     expect(observed.slice(0, 2)).toEqual([ids.deployment, ids.principal]);
     expect(JSON.stringify(observed)).not.toContain("api_key");
   });
+
+  it("syncs only secret-free environment model metadata through the narrow RPC", async () => {
+    let observedText = "";
+    let observed: readonly unknown[] = [];
+    const repository = createPostgresPricingControlRepository(
+      pool((text, values) => {
+        observedText = text;
+        observed = values;
+        return { rows: [{ ...row, provider_connection_id: null }], rowCount: 1 };
+      }),
+    );
+
+    const result = await repository.syncEnvironmentModels(
+      { deployment_id: ids.deployment, principal_id: ids.principal },
+      {
+        schema_version: "environment-model-catalog-sync@1.0.0",
+        models: [
+          {
+            model_profile_id: "30000000-0000-4000-8000-000000000003",
+            provider: "deepseek",
+            model_id: "deepseek-v4-pro",
+            display_name: "DeepSeek 系统模型",
+            base_url: "https://api.deepseek.com",
+            capabilities: row.capabilities,
+            is_system_default: true,
+          },
+        ],
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(observedText).toContain("sync_environment_model_catalog");
+    expect(observed.slice(0, 2)).toEqual([ids.deployment, ids.principal]);
+    expect(JSON.stringify(observed)).not.toContain("api_key");
+    if (!result.ok) throw new Error("Expected environment catalog sync to succeed");
+    expect(result.value[0]?.provider_connection_id).toBeUndefined();
+  });
 });

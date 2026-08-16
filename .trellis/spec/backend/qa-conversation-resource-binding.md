@@ -37,8 +37,10 @@ datasource_id, model_profile_id, expected_resource_version
 ### 3. Contracts
 
 - Resource Catalog 只返回安全投影；Credential、SecretRef locator、连接串和价格明细不得返回浏览器。
-- 环境中存在 Credential、但 Profile 尚未进入 active pricing catalog 时，模型显示为
-  `UNBILLABLE + selectable=false`，不能因为 `/api/models` 可见而绕过计费目录。
+- 环境 Credential Profile 必须先通过安全元数据 RPC 同步到 PostgreSQL 权威目录；同步命令不得包含
+  Credential。计费模式为 `SHADOW` 时该 Profile 可进入 `ACTIVE + selectable=true`，暂停用户额度
+  Hold/扣减；切回 `ENFORCED` 后，缺少完整价格链的 Profile 必须恢复为
+  `UNBILLABLE + selectable=false`。
 - 空对话切换返回 `UPDATED_CURRENT` 并把 `resource_version` 加一；已有消息的对话返回
   `CREATED_REPLACEMENT`，新对话消息数为 0，旧 ID、消息和 Run 不变。
 - Q&A Run start 的浏览器请求只含 `question + idempotency_key`。Repository 从 Conversation 解析
@@ -63,7 +65,8 @@ datasource_id, model_profile_id, expected_resource_version
 | model profile 不在 active authority catalog | `MODEL_PROFILE_NOT_AVAILABLE` |
 | 已有消息后绕过 switch RPC 原地改资源 | `CONVERSATION_RESOURCES_FROZEN` |
 | Q&A Run 缺少完整模型/数据源快照 | `CONVERSATION_RESOURCES_REQUIRED` / `QA_RUN_BINDING_INVALID` |
-| Profile 仅有环境 Credential、没有计费目录版本 | UI 显示不可计费，Send 禁用 |
+| `SHADOW` 且环境 Profile 已安全同步 | UI 显示可运行，可冻结到 Conversation |
+| `ENFORCED` 且 Profile 缺少完整价格链 | UI 显示不可计费，Send 禁用 |
 
 ### 5. Good / Base / Bad Cases
 

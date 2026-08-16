@@ -17,8 +17,10 @@ import {
   pricingCandidateDecisionInputSchema,
   type SubmitFxRateSyncInput,
   type SubmitModelPriceSyncInput,
+  type SyncEnvironmentModelCatalogInput,
   submitFxRateSyncInputSchema,
   submitModelPriceSyncInputSchema,
+  syncEnvironmentModelCatalogInputSchema,
   type UpsertModelCatalogEntryInput,
   type UpsertModelProviderConnectionInput,
   upsertModelCatalogEntryInputSchema,
@@ -57,7 +59,7 @@ interface ModelCatalogRow {
   readonly app_id: string;
   readonly environment: string;
   readonly model_profile_id: string;
-  readonly provider_connection_id?: string;
+  readonly provider_connection_id?: string | null;
   readonly provider: ModelCatalogEntry["provider"];
   readonly model_id: string;
   readonly display_name: string;
@@ -120,9 +122,11 @@ function date(value: Date | string): string {
 }
 
 function model(row: ModelCatalogRow): ModelCatalogEntry {
+  const { provider_connection_id: providerConnectionId, ...modelRow } = row;
   return modelCatalogEntrySchema.parse({
     schema_version: "model-catalog-entry@1.0.0",
-    ...row,
+    ...modelRow,
+    ...(providerConnectionId ? { provider_connection_id: providerConnectionId } : {}),
     config_version: Number(row.config_version),
     created_at: timestamp(row.created_at),
     updated_at: timestamp(row.updated_at),
@@ -256,6 +260,28 @@ export function createPostgresPricingControlRepository(pool: SqlPool) {
           [parsed.value.deployment_id, parsed.value.principal_id],
         );
         return Object.freeze(result.rows.map(providerConnection));
+      });
+    },
+
+    async syncEnvironmentModels(
+      input: unknown,
+      command: SyncEnvironmentModelCatalogInput,
+    ): Promise<BoundaryResult<readonly ModelCatalogEntry[]>> {
+      const parsedContext = context(input);
+      if (!parsedContext.ok) return parsedContext;
+      const parsedCommand = syncEnvironmentModelCatalogInputSchema.safeParse(command);
+      if (!parsedCommand.success) {
+        return failure(
+          "ENVIRONMENT_MODEL_CATALOG_SYNC_INVALID",
+          "环境模型目录同步不符合严格契约。",
+        );
+      }
+      return withClient(pool, async (client) => {
+        const result = await client.query<ModelCatalogRow>(
+          "select * from platform.sync_environment_model_catalog($1::uuid,$2::uuid,$3::jsonb)",
+          [parsedContext.value.deployment_id, parsedContext.value.principal_id, parsedCommand.data],
+        );
+        return Object.freeze(result.rows.map(model));
       });
     },
 

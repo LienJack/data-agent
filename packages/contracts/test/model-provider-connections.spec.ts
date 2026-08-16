@@ -3,6 +3,7 @@ import {
   archiveModelProviderConnectionInputSchema,
   modelProviderConnectionSchema,
   modelProviderSelectionInputSchema,
+  syncEnvironmentModelCatalogInputSchema,
   upsertModelProviderConnectionInputSchema,
 } from "../src/workspaces/billing.js";
 
@@ -109,5 +110,42 @@ describe("model provider connection contracts", () => {
       api_key: "do-not-store",
     };
     expect(upsertModelProviderConnectionInputSchema.safeParse(payload).success).toBe(false);
+  });
+
+  it("accepts only secret-free environment model catalog projections", () => {
+    const input = {
+      schema_version: "environment-model-catalog-sync@1.0.0",
+      models: [
+        {
+          model_profile_id: "30000000-0000-4000-8000-000000000003",
+          provider: "deepseek",
+          model_id: "deepseek-v4-pro",
+          display_name: "DeepSeek 系统模型",
+          base_url: "https://api.deepseek.com",
+          capabilities,
+          is_system_default: true,
+        },
+      ],
+    };
+
+    expect(syncEnvironmentModelCatalogInputSchema.parse(input).models).toHaveLength(1);
+    expect(
+      syncEnvironmentModelCatalogInputSchema.safeParse({
+        ...input,
+        models: [{ ...input.models[0], api_key: "must-not-cross-boundary" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      syncEnvironmentModelCatalogInputSchema.safeParse({
+        ...input,
+        models: [input.models[0], { ...input.models[0], model_profile_id: ids.connection }],
+      }).success,
+    ).toBe(false);
+    expect(
+      syncEnvironmentModelCatalogInputSchema.safeParse({
+        ...input,
+        models: [{ ...input.models[0], base_url: "http://api.deepseek.com" }],
+      }).success,
+    ).toBe(false);
   });
 });
