@@ -1,39 +1,42 @@
 ---
-title: "feat: DataFoundry 能力迁移与 CoA 语义增强总计划"
+title: "feat: DataFoundry Greenfield 能力建设与 CoA 语义层生成总计划"
 type: feat
 status: active
 date: 2026-08-16
 deepened: 2026-08-16
 ---
 
-# feat: DataFoundry 能力迁移与 CoA 语义增强总计划
+# feat: DataFoundry Greenfield 能力建设与 CoA 语义层生成总计划
 
 ## Summary
 
-本计划在保留原 M01–M18 全部平台能力的基础上，叠加 S01–S12、A01–A10、R01–R10 与
-T01–T08 Agent Team 能力，
-把 DataFoundry 的工作台与资源体验、CoA 的 Ontology/Metric/Context Serve 思路，收口到
-`data-agent` 现有的 PostgreSQL Authority、Graph v2、治理、Worker、计费和 Test Center。
-执行以一个持续 Goal 驱动多个依赖有序、可恢复、可独立提交的实施单元，并由语义管理、Text2SQL、
-报告写作三类独立 Agent Profile 组成 Team；中途不请求产品决策，最终以 Falcon 题目、真实
-PostgreSQL、真实 Worker、真实 Agent Team 路径和确定性 Oracle 作为 Go/No-Go 门禁。
+本计划把原 M01–M18 全部平台能力与 S01–S12、A01–A10、R01–R10、T01–T08 Agent Team 能力作为
+一个 Greenfield 项目建设，不迁移任何历史 Workspace、Run、文件、Ontology Package、Semantic Release、
+API Payload 或业务数据。DataFoundry 提供工作台与资源体验参考，CoA 提供 Ontology/Metric/Context Serve
+参考；系统从新数据源 Schema 与业务资料直接生成第一版语义层，并收口到 `data-agent` 现有的 PostgreSQL
+Authority、Graph v2、治理、Worker、计费和 Test Center。
+执行以一个持续 Goal 驱动多个依赖有序、可恢复、可独立提交的实施单元，并由 Mastra 承载语义管理、
+Text2SQL、报告写作三类独立 Agent Profile；中途不请求产品决策，最终以新生成的 Published Semantic
+Release、Falcon 题目、真实 PostgreSQL、真实 Worker、真实 Agent Team 路径和确定性 Oracle 作为
+Go/No-Go 门禁。
 
 ---
 
 ## Problem Frame
 
-早期 DataFoundry 计划只覆盖数据源、Data Link、Q&A、模型设置和导航，近期语义路线又重点扩展了
-Graph v2、Semantic Studio、Agent Authoring 与 Falcon。若把新的语义清单直接替换 M01–M18，
-会丢失 Run、会话、文件、Artifact、扩展中心和工作台闭环；若按 DataFoundry、CoA、
-`data-agent` 各自复制一套系统，则会形成多份 Authority、任务系统、资源配置和发布状态。
+早期清单分别描述 DataFoundry 工作台能力与 CoA 语义能力。若用新的语义清单替换 M01–M18，会丢失
+Run、会话、文件、Artifact、扩展中心和工作台闭环；若为两个参考项目各造一套系统，又会形成多份
+Authority、任务系统、资源配置和发布状态。本轮按新项目处理，核心问题不再是怎样兼容或搬运旧数据，
+而是怎样一次构建完整平台并从零生成可被真实查询消费的第一版语义层。
 
 本计划解决的是同一个产品的收口问题：DataFoundry 只提供产品能力与交互参考，CoA 只提供
 Ontology/Metric/Context Serve 的构成参考，最终可执行事实、权限、发布、计费、SQL 与评测仍由
 `data-agent` 的现有权威链决定。
 
-首要用户是 Workspace Analyst；首要任务是用中文业务问题，在已发布语义和 Workspace 权限下得到可执行的
-只读 SQL、可核验结果、证据引用和可交付报告，并能从失败/中断恢复。Semantic Maintainer/Reviewer 与
-Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管理 Provider、Datasource、Extension 和权限。
+首要用户是 Workspace Analyst；首要任务是接入一个新数据源后，由系统生成并发布第一版受治理语义层，
+再用中文业务问题得到可执行的只读 SQL、可核验结果、证据引用和可交付报告，并能从失败/中断恢复。
+Semantic Maintainer 与 Workspace Admin 是支撑角色：前者检查生成证据和后续 Candidate，后者在 Goal 启动时
+授权精确的 Greenfield Bootstrap Policy，并管理 Provider、Datasource、Extension 和权限。
 可观察结果不是“功能页面存在”，而是首要任务通过真实 Team/Worker/PostgreSQL/Falcon，并能由公开 Receipt
 重放；平台扩展还必须通过 U17 Workspace Journey Gate，不能用 SQL 分数掩盖资源工作台缺口。
 
@@ -41,14 +44,14 @@ Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管�
 
 ## Requirements
 
-- G1. 完整保留并实施 M01–M18，不允许用 S/A/R 清单覆盖或降级原迁移范围。
+- G1. 完整实施 M01–M18，不允许用 S/A/R/T 清单覆盖或降级原 Greenfield 平台范围。
 - G2. 实施 S01–S12、A01–A10、R01–R10，且每个原始编号都有唯一主实施单元、验收证据和状态。
 - G3. 所有 Run 资源先由服务端鉴权、解析 Workspace Defaults 与 Run Overrides，再冻结为
   `Effective Run Config`；客户端选择永远不是授权依据。
 - G4. 模型选择必须贯通 Selector → Run → Worker → Provider → Usage/Billing，不能只停留在 UI
   或 Conversation 持久化。
-- G5. Semantic Graph v2、`semantic-ast`、Candidate/Review/Publish/Rollback 和现有 Semantic API
-  是扩展基线；不建设平行 Ontology Authority，也不静默删除旧语义入口。
+- G5. Semantic Graph v2、`semantic-ast` 与 Candidate/Validate/Publish/Rollback 合同是实现基线；新项目只
+  生成新 Package/Release，不承担旧 Payload、旧 Release 或旧 Semantic API 的兼容迁移。
 - G6. PostgreSQL 是 Workspace、Run、资源、语义发布、Job、Receipt、计费和评测 Authority；
   Neo4j、Embedding Index、缓存与前端 Store 都是可重建投影。
 - G7. 所有 AI 归纳、检索和诊断输出都只是 Candidate/Evidence；AI 不能批准语义、覆盖权限拒绝、
@@ -69,6 +72,14 @@ Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管�
 - G14. 三类 Agent 通过 Team Orchestrator、`TaskEnvelope`、类型化 Artifact、受限
   `ContextProjection` 与 `HandoffReceipt` 协作；禁止在 Agent 间复制完整会话、原始记忆或无限上下文，
   `completed` 也不能替代确定性 `accepted`。
+- G15. 项目以空 Workspace/空语义注册表启动；唯一语义输入是已授权的新 Datasource Schema Snapshot、
+  业务资料与 Bootstrap Policy。Goal 必须生成第一版 Candidate、确定性验证并由非 Agent Release Authority
+  发布首个 Semantic Release，不能要求提前存在旧 Release 或 Reviewer Receipt。首版只包含
+  `MandatoryReleaseManifest` 中可由 Schema/约束/执行探针或签名业务断言机械验证的对象；其他歧义增强保留
+  Candidate，不得靠 Agent 猜测，也不阻断已满足的 Physical Semantic Core。
+- G16. Agent 执行层使用仓库已固定的 Mastra；参考 DeepSeek Harness 的 Durable Truth/Model View 分层、
+  Context Compiler、Artifact-first、事务式 Compaction、显式 Resume 与 Subagent Provider，但业务 Task、
+  Scope、Receipt、Acceptance 和发布权始终由项目合同/PostgreSQL Authority 持有。
 
 ---
 
@@ -77,46 +88,60 @@ Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管�
 - 不复制或嵌入 DataFoundry、CoA 的服务、数据库、前端组件、AWS CDK 或运行时依赖；只借鉴已审计的
   能力边界、合同和交互模式。
 - 不新增第二份语义图、Metric Authority、Datasource Authority、Job 系统或计费账本。
-- 不允许 AI 自动批准或发布新的语义 Candidate；目标 Falcon Release 必须在 Goal 启动前已由授权
-  Reviewer 对精确内容摘要完成审核，Goal 只做等价迁移、消费和验证。
+- 不迁移历史 Workspace、业务数据、Run、File/Artifact、Ontology Package、Semantic Release、消息、账务或
+  API Payload；不做 Backfill、Dual Read/Write、旧 Hash 保持、Compatibility Adapter 或 Cutover。
+- 新项目仍需创建数据库 Schema，但这只是空库初始化 DDL，不包含历史行搬运、数据清洗或回填计划。
+- AI 只能生成 Candidate/Validation/Impact，不能自行批准。首个 Release 由 Goal 启动时预授权的
+  `SemanticBootstrapPolicy`、不可委托的 `PublisherGrant` 与确定性 Gate 决定发布；后续日常语义变更仍走
+  人工 Review/Publish。Agent 只能看到 Policy View/Digest，永远拿不到签名原文或 Grant。
 - 不以 LLM Judge、相似度、页面可见、单测通过或 SQL 可执行替代确定性发布门禁。
 - 不把 Falcon TEST 191 题声明为本地 PASS 或本地准确率；它们只生成可审计 Submission Artifact。
-- 不为迁移方便删除共享数据库、Volume、已有 Migration、历史 Run、Receipt、Artifact 或 Release。
+- 不读取或修改现有生产 Workspace 作为输入；Greenfield Goal 只操作专属新 Workspace/Schema/Artifact Scope。
 - 不在本计划顺带完成 U6 Research Platform、归因分析或其他不影响 M/S/A/R/T 闭环的历史重构。
 - 不克隆 DataFoundry 的品牌、视觉身份或虚构运行数据；只复用本项目 Workspace Shell 和业务组件。
 - 不把 Team Orchestrator 建成第四个拥有领域 Authority 的万能 Agent；它只负责任务图、预算、路由、
   Handoff、Checkpoint 与验收汇聚。
-- Semantic Management Agent 只能产出 Candidate/Validation/Impact，不获得 Publish 权限；Text2SQL Agent
-  只消费 Published Release；Report Writing Agent 只引用已验证 Evidence，不能直连原始数据源补证。
+- Semantic Management Agent 只能产出 Candidate/Validation/Impact，不获得 Publish Tool；Bootstrap Release
+  Authority 是确定性非 Agent 服务。产品/计分 Text2SQL 只消费 Published Release；唯一例外是无正式产物的
+  PREPUBLISH_EVALUATION Activation。Report 只引用已验证 Evidence。
 
 ### Deferred to Follow-Up Work
 
 - Falcon 上游版本更新、官方自动提交和 Leaderboard 同步：另立 Benchmark 生命周期任务。
-- 为 Falcon 28 个数据库逐库人工建设完整 Ontology：本计划只要求已选主域的发布语义与全库物理目录。
+- 从旧 DataFoundry/旧 `data-agent` Workspace 导入用户、文件、Run、账务或 Semantic Release：另立 Migration 项目。
+- Trino 与其他非 mandatory Datasource Adapter：五类 Greenfield Adapter 认证后另立扩展任务。
+- 为 Falcon 28 个数据库逐库人工增强完整业务 Ontology：另立优化任务；本计划仍强制在同一 Initial Release
+  Set 中为 28 库各自动生成可查询、Schema-grounded 的 Package，db24/db14 额外要求业务术语/关系/Metric 增强。
 - 面向第三方的通用插件市场、付费 Marketplace 和跨组织共享模板：在 M12/M13 的内部管理闭环稳定后另行规划。
 
 ---
 
 ## Context & Research
 
-### Current `data-agent` Baseline
+### Current `data-agent` Reuse Baseline
 
 - `packages/contracts/src/runs/runtime.ts`、`packages/platform/src/events/postgres-run-event-store.ts`、
   `packages/platform/src/queue/postgres-run-queue.ts` 已提供 Durable Run、Sequence、Lease/Fence、
   Cancel/Resume 与公开事件基线。
-- `packages/contracts/src/workspaces/qa-resources.ts`、10648 Resource Binding 迁移、Workspace-scoped Q&A
+- `packages/contracts/src/workspaces/qa-resources.ts`、Workspace Resource Binding 与 Workspace-scoped Q&A
   API 已冻结模型和数据源选择，但文件、知识库、MCP、Skill、Semantic Release 与 Context Policy 尚未
   统一进入一个服务端 Effective Config。
 - 10649–10652 与 `apps/web/src/lib/model-provider-admin.ts` 已建立 API-backed Provider 控制面；
   `packages/platform/src/billing/billing-gated-model-provider.ts` 是真实调用与账务收口模式。
 - 10638–10645、`semantic-graph-v2.ts`、`semantic-governance.ts`、Semantic Studio、Authoring Worker
   已建立 Graph v2、Candidate、Review、Publish 与事件审计基线。
+- 10610 `semantic.bootstrap_semantic_domain` 已要求两个不同 signer、独立初始 reviewer，并创建
+  `active_release=null/generation=0` genesis；现有 `prepare_publish_attempt` 又要求已批准 Review Task。U5 必须以
+  独立窄 RPC 原子增加 system-bootstrap 首发路径并保留双签 Domain 初始化，不能只在 TypeScript 绕过数据库 Gate。
 - `packages/evals/src/test-center/falcon-*`、`infra/falcon/v1/`、10646 Falcon Import 已固定 28 个
   PostgreSQL Schema、DEV 309、TEST 191 与严格 expected-result Oracle。
-- 当前工作树有大量并行任务改动；实施时必须基于实时 HEAD/Status 建立 Owned Path Allowlist，
-  不能把本计划中的观察当作已合并发布证明。
+- 当前工作树有大量并行任务改动；实施时必须基于实时 HEAD/Status 建立 Owned Path Allowlist。这里复用的是
+  代码模式和 Authority，不是旧项目数据，也不能把观察状态当成新项目已交付证明。
 - `packages/agent-runtime/src/teams/` 已有 `TaskEnvelope`、`ContextProjection`、Tool/Network/Budget
   收窄、Handoff Receipt 与四个 L2 角色的基线；本计划扩展它，不另造一套 Team 协议。
+- `packages/agent-runtime` 已固定 `@mastra/core` 1.52.1，并通过 `src/mastra/` Bridge、Worker Composition 与
+  `MastraSnapshotBinding` 把 Mastra 限制在内部执行层；公共合同不导出 Mastra 构造器。U19/U20 沿用该边界，
+  不把 Mastra Memory、Thread、Workflow Snapshot 直接当业务 Authority。
 
 ### Reference Patterns
 
@@ -131,12 +156,20 @@ Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管�
   Provider-native 子 Agent 身份必须分离；交接使用类型化 Artifact/摘要而不是拼接自然语言；Plan/Task
   合同不可变，`completed` 需经 VerifierDecision 才能成为 `accepted`，并通过 Checkpoint/Fence/CAS
   支持恢复。这些结论用于约束 T01–T08，不引入其中项目的运行时。
+- DeepSeek Harness reference `47f943859bef60e4160492346772ded9b24f765a`：只采用 Goal 与激活权分离、
+  Durable Truth→Context Compiler→Model View、Artifact-first 大结果、`compaction/start/end` 稳定性复核、
+  `TOOL_NOT_STARTED`/`TOOL_OUTCOME_UNKNOWN` 与 Subagent Provider 的父子身份/回收思想；不引入 Cordis、
+  Session Store 或其插件运行时。
+- Mastra reference `57b032df3c` 与 `深度调研` RQ010：Supervisor/Subagent Tool、AgentController、Workflow
+  Snapshot 和 A2A 是不同通信路径。新项目只使用本地同进程 Mastra Agent/Workflow/Subagent 原语；跨服务 A2A
+  不在本次范围，且 Mastra `completed`/snapshot 不能替代项目 Verifier/Receipt。
 
 ### Institutional Learnings
 
 - 模型选择持久化不等于真实切换；必须看到 Provider、Usage 与 Billing Receipt 的执行证据。
-- 已有语义 API/路由必须兼容或显式标记 Paused，不能因为 Graph v2 上线而静默消失。
-- Migration 必须通过 Ledger/Checksum 证明，不把 `pnpm dev` 当作迁移完成，也不以删除 Volume 恢复。
+- Greenfield 项目不需要旧语义兼容矩阵；真正需要证明的是空 Workspace 能从 Source Snapshot 生成首个
+  Package/Release，且之后每个 Run 都固定其 Release Hash。
+- 数据库只执行空库 Schema 初始化；不把 Backfill、历史 Ledger 状态或删除 Volume 作为交付步骤。
 - Falcon 使用真实 PostgreSQL；Demo、Tuning、Local Holdout、Official Test 必须隔离，确定性 Oracle
   决定 PASS/FAIL。
 
@@ -162,9 +195,11 @@ Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管�
 | 扩展中心 | MCP 管理面与 Run 内 Semantic MCP Tool 分层 | 管理配置和实际工具调用具有不同权限边界 |
 | Agent Team | 一个非领域 Orchestrator + 三个独立 Agent Profile + 类型化 Handoff | 分离上下文与权限，同时复用已有 Team 合同和 Authority |
 | Agent 完成 | Agent 调用显式 Complete/Checkpoint Tool，Verifier 决定 Accepted | 防止以助手自然语言或子任务完成冒充业务验收 |
-| 迁移兼容 | Additive Schema + Read Adapter + Backfill Receipt + Cutover + Retire | 避免破坏正在并行运行的 API、Worker 和 Release |
+| Greenfield 语义 Bootstrap | Source Bundle→AI Candidate→Pre-publish Gate→Bootstrap Release Authority | 一次 generation 0→1 CAS 原子发布 Initial Release Set；歧义增强不混入 v1 |
 | 最终门禁 | U17 Workspace Journey + U18 Falcon 绝对阈值/稳定性/Holdout/TEST Submission | Falcon 证明 governed Text2SQL/Report，Journey 证明其余平台能力 |
 | 模型数据出境 | 所有 Chat/Embedding 请求先过 sensitivity-aware Data Projection Gate | Provenance 正确不等于允许把原始值发送给 Provider |
+| Agent 执行层 | Mastra Agent/Workflow/Subagent + 项目自有 Port/Receipt/PostgreSQL Authority | 利用现成 Agent 原语，但不泄漏框架身份或让 Snapshot 取代业务状态 |
+| Context Runtime | Durable Truth→Context Compiler→Model View；Artifact-first；Epoch Compaction | 参考 DeepSeek Harness，避免把完整消息历史当上下文或恢复真相 |
 
 ---
 
@@ -172,58 +207,83 @@ Workspace Admin 是支撑角色：前者维护并人工发布语义，后者管�
 
 ### Goal Objective
 
-Goal 执行器应把本文件作为唯一范围入口，按 U1–U20 的依赖顺序持续实施、验证和提交；只有最终
-Falcon Gate 签发 GO 且所有编号都有证据时，才能把 Goal 标记为完成。
+Goal 执行器应把本文件作为唯一范围入口，按 U1–U20 的依赖顺序持续实施、验证和提交：先初始化隔离的空
+Journey Workspace 与 Falcon Evaluation Workspace，由 U11/U20 Semantic Agent 生成 Candidate，再由 U5
+Bootstrap Authority 发布各自首版；只有 Published Release 可交给 Text2SQL/Report Agent 跑真实问答、报告与
+Falcon。只有 Greenfield
+Bootstrap Release、Workspace Journey 和 Falcon Gate 都签发 GO 且所有编号都有证据时，才能标记完成。
 
 ### Preflight Before the First Mutation
 
 以下静态检查在写代码前一次完成；任一失败都返回单一 Blocker Report，不进入“做一半再询问用户”状态：
 
 1. 记录实时 HEAD、分支、Dirty Status、现有 Trellis 任务和仅属于本 Goal 的路径 Allowlist。
-2. 确认 PostgreSQL、Migration Ledger/Checksum、Web、Worker、Indexer 和必要 SecretRef 可用。
+2. 确认两个专属空 Scope：U17 `Journey Workspace` 与 U18 `Falcon Evaluation Workspace`；两者的 Schema/
+   Artifact Namespace、Semantic Domain、Policy/Grant/Receipt 均隔离，且都未绑定历史用户数据或 Release。
+   确认 PostgreSQL、Web、Worker、Indexer 和必要 SecretRef 可用；DDL 只创建空库 Schema。
 3. 确认至少一个 API-backed Certified Model Profile 可完成真实 Provider 调用与 Billing Settlement。
 4. 校验 `infra/falcon/v1/` 固定摘要、28 Schema/500 题资产、Falcon Workspace Binding 与严格 Oracle。
-5. 确认授权 Reviewer Receipt 已绑定 Falcon db24 Published Release 的可执行 Package/AST/Mapping/Constraint/
-   Formula canonical semantic digest，而不是只签署人类可读摘要；若没有，Goal 在任何产品改动前停止。
+5. 冻结由已认证 Workspace Admin 发起、独立非 Agent Platform Attestor 联签的 `LaunchAuthorization`，其中为
+   Journey/Falcon 两个 Domain 绑定允许的数据源/Schema/业务资料摘要、`MandatoryReleaseManifest`、机器可验证
+   业务断言、生成范围、硬门禁、Provider、预算、预期 signer key-id 与独立初始 Reviewer Assignment。Preflight
+   只验证现有 Principal/Key SecretRef/签名材料可用并记录目标 digest，不调用尚未实现的 U1/U5 Authority，
+   `SemanticBootstrapPolicy`/Domain Receipt/Publisher Grant 在后续 Phase Activation 物化且不得要求用户二次确认。
 6. 确认现有 `packages/agent-runtime/src/teams/` 合同与 U19 Slice 所需的 Provider/Artifact/Sandbox 基础依赖
    可用；U19 先验证 Team v2 合同，三类完整可运行 Profile 属于 U20 交付物，不错误地作为实施前置。
 7. 完成 PostgreSQL、MySQL、SQLite、DuckDB、ClickHouse 的驱动版本、许可证、供应链和目标平台预审，冻结
    mandatory adapter set；任一 mandatory adapter 不可合法交付则在任何产品改动前停止。
-8. 在任何迁移实现前运行并持久化迁移前 Falcon Baseline Receipt，绑定代码 Commit、Migration Ledger、
-   Datasource/Schema、Published Semantic Release、Provider/Profile、Prompt/Workflow、Budget、Dataset/Oracle、
-   环境健康和逐题结果；Baseline 只作额外回归阻断，不能降低 U18 绝对门禁。
-9. 建立一个 Trellis Parent Task，并按 U-ID 建立可独立验收的 Child Task；Parent 只聚合范围和最终门禁。
+8. 校验 Mastra 固定版本/Lockfile、内部 Bridge、Snapshot Binding 与项目公共导出边界；校验 DeepSeek Harness
+   参考提交和本地研究文档可读，但不把两个参考仓库纳入运行依赖。
+9. 为 Falcon 冻结两个不相交 Allowlist：`SemanticBootstrapCorpus` 只含 28 库 Schema、独立业务资料及明确
+   允许的 DEMO/TUNING 断言；`CaseRuntimePublicInput` 只在单题 Text2SQL Task 中提供该题公开题面。
+   Local Holdout/TEST 题面、Gold、expected、Oracle 派生反馈与 sealed 字段都不得进入 Semantic Agent、Package、
+   跨题 Artifact 或优化日志。
+10. 建立一个 Trellis Parent Task，并按 U-ID 建立可独立验收的 Child Task；Parent 只聚合范围和最终门禁。
+
+### Phase Activation After Contracts Exist
+
+- U1 合同与 Signer Key Registry 安装后，从不可变 `LaunchAuthorization` 机械物化两个
+  `SemanticBootstrapPolicy`，digest 必须与启动目标一致。
+- U5 Authority/RPC 安装后，以 CAS 验证 Admin/Platform Attestor 的 key-id/signature/nonce/expiry/capability，
+  调用强化后的 per-domain bootstrap，配置独立 Reviewer Assignment，并签发短期、不可委托、单 audience 的
+  `PublisherGrantRef`。Domain Receipt 必须 `verification_state=VERIFIED`；Policy/Grant Receipt 标记
+  `SYSTEM_BOOTSTRAP_POLICY`，不得冒充 Human Reviewed，Agent/Manifest 均不持有 Bearer Material。
+- U20 安装后，以 `ExpectedProfileContract` 物化三个 `AgentProfileRevision` 与 Skill/Workflow/Prompt/Model Receipt。
+  只有 `PhaseActivationReceipt` 同时绑定 LaunchAuthorization、两 Domain genesis、Grant Ref 与 Materialized Profile
+  Revision，U17/U18 才能启动；任何 digest 漂移 fail closed，但全程不追加用户确认。
 
 ### Revalidation of Mutable Preconditions
 
 Preflight 冻结身份和摘要，但不假设长 Goal 期间外部事实永远有效。每个 Phase 入口、每个消费相应 Authority
-的 U-ID 写入前，以及 U18 启动前，必须重新核验 Workspace/RBAC/Revocation、Semantic Release 状态、
-SecretRef、Provider Certification、Migration Ledger/Checksum、Worker/Indexer/Job/Neo4j/Scanner 健康，生成带
-CAS/version 和有效期的 `PhaseEntryReceipt`。关键对象被撤销或漂移时，在下一次领域写入/Tool 调用前停止；
-不得继续使用 Preflight 时的旧授权，也不得在原 Attempt 中偷换新版本。
+的 U-ID 写入前，以及 U18 启动前，必须重新核验 Workspace/RBAC/Revocation、LaunchAuthorization（U5 前）或
+已物化 Bootstrap Policy/Grant（U5 后）、Source/
+Schema Digest、当前 Semantic Release（各 Domain 首次 publish 前必须为空；U17/U18 发布后分别等于其首版冻结
+Hash）、SecretRef、Provider
+Certification、Worker/Indexer/Job/Neo4j/Scanner 健康，生成带 CAS/version 和有效期的 `PhaseEntryReceipt`。
+关键对象被撤销或漂移时，在下一次领域写入/Tool 调用前停止；不得在原 Attempt 中偷换版本。
 
 ### Non-Interactive Defaults
 
-- 遇到“扩展既有合同还是新建平行合同”时，一律扩展既有合同并提供向后兼容 Reader/Projection。
+- 遇到“复用项目 Authority 还是采用参考框架存储”时，一律复用 PostgreSQL/Artifact/Receipt Authority；Mastra
+  只在内部执行层适配，不把其 Thread/Memory/Snapshot 暴露为公共业务合同。
 - 遇到“缓存/Neo4j/索引还是 PostgreSQL”冲突时，以 PostgreSQL 为 Authority，其余重建。
-- 遇到旧入口无法立即兼容时，保留只读状态并在 UI/API 返回显式 `PAUSED`/迁移原因，不删除入口。
+- 遇到尚未生成首版语义层时，Run 返回 `SEMANTIC_BOOTSTRAP_NOT_READY` 并指向生成 Job，不降级到无语义 SQL。
 - 遇到可重试基础设施错误时按既有 Retry/Lease/Fence 规则恢复；业务校验失败不自动降级标准。
-- 遇到 Migration ID 竞争时，在执行时分配最新空闲 Ledger ID并同时生成 Source、Renderer、Rendered SQL、
-  Checksum 与 Postcondition，不复用本计划撰写时观察到的编号。
-- 遇到关联但不属于 G1–G14 的问题时记录 Deferred Finding，不扩张当前 Child Task。
+- 遇到关联但不属于 G1–G16 的问题时记录 Deferred Finding，不扩张当前 Child Task。
 - 需要补充参考或调研时，先检索仓库与 `深度调研` 本地资料；只有本地证据不足且结论会改变合同/门禁时
   才做外部研究，并把固定来源、版本和结论写入当前 Child Task Research Artifact，不临时询问用户。
 - Report Writing Agent 发现 Evidence Gap 时只向 Orchestrator 返回类型化 Gap；Orchestrator 可创建一次
   有界 Text2SQL 子任务，禁止两个 Agent 自由对话或无限往返。
-- 不执行破坏性数据库/Volume/历史 Artifact 清理；需要此类动作时保持数据并报告 Blocked。
+- Mastra/Worker 重启后不得隐式续跑。Goal Orchestrator 只有持有原 `GoalExecutionManifest` 的自动恢复授权、
+  精确 Goal Revision/Lease/Budget 且 Recovery Probe 通过时，才显式 re-arm 新 Attempt；unknown 外部效果先对账。
+- 不执行破坏性数据库/Volume/Artifact 清理；需要此类动作时保持数据并报告 Blocked。
 
 ### Progress, Recovery, and Commits
 
 - 每个 U-ID 是一个 Trellis Child Task 和一个 Scoped Commit；只暂存该单元 Owned Paths。
-- 多个 U-ID 需要递进修改同一路径时，由较晚 U-ID 只追加其声明的增量职责；不得改写较早单元已经签发的
-  Contract/Receipt 历史。若必须做不兼容变更，先废止受影响 Receipt、签发 Compatibility/Invalidation Receipt，
-  并按依赖图重跑所有下游 Gate，不能用“同一文件已改过”跳过回归。
-- 进度来源是 Commit、Migration Ledger、Job/Run/Artifact/Oracle Receipt，不在计划中维护完成勾选。
+- 多个 U-ID 需要递进修改同一路径时，由较晚 U-ID 只追加其声明的增量职责；若变更已签发的新项目合同，
+  先废止受影响 Receipt、签发 Invalidation Receipt，并按依赖图重跑下游 Gate。
+- 进度来源是 Commit、Job/Run/Artifact/Bootstrap/Falcon Receipt，不在计划中维护完成勾选。
 - Goal 恢复时从最后一个已验证 Commit/Receipt 继续；已验证单元不重做，未通过门禁的单元不标记完成。
 - 同一失败连续三轮仍无法产生新证据时进入深度诊断；只有确认是外部权限、凭据、服务或范围冲突后
   才报告 Blocked，不通过降低 Oracle、跳过题目或伪造 Fixture 收口。
@@ -232,7 +292,7 @@ CAS/version 和有效期的 `PhaseEntryReceipt`。关键对象被撤销或漂移
 - Preflight 根据 U-ID 验证清单与 Falcon 固定 Run 数估算每段 active wall time、Tool Calls、Provider Token/
   microcredit 与存储预算，并以 20% headroom 写入 Manifest；任一段不得借用下一段预算，超限停止并保留
   Checkpoint。该预算是 Goal 的运行约束，不赋予降低 Falcon 阈值或减少 mandatory scope 的权力。
-- Segment 固定顺序为 Contract/Authority→Workbench+U19 Slice→Semantic/Extension+U20→Workspace Journey→
+- Segment 固定顺序为 Contract/Authority→U7+U19 Risk Slice→Workbench→Semantic/Extension+U20→Workspace Journey→
   Falcon；上一段只有签发 Exit Receipt 才创建下一段 Task，但全程属于同一个 Goal，不等待用户“继续”。
 
 ### Goal Launch Packet for Future Execution
@@ -244,18 +304,32 @@ CAS/version 和有效期的 `PhaseEntryReceipt`。关键对象被撤销或漂移
 及其 plan commit/hash 为冻结范围，从 Preflight 开始按依赖实施 U1–U20。每个 U-ID 建立
 Trellis Child Task，完成范围内验证和 scoped commit 后再推进。保留用户/并行任务改动，禁止
 破坏性清理；歧义按 Non-Interactive Defaults 处理，调研优先使用仓库与 深度调研 本地资料。
-只有三类 Agent Profile/Team Receipt 完整且 U18 Falcon Release Gate 签发 GO 才能 complete；
+仅操作隔离的 Journey Workspace 与 Falcon Evaluation Workspace；由 U11/U20 Mastra Semantic Agent 按预授权
+Policy View 生成 Candidate，再交 U5 Bootstrap Authority 生成首个 Published Semantic Release；之后才创建
+Text2SQL/Report Task。只有 Bootstrap/Journey/Falcon 三个
+Gate 都签发 GO 才能 complete；
 否则在穷尽有界恢复后输出单一 Blocker/Evidence Report，不中途请求普通产品决策。
 ```
 
 Goal 启动器必须先生成并持久化 `GoalExecutionManifest`，至少包含：
 
 - `plan_commit`、`plan_content_hash`、起始 HEAD/branch、Owned Path Allowlist 与 U1–U20 DAG。
-- Falcon Dataset/Oracle/Workspace/Datasource/Schema Snapshot/Published Semantic Release 的固定 ID 和 Hash。
+- Journey/Falcon Workspace、各自 Datasource/Schema/Business Source Bundle、`LaunchAuthorization` 与目标
+  Policy/Domain/Grant Hash，以及待 U1/U5 CAS 物化的 `SemanticBootstrapPolicy`、Verified Domain Receipt、
+  `PublisherGrantRef/Hash` slot；另含 Falcon Bootstrap/Case/Sealed 输入隔离清单。两个 Domain 激活前都必须
+  `active_release=null && generation=0`，Manifest 永不保存可用 Grant。
 - Certified Provider/Model Profile、价格/预算、SecretRef 可用状态（只记录引用与脱敏状态）。
 - 每个 U-ID 的输入 Receipt、输出 Schema、验证命令、Scoped Commit、Retry Class、Rollback 和 Exit Gate。
-- 三类 Agent 的目标 Profile ID，以及 U20 Profile Registry 固定的 Tool/Skill/Workflow/Prompt/Model Revision。
-- `last_accepted_unit`、当前 Task/Attempt/Fence、Artifact/Receipt 索引、失败计数和 Deferred Finding 索引。
+- Mastra/Core Lockfile Hash、内部 Bridge 版本与三类 Agent 的目标 Profile ID/角色边界/Required Tool-Skill-
+  Workflow-Model 约束，形成不依赖尚未创建文件的 `ExpectedProfileContract`；Prompt/Skill/Workflow 实际 bytes/hash
+  留待 U20 物化后以 CAS 追加 `MaterializedProfileRevisionReceipt`。Mastra 类型不得进入 Manifest 公共 Schema。
+- `last_accepted_unit`、当前 Task/Attempt/Fence、Goal Revision、Event Watermark、Context Epoch、Artifact/
+  Receipt 索引、unknown effect、失败计数和 Deferred Finding 索引。
+
+Parent Trellis Task 是执行元数据所有者：在其 `research/` 中保存版本化 `goal-execution-manifest.json` 与
+append-only `goal-checkpoints.jsonl`，每个 U-ID Commit/Receipt 后按 revision+hash 更新。启动动作对 plan hash 的
+一次确认视为 start approval；启动器机械生成并校验 Child Task 所需的 PRD/Design/Implement/Check 上下文，
+后续不再等待普通 Review。产品内 Task/Event/Artifact Authority 仍在 PostgreSQL，不能把该执行元数据混入产品状态。
 
 ### Autonomous Decision and Stop Table
 
@@ -264,10 +338,12 @@ Goal 启动器必须先生成并持久化 `GoalExecutionManifest`，至少包含
 | 本地实现模式或资料不明确 | 先查仓库，再查 `深度调研`，记录固定 Research Artifact 后选与 Authority 一致的最小方案 | 否 |
 | 测试暴露范围内缺陷 | 在当前最小 U-ID 修复并重跑相关 Gate，最多三轮后进入深度诊断 | 否 |
 | 并行改动占用同一文件 | 读取实时 Diff，适配非冲突改动；无法安全分离时在写入前停止并给出冲突路径/所有者证据 | 只在确实冲突阻塞时停止 |
-| Migration ID 冲突 | 重新分配最新空闲 ID并更新 Source/Renderer/SQL/Checksum/Postcondition | 否 |
+| 空库 Schema 初始化 DDL 与并行编号冲突 | 按仓库现行 Ledger 机制重新分配部署编号；不得因此引入数据 Backfill/兼容流程 | 否 |
 | Provider/Worker 短暂失败 | 按 Provider Invocation Semantics、Retry/Lease/Fence 恢复；本地 Artifact/Settlement 单次接受，外部调用不虚构 exactly-once | 否 |
 | 缺凭据、外部权限、服务持续不可用 | 三次有新诊断证据的恢复均失败后输出 Blocker Report，保留可恢复状态 | 终止 Goal，不做中途问答 |
-| 需要人工 Semantic Publish | 只允许 Preflight 检查已发布精确 Hash；缺失则在任何产品改动前停止 | 终止 Goal，不让 Agent 代批 |
+| 首版语义存在歧义或 Bootstrap Gate 未过 | Optional 歧义对象排除出 v1 并保留 Candidate；Mandatory Manifest/业务断言仍有 unresolved 则禁止发布，不得猜测或把 AI 自评当批准 | Mandatory 未满足时终止 Goal 并输出 READY_FOR_REVIEW/Blocker，不中途弱化 Gate |
+| Bootstrap Publisher 被二次调用 | `active_release != null` 或 `generation != 0` 时永久拒绝；后续变更只走人工 Review | 否 |
+| Mastra/Subagent 恢复遇到 unknown effect | repair/replay/reconcile，重新编译 Model View 并由 Orchestrator 显式启动新 Attempt；禁止隐式续跑 | 否；无法查证则终止 Goal |
 | Falcon 任一绝对 Gate 未过 | 返回最小失败题/层修复；不得降阈值、跳题或把 TEST 当本地 PASS | 否；未修复则不 complete |
 
 每次上下文压缩或 Goal 恢复都只加载 Execution Manifest、当前 U-ID、直接依赖 Receipt、Owned Diff 与最近
@@ -309,13 +385,13 @@ Goal 启动器必须先生成并持久化 `GoalExecutionManifest`，至少包含
 | S09 | U4（U11） | Metric 绑定 Concept/Formula/Dimension/Grain/Time/Unit |
 | S10 | U4（U13） | AST Authority 与编译产物摘要一致 |
 | S11 | U4（U5） | Node/Edge/Constraint/Formula/Mapping 均有 Provenance |
-| S12 | U5 | Candidate→Compile→Validate→Review→Publish→Rollback Receipt 链 |
+| S12 | U5 | 首版 Candidate→Validate→Bootstrap Admission→Publish；后续 Review→Publish→Rollback |
 | A01 | U11 | Schema Induction 只输出 Review-only Graph Patch |
 | A02 | U11（U15） | 文档归纳输出术语/概念/关系/规则候选与原文证据 |
 | A03 | U11 | Foundational Grounding 可选且只生成对齐候选 |
 | A04 | U11 | Stable Object ID Resolver 避免重复概念 |
 | A05 | U5（U11） | Proposal 去重后进入现有 Candidate Plane |
-| A06 | U5（U11） | 确定性阻断、质量评分、人工审核三层分离 |
+| A06 | U5（U11） | 确定性阻断、质量评分、Bootstrap Policy/后续人工审核分离 |
 | A07 | U11 | Drift 只重算受影响对象并保留不变内容 |
 | A08 | U11 | Metric/Formula/Query/Agent/Release 影响清单可追溯 |
 | A09 | U11 | Metric Dry-run/批量验证/异步导入/版本差异 |
@@ -332,45 +408,58 @@ Goal 启动器必须先生成并持久化 `GoalExecutionManifest`，至少包含
 | R10 | U18 | Falcon + Deterministic Oracle 签发最终结果 |
 | T01 | U20（U19） | Agent Profile Registry 冻结 Profile/Tool/Skill/Workflow/Prompt/Model Revision |
 | T02 | U20（U19） | Semantic Management Agent 只生成 Candidate/Validation/Impact Artifact |
-| T03 | U20（U19） | Text2SQL Agent 只消费 Published Semantic Layer 并产出 Query Evidence |
+| T03 | U20（U19） | 产品/计分 Text2SQL 只消费 Published Layer；隔离 PREPUBLISH_EVALUATION 不产正式 Query Evidence |
 | T04 | U20（U19） | Report Writing Agent 只从 Accepted Evidence 投影带引用报告 |
-| T05 | U19（U20） | Team Orchestrator 维护 Task DAG、预算、Fence、Checkpoint 与 Fan-in |
-| T06 | U19 | Task/Handoff 只传 Artifact Ref 与有界 Context Projection，不复制完整上下文 |
-| T07 | U20（U19） | 每类 Agent 使用独立 Tool/Skill/Workflow Policy 和显式 Complete Tool |
-| T08 | U18（U20） | Falcon Team Run 证明角色隔离、可恢复、可审计且上下文不失控 |
+| T05 | U19（U20） | Mastra 只执行；Team Orchestrator 维护 Task DAG、预算、Fence、Checkpoint 与 Fan-in |
+| T06 | U19 | Context Compiler/Handoff 绑定 Goal/Event/Epoch，只传 Artifact Ref 与有界 Projection |
+| T07 | U20（U19） | 每类 Agent 独立注册 Tool/Skill/Workflow，并区分 Mastra completed 与业务 accepted |
+| T08 | U18（U20） | Falcon Team Run 证明角色隔离、Subagent 回收、事务压缩恢复且上下文不失控 |
 
 ---
 
 ## Agent Team Architecture
 
 Team 对外只有三类领域 Agent；内部 Team Orchestrator 是确定性的控制面，不拥有 Semantic、SQL、Report
-或评测 Authority。三类 Agent 可以使用不同模型配置，但由 U20 Profile Registry 创建并冻结
+或评测 Authority。Mastra 只提供 Agent/Workflow/Subagent/Stream/Snapshot 执行原语，PostgreSQL 持有 Task、
+Event、Artifact、Effect、Lease/Fence 和 Acceptance。三类 Agent 可使用不同模型配置，由 U20 Registry 冻结
 `AgentProfileRevision`，其中引用 U2 Effective Config 与 U3 Provider/Model Receipt；每个 Task Receipt
 记录实际版本。
 
 产品语义是“同一 Orchestrator 下的两条受治理 Workflow”，不是强迫三个 Agent 共享一个问题 Context：
-问答由 Text2SQL→Report 完成；Semantic Management 异步维护 Candidate，只有人工发布后才影响后续问答。
+问答由 Text2SQL→Report 完成；Semantic Management 先为 Greenfield Workspace 生成首版 Candidate，由一次性
+Bootstrap Authority 发布后影响首轮问答，后续 Candidate 只有人工发布后才影响新 Run。
 Team 共享 Task/Handoff/Artifact/Verifier 基础设施，但三类 Profile 从不共享完整上下文或互相继承权限。
 
 | Agent Profile | 接收的最小上下文 | 注册 Tool | 注册 Skill | Workflow | 权威输出 | 明确禁止 |
 |---|---|---|---|---|---|---|
-| Semantic Management Agent | Schema Snapshot、Published Release、相关 Candidate/Evidence | 读 Schema/Release；建 Candidate Patch；Compile/Validate；Drift/Impact；提交 Job/Checkpoint/Complete | `schema-to-candidate`、`drift-reanalysis`、`metric-maintenance` | `semantic-candidate-lifecycle@revision` | Candidate、Validation、Impact、Job Receipt | Publish、执行 SQL、生成最终报告、读取 Falcon Gold |
-| Text2SQL Agent | Question Contract、Published `ResolvedContextPackage`、SQL Policy、必要 Artifact Ref | `list_metrics`、`describe_semantic_model`、`resolve_context`、`graph_traversal`、Compile、Sandbox Query、Checkpoint/Complete | `question-to-query`、`ambiguity-resolution`、`bounded-query-repair` | `governed-text2sql@revision` | LogicalPlan、SqlArtifact、QueryEvidence、Resolution Trace | 修改语义、消费 Candidate、绕过 Firewall、签发报告或 Oracle Verdict |
+| Semantic Management Agent | Schema Snapshot、Business Source Bundle、Bootstrap Policy View/Digest；后续才含 Published Release | 读 Schema/Release；建 Candidate Patch；Compile/Validate；Drift/Impact；提交 Job/Checkpoint/Complete | `schema-to-candidate`、`drift-reanalysis`、`metric-maintenance` | `semantic-bootstrap-or-candidate@revision` | Candidate、Validation、Impact、Job Receipt | 签名 Policy/Publisher Grant、Publish、执行 SQL、生成最终报告、读取 Falcon Gold/expected/sealed/derived fields |
+| Text2SQL Agent | Question Contract、Published `ResolvedContextPackage`；或隔离的 PREPUBLISH_EVALUATION Activation；SQL Policy、必要 Artifact Ref | `list_metrics`、`describe_semantic_model`、`resolve_context`、`graph_traversal`、Compile、Sandbox Query、Checkpoint/Complete | `question-to-query`、`ambiguity-resolution`、`bounded-query-repair` | `governed-text2sql@revision` | LogicalPlan、SqlArtifact、QueryEvidence、Resolution Trace；预发布只产 CandidateEvaluation Evidence | 修改语义、在产品/计分 Task 消费 Candidate、绕过 Firewall、签发报告或 Oracle Verdict |
 | Report Writing Agent | ReportSpec、Accepted QueryEvidence/Claim/Evidence、Artifact Ref | 读 Artifact/Evidence；生成 Report/Chart Candidate；校验 Claim 引用；Checkpoint/Complete | `evidence-to-report`、`chart-selection`、`claim-citation` | `evidence-report@revision` | Report Candidate、ChartSpec、Citation/Claim Matrix | 直连数据源、修改 SQL/语义、无 Evidence 编写事实、签发 GO |
 
 ### Team Control and Handoff Rules
 
 - Orchestrator 只依据 Task 类型、依赖和状态路由：语义维护请求进入 Semantic Management Agent；用户问题
   进入 Text2SQL Agent；只有 QueryEvidence 经确定性验证 `accepted` 后才能进入 Report Writing Agent。
-- 默认问答路径为 `Question → Text2SQL → Query Verifier → Report Writing → Report Verifier`；语义维护路径
-  为 `Schema/Drift → Semantic Management → Candidate/Validation → Human Review/Publish`，两条路径不混写。
+- 默认问答路径为 `Question → Text2SQL → Query Verifier → Report Writing → Report Verifier`；首建语义路径
+  为 `Schema/Business Sources → Semantic Management → Candidate/Validation → Bootstrap Authority → Publish v1`；
+  后续维护才是 `Drift → Candidate/Validation → Human Review/Publish`，三条路径不混写。
 - 新 Candidate 不能被当前问答 Task 消费。只有发布形成新 `PublishedReleaseRef` 后，后续 Text2SQL Task
-  才能解析它；由此保留人工发布 Authority，并避免 Agent 自我强化错误语义。
-- Handoff 必须包含 Task/Attempt/Run/Scope、Profile Revision、Artifact Ref、Context Projection、预算、Tool/Network
-  Policy、Expected Output Schema 和 Acceptance Contract；子 Task 只能收窄这些范围。
+  才能解析它；首版发布 Receipt 明确标注 `SYSTEM_BOOTSTRAP_POLICY`，后续保留人工发布 Authority。
+- Handoff 必须包含 Parent/Child Task、Goal Revision、Event Watermark、Context Epoch/Build Signature、Attempt/
+  Run/Scope、Profile Revision、Artifact Ref、预算、Tool/Network Policy、Expected Revision/Output/Acceptance；
+  子 Task 只能收窄这些范围。
 - 跨 Agent 不传完整消息历史、私有推理、系统提示或原始记忆；Authority 字段留在 `TaskEnvelope`/内容寻址
   Artifact Ref，最多 64 KiB 的投影 `data` 始终标为 `UNTRUSTED_DATA`/`DATA_ONLY`。长任务通过
   Checkpoint/Compaction Artifact 恢复，而不是持续扩大同一 Context。
+- 每个 Task 独立运行 `Durable Truth → Context Compiler → Model View`：Compiler 输出 `ContextBuildManifest`、
+  `BuildSignature`、`OmissionLedger` 和 `ContextEpochRef`。相同 Task/Goal/Event Watermark/Policy/Input 必须纯重建
+  出相同签名；dispatch 前任一版本漂移都使旧 View stale，Provider 调用次数必须为 0。
+- Context 减载固定顺序为去重→大型结果 Artifact 化→按需 Slice→确定性 prune→事务式 Compaction。
+  Compaction 使用 start/summary/replace/end、CAS、lineage 和 Recovery Probe；失败继续使用旧 Epoch。KV Cache
+  只记录 telemetry，不能成为 Memory、Truth 或恢复条件。
+- Mastra Subagent 默认使用 fresh thread/resource，不 fork 父会话；正式回流只有类型化 Result/Artifact Ref。
+  领域 Agent 禁止递归委派，只有 Orchestrator 能创建深度 1 的子 Task；取消沿 lineage 传播，迟到结果必须通过
+  lease/fence/expected revision 才能进入父 Task。Mastra `messageFilter` 不作为安全边界，裁剪失败必须 fail closed。
 - Agent 调用 `complete_task` 仅表示产物已提交；Orchestrator 必须等待合同校验、权限校验、SQL/Claim/Oracle
   等确定性 Verifier 签发 `accepted`。失败只重开最小 Task/Attempt，且 `remaining_handoffs` 严格减少。
 - 业务 `AgentSession/Task/Attempt` 身份与 Provider 原生 child/session ID 分离；Provider ID 只作为 Invocation
@@ -384,8 +473,8 @@ Team 共享 Task/Handoff/Artifact/Verifier 基础设施，但三类 Profile 从�
 flowchart LR
     User["Question / Semantic Request"] --> Orch["Team Orchestrator"]
     Orch -->|"Schema + Release refs"| Sem["Semantic Management Agent"]
-    Sem -->|"Candidate + Validation refs"| Review["Human Review / Publish Authority"]
-    Review -->|"Published Release ref"| Orch
+    Sem -->|"Candidate + Validation refs"| Publish["Bootstrap v1 / Later Human Publish Authority"]
+    Publish -->|"Published Release ref"| Orch
     Orch -->|"Question + Resolved Context"| SQL["Text2SQL Agent"]
     SQL -->|"LogicalPlan + QueryEvidence"| QV["Deterministic Query Verifier"]
     QV -->|"Accepted evidence refs"| Report["Report Writing Agent"]
@@ -407,7 +496,7 @@ flowchart TB
     Candidate["Semantic Candidate Plane"]
     Release["Published Ontology Package + Graph v2"]
     Context["Resolved Context Package"]
-    Team["Orchestrator + 3 Agent Profiles"]
+    Team["PostgreSQL Orchestrator + Mastra 3 Agent Profiles"]
     Runtime["Metric / Text2SQL / Graph / Knowledge Routing"]
     Firewall["SQL Firewall + Sandbox Authority"]
     Console["Public Trace + Artifact Workspace"]
@@ -445,9 +534,11 @@ flowchart TB
     U10 --> U6
     U2 --> U7
     U2 --> U8
+    U19 --> U8
     U7 --> U9
     U8 --> U9
     U2 --> U10
+    U19 --> U10
     U5 --> U11
     U10 --> U11
     U15 --> U11
@@ -477,6 +568,7 @@ flowchart TB
     U15 --> U20
     U19 --> U20
     U3 --> U17
+    U5 --> U17
     U7 --> U17
     U9 --> U17
     U12 --> U17
@@ -500,39 +592,57 @@ flowchart TB
     U20 --> U18
 ```
 
-### Phase 0 — Authority Baseline and Contract Freeze
+### Phase 0 — Greenfield Authority and Semantic Bootstrap
 
-- U1. **能力账本、兼容基线与迁移骨架**
+- U1. **能力账本、Greenfield 输入合同与 Bootstrap 基线**
 
-**Goal:** 把 58 个 M/S/A/R/T 编号变成机器可检查的 Capability Manifest，并冻结当前 API、Migration、
-Graph v2、Falcon 和旧语义入口基线，防止执行中遗漏或以“已有”误判完成。
+**Goal:** 把 58 个 M/S/A/R/T 编号变成机器可检查的 Capability Manifest，并定义空 Workspace、
+Bootstrap Source Bundle、首次语义发布和 Falcon 输入隔离合同，防止把旧数据或“已有能力”当成交付。
 
-**Requirements:** G1, G2, G5, G11, G13, G14
+**Requirements:** G1, G2, G5, G11, G13–G16
 
 **Dependencies:** None
 
 **Files:**
-- Create: `packages/contracts/src/capabilities/platform-migration.ts`
+- Create: `packages/contracts/src/capabilities/platform-capabilities.ts`
 - Modify: `packages/contracts/src/capabilities/index.ts`
+- Create: `packages/contracts/src/semantic/greenfield-bootstrap.ts`
+- Create: `packages/contracts/src/semantic/semantic-coverage-policy.ts`
+- Create: `packages/contracts/src/authz/signer-key-registry.ts`
+- Create: `packages/contracts/src/workspaces/route-authorization-matrix.ts`
 - Create: `docs/architecture/datafoundry-coa-capability-ledger.md`
-- Test: `packages/contracts/test/platform-migration-capability.spec.ts`
-- Test: `tests/datafoundry-coa-compatibility-baseline.spec.ts`
+- Test: `packages/contracts/test/platform-capability.spec.ts`
+- Test: `packages/contracts/test/greenfield-semantic-bootstrap.spec.ts`
+- Test: `packages/contracts/test/semantic-coverage-policy.spec.ts`
+- Test: `tests/datafoundry-coa-greenfield-bootstrap.spec.ts`
 
 **Approach:**
 - Manifest 固定 Capability ID、Owner、Authority、状态、主 U-ID、依赖和证据类型，但不把计划进度伪装成运行状态。
-- 对已有 Route/Contract/Migration 建 Characterization，旧入口标记 `ACTIVE`、`COMPATIBLE` 或 `PAUSED`。
+- `GreenfieldBootstrapInput` 固定空 Workspace 断言、Schema Snapshot、Business Source Bundle、Bootstrap Policy、
+  `MandatoryReleaseManifest`、Falcon Bootstrap/Case/Sealed Boundary 与期望的首版 Release Set；不接收旧 Release、
+  旧 Payload 或历史数据 Ref。Policy 的可见 View 与不可导出的 Publisher Grant 是不同合同。
+- 项目级版本化 `SemanticCoveragePolicyFloor` 位于 Bootstrap Policy 之外且不可被其降低：冻结 Adapter 支持类型
+  后，100% in-scope relation、PK、FK 和所有 supported queryable column 都必须映射，所有 FK 都有 Join Edge/
+  Evidence；unsupported 类型只能按 Adapter Capability 给出确定性排除原因。db24/db14 另叠加业务断言。
+- Schema 初始化沿用仓库 DDL Renderer/Ledger，只创建空表、RLS、RPC 与初始 Registry，不允许数据 Backfill。
+- `RouteAuthorizationMatrix` 为本计划每个新增 API method 冻结 Workspace Action、允许角色、对象所有权/Scope、
+  读写级别、expected-version/idempotency、Worker `TaskCapability` 与审计事件；UI/API/Tool/Worker 共用同一矩阵。
 - 每个后续单元只能通过追加真实 Receipt 更新可运行 Capability Projection。
 
 **Patterns to follow:**
 - `packages/contracts/src/capabilities/deferred-artifacts.ts`
-- `apps/web/test/legacy-workspace-characterization.spec.ts`
+- `packages/contracts/src/runs/runtime.ts` 的 PostgreSQL/Mastra Snapshot Authority 分离
 
 **Test scenarios:**
 - Happy path: 58 个原始 ID 各出现一次且都映射到有效 U-ID 和 Evidence Kind。
 - Edge case: 重复、缺失、未知 Capability ID 或循环依赖使 Manifest 校验失败。
-- Integration: 旧 Data Link/Workspace/Semantic Route 的当前状态被 Characterization 固定，不因新清单消失。
+- Integration: 新 Workspace 固定 `active_release=null && generation=0`；任何历史 Release/Run/File/账务引用进入
+  Bootstrap Input 都失败，Public/Sealed Falcon 字段混用也失败。
+- Security: 覆盖 Run/File/Artifact/Job/Semantic/Context/Knowledge/Datasource/Falcon 的跨角色、跨 Workspace、
+  猜测对象 ID 与间接 Tool 调用，所有旁路都由同一 Action Matrix 拒绝。
 
-**Verification:** Capability Matrix 与合同 Manifest 完全一致，后续单元可按 ID 查询依赖与证据要求。
+**Verification:** Capability Matrix 与合同 Manifest 完全一致，且新项目只有显式 Bootstrap Source 可成为首版
+语义层输入。
 
 - U2. **Effective Run Config、Workspace Defaults 与 Context Receipt 合同**
 
@@ -563,6 +673,9 @@ Semantic Release、Context Policy、Data Egress Policy，形成 Run/Usage/Billin
 - `@` Mention 只解析已授权 Registry Resource ID，不把显示名称或客户端提供对象直接写入配置。
 - 冻结 requested/effective 差异、Unavailable Reason、资源 Revision/Hash、Semantic Release、Schema Snapshot、
   Context Budget、Data Classification 与获准 Provider/Audience；运行时仍重验 revocation。
+- Greenfield Workspace 在实际首发前允许 `semantic_release_ref=null`，但只能创建 Bootstrap Job，不能创建问答
+  Run；各 Scope 经 U11/U20 生成 Candidate、再由 U5 Authority 发布后，Resolver 必须绑定首版 Release Hash，
+  不能回退到无语义 Text2SQL。
 - Run 创建与 Worker 消费同一 Receipt；Worker 不重新相信客户端资源字段。
 
 **Patterns to follow:**
@@ -629,12 +742,13 @@ Usage 与 Billing Settlement。
 
 **Verification:** UI 选择可由真实 Provider、Usage 和账务回执反向证明，不以 Store 值作为完成证据。
 
-- U4. **Ontology Package 与 Graph v2 语义构成扩展**
+- U4. **Greenfield Ontology Package、Graph v2 与验证合同**
 
-**Goal:** 在 Graph v2 内表达 Namespace、Package、Concept/Class、Data/Object Property、Taxonomy、
-Constraint、Physical Mapping、Metric、Formula 和 Provenance。
+**Goal:** 定义可重复的 Ontology Package/Graph v2 Candidate 合同及其 Canonicalize/Compile/Validate 边界，表达
+Namespace、Concept/Class、Property、Taxonomy、Constraint、Mapping、Metric、Formula 和 Provenance；实际
+`Schema/Business Sources→Candidate` 生成归 U11，Mastra Semantic Agent 编排归 U20。
 
-**Requirements:** G5, G6, S01–S11
+**Requirements:** G5–G7, G15, S01–S11
 
 **Dependencies:** U1
 
@@ -650,40 +764,42 @@ Constraint、Physical Mapping、Metric、Formula 和 Provenance。
 - Test: `packages/contracts/test/ontology-package.spec.ts`
 - Test: `packages/contracts/test/semantic-graph-v2.spec.ts`
 - Test: `packages/semantic/test/semantic-graph-v2.spec.ts`
-- Test: `packages/platform/test/semantic/semantic-graph-migration.spec.ts`
+- Test: `packages/platform/test/semantic/semantic-graph-bootstrap.spec.ts`
 
 **Approach:**
-- 保留现有 Node/Edge 身份：BUSINESS_SUBJECT 增加 Concept/Class 角色，DIMENSION 增加 Data Property
-  元数据，关系 Edge 增加 Object Property/Taxonomy/Alignment/Constraint 语义。
+- Stable ID 由 Namespace + Source Object Identity + Semantic Role 确定性生成；BUSINESS_SUBJECT 承载
+  Concept/Class，DIMENSION 承载 Data Property，关系 Edge 承载 Object Property/Taxonomy/Constraint。
 - Package Manifest 绑定 Registry、依赖、导入、Evidence、Validation 与 Release，不复制节点存储。
-- 现有 `semantic-graph-source@2`/`projection@1` Payload、Hash 和 Reader 永不原地修改；新增 writer/source/
-  projection/package 版本和显式 read-version matrix，通过 derived revision/release binding 迁移。
-- 旧 Release 通过确定性 Adapter 读取；Backfill 只建立派生 Revision 和可证明映射，不给旧 JSON 补默认字段。
-  旧/新 Web、Worker 的滚动部署顺序为 Reader/Adapter→Writer→Backfill→Cutover，Rollback 只切回旧 Binding。
+- U4 用固定 Greenfield Candidate Fixture 验证 `Candidate Package → Canonicalize/Compile/Validate`；Candidate
+  必须绑定 Schema Snapshot、Business Source Bundle 与 Policy Digest，相同 Candidate/版本产生相同 Package Hash，
+  不读取旧 Release 或兼容 Fixture。
+- Queryable Mapping 必须绑定当前 Schema Snapshot，Join Edge 必须有 FK/统计/查询探针等证据；无法确定的业务
+  Metric/Formula 标记 unresolved，不允许模型猜测。只有 `MandatoryReleaseManifest` 内对象必须 unresolved=0；
+  其他对象排除出 v1 并保留为后续 Candidate。db24/db14 的签名业务断言继续是其 mandatory hard Gate。
 
 **Patterns to follow:**
 - `packages/contracts/src/artifacts/semantic-graph-v2.ts`
 - `packages/semantic/src/graph-v2/canonicalize.ts`
 - `packages/contracts/src/artifacts/semantic-governance.ts`
 
-**Execution note:** 先固定旧 Graph v2 canonical hash 的兼容样本，再扩展新字段和 Backfill。
+**Execution note:** 先写相同 Source Bundle 纯重建得到相同 Package Hash 的失败测试，再实现生成合同。
 
 **Test scenarios:**
 - Happy path: 完整 Package 可规范化、编译、验证并保持稳定 Hash。
 - Edge case: 跨 Namespace 依赖循环、Domain/Range 不存在、基数矛盾、重复稳定 ID 被拒绝。
 - Error path: Queryable Mapping 未绑定当前 Schema Snapshot 时不能进入运行时。
-- Integration: 旧 Graph v2 Release 通过兼容 Reader 保持原行为，新 Package 可在 Studio 与 Runtime 读取。
-- Compatibility: old Writer/new Reader、new Writer/new Reader、old Worker during cutover 的版本矩阵全部通过，
-  已发布旧 Payload 的 wire hash 与 canonical hash 不变。
+- Security: Falcon Gold/expected/sealed Holdout 或跨 Workspace 资料出现在 Source Bundle 时生成立即失败。
+- Integration: 固定 Candidate Package 能在空 Registry 的 Studio Preview 与 Validator 中使用同一 Hash；U11/U20
+  再证明真实新输入生成同合同 Candidate。
 
 **Verification:** 没有第二份语义 Authority，且 S01–S11 每项都有合同、持久化和验证证据。
 
-- U5. **语义生命周期、Proposal 合并与 Portability 收口**
+- U5. **首版语义发布、Bootstrap Admission 与后续治理**
 
-**Goal:** 把 Package/Graph Patch 接入现有 Candidate→Compile→Validate→Review→Publish→Rollback，
-并让 OSI/Ossie 只作为交换协议。
+**Goal:** 允许空 Registry 从 U4 Candidate 生成首个 Published Semantic Release，并在首次发布后永久关闭
+Bootstrap Publisher；后续变更恢复 Candidate→Review→Publish→Rollback，OSI/Ossie 仅作交换协议。
 
-**Requirements:** G5, G7, S12, A05, A06, A10
+**Requirements:** G5–G7, G11, G15, S12, A05, A06, A10
 
 **Dependencies:** U4
 
@@ -691,21 +807,40 @@ Constraint、Physical Mapping、Metric、Formula 和 Provenance。
 - Modify: `packages/platform/src/semantic/postgres-semantic-candidate-compile.ts`
 - Modify: `packages/platform/src/semantic/postgres-semantic-graph.ts`
 - Modify: `packages/platform/src/semantic/postgres-semantic-portability.ts`
+- Create: `packages/platform/src/semantic/greenfield-bootstrap-release-authority.ts`
+- Create: `packages/platform/src/authz/postgres-privileged-grant-authority.ts`
+- Create: `infra/supabase/apps/data-agent/migration-sources/<allocated-ledger-id>/`
 - Modify: `apps/web/src/lib/postgres-semantic-governance-service.ts`
 - Modify: `apps/web/src/app/api/semantic/governance/publish/route.ts`
 - Modify: `apps/web/src/app/api/semantic/governance/rollback/route.ts`
 - Modify: `apps/web/src/app/api/workspaces/[workspaceId]/semantic/portability/imports/route.ts`
 - Test: `packages/platform/test/semantic/postgres-semantic-candidate-compile.spec.ts`
 - Test: `packages/platform/test/semantic/postgres-semantic-portability.spec.ts`
+- Test: `packages/platform/test/semantic/greenfield-bootstrap-release-authority.spec.ts`
 - Test: `apps/web/test/postgres-semantic-governance-transaction.spec.ts`
 - Test: `apps/web/test/semantic-portability-route.spec.ts`
 
 **Approach:**
-- Proposal 先按 stable object ID、base release、patch digest 去重，再进入 Candidate Plane。
-- Deterministic blockers、quality score、review decision 分开持久化；只有授权 Review Receipt 可发布。
-- Cutover 前生成 `SemanticEquivalenceReceipt`，证明 Reviewer 签署的 executable semantic digest 与迁移后
-  Package/AST/Mapping/Constraint/Formula digest 等价；wire hash 可以变化，逻辑 digest 不得变化。无法证明的
-  差异必须转成新 Candidate 并在发布前阻止 Goal，不能继承旧 Review Receipt。
+- 首版 Proposal 允许 `base_release=null`，按 Source/Policy/Package Digest 去重进入 Candidate Plane；Semantic
+  Agent 只能提交 Candidate/Validation，不获得 Review/Publish Tool。
+- 非模型 Bootstrap Verifier 检查 Schema Digest、Node/Edge/Mapping/Join 覆盖、Formula AST、lowerability、
+  query dry-run、unresolved 集合、来源污染和权限，生成 `SemanticBootstrapValidationReceipt`。
+- 可见的 `SemanticBootstrapPolicyView` 只含 digest、Mandatory Manifest 与约束；签名原文和
+  `PublisherGrant` 只由 PostgreSQL-backed `PrivilegedGrantAuthority`/独立 NOLOGIN 服务身份持有。Grant 绑定
+  issuer/key-id/audience/operator/workspace/environment/release-set/policy-digest/nonce/issued-at/expires-at，最末端
+  Authority 校验实时撤销版本并以 CAS 消费；Grant/Capability 均按 Semantic Domain 隔离，Manifest/日志/Artifact
+  不保存 bearer material。
+- 专用 security-definer RPC 在一个事务内锁定 Domain/Pointer，验证 Domain Bootstrap 双签 Receipt、Policy、
+  Candidate Set、Validation Receipt、`active_release=null && generation=0`，原子写入 generation 1 Initial Release
+  Set、顶层 `FirstReleaseAdmissionReceipt`、逐 Package `SemanticPackageAdmissionReceipt`、active pointer、
+  `PUBLISHED_ONLY` activation、Capability tombstone 与 outbox；同 digest 重试返回同一 Receipt，任何中间失败全回滚。
+  `approval_mode=SYSTEM_BOOTSTRAP_POLICY`，不能冒充人工审核，通用 Publish Route 不接受 Bootstrap Grant。
+- 新的 verified domain-bootstrap RPC 从受治理 Signer Key Registry 校验 packet digest、key-id、signature、nonce、
+  expiry、signer capability 与已认证 Principal，写 `verification_state=VERIFIED` 后才创建 genesis；撤销应用角色
+  对旧 string-only bootstrap RPC 的执行权。首发 RPC 只接受 verified receipt，不相信 caller 提供的 signer 字符串。
+- U5 用隔离 Greenfield Fixture 证明发布 Authority，不声称此时已生成最终项目语义；实际 Source→Semantic
+  Agent→v1 的产品证据由 U17 完整旅程和 U18 Falcon 28 库 Bundle 产生，避免对 U20 形成循环依赖。
+- 后续 Proposal 必须绑定 base release，并恢复授权 Reviewer Receipt；Bootstrap Policy 不得发布 generation 2。
 - Import 先 Dry-run 转内部 Package/AST/Patch，Export 从 Published Release 投影，协议对象不成为 Authority。
 
 **Patterns to follow:**
@@ -714,14 +849,23 @@ Constraint、Physical Mapping、Metric、Formula 和 Provenance。
 - `apps/web/src/lib/postgres-semantic-governance-service.ts`
 
 **Test scenarios:**
-- Happy path: Candidate 编译/验证/审核/发布/回滚产生连续 Receipt 与 Release lineage。
-- Edge case: 重复 Proposal 幂等返回原对象，stale base 或 review version 冲突失败。
+- Happy path: 空 Registry 的 Candidate Set 经确定性 Gate 原子发布 v1，治理读取/Release Resolver 返回同一
+  Release Set Hash；后续人工
+  Review 发布 v2 并可 roll-forward 到上一有效 Release。
+- Edge case: 重复 Bootstrap 请求幂等返回同一 v1；generation 非 0、active release 已存在或 Policy 过期时拒绝。
+- Idempotency precedence: RPC 先按 Domain/idempotency key/request digest 查询已提交的同一 Admission Receipt
+  并返回；只有不存在精确匹配 Receipt 的新请求才应用 generation/active-release/expiry 拒绝规则。
 - Error path: AI Actor、导入文件或客户端布尔值不能直接发布。
+- Security: 通过 `read_artifact`、MCP、Job、共享 Worker、通用 Publish Route 或提示注入转交 Policy/Grant、
+  冒充签发者、重放 nonce、错 audience/Workspace/Release Set 均被最末端 RPC 拒绝且不泄露原始 Grant。
+- Security: 伪造 signer 字符串、未知/撤销 key-id、签名与 packet digest 不匹配、过期或重放 nonce、Reviewer 与
+  signer 未分离均不能得到 Verified Domain Receipt；旧 bootstrap RPC 对应用身份不可执行。
+- Error path: open question、无 Join/Mapping 证据、Formula 无法 lower、Source/Policy Digest 漂移或 sealed
+  Falcon 字段污染时保持 Candidate/READY_FOR_REVIEW，不为一口气执行猜测业务含义。
 - Integration: OSI/Ossie round-trip 保留可交换语义，但运行时只消费内部 AST/Published Package。
-- Error path: Backfill 默认值、Mapping 重写或 canonicalization 使 executable semantic digest 改变时，
-  `SemanticEquivalenceReceipt` 拒绝 Cutover，U18 不得消费派生 Release。
 
-**Verification:** S12 和 A05/A06/A10 均在既有 Governance Authority 中闭环。
+**Verification:** 新 Workspace 的首版 Release 可完全追溯到 Source/Policy/Candidate/Validator/Admission，发布者
+不是 Agent；Bootstrap Capability 已熔断，后续治理仍需人工 Review。
 
 ### Phase 1 — Run Workbench and Durable Resources
 
@@ -819,7 +963,7 @@ Effective Config。
 
 **Requirements:** G6, M06, M07, M08, M09
 
-**Dependencies:** U2
+**Dependencies:** U2, U19
 
 **Files:**
 - Modify: `packages/contracts/src/runs/runtime.ts`
@@ -894,12 +1038,14 @@ Effective Config。
 
 **Requirements:** G6, G10, M16, M17
 
-**Dependencies:** U2
+**Dependencies:** U2, U19
 
 **Files:**
 - Create: `packages/contracts/src/jobs/runtime.ts`
 - Create: `packages/platform/src/jobs/postgres-job-queue.ts`
 - Create: `apps/worker/src/jobs/job-worker-runner.ts`
+- Create: `apps/worker/src/jobs/artifact-export-job.ts`
+- Create: `apps/worker/src/jobs/datalink-rebuild-job.ts`
 - Modify: `apps/worker/src/run-worker-cli.ts`
 - Modify: `apps/worker/src/runs/run-worker-daemon.ts`
 - Modify: `apps/worker/package.json`
@@ -909,6 +1055,7 @@ Effective Config。
 - Create: `apps/web/src/app/api/workspaces/[workspaceId]/jobs/route.ts`
 - Create: `apps/web/src/app/api/workspaces/[workspaceId]/jobs/[jobId]/commands/route.ts`
 - Create: `apps/web/src/app/api/ready/route.ts`
+- Modify: `apps/web/src/app/api/workspaces/[workspaceId]/artifacts/[artifactId]/exports/route.ts`
 - Create: `infra/supabase/apps/data-agent/migration-sources/<allocated-ledger-id>/`
 - Test: `packages/contracts/test/job-runtime.spec.ts`
 - Test: `packages/platform/test/jobs/postgres-job-queue.spec.ts`
@@ -918,6 +1065,8 @@ Effective Config。
 **Approach:**
 - 复用 Run 的 Lease/Fence/Idempotency 思路，但 Job 与交互式 Run 分表/分合同，避免状态语义混淆。
 - 每个 Job 固定 Input Hash、Authority Scope、Attempt、Output Artifact、稳定 Error Code 与取消策略。
+- Artifact Export Route 只提交持久 `ARTIFACT_EXPORT` Job；`DATALINK_REBUILD` 使用独立 Handler，二者都以
+  输出 Artifact/Receipt 才能把 G10 Capability 标为 READY，不能以通用队列存在冒充业务 Handler 已交付。
 - v1 明确与现有 Worker 进程同宿主：`run-worker-cli` 启动 Run 与 Job 两个独立 Queue Loop，使用加权调度、
   独立并发/Lease/Fence/Shutdown 和资源上限，交互式 Run 不被批量 Index/Export Job 饿死。
 - Worker Health 分别报告 `run_queue_ready` 与 `job_queue_ready`；Compose/local runtime/readiness 可独立判断
@@ -928,6 +1077,8 @@ Effective Config。
 
 **Test scenarios:**
 - Happy path: 六类 Job 使用同一队列完成、重试、取消并产生输出 Artifact Receipt。
+- Integration: Artifact Export 与 DataLink Rebuild 分别经过 Route/Job Handler/Worker/Output Receipt，刷新、
+  重试与取消不退回 inline 执行。
 - Edge case: 重复提交同 Input Hash 幂等，stale worker/fence 不能提交终态。
 - Error path: 不支持取消、权限拒绝和非重试业务错误不会被无限重试。
 - Security: 未登录/无 Operations Action 只能读取最小 liveness，不能读取 Capability 名称、Receipt ID、
@@ -942,10 +1093,10 @@ Effective Config。
 
 - U11. **归纳、Grounding、Drift、Impact 与 Metric 维护**
 
-**Goal:** 通过 Job Center 实现结构化/文档归纳、Foundational Grounding、稳定 ID、增量 Drift、
-Impact Analysis、Metric 批量导入与交换适配，全部输出 Candidate。
+**Goal:** 通过 Job Center 实现 Greenfield Schema/文档归纳、Foundational Grounding、稳定 ID、增量 Drift、
+Impact Analysis、Metric 批量导入与交换适配；首建和维护都只输出 Candidate。
 
-**Requirements:** G7, G10, A01–A10, S09
+**Requirements:** G7, G10, G15, A01–A10, S09
 
 **Dependencies:** U5, U10, U15
 
@@ -967,6 +1118,11 @@ Impact Analysis、Metric 批量导入与交换适配，全部输出 Candidate。
 
 **Approach:**
 - Structured 与 Document Induction 共享 Proposal Envelope/Evidence，但使用不同输入解析与泄漏防护。
+- Bootstrap 模式接受 `base_release=null` 与 U1 Source Bundle，产出覆盖物理对象、Join、术语、Mapping/Metric
+  候选的 Package Patch，是实际 `SchemaSnapshot + BusinessSourceBundle → Candidate` 的唯一生成实现；随后由
+  U20 Semantic Agent 编排并交 U5 非 Agent Authority，本单元不直接发布。
+- Candidate 分成 mandatory Physical Semantic Core、由签名业务断言支持的 mandatory enhancement 和 optional
+  unresolved enhancement；只有前两类进入 Initial Release Set，第三类保留后续 Review Candidate。
 - Stable ID 基于 Namespace、对象角色、规范名称、Mapping/Evidence，不使用随机 LLM 输出作身份。
 - Drift Planner 以 Schema Snapshot Diff 计算受影响闭包，只重算相关对象并证明不变内容 Hash 未变。
 - Metric Import 先 Dry-run/Validate/Diff，再生成 Patch；Foundational Ontology 只提供候选对齐。
@@ -975,6 +1131,8 @@ Impact Analysis、Metric 批量导入与交换适配，全部输出 Candidate。
 - Happy path: Schema 与文档分别生成可审阅 Patch、Evidence、Impact 与 Job Receipt。
 - Edge case: 相同概念别名合并、跨包冲突显式提示，不稳定 LLM 顺序不改变 Object ID。
 - Error path: 无证据、越权数据、sealed benchmark 内容或 invalid mapping 不进入 Candidate。
+- Security: `SemanticBootstrapCorpus` 以外的 Local Holdout/TEST 题面、Gold/expected、Oracle 派生反馈或跨题
+  Artifact 进入输入即产生 taint failure，不能通过换 Agent/Profile 绕过。
 - Integration: Drift 只更新受影响 Metric/Formula/Query/Agent/Release 列表，未影响对象 Hash 保持不变。
 
 **Verification:** A01–A10 各有确定性合同/测试，且没有任何自动 Accept/Publish 路径。
@@ -1070,6 +1228,7 @@ Effective Config、RBAC 和 Tool Policy。
 **Dependencies:** U2, U10, U12, U13
 
 **Files:**
+- Modify: `packages/contracts/src/runs/runtime.ts`
 - Modify: `packages/contracts/src/workspaces/identity.ts`
 - Create: `packages/contracts/src/extensions/mcp.ts`
 - Create: `packages/contracts/src/extensions/skills.ts`
@@ -1087,10 +1246,18 @@ Effective Config、RBAC 和 Tool Policy。
 
 **Approach:**
 - 管理面维护 Endpoint/SecretRef/Manifest/Version/Enabled/Policy；Run 只消费冻结后的授权工具集合。
+- 所有外部 MCP/HTTP Tool dispatch 与 Chat/Embedding 一样先生成 `AgentDataProjectionReceipt`，绑定 Server
+  Revision/Trust Class/Audience、字段 Allowlist、数据分类、mask/DLP、payload digest 与 Policy Revision；
+  SecretRef 值和未批准的原始 QueryResult/Document Chunk 不得作为 Tool 参数出境。
+- MCP Transport 仅允许 HTTPS，每次 DNS 解析和重定向后拒绝 private/link-local/metadata 地址，并限制端口、
+  响应大小、超时与重定向次数；最末端同时重验 TaskCapability 与 Projection Receipt。
 - 新增 `EXTENSION_MANAGE` Workspace Action；只有 WORKSPACE_ADMIN/SUPER_ADMIN 可创建、替换、启停或发布
   MCP/Skill Revision，ANALYST/VIEWER 只能读取或选择已批准 Revision。Registry/Route 在事务内重验 Role/Version。
 - Skill Revision 内容寻址且不可变，绑定 canonical package/dependency digest、Signer/Trusted Publisher、来源、
   能力声明与默认资源；不执行任意安装脚本，未签名、digest 漂移或 fetched bytes 不匹配一律隔离。
+- 每个 MCP/HTTP Tool Revision 必填 `ToolEffectSemantics`：仅 `READ_ONLY`、带稳定 Idempotency Key 的
+  `IDEMPOTENT_REQUEST` 或具备 `OUTCOME_STATUS_QUERY` 的工具可进入三类 Profile。Dispatch 前先持久化 Effect
+  Intent；恢复先查询/对账，无法分类或查证的外部 Tool 不进入本 Goal allowlist。
 - `list_metrics`、`describe_semantic_model`、`resolve_context`、`graph_traversal`、`query` 调用现有服务，
   不复制业务逻辑。
 
@@ -1100,6 +1267,10 @@ Effective Config、RBAC 和 Tool Policy。
 - Error path: Token 泄漏、SSRF endpoint、普通用户启停、Skill 路径穿越、越权 query 被拒绝。
 - Security: ANALYST/VIEWER mutation/publish/enable、同版本换包、Signer 撤销、Dependency Digest 漂移和
   Tool Manifest 扩权均失败关闭；历史 Run 继续引用原不可变 bytes/digest。
+- Security: 恶意 MCP、DNS rebinding、redirect SSRF、凭据转发、敏感 Tool 参数和错 Audience Projection
+  都不能到达网络 dispatch。
+- Recovery: READ_ONLY/IDEMPOTENT_REQUEST/OUTCOME_STATUS_QUERY 分别覆盖请求送达前后崩溃；未知远端效果只
+  进入 TOOL_OUTCOME_UNKNOWN/Reconcile，不自动重放，未声明 effect semantics 的 Manifest 无法发布。
 - Integration: M12 管理配置与 R08 实际调用分别留 Registry Receipt 和 Tool/Resolution/SQL Receipt。
 
 **Verification:** 管理面和调用面分层清晰，Semantic MCP 不能绕过任何已有 Authority。
@@ -1157,10 +1328,10 @@ Effective Config、RBAC 和 Tool Policy。
 
 - U19. **Agent Team v2 合同与早期纵向切片**
 
-**Goal:** 在大规模接入 U8–U15 之前，先用现有 Team Runtime、真实 Artifact 和现有 PostgreSQL Sandbox
-证明三类 Profile、委派权限、Context Coverage、Handoff CAS、Completion/Acceptance 与中断恢复合同可行。
+**Goal:** 在大规模接入 U8–U15 之前，先用仓库固定的 Mastra、真实 Artifact 和 PostgreSQL Sandbox 证明
+三类 Profile、Context Compiler、Subagent 委派/回收、Handoff CAS、Completion/Acceptance 和中断恢复合同可行。
 
-**Requirements:** G6, G7, G9, G13, G14, T01, T05, T06, T07
+**Requirements:** G6, G7, G9, G13, G14, G16, T01, T05, T06, T07
 
 **Dependencies:** U2, U3, U5, U7
 
@@ -1174,25 +1345,69 @@ Effective Config、RBAC 和 Tool Policy。
 - Create: `packages/agent-runtime/src/teams/workflow-registry.ts`
 - Create: `packages/agent-runtime/src/teams/team-orchestrator.ts`
 - Create: `packages/agent-runtime/src/teams/task-completion.ts`
+- Create: `packages/agent-runtime/src/mastra/mastra-team-runtime.ts`
+- Create: `packages/agent-runtime/src/mastra/context-compiler.ts`
+- Create: `packages/agent-runtime/src/mastra/context-epoch-adapter.ts`
+- Create: `packages/agent-runtime/src/mastra/subagent-controller.ts`
+- Create: `packages/agent-runtime/src/mastra/provider-dispatch-envelope.ts`
+- Modify: `packages/platform/src/authz/postgres-privileged-grant-authority.ts`
+- Create: `packages/platform/src/agents/postgres-team-run-store.ts`
+- Create: `packages/contracts/src/artifacts/sensitive-execution-artifact.ts`
+- Create: `packages/platform/src/storage/sensitive-execution-artifact-authority.ts`
+- Create: `infra/supabase/apps/data-agent/migration-sources/<allocated-ledger-id>/`
 - Create: `docs/architecture/data-agent-team-profiles.md`
 - Test: `packages/agent-runtime/test/agent-profiles.spec.ts`
 - Test: `packages/agent-runtime/test/team-orchestrator.spec.ts`
 - Test: `packages/agent-runtime/test/team-handoff.spec.ts`
 - Test: `packages/agent-runtime/test/task-completion.spec.ts`
+- Test: `packages/agent-runtime/test/mastra-team-runtime.spec.ts`
+- Test: `packages/agent-runtime/test/context-compiler.spec.ts`
+- Test: `packages/agent-runtime/test/context-epoch-recovery.spec.ts`
+- Test: `packages/agent-runtime/test/public-surface.spec.ts`
+- Test: `packages/agent-runtime/test/provider-dispatch-envelope.spec.ts`
+- Test: `packages/platform/test/agents/postgres-team-run-store.spec.ts`
+- Test: `packages/platform/test/storage/sensitive-execution-artifact-authority.spec.ts`
 
 **Approach:**
-- 发布 Team Contract v2：保留现有四个 L2 角色/Receipt 的 v1 Reader，增加 `data-agent-orchestrator` 控制角色、
-  三类 Profile ID、`AgentProfileRevision` Schema、Expected Output、Verifier Contract 与版本化 Adapter。
+- Team Contract v2 直接定义 `data-agent-orchestrator` 控制角色、三类 Profile ID、`AgentProfileRevision`、
+  Expected Output 与 Verifier Contract；框架无关合同不导出 Mastra Agent/Thread/Workflow 类型。
+- `MastraTeamRuntime` 适配 `@mastra/core` 固定版本的 Agent/Workflow/Subagent/Stream/Snapshot；Snapshot 仅标记
+  `EXECUTION_SNAPSHOT_ONLY`，rehydration 后必须从 PostgreSQL Task/Event/Artifact/Effect 重放业务状态。
+- U19 创建最小 PostgreSQL Team Store 与 DDL，持久化 Task/Attempt/Event/Effect/Lease/Fence/ContextEpoch/
+  OpenObligation/Acceptance；U20 只扩展 Profile Registry 与产品接线，早期 Gate 不使用内存 Store 冒充 Authority。
 - 把 `direct_tool_allowlist` 与 `delegation_ceiling` 分开。只有服务端 Orchestration Authority 能从 Ceiling 派生
   子 Task；Orchestrator Profile 的直接调用列表不含领域 Tool，子 Task 仍不能获得 Ceiling 之外的权限。
 - 每个 Task 签发短期 `TaskCapability`，绑定 Profile Revision、Task/Attempt/Fence、Workspace Scope、Artifact
   集合、Operation Audience 和过期时间；Tool 入口与最末端 Domain Authority 都校验它，不信任共享 Worker 身份。
+- `PrivilegedGrantAuthority` 只有持有 `TASK_CAPABILITY_ISSUE` Action 的非 Agent 服务可签发 TaskCapability；
+  签名密钥只以 SecretRef 在签发端解引用，Grant 固定 issuer/key-id/audience/tenant/workspace/task/attempt/fence/
+  nonce/revocation version，原始凭据不进入 Manifest、Context、Receipt 或日志。
 - Authority 字段留在 Envelope/Artifact Ref；投影数据始终为 `UNTRUSTED_DATA`。每类 Profile 定义
   Mandatory Context Set 与 `ProjectionCoverageReceipt`，列出候选全集、纳入/遗漏、裁剪原因和按需读取 Ref；
   Policy、Question、Mapping 或 Claim Evidence 缺失时不能接受。
 - `complete_task` 只提交 typed output。`VerifierDecision` 分开记录 `schema_valid`、`scope_valid`、
   `policy_valid`、`provenance_valid`、`execution_valid`、`intent_grounded`、`oracle_verified`；非 Falcon 无法证明
   语义正确时返回 `SEMANTICALLY_UNVERIFIED`/`NEEDS_CLARIFICATION`，Report 不得升级为已验证事实。
+- 每次模型调用从 Task/Goal Revision/Event Watermark/Policy/Release/Artifact Truth 编译 Model View，写
+  `ContextBuildManifest`、`BuildSignature`、`OmissionLedger`、`ContextEpochRef`；相同输入纯重建签名相同，
+  dispatch 前漂移则 fail closed。Mastra Memory/messageFilter 不能成为 Scope 或敏感数据裁剪边界。
+- 在所有 Mastra processor/middleware 之后、Provider Transport 之前规范化最终 messages/tool schemas/
+  attachments/Profile/Model Revision 与 Projection Ref，生成 `ProviderDispatchEnvelope`；其 wire hash 必须与
+  ContextBuildManifest/AgentDataProjectionReceipt 精确匹配，任何后置追加字段在网络调用前失败关闭。
+- 父任务通过 `DelegationContract` 创建 fresh、深度 1 的子 Task；子 Task 无父完整历史、无递归委派权，只收
+  最小 ContextSlice/Artifact Ref/Capability/Budget/Acceptance。返回 `SubagentResult` 后由父 Verifier 接受；
+  cancel/timeout/late result 通过 lineage、lease、fence 和 expected revision 收口。
+- Context 先去重/offload/slice/prune，仍超预算才创建 Context Epoch。Compaction 用
+  `start→summary→replace→end`、CAS/lineage/Probe；恢复区分 `TOOL_NOT_STARTED`、
+  `TOOL_OUTCOME_UNKNOWN`、failed、succeeded，unknown 先 reconcile，不能盲目重放。
+- PostgreSQL `OpenObligationLedger` 独立于模型摘要，冻结目标约束、未决澄清、权限/安全拒绝、unsupported
+  claims、pending/unknown effects、子任务承诺、预算与剩余 Acceptance 条款；新 Epoch 激活前必须对 ledger ID/
+  状态做集合等价检查，任何缺失继续使用旧 Epoch。
+- `SensitiveExecutionArtifactPolicyRevision` 覆盖 Tool Result、Context Slice/Model View、Compaction Summary、
+  Omission/Obligation Ledger、Handoff 与 Recovery Artifact。U19 的 `SensitiveExecutionArtifactAuthority` 使用
+  私有内容寻址 Bucket 保存加密 payload，PostgreSQL 保存 Workspace/Task/Epoch Scope、key-id、cipher/plain hash、
+  TTL/Legal Hold/refcount/tombstone/backup-expiry 与访问审计；密钥只由服务端 SecretRef/KMS 解引用，默认无
+  Public Preview。U6 后续复用该生命周期核心，不另建安全较弱的文件路径。
 - 早期 Slice 使用已存在的 Provider/Profile、Artifact Authority、PostgreSQL Sandbox 和固定测试语义，跑通
   `Text2SQL→Verifier→Report` 以及 `Semantic→Candidate`；它验证合同但不冒充 U20 的完整产品 Tool 接线。
 
@@ -1201,30 +1416,44 @@ Effective Config、RBAC 和 Tool Policy。
 - `packages/agent-runtime/src/teams/handoff.ts`
 - `packages/agent-runtime/src/teams/context-projection.ts`
 - `packages/agent-runtime/test/team-handoff.spec.ts`
+- `packages/agent-runtime/src/mastra/mastra-execution-bridge.ts`
+- `packages/contracts/src/runs/runtime.ts` 的 `MastraSnapshotBinding`
 - `.trellis/tasks/07-25-data-agent-reset-refactor/design.md` 的 Multi-Agent Team/Handoff 约束
 
 **Test scenarios:**
 - Happy path: 三个固定 Profile 具有不同 direct Tool/Skill/Workflow/Context 合同；最小 QueryEvidence 经多维
-  Verifier 接受后才能交给 Report，Candidate 始终不能被 Text2SQL 消费。
+  Verifier 接受后才能交给 Report，Candidate 不能被产品/计分 Text2SQL 消费，预发布 Activation 也不能产正式 Evidence。
 - Policy: Orchestrator 可委派 Text2SQL Tool 但自身调用同一 Tool 被最末端 Authority 拒绝；三类 Agent 尝试
   经共享 `read_artifact`、Job、MCP 或组合服务越权时同样失败。
 - Edge case: 100 个 Task 的每个投影不超过 64 KiB；Coverage Receipt 暴露所有遗漏，关键遗漏阻止 Accepted；
   可选 Evidence 只能通过受预算约束的按需 fetch 读取。
+- Context: 清空进程 Memory/View Cache 后，固定 Truth 可重建相同 Build Signature；Goal/Policy/Release 在
+  dispatch 前漂移时 Provider 调用为 0。大 Tool Result 只以 Artifact Slice 进入 View。
+- Context: Mastra middleware 追加消息、Memory、附件或 Tool Schema 会使 ProviderDispatchEnvelope 不匹配并在
+  网络前失败；相同 Epoch/Truth 的最终 wire hash 必须一致。
+- Subagent: fresh child 不含父 Secret/无关历史，递归 spawn 被拒绝；cancel/lease expiry 后的迟到结果保留审计
+  但不能进入父 Accepted-set。Mastra messageFilter 报错时不得回退完整父上下文。
+- Compaction: 在 start/summary/replace/end/Probe 各 kill point 恢复，旧 Epoch 始终可用；pending/unknown Tool、
+  Goal constraint、权限拒绝、unsupported claim、子任务承诺、剩余 Acceptance 与 Artifact Hash 不丢失；
+  Obligation 集合不等价时新 Epoch 不激活，KV Cache hit/miss 不改变结果。
 - Error path: Handoff 扩大 Scope/Artifact/Tool/Network/Budget、复用过期 TaskCapability、stale Fence/Profile、
   Provider child ID 冒充 Team Task，或 Agent 自报完成都失败关闭。
 - Recovery: 在 Provider 调用前/后、Artifact 写入前/后和 Completion 提交前/后注入中断，恢复只接受一份本地
   Artifact/Settlement；外部调用语义按 Certified Provider 能力分类，不虚构 exactly-once。
-- Compatibility: 既有 L2 Research Team v1 Task/Receipt 可继续读取和运行。
+- Boundary: `packages/agent-runtime` 公共根导出不包含 Mastra 构造器、Thread、Memory 或 Snapshot 实现类型。
+- Security: Context/Compaction Artifact 跨 Workspace、过期 Capability、删除后恢复、备份到期或 Public Trace
+  泄漏均失败；存储只暴露脱敏摘要与内容引用。
 
-**Verification:** U19 Exit Gate 必须在真实现有 Authority 上证明 v2 Contract、delegation ceiling、末端
-TaskCapability、Coverage、Checkpoint 和多维 Verifier；若 Slice 不成立，Goal 在继续 U8–U15 前停止，避免晚期返工。
+**Verification:** U19 Exit Gate 必须在真实 Mastra+PostgreSQL Authority 上证明 v2 Contract、Context Build、
+Subagent 隔离/回收、末端 TaskCapability、Epoch Recovery 和多维 Verifier；若 Slice 不成立，Goal 在继续
+U8–U15 前停止。
 
-- U20. **三类专职 Agent Profile 的完整 Tool/Skill/Workflow 与 Team 产品运行时**
+- U20. **Mastra 三类专职 Agent、Context Runtime 与 Team 产品接线**
 
-**Goal:** 将 U19 合同接入 Semantic、Context、Text2SQL、Artifact、MCP/Skill、Report、Worker 和 Web，注册
-Semantic Management、Text2SQL、Report Writing 三类可运行 Profile，并保持各自独立上下文。
+**Goal:** 将 U19 合同接入 Semantic、Context、Text2SQL、Artifact、MCP/Skill、Report、Worker 和 Web，用
+Mastra 注册 Semantic Management、Text2SQL、Report Writing 三类 Profile，并保持独立 Context/Epoch/Subagent。
 
-**Requirements:** G3, G6, G7, G9, G13, G14, M05, M12, M13, R03, R06, R08, T02–T07
+**Requirements:** G3, G6, G7, G9, G13, G14, G16, M05, M12, M13, R03, R06, R08, T01–T07
 
 **Dependencies:** U8, U9, U10, U11, U12, U13, U14, U15, U19
 
@@ -1232,27 +1461,56 @@ Semantic Management、Text2SQL、Report Writing 三类可运行 Profile，并保
 - Modify: `packages/contracts/src/workspaces/identity.ts`
 - Modify: `packages/contracts/src/artifacts/research/system.ts`
 - Create: `packages/platform/src/agents/postgres-agent-profile-registry.ts`
-- Create: `packages/platform/src/agents/postgres-team-run-store.ts`
+- Modify: `packages/platform/src/agents/postgres-team-run-store.ts`
 - Modify: `packages/platform/src/agents/model-egress-projection.ts`
 - Create: `apps/worker/src/teams/data-agent-team-runner.ts`
+- Modify: `apps/worker/src/run-worker-cli.ts`
+- Modify: `apps/worker/src/runs/run-worker-daemon.ts`
+- Modify: `apps/worker/src/runs/index.ts`
+- Modify: `apps/worker/src/runs/research-workflow-executor.ts`
+- Create: `apps/worker/src/teams/mastra-profile-composition.ts`
+- Create: `apps/worker/src/teams/mastra-workflow-registry.ts`
 - Create: `apps/worker/src/teams/tools/semantic-management-tools.ts`
 - Create: `apps/worker/src/teams/tools/text2sql-tools.ts`
 - Create: `apps/worker/src/teams/tools/report-writing-tools.ts`
 - Create: `apps/worker/src/teams/prompts/semantic-management-agent.md`
 - Create: `apps/worker/src/teams/prompts/text2sql-agent.md`
 - Create: `apps/worker/src/teams/prompts/report-writing-agent.md`
+- Create: `apps/worker/src/teams/skills/schema-to-candidate.md`
+- Create: `apps/worker/src/teams/skills/drift-reanalysis.md`
+- Create: `apps/worker/src/teams/skills/metric-maintenance.md`
+- Create: `apps/worker/src/teams/skills/question-to-query.md`
+- Create: `apps/worker/src/teams/skills/ambiguity-resolution.md`
+- Create: `apps/worker/src/teams/skills/bounded-query-repair.md`
+- Create: `apps/worker/src/teams/skills/evidence-to-report.md`
+- Create: `apps/worker/src/teams/skills/chart-selection.md`
+- Create: `apps/worker/src/teams/skills/claim-citation.md`
 - Create: `apps/web/src/app/api/workspaces/[workspaceId]/agent-profiles/route.ts`
+- Modify: `apps/web/src/app/api/workspaces/[workspaceId]/runs/route.ts`
 - Create: `apps/web/src/components/qa/agent-team-trace.tsx`
 - Create: `docs/runbooks/data-agent-team-operations.md`
 - Create: `infra/supabase/apps/data-agent/migration-sources/<allocated-ledger-id>/`
 - Test: `packages/platform/test/agents/postgres-agent-team-runtime.spec.ts`
+- Test: `packages/contracts/test/data-agent-team-command.spec.ts`
 - Test: `apps/worker/test/teams/data-agent-team-runner.spec.ts`
+- Test: `apps/worker/test/teams/mastra-profile-composition.spec.ts`
+- Test: `apps/worker/test/teams/profile-skill-registration.spec.ts`
+- Test: `apps/worker/test/teams/mastra-context-recovery.spec.ts`
 - Test: `apps/web/test/agent-profiles-route.spec.ts`
 - Test: `apps/web/test/agent-team-trace.spec.tsx`
 
 **Approach:**
 - Profile Registry 由 U20 创建实际 `AgentProfileRevision`，引用 U2 Effective Config、U3 Provider/Model Receipt、
   U14 Tool/Skill Revision，以及 Prompt/Workflow/Context/Verifier Hash；Team Run 启动后不可原地变更。
+- U20 将上列九个内置 Skill 作为内容寻址、签名、不可变的 Greenfield Skill Revision 注册，冻结 dependency/
+  Tool digest；三个 Profile 引用互不混淆的已发布 Revision，且 Skill Tool 声明必须是 direct allowlist 子集，
+  不等待管理员在 Goal 中途上传。
+- Q&A Route 写入冻结的 `START_DATA_AGENT_TEAM` workflow kind；`run-worker-cli`、daemon 与 executor registry 按
+  immutable kind 调度 `DataAgentTeamRunner`，Semantic Bootstrap Job 也进入同一 Team Runtime。旧
+  `START_L2_RESEARCH` 保持显式独立分支，不能作为默认 fallback 或三 Profile 已接线的证据。
+- 三类 Profile 由同一 Mastra Composition Root 创建，但使用不同 Agent Instance、thread/resource namespace、
+  Tool Registry、Skill、Workflow、Prompt、Model、Context Policy 与 Budget。Mastra Agent Network 不拥有动态
+  Team 路由；Orchestrator DAG 是唯一派发者，禁止领域 Agent 自主创建递归子 Agent。
 - 新增 `AGENT_PROFILE_MANAGE` Action；只有 WORKSPACE_ADMIN/SUPER_ADMIN 可创建/发布/启停 Profile，
   ANALYST/VIEWER 只可选择已批准 Revision。Registry/Route 事务内重验 Actor、Role、expected version 和 Tool Ceiling。
 - 三个 Tool Catalog 只适配 U5/U7/U9/U11–U14 的原子服务。共同元工具限于 `list_capabilities`、
@@ -1265,13 +1523,21 @@ Semantic Management、Text2SQL、Report Writing 三类可运行 Profile，并保
   形成一个 GapSet，最多派发一次有界 Text2SQL 回补；部分未补齐项必须在报告中标为 Unsupported。
 - Semantic Release/Schema Snapshot 在 Task 内冻结；RBAC、Tool Disable、Secret Revocation 每次 Tool 调用重验。
   Policy Revision 变化终止旧 Attempt 并创建新 Task，`refresh_context` 不能原地扩大权限或偷换 Release。
-- 每个 Chat/Embedding Provider 请求先产出 sensitivity-aware `AgentDataProjectionReceipt`：绑定分类、允许字段、
-  Audience/Provider Policy、mask/DLP/small-group suppression、payload digest 和 policy version。Context、Handoff、
-  Report、Export 只能引用批准投影，原始 QueryResult/Document Chunk 不得直接出境。
+- 每个 Chat/Embedding/外部 MCP/HTTP 请求先产出 sensitivity-aware `AgentDataProjectionReceipt`：绑定分类、
+  允许字段、Audience/Provider/Server Policy、mask/DLP/small-group suppression、payload digest 和 policy version。
+  Context、Handoff、Report、Export 与 Tool 参数只能引用批准投影，原始 QueryResult/Document Chunk 不得直接出境。
+- Context Compiler 在每个 Mastra Step/Provider dispatch 前重建 View；Checkpoint 在 Provider dispatch、外部 Tool
+  body、Tool Result/Artifact commit、Handoff、`complete_task` 和 Workflow Step 切换前 fail closed。Mastra
+  stream delta 只投影到 UI，不自动进入父模型或业务 Event Truth。
+- Semantic Bootstrap Task 使用 fresh 子 Task，输入只含 U1 Source Bundle、U4 Package Contract 和 U5 Policy View/Digest；
+  Text2SQL/Report 不继承其 thread。Report Gap 回补由 Orchestrator 新建一个 fresh Text2SQL Task，最大一次，
+  结果必须重新走 Query Verifier，不能把子 Agent 自由文本直接拼进报告。
 - Team Console 只展示角色、公开输入摘要、Tool Name、Artifact/Handoff/Verifier、Coverage、预算和 Checkpoint；
   不展示 Prompt、私有推理、Secret 或原始 Context，所有操作调用同一服务端 Team API。
 
 **Test scenarios:**
+- Happy path: 空 Workspace 的 Semantic Agent 从获准 Source Bundle 生成 Candidate/Validation；非 Agent U5
+  Authority 发布 v1 后，新 Text2SQL Task 才能读取该 Release，三个 Mastra thread/resource 始终独立。
 - Happy path: 问题经 Text2SQL 得到 `intent_grounded + execution_valid` QueryEvidence，再由 Report 生成引用完整
   的 Report；Schema Drift 只进 Semantic Agent 并止于 Candidate/Validation/Impact。
 - Policy: Semantic 无 Publish/Query/Report Tool；Text2SQL 无 Candidate Mutation/Report Tool；Report 无
@@ -1279,7 +1545,7 @@ Semantic Management、Text2SQL、Report Writing 三类可运行 Profile，并保
 - Error path: Skill/Workflow 引用未注册 Tool、Tool 被禁用、RBAC/Secret 撤销、Candidate Ref、无 Evidence Claim、
   Firewall 拒绝后的旁路查询或 Context 关键遗漏均不能推进 `ACCEPTED`。
 - Security: ANALYST/VIEWER 修改 Profile、共享 Worker 冒充 Profile、PII/credential/restricted column、未获准
-  Provider、small-group 风险或 Egress Policy 撤销均阻止模型/Embedding 调用并留下脱敏拒绝 Receipt。
+  Provider/MCP Audience、small-group 风险或 Egress Policy 撤销均阻止模型/Embedding/Tool 网络调用并留下脱敏拒绝 Receipt。
 - Prompt injection: Question、Document Chunk、MCP/Tool Output 一律标记为 `UNTRUSTED_DATA`；对抗样本不得改变
   Task Objective、Tool Target、Workspace/Schema Scope、Profile 或 Capability。只有签名 Control Envelope 可以
   改变控制字段，任何由不受信数据诱导的跨角色调用都必须被最末端 TaskCapability 校验拒绝。
@@ -1288,11 +1554,19 @@ Semantic Management、Text2SQL、Report Writing 三类可运行 Profile，并保
   或创建子任务绕过聚合额度。
 - Recovery: Checkpoint 恢复后的 Accepted-set/Artifact Hash 和本地 Billing 幂等键与无故障运行一致；外部
   Provider 是否重调由 U3 的 Certified Invocation Semantics 决定并明确显示。
+- Recovery: Mastra Snapshot 丢失或 KV Cache 全空时仍可从 PostgreSQL Truth 重建；snapshot 存在但
+  Task/Goal/Policy/Release 已 stale 时必须拒绝。恢复顺序固定为 repair→replay→reconcile unknown→rebuild
+  Model View→Recovery Probe→Orchestrator 显式 resume 新 Attempt。
+- Subagent: 三 Profile 的 fresh child thread/resource 互不读取；fork、递归 spawn、共享 Memory namespace、
+  超过 Handoff 深度/预算及 late result 合并均被拒绝并留下 Receipt。
 - Integration: 浏览器/API/Tool 对 Team 的已授权能力一致；三份 Registration Receipt 的
   Profile/Tool/Skill/Workflow/Prompt/Model Revision 互不混淆。
+- Integration: 真实 Route→Queue→Worker daemon→PostgreSQL Team Store→Mastra Profile 链分别覆盖 Semantic
+  Bootstrap 与 Q&A；任何仍进入旧 Research Executor 的 `START_DATA_AGENT_TEAM` 命令都使 Gate 失败。
 
-**Verification:** 每个产品 Team Run 都留下 Profile、TaskCapability、Context Coverage、Handoff、Checkpoint、
-Tool Invocation、Completion 和多维 VerifierDecision 链；任何单一 Agent 或共享 Worker 身份都无法跨角色取权。
+**Verification:** 每个产品 Team Run 都留下 Mastra Execution Ref 以及框架无关的 Profile、TaskCapability、
+Context Build/Epoch、Subagent、Handoff、Checkpoint、Tool、Completion、Verifier 链；任何 Mastra/单 Agent/
+共享 Worker 身份都无法跨角色取权或把 execution completed 升级为 accepted。
 
 ### Phase 3 — Platform Extension and Product Integration
 
@@ -1318,6 +1592,9 @@ SQLite、DuckDB、ClickHouse 等 Adapter。
 - Modify: `apps/web/src/lib/datasource-route.ts`
 - Modify: `apps/web/src/components/qa/data-source-selector.tsx`
 - Create: `apps/web/src/components/settings/datasource-gallery.tsx`
+- Modify: `packages/platform/package.json`
+- Modify: `pnpm-lock.yaml`
+- Modify: `compose.yaml`
 - Test: `packages/platform/test/datasources/adapter-registry.spec.ts`
 - Test: `packages/platform/test/datasources/adapter-certification.spec.ts`
 - Test: `apps/web/test/datasource-gallery.spec.tsx`
@@ -1328,10 +1605,22 @@ SQLite、DuckDB、ClickHouse 等 Adapter。
   伪装成可安全 Text2SQL。M15 READY 要求 Preflight 冻结的 mandatory set 全部达到 `GOVERNED_QUERY`。
 - mandatory set 固定为 PostgreSQL、MySQL、SQLite、DuckDB、ClickHouse；Preflight 完成驱动、许可证和供应链
   预审，任一不满足即在产品改动前阻止 Goal，U16 不能在执行中静默缩小范围。
+- Adapter Implementation Matrix 已决如下；所有 semver 均精确 pin，MySQL/ClickHouse 测试镜像还必须在
+  Launch Manifest 记录不可变 OCI digest，不能在 U16 临时换库或换拓扑：
+
+| Adapter | Driver / parser | Runtime topology | 安全与认证路径 |
+|---|---|---|---|
+| PostgreSQL | `pg@8.22.0` + `pgsql-parser@18.1.1` | Worker in-process；现有 PostgreSQL | AST Firewall + read-only role/RLS + `EXPLAIN` + Sandbox Receipt |
+| MySQL | `mysql2@3.23.2` + `node-sql-parser@5.4.0` | Worker in-process；Compose/CI MySQL 8.4 image digest | TLS/SecretRef + MySQL AST + read-only account + `EXPLAIN` |
+| SQLite | Node 24 `node:sqlite` + `node-sql-parser@5.4.0` | Worker file sandbox；只读 URI/allowlisted inode | 单文件 Scope + SQLite AST + `PRAGMA query_only=ON` + progress timeout |
+| DuckDB | `@duckdb/node-api@1.5.2-r.2` | Worker file/in-memory sandbox，无 sidecar | allowlisted file + native statement extraction/`EXPLAIN` + read-only external access deny |
+| ClickHouse | `@clickhouse/client@1.20.0` | Worker client；Compose/CI ClickHouse image digest | HTTPS/SecretRef + readonly profile + single statement + `EXPLAIN SYNTAX` + query limits |
+
+- 版本与 driver 选择来自当前仓库/固定本地参考；Preflight 只验证 license、Node ABI、平台二进制与镜像 digest，
+  不再选择替代实现。任何一行验证失败都在第一次产品 mutation 前 Blocked，而不是运行中缩小 mandatory set。
 - 引入版本化 dialect-neutral Execution Permit/SqlArtifact 外壳，并为各方言独立实现 compiler lowering、parser/
   firewall、read-only、SecretRef、TLS、timeout、row/byte、identifier/parameter、结果规范化和审计。
-- 现有 `trino` 类型先做 Characterization：能力保持 `COMPATIBLE`，若当前安全合同不足则 UI/API 显式
-  `PAUSED` 并说明原因；不得因新列表未提及而删除或冒充 GOVERNED_QUERY。
+- Trino 不属于本次 mandatory Greenfield Adapter Set，列入 Deferred；不得用其现有代码或配置冒充本次认证。
 
 **Test scenarios:**
 - Happy path: Gallery Schema 生成连接表单并由同一 Datasource API 测试/保存/扫描。
@@ -1339,19 +1628,19 @@ SQLite、DuckDB、ClickHouse 等 Adapter。
 - Error path: SSRF、私网策略、错误 TLS、写操作、超时、凭据输出被拒绝。
 - Integration: mandatory set 各自经 Schema Scan→Effective Config→dialect Firewall→真实只读执行→Receipt
   完成独立认证；一个方言的 Parser/Driver 不得被另一个复用为“best effort”。
-- Compatibility: Trino 当前行为被固定为 ACTIVE/COMPATIBLE/PAUSED 之一，旧配置和历史 Receipt 可读。
+- Scope: Registry 只把五个 mandatory Adapter 标为可选目标；未实现的 Trino 不出现在新 Workspace Gallery。
 
 **Verification:** M14/M15 没有新 Datasource Authority；mandatory set 五类均有 GOVERNED_QUERY 认证报告，
-Trino 有明确兼容状态，任何 BLOCKED/DISABLED mandatory adapter 都阻止最终平台 GO。
+任何 BLOCKED/DISABLED mandatory adapter 都阻止最终平台 GO。
 
 - U17. **统一 Workspace UX、Context Preview、双语与引导**
 
 **Goal:** 把 Run Resources、Artifact、Job、Knowledge、Extensions、Semantic Preview、Datasource、Test Center
 收口到现有 Workspace Shell，并完成中英文与真实空/错/恢复状态。
 
-**Requirements:** G9, G13, G14, M18, R09, T05, T06, T07
+**Requirements:** G9, G13–G16, M18, R09, T05, T06, T07
 
-**Dependencies:** U3, U7, U9, U12, U14, U15, U16, U20
+**Dependencies:** U3, U5, U7, U9, U12, U14, U15, U16, U20
 
 **Files:**
 - Modify: `apps/web/src/components/layout/workspace-shell.tsx`
@@ -1362,16 +1651,17 @@ Trino 有明确兼容状态，任何 BLOCKED/DISABLED mandatory adapter 都阻�
 - Modify: `apps/web/src/app/w/[workspaceId]/tests/page.tsx`
 - Modify: `apps/web/src/components/qa/agent-team-trace.tsx`
 - Create: `apps/web/src/i18n/`
+- Create: `packages/contracts/src/evals/workspace-journey-evidence.ts`
 - Create: `docs/runbooks/datafoundry-coa-quick-start.md`
 - Test: `apps/web/test/workspace-navigation.spec.ts`
-- Test: `apps/web/test/workspace-migration-experience.spec.tsx`
+- Test: `apps/web/test/workspace-greenfield-onboarding.spec.tsx`
 - Test: `apps/web/test/i18n-workspace.spec.tsx`
 
 **Approach:**
 - 保留现有组件和真实数据流，统一入口、密度、状态语言与跨页 Deep Link，不复制参考项目组件。
 - Workspace IA 固定为：`/qa` 是默认 Workbench，承载 Composer、Run Resources、Team Trace、Task Console 和
-  Run-scoped Artifact 面板；`/semantic` 独占 Graph/Candidate/Review/Context Preview；`/data-sources` 独占连接/
-  Schema（旧 `/data-link` 兼容或 Paused）；`/platform-settings` 承载 Model/Defaults/Files/Knowledge/Extensions/
+  Run-scoped Artifact 面板；`/semantic` 独占 Source/Bootstrap/Graph/Candidate/Review/Context Preview；
+  `/data-sources` 独占连接/Schema；`/platform-settings` 承载 Model/Defaults/Files/Knowledge/Extensions/
   Workspace Jobs；`/tests` 独占 Falcon；`/results` 聚合跨 Run 的 Accepted Artifact/Report。
 - Deep Link 必须保留 Workspace/Run/Task/Artifact 上下文，顶部显示 `Workspace > Surface > Run/Task` 面包屑，
   详情关闭后返回原筛选、滚动和选中节点；任何能力只有一个宿主页，其他页面使用引用和跳转。
@@ -1380,48 +1670,77 @@ Trino 有明确兼容状态，任何 BLOCKED/DISABLED mandatory adapter 都阻�
   不同 Agent 的 Tool/Skill/Workflow Revision 提供可审计详情；不渲染私有 Prompt/Reasoning/Raw Context。
 - Team Trace 交互按节点状态约束：QUEUED/RUNNING 可 Cancel；WAITING 只能回应指定 Interrupt 或 Cancel；
   CHECKPOINTED 可 Resume；COMPLETED 只表示等待 Verifier；REJECTED 仅在 Reason 可重试时从固定 Checkpoint
-  Retry；ACCEPTED 只读。父 Task Cancel 级联未启动子项并向运行子项发 fenced command，已接受 Artifact 保留。
+  Retry；ACCEPTED 只读。另显式覆盖 FAILED、CANCELLED、TIMED_OUT、RECOVERING、OUTCOME_UNKNOWN、BLOCKED：
+  每态固定文案、Artifact 可用性、允许/禁止动作、父子传播、对账/重试入口及 pending/success/error 反馈；
+  OUTCOME_UNKNOWN 只能 Reconcile，不能显示普通 Retry。父 Task Cancel 级联未启动子项并向运行子项发 fenced
+  command，已接受 Artifact 保留，迟到结果只读审计。
 - 公共状态分四条互不折叠的轴：Task=`execution state`；Evidence=`Candidate/Validated/Accepted/Published`；
   Benchmark=`DEMO/TUNING/HOLDOUT/TEST + Oracle Verdict/Unscored Submission`；Release=`HOLD/GO`。UI 固定展示
   Authority Actor/Receipt，明确 `completed ≠ accepted`、`PASS ≠ GO`、TEST 永远是 `submission complete, unscored`。
 - Demo、Fixture、Tuning、Holdout、Production 使用显式 badge/permission/registry，禁止混淆。
+- Greenfield 语义状态固定为 `NO_SEMANTIC_RELEASE → SCHEMA_READY → BOOTSTRAP_RUNNING → CANDIDATE_READY →
+  VALIDATION_FAILED | READY_FOR_REVIEW | PUBLISHED_V1_READY`；另列 `POLICY_MISSING/EXPIRED`，不能与 Validation
+  Failure 合并。READY_FOR_REVIEW 展示 unresolved Mandatory 对象与 Blocker Evidence，禁止进入 QA/Falcon，
+  只能由 Semantic Maintainer 进入人工治理流程。
+  只有 PUBLISHED_V1_READY 可进入 QA/Falcon。Bootstrap v1 标注
+  `SYSTEM_BOOTSTRAP_POLICY`，后续人工 Review 状态与它分开显示。
+- 首建状态固定角色交接：Admin 负责 Datasource/Provider/启动授权；系统 Semantic Agent 执行 Scan/Candidate/
+  Validation；Analyst 在 PUBLISHED_V1_READY 后提问和取报告；Semantic Maintainer 只处理需要人工介入的后续
+  Candidate。每态定义其他角色的只读内容、唯一 CTA、通知、Deep Link 与返回路径；不得用 SUPER_ADMIN 全程
+  浏览器测试掩盖 Analyst 的最小权限入口。
+- `/tests` 状态机固定为 NOT_READY（缺失依赖+跳转）→READY（冻结输入+唯一 Start）→RUNNING/PARTIAL（按库/
+  split 进度+取消规则）→GO/HOLD 或 BLOCKED/FAILED（Reason+诊断入口）。诊断 Run 与正式 Gate Run 分开；正式
+  Gate 禁止选择性重跑，TEST 始终显示 unscored submission。
+- 响应式/无障碍合同要求窄屏按 Composer→Answer→恢复动作→Trace/Artifact 渐进展开；DAG 提供可聚焦 tree/list
+  等价视图，全部动作可键盘操作，详情关闭恢复焦点，动态状态用 ARIA live，Dialog/Drawer 管理焦点，并验证
+  对比度、触控目标及中英文放大文本。
 - Reason Code 恢复矩阵固定为：Permission→Request Access/联系管理员且不可 Retry；NOT_READY→跳到缺失依赖；
   STALE_RELEASE→重新 Preview 并创建新 Task；CHECKPOINT_AVAILABLE→Resume；PROVIDER_UNAVAILABLE→选择已认证
   Profile 后新建 Attempt；BILLING_HOLD→管理员解除；Terminal Policy Denial→只读解释，不显示 Retry。
 
 **Test scenarios:**
-- Happy path: 新 Workspace 从 Quick Start 配置资源→提问→看 Context/Trace/Artifact→进入 Falcon Test Center。
-- Happy path: Semantic Maintainer 从 Semantic 入口启动 Agent Candidate→查看 Evidence/Validation/Impact→Reviewer
-  处理 stale base/权限/批准或驳回→看到 Published Release；随后新 QA Run 明确显示切换后的 Release Ref。
-- Edge case: 空资源、部分 Ready、Paused Legacy Route、Job Running、Run Restoring、语言切换保持状态。
+- Happy path: 空 Workspace→配置 Datasource→Schema Scan→上传业务资料→Semantic Agent 生成 Candidate→
+  Bootstrap Gate 发布 v1→提问→Text2SQL/Report→查看 Context/Trace/Artifact→Falcon Test Center。
+- Happy path: 首版之后，Semantic Maintainer 从 Drift Candidate 查看 Evidence/Validation/Impact，经 Reviewer
+  处理 stale base/权限并到达 READY_FOR_REVIEW；自动浏览器旅程不模拟生产人工批准。Review→Publish 成功分支
+  只在隔离 Fixture 中使用预置、非模型测试 Reviewer Receipt 验证合同，不能成为 Goal 的运行中审批依赖。
+- Golden journey: 冻结一个非 Falcon 的 Greenfield Schema/业务资料/中文问题/ReportSpec 与启动前批准的
+  确定性验收包，校验必需 Claim 覆盖、事实 Result、图表类型/字段、引用完整和结论段落；不使用 LLM Judge。
+- Edge case: 空资源、部分 Ready、Bootstrap Running/Failed、Job Running、Run Restoring、语言切换保持状态。
 - Error path: Permission、Not Ready、Stale Release、Provider/Billing Hold 提供可恢复动作但不伪装成功。
 - Integration: 所有导航 URL 保持 `/w/:workspaceId` 且服务端重新核验 Workspace。
 - Integration: 同一问题可从 Team DAG Deep Link 到 Text2SQL Evidence、Report Citation 与 Falcon Verdict，
   取消/恢复不会绕过服务端 Fence。
 - Interaction: 对每个 Team 节点状态验证可见详情、允许/禁用动作、父子传播、pending/success/error 反馈、
   Checkpoint 来源和部分 Artifact 可用性；对每个 Reason Code 验证唯一恢复路径。
+- Accessibility: 宽/窄屏、键盘、焦点恢复、ARIA live、tree/list 等价视图、中英文与 200% 文本缩放通过。
+- Test Center: 每个状态刷新可重建，正式 Gate 不出现单题选择性重跑，TEST 不出现本地 accuracy/PASS。
 
-**Verification:** 中文和英文两条完整用户旅程（受治理问答/报告、语义维护/人工发布）均通过真实浏览器；
-Workspace IA、返回路径、状态/Authority 词汇、旧入口兼容/Paused 和恢复矩阵无歧义，形成 U18 的
-`WorkspaceJourneyGateReceipt`，不能只凭 Falcon SQL 分数替代平台体验验收。
+**Verification:** 中文和英文 Greenfield 首版生成→问答/报告旅程，以及后续语义维护到 READY_FOR_REVIEW 的
+只读/权限旅程均通过真实浏览器；隔离 Fixture 另证后续 Review/Publish 合同。Workspace IA、角色交接、返回路径、
+Bootstrap/Review Authority、恢复与 Test Center 状态无歧义，生成内容寻址的 Goal/CI
+`WorkspaceJourneyEvidenceArtifact`（不是产品 Authority Receipt）供 U18 读取；不能只凭 Falcon SQL 分数替代体验验收。
 
 ### Phase 4 — Falcon Release Gate
 
-- U18. **Falcon 题目端到端验收与发布证据包**
+- U18. **Greenfield Semantic + Mastra Team + Falcon 端到端发布门禁**
 
-**Goal:** 用迁移后的统一配置、Published Semantic Release、Context Serve、三类专职 Agent Team、Worker、
-Provider、Artifact、Trace 和 Billing 跑 Falcon 题目，签发最终 Go/No-Go。
+**Goal:** 先由 Mastra Semantic Profile 为 Falcon 28 库从 Bootstrap Corpus 生成 Candidate Set，经隔离预发布
+验证后原子冻结 Published Semantic v1；再由 Text2SQL/Report Profile、Worker、Provider、Artifact、Trace、Billing
+与严格 Oracle 跑题，签发最终 Go/No-Go。
 
-**Requirements:** G4, G6, G7, G9, G12, G13, G14, R10, T08
+**Requirements:** G4, G6, G7, G9, G12–G16, R10, T08
 
 **Dependencies:** U3, U5, U7, U8, U9, U10, U11, U12, U13, U14, U15, U16, U17, U20
 
 **Files:**
+- Create: `packages/contracts/src/evals/falcon-semantic-release-set.ts`
 - Modify: `packages/evals/src/test-center/falcon-runner.ts`
 - Modify: `packages/evals/src/test-center/falcon-oracle.ts`
 - Modify: `packages/evals/src/test-center/scorecard.ts`
 - Modify: `packages/evals/src/test-center/falcon-semantic-context.ts`
 - Create: `packages/platform/src/evals/postgres-falcon-team-run-authority.ts`
+- Create: `packages/platform/src/evals/prepublish-candidate-evaluation-authority.ts`
 - Modify: `apps/web/src/lib/test-center-runtime.ts`
 - Modify: `apps/web/src/lib/test-center-route.ts`
 - Modify: `apps/web/src/app/api/workspaces/[workspaceId]/tests/runs/route.ts`
@@ -1430,29 +1749,55 @@ Provider、Artifact、Trace 和 Billing 跑 Falcon 题目，签发最终 Go/No-G
 - Create: `docs/runbooks/datafoundry-coa-falcon-release-gate.md`
 - Test: `packages/evals/test/falcon-dataset.spec.ts`
 - Test: `packages/evals/test/falcon-oracle.spec.ts`
+- Test: `packages/evals/test/falcon-semantic-usage.spec.ts`
 - Test: `packages/platform/test/sandbox/postgres-falcon-benchmark-executor.spec.ts`
-- Test: `apps/worker/test/runs/falcon-migration-acceptance.spec.ts`
-- Test: `apps/web/test/falcon-migration-release-gate.spec.tsx`
+- Test: `apps/worker/test/runs/falcon-greenfield-acceptance.spec.ts`
+- Test: `apps/web/test/falcon-greenfield-release-gate.spec.tsx`
 
 **Approach:**
-- 冻结同一 Provider/Profile、Effective Config、Falcon Dataset Digest、Datasource Fingerprint、Schema Snapshot、
-  Published Semantic Release、Context Policy、三个 Agent Profile/Tool/Skill/Workflow Revision 与 Oracle Version。
+- Falcon 沿用一个 Workspace/Datasource/Semantic Domain，但 Initial Release Set 内含 28 个 database-scoped
+  Package。`FalconSemanticBundleIndex` 固定 `database_id→schema_name→package_ref→schema_snapshot_hash→
+  SemanticPackageAdmissionReceipt`，并绑定唯一 `ReleaseSetHash`/顶层 `FirstReleaseAdmissionReceipt`；不得虚构
+  28 条 generation 轴或重复消费 Publisher Grant。
+- 在任何发布/计分 Run 前，Semantic Management Agent 只读 `SemanticBootstrapCorpus`，为 28 库分别生成
+  Schema-grounded Candidate Package。全部库必须满足 Physical Semantic Core/Queryable Mapping/Join Coverage；
+  db24/db14 还必须满足启动前签名的术语、关系、Metric/Formula 业务断言。Optional unresolved 对象不进入 v1。
+- 发布前使用 `PREPUBLISH_EVALUATION_ONLY` Candidate Evaluation Activation：Audience 仅限独立 Falcon
+  Evaluation Authority，不可被 QA/Report/产品 API 解析；对精确 Candidate Set Hash 使用与正式运行相同的
+  Context Resolver、Text2SQL Profile、Compiler/Firewall/Usage Gate 跑 DEMO/TUNING。它是 T03 Published-only
+  规则的唯一隔离例外，不能产出正式 QueryEvidence/ScoreCard。
+- Bootstrap Policy 内最多 2 次 Candidate 修订，只能使用公开 Schema、获准业务资料、DEMO/TUNING 断言与
+  非 sealed 诊断；Local Holdout/TEST 题面、DEV 计分反馈、Gold/expected/Oracle 派生信号全部禁止。预发布阈值
+  通过后签发绑定 exact Candidate Set Hash 的 `CandidateEvaluationReceipt`；U5 RPC 只发布该 Hash，一次性
+  generation 0→1 并熔断。
+- 冻结同一 Provider/Profile、Effective Config、Falcon Dataset Digest、Datasource Fingerprint、28 个 Schema/
+  Package 与唯一 Semantic Release Set、Context Policy、Mastra/Core/Context Compiler、三个 Agent Profile/Tool/
+  Skill/Workflow Revision 与 Oracle Version；发布完成后才开始 Text2SQL 计分，失败不得回到 Bootstrap 修订。
 - 每道计分题必须由 Team Orchestrator 创建 Text2SQL Task，Text2SQL Agent 只消费 Published Release；SQL
-  经 Firewall 和 Falcon Oracle 接受后才成为 QueryEvidence。禁止绕回旧单 Agent/直接 Runner 路径获取分数。
+  经 Firewall 和 Falcon Oracle 接受后才成为 QueryEvidence，并签发 `SemanticUsageReceipt`，记录实际解析/
+  编译使用的 Package/Object/Mapping/Join/Metric 与 ReleaseSetHash。禁止裸 Schema fallback、旧单 Agent 或直接
+  Runner 路径获取分数；移除声明使用的语义对象后，Context/LogicalPlan 必须失败或产生可解释差异。
 - Test Center Web/API 只创建 durable per-case Team Run 并等待 Accepted QueryEvidence/Provider/Billing/Worker
   Receipt；`packages/evals` 保持纯评测层，只接收已接受候选 SQL 并调用 sealed Oracle。任何沿用
   `createSqlAgent→executeSqlBenchmarkBatch` 的 inline Web 路径、缺 Team Receipt 的 SQL 或客户端自报 PASS 都拒绝计分。
 - Fixed DEMO 10 题和 db24 DEV 17 题还必须由 Report Writing Agent 从 Accepted QueryEvidence 生成简洁答案/
   报告投影，并通过 Claim-Citation/Evidence 完整性校验；报告质量不改变 Falcon SQL Oracle Verdict。
-- Semantic Management Agent 在同一 Falcon Schema/Release 上完成一次只读 Coverage/Drift Dry-run，产出
-  Candidate/Impact Artifact 供审计但不发布、不影响当前分数；这只验收独立 Semantic Workflow，不宣称
-  三个 Agent 共同回答同一道题。人工发布链由 Preflight 的真实 Reviewer Receipt 与 U5 Equivalence Receipt 证明。
+- Semantic Management Agent 的实际 Bootstrap DAG、28 份 Package Admission Receipt 与一个顶层 First Release
+  Receipt 证明语义 Profile；它不和
+  Text2SQL/Report 共享 thread，也不参加同一道题的回答。发布后整轮 ReleaseSetHash 不变。
 - 先跑 DEMO/TUNING 诊断并修复可证明问题，再对 Local Holdout 做隔离门禁；Holdout 内容不得进入 Prompt、
   Reflection 或优化日志。
-- Local Holdout 明确拆为 model-visible `PublicHoldoutCase`（仅题面、允许 Schema/Context）与 evaluator-only
-  `SealedHoldoutCase`（Gold SQL、expected result、split/registry/classification）；禁止进入模型的是 sealed 字段，
-  不是执行所必需的公开题面。Taint/serializer test 证明只有 public fields 到达 Agent/Provider/Trace/Artifact。
-- 公开题逐题保留 Attempt 0 和最多一次有界 Reflection；基础设施、权限、坏题、Oracle 故障不触发模型重试。
+- Local Holdout 明确拆为当前题 model-visible `PublicHoldoutCase` 与 evaluator-only `SealedHoldoutCase`；
+  `SealedDerivedEvaluation` 还包括 Oracle Verdict、expected-vs-actual diff、mismatch classification、derived row/
+  column signal 与错误摘要。Taint/serializer test 证明 sealed 及 derived 字段不到达 Agent/Provider/Reflection/
+  Public Trace/Report，也不进入后续题上下文。
+- DEMO/TUNING 可按冻结反馈策略保留 Attempt 0 和一次有界 Reflection。Local Holdout 的 Attempt 1 只能在
+  sealed Oracle 前基于公开题面、Published Release、候选 SQL 与非 Oracle Compiler/Firewall 诊断做盲自检；
+  随后只提交一次 sealed Oracle。TEST 不接受任何 Oracle 反馈式 Reflection。基础设施、权限、坏题、Oracle
+  故障不触发模型重试。
+- DEV 309 使用 `DevReflectionContract`：Attempt 1 也只能基于公开题面、Published Release、Attempt 0 SQL 与
+  非 Oracle Compiler/Firewall 诊断盲自检；两个候选都冻结后才调用 sealed Oracle。Verdict/diff/classification
+  不进入本题重试或后续题 Context，Post-reflection 不能由 evaluator 反馈驱动。
 - TEST 191 只运行 Submission，生成 SQL/CSV/Trace Artifact，不进入本地准确率分母。
 
 **Patterns to follow:**
@@ -1462,7 +1807,7 @@ Provider、Artifact、Trace 和 Billing 跑 Falcon 题目，签发最终 Go/No-G
 
 **Test scenarios:**
 - Happy path: db24 主域全部 17 道 DEV 题与 db14 全部 32 道 DEV 题逐题得到严格 Oracle PASS。
-- Happy path: 固定 10 道 DEMO 全部 PASS；5 道 Local Holdout 至少 4 道 post-reflection PASS。
+- Happy path: 固定 10 道 DEMO 全部 PASS；5 道 Local Holdout 至少 4 道 blind post-reflection PASS。
 - Happy path: DEMO 10 与 db24 17 的 Accepted QueryEvidence 均生成 Report Artifact，且每个事实 Claim 都能
   追溯到同题 Query/Result/Schema/Release Receipt。
 - Edge case: unordered multiset、重复行、NULL、numeric/date/text、ordered result 均按 Oracle Version 比较。
@@ -1471,8 +1816,8 @@ Provider、Artifact、Trace 和 Billing 跑 Falcon 题目，签发最终 Go/No-G
 - Integration: TEST 191 全部生成可审计 Submission Artifact，UI/API 不显示本地 PASS/accuracy。
 - Bypass: 现有 inline model runner、直接 eval runner、缺 Worker/Team/Billing Receipt 或伪造 SQL Artifact 的请求
   都不能取得 Oracle Verdict/ScoreCard。
-- Integration: 每道题的 Team DAG 都能证明 Text2SQL Profile；DEMO/db24 还能证明 Report Profile；同一固定
-  Falcon Schema 的 Semantic Dry-run 证明 Semantic Profile，三个 Profile 的 Context/Tool Policy 均保持隔离。
+- Integration: 28 库 Bootstrap DAG 证明 Semantic Profile；每道题 DAG 证明 Text2SQL Profile，DEMO/db24 还
+  证明 Report Profile；三个 Mastra thread/resource、Context Epoch 与 Tool Policy 均保持隔离。
 - Recovery: 在 Text2SQL、Report 和 Orchestrator 各注入一次 Worker 中断，本地 SQL/Artifact/Settlement 只接受
   一份且 Verdict/Accepted-set Hash 不变；外部 Provider Usage 按 U3 Capability 查询/对账，outcome unknown
   不能被伪装成“未重复”。
@@ -1480,24 +1825,37 @@ Provider、Artifact、Trace 和 Billing 跑 Falcon 题目，签发最终 Go/No-G
   Artifact Preview、Reflection、日志或模型请求。
 - Security: Public/Sealed Holdout 具有不同存储/Serializer/Artifact Type；任一 sealed 字段流入 Context、
   Provider Payload 或 Report 时整轮 Gate 失败。
+- Security: 任一 sealed-derived Verdict/diff/classification/signal 进入 Holdout Reflection、公开事件或后续题
+  Context 时整轮失败；Bootstrap Corpus 出现 Local Holdout/TEST 题面同样失败。
+- Security: DEV Oracle 在两个候选冻结前被调用，或其 derived feedback 进入 Attempt 1/后续题时整轮失败。
+- Context/Subagent: 每个 Falcon Task 的 Build Signature/Omission Ledger/Epoch 可重建；三个 Profile 使用 fresh
+  thread/resource，禁止 fork/递归委派。Worker kill、Context Compaction、late child result 和 unknown Tool Effect
+  均按 U19/U20 恢复合同收口，不能改变 Accepted-set Hash。
+- Bootstrap: 28 个 Package 的 Provenance 均只指向 Bootstrap Corpus；任一 Gold/expected/sealed/derived taint、
+  缺 Physical Core/Queryable Mapping/Join/mandatory 业务断言、部分发布或 Publisher 二次使用都阻止整轮 GO。
+- Semantic contribution: 每库 `SemanticCoverageReceipt` 满足不可降低的 `SemanticCoveragePolicyFloor`；每题 `SemanticUsageReceipt` 绑定实际
+  对象和 ReleaseSetHash，针对声明对象的消融测试不能仍走裸 Schema 得到同一 LogicalPlan。
+- Pre-publish: Evaluation Activation 不能被产品 Run/QA/Report 解析，不能产正式 Verdict；Publisher 收到与
+  `CandidateEvaluationReceipt` 不同 Hash、超过两次修订或任何非 DEMO/TUNING 输入时拒绝。
 
 **Verification:** 只有满足下列 Release Gate 才可签发 GO：
 - Fixed DEMO = 10/10 PASS；db24 DEV = 17/17 PASS；db14 DEV = 32/32 PASS。
-- Local Holdout post-reflection pass rate ≥ 0.80（至少 4/5），且运行前后污染检查均通过。
+- Local Holdout blind post-reflection pass rate ≥ 0.80（至少 4/5），且运行前后污染检查均通过。
 - DEV 309 First-pass ≥ 0.70（至少 217/309），Post-reflection ≥ 0.80（至少 248/309），每个数据库
   Post-reflection ≥ 0.60；309 题全部有确定性 Verdict/Failure Classification/Cost/Latency/Receipt，不能静默
-  跳题或用 Baseline 豁免绝对阈值，Permission/Security/Oracle/Infrastructure Failure 计为 Gate Failure。
+  跳题或豁免绝对阈值，Permission/Security/Oracle/Infrastructure Failure 计为 Gate Failure。
 - 冷重启 Worker 后独立重跑固定 Stability Suite（db24 17 + db14 32 + Local Holdout 5，重复题按 Case ID 去重），
   必须再次满足各自绝对门禁且无题级 flake；Provider 必须绑定不可变 Model Revision/采样参数，不能选择性重跑。
 - TEST 191 Submission 完整，但不声明本地 PASS。
 - 三类 Agent Profile Registration Receipt、Tool/Skill/Workflow Revision、Task/Handoff/Context/Completion/
   Verifier Receipt 完整；任一题绕过 Team Text2SQL 路径或上下文越界均阻止 GO。
-- DEMO 10 与 db24 17 的 Report Claim-Citation Gate 全部通过；Semantic Coverage/Drift Dry-run 通过但不产生
-  自动发布，Published Release Hash 在整轮 Falcon 中保持不变。
-- 与迁移前固定 Baseline 相比，First-pass/Post-reflection/Recovery 无未解释回归。
-- U17 `WorkspaceJourneyGateReceipt` 同时通过；Falcon 证明 governed Text2SQL/Report 质量，但不能单独替代
+- 顶层 `FirstReleaseAdmissionReceipt` 原子覆盖 28 个 `SemanticPackageAdmissionReceipt` 与
+  `FalconSemanticBundleIndex`；28 库 Coverage/Usage Gate、db24/db14 额外业务断言 Gate 均通过。DEMO 10 与
+  db24 17 的 Report Claim-Citation Gate 全部通过，ReleaseSetHash 整轮不变。
+- U17 `WorkspaceJourneyEvidenceArtifact` 同时通过；Falcon 证明 governed Text2SQL/Report 质量，但不能单独替代
   Files/Knowledge/MCP/Skill/Job/Datasource/恢复/双语的真实产品旅程证据。
-- Web、PostgreSQL、Migration Ledger、Worker、Indexer、Job Center、Provider/Billing、Artifact/Trace 健康证据齐全。
+- Web、PostgreSQL、空库 Schema 初始化、Worker、Indexer、Job Center、Mastra Runtime、Provider/Billing、
+  Artifact/Trace 健康证据齐全。
 
 ---
 
@@ -1524,7 +1882,6 @@ flowchart TB
     Execute --> Evidence
     Evidence --> Web
     Evidence --> Eval
-    Eval --> Semantic
 ```
 
 - **Interaction graph:** Workspace API 创建 Run/Job；Authority 解析资源；Worker 消费冻结配置；Semantic/Context
@@ -1532,16 +1889,19 @@ flowchart TB
   公开 Projection。
 - **Error propagation:** 服务端稳定 Reason Code 跨合同传播；权限拒绝和不可发布状态吸收，基础设施错误才进入
   有界 Retry，前端不自行翻译成功态。
-- **State lifecycle risks:** Migration/Backfill、双写、stale Worker、重复 Event、重复 Billing、索引投影过期、
-  Artifact 导出与 Context Snapshot 漂移均由 version/hash/fence/idempotency 管理。
+- **State lifecycle risks:** 首次 Schema 初始化、并行 DDL 编号、stale Worker、重复 Event、重复 Billing、
+  索引投影过期、Mastra Snapshot 漂移、Context Epoch 失败和子 Task 晚到结果均由 version/hash/fence/CAS/
+  idempotency 管理。
 - **API surface parity:** `/w/:workspaceId` UI、Workspace API、Worker、Semantic MCP、CLI/Runbook 和 Test Center
   必须消费同一 Contract/Projection。
 - **Agent parity and isolation:** Team 的可授权能力并集对 UI/API/Tool 可达；单个 Profile 只获得完成本角色所需的
   子集。Handoff 只传有界 Projection/Artifact Ref，Team 状态在 PostgreSQL，不把任一 Agent Context 当 Authority。
 - **Integration coverage:** 单层 Mock 不能证明 Effective Config、Provider/Billing、Semantic Release、SQL Firewall、
   Artifact Hash 或 Falcon Oracle；U18 必须跑真实组合。
-- **Unchanged invariants:** PostgreSQL Authority、SecretRef、Graph v2 identity、人工发布、公共事件脱敏、
-  Deterministic Oracle、Falcon TEST 无本地 Gold 均保持不变。
+- **Unchanged invariants:** PostgreSQL Authority、SecretRef、Graph v2 identity、Agent Candidate-only、公共事件脱敏、
+  Deterministic Oracle、Falcon TEST 无本地 Gold 均保持不变。唯一例外是 generation 0 由 Goal 启动时签名的
+  `SemanticBootstrapPolicy` 和非模型 Bootstrap Publisher 发布；Bootstrap 成功后 generation=1 且 capability
+  disabled，后续人工 Review/Publish 只能产生 generation≥2。
 
 ---
 
@@ -1549,12 +1909,12 @@ flowchart TB
 
 | Phase | 单元 | 进入条件 | 退出 Gate |
 |---|---|---|---|
-| 0 Contract Freeze | U1–U5 | Preflight 全部通过 | 兼容合同、Effective Config、Provider、Ontology Package、治理生命周期全绿 |
+| 0 Greenfield Contract Freeze | U1–U5 | Preflight 全部通过 | Capability/Effective Config/Provider/Ontology Package/Bootstrap Authority 合同全绿 |
 | 1A Team Risk Slice | U7→U19 | U2/U3/U5 READY | Team v2 delegation/coverage/acceptance/recovery Slice 全绿，否则提前停止 |
-| 1B Run Workbench | U10→U6；U8→U9 | Phase 0 + U7 Receipts | 文件/Artifact/恢复/Console/Job 真实持久化与恢复全绿 |
-| 2 Semantic + Agent Runtime | U15→U11→U12→U13→U14→U20 | Phase 1 与 U19 Slice READY | Candidate→Published→Context→SQL/MCP/Knowledge→三 Profile 闭环全绿 |
-| 3 Platform UX | U16→U17 | Runtime API 与 U20 Agent Team 稳定 | Adapter 认证与 Workspace Journey Gate、Team Trace、双语/状态完整 |
-| 4 Release | U18 | 除 R10/T08 运行证据外其余 Capability Evidence READY | 生成 R10/T08 Evidence，Falcon Release Gate 签发 GO |
+| 1B Run Workbench | U10→U6；U8→U9 | U19 Slice READY | 文件/Artifact/恢复/Console/Job 真实持久化与恢复全绿 |
+| 2 Semantic + Agent Runtime | U15→U11→U12→U13→U14→U20 | Phase 1 与 U19 Slice READY | 真实 Source→Candidate、隔离集成 v1、Context/SQL/MCP/Knowledge 与 Mastra 三 Profile 全绿 |
+| 3 Platform UX | U16→U17 | U16 需 U10 READY；U17 需 U16 与 U20 READY | Adapter 认证与 Workspace Journey Evidence、Team Trace、双语/状态完整 |
+| 4 Release | U18 | 除 R10/T08 运行证据外其余 Capability Evidence READY | 28 Package Initial Release Set、R10/T08 Evidence 与 Falcon Gate 共同签发 GO |
 
 每个 Phase 的退出 Gate 是下一阶段的机器可验证前置；Goal 不等待用户“继续”，失败时直接回到产生该
 Receipt 的最小 U-ID 修复并重跑相关门禁。
@@ -1565,40 +1925,45 @@ Receipt 的最小 U-ID 修复并重跑相关门禁。
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| 共享 Dirty Tree 与并行 Migration 冲突 | High | High | 实时分配 Ledger ID、Owned Path Allowlist、每 U-ID Scoped Commit |
-| 58 项范围导致大爆炸改动 | High | High | 20 个 Child Task、依赖 Gate、兼容优先、每项独立 Evidence |
-| 新 Package 字段破坏旧 Release Hash | Medium | High | 旧 Canonical Characterization、确定性兼容 Reader、等价 Backfill Receipt |
+| 共享 Dirty Tree 与并行 Schema 初始化编号冲突 | High | High | 实时分配 DDL Ledger ID、Owned Path Allowlist、每 U-ID Scoped Commit |
+| 58 项范围导致大爆炸改动 | High | High | 20 个 Child Task、依赖 Gate、Greenfield 合同先冻结、每项独立 Evidence |
+| 新语义层覆盖不完整或虽存在但未参与查询 | Medium | Critical | Mandatory Manifest、Coverage/Usage Receipt、关系与 Formula AST Gate、Join Proof、Query Dry-run 与逐题消融 |
 | Effective Config 形成第二份资源 Authority | Medium | High | 只保存解析快照；每项仍指向原 Datasource/Model/Resource Authority |
-| AI 归纳越权或自动发布 | Medium | Critical | Candidate-only、Reviewer Receipt、发布 API Actor/Version/Hash 校验 |
+| AI 归纳越权或把首版冒充人工审核 | Medium | Critical | Agent 只见 Policy View；Grant 由独立 Authority 持有并一次消费；Receipt 显式 `SYSTEM_BOOTSTRAP_POLICY`；发布 generation 1 后永久熔断 |
 | Knowledge/RAG 绕过 SQL/RBAC | Medium | Critical | Evidence-only；权限拒绝吸收；所有 Query 统一走 Sandbox Authority |
-| MCP/Skill 扩大攻击面 | High | High | SecretRef、SSRF 防护、Manifest Pin、Tool Policy、无任意安装脚本 |
+| MCP/Skill 扩大攻击面或绕过出境策略 | High | Critical | SecretRef、每跳 SSRF/DNS 防护、Manifest Pin、Tool Policy、外部 Tool Projection Receipt、无任意安装脚本 |
 | 三类 Agent 实为同一 Context/权限换名称 | High | Critical | 独立 Profile Revision/Tool/Skill/Workflow/Context，策略负向测试与 Registration Receipt |
 | Handoff 导致上下文爆炸或自由对话死循环 | High | High | 64 KiB Projection、Artifact Ref、Checkpoint、Handoff 深度递减、Gap 最多一次回补 |
 | 不受信 Context/MCP 输出诱导 Agent 越权 | High | Critical | Control/Data 分离、UNTRUSTED 标记、签名 Envelope、最末端 TaskCapability 重验与对抗测试 |
 | 多 Agent/Fan-out 绕过单请求限额 | Medium | High | Principal/Workspace/Profile 聚合配额、入队预留、并发/日/Run Budget 与稳定拒绝 Receipt |
 | Agent 自报完成绕过验收 | Medium | Critical | `complete_task` 只提交；Schema/SQL/Claim/Falcon Verifier 决定 `ACCEPTED` |
+| Mastra Memory/Snapshot 被误当成业务真相 | Medium | Critical | Mastra 只保存执行快照；Task/Event/Artifact/Effect/Acceptance 仅以 PostgreSQL 为 Authority；根导出不泄漏 Mastra |
+| Context 压缩丢义务或子 Agent 泄露完整父上下文 | High | Critical | Build/Omission/Obligation Ledger；Artifact-first；事务化 Context Epoch；敏感 Artifact Policy；最小 ContextSlice；禁止递归委派与晚结果写回 |
 | 专职 Agent 能力割裂导致用户操作缺口 | Medium | High | Team 级 UI/API/Tool parity matrix，单 Agent 保持 least privilege |
 | 多 Adapter 方言/只读行为不一致 | High | High | 每 Adapter 独立认证，失败类型保持 DISABLED 而非降级安全标准 |
-| Falcon 题目被调优污染 | Medium | Critical | DEMO/TUNING/HOLDOUT/TEST 分层、摘要检查、Holdout 密封与一次门禁 |
-| Falcon 题目受模型随机性影响 | Medium | High | 固定 Profile/参数/预算/上下文，保存 Attempt 0，仅一次有界 Reflection |
-| 人工发布与无人干预冲突 | High | High | 精确 Falcon Release 审核作为 Goal 启动前置；Goal 中不产生新的审批请求 |
+| Falcon 题目或 Oracle 派生反馈污染语义/模型 | Medium | Critical | Bootstrap/Case/Sealed/SealedDerived 分层、actor-specific taint、Holdout Oracle 前盲自检与一次门禁 |
+| Falcon 题目受模型随机性影响 | Medium | High | 固定 Profile/参数/预算/上下文，保存 Attempt 0，按 split 固定盲自检/Reflection Policy |
+| 首版发布与无人干预冲突 | High | High | Goal 启动时完成 Admin+Platform Attestor 授权；仅 generation 0、Mandatory Manifest 全部 PASS/unresolved=0 才 CAS 发布，optional 歧义留 Candidate，否则 fail-closed 到 READY_FOR_REVIEW/Blocker |
 | 全仓历史失败掩盖本任务问题 | High | Medium | Scoped Gate 先归因，最终再跑全仓；无关失败单列但 Falcon/范围内失败不可豁免 |
 
 ---
 
 ## Operational and Rollback Notes
 
-- 所有数据库变更采用 Additive Migration 与版本化 Backfill；Cutover 前保留旧 Reader，验证后才把旧入口转
-  `COMPATIBLE` 或 `PAUSED`，不物理删除历史数据。
+- 数据库只做 Greenfield 空 Schema 初始化：创建新表、RLS、窄 RPC、Registry 与索引声明；不读取、不搬运、
+  不回填任何历史数据，也不存在 Dual Read/Write、旧 Reader 或 Cutover。
 - 索引、Neo4j、Embedding、Context Projection 可按 Authority Receipt 重建；重建失败不影响已发布 Release，
   但相关 Capability 标记 NOT_READY。
 - Provider/Adapter/Extension 可单独 Disable；历史 Run 继续引用原 Revision/Receipt。
 - Run/Job 失败保留事件、Artifact 与 Billing 状态；重试创建新 Attempt/Fence，不覆写历史。
-- 回滚按 `GoalExecutionManifest` 已接受单元做逆拓扑：先撤销依赖方，再撤销其依赖，不按 U-ID 数字排序；
-  保留不可变 Receipt，数据库结构只通过新的补偿 Migration 前进。
+- 回滚按 `GoalExecutionManifest` 已接受单元做逆拓扑：先禁用依赖方，再禁用其依赖，不按 U-ID 数字排序；
+  保留不可变 Receipt。DDL 修正只追加新的 forward DDL；不删除用户数据、不伪造未发布状态。
+- 首版发布后 Bootstrap Publisher 永久熔断；若首版内容有缺陷，停止新 Run 并按正常 generation≥2 人工治理流程
+  发布修正版，不能重新打开 generation 0 特权。
 - Goal 不获授权执行 Falcon Schema 重建、数据库删除或 Volume 清理；需要时另发明确的破坏性操作请求。
 - Team 回滚只切回上一版 `AgentProfileRevision`/Workflow/Tool Policy，并取消新 Task；历史 Handoff、Artifact、
-  Verifier 与 Billing Receipt 不覆写。恢复不得把失败 Task 的完整 Context 注入新 Attempt。
+  Verifier 与 Billing Receipt 不覆写。恢复顺序固定为 repair→replay→reconcile unknown→rebuild Model View→
+  Orchestrator 显式 resume 新 Attempt，不得把失败 Task 的完整 Context 注入新 Attempt。
 
 ---
 
@@ -1622,7 +1987,9 @@ Receipt 的最小 U-ID 修复并重跑相关门禁。
 - Provider 接入方式：全部 API-backed，不引入 CLI runtime。
 - 最终验收：Falcon 真实题目与确定性 Oracle，不以静态测试或页面可见代替。
 - Falcon TEST 是否本地判分：否，只生成 Submission Artifact。
-- Goal 中是否允许 AI 发布语义：否；精确已审内容作为启动前置，执行中不请求人工审批。
+- Goal 中如何无人干预地产生首个 Published Release：启动时完成 Admin 与独立 Platform Attestor 授权；AI 只写
+  Candidate 并只见 Policy View，独立 Verifier 生成 Receipt，非模型窄权限 Publisher 用不可委托 Grant 原子执行
+  generation 0→1 并永久熔断。Optional 歧义留 Candidate，mandatory 未满足则 fail closed。
 - Agent 是否只是 Prompt 名称不同：否；三类 Agent 各自注册不同 Tool/Skill/Workflow/Context Policy，并生成
   独立 Profile/Task/Handoff Receipt。
 - 是否由三个 Agent 共享完整对话：否；Team 只通过 Artifact Ref 与有界 Context Projection 协作。
@@ -1630,13 +1997,22 @@ Receipt 的最小 U-ID 修复并重跑相关门禁。
 - 报告 Agent 是否直接补查数据库：否；Evidence Gap 交回 Orchestrator，最多创建一次新的 Text2SQL Task。
 - Job Center 如何部署：与现有 Worker 同宿主但独立 Queue Loop/Lease/Health/Concurrency，不新增万能进程或隐形服务。
 - Knowledge Vector Backend：PostgreSQL 保存 Authority，现有 Neo4j 保存可重建向量投影，Embedding 全部 API-backed。
-- mandatory Adapter：PostgreSQL、MySQL、SQLite、DuckDB、ClickHouse 均需 GOVERNED_QUERY；Trino 保持兼容或显式 Paused。
-- 迁移前 Baseline 何时冻结：Preflight、任何产品 mutation 之前；只作回归阻断，不豁免绝对 Falcon 阈值。
-- GO 的含义：U17 Workspace Journey 证明平台旅程，U18 Falcon 证明 governed Text2SQL/Report；两者都通过才是平台 GO。
+- mandatory Adapter：PostgreSQL、MySQL、SQLite、DuckDB、ClickHouse 均需 GOVERNED_QUERY；Trino 明确不在本次范围。
+- Falcon 输入何时冻结：在任何语义生成或题目执行前冻结 Bootstrap Corpus、逐题 Public Input、Sealed 与
+  SealedDerived 边界；Local Holdout/TEST 题面、Gold、expected、Oracle 派生反馈绝不进入语义生成或跨题上下文。
+- Falcon 28 库如何首发：一个 Workspace/Datasource/Semantic Domain 的 generation 1 Initial Release Set 原子包含
+  28 个 database-scoped Package，只有一个顶层 First Release Receipt，另有 28 个 Package Admission Receipt。
+- Mastra 与 PostgreSQL 如何分工：Mastra 只负责三个 Profile 的 Agent/Workflow composition 和执行快照；
+  Orchestrator DAG、租约/Fence、Task/Event/Artifact/Receipt/Acceptance 继续以 PostgreSQL 为唯一 Authority。
+- 子 Agent 如何控 Context：父 Task 只下发最小 `ContextSlice + Artifact refs`，子 Task 使用独立 thread/resource，
+  禁止递归委派；所有 Model View 都由 Context Compiler 按 watermark 重建。
+- GO 的含义：U17 `WorkspaceJourneyEvidenceArtifact` 证明平台旅程，U18 Falcon 证明 governed Text2SQL/Report；
+  两者都通过才是平台 GO。
 
 ### Deferred to Implementation
 
-- 每次 Migration 的最终 Ledger ID：执行时按实时 Migration Ledger 分配，避免并行任务冲突。
+- 空 Schema 初始化 DDL 的具体 Ledger 编号由未来 Goal 在 Preflight 后实时分配；它只是部署排序细节，不是
+  历史数据迁移门禁。
 
 ---
 
@@ -1645,32 +2021,57 @@ Receipt 的最小 U-ID 修复并重跑相关门禁。
 Goal 只有同时满足以下事实才能完成：
 
 - 58 个 M/S/A/R/T Capability ID 全部有 READY Evidence，且 Capability Manifest 无缺失/重复。
-- U1–U20 各自存在 Scoped Commit、验证结果和必要的 Migration/Run/Job/Artifact/Receipt。
+- U1–U20 各自存在 Scoped Commit、验证结果和必要的 Schema/Run/Job/Artifact/Receipt。
 - Workspace Defaults/Overrides、Run、Worker、Provider/Billing、Context、SQL 与公开 Trace 的 Hash 链闭合。
 - Ontology Package 是 Graph v2/治理的扩展，不存在第二份语义 Authority 或自动发布旁路。
-- Web、Database、Migration Ledger、Worker、Indexer、Job Center、可选服务健康分别验证，不笼统写“服务已启动”。
-- 旧 API/Route 已兼容或显式 Paused，没有静默删除。
+- Web、PostgreSQL、空库 Schema 初始化、Worker、Indexer、Job Center、Mastra Runtime、Provider/Billing 与
+  Artifact/Trace 健康分别验证，不笼统写“服务已启动”。
+- 这是独立 Greenfield 产品面；未承诺旧 API/Route/Payload/Release 兼容，也没有静默读取或搬运历史状态。
 - 三类 Agent 的 Tool/Skill/Workflow/Profile 确实不同，Team 只通过有界 Context/Handoff 协作；所有
   `completed` Task 均有独立 VerifierDecision 才成为 `accepted`。
+- 每个 Model View 都可追溯到 `ContextBuildManifest + BuildSignature + OmissionLedger + ContextEpochRef`；子 Task
+  不继承完整父上下文，TOOL_NOT_STARTED 与 TOOL_OUTCOME_UNKNOWN 恢复路径可区分。
+- `OpenObligationLedger` 在 compaction 前后集合等价；Bootstrap/Task Grant 不进入 Agent Context，所有 API/
+  Tool/Worker 路径服从同一 Route Authorization Matrix 与最末端 Grant/TaskCapability 校验。
+- 唯一 Published Initial Release Set 含 28 个可查询 Package、一个 `FirstReleaseAdmissionReceipt`、28 个
+  `SemanticPackageAdmissionReceipt` 与 `FalconSemanticBundleIndex`；db24/db14 的业务语义增强 Gate 额外通过。
+- Journey Workspace 另有独立 `FirstReleaseAdmissionReceipt` 与 `WorkspaceJourneyEvidenceArtifact`；它与 Falcon
+  Workspace 的 Domain/Policy/Grant/Release/Artifact Namespace 不混用。
 - Falcon Gate 满足 U18 的全部绝对门禁与污染检查，并签发内容寻址的 Release Evidence Package。
-- 全仓 Gate 通过；若存在与本 Goal 无关的既有失败，必须有可复现归因，但任何范围内或 Falcon 失败都不能豁免。
+- 全仓 Gate 必须完整运行；本 Goal 范围内与 Falcon Gate 必须全部通过。既有且与本 Goal 无关的失败可凭
+  可复现基线归因单列，但不能豁免任何范围内或 Falcon 失败。
 
 ---
 
 ## Sources & References
 
-- Origin input: 2026-08-16 用户提供的“DataFoundry 能力迁移 + CoA 语义增强”总清单及 Falcon 最终验收补充。
+- Origin input: 2026-08-16 用户提供的“DataFoundry 能力迁移 + CoA 语义增强”总清单及 Falcon 最终验收补充；
+  同日补充将本计划改为 Greenfield 新项目、无需历史数据迁移，并指定 Mastra 三类 Agent 与 DeepSeek Harness
+  上下文/子 Agent 管理作为计划要求。
 - Earlier requirements: `docs/brainstorms/2026-08-05-datafoundry-platform-modules-requirements.md`
 - Earlier implementation plan: `docs/plans/2026-08-05-001-datafoundry-platform-modules-plan.md`
 - Semantic roadmap: `docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md`
 - Falcon authority: `.trellis/tasks/08-15-falcon-demo-eval/prd.md`
-- Falcon execution baseline: `.trellis/tasks/08-15-falcon-demo-eval/implement.md`
+- Falcon execution contract: `.trellis/tasks/08-15-falcon-demo-eval/implement.md`
 - Existing Team contracts: `packages/agent-runtime/src/teams/contracts.ts`,
   `packages/agent-runtime/src/teams/handoff.ts`, `packages/agent-runtime/src/teams/context-projection.ts` and
   `packages/agent-runtime/test/team-handoff.spec.ts`.
 - DataFoundry fixed reference: commit `08afa7b`, especially `apps/api/src/run-config-resolver.ts`,
   `apps/api/src/run-checkpoint-resume.ts`, `apps/api/src/session-branching.ts`, `apps/api/src/context-package-recorder.ts`.
 - CoA fixed reference: commit `4e0ad25`, especially Smithy Ontology Induction/Metric/Serve contracts and MCP tool definitions.
+- Mastra fixed local reference: `/Users/lienli/Documents/GitHub/agent-ref/mastra` commit `57b032df3c`; product dependency
+  `@mastra/core` is pinned to `1.52.1`, and Mastra remains internal to `packages/agent-runtime`.
+- Adapter fixed local references: current repo pins `pg@8.22.0`/`pgsql-parser@18.1.1` and already uses
+  `mysql2@3.23.2`; local `text2sql`/DataFoundry refs use `node-sql-parser@5.4.0`; Mastra fixed commit above uses
+  `@duckdb/node-api@1.5.2-r.2` and `@clickhouse/client@1.20.0` in its store packages.
+- DeepSeek Harness fixed local reference: `/Users/lienli/Documents/GitHub/deepseek-harness` commit
+  `47f943859bef60e4160492346772ded9b24f765a`.
 - External local research root: `深度调研/`.
+  - `research/agent-context-management/synthesis/series-r3-harness/articles/03-context-is-not-message-history-r2.md`
+  - `research/agent-context-management/synthesis/series-r3-harness/articles/09-compaction-is-transaction.md`
+  - `research/agent-context-management/synthesis/series-r3-harness/articles/10-recovery-is-not-continuation.md`
+  - `research/agent-context-management/synthesis/series-r3-harness/articles/13-workflow-subagent-team.md`
+  - `research/agent-team/answers/RQ010-在-Mastra-中-Agent-与-Agent-之间通过哪些调用-消息与事件路径通信-运行时又如何在保持上下文隔离的前提下共享会话-Memory-Workflow-状态和结.md`
+  - `research/agent-harness-framework/synthesis/cordis-mastra-harness/article.md`
   - `research/tutti-project-onboarding/textbook-runtime/chapters/CH012-REV001-CHD96d3d63b50b51d-11-Communication-与-Multi-Agent-协议-Handoff-和工作协作.md`
   - `research/quant-trading-agent/synthesis/textbook-build/curated/CH008.md`
