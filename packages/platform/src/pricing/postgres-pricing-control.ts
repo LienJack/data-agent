@@ -1,12 +1,18 @@
 import {
+  type ArchiveModelProviderConnectionInput,
+  archiveModelProviderConnectionInputSchema,
   type FxRateCandidate,
   fxRateCandidateSchema,
   type ModelCatalogEntry,
   type ModelCatalogStatusInput,
   type ModelPriceCandidate,
+  type ModelProviderConnection,
+  type ModelProviderSelectionInput,
   modelCatalogEntrySchema,
   modelCatalogStatusInputSchema,
   modelPriceCandidateSchema,
+  modelProviderConnectionSchema,
+  modelProviderSelectionInputSchema,
   type PricingCandidateDecisionInput,
   pricingCandidateDecisionInputSchema,
   type SubmitFxRateSyncInput,
@@ -14,7 +20,9 @@ import {
   submitFxRateSyncInputSchema,
   submitModelPriceSyncInputSchema,
   type UpsertModelCatalogEntryInput,
+  type UpsertModelProviderConnectionInput,
   upsertModelCatalogEntryInputSchema,
+  upsertModelProviderConnectionInputSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import type { SqlClient, SqlPool } from "../persistence/transaction.js";
@@ -49,6 +57,7 @@ interface ModelCatalogRow {
   readonly app_id: string;
   readonly environment: string;
   readonly model_profile_id: string;
+  readonly provider_connection_id?: string;
   readonly provider: ModelCatalogEntry["provider"];
   readonly model_id: string;
   readonly display_name: string;
@@ -58,6 +67,24 @@ interface ModelCatalogRow {
   readonly status: ModelCatalogEntry["status"];
   readonly config_version: number | string;
   readonly is_system_default: boolean;
+  readonly created_by: string;
+  readonly created_at: Date | string;
+  readonly updated_at: Date | string;
+}
+
+interface ModelProviderConnectionRow {
+  readonly app_id: string;
+  readonly environment: string;
+  readonly provider_connection_id: string;
+  readonly vendor_id: ModelProviderConnection["vendor_id"];
+  readonly runtime_provider: ModelProviderConnection["runtime_provider"];
+  readonly display_name: string;
+  readonly base_url: string;
+  readonly credential_ref: unknown | null;
+  readonly source: ModelProviderConnection["source"];
+  readonly status: ModelProviderConnection["status"];
+  readonly health: ModelProviderConnection["health"];
+  readonly config_version: number | string;
   readonly created_by: string;
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
@@ -95,6 +122,16 @@ function date(value: Date | string): string {
 function model(row: ModelCatalogRow): ModelCatalogEntry {
   return modelCatalogEntrySchema.parse({
     schema_version: "model-catalog-entry@1.0.0",
+    ...row,
+    config_version: Number(row.config_version),
+    created_at: timestamp(row.created_at),
+    updated_at: timestamp(row.updated_at),
+  });
+}
+
+function providerConnection(row: ModelProviderConnectionRow): ModelProviderConnection {
+  return modelProviderConnectionSchema.parse({
+    schema_version: "model-provider-connection@1.0.0",
     ...row,
     config_version: Number(row.config_version),
     created_at: timestamp(row.created_at),
@@ -205,6 +242,69 @@ export function createPostgresPricingControlRepository(pool: SqlPool) {
           [parsed.value.deployment_id, parsed.value.principal_id],
         );
         return Object.freeze(result.rows.map(model));
+      });
+    },
+
+    async listProviderConnections(
+      input: unknown,
+    ): Promise<BoundaryResult<readonly ModelProviderConnection[]>> {
+      const parsed = context(input);
+      if (!parsed.ok) return parsed;
+      return withClient(pool, async (client) => {
+        const result = await client.query<ModelProviderConnectionRow>(
+          "select * from platform.list_model_provider_connections($1::uuid,$2::uuid)",
+          [parsed.value.deployment_id, parsed.value.principal_id],
+        );
+        return Object.freeze(result.rows.map(providerConnection));
+      });
+    },
+
+    async applyProviderConnectionCommand(
+      input: unknown,
+      command: UpsertModelProviderConnectionInput | ArchiveModelProviderConnectionInput,
+    ): Promise<BoundaryResult<ModelProviderConnection>> {
+      const parsedContext = context(input);
+      if (!parsedContext.ok) return parsedContext;
+      const parsedCommand =
+        command.schema_version === "model-provider-upsert@1.0.0"
+          ? upsertModelProviderConnectionInputSchema.safeParse(command)
+          : archiveModelProviderConnectionInputSchema.safeParse(command);
+      if (!parsedCommand.success) {
+        return failure("MODEL_PROVIDER_COMMAND_INVALID", "供应商连接命令不符合严格契约。");
+      }
+      return withClient(pool, async (client) => {
+        const result = await client.query<{ readonly result: ModelProviderConnectionRow }>(
+          "select app_data_agent.apply_model_provider_connection_command($1::uuid,$2::uuid,$3::jsonb) as result",
+          [parsedContext.value.deployment_id, parsedContext.value.principal_id, parsedCommand.data],
+        );
+        const row = result.rows[0];
+        if (!row) throw new Error("MODEL_PROVIDER_RECEIPT_MISSING");
+        return providerConnection(row.result);
+      });
+    },
+
+    async applyProviderSelection(
+      input: unknown,
+      selection: ModelProviderSelectionInput,
+    ): Promise<BoundaryResult<readonly ModelCatalogEntry[]>> {
+      const parsedContext = context(input);
+      if (!parsedContext.ok) return parsedContext;
+      const parsedSelection = modelProviderSelectionInputSchema.safeParse(selection);
+      if (!parsedSelection.success) {
+        return failure("MODEL_PROVIDER_SELECTION_INVALID", "供应商模型选择不符合严格契约。");
+      }
+      return withClient(pool, async (client) => {
+        const result = await client.query<{ readonly result: readonly ModelCatalogRow[] }>(
+          "select app_data_agent.apply_model_provider_selection($1::uuid,$2::uuid,$3::jsonb) as result",
+          [
+            parsedContext.value.deployment_id,
+            parsedContext.value.principal_id,
+            parsedSelection.data,
+          ],
+        );
+        const rows = result.rows[0]?.result;
+        if (!rows) throw new Error("MODEL_PROVIDER_SELECTION_RECEIPT_MISSING");
+        return Object.freeze(rows.map(model));
       });
     },
 

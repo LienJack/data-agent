@@ -13,10 +13,16 @@ const mocks = vi.hoisted(() => ({
   ModelBillingPanel: function ModelBillingPanel() {
     return null;
   },
+  ModelProvidersPanel: function ModelProvidersPanel() {
+    return null;
+  },
   OperationsAdminPanel: function OperationsAdminPanel() {
     return null;
   },
   PricingControlPanel: function PricingControlPanel() {
+    return null;
+  },
+  PlatformSettingsTabs: function PlatformSettingsTabs() {
     return null;
   },
   SemanticPortabilityPanel: function SemanticPortabilityPanel() {
@@ -36,11 +42,17 @@ vi.mock("@/components/settings/credit-ledger-panel", () => ({
 vi.mock("@/components/settings/model-billing-panel", () => ({
   ModelBillingPanel: mocks.ModelBillingPanel,
 }));
+vi.mock("@/components/settings/model-providers-panel", () => ({
+  ModelProvidersPanel: mocks.ModelProvidersPanel,
+}));
 vi.mock("@/components/settings/operations-admin-panel", () => ({
   OperationsAdminPanel: mocks.OperationsAdminPanel,
 }));
 vi.mock("@/components/settings/pricing-control-panel", () => ({
   PricingControlPanel: mocks.PricingControlPanel,
+}));
+vi.mock("@/components/settings/platform-settings-tabs", () => ({
+  PlatformSettingsTabs: mocks.PlatformSettingsTabs,
 }));
 vi.mock("@/components/settings/semantic-portability-panel", () => ({
   SemanticPortabilityPanel: mocks.SemanticPortabilityPanel,
@@ -85,12 +97,26 @@ describe("platform settings billing UI", () => {
   });
 
   it("keeps non-billing settings but does not mount billing controls by default", async () => {
-    const elements = collectElements(await SettingsPage());
+    const pageElements = collectElements(await SettingsPage());
+    const tabs = pageElements.find((element) => element.type === mocks.PlatformSettingsTabs) as
+      | ReactElement<{
+          readonly model: ReactNode;
+          readonly operations: ReactNode;
+          readonly semantic: ReactNode;
+        }>
+      | undefined;
+    const elements = collectElements([
+      tabs?.props.model,
+      tabs?.props.operations,
+      tabs?.props.semantic,
+    ]);
     const types = new Set(elements.map((element) => element.type));
     const operations = elements.find((element) => element.type === mocks.OperationsAdminPanel) as
       | ReactElement<{ readonly billingUiEnabled: boolean }>
       | undefined;
 
+    expect(tabs).toBeDefined();
+    expect(types).toContain(mocks.ModelProvidersPanel);
     expect(types).toContain(mocks.OperationsAdminPanel);
     expect(types).toContain(mocks.SemanticPortabilityPanel);
     expect(types).not.toContain(mocks.CreditLedgerPanel);
@@ -102,7 +128,11 @@ describe("platform settings billing UI", () => {
   it("restores the existing controls after an explicit server opt-in", async () => {
     vi.stubEnv("BILLING_UI_ENABLED", "true");
 
-    const elements = collectElements(await SettingsPage());
+    const pageElements = collectElements(await SettingsPage());
+    const tabs = pageElements.find((element) => element.type === mocks.PlatformSettingsTabs) as
+      | ReactElement<{ readonly operations: ReactNode }>
+      | undefined;
+    const elements = collectElements(tabs?.props.operations);
     const types = new Set(elements.map((element) => element.type));
     const operations = elements.find((element) => element.type === mocks.OperationsAdminPanel) as
       | ReactElement<{ readonly billingUiEnabled: boolean }>

@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
 import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
+import { ModelProvidersPanel } from "@/components/settings/model-providers-panel";
 import { OperationsAdminPanel } from "@/components/settings/operations-admin-panel";
+import { PlatformSettingsTabs } from "@/components/settings/platform-settings-tabs";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
 import { isBillingUiEnabled } from "@/lib/billing-ui";
@@ -51,38 +53,42 @@ export default async function SettingsPage() {
           </div>
         </header>
 
-        {isSuperAdmin && (
-          <div className="mt-8 workspace-section">
-            <OperationsAdminPanel
-              currentPrincipalId={session.value.principal_id}
-              billingUiEnabled={billingUiEnabled}
-            />
-          </div>
-        )}
-
-        {billingUiEnabled && (
-          <>
-            <div
-              className={`${isSuperAdmin ? "mt-12 border-t border-[var(--color-border-default)] pt-8" : "mt-8"} workspace-section`}
-            >
-              <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
+        <PlatformSettingsTabs
+          model={<ModelProvidersPanel isSuperAdmin={isSuperAdmin} />}
+          operations={
+            <div className="space-y-10">
+              {isSuperAdmin && (
+                <div className="workspace-section">
+                  <OperationsAdminPanel
+                    currentPrincipalId={session.value.principal_id}
+                    billingUiEnabled={billingUiEnabled}
+                  />
+                </div>
+              )}
+              {billingUiEnabled && (
+                <>
+                  <div className="border-t border-[var(--color-border-default)] pt-8 workspace-section">
+                    <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
+                  </div>
+                  <div className="border-t border-[var(--color-border-default)] pt-8">
+                    <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
+                  </div>
+                </>
+              )}
+              {billingUiEnabled && isSuperAdmin && (
+                <div className="border-t border-[var(--color-border-default)] pt-8">
+                  <PricingControlPanel />
+                </div>
+              )}
+              {!isSuperAdmin && !billingUiEnabled && (
+                <div className="border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-5 text-sm text-[var(--color-text-secondary)]">
+                  组织与运维控制面仅向平台管理员开放。
+                </div>
+              )}
             </div>
-
-            <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
-              <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
-            </div>
-          </>
-        )}
-
-        <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
-          <SemanticPortabilityPanel workspaces={workspaces} />
-        </div>
-
-        {billingUiEnabled && isSuperAdmin && (
-          <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
-            <PricingControlPanel />
-          </div>
-        )}
+          }
+          semantic={<SemanticPortabilityPanel workspaces={workspaces} />}
+        />
       </div>
     </div>
   );

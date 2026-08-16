@@ -48,11 +48,93 @@ export const globalModelCredentialRefSchema = z.strictObject({
   rotation_state: z.enum(["ACTIVE", "ROTATION_PENDING", "REVOCATION_PENDING", "REVOKED"]),
 });
 
+export const modelVendorIdSchema = z.enum([
+  "deepseek",
+  "kimi",
+  "glm",
+  "openai",
+  "anthropic",
+  "grok",
+  "gemini",
+  "volcengine",
+  "siliconflow",
+  "openai-compatible",
+]);
+
+export const modelProviderConnectionSourceSchema = z.enum(["environment", "manual"]);
+export const modelProviderConnectionStatusSchema = z.enum(["ACTIVE", "ARCHIVED"]);
+export const modelProviderConnectionHealthSchema = z.enum([
+  "configured",
+  "untested",
+  "connected",
+  "failed",
+]);
+
+export const modelProviderConnectionSchema = z.strictObject({
+  schema_version: z.literal("model-provider-connection@1.0.0"),
+  app_id: immutableIdSchema,
+  environment: environmentSchema,
+  provider_connection_id: immutableIdSchema,
+  vendor_id: modelVendorIdSchema,
+  runtime_provider: modelProviderSchema,
+  display_name: z.string().min(1).max(255),
+  base_url: z.url().max(2048),
+  credential_ref: globalModelCredentialRefSchema.nullable(),
+  source: modelProviderConnectionSourceSchema,
+  status: modelProviderConnectionStatusSchema,
+  health: modelProviderConnectionHealthSchema,
+  config_version: z.number().int().positive(),
+  created_by: immutableIdSchema,
+  created_at: timestampSchema,
+  updated_at: timestampSchema,
+});
+
+export const upsertModelProviderConnectionInputSchema = z.strictObject({
+  schema_version: z.literal("model-provider-upsert@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  provider_connection_id: immutableIdSchema,
+  vendor_id: modelVendorIdSchema,
+  runtime_provider: modelProviderSchema,
+  display_name: z.string().min(1).max(255),
+  base_url: z.url().max(2048),
+  credential_ref: globalModelCredentialRefSchema.nullable(),
+  expected_config_version: z.number().int().nonnegative(),
+});
+
+export const archiveModelProviderConnectionInputSchema = z.strictObject({
+  schema_version: z.literal("model-provider-archive@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  provider_connection_id: immutableIdSchema,
+  expected_config_version: z.number().int().positive(),
+  reason: z.string().min(1).max(500),
+});
+
+export const modelProviderSelectionItemSchema = z.strictObject({
+  model_profile_id: immutableIdSchema,
+  model_id: z.string().min(1).max(256),
+  display_name: z.string().min(1).max(255),
+  capabilities: modelCapabilitiesSchema,
+  enabled: z.boolean(),
+  expected_config_version: z.number().int().nonnegative(),
+});
+
+export const modelProviderSelectionInputSchema = z.strictObject({
+  schema_version: z.literal("model-provider-selection@1.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(128),
+  provider_connection_id: immutableIdSchema,
+  expected_connection_version: z.number().int().positive(),
+  models: z.array(modelProviderSelectionItemSchema).min(1).max(1000),
+});
+
 export const modelCatalogEntrySchema = z.strictObject({
   schema_version: z.literal("model-catalog-entry@1.0.0"),
   app_id: immutableIdSchema,
   environment: environmentSchema,
   model_profile_id: immutableIdSchema,
+  provider_connection_id: immutableIdSchema.optional(),
   provider: modelProviderSchema,
   model_id: z.string().min(1).max(256),
   display_name: z.string().min(1).max(255),
@@ -72,6 +154,7 @@ export const upsertModelCatalogEntryInputSchema = z.strictObject({
   operation_id: immutableIdSchema,
   idempotency_key: z.string().min(8).max(128),
   model_profile_id: immutableIdSchema,
+  provider_connection_id: immutableIdSchema.optional(),
   provider: modelProviderSchema,
   model_id: z.string().min(1).max(256),
   display_name: z.string().min(1).max(255),
@@ -580,6 +663,15 @@ export type ModelPriceVersion = z.infer<typeof modelPriceVersionSchema>;
 export type FxRateCandidate = z.infer<typeof fxRateCandidateSchema>;
 export type FxRateVersion = z.infer<typeof fxRateVersionSchema>;
 export type GlobalModelCredentialRef = z.infer<typeof globalModelCredentialRefSchema>;
+export type ModelVendorId = z.infer<typeof modelVendorIdSchema>;
+export type ModelProviderConnection = z.infer<typeof modelProviderConnectionSchema>;
+export type UpsertModelProviderConnectionInput = z.infer<
+  typeof upsertModelProviderConnectionInputSchema
+>;
+export type ArchiveModelProviderConnectionInput = z.infer<
+  typeof archiveModelProviderConnectionInputSchema
+>;
+export type ModelProviderSelectionInput = z.infer<typeof modelProviderSelectionInputSchema>;
 export type ModelCatalogEntry = z.infer<typeof modelCatalogEntrySchema>;
 export type UpsertModelCatalogEntryInput = z.infer<typeof upsertModelCatalogEntryInputSchema>;
 export type ModelCatalogStatusInput = z.infer<typeof modelCatalogStatusInputSchema>;
