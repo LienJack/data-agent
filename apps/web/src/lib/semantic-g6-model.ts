@@ -1,6 +1,5 @@
 import type { EdgeData, GraphData, NodeData } from "@antv/g6";
 import type {
-  SemanticGraphCluster,
   SemanticGraphFullResult,
   SemanticGraphNeighborhoodResult,
   SemanticGraphReadEdge,
@@ -8,19 +7,18 @@ import type {
 } from "@data-agent/contracts";
 import {
   edgeLabel,
-  fullGraphClusterPoint,
-  localGraphLayout,
   SEMANTIC_EDGE_FAMILY_PRESENTATION,
   SEMANTIC_NODE_PRESENTATION,
   SEMANTIC_STATUS_PRESENTATION,
 } from "./semantic-studio-model";
 
-export type SemanticG6ElementKind = "semantic-node" | "semantic-edge" | "cluster";
+export type SemanticG6ElementKind = "semantic-node" | "semantic-edge";
 
 export interface SemanticG6ElementData extends Record<string, unknown> {
   readonly kind: SemanticG6ElementKind;
   readonly sourceId: string;
   readonly label?: string;
+  readonly nodeType?: SemanticGraphReadNode["node"]["node_type"];
 }
 
 const NODE_SURFACES = {
@@ -32,16 +30,6 @@ const NODE_SURFACES = {
   PHYSICAL_COLUMN: "#fafbfa",
   GLOSSARY_TERM: "#f4f9f6",
 } as const;
-
-const CLUSTER_DONUT_ORDER = [
-  "BUSINESS_SUBJECT",
-  "DIMENSION",
-  "METRIC",
-  "FORMULA",
-  "PHYSICAL_TABLE",
-  "PHYSICAL_COLUMN",
-  "GLOSSARY_TERM",
-] as const;
 
 function truncate(value: string, limit: number): string {
   return value.length <= limit ? value : `${value.slice(0, limit - 1)}…`;
@@ -79,6 +67,7 @@ function semanticNodeDatum(item: SemanticGraphReadNode, selectedNodeId: string |
       kind: "semantic-node",
       sourceId: item.node.node_id,
       label: item.node.name,
+      nodeType: item.node.node_type,
     } satisfies SemanticG6ElementData,
     style: {
       size: nodeSize(item, selected),
@@ -138,11 +127,64 @@ function semanticNodeDatum(item: SemanticGraphReadNode, selectedNodeId: string |
   };
 }
 
+function forceNodeDatum(item: SemanticGraphReadNode, selectedNodeId: string | null): NodeData {
+  const selected = item.node.node_id === selectedNodeId;
+  const type = SEMANTIC_NODE_PRESENTATION[item.node.node_type];
+  const status = SEMANTIC_STATUS_PRESENTATION[item.status];
+  const degree = item.relation_count.total;
+  const prominent =
+    selected ||
+    item.node.node_type === "BUSINESS_SUBJECT" ||
+    item.node.node_type === "METRIC" ||
+    item.node.node_type === "FORMULA" ||
+    degree >= 8;
+  const size = Math.min(38, 16 + Math.sqrt(Math.max(1, degree)) * 4);
+  return {
+    id: item.node.node_id,
+    type: "circle",
+    states: selected ? ["selected"] : [],
+    data: {
+      kind: "semantic-node",
+      sourceId: item.node.node_id,
+      label: item.node.name,
+      nodeType: item.node.node_type,
+    } satisfies SemanticG6ElementData,
+    style: {
+      size,
+      fill: type.fill,
+      stroke: selected ? "#244f43" : item.status === "PUBLISHED" ? "#f7faf8" : status.color,
+      lineWidth: selected ? 3.5 : item.status === "PUBLISHED" ? 1.5 : 3,
+      lineDash: statusDash(item.status),
+      shadowColor: selected ? "rgba(36, 79, 67, 0.22)" : "rgba(38, 54, 47, 0.11)",
+      shadowBlur: selected ? 18 : 7,
+      shadowOffsetY: selected ? 5 : 2,
+      ...(prominent
+        ? {
+            labelText: nodeLabel(item, selected),
+            labelPlacement: "bottom" as const,
+            labelOffsetY: 7,
+            labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
+            labelFontSize: selected ? 10.5 : 8.5,
+            labelFontWeight: selected ? 650 : 560,
+            labelFill: "#33413b",
+            labelBackground: true,
+            labelBackgroundFill: "rgba(249, 251, 250, 0.9)",
+            labelBackgroundStroke: "rgba(215, 222, 218, 0.8)",
+            labelBackgroundLineWidth: 1,
+            labelBackgroundRadius: 5,
+            labelPadding: [2, 5] as [number, number],
+          }
+        : {}),
+    },
+  };
+}
+
 function semanticEdgeDatum(
   item: SemanticGraphReadEdge,
   selectedEdgeId: string | null,
   curveOffset: number,
-  edgeType: "quadratic" | "cubic-horizontal",
+  edgeType: "line" | "quadratic" | "cubic-horizontal",
+  compact: boolean,
 ): EdgeData {
   const selected = item.edge.edge_id === selectedEdgeId;
   const status = SEMANTIC_STATUS_PRESENTATION[item.status];
@@ -162,13 +204,13 @@ function semanticEdgeDatum(
     } satisfies SemanticG6ElementData,
     style: {
       stroke: selected ? "#244f43" : stroke,
-      lineWidth: selected ? 2.8 : 1.25,
+      lineWidth: selected ? 2.8 : compact ? 0.8 : 1.25,
       lineDash: statusDash(item.status),
-      opacity: selected ? 1 : 0.48,
-      curveOffset,
+      opacity: selected ? 1 : compact ? 0.22 : 0.48,
+      ...(edgeType === "line" ? {} : { curveOffset }),
       endArrow: true,
       endArrowFill: selected ? "#244f43" : stroke,
-      endArrowSize: 5,
+      endArrowSize: compact ? 3 : 5,
     },
   };
 }
@@ -176,7 +218,8 @@ function semanticEdgeDatum(
 function semanticEdges(
   items: readonly SemanticGraphReadEdge[],
   selectedEdgeId: string | null,
-  edgeType: "quadratic" | "cubic-horizontal",
+  edgeType: "line" | "quadratic" | "cubic-horizontal",
+  compact = false,
 ): EdgeData[] {
   const byPair = new Map<string, SemanticGraphReadEdge[]>();
   for (const item of items) {
@@ -190,72 +233,8 @@ function semanticEdges(
     const group = byPair.get(key) ?? [item];
     const index = group.findIndex((candidate) => candidate.edge.edge_id === item.edge.edge_id);
     const curveOffset = group.length === 1 ? 0 : (index - (group.length - 1) / 2) * 22;
-    return semanticEdgeDatum(item, selectedEdgeId, curveOffset, edgeType);
+    return semanticEdgeDatum(item, selectedEdgeId, curveOffset, edgeType, compact);
   });
-}
-
-function clusterDatum(cluster: SemanticGraphCluster): NodeData {
-  const point = fullGraphClusterPoint(cluster);
-  const size = Math.min(148, 70 + Math.sqrt(cluster.node_count) * 6.8);
-  return {
-    id: cluster.cluster_id,
-    type: "donut",
-    data: {
-      kind: "cluster",
-      sourceId: cluster.cluster_id,
-      label: cluster.label,
-    } satisfies SemanticG6ElementData,
-    style: {
-      x: point.x,
-      y: point.y,
-      size,
-      innerR: "72%",
-      donuts: CLUSTER_DONUT_ORDER.map((nodeType) => ({
-        value: cluster.node_type_counts[nodeType] ?? 0,
-        color: SEMANTIC_NODE_PRESENTATION[nodeType].fill,
-      })).filter((segment) => segment.value > 0),
-      fill: "#ffffff",
-      stroke: cluster.candidate_count > 0 ? "#a76b16" : "#d7dfda",
-      lineWidth: cluster.candidate_count > 0 ? 2.5 : 1.5,
-      shadowColor: "rgba(38, 54, 47, 0.12)",
-      shadowBlur: 20,
-      shadowOffsetY: 8,
-      labelText: `${truncate(cluster.label, 24)}\n${cluster.node_count} 节点 · ${cluster.edge_count} 关系`,
-      labelPlacement: "bottom",
-      labelOffsetY: 12,
-      labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
-      labelFontSize: 11.5,
-      labelFontWeight: 650,
-      labelFill: "#263a33",
-      labelBackground: true,
-      labelBackgroundFill: "rgba(255, 255, 255, 0.96)",
-      labelBackgroundStroke: "#e1e6e3",
-      labelBackgroundLineWidth: 1,
-      labelBackgroundRadius: 7,
-      labelPadding: [5, 8],
-      iconText: String(cluster.node_count),
-      iconFontFamily: "var(--font-geist-mono), monospace",
-      iconFontSize: Math.min(20, 12 + Math.sqrt(cluster.node_count)),
-      iconFontWeight: 700,
-      iconFill: "#2e4f45",
-      badges:
-        cluster.candidate_count > 0
-          ? [
-              {
-                text: `${cluster.candidate_count} 候选`,
-                placement: "right-top",
-                fontSize: 8,
-                fontWeight: 650,
-                fill: "#8a570d",
-                backgroundFill: "#fff4df",
-                backgroundStroke: "#e8c98d",
-                backgroundRadius: 5,
-                padding: [2, 5],
-              },
-            ]
-          : [],
-    },
-  };
 }
 
 export function buildLocalG6Data(
@@ -274,20 +253,9 @@ export function buildFullG6Data(
   selectedNodeId: string | null,
   selectedEdgeId: string | null,
 ): GraphData {
-  const expandedPoints = localGraphLayout(graph.nodes, graph.nodes[0]?.node.node_id ?? "");
   return {
-    nodes: [
-      ...graph.clusters.map(clusterDatum),
-      ...graph.nodes.map((item) => {
-        const datum = semanticNodeDatum(item, selectedNodeId);
-        const point = expandedPoints.get(item.node.node_id);
-        return {
-          ...datum,
-          style: { ...datum.style, x: point?.x ?? 500, y: point?.y ?? 310 },
-        };
-      }),
-    ],
-    edges: semanticEdges(graph.edges, selectedEdgeId, "quadratic"),
+    nodes: graph.nodes.map((item) => forceNodeDatum(item, selectedNodeId)),
+    edges: semanticEdges(graph.edges, selectedEdgeId, "line", true),
   };
 }
 
@@ -295,9 +263,7 @@ export function semanticG6SourceId(data: unknown): SemanticG6ElementData | null 
   if (!data || typeof data !== "object") return null;
   const candidate = data as Partial<SemanticG6ElementData>;
   if (
-    (candidate.kind === "semantic-node" ||
-      candidate.kind === "semantic-edge" ||
-      candidate.kind === "cluster") &&
+    (candidate.kind === "semantic-node" || candidate.kind === "semantic-edge") &&
     typeof candidate.sourceId === "string"
   ) {
     return candidate as SemanticG6ElementData;

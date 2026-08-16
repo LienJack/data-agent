@@ -48,6 +48,8 @@ export interface SemanticStudioResumeInput extends SemanticAuthoringResumeInput 
   readonly semantic_domain: string;
 }
 
+const FULL_FORCE_GRAPH_CLUSTER_LIMIT = 24;
+
 function failure<T>(code: string, message: string, retryable = false): PortResult<T> {
   return { ok: false, error: { code, message, retryable } };
 }
@@ -139,6 +141,14 @@ export function createSemanticStudioService(dependencies: SemanticStudioServiceD
             edge_limit: 500,
           })
         : null;
+      const collapsedFull = readModel.fullGraph();
+      const expandedClusterIds = [
+        ...(input.expanded_cluster_id === null ? [] : [input.expanded_cluster_id]),
+        ...collapsedFull.clusters.map((cluster) => cluster.cluster_id),
+      ]
+        .filter((clusterId, index, values) => values.indexOf(clusterId) === index)
+        .slice(0, FULL_FORCE_GRAPH_CLUSTER_LIMIT);
+      const full = readModel.fullGraph({ expanded_cluster_ids: expandedClusterIds });
       return {
         ok: true,
         value: {
@@ -151,10 +161,7 @@ export function createSemanticStudioService(dependencies: SemanticStudioServiceD
             label: `Release ${active.value.release_generation}`,
           },
           list,
-          full: readModel.fullGraph({
-            expanded_cluster_ids:
-              input.expanded_cluster_id === null ? [] : [input.expanded_cluster_id],
-          }),
+          full,
           local,
           authoring: authoring.value,
         },

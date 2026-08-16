@@ -3,13 +3,12 @@
 import type { Graph as G6Graph, IElementEvent } from "@antv/g6";
 import type {
   SemanticEdgeFamily,
-  SemanticGraphCluster,
   SemanticGraphFullResult,
   SemanticGraphNeighborhoodResult,
   SemanticGraphReadEdge,
   SemanticGraphReadNode,
 } from "@data-agent/contracts";
-import { CornersOut, Minus, Plus } from "@phosphor-icons/react";
+import { ArrowClockwise, CornersOut, Minus, Plus } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { buildFullG6Data, buildLocalG6Data, semanticG6SourceId } from "@/lib/semantic-g6-model";
 import {
@@ -27,13 +26,9 @@ interface SemanticGraphCanvasProps {
   readonly selectedEdgeId: string | null;
   readonly onSelectNode: (node: SemanticGraphReadNode) => void;
   readonly onSelectEdge: (edge: SemanticGraphReadEdge) => void;
-  readonly onExpandCluster: (cluster: SemanticGraphCluster) => void;
 }
 
-type GraphCallbacks = Pick<
-  SemanticGraphCanvasProps,
-  "onSelectNode" | "onSelectEdge" | "onExpandCluster"
->;
+type GraphCallbacks = Pick<SemanticGraphCanvasProps, "onSelectNode" | "onSelectEdge">;
 
 export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -74,7 +69,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   const empty =
     props.mode === "local"
       ? !localGraph || localGraph.nodes.length === 0
-      : fullGraph.clusters.length + fullGraph.nodes.length === 0;
+      : fullGraph.nodes.length === 0;
   const g6Data = useMemo(() => {
     if (props.mode === "local") {
       return localGraph
@@ -101,16 +96,6 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       ),
     [graph],
   );
-  const clusterById = useMemo(
-    () =>
-      new Map(
-        props.full.clusters.map(
-          (item) => [item.cluster_id, item] satisfies readonly [string, SemanticGraphCluster],
-        ),
-      ),
-    [props.full.clusters],
-  );
-
   useEffect(() => {
     callbacksRef.current = props;
   }, [props]);
@@ -146,7 +131,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
             : { type: "view", options: { when: "always", direction: "both" } },
         padding: props.mode === "local" ? [80, 44, 58, 44] : [92, 82, 82, 82],
         zoom: props.mode === "local" ? 0.72 : 1,
-        zoomRange: [0.18, 1.8],
+        zoomRange: props.mode === "local" ? [0.18, 1.8] : [0.06, 2.4],
         animation: false,
         behaviors: [
           "drag-canvas",
@@ -230,9 +215,9 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
           },
           animation: false,
         },
-        ...(props.mode === "local"
-          ? {
-              layout: {
+        layout:
+          props.mode === "local"
+            ? {
                 type: "antv-dagre",
                 animation: false,
                 rankdir: "LR",
@@ -243,9 +228,23 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                 ranker: "network-simplex",
                 controlPoints: false,
                 edgeLabelSpace: false,
+              }
+            : {
+                type: "force",
+                preLayout: true,
+                animation: false,
+                preventOverlap: true,
+                nodeSize: 42,
+                nodeStrength: -760,
+                edgeStrength: 72,
+                linkDistance: 112,
+                gravity: 5,
+                factor: 1,
+                damping: 0.86,
+                maxSpeed: 240,
+                maxIteration: 600,
+                minMovement: 0.35,
               },
-            }
-          : {}),
       });
       mountedGraph = instance;
       graphRef.current = instance;
@@ -254,11 +253,6 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         const datum = instance.getElementData(String(event.target.id));
         const source = semanticG6SourceId(datum.data);
         if (!source) return;
-        if (source.kind === "cluster") {
-          const cluster = clusterById.get(source.sourceId);
-          if (cluster) callbacksRef.current.onExpandCluster(cluster);
-          return;
-        }
         const node = nodeById.get(source.sourceId);
         if (node) callbacksRef.current.onSelectNode(node);
       });
@@ -299,7 +293,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       resizeObserver?.disconnect();
       if (renderSettled) destroyMountedGraph();
     };
-  }, [clusterById, edgeById, empty, g6Data, nodeById, props.mode]);
+  }, [edgeById, empty, g6Data, nodeById, props.mode]);
 
   return (
     <section
@@ -309,15 +303,26 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     >
       <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-136px)] rounded-[10px] border border-white/80 bg-white/88 px-3 py-2 shadow-[0_8px_24px_rgba(38,52,45,0.06)] backdrop-blur-sm sm:left-4 sm:top-4">
         <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#356b5a]">
-          {props.mode === "local" ? "Ontology flow" : "Community map"}
+          {props.mode === "local" ? "Ontology flow" : "Force graph"}
         </p>
         <p className="mt-0.5 text-[9px] text-[#74807a]">
           {props.mode === "local"
             ? "按语义方向分层 · 悬停显示关系名"
-            : "环形占比表示 Node 类型构成 · 点击社区展开"}
+            : `${fullGraph.nodes.length} Node · ${fullGraph.edges.length} Edge · 拖拽节点探索关系`}
         </p>
       </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-white/80 bg-white/90 p-1 shadow-[0_8px_24px_rgba(38,52,45,0.08)] backdrop-blur-sm sm:right-4 sm:top-4">
+        {props.mode === "full" ? (
+          <button
+            type="button"
+            aria-label="重新计算力导向布局"
+            onClick={() => void graphRef.current?.layout()}
+            className="grid size-7 place-items-center rounded-[7px] text-[#627069] transition-[background-color,color,transform] duration-200 hover:bg-[#edf1ee] hover:text-[#285b4b] active:scale-[0.96]"
+            title="重新布局"
+          >
+            <ArrowClockwise className="size-3.5" aria-hidden="true" />
+          </button>
+        ) : null}
         <button
           type="button"
           aria-label="放大关系图"
@@ -352,6 +357,11 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
           {props.local.omitted_edge_count} 关系
         </div>
       ) : null}
+      {props.mode === "full" && props.full.truncated ? (
+        <div className="absolute right-40 top-4 z-10 border-l-2 border-amber-500 bg-amber-50 px-3 py-1.5 text-[10px] text-amber-800">
+          全图已按安全预算截断，省略 {props.full.omitted_glyph_count} 个节点
+        </div>
+      ) : null}
       {empty ? (
         <div className="flex min-h-[560px] items-center justify-center text-sm text-[#6d7973]">
           当前范围没有可见节点
@@ -364,13 +374,26 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
             aria-label={
               props.mode === "local"
                 ? "AntV G6 绘制的选中节点局部关系图"
-                : "AntV G6 绘制的 GraphRAG 风格分群语义全图"
+                : "AntV G6 Force 绘制的全部语义节点和关系图"
             }
             className="h-[calc(100dvh-402px)] min-h-[560px] max-h-[780px] w-full bg-[radial-gradient(circle_at_50%_44%,rgba(214,231,223,0.42),transparent_42%),linear-gradient(rgba(245,248,246,0.94),rgba(250,251,250,0.98))]"
           />
           {!ready && !renderError ? (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center text-xs text-[#6d7973]">
-              正在初始化 AntV G6 图谱…
+            <div className="pointer-events-none absolute inset-0 grid place-items-center bg-[#f7f9f7]/72 text-xs text-[#6d7973]">
+              <div className="flex flex-col items-center gap-4">
+                <div
+                  className="relative h-20 w-32 animate-pulse motion-reduce:animate-none"
+                  aria-hidden="true"
+                >
+                  <span className="absolute left-2 top-8 size-3 rounded-full bg-[#b94b37]/55" />
+                  <span className="absolute left-14 top-2 size-4 rounded-full bg-[#d19a2d]/55" />
+                  <span className="absolute right-3 top-9 size-3 rounded-full bg-[#2f7f9f]/55" />
+                  <span className="absolute bottom-1 left-12 size-3.5 rounded-full bg-[#66736d]/45" />
+                </div>
+                <span>
+                  {props.mode === "full" ? "正在计算 G6 力导向布局…" : "正在初始化 AntV G6 图谱…"}
+                </span>
+              </div>
             </div>
           ) : null}
           {renderError ? (
@@ -386,25 +409,6 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
             键盘与读屏表格视图
           </summary>
           <div className="mt-3 max-h-56 overflow-auto">
-            {"clusters" in graph && graph.clusters.length > 0 ? (
-              <div className="mb-4">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-secondary)]">
-                  社区分群
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {graph.clusters.map((cluster) => (
-                    <button
-                      key={cluster.cluster_id}
-                      type="button"
-                      onClick={() => props.onExpandCluster(cluster)}
-                      className="rounded border border-[var(--color-border-default)] px-2 py-1.5 text-left hover:bg-[var(--color-bg-secondary)]"
-                    >
-                      {cluster.label} · {cluster.node_count} 节点 · {cluster.edge_count} 关系
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
             <table className="w-full text-left">
               <thead className="text-[10px] uppercase tracking-wide text-[var(--color-text-secondary)]">
                 <tr>

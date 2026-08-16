@@ -35,23 +35,20 @@ describe("semantic G6 graph model", () => {
     expect(data.edges?.[0]?.style?.labelText).toBeUndefined();
   });
 
-  it("keeps GraphRAG clusters as first-class clickable summary glyphs", () => {
+  it("maps the complete ontology to compact force nodes and directed relationships", () => {
     const snapshot = semanticStudioPreviewSnapshot();
     const data = buildFullG6Data(snapshot.full, null, null);
-    const cluster = data.nodes?.find((node) => node.id === snapshot.full.clusters[0]?.cluster_id);
 
-    expect(data.nodes).toHaveLength(snapshot.full.clusters.length + snapshot.full.nodes.length);
-    expect(semanticG6SourceId(cluster?.data)).toEqual({
-      kind: "cluster",
-      sourceId: snapshot.full.clusters[0]?.cluster_id,
-      label: snapshot.full.clusters[0]?.label,
+    expect(snapshot.full.clusters).toEqual([]);
+    expect(data.nodes).toHaveLength(snapshot.full.nodes.length);
+    expect(data.edges).toHaveLength(snapshot.full.edges.length);
+    expect(data.nodes?.every((node) => node.type === "circle")).toBe(true);
+    expect(data.nodes?.some((node) => node.type === "donut")).toBe(false);
+    expect(data.edges?.every((edge) => edge.type === "line")).toBe(true);
+    expect(semanticG6SourceId(data.nodes?.[0]?.data)).toMatchObject({
+      kind: "semantic-node",
+      sourceId: snapshot.full.nodes[0]?.node.node_id,
     });
-    expect(cluster?.type).toBe("donut");
-    expect(cluster?.style?.donuts).toHaveLength(
-      Object.values(snapshot.full.clusters[0]?.node_type_counts ?? {}).filter((count) => count > 0)
-        .length,
-    );
-    expect(cluster?.style?.labelText).toContain("节点");
   });
 
   it("shows the complete ontology chain instead of embedding physical fields", () => {

@@ -4,7 +4,6 @@ import type {
   SemanticAuthoringPublicEvent,
   SemanticAuthoringState,
   SemanticEdgeFamily,
-  SemanticGraphCluster,
   SemanticGraphEntryStatus,
   SemanticGraphNode,
   SemanticGraphReadEdge,
@@ -25,7 +24,6 @@ import { MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLayoutStore } from "@/lib/layout-store";
 import {
-  expandSemanticStudioCluster,
   loadSemanticStudio,
   resumeSemanticAuthoring,
   type SemanticStudioSnapshot,
@@ -246,6 +244,11 @@ export function SemanticStudio({
     const counts = new Map<SemanticNodeType, number>(NODE_TYPES.map((type) => [type, 0]));
     let nodeCount = 0;
     let candidateCount = 0;
+    for (const item of snapshot?.full.nodes ?? []) {
+      nodeCount += 1;
+      if (item.status !== "PUBLISHED") candidateCount += 1;
+      counts.set(item.node.node_type, (counts.get(item.node.node_type) ?? 0) + 1);
+    }
     for (const cluster of snapshot?.full.clusters ?? []) {
       nodeCount += cluster.node_count;
       candidateCount += cluster.candidate_count;
@@ -254,8 +257,9 @@ export function SemanticStudio({
       }
     }
     return { nodeCount, candidateCount, nodeTypeCounts: counts };
-  }, [snapshot?.full.clusters]);
+  }, [snapshot?.full.clusters, snapshot?.full.nodes]);
   const candidateCount = graphSummary.candidateCount;
+  const inspectorVisible = view !== "full" || selectedNode !== null || selectedEdge !== null;
 
   async function selectAndLoadNode(node: SemanticGraphReadNode, openGraph: boolean) {
     setSelectedNode(node);
@@ -301,33 +305,6 @@ export function SemanticStudio({
         runId: authoringState?.run.authoring_run_id,
         hops: nextHops,
       });
-    }
-  }
-
-  async function expandCluster(cluster: SemanticGraphCluster) {
-    if (!snapshot) return;
-    if (preview) {
-      const { semanticStudioPreviewExpandedFullGraph } = await import(
-        "@/lib/semantic-studio-preview"
-      );
-      setSnapshot({
-        ...snapshot,
-        full: semanticStudioPreviewExpandedFullGraph(cluster.cluster_id),
-      });
-      return;
-    }
-    setLoading(true);
-    try {
-      const full = await expandSemanticStudioCluster(workspaceId, {
-        domain: snapshot.semantic_domain,
-        clusterId: cluster.cluster_id,
-        runId: authoringState?.run.authoring_run_id,
-      });
-      setSnapshot({ ...snapshot, full });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法展开分群。");
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -552,7 +529,9 @@ export function SemanticStudio({
             onResume={(answer) => void resume(answer)}
           />
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)] xl:grid-cols-[184px_minmax(0,1fr)_286px]">
+          <div
+            className={`mt-4 grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)] ${inspectorVisible ? "xl:grid-cols-[184px_minmax(0,1fr)_286px]" : "xl:grid-cols-[184px_minmax(0,1fr)]"}`}
+          >
             <aside
               className="border-b border-[#d7ddd9] pb-3 lg:sticky lg:top-3 lg:self-start lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
               aria-label="语义工作台导航"
@@ -832,24 +811,25 @@ export function SemanticStudio({
                         setSelectedEdge(edge);
                         setSelectedNode(null);
                       }}
-                      onExpandCluster={(cluster) => void expandCluster(cluster)}
                     />
                   )}
                 </div>
               </div>
             </motion.section>
 
-            <div className="lg:col-start-2 xl:col-start-3 xl:row-start-1">
-              <SemanticInspector
-                node={selectedNode}
-                edge={selectedEdge}
-                onClose={() => {
-                  setSelectedNode(null);
-                  setSelectedEdge(null);
-                }}
-                onAskAgent={setDraft}
-              />
-            </div>
+            {inspectorVisible ? (
+              <div className="lg:col-start-2 xl:col-start-3 xl:row-start-1">
+                <SemanticInspector
+                  node={selectedNode}
+                  edge={selectedEdge}
+                  onClose={() => {
+                    setSelectedNode(null);
+                    setSelectedEdge(null);
+                  }}
+                  onAskAgent={setDraft}
+                />
+              </div>
+            ) : null}
           </div>
           {loading ? (
             <div
