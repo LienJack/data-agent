@@ -273,3 +273,24 @@ Delivered a PostgreSQL-fenced, rebuildable Neo4j relationship index with 10625 a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 12: 平台设置模型供应商管理
+
+**Date**: 2026-08-16
+**Task**: 平台设置模型供应商管理
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+交付三 Tab 平台设置、API 供应商 Card、环境只读投影、服务端模型发现、PostgreSQL 多模型选择与审计归档；迁移、聚焦测试、范围格式及浏览器验收通过，Web 全量 typecheck 仅受并行 QA CLI 文件阻塞。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37bf5c8` | (see git log) |
+
+### Status
+
+[OK] **Completed**
