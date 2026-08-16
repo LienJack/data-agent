@@ -294,3 +294,24 @@ Delivered a PostgreSQL-fenced, rebuildable Neo4j relationship index with 10625 a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 13: 暂停计费并恢复模型选择
+
+**Date**: 2026-08-16
+**Task**: 暂停计费并恢复模型选择
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+将本地计费权威模式切到 SHADOW，安全同步环境模型目录，串行化并发刷新，并验证 DeepSeek 与 Kimi 可绑定到 Q&A Conversation。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f6e1f69` | (see git log) |
+
+### Status
+
+[OK] **Completed**

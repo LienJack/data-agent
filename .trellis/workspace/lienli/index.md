@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
+- **Total Sessions**: 13
 - **Last Active**: 2026-08-16
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~296 | Active |
+| `journal-1.md` | ~317 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-08-16 | 暂停计费并恢复模型选择 | `f6e1f69` | `feat/datafoundry-platform-modules` |
 | 12 | 2026-08-16 | 平台设置模型供应商管理 | `37bf5c8` | `feat/datafoundry-platform-modules` |
 | 11 | 2026-08-16 | 暂停积分与计费前端功能 | `515c9b5` | `feat/datafoundry-platform-modules` |
 | 10 | 2026-08-15 | 完成 Agent 原生 Semantic Studio 图体验 | `14bc1f9` | `feat/datafoundry-platform-modules` |
