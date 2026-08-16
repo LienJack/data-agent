@@ -35,6 +35,8 @@ interface SemanticGraphCanvasProps {
 
 type GraphCallbacks = Pick<SemanticGraphCanvasProps, "onSelectNode" | "onSelectEdge">;
 
+const FULL_GRAPH_VIEW_ZOOM = 0.29;
+
 export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const graphRef = useRef<G6Graph | null>(null);
@@ -87,6 +89,10 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     () => semanticFullForceLayout(fullGraph.nodes.length),
     [fullGraph.nodes.length],
   );
+  const fullGraphTypeCount = useMemo(
+    () => new Set(fullGraph.nodes.map((item) => item.node.node_type)).size,
+    [fullGraph.nodes],
+  );
   const nodeById = useMemo(
     () =>
       new Map(
@@ -134,12 +140,9 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       const instance = new Graph({
         container,
         data: g6Data,
-        autoFit:
-          props.mode === "local"
-            ? { type: "center" }
-            : { type: "view", options: { when: "always", direction: "both" } },
+        autoFit: { type: "center" },
         padding: props.mode === "local" ? [80, 44, 58, 44] : [92, 82, 82, 82],
-        zoom: props.mode === "local" ? 0.72 : 1,
+        zoom: props.mode === "local" ? 0.72 : FULL_GRAPH_VIEW_ZOOM,
         zoomRange: props.mode === "local" ? [0.18, 1.8] : [0.06, 2.4],
         animation: false,
         behaviors: [
@@ -178,25 +181,34 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               shadowBlur: 20,
               shadowOffsetY: 7,
             },
-            active: (datum) => ({
-              opacity: 1,
-              lineWidth: 2.5,
-              shadowColor: "rgba(36, 79, 67, 0.14)",
-              shadowBlur: 14,
-              labelText: typeof datum.data?.label === "string" ? datum.data.label : "语义节点",
-              labelPlacement: "bottom",
-              labelOffsetY: 7,
-              labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
-              labelFontSize: 9,
-              labelFontWeight: 600,
-              labelFill: "#33413b",
-              labelBackground: true,
-              labelBackgroundFill: "rgba(249, 251, 250, 0.96)",
-              labelBackgroundStroke: "#d8dfdb",
-              labelBackgroundLineWidth: 1,
-              labelBackgroundRadius: 5,
-              labelPadding: [2, 5],
-            }),
+            active:
+              props.mode === "full"
+                ? (datum) => ({
+                    opacity: 1,
+                    lineWidth: 2,
+                    shadowColor: "rgba(36, 79, 67, 0.16)",
+                    shadowBlur: 12,
+                    labelText:
+                      typeof datum.data?.label === "string" ? datum.data.label : "语义节点",
+                    labelPlacement: "bottom",
+                    labelOffsetY: 14,
+                    labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
+                    labelFontSize: 32,
+                    labelFontWeight: 700,
+                    labelFill: "#1f2d27",
+                    labelBackground: true,
+                    labelBackgroundFill: "rgba(250, 252, 251, 0.98)",
+                    labelBackgroundStroke: "#c7d2cc",
+                    labelBackgroundLineWidth: 1,
+                    labelBackgroundRadius: 6,
+                    labelPadding: [4, 9],
+                  })
+                : {
+                    opacity: 1,
+                    lineWidth: 2.5,
+                    shadowColor: "rgba(36, 79, 67, 0.14)",
+                    shadowBlur: 14,
+                  },
             inactive: { opacity: 0.16 },
           },
           animation: false,
@@ -308,6 +320,8 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       data-layout-mode={props.mode === "full" ? "expanded-force" : "layered-flow"}
       data-layout-width={props.mode === "full" ? fullForceLayout.width : undefined}
       data-layout-height={props.mode === "full" ? fullForceLayout.height : undefined}
+      data-layout-clusters={props.mode === "full" ? fullGraphTypeCount : undefined}
+      data-layout-zoom={props.mode === "full" ? FULL_GRAPH_VIEW_ZOOM : undefined}
       className="relative min-h-[560px] overflow-hidden bg-[#f7f9f7]"
       aria-label={props.mode === "local" ? "节点局部关系图" : "语义全图"}
     >
@@ -318,7 +332,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         <p className="mt-0.5 text-[9px] text-[#74807a]">
           {props.mode === "local"
             ? "按语义方向分层 · 悬停显示关系名"
-            : `${fullGraph.nodes.length} Node · ${fullGraph.edges.length} Edge · 关键节点标注`}
+            : `${fullGraph.nodes.length} Node · ${fullGraphTypeCount} 类社区 · 同类聚合扩散`}
         </p>
       </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-white/80 bg-white/90 p-1 shadow-[0_8px_24px_rgba(38,52,45,0.08)] backdrop-blur-sm sm:right-4 sm:top-4">
@@ -354,7 +368,15 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         <button
           type="button"
           aria-label="适应关系图视图"
-          onClick={() => void graphRef.current?.fitView()}
+          onClick={() => {
+            const instance = graphRef.current;
+            if (!instance) return;
+            if (props.mode === "full") {
+              void instance.zoomTo(FULL_GRAPH_VIEW_ZOOM).then(() => instance.fitCenter());
+              return;
+            }
+            void instance.fitView();
+          }}
           className="grid size-7 place-items-center rounded-[7px] text-[#627069] transition-[background-color,color,transform] duration-200 hover:bg-[#edf1ee] hover:text-[#285b4b] active:scale-[0.96]"
           title="适应视图"
         >

@@ -29,6 +29,9 @@ export interface SemanticFullForceLayout {
   readonly width: number;
   readonly height: number;
   readonly preventOverlap: true;
+  readonly clustering: true;
+  readonly nodeClusterBy: (node: NodeData) => string;
+  readonly clusterNodeStrength: number;
   readonly nodeSize: number;
   readonly nodeSpacing: number;
   readonly collideStrength: number;
@@ -44,7 +47,7 @@ export interface SemanticFullForceLayout {
   readonly distanceThresholdMode: "max";
 }
 
-const FULL_FORCE_NODE_SIZE = 44;
+const FULL_FORCE_NODE_SIZE = 28;
 const FULL_FORCE_NODE_SPACING = 34;
 const FULL_FORCE_NODE_PITCH = FULL_FORCE_NODE_SIZE + FULL_FORCE_NODE_SPACING;
 
@@ -66,17 +69,21 @@ export function semanticFullForceLayout(nodeCount: number): SemanticFullForceLay
     width: Math.max(1280, columns * FULL_FORCE_NODE_PITCH),
     height: Math.max(800, rows * FULL_FORCE_NODE_PITCH),
     preventOverlap: true,
+    clustering: true,
+    nodeClusterBy: (node) =>
+      typeof node.data?.nodeType === "string" ? node.data.nodeType : "UNKNOWN",
+    clusterNodeStrength: 28,
     nodeSize: FULL_FORCE_NODE_SIZE,
     nodeSpacing: FULL_FORCE_NODE_SPACING,
     collideStrength: 1,
-    nodeStrength: 1600,
-    edgeStrength: 36,
-    linkDistance: 152,
-    gravity: 2,
-    factor: 1.15,
+    nodeStrength: 1400,
+    edgeStrength: 10,
+    linkDistance: 168,
+    gravity: 1.5,
+    factor: 1.1,
     damping: 0.88,
     maxSpeed: 220,
-    maxIteration: 900,
+    maxIteration: 1100,
     minMovement: 0.18,
     distanceThresholdMode: "max",
   };
@@ -198,34 +205,85 @@ const FULL_FORCE_LABEL_PRIORITY: Record<SemanticGraphReadNode["node"]["node_type
   PHYSICAL_COLUMN: 0,
 };
 
+const FULL_FORCE_COMMUNITY_ANCHORS: Record<
+  SemanticGraphReadNode["node"]["node_type"],
+  readonly [number, number]
+> = {
+  BUSINESS_SUBJECT: [710, 150],
+  DIMENSION: [410, 225],
+  METRIC: [1010, 215],
+  FORMULA: [1165, 500],
+  PHYSICAL_TABLE: [810, 690],
+  PHYSICAL_COLUMN: [450, 620],
+  GLOSSARY_TERM: [205, 425],
+};
+
+function fullForceScore(item: SemanticGraphReadNode): number {
+  return item.relation_count.total * 10 + FULL_FORCE_LABEL_PRIORITY[item.node.node_type];
+}
+
 function fullForceLabelIds(
   items: readonly SemanticGraphReadNode[],
   selectedNodeId: string | null,
 ): ReadonlySet<string> {
-  const labelBudget = Math.max(10, Math.min(24, Math.ceil(Math.sqrt(items.length) * 1.25)));
+  const labelBudget = Math.max(7, Math.min(8, Math.ceil(Math.sqrt(items.length) * 0.45)));
   const ranked = [...items].sort((left, right) => {
-    const leftScore =
-      left.relation_count.total * 10 + FULL_FORCE_LABEL_PRIORITY[left.node.node_type];
-    const rightScore =
-      right.relation_count.total * 10 + FULL_FORCE_LABEL_PRIORITY[right.node.node_type];
+    const leftScore = fullForceScore(left);
+    const rightScore = fullForceScore(right);
     return rightScore - leftScore || left.node.name.localeCompare(right.node.name);
   });
-  const ids = new Set(ranked.slice(0, labelBudget).map((item) => item.node.node_id));
+  const ids = new Set<string>();
+  for (const nodeType of Object.keys(FULL_FORCE_LABEL_PRIORITY)) {
+    const representative = ranked.find((item) => item.node.node_type === nodeType);
+    if (representative) ids.add(representative.node.node_id);
+  }
+  for (const item of ranked) {
+    if (ids.size >= labelBudget) break;
+    ids.add(item.node.node_id);
+  }
   if (selectedNodeId) ids.add(selectedNodeId);
   return ids;
+}
+
+function fullForceSeedPositions(
+  items: readonly SemanticGraphReadNode[],
+): ReadonlyMap<string, readonly [number, number]> {
+  const byType = new Map<SemanticGraphReadNode["node"]["node_type"], SemanticGraphReadNode[]>();
+  for (const item of items) {
+    const group = byType.get(item.node.node_type) ?? [];
+    group.push(item);
+    byType.set(item.node.node_type, group);
+  }
+
+  const positions = new Map<string, readonly [number, number]>();
+  for (const [nodeType, group] of byType) {
+    const [anchorX, anchorY] = FULL_FORCE_COMMUNITY_ANCHORS[nodeType];
+    group
+      .sort((left, right) => left.node.node_id.localeCompare(right.node.node_id))
+      .forEach((item, index) => {
+        const angle = index * 2.399963229728653;
+        const radius = 12 * Math.sqrt(index);
+        positions.set(item.node.node_id, [
+          anchorX + Math.cos(angle) * radius,
+          anchorY + Math.sin(angle) * radius,
+        ]);
+      });
+  }
+  return positions;
 }
 
 function forceNodeDatum(
   item: SemanticGraphReadNode,
   selectedNodeId: string | null,
   labeled: boolean,
+  seed: readonly [number, number],
 ): NodeData {
   const selected = item.node.node_id === selectedNodeId;
   const type = SEMANTIC_NODE_PRESENTATION[item.node.node_type];
   const status = SEMANTIC_STATUS_PRESENTATION[item.status];
   const degree = item.relation_count.total;
   const prominent = selected || labeled;
-  const size = Math.min(38, 16 + Math.sqrt(Math.max(1, degree)) * 4);
+  const size = selected ? 28 : Math.min(22, 8 + Math.sqrt(Math.max(1, degree)) * 2.2);
   return {
     id: item.node.node_id,
     type: "circle",
@@ -237,29 +295,31 @@ function forceNodeDatum(
       nodeType: item.node.node_type,
     } satisfies SemanticG6ElementData,
     style: {
+      x: seed[0],
+      y: seed[1],
       size,
       fill: type.fill,
       stroke: selected ? "#244f43" : item.status === "PUBLISHED" ? "#f7faf8" : status.color,
-      lineWidth: selected ? 3.5 : item.status === "PUBLISHED" ? 1.5 : 3,
+      lineWidth: selected ? 2.5 : item.status === "PUBLISHED" ? 1 : 2,
       lineDash: statusDash(item.status),
       shadowColor: selected ? "rgba(36, 79, 67, 0.22)" : "rgba(38, 54, 47, 0.11)",
-      shadowBlur: selected ? 18 : 7,
-      shadowOffsetY: selected ? 5 : 2,
+      shadowBlur: selected ? 15 : 5,
+      shadowOffsetY: selected ? 4 : 1.5,
       ...(prominent
         ? {
             labelText: nodeLabel(item, selected),
             labelPlacement: "bottom" as const,
-            labelOffsetY: 7,
+            labelOffsetY: 14,
             labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
-            labelFontSize: selected ? 10.5 : 8.5,
-            labelFontWeight: selected ? 650 : 560,
-            labelFill: "#33413b",
+            labelFontSize: selected ? 36 : 32,
+            labelFontWeight: selected ? 700 : 650,
+            labelFill: "#1f2d27",
             labelBackground: true,
-            labelBackgroundFill: "rgba(249, 251, 250, 0.9)",
-            labelBackgroundStroke: "rgba(215, 222, 218, 0.8)",
+            labelBackgroundFill: "rgba(250, 252, 251, 0.96)",
+            labelBackgroundStroke: "rgba(199, 210, 204, 0.92)",
             labelBackgroundLineWidth: 1,
-            labelBackgroundRadius: 5,
-            labelPadding: [2, 5] as [number, number],
+            labelBackgroundRadius: 6,
+            labelPadding: [4, 9] as [number, number],
           }
         : {}),
     },
@@ -341,10 +401,12 @@ export function buildFullG6Data(
   selectedEdgeId: string | null,
 ): GraphData {
   const labeledNodeIds = fullForceLabelIds(graph.nodes, selectedNodeId);
+  const seedPositions = fullForceSeedPositions(graph.nodes);
   return {
-    nodes: graph.nodes.map((item) =>
-      forceNodeDatum(item, selectedNodeId, labeledNodeIds.has(item.node.node_id)),
-    ),
+    nodes: graph.nodes.map((item) => {
+      const seed = seedPositions.get(item.node.node_id) ?? [640, 400];
+      return forceNodeDatum(item, selectedNodeId, labeledNodeIds.has(item.node.node_id), seed);
+    }),
     edges: semanticEdges(graph.edges, selectedEdgeId, "line", true),
   };
 }

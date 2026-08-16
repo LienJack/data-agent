@@ -48,7 +48,26 @@ describe("semantic G6 graph model", () => {
     expect(data.edges?.every((edge) => edge.type === "line")).toBe(true);
     expect(
       data.nodes?.filter((node) => node.style?.labelText !== undefined).length,
-    ).toBeLessThanOrEqual(24);
+    ).toBeLessThanOrEqual(8);
+    expect(
+      new Set(
+        data.nodes
+          ?.filter((node) => node.style?.labelText !== undefined)
+          .map((node) => node.data?.nodeType),
+      ),
+    ).toEqual(
+      new Set([
+        "BUSINESS_SUBJECT",
+        "DIMENSION",
+        "METRIC",
+        "FORMULA",
+        "PHYSICAL_TABLE",
+        "PHYSICAL_COLUMN",
+        "GLOSSARY_TERM",
+      ]),
+    );
+    expect(data.nodes?.every((node) => Number.isFinite(node.style?.x))).toBe(true);
+    expect(data.nodes?.every((node) => Number.isFinite(node.style?.y))).toBe(true);
     expect(semanticG6SourceId(data.nodes?.[0]?.data)).toMatchObject({
       kind: "semantic-node",
       sourceId: snapshot.full.nodes[0]?.node.node_id,
@@ -62,6 +81,8 @@ describe("semantic G6 graph model", () => {
     expect(small).toMatchObject({
       type: "force",
       preventOverlap: true,
+      clustering: true,
+      clusterNodeStrength: 28,
       collideStrength: 1,
       distanceThresholdMode: "max",
     });
@@ -70,6 +91,7 @@ describe("semantic G6 graph model", () => {
     expect(dense.nodeSpacing).toBeGreaterThan(0);
     expect(dense.nodeStrength).toBeGreaterThan(0);
     expect(dense.linkDistance).toBeGreaterThan(dense.nodeSize + dense.nodeSpacing);
+    expect(dense.nodeClusterBy({ id: "metric", data: { nodeType: "METRIC" } })).toBe("METRIC");
   });
 
   it("shows the complete ontology chain instead of embedding physical fields", () => {
