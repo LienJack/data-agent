@@ -70,6 +70,7 @@ export {
 export * from "./graph-v2/canonicalize.js";
 export * from "./graph-v2/compiler.js";
 export * from "./graph-v2/errors.js";
+export * from "./graph-v2/ontology-package.js";
 export * from "./graph-v2/patch-reducer.js";
 export * from "./graph-v2/validator.js";
 export {

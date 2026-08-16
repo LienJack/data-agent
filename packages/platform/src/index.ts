@@ -101,6 +101,13 @@ export {
   type SemanticRelationshipGraphSlice,
 } from "./semantic/neo4j-relationship-index.js";
 export {
+  createPostgresOntologyPackageStore,
+  type OntologyPackageCandidateCommitInput,
+  type OntologyPackagePreviewBindInput,
+  type OntologyPackageValidationCommitInput,
+  type PostgresOntologyPackageStore,
+} from "./semantic/postgres-ontology-package.js";
+export {
   createPostgresRelationshipIndexStore,
   type PostgresRelationshipIndexStore,
 } from "./semantic/postgres-relationship-index.js";

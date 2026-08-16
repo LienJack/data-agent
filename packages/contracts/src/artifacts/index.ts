@@ -39,6 +39,7 @@ export {
   type SemanticReleaseIssuerAdapter,
 } from "./grounding-materializer.js";
 export * from "./l2.js";
+export * from "./ontology-package.js";
 export * from "./research/index.js";
 export * from "./semantic-control-plane.js";
 export * from "./semantic-explorer.js";
