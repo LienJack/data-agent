@@ -194,6 +194,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               props.mode === "full"
                 ? (datum) => ({
                     opacity: 1,
+                    size: 42,
                     lineWidth: 3,
                     stroke: "#244f43",
                     shadowColor: "rgba(36, 79, 67, 0.24)",
@@ -225,6 +226,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               props.mode === "full"
                 ? (datum) => ({
                     opacity: 1,
+                    size: 40,
                     lineWidth: 2,
                     shadowColor: "rgba(36, 79, 67, 0.16)",
                     shadowBlur: 12,
@@ -251,11 +253,12 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                   },
             related: {
               opacity: 1,
+              size: 34,
               lineWidth: 1.75,
               shadowColor: "rgba(36, 79, 67, 0.12)",
               shadowBlur: 8,
             },
-            inactive: { opacity: 0.08 },
+            inactive: { opacity: 0.48, size: 34 },
           },
           animation: false,
         },
@@ -292,7 +295,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               labelPadding: [2, 5],
             }),
             related: { opacity: 0.86, lineWidth: 1.6 },
-            inactive: { opacity: 0.025 },
+            inactive: { opacity: 0.06 },
           },
           animation: false,
         },
