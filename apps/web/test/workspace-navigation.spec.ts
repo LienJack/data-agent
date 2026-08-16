@@ -30,13 +30,29 @@ function access(
 describe("workspace role navigation", () => {
   it("hides management entries from viewers", () => {
     const items = navigationForWorkspace(access("VIEWER", ["WORKSPACE_RESULT_READ"]));
-    expect(items.map((item) => item.label)).toEqual(["结果浏览"]);
+    expect(items.map((item) => item.label)).toEqual(["能力测试"]);
+    expect(items[0]?.href).toBe("/w/00000000-0000-4000-8000-00000000aa11/tests");
   });
 
   it("shows workspace administration only when the parsed projection allows it", () => {
     const items = navigationForWorkspace(
       access("WORKSPACE_ADMIN", ["MEMBER_MANAGE", "DATASOURCE_MANAGE", "WORKSPACE_RESULT_READ"]),
     );
-    expect(items.map((item) => item.label)).toEqual(["结果浏览", "数据源", "成员管理"]);
+    expect(items.map((item) => item.label)).toEqual(["能力测试", "数据源", "成员管理"]);
+  });
+
+  it("keeps all analyst routes inside the current workspace", () => {
+    const items = navigationForWorkspace(
+      access("ANALYST", [
+        "ANALYSIS_RUN_CREATE",
+        "WORKSPACE_RESULT_READ",
+        "SEMANTIC_EDIT",
+        "SEMANTIC_REVIEW",
+      ]),
+    );
+    expect(items.map((item) => item.key)).toEqual(["analysis", "qa", "tests", "semantic"]);
+    expect(
+      items.every((item) => item.href.startsWith("/w/00000000-0000-4000-8000-00000000aa11/")),
+    ).toBe(true);
   });
 });
