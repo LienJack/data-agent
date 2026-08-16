@@ -21,6 +21,67 @@ export interface SemanticG6ElementData extends Record<string, unknown> {
   readonly nodeType?: SemanticGraphReadNode["node"]["node_type"];
 }
 
+export interface SemanticFullForceLayout {
+  readonly [key: string]: unknown;
+  readonly type: "force";
+  readonly preLayout: true;
+  readonly animation: false;
+  readonly width: number;
+  readonly height: number;
+  readonly preventOverlap: true;
+  readonly nodeSize: number;
+  readonly nodeSpacing: number;
+  readonly collideStrength: number;
+  readonly nodeStrength: number;
+  readonly edgeStrength: number;
+  readonly linkDistance: number;
+  readonly gravity: number;
+  readonly factor: number;
+  readonly damping: number;
+  readonly maxSpeed: number;
+  readonly maxIteration: number;
+  readonly minMovement: number;
+  readonly distanceThresholdMode: "max";
+}
+
+const FULL_FORCE_NODE_SIZE = 44;
+const FULL_FORCE_NODE_SPACING = 34;
+const FULL_FORCE_NODE_PITCH = FULL_FORCE_NODE_SIZE + FULL_FORCE_NODE_SPACING;
+
+/**
+ * Give dense ontologies a layout area that grows with their node count.
+ * G6 still fits the result into the viewport, but collision is calculated in
+ * this larger coordinate space so nodes receive independent positions instead
+ * of being compressed into a stack.
+ */
+export function semanticFullForceLayout(nodeCount: number): SemanticFullForceLayout {
+  const safeNodeCount = Math.max(1, Math.floor(nodeCount));
+  const columns = Math.ceil(Math.sqrt(safeNodeCount * 1.6));
+  const rows = Math.ceil(safeNodeCount / columns);
+
+  return {
+    type: "force",
+    preLayout: true,
+    animation: false,
+    width: Math.max(1280, columns * FULL_FORCE_NODE_PITCH),
+    height: Math.max(800, rows * FULL_FORCE_NODE_PITCH),
+    preventOverlap: true,
+    nodeSize: FULL_FORCE_NODE_SIZE,
+    nodeSpacing: FULL_FORCE_NODE_SPACING,
+    collideStrength: 1,
+    nodeStrength: 1600,
+    edgeStrength: 36,
+    linkDistance: 152,
+    gravity: 2,
+    factor: 1.15,
+    damping: 0.88,
+    maxSpeed: 220,
+    maxIteration: 900,
+    minMovement: 0.18,
+    distanceThresholdMode: "max",
+  };
+}
+
 const NODE_SURFACES = {
   BUSINESS_SUBJECT: "#fff7f4",
   DIMENSION: "#f3fafc",
@@ -127,17 +188,43 @@ function semanticNodeDatum(item: SemanticGraphReadNode, selectedNodeId: string |
   };
 }
 
-function forceNodeDatum(item: SemanticGraphReadNode, selectedNodeId: string | null): NodeData {
+const FULL_FORCE_LABEL_PRIORITY: Record<SemanticGraphReadNode["node"]["node_type"], number> = {
+  BUSINESS_SUBJECT: 36,
+  METRIC: 28,
+  FORMULA: 22,
+  DIMENSION: 16,
+  PHYSICAL_TABLE: 12,
+  GLOSSARY_TERM: 8,
+  PHYSICAL_COLUMN: 0,
+};
+
+function fullForceLabelIds(
+  items: readonly SemanticGraphReadNode[],
+  selectedNodeId: string | null,
+): ReadonlySet<string> {
+  const labelBudget = Math.max(10, Math.min(24, Math.ceil(Math.sqrt(items.length) * 1.25)));
+  const ranked = [...items].sort((left, right) => {
+    const leftScore =
+      left.relation_count.total * 10 + FULL_FORCE_LABEL_PRIORITY[left.node.node_type];
+    const rightScore =
+      right.relation_count.total * 10 + FULL_FORCE_LABEL_PRIORITY[right.node.node_type];
+    return rightScore - leftScore || left.node.name.localeCompare(right.node.name);
+  });
+  const ids = new Set(ranked.slice(0, labelBudget).map((item) => item.node.node_id));
+  if (selectedNodeId) ids.add(selectedNodeId);
+  return ids;
+}
+
+function forceNodeDatum(
+  item: SemanticGraphReadNode,
+  selectedNodeId: string | null,
+  labeled: boolean,
+): NodeData {
   const selected = item.node.node_id === selectedNodeId;
   const type = SEMANTIC_NODE_PRESENTATION[item.node.node_type];
   const status = SEMANTIC_STATUS_PRESENTATION[item.status];
   const degree = item.relation_count.total;
-  const prominent =
-    selected ||
-    item.node.node_type === "BUSINESS_SUBJECT" ||
-    item.node.node_type === "METRIC" ||
-    item.node.node_type === "FORMULA" ||
-    degree >= 8;
+  const prominent = selected || labeled;
   const size = Math.min(38, 16 + Math.sqrt(Math.max(1, degree)) * 4);
   return {
     id: item.node.node_id,
@@ -253,8 +340,11 @@ export function buildFullG6Data(
   selectedNodeId: string | null,
   selectedEdgeId: string | null,
 ): GraphData {
+  const labeledNodeIds = fullForceLabelIds(graph.nodes, selectedNodeId);
   return {
-    nodes: graph.nodes.map((item) => forceNodeDatum(item, selectedNodeId)),
+    nodes: graph.nodes.map((item) =>
+      forceNodeDatum(item, selectedNodeId, labeledNodeIds.has(item.node.node_id)),
+    ),
     edges: semanticEdges(graph.edges, selectedEdgeId, "line", true),
   };
 }

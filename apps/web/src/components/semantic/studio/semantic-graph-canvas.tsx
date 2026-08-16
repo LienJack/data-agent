@@ -10,7 +10,12 @@ import type {
 } from "@data-agent/contracts";
 import { ArrowClockwise, CornersOut, Minus, Plus } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildFullG6Data, buildLocalG6Data, semanticG6SourceId } from "@/lib/semantic-g6-model";
+import {
+  buildFullG6Data,
+  buildLocalG6Data,
+  semanticFullForceLayout,
+  semanticG6SourceId,
+} from "@/lib/semantic-g6-model";
 import {
   edgeLabel,
   SEMANTIC_NODE_PRESENTATION,
@@ -78,6 +83,10 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
     }
     return buildFullG6Data(fullGraph, props.selectedNodeId, props.selectedEdgeId);
   }, [fullGraph, localGraph, props.mode, props.selectedEdgeId, props.selectedNodeId]);
+  const fullForceLayout = useMemo(
+    () => semanticFullForceLayout(fullGraph.nodes.length),
+    [fullGraph.nodes.length],
+  );
   const nodeById = useMemo(
     () =>
       new Map(
@@ -169,12 +178,25 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               shadowBlur: 20,
               shadowOffsetY: 7,
             },
-            active: {
+            active: (datum) => ({
               opacity: 1,
               lineWidth: 2.5,
               shadowColor: "rgba(36, 79, 67, 0.14)",
               shadowBlur: 14,
-            },
+              labelText: typeof datum.data?.label === "string" ? datum.data.label : "语义节点",
+              labelPlacement: "bottom",
+              labelOffsetY: 7,
+              labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
+              labelFontSize: 9,
+              labelFontWeight: 600,
+              labelFill: "#33413b",
+              labelBackground: true,
+              labelBackgroundFill: "rgba(249, 251, 250, 0.96)",
+              labelBackgroundStroke: "#d8dfdb",
+              labelBackgroundLineWidth: 1,
+              labelBackgroundRadius: 5,
+              labelPadding: [2, 5],
+            }),
             inactive: { opacity: 0.16 },
           },
           animation: false,
@@ -229,22 +251,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                 controlPoints: false,
                 edgeLabelSpace: false,
               }
-            : {
-                type: "force",
-                preLayout: true,
-                animation: false,
-                preventOverlap: true,
-                nodeSize: 42,
-                nodeStrength: -760,
-                edgeStrength: 72,
-                linkDistance: 112,
-                gravity: 5,
-                factor: 1,
-                damping: 0.86,
-                maxSpeed: 240,
-                maxIteration: 600,
-                minMovement: 0.35,
-              },
+            : fullForceLayout,
       });
       mountedGraph = instance;
       graphRef.current = instance;
@@ -293,11 +300,14 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       resizeObserver?.disconnect();
       if (renderSettled) destroyMountedGraph();
     };
-  }, [edgeById, empty, g6Data, nodeById, props.mode]);
+  }, [edgeById, empty, fullForceLayout, g6Data, nodeById, props.mode]);
 
   return (
     <section
       id={props.mode === "full" ? "semantic-full-graph" : undefined}
+      data-layout-mode={props.mode === "full" ? "expanded-force" : "layered-flow"}
+      data-layout-width={props.mode === "full" ? fullForceLayout.width : undefined}
+      data-layout-height={props.mode === "full" ? fullForceLayout.height : undefined}
       className="relative min-h-[560px] overflow-hidden bg-[#f7f9f7]"
       aria-label={props.mode === "local" ? "节点局部关系图" : "语义全图"}
     >
@@ -308,7 +318,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         <p className="mt-0.5 text-[9px] text-[#74807a]">
           {props.mode === "local"
             ? "按语义方向分层 · 悬停显示关系名"
-            : `${fullGraph.nodes.length} Node · ${fullGraph.edges.length} Edge · 拖拽节点探索关系`}
+            : `${fullGraph.nodes.length} Node · ${fullGraph.edges.length} Edge · 关键节点标注`}
         </p>
       </div>
       <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-white/80 bg-white/90 p-1 shadow-[0_8px_24px_rgba(38,52,45,0.08)] backdrop-blur-sm sm:right-4 sm:top-4">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildFullG6Data,
   buildLocalG6Data,
+  semanticFullForceLayout,
   semanticG6SourceId,
 } from "../src/lib/semantic-g6-model";
 import {
@@ -45,10 +46,30 @@ describe("semantic G6 graph model", () => {
     expect(data.nodes?.every((node) => node.type === "circle")).toBe(true);
     expect(data.nodes?.some((node) => node.type === "donut")).toBe(false);
     expect(data.edges?.every((edge) => edge.type === "line")).toBe(true);
+    expect(
+      data.nodes?.filter((node) => node.style?.labelText !== undefined).length,
+    ).toBeLessThanOrEqual(24);
     expect(semanticG6SourceId(data.nodes?.[0]?.data)).toMatchObject({
       kind: "semantic-node",
       sourceId: snapshot.full.nodes[0]?.node.node_id,
     });
+  });
+
+  it("expands dense full graphs in a growing collision-safe force area", () => {
+    const small = semanticFullForceLayout(25);
+    const dense = semanticFullForceLayout(306);
+
+    expect(small).toMatchObject({
+      type: "force",
+      preventOverlap: true,
+      collideStrength: 1,
+      distanceThresholdMode: "max",
+    });
+    expect(dense.width).toBeGreaterThan(small.width);
+    expect(dense.height).toBeGreaterThan(small.height);
+    expect(dense.nodeSpacing).toBeGreaterThan(0);
+    expect(dense.nodeStrength).toBeGreaterThan(0);
+    expect(dense.linkDistance).toBeGreaterThan(dense.nodeSize + dense.nodeSpacing);
   });
 
   it("shows the complete ontology chain instead of embedding physical fields", () => {
