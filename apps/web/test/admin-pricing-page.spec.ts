@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   }),
 }));
 
+vi.mock("server-only", () => ({}));
 vi.mock("next/navigation", () => ({
   notFound: mocks.notFound,
   redirect: mocks.redirect,
@@ -28,6 +29,7 @@ beforeAll(async () => {
 });
 
 beforeEach(() => {
+  vi.unstubAllEnvs();
   mocks.session.mockReset();
   mocks.notFound.mockClear();
   mocks.redirect.mockClear();
@@ -54,7 +56,18 @@ describe("pricing admin page boundary", () => {
     expect(mocks.redirect).toHaveBeenCalledWith("/login");
   });
 
-  it("renders only after a fresh super-admin session check", async () => {
+  it("returns not found for a super-admin while the billing UI is paused", async () => {
+    mocks.session.mockResolvedValue({
+      ok: true,
+      value: { system_role: "SUPER_ADMIN" },
+    });
+
+    await expect(PricingAdminPage()).rejects.toThrow("NEXT_NOT_FOUND");
+    expect(mocks.notFound).toHaveBeenCalledOnce();
+  });
+
+  it("renders after a fresh super-admin session check and explicit opt-in", async () => {
+    vi.stubEnv("BILLING_UI_ENABLED", "true");
     mocks.session.mockResolvedValue({
       ok: true,
       value: { system_role: "SUPER_ADMIN" },

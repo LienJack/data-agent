@@ -4,6 +4,7 @@ import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
 import { OperationsAdminPanel } from "@/components/settings/operations-admin-panel";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
+import { isBillingUiEnabled } from "@/lib/billing-ui";
 import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
 
 /**
@@ -25,6 +26,7 @@ export default async function SettingsPage() {
     );
   }
   const isSuperAdmin = session.value.system_role === "SUPER_ADMIN";
+  const billingUiEnabled = isBillingUiEnabled();
   const workspaceAccess = await listSessionWorkspaces(session.value);
   const workspaces = workspaceAccess.ok ? workspaceAccess.value : [];
   return (
@@ -38,7 +40,9 @@ export default async function SettingsPage() {
             <div>
               <h1 className="text-2xl font-semibold tracking-[-0.03em]">平台设置</h1>
               <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                账户、模型与计费输入的数据库权威控制面。
+                {billingUiEnabled
+                  ? "账户、模型与计费输入的数据库权威控制面。"
+                  : "账户、工作空间与语义治理的数据库权威控制面。"}
               </p>
             </div>
             <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
@@ -49,25 +53,32 @@ export default async function SettingsPage() {
 
         {isSuperAdmin && (
           <div className="mt-8 workspace-section">
-            <OperationsAdminPanel currentPrincipalId={session.value.principal_id} />
+            <OperationsAdminPanel
+              currentPrincipalId={session.value.principal_id}
+              billingUiEnabled={billingUiEnabled}
+            />
           </div>
         )}
 
-        <div
-          className={`${isSuperAdmin ? "mt-12 border-t border-[var(--color-border-default)] pt-8" : "mt-8"} workspace-section`}
-        >
-          <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
-        </div>
+        {billingUiEnabled && (
+          <>
+            <div
+              className={`${isSuperAdmin ? "mt-12 border-t border-[var(--color-border-default)] pt-8" : "mt-8"} workspace-section`}
+            >
+              <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
+            </div>
 
-        <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
-          <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
-        </div>
+            <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
+              <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
+            </div>
+          </>
+        )}
 
         <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
           <SemanticPortabilityPanel workspaces={workspaces} />
         </div>
 
-        {isSuperAdmin && (
+        {billingUiEnabled && isSuperAdmin && (
           <div className="mt-12 border-t border-[var(--color-border-default)] pt-8">
             <PricingControlPanel />
           </div>

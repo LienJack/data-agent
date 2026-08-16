@@ -11,9 +11,11 @@ import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ReasonDialog } from "@/components/ui/reason-dialog";
+import { visibleOperationsHealthGates } from "@/lib/billing-ui-policy";
 
 interface OperationsAdminPanelProps {
   readonly currentPrincipalId: string;
+  readonly billingUiEnabled: boolean;
 }
 
 type PanelTab = "overview" | "users" | "workspaces";
@@ -170,7 +172,10 @@ function Metric(props: {
   );
 }
 
-export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPanelProps) {
+export function OperationsAdminPanel({
+  currentPrincipalId,
+  billingUiEnabled,
+}: OperationsAdminPanelProps) {
   const [tab, setTab] = useState<PanelTab>("overview");
   const [users, setUsers] = useState<readonly AdminUserProjection[]>([]);
   const [workspaces, setWorkspaces] = useState<readonly AdminWorkspaceProjection[]>([]);
@@ -211,14 +216,14 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
   useEffect(() => void reload(), [reload]);
 
   const summary = useMemo(() => {
-    const gates = health?.gates ?? [];
+    const gates = visibleOperationsHealthGates(health?.gates ?? [], billingUiEnabled);
     return {
       activeUsers: users.filter((user) => user.status === "ACTIVE").length,
       activeWorkspaces: workspaces.filter((workspace) => workspace.lifecycle === "ACTIVE").length,
       pending: gates.reduce((total, gate) => total + gate.count, 0),
       blocked: gates.filter((gate) => gate.status === "BLOCKED").length,
     };
-  }, [health, users, workspaces]);
+  }, [billingUiEnabled, health, users, workspaces]);
 
   async function createUser(event: FormEvent) {
     event.preventDefault();
@@ -415,7 +420,7 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
         <div className="flex items-center gap-3">
           {health && (
             <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
-              {health.billing_mode} · epoch {health.billing_epoch} ·{" "}
+              {billingUiEnabled && `${health.billing_mode} · epoch ${health.billing_epoch} · `}
               {formatTime(health.generated_at)}
             </p>
           )}
@@ -535,7 +540,7 @@ export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPane
             正在读取数据库权威状态…
           </div>
         ) : tab === "overview" ? (
-          <HealthOverview health={health} onNavigate={setTab} />
+          <HealthOverview health={health} onNavigate={setTab} billingUiEnabled={billingUiEnabled} />
         ) : tab === "users" ? (
           <UsersPanel
             users={users}
@@ -608,11 +613,14 @@ function AdminActionDialog(props: {
 function HealthOverview({
   health,
   onNavigate,
+  billingUiEnabled,
 }: {
   readonly health?: OperationsHealthProjection;
   readonly onNavigate: (tab: PanelTab) => void;
+  readonly billingUiEnabled: boolean;
 }) {
   if (!health) return null;
+  const gates = visibleOperationsHealthGates(health.gates, billingUiEnabled);
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div className="overflow-hidden rounded-xl border border-[var(--color-border-default)]">
@@ -620,15 +628,15 @@ function HealthOverview({
           <div>
             <h3 className="text-sm font-semibold">上线健康门</h3>
             <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
-              六项检查共享同一权威快照
+              {gates.length} 项检查共享同一权威快照
             </p>
           </div>
           <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
-            6 / 6 observed
+            {gates.length} / {gates.length} observed
           </span>
         </div>
         <div className="divide-y divide-[var(--color-border-default)]">
-          {health.gates.map((gate) => {
+          {gates.map((gate) => {
             const tone = gateTone(gate.status);
             return (
               <div
@@ -680,16 +688,20 @@ function HealthOverview({
           >
             管理工作空间 <span aria-hidden="true">→</span>
           </button>
-          <Link
-            href="/admin/pricing"
-            className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]"
-          >
-            审批价格候选 <span aria-hidden="true">→</span>
-          </Link>
+          {billingUiEnabled && (
+            <Link
+              href="/admin/pricing"
+              className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]"
+            >
+              审批价格候选 <span aria-hidden="true">→</span>
+            </Link>
+          )}
         </div>
         <div className="mt-5 border-t border-[var(--color-border-default)] pt-4">
           <p className="text-[10px] leading-5 text-[var(--color-text-muted)]">
-            身份副作用、账单复核与余额漂移会阻断上线；同步或待审批项显示为注意。
+            {billingUiEnabled
+              ? "身份副作用、账单复核与余额漂移会阻断上线；同步或待审批项显示为注意。"
+              : "身份副作用未完成时会阻断上线；待处理项显示为注意。"}
           </p>
         </div>
       </aside>
@@ -719,7 +731,7 @@ function UsersPanel(props: {
         <div className="border-b border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-4 py-3">
           <h3 className="text-sm font-semibold">全局用户目录</h3>
           <p className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
-            账号全局唯一，积分账户不随工作空间复制
+            账号全局唯一，成员关系按工作空间隔离
           </p>
         </div>
         <div className="divide-y divide-[var(--color-border-default)]">

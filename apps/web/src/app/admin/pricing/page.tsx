@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
+import { isBillingUiEnabled } from "@/lib/billing-ui";
 import { getCurrentWorkspaceSession } from "@/lib/workspace-identity";
 
 export default async function PricingAdminPage() {
@@ -15,6 +16,7 @@ export default async function PricingAdminPage() {
     );
   }
   if (session.value.system_role !== "SUPER_ADMIN") notFound();
+  if (!isBillingUiEnabled()) notFound();
 
   return (
     <main className="mx-auto max-w-6xl p-6">

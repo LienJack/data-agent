@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountControls } from "@/components/workspaces/account-controls";
+import { isBillingUiEnabled } from "@/lib/billing-ui";
 import {
   getCurrentWorkspaceSession,
   listSessionWorkspaces,
@@ -25,6 +26,7 @@ export default async function WorkspaceHomePage({
     (candidate) => candidate.workspace.workspace_id === workspaceId,
   );
   if (!access) redirect("/workspaces");
+  const billingUiEnabled = isBillingUiEnabled();
   const navigation = navigationForWorkspace(access);
 
   return (
@@ -77,7 +79,9 @@ export default async function WorkspaceHomePage({
                 </span>
               </div>
               <p className="mt-2 text-xs leading-5 text-[var(--color-text-secondary)]">
-                {item.description}
+                {!billingUiEnabled && item.key === "platform-settings"
+                  ? "管理账户、工作空间与语义资产"
+                  : item.description}
               </p>
             </Link>
           ))}
@@ -85,7 +89,9 @@ export default async function WorkspaceHomePage({
 
         <section className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 text-sm text-blue-900">
           身份、工作空间、数据源、对话、Schema Discovery 与语义请求均由当前 capability 隔离；
-          平台模型与计费控制面将在后续阶段继续接入。
+          {billingUiEnabled
+            ? "平台模型与计费控制面将在后续阶段继续接入。"
+            : "平台级扩展能力将在后续阶段继续接入。"}
         </section>
       </div>
     </main>
