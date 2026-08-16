@@ -13,7 +13,12 @@ import {
   releaseDecisionSchema,
 } from "../runs/index.js";
 
+export * from "../authz/signer-key-registry.js";
+export * from "../semantic/greenfield-bootstrap.js";
+export * from "../semantic/semantic-coverage-policy.js";
+export * from "../workspaces/route-authorization-matrix.js";
 export * from "./deferred-artifacts.js";
+export * from "./platform-capabilities.js";
 
 export const capabilityLevelSchema = z.enum(["L2", "L3", "L4", "L5"]);
 

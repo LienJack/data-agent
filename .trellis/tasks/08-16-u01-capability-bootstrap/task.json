@@ -3,7 +3,7 @@
   "name": "u01-capability-bootstrap",
   "title": "U1 能力账本 Greenfield 输入合同与 Bootstrap 基线",
   "description": "冻结计划对应 U1 的独立实施、验证与 scoped commit。",
-  "status": "planning",
+  "status": "completed",
   "dev_type": null,
   "scope": null,
   "package": null,
