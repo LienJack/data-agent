@@ -159,6 +159,15 @@ function assertScope(requested: AppScope, authorized: AppScope): void {
   }
 }
 
+function assertLeasePrincipal(requested: string, authorized: string): void {
+  if (requested !== authorized) {
+    throw new PersistenceBoundaryError(
+      "RUN_EVENT_STORE_PRINCIPAL_DENIED",
+      "Run Work Lease 的 Principal 与当前服务端 Authority 不一致。",
+    );
+  }
+}
+
 function iso(value: Date | string): string {
   const parsed = value instanceof Date ? value : new Date(value);
   if (!Number.isFinite(parsed.getTime())) {
@@ -460,6 +469,7 @@ export function createPostgresRunEventStore(
       { access: "WRITE", map_database_error: mapDatabaseRuntimeFailure },
       async ({ capability, client }) => {
         assertScope(parsedEvent.data.scope, capability.scope);
+        assertLeasePrincipal(parsedLease.data.principal_id, capability.principal);
         const current = parsedExpectedProjection.data;
         const nextProjection = reduceAppendProjection(current.projection, parsedEvent.data);
         const nextProjectionHash = await hashRunProjection(nextProjection);
@@ -546,6 +556,7 @@ export function createPostgresRunEventStore(
       { access: "WRITE", map_database_error: mapDatabaseRuntimeFailure },
       async ({ capability, client }) => {
         assertScope(parsed.data.scope, capability.scope);
+        assertLeasePrincipal(parsedLease.data.principal_id, capability.principal);
         const result = await client.query<JsonResultRow>(
           "select app_data_agent.commit_run_checkpoint($1::jsonb, $2::jsonb) as result",
           [JSON.stringify(parsedLease.data), JSON.stringify(parsed.data)],
@@ -734,6 +745,7 @@ export function createPostgresRunEventStore(
       { access: "WRITE", map_database_error: mapDatabaseRuntimeFailure },
       async ({ capability, client }) => {
         assertScope(parsed.data.scope, capability.scope);
+        assertLeasePrincipal(parsedLease.data.principal_id, capability.principal);
         const result = await client.query<JsonResultRow>(
           "select app_data_agent.commit_run_effect_receipt($1::jsonb, $2::jsonb) as result",
           [JSON.stringify(parsedLease.data), JSON.stringify(parsed.data)],

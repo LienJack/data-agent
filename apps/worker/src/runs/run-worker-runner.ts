@@ -1,8 +1,13 @@
 import {
   type AppScope,
+  type ContextReceiptBinding,
   type ContractError,
   canonicalizeJson,
+  contextReceiptBindingSchema,
   runCheckpointInputSchema as contractRunCheckpointInputSchema,
+  type EffectiveRunConfigReceiptCandidate,
+  effectiveConfigRunLeasePayloadSchema,
+  effectiveRunConfigReceiptCandidateSchema,
   type MastraSnapshotBinding,
   mastraSnapshotBindingSchema,
   type PortResult,
@@ -17,10 +22,15 @@ import {
   retryDelayMsSchema,
   runWorkLeaseSchema,
   type SideEffectReceipt,
+  verifyContextReceiptBindingCandidate,
+  verifyEffectiveRunConfigReceiptCandidate,
   workerRunRuntimeEventSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
-import { createRunExecutionContext } from "./run-execution-context.js";
+import {
+  createRunExecutionContext,
+  type RunExecutionContextProvenance,
+} from "./run-execution-context.js";
 import { createRunExecutionSupervisor } from "./run-execution-supervisor.js";
 import { failure, occurredAt, scopesMatch, success } from "./run-worker-shared.js";
 
@@ -126,7 +136,9 @@ export type RunWorkerCycleOutcome =
       observed_event_sequence: number;
     }>;
 
-export interface RunExecutionContext {
+export interface RunExecutionContext extends RunExecutionContextProvenance {
+  getEffectiveConfig(): EffectiveRunConfigReceiptCandidate;
+  getContextReceipt(): ContextReceiptBinding;
   heartbeat(): Promise<PortResult<{ readonly expires_at: string }>>;
   checkpoint(input: RunCheckpointInput): Promise<PortResult<MastraSnapshotBinding>>;
   executeSideEffectOnce(input: {
@@ -165,12 +177,22 @@ export interface RunWorkerRunnerDependencies {
   readonly queue: RunQueuePort;
   readonly event_store: RunEventStorePort;
   readonly executor: RunWorkflowExecutorPort;
+  readonly effective_config_loader: (lease: RunWorkLease) => Promise<PortResult<unknown>>;
   readonly now?: () => Date;
   readonly create_id?: () => string;
   readonly execution_timeout_ms?: number;
   readonly heartbeat_interval_ms?: number;
   readonly side_effect_timeout_ms?: number;
 }
+
+const effectiveConfigWorkerConsumptionSchema = z.strictObject({
+  schema_version: z.literal("effective-config-worker-consumption@1.0.0"),
+  replayed: z.boolean(),
+  context_receipt: contextReceiptBindingSchema,
+  effective_config: effectiveRunConfigReceiptCandidateSchema,
+});
+
+type EffectiveConfigWorkerConsumption = z.infer<typeof effectiveConfigWorkerConsumptionSchema>;
 
 type AppendResult = Readonly<{
   event: RunRuntimeEvent;
@@ -225,6 +247,44 @@ function eventIdempotencyKey(lease: RunWorkLease, eventKind: string, identity: s
 
 function sideEffectEventIdempotencyKey(lease: RunWorkLease, receipt: SideEffectReceipt): string {
   return ["side-effect", lease.run_id, receipt.effect_kind, receipt.input_hash].join(":");
+}
+
+function sameVersionedResource(
+  left: Readonly<{ resource_id: string; resource_revision: number; resource_hash: string }>,
+  right: Readonly<{ resource_id: string; resource_revision: number; resource_hash: string }>,
+): boolean {
+  return (
+    left.resource_id === right.resource_id &&
+    left.resource_revision === right.resource_revision &&
+    left.resource_hash === right.resource_hash
+  );
+}
+
+function canonicalAvailableResourceReferences(receipt: EffectiveRunConfigReceiptCandidate) {
+  return receipt.resource_bindings
+    .flatMap((binding) =>
+      binding.availability === "AVAILABLE" && binding.effective_resource
+        ? [binding.effective_resource]
+        : [],
+    )
+    .toSorted((left, right) => {
+      if (left.resource_id !== right.resource_id) {
+        return left.resource_id < right.resource_id ? -1 : 1;
+      }
+      if (left.resource_revision !== right.resource_revision) {
+        return left.resource_revision - right.resource_revision;
+      }
+      return left.resource_hash < right.resource_hash
+        ? -1
+        : left.resource_hash > right.resource_hash
+          ? 1
+          : 0;
+    })
+    .map(({ resource_id, resource_revision, resource_hash }) => ({
+      resource_id,
+      resource_revision,
+      resource_hash,
+    }));
 }
 
 function processCrashFailure(): PortResult<RunWorkerCycleOutcome> {
@@ -512,9 +572,12 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
   function createExecutionContext(
     lease: RunWorkLease,
     runSignal: AbortSignal,
+    consumption: EffectiveConfigWorkerConsumption,
   ): RunExecutionContext {
     return createRunExecutionContext({
       lease,
+      effective_config: consumption.effective_config,
+      context_receipt: consumption.context_receipt,
       run_signal: runSignal,
       event_store: dependencies.event_store,
       now,
@@ -545,6 +608,95 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       append_side_effect_event: (receipt) => appendSideEffectEvent(lease, receipt),
       append_display_event: (input) => appendDisplayEvent(lease, input),
     });
+  }
+
+  async function loadEffectiveConfig(
+    lease: RunWorkLease,
+  ): Promise<PortResult<EffectiveConfigWorkerConsumption>> {
+    const loaded = await dependencies.effective_config_loader(lease);
+    if (!loaded.ok) return loaded;
+    const parsed = effectiveConfigWorkerConsumptionSchema.safeParse(loaded.value);
+    if (!parsed.success) {
+      return failure(
+        "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+        "Effective Config Loader 返回了无效消费回执。",
+        false,
+      );
+    }
+    try {
+      const [effectiveConfig, contextReceipt] = await Promise.all([
+        verifyEffectiveRunConfigReceiptCandidate(parsed.data.effective_config),
+        verifyContextReceiptBindingCandidate(parsed.data.context_receipt),
+      ]);
+      const configRef = effectiveConfigRunLeasePayloadSchema.parse(
+        lease.payload,
+      ).effective_config_ref;
+      if (
+        effectiveConfig.run_id !== lease.run_id ||
+        effectiveConfig.scope.app_id !== lease.scope.app_id ||
+        effectiveConfig.scope.tenant_id !== lease.scope.tenant_id ||
+        effectiveConfig.scope.environment !== lease.scope.environment ||
+        effectiveConfig.scope.principal_id !== lease.principal_id ||
+        effectiveConfig.config_id !== configRef.config_id ||
+        effectiveConfig.config_revision !== configRef.config_revision ||
+        effectiveConfig.config_hash !== configRef.config_hash ||
+        contextReceipt.consumer !== "WORKER_START" ||
+        contextReceipt.receipt_id !== lease.attempt_id ||
+        contextReceipt.outbox_id !== lease.outbox_id ||
+        contextReceipt.command_id !== lease.command_id ||
+        contextReceipt.scope.app_id !== lease.scope.app_id ||
+        contextReceipt.scope.tenant_id !== lease.scope.tenant_id ||
+        contextReceipt.scope.environment !== lease.scope.environment ||
+        contextReceipt.scope.principal_id !== lease.principal_id ||
+        contextReceipt.scope.workspace_id !== effectiveConfig.scope.workspace_id ||
+        contextReceipt.consumer_id !== lease.worker_id ||
+        contextReceipt.attempt_id !== lease.attempt_id ||
+        contextReceipt.lease_token !== lease.lease_token ||
+        contextReceipt.worker_fence !== lease.worker_fence ||
+        contextReceipt.run_id !== lease.run_id ||
+        contextReceipt.config_ref.config_id !== configRef.config_id ||
+        contextReceipt.config_ref.config_revision !== configRef.config_revision ||
+        contextReceipt.config_ref.config_hash !== configRef.config_hash ||
+        !sameVersionedResource(contextReceipt.semantic_release, effectiveConfig.semantic_release) ||
+        contextReceipt.semantic_release.datasource_id !==
+          effectiveConfig.semantic_release.datasource_id ||
+        contextReceipt.semantic_release.semantic_generation !==
+          effectiveConfig.semantic_release.semantic_generation ||
+        contextReceipt.semantic_release.publication_status !==
+          effectiveConfig.semantic_release.publication_status ||
+        !sameVersionedResource(contextReceipt.schema_snapshot, effectiveConfig.schema_snapshot) ||
+        contextReceipt.schema_snapshot.datasource_id !==
+          effectiveConfig.schema_snapshot.datasource_id ||
+        contextReceipt.schema_snapshot.semantic_release_id !==
+          effectiveConfig.schema_snapshot.semantic_release_id ||
+        contextReceipt.schema_snapshot.semantic_generation !==
+          effectiveConfig.schema_snapshot.semantic_generation ||
+        !sameVersionedResource(contextReceipt.context_policy, effectiveConfig.context_policy) ||
+        contextReceipt.provider !== effectiveConfig.model.provider ||
+        JSON.stringify(contextReceipt.audiences) !==
+          JSON.stringify(effectiveConfig.effective_egress.allowed_audiences) ||
+        contextReceipt.classification !== effectiveConfig.effective_egress.classification ||
+        JSON.stringify(contextReceipt.resource_refs) !==
+          JSON.stringify(canonicalAvailableResourceReferences(effectiveConfig))
+      ) {
+        return failure(
+          "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+          "Effective Config、Context Receipt 与 Lease 不一致。",
+          false,
+        );
+      }
+      return success({
+        ...parsed.data,
+        effective_config: effectiveConfig,
+        context_receipt: contextReceipt,
+      });
+    } catch {
+      return failure(
+        "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+        "Effective Config 或 Context Receipt 完整性校验失败。",
+        false,
+      );
+    }
   }
 
   async function completeQueue(
@@ -742,7 +894,24 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       ) {
         return failure("WORKER_LEASE_INVALID", "Queue 返回的 Lease 与 Worker 请求不匹配。", false);
       }
-      const lease = leaseResult.data;
+      const payload = effectiveConfigRunLeasePayloadSchema.safeParse(leaseResult.data.payload);
+      if (!payload.success) {
+        return failure(
+          "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+          "Worker Lease 必须只携带 Effective Config Reference。",
+          false,
+        );
+      }
+      const lease = { ...leaseResult.data, payload: payload.data };
+      if (lease.command_kind !== "START_L2_RESEARCH") {
+        return failure(
+          "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+          "Worker Lease Command Kind 与 Effective Config Payload 不一致。",
+          false,
+        );
+      }
+      const effectiveConfig = await loadEffectiveConfig(lease);
+      if (!effectiveConfig.ok) return effectiveConfig;
       const current = await readProjection(lease);
       if (!current.ok) {
         return current;
@@ -793,7 +962,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
         timing.heartbeat_interval_ms,
         Math.floor(lease.lease_duration_ms / 3),
       );
-      const context = createExecutionContext(lease, runController.signal);
+      const context = createExecutionContext(lease, runController.signal, effectiveConfig.value);
       const supervisor = createRunExecutionSupervisor({
         context,
         controller: runController,

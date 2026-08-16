@@ -37,6 +37,7 @@ export const workspaceDatasourceSchema = z.strictObject({
   schema_version: z.literal("workspace-datasource@1.0.0"),
   workspace_id: immutableIdSchema,
   datasource_id: immutableIdSchema,
+  resource_version: z.number().int().positive().safe(),
   ...workspaceDatasourceFields,
   status: workspaceDatasourceStatusSchema,
   last_tested_at: timestampSchema.nullable(),

@@ -75,6 +75,7 @@ const datasourceRow = {
   tenant_id: ids.tenant,
   environment: "test",
   datasource_id: ids.datasource,
+  resource_version: "7",
   name: "workspace sqlite",
   datasource_type: "sqlite",
   host: null,
@@ -129,6 +130,7 @@ describe("PostgreSQL workspace data repository", () => {
       value: {
         workspace_id: ids.tenant,
         datasource_id: ids.datasource,
+        resource_version: 7,
         created_by_principal_id: ids.principal,
       },
     });
@@ -137,6 +139,7 @@ describe("PostgreSQL workspace data repository", () => {
     );
     expect(insert?.values.slice(0, 4)).toEqual([ids.app, ids.tenant, "test", ids.datasource]);
     expect(insert?.values.at(-1)).toBe(ids.principal);
+    expect(insert?.text).toContain("resource_version");
     expect(fixture.calls.at(-1)?.text).toBe("COMMIT");
   });
 
@@ -194,12 +197,14 @@ describe("PostgreSQL workspace data repository", () => {
 
     await expect(first.listDatasources(issued.capability)).resolves.toMatchObject({
       ok: true,
-      value: [{ datasource_id: ids.datasource }],
+      value: [{ datasource_id: ids.datasource, resource_version: 7 }],
     });
     await expect(second.listDatasources(issued.capability)).resolves.toMatchObject({
       ok: true,
-      value: [{ datasource_id: ids.datasource }],
+      value: [{ datasource_id: ids.datasource, resource_version: 7 }],
     });
+    const select = fixture.calls.find(({ text }) => text.includes("from datasource_connections"));
+    expect(select?.text).toContain("resource_version");
     expect(fixture.connections()).toBe(2);
   });
 

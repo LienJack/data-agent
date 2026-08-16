@@ -74,6 +74,7 @@ describe("workspace datasource contracts", () => {
       ...input,
       schema_version: "workspace-datasource@1.0.0",
       workspace_id: ids.workspace,
+      resource_version: 7,
       status: "ACTIVE",
       last_tested_at: null,
       created_by_principal_id: ids.principal,
@@ -82,6 +83,17 @@ describe("workspace datasource contracts", () => {
     } as const;
     expect(workspaceDatasourceSchema.parse(projection)).toEqual(projection);
     rejectsUnknown(workspaceDatasourceSchema, projection);
+    const { resource_version: _resourceVersion, ...projectionWithoutVersion } = projection;
+    expect(workspaceDatasourceSchema.safeParse(projectionWithoutVersion).success).toBe(false);
+    expect(
+      workspaceDatasourceSchema.safeParse({ ...projection, resource_version: 0 }).success,
+    ).toBe(false);
+    expect(
+      workspaceDatasourceSchema.safeParse({
+        ...projection,
+        resource_version: Number.MAX_SAFE_INTEGER + 1,
+      }).success,
+    ).toBe(false);
   });
 });
 

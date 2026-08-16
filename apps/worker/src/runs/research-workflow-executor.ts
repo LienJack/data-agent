@@ -21,6 +21,7 @@ import {
   sealKernelVerifiedReportReadyCandidate,
 } from "@data-agent/research/server";
 import { z } from "zod";
+import { hasRunExecutionContextProvenance } from "./run-execution-context.js";
 import {
   type RunCheckpointInput,
   type RunDisplayEventInput,
@@ -41,19 +42,6 @@ const RESEARCH_EXECUTOR_OPTIONS_SCHEMA = z.strictObject({
   }),
   principal_id: z.string().uuid(),
   protocol_input: z.unknown(),
-});
-
-const QA_EXECUTION_BINDING_SCHEMA = z.strictObject({
-  kind: z.literal("START_L2_RESEARCH"),
-  mode: z.literal("L2").optional(),
-  conversation_id: z.uuid(),
-  message_id: z.uuid(),
-  datasource_id: z.uuid(),
-  model_profile_id: z.uuid(),
-  model_config_version: z.number().int().positive().safe(),
-  provider: z.enum(["openai", "anthropic", "deepseek", "glm", "kimi", "grok", "gemini"]),
-  model_id: z.string().min(1).max(256),
-  datasource_binding_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
 });
 
 export type ResearchExecutorOptions = z.infer<typeof RESEARCH_EXECUTOR_OPTIONS_SCHEMA>;
@@ -384,6 +372,10 @@ export function createResearchWorkflowExecutor(
         deadline_at: _deadline,
       } = input;
 
+      if (!hasRunExecutionContextProvenance(context)) {
+        return researchErrorResult("RUN_EXECUTION_CONTEXT_UNTRUSTED", false);
+      }
+
       if (lease.principal_id !== deps.principal_id) {
         return researchErrorResult("RUN_PRINCIPAL_MISMATCH", false);
       }
@@ -392,39 +384,27 @@ export function createResearchWorkflowExecutor(
         return researchErrorResult("RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED", false);
       }
 
-      const payload = lease.payload as {
-        readonly kind: "START_L2_RESEARCH";
-        readonly protocol_input?: unknown;
-      };
-      if (payload.kind !== "START_L2_RESEARCH") {
-        return researchErrorResult("UNKNOWN_COMMAND_KIND", false);
-      }
-
-      const qaBinding = QA_EXECUTION_BINDING_SCHEMA.safeParse(lease.payload);
-      if (typeof lease.payload.model_profile_id === "string" && !qaBinding.success) {
-        return researchErrorResult("QA_RUN_BINDING_INVALID", false);
-      }
-      if (qaBinding.success) {
-        const callId = `${lease.attempt_id}:resource-binding`;
-        await emitDisplayEvent(context, {
-          kind: "tool_started",
-          key: "qa-resource-binding-start",
-          call_id: callId,
-          tool_name: "resource.binding.verify",
-          title: "运行资源绑定",
-          summary: "核验对话冻结的模型与数据源快照",
-          input: `model_profile=${qaBinding.data.model_profile_id}; datasource=${qaBinding.data.datasource_id}`,
-        });
-        await emitDisplayEvent(context, {
-          kind: "tool_completed",
-          key: "qa-resource-binding-complete",
-          call_id: callId,
-          tool_name: "resource.binding.verify",
-          summary: `已冻结 ${qaBinding.data.provider}/${qaBinding.data.model_id} 与当前数据源`,
-          output: `model_config_version=${qaBinding.data.model_config_version}; datasource_binding=${qaBinding.data.datasource_binding_hash.slice(0, 15)}…`,
-          duration_ms: 0,
-        });
-      }
+      const effectiveConfig = context.getEffectiveConfig();
+      const contextReceipt = context.getContextReceipt();
+      const callId = `${lease.attempt_id}:effective-config`;
+      await emitDisplayEvent(context, {
+        kind: "tool_started",
+        key: "effective-config-start",
+        call_id: callId,
+        tool_name: "effective.config.verify",
+        title: "运行配置核验",
+        summary: "核验 Worker 消费的语义、模型与数据源冻结回执",
+        input: `config=${effectiveConfig.config_id}@${effectiveConfig.config_revision}; receipt=${contextReceipt.receipt_id}`,
+      });
+      await emitDisplayEvent(context, {
+        kind: "tool_completed",
+        key: "effective-config-complete",
+        call_id: callId,
+        tool_name: "effective.config.verify",
+        summary: `已冻结 ${effectiveConfig.model.provider}/${effectiveConfig.model.model_id} 与数据源、语义快照`,
+        output: `datasource=${effectiveConfig.datasource.resource_id}; semantic_release=${effectiveConfig.semantic_release.resource_id}; config_hash=${effectiveConfig.config_hash.slice(0, 15)}…`,
+        duration_ms: 0,
+      });
 
       const protocolInput: ResearchProtocolInput = {
         observations: {

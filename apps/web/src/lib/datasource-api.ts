@@ -2,7 +2,7 @@
  * Data Sources API 客户端。
  */
 
-import type { WorkspaceDatasource } from "@data-agent/contracts";
+import { type WorkspaceDatasource, workspaceDatasourceSchema } from "@data-agent/contracts";
 import { resolveWorkspaceId } from "./api-client";
 import type {
   CreateDataSourceInput,
@@ -20,6 +20,7 @@ function workspaceApiBase(): string {
 function fromContract(value: WorkspaceDatasource): DataSourceConnection {
   return {
     id: value.datasource_id,
+    resourceVersion: value.resource_version,
     name: value.name,
     type: value.type,
     host: value.host ?? undefined,
@@ -57,30 +58,35 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 /** 获取所有数据源连接 */
 export async function fetchDataSources(): Promise<DataSourceConnection[]> {
-  return (await request<WorkspaceDatasource[]>(workspaceApiBase())).map(fromContract);
+  return workspaceDatasourceSchema
+    .array()
+    .parse(await request<unknown>(workspaceApiBase()))
+    .map(fromContract);
 }
 
 /** 创建数据源连接 */
 export async function createDataSource(
   input: CreateDataSourceInput,
 ): Promise<DataSourceConnection> {
-  const created = await request<WorkspaceDatasource>(workspaceApiBase(), {
-    method: "POST",
-    body: JSON.stringify({
-      schema_version: "workspace-datasource-create@1.0.0",
-      name: input.name,
-      type: input.type,
-      host: input.host ?? null,
-      port: input.port ?? null,
-      database: input.database ?? null,
-      username: input.username ?? null,
-      credential_ref: input.credentialRef ?? null,
-      ssl: input.ssl ?? "disable",
-      path: input.path ?? null,
-      catalog: input.catalog ?? null,
-      schema: input.schema ?? null,
+  const created = workspaceDatasourceSchema.parse(
+    await request<unknown>(workspaceApiBase(), {
+      method: "POST",
+      body: JSON.stringify({
+        schema_version: "workspace-datasource-create@1.0.0",
+        name: input.name,
+        type: input.type,
+        host: input.host ?? null,
+        port: input.port ?? null,
+        database: input.database ?? null,
+        username: input.username ?? null,
+        credential_ref: input.credentialRef ?? null,
+        ssl: input.ssl ?? "disable",
+        path: input.path ?? null,
+        catalog: input.catalog ?? null,
+        schema: input.schema ?? null,
+      }),
     }),
-  });
+  );
   return fromContract(created);
 }
 

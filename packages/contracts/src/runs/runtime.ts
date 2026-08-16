@@ -612,6 +612,7 @@ export const sideEffectReceiptSchema = z
 
 export const runWorkLeaseSchema = z.strictObject({
   scope: appScopeSchema,
+  principal_id: immutableIdSchema,
   outbox_id: immutableIdSchema,
   run_id: immutableIdSchema,
   command_id: immutableIdSchema,

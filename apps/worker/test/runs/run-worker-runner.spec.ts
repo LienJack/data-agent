@@ -14,6 +14,11 @@ import {
   type RunCheckpointInput,
   type RunWorkflowExecutorPort,
 } from "../../src/runs/index.js";
+import {
+  bindEffectiveConfigLease,
+  buildWorkerEffectiveConfigFixture,
+  createEffectiveConfigFixtureLoader,
+} from "./support/effective-config-fixture.js";
 import { InMemoryRunRuntime } from "./support/in-memory-run-runtime.js";
 
 const scope = {
@@ -22,9 +27,12 @@ const scope = {
   environment: "test",
 } as const satisfies AppScope;
 const runId = "80000000-0000-4000-8000-000000000003";
+const principalId = "80000000-0000-4000-8000-000000000005";
 const commandId = "80000000-0000-4000-8000-000000000004";
 const payloadHash = `sha256:${"1".repeat(64)}`;
 const workflowRevision = `sha256:${"2".repeat(64)}`;
+let effectiveConfigFixture: Awaited<ReturnType<typeof buildWorkerEffectiveConfigFixture>> | null =
+  null;
 
 function acceptedEvent(): RunRuntimeEvent {
   return {
@@ -51,8 +59,9 @@ function lease(
   deliveryAttemptNo = attemptNo,
 ): RunWorkLease {
   const suffix = String(attemptNo).padStart(2, "0");
-  return {
+  const rawLease = {
     scope,
+    principal_id: principalId,
     outbox_id: `80000000-0000-4000-8000-0000000001${suffix}`,
     run_id: runId,
     command_id: commandId,
@@ -68,7 +77,9 @@ function lease(
     payload: {
       kind: "START_L2_RESEARCH",
     },
-  };
+  } satisfies RunWorkLease;
+  if (!effectiveConfigFixture) throw new Error("effective config fixture not initialized");
+  return bindEffectiveConfigLease(rawLease, effectiveConfigFixture);
 }
 
 function checkpointInput(
@@ -109,10 +120,17 @@ async function harness(
 ) {
   const runtime = new InMemoryRunRuntime();
   await runtime.seed(acceptedEvent());
+  effectiveConfigFixture = await buildWorkerEffectiveConfigFixture({
+    scope,
+    workspace_id: scope.tenant_id,
+    principal_id: principalId,
+    run_id: runId,
+  });
   const runner = createRunWorkerRunner({
     queue: runtime,
     event_store: runtime,
     executor,
+    effective_config_loader: createEffectiveConfigFixtureLoader(effectiveConfigFixture),
     now: () => new Date("2026-07-26T00:01:00.000Z"),
     create_id: createIdFactory(),
     ...timing,

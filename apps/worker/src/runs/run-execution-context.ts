@@ -1,4 +1,6 @@
 import {
+  type ContextReceiptBinding,
+  type EffectiveRunConfigReceiptCandidate,
   type MastraSnapshotBinding,
   mastraSnapshotBindingBodySchema,
   type PortResult,
@@ -13,8 +15,21 @@ import {
 import type { RunDisplayEventInput, RunExecutionContext } from "./run-worker-runner.js";
 import { failure, occurredAt, receiptMatchesRequest, success } from "./run-worker-shared.js";
 
+declare const runExecutionContextProvenance: unique symbol;
+export type RunExecutionContextProvenance = Readonly<{
+  [runExecutionContextProvenance]: true;
+}>;
+
+const trustedRunExecutionContexts = new WeakSet<object>();
+
+export function hasRunExecutionContextProvenance(input: unknown): input is RunExecutionContext {
+  return typeof input === "object" && input !== null && trustedRunExecutionContexts.has(input);
+}
+
 interface RunExecutionContextDependencies {
   readonly lease: RunWorkLease;
+  readonly effective_config: EffectiveRunConfigReceiptCandidate;
+  readonly context_receipt: ContextReceiptBinding;
   readonly run_signal: AbortSignal;
   readonly event_store: Pick<
     RunEventStorePort,
@@ -41,6 +56,8 @@ interface RunExecutionContextDependencies {
 
 export function createRunExecutionContext({
   lease,
+  effective_config: effectiveConfig,
+  context_receipt: contextReceipt,
   run_signal: runSignal,
   event_store: eventStore,
   now,
@@ -60,7 +77,15 @@ export function createRunExecutionContext({
       false,
     );
 
-  return {
+  const context = {
+    getEffectiveConfig() {
+      return effectiveConfig;
+    },
+
+    getContextReceipt() {
+      return contextReceipt;
+    },
+
     async emitDisplayEvent(input) {
       if (runSignal.aborted) return aborted();
       return appendDisplayEvent(input);
@@ -306,5 +331,7 @@ export function createRunExecutionContext({
         }
       }
     },
-  };
+  } as RunExecutionContext;
+  trustedRunExecutionContexts.add(context);
+  return Object.freeze(context);
 }

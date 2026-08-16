@@ -194,6 +194,7 @@ describe("持久 Run Runtime Contract", () => {
   it("Lease 区分 Run 全局 Attempt 与当前 Outbox 的交付预算", () => {
     const lease = {
       scope,
+      principal_id: "00000000-0000-4000-8000-000000000016",
       outbox_id: "00000000-0000-4000-8000-000000000015",
       run_id: ids.run,
       command_id: ids.command,

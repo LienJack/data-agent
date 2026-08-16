@@ -1,14 +1,21 @@
 import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
+import { effectiveConfigRunLeasePayloadSchema } from "@data-agent/contracts";
 import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
+  createPostgresEffectiveConfigResolver,
+  createPostgresOperationsAdminRepository,
   createPostgresResearchAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
 } from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
+import {
+  createMultiPrincipalRunWorkerRunner,
+  isRunnableWorkspaceMember,
+} from "./runs/multi-principal-runner.js";
 import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
 import {
   createInitialWorkerHealth,
@@ -115,35 +122,91 @@ export async function runWorkerProcess(
     if (!resolved.ok) throw new RunWorkerStartupError(resolved.error.code);
 
     const appCapability = resolved.value;
-    const authorityCapabilityInput = config.research_authority_capability_id
-      ? {
-          app_capability: appCapability,
-          authority_capability_id: config.research_authority_capability_id,
-        }
-      : null;
-    const executor = createResearchWorkflowExecutor({
-      research_authority: createPostgresResearchAuthority({
-        pool: sqlPool,
-        authorizer: capabilityAuthority.authorizer,
-      }),
-      authority_capability_input: authorityCapabilityInput,
-      principal_id: config.principal_id,
-      create_id: randomUUID,
-      now: () => new Date(),
+    const operations = createPostgresOperationsAdminRepository(sqlPool);
+    const researchAuthority = createPostgresResearchAuthority({
+      pool: sqlPool,
+      authorizer: capabilityAuthority.authorizer,
     });
-    const runner = createRunWorkerRunner({
-      queue: createPostgresRunQueue(sqlPool, capabilityAuthority.authorizer, appCapability, {
-        lease_duration_ms: config.lease_duration_ms,
-      }),
-      event_store: createPostgresRunEventStore(
-        sqlPool,
-        capabilityAuthority.authorizer,
-        appCapability,
-      ),
-      executor,
-      execution_timeout_ms: config.execution_timeout_ms,
-      heartbeat_interval_ms: config.heartbeat_interval_ms,
-      side_effect_timeout_ms: config.side_effect_timeout_ms,
+    const effectiveConfigResolver = createPostgresEffectiveConfigResolver({
+      pool: sqlPool,
+      authorizer: capabilityAuthority.authorizer,
+    });
+    const runner = createMultiPrincipalRunWorkerRunner({
+      listPrincipals: async () => {
+        const members = await operations.listWorkspaceMembers({
+          deployment_id: config.deployment_id,
+          principal_id: config.principal_id,
+          workspace_id: config.tenant_id,
+        });
+        if (!members.ok) return members;
+        return {
+          ok: true,
+          value: members.value
+            .filter(isRunnableWorkspaceMember)
+            .map((member) => ({ principal_id: member.principal_id })),
+        };
+      },
+      createRunner: async (principalId) => {
+        const principalCapability = await capabilityAuthority.resolveForServerContext({
+          deployment_id: config.deployment_id,
+          tenant_id: config.tenant_id,
+          principal_id: principalId,
+          access: "WRITE",
+        });
+        if (!principalCapability.ok) return principalCapability;
+        const capability = principalCapability.value;
+        const executor = createResearchWorkflowExecutor({
+          research_authority: researchAuthority,
+          authority_capability_input: config.research_authority_capability_id
+            ? {
+                app_capability: capability,
+                authority_capability_id: config.research_authority_capability_id,
+              }
+            : null,
+          principal_id: principalId,
+          create_id: randomUUID,
+          now: () => new Date(),
+        });
+        return {
+          ok: true,
+          value: createRunWorkerRunner({
+            queue: createPostgresRunQueue(sqlPool, capabilityAuthority.authorizer, capability, {
+              lease_duration_ms: config.lease_duration_ms,
+            }),
+            event_store: createPostgresRunEventStore(
+              sqlPool,
+              capabilityAuthority.authorizer,
+              capability,
+            ),
+            executor,
+            effective_config_loader: (lease) => {
+              const payload = effectiveConfigRunLeasePayloadSchema.safeParse(lease.payload);
+              if (!payload.success || lease.command_kind !== "START_L2_RESEARCH") {
+                return Promise.resolve({
+                  ok: false,
+                  error: {
+                    code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+                    message: "Worker Lease 必须只携带 Effective Config Reference。",
+                    retryable: false,
+                  },
+                });
+              }
+              return effectiveConfigResolver.revalidateForWorker({
+                principal_capability: capability,
+                context_receipt_id: lease.attempt_id,
+                lease: {
+                  ...lease,
+                  command_kind: "START_L2_RESEARCH",
+                  payload: payload.data,
+                },
+              });
+            },
+            execution_timeout_ms: config.execution_timeout_ms,
+            heartbeat_interval_ms: config.heartbeat_interval_ms,
+            side_effect_timeout_ms: config.side_effect_timeout_ms,
+          }),
+        };
+      },
     });
 
     health.initialized = true;
@@ -151,7 +214,7 @@ export async function runWorkerProcess(
     writeLog({
       level: "info",
       event_name: "run_worker_started",
-      reason_code: authorityCapabilityInput
+      reason_code: config.research_authority_capability_id
         ? "RESEARCH_AUTHORITY_CONFIGURED"
         : "RESEARCH_AUTHORITY_NOT_CONFIGURED",
     });

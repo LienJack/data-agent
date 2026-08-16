@@ -4,19 +4,12 @@ import {
   createModelProviderBindings,
   SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
 } from "@data-agent/agent-runtime";
-import {
-  adaptPgPool,
-  createPostgresCapabilityAuthority,
-  createPostgresRepository,
-  createPostgresRunEventStore,
-  createPostgresRunQueue,
-} from "@data-agent/platform";
+import { adaptPgPool, createPostgresCapabilityAuthority } from "@data-agent/platform";
 import nextEnvironment from "@next/env";
 import { Pool } from "pg";
 import { z } from "zod";
 import { runCredentialedProviderCertification } from "./credentialed-provider-certification.js";
 import { createPostgresModelCertificationReceiptStore } from "./postgres-model-certification-receipt-store.js";
-import { createRunWorkerRunner } from "./runs/index.js";
 
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 const DEFAULT_TENANT_ID = "00000000-0000-4000-8000-000000000002";
@@ -27,6 +20,8 @@ const configurationSchema = z.strictObject({
   databaseUrl: z.string().min(1),
   tenantId: z.uuid(),
   principalId: z.uuid(),
+  certificationRunId: z.uuid(),
+  certificationWorkerFence: z.coerce.number().int().nonnegative().safe(),
 });
 
 function repositoryRoot(): string {
@@ -93,6 +88,8 @@ async function main(): Promise<void> {
     databaseUrl: process.env.DATA_AGENT_DATABASE_URL ?? process.env.DATABASE_URL,
     tenantId: process.env.TEST_CENTER_TENANT_ID ?? DEFAULT_TENANT_ID,
     principalId: process.env.TEST_CENTER_PRINCIPAL_ID ?? DEFAULT_PRINCIPAL_ID,
+    certificationRunId: process.env.DATA_AGENT_SYSTEM_MODEL_CERTIFICATION_RUN_ID,
+    certificationWorkerFence: process.env.DATA_AGENT_SYSTEM_MODEL_CERTIFICATION_WORKER_FENCE,
   });
   if (
     !configuration.success ||
@@ -103,6 +100,10 @@ async function main(): Promise<void> {
       schema_version: "1.0.0",
       terminal: "HOLD",
       reason_code: "SYSTEM_MODEL_CERTIFICATION_CONFIGURATION_INVALID",
+      required_authority_variables: [
+        "DATA_AGENT_SYSTEM_MODEL_CERTIFICATION_RUN_ID",
+        "DATA_AGENT_SYSTEM_MODEL_CERTIFICATION_WORKER_FENCE",
+      ],
     });
     process.exitCode = 64;
     return;
@@ -130,20 +131,6 @@ async function main(): Promise<void> {
     });
     if (!capabilityResult.ok) throw new Error(capabilityResult.error.code);
     const capability = capabilityResult.value;
-    const repository = createPostgresRepository(sqlPool, authority.authorizer);
-    const runId = randomUUID();
-    const accepted = await repository.acceptCommand(capability, {
-      run_id: runId,
-      command_id: randomUUID(),
-      event_id: randomUUID(),
-      outbox_id: randomUUID(),
-      audit_id: randomUUID(),
-      idempotency_key: `system-model-certification-${randomUUID()}`,
-      question: "对根目录 .env 的 DeepSeek 与 Kimi 系统模型执行真实凭证认证。",
-      payload: { kind: "START_L2_RESEARCH", mode: "L2" },
-    });
-    if (!accepted.ok) throw new Error(accepted.error.code);
-
     const receiptStore = createPostgresModelCertificationReceiptStore({
       pool: sqlPool,
       authorizer: authority.authorizer,
@@ -153,48 +140,23 @@ async function main(): Promise<void> {
     const bindings = createModelProviderBindings(SYSTEM_MODEL_DEPLOYMENT_OVERRIDES).filter(
       (binding) => selectedProviders.has(binding.provider),
     );
-    const reportHolder: {
-      value?: Awaited<ReturnType<typeof runCredentialedProviderCertification>>;
-    } = {};
-    const runner = createRunWorkerRunner({
-      queue: createPostgresRunQueue(sqlPool, authority.authorizer, capability, {
-        lease_duration_ms: 900_000,
-      }),
-      event_store: createPostgresRunEventStore(sqlPool, authority.authorizer, capability),
-      execution_timeout_ms: 900_000,
-      heartbeat_interval_ms: 15_000,
-      executor: {
-        async execute({ lease }) {
-          const certificationReport = await runCredentialedProviderCertification({
-            scope: capability.scope,
-            run_id: lease.run_id,
-            worker_fence: lease.worker_fence,
-            bindings,
-            resolve_credential: async (credentialEnvironment) =>
-              process.env[credentialEnvironment]?.trim() ?? null,
-            receipt_store: receiptStore,
-          });
-          reportHolder.value = certificationReport;
-          return certificationReport.terminal === "PASS"
-            ? { kind: "COMPLETED" }
-            : { kind: "FAILED", error_code: "MODEL_CERTIFICATION_HOLD" };
-        },
-      },
-    });
-    const cycle = await runner.runOnce({
+    const certificationReport = await runCredentialedProviderCertification({
       scope: capability.scope,
-      worker_id: "local-system-model-certifier",
+      run_id: configuration.data.certificationRunId,
+      worker_fence: configuration.data.certificationWorkerFence,
+      bindings,
+      resolve_credential: async (credentialEnvironment) =>
+        process.env[credentialEnvironment]?.trim() ?? null,
+      receipt_store: receiptStore,
     });
-    const certificationReport = reportHolder.value;
     report({
       schema_version: "1.0.0",
-      terminal: certificationReport?.terminal ?? "HOLD",
+      terminal: certificationReport.terminal,
       deployment_id: deploymentId,
-      run_id: runId,
-      cycle,
+      run_id: configuration.data.certificationRunId,
       certification: certificationReport,
     });
-    process.exitCode = certificationReport?.terminal === "PASS" && cycle.ok ? 0 : 2;
+    process.exitCode = certificationReport.terminal === "PASS" ? 0 : 2;
   } catch {
     report({
       schema_version: "1.0.0",

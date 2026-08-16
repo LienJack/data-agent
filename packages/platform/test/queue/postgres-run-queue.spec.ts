@@ -68,6 +68,7 @@ function scriptedPool(
 
 function leaseRow() {
   return {
+    principal_id: ids.principal,
     outbox_id: ids.outbox,
     run_id: ids.run,
     command_id: ids.command,
@@ -101,6 +102,7 @@ describe("PostgreSQL Run Queue", () => {
       ok: true,
       value: {
         scope,
+        principal_id: ids.principal,
         outbox_id: ids.outbox,
         run_id: ids.run,
         command_id: ids.command,
@@ -120,6 +122,10 @@ describe("PostgreSQL Run Queue", () => {
       "worker-a",
       1,
       30,
+      ids.app,
+      ids.tenant,
+      "test",
+      ids.principal,
     ]);
     const claim = fixture.calls.find(({ text }) => text.includes("claim_run_work"));
     expect(claim?.text).toContain("work.payload as payload_json");
@@ -209,6 +215,7 @@ describe("PostgreSQL Run Queue", () => {
     });
     const lease = {
       scope,
+      principal_id: ids.principal,
       outbox_id: ids.outbox,
       run_id: ids.run,
       command_id: ids.command,
@@ -227,6 +234,18 @@ describe("PostgreSQL Run Queue", () => {
     await expect(queue.complete({ lease, final_event_sequence: 3 })).resolves.toMatchObject({
       ok: false,
       error: { code: "RUN_QUEUE_STALE_FENCE" },
+    });
+    await expect(
+      queue.complete({
+        lease: {
+          ...lease,
+          principal_id: "00000000-0000-4000-8000-000000000102",
+        },
+        final_event_sequence: 3,
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "RUN_QUEUE_PRINCIPAL_DENIED" },
     });
     await expect(
       queue.lease({

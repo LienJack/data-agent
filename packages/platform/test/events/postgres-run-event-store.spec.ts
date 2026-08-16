@@ -118,6 +118,7 @@ const leased = workerRunRuntimeEventSchema.parse({
 });
 const lease = runWorkLeaseSchema.parse({
   scope,
+  principal_id: ids.principal,
   outbox_id: "00000000-0000-4000-8000-000000000501",
   run_id: ids.run,
   command_id: ids.command,
@@ -223,6 +224,23 @@ describe("PostgreSQL Run Event Store", () => {
         ({ text }) => text.includes("from run_events") && text.includes("event_id = $6"),
       ),
     ).toBe(false);
+
+    await expect(
+      store.append({
+        lease: {
+          ...lease,
+          principal_id: "00000000-0000-4000-8000-000000000102",
+        },
+        event: leased,
+        expected_projection: {
+          projection: initialProjection,
+          projection_hash: expectedProjectionHash,
+        },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "RUN_EVENT_STORE_PRINCIPAL_DENIED" },
+    });
   });
 
   it("maps local Projection reducer failures to the stable database-facing contract", async () => {

@@ -7,9 +7,11 @@ import { useWorkbenchStore } from "@/lib/workbench-store";
 export function QueryInputSection({
   onSubmit,
   onCommand,
+  submissionDisabled = false,
 }: {
   onSubmit?: (question: string) => Promise<void>;
   onCommand?: (command: "cancel" | "resume" | "replay") => Promise<void>;
+  submissionDisabled?: boolean;
 }) {
   const projection = useWorkbenchStore((s) => s.projection);
   const sectionStatus = useWorkbenchStore((s) => s.sections.query);
@@ -54,14 +56,21 @@ export function QueryInputSection({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (e.key === "Enter" && !e.shiftKey && question.trim() && !busy && !isActive) {
+      if (
+        e.key === "Enter" &&
+        !e.shiftKey &&
+        question.trim() &&
+        !busy &&
+        !isActive &&
+        !submissionDisabled
+      ) {
         e.preventDefault();
         if (onSubmit) {
           void onSubmit(question.trim());
         }
       }
     },
-    [question, busy, isActive, onSubmit],
+    [question, busy, isActive, onSubmit, submissionDisabled],
   );
 
   if (sectionStatus === "loading") {
@@ -189,14 +198,14 @@ export function QueryInputSection({
           className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-2.5 text-sm placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-accent)] focus:outline-none"
           aria-label="分析问题输入"
           aria-describedby="query-input-hint"
-          disabled={isActive}
+          disabled={isActive || submissionDisabled}
         />
         <span id="query-input-hint" className="sr-only">
           输入分析问题后按 Enter 提交，或点击分析按钮
         </span>
         <button
           type="button"
-          disabled={!question.trim() || busy || isActive}
+          disabled={!question.trim() || busy || isActive || submissionDisabled}
           onClick={() => {
             if (onSubmit && question.trim()) {
               void onSubmit(question.trim());

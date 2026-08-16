@@ -49,6 +49,8 @@ export interface DatabaseTypeConfig {
 /** 数据源连接 */
 export interface DataSourceConnection {
   id: string;
+  /** PostgreSQL Authority 拥有的当前资源版本，用于 Run expected revision。 */
+  resourceVersion: number;
   name: string;
   type: DatabaseType;
   host?: string;

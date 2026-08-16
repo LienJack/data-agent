@@ -32,6 +32,7 @@ describe("platform package public surface", () => {
       "createPostgresControlledFixture",
       "createPostgresCreditLedgerRepository",
       "createPostgresDatasourceEgress",
+      "createPostgresEffectiveConfigResolver",
       "createPostgresModelBillingRepository",
       "createPostgresOperationsAdminRepository",
       "createPostgresPricingControlRepository",

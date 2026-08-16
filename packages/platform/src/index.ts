@@ -50,6 +50,15 @@ export {
   type PostgresResearchResourceInvocationOptions,
 } from "./research/postgres-research-resource-invocation.js";
 export {
+  createPostgresEffectiveConfigResolver,
+  type EffectiveConfigLookup,
+  type EffectiveConfigResolutionInput,
+  type EffectiveConfigWorkerAuthorityInput,
+  type EffectiveConfigWorkerConsumption,
+  type PostgresEffectiveConfigResolver,
+  type PostgresEffectiveConfigResolverOptions,
+} from "./runs/effective-config-resolver.js";
+export {
   type ActiveSandboxCancelRequest,
   type CoordinatedSandboxPort,
   type CoordinatedSandboxPortOptions,

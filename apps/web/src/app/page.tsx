@@ -8,14 +8,15 @@ import { FixtureEvidenceSection } from "@/components/workbench/fixture-evidence-
 import { HypothesisSection } from "@/components/workbench/hypothesis-section";
 import { QueryInputSection } from "@/components/workbench/query-input-section";
 import { ReportSection } from "@/components/workbench/report-section";
+import { submitBoundAnalysisRun } from "@/lib/analysis-run-submission";
 import {
   commandRun,
-  createRun,
   getRun,
   type RunEvent,
   resolveWorkspaceId,
   streamRunEvents,
 } from "@/lib/api-client";
+import { useQAStore } from "@/lib/qa-store";
 import { createM1DemoState, type RunProjection } from "@/lib/run-projection";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 
@@ -40,6 +41,16 @@ export default function AnalysisWorkbenchPage() {
   const projection = useWorkbenchStore((s) => s.projection);
   const _connection = useWorkbenchStore((s) => s.connection);
   const _busy = useWorkbenchStore((s) => s.busy);
+  const conversations = useQAStore((s) => s.conversations);
+  const activeConversationId = useQAStore((s) => s.activeConversationId);
+  const loadConversations = useQAStore((s) => s.loadConversations);
+  const selectConversation = useQAStore((s) => s.selectConversation);
+  const activeConversation = conversations.find(
+    (conversation) => conversation.id === activeConversationId,
+  );
+  const conversationReady = Boolean(
+    activeConversation?.dataSourceId && activeConversation.modelProfileId,
+  );
 
   const state = useWorkbenchStore((s) => ({
     authorityState: s.authorityState,
@@ -92,6 +103,16 @@ export default function AnalysisWorkbenchPage() {
     setConnection,
     hydrate,
   ]);
+
+  useEffect(() => {
+    if (!resolveWorkspaceId()) return;
+    void loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (activeConversationId || !conversations[0]) return;
+    void selectConversation(conversations[0].id);
+  }, [activeConversationId, conversations, selectConversation]);
 
   // ── SSE 生命周期 ────────────────────────────────────────────────────────
 
@@ -165,11 +186,23 @@ export default function AnalysisWorkbenchPage() {
   const handleSubmit = useCallback(
     async (question: string) => {
       if (!question.trim()) return;
+      const workspaceId = resolveWorkspaceId();
+      if (!workspaceId) {
+        setError("请先选择工作空间");
+        return;
+      }
+      if (!activeConversation || !conversationReady) {
+        setError("请先在问答工作区创建对话，并绑定可运行模型与数据源");
+        return;
+      }
       setBusy(true);
       setError(undefined);
       try {
-        const workspaceId = resolveWorkspaceId();
-        const run = await createRun(question, workspaceId);
+        const run = await submitBoundAnalysisRun({
+          question,
+          workspace_id: workspaceId,
+          conversation: activeConversation,
+        });
         setActiveRunId(run.runId);
         setProjection(run);
         setProjectionVersion(0);
@@ -184,6 +217,8 @@ export default function AnalysisWorkbenchPage() {
       }
     },
     [
+      activeConversation,
+      conversationReady,
       setBusy,
       setError,
       setActiveRunId,
@@ -242,7 +277,16 @@ export default function AnalysisWorkbenchPage() {
         {/* 信息层级 1: 权威状态/当前动作（已由 AuthorityStatusBar 展示） */}
 
         {/* 信息层级 2: Question/Scope/Clarification */}
-        <QueryInputSection onSubmit={handleSubmit} onCommand={handleCommand} />
+        {!conversationReady && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            请先在问答工作区创建对话，并绑定可运行模型与数据源。
+          </p>
+        )}
+        <QueryInputSection
+          onSubmit={handleSubmit}
+          onCommand={handleCommand}
+          submissionDisabled={!conversationReady}
+        />
 
         {/* 信息层级 3: Report/Claim–Evidence */}
         <ReportSection />

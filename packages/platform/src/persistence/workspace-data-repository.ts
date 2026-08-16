@@ -31,6 +31,7 @@ interface DatasourceRow {
   readonly tenant_id: string;
   readonly environment: string;
   readonly datasource_id: string;
+  readonly resource_version: string | number;
   readonly name: string;
   readonly datasource_type: WorkspaceDatasource["type"];
   readonly host: string | null;
@@ -98,7 +99,7 @@ interface RunBindingRow {
 }
 
 const datasourceColumns = `
-  app_id, tenant_id, environment, datasource_id, name, datasource_type,
+  app_id, tenant_id, environment, datasource_id, resource_version, name, datasource_type,
   host, port, database_name, username, credential_ref_id, secret_ref_id,
   secret_version, rotation_state, ssl_mode, file_path, catalog_name, schema_name,
   status, last_tested_at, created_by_principal_id, created_at, updated_at`;
@@ -146,6 +147,7 @@ function datasource(row: DatasourceRow): WorkspaceDatasource {
     schema_version: "workspace-datasource@1.0.0",
     workspace_id: row.tenant_id,
     datasource_id: row.datasource_id,
+    resource_version: Number(row.resource_version),
     name: row.name,
     type: row.datasource_type,
     host: row.host,

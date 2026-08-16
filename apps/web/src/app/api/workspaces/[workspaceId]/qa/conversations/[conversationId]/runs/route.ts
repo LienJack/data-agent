@@ -1,8 +1,14 @@
-import { randomUUID } from "node:crypto";
-import { qaRunStartInputSchema } from "@data-agent/contracts";
+import {
+  buildRunConfigRequestCandidate,
+  qaRunStartInputSchema,
+  workspaceIdempotencyKeySchema,
+} from "@data-agent/contracts";
 import { createPostgresRepository } from "@data-agent/platform";
 import { type NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
+import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
+  getEffectiveConfigResolver,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
   getWorkspaceSqlPool,
@@ -14,11 +20,18 @@ type RouteContext = {
   params: Promise<{ workspaceId: string; conversationId: string }>;
 };
 
+const inherited = { mode: "INHERIT_DEFAULT" } as const;
+const effectiveConfigQaRunStartInputSchema = qaRunStartInputSchema.extend({
+  idempotency_key: workspaceIdempotencyKeySchema,
+});
+
 export async function POST(request: NextRequest, context: RouteContext) {
   const { workspaceId, conversationId } = await context.params;
   const authorized = await authorizeWorkspaceRequest(request, workspaceId, "WRITE");
   if (!authorized.ok) return workspaceErrorResponse(authorized.error);
-  const input = qaRunStartInputSchema.safeParse(await request.json().catch(() => null));
+  const input = effectiveConfigQaRunStartInputSchema.safeParse(
+    await request.json().catch(() => null),
+  );
   if (!input.success) {
     return workspaceErrorResponse({
       code: "RUN_INPUT_INVALID",
@@ -27,42 +40,122 @@ export async function POST(request: NextRequest, context: RouteContext) {
     });
   }
 
-  const runId = randomUUID();
+  const conversationIdResult = z.uuid().safeParse(conversationId);
+  if (!conversationIdResult.success) {
+    return workspaceErrorResponse({
+      code: "CONVERSATION_NOT_FOUND_OR_DENIED",
+      message: "对话不存在或无权访问。",
+      retryable: false,
+    });
+  }
+  const conversation = await getWorkspaceDataRepository().getConversation(
+    authorized.value.capability,
+    conversationIdResult.data,
+  );
+  if (!conversation.ok) return workspaceErrorResponse(conversation.error);
+  if (!conversation.value) {
+    return workspaceErrorResponse({
+      code: "CONVERSATION_NOT_FOUND_OR_DENIED",
+      message: "对话不存在或无权访问。",
+      retryable: false,
+    });
+  }
+  const conversationVersion = z
+    .number()
+    .int()
+    .positive()
+    .safe()
+    .safeParse(conversation.value.resource_version);
+  if (!conversationVersion.success) {
+    return workspaceErrorResponse({
+      code: "CONVERSATION_VERSION_REQUIRED",
+      message: "对话缺少可冻结的资源版本。",
+      retryable: true,
+    });
+  }
+
+  const resolver = getEffectiveConfigResolver();
+  const defaults = await resolver.getWorkspaceDefaults(authorized.value.capability);
+  if (!defaults.ok) return workspaceErrorResponse(defaults.error);
+  if (!defaults.value) {
+    return workspaceErrorResponse({
+      code: "WORKSPACE_DEFAULTS_NOT_CONFIGURED",
+      message: "工作空间尚未配置 Run Defaults。",
+      retryable: false,
+    });
+  }
+
+  const identities = deriveRunCommandIdentities({
+    workspace_id: workspaceId,
+    principal_id: authorized.value.capability.principal,
+    idempotency_key: input.data.idempotency_key,
+  });
+  const runId = identities.run_id;
+  const configRequest = await buildRunConfigRequestCandidate({
+    schema_version: "run-config-request@1.0.0",
+    operation: "QUESTION_RUN",
+    workspace_id: workspaceId,
+    run_id: runId,
+    idempotency_key: input.data.idempotency_key,
+    conversation_ref: {
+      conversation_id: conversation.value.conversation_id,
+      expected_resource_version: conversationVersion.data,
+    },
+    defaults_ref: defaults.value.defaults_ref,
+    overrides: {
+      model: inherited,
+      datasource: inherited,
+      files: inherited,
+      knowledge: inherited,
+      mcp_servers: inherited,
+      skills: inherited,
+      egress: null,
+    },
+    mentions: [],
+  });
+  if (configRequest.operation !== "QUESTION_RUN") {
+    throw new TypeError("QUESTION_RUN_CONFIG_BUILD_FAILED");
+  }
+  const accepted = await resolver.resolveAndAccept(authorized.value.capability, {
+    request: configRequest,
+    command: {
+      run_id: runId,
+      command_id: identities.command_id,
+      event_id: identities.event_id,
+      outbox_id: identities.outbox_id,
+      audit_id: identities.audit_id,
+      idempotency_key: input.data.idempotency_key,
+      question: input.data.question,
+    },
+  });
+  if (!accepted.ok) return workspaceErrorResponse(accepted.error);
+  if (accepted.value.operation !== "QUESTION_RUN" || accepted.value.admission !== "READY") {
+    return NextResponse.json({ resolution: accepted.value }, { status: 409 });
+  }
+
   const repository = createPostgresRepository(
     getWorkspaceSqlPool(),
     getWorkspaceAuthority().authorizer,
   );
-  const accepted = await repository.acceptCommand(authorized.value.capability, {
-    run_id: runId,
-    command_id: randomUUID(),
-    event_id: randomUUID(),
-    outbox_id: randomUUID(),
-    audit_id: randomUUID(),
-    idempotency_key: input.data.idempotency_key,
-    question: input.data.question,
-    payload: {
-      kind: "START_L2_RESEARCH",
-      mode: "L2",
-      conversation_id: conversationId,
-      message_id: randomUUID(),
-    },
-  });
-  if (!accepted.ok) return workspaceErrorResponse(accepted.error);
-
-  const [persisted, binding] = await Promise.all([
+  const [persisted, effectiveConfig] = await Promise.all([
     repository.getRun(authorized.value.capability, { run_id: runId }),
-    getWorkspaceDataRepository().getRunBinding(authorized.value.capability, runId),
+    resolver.getEffectiveConfig(authorized.value.capability, {
+      run_id: runId,
+      config_ref: accepted.value.effective_config_ref,
+      conversation_ref: configRequest.conversation_ref,
+    }),
   ]);
   if (!persisted.ok) return workspaceErrorResponse(persisted.error);
-  if (!binding.ok) return workspaceErrorResponse(binding.error);
-  if (!persisted.value || !binding.value) {
+  if (!effectiveConfig.ok) return workspaceErrorResponse(effectiveConfig.error);
+  if (!persisted.value) {
     return workspaceErrorResponse({
       code: "PERSISTENCE_TRANSACTION_FAILED",
-      message: "Run 已接受但当前无法读取权威资源快照。",
+      message: "Run 已接受但当前无法读取权威投影。",
       retryable: true,
     });
   }
-  return NextResponse.json(workspaceRunProjection(persisted.value, binding.value.datasource_id), {
-    status: accepted.value.created ? 201 : 200,
-  });
+  return NextResponse.json(
+    workspaceRunProjection(persisted.value, effectiveConfig.value.datasource.resource_id),
+    { status: 201 },
+  );
 }

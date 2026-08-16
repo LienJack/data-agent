@@ -25,6 +25,7 @@ const errorCodeSchema = z
   .regex(/^[A-Z][A-Z0-9_]*$/);
 
 interface RunWorkLeaseRow {
+  readonly principal_id: string;
   readonly outbox_id: string;
   readonly run_id: string;
   readonly command_id: string;
@@ -77,6 +78,15 @@ function assertScope(requested: AppScope, authorized: AppScope): void {
   }
 }
 
+function assertPrincipal(requested: string, authorized: string): void {
+  if (requested !== authorized) {
+    throw new PersistenceBoundaryError(
+      "RUN_QUEUE_PRINCIPAL_DENIED",
+      "Run Queue Lease 的 Principal 与当前服务端 Authority 不一致。",
+    );
+  }
+}
+
 function iso(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
 }
@@ -84,6 +94,7 @@ function iso(value: Date | string): string {
 function leaseFromRow(scope: AppScope, row: RunWorkLeaseRow): RunWorkLease {
   return runWorkLeaseSchema.parse({
     scope,
+    principal_id: row.principal_id,
     outbox_id: row.outbox_id,
     run_id: row.run_id,
     command_id: row.command_id,
@@ -136,6 +147,7 @@ export function createPostgresRunQueue(
         assertScope(parsedScope.data, capability.scope);
         const result = await client.query<RunWorkLeaseRow>(
           `select
+             run.principal_id,
              work.outbox_id,
              work.run_id,
              work.command_id,
@@ -149,8 +161,22 @@ export function createPostgresRunQueue(
              work.lease_token,
              work.worker_fence,
              work.expires_at as lease_expires_at
-           from app_data_agent.claim_run_work($1::text, $2::integer, $3::integer) as work`,
-          [parsedWorker.data, 1, leaseSeconds],
+           from app_data_agent.claim_run_work($1::text, $2::integer, $3::integer) as work
+           join app_data_agent.runs as run
+             on run.app_id = $4::uuid
+            and run.tenant_id = $5::uuid
+            and run.environment = $6::text
+            and run.run_id = work.run_id
+            and run.principal_id = $7::uuid`,
+          [
+            parsedWorker.data,
+            1,
+            leaseSeconds,
+            capability.scope.app_id,
+            capability.scope.tenant_id,
+            capability.scope.environment,
+            capability.principal,
+          ],
         );
         const row = result.rows[0];
         return row ? leaseFromRow(capability.scope, row) : null;
@@ -174,6 +200,7 @@ export function createPostgresRunQueue(
       },
       async ({ capability, client }) => {
         assertScope(parsed.data.scope, capability.scope);
+        assertPrincipal(parsed.data.principal_id, capability.principal);
         const result = await client.query<TimestampRow>(
           `select app_data_agent.heartbeat_run_work(
              $1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::integer
@@ -221,6 +248,7 @@ export function createPostgresRunQueue(
       },
       async ({ capability, client }) => {
         assertScope(parsed.data.scope, capability.scope);
+        assertPrincipal(parsed.data.principal_id, capability.principal);
         const result = await client.query<BooleanRow>(
           `select app_data_agent.complete_run_work(
              $1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint
@@ -271,6 +299,7 @@ export function createPostgresRunQueue(
       },
       async ({ capability, client }) => {
         assertScope(parsedLease.data.scope, capability.scope);
+        assertPrincipal(parsedLease.data.principal_id, capability.principal);
         const result = await client.query<BooleanRow>(
           `select app_data_agent.retry_run_work(
              $1::uuid, $2::uuid, $3::text, $4::bigint, $5::bigint, $6::bigint,

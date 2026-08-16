@@ -83,11 +83,18 @@ export async function createRun(
   question: string,
   workspaceId?: string,
   datasourceId?: string,
+  datasourceRevision?: number,
   conversationId?: string,
 ): Promise<RunProjection> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
-  if (!resolvedWorkspace || !datasourceId || !conversationId) {
-    throw new Error("Run 必须显式绑定工作空间、数据源和对话");
+  if (
+    !resolvedWorkspace ||
+    !datasourceId ||
+    !Number.isSafeInteger(datasourceRevision) ||
+    (datasourceRevision ?? 0) < 1 ||
+    !conversationId
+  ) {
+    throw new Error("Run 必须显式绑定工作空间、带版本的数据源和对话");
   }
   const idempotencyKey = crypto.randomUUID();
   return request<RunProjection>(
@@ -99,6 +106,7 @@ export async function createRun(
         question,
         idempotencyKey,
         datasourceId,
+        datasourceRevision,
         conversationId,
       }),
     },

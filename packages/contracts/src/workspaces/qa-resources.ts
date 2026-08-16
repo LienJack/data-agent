@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { immutableIdSchema, timestampSchema } from "../common/index.js";
 import { modelProviderSchema } from "../providers/index.js";
+import { runConfigRequestSchema } from "../runs/effective-config.js";
 import { workspaceConversationSchema, workspaceDatasourceTypeSchema } from "./data-isolation.js";
 
 export const qaModelReadinessSchema = z.enum([
@@ -80,6 +81,30 @@ export const qaRunStartInputSchema = z.strictObject({
   idempotency_key: z.string().trim().min(8).max(256),
 });
 
+export const qaRunStartInputV2Schema = z
+  .strictObject({
+    schema_version: z.literal("qa-run-start@2.0.0"),
+    question: z.string().trim().min(1).max(4_000),
+    idempotency_key: z.string().trim().min(8).max(256),
+    config_request: runConfigRequestSchema,
+  })
+  .superRefine((request, ctx) => {
+    if (request.config_request.operation !== "QUESTION_RUN") {
+      ctx.addIssue({
+        code: "custom",
+        message: "QA Run Start V2 只接受 QUESTION_RUN config request。",
+        path: ["config_request", "operation"],
+      });
+    }
+    if (request.idempotency_key !== request.config_request.idempotency_key) {
+      ctx.addIssue({
+        code: "custom",
+        message: "QA Run 与 Config Request 必须使用相同幂等键。",
+        path: ["config_request", "idempotency_key"],
+      });
+    }
+  });
+
 export type QaModelReadiness = z.infer<typeof qaModelReadinessSchema>;
 export type QaModelResource = z.infer<typeof qaModelResourceSchema>;
 export type QaDatasourceResource = z.infer<typeof qaDatasourceResourceSchema>;
@@ -92,3 +117,4 @@ export type QaConversationResourceSwitchResult = z.infer<
 >;
 export type QaRunBinding = z.infer<typeof qaRunBindingSchema>;
 export type QaRunStartInput = z.infer<typeof qaRunStartInputSchema>;
+export type QaRunStartInputV2 = z.infer<typeof qaRunStartInputV2Schema>;

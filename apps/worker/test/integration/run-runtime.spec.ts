@@ -33,6 +33,17 @@ function interruptedAppend(): PortResult<never> {
   };
 }
 
+async function rejectLegacyRunWithoutEffectiveConfig(): Promise<PortResult<never>> {
+  return {
+    ok: false,
+    error: {
+      code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
+      message: "Legacy integration fixture has no Effective Config authority receipt.",
+      retryable: false,
+    },
+  };
+}
+
 describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runtime", () => {
   const backendPool = new Pool({ connectionString: databaseUrl });
   const adminPool = new Pool({ connectionString: adminDatabaseUrl });
@@ -108,6 +119,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const firstRunner = createRunWorkerRunner({
       queue,
       event_store: interruptedStore,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor,
     });
     await expect(
@@ -122,6 +134,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const secondRunner = createRunWorkerRunner({
       queue,
       event_store: store,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor,
     });
     await expect(
@@ -186,6 +199,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const firstRunner = createRunWorkerRunner({
       queue,
       event_store: interruptedStore,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor,
     });
 
@@ -201,6 +215,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const secondRunner = createRunWorkerRunner({
       queue,
       event_store: store,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor,
     });
     await expect(
@@ -257,6 +272,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const runner = createRunWorkerRunner({
       queue,
       event_store: store,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor: {
         async execute() {
           const cancelled = await control.submit({
@@ -398,6 +414,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const interruptedRunner = createRunWorkerRunner({
       queue: interruptedQueue,
       event_store: store,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor: {
         async execute() {
           return { kind: "COMPLETED" };
@@ -418,6 +435,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
       createRunWorkerRunner({
         queue,
         event_store: store,
+        effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
         executor: {
           async execute() {
             throw new Error("settled work must not execute twice");
@@ -475,6 +493,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const runner = createRunWorkerRunner({
       queue,
       event_store: store,
+      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
       executor: {
         async execute({ restored_snapshot }) {
           executions += 1;
