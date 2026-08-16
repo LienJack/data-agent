@@ -252,3 +252,24 @@ Delivered a PostgreSQL-fenced, rebuildable Neo4j relationship index with 10625 a
 ### Status
 
 [OK] **Completed**
+
+
+## Session 11: 暂停积分与计费前端功能
+
+**Date**: 2026-08-16
+**Task**: 暂停积分与计费前端功能
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+默认隐藏工作空间平台设置中的积分、计费、价格和汇率控制面，保留服务端账务与主模型流程；完成 Web 单测、类型、格式、构建和真实浏览器验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `515c9b5` | (see git log) |
+
+### Status
+
+[OK] **Completed**
