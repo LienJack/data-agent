@@ -1,0 +1,7 @@
+{"file":".trellis/spec/guides/index.md","reason":"Cross-layer planning and reuse rules."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend authority and package guidance index."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend workspace and product journey guidance index."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Candidate, deterministic authority and release evidence boundaries."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL authority, tenancy, migration and recovery invariants."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Provider, sandbox and adapter conformance requirements."}
+{"file":".trellis/tasks/08-16-datafoundry-coa-greenfield/research/preflight-evidence.md","reason":"Frozen provider, Falcon, reference and scope evidence."}

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Contracts dependency direction and public surface boundaries."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Stable failure results and strict boundary behavior."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Candidate/authority and release evidence rules."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Test-first strict Zod contract requirements."}
+{"file":".trellis/tasks/08-16-datafoundry-coa-greenfield/research/preflight-evidence.md","reason":"Frozen DeepSeek, Falcon and Greenfield constraints."}

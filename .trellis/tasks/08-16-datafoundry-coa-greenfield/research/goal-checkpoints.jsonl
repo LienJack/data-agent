@@ -1,0 +1,1 @@
+{"schema_version":"goal-checkpoint@1.0.0","revision":1,"event":"PREFLIGHT_ACCEPTED","current_unit":"U1","plan_commit":"db9ad7a2a8de35302b34a45d4a8c26b18296e931","provider":"deepseek","model_id":"deepseek-v4-flash","provider_smoke":"PASS_PENDING_RECEIPT_COMMIT","falcon_bundle":"READY","falcon_import_policy":"REUSE_EXISTING_ONLY","claude_allowed":false,"unknown_effects":[]}

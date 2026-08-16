@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Test-first and contract verification quality gate."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Final authority and release proof audit."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Cross-adapter and failure-closed verification."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Secret redaction and audit evidence review."}
+{"file":".trellis/tasks/08-16-datafoundry-coa-greenfield/research/preflight-evidence.md","reason":"Compare final state to frozen preflight inputs."}
