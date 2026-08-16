@@ -160,6 +160,25 @@ export async function handleGetSemanticAuthoringRun(
   }
 }
 
+export async function handleGetSemanticAuthoringPublicFeed(
+  request: NextRequest,
+  runId: string,
+  service: SemanticStudioService,
+) {
+  try {
+    const query = runQuerySchema.parse(queryObject(request));
+    return response(
+      await service.getPublicRun({
+        semantic_domain: query.semanticDomain,
+        authoring_run_id: immutableIdSchema.parse(runId),
+        after_sequence: query.after,
+      }),
+    );
+  } catch (error) {
+    return invalid(error);
+  }
+}
+
 export async function handleStreamSemanticAuthoringRun(
   request: NextRequest,
   runId: string,
@@ -219,6 +238,91 @@ export async function handleStreamSemanticAuthoringRun(
               error: {
                 code: "SEMANTIC_STUDIO_STREAM_FAILED",
                 message: "Agent 事件流暂时中断，客户端将自动重连。",
+                retryable: true,
+              },
+            })}\n\n`,
+          );
+          close();
+        });
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "private, no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  } catch (error) {
+    return invalid(error);
+  }
+}
+
+export async function handleStreamSemanticAuthoringPublicFeed(
+  request: NextRequest,
+  runId: string,
+  service: SemanticStudioService,
+): Promise<Response> {
+  try {
+    const query = runQuerySchema.parse(queryObject(request));
+    const authoringRunId = immutableIdSchema.parse(runId);
+    const encoder = new TextEncoder();
+    let cursor = selectSseCursor(request.headers.get("last-event-id"), String(query.after));
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const send = (value: string) => {
+          if (!cancelled) controller.enqueue(encoder.encode(value));
+        };
+        const close = () => {
+          if (cancelled) return;
+          cancelled = true;
+          controller.close();
+        };
+        request.signal.addEventListener("abort", close, { once: true });
+        send("retry: 1500\n\n");
+        void (async () => {
+          const expiresAt = Date.now() + 55_000;
+          while (!cancelled && Date.now() < expiresAt) {
+            const result = await service.getPublicRun({
+              semantic_domain: query.semanticDomain,
+              authoring_run_id: authoringRunId,
+              after_sequence: cursor,
+            });
+            if (!result.ok) {
+              send(`event: error\ndata: ${JSON.stringify({ error: result.error })}\n\n`);
+              close();
+              return;
+            }
+            const lastSequence = result.value.events.at(-1)?.sequence;
+            if (lastSequence !== undefined) cursor = Math.max(cursor, lastSequence);
+            send(
+              `id: ${cursor}\nevent: public-authoring\ndata: ${JSON.stringify(result.value)}\n\n`,
+            );
+            if (
+              result.value.run.status !== "QUEUED" &&
+              result.value.run.status !== "RUNNING" &&
+              result.value.run.status !== "WAITING_CLARIFICATION"
+            ) {
+              close();
+              return;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 1_000));
+          }
+          if (!cancelled) {
+            send(`id: ${cursor}\nevent: reconnect\ndata: {}\n\n`);
+            close();
+          }
+        })().catch(() => {
+          send(
+            `event: error\ndata: ${JSON.stringify({
+              error: {
+                code: "SEMANTIC_STUDIO_STREAM_FAILED",
+                message: "Agent 公开事件流暂时中断，客户端将自动重连。",
                 retryable: true,
               },
             })}\n\n`,

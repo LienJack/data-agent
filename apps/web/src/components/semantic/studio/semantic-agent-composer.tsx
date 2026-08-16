@@ -2,28 +2,18 @@
 
 import type {
   SemanticAuthoringPublicEvent,
-  SemanticAuthoringState,
   SemanticGraphReadEdge,
   SemanticGraphReadNode,
 } from "@data-agent/contracts";
-import { CaretDown, CaretUp, PaperPlaneTilt, Pulse, Sparkle, X } from "@phosphor-icons/react";
+import { ArrowSquareOut, PaperPlaneTilt, Pulse, Sparkle, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-import { useState } from "react";
-import { publicEventSummary } from "@/lib/semantic-studio-model";
+import type { SemanticStudioAuthoringState } from "@/lib/semantic-studio-api";
 
 const EXAMPLES = [
   "新增“成交商品数”，按订单明细的 product_id 去重计算，单位是件。",
   "把成交商品数改成只统计已支付订单，仍按商品去重。",
   "给订单明细增加商品维度，并绑定商品 ID。",
 ] as const;
-
-function eventTone(event: SemanticAuthoringPublicEvent): string {
-  if (event.type === "authoring_terminal")
-    return event.payload.status === "FAILED" ? "#b64b3c" : "#3f806b";
-  if (event.type === "validation") return event.payload.valid ? "#3f806b" : "#a56f20";
-  if (event.type === "clarification") return "#2f7f9f";
-  return "#527c70";
-}
 
 export function SemanticAgentComposer({
   domain,
@@ -39,13 +29,14 @@ export function SemanticAgentComposer({
   onClearSelection,
   onSubmit,
   onResume,
+  onOpenTrajectory,
 }: {
   readonly domain: string;
   readonly releaseLabel: string;
   readonly selectedNode: SemanticGraphReadNode | null;
   readonly selectedEdge: SemanticGraphReadEdge | null;
   readonly draft: string;
-  readonly state: SemanticAuthoringState | null;
+  readonly state: SemanticStudioAuthoringState | null;
   readonly events: readonly SemanticAuthoringPublicEvent[];
   readonly busy: boolean;
   readonly error: string | null;
@@ -53,8 +44,8 @@ export function SemanticAgentComposer({
   readonly onClearSelection: () => void;
   readonly onSubmit: () => void;
   readonly onResume: (answer: string) => void;
+  readonly onOpenTrajectory: () => void;
 }) {
-  const [timelineOpen, setTimelineOpen] = useState(true);
   const clarification = state?.run.clarification;
   const running = state?.run.status === "RUNNING";
   return (
@@ -63,50 +54,31 @@ export function SemanticAgentComposer({
         layout
         className="border border-[#bfcac4] bg-white/96 px-3 py-3 shadow-[0_18px_50px_rgba(32,45,39,0.14)] backdrop-blur-md sm:px-4"
       >
-        {events.length > 0 ? (
-          <motion.div layout className="mb-3 overflow-hidden border border-[#d7ddd9] bg-[#f8faf8]">
+        {state ? (
+          <motion.div
+            layout
+            className="mb-3 flex flex-col gap-2 border border-[#d7ddd9] bg-[#f8faf8] px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex items-center gap-2 text-[11px] text-[#59665f]">
+              <Pulse
+                className={`size-4 ${running ? "animate-pulse text-[#356b5a]" : "text-[#89938e]"}`}
+                aria-hidden="true"
+              />
+              <span className="font-semibold">
+                {running ? "Agent 任务仍在执行" : "这次 Agent 任务已有执行记录"}
+              </span>
+              <span className="font-mono text-[10px] text-[#89938e]">
+                {events.length} 个公开事件
+              </span>
+            </div>
             <button
               type="button"
-              onClick={() => setTimelineOpen((value) => !value)}
-              className="flex w-full items-center justify-between px-3 py-2 text-left transition-colors hover:bg-white"
+              onClick={onOpenTrajectory}
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#356b5a] hover:text-[#285b4b]"
             >
-              <span className="flex items-center gap-2 text-[11px] font-semibold text-[#59665f]">
-                <Pulse
-                  className={`size-4 ${running ? "animate-pulse text-[#356b5a]" : "text-[#89938e]"}`}
-                  aria-hidden="true"
-                />
-                Agent 执行轨迹 · {events.length} 个公开事件
-              </span>
-              {timelineOpen ? (
-                <CaretDown className="size-3.5 text-[#748079]" aria-hidden="true" />
-              ) : (
-                <CaretUp className="size-3.5 text-[#748079]" aria-hidden="true" />
-              )}
+              打开全屏轨迹
+              <ArrowSquareOut className="size-3.5" aria-hidden="true" />
             </button>
-            {timelineOpen ? (
-              <motion.ol
-                layout
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="max-h-32 overflow-auto border-t border-[#d7ddd9] px-3 py-2"
-              >
-                {events.slice(-8).map((event) => (
-                  <li
-                    key={event.event_id}
-                    className="flex items-start gap-2 py-1 text-[11px] text-[#65716b]"
-                  >
-                    <span
-                      className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ backgroundColor: eventTone(event) }}
-                    />
-                    <span className="w-7 shrink-0 font-mono text-[10px] text-[#89938e]">
-                      #{event.sequence}
-                    </span>
-                    <span>{publicEventSummary(event)}</span>
-                  </li>
-                ))}
-              </motion.ol>
-            ) : null}
           </motion.div>
         ) : null}
 
@@ -166,17 +138,19 @@ export function SemanticAgentComposer({
           <button
             type="button"
             disabled={
-              busy || running || draft.trim().length === 0 || clarification?.answer === null
+              busy || (!running && draft.trim().length === 0) || clarification?.answer === null
             }
-            onClick={onSubmit}
+            onClick={running ? onOpenTrajectory : onSubmit}
             className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 bg-[#356b5a] px-4 text-xs font-semibold text-white transition-colors hover:bg-[#285b4b] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
           >
-            {busy || running ? (
+            {busy ? (
               <Sparkle className="size-4 animate-pulse" aria-hidden="true" />
+            ) : running ? (
+              <ArrowSquareOut className="size-4" aria-hidden="true" />
             ) : (
               <PaperPlaneTilt className="size-4" weight="fill" aria-hidden="true" />
             )}
-            {busy || running ? "Agent 执行中…" : "交给 Agent"}
+            {busy ? "正在提交…" : running ? "查看执行轨迹" : "交给 Agent"}
           </button>
         </div>
         {error ? <p className="mt-2 text-[11px] text-[var(--color-error)]">{error}</p> : null}

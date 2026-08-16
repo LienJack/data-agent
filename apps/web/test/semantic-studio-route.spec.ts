@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  handleGetSemanticAuthoringPublicFeed,
   handleLoadSemanticStudio,
   handleStreamSemanticAuthoringRun,
 } from "../src/lib/semantic-studio-route";
@@ -66,6 +67,28 @@ describe("Semantic Studio routes", () => {
       semantic_domain: "ecommerce",
       authoring_run_id: runId,
       after_sequence: 7,
+    });
+  });
+
+  it("loads the browser-safe public feed through a dedicated endpoint", async () => {
+    const getPublicRun = vi.fn(async () => ({
+      ok: true as const,
+      value: { schema_version: "semantic-authoring-public-feed@1.0.0" },
+    }));
+    const service = { getPublicRun } as unknown as SemanticStudioService;
+    const response = await handleGetSemanticAuthoringPublicFeed(
+      new NextRequest(
+        `http://localhost/api/workspaces/w/semantic/studio/authoring-runs/${runId}/feed?semanticDomain=ecommerce&after=4`,
+      ),
+      runId,
+      service,
+    );
+
+    expect(response.status).toBe(200);
+    expect(getPublicRun).toHaveBeenCalledWith({
+      semantic_domain: "ecommerce",
+      authoring_run_id: runId,
+      after_sequence: 4,
     });
   });
 });

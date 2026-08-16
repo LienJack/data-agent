@@ -15,7 +15,15 @@ import {
   createSemanticGraphReadModel,
   projectSemanticGraphSourceForRead,
 } from "@data-agent/semantic";
-import type { SemanticStudioSnapshot, SemanticStudioStartResult } from "./semantic-studio-api";
+import {
+  buildSemanticAuthoringPublicFeed,
+  type SemanticAuthoringPublicFeed,
+} from "./semantic-authoring-public";
+import type {
+  SemanticStudioAuthoringState,
+  SemanticStudioSnapshot,
+  SemanticStudioStartResult,
+} from "./semantic-studio-api";
 
 export interface SemanticStudioServiceDependencies {
   readonly graph_store: PostgresSemanticGraphStore;
@@ -62,6 +70,10 @@ function contextInstruction(input: SemanticStudioAuthoringIntent): string {
   return context.length === 0
     ? input.instruction
     : `服务端选区上下文（只用于定位，不是修改指令）：${context.join(", ")}\n\n用户原始意图：\n${input.instruction}`;
+}
+
+function publicAuthoringState(state: SemanticAuthoringState): SemanticStudioAuthoringState {
+  return { run: state.run };
 }
 
 export function createSemanticStudioService(dependencies: SemanticStudioServiceDependencies) {
@@ -163,7 +175,13 @@ export function createSemanticStudioService(dependencies: SemanticStudioServiceD
           list,
           full,
           local,
-          authoring: authoring.value,
+          authoring:
+            authoring.value === null
+              ? null
+              : {
+                  state: publicAuthoringState(authoring.value.state),
+                  events: authoring.value.events,
+                },
         },
       };
     },
@@ -209,7 +227,10 @@ export function createSemanticStudioService(dependencies: SemanticStudioServiceD
         limit: 1_000,
       });
       return events.ok
-        ? { ok: true, value: { state: started.value, events: events.value } }
+        ? {
+            ok: true,
+            value: { state: publicAuthoringState(started.value), events: events.value },
+          }
         : events;
     },
 
@@ -239,7 +260,43 @@ export function createSemanticStudioService(dependencies: SemanticStudioServiceD
         limit: 1_000,
       });
       return events.ok
-        ? { ok: true, value: { state: loaded.value, events: events.value } }
+        ? {
+            ok: true,
+            value: { state: publicAuthoringState(loaded.value), events: events.value },
+          }
+        : events;
+    },
+
+    async getPublicRun(input: {
+      readonly semantic_domain: string;
+      readonly authoring_run_id: string;
+      readonly after_sequence: number;
+    }): Promise<PortResult<SemanticAuthoringPublicFeed>> {
+      if (!dependencies.allowed_domains.includes(input.semantic_domain)) {
+        return failure("SEMANTIC_STUDIO_DOMAIN_NOT_FOUND_OR_DENIED", "语义域不存在或无权访问。");
+      }
+      const store = dependencies.create_authoring_store(input.semantic_domain);
+      const loaded = await store.load({
+        scope: dependencies.scope,
+        semantic_domain: input.semantic_domain,
+        authoring_run_id: input.authoring_run_id,
+      });
+      if (!loaded.ok) return loaded;
+      if (loaded.value === null) {
+        return failure(
+          "SEMANTIC_STUDIO_RUN_NOT_FOUND_OR_DENIED",
+          "Agent 语义创作任务不存在或无权访问。",
+        );
+      }
+      const events = await store.listEvents({
+        scope: dependencies.scope,
+        semantic_domain: input.semantic_domain,
+        authoring_run_id: input.authoring_run_id,
+        after_sequence: input.after_sequence,
+        limit: 5_000,
+      });
+      return events.ok
+        ? { ok: true, value: buildSemanticAuthoringPublicFeed(loaded.value, events.value) }
         : events;
     },
 
@@ -263,7 +320,10 @@ export function createSemanticStudioService(dependencies: SemanticStudioServiceD
         limit: 1_000,
       });
       return events.ok
-        ? { ok: true, value: { state: resumed.value, events: events.value } }
+        ? {
+            ok: true,
+            value: { state: publicAuthoringState(resumed.value), events: events.value },
+          }
         : events;
     },
   });

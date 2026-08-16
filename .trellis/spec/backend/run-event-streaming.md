@@ -94,3 +94,95 @@ setEvents((current) => mergePublicRunEvents(current, [event]));
 const processRows = assembleProcessRows(events, runId);
 const trajectory = groupTrajectoryEvents(events);
 ```
+
+## 场景：Semantic Authoring 独立公开轨迹
+
+### 1. Scope / Trigger
+
+- Semantic Studio 创建 Authoring Run 后进入独立 Run 页面时适用。
+- 内部 `SemanticAuthoringState` 含 working graph、checkpoint、provider request 和 tool result；这些
+  字段不得作为浏览器响应。服务端必须先构建严格、脱敏的 public feed。
+
+### 2. Signatures
+
+```text
+GET /api/workspaces/:workspaceId/semantic/studio/authoring-runs/:runId/feed
+  ?semanticDomain=:domain&after=:sequence
+
+GET /api/workspaces/:workspaceId/semantic/studio/authoring-runs/:runId/feed/events
+Last-Event-ID: :sequence
+
+POST /api/workspaces/:workspaceId/semantic/studio/authoring-runs/:runId/resume
+```
+
+```ts
+type SemanticAuthoringPublicFeed = {
+  schema_version: "semantic-authoring-public-feed@1.0.0";
+  run: PublicRunMetadata;
+  messages: Array<{ message_id: string; role: "user" | "assistant"; content: string }>;
+  pending_tools: Array<{ call_id: string; tool_name: string }>;
+  events: SemanticAuthoringPublicEvent[];
+};
+```
+
+### 3. Contracts
+
+- `buildSemanticAuthoringPublicFeed` 只能在服务端接收内部 State；Tool message、Tool arguments、完整
+  working graph 和 pending provider request 必须丢弃。
+- 用户首条消息只保留 `用户原始意图` 后的内容；选区上下文是内部定位信息，不进入 Feed。
+- USER/ASSISTANT 文本经过 `redactPublicDisplayText`；Tool 只输出 `call_id/tool_name` 与已持久化的安全
+  event summary，不输出 checkpoint tool JSON。
+- `QUEUED` 只在 PostgreSQL `event_sequence === 0` 且 Run 仍为 `RUNNING` 时派生；不能根据一次增量
+  查询返回空 events 判定，否则 SSE cursor 前进后会错误回退到排队状态。
+- 初始 GET 回放完整 feed；SSE 只增量返回 `after` 之后的事件。前端合并时以 sequence 去重，同时使用
+  最新 Run metadata/messages/pending tools。
+- Run 终态后服务端和浏览器都关闭 EventSource。10 秒无事件只显示“等待执行器”提示，不修改权威状态。
+- Parent Semantic Studio 和独立轨迹页的浏览器 DTO 都只保留公开 Run metadata；服务端可继续使用内部
+  working graph 构建既有 Candidate read projection。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| 非法 `workspaceId/runId/domain/after` | 稳定输入错误，不执行 Store 查询 |
+| Run 不存在、越权或 domain 不匹配 | `SEMANTIC_STUDIO_RUN_NOT_FOUND_OR_DENIED`，不泄露对象存在性 |
+| Feed/Event 未通过严格 Zod Parse | 客户端显示错误/重连，不使用类型断言继续渲染 |
+| SSE 断线 | 从最后 event sequence 重连并去重 |
+| 当前无新增 event | 保留最新 Run 状态；不得从 RUNNING 回退为 QUEUED |
+| 文本命中 Credential/System Prompt 模式 | public feed 中替换为 `[REDACTED]` |
+| Worker 尚未领取 | 页面显示排队，阈值后显示非权威等待提示 |
+| Run terminal | 关闭 SSE，保留完整回放与 Candidate-only 文案 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：服务端从权威 Store 加载 State 和 events，投影为 public feed，独立页面用同一 Feed 渲染对话、
+  pending tool 和执行事件。
+- Base：旧 Run 没有公开 assistant 文本；页面仍显示用户意图、状态和已有事件，不构造私有推理。
+- Bad：把 `SemanticAuthoringState` 或 `checkpoint.messages` 直接作为 Route JSON 返回浏览器。
+- Bad：SSE 每次增量 events 为空时把 Run 重新标记为 QUEUED。
+
+### 6. Tests Required
+
+- Projection unit：剥离选区上下文，保留 USER/ASSISTANT，排除 Tool JSON/arguments，并验证 Secret fixture。
+- Route：`semanticDomain/after/runId` 绑定到 scoped service；SSE 恢复和 terminal close。
+- Client：public feed 严格 parse，按 sequence 去重，terminal 主动关闭 EventSource。
+- UI：排队、等待执行器、运行、澄清、完成、失败、重连；桌面双栏与窄屏侧栏折叠。
+- Build：Next production build 必须收录 Run page、Feed GET 和 Feed SSE route。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+return NextResponse.json({ data: semanticAuthoringState });
+const queued = incrementalEvents.length === 0;
+```
+
+#### Correct
+
+```ts
+const feed = buildSemanticAuthoringPublicFeed(state, incrementalEvents);
+return NextResponse.json({ data: semanticAuthoringPublicFeedSchema.parse(feed) });
+
+const queued = state.run.status === "RUNNING" && state.event_sequence === 0;
+```

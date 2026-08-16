@@ -2,25 +2,33 @@
 
 import {
   type SemanticAuthoringPublicEvent,
-  type SemanticAuthoringState,
+  type SemanticAuthoringRun,
   type SemanticGraphEntryStatus,
   type SemanticGraphFullResult,
   type SemanticGraphNeighborhoodResult,
   type SemanticGraphNodeListResult,
   type SemanticNodeType,
   semanticAuthoringPublicEventSchema,
-  semanticAuthoringStateSchema,
+  semanticAuthoringRunSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
+import {
+  type SemanticAuthoringPublicFeed,
+  semanticAuthoringPublicFeedSchema,
+} from "./semantic-authoring-public";
 
 /*
  * The SSE stream is a browser boundary, so it must parse the same strict
  * contracts used by the Worker instead of trusting a TypeScript assertion.
  */
 const semanticStudioStartResultSchema = z.strictObject({
-  state: semanticAuthoringStateSchema,
+  state: z.strictObject({ run: semanticAuthoringRunSchema }),
   events: z.array(semanticAuthoringPublicEventSchema),
 });
+
+export interface SemanticStudioAuthoringState {
+  readonly run: SemanticAuthoringRun;
+}
 
 export interface SemanticStudioReleaseIdentity {
   readonly release_id: string;
@@ -37,13 +45,13 @@ export interface SemanticStudioSnapshot {
   readonly full: SemanticGraphFullResult;
   readonly local: SemanticGraphNeighborhoodResult | null;
   readonly authoring: {
-    readonly state: SemanticAuthoringState;
+    readonly state: SemanticStudioAuthoringState;
     readonly events: readonly SemanticAuthoringPublicEvent[];
   } | null;
 }
 
 export interface SemanticStudioStartResult {
-  readonly state: SemanticAuthoringState;
+  readonly state: SemanticStudioAuthoringState;
   readonly events: readonly SemanticAuthoringPublicEvent[];
 }
 
@@ -169,6 +177,20 @@ export function loadSemanticAuthoringEvents(
   return api(`${studioApiBase(workspaceId)}/authoring-runs/${input.runId}?${query}`, { signal });
 }
 
+export function loadSemanticAuthoringPublicFeed(
+  workspaceId: string,
+  input: { readonly semanticDomain: string; readonly runId: string; readonly after: number },
+  signal?: AbortSignal,
+): Promise<SemanticAuthoringPublicFeed> {
+  const query = new URLSearchParams({
+    semanticDomain: input.semanticDomain,
+    after: String(input.after),
+  });
+  return api(`${studioApiBase(workspaceId)}/authoring-runs/${input.runId}/feed?${query}`, {
+    signal,
+  });
+}
+
 export function subscribeSemanticAuthoringEvents(
   workspaceId: string,
   input: { readonly semanticDomain: string; readonly runId: string; readonly after: number },
@@ -201,6 +223,47 @@ export function subscribeSemanticAuthoringEvents(
   source.addEventListener("error", () => {
     if (source.readyState !== EventSource.CLOSED) {
       handlers.onError("Agent 事件流暂时中断，正在自动重连。");
+    }
+  });
+  return () => source.close();
+}
+
+export function subscribeSemanticAuthoringPublicFeed(
+  workspaceId: string,
+  input: { readonly semanticDomain: string; readonly runId: string; readonly after: number },
+  handlers: {
+    readonly onAuthoring: (value: SemanticAuthoringPublicFeed) => void;
+    readonly onError: (message: string) => void;
+    readonly onConnectionChange?: (status: "live" | "reconnecting") => void;
+  },
+): () => void {
+  const query = new URLSearchParams({
+    semanticDomain: input.semanticDomain,
+    after: String(input.after),
+  });
+  const source = new EventSource(
+    `${studioApiBase(workspaceId)}/authoring-runs/${input.runId}/feed/events?${query}`,
+  );
+  source.addEventListener("open", () => handlers.onConnectionChange?.("live"));
+  source.addEventListener("public-authoring", (event) => {
+    try {
+      const result = semanticAuthoringPublicFeedSchema.parse(JSON.parse(event.data));
+      handlers.onAuthoring(result);
+      if (
+        result.run.status !== "QUEUED" &&
+        result.run.status !== "RUNNING" &&
+        result.run.status !== "WAITING_CLARIFICATION"
+      ) {
+        source.close();
+      }
+    } catch {
+      handlers.onError("Agent 公开轨迹返回了无效数据，正在重新连接。");
+    }
+  });
+  source.addEventListener("error", () => {
+    if (source.readyState !== EventSource.CLOSED) {
+      handlers.onConnectionChange?.("reconnecting");
+      handlers.onError("Agent 公开轨迹暂时中断，正在自动重连。");
     }
   });
   return () => source.close();

@@ -23,6 +23,8 @@ describe("Semantic Studio Agent-only authoring boundary", () => {
 
   it("strictly parses authoring SSE payloads and closes terminal streams", () => {
     expect(semanticStudioApiSource).toContain("semanticStudioStartResultSchema.parse(");
+    expect(semanticStudioApiSource).toContain("semanticAuthoringRunSchema");
+    expect(semanticStudioApiSource).not.toContain("semanticAuthoringStateSchema");
     expect(semanticStudioApiSource).toContain('result.state.run.status !== "RUNNING"');
     expect(semanticStudioApiSource).toContain("source.close();");
   });

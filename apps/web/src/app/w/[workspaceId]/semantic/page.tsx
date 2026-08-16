@@ -6,7 +6,7 @@ export default async function WorkspaceSemanticPage({
   searchParams,
 }: {
   params: Promise<{ workspaceId: string }>;
-  searchParams: Promise<{ preview?: string; intent?: string }>;
+  searchParams: Promise<{ preview?: string; intent?: string; domain?: string; runId?: string }>;
 }) {
   const [{ workspaceId }, query] = await Promise.all([params, searchParams]);
   const preview = query.preview === "1" && process.env.NODE_ENV !== "production";
@@ -15,6 +15,8 @@ export default async function WorkspaceSemanticPage({
       workspaceId={workspaceId}
       initialSnapshot={preview ? semanticStudioPreviewSnapshot() : null}
       initialDraft={query.intent?.slice(0, 20_000) ?? ""}
+      initialDomain={query.domain?.slice(0, 64)}
+      initialRunId={query.runId}
       preview={preview}
     />
   );

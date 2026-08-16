@@ -2,7 +2,6 @@
 
 import type {
   SemanticAuthoringPublicEvent,
-  SemanticAuthoringState,
   SemanticEdgeFamily,
   SemanticGraphEntryStatus,
   SemanticGraphNode,
@@ -21,11 +20,13 @@ import {
   Sparkle,
 } from "@phosphor-icons/react";
 import { MotionConfig, motion, useReducedMotion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLayoutStore } from "@/lib/layout-store";
 import {
   loadSemanticStudio,
   resumeSemanticAuthoring,
+  type SemanticStudioAuthoringState,
   type SemanticStudioSnapshot,
   startSemanticAuthoring,
   subscribeSemanticAuthoringEvents,
@@ -70,7 +71,7 @@ const STATUSES = [
   "RETIRED",
 ] as const satisfies readonly SemanticGraphEntryStatus[];
 
-function runIsOpen(state: SemanticAuthoringState | null): boolean {
+function runIsOpen(state: SemanticStudioAuthoringState | null): boolean {
   return state?.run.status === "RUNNING" || state?.run.status === "WAITING_CLARIFICATION";
 }
 
@@ -78,13 +79,18 @@ export function SemanticStudio({
   workspaceId,
   initialSnapshot,
   initialDraft = "",
+  initialDomain,
+  initialRunId,
   preview = false,
 }: {
   readonly workspaceId: string;
   readonly initialSnapshot: SemanticStudioSnapshot | null;
   readonly initialDraft?: string;
+  readonly initialDomain?: string;
+  readonly initialRunId?: string;
   readonly preview?: boolean;
 }) {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [view, setView] = useState<SemanticStudioView>("nodes");
   const [loading, setLoading] = useState(initialSnapshot === null);
@@ -109,7 +115,7 @@ export function SemanticStudio({
   const [selectedEdge, setSelectedEdge] = useState<SemanticGraphReadEdge | null>(null);
   const [hops, setHops] = useState<1 | 2>(1);
   const [draft, setDraft] = useState(initialDraft);
-  const [authoringState, setAuthoringState] = useState<SemanticAuthoringState | null>(
+  const [authoringState, setAuthoringState] = useState<SemanticStudioAuthoringState | null>(
     initialSnapshot?.authoring?.state ?? null,
   );
   const [events, setEvents] = useState<readonly SemanticAuthoringPublicEvent[]>(
@@ -165,9 +171,11 @@ export function SemanticStudio({
   );
 
   useEffect(() => {
-    if (initialSnapshot === null) void load();
+    if (initialSnapshot === null) {
+      void load({ domain: initialDomain, runId: initialRunId });
+    }
     return () => activeRequest.current?.abort();
-  }, [initialSnapshot, load]);
+  }, [initialDomain, initialRunId, initialSnapshot, load]);
 
   useEffect(() => {
     const media = window.matchMedia("(max-width: 767px)");
@@ -393,6 +401,9 @@ export function SemanticStudio({
       setAuthoringState(result.state);
       setEvents((current) => mergeAuthoringEvents(current, result.events));
       setDraft("");
+      router.push(
+        `/w/${encodeURIComponent(workspaceId)}/semantic/authoring/${encodeURIComponent(result.state.run.authoring_run_id)}?domain=${encodeURIComponent(snapshot.semantic_domain)}`,
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Agent 语义创作未能启动。");
     } finally {
@@ -527,6 +538,12 @@ export function SemanticStudio({
             }}
             onSubmit={() => void submitAuthoring()}
             onResume={(answer) => void resume(answer)}
+            onOpenTrajectory={() => {
+              if (!authoringState) return;
+              router.push(
+                `/w/${encodeURIComponent(workspaceId)}/semantic/authoring/${encodeURIComponent(authoringState.run.authoring_run_id)}?domain=${encodeURIComponent(snapshot.semantic_domain)}`,
+              );
+            }}
           />
 
           <div
