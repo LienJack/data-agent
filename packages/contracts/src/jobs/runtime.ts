@@ -4,6 +4,7 @@ import {
   artifactReferenceIdentity,
   artifactReferenceSchema,
 } from "../artifacts/envelope.js";
+import { semanticInductionRequestSchema } from "../artifacts/semantic-induction.js";
 import {
   type AppScope,
   appScopeSchema,
@@ -84,7 +85,11 @@ function referenceScopeMatches(reference: ScopedReference, scope: AppScope): boo
 
 export const jobDomainOutputReferenceSchema = z.strictObject({
   schema_version: z.literal("job-domain-output-reference@1.0.0"),
-  resource_kind: z.enum(["WORKSPACE_FILE_SCAN_RECEIPT", "KNOWLEDGE_INDEX_GENERATION"]),
+  resource_kind: z.enum([
+    "WORKSPACE_FILE_SCAN_RECEIPT",
+    "KNOWLEDGE_INDEX_GENERATION",
+    "SEMANTIC_INDUCTION_RECEIPT",
+  ]),
   app_id: immutableIdSchema,
   tenant_id: immutableIdSchema,
   environment: appScopeSchema.shape.environment,
@@ -191,6 +196,23 @@ export const jobInputSchema = z
         context.addIssue({
           code: "custom",
           message: "KNOWLEDGE_INDEX must bind one exact Knowledge Base Revision and Generation.",
+          path: ["parameters"],
+        });
+      }
+    }
+    if (input.kind === "SEMANTIC_INDUCTION" || input.kind === "METRIC_IMPORT") {
+      const keys = Object.keys(input.parameters).sort();
+      const request = semanticInductionRequestSchema.safeParse(input.parameters.request);
+      if (
+        input.resource_refs.length !== 0 ||
+        keys.join("\u0000") !== "request" ||
+        !request.success ||
+        (input.kind === "METRIC_IMPORT") !==
+          (request.success && request.data.induction_kind === "METRIC_IMPORT")
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "Semantic induction jobs must bind one exact governed induction request.",
           path: ["parameters"],
         });
       }

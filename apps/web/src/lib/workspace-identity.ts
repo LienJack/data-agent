@@ -17,6 +17,7 @@ import {
   createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
   createPostgresProviderInvocationStore,
+  createPostgresSemanticInductionRegistry,
   createPostgresSemanticPortabilityRepository,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
@@ -53,6 +54,7 @@ interface WorkspaceIdentityRuntimeState {
   providerInvocationStore?: ReturnType<typeof createPostgresProviderInvocationStore>;
   workspaceFiles?: ReturnType<typeof createPostgresWorkspaceFiles>;
   knowledgeRegistry?: ReturnType<typeof createPostgresKnowledgeRegistry>;
+  semanticInductionRegistry?: ReturnType<typeof createPostgresSemanticInductionRegistry>;
   workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
 }
 
@@ -170,6 +172,15 @@ export function getKnowledgeRegistry() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.knowledgeRegistry;
+}
+
+export function getSemanticInductionRegistry() {
+  const runtime = state();
+  runtime.semanticInductionRegistry ??= createPostgresSemanticInductionRegistry({
+    pool: getWorkspaceSqlPool(),
+    authorizer: getWorkspaceAuthority().authorizer,
+  });
+  return runtime.semanticInductionRegistry;
 }
 
 export function getWorkspaceContent() {

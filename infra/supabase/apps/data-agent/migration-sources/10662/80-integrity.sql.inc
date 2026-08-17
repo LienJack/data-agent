@@ -1,0 +1,15 @@
+create trigger semantic_induction_source_packages_immutable
+before update or delete on app_data_agent.semantic_induction_source_packages
+for each row execute function app_data_agent.reject_semantic_induction_immutable_mutation();
+create trigger semantic_induction_proposals_immutable
+before update or delete on app_data_agent.semantic_induction_proposals
+for each row execute function app_data_agent.reject_semantic_induction_immutable_mutation();
+create trigger semantic_impact_plans_immutable
+before update or delete on app_data_agent.semantic_impact_plans
+for each row execute function app_data_agent.reject_semantic_induction_immutable_mutation();
+create trigger semantic_metric_dry_run_receipts_immutable
+before update or delete on app_data_agent.semantic_metric_dry_run_receipts
+for each row execute function app_data_agent.reject_semantic_induction_immutable_mutation();
+create trigger semantic_induction_receipts_immutable
+before update or delete on app_data_agent.semantic_induction_receipts
+for each row execute function app_data_agent.reject_semantic_induction_immutable_mutation();

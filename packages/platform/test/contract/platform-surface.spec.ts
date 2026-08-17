@@ -78,6 +78,7 @@ describe("platform package public surface", () => {
       "createPostgresSemanticCandidateCompileStore",
       "createPostgresSemanticExplorerReader",
       "createPostgresSemanticGraphStore",
+      "createPostgresSemanticInductionRegistry",
       "createPostgresSemanticPortabilityRepository",
       "createPostgresTeamRunStore",
       "createPostgresText2SqlSandboxAuthority",

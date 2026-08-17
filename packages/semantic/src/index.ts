@@ -120,6 +120,7 @@ export {
   ImpactKind,
   type ImpactResult,
 } from "./impact/impact-analyzer.js";
+export * from "./induction/index.js";
 export {
   buildSemanticRelationshipGraphManifest,
   createSemanticRelationshipSearchService,

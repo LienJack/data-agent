@@ -25,6 +25,7 @@ import {
   createPostgresResearchAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
+  createPostgresSemanticInductionRegistry,
   createPostgresWorkspaceFiles,
   createUnavailableKnowledgeIndex,
   createWorkspaceContentNamespace,
@@ -37,6 +38,7 @@ import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handl
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
 import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
+import { createSemanticInductionJobHandler } from "./jobs/semantic-induction-job-handler.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
@@ -416,6 +418,10 @@ export async function runWorkerProcess(
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           });
+          const semanticInductionRegistry = createPostgresSemanticInductionRegistry({
+            pool: sqlPool,
+            authorizer: capabilityAuthority.authorizer,
+          });
           const workspaceContent = createWorkspaceContentNamespace(
             fileStorage,
             capabilityAuthority.authorizer,
@@ -446,6 +452,15 @@ export async function runWorkerProcess(
                 index: knowledgeIndex,
                 create_id: randomUUID,
                 now: () => new Date(),
+              }),
+              createSemanticInductionJobHandler({
+                capability,
+                registry: semanticInductionRegistry,
+              }),
+              createSemanticInductionJobHandler({
+                capability,
+                registry: semanticInductionRegistry,
+                kind: "METRIC_IMPORT",
               }),
             ],
           });

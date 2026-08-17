@@ -165,6 +165,10 @@ export {
   type SemanticGraphReleaseBindingInput,
 } from "./semantic/postgres-semantic-graph.js";
 export {
+  createPostgresSemanticInductionRegistry,
+  type PostgresSemanticInductionRegistry,
+} from "./semantic/postgres-semantic-induction.js";
+export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";
