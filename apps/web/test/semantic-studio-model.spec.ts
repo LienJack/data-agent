@@ -1,6 +1,7 @@
 import type { SemanticAuthoringPublicEvent, SemanticGraphReadNode } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  assembleSemanticAuthoringProcessEvents,
   filterSemanticNodes,
   localGraphLayout,
   mergeAuthoringEvents,
@@ -55,5 +56,45 @@ describe("Semantic Studio view model", () => {
       payload: { phase: "READING", status: "RUNNING", summary: "读取图" },
     } as SemanticAuthoringPublicEvent;
     expect(mergeAuthoringEvents([first], [first])).toEqual([first]);
+  });
+
+  it("rebuilds one collapsible reasoning block from semantic turn stage events", () => {
+    const base = {
+      schema_version: "semantic-authoring-public-event@1.0.0" as const,
+      run_id: "10000000-0000-4000-8000-000000000002",
+      occurred_at: "2026-08-15T00:00:00.000Z",
+      type: "stage" as const,
+    };
+    const events: SemanticAuthoringPublicEvent[] = [
+      {
+        ...base,
+        event_id: "10000000-0000-4000-8000-000000000003",
+        sequence: 1,
+        payload: {
+          phase: "semantic-turn-1",
+          summary: "Started governed planning.",
+          status: "RUNNING",
+        },
+      },
+      {
+        ...base,
+        event_id: "10000000-0000-4000-8000-000000000004",
+        sequence: 2,
+        payload: {
+          phase: "semantic-turn-1",
+          summary: "Selected governed tools.",
+          status: "COMPLETED",
+        },
+      },
+    ];
+    expect(assembleSemanticAuthoringProcessEvents(events)).toEqual([
+      expect.objectContaining({
+        sequence: 1,
+        payload: expect.objectContaining({
+          status: "COMPLETED",
+          summary: "Started governed planning. Selected governed tools.",
+        }),
+      }),
+    ]);
   });
 });

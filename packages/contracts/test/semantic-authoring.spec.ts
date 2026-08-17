@@ -170,6 +170,38 @@ describe("semantic authoring contracts", () => {
     expect(
       semanticAuthoringPublicEventSchema.parse({
         schema_version: "semantic-authoring-public-event@1.0.0",
+        event_id: "00000000-0000-4000-8000-000000000113",
+        run_id: "00000000-0000-4000-8000-000000000103",
+        sequence: 6,
+        occurred_at: "2026-08-15T00:00:59.000Z",
+        type: "stage",
+        payload: {
+          phase: "semantic-turn-1",
+          summary: "已形成 2 个受策略约束的工具调用。",
+          status: "COMPLETED",
+        },
+      }).type,
+    ).toBe("stage");
+    expect(() =>
+      semanticAuthoringPublicEventSchema.parse({
+        schema_version: "semantic-authoring-public-event@1.0.0",
+        event_id: "00000000-0000-4000-8000-000000000114",
+        run_id: "00000000-0000-4000-8000-000000000103",
+        sequence: 6,
+        occurred_at: "2026-08-15T00:00:59.000Z",
+        type: "stage",
+        payload: {
+          phase: "semantic-turn-1",
+          summary: "public",
+          status: "COMPLETED",
+          reasoning_content: "private chain of thought",
+        },
+      }),
+    ).toThrow();
+
+    expect(
+      semanticAuthoringPublicEventSchema.parse({
+        schema_version: "semantic-authoring-public-event@1.0.0",
         event_id: "00000000-0000-4000-8000-000000000109",
         run_id: "00000000-0000-4000-8000-000000000103",
         sequence: 7,

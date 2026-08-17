@@ -39,6 +39,7 @@ import {
   SEMANTIC_STATUS_PRESENTATION,
   type SemanticStudioView,
 } from "@/lib/semantic-studio-model";
+import { ContextPreviewWorkbench } from "./context-preview-workbench";
 import { SemanticAgentComposer } from "./semantic-agent-composer";
 import { SemanticGraphCanvas } from "./semantic-graph-canvas";
 import { SemanticInspector } from "./semantic-inspector";
@@ -520,6 +521,15 @@ export function SemanticStudio({
               </div>
             </div>
           </header>
+
+          <details className="mt-4 border-y border-[#d7ddd9] bg-white">
+            <summary className="cursor-pointer list-none px-4 py-3 text-xs font-semibold text-[#34413b] outline-none focus-visible:ring-2 focus-visible:ring-[#356b5a]">
+              Context Preview
+            </summary>
+            <div className="border-t border-[#d7ddd9] p-3">
+              <ContextPreviewWorkbench workspaceId={workspaceId} />
+            </div>
+          </details>
 
           <SemanticAgentComposer
             domain={snapshot.semantic_domain}

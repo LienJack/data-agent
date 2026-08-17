@@ -1,4 +1,4 @@
-import { Children, isValidElement, type ReactNode } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -29,20 +29,6 @@ vi.mock("@/lib/workspace-navigation", () => ({
 }));
 
 let WorkspaceHomePage: typeof import("../src/app/w/[workspaceId]/page").default;
-
-function textContent(node: ReactNode): string {
-  const values: string[] = [];
-  Children.forEach(node, (child) => {
-    if (typeof child === "string" || typeof child === "number") {
-      values.push(String(child));
-      return;
-    }
-    if (isValidElement<{ readonly children?: ReactNode }>(child)) {
-      values.push(textContent(child.props.children));
-    }
-  });
-  return values.join("");
-}
 
 beforeAll(async () => {
   ({ default: WorkspaceHomePage } = await import("../src/app/w/[workspaceId]/page"));
@@ -77,7 +63,7 @@ describe("workspace home billing UI", () => {
     const page = await WorkspaceHomePage({
       params: Promise.resolve({ workspaceId: "9e0ed5ae-7ab6-4896-b7eb-868e202f3725" }),
     });
-    const copy = textContent(page);
+    const copy = renderToStaticMarkup(page);
 
     expect(copy).toContain("管理账户、工作空间与语义资产");
     expect(copy).toContain("平台级扩展能力将在后续阶段继续接入");
@@ -91,7 +77,7 @@ describe("workspace home billing UI", () => {
     const page = await WorkspaceHomePage({
       params: Promise.resolve({ workspaceId: "9e0ed5ae-7ab6-4896-b7eb-868e202f3725" }),
     });
-    const copy = textContent(page);
+    const copy = renderToStaticMarkup(page);
 
     expect(copy).toContain("管理模型、价格、汇率和账务复核");
     expect(copy).toContain("平台模型与计费控制面将在后续阶段继续接入");

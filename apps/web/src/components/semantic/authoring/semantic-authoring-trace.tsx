@@ -3,6 +3,7 @@
 import type { SemanticAuthoringPublicEvent } from "@data-agent/contracts";
 import {
   ArrowLeft,
+  Brain,
   CheckCircle,
   CircleNotch,
   ClockCountdown,
@@ -17,6 +18,8 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { WorkspaceLocale } from "@/i18n";
+import { useWorkspaceI18n } from "@/i18n";
 import { useLayoutStore } from "@/lib/layout-store";
 import {
   mergeSemanticAuthoringPublicFeeds,
@@ -27,7 +30,10 @@ import {
   resumeSemanticAuthoring,
   subscribeSemanticAuthoringPublicFeed,
 } from "@/lib/semantic-studio-api";
-import { publicEventSummary } from "@/lib/semantic-studio-model";
+import {
+  assembleSemanticAuthoringProcessEvents,
+  publicEventSummary,
+} from "@/lib/semantic-studio-model";
 
 const TOOL_LABELS: Record<string, string> = {
   list_semantic_types: "读取语义类型",
@@ -51,18 +57,32 @@ const TOOL_LABELS: Record<string, string> = {
   complete_authoring_run: "完成语义创作",
 };
 
-function eventPresentation(event: SemanticAuthoringPublicEvent) {
+function copy(locale: WorkspaceLocale, zhCN: string, enUS: string): string {
+  return locale === "zh-CN" ? zhCN : enUS;
+}
+
+function eventPresentation(event: SemanticAuthoringPublicEvent, locale: WorkspaceLocale) {
   switch (event.type) {
     case "stage":
-      return {
-        label: "执行阶段",
-        Icon: CircleNotch,
-        tone: "text-[#426e60]",
-        surface: "bg-[#e9f1ed]",
-      };
+      return event.payload.phase.startsWith("semantic-turn-")
+        ? {
+            label: copy(locale, "思考摘要", "Thinking summary"),
+            Icon: Brain,
+            tone: "text-[#4f627c]",
+            surface: "bg-[#e9edf3]",
+          }
+        : {
+            label: copy(locale, "执行阶段", "Execution stage"),
+            Icon: CircleNotch,
+            tone: "text-[#426e60]",
+            surface: "bg-[#e9f1ed]",
+          };
     case "tool":
       return {
-        label: TOOL_LABELS[event.payload.tool_name] ?? event.payload.tool_name,
+        label:
+          locale === "zh-CN"
+            ? (TOOL_LABELS[event.payload.tool_name] ?? event.payload.tool_name)
+            : event.payload.tool_name,
         Icon: Wrench,
         tone: event.payload.status === "FAILED" ? "text-[#a04436]" : "text-[#426e60]",
         surface: event.payload.status === "FAILED" ? "bg-[#f8e9e6]" : "bg-[#e9f1ed]",
@@ -76,16 +96,21 @@ function eventPresentation(event: SemanticAuthoringPublicEvent) {
       };
     case "validation":
       return {
-        label: "确定性校验",
+        label: copy(locale, "确定性校验", "Deterministic validation"),
         Icon: event.payload.valid ? CheckCircle : WarningCircle,
         tone: event.payload.valid ? "text-[#36705d]" : "text-[#9a6318]",
         surface: event.payload.valid ? "bg-[#e6f1eb]" : "bg-[#fbf0d9]",
       };
     case "clarification":
-      return { label: "业务澄清", Icon: Question, tone: "text-[#3d6f85]", surface: "bg-[#e7f0f4]" };
+      return {
+        label: copy(locale, "业务澄清", "Business clarification"),
+        Icon: Question,
+        tone: "text-[#3d6f85]",
+        surface: "bg-[#e7f0f4]",
+      };
     case "authoring_terminal":
       return {
-        label: "任务结束",
+        label: copy(locale, "任务结束", "Run terminal"),
         Icon: event.payload.status === "FAILED" ? WarningCircle : ShieldCheck,
         tone: event.payload.status === "FAILED" ? "text-[#a04436]" : "text-[#36705d]",
         surface: event.payload.status === "FAILED" ? "bg-[#f8e9e6]" : "bg-[#e6f1eb]",
@@ -93,12 +118,16 @@ function eventPresentation(event: SemanticAuthoringPublicEvent) {
   }
 }
 
-function runStatus(feed: SemanticAuthoringPublicFeed, now: number) {
+function runStatus(feed: SemanticAuthoringPublicFeed, now: number, locale: WorkspaceLocale) {
   const queuedFor = now - new Date(feed.run.updated_at).getTime();
   if (feed.run.status === "QUEUED" && queuedFor >= 10_000) {
     return {
-      label: "等待执行器领取",
-      detail: "任务已安全保存，但尚未产生 Worker 事件。页面会持续自动重连。",
+      label: copy(locale, "等待执行器领取", "Waiting for a worker"),
+      detail: copy(
+        locale,
+        "任务已安全保存，但尚未产生 Worker 事件。页面会持续自动重连。",
+        "The task is durable but has no Worker event yet. This page keeps reconnecting.",
+      ),
       tone: "text-[#8a5b15]",
       dot: "bg-[#bb8126]",
     };
@@ -106,43 +135,67 @@ function runStatus(feed: SemanticAuthoringPublicFeed, now: number) {
   switch (feed.run.status) {
     case "QUEUED":
       return {
-        label: "已排队",
-        detail: "请求已保存，正在等待执行器领取。",
+        label: copy(locale, "已排队", "Queued"),
+        detail: copy(
+          locale,
+          "请求已保存，正在等待执行器领取。",
+          "The request is waiting for a worker.",
+        ),
         tone: "text-[#4f665e]",
         dot: "bg-[#799288]",
       };
     case "RUNNING":
       return {
-        label: "Agent 正在执行",
-        detail: `正在处理第 ${Math.max(1, feed.run.current_turn + 1)} 轮。`,
+        label: copy(locale, "Agent 正在执行", "Agent running"),
+        detail: copy(
+          locale,
+          `正在处理第 ${Math.max(1, feed.run.current_turn + 1)} 轮。`,
+          `Processing turn ${Math.max(1, feed.run.current_turn + 1)}.`,
+        ),
         tone: "text-[#356b5a]",
         dot: "bg-[#4e8a76]",
       };
     case "WAITING_CLARIFICATION":
       return {
-        label: "等待你的确认",
-        detail: "选择一个业务口径后，Agent 会从保存的 checkpoint 继续。",
+        label: copy(locale, "等待你的确认", "Waiting for clarification"),
+        detail: copy(
+          locale,
+          "选择一个业务口径后，Agent 会从保存的 checkpoint 继续。",
+          "Choose a business interpretation to resume from the durable checkpoint.",
+        ),
         tone: "text-[#366f87]",
         dot: "bg-[#4b8298]",
       };
     case "READY_FOR_REVIEW":
       return {
-        label: "已生成待审核 Candidate",
-        detail: "确定性校验已通过；发布前仍不会影响活动语义。",
+        label: copy(locale, "已生成待审核 Candidate", "Candidate ready for review"),
+        detail: copy(
+          locale,
+          "确定性校验已通过；发布前仍不会影响活动语义。",
+          "Deterministic validation passed; active semantics remain unchanged until publish.",
+        ),
         tone: "text-[#2f6b58]",
         dot: "bg-[#3d806a]",
       };
     case "FAILED":
       return {
-        label: "执行失败",
-        detail: "已保留公开轨迹与 checkpoint，可据错误信息重试。",
+        label: copy(locale, "执行失败", "Run failed"),
+        detail: copy(
+          locale,
+          "已保留公开轨迹与 checkpoint，可据错误信息恢复。",
+          "The public trace and checkpoint are retained for governed recovery.",
+        ),
         tone: "text-[#a04436]",
         dot: "bg-[#b45445]",
       };
     case "CANCELLED":
       return {
-        label: "已取消",
-        detail: "该任务没有写入活动语义。",
+        label: copy(locale, "已取消", "Cancelled"),
+        detail: copy(
+          locale,
+          "该任务没有写入活动语义。",
+          "This task did not change active semantics.",
+        ),
         tone: "text-[#65716c]",
         dot: "bg-[#8a948f]",
       };
@@ -158,6 +211,7 @@ export function SemanticAuthoringTrace({
   readonly runId: string;
   readonly semanticDomain: string;
 }) {
+  const { locale } = useWorkspaceI18n();
   const [feed, setFeed] = useState<SemanticAuthoringPublicFeed | null>(null);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
@@ -234,7 +288,11 @@ export function SemanticAuthoringTrace({
     return () => window.clearInterval(timer);
   }, [feed?.run.status]);
 
-  const status = useMemo(() => (feed ? runStatus(feed, now) : null), [feed, now]);
+  const status = useMemo(() => (feed ? runStatus(feed, now, locale) : null), [feed, locale, now]);
+  const processEvents = useMemo(
+    () => assembleSemanticAuthoringProcessEvents(feed?.events ?? []),
+    [feed?.events],
+  );
   const backHref = `/w/${encodeURIComponent(workspaceId)}/semantic?domain=${encodeURIComponent(
     semanticDomain,
   )}&runId=${encodeURIComponent(runId)}`;
@@ -273,7 +331,9 @@ export function SemanticAuthoringTrace({
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#356b5a]">
             Public agent trace
           </p>
-          <p className="mt-2 text-sm font-medium">正在恢复公开事件流</p>
+          <p className="mt-2 text-sm font-medium">
+            {copy(locale, "正在恢复公开事件流", "Restoring the public event stream")}
+          </p>
           <div className="mt-4 h-px overflow-hidden bg-[#d8dfda]">
             <motion.div
               className="h-full w-1/3 bg-[#356b5a]"
@@ -295,13 +355,16 @@ export function SemanticAuthoringTrace({
       <main className="grid min-h-screen place-items-center bg-[#f3f5f3] px-6 text-[#26312d]">
         <div className="w-full max-w-lg border-y border-[#d8dfda] bg-white px-8 py-12 text-center">
           <WarningCircle className="mx-auto size-7 text-[#a04436]" aria-hidden="true" />
-          <h1 className="mt-4 text-lg font-semibold">无法打开这条执行轨迹</h1>
+          <h1 className="mt-4 text-lg font-semibold">
+            {copy(locale, "无法打开这条执行轨迹", "Unable to open this execution trace")}
+          </h1>
           <p className="mt-2 text-xs leading-5 text-[#65716c]">{fatalError}</p>
           <Link
             href={backHref}
             className="mt-6 inline-flex items-center gap-2 text-xs font-semibold text-[#356b5a]"
           >
-            <ArrowLeft className="size-4" aria-hidden="true" /> 返回语义工作台
+            <ArrowLeft className="size-4" aria-hidden="true" />
+            {copy(locale, "返回语义工作台", "Back to Semantic Studio")}
           </Link>
         </div>
       </main>
@@ -313,22 +376,25 @@ export function SemanticAuthoringTrace({
       <header className="border-b border-[#d6ddd8] bg-white/95 px-4 py-3 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-[1540px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <nav className="flex items-center gap-2 text-[11px] text-[#728079]" aria-label="面包屑">
+            <nav
+              className="flex items-center gap-2 text-[11px] text-[#728079]"
+              aria-label={copy(locale, "面包屑", "Breadcrumb")}
+            >
               <Link
                 href={backHref}
                 className="inline-flex items-center gap-1.5 hover:text-[#356b5a]"
               >
                 <ArrowLeft className="size-3.5" aria-hidden="true" />
-                语义工作台
+                {copy(locale, "语义工作台", "Semantic Studio")}
               </Link>
               <span aria-hidden="true">/</span>
               <span className="truncate font-mono text-[#4e5a55]">{semanticDomain}</span>
               <span aria-hidden="true">/</span>
-              <span className="truncate">Agent 执行轨迹</span>
+              <span className="truncate">{copy(locale, "Agent 执行轨迹", "Agent trace")}</span>
             </nav>
             <div className="mt-2 flex flex-wrap items-center gap-3">
-              <h1 className="text-lg font-semibold tracking-[-0.025em] sm:text-xl">
-                语义变更执行轨迹
+              <h1 className="text-lg font-semibold sm:text-xl">
+                {copy(locale, "语义变更执行轨迹", "Semantic authoring trace")}
               </h1>
               {status ? (
                 <span
@@ -347,19 +413,28 @@ export function SemanticAuthoringTrace({
             <span className="font-mono">Run · {runId.slice(0, 8)}</span>
             <span className="h-4 w-px bg-[#d8dfda]" aria-hidden="true" />
             <span className={connection === "live" ? "text-[#3a715f]" : "text-[#94631e]"}>
-              {connection === "live" ? "事件流已连接" : "正在重新连接"}
+              {connection === "live"
+                ? copy(locale, "事件流已连接", "Event stream connected")
+                : copy(locale, "正在重新连接", "Reconnecting")}
             </span>
           </div>
         </div>
       </header>
 
       <div className="mx-auto grid max-w-[1540px] gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1.65fr)_minmax(330px,0.8fr)] lg:px-6">
-        <section className="min-w-0 border border-[#d8dfda] bg-white" aria-label="Agent 对话内容">
+        <section
+          className="min-w-0 border border-[#d8dfda] bg-white"
+          aria-label={copy(locale, "Agent 对话内容", "Agent conversation")}
+        >
           <div className="flex items-start justify-between gap-4 border-b border-[#d8dfda] px-4 py-3 sm:px-5">
             <div>
-              <p className="text-xs font-semibold">对话内容</p>
+              <p className="text-xs font-semibold">{copy(locale, "对话内容", "Conversation")}</p>
               <p className="mt-1 text-[10px] leading-4 text-[#75817b]">
-                仅展示用户原始意图与可公开的 Agent 回复；不包含系统提示或私有推理。
+                {copy(
+                  locale,
+                  "仅展示用户原始意图与可公开的 Agent 回复；不包含系统提示或私有推理。",
+                  "Shows the user intent and public Agent response only; system prompts and private reasoning are excluded.",
+                )}
               </p>
             </div>
             <Robot className="mt-0.5 size-5 shrink-0 text-[#56796d]" aria-hidden="true" />
@@ -380,7 +455,7 @@ export function SemanticAuthoringTrace({
                     <p
                       className={`mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] ${message.role === "user" ? "text-right text-[#55756a]" : "text-[#718079]"}`}
                     >
-                      {message.role === "user" ? "你" : "Agent"}
+                      {message.role === "user" ? copy(locale, "你", "You") : "Agent"}
                     </p>
                     <div
                       className={
@@ -406,7 +481,9 @@ export function SemanticAuthoringTrace({
 
               {feed.run.clarification && !feed.run.clarification.answered ? (
                 <div className="border-l-2 border-[#4f8196] bg-[#eef5f7] px-4 py-4">
-                  <p className="text-xs font-semibold text-[#315f73]">Agent 需要确认业务口径</p>
+                  <p className="text-xs font-semibold text-[#315f73]">
+                    {copy(locale, "Agent 需要确认业务口径", "Agent needs clarification")}
+                  </p>
                   <p className="mt-2 text-[13px] leading-6 text-[#395d6a]">
                     {feed.run.clarification.question}
                   </p>
@@ -429,15 +506,20 @@ export function SemanticAuthoringTrace({
           </div>
         </section>
 
-        <aside className="min-w-0 lg:sticky lg:top-5 lg:self-start" aria-label="执行过程与工具调用">
+        <aside
+          className="min-w-0 lg:sticky lg:top-5 lg:self-start"
+          aria-label={copy(locale, "执行过程与工具调用", "Execution process and tool calls")}
+        >
           <div className="border border-[#d8dfda] bg-white">
             <div className="border-b border-[#d8dfda] px-4 py-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold">执行过程</p>
+                  <p className="text-xs font-semibold">
+                    {copy(locale, "执行过程", "Execution process")}
+                  </p>
                   <p className="mt-1 text-[10px] text-[#75817b]">
                     {feed.events.length} 个公开事件 · {feed.run.used_tool_calls}/
-                    {feed.run.max_tool_calls} 次工具调用
+                    {feed.run.max_tool_calls} {copy(locale, "次工具调用", "tool calls")}
                   </p>
                 </div>
                 <Pulse
@@ -458,9 +540,12 @@ export function SemanticAuthoringTrace({
                 </li>
               ) : null}
 
-              {feed.events.map((event) => {
-                const presentation = eventPresentation(event);
+              {processEvents.map((event) => {
+                const presentation = eventPresentation(event, locale);
                 const Icon = presentation.Icon;
+                const disclosure =
+                  event.type === "tool" ||
+                  (event.type === "stage" && event.payload.phase.startsWith("semantic-turn-"));
                 return (
                   <li
                     key={event.event_id}
@@ -471,17 +556,46 @@ export function SemanticAuthoringTrace({
                     >
                       <Icon className="size-3.5" aria-hidden="true" />
                     </span>
-                    <div className="flex items-start justify-between gap-3">
-                      <p className={`text-[11px] font-semibold ${presentation.tone}`}>
-                        {presentation.label}
-                      </p>
-                      <span className="font-mono text-[9px] text-[#99a29e]">#{event.sequence}</span>
-                    </div>
-                    <p className="mt-1 text-[11px] leading-5 text-[#5f6c66]">
-                      {publicEventSummary(event)}
-                    </p>
+                    {disclosure ? (
+                      <details>
+                        <summary className="flex cursor-pointer list-none items-start justify-between gap-3 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-[#356b5a]">
+                          <span className={`text-[11px] font-semibold ${presentation.tone}`}>
+                            {presentation.label}
+                            {` · ${event.payload.status}`}
+                          </span>
+                          <span className="font-mono text-[9px] text-[#99a29e]">
+                            #{event.sequence}
+                          </span>
+                        </summary>
+                        <div className="mt-2 border-l border-[#d3dbd6] pl-3">
+                          <p className="text-[11px] leading-5 text-[#5f6c66]">
+                            {publicEventSummary(event)}
+                          </p>
+                          {event.type === "tool" ? (
+                            <p className="mt-1 break-all font-mono text-[9px] text-[#99a29e]">
+                              {event.payload.call_id}
+                              {event.payload.error_code ? ` · ${event.payload.error_code}` : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                      </details>
+                    ) : (
+                      <>
+                        <div className="flex items-start justify-between gap-3">
+                          <p className={`text-[11px] font-semibold ${presentation.tone}`}>
+                            {presentation.label}
+                          </p>
+                          <span className="font-mono text-[9px] text-[#99a29e]">
+                            #{event.sequence}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-5 text-[#5f6c66]">
+                          {publicEventSummary(event)}
+                        </p>
+                      </>
+                    )}
                     <p className="mt-1 font-mono text-[9px] text-[#99a29e]">
-                      {new Intl.DateTimeFormat("zh-CN", {
+                      {new Intl.DateTimeFormat(locale, {
                         hour: "2-digit",
                         minute: "2-digit",
                         second: "2-digit",
@@ -500,9 +614,13 @@ export function SemanticAuthoringTrace({
                     <Wrench className="size-3.5 animate-pulse" aria-hidden="true" />
                   </span>
                   <p className="text-[11px] font-semibold text-[#426e60]">
-                    {TOOL_LABELS[tool.tool_name] ?? tool.tool_name}
+                    {locale === "zh-CN"
+                      ? (TOOL_LABELS[tool.tool_name] ?? tool.tool_name)
+                      : tool.tool_name}
                   </p>
-                  <p className="mt-1 text-[11px] text-[#65716c]">工具正在执行</p>
+                  <p className="mt-1 text-[11px] text-[#65716c]">
+                    {copy(locale, "工具正在执行", "Tool running")}
+                  </p>
                   <p className="mt-1 truncate font-mono text-[9px] text-[#99a29e]">
                     {tool.call_id}
                   </p>
@@ -513,7 +631,13 @@ export function SemanticAuthoringTrace({
 
           <div className="mt-3 border-l-2 border-[#9cb2a9] px-3 py-2 text-[10px] leading-4 text-[#718079]">
             <p>Candidate revision · {feed.run.working_revision}</p>
-            <p>所有变更仍需审核发布，不会直接覆盖活动语义。</p>
+            <p>
+              {copy(
+                locale,
+                "所有变更仍需审核发布，不会直接覆盖活动语义。",
+                "All changes require review and publish; active semantics are not overwritten.",
+              )}
+            </p>
           </div>
           {streamNotice || fatalError ? (
             <p className="mt-3 border-l-2 border-[#c0852d] bg-[#fbf3e4] px-3 py-2 text-[10px] leading-4 text-[#81591c]">

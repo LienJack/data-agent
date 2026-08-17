@@ -142,6 +142,47 @@ export function mergeAuthoringEvents(
   return [...bySequence.values()].sort((left, right) => left.sequence - right.sequence);
 }
 
+export function assembleSemanticAuthoringProcessEvents(
+  events: readonly SemanticAuthoringPublicEvent[],
+): readonly SemanticAuthoringPublicEvent[] {
+  const passthrough: SemanticAuthoringPublicEvent[] = [];
+  const reasoningStages = new Map<
+    string,
+    {
+      first: Extract<SemanticAuthoringPublicEvent, { type: "stage" }>;
+      latest: Extract<SemanticAuthoringPublicEvent, { type: "stage" }>;
+      summaries: string[];
+      completed: boolean;
+    }
+  >();
+
+  for (const event of events) {
+    if (event.type !== "stage" || !event.payload.phase.startsWith("semantic-turn-")) {
+      passthrough.push(event);
+      continue;
+    }
+    const current = reasoningStages.get(event.payload.phase);
+    const summaries = [...(current?.summaries ?? []), event.payload.summary];
+    reasoningStages.set(event.payload.phase, {
+      first: current?.first ?? event,
+      latest: event,
+      summaries,
+      completed: current?.completed === true || event.payload.status === "COMPLETED",
+    });
+  }
+
+  const blocks = [...reasoningStages.values()].map(({ first, latest, summaries, completed }) => ({
+    ...first,
+    occurred_at: latest.occurred_at,
+    payload: {
+      ...latest.payload,
+      status: completed ? ("COMPLETED" as const) : ("RUNNING" as const),
+      summary: summaries.join(" "),
+    },
+  }));
+  return [...passthrough, ...blocks].sort((left, right) => left.sequence - right.sequence);
+}
+
 export function publicEventSummary(event: SemanticAuthoringPublicEvent): string {
   switch (event.type) {
     case "stage":

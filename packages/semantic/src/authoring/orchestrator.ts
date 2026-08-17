@@ -372,8 +372,8 @@ export function createSemanticAuthoringOrchestrator(
             event(state, {
               type: "stage",
               payload: {
-                phase: "AGENT_TURN",
-                summary: `开始 Agent turn ${request.turn_index}`,
+                phase: `semantic-turn-${request.turn_index}`,
+                summary: "开始形成受治理的语义工具计划。",
                 status: "RUNNING",
               },
             }),
@@ -454,8 +454,8 @@ export function createSemanticAuthoringOrchestrator(
           event(state, {
             type: "stage",
             payload: {
-              phase: "AGENT_TURN",
-              summary: `Agent turn ${request.turn_index} 已返回 ${calls.length} 个工具调用`,
+              phase: `semantic-turn-${request.turn_index}`,
+              summary: `已形成 ${calls.length} 个受策略约束的工具调用。`,
               status: "COMPLETED",
             },
           }),

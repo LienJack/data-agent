@@ -2,6 +2,7 @@
 
 import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import { useId, useState } from "react";
+import { useWorkspaceI18n } from "@/i18n";
 import type { ProcessRow } from "@/lib/qa-event-assembler";
 import { useQAStore } from "@/lib/qa-store";
 
@@ -11,6 +12,7 @@ function durationLabel(durationMs: number | null): string {
 }
 
 export function ProcessDisclosure({ row }: { row: ProcessRow }) {
+  const { t } = useWorkspaceI18n();
   const [expanded, setExpanded] = useState(false);
   const panelId = useId();
   const openTrajectory = useQAStore((state) => state.openTrajectory);
@@ -42,8 +44,12 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
         />
         <span className="min-w-0 flex-1">
           <span className="font-medium text-[var(--color-text-secondary)]">
-            {row.kind === "tool" ? row.toolName : row.kind === "reasoning" ? "思考" : "阶段"} ·{" "}
-            {row.title}
+            {row.kind === "tool"
+              ? row.toolName
+              : row.kind === "reasoning"
+                ? t("process.thinking")
+                : t("process.stage")}{" "}
+            · {row.title}
           </span>
           <span className="ml-2 break-words text-[var(--color-text-muted)]">{compactSummary}</span>
         </span>
@@ -61,7 +67,9 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
         <div id={panelId} className="mb-2 rounded-md bg-[var(--color-bg-tertiary)] p-3">
           {row.input !== null && (
             <section className="mb-3">
-              <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">Input</p>
+              <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">
+                {t("process.input")}
+              </p>
               <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--color-text-secondary)]">
                 {row.input}
               </pre>
@@ -69,7 +77,9 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
           )}
           {row.output !== null && (
             <section>
-              <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">Output</p>
+              <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">
+                {t("process.output")}
+              </p>
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--color-text-secondary)]">
                 {row.output}
               </pre>
@@ -83,7 +93,7 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
             onClick={() => openTrajectory({ runId: row.runId, sequence: row.sequence })}
             className="mt-3 text-[var(--color-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
           >
-            在轨迹中定位
+            {t("process.locate")}
           </button>
         </div>
       )}

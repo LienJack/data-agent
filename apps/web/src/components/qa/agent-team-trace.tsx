@@ -2,12 +2,18 @@
 
 import type { AgentProductProfileRegistryItem, AgentTeamPublicTrace } from "@data-agent/contracts";
 import { FlowArrow, Hammer, ShieldCheck } from "@phosphor-icons/react";
+import type { ReactNode } from "react";
+import { useWorkspaceI18n } from "@/i18n";
 
 const labels = {
   "governed-text2sql-agent": "Text2SQL",
   "report-writing-agent": "Report",
   "semantic-management-agent": "Semantic",
 } as const;
+
+function shortIdentity(value: string): string {
+  return value.length > 24 ? `${value.slice(0, 12)}...${value.slice(-8)}` : value;
+}
 
 export function AgentTeamTrace({
   profiles,
@@ -18,6 +24,7 @@ export function AgentTeamTrace({
   readonly trace: AgentTeamPublicTrace | null;
   readonly error?: string | null;
 }) {
+  const { t } = useWorkspaceI18n();
   if (error) {
     return (
       <p className="p-5 text-xs text-red-700" role="alert">
@@ -28,7 +35,7 @@ export function AgentTeamTrace({
   if (profiles.length === 0 && trace === null) {
     return (
       <p className="p-5 text-xs text-[var(--color-text-muted)]" role="status">
-        当前工作空间尚未启用 Agent Profile
+        {t("team.empty")}
       </p>
     );
   }
@@ -37,10 +44,10 @@ export function AgentTeamTrace({
       {trace && (
         <div className="grid grid-cols-2 gap-px border-b border-[var(--color-border-default)] bg-[var(--color-border-default)] sm:grid-cols-4">
           {[
-            ["Tasks", trace.tasks.length],
-            ["Handoffs", trace.handoffs.length],
-            ["Epochs", trace.epochs.length],
-            ["Verifiers", trace.verifier_decisions.length],
+            [t("team.tasks"), trace.tasks.length],
+            [t("team.handoffs"), trace.handoffs.length],
+            [t("team.epochs"), trace.epochs.length],
+            [t("team.verifiers"), trace.verifier_decisions.length],
           ].map(([label, value]) => (
             <div key={label} className="bg-[var(--color-bg-primary)] px-4 py-3">
               <p className="text-[10px] text-[var(--color-text-muted)]">{label}</p>
@@ -69,6 +76,44 @@ export function AgentTeamTrace({
           ))}
         </ol>
       )}
+      {trace &&
+        (trace.handoffs.length > 0 ||
+          trace.epochs.length > 0 ||
+          trace.verifier_decisions.length > 0) && (
+          <div className="grid border-b border-[var(--color-border-default)] lg:grid-cols-3">
+            <TraceDisclosure title={t("team.handoffs")} count={trace.handoffs.length}>
+              {trace.handoffs.map((handoff) => (
+                <li key={handoff.handoff_id}>
+                  <code>{shortIdentity(handoff.parent_task_id)}</code> →{" "}
+                  <code>{shortIdentity(handoff.child_task_id)}</code>
+                  <span className="mt-1 block text-[var(--color-text-muted)]">
+                    r{handoff.parent_expected_revision} · {shortIdentity(handoff.request_hash)}
+                  </span>
+                </li>
+              ))}
+            </TraceDisclosure>
+            <TraceDisclosure title={t("team.epochs")} count={trace.epochs.length}>
+              {trace.epochs.map((epoch) => (
+                <li key={`${epoch.task_id}:${epoch.epoch_id}:${epoch.epoch_revision}`}>
+                  <code>{shortIdentity(epoch.task_id)}</code> · {epoch.phase}
+                  <span className="mt-1 block text-[var(--color-text-muted)]">
+                    epoch r{epoch.epoch_revision} · {shortIdentity(epoch.build_signature)}
+                  </span>
+                </li>
+              ))}
+            </TraceDisclosure>
+            <TraceDisclosure title={t("team.verifiers")} count={trace.verifier_decisions.length}>
+              {trace.verifier_decisions.map((decision) => (
+                <li key={decision.decision_id}>
+                  <code>{shortIdentity(decision.task_id)}</code> · task r{decision.task_revision}
+                  <span className="mt-1 block text-[var(--color-text-muted)]">
+                    {shortIdentity(decision.decision_hash)}
+                  </span>
+                </li>
+              ))}
+            </TraceDisclosure>
+          </div>
+        )}
       <ul className="divide-y divide-[var(--color-border-default)]">
         {profiles.map(({ revision, head }) => (
           <li key={revision.profile_id} className="px-5 py-4">
@@ -94,7 +139,7 @@ export function AgentTeamTrace({
             <dl className="mt-3 grid gap-2 text-[11px] sm:grid-cols-3">
               <div className="min-w-0">
                 <dt className="flex items-center gap-1 text-[var(--color-text-muted)]">
-                  <FlowArrow size={13} /> Workflow
+                  <FlowArrow size={13} /> {t("team.workflow")}
                 </dt>
                 <dd className="mt-1 truncate" title={revision.workflow_ref.workflow_id}>
                   {revision.workflow_ref.workflow_id}
@@ -102,16 +147,18 @@ export function AgentTeamTrace({
               </div>
               <div>
                 <dt className="flex items-center gap-1 text-[var(--color-text-muted)]">
-                  <ShieldCheck size={13} /> Skills
+                  <ShieldCheck size={13} /> {t("team.skills")}
                 </dt>
-                <dd className="mt-1 tabular-nums">{revision.skill_refs.length} revisions</dd>
+                <dd className="mt-1 tabular-nums">
+                  {revision.skill_refs.length} {t("team.revisions")}
+                </dd>
               </div>
               <div>
                 <dt className="flex items-center gap-1 text-[var(--color-text-muted)]">
-                  <Hammer size={13} /> Tools
+                  <Hammer size={13} /> {t("team.tools")}
                 </dt>
                 <dd className="mt-1 tabular-nums">
-                  {revision.direct_tool_allowlist.length} direct
+                  {revision.direct_tool_allowlist.length} {t("team.direct")}
                 </dd>
               </div>
             </dl>
@@ -119,5 +166,24 @@ export function AgentTeamTrace({
         ))}
       </ul>
     </div>
+  );
+}
+
+function TraceDisclosure({
+  title,
+  count,
+  children,
+}: {
+  readonly title: string;
+  readonly count: number;
+  readonly children: ReactNode;
+}) {
+  return (
+    <details className="border-b border-[var(--color-border-default)] px-4 py-3 last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0">
+      <summary className="cursor-pointer list-none text-[10px] font-semibold text-[var(--color-text-secondary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
+        {title} · {count}
+      </summary>
+      <ul className="mt-3 space-y-3 text-[10px] text-[var(--color-text-secondary)]">{children}</ul>
+    </details>
   );
 }

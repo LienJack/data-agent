@@ -2,6 +2,8 @@
 
 import type { ResolvedContextCommitResult, ResolvedContextState } from "@data-agent/contracts";
 import { Database, ShieldCheck, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
+import type { MessageKey } from "@/i18n";
+import { useWorkspaceI18n } from "@/i18n";
 
 export type SemanticContextPreviewState =
   | { readonly kind: "IDLE" }
@@ -11,13 +13,16 @@ export type SemanticContextPreviewState =
 
 const STATE_PRESENTATION: Record<
   ResolvedContextState,
-  { readonly label: string; readonly className: string }
+  { readonly labelKey: MessageKey; readonly className: string }
 > = {
-  READY: { label: "可用", className: "bg-[#e3efe9] text-[#285b4b]" },
-  PARTIAL: { label: "部分可用", className: "bg-[#fff1d6] text-[#80530c]" },
-  NEEDS_CLARIFICATION: { label: "需要澄清", className: "bg-[#fff1d6] text-[#80530c]" },
-  REJECTED: { label: "已拒绝", className: "bg-[#f8e3df] text-[#8b3f31]" },
-  STALE: { label: "已过期", className: "bg-[#e9ecea] text-[#59665f]" },
+  READY: { labelKey: "context.state.READY", className: "bg-[#e3efe9] text-[#285b4b]" },
+  PARTIAL: { labelKey: "context.state.PARTIAL", className: "bg-[#fff1d6] text-[#80530c]" },
+  NEEDS_CLARIFICATION: {
+    labelKey: "context.state.NEEDS_CLARIFICATION",
+    className: "bg-[#fff1d6] text-[#80530c]",
+  },
+  REJECTED: { labelKey: "context.state.REJECTED", className: "bg-[#f8e3df] text-[#8b3f31]" },
+  STALE: { labelKey: "context.state.STALE", className: "bg-[#e9ecea] text-[#59665f]" },
 };
 
 function shortHash(hash: string): string {
@@ -29,12 +34,13 @@ function EmptyPreview({
 }: {
   readonly state: Exclude<SemanticContextPreviewState, { kind: "RESOLVED" }>;
 }) {
+  const { t } = useWorkspaceI18n();
   const resolving = state.kind === "RESOLVING";
   const failed = state.kind === "ERROR";
   return (
     <section
       aria-busy={resolving}
-      aria-label="Context Preview"
+      aria-label={t("context.preview")}
       className="grid min-h-40 place-items-center border border-[#d7ddd9] bg-[#f8faf8] px-5 py-8 text-center"
     >
       <div>
@@ -46,7 +52,7 @@ function EmptyPreview({
           <ShieldCheck className="mx-auto size-5 text-[#82908a]" aria-hidden="true" />
         )}
         <p className="mt-3 text-xs font-semibold text-[#34413b]">
-          {resolving ? "正在解析上下文" : failed ? "上下文解析失败" : "尚未解析上下文"}
+          {resolving ? t("context.resolving") : failed ? t("context.failed") : t("context.idle")}
         </p>
         {failed ? (
           <code className="mt-2 block text-[10px] text-[#8b3f31]">{state.code}</code>
@@ -57,13 +63,14 @@ function EmptyPreview({
 }
 
 export function ContextPreview({ state }: { readonly state: SemanticContextPreviewState }) {
+  const { t } = useWorkspaceI18n();
   if (state.kind !== "RESOLVED") return <EmptyPreview state={state} />;
 
   const { package: contextPackage, receipt } = state.result;
   const presentation = STATE_PRESENTATION[receipt.state];
   return (
     <section
-      aria-label="Context Preview"
+      aria-label={t("context.preview")}
       className="overflow-hidden border border-[#d7ddd9] bg-white text-[#34413b]"
       data-context-package-hash={contextPackage.package_hash}
       data-context-state={receipt.state}
@@ -71,7 +78,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#d7ddd9] bg-[#f8faf8] px-4 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#6f7b75]">
-            Context Preview
+            {t("context.preview")}
           </p>
           <p className="mt-1 truncate font-mono text-[10px] text-[#7b8781]">
             {contextPackage.package_id}
@@ -80,7 +87,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-[#6f7b75]">{receipt.route}</span>
           <span className={`px-2 py-1 text-[10px] font-semibold ${presentation.className}`}>
-            {presentation.label}
+            {t(presentation.labelKey)}
           </span>
         </div>
       </header>
@@ -89,12 +96,12 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
         <div className="min-w-0 px-4 py-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <IdentityRow
-              label="Published Release"
+              label={t("context.release")}
               value={`${contextPackage.semantic_release.resource_id} · r${contextPackage.semantic_release.resource_revision}`}
               hash={contextPackage.semantic_release.resource_hash}
             />
             <IdentityRow
-              label="Schema Snapshot"
+              label={t("context.schema")}
               value={`${contextPackage.schema_snapshot.resource_id} · r${contextPackage.schema_snapshot.resource_revision}`}
               hash={contextPackage.schema_snapshot.resource_hash}
             />
@@ -103,7 +110,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
           {contextPackage.route_decision.clarification_candidates.length > 0 ? (
             <section className="mt-4 border-l-2 border-[#d19a2d] bg-[#fff9ec] px-3 py-2">
               <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#80530c]">
-                澄清候选
+                {t("context.clarification")}
               </h3>
               <ul className="mt-2 space-y-1 text-[11px] text-[#5f553f]">
                 {contextPackage.route_decision.clarification_candidates.map((candidate) => (
@@ -117,7 +124,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
 
           <section className="mt-5">
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#6f7b75]">
-              Evidence Projection
+              {t("context.evidence")}
             </h3>
             {contextPackage.evidence.length > 0 ? (
               <ul className="mt-2 divide-y divide-[#e2e7e4] border-y border-[#e2e7e4]">
@@ -134,7 +141,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 text-[11px] text-[#7b8781]">没有纳入 Evidence 摘要。</p>
+              <p className="mt-2 text-[11px] text-[#7b8781]">{t("context.noEvidence")}</p>
             )}
           </section>
         </div>
@@ -143,13 +150,22 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
           <div className="flex items-center gap-2">
             <Database className="size-4 text-[#356b5a]" aria-hidden="true" />
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#59665f]">
-              Context Capacity
+              {t("context.capacity")}
             </h3>
           </div>
           <dl className="mt-3 grid grid-cols-3 gap-2 border-y border-[#d7ddd9] py-3 text-center">
-            <CapacityStat label="上限" value={contextPackage.capacity.max_context_bytes} />
-            <CapacityStat label="已纳入" value={contextPackage.capacity.included_bytes} />
-            <CapacityStat label="已裁剪" value={contextPackage.capacity.cropped_bytes} />
+            <CapacityStat
+              label={t("context.limit")}
+              value={contextPackage.capacity.max_context_bytes}
+            />
+            <CapacityStat
+              label={t("context.included")}
+              value={contextPackage.capacity.included_bytes}
+            />
+            <CapacityStat
+              label={t("context.cropped")}
+              value={contextPackage.capacity.cropped_bytes}
+            />
           </dl>
           <ul className="mt-3 space-y-2">
             {contextPackage.capacity.items.map((item) => (

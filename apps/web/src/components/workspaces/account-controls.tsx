@@ -2,9 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useWorkspaceI18n } from "@/i18n";
 import { authClient } from "@/lib/auth-client";
 
 export function AccountControls() {
+  const { t } = useWorkspaceI18n();
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -21,7 +23,7 @@ export function AccountControls() {
       }}
       className="rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
     >
-      {pending ? "正在退出…" : "退出登录"}
+      {pending ? t("workspace.signingOut") : t("workspace.signOut")}
     </button>
   );
 }

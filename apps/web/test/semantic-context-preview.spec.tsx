@@ -143,7 +143,7 @@ describe("Semantic Context Preview", () => {
     expect(markup).toContain(label);
     expect(markup).toContain(preview.package.semantic_release.resource_id);
     expect(markup).toContain(preview.package.schema_snapshot.resource_id);
-    expect(markup).toContain("Context Capacity");
+    expect(markup).toContain("上下文容量");
     expect(markup).not.toContain("raw_prompt");
     expect(markup).not.toContain("private_reasoning");
   });
@@ -154,6 +154,6 @@ describe("Semantic Context Preview", () => {
     { kind: "ERROR", code: "RESOLVED_CONTEXT_RELEASE_STALE" },
   ])("renders the $kind view state", (state) => {
     const markup = renderToStaticMarkup(<ContextPreview state={state} />);
-    expect(markup).toContain('aria-label="Context Preview"');
+    expect(markup).toContain('aria-label="上下文预览"');
   });
 });

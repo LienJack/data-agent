@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
+import type { MessageKey } from "@/i18n";
+import { useWorkspaceI18n } from "@/i18n";
 import { useLayoutStore, useSidebarCollapsed } from "@/lib/layout-store";
 import { useQAConversations, useQAStore } from "@/lib/qa-store";
 import { useWorkbenchStore } from "@/lib/workbench-store";
@@ -130,6 +132,17 @@ const navigationIcons: Readonly<Record<WorkspaceNavigationKey, ReactNode>> = {
   "platform-settings": icons.settings,
 };
 
+const navigationLabels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
+  analysis: "workspace.surface.analysis",
+  qa: "workspace.surface.qa",
+  tests: "workspace.surface.tests",
+  jobs: "workspace.surface.jobs",
+  "data-sources": "workspace.surface.data-sources",
+  semantic: "workspace.surface.semantic",
+  members: "workspace.surface.members",
+  "platform-settings": "workspace.surface.platform-settings",
+};
+
 interface SidebarProps {
   readonly access: WorkspaceAccessProjection;
   readonly navigation: readonly WorkspaceNavigationItem[];
@@ -142,6 +155,7 @@ interface SidebarProps {
  * 底部能力状态来自 Workbench authority，不在视觉层伪造用户或环境信息。
  */
 export function Sidebar({ access, navigation }: SidebarProps) {
+  const { locale, t } = useWorkspaceI18n();
   const pathname = usePathname();
   const router = useRouter();
   const collapsed = useSidebarCollapsed();
@@ -163,12 +177,12 @@ export function Sidebar({ access, navigation }: SidebarProps) {
   }, [loadConversations, qaItem]);
 
   const filteredConversations = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase("zh-CN");
+    const query = search.trim().toLocaleLowerCase(locale);
     if (!query) return conversations;
     return conversations.filter((conversation) =>
-      conversation.title.toLocaleLowerCase("zh-CN").includes(query),
+      conversation.title.toLocaleLowerCase(locale).includes(query),
     );
-  }, [conversations, search]);
+  }, [conversations, locale, search]);
 
   return (
     <aside
@@ -187,14 +201,14 @@ export function Sidebar({ access, navigation }: SidebarProps) {
           <Link
             href={workspaceHome}
             className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border-default)] bg-white text-sm font-semibold text-[var(--color-text-primary)] shadow-sm"
-            aria-label="data agent 首页"
+            aria-label={`data agent ${t("workspace.home")}`}
           >
             D
           </Link>
         )}
         {!collapsed && (
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[15px] font-semibold tracking-[-0.01em]">data agent</div>
+            <div className="truncate text-[15px] font-semibold">data agent</div>
             <div className="mt-0.5 text-[11px] text-[var(--color-text-muted)]">
               {access.workspace.display_name} · {access.role}
             </div>
@@ -204,7 +218,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
           type="button"
           onClick={toggleSidebar}
           className="flex size-8 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
-          aria-label={collapsed ? "展开侧边栏" : "折叠侧边栏"}
+          aria-label={collapsed ? t("workspace.expandSidebar") : t("workspace.collapseSidebar")}
         >
           <svg
             aria-hidden="true"
@@ -221,10 +235,10 @@ export function Sidebar({ access, navigation }: SidebarProps) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <nav className="px-2 py-4" aria-label="工作区资源">
+        <nav className="px-2 py-4" aria-label={t("workspace.resources")}>
           {!collapsed && (
             <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
-              分析与治理
+              {t("workspace.analysisGovernance")}
             </p>
           )}
           <div className="space-y-0.5">
@@ -232,7 +246,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
               <SidebarItem
                 key={item.href}
                 href={item.href}
-                label={item.label}
+                label={t(navigationLabels[item.key])}
                 icon={navigationIcons[item.key]}
                 collapsed={collapsed}
               />
@@ -243,17 +257,17 @@ export function Sidebar({ access, navigation }: SidebarProps) {
         {!collapsed && qaItem && (
           <section
             className="border-t border-[var(--color-border-default)] px-3 py-3"
-            aria-label="数据任务"
+            aria-label={t("workspace.surface.qa")}
           >
             <Link
               href={qaItem.href}
               className="flex h-10 items-center justify-center rounded-lg bg-[#171a18] text-[13px] font-semibold text-white shadow-sm hover:bg-black"
             >
-              新建业务问题
+              {t("workspace.newQuestion")}
             </Link>
 
             <label className="relative mt-3 block">
-              <span className="sr-only">搜索会话</span>
+              <span className="sr-only">{t("workspace.searchConversations")}</span>
               <svg
                 aria-hidden="true"
                 viewBox="0 0 20 20"
@@ -268,7 +282,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="搜索最近分析"
+                placeholder={t("workspace.searchRecent")}
                 className="h-10 w-full rounded-lg border border-[var(--color-border-default)] bg-white pl-9 pr-3 text-[13px] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-border-focused)] focus:outline-none"
               />
             </label>
@@ -327,7 +341,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
 
               {!projection && filteredConversations.length === 0 && (
                 <p className="px-2 py-4 text-center text-[11px] text-[var(--color-text-muted)]">
-                  暂无会话
+                  {t("workspace.noConversations")}
                 </p>
               )}
             </div>
@@ -353,7 +367,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
             href="/workspaces"
             className="mt-1 flex h-7 items-center justify-center rounded-md text-[11px] font-medium text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
           >
-            切换工作空间
+            {t("workspace.switch")}
           </a>
         </div>
       )}

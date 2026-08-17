@@ -4,11 +4,13 @@ import type { WorkspaceAccessProjection } from "@data-agent/contracts";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useLayoutEffect, useRef } from "react";
+import { WorkspaceI18nProvider } from "@/i18n";
 import { resetWorkspaceClientState } from "@/lib/workspace-client-state";
 import type { WorkspaceNavigationItem } from "@/lib/workspace-navigation";
 import { workspacePath } from "@/lib/workspace-routes";
 import { Sidebar } from "./sidebar";
 import { StatusBar } from "./status-bar";
+import { WorkspaceTopbar } from "./workspace-topbar";
 
 interface WorkspaceShellProps {
   readonly access: WorkspaceAccessProjection;
@@ -31,12 +33,15 @@ export function WorkspaceShell({ access, navigation, children }: WorkspaceShellP
   }, [workspaceId]);
 
   return (
-    <div className="flex h-screen flex-row bg-[var(--color-bg-canvas)]">
-      <Sidebar access={access} navigation={navigation} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <main className="min-h-0 flex-1 overflow-auto">{children}</main>
-        {!usesEmbeddedRunStatus && <StatusBar />}
+    <WorkspaceI18nProvider>
+      <div className="flex h-screen flex-row bg-[var(--color-bg-canvas)]">
+        <Sidebar access={access} navigation={navigation} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <WorkspaceTopbar access={access} />
+          <main className="min-h-0 flex-1 overflow-auto">{children}</main>
+          {!usesEmbeddedRunStatus && <StatusBar />}
+        </div>
       </div>
-    </div>
+    </WorkspaceI18nProvider>
   );
 }
