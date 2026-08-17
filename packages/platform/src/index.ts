@@ -1,7 +1,8 @@
-export * from "./attribution/published-f9-lifecycle.js";
-export * from "./artifacts/postgres-artifact-workspace-store.js";
-export * from "./artifacts/artifact-workspace-service.js";
+export * from "./agents/model-egress-projection.js";
 export * from "./agents/postgres-team-run-store.js";
+export * from "./artifacts/artifact-workspace-service.js";
+export * from "./artifacts/postgres-artifact-workspace-store.js";
+export * from "./attribution/published-f9-lifecycle.js";
 export {
   createPostgresPrivilegedGrantAuthority,
   type PostgresPrivilegedGrantAuthority,
@@ -32,6 +33,12 @@ export * from "./catalog/schema-drift.js";
 export * from "./datasources/postgres-datasource-egress.js";
 export * from "./events/postgres-run-control.js";
 export * from "./events/postgres-run-event-store.js";
+export * from "./jobs/postgres-job-queue.js";
+export * from "./knowledge/api-embedding-provider.js";
+export * from "./knowledge/knowledge-index.js";
+export * from "./knowledge/knowledge-search-service.js";
+export * from "./knowledge/neo4j-knowledge-index.js";
+export * from "./knowledge/postgres-knowledge-registry.js";
 export {
   type CommandAcceptance,
   createPostgresRepository,
@@ -42,7 +49,6 @@ export * from "./persistence/transaction.js";
 export * from "./persistence/workspace-data-repository.js";
 export * from "./pricing/postgres-pricing-control.js";
 export * from "./providers/index.js";
-export * from "./jobs/postgres-job-queue.js";
 export * from "./queue/postgres-run-queue.js";
 export {
   createPostgresControlledFixture,
@@ -162,15 +168,15 @@ export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";
-export * from "./storage/namespace.js";
+export * from "./storage/clamav-client.js";
 export * from "./storage/file-scan-port.js";
 export * from "./storage/file-system-storage-client.js";
-export * from "./storage/clamav-client.js";
+export * from "./storage/namespace.js";
 export * from "./storage/postgres-workspace-files.js";
-export * from "./storage/workspace-content-gc.js";
-export * from "./storage/workspace-content-orphan-gc.js";
-export * from "./storage/workspace-content-namespace.js";
 export * from "./storage/sensitive-execution-artifact-authority.js";
+export * from "./storage/workspace-content-gc.js";
+export * from "./storage/workspace-content-namespace.js";
+export * from "./storage/workspace-content-orphan-gc.js";
 export type {
   AppCapability,
   AppCapabilityRole,

@@ -25,6 +25,7 @@ export const JOB_KINDS = [
   "METRIC_IMPORT",
   "DATALINK_REBUILD",
   "FILE_SCAN",
+  "KNOWLEDGE_INDEX",
 ] as const;
 
 export const jobKindSchema = z.enum(JOB_KINDS);
@@ -83,7 +84,7 @@ function referenceScopeMatches(reference: ScopedReference, scope: AppScope): boo
 
 export const jobDomainOutputReferenceSchema = z.strictObject({
   schema_version: z.literal("job-domain-output-reference@1.0.0"),
-  resource_kind: z.literal("WORKSPACE_FILE_SCAN_RECEIPT"),
+  resource_kind: z.enum(["WORKSPACE_FILE_SCAN_RECEIPT", "KNOWLEDGE_INDEX_GENERATION"]),
   app_id: immutableIdSchema,
   tenant_id: immutableIdSchema,
   environment: appScopeSchema.shape.environment,
@@ -172,6 +173,24 @@ export const jobInputSchema = z
         context.addIssue({
           code: "custom",
           message: "FILE_SCAN 必须只绑定 exact File Revision 参数，不能携带通用 Artifact 引用。",
+          path: ["parameters"],
+        });
+      }
+    }
+    if (input.kind === "KNOWLEDGE_INDEX") {
+      const keys = Object.keys(input.parameters).sort();
+      if (
+        input.resource_refs.length !== 0 ||
+        keys.join("\u0000") !==
+          "generation_id\u0000knowledge_base_id\u0000revision\u0000revision_hash" ||
+        !immutableIdSchema.safeParse(input.parameters.knowledge_base_id).success ||
+        !positiveSafeIntegerSchema.safeParse(input.parameters.revision).success ||
+        !contentHashSchema.safeParse(input.parameters.revision_hash).success ||
+        !immutableIdSchema.safeParse(input.parameters.generation_id).success
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "KNOWLEDGE_INDEX must bind one exact Knowledge Base Revision and Generation.",
           path: ["parameters"],
         });
       }

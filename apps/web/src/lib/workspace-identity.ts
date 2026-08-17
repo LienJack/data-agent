@@ -12,6 +12,7 @@ import {
   createFileSystemStorageClient,
   createPostgresCreditLedgerRepository,
   createPostgresEffectiveConfigResolver,
+  createPostgresKnowledgeRegistry,
   createPostgresModelBillingRepository,
   createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
@@ -51,6 +52,7 @@ interface WorkspaceIdentityRuntimeState {
   effectiveConfigResolver?: ReturnType<typeof createPostgresEffectiveConfigResolver>;
   providerInvocationStore?: ReturnType<typeof createPostgresProviderInvocationStore>;
   workspaceFiles?: ReturnType<typeof createPostgresWorkspaceFiles>;
+  knowledgeRegistry?: ReturnType<typeof createPostgresKnowledgeRegistry>;
   workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
 }
 
@@ -159,6 +161,15 @@ export function getWorkspaceFiles() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.workspaceFiles;
+}
+
+export function getKnowledgeRegistry() {
+  const runtime = state();
+  runtime.knowledgeRegistry ??= createPostgresKnowledgeRegistry({
+    pool: getWorkspaceSqlPool(),
+    authorizer: getWorkspaceAuthority().authorizer,
+  });
+  return runtime.knowledgeRegistry;
 }
 
 export function getWorkspaceContent() {

@@ -7,7 +7,8 @@
 - Job 与交互式 Run 使用不同表、状态机、Attempt、Lease、Fence 和终态 Receipt；禁止把
   Job 塞入 Run Outbox，或把 Run Lease 当作 Job 执行权限。
 - 固定 kind 为 `SCHEMA_SCAN`、`RELATIONSHIP_INDEX`、`ARTIFACT_EXPORT`、
-  `SEMANTIC_INDUCTION`、`METRIC_IMPORT`、`DATALINK_REBUILD`。新增 kind 必须先更新
+  `SEMANTIC_INDUCTION`、`METRIC_IMPORT`、`DATALINK_REBUILD`、`FILE_SCAN`、
+  `KNOWLEDGE_INDEX`。新增 kind 必须先更新
   Contract、10659 后继 migration、Handler、readiness 与测试。
 - `FILE_SCAN` 属 U6 后续能力；未交付 Handler 时不得注册空实现或发布 READY。
 - 后继 migration 新增 Job Kind 时，必须同步提升 heartbeat/claim 的 handler 闭集上限；SQL 上限与
@@ -35,7 +36,7 @@
   bytes 只从 committed `ArtifactExportReceipt` 的 GET 路径读取。
 - 公共 `/api/ready` 只返回 `{live,ready}`。只有 workspace authorization 成功时才返回去掉
   receipt hash、内部错误和依赖细节的 capability/status/reason/time 投影。
-- 当前 `ARTIFACT_EXPORT` 与 `FILE_SCAN` 注册真实 Handler；其余 kind 明确 NOT_READY，直到各自单元提供
+- 当前 `ARTIFACT_EXPORT`、`FILE_SCAN` 与 `KNOWLEDGE_INDEX` 注册真实 Handler；其余 kind明确 NOT_READY，直到各自单元提供
   真实依赖与输出闭环。
 - `FILE_SCAN` 的确定性本地 Policy Block 必须携带同一字节的 Scanner Evidence 后提交领域 Receipt；
   只有 Scanner 不可用、超时、签名过期或未知协议结果才保持 `QUARANTINED` 并走可重试失败。

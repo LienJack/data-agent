@@ -12,10 +12,13 @@ import {
   createClamAvInstreamClient,
   createFileScanPort,
   createFileSystemStorageClient,
+  createNeo4jKnowledgeIndexFromEnvironment,
+  createOpenAiCompatibleEmbeddingProviderFactory,
   createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
   createPostgresEffectiveConfigResolver,
   createPostgresJobQueue,
+  createPostgresKnowledgeRegistry,
   createPostgresOperationsAdminRepository,
   createPostgresProviderInvocationSmokeJob,
   createPostgresRepository,
@@ -23,7 +26,9 @@ import {
   createPostgresRunEventStore,
   createPostgresRunQueue,
   createPostgresWorkspaceFiles,
+  createUnavailableKnowledgeIndex,
   createWorkspaceContentNamespace,
+  type KnowledgeIndex,
   providerInvocationSmokeClaimSchema,
 } from "@data-agent/platform";
 import pg from "pg";
@@ -32,6 +37,7 @@ import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handl
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
 import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
+import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
 import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
@@ -210,6 +216,20 @@ export async function runWorkerProcess(
     max_signature_age_ms: 7 * 24 * 60 * 60 * 1_000,
     policy_version: fileScanPolicyVersion,
   });
+  let knowledgeIndex: KnowledgeIndex = createUnavailableKnowledgeIndex();
+  try {
+    const configuredIndex = createNeo4jKnowledgeIndexFromEnvironment(environment);
+    try {
+      await configuredIndex.initialize();
+      knowledgeIndex = configuredIndex;
+    } catch {
+      await configuredIndex.close();
+    }
+  } catch {
+    // Missing Neo4j configuration keeps the handler fail-closed without
+    // preventing unrelated Run and Job capabilities from starting.
+  }
+  const embeddingProviderFactory = createOpenAiCompatibleEmbeddingProviderFactory(environment);
   const controller = new AbortController();
   const health = createInitialWorkerHealth(config.research_authority_capability_id !== null);
   const healthServer = createHealthServer(health);
@@ -392,6 +412,14 @@ export async function runWorkerProcess(
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           });
+          const knowledgeRegistry = createPostgresKnowledgeRegistry({
+            pool: sqlPool,
+            authorizer: capabilityAuthority.authorizer,
+          });
+          const workspaceContent = createWorkspaceContentNamespace(
+            fileStorage,
+            capabilityAuthority.authorizer,
+          );
           const principalRunner = createJobWorkerRunner({
             queue,
             lease_duration_ms: config.lease_duration_ms,
@@ -406,12 +434,18 @@ export async function runWorkerProcess(
               createFileScanJobHandler({
                 capability,
                 files: workspaceFiles,
-                content: createWorkspaceContentNamespace(
-                  fileStorage,
-                  capabilityAuthority.authorizer,
-                ),
+                content: workspaceContent,
                 scanner: fileScanner,
                 policy_version: fileScanPolicyVersion,
+              }),
+              createKnowledgeIndexJobHandler({
+                capability,
+                registry: knowledgeRegistry,
+                content: workspaceContent,
+                embedding: embeddingProviderFactory,
+                index: knowledgeIndex,
+                create_id: randomUUID,
+                now: () => new Date(),
               }),
             ],
           });
@@ -529,6 +563,7 @@ export async function runWorkerProcess(
     health.initialized = false;
     controller.abort();
     await closeServer(healthServer);
+    await knowledgeIndex.close();
     await smokeJobPool?.end();
     await pool.end();
     process.off("SIGINT", stop);

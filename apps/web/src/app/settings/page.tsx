@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
+import { KnowledgeBasesPanel } from "@/components/settings/knowledge-bases-panel";
 import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
 import { ModelProvidersPanel } from "@/components/settings/model-providers-panel";
 import { OperationsAdminPanel } from "@/components/settings/operations-admin-panel";
@@ -87,7 +88,14 @@ export default async function SettingsPage() {
               )}
             </div>
           }
-          semantic={<SemanticPortabilityPanel workspaces={workspaces} />}
+          semantic={
+            <div className="space-y-10">
+              <KnowledgeBasesPanel workspaces={workspaces} />
+              <div className="border-t border-[var(--color-border-default)] pt-8">
+                <SemanticPortabilityPanel workspaces={workspaces} />
+              </div>
+            </div>
+          }
         />
       </div>
     </div>

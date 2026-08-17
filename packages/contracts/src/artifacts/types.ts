@@ -74,6 +74,7 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "SchemaSnapshot",
   "PolicyReceipt",
   "AgentDataProjectionReceipt",
+  "KnowledgeRetrievalReceipt",
   "EvalReleaseDecision",
   "BenchmarkManifest",
   "BenchmarkDatasetSnapshot",

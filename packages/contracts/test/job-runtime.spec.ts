@@ -37,7 +37,7 @@ const input = jobInputSchema.parse({
 });
 
 describe("U10 job runtime contract", () => {
-  it("extends the six core job kinds with the U6 FILE_SCAN authority", () => {
+  it("extends the core job kinds with U6 FILE_SCAN and U15 KNOWLEDGE_INDEX", () => {
     expect(JOB_KINDS).toEqual([
       "SCHEMA_SCAN",
       "RELATIONSHIP_INDEX",
@@ -46,6 +46,7 @@ describe("U10 job runtime contract", () => {
       "METRIC_IMPORT",
       "DATALINK_REBUILD",
       "FILE_SCAN",
+      "KNOWLEDGE_INDEX",
     ]);
     expect(jobKindSchema.safeParse("FILE_SCAN").success).toBe(true);
   });

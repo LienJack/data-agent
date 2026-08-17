@@ -2,6 +2,7 @@ import type { AppScope, PortResult } from "../common/index.js";
 
 export type { AppScope, ContractError, PortResult } from "../common/index.js";
 export * from "./benchmark-suite.js";
+export * from "./embedding-provider.js";
 export * from "./event-correlation.js";
 export * from "./external-agent.js";
 export * from "./model-provider.js";
