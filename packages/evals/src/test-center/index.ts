@@ -16,6 +16,7 @@ export * from "./falcon-ontology-graph.js";
 export * from "./falcon-oracle.js";
 export * from "./falcon-runner.js";
 export * from "./falcon-semantic-context.js";
+export * from "./falcon-tuning-recipes.js";
 export * from "./insightbench-dataset.js";
 export * from "./insightbench-installer.js";
 export * from "./insightbench-oracle.js";

@@ -3,24 +3,39 @@ set -eu
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 infra_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
-container_name="data-agent-supabase-smoke-$$"
-database_name="data_agent_test"
-database_password="data-agent-test-only"
+container_name=${DATA_AGENT_POSTGRES_CONTAINER_NAME:-"data-agent-supabase-smoke-$$"}
+database_name=${DATA_AGENT_POSTGRES_DATABASE_NAME:-data_agent_test}
+database_password=${DATA_AGENT_POSTGRES_DATABASE_PASSWORD:-data-agent-test-only}
+host_port=${DATA_AGENT_POSTGRES_HOST_PORT:-}
+keep_container=${DATA_AGENT_POSTGRES_KEEP_CONTAINER:-NO}
 assertion_filter=${DATA_AGENT_POSTGRES_ASSERTION_FILTER:-}
 
 cleanup() {
+  if [ "$keep_container" = "YES" ]; then
+    return
+  fi
   docker rm -f "$container_name" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
 
 "$script_dir/static-check.sh"
 
-docker run \
-  --detach \
-  --name "$container_name" \
-  --env POSTGRES_PASSWORD="$database_password" \
-  --env POSTGRES_DB="$database_name" \
-  postgres:17-alpine >/dev/null
+if [ -n "$host_port" ]; then
+  docker run \
+    --detach \
+    --name "$container_name" \
+    --publish "$host_port:5432" \
+    --env POSTGRES_PASSWORD="$database_password" \
+    --env POSTGRES_DB="$database_name" \
+    postgres:17-alpine >/dev/null
+else
+  docker run \
+    --detach \
+    --name "$container_name" \
+    --env POSTGRES_PASSWORD="$database_password" \
+    --env POSTGRES_DB="$database_name" \
+    postgres:17-alpine >/dev/null
+fi
 
 ready=0
 attempt=0

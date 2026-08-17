@@ -1,0 +1,197 @@
+{
+  "schema_version": "falcon-agent-release-gate@1.0.0",
+  "artifact_id": "334c0e3e-5a78-57c4-abc2-1b126aa428a3",
+  "scope": {
+    "app_id": "00000000-0000-4000-8000-00000000da01",
+    "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+    "environment": "local"
+  },
+  "workspace_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+  "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+  "source_commit": "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+  "source_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+  "oracle_version": "falcon-postgres-expected-result@1.0.0",
+  "semantic_bundle_index_ref": {
+    "resource_id": "4908562e-5898-5072-9499-4af74b1e641a",
+    "resource_revision": 1,
+    "resource_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4"
+  },
+  "workspace_journey_ref": {
+    "resource_id": "00000000-0000-4000-8000-000000000017",
+    "resource_revision": 1,
+    "resource_hash": "sha256:8bcd99d1bf6f244b5f945901942d21f78ad4c372e3df4eae9e64b01185cb162f"
+  },
+  "model_profile_ref": {
+    "resource_id": "7fd35b18-528c-4a89-aa35-6266bfbc5611",
+    "resource_revision": 1,
+    "resource_hash": "sha256:8a47a5bbbdcaecda6daeb29adab1a82aa7061fe7b25423c1f26afdc4f0326ef0"
+  },
+  "agent_profile_set_hash": "sha256:0a1c3b39431f81a56f225d51bcf10128d3392ddd7a0a33ee9a0633ac73a643d7",
+  "dev": {
+    "case_count": 309,
+    "terminal_cases": 309,
+    "first_passed": 264,
+    "final_passed": 264,
+    "database_scores": [
+      {
+        "database_id": 4,
+        "case_count": 22,
+        "first_passed": 18,
+        "final_passed": 18,
+        "terminal_cases": 22
+      },
+      {
+        "database_id": 5,
+        "case_count": 15,
+        "first_passed": 9,
+        "final_passed": 9,
+        "terminal_cases": 15
+      },
+      {
+        "database_id": 7,
+        "case_count": 9,
+        "first_passed": 7,
+        "final_passed": 7,
+        "terminal_cases": 9
+      },
+      {
+        "database_id": 8,
+        "case_count": 16,
+        "first_passed": 11,
+        "final_passed": 11,
+        "terminal_cases": 16
+      },
+      {
+        "database_id": 9,
+        "case_count": 8,
+        "first_passed": 5,
+        "final_passed": 5,
+        "terminal_cases": 8
+      },
+      {
+        "database_id": 14,
+        "case_count": 32,
+        "first_passed": 32,
+        "final_passed": 32,
+        "terminal_cases": 32
+      },
+      {
+        "database_id": 15,
+        "case_count": 29,
+        "first_passed": 27,
+        "final_passed": 27,
+        "terminal_cases": 29
+      },
+      {
+        "database_id": 16,
+        "case_count": 16,
+        "first_passed": 14,
+        "final_passed": 14,
+        "terminal_cases": 16
+      },
+      {
+        "database_id": 17,
+        "case_count": 14,
+        "first_passed": 14,
+        "final_passed": 14,
+        "terminal_cases": 14
+      },
+      {
+        "database_id": 18,
+        "case_count": 16,
+        "first_passed": 16,
+        "final_passed": 16,
+        "terminal_cases": 16
+      },
+      {
+        "database_id": 19,
+        "case_count": 10,
+        "first_passed": 8,
+        "final_passed": 8,
+        "terminal_cases": 10
+      },
+      {
+        "database_id": 20,
+        "case_count": 29,
+        "first_passed": 25,
+        "final_passed": 25,
+        "terminal_cases": 29
+      },
+      {
+        "database_id": 21,
+        "case_count": 35,
+        "first_passed": 32,
+        "final_passed": 32,
+        "terminal_cases": 35
+      },
+      {
+        "database_id": 24,
+        "case_count": 17,
+        "first_passed": 17,
+        "final_passed": 17,
+        "terminal_cases": 17
+      },
+      {
+        "database_id": 26,
+        "case_count": 24,
+        "first_passed": 18,
+        "final_passed": 18,
+        "terminal_cases": 24
+      },
+      {
+        "database_id": 28,
+        "case_count": 17,
+        "first_passed": 11,
+        "final_passed": 11,
+        "terminal_cases": 17
+      }
+    ]
+  },
+  "demo": {
+    "case_count": 10,
+    "passed": 10
+  },
+  "db24": {
+    "case_count": 17,
+    "passed": 17
+  },
+  "db14": {
+    "case_count": 32,
+    "passed": 32
+  },
+  "holdout": {
+    "case_count": 5,
+    "passed": 4
+  },
+  "stability": {
+    "case_count": 54,
+    "passed": 54,
+    "flake_count": 0,
+    "cold_restart_verified": true
+  },
+  "test_submission": {
+    "case_count": 191,
+    "completed": 191,
+    "local_verdict_count": 0,
+    "submission_hash": "sha256:3a067fe4d1592cf20915ad619bfd86f84915646081fb5e25e4d41cb3f6e148a3"
+  },
+  "evidence": {
+    "team_case_count": 500,
+    "semantic_usage_count": 500,
+    "provider_invocation_count": 500,
+    "report_count": 17,
+    "report_citation_passed": 17,
+    "taint_violation_count": 0,
+    "infrastructure_failure_count": 0
+  },
+  "runtime_health": {
+    "postgres": true,
+    "worker": true,
+    "provider": true,
+    "team_runtime": true,
+    "oracle": true
+  },
+  "result": "GO",
+  "completed_at": "2026-08-17T23:31:14.524Z",
+  "artifact_hash": "sha256:819aa715a6eaafd1ebcec420aa9e742f06ca30a9aa86d4aaaac63d44920c2d57"
+}

@@ -169,14 +169,14 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
   readonly #bridge: ModelExecutionBridge;
   readonly #clock: ModelProviderAdapterClock;
   readonly #dispatchMarker: ProviderDispatchMarker;
-  readonly #authorization: "PERSISTENT_PERMIT" | "LEGACY_TEST_ONLY";
+  readonly #authorization: "PERSISTENT_PERMIT" | "CERTIFIED_EVALUATION" | "LEGACY_TEST_ONLY";
   readonly #abortSignal: AbortSignal | undefined;
 
   constructor(options: {
     readonly bridge: ModelExecutionBridge;
     readonly clock?: ModelProviderAdapterClock;
     readonly dispatch_marker: ProviderDispatchMarker;
-    readonly authorization: "PERSISTENT_PERMIT" | "LEGACY_TEST_ONLY";
+    readonly authorization: "PERSISTENT_PERMIT" | "CERTIFIED_EVALUATION" | "LEGACY_TEST_ONLY";
     readonly abort_signal?: AbortSignal;
   }) {
     this.#bridge = options.bridge;
@@ -190,7 +190,9 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
     if (
       (this.#authorization === "PERSISTENT_PERMIT" &&
         !isAuthoritativePersistedModelProviderInvocation(input)) ||
-      (this.#authorization === "LEGACY_TEST_ONLY" && !isAuthoritativeModelProviderInvocation(input))
+      ((this.#authorization === "CERTIFIED_EVALUATION" ||
+        this.#authorization === "LEGACY_TEST_ONLY") &&
+        !isAuthoritativeModelProviderInvocation(input))
     ) {
       throw new MastraExecutionError(
         "MODEL_PROVIDER_REQUEST_NOT_AUTHORIZED",

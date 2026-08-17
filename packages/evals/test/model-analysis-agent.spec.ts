@@ -30,7 +30,14 @@ const scope = {
 const receiptHash = `sha256:${"a".repeat(64)}` as const;
 const responseHash = `sha256:${"b".repeat(64)}` as const;
 
-async function availableProfile() {
+async function availableProfile(
+  pricing: ModelProfile["operational_constraints"]["pricing"] = {
+    verification_status: "VERIFIED",
+    currency: "USD",
+    input_microunits_per_million_tokens: 1_000,
+    output_microunits_per_million_tokens: 2_000,
+  },
+) {
   const receiptRef = {
     artifact_id: "51000000-0000-4000-8000-000000000003",
     artifact_type: "ModelCertificationReceipt",
@@ -39,7 +46,7 @@ async function availableProfile() {
     revision: 1,
     content_hash: receiptHash,
   } as const;
-  const profile = {
+  const profile: ModelProfile = {
     profile_id: "51000000-0000-4000-8000-000000000005",
     scope,
     provider: "openai",
@@ -59,18 +66,13 @@ async function availableProfile() {
         max_output_tokens: 4_096,
       },
       region_privacy: { verification_status: "UNVERIFIED" },
-      pricing: {
-        verification_status: "VERIFIED",
-        currency: "USD",
-        input_microunits_per_million_tokens: 1_000,
-        output_microunits_per_million_tokens: 2_000,
-      },
+      pricing,
       fallback_compatibility: { verification_status: "UNVERIFIED" },
     },
     certification_status: "AVAILABLE",
     certification_receipt_ref: receiptRef,
     certified_model_id: "fixture-model",
-  } as const satisfies ModelProfile;
+  };
   const profileHash = await computeModelProfileHash(profile);
   return authorizeAvailableModelProfile(profile, {
     verifyCommitted: async () => true,
@@ -148,7 +150,14 @@ function eventsFor(
       event_type: "COMPLETED" as const,
       output_text: JSON.stringify(output),
       response_hash: responseHash,
-      usage: { input_tokens: 120, output_tokens: 80, tool_calls: 0 },
+      usage: {
+        availability: "AVAILABLE" as const,
+        source: "PROVIDER_REPORTED" as const,
+        input_tokens: 120,
+        output_tokens: 80,
+        tool_calls: 0,
+        unavailable_reason: null,
+      },
     };
   }
   return stream();
@@ -298,6 +307,32 @@ describe("CertifiedModelAnalysisAgent", () => {
 });
 
 describe("CertifiedModelSqlAgent", () => {
+  it("runs with verified context limits when commercial pricing is unavailable", async () => {
+    const profile = await availableProfile({ verification_status: "UNVERIFIED" });
+    const port: ModelProviderPort = {
+      stream: (request) =>
+        eventsFor(request, { answer_type: "SQL", sql: "SELECT category FROM dataset" }),
+    };
+    const agent = new CertifiedModelSqlAgent({
+      profile,
+      model_provider: port,
+      budget: { ...budget, max_cost_micros: 0 },
+    });
+    const answer = await agent.answer({
+      test_case: await publicCase(),
+      seed: 42,
+      invocation: {
+        run_id: randomUUID(),
+        attempt_id: randomUUID(),
+        timeout_ms: 5_000,
+        max_output_tokens: 1_000,
+      },
+    });
+
+    expect(answer.sql).toBe("SELECT category FROM dataset");
+    expect(answer.usage).toMatchObject({ cost_micros: 0, currency: "USD" });
+  });
+
   it("compacts provider reflection overruns before creating an authoritative receipt", async () => {
     const profile = await availableProfile();
     const observed: AuthoritativeModelProviderInvocation[] = [];

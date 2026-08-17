@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/index.md","reason":"Verify authority, migration and package boundaries."}
+{"file":".trellis/spec/backend/datasource-adapters.md","reason":"Verify PostgreSQL execution safety."}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Verify Team public trace and redaction."}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/falcon-upstream-audit.md","reason":"Verify pinned dataset counts and sealed boundary."}
+{"file":".trellis/spec/backend/falcon-agent-release-gate.md","reason":"Verify U18 Agent Team authority, isolation, recovery and absolute gate."}
+{"file":"docs/runbooks/falcon-agent-release-gate.md","reason":"Verify fresh PostgreSQL, Provider confirmation, stability and final artifact operations."}

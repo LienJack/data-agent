@@ -101,6 +101,7 @@ export class TestCenterRuntimeError extends Error {
       | "TEST_CENTER_RUN_NOT_FOUND"
       | "TEST_CENTER_INSTALL_UNSUPPORTED"
       | "TEST_CENTER_INSTALL_FAILED"
+      | "TEST_CENTER_WORKER_REQUIRED"
       | "TEST_CENTER_PERSISTENCE_UNAVAILABLE",
     message: string,
     readonly status: number,
@@ -596,11 +597,21 @@ export async function executeEcommerceSqlAcceptance(input: {
   return getPersistedTestRun(persisted.batch_run_id);
 }
 
+function assertWebRunnableSuite(suiteId: string): void {
+  if (suiteId !== "falcon") return;
+  throw new TestCenterRuntimeError(
+    "TEST_CENTER_WORKER_REQUIRED",
+    "Falcon 正式评测只能由受治理 Worker Agent Team 创建；Web 入口仅可读取运行与 Gate 证据。",
+    409,
+  );
+}
+
 export async function executeTestCenterRun(
   untrustedInput: unknown,
   idempotencyKey: string,
 ): Promise<BenchmarkEvalBatchRun> {
   const request = createBenchmarkRunInputSchema.parse(untrustedInput);
+  assertWebRunnableSuite(request.suite_id);
   const suite = await getBenchmarkCatalogEntry(request.suite_id);
   if (!suite?.runnable) {
     throw new TestCenterRuntimeError(

@@ -22,6 +22,7 @@ import type {
   BenchmarkAnalysisAgentInvocationContext,
   BenchmarkAnalysisAgentReflection,
 } from "./analysis-agent.js";
+import { reportedTokenCounts } from "./model-provider-usage.js";
 
 export const INSIGHTBENCH_REPORT_RESPONSE_SCHEMA_VERSION = "insightbench-analysis-report@1.0.0";
 export const INSIGHTBENCH_REFLECTION_RESPONSE_SCHEMA_VERSION =
@@ -291,9 +292,10 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
         "认证模型调用未返回完成事件。",
       );
     }
+    const tokenCounts = reportedTokenCounts(completed.usage);
     const actualCost = estimateCostMicros({
-      input_tokens: completed.usage.input_tokens,
-      output_tokens: completed.usage.output_tokens,
+      input_tokens: tokenCounts.input_tokens,
+      output_tokens: tokenCounts.output_tokens,
       input_rate: this.#pricing.input_microunits_per_million_tokens,
       output_rate: this.#pricing.output_microunits_per_million_tokens,
     });
@@ -336,14 +338,15 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
         "认证模型返回的首答不符合分析报告契约。",
       );
     }
+    const tokenCounts = reportedTokenCounts(result.event.usage);
     return {
       report: report.data,
       usage: {
-        input_tokens: result.event.usage.input_tokens,
-        output_tokens: result.event.usage.output_tokens,
+        input_tokens: tokenCounts.input_tokens,
+        output_tokens: tokenCounts.output_tokens,
         cost_micros: estimateCostMicros({
-          input_tokens: result.event.usage.input_tokens,
-          output_tokens: result.event.usage.output_tokens,
+          input_tokens: tokenCounts.input_tokens,
+          output_tokens: tokenCounts.output_tokens,
           input_rate: this.#pricing.input_microunits_per_million_tokens,
           output_rate: this.#pricing.output_microunits_per_million_tokens,
         }),
@@ -377,12 +380,13 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
         "认证模型返回的反省不符合结构化契约。",
       );
     }
+    const tokenCounts = reportedTokenCounts(result.event.usage);
     const usage = {
-      input_tokens: result.event.usage.input_tokens,
-      output_tokens: result.event.usage.output_tokens,
+      input_tokens: tokenCounts.input_tokens,
+      output_tokens: tokenCounts.output_tokens,
       cost_micros: estimateCostMicros({
-        input_tokens: result.event.usage.input_tokens,
-        output_tokens: result.event.usage.output_tokens,
+        input_tokens: tokenCounts.input_tokens,
+        output_tokens: tokenCounts.output_tokens,
         input_rate: this.#pricing.input_microunits_per_million_tokens,
         output_rate: this.#pricing.output_microunits_per_million_tokens,
       }),

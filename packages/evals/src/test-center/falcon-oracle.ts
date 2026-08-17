@@ -42,6 +42,12 @@ function closeNumber(left: number, right: number): boolean {
   return difference <= 1e-6 || difference <= 1e-6 * Math.max(Math.abs(left), Math.abs(right), 1);
 }
 
+function expectedDecimalPlaces(value: FalconCell): number | null {
+  if (typeof value !== "string") return null;
+  const match = value.trim().match(/^[+-]?\d+\.(\d+)$/u);
+  return match?.[1]?.length ?? null;
+}
+
 function numeric(value: FalconCell): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   if (
@@ -66,7 +72,14 @@ function cellsEqual(left: FalconCell, right: FalconCell): boolean {
   if (left === null || right === null) return left === right;
   const leftNumber = numeric(left);
   const rightNumber = numeric(right);
-  if (leftNumber !== null && rightNumber !== null) return closeNumber(leftNumber, rightNumber);
+  if (leftNumber !== null && rightNumber !== null) {
+    const decimalPlaces = expectedDecimalPlaces(right);
+    if (decimalPlaces !== null && decimalPlaces <= 12) {
+      const scale = 10 ** decimalPlaces;
+      if (closeNumber(Math.round(leftNumber * scale) / scale, rightNumber)) return true;
+    }
+    return closeNumber(leftNumber, rightNumber);
+  }
   const leftDate = dateTime(left);
   const rightDate = dateTime(right);
   if (leftDate !== null && rightDate !== null) return leftDate === rightDate;

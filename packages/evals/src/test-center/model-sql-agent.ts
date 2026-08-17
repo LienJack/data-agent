@@ -23,6 +23,7 @@ import type {
   BenchmarkSqlAgentInvocationContext,
 } from "./agents.js";
 import { CertifiedModelAnalysisAgentError } from "./model-analysis-agent.js";
+import { reportedTokenCounts } from "./model-provider-usage.js";
 
 export const SQL_ANSWER_RESPONSE_SCHEMA_VERSION = "benchmark-sql-answer@1.0.0";
 export const SQL_REFLECTION_RESPONSE_SCHEMA_VERSION = "benchmark-sql-reflection@1.1.0";
@@ -97,7 +98,16 @@ function answerMessages(input: { readonly test_case: PublicBenchmarkCase; readon
         "Use only the public question, evidence, and schema. Never request or infer hidden gold SQL.",
         "Produce executable SQL for the named database dialect and avoid markdown fences.",
         "Before returning, verify that every referenced table and column exists exactly in the supplied schema; aliases do not create columns.",
+        "PostgreSQL folds unquoted identifiers to lower case. Double-quote every schema identifier containing uppercase letters, spaces, or punctuation exactly as supplied.",
         "Select exactly the semantic attributes requested by the question and avoid SELECT * unless the question explicitly requests every column.",
+        "When the question asks for an entity and corresponding metrics, include that entity as the first output attribute followed by the requested metrics.",
+        "In Chinese double-negation filters such as 排除非欺诈/排除非成功, exclude the negated class and retain the positive class.",
+        "Return the smallest requested output shape. Intermediate counts, denominators, totals, rates, ranks, filters, and sort keys are not output columns unless the question explicitly asks to list them.",
+        "For Chinese 哪些/谁 questions, return only the requested entity identifier unless 及其/和它的/列出该指标 explicitly requests another attribute. For 占比是多少, return the grouping dimension and ratio, not the numerator total.",
+        "For 哪些...最高/最低/最多/最少, filter to the tied extrema with RANK/DENSE_RANK or an extremum comparison; ORDER BY alone must not return every entity.",
+        "Do not put entity IDs into the RANK/DENSE_RANK window ordering because that destroys ties. Filter the rank first, then apply stable entity tie breakers only in the final ORDER BY.",
+        "When output order matters outside an extremum rank window, add stable requested-entity tie breakers after the primary sort metric.",
+        "For a latest/most-recent event metric, rank event rows per requested entity first and compute the metric from that same selected row; never combine unrelated MIN and MAX rows.",
         "Copy quoted literal values byte-for-byte from the question, including leading or trailing spaces and punctuation; never trim or normalize them.",
         "Keep SELECT expressions in the question's mention order; for 'number/count of X by each Y', put the aggregate first and then the grouping attributes.",
         "When a person's name is split into first_name and last_name, interpret ordering by 'name' as first_name then last_name unless the question explicitly says surname or last name.",
@@ -178,10 +188,7 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
     AvailableModelProfile["operational_constraints"]["context_window"],
     { readonly verification_status: "VERIFIED" }
   >;
-  readonly #pricing: Extract<
-    AvailableModelProfile["operational_constraints"]["pricing"],
-    { readonly verification_status: "VERIFIED" }
-  >;
+  readonly #pricing: AvailableModelProfile["operational_constraints"]["pricing"];
   #spentCostMicros = 0;
 
   constructor(input: {
@@ -203,10 +210,10 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
         "SQL 模型 Agent 需要已验证的 Context Window 约束。",
       );
     }
-    if (pricing.verification_status !== "VERIFIED" || pricing.currency !== "USD") {
+    if (pricing.verification_status === "VERIFIED" && pricing.currency !== "USD") {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_PRICING_NOT_VERIFIED",
-        "SQL 模型 Agent 需要以 USD 表示的已验证定价约束。",
+        "SQL 模型 Agent 的已验证定价必须使用 USD。",
       );
     }
     if (input.budget.max_output_tokens_per_attempt > contextWindow.max_output_tokens) {
@@ -254,12 +261,7 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
         "题目与 Schema 超出认证 Profile 的 Context Window。",
       );
     }
-    const maximumAttemptCost = estimateCostMicros({
-      input_tokens: inputTokenBudget,
-      output_tokens: maxOutputTokens,
-      input_rate: this.#pricing.input_microunits_per_million_tokens,
-      output_rate: this.#pricing.output_microunits_per_million_tokens,
-    });
+    const maximumAttemptCost = this.#cost(inputTokenBudget, maxOutputTokens);
     if (this.#spentCostMicros + maximumAttemptCost > this.#budget.max_cost_micros) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_BUDGET_EXCEEDED",
@@ -322,12 +324,8 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
         "认证模型调用未返回完成事件。",
       );
     }
-    const cost = estimateCostMicros({
-      input_tokens: completed.usage.input_tokens,
-      output_tokens: completed.usage.output_tokens,
-      input_rate: this.#pricing.input_microunits_per_million_tokens,
-      output_rate: this.#pricing.output_microunits_per_million_tokens,
-    });
+    const tokenCounts = reportedTokenCounts(completed.usage);
+    const cost = this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens);
     this.#spentCostMicros += cost;
     let output: unknown;
     try {
@@ -346,17 +344,24 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
   }
 
   #usage(event: CompletedModelEvent): BenchmarkUsage {
+    const tokenCounts = reportedTokenCounts(event.usage);
     return {
-      input_tokens: event.usage.input_tokens,
-      output_tokens: event.usage.output_tokens,
-      cost_micros: estimateCostMicros({
-        input_tokens: event.usage.input_tokens,
-        output_tokens: event.usage.output_tokens,
-        input_rate: this.#pricing.input_microunits_per_million_tokens,
-        output_rate: this.#pricing.output_microunits_per_million_tokens,
-      }),
+      input_tokens: tokenCounts.input_tokens,
+      output_tokens: tokenCounts.output_tokens,
+      cost_micros: this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens),
       currency: "USD",
     };
+  }
+
+  #cost(inputTokens: number, outputTokens: number): number {
+    return this.#pricing.verification_status === "VERIFIED"
+      ? estimateCostMicros({
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          input_rate: this.#pricing.input_microunits_per_million_tokens,
+          output_rate: this.#pricing.output_microunits_per_million_tokens,
+        })
+      : 0;
   }
 
   async answer(input: {

@@ -1,0 +1,3393 @@
+{
+  "schema_version": "falcon-agent-team-batch@1.0.0",
+  "scope": "db24",
+  "model_id": "deepseek-v4-pro",
+  "source_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+  "semantic_bundle_index": {
+    "schema_version": "falcon-semantic-bundle-index@1.0.0",
+    "scope": {
+      "app_id": "00000000-0000-4000-8000-00000000da01",
+      "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+      "environment": "local"
+    },
+    "workspace_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+    "semantic_domain": "falcon",
+    "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+    "source_commit": "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+    "source_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+    "release_set_ref": {
+      "resource_id": "4908562e-5898-5072-9499-4af74b1e641a",
+      "resource_revision": 1,
+      "resource_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67"
+    },
+    "first_release_receipt_ref": {
+      "resource_id": "dbf7f066-0bfe-5471-bd12-b5c7495914a8",
+      "resource_revision": 1,
+      "resource_hash": "sha256:b7e6000131627d3d1ab975a900cfd3253a8610e5a0c9bcc25eeede7cffcf189f"
+    },
+    "entries": [
+      {
+        "database_id": 1,
+        "schema_name": "falcon_db_01",
+        "package_ref": {
+          "resource_id": "ec271733-0033-5de3-9c60-5243929a37d9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f0ee52935067a7b779b83dc1821a046885038e8fe5f51d078cf6a94fd1ebb707"
+        },
+        "schema_snapshot_hash": "sha256:66762ba719b5de8d702ea50b47234426082887e7ad1a613d8dfe65e4b26c2109",
+        "admission_receipt_ref": {
+          "resource_id": "441ad419-57e3-54d6-aa97-8f04098ca54c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1c7480e0c241fd13cfb0c51618abfd4ec5d58eb53a26e587ae49dedc96052dd6"
+        },
+        "coverage_receipt_hash": "sha256:c142753464d034cb08df66a0bc0e83e417fe466e50d41159baf85b11fa7a7590",
+        "physical_object_count": 25,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 2,
+        "schema_name": "falcon_db_02",
+        "package_ref": {
+          "resource_id": "929952d4-4d34-58f7-b58f-e47d856ea807",
+          "resource_revision": 1,
+          "resource_hash": "sha256:05ebca9269d558e9dee72c1a1ccf29b7848f8534510f94cf2e5191bb208292af"
+        },
+        "schema_snapshot_hash": "sha256:da5fbe148074e0c14002dd507054a7dea8306979be1bb0627fa7d6fbe6d427f8",
+        "admission_receipt_ref": {
+          "resource_id": "621df745-2fde-54e0-ac75-523b08e7746d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:55b7f51aedcd3a6f21fbf491ac387951c368d296aa18ece230993490fdd53e0d"
+        },
+        "coverage_receipt_hash": "sha256:30230185e3aac06bf58d90dc51c23ef1d56607aef30e00f2f942202d28555a09",
+        "physical_object_count": 14,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 3,
+        "schema_name": "falcon_db_03",
+        "package_ref": {
+          "resource_id": "6920785e-b953-5ba5-8cef-8d24db59789f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7a2cbde1166161eadffe68b7baf7253b127ef40e48e05fe07b1d050107d77924"
+        },
+        "schema_snapshot_hash": "sha256:52af9d591186f29a5f25095044f2a0ab531d28424caf6b975f1b88c30782c8b4",
+        "admission_receipt_ref": {
+          "resource_id": "658355c2-e514-5bed-a4de-c7541e0c0de9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2613422def3a84812d04dcd1ff2cdc79f2b2ad66bbc99c520921724ea371b47f"
+        },
+        "coverage_receipt_hash": "sha256:4e1e9a4d5a6f6b0a42f643a9f7e440a7665e06bba70f4e46e068bf3b3ebb62cf",
+        "physical_object_count": 10,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 4,
+        "schema_name": "falcon_db_04",
+        "package_ref": {
+          "resource_id": "5c9d842f-25e3-5d93-b22b-e238ba679c75",
+          "resource_revision": 1,
+          "resource_hash": "sha256:74a722c436185ad906170a6857ba0b1be6c5b43d06ccc927bff87a656ed7997e"
+        },
+        "schema_snapshot_hash": "sha256:8dcf369f0bb6d16dc42d76e7669f4517af511ccd5007afefaa420c035e51bd04",
+        "admission_receipt_ref": {
+          "resource_id": "0bf0c9be-201b-5375-aafe-d91eb747b0d1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:de1e28babf89deef544d398fda27eaabff698464ec62673aa478486a58b35a38"
+        },
+        "coverage_receipt_hash": "sha256:2389e8d4ab4e2710b9bd551e6e33b18dcd1de8829520c5113c4f0aea06984ec2",
+        "physical_object_count": 13,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 5,
+        "schema_name": "falcon_db_05",
+        "package_ref": {
+          "resource_id": "7bbc74b3-2dbd-5d7b-954c-b8093921da12",
+          "resource_revision": 1,
+          "resource_hash": "sha256:82a9f6cf26fcb67fed103a4d2b06eb3eb87f9e387b8add78180fd45c9927f3ea"
+        },
+        "schema_snapshot_hash": "sha256:a3cbe5862352a509c38ea47650ab8f9782dad3b92531aa5114a63325526c6a8a",
+        "admission_receipt_ref": {
+          "resource_id": "fef5c8e3-ba91-5f89-abff-f25ebfeadbeb",
+          "resource_revision": 1,
+          "resource_hash": "sha256:99cd4bca9f1e478f5c3a201642208ed1394d9bb279219fb42b7c1bd5a1758765"
+        },
+        "coverage_receipt_hash": "sha256:c5372102108b6ee22e9bd350ee5cc3c37eb1596479a8b8585d0c33437a1f97ef",
+        "physical_object_count": 8,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 6,
+        "schema_name": "falcon_db_06",
+        "package_ref": {
+          "resource_id": "9b592abd-f196-5e49-b023-b4dba2f6be5a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3a90dde5eba87a1a3473241e9abb23d5ed494eaf4ab931dae67ad9d8ca0ba6f4"
+        },
+        "schema_snapshot_hash": "sha256:61484d6e131a1d99dc0772c253e5be08ec0451b41a37b570ab04620767af5ed4",
+        "admission_receipt_ref": {
+          "resource_id": "bfa57b63-9f72-5b68-97df-ffa281854528",
+          "resource_revision": 1,
+          "resource_hash": "sha256:8142adbd90e6d0442682aaba7019a00be715cfd80ba9e8e81f31fd54572e5974"
+        },
+        "coverage_receipt_hash": "sha256:b39ec4c19422bf33d0f76e76afc35cfcb936f3fd62bb8fbedf5fe712f766cc1e",
+        "physical_object_count": 13,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 7,
+        "schema_name": "falcon_db_07",
+        "package_ref": {
+          "resource_id": "fb5fb53f-1815-5ffc-beb4-07cdf1da772b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:9bc038ad0335b0f7411e497173122814a5b5fe526fe79b60a8e349deadc89f7e"
+        },
+        "schema_snapshot_hash": "sha256:0a4f0a6e4fed0793e4fff4716e633caad96bcd21a5771bf31a407e4edce88fea",
+        "admission_receipt_ref": {
+          "resource_id": "553b4295-a96c-515e-986c-b9e7b4454093",
+          "resource_revision": 1,
+          "resource_hash": "sha256:a1ceeef9666d01a78867b787b50cf7a78a3650c91045444cf78ef6bfebdc80d2"
+        },
+        "coverage_receipt_hash": "sha256:06398e9b3955da2247e650e3e683ff611f5461b6b2691e7d30bbee683341f9c7",
+        "physical_object_count": 12,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 8,
+        "schema_name": "falcon_db_08",
+        "package_ref": {
+          "resource_id": "607cbf86-9e20-5b47-95c4-4a487c5c5ce1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:8f1f1669dc83aff73b396a5c9457b6e643fd1bdd7b9936fc89fbcaf6344fd311"
+        },
+        "schema_snapshot_hash": "sha256:32070bf932bcdb078cf8e55d017914c7a5f0accce757464b7b781df90316d6c9",
+        "admission_receipt_ref": {
+          "resource_id": "d79f70ba-3945-5ef8-a5c7-a6bdbab2b0c2",
+          "resource_revision": 1,
+          "resource_hash": "sha256:35e985588e391e8e5591634724ee2b4a7fe5335d1356f2680a50f63eddd17cbe"
+        },
+        "coverage_receipt_hash": "sha256:1b8a197ee569bcd651d5cd050b7e754f963fcc872add786cfe49c32eec4daad1",
+        "physical_object_count": 14,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 9,
+        "schema_name": "falcon_db_09",
+        "package_ref": {
+          "resource_id": "d62bae76-ee7c-5744-bad3-3401306ae977",
+          "resource_revision": 1,
+          "resource_hash": "sha256:72d822e1c8f829cbf7591bd21b8707df9dfc08df6e9bee7346256b0f1aed2344"
+        },
+        "schema_snapshot_hash": "sha256:72af5d0f1edbae1a8811224a95d2811635d72da3bb462003f1ef3b2fe4b29239",
+        "admission_receipt_ref": {
+          "resource_id": "0faec119-dbd7-56c9-8269-4fb2780d9c0b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:af03dbea3c7bba813a0a43f66e93fc4116eafa3ca7b38744717941823e22c75e"
+        },
+        "coverage_receipt_hash": "sha256:ce7fcc3bb5e9309b1484f42e4e3a83c6b33a7f9487954903ab3c48addbfd25f3",
+        "physical_object_count": 9,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 10,
+        "schema_name": "falcon_db_10",
+        "package_ref": {
+          "resource_id": "c8022654-a46b-594a-adc6-599eab95dcc4",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bad98b1b26044be41e3369e32720f28045c46d8af62ddede6f0a946cdbb718a3"
+        },
+        "schema_snapshot_hash": "sha256:f196349f14860eec779230615c675958b1b2856b036a085b35fe3207838e9fee",
+        "admission_receipt_ref": {
+          "resource_id": "e05b7a59-cc31-59ed-b970-7f75c88a59e3",
+          "resource_revision": 1,
+          "resource_hash": "sha256:6f59cecfe9d5f7403c4bb533fc6a1725346aca7256f4202aa83723078dd1db22"
+        },
+        "coverage_receipt_hash": "sha256:0ecf0cd647245d74f804d1f5bf7c7ec8bb83706d66af5658fa3afdbfc19bec05",
+        "physical_object_count": 14,
+        "queryable_mapping_count": 2,
+        "join_count": 1,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 11,
+        "schema_name": "falcon_db_11",
+        "package_ref": {
+          "resource_id": "1e1f386f-b819-59f3-9f57-5287bf6987cd",
+          "resource_revision": 1,
+          "resource_hash": "sha256:a894ce7a98030ea440f98b2c6a0bdaf59a41b15cc133a7acf646087d6fc0f76b"
+        },
+        "schema_snapshot_hash": "sha256:1e1d9d6a07f5cd5c4accbbeb3a980792390e91c6ce072eb3c6d9f0a38c11aabe",
+        "admission_receipt_ref": {
+          "resource_id": "d5204056-9b18-5aba-9e13-d95f470ee35f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:fc5198005fd24faef2918518732aee35bc8735fafbd2c8e7bc28b0e6d170c8a0"
+        },
+        "coverage_receipt_hash": "sha256:6a74b662902e895f0f550642e79b55c173acb45490de1d66f8a2cd1326921dd6",
+        "physical_object_count": 9,
+        "queryable_mapping_count": 2,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 12,
+        "schema_name": "falcon_db_12",
+        "package_ref": {
+          "resource_id": "e61bfab1-e38b-5160-bd15-a3858c7cb75f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f5d6b1a60b39c82c37ecb4079e9a025a4ea10388cc93c542d5b72fa0a4a61c09"
+        },
+        "schema_snapshot_hash": "sha256:e7bedeb31b0357acb9060b27281d5a2a6bb54ce1ef529d8c7397a9dd42b897ff",
+        "admission_receipt_ref": {
+          "resource_id": "224b8b8c-088b-5db4-ab7c-ab19d593553a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c30a6b10ed7eee77e9e51fb46f7d1abc890e5cbfb3705df6c09eb5bc731e1618"
+        },
+        "coverage_receipt_hash": "sha256:ddf633d97b0fef86a3c4804b7ee07da89c40e1a0b2411a48abde2d2877ad6231",
+        "physical_object_count": 19,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 13,
+        "schema_name": "falcon_db_13",
+        "package_ref": {
+          "resource_id": "0afe020f-b73f-52b7-9593-1c58420c2dcc",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7c7656adc9ef526733cef4c4c78faf617a306c12e207b99ace4078b1d971fc2f"
+        },
+        "schema_snapshot_hash": "sha256:8623dd90456b03704418f4f5c6f51cb5dc144db0e889b12dd13bcb6e4ea2dcd3",
+        "admission_receipt_ref": {
+          "resource_id": "b5a72b6f-455c-5d89-87c7-e48e84bbd2b3",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5cb1454b4a50c3275e7e68047edf40ac17353e09ca1a9fd11e6727e4c2cfcc22"
+        },
+        "coverage_receipt_hash": "sha256:1ba072af6c6a3437ead9868958c4db6d098e4ecf1ae0598e8df35880d0f03a86",
+        "physical_object_count": 23,
+        "queryable_mapping_count": 3,
+        "join_count": 3,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 14,
+        "schema_name": "falcon_db_14",
+        "package_ref": {
+          "resource_id": "9cc7f021-6615-5df7-95c4-c00a8296ff21",
+          "resource_revision": 1,
+          "resource_hash": "sha256:77da3dae238f5c0a3df0be7fddafd9936d49048581bcc82023a491ca9deffc0d"
+        },
+        "schema_snapshot_hash": "sha256:d3741ffbf68969e87e55108f035d4f1b1ef8f58915cf93d2ce725136cdc78040",
+        "admission_receipt_ref": {
+          "resource_id": "ad35eb5b-30d9-585a-ac08-fc479b910e24",
+          "resource_revision": 1,
+          "resource_hash": "sha256:8a59715bb547a9b57027f229e1ea499d90b6ac06f4ffa30779dfc8afb97c6e67"
+        },
+        "coverage_receipt_hash": "sha256:2b1cf5e53ad20cee3ac067908481338a13035b4d9b6c2edcf7c75ad2318f469f",
+        "physical_object_count": 22,
+        "queryable_mapping_count": 4,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 15,
+        "schema_name": "falcon_db_15",
+        "package_ref": {
+          "resource_id": "44e76936-2719-57ab-adb2-54c081f454ee",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1f56307db5558dc742f3bdbcb993a3d443281b00cb479aa2bae376822cdb8b2d"
+        },
+        "schema_snapshot_hash": "sha256:68572e553afe0fb6b0950d0236b2a1d672661b133a389d3d34e3446635eef4e8",
+        "admission_receipt_ref": {
+          "resource_id": "e5b3f3bd-7bce-5256-a5fa-f05db8bd9a5c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:d6f299b0e81ecbd55bed120e8499f4f476bf6ecb94012907e8d718644154630c"
+        },
+        "coverage_receipt_hash": "sha256:8abfedf4fb17c1576a8098eee8f4dee4d465cef610076a63a671040081bd7f12",
+        "physical_object_count": 19,
+        "queryable_mapping_count": 4,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 16,
+        "schema_name": "falcon_db_16",
+        "package_ref": {
+          "resource_id": "85afa013-cb4b-5efd-90ce-f6751ab03ad9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c1e9b02a705ad5bb9bc24363fe896cee9af965a5aa954f981e648522605c8632"
+        },
+        "schema_snapshot_hash": "sha256:309ce7f5f75bffcfde6028abb11d0362611ddd632c64e703c4fdabab86ae42ce",
+        "admission_receipt_ref": {
+          "resource_id": "ce0798de-ef77-56c4-9730-2d67e858eda0",
+          "resource_revision": 1,
+          "resource_hash": "sha256:9ec06302c2bc4457c68c4a0778bf9cfc6e841cbf6c69c6d3f1e443aba2ed3e17"
+        },
+        "coverage_receipt_hash": "sha256:9da30ef3a5e6bef0c53ae483100fe3cfd1f8b7758059f57d418f7db70f21591e",
+        "physical_object_count": 26,
+        "queryable_mapping_count": 4,
+        "join_count": 9,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 17,
+        "schema_name": "falcon_db_17",
+        "package_ref": {
+          "resource_id": "31a10c0c-b49a-5080-872b-f29cdb0bef65",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5f49551a479369c189ccc86bbf38f1e83dd630cad4d42cb76d523d0950dc8a50"
+        },
+        "schema_snapshot_hash": "sha256:342ba5fc98abefd6d4f1669cd575df3d99d67f95a6e351575ebdc6065ba60421",
+        "admission_receipt_ref": {
+          "resource_id": "b1113fc1-6528-5e79-881e-168133e8e197",
+          "resource_revision": 1,
+          "resource_hash": "sha256:84361a86ce3a258245a666957846f51a44c9f0263877fe083739e123c626b253"
+        },
+        "coverage_receipt_hash": "sha256:3b46f15ff4420a5826b7fbbd0c10678373fa709d6433ef003167dcca3890987a",
+        "physical_object_count": 29,
+        "queryable_mapping_count": 5,
+        "join_count": 3,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 18,
+        "schema_name": "falcon_db_18",
+        "package_ref": {
+          "resource_id": "e494b922-59f3-564a-bd6c-97ef30cabb5b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:28619c5a100d84d46b14e9d2fea570182ddeec096cb10ccd2ce8298671d91d8a"
+        },
+        "schema_snapshot_hash": "sha256:7fe52d329abcea087fe2a0ab1218bd703da292242b3fc11199c422e56244a75e",
+        "admission_receipt_ref": {
+          "resource_id": "833a7eb5-a6e1-52bb-b615-e30f2856c056",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ddf4ff0ca3cb3e0a0dbcbd0c706ceefda3866fa1a1fdb61065037a69af958e61"
+        },
+        "coverage_receipt_hash": "sha256:f9e939741ddb75439d4dd5a9d5bcb2626163115e039d2d5a003479f5beda84e0",
+        "physical_object_count": 21,
+        "queryable_mapping_count": 5,
+        "join_count": 1,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 19,
+        "schema_name": "falcon_db_19",
+        "package_ref": {
+          "resource_id": "46d6469d-b0e7-5506-921b-0b9b4aebb0e6",
+          "resource_revision": 1,
+          "resource_hash": "sha256:06e346a1ca37a5446cd7348798600d5dbd49ebdf83a19867df5c38fddafbb1e1"
+        },
+        "schema_snapshot_hash": "sha256:031d83bf316a7494bb4c47c8b6a90c66d7b5718b6ee576a4b22f25b072f75bee",
+        "admission_receipt_ref": {
+          "resource_id": "22400a29-2a87-5677-989d-aff46d6beccd",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f0de2305d3337a25dd5b52cc06468ac7ca2386c135d935676d4c9b5bb1593236"
+        },
+        "coverage_receipt_hash": "sha256:ec71b1ba82a5d5fb0bb585f39cc31ce8099f537efe15c48f58aabae092903ff6",
+        "physical_object_count": 25,
+        "queryable_mapping_count": 2,
+        "join_count": 1,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 20,
+        "schema_name": "falcon_db_20",
+        "package_ref": {
+          "resource_id": "6ffca4d3-9ead-51b9-8403-c47f95208c10",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ec2f58bba467eabbae36091613f8b944b7edbb6b9a476f5aa75c5642c9e42a2d"
+        },
+        "schema_snapshot_hash": "sha256:5c081d116181c935130346cece39db83a8404e9440835b90879a21445fad051c",
+        "admission_receipt_ref": {
+          "resource_id": "656aeb91-95ee-5fea-8867-660f9f6afd6c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2724f4c1f8c2a8ec1ac4ed18a2648967cf046e99a8e42595f37776d02bd2ab5c"
+        },
+        "coverage_receipt_hash": "sha256:e6669b316500ac76d119513b369aac05be639f9e4fc7287e5860e7f19fa667be",
+        "physical_object_count": 18,
+        "queryable_mapping_count": 2,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 21,
+        "schema_name": "falcon_db_21",
+        "package_ref": {
+          "resource_id": "3e732e47-e341-52ff-9960-93b914ce4e0c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:63f8e1c0b3c8a6d5495158a278635bc79b92ed8af206e2e6156bb9b15a72445c"
+        },
+        "schema_snapshot_hash": "sha256:2596cc8f209991df2eb53e1f1eebc5067080ed7d1d0b1c5a71e9b6703a8658e1",
+        "admission_receipt_ref": {
+          "resource_id": "82c5aa17-92a0-5ae8-8411-33ff5bdcc2d6",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ca4fbe8dfb294dafe813c22f60147643e5fb3e7d35882970d54ffd85773e6a48"
+        },
+        "coverage_receipt_hash": "sha256:4092dd72d77ee65cf84f7a1e449ec1edb562b3c7fe753ecb979b3b212aae01d0",
+        "physical_object_count": 24,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 22,
+        "schema_name": "falcon_db_22",
+        "package_ref": {
+          "resource_id": "a88cd749-1ad3-5e75-a1c4-955afdc2141a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:80076917252dc8d2e4cd7ec07fb57d74cf4062a10bfa394430f5d68379fc5243"
+        },
+        "schema_snapshot_hash": "sha256:49f273e7043db67a6a3d0af4bd2c951d0f772c3f9f4c17ee933bd5ddbd4be488",
+        "admission_receipt_ref": {
+          "resource_id": "16e4e0d6-b3e4-5730-a072-16fe3f034ae8",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1ebe2e6ad1c92011be8b00e115a9e9fe0fa7a90f846760bf3931d0b9f1c1a197"
+        },
+        "coverage_receipt_hash": "sha256:74aa47f9d86cda4c22442491066a38912c467085b998c8a23b8e0f2ca193a07a",
+        "physical_object_count": 45,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 23,
+        "schema_name": "falcon_db_23",
+        "package_ref": {
+          "resource_id": "ba9af84d-3540-5d2e-8c0d-03a34bcf0529",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7efea2bdf4fc617a23ada66d41550c558537a6ebd34f9c5f3dc92723f71ca50c"
+        },
+        "schema_snapshot_hash": "sha256:03dff3091ad475382ab2b2dc8529cc50c8c5996e6126d88309e09192d9c03c97",
+        "admission_receipt_ref": {
+          "resource_id": "05c833ad-a6f1-559d-84cd-48c91e9f7216",
+          "resource_revision": 1,
+          "resource_hash": "sha256:02d8e073595e692c1583bfeefe0471b7a4c30d10ebed21af2d5dddcacaaa8ca1"
+        },
+        "coverage_receipt_hash": "sha256:a52e4896eed6090fb3a4f26d55373d48f1cc853f5592614008e7a1426f9b3024",
+        "physical_object_count": 18,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 24,
+        "schema_name": "falcon_db_24",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "schema_snapshot_hash": "sha256:fe057b04bc4de067568281c9c3e4b7b081dfafdae32e7031db8349dc6815a7f5",
+        "admission_receipt_ref": {
+          "resource_id": "ecbfa3b1-cd99-5986-8451-a48b819e60b8",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5c5bae2b78534732d0fc4c19865c12d2cb9049cf58daa02c43c0e5676e918660"
+        },
+        "coverage_receipt_hash": "sha256:c116dbb2457ae2f59f4bc38b7c6f9bc7430931682a12626aa30cf4f5db452d34",
+        "physical_object_count": 79,
+        "queryable_mapping_count": 9,
+        "join_count": 8,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 25,
+        "schema_name": "falcon_db_25",
+        "package_ref": {
+          "resource_id": "4c2b9837-e8fc-5fc7-80b0-162410c04be4",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2daba740dee280de5daafd07114cc2fced252574c3a6b40ee238ae37dee67cac"
+        },
+        "schema_snapshot_hash": "sha256:bd13aa5b3fda3f6989e05bdc0f7e2bf74d796afa6d4ef0726d46284601c3b9e3",
+        "admission_receipt_ref": {
+          "resource_id": "856dfc8a-8abb-52cd-ac26-d1de1d543f47",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3108636b4e8d4e0d694ad0fc677839114c58404273d806856458e8a03b39efea"
+        },
+        "coverage_receipt_hash": "sha256:d20d66778fc9d28968ee2652e4124c61d55cdd9f7fbb9e669f0bdd10b8260dfa",
+        "physical_object_count": 47,
+        "queryable_mapping_count": 8,
+        "join_count": 3,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 26,
+        "schema_name": "falcon_db_26",
+        "package_ref": {
+          "resource_id": "dfbc8429-5700-550d-b373-267c53b6ca95",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2ef372d2a6f5a0a9353edd857f3acb233581b8b31ac6d7e276bab3fbdd32fc5a"
+        },
+        "schema_snapshot_hash": "sha256:627dca7fe9df9a27b1f03b7560253ac7fa2c67609b4e45c30856e778c12dd43e",
+        "admission_receipt_ref": {
+          "resource_id": "3c91425e-aa46-5f68-9a52-0e08a927dc92",
+          "resource_revision": 1,
+          "resource_hash": "sha256:007d4c159bf92fc0cfbe74b5376822ca2649748ec1248f8771f1f8790e72f33d"
+        },
+        "coverage_receipt_hash": "sha256:c561848583b5b0d073f4ec8e66b39b68daea2594287c8b8ab7d5e08e18280780",
+        "physical_object_count": 94,
+        "queryable_mapping_count": 7,
+        "join_count": 10,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 27,
+        "schema_name": "falcon_db_27",
+        "package_ref": {
+          "resource_id": "7bac2559-5b7b-5e96-b58a-e54daafea040",
+          "resource_revision": 1,
+          "resource_hash": "sha256:97d466f38b18559590efc4289083b15304e9054777724945432bb6292067753b"
+        },
+        "schema_snapshot_hash": "sha256:127a8532cd6467170d6093f3446926ffd4cad0d5fefea83c17cc5410603ee672",
+        "admission_receipt_ref": {
+          "resource_id": "d974aced-d01e-5e2c-b837-2a836bcdd7c1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:0e6c07869b23e30ac6394cc766a4c976dc185c10a47408a0d21403f92141553b"
+        },
+        "coverage_receipt_hash": "sha256:59cafdcef76fa5eb5206b39004026d4894975c46c8c1d8491957f0a43f4fad2b",
+        "physical_object_count": 48,
+        "queryable_mapping_count": 7,
+        "join_count": 8,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 28,
+        "schema_name": "falcon_db_28",
+        "package_ref": {
+          "resource_id": "ffef3e05-d70b-536c-bdbb-be9f18c1c7fc",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ba2b8fa5ec59db701fa2daa7ba835762bcb5ea593e005bff7a144c2495678733"
+        },
+        "schema_snapshot_hash": "sha256:aab68e789b8d91e333bdda247ad1e11993eb566972dc4a21be35bd917ae4257e",
+        "admission_receipt_ref": {
+          "resource_id": "1be6acd7-7352-5606-86b8-1659faa4a275",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7d0870db3b8f417ca2fbca960e79ad8389be61e02ef08defbeabb54ede9e86ad"
+        },
+        "coverage_receipt_hash": "sha256:a17c54cc58668bff91916037584941adedd7a92799f3a20e86d948f62d6ea685",
+        "physical_object_count": 52,
+        "queryable_mapping_count": 8,
+        "join_count": 7,
+        "mandatory_assertions_passed": true
+      }
+    ],
+    "created_at": "2026-08-18T00:00:00.000Z",
+    "bundle_index_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4"
+  },
+  "model_profile_ref": {
+    "artifact_id": "7fd35b18-528c-4a89-aa35-6266bfbc5611",
+    "artifact_type": "ModelCertificationReceipt",
+    "app_id": "00000000-0000-4000-8000-00000000da01",
+    "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+    "environment": "local",
+    "run_id": "00000000-0000-4000-8000-000000001810",
+    "revision": 1,
+    "content_hash": "sha256:8a47a5bbbdcaecda6daeb29adab1a82aa7061fe7b25423c1f26afdc4f0326ef0"
+  },
+  "cases": [
+    {
+      "case_id": "02006019-7872-5daa-b6e8-ffb0b4682f77",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "59b207ea-8fee-42ac-863e-871ada39e222",
+      "status": "PASS",
+      "first_sql": "WITH customer_totals AS (\n  SELECT customer_id, SUM(order_total) AS total_spent\n  FROM blinkit_orders\n  GROUP BY customer_id\n),\nsegment_avg AS (\n  SELECT c.customer_segment, AVG(ct.total_spent) AS avg_segment_total\n  FROM blinkit_customers c\n  JOIN customer_totals ct ON c.customer_id = ct.customer_id\n  GROUP BY c.customer_segment\n)\nSELECT ct.customer_id\nFROM customer_totals ct\nJOIN blinkit_customers c ON ct.customer_id = c.customer_id\nJOIN segment_avg sa ON c.customer_segment = sa.customer_segment\nWHERE ct.total_spent > sa.avg_segment_total\nORDER BY ct.customer_id;",
+      "final_sql": "WITH customer_totals AS (\n  SELECT customer_id, SUM(order_total) AS total_spent\n  FROM blinkit_orders\n  GROUP BY customer_id\n),\nsegment_avg AS (\n  SELECT c.customer_segment, AVG(ct.total_spent) AS avg_segment_total\n  FROM blinkit_customers c\n  JOIN customer_totals ct ON c.customer_id = ct.customer_id\n  GROUP BY c.customer_segment\n)\nSELECT ct.customer_id\nFROM customer_totals ct\nJOIN blinkit_customers c ON ct.customer_id = c.customer_id\nJOIN segment_avg sa ON c.customer_segment = sa.customer_segment\nWHERE ct.total_spent > sa.avg_segment_total\nORDER BY ct.customer_id;",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:2167bc80686a59ebb629629e24f6177249717843ba12ce1cd5c7d13f6d33336e",
+      "final_oracle_receipt_hash": "sha256:2167bc80686a59ebb629629e24f6177249717843ba12ce1cd5c7d13f6d33336e",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "133c8f8d-875f-424a-bc00-bdde449449ce",
+        "case_id": "02006019-7872-5daa-b6e8-ffb0b4682f77",
+        "database_id": 24,
+        "run_id": "59b207ea-8fee-42ac-863e-871ada39e222",
+        "task_id": "8bc55458-226f-40b5-bedc-5567660cc185",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "48729da9-2314-4b10-8295-771c863d51e6",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f136a615bb287414a87f41480f0aae13275e21125ffe18784726e597c98a2afc"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "f353bdca-dbd5-44bd-87b3-503ae6b8a976",
+          "resource_revision": 1,
+          "resource_hash": "sha256:21074549d6e25ca9d3426d746dad2f65227d603fe45f7c7bcc321d9ccb714bdc"
+        },
+        "query_evidence_ref": {
+          "resource_id": "1bdd05d4-24af-4936-a36f-524d8f04445c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:fe826569b6bb13c6ff247fe712fddc24b6ccf569b753417ff799fbcef085f76d"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2064,
+          "output_tokens": 190
+        },
+        "accepted_at": "2026-08-17T22:36:25.571Z",
+        "receipt_hash": "sha256:c14d3f0cba2882b5d65bb50e0bbc41aa8b297cfc3daed15b243fcfeca9622daa"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "59b207ea-8fee-42ac-863e-871ada39e222",
+        "tasks": [
+          {
+            "task_id": "63a2003e-28e4-423e-976f-da81c7a1496f",
+            "parent_task_id": "a4247334-ee09-4253-8727-7b5b287aa884",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "745c4d51-77e9-44ac-a1f5-9dd5a7f8070a",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.571Z"
+          },
+          {
+            "task_id": "8bc55458-226f-40b5-bedc-5567660cc185",
+            "parent_task_id": "a4247334-ee09-4253-8727-7b5b287aa884",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "879c7b39-00ac-4b0e-aab4-7ee7a8d0f4a5",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.571Z"
+          },
+          {
+            "task_id": "a4247334-ee09-4253-8727-7b5b287aa884",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "7e61ab43-df38-4f22-969e-d9426850fa26",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.571Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "3fd4ce91-5094-4f9a-95af-a2bf6667f24d",
+            "parent_task_id": "a4247334-ee09-4253-8727-7b5b287aa884",
+            "child_task_id": "63a2003e-28e4-423e-976f-da81c7a1496f",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.571Z"
+          },
+          {
+            "handoff_id": "5deaa5e4-8f7f-4535-8c7e-22851e878e1b",
+            "parent_task_id": "a4247334-ee09-4253-8727-7b5b287aa884",
+            "child_task_id": "8bc55458-226f-40b5-bedc-5567660cc185",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.571Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "a4247334-ee09-4253-8727-7b5b287aa884",
+            "task_revision": 1,
+            "decision_id": "07678905-6e8b-48c8-a8ca-41d3e630f9a8",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:f7eb41f4421b28396a1f253bc207fcdd4609bcd0e3c2633ad42d05c7b24a4edd",
+            "created_at": "2026-08-17T22:36:25.571Z"
+          }
+        ],
+        "trace_hash": "sha256:e1a08a3ddccc980a65ed0be010cb7635279257c6600ad47afd1fe6f0757a717f"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 02006019-7872-5daa-b6e8-ffb0b4682f77 is accepted.",
+        "citation_hash": "sha256:fe826569b6bb13c6ff247fe712fddc24b6ccf569b753417ff799fbcef085f76d"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "0675dbf9-f121-5053-a0c9-22b8d5d09e69",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "45f836b7-5b50-435b-bda2-842188e4266b",
+      "status": "PASS",
+      "first_sql": "WITH filtered_orders AS (\n    SELECT\n        o.order_id,\n        CAST(o.order_total AS DOUBLE PRECISION) AS order_total,\n        c.customer_segment\n    FROM\n        blinkit_orders o\n    INNER JOIN\n        blinkit_customers c\n        ON o.customer_id = c.customer_id\n    WHERE\n        (substr(o.order_date, 1, 10)::date) BETWEEN '2024-01-01' AND '2024-06-30'\n)\nSELECT\n    customer_segment AS \"客户群体\",\n    SUM(order_total) / COUNT(order_id) AS \"客单价\"\nFROM\n    filtered_orders\nGROUP BY\n    customer_segment\nORDER BY\n    \"客单价\" DESC\nLIMIT 3",
+      "final_sql": "WITH filtered_orders AS (\n    SELECT\n        o.order_id,\n        CAST(o.order_total AS DOUBLE PRECISION) AS order_total,\n        c.customer_segment\n    FROM\n        blinkit_orders o\n    INNER JOIN\n        blinkit_customers c\n        ON o.customer_id = c.customer_id\n    WHERE\n        (substr(o.order_date, 1, 10)::date) BETWEEN '2024-01-01' AND '2024-06-30'\n)\nSELECT\n    customer_segment AS \"客户群体\",\n    SUM(order_total) / COUNT(order_id) AS \"客单价\"\nFROM\n    filtered_orders\nGROUP BY\n    customer_segment\nORDER BY\n    \"客单价\" DESC\nLIMIT 3",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:e199c8056e429bf840e6dddead0df543610104ecfb8b54e38906a1ba3bb3b011",
+      "final_oracle_receipt_hash": "sha256:e199c8056e429bf840e6dddead0df543610104ecfb8b54e38906a1ba3bb3b011",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "f26fd554-2771-401c-a528-8939dc23f952",
+        "case_id": "0675dbf9-f121-5053-a0c9-22b8d5d09e69",
+        "database_id": 24,
+        "run_id": "45f836b7-5b50-435b-bda2-842188e4266b",
+        "task_id": "81c87105-fa67-49b7-9fb6-8ac790cfbd90",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "566539e9-cdaf-4c3f-9ece-1c7f5513ee70",
+          "resource_revision": 1,
+          "resource_hash": "sha256:21582a35d1d1a5e8b7c561bdec216de09585329d1e16e7380c153a137e7d5c7c"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "7246dea7-4e35-42ae-827e-e4bf12e5f95d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:b632ac460bc9422ac0e90b18810469fa2f7d87d417e2ce53b796e6dc9717668c"
+        },
+        "query_evidence_ref": {
+          "resource_id": "ffd95a1a-f5d4-47e2-868b-b0a20c5b2d73",
+          "resource_revision": 1,
+          "resource_hash": "sha256:d469e345c4e1ad8674096d2e0df1c5d7336ef020629bbc21900df0ae3b6544de"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2269,
+          "output_tokens": 297
+        },
+        "accepted_at": "2026-08-17T22:42:57.030Z",
+        "receipt_hash": "sha256:a6457bc9721503877ac647f35c0c6ddf2b4e3c3b90e058fd505869f574be5c31"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "45f836b7-5b50-435b-bda2-842188e4266b",
+        "tasks": [
+          {
+            "task_id": "81c87105-fa67-49b7-9fb6-8ac790cfbd90",
+            "parent_task_id": "c4c9f418-b4c5-4f47-86a2-c655ec4c98b0",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "8d411611-15c7-4dff-a6af-e07b6e4d99a0",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:57.030Z"
+          },
+          {
+            "task_id": "ad281c85-a4ce-4991-817e-fc9d918c5c71",
+            "parent_task_id": "c4c9f418-b4c5-4f47-86a2-c655ec4c98b0",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "cb1544f0-5160-4221-9046-03632139e9a9",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:57.030Z"
+          },
+          {
+            "task_id": "c4c9f418-b4c5-4f47-86a2-c655ec4c98b0",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "45ce4261-f780-4786-82b3-c921acea5bbb",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:57.030Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "11604e97-b7e5-4f6c-b88a-8412fd23458c",
+            "parent_task_id": "c4c9f418-b4c5-4f47-86a2-c655ec4c98b0",
+            "child_task_id": "ad281c85-a4ce-4991-817e-fc9d918c5c71",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:57.030Z"
+          },
+          {
+            "handoff_id": "fdf7c675-05c1-4c84-b581-0ab34c524eee",
+            "parent_task_id": "c4c9f418-b4c5-4f47-86a2-c655ec4c98b0",
+            "child_task_id": "81c87105-fa67-49b7-9fb6-8ac790cfbd90",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:57.030Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "c4c9f418-b4c5-4f47-86a2-c655ec4c98b0",
+            "task_revision": 1,
+            "decision_id": "5163b147-3ded-4ff8-abf2-53f8a767569b",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:405a38d51dd4414c6b3db880a68fc79515583979cb7e4dc148dbb8bc9b48f463",
+            "created_at": "2026-08-17T22:42:57.030Z"
+          }
+        ],
+        "trace_hash": "sha256:0224d15212f59016ad669f984ed3ac69422f4add83068f1e3140fb48f66fb3bc"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 0675dbf9-f121-5053-a0c9-22b8d5d09e69 is accepted.",
+        "citation_hash": "sha256:d469e345c4e1ad8674096d2e0df1c5d7336ef020629bbc21900df0ae3b6544de"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "1124892e-97ae-5697-9093-b3ac3d96a542",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "01495515-5215-44e2-b467-bfa3528a9a99",
+      "status": "PASS",
+      "first_sql": "WITH customer_totals AS (SELECT o.customer_id, SUM(o.order_total) AS total_spent FROM blinkit_orders o JOIN blinkit_customers c ON o.customer_id = c.customer_id WHERE EXTRACT(YEAR FROM c.registration_date::date) = 2023 GROUP BY o.customer_id), avg_spent AS (SELECT AVG(total_spent) AS avg_total FROM customer_totals) SELECT ct.customer_id, ct.total_spent FROM customer_totals ct CROSS JOIN avg_spent a WHERE ct.total_spent > a.avg_total ORDER BY ct.total_spent DESC, ct.customer_id ASC",
+      "final_sql": "WITH customer_totals AS (SELECT o.customer_id, SUM(o.order_total) AS total_spent FROM blinkit_orders o JOIN blinkit_customers c ON o.customer_id = c.customer_id WHERE EXTRACT(YEAR FROM c.registration_date::date) = 2023 GROUP BY o.customer_id), avg_spent AS (SELECT AVG(total_spent) AS avg_total FROM customer_totals) SELECT ct.customer_id, ct.total_spent FROM customer_totals ct CROSS JOIN avg_spent a WHERE ct.total_spent > a.avg_total ORDER BY ct.total_spent DESC, ct.customer_id ASC",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:d05d250b3132f0497ef880254188caeb73818807d281d6f4577d1140697e615b",
+      "final_oracle_receipt_hash": "sha256:d05d250b3132f0497ef880254188caeb73818807d281d6f4577d1140697e615b",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "c017334f-43a4-4139-993d-b58a1880a705",
+        "case_id": "1124892e-97ae-5697-9093-b3ac3d96a542",
+        "database_id": 24,
+        "run_id": "01495515-5215-44e2-b467-bfa3528a9a99",
+        "task_id": "d59649a7-4d0c-4ce5-b19d-27f3fdb15e7d",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "beea5bff-e457-4531-839a-a489d89f7c7f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:79cb5a92f2830a9107d8124d7b1a152b80b9d4f6ba4df910456c53fd95ade0a2"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "4b0c0db9-fd88-4feb-9c2b-f12fd2e056f2",
+          "resource_revision": 1,
+          "resource_hash": "sha256:730c72aae2e55bda1d1fe88ca3c4b4ee2d2417b804cd8dcb2145f608c0fc7911"
+        },
+        "query_evidence_ref": {
+          "resource_id": "f8709bbe-8d71-4aae-8e89-e150e9bd76f8",
+          "resource_revision": 1,
+          "resource_hash": "sha256:cce04096221465a1fa74a2e63171debe16f5982d293bc5936ffc7b9612746cd9"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2074,
+          "output_tokens": 152
+        },
+        "accepted_at": "2026-08-17T22:36:25.573Z",
+        "receipt_hash": "sha256:6153fe6b9b6a60522b87f61ec42f618c531716b300d834293a2f4dc87fac34af"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "01495515-5215-44e2-b467-bfa3528a9a99",
+        "tasks": [
+          {
+            "task_id": "0990a65a-da8f-47b8-9c86-1ad68ec2be83",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "04b74b47-7531-4e87-93ce-e649ac1f7128",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "task_id": "7c6f1a65-b7c0-443a-9ff7-9c3b70250d80",
+            "parent_task_id": "0990a65a-da8f-47b8-9c86-1ad68ec2be83",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "c671ef8d-6421-4f98-9660-148c1c549d18",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "task_id": "d59649a7-4d0c-4ce5-b19d-27f3fdb15e7d",
+            "parent_task_id": "0990a65a-da8f-47b8-9c86-1ad68ec2be83",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "7f4ad1eb-4850-4ee8-a14a-bca00c63721a",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "74494460-0f0e-44f4-9e11-9b37b05fe64e",
+            "parent_task_id": "0990a65a-da8f-47b8-9c86-1ad68ec2be83",
+            "child_task_id": "d59649a7-4d0c-4ce5-b19d-27f3fdb15e7d",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "handoff_id": "e85906fb-f7b9-4212-936b-e6813f11db8d",
+            "parent_task_id": "0990a65a-da8f-47b8-9c86-1ad68ec2be83",
+            "child_task_id": "7c6f1a65-b7c0-443a-9ff7-9c3b70250d80",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "0990a65a-da8f-47b8-9c86-1ad68ec2be83",
+            "task_revision": 1,
+            "decision_id": "e2bfa4fd-a2e3-4b58-8cd5-f401576b4d32",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:5cfd05a1a03bd2b45829989cf58131bc83289c9ae8d8ae9ba76a7a168be6f992",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "trace_hash": "sha256:c6fa754f8e0a74b8352b27ec9bbe253a96b506639e1a00d69c255c681a7790ef"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 1124892e-97ae-5697-9093-b3ac3d96a542 is accepted.",
+        "citation_hash": "sha256:cce04096221465a1fa74a2e63171debe16f5982d293bc5936ffc7b9612746cd9"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "19886143-efe1-5ac6-a264-dd559acb6df5",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "e635d5de-4e8a-46cc-8ee3-608aa5165c21",
+      "status": "PASS",
+      "first_sql": "WITH partner_avg AS (SELECT delivery_partner_id, AVG(delivery_time_minutes) AS avg_delay FROM blinkit_delivery_performance GROUP BY delivery_partner_id), overall_avg AS (SELECT AVG(delivery_time_minutes) AS overall_avg_delay FROM blinkit_delivery_performance) SELECT p.delivery_partner_id FROM partner_avg p CROSS JOIN overall_avg o WHERE p.avg_delay > o.overall_avg_delay ORDER BY p.delivery_partner_id;",
+      "final_sql": "WITH partner_avg AS (SELECT delivery_partner_id, AVG(delivery_time_minutes) AS avg_delay FROM blinkit_delivery_performance GROUP BY delivery_partner_id), overall_avg AS (SELECT AVG(delivery_time_minutes) AS overall_avg_delay FROM blinkit_delivery_performance) SELECT p.delivery_partner_id, p.avg_delay AS average_delay FROM partner_avg p CROSS JOIN overall_avg o WHERE p.avg_delay > o.overall_avg_delay ORDER BY p.delivery_partner_id;",
+      "first_verdict": "FAIL",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:0dc1384ca51a042b6707915afc6201635dcdcc8948ad374cd413325533a058c0",
+      "final_oracle_receipt_hash": "sha256:1019498f028f6948747063b424395666c20c0e18c5fd56dfc3779302ab473241",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "08c862e3-73f7-47bb-81c1-a11c1eca15e3",
+        "case_id": "19886143-efe1-5ac6-a264-dd559acb6df5",
+        "database_id": 24,
+        "run_id": "e635d5de-4e8a-46cc-8ee3-608aa5165c21",
+        "task_id": "fdf3f928-9e8b-4c2d-bef3-47a5929672ad",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "665b11a6-eb1e-4877-85e0-91f6041f5451",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5ce413ef5d85e811655d095c29ad2aa2ecb1c1afcc4954655510aec2592021f4"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "ee966d4b-14ea-47ce-b2bc-1caeb25bbf34",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3954876be1e60aec447ebd9e4f3bb727473c7fbc0d9197e63a83208c10f3c20e"
+        },
+        "query_evidence_ref": {
+          "resource_id": "d0cf870e-df0e-48af-8c77-3ea43b2fa964",
+          "resource_revision": 1,
+          "resource_hash": "sha256:0faad65ddb03ae9847c8cab9f31620a0b3512afa87782eb28c8b69c2b6588989"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2281,
+          "output_tokens": 303
+        },
+        "accepted_at": "2026-08-17T22:36:25.573Z",
+        "receipt_hash": "sha256:777b79d3574c89591e53b6a9d8d5bf3cfa023609e4368143753ff980bac47c3c"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "e635d5de-4e8a-46cc-8ee3-608aa5165c21",
+        "tasks": [
+          {
+            "task_id": "3ec5b9e1-2041-480b-90ef-98a36055be5a",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "ea7cfa5d-ec2d-4c33-88e7-2695648dc706",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "task_id": "e5b3b183-32dd-46de-a197-31a2a01bc3ca",
+            "parent_task_id": "3ec5b9e1-2041-480b-90ef-98a36055be5a",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "1ee89fe8-d5d9-4d97-8afb-bdefdee9a578",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "task_id": "fdf3f928-9e8b-4c2d-bef3-47a5929672ad",
+            "parent_task_id": "3ec5b9e1-2041-480b-90ef-98a36055be5a",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "0e69f875-19d4-4886-abcc-e1bd4ae27e58",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "d0cc33c8-f3d8-44a9-8c07-c3d7e283b9fd",
+            "parent_task_id": "3ec5b9e1-2041-480b-90ef-98a36055be5a",
+            "child_task_id": "fdf3f928-9e8b-4c2d-bef3-47a5929672ad",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "handoff_id": "d27e5e6a-9a37-4ceb-959d-dc31b52e1848",
+            "parent_task_id": "3ec5b9e1-2041-480b-90ef-98a36055be5a",
+            "child_task_id": "e5b3b183-32dd-46de-a197-31a2a01bc3ca",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "3ec5b9e1-2041-480b-90ef-98a36055be5a",
+            "task_revision": 1,
+            "decision_id": "7a7eec28-c766-41dc-8934-1904766e980f",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:630da69a45e96602c47892e28792ff1aaf42ed78152a78c271c997654b3bbbaa",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "trace_hash": "sha256:47fb69fc4fb69efa9cd81188183ac574d811dfee29a0f0c1b1085bd10ab36b8a"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 19886143-efe1-5ac6-a264-dd559acb6df5 is accepted.",
+        "citation_hash": "sha256:0faad65ddb03ae9847c8cab9f31620a0b3512afa87782eb28c8b69c2b6588989"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "204b4829-74c0-54aa-8f8c-740a9ccc262b",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "430258f9-6b6c-4c8c-a52f-859bed4ea2f4",
+      "status": "PASS",
+      "first_sql": "WITH dairy_products AS (\n    SELECT\n        product_id\n    FROM\n        blinkit_products\n    WHERE\n        category = 'Dairy & Breakfast'\n),\norder_products AS (\n    SELECT\n        oi.product_id,\n        oi.order_id\n    FROM\n        blinkit_order_items oi\n        JOIN dairy_products dp ON oi.product_id = dp.product_id\n),\ndelivery_status_data AS (\n    SELECT\n        op.product_id,\n        CASE\n            WHEN dp.delivery_status = 'On Time' THEN 1\n            ELSE 0\n        END AS is_ontime\n    FROM\n        order_products op\n        JOIN blinkit_orders o ON op.order_id = o.order_id -- 确保 op.order_id 正确引用\n        JOIN blinkit_delivery_performance dp ON op.order_id = dp.order_id\n),\ndelivery_stats AS (\n    SELECT\n        product_id,\n        SUM(is_ontime) * 1.0 / COUNT(*) AS ontime_rate\n    FROM\n        delivery_status_data\n    GROUP BY\n        product_id\n)\nSELECT\n    product_id\nFROM\n    delivery_stats\nWHERE\n    ontime_rate < 0.9",
+      "final_sql": "WITH dairy_products AS (\n    SELECT\n        product_id\n    FROM\n        blinkit_products\n    WHERE\n        category = 'Dairy & Breakfast'\n),\norder_products AS (\n    SELECT\n        oi.product_id,\n        oi.order_id\n    FROM\n        blinkit_order_items oi\n        JOIN dairy_products dp ON oi.product_id = dp.product_id\n),\ndelivery_status_data AS (\n    SELECT\n        op.product_id,\n        CASE\n            WHEN dp.delivery_status = 'On Time' THEN 1\n            ELSE 0\n        END AS is_ontime\n    FROM\n        order_products op\n        JOIN blinkit_orders o ON op.order_id = o.order_id -- 确保 op.order_id 正确引用\n        JOIN blinkit_delivery_performance dp ON op.order_id = dp.order_id\n),\ndelivery_stats AS (\n    SELECT\n        product_id,\n        SUM(is_ontime) * 1.0 / COUNT(*) AS ontime_rate\n    FROM\n        delivery_status_data\n    GROUP BY\n        product_id\n)\nSELECT\n    product_id\nFROM\n    delivery_stats\nWHERE\n    ontime_rate < 0.9",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:00b5fa0fbd69e37a826a9f03347706d9d026f82aff0c6bfbf04b3ad41e7fc0e0",
+      "final_oracle_receipt_hash": "sha256:00b5fa0fbd69e37a826a9f03347706d9d026f82aff0c6bfbf04b3ad41e7fc0e0",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "c3ac216e-8147-4b81-ad34-fbcf0afed98e",
+        "case_id": "204b4829-74c0-54aa-8f8c-740a9ccc262b",
+        "database_id": 24,
+        "run_id": "430258f9-6b6c-4c8c-a52f-859bed4ea2f4",
+        "task_id": "422e7c0e-28f8-4a25-90a1-fa4383ae3c13",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "8fb18266-58da-456b-af1c-11c4e46655ee",
+          "resource_revision": 1,
+          "resource_hash": "sha256:66ae3b54ffcb42020bc83d7d7f202a15d9b28d4d8c99525448bace98afcb9205"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "81652425-d0bf-4421-bb6c-55e1a7b8b566",
+          "resource_revision": 1,
+          "resource_hash": "sha256:436e511640522509de9fb5b2b3812559ad25a174acec2f784b0e4411d0ca00ea"
+        },
+        "query_evidence_ref": {
+          "resource_id": "a4d4321d-7979-4eb3-b50c-a72bdbb5934f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:6728083c7498a8e7b45842f7d4c1e1658d4c58ae6d4e22a59bd27e8c3174ee7c"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2258,
+          "output_tokens": 280
+        },
+        "accepted_at": "2026-08-17T22:42:56.968Z",
+        "receipt_hash": "sha256:d1eec09cdd8cc4b44a9cc7fc71eca61ea5f90dfc777b15549ae4e2e20e2db117"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "430258f9-6b6c-4c8c-a52f-859bed4ea2f4",
+        "tasks": [
+          {
+            "task_id": "0d447f1c-ae31-40f9-afa4-ef608cee7c17",
+            "parent_task_id": "d80b4967-9712-4b7f-9ce8-54c4e57c393b",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "f134577a-387e-4d64-ba86-cb4fc9fc806a",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:56.968Z"
+          },
+          {
+            "task_id": "422e7c0e-28f8-4a25-90a1-fa4383ae3c13",
+            "parent_task_id": "d80b4967-9712-4b7f-9ce8-54c4e57c393b",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "55f9236e-749b-4459-8444-e03caf7020cf",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:56.968Z"
+          },
+          {
+            "task_id": "d80b4967-9712-4b7f-9ce8-54c4e57c393b",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "8407cb28-5bba-404c-820d-670257d9d364",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:56.968Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "0c77c986-fc45-4c14-874d-8c516a47c799",
+            "parent_task_id": "d80b4967-9712-4b7f-9ce8-54c4e57c393b",
+            "child_task_id": "422e7c0e-28f8-4a25-90a1-fa4383ae3c13",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:56.968Z"
+          },
+          {
+            "handoff_id": "73266eaa-9663-431c-9577-c13837fe257f",
+            "parent_task_id": "d80b4967-9712-4b7f-9ce8-54c4e57c393b",
+            "child_task_id": "0d447f1c-ae31-40f9-afa4-ef608cee7c17",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:56.968Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "d80b4967-9712-4b7f-9ce8-54c4e57c393b",
+            "task_revision": 1,
+            "decision_id": "9bd5740c-297b-41fc-8080-b7c2e7376b98",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:0b174985f97d9bb06e7e8a086126c9ab85b11dd28277befa7084a7439b715ebb",
+            "created_at": "2026-08-17T22:42:56.968Z"
+          }
+        ],
+        "trace_hash": "sha256:9eb890ccd9d4353f89be14993cc1a8d34279d4b4522140e89b5dc79a07c4cb0c"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 204b4829-74c0-54aa-8f8c-740a9ccc262b is accepted.",
+        "citation_hash": "sha256:6728083c7498a8e7b45842f7d4c1e1658d4c58ae6d4e22a59bd27e8c3174ee7c"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "26a63a14-b293-53bd-bd0e-536760810e04",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "4008a382-0608-47ee-b54c-df8ad47bb0fb",
+      "status": "PASS",
+      "first_sql": "WITH delivery_performance AS (\n    SELECT \n        order_id,\n        CAST(delivery_time_minutes AS DOUBLE PRECISION) AS delivery_time_minutes\n    FROM \n        blinkit_delivery_performance\n),\nmax_early_value AS (\n    SELECT \n        MIN(delivery_time_minutes) AS min_delivery_time\n    FROM \n        delivery_performance\n),\ntarget_orders AS (\n    SELECT \n        dp.order_id\n    FROM \n        delivery_performance dp\n        JOIN max_early_value mev ON dp.delivery_time_minutes = mev.min_delivery_time\n),\norder_products AS (\n    SELECT \n        oi.order_id,\n        oi.product_id\n    FROM \n        blinkit_order_items oi\n        JOIN target_orders to1 ON oi.order_id = to1.order_id\n),\nproduct_info AS (\n    SELECT \n        op.order_id,\n        p.category\n    FROM \n        order_products op\n        JOIN blinkit_products p ON op.product_id = p.product_id\n)\nSELECT DISTINCT \n    order_id AS \"order_id\",\n    category AS \"商品品类\"\nFROM \n    product_info",
+      "final_sql": "WITH delivery_performance AS (\n    SELECT \n        order_id,\n        CAST(delivery_time_minutes AS DOUBLE PRECISION) AS delivery_time_minutes\n    FROM \n        blinkit_delivery_performance\n),\nmax_early_value AS (\n    SELECT \n        MIN(delivery_time_minutes) AS min_delivery_time\n    FROM \n        delivery_performance\n),\ntarget_orders AS (\n    SELECT \n        dp.order_id\n    FROM \n        delivery_performance dp\n        JOIN max_early_value mev ON dp.delivery_time_minutes = mev.min_delivery_time\n),\norder_products AS (\n    SELECT \n        oi.order_id,\n        oi.product_id\n    FROM \n        blinkit_order_items oi\n        JOIN target_orders to1 ON oi.order_id = to1.order_id\n),\nproduct_info AS (\n    SELECT \n        op.order_id,\n        p.category\n    FROM \n        order_products op\n        JOIN blinkit_products p ON op.product_id = p.product_id\n)\nSELECT DISTINCT \n    order_id AS \"order_id\",\n    category AS \"商品品类\"\nFROM \n    product_info",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:9245ac361405a02e188c4003bebd7ed68c267896a6461168648552b7eac43e7a",
+      "final_oracle_receipt_hash": "sha256:9245ac361405a02e188c4003bebd7ed68c267896a6461168648552b7eac43e7a",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "5c3f2115-c2f5-454f-b9f8-a87e2aa45ac8",
+        "case_id": "26a63a14-b293-53bd-bd0e-536760810e04",
+        "database_id": 24,
+        "run_id": "4008a382-0608-47ee-b54c-df8ad47bb0fb",
+        "task_id": "8b396176-a0f5-4aa8-afb1-82d5311162c3",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "d13b80f4-d9d9-4c61-80e5-64b7623318cd",
+          "resource_revision": 1,
+          "resource_hash": "sha256:15177e6bf15612769abf1c564c89b6b404d2cbf791591ffa3e2cd3e33d01ed01"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "947bd763-5955-4ff3-b885-64ec2d0a084b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c78488e0c27588b7930f552fbecbd848b084d5fa9e0b37488f9bc85a065cbfe9"
+        },
+        "query_evidence_ref": {
+          "resource_id": "42d72e5a-4867-40d3-a401-8c2253c6ef79",
+          "resource_revision": 1,
+          "resource_hash": "sha256:388eb0c11c19228cbf273280103eb8350f1fdb2cdcb9ec63408da9aef14c8955"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2282,
+          "output_tokens": 324
+        },
+        "accepted_at": "2026-08-17T22:42:58.053Z",
+        "receipt_hash": "sha256:696208bbadd9408d73f8494815392c340829e7def58bfdc834cabb587b1b6681"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "4008a382-0608-47ee-b54c-df8ad47bb0fb",
+        "tasks": [
+          {
+            "task_id": "3be0c176-93d0-4eb9-bf8c-7b2f2c5ed488",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "db2d63c7-5569-4088-af0a-08649d0d189d",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:58.053Z"
+          },
+          {
+            "task_id": "69389c62-2669-4368-beab-487bd0b35278",
+            "parent_task_id": "3be0c176-93d0-4eb9-bf8c-7b2f2c5ed488",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "501d26c9-485a-4f08-bbc1-d7dc40276023",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:58.053Z"
+          },
+          {
+            "task_id": "8b396176-a0f5-4aa8-afb1-82d5311162c3",
+            "parent_task_id": "3be0c176-93d0-4eb9-bf8c-7b2f2c5ed488",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "731e1c7a-2f34-4c72-abb6-44b84cd451d0",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:58.053Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "3498aaa2-295e-481a-9da6-59b8d58aa811",
+            "parent_task_id": "3be0c176-93d0-4eb9-bf8c-7b2f2c5ed488",
+            "child_task_id": "8b396176-a0f5-4aa8-afb1-82d5311162c3",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:58.053Z"
+          },
+          {
+            "handoff_id": "5add1e3b-5fb5-42fb-bef6-88410094bd87",
+            "parent_task_id": "3be0c176-93d0-4eb9-bf8c-7b2f2c5ed488",
+            "child_task_id": "69389c62-2669-4368-beab-487bd0b35278",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:58.053Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "3be0c176-93d0-4eb9-bf8c-7b2f2c5ed488",
+            "task_revision": 1,
+            "decision_id": "21b2c0ed-cd47-403f-8fd3-f5ed278a9383",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:d818cb40466933368d7be132bcbde163bb899cacb19ca05bc6c0326e50fc9c1c",
+            "created_at": "2026-08-17T22:42:58.053Z"
+          }
+        ],
+        "trace_hash": "sha256:74376f3f83d87e3c08a0d9cf337b6a426e12586772da63d2d936238a76102fcc"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 26a63a14-b293-53bd-bd0e-536760810e04 is accepted.",
+        "citation_hash": "sha256:388eb0c11c19228cbf273280103eb8350f1fdb2cdcb9ec63408da9aef14c8955"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "2aea43bd-267a-554c-9d53-aeafe188a5b9",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "6f8753ef-f953-4b3f-b326-31b965062c74",
+      "status": "PASS",
+      "first_sql": "SELECT delivery_partner_id FROM blinkit_delivery_performance WHERE EXTRACT(YEAR FROM promised_time::timestamp) = 2023 GROUP BY delivery_partner_id HAVING SUM(CASE WHEN delivery_status = 'On Time' THEN 1 ELSE 0 END)::numeric / COUNT(*) = MAX(SUM(CASE WHEN delivery_status = 'On Time' THEN 1 ELSE 0 END)::numeric / COUNT(*)) OVER () ORDER BY delivery_partner_id",
+      "final_sql": "SELECT delivery_partner_id FROM (SELECT delivery_partner_id, SUM(CASE WHEN delivery_status = 'On Time' THEN 1 ELSE 0 END)::numeric / COUNT(*) AS on_time_rate, RANK() OVER (ORDER BY SUM(CASE WHEN delivery_status = 'On Time' THEN 1 ELSE 0 END)::numeric / COUNT(*) DESC) AS rnk FROM blinkit_delivery_performance WHERE EXTRACT(YEAR FROM promised_time::timestamp) = 2023 GROUP BY delivery_partner_id) t WHERE rnk = 1 ORDER BY delivery_partner_id",
+      "first_verdict": "FAIL",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:b0c46be35c588f734fc68a73754f6e5aa9a3e271311565d5345f10d1dea7bff2",
+      "final_oracle_receipt_hash": "sha256:91bf670edca9482d73fd39aee24f537bf6266acdd399000a8eea2c6757a702bf",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "40e95b19-ad3b-4687-9024-84a259a1cdf4",
+        "case_id": "2aea43bd-267a-554c-9d53-aeafe188a5b9",
+        "database_id": 24,
+        "run_id": "6f8753ef-f953-4b3f-b326-31b965062c74",
+        "task_id": "97d008be-79c5-4d00-b667-17917296c8ad",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "66bd58db-ad9b-4b46-ba68-d5beffb2970c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:b00b6353421a59b7f786fdf4477cbb843c37005f261b2f318e7f1e9a8a23ba32"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "fd573475-33d8-468d-8888-23db51ff9253",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2a4b89a4a8a0f07b3639c00101c5e3555c90577889f9961e254c77c6cd2b2ec7"
+        },
+        "query_evidence_ref": {
+          "resource_id": "8251e4df-b3a1-4162-b545-adb85c46d70a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:669a29f5309b2711eaa995310bd3783e203051aca1d7bfbbedce30cbdf6468ec"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2250,
+          "output_tokens": 264
+        },
+        "accepted_at": "2026-08-17T22:36:25.572Z",
+        "receipt_hash": "sha256:91f383a58bd5046d2f6eda0d70cd3dce0edfa8d9d7b202929465cea959cf4d76"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "6f8753ef-f953-4b3f-b326-31b965062c74",
+        "tasks": [
+          {
+            "task_id": "1e7917ee-7b15-4bd5-b414-dead8a1b5d83",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "557a0715-f298-4a7f-95c6-63f90b358ffa",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.572Z"
+          },
+          {
+            "task_id": "71e9175e-d178-474e-a3fc-7661df4bd9ce",
+            "parent_task_id": "1e7917ee-7b15-4bd5-b414-dead8a1b5d83",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "0e747277-1312-43d4-b296-9d97ef755201",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.572Z"
+          },
+          {
+            "task_id": "97d008be-79c5-4d00-b667-17917296c8ad",
+            "parent_task_id": "1e7917ee-7b15-4bd5-b414-dead8a1b5d83",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "7636274e-5c31-474c-9a13-b3de774c7ed4",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.572Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "616369cf-c277-4a37-8679-8e4e4fe7ec81",
+            "parent_task_id": "1e7917ee-7b15-4bd5-b414-dead8a1b5d83",
+            "child_task_id": "97d008be-79c5-4d00-b667-17917296c8ad",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.572Z"
+          },
+          {
+            "handoff_id": "6e508e5e-b15d-445c-be99-31d222b78ba8",
+            "parent_task_id": "1e7917ee-7b15-4bd5-b414-dead8a1b5d83",
+            "child_task_id": "71e9175e-d178-474e-a3fc-7661df4bd9ce",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.572Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "1e7917ee-7b15-4bd5-b414-dead8a1b5d83",
+            "task_revision": 1,
+            "decision_id": "7626fe01-c552-493a-a2c1-20dcf61c96ad",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:ad6f0dc603119a1c2eeb014de407adad7b5a3a866851a433c059c3ec7d656642",
+            "created_at": "2026-08-17T22:36:25.572Z"
+          }
+        ],
+        "trace_hash": "sha256:80d8a11c337b01eb50df6dfa9d1b483ce13ed5c847b4e0bdabd6e125af6a0874"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 2aea43bd-267a-554c-9d53-aeafe188a5b9 is accepted.",
+        "citation_hash": "sha256:669a29f5309b2711eaa995310bd3783e203051aca1d7bfbbedce30cbdf6468ec"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "3f2231b0-e903-5952-8482-6786837a61cc",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "4df41f95-8ab6-4e9e-b30b-181ab804127e",
+      "status": "PASS",
+      "first_sql": "WITH inventory_summary AS (\n    SELECT\n        product_id,\n        SUM(CAST(damaged_stock AS DOUBLE PRECISION)) AS total_damaged,\n        SUM(CAST(stock_received AS DOUBLE PRECISION)) AS total_received\n    FROM\n        blinkit_inventory\n    GROUP BY\n        product_id\n),\nproduct_damage_ratio AS (\n    SELECT\n        p.product_id,\n        p.category,\n        (\n            CAST(i.total_damaged AS DOUBLE PRECISION) / NULLIF(i.total_received, 0)\n        ) AS \"damage_ratio\"\n    FROM\n        inventory_summary i\n        JOIN blinkit_products p ON i.product_id = p.product_id\n),\ncategory_avg_ratio AS (\n    SELECT\n        category,\n        AVG(\"damage_ratio\") AS \"avg_damage_ratio\"\n    FROM\n        product_damage_ratio\n    GROUP BY\n        category\n)\nSELECT\n    pdr.product_id\nFROM\n    product_damage_ratio pdr\n    JOIN category_avg_ratio car ON pdr.category = car.category\nWHERE\n    pdr.\"damage_ratio\" > car.\"avg_damage_ratio\"",
+      "final_sql": "WITH inventory_summary AS (\n    SELECT\n        product_id,\n        SUM(CAST(damaged_stock AS DOUBLE PRECISION)) AS total_damaged,\n        SUM(CAST(stock_received AS DOUBLE PRECISION)) AS total_received\n    FROM\n        blinkit_inventory\n    GROUP BY\n        product_id\n),\nproduct_damage_ratio AS (\n    SELECT\n        p.product_id,\n        p.category,\n        (\n            CAST(i.total_damaged AS DOUBLE PRECISION) / NULLIF(i.total_received, 0)\n        ) AS \"damage_ratio\"\n    FROM\n        inventory_summary i\n        JOIN blinkit_products p ON i.product_id = p.product_id\n),\ncategory_avg_ratio AS (\n    SELECT\n        category,\n        AVG(\"damage_ratio\") AS \"avg_damage_ratio\"\n    FROM\n        product_damage_ratio\n    GROUP BY\n        category\n)\nSELECT\n    pdr.product_id\nFROM\n    product_damage_ratio pdr\n    JOIN category_avg_ratio car ON pdr.category = car.category\nWHERE\n    pdr.\"damage_ratio\" > car.\"avg_damage_ratio\"",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:628d10365f559feeec3c0c0f41772282c92e8993af13f67eecf004ed3714f1e0",
+      "final_oracle_receipt_hash": "sha256:628d10365f559feeec3c0c0f41772282c92e8993af13f67eecf004ed3714f1e0",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "de3ac6a7-e95b-4a56-a8b8-b4ecd7f78df5",
+        "case_id": "3f2231b0-e903-5952-8482-6786837a61cc",
+        "database_id": 24,
+        "run_id": "4df41f95-8ab6-4e9e-b30b-181ab804127e",
+        "task_id": "d8002b49-bd5e-4c12-89f7-afdabd2754eb",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "309b38bd-9e4b-46b8-b2be-bd48f0775d5d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:211518121d6b660e2ec47ae90c6d70df179c15c55851ec6bd9623c4f7dc376a0"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "70874dc9-2b4e-4987-bae9-e199b8ebb60c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:81e1275a5ecab48853e0edea105f075e5cd80f9dc562138941deefc0ed65af9b"
+        },
+        "query_evidence_ref": {
+          "resource_id": "1161e661-798c-45a3-b555-8ea67024958d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:424f65f508a2b982ee47c73c09115e40842e634298bff716c3355ca639a2c619"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2364,
+          "output_tokens": 380
+        },
+        "accepted_at": "2026-08-17T22:43:00.781Z",
+        "receipt_hash": "sha256:cb7a643455e6373854349ca7bb598546f02a704ec366798af57138ddf0282728"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "4df41f95-8ab6-4e9e-b30b-181ab804127e",
+        "tasks": [
+          {
+            "task_id": "28ba8411-1f47-47ae-be27-3400054e96d5",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "e1c37338-c801-44c9-b431-154678eb9e88",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:43:00.781Z"
+          },
+          {
+            "task_id": "b9681f12-146c-45eb-9287-9e9b8348ed35",
+            "parent_task_id": "28ba8411-1f47-47ae-be27-3400054e96d5",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "b4f20a93-ae81-4932-b0b7-d9fa6708d76e",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:43:00.781Z"
+          },
+          {
+            "task_id": "d8002b49-bd5e-4c12-89f7-afdabd2754eb",
+            "parent_task_id": "28ba8411-1f47-47ae-be27-3400054e96d5",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "e00b1015-1eee-4e4b-813b-b53fbda1a874",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:43:00.781Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "67615132-9227-4b53-b2d4-97461fbe4681",
+            "parent_task_id": "28ba8411-1f47-47ae-be27-3400054e96d5",
+            "child_task_id": "b9681f12-146c-45eb-9287-9e9b8348ed35",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:43:00.781Z"
+          },
+          {
+            "handoff_id": "b4d22ff4-24ed-43df-b547-f38957e15d3d",
+            "parent_task_id": "28ba8411-1f47-47ae-be27-3400054e96d5",
+            "child_task_id": "d8002b49-bd5e-4c12-89f7-afdabd2754eb",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:43:00.781Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "28ba8411-1f47-47ae-be27-3400054e96d5",
+            "task_revision": 1,
+            "decision_id": "3277a8e0-fc0c-4e49-a403-11ca37ca046a",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:772b5af74c4ace41fbf8407d01499a1fddbaaec01356a13c1429c8f96bafc6f9",
+            "created_at": "2026-08-17T22:43:00.781Z"
+          }
+        ],
+        "trace_hash": "sha256:d4937c3d6aa450bb427c999e6d14fabe06cfe134b5c3bfd3bf4636df58ee1954"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 3f2231b0-e903-5952-8482-6786837a61cc is accepted.",
+        "citation_hash": "sha256:424f65f508a2b982ee47c73c09115e40842e634298bff716c3355ca639a2c619"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "4d270cf1-fdd9-5921-b2f7-520b2e73b71a",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "153f3658-e336-4105-9dba-a0e01860baee",
+      "status": "PASS",
+      "first_sql": "with product_sales as (\n    select \n        oi.product_id,\n        sum(cast(oi.quantity as bigint)) as total_quantity\n    from \n        blinkit_order_items oi\n    group by \n        oi.product_id\n),\ncategory_avg as (\n    select \n        p.category,\n        avg(ps.total_quantity) as avg_quantity\n    from \n        product_sales ps\n    join \n        blinkit_products p \n    on \n        ps.product_id = p.product_id\n    group by \n        p.category\n)\nselect \n    ps.product_id\nfrom \n    product_sales ps\njoin \n    blinkit_products p \non \n    ps.product_id = p.product_id\njoin \n    category_avg ca \non \n    p.category = ca.category\nwhere \n    ps.total_quantity > ca.avg_quantity",
+      "final_sql": "with product_sales as (\n    select \n        oi.product_id,\n        sum(cast(oi.quantity as bigint)) as total_quantity\n    from \n        blinkit_order_items oi\n    group by \n        oi.product_id\n),\ncategory_avg as (\n    select \n        p.category,\n        avg(ps.total_quantity) as avg_quantity\n    from \n        product_sales ps\n    join \n        blinkit_products p \n    on \n        ps.product_id = p.product_id\n    group by \n        p.category\n)\nselect \n    ps.product_id\nfrom \n    product_sales ps\njoin \n    blinkit_products p \non \n    ps.product_id = p.product_id\njoin \n    category_avg ca \non \n    p.category = ca.category\nwhere \n    ps.total_quantity > ca.avg_quantity",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:8bf3e5a0446ee00f7f246a8effa68699a361ee79f53c83f7a2f0a6d7c4ab1d37",
+      "final_oracle_receipt_hash": "sha256:8bf3e5a0446ee00f7f246a8effa68699a361ee79f53c83f7a2f0a6d7c4ab1d37",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "d37f3a13-ce75-4f9d-92c4-f6e24bfeefec",
+        "case_id": "4d270cf1-fdd9-5921-b2f7-520b2e73b71a",
+        "database_id": 24,
+        "run_id": "153f3658-e336-4105-9dba-a0e01860baee",
+        "task_id": "579e382a-e8ff-4d92-b8c2-663bba375bc0",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "de6c9816-2e62-4e33-b687-6b6a01813c9b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7f48b07a61aeae3ee9dc577af38e3b9b70efd465a7bfb11cd67abe903e2212b1"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "3cc72726-e82a-45d2-b496-cb2c448c0f23",
+          "resource_revision": 1,
+          "resource_hash": "sha256:e235a05875044a9a4f823b1310720f4153742b402072f28c0f17cbd6323ba7ca"
+        },
+        "query_evidence_ref": {
+          "resource_id": "ba6e0c1e-54ea-4e0d-ad51-970f3fe9f41f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:08c97a715f5cb8e8cfc875ef06624c4fd6c7a81dd4b6d9b24cc609f29d081e1f"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2210,
+          "output_tokens": 219
+        },
+        "accepted_at": "2026-08-17T22:42:56.465Z",
+        "receipt_hash": "sha256:2817426294dedca781863d8015ee438bcfac6a5fb0b1002f0548d689c7d5f1a8"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "153f3658-e336-4105-9dba-a0e01860baee",
+        "tasks": [
+          {
+            "task_id": "2fc6821c-e214-4829-99ba-de74979fc765",
+            "parent_task_id": "6838d22b-05bc-4c5c-a285-010ffa552407",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "2e8eb761-60b9-453a-94d9-8bb6a2f90340",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:56.465Z"
+          },
+          {
+            "task_id": "579e382a-e8ff-4d92-b8c2-663bba375bc0",
+            "parent_task_id": "6838d22b-05bc-4c5c-a285-010ffa552407",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "531bcdd3-7a0e-42c2-8f61-8fee965478e3",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:56.465Z"
+          },
+          {
+            "task_id": "6838d22b-05bc-4c5c-a285-010ffa552407",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "513fdd7f-e738-4955-a5da-f4f35c02fc26",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:42:56.465Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "10382b41-11ff-4770-850e-9981da515cab",
+            "parent_task_id": "6838d22b-05bc-4c5c-a285-010ffa552407",
+            "child_task_id": "579e382a-e8ff-4d92-b8c2-663bba375bc0",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:56.465Z"
+          },
+          {
+            "handoff_id": "2528b49b-3a95-4b21-af1a-5fd72646e75d",
+            "parent_task_id": "6838d22b-05bc-4c5c-a285-010ffa552407",
+            "child_task_id": "2fc6821c-e214-4829-99ba-de74979fc765",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:42:56.465Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "6838d22b-05bc-4c5c-a285-010ffa552407",
+            "task_revision": 1,
+            "decision_id": "3865a2f8-f642-4afe-b89f-5b30848a95f1",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:163657a565f82dc92bccccf0721f5db7c75230cd7758cd607421bc09e7443c82",
+            "created_at": "2026-08-17T22:42:56.465Z"
+          }
+        ],
+        "trace_hash": "sha256:915a091ed07a03e3eff5638eed052a0e4078980a0a0e5d1ee75f15e5d1c97c40"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 4d270cf1-fdd9-5921-b2f7-520b2e73b71a is accepted.",
+        "citation_hash": "sha256:08c97a715f5cb8e8cfc875ef06624c4fd6c7a81dd4b6d9b24cc609f29d081e1f"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "51a5c7bb-d104-5f9c-985a-9b6a202f8799",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "1636191a-7ea1-43b7-b954-e4e1cc66e040",
+      "status": "PASS",
+      "first_sql": "SELECT delivery_partner_id, COUNT(*) FILTER (WHERE delivery_status <> 'On Time') AS abnormal_orders FROM blinkit_delivery_performance GROUP BY delivery_partner_id HAVING COUNT(*) FILTER (WHERE delivery_status = 'On Time')::numeric / COUNT(*)::numeric < 0.90 ORDER BY delivery_partner_id",
+      "final_sql": "SELECT delivery_partner_id, COUNT(*) FILTER (WHERE delivery_status <> 'On Time') AS abnormal_orders FROM blinkit_delivery_performance GROUP BY delivery_partner_id HAVING COUNT(*) FILTER (WHERE delivery_status = 'On Time')::numeric / COUNT(*)::numeric < 0.90 ORDER BY delivery_partner_id",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:756e759f42b4738c9556ab0410baf8c9f666d12c5b35c434e771044ebe84c500",
+      "final_oracle_receipt_hash": "sha256:756e759f42b4738c9556ab0410baf8c9f666d12c5b35c434e771044ebe84c500",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "63829661-5b78-4ae8-9d3b-91a8bc00406e",
+        "case_id": "51a5c7bb-d104-5f9c-985a-9b6a202f8799",
+        "database_id": 24,
+        "run_id": "1636191a-7ea1-43b7-b954-e4e1cc66e040",
+        "task_id": "be0633b4-948b-4907-94b6-93a0447a2ea5",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "1181e124-006c-429a-8a07-b97065014722",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bf5a9d4cf0c68e3bfdcfd1561a1b683b0d36d71b5b5ba676cc8d292384db2267"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "cddc01ff-fc91-4762-9be3-dc1d4bce770a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1472e78a664ab31d2d301d6d5342b11e20fed0471b37b9dd83441b329ccfdb84"
+        },
+        "query_evidence_ref": {
+          "resource_id": "27df866d-65db-4bf5-b0b0-fa08dcb20141",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5f9da516fd201da5cdd90dfcaaaecb4e51a521f605567ab9b90c9677f09efc50"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2064,
+          "output_tokens": 87
+        },
+        "accepted_at": "2026-08-17T22:36:27.756Z",
+        "receipt_hash": "sha256:0f0cb875e169d03b7ecb0ff1068b0003887936a5e4f808968a228213ac824040"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "1636191a-7ea1-43b7-b954-e4e1cc66e040",
+        "tasks": [
+          {
+            "task_id": "46a89191-c8e7-4acd-8a0e-eccca9ce65fd",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "a1f6d5cc-4078-416f-a926-f56452041e44",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.756Z"
+          },
+          {
+            "task_id": "be0633b4-948b-4907-94b6-93a0447a2ea5",
+            "parent_task_id": "46a89191-c8e7-4acd-8a0e-eccca9ce65fd",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "b9ed3ce0-fe87-41de-9099-67e79cacd741",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.756Z"
+          },
+          {
+            "task_id": "cecb9e41-e443-49ed-a52e-acba5d586911",
+            "parent_task_id": "46a89191-c8e7-4acd-8a0e-eccca9ce65fd",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "3301869e-1b09-4888-9d7a-c6ab9c99f40f",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.756Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "3066e102-777f-4817-b4ef-1c6a57fd2378",
+            "parent_task_id": "46a89191-c8e7-4acd-8a0e-eccca9ce65fd",
+            "child_task_id": "cecb9e41-e443-49ed-a52e-acba5d586911",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:27.756Z"
+          },
+          {
+            "handoff_id": "80b16d97-4c19-4bf6-aee5-e4aea80ae79c",
+            "parent_task_id": "46a89191-c8e7-4acd-8a0e-eccca9ce65fd",
+            "child_task_id": "be0633b4-948b-4907-94b6-93a0447a2ea5",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:27.756Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "46a89191-c8e7-4acd-8a0e-eccca9ce65fd",
+            "task_revision": 1,
+            "decision_id": "7cab8456-8490-4703-9537-4b7d50562979",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:9829f7d20afe40f2e9cddbea1dbe5e7bdbbe4b346f648d451da0969133258d1d",
+            "created_at": "2026-08-17T22:36:27.756Z"
+          }
+        ],
+        "trace_hash": "sha256:57ffde514923108209b054079fffee2081b98a866e4959764efc38897b384d95"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 51a5c7bb-d104-5f9c-985a-9b6a202f8799 is accepted.",
+        "citation_hash": "sha256:5f9da516fd201da5cdd90dfcaaaecb4e51a521f605567ab9b90c9677f09efc50"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "59a651ec-a6fb-5edf-b133-26a008fb24f2",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "20fd3454-2a1a-43fe-bcbe-86fa6bf9e0a6",
+      "status": "PASS",
+      "first_sql": "SELECT p.category AS category, o.payment_method AS payment_method, SUM(oi.quantity * oi.unit_price) AS total_sales, AVG(SUM(oi.quantity * oi.unit_price)) OVER (PARTITION BY p.category) AS avg_category_sales FROM blinkit_order_items oi JOIN blinkit_orders o ON oi.order_id = o.order_id JOIN blinkit_products p ON oi.product_id = p.product_id GROUP BY p.category, o.payment_method ORDER BY p.category, o.payment_method;",
+      "final_sql": "SELECT p.category AS category, o.payment_method AS payment_method, SUM(oi.quantity * oi.unit_price) AS total_sales, AVG(SUM(oi.quantity * oi.unit_price)) OVER (PARTITION BY p.category) AS avg_category_sales FROM blinkit_order_items oi JOIN blinkit_orders o ON oi.order_id = o.order_id JOIN blinkit_products p ON oi.product_id = p.product_id GROUP BY p.category, o.payment_method ORDER BY p.category, o.payment_method;",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:926d6981c7450f2a0bd66b0b498f1ec35b24ece2e9e7b1e4842d44bd0ab459ca",
+      "final_oracle_receipt_hash": "sha256:926d6981c7450f2a0bd66b0b498f1ec35b24ece2e9e7b1e4842d44bd0ab459ca",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "d34c959d-6b61-4bc0-92f2-e68707201e5b",
+        "case_id": "59a651ec-a6fb-5edf-b133-26a008fb24f2",
+        "database_id": 24,
+        "run_id": "20fd3454-2a1a-43fe-bcbe-86fa6bf9e0a6",
+        "task_id": "411d237a-4295-4e8a-950d-4b6b4363ccdb",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "e37735b4-235b-4b93-87ac-42a49a3473a4",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bcac842102ab97b4dd7a3e5cd0c091bd68c3051892c47c763284d361d1903ecc"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "36afc77c-961b-4a6a-adef-3a9dbd61db62",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ba70b40740b202d14b1cd246d89c042b7e5b3c4c18952581e2159b8a3dbe30e8"
+        },
+        "query_evidence_ref": {
+          "resource_id": "e41309e2-ed0d-4c60-8258-66c3a2c7521d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3d46c6c0de94c6247310e171dc4561bf21f945b3e60a7099b2785367ad2f6b67"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2063,
+          "output_tokens": 131
+        },
+        "accepted_at": "2026-08-17T22:36:32.993Z",
+        "receipt_hash": "sha256:8ebdf9159519ef51acf327dfcece5a38e99cd5b46404b6f1ab94157bd23377c2"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "20fd3454-2a1a-43fe-bcbe-86fa6bf9e0a6",
+        "tasks": [
+          {
+            "task_id": "411d237a-4295-4e8a-950d-4b6b4363ccdb",
+            "parent_task_id": "76ee117f-157f-4a89-96c9-28ee5715af17",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "a19044ca-588d-4ea9-9975-218f73394c03",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:32.993Z"
+          },
+          {
+            "task_id": "6fbe7fd7-c01a-4fbb-9c2a-659e69654ad1",
+            "parent_task_id": "76ee117f-157f-4a89-96c9-28ee5715af17",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "d2fb97fe-4f97-4bf5-b1c9-cb8d3688021e",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:32.993Z"
+          },
+          {
+            "task_id": "76ee117f-157f-4a89-96c9-28ee5715af17",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "f2a70225-e427-4123-92fa-b225ced3b53b",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:32.993Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "4eb102a1-9cea-4109-b5c1-5b8e8867b783",
+            "parent_task_id": "76ee117f-157f-4a89-96c9-28ee5715af17",
+            "child_task_id": "411d237a-4295-4e8a-950d-4b6b4363ccdb",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:32.993Z"
+          },
+          {
+            "handoff_id": "5ad8e3cd-c822-48f3-81c1-ab6a424109a5",
+            "parent_task_id": "76ee117f-157f-4a89-96c9-28ee5715af17",
+            "child_task_id": "6fbe7fd7-c01a-4fbb-9c2a-659e69654ad1",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:32.993Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "76ee117f-157f-4a89-96c9-28ee5715af17",
+            "task_revision": 1,
+            "decision_id": "e89cb026-8405-4df3-9c0b-e56cab6bf8b3",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:54dc6717773e664491295a1700d8d7ae31ae08e830f2651ab1157392a8209b05",
+            "created_at": "2026-08-17T22:36:32.993Z"
+          }
+        ],
+        "trace_hash": "sha256:3e424b11934f9493e71e9fcc7a27f494ede1d9980d46b77af3e970757623c9f5"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 59a651ec-a6fb-5edf-b133-26a008fb24f2 is accepted.",
+        "citation_hash": "sha256:3d46c6c0de94c6247310e171dc4561bf21f945b3e60a7099b2785367ad2f6b67"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "626e3e6a-ad7b-51c0-acd9-82b4998fbb3c",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "c599de7b-36dd-402f-a125-af00c99427bd",
+      "status": "PASS",
+      "first_sql": "select result.customer_id, replace(replace(result.customer_name, 'â€™', '’'), 'â€“', '–') as customer_name, result.email, ('+' || result.phone::text) as phone, replace(replace(result.address, 'â€™', '’'), 'â€“', '–') as address, replace(replace(result.area, 'â€™', '’'), 'â€“', '–') as area, lpad(result.pincode::text, 6, '0') as pincode, result.registration_date, result.customer_segment, result.total_orders, result.avg_order_value from (with\n-- 步骤1: 筛选2024年注册客户并提取注册月份\nregistered_2024 as (\nselect\ncustomer_id,\nsubstr(registration_date, 1, 7) as reg_month\nfrom\nblinkit_customers\nwhere\nsubstr(registration_date, 1, 4) = '2024'\n),\n\n-- 步骤2: 计算客户当月订单总金额\ncustomer_monthly_orders as (\nselect\nr.customer_id,\nr.reg_month,\nsum(cast(o.order_total as decimal)) as total_amount\nfrom\nregistered_2024 r\njoin\nblinkit_orders o\non r.customer_id = o.customer_id\nand substr(o.order_date, 1, 7) = r.reg_month\ngroup by\nr.customer_id, r.reg_month\n),\n\n-- 步骤3: 计算各月份平均订单金额\nmonthly_avg as (\nselect\nreg_month,\navg(total_amount) as avg_amount\nfrom\ncustomer_monthly_orders\ngroup by\nreg_month\n)\n\n-- 最终结果: 获取超过月均值的客户详细信息\nselect\nc.*\nfrom\nblinkit_customers c\ninner join\ncustomer_monthly_orders cmo\non c.customer_id = cmo.customer_id\ninner join\nmonthly_avg ma\non cmo.reg_month = ma.reg_month\nand cmo.total_amount > ma.avg_amount) as result",
+      "final_sql": "select result.customer_id, replace(replace(result.customer_name, 'â€™', '’'), 'â€“', '–') as customer_name, result.email, ('+' || result.phone::text) as phone, replace(replace(result.address, 'â€™', '’'), 'â€“', '–') as address, replace(replace(result.area, 'â€™', '’'), 'â€“', '–') as area, lpad(result.pincode::text, 6, '0') as pincode, result.registration_date, result.customer_segment, result.total_orders, result.avg_order_value from (with\n-- 步骤1: 筛选2024年注册客户并提取注册月份\nregistered_2024 as (\nselect\ncustomer_id,\nsubstr(registration_date, 1, 7) as reg_month\nfrom\nblinkit_customers\nwhere\nsubstr(registration_date, 1, 4) = '2024'\n),\n\n-- 步骤2: 计算客户当月订单总金额\ncustomer_monthly_orders as (\nselect\nr.customer_id,\nr.reg_month,\nsum(cast(o.order_total as decimal)) as total_amount\nfrom\nregistered_2024 r\njoin\nblinkit_orders o\non r.customer_id = o.customer_id\nand substr(o.order_date, 1, 7) = r.reg_month\ngroup by\nr.customer_id, r.reg_month\n),\n\n-- 步骤3: 计算各月份平均订单金额\nmonthly_avg as (\nselect\nreg_month,\navg(total_amount) as avg_amount\nfrom\ncustomer_monthly_orders\ngroup by\nreg_month\n)\n\n-- 最终结果: 获取超过月均值的客户详细信息\nselect\nc.*\nfrom\nblinkit_customers c\ninner join\ncustomer_monthly_orders cmo\non c.customer_id = cmo.customer_id\ninner join\nmonthly_avg ma\non cmo.reg_month = ma.reg_month\nand cmo.total_amount > ma.avg_amount) as result",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:098c2a5b3ce45276c880c2363de86094ac4dd660ca1c30d6ecc2063ba4c30fe2",
+      "final_oracle_receipt_hash": "sha256:098c2a5b3ce45276c880c2363de86094ac4dd660ca1c30d6ecc2063ba4c30fe2",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "6819477d-c766-4b08-af53-c66e11a5a1f7",
+        "case_id": "626e3e6a-ad7b-51c0-acd9-82b4998fbb3c",
+        "database_id": 24,
+        "run_id": "c599de7b-36dd-402f-a125-af00c99427bd",
+        "task_id": "444dbe1e-6c0d-4fce-9c0b-506cfae0bdb9",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "a5174297-0781-4d53-b778-90f95ef573c5",
+          "resource_revision": 1,
+          "resource_hash": "sha256:54790555ec75524879f056b65cb9feb06b71bf694524f9a8bb7dde5cfb10eaa1"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "e1d625b5-f9e2-4a0f-a36b-3fe949156796",
+          "resource_revision": 1,
+          "resource_hash": "sha256:41ba9cbb12890e66db0eb890c431ef2a89e8af1d3f434478d6082afcae80bb02"
+        },
+        "query_evidence_ref": {
+          "resource_id": "2473aa2f-a19d-4b6a-be3b-410c0b76c3b5",
+          "resource_revision": 1,
+          "resource_hash": "sha256:dbd967c5d7adbe32ccfb8923dc1db3871d842038f932f8c0e499f0bd991c373b"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2357,
+          "output_tokens": 388
+        },
+        "accepted_at": "2026-08-17T22:43:02.956Z",
+        "receipt_hash": "sha256:074162b179c4ee812f5c75d29940d20b9241487cf3efff9425fb3639e543e3af"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "c599de7b-36dd-402f-a125-af00c99427bd",
+        "tasks": [
+          {
+            "task_id": "444dbe1e-6c0d-4fce-9c0b-506cfae0bdb9",
+            "parent_task_id": "6d87c8b9-80a8-47b0-88d3-58c377ddda40",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "bbdcf6e6-e979-4c78-ac97-6f4947e6929a",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:43:02.956Z"
+          },
+          {
+            "task_id": "4ea50939-8455-43e4-a6a1-27784e3f286b",
+            "parent_task_id": "6d87c8b9-80a8-47b0-88d3-58c377ddda40",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "3701a5d5-0a02-4458-8b6f-dd8bae135424",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:43:02.956Z"
+          },
+          {
+            "task_id": "6d87c8b9-80a8-47b0-88d3-58c377ddda40",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "663c1de6-31cb-40ac-9ec6-85845996b7d9",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:43:02.956Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "236fdb1d-d5f5-47f7-be5f-3eaf06efeda6",
+            "parent_task_id": "6d87c8b9-80a8-47b0-88d3-58c377ddda40",
+            "child_task_id": "4ea50939-8455-43e4-a6a1-27784e3f286b",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:43:02.956Z"
+          },
+          {
+            "handoff_id": "90b8ed62-f9b2-4163-b79e-136677f503d5",
+            "parent_task_id": "6d87c8b9-80a8-47b0-88d3-58c377ddda40",
+            "child_task_id": "444dbe1e-6c0d-4fce-9c0b-506cfae0bdb9",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:43:02.956Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "6d87c8b9-80a8-47b0-88d3-58c377ddda40",
+            "task_revision": 1,
+            "decision_id": "d4765095-76b4-4fd6-b84a-a2990b92efc7",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:ffa7f59263527ebac07adc7f9dc78001eb7d9a47c4a41672ae06263f7b1911ad",
+            "created_at": "2026-08-17T22:43:02.956Z"
+          }
+        ],
+        "trace_hash": "sha256:384557fdf38a6d07a642131c5bc8b9bcfe84b0d846625886f8a3a433fc00dd23"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 626e3e6a-ad7b-51c0-acd9-82b4998fbb3c is accepted.",
+        "citation_hash": "sha256:dbd967c5d7adbe32ccfb8923dc1db3871d842038f932f8c0e499f0bd991c373b"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "7d39b06c-696d-54d1-ac8f-ee3ec3536c04",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "06d8cec3-5ce1-4f76-872b-6b0c75792117",
+      "status": "PASS",
+      "first_sql": "SELECT COUNT(*) FROM blinkit_customers c WHERE EXISTS (SELECT 1 FROM blinkit_orders o WHERE o.customer_id = c.customer_id AND o.order_date = (SELECT MAX(order_date) FROM blinkit_orders) AND o.delivery_status = 'Slightly Delayed')",
+      "final_sql": "SELECT COUNT(*) FROM (SELECT customer_id, delivery_status, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date DESC) AS rn FROM blinkit_orders) t WHERE rn = 1 AND delivery_status = 'Slightly Delayed';",
+      "first_verdict": "FAIL",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:069df1b8d775c2fb7b39400c3e16282d18447af33eec48a402a55dc5d7482f77",
+      "final_oracle_receipt_hash": "sha256:0d874fdcb9b80f2590bd32c9365227779639007c7f5e23802c0b93d20f061ff9",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "a57f1d65-2ed5-421d-9a88-0a096ad5f815",
+        "case_id": "7d39b06c-696d-54d1-ac8f-ee3ec3536c04",
+        "database_id": 24,
+        "run_id": "06d8cec3-5ce1-4f76-872b-6b0c75792117",
+        "task_id": "a4c291fa-839e-4590-ba06-cce2b6325a02",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "55fa8ab0-27eb-402c-8873-a7c4e77d5974",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7bb7c34835597629caa8056a136ff5486c69a32cb5e22c0f6de6d3f68634a129"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "b3a4b559-f6b3-4b72-a595-d6a4cedacf11",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7e68a2626e41af2685b42b85c8715fb4fd4d8e35fcbd481727c8014b54ded9e1"
+        },
+        "query_evidence_ref": {
+          "resource_id": "58980272-2390-4ae5-92f7-b8d887a19e6d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:34db7237610c4af55238adebc2f8170b788439a4cd3c2cb6f68bdec76397aa23"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2232,
+          "output_tokens": 252
+        },
+        "accepted_at": "2026-08-17T22:36:27.834Z",
+        "receipt_hash": "sha256:765c30a90b65d2df86ef7bff5c31a30c98d192fd4c7521ca00034b2cd152ec9d"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "06d8cec3-5ce1-4f76-872b-6b0c75792117",
+        "tasks": [
+          {
+            "task_id": "8951ab6d-a56d-4e3f-8ccf-6ce5c54fb6c3",
+            "parent_task_id": "c1a226b0-79c9-4de1-b95c-e405c606722d",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "77889710-a9e3-4410-9049-1e99fc96b6a8",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.834Z"
+          },
+          {
+            "task_id": "a4c291fa-839e-4590-ba06-cce2b6325a02",
+            "parent_task_id": "c1a226b0-79c9-4de1-b95c-e405c606722d",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "aa2cd6da-e5f7-41f8-ae3c-b895ec4811b4",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.834Z"
+          },
+          {
+            "task_id": "c1a226b0-79c9-4de1-b95c-e405c606722d",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "dddeba98-d31a-4030-bb32-e4e8518f45ab",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.834Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "45621baa-6e1d-4ed9-bc07-a25febf042fe",
+            "parent_task_id": "c1a226b0-79c9-4de1-b95c-e405c606722d",
+            "child_task_id": "8951ab6d-a56d-4e3f-8ccf-6ce5c54fb6c3",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:27.834Z"
+          },
+          {
+            "handoff_id": "97c11b6c-1c36-4d84-9163-c55461b4fe8d",
+            "parent_task_id": "c1a226b0-79c9-4de1-b95c-e405c606722d",
+            "child_task_id": "a4c291fa-839e-4590-ba06-cce2b6325a02",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:27.834Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "c1a226b0-79c9-4de1-b95c-e405c606722d",
+            "task_revision": 1,
+            "decision_id": "70077666-27b9-4af7-ac17-226a21675ab4",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:2519e7d7d4aa3730b57abb98b0e0b6b023b7223cf0e6ebe33b2970017aba6d18",
+            "created_at": "2026-08-17T22:36:27.834Z"
+          }
+        ],
+        "trace_hash": "sha256:4c363e964c6fd6e85485bafeeb74a9f3c54f356b70fa61f4572c5e22bba795c5"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 7d39b06c-696d-54d1-ac8f-ee3ec3536c04 is accepted.",
+        "citation_hash": "sha256:34db7237610c4af55238adebc2f8170b788439a4cd3c2cb6f68bdec76397aa23"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "9548d4f9-0a90-51a3-b2f2-5aff62d1c88f",
+      "database_id": "falcon_db_24",
+      "registry": "TUNING",
+      "run_id": "6adfd02a-433f-467e-9981-f2622828cf6b",
+      "status": "PASS",
+      "first_sql": "SELECT p.product_id FROM blinkit_products p WHERE p.margin_percentage > (SELECT AVG(p2.margin_percentage) FROM blinkit_products p2 WHERE p2.brand = p.brand);",
+      "final_sql": "SELECT p.product_id FROM blinkit_products p WHERE p.margin_percentage > (SELECT AVG(p2.margin_percentage) FROM blinkit_products p2 WHERE p2.brand = p.brand);",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:0d874fdcb9b80f2590bd32c9365227779639007c7f5e23802c0b93d20f061ff9",
+      "final_oracle_receipt_hash": "sha256:0d874fdcb9b80f2590bd32c9365227779639007c7f5e23802c0b93d20f061ff9",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "6af68600-8823-46f0-81de-db18bd9d7abe",
+        "case_id": "9548d4f9-0a90-51a3-b2f2-5aff62d1c88f",
+        "database_id": 24,
+        "run_id": "6adfd02a-433f-467e-9981-f2622828cf6b",
+        "task_id": "066a755f-d891-42ab-a4a5-54b09476da9a",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "f986b25f-ec55-4ee5-93f6-ebf065adda36",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f88f5269f5b8536cd30a3e92969fe9682f6a164cc93b50c922789fd99507de4c"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "598753ae-7d8f-42a0-9694-d15958afa63d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:90356778a01a725e5076fba3d514f1c4e9abcf527d832d595ace6309dceb51d2"
+        },
+        "query_evidence_ref": {
+          "resource_id": "8c4736f5-5128-4a34-b36a-03bd2ffff6e9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:530e713f4ec849057e7896d5c6c95f7565a7797df6cddfce7dc67b6fbe3846ae"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2062,
+          "output_tokens": 61
+        },
+        "accepted_at": "2026-08-17T22:36:33.896Z",
+        "receipt_hash": "sha256:43fa9859faadf594ccfbbba5155f0d1af91fd339f365c10c730b1365233c4211"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "6adfd02a-433f-467e-9981-f2622828cf6b",
+        "tasks": [
+          {
+            "task_id": "066a755f-d891-42ab-a4a5-54b09476da9a",
+            "parent_task_id": "34bff72f-c197-466a-84fa-f2b4d515b268",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "168d85d9-8ea3-41a4-964b-8b4feb556de0",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:33.896Z"
+          },
+          {
+            "task_id": "3497c391-824a-45e4-ba33-4f28adc08e52",
+            "parent_task_id": "34bff72f-c197-466a-84fa-f2b4d515b268",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "fcf3a7b9-389b-404d-9e58-dcbaf7fd82f1",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:33.896Z"
+          },
+          {
+            "task_id": "34bff72f-c197-466a-84fa-f2b4d515b268",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "5893a5b8-9b15-4aeb-9998-8c9037f30cac",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:33.896Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "b35a5d3c-cf50-46c6-bbc1-8b3294ac8be5",
+            "parent_task_id": "34bff72f-c197-466a-84fa-f2b4d515b268",
+            "child_task_id": "3497c391-824a-45e4-ba33-4f28adc08e52",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:33.896Z"
+          },
+          {
+            "handoff_id": "d48ad854-3996-479a-92c4-c295d1284095",
+            "parent_task_id": "34bff72f-c197-466a-84fa-f2b4d515b268",
+            "child_task_id": "066a755f-d891-42ab-a4a5-54b09476da9a",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:33.896Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "34bff72f-c197-466a-84fa-f2b4d515b268",
+            "task_revision": 1,
+            "decision_id": "1fc12e72-0120-4284-bd5b-66d77876b587",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:02f36ff5637744723d278a167d11e3b64df5d4e6b7a0f77cd8e6ac60caa8964f",
+            "created_at": "2026-08-17T22:36:33.896Z"
+          }
+        ],
+        "trace_hash": "sha256:fb4eb487581ffb30a09b4c666d1a5db95ce97d02b81c484d9f751fc7218c05a2"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case 9548d4f9-0a90-51a3-b2f2-5aff62d1c88f is accepted.",
+        "citation_hash": "sha256:530e713f4ec849057e7896d5c6c95f7565a7797df6cddfce7dc67b6fbe3846ae"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "aa5d9332-76a2-589f-8837-9fbf73c2531a",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "c4f3081e-e085-4d39-bd26-0d186ec57de4",
+      "status": "PASS",
+      "first_sql": "WITH p AS (\n  SELECT product_id, brand, shelf_life_days::numeric AS sld\n  FROM blinkit_products\n), agg AS (\n  SELECT product_id, SUM(damaged_stock::numeric) AS dmg, SUM(stock_received::numeric) AS rcv\n  FROM blinkit_inventory\n  GROUP BY product_id\n), dmg_rate AS (\n  SELECT a.product_id, p.brand, a.dmg / NULLIF(a.dmg + a.rcv, 0) AS rate, p.sld\n  FROM agg a\n  JOIN p ON p.product_id = a.product_id\n  WHERE a.dmg / NULLIF(a.dmg + a.rcv, 0) > 0.05\n), brand_stats AS (\n  SELECT brand, COUNT(*) AS product_count, AVG(sld) AS avg_shelf_life\n  FROM dmg_rate\n  GROUP BY brand\n)\nSELECT brand, product_count, avg_shelf_life\nFROM brand_stats\nORDER BY avg_shelf_life DESC, brand ASC;",
+      "final_sql": "WITH p AS (\n  SELECT product_id, brand, shelf_life_days::numeric AS sld\n  FROM blinkit_products\n), agg AS (\n  SELECT product_id, SUM(damaged_stock::numeric) AS dmg, SUM(stock_received::numeric) AS rcv\n  FROM blinkit_inventory\n  GROUP BY product_id\n), dmg_rate AS (\n  SELECT a.product_id, p.brand, a.dmg / NULLIF(a.dmg + a.rcv, 0) AS rate, p.sld\n  FROM agg a\n  JOIN p ON p.product_id = a.product_id\n  WHERE a.dmg / NULLIF(a.dmg + a.rcv, 0) > 0.05\n), brand_stats AS (\n  SELECT brand, COUNT(*) AS product_count, AVG(sld) AS avg_shelf_life\n  FROM dmg_rate\n  GROUP BY brand\n)\nSELECT brand, product_count, avg_shelf_life\nFROM brand_stats\nORDER BY avg_shelf_life DESC, brand ASC;",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:d9336a7642fa759a074a173b973d955ae8b2796b2cb4094359cfc4e7727f6d3c",
+      "final_oracle_receipt_hash": "sha256:d9336a7642fa759a074a173b973d955ae8b2796b2cb4094359cfc4e7727f6d3c",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "a48c5696-ebe7-446e-9ef4-3767fb3e05a8",
+        "case_id": "aa5d9332-76a2-589f-8837-9fbf73c2531a",
+        "database_id": 24,
+        "run_id": "c4f3081e-e085-4d39-bd26-0d186ec57de4",
+        "task_id": "e08fed40-e850-4a27-8bd7-79a4c547b66b",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "2b434773-b8d3-4945-9986-75b886112a4c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1d63a211fa2a311f03905fb0bab2cfbe99bf3227873a046f47059c5218db3fb4"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "5f5621bb-a152-47f9-bbec-2dfa1c1ccdd5",
+          "resource_revision": 1,
+          "resource_hash": "sha256:14038dc8df642b75d3e1e6677cadd00249fd8a5e8c6bd90b85a453c5ba460024"
+        },
+        "query_evidence_ref": {
+          "resource_id": "e6c65557-e00a-4875-a016-a4838c1227de",
+          "resource_revision": 1,
+          "resource_hash": "sha256:491994016c7fa213db3a8e4c7cdba97191ed6f93655900ad4483294aa29b2b97"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2072,
+          "output_tokens": 248
+        },
+        "accepted_at": "2026-08-17T22:36:27.269Z",
+        "receipt_hash": "sha256:9d7671355c5de1e60ee0e5fd0675084c6b10c38133dc87d267bc72f0cda2c122"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "c4f3081e-e085-4d39-bd26-0d186ec57de4",
+        "tasks": [
+          {
+            "task_id": "05199506-661f-4dbf-b283-a274f9c7506b",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "d35ad137-22a9-4c49-bcf2-c89824d6c747",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.269Z"
+          },
+          {
+            "task_id": "dd274c71-3395-4fb1-b7f2-289ff3fa40de",
+            "parent_task_id": "05199506-661f-4dbf-b283-a274f9c7506b",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "009e2370-ed16-477a-b30b-3c88d7ca3604",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.269Z"
+          },
+          {
+            "task_id": "e08fed40-e850-4a27-8bd7-79a4c547b66b",
+            "parent_task_id": "05199506-661f-4dbf-b283-a274f9c7506b",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "606d6b15-e4cf-4468-b536-5081c9d9568b",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:27.269Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "0fdf01fc-a1c3-404c-ba26-378deb536a29",
+            "parent_task_id": "05199506-661f-4dbf-b283-a274f9c7506b",
+            "child_task_id": "dd274c71-3395-4fb1-b7f2-289ff3fa40de",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:27.269Z"
+          },
+          {
+            "handoff_id": "bf2d4a31-c737-4e7c-a279-aa7b29104567",
+            "parent_task_id": "05199506-661f-4dbf-b283-a274f9c7506b",
+            "child_task_id": "e08fed40-e850-4a27-8bd7-79a4c547b66b",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:27.269Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "05199506-661f-4dbf-b283-a274f9c7506b",
+            "task_revision": 1,
+            "decision_id": "ca860a55-767b-44bb-b8fb-42f919fbe3b2",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:6e52086a7be0158b4ee575c5162e8f5b8f50d7514866d2ceb49b94991cf5bdb7",
+            "created_at": "2026-08-17T22:36:27.269Z"
+          }
+        ],
+        "trace_hash": "sha256:7b3f2197d5d1dad04bce79e8e6fe5bc4c9302fa20b56f7efbeb17ff99a32c388"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case aa5d9332-76a2-589f-8837-9fbf73c2531a is accepted.",
+        "citation_hash": "sha256:491994016c7fa213db3a8e4c7cdba97191ed6f93655900ad4483294aa29b2b97"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "abd87f2d-15e7-5646-9889-7c4164af9279",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "2be02632-592b-42e6-ab02-b2d709e0482b",
+      "status": "PASS",
+      "first_sql": "WITH cash_items AS (\n    SELECT oi.product_id, oi.quantity, p.brand\n    FROM blinkit_order_items oi\n    JOIN blinkit_orders o ON o.order_id = oi.order_id\n    JOIN blinkit_products p ON p.product_id = oi.product_id\n    WHERE o.payment_method = 'Cash'\n),\nproduct_contrib AS (\n    SELECT product_id, brand, COUNT(*) AS occurrence_count, SUM(quantity) AS quantity_sum\n    FROM cash_items\n    GROUP BY product_id, brand\n),\nbrand_contrib AS (\n    SELECT brand, SUM(occurrence_count * quantity_sum) AS total_contribution\n    FROM product_contrib\n    GROUP BY brand\n),\ntotal_contrib AS (\n    SELECT SUM(total_contribution) AS grand_total\n    FROM brand_contrib\n)\nSELECT bc.brand,\n       bc.total_contribution::numeric / NULLIF(tc.grand_total::numeric, 0) AS sales_ratio\nFROM brand_contrib bc\nCROSS JOIN total_contrib tc\nWHERE tc.grand_total IS NOT NULL\nORDER BY bc.brand ASC",
+      "final_sql": "WITH cash_items AS (\n    SELECT oi.product_id, oi.quantity, p.brand\n    FROM blinkit_order_items oi\n    JOIN blinkit_orders o ON o.order_id = oi.order_id\n    JOIN blinkit_products p ON p.product_id = oi.product_id\n    WHERE o.payment_method = 'Cash'\n),\nproduct_contrib AS (\n    SELECT product_id, brand, COUNT(*) AS occurrence_count, SUM(quantity) AS quantity_sum\n    FROM cash_items\n    GROUP BY product_id, brand\n),\nbrand_contrib AS (\n    SELECT brand, SUM(occurrence_count * quantity_sum) AS total_contribution\n    FROM product_contrib\n    GROUP BY brand\n),\ntotal_contrib AS (\n    SELECT SUM(total_contribution) AS grand_total\n    FROM brand_contrib\n)\nSELECT bc.brand,\n       bc.total_contribution::numeric / NULLIF(tc.grand_total::numeric, 0) AS sales_ratio\nFROM brand_contrib bc\nCROSS JOIN total_contrib tc\nWHERE tc.grand_total IS NOT NULL\nORDER BY bc.brand ASC",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:76757ddd6489abebb9f8ad66d0bfee9fd765a034e63518a699e6da2dc4d03ceb",
+      "final_oracle_receipt_hash": "sha256:76757ddd6489abebb9f8ad66d0bfee9fd765a034e63518a699e6da2dc4d03ceb",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "63612d74-ab9f-4131-ba29-b3ad5e9e127a",
+        "case_id": "abd87f2d-15e7-5646-9889-7c4164af9279",
+        "database_id": 24,
+        "run_id": "2be02632-592b-42e6-ab02-b2d709e0482b",
+        "task_id": "f28e1ce7-849d-48d9-9a96-c79ddca4e348",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "626b5ec8-8e85-48ad-bc61-03b6fa23242a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:23d2c71f978bbfd69b8464161acb1ed3f3ec5d6dc3702fd67b568292351d662c"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "d81606da-b618-4a8d-a9e7-8b6a9a5350ac",
+          "resource_revision": 1,
+          "resource_hash": "sha256:673e99e7712bc8832bc040889f67824b21dc6f10b0ea49ea677296c041b4e8b3"
+        },
+        "query_evidence_ref": {
+          "resource_id": "d105dc81-8180-408b-83e9-35d2c7a068ad",
+          "resource_revision": 1,
+          "resource_hash": "sha256:0fd265865c30f1a90657a1c7c5d8eefc9b4c7e60cec06e8d507f464368e2ec3a"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2064,
+          "output_tokens": 262
+        },
+        "accepted_at": "2026-08-17T22:36:29.271Z",
+        "receipt_hash": "sha256:22a4c17c3e48a3167e6ded9596cccafa0db5bb34fa50428ace87beb5d182a7c3"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "2be02632-592b-42e6-ab02-b2d709e0482b",
+        "tasks": [
+          {
+            "task_id": "5d2c9140-5e19-4818-b9c7-d5f37ae38925",
+            "parent_task_id": "c36a7f73-887a-4644-98ad-9fa6cee2b513",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "d8f87638-71d2-4bb8-9cdb-0463217967fa",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:29.271Z"
+          },
+          {
+            "task_id": "c36a7f73-887a-4644-98ad-9fa6cee2b513",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "e11ce215-bb28-48ad-862f-eb488cf561eb",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:29.271Z"
+          },
+          {
+            "task_id": "f28e1ce7-849d-48d9-9a96-c79ddca4e348",
+            "parent_task_id": "c36a7f73-887a-4644-98ad-9fa6cee2b513",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "83476a58-7ba7-4453-aaa1-b893e3a8610c",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:29.271Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "167bc4bf-4124-42b0-ab8b-6a1b372eed50",
+            "parent_task_id": "c36a7f73-887a-4644-98ad-9fa6cee2b513",
+            "child_task_id": "f28e1ce7-849d-48d9-9a96-c79ddca4e348",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:29.271Z"
+          },
+          {
+            "handoff_id": "32536c2c-5d77-4739-81ab-d41455a5bcee",
+            "parent_task_id": "c36a7f73-887a-4644-98ad-9fa6cee2b513",
+            "child_task_id": "5d2c9140-5e19-4818-b9c7-d5f37ae38925",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:29.271Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "c36a7f73-887a-4644-98ad-9fa6cee2b513",
+            "task_revision": 1,
+            "decision_id": "0f8be118-80c5-4307-a5c6-2f5c833048fd",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:f7e84cc17572fda01d2395f73081a87030b43f128145ff1c460b3a60ad810af8",
+            "created_at": "2026-08-17T22:36:29.271Z"
+          }
+        ],
+        "trace_hash": "sha256:cb5dd6dfc35c2f8be7a78eca429ddd53b30f2adbe0d682ed2aa5a89308b8b56c"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case abd87f2d-15e7-5646-9889-7c4164af9279 is accepted.",
+        "citation_hash": "sha256:0fd265865c30f1a90657a1c7c5d8eefc9b4c7e60cec06e8d507f464368e2ec3a"
+      },
+      "error_code": null
+    },
+    {
+      "case_id": "bf9a381c-0922-5694-88b0-bcfa11006b89",
+      "database_id": "falcon_db_24",
+      "registry": "DEMO",
+      "run_id": "15c61dd6-3da9-40f7-baa3-3d356102a95c",
+      "status": "PASS",
+      "first_sql": "SELECT delivery_partner_id FROM blinkit_delivery_performance GROUP BY delivery_partner_id HAVING COUNT(*) FILTER (WHERE delivery_status = 'On Time')::numeric / NULLIF(COUNT(*), 0) < 0.95;",
+      "final_sql": "SELECT delivery_partner_id FROM blinkit_delivery_performance GROUP BY delivery_partner_id HAVING COUNT(*) FILTER (WHERE delivery_status = 'On Time')::numeric / NULLIF(COUNT(*), 0) < 0.95;",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:f1036100e2c1b73d0bd9e3358d5fff70561e42e660a23e6be8274cc8b5c70a3c",
+      "final_oracle_receipt_hash": "sha256:f1036100e2c1b73d0bd9e3358d5fff70561e42e660a23e6be8274cc8b5c70a3c",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "004b510a-3eaa-4291-94e5-4df479593da1",
+        "case_id": "bf9a381c-0922-5694-88b0-bcfa11006b89",
+        "database_id": 24,
+        "run_id": "15c61dd6-3da9-40f7-baa3-3d356102a95c",
+        "task_id": "dffb849e-bfa6-43df-b8e2-3de7604deb8f",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "context_receipt_ref": {
+          "resource_id": "37f9cf44-c94e-420b-8160-56909ff6fbaf",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c96663130e807aee8858da60c962c3a60f4cdfd556b532a36b68da7a708ee868"
+        },
+        "physical_object_ids": [
+          "blinkit_customer_feedback",
+          "blinkit_customers",
+          "blinkit_delivery_performance",
+          "blinkit_inventory",
+          "blinkit_inventoryNew",
+          "blinkit_marketing_performance",
+          "blinkit_order_items",
+          "blinkit_orders",
+          "blinkit_products"
+        ],
+        "mapping_ids": [
+          "mapping-blinkit_customer_feedback",
+          "mapping-blinkit_customers",
+          "mapping-blinkit_delivery_performance",
+          "mapping-blinkit_inventory",
+          "mapping-blinkit_inventoryNew",
+          "mapping-blinkit_marketing_performance",
+          "mapping-blinkit_order_items",
+          "mapping-blinkit_orders",
+          "mapping-blinkit_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "69adb2fd-661b-4d00-90a8-582778d95616",
+          "resource_revision": 1,
+          "resource_hash": "sha256:a305d7130403ed4db7b6a5ea87ef24e412f2a3e9526e5f10614a9af86a77ea7b"
+        },
+        "query_evidence_ref": {
+          "resource_id": "da544aa9-8a39-40cc-851d-51c6eb033beb",
+          "resource_revision": 1,
+          "resource_hash": "sha256:df5232c3343f3c0da362f8019f010569969403afdbab1e79573062af06d0ab17"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 2060,
+          "output_tokens": 69
+        },
+        "accepted_at": "2026-08-17T22:36:25.573Z",
+        "receipt_hash": "sha256:aba35497cb707c278c53a9b7e4906c9bff09d8d192bd6d7135b60f53123c302f"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "15c61dd6-3da9-40f7-baa3-3d356102a95c",
+        "tasks": [
+          {
+            "task_id": "76da8f24-8ad9-4870-84da-5ab2c45444bf",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "d73f59c4-a068-4cf6-be0b-a93fc8e19106",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "task_id": "9202f71d-caca-434d-8c12-aa8dd7486b31",
+            "parent_task_id": "76da8f24-8ad9-4870-84da-5ab2c45444bf",
+            "depth": 1,
+            "profile_id": "report-writing-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:54586241afa84050c4841d5855c7edf828d6b30c2e6ca2650d42c1627b2890fe",
+            "task_revision": 1,
+            "attempt_id": "29bc442b-81c7-41c8-8d72-83eea8d9ef42",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "task_id": "dffb849e-bfa6-43df-b8e2-3de7604deb8f",
+            "parent_task_id": "76da8f24-8ad9-4870-84da-5ab2c45444bf",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "0212f7ff-d5e9-489a-ba60-3f46519b3cb1",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "576c7b5d-94ad-4332-b85c-7889a648d762",
+            "parent_task_id": "76da8f24-8ad9-4870-84da-5ab2c45444bf",
+            "child_task_id": "9202f71d-caca-434d-8c12-aa8dd7486b31",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          },
+          {
+            "handoff_id": "a2392260-8cca-4cd8-b4b6-2e5697d2adc1",
+            "parent_task_id": "76da8f24-8ad9-4870-84da-5ab2c45444bf",
+            "child_task_id": "dffb849e-bfa6-43df-b8e2-3de7604deb8f",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "76da8f24-8ad9-4870-84da-5ab2c45444bf",
+            "task_revision": 1,
+            "decision_id": "8ae8f199-9540-4f1f-acb0-3e08c477c9de",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:75f4db3ab691f25e8ee0e4ea4bf694768ede874889d1b22d392bb00ab943494e",
+            "created_at": "2026-08-17T22:36:25.573Z"
+          }
+        ],
+        "trace_hash": "sha256:67cea047e3df3602ff10d9c5925da7a25d80c1df273c750a1128ac75df7f1f3f"
+      },
+      "report": {
+        "summary": "The governed Text2SQL task produced accepted query evidence.",
+        "claim": "Falcon case bf9a381c-0922-5694-88b0-bcfa11006b89 is accepted.",
+        "citation_hash": "sha256:df5232c3343f3c0da362f8019f010569969403afdbab1e79573062af06d0ab17"
+      },
+      "error_code": null
+    }
+  ]
+}

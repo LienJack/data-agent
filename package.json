@@ -53,6 +53,8 @@
     "falcon:demo:smoke": "tsx scripts/falcon.ts demo:smoke",
     "falcon:eval:batch": "tsx scripts/falcon.ts eval:batch",
     "falcon:submission": "tsx scripts/falcon.ts submission",
+    "falcon:agent-gate": "pnpm --filter @data-agent/worker falcon:team",
+    "falcon:agent-final": "pnpm --filter @data-agent/worker falcon:final",
     "test:security": "pnpm --filter @data-agent/agent-runtime test:security && pnpm --filter @data-agent/platform test:security && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",
     "test:deploy:docker": "tsx scripts/pending-gate.ts test:deploy:docker U9",
     "test:deploy:hosted": "tsx scripts/pending-gate.ts test:deploy:hosted U9",

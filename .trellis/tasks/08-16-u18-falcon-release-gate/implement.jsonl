@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/index.md","reason":"Cross-layer authority, migration and package boundaries."}
+{"file":".trellis/spec/backend/datasource-adapters.md","reason":"Falcon PostgreSQL datasource and governed query constraints."}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Public Agent SSE, redaction and Journey evidence rules."}
+{"file":".trellis/tasks/08-15-falcon-demo-eval/research/falcon-upstream-audit.md","reason":"Pinned Falcon snapshot and sealed/public dataset audit."}
+{"file":"artifacts/falcon-agent-gate/falcon-agent-release-gate.json","reason":"Final GO evidence: DEV 264/309, Holdout 4/5, TEST 191/191, stability 54/54."}
+{"file":"apps/worker/src/evals/falcon-final-gate-cli.ts","reason":"Mechanical aggregation and absolute gate signing."}

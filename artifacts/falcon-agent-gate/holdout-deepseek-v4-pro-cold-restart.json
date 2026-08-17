@@ -1,0 +1,1256 @@
+{
+  "schema_version": "falcon-agent-team-batch@1.0.0",
+  "scope": "holdout",
+  "model_id": "deepseek-v4-pro",
+  "source_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+  "semantic_bundle_index": {
+    "schema_version": "falcon-semantic-bundle-index@1.0.0",
+    "scope": {
+      "app_id": "00000000-0000-4000-8000-00000000da01",
+      "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+      "environment": "local"
+    },
+    "workspace_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+    "semantic_domain": "falcon",
+    "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+    "source_commit": "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+    "source_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+    "release_set_ref": {
+      "resource_id": "4908562e-5898-5072-9499-4af74b1e641a",
+      "resource_revision": 1,
+      "resource_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67"
+    },
+    "first_release_receipt_ref": {
+      "resource_id": "dbf7f066-0bfe-5471-bd12-b5c7495914a8",
+      "resource_revision": 1,
+      "resource_hash": "sha256:b7e6000131627d3d1ab975a900cfd3253a8610e5a0c9bcc25eeede7cffcf189f"
+    },
+    "entries": [
+      {
+        "database_id": 1,
+        "schema_name": "falcon_db_01",
+        "package_ref": {
+          "resource_id": "ec271733-0033-5de3-9c60-5243929a37d9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f0ee52935067a7b779b83dc1821a046885038e8fe5f51d078cf6a94fd1ebb707"
+        },
+        "schema_snapshot_hash": "sha256:66762ba719b5de8d702ea50b47234426082887e7ad1a613d8dfe65e4b26c2109",
+        "admission_receipt_ref": {
+          "resource_id": "441ad419-57e3-54d6-aa97-8f04098ca54c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1c7480e0c241fd13cfb0c51618abfd4ec5d58eb53a26e587ae49dedc96052dd6"
+        },
+        "coverage_receipt_hash": "sha256:c142753464d034cb08df66a0bc0e83e417fe466e50d41159baf85b11fa7a7590",
+        "physical_object_count": 25,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 2,
+        "schema_name": "falcon_db_02",
+        "package_ref": {
+          "resource_id": "929952d4-4d34-58f7-b58f-e47d856ea807",
+          "resource_revision": 1,
+          "resource_hash": "sha256:05ebca9269d558e9dee72c1a1ccf29b7848f8534510f94cf2e5191bb208292af"
+        },
+        "schema_snapshot_hash": "sha256:da5fbe148074e0c14002dd507054a7dea8306979be1bb0627fa7d6fbe6d427f8",
+        "admission_receipt_ref": {
+          "resource_id": "621df745-2fde-54e0-ac75-523b08e7746d",
+          "resource_revision": 1,
+          "resource_hash": "sha256:55b7f51aedcd3a6f21fbf491ac387951c368d296aa18ece230993490fdd53e0d"
+        },
+        "coverage_receipt_hash": "sha256:30230185e3aac06bf58d90dc51c23ef1d56607aef30e00f2f942202d28555a09",
+        "physical_object_count": 14,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 3,
+        "schema_name": "falcon_db_03",
+        "package_ref": {
+          "resource_id": "6920785e-b953-5ba5-8cef-8d24db59789f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7a2cbde1166161eadffe68b7baf7253b127ef40e48e05fe07b1d050107d77924"
+        },
+        "schema_snapshot_hash": "sha256:52af9d591186f29a5f25095044f2a0ab531d28424caf6b975f1b88c30782c8b4",
+        "admission_receipt_ref": {
+          "resource_id": "658355c2-e514-5bed-a4de-c7541e0c0de9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2613422def3a84812d04dcd1ff2cdc79f2b2ad66bbc99c520921724ea371b47f"
+        },
+        "coverage_receipt_hash": "sha256:4e1e9a4d5a6f6b0a42f643a9f7e440a7665e06bba70f4e46e068bf3b3ebb62cf",
+        "physical_object_count": 10,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 4,
+        "schema_name": "falcon_db_04",
+        "package_ref": {
+          "resource_id": "5c9d842f-25e3-5d93-b22b-e238ba679c75",
+          "resource_revision": 1,
+          "resource_hash": "sha256:74a722c436185ad906170a6857ba0b1be6c5b43d06ccc927bff87a656ed7997e"
+        },
+        "schema_snapshot_hash": "sha256:8dcf369f0bb6d16dc42d76e7669f4517af511ccd5007afefaa420c035e51bd04",
+        "admission_receipt_ref": {
+          "resource_id": "0bf0c9be-201b-5375-aafe-d91eb747b0d1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:de1e28babf89deef544d398fda27eaabff698464ec62673aa478486a58b35a38"
+        },
+        "coverage_receipt_hash": "sha256:2389e8d4ab4e2710b9bd551e6e33b18dcd1de8829520c5113c4f0aea06984ec2",
+        "physical_object_count": 13,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 5,
+        "schema_name": "falcon_db_05",
+        "package_ref": {
+          "resource_id": "7bbc74b3-2dbd-5d7b-954c-b8093921da12",
+          "resource_revision": 1,
+          "resource_hash": "sha256:82a9f6cf26fcb67fed103a4d2b06eb3eb87f9e387b8add78180fd45c9927f3ea"
+        },
+        "schema_snapshot_hash": "sha256:a3cbe5862352a509c38ea47650ab8f9782dad3b92531aa5114a63325526c6a8a",
+        "admission_receipt_ref": {
+          "resource_id": "fef5c8e3-ba91-5f89-abff-f25ebfeadbeb",
+          "resource_revision": 1,
+          "resource_hash": "sha256:99cd4bca9f1e478f5c3a201642208ed1394d9bb279219fb42b7c1bd5a1758765"
+        },
+        "coverage_receipt_hash": "sha256:c5372102108b6ee22e9bd350ee5cc3c37eb1596479a8b8585d0c33437a1f97ef",
+        "physical_object_count": 8,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 6,
+        "schema_name": "falcon_db_06",
+        "package_ref": {
+          "resource_id": "9b592abd-f196-5e49-b023-b4dba2f6be5a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3a90dde5eba87a1a3473241e9abb23d5ed494eaf4ab931dae67ad9d8ca0ba6f4"
+        },
+        "schema_snapshot_hash": "sha256:61484d6e131a1d99dc0772c253e5be08ec0451b41a37b570ab04620767af5ed4",
+        "admission_receipt_ref": {
+          "resource_id": "bfa57b63-9f72-5b68-97df-ffa281854528",
+          "resource_revision": 1,
+          "resource_hash": "sha256:8142adbd90e6d0442682aaba7019a00be715cfd80ba9e8e81f31fd54572e5974"
+        },
+        "coverage_receipt_hash": "sha256:b39ec4c19422bf33d0f76e76afc35cfcb936f3fd62bb8fbedf5fe712f766cc1e",
+        "physical_object_count": 13,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 7,
+        "schema_name": "falcon_db_07",
+        "package_ref": {
+          "resource_id": "fb5fb53f-1815-5ffc-beb4-07cdf1da772b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:9bc038ad0335b0f7411e497173122814a5b5fe526fe79b60a8e349deadc89f7e"
+        },
+        "schema_snapshot_hash": "sha256:0a4f0a6e4fed0793e4fff4716e633caad96bcd21a5771bf31a407e4edce88fea",
+        "admission_receipt_ref": {
+          "resource_id": "553b4295-a96c-515e-986c-b9e7b4454093",
+          "resource_revision": 1,
+          "resource_hash": "sha256:a1ceeef9666d01a78867b787b50cf7a78a3650c91045444cf78ef6bfebdc80d2"
+        },
+        "coverage_receipt_hash": "sha256:06398e9b3955da2247e650e3e683ff611f5461b6b2691e7d30bbee683341f9c7",
+        "physical_object_count": 12,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 8,
+        "schema_name": "falcon_db_08",
+        "package_ref": {
+          "resource_id": "607cbf86-9e20-5b47-95c4-4a487c5c5ce1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:8f1f1669dc83aff73b396a5c9457b6e643fd1bdd7b9936fc89fbcaf6344fd311"
+        },
+        "schema_snapshot_hash": "sha256:32070bf932bcdb078cf8e55d017914c7a5f0accce757464b7b781df90316d6c9",
+        "admission_receipt_ref": {
+          "resource_id": "d79f70ba-3945-5ef8-a5c7-a6bdbab2b0c2",
+          "resource_revision": 1,
+          "resource_hash": "sha256:35e985588e391e8e5591634724ee2b4a7fe5335d1356f2680a50f63eddd17cbe"
+        },
+        "coverage_receipt_hash": "sha256:1b8a197ee569bcd651d5cd050b7e754f963fcc872add786cfe49c32eec4daad1",
+        "physical_object_count": 14,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 9,
+        "schema_name": "falcon_db_09",
+        "package_ref": {
+          "resource_id": "d62bae76-ee7c-5744-bad3-3401306ae977",
+          "resource_revision": 1,
+          "resource_hash": "sha256:72d822e1c8f829cbf7591bd21b8707df9dfc08df6e9bee7346256b0f1aed2344"
+        },
+        "schema_snapshot_hash": "sha256:72af5d0f1edbae1a8811224a95d2811635d72da3bb462003f1ef3b2fe4b29239",
+        "admission_receipt_ref": {
+          "resource_id": "0faec119-dbd7-56c9-8269-4fb2780d9c0b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:af03dbea3c7bba813a0a43f66e93fc4116eafa3ca7b38744717941823e22c75e"
+        },
+        "coverage_receipt_hash": "sha256:ce7fcc3bb5e9309b1484f42e4e3a83c6b33a7f9487954903ab3c48addbfd25f3",
+        "physical_object_count": 9,
+        "queryable_mapping_count": 1,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 10,
+        "schema_name": "falcon_db_10",
+        "package_ref": {
+          "resource_id": "c8022654-a46b-594a-adc6-599eab95dcc4",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bad98b1b26044be41e3369e32720f28045c46d8af62ddede6f0a946cdbb718a3"
+        },
+        "schema_snapshot_hash": "sha256:f196349f14860eec779230615c675958b1b2856b036a085b35fe3207838e9fee",
+        "admission_receipt_ref": {
+          "resource_id": "e05b7a59-cc31-59ed-b970-7f75c88a59e3",
+          "resource_revision": 1,
+          "resource_hash": "sha256:6f59cecfe9d5f7403c4bb533fc6a1725346aca7256f4202aa83723078dd1db22"
+        },
+        "coverage_receipt_hash": "sha256:0ecf0cd647245d74f804d1f5bf7c7ec8bb83706d66af5658fa3afdbfc19bec05",
+        "physical_object_count": 14,
+        "queryable_mapping_count": 2,
+        "join_count": 1,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 11,
+        "schema_name": "falcon_db_11",
+        "package_ref": {
+          "resource_id": "1e1f386f-b819-59f3-9f57-5287bf6987cd",
+          "resource_revision": 1,
+          "resource_hash": "sha256:a894ce7a98030ea440f98b2c6a0bdaf59a41b15cc133a7acf646087d6fc0f76b"
+        },
+        "schema_snapshot_hash": "sha256:1e1d9d6a07f5cd5c4accbbeb3a980792390e91c6ce072eb3c6d9f0a38c11aabe",
+        "admission_receipt_ref": {
+          "resource_id": "d5204056-9b18-5aba-9e13-d95f470ee35f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:fc5198005fd24faef2918518732aee35bc8735fafbd2c8e7bc28b0e6d170c8a0"
+        },
+        "coverage_receipt_hash": "sha256:6a74b662902e895f0f550642e79b55c173acb45490de1d66f8a2cd1326921dd6",
+        "physical_object_count": 9,
+        "queryable_mapping_count": 2,
+        "join_count": 0,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 12,
+        "schema_name": "falcon_db_12",
+        "package_ref": {
+          "resource_id": "e61bfab1-e38b-5160-bd15-a3858c7cb75f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f5d6b1a60b39c82c37ecb4079e9a025a4ea10388cc93c542d5b72fa0a4a61c09"
+        },
+        "schema_snapshot_hash": "sha256:e7bedeb31b0357acb9060b27281d5a2a6bb54ce1ef529d8c7397a9dd42b897ff",
+        "admission_receipt_ref": {
+          "resource_id": "224b8b8c-088b-5db4-ab7c-ab19d593553a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c30a6b10ed7eee77e9e51fb46f7d1abc890e5cbfb3705df6c09eb5bc731e1618"
+        },
+        "coverage_receipt_hash": "sha256:ddf633d97b0fef86a3c4804b7ee07da89c40e1a0b2411a48abde2d2877ad6231",
+        "physical_object_count": 19,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 13,
+        "schema_name": "falcon_db_13",
+        "package_ref": {
+          "resource_id": "0afe020f-b73f-52b7-9593-1c58420c2dcc",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7c7656adc9ef526733cef4c4c78faf617a306c12e207b99ace4078b1d971fc2f"
+        },
+        "schema_snapshot_hash": "sha256:8623dd90456b03704418f4f5c6f51cb5dc144db0e889b12dd13bcb6e4ea2dcd3",
+        "admission_receipt_ref": {
+          "resource_id": "b5a72b6f-455c-5d89-87c7-e48e84bbd2b3",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5cb1454b4a50c3275e7e68047edf40ac17353e09ca1a9fd11e6727e4c2cfcc22"
+        },
+        "coverage_receipt_hash": "sha256:1ba072af6c6a3437ead9868958c4db6d098e4ecf1ae0598e8df35880d0f03a86",
+        "physical_object_count": 23,
+        "queryable_mapping_count": 3,
+        "join_count": 3,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 14,
+        "schema_name": "falcon_db_14",
+        "package_ref": {
+          "resource_id": "9cc7f021-6615-5df7-95c4-c00a8296ff21",
+          "resource_revision": 1,
+          "resource_hash": "sha256:77da3dae238f5c0a3df0be7fddafd9936d49048581bcc82023a491ca9deffc0d"
+        },
+        "schema_snapshot_hash": "sha256:d3741ffbf68969e87e55108f035d4f1b1ef8f58915cf93d2ce725136cdc78040",
+        "admission_receipt_ref": {
+          "resource_id": "ad35eb5b-30d9-585a-ac08-fc479b910e24",
+          "resource_revision": 1,
+          "resource_hash": "sha256:8a59715bb547a9b57027f229e1ea499d90b6ac06f4ffa30779dfc8afb97c6e67"
+        },
+        "coverage_receipt_hash": "sha256:2b1cf5e53ad20cee3ac067908481338a13035b4d9b6c2edcf7c75ad2318f469f",
+        "physical_object_count": 22,
+        "queryable_mapping_count": 4,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 15,
+        "schema_name": "falcon_db_15",
+        "package_ref": {
+          "resource_id": "44e76936-2719-57ab-adb2-54c081f454ee",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1f56307db5558dc742f3bdbcb993a3d443281b00cb479aa2bae376822cdb8b2d"
+        },
+        "schema_snapshot_hash": "sha256:68572e553afe0fb6b0950d0236b2a1d672661b133a389d3d34e3446635eef4e8",
+        "admission_receipt_ref": {
+          "resource_id": "e5b3f3bd-7bce-5256-a5fa-f05db8bd9a5c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:d6f299b0e81ecbd55bed120e8499f4f476bf6ecb94012907e8d718644154630c"
+        },
+        "coverage_receipt_hash": "sha256:8abfedf4fb17c1576a8098eee8f4dee4d465cef610076a63a671040081bd7f12",
+        "physical_object_count": 19,
+        "queryable_mapping_count": 4,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 16,
+        "schema_name": "falcon_db_16",
+        "package_ref": {
+          "resource_id": "85afa013-cb4b-5efd-90ce-f6751ab03ad9",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c1e9b02a705ad5bb9bc24363fe896cee9af965a5aa954f981e648522605c8632"
+        },
+        "schema_snapshot_hash": "sha256:309ce7f5f75bffcfde6028abb11d0362611ddd632c64e703c4fdabab86ae42ce",
+        "admission_receipt_ref": {
+          "resource_id": "ce0798de-ef77-56c4-9730-2d67e858eda0",
+          "resource_revision": 1,
+          "resource_hash": "sha256:9ec06302c2bc4457c68c4a0778bf9cfc6e841cbf6c69c6d3f1e443aba2ed3e17"
+        },
+        "coverage_receipt_hash": "sha256:9da30ef3a5e6bef0c53ae483100fe3cfd1f8b7758059f57d418f7db70f21591e",
+        "physical_object_count": 26,
+        "queryable_mapping_count": 4,
+        "join_count": 9,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 17,
+        "schema_name": "falcon_db_17",
+        "package_ref": {
+          "resource_id": "31a10c0c-b49a-5080-872b-f29cdb0bef65",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5f49551a479369c189ccc86bbf38f1e83dd630cad4d42cb76d523d0950dc8a50"
+        },
+        "schema_snapshot_hash": "sha256:342ba5fc98abefd6d4f1669cd575df3d99d67f95a6e351575ebdc6065ba60421",
+        "admission_receipt_ref": {
+          "resource_id": "b1113fc1-6528-5e79-881e-168133e8e197",
+          "resource_revision": 1,
+          "resource_hash": "sha256:84361a86ce3a258245a666957846f51a44c9f0263877fe083739e123c626b253"
+        },
+        "coverage_receipt_hash": "sha256:3b46f15ff4420a5826b7fbbd0c10678373fa709d6433ef003167dcca3890987a",
+        "physical_object_count": 29,
+        "queryable_mapping_count": 5,
+        "join_count": 3,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 18,
+        "schema_name": "falcon_db_18",
+        "package_ref": {
+          "resource_id": "e494b922-59f3-564a-bd6c-97ef30cabb5b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:28619c5a100d84d46b14e9d2fea570182ddeec096cb10ccd2ce8298671d91d8a"
+        },
+        "schema_snapshot_hash": "sha256:7fe52d329abcea087fe2a0ab1218bd703da292242b3fc11199c422e56244a75e",
+        "admission_receipt_ref": {
+          "resource_id": "833a7eb5-a6e1-52bb-b615-e30f2856c056",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ddf4ff0ca3cb3e0a0dbcbd0c706ceefda3866fa1a1fdb61065037a69af958e61"
+        },
+        "coverage_receipt_hash": "sha256:f9e939741ddb75439d4dd5a9d5bcb2626163115e039d2d5a003479f5beda84e0",
+        "physical_object_count": 21,
+        "queryable_mapping_count": 5,
+        "join_count": 1,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 19,
+        "schema_name": "falcon_db_19",
+        "package_ref": {
+          "resource_id": "46d6469d-b0e7-5506-921b-0b9b4aebb0e6",
+          "resource_revision": 1,
+          "resource_hash": "sha256:06e346a1ca37a5446cd7348798600d5dbd49ebdf83a19867df5c38fddafbb1e1"
+        },
+        "schema_snapshot_hash": "sha256:031d83bf316a7494bb4c47c8b6a90c66d7b5718b6ee576a4b22f25b072f75bee",
+        "admission_receipt_ref": {
+          "resource_id": "22400a29-2a87-5677-989d-aff46d6beccd",
+          "resource_revision": 1,
+          "resource_hash": "sha256:f0de2305d3337a25dd5b52cc06468ac7ca2386c135d935676d4c9b5bb1593236"
+        },
+        "coverage_receipt_hash": "sha256:ec71b1ba82a5d5fb0bb585f39cc31ce8099f537efe15c48f58aabae092903ff6",
+        "physical_object_count": 25,
+        "queryable_mapping_count": 2,
+        "join_count": 1,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 20,
+        "schema_name": "falcon_db_20",
+        "package_ref": {
+          "resource_id": "6ffca4d3-9ead-51b9-8403-c47f95208c10",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ec2f58bba467eabbae36091613f8b944b7edbb6b9a476f5aa75c5642c9e42a2d"
+        },
+        "schema_snapshot_hash": "sha256:5c081d116181c935130346cece39db83a8404e9440835b90879a21445fad051c",
+        "admission_receipt_ref": {
+          "resource_id": "656aeb91-95ee-5fea-8867-660f9f6afd6c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2724f4c1f8c2a8ec1ac4ed18a2648967cf046e99a8e42595f37776d02bd2ab5c"
+        },
+        "coverage_receipt_hash": "sha256:e6669b316500ac76d119513b369aac05be639f9e4fc7287e5860e7f19fa667be",
+        "physical_object_count": 18,
+        "queryable_mapping_count": 2,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 21,
+        "schema_name": "falcon_db_21",
+        "package_ref": {
+          "resource_id": "3e732e47-e341-52ff-9960-93b914ce4e0c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:63f8e1c0b3c8a6d5495158a278635bc79b92ed8af206e2e6156bb9b15a72445c"
+        },
+        "schema_snapshot_hash": "sha256:2596cc8f209991df2eb53e1f1eebc5067080ed7d1d0b1c5a71e9b6703a8658e1",
+        "admission_receipt_ref": {
+          "resource_id": "82c5aa17-92a0-5ae8-8411-33ff5bdcc2d6",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ca4fbe8dfb294dafe813c22f60147643e5fb3e7d35882970d54ffd85773e6a48"
+        },
+        "coverage_receipt_hash": "sha256:4092dd72d77ee65cf84f7a1e449ec1edb562b3c7fe753ecb979b3b212aae01d0",
+        "physical_object_count": 24,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 22,
+        "schema_name": "falcon_db_22",
+        "package_ref": {
+          "resource_id": "a88cd749-1ad3-5e75-a1c4-955afdc2141a",
+          "resource_revision": 1,
+          "resource_hash": "sha256:80076917252dc8d2e4cd7ec07fb57d74cf4062a10bfa394430f5d68379fc5243"
+        },
+        "schema_snapshot_hash": "sha256:49f273e7043db67a6a3d0af4bd2c951d0f772c3f9f4c17ee933bd5ddbd4be488",
+        "admission_receipt_ref": {
+          "resource_id": "16e4e0d6-b3e4-5730-a072-16fe3f034ae8",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1ebe2e6ad1c92011be8b00e115a9e9fe0fa7a90f846760bf3931d0b9f1c1a197"
+        },
+        "coverage_receipt_hash": "sha256:74aa47f9d86cda4c22442491066a38912c467085b998c8a23b8e0f2ca193a07a",
+        "physical_object_count": 45,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 23,
+        "schema_name": "falcon_db_23",
+        "package_ref": {
+          "resource_id": "ba9af84d-3540-5d2e-8c0d-03a34bcf0529",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7efea2bdf4fc617a23ada66d41550c558537a6ebd34f9c5f3dc92723f71ca50c"
+        },
+        "schema_snapshot_hash": "sha256:03dff3091ad475382ab2b2dc8529cc50c8c5996e6126d88309e09192d9c03c97",
+        "admission_receipt_ref": {
+          "resource_id": "05c833ad-a6f1-559d-84cd-48c91e9f7216",
+          "resource_revision": 1,
+          "resource_hash": "sha256:02d8e073595e692c1583bfeefe0471b7a4c30d10ebed21af2d5dddcacaaa8ca1"
+        },
+        "coverage_receipt_hash": "sha256:a52e4896eed6090fb3a4f26d55373d48f1cc853f5592614008e7a1426f9b3024",
+        "physical_object_count": 18,
+        "queryable_mapping_count": 3,
+        "join_count": 2,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 24,
+        "schema_name": "falcon_db_24",
+        "package_ref": {
+          "resource_id": "bb76115f-16df-5c07-ba01-7fd4c9dd2db7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:bec624fd868ad0581f6c7a9ad4a3a99987e0d27323c4c3710372a73c35ea0a69"
+        },
+        "schema_snapshot_hash": "sha256:fe057b04bc4de067568281c9c3e4b7b081dfafdae32e7031db8349dc6815a7f5",
+        "admission_receipt_ref": {
+          "resource_id": "ecbfa3b1-cd99-5986-8451-a48b819e60b8",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5c5bae2b78534732d0fc4c19865c12d2cb9049cf58daa02c43c0e5676e918660"
+        },
+        "coverage_receipt_hash": "sha256:c116dbb2457ae2f59f4bc38b7c6f9bc7430931682a12626aa30cf4f5db452d34",
+        "physical_object_count": 79,
+        "queryable_mapping_count": 9,
+        "join_count": 8,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 25,
+        "schema_name": "falcon_db_25",
+        "package_ref": {
+          "resource_id": "4c2b9837-e8fc-5fc7-80b0-162410c04be4",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2daba740dee280de5daafd07114cc2fced252574c3a6b40ee238ae37dee67cac"
+        },
+        "schema_snapshot_hash": "sha256:bd13aa5b3fda3f6989e05bdc0f7e2bf74d796afa6d4ef0726d46284601c3b9e3",
+        "admission_receipt_ref": {
+          "resource_id": "856dfc8a-8abb-52cd-ac26-d1de1d543f47",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3108636b4e8d4e0d694ad0fc677839114c58404273d806856458e8a03b39efea"
+        },
+        "coverage_receipt_hash": "sha256:d20d66778fc9d28968ee2652e4124c61d55cdd9f7fbb9e669f0bdd10b8260dfa",
+        "physical_object_count": 47,
+        "queryable_mapping_count": 8,
+        "join_count": 3,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 26,
+        "schema_name": "falcon_db_26",
+        "package_ref": {
+          "resource_id": "dfbc8429-5700-550d-b373-267c53b6ca95",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2ef372d2a6f5a0a9353edd857f3acb233581b8b31ac6d7e276bab3fbdd32fc5a"
+        },
+        "schema_snapshot_hash": "sha256:627dca7fe9df9a27b1f03b7560253ac7fa2c67609b4e45c30856e778c12dd43e",
+        "admission_receipt_ref": {
+          "resource_id": "3c91425e-aa46-5f68-9a52-0e08a927dc92",
+          "resource_revision": 1,
+          "resource_hash": "sha256:007d4c159bf92fc0cfbe74b5376822ca2649748ec1248f8771f1f8790e72f33d"
+        },
+        "coverage_receipt_hash": "sha256:c561848583b5b0d073f4ec8e66b39b68daea2594287c8b8ab7d5e08e18280780",
+        "physical_object_count": 94,
+        "queryable_mapping_count": 7,
+        "join_count": 10,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 27,
+        "schema_name": "falcon_db_27",
+        "package_ref": {
+          "resource_id": "7bac2559-5b7b-5e96-b58a-e54daafea040",
+          "resource_revision": 1,
+          "resource_hash": "sha256:97d466f38b18559590efc4289083b15304e9054777724945432bb6292067753b"
+        },
+        "schema_snapshot_hash": "sha256:127a8532cd6467170d6093f3446926ffd4cad0d5fefea83c17cc5410603ee672",
+        "admission_receipt_ref": {
+          "resource_id": "d974aced-d01e-5e2c-b837-2a836bcdd7c1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:0e6c07869b23e30ac6394cc766a4c976dc185c10a47408a0d21403f92141553b"
+        },
+        "coverage_receipt_hash": "sha256:59cafdcef76fa5eb5206b39004026d4894975c46c8c1d8491957f0a43f4fad2b",
+        "physical_object_count": 48,
+        "queryable_mapping_count": 7,
+        "join_count": 8,
+        "mandatory_assertions_passed": true
+      },
+      {
+        "database_id": 28,
+        "schema_name": "falcon_db_28",
+        "package_ref": {
+          "resource_id": "ffef3e05-d70b-536c-bdbb-be9f18c1c7fc",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ba2b8fa5ec59db701fa2daa7ba835762bcb5ea593e005bff7a144c2495678733"
+        },
+        "schema_snapshot_hash": "sha256:aab68e789b8d91e333bdda247ad1e11993eb566972dc4a21be35bd917ae4257e",
+        "admission_receipt_ref": {
+          "resource_id": "1be6acd7-7352-5606-86b8-1659faa4a275",
+          "resource_revision": 1,
+          "resource_hash": "sha256:7d0870db3b8f417ca2fbca960e79ad8389be61e02ef08defbeabb54ede9e86ad"
+        },
+        "coverage_receipt_hash": "sha256:a17c54cc58668bff91916037584941adedd7a92799f3a20e86d948f62d6ea685",
+        "physical_object_count": 52,
+        "queryable_mapping_count": 8,
+        "join_count": 7,
+        "mandatory_assertions_passed": true
+      }
+    ],
+    "created_at": "2026-08-18T00:00:00.000Z",
+    "bundle_index_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4"
+  },
+  "model_profile_ref": {
+    "artifact_id": "7fd35b18-528c-4a89-aa35-6266bfbc5611",
+    "artifact_type": "ModelCertificationReceipt",
+    "app_id": "00000000-0000-4000-8000-00000000da01",
+    "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+    "environment": "local",
+    "run_id": "00000000-0000-4000-8000-000000001810",
+    "revision": 1,
+    "content_hash": "sha256:8a47a5bbbdcaecda6daeb29adab1a82aa7061fe7b25423c1f26afdc4f0326ef0"
+  },
+  "cases": [
+    {
+      "case_id": "12a75bc3-852b-5a63-a167-ae3c8ebacd9b",
+      "database_id": "falcon_db_15",
+      "registry": "TUNING",
+      "run_id": "05270332-a712-4b09-8e86-97a9ed9f65a1",
+      "status": "FAIL",
+      "first_sql": "SELECT c.\"Cust_ID\", c.\"Customer_Segment\", f.\"Transaction_Value\" FROM (SELECT t.\"Transaction_ID\", t.\"Transaction_Value\", cc.\"Cust_ID\", ROW_NUMBER() OVER (PARTITION BY cc.\"Cust_ID\" ORDER BY to_date(t.\"Transaction_Date\", 'DD-Mon-YY'), t.\"Transaction_ID\") AS rn FROM credit_card_transaction_base t JOIN credit_card_card_base cc ON t.\"Credit_Card_ID\" = cc.\"Card_Number\" JOIN credit_card_fraud_base fr ON t.\"Transaction_ID\" = fr.\"Transaction_ID\" WHERE fr.\"Fraud_Flag\" = 1) f JOIN credit_card_customer_base c ON f.\"Cust_ID\" = c.\"Cust_ID\" WHERE f.rn = 1 ORDER BY c.\"Cust_ID\"",
+      "final_sql": "SELECT c.\"Cust_ID\", c.\"Customer_Segment\", f.\"Transaction_Value\" FROM (SELECT t.\"Transaction_ID\", t.\"Transaction_Value\", cc.\"Cust_ID\", ROW_NUMBER() OVER (PARTITION BY cc.\"Cust_ID\" ORDER BY to_date(t.\"Transaction_Date\", 'DD-MM-YY'), t.\"Transaction_ID\") AS rn FROM credit_card_transaction_base t JOIN credit_card_card_base cc ON t.\"Credit_Card_ID\" = cc.\"Card_Number\" JOIN credit_card_fraud_base fr ON t.\"Transaction_ID\" = fr.\"Transaction_ID\" WHERE fr.\"Fraud_Flag\" = 1) f JOIN credit_card_customer_base c ON f.\"Cust_ID\" = c.\"Cust_ID\" WHERE f.rn = 1 ORDER BY c.\"Cust_ID\"",
+      "first_verdict": "FAIL",
+      "final_verdict": "FAIL",
+      "first_oracle_receipt_hash": "sha256:b713e411e5a13d22beb2abe6c06cfa055c4d240d83c6ef0827cc22223dd299d2",
+      "final_oracle_receipt_hash": "sha256:b713e411e5a13d22beb2abe6c06cfa055c4d240d83c6ef0827cc22223dd299d2",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "9b51cbb4-b486-4190-abfa-8a7d531a23fb",
+        "case_id": "12a75bc3-852b-5a63-a167-ae3c8ebacd9b",
+        "database_id": 15,
+        "run_id": "05270332-a712-4b09-8e86-97a9ed9f65a1",
+        "task_id": "706b6816-78f9-454c-8fff-51dbf3f13af0",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "44e76936-2719-57ab-adb2-54c081f454ee",
+          "resource_revision": 1,
+          "resource_hash": "sha256:1f56307db5558dc742f3bdbcb993a3d443281b00cb479aa2bae376822cdb8b2d"
+        },
+        "context_receipt_ref": {
+          "resource_id": "daca4330-4f8d-4a4e-8c91-b531afab66c2",
+          "resource_revision": 1,
+          "resource_hash": "sha256:78337481693eee018a866764c656d0d812fffc2ff30bf78a129a35c22c9c0855"
+        },
+        "physical_object_ids": [
+          "credit_card_card_base",
+          "credit_card_customer_base",
+          "credit_card_fraud_base",
+          "credit_card_transaction_base"
+        ],
+        "mapping_ids": [
+          "mapping-credit_card_card_base",
+          "mapping-credit_card_customer_base",
+          "mapping-credit_card_fraud_base",
+          "mapping-credit_card_transaction_base"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "0d3bb5fc-1091-40d0-95ef-c3b54136347f",
+          "resource_revision": 1,
+          "resource_hash": "sha256:beea1849e158eb08f5b2ba02e2a9deb12ca4f4b8d99364cecaea81d308755f30"
+        },
+        "query_evidence_ref": {
+          "resource_id": "4a8ec063-25c2-4ce8-97c5-a5beb4779f88",
+          "resource_revision": 1,
+          "resource_hash": "sha256:e05968c238adf45f800978c33793c7aa1c37691aeea3617ad480bed2fe062a52"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 1252,
+          "output_tokens": 434
+        },
+        "accepted_at": "2026-08-17T23:17:54.564Z",
+        "receipt_hash": "sha256:9655f0ea9a236ab1aefb71387142d4667b35f5dd4243effbd38ad15bd1d15200"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "05270332-a712-4b09-8e86-97a9ed9f65a1",
+        "tasks": [
+          {
+            "task_id": "706b6816-78f9-454c-8fff-51dbf3f13af0",
+            "parent_task_id": "f813ef5c-ef87-4d34-886c-3e8e75713954",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "871cd092-a9b9-46df-aa6c-743b08ed6e07",
+            "worker_fence": 1,
+            "status": "REJECTED",
+            "created_at": "2026-08-17T23:17:54.564Z"
+          },
+          {
+            "task_id": "f813ef5c-ef87-4d34-886c-3e8e75713954",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "09dd958e-6ed1-464e-8aaf-50826f9a3732",
+            "worker_fence": 1,
+            "status": "REJECTED",
+            "created_at": "2026-08-17T23:17:54.564Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "5103df57-3d59-4fa4-9ed1-5a521f17fbac",
+            "parent_task_id": "f813ef5c-ef87-4d34-886c-3e8e75713954",
+            "child_task_id": "706b6816-78f9-454c-8fff-51dbf3f13af0",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T23:17:54.564Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "f813ef5c-ef87-4d34-886c-3e8e75713954",
+            "task_revision": 1,
+            "decision_id": "06979b9b-8852-4089-994b-c2c223e17160",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:c8b2d8a198638d7e0edcacf130a2b09a2debddb4277d762baaf71406966ba8de",
+            "created_at": "2026-08-17T23:17:54.564Z"
+          }
+        ],
+        "trace_hash": "sha256:aacc885d6d4d0f333e9500d346d6d30b9f7b1bf16c0094dade45b5898448dc9a"
+      },
+      "report": null,
+      "error_code": "POSTGRES_QUERY_FAILED"
+    },
+    {
+      "case_id": "22ceda1f-1a35-5981-8b54-b08f7facd909",
+      "database_id": "falcon_db_18",
+      "registry": "TUNING",
+      "run_id": "12901f3b-cb6a-433e-8d81-94deec58d2e4",
+      "status": "PASS",
+      "first_sql": "SELECT t.\"country\", c.\"corruption_index\", u.\"unemployment_rate\" FROM world_economic_tourism t JOIN world_economic_corruption c ON t.\"country\" = c.\"country\" JOIN world_economic_unemployment u ON t.\"country\" = u.\"country\" WHERE t.\"percentage_of_gdp\" > 0.05 AND t.\"receipts_in_billions\" > 0.5;",
+      "final_sql": "SELECT t.\"country\", c.\"corruption_index\", u.\"unemployment_rate\" FROM world_economic_tourism t JOIN world_economic_corruption c ON t.\"country\" = c.\"country\" JOIN world_economic_unemployment u ON t.\"country\" = u.\"country\" WHERE t.\"percentage_of_gdp\" > 0.05 AND t.\"receipts_in_billions\" > 0.5;",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:4046e2fb7fbcf676915edfdc252b2755b69bb62ff411191676b2c80351a74220",
+      "final_oracle_receipt_hash": "sha256:4046e2fb7fbcf676915edfdc252b2755b69bb62ff411191676b2c80351a74220",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "0c1201de-2499-4b4c-ac56-eb7f26909dff",
+        "case_id": "22ceda1f-1a35-5981-8b54-b08f7facd909",
+        "database_id": 18,
+        "run_id": "12901f3b-cb6a-433e-8d81-94deec58d2e4",
+        "task_id": "88c274bd-53af-4b74-8b5b-41a4906341e7",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "e494b922-59f3-564a-bd6c-97ef30cabb5b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:28619c5a100d84d46b14e9d2fea570182ddeec096cb10ccd2ce8298671d91d8a"
+        },
+        "context_receipt_ref": {
+          "resource_id": "7f505f14-6bdc-407b-82d8-eb8e502d5bf8",
+          "resource_revision": 1,
+          "resource_hash": "sha256:81399ad351a1db91f1a10bb5545cc98f00d59cadbae896d0ad13bb2e67a8e5be"
+        },
+        "physical_object_ids": [
+          "world_economic_corruption",
+          "world_economic_cost_of_living",
+          "world_economic_richest_countries",
+          "world_economic_tourism",
+          "world_economic_unemployment"
+        ],
+        "mapping_ids": [
+          "mapping-world_economic_corruption",
+          "mapping-world_economic_cost_of_living",
+          "mapping-world_economic_richest_countries",
+          "mapping-world_economic_tourism",
+          "mapping-world_economic_unemployment"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "9220cd13-6c00-4c15-a394-8b9f35f0feb7",
+          "resource_revision": 1,
+          "resource_hash": "sha256:057d5da7c33a509dd190417846c9cf9470a032c8e323c5a7392d57d0b64dba43"
+        },
+        "query_evidence_ref": {
+          "resource_id": "3884b2fd-51b1-4486-8de7-787320c0503c",
+          "resource_revision": 1,
+          "resource_hash": "sha256:698b94f11b5c6ce766a4b60eea2e3454b964856e13c8fc1eed12ec7f4a9e5652"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 1075,
+          "output_tokens": 309
+        },
+        "accepted_at": "2026-08-17T23:13:37.998Z",
+        "receipt_hash": "sha256:c2ed6db79fa6f9ce913d6af07b820b2ab84a799f26eb70f82cb24727333b3c8c"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "12901f3b-cb6a-433e-8d81-94deec58d2e4",
+        "tasks": [
+          {
+            "task_id": "88c274bd-53af-4b74-8b5b-41a4906341e7",
+            "parent_task_id": "89468e13-766a-4613-bf43-f933915d55bc",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "f587c3a3-6ec6-4d69-b21c-cd7e5f967375",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          },
+          {
+            "task_id": "89468e13-766a-4613-bf43-f933915d55bc",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "2fa765dd-29f8-454e-864c-46d42eed1d71",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "52ed300b-e86f-4e5f-9ef2-282cedba7068",
+            "parent_task_id": "89468e13-766a-4613-bf43-f933915d55bc",
+            "child_task_id": "88c274bd-53af-4b74-8b5b-41a4906341e7",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "89468e13-766a-4613-bf43-f933915d55bc",
+            "task_revision": 1,
+            "decision_id": "3bb17fa6-d06b-4ea3-984c-d71e34f67e68",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:b0d570342b9b7eb8b088af50599de132c16e853a48ef9ecf430f6c7782d6400e",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "trace_hash": "sha256:f8382e7df801b9e30414e3ec8dfc8c106d783857ee0213b54956708fe264c53b"
+      },
+      "report": null,
+      "error_code": null
+    },
+    {
+      "case_id": "284718d4-1656-5e82-aead-11ce7f02fb0e",
+      "database_id": "falcon_db_28",
+      "registry": "TUNING",
+      "run_id": "2d7a212d-0a53-4dfa-9268-853eed23b2de",
+      "status": "PASS",
+      "first_sql": "SELECT o.\"customer_id\", (s.\"delivery_date\"::date - s.\"shipment_date\"::date) AS wait_days FROM online_shop_orders o JOIN online_shop_shipments s ON o.\"order_id\" = s.\"order_id\" WHERE s.\"carrier\" = 'UPS' AND o.\"total_price\" < 100 AND s.\"shipment_date\" = (SELECT MAX(s2.\"shipment_date\") FROM online_shop_shipments s2 JOIN online_shop_orders o2 ON s2.\"order_id\" = o2.\"order_id\" WHERE o2.\"customer_id\" = o.\"customer_id\" AND s2.\"carrier\" = 'UPS' AND o2.\"total_price\" < 100) ORDER BY o.\"customer_id\"",
+      "final_sql": "WITH ranked_shipments AS (\n    SELECT\n        o.\"customer_id\",\n        s.\"shipment_id\",\n        s.\"shipment_date\",\n        s.\"delivery_date\",\n        ROW_NUMBER() OVER (\n            PARTITION BY o.\"customer_id\"\n            ORDER BY s.\"shipment_date\" DESC, s.\"shipment_id\" DESC\n        ) AS rn\n    FROM online_shop_orders o\n    JOIN online_shop_shipments s ON o.\"order_id\" = s.\"order_id\"\n    WHERE s.\"carrier\" = 'UPS'\n      AND o.\"total_price\" < 100\n)\nSELECT \"customer_id\",\n       (\"delivery_date\"::date - \"shipment_date\"::date) AS wait_days\nFROM ranked_shipments\nWHERE rn = 1\nORDER BY \"customer_id\";",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:1b4b1aced07656b0703f340ce7ff4564f71363f8a895eb48d70ac0de51078f2b",
+      "final_oracle_receipt_hash": "sha256:1b4b1aced07656b0703f340ce7ff4564f71363f8a895eb48d70ac0de51078f2b",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "57c86a46-5fa6-4ed2-be49-434f349dc77e",
+        "case_id": "284718d4-1656-5e82-aead-11ce7f02fb0e",
+        "database_id": 28,
+        "run_id": "2d7a212d-0a53-4dfa-9268-853eed23b2de",
+        "task_id": "b805d0ee-914a-48d1-8676-ecbeb8da7b20",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "ffef3e05-d70b-536c-bdbb-be9f18c1c7fc",
+          "resource_revision": 1,
+          "resource_hash": "sha256:ba2b8fa5ec59db701fa2daa7ba835762bcb5ea593e005bff7a144c2495678733"
+        },
+        "context_receipt_ref": {
+          "resource_id": "6ad955c8-ea4b-4b82-8a76-7b8a1f012279",
+          "resource_revision": 1,
+          "resource_hash": "sha256:3c63b4a00706d80846f8ebadf95c434303437e19ce1802109e4b9251bf81478f"
+        },
+        "physical_object_ids": [
+          "online_shop_customers",
+          "online_shop_order_items",
+          "online_shop_orders",
+          "online_shop_payment",
+          "online_shop_products",
+          "online_shop_reviews",
+          "online_shop_shipments",
+          "online_shop_suppliers"
+        ],
+        "mapping_ids": [
+          "mapping-online_shop_customers",
+          "mapping-online_shop_order_items",
+          "mapping-online_shop_orders",
+          "mapping-online_shop_payment",
+          "mapping-online_shop_products",
+          "mapping-online_shop_reviews",
+          "mapping-online_shop_shipments",
+          "mapping-online_shop_suppliers"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "3a39b325-515b-4cd6-85b2-5a2b96aae443",
+          "resource_revision": 1,
+          "resource_hash": "sha256:fb35aee11ad7b95953ad79e1f309e2fba1c4b7a5bc577e647a7806299bfe0f51"
+        },
+        "query_evidence_ref": {
+          "resource_id": "6e7456ac-11ac-46f0-b13c-f74e5a876b68",
+          "resource_revision": 1,
+          "resource_hash": "sha256:42a0b26d85e6552df8adb718e0d1735b95cd876f2db9fd3286db0e9ecad9f38f"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 1297,
+          "output_tokens": 343
+        },
+        "accepted_at": "2026-08-17T23:17:54.567Z",
+        "receipt_hash": "sha256:e638c4ae41b1b488093848d7cdbd0ea8ede0d6b95ecdfeabfb075fc0a12b027d"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "2d7a212d-0a53-4dfa-9268-853eed23b2de",
+        "tasks": [
+          {
+            "task_id": "1a002e47-c796-4b3c-a275-fc5c3fd38d34",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "8d98e36c-c3f0-4f4b-a71a-a5f5eb794d3f",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:17:54.567Z"
+          },
+          {
+            "task_id": "b805d0ee-914a-48d1-8676-ecbeb8da7b20",
+            "parent_task_id": "1a002e47-c796-4b3c-a275-fc5c3fd38d34",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "c1ac094f-4037-4e09-80c7-2559f4c5c960",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:17:54.567Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "8df61419-f2ad-44b5-9ec3-e1a934372a2d",
+            "parent_task_id": "1a002e47-c796-4b3c-a275-fc5c3fd38d34",
+            "child_task_id": "b805d0ee-914a-48d1-8676-ecbeb8da7b20",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T23:17:54.567Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "1a002e47-c796-4b3c-a275-fc5c3fd38d34",
+            "task_revision": 1,
+            "decision_id": "6c36c800-5deb-404c-bd34-d7553b8e7579",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:82d01172549c74d6c7f69b9fcda92ee680b0bfc32b239ebe207193e2934fd2fa",
+            "created_at": "2026-08-17T23:17:54.567Z"
+          }
+        ],
+        "trace_hash": "sha256:9b4da8ab962464ded5145cc43a8cc73556f035b2e8c2bb0f26563d992065c107"
+      },
+      "report": null,
+      "error_code": null
+    },
+    {
+      "case_id": "5309edc0-5753-5f8e-8764-b99a472fe711",
+      "database_id": "falcon_db_04",
+      "registry": "TUNING",
+      "run_id": "11abd222-edac-42e1-90af-453cdbaf6814",
+      "status": "PASS",
+      "first_sql": "SELECT \"countryCode\", \"customerID\", \"DaysLate\", \"DaysToSettle\", \"Disputed\", \"DueDate\", \"InvoiceAmount\", \"InvoiceDate\", \"invoiceNumber\", \"PaperlessBill\", \"PaperlessDate\", \"SettledDate\" FROM finance_factoring_data WHERE \"Disputed\" = 'Yes' ORDER BY \"InvoiceAmount\" DESC LIMIT 10;",
+      "final_sql": "SELECT \"countryCode\", \"customerID\", \"DaysLate\", \"DaysToSettle\", \"Disputed\", \"DueDate\", \"InvoiceAmount\", \"InvoiceDate\", \"invoiceNumber\", \"PaperlessBill\", \"PaperlessDate\", \"SettledDate\" FROM finance_factoring_data WHERE \"Disputed\" = 'Yes' ORDER BY \"InvoiceAmount\" DESC LIMIT 10;",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:149b7a7eda0e2a2cff9fd5f84adee48f4644e5a567f73e7dd1d1c0e16336854d",
+      "final_oracle_receipt_hash": "sha256:149b7a7eda0e2a2cff9fd5f84adee48f4644e5a567f73e7dd1d1c0e16336854d",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "0d92cb98-77fd-422c-be17-1de1cf283761",
+        "case_id": "5309edc0-5753-5f8e-8764-b99a472fe711",
+        "database_id": 4,
+        "run_id": "11abd222-edac-42e1-90af-453cdbaf6814",
+        "task_id": "1e8b1472-7887-4181-9da5-a4b66b1e6b78",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "5c9d842f-25e3-5d93-b22b-e238ba679c75",
+          "resource_revision": 1,
+          "resource_hash": "sha256:74a722c436185ad906170a6857ba0b1be6c5b43d06ccc927bff87a656ed7997e"
+        },
+        "context_receipt_ref": {
+          "resource_id": "b932f3f2-3a89-4191-a749-7e312c8c91dc",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c8fb4131e6221cf4c7740eb72801f6b17fda8a026302bf8cad87fda7c349b270"
+        },
+        "physical_object_ids": [
+          "finance_factoring_data"
+        ],
+        "mapping_ids": [
+          "mapping-finance_factoring_data"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "0a7d43f1-80fa-42a4-bbe8-0f000d8b8e27",
+          "resource_revision": 1,
+          "resource_hash": "sha256:9c047a8ffc2988c1015135ef113babc77beec0afd7308ba5316b86a8c0ec7b84"
+        },
+        "query_evidence_ref": {
+          "resource_id": "436818c7-7b92-4380-8503-89da569eeaee",
+          "resource_revision": 1,
+          "resource_hash": "sha256:6f991868f67e0201d193d34b6a0df16df623f5da7a9505c796eb73d01f631026"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 937,
+          "output_tokens": 98
+        },
+        "accepted_at": "2026-08-17T23:13:37.998Z",
+        "receipt_hash": "sha256:84962a77ce1e158508e30cc84cdaa84aacb666db443ba034f5b1fbd5ce005013"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "11abd222-edac-42e1-90af-453cdbaf6814",
+        "tasks": [
+          {
+            "task_id": "1e8b1472-7887-4181-9da5-a4b66b1e6b78",
+            "parent_task_id": "4b3048ce-488a-4ae6-84bc-6c5bc2b795bb",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "7b6a220f-7f10-4cad-8c67-f1f31ebe3b8f",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          },
+          {
+            "task_id": "4b3048ce-488a-4ae6-84bc-6c5bc2b795bb",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "1a4b4e84-021c-41a3-97d6-175c56dc3783",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "64cc7636-24bc-40b1-b3f6-be6b110a920b",
+            "parent_task_id": "4b3048ce-488a-4ae6-84bc-6c5bc2b795bb",
+            "child_task_id": "1e8b1472-7887-4181-9da5-a4b66b1e6b78",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "4b3048ce-488a-4ae6-84bc-6c5bc2b795bb",
+            "task_revision": 1,
+            "decision_id": "deb2bc52-d904-4974-a143-327963f382f2",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:59cf253b9ed390ff7a8e2e8a36b578218f343f4ad120466aa9bc73607325f87e",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "trace_hash": "sha256:35e4a2870cfc28d49e8cf7583cdb73a42fbcae5e5607457f301d995ebf00e78e"
+      },
+      "report": null,
+      "error_code": null
+    },
+    {
+      "case_id": "d23a465a-9137-5f03-8a67-cdb23669cd78",
+      "database_id": "falcon_db_17",
+      "registry": "TUNING",
+      "run_id": "2d3797ad-87f3-48ae-b196-22e071934b89",
+      "status": "PASS",
+      "first_sql": "SELECT oi.\"seller_id\", SUM(oi.\"price\") / NULLIF(SUM(oi.\"shipping_charges\"), 0) AS ratio FROM ecommerce_order_items oi JOIN ecommerce_products p ON oi.\"product_id\" = p.\"product_id\" WHERE p.\"product_category_name\" = 'electronics' GROUP BY oi.\"seller_id\" ORDER BY ratio DESC, oi.\"seller_id\" ASC LIMIT 1",
+      "final_sql": "SELECT oi.\"seller_id\", SUM(oi.\"price\") / NULLIF(SUM(oi.\"shipping_charges\"), 0) AS ratio FROM ecommerce_order_items oi JOIN ecommerce_products p ON oi.\"product_id\" = p.\"product_id\" WHERE p.\"product_category_name\" = 'electronics' GROUP BY oi.\"seller_id\" ORDER BY ratio DESC, oi.\"seller_id\" ASC LIMIT 1",
+      "first_verdict": "PASS",
+      "final_verdict": "PASS",
+      "first_oracle_receipt_hash": "sha256:6826e213e6ef0c68601183223dda68c5dcf6c7b71632fdc0b7bfbf164ca34fd2",
+      "final_oracle_receipt_hash": "sha256:6826e213e6ef0c68601183223dda68c5dcf6c7b71632fdc0b7bfbf164ca34fd2",
+      "semantic_usage_receipt": {
+        "schema_version": "falcon-semantic-usage-receipt@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "receipt_id": "10caf7a7-c4de-4e7a-abc2-aeb39b69bf9c",
+        "case_id": "d23a465a-9137-5f03-8a67-cdb23669cd78",
+        "database_id": 17,
+        "run_id": "2d3797ad-87f3-48ae-b196-22e071934b89",
+        "task_id": "9188bb52-cc51-4d16-9294-f650a539293d",
+        "release_set_hash": "sha256:7eda603a9559c4f1f010ad26ebf8474d6e26e2466bfacc452883ac163f5abc67",
+        "package_ref": {
+          "resource_id": "31a10c0c-b49a-5080-872b-f29cdb0bef65",
+          "resource_revision": 1,
+          "resource_hash": "sha256:5f49551a479369c189ccc86bbf38f1e83dd630cad4d42cb76d523d0950dc8a50"
+        },
+        "context_receipt_ref": {
+          "resource_id": "be00c464-6997-4d24-9187-c9611cd8167b",
+          "resource_revision": 1,
+          "resource_hash": "sha256:c790bd8cc31c4c5f575786be633e658d2dcce23e495dd42fbcb5e41b4909363b"
+        },
+        "physical_object_ids": [
+          "ecommerce_customers",
+          "ecommerce_order_items",
+          "ecommerce_orders",
+          "ecommerce_payments",
+          "ecommerce_products"
+        ],
+        "mapping_ids": [
+          "mapping-ecommerce_customers",
+          "mapping-ecommerce_order_items",
+          "mapping-ecommerce_orders",
+          "mapping-ecommerce_payments",
+          "mapping-ecommerce_products"
+        ],
+        "join_ids": [],
+        "provider_invocation_ref": {
+          "resource_id": "31b359dd-5845-40ed-b9ac-f82cec9ca287",
+          "resource_revision": 1,
+          "resource_hash": "sha256:2a9aa88cf939e50354a4a8bb8adf6bbd5fdb5ed297828d078d335cf64453574a"
+        },
+        "query_evidence_ref": {
+          "resource_id": "96cb6080-1e2c-4b3e-bfa6-1c1b235409b1",
+          "resource_revision": 1,
+          "resource_hash": "sha256:570e8829d48689b33e4cc686a320f37352be01109c4edae6af9375a366f3d8f5"
+        },
+        "token_usage": {
+          "availability": "AVAILABLE",
+          "source": "PROVIDER_REPORTED",
+          "input_tokens": 1085,
+          "output_tokens": 234
+        },
+        "accepted_at": "2026-08-17T23:13:37.998Z",
+        "receipt_hash": "sha256:ffcfb089cb22d9f9ea997fecca07f8982c13f3d57cfc9744e7b47a877eb491af"
+      },
+      "team_trace": {
+        "schema_version": "agent-team-public-trace@1.0.0",
+        "scope": {
+          "app_id": "00000000-0000-4000-8000-00000000da01",
+          "tenant_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+          "environment": "local"
+        },
+        "run_id": "2d3797ad-87f3-48ae-b196-22e071934b89",
+        "tasks": [
+          {
+            "task_id": "9188bb52-cc51-4d16-9294-f650a539293d",
+            "parent_task_id": "c466456d-89f0-4906-bbad-86cc4661d639",
+            "depth": 1,
+            "profile_id": "governed-text2sql-agent",
+            "profile_revision": 1,
+            "profile_hash": "sha256:e020508acdac7c8838b4d291ed0f02290c2f8feb40fb474ececdf48283cd1736",
+            "task_revision": 1,
+            "attempt_id": "9a9536ac-5828-449f-8f21-9aab52e2d108",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          },
+          {
+            "task_id": "c466456d-89f0-4906-bbad-86cc4661d639",
+            "parent_task_id": null,
+            "depth": 0,
+            "profile_id": "data-agent-orchestrator",
+            "profile_revision": 1,
+            "profile_hash": "sha256:37b43784d9eb9d4cbb73a340b5d0e6d7af9692d22b9bd528b54c375bfb404e7c",
+            "task_revision": 1,
+            "attempt_id": "39ec5a1a-78d0-491c-a3cf-ad2983d7a405",
+            "worker_fence": 1,
+            "status": "ACCEPTED",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "handoffs": [
+          {
+            "handoff_id": "6a6de5da-2dc3-4d36-8f34-d0ab7e98cd23",
+            "parent_task_id": "c466456d-89f0-4906-bbad-86cc4661d639",
+            "child_task_id": "9188bb52-cc51-4d16-9294-f650a539293d",
+            "parent_expected_revision": 1,
+            "request_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "epochs": [],
+        "verifier_decisions": [
+          {
+            "task_id": "c466456d-89f0-4906-bbad-86cc4661d639",
+            "task_revision": 1,
+            "decision_id": "da2d64ba-3dc2-43c3-99a0-04bc81a9d607",
+            "completion_hash": "sha256:c9a13d58bb2c610bc0f7d4866becf9369cac274f965fc1dc58ff412142d187e4",
+            "decision_hash": "sha256:5682a96f8efb20bb3cb9cf867d42eb71351fce1e19dd305e1c9e880c88155805",
+            "created_at": "2026-08-17T23:13:37.998Z"
+          }
+        ],
+        "trace_hash": "sha256:e3643b203aad0dcc395b71ccbe0d5c4a47afa6a7bb925fa3d5e2a5cc7de4b579"
+      },
+      "report": null,
+      "error_code": null
+    }
+  ]
+}

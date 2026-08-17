@@ -17,6 +17,7 @@ import {
 } from "@data-agent/contracts";
 import type { BenchmarkSqlAgentInvocationContext } from "./agents.js";
 import { CertifiedModelAnalysisAgentError } from "./model-analysis-agent.js";
+import { reportedTokenCounts } from "./model-provider-usage.js";
 
 export const MULTIPLE_CHOICE_RESPONSE_SCHEMA_VERSION = "benchmark-multiple-choice@1.0.0";
 export const modelMultipleChoiceResponseSchema = benchmarkMultipleChoiceAnswerSchema;
@@ -256,9 +257,10 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
         "认证模型返回的选择题结果不符合契约。",
       );
     }
+    const tokenCounts = reportedTokenCounts(completed.usage);
     const cost = estimateCostMicros({
-      input_tokens: completed.usage.input_tokens,
-      output_tokens: completed.usage.output_tokens,
+      input_tokens: tokenCounts.input_tokens,
+      output_tokens: tokenCounts.output_tokens,
       input_rate: this.#pricing.input_microunits_per_million_tokens,
       output_rate: this.#pricing.output_microunits_per_million_tokens,
     });
@@ -266,8 +268,8 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     return {
       answer: answer.data,
       usage: {
-        input_tokens: completed.usage.input_tokens,
-        output_tokens: completed.usage.output_tokens,
+        input_tokens: tokenCounts.input_tokens,
+        output_tokens: tokenCounts.output_tokens,
         cost_micros: cost,
         currency: "USD",
       },

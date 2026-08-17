@@ -120,6 +120,9 @@ importers:
       '@data-agent/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@data-agent/evals':
+        specifier: workspace:*
+        version: link:../../packages/evals
       '@data-agent/platform':
         specifier: workspace:*
         version: link:../../packages/platform

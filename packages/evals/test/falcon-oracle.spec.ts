@@ -80,6 +80,19 @@ describe("FalconResultOracle", () => {
     expect(result.verdict).toBe("PASS");
   });
 
+  it("honors decimal precision declared by fixed expected results", async () => {
+    const rounded = sealed({
+      expected_results: [
+        { columns: ["carrier", "average_days"], rows: [["DHL", "4.50"]], ordered: false },
+      ],
+    });
+    const result = await evaluate(
+      executor({ columns: ["carrier", "average_days"], rows: [["DHL", 4.5011049723756906]] }),
+      rounded,
+    );
+    expect(result.verdict).toBe("PASS");
+  });
+
   it("enforces ordered results, duplicate cardinality and explicit column count", async () => {
     const ordered = sealed({
       expected_results: [{ columns: ["value"], rows: [[1], [2], [2]], ordered: true }],

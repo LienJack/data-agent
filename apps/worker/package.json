@@ -27,11 +27,14 @@
     "provider:recover-stale": "tsx src/provider-stale-marker-recovery-cli.ts",
     "provider:smoke": "tsx src/provider-invocation-smoke-cli.ts",
     "provider:classify-unknown": "tsx src/provider-unknown-classification-cli.ts",
-    "system-models:certify": "tsx src/system-model-certification-cli.ts"
+    "system-models:certify": "tsx src/system-model-certification-cli.ts",
+    "falcon:team": "tsx src/evals/falcon-team-gate-cli.ts",
+    "falcon:final": "tsx src/evals/falcon-final-gate-cli.ts"
   },
   "dependencies": {
     "@data-agent/agent-runtime": "workspace:*",
     "@data-agent/contracts": "workspace:*",
+    "@data-agent/evals": "workspace:*",
     "@data-agent/platform": "workspace:*",
     "@data-agent/research": "workspace:*",
     "@data-agent/semantic": "workspace:*",

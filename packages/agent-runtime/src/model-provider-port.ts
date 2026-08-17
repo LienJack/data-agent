@@ -65,6 +65,30 @@ export function createModelProviderPort(
   });
 }
 
+/**
+ * Isolated benchmark boundary. Requests still require an authoritative,
+ * persisted-certification-backed model profile, but do not impersonate a U3
+ * run dispatch permit. Product Run execution must use createModelProviderPort.
+ */
+export function createCertifiedEvaluationModelProviderPort(
+  input: ModelProviderPortCompositionInput,
+): ModelProviderPort {
+  const bridge = createMastraModelExecutionBridge({
+    credential_resolver: input.credential_resolver,
+    binding_resolver: input.binding_resolver satisfies ServerModelProviderBindingResolver,
+    tool_registry: new ServerOwnedToolRegistry(input.tools ?? []),
+    response_schema_registry: input.response_schema_registry,
+    input_token_counter: input.input_token_counter,
+  });
+  return new MastraModelProviderAdapter({
+    bridge,
+    dispatch_marker: input.dispatch_marker,
+    authorization: "CERTIFIED_EVALUATION",
+    ...(input.abort_signal ? { abort_signal: input.abort_signal } : {}),
+    ...(input.clock ? { clock: input.clock } : {}),
+  });
+}
+
 export type {
   ModelCredentialResolver,
   ModelProviderAdapterClock,
