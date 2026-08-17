@@ -561,11 +561,25 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
 
   // ─── Bounded closure 校验：所有引用指向 bundle 内的有效对象 ──────────────
   if (bundle.physical_binding && bundle.physical_binding.entries.length > 0) {
-    const allLogicalIds = new Set([...metricIds, ...dimensionIds, ...relationshipIds]);
+    const tableIds = new Set(
+      bundle.catalog_governance?.tables.map((table) => table.table_id) ?? [],
+    );
+    const columnIds = new Set(
+      bundle.catalog_governance?.tables.flatMap((table) =>
+        table.columns.map((column) => column.column_id),
+      ) ?? [],
+    );
+    const idsByObjectType = {
+      metric: metricIds,
+      dimension: dimensionIds,
+      relationship: relationshipIds,
+      table: tableIds,
+      column: columnIds,
+    } as const;
     for (const entry of bundle.physical_binding.entries) {
-      if (!allLogicalIds.has(entry.logical_object_id)) {
+      if (!idsByObjectType[entry.logical_object_type].has(entry.logical_object_id)) {
         throw new SemanticGovernanceError(
-          `PhysicalBinding 条目引用不存在的逻辑对象 ID: ${entry.logical_object_id}。`,
+          `PhysicalBinding ${entry.logical_object_type} 条目引用不存在的逻辑对象 ID: ${entry.logical_object_id}。`,
         );
       }
     }

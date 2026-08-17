@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify PostgreSQL Authority, immutable material, replay and scope isolation."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify all compile/provider failures are stable and redacted."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Verify Candidate and published Authority cannot be bypassed."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Verify fake/production Agent and persistence adapters share semantics."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run required type, contract, integration, tenancy and security gates."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Audit round-trip identity and validation ownership at every layer."}
+{"file":".trellis/tasks/08-11-semantic-layer-m3-agent-candidates/research/agent-maintained-semantic-baseline.md","reason":"Check the implementation against the approved four-plane architecture."}

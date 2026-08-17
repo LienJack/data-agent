@@ -1,0 +1,31 @@
+{
+  "id": "semantic-layer-m3-agent-candidates",
+  "name": "semantic-layer-m3-agent-candidates",
+  "title": "M3 Agent-maintained Semantic Candidates",
+  "description": "Compile PostgreSQL schema evidence into replayable, agent-generated semantic candidate operations that enter the existing governed review path.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "packages/contracts,packages/semantic,packages/platform,apps/web,infra/supabase semantic candidate generation",
+  "package": null,
+  "priority": "P1",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-11",
+  "completedAt": "2026-08-17",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-08-semantic-layer-studio",
+  "relatedFiles": [
+    "docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md",
+    ".trellis/tasks/08-08-semantic-layer-studio",
+    ".trellis/tasks/archive/2026-08/08-08-semantic-layer-m1-schema-discovery",
+    ".trellis/tasks/archive/2026-08/08-09-semantic-layer-m2-explorer"
+  ],
+  "notes": "M3 implementation and scoped verification completed. PostgreSQL 17 migration chain through 10626 passed; current focused contract, kernel, platform, Web and renderer checks were revalidated before the scoped commit.",
+  "meta": {}
+}

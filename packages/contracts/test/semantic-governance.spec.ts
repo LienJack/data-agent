@@ -231,6 +231,64 @@ describe("assertSemanticSourceBundleInvariants", () => {
     expect(() => assertSemanticSourceBundleInvariants(bundle)).not.toThrow();
   });
 
+  it("catalog 中存在的 table 可以建立物理绑定", () => {
+    const tableId = "orders@1";
+    const columnId = "orders.amount@1";
+    const bundle = buildU5Bundle({
+      catalog_governance: {
+        tables: [
+          {
+            table_id: tableId,
+            table_name: "orders",
+            columns: [
+              {
+                column_id: columnId,
+                column_name: "amount",
+                nullable: false,
+                data_type: "numeric",
+                constraint_refs: [],
+              },
+            ],
+            snapshot_currentness: {
+              snapshot_timestamp: "2026-08-15T00:00:00.000Z",
+              staleness_threshold_seconds: null,
+            },
+            catalog_fence: "test-catalog",
+          },
+        ],
+        data_quality_oracle_refs: [],
+      },
+      physical_binding: {
+        default_datasource_id: ids.appB,
+        entries: [
+          {
+            logical_object_id: tableId,
+            logical_object_type: "table",
+            datasource_id: ids.appB,
+            schema_name: "demo",
+            table_name: "orders",
+            column_name: null,
+            binding_lifecycle: "active",
+            valid_from: null,
+            valid_until: null,
+          },
+          {
+            logical_object_id: columnId,
+            logical_object_type: "column",
+            datasource_id: ids.appB,
+            schema_name: "demo",
+            table_name: "orders",
+            column_name: "amount",
+            binding_lifecycle: "active",
+            valid_from: null,
+            valid_until: null,
+          },
+        ],
+      },
+    }) as SemanticSourceBundle;
+    expect(() => assertSemanticSourceBundleInvariants(bundle)).not.toThrow();
+  });
+
   it("不支持的 capability_profile 被拒绝", () => {
     const bundle = buildU5Bundle() as SemanticSourceBundle;
     (bundle.metadata as Record<string, unknown>).capability_profile = "INVALID_PROFILE";

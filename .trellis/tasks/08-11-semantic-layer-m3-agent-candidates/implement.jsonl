@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Preserve contracts/domain/platform/Web dependency direction."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Implement PostgreSQL scope, transaction, RLS, idempotency and migration authority correctly."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Use stable public compile terminals and fail-closed redaction."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Keep Agent output as candidate evidence and active release as runtime authority."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Define and test Agent/provider and persistence port semantics."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Apply strict schemas, boundary tests and scoped verification."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace snapshot, Agent output, CompileRun, Candidate and UI across layers."}
+{"file":".trellis/tasks/08-11-semantic-layer-m3-agent-candidates/research/agent-maintained-semantic-baseline.md","reason":"Carry the approved research architecture and existing milestone evidence into implementation."}

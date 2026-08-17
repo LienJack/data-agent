@@ -52,6 +52,7 @@ describe("platform package public surface", () => {
       "createPostgresSchemaSnapshotStore",
       "createPostgresSecretRefRepository",
       "createPostgresSemanticAuthoringStore",
+      "createPostgresSemanticCandidateCompileStore",
       "createPostgresSemanticExplorerReader",
       "createPostgresSemanticGraphStore",
       "createPostgresSemanticPortabilityRepository",

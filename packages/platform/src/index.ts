@@ -134,6 +134,18 @@ export {
   type PostgresSemanticAuthoringQueueOptions,
 } from "./semantic/postgres-semantic-authoring-queue.js";
 export {
+  createPostgresSemanticCandidateCompileStore,
+  type PostgresSemanticCandidateCompileStore,
+  type SemanticCompileBeginInput,
+  type SemanticCompileBeginResult,
+  type SemanticCompileBundle,
+  type SemanticCompileCandidateAttachment,
+  type SemanticCompileCandidateAttachmentInput,
+  type SemanticCompileDriftEvidence,
+  type SemanticCompileFinishInput,
+  type SemanticCompileFinishResult,
+} from "./semantic/postgres-semantic-candidate-compile.js";
+export {
   createPostgresSemanticExplorerReader,
   type PostgresSemanticExplorerReader,
   type SemanticExplorerCandidateComparisonInput,
