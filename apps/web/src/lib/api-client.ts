@@ -16,6 +16,7 @@ import {
   verifySqlHistoryResult,
 } from "@data-agent/contracts";
 import type { RunProjection } from "./run-projection";
+import { workspaceIdFromPathname } from "./workspace-routes";
 
 // ─── Connection State ──────────────────────────────────────────────────────
 
@@ -32,22 +33,9 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "";
 
 // ─── Workspace Context ─────────────────────────────────────────────────────
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/** 从 /w/:workspaceId 路由或会话选择解析工作空间 ID。 */
+/** 仅从当前 /w/:workspaceId 规范路由解析工作空间 ID。 */
 export function resolveWorkspaceId(): string {
-  if (typeof window !== "undefined") {
-    const routed = window.location.pathname.match(
-      /^\/w\/([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})(?:\/|$)/i,
-    )?.[1];
-    if (routed) {
-      window.sessionStorage.setItem("data-agent.activeWorkspaceId", routed);
-      return routed;
-    }
-    const stored = window.sessionStorage.getItem("data-agent.activeWorkspaceId")?.trim();
-    if (stored && UUID_PATTERN.test(stored)) return stored;
-  }
-  return "";
+  return typeof window === "undefined" ? "" : workspaceIdFromPathname(window.location.pathname);
 }
 
 // ─── Auth Headers ──────────────────────────────────────────────────────────

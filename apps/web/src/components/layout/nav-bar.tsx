@@ -9,30 +9,30 @@ interface NavItem {
   href: string;
 }
 
-const navItems: NavItem[] = [
-  { label: "分析工作台", href: "/" },
-  { label: "语义审核", href: "/semantic" },
-];
+interface NavBarProps {
+  readonly homeHref: string;
+  readonly items: readonly NavItem[];
+}
 
 /**
  * 紧凑导航栏 — 参考 DataFoundry 设计。
  *
  * 信息密度高，去除装饰元素，采用语义化色彩。
  */
-export function NavBar() {
+export function NavBar({ homeHref, items }: NavBarProps) {
   const pathname = usePathname();
 
   return (
     <header className="flex h-9 shrink-0 items-center border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3">
       <div className="flex items-center gap-4">
         <Link
-          href="/"
+          href={homeHref}
           className="text-sm font-semibold text-[var(--color-text-primary)] hover:text-[var(--color-accent)]"
         >
           Data Agent
         </Link>
         <nav className="flex items-center gap-0.5">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const isActive =
               pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
             return (
