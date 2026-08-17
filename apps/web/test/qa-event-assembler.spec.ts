@@ -39,6 +39,14 @@ function event(
         };
       }
     | {
+        type: "lifecycle";
+        payload: {
+          name: string;
+          status: "QUEUED" | "RUNNING" | "WAITING";
+          summary: string;
+        };
+      }
+    | {
         type: "terminal";
         payload: {
           status: "COMPLETED" | "FAILED" | "CANCELLED";
@@ -80,6 +88,21 @@ describe("Q&A public event assembly", () => {
     const merged = mergePublicRunEvents([second], [first, second]);
     expect(merged).toHaveLength(2);
     expect(answerText(merged, runId)).toBe("AB");
+  });
+  it("keeps a replayed WAITING lifecycle event as one durable trajectory record", () => {
+    const waiting = event(3, {
+      type: "lifecycle",
+      payload: { name: "run.suspended", status: "WAITING", summary: "任务等待后续处理" },
+    });
+    const merged = mergePublicRunEvents([waiting], [waiting]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      type: "lifecycle",
+      payload: {
+        status: "WAITING",
+        summary: "任务等待后续处理",
+      },
+    });
   });
 
   it("merges tool start and completion without losing the safe input", () => {

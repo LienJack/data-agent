@@ -3,7 +3,7 @@
   "name": "u08-session-recovery",
   "title": "U8 会话恢复 Run 控制 Checkpoint 分支与协作中断",
   "description": "冻结计划对应 U8 的独立实施、验证与 scoped commit。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

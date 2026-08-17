@@ -63,7 +63,7 @@ const runLeasedEventSchema = z.strictObject({
   }),
 });
 
-const snapshotReferenceSchema = z.strictObject({
+export const snapshotReferenceSchema = z.strictObject({
   snapshot_id: immutableIdSchema,
   snapshot_version: positiveSafeIntegerSchema,
   snapshot_hash: contentHashSchema,
@@ -148,10 +148,18 @@ const runAnswerDeltaEventSchema = z.strictObject({
 const runSuspendedEventSchema = z.strictObject({
   ...runtimeEventFields,
   event_type: z.literal("run.suspended"),
-  payload: z.strictObject({
-    reason_code: runtimeIdentifierSchema,
-    snapshot_id: immutableIdSchema,
-  }),
+  payload: z.union([
+    z.strictObject({
+      reason_code: runtimeIdentifierSchema,
+      snapshot_id: immutableIdSchema,
+    }),
+    z.strictObject({
+      reason_code: runtimeIdentifierSchema,
+      snapshot_id: immutableIdSchema,
+      interruption_id: immutableIdSchema,
+      interruption_version: positiveSafeIntegerSchema,
+    }),
+  ]),
 });
 
 const runResumedEventSchema = z.strictObject({

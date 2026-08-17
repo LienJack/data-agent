@@ -1,1 +1,3 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Run lock/Fence/Checkpoint/Effect and narrow RPC rules"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"Durable event replay and public projection rules"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Dialog focus, durable state and recovery UI conventions"}

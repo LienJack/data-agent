@@ -78,6 +78,7 @@ export {
   type PostgresEffectiveConfigResolver,
   type PostgresEffectiveConfigResolverOptions,
 } from "./runs/effective-config-resolver.js";
+export * from "./runs/postgres-session-recovery.js";
 export {
   type ActiveSandboxCancelRequest,
   type CoordinatedSandboxPort,
