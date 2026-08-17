@@ -36,7 +36,11 @@ export {
 export * from "./catalog/schema-drift.js";
 export * from "./datasources/postgres-datasource-egress.js";
 export * from "./events/postgres-run-control.js";
-export * from "./events/postgres-run-event-store.js";
+export {
+  createPostgresRunEventStore,
+  type MastraSnapshotBinding,
+  type SideEffectReceipt,
+} from "./events/postgres-run-event-store.js";
 export * from "./jobs/postgres-job-queue.js";
 export * from "./knowledge/api-embedding-provider.js";
 export * from "./knowledge/knowledge-index.js";
@@ -78,6 +82,7 @@ export {
   type PostgresEffectiveConfigResolver,
   type PostgresEffectiveConfigResolverOptions,
 } from "./runs/effective-config-resolver.js";
+export * from "./runs/postgres-resolution-trace.js";
 export * from "./runs/postgres-session-recovery.js";
 export {
   type ActiveSandboxCancelRequest,

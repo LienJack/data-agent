@@ -241,7 +241,7 @@ async function verifiedEventFromRow(row: RunEventRow): Promise<RunRuntimeEvent> 
   return event;
 }
 
-async function loadEvents(
+export async function loadVerifiedRunEvents(
   client: SqlClient,
   scope: AppScope,
   runId: string,
@@ -375,7 +375,7 @@ export function createPostgresRunEventStore(
       { access: "READ", map_database_error: mapDatabaseRuntimeFailure },
       async ({ capability, client }) => {
         assertScope(parsed.data.scope, capability.scope);
-        return loadEvents(
+        return loadVerifiedRunEvents(
           client,
           capability.scope,
           parsed.data.run_id,

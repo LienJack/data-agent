@@ -1,1 +1,3 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"Durable event/public projection and SSE replay contracts"}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Artifact hash/reference visibility and lineage"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict DTO decoding and exhaustive states"}

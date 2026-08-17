@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { ChatArea } from "@/components/qa/chat-area";
 import { ChatInput } from "@/components/qa/chat-input";
-import { TrajectoryView } from "@/components/qa/trajectory-view";
+import { ResolutionTraceView } from "@/components/qa/resolution-trace-view";
 import { useQAStore, useQAView } from "@/lib/qa-store";
 
 /**
@@ -18,12 +18,15 @@ export default function QAPage() {
   const setView = useQAStore((state) => state.setView);
   const openTrajectory = useQAStore((state) => state.openTrajectory);
   const openConversation = useQAStore((state) => state.openConversation);
+  const selectConversation = useQAStore((state) => state.selectConversation);
 
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
     const runId = parameters.get("run");
+    const conversationId = parameters.get("conversation");
     const sequence = Number(parameters.get("event"));
     const tab = parameters.get("tab");
+    if (conversationId) void selectConversation(conversationId);
     if (runId && Number.isSafeInteger(sequence) && sequence > 0) {
       const focus = { runId, sequence };
       if (tab === "trajectory") openTrajectory(focus);
@@ -31,7 +34,7 @@ export default function QAPage() {
     } else if (tab === "trajectory") {
       setView("trajectory");
     }
-  }, [openConversation, openTrajectory, setView]);
+  }, [openConversation, openTrajectory, selectConversation, setView]);
   return (
     <div className="flex h-full min-w-0 flex-col bg-[var(--color-bg-primary)]">
       <nav
@@ -51,7 +54,7 @@ export default function QAPage() {
         ))}
       </nav>
       <div className="min-h-0 flex-1">
-        {view === "conversation" ? <ChatArea /> : <TrajectoryView />}
+        {view === "conversation" ? <ChatArea /> : <ResolutionTraceView />}
       </div>
       {view === "conversation" && <ChatInput />}
     </div>

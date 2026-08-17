@@ -1,0 +1,261 @@
+import {
+  computeL2ArtifactContentHash,
+  computeSqlArtifactQueryHash,
+  l2ArtifactDocumentSchema,
+  runRuntimeEventSchema,
+  sha256ContentHash,
+} from "@data-agent/contracts";
+import { describe, expect, it } from "vitest";
+import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
+import { createPostgresResolutionTraceProjector } from "../../src/runs/postgres-resolution-trace.js";
+import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
+import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
+
+const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+const hash = (character: string) => `sha256:${character.repeat(64)}`;
+const ids = {
+  app: id(1),
+  tenant: id(2),
+  principal: id(3),
+  run: id(4),
+  conversation: id(5),
+  config: id(6),
+  deployment: id(7),
+  event: id(8),
+  command: id(9),
+  sql: id(10),
+  plan: id(11),
+  attempt: id(12),
+} as const;
+const scope = { app_id: ids.app, tenant_id: ids.tenant, environment: "test" } as const;
+const occurredAt = "2026-08-18T12:00:00.000Z";
+
+function issueCapability() {
+  const registry = createDeploymentRegistry(
+    [{ deployment_id: ids.deployment, app_id: ids.app, environment: "test" }],
+    [
+      {
+        subject: ids.principal,
+        deployment_id: ids.deployment,
+        tenant_id: ids.tenant,
+        role: "ANALYST",
+      },
+    ],
+  );
+  const resolved = registry.resolveForDeployment(ids.deployment, { subject: ids.principal });
+  if (!resolved.ok) throw new Error("capability fixture failed");
+  return {
+    capability: resolved.value,
+    authorizer: asTransactionalTestAuthority(registry.authorizer),
+  };
+}
+
+function scriptedPool(
+  handle: (text: string, values: readonly unknown[]) => SqlQueryResult | undefined,
+) {
+  const calls: { text: string; values: readonly unknown[] }[] = [];
+  const client: SqlClient = {
+    async query<Row extends object = Record<string, unknown>>(text: string, values = []) {
+      calls.push({ text, values });
+      const handled = handle(text, values);
+      if (handled) return handled as SqlQueryResult<Row>;
+      if (text.includes("backend_context_matches"))
+        return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
+      return { rows: [], rowCount: 0 } as SqlQueryResult<Row>;
+    },
+    release() {},
+  };
+  const pool: SqlPool = { connect: async () => client };
+  return { pool, calls };
+}
+
+const accepted = runRuntimeEventSchema.parse({
+  schema_version: "1.0.0",
+  event_id: ids.event,
+  scope,
+  run_id: ids.run,
+  sequence: 1,
+  worker_fence: 0,
+  idempotency_key: `event:${ids.event}`,
+  occurred_at: occurredAt,
+  event_type: "run.accepted",
+  payload: { command_id: ids.command, payload_hash: hash("1") },
+});
+
+async function eventRow(sequence = 1, eventHash?: string) {
+  const event = { ...accepted, sequence };
+  return {
+    app_id: scope.app_id,
+    tenant_id: scope.tenant_id,
+    environment: scope.environment,
+    event_id: event.event_id,
+    run_id: event.run_id,
+    sequence,
+    event_type: event.event_type,
+    payload_json: event.payload,
+    worker_fence: event.worker_fence,
+    dedupe_key: event.idempotency_key,
+    event_hash: eventHash ?? (await sha256ContentHash(event)),
+    event_document: event,
+    created_at: event.occurred_at,
+  };
+}
+
+function authorityRow() {
+  return {
+    run_id: ids.run,
+    principal_id: ids.principal,
+    conversation_id: ids.conversation,
+    config_id: ids.config,
+    config_revision: 1,
+    config_hash: hash("2"),
+    schema_snapshot_hash: hash("3"),
+    config_committed_at: occurredAt,
+  };
+}
+
+async function sqlArtifactRow() {
+  const logicalPlanRef = {
+    artifact_id: ids.plan,
+    artifact_type: "LogicalPlan" as const,
+    ...scope,
+    run_id: ids.run,
+    revision: 1,
+    content_hash: hash("4"),
+  };
+  const sqlPayload = {
+    artifact_type: "SqlArtifact" as const,
+    logical_plan_ref: logicalPlanRef,
+    compiler_version: "postgresql-compiler@1.0.0",
+    ast_hash: hash("5"),
+    dialect: "postgresql" as const,
+    sql: "select $1::integer as private_value",
+    parameters: { $1: 42 },
+    query_hash: await computeSqlArtifactQueryHash({
+      dialect: "postgresql",
+      sql: "select $1::integer as private_value",
+      parameters: { $1: 42 },
+    }),
+  };
+  const draft = l2ArtifactDocumentSchema.parse({
+    envelope: {
+      artifact_id: ids.sql,
+      artifact_type: "SqlArtifact",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      parent_ref: null,
+      attempt_id: ids.attempt,
+      producer: { kind: "deterministic", id: "sql-compiler" },
+      input_refs: [logicalPlanRef],
+      schema_version: "1.0.0",
+      semantic_version: "1.0.0",
+      policy_version: "1.0.0",
+      model_profile_version: "1.0.0",
+      content_hash: hash("0"),
+      status: "COMMITTED",
+      created_at: occurredAt,
+    },
+    payload: sqlPayload,
+  });
+  const contentHash = await computeL2ArtifactContentHash(draft);
+  const document = l2ArtifactDocumentSchema.parse({
+    ...draft,
+    envelope: { ...draft.envelope, content_hash: contentHash },
+  });
+  return {
+    artifact_id: ids.sql,
+    artifact_type: "SqlArtifact",
+    revision: 1,
+    content_hash: contentHash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
+describe("PostgreSQL Resolution Trace projector", () => {
+  it("projects stable trace and redacted SQL history from verified authority rows", async () => {
+    const row = await eventRow();
+    const sql = await sqlArtifactRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool, calls } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts"))
+        return { rows: [{}], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [sql], rowCount: 1 };
+      return undefined;
+    });
+    const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+
+    const first = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    const second = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    expect(first.ok && second.ok && first.value?.trace_hash).toBe(
+      second.ok && second.value?.trace_hash,
+    );
+    expect(first.ok && first.value?.nodes.some(({ kind }) => kind === "SQL")).toBe(true);
+
+    const history = await projector.listSqlHistory(capability, {
+      scope,
+      run_id: ids.run,
+      occurred_after: "2026-08-18T11:00:00.000Z",
+      occurred_before: "2026-08-18T13:00:00.000Z",
+      limit: 10,
+    });
+    expect(history.ok && history.value.items[0]?.status).toBe("COMPILED");
+    expect(history.ok && history.value.items[0]?.schema_snapshot_hash).toBe(hash("3"));
+    expect(JSON.stringify(history)).not.toContain("private_value");
+    expect(JSON.stringify(history)).not.toMatch(/"(?:sql|parameters|rows|prompt|context)"/i);
+    expect(calls.some(({ text }) => text.includes("run.principal_id = $4"))).toBe(true);
+
+    const outsideWindow = await projector.listSqlHistory(capability, {
+      scope,
+      run_id: ids.run,
+      occurred_after: "2026-08-18T13:00:00.000Z",
+      limit: 10,
+    });
+    expect(outsideWindow.ok && outsideWindow.value.items).toEqual([]);
+    const callsBeforeInvalidWindow = calls.length;
+    const invalidWindow = await projector.listSqlHistory(capability, {
+      scope,
+      occurred_after: "2026-08-18T13:00:00.000Z",
+      occurred_before: "2026-08-18T11:00:00.000Z",
+    });
+    expect(invalidWindow).toMatchObject({
+      ok: false,
+      error: { code: "SQL_HISTORY_LOOKUP_INVALID" },
+    });
+    expect(calls).toHaveLength(callsBeforeInvalidWindow);
+  });
+
+  it("fails closed when the verified event stream has a sequence gap", async () => {
+    const row = await eventRow(2);
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
+      return undefined;
+    });
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: "RESOLUTION_TRACE_EVENT_GAP" } });
+  });
+
+  it("fails closed when a stored event hash does not match its document", async () => {
+    const row = await eventRow(1, hash("f"));
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      return undefined;
+    });
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    expect(result).toMatchObject({ ok: false, error: { code: "RUN_EVENT_STORE_EVENT_CORRUPT" } });
+  });
+});

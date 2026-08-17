@@ -26,6 +26,7 @@ export * from "./effective-config.js";
 export * from "./interruption.js";
 export * from "./public-events.js";
 export * from "./release-manifest.js";
+export * from "./resolution-trace.js";
 export * from "./runtime.js";
 
 export const RUN_TERMINAL_REASON_PAIRS = [

@@ -5,6 +5,10 @@ import {
   conversationTrajectorySchema,
   type PublicRunEvent,
   publicRunEventSchema,
+  type ResolutionTrace,
+  type SqlHistoryResult,
+  verifyResolutionTrace,
+  verifySqlHistoryResult,
 } from "@data-agent/contracts";
 import type { RunProjection } from "./run-projection";
 
@@ -257,6 +261,46 @@ export async function fetchConversationTrajectory(
     resolvedWorkspace,
   );
   return conversationTrajectorySchema.parse(response.data);
+}
+
+export async function fetchResolutionTrace(
+  runId: string,
+  workspaceId?: string,
+): Promise<ResolutionTrace> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  const response = await request<{ data: unknown }>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/runs/${encodeURIComponent(runId)}/resolution-trace`,
+    {},
+    resolvedWorkspace,
+  );
+  return verifyResolutionTrace(response.data);
+}
+
+export async function fetchSqlHistory(
+  filters: {
+    readonly runId?: string;
+    readonly conversationId?: string;
+    readonly occurredAfter?: string;
+    readonly occurredBefore?: string;
+    readonly limit?: number;
+  },
+  workspaceId?: string,
+): Promise<SqlHistoryResult> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  const parameters = new URLSearchParams();
+  if (filters.runId) parameters.set("run_id", filters.runId);
+  if (filters.conversationId) parameters.set("conversation_id", filters.conversationId);
+  if (filters.occurredAfter) parameters.set("occurred_after", filters.occurredAfter);
+  if (filters.occurredBefore) parameters.set("occurred_before", filters.occurredBefore);
+  parameters.set("limit", String(filters.limit ?? 100));
+  const response = await request<{ data: unknown }>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/sql-history?${parameters.toString()}`,
+    {},
+    resolvedWorkspace,
+  );
+  return verifySqlHistoryResult(response.data);
 }
 
 // ─── Exponential Backoff ───────────────────────────────────────────────────
