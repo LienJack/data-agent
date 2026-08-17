@@ -24,6 +24,7 @@ import {
   netRevenueContract,
 } from "./support/commerce-fixture.js";
 import { committedLogicalPlanAuthorityFixture } from "./support/compiler-authority-fixture.js";
+import { authoritativeResolvedContextBindingFixture } from "./support/resolved-context-binding-fixture.js";
 
 async function readyFixture(
   queryContract: QueryContractPayload = netRevenueContract(),
@@ -100,6 +101,35 @@ function simulatedPostgresqlDriverColumns(sql: string): string[] {
 }
 
 describe("PostgreSQL Dialect Compiler", () => {
+  it("rejects a schema-shaped but unbranded Resolved Context binding", async () => {
+    const fixture = await readyFixture();
+    const input = await compilerInput(fixture);
+    await expect(
+      compilePostgresqlLogicalPlan({
+        ...input,
+        resolved_context_binding: { binding_hash: `sha256:${"1".repeat(64)}` },
+      }),
+    ).resolves.toEqual({
+      state: "FAILED",
+      reason_code: "POSTGRESQL_COMPILER_RESOLVED_CONTEXT_AUTHORITY_REQUIRED",
+    });
+  });
+
+  it("binds an authoritative Resolved Context hash into Compiler Proof and SqlArtifact", async () => {
+    const fixture = await readyFixture();
+    const input = await compilerInput(fixture);
+    const binding = await authoritativeResolvedContextBindingFixture();
+    const result = await compilePostgresqlLogicalPlan({
+      ...input,
+      resolved_context_binding: binding,
+    });
+    if (result.state !== "COMPILED") throw new Error(`expected compilation: ${result.reason_code}`);
+    expect(result.compilation.sql_artifact.resolved_context_binding_hash).toBe(
+      binding.binding_hash,
+    );
+    expect(result.compilation.proof.resolved_context_binding_hash).toBe(binding.binding_hash);
+  });
+
   it("从品牌化 LogicalPlan 产生可验真的确定性 SqlArtifact、AST、Proof 与参数顺序", async () => {
     const fixture = await readyFixture();
     const input = await compilerInput(fixture);

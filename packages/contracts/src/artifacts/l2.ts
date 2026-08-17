@@ -685,6 +685,7 @@ export const sqlArtifactSchema = z.strictObject({
   sql: z.string().min(1).max(100_000),
   parameters: z.record(z.string(), z.json()),
   query_hash: contentHashSchema,
+  resolved_context_binding_hash: contentHashSchema.optional(),
 });
 
 export const TEXT2SQL_GATES = [

@@ -12,6 +12,7 @@ import {
   computePostgresqlExecutionSettingsHash,
   postgresqlExecutionSettingsSchema,
 } from "../artifacts/text2sql-evidence.js";
+import { resolvedContextText2SqlBindingSchema } from "../artifacts/text2sql-primitives.js";
 import {
   appScopeSchema,
   type ContentHash,
@@ -380,6 +381,7 @@ export const sandboxExecutionRequestSchema = z
         execution_settings: postgresqlExecutionSettingsSchema,
         snapshot_requirement: sandboxSnapshotRequirementSchema,
         parameters: sandboxSqlParametersSchema,
+        resolved_context_binding: resolvedContextText2SqlBindingSchema.optional(),
       }),
     }),
     z.strictObject({
@@ -419,6 +421,23 @@ export const sandboxExecutionRequestSchema = z
         code: "custom",
         message: "Sandbox Request 的 PostgreSQL Timeout 必须与执行预算精确一致。",
         path: ["payload", "execution_settings"],
+      });
+    }
+    if (
+      request.language === "sql" &&
+      request.payload.resolved_context_binding &&
+      (request.payload.resolved_context_binding.scope.app_id !== request.scope.app_id ||
+        request.payload.resolved_context_binding.scope.tenant_id !== request.scope.tenant_id ||
+        request.payload.resolved_context_binding.scope.environment !== request.scope.environment ||
+        request.payload.resolved_context_binding.semantic_release.datasource_id !==
+          request.payload.datasource_id ||
+        request.payload.resolved_context_binding.schema_snapshot.datasource_id !==
+          request.payload.datasource_id)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Resolved Context binding must match the Sandbox scope and datasource.",
+        path: ["payload", "resolved_context_binding"],
       });
     }
   });
@@ -604,6 +623,7 @@ export const sandboxSqlArtifactBindingSchema = z.strictObject({
   sql: z.string().min(1).max(100_000),
   parameters: sandboxSqlParametersSchema,
   query_hash: contentHashSchema,
+  resolved_context_binding_hash: contentHashSchema.optional(),
 });
 
 async function computeSandboxSqlArtifactQueryHash(

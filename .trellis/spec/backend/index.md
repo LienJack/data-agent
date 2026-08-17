@@ -27,6 +27,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Knowledge Base Authority](./knowledge-base.md) | U6 File 到 U10 索引、Neo4j 投影、检索证据与 U2 冻结 | 已建立 |
 | [Semantic Induction Maintenance](./semantic-induction-maintenance.md) | U10 Job 到 U5 review-only Candidate 的稳定归纳、漂移影响与 Metric dry-run | 已建立 |
 | [Resolved Context Authority](./resolved-context-authority.md) | Request/Snapshot/Package/Receipt 身份闭包、能力路由与 Preview/Worker 共用解析 | 已建立 |
+| [Resolved Context Text2SQL Authority](./text2sql-resolved-context.md) | Context/Mapping/Compiler/Graph/SQL Firewall 的执行闭包 | 已建立 |
 | [本地开发与 Docker 运行模式](./local-runtime-modes.md) | 数据库容器、本地 watch、完整部署与迁移门禁 | 已建立 |
 | [Python Sandbox 执行](./python-sandbox-execution.md) | 模型 Python 源码、隔离运行、资源预算、Receipt 与失败关闭 | 设计冻结，未实现 |
 | [质量规范](./quality-guidelines.md) | 类型、测试、边界与审查门禁 | 已建立 |

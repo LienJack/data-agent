@@ -8,6 +8,7 @@ import {
   computeSandboxOrderedResultHash,
   computeSandboxResultBytes,
   l2ArtifactDocumentSchema,
+  type ResolvedContextText2SqlBinding,
   sandboxExecutionRequestSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -24,7 +25,7 @@ import {
   type SnapshotDescriptor,
   sandboxExecutionImmutableIdentitySchema,
 } from "@data-agent/contracts/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresText2SqlSandboxAuthority } from "../../src/sandbox/postgres-text2sql-sandbox-authority.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
@@ -55,6 +56,42 @@ const authorityIdentity = {
 } as const;
 const hash = (digit: string) => `sha256:${digit.repeat(64)}`;
 const observedAt = "2026-07-27T00:01:00.000Z";
+
+function resolvedContextBinding(): ResolvedContextText2SqlBinding {
+  return {
+    schema_version: "resolved-context-text2sql-binding@1.0.0",
+    scope: { app_id: ids.app, tenant_id: ids.tenant, environment: "test" },
+    resolved_context_package_ref: {
+      package_id: "47f7093f-71b2-8f72-8398-3832d59c5089",
+      package_revision: 1,
+      package_hash: hash("1"),
+    },
+    authority_snapshot_hash: hash("2"),
+    semantic_release: {
+      resource_id: ids.policy,
+      resource_revision: 1,
+      resource_hash: hash("3"),
+      datasource_id: ids.datasource,
+      semantic_generation: 1,
+      publication_status: "PUBLISHED",
+    },
+    schema_snapshot: {
+      resource_id: ids.admission,
+      resource_revision: 1,
+      resource_hash: hash("4"),
+      datasource_id: ids.datasource,
+      semantic_release_id: ids.policy,
+      semantic_generation: 1,
+    },
+    route: "METRIC",
+    selected_metric_id: "gross_revenue",
+    selected_ontology_ids: [],
+    mapping_refs: ["mapping.amount"],
+    semantic_projection_hashes: [hash("7")],
+    mapping_closure_hash: hash("5"),
+    binding_hash: hash("6"),
+  };
+}
 
 interface SqlCall {
   readonly text: string;
@@ -158,6 +195,7 @@ async function protocolFixture(
     readonly sql?: string;
     readonly compiler_version?: string;
     readonly search_path?: readonly string[];
+    readonly resolved_context_binding?: ResolvedContextText2SqlBinding;
   } = {},
 ) {
   const settings = {
@@ -194,6 +232,9 @@ async function protocolFixture(
       logical_plan_ref: logicalPlanRef,
       compiler_version: options.compiler_version ?? "postgresql-compiler@1.1.0",
       ast_hash: hash("6"),
+      ...(options.resolved_context_binding
+        ? { resolved_context_binding_hash: options.resolved_context_binding.binding_hash }
+        : {}),
       ...sqlMaterial,
       query_hash: queryHash,
     },
@@ -243,6 +284,9 @@ async function protocolFixture(
       execution_settings: settings,
       snapshot_requirement: { mode: "REQUIRE_REPLAYABLE" },
       parameters,
+      ...(options.resolved_context_binding
+        ? { resolved_context_binding: options.resolved_context_binding }
+        : {}),
     },
     budget,
   });
@@ -562,6 +606,21 @@ function controlledRelationManifest(
 }
 
 describe("PostgreSQL Text2SQL Sandbox Authority", () => {
+  it("rejects a cross-scope Resolved Context binding before database I/O", async () => {
+    await expect(
+      protocolFixture({
+        resolved_context_binding: {
+          ...resolvedContextBinding(),
+          scope: {
+            app_id: ids.app,
+            tenant_id: "00000000-0000-4000-8000-000000009999",
+            environment: "test",
+          },
+        },
+      }),
+    ).rejects.toThrow("Resolved Context binding must match the Sandbox scope and datasource");
+  });
+
   it("fails closed when fixed Snapshot Authority contains duplicate execution identity", async () => {
     const capability = issueCapability();
     const descriptor = await snapshotDescriptor();
@@ -652,7 +711,8 @@ describe("PostgreSQL Text2SQL Sandbox Authority", () => {
   });
 
   it("prepares Exact Revision, revalidation, claim and grant in one database transaction", async () => {
-    const fixture = await protocolFixture();
+    const binding = resolvedContextBinding();
+    const fixture = await protocolFixture({ resolved_context_binding: binding });
     const capability = issueCapability();
     const pool = scriptedPool((text, values) => {
       if (text.includes("from artifacts as artifact")) {
@@ -667,6 +727,9 @@ describe("PostgreSQL Text2SQL Sandbox Authority", () => {
           rows: document ? [{ document_json: document }] : [],
           rowCount: document ? 1 : 0,
         };
+      }
+      if (text.includes("verify_resolved_context_text2sql_binding")) {
+        return { rows: [{ value: true }], rowCount: 1 };
       }
       if (text.includes("claim_text2sql_sandbox_execution")) {
         const command = JSON.parse(String(values[0])) as Record<string, unknown>;
@@ -718,6 +781,7 @@ describe("PostgreSQL Text2SQL Sandbox Authority", () => {
       owner_id: "sandbox-worker-1",
       snapshot_descriptors: [fixture.descriptor],
       snapshot_relation_manifests: [controlledRelationManifest(fixture.descriptor)],
+      require_resolved_context_binding: true,
       now: () => new Date(observedAt),
     });
 
@@ -742,6 +806,14 @@ describe("PostgreSQL Text2SQL Sandbox Authority", () => {
     expect(
       pool.calls.filter(({ text }) => text.includes("from artifacts as artifact")),
     ).toHaveLength(4);
+    const verifierIndex = pool.calls.findIndex(({ text }) =>
+      text.includes("verify_resolved_context_text2sql_binding"),
+    );
+    const claimIndex = pool.calls.findIndex(({ text }) =>
+      text.includes("claim_text2sql_sandbox_execution"),
+    );
+    expect(verifierIndex).toBeGreaterThanOrEqual(0);
+    expect(verifierIndex).toBeLessThan(claimIndex);
     const claimCall = pool.calls.find(({ text }) =>
       text.includes("claim_text2sql_sandbox_execution"),
     );
@@ -808,6 +880,137 @@ describe("PostgreSQL Text2SQL Sandbox Authority", () => {
       expect(pool.calls.filter(({ text }) => text === "ROLLBACK")).toHaveLength(1);
     },
   );
+
+  it("requires an authoritative Resolved Context binding before durable claim", async () => {
+    const fixture = await protocolFixture();
+    const capability = issueCapability();
+    const pool = scriptedPool((text, values) => {
+      if (!text.includes("from artifacts as artifact")) return undefined;
+      const artifactId = values[4];
+      const document =
+        artifactId === ids.permit
+          ? fixture.permitDocument
+          : artifactId === ids.sql
+            ? fixture.sqlDocument
+            : null;
+      return {
+        rows: document ? [{ document_json: document }] : [],
+        rowCount: document ? 1 : 0,
+      };
+    });
+    const authority = createPostgresText2SqlSandboxAuthority({
+      pool: pool.pool,
+      authorizer: capability.authorizer,
+      capability: capability.capability,
+      identity: authorityIdentity,
+      owner_id: "sandbox-worker-1",
+      snapshot_descriptors: [fixture.descriptor],
+      snapshot_relation_manifests: [controlledRelationManifest(fixture.descriptor)],
+      require_resolved_context_binding: true,
+      now: () => new Date(observedAt),
+    });
+
+    await expect(prepareSandboxExecution(fixture.request, authority)).rejects.toMatchObject({
+      code: "SANDBOX_AUTHORITY_REJECTED",
+    });
+    expect(pool.calls.some(({ text }) => text.includes("claim_text2sql_sandbox_execution"))).toBe(
+      false,
+    );
+    expect(pool.calls.some(({ text }) => text.includes("mark_text2sql_sandbox_executing"))).toBe(
+      false,
+    );
+  });
+
+  it("rejects a supplied Resolved Context binding when server authority denies it", async () => {
+    const binding = resolvedContextBinding();
+    const fixture = await protocolFixture({ resolved_context_binding: binding });
+    const capability = issueCapability();
+    const verify = vi.fn(async () => false);
+    const pool = scriptedPool((text, values) => {
+      if (!text.includes("from artifacts as artifact")) return undefined;
+      const artifactId = values[4];
+      const document =
+        artifactId === ids.permit
+          ? fixture.permitDocument
+          : artifactId === ids.sql
+            ? fixture.sqlDocument
+            : null;
+      return {
+        rows: document ? [{ document_json: document }] : [],
+        rowCount: document ? 1 : 0,
+      };
+    });
+    const authority = createPostgresText2SqlSandboxAuthority({
+      pool: pool.pool,
+      authorizer: capability.authorizer,
+      capability: capability.capability,
+      identity: authorityIdentity,
+      owner_id: "sandbox-worker-1",
+      snapshot_descriptors: [fixture.descriptor],
+      snapshot_relation_manifests: [controlledRelationManifest(fixture.descriptor)],
+      require_resolved_context_binding: true,
+      resolved_context_binding_authority: { verify },
+      now: () => new Date(observedAt),
+    });
+
+    await expect(prepareSandboxExecution(fixture.request, authority)).rejects.toMatchObject({
+      code: "SANDBOX_AUTHORITY_REJECTED",
+    });
+    expect(verify).toHaveBeenCalledWith({
+      binding,
+      scope: fixture.request.scope,
+      run_id: fixture.request.run_id,
+      sql_artifact_ref: fixture.request.payload.sql_artifact_ref,
+    });
+    expect(pool.calls.some(({ text }) => text.includes("claim_text2sql_sandbox_execution"))).toBe(
+      false,
+    );
+  });
+
+  it("uses the PostgreSQL currentness verifier by default before claim", async () => {
+    const binding = resolvedContextBinding();
+    const fixture = await protocolFixture({ resolved_context_binding: binding });
+    const capability = issueCapability();
+    const pool = scriptedPool((text, values) => {
+      if (text.includes("verify_resolved_context_text2sql_binding")) {
+        return { rows: [{ value: false }], rowCount: 1 };
+      }
+      if (!text.includes("from artifacts as artifact")) return undefined;
+      const artifactId = values[4];
+      const document =
+        artifactId === ids.permit
+          ? fixture.permitDocument
+          : artifactId === ids.sql
+            ? fixture.sqlDocument
+            : null;
+      return {
+        rows: document ? [{ document_json: document }] : [],
+        rowCount: document ? 1 : 0,
+      };
+    });
+    const authority = createPostgresText2SqlSandboxAuthority({
+      pool: pool.pool,
+      authorizer: capability.authorizer,
+      capability: capability.capability,
+      identity: authorityIdentity,
+      owner_id: "sandbox-worker-1",
+      snapshot_descriptors: [fixture.descriptor],
+      snapshot_relation_manifests: [controlledRelationManifest(fixture.descriptor)],
+      require_resolved_context_binding: true,
+      now: () => new Date(observedAt),
+    });
+
+    await expect(prepareSandboxExecution(fixture.request, authority)).rejects.toMatchObject({
+      code: "SANDBOX_AUTHORITY_REJECTED",
+    });
+    const verifierCall = pool.calls.find(({ text }) =>
+      text.includes("verify_resolved_context_text2sql_binding"),
+    );
+    expect(verifierCall?.values).toEqual([JSON.stringify(binding), ids.run]);
+    expect(pool.calls.some(({ text }) => text.includes("claim_text2sql_sandbox_execution"))).toBe(
+      false,
+    );
+  });
 
   it.each([
     {

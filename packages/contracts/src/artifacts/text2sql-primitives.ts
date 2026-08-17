@@ -1,5 +1,112 @@
 import { z } from "zod";
-import { postgresqlOutputAliasSchema, versionIdentifierSchema } from "../common/index.js";
+import {
+  appScopeSchema,
+  contentHashSchema,
+  postgresqlOutputAliasSchema,
+  versionIdentifierSchema,
+} from "../common/index.js";
+
+const contextVersionedResourceSchema = z.strictObject({
+  resource_id: z.uuid(),
+  resource_revision: z.number().int().positive().safe(),
+  resource_hash: contentHashSchema,
+});
+
+const contextSemanticReleaseSchema = contextVersionedResourceSchema.extend({
+  datasource_id: z.uuid(),
+  semantic_generation: z.number().int().positive().safe(),
+  publication_status: z.literal("PUBLISHED"),
+});
+
+const contextSchemaSnapshotSchema = contextVersionedResourceSchema.extend({
+  datasource_id: z.uuid(),
+  semantic_release_id: z.uuid(),
+  semantic_generation: z.number().int().positive().safe(),
+});
+
+const canonicalBindingIdsSchema = z
+  .array(versionIdentifierSchema)
+  .min(1)
+  .max(512)
+  .superRefine((values, ctx) => {
+    values.forEach((value, index) => {
+      if (index > 0 && (values[index - 1] ?? "") >= value) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Text2SQL binding identities must be unique and canonically sorted.",
+          path: [index],
+        });
+      }
+    });
+  });
+
+const canonicalProjectionHashesSchema = z
+  .array(contentHashSchema)
+  .min(1)
+  .max(32)
+  .superRefine((values, ctx) => {
+    values.forEach((value, index) => {
+      if (index > 0 && (values[index - 1] ?? "") >= value) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Semantic projection hashes must be unique and canonically sorted.",
+          path: [index],
+        });
+      }
+    });
+  });
+
+export const resolvedContextText2SqlBindingDraftSchema = z
+  .strictObject({
+    schema_version: z.literal("resolved-context-text2sql-binding@1.0.0"),
+    scope: appScopeSchema,
+    resolved_context_package_ref: z.strictObject({
+      package_id: z.uuid(),
+      package_revision: z.literal(1),
+      package_hash: contentHashSchema,
+    }),
+    authority_snapshot_hash: contentHashSchema,
+    semantic_release: contextSemanticReleaseSchema,
+    schema_snapshot: contextSchemaSnapshotSchema,
+    route: z.enum(["METRIC", "ONTOLOGY_TEXT2SQL"]),
+    selected_metric_id: versionIdentifierSchema.nullable(),
+    selected_ontology_ids: z.array(versionIdentifierSchema).max(256),
+    mapping_refs: canonicalBindingIdsSchema,
+    semantic_projection_hashes: canonicalProjectionHashesSchema,
+    mapping_closure_hash: contentHashSchema,
+  })
+  .superRefine((binding, ctx) => {
+    if (
+      binding.semantic_release.datasource_id !== binding.schema_snapshot.datasource_id ||
+      binding.semantic_release.resource_id !== binding.schema_snapshot.semantic_release_id ||
+      binding.semantic_release.semantic_generation !== binding.schema_snapshot.semantic_generation
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Text2SQL binding Release and Schema Snapshot must be exact.",
+        path: ["schema_snapshot"],
+      });
+    }
+    if ((binding.route === "METRIC") !== (binding.selected_metric_id !== null)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Metric route must bind exactly one selected Metric.",
+        path: ["selected_metric_id"],
+      });
+    }
+    if ((binding.route === "ONTOLOGY_TEXT2SQL") !== binding.selected_ontology_ids.length > 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Ontology route must bind at least one selected Ontology object.",
+        path: ["selected_ontology_ids"],
+      });
+    }
+  });
+
+export const resolvedContextText2SqlBindingSchema =
+  resolvedContextText2SqlBindingDraftSchema.extend({ binding_hash: contentHashSchema });
+
+export type ResolvedContextText2SqlBinding = z.infer<typeof resolvedContextText2SqlBindingSchema>;
 
 export const qualifiedColumnIdSchema = versionIdentifierSchema.refine(
   (value) => /^[A-Za-z0-9][A-Za-z0-9_:@/+~-]*\.[A-Za-z0-9][A-Za-z0-9_:@/+~-]*$/.test(value),
