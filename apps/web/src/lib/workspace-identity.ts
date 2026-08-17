@@ -17,6 +17,7 @@ import {
   createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
   createPostgresProviderInvocationStore,
+  createPostgresResolvedContextRegistry,
   createPostgresSemanticInductionRegistry,
   createPostgresSemanticPortabilityRepository,
   createPostgresWorkspaceAuthority,
@@ -25,6 +26,7 @@ import {
   createWorkspaceContentNamespace,
   type ResolvedSessionPrincipal,
 } from "@data-agent/platform";
+import { createResolvedContextService } from "@data-agent/semantic";
 import { headers } from "next/headers";
 import pg from "pg";
 import { z } from "zod";
@@ -55,6 +57,7 @@ interface WorkspaceIdentityRuntimeState {
   workspaceFiles?: ReturnType<typeof createPostgresWorkspaceFiles>;
   knowledgeRegistry?: ReturnType<typeof createPostgresKnowledgeRegistry>;
   semanticInductionRegistry?: ReturnType<typeof createPostgresSemanticInductionRegistry>;
+  resolvedContextService?: ReturnType<typeof createResolvedContextService>;
   workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
 }
 
@@ -181,6 +184,17 @@ export function getSemanticInductionRegistry() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.semanticInductionRegistry;
+}
+
+export function getResolvedContextService() {
+  const runtime = state();
+  runtime.resolvedContextService ??= createResolvedContextService({
+    authority: createPostgresResolvedContextRegistry({
+      pool: getWorkspaceSqlPool(),
+      authorizer: getWorkspaceAuthority().authorizer,
+    }),
+  });
+  return runtime.resolvedContextService;
 }
 
 export function getWorkspaceContent() {

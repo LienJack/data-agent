@@ -21,7 +21,10 @@ import {
   sealKernelVerifiedReportReadyCandidate,
 } from "@data-agent/research/server";
 import { z } from "zod";
-import { hasRunExecutionContextProvenance } from "./run-execution-context.js";
+import {
+  hasRunExecutionContextProvenance,
+  hasRunResolvedContextCapability,
+} from "./run-execution-context.js";
 import {
   type RunCheckpointInput,
   type RunDisplayEventInput,
@@ -404,6 +407,27 @@ export function createResearchWorkflowExecutor(
         tool_name: "effective.config.verify",
         summary: `已冻结 ${effectiveConfig.model.provider}/${effectiveConfig.model.model_id} 与数据源、语义快照`,
         output: `datasource=${effectiveConfig.datasource.resource_id}; semantic_release=${effectiveConfig.semantic_release.resource_id}; config_hash=${effectiveConfig.config_hash.slice(0, 15)}…`,
+        duration_ms: 0,
+      });
+
+      const resolvedContext = context.getResolvedContextCapability?.() ?? null;
+      if (!resolvedContext || !hasRunResolvedContextCapability(resolvedContext)) {
+        return researchErrorResult("RESOLVED_CONTEXT_AUTHORITY_NOT_CONFIGURED", false);
+      }
+      const resolved = await resolvedContext.resolve();
+      if (!resolved.ok) {
+        return researchErrorResult(resolved.error.code, resolved.error.retryable);
+      }
+      if (!["READY", "PARTIAL"].includes(resolved.value.receipt.state)) {
+        return researchErrorResult(`RESOLVED_CONTEXT_${resolved.value.receipt.state}`, false);
+      }
+      await emitDisplayEvent(context, {
+        kind: "tool_completed",
+        key: "resolved-context-complete",
+        call_id: `${lease.attempt_id}:resolved-context`,
+        tool_name: "context.resolve",
+        summary: `已冻结 ${resolved.value.receipt.route} 上下文包`,
+        output: `package=${resolved.value.receipt.package_ref.package_id}; hash=${resolved.value.receipt.package_ref.package_hash.slice(0, 15)}…`,
         duration_ms: 0,
       });
 

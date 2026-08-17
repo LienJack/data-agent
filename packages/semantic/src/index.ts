@@ -102,6 +102,7 @@ export {
   type U5RuntimeRestrictionProjection,
   type U5SemanticProjection,
 } from "./compiler/u5-compiler.js";
+export * from "./context/index.js";
 export {
   buildSemanticExplorerCandidateComparison,
   buildSemanticExplorerLineage,

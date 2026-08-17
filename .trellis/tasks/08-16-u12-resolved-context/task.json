@@ -3,7 +3,7 @@
   "name": "u12-resolved-context",
   "title": "U12 Resolved Context Package Metric Resolver 能力路由与 Preview",
   "description": "冻结计划对应 U12 的独立实施、验证与 scoped commit。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

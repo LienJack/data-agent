@@ -6,6 +6,7 @@ infra_dir=$(CDPATH= cd -- "$script_dir/.." && pwd)
 container_name="data-agent-supabase-smoke-$$"
 database_name="data_agent_test"
 database_password="data-agent-test-only"
+assertion_filter=${DATA_AGENT_POSTGRES_ASSERTION_FILTER:-}
 
 cleanup() {
   docker rm -f "$container_name" >/dev/null 2>&1 || true
@@ -1613,6 +1614,9 @@ if [ "$lifecycle_state" != "ACTIVE:1" ]; then
 fi
 
 for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | sort); do
+  if [ -n "$assertion_filter" ] && [ "$(basename "$assertion_file")" != "$assertion_filter" ]; then
+    continue
+  fi
   case "$(basename "$assertion_file")" in
     28-schema-discovery-authority-assertions.sql)
       continue

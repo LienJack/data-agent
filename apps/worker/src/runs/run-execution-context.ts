@@ -5,6 +5,7 @@ import {
   type MastraSnapshotBinding,
   mastraSnapshotBindingBodySchema,
   type PortResult,
+  type ResolvedContextCommitResult,
   type RunEventStorePort,
   type RunProjectionRecord,
   type RunWorkLease,
@@ -24,6 +25,7 @@ export type RunExecutionContextProvenance = Readonly<{
 
 const trustedRunExecutionContexts = new WeakSet<object>();
 const trustedProviderDispatchCapabilities = new WeakSet<object>();
+const trustedResolvedContextCapabilities = new WeakSet<object>();
 
 export interface RunProviderDispatchCapability {
   invoke(input: {
@@ -39,6 +41,26 @@ export interface RunBoundProviderDispatcher {
     readonly logical_call_id: string;
     readonly signal: AbortSignal;
   }): Promise<PortResult<AuditedModelProviderResult>>;
+}
+
+export interface RunResolvedContextCapability {
+  resolve(): Promise<PortResult<ResolvedContextCommitResult>>;
+}
+
+export interface RunBoundResolvedContextResolver {
+  resolve(input: {
+    readonly lease: RunWorkLease;
+    readonly effective_config: EffectiveRunConfigReceiptCandidate;
+    readonly context_receipt: ContextReceiptBinding;
+  }): Promise<PortResult<ResolvedContextCommitResult>>;
+}
+
+export function hasRunResolvedContextCapability(
+  input: unknown,
+): input is RunResolvedContextCapability {
+  return (
+    typeof input === "object" && input !== null && trustedResolvedContextCapabilities.has(input)
+  );
 }
 
 export function hasRunProviderDispatchCapability(
@@ -66,6 +88,7 @@ interface RunExecutionContextDependencies {
   readonly create_id: () => string;
   readonly side_effect_timeout_ms: number;
   readonly provider_dispatch: RunBoundProviderDispatcher | null;
+  readonly resolved_context?: RunBoundResolvedContextResolver | null;
   readonly heartbeat: () => Promise<PortResult<{ readonly expires_at: string }>>;
   readonly guard_running_lease: (
     lease: RunWorkLease,
@@ -92,6 +115,7 @@ export function createRunExecutionContext({
   create_id: createId,
   side_effect_timeout_ms: sideEffectTimeoutMs,
   provider_dispatch: providerDispatch,
+  resolved_context: resolvedContext,
   heartbeat,
   guard_running_lease: guardRunningLease,
   append_checkpoint_event: appendCheckpointEvent,
@@ -143,6 +167,30 @@ export function createRunExecutionContext({
   if (providerDispatchCapability) {
     trustedProviderDispatchCapabilities.add(providerDispatchCapability);
   }
+  let resolvedContextUsed = false;
+  const resolvedContextCapability = resolvedContext
+    ? Object.freeze({
+        resolve() {
+          if (runSignal.aborted) return Promise.resolve(aborted<ResolvedContextCommitResult>());
+          if (resolvedContextUsed) {
+            return Promise.resolve(
+              failure(
+                "RESOLVED_CONTEXT_ALREADY_CONSUMED",
+                "Resolved Context capability can be consumed only once per Run attempt.",
+                false,
+              ),
+            );
+          }
+          resolvedContextUsed = true;
+          return resolvedContext.resolve({
+            lease,
+            effective_config: effectiveConfig,
+            context_receipt: contextReceipt,
+          });
+        },
+      })
+    : null;
+  if (resolvedContextCapability) trustedResolvedContextCapabilities.add(resolvedContextCapability);
 
   const context = {
     getEffectiveConfig() {
@@ -155,6 +203,10 @@ export function createRunExecutionContext({
 
     getProviderDispatchCapability() {
       return providerDispatchCapability;
+    },
+
+    getResolvedContextCapability() {
+      return resolvedContextCapability;
     },
 
     async emitDisplayEvent(input) {

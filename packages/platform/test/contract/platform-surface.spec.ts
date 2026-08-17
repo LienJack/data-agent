@@ -68,6 +68,7 @@ describe("platform package public surface", () => {
       "createPostgresRepository",
       "createPostgresResearchAuthority",
       "createPostgresResearchResourceInvocation",
+      "createPostgresResolvedContextRegistry",
       "createPostgresRunControl",
       "createPostgresRunEventStore",
       "createPostgresRunQueue",

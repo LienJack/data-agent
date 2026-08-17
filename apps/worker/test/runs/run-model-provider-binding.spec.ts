@@ -63,6 +63,21 @@ describe("Research Worker governed Provider binding", () => {
       })),
     } satisfies RunBoundProviderDispatcher;
     const displayEvents: unknown[] = [];
+    const resolvedContext = {
+      resolve: vi.fn(async () => ({
+        ok: true as const,
+        value: {
+          receipt: {
+            state: "READY",
+            route: "METRIC",
+            package_ref: {
+              package_id: "86000000-0000-4000-8000-000000000010",
+              package_hash: `sha256:${"a".repeat(64)}`,
+            },
+          },
+        } as never,
+      })),
+    };
     const context = createRunExecutionContext({
       lease: workerLease,
       effective_config: config,
@@ -73,6 +88,7 @@ describe("Research Worker governed Provider binding", () => {
       create_id: () => "86000000-0000-4000-8000-000000000099",
       side_effect_timeout_ms: 1_000,
       provider_dispatch: dispatch,
+      resolved_context: resolvedContext,
       heartbeat: async () => ({ ok: true, value: { expires_at: workerLease.expires_at } }),
       guard_running_lease: async () =>
         ({
@@ -116,6 +132,10 @@ describe("Research Worker governed Provider binding", () => {
       context_receipt: consumption.context_receipt,
       logical_call_id: workerLease.command_id,
     });
+    expect(resolvedContext.resolve).toHaveBeenCalledTimes(1);
+    expect(resolvedContext.resolve.mock.invocationCallOrder[0]).toBeLessThan(
+      dispatch.invoke.mock.invocationCallOrder[0] ?? Number.MAX_SAFE_INTEGER,
+    );
     expect(displayEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "progress", phase: "provider.authority.prepare" }),

@@ -23,6 +23,7 @@ import {
   createPostgresProviderInvocationSmokeJob,
   createPostgresRepository,
   createPostgresResearchAuthority,
+  createPostgresResolvedContextRegistry,
   createPostgresRunEventStore,
   createPostgresRunQueue,
   createPostgresSemanticInductionRegistry,
@@ -32,6 +33,7 @@ import {
   type KnowledgeIndex,
   providerInvocationSmokeClaimSchema,
 } from "@data-agent/platform";
+import { createResolvedContextService } from "@data-agent/semantic";
 import pg from "pg";
 import { z } from "zod";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
@@ -48,6 +50,7 @@ import {
   isRunnableWorkspaceMember,
 } from "./runs/multi-principal-runner.js";
 import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
+import { createRunBoundResolvedContextResolver } from "./runs/run-bound-resolved-context.js";
 import {
   createInitialWorkerHealth,
   parseRunWorkerEnvironment,
@@ -298,6 +301,15 @@ export async function runWorkerProcess(
           capability,
           environment,
         });
+        const resolvedContext = createRunBoundResolvedContextResolver({
+          capability,
+          service: createResolvedContextService({
+            authority: createPostgresResolvedContextRegistry({
+              pool: sqlPool,
+              authorizer: capabilityAuthority.authorizer,
+            }),
+          }),
+        });
         const executor = smokeTarget
           ? createProviderSmokeExecutor()
           : createResearchWorkflowExecutor({
@@ -341,6 +353,7 @@ export async function runWorkerProcess(
             event_store: eventStore,
             executor,
             provider_dispatch: providerDispatch,
+            resolved_context: resolvedContext,
             effective_config_loader: (lease) => {
               const payload = effectiveConfigRunLeasePayloadSchema.safeParse(lease.payload);
               if (!payload.success || lease.command_kind !== "START_L2_RESEARCH") {

@@ -169,6 +169,10 @@ export {
   type PostgresSemanticInductionRegistry,
 } from "./semantic/postgres-semantic-induction.js";
 export {
+  createPostgresResolvedContextRegistry,
+  type PostgresResolvedContextRegistry,
+} from "./semantic/postgres-resolved-context.js";
+export {
   createPostgresSemanticPortabilityRepository,
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";
