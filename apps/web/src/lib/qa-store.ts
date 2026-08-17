@@ -84,7 +84,10 @@ interface QAActions {
   openTrajectory: (focus: TrajectoryFocus) => void;
   openConversation: (focus: TrajectoryFocus) => void;
   /** 发送消息 */
-  sendMessage: (content: string) => Promise<boolean>;
+  sendMessage: (
+    content: string,
+    files?: readonly Readonly<{ file_id: string; revision: number; revision_hash: string }>[],
+  ) => Promise<boolean>;
   stopMessage: () => Promise<void>;
   loadResourceCatalog: () => Promise<void>;
   /** 加载数据源列表 */
@@ -332,7 +335,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
     }
   },
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, files = []) => {
     const state = get();
     let conversationId = state.activeConversationId;
 
@@ -377,7 +380,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
       if (!activeConversation.modelProfileId) throw new Error("发送消息前请先选择模型");
 
       // 服务端在一个事务中从 Conversation 冻结资源、写入用户消息并创建 Run。
-      const run = await createQaRun(content, conversationId, workspaceId);
+      const run = await createQaRun(content, conversationId, workspaceId, files);
       runAccepted = true;
 
       const agentMessageId = `local-agent-${Date.now()}`;

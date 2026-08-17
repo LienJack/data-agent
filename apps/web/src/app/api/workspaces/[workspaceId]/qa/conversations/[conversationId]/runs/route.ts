@@ -1,6 +1,7 @@
 import {
   buildRunConfigRequestCandidate,
   qaRunStartInputSchema,
+  workspaceFileReferenceSchema,
   workspaceIdempotencyKeySchema,
 } from "@data-agent/contracts";
 import { createPostgresRepository } from "@data-agent/platform";
@@ -12,6 +13,7 @@ import {
   getProviderInvocationStore,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
+  getWorkspaceFiles,
   getWorkspaceSqlPool,
 } from "@/lib/workspace-identity";
 import { authorizeWorkspaceRequest, workspaceErrorResponse } from "@/lib/workspace-request";
@@ -24,6 +26,7 @@ type RouteContext = {
 const inherited = { mode: "INHERIT_DEFAULT" } as const;
 const effectiveConfigQaRunStartInputSchema = qaRunStartInputSchema.extend({
   idempotency_key: workspaceIdempotencyKeySchema,
+  files: z.array(workspaceFileReferenceSchema).max(16).default([]),
 });
 
 export async function POST(request: NextRequest, context: RouteContext) {
@@ -76,6 +79,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const resolver = getEffectiveConfigResolver();
+  const orderedFiles = [...input.data.files].sort((left, right) =>
+    left.file_id.localeCompare(right.file_id),
+  );
+  if (new Set(orderedFiles.map((file) => file.file_id)).size !== orderedFiles.length) {
+    return workspaceErrorResponse({
+      code: "RUN_INPUT_INVALID",
+      message: "附件引用不得重复。",
+      retryable: false,
+    });
+  }
+  for (const fileRef of orderedFiles) {
+    const file = await getWorkspaceFiles().get(authorized.value.capability, fileRef);
+    if (!file.ok) return workspaceErrorResponse(file.error);
+    if (file.value?.status !== "READY") {
+      return workspaceErrorResponse({
+        code: "WORKSPACE_FILE_NOT_AVAILABLE",
+        message: "附件尚未通过扫描或已不可用。",
+        retryable: false,
+      });
+    }
+  }
   const [defaults, selections] = await Promise.all([
     resolver.getWorkspaceDefaults(authorized.value.capability),
     getProviderInvocationStore().resolveConversationRunSelections(authorized.value.capability, {
@@ -129,7 +153,16 @@ export async function POST(request: NextRequest, context: RouteContext) {
           },
         ],
       },
-      files: inherited,
+      files:
+        orderedFiles.length === 0
+          ? inherited
+          : {
+              mode: "RESOURCE_IDS",
+              resources: orderedFiles.map((file) => ({
+                resource_id: file.file_id,
+                expected_revision: file.revision,
+              })),
+            },
       knowledge: inherited,
       mcp_servers: inherited,
       skills: inherited,

@@ -163,6 +163,13 @@ export {
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";
 export * from "./storage/namespace.js";
+export * from "./storage/file-scan-port.js";
+export * from "./storage/file-system-storage-client.js";
+export * from "./storage/clamav-client.js";
+export * from "./storage/postgres-workspace-files.js";
+export * from "./storage/workspace-content-gc.js";
+export * from "./storage/workspace-content-orphan-gc.js";
+export * from "./storage/workspace-content-namespace.js";
 export * from "./storage/sensitive-execution-artifact-authority.js";
 export type {
   AppCapability,

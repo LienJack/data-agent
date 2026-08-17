@@ -1,6 +1,6 @@
 import {
-  type ArtifactReference,
   artifactExportCommandSchema,
+  type JobOutputReference,
   type PortResult,
 } from "@data-agent/contracts";
 import {
@@ -29,7 +29,7 @@ export function createArtifactExportJobHandler(
       kind: "ARTIFACT_EXPORT",
       handler_revision: "artifact-export-handler@1.0.0",
     },
-    async execute(lease): Promise<PortResult<readonly ArtifactReference[]>> {
+    async execute(lease): Promise<PortResult<readonly JobOutputReference[]>> {
       const parameters = parametersSchema.safeParse(lease.input.parameters);
       const source = lease.input.resource_refs[0];
       if (!parameters.success || lease.input.resource_refs.length !== 1 || !source) {

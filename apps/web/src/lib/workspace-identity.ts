@@ -9,6 +9,7 @@ import {
   type AppCapability,
   adaptPgPool,
   type BoundaryResult,
+  createFileSystemStorageClient,
   createPostgresCreditLedgerRepository,
   createPostgresEffectiveConfigResolver,
   createPostgresModelBillingRepository,
@@ -18,6 +19,8 @@ import {
   createPostgresSemanticPortabilityRepository,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
+  createPostgresWorkspaceFiles,
+  createWorkspaceContentNamespace,
   type ResolvedSessionPrincipal,
 } from "@data-agent/platform";
 import { headers } from "next/headers";
@@ -47,6 +50,8 @@ interface WorkspaceIdentityRuntimeState {
   semanticPortabilityRepository?: ReturnType<typeof createPostgresSemanticPortabilityRepository>;
   effectiveConfigResolver?: ReturnType<typeof createPostgresEffectiveConfigResolver>;
   providerInvocationStore?: ReturnType<typeof createPostgresProviderInvocationStore>;
+  workspaceFiles?: ReturnType<typeof createPostgresWorkspaceFiles>;
+  workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
 }
 
 interface SessionResolutionDependencies {
@@ -145,6 +150,27 @@ export function getProviderInvocationStore() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.providerInvocationStore;
+}
+
+export function getWorkspaceFiles() {
+  const runtime = state();
+  runtime.workspaceFiles ??= createPostgresWorkspaceFiles({
+    pool: getWorkspaceSqlPool(),
+    authorizer: getWorkspaceAuthority().authorizer,
+  });
+  return runtime.workspaceFiles;
+}
+
+export function getWorkspaceContent() {
+  const runtime = state();
+  ensureRootEnvironmentLoaded();
+  runtime.workspaceContent ??= createWorkspaceContentNamespace(
+    createFileSystemStorageClient(
+      process.env.DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT ?? ".data/workspace-content",
+    ),
+    getWorkspaceAuthority().authorizer,
+  );
+  return runtime.workspaceContent;
 }
 
 export function getPricingControlRepository() {

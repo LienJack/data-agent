@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/index.md","reason":"Review Authority, transaction, security and validation invariants."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Review immutable file revision and receipt hash/reference closure."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Review storage/scanner hosted and fake adapter conformance."}
+{"file":".trellis/spec/backend/job-center.md","reason":"Review FILE_SCAN exact U10 lifecycle and readiness integration."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Review API parse and UI state fail-closed behavior."}
+{"file":"docs/plans/2026-08-16-001-feat-datafoundry-coa-migration-plan.md","reason":"Verify exact frozen U6 scope and Falcon final-gate boundary."}
+{"file":".trellis/tasks/08-16-u06-workspace-files/design.md","reason":"Review the exact Blob, Revision, Scan, Retention, GC and Effective Config boundary implemented by this task."}

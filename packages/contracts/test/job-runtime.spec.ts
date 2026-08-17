@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertJobStatusTransition,
   buildCapabilityReadinessReceipt,
+  buildJobOutputReceipt,
   buildJobSubmissionCommand,
   buildJobSubmissionReceipt,
   buildJobWorkerHeartbeat,
@@ -12,6 +13,7 @@ import {
   jobKindSchema,
   jobSubmissionCommandSchema,
   verifyCapabilityReadinessReceipt,
+  verifyJobOutputReceipt,
   verifyJobSubmissionCommand,
   verifyJobSubmissionReceipt,
   verifyJobWorkerHeartbeat,
@@ -35,7 +37,7 @@ const input = jobInputSchema.parse({
 });
 
 describe("U10 job runtime contract", () => {
-  it("freezes the six core job kinds and rejects FILE_SCAN placeholders", () => {
+  it("extends the six core job kinds with the U6 FILE_SCAN authority", () => {
     expect(JOB_KINDS).toEqual([
       "SCHEMA_SCAN",
       "RELATIONSHIP_INDEX",
@@ -43,8 +45,9 @@ describe("U10 job runtime contract", () => {
       "SEMANTIC_INDUCTION",
       "METRIC_IMPORT",
       "DATALINK_REBUILD",
+      "FILE_SCAN",
     ]);
-    expect(jobKindSchema.safeParse("FILE_SCAN").success).toBe(false);
+    expect(jobKindSchema.safeParse("FILE_SCAN").success).toBe(true);
   });
 
   it("builds and verifies a canonical submission command", async () => {
@@ -62,6 +65,70 @@ describe("U10 job runtime contract", () => {
     expect(command.request_hash).toBe(await computeJobRequestHash(command));
     expect(await verifyJobSubmissionCommand(command)).toEqual(command);
     expect(Object.isFrozen(command)).toBe(true);
+  });
+
+  it("requires the exact U6 file revision identity for FILE_SCAN", () => {
+    expect(
+      jobInputSchema.safeParse({
+        schema_version: "job-input@1.0.0",
+        kind: "FILE_SCAN",
+        resource_refs: [],
+        parameters: {
+          file_id: "70000000-0000-4000-8000-000000000001",
+          revision: 1,
+          revision_hash: `sha256:${"7".repeat(64)}`,
+        },
+      }).success,
+    ).toBe(true);
+    expect(
+      jobInputSchema.safeParse({
+        schema_version: "job-input@1.0.0",
+        kind: "FILE_SCAN",
+        resource_refs: [],
+        parameters: {
+          file_id: "70000000-0000-4000-8000-000000000001",
+          revision: 1,
+          revision_hash: `sha256:${"7".repeat(64)}`,
+          storage_key: "forbidden",
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("allows a successful FILE_SCAN to reference its committed domain receipt", async () => {
+    const receipt = await buildJobOutputReceipt({
+      schema_version: "job-output-receipt@1.0.0",
+      receipt_id: "71000000-0000-4000-8000-000000000001",
+      scope,
+      principal_id: "72000000-0000-4000-8000-000000000001",
+      job_id: "73000000-0000-4000-8000-000000000001",
+      kind: "FILE_SCAN",
+      request_hash: `sha256:${"1".repeat(64)}`,
+      attempt_id: "74000000-0000-4000-8000-000000000001",
+      worker_fence: 1,
+      terminal: "SUCCEEDED",
+      output_refs: [
+        {
+          schema_version: "job-domain-output-reference@1.0.0",
+          resource_kind: "WORKSPACE_FILE_SCAN_RECEIPT",
+          app_id: scope.app_id,
+          tenant_id: scope.tenant_id,
+          environment: scope.environment,
+          resource_id: "75000000-0000-4000-8000-000000000001",
+          resource_revision: 1,
+          resource_hash: `sha256:${"2".repeat(64)}`,
+        },
+      ],
+      error_code: null,
+      committed_at: "2026-08-17T12:00:00.000Z",
+    });
+    expect(await verifyJobOutputReceipt(receipt)).toEqual(receipt);
+    await expect(
+      verifyJobOutputReceipt({
+        ...receipt,
+        output_refs: [{ ...receipt.output_refs[0], resource_hash: `sha256:${"3".repeat(64)}` }],
+      }),
+    ).rejects.toThrow("JOB_OUTPUT_RECEIPT_HASH_MISMATCH");
   });
 
   it("binds the database submission receipt to the exact request and acceptance time", async () => {

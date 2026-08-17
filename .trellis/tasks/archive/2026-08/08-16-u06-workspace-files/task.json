@@ -1,0 +1,28 @@
+{
+  "id": "u06-workspace-files",
+  "name": "u06-workspace-files",
+  "title": "U6 文件附件与 Workspace 资源生命周期",
+  "description": "冻结计划对应 U6 的独立实施、验证与 scoped commit。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P0",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-16",
+  "completedAt": "2026-08-17",
+  "branch": null,
+  "base_branch": "feat/datafoundry-platform-modules",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-16-datafoundry-coa-greenfield",
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "verification": "{\"result\":\"pass\",\"completed_at\":\"2026-08-17T16:45:00+08:00\",\"migration_checksum\":\"sha256:3808e5827f6f65bebdd490f501953b8be1a9fac3c4a11c62e3cc0e37510c6557\",\"fresh_postgres\":\"PostgreSQL 17 full migration chain with ecommerce and Falcon import hooks mounted to /dev/null; assertion 38 passed\",\"contracts\":\"59 files, 751 tests\",\"platform\":\"64 files, 425 tests\",\"worker\":\"9 files, 71 tests\",\"web\":\"71 files passed and 1 skipped; 271 tests passed and 1 skipped\",\"gates\":[\"contracts/platform/worker/web typecheck and build\",\"Biome\",\"diff-check\",\"static-check through 10660\",\"renderer verify\",\"Docker Compose config\"],\"forbidden\":\"no data import, Falcon execution, real Provider call, Claude, Anthropic, side queue, raw file or secret logging\"}"
+  }
+}

@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
   type AppScope,
-  type ArtifactReference,
   buildJobWorkerHeartbeat,
   type JobHandlerBinding,
   type JobKind,
+  type JobOutputReference,
   type JobQueuePort,
   type JobWorkLease,
   type PortResult,
@@ -15,7 +15,7 @@ export interface JobHandler {
   execute(
     lease: JobWorkLease,
     signal: AbortSignal,
-  ): Promise<PortResult<readonly ArtifactReference[]>>;
+  ): Promise<PortResult<readonly JobOutputReference[]>>;
 }
 
 export type JobWorkerCycleOutcome =
@@ -107,7 +107,7 @@ export function createJobWorkerRunner(
           ? { ok: true, value: { kind: "CANCELLED", job_id: lease.job_id } }
           : cancelled;
       }
-      let executed: PortResult<readonly ArtifactReference[]>;
+      let executed: PortResult<readonly JobOutputReference[]>;
       try {
         executed = await handler.execute(lease, input.signal);
       } catch {

@@ -105,6 +105,21 @@ services:
       PYTHON_SANDBOX_MAX_PIDS: ${PYTHON_SANDBOX_MAX_PIDS:-32}
       PYTHON_SANDBOX_MAX_OPEN_FILES: ${PYTHON_SANDBOX_MAX_OPEN_FILES:-128}
 
+  # ---------- Isolated malware scanner (no host port) ----------
+  clamav:
+    image: clamav/clamav:1.4.5-debian13-slim
+    container_name: data-agent-clamav
+    profiles: ["deploy"]
+    restart: unless-stopped
+    volumes:
+      - clamav_signatures:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
   # ---------- Web app (Next.js) ----------
   web:
     build:
@@ -116,11 +131,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    volumes:
+      - workspace_content:/app/.data/workspace-content
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
+      DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT: /app/.data/workspace-content
       SEMANTIC_GOVERNANCE_BACKEND: ${SEMANTIC_GOVERNANCE_BACKEND:-postgres}
       SEMANTIC_EXPLORER_ENABLED: ${SEMANTIC_EXPLORER_ENABLED:-true}
       SEMANTIC_DEPLOYMENT_ID: ${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}
@@ -169,10 +187,13 @@ services:
         condition: service_healthy
       python-sandbox:
         condition: service_healthy
+      clamav:
+        condition: service_healthy
     group_add:
       - "10010"
     volumes:
       - python_sandbox_ipc:/run/data-agent-python
+      - workspace_content:/app/.data/workspace-content
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
       NODE_ENV: production
@@ -186,6 +207,10 @@ services:
       WORKER_EXECUTION_TIMEOUT_MS: ${WORKER_EXECUTION_TIMEOUT_MS:-300000}
       WORKER_SIDE_EFFECT_TIMEOUT_MS: ${WORKER_SIDE_EFFECT_TIMEOUT_MS:-60000}
       WORKER_HEALTH_PORT: "9091"
+      DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT: /app/.data/workspace-content
+      DATA_AGENT_CLAMAV_HOST: clamav
+      DATA_AGENT_CLAMAV_PORT: "3310"
+      DATA_AGENT_CLAMAV_TIMEOUT_MS: "30000"
       WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID: ${WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID:-}
       PYTHON_SANDBOX_ENABLED: ${PYTHON_SANDBOX_ENABLED:-true}
       PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
@@ -252,3 +277,5 @@ volumes:
   neo4jdata:
   neo4jlogs:
   python_sandbox_ipc:
+  workspace_content:
+  clamav_signatures:

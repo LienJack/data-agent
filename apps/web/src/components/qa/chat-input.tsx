@@ -1,5 +1,6 @@
 "use client";
 
+import type { WorkspaceFileReference } from "@data-agent/contracts";
 import { PaperPlaneTilt, Pulse, Stop, WarningCircle } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
 import {
@@ -16,6 +17,7 @@ import {
 } from "@/lib/qa-store";
 import { cn } from "@/lib/utils";
 import { DataSourceSelector } from "./data-source-selector";
+import { FileAttachmentSelector } from "./file-attachment-selector";
 import { ModelSelector } from "./model-selector";
 
 export function ChatInput() {
@@ -31,6 +33,7 @@ export function ChatInput() {
   const conversations = useQAConversations();
   const activeId = useQAActiveConversationId();
   const [input, setInput] = useState("");
+  const [selectedFiles, setSelectedFiles] = useState<readonly WorkspaceFileReference[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
 
@@ -59,10 +62,13 @@ export function ChatInput() {
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || sending || switching || !resourcesComplete) return;
-    const accepted = await sendMessage(trimmed);
-    if (accepted) setInput("");
+    const accepted = await sendMessage(trimmed, selectedFiles);
+    if (accepted) {
+      setInput("");
+      setSelectedFiles([]);
+    }
     inputRef.current?.focus();
-  }, [input, resourcesComplete, sendMessage, sending, switching]);
+  }, [input, resourcesComplete, selectedFiles, sendMessage, sending, switching]);
 
   return (
     <div className="shrink-0 bg-[var(--color-bg-primary)] px-3 pb-4 pt-2 sm:px-5 sm:pb-5">
@@ -133,6 +139,12 @@ export function ChatInput() {
               <div className="min-w-0 flex-1 sm:flex-none">
                 <ModelSelector />
               </div>
+              <FileAttachmentSelector
+                sessionId={activeId}
+                disabled={sending || switching}
+                selected={selectedFiles}
+                onChange={setSelectedFiles}
+              />
               {sending ? (
                 <button
                   type="button"

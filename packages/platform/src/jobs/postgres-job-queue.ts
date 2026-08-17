@@ -1,6 +1,7 @@
 import {
   type AppScope,
   appScopeSchema,
+  JOB_KINDS,
   type JobQueuePort,
   type JobSubmissionCommand,
   type JobWorkerHeartbeat,
@@ -197,7 +198,11 @@ export function createPostgresJobQueue(
     async claim(input) {
       const scope = appScopeSchema.safeParse(input.scope);
       const worker = jobRuntimeIdentifierSchema.safeParse(input.worker_id);
-      const handlers = z.array(jobHandlerBindingSchema).min(1).max(6).safeParse(input.handlers);
+      const handlers = z
+        .array(jobHandlerBindingSchema)
+        .min(1)
+        .max(JOB_KINDS.length)
+        .safeParse(input.handlers);
       if (!scope.success || !worker.success || !handlers.success) {
         return invalidInput("Job Claim 输入不符合契约。");
       }

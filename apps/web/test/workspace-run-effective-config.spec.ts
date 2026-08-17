@@ -20,6 +20,7 @@ const ids = {
   safety: "10000000-0000-4000-8000-00000000000c",
   config: "10000000-0000-4000-8000-00000000000d",
   conversation: "10000000-0000-4000-8000-00000000000e",
+  file: "10000000-0000-4000-8000-00000000000f",
 } as const;
 
 const H1 = `sha256:${"1".repeat(64)}` as const;
@@ -38,6 +39,7 @@ const mocks = vi.hoisted(() => ({
   getConversation: vi.fn(),
   getRun: vi.fn(),
   resolveSelections: vi.fn(),
+  getFile: vi.fn(),
   runProjection: vi.fn(),
 }));
 
@@ -64,6 +66,7 @@ vi.mock("@/lib/workspace-identity", () => ({
     resolveConversationRunSelections: mocks.resolveSelections,
   }),
   getWorkspaceDataRepository: () => ({ getConversation: mocks.getConversation }),
+  getWorkspaceFiles: () => ({ get: mocks.getFile }),
   getWorkspaceSqlPool: () => ({}),
 }));
 
@@ -188,6 +191,10 @@ beforeEach(async () => {
       datasource_id: ids.datasource,
       datasource_resource_version: 3,
     },
+  });
+  mocks.getFile.mockResolvedValue({
+    ok: true,
+    value: { file_id: ids.file, revision: 2, revision_hash: H1, status: "READY" },
   });
   mocks.runProjection.mockReturnValue({ runId: ids.run, status: "QUEUED" });
 });
@@ -369,6 +376,39 @@ describe("workspace Effective Config routes", () => {
       });
     }
     expect(mocks.getRun).toHaveBeenCalledTimes(2);
+  });
+
+  it("freezes exact READY file revisions and rejects deleted attachment references", async () => {
+    const request = (idempotencyKey: string) =>
+      new NextRequest(
+        `http://localhost/api/workspaces/${ids.workspace}/qa/conversations/${ids.conversation}/runs`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            schema_version: "qa-run-start@1.0.0",
+            question: "分析附件",
+            idempotency_key: idempotencyKey,
+            files: [{ file_id: ids.file, revision: 2, revision_hash: H1 }],
+          }),
+        },
+      );
+    const context = {
+      params: Promise.resolve({ workspaceId: ids.workspace, conversationId: ids.conversation }),
+    };
+    const accepted = await qaPost(request("qa-file-ready"), context);
+    expect(accepted.status).toBe(201);
+    expect(mocks.resolveAndAccept.mock.calls.at(-1)?.[1].request.overrides.files).toEqual({
+      mode: "RESOURCE_IDS",
+      resources: [{ resource_id: ids.file, expected_revision: 2 }],
+    });
+
+    mocks.getFile.mockResolvedValueOnce({
+      ok: true,
+      value: { file_id: ids.file, revision: 3, revision_hash: H2, status: "DELETED" },
+    });
+    const rejected = await qaPost(request("qa-file-deleted"), context);
+    expect(rejected.status).toBe(400);
+    expect(mocks.resolveAndAccept).toHaveBeenCalledTimes(1);
   });
 
   it("rejects client authority/effective/provider claims before resolver execution", async () => {

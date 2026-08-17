@@ -9,6 +9,9 @@ import {
 } from "@data-agent/contracts";
 import {
   adaptPgPool,
+  createClamAvInstreamClient,
+  createFileScanPort,
+  createFileSystemStorageClient,
   createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
   createPostgresEffectiveConfigResolver,
@@ -19,11 +22,14 @@ import {
   createPostgresResearchAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
+  createPostgresWorkspaceFiles,
+  createWorkspaceContentNamespace,
   providerInvocationSmokeClaimSchema,
 } from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
+import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
 import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
@@ -179,6 +185,31 @@ export async function runWorkerProcess(
     value: z.infer<typeof providerInvocationSmokeClaimSchema> | null;
   } = { value: null };
   const capabilityAuthority = createPostgresCapabilityAuthority(sqlPool);
+  const fileStorage = createFileSystemStorageClient(
+    environment.DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT ?? ".data/workspace-content",
+  );
+  const fileScanPolicyVersion = "workspace-file-policy@1.0.0";
+  const fileScanner = createFileScanPort({
+    clamav: createClamAvInstreamClient({
+      host: environment.DATA_AGENT_CLAMAV_HOST ?? "127.0.0.1",
+      port: z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(65_535)
+        .parse(environment.DATA_AGENT_CLAMAV_PORT ?? 3310),
+      timeout_ms: z.coerce
+        .number()
+        .int()
+        .min(100)
+        .max(120_000)
+        .parse(environment.DATA_AGENT_CLAMAV_TIMEOUT_MS ?? 30_000),
+      max_bytes: 25 * 1024 * 1024,
+    }),
+    now: () => new Date(),
+    max_signature_age_ms: 7 * 24 * 60 * 60 * 1_000,
+    policy_version: fileScanPolicyVersion,
+  });
   const controller = new AbortController();
   const health = createInitialWorkerHealth(config.research_authority_capability_id !== null);
   const healthServer = createHealthServer(health);
@@ -357,6 +388,10 @@ export async function runWorkerProcess(
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           });
+          const workspaceFiles = createPostgresWorkspaceFiles({
+            pool: sqlPool,
+            authorizer: capabilityAuthority.authorizer,
+          });
           const principalRunner = createJobWorkerRunner({
             queue,
             lease_duration_ms: config.lease_duration_ms,
@@ -367,6 +402,16 @@ export async function runWorkerProcess(
                   repository: createPostgresRepository(sqlPool, capabilityAuthority.authorizer),
                   exportStore,
                 },
+              }),
+              createFileScanJobHandler({
+                capability,
+                files: workspaceFiles,
+                content: createWorkspaceContentNamespace(
+                  fileStorage,
+                  capabilityAuthority.authorizer,
+                ),
+                scanner: fileScanner,
+                policy_version: fileScanPolicyVersion,
               }),
             ],
           });

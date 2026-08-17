@@ -119,6 +119,7 @@ export async function createQaRun(
   question: string,
   conversationId: string,
   workspaceId?: string,
+  files: readonly Readonly<{ file_id: string; revision: number; revision_hash: string }>[] = [],
 ): Promise<RunProjection> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
   if (!resolvedWorkspace || !conversationId) {
@@ -132,6 +133,7 @@ export async function createQaRun(
         schema_version: "qa-run-start@1.0.0",
         question,
         idempotency_key: crypto.randomUUID(),
+        files,
       }),
     },
     resolvedWorkspace,

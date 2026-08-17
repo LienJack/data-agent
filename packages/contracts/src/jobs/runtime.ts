@@ -7,6 +7,7 @@ import {
 import {
   type AppScope,
   appScopeSchema,
+  canonicalizeJson,
   contentHashSchema,
   deepFreeze,
   immutableIdSchema,
@@ -23,6 +24,7 @@ export const JOB_KINDS = [
   "SEMANTIC_INDUCTION",
   "METRIC_IMPORT",
   "DATALINK_REBUILD",
+  "FILE_SCAN",
 ] as const;
 
 export const jobKindSchema = z.enum(JOB_KINDS);
@@ -65,12 +67,69 @@ export const jobRetryDelayMsSchema = z.number().int().min(1_000).max(86_400_000)
 const positiveSafeIntegerSchema = z.number().int().positive().safe();
 const nonNegativeSafeIntegerSchema = z.number().int().nonnegative().safe();
 
-function referenceScopeMatches(reference: ArtifactReference, scope: AppScope): boolean {
+type ScopedReference = Readonly<{
+  app_id: string;
+  tenant_id: string;
+  environment: string;
+}>;
+
+function referenceScopeMatches(reference: ScopedReference, scope: AppScope): boolean {
   return (
     reference.app_id === scope.app_id &&
     reference.tenant_id === scope.tenant_id &&
     reference.environment === scope.environment
   );
+}
+
+export const jobDomainOutputReferenceSchema = z.strictObject({
+  schema_version: z.literal("job-domain-output-reference@1.0.0"),
+  resource_kind: z.literal("WORKSPACE_FILE_SCAN_RECEIPT"),
+  app_id: immutableIdSchema,
+  tenant_id: immutableIdSchema,
+  environment: appScopeSchema.shape.environment,
+  resource_id: immutableIdSchema,
+  resource_revision: positiveSafeIntegerSchema,
+  resource_hash: contentHashSchema,
+});
+
+export const jobOutputReferenceSchema = z.union([
+  artifactReferenceSchema,
+  jobDomainOutputReferenceSchema,
+]);
+
+export type JobDomainOutputReference = z.infer<typeof jobDomainOutputReferenceSchema>;
+export type JobOutputReference = z.infer<typeof jobOutputReferenceSchema>;
+
+function jobOutputReferenceIdentity(reference: JobOutputReference): string {
+  if ("artifact_type" in reference) return `ARTIFACT:${artifactReferenceIdentity(reference)}`;
+  return `DOMAIN:${canonicalizeJson([
+    reference.app_id,
+    reference.tenant_id,
+    reference.environment,
+    reference.resource_kind,
+    reference.resource_id,
+    reference.resource_revision,
+    reference.resource_hash,
+  ])}`;
+}
+
+function assertCanonicalOutputReferences(
+  references: readonly JobOutputReference[],
+  context: z.RefinementCtx,
+  path: PropertyKey[],
+): void {
+  const identities = references.map(jobOutputReferenceIdentity);
+  if (new Set(identities).size !== identities.length) {
+    context.addIssue({ code: "custom", message: "Job Output References 不得重复。", path });
+  }
+  const sorted = [...identities].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  if (identities.some((identity, index) => identity !== sorted[index])) {
+    context.addIssue({
+      code: "custom",
+      message: "Job Output References 必须按完整内容身份规范排序。",
+      path,
+    });
+  }
 }
 
 function assertCanonicalReferences(
@@ -101,6 +160,22 @@ export const jobInputSchema = z
   })
   .superRefine((input, context) => {
     assertCanonicalReferences(input.resource_refs, context, ["resource_refs"]);
+    if (input.kind === "FILE_SCAN") {
+      const keys = Object.keys(input.parameters).sort();
+      if (
+        input.resource_refs.length !== 0 ||
+        keys.join("\u0000") !== "file_id\u0000revision\u0000revision_hash" ||
+        !immutableIdSchema.safeParse(input.parameters.file_id).success ||
+        !positiveSafeIntegerSchema.safeParse(input.parameters.revision).success ||
+        !contentHashSchema.safeParse(input.parameters.revision_hash).success
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "FILE_SCAN 必须只绑定 exact File Revision 参数，不能携带通用 Artifact 引用。",
+          path: ["parameters"],
+        });
+      }
+    }
   });
 
 const jobSubmissionDraftSchema = z
@@ -294,12 +369,12 @@ const jobOutputReceiptDraftSchema = z
     attempt_id: immutableIdSchema,
     worker_fence: positiveSafeIntegerSchema,
     terminal: jobTerminalStatusSchema,
-    output_refs: z.array(artifactReferenceSchema).max(64),
+    output_refs: z.array(jobOutputReferenceSchema).max(64),
     error_code: jobErrorCodeSchema.nullable(),
     committed_at: jobTimestampSchema,
   })
   .superRefine((receipt, context) => {
-    assertCanonicalReferences(receipt.output_refs, context, ["output_refs"]);
+    assertCanonicalOutputReferences(receipt.output_refs, context, ["output_refs"]);
     receipt.output_refs.forEach((reference, index) => {
       if (!referenceScopeMatches(reference, receipt.scope)) {
         context.addIssue({
@@ -700,7 +775,7 @@ export interface JobQueuePort {
   }): Promise<PortResult<{ readonly expires_at: string; readonly cancel_requested: boolean }>>;
   succeed(input: {
     readonly lease: JobWorkLease;
-    readonly output_refs: readonly ArtifactReference[];
+    readonly output_refs: readonly JobOutputReference[];
   }): Promise<PortResult<JobOutputReceipt>>;
   fail(input: {
     readonly lease: JobWorkLease;
