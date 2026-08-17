@@ -1,4 +1,5 @@
 export * from "./envelope.js";
+export * from "./export-receipt.js";
 export {
   assertGroundingAuthorityBundleConsistency,
   assertGroundingAuthorityOriginConsistency,

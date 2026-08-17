@@ -45,6 +45,8 @@ export const DEFERRED_ARTIFACT_TYPES = [
 ] as const;
 
 export const SYSTEM_ARTIFACT_TYPES = [
+  "ArtifactExportReceipt",
+  "ArtifactWorkspaceDocument",
   "ReleaseManifest",
   "EvalCase",
   "EvalRegistryAssignment",

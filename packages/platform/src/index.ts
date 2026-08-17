@@ -1,4 +1,5 @@
 export * from "./attribution/published-f9-lifecycle.js";
+export * from "./artifacts/postgres-artifact-workspace-store.js";
 export {
   createPostgresPrivilegedGrantAuthority,
   type PostgresPrivilegedGrantAuthority,
