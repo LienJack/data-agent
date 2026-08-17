@@ -3,7 +3,7 @@
   "name": "u14-mcp-skill-runtime",
   "title": "U14 MCP Skill 管理面与 Semantic MCP Runtime",
   "description": "冻结计划对应 U14 的独立实施、验证与 scoped commit。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
+import { ExtensionsPanel } from "@/components/settings/extensions-panel";
 import { KnowledgeBasesPanel } from "@/components/settings/knowledge-bases-panel";
 import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
 import { ModelProvidersPanel } from "@/components/settings/model-providers-panel";
@@ -96,6 +97,7 @@ export default async function SettingsPage() {
               </div>
             </div>
           }
+          extensions={<ExtensionsPanel workspaces={workspaces} />}
         />
       </div>
     </div>

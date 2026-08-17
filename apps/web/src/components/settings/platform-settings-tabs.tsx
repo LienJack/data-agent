@@ -1,6 +1,6 @@
 "use client";
 
-import { Buildings, Graph, SlidersHorizontal } from "@phosphor-icons/react";
+import { Buildings, Graph, PlugsConnected, SlidersHorizontal } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -9,19 +9,26 @@ interface PlatformSettingsTabsProps {
   readonly model: ReactNode;
   readonly operations: ReactNode;
   readonly semantic: ReactNode;
+  readonly extensions: ReactNode;
 }
 
 const TABS = [
   { id: "model", label: "模型配置", icon: SlidersHorizontal },
   { id: "operations", label: "组织与运维", icon: Buildings },
   { id: "semantic", label: "语义管理", icon: Graph },
+  { id: "extensions", label: "扩展", icon: PlugsConnected },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
 
-export function PlatformSettingsTabs({ model, operations, semantic }: PlatformSettingsTabsProps) {
+export function PlatformSettingsTabs({
+  model,
+  operations,
+  semantic,
+  extensions,
+}: PlatformSettingsTabsProps) {
   const [activeTab, setActiveTab] = useState<TabId>("model");
-  const content = { model, operations, semantic }[activeTab];
+  const content = { model, operations, semantic, extensions }[activeTab];
 
   return (
     <div className="mt-5">

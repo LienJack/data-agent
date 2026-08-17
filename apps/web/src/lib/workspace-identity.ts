@@ -13,6 +13,7 @@ import {
   createPostgresCreditLedgerRepository,
   createPostgresEffectiveConfigResolver,
   createPostgresKnowledgeRegistry,
+  createPostgresMcpRegistry,
   createPostgresModelBillingRepository,
   createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
@@ -20,6 +21,7 @@ import {
   createPostgresResolvedContextRegistry,
   createPostgresSemanticInductionRegistry,
   createPostgresSemanticPortabilityRepository,
+  createPostgresSkillRegistry,
   createPostgresWorkspaceAuthority,
   createPostgresWorkspaceDataRepository,
   createPostgresWorkspaceFiles,
@@ -56,6 +58,8 @@ interface WorkspaceIdentityRuntimeState {
   providerInvocationStore?: ReturnType<typeof createPostgresProviderInvocationStore>;
   workspaceFiles?: ReturnType<typeof createPostgresWorkspaceFiles>;
   knowledgeRegistry?: ReturnType<typeof createPostgresKnowledgeRegistry>;
+  mcpRegistry?: ReturnType<typeof createPostgresMcpRegistry>;
+  skillRegistry?: ReturnType<typeof createPostgresSkillRegistry>;
   semanticInductionRegistry?: ReturnType<typeof createPostgresSemanticInductionRegistry>;
   resolvedContextService?: ReturnType<typeof createResolvedContextService>;
   workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
@@ -175,6 +179,24 @@ export function getKnowledgeRegistry() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.knowledgeRegistry;
+}
+
+export function getMcpRegistry() {
+  const runtime = state();
+  runtime.mcpRegistry ??= createPostgresMcpRegistry({
+    pool: getWorkspaceSqlPool(),
+    authorizer: getWorkspaceAuthority().authorizer,
+  });
+  return runtime.mcpRegistry;
+}
+
+export function getSkillRegistry() {
+  const runtime = state();
+  runtime.skillRegistry ??= createPostgresSkillRegistry({
+    pool: getWorkspaceSqlPool(),
+    authorizer: getWorkspaceAuthority().authorizer,
+  });
+  return runtime.skillRegistry;
 }
 
 export function getSemanticInductionRegistry() {

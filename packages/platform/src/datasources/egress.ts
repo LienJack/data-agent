@@ -109,7 +109,9 @@ function canonicalPublicAddress(address: string): string | null {
   return parsed.range() === "unicast" ? parsed.toString() : null;
 }
 
-function normalizeResolvedAddresses(addresses: readonly string[]): readonly string[] | null {
+export function normalizePublicEgressAddresses(
+  addresses: readonly string[],
+): readonly string[] | null {
   if (addresses.length === 0) return null;
   const normalized = addresses.map(canonicalPublicAddress);
   if (normalized.some((address) => address === null)) return null;
@@ -313,7 +315,7 @@ export function createDatasourceEgressPolicyRegistry(authorizer: CapabilityAutho
         return failure("DATASOURCE_URL_DENIED", "Datasource URL 不满足 Egress Policy。");
       }
 
-      const addresses = normalizeResolvedAddresses(await resolver.resolve(host));
+      const addresses = normalizePublicEgressAddresses(await resolver.resolve(host));
       if (!addresses) {
         return failure("DATASOURCE_ADDRESS_DENIED", "Datasource DNS 解析到受限地址。");
       }
@@ -347,7 +349,7 @@ export function createDatasourceEgressPolicyRegistry(authorizer: CapabilityAutho
       if (!capability.ok) return capability;
       const approval = requireApproval(capability.value, approvalInput);
       if (!approval.ok) return approval;
-      const next = normalizeResolvedAddresses(await resolver.resolve(approval.value.host));
+      const next = normalizePublicEgressAddresses(await resolver.resolve(approval.value.host));
       const expected = [...approval.value.pinned_addresses].sort();
       if (
         !next ||

@@ -8,6 +8,7 @@ export * from "./catalog/index.js";
 export * from "./common/index.js";
 export * from "./context/index.js";
 export * from "./evals/index.js";
+export * from "./extensions/index.js";
 export * from "./jobs/index.js";
 export * from "./knowledge/index.js";
 export * from "./ports/index.js";

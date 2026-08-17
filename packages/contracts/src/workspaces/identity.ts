@@ -21,6 +21,7 @@ export const workspaceActionSchema = z.enum([
   "USER_RESET_PASSWORD",
   "MEMBER_MANAGE",
   "DATASOURCE_MANAGE",
+  "EXTENSION_MANAGE",
   "SEMANTIC_EDIT",
   "SEMANTIC_REVIEW",
   "ANALYSIS_RUN_CREATE",
@@ -215,6 +216,7 @@ const workspaceRoleActions = Object.freeze({
   WORKSPACE_ADMIN: [
     "MEMBER_MANAGE",
     "DATASOURCE_MANAGE",
+    "EXTENSION_MANAGE",
     "SEMANTIC_EDIT",
     "SEMANTIC_REVIEW",
     "ANALYSIS_RUN_CREATE",

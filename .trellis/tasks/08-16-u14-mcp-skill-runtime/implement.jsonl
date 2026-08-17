@@ -1,1 +1,2 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/extension-runtime.md","reason":"U14 Registry, Effective Config, Effect, transport and Semantic MCP contracts"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Settings control-plane component and responsive state conventions"}

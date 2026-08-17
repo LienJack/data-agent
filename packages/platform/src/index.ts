@@ -11,6 +11,10 @@ export {
 export * from "./billing/billing-gated-provider.js";
 export * from "./billing/microcredits.js";
 export * from "./billing/model-cost.js";
+export * from "./extensions/postgres-mcp-registry.js";
+export * from "./extensions/mcp-transport.js";
+export * from "./extensions/postgres-skill-registry.js";
+export * from "./extensions/postgres-tool-effect-store.js";
 export * from "./billing/postgres-credit-ledger.js";
 export * from "./billing/postgres-model-billing.js";
 export * from "./cache/namespace.js";
