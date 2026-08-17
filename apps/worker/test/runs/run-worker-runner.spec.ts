@@ -1,6 +1,7 @@
 import {
   type AppScope,
   type ArtifactReference,
+  effectiveConfigRunLeasePayloadSchema,
   RUN_RETRY_MAX_ATTEMPTS,
   RUN_RETRY_MIN_DELAY_MS,
   type RunRuntimeEvent,
@@ -14,6 +15,7 @@ import {
   type RunCheckpointInput,
   type RunWorkflowExecutorPort,
 } from "../../src/runs/index.js";
+import { createRunWorkflowExecutorRouter } from "../../src/teams/run-workflow-executor-router.js";
 import {
   bindEffectiveConfigLease,
   buildWorkerEffectiveConfigFixture,
@@ -57,6 +59,7 @@ function lease(
   workerFence: number,
   workerId = `worker-${attemptNo}`,
   deliveryAttemptNo = attemptNo,
+  commandKind: "START_DATA_AGENT_TEAM" | "START_L2_RESEARCH" = "START_L2_RESEARCH",
 ): RunWorkLease {
   const suffix = String(attemptNo).padStart(2, "0");
   const rawLease = {
@@ -79,7 +82,35 @@ function lease(
     },
   } satisfies RunWorkLease;
   if (!effectiveConfigFixture) throw new Error("effective config fixture not initialized");
-  return bindEffectiveConfigLease(rawLease, effectiveConfigFixture);
+  const bound = bindEffectiveConfigLease(rawLease, effectiveConfigFixture);
+  if (commandKind === "START_L2_RESEARCH") return bound;
+  const legacyPayload = effectiveConfigRunLeasePayloadSchema.parse(bound.payload);
+  if (legacyPayload.kind !== "START_L2_RESEARCH") throw new Error("legacy fixture drift");
+  return {
+    ...bound,
+    command_kind: "START_DATA_AGENT_TEAM",
+    payload: {
+      kind: "START_DATA_AGENT_TEAM",
+      effective_config_ref: legacyPayload.effective_config_ref,
+      profile_refs: [
+        {
+          profile_id: "governed-text2sql-agent",
+          revision: 1,
+          revision_hash: `sha256:${"3".repeat(64)}`,
+        },
+        {
+          profile_id: "report-writing-agent",
+          revision: 1,
+          revision_hash: `sha256:${"4".repeat(64)}`,
+        },
+        {
+          profile_id: "semantic-management-agent",
+          revision: 1,
+          revision_hash: `sha256:${"5".repeat(64)}`,
+        },
+      ],
+    },
+  };
 }
 
 function checkpointInput(
@@ -167,6 +198,24 @@ async function cancelRuntime(
 }
 
 describe("Run Worker Runner", () => {
+  it("routes START_DATA_AGENT_TEAM only to the Team executor", async () => {
+    const researchExecute = vi.fn(async () => ({ kind: "FAILED" as const, error_code: "WRONG" }));
+    const teamExecute = vi.fn(async () => ({ kind: "COMPLETED" as const }));
+    const executor = createRunWorkflowExecutorRouter({
+      research: { execute: researchExecute },
+      team: { execute: teamExecute },
+    });
+    const { runtime, runner } = await harness(executor);
+    runtime.enqueueLease(lease(1, 1, "worker-1", 1, "START_DATA_AGENT_TEAM"));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "COMPLETED" },
+    });
+    expect(teamExecute).toHaveBeenCalledTimes(1);
+    expect(researchExecute).not.toHaveBeenCalled();
+  });
+
   it("公共 Worker 入口不导出测试 Fixture，Executor Port 也不泄漏 Mastra 构造器", () => {
     const publicExports = Object.keys(workerPublic);
 

@@ -66,6 +66,53 @@ describe("public Run events", () => {
     expect(redactPublicDisplayText("系统提示词：不要公开\n安全摘要")).toBe("[REDACTED]\n安全摘要");
   });
 
+  it("maps public reasoning summaries without accepting private chain-of-thought fields", () => {
+    const started = event("run.reasoning_started", 3, {
+      block_id: "reasoning-1",
+      title: "规划执行路径",
+    });
+    const delta = event("run.reasoning_delta", 4, {
+      block_id: "reasoning-1",
+      delta: "先确认语义口径，再执行受治理查询。",
+    });
+    const completed = event("run.reasoning_completed", 5, {
+      block_id: "reasoning-1",
+      summary: "已确认语义口径与查询边界。",
+      duration_ms: 28,
+    });
+
+    expect([started, delta, completed].map(toPublicRunEvent)).toEqual([
+      expect.objectContaining({
+        type: "reasoning",
+        payload: { phase: "START", block_id: "reasoning-1", title: "规划执行路径" },
+      }),
+      expect.objectContaining({
+        type: "reasoning",
+        payload: {
+          phase: "DELTA",
+          block_id: "reasoning-1",
+          delta: "先确认语义口径，再执行受治理查询。",
+        },
+      }),
+      expect.objectContaining({
+        type: "reasoning",
+        payload: {
+          phase: "END",
+          block_id: "reasoning-1",
+          summary: "已确认语义口径与查询边界。",
+          duration_ms: 28,
+        },
+      }),
+    ]);
+    expect(() =>
+      event("run.reasoning_delta", 6, {
+        block_id: "reasoning-1",
+        delta: "公开摘要",
+        reasoning_content: "private chain of thought",
+      }),
+    ).toThrow();
+  });
+
   it("fails closed for unknown public event kinds", () => {
     expect(() => event("run.private_reasoning", 2, { text: "hidden" })).toThrow();
   });

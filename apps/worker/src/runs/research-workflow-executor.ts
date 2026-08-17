@@ -324,6 +324,13 @@ export function createResearchWorkflowExecutor(
       switch (outcome.kind) {
         case "REPORT_READY_CANDIDATE": {
           await emitDisplayEvent(context, {
+            kind: "reasoning_completed",
+            key: "research.reasoning.completed",
+            block_id: `research-${lease.attempt_id}`,
+            summary: "已完成受治理研究路径、证据门禁与 Artifact 提交。",
+            duration_ms: 0,
+          });
+          await emitDisplayEvent(context, {
             kind: "answer_delta",
             key: `answer:${state.step}:${outcome.kind}`,
             delta: providerOutput,
@@ -333,6 +340,13 @@ export function createResearchWorkflowExecutor(
           });
         }
         case "RESEARCH_STOP_CANDIDATE": {
+          await emitDisplayEvent(context, {
+            kind: "reasoning_completed",
+            key: "research.reasoning.completed",
+            block_id: `research-${lease.attempt_id}`,
+            summary: "已完成证据检查，当前结果需要暂停并等待后续处理。",
+            duration_ms: 0,
+          });
           await emitDisplayEvent(context, {
             kind: "answer_delta",
             key: `answer:${state.step}:${outcome.kind}`,
@@ -388,6 +402,13 @@ export function createResearchWorkflowExecutor(
         return researchErrorResult("RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED", false);
       }
 
+      await emitDisplayEvent(context, {
+        kind: "reasoning_started",
+        key: "research.reasoning.started",
+        block_id: `research-${lease.attempt_id}`,
+        title: "规划受治理研究路径",
+      });
+
       const effectiveConfig = context.getEffectiveConfig();
       const contextReceipt = context.getContextReceipt();
       const callId = `${lease.attempt_id}:effective-config`;
@@ -414,6 +435,16 @@ export function createResearchWorkflowExecutor(
       if (!resolvedContext || !hasRunResolvedContextCapability(resolvedContext)) {
         return researchErrorResult("RESOLVED_CONTEXT_AUTHORITY_NOT_CONFIGURED", false);
       }
+      const contextCallId = `${lease.attempt_id}:resolved-context`;
+      await emitDisplayEvent(context, {
+        kind: "tool_started",
+        key: "resolved-context-start",
+        call_id: contextCallId,
+        tool_name: "context.resolve",
+        title: "解析运行上下文",
+        summary: "正在加载并核验内容寻址的 Resolved Context",
+        input: "仅传递上下文请求与权威引用",
+      });
       const resolved = await resolvedContext.resolve();
       if (!resolved.ok) {
         return researchErrorResult(resolved.error.code, resolved.error.retryable);
@@ -424,11 +455,17 @@ export function createResearchWorkflowExecutor(
       await emitDisplayEvent(context, {
         kind: "tool_completed",
         key: "resolved-context-complete",
-        call_id: `${lease.attempt_id}:resolved-context`,
+        call_id: contextCallId,
         tool_name: "context.resolve",
         summary: `已冻结 ${resolved.value.receipt.route} 上下文包`,
         output: `package=${resolved.value.receipt.package_ref.package_id}; hash=${resolved.value.receipt.package_ref.package_hash.slice(0, 15)}…`,
         duration_ms: 0,
+      });
+      await emitDisplayEvent(context, {
+        kind: "reasoning_delta",
+        key: "research.reasoning.context",
+        block_id: `research-${lease.attempt_id}`,
+        delta: "已锁定配置、语义版本和 Resolved Context，进入受审计执行阶段。",
       });
 
       const providerDispatch = context.getProviderDispatchCapability();
@@ -444,6 +481,15 @@ export function createResearchWorkflowExecutor(
         title: "核验模型调用权限",
         summary: "正在核验冻结配置、数据投影与持久化调用权限",
         status: "RUNNING",
+      });
+      await emitDisplayEvent(context, {
+        kind: "tool_started",
+        key: "provider-dispatch-start",
+        call_id: providerCallId,
+        tool_name: "provider.dispatch",
+        title: "调用模型 Provider",
+        summary: "正在通过 Provider Invocation Authority 执行受审计调用",
+        input: "冻结配置与已批准数据投影",
       });
       const providerResult = await providerDispatch.invoke({
         logical_call_id: lease.command_id,
@@ -469,6 +515,12 @@ export function createResearchWorkflowExecutor(
         summary: "Provider terminal receipt 与 protected response 已提交",
         output: `invocation=${providerResult.value.projection.invocation_id}; status=${providerResult.value.projection.status}`,
         duration_ms: Math.max(0, deps.now().getTime() - providerStartedAt),
+      });
+      await emitDisplayEvent(context, {
+        kind: "reasoning_delta",
+        key: "research.reasoning.provider",
+        block_id: `research-${lease.attempt_id}`,
+        delta: "Provider 回执已验证，继续执行确定性研究内核与证据门禁。",
       });
 
       const protocolInput: ResearchProtocolInput = {

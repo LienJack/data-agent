@@ -1,3 +1,4 @@
+export * from "./agents/index.js";
 export * from "./artifacts/index.js";
 export * from "./artifacts/semantic-authoring.js";
 export * from "./artifacts/semantic-graph-read.js";

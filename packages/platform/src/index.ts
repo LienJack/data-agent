@@ -1,4 +1,6 @@
 export * from "./agents/model-egress-projection.js";
+export * from "./agents/postgres-agent-profile-registry.js";
+export * from "./agents/postgres-agent-team-trace.js";
 export * from "./agents/postgres-team-run-store.js";
 export * from "./artifacts/artifact-workspace-service.js";
 export * from "./artifacts/postgres-artifact-workspace-store.js";

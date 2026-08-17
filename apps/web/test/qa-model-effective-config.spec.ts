@@ -38,6 +38,16 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
+  getAgentProfileRegistry: () => ({
+    list: async () => ({
+      ok: true,
+      value: [
+        { revision: { profile_id: "governed-text2sql-agent" } },
+        { revision: { profile_id: "report-writing-agent" } },
+        { revision: { profile_id: "semantic-management-agent" } },
+      ],
+    }),
+  }),
   getEffectiveConfigResolver: () => ({
     getWorkspaceDefaults: mocks.getDefaults,
     resolveAndAccept: mocks.resolveAndAccept,

@@ -41,6 +41,7 @@ const mocks = vi.hoisted(() => ({
   resolveSelections: vi.fn(),
   getFile: vi.fn(),
   runProjection: vi.fn(),
+  listProfiles: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -55,6 +56,9 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
+  getAgentProfileRegistry: () => ({
+    list: mocks.listProfiles,
+  }),
   getEffectiveConfigResolver: () => ({
     getWorkspaceDefaults: mocks.getDefaults,
     updateWorkspaceDefaults: mocks.updateDefaults,
@@ -197,6 +201,14 @@ beforeEach(async () => {
     value: { file_id: ids.file, revision: 2, revision_hash: H1, status: "READY" },
   });
   mocks.runProjection.mockReturnValue({ runId: ids.run, status: "QUEUED" });
+  mocks.listProfiles.mockResolvedValue({
+    ok: true,
+    value: [
+      { revision: { profile_id: "governed-text2sql-agent" } },
+      { revision: { profile_id: "report-writing-agent" } },
+      { revision: { profile_id: "semantic-management-agent" } },
+    ],
+  });
 });
 
 describe("workspace Effective Config routes", () => {
@@ -261,6 +273,32 @@ describe("workspace Effective Config routes", () => {
     expect(secondInput.command).toEqual(firstInput.command);
     expect(secondInput.request).toEqual(firstInput.request);
     expect(firstInput.command.run_id).toBe(firstInput.request.run_id);
+  });
+
+  it("rejects a Team Run before acceptance when the enabled Profile set is incomplete", async () => {
+    mocks.listProfiles.mockResolvedValueOnce({
+      ok: true,
+      value: [{ revision: { profile_id: "governed-text2sql-agent" } }],
+    });
+    const response = await genericPost(
+      new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/runs`, {
+        method: "POST",
+        body: JSON.stringify({
+          question: "统计订单数",
+          idempotencyKey: "missing-team-profile",
+          datasourceId: ids.datasource,
+          datasourceRevision: 3,
+          conversationId: ids.conversation,
+        }),
+      }),
+      { params: Promise.resolve({ workspaceId: ids.workspace }) },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "AGENT_PROFILE_SET_NOT_READY" },
+    });
+    expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
   });
 
   it("derives the same Defaults operation identity for an idempotent PATCH retry", async () => {

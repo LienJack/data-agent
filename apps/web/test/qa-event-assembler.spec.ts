@@ -39,6 +39,13 @@ function event(
         };
       }
     | {
+        type: "reasoning";
+        payload:
+          | { phase: "START"; block_id: string; title: string }
+          | { phase: "DELTA"; block_id: string; delta: string }
+          | { phase: "END"; block_id: string; summary: string; duration_ms: number };
+      }
+    | {
         type: "lifecycle";
         payload: {
           name: string;
@@ -145,6 +152,41 @@ describe("Q&A public event assembly", () => {
     ]);
   });
 
+  it("merges public reasoning summary chunks into one collapsible process row", () => {
+    const started = event(2, {
+      type: "reasoning",
+      payload: { phase: "START", block_id: "reasoning-1", title: "规划执行路径" },
+    });
+    const delta = event(3, {
+      type: "reasoning",
+      payload: {
+        phase: "DELTA",
+        block_id: "reasoning-1",
+        delta: "先确认语义口径，再执行受治理查询。",
+      },
+    });
+    const completed = event(4, {
+      type: "reasoning",
+      payload: {
+        phase: "END",
+        block_id: "reasoning-1",
+        summary: "已确认语义口径与查询边界。",
+        duration_ms: 28,
+      },
+    });
+
+    expect(assembleProcessRows([started, delta, completed], runId)).toEqual([
+      expect.objectContaining({
+        id: `${runId}:reasoning:reasoning-1`,
+        kind: "reasoning",
+        title: "规划执行路径",
+        summary: "已确认语义口径与查询边界。",
+        status: "COMPLETED",
+        durationMs: 28,
+      }),
+    ]);
+  });
+
   it("groups the entire conversation by run and counts unique tool calls", () => {
     const progress = event(1, {
       type: "progress",
@@ -201,6 +243,23 @@ describe("Q&A public event assembly", () => {
     expect(assembleProcessRows([tool, cancelled], runId)[0]).toMatchObject({
       status: "INTERRUPTED",
       summary: "工具调用已随 Run 中断",
+    });
+  });
+
+  it("marks an unfinished reasoning summary as failed with its terminal Run", () => {
+    const reasoning = event(2, {
+      type: "reasoning",
+      payload: { phase: "START", block_id: "reasoning-failed", title: "规划执行路径" },
+    });
+    const failed = event(3, {
+      type: "terminal",
+      payload: { status: "FAILED", summary: "执行失败", error_code: "TEAM_FAILED" },
+    });
+
+    expect(assembleProcessRows([reasoning, failed], runId)[0]).toMatchObject({
+      kind: "reasoning",
+      status: "FAILED",
+      summary: "思考摘要未完成，Run 已失败",
     });
   });
 });

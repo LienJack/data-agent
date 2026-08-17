@@ -48,20 +48,30 @@ const effectiveConfigLookupSchema = z.strictObject({
   config_ref: effectiveRunConfigReferenceSchema,
   conversation_ref: effectiveConfigConversationReferenceSchema,
 });
-const effectiveConfigRunWorkLeaseSchema = runWorkLeaseSchema.safeExtend({
-  scope: z.strictObject({
-    app_id: canonicalImmutableIdSchema,
-    tenant_id: canonicalImmutableIdSchema,
-    environment: environmentSchema,
-  }),
-  principal_id: canonicalImmutableIdSchema,
-  outbox_id: canonicalImmutableIdSchema,
-  run_id: canonicalImmutableIdSchema,
-  command_id: canonicalImmutableIdSchema,
-  command_kind: z.literal("START_L2_RESEARCH"),
-  attempt_id: canonicalImmutableIdSchema,
-  payload: effectiveConfigRunLeasePayloadSchema,
-});
+const effectiveConfigRunWorkLeaseSchema = runWorkLeaseSchema
+  .safeExtend({
+    scope: z.strictObject({
+      app_id: canonicalImmutableIdSchema,
+      tenant_id: canonicalImmutableIdSchema,
+      environment: environmentSchema,
+    }),
+    principal_id: canonicalImmutableIdSchema,
+    outbox_id: canonicalImmutableIdSchema,
+    run_id: canonicalImmutableIdSchema,
+    command_id: canonicalImmutableIdSchema,
+    command_kind: z.enum(["START_DATA_AGENT_TEAM", "START_L2_RESEARCH"]),
+    attempt_id: canonicalImmutableIdSchema,
+    payload: effectiveConfigRunLeasePayloadSchema,
+  })
+  .superRefine((lease, ctx) => {
+    if (lease.command_kind !== lease.payload.kind) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Worker lease command kind must match its Effective Config payload.",
+        path: ["payload", "kind"],
+      });
+    }
+  });
 const workerRevalidationInputSchema = z.strictObject({
   context_receipt_id: canonicalImmutableIdSchema,
   lease: effectiveConfigRunWorkLeaseSchema,
@@ -437,7 +447,7 @@ function assertLeaseAuthority(
     lease.scope.tenant_id !== capability.scope.tenant_id ||
     lease.scope.environment !== capability.scope.environment ||
     lease.principal_id !== capability.principal ||
-    lease.command_kind !== "START_L2_RESEARCH"
+    lease.command_kind !== lease.payload.kind
   ) {
     throw new PersistenceBoundaryError(
       "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",

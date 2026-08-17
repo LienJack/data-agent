@@ -10,6 +10,7 @@ import { z } from "zod";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
   getEffectiveConfigResolver,
+  getAgentProfileRegistry,
   getProviderInvocationStore,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
@@ -100,15 +101,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
     }
   }
-  const [defaults, selections] = await Promise.all([
+  const [defaults, selections, profiles] = await Promise.all([
     resolver.getWorkspaceDefaults(authorized.value.capability),
     getProviderInvocationStore().resolveConversationRunSelections(authorized.value.capability, {
       conversation_id: conversation.value.conversation_id,
       expected_resource_version: conversationVersion.data,
     }),
+    getAgentProfileRegistry().list(authorized.value.capability, true),
   ]);
   if (!defaults.ok) return workspaceErrorResponse(defaults.error);
   if (!selections.ok) return workspaceErrorResponse(selections.error);
+  if (!profiles.ok) return workspaceErrorResponse(profiles.error);
+  if (
+    profiles.value.map(({ revision }) => revision.profile_id).join(",") !==
+    "governed-text2sql-agent,report-writing-agent,semantic-management-agent"
+  ) {
+    return workspaceErrorResponse({
+      code: "AGENT_PROFILE_SET_NOT_READY",
+      message: "Three enabled Agent Profiles are required before starting a Team Run.",
+      retryable: false,
+    });
+  }
   if (!defaults.value) {
     return workspaceErrorResponse({
       code: "WORKSPACE_DEFAULTS_NOT_CONFIGURED",

@@ -1,12 +1,17 @@
 "use client";
 
 import {
+  type AgentProductProfileRegistryItem,
+  type AgentTeamPublicTrace,
+  agentProductProfileListResultSchema,
   type ConversationTrajectory,
   conversationTrajectorySchema,
   type PublicRunEvent,
   publicRunEventSchema,
   type ResolutionTrace,
   type SqlHistoryResult,
+  verifyAgentProductProfileRevision,
+  verifyAgentTeamPublicTrace,
   verifyResolutionTrace,
   verifySqlHistoryResult,
 } from "@data-agent/contracts";
@@ -301,6 +306,37 @@ export async function fetchSqlHistory(
     resolvedWorkspace,
   );
   return verifySqlHistoryResult(response.data);
+}
+
+export async function fetchAgentProfiles(
+  workspaceId?: string,
+): Promise<readonly AgentProductProfileRegistryItem[]> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  const response = await request<{ data: unknown }>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/agent-profiles`,
+    {},
+    resolvedWorkspace,
+  );
+  const result = agentProductProfileListResultSchema.parse(response.data);
+  await Promise.all(
+    result.items.map(({ revision }) => verifyAgentProductProfileRevision(revision)),
+  );
+  return result.items;
+}
+
+export async function fetchAgentTeamTrace(
+  runId: string,
+  workspaceId?: string,
+): Promise<AgentTeamPublicTrace | null> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  const response = await request<{ data: unknown }>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/runs/${encodeURIComponent(runId)}/team-trace`,
+    {},
+    resolvedWorkspace,
+  );
+  return response.data === null ? null : verifyAgentTeamPublicTrace(response.data);
 }
 
 // ─── Exponential Backoff ───────────────────────────────────────────────────

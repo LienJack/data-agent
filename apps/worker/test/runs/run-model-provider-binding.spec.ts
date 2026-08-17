@@ -139,15 +139,11 @@ describe("Research Worker governed Provider binding", () => {
     expect(displayEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ kind: "progress", phase: "provider.authority.prepare" }),
+        expect.objectContaining({ kind: "tool_started", tool_name: "provider.dispatch" }),
         expect.objectContaining({
           kind: "tool_failed",
           error_code: "PROVIDER_INVOCATION_OUTCOME_UNKNOWN",
         }),
-      ]),
-    );
-    expect(displayEvents).not.toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "tool_started", tool_name: "provider.dispatch" }),
       ]),
     );
   });

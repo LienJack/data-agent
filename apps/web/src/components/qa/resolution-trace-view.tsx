@@ -7,15 +7,22 @@ import {
   Clock,
   FileText,
   GitBranch,
+  Robot,
   Table,
 } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { AgentTeamTrace } from "@/components/qa/agent-team-trace";
 import { EmptyState } from "@/components/ui/empty-state";
-import { fetchResolutionTrace, fetchSqlHistory } from "@/lib/api-client";
+import {
+  fetchAgentProfiles,
+  fetchAgentTeamTrace,
+  fetchResolutionTrace,
+  fetchSqlHistory,
+} from "@/lib/api-client";
 import { useQAActiveConversationId, useQAEvents, useQATrajectoryFocus } from "@/lib/qa-store";
 
-type TraceTab = "overview" | "trace" | "sql" | "artifacts";
+type TraceTab = "overview" | "team" | "trace" | "sql" | "artifacts";
 type LoadState =
   | { readonly status: "idle" | "loading" }
   | { readonly status: "error"; readonly message: string }
@@ -23,6 +30,9 @@ type LoadState =
       readonly status: "ready";
       readonly trace: ResolutionTrace;
       readonly sql: readonly SqlHistoryEntry[];
+      readonly profiles: Awaited<ReturnType<typeof fetchAgentProfiles>>;
+      readonly teamTrace: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
+      readonly teamError: string | null;
     };
 
 const tabs: readonly {
@@ -32,6 +42,7 @@ const tabs: readonly {
 }[] = [
   { id: "overview", label: "概览", icon: Clock },
   { id: "trace", label: "轨迹", icon: GitBranch },
+  { id: "team", label: "Team", icon: Robot },
   { id: "sql", label: "SQL", icon: Table },
   { id: "artifacts", label: "工件", icon: FileText },
 ];
@@ -212,12 +223,23 @@ export function ResolutionTraceView() {
     }
     let active = true;
     setState({ status: "loading" });
+    const team = Promise.all([
+      fetchAgentProfiles(workspaceId),
+      fetchAgentTeamTrace(runId, workspaceId),
+    ])
+      .then(([profiles, teamTrace]) => ({ profiles, teamTrace, teamError: null }))
+      .catch((error: unknown) => ({
+        profiles: [],
+        teamTrace: null,
+        teamError: error instanceof Error ? error.message : "Agent Team 轨迹加载失败",
+      }));
     void Promise.all([
       fetchResolutionTrace(runId, workspaceId),
       fetchSqlHistory({ runId, ...(conversationId ? { conversationId } : {}) }, workspaceId),
+      team,
     ])
-      .then(([trace, sql]) => {
-        if (active) setState({ status: "ready", trace, sql: sql.items });
+      .then(([trace, sql, teamState]) => {
+        if (active) setState({ status: "ready", trace, sql: sql.items, ...teamState });
       })
       .catch((error: unknown) => {
         if (active)
@@ -248,16 +270,30 @@ export function ResolutionTraceView() {
     );
   if (state.status !== "ready") return null;
 
-  return <ResolutionTracePanel trace={state.trace} sql={state.sql} />;
+  return (
+    <ResolutionTracePanel
+      trace={state.trace}
+      sql={state.sql}
+      profiles={state.profiles}
+      teamTrace={state.teamTrace}
+      teamError={state.teamError}
+    />
+  );
 }
 
 export function ResolutionTracePanel({
   trace,
   sql,
+  profiles = [],
+  teamTrace = null,
+  teamError = null,
   initialTab = "trace",
 }: {
   readonly trace: ResolutionTrace;
   readonly sql: readonly SqlHistoryEntry[];
+  readonly profiles?: Awaited<ReturnType<typeof fetchAgentProfiles>>;
+  readonly teamTrace?: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
+  readonly teamError?: string | null;
   readonly initialTab?: TraceTab;
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
@@ -291,6 +327,9 @@ export function ResolutionTracePanel({
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {tab === "overview" && <Overview trace={trace} sql={sql} />}
         {tab === "trace" && <TraceList nodes={trace.nodes} />}
+        {tab === "team" && (
+          <AgentTeamTrace profiles={profiles} trace={teamTrace} error={teamError} />
+        )}
         {tab === "sql" && <SqlList entries={sql} />}
         {tab === "artifacts" && <ArtifactList trace={trace} />}
       </div>

@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Mastra internal-only dependency direction"}
+{"file":".trellis/spec/backend/extension-runtime.md","reason":"Exact Skill revision/head and tool effect authority"}
+{"file":".trellis/spec/backend/resolved-context-authority.md","reason":"Profile-specific context routing and worker gate"}
+{"file":".trellis/spec/backend/session-recovery.md","reason":"Checkpoint/resume and no blind replay"}
+{"file":".trellis/tasks/08-16-u19-agent-team-v2/design.md","reason":"Existing Team v2 runtime and PostgreSQL authority contracts"}

@@ -145,6 +145,34 @@ const runAnswerDeltaEventSchema = z.strictObject({
   }),
 });
 
+const runReasoningStartedEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.reasoning_started"),
+  payload: z.strictObject({
+    block_id: displayCallIdSchema,
+    title: z.string().trim().min(1).max(128),
+  }),
+});
+
+const runReasoningDeltaEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.reasoning_delta"),
+  payload: z.strictObject({
+    block_id: displayCallIdSchema,
+    delta: z.string().min(1).max(4_096),
+  }),
+});
+
+const runReasoningCompletedEventSchema = z.strictObject({
+  ...runtimeEventFields,
+  event_type: z.literal("run.reasoning_completed"),
+  payload: z.strictObject({
+    block_id: displayCallIdSchema,
+    summary: displayTextSchema,
+    duration_ms: nonNegativeSafeIntegerSchema,
+  }),
+});
+
 const runSuspendedEventSchema = z.strictObject({
   ...runtimeEventFields,
   event_type: z.literal("run.suspended"),
@@ -216,6 +244,9 @@ export const runRuntimeEventSchema = z
     runToolCompletedEventSchema,
     runToolFailedEventSchema,
     runAnswerDeltaEventSchema,
+    runReasoningStartedEventSchema,
+    runReasoningDeltaEventSchema,
+    runReasoningCompletedEventSchema,
     runSuspendedEventSchema,
     runResumedEventSchema,
     runRetryScheduledEventSchema,
@@ -459,6 +490,9 @@ export function reduceRunProjection(
     case "run.tool_completed":
     case "run.tool_failed":
     case "run.answer_delta":
+    case "run.reasoning_started":
+    case "run.reasoning_delta":
+    case "run.reasoning_completed":
       requireCurrentFence(previous, event);
       requireState(previous, ["RUNNING"], event);
       next = updateProjection(previous, event, {});
@@ -624,7 +658,7 @@ export const runWorkLeaseSchema = z.strictObject({
   outbox_id: immutableIdSchema,
   run_id: immutableIdSchema,
   command_id: immutableIdSchema,
-  command_kind: z.enum(["START_L2_RESEARCH", "RESUME_RUN"]),
+  command_kind: z.enum(["START_DATA_AGENT_TEAM", "START_L2_RESEARCH", "RESUME_RUN"]),
   attempt_id: immutableIdSchema,
   attempt_no: positiveSafeIntegerSchema,
   delivery_attempt_no: positiveSafeIntegerSchema,

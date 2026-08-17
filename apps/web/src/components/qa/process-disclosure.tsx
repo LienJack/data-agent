@@ -1,5 +1,6 @@
 "use client";
 
+import { CaretDown, CaretRight } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import type { ProcessRow } from "@/lib/qa-event-assembler";
 import { useQAStore } from "@/lib/qa-store";
@@ -16,6 +17,7 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
   const failed = row.status === "FAILED";
   const interrupted = row.status === "INTERRUPTED";
   const running = row.status === "RUNNING";
+  const compactSummary = `${row.summary.slice(0, 180)}${row.summary.length > 180 ? "..." : ""}`;
 
   return (
     <div className="border-l border-[var(--color-border-default)] pl-3 text-xs">
@@ -40,9 +42,10 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
         />
         <span className="min-w-0 flex-1">
           <span className="font-medium text-[var(--color-text-secondary)]">
-            {row.kind === "progress" ? "Think" : row.toolName} · {row.title}
+            {row.kind === "tool" ? row.toolName : row.kind === "reasoning" ? "思考" : "阶段"} ·{" "}
+            {row.title}
           </span>
-          <span className="ml-2 text-[var(--color-text-muted)]">{row.summary}</span>
+          <span className="ml-2 break-words text-[var(--color-text-muted)]">{compactSummary}</span>
         </span>
         {row.durationMs !== null && (
           <span className="shrink-0 tabular-nums text-[var(--color-text-muted)]">
@@ -50,7 +53,7 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
           </span>
         )}
         <span aria-hidden="true" className="shrink-0 text-[var(--color-text-muted)]">
-          {expanded ? "−" : "+"}
+          {expanded ? <CaretDown size={14} /> : <CaretRight size={14} />}
         </span>
       </button>
 
@@ -58,9 +61,7 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
         <div id={panelId} className="mb-2 rounded-md bg-[var(--color-bg-tertiary)] p-3">
           {row.input !== null && (
             <section className="mb-3">
-              <p className="mb-1 font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-                Input
-              </p>
+              <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">Input</p>
               <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--color-text-secondary)]">
                 {row.input}
               </pre>
@@ -68,9 +69,7 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
           )}
           {row.output !== null && (
             <section>
-              <p className="mb-1 font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-                Output
-              </p>
+              <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">Output</p>
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px] text-[var(--color-text-secondary)]">
                 {row.output}
               </pre>

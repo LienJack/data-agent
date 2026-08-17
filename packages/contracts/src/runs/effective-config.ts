@@ -1,4 +1,8 @@
 import { z } from "zod";
+import {
+  agentProductProfileReferenceSchema,
+  agentSpecialistProfileIdSchema,
+} from "../agents/profile-registry.js";
 import { SENSITIVITY_LEVEL } from "../artifacts/text2sql-primitives.js";
 import { contentHashSchema, sha256ContentHash, versionIdentifierSchema } from "../common/index.js";
 import { modelProviderSchema } from "../providers/index.js";
@@ -441,10 +445,31 @@ export const effectiveRunConfigReferenceSchema = z.strictObject({
   config_hash: contentHashSchema,
 });
 
-export const effectiveConfigRunLeasePayloadSchema = z.strictObject({
-  kind: z.literal("START_L2_RESEARCH"),
-  effective_config_ref: effectiveRunConfigReferenceSchema,
-});
+export const effectiveConfigRunLeasePayloadSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("START_L2_RESEARCH"),
+    effective_config_ref: effectiveRunConfigReferenceSchema,
+  }),
+  z.strictObject({
+    kind: z.literal("START_DATA_AGENT_TEAM"),
+    effective_config_ref: effectiveRunConfigReferenceSchema,
+    profile_refs: z
+      .array(agentProductProfileReferenceSchema)
+      .length(3)
+      .superRefine((references, ctx) => {
+        const expected = agentSpecialistProfileIdSchema.options;
+        references.forEach((reference, index) => {
+          if (reference.profile_id !== expected[index]) {
+            ctx.addIssue({
+              code: "custom",
+              message: "Team Profile refs must contain all specialists in canonical order.",
+              path: [index, "profile_id"],
+            });
+          }
+        });
+      }),
+  }),
+]);
 
 export const effectiveModelProfileSchema = versionedResourceReferenceSchema.extend({
   provider: modelProviderSchema,

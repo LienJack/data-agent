@@ -4,7 +4,7 @@ export interface ProcessRow {
   id: string;
   runId: string;
   sequence: number;
-  kind: "progress" | "tool";
+  kind: "progress" | "reasoning" | "tool";
   title: string;
   summary: string;
   status: "RUNNING" | "COMPLETED" | "FAILED" | "INTERRUPTED";
@@ -54,6 +54,7 @@ export function assembleProcessRows(
 ): ProcessRow[] {
   const rows: ProcessRow[] = [];
   const tools = new Map<string, ProcessRow>();
+  const reasoning = new Map<string, ProcessRow>();
   let terminalStatus: "COMPLETED" | "FAILED" | "CANCELLED" | null = null;
   for (const event of events
     .filter((candidate) => candidate.run_id === runId)
@@ -90,6 +91,28 @@ export function assembleProcessRows(
       };
       tools.set(event.payload.call_id, next);
     }
+    if (event.type === "reasoning") {
+      const current = reasoning.get(event.payload.block_id);
+      reasoning.set(event.payload.block_id, {
+        id: `${runId}:reasoning:${event.payload.block_id}`,
+        runId,
+        sequence: current?.sequence ?? event.sequence,
+        kind: "reasoning",
+        title: event.payload.phase === "START" ? event.payload.title : (current?.title ?? "思考"),
+        summary:
+          event.payload.phase === "DELTA"
+            ? `${current?.summary ?? ""}${event.payload.delta}`
+            : event.payload.phase === "END"
+              ? event.payload.summary
+              : "正在思考…",
+        status: event.payload.phase === "END" ? "COMPLETED" : "RUNNING",
+        input: null,
+        output: null,
+        durationMs:
+          event.payload.phase === "END" ? event.payload.duration_ms : (current?.durationMs ?? null),
+        toolName: null,
+      });
+    }
     if (event.type === "terminal") terminalStatus = event.payload.status;
   }
   rows.push(
@@ -102,6 +125,19 @@ export function assembleProcessRows(
         status: terminalStatus === "CANCELLED" ? ("INTERRUPTED" as const) : ("FAILED" as const),
         summary:
           terminalStatus === "CANCELLED" ? "工具调用已随 Run 中断" : "工具调用未完成，Run 已失败",
+      };
+    }),
+  );
+  rows.push(
+    ...[...reasoning.values()].map((row) => {
+      if (row.status !== "RUNNING" || terminalStatus === null || terminalStatus === "COMPLETED") {
+        return row;
+      }
+      return {
+        ...row,
+        status: terminalStatus === "CANCELLED" ? ("INTERRUPTED" as const) : ("FAILED" as const),
+        summary:
+          terminalStatus === "CANCELLED" ? "思考摘要已随 Run 中断" : "思考摘要未完成，Run 已失败",
       };
     }),
   );

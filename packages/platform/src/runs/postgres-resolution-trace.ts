@@ -376,6 +376,24 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
         duration_ms: null,
         artifact_refs: [],
       };
+    case "reasoning":
+      return {
+        node_id: `event:${event.event_id}`,
+        kind: "REASONING",
+        source_event_id: event.event_id,
+        sequence: event.sequence,
+        occurred_at: event.occurred_at,
+        status: publicEvent.payload.phase === "END" ? "COMPLETED" : "RUNNING",
+        title: publicEvent.payload.phase === "START" ? publicEvent.payload.title : "思考摘要",
+        summary:
+          publicEvent.payload.phase === "DELTA"
+            ? redactPublicDisplayText(publicEvent.payload.delta).slice(0, 2_000)
+            : publicEvent.payload.phase === "END"
+              ? redactPublicDisplayText(publicEvent.payload.summary).slice(0, 2_000)
+              : "正在整理分析路径",
+        duration_ms: publicEvent.payload.phase === "END" ? publicEvent.payload.duration_ms : null,
+        artifact_refs: [],
+      };
     case "terminal":
       return {
         node_id: `event:${event.event_id}`,

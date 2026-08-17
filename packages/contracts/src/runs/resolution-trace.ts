@@ -32,6 +32,7 @@ export const resolutionTraceNodeSchema = z.strictObject({
   kind: z.enum([
     "LIFECYCLE",
     "PROGRESS",
+    "REASONING",
     "TOOL",
     "ANSWER",
     "TERMINAL",

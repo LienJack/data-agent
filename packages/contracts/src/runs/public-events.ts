@@ -54,6 +54,28 @@ export const publicRunEventSchema = z.discriminatedUnion("type", [
   }),
   z.strictObject({
     ...publicEventBase,
+    type: z.literal("reasoning"),
+    payload: z.discriminatedUnion("phase", [
+      z.strictObject({
+        phase: z.literal("START"),
+        block_id: z.string().min(1).max(256),
+        title: z.string().min(1).max(128),
+      }),
+      z.strictObject({
+        phase: z.literal("DELTA"),
+        block_id: z.string().min(1).max(256),
+        delta: z.string().min(1).max(4_096),
+      }),
+      z.strictObject({
+        phase: z.literal("END"),
+        block_id: z.string().min(1).max(256),
+        summary: publicTextSchema,
+        duration_ms: z.number().int().nonnegative().safe(),
+      }),
+    ]),
+  }),
+  z.strictObject({
+    ...publicEventBase,
     type: z.literal("terminal"),
     payload: z.strictObject({
       status: z.enum(["COMPLETED", "FAILED", "CANCELLED"]),
@@ -167,6 +189,24 @@ export function toPublicRunEvent(input: unknown): PublicRunEvent {
       });
     case "run.answer_delta":
       return publicRunEventSchema.parse({ ...common, type: "answer", payload: event.payload });
+    case "run.reasoning_started":
+      return publicRunEventSchema.parse({
+        ...common,
+        type: "reasoning",
+        payload: { phase: "START", ...event.payload },
+      });
+    case "run.reasoning_delta":
+      return publicRunEventSchema.parse({
+        ...common,
+        type: "reasoning",
+        payload: { phase: "DELTA", ...event.payload },
+      });
+    case "run.reasoning_completed":
+      return publicRunEventSchema.parse({
+        ...common,
+        type: "reasoning",
+        payload: { phase: "END", ...event.payload },
+      });
     case "run.suspended":
       return publicRunEventSchema.parse({
         ...common,

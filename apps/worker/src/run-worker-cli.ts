@@ -14,6 +14,7 @@ import {
   createFileSystemStorageClient,
   createNeo4jKnowledgeIndexFromEnvironment,
   createOpenAiCompatibleEmbeddingProviderFactory,
+  createPostgresAgentProfileRegistry,
   createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
   createPostgresEffectiveConfigResolver,
@@ -59,6 +60,8 @@ import {
   type WorkerHealthState,
 } from "./runs/run-worker-daemon.js";
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
+import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
+import { createRunWorkflowExecutorRouter } from "./teams/run-workflow-executor-router.js";
 
 class RunWorkerStartupError extends Error {
   override readonly name = "RunWorkerStartupError";
@@ -310,20 +313,37 @@ export async function runWorkerProcess(
             }),
           }),
         });
+        const researchExecutor = createResearchWorkflowExecutor({
+          research_authority: researchAuthority,
+          authority_capability_input: config.research_authority_capability_id
+            ? {
+                app_capability: capability,
+                authority_capability_id: config.research_authority_capability_id,
+              }
+            : null,
+          principal_id: principalId,
+          create_id: randomUUID,
+          now: () => new Date(),
+        });
+        const profileRegistry = createPostgresAgentProfileRegistry({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
+        const teamExecutor = createDataAgentTeamRunner({
+          profiles: {
+            listEnabled: (profileCapability) => profileRegistry.list(profileCapability, true),
+          },
+          profile_capability_input: capability,
+          runtime: {
+            execute: async () => ({
+              status: "FAILED",
+              reason_code: "DATA_AGENT_TEAM_DOMAIN_RUNTIME_UNAVAILABLE",
+            }),
+          },
+        });
         const executor = smokeTarget
           ? createProviderSmokeExecutor()
-          : createResearchWorkflowExecutor({
-              research_authority: researchAuthority,
-              authority_capability_input: config.research_authority_capability_id
-                ? {
-                    app_capability: capability,
-                    authority_capability_id: config.research_authority_capability_id,
-                  }
-                : null,
-              principal_id: principalId,
-              create_id: randomUUID,
-              now: () => new Date(),
-            });
+          : createRunWorkflowExecutorRouter({ research: researchExecutor, team: teamExecutor });
         const queue = createPostgresRunQueue(sqlPool, capabilityAuthority.authorizer, capability, {
           lease_duration_ms: config.lease_duration_ms,
         });
@@ -356,7 +376,7 @@ export async function runWorkerProcess(
             resolved_context: resolvedContext,
             effective_config_loader: (lease) => {
               const payload = effectiveConfigRunLeasePayloadSchema.safeParse(lease.payload);
-              if (!payload.success || lease.command_kind !== "START_L2_RESEARCH") {
+              if (!payload.success || lease.command_kind !== payload.data.kind) {
                 return Promise.resolve({
                   ok: false,
                   error: {
@@ -371,7 +391,7 @@ export async function runWorkerProcess(
                 context_receipt_id: lease.attempt_id,
                 lease: {
                   ...lease,
-                  command_kind: "START_L2_RESEARCH",
+                  command_kind: payload.data.kind,
                   payload: payload.data,
                 },
               });

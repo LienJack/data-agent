@@ -111,6 +111,25 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     key: z.string().min(1).max(128),
     delta: z.string().min(1).max(100_000),
   }),
+  z.strictObject({
+    kind: z.literal("reasoning_started"),
+    key: z.string().min(1).max(128),
+    block_id: z.string().min(1).max(256),
+    title: z.string().min(1).max(128),
+  }),
+  z.strictObject({
+    kind: z.literal("reasoning_delta"),
+    key: z.string().min(1).max(128),
+    block_id: z.string().min(1).max(256),
+    delta: z.string().min(1).max(4_096),
+  }),
+  z.strictObject({
+    kind: z.literal("reasoning_completed"),
+    key: z.string().min(1).max(128),
+    block_id: z.string().min(1).max(256),
+    summary: z.string().min(1).max(100_000),
+    duration_ms: z.number().int().nonnegative().safe(),
+  }),
 ]);
 
 export type RunDisplayEventInput = z.infer<typeof runDisplayEventInputSchema>;
@@ -913,7 +932,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
         );
       }
       const lease = { ...leaseResult.data, payload: payload.data };
-      if (lease.command_kind !== "START_L2_RESEARCH") {
+      if (lease.command_kind !== payload.data.kind) {
         return failure(
           "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
           "Worker Lease Command Kind 与 Effective Config Payload 不一致。",

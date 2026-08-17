@@ -18,6 +18,7 @@
 type PublicRunEvent =
   | { type: "lifecycle"; run_id: string; sequence: number; payload: LifecyclePayload }
   | { type: "progress"; run_id: string; sequence: number; payload: ProgressPayload }
+  | { type: "reasoning"; run_id: string; sequence: number; payload: ReasoningSummaryPayload }
   | { type: "tool"; run_id: string; sequence: number; payload: ToolPayload }
   | { type: "answer"; run_id: string; sequence: number; payload: { delta: string } }
   | { type: "terminal"; run_id: string; sequence: number; payload: TerminalPayload };
@@ -43,6 +44,10 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
   Connection Userinfo、Token 形态及 System Prompt 标记。
 - 前端以 `(run_id, sequence)` 去重。Chat 的 Process Row 和 Trajectory 必须共享同一事件数组。
 - 工具开始与完成通过 `call_id` 合并；安全 Input 来自 Start，Output/Duration/Status 来自终结事件。
+- 公开思考摘要通过 `block_id` 合并，固定 `START -> DELTA* -> END`。这些文本只能由应用根据已验证阶段生成，
+  不接受 Provider `reasoning_content`、raw chain-of-thought 或 System Prompt。
+- `run.reasoning_*`、`run.tool_*`、`run.progress` 与 `run.answer_delta` 只能在活动 Lease/Fence 下追加；数据库
+  exact-key 校验载荷，并只推进 Projection version/event cursor，不能改变 `RUNNING` Authority 状态。
 - 最终 Agent Message 使用 `run_id` 作为确定性 `message_id`，终态后只执行一次持久化。
 - 所有 Workspace `READ` 成员可查看完整的非敏感、已策展 Input/Output；未知嵌套 Provider 对象、
   SQL Result Row、Prompt 全文和 Credential 不得作为 display event 输入。
@@ -52,6 +57,7 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 | 条件 | 结果 |
 | --- | --- |
 | 未知 event type / 未知 payload 字段 | Zod Parse 失败，不进入 UI |
+| reasoning payload 含 `reasoning_content` 或其他未知字段 | Contract/数据库 exact-key 校验失败 |
 | display event 不在 `RUNNING` 或 Fence 过期 | `RUN_EVENT_TRANSITION_INVALID` 或 Fence Error |
 | 同幂等键对应不同 payload | `RUN_DISPLAY_EVENT_REPLAY_MISMATCH` |
 | 输入含已知 Secret 形态 | 写库前替换为 `[REDACTED]` |
@@ -59,6 +65,7 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 | SSE 断线 | 客户端从最后 sequence 重连并去重 |
 | SSE 异常但 Run 已终态 | GET Projection 兜底生成最终非问题复述文案 |
 | Run 取消且工具未完成 | UI 派生 `INTERRUPTED`，不伪造 Tool Result |
+| Run 失败/取消且思考块未 END | UI 派生 `FAILED/INTERRUPTED`，不伪造完整摘要 |
 
 ### 5. Good / Base / Bad Cases
 
@@ -71,6 +78,7 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 
 - Contract：新增事件合法 Parse、未知事件失败、非法状态迁移和 Secret Fixture。
 - Worker：成功/失败 display event、写前脱敏、同 Attempt 幂等重放。
+- PostgreSQL 17：display payload exact-key、活动 Lease/Fence、Reducer 保持 `RUNNING`、私有推理字段拒绝。
 - Platform/API：Conversation Run binding 的 READ/越权；`after_sequence` 缺口回放上限。
 - Web：SSE Schema Parse、`Last-Event-ID` 优先级、sequence 去重、回答增量排序。
 - UI：Reasoning/Tool 默认折叠、原生 Button 键盘语义、失败/中断、长输出滚动。
