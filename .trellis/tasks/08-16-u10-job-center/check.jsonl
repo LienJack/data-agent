@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/index.md","reason":"Review backend authority, transaction, error, and testing invariants."}
+{"file":".trellis/spec/frontend/index.md","reason":"Review API authorization, readiness redaction, and route behavior."}
+{"file":".trellis/spec/guides/index.md","reason":"Review cross-layer consistency and completion gates."}
+{"file":"docs/plans/2026-08-16-001-feat-datafoundry-coa-migration-plan.md","reason":"Verify implementation matches frozen U10 scope without Falcon intermediate execution."}
+{"file":"infra/supabase/test-support/37-job-center-authority-assertions.sql","reason":"Mechanical RLS, grant, idempotency, fence, cancellation, recovery, output, and readiness evidence."}
+{"file":".trellis/spec/backend/job-center.md","reason":"Verify durable U10 conventions and explicit NOT_READY compatibility boundaries."}

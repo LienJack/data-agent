@@ -1,5 +1,6 @@
 export * from "./attribution/published-f9-lifecycle.js";
 export * from "./artifacts/postgres-artifact-workspace-store.js";
+export * from "./artifacts/artifact-workspace-service.js";
 export * from "./agents/postgres-team-run-store.js";
 export {
   createPostgresPrivilegedGrantAuthority,
@@ -41,6 +42,7 @@ export * from "./persistence/transaction.js";
 export * from "./persistence/workspace-data-repository.js";
 export * from "./pricing/postgres-pricing-control.js";
 export * from "./providers/index.js";
+export * from "./jobs/postgres-job-queue.js";
 export * from "./queue/postgres-run-queue.js";
 export {
   createPostgresControlledFixture,

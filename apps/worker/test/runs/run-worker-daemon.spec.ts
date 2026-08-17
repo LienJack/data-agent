@@ -69,6 +69,8 @@ describe("Run Worker daemon", () => {
     expect(sleep).toHaveBeenCalledWith(1_000, abort.signal);
     expect(health).toMatchObject({
       initialized: false,
+      run_queue_ready: false,
+      job_queue_ready: false,
       last_cycle_at: "2026-08-10T10:00:00.000Z",
       last_cycle_kind: "IDLE",
       last_error_code: null,

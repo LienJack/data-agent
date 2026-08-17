@@ -13,6 +13,7 @@ export type WorkspaceNavigationKey =
   | "analysis"
   | "qa"
   | "tests"
+  | "jobs"
   | "data-sources"
   | "semantic"
   | "members"
@@ -44,6 +45,14 @@ const navigationDefinitions = [
     label: "能力测试",
     description: "查看并运行当前工作空间的能力测试",
     path: "tests",
+    requiredAction: "WORKSPACE_RESULT_READ",
+    phase: "AVAILABLE",
+  },
+  {
+    key: "jobs",
+    label: "任务中心",
+    description: "查看后台任务、重试和取消状态",
+    path: "jobs",
     requiredAction: "WORKSPACE_RESULT_READ",
     phase: "AVAILABLE",
   },

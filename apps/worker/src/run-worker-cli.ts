@@ -9,10 +9,13 @@ import {
 } from "@data-agent/contracts";
 import {
   adaptPgPool,
+  createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
   createPostgresEffectiveConfigResolver,
+  createPostgresJobQueue,
   createPostgresOperationsAdminRepository,
   createPostgresProviderInvocationSmokeJob,
+  createPostgresRepository,
   createPostgresResearchAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
@@ -20,6 +23,9 @@ import {
 } from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
+import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
+import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
+import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
 import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
@@ -312,6 +318,73 @@ export async function runWorkerProcess(
       },
     });
 
+    let jobPrincipalCursor = 0;
+    const jobRunner = {
+      async runOnce(input: {
+        scope: typeof appCapability.scope;
+        worker_id: string;
+        signal: AbortSignal;
+      }) {
+        const members = await operations.listWorkspaceMembers({
+          deployment_id: config.deployment_id,
+          principal_id: config.principal_id,
+          workspace_id: config.tenant_id,
+        });
+        if (!members.ok) return members;
+        const principals = members.value
+          .filter(isRunnableWorkspaceMember)
+          .map((member) => member.principal_id);
+        if (principals.length === 0) return { ok: true as const, value: { kind: "IDLE" as const } };
+        for (let offset = 0; offset < principals.length; offset += 1) {
+          const index = (jobPrincipalCursor + offset) % principals.length;
+          const principalId = principals[index];
+          if (!principalId) continue;
+          const principalCapability = await capabilityAuthority.resolveForServerContext({
+            deployment_id: config.deployment_id,
+            tenant_id: config.tenant_id,
+            principal_id: principalId,
+            access: "WRITE",
+          });
+          if (!principalCapability.ok) continue;
+          const capability = principalCapability.value;
+          const queue = createPostgresJobQueue(
+            sqlPool,
+            capabilityAuthority.authorizer,
+            capability,
+            { lease_duration_ms: config.lease_duration_ms },
+          );
+          const exportStore = createPostgresArtifactWorkspaceStore({
+            pool: sqlPool,
+            authorizer: capabilityAuthority.authorizer,
+          });
+          const principalRunner = createJobWorkerRunner({
+            queue,
+            lease_duration_ms: config.lease_duration_ms,
+            handlers: [
+              createArtifactExportJobHandler({
+                capability,
+                workspace: {
+                  repository: createPostgresRepository(sqlPool, capabilityAuthority.authorizer),
+                  exportStore,
+                },
+              }),
+            ],
+          });
+          const cycle = await principalRunner.runOnce({
+            scope: input.scope,
+            worker_id: input.worker_id,
+            signal: input.signal,
+          });
+          if (!cycle.ok || cycle.value.kind !== "IDLE") {
+            jobPrincipalCursor = (index + 1) % principals.length;
+            return cycle;
+          }
+        }
+        jobPrincipalCursor = (jobPrincipalCursor + 1) % principals.length;
+        return { ok: true as const, value: { kind: "IDLE" as const } };
+      },
+    };
+
     if (environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES") {
       const result = await runner.runOnce({
         scope: appCapability.scope,
@@ -373,7 +446,6 @@ export async function runWorkerProcess(
       return;
     }
 
-    health.initialized = true;
     await listen(healthServer, config.health_port);
     writeLog({
       level: "info",
@@ -382,15 +454,32 @@ export async function runWorkerProcess(
         ? "RESEARCH_AUTHORITY_CONFIGURED"
         : "RESEARCH_AUTHORITY_NOT_CONFIGURED",
     });
-    await runWorkerLoop({
-      runner,
-      scope: appCapability.scope,
-      worker_id: config.worker_id,
-      poll_interval_ms: config.poll_interval_ms,
-      signal: controller.signal,
-      health,
-      logger: writeLog,
-    });
+    await Promise.all([
+      runWorkerLoop({
+        runner,
+        scope: appCapability.scope,
+        worker_id: config.worker_id,
+        poll_interval_ms: config.poll_interval_ms,
+        signal: controller.signal,
+        health,
+        logger: writeLog,
+      }),
+      runJobWorkerLoop({
+        runner: jobRunner,
+        scope: appCapability.scope,
+        worker_id: `${config.worker_id}:jobs`,
+        poll_interval_ms: config.poll_interval_ms,
+        signal: controller.signal,
+        health,
+        logger: (record) => {
+          const { level, ...fields } = record;
+          const output = JSON.stringify(fields);
+          if (level === "error") console.error(output);
+          else if (level === "warn") console.warn(output);
+          else console.info(output);
+        },
+      }),
+    ]);
   } finally {
     health.initialized = false;
     controller.abort();

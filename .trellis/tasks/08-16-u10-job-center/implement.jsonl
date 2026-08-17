@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/index.md","reason":"Backend pre-development checklist for Contracts, Platform, Worker, SQL, and routes."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend/API and public readiness boundary conventions."}
+{"file":".trellis/spec/guides/index.md","reason":"Shared cross-layer design and verification guidance."}
+{"file":"docs/plans/2026-08-16-001-feat-datafoundry-coa-migration-plan.md","reason":"Frozen U10 scope, dependencies, files, approach, and acceptance scenarios."}
+{"file":".trellis/spec/backend/job-center.md","reason":"Persistent U10 Job Authority, worker loop, readiness, and compatibility invariants."}
+{"file":"docs/runbooks/job-center.md","reason":"Operational health, readiness, cancellation, and recovery procedure."}

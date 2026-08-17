@@ -62,18 +62,28 @@ export function parseRunWorkerEnvironment(
 
 export interface WorkerHealthState {
   initialized: boolean;
+  run_queue_ready: boolean;
+  job_queue_ready: boolean;
   last_cycle_at: string | null;
   last_cycle_kind: RunWorkerCycleOutcome["kind"] | null;
   last_error_code: string | null;
+  job_last_cycle_at: string | null;
+  job_last_cycle_kind: "IDLE" | "COMPLETED" | "RETRY_SCHEDULED" | "CANCELLED" | "FAILED" | null;
+  job_last_error_code: string | null;
   readonly research_authority_configured: boolean;
 }
 
 export function createInitialWorkerHealth(researchAuthorityConfigured: boolean): WorkerHealthState {
   return {
     initialized: false,
+    run_queue_ready: false,
+    job_queue_ready: false,
     last_cycle_at: null,
     last_cycle_kind: null,
     last_error_code: null,
+    job_last_cycle_at: null,
+    job_last_cycle_kind: null,
+    job_last_error_code: null,
     research_authority_configured: researchAuthorityConfigured,
   };
 }
@@ -134,7 +144,8 @@ export async function runWorkerLoop(
   const sleep = options.sleep ?? defaultSleep;
   const logger = options.logger ?? (() => undefined);
   const now = options.now ?? (() => new Date());
-  options.health.initialized = true;
+  options.health.run_queue_ready = true;
+  options.health.initialized = options.health.job_queue_ready;
 
   while (!options.signal.aborted) {
     try {
@@ -176,5 +187,6 @@ export async function runWorkerLoop(
     await sleep(options.poll_interval_ms, options.signal);
   }
 
+  options.health.run_queue_ready = false;
   options.health.initialized = false;
 }

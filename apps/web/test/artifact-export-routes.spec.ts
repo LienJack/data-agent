@@ -13,10 +13,24 @@ const state = vi.hoisted(() => ({
   resolves: 0,
   creates: 0,
   loads: 0,
+  enqueues: 0,
   accesses: [] as string[],
 }));
 
 vi.mock("@data-agent/platform", () => ({
+  createPostgresJobQueue: () => ({
+    enqueue: async () => {
+      state.enqueues += 1;
+      return {
+        ok: true,
+        value: {
+          schema_version: "job-submission-receipt@1.0.0",
+          disposition: "CREATED",
+          job_id: "00000000-0000-4000-8000-000000007305",
+        },
+      };
+    },
+  }),
   createPostgresRepository: () => ({
     resolveArtifact: async () => {
       state.resolves += 1;
@@ -88,6 +102,7 @@ describe("Artifact preview/export routes", () => {
     state.resolves = 0;
     state.creates = 0;
     state.loads = 0;
+    state.enqueues = 0;
     state.accesses = [];
   });
 
@@ -106,7 +121,7 @@ describe("Artifact preview/export routes", () => {
     await expect(response.json()).resolves.toMatchObject({ source_ref: item.reference });
   });
 
-  it("creates one receipt then downloads exact bytes with attachment headers", async () => {
+  it("enqueues Artifact Export and does not render bytes in the request", async () => {
     const route = await import(
       "../src/app/api/workspaces/[workspaceId]/artifacts/[artifactId]/exports/route"
     );
@@ -129,23 +144,15 @@ describe("Artifact preview/export routes", () => {
       }),
       context,
     );
-    expect(created.status).toBe(201);
-    const createdBody = (await created.json()) as { download_url: string };
-    expect(state.creates).toBe(1);
+    expect(created.status).toBe(202);
+    await expect(created.json()).resolves.toMatchObject({
+      disposition: "CREATED",
+      job: { job_id: "00000000-0000-4000-8000-000000007305" },
+    });
+    expect(state.enqueues).toBe(1);
+    expect(state.creates).toBe(0);
+    expect(state.resolves).toBe(0);
     expect(state.accesses).toEqual(["WRITE"]);
-
-    const downloaded = await route.GET(
-      new NextRequest(`http://localhost${createdBody.download_url}`),
-      context,
-    );
-    expect(downloaded.status).toBe(200);
-    expect(downloaded.headers.get("content-disposition")).toBe(
-      'attachment; filename="safe-results.csv"',
-    );
-    expect(downloaded.headers.get("x-content-type-options")).toBe("nosniff");
-    expect(await downloaded.text()).toContain("'=1+1");
-    expect(state.loads).toBe(1);
-    expect(state.accesses).toEqual(["WRITE", "READ"]);
   });
 
   it("rejects a cross-workspace source before repository access", async () => {

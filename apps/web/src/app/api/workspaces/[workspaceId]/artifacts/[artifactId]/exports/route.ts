@@ -1,5 +1,6 @@
 import {
   artifactExportCommandSchema,
+  buildJobSubmissionCommand,
   loadArtifactExportCommandSchema,
 } from "@data-agent/contracts";
 import {
@@ -12,6 +13,7 @@ import {
   createArtifactWorkspaceService,
 } from "@/lib/artifact-workspace-service";
 import { getWorkspaceAuthority, getWorkspaceSqlPool } from "@/lib/workspace-identity";
+import { getWorkspaceJobQueue } from "@/lib/job-center";
 import { authorizeWorkspaceRequest, workspaceErrorResponse } from "@/lib/workspace-request";
 
 function workspaceService() {
@@ -21,10 +23,6 @@ function workspaceService() {
     repository: createPostgresRepository(pool, authorizer),
     exportStore: createPostgresArtifactWorkspaceStore({ pool, authorizer }),
   });
-}
-
-function encode(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
 }
 
 function decode(value: string | null): unknown {
@@ -61,20 +59,38 @@ export async function POST(request: NextRequest, context: Context) {
         retryable: false,
       });
     }
-    const result = await workspaceService().createExport(authorized.value.capability, command);
-    const loadCommand = loadArtifactExportCommandSchema.parse({
-      schema_version: "artifact-export-load@1.0.0",
-      receipt_ref: result.receipt.receipt_ref,
-      source_ref: result.receipt.source_ref,
-      output_hash: result.receipt.output_hash,
+    const jobCommand = await buildJobSubmissionCommand({
+      schema_version: "job-submit@1.0.0",
+      scope: {
+        app_id: command.source_ref.app_id,
+        tenant_id: command.source_ref.tenant_id,
+        environment: command.source_ref.environment,
+      },
+      kind: "ARTIFACT_EXPORT",
+      idempotency_key: `artifact-export:${command.idempotency_key}`,
+      input: {
+        schema_version: "job-input@1.0.0",
+        kind: "ARTIFACT_EXPORT",
+        resource_refs: [command.source_ref],
+        parameters: {
+          format: command.format,
+          filename_stem: command.filename_stem,
+          export_idempotency_key: command.idempotency_key,
+        },
+      },
+      priority: 50,
+      max_attempts: 3,
+      cancel_policy: "COOPERATIVE",
     });
+    const submitted = await getWorkspaceJobQueue(authorized.value.capability).enqueue(jobCommand);
+    if (!submitted.ok) return workspaceErrorResponse(submitted.error);
     return NextResponse.json(
       {
-        ...result,
-        download_url: `/api/workspaces/${workspaceId}/artifacts/${artifactId}/exports?receipt=${encode(loadCommand)}`,
+        disposition: submitted.value.disposition,
+        job: submitted.value,
       },
       {
-        status: result.disposition === "CREATED" ? 201 : 200,
+        status: 202,
         headers: { "Cache-Control": "no-store" },
       },
     );

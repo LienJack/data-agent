@@ -4,6 +4,7 @@ import * as platform from "../../src/index.js";
 describe("platform package public surface", () => {
   it("exports only production, scope-aware U2/U4/U6 entry points", () => {
     expect(Object.keys(platform).sort()).toEqual([
+      "ArtifactWorkspaceError",
       "CatalogContractError",
       "MICROCREDITS_PER_CNY",
       "MICROCREDITS_PER_CREDIT",
@@ -20,6 +21,7 @@ describe("platform package public surface", () => {
       "cnyAmountToMicrocredits",
       "comparePhysicalSchemaSnapshots",
       "containsPotentialPlaintextSecret",
+      "createArtifactWorkspaceService",
       "createBillingGatedProvider",
       "createCacheNamespace",
       "createCoordinatedSandboxPort",
@@ -33,6 +35,7 @@ describe("platform package public surface", () => {
       "createPostgresCreditLedgerRepository",
       "createPostgresDatasourceEgress",
       "createPostgresEffectiveConfigResolver",
+      "createPostgresJobQueue",
       "createPostgresModelBillingRepository",
       "createPostgresOperationsAdminRepository",
       "createPostgresPricingControlRepository",
@@ -62,9 +65,12 @@ describe("platform package public surface", () => {
       "creditAmountToMicrocredits",
       "microcreditsToCnyAmount",
       "microcreditsToCreditAmount",
+      "neutralizeSpreadsheetFormula",
+      "projectArtifactDocument",
       "providerInvocationSmokeClaimSchema",
       "providerInvocationSmokeProofSchema",
       "providerInvocationUnknownClassificationSchema",
+      "renderArtifactExport",
       "roundHalfUpMicrocredits",
       "subtractMicrocredits",
       "withAppTransaction",
