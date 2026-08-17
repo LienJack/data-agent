@@ -30,7 +30,7 @@ function access(
 describe("workspace role navigation", () => {
   it("hides management entries from viewers", () => {
     const items = navigationForWorkspace(access("VIEWER", ["WORKSPACE_RESULT_READ"]));
-    expect(items.map((item) => item.label)).toEqual(["能力测试"]);
+    expect(items.map((item) => item.label)).toEqual(["能力测试", "任务中心"]);
     expect(items[0]?.href).toBe("/w/00000000-0000-4000-8000-00000000aa11/tests");
   });
 
@@ -38,7 +38,7 @@ describe("workspace role navigation", () => {
     const items = navigationForWorkspace(
       access("WORKSPACE_ADMIN", ["MEMBER_MANAGE", "DATASOURCE_MANAGE", "WORKSPACE_RESULT_READ"]),
     );
-    expect(items.map((item) => item.label)).toEqual(["能力测试", "数据源", "成员管理"]);
+    expect(items.map((item) => item.label)).toEqual(["能力测试", "任务中心", "数据源", "成员管理"]);
   });
 
   it("keeps all analyst routes inside the current workspace", () => {
@@ -50,7 +50,7 @@ describe("workspace role navigation", () => {
         "SEMANTIC_REVIEW",
       ]),
     );
-    expect(items.map((item) => item.key)).toEqual(["analysis", "qa", "tests", "semantic"]);
+    expect(items.map((item) => item.key)).toEqual(["analysis", "qa", "tests", "jobs", "semantic"]);
     expect(
       items.every((item) => item.href.startsWith("/w/00000000-0000-4000-8000-00000000aa11/")),
     ).toBe(true);
