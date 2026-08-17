@@ -47,6 +47,7 @@ export const DEFERRED_ARTIFACT_TYPES = [
 export const SYSTEM_ARTIFACT_TYPES = [
   "ArtifactExportReceipt",
   "ArtifactWorkspaceDocument",
+  "SensitiveExecutionArtifact",
   "ReleaseManifest",
   "EvalCase",
   "EvalRegistryAssignment",

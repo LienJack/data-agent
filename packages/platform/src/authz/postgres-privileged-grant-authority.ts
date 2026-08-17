@@ -12,6 +12,7 @@ import {
   withAppTransaction,
 } from "../persistence/transaction.js";
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
+import { createPostgresTeamRunStore } from "../agents/postgres-team-run-store.js";
 
 interface JsonValueRow {
   readonly value: unknown;
@@ -22,6 +23,7 @@ export interface PostgresPrivilegedGrantAuthority {
     capability: unknown,
     command: unknown,
   ): Promise<PortResult<CreateSemanticPublisherGrantResult>>;
+  issueTaskCapability(capability: unknown, command: unknown): Promise<PortResult<unknown>>;
 }
 
 export interface PostgresPrivilegedGrantAuthorityOptions {
@@ -87,7 +89,11 @@ async function verifyResult(
 export function createPostgresPrivilegedGrantAuthority(
   options: PostgresPrivilegedGrantAuthorityOptions,
 ): PostgresPrivilegedGrantAuthority {
+  const teamStore = createPostgresTeamRunStore(options);
   return {
+    issueTaskCapability(capabilityInput, commandInput) {
+      return teamStore.issueTaskCapability(capabilityInput, commandInput);
+    },
     async createPublisherGrant(capabilityInput, commandInput) {
       const parsed = createSemanticPublisherGrantCommandSchema.safeParse(commandInput);
       if (!parsed.success) return invalid("Publisher Grant command 不符合严格契约。");

@@ -1,5 +1,6 @@
 export * from "./attribution/published-f9-lifecycle.js";
 export * from "./artifacts/postgres-artifact-workspace-store.js";
+export * from "./agents/postgres-team-run-store.js";
 export {
   createPostgresPrivilegedGrantAuthority,
   type PostgresPrivilegedGrantAuthority,
@@ -148,6 +149,7 @@ export {
   type PostgresSemanticPortabilityRepository,
 } from "./semantic/postgres-semantic-portability.js";
 export * from "./storage/namespace.js";
+export * from "./storage/sensitive-execution-artifact-authority.js";
 export type {
   AppCapability,
   AppCapabilityRole,

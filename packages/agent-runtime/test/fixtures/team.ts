@@ -26,6 +26,13 @@ export const ARTIFACT_REF = {
   content_hash: `sha256:${"1".repeat(64)}`,
 } as const satisfies ArtifactReference;
 
+export const MODEL_VIEW_REF = {
+  ...ARTIFACT_REF,
+  artifact_id: "00000000-0000-4000-8000-000000000013",
+  artifact_type: "SensitiveExecutionArtifact",
+  content_hash: `sha256:${"4".repeat(64)}`,
+} as const satisfies ArtifactReference;
+
 export function makeParentTask() {
   return {
     schema_version: "1.0.0",

@@ -42,6 +42,7 @@ export {
 export * from "./l2.js";
 export * from "./ontology-package.js";
 export * from "./research/index.js";
+export * from "./sensitive-execution-artifact.js";
 export * from "./semantic-control-plane.js";
 export * from "./semantic-explorer.js";
 export * from "./semantic-governance.js";

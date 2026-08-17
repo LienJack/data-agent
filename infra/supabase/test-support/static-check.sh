@@ -128,6 +128,7 @@ for migration_file in $migration_files; do
     20260725010655_*) renderer="scripts/render-10655-migration.ts" ;;
     20260725010656_*) renderer="scripts/render-10656-migration.ts" ;;
     20260725010657_*) renderer="scripts/render-10657-migration.ts" ;;
+    20260725010658_*) renderer="scripts/render-10658-migration.ts" ;;
     *) renderer="" ;;
   esac
   if [ -n "$renderer" ]; then

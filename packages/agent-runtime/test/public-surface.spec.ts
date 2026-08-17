@@ -22,6 +22,8 @@ describe("Agent Runtime 公共出口", () => {
     expect(exports).toContain("ServerModelResponseSchemaRegistry");
     expect(exports).not.toContain("Agent");
     expect(exports).not.toContain("Mastra");
+    expect(exports).not.toContain("MastraTeamRuntime");
+    expect(exports).not.toContain("createPersistedSubagentController");
     expect(exports).not.toContain("MastraModelProviderAdapter");
     expect(exports).not.toContain("createMastraModelExecutionBridge");
     expect(exports).not.toContain("createMastraModelExecutionBridgeForTesting");
