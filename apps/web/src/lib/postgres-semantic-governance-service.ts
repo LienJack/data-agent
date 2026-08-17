@@ -830,26 +830,27 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           throw new SemanticGovernanceError("NO_CANDIDATE", "审核包没有关联的提案", 400);
         }
 
+        const command = {
+          schema_version: "human-prepare-publish-attempt@1.0.0",
+          scope: {
+            app_id: scope.appId,
+            tenant_id: scope.tenantId,
+            workspace_id: scope.tenantId,
+            environment: scope.environment,
+          },
+          semantic_domain: scope.semanticDomain,
+          packet_id: input.packet_id,
+          candidate_id: candidateId,
+          compiler_bundle_digest: input.compiler_bundle_digest,
+          catalog_fence_epoch: input.catalog_epoch,
+          dependency_generation: input.dependency_generation,
+          target_generation: input.target_generation,
+          idempotency_digest: input.idempotency_digest,
+          conditional_legacy_plan: input.conditional_legacy_plan ?? null,
+        };
         const result = await client.query<{ prepare_publish_attempt: Record<string, unknown> }>(
-          `SELECT semantic.prepare_publish_attempt(
-          $1::uuid, $2::uuid, $3, $4,
-          $5::uuid, $6::uuid, $7::text, $8::bigint,
-          $9::bigint, $10::bigint, $11::text, $12::jsonb
-        )`,
-          [
-            scope.appId,
-            scope.tenantId,
-            scope.environment,
-            scope.semanticDomain,
-            input.packet_id,
-            candidateId,
-            input.compiler_bundle_digest,
-            input.catalog_epoch,
-            input.dependency_generation,
-            input.target_generation,
-            input.idempotency_digest,
-            input.conditional_legacy_plan ? JSON.stringify(input.conditional_legacy_plan) : null,
-          ],
+          "select semantic.human_prepare_publish_attempt($1::jsonb) as prepare_publish_attempt",
+          [command],
         );
 
         const rpcResult = result.rows[0]?.prepare_publish_attempt;
@@ -901,27 +902,28 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           throw new SemanticGovernanceError("NO_ATTEMPT", "没有找到准备好的发布尝试", 400);
         }
 
+        const command = {
+          schema_version: "human-commit-publish-attempt@1.0.0",
+          scope: {
+            app_id: scope.appId,
+            tenant_id: scope.tenantId,
+            workspace_id: scope.tenantId,
+            environment: scope.environment,
+          },
+          semantic_domain: scope.semanticDomain,
+          attempt_id: input.attempt_id,
+          executable_projection_ref: input.executable_projection_ref,
+          executable_projection_hash: input.executable_projection_hash,
+          relationship_projection_ref: input.relationship_projection_ref,
+          relationship_projection_hash: input.relationship_projection_hash,
+          runtime_restriction_projection_ref: input.runtime_restriction_projection_ref,
+          runtime_restriction_projection_hash: input.runtime_restriction_projection_hash,
+          profile_child_manifest: input.profile_child_manifest ?? null,
+          committed_legacy_attempt_ref: input.committed_legacy_attempt_ref ?? null,
+        };
         const result = await client.query<{ commit_publish_attempt: Record<string, unknown> }>(
-          `SELECT semantic.commit_publish_attempt(
-          $1::uuid, $2::uuid, $3, $4,
-          $5::uuid, $6::uuid, $7, $8::uuid,
-          $9, $10::uuid, $11, $12::jsonb, $13::uuid
-        )`,
-          [
-            scope.appId,
-            scope.tenantId,
-            scope.environment,
-            scope.semanticDomain,
-            input.attempt_id,
-            input.executable_projection_ref,
-            input.executable_projection_hash,
-            input.relationship_projection_ref,
-            input.relationship_projection_hash,
-            input.runtime_restriction_projection_ref,
-            input.runtime_restriction_projection_hash,
-            input.profile_child_manifest ? JSON.stringify(input.profile_child_manifest) : null,
-            input.committed_legacy_attempt_ref ?? null,
-          ],
+          "select semantic.human_commit_publish_attempt($1::jsonb) as commit_publish_attempt",
+          [command],
         );
 
         const rpcResult = result.rows[0]?.commit_publish_attempt;
@@ -947,20 +949,22 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
       ["OWNER"],
       "semantic.execute-rollback",
       async (client, scope) => {
+        const command = {
+          schema_version: "human-execute-rollback@1.0.0",
+          scope: {
+            app_id: scope.appId,
+            tenant_id: scope.tenantId,
+            workspace_id: scope.tenantId,
+            environment: scope.environment,
+          },
+          semantic_domain: scope.semanticDomain,
+          authorization_id: input.authorization_id,
+          nonce: input.authorization_nonce,
+          rollback_reason: input.rollback_reason,
+        };
         const result = await client.query<{ execute_rollback: Record<string, unknown> }>(
-          `SELECT semantic.execute_rollback(
-          $1::uuid, $2::uuid, $3, $4,
-          $5::uuid, $6::uuid, $7
-        )`,
-          [
-            scope.appId,
-            scope.tenantId,
-            scope.environment,
-            scope.semanticDomain,
-            input.authorization_id,
-            input.authorization_nonce,
-            input.rollback_reason,
-          ],
+          "select semantic.human_execute_rollback($1::jsonb) as execute_rollback",
+          [command],
         );
 
         const rpcResult = result.rows[0]?.execute_rollback;

@@ -1,4 +1,9 @@
 export * from "./attribution/published-f9-lifecycle.js";
+export {
+  createPostgresPrivilegedGrantAuthority,
+  type PostgresPrivilegedGrantAuthority,
+  type PostgresPrivilegedGrantAuthorityOptions,
+} from "./authz/postgres-privileged-grant-authority.js";
 export * from "./billing/billing-gated-provider.js";
 export * from "./billing/microcredits.js";
 export * from "./billing/model-cost.js";
@@ -92,6 +97,11 @@ export {
 } from "./sandbox/python-sql-sandbox.js";
 export * from "./secrets/postgres-secret-ref.js";
 export { containsPotentialPlaintextSecret } from "./secrets/secret-ref.js";
+export {
+  createPostgresGreenfieldBootstrapReleaseAuthority,
+  type PostgresGreenfieldBootstrapReleaseAuthority,
+  type PostgresGreenfieldBootstrapReleaseAuthorityOptions,
+} from "./semantic/greenfield-bootstrap-release-authority.js";
 export {
   createInMemoryRelationshipGraphAdapter,
   createNeo4jRelationshipGraphAdapter,

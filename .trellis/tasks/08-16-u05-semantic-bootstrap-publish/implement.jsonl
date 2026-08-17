@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Keep U5 contracts framework-neutral and adapters in Platform/Web boundaries."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Implement 10656 PostgreSQL Authority, RLS, grants, locks and idempotency."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Preserve candidate, release-set, admission and receipt hash authority."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Keep verifier, grant and publisher fake/production semantics exact."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Use strict contracts, adversarial tests and scoped validation."}
+{"file":".trellis/tasks/08-16-u01-capability-bootstrap/prd.md","reason":"Consume U1 Greenfield, coverage and signer constraints without expanding them."}
+{"file":".trellis/tasks/08-16-u04-ontology-package/prd.md","reason":"Consume exact U4 package, validation and preview Authority."}
+{"file":"docs/plans/2026-08-16-001-feat-datafoundry-coa-migration-plan.md","reason":"Preserve frozen U5 one-shot bootstrap and later governance requirements."}

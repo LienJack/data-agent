@@ -88,6 +88,28 @@ describe("semantic governance route material gates", () => {
     expect(parseSemanticPublishRequest(request)).toEqual(request);
   });
 
+  it("rejects every bootstrap-only field at the public human publish boundary", () => {
+    expect(
+      codeOf(() =>
+        parseSemanticPublishRequest({
+          action: "prepare",
+          input: {
+            schema_version: "semantic-prepare-publish@1.0.0",
+            semantic_domain: "revenue",
+            packet_id: id,
+            compiler_bundle_digest: hash,
+            catalog_epoch: 7,
+            dependency_generation: 11,
+            target_generation: 12,
+            idempotency_digest: hash,
+            approval_mode: "SYSTEM_BOOTSTRAP_POLICY",
+            grant_ref: { grant_id: id, grant_hash: hash },
+          },
+        }),
+      ),
+    ).toBe("SEMANTIC_PUBLISH_MATERIAL_REQUIRED");
+  });
+
   it("never exposes an unknown cause in the public response", async () => {
     const cause = Object.assign(
       new Error("postgresql://reader:raw-secret@db.internal/analytics token=abc"),

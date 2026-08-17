@@ -103,7 +103,7 @@ function createFixture(options: FixtureOptions = {}) {
           if (text.includes("FROM semantic.semantic_review_task")) {
             return { rows: [{ candidate_id: ids.candidate }] as Row[], rowCount: 1 };
           }
-          if (text.includes("semantic.prepare_publish_attempt")) {
+          if (text.includes("semantic.human_prepare_publish_attempt")) {
             return {
               rows: [{ prepare_publish_attempt: { attempt_id: ids.attempt } }] as Row[],
               rowCount: 1,
@@ -112,13 +112,13 @@ function createFixture(options: FixtureOptions = {}) {
           if (text.includes("FROM semantic.semantic_publish_attempt")) {
             return { rows: [{ attempt_id: ids.attempt }] as Row[], rowCount: 1 };
           }
-          if (text.includes("semantic.commit_publish_attempt")) {
+          if (text.includes("semantic.human_commit_publish_attempt")) {
             return {
               rows: [{ commit_publish_attempt: { release_id: ids.release } }] as Row[],
               rowCount: 1,
             };
           }
-          if (text.includes("semantic.execute_rollback")) {
+          if (text.includes("semantic.human_execute_rollback")) {
             return {
               rows: [{ execute_rollback: { receipt_id: ids.receipt } }] as Row[],
               rowCount: 1,
@@ -401,51 +401,71 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
     });
 
     const prepare = fixture.calls.find((call) =>
-      call.text.includes("semantic.prepare_publish_attempt"),
+      call.text.includes("semantic.human_prepare_publish_attempt"),
     );
     expect(prepare?.values).toEqual([
-      ids.app,
-      ids.tenant,
-      "test",
-      "revenue",
-      ids.packet,
-      ids.candidate,
-      hashA,
-      7,
-      11,
-      12,
-      hashB,
-      JSON.stringify(legacyPlan),
+      {
+        schema_version: "human-prepare-publish-attempt@1.0.0",
+        scope: {
+          app_id: ids.app,
+          tenant_id: ids.tenant,
+          workspace_id: ids.tenant,
+          environment: "test",
+        },
+        semantic_domain: "revenue",
+        packet_id: ids.packet,
+        candidate_id: ids.candidate,
+        compiler_bundle_digest: hashA,
+        catalog_fence_epoch: 7,
+        dependency_generation: 11,
+        target_generation: 12,
+        idempotency_digest: hashB,
+        conditional_legacy_plan: legacyPlan,
+      },
     ]);
 
     const commit = fixture.calls.find((call) =>
-      call.text.includes("semantic.commit_publish_attempt"),
+      call.text.includes("semantic.human_commit_publish_attempt"),
     );
     expect(commit?.values).toEqual([
-      ids.app,
-      ids.tenant,
-      "test",
-      "revenue",
-      ids.attempt,
-      ids.executableProjection,
-      hashA,
-      ids.relationshipProjection,
-      hashB,
-      ids.restrictionProjection,
-      hashC,
-      JSON.stringify(childManifest),
-      ids.legacyAttempt,
+      {
+        schema_version: "human-commit-publish-attempt@1.0.0",
+        scope: {
+          app_id: ids.app,
+          tenant_id: ids.tenant,
+          workspace_id: ids.tenant,
+          environment: "test",
+        },
+        semantic_domain: "revenue",
+        attempt_id: ids.attempt,
+        executable_projection_ref: ids.executableProjection,
+        executable_projection_hash: hashA,
+        relationship_projection_ref: ids.relationshipProjection,
+        relationship_projection_hash: hashB,
+        runtime_restriction_projection_ref: ids.restrictionProjection,
+        runtime_restriction_projection_hash: hashC,
+        profile_child_manifest: childManifest,
+        committed_legacy_attempt_ref: ids.legacyAttempt,
+      },
     ]);
 
-    const rollback = fixture.calls.find((call) => call.text.includes("semantic.execute_rollback"));
+    const rollback = fixture.calls.find((call) =>
+      call.text.includes("semantic.human_execute_rollback"),
+    );
     expect(rollback?.values).toEqual([
-      ids.app,
-      ids.tenant,
-      "test",
-      "revenue",
-      ids.authorization,
-      ids.nonce,
-      "Operator-approved rollback",
+      {
+        schema_version: "human-execute-rollback@1.0.0",
+        scope: {
+          app_id: ids.app,
+          tenant_id: ids.tenant,
+          workspace_id: ids.tenant,
+          environment: "test",
+        },
+        semantic_domain: "revenue",
+        authorization_id: ids.authorization,
+        nonce: ids.nonce,
+        rollback_reason: "Operator-approved rollback",
+      },
     ]);
   });
 });

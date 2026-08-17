@@ -1,1 +1,8 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Review transaction atomicity, RLS, NOLOGIN owners and narrow grants."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Review one-way authority and canonical hash/reference closure."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Review cryptographic verifier and publisher adapters against SQL wire."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run happy, edge, error, security and fresh PostgreSQL gates."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify signatures, grant material and source content never leak."}
+{"file":".trellis/tasks/08-16-u05-semantic-bootstrap-publish/prd.md","reason":"Audit every U5 acceptance criterion and out-of-scope boundary."}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Review Contract to Platform to PostgreSQL to Web round-trip closure"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Review Web strict DTO boundary and bootstrap field rejection"}

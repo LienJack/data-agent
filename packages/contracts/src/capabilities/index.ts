@@ -15,6 +15,7 @@ import {
 
 export * from "../authz/signer-key-registry.js";
 export * from "../semantic/greenfield-bootstrap.js";
+export * from "../semantic/semantic-bootstrap-release.js";
 export * from "../semantic/semantic-coverage-policy.js";
 export * from "../workspaces/route-authorization-matrix.js";
 export * from "./deferred-artifacts.js";
