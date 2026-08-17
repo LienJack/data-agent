@@ -37,6 +37,8 @@ export {
 } from "./catalog/postgres-snapshot-store.js";
 export * from "./catalog/schema-drift.js";
 export * from "./datasources/postgres-datasource-egress.js";
+export * from "./datasources/adapter-registry.js";
+export * from "./datasources/adapters/public.js";
 export * from "./events/postgres-run-control.js";
 export {
   createPostgresRunEventStore,

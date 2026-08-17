@@ -1,1 +1,6 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Contracts/Platform/Web dependency direction"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Datasource Authority, Egress, SecretRef and migration rules"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Sandbox Permit, datasource identity, limits and receipts"}
+{"file":".trellis/spec/backend/text2sql-resolved-context.md","reason":"Resolved Context to dialect firewall execution closure"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Shared DTO decoding and exhaustive capability states"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Server-authored projection and responsive UI"}

@@ -19,20 +19,20 @@ const FIELD_LABELS: Record<ConnectionField, string> = {
   port: "端口",
   database: "数据库名",
   username: "用户名",
+  credentialRef: "凭据引用",
   ssl: "SSL",
   path: "文件路径",
-  catalog: "Catalog",
-  schema: "Schema",
 };
 
-const FIELD_INPUT_TYPE: Record<Exclude<ConnectionField, "ssl">, "text" | "number"> = {
+const FIELD_INPUT_TYPE: Record<
+  Exclude<ConnectionField, "ssl" | "credentialRef">,
+  "text" | "number"
+> = {
   host: "text",
   port: "number",
   database: "text",
   username: "text",
   path: "text",
-  catalog: "text",
-  schema: "text",
 };
 
 /**
@@ -105,8 +105,6 @@ export function ConnectionForm() {
     if (fields.includes("database")) input.database = readValue("database").trim();
     if (fields.includes("username")) input.username = readValue("username").trim();
     if (fields.includes("path")) input.path = readValue("path").trim();
-    if (fields.includes("catalog")) input.catalog = readValue("catalog").trim();
-    if (fields.includes("schema")) input.schema = readValue("schema").trim();
 
     await testConnection(input);
   }, [type, values, name, requiredFields, fields, supportsSsl, config, readValue, testConnection]);
@@ -141,8 +139,6 @@ export function ConnectionForm() {
       if (fields.includes("database")) input.database = readValue("database").trim();
       if (fields.includes("username")) input.username = readValue("username").trim();
       if (fields.includes("path")) input.path = readValue("path").trim();
-      if (fields.includes("catalog")) input.catalog = readValue("catalog").trim();
-      if (fields.includes("schema")) input.schema = readValue("schema").trim();
 
       await addConnection(input);
     } catch (err) {
@@ -193,10 +189,10 @@ export function ConnectionForm() {
                   aria-pressed={selected}
                   onClick={() => handleTypeChange(dbType)}
                   className={cn(
-                    "relative min-h-28 rounded-xl border p-3 text-left transition-all",
+                    "relative min-h-28 rounded-lg border p-3 text-left transition-colors",
                     selected
                       ? "border-[var(--color-border-focused)] bg-[var(--color-selection-selected-bg)] shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_10%,transparent)]"
-                      : "border-[var(--color-border-default)] bg-white hover:-translate-y-0.5 hover:border-[var(--color-border-focused)] hover:shadow-[0_8px_18px_rgb(23_26_24_/_0.07)]",
+                      : "border-[var(--color-border-default)] bg-white hover:border-[var(--color-border-focused)]",
                   )}
                 >
                   <span className="flex items-start gap-2.5">
@@ -245,6 +241,16 @@ export function ConnectionForm() {
 
         {/* 动态字段 */}
         {fields.map((field) => {
+          if (field === "credentialRef") {
+            return (
+              <div
+                key={field}
+                className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-3 py-2 text-xs text-[var(--color-text-secondary)]"
+              >
+                凭据由服务端 SecretRef 选择器绑定，连接表单不接收明文密码。
+              </div>
+            );
+          }
           if (field === "ssl") {
             if (!supportsSsl) return null;
             return (

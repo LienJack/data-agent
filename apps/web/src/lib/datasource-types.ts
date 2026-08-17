@@ -5,11 +5,17 @@
  * 新增数据库类型只需扩展 DatabaseType 和 DATABASE_TYPE_CONFIGS。
  */
 
-import { type DataSourceCredentialRef, dataSourceCredentialRefSchema } from "@data-agent/contracts";
+import {
+  type DataSourceCredentialRef,
+  type DatasourceAdapterId,
+  dataSourceCredentialRefSchema,
+  datasourceAdapterIdSchema,
+  MANDATORY_DATASOURCE_ADAPTER_DEFINITIONS,
+} from "@data-agent/contracts";
 import { z } from "zod";
 
 /** 数据库类型 */
-export type DatabaseType = "postgresql" | "mysql" | "clickhouse" | "sqlite" | "trino";
+export type DatabaseType = DatasourceAdapterId;
 
 /** SSL 选项 */
 export type SSLOption = "disable" | "require" | "verify-ca" | "verify-full";
@@ -22,11 +28,10 @@ export type ConnectionField =
   | "username"
   | "ssl"
   | "path"
-  | "catalog"
-  | "schema";
+  | "credentialRef";
 
 /** 数据库大类 */
-export type DatabaseCategory = "relational" | "analytics" | "file" | "query-engine";
+export type DatabaseCategory = "relational" | "analytics" | "file";
 
 /** 数据库类型配置（注册表项） */
 export interface DatabaseTypeConfig {
@@ -73,7 +78,7 @@ export interface DataSourceConnection {
 }
 
 const dataSourceRequestShape = {
-  type: z.enum(["postgresql", "mysql", "clickhouse", "sqlite", "trino"]),
+  type: datasourceAdapterIdSchema,
   host: z.string().trim().min(1).max(255).optional(),
   port: z.number().int().min(1).max(65_535).optional(),
   database: z.string().trim().min(1).max(255).optional(),
@@ -81,21 +86,66 @@ const dataSourceRequestShape = {
   credentialRef: dataSourceCredentialRefSchema.optional(),
   ssl: z.enum(["disable", "require", "verify-ca", "verify-full"]).optional(),
   path: z.string().trim().min(1).max(4096).optional(),
-  catalog: z.string().trim().min(1).max(255).optional(),
-  schema: z.string().trim().min(1).max(255).optional(),
 } as const;
+const dataSourceFieldsSchema = z.strictObject(dataSourceRequestShape);
+
+function validateAdapterFields(
+  input: z.infer<typeof dataSourceFieldsSchema> & { readonly name?: string },
+  ctx: z.RefinementCtx,
+) {
+  const descriptor = MANDATORY_DATASOURCE_ADAPTER_DEFINITIONS.find(
+    ({ adapter_id }) => adapter_id === input.type,
+  );
+  if (!descriptor) return;
+  const allowed = new Set(descriptor.fields.map(({ field_id }) => field_id));
+  for (const definition of descriptor.fields) {
+    if (
+      definition.required &&
+      definition.field_id !== "ssl" &&
+      definition.default_value === null &&
+      input[definition.field_id] == null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Missing required Adapter field ${definition.field_id}.`,
+        path: [definition.field_id],
+      });
+    }
+  }
+  for (const fieldId of [
+    "host",
+    "port",
+    "database",
+    "username",
+    "credentialRef",
+    "ssl",
+    "path",
+  ] as const) {
+    if (!allowed.has(fieldId) && input[fieldId] != null) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Field ${fieldId} is not valid for Adapter ${input.type}.`,
+        path: [fieldId],
+      });
+    }
+  }
+}
 
 /** 创建数据源请求；strict schema 会拒绝原始 Secret 与 provider locator。 */
-export const createDataSourceInputSchema = z.strictObject({
-  name: z.string().trim().min(1).max(255),
-  ...dataSourceRequestShape,
-});
+export const createDataSourceInputSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(255),
+    ...dataSourceRequestShape,
+  })
+  .superRefine(validateAdapterFields);
 
 /** 测试连接请求；凭据只允许以 strict credential reference 传递。 */
-export const testConnectionInputSchema = z.strictObject({
-  name: z.string().trim().min(1).max(255).optional(),
-  ...dataSourceRequestShape,
-});
+export const testConnectionInputSchema = z
+  .strictObject({
+    name: z.string().trim().min(1).max(255).optional(),
+    ...dataSourceRequestShape,
+  })
+  .superRefine(validateAdapterFields);
 
 export type CreateDataSourceInput = z.infer<typeof createDataSourceInputSchema>;
 export type TestConnectionInput = z.infer<typeof testConnectionInputSchema>;
@@ -108,86 +158,38 @@ export interface TestConnectionResult {
 }
 
 /** 数据库类型注册表 */
-export const DATABASE_TYPE_CONFIGS: Record<DatabaseType, DatabaseTypeConfig> = {
-  postgresql: {
-    type: "postgresql",
-    label: "PostgreSQL",
-    description: "关系型数据库，支持 SSL 连接",
-    defaultPort: 5432,
-    fields: ["host", "port", "database", "username", "ssl"],
-    requiredFields: ["host", "database", "username"],
-    supportsSsl: true,
-    requiresCredential: true,
-    category: "relational",
-    placeholders: {
-      host: "localhost",
-      database: "analytics",
-      username: "admin",
-    },
-  },
-  mysql: {
-    type: "mysql",
-    label: "MySQL",
-    description: "关系型数据库，支持 SSL 连接",
-    defaultPort: 3306,
-    fields: ["host", "port", "database", "username", "ssl"],
-    requiredFields: ["host", "database", "username"],
-    supportsSsl: true,
-    requiresCredential: true,
-    category: "relational",
-    placeholders: {
-      host: "localhost",
-      database: "analytics",
-      username: "admin",
-    },
-  },
-  clickhouse: {
-    type: "clickhouse",
-    label: "ClickHouse",
-    description: "列式分析数据库，走 HTTP 接口",
-    defaultPort: 8123,
-    fields: ["host", "port", "database", "username", "ssl"],
-    requiredFields: ["host", "database", "username"],
-    supportsSsl: true,
-    requiresCredential: true,
-    category: "analytics",
-    placeholders: {
-      host: "localhost",
-      database: "default",
-      username: "default",
-    },
-  },
-  sqlite: {
-    type: "sqlite",
-    label: "SQLite",
-    description: "嵌入式文件数据库，无需服务器",
-    fields: ["path"],
-    requiredFields: ["path"],
-    supportsSsl: false,
-    requiresCredential: false,
-    category: "file",
-    placeholders: {
-      path: "/path/to/analytics.db",
-    },
-  },
-  trino: {
-    type: "trino",
-    label: "Trino",
-    description: "分布式 SQL 查询引擎",
-    defaultPort: 8080,
-    fields: ["host", "port", "catalog", "schema", "username", "ssl"],
-    requiredFields: ["host", "username"],
-    supportsSsl: true,
-    requiresCredential: true,
-    category: "query-engine",
-    placeholders: {
-      host: "localhost",
-      catalog: "tpch",
-      schema: "tiny",
-      username: "default",
-    },
-  },
-};
+const categories = {
+  RELATIONAL: "relational",
+  ANALYTICS: "analytics",
+  FILE: "file",
+} as const;
+
+export const DATABASE_TYPE_CONFIGS = Object.fromEntries(
+  MANDATORY_DATASOURCE_ADAPTER_DEFINITIONS.map((descriptor) => {
+    const port = descriptor.fields.find(({ field_id }) => field_id === "port");
+    return [
+      descriptor.adapter_id,
+      {
+        type: descriptor.adapter_id,
+        label: descriptor.display_name,
+        description: `${descriptor.dialect} · ${descriptor.topology}`,
+        ...(typeof port?.default_value === "number" ? { defaultPort: port.default_value } : {}),
+        fields: descriptor.fields.map(({ field_id }) => field_id),
+        requiredFields: descriptor.fields
+          .filter(({ required }) => required)
+          .map(({ field_id }) => field_id),
+        supportsSsl: descriptor.fields.some(({ field_id }) => field_id === "ssl"),
+        requiresCredential: descriptor.fields.some(({ field_id }) => field_id === "credentialRef"),
+        category: categories[descriptor.category],
+        placeholders: Object.fromEntries(
+          descriptor.fields.flatMap(({ field_id, placeholder }) =>
+            placeholder === null ? [] : [[field_id, placeholder]],
+          ),
+        ),
+      } satisfies DatabaseTypeConfig,
+    ];
+  }),
+) as Record<DatabaseType, DatabaseTypeConfig>;
 
 /** 按类型获取配置 */
 export function getDatabaseTypeConfig(type: DatabaseType): DatabaseTypeConfig {
@@ -195,7 +197,9 @@ export function getDatabaseTypeConfig(type: DatabaseType): DatabaseTypeConfig {
 }
 
 /** 所有数据库类型（按注册表顺序） */
-export const DATABASE_TYPES: DatabaseType[] = Object.keys(DATABASE_TYPE_CONFIGS) as DatabaseType[];
+export const DATABASE_TYPES: DatabaseType[] = MANDATORY_DATASOURCE_ADAPTER_DEFINITIONS.map(
+  ({ adapter_id }) => adapter_id,
+);
 
 /** SSL 选项配置 */
 export const SSL_OPTIONS: { value: SSLOption; label: string }[] = [

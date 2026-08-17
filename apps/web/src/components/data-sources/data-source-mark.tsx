@@ -12,7 +12,7 @@ const MARKS: Record<DatabaseType, { text: string; background: string; foreground
   mysql: { text: "MY", background: "#e9f4f6", foreground: "#176b78" },
   clickhouse: { text: "CH", background: "#fff7d7", foreground: "#826b00" },
   sqlite: { text: "SQ", background: "#e7f3f7", foreground: "#25759a" },
-  trino: { text: "TR", background: "#f4eafa", foreground: "#6e3f87" },
+  duckdb: { text: "DB", background: "#fff4c2", foreground: "#5f5200" },
 };
 
 const SIZE_CLASSES = {
@@ -27,7 +27,7 @@ export function DataSourceMark({ type, size = "md", className }: DataSourceMarkP
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center font-bold tracking-[-0.04em] shadow-[inset_0_0_0_1px_rgb(255_255_255_/_0.3)]",
+        "inline-flex shrink-0 items-center justify-center font-bold shadow-[inset_0_0_0_1px_rgb(255_255_255_/_0.3)]",
         SIZE_CLASSES[size],
         className,
       )}

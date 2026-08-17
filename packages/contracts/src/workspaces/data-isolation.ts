@@ -7,7 +7,7 @@ export const workspaceDatasourceTypeSchema = z.enum([
   "mysql",
   "clickhouse",
   "sqlite",
-  "trino",
+  "duckdb",
 ]);
 
 export const workspaceDatasourceSslSchema = z.enum([

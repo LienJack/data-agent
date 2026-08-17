@@ -2,7 +2,12 @@
  * Data Sources API 客户端。
  */
 
-import { type WorkspaceDatasource, workspaceDatasourceSchema } from "@data-agent/contracts";
+import {
+  type DatasourceAdapterRegistrySnapshot,
+  verifyDatasourceAdapterRegistrySnapshot,
+  type WorkspaceDatasource,
+  workspaceDatasourceSchema,
+} from "@data-agent/contracts";
 import { resolveWorkspaceId } from "./api-client";
 import type {
   CreateDataSourceInput,
@@ -11,10 +16,14 @@ import type {
   TestConnectionResult,
 } from "./datasource-types";
 
-function workspaceApiBase(): string {
+function workspaceApiRoot(): string {
   const workspaceId = resolveWorkspaceId();
   if (!workspaceId) throw new Error("请先选择工作空间");
-  return `/api/workspaces/${encodeURIComponent(workspaceId)}/datasources`;
+  return `/api/workspaces/${encodeURIComponent(workspaceId)}`;
+}
+
+function workspaceApiBase(): string {
+  return `${workspaceApiRoot()}/datasources`;
 }
 
 function fromContract(value: WorkspaceDatasource): DataSourceConnection {
@@ -64,6 +73,12 @@ export async function fetchDataSources(): Promise<DataSourceConnection[]> {
     .map(fromContract);
 }
 
+export async function fetchDatasourceAdapterRegistry(): Promise<DatasourceAdapterRegistrySnapshot> {
+  return verifyDatasourceAdapterRegistrySnapshot(
+    await request<unknown>(`${workspaceApiRoot()}/datasource-adapters`),
+  );
+}
+
 /** 创建数据源连接 */
 export async function createDataSource(
   input: CreateDataSourceInput,
@@ -82,8 +97,8 @@ export async function createDataSource(
         credential_ref: input.credentialRef ?? null,
         ssl: input.ssl ?? "disable",
         path: input.path ?? null,
-        catalog: input.catalog ?? null,
-        schema: input.schema ?? null,
+        catalog: null,
+        schema: null,
       }),
     }),
   );

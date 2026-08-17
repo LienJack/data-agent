@@ -50,7 +50,7 @@ export async function resolveDataSourceCredential(
   connector: DataSourceConnectorPort,
 ): Promise<TestConnectionResult> {
   try {
-    if (input.type === "sqlite") {
+    if (input.type === "sqlite" || input.type === "duckdb") {
       return await connector.test(input, undefined);
     }
 

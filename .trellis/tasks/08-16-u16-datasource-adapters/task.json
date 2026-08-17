@@ -3,7 +3,7 @@
   "name": "u16-datasource-adapters",
   "title": "U16 Datasource Gallery 与分批 Adapter 认证",
   "description": "冻结计划对应 U16 的独立实施、验证与 scoped commit。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

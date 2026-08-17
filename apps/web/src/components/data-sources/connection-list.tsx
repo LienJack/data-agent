@@ -17,13 +17,8 @@ import { formatDate } from "@/lib/utils";
 import { DataSourceMark } from "./data-source-mark";
 
 function describeConnection(conn: DataSourceConnection) {
-  if (conn.type === "sqlite") {
-    return conn.path ?? "SQLite 文件";
-  }
-  if (conn.type === "trino") {
-    const catalog = conn.catalog ?? "catalog";
-    const schema = conn.schema ?? "schema";
-    return `${conn.host}:${conn.port ?? 8080}/${catalog}.${schema}`;
+  if (conn.type === "sqlite" || conn.type === "duckdb") {
+    return conn.path ?? `${DATABASE_TYPE_CONFIGS[conn.type].label} 文件`;
   }
   return `${conn.host}:${conn.port}/${conn.database}`;
 }
@@ -69,7 +64,7 @@ export function ConnectionList() {
     return (
       <EmptyState
         title="暂未配置数据源"
-        description="添加数据源连接以开始使用数据分析功能。支持 PostgreSQL、MySQL、ClickHouse、SQLite 和 Trino。"
+        description="添加数据源连接以开始使用数据分析功能。支持 PostgreSQL、MySQL、ClickHouse、SQLite 和 DuckDB。"
       />
     );
   }
