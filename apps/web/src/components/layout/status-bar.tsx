@@ -1,5 +1,6 @@
 "use client";
 
+import { Circle, SpinnerGap } from "@phosphor-icons/react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
 import type { RunConnectionState } from "@/lib/run-projection";
@@ -10,7 +11,7 @@ import { useWorkbenchStore } from "@/lib/workbench-store";
  *
  * 显示连接状态、数据源、模型信息，始终固定在页面底部。
  */
-export function StatusBar() {
+export function StatusBar({ className = "" }: { readonly className?: string }) {
   const { t } = useWorkspaceI18n();
   const connection = useWorkbenchStore((s) => s.connection);
   const activeRunId = useWorkbenchStore((s) => s.activeRunId);
@@ -21,11 +22,20 @@ export function StatusBar() {
   const runId = activeRunId;
 
   return (
-    <footer className="flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-3">
+    <footer
+      className={`flex h-7 shrink-0 items-center justify-between border-t border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-3 ${className}`}
+    >
       <div className="flex items-center gap-1.5">
-        <span className="text-[11px]" style={{ color: statusDisplay.color }}>
-          {statusDisplay.icon}
-        </span>
+        {statusDisplay.spinning ? (
+          <SpinnerGap
+            aria-hidden="true"
+            className="animate-spin"
+            color={statusDisplay.color}
+            size={12}
+          />
+        ) : (
+          <Circle aria-hidden="true" color={statusDisplay.color} size={9} weight="fill" />
+        )}
         <span className="text-[11px] text-[var(--color-text-muted)]">
           {t(statusDisplay.labelKey)}
         </span>
@@ -61,20 +71,20 @@ export function StatusBar() {
 interface StatusConfig {
   labelKey: MessageKey;
   color: string;
-  icon: string;
+  spinning: boolean;
 }
 
 function statusConfig(connection: RunConnectionState): StatusConfig {
   switch (connection) {
     case "live":
-      return { labelKey: "status.live", color: "#88C980", icon: "●" };
+      return { labelKey: "status.live", color: "#33745c", spinning: false };
     case "connecting":
-      return { labelKey: "status.connecting", color: "#D8B76A", icon: "◐" };
+      return { labelKey: "status.connecting", color: "#9a6a1d", spinning: true };
     case "reconnecting":
-      return { labelKey: "status.reconnecting", color: "#D8B76A", icon: "◐" };
+      return { labelKey: "status.reconnecting", color: "#9a6a1d", spinning: true };
     case "closed":
-      return { labelKey: "status.closed", color: "#5F6975", icon: "○" };
+      return { labelKey: "status.closed", color: "#7b8781", spinning: false };
     default:
-      return { labelKey: "status.ready", color: "#88C980", icon: "●" };
+      return { labelKey: "status.ready", color: "#33745c", spinning: false };
   }
 }

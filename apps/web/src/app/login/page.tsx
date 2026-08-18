@@ -1,5 +1,6 @@
 "use client";
 
+import { CirclesFour, ShieldCheck } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { authClient } from "@/lib/auth-client";
@@ -32,51 +33,73 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg-secondary)] px-6 py-12">
-      <section className="w-full max-w-[420px] rounded-2xl border border-[var(--color-border-default)] bg-white p-8 shadow-sm">
-        <div className="flex size-11 items-center justify-center rounded-xl bg-[#171a18] text-sm font-bold text-white">
-          DA
+    <main className="grid min-h-[100dvh] grid-rows-[128px_minmax(0,1fr)] bg-[var(--color-bg-surface)] lg:grid-cols-[minmax(300px,0.8fr)_minmax(520px,1.2fr)] lg:grid-rows-1">
+      <aside className="relative flex min-h-28 flex-col justify-between overflow-hidden bg-[var(--color-text-primary)] p-5 text-white sm:p-8 lg:min-h-[100dvh] lg:p-10">
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 items-center justify-center rounded-md bg-white text-[var(--color-text-primary)]">
+            <CirclesFour aria-hidden="true" size={19} weight="fill" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold">Data Agent</p>
+            <p className="font-mono text-[9px] text-white/55">ANALYTICS CONTROL PLANE</p>
+          </div>
         </div>
-        <h1 className="mt-6 text-2xl font-semibold tracking-[-0.02em]">登录 Data Agent</h1>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-          账号由超级管理员创建，系统不开放自主注册。
-        </p>
+        <div className="hidden max-w-sm lg:block">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-4 border-t border-white/15 pt-5 text-xs">
+            <ShieldCheck aria-hidden="true" className="text-emerald-300" size={18} />
+            <div>
+              <p className="font-medium text-white/90">Workspace authority</p>
+              <p className="mt-1 leading-5 text-white/50">Identity · role · environment</p>
+            </div>
+          </div>
+        </div>
+      </aside>
 
-        <form onSubmit={submit} className="mt-8 space-y-5">
-          <label className="block">
-            <span className="text-xs font-medium text-[var(--color-text-secondary)]">邮箱</span>
-            <input
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              className="mt-2 h-11 w-full rounded-lg border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
-            />
-          </label>
-          <label className="block">
-            <span className="text-xs font-medium text-[var(--color-text-secondary)]">密码</span>
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              minLength={12}
-              required
-              className="mt-2 h-11 w-full rounded-lg border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
-            />
-          </label>
-          {error && (
-            <p role="alert" className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={pending}
-            className="h-11 w-full rounded-lg bg-[#171a18] text-sm font-semibold text-white hover:bg-black disabled:opacity-50"
-          >
-            {pending ? "正在验证…" : "登录"}
-          </button>
-        </form>
+      <section className="flex items-center px-5 py-12 sm:px-10 lg:px-[10vw]">
+        <div className="w-full max-w-[420px]">
+          <p className="page-eyebrow">Secure access</p>
+          <h1 className="page-title">登录工作台</h1>
+          <p className="page-description">账号由超级管理员创建，系统不开放自主注册。</p>
+
+          <form onSubmit={submit} className="mt-8 space-y-5">
+            <label className="block">
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">邮箱</span>
+              <input
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                className="mt-2 h-12 w-full rounded-md border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">密码</span>
+              <input
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                minLength={12}
+                required
+                className="mt-2 h-12 w-full rounded-md border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
+              />
+            </label>
+            {error && (
+              <p
+                role="alert"
+                className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-700"
+              >
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={pending}
+              className="h-12 w-full rounded-md bg-[var(--color-text-primary)] text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+            >
+              {pending ? "正在验证…" : "登录"}
+            </button>
+          </form>
+        </div>
       </section>
     </main>
   );

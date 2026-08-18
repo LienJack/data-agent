@@ -41,12 +41,11 @@ export default function DataSourcesPage() {
   return (
     <div className="workspace-container">
       <div className="workspace-section">
-        <div className="mb-4 flex items-center justify-between">
+        <header className="page-heading">
           <div>
-            <h1 className="text-base font-semibold text-[var(--color-text-primary)]">
-              Data Sources
-            </h1>
-            <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
+            <p className="page-eyebrow">Workspace / Connections</p>
+            <h1 className="page-title">数据源</h1>
+            <p className="page-description">
               管理数据源连接 — 支持 PostgreSQL、MySQL、ClickHouse、SQLite 和 DuckDB
             </p>
           </div>
@@ -55,12 +54,12 @@ export default function DataSourcesPage() {
               添加连接
             </Button>
           )}
-        </div>
+        </header>
 
         {showForm && <ConnectionForm />}
 
         {!showForm && (
-          <div className="space-y-5">
+          <div className="mt-5 space-y-5">
             {adapters.status === "loading" && (
               <p className="text-xs text-[var(--color-text-muted)]" role="status">
                 正在加载 Adapter Registry...

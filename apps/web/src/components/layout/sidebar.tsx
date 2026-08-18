@@ -1,9 +1,9 @@
 "use client";
 
 import type { WorkspaceAccessProjection } from "@data-agent/contracts";
+import { ChatCircleDots, MagnifyingGlass, Plus, SidebarSimple } from "@phosphor-icons/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
@@ -13,124 +13,7 @@ import { useWorkbenchStore } from "@/lib/workbench-store";
 import type { WorkspaceNavigationItem, WorkspaceNavigationKey } from "@/lib/workspace-navigation";
 import { workspacePath } from "@/lib/workspace-routes";
 import { SidebarItem } from "./sidebar-item";
-
-const iconClassName = "h-4 w-4";
-
-const icons = {
-  workbench: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <path d="M3 15.5V11m4 4.5V7m4 8.5V4m4 11.5V9" />
-    </svg>
-  ),
-  review: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <path d="M5 3.5h10v13H5z" />
-      <path d="m7.5 10 1.5 1.5 3.5-4" />
-    </svg>
-  ),
-  dataSources: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <ellipse cx="10" cy="4.5" rx="6" ry="2.5" />
-      <path d="M4 4.5v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5M4 9.5v5c0 1.4 2.7 2.5 6 2.5s6-1.1 6-2.5v-5" />
-    </svg>
-  ),
-  qa: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <path d="M3.5 4.5h13v9h-7l-3.5 3v-3H3.5z" />
-    </svg>
-  ),
-  tests: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <path d="M6 3.5h8M7 3.5v4l-3.5 6.2A2 2 0 0 0 5.2 16.5h9.6a2 2 0 0 0 1.7-2.8L13 7.5v-4" />
-      <path d="M6 12h8" />
-    </svg>
-  ),
-  jobs: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <path d="M4 4.5h12v11H4zM7 2.5v4M13 2.5v4M7 10h6M7 13h4" />
-    </svg>
-  ),
-  settings: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <circle cx="10" cy="10" r="2.5" />
-      <path d="M10 2.5v2M10 15.5v2M17.5 10h-2M4.5 10h-2M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4M15.3 15.3l-1.4-1.4M6.1 6.1 4.7 4.7" />
-    </svg>
-  ),
-  members: (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 20 20"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={iconClassName}
-    >
-      <circle cx="7" cy="7" r="2.5" />
-      <circle cx="14" cy="8" r="2" />
-      <path d="M2.8 16c.4-3 2-4.5 4.4-4.5s4 1.5 4.4 4.5M11.5 12c2.8-.4 4.7.9 5.2 3.5" />
-    </svg>
-  ),
-};
-
-const navigationIcons: Readonly<Record<WorkspaceNavigationKey, ReactNode>> = {
-  analysis: icons.workbench,
-  qa: icons.qa,
-  tests: icons.tests,
-  jobs: icons.jobs,
-  "data-sources": icons.dataSources,
-  semantic: icons.review,
-  members: icons.members,
-  "platform-settings": icons.settings,
-};
+import { WorkspaceNavIcon } from "./workspace-nav-icon";
 
 const navigationLabels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
   analysis: "workspace.surface.analysis",
@@ -187,23 +70,23 @@ export function Sidebar({ access, navigation }: SidebarProps) {
   return (
     <aside
       className={[
-        "flex h-full shrink-0 flex-col border-r border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] transition-[width] duration-200",
-        collapsed ? "w-[56px]" : "w-[288px]",
+        "hidden h-full shrink-0 flex-col border-r border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] transition-[width] duration-200 lg:flex",
+        collapsed ? "w-16" : "w-[248px]",
       ].join(" ")}
     >
       <div
         className={[
-          "flex h-[72px] shrink-0 items-center border-b border-[var(--color-border-default)]",
+          "flex h-14 shrink-0 items-center border-b border-[var(--color-border-default)]",
           collapsed ? "justify-center px-2" : "gap-3 px-3",
         ].join(" ")}
       >
         {!collapsed && (
           <Link
             href={workspaceHome}
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-[var(--color-border-default)] bg-white text-sm font-semibold text-[var(--color-text-primary)] shadow-sm"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md bg-[var(--color-text-primary)] text-[11px] font-semibold text-white"
             aria-label={`data agent ${t("workspace.home")}`}
           >
-            D
+            DA
           </Link>
         )}
         {!collapsed && (
@@ -220,17 +103,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
           className="flex size-8 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]"
           aria-label={collapsed ? t("workspace.expandSidebar") : t("workspace.collapseSidebar")}
         >
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            className="size-4"
-          >
-            <rect x="3.5" y="4" width="13" height="12" rx="1.5" />
-            <path d="M8 4v12" />
-          </svg>
+          <SidebarSimple aria-hidden="true" size={17} />
         </button>
       </div>
 
@@ -247,7 +120,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
                 key={item.href}
                 href={item.href}
                 label={t(navigationLabels[item.key])}
-                icon={navigationIcons[item.key]}
+                icon={<WorkspaceNavIcon navigationKey={item.key} />}
                 collapsed={collapsed}
               />
             ))}
@@ -261,24 +134,19 @@ export function Sidebar({ access, navigation }: SidebarProps) {
           >
             <Link
               href={qaItem.href}
-              className="flex h-10 items-center justify-center rounded-lg bg-[#171a18] text-[13px] font-semibold text-white shadow-sm hover:bg-black"
+              className="flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--color-text-primary)] text-[12px] font-semibold text-white hover:bg-[var(--color-accent-hover)]"
             >
+              <Plus aria-hidden="true" size={14} />
               {t("workspace.newQuestion")}
             </Link>
 
             <label className="relative mt-3 block">
               <span className="sr-only">{t("workspace.searchConversations")}</span>
-              <svg
+              <MagnifyingGlass
                 aria-hidden="true"
-                viewBox="0 0 20 20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-text-muted)]"
-              >
-                <circle cx="8.5" cy="8.5" r="4.5" />
-                <path d="m12 12 4 4" />
-              </svg>
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
+                size={15}
+              />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -296,16 +164,11 @@ export function Sidebar({ access, navigation }: SidebarProps) {
                     pathname === analysisItem.href ? "bg-white shadow-sm" : "hover:bg-white/70",
                   ].join(" ")}
                 >
-                  <svg
+                  <ChatCircleDots
                     aria-hidden="true"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    className="mt-0.5 size-4 shrink-0 text-[var(--color-text-muted)]"
-                  >
-                    <path d="M3.5 4.5h13v9h-7l-3.5 3v-3H3.5z" />
-                  </svg>
+                    className="mt-0.5 shrink-0 text-[var(--color-text-muted)]"
+                    size={16}
+                  />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--color-text-primary)]">
                     {projection.question}
                   </span>
@@ -323,16 +186,11 @@ export function Sidebar({ access, navigation }: SidebarProps) {
                   }}
                   className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-white/70"
                 >
-                  <svg
+                  <ChatCircleDots
                     aria-hidden="true"
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    className="mt-0.5 size-4 shrink-0 text-[var(--color-text-muted)]"
-                  >
-                    <path d="M3.5 4.5h13v9h-7l-3.5 3v-3H3.5z" />
-                  </svg>
+                    className="mt-0.5 shrink-0 text-[var(--color-text-muted)]"
+                    size={16}
+                  />
                   <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]">
                     {conversation.title}
                   </span>

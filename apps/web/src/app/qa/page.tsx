@@ -1,5 +1,6 @@
 "use client";
 
+import { ChatCircleDots, Path } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { ChatArea } from "@/components/qa/chat-area";
 import { ChatInput } from "@/components/qa/chat-input";
@@ -38,7 +39,7 @@ export default function QAPage() {
   return (
     <div className="flex h-full min-w-0 flex-col bg-[var(--color-bg-primary)]">
       <nav
-        className="flex h-11 shrink-0 items-end gap-6 border-b border-[var(--color-border-default)] px-5"
+        className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 sm:px-5"
         aria-label="对话视图"
       >
         {(["conversation", "trajectory"] as const).map((candidate) => (
@@ -47,8 +48,13 @@ export default function QAPage() {
             type="button"
             aria-current={view === candidate ? "page" : undefined}
             onClick={() => setView(candidate)}
-            className={`h-full border-b-2 px-1 text-sm ${view === candidate ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"}`}
+            className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ${view === candidate ? "bg-[color-mix(in_srgb,var(--color-accent)_9%,transparent)] text-[var(--color-accent)]" : "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"}`}
           >
+            {candidate === "conversation" ? (
+              <ChatCircleDots aria-hidden="true" size={15} />
+            ) : (
+              <Path aria-hidden="true" size={15} />
+            )}
             {candidate === "conversation" ? "对话" : "轨迹"}
           </button>
         ))}

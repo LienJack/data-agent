@@ -19,7 +19,7 @@ export default async function PricingAdminPage() {
   if (!isBillingUiEnabled()) notFound();
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
+    <main className="page-frame max-w-6xl">
       <PricingControlPanel />
     </main>
   );

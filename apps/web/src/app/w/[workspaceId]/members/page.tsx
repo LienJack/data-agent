@@ -1,3 +1,4 @@
+import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { WorkspaceMembersPanel } from "@/components/workspaces/workspace-members-panel";
@@ -19,8 +20,8 @@ export default async function WorkspaceMembersPage({
   if (!access) redirect("/workspaces");
 
   return (
-    <div className="px-4 py-6 sm:px-6 lg:py-8">
-      <div className="mx-auto max-w-7xl">
+    <div className="page-frame">
+      <div>
         <WorkspaceMembersPanel
           workspaceId={workspaceId}
           workspaceName={access.workspace.display_name}
@@ -30,9 +31,10 @@ export default async function WorkspaceMembersPage({
         />
         <Link
           href={`/w/${workspaceId}`}
-          className="mt-5 inline-flex text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          className="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
         >
-          ← 返回工作空间概览
+          <ArrowLeft aria-hidden="true" size={14} />
+          返回工作空间概览
         </Link>
       </div>
     </div>

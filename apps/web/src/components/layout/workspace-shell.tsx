@@ -8,6 +8,7 @@ import { WorkspaceI18nProvider } from "@/i18n";
 import { resetWorkspaceClientState } from "@/lib/workspace-client-state";
 import type { WorkspaceNavigationItem } from "@/lib/workspace-navigation";
 import { workspacePath } from "@/lib/workspace-routes";
+import { MobileWorkspaceNav } from "./mobile-workspace-nav";
 import { Sidebar } from "./sidebar";
 import { StatusBar } from "./status-bar";
 import { WorkspaceTopbar } from "./workspace-topbar";
@@ -34,13 +35,14 @@ export function WorkspaceShell({ access, navigation, children }: WorkspaceShellP
 
   return (
     <WorkspaceI18nProvider>
-      <div className="flex h-screen flex-row bg-[var(--color-bg-canvas)]">
+      <div className="flex min-h-[100dvh] flex-row bg-[var(--color-bg-canvas)]">
         <Sidebar access={access} navigation={navigation} />
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
           <WorkspaceTopbar access={access} />
-          <main className="min-h-0 flex-1 overflow-auto">{children}</main>
-          {!usesEmbeddedRunStatus && <StatusBar />}
+          <main className="min-h-0 flex-1 overflow-auto pb-16 lg:pb-0">{children}</main>
+          {!usesEmbeddedRunStatus && <StatusBar className="hidden lg:flex" />}
         </div>
+        <MobileWorkspaceNav navigation={navigation} />
       </div>
     </WorkspaceI18nProvider>
   );

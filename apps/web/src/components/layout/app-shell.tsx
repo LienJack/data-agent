@@ -1,5 +1,6 @@
 "use client";
 
+import { CirclesFour } from "@phosphor-icons/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -26,21 +27,21 @@ export function AppShell({ children }: AppShellProps) {
     pathname === "/settings" || pathname.startsWith("/admin/");
 
   return (
-    <div className="flex h-screen flex-col bg-[var(--color-bg-canvas)]">
+    <div className="flex min-h-[100dvh] flex-col bg-[var(--color-bg-canvas)]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {usesResponsiveControlPlaneShell && (
-          <header className="flex h-12 shrink-0 items-center justify-between border-b border-[var(--color-border-default)] px-4">
+          <header className="flex h-13 shrink-0 items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,var(--color-bg-surface)_92%,transparent)] px-4 backdrop-blur-xl">
             <Link
               href="/workspaces"
-              className="flex items-center gap-2 text-sm font-semibold tracking-[-0.01em]"
+              className="flex items-center gap-2 text-sm font-semibold"
               aria-label="返回 data agent 首页"
             >
-              <span className="flex size-7 items-center justify-center rounded-md border border-[var(--color-border-default)] bg-white text-xs shadow-sm">
-                D
+              <span className="flex size-7 items-center justify-center rounded-md bg-[var(--color-text-primary)] text-white">
+                <CirclesFour aria-hidden="true" size={15} weight="fill" />
               </span>
               data agent
             </Link>
-            <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+            <span className="font-mono text-[10px] font-semibold uppercase text-[var(--color-text-muted)]">
               平台控制面
             </span>
           </header>

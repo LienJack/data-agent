@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretDown, CaretRight } from "@phosphor-icons/react";
+import { Brain, CaretDown, CaretRight, FlowArrow, TerminalWindow } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { useWorkspaceI18n } from "@/i18n";
 import type { ProcessRow } from "@/lib/qa-event-assembler";
@@ -20,30 +20,23 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
   const interrupted = row.status === "INTERRUPTED";
   const running = row.status === "RUNNING";
   const compactSummary = `${row.summary.slice(0, 180)}${row.summary.length > 180 ? "..." : ""}`;
+  const ProcessIcon =
+    row.kind === "tool" ? TerminalWindow : row.kind === "reasoning" ? Brain : FlowArrow;
 
   return (
-    <div className="border-l border-[var(--color-border-default)] pl-3 text-xs">
+    <div className="border-b border-[var(--color-border-default)] last:border-b-0">
       <button
         type="button"
         aria-expanded={expanded}
         aria-controls={panelId}
         onClick={() => setExpanded((current) => !current)}
-        className="flex w-full items-start gap-2 rounded py-1.5 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+        className="flex min-h-10 w-full items-center gap-2 px-1.5 py-2 text-left outline-none hover:bg-[color-mix(in_srgb,var(--color-accent)_5%,transparent)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
       >
-        <span
-          aria-hidden="true"
-          className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${
-            failed
-              ? "bg-red-500"
-              : interrupted
-                ? "bg-orange-500"
-                : running
-                  ? "animate-pulse bg-amber-500"
-                  : "bg-emerald-500"
-          }`}
-        />
+        <span className="flex size-6 shrink-0 items-center justify-center rounded bg-[var(--color-bg-overlay)] text-[var(--color-text-secondary)]">
+          <ProcessIcon aria-hidden="true" size={14} />
+        </span>
         <span className="min-w-0 flex-1">
-          <span className="font-medium text-[var(--color-text-secondary)]">
+          <span className="text-[11px] font-semibold text-[var(--color-text-primary)]">
             {row.kind === "tool"
               ? row.toolName
               : row.kind === "reasoning"
@@ -51,7 +44,22 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
                 : t("process.stage")}{" "}
             · {row.title}
           </span>
-          <span className="ml-2 break-words text-[var(--color-text-muted)]">{compactSummary}</span>
+          <span className="ml-2 break-words text-[10px] text-[var(--color-text-muted)]">
+            {compactSummary}
+          </span>
+        </span>
+        <span
+          className={`shrink-0 rounded px-1.5 py-0.5 font-mono text-[8px] font-semibold uppercase ${
+            failed
+              ? "bg-red-50 text-red-700"
+              : interrupted
+                ? "bg-orange-50 text-orange-700"
+                : running
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {row.status}
         </span>
         {row.durationMs !== null && (
           <span className="shrink-0 tabular-nums text-[var(--color-text-muted)]">
@@ -64,7 +72,10 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
       </button>
 
       {expanded && (
-        <div id={panelId} className="mb-2 rounded-md bg-[var(--color-bg-tertiary)] p-3">
+        <div
+          id={panelId}
+          className="mb-2 ml-8 border-l-2 border-[var(--color-border-overlay)] bg-[var(--color-bg-overlay)] p-3"
+        >
           {row.input !== null && (
             <section className="mb-3">
               <p className="mb-1 font-semibold uppercase text-[var(--color-text-muted)]">
@@ -91,7 +102,7 @@ export function ProcessDisclosure({ row }: { row: ProcessRow }) {
           <button
             type="button"
             onClick={() => openTrajectory({ runId: row.runId, sequence: row.sequence })}
-            className="mt-3 text-[var(--color-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+            className="mt-3 font-mono text-[9px] font-semibold uppercase text-[var(--color-accent)] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
           >
             {t("process.locate")}
           </button>

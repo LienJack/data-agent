@@ -1,6 +1,7 @@
 "use client";
 
 import type { PublicRunEvent } from "@data-agent/contracts";
+import { Cpu } from "@phosphor-icons/react";
 import { assembleProcessRows } from "@/lib/qa-event-assembler";
 import type { Message } from "@/lib/qa-types";
 import { formatDateTime } from "@/lib/utils";
@@ -24,19 +25,32 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
   return (
     <div
       id={message.runId ? `chat-run-${message.runId}` : undefined}
-      className={`flex ${isUser ? "justify-end" : "justify-start"} mb-3 scroll-m-20`}
+      className={`mb-6 flex ${isUser ? "justify-end" : "justify-start"} scroll-m-20`}
     >
       <div
-        className={`${isUser ? "max-w-[80%]" : "w-full max-w-3xl"} rounded-lg px-3 py-2 ${
+        className={`${isUser ? "max-w-[82%] rounded-lg px-3.5 py-2.5" : "w-full"} ${
           isUser
-            ? "bg-[var(--color-accent)] text-white"
+            ? "bg-[var(--color-text-primary)] text-white shadow-[var(--shadow-float)]"
             : message.type === "error"
-              ? "bg-red-900/20 text-red-400"
-              : "bg-[var(--color-bg-tertiary)] text-[var(--color-text-primary)]"
+              ? "border-l-2 border-[var(--color-error)] bg-red-50 px-4 py-3 text-red-800"
+              : "text-[var(--color-text-primary)]"
         }`}
       >
+        {!isUser && (
+          <div className="mb-2.5 flex items-center gap-2">
+            <span className="flex size-7 items-center justify-center rounded-md bg-[var(--color-text-primary)] text-white">
+              <Cpu aria-hidden="true" size={15} />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold">Data Agent</p>
+              <p className="font-mono text-[9px] text-[var(--color-text-muted)]">
+                governed response
+              </p>
+            </div>
+          </div>
+        )}
         {processRows.length > 0 && (
-          <fieldset className="mb-3 space-y-0.5">
+          <fieldset className="agent-process-list">
             <legend className="sr-only">执行过程</legend>
             {processRows.map((row) => (
               <ProcessDisclosure key={row.id} row={row} />
@@ -49,14 +63,16 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
         ) : message.type === "hypothesis" ? (
           <HypothesisContent message={message} />
         ) : (
-          <div className="whitespace-pre-wrap text-sm">
+          <div
+            className={isUser ? "whitespace-pre-wrap text-sm" : "agent-answer whitespace-pre-wrap"}
+          >
             {message.content || (message.runId ? "正在生成回答…" : "")}
           </div>
         )}
 
         {/* 时间戳 */}
         <div
-          className={`mt-1 text-[10px] ${
+          className={`mt-2 font-mono text-[9px] ${
             isUser ? "text-white/60" : "text-[var(--color-text-muted)]"
           }`}
         >

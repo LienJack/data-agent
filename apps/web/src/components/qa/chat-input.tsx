@@ -71,8 +71,8 @@ export function ChatInput() {
   }, [input, resourcesComplete, selectedFiles, sendMessage, sending, switching]);
 
   return (
-    <div className="shrink-0 bg-[var(--color-bg-primary)] px-3 pb-4 pt-2 sm:px-5 sm:pb-5">
-      <div className="mx-auto w-full max-w-5xl">
+    <div className="shrink-0 border-t border-[var(--color-border-default)] bg-[color-mix(in_srgb,var(--color-bg-surface)_96%,transparent)] px-3 pb-3 pt-3 backdrop-blur-xl sm:px-5">
+      <div className="mx-auto w-full max-w-[920px]">
         {(resourceError || resourceNotice) && (
           <div
             className={cn(
@@ -93,7 +93,7 @@ export function ChatInput() {
           </div>
         )}
 
-        <div className="rounded-[24px] border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2.5 pb-2.5 pt-3 shadow-[0_14px_38px_rgb(28_38_33_/_0.09)] transition-[border-color,box-shadow] focus-within:border-[var(--color-border-focused)] focus-within:shadow-[0_16px_42px_rgb(28_38_33_/_0.12)] sm:px-3 sm:pb-3">
+        <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2.5 pb-2.5 pt-3 shadow-[var(--shadow-float)] transition-[border-color,box-shadow] focus-within:border-[var(--color-border-focused)] sm:px-3 sm:pb-3">
           <label htmlFor="qa-composer-input" className="sr-only">
             给数据分析 Agent 发送消息
           </label>
@@ -170,9 +170,6 @@ export function ChatInput() {
             </div>
           </div>
         </div>
-        <p className="mt-2 px-2 text-center text-[10px] text-[var(--color-text-muted)]">
-          Enter 发送 · Shift+Enter 换行 · 模型与数据源按对话冻结
-        </p>
       </div>
     </div>
   );

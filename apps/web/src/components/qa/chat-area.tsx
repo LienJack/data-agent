@@ -62,7 +62,7 @@ export function ChatArea() {
   return (
     <div className="flex h-full flex-col">
       {/* 消息列表 */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-5 sm:px-6">
         {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center py-12">
             <LoadingIndicator />
@@ -72,7 +72,7 @@ export function ChatArea() {
             <EmptyState title="开始提问" description="在下方输入框输入您的问题" />
           </div>
         ) : (
-          <div>
+          <div className="mx-auto w-full max-w-[920px]">
             {messages.map((msg) => (
               <ChatMessage
                 key={msg.id}
@@ -82,8 +82,8 @@ export function ChatArea() {
             ))}
             {sending &&
               !messages.some((message) => message.role === "agent" && !message.content) && (
-                <div className="flex justify-start mb-3">
-                  <div className="max-w-[80%] rounded-lg bg-[var(--color-bg-tertiary)] px-3 py-2">
+                <div className="mb-3 flex justify-start">
+                  <div className="border-l-2 border-[var(--color-accent)] px-3 py-2">
                     <LoadingIndicator />
                   </div>
                 </div>

@@ -12,6 +12,7 @@ import {
   type PublicBenchmarkCase,
   SUBMITTED_ANSWER_AGENT_ID,
 } from "@data-agent/contracts";
+import { ShieldCheck } from "@phosphor-icons/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { resolveWorkspaceId, workspaceRequestHeaders } from "@/lib/api-client";
 
@@ -299,33 +300,34 @@ export default function TestCenterPage() {
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="mx-auto w-full max-w-[1500px] px-5 py-5">
-        <header className="flex flex-wrap items-start justify-between gap-4">
+      <div className="page-frame max-w-[1500px]">
+        <header className="page-heading">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold tracking-[-0.02em]">能力测试</h1>
-              <span className="rounded bg-[#edf2ef] px-2 py-0.5 text-[10px] font-semibold text-[#527c70]">
-                TEST CENTER
-              </span>
-            </div>
-            <p className="mt-1 max-w-3xl text-xs leading-5 text-[var(--color-text-muted)]">
+            <p className="page-eyebrow">Evaluation / Test Center</p>
+            <h1 className="page-title">能力测试</h1>
+            <p className="page-description">
               选择公开题库，单题或批量执行；Oracle 确定性判分，首答与反省后成绩分开记录。
             </p>
           </div>
-          <div className="rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-[11px] text-[var(--color-text-secondary)]">
+          <div className="flex items-start gap-2 border-l-2 border-[var(--color-accent)] px-3 py-1 text-[10px] leading-5 text-[var(--color-text-secondary)]">
+            <ShieldCheck
+              aria-hidden="true"
+              className="mt-0.5 text-[var(--color-accent)]"
+              size={17}
+            />
             <div>密封材料：服务端隔离</div>
-            <div className="mt-0.5">成绩聚合：服务端生成</div>
+            <div className="sr-only">成绩聚合：服务端生成</div>
           </div>
         </header>
 
-        <section className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5" aria-label="题库选择">
+        <section className="mt-5 flex snap-x gap-2 overflow-x-auto pb-2" aria-label="题库选择">
           {previewableSuites.map((suite) => (
             <button
               type="button"
               key={suite.suite_id}
               onClick={() => chooseSuite(suite)}
               className={[
-                "min-h-40 rounded-xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md",
+                "min-h-32 min-w-[230px] snap-start rounded-lg border bg-[var(--color-bg-surface)] p-4 text-left transition hover:-translate-y-0.5",
                 activeSuiteId === suite.suite_id
                   ? "border-[#6a8e81] ring-2 ring-[#6a8e81]/10"
                   : "border-[var(--color-border-default)]",
@@ -362,8 +364,8 @@ export default function TestCenterPage() {
           </div>
         )}
 
-        <section className="mt-4 grid min-h-[520px] gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-white">
+        <section className="mt-4 grid min-h-[520px] gap-4 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <div className="overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-white">
             <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold">题目</h2>
