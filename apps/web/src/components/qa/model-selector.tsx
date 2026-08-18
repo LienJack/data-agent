@@ -54,9 +54,11 @@ export function ModelSelector({
         description: [
           `${model.provider} · ${model.model_id}`,
           model.profile_version,
-          model.certification_receipt_ref === null
-            ? "无当前执行认证"
-            : `认证 r${model.certification_receipt_ref.revision}`,
+          model.api_authentication_state === "PASS"
+            ? "API 已认证"
+            : model.certification_receipt_ref === null
+              ? "无当前执行认证"
+              : `认证 r${model.certification_receipt_ref.revision}`,
           model.effective_context_ceiling_tokens === null
             ? null
             : `Context ${model.effective_context_ceiling_tokens.toLocaleString()}`,

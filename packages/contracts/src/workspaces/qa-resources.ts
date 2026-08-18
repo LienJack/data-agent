@@ -13,6 +13,7 @@ import {
   providerInvocationScopeSchema,
 } from "../providers/index.js";
 import { runConfigRequestSchema } from "../runs/effective-config.js";
+import { modelCertificationStateSchema } from "./billing.js";
 import { workspaceConversationSchema, workspaceDatasourceTypeSchema } from "./data-isolation.js";
 
 export const qaModelReadinessSchema = z.enum([
@@ -33,6 +34,7 @@ export const qaModelResourceSchema = z
     model_id: z.string().trim().min(1).max(256),
     display_name: z.string().trim().min(1).max(255),
     certification_receipt_ref: modelCertificationReceiptReferenceSchema.nullable(),
+    api_authentication_state: modelCertificationStateSchema.optional(),
     effective_context_ceiling_tokens: z.number().int().positive().safe().nullable(),
     effective_output_ceiling_tokens: z.number().int().positive().safe().nullable(),
     readiness: qaModelReadinessSchema,
@@ -50,14 +52,15 @@ export const qaModelResourceSchema = z
       model.certification_receipt_ref !== null &&
       model.effective_context_ceiling_tokens !== null &&
       model.effective_output_ceiling_tokens !== null;
+    const hasApiAuthentication = model.api_authentication_state === "PASS";
     const hasAnyExecutionAuthority =
       model.certification_receipt_ref !== null ||
       model.effective_context_ceiling_tokens !== null ||
       model.effective_output_ceiling_tokens !== null;
     if (
       model.readiness === "AVAILABLE"
-        ? !model.selectable || !hasCompleteExecutionAuthority
-        : model.selectable || hasAnyExecutionAuthority
+        ? !model.selectable || (!hasCompleteExecutionAuthority && !hasApiAuthentication)
+        : model.selectable || hasAnyExecutionAuthority || hasApiAuthentication
     ) {
       ctx.addIssue({
         code: "custom",

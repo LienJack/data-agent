@@ -1,0 +1,70 @@
+# Model API Authentication
+
+## Scenario: 用一次模型目录请求开放 Q&A 选择
+
+### 1. Scope / Trigger
+
+- 修改设置页认证按钮、认证 API、模型目录认证字段或 Q&A 选择状态时适用。
+- 本流程只证明服务端凭据能读取非空模型目录，不是模型能力或质量认证。
+
+### 2. Signatures
+
+```text
+GET  /api/admin/model-certifications
+POST /api/admin/models/:modelProfileId/certifications
+platform.record_model_api_authentication(deployment_id uuid, principal_id uuid, command jsonb) -> jsonb
+platform.list_model_api_authentication_views(deployment_id uuid, principal_id uuid) -> jsonb
+```
+
+### 3. Contracts
+
+- 浏览器 body：`model-certification-start@1.0.0`、profile、正整数 config version、8-128 字符幂等键。
+- 数据库 command：`model-api-authentication@1.0.0`，另加 1-1000 的 `response_item_count`。
+- 状态仅为 `NOT_CERTIFIED | PASS`；没有 Job、进度或证书引用。
+- `PASS` 仅在认证 config version 等于模型当前 config version 时有效。
+- Provider 响应正文、Header、Credential 和 URL query 不得持久化或公开。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| 非 `SUPER_ADMIN` | `SUPER_ADMIN_REQUIRED`，不请求 Provider |
+| path/body 或 config 不匹配 | 稳定 4xx，不写状态 |
+| API Key 缺失 | `MODEL_CREDENTIAL_NOT_CONFIGURED` |
+| `/models` 失败或格式错误 | 脱敏 discovery error，不写状态 |
+| `/models` 空数组 | `MODEL_CERTIFICATION_RESPONSE_EMPTY` |
+| 同幂等键相同参数 | 返回原 `PASS` |
+
+### 5. Good / Base / Bad Cases
+
+- Good：非空目录 -> 写当前 config `PASS` -> Q&A 可选择。
+- Base：未认证或 config 已变化 -> `NOT_CERTIFIED` -> Q&A 不可选择。
+- Bad：创建 Job/Worker/认证证书来完成一次同步连通性检查。
+
+### 6. Tests Required
+
+- Route：非空成功、空响应、权限拒绝、path/body mismatch、无 Secret。
+- Repository/SQL：参数闭合、幂等、config stale、回滚后无测试状态。
+- Q&A：相同 profile/config 的 `PASS` 才覆盖为 `AVAILABLE/selectable=true`。
+- Browser：按钮 loading、成功刷新、错误保留状态、移动端无溢出。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+await enqueueJob({ kind: "MODEL_CERTIFICATION" });
+```
+
+#### Correct
+
+```ts
+const models = await fetchProviderModelCatalog(serverOwnedConnection);
+if (models.length === 0) return MODEL_CERTIFICATION_RESPONSE_EMPTY;
+await repository.recordModelAuthentication(context, {
+  model_profile_id: profileId,
+  expected_config_version: configVersion,
+  response_item_count: models.length,
+  idempotency_key: idempotencyKey,
+});
+```

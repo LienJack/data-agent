@@ -67,6 +67,7 @@ describe("Q&A resource catalog", () => {
         model_id: "deepseek-v4-flash",
         display_name: "DeepSeek V4 Flash",
         certification_receipt_ref: availableProfile().certification_receipt_ref,
+        api_authentication_state: "NOT_CERTIFIED",
         effective_context_ceiling_tokens: 16_000,
         effective_output_ceiling_tokens: 4_000,
         readiness: "AVAILABLE",
@@ -169,6 +170,46 @@ describe("Q&A resource catalog", () => {
         certification_receipt_ref: null,
         effective_context_ceiling_tokens: null,
         effective_output_ceiling_tokens: null,
+      }),
+    ]);
+  });
+
+  it("makes the current model version selectable after a simple API authentication", () => {
+    const unavailable = {
+      model_profile_id: ids.profile,
+      model_config_version: 4,
+      resource_hash: hash("a"),
+      profile_version: "model-profile@4",
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      display_name: "DeepSeek V4 Flash",
+      readiness: "CERTIFICATION_REQUIRED",
+      selectable: false,
+      unavailable_reason: "MODEL_CERTIFICATION_REQUIRED",
+    } as const satisfies ProviderExecutionProfile;
+
+    const catalog = buildQaResourceCatalog({
+      models: [unavailable],
+      authentications: [
+        {
+          schema_version: "model-certification-view@1.0.0",
+          model_profile_id: ids.profile,
+          model_config_version: 4,
+          provider: "deepseek",
+          model_id: "deepseek-v4-flash",
+          state: "PASS",
+          completed_at: "2026-08-18T00:00:00.000Z",
+        },
+      ],
+      datasources: [],
+    });
+
+    expect(catalog.models).toEqual([
+      expect.objectContaining({
+        readiness: "AVAILABLE",
+        selectable: true,
+        api_authentication_state: "PASS",
+        certification_receipt_ref: null,
       }),
     ]);
   });

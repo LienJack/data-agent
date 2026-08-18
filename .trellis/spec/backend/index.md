@@ -39,6 +39,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Run 公开事件流](./run-event-streaming.md) | Durable SSE、公开事件 DTO、对话轨迹与前端装配 | 已建立 |
 | [Agent Team Product Runtime](./agent-team-runtime.md) | Product Profile、Skill、Team 命令、专职 Tool 与 Acceptance 边界 | 已建立 |
 | [Datasource Adapter Runtime](./datasource-adapters.md) | 五类 Registry、方言 Firewall、只读 Transport 与认证报告 | 已建立 |
+| [Model API Authentication](./model-api-authentication.md) | 模型目录认证、权限、幂等与 Q&A readiness | 已建立 |
 
 ---
 

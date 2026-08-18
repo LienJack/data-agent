@@ -1,6 +1,11 @@
 "use client";
 
-import type { ModelCatalogEntry, ModelProvider, ModelVendorId } from "@data-agent/contracts";
+import type {
+  ModelCatalogEntry,
+  ModelCertificationPublicView,
+  ModelProvider,
+  ModelVendorId,
+} from "@data-agent/contracts";
 import {
   ArrowsClockwise,
   CaretDown,
@@ -10,6 +15,7 @@ import {
   LockKey,
   PencilSimple,
   Plus,
+  ShieldCheck,
   Trash,
   WarningCircle,
   X,
@@ -26,6 +32,7 @@ import type {
   ProviderModelView,
 } from "@/lib/model-provider-view";
 import { cn } from "@/lib/utils";
+import { ModelCertificationDialog } from "./model-certification-dialog";
 import { ProviderMark } from "./provider-mark";
 
 interface ModelProvidersPanelProps {
@@ -103,6 +110,22 @@ function modelStatus(model: ProviderModelView): { label: string; className: stri
   };
 }
 
+function certificationStatus(view: ModelCertificationPublicView | undefined) {
+  if (!view || view.state === "NOT_CERTIFIED") {
+    return {
+      label: "待认证",
+      className: "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
+    };
+  }
+  if (view.state === "PASS") {
+    return { label: "已认证", className: "bg-emerald-50 text-emerald-700" };
+  }
+  return {
+    label: "待认证",
+    className: "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
+  };
+}
+
 function mergeModelDirectory(
   provider: ModelProviderView,
   discovered: readonly DiscoveredProviderModelView[],
@@ -121,6 +144,7 @@ function mergeModelDirectory(
 
 export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) {
   const [providers, setProviders] = useState<readonly ModelProviderView[]>([]);
+  const [certifications, setCertifications] = useState<readonly ModelCertificationPublicView[]>([]);
   const [loading, setLoading] = useState(isSuperAdmin);
   const [error, setError] = useState<string>();
   const [draft, setDraft] = useState<ProviderDraft>();
@@ -132,14 +156,20 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
   >({});
   const [selections, setSelections] = useState<Readonly<Record<string, readonly string[]>>>({});
   const [deleting, setDeleting] = useState<string>();
+  const [certifying, setCertifying] = useState<ProviderModelView>();
+  const [certificationPending, setCertificationPending] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!isSuperAdmin) return;
     setLoading(true);
     setError(undefined);
     try {
-      const next = await api<readonly ModelProviderView[]>("/api/admin/model-providers");
+      const [next, nextCertifications] = await Promise.all([
+        api<readonly ModelProviderView[]>("/api/admin/model-providers"),
+        api<readonly ModelCertificationPublicView[]>("/api/admin/model-certifications"),
+      ]);
       setProviders(next);
+      setCertifications(nextCertifications);
       setSelections(
         Object.fromEntries(
           next.map((provider) => [
@@ -157,9 +187,25 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
     }
   }, [isSuperAdmin]);
 
+  const refreshCertifications = useCallback(async () => {
+    if (!isSuperAdmin) return;
+    try {
+      setCertifications(
+        await api<readonly ModelCertificationPublicView[]>("/api/admin/model-certifications"),
+      );
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "加载认证状态失败");
+    }
+  }, [isSuperAdmin]);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const certificationByProfile = useMemo(
+    () => new Map(certifications.map((view) => [view.model_profile_id, view])),
+    [certifications],
+  );
 
   const activeModelCount = useMemo(
     () =>
@@ -312,6 +358,33 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
     },
     [refresh],
   );
+
+  const submitCertification = useCallback(async () => {
+    if (!certifying) return;
+    setCertificationPending(true);
+    setError(undefined);
+    try {
+      await api(
+        `/api/admin/models/${encodeURIComponent(certifying.model_profile_id)}/certifications`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            schema_version: "model-certification-start@1.0.0",
+            model_profile_id: certifying.model_profile_id,
+            expected_config_version: certifying.config_version,
+            idempotency_key: `model-certification-${crypto.randomUUID()}`,
+          }),
+        },
+      );
+      setCertifying(undefined);
+      await refreshCertifications();
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : "模型认证提交失败");
+    } finally {
+      setCertificationPending(false);
+    }
+  }, [certifying, refreshCertifications]);
 
   if (!isSuperAdmin) {
     return (
@@ -588,6 +661,16 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
                             (candidate) => candidate.model_id === model.id,
                           );
                           const status = saved ? modelStatus(saved) : null;
+                          const certification = saved
+                            ? certificationByProfile.get(saved.model_profile_id)
+                            : undefined;
+                          const certificationBadge = certificationStatus(certification);
+                          const certificationSupported =
+                            saved &&
+                            ((provider.runtime_provider === "deepseek" &&
+                              saved.model_id === "deepseek-v4-flash") ||
+                              (provider.runtime_provider === "kimi" &&
+                                saved.model_id === "kimi-k3"));
                           const enabled = selected.has(model.id);
                           return (
                             <div
@@ -617,6 +700,16 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
                                       默认
                                     </span>
                                   )}
+                                  {saved && certificationSupported && (
+                                    <span
+                                      className={cn(
+                                        "rounded-full px-1.5 py-0.5 text-[9px]",
+                                        certificationBadge.className,
+                                      )}
+                                    >
+                                      {certificationBadge.label}
+                                    </span>
+                                  )}
                                 </div>
                                 {model.display_name !== model.id && (
                                   <p className="mt-1 truncate text-[10px] text-[var(--color-text-muted)]">
@@ -624,6 +717,17 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
                                   </p>
                                 )}
                               </div>
+                              {saved && certificationSupported && (
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => setCertifying(saved)}
+                                  aria-label={`${certification?.state === "PASS" ? "重新认证" : "认证"} ${saved.model_id}`}
+                                >
+                                  <ShieldCheck aria-hidden="true" size={13} />
+                                  {certification?.state === "PASS" ? "重新认证" : "认证"}
+                                </Button>
+                              )}
                               <span className="text-[10px] text-[var(--color-text-muted)]">
                                 {enabled ? "启动" : "停用"}
                               </span>
@@ -699,6 +803,18 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
             );
           })}
         </div>
+      )}
+
+      {certifying && (
+        <ModelCertificationDialog
+          model={certifying}
+          pending={certificationPending}
+          isRecertification={
+            certificationByProfile.get(certifying.model_profile_id)?.state === "PASS"
+          }
+          onCancel={() => setCertifying(undefined)}
+          onConfirm={() => void submitCertification()}
+        />
       )}
     </div>
   );

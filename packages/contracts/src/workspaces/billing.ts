@@ -190,6 +190,41 @@ export const modelCatalogEntrySchema = z.strictObject({
   updated_at: timestampSchema,
 });
 
+export const modelCertificationStateSchema = z.enum(["NOT_CERTIFIED", "PASS"]);
+
+export const startModelCertificationInputSchema = z.strictObject({
+  schema_version: z.literal("model-certification-start@1.0.0"),
+  model_profile_id: immutableIdSchema,
+  expected_config_version: z.number().int().positive().safe(),
+  idempotency_key: z
+    .string()
+    .min(8)
+    .max(128)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:@/-]*$/),
+});
+
+export const recordModelApiAuthenticationInputSchema = z.strictObject({
+  schema_version: z.literal("model-api-authentication@1.0.0"),
+  model_profile_id: immutableIdSchema,
+  expected_config_version: z.number().int().positive().safe(),
+  response_item_count: z.number().int().positive().max(1_000),
+  idempotency_key: z
+    .string()
+    .min(8)
+    .max(128)
+    .regex(/^[A-Za-z0-9][A-Za-z0-9._:@/-]*$/),
+});
+
+export const modelCertificationPublicViewSchema = z.strictObject({
+  schema_version: z.literal("model-certification-view@1.0.0"),
+  model_profile_id: immutableIdSchema,
+  model_config_version: z.number().int().positive().safe(),
+  provider: modelProviderSchema,
+  model_id: z.string().min(1).max(256),
+  state: modelCertificationStateSchema,
+  completed_at: timestampSchema.nullable(),
+});
+
 export const upsertModelCatalogEntryInputSchema = z.strictObject({
   schema_version: z.literal("model-catalog-upsert@1.0.0"),
   operation_id: immutableIdSchema,
@@ -718,6 +753,11 @@ export type SyncEnvironmentModelCatalogInput = z.infer<
   typeof syncEnvironmentModelCatalogInputSchema
 >;
 export type ModelCatalogEntry = z.infer<typeof modelCatalogEntrySchema>;
+export type ModelCertificationPublicView = z.infer<typeof modelCertificationPublicViewSchema>;
+export type RecordModelApiAuthenticationInput = z.infer<
+  typeof recordModelApiAuthenticationInputSchema
+>;
+export type StartModelCertificationInput = z.infer<typeof startModelCertificationInputSchema>;
 export type UpsertModelCatalogEntryInput = z.infer<typeof upsertModelCatalogEntryInputSchema>;
 export type ModelCatalogStatusInput = z.infer<typeof modelCatalogStatusInputSchema>;
 export type PricingSyncOperation = z.infer<typeof pricingSyncOperationSchema>;

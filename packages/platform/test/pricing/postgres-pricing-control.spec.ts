@@ -68,6 +68,49 @@ const connectionRow = {
 } as const;
 
 describe("PostgreSQL pricing control repository", () => {
+  it("records one non-empty model API response without carrying credentials", async () => {
+    let observedText = "";
+    let observed: readonly unknown[] = [];
+    const repository = createPostgresPricingControlRepository(
+      pool((text, values) => {
+        observedText = text;
+        observed = values;
+        return {
+          rows: [
+            {
+              value: {
+                schema_version: "model-certification-view@1.0.0",
+                model_profile_id: ids.profile,
+                model_config_version: 1,
+                provider: "deepseek",
+                model_id: "deepseek-v4-flash",
+                state: "PASS",
+                completed_at: "2026-08-18T00:00:00.000Z",
+              },
+            },
+          ],
+          rowCount: 1,
+        };
+      }),
+    );
+
+    const result = await repository.recordModelAuthentication(
+      { deployment_id: ids.deployment, principal_id: ids.principal },
+      {
+        schema_version: "model-api-authentication@1.0.0",
+        model_profile_id: ids.profile,
+        expected_config_version: 1,
+        response_item_count: 2,
+        idempotency_key: "model-auth-one",
+      },
+    );
+
+    expect(result).toMatchObject({ ok: true, value: { state: "PASS" } });
+    expect(observedText).toContain("record_model_api_authentication");
+    expect(observed.slice(0, 2)).toEqual([ids.deployment, ids.principal]);
+    expect(JSON.stringify(observed)).not.toMatch(/api[_-]?key|authorization/iu);
+  });
+
   it("reads a shared database model projection", async () => {
     const repositoryA = createPostgresPricingControlRepository(
       pool(() => ({ rows: [row], rowCount: 1 })),

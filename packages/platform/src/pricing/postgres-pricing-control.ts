@@ -5,16 +5,20 @@ import {
   fxRateCandidateSchema,
   type ModelCatalogEntry,
   type ModelCatalogStatusInput,
+  type ModelCertificationPublicView,
   type ModelPriceCandidate,
   type ModelProviderConnection,
   type ModelProviderSelectionInput,
   modelCatalogEntrySchema,
   modelCatalogStatusInputSchema,
+  modelCertificationPublicViewSchema,
   modelPriceCandidateSchema,
   modelProviderConnectionSchema,
   modelProviderSelectionInputSchema,
   type PricingCandidateDecisionInput,
   pricingCandidateDecisionInputSchema,
+  type RecordModelApiAuthenticationInput,
+  recordModelApiAuthenticationInputSchema,
   type SubmitFxRateSyncInput,
   type SubmitModelPriceSyncInput,
   type SyncEnvironmentModelCatalogInput,
@@ -72,6 +76,11 @@ interface ModelCatalogRow {
   readonly created_by: string;
   readonly created_at: Date | string;
   readonly updated_at: Date | string;
+  readonly api_authenticated_config_version?: number | string | null;
+  readonly api_authenticated_at?: Date | string | null;
+  readonly api_authentication_response_count?: number | null;
+  readonly api_authentication_idempotency_key?: string | null;
+  readonly api_authenticated_by?: string | null;
 }
 
 interface ModelProviderConnectionRow {
@@ -122,7 +131,15 @@ function date(value: Date | string): string {
 }
 
 function model(row: ModelCatalogRow): ModelCatalogEntry {
-  const { provider_connection_id: providerConnectionId, ...modelRow } = row;
+  const {
+    provider_connection_id: providerConnectionId,
+    api_authenticated_config_version: _authenticatedConfigVersion,
+    api_authenticated_at: _authenticatedAt,
+    api_authentication_response_count: _responseCount,
+    api_authentication_idempotency_key: _idempotencyKey,
+    api_authenticated_by: _authenticatedBy,
+    ...modelRow
+  } = row;
   return modelCatalogEntrySchema.parse({
     schema_version: "model-catalog-entry@1.0.0",
     ...modelRow,
@@ -246,6 +263,41 @@ export function createPostgresPricingControlRepository(pool: SqlPool) {
           [parsed.value.deployment_id, parsed.value.principal_id],
         );
         return Object.freeze(result.rows.map(model));
+      });
+    },
+
+    async listModelAuthentications(
+      input: unknown,
+    ): Promise<BoundaryResult<readonly ModelCertificationPublicView[]>> {
+      const parsed = context(input);
+      if (!parsed.ok) return parsed;
+      return withClient(pool, async (client) => {
+        const result = await client.query<{ readonly value: unknown }>(
+          "select platform.list_model_api_authentication_views($1::uuid,$2::uuid) as value",
+          [parsed.value.deployment_id, parsed.value.principal_id],
+        );
+        return Object.freeze(
+          z.array(modelCertificationPublicViewSchema).parse(result.rows[0]?.value),
+        );
+      });
+    },
+
+    async recordModelAuthentication(
+      input: unknown,
+      command: RecordModelApiAuthenticationInput,
+    ): Promise<BoundaryResult<ModelCertificationPublicView>> {
+      const parsedContext = context(input);
+      if (!parsedContext.ok) return parsedContext;
+      const parsedCommand = recordModelApiAuthenticationInputSchema.safeParse(command);
+      if (!parsedCommand.success) {
+        return failure("MODEL_AUTHENTICATION_INPUT_INVALID", "模型认证输入无效。");
+      }
+      return withClient(pool, async (client) => {
+        const result = await client.query<{ readonly value: unknown }>(
+          "select platform.record_model_api_authentication($1::uuid,$2::uuid,$3::jsonb) as value",
+          [parsedContext.value.deployment_id, parsedContext.value.principal_id, parsedCommand.data],
+        );
+        return modelCertificationPublicViewSchema.parse(result.rows[0]?.value);
       });
     },
 
