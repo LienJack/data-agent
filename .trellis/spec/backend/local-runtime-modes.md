@@ -20,6 +20,10 @@ pnpm docker:migrate
 pnpm docker:up     # deploy profile 的五个长期服务
 pnpm docker:down   # 移除容器，保留命名数据卷
 
+DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES \
+NODE_OPTIONS=--conditions=react-server \
+pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
+
 GET worker:9091/live
 GET relationship-indexer:9090/live
 python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 TCP 端口
@@ -45,6 +49,12 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   Explorer 走 PostgreSQL fallback，Web 与 Governance 继续可用。
 - `pnpm dev` 只读 Migration Ledger，不得隐式执行 SQL。迁移只由显式
   migrate 命令执行，并要求 `ON_ERROR_STOP=1` 与名称/checksum 精确复核。
+- Q&A readiness bootstrap 只允许显式 CLI：确认变量必须精确为
+  `DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES`，`NODE_ENV=production` 必须返回
+  `QA_READINESS_PRODUCTION_FORBIDDEN`。页面加载、`pnpm dev` 和 Run POST 均不得隐式调用。
+- Readiness 顺序固定为 role Model revisions -> Schema Snapshot -> Workspace Defaults -> 九 Skill/三 Profile；
+  Profile 必须最后激活。所有写入走现有 Port/RPC，operation/idempotency identity 必须稳定；重复执行返回
+  `QA_READINESS_ALREADY_READY`，不得增加 Head 或 Defaults revision。
 - Worker `/live` 只表示进程、数据库 Authority 与 Runner 已初始化。未配置
   `WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID` 时可轮询 Queue，但 Artifact 提交必须以
   `RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED` 失败关闭。
@@ -61,12 +71,17 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 | Docker/Next 构建后根级 Vitest 扫描 `.next/standalone` | 排除 `**/.next/**`，只执行源码测试 |
 | Worker 配置越界 | `WORKER_CONFIG_INVALID` 并非零退出 |
 | U6 Authority Capability 未配置 | Run 进入明确 `FAILED`，Reason Code 不泄漏 Secret |
+| Readiness 未显式确认 | `QA_READINESS_EXPLICIT_CONFIRMATION_REQUIRED`，零数据库访问 |
+| Readiness 在 production 执行 | `QA_READINESS_PRODUCTION_FORBIDDEN`，零数据库访问 |
+| Datasource/Semantic/认证模型不齐 | 稳定 `QA_READINESS_*_REQUIRED` 或底层公开 reason code；不得激活 Profile |
 
 ### 5. Good / Base / Bad
 
 - Good：`pnpm dev` 先移除三个无状态应用容器，核验数据库后启动本地 watch。
+- Good：首次本地 demo 使用显式 readiness CLI，完成后再次执行得到 `QA_READINESS_ALREADY_READY`。
 - Base：只调试 Worker 时执行 `pnpm dev:infra && pnpm dev:worker`。
 - Bad：同时运行 Docker Web/Worker/Indexer 与本地应用，或让日常启动自动重放迁移。
+- Bad：在 Q&A POST 里按需写 Defaults/Profile，或直接 INSERT Registry 表来消除 400。
 
 ### 6. 必需测试
 
@@ -75,6 +90,8 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   六个长期服务，并断言 sandbox 无网络/数据库 Secret/公共端口、只读 root 与硬资源限制。
 - Worker Unit/Integration：严格 env、IDLE 退避、日志脱敏、Lease/Heartbeat/Fence/终态。
 - Migration：已应用版本跳过，缺失版本应用，checksum 漂移非零退出。
+- Q&A readiness：未确认/production 零调用、步骤顺序、早期失败不激活 Profile、真实本地执行与幂等重跑；
+  浏览器 POST 必须从 readiness 400 变为 201。
 - 在执行过 Next/Docker 生产构建的工作区运行根级 Vitest 时，命令必须显式使用
   `--exclude '**/.next/**'`，避免把 `.next/standalone` 中复制的测试文件当作源码重复执行。
 - 物理 Smoke：三个本地应用热更新；当前五容器 healthy；Python Sandbox 落地后六容器
@@ -97,4 +114,6 @@ pnpm exec vitest run apps/web/test/integration/example.spec.ts  # 构建后可�
 pnpm dev              # 开发：Docker 数据库 + 本地 watch
 pnpm docker:migrate && pnpm docker:up  # 部署：显式迁移 + 五服务容器
 pnpm exec vitest run --exclude '**/.next/**' apps/web/test/integration/example.spec.ts
+DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES NODE_OPTIONS=--conditions=react-server \
+  pnpm --filter @data-agent/web exec tsx src/cli/bootstrap-qa-readiness.ts
 ```

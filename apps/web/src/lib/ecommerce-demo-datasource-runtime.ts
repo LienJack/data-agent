@@ -95,7 +95,8 @@ export function createEcommerceDemoConnectorFactory(): SchemaDiscoveryConnectorF
           database: input.database,
           user: input.username,
           password: input.secret_value,
-          ssl: input.ssl === "disable" ? false : { rejectUnauthorized: input.ssl === "verify-full" },
+          ssl:
+            input.ssl === "disable" ? false : { rejectUnauthorized: input.ssl === "verify-full" },
           max: 2,
           connectionTimeoutMillis: 5_000,
           idleTimeoutMillis: 30_000,
@@ -109,9 +110,13 @@ export function createEcommerceDemoConnectorFactory(): SchemaDiscoveryConnectorF
   return Object.freeze(factory);
 }
 
-export function ecommerceDemoRuntimeEnvironment(
-  environment: NodeJS.ProcessEnv,
-): NodeJS.ProcessEnv {
+export async function closeEcommerceDemoConnectorPools(): Promise<void> {
+  const active = [...pools.values()];
+  pools.clear();
+  await Promise.all(active.map((pool) => pool.end()));
+}
+
+export function ecommerceDemoRuntimeEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
     ...environment,
     DATA_AGENT_ECOMMERCE_READER_PASSWORD:

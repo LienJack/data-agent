@@ -68,6 +68,8 @@ declare
   runtime_profile jsonb; additional_skill_id uuid;
   first_result jsonb; replay_result jsonb; listed jsonb; disabled_skill jsonb; unavailable_profile jsonb;
   additional_profile_id text; legacy_payload jsonb; routed_payload jsonb;
+  acceptance_command jsonb; acceptance_event jsonb; acceptance_result jsonb; acceptance_replay jsonb;
+  legacy_hash text; team_hash text;
 begin
   skill_revision:=pg_catalog.jsonb_build_object(
     'schema_version','skill-revision@1.0.0','scope',scope_document,
@@ -213,6 +215,56 @@ begin
   if app_data_agent.load_agent_team_public_projection(
     '00000000-0000-4000-8000-000000002601'::uuid) is not null
   then raise exception 'U20 empty Team trace was not null'; end if;
+
+  legacy_payload:=pg_catalog.jsonb_build_object('kind','START_L2_RESEARCH',
+    'effective_config_ref',pg_catalog.jsonb_build_object(
+      'config_id','00000000-0000-4000-8000-000000002612','config_revision',1,
+      'config_hash','sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc'));
+  legacy_hash:=platform.canonical_sha256(legacy_payload);
+  acceptance_command:=pg_catalog.jsonb_build_object(
+    'run_id','00000000-0000-4000-8000-000000002610',
+    'command_id','00000000-0000-4000-8000-000000002611',
+    'event_id','00000000-0000-4000-8000-000000002613',
+    'outbox_id','00000000-0000-4000-8000-000000002614',
+    'audit_id','00000000-0000-4000-8000-000000002615',
+    'idempotency_key','u20:team:atomic-acceptance:1',
+    'question','U20 atomic Team acceptance probe','payload',legacy_payload);
+  acceptance_event:=pg_catalog.jsonb_build_object(
+    'schema_version','1.0.0','event_id','00000000-0000-4000-8000-000000002613',
+    'scope',scope_document,'run_id','00000000-0000-4000-8000-000000002610',
+    'sequence',1,'worker_fence',0,'idempotency_key','event:00000000-0000-4000-8000-000000002613',
+    'occurred_at','2026-08-18T00:00:00.000Z','event_type','run.accepted',
+    'payload',pg_catalog.jsonb_build_object(
+      'command_id','00000000-0000-4000-8000-000000002611','payload_hash',legacy_hash));
+  acceptance_result:=app_data_agent.accept_backend_run_command(
+    acceptance_command,legacy_hash,acceptance_event,
+    app_data_agent.runtime_canonical_sha256(acceptance_event));
+  acceptance_replay:=app_data_agent.accept_backend_run_command(
+    acceptance_command,legacy_hash,acceptance_event,
+    app_data_agent.runtime_canonical_sha256(acceptance_event));
+  select command.payload_hash into strict team_hash from app_data_agent.commands command
+  where command.app_id='00000000-0000-4000-8000-00000000da01'
+    and command.tenant_id='00000000-0000-4000-8000-00000000aa22'
+    and command.environment='test'
+    and command.command_id='00000000-0000-4000-8000-000000002611';
+  if (acceptance_result->>'created')::boolean is distinct from true
+    or (acceptance_replay->>'created')::boolean is distinct from false
+    or team_hash=legacy_hash
+    or acceptance_result->>'payload_hash'<>team_hash
+    or acceptance_replay->>'payload_hash'<>team_hash
+    or not exists(select 1 from app_data_agent.idempotency_records record
+      where record.command_id='00000000-0000-4000-8000-000000002611' and record.payload_hash=team_hash)
+    or not exists(select 1 from app_data_agent.run_events event
+      where event.command_id='00000000-0000-4000-8000-000000002611'
+        and event.payload_json->>'payload_hash'=team_hash
+        and event.event_hash=app_data_agent.runtime_canonical_sha256(event.event_document))
+    or not exists(select 1 from app_data_agent.outbox message
+      where message.command_id='00000000-0000-4000-8000-000000002611'
+        and message.payload_json->>'payload_hash'=team_hash)
+    or not exists(select 1 from app_data_agent.audit_log audit
+      where audit.details->>'command_id'='00000000-0000-4000-8000-000000002611'
+        and audit.details->>'payload_hash'=team_hash)
+  then raise exception 'U20 Team acceptance did not atomically upgrade all hashes'; end if;
 
   disabled_skill:=app_data_agent.commit_extension_revision(pg_catalog.jsonb_build_object(
     'schema_version','extension-revision-commit@1.0.0',

@@ -5,6 +5,7 @@ import {
   type AgentTeamPublicTrace,
   agentProductProfileListResultSchema,
   type ConversationTrajectory,
+  contractErrorSchema,
   conversationTrajectorySchema,
   type PublicRunEvent,
   publicRunEventSchema,
@@ -30,6 +31,19 @@ export type RunEvent = PublicRunEvent;
 // ─── Configuration ─────────────────────────────────────────────────────────
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "";
+
+export class ApiRequestError extends Error {
+  override readonly name = "ApiRequestError";
+
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+    readonly retryable: boolean | null,
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 // ─── Workspace Context ─────────────────────────────────────────────────────
 
@@ -68,7 +82,17 @@ async function request<T>(path: string, init: RequestInit = {}, workspaceId?: st
     headers: { ...authHeaders(workspaceId), ...init.headers },
   });
   if (!response.ok) {
-    throw new Error(`API 请求失败 (${response.status})`);
+    const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+    const parsed = contractErrorSchema.safeParse(body?.error);
+    if (parsed.success) {
+      throw new ApiRequestError(
+        response.status,
+        parsed.data.code,
+        parsed.data.retryable,
+        `${parsed.data.message} (${parsed.data.code})`,
+      );
+    }
+    throw new ApiRequestError(response.status, null, null, `API 请求失败 (${response.status})`);
   }
   return response.json() as Promise<T>;
 }
