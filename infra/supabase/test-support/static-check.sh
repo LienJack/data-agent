@@ -106,6 +106,8 @@ for migration_file in $migration_files; do
     20260725010631_*) renderer="scripts/render-10631-migration.ts" ;;
     20260725010632_*) renderer="scripts/render-10632-migration.ts" ;;
     20260725010633_*) renderer="scripts/render-10633-migration.ts" ;;
+    20260725010634_*) renderer="scripts/render-10634-migration.ts" ;;
+    20260725010635_*) renderer="scripts/render-10635-migration.ts" ;;
     20260725010636_*) renderer="scripts/render-10636-migration.ts" ;;
     20260725010637_*) renderer="scripts/render-10637-migration.ts" ;;
     20260725010638_*) renderer="scripts/render-10638-migration.ts" ;;

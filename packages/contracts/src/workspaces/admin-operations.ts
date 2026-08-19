@@ -2,6 +2,7 @@ import { z } from "zod";
 import { immutableIdSchema, timestampSchema } from "../common/primitives.js";
 import {
   appUserStatusSchema,
+  loginUsernameSchema,
   systemRoleSchema,
   workspaceIdempotencyKeySchema,
   workspaceLifecycleSchema,
@@ -12,6 +13,7 @@ export const adminUserProjectionSchema = z.strictObject({
   schema_version: z.literal("admin-user-projection@1.0.0"),
   principal_id: immutableIdSchema,
   auth_user_id: immutableIdSchema,
+  username: loginUsernameSchema.nullable(),
   email: z.email().max(320),
   display_name: z.string().min(1).max(128),
   system_role: systemRoleSchema,
@@ -43,6 +45,7 @@ export const adminWorkspaceMemberProjectionSchema = z.strictObject({
   schema_version: z.literal("admin-workspace-member-projection@1.0.0"),
   workspace_id: immutableIdSchema,
   principal_id: immutableIdSchema,
+  username: loginUsernameSchema.nullable(),
   email: z.email().max(320),
   display_name: z.string().min(1).max(128),
   system_role: systemRoleSchema,
@@ -84,6 +87,7 @@ export const createAdminUserInputSchema = z.strictObject({
   schema_version: z.literal("admin-user-create@1.0.0"),
   operation_id: immutableIdSchema,
   idempotency_key: workspaceIdempotencyKeySchema,
+  username: loginUsernameSchema,
   email: z.email().max(320),
   display_name: z.string().trim().min(1).max(128),
   system_role: systemRoleSchema,

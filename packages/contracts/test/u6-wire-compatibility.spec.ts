@@ -234,7 +234,7 @@ describe("U6 Wire Compatibility: C2 descriptor", () => {
   it("U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR 的物理描述符 hash 保持不变", () => {
     // 从脚本导出的已冻结 hash
     expect(U6_C2_PHYSICAL_SCHEMA_DESCRIPTOR.physical_descriptor_hash).toBe(
-      "sha256:8ed64a68036ca2b67c31175d8028b0d657c8662068efc165ecb5821dc65891fc",
+      "sha256:f404abca017479c92103aa85ee58a38865bfe89b0e4d7038829f9629bfcf0a30",
     );
   });
 

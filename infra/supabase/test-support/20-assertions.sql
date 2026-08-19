@@ -60,13 +60,13 @@ select test_support.assert_true(
 
 select test_support.assert_true(
   (
-    select pg_catalog.count(*) >= 33
+    select pg_catalog.count(*) >= 35
       and pg_catalog.bool_or(
-        migration_version = '20260725010633_app_data_agent_operations_admin'
+        migration_version = '20260725010635_app_data_agent_superadmin_email_sync'
       )
     from platform.migration_ledger
   ),
-  'Phase 7 operations admin migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
+  'Superadmin email sync migration 必须记账；并允许 dirty worktree 的后续 migration 一并存在'
 );
 
 select test_support.assert_raises(

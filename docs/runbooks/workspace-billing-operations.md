@@ -64,6 +64,7 @@ docker compose --profile deploy ps
 ```bash
 export DATA_AGENT_ALLOW_SUPERADMIN_BOOTSTRAP=YES
 export DATA_AGENT_BOOTSTRAP_EMAIL='admin@example.com'
+export DATA_AGENT_BOOTSTRAP_USERNAME='platform.admin'
 export DATA_AGENT_BOOTSTRAP_NAME='Platform Admin'
 export DATA_AGENT_BOOTSTRAP_PASSWORD='<secure-secret-12-to-128-chars>'
 export DATA_AGENT_BOOTSTRAP_WORKSPACE_SLUG='main-workspace'
@@ -94,9 +95,13 @@ repository 前验证当前工作空间写 capability 和 `OWNER` 能力，数据
 
 ### 5.1 创建用户
 
-在“组织与运维 → 用户”填写邮箱、显示名和系统角色。创建成功时：
+在“组织与运维 → 用户”填写唯一登录用户名、邮箱、显示名和系统角色。创建成功时：
 
 - Better Auth 账号先创建，PostgreSQL app user 后创建；后者失败会清理认证孤儿。
+- username 全局唯一、统一小写，只允许 3–30 位字母、数字、下划线和点；邮箱或 username
+  均可登录，显示名不能登录。
+- `app_users` 成功插入后，数据库按同一 `principal_id` 自动创建唯一积分账户；username、
+  显示名和密码变化不改变 principal、角色、积分余额或历史账单。
 - 初始密码只在当前 HTTPS 响应显示一次，刷新后不可恢复。
 - 使用安全渠道把密码交给用户，并要求首次登录后重置。
 - 不在日志、截图、工单或聊天中粘贴一次性密码。
@@ -162,6 +167,19 @@ repository 前验证当前工作空间写 capability 和 `OWNER` 能力，数据
 - 无法证明调用发生或应扣费：选择“释放”，明确填写原因。
 - 在决定前冻结额保持占用；不能用直接改 bill/hold 状态跳过复核。
 - 队列清空后重新运行 reconciliation，确认 `BILLING_REVIEW` gate 为 `PASS`。
+
+### 8.3 Agent 模型调用主体
+
+- Web 只把会话解析出的 `principal_id` 写入 Run；浏览器不能提交或覆盖计费用户。
+- Worker 启动账号只用于发现工作空间成员。每次领取任务后，Lease 中的
+  `principal_id` 必须与实时 capability、Run owner、事件和 checkpoint 一致。
+- Agent Worker 的模型组合必须使用 billing-gated provider：先提交 PostgreSQL
+  authorize，再创建真实 Provider stream；余额不足、价格缺失或主体不一致时 Provider
+  不会被调用。
+- `COMPLETED` 只有在不可变 usage 和 billing finalize 都提交后才向工作流可见；调用中断或
+  Provider 结果不确定时进入 `OUTCOME_UNKNOWN`/人工复核，不能静默释放冻结额。
+- 当前确定性研究内核没有调用 LLM，因此不会伪造模型账单；一旦工作流启用模型阶段，必须从
+  上述组合根注入，不允许直接持有原始 Provider adapter。
 
 ## 9. `SHADOW → ENFORCED` Go/No-Go
 

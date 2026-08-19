@@ -1,9 +1,14 @@
 import { betterAuth } from "better-auth";
-import { admin, createAccessControl } from "better-auth/plugins";
+import { admin, createAccessControl, username } from "better-auth/plugins";
 import { defaultStatements, userAc } from "better-auth/plugins/admin/access";
 import type pg from "pg";
 
 const authAccessControl = createAccessControl(defaultStatements);
+
+export const dataAgentPasswordPolicy = Object.freeze({
+  minPasswordLength: 1,
+  maxPasswordLength: Number.MAX_SAFE_INTEGER,
+});
 
 /**
  * Better Auth admin capability is deliberately narrower than its default role.
@@ -30,8 +35,7 @@ export function createDataAgentAuth(input: DataAgentAuthConfigInput) {
     emailAndPassword: {
       enabled: true,
       disableSignUp: true,
-      minPasswordLength: 12,
-      maxPasswordLength: 128,
+      ...dataAgentPasswordPolicy,
       revokeSessionsOnPasswordReset: true,
     },
     session: {
@@ -44,6 +48,7 @@ export function createDataAgentAuth(input: DataAgentAuthConfigInput) {
       database: { generateId: "uuid" },
     },
     plugins: [
+      username({ minUsernameLength: 3, maxUsernameLength: 30 }),
       admin({
         ac: authAccessControl,
         roles: {

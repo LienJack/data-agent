@@ -1,9 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { mergeSystemModelsWithCatalog, resolveSystemModelsFromProcess } from "@/lib/system-models";
 import {
   getPricingControlRepository,
   getWorkspaceDeploymentId,
   getWorkspaceSessionFromHeaders,
 } from "@/lib/workspace-identity";
+
+export const runtime = "nodejs";
 
 /**
  * GET  /api/models — 获取系统模型与手工配置的安全投影
@@ -18,23 +21,26 @@ export async function GET(request: NextRequest) {
     principal_id: session.value.principal_id,
   });
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: 503 });
+  const catalogModels = result.value.map((entry) => ({
+    id: entry.model_profile_id,
+    name: entry.display_name,
+    vendorId: entry.provider,
+    provider: entry.provider,
+    modelName: entry.model_id,
+    source: "manual" as const,
+    isSystemModel: false,
+    isSystemDefault: entry.is_system_default,
+    connectionStatus:
+      entry.credential_ref?.rotation_state === "ACTIVE"
+        ? ("configured" as const)
+        : ("unchecked" as const),
+    apiKeyMasked: entry.credential_ref ? "SecretRef 已配置" : "未配置",
+    baseUrl: entry.base_url,
+    createdAt: entry.created_at,
+    updatedAt: entry.updated_at,
+  }));
   return NextResponse.json({
-    data: result.value.map((entry) => ({
-      id: entry.model_profile_id,
-      name: entry.display_name,
-      vendorId: entry.provider,
-      provider: entry.provider,
-      modelName: entry.model_id,
-      source: "manual",
-      isSystemModel: false,
-      isSystemDefault: entry.is_system_default,
-      connectionStatus:
-        entry.credential_ref?.rotation_state === "ACTIVE" ? "configured" : "unchecked",
-      apiKeyMasked: entry.credential_ref ? "SecretRef 已配置" : "未配置",
-      baseUrl: entry.base_url,
-      createdAt: entry.created_at,
-      updatedAt: entry.updated_at,
-    })),
+    data: mergeSystemModelsWithCatalog(resolveSystemModelsFromProcess(), catalogModels),
   });
 }
 

@@ -15,12 +15,18 @@ export default function LoginPage() {
     setPending(true);
     setError(undefined);
     const form = new FormData(event.currentTarget);
-    const email = String(form.get("email") ?? "").trim();
+    const identifier = String(form.get("identifier") ?? "").trim();
     const password = String(form.get("password") ?? "");
     try {
-      const result = await authClient.signIn.email({ email, password, rememberMe: true });
+      const result = identifier.includes("@")
+        ? await authClient.signIn.email({ email: identifier, password, rememberMe: true })
+        : await authClient.signIn.username({
+            username: identifier.toLowerCase(),
+            password,
+            rememberMe: true,
+          });
       if (result.error) {
-        setError("邮箱或密码不正确，或账号已停用。");
+        setError("邮箱、用户名或密码不正确，或账号已停用。");
         return;
       }
       router.replace("/workspaces");
@@ -63,11 +69,13 @@ export default function LoginPage() {
 
           <form onSubmit={submit} className="mt-8 space-y-5">
             <label className="block">
-              <span className="text-xs font-medium text-[var(--color-text-secondary)]">邮箱</span>
+              <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+                邮箱或用户名
+              </span>
               <input
-                name="email"
-                type="email"
-                autoComplete="email"
+                name="identifier"
+                type="text"
+                autoComplete="username"
                 required
                 className="mt-2 h-12 w-full rounded-md border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
               />
@@ -78,7 +86,6 @@ export default function LoginPage() {
                 name="password"
                 type="password"
                 autoComplete="current-password"
-                minLength={12}
                 required
                 className="mt-2 h-12 w-full rounded-md border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
               />

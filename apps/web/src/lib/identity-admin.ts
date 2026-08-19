@@ -32,6 +32,7 @@ type OperationsDirectory = Pick<ReturnType<typeof getOperationsAdminRepository>,
 interface AuthAdminAdapter {
   createUser(input: {
     readonly email: string;
+    readonly username: string;
     readonly password: string;
     readonly name: string;
     readonly role: "admin" | "user";
@@ -143,6 +144,7 @@ export function createIdentityAdminService(dependencies: IdentityAdminServiceDep
       try {
         created = await dependencies.auth.createUser({
           email: parsed.data.email,
+          username: parsed.data.username,
           password,
           name: parsed.data.display_name,
           role: parsed.data.system_role === "SUPER_ADMIN" ? "admin" : "user",

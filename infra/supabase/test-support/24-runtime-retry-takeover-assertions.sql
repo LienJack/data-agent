@@ -914,6 +914,20 @@ select test_support.assert_true(
 commit;
 
 begin;
+insert into app_data_agent.workspaces (
+  app_id,
+  workspace_id,
+  environment,
+  slug,
+  display_name
+)
+values (
+  '00000000-0000-4000-8000-00000000da01',
+  '00000000-0000-4000-8000-00000000aa33',
+  'test',
+  'smoke-aa33-test',
+  'Smoke workspace AA33 test'
+);
 insert into app_data_agent.memberships (
   app_id,
   tenant_id,

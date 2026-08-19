@@ -3,6 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 describe("Better Auth boundary", () => {
+  it("keeps password creation and reset free of practical character-count limits", async () => {
+    const { dataAgentPasswordPolicy } = await import("../src/lib/auth-config");
+    expect(dataAgentPasswordPolicy).toEqual({
+      minPasswordLength: 1,
+      maxPasswordLength: Number.MAX_SAFE_INTEGER,
+    });
+  });
+
   it("removes impersonation from the only configured auth admin role", async () => {
     const { dataAgentAuthAdminRole } = await import("../src/lib/auth-config");
     expect(dataAgentAuthAdminRole.authorize({ user: ["create", "set-password", "ban"] })).toEqual({

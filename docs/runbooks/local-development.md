@@ -36,7 +36,7 @@ pnpm dev:apps
 pnpm dev
 ```
 
-`pnpm dev` 的顺序是 `dev:infra -> dev:check -> dev:apps`。Ledger 缺失或 checksum
+`pnpm dev` 的顺序是 `dev:infra -> 可选 dev:admin-sync -> dev:check -> dev:apps`。Ledger 缺失或 checksum
 不一致时，它会以非零状态停止并提示执行 `pnpm dev:migrate`，不会隐式重放 SQL。
 
 ## 3. 单服务调试
@@ -70,6 +70,24 @@ Secret 只放在 Git 忽略的 `.env` 或 `.env.local`，不要写入 Compose、
 - `WORKER_DEPLOYMENT_ID`、`WORKER_TENANT_ID`、`WORKER_PRINCIPAL_ID`；
 - `WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID`；
 - `NEO4J_PASSWORD`。
+
+本地超级管理员可选同步使用以下变量名（值只写入 Git 忽略的 `.env` / `.env.local`）：
+
+```dotenv
+DATA_AGENT_LOCAL_SUPERADMIN_SYNC=YES
+DATA_AGENT_BOOTSTRAP_EMAIL=<desired-superadmin-email>
+DATA_AGENT_BOOTSTRAP_USERNAME=<unique-lowercase-login-name>
+DATA_AGENT_BOOTSTRAP_NAME=<display-name-for-first-create>
+DATA_AGENT_BOOTSTRAP_PASSWORD=<non-empty-secret-without-practical-maximum-length>
+DATA_AGENT_BOOTSTRAP_WORKSPACE_SLUG=main-workspace
+DATA_AGENT_BOOTSTRAP_WORKSPACE_NAME=Main Workspace
+```
+
+可先单独运行 `pnpm dev:admin-sync`。相同 email/username/password 返回 `UNCHANGED`，不提升
+授权版本；发生变化时原子更新凭证、撤销旧会话并保留同一 `principal_id`、工作空间角色、
+积分余额和历史账单。开关未精确设置为 `YES` 时完全跳过；production、非 `local`
+deployment、非 `postgres` executor、目标邮箱冲突或多 active 超级管理员都会失败关闭。
+`pnpm dev:check` 始终只读，不执行同步。
 
 未配置 `WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID` 时，Worker 进程和 Queue 轮询保持
 可用，但研究 Artifact 提交失败关闭为 `RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED`；

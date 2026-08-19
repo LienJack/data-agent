@@ -65,6 +65,9 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
+  getPricingControlRepository: () => ({
+    listModelAuthentications: vi.fn(async () => ({ ok: true, value: [] })),
+  }),
   getProviderInvocationStore: () => ({
     listExecutionProfiles: mocks.listExecutionProfiles,
   }),

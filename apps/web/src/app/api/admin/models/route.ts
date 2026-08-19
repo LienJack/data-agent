@@ -1,6 +1,10 @@
 import { upsertModelCatalogEntryInputSchema } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
-import { authorizePricingAdminRequest, pricingResultResponse } from "@/lib/pricing-admin";
+import {
+  authorizePricingAdminRequest,
+  pricingResultResponse,
+  rejectEnvironmentSystemModelMutation,
+} from "@/lib/pricing-admin";
 
 export const runtime = "nodejs";
 
@@ -29,6 +33,8 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const immutableResponse = rejectEnvironmentSystemModelMutation(parsed.data.model_profile_id);
+  if (immutableResponse) return immutableResponse;
   return pricingResultResponse(
     await authorized.value.repository.applyModelCommand(authorized.value.context, parsed.data),
     201,

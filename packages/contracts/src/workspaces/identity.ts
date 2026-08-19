@@ -8,6 +8,13 @@ import {
 
 export const systemRoleSchema = z.enum(["SUPER_ADMIN", "USER"]);
 export const appUserStatusSchema = z.enum(["ACTIVE", "DISABLED"]);
+export const loginUsernameSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3)
+  .max(30)
+  .regex(/^[a-z0-9_.]+$/);
 export const workspaceRoleSchema = z.enum(["WORKSPACE_ADMIN", "ANALYST", "VIEWER"]);
 export const workspaceLifecycleSchema = z.enum(["ACTIVE", "ARCHIVED"]);
 
@@ -44,6 +51,7 @@ export const appUserSchema = z.strictObject({
   environment: environmentSchema,
   principal_id: immutableIdSchema,
   auth_user_id: z.string().min(1).max(256),
+  username: loginUsernameSchema.nullable(),
   email: z.email().max(320),
   display_name: z.string().min(1).max(128),
   system_role: systemRoleSchema,

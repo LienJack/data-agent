@@ -188,10 +188,23 @@ describe("Q&A immutable resource contracts", () => {
         {
           model_profile_id: modelProfile,
           config_version: 2,
+          profile_version: "model-profile@2",
           provider: "deepseek",
           model_id: "deepseek-v4-pro",
           display_name: "DeepSeek",
-          readiness: "RUNNABLE",
+          certification_receipt_ref: {
+            artifact_id: ids.message,
+            artifact_type: "ModelCertificationReceipt",
+            app_id: ids.app,
+            tenant_id: ids.workspace,
+            environment: "test",
+            run_id: ids.run,
+            revision: 1,
+            content_hash: `sha256:${"a".repeat(64)}`,
+          },
+          effective_context_ceiling_tokens: 16_000,
+          effective_output_ceiling_tokens: 4_000,
+          readiness: "AVAILABLE",
           selectable: true,
         },
       ],
@@ -206,6 +219,30 @@ describe("Q&A immutable resource contracts", () => {
       ],
     } as const;
     expect(qaResourceCatalogSchema.parse(catalog)).toEqual(catalog);
+    expect(
+      qaResourceCatalogSchema.safeParse({
+        ...catalog,
+        models: [{ ...catalog.models[0], profile_version: "model-profile@3" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      qaResourceCatalogSchema.safeParse({
+        ...catalog,
+        models: [
+          {
+            ...catalog.models[0],
+            readiness: "CERTIFICATION_REQUIRED",
+            selectable: false,
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      qaResourceCatalogSchema.safeParse({
+        ...catalog,
+        models: [{ ...catalog.models[0], effective_output_ceiling_tokens: null }],
+      }).success,
+    ).toBe(false);
     expect(
       qaResourceCatalogSchema.safeParse({
         ...catalog,

@@ -15,8 +15,15 @@ const configurationSchema = z.strictObject({
   databaseUrl: z.string().min(1),
   deploymentId: z.uuid(),
   email: z.email().transform((value) => value.toLowerCase()),
+  username: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(3)
+    .max(30)
+    .regex(/^[a-z0-9_.]+$/),
   displayName: z.string().trim().min(1).max(128),
-  password: z.string().min(12).max(128),
+  password: z.string().min(1),
   workspaceSlug: z
     .string()
     .trim()
@@ -55,6 +62,7 @@ async function main(): Promise<void> {
     databaseUrl: process.env.AUTH_DATABASE_URL ?? process.env.DATABASE_URL,
     deploymentId: process.env.WORKSPACE_DEPLOYMENT_ID ?? process.env.SEMANTIC_DEPLOYMENT_ID,
     email: process.env.DATA_AGENT_BOOTSTRAP_EMAIL,
+    username: process.env.DATA_AGENT_BOOTSTRAP_USERNAME,
     displayName: process.env.DATA_AGENT_BOOTSTRAP_NAME,
     password: process.env.DATA_AGENT_BOOTSTRAP_PASSWORD,
     workspaceSlug: process.env.DATA_AGENT_BOOTSTRAP_WORKSPACE_SLUG ?? "main-workspace",
@@ -69,8 +77,9 @@ async function main(): Promise<void> {
         "DATABASE_URL or AUTH_DATABASE_URL",
         "WORKSPACE_DEPLOYMENT_ID or SEMANTIC_DEPLOYMENT_ID",
         "DATA_AGENT_BOOTSTRAP_EMAIL",
+        "DATA_AGENT_BOOTSTRAP_USERNAME (3-30 letters, numbers, _ or .)",
         "DATA_AGENT_BOOTSTRAP_NAME",
-        "DATA_AGENT_BOOTSTRAP_PASSWORD (12-128 characters)",
+        "DATA_AGENT_BOOTSTRAP_PASSWORD (no character-count limit)",
       ],
     });
     process.exitCode = 64;
@@ -107,10 +116,16 @@ async function main(): Promise<void> {
     await client.query("set local idle_in_transaction_session_timeout = '30000ms'");
     await client.query(
       `insert into data_agent_auth."user" (
-         "id", "name", "email", "emailVerified", "role", "banned", "createdAt", "updatedAt"
-       ) values ($1::uuid, $2::text, $3::text, true, 'admin', false,
+         "id", "name", "email", "emailVerified", "username", "displayUsername",
+         "role", "banned", "createdAt", "updatedAt"
+       ) values ($1::uuid, $2::text, $3::text, true, $4::text, $4::text, 'admin', false,
          pg_catalog.clock_timestamp(), pg_catalog.clock_timestamp())`,
-      [authUserId, configuration.data.displayName, configuration.data.email],
+      [
+        authUserId,
+        configuration.data.displayName,
+        configuration.data.email,
+        configuration.data.username,
+      ],
     );
     await client.query(
       `insert into data_agent_auth."account" (
@@ -164,10 +179,7 @@ async function main(): Promise<void> {
         environment: deployment.rows[0].environment,
         principalId,
       },
-      resolveEcommerceDemoConnectionConfiguration(
-        process.env,
-        deployment.rows[0].environment,
-      ),
+      resolveEcommerceDemoConnectionConfiguration(process.env, deployment.rows[0].environment),
     );
     await client.query("commit");
     report({

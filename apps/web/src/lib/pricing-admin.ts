@@ -3,6 +3,7 @@ import "server-only";
 import type { SessionPrincipal } from "@data-agent/contracts";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { isEnvironmentSystemModelProfileId } from "./system-models";
 import {
   getPricingControlRepository,
   getWorkspaceDeploymentId,
@@ -75,4 +76,18 @@ export function pricingResultResponse<T>(
         { error: result.error },
         { status: result.error.code === "SUPER_ADMIN_REQUIRED" ? 403 : 409 },
       );
+}
+
+export function rejectEnvironmentSystemModelMutation(profileId: string): NextResponse | null {
+  if (!isEnvironmentSystemModelProfileId(profileId)) return null;
+  return NextResponse.json(
+    {
+      error: {
+        code: "SYSTEM_MODEL_IMMUTABLE",
+        message: "系统模型由环境变量托管，不能修改、停用或删除。",
+        retryable: false,
+      },
+    },
+    { status: 409 },
+  );
 }

@@ -14,6 +14,7 @@ describe("admin operations contracts", () => {
       schema_version: "admin-user-projection@1.0.0",
       principal_id: id,
       auth_user_id: id,
+      username: "admin",
       email: "admin@example.test",
       display_name: "Admin",
       system_role: "SUPER_ADMIN",

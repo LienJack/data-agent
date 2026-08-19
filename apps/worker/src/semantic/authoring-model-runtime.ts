@@ -181,9 +181,11 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
       },
       {
         resolve: async (reference) =>
-          artifactReferenceIdentity(reference) === receiptIdentity ? receipt.claims : null,
+          "artifact_type" in reference && artifactReferenceIdentity(reference) === receiptIdentity
+            ? receipt.claims
+            : null,
         verifyCommitted: async (reference) =>
-          artifactReferenceIdentity(reference) === receiptIdentity,
+          "artifact_type" in reference && artifactReferenceIdentity(reference) === receiptIdentity,
       },
     );
   } catch {

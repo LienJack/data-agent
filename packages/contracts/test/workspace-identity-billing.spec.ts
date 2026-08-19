@@ -64,6 +64,7 @@ describe("workspace and identity contracts", () => {
       environment: "test",
       principal_id: ids.principal,
       auth_user_id: "auth-user-1",
+      username: "analyst",
       email: "analyst@example.test",
       display_name: "Analyst",
       system_role: "USER",
@@ -73,6 +74,7 @@ describe("workspace and identity contracts", () => {
       disabled_at: null,
     } as const;
     expect(appUserSchema.parse(user).system_role).toBe("USER");
+    expect(appUserSchema.safeParse({ ...user, username: "two words" }).success).toBe(false);
     expect(appUserSchema.safeParse({ ...user, system_role: "WORKSPACE_ADMIN" }).success).toBe(
       false,
     );

@@ -185,10 +185,12 @@ async function authorizePersistedProfile(
   } as const;
   await authorizeAvailableModelProfile(availableProfile, {
     resolve: async (reference) => {
+      if (!("artifact_type" in reference)) return null;
       const resolved = await input.receipt_store.resolve(reference);
       return resolved.ok ? resolved.value : null;
     },
     verifyCommitted: async (reference) => {
+      if (!("artifact_type" in reference)) return false;
       const verified = await input.receipt_store.verify(reference);
       return verified.ok && verified.value;
     },

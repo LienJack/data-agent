@@ -15,20 +15,24 @@ const LOCAL_DEFAULTS = Object.freeze({
   SEMANTIC_GOVERNANCE_BACKEND: "postgres",
   SEMANTIC_EXPLORER_ENABLED: "true",
   SEMANTIC_DEPLOYMENT_ID: LOCAL_DEPLOYMENT_ID,
+  WORKSPACE_DEPLOYMENT_ID: LOCAL_DEPLOYMENT_ID,
+  BETTER_AUTH_SECRET: "data-agent-local-development-secret-change-me",
+  BETTER_AUTH_URL: "http://localhost:3000",
   DATA_AGENT_ECOMMERCE_HOST: "127.0.0.1",
   DATA_AGENT_ECOMMERCE_PORT: "5432",
   DATA_AGENT_ECOMMERCE_DATABASE: "data_agent",
   DATA_AGENT_ECOMMERCE_READER_PASSWORD: "data-agent-ecommerce-demo-change-me",
   SEMANTIC_TENANT_ID: LOCAL_TENANT_ID,
   SEMANTIC_PRINCIPAL_ID: LOCAL_PRINCIPAL_ID,
-  SEMANTIC_ALLOWED_DOMAINS: "revenue,customer,marketing,sales",
+  SEMANTIC_ALLOWED_DOMAINS: "revenue,customer,marketing,sales,ecommerce",
   SEMANTIC_RELATIONSHIP_INDEX_ENABLED: "true",
-  SEMANTIC_RELATIONSHIP_DOMAINS: "sales",
+  SEMANTIC_RELATIONSHIP_DOMAINS: "sales,ecommerce",
   SEMANTIC_RELATIONSHIP_INDEX_HEALTH_PORT: "9090",
   WORKER_DEPLOYMENT_ID: LOCAL_DEPLOYMENT_ID,
   WORKER_TENANT_ID: LOCAL_TENANT_ID,
   WORKER_PRINCIPAL_ID: LOCAL_PRINCIPAL_ID,
   WORKER_ID: "worker-local",
+  SEMANTIC_AUTHORING_WORKER_ID: "semantic-authoring-worker-local",
   WORKER_HEALTH_PORT: "9091",
   NEO4J_URI: "bolt://127.0.0.1:7687",
   NEO4J_USERNAME: "neo4j",
@@ -40,6 +44,35 @@ const LOCAL_DEFAULTS = Object.freeze({
 });
 
 type EnvironmentLayer = Readonly<Record<string, string | undefined>>;
+
+interface LocalSuperadminSyncResult {
+  readonly terminal: "SUCCEEDED" | "SKIPPED" | "HOLD";
+  readonly reason_code: string;
+  readonly principal_id?: string;
+  readonly workspace_id?: string;
+}
+
+export function isLocalSuperadminSyncEnabled(environment: EnvironmentLayer): boolean {
+  return environment.DATA_AGENT_LOCAL_SUPERADMIN_SYNC?.trim() === "YES";
+}
+
+export function applyLocalSuperadminAuthority(
+  environment: NodeJS.ProcessEnv,
+  result: LocalSuperadminSyncResult,
+): NodeJS.ProcessEnv {
+  if (result.terminal !== "SUCCEEDED" || !result.principal_id || !result.workspace_id) {
+    return environment;
+  }
+  return {
+    ...environment,
+    SEMANTIC_TENANT_ID: result.workspace_id,
+    SEMANTIC_PRINCIPAL_ID: result.principal_id,
+    WORKER_TENANT_ID: result.workspace_id,
+    WORKER_PRINCIPAL_ID: result.principal_id,
+    TEST_CENTER_TENANT_ID: result.workspace_id,
+    TEST_CENTER_PRINCIPAL_ID: result.principal_id,
+  };
+}
 
 export function mergeLocalDevelopmentEnvironment(
   input: Readonly<{
@@ -62,6 +95,7 @@ export function mergeLocalDevelopmentEnvironment(
     merged.MOONSHOT_API_KEY = merged.KimiAPIKey;
   }
   merged.WORKER_DEPLOYMENT_ID ||= merged.SEMANTIC_DEPLOYMENT_ID ?? LOCAL_DEPLOYMENT_ID;
+  merged.WORKSPACE_DEPLOYMENT_ID ||= merged.SEMANTIC_DEPLOYMENT_ID ?? LOCAL_DEPLOYMENT_ID;
   merged.WORKER_TENANT_ID ||= merged.SEMANTIC_TENANT_ID ?? LOCAL_TENANT_ID;
   merged.WORKER_PRINCIPAL_ID ||= merged.SEMANTIC_PRINCIPAL_ID ?? LOCAL_PRINCIPAL_ID;
   return merged;
@@ -80,7 +114,7 @@ function loadLocalDevelopmentEnvironment(): NodeJS.ProcessEnv {
 }
 
 export interface LocalApplicationProcessSpec {
-  readonly name: "web" | "worker" | "indexer";
+  readonly name: "web" | "worker" | "indexer" | "semantic-authoring";
   readonly command: "pnpm";
   readonly args: readonly string[];
 }
@@ -102,6 +136,11 @@ export function buildLocalApplicationProcessSpecs(): readonly LocalApplicationPr
       command: "pnpm",
       args: ["--filter", "@data-agent/worker", "dev:indexer"],
     },
+    {
+      name: "semantic-authoring",
+      command: "pnpm",
+      args: ["--filter", "@data-agent/worker", "dev:semantic-authoring"],
+    },
   ];
 }
 
@@ -115,6 +154,27 @@ function runCommand(command: string, args: readonly string[], environment = proc
   if (result.status !== 0) {
     throw new Error(`COMMAND_FAILED:${command}:${result.status ?? "signal"}`);
   }
+}
+
+function runOptionalLocalSuperadminSync(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (!isLocalSuperadminSyncEnabled(environment)) return environment;
+  const result = spawnSync("pnpm", ["exec", "tsx", "apps/web/src/cli/local-superadmin-sync.ts"], {
+    cwd: REPOSITORY_ROOT,
+    env: environment,
+    encoding: "utf8",
+  });
+  if (result.error) throw result.error;
+  let parsed: LocalSuperadminSyncResult;
+  try {
+    parsed = JSON.parse(result.stdout) as LocalSuperadminSyncResult;
+  } catch {
+    throw new Error("DEV_SUPERADMIN_SYNC_RESULT_INVALID");
+  }
+  if (result.status !== 0 || parsed.terminal !== "SUCCEEDED") {
+    throw new Error(parsed.reason_code || "DEV_SUPERADMIN_SYNC_FAILED");
+  }
+  console.info(`Local superadmin sync: ${parsed.reason_code}`);
+  return applyLocalSuperadminAuthority(environment, parsed);
 }
 
 interface ComposeContainerState {
@@ -427,12 +487,13 @@ type RuntimeCommand =
   | "web"
   | "worker"
   | "indexer"
+  | "semantic-authoring"
   | "docker-migrate"
   | "docker-up"
   | "docker-down";
 
 async function main(command: RuntimeCommand | undefined): Promise<number> {
-  const environment = loadLocalDevelopmentEnvironment();
+  let environment = loadLocalDevelopmentEnvironment();
   switch (command) {
     case "infra":
       runCommand(
@@ -461,12 +522,18 @@ async function main(command: RuntimeCommand | undefined): Promise<number> {
       return 0;
     case "dev":
       await main("infra");
+      // Admin sync depends on the newest governed SQL surface. Keep the
+      // existing migration-ledger diagnostic ahead of any optional write so a
+      // stale local database still receives the actionable migrate message.
+      assertMigrationLedgerCurrent();
+      environment = runOptionalLocalSuperadminSync(environment);
       await runDevelopmentCheck(environment);
       return superviseApplications(buildLocalApplicationProcessSpecs(), environment);
     case "apps":
     case "web":
     case "worker":
     case "indexer":
+    case "semantic-authoring":
       return superviseApplications(selectApplicationSpecs(command), environment);
     case "docker-migrate":
       runCommand("docker", ["compose", "up", "-d", "--wait", "postgres"], environment);
@@ -489,7 +556,7 @@ async function main(command: RuntimeCommand | undefined): Promise<number> {
       return 0;
     default:
       console.error(
-        "Usage: local-dev-runtime.ts <dev|infra|migrate|check|apps|web|worker|indexer|docker-migrate|docker-up|docker-down>",
+        "Usage: local-dev-runtime.ts <dev|infra|migrate|check|apps|web|worker|indexer|semantic-authoring|docker-migrate|docker-up|docker-down>",
       );
       return 2;
   }

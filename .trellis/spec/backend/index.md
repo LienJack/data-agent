@@ -22,6 +22,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Test Center 与系统模型](./benchmark-test-center.md) | 环境模型、题库安装、密封 Oracle、反省与 Holdout 发布门禁 | 已建立 |
 | [Falcon Agent Release Gate](./falcon-agent-release-gate.md) | 28 库/500 题 Agent Team、隔离、恢复、冷启动与绝对发布门禁 | 已建立 |
 | [Semantic Relationship Index](./semantic-relationship-index.md) | PostgreSQL 权威、Neo4j 投影、搜索回退与索引器闭环 | 已建立 |
+| [工作空间、身份与计费权威](./workspace-identity-billing.md) | Workspace Scope、RBAC、幂等管理命令和账务精度/状态机 | 已建立 |
 | [Q&A 对话资源绑定](./qa-conversation-resource-binding.md) | Composer、Conversation 冻结、Run 快照与 Worker 发布门禁 | 已建立，真实执行 HOLD |
 | [Provider Invocation Authority](./provider-invocation-authority.md) | U2 配置到 Provider Intent、Dispatch、Response、Usage 的持久权威链 | 已建立 |
 | [统一 Job Center](./job-center.md) | 后台 Job、Lease/Fence、Handler Heartbeat 与 Capability Readiness | 已建立 |
