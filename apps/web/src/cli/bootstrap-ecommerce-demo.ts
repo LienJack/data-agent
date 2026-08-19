@@ -15,7 +15,9 @@ const configSchema = z.strictObject({
 
 function repositoryRoot(): string {
   const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps" ? resolve(cwd, "../..") : cwd;
+  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
+    ? resolve(cwd, "../..")
+    : cwd;
 }
 function report(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
@@ -33,16 +35,33 @@ if (process.env[CONFIRMATION_VARIABLE]?.trim() !== "YES") {
 } else {
   const config = configSchema.safeParse({
     databaseUrl: process.env.AUTH_DATABASE_URL ?? process.env.DATABASE_URL,
-    workspaceSlug: process.env.DATA_AGENT_ECOMMERCE_WORKSPACE_SLUG ?? process.env.DATA_AGENT_BOOTSTRAP_WORKSPACE_SLUG ?? "main-workspace",
+    workspaceSlug:
+      process.env.DATA_AGENT_ECOMMERCE_WORKSPACE_SLUG ??
+      process.env.DATA_AGENT_BOOTSTRAP_WORKSPACE_SLUG ??
+      "main-workspace",
   });
   if (!config.success) {
-    report({ schema_version: "ecommerce-demo-workspace-bootstrap-result@1.0.0", terminal: "HOLD", reason_code: "ECOMMERCE_DEMO_BOOTSTRAP_CONFIGURATION_INVALID" });
+    report({
+      schema_version: "ecommerce-demo-workspace-bootstrap-result@1.0.0",
+      terminal: "HOLD",
+      reason_code: "ECOMMERCE_DEMO_BOOTSTRAP_CONFIGURATION_INVALID",
+    });
     process.exitCode = 64;
   } else {
-    const client = new Client({ connectionString: config.data.databaseUrl, application_name: "data-agent-ecommerce-demo-bootstrap", connectionTimeoutMillis: 5_000, statement_timeout: 60_000 });
+    const client = new Client({
+      connectionString: config.data.databaseUrl,
+      application_name: "data-agent-ecommerce-demo-bootstrap",
+      connectionTimeoutMillis: 5_000,
+      statement_timeout: 60_000,
+    });
     try {
       await client.connect();
-      const target = await client.query<{ app_id: string; workspace_id: string; environment: string; principal_id: string }>(
+      const target = await client.query<{
+        app_id: string;
+        workspace_id: string;
+        environment: string;
+        principal_id: string;
+      }>(
         `select workspace.app_id, workspace.workspace_id, workspace.environment, membership.principal_id
          from app_data_agent.workspaces as workspace
          join app_data_agent.memberships as membership
@@ -56,19 +75,32 @@ if (process.env[CONFIRMATION_VARIABLE]?.trim() !== "YES") {
            and app_user.system_role = 'SUPER_ADMIN' and app_user.status = 'ACTIVE'`,
         [config.data.workspaceSlug],
       );
-      if (target.rowCount !== 1 || !target.rows[0]) throw new Error("ECOMMERCE_DEMO_BOOTSTRAP_TARGET_AMBIGUOUS");
+      if (target.rowCount !== 1 || !target.rows[0])
+        throw new Error("ECOMMERCE_DEMO_BOOTSTRAP_TARGET_AMBIGUOUS");
       const row = target.rows[0];
       await client.query("begin");
       const result = await attachEcommerceDemoToWorkspace(
         client,
-        { appId: row.app_id, workspaceId: row.workspace_id, environment: row.environment, principalId: row.principal_id },
+        {
+          appId: row.app_id,
+          workspaceId: row.workspace_id,
+          environment: row.environment,
+          principalId: row.principal_id,
+        },
         resolveEcommerceDemoConnectionConfiguration(process.env, row.environment),
       );
       await client.query("commit");
       report(result);
-    } catch {
+    } catch (error) {
       await client.query("rollback").catch(() => undefined);
-      report({ schema_version: "ecommerce-demo-workspace-bootstrap-result@1.0.0", terminal: "HOLD", reason_code: "ECOMMERCE_DEMO_BOOTSTRAP_FAILED" });
+      const message = error instanceof Error ? error.message : "";
+      report({
+        schema_version: "ecommerce-demo-workspace-bootstrap-result@1.0.0",
+        terminal: "HOLD",
+        reason_code: /^[A-Z][A-Z0-9_]{2,127}$/u.test(message)
+          ? message
+          : "ECOMMERCE_DEMO_BOOTSTRAP_FAILED",
+      });
       process.exitCode = 2;
     } finally {
       await client.end().catch(() => undefined);

@@ -60,20 +60,13 @@ export {
   type Unit,
   unitSchema,
 } from "@data-agent/contracts";
-export * from "./candidate-generation/index.js";
 export * from "./authoring/index.js";
-export * from "./read-model/index.js";
+export * from "./candidate-generation/index.js";
 export {
   ContributionLoweringStatus,
   type DescriptiveContributionLoweringResult,
   lowerDescriptiveContributionProfile,
 } from "./compiler/contribution-profile-compiler.js";
-export * from "./graph-v2/canonicalize.js";
-export * from "./graph-v2/compiler.js";
-export * from "./graph-v2/errors.js";
-export * from "./graph-v2/ontology-package.js";
-export * from "./graph-v2/patch-reducer.js";
-export * from "./graph-v2/validator.js";
 export {
   computeLowerabilityProof,
   type LowerabilityProof,
@@ -115,6 +108,12 @@ export {
   type SemanticExplorerSearchEntry,
   semanticExplorerIdentityKey,
 } from "./explorer/index.js";
+export * from "./graph-v2/canonicalize.js";
+export * from "./graph-v2/compiler.js";
+export * from "./graph-v2/errors.js";
+export * from "./graph-v2/ontology-package.js";
+export * from "./graph-v2/patch-reducer.js";
+export * from "./graph-v2/validator.js";
 export {
   computeBundleImpact,
   type ImpactEntry,
@@ -122,6 +121,7 @@ export {
   type ImpactResult,
 } from "./impact/impact-analyzer.js";
 export * from "./induction/index.js";
+export * from "./read-model/index.js";
 export {
   buildSemanticRelationshipGraphManifest,
   createSemanticRelationshipSearchService,

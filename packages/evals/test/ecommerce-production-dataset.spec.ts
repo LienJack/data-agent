@@ -23,9 +23,16 @@ afterEach(async () => {
 });
 
 describe("E-commerce production preview dataset", () => {
+  it("resolves the committed suite at runtime without a bundler asset import", async () => {
+    const dataset = await loadEcommerceProductionPreview();
+    expect(dataset.public_cases).toHaveLength(24);
+  });
+
   it("exposes all 24 public cases with real PostgreSQL table schemas while remaining HOLD", async () => {
     const dataset = await loadEcommerceProductionPreview(fixtureRoot);
     expect(dataset.readiness).toBe("HOLD");
+    expect(dataset.public_cases.filter((testCase) => testCase.runnable)).toHaveLength(16);
+    expect(dataset.public_cases.filter((testCase) => !testCase.runnable)).toHaveLength(8);
     expect(dataset.public_cases).toHaveLength(24);
     expect(dataset.public_cases.filter((testCase) => testCase.registry === "HOLDOUT")).toHaveLength(
       6,

@@ -14,6 +14,8 @@ import type {
   TableMapping,
 } from "@/lib/data-link-types";
 import { createProposal } from "@/lib/semantic-api";
+import { useWorkspaceId } from "@/lib/use-workspace-id";
+import { workspacePath } from "@/lib/workspace-routes";
 
 interface SemanticEditorProps {
   /** 编辑模式：新建或修改 */
@@ -30,6 +32,7 @@ interface SemanticEditorProps {
  */
 export function SemanticEditor({ mode, model }: SemanticEditorProps) {
   const router = useRouter();
+  const workspaceId = useWorkspaceId();
   const [name, setName] = useState(model?.name ?? "");
   const [description, setDescription] = useState(model?.description ?? "");
   const [domain, setDomain] = useState(model?.domain ?? "");
@@ -64,13 +67,18 @@ export function SemanticEditor({ mode, model }: SemanticEditorProps) {
       });
 
       // M0 只创建 DRAFT，不伪造尚未存在的 ReviewPacket。
-      router.push(`/semantic?candidateId=${result.candidate_id}&status=draft`);
+      router.push(
+        workspacePath(
+          workspaceId,
+          `semantic?candidateId=${encodeURIComponent(result.candidate_id)}&status=draft`,
+        ),
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "提交审核失败");
     } finally {
       setSubmitting(false);
     }
-  }, [name, description, domain, model, router]);
+  }, [name, description, domain, model, router, workspaceId]);
 
   const tabs = [
     {

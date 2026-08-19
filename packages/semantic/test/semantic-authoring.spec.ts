@@ -33,7 +33,14 @@ function toolResult(toolCalls: readonly SemanticAuthoringToolCall[]): AgentTurnR
     response_digest: responseDigest,
     assistant_text: "",
     tool_calls: JSON.parse(JSON.stringify(toolCalls)),
-    usage: { input_tokens: 10, output_tokens: 10, tool_calls: toolCalls.length },
+    usage: {
+      availability: "AVAILABLE",
+      source: "PROVIDER_REPORTED",
+      input_tokens: 10,
+      output_tokens: 10,
+      tool_calls: toolCalls.length,
+      unavailable_reason: null,
+    },
   });
 }
 
@@ -363,7 +370,14 @@ describe("Semantic authoring Agent tool loop", () => {
         terminal: "FINAL",
         response_digest: responseDigest,
         assistant_text: "done",
-        usage: { input_tokens: 1, output_tokens: 1, tool_calls: 0 },
+        usage: {
+          availability: "AVAILABLE",
+          source: "PROVIDER_REPORTED",
+          input_tokens: 1,
+          output_tokens: 1,
+          tool_calls: 0,
+          unavailable_reason: null,
+        },
       }),
     ]);
     const agent: AgentTurnPort = {

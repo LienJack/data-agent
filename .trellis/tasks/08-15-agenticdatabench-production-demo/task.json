@@ -21,6 +21,6 @@
   "children": [],
   "parent": null,
   "relatedFiles": [],
-  "notes": "用户已确认压缩 seed bundle 随仓库分发且标准启动不二次联网，并最终决定采用真实 CPython 3.12 Sandbox。固定数据、Schema 隔离、Workspace 绑定、语义 Draft、24 题公开预览和隔离 Python runtime 已实现；Runner/Oracle、语义发布、取消与完整容器对抗门禁尚未闭合，因此任务继续 in_progress 且套件保持 HOLD。",
+  "notes": "用户已确认压缩 seed bundle 随仓库分发且标准启动不二次联网，并最终决定采用真实 CPython 3.12 Sandbox。固定数据、Schema 隔离、Workspace 绑定与语义发布已完成；Production Suite 的 16 道 SQL 题已接入认证模型、真实 PostgreSQL Oracle 与持久化 ScoreCard，套件状态为 READY。8 道 Python 题仍按题保持 HOLD，Python Artifact Runner、取消与完整容器对抗门禁尚未闭合，因此任务继续 in_progress。",
   "meta": {}
 }

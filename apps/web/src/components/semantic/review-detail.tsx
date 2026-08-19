@@ -202,7 +202,7 @@ export function ReviewDetail({ packetId, onBack }: ReviewDetailProps) {
                       reviewer.decision === "approved"
                         ? "success"
                         : reviewer.decision === "rejected"
-                          ? "destructive"
+                          ? "danger"
                           : "outline"
                     }
                   >
@@ -340,7 +340,7 @@ export function ReviewDetail({ packetId, onBack }: ReviewDetailProps) {
           <Badge
             variant={
               packet.riskLevel === "critical" || packet.riskLevel === "high"
-                ? "destructive"
+                ? "danger"
                 : packet.riskLevel === "medium"
                   ? "warning"
                   : "default"
@@ -381,14 +381,14 @@ export function ReviewDetail({ packetId, onBack }: ReviewDetailProps) {
               />
               <div className="flex gap-2">
                 <Button
-                  variant="default"
+                  variant="primary"
                   loading={decisionLoading}
                   onClick={() => void handleDecision("approved")}
                 >
                   批准
                 </Button>
                 <Button
-                  variant="destructive"
+                  variant="danger"
                   loading={decisionLoading}
                   onClick={() => void handleDecision("rejected")}
                 >

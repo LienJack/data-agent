@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   type benchmarkTableSchema,
   type PublicBenchmarkCase,
@@ -254,12 +255,19 @@ export interface EcommerceProductionSqlDataset {
 }
 
 function defaultProductionSuiteDirectory(): string {
-  const cwd = resolve(process.cwd());
-  const root =
-    basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-      ? resolve(cwd, "../..")
-      : cwd;
-  return resolve(root, "infra/agenticdatabench/ecommerce-v1/production-suite");
+  const relativeDirectory = "infra/agenticdatabench/ecommerce-v1/production-suite";
+  const candidateDirectories = [
+    resolve(process.cwd(), relativeDirectory),
+    resolve(process.cwd(), "../..", relativeDirectory),
+  ];
+
+  for (const candidateDirectory of candidateDirectories) {
+    if (existsSync(resolve(candidateDirectory, "manifest.json"))) {
+      return candidateDirectory;
+    }
+  }
+
+  throw new Error("ECOMMERCE_PRODUCTION_SUITE_NOT_FOUND");
 }
 
 /** Loads public-only material. This adapter deliberately never opens the sealed directory. */
@@ -295,11 +303,15 @@ export async function loadEcommerceProductionPreview(
       ordinal: sourceCase.ordinal - 1,
       database_id: "demo_adb_ecommerce_mart",
       question: sourceCase.question,
-      evidence: `题目：${sourceCase.title}；预期产物：${sourceCase.outputs.join("、")}；当前仅预览，Runner 与 Artifact Oracle 尚未认证。`,
+      evidence: `题目：${sourceCase.title}；预期产物：${sourceCase.outputs.join("、")}。${sourceCase.python_required ? "该题需要 SQL 与 Python Artifact Runner。" : "该题已接入认证模型、PostgreSQL 结果 Oracle 与 ScoreCard。"}`,
       difficulty: sourceCase.difficulty,
       capabilities: sourceCase.capabilities,
       registry: sourceCase.registry,
       schema: sourceCase.tables.map((tableName) => tableCatalog[tableName]),
+      runnable: !sourceCase.python_required,
+      status_reason: sourceCase.python_required
+        ? "该题的 SQL 数据准备与 Python Sandbox 已安装，但 Python Artifact Runner 尚未接入 Test Center。"
+        : null,
     };
     publicCases.push(
       publicBenchmarkCaseSchema.parse({

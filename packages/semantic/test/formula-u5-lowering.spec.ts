@@ -69,6 +69,31 @@ describe("Formula U5 Lowering", () => {
     expect(result.errors.length).toBe(0);
   });
 
+  it.each(["avg", "min", "max", "count_distinct"] as const)(
+    "non-additive %s metric is lowerable without falsifying additivity",
+    async (aggregation) => {
+      const bundle = {
+        metadata: baseMetadata,
+        formulas: [],
+        metrics: [
+          {
+            ...baseMetric,
+            metric_id: `metric-${aggregation}`,
+            aggregation,
+            additivity: "non-additive" as const,
+          },
+        ],
+        dimensions: [],
+        relationships: [],
+        runtime_authorization: undefined,
+      };
+      const result = await compileU5Projection(bundle);
+      expect(getLowerabilityVerdict(result)).toBe("LOWERABLE_TO_U5");
+      expect(result.errors).toEqual([]);
+      expect(result.semantic.metrics[0]?.additivity).toBe("non-additive");
+    },
+  );
+
   it("ratio formula is not lowerable", () => {
     const bundle = {
       metadata: baseMetadata,

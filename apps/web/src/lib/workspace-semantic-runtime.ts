@@ -1,13 +1,13 @@
 import "server-only";
 
 import type { NextRequest } from "next/server";
-import { createCapabilitySchemaDiscoveryAuthorityResolver } from "./schema-discovery-authority";
 import {
   createEcommerceDemoConnectorFactory,
   createEcommerceDemoEgressAuthorizer,
   createEcommerceDemoSecretResolver,
   ecommerceDemoRuntimeEnvironment,
 } from "./ecommerce-demo-datasource-runtime";
+import { createCapabilitySchemaDiscoveryAuthorityResolver } from "./schema-discovery-authority";
 import {
   createSchemaDiscoveryDatasourceResolver,
   createWorkspaceDatasourceMetadataResolver,
@@ -17,6 +17,10 @@ import {
   type SchemaDiscoveryRuntime,
 } from "./schema-discovery-runtime";
 import { createCapabilitySemanticAuthorityResolver } from "./semantic-authority";
+import {
+  createSemanticCandidateRuntime,
+  type SemanticCandidateRuntime,
+} from "./semantic-candidate-runtime";
 import {
   createSemanticExplorerRuntime,
   type SemanticExplorerRuntime,
@@ -87,6 +91,23 @@ export async function getWorkspaceSemanticGovernanceRuntime(
     ok: true,
     runtime: createSemanticGovernanceRuntime({
       environment: { ...process.env, SEMANTIC_GOVERNANCE_BACKEND: "postgres" },
+      sqlPool: dependencies.sqlPool,
+      transactionalAuthorizer: dependencies.authorizer,
+      authorityResolver: dependencies.resolver,
+    }),
+  };
+}
+
+export async function getWorkspaceSemanticCandidateRuntime(
+  request: NextRequest,
+  access: "READ" | "WRITE",
+): Promise<WorkspaceSemanticRuntimeResult<SemanticCandidateRuntime>> {
+  const dependencies = await requestDependencies(request, access);
+  if (!dependencies.ok) return dependencies;
+  return {
+    ok: true,
+    runtime: createSemanticCandidateRuntime({
+      environment: process.env,
       sqlPool: dependencies.sqlPool,
       transactionalAuthorizer: dependencies.authorizer,
       authorityResolver: dependencies.resolver,

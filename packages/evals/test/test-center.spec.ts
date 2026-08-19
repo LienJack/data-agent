@@ -52,17 +52,17 @@ describe("benchmark catalog", () => {
     expect(catalog.find((suite) => suite.suite_id === "blade")?.supports_reflection).toBe(true);
   });
 
-  it("separates E-commerce public preview from unverified execution readiness", async () => {
+  it("advertises verified E-commerce SQL execution while retaining per-case Python gates", async () => {
     const root = await mkdtemp(join(tmpdir(), "data-agent-catalog-"));
     temporaryDirectories.push(root);
     const catalog = await getBenchmarkCatalog(root);
     const suite = catalog.find((entry) => entry.suite_id === "ecommerce-production");
     expect(suite).toMatchObject({
-      dataset_status: "INVALID",
+      dataset_status: "READY",
       previewable: true,
-      runnable: false,
-      installed_digest: null,
+      runnable: true,
     });
+    expect(suite?.installed_digest).toMatch(/^sha256:[a-f0-9]{64}$/u);
   });
 });
 

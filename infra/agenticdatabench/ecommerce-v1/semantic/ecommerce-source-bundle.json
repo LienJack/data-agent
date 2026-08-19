@@ -18,7 +18,7 @@
       "policy_version": "ecommerce-semantic-policy@1.0.0"
     },
     "created_at": "2026-08-15T00:00:00Z",
-    "description": "AgenticDataBench E-commerce Demo v1 人工审核前的固定语义候选模板。"
+    "description": "AgenticDataBench E-commerce Demo v1 固定、可审核并由 Workspace bootstrap 发布的语义源。"
   },
   "formulas": [],
   "metrics": [
@@ -2575,7 +2575,7 @@
       }
     ],
     "owner": "Data Agent Demo",
-    "lifecycle": "draft"
+    "lifecycle": "active"
   },
   "physical_binding": {
     "entries": [

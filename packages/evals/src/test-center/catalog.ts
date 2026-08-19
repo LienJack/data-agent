@@ -33,6 +33,7 @@ import {
   type DrSpiderImportReceipt,
   drSpiderImportReceiptSchema,
 } from "./dr-spider-source.js";
+import { loadEcommerceProductionPreview } from "./ecommerce-production-dataset.js";
 import { verifyFalconBundle } from "./falcon-dataset.js";
 import {
   INSIGHTBENCH_DATASET_VERSION,
@@ -340,6 +341,28 @@ async function insightBenchInstallationState(root: string): Promise<{
         digest: null,
         reason: "InsightBench 安装目录存在，但 Import Receipt 或文件摘要不一致。",
       };
+}
+
+async function ecommerceProductionInstallationState(): Promise<{
+  readonly status: "READY" | "INVALID";
+  readonly reason: string;
+  readonly digest: `sha256:${string}` | null;
+}> {
+  try {
+    const dataset = await loadEcommerceProductionPreview();
+    const runnableCases = dataset.public_cases.filter((testCase) => testCase.runnable).length;
+    return {
+      status: "READY",
+      reason: `${runnableCases} 道 SQL 题已接入认证模型、真实 PostgreSQL Oracle 与权威 ScoreCard；8 道 SQL+Python 题按题目标记 HOLD，不再阻断整个 Demo。`,
+      digest: dataset.dataset_digest,
+    };
+  } catch {
+    return {
+      status: "INVALID",
+      reason: "固定 E-commerce 题库资产摘要校验失败。",
+      digest: null,
+    };
+  }
 }
 
 async function falconInstallationState(): Promise<{
@@ -732,6 +755,7 @@ export async function getBenchmarkCatalog(
   const insightBenchState = await insightBenchInstallationState(root);
   const drSpiderState = await drSpiderInstallationState(root);
   const bladeState = await bladeInstallationState(root);
+  const ecommerceState = await ecommerceProductionInstallationState();
   const falconState = await falconInstallationState();
   return Object.freeze(
     fixedCatalogEntries(now).map((entry) => {
@@ -816,6 +840,16 @@ export async function getBenchmarkCatalog(
           installed_digest: null,
         });
       }
+      if (entry.suite_id === "ecommerce-production") {
+        return benchmarkCatalogEntrySchema.parse({
+          ...entry,
+          dataset_status: ecommerceState.status,
+          status_reason: ecommerceState.reason,
+          previewable: ecommerceState.status === "READY",
+          runnable: ecommerceState.status === "READY",
+          installed_digest: ecommerceState.digest,
+        });
+      }
       if (entry.suite_id === "falcon") {
         return benchmarkCatalogEntrySchema.parse({
           ...entry,
@@ -826,16 +860,13 @@ export async function getBenchmarkCatalog(
           installed_digest: falconState.digest,
         });
       }
-      if (
-        entry.suite_id === "agenticdatabench-ecommerce" ||
-        entry.suite_id === "ecommerce-production"
-      ) {
+      if (entry.suite_id === "agenticdatabench-ecommerce") {
         return benchmarkCatalogEntrySchema.parse({
           ...entry,
           dataset_status: "INVALID",
           status_reason:
-            "固定数据与题库资产已安装，但 PostgreSQL/Python Artifact Oracle 尚未完成端到端认证；保持 HOLD。",
-          previewable: entry.suite_id === "ecommerce-production",
+            "官方兼容套件的多格式 Artifact Adapter 尚未完成认证；不与 Production Suite 混报。",
+          previewable: false,
           runnable: false,
           installed_digest: null,
         });

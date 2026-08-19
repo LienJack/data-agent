@@ -11,6 +11,7 @@ import type {
   SemanticRelationshipEdgeCategory,
   SemanticRelationshipSearchResult,
 } from "@data-agent/contracts";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   getActiveExplorerSnapshot,
@@ -56,6 +57,7 @@ function publicError(error: unknown): { code: string; message: string; permissio
 }
 
 export function ExplorerWorkspace() {
+  const pathname = usePathname();
   const [state, dispatch] = useReducer(semanticExplorerReducer, initialExplorerState);
   const [domains, setDomains] = useState<readonly SemanticExplorerDomainSummary[]>([]);
   const [domainCatalogState, setDomainCatalogState] = useState<"loading" | "ready" | "error">(
@@ -142,7 +144,7 @@ export function ExplorerWorkspace() {
           domain,
           releaseId: snapshot.release_identity.release_id,
         });
-        window.history.replaceState(null, "", `/semantic/explorer?${params.toString()}`);
+        window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
 
         const timelineResult = await timelinePromise;
         if (requestEpoch.current !== epoch) return;
@@ -169,7 +171,7 @@ export function ExplorerWorkspace() {
         });
       }
     },
-    [cancelAuxiliaryOperation, cancelLineageOperation],
+    [cancelAuxiliaryOperation, cancelLineageOperation, pathname],
   );
 
   useEffect(() => {

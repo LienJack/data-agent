@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SYSTEM_MODEL_DEPLOYMENT_OVERRIDES } from "@data-agent/agent-runtime";
-import { executeEcommerceSqlAcceptance } from "../lib/test-center-runtime";
+import { CERTIFIED_MODEL_SQL_AGENT_ID } from "@data-agent/contracts";
+import { executeTestCenterRun } from "../lib/test-center-runtime";
 
 const CONFIRMATION = "DATA_AGENT_ALLOW_ECOMMERCE_AGENT_ACCEPTANCE";
 const DEFAULT_CASE_ID = "ec100000-0000-4000-8000-000000000004";
@@ -23,12 +24,28 @@ if (process.env[CONFIRMATION]?.trim() !== "YES") {
     process.env.DATA_AGENT_MODEL_PROVIDER_OVERRIDES ||= JSON.stringify(
       SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
     );
-    const run = await executeEcommerceSqlAcceptance({
-      case_id: process.env.DATA_AGENT_ECOMMERCE_ACCEPTANCE_CASE_ID?.trim() || DEFAULT_CASE_ID,
-      idempotency_key:
-        process.env.DATA_AGENT_ECOMMERCE_ACCEPTANCE_IDEMPOTENCY_KEY?.trim() || randomUUID(),
-      reflection_enabled: process.env.DATA_AGENT_ECOMMERCE_ACCEPTANCE_REFLECTION !== "NO",
-    });
+    const caseId = process.env.DATA_AGENT_ECOMMERCE_ACCEPTANCE_CASE_ID?.trim() || DEFAULT_CASE_ID;
+    const reflectionEnabled = process.env.DATA_AGENT_ECOMMERCE_ACCEPTANCE_REFLECTION !== "NO";
+    const run = await executeTestCenterRun(
+      {
+        suite_id: "ecommerce-production",
+        suite_version: "1.0.0",
+        case_ids: [caseId],
+        agent_id: CERTIFIED_MODEL_SQL_AGENT_ID,
+        reflection_enabled: reflectionEnabled,
+        seed: 20260815,
+        budget: {
+          max_cases: 1,
+          max_attempts_per_case: reflectionEnabled ? 2 : 1,
+          max_case_duration_ms: 120_000,
+          max_batch_duration_ms: 240_000,
+          max_output_tokens_per_attempt: 4_096,
+          max_cost_micros: 2_000_000,
+          concurrency: 1,
+        },
+      },
+      process.env.DATA_AGENT_ECOMMERCE_ACCEPTANCE_IDEMPOTENCY_KEY?.trim() || randomUUID(),
+    );
     const attempt = run.case_runs[0]?.attempts.at(-1);
     report({
       schema_version: "ecommerce-agent-acceptance-result@1.0.0",

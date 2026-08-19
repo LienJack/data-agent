@@ -8,7 +8,11 @@ function explorerEnabled(): boolean {
   );
 }
 
-export default function SemanticExplorerPage() {
+export default function SemanticExplorerPage({
+  returnHref = "/workspaces",
+}: {
+  returnHref?: string;
+}) {
   return (
     <main className="min-h-screen bg-[var(--color-bg-secondary)] px-4 py-6 md:px-8">
       <div className="mx-auto w-full max-w-[1680px]">
@@ -37,7 +41,7 @@ export default function SemanticExplorerPage() {
               pointer、release 或 projection。
             </p>
             <Link
-              href="/semantic"
+              href={returnHref}
               className="mt-4 inline-flex rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-white"
             >
               返回 Review Workspace

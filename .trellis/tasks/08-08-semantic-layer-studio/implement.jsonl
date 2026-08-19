@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/index.md","reason":"Route each milestone to the owning backend guidelines."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"The roadmap crosses catalog, contract, service, API, UI and runtime layers."}
+{"file":".trellis/tasks/08-08-semantic-layer-studio/research/roadmap-baseline.md","reason":"Preserve authority, milestone and dirty-worktree boundaries."}

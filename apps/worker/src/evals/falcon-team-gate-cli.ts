@@ -255,8 +255,11 @@ async function resolveCertifiedRuntime(pool: Pool, environment: NodeJS.ProcessEn
     },
     {
       resolve: async (reference) =>
-        reference.artifact_id === receiptReference.artifact_id ? claims : null,
-      verifyCommitted: async (reference) => reference.artifact_id === receiptReference.artifact_id,
+        "artifact_id" in reference && reference.artifact_id === receiptReference.artifact_id
+          ? claims
+          : null,
+      verifyCommitted: async (reference) =>
+        "artifact_id" in reference && reference.artifact_id === receiptReference.artifact_id,
     },
   );
   const credential = environment[binding.credential_env]?.trim();

@@ -8,6 +8,14 @@
 - All external JSON, model output, bundle manifests and database JSON are parsed as `unknown` through strict schemas.
 - Implementation proceeds in gates. A failed gate blocks later phases; do not hide a failed import, Oracle or infrastructure condition behind a Demo fallback.
 
+## 2026-08-15 Verified Increment
+
+- PostgreSQL semantic authority now contains an active `ecommerce` release at generation 1 with 32 metrics, 15 dimensions, 8 executable relationships, 14 entities and 46 Chinese terms.
+- The fixed source bundle passes full invariant validation and U5 compilation; non-additive `avg`/`min`/`max`/`count_distinct` metadata remains truthful.
+- `ecommerce-production` is `READY`, previewable and runnable. Its 16 SQL cases use the certified model, real PostgreSQL result Oracle and persisted ScoreCard through the public Test Center execution path.
+- A real Hard case (`ec100000-0000-4000-8000-000000000004`) completed with `PASS`; batch run `49b16939-63b5-48ab-b5b7-f25b1af30ce2` and its Oracle/ScoreCard digests were read back from PostgreSQL.
+- The eight Python-required cases remain individually non-runnable with an explicit Python Artifact Runner reason. They no longer place the whole Production Suite in HOLD, and still block Phase 6–8 completion honestly.
+
 ## Phase 0. Baseline and Collision Check
 
 ### Work

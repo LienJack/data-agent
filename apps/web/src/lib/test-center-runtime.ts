@@ -386,7 +386,7 @@ export async function listTestCenterAgents(
   if (suiteId === "blade") {
     return Object.freeze([(await modelRuntime()).multiple_choice_descriptor]);
   }
-  if (suiteId === "falcon") {
+  if (suiteId === "ecommerce-production" || suiteId === "falcon") {
     return Object.freeze([(await modelRuntime()).sql_descriptor]);
   }
   const suite = await getBenchmarkCatalogEntry(suiteId);
@@ -514,9 +514,9 @@ function completedBatchRun(input: {
 }
 
 /**
- * Server-only acceptance seam for the fixed E-commerce snapshot. It deliberately bypasses the
- * public catalog's HOLD flag, but still requires a certified model, sealed assets, the database
- * reader role, deterministic Oracle evaluation and authoritative ScoreCard persistence.
+ * Server-only compatibility seam for the fixed E-commerce snapshot. New acceptance runs use the
+ * public Test Center execution path; this function remains for callers that need the narrow SQL
+ * contract while retaining the same certified model, Oracle and ScoreCard requirements.
  */
 export async function executeEcommerceSqlAcceptance(input: {
   readonly case_id: string;
@@ -525,7 +525,7 @@ export async function executeEcommerceSqlAcceptance(input: {
 }): Promise<BenchmarkEvalBatchRun> {
   const dataset = await loadEcommerceProductionSqlDataset();
   const testCase = dataset.public_cases.find((candidate) => candidate.case_id === input.case_id);
-  if (!testCase || testCase.capabilities.includes("PYTHON_ANALYSIS")) {
+  if (!testCase?.runnable) {
     throw new TestCenterRuntimeError(
       "TEST_CENTER_SUITE_NOT_READY",
       "当前验收入口只接受已具备确定性结果 Oracle 的 E-commerce SQL Case。",
@@ -710,6 +710,73 @@ export async function executeTestCenterRun(
         timeout_ms: request.budget.max_case_duration_ms,
         max_rows: 100_000,
         oracle_version: "falcon-postgres-expected-result@1.0.0",
+      }),
+    });
+  } else if (request.suite_id === "ecommerce-production") {
+    const dataset = await loadEcommerceProductionSqlDataset();
+    const selectedCases = request.case_ids.map((caseId) =>
+      dataset.public_cases.find((testCase) => testCase.case_id === caseId),
+    );
+    const unavailableIndex = selectedCases.findIndex((testCase) => !testCase?.runnable);
+    if (unavailableIndex >= 0) {
+      const unavailable = selectedCases[unavailableIndex];
+      throw new TestCenterRuntimeError(
+        "TEST_CENTER_SUITE_NOT_READY",
+        unavailable?.status_reason ?? "所选 E-commerce 题目尚未注册可执行 Runner。",
+        409,
+      );
+    }
+    let agent: BenchmarkEvalAgent;
+    if (request.agent_id === CERTIFIED_MODEL_SQL_AGENT_ID) {
+      const runtime = await modelRuntime();
+      if (!runtime.available) {
+        throw new TestCenterRuntimeError(
+          "TEST_CENTER_AGENT_UNSUPPORTED",
+          runtime.sql_descriptor.unavailable_reason ?? "认证 SQL 模型 Agent 尚不可用。",
+          409,
+        );
+      }
+      agent = runtime.createSqlAgent(request.budget);
+    } else if (request.agent_id === SUBMITTED_ANSWER_AGENT_ID) {
+      agent = new SubmittedAnswerAgent(request.submitted_answers ?? {});
+    } else {
+      throw new TestCenterRuntimeError(
+        "TEST_CENTER_AGENT_UNSUPPORTED",
+        "E-commerce Production 当前只注册认证模型 SQL Agent 与提交答案 Agent。",
+        409,
+      );
+    }
+    if (request.reflection_enabled && !agent.descriptor.supports_reflection) {
+      throw new TestCenterRuntimeError(
+        "TEST_CENTER_REFLECTION_UNSUPPORTED",
+        "所选 Agent 不支持受 Oracle 反馈约束的自反省重试。",
+        409,
+      );
+    }
+    execution = await executeSqlBenchmarkBatch({
+      dataset,
+      suite: {
+        suite_id: "ecommerce-production",
+        suite_version: "1.0.0",
+        dataset_version: "adb-ecommerce-bounded-v1",
+        source_commit: "61bb0d6be3439797d2c75a6ede198b0b296cc226",
+        oracle_version: "ecommerce-postgres-result-equivalence@1.0.0",
+        prompt_version: "ecommerce-certified-sql-agent@1.0.0",
+        workflow_version: "test-center-case-runner@1.0.0",
+        evaluator_version: "ecommerce-postgres-evaluator@1.0.0",
+        aggregator_version: "test-center-aggregator@1.0.0",
+      },
+      case_ids: request.case_ids,
+      agent,
+      reflection_enabled: request.reflection_enabled,
+      budget: request.budget,
+      seed: request.seed,
+      batch_run_id: batchRunId,
+      oracle: new PostgresResultOracle({
+        executor: createPostgresEcommerceBenchmarkExecutor({ pool: pool() }),
+        timeout_ms: request.budget.max_case_duration_ms,
+        max_rows: 100_000,
+        oracle_version: "ecommerce-postgres-result-equivalence@1.0.0",
       }),
     });
   } else if (request.suite_id === "bird-mini-dev") {

@@ -1,10 +1,4 @@
-import {
-  type FormulaSignature,
-  SemanticGovernanceError,
-  type SemanticMetric,
-  type SemanticRelationship,
-  type SemanticSourceBundle,
-} from "@data-agent/contracts";
+import type { FormulaSignature, SemanticMetric, SemanticSourceBundle } from "@data-agent/contracts";
 
 /**
  * Lowerability 状态判别。
@@ -62,6 +56,17 @@ function isAggregationU5Lowerable(aggregation: string): boolean {
  */
 function isAdditivityU5Lowerable(additivity: string): boolean {
   return additivity === "additive" || additivity === "semi-additive";
+}
+
+/**
+ * 检查指标的 additivity 是否可降级到 U5。
+ *
+ * U5 的指标执行器原生支持 avg、min、max 与 count_distinct。这些聚合在业务语义上
+ * 必须保留为 non-additive，但不代表它们无法执行。Formula 的可降级范围仍保持更严格，
+ * 避免将 ratio/window 等表达式误判为可执行。
+ */
+function isMetricAdditivityU5Lowerable(additivity: string): boolean {
+  return isAdditivityU5Lowerable(additivity) || additivity === "non-additive";
 }
 
 /**
@@ -211,7 +216,7 @@ export function computeLowerabilityProof(bundle: SemanticSourceBundle): Lowerabi
       reasons.push(`AGGREGATION_NOT_U5_LOWERABLE: ${metric.aggregation}`);
     }
 
-    if (!isAdditivityU5Lowerable(metric.additivity)) {
+    if (!isMetricAdditivityU5Lowerable(metric.additivity)) {
       reasons.push(`ADDITIVITY_NOT_U5_LOWERABLE: ${metric.additivity}`);
     }
 
@@ -228,7 +233,8 @@ export function computeLowerabilityProof(bundle: SemanticSourceBundle): Lowerabi
     }
 
     if (metric.formula) {
-      const formulaProof = proofs.find((p) => p.formulaId === metric.formula!.formula_id);
+      const formulaId = metric.formula.formula_id;
+      const formulaProof = proofs.find((p) => p.formulaId === formulaId);
       if (formulaProof && formulaProof.status === LowerabilityStatus.NOT_LOWERABLE) {
         reasons.push(`FORMULA_NOT_LOWERABLE: ${metric.formula.formula_id}`);
       }
