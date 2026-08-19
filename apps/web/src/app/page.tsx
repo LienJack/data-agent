@@ -1,24 +1,19 @@
 "use client";
 
-import { useCallback, useEffect } from "react";
-import { AuthorityStatusBar } from "@/components/workbench/authority-status-bar";
+import { Database } from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
+import { AnalysisReportDocument } from "@/components/workbench/analysis-report-document";
 import { ClarificationDialog } from "@/components/workbench/clarification-dialog";
-import { EvalSection } from "@/components/workbench/eval-section";
-import { FixtureEvidenceSection } from "@/components/workbench/fixture-evidence-section";
-import { HypothesisSection } from "@/components/workbench/hypothesis-section";
-import { QueryInputSection } from "@/components/workbench/query-input-section";
-import { ReportSection } from "@/components/workbench/report-section";
+import { TaskConsole } from "@/components/workbench/task-console";
+import { WorkbenchComposer } from "@/components/workbench/workbench-composer";
 import { submitBoundAnalysisRun } from "@/lib/analysis-run-submission";
-import {
-  commandRun,
-  getRun,
-  type RunEvent,
-  resolveWorkspaceId,
-  streamRunEvents,
-} from "@/lib/api-client";
+import { getRun, type RunEvent, streamRunEvents } from "@/lib/api-client";
 import { useQAStore } from "@/lib/qa-store";
 import { createM1DemoState, type RunProjection } from "@/lib/run-projection";
+import { useWorkspaceId } from "@/lib/use-workspace-id";
 import { useWorkbenchStore } from "@/lib/workbench-store";
+import { workspaceStorageKey } from "@/lib/workspace-routes";
 
 /** 判断 Run 是否已终止（COMPLETED / FAILED / CANCELLED） */
 function isRunTerminal(status: RunProjection["status"]): boolean {
@@ -26,6 +21,9 @@ function isRunTerminal(status: RunProjection["status"]): boolean {
 }
 
 export default function AnalysisWorkbenchPage() {
+  const workspaceId = useWorkspaceId();
+  const activeRunStorageKey = workspaceId ? workspaceStorageKey(workspaceId, "activeRunId") : "";
+  const [consoleOpen, setConsoleOpen] = useState(true);
   const hydrate = useWorkbenchStore((s) => s.hydrate);
   const setProjection = useWorkbenchStore((s) => s.setProjection);
   const setConnection = useWorkbenchStore((s) => s.setConnection);
@@ -37,9 +35,7 @@ export default function AnalysisWorkbenchPage() {
   const setBusy = useWorkbenchStore((s) => s.setBusy);
 
   const activeRunId = useWorkbenchStore((s) => s.activeRunId);
-  const projectionVersion = useWorkbenchStore((s) => s.projectionVersion);
   const projection = useWorkbenchStore((s) => s.projection);
-  const _connection = useWorkbenchStore((s) => s.connection);
   const _busy = useWorkbenchStore((s) => s.busy);
   const conversations = useQAStore((s) => s.conversations);
   const activeConversationId = useQAStore((s) => s.activeConversationId);
@@ -52,31 +48,29 @@ export default function AnalysisWorkbenchPage() {
     activeConversation?.dataSourceId && activeConversation.modelProfileId,
   );
 
-  const state = useWorkbenchStore((s) => ({
-    authorityState: s.authorityState,
-    coreL2Verdict: s.coreL2Verdict,
-    attributionF9Status: s.attributionF9Status,
-    fixtureEvidenceVerdict: s.fixtureEvidenceVerdict,
-    currentAction: s.currentAction,
-    l2Only: s.projection?.l2Only ?? true,
-    demoLicense: s.projection?.demoLicense ?? "Demo v1.0.0",
-    demoVersion: s.projection?.demoVersion ?? "1.0.0",
-    experienceOnly: s.projection?.experienceOnly ?? true,
-    l3Route: s.l3Route,
-    l4Route: s.l4Route,
-    l5Route: s.l5Route,
-  }));
+  const state = useWorkbenchStore(
+    useShallow((s) => ({
+      coreL2Verdict: s.coreL2Verdict,
+      attributionF9Status: s.attributionF9Status,
+      fixtureEvidenceVerdict: s.fixtureEvidenceVerdict,
+      currentAction: s.currentAction,
+      authorityState: s.authorityState,
+      connection: s.connection,
+      projectionVersion: s.projectionVersion,
+    })),
+  );
 
   // ── 初始化 ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    const stored = sessionStorage.getItem("data-agent.activeRunId");
+    if (!workspaceId) return;
+    const stored = sessionStorage.getItem(activeRunStorageKey);
     if (stored) {
       setActiveRunId(stored);
       void (async () => {
         try {
           setConnection("connecting");
-          const run = await getRun(stored);
+          const run = await getRun(stored, workspaceId);
           setProjection(run);
           setProjectionVersion(0);
           setConnection(isRunTerminal(run.status) ? "closed" : "live");
@@ -102,12 +96,14 @@ export default function AnalysisWorkbenchPage() {
     setCurrentAction,
     setConnection,
     hydrate,
+    activeRunStorageKey,
+    workspaceId,
   ]);
 
   useEffect(() => {
-    if (!resolveWorkspaceId()) return;
+    if (!workspaceId) return;
     void loadConversations();
-  }, [loadConversations]);
+  }, [loadConversations, workspaceId]);
 
   useEffect(() => {
     if (activeConversationId || !conversations[0]) return;
@@ -127,7 +123,6 @@ export default function AnalysisWorkbenchPage() {
 
     let stopped = false;
     const controller = new AbortController();
-    const workspaceId = resolveWorkspaceId();
     let cursor = useWorkbenchStore.getState().projectionVersion;
     let attempt = 0;
     let terminalSeen = false;
@@ -179,14 +174,13 @@ export default function AnalysisWorkbenchPage() {
       stopped = true;
       controller.abort();
     };
-  }, [activeRunId, setConnection]);
+  }, [activeRunId, setConnection, workspaceId]);
 
-  // ── 提交与分析命令 ──────────────────────────────────────────────────────
+  // ── 提交分析 ────────────────────────────────────────────────────────────
 
   const handleSubmit = useCallback(
     async (question: string) => {
       if (!question.trim()) return;
-      const workspaceId = resolveWorkspaceId();
       if (!workspaceId) {
         setError("请先选择工作空间");
         return;
@@ -209,7 +203,7 @@ export default function AnalysisWorkbenchPage() {
         setConnection("connecting");
         setCurrentAction("分析中…");
         setSectionStatus("query", "ready");
-        sessionStorage.setItem("data-agent.activeRunId", run.runId);
+        sessionStorage.setItem(activeRunStorageKey, run.runId);
       } catch (err) {
         setError(err instanceof Error ? err.message : "创建分析任务失败");
       } finally {
@@ -217,8 +211,6 @@ export default function AnalysisWorkbenchPage() {
       }
     },
     [
-      activeConversation,
-      conversationReady,
       setBusy,
       setError,
       setActiveRunId,
@@ -227,134 +219,119 @@ export default function AnalysisWorkbenchPage() {
       setConnection,
       setCurrentAction,
       setSectionStatus,
-    ],
-  );
-
-  const handleCommand = useCallback(
-    async (command: "cancel" | "resume" | "replay") => {
-      if (!activeRunId || !projection) return;
-      setBusy(true);
-      try {
-        const label =
-          command === "cancel" ? "取消中…" : command === "resume" ? "恢复中…" : "重播中…";
-        setCurrentAction(label);
-        await commandRun(activeRunId, command, projectionVersion);
-        if (command === "replay") {
-          setProjectionVersion(0);
-          setConnection("connecting");
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : `命令 ${command} 失败`);
-      } finally {
-        setBusy(false);
-      }
-    },
-    [
-      activeRunId,
-      projection,
-      projectionVersion,
-      setBusy,
-      setError,
-      setCurrentAction,
-      setConnection,
-      setProjectionVersion,
+      activeRunStorageKey,
+      activeConversation,
+      conversationReady,
+      workspaceId,
     ],
   );
 
   // ── 渲染 ────────────────────────────────────────────────────────────────
 
   return (
-    <div>
-      <AuthorityStatusBar
-        authorityState={state.authorityState}
-        coreL2Status={state.coreL2Verdict}
-        attributionF9Status={state.attributionF9Status}
-        fixtureEvidenceStatus={state.fixtureEvidenceVerdict}
-        currentAction={state.currentAction}
-      />
+    <div className="flex h-full min-h-0 bg-[var(--color-bg-surface)]">
+      <section className="relative flex min-w-0 flex-1 flex-col" aria-label="分析报告工作区">
+        <header className="flex min-h-16 shrink-0 items-center gap-4 border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-4 sm:px-6 lg:px-8">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[14px] font-semibold text-[var(--color-text-primary)]">
+              {projection?.question ?? "新数据分析"}
+            </p>
+            <div className="mt-2 flex items-center gap-2 overflow-hidden">
+              {projection?.scope?.workspace && (
+                <HeaderPill name="工作区" value={projection.scope.workspace} />
+              )}
+              {projection?.scope?.dataset && (
+                <HeaderPill name="数据集" value={projection.scope.dataset} />
+              )}
+              {projection?.scope?.dialect && (
+                <HeaderPill name="方言" value={projection.scope.dialect} />
+              )}
+              <span className="hidden rounded-full border border-[var(--color-border-default)] px-2.5 py-1 text-[10px] text-[var(--color-text-muted)] 2xl:inline">
+                Core L2
+              </span>
+            </div>
+          </div>
+          <span
+            className={[
+              "rounded border px-2.5 py-1 font-mono text-[9px] font-semibold uppercase",
+              projection?.status === "COMPLETED"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-amber-200 bg-amber-50 text-amber-700",
+            ].join(" ")}
+          >
+            {projection?.status === "COMPLETED" ? "工作流已完成" : state.currentAction}
+          </span>
+          {!consoleOpen && (
+            <button
+              type="button"
+              onClick={() => setConsoleOpen(true)}
+              className="hidden rounded-md border border-[var(--color-border-default)] px-3 py-2 text-[11px] font-medium hover:bg-[var(--color-bg-tertiary)] xl:block"
+            >
+              查看运行与证据
+            </button>
+          )}
+        </header>
 
-      <main className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-        {/* 信息层级 1: 权威状态/当前动作（已由 AuthorityStatusBar 展示） */}
-
-        {/* 信息层级 2: Question/Scope/Clarification */}
-        {!conversationReady && (
-          <p className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            请先在问答工作区创建对话，并绑定可运行模型与数据源。
-          </p>
-        )}
-        <QueryInputSection
-          onSubmit={handleSubmit}
-          onCommand={handleCommand}
-          submissionDisabled={!conversationReady}
-        />
-
-        {/* 信息层级 3: Report/Claim–Evidence */}
-        <ReportSection />
-
-        {/* 信息层级 4: Hypothesis/SQL/Receipt */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <HypothesisSection />
-          <EvalSection />
+        <div className="min-h-0 flex-1 overflow-y-auto pb-40">
+          <AnalysisReportDocument
+            projection={projection}
+            coreL2Verdict={state.coreL2Verdict}
+            attributionF9Status={state.attributionF9Status}
+            fixtureEvidenceVerdict={state.fixtureEvidenceVerdict}
+          />
         </div>
 
-        {/* 信息层级 5: F9 Fixture Evidence — 符合 implement.md §8.7 要求 */}
-        <FixtureEvidenceSection />
-
-        {/* M1 固定信息 — 符合 implement.md §8.7 要求 */}
-        <M1StateFooter
-          l2Only={state.l2Only}
-          demoLicense={state.demoLicense}
-          demoVersion={state.demoVersion}
-          experienceOnly={state.experienceOnly}
-          l3Route={state.l3Route}
-          l4Route={state.l4Route}
-          l5Route={state.l5Route}
+        {!conversationReady && (
+          <p
+            className="absolute inset-x-6 bottom-36 z-20 mx-auto max-w-[940px] rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 lg:inset-x-10"
+            role="status"
+          >
+            请先在问答工作区创建对话，并绑定可运行模型与数据源后再开始分析。
+          </p>
+        )}
+        <WorkbenchComposer
+          projection={projection}
+          busy={_busy || !conversationReady}
+          onSubmit={handleSubmit}
         />
-      </main>
+      </section>
 
-      {/* 澄清对话框 */}
-      <ClarificationDialog />
+      {consoleOpen && (
+        <div className="hidden h-full xl:block">
+          <TaskConsole
+            projection={projection}
+            currentAction={state.currentAction}
+            authorityState={state.authorityState}
+            connection={state.connection}
+            projectionVersion={state.projectionVersion}
+            coreL2Verdict={state.coreL2Verdict}
+            attributionF9Status={state.attributionF9Status}
+            fixtureEvidenceVerdict={state.fixtureEvidenceVerdict}
+            onClose={() => setConsoleOpen(false)}
+          />
+        </div>
+      )}
+      <ClarificationDialog
+        workspaceId={workspaceId}
+        runId={activeRunId}
+        onResolved={async () => {
+          if (!activeRunId) return;
+          const resumed = await getRun(activeRunId, workspaceId);
+          setProjection(resumed);
+          setConnection("connecting");
+          setCurrentAction("正在恢复…");
+        }}
+      />
     </div>
   );
 }
 
-function M1StateFooter({
-  l2Only,
-  demoLicense,
-  demoVersion,
-  experienceOnly,
-  l3Route,
-  l4Route,
-  l5Route,
-}: {
-  l2Only: boolean;
-  demoLicense: string;
-  demoVersion: string;
-  experienceOnly: boolean;
-  l3Route: string;
-  l4Route: string;
-  l5Route: string;
-}) {
+function HeaderPill({ name, value }: { name: string; value: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] p-4 text-center text-xs text-[var(--color-text-tertiary)]">
-      <p>
-        Data Agent · M1 Demo · Core L2=
-        <span className="font-medium text-[var(--color-warning)]">HOLD</span>
-        {" · "}归因 F9=
-        <span className="font-medium text-[var(--color-text-tertiary)]">NOT_REGISTERED</span>
-        {" · "}Fixture Evidence=
-        <span className="font-medium text-[var(--color-warning)]">HOLD</span>
-      </p>
-      <p className="mt-1">
-        {demoLicense} v{demoVersion}
-        {experienceOnly && " · 仅体验用途"}
-        {l2Only && " · 仅 L2 能力"}
-      </p>
-      <p className="mt-1">
-        {l3Route === "NOT_DELIVERED" && "L3 实验 DAG 未交付 · "}
-        {l4Route === "NOT_DELIVERED" && "L4 主动发现 未交付 · "}
-        {l5Route === "NOT_DELIVERED" && "L5 因果决策 未交付"}· 本页面仅展示 L2 分析工作台可行性
-      </p>
-    </div>
+    <span className="flex max-w-[190px] items-center gap-1.5 truncate border-l border-[var(--color-border-default)] pl-2.5 text-[10px] text-[var(--color-text-secondary)]">
+      <Database aria-hidden="true" className="shrink-0 text-[var(--color-text-muted)]" size={12} />
+      <span className="shrink-0 text-[var(--color-text-muted)]">{name}</span>
+      <span className="truncate font-medium">{value}</span>
+    </span>
   );
 }

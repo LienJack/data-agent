@@ -42,6 +42,11 @@ const verdictColors: Record<string, string> = {
   NOT_REGISTERED: "status-badge status-badge--not-registered",
 };
 
+/**
+ * 紧凑型权威状态栏 — 参考 DataFoundry 设计。
+ *
+ * 信息密度高，去除装饰元素，语义化色彩指示。
+ */
 export function AuthorityStatusBar({
   authorityState,
   coreL2Status,
@@ -50,51 +55,45 @@ export function AuthorityStatusBar({
   currentAction,
 }: AuthorityStatusBarProps) {
   return (
-    <header className="border-b border-[var(--color-border)] bg-[var(--color-bg-primary)]">
-      <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-lg font-semibold">Data Agent</h1>
-          <span className="text-xs text-[var(--color-text-tertiary)]">分析工作台 · M1</span>
-        </div>
+    <header className="border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)]">
+      <div className="workspace-container">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-xs font-medium text-[var(--color-text-secondary)]">
+              当前动作:
+            </span>
+            <span className="text-xs font-medium text-[var(--color-text-primary)]">
+              {currentAction}
+            </span>
+          </div>
 
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-[var(--color-text-secondary)]">
-            当前动作:{" "}
-            <span className="font-medium text-[var(--color-text-primary)]">{currentAction}</span>
-          </span>
-          <span className={authorityStateColors[authorityState]}>
-            {authorityStateLabels[authorityState]}
-          </span>
+          <div className="flex items-center gap-3">
+            <section className="flex items-center gap-2 text-[11px]" aria-label="系统状态指示器">
+              <span className="text-[var(--color-text-muted)]">Core L2:</span>
+              <span className={verdictColors[coreL2Status]}>{verdictLabels[coreL2Status]}</span>
+            </section>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-[var(--color-text-muted)]">归因 F9:</span>
+              <span className={verdictColors[attributionF9Status]}>
+                {verdictLabels[attributionF9Status]}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-[var(--color-text-muted)]">Fixture:</span>
+              <span className={verdictColors[fixtureEvidenceStatus]}>
+                {verdictLabels[fixtureEvidenceStatus]}
+              </span>
+            </div>
+            <span className={authorityStateColors[authorityState]}>
+              {authorityStateLabels[authorityState]}
+            </span>
+          </div>
         </div>
       </div>
 
       {/* 读屏软件 — 当前动作播报 */}
       <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {authorityStateLabels[authorityState]} — {currentAction}
-      </div>
-
-      <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-secondary)]">
-        <section
-          className="mx-auto flex max-w-7xl items-center gap-4 px-4 py-2 text-xs sm:gap-6"
-          aria-label="系统状态指示器"
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--color-text-tertiary)]">Core L2:</span>
-            <span className={verdictColors[coreL2Status]}>{verdictLabels[coreL2Status]}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--color-text-tertiary)]">归因 F9:</span>
-            <span className={verdictColors[attributionF9Status]}>
-              {verdictLabels[attributionF9Status]}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[var(--color-text-tertiary)]">Fixture Evidence:</span>
-            <span className={verdictColors[fixtureEvidenceStatus]}>
-              {verdictLabels[fixtureEvidenceStatus]}
-            </span>
-          </div>
-        </section>
       </div>
     </header>
   );

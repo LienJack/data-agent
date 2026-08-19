@@ -28,7 +28,7 @@ export function Tabs({ tabs, defaultTab, className, onChange }: TabsProps) {
 
   return (
     <div className={className}>
-      <div role="tablist" className="flex border-b border-[var(--color-border)]">
+      <div role="tablist" className="flex border-b border-[var(--color-border-default)]">
         {tabs.map((tab) => (
           <button
             type="button"
@@ -38,7 +38,7 @@ export function Tabs({ tabs, defaultTab, className, onChange }: TabsProps) {
             disabled={tab.disabled}
             onClick={() => handleTabChange(tab.id)}
             className={cn(
-              "relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium whitespace-nowrap transition-colors",
+              "relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors",
               tab.id === activeTab
                 ? "text-[var(--color-accent)] after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:bg-[var(--color-accent)]"
                 : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
@@ -54,7 +54,7 @@ export function Tabs({ tabs, defaultTab, className, onChange }: TabsProps) {
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="pt-4">
+      <div role="tabpanel" className="pt-3">
         {activeContent}
       </div>
     </div>

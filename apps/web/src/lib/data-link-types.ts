@@ -69,6 +69,6 @@ export interface SemanticRelation {
   sourceColumn: string;
   targetTable: string;
   targetColumn: string;
-  type: "one-to-one" | "one-to-many" | "many-to-many";
+  type: "one-to-one" | "one-to-many" | "many-to-one" | "many-to-many";
   description: string;
 }

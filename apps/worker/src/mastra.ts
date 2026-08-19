@@ -8,6 +8,11 @@ import {
   type TrustedModelInputTokenCounter,
 } from "@data-agent/agent-runtime";
 import type { ModelProviderPort } from "@data-agent/contracts";
+import {
+  createBillingGatedModelProvider,
+  type ModelBillingPort,
+  type ModelBillingProviderLifecycle,
+} from "@data-agent/platform";
 
 export interface WorkerMastraComposition {
   readonly model_provider: ModelProviderPort;
@@ -26,18 +31,26 @@ export function createWorkerMastraComposition(input: {
   readonly input_token_counter: TrustedModelInputTokenCounter;
   readonly tools?: readonly ServerOwnedToolDescriptor[];
   readonly clock?: ModelProviderAdapterClock;
+  readonly billing: Pick<ModelBillingPort, "authorize" | "finalize">;
+  readonly billing_lifecycle: ModelBillingProviderLifecycle;
 }): WorkerMastraComposition {
-  return Object.freeze({
-    model_provider: createModelProviderPort({
-      ...input,
-      tools: input.tools ?? [],
-      dispatch_marker: {
-        // The legacy composition is not the audited U3 path. Keep it unable to
-        // cross the network without a durable PostgreSQL dispatch marker.
-        mark_dispatched: async () => {
-          throw new Error("PROVIDER_PERSISTENT_DISPATCH_MARKER_REQUIRED");
-        },
+  const delegate = createModelProviderPort({
+    ...input,
+    tools: input.tools ?? [],
+    dispatch_marker: {
+      // This legacy billing composition is not the U3 audited dispatch path.
+      // Fail closed at DISPATCH_READY so it can never cross the network without
+      // a PostgreSQL-backed provider invocation permit.
+      mark_dispatched: async () => {
+        throw new Error("PROVIDER_PERSISTENT_DISPATCH_MARKER_REQUIRED");
       },
+    },
+  });
+  return Object.freeze({
+    model_provider: createBillingGatedModelProvider({
+      delegate,
+      billing: input.billing,
+      lifecycle: input.billing_lifecycle,
     }),
   });
 }

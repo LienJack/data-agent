@@ -37,6 +37,7 @@ interface DataSourceActions {
   testConnection: (input: TestConnectionInput) => Promise<TestConnectionResult>;
   setShowForm: (show: boolean) => void;
   clearError: () => void;
+  reset: () => void;
 }
 
 export type DataSourceStore = DataSourceState & DataSourceActions;
@@ -104,6 +105,8 @@ export const useDataSourceStore = create<DataSourceStore>((set, get) => ({
   setShowForm: (show) => set({ showForm: show }),
 
   clearError: () => set({ error: undefined }),
+
+  reset: () => set(initialState),
 }));
 
 // ─── Selector Hooks ──────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import type {
   Hypothesis,
   RunConnectionState,
@@ -107,13 +108,15 @@ export const useWorkbenchSections = () => useWorkbenchStore((s) => s.sections);
 export const useWorkbenchSectionStatus = (section: keyof WorkbenchState["sections"]) =>
   useWorkbenchStore((s) => s.sections[section]);
 export const useWorkbenchAuthority = () =>
-  useWorkbenchStore((s) => ({
-    authorityState: s.authorityState,
-    coreL2Verdict: s.coreL2Verdict,
-    attributionF9Status: s.attributionF9Status,
-    fixtureEvidenceVerdict: s.fixtureEvidenceVerdict,
-    currentAction: s.currentAction,
-  }));
+  useWorkbenchStore(
+    useShallow((s) => ({
+      authorityState: s.authorityState,
+      coreL2Verdict: s.coreL2Verdict,
+      attributionF9Status: s.attributionF9Status,
+      fixtureEvidenceVerdict: s.fixtureEvidenceVerdict,
+      currentAction: s.currentAction,
+    })),
+  );
 export const useWorkbenchError = () => useWorkbenchStore((s) => s.error);
 export const useWorkbenchBusy = () => useWorkbenchStore((s) => s.busy);
 export const useWorkbenchClarification = () => useWorkbenchStore((s) => s.clarificationPending);

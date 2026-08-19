@@ -62,12 +62,12 @@ export function WorkbenchSection({
 
       {status !== "ready" ? (
         <div
-          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12"
+          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-surface)] py-8"
           role="alert"
         >
-          <span className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]">
+          <span className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
             {status === "loading" && (
-              <span className="inline-block size-4 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)]" />
+              <span className="inline-block size-3 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-accent)]" />
             )}
             {statusIcons[status] && <span aria-hidden="true">{statusIcons[status]}</span>}
             <span>{statusMessages[status]}</span>

@@ -1,77 +1,45 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
-type ButtonVariant = "default" | "outline" | "ghost" | "destructive" | "link";
-type ButtonSize = "xs" | "sm" | "default" | "lg" | "icon";
-
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
+  variant?: "primary" | "secondary" | "ghost" | "danger";
+  size?: "sm" | "md" | "lg";
   loading?: boolean;
-  children: ReactNode;
 }
 
-const variantStyles: Record<ButtonVariant, string> = {
-  default: "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] shadow-sm",
-  outline:
-    "border border-[var(--color-border)] bg-[var(--color-bg-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]",
+const variantClasses: Record<string, string> = {
+  primary: "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
+  secondary:
+    "border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]",
   ghost:
     "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]",
-  destructive:
-    "bg-[var(--color-error)]/10 text-[var(--color-error)] hover:bg-[var(--color-error)]/20",
-  link: "text-[var(--color-accent)] underline-offset-4 hover:underline",
+  danger: "border border-red-700 bg-red-900/30 text-[#F87171] hover:bg-red-900/50",
 };
 
-const sizeStyles: Record<ButtonSize, string> = {
-  xs: "h-6 gap-1 rounded px-2 text-xs",
-  sm: "h-7 gap-1 rounded-md px-2.5 text-sm",
-  default: "h-8 gap-1.5 rounded-lg px-3 text-sm",
-  lg: "h-9 gap-1.5 rounded-lg px-4 text-sm",
-  icon: "size-8 rounded-lg",
+const sizeClasses: Record<string, string> = {
+  sm: "px-2 py-1 text-xs",
+  md: "px-3 py-1.5 text-sm",
+  lg: "px-4 py-2 text-sm",
 };
 
 export function Button({
   className,
-  variant = "default",
-  size = "default",
-  loading = false,
-  disabled,
-  children,
+  variant = "primary",
+  size = "sm",
+  loading,
   ...props
 }: ButtonProps) {
   return (
     <button
-      data-slot="button"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]/50 disabled:pointer-events-none disabled:opacity-50",
-        variantStyles[variant],
-        sizeStyles[size],
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-50",
+        variantClasses[variant],
+        sizeClasses[size],
+        loading && "cursor-wait",
         className,
       )}
-      disabled={disabled || loading}
+      disabled={props.disabled || loading}
       {...props}
-    >
-      {loading && <SpinnerInline />}
-      {children}
-    </button>
-  );
-}
-
-function SpinnerInline() {
-  return (
-    <svg
-      aria-label="u52a0u8f7du4e2d"
-      className="size-3.5 animate-spin"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-    >
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-      />
-    </svg>
+    />
   );
 }

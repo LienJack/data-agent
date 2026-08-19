@@ -3,7 +3,7 @@ export { Button } from "./button";
 export { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./card";
 export { EmptyState } from "./empty-state";
 export { Separator } from "./separator";
-export { CardSkeleton, ListSkeleton, Skeleton } from "./skeleton";
+export { Skeleton } from "./skeleton";
 export { FullPageSpinner, Spinner } from "./spinner";
 export type { ViewState } from "./state-block";
 export { StateBlock } from "./state-block";

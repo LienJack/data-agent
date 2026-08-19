@@ -186,6 +186,7 @@ export function OperationsAdminPanel({
   const [notice, setNotice] = useState<string>();
   const [oneTimePassword, setOneTimePassword] = useState<string>();
   const [identityRetry, setIdentityRetry] = useState<IdentityRetryRequest>();
+  const [username, setUsername] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [userName, setUserName] = useState("");
   const [userRole, setUserRole] = useState<"USER" | "SUPER_ADMIN">("USER");
@@ -240,11 +241,13 @@ export function OperationsAdminPanel({
           schema_version: "admin-user-create@1.0.0",
           operation_id: operationId,
           idempotency_key: operationKey("admin-user-create"),
+          username: username.trim().toLowerCase(),
           email: userEmail.trim(),
           display_name: userName.trim(),
           system_role: userRole,
         }),
       });
+      setUsername("");
       setUserEmail("");
       setUserName("");
       setOneTimePassword(result.one_time_password ?? undefined);
@@ -546,9 +549,11 @@ export function OperationsAdminPanel({
             users={users}
             currentPrincipalId={currentPrincipalId}
             pending={pending}
+            username={username}
             email={userEmail}
             name={userName}
             role={userRole}
+            onUsernameChange={setUsername}
             onEmailChange={setUserEmail}
             onNameChange={setUserName}
             onRoleChange={setUserRole}
@@ -713,9 +718,11 @@ function UsersPanel(props: {
   readonly users: readonly AdminUserProjection[];
   readonly currentPrincipalId: string;
   readonly pending: boolean;
+  readonly username: string;
   readonly email: string;
   readonly name: string;
   readonly role: "USER" | "SUPER_ADMIN";
+  readonly onUsernameChange: (value: string) => void;
   readonly onEmailChange: (value: string) => void;
   readonly onNameChange: (value: string) => void;
   readonly onRoleChange: (value: "USER" | "SUPER_ADMIN") => void;
@@ -757,6 +764,7 @@ function UsersPanel(props: {
                     />
                   </div>
                   <p className="mt-0.5 truncate text-[11px] text-[var(--color-text-muted)]">
+                    {user.username ? `@${user.username} · ` : ""}
                     {user.email} · {shortId(user.principal_id)}
                   </p>
                 </div>
@@ -801,6 +809,23 @@ function UsersPanel(props: {
           首期不开放自主注册。系统生成一次性初始密码。
         </p>
         <label className="mt-4 block text-[11px] font-medium">
+          登录用户名
+          <input
+            value={props.username}
+            onChange={(event) => props.onUsernameChange(event.target.value)}
+            required
+            minLength={3}
+            maxLength={30}
+            pattern="[A-Za-z0-9_.]+"
+            autoComplete="off"
+            className="mt-1.5 h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-border-focused)]"
+            placeholder="例如：analyst.chen"
+          />
+          <span className="mt-1 block text-[10px] font-normal text-[var(--color-text-muted)]">
+            3–30 位，仅字母、数字、下划线和点；保存后转为小写。
+          </span>
+        </label>
+        <label className="mt-3 block text-[11px] font-medium">
           显示名称
           <input
             value={props.name}
@@ -836,7 +861,9 @@ function UsersPanel(props: {
         <Button
           className="mt-4 w-full"
           type="submit"
-          disabled={props.pending || !props.email.trim() || !props.name.trim()}
+          disabled={
+            props.pending || !props.username.trim() || !props.email.trim() || !props.name.trim()
+          }
         >
           {props.pending ? "正在创建…" : "创建用户"}
         </Button>

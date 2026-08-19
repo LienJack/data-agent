@@ -1,17 +1,17 @@
 import { cn } from "@/lib/utils";
 
 interface SeparatorProps {
-  orientation?: "horizontal" | "vertical";
   className?: string;
+  orientation?: "horizontal" | "vertical";
 }
 
-export function Separator({ orientation = "horizontal", className }: SeparatorProps) {
+export function Separator({ className, orientation = "horizontal" }: SeparatorProps) {
   return (
     <hr
       aria-orientation={orientation}
       className={cn(
+        "shrink-0 bg-[var(--color-border-default)]",
         orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
-        "border-none bg-[var(--color-border)]",
         className,
       )}
     />

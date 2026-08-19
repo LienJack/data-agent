@@ -101,7 +101,7 @@ try {
        base_url, capabilities, credential_ref, status, config_version,
        is_system_default, created_by
      ) values (
-       $1::uuid, $2::text, $3::uuid, 'deepseek', 'deepseek-v4-pro',
+       $1::uuid, $2::text, $3::uuid, 'deepseek', 'deepseek-v4-flash',
        'DeepSeek system model smoke', 'https://api.deepseek.com',
        '{"structured_output":true,"tool_calling":true,"streaming":true,"reasoning":true,"vision":false}'::jsonb,
        null, 'ACTIVE', 1, true, $4::uuid
@@ -113,7 +113,7 @@ try {
        app_id, environment, model_profile_id, config_version, snapshot, actor_principal_id
      ) values (
        $1::uuid, $2::text, $3::uuid, 1,
-       '{"provider":"deepseek","model_id":"deepseek-v4-pro"}'::jsonb,
+       '{"provider":"deepseek","model_id":"deepseek-v4-flash"}'::jsonb,
        $4::uuid
      ) on conflict do nothing`,
     [selected.app_id, selected.environment, SYSTEM_MODEL_PROFILE_ID, selected.owner_principal_id],

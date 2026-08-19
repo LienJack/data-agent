@@ -78,11 +78,11 @@ export function QueryInputSection({
       <div className="card">
         <h2 className="section-header">分析查询</h2>
         <div
-          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12"
+          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-surface)] py-8"
           role="alert"
         >
-          <div className="flex items-center gap-2 text-sm text-[var(--color-text-tertiary)]">
-            <span className="inline-block size-4 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)]" />
+          <div className="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+            <span className="inline-block size-3 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-accent)]" />
             正在加载工作空间…
           </div>
         </div>
@@ -95,11 +95,11 @@ export function QueryInputSection({
       <div className="card">
         <h2 className="section-header">分析查询</h2>
         <div
-          className="flex items-center justify-center rounded-lg border border-dashed border-red-200 bg-red-50 py-12 dark:border-red-800 dark:bg-red-900/20"
+          className="flex items-center justify-center rounded-lg border border-dashed border-red-800 bg-red-900/20 py-8"
           role="alert"
         >
           <div className="text-center">
-            <p className="text-sm text-red-700 dark:text-red-400">加载失败，请重试</p>
+            <p className="text-xs text-[#F87171]">加载失败，请重试</p>
             <button
               type="button"
               onClick={() => {
@@ -121,10 +121,10 @@ export function QueryInputSection({
       <div className="card">
         <h2 className="section-header">分析查询</h2>
         <div
-          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-bg-secondary)] py-12"
+          className="flex items-center justify-center rounded-lg border border-dashed border-[var(--color-border-default)] bg-[var(--color-bg-surface)] py-8"
           role="alert"
         >
-          <p className="text-sm text-[var(--color-text-tertiary)]">
+          <p className="text-xs text-[var(--color-text-muted)]">
             权限不足 · 需要 ANALYST 或更高角色
           </p>
         </div>
@@ -137,10 +137,10 @@ export function QueryInputSection({
       <div className="card">
         <h2 className="section-header">分析查询</h2>
         <div
-          className="flex items-center justify-center rounded-lg border border-dashed border-amber-200 bg-amber-50 py-12 dark:border-amber-800 dark:bg-amber-900/20"
+          className="flex items-center justify-center rounded-lg border border-dashed border-amber-800 bg-amber-900/20 py-8"
           role="alert"
         >
-          <p className="text-sm text-amber-700 dark:text-amber-400">数据已过期 · 需要重新查询</p>
+          <p className="text-xs text-[#D8B76A]">数据已过期 · 需要重新查询</p>
         </div>
       </div>
     );
@@ -162,16 +162,16 @@ export function QueryInputSection({
       {/* 连接状态指示器 */}
       {activeRunId && (
         <div
-          className="mb-3 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-tertiary)]"
+          className="mb-2 flex items-center gap-2 text-xs text-[var(--color-text-muted)]"
           aria-live="polite"
         >
           <span
-            className={`inline-block size-2 rounded-full ${
+            className={`inline-block size-1.5 rounded-full ${
               connection === "live"
-                ? "bg-emerald-500"
+                ? "bg-[#88C980]"
                 : connection === "closed"
-                  ? "bg-stone-400"
-                  : "bg-amber-500"
+                  ? "bg-[#5F6975]"
+                  : "bg-[#D8B76A]"
             }`}
           />
           {connection === "live"
@@ -182,12 +182,12 @@ export function QueryInputSection({
                 ? "正在连接"
                 : "正在重连"}
           {busy && (
-            <span className="ml-1 inline-block size-3 animate-spin rounded-full border-2 border-[var(--color-border)] border-t-[var(--color-accent)]" />
+            <span className="ml-1 inline-block size-2.5 animate-spin rounded-full border-2 border-[var(--color-border-default)] border-t-[var(--color-accent)]" />
           )}
         </div>
       )}
 
-      <div className="flex gap-3">
+      <div className="flex gap-2">
         <input
           type="text"
           ref={inputRef}
@@ -195,7 +195,7 @@ export function QueryInputSection({
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="输入分析问题，例如：2025 年第一季度华南区净收入同比为什么下降？"
-          className="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-2.5 text-sm placeholder:text-[var(--color-text-tertiary)] focus:border-[var(--color-accent)] focus:outline-none"
+          className="min-w-0 flex-1 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] px-3 py-2 text-xs placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-border-focused)] focus:outline-none"
           aria-label="分析问题输入"
           aria-describedby="query-input-hint"
           disabled={isActive || submissionDisabled}
@@ -211,7 +211,7 @@ export function QueryInputSection({
               void onSubmit(question.trim());
             }
           }}
-          className="rounded-lg bg-[var(--color-accent)] px-4 py-2.5 text-sm font-medium text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+          className="rounded-md bg-[var(--color-accent)] px-3 py-2 text-xs font-medium text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
           aria-label="开始分析"
         >
           分析
@@ -219,7 +219,7 @@ export function QueryInputSection({
         <button
           type="button"
           disabled={!question.trim() || busy || isActive}
-          className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-4 py-2.5 text-sm font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+          className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
           aria-label="请求澄清"
           onClick={() => setClarificationPending(true)}
         >
@@ -229,7 +229,7 @@ export function QueryInputSection({
 
       {/* 取消/恢复/重播按钮 — 仅在活跃 Run 时显示 */}
       {activeRunId && (
-        <fieldset className="mt-3 flex flex-wrap items-center gap-2 border-0 p-0">
+        <fieldset className="mt-2 flex items-center gap-2 border-0 p-0">
           <legend className="sr-only">运行控制</legend>
           {isActive && (
             <button
@@ -238,7 +238,7 @@ export function QueryInputSection({
               onClick={() => {
                 if (onCommand) void onCommand("cancel");
               }}
-              className="rounded-lg border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-50 dark:border-red-700 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50"
+              className="rounded-md border border-red-700 bg-red-900/30 px-2 py-1 text-xs font-medium text-[#F87171] hover:bg-red-900/50 disabled:opacity-50"
               aria-label="取消分析"
             >
               取消
@@ -251,7 +251,7 @@ export function QueryInputSection({
               onClick={() => {
                 if (onCommand) void onCommand("replay");
               }}
-              className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-primary)] px-3 py-1.5 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-secondary)] disabled:opacity-50"
+              className="rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2 py-1 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
               aria-label="重新分析"
             >
               重播
@@ -259,7 +259,7 @@ export function QueryInputSection({
           )}
           {/* 运行状态标签 */}
           <span
-            className="ml-auto text-xs font-medium text-[var(--color-text-tertiary)]"
+            className="ml-auto text-xs font-medium text-[var(--color-text-muted)]"
             aria-live="polite"
           >
             {runStatus === "QUEUED" && "排队中"}
@@ -273,24 +273,24 @@ export function QueryInputSection({
 
       {projection?.scope && (
         <section
-          className="mt-3 flex flex-wrap gap-3 text-xs text-[var(--color-text-tertiary)]"
+          className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]"
           aria-label="工作空间上下文"
         >
           <span>
             工作空间:{" "}
-            <code className="rounded bg-[var(--color-bg-secondary)] px-1 py-0.5 font-mono">
+            <code className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 font-mono">
               {projection.scope.workspace ?? "—"}
             </code>
           </span>
           <span>
             数据集:{" "}
-            <code className="rounded bg-[var(--color-bg-secondary)] px-1 py-0.5 font-mono">
+            <code className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 font-mono">
               {projection.scope.dataset ?? "—"}
             </code>
           </span>
           <span>
             方言:{" "}
-            <code className="rounded bg-[var(--color-bg-secondary)] px-1 py-0.5 font-mono">
+            <code className="rounded bg-[var(--color-bg-surface)] px-1 py-0.5 font-mono">
               {projection.scope.dialect ?? "—"}
             </code>
           </span>
@@ -298,27 +298,27 @@ export function QueryInputSection({
       )}
 
       <section className="mt-2 flex flex-wrap gap-2 text-xs" aria-label="能力标签">
-        <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400">
+        <span className="rounded bg-emerald-900/30 px-1.5 py-0.5 text-[11px] text-[#88C980]">
           L2 多步研究分析师
         </span>
         {l3Route === "NOT_DELIVERED" && (
-          <span className="rounded-full bg-gray-50 px-2 py-0.5 text-gray-400 line-through dark:bg-gray-800 dark:text-gray-500">
+          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-[#5F6975] line-through">
             L3 实验 DAG
           </span>
         )}
         {l4Route === "NOT_DELIVERED" && (
-          <span className="rounded-full bg-gray-50 px-2 py-0.5 text-gray-400 line-through dark:bg-gray-800 dark:text-gray-500">
+          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-[#5F6975] line-through">
             L4 主动发现
           </span>
         )}
         {l5Route === "NOT_DELIVERED" && (
-          <span className="rounded-full bg-gray-50 px-2 py-0.5 text-gray-400 line-through dark:bg-gray-800 dark:text-gray-500">
+          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-[#5F6975] line-through">
             L5 因果决策
           </span>
         )}
       </section>
 
-      <p className="mt-2 text-xs text-[var(--color-text-tertiary)]">
+      <p className="mt-1.5 text-xs text-[var(--color-text-muted)]">
         {projection?.demoLicense ?? "Demo v1.0.0"} · 仅体验用途
         {l2Only && " · 仅 L2 能力"}
       </p>

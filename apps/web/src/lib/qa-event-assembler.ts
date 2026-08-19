@@ -1,4 +1,5 @@
 import type { PublicRunEvent } from "@data-agent/contracts";
+import type { Message } from "./qa-types";
 
 export interface ProcessRow {
   id: string;
@@ -21,6 +22,32 @@ export interface TrajectoryRunGroup {
   completedAt: string;
   durationMs: number;
   toolCalls: number;
+}
+
+export type TrajectoryRole = "user" | "assistant" | "tool" | "system";
+
+export interface TrajectoryRecord {
+  id: string;
+  runId: string;
+  sequences: number[];
+  sequence: number;
+  turn: number;
+  role: TrajectoryRole;
+  eventType: string;
+  label: string;
+  summary: string;
+  status: string;
+  occurredAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  payload: unknown;
+  result: unknown;
+  schema: Readonly<{
+    schema_version: string;
+    event_type: string;
+    role: TrajectoryRole;
+    source: "qa_messages" | "run_events";
+  }>;
 }
 
 export function mergePublicRunEvents(
@@ -173,4 +200,256 @@ export function groupTrajectoryEvents(events: readonly PublicRunEvent[]): Trajec
       };
     })
     .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+}
+
+function precedingUserMessage(messages: readonly Message[], runId: string): Message | undefined {
+  const assistantIndex = messages.findIndex(
+    (message) => message.role === "agent" && message.runId === runId,
+  );
+  return messages
+    .slice(0, assistantIndex < 0 ? messages.length : assistantIndex)
+    .findLast((message) => message.role === "user");
+}
+
+function terminalForRun(
+  events: readonly PublicRunEvent[],
+): Extract<PublicRunEvent, { type: "terminal" }> | undefined {
+  return events.findLast(
+    (event): event is Extract<PublicRunEvent, { type: "terminal" }> => event.type === "terminal",
+  );
+}
+
+function schemaFor(
+  role: TrajectoryRole,
+  eventType: string,
+  source: "qa_messages" | "run_events",
+): TrajectoryRecord["schema"] {
+  return {
+    schema_version:
+      source === "run_events" ? "public-run-event@1.0.0" : "workspace-conversation-message@1.0.0",
+    event_type: eventType,
+    role,
+    source,
+  };
+}
+
+/**
+ * Project parsed messages and public Run events into the trajectory inspector ledger.
+ * Tool boundaries are collapsed by call_id so Payload and Result stay on one record.
+ */
+export function buildTrajectoryRecords(
+  events: readonly PublicRunEvent[],
+  messages: readonly Message[],
+): TrajectoryRecord[] {
+  const records: TrajectoryRecord[] = [];
+  const usedUserMessageIds = new Set<string>();
+
+  for (const [turnIndex, group] of groupTrajectoryEvents(events).entries()) {
+    const turn = turnIndex + 1;
+    const firstSequence = group.events[0]?.sequence ?? 1;
+    const terminal = terminalForRun(group.events);
+    const userMessage = precedingUserMessage(messages, group.runId);
+
+    if (userMessage && !usedUserMessageIds.has(userMessage.id)) {
+      usedUserMessageIds.add(userMessage.id);
+      records.push({
+        id: `message:${userMessage.id}`,
+        runId: group.runId,
+        sequences: [firstSequence],
+        sequence: firstSequence,
+        turn,
+        role: "user",
+        eventType: "message.user",
+        label: "用户消息",
+        summary: userMessage.content,
+        status: "COMPLETED",
+        occurredAt: userMessage.createdAt,
+        completedAt: userMessage.createdAt,
+        durationMs: 0,
+        payload: { content: userMessage.content, type: userMessage.type },
+        result: null,
+        schema: schemaFor("user", "message.user", "qa_messages"),
+      });
+    }
+
+    for (const event of group.events) {
+      if (event.type === "answer" || event.type === "reasoning" || event.type === "tool") continue;
+      if (event.type === "progress") {
+        records.push({
+          id: `event:${event.run_id}:${event.sequence}`,
+          runId: event.run_id,
+          sequences: [event.sequence],
+          sequence: event.sequence,
+          turn,
+          role: "assistant",
+          eventType: "progress",
+          label: event.payload.title,
+          summary: event.payload.summary,
+          status: event.payload.status,
+          occurredAt: event.occurred_at,
+          completedAt: event.payload.status === "COMPLETED" ? event.occurred_at : null,
+          durationMs: null,
+          payload: event.payload,
+          result: event.payload.status === "COMPLETED" ? { summary: event.payload.summary } : null,
+          schema: schemaFor("assistant", "progress", "run_events"),
+        });
+        continue;
+      }
+
+      const label = event.type === "terminal" ? "运行终态" : event.payload.name;
+      records.push({
+        id: `event:${event.run_id}:${event.sequence}`,
+        runId: event.run_id,
+        sequences: [event.sequence],
+        sequence: event.sequence,
+        turn,
+        role: "system",
+        eventType: event.type,
+        label,
+        summary: event.payload.summary,
+        status: event.payload.status,
+        occurredAt: event.occurred_at,
+        completedAt: event.type === "terminal" ? event.occurred_at : null,
+        durationMs: event.type === "terminal" ? group.durationMs : null,
+        payload: event.payload,
+        result:
+          event.type === "terminal"
+            ? { status: event.payload.status, error_code: event.payload.error_code }
+            : null,
+        schema: schemaFor("system", event.type, "run_events"),
+      });
+    }
+
+    const toolEvents = group.events.filter(
+      (event): event is Extract<PublicRunEvent, { type: "tool" }> => event.type === "tool",
+    );
+    const toolEventsByCall = new Map<string, typeof toolEvents>();
+    for (const event of toolEvents) {
+      const call = toolEventsByCall.get(event.payload.call_id) ?? [];
+      call.push(event);
+      toolEventsByCall.set(event.payload.call_id, call);
+    }
+    for (const row of assembleProcessRows(group.events, group.runId).filter(
+      (candidate) => candidate.kind === "tool",
+    )) {
+      const callEvents = toolEventsByCall.get(
+        toolEvents.find((event) => event.sequence === row.sequence)?.payload.call_id ?? "",
+      );
+      if (!callEvents || callEvents.length === 0) continue;
+      const started = callEvents[0];
+      const completed = callEvents.at(-1);
+      if (!started || !completed) continue;
+      records.push({
+        id: row.id,
+        runId: row.runId,
+        sequences: callEvents.map((event) => event.sequence),
+        sequence: row.sequence,
+        turn,
+        role: "tool",
+        eventType: "tool",
+        label: row.toolName ?? row.title,
+        summary: row.summary,
+        status: row.status,
+        occurredAt: started.occurred_at,
+        completedAt: row.status === "RUNNING" ? null : completed.occurred_at,
+        durationMs: row.durationMs,
+        payload: {
+          call_id: started.payload.call_id,
+          tool_name: started.payload.tool_name,
+          input: row.input,
+        },
+        result: {
+          status: row.status,
+          output: row.output,
+          duration_ms: row.durationMs,
+          error_code: completed.payload.error_code,
+        },
+        schema: schemaFor("tool", "tool", "run_events"),
+      });
+    }
+
+    const reasoningEvents = group.events.filter(
+      (event): event is Extract<PublicRunEvent, { type: "reasoning" }> =>
+        event.type === "reasoning",
+    );
+    for (const row of assembleProcessRows(group.events, group.runId).filter(
+      (candidate) => candidate.kind === "reasoning",
+    )) {
+      const blockId = row.id.slice(`${group.runId}:reasoning:`.length);
+      const blockEvents = reasoningEvents.filter((event) => event.payload.block_id === blockId);
+      const started = blockEvents[0];
+      const completed = blockEvents.at(-1);
+      if (!started || !completed) continue;
+      records.push({
+        id: row.id,
+        runId: row.runId,
+        sequences: blockEvents.map((event) => event.sequence),
+        sequence: row.sequence,
+        turn,
+        role: "assistant",
+        eventType: "reasoning",
+        label: row.title,
+        summary: row.summary,
+        status: row.status,
+        occurredAt: started.occurred_at,
+        completedAt: row.status === "RUNNING" ? null : completed.occurred_at,
+        durationMs: row.durationMs,
+        payload: { block_id: blockId, visibility: "PUBLIC_SUMMARY_ONLY" },
+        result:
+          row.status === "COMPLETED" ? { summary: row.summary, duration_ms: row.durationMs } : null,
+        schema: schemaFor("assistant", "reasoning", "run_events"),
+      });
+    }
+
+    const answerEvents = group.events.filter(
+      (event): event is Extract<PublicRunEvent, { type: "answer" }> => event.type === "answer",
+    );
+    const assistantMessage = messages.find(
+      (message) => message.role === "agent" && message.runId === group.runId,
+    );
+    const answer =
+      assistantMessage?.content ?? answerEvents.map((event) => event.payload.delta).join("");
+    if (assistantMessage || answer.length > 0) {
+      const anchor = answerEvents[0] ?? terminal ?? group.events.at(-1);
+      if (anchor) {
+        const assistantStatus = terminal?.payload.status ?? "RUNNING";
+        records.push({
+          id: `assistant:${group.runId}`,
+          runId: group.runId,
+          sequences:
+            answerEvents.length > 0
+              ? answerEvents.map((event) => event.sequence)
+              : [anchor.sequence],
+          sequence: anchor.sequence,
+          turn,
+          role: "assistant",
+          eventType: "message.assistant",
+          label: "助手消息",
+          summary: answer || "正在生成回答…",
+          status: assistantStatus,
+          occurredAt: anchor.occurred_at,
+          completedAt: terminal?.occurred_at ?? null,
+          durationMs:
+            terminal && answerEvents[0]
+              ? Math.max(
+                  0,
+                  Date.parse(terminal.occurred_at) - Date.parse(answerEvents[0].occurred_at),
+                )
+              : null,
+          payload: { delta_count: answerEvents.length },
+          result: { content: answer, type: assistantMessage?.type ?? "text" },
+          schema: schemaFor("assistant", "message.assistant", "qa_messages"),
+        });
+      }
+    }
+  }
+
+  const roleOrder: Record<TrajectoryRole, number> = { user: 0, system: 1, assistant: 2, tool: 3 };
+  return records.sort(
+    (left, right) =>
+      left.occurredAt.localeCompare(right.occurredAt) ||
+      left.turn - right.turn ||
+      left.sequence - right.sequence ||
+      roleOrder[left.role] - roleOrder[right.role],
+  );
 }

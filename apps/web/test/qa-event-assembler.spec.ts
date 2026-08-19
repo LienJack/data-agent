@@ -4,9 +4,11 @@ import { parseEventBlock } from "../src/lib/api-client";
 import {
   answerText,
   assembleProcessRows,
+  buildTrajectoryRecords,
   groupTrajectoryEvents,
   mergePublicRunEvents,
 } from "../src/lib/qa-event-assembler";
+import type { Message } from "../src/lib/qa-types";
 import { selectSseCursor } from "../src/lib/sse-cursor";
 
 const runId = "10000000-0000-4000-8000-000000000001";
@@ -96,6 +98,7 @@ describe("Q&A public event assembly", () => {
     expect(merged).toHaveLength(2);
     expect(answerText(merged, runId)).toBe("AB");
   });
+
   it("keeps a replayed WAITING lifecycle event as one durable trajectory record", () => {
     const waiting = event(3, {
       type: "lifecycle",
@@ -260,6 +263,90 @@ describe("Q&A public event assembly", () => {
       kind: "reasoning",
       status: "FAILED",
       summary: "思考摘要未完成，Run 已失败",
+    });
+  });
+
+  it("projects user, assistant and merged tool records for the draggable inspector", () => {
+    const progress = event(1, {
+      type: "progress",
+      payload: {
+        phase: "research",
+        title: "分析问题",
+        summary: "正在准备执行",
+        status: "RUNNING",
+      },
+    });
+    const toolStart = event(2, {
+      type: "tool",
+      payload: {
+        call_id: "call-inspector",
+        tool_name: "research.kernel",
+        title: "研究内核",
+        summary: "执行中",
+        status: "RUNNING",
+        input: "dataset=orders",
+        output: null,
+        duration_ms: null,
+        error_code: null,
+      },
+    });
+    const toolComplete = event(3, {
+      type: "tool",
+      payload: {
+        call_id: "call-inspector",
+        tool_name: "research.kernel",
+        title: "研究内核",
+        summary: "执行完成",
+        status: "COMPLETED",
+        input: null,
+        output: "2 artifacts",
+        duration_ms: 42,
+        error_code: null,
+      },
+    });
+    const answer = event(4, { type: "answer", payload: { delta: "结论" } });
+    const terminal = event(5, {
+      type: "terminal",
+      payload: { status: "COMPLETED", summary: "完成", error_code: null },
+    });
+    const messages: Message[] = [
+      {
+        id: "message-user",
+        conversationId: "30000000-0000-4000-8000-000000000001",
+        role: "user",
+        content: "分析订单",
+        type: "text",
+        createdAt: "2026-08-14T00:00:00.000Z",
+      },
+      {
+        id: "message-assistant",
+        conversationId: "30000000-0000-4000-8000-000000000001",
+        role: "agent",
+        content: "结论",
+        type: "text",
+        runId,
+        createdAt: "2026-08-14T00:00:06.000Z",
+      },
+    ];
+
+    const records = buildTrajectoryRecords(
+      [progress, toolStart, toolComplete, answer, terminal],
+      messages,
+    );
+    expect(records.map((record) => record.role)).toEqual([
+      "user",
+      "assistant",
+      "tool",
+      "assistant",
+      "system",
+    ]);
+    expect(records.find((record) => record.role === "tool")).toMatchObject({
+      sequences: [2, 3],
+      payload: { input: "dataset=orders" },
+      result: { output: "2 artifacts", duration_ms: 42 },
+    });
+    expect(records.find((record) => record.eventType === "message.assistant")).toMatchObject({
+      result: { content: "结论", type: "text" },
     });
   });
 });

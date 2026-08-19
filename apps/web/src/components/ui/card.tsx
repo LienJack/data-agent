@@ -10,8 +10,8 @@ export function Card({ className, size = "default", ...props }: CardProps) {
     <div
       data-slot="card"
       className={cn(
-        "flex flex-col gap-4 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-primary)] py-4 shadow-sm",
-        size === "sm" && "gap-3 py-3",
+        "flex flex-col gap-3 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] py-3",
+        size === "sm" && "gap-2 py-2",
         className,
       )}
       {...props}
@@ -21,7 +21,7 @@ export function Card({ className, size = "default", ...props }: CardProps) {
 
 export function CardHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div data-slot="card-header" className={cn("flex flex-col gap-1 px-4", className)} {...props} />
+    <div data-slot="card-header" className={cn("flex flex-col gap-1 px-3", className)} {...props} />
   );
 }
 
@@ -29,7 +29,7 @@ export function CardTitle({ className, ...props }: HTMLAttributes<HTMLDivElement
   return (
     <div
       data-slot="card-title"
-      className={cn("text-base font-semibold leading-none tracking-tight", className)}
+      className={cn("text-sm font-semibold leading-none tracking-tight", className)}
       {...props}
     />
   );
@@ -39,14 +39,14 @@ export function CardDescription({ className, ...props }: HTMLAttributes<HTMLDivE
   return (
     <div
       data-slot="card-description"
-      className={cn("text-sm text-[var(--color-text-secondary)]", className)}
+      className={cn("text-xs text-[var(--color-text-secondary)]", className)}
       {...props}
     />
   );
 }
 
 export function CardContent({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div data-slot="card-content" className={cn("px-4", className)} {...props} />;
+  return <div data-slot="card-content" className={cn("px-3", className)} {...props} />;
 }
 
 export function CardFooter({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
@@ -54,7 +54,7 @@ export function CardFooter({ className, ...props }: HTMLAttributes<HTMLDivElemen
     <div
       data-slot="card-footer"
       className={cn(
-        "mt-auto flex items-center gap-2 border-t border-[var(--color-border)] px-4 pt-4",
+        "mt-auto flex items-center gap-2 border-t border-[var(--color-border-default)] px-3 pt-3",
         className,
       )}
       {...props}
