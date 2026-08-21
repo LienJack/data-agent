@@ -84,4 +84,3 @@ SHADOW path 不执行 adaptive runtime；它只在 admission 旁路持久化 pla
 
 ENFORCED 异常时将新 admission policy 切到 `ROOT_ONLY_DEFER_DATA` 或 SHADOW；旧/在途 Run 继续使用冻结 executor。数据库 schema
 不回滚、不删 receipt；通过新 migration repair。任何数据型请求在回退期间宁可 DEFERRED，不回落到无证据 Root answer。
-
