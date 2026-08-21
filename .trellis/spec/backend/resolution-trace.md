@@ -34,7 +34,9 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   唯一且从 1 连续，nodes 按 sequence/node ID 升序，edges 按 from/to/kind 升序；重复、乱序、悬空端点
   全部失败关闭。
 - Platform 在一个 READ transaction 中重验 capability scope、Run principal、Event document/relational/hash、
-  Artifact relational/envelope/content hash 与每个 input ref 的 scope/type/revision/hash 存在性。
+  Artifact relational/document/content hash 与每个 input/source ref 的 scope/type/revision/hash 存在性。Artifact
+  document 可以是 committed L2 envelope，或由 Production Team 提交的 strict/hash-verified
+  `product-team-artifact@1.0.0`；两者都必须与 relational exact identity 一致，禁止因 schema variant 跳过校验。
 - Trace 只保存 bounded summary、status、duration、时间和 typed refs。禁止 Prompt、私有推理、raw Context、
   raw SQL、参数值、Result rows、credential 与 Provider body。
 - SQL History 固定 SqlArtifact、ExecutionReceipt、QueryEvidence、SandboxResult、Schema Snapshot 引用/哈希，
@@ -50,7 +52,7 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
 | --- | --- |
 | Event document/relational/hash 不一致 | `RUN_EVENT_STORE_EVENT_CORRUPT` |
 | sequence 缺口或从非 1 开始 | `RESOLUTION_TRACE_EVENT_GAP` |
-| Artifact envelope/hash/type/scope 换绑 | `RESOLUTION_TRACE_ARTIFACT_CORRUPT` |
+| Artifact L2/Product Team document、hash、type 或 scope 换绑 | `RESOLUTION_TRACE_ARTIFACT_CORRUPT` |
 | Artifact input ref 不存在或 identity 漂移 | `RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING` |
 | SQL 缺 Effective Config/Schema Snapshot | `RESOLUTION_TRACE_CONFIG_MISSING` |
 | SQL 缺 Conversation binding | `RESOLUTION_TRACE_CONVERSATION_MISSING` |
@@ -70,7 +72,7 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
 
 - Contracts：node/edge/entry canonical hash、排序、重复 sequence、端点闭包、scope/ref splice、unknown field、
   deep-link identity 与 forbidden-key scan。
-- Platform：稳定 reload、Event gap/hash、Artifact relational/document/content hash、input ref existence、SQL
+- Platform：稳定 reload、Event gap/hash、L2 与 Product Team Artifact relational/document/content hash、input/source ref existence、SQL
   statement/parameter hash、Run/Conversation filter 与 principal predicate。
 - Web：route 注入授权 scope、not-found-or-denied、client hash verify、Trace/SQL/Artifact/empty/error 状态、键盘 Tab、
   1440px 与 390px 截图、长摘要和页面横向溢出检查。

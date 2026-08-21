@@ -6,10 +6,12 @@ import {
   buildResolutionTrace,
   buildSqlHistoryEntry,
   computeL2ArtifactContentHash,
+  computeProductTeamArtifactHash,
   contentHashSchema,
   immutableIdSchema,
   l2ArtifactDocumentSchema,
   type PortResult,
+  productTeamArtifactDocumentSchema,
   type ResolutionTrace,
   type ResolutionTraceEdge,
   type ResolutionTraceNode,
@@ -77,7 +79,10 @@ interface ArtifactRow {
 
 interface VerifiedArtifact {
   readonly reference: ArtifactReference;
-  readonly document: z.infer<typeof l2ArtifactDocumentSchema> | null;
+  readonly document:
+    | z.infer<typeof l2ArtifactDocumentSchema>
+    | z.infer<typeof productTeamArtifactDocumentSchema>
+    | null;
   readonly created_at: string;
 }
 
@@ -209,7 +214,14 @@ function referenceFromRow(scope: AppScope, runId: string, row: ArtifactRow): Art
   return {
     artifact_id: immutableIdSchema.parse(row.artifact_id),
     artifact_type: z
-      .enum(["SqlArtifact", "ExecutionReceipt", "QueryEvidence", "SchemaSnapshot", "SandboxResult"])
+      .enum([
+        "SqlArtifact",
+        "ExecutionReceipt",
+        "QueryEvidence",
+        "AnalysisReport",
+        "SchemaSnapshot",
+        "SandboxResult",
+      ])
       .parse(row.artifact_type),
     ...scope,
     run_id: immutableIdSchema.parse(runId),
@@ -237,7 +249,14 @@ async function loadVerifiedArtifacts(
       authority.scope.tenant_id,
       authority.scope.environment,
       authority.run_id,
-      ["SqlArtifact", "ExecutionReceipt", "QueryEvidence", "SchemaSnapshot", "SandboxResult"],
+      [
+        "SqlArtifact",
+        "ExecutionReceipt",
+        "QueryEvidence",
+        "AnalysisReport",
+        "SchemaSnapshot",
+        "SandboxResult",
+      ],
     ],
   );
   const artifacts: VerifiedArtifact[] = [];
@@ -250,31 +269,43 @@ async function loadVerifiedArtifacts(
       artifacts.push({ reference, document: null, created_at: iso(row.created_at) });
       continue;
     }
-    const document = l2ArtifactDocumentSchema.safeParse(row.document_json);
-    if (!document.success || document.data.envelope.status !== "COMMITTED") {
+    const l2Result = l2ArtifactDocumentSchema.safeParse(row.document_json);
+    const productResult = productTeamArtifactDocumentSchema.safeParse(row.document_json);
+    let document: Exclude<VerifiedArtifact["document"], null>;
+    if (l2Result.success && l2Result.data.envelope.status === "COMMITTED") {
+      document = l2Result.data;
+    } else if (productResult.success) {
+      document = productResult.data;
+    } else {
       throw new PersistenceBoundaryError(
         "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
-        "Stored Artifact document 不符合 committed L2 契约。",
+        "Stored Artifact document 不符合 committed L2 或 Product Team 契约。",
       );
     }
-    const envelope = document.data.envelope;
+    const documentReference = "envelope" in document ? document.envelope : document.artifact_ref;
+    const computedHash =
+      "envelope" in document
+        ? await computeL2ArtifactContentHash(document)
+        : await computeProductTeamArtifactHash(document);
     if (
-      envelope.artifact_id !== reference.artifact_id ||
-      envelope.artifact_type !== reference.artifact_type ||
-      envelope.app_id !== reference.app_id ||
-      envelope.tenant_id !== reference.tenant_id ||
-      envelope.environment !== reference.environment ||
-      envelope.run_id !== reference.run_id ||
-      envelope.revision !== reference.revision ||
-      envelope.content_hash !== reference.content_hash ||
-      (await computeL2ArtifactContentHash(document.data)) !== reference.content_hash
+      documentReference.artifact_id !== reference.artifact_id ||
+      documentReference.artifact_type !== reference.artifact_type ||
+      documentReference.app_id !== reference.app_id ||
+      documentReference.tenant_id !== reference.tenant_id ||
+      documentReference.environment !== reference.environment ||
+      documentReference.run_id !== reference.run_id ||
+      documentReference.revision !== reference.revision ||
+      documentReference.content_hash !== reference.content_hash ||
+      computedHash !== reference.content_hash
     ) {
       throw new PersistenceBoundaryError(
         "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
         "Stored Artifact relational/document/hash identity 不一致。",
       );
     }
-    for (const input of document.data.envelope.input_refs) {
+    const inputReferences =
+      "envelope" in document ? document.envelope.input_refs : document.source_refs;
+    for (const input of inputReferences) {
       const exists = await client.query(
         `select 1
          from artifacts
@@ -305,7 +336,7 @@ async function loadVerifiedArtifacts(
         );
       }
     }
-    artifacts.push({ reference, document: document.data, created_at: iso(row.created_at) });
+    artifacts.push({ reference, document, created_at: iso(row.created_at) });
   }
   return artifacts;
 }
@@ -479,7 +510,11 @@ async function projectTrace(
   for (const artifact of artifacts) {
     if (!artifact.document) continue;
     const target = nodeByReference.get(artifactReferenceIdentity(artifact.reference));
-    for (const input of artifact.document.envelope.input_refs) {
+    const inputReferences =
+      "envelope" in artifact.document
+        ? artifact.document.envelope.input_refs
+        : artifact.document.source_refs;
+    for (const input of inputReferences) {
       const source = nodeByReference.get(artifactReferenceIdentity(input));
       if (source && target)
         edges.push({ from_node_id: source, to_node_id: target, kind: "EVIDENCE" });
@@ -528,33 +563,41 @@ async function projectSqlHistory(
   const byIdentity = new Map(
     artifacts.map((artifact) => [artifactReferenceIdentity(artifact.reference), artifact]),
   );
+  const l2Document = (artifact: VerifiedArtifact) =>
+    artifact.document && "envelope" in artifact.document ? artifact.document : null;
   const executions = artifacts.filter(
-    (artifact) => artifact.document?.payload.artifact_type === "ExecutionReceipt",
+    (artifact) => l2Document(artifact)?.payload.artifact_type === "ExecutionReceipt",
   );
   const evidences = artifacts.filter(
-    (artifact) => artifact.document?.payload.artifact_type === "QueryEvidence",
+    (artifact) => l2Document(artifact)?.payload.artifact_type === "QueryEvidence",
   );
   const entries: SqlHistoryEntry[] = [];
   for (const artifact of artifacts) {
-    if (artifact.document?.payload.artifact_type !== "SqlArtifact") continue;
-    const sql = artifact.document.payload;
-    const execution = executions.find(
-      (candidate) =>
-        candidate.document?.payload.artifact_type === "ExecutionReceipt" &&
-        artifactReferenceIdentity(candidate.document.payload.sql_artifact_ref) ===
-          artifactReferenceIdentity(artifact.reference),
-    );
+    const sqlDocument = l2Document(artifact);
+    if (sqlDocument?.payload.artifact_type !== "SqlArtifact") continue;
+    const sql = sqlDocument.payload;
+    const execution = executions.find((candidate) => {
+      const candidateDocument = l2Document(candidate);
+      return (
+        candidateDocument?.payload.artifact_type === "ExecutionReceipt" &&
+        artifactReferenceIdentity(candidateDocument.payload.sql_artifact_ref) ===
+          artifactReferenceIdentity(artifact.reference)
+      );
+    });
+    const executionDocument = execution ? l2Document(execution) : null;
     const executionPayload =
-      execution?.document?.payload.artifact_type === "ExecutionReceipt"
-        ? execution.document.payload
+      executionDocument?.payload.artifact_type === "ExecutionReceipt"
+        ? executionDocument.payload
         : null;
     const evidence = execution
-      ? evidences.find(
-          (candidate) =>
-            candidate.document?.payload.artifact_type === "QueryEvidence" &&
-            artifactReferenceIdentity(candidate.document.payload.execution_receipt_ref) ===
-              artifactReferenceIdentity(execution.reference),
-        )
+      ? evidences.find((candidate) => {
+          const candidateDocument = l2Document(candidate);
+          return (
+            candidateDocument?.payload.artifact_type === "QueryEvidence" &&
+            artifactReferenceIdentity(candidateDocument.payload.execution_receipt_ref) ===
+              artifactReferenceIdentity(execution.reference)
+          );
+        })
       : undefined;
     const resultRef = executionPayload?.result_artifact_ref ?? null;
     if (resultRef && !byIdentity.has(artifactReferenceIdentity(resultRef))) {

@@ -1,4 +1,5 @@
 import {
+  buildProductTeamArtifactDocument,
   computeL2ArtifactContentHash,
   computeSqlArtifactQueryHash,
   l2ArtifactDocumentSchema,
@@ -173,7 +174,69 @@ async function sqlArtifactRow() {
   };
 }
 
+async function productTeamSqlArtifactRow() {
+  const document = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@1.0.0",
+    artifact_ref: {
+      artifact_id: ids.sql,
+      artifact_type: "SqlArtifact",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "governed-text2sql-agent",
+    task_id: ids.attempt,
+    source_refs: [],
+    projection: {
+      kind: "SQL",
+      dialect: "postgresql",
+      sql: "select count(*) from orders",
+    },
+    committed_at: occurredAt,
+  });
+  return {
+    artifact_id: document.artifact_ref.artifact_id,
+    artifact_type: document.artifact_ref.artifact_type,
+    revision: document.artifact_ref.revision,
+    content_hash: document.artifact_ref.content_hash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
 describe("PostgreSQL Resolution Trace projector", () => {
+  it("projects verified Product Team artifacts without requiring a legacy L2 envelope", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [sql], rowCount: 1 };
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+
+    expect(result.ok && result.value?.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "SQL",
+          artifact_refs: [
+            expect.objectContaining({
+              artifact_id: sql.artifact_id,
+              content_hash: sql.content_hash,
+            }),
+          ],
+        }),
+      ]),
+    );
+  });
+
   it("projects stable trace and redacted SQL history from verified authority rows", async () => {
     const row = await eventRow();
     const sql = await sqlArtifactRow();
