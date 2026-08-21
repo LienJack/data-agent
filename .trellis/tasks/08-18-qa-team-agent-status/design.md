@@ -7,19 +7,22 @@
 
 ## Reference Priority And Code Reuse
 
-本纵向切片明确采用两类参考，职责不同：
+本纵向切片明确采用三类外部参考，职责不同：
 
 1. **Codex 桌面端 = 功能基准**：以当前可观察交互定义用户体验和验收，不推断其私有实现。
 2. **DeepSeek Harness = 主要代码基线**：固定 commit `47f943859bef60e4160492346772ded9b24f765a`，
    在 MIT 条款下优先复制、裁剪和改造可兼容实现，而不是只看界面后重新手写。
-3. **Data Agent = 权威与视觉边界**：保留 PostgreSQL Run Events、Workspace RBAC、ArtifactReference、现有组件和设计 token。
+3. **Reasonix = 多端分层的次级设计参考**：固定 commit `668cdee703680530901c67ff3908a95b720ad0d2`，
+   参考 transport-agnostic Controller + typed event sink + surface adapter 的边界；不把它当主要代码来源。
+4. **Data Agent = 权威与视觉边界**：保留 PostgreSQL Run Events、Workspace RBAC、ArtifactReference、现有组件和设计 token。
 
 预计 Inline UI、Inspector shell、assembler/snapshot、Subagent baseline/live merge 与相应测试的大部分代码来自
 Harness 移植改造；Data Agent 新写部分主要集中在 v2 事件合同、PostgreSQL validator、Workspace/Artifact authority
 和 Semantic/Text2SQL/Report 领域适配。
 
 复用源码或测试时，在目标文件头或仓库第三方来源清单记录 upstream path + commit + modified status，保留
-`Copyright (c) 2026 DeepSeek` 与 MIT 许可文本。Codex 只形成行为验收记录，不形成代码来源条目。
+`Copyright (c) 2026 DeepSeek` 与 MIT 许可文本。Codex 只形成行为验收记录。Reasonix 当前只形成架构证据记录；
+若后续复制其代码，再单独维护 `Copyright (c) 2026 Reasonix Contributors` 与 MIT 来源条目。
 
 | Data Agent deliverable | DeepSeek Harness primary source | Reuse mode |
 | --- | --- | --- |
@@ -30,6 +33,10 @@ Harness 移植改造；Data Agent 新写部分主要集中在 v2 事件合同、
 | Subagent baseline + live | `session.ts`, `manager.ts`, `subagent-lineage.ts`, `SubagentCatalogAction.tsx` | 移植 baseline/live merge、状态/耗时/诊断模式，限制为一层 Team depth |
 | produced file affordance | `ProducedFiles.tsx`, `turn-deliverables.ts` | 可复用 chip/测宽/可访问交互；把宿主 `openFile(path)` 替换为 Artifact Preview |
 | replay/browser proof | Harness assembler、details lifecycle、subagent conversation/interrupt E2E | 移植 fixture 和断言结构，改写为真实 Web + Worker + SSE |
+
+Reasonix 不是“一种跨端 wire protocol”的证据：它的 HTTP/SSE、ACP、Wails 和 TUI transport 不同。可借鉴的是所有
+surface 都通过同一个无前端依赖的控制边界发命令并消费类型化事件，且用 layering lint 防止 runtime 反向依赖 UI。
+详细证据见 `research/reasonix-multi-surface-protocol-design.md`。
 
 ## Content Plan
 
@@ -95,6 +102,28 @@ SSE 提供实时顺序和状态，Team Trace 提供最终审计详情，Artifact
 identity 不一致时 UI 显示 stale/error，不能自行择一成功。Subagent Inspector 不建立第二条事件权威，只过滤同一
 Public Run Event replay；SSE connection state 只表达“实时/重连中/已结束”，不能推进 Agent status。
 
+## Multi-Surface Public Run Protocol
+
+```mermaid
+flowchart TB
+  A["PostgreSQL Run Events / Team Store / Artifact Store"] --> B["Surface-neutral Public Run Protocol"]
+  B --> C["Web REST/SSE adapter — current delivery"]
+  B -. future .-> D["Desktop adapter"]
+  B -. future .-> E["TUI adapter"]
+  C --> F["Harness-derived assembler + Codex-parity Web UI"]
+```
+
+这里的 protocol 是版本化领域语义，不强制所有 surface 使用同一网络 envelope：
+
+- `PublicRunEvent@v2`、`QAInspectorTarget`、`ArtifactReference/ArtifactPreviewResult` 是共享 DTO；
+- `workspace_id/conversation_id/run_id/sequence` 和 Agent/Tool identity 在所有 adapter 中不变；
+- replay cursor、dedupe、terminal closure、cancel/approve 等命令的 authority 语义一致；
+- Web 使用 REST/SSE；未来 Desktop/TUI 可使用不同 transport，但只能适配同一 authority 和 projection core；
+- surface-local store 只保存选择、布局和连接状态，不能拥有 Model/provider binding 或推进 Agent/Run status。
+
+当前任务增加无 DOM 的 headless conformance fixture，证明 core projection 不依赖 React、浏览器 `EventSource` 或
+桌面 host；不交付 Desktop/TUI/ACP 产品面。
+
 ## Runtime Boundary
 
 - `DataAgentTeamRunner` 仍是 `RunWorkflowExecutorPort`，但 production 注入真实
@@ -106,6 +135,8 @@ Public Run Event replay；SSE connection state 只表达“实时/重连中/已�
 - Report 顺序执行 evidence read -> report project，输出 `AnalysisReport`；只有 Acceptance `ACCEPTED` 才完成 Run。
 - Provider、Compiler、Sandbox、Artifact adapters 使用现有 authority ports；缺失能力返回 `BLOCKED/FAILED`，不造假 Artifact。
 - Tool terminal event 只有在 Artifact Store commit/hash verify 之后才发布 `artifact_refs`；Inspector 不接受裸 path。
+- Runtime 和 public event core 不 import Web/Desktop/TUI package；所有 surface 只能通过同一 Run/Workspace command
+  authority 与 typed public event port 交互，不能按客户端选择另一套 Model 或执行链。
 
 ## Event Contract
 
@@ -189,6 +220,8 @@ function assembleSubagentInspector(
 - Browser：真实 SSE reconnect、Artifact Preview denied/unsupported、1440x1000/390x844、center scroll 与 Composer 可操作。
 - Reference parity：Codex capability matrix 每行必须有截图、ARIA snapshot 或交互断言；DeepSeek Harness 来源清单中的
   每个复用项必须有对应 Data Agent test，并验证没有带入 host `openFile`、多级 lineage 或私有 event payload。
+- Multi-surface conformance：同一 replay fixture 通过 Web wire adapter 与 headless adapter 后保持 event identity、
+  sequence、terminal closure、Inspector target 与公开错误码一致；只允许 envelope/view model 不同。
 
 ## Wrong vs Correct
 
@@ -210,6 +243,7 @@ const preview = await fetchArtifactPreview(target.reference);
 - 新写入使用 `run-runtime-event@2.0.0` / `public-run-event@2.0.0`；v1 decoder 保留并规范化旧 Tool event，数据库 migration 前后原子部署，历史 sequence/row 不改写。
 - 回滚 UI 不删除事件；回滚 runtime 时新 Run 明确 BLOCKED，不回退 legacy Research。
 - 回滚或重写已移植的 Harness 代码时保留来源/许可记录；替换实现不等于删除第三方归属历史。
+- Reasonix 仅为设计参考；若未来引入 Desktop/TUI，必须新增独立任务和 surface adapter，不得把 transport 条件分支塞入 Team runtime。
 
 ## Task Ordering
 

@@ -10,4 +10,6 @@
 - [ ] 实现 completion/verifier/acceptance、retry/recovery/reconcile。
 - [ ] 在 run-worker-cli 注入真实 runtime，启动本地 Worker 做 E-commerce integration。
 - [ ] 真实 SSE 中验证按 `profile_id/task_id` 可重放 Subagent feed，断线不重复 Tool/Provider side effect。
+- [ ] 添加 architecture/conformance tests：Runtime 无 surface import，Web 与 headless invocation 对同一 Run 不改变
+      Model binding、task ID、effect receipt 或 public event identity。
 - [ ] 运行 Agent Runtime/Worker/Platform tests、typecheck、Biome 和数据库断言，更新 specs 并提交。

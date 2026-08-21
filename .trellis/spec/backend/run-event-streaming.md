@@ -4,6 +4,8 @@
 > commit `47f943859bef60e4160492346772ded9b24f765a` 是主要代码基线：在 MIT 条款下优先移植并改造
 > `ReasoningRow`、`ToolRow`、assembler/snapshot、details layout 和相关测试，避免另建近似状态机；
 > 同时必须替换为 Data Agent 的事件、权限、Artifact 和设计 token，并保留上游版权/许可与修改记录。
+> Reasonix 固定 commit `668cdee703680530901c67ff3908a95b720ad0d2` 仅作为多端分层参考：共享
+> control/event authority 位于各 surface adapter 之后。它不证明所有客户端使用同一种 wire protocol，也不是本任务的代码基线。
 
 ## 场景：对话实时过程与对话级轨迹
 
@@ -11,6 +13,7 @@
 
 - Worker 新增用户可见的阶段进度、工具边界或回答增量时适用。
 - Web 新增 Run SSE 消费者或按 Conversation 聚合轨迹时适用。
+- Desktop/TUI 等未来 surface 新增 adapter 时也适用；它们必须消费同一 Run identity、公开 DTO 和 replay 语义。
 - “Think”只表示可审计的阶段摘要；隐藏模型推理、System Prompt 与 Raw Memory 不属于公开事件。
 
 ### 2. Signatures
@@ -44,6 +47,10 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - `PublicRunEvent` 与 `ConversationTrajectory` 必须由 `@data-agent/contracts` 的 Zod Schema 解析。
 - display event 只允许严格、扁平、定长字段；写 `run_events` 前清理 Credential、Authorization、
   Connection Userinfo、Token 形态及 System Prompt 标记。
+- `PublicRunEvent`、Run/Agent/Tool identity、cursor、terminal closure 和公开错误码组成 surface-neutral protocol core；
+  REST/SSE 只是当前 Web adapter。未来 adapter 可以使用不同 envelope，但不能改变这些领域语义。
+- Contract/replay/projection core 不得 import React、DOM、`EventSource`、Wails、TUI 或其他 surface package；
+  selection、panel layout 和 connection health 留在 surface-local store。
 - 复制/改造 Harness 实质性代码时维护 upstream path + commit + target path + modified status 来源清单，
   保留 `Copyright (c) 2026 DeepSeek` 与 MIT permission notice；Codex 桌面仅作为黑盒功能验收基准。
 - 新增 Agent identity/Artifact locator 时必须使用显式 v2 runtime/public schema；读取保留 v1 decoder 并规范化
@@ -90,6 +97,7 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - Base：旧 Run 只有 lifecycle/terminal；轨迹仍可回放，对话不显示空工具卡。
 - Bad：组件接收 `unknown` 后使用类型断言，或另建一个仅存在内存中的“轨迹状态”。
 - Bad：已有 Harness assembler/details 实现可适配却无理由从零重写，或复制后删除 MIT 来源记录。
+- Bad：Web/Desktop/TUI 各自维护一套 Agent lifecycle、根据 surface 选择不同 Model binding，或让 runtime 反向 import frontend。
 - Bad：把 Chain-of-Thought、Provider Request、SQL Rows 或原始工具对象序列化进 `run_events`。
 
 ### 6. Tests Required
@@ -104,6 +112,8 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - UI：Reasoning/Tool 默认折叠、原生 Button 键盘语义、失败/中断、长输出滚动。
 - Trajectory：按用户问题与 Run 分组、Duration/Turns/Calls、`runId + sequence` 双向定位。
 - Provenance：source-reuse ledger 覆盖所有 copied/adapted Harness 文件，notice/commit/modified status 完整。
+- Multi-surface conformance：同一 fixture 经 Web SSE adapter 与 headless adapter 后保持 event identity、sequence、
+  cursor、terminal closure、Inspector target 和错误码一致；不要求实现实际 Desktop/TUI。
 
 ### 7. Wrong vs Correct
 
@@ -124,6 +134,9 @@ const processRows = assembleProcessRows(events, runId);
 const trajectory = groupTrajectoryEvents(events);
 const inspector = assembleSubagentInspector(events, selectedAgent);
 ```
+
+Surface adapter 可以改变 wire envelope 和渲染 view model，但 `events` 必须来自同一严格 projection；不得在 adapter
+内重新推导 Model、Run 或 Agent authority。
 
 ## 场景：Semantic Authoring 独立公开轨迹
 

@@ -2,7 +2,8 @@
 
 ## 1. Scope / Trigger
 
-任何新增或修改 Agent 对话、执行轨迹、Team Trace、Semantic Agent 或 SSE 消费组件时使用本规范。目标是让用户看到可恢复的公开过程，同时禁止浏览器获得私有推理、原始上下文和凭据。
+任何新增或修改 Agent 对话、执行轨迹、Team Trace、Semantic Agent、SSE 消费组件或未来 Desktop/TUI adapter
+时使用本规范。目标是让用户看到可恢复的公开过程，同时禁止任何 surface 获得私有推理、原始上下文和凭据。
 
 ## 2. Signatures
 
@@ -62,6 +63,9 @@ function assembleSemanticAuthoringProcessEvents(
 
 QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `START/DELTA/END + block_id`；Semantic Authoring 使用 `/api/workspaces/:workspaceId/semantic/studio/authoring-runs/:runId/feed/events`，为兼容 PostgreSQL Authority 保留 `stage` 类型并用 `semantic-turn-* + RUNNING/COMPLETED` 表达同一公开思考折叠语义。两者都必须先由 Workspace 服务端边界鉴权。
 
+这些 REST/SSE endpoint 是当前 Web transport，不是 Public Run Protocol 本身。Protocol core 是严格 DTO、稳定
+identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可用不同 transport，但必须保持这些语义。
+
 ## 3. Contracts
 
 - QA reasoning 按 `block_id` 合并，Semantic thinking stage 按 `phase` 合并，tool 按 `call_id` 合并；SSE 重连后的 durable replay 必须得到同一展示结果。
@@ -82,6 +86,10 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
   替换 Cordis/SessionEvent/host openFile/品牌 token 为 Data Agent 边界，并保留 MIT 来源/修改记录。
 - Codex 桌面端是黑盒功能基准；Inline 顺序、折叠、文件/Agent Inspector、面板生命周期、键盘和焦点必须进入
   `MATCH/ADAPTED/OUT_OF_SCOPE` 验收矩阵，禁止用静态视觉相似替代功能 proof。
+- Reasonix 固定 commit `668cdee703680530901c67ff3908a95b720ad0d2` 只作为次级架构参考：共享 controller/event
+  core 后接 TUI、HTTP/SSE、Wails、ACP adapter。它们不是同一 wire protocol；Web 仍是本任务唯一交付 surface。
+- assembler/snapshot core 必须无 React、DOM、`EventSource` 或 host 依赖；Web hook/store 只负责 transport、selection、
+  layout 和 connection state，不得推进 Agent/Run authority 或重选 Model/provider。
 - reasoning 与 tool 默认折叠，按钮或原生 `summary` 必须可键盘操作并暴露 expanded state。
 - `WorkspaceJourneyEvidenceArtifact` 是 Goal/CI proof，不是 Authority Receipt；只有 required checkpoint 全 PASS 且 artifact hash 有效时才是 `GO`。
 
@@ -113,6 +121,7 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
   or opening a path parsed from Tool output.
 - Bad: rebuilding a parallel UI state machine when the pinned Harness implementation can be adapted, or copying it
   without upstream path/commit/MIT/modified-source records.
+- Bad: tying the projection core to browser `EventSource`, or creating separate lifecycle truth for Web/Desktop/TUI.
 
 ## 6. Tests Required
 
@@ -125,6 +134,8 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
 - Browser: 1440px and 390px have no document horizontal overflow; language and disclosure controls work with Enter.
 - Browser: Codex parity matrix covers Inspector open/switch/resize/close/restore and Subagent live updates with proof.
 - Provenance: every copied/adapted Harness source and test has an upstream/target mapping plus retained MIT notice.
+- Multi-surface conformance: the Web adapter and a headless adapter process the same fixture into identical block/Inspector
+  identity, cursor and terminal state; actual Desktop/TUI/ACP delivery remains out of scope.
 
 ## 7. Wrong vs Correct
 

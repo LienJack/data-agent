@@ -21,6 +21,8 @@
   AppFrame/details rail、selection store、Subagent baseline/live 和 E2E 结构；保留来源与 MIT notice。
 - 功能尽可能对标 Codex 桌面端：Inline 顺序、折叠行为、文件/Artifact Inspector、Subagent live Inspector、
   右栏调宽/关闭/恢复、键盘与焦点行为必须逐项验证；视觉继续使用 Data Agent design system。
+- Web UI 是 surface-neutral Public Run Protocol 的首个 adapter。assembler/snapshot core 不依赖 React、DOM 或
+  `EventSource`；Reasonix 仅提供“共享运行时、surface-local projection”的设计思想，不替代 Harness UI 源码基线。
 - 无事件、排队、失败、取消、断线、旧 Run、stale trace 都有明确非成功状态。
 - 中英文、键盘、screen reader、focus-visible、reduced motion 完整。
 - 内部 role Model profiles 不出现在用户可选模型菜单。
@@ -34,3 +36,5 @@
 - [ ] Inspector baseline + SSE、断线重连、刷新 URL 恢复、Conversation/Run 切换和 stale target 都有确定性测试，顺序与 trajectory 一致。
 - [ ] Tool/Subagent/Artifact 均可从 Inspector 定位 trajectory，错误状态展示公开 reason code。
 - [ ] Codex 桌面功能矩阵逐项达到 MATCH/ADAPTED；DeepSeek Harness source-reuse ledger 覆盖所有移植文件、测试、修改点和 MIT 归属。
+- [ ] Web projection 与 headless fixture 对同一 replay 得到相同 activity/Inspector identity；布局、selection、连接
+      badge 仍是 Web-local view state，不反写 public event authority。

@@ -1,1 +1,4 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"验证 schema、数据库、SSE、headless replay 与 terminal closure"}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"验证严格 DTO、Inspector target 与无私有字段"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-source-reuse-ledger.md","reason":"验证复用实现和测试保留来源许可"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/reasonix-multi-surface-protocol-design.md","reason":"验证没有误建单一 wire protocol 或第二套 surface authority"}

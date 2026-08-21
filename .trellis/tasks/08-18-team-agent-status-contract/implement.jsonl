@@ -1,1 +1,5 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"PublicRunEvent v2、PostgreSQL validator、cursor replay 与 adapter conformance"}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Agent Tool Artifact public DTO 与 Inspector addressing"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-status-design.md","reason":"Harness event persistence 与 deterministic assembler 主要实现参考"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-source-reuse-ledger.md","reason":"合同和测试复用的固定来源与 MIT 记录"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/reasonix-multi-surface-protocol-design.md","reason":"Surface-neutral protocol core 与不同 transport adapter 边界"}

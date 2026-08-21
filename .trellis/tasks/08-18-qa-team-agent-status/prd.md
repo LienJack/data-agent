@@ -20,6 +20,9 @@
   优先移植并改造其 assembler、snapshot、details layout、disclosure/tool row、subagent baseline/live merge 与测试结构，
   避免重复发明；复制实质性代码必须记录上游文件、固定提交、修改点并保留 MIT 版权/许可声明。
 - 2026-08-21 通过 Understand Anything fresh graph 复核：Harness details panel 的选择写入共享 store、内容从 session snapshot 派生；session/subagent 使用 durable baseline + live increment；三栏空间不足时优先收起 details。Harness ProducedFiles 走宿主 `openFile`，该行为不适用于 Data Agent 的多租户 Artifact 权威。
+- Reasonix 固定参考提交 `668cdee703680530901c67ff3908a95b720ad0d2` 证明同一个无传输依赖的
+  `control.Controller` 可位于 TUI、HTTP/SSE、Wails Desktop 与 ACP adapter 之后。它只作为“一个运行时、多个
+  surface”的次级设计参考，不替代 DeepSeek Harness 的主要代码基线，也不意味着所有端共用同一种 wire protocol。
 
 ## Requirements
 
@@ -46,9 +49,12 @@
 - R14：功能尽可能对标 Codex 桌面端当前可观察体验：回答内事件顺序、默认折叠、文件/Artifact 右栏预览、
   Subagent 右栏实时活动、selection 切换、面板关闭/调宽、刷新恢复、键盘和 focus return 均进入验收矩阵。
   Codex 是黑盒功能基准，不假定或复制其私有源码、协议和品牌资产。
-- R15：实现优先级固定为“Data Agent 权威合同 > Codex 桌面功能语义 > DeepSeek Harness 可复用实现 > Data Agent 视觉 token”。
+- R15：实现优先级固定为“Data Agent 权威合同 > Codex 桌面功能语义 > DeepSeek Harness 可复用实现 > Reasonix 多端分层思想 > Data Agent 视觉 token”。
   若 Harness 实现与 PostgreSQL authority、Workspace RBAC、ArtifactReference 或一层 Team 深度冲突，只改造冲突边界，
   不以“重新手写”为默认选择。
+- R16：公开 Run 合同必须与具体 surface/transport 解耦。同一 `workspace/conversation/run/sequence` identity、
+  `PublicRunEvent@v2`、replay/cursor/terminal 语义、命令 authority 与 Inspector target 可被 Web REST/SSE adapter
+  和未来 Desktop/TUI adapter 消费；当前范围只实现 Web，不创建第二套模型执行或 Agent lifecycle。
 
 ## Acceptance Criteria
 
@@ -61,6 +67,8 @@
 - [ ] Artifact/file link 只使用 exact reference，预览支持既有 REPORT/SQL/TABLE/CHART/MARKDOWN renderer；unsupported/denied/hash mismatch 不回退 raw output。
 - [ ] 建立 Codex 桌面功能对标矩阵并完成逐项 browser proof；每项标注 `MATCH/ADAPTED/OUT_OF_SCOPE`，不得只写“类似 Codex”。
 - [ ] 建立 DeepSeek Harness 来源清单，记录复用/改造的上游文件、commit、Data Agent 目标文件、差异和 MIT notice；可复用项无理由重写视为 Review finding。
+- [ ] Web REST/SSE 与一个无 DOM 的 headless contract adapter 对同一 fixture 产生相同 public event identity、
+      replay cursor、terminal closure 和 Inspector addressing；projection core 不依赖 React、`EventSource` 或桌面宿主。
 - [ ] 1440x1000 和 390x844 浏览器截图无重叠、裁切或横向溢出，reduced motion 下无持续动画。
 - [ ] Worker/Web/contracts focused tests、typecheck、Biome、migration renderer/static 与浏览器实际运行验证通过。
 
@@ -73,6 +81,7 @@
 - 不展示 Screenshot 中可能来自模型的原始 Think 文本；只展示 Data Agent 生成并通过严格合同的公共摘要。
 - 不把本地 optimistic 状态、SSE 连接状态或“正在生成回答”当作 Agent authority。
 - 不把 `createResearchWorkflowExecutor` 当作 Team runtime fallback，也不把 Falcon benchmark runner 接入生产请求。
+- 不在本任务交付新的 TUI、Desktop、ACP server 或通用跨端 SDK；Reasonix 只约束核心协议和 adapter 边界。
 
 ## Delivery Map
 

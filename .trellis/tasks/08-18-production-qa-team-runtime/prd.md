@@ -14,6 +14,8 @@
 - 每个 durable transition 后发 Agent status；Tool 前后事件完整，失败时零伪成功。
 - QueryEvidence、SqlArtifact、AnalysisReport 等可查看产物先提交 Artifact Store，再把完整 `ArtifactReference` 写入对应 Tool terminal event，供 Inline file link 与 Inspector 预览。
 - deterministic task/attempt/handoff IDs 支持 lease retry、snapshot loss 和 idempotent replay。
+- Runtime 发出的命令/事件端口与 Web/Desktop/TUI surface 无关；Model/provider/profile binding 只由冻结配置和 Run
+  authority 决定，不根据客户端类型分叉执行链。
 
 ## Acceptance Criteria
 
@@ -22,3 +24,5 @@
 - [ ] Text2SQL/Report 的公开 Tool 终结事件引用真实已提交 Artifact；点击后现有 Preview API 可按 exact reference 读取，失败时不回退为 raw Tool output。
 - [ ] Profile stale、context drift、tool denial、provider failure、lease takeover 全部失败关闭。
 - [ ] Worker restart/replay 不重复 Provider/Tool side effect，最终 Acceptance 唯一。
+- [ ] Runtime/Team Store/Artifact authority 没有 Web/Desktop/TUI import 或 surface 条件分支；headless invocation 与
+      Web 请求绑定到同一 Run 时产生相同 task/event identity。

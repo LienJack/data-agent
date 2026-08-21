@@ -29,6 +29,9 @@ type QAInspectorTarget =
 使用现有 answer typography。`QAInspector` 只持有 target selection，详情从 QA store 中的 parsed events 或 Artifact
 Preview API 派生，不维护第二份 Agent lifecycle 状态。
 
+Assembler/snapshot 作为 surface-neutral projection core：输入严格 Public Run DTO，输出稳定 block/snapshot，不读取
+React context、DOM、浏览器 `EventSource`、Wails 或终端状态。Web hook/store 负责把 REST/SSE transport 适配成该输入。
+
 ## Layout
 
 - Think row：Brain icon + `Think` + truncated public summary。
@@ -68,6 +71,13 @@ DeepSeek Harness 固定 commit `47f943859bef60e4160492346772ded9b24f765a` 是 UI
 Data Agent 的 `PublicRunEvent`、QA store、Workspace RBAC、Artifact Preview、Phosphor icons 与一层 Team depth。
 实质性复制保留 DeepSeek MIT notice 和 modified-source 记录。
 
+## Secondary Architecture Reference: Reasonix
+
+Reasonix 固定 commit `668cdee703680530901c67ff3908a95b720ad0d2` 展示了同一个 control/event core 如何由
+TUI、HTTP/SSE、Wails Desktop 与 ACP 分别适配。这里只采用两点：projection core 不依赖 surface，以及布局/连接
+状态留在 surface-local store。HTTP/SSE、ACP、Wails 并不是同一种 wire protocol；本任务也不复制 Reasonix UI、
+不创建 Desktop/TUI，只用 headless fixture 验证 Harness-derived assembler 可在 Web 之外消费同一 DTO。
+
 ## Codex Desktop Functional Target
 
 Codex 桌面端是黑盒行为基准。目标不是外观截图近似，而是操作结果尽可能一致：事件插入正文、默认折叠、
@@ -85,3 +95,4 @@ Codex 桌面端是黑盒行为基准。目标不是外观截图近似，而是�
 | Artifact scope/hash denied | Show public error code; never reveal existence or fallback body |
 | Conversation/Run changed | Close stale Inspector and restore focus safely |
 | desktop width cannot keep center >= 640px | Auto-collapse Inspector without deleting selection |
+| surface adapter reconnects or changes envelope | Preserve Run/sequence authority; only adapter connection state may change |
