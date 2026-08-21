@@ -2,6 +2,7 @@
 
 import type {
   PublicRunEvent,
+  QaInspectorTarget,
   QaResourceCatalog,
   WorkspaceConversation,
   WorkspaceConversationMessage,
@@ -22,7 +23,8 @@ import {
 } from "./api-client";
 import { fetchDataSources } from "./datasource-api";
 import type { DataSourceConnection } from "./datasource-types";
-import { answerText, mergePublicRunEvents } from "./qa-event-assembler";
+import { answerText, mergePublicRunEvents, resumableRunFromReplay } from "./qa-event-assembler";
+import { replaceQAInspectorTargetInBrowser } from "./qa-inspector-target";
 import type {
   Conversation,
   CreateConversationInput,
@@ -50,6 +52,9 @@ interface QAState {
   events: PublicRunEvent[];
   view: QAView;
   trajectoryFocus: TrajectoryFocus | null;
+  inspectorTarget: QaInspectorTarget | null;
+  inspectorTriggerId: string | null;
+  inspectorWidth: number;
   connection: RunConnectionState;
   /** 可用数据源列表 */
   dataSources: DataSourceConnection[];
@@ -68,6 +73,11 @@ interface QAState {
   error: string | undefined;
 }
 
+interface SelectConversationOptions {
+  /** URL bootstrap keeps the exact query until replay validation restores it. */
+  preserveInspectorQuery?: boolean;
+}
+
 interface QAActions {
   /** 加载对话列表 */
   loadConversations: () => Promise<void>;
@@ -76,13 +86,18 @@ interface QAActions {
   /** 删除对话 */
   deleteConversation: (id: string) => Promise<void>;
   /** 选中对话 */
-  selectConversation: (id: string) => Promise<void>;
+  selectConversation: (id: string, options?: SelectConversationOptions) => Promise<void>;
   /** 加载消息 */
   loadMessages: (conversationId: string) => Promise<void>;
   loadTrajectory: (conversationId: string) => Promise<void>;
   setView: (view: QAView) => void;
   openTrajectory: (focus: TrajectoryFocus) => void;
   openConversation: (focus: TrajectoryFocus) => void;
+  selectInspector: (target: QaInspectorTarget, triggerId: string) => void;
+  closeInspector: () => void;
+  restoreInspector: (target: QaInspectorTarget | null) => void;
+  setInspectorWidth: (width: number) => void;
+  hydrateInspectorWidth: () => void;
   /** 发送消息 */
   sendMessage: (
     content: string,
@@ -111,6 +126,9 @@ const initialState: QAState = {
   events: [],
   view: "conversation",
   trajectoryFocus: null,
+  inspectorTarget: null,
+  inspectorTriggerId: null,
+  inspectorWidth: 360,
   connection: "idle",
   dataSources: [],
   resourceCatalog: null,
@@ -168,7 +186,104 @@ function terminalAnswer(projection: RunProjection | null): string {
   return "分析执行完成。";
 }
 
+function replayTerminalAnswer(events: readonly PublicRunEvent[], runId: string): string | null {
+  const answer = answerText(events, runId);
+  if (answer) return answer;
+  const terminal = events.findLast(
+    (event): event is Extract<PublicRunEvent, { type: "terminal" }> =>
+      event.run_id === runId && event.type === "terminal",
+  );
+  if (!terminal) return null;
+  if (terminal.payload.status === "FAILED") return "分析执行失败，请展开执行过程查看失败节点。";
+  if (terminal.payload.status === "CANCELLED") return "分析已取消。";
+  return "分析执行完成。";
+}
+
 let activeStreamController: AbortController | null = null;
+
+export function acceptsRunStreamFrame(
+  activeConversationId: string | null,
+  activeRunId: string | null,
+  expectedConversationId: string,
+  expectedRunId: string,
+): boolean {
+  return activeConversationId === expectedConversationId && activeRunId === expectedRunId;
+}
+
+async function attachReplayRunStream(
+  runId: string,
+  workspaceId: string,
+  conversationId: string,
+  initialCursor: number,
+): Promise<void> {
+  if (activeStreamController && useQAStore.getState().activeRunId === runId) return;
+  activeStreamController?.abort();
+  const controller = new AbortController();
+  activeStreamController = controller;
+  let cursor = initialCursor;
+  let terminal = false;
+  let attempt = 0;
+  if (useQAStore.getState().activeConversationId !== conversationId) return;
+  useQAStore.setState({ activeRunId: runId, connection: "connecting" });
+  try {
+    while (!terminal && !controller.signal.aborted) {
+      try {
+        useQAStore.setState({ connection: attempt === 0 ? "connecting" : "reconnecting" });
+        await streamRunEvents({
+          runId,
+          workspaceId,
+          cursor,
+          signal: controller.signal,
+          onEvent: (event) => {
+            cursor = Math.max(cursor, event.sequence);
+            terminal ||= event.type === "terminal";
+            useQAStore.setState((state) => {
+              if (
+                !acceptsRunStreamFrame(
+                  state.activeConversationId,
+                  state.activeRunId,
+                  conversationId,
+                  runId,
+                )
+              ) {
+                return {};
+              }
+              const events = mergePublicRunEvents(state.events, [event]);
+              const content = answerText(events, runId);
+              return {
+                events,
+                connection: terminal ? "closed" : "live",
+                messages: state.messages.map((message) =>
+                  message.role === "agent" && message.runId === runId
+                    ? { ...message, content: content || message.content }
+                    : message,
+                ),
+              };
+            });
+          },
+        });
+        if (!terminal) attempt += 1;
+      } catch {
+        if (controller.signal.aborted) break;
+        attempt += 1;
+      }
+      if (!terminal && attempt <= 8) await waitWithBackoff(attempt, controller.signal);
+      if (attempt > 8) {
+        useQAStore.setState({ connection: "reconnecting" });
+        return;
+      }
+    }
+  } finally {
+    if (activeStreamController === controller) activeStreamController = null;
+    if (
+      terminal &&
+      useQAStore.getState().activeConversationId === conversationId &&
+      useQAStore.getState().activeRunId === runId
+    ) {
+      useQAStore.setState({ activeRunId: null, connection: "closed" });
+    }
+  }
+}
 
 export const useQAStore = create<QAStore>((set, get) => ({
   ...initialState,
@@ -186,6 +301,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
   },
 
   createConversation: async (input) => {
+    activeStreamController?.abort();
+    activeStreamController = null;
     set({ error: undefined });
     try {
       const catalog = get().resourceCatalog;
@@ -215,6 +332,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
         events: [],
         view: "conversation",
         trajectoryFocus: null,
+        inspectorTarget: null,
+        inspectorTriggerId: null,
         resourceNotice: undefined,
       }));
       return conversation;
@@ -231,6 +350,10 @@ export const useQAStore = create<QAStore>((set, get) => ({
         method: "DELETE",
       });
       if (!response.ok) throw new Error("删除对话失败");
+      if (get().activeConversationId === id) {
+        activeStreamController?.abort();
+        activeStreamController = null;
+      }
       set((state) => {
         const deletingActive = state.activeConversationId === id;
         const conversations = state.conversations.filter((c) => c.id !== id);
@@ -240,7 +363,15 @@ export const useQAStore = create<QAStore>((set, get) => ({
         return {
           conversations,
           activeConversationId,
-          ...(deletingActive ? { messages: [], events: [], trajectoryFocus: null } : {}),
+          ...(deletingActive
+            ? {
+                messages: [],
+                events: [],
+                trajectoryFocus: null,
+                inspectorTarget: null,
+                inspectorTriggerId: null,
+              }
+            : {}),
         };
       });
     } catch (err) {
@@ -248,8 +379,18 @@ export const useQAStore = create<QAStore>((set, get) => ({
     }
   },
 
-  selectConversation: async (id) => {
-    set({ activeConversationId: id, messages: [], events: [], trajectoryFocus: null });
+  selectConversation: async (id, options) => {
+    activeStreamController?.abort();
+    activeStreamController = null;
+    if (!options?.preserveInspectorQuery) replaceQAInspectorTargetInBrowser(null, id);
+    set({
+      activeConversationId: id,
+      messages: [],
+      events: [],
+      trajectoryFocus: null,
+      inspectorTarget: null,
+      inspectorTriggerId: null,
+    });
     await get().loadMessages(id);
   },
 
@@ -263,11 +404,62 @@ export const useQAStore = create<QAStore>((set, get) => ({
       if (!response.ok) throw new Error("加载消息失败");
       const json = (await response.json()) as { data: WorkspaceConversationMessage[] };
       if (get().activeConversationId === conversationId) {
+        const messages = json.data.map(messageFromContract);
+        for (const runId of new Set(trajectory.events.map((event) => event.run_id))) {
+          if (messages.some((message) => message.role === "agent" && message.runId === runId))
+            continue;
+          const content = replayTerminalAnswer(trajectory.events, runId);
+          if (!content) continue;
+          const terminal = trajectory.events.findLast(
+            (event) => event.run_id === runId && event.type === "terminal",
+          );
+          messages.push({
+            id: `replay-agent-${runId}`,
+            conversationId,
+            role: "agent",
+            content,
+            type: "text",
+            runId,
+            createdAt: terminal?.occurred_at ?? new Date().toISOString(),
+          });
+        }
+        const resumable = resumableRunFromReplay(trajectory.events);
+        if (
+          resumable &&
+          !messages.some((message) => message.role === "agent" && message.runId === resumable.runId)
+        ) {
+          messages.push({
+            id: `replay-agent-${resumable.runId}`,
+            conversationId,
+            role: "agent",
+            content: answerText(trajectory.events, resumable.runId),
+            type: "text",
+            runId: resumable.runId,
+            createdAt:
+              trajectory.events.find((event) => event.run_id === resumable.runId)?.occurred_at ??
+              new Date().toISOString(),
+          });
+        }
+        messages.sort(
+          (left, right) =>
+            left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+        );
         set({
-          messages: json.data.map(messageFromContract),
+          messages,
           events: trajectory.events,
           loading: false,
         });
+        if (resumable) {
+          const workspaceId = resolveWorkspaceId();
+          if (workspaceId) {
+            void attachReplayRunStream(
+              resumable.runId,
+              workspaceId,
+              conversationId,
+              resumable.cursor,
+            );
+          }
+        }
       }
     } catch (err) {
       set({ error: err instanceof Error ? err.message : "加载消息失败", loading: false });
@@ -304,6 +496,62 @@ export const useQAStore = create<QAStore>((set, get) => ({
       url.searchParams.set("run", focus.runId);
       url.searchParams.set("event", String(focus.sequence));
       window.history.replaceState(null, "", url);
+    }
+  },
+
+  selectInspector: (target, triggerId) => {
+    const state = get();
+    const runBelongsToConversation =
+      state.events.some((event) => event.run_id === target.run_id) ||
+      state.messages.some((message) => message.runId === target.run_id);
+    if (!state.activeConversationId || !runBelongsToConversation) {
+      set({ error: "INSPECTOR_RUN_NOT_IN_ACTIVE_CONVERSATION" });
+      return;
+    }
+    replaceQAInspectorTargetInBrowser(target, state.activeConversationId);
+    set({ inspectorTarget: target, inspectorTriggerId: triggerId });
+  },
+
+  closeInspector: () => {
+    const triggerId = get().inspectorTriggerId;
+    replaceQAInspectorTargetInBrowser(null, get().activeConversationId);
+    set({ inspectorTarget: null, inspectorTriggerId: null });
+    if (triggerId && typeof document !== "undefined") {
+      requestAnimationFrame(() => document.getElementById(triggerId)?.focus());
+    }
+  },
+
+  restoreInspector: (target) => {
+    const state = get();
+    const knownRun =
+      target === null ||
+      state.events.some((event) => event.run_id === target.run_id) ||
+      state.messages.some((message) => message.runId === target.run_id);
+    const restored = knownRun ? target : null;
+    replaceQAInspectorTargetInBrowser(restored, state.activeConversationId);
+    set({
+      inspectorTarget: restored,
+      inspectorTriggerId: null,
+      ...(knownRun ? {} : { error: "INSPECTOR_RUN_NOT_IN_ACTIVE_CONVERSATION" }),
+    });
+  },
+
+  setInspectorWidth: (width) => {
+    const inspectorWidth = Math.min(520, Math.max(320, Math.round(width)));
+    set({ inspectorWidth });
+    try {
+      window.localStorage.setItem("data-agent.qa-inspector-width", String(inspectorWidth));
+    } catch {
+      // Layout preference failure must not affect Run or Inspector authority.
+    }
+  },
+
+  hydrateInspectorWidth: () => {
+    try {
+      const stored = Number(window.localStorage.getItem("data-agent.qa-inspector-width"));
+      if (Number.isFinite(stored)) set({ inspectorWidth: Math.min(520, Math.max(320, stored)) });
+    } catch {
+      // Keep the contract default when browser storage is unavailable.
     }
   },
 
@@ -358,6 +606,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
       conversationId = conv.id;
     }
 
+    activeStreamController?.abort();
+    activeStreamController = null;
     set({ sending: true, error: undefined });
 
     // 添加用户消息到本地
@@ -372,6 +622,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
     set((s) => ({ messages: [...s.messages, userMessage] }));
 
     let runAccepted = false;
+    let finalAnswerProjected = false;
     try {
       const workspaceId = resolveWorkspaceId();
       const activeConversation = get().conversations.find((item) => item.id === conversationId);
@@ -397,7 +648,10 @@ export const useQAStore = create<QAStore>((set, get) => ({
         messages: [...current.messages, agentMessage],
         connection: "connecting",
         activeRunId: run.runId,
+        inspectorTarget: null,
+        inspectorTriggerId: null,
       }));
+      replaceQAInspectorTargetInBrowser(null, conversationId);
 
       // sequence 是断线补发、去重和恢复的唯一游标。
       const controller = new AbortController();
@@ -421,6 +675,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
                 cursor = Math.max(cursor, event.sequence);
                 terminal ||= event.type === "terminal";
                 set((current) => {
+                  if (current.activeConversationId !== conversationId) return {};
                   const events = mergePublicRunEvents(current.events, [event]);
                   const content = answerText(events, run.runId);
                   return {
@@ -467,6 +722,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
         connection: "closed",
         activeRunId: null,
       }));
+      finalAnswerProjected = true;
 
       const persisted = await fetch(
         workspaceQaPath(`/conversations/${encodeURIComponent(conversationId)}/messages`),
@@ -496,6 +752,15 @@ export const useQAStore = create<QAStore>((set, get) => ({
       return true;
     } catch (err) {
       const errorContent = err instanceof Error ? err.message : "分析请求失败";
+      if (finalAnswerProjected) {
+        set({
+          sending: false,
+          connection: "closed",
+          activeRunId: null,
+          error: `最终回答索引持久化失败；回答仍可从 Run 事件恢复。${errorContent}`,
+        });
+        return true;
+      }
       set((current) => {
         const pending = [...current.messages]
           .reverse()
@@ -614,6 +879,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
             messages: [],
             events: [],
             trajectoryFocus: null,
+            inspectorTarget: null,
+            inspectorTriggerId: null,
             resourceSwitching: false,
             resourceNotice: "已为新资源创建独立对话，原对话与执行证据保持不变",
           };
@@ -656,6 +923,8 @@ export const useQAMessages = () => useQAStore((s) => s.messages);
 export const useQAEvents = () => useQAStore((s) => s.events);
 export const useQAView = () => useQAStore((s) => s.view);
 export const useQATrajectoryFocus = () => useQAStore((s) => s.trajectoryFocus);
+export const useQAInspectorTarget = () => useQAStore((s) => s.inspectorTarget);
+export const useQAInspectorWidth = () => useQAStore((s) => s.inspectorWidth);
 export const useQAConnection = () => useQAStore((s) => s.connection);
 export const useQADataSources = () => useQAStore((s) => s.dataSources);
 export const useQAResourceCatalog = () => useQAStore((s) => s.resourceCatalog);

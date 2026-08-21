@@ -4,7 +4,9 @@ import { ChatCircleDots, Path } from "@phosphor-icons/react";
 import { useEffect } from "react";
 import { ChatArea } from "@/components/qa/chat-area";
 import { ChatInput } from "@/components/qa/chat-input";
+import { QAInspector } from "@/components/qa/qa-inspector";
 import { ResolutionTraceView } from "@/components/qa/resolution-trace-view";
+import { parseQAInspectorTarget } from "@/lib/qa-inspector-target";
 import { useQAStore, useQAView } from "@/lib/qa-store";
 
 /**
@@ -20,6 +22,7 @@ export default function QAPage() {
   const openTrajectory = useQAStore((state) => state.openTrajectory);
   const openConversation = useQAStore((state) => state.openConversation);
   const selectConversation = useQAStore((state) => state.selectConversation);
+  const restoreInspector = useQAStore((state) => state.restoreInspector);
 
   useEffect(() => {
     const parameters = new URLSearchParams(window.location.search);
@@ -27,19 +30,24 @@ export default function QAPage() {
     const conversationId = parameters.get("conversation");
     const sequence = Number(parameters.get("event"));
     const tab = parameters.get("tab");
-    if (conversationId) void selectConversation(conversationId);
-    if (runId && Number.isSafeInteger(sequence) && sequence > 0) {
-      const focus = { runId, sequence };
-      if (tab === "trajectory") openTrajectory(focus);
-      if (tab === "conversation") openConversation(focus);
-    } else if (tab === "trajectory") {
-      setView("trajectory");
-    }
-  }, [openConversation, openTrajectory, selectConversation, setView]);
+    const inspectorTarget = parseQAInspectorTarget(parameters);
+    void (async () => {
+      if (conversationId)
+        await selectConversation(conversationId, { preserveInspectorQuery: true });
+      restoreInspector(inspectorTarget);
+      if (runId && Number.isSafeInteger(sequence) && sequence > 0) {
+        const focus = { runId, sequence };
+        if (tab === "trajectory") openTrajectory(focus);
+        if (tab === "conversation") openConversation(focus);
+      } else if (tab === "trajectory") {
+        setView("trajectory");
+      }
+    })();
+  }, [openConversation, openTrajectory, restoreInspector, selectConversation, setView]);
   return (
-    <div className="flex h-full min-w-0 flex-col bg-[var(--color-bg-primary)]">
+    <div className="qa-page-frame min-w-0 bg-[var(--color-bg-primary)]">
       <nav
-        className="flex h-11 shrink-0 items-center gap-1 border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 sm:px-5"
+        className="col-start-1 row-start-1 flex h-11 shrink-0 items-center gap-1 border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 sm:px-5"
         aria-label="对话视图"
       >
         {(["conversation", "trajectory"] as const).map((candidate) => (
@@ -59,10 +67,15 @@ export default function QAPage() {
           </button>
         ))}
       </nav>
-      <div className="min-h-0 flex-1">
+      <div className="col-start-1 row-start-2 min-h-0 overflow-hidden">
         {view === "conversation" ? <ChatArea /> : <ResolutionTraceView />}
       </div>
-      {view === "conversation" && <ChatInput />}
+      {view === "conversation" && (
+        <div className="col-start-1 row-start-3">
+          <ChatInput />
+        </div>
+      )}
+      <QAInspector />
     </div>
   );
 }

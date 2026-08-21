@@ -77,17 +77,42 @@ function Overview({ trace, sql }: { trace: ResolutionTrace; sql: readonly SqlHis
   );
 }
 
-function TraceList({ nodes }: { nodes: readonly ResolutionTraceNode[] }) {
-  const [expanded, setExpanded] = useState<string | null>(nodes.at(-1)?.node_id ?? null);
+function TraceList({
+  nodes,
+  focusedSequence = null,
+}: {
+  nodes: readonly ResolutionTraceNode[];
+  focusedSequence?: number | null;
+}) {
+  const focusedNode = nodes.find((node) => node.sequence === focusedSequence);
+  const [expanded, setExpanded] = useState<string | null>(
+    focusedNode?.node_id ?? nodes.at(-1)?.node_id ?? null,
+  );
+  useEffect(() => {
+    if (!focusedNode) return;
+    setExpanded(focusedNode.node_id);
+    document
+      .getElementById(`resolution-trace-${focusedNode.node_id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusedNode]);
   if (nodes.length === 0)
     return <EmptyState title="暂无运行节点" description="当前 Run 尚未提交公开事件或工件" />;
   return (
     <ol className="divide-y divide-[var(--color-border-default)]">
       {nodes.map((node) => (
-        <li key={node.node_id}>
+        <li
+          key={node.node_id}
+          id={`resolution-trace-${node.node_id}`}
+          className={
+            node.sequence === focusedSequence
+              ? "bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+              : undefined
+          }
+        >
           <button
             type="button"
             aria-expanded={expanded === node.node_id}
+            aria-current={node.sequence === focusedSequence ? "step" : undefined}
             onClick={() => setExpanded(expanded === node.node_id ? null : node.node_id)}
             className="grid w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-3 px-5 py-3 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]"
           >
@@ -274,6 +299,7 @@ export function ResolutionTraceView() {
     <ResolutionTracePanel
       trace={state.trace}
       sql={state.sql}
+      focusSequence={focus?.sequence ?? null}
       profiles={state.profiles}
       teamTrace={state.teamTrace}
       teamError={state.teamError}
@@ -288,6 +314,7 @@ export function ResolutionTracePanel({
   teamTrace = null,
   teamError = null,
   initialTab = "trace",
+  focusSequence = null,
 }: {
   readonly trace: ResolutionTrace;
   readonly sql: readonly SqlHistoryEntry[];
@@ -295,6 +322,7 @@ export function ResolutionTracePanel({
   readonly teamTrace?: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
   readonly teamError?: string | null;
   readonly initialTab?: TraceTab;
+  readonly focusSequence?: number | null;
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
 
@@ -326,7 +354,7 @@ export function ResolutionTracePanel({
       </header>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {tab === "overview" && <Overview trace={trace} sql={sql} />}
-        {tab === "trace" && <TraceList nodes={trace.nodes} />}
+        {tab === "trace" && <TraceList nodes={trace.nodes} focusedSequence={focusSequence} />}
         {tab === "team" && (
           <AgentTeamTrace profiles={profiles} trace={teamTrace} error={teamError} />
         )}

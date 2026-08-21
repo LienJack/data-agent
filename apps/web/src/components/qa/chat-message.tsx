@@ -2,10 +2,10 @@
 
 import type { PublicRunEvent } from "@data-agent/contracts";
 import { Cpu } from "@phosphor-icons/react";
-import { assembleProcessRows } from "@/lib/qa-event-assembler";
+import { assembleConversationActivity } from "@/lib/qa-event-assembler";
 import type { Message } from "@/lib/qa-types";
 import { formatDateTime } from "@/lib/utils";
-import { ProcessDisclosure } from "./process-disclosure";
+import { ConversationActivityStream } from "./conversation-activity-stream";
 
 interface ChatMessageProps {
   message: Message;
@@ -20,7 +20,11 @@ interface ChatMessageProps {
  */
 export function ChatMessage({ message, events = [] }: ChatMessageProps) {
   const isUser = message.role === "user";
-  const processRows = message.runId ? assembleProcessRows(events, message.runId) : [];
+  const activity =
+    message.role === "agent" && message.runId
+      ? assembleConversationActivity(events, message.runId)
+      : [];
+  const hasAnswerEvents = activity.some((block) => block.kind === "text");
 
   return (
     <div
@@ -49,26 +53,19 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
             </div>
           </div>
         )}
-        {processRows.length > 0 && (
-          <fieldset className="agent-process-list">
-            <legend className="sr-only">执行过程</legend>
-            {processRows.map((row) => (
-              <ProcessDisclosure key={row.id} row={row} />
-            ))}
-          </fieldset>
-        )}
-        {/* 消息内容 */}
-        {message.type === "report" ? (
+        {activity.length > 0 && <ConversationActivityStream blocks={activity} />}
+        {/* Legacy messages without answer events retain their persisted body. */}
+        {!hasAnswerEvents && message.type === "report" ? (
           <ReportContent message={message} />
-        ) : message.type === "hypothesis" ? (
+        ) : !hasAnswerEvents && message.type === "hypothesis" ? (
           <HypothesisContent message={message} />
-        ) : (
+        ) : !hasAnswerEvents ? (
           <div
             className={isUser ? "whitespace-pre-wrap text-sm" : "agent-answer whitespace-pre-wrap"}
           >
             {message.content || (message.runId ? "正在生成回答…" : "")}
           </div>
-        )}
+        ) : null}
 
         {/* 时间戳 */}
         <div

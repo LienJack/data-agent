@@ -31,6 +31,10 @@ describe("Workspace i18n", () => {
             output: null,
             durationMs: null,
             toolName: null,
+            errorCode: null,
+            profileId: null,
+            taskId: null,
+            artifactRefs: [],
           }}
         />
         <GreenfieldJourneyPanel currentStage="SCHEMA_READY" />

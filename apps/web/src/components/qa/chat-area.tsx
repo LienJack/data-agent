@@ -77,7 +77,11 @@ export function ChatArea() {
               <ChatMessage
                 key={msg.id}
                 message={msg}
-                events={msg.runId ? events.filter((event) => event.run_id === msg.runId) : []}
+                events={
+                  msg.role === "agent" && msg.runId
+                    ? events.filter((event) => event.run_id === msg.runId)
+                    : []
+                }
               />
             ))}
             {sending &&

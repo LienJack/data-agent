@@ -125,11 +125,11 @@ export function ChatInput() {
             className="max-h-52 min-h-[72px] w-full resize-none border-0 bg-transparent px-2 py-1 text-[15px] leading-6 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-[84px]"
           />
 
-          <div className="mt-1 flex min-w-0 flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border-default)]/70 pt-2">
-            <div className="min-w-0 flex-1 sm:flex-none">
+          <div className="mt-1 grid min-w-0 grid-cols-1 gap-2 border-t border-[var(--color-border-default)]/70 pt-2 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
+            <div className="min-w-0 w-full sm:w-auto sm:flex-none">
               <DataSourceSelector />
             </div>
-            <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5 sm:flex-none">
+            <div className="flex min-w-0 w-full items-center justify-end gap-1.5 sm:w-auto sm:flex-none">
               {sending && (
                 <span className="hidden items-center gap-1 text-[10px] text-[var(--color-text-muted)] md:flex">
                   <span className="size-1.5 rounded-full bg-[var(--color-accent)]" />

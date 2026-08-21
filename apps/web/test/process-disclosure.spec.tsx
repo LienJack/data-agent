@@ -18,6 +18,10 @@ describe("ProcessDisclosure", () => {
           output: null,
           durationMs: null,
           toolName: "research.kernel",
+          errorCode: null,
+          profileId: null,
+          taskId: null,
+          artifactRefs: [],
         }}
       />,
     );

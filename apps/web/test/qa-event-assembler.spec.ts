@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import { parseEventBlock } from "../src/lib/api-client";
 import {
   answerText,
+  assembleConversationActivity,
   assembleProcessRows,
+  assembleSubagentInspector,
   buildTrajectoryRecords,
   groupTrajectoryEvents,
   mergePublicRunEvents,
+  resumableRunFromReplay,
 } from "../src/lib/qa-event-assembler";
 import type { Message } from "../src/lib/qa-types";
 import { selectSseCursor } from "../src/lib/sse-cursor";
@@ -95,6 +98,22 @@ function agentEvent(sequence: number): PublicRunEvent {
   });
 }
 
+function teamEvent(
+  sequence: number,
+  type: "agent" | "tool" | "answer" | "terminal",
+  payload: Record<string, unknown>,
+): PublicRunEvent {
+  return publicRunEventSchema.parse({
+    schema_version: "public-run-event@2.0.0",
+    event_id: `23000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+    run_id: runId,
+    sequence,
+    occurred_at: `2026-08-14T00:00:${String(sequence).padStart(2, "0")}.000Z`,
+    type,
+    payload,
+  });
+}
+
 describe("Q&A public event assembly", () => {
   it("prefers a valid Last-Event-ID and safely falls back to the query cursor", () => {
     expect(selectSseCursor("12", "4")).toBe(12);
@@ -118,6 +137,24 @@ describe("Q&A public event assembly", () => {
     const merged = mergePublicRunEvents([second], [first, second]);
     expect(merged).toHaveLength(2);
     expect(answerText(merged, runId)).toBe("AB");
+  });
+
+  it("resumes only the latest non-terminal replay from its durable cursor", () => {
+    const first = event(1, {
+      type: "lifecycle",
+      payload: { name: "run.leased", status: "RUNNING", summary: "执行中" },
+    });
+    const second = event(2, { type: "answer", payload: { delta: "部分回答" } });
+    expect(resumableRunFromReplay([second, first])).toEqual({ runId, cursor: 2 });
+    expect(
+      resumableRunFromReplay([
+        first,
+        event(3, {
+          type: "terminal",
+          payload: { status: "COMPLETED", summary: "完成", error_code: null },
+        }),
+      ]),
+    ).toBeNull();
   });
 
   it("keeps a replayed WAITING lifecycle event as one durable trajectory record", () => {
@@ -147,6 +184,125 @@ describe("Q&A public event assembly", () => {
         payload: expect.objectContaining({ profile_id: "governed-text2sql-agent" }),
       }),
     ]);
+  });
+
+  it("assembles answer, Subagent and one-level owned Tool/Artifact blocks deterministically", () => {
+    const taskId = "22000000-0000-4000-8000-000000000001";
+    const reference = {
+      artifact_id: "24000000-0000-4000-8000-000000000001",
+      artifact_type: "AnalysisReport" as const,
+      app_id: "24000000-0000-4000-8000-000000000002",
+      tenant_id: "24000000-0000-4000-8000-000000000003",
+      environment: "test" as const,
+      run_id: runId,
+      revision: 1,
+      content_hash: `sha256:${"a".repeat(64)}` as const,
+    };
+    const events = [
+      event(1, {
+        type: "reasoning",
+        payload: { phase: "START", block_id: "think", title: "规划" },
+      }),
+      teamEvent(2, "answer", { delta: "中间" }),
+      teamEvent(3, "answer", { delta: "回答" }),
+      teamEvent(4, "agent", {
+        profile_id: "governed-text2sql-agent",
+        task_id: taskId,
+        status: "RUNNING",
+        phase: "compile.query",
+        title: "Text2SQL",
+        summary: "正在编译查询",
+        duration_ms: null,
+        error_code: null,
+      }),
+      teamEvent(5, "tool", {
+        call_id: "compile-1",
+        tool_name: "sql.compiler.compile",
+        profile_id: "governed-text2sql-agent",
+        task_id: taskId,
+        title: "编译 SQL",
+        summary: "编译中",
+        status: "RUNNING",
+        input: "semantic query",
+        output: null,
+        duration_ms: null,
+        error_code: null,
+        artifact_refs: [],
+      }),
+      teamEvent(6, "tool", {
+        call_id: "compile-1",
+        tool_name: "sql.compiler.compile",
+        profile_id: "governed-text2sql-agent",
+        task_id: taskId,
+        title: "编译 SQL",
+        summary: "编译完成",
+        status: "COMPLETED",
+        input: null,
+        output: "SELECT count(*)",
+        duration_ms: 42,
+        error_code: null,
+        artifact_refs: [reference],
+      }),
+      teamEvent(7, "answer", { delta: "最终结论" }),
+      teamEvent(8, "agent", {
+        profile_id: "governed-text2sql-agent",
+        task_id: taskId,
+        status: "COMPLETED",
+        phase: "query.accepted",
+        title: "Text2SQL",
+        summary: "查询证据已提交",
+        duration_ms: 420,
+        error_code: null,
+      }),
+      teamEvent(9, "terminal", { status: "COMPLETED", summary: "完成", error_code: null }),
+    ];
+
+    const blocks = assembleConversationActivity(events, runId);
+    expect(blocks.map((block) => [block.kind, block.sequence])).toEqual([
+      ["reasoning", 1],
+      ["text", 2],
+      ["agent", 4],
+      ["text", 7],
+    ]);
+    expect(blocks[1]).toMatchObject({ kind: "text", content: "中间回答" });
+    expect(blocks[2]).toMatchObject({
+      kind: "agent",
+      agent: {
+        status: "COMPLETED",
+        children: [
+          expect.objectContaining({
+            toolName: "sql.compiler.compile",
+            artifactRefs: [reference],
+          }),
+        ],
+      },
+    });
+    expect(assembleConversationActivity([...events].reverse(), runId)).toEqual(blocks);
+
+    const target = {
+      kind: "subagent" as const,
+      run_id: runId,
+      profile_id: "governed-text2sql-agent" as const,
+      task_id: taskId,
+      anchor_sequence: 4,
+    };
+    expect(assembleSubagentInspector(events, target)).toMatchObject({
+      state: "ready",
+      cursor: 9,
+      terminal: true,
+      events: [
+        expect.objectContaining({ sequence: 4 }),
+        expect.objectContaining({ sequence: 5 }),
+        expect.objectContaining({ sequence: 6 }),
+        expect.objectContaining({ sequence: 8 }),
+      ],
+    });
+    expect(
+      assembleSubagentInspector(events, {
+        ...target,
+        task_id: "22000000-0000-4000-8000-000000000099",
+      }).state,
+    ).toBe("stale");
   });
 
   it("merges tool start and completion without losing the safe input", () => {
@@ -297,6 +453,34 @@ describe("Q&A public event assembly", () => {
       kind: "reasoning",
       status: "FAILED",
       summary: "思考摘要未完成，Run 已失败",
+    });
+  });
+
+  it("closes a preallocated PENDING Agent on Run failure with a public label", () => {
+    const pending = teamEvent(1, "agent", {
+      profile_id: "report-writing-agent",
+      task_id: null,
+      status: "PENDING",
+      phase: "task.pending",
+      title: "report-writing-agent",
+      summary: "等待上游证据",
+      duration_ms: null,
+      error_code: null,
+    });
+    const failed = teamEvent(2, "terminal", {
+      status: "FAILED",
+      summary: "执行失败",
+      error_code: "PROVIDER_FAILED",
+    });
+    const block = assembleConversationActivity([pending, failed], runId)[0];
+    expect(block).toMatchObject({
+      kind: "agent",
+      agent: {
+        title: "Report",
+        taskId: null,
+        status: "FAILED",
+        errorCode: "PROVIDER_FAILED",
+      },
     });
   });
 

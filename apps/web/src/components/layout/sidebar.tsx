@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
 import { useLayoutStore, useSidebarCollapsed } from "@/lib/layout-store";
+import { qaConversationHref } from "@/lib/qa-inspector-target";
 import { useQAConversations, useQAStore } from "@/lib/qa-store";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 import type { WorkspaceNavigationItem, WorkspaceNavigationKey } from "@/lib/workspace-navigation";
@@ -182,7 +183,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
                   type="button"
                   onClick={() => {
                     void selectConversation(conversation.id);
-                    router.push(qaItem.href);
+                    router.push(qaConversationHref(qaItem.href, conversation.id));
                   }}
                   className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-white/70"
                 >

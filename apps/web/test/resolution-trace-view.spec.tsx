@@ -31,10 +31,14 @@ describe("Resolution Trace panel", () => {
       ],
       edges: [],
     });
-    const html = renderToStaticMarkup(<ResolutionTracePanel trace={trace} sql={[]} />);
+    const html = renderToStaticMarkup(
+      <ResolutionTracePanel trace={trace} sql={[]} focusSequence={1} />,
+    );
     expect(html).toContain("运行与证据");
     expect(html).toContain("Evidence planning");
     expect(html).toContain("break-words");
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain(`id="resolution-trace-event:${id(5)}"`);
     expect(html).not.toContain("private reasoning");
   });
 

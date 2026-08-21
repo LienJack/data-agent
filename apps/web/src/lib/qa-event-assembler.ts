@@ -1,5 +1,18 @@
-import type { PublicRunEvent } from "@data-agent/contracts";
+/**
+ * Modified from DeepSeek Harness keyed conversation/snapshot assemblers.
+ * Fixed upstream commit and MIT notice: components/qa/DEEPSEEK_HARNESS_MIT_NOTICE.md
+ */
+import type { ArtifactReference, PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts";
 import type { Message } from "./qa-types";
+
+export type ProcessStatus =
+  | "PENDING"
+  | "RUNNING"
+  | "COMPLETED"
+  | "FAILED"
+  | "INTERRUPTED"
+  | "SKIPPED"
+  | "BLOCKED";
 
 export interface ProcessRow {
   id: string;
@@ -8,11 +21,46 @@ export interface ProcessRow {
   kind: "progress" | "reasoning" | "tool";
   title: string;
   summary: string;
-  status: "RUNNING" | "COMPLETED" | "FAILED" | "INTERRUPTED";
+  status: ProcessStatus;
   input: string | null;
   output: string | null;
   durationMs: number | null;
   toolName: string | null;
+  errorCode: string | null;
+  profileId: string | null;
+  taskId: string | null;
+  artifactRefs: readonly ArtifactReference[];
+}
+
+export interface TeamAgentView {
+  id: string;
+  runId: string;
+  profileId: string;
+  taskId: string | null;
+  sequence: number;
+  latestSequence: number;
+  title: string;
+  phase: string;
+  summary: string;
+  status: ProcessStatus;
+  durationMs: number | null;
+  errorCode: string | null;
+  children: readonly ProcessRow[];
+  artifactRefs: readonly ArtifactReference[];
+}
+
+export type ConversationActivityBlock =
+  | { kind: "text"; id: string; sequence: number; content: string }
+  | { kind: "reasoning" | "progress" | "tool"; id: string; sequence: number; row: ProcessRow }
+  | { kind: "agent"; id: string; sequence: number; agent: TeamAgentView };
+
+export interface SubagentInspectorSnapshot {
+  target: Extract<QaInspectorTarget, { kind: "subagent" }>;
+  state: "ready" | "stale";
+  agent: TeamAgentView | null;
+  events: readonly PublicRunEvent[];
+  cursor: number;
+  terminal: boolean;
 }
 
 export interface TrajectoryRunGroup {
@@ -75,6 +123,28 @@ export function answerText(events: readonly PublicRunEvent[], runId: string): st
     .join("");
 }
 
+export function resumableRunFromReplay(
+  events: readonly PublicRunEvent[],
+): { runId: string; cursor: number } | null {
+  const groups = new Map<string, PublicRunEvent[]>();
+  for (const event of events) {
+    const group = groups.get(event.run_id) ?? [];
+    group.push(event);
+    groups.set(event.run_id, group);
+  }
+  const candidates = [...groups.entries()]
+    .map(([runId, group]) => ({
+      runId,
+      cursor: Math.max(...group.map((event) => event.sequence)),
+      terminal: group.some((event) => event.type === "terminal"),
+      occurredAt: group.at(-1)?.occurred_at ?? "",
+    }))
+    .filter((candidate) => !candidate.terminal)
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+  const selected = candidates[0];
+  return selected ? { runId: selected.runId, cursor: selected.cursor } : null;
+}
+
 export function assembleProcessRows(
   events: readonly PublicRunEvent[],
   runId: string,
@@ -99,6 +169,10 @@ export function assembleProcessRows(
         output: null,
         durationMs: null,
         toolName: null,
+        errorCode: null,
+        profileId: null,
+        taskId: null,
+        artifactRefs: [],
       });
     }
     if (event.type === "tool") {
@@ -115,6 +189,13 @@ export function assembleProcessRows(
         output: event.payload.output ?? current?.output ?? null,
         durationMs: event.payload.duration_ms ?? current?.durationMs ?? null,
         toolName: event.payload.tool_name,
+        errorCode: event.payload.error_code ?? current?.errorCode ?? null,
+        profileId: "profile_id" in event.payload ? event.payload.profile_id : null,
+        taskId: "task_id" in event.payload ? event.payload.task_id : null,
+        artifactRefs:
+          "artifact_refs" in event.payload && event.payload.artifact_refs.length > 0
+            ? event.payload.artifact_refs
+            : (current?.artifactRefs ?? []),
       };
       tools.set(event.payload.call_id, next);
     }
@@ -138,6 +219,10 @@ export function assembleProcessRows(
         durationMs:
           event.payload.phase === "END" ? event.payload.duration_ms : (current?.durationMs ?? null),
         toolName: null,
+        errorCode: null,
+        profileId: null,
+        taskId: null,
+        artifactRefs: [],
       });
     }
     if (event.type === "terminal") terminalStatus = event.payload.status;
@@ -152,6 +237,7 @@ export function assembleProcessRows(
         status: terminalStatus === "CANCELLED" ? ("INTERRUPTED" as const) : ("FAILED" as const),
         summary:
           terminalStatus === "CANCELLED" ? "工具调用已随 Run 中断" : "工具调用未完成，Run 已失败",
+        errorCode: terminalStatus === "CANCELLED" ? "RUN_CANCELLED" : "RUN_FAILED",
       };
     }),
   );
@@ -165,10 +251,180 @@ export function assembleProcessRows(
         status: terminalStatus === "CANCELLED" ? ("INTERRUPTED" as const) : ("FAILED" as const),
         summary:
           terminalStatus === "CANCELLED" ? "思考摘要已随 Run 中断" : "思考摘要未完成，Run 已失败",
+        errorCode: terminalStatus === "CANCELLED" ? "RUN_CANCELLED" : "RUN_FAILED",
       };
     }),
   );
   return rows.sort((left, right) => left.sequence - right.sequence);
+}
+
+function agentIdentity(profileId: string, taskId: string | null): string {
+  return `${profileId}:${taskId ?? "pending"}`;
+}
+
+export function publicAgentLabel(profileId: string): "Semantic" | "Text2SQL" | "Report" {
+  if (profileId === "semantic-management-agent") return "Semantic";
+  if (profileId === "governed-text2sql-agent") return "Text2SQL";
+  return "Report";
+}
+
+function artifactIdentity(reference: ArtifactReference): string {
+  return `${reference.artifact_id}:${reference.revision}:${reference.content_hash}`;
+}
+
+export function assembleTeamAgents(
+  events: readonly PublicRunEvent[],
+  runId: string,
+): TeamAgentView[] {
+  const tools = assembleProcessRows(events, runId).filter(
+    (row) => row.kind === "tool" && row.profileId !== null,
+  );
+  const agents = new Map<string, TeamAgentView>();
+  let terminal: Extract<PublicRunEvent, { type: "terminal" }> | undefined;
+
+  for (const event of events
+    .filter((candidate) => candidate.run_id === runId)
+    .sort((left, right) => left.sequence - right.sequence)) {
+    if (event.type === "terminal") terminal = event;
+    if (event.type !== "agent") continue;
+    const key = agentIdentity(event.payload.profile_id, event.payload.task_id);
+    const current = agents.get(key);
+    agents.set(key, {
+      id: `${runId}:agent:${key}`,
+      runId,
+      profileId: event.payload.profile_id,
+      taskId: event.payload.task_id,
+      sequence: current?.sequence ?? event.sequence,
+      latestSequence: event.sequence,
+      title: publicAgentLabel(event.payload.profile_id),
+      phase: event.payload.phase,
+      summary: event.payload.summary,
+      status: event.payload.status,
+      durationMs: event.payload.duration_ms ?? current?.durationMs ?? null,
+      errorCode: event.payload.error_code ?? current?.errorCode ?? null,
+      children: current?.children ?? [],
+      artifactRefs: current?.artifactRefs ?? [],
+    });
+  }
+
+  return [...agents.values()]
+    .map((agent) => {
+      const children = tools.filter(
+        (tool) => tool.profileId === agent.profileId && tool.taskId === agent.taskId,
+      );
+      const refs = new Map<string, ArtifactReference>();
+      for (const child of children) {
+        for (const reference of child.artifactRefs)
+          refs.set(artifactIdentity(reference), reference);
+      }
+      if (
+        terminal &&
+        (agent.status === "PENDING" || agent.status === "RUNNING") &&
+        terminal.payload.status !== "COMPLETED"
+      ) {
+        return {
+          ...agent,
+          status:
+            terminal.payload.status === "CANCELLED"
+              ? ("INTERRUPTED" as const)
+              : ("FAILED" as const),
+          summary:
+            terminal.payload.status === "CANCELLED"
+              ? "Subagent 已随 Run 中断"
+              : "Subagent 未完成，Run 已失败",
+          errorCode: terminal.payload.error_code ?? `RUN_${terminal.payload.status}`,
+          children,
+          artifactRefs: [...refs.values()],
+        };
+      }
+      return { ...agent, children, artifactRefs: [...refs.values()] };
+    })
+    .sort((left, right) => left.sequence - right.sequence);
+}
+
+/**
+ * Harness-derived keyed snapshot projection. It is deliberately free of React,
+ * DOM and EventSource so Web and future headless surfaces consume identical IDs.
+ */
+export function assembleConversationActivity(
+  events: readonly PublicRunEvent[],
+  runId: string,
+): ConversationActivityBlock[] {
+  const runEvents = events
+    .filter((event) => event.run_id === runId)
+    .sort((left, right) => left.sequence - right.sequence);
+  const rows = assembleProcessRows(runEvents, runId);
+  const agents = assembleTeamAgents(runEvents, runId);
+  const blocks: ConversationActivityBlock[] = [];
+  const ownedToolIds = new Set(agents.flatMap((agent) => agent.children.map((child) => child.id)));
+  const rowBySequence = new Map(rows.map((row) => [row.sequence, row]));
+  const agentBySequence = new Map(agents.map((agent) => [agent.sequence, agent]));
+  let text: Extract<ConversationActivityBlock, { kind: "text" }> | null = null;
+
+  const flushText = () => {
+    if (text) blocks.push(text);
+    text = null;
+  };
+  for (const event of runEvents) {
+    if (event.type === "answer") {
+      if (text !== null) {
+        text = {
+          kind: "text",
+          id: text.id,
+          sequence: text.sequence,
+          content: `${text.content}${event.payload.delta}`,
+        };
+      } else {
+        text = {
+          kind: "text",
+          id: `${runId}:answer:${event.sequence}`,
+          sequence: event.sequence,
+          content: event.payload.delta,
+        };
+      }
+      continue;
+    }
+    flushText();
+    const agent = agentBySequence.get(event.sequence);
+    if (agent) {
+      blocks.push({ kind: "agent", id: agent.id, sequence: agent.sequence, agent });
+      continue;
+    }
+    const row = rowBySequence.get(event.sequence);
+    if (!row || (row.kind === "tool" && ownedToolIds.has(row.id))) continue;
+    blocks.push({ kind: row.kind, id: row.id, sequence: row.sequence, row });
+  }
+  flushText();
+  return blocks.sort((left, right) => left.sequence - right.sequence);
+}
+
+export function assembleSubagentInspector(
+  events: readonly PublicRunEvent[],
+  target: Extract<QaInspectorTarget, { kind: "subagent" }>,
+): SubagentInspectorSnapshot {
+  const runEvents = events
+    .filter((event) => event.run_id === target.run_id)
+    .sort((left, right) => left.sequence - right.sequence);
+  const selectedEvents = runEvents.filter(
+    (event) =>
+      (event.type === "agent" || event.type === "tool") &&
+      "profile_id" in event.payload &&
+      event.payload.profile_id === target.profile_id &&
+      event.payload.task_id === target.task_id,
+  );
+  const agent =
+    assembleTeamAgents(runEvents, target.run_id).find(
+      (candidate) =>
+        candidate.profileId === target.profile_id && candidate.taskId === target.task_id,
+    ) ?? null;
+  return {
+    target,
+    state: agent ? "ready" : "stale",
+    agent,
+    events: selectedEvents,
+    cursor: runEvents.at(-1)?.sequence ?? 0,
+    terminal: runEvents.some((event) => event.type === "terminal"),
+  };
 }
 
 export function groupTrajectoryEvents(events: readonly PublicRunEvent[]): TrajectoryRunGroup[] {

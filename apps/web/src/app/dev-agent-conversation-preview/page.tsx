@@ -19,6 +19,10 @@ const rows: readonly ProcessRow[] = [
     output: null,
     durationMs: 842,
     toolName: null,
+    errorCode: null,
+    profileId: null,
+    taskId: null,
+    artifactRefs: [],
   },
   {
     id: `${runId}:tool:2`,
@@ -32,6 +36,10 @@ const rows: readonly ProcessRow[] = [
     output: "rows=6; receipt=sha256:7f1d...09ac",
     durationMs: 1264,
     toolName: "semantic.text2sql.execute",
+    errorCode: null,
+    profileId: null,
+    taskId: null,
+    artifactRefs: [],
   },
   {
     id: `${runId}:stage:3`,
@@ -45,6 +53,10 @@ const rows: readonly ProcessRow[] = [
     output: null,
     durationMs: 318,
     toolName: null,
+    errorCode: null,
+    profileId: null,
+    taskId: null,
+    artifactRefs: [],
   },
 ];
 

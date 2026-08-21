@@ -58,3 +58,21 @@ No substantial upstream source block was copied verbatim in this contract slice,
 | Harness produced-file/details affordance contract | `product-team-artifact@1.0.0`, PostgreSQL Product Team Artifact Store and existing Preview projector | REIMPLEMENTED_WITH_REASON | Harness opens local files; Data Agent commits content-addressed SQL/TABLE/REPORT projections and only publishes exact committed refs | contracts/platform preview tests |
 
 No substantial upstream source block was copied verbatim in this runtime slice, so no per-file MIT header was added. Control-flow and recovery patterns were adapted while Data Agent domain, PostgreSQL authority and public-event contracts remain project-native.
+
+### Q&A Inline activity and Inspector UI — implemented
+
+Modified-source notice: `apps/web/src/components/qa/DEEPSEEK_HARNESS_MIT_NOTICE.md` retains the full DeepSeek MIT
+license and copyright for every UI target below.
+
+| Upstream source @ `47f943859bef60e4160492346772ded9b24f765a` | Data Agent target | Mode | Material differences | Validation |
+| --- | --- | --- | --- | --- |
+| `runtime/.../conversation-assembler.ts` + `ui-conversation/.../chat-snapshot-builder.ts` | `apps/web/src/lib/qa-event-assembler.ts` | ADAPTED | keyed by strict Run sequence, `block_id`, `call_id`, and exact `profile_id/task_id`; adjacent answer deltas coalesce; Team depth is fixed to one; terminal closure comes from public Run terminal | `qa-event-assembler.spec.ts` replay/order/closure/headless tests |
+| `ui-conversation/.../ReasoningRow.tsx` + `ui-tool/.../ToolRow.tsx` | `process-disclosure.tsx` + `conversation-activity-stream.tsx` | ADAPTED | public summary only; sibling disclosure/entity actions; governed ArtifactReference replaces filesystem paths; Data Agent status/error/i18n tokens | `process-disclosure`, `chat-message-activity`, i18n tests |
+| `ui-layout/AppFrame.tsx` + `columns.ts` + `stores.ts` | `qa-inspector-layout.ts` + `qa-inspector.tsx` + Q&A page frame | ADAPTED | 640px center floor, 320–520px details, derived auto-collapse without clearing selection, fixed viewport shell, 390px content sheet, browser-local width preference | `qa-inspector-layout.spec.ts` 1280/1000/959 + browser 1440x1000/390x844 geometry proof |
+| `ui-conversation/.../DetailsPanel.tsx` + `stores.ts` | `qa-inspector-target.ts` + QA store Inspector state | ADAPTED | strict contract target, URL conversation locator, exact active-conversation Run validation, focus return; material remains replay/Preview-derived | `qa-inspector-target.spec.ts`, `qa-inspector-store.spec.ts` double reload/cross-Run tests |
+| `runtime/sessions/session.ts` + `manager.ts` | QA store `attachReplayRunStream` | ADAPTED | replay cursor resumes the same PostgreSQL Run SSE; connection state remains separate from Agent authority; conversation/run generation guard rejects late frames | resumable cursor and cross-conversation frame tests |
+| `ui-subagent/SubagentCatalogAction.tsx` | `qa-inspector.tsx` Subagent Overview/Public events/Artifacts | ADAPTED | fixed Semantic/Text2SQL/Report public labels, exact durable task address, one Team level, no token/model/private callback panel | `qa-inspector-component.spec.tsx` ready/stale baseline tests |
+| `ui-deliverables/ProducedFiles.tsx` | Tool Artifact chips + existing `ArtifactWorkspace` | PARTIAL | removed host `openFile(path)`; only committed exact ArtifactReference opens authenticated Preview API with explicit stale/denied/hash/unsupported errors | Artifact workspace tests + Inspector component contract |
+
+Codex desktop remains a black-box functional target only; no Codex source or private protocol was copied. Reasonix remains
+an architecture-only reference; no Reasonix UI/TUI/Desktop code was copied.
