@@ -34,7 +34,7 @@
 - [x] 使用 `trellis-check` 审查 correctness/a11y/performance/simplicity，修复 task-scoped P0/P1/P2。
 - [x] 使用 `trellis-update-spec` 更新 frontend material executable spec。
 - [x] 只 stage owned paths，创建 scoped implementation commit。
-- [ ] archive child 并记录 journal。
+- [x] archive child 并记录 journal。
 
 ## Owned Paths
 
