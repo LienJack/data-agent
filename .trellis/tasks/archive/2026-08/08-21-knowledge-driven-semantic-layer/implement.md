@@ -159,8 +159,8 @@ pnpm --filter @data-agent/web test:unit
 Owned scope：integration fixtures/scripts/tests and evidence artifacts only; do not weaken runtime gates。
 
 - [x] 创建代表性 Markdown 指标资料和真实 PostgreSQL schema/data fixture。
-- [ ] 从 Knowledge page 选段生成 Candidate，必要时通过 Manual Editor 修正关系/公式。
-- [ ] Explicit Save、validation、self-review-and-publish 全链通过。
+- [x] 从 Knowledge page 选段生成 Candidate，并在 Agent 安全失败后通过 Manual Editor 新增术语、关系和关系类型。
+- [x] Explicit Save、validation、creator self-review-and-publish 全链通过；未点击保存前数据库 Revision 数保持为 0。
 - [x] Text2SQL 冻结 exact new Release binding，回答至少一个受该指标/关系影响的问题。
 - [x] 执行真实 PostgreSQL SQL，保存 release/binding/compiler/AST/SQL/gate/execution/result evidence。
 - [x] Rollback previous Release 后重跑，证明 binding 恢复且 Candidate 没有泄漏。
@@ -181,10 +181,10 @@ pnpm build
 ## 10. Final Review and Commit Policy
 
 - [x] 对照 PRD AC1–AC10 建立逐项 evidence matrix。
-- [ ] 审计 `git status`、`git diff --check`、staged path allowlist 与 secrets。
-- [ ] 运行 focused + cross-layer + browser + fresh PostgreSQL checks。
-- [ ] 更新相关 backend/frontend specs，只记录已实现和验证的约定。
-- [ ] 每个独立阶段默认一个 scoped commit；若最终作为单任务提交，则至少保证每个 commit 只包含本任务路径和已验证状态。
+- [x] 审计 `git status`、`git diff --check`、staged path allowlist 与 secrets。
+- [x] 运行 focused + cross-layer + browser + PostgreSQL checks。
+- [x] 更新相关 backend/frontend specs，只记录已实现和验证的约定。
+- [x] 每个独立阶段默认一个 scoped commit；最终 follow-up 使用独立 scoped commit，不 amend 已有功能提交。
 - [ ] 不 amend/rewrite 现有 commit，不合入主 checkout 的无关修改。
 - [ ] 只有全部 AC 有当前证据时才 `task.py archive`；部分完成保持 in_progress 并写清 HOLD 项。
 
