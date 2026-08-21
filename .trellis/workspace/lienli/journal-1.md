@@ -378,3 +378,24 @@ Added deterministic schema/document/foundational/metric induction, impact planni
 ### Status
 
 [OK] **Completed**
+
+
+## Session 17: Public Team Agent event contract
+
+**Date**: 2026-08-21
+**Task**: Public Team Agent event contract
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Added strict v2 Agent/Tool/Artifact runtime and public events, PostgreSQL 17 validation, durable SSE/headless projection, trajectory decoding, v1 compatibility, and focused cross-layer tests.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `38c6cff` | (see git log) |
+
+### Status
+
+[OK] **Completed**
