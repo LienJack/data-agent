@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
+- **Total Sessions**: 23
 - **Last Active**: 2026-08-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~507 | Active |
+| `journal-1.md` | ~528 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-08-22 | Private conversation directory and 30-day trash | `65d49ec` | `feat/datafoundry-platform-modules` |
 | 22 | 2026-08-22 | Governed Table and VChart Answers | `a328269` | `feat/datafoundry-platform-modules` |
 | 21 | 2026-08-22 | Q&A Activity Stream and Safe Rich Text | `fc0cd2a` | `feat/datafoundry-platform-modules` |
 | 20 | 2026-08-22 | Adaptive Agent Dispatch Runtime | `c174d4b` | `feat/datafoundry-platform-modules` |

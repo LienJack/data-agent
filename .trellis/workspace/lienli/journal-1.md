@@ -505,3 +505,24 @@ Added deterministic visualization intent, committed QueryEvidence chart companio
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: Private conversation directory and 30-day trash
+
+**Date**: 2026-08-22
+**Task**: Private conversation directory and 30-day trash
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Delivered exact-owner one-level conversation folders, lifecycle commands, 30-day PostgreSQL retention, desktop/mobile directory UI, and direct Run/SSE/Artifact trash denial with real browser evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `65d49ec` | (see git log) |
+
+### Status
+
+[OK] **Completed**
