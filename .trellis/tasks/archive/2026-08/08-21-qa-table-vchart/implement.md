@@ -120,8 +120,8 @@ pnpm --filter @data-agent/web build
 ## 8. Finish
 
 - [x] Update relevant Trellis specs only for reusable, verified conventions.
-- [ ] Commit only owned task/product files in one scoped work commit.
-- [ ] Archive the task in a separate scoped task-state commit if Trellis archive moves files.
+- [x] Commit only owned task/product files in one scoped work commit.
+- [x] Archive the task in a separate scoped task-state commit if Trellis archive moves files.
 - [ ] Record session journal commit without unrelated dirty files.
 - [x] Do not claim parent integration/release complete; remaining child tasks and final parent vertical acceptance remain separate.
 
