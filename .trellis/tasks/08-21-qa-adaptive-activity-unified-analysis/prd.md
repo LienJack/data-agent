@@ -215,6 +215,7 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
   - 重命名只修改当前对话标题与更新时间，不改变 conversation/message/run/artifact identity；
   - 归档是可恢复状态，默认从活跃目录和搜索隐藏，并可在“已归档”视图恢复；
   - 删除默认采用可恢复的软删除/回收站状态，需要二次确认，并从活跃、归档、搜索、URL restore 与 SSE attach 中退出；
+  - 回收站从 authority 记录的 `deleted_at` 起默认保留 30 天；保留期内 owner 可以恢复，期满后仅由后台保留任务按批次清理；
   - Running、等待审批或等待用户回答的对话不能被无声删除，必须先取消/终止对应交互并得到 durable terminal receipt；
   - 回收站最终清除必须遵守 Artifact、审计、计费和法定保留边界，不能由 Web 直接级联物理删除。
 - **R51**：会话列表动作必须具有 optimistic-free 的服务端结果：rename/archive/delete/restore 只有在 authority 提交成功后
@@ -297,7 +298,8 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 - [ ] **AC20 / Folder operations**：用户可创建/重命名/排序/归档自己的文件夹，把自己的对话移动到文件夹或未分组；
   文件夹归档后对话仍存在且 owner 不变，刷新和另一浏览器登录后 membership/order 一致。
 - [ ] **AC21 / Conversation actions**：会话菜单可重命名、归档、恢复和删除；重命名不改 identity，归档可恢复，删除需确认并
-  进入回收站，Running/等待交互对话没有 durable terminal receipt 时删除失败关闭。
+  进入回收站；`deleted_at` 后 30 天内 owner 可恢复，第 30 天到期前后台任务不得清理，到期后按保留边界清理；
+  Running/等待交互对话没有 durable terminal receipt 时删除失败关闭。
 - [ ] **AC22 / User isolation**：同一 Workspace 的用户 A 与用户 B 各创建文件夹、对话、Run 和 Artifact 后，双方的列表、计数、
   搜索、直接 URL、messages、trajectory、SSE、Inspector、Preview 和 Export 均只能命中自己的资源。
 - [ ] **AC23 / Workspace admin**：`WORKSPACE_ADMIN` 在显式“全部用户”管理视图看到当前 Workspace 所有 owner 的文件夹和对话，
@@ -360,10 +362,10 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
   必须补齐同一 principal identity 与 owner-or-admin 验证，不能用仅 Workspace scope 的列表查询代替。
 - 既有会话在 Folder 功能上线时默认进入其 owner 的“未分组”，不创建共享文件夹，也不改变历史 owner。
 
-## Open Product Question
+## Resolved Product Decisions
 
-- **OQ1 — 对话删除保留策略**：推荐会话先进入可恢复回收站，默认保留 30 天，之后由后台保留任务按审计/Artifact/计费约束清除；
-  另一种方案是永久软删除、只允许管理员执行最终清除。无论选择哪种，Web 都不直接级联物理删除权威记录。
+- **D1 — 对话删除保留策略**：已确认会话先进入可恢复回收站，从 authority `deleted_at` 起默认保留 30 天；保留期内 owner
+  可以恢复，期满后由后台保留任务按审计、Artifact、计费与法定边界分批清理。Web 不直接级联物理删除权威记录。
 
 ## Relationship To Previous Delivery
 
