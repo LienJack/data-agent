@@ -218,6 +218,67 @@ export function isAuthoritativeModelProviderInvocation(
   );
 }
 
+declare const authoritativeSemanticAuthoringModelProviderInvocation: unique symbol;
+const authorizedSemanticAuthoringModelProviderInvocations = new WeakSet<object>();
+
+/**
+ * A semantic-authoring provider request whose exact intent has already been
+ * committed by the semantic PostgreSQL authority. This is deliberately a
+ * separate product authority from both U3 Run dispatch permits and isolated
+ * certification/evaluation traffic.
+ */
+export type AuthoritativeSemanticAuthoringModelProviderInvocation =
+  AuthoritativeModelProviderInvocation & {
+    readonly [authoritativeSemanticAuthoringModelProviderInvocation]: true;
+  };
+
+export type SemanticAuthoringModelProviderProfileResolver = (input: {
+  readonly scope: AppScope;
+  readonly profile_id: string;
+}) => Promise<AvailableExecutionModelProfile | null>;
+
+export async function authorizeSemanticAuthoringModelProviderInvocation(
+  input: unknown,
+  resolveProfile: SemanticAuthoringModelProviderProfileResolver,
+  commitIntent: (request: AuthoritativeModelProviderInvocation) => Promise<boolean>,
+): Promise<AuthoritativeSemanticAuthoringModelProviderInvocation> {
+  const request = modelProviderRequestSchema.parse(input);
+  const profile = await resolveProfile({ scope: request.scope, profile_id: request.profile_id });
+  if (
+    !profile ||
+    !isAvailableExecutionModelProfile(profile) ||
+    profile.scope.app_id !== request.scope.app_id ||
+    profile.scope.tenant_id !== request.scope.tenant_id ||
+    profile.scope.environment !== request.scope.environment ||
+    profile.provider !== request.provider ||
+    profile.profile_id !== request.profile_id ||
+    profile.profile_version !== request.profile_version ||
+    profile.model_id !== request.model_id
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "Semantic authoring Provider 调用必须绑定 exact AVAILABLE Execution Profile。",
+    );
+  }
+  if (!(await commitIntent(request as AuthoritativeModelProviderInvocation))) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "Semantic authoring Provider 调用必须先提交 exact PostgreSQL intent。",
+    );
+  }
+  authorizedModelProviderInvocations.add(request);
+  authorizedSemanticAuthoringModelProviderInvocations.add(request);
+  return deepFreeze(request) as AuthoritativeSemanticAuthoringModelProviderInvocation;
+}
+
+export function isAuthoritativeSemanticAuthoringModelProviderInvocation(
+  input: unknown,
+): input is AuthoritativeSemanticAuthoringModelProviderInvocation {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    authorizedSemanticAuthoringModelProviderInvocations.has(input)
+  );
+}
+
 declare const authoritativePersistedModelProviderInvocation: unique symbol;
 const authorizedPersistedModelProviderInvocations = new WeakSet<object>();
 

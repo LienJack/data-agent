@@ -157,6 +157,11 @@ export {
   type PostgresSemanticAuthoringStoreOptions,
 } from "./semantic/postgres-semantic-authoring.js";
 export {
+  createPostgresSemanticAuthoringProviderInvocation,
+  type PostgresSemanticAuthoringProviderInvocation,
+  type PostgresSemanticAuthoringProviderInvocationOptions,
+} from "./semantic/postgres-semantic-authoring-provider-invocation.js";
+export {
   createPostgresSemanticAuthoringQueue,
   type PostgresSemanticAuthoringQueueOptions,
 } from "./semantic/postgres-semantic-authoring-queue.js";

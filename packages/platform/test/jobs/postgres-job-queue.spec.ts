@@ -1,4 +1,5 @@
 import {
+  buildJobOutputReceipt,
   buildJobSubmissionCommand,
   buildJobSubmissionReceipt,
   buildJobWorkLease,
@@ -193,6 +194,76 @@ describe("PostgreSQL Job Queue", () => {
       ok: false,
       error: { code: "JOB_SUBMISSION_RECEIPT_HASH_MISMATCH", retryable: false },
     });
+  });
+
+  it("serializes successful output references as JSONB instead of a PostgreSQL array", async () => {
+    const input = jobInputSchema.parse({
+      schema_version: "job-input@1.0.0",
+      kind: "FILE_SCAN",
+      resource_refs: [],
+      parameters: {
+        file_id: "00000000-0000-4000-8000-000000000401",
+        revision: 1,
+        revision_hash: `sha256:${"4".repeat(64)}`,
+      },
+    });
+    const lease = await buildJobWorkLease({
+      schema_version: "job-work-lease@1.0.0",
+      scope,
+      principal_id: ids.principal,
+      job_id: ids.job,
+      kind: "FILE_SCAN",
+      request_hash: `sha256:${"1".repeat(64)}`,
+      input,
+      attempt_id: ids.attempt,
+      attempt_no: 1,
+      delivery_attempt_no: 1,
+      worker_id: "job-worker-a",
+      lease_token: 1,
+      worker_fence: 1,
+      lease_duration_ms: 30_000,
+      expires_at: "2026-08-17T12:00:30.000Z",
+      handler_revision: "file-scan-handler@1.0.0",
+    });
+    const output = {
+      schema_version: "job-domain-output-reference@1.0.0" as const,
+      resource_kind: "WORKSPACE_FILE_SCAN_RECEIPT" as const,
+      app_id: scope.app_id,
+      tenant_id: scope.tenant_id,
+      environment: scope.environment,
+      resource_id: "00000000-0000-4000-8000-000000000501",
+      resource_revision: 1,
+      resource_hash: `sha256:${"5".repeat(64)}` as const,
+    };
+    const receipt = await buildJobOutputReceipt({
+      schema_version: "job-output-receipt@1.0.0",
+      receipt_id: "00000000-0000-4000-8000-000000000601",
+      scope,
+      principal_id: ids.principal,
+      job_id: ids.job,
+      kind: "FILE_SCAN",
+      request_hash: lease.request_hash,
+      attempt_id: ids.attempt,
+      worker_fence: 1,
+      terminal: "SUCCEEDED",
+      output_refs: [output],
+      error_code: null,
+      committed_at: "2026-08-17T12:00:00.000Z",
+    });
+    const scripted = poolWith(new Map([["succeed_job_work", receipt]]));
+    const auth = authority();
+    const queue = createPostgresJobQueue(scripted.pool, auth.authorizer, auth.capability, {
+      lease_duration_ms: 30_000,
+    });
+
+    await expect(queue.succeed({ lease, output_refs: [output] })).resolves.toEqual({
+      ok: true,
+      value: receipt,
+    });
+    expect(scripted.calls.find(({ text }) => text.includes("succeed_job_work"))?.values).toEqual([
+      lease,
+      JSON.stringify([output]),
+    ]);
   });
 
   it("maps Job Authority markers without collapsing retry semantics", async () => {

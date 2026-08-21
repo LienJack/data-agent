@@ -148,6 +148,23 @@ for migration_file in $migration_files; do
     20260725010673_*) renderer="scripts/render-10673-migration.ts" ;;
     20260725010674_*) renderer="scripts/render-10674-migration.ts" ;;
     20260725010675_*) renderer="scripts/render-10675-migration.ts" ;;
+    20260725010676_*) renderer="scripts/render-10676-migration.ts" ;;
+    20260725010677_*) renderer="scripts/render-10677-migration.ts" ;;
+    20260725010678_*) renderer="scripts/render-10678-migration.ts" ;;
+    20260725010679_*) renderer="scripts/render-10679-migration.ts" ;;
+    20260725010680_*) renderer="scripts/render-10680-migration.ts" ;;
+    20260725010681_*) renderer="scripts/render-10681-migration.ts" ;;
+    20260725010682_*) renderer="scripts/render-10682-migration.ts" ;;
+    20260725010683_*) renderer="scripts/render-10683-migration.ts" ;;
+    20260725010684_*) renderer="scripts/render-10684-migration.ts" ;;
+    20260725010685_*) renderer="scripts/render-10685-migration.ts" ;;
+    20260725010686_*) renderer="scripts/render-10686-migration.ts" ;;
+    20260725010687_*) renderer="scripts/render-10687-migration.ts" ;;
+    20260725010688_*) renderer="scripts/render-10688-migration.ts" ;;
+    20260725010689_*) renderer="scripts/render-10689-migration.ts" ;;
+    20260725010690_*) renderer="scripts/render-10690-migration.ts" ;;
+    20260725010691_*) renderer="scripts/render-10691-migration.ts" ;;
+    20260725010692_*) renderer="scripts/render-10692-migration.ts" ;;
     *) renderer="" ;;
   esac
   if [ -n "$renderer" ]; then

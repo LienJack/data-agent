@@ -5,6 +5,7 @@ import {
   type ModelCredentialResolver,
   type ModelProviderAdapterClock,
   type ProviderDispatchMarker,
+  type ProviderTerminalRecorder,
   type ServerModelProviderBindingResolver,
   type ServerModelResponseSchemaDescriptor,
   ServerModelResponseSchemaRegistry,
@@ -34,9 +35,33 @@ export interface ModelProviderPortCompositionInput {
   readonly response_schema_registry: ServerModelResponseSchemaRegistry;
   readonly input_token_counter: TrustedModelInputTokenCounter;
   readonly dispatch_marker: ProviderDispatchMarker;
+  readonly terminal_recorder?: ProviderTerminalRecorder;
   readonly abort_signal?: AbortSignal;
   readonly tools?: readonly ServerOwnedToolDescriptor[];
   readonly clock?: ModelProviderAdapterClock;
+}
+
+/** Product composition for PostgreSQL-audited semantic authoring traffic. */
+export function createSemanticAuthoringModelProviderPort(
+  input: ModelProviderPortCompositionInput & {
+    readonly terminal_recorder: ProviderTerminalRecorder;
+  },
+): ModelProviderPort {
+  const bridge = createMastraModelExecutionBridge({
+    credential_resolver: input.credential_resolver,
+    binding_resolver: input.binding_resolver satisfies ServerModelProviderBindingResolver,
+    tool_registry: new ServerOwnedToolRegistry(input.tools ?? []),
+    response_schema_registry: input.response_schema_registry,
+    input_token_counter: input.input_token_counter,
+  });
+  return new MastraModelProviderAdapter({
+    bridge,
+    dispatch_marker: input.dispatch_marker,
+    terminal_recorder: input.terminal_recorder,
+    authorization: "SEMANTIC_AUTHORING_PERSISTED",
+    ...(input.abort_signal ? { abort_signal: input.abort_signal } : {}),
+    ...(input.clock ? { clock: input.clock } : {}),
+  });
 }
 
 /**
@@ -93,6 +118,7 @@ export type {
   ModelCredentialResolver,
   ModelProviderAdapterClock,
   ModelProviderBinding,
+  ProviderTerminalRecorder,
   ServerModelResponseSchemaDescriptor,
   ServerOwnedToolDescriptor,
   TrustedModelInputTokenCounter,

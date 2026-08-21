@@ -190,32 +190,32 @@ export function createSemanticCandidateSaveService(dependencies: Dependencies) {
 
       let finalGraph = state.working_graph;
       let manualPatch = null;
-      if (request.manual_edits.length > 0) {
-        let graph = state.working_graph;
-        const operations: SemanticGraphPatchOperation[] = [];
-        for (const edit of request.manual_edits) {
-          const operation = await materializeOperation(edit, graph);
-          operations.push(operation);
-          const next = await createSemanticGraphPatch(graph, {
-            patch_id: dependencies.new_id(),
-            candidate_id: state.run.candidate_id,
-            from_working_revision: state.run.working_revision + operations.length - 1,
-            operations: [operation],
-            validate_result: false,
-          });
-          graph = next.next_graph;
-        }
-        const combined = await createSemanticGraphPatch(state.working_graph, {
-          patch_id: dependencies.new_id(),
-          candidate_id: state.run.candidate_id,
-          from_working_revision: state.run.working_revision,
-          operations,
-        });
-        manualPatch = combined.patch;
-        finalGraph = combined.next_graph;
-      }
       let compilation: Awaited<ReturnType<typeof compileSemanticGraphV2>>;
       try {
+        if (request.manual_edits.length > 0) {
+          let graph = state.working_graph;
+          const operations: SemanticGraphPatchOperation[] = [];
+          for (const edit of request.manual_edits) {
+            const operation = await materializeOperation(edit, graph);
+            operations.push(operation);
+            const next = await createSemanticGraphPatch(graph, {
+              patch_id: dependencies.new_id(),
+              candidate_id: state.run.candidate_id,
+              from_working_revision: state.run.working_revision + operations.length - 1,
+              operations: [operation],
+              validate_result: false,
+            });
+            graph = next.next_graph;
+          }
+          const combined = await createSemanticGraphPatch(state.working_graph, {
+            patch_id: dependencies.new_id(),
+            candidate_id: state.run.candidate_id,
+            from_working_revision: state.run.working_revision,
+            operations,
+          });
+          manualPatch = combined.patch;
+          finalGraph = combined.next_graph;
+        }
         compilation = await compileSemanticGraphV2(finalGraph);
       } catch (error) {
         return failure(
