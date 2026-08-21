@@ -33,10 +33,10 @@ public Run log.
 
 ## Browser artifacts
 
-- [Desktop Subagent Inspector](../archive/2026-08/08-18-qa-team-agent-status-ui/artifacts/desktop-subagent-inspector-1440x1000.png)
-- [Desktop Artifact Preview](../archive/2026-08/08-18-qa-team-agent-status-ui/artifacts/desktop-artifact-preview-1440x1000.png)
-- [Desktop trajectory locator](../archive/2026-08/08-18-qa-team-agent-status-ui/artifacts/desktop-trajectory-locate-1440x1000.png)
-- [Mobile Subagent Inspector](../archive/2026-08/08-18-qa-team-agent-status-ui/artifacts/mobile-subagent-inspector-390x844.png)
+- [Desktop Subagent Inspector](../08-18-qa-team-agent-status-ui/artifacts/desktop-subagent-inspector-1440x1000.png)
+- [Desktop Artifact Preview](../08-18-qa-team-agent-status-ui/artifacts/desktop-artifact-preview-1440x1000.png)
+- [Desktop trajectory locator](../08-18-qa-team-agent-status-ui/artifacts/desktop-trajectory-locate-1440x1000.png)
+- [Mobile Subagent Inspector](../08-18-qa-team-agent-status-ui/artifacts/mobile-subagent-inspector-390x844.png)
 
 Desktop proof used 1440x1000. Mobile proof used 390x844 with reduced motion. The mobile Inspector occupies the content
 row above the two-row Composer, the Composer remains actionable, and the document has no horizontal overflow.
