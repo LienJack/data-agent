@@ -1,12 +1,19 @@
-import type { ModelProviderBinding, ProviderProbeResult } from "@data-agent/agent-runtime";
+import type {
+  ExecutionProviderProbeResult,
+  ModelProviderBinding,
+  ModelProviderExecutionBinding,
+  ProviderProbeResult,
+} from "@data-agent/agent-runtime";
 import {
   type AppScope,
   type ArtifactReference,
   artifactReferenceIdentity,
+  authorizeAvailableExecutionModelProfile,
   authorizeAvailableModelProfile,
   type ModelCertificationClaims,
   modelCertificationClaimsSchema,
-  type modelExecutionCertificationClaimsSchema,
+  modelExecutionCertificationClaimsSchema,
+  modelExecutionProfileSchema,
   modelProfileSchema,
   type PortResult,
 } from "@data-agent/contracts";
@@ -46,11 +53,12 @@ export type CredentialedProviderAttempt =
       readonly kind: "PENDING_RECEIPT_COMMIT";
       readonly provider: ModelProviderBinding["provider"];
       readonly model_id: string;
-      readonly probe: Extract<
-        ProviderProbeResult,
-        { readonly certification_status: "PENDING_RECEIPT_COMMIT" }
-      >;
-      readonly claims: ModelCertificationClaims;
+      readonly probe:
+        | Extract<ProviderProbeResult, { readonly certification_status: "PENDING_RECEIPT_COMMIT" }>
+        | ExecutionProviderProbeResult;
+      readonly claims:
+        | ModelCertificationClaims
+        | z.infer<typeof modelExecutionCertificationClaimsSchema>;
     };
 
 export interface CredentialedProviderCertificationEntry {
@@ -82,7 +90,7 @@ export interface CredentialedProviderCertificationCoreInput {
   readonly scope: AppScope;
   readonly run_id: string;
   readonly worker_fence: number;
-  readonly bindings: readonly ModelProviderBinding[];
+  readonly bindings: readonly (ModelProviderBinding | ModelProviderExecutionBinding)[];
   readonly receipt_store: ModelCertificationReceiptStore;
   readonly now?: () => Date;
 }
@@ -129,10 +137,33 @@ function certificationReport(input: {
 }
 
 function receiptMatchesAttempt(
-  binding: ModelProviderBinding,
+  binding: ModelProviderBinding | ModelProviderExecutionBinding,
   input: CredentialedProviderCertificationCoreInput,
   attempt: Extract<CredentialedProviderAttempt, { readonly kind: "PENDING_RECEIPT_COMMIT" }>,
 ): boolean {
+  if ("model_config_version" in binding) {
+    const claims = modelExecutionCertificationClaimsSchema.safeParse(attempt.claims);
+    if (!("execution_profile" in attempt.probe)) return false;
+    const profile = modelExecutionProfileSchema.safeParse(attempt.probe.execution_profile);
+    return (
+      claims.success &&
+      profile.success &&
+      attempt.provider === binding.provider &&
+      attempt.model_id === binding.default_model_id &&
+      claims.data.receipt_ref.app_id === input.scope.app_id &&
+      claims.data.receipt_ref.tenant_id === input.scope.tenant_id &&
+      claims.data.receipt_ref.environment === input.scope.environment &&
+      claims.data.receipt_ref.run_id === input.run_id &&
+      claims.data.profile_id === binding.profile_id &&
+      claims.data.model_config_version === binding.model_config_version &&
+      claims.data.provider === binding.provider &&
+      claims.data.model_id === binding.default_model_id &&
+      claims.data.execution_profile_hash === attempt.probe.execution_profile_hash &&
+      profile.data.profile_id === binding.profile_id &&
+      profile.data.model_config_version === binding.model_config_version
+    );
+  }
+  if ("execution_profile" in attempt.probe) return false;
   const claims = modelCertificationClaimsSchema.safeParse(attempt.claims);
   const profile = modelProfileSchema.safeParse(attempt.probe.profile);
   return (
@@ -170,11 +201,34 @@ async function authorizePersistedProfile(
   const committed = await input.receipt_store.commit(attempt.claims, {
     worker_fence: input.worker_fence,
   });
-  if (
-    !committed.ok ||
-    artifactReferenceIdentity(committed.value) !== artifactReferenceIdentity(expectedReference)
-  ) {
+  if (!committed.ok) {
+    throw new Error(committed.error.code);
+  }
+  if (artifactReferenceIdentity(committed.value) !== artifactReferenceIdentity(expectedReference)) {
     return null;
+  }
+
+  if ("execution_profile" in attempt.probe) {
+    const claims = modelExecutionCertificationClaimsSchema.parse(attempt.claims);
+    await authorizeAvailableExecutionModelProfile(
+      {
+        ...attempt.probe.execution_profile,
+        certification_status: "AVAILABLE",
+        certification_receipt_ref: expectedReference,
+        certified_model_id: attempt.probe.execution_profile.model_id,
+      },
+      {
+        resolve: async (reference) => {
+          const resolved = await input.receipt_store.resolve(reference);
+          return resolved.ok ? resolved.value : null;
+        },
+        verifyCommitted: async (reference) => {
+          const verified = await input.receipt_store.verify(reference);
+          return verified.ok && verified.value;
+        },
+      },
+    );
+    return claims.receipt_ref;
   }
 
   const availableProfile = {
@@ -278,8 +332,12 @@ export async function runCredentialedProviderCertificationCore(
             })
           : unavailableEntry(binding, "MODEL_CERTIFICATION_RECEIPT_COMMIT_FAILED"),
       );
-    } catch {
-      entries.push(unavailableEntry(binding, "MODEL_CERTIFICATION_AUTHORITY_REJECTED"));
+    } catch (error) {
+      const publicCode =
+        error instanceof Error && /^[A-Z][A-Z0-9_]{1,126}$/.test(error.message)
+          ? error.message
+          : "MODEL_CERTIFICATION_AUTHORITY_REJECTED";
+      entries.push(unavailableEntry(binding, publicCode));
     }
   }
 

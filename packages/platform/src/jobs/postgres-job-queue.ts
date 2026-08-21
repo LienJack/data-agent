@@ -210,7 +210,7 @@ export function createPostgresJobQueue(
         assertScope(scope.data, capability.scope);
         const result = await client.query<{ value: unknown }>(
           "select app_data_agent.claim_job_work($1::text,$2::jsonb,$3::integer) as value",
-          [worker.data, handlers.data, options.lease_duration_ms],
+          [worker.data, JSON.stringify(handlers.data), options.lease_duration_ms],
         );
         return result.rows[0]?.value === null || result.rows[0]?.value === undefined
           ? null

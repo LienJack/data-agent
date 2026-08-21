@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
+import { materializeBuiltinTeamProfiles } from "@data-agent/agent-runtime";
 import {
   type AgentSpecialistProfileId,
   agentSpecialistProfileIdSchema,
@@ -26,7 +27,6 @@ import {
   type QaReadinessState,
   runQaReadinessBootstrap,
 } from "../../../../scripts/qa-readiness-bootstrap";
-import { materializeBuiltinTeamProfiles } from "../../../worker/src/teams/materialize-builtin-team";
 import { ECOMMERCE_DEMO_DATASOURCE_ID } from "../lib/ecommerce-demo-bootstrap";
 import {
   closeEcommerceDemoConnectorPools,

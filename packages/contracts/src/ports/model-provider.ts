@@ -356,7 +356,13 @@ export async function authorizePersistedModelProviderInvocation(
     request.run_id !== envelope.run_id ||
     request.scope.app_id !== envelope.scope.app_id ||
     request.scope.tenant_id !== envelope.scope.tenant_id ||
-    request.scope.environment !== envelope.scope.environment ||
+    request.scope.environment !== envelope.scope.environment
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_INVOCATION_AUTHORITY_MISMATCH",
+    );
+  }
+  if (
     request.profile_id !== envelope.model_profile.profile_id ||
     request.model_config_version !== envelope.model_profile.model_config_version ||
     request.profile_version !== envelope.model_profile.profile_version ||
@@ -369,7 +375,13 @@ export async function authorizePersistedModelProviderInvocation(
     JSON.stringify(request.recovery_capabilities) !==
       JSON.stringify(envelope.certification.recovery_capabilities) ||
     JSON.stringify(request.connection) !== JSON.stringify(envelope.connection) ||
-    JSON.stringify(request.task_ref) !== JSON.stringify(envelope.task_ref) ||
+    JSON.stringify(request.task_ref) !== JSON.stringify(envelope.task_ref)
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_REQUEST_AUTHORITY_MISMATCH",
+    );
+  }
+  if (
     projectionReceipt.receipt_id !== envelope.projection.receipt_ref.artifact_id ||
     projectionReceipt.receipt_hash !== envelope.projection.receipt_ref.content_hash ||
     envelope.projection.receipt_ref.revision !== 1 ||
@@ -386,12 +398,26 @@ export async function authorizePersistedModelProviderInvocation(
       envelope.projection.token_bound_policy_version ||
     projectionReceipt.trusted_input_token_upper_bound !==
       envelope.projection.trusted_input_token_upper_bound ||
-    projectionReceipt.taint.taint_hash !== envelope.projection.taint_hash ||
+    projectionReceipt.taint.taint_hash !== envelope.projection.taint_hash
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_PROJECTION_AUTHORITY_MISMATCH",
+    );
+  }
+  if (
     request.response_schema_version !== envelope.request_policy.response_schema_version ||
     !sameTools ||
     !sameBudget ||
-    (await computeModelProviderPayloadHash(request)) !== envelope.projection.payload_hash ||
-    !availableProfile ||
+    (await computeModelProviderPayloadHash(request)) !== envelope.projection.payload_hash
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_REQUEST_POLICY_MISMATCH",
+    );
+  }
+  if (!availableProfile) {
+    throw new ModelProviderInvocationAuthorizationError("PROVIDER_TRANSPORT_PROFILE_NOT_AVAILABLE");
+  }
+  if (
     availableProfile.scope.app_id !== request.scope.app_id ||
     availableProfile.scope.tenant_id !== request.scope.tenant_id ||
     availableProfile.scope.environment !== request.scope.environment ||
@@ -400,12 +426,30 @@ export async function authorizePersistedModelProviderInvocation(
     availableProfile.profile_version !== envelope.model_profile.profile_version ||
     availableProfile.adapter_version !== envelope.model_profile.adapter_version ||
     availableProfile.model_id !== envelope.model_profile.model_id ||
-    availableProfile.provider !== envelope.model_profile.provider ||
+    availableProfile.provider !== envelope.model_profile.provider
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_PROFILE_IDENTITY_MISMATCH",
+    );
+  }
+  if (
     resolvedCertificationIdentity !== expectedCertificationIdentity ||
-    resolvedExecutionProfileHash !== envelope.certification.execution_profile_hash ||
+    resolvedExecutionProfileHash !== envelope.certification.execution_profile_hash
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_PROFILE_CERTIFICATION_MISMATCH",
+    );
+  }
+  if (
     canonicalizeJson(availableProfile.recovery_capabilities) !==
       canonicalizeJson(envelope.certification.recovery_capabilities) ||
-    canonicalizeJson(availableProfile.connection) !== canonicalizeJson(envelope.connection) ||
+    canonicalizeJson(availableProfile.connection) !== canonicalizeJson(envelope.connection)
+  ) {
+    throw new ModelProviderInvocationAuthorizationError(
+      "PROVIDER_TRANSPORT_PROFILE_RECOVERY_MISMATCH",
+    );
+  }
+  if (
     availableProfile.operational_constraints.context_window.verification_status !== "VERIFIED" ||
     availableProfile.operational_constraints.context_window.max_context_tokens !==
       envelope.certification.certified_context_window.max_context_tokens ||
@@ -413,7 +457,7 @@ export async function authorizePersistedModelProviderInvocation(
       envelope.certification.certified_context_window.max_output_tokens
   ) {
     throw new ModelProviderInvocationAuthorizationError(
-      "Provider transport 与 committed U2/U3 authority 不一致。",
+      "PROVIDER_TRANSPORT_PROFILE_CAPACITY_MISMATCH",
     );
   }
   authorizedModelProviderInvocations.add(request);

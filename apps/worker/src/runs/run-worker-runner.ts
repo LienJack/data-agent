@@ -979,8 +979,6 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           false,
         );
       }
-      const effectiveConfig = await loadEffectiveConfig(lease);
-      if (!effectiveConfig.ok) return effectiveConfig;
       const current = await readProjection(lease);
       if (!current.ok) {
         return current;
@@ -1023,6 +1021,11 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
         if (stale) return stale;
         return initialHeartbeat;
       }
+      // Effective Config consumption is fence-bound and therefore must happen
+      // only after the durable run.leased event has advanced the projection to
+      // RUNNING for this exact worker fence.
+      const effectiveConfig = await loadEffectiveConfig(lease);
+      if (!effectiveConfig.ok) return effectiveConfig;
       const runController = new AbortController();
       const executionDeadlineAt = new Date(
         now().getTime() + timing.execution_timeout_ms,

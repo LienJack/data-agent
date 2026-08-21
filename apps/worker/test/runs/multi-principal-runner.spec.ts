@@ -173,13 +173,13 @@ describe("multi-principal run worker", () => {
     expect(observed).toEqual(["principal-a", "principal-b"]);
   });
 
-  it("classifies only active OWNER/ANALYST members as CLI-runnable principals", () => {
+  it("classifies only active WORKSPACE_ADMIN/ANALYST members as CLI-runnable principals", () => {
     expect(
       [
-        { role: "OWNER", user_status: "ACTIVE", revoked_at: null },
+        { role: "WORKSPACE_ADMIN", user_status: "ACTIVE", revoked_at: null },
         { role: "ANALYST", user_status: "ACTIVE", revoked_at: null },
         { role: "VIEWER", user_status: "ACTIVE", revoked_at: null },
-        { role: "OWNER", user_status: "DISABLED", revoked_at: null },
+        { role: "WORKSPACE_ADMIN", user_status: "DISABLED", revoked_at: null },
         { role: "ANALYST", user_status: "ACTIVE", revoked_at: "2026-08-16T00:00:00.000Z" },
       ].map(isRunnableWorkspaceMember),
     ).toEqual([true, true, false, false, false]);

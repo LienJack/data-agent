@@ -52,6 +52,9 @@ function visibleToolPort(input: {
         tool_name: invocation.tool_id,
         title: invocation.tool_id,
         summary: `${invocation.profile.revision.profile_id} 正在调用受治理工具`,
+        profile_id: invocation.profile.revision.profile_id,
+        task_id: invocation.task.task_id,
+        artifact_refs: [],
         input: JSON.stringify({
           profile_id: invocation.profile.revision.profile_id,
           task_id: invocation.task.task_id,
@@ -67,6 +70,9 @@ function visibleToolPort(input: {
           call_id: callId,
           tool_name: invocation.tool_id,
           summary: "受治理工具调用已完成",
+          profile_id: invocation.profile.revision.profile_id,
+          task_id: invocation.task.task_id,
+          artifact_refs: result ? [result] : [],
           output: result
             ? JSON.stringify({
                 artifact_id: result.artifact_id,
@@ -88,6 +94,9 @@ function visibleToolPort(input: {
           tool_name: invocation.tool_id,
           summary: "受治理工具调用失败",
           error_code: "TEAM_TOOL_EXECUTION_FAILED",
+          profile_id: invocation.profile.revision.profile_id,
+          task_id: invocation.task.task_id,
+          artifact_refs: [],
           output: null,
           duration_ms: Math.max(0, input.now() - startedAt),
         });

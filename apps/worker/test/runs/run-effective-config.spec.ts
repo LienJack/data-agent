@@ -346,8 +346,9 @@ describe("U2 Worker effective config boundary", () => {
         await capability.invoke({ logical_call_id: ids.command });
         await expect(capability.invoke({ logical_call_id: ids.command })).resolves.toMatchObject({
           ok: false,
-          error: { code: "PROVIDER_CALL_LIMIT_EXCEEDED", retryable: false },
+          error: { code: "PROVIDER_LOGICAL_CALL_DUPLICATE", retryable: false },
         });
+        await capability.invoke({ logical_call_id: ids.otherRun });
         return { kind: "COMPLETED" };
       },
     };
@@ -360,7 +361,7 @@ describe("U2 Worker effective config boundary", () => {
     });
 
     expect(result).toMatchObject({ ok: true, value: { kind: "COMPLETED" } });
-    expect(providerDispatch.invoke).toHaveBeenCalledOnce();
+    expect(providerDispatch.invoke).toHaveBeenCalledTimes(2);
     expect(providerDispatch.invoke).toHaveBeenCalledWith({
       signal: expect.any(AbortSignal),
       lease: workerLease,
@@ -370,7 +371,7 @@ describe("U2 Worker effective config boundary", () => {
     });
   });
 
-  it("revalidates before reading projection or settling a terminal queue row", async () => {
+  it("revalidates after durable lease admission and before Executor or terminal settlement", async () => {
     const config = await effectiveConfig();
     const workerLease = lease(config);
     const runtime = new InMemoryRunRuntime();
@@ -399,9 +400,9 @@ describe("U2 Worker effective config boundary", () => {
       error: { code: "EFFECTIVE_CONFIG_REVOKED" },
     });
     expect(loader).toHaveBeenCalledOnce();
-    expect(readProjection).not.toHaveBeenCalled();
+    expect(readProjection).toHaveBeenCalledOnce();
     expect(runtime.completed).toHaveLength(0);
-    expect(runtime.operations).toEqual(["queue:lease"]);
+    expect(runtime.operations).toEqual(["queue:lease", "event:run.leased", "queue:heartbeat"]);
   });
 
   it("revalidates before Executor and exposes only verified config/context accessors", async () => {
@@ -470,7 +471,7 @@ describe("U2 Worker effective config boundary", () => {
       error: { code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID" },
     });
     expect(executor.execute).not.toHaveBeenCalled();
-    expect(runtime.operations).toEqual(["queue:lease"]);
+    expect(runtime.operations).toEqual(["queue:lease", "event:run.leased", "queue:heartbeat"]);
   });
 
   it("rejects tampered optional selection closure before Executor and effects", async () => {
@@ -499,7 +500,7 @@ describe("U2 Worker effective config boundary", () => {
       error: { code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID" },
     });
     expect(executor.execute).not.toHaveBeenCalled();
-    expect(runtime.operations).toEqual(["queue:lease"]);
+    expect(runtime.operations).toEqual(["queue:lease", "event:run.leased", "queue:heartbeat"]);
   });
 
   it("rejects a validly hashed receipt with a different run binding", async () => {
@@ -520,7 +521,7 @@ describe("U2 Worker effective config boundary", () => {
       error: { code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID" },
     });
     expect(executor.execute).not.toHaveBeenCalled();
-    expect(runtime.operations).toEqual(["queue:lease"]);
+    expect(runtime.operations).toEqual(["queue:lease", "event:run.leased", "queue:heartbeat"]);
   });
 
   it("rejects a validly hashed receipt with a different workspace scope", async () => {
@@ -540,11 +541,11 @@ describe("U2 Worker effective config boundary", () => {
       error: { code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID" },
     });
     expect(executor.execute).not.toHaveBeenCalled();
-    expect(runtime.operations).toEqual(["queue:lease"]);
+    expect(runtime.operations).toEqual(["queue:lease", "event:run.leased", "queue:heartbeat"]);
   });
 
   it.each(["EFFECTIVE_CONFIG_REVOKED", "EFFECTIVE_CONFIG_FENCE_STALE"])(
-    "propagates %s before Executor, heartbeat, event, or side effect",
+    "propagates %s after lease admission but before Executor or side effect",
     async (code) => {
       const config = await effectiveConfig();
       const workerLease = lease(config);
@@ -561,7 +562,7 @@ describe("U2 Worker effective config boundary", () => {
 
       expect(result).toMatchObject({ ok: false, error: { code } });
       expect(executor.execute).not.toHaveBeenCalled();
-      expect(runtime.operations).toEqual(["queue:lease"]);
+      expect(runtime.operations).toEqual(["queue:lease", "event:run.leased", "queue:heartbeat"]);
     },
   );
 

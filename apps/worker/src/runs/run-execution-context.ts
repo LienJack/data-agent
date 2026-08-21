@@ -129,7 +129,8 @@ export function createRunExecutionContext({
       "Run 执行已因取消、Heartbeat 失败或 Deadline 到期而中止。",
       false,
     );
-  let providerDispatchUsed = false;
+  const providerLogicalCalls = new Set<string>();
+  const providerCallLimit = effectiveConfig.execution_safety_policy.max_provider_calls;
   const providerDispatchCapability = providerDispatch
     ? Object.freeze({
         invoke(input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) {
@@ -144,16 +145,25 @@ export function createRunExecutionContext({
               ),
             );
           }
-          if (providerDispatchUsed) {
+          if (providerLogicalCalls.has(logicalCallId.data)) {
             return Promise.resolve(
               failure(
-                "PROVIDER_CALL_LIMIT_EXCEEDED",
-                "当前 Run Execution Context 只允许一次 Provider logical call。",
+                "PROVIDER_LOGICAL_CALL_DUPLICATE",
+                "同一 Run Execution Context 不能重复消费 Provider logical call ID。",
                 false,
               ),
             );
           }
-          providerDispatchUsed = true;
+          if (providerLogicalCalls.size >= providerCallLimit) {
+            return Promise.resolve(
+              failure(
+                "PROVIDER_CALL_LIMIT_EXCEEDED",
+                "Provider logical call 数量已达到冻结 Execution Safety Policy 上限。",
+                false,
+              ),
+            );
+          }
+          providerLogicalCalls.add(logicalCallId.data);
           return providerDispatch.invoke({
             lease,
             effective_config: effectiveConfig,
@@ -363,7 +373,7 @@ export function createRunExecutionContext({
           )
           .then(
             (value) => ({ kind: "RESULT" as const, value }),
-            () => ({ kind: "ERROR" as const }),
+            (error: unknown) => ({ kind: "ERROR" as const, error }),
           );
         const effectOutcome = await Promise.race([effectExecution, effectAborted]);
         clearTimeout(effectTimer);
@@ -378,11 +388,12 @@ export function createRunExecutionContext({
             : aborted();
         }
         if (effectOutcome.kind === "ERROR") {
-          return failure(
-            "RUN_SIDE_EFFECT_EXECUTION_FAILED",
-            "Side Effect 执行失败，未提交 Receipt。",
-            true,
-          );
+          const publicCode =
+            effectOutcome.error instanceof Error &&
+            /^[A-Z][A-Z0-9_]{1,126}$/.test(effectOutcome.error.message)
+              ? effectOutcome.error.message
+              : "RUN_SIDE_EFFECT_EXECUTION_FAILED";
+          return failure(publicCode, "Side Effect 执行失败，未提交 Receipt。", true);
         }
         const output = effectOutcome.value;
         let outputHash: string;
@@ -396,7 +407,10 @@ export function createRunExecutionContext({
           );
         }
         if (runSignal.aborted) return aborted();
-        const beforeReceipt = await guardRunningLease(lease, beforeEffect.value.projection_hash);
+        // The effect may emit public Tool/Subagent progress events while it is running.
+        // Those events legitimately advance the same fenced RUNNING projection, so the
+        // receipt guard must revalidate status/fence instead of requiring the pre-effect hash.
+        const beforeReceipt = await guardRunningLease(lease);
         if (!beforeReceipt.ok) {
           return beforeReceipt;
         }

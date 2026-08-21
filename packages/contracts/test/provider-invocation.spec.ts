@@ -1010,7 +1010,7 @@ describe("U3 provider invocation contracts", () => {
         fixture.permit,
         async () => substituted.profile,
       ),
-    ).rejects.toThrow("committed U2/U3 authority");
+    ).rejects.toThrow("PROVIDER_TRANSPORT_PROFILE_IDENTITY_MISMATCH");
   });
 
   it("hashes the complete canonical dispatch envelope and rejects tampering", async () => {

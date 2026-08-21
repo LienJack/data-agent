@@ -1,6 +1,7 @@
 export * from "./agents/model-egress-projection.js";
 export * from "./agents/postgres-agent-profile-registry.js";
 export * from "./agents/postgres-agent-team-trace.js";
+export * from "./agents/postgres-product-team-artifact-store.js";
 export * from "./agents/postgres-team-run-store.js";
 export * from "./artifacts/artifact-workspace-service.js";
 export * from "./artifacts/postgres-artifact-workspace-store.js";
@@ -97,6 +98,7 @@ export {
 } from "./sandbox/coordinated-sandbox-port.js";
 export {
   assertEcommerceBenchmarkReadOnlySql,
+  compileEcommerceTableCountSql,
   createPostgresEcommerceBenchmarkExecutor,
   type EcommerceBenchmarkQueryExecutor,
   type EcommerceBenchmarkQueryResult,

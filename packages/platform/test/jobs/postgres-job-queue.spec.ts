@@ -141,7 +141,9 @@ describe("PostgreSQL Job Queue", () => {
     ).resolves.toEqual({ ok: true, value: lease });
     expect(scripted.calls.find(({ text }) => text.includes("claim_job_work"))?.values).toEqual([
       "job-worker-a",
-      [{ kind: "ARTIFACT_EXPORT", handler_revision: "artifact-export-handler@1.0.0" }],
+      JSON.stringify([
+        { kind: "ARTIFACT_EXPORT", handler_revision: "artifact-export-handler@1.0.0" },
+      ]),
       30_000,
     ]);
   });

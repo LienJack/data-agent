@@ -37,6 +37,11 @@ function transition(permit: Permit) {
   } as const;
 }
 
+function outcomeTransition(permit: Permit) {
+  const { attempt_id: _attemptId, worker_fence: _workerFence, ...outcome } = transition(permit);
+  return outcome;
+}
+
 function samePermit(left: Permit, right: PermitReceipt): boolean {
   return (
     left.permit_id === right.permit_id &&
@@ -233,7 +238,7 @@ export function createPostgresAuditedProviderInvocationAdapter(input: {
         ...transition(permit),
         outcome: {
           schema_version: "provider-invocation-outcome-candidate@1.0.0",
-          ...transition(permit),
+          ...outcomeTransition(permit),
           status: "FAILED",
           reason_code,
           response_artifact_ref: null,
@@ -282,7 +287,7 @@ export function createPostgresAuditedProviderInvocationAdapter(input: {
         ...transition(permit),
         outcome: {
           schema_version: "provider-invocation-outcome-candidate@1.0.0",
-          ...transition(permit),
+          ...outcomeTransition(permit),
           status: terminal.kind,
           reason_code: terminal.reason_code,
           response_artifact_ref: null,
@@ -311,7 +316,7 @@ export function createPostgresAuditedProviderInvocationAdapter(input: {
         ...transition(permit),
         outcome: {
           schema_version: "provider-invocation-outcome-candidate@1.0.0",
-          ...transition(permit),
+          ...outcomeTransition(permit),
           status: "OUTCOME_UNKNOWN",
           reason_code: "PROVIDER_INVOCATION_OUTCOME_UNKNOWN",
           response_artifact_ref: null,
@@ -365,7 +370,7 @@ export function createPostgresAuditedProviderInvocationAdapter(input: {
         response_document: document,
         outcome: {
           schema_version: "provider-invocation-completed-candidate@1.0.0",
-          ...transition(permit),
+          ...outcomeTransition(permit),
           status: "COMPLETED",
           reason_code: null,
           response_hash: document.response_hash,

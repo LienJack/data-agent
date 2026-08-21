@@ -52,6 +52,16 @@ export interface EcommerceBenchmarkQueryExecutor {
     readonly timeout_ms: number;
     readonly max_rows: number;
   }): Promise<EcommerceBenchmarkQueryResult>;
+  executeTableCount(input: { readonly timeout_ms: number }): Promise<EcommerceBenchmarkQueryResult>;
+}
+
+export function compileEcommerceTableCountSql(): string {
+  return `select count(*)::integer as table_count
+from pg_catalog.pg_class relation
+join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
+where namespace.nspname = '${ALLOWED_SCHEMA}'
+  and relation.relkind in ('r', 'p')
+  and relation.relname = any($1::text[])`;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -184,6 +194,38 @@ export function createPostgresEcommerceBenchmarkExecutor(input: {
           rows: Object.freeze(
             result.rows.map((row) => Object.freeze((row as unknown[]).map(normalize))),
           ),
+        });
+      } catch (error) {
+        await client.query("rollback").catch(() => undefined);
+        if (isRecord(error) && error.code === "57014") throw new Error("POSTGRES_QUERY_TIMEOUT");
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async executeTableCount(request: { readonly timeout_ms: number }) {
+      if (
+        !Number.isInteger(request.timeout_ms) ||
+        request.timeout_ms < 1 ||
+        request.timeout_ms > 600_000
+      ) {
+        throw new Error("POSTGRES_QUERY_BUDGET_INVALID");
+      }
+      const client = await input.pool.connect();
+      try {
+        await client.query("begin read only");
+        await client.query(`set local role ${READER_ROLE}`);
+        await client.query(`set local statement_timeout = '${request.timeout_ms}ms'`);
+        await client.query("set local lock_timeout = '1000ms'");
+        const result = await client.query<{ readonly table_count: number | string }>(
+          compileEcommerceTableCountSql(),
+          [[...ALLOWED_RELATIONS].sort()],
+        );
+        await client.query("commit");
+        return Object.freeze({
+          columns: Object.freeze(["table_count"]),
+          rows: Object.freeze([Object.freeze([Number(result.rows[0]?.table_count ?? 0)] as const)]),
         });
       } catch (error) {
         await client.query("rollback").catch(() => undefined);

@@ -45,6 +45,7 @@ export interface DataAgentProductTeamRuntimePort {
     readonly restored_snapshot: Parameters<
       RunWorkflowExecutorPort["execute"]
     >[0]["restored_snapshot"];
+    readonly execution_context: RunExecutionContext;
     readonly signal: AbortSignal;
     readonly deadline_at: string;
   }): Promise<unknown>;
@@ -144,14 +145,24 @@ export function createDataAgentTeamRunner(
       } catch {
         return failed("RESOLVED_CONTEXT_RESULT_INVALID");
       }
-      if (!["READY", "PARTIAL"].includes(context.package.route_decision.state)) {
+      const metadataFallback =
+        context.package.route_decision.state === "REJECTED" &&
+        context.package.route_decision.route === "NONE" &&
+        context.package.route_decision.reason_codes.length === 1 &&
+        context.package.route_decision.reason_codes[0] === "NO_GOVERNED_CONTEXT_ROUTE";
+      if (
+        !["READY", "PARTIAL"].includes(context.package.route_decision.state) &&
+        !metadataFallback
+      ) {
         return failed("RESOLVED_CONTEXT_NOT_RUNNABLE");
       }
       const contextVerified = await emitPublicReasoning(input.context, {
         kind: "reasoning_delta",
         key: "team.reasoning.context",
         block_id: reasoningBlockId,
-        delta: "已验证 Resolved Context 身份闭包，开始执行受治理的专职工作流。",
+        delta: metadataFallback
+          ? "Resolved Context 未命中业务路由，按受限元数据查询路径读取冻结 Semantic Release。"
+          : "已验证 Resolved Context 身份闭包，开始执行受治理的专职工作流。",
       });
       if (contextVerified) return failed(contextVerified);
       const runtime = runtimeResultSchema.safeParse(
@@ -165,6 +176,7 @@ export function createDataAgentTeamRunner(
             receipt_hash: context.receipt.receipt_hash,
           },
           restored_snapshot: input.restored_snapshot,
+          execution_context: input.context,
           signal: input.signal,
           deadline_at: input.deadline_at,
         }),

@@ -249,7 +249,7 @@ describe("Credentialed Provider Certification Worker", () => {
       expect.arrayContaining([
         expect.objectContaining({
           certification_status: "UNAVAILABLE",
-          reason_code: "MODEL_CERTIFICATION_RECEIPT_COMMIT_FAILED",
+          reason_code: "FIXTURE_COMMIT_FAILED",
         }),
       ]),
     );

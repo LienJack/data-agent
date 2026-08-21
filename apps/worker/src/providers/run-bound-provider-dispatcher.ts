@@ -39,7 +39,9 @@ function sameEffectiveModel(
     profile.readiness === "AVAILABLE" &&
     profile.model_profile_id === config.model.resource_id &&
     profile.model_config_version === config.model.resource_revision &&
-    profile.resource_hash === config.model.resource_hash &&
+    // U2 already revalidates config.model.resource_hash against the active Catalog row.
+    // The execution profile projects the immutable model_config_versions snapshot hash,
+    // which is intentionally a different canonical document and cannot be compared byte-for-byte.
     profile.profile_version === config.model.profile_version &&
     profile.provider === config.model.provider &&
     profile.model_id === config.model.model_id
@@ -255,7 +257,7 @@ export function createRunBoundProviderDispatcher(input: {
         model_profile: {
           profile_id: profile.model_profile_id,
           model_config_version: profile.model_config_version,
-          resource_hash: profile.resource_hash,
+          resource_hash: config.model.resource_hash,
           profile_version: profile.profile_version,
           provider: profile.provider,
           model_id: profile.model_id,

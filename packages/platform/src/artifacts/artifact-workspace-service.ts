@@ -23,6 +23,7 @@ import {
   SPREADSHEET_FORMULA_POLICY_VERSION,
   sandboxResultSchema,
   verifyArtifactWorkspaceDocument,
+  verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 
 const textEncoder = new TextEncoder();
@@ -95,80 +96,88 @@ export async function projectArtifactDocument(
     requireSourceIdentity(sourceReference, workspaceDocument.document_ref);
     projection = workspaceDocument.projection;
   } else {
-    const sandbox = sandboxResultSchema.safeParse(documentInput);
-    if (sandbox.success) {
-      requireSourceIdentity(sourceReference, sandbox.data.result_ref);
-      if ((await computeSandboxResultHash(sandbox.data)) !== sourceReference.content_hash) {
-        throw new ArtifactWorkspaceError(
-          "ARTIFACT_SOURCE_HASH_MISMATCH",
-          "Sandbox Result canonical hash 与 Source Reference 不一致。",
-        );
-      }
-      projection = artifactWorkspaceProjectionSchema.parse({
-        kind: "TABLE",
-        columns: sandbox.data.columns.map((column) => ({
-          key: column.name,
-          label: column.name,
-          data_type: tableDataType(column.type),
-        })),
-        rows: sandbox.data.rows.map((row) =>
-          Object.fromEntries(
-            sandbox.data.columns.map((column, index) => [column.name, scalar(row[index])]),
-          ),
-        ),
-        total_rows: sandbox.data.row_count,
-      });
+    const productTeamDocument = await verifyProductTeamArtifactDocument(documentInput).catch(
+      () => null,
+    );
+    if (productTeamDocument) {
+      requireSourceIdentity(sourceReference, productTeamDocument.artifact_ref);
+      projection = productTeamDocument.projection;
     } else {
-      const l2 = l2ArtifactDocumentSchema.safeParse(documentInput);
-      if (!l2.success || l2.data.envelope.status !== "COMMITTED") {
-        throw new ArtifactWorkspaceError(
-          "ARTIFACT_PREVIEW_UNSUPPORTED",
-          "Artifact document 没有已注册的安全 preview adapter。",
-        );
-      }
-      const envelopeReference = {
-        artifact_id: l2.data.envelope.artifact_id,
-        artifact_type: l2.data.envelope.artifact_type,
-        app_id: l2.data.envelope.app_id,
-        tenant_id: l2.data.envelope.tenant_id,
-        environment: l2.data.envelope.environment,
-        run_id: l2.data.envelope.run_id,
-        revision: l2.data.envelope.revision,
-        content_hash: l2.data.envelope.content_hash,
-      } as ArtifactReference;
-      requireSourceIdentity(sourceReference, envelopeReference);
-      if ((await computeL2ArtifactContentHash(l2.data)) !== sourceReference.content_hash) {
-        throw new ArtifactWorkspaceError(
-          "ARTIFACT_SOURCE_HASH_MISMATCH",
-          "L2 Artifact canonical hash 与 Source Reference 不一致。",
-        );
-      }
-      switch (l2.data.payload.artifact_type) {
-        case "SqlArtifact":
-          projection = {
-            kind: "SQL",
-            dialect: "postgresql",
-            sql: l2.data.payload.sql,
-          };
-          break;
-        case "AnalysisReport":
-          projection = {
-            kind: "REPORT",
-            title: l2.data.payload.title,
-            sections: [
-              {
-                heading: "Evidence-backed claims",
-                body_text: l2.data.payload.limitations.join("\n"),
-                source_refs: l2.data.payload.claim_refs,
-              },
-            ],
-          };
-          break;
-        default:
+      const sandbox = sandboxResultSchema.safeParse(documentInput);
+      if (sandbox.success) {
+        requireSourceIdentity(sourceReference, sandbox.data.result_ref);
+        if ((await computeSandboxResultHash(sandbox.data)) !== sourceReference.content_hash) {
+          throw new ArtifactWorkspaceError(
+            "ARTIFACT_SOURCE_HASH_MISMATCH",
+            "Sandbox Result canonical hash 与 Source Reference 不一致。",
+          );
+        }
+        projection = artifactWorkspaceProjectionSchema.parse({
+          kind: "TABLE",
+          columns: sandbox.data.columns.map((column) => ({
+            key: column.name,
+            label: column.name,
+            data_type: tableDataType(column.type),
+          })),
+          rows: sandbox.data.rows.map((row) =>
+            Object.fromEntries(
+              sandbox.data.columns.map((column, index) => [column.name, scalar(row[index])]),
+            ),
+          ),
+          total_rows: sandbox.data.row_count,
+        });
+      } else {
+        const l2 = l2ArtifactDocumentSchema.safeParse(documentInput);
+        if (!l2.success || l2.data.envelope.status !== "COMMITTED") {
           throw new ArtifactWorkspaceError(
             "ARTIFACT_PREVIEW_UNSUPPORTED",
-            "该 L2 Artifact 类型没有 U7 安全 preview adapter。",
+            "Artifact document 没有已注册的安全 preview adapter。",
           );
+        }
+        const envelopeReference = {
+          artifact_id: l2.data.envelope.artifact_id,
+          artifact_type: l2.data.envelope.artifact_type,
+          app_id: l2.data.envelope.app_id,
+          tenant_id: l2.data.envelope.tenant_id,
+          environment: l2.data.envelope.environment,
+          run_id: l2.data.envelope.run_id,
+          revision: l2.data.envelope.revision,
+          content_hash: l2.data.envelope.content_hash,
+        } as ArtifactReference;
+        requireSourceIdentity(sourceReference, envelopeReference);
+        if ((await computeL2ArtifactContentHash(l2.data)) !== sourceReference.content_hash) {
+          throw new ArtifactWorkspaceError(
+            "ARTIFACT_SOURCE_HASH_MISMATCH",
+            "L2 Artifact canonical hash 与 Source Reference 不一致。",
+          );
+        }
+        switch (l2.data.payload.artifact_type) {
+          case "SqlArtifact":
+            projection = {
+              kind: "SQL",
+              dialect: "postgresql",
+              sql: l2.data.payload.sql,
+            };
+            break;
+          case "AnalysisReport":
+            projection = {
+              kind: "REPORT",
+              title: l2.data.payload.title,
+              sections: [
+                {
+                  heading: "Evidence-backed claims",
+                  body_text: l2.data.payload.limitations.join("\n"),
+                  source_refs: l2.data.payload.claim_refs,
+                },
+              ],
+            };
+            break;
+          default:
+            throw new ArtifactWorkspaceError(
+              "ARTIFACT_PREVIEW_UNSUPPORTED",
+              "该 L2 Artifact 类型没有 U7 安全 preview adapter。",
+            );
+        }
       }
     }
   }

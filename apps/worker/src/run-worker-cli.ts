@@ -17,10 +17,12 @@ import {
   createPostgresAgentProfileRegistry,
   createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
+  createPostgresEcommerceBenchmarkExecutor,
   createPostgresEffectiveConfigResolver,
   createPostgresJobQueue,
   createPostgresKnowledgeRegistry,
   createPostgresOperationsAdminRepository,
+  createPostgresProductTeamArtifactStore,
   createPostgresProviderInvocationSmokeJob,
   createPostgresRepository,
   createPostgresResearchAuthority,
@@ -28,6 +30,7 @@ import {
   createPostgresRunEventStore,
   createPostgresRunQueue,
   createPostgresSemanticInductionRegistry,
+  createPostgresTeamRunStore,
   createPostgresWorkspaceFiles,
   createUnavailableKnowledgeIndex,
   createWorkspaceContentNamespace,
@@ -61,6 +64,8 @@ import {
 } from "./runs/run-worker-daemon.js";
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
+import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
+import { createProductionTeamTools } from "./teams/production-team-tools.js";
 import { createRunWorkflowExecutorRouter } from "./teams/run-workflow-executor-router.js";
 
 class RunWorkerStartupError extends Error {
@@ -329,17 +334,38 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
+        const teamStore = createPostgresTeamRunStore({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
+        const teamArtifacts = createPostgresProductTeamArtifactStore({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
+        const ecommerceSandbox = createPostgresEcommerceBenchmarkExecutor({ pool });
         const teamExecutor = createDataAgentTeamRunner({
           profiles: {
             listEnabled: (profileCapability) => profileRegistry.list(profileCapability, true),
           },
           profile_capability_input: capability,
-          runtime: {
-            execute: async () => ({
-              status: "FAILED",
-              reason_code: "DATA_AGENT_TEAM_DOMAIN_RUNTIME_UNAVAILABLE",
-            }),
-          },
+          runtime: createProductionTeamRuntime({
+            store: teamStore,
+            capability,
+            artifacts: {
+              verifyCommitted: (reference) => teamArtifacts.verifyCommitted(capability, reference),
+              resolveCommitted: (reference) =>
+                teamArtifacts.resolveCommitted(capability, reference),
+            },
+            create_tools: (input) =>
+              createProductionTeamTools(
+                {
+                  capability,
+                  artifacts: teamArtifacts,
+                  sandbox: ecommerceSandbox,
+                },
+                input,
+              ),
+          }),
         });
         const executor = smokeTarget
           ? createProviderSmokeExecutor()

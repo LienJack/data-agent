@@ -46,3 +46,15 @@ For every target created later, add:
 | `packages/client/ui-trajectory/src/client/trajectory-snapshot-builder.ts` | `apps/web/src/lib/qa-event-assembler.ts` + resolution trace projector | ADAPTED | preserved one ordered source stream; added strict Agent/Tool/Artifact public identities and retained v1 read compatibility | Web/platform focused tests |
 
 No substantial upstream source block was copied verbatim in this contract slice, so no additional MIT source header is required. The primary Harness attribution remains in this ledger; UI slices will record copied/adapted component-level code separately.
+
+### Production Team runtime — implemented
+
+| Upstream source @ `47f943859bef60e4160492346772ded9b24f765a` | Data Agent target | Mode | Material differences | Validation |
+| --- | --- | --- | --- | --- |
+| `packages/session/session-persistence/src/coordinator.ts` + `preparations.ts` | `apps/worker/src/teams/production-team-runtime.ts` | ADAPTED | retained prepare-before-dispatch, stable operation identity and replay-first coordination; replaced Harness session backend with PostgreSQL Team Store commands, Worker Fence and deterministic task/handoff/context/completion/acceptance identities | production runtime unit/replay tests + Worker typecheck |
+| `packages/session/session-checkpoint-policy/tests/crash-recovery.e2e.ts` | `apps/worker/test/teams/production-team-runtime.spec.ts` | ADAPTED | retained crash/reopen test shape; Data Agent recovery loads accepted Report task and delegates external side effects to existing durable `executeSideEffectOnce` receipts | focused Worker tests |
+| `packages/client/runtime/src/client/sessions/session.ts` higher-seq/replay rules | `apps/worker/src/runs/run-execution-context.ts` + production runtime replay | ADAPTED | retained stable logical-call identity and replay no-op semantics; enforced frozen `max_provider_calls`, duplicate logical-call denial and PostgreSQL Provider receipts | `run-effective-config.spec.ts` |
+| Harness subagent lifecycle/catalog persistence | Team root/child tasks, Handoffs and public Agent status | REIMPLEMENTED_WITH_REASON | Harness child sessions are independent transport addresses; Data Agent children must instead bind approved Product Profiles, Task Capability, Context Epoch, Artifact scope, Acceptance and Worker Fence | Team Store/runtime tests |
+| Harness produced-file/details affordance contract | `product-team-artifact@1.0.0`, PostgreSQL Product Team Artifact Store and existing Preview projector | REIMPLEMENTED_WITH_REASON | Harness opens local files; Data Agent commits content-addressed SQL/TABLE/REPORT projections and only publishes exact committed refs | contracts/platform preview tests |
+
+No substantial upstream source block was copied verbatim in this runtime slice, so no per-file MIT header was added. Control-flow and recovery patterns were adapted while Data Agent domain, PostgreSQL authority and public-event contracts remain project-native.

@@ -13,7 +13,7 @@ export function isRunnableWorkspaceMember(member: {
   return (
     member.user_status === "ACTIVE" &&
     member.revoked_at === null &&
-    (member.role === "OWNER" || member.role === "ANALYST")
+    (member.role === "WORKSPACE_ADMIN" || member.role === "ANALYST")
   );
 }
 

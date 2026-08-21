@@ -95,7 +95,17 @@ export function createPersistedModelProviderTransport(input: {
           permit,
           input.profile_resolver,
         );
-      } catch {
+      } catch (error) {
+        console.warn(
+          JSON.stringify({
+            event: "provider_transport_authorization_rejected",
+            error_name: error instanceof Error ? error.name : "UnknownError",
+            reason:
+              error instanceof Error
+                ? error.message.slice(0, 500)
+                : "PROVIDER_LOCAL_PREPARATION_FAILED",
+          }),
+        );
         return {
           kind: "FAILED",
           reason_code: "PROVIDER_LOCAL_PREPARATION_FAILED",

@@ -41,8 +41,8 @@ export {
 } from "./grounding-materializer.js";
 export * from "./l2.js";
 export * from "./ontology-package.js";
+export * from "./product-team-artifact.js";
 export * from "./research/index.js";
-export * from "./sensitive-execution-artifact.js";
 export * from "./semantic-candidate-generation.js";
 export * from "./semantic-control-plane.js";
 export * from "./semantic-explorer.js";
@@ -50,6 +50,7 @@ export * from "./semantic-governance.js";
 export * from "./semantic-governance-requests.js";
 export * from "./semantic-induction.js";
 export * from "./semantic-relationship-index.js";
+export * from "./sensitive-execution-artifact.js";
 export * from "./text2sql-evidence.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,
