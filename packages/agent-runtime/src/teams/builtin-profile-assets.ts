@@ -212,7 +212,7 @@ export async function buildBuiltinTeamMaterialization(input: BuiltinTeamMaterial
         schema_version: "agent-product-profile-revision@1.0.0",
         scope: input.scope,
         profile_id: profileId,
-        revision: 1,
+        revision: runtime.revision,
         runtime_profile_ref: {
           profile_id: profileId,
           revision: runtime.revision,

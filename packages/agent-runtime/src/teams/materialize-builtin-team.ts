@@ -22,6 +22,10 @@ interface SkillCommitPort {
 }
 
 interface ProfileCommitPort {
+  list(
+    capabilityInput: unknown,
+    enabledOnly?: boolean,
+  ): Promise<PortResult<readonly AgentProductProfileRegistryItem[]>>;
   commit(
     capabilityInput: unknown,
     command: unknown,
@@ -47,6 +51,11 @@ export async function materializeBuiltinTeamProfiles(
     if (!result.ok) return result;
   }
 
+  const listed = await dependencies.profiles.list(input.capability_input, false);
+  if (!listed.ok) return listed;
+  const headsByProfileId = new Map(
+    listed.value.map((item) => [item.head.profile_id, item.head] as const),
+  );
   const committed: AgentProductProfileRegistryItem[] = [];
   for (const revision of materialized.profile_revisions) {
     const command = await buildAgentProductProfileCommitCommand({
@@ -55,7 +64,7 @@ export async function materializeBuiltinTeamProfiles(
       idempotency_key: `${input.idempotency_prefix}:profile:${revision.profile_id}:${revision.revision}`,
       actor_principal_id: input.actor_principal_id,
       revision,
-      expected_head_version: 0,
+      expected_head_version: headsByProfileId.get(revision.profile_id)?.version ?? 0,
       target_lifecycle: "ENABLED",
     });
     const result = await dependencies.profiles.commit(input.capability_input, command);

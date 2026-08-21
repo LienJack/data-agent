@@ -5,6 +5,7 @@ import {
   assertDelegationAllowed,
   assertDirectToolAllowed,
   DATA_AGENT_PROFILE_IDS,
+  getAgentProfileRevisionExact,
 } from "../src/teams/index.js";
 
 describe("Agent Team v2 profiles", () => {
@@ -15,8 +16,8 @@ describe("Agent Team v2 profiles", () => {
       "governed-text2sql-agent",
       "report-writing-agent",
     ]);
-    expect(AGENT_PROFILE_REVISIONS.map((profile) => profile.profile_id)).toEqual(
-      DATA_AGENT_PROFILE_IDS,
+    expect(new Set(AGENT_PROFILE_REVISIONS.map((profile) => profile.profile_id))).toEqual(
+      new Set(DATA_AGENT_PROFILE_IDS),
     );
     for (const profile of AGENT_PROFILE_REVISIONS) {
       expect(agentProfileRevisionSchema.parse(profile)).toEqual(profile);
@@ -24,7 +25,16 @@ describe("Agent Team v2 profiles", () => {
     }
     expect(
       new Set(AGENT_PROFILE_REVISIONS.map((profile) => profile.workflow.workflow_id)).size,
-    ).toBe(4);
+    ).toBe(5);
+    const semanticRevisions = AGENT_PROFILE_REVISIONS.filter(
+      ({ profile_id }) => profile_id === "semantic-management-agent",
+    );
+    expect(semanticRevisions.map(({ revision }) => revision)).toEqual([1, 2]);
+    for (const semantic of semanticRevisions) {
+      expect(
+        getAgentProfileRevisionExact(semantic.profile_id, semantic.revision, semantic.profile_hash),
+      ).toBe(semantic);
+    }
   });
 
   it("separates direct tools from delegation and denies recursive delegation", () => {

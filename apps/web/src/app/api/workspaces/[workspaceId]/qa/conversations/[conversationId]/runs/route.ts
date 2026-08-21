@@ -4,13 +4,14 @@ import {
   workspaceFileReferenceSchema,
   workspaceIdempotencyKeySchema,
 } from "@data-agent/contracts";
-import { createPostgresRepository } from "@data-agent/platform";
+import { createPostgresRepository, planAgentDispatch } from "@data-agent/platform";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
-  getEffectiveConfigResolver,
+  getAgentDispatchAuthority,
   getAgentProfileRegistry,
+  getEffectiveConfigResolver,
   getProviderInvocationStore,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
@@ -112,16 +113,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (!defaults.ok) return workspaceErrorResponse(defaults.error);
   if (!selections.ok) return workspaceErrorResponse(selections.error);
   if (!profiles.ok) return workspaceErrorResponse(profiles.error);
-  if (
-    profiles.value.map(({ revision }) => revision.profile_id).join(",") !==
-    "governed-text2sql-agent,report-writing-agent,semantic-management-agent"
-  ) {
-    return workspaceErrorResponse({
-      code: "AGENT_PROFILE_SET_NOT_READY",
-      message: "Three enabled Agent Profiles are required before starting a Team Run.",
-      retryable: false,
-    });
-  }
   if (!defaults.value) {
     return workspaceErrorResponse({
       code: "WORKSPACE_DEFAULTS_NOT_CONFIGURED",
@@ -136,6 +127,27 @@ export async function POST(request: NextRequest, context: RouteContext) {
     idempotency_key: input.data.idempotency_key,
   });
   const runId = identities.run_id;
+  const rollout = await getAgentDispatchAuthority().resolveRolloutPolicy(
+    authorized.value.capability,
+    process.env.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
+  );
+  if (!rollout.ok) return workspaceErrorResponse(rollout.error);
+  const dispatch = await planAgentDispatch({
+    run_id: runId,
+    question: input.data.question,
+    enabled_profiles: profiles.value,
+    rollout_mode: rollout.value.mode,
+    policy_version: rollout.value.policy_version,
+  });
+  if (dispatch.admission.kind === "DEFERRED") {
+    const deferred = await getAgentDispatchAuthority().commitDeferred(authorized.value.capability, {
+      idempotency_key: input.data.idempotency_key,
+      question: input.data.question,
+      receipt: dispatch.admission,
+    });
+    if (!deferred.ok) return workspaceErrorResponse(deferred.error);
+    return NextResponse.json({ dispatch: deferred.value }, { status: 409 });
+  }
   const configRequest = await buildRunConfigRequestCandidate({
     schema_version: "run-config-request@1.0.0",
     operation: "QUESTION_RUN",
@@ -196,6 +208,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
       audit_id: identities.audit_id,
       idempotency_key: input.data.idempotency_key,
       question: input.data.question,
+      dispatch_admission: dispatch.admission,
+      shadow_dispatch_plan: dispatch.shadow_plan,
     },
   });
   if (!accepted.ok) return workspaceErrorResponse(accepted.error);

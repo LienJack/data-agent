@@ -42,6 +42,9 @@ const mocks = vi.hoisted(() => ({
   getFile: vi.fn(),
   runProjection: vi.fn(),
   listProfiles: vi.fn(),
+  resolveRollout: vi.fn(),
+  commitDeferred: vi.fn(),
+  planDispatch: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -56,6 +59,10 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
+  getAgentDispatchAuthority: () => ({
+    resolveRolloutPolicy: mocks.resolveRollout,
+    commitDeferred: mocks.commitDeferred,
+  }),
   getAgentProfileRegistry: () => ({
     list: mocks.listProfiles,
   }),
@@ -76,6 +83,7 @@ vi.mock("@/lib/workspace-identity", () => ({
 
 vi.mock("@data-agent/platform", () => ({
   createPostgresRepository: () => ({ getRun: mocks.getRun }),
+  planAgentDispatch: mocks.planDispatch,
 }));
 
 vi.mock("@/lib/workspace-run", () => ({
@@ -209,6 +217,18 @@ beforeEach(async () => {
       { revision: { profile_id: "semantic-management-agent" } },
     ],
   });
+  mocks.resolveRollout.mockResolvedValue({
+    ok: true,
+    value: {
+      mode: "ENFORCED",
+      version: 1,
+      policy_version: "adaptive-routing@1.0.0+rollout.1",
+    },
+  });
+  mocks.planDispatch.mockResolvedValue({
+    admission: { kind: "EXECUTE", plan: {}, binding: {} },
+    shadow_plan: null,
+  });
 });
 
 describe("workspace Effective Config routes", () => {
@@ -275,7 +295,7 @@ describe("workspace Effective Config routes", () => {
     expect(firstInput.command.run_id).toBe(firstInput.request.run_id);
   });
 
-  it("rejects a Team Run before acceptance when the enabled Profile set is incomplete", async () => {
+  it("passes the enabled registry catalog to selective admission without exact-three pre-rejection", async () => {
     mocks.listProfiles.mockResolvedValueOnce({
       ok: true,
       value: [{ revision: { profile_id: "governed-text2sql-agent" } }],
@@ -294,10 +314,63 @@ describe("workspace Effective Config routes", () => {
       { params: Promise.resolve({ workspaceId: ids.workspace }) },
     );
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toMatchObject({
-      error: { code: "AGENT_PROFILE_SET_NOT_READY" },
+    expect(response.status).toBe(201);
+    expect(mocks.planDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        enabled_profiles: [{ revision: { profile_id: "governed-text2sql-agent" } }],
+      }),
+    );
+  });
+
+  it("replays a durable DEFERRED receipt and obeys the DB-frozen rollout mode", async () => {
+    const receipt = {
+      kind: "DEFERRED",
+      schema_version: "agent-dispatch-deferred-receipt@1.0.0",
+      run_id: ids.run,
+      question_class: "DATA_QUERY",
+      reason_code: "ROOT_ONLY_DEFER_DATA",
+      required_capabilities: ["adaptive-team-runtime@1.0.0"],
+      policy_version: "adaptive-routing@1.0.0+rollout.1",
+      capability_snapshot_hash: H1,
+      receipt_hash: H2,
+    } as const;
+    mocks.resolveRollout.mockResolvedValue({
+      ok: true,
+      value: {
+        mode: "ROOT_ONLY_DEFER_DATA",
+        version: 7,
+        policy_version: "adaptive-routing@1.0.0+rollout.1",
+      },
     });
+    mocks.planDispatch.mockResolvedValue({ admission: receipt, shadow_plan: null });
+    mocks.commitDeferred.mockResolvedValue({ ok: true, value: receipt });
+    const makeRequest = () =>
+      new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/runs`, {
+        method: "POST",
+        body: JSON.stringify({
+          question: "统计订单数",
+          idempotencyKey: "durable-deferred-replay",
+          datasourceId: ids.datasource,
+          datasourceRevision: 3,
+          conversationId: ids.conversation,
+        }),
+      });
+    const first = await genericPost(makeRequest(), {
+      params: Promise.resolve({ workspaceId: ids.workspace }),
+    });
+    const replay = await genericPost(makeRequest(), {
+      params: Promise.resolve({ workspaceId: ids.workspace }),
+    });
+    expect(first.status).toBe(409);
+    expect(replay.status).toBe(409);
+    await expect(replay.json()).resolves.toEqual({ dispatch: receipt });
+    expect(mocks.planDispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rollout_mode: "ROOT_ONLY_DEFER_DATA",
+        policy_version: "adaptive-routing@1.0.0+rollout.1",
+      }),
+    );
+    expect(mocks.commitDeferred).toHaveBeenCalledTimes(2);
     expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
   });
 

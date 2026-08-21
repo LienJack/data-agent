@@ -64,6 +64,7 @@ import {
 } from "./runs/run-worker-daemon.js";
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
+import { createDirectAnswerExecutor } from "./teams/direct-answer-executor.js";
 import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
 import { createProductionTeamTools } from "./teams/production-team-tools.js";
 import { createRunWorkflowExecutorRouter } from "./teams/run-workflow-executor-router.js";
@@ -348,6 +349,7 @@ export async function runWorkerProcess(
             listEnabled: (profileCapability) => profileRegistry.list(profileCapability, true),
           },
           profile_capability_input: capability,
+          direct: createDirectAnswerExecutor(),
           runtime: createProductionTeamRuntime({
             store: teamStore,
             capability,

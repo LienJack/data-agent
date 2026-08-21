@@ -216,6 +216,7 @@ async function createChild(input: {
   readonly root: TeamTaskV2;
   readonly root_capability: Awaited<ReturnType<typeof createCapability>>;
   readonly profile_id: AgentSpecialistProfileId;
+  readonly profile: AgentProductProfileRegistryItem;
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
@@ -228,6 +229,8 @@ async function createChild(input: {
     child_task_id: taskId,
     child_attempt_id: identity(input.lease.run_id, `attempt:${input.profile_id}`),
     child_profile_id: input.profile_id,
+    child_profile_revision: input.profile.revision.runtime_profile_ref.revision,
+    child_profile_hash: input.profile.revision.runtime_profile_ref.profile_hash,
     parent_expected_revision: input.root.task_revision,
     objective_hash: await sha256ContentHash({
       run_id: input.lease.run_id,
@@ -389,6 +392,30 @@ function acceptedOutput(snapshot: unknown): ArtifactReference | null {
   return (completion?.output_ref as ArtifactReference | undefined) ?? null;
 }
 
+function selectedExecutionOrder(
+  input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0],
+): readonly AgentSpecialistProfileId[] {
+  if (!input.dispatch_plan) {
+    return ["semantic-management-agent", "governed-text2sql-agent", "report-writing-agent"];
+  }
+  const selected = input.dispatch_plan.selected_profile_refs.map(({ profile_id: id }) => id);
+  const remaining = new Set(selected);
+  const ordered: AgentSpecialistProfileId[] = [];
+  while (remaining.size > 0) {
+    const ready = selected.find(
+      (profileId) =>
+        remaining.has(profileId) &&
+        input.dispatch_plan?.dependency_edges.every(
+          (edge) => edge.to_profile_id !== profileId || ordered.includes(edge.from_profile_id),
+        ),
+    );
+    if (!ready) throw new ProductionTeamRuntimeError("AGENT_DEPENDENCY_UNSATISFIED");
+    ordered.push(ready);
+    remaining.delete(ready);
+  }
+  return ordered;
+}
+
 export function createProductionTeamRuntime(
   dependencies: ProductionTeamRuntimeDependencies,
 ): DataAgentProductTeamRuntimePort {
@@ -398,21 +425,24 @@ export function createProductionTeamRuntime(
       const timestamp = stableStartedAt(input.lease);
       const rootId = identity(input.lease.run_id, "task:root");
       try {
-        const reportTaskId = identity(input.lease.run_id, "task:report-writing-agent");
-        const loadedReport = portValue(
+        const executionOrder = selectedExecutionOrder(input);
+        const replayProfileId = executionOrder.at(-1);
+        if (!replayProfileId) throw new ProductionTeamRuntimeError("AGENT_DISPATCH_PLAN_INVALID");
+        const replayTaskId = identity(input.lease.run_id, `task:${replayProfileId}`);
+        const loadedReplay = portValue(
           await dependencies.store.loadRun(
             dependencies.capability,
             await command({
               operation: "LOAD_RUN",
-              label: "load-report",
-              task_id: reportTaskId,
+              label: "load-selected-acceptance",
+              task_id: replayTaskId,
               expected_revision: null,
               document: null,
               lease: input.lease,
             }),
           ),
         );
-        const replay = loadedReport as { readonly document?: unknown };
+        const replay = loadedReplay as { readonly document?: unknown };
         if (acceptedOutput(replay.document)) {
           return { status: "ACCEPTED", reason_code: "TEAM_ACCEPTED_REPLAY" };
         }
@@ -458,17 +488,17 @@ export function createProductionTeamRuntime(
           issued_at: timestamp,
         });
 
-        const specialistIds = [
-          "semantic-management-agent",
-          "governed-text2sql-agent",
-          "report-writing-agent",
-        ] as const;
         const tasks = new Map<AgentSpecialistProfileId, TeamTaskV2>();
-        for (const profileId of specialistIds) {
+        for (const profileId of executionOrder) {
+          const selectedProfile = input.profiles.get(profileId);
+          if (!selectedProfile) {
+            throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
+          }
           const task = await createChild({
             root,
             root_capability: rootCapability,
             profile_id: profileId,
+            profile: selectedProfile,
             lease: input.lease,
             store: dependencies.store,
             capability: dependencies.capability,
@@ -489,29 +519,29 @@ export function createProductionTeamRuntime(
           });
         }
 
-        const semanticTask = tasks.get("semantic-management-agent");
-        if (!semanticTask) throw new ProductionTeamRuntimeError("TEAM_SEMANTIC_TASK_MISSING");
-        await emit(input.execution_context, {
-          kind: "agent_status",
-          key: `team.agent.${semanticTask.task_id}.skipped`,
-          profile_id: "semantic-management-agent",
-          task_id: semanticTask.task_id,
-          status: "SKIPPED",
-          phase: "semantic.release.ready",
-          title: "Semantic",
-          summary: "冻结 Effective Config 已绑定 Published Semantic Release，无需写 Candidate",
-          duration_ms: 0,
-          error_code: null,
-        });
-
         const coverageHash = await sha256ContentHash({
           resolved_context_ref: input.resolved_context_ref,
           profiles: [...input.profiles.values()].map(({ revision }) => revision.revision_hash),
         });
         let evidenceRef: ArtifactReference | null = null;
-        for (const profileId of ["governed-text2sql-agent", "report-writing-agent"] as const) {
+        for (const profileId of executionOrder) {
           const task = tasks.get(profileId);
           if (!task) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_TASK_MISSING");
+          if (!input.dispatch_plan && profileId === "semantic-management-agent") {
+            await emit(input.execution_context, {
+              kind: "agent_status",
+              key: `team.agent.${task.task_id}.skipped`,
+              profile_id: profileId,
+              task_id: task.task_id,
+              status: "SKIPPED",
+              phase: "semantic.release.ready",
+              title: "Semantic",
+              summary: "Legacy Run 已冻结 Published Semantic Release，无需写 Candidate",
+              duration_ms: 0,
+              error_code: null,
+            });
+            continue;
+          }
           const epoch = await commitContextEpoch({
             task,
             context_ref: input.resolved_context_ref,
@@ -526,7 +556,12 @@ export function createProductionTeamRuntime(
             task_id: task.task_id,
             status: "RUNNING",
             phase: "context.activated",
-            title: profileId === "governed-text2sql-agent" ? "Text2SQL" : "Report",
+            title:
+              profileId === "governed-text2sql-agent"
+                ? "Text2SQL"
+                : profileId === "report-writing-agent"
+                  ? "Report"
+                  : "Semantic",
             summary: "受治理 Context Epoch 已激活，开始执行专职 Tool 链",
             duration_ms: null,
             error_code: null,
@@ -558,6 +593,13 @@ export function createProductionTeamRuntime(
               },
             },
             now: () => now().getTime(),
+            ...(input.dispatch_plan?.question_class === "SEMANTIC_READ"
+              ? {
+                  execution_tool_allowlists: {
+                    "semantic-management-agent": ["semantic.catalog.read"],
+                  },
+                }
+              : {}),
           });
           const effect: SideEffectReceipt = portValue(
             await input.execution_context.executeSideEffectOnce({
@@ -605,7 +647,12 @@ export function createProductionTeamRuntime(
             task_id: task.task_id,
             status: "COMPLETED",
             phase: "acceptance.committed",
-            title: profileId === "governed-text2sql-agent" ? "Text2SQL" : "Report",
+            title:
+              profileId === "governed-text2sql-agent"
+                ? "Text2SQL"
+                : profileId === "report-writing-agent"
+                  ? "Report"
+                  : "Semantic",
             summary: "Completion、Verifier 与 Acceptance 已持久化并验收",
             duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
             error_code: null,
@@ -624,6 +671,25 @@ export function createProductionTeamRuntime(
             const answer = report.projection.sections
               .map(({ body_text: bodyText }) => bodyText)
               .join("\n\n");
+            await emit(input.execution_context, {
+              kind: "answer_delta",
+              key: `team.answer.${task.task_id}`,
+              delta: answer,
+            });
+          } else if (executionOrder.at(-1) === profileId) {
+            const artifact = await verifyProductTeamArtifactDocument(
+              portValue(await dependencies.artifacts.resolveCommitted(outputRef)),
+            );
+            if (
+              artifactReferenceIdentity(artifact.artifact_ref) !==
+              artifactReferenceIdentity(outputRef)
+            ) {
+              throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
+            }
+            const answer =
+              artifact.projection.kind === "REPORT"
+                ? artifact.projection.sections.map(({ body_text: body }) => body).join("\n\n")
+                : `已生成并验收 ${artifact.artifact_ref.artifact_type} 数据结果。`;
             await emit(input.execution_context, {
               kind: "answer_delta",
               key: `team.answer.${task.task_id}`,

@@ -165,6 +165,21 @@ export const AGENT_PROFILE_REVISIONS = deepFreeze([
   }),
   profile({
     schema_version: "agent-profile-revision@2.0.0",
+    profile_id: "semantic-management-agent",
+    revision: 2,
+    direct_tool_allowlist: ["semantic.candidate.write", "semantic.catalog.read"],
+    delegation_ceiling: [],
+    mandatory_context: ["GOAL", "POLICY", "QUESTION", "SCHEMA_MAPPING"],
+    workflow: { workflow_id: "team.semantic-read.v2", workflow_revision: 1 },
+    expected_output_artifact_types: ["AnalysisReport", "SemanticGraphCandidate"],
+    verifier: {
+      verifier_id: "team.semantic-read-verifier.v2",
+      required_dimensions: [...dimensions],
+      semantic_fallback: "SEMANTICALLY_UNVERIFIED",
+    },
+  }),
+  profile({
+    schema_version: "agent-profile-revision@2.0.0",
     profile_id: "governed-text2sql-agent",
     revision: 1,
     direct_tool_allowlist: ["semantic.release.read", "sql.compiler.compile", "sql.sandbox.execute"],
@@ -195,11 +210,27 @@ export const AGENT_PROFILE_REVISIONS = deepFreeze([
   }),
 ] as const);
 
+const profilesByIdentity = new Map(
+  AGENT_PROFILE_REVISIONS.map((entry) => [
+    `${entry.profile_id}:${entry.revision}:${entry.profile_hash}`,
+    entry,
+  ]),
+);
 const profilesById = new Map(AGENT_PROFILE_REVISIONS.map((entry) => [entry.profile_id, entry]));
 
 export function getAgentProfileRevision(profileId: DataAgentProfileId): AgentProfileRevision {
   const result = profilesById.get(profileId);
   if (!result) throw new Error("TEAM_PROFILE_NOT_FOUND");
+  return result;
+}
+
+export function getAgentProfileRevisionExact(
+  profileId: DataAgentProfileId,
+  revision: number,
+  profileHash: string,
+): AgentProfileRevision {
+  const result = profilesByIdentity.get(`${profileId}:${revision}:${profileHash}`);
+  if (!result) throw new Error("TEAM_PROFILE_REVISION_NOT_FOUND");
   return result;
 }
 

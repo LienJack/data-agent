@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   resolveAndAccept: vi.fn(),
   getEffectiveConfig: vi.fn(),
   getRun: vi.fn(),
+  resolveRollout: vi.fn(),
+  commitDeferred: vi.fn(),
+  planDispatch: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -38,6 +41,10 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
+  getAgentDispatchAuthority: () => ({
+    resolveRolloutPolicy: mocks.resolveRollout,
+    commitDeferred: mocks.commitDeferred,
+  }),
   getAgentProfileRegistry: () => ({
     list: async () => ({
       ok: true,
@@ -63,6 +70,7 @@ vi.mock("@/lib/workspace-identity", () => ({
 
 vi.mock("@data-agent/platform", () => ({
   createPostgresRepository: () => ({ getRun: mocks.getRun }),
+  planAgentDispatch: mocks.planDispatch,
 }));
 
 vi.mock("@/lib/workspace-run", () => ({
@@ -126,6 +134,18 @@ beforeEach(() => {
     },
   });
   mocks.getRun.mockResolvedValue({ ok: true, value: { run_id: ids.run } });
+  mocks.resolveRollout.mockResolvedValue({
+    ok: true,
+    value: {
+      mode: "ENFORCED",
+      version: 1,
+      policy_version: "adaptive-routing@1.0.0+rollout.1",
+    },
+  });
+  mocks.planDispatch.mockResolvedValue({
+    admission: { kind: "EXECUTE", plan: {}, binding: {} },
+    shadow_plan: null,
+  });
 });
 
 describe("QA effective model selection", () => {

@@ -1,9 +1,14 @@
 import {
+  buildAgentDispatchExecuteAdmission,
+  buildAgentDispatchExecutionBinding,
+  buildAgentDispatchPlan,
+  buildDirectAdmissibilityReceipt,
   buildResolvedContextAuthoritySnapshot,
   buildResolvedContextPackage,
   buildResolvedContextReceipt,
   buildResolvedContextRequest,
   type RunWorkLease,
+  sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createRunExecutionContext } from "../../src/runs/run-execution-context.js";
@@ -208,7 +213,7 @@ async function harness() {
       schema_version: "agent-product-profile-head@1.0.0" as const,
       scope,
       profile_id: revision.profile_id,
-      active_revision: 1,
+      active_revision: revision.revision,
       active_revision_hash: revision.revision_hash,
       lifecycle: "ENABLED" as const,
       version: 1,
@@ -286,7 +291,7 @@ async function harness() {
       return { ok: true, value: { sequence: displayEvents.length } };
     },
   });
-  return { context, lease, profiles, resolved, displayEvents };
+  return { context, lease, profiles, resolved, displayEvents, effectiveConfig };
 }
 
 describe("Data Agent Team runner", () => {
@@ -344,5 +349,190 @@ describe("Data Agent Team runner", () => {
       }),
     ).resolves.toEqual({ kind: "FAILED", error_code: "DATA_AGENT_TEAM_PROFILE_STALE" });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("executes a Text2SQL-only adaptive lease when Report is not enabled", async () => {
+    const { context, lease, profiles, effectiveConfig } = await harness();
+    const text2sql = profiles.find(
+      ({ revision }) => revision.profile_id === "governed-text2sql-agent",
+    );
+    expect(text2sql).toBeDefined();
+    if (!text2sql) throw new TypeError("missing Text2SQL fixture");
+    const selected = [
+      {
+        profile_id: text2sql.revision.profile_id,
+        revision: text2sql.revision.revision,
+        revision_hash: text2sql.revision.revision_hash,
+      },
+    ];
+    const capabilityHash = await sha256ContentHash({ selected });
+    const plan = await buildAgentDispatchPlan({
+      schema_version: "agent-dispatch-plan@1.0.0",
+      plan_id: id(70),
+      run_id: lease.run_id,
+      question_class: "DATA_QUERY",
+      mode: "TEAM",
+      selected_profile_refs: selected,
+      dependency_edges: [],
+      required_evidence: ["ACCEPTED_QUERY_EVIDENCE", "FROZEN_SEMANTIC_RELEASE"],
+      reason_codes: ["DATA_QUERY_SPECIALIST_REQUIRED"],
+      capability_snapshot_hash: capabilityHash,
+      policy_version: "adaptive-routing@1.0.0",
+      direct_admissibility_receipt: null,
+    });
+    const binding = await buildAgentDispatchExecutionBinding({
+      schema_version: "agent-dispatch-execution-binding@1.0.0",
+      run_id: lease.run_id,
+      effective_executor_version: "ADAPTIVE@1",
+      dispatch_plan_ref: { plan_id: plan.plan_id, plan_hash: plan.plan_hash },
+      selected_profile_refs: selected,
+      policy_version: plan.policy_version,
+      capability_snapshot_hash: plan.capability_snapshot_hash,
+      shadow_dispatch_plan_ref: null,
+    });
+    const admission = await buildAgentDispatchExecuteAdmission({ kind: "EXECUTE", plan, binding });
+    const adaptiveLease: RunWorkLease = {
+      ...lease,
+      payload: {
+        schema_version: "effective-config-team-lease@2.0.0",
+        kind: "START_DATA_AGENT_TEAM",
+        executor_version: "ADAPTIVE@1",
+        effective_config_ref: effectiveConfigRef(effectiveConfig),
+        profile_refs: selected,
+        dispatch_plan: admission.plan,
+        dispatch_binding: admission.binding,
+      },
+    };
+    const execute = vi.fn(async ({ profiles: selectedProfiles }) => {
+      expect([...selectedProfiles.keys()]).toEqual(["governed-text2sql-agent"]);
+      return { status: "ACCEPTED" as const, reason_code: "TEXT2SQL_ONLY_ACCEPTED" };
+    });
+    const runner = createDataAgentTeamRunner({
+      profiles: { listEnabled: async () => ({ ok: true, value: [text2sql] }) },
+      profile_capability_input: {},
+      runtime: { execute },
+    });
+    await expect(
+      runner.execute({
+        lease: adaptiveLease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:05:00.000Z",
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("routes DIRECT to the zero-Agent executor without listing Product Profiles", async () => {
+    const { context, lease, effectiveConfig } = await harness();
+    const capabilityHash = await sha256ContentHash({ direct: true });
+    const directReceipt = await buildDirectAdmissibilityReceipt({
+      schema_version: "direct-admissibility-receipt@1.0.0",
+      no_new_facts: true,
+      no_governance_mutation: true,
+      no_formal_report: true,
+      policy_version: "adaptive-routing@1.0.0",
+      capability_snapshot_hash: capabilityHash,
+    });
+    const plan = await buildAgentDispatchPlan({
+      schema_version: "agent-dispatch-plan@1.0.0",
+      plan_id: id(71),
+      run_id: lease.run_id,
+      question_class: "EXPLANATION",
+      mode: "DIRECT",
+      selected_profile_refs: [],
+      dependency_edges: [],
+      required_evidence: ["DIRECT_PROVIDER_RECEIPT"],
+      reason_codes: ["DIRECT_EXPLANATION_ADMISSIBLE"],
+      capability_snapshot_hash: capabilityHash,
+      policy_version: "adaptive-routing@1.0.0",
+      direct_admissibility_receipt: directReceipt,
+    });
+    const binding = await buildAgentDispatchExecutionBinding({
+      schema_version: "agent-dispatch-execution-binding@1.0.0",
+      run_id: lease.run_id,
+      effective_executor_version: "ADAPTIVE@1",
+      dispatch_plan_ref: { plan_id: plan.plan_id, plan_hash: plan.plan_hash },
+      selected_profile_refs: [],
+      policy_version: plan.policy_version,
+      capability_snapshot_hash: plan.capability_snapshot_hash,
+      shadow_dispatch_plan_ref: null,
+    });
+    const adaptiveLease: RunWorkLease = {
+      ...lease,
+      payload: {
+        schema_version: "effective-config-team-lease@2.0.0",
+        kind: "START_DATA_AGENT_TEAM",
+        executor_version: "ADAPTIVE@1",
+        effective_config_ref: effectiveConfigRef(effectiveConfig),
+        profile_refs: [],
+        dispatch_plan: plan,
+        dispatch_binding: binding,
+      },
+    };
+    const listEnabled = vi.fn();
+    const direct = { execute: vi.fn(async () => ({ kind: "COMPLETED" as const })) };
+    const runtime = { execute: vi.fn() };
+    const runner = createDataAgentTeamRunner({
+      profiles: { listEnabled },
+      profile_capability_input: {},
+      runtime,
+      direct,
+    });
+    await expect(
+      runner.execute({
+        lease: adaptiveLease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:05:00.000Z",
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(direct.execute).toHaveBeenCalledOnce();
+    expect(listEnabled).not.toHaveBeenCalled();
+    expect(runtime.execute).not.toHaveBeenCalled();
+
+    const mismatchedBinding = await buildAgentDispatchExecutionBinding({
+      schema_version: "agent-dispatch-execution-binding@1.0.0",
+      run_id: lease.run_id,
+      effective_executor_version: "ADAPTIVE@1",
+      dispatch_plan_ref: { plan_id: id(72), plan_hash: plan.plan_hash },
+      selected_profile_refs: [],
+      policy_version: plan.policy_version,
+      capability_snapshot_hash: plan.capability_snapshot_hash,
+      shadow_dispatch_plan_ref: null,
+    });
+    await expect(
+      runner.execute({
+        lease: {
+          ...adaptiveLease,
+          payload: { ...adaptiveLease.payload, dispatch_binding: mismatchedBinding },
+        },
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:05:00.000Z",
+      }),
+    ).resolves.toEqual({ kind: "FAILED", error_code: "DATA_AGENT_TEAM_LEASE_INVALID" });
+    await expect(
+      runner.execute({
+        lease: {
+          ...adaptiveLease,
+          payload: {
+            ...adaptiveLease.payload,
+            dispatch_binding: {
+              ...binding,
+              binding_hash: `sha256:${"0".repeat(64)}`,
+            },
+          },
+        },
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:05:00.000Z",
+      }),
+    ).resolves.toEqual({ kind: "FAILED", error_code: "AGENT_DISPATCH_RECEIPT_MISMATCH" });
+    expect(direct.execute).toHaveBeenCalledOnce();
   });
 });

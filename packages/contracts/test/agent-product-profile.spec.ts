@@ -146,6 +146,15 @@ describe("Agent product profile contracts", () => {
         profile_refs: profileRefs,
       }).kind,
     ).toBe("START_DATA_AGENT_TEAM");
+    expect(
+      effectiveConfigRunLeasePayloadSchema.parse({
+        schema_version: "effective-config-team-lease@1.0.0",
+        kind: "START_DATA_AGENT_TEAM",
+        executor_version: "LEGACY_FIXED@1",
+        effective_config_ref: effectiveConfigRef,
+        profile_refs: profileRefs,
+      }),
+    ).toMatchObject({ schema_version: "effective-config-team-lease@1.0.0" });
     expect(() =>
       effectiveConfigRunLeasePayloadSchema.parse({
         kind: "START_DATA_AGENT_TEAM",

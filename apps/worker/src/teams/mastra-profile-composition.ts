@@ -1,6 +1,5 @@
 import {
-  assertDirectToolAllowed,
-  getAgentProfileRevision,
+  getAgentProfileRevisionExact,
   type TeamTaskV2,
   TeamWorkflowRegistry,
 } from "@data-agent/agent-runtime";
@@ -122,10 +121,25 @@ export async function verifyProductProfileSet(
   ) {
     throw new TypeError("TEAM_PRODUCT_PROFILE_SET_INCOMPLETE");
   }
+  return verifySelectedProductProfiles(items);
+}
+
+export async function verifySelectedProductProfiles(
+  items: readonly AgentProductProfileRegistryItem[],
+): Promise<ReadonlyMap<AgentSpecialistProfileId, AgentProductProfileRegistryItem>> {
   const profiles = new Map<AgentSpecialistProfileId, AgentProductProfileRegistryItem>();
   for (const item of items) {
     const revision = await verifyAgentProductProfileRevision(item.revision);
-    const runtime = getAgentProfileRevision(revision.profile_id);
+    let runtime: ReturnType<typeof getAgentProfileRevisionExact>;
+    try {
+      runtime = getAgentProfileRevisionExact(
+        revision.profile_id,
+        revision.runtime_profile_ref.revision,
+        revision.runtime_profile_ref.profile_hash,
+      );
+    } catch {
+      throw new TypeError("TEAM_PRODUCT_PROFILE_RUNTIME_REVISION_UNKNOWN");
+    }
     if (
       item.head.lifecycle !== "ENABLED" ||
       revision.approval_status !== "APPROVED" ||
@@ -138,6 +152,9 @@ export async function verifyProductProfileSet(
     ) {
       throw new TypeError("TEAM_PRODUCT_PROFILE_NOT_CURRENT");
     }
+    if (profiles.has(revision.profile_id)) {
+      throw new TypeError("TEAM_PRODUCT_PROFILE_DUPLICATE");
+    }
     profiles.set(revision.profile_id, item);
   }
   return profiles;
@@ -148,22 +165,37 @@ export async function createMastraProfileComposition(input: {
   readonly tools: ProductProfileToolPort;
   readonly visibility: ProductProfileToolVisibilityPort;
   readonly now?: () => number;
+  readonly execution_tool_allowlists?: Partial<Record<AgentSpecialistProfileId, readonly string[]>>;
 }): Promise<TeamWorkflowRegistry> {
-  const profiles = await verifyProductProfileSet(input.profiles);
+  const profiles = await verifySelectedProductProfiles(input.profiles);
   const tools = visibleToolPort({
     tools: input.tools,
     visibility: input.visibility,
     now: input.now ?? Date.now,
   });
   const registry = new TeamWorkflowRegistry();
-  for (const profileId of profileIds) {
-    const productProfile = profiles.get(profileId);
-    if (!productProfile) throw new TypeError("TEAM_PRODUCT_PROFILE_SET_INCOMPLETE");
-    const runtimeProfile = getAgentProfileRevision(profileId);
+  for (const [profileId, productProfile] of profiles) {
+    const runtimeProfile = getAgentProfileRevisionExact(
+      profileId,
+      productProfile.revision.runtime_profile_ref.revision,
+      productProfile.revision.runtime_profile_ref.profile_hash,
+    );
     registry.register(runtimeProfile, async ({ task, context_epoch, signal }) => {
       let output: ArtifactReference | null = null;
-      for (const toolId of productProfile.revision.direct_tool_allowlist) {
-        assertDirectToolAllowed(profileId, toolId);
+      const executionTools =
+        input.execution_tool_allowlists?.[profileId] ??
+        productProfile.revision.direct_tool_allowlist;
+      if (
+        executionTools.some(
+          (toolId) => !productProfile.revision.direct_tool_allowlist.includes(toolId),
+        )
+      ) {
+        throw new TypeError("TEAM_EXECUTION_TOOL_ALLOWLIST_ESCALATION");
+      }
+      for (const toolId of executionTools) {
+        if (!runtimeProfile.direct_tool_allowlist.includes(toolId)) {
+          throw new TypeError("TEAM_DIRECT_TOOL_DENIED");
+        }
         const candidate = await tools.invoke({
           task,
           profile: productProfile,

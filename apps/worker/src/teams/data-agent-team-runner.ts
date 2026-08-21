@@ -1,9 +1,11 @@
 import {
+  type AgentDispatchPlan,
   type AgentProductProfileReference,
   type AgentProductProfileRegistryItem,
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type ResolvedContextCommitResult,
+  verifyAgentDispatchAdmissionResult,
   verifyResolvedContextCommitResult,
 } from "@data-agent/contracts";
 import { z } from "zod";
@@ -18,7 +20,10 @@ import {
   type RunWorkflowExecutorPort,
   runExecutorResultSchema,
 } from "../runs/run-worker-runner.js";
-import { verifyProductProfileSet } from "./mastra-profile-composition.js";
+import {
+  verifyProductProfileSet,
+  verifySelectedProductProfiles,
+} from "./mastra-profile-composition.js";
 
 const runtimeResultSchema = z.strictObject({
   status: z.enum(["ACCEPTED", "FAILED", "NEEDS_CLARIFICATION"]),
@@ -36,6 +41,7 @@ export interface DataAgentProductTeamRuntimePort {
       AgentProductProfileReference["profile_id"],
       AgentProductProfileRegistryItem
     >;
+    readonly dispatch_plan?: AgentDispatchPlan | null;
     readonly resolved_context_ref: Readonly<{
       package_id: string;
       package_hash: string;
@@ -59,6 +65,7 @@ export interface DataAgentTeamRunnerDependencies {
   };
   readonly profile_capability_input: unknown;
   readonly runtime: DataAgentProductTeamRuntimePort;
+  readonly direct?: RunWorkflowExecutorPort;
 }
 
 function failed(errorCode: string): RunExecutorResult {
@@ -74,18 +81,27 @@ async function emitPublicReasoning(
   return result.ok ? null : result.error.code;
 }
 
-function exactProfileRefs(
+function selectExactProfileRefs(
   expected: readonly AgentProductProfileReference[],
-  items: readonly AgentProductProfileRegistryItem[],
-): boolean {
-  return expected.every((reference, index) => {
-    const item = items[index];
-    return (
-      item?.revision.profile_id === reference.profile_id &&
-      item.revision.revision === reference.revision &&
-      item.revision.revision_hash === reference.revision_hash
-    );
-  });
+  items: ReadonlyMap<AgentProductProfileReference["profile_id"], AgentProductProfileRegistryItem>,
+): ReadonlyMap<AgentProductProfileReference["profile_id"], AgentProductProfileRegistryItem> | null {
+  const selected = new Map<
+    AgentProductProfileReference["profile_id"],
+    AgentProductProfileRegistryItem
+  >();
+  for (const reference of expected) {
+    const item = items.get(reference.profile_id);
+    if (
+      !(
+        item?.revision.profile_id === reference.profile_id &&
+        item.revision.revision === reference.revision &&
+        item.revision.revision_hash === reference.revision_hash
+      )
+    )
+      return null;
+    selected.set(reference.profile_id, item);
+  }
+  return selected;
 }
 
 export function createDataAgentTeamRunner(
@@ -104,6 +120,33 @@ export function createDataAgentTeamRunner(
       ) {
         return failed("DATA_AGENT_TEAM_LEASE_INVALID");
       }
+      let dispatchPlan: AgentDispatchPlan | null = null;
+      if (payload.data.schema_version === "effective-config-team-lease@2.0.0") {
+        try {
+          const admission = await verifyAgentDispatchAdmissionResult({
+            kind: "EXECUTE",
+            plan: payload.data.dispatch_plan,
+            binding: payload.data.dispatch_binding,
+          });
+          if (admission.kind !== "EXECUTE") return failed("AGENT_DISPATCH_RECEIPT_MISMATCH");
+          dispatchPlan = admission.plan;
+          const binding = admission.binding;
+          if (
+            dispatchPlan.run_id !== input.lease.run_id ||
+            binding.run_id !== input.lease.run_id ||
+            binding.effective_executor_version !== payload.data.executor_version
+          ) {
+            return failed("AGENT_DISPATCH_EXECUTOR_MISMATCH");
+          }
+        } catch {
+          return failed("AGENT_DISPATCH_RECEIPT_MISMATCH");
+        }
+        if (dispatchPlan.mode === "DIRECT") {
+          return dependencies.direct
+            ? dependencies.direct.execute(input)
+            : failed("DIRECT_ANSWER_PROVIDER_FAILED");
+        }
+      }
       const reasoningBlockId = `team-${input.lease.attempt_id}`;
       const reasoningStarted = await emitPublicReasoning(input.context, {
         kind: "reasoning_started",
@@ -114,23 +157,29 @@ export function createDataAgentTeamRunner(
       if (reasoningStarted) return failed(reasoningStarted);
       const listed = await dependencies.profiles.listEnabled(dependencies.profile_capability_input);
       if (!listed.ok) return failed(listed.error.code);
-      if (!exactProfileRefs(payload.data.profile_refs, listed.value)) {
-        return failed("DATA_AGENT_TEAM_PROFILE_STALE");
-      }
-      let profiles: ReadonlyMap<
+      let catalog: ReadonlyMap<
         AgentProductProfileReference["profile_id"],
         AgentProductProfileRegistryItem
       >;
       try {
-        profiles = await verifyProductProfileSet(listed.value);
+        catalog =
+          payload.data.schema_version === "effective-config-team-lease@1.0.0"
+            ? await verifyProductProfileSet(listed.value)
+            : await verifySelectedProductProfiles(listed.value);
       } catch {
-        return failed("DATA_AGENT_TEAM_PROFILE_INVALID");
+        return failed(
+          payload.data.schema_version === "effective-config-team-lease@1.0.0"
+            ? "DATA_AGENT_TEAM_PROFILE_STALE"
+            : "DATA_AGENT_TEAM_PROFILE_INVALID",
+        );
       }
+      const profiles = selectExactProfileRefs(payload.data.profile_refs, catalog);
+      if (!profiles) return failed("DATA_AGENT_TEAM_PROFILE_STALE");
       const profilesVerified = await emitPublicReasoning(input.context, {
         kind: "reasoning_delta",
         key: "team.reasoning.profiles",
         block_id: reasoningBlockId,
-        delta: "已锁定三个专职 Agent 的已批准 Profile、Skill 与 Tool 边界。",
+        delta: `已锁定 ${profiles.size} 个实际选中的专职 Agent Profile、Skill 与 Tool 边界。`,
       });
       if (profilesVerified) return failed(profilesVerified);
       const contextCapability = input.context.getResolvedContextCapability?.();
@@ -169,6 +218,7 @@ export function createDataAgentTeamRunner(
         await dependencies.runtime.execute({
           lease: input.lease,
           profiles,
+          dispatch_plan: dispatchPlan,
           resolved_context_ref: {
             package_id: context.package.package_id,
             package_hash: context.package.package_hash,

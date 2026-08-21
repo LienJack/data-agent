@@ -17,6 +17,7 @@ import {
   type RunWorkLease,
   runConfigResolutionReceiptCandidateSchema,
   runWorkLeaseSchema,
+  verifyAgentDispatchAdmissionResult,
   verifyContextReceiptBindingCandidate,
   verifyEffectiveRunConfigReceiptCandidate,
   verifyRunConfigRequestCandidate,
@@ -769,6 +770,40 @@ export function createPostgresEffectiveConfigResolver(
           : null;
       if (request.operation === "QUESTION_RUN" && !command?.success) {
         return failure("EFFECTIVE_CONFIG_REQUEST_INVALID", "Run command envelope 不符合严格合同。");
+      }
+      if (
+        request.operation === "QUESTION_RUN" &&
+        command?.success &&
+        command.data.dispatch_admission
+      ) {
+        try {
+          const dispatch = await verifyAgentDispatchAdmissionResult(
+            command.data.dispatch_admission,
+          );
+          if (dispatch.kind !== "EXECUTE" || dispatch.plan.run_id !== request.run_id) {
+            return failure(
+              "AGENT_DISPATCH_RECEIPT_MISMATCH",
+              "Agent Dispatch receipt 与 Run identity 不一致。",
+            );
+          }
+          const shadow = command.data.shadow_dispatch_plan;
+          if (
+            (dispatch.binding.shadow_dispatch_plan_ref === null) !== (shadow == null) ||
+            (shadow &&
+              (shadow.plan_id !== dispatch.binding.shadow_dispatch_plan_ref?.plan_id ||
+                shadow.plan_hash !== dispatch.binding.shadow_dispatch_plan_ref.plan_hash))
+          ) {
+            return failure(
+              "AGENT_DISPATCH_RECEIPT_MISMATCH",
+              "Shadow Dispatch Plan 与冻结 binding 不一致。",
+            );
+          }
+        } catch {
+          return failure(
+            "AGENT_DISPATCH_RECEIPT_MISMATCH",
+            "Agent Dispatch receipt 未通过内容寻址校验。",
+          );
+        }
       }
       if (request.operation === "SEMANTIC_BOOTSTRAP_JOB" && input.command !== undefined) {
         return failure(

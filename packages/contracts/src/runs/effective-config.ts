@@ -1,5 +1,10 @@
 import { z } from "zod";
 import {
+  agentDispatchAdmissionResultSchema,
+  agentDispatchExecutionBindingSchema,
+  agentDispatchPlanSchema,
+} from "../agents/dispatch.js";
+import {
   agentProductProfileReferenceSchema,
   agentSpecialistProfileIdSchema,
 } from "../agents/profile-registry.js";
@@ -59,6 +64,12 @@ export const effectiveConfigRunCommandEnvelopeSchema = z.strictObject({
   audit_id: canonicalImmutableIdSchema,
   idempotency_key: workspaceIdempotencyKeySchema,
   question: z.string().trim().min(1).max(4_000),
+  dispatch_admission: agentDispatchAdmissionResultSchema
+    .refine((admission) => admission.kind === "EXECUTE", {
+      message: "只有 EXECUTE admission 可以创建 Run。",
+    })
+    .optional(),
+  shadow_dispatch_plan: agentDispatchPlanSchema.nullable().optional(),
 });
 
 export const effectiveConfigConversationReferenceSchema = z.strictObject({
@@ -445,30 +456,101 @@ export const effectiveRunConfigReferenceSchema = z.strictObject({
   config_hash: contentHashSchema,
 });
 
-export const effectiveConfigRunLeasePayloadSchema = z.discriminatedUnion("kind", [
+const legacyTeamProfileRefsSchema = z
+  .array(agentProductProfileReferenceSchema)
+  .length(3)
+  .superRefine((references, ctx) => {
+    const expected = agentSpecialistProfileIdSchema.options;
+    references.forEach((reference, index) => {
+      if (reference.profile_id !== expected[index]) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Legacy Team Profile refs must contain all specialists in canonical order.",
+          path: [index, "profile_id"],
+        });
+      }
+    });
+  });
+
+const legacyEffectiveConfigTeamLeasePayloadSchema = z
+  .strictObject({
+    kind: z.literal("START_DATA_AGENT_TEAM"),
+    effective_config_ref: effectiveRunConfigReferenceSchema,
+    profile_refs: legacyTeamProfileRefsSchema,
+  })
+  .transform((payload) => ({
+    ...payload,
+    schema_version: "effective-config-team-lease@1.0.0" as const,
+    executor_version: "LEGACY_FIXED@1" as const,
+  }));
+
+const normalizedLegacyEffectiveConfigTeamLeasePayloadSchema = z.strictObject({
+  schema_version: z.literal("effective-config-team-lease@1.0.0"),
+  kind: z.literal("START_DATA_AGENT_TEAM"),
+  executor_version: z.literal("LEGACY_FIXED@1"),
+  effective_config_ref: effectiveRunConfigReferenceSchema,
+  profile_refs: legacyTeamProfileRefsSchema,
+});
+
+const adaptiveEffectiveConfigTeamLeasePayloadSchema = z
+  .strictObject({
+    schema_version: z.literal("effective-config-team-lease@2.0.0"),
+    kind: z.literal("START_DATA_AGENT_TEAM"),
+    executor_version: z.enum(["LEGACY_FIXED@1", "ADAPTIVE@1"]),
+    effective_config_ref: effectiveRunConfigReferenceSchema,
+    profile_refs: z.array(agentProductProfileReferenceSchema).min(0).max(3),
+    dispatch_plan: agentDispatchPlanSchema,
+    dispatch_binding: agentDispatchExecutionBindingSchema,
+  })
+  .superRefine((payload, ctx) => {
+    if (payload.executor_version !== payload.dispatch_binding.effective_executor_version) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Team lease executor_version 必须与 dispatch binding 一致。",
+        path: ["executor_version"],
+      });
+    }
+    if (
+      JSON.stringify(payload.profile_refs) !==
+      JSON.stringify(payload.dispatch_binding.selected_profile_refs)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Adaptive Team profile_refs 必须与 dispatch binding 完全一致。",
+        path: ["profile_refs"],
+      });
+    }
+    if (
+      payload.dispatch_plan.run_id !== payload.dispatch_binding.run_id ||
+      payload.dispatch_plan.plan_id !== payload.dispatch_binding.dispatch_plan_ref.plan_id ||
+      payload.dispatch_plan.plan_hash !== payload.dispatch_binding.dispatch_plan_ref.plan_hash
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Team lease dispatch plan 必须与 binding 精确闭合。",
+        path: ["dispatch_plan"],
+      });
+    }
+    if (
+      payload.executor_version === "LEGACY_FIXED@1" &&
+      payload.dispatch_binding.shadow_dispatch_plan_ref === null
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Versioned SHADOW lease 必须携带 shadow dispatch plan ref。",
+        path: ["dispatch_binding", "shadow_dispatch_plan_ref"],
+      });
+    }
+  });
+
+export const effectiveConfigRunLeasePayloadSchema = z.union([
   z.strictObject({
     kind: z.literal("START_L2_RESEARCH"),
     effective_config_ref: effectiveRunConfigReferenceSchema,
   }),
-  z.strictObject({
-    kind: z.literal("START_DATA_AGENT_TEAM"),
-    effective_config_ref: effectiveRunConfigReferenceSchema,
-    profile_refs: z
-      .array(agentProductProfileReferenceSchema)
-      .length(3)
-      .superRefine((references, ctx) => {
-        const expected = agentSpecialistProfileIdSchema.options;
-        references.forEach((reference, index) => {
-          if (reference.profile_id !== expected[index]) {
-            ctx.addIssue({
-              code: "custom",
-              message: "Team Profile refs must contain all specialists in canonical order.",
-              path: [index, "profile_id"],
-            });
-          }
-        });
-      }),
-  }),
+  legacyEffectiveConfigTeamLeasePayloadSchema,
+  normalizedLegacyEffectiveConfigTeamLeasePayloadSchema,
+  adaptiveEffectiveConfigTeamLeasePayloadSchema,
 ]);
 
 export const effectiveModelProfileSchema = versionedResourceReferenceSchema.extend({

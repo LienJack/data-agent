@@ -82,7 +82,10 @@ async function commitArtifact(
   factoryInput: ProductionTeamToolFactoryInput,
   input: {
     readonly artifact_type: "SqlArtifact" | "QueryEvidence" | "AnalysisReport";
-    readonly profile_id: "governed-text2sql-agent" | "report-writing-agent";
+    readonly profile_id:
+      | "governed-text2sql-agent"
+      | "report-writing-agent"
+      | "semantic-management-agent";
     readonly task_id: string;
     readonly source_refs: readonly ArtifactReference[];
     readonly projection: ProductTeamArtifactDocument["projection"];
@@ -119,7 +122,8 @@ export function createProductionTeamTools(
   const state: {
     sql_ref: ArtifactReference | null;
     provider_answer: string | null;
-  } = { sql_ref: null, provider_answer: null };
+    semantic_ref: ArtifactReference | null;
+  } = { sql_ref: null, provider_answer: null, semantic_ref: null };
 
   return Object.freeze({
     async invoke(input: Parameters<ProductProfileToolPort["invoke"]>[0]) {
@@ -128,6 +132,29 @@ export function createProductionTeamTools(
         input.task.run_id !== factoryInput.lease.run_id
       ) {
         throw new ProductionTeamToolError("TEAM_TOOL_TASK_CORRELATION_INVALID");
+      }
+      if (input.task.profile_id === "semantic-management-agent") {
+        if (input.tool_id === "semantic.catalog.read") {
+          state.semantic_ref = await commitArtifact(dependencies, factoryInput, {
+            artifact_type: "AnalysisReport",
+            profile_id: "semantic-management-agent",
+            task_id: input.task.task_id,
+            source_refs: [],
+            projection: {
+              kind: "REPORT",
+              title: "冻结语义层说明",
+              sections: [
+                {
+                  heading: "语义层",
+                  body_text: "已读取本次 Run 冻结的 Published Semantic Release。",
+                  source_refs: [],
+                },
+              ],
+            },
+          });
+          return state.semantic_ref;
+        }
+        throw new ProductionTeamToolError("SEMANTIC_AGENT_TOOL_DENIED");
       }
       if (input.task.profile_id === "governed-text2sql-agent") {
         if (input.tool_id === "semantic.release.read") return null;

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import {
   type AgentProductProfileRegistryItem,
   type ArtifactReference,
+  buildAgentDispatchPlan,
   buildProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
@@ -327,5 +328,186 @@ describe("Production Team runtime", () => {
     ).resolves.toEqual({ status: "ACCEPTED", reason_code: "TEAM_ACCEPTED_REPLAY" });
     expect(tool).not.toHaveBeenCalled();
     expect(calls.map(({ operation }) => operation)).toEqual(["LOAD_RUN"]);
+  });
+
+  it("runs adaptive Report with Text2SQL and Report only", async () => {
+    const profileMap = await profiles();
+    const text2sql = profileMap.get("governed-text2sql-agent");
+    const report = profileMap.get("report-writing-agent");
+    if (!text2sql || !report) throw new TypeError("missing adaptive Report fixtures");
+    const plan = await buildAgentDispatchPlan({
+      schema_version: "agent-dispatch-plan@1.0.0",
+      plan_id: id(92),
+      run_id: id(50),
+      question_class: "REPORT",
+      mode: "TEAM",
+      selected_profile_refs: [text2sql, report].map(({ revision }) => ({
+        profile_id: revision.profile_id,
+        revision: revision.revision,
+        revision_hash: revision.revision_hash,
+      })),
+      dependency_edges: [
+        {
+          from_profile_id: "governed-text2sql-agent",
+          to_profile_id: "report-writing-agent",
+          evidence_requirement: "ACCEPTED_QUERY_EVIDENCE",
+        },
+      ],
+      required_evidence: [
+        "ACCEPTED_QUERY_EVIDENCE",
+        "ACCEPTED_REPORT_ARTIFACT",
+        "FROZEN_SEMANTIC_RELEASE",
+      ],
+      reason_codes: ["REPORT_SPECIALIST_REQUIRED"],
+      capability_snapshot_hash: hash("4"),
+      policy_version: "adaptive-routing@1.0.0+rollout.2",
+      direct_admissibility_receipt: null,
+    });
+    const calls: Array<{ operation: string; document: unknown }> = [];
+    const events: unknown[] = [];
+    const reportDocument = await buildProductTeamArtifactDocument({
+      schema_version: "product-team-artifact@1.0.0",
+      artifact_ref: reference("AnalysisReport", id(94)),
+      profile_id: "report-writing-agent",
+      task_id: id(94),
+      source_refs: [reference("QueryEvidence", id(93))],
+      projection: {
+        kind: "REPORT",
+        title: "Adaptive Report",
+        sections: [{ heading: "结论", body_text: "已验收。", source_refs: [] }],
+      },
+      committed_at: "2026-08-18T12:00:00.000Z",
+    });
+    const runtime = createProductionTeamRuntime({
+      store: store(calls),
+      capability: {},
+      tools: {
+        async invoke({ tool_id }) {
+          if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(91));
+          if (tool_id === "sql.sandbox.execute") return reference("QueryEvidence", id(93));
+          if (tool_id === "evidence.read") return reference("QueryEvidence", id(93));
+          if (tool_id === "report.project") return reportDocument.artifact_ref;
+          return null;
+        },
+      },
+      artifacts: {
+        verifyCommitted: async () => ({ ok: true, value: true }),
+        resolveCommitted: async () => ({ ok: true, value: reportDocument }),
+      },
+      now: () => new Date("2026-08-18T12:00:01.000Z"),
+    });
+
+    await expect(
+      runtime.execute({
+        lease: lease(),
+        profiles: new Map([
+          ["governed-text2sql-agent", text2sql],
+          ["report-writing-agent", report],
+        ]),
+        dispatch_plan: plan,
+        resolved_context_ref: {
+          package_id: id(60),
+          package_hash: hash("p"),
+          receipt_id: id(61),
+          receipt_hash: hash("r"),
+        },
+        restored_snapshot: null,
+        execution_context: executionContext(events),
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:01:00.000Z",
+      }),
+    ).resolves.toEqual({ status: "ACCEPTED", reason_code: "TEAM_ACCEPTED" });
+    expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(2);
+    const delegatedProfileIds = calls
+      .filter(({ operation }) => operation === "PREPARE_HANDOFF")
+      .map(
+        ({ document }) =>
+          (document as { child_task?: { profile_id?: string } }).child_task?.profile_id,
+      );
+    expect(delegatedProfileIds).toEqual(["governed-text2sql-agent", "report-writing-agent"]);
+    expect(JSON.stringify(events)).not.toContain("semantic-management-agent");
+    expect(events).not.toContainEqual(expect.objectContaining({ status: "SKIPPED" }));
+  });
+
+  it("keeps SEMANTIC_READ read-only and emits no candidate write or candidate artifact", async () => {
+    const profileMap = await profiles();
+    const semantic = profileMap.get("semantic-management-agent");
+    expect(semantic).toBeDefined();
+    if (!semantic) throw new TypeError("missing semantic fixture");
+    const semanticRef = {
+      profile_id: semantic.revision.profile_id,
+      revision: semantic.revision.revision,
+      revision_hash: semantic.revision.revision_hash,
+    };
+    const plan = await buildAgentDispatchPlan({
+      schema_version: "agent-dispatch-plan@1.0.0",
+      plan_id: id(95),
+      run_id: id(50),
+      question_class: "SEMANTIC_READ",
+      mode: "TEAM",
+      selected_profile_refs: [semanticRef],
+      dependency_edges: [],
+      required_evidence: ["FROZEN_SEMANTIC_RELEASE"],
+      reason_codes: ["SEMANTIC_READ_SPECIALIST_REQUIRED"],
+      capability_snapshot_hash: hash("4"),
+      policy_version: "adaptive-routing@1.0.0",
+      direct_admissibility_receipt: null,
+    });
+    const calls: Array<{ operation: string; document: unknown }> = [];
+    const events: unknown[] = [];
+    const invoked: string[] = [];
+    const draftOutput = reference("AnalysisReport", id(96));
+    const document = await buildProductTeamArtifactDocument({
+      schema_version: "product-team-artifact@1.0.0",
+      artifact_ref: draftOutput,
+      profile_id: "semantic-management-agent",
+      task_id: id(96),
+      source_refs: [],
+      projection: {
+        kind: "REPORT",
+        title: "冻结语义层说明",
+        sections: [{ heading: "语义层", body_text: "只读语义层。", source_refs: [] }],
+      },
+      committed_at: "2026-08-18T12:00:00.000Z",
+    });
+    const output = document.artifact_ref;
+    const runtime = createProductionTeamRuntime({
+      store: store(calls),
+      capability: {},
+      tools: {
+        async invoke({ tool_id }) {
+          invoked.push(tool_id);
+          return output;
+        },
+      },
+      artifacts: {
+        verifyCommitted: async () => ({ ok: true, value: true }),
+        resolveCommitted: async () => ({ ok: true, value: document }),
+      },
+      now: () => new Date("2026-08-18T12:00:01.000Z"),
+    });
+    await expect(
+      runtime.execute({
+        lease: lease(),
+        profiles: new Map([["semantic-management-agent", semantic]]),
+        dispatch_plan: plan,
+        resolved_context_ref: {
+          package_id: id(60),
+          package_hash: hash("p"),
+          receipt_id: id(61),
+          receipt_hash: hash("r"),
+        },
+        restored_snapshot: null,
+        execution_context: executionContext(events),
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:01:00.000Z",
+      }),
+    ).resolves.toEqual({ status: "ACCEPTED", reason_code: "TEAM_ACCEPTED" });
+    expect(invoked).toEqual(["semantic.catalog.read"]);
+    expect(invoked).not.toContain("semantic.candidate.write");
+    expect(document.artifact_ref.artifact_type).toBe("AnalysisReport");
+    expect(
+      JSON.stringify(calls.filter(({ operation }) => operation === "COMMIT_COMPLETION")),
+    ).not.toContain("SemanticGraphCandidate");
   });
 });

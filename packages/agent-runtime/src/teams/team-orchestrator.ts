@@ -17,6 +17,7 @@ import {
   assertDelegationAllowed,
   dataAgentProfileIdSchema,
   getAgentProfileRevision,
+  getAgentProfileRevisionExact,
 } from "./agent-profiles.js";
 
 const taskBoundsSchema = z.strictObject({
@@ -80,13 +81,15 @@ function syncHash(input: unknown): `sha256:${string}` {
 export const teamTaskV2Schema = teamTaskDraftSchema
   .extend({ task_hash: contentHashSchema })
   .superRefine((task, ctx) => {
-    const profile = getAgentProfileRevision(task.profile_id);
-    if (profile.revision !== task.profile_revision || profile.profile_hash !== task.profile_hash) {
+    try {
+      getAgentProfileRevisionExact(task.profile_id, task.profile_revision, task.profile_hash);
+    } catch {
       ctx.addIssue({
         code: "custom",
         message: "Task profile revision mismatch.",
         path: ["profile_hash"],
       });
+      return;
     }
     if (
       (task.depth === 0 &&
@@ -272,6 +275,8 @@ const delegationRequestSchema = z.strictObject({
   child_task_id: immutableIdSchema,
   child_attempt_id: immutableIdSchema,
   child_profile_id: dataAgentProfileIdSchema,
+  child_profile_revision: z.number().int().positive().optional(),
+  child_profile_hash: contentHashSchema.optional(),
   parent_expected_revision: z.number().int().positive(),
   objective_hash: contentHashSchema,
   artifact_refs: z.array(artifactReferenceSchema).max(64),
@@ -330,7 +335,20 @@ export function createSubagentDelegationCommand(
   ) {
     throw new Error("TEAM_ARTIFACT_SCOPE_ESCALATION");
   }
-  const profile = getAgentProfileRevision(request.child_profile_id);
+  if (
+    (request.child_profile_revision === undefined) !==
+    (request.child_profile_hash === undefined)
+  ) {
+    throw new Error("TEAM_PROFILE_REVISION_BINDING_INVALID");
+  }
+  const profile =
+    request.child_profile_revision && request.child_profile_hash
+      ? getAgentProfileRevisionExact(
+          request.child_profile_id,
+          request.child_profile_revision,
+          request.child_profile_hash,
+        )
+      : getAgentProfileRevision(request.child_profile_id);
   const childTask = buildTeamTaskV2({
     schema_version: "agent-team-task@2.0.0",
     task_id: request.child_task_id,

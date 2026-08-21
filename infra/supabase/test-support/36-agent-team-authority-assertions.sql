@@ -15,7 +15,7 @@ begin
       and ledger.migration_version='20260725010658_app_data_agent_agent_team_authority'
   ) then raise exception 'AGENT_TEAM_LEDGER_ASSERTION_FAILED'; end if;
 
-  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>4
+  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>5
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='data-agent-orchestrator' and profile_revision=1
@@ -24,7 +24,13 @@ begin
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='semantic-management-agent'
+        and profile_revision=1
         and profile_hash='sha256:92910b6741ada7b2e5377c0b00b3ff2c64be7f0fb5567161359dfbabd4814b38'
+    )
+    or not exists (
+      select 1 from app_data_agent.agent_profile_revisions
+      where profile_id='semantic-management-agent' and profile_revision=2
+        and profile_hash='sha256:bae4ec47ca7c23a0ac046c0086051d3696752586f09534572440fb1af1edf3f3'
     )
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
@@ -165,6 +171,12 @@ values (
   '00000000-0000-4000-8000-00000000589c','00000000-0000-4000-8000-00000000da01',
   'local','sha256:9999999999999999999999999999999999999999999999999999999999999999'
 );
+select pg_catalog.set_config('data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
+select pg_catalog.set_config('data_agent.tenant_id','00000000-0000-4000-8000-000000005801',true);
+select pg_catalog.set_config('data_agent.environment','local',true);
+select pg_catalog.set_config('data_agent.deployment_id','00000000-0000-4000-8000-00000000589c',true);
+select pg_catalog.set_config('data_agent.principal_id','00000000-0000-4000-8000-000000005802',true);
+select pg_catalog.set_config('data_agent.role','owner',true);
 insert into app_data_agent.runs(
   app_id,tenant_id,environment,run_id,principal_id,status,active_fence,question
 ) values (
@@ -246,12 +258,6 @@ select '00000000-0000-4000-8000-00000000da01',
   '00000000-0000-4000-8000-000000005803',2,'RUNNING',7,event_id,
   app_data_agent.runtime_canonical_sha256(document),document,created_at
 from projected;
-select pg_catalog.set_config('data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
-select pg_catalog.set_config('data_agent.tenant_id','00000000-0000-4000-8000-000000005801',true);
-select pg_catalog.set_config('data_agent.environment','local',true);
-select pg_catalog.set_config('data_agent.deployment_id','00000000-0000-4000-8000-00000000589c',true);
-select pg_catalog.set_config('data_agent.principal_id','00000000-0000-4000-8000-000000005802',true);
-select pg_catalog.set_config('data_agent.role','owner',true);
 do $behavior$
 declare
   lease jsonb;
@@ -271,7 +277,8 @@ begin
     'command_id','00000000-0000-4000-8000-000000005804','command_kind','START_L2_RESEARCH',
     'attempt_id','00000000-0000-4000-8000-000000005806','attempt_no',1,
     'delivery_attempt_no',1,'lease_duration_ms',60000,'worker_id','u19-worker',
-    'lease_token',1,'worker_fence',7,'expires_at','2026-08-17T23:59:00.000Z',
+    'lease_token',1,'worker_fence',7,'expires_at',
+    app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp()+interval '10 minutes'),
     'payload',pg_catalog.jsonb_build_object(
       'kind','START_L2_RESEARCH','effective_config_ref',pg_catalog.jsonb_build_object(
         'config_id','00000000-0000-4000-8000-000000005809','config_revision',1,
@@ -318,7 +325,8 @@ begin
     'operation_audiences',pg_catalog.jsonb_build_array('TOOL_INVOKE'),
     'issuer',pg_catalog.jsonb_build_object(
       'principal_id','00000000-0000-4000-8000-000000005802','key_id','u19-team-key@1'),
-    'issued_at','2026-08-17T23:00:00.000Z','expires_at','2026-08-17T23:10:00.000Z',
+    'issued_at',app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp()),
+    'expires_at',app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp()+interval '10 minutes'),
     'nonce','00000000-0000-4000-8000-000000005813','revocation_version',1
   );
   capability := capability || pg_catalog.jsonb_build_object(
@@ -351,9 +359,11 @@ begin
     'storage_key_hash','sha256:3333333333333333333333333333333333333333333333333333333333333333',
     'encryption',pg_catalog.jsonb_build_object('algorithm','AES-256-GCM','key_id','u19-kms@1'),
     'lifecycle',pg_catalog.jsonb_build_object(
-      'status','ACTIVE','expires_at','2026-08-18T04:00:00.000Z','legal_hold',false,
-      'ref_count',1,'tombstoned_at',null,'backup_expires_at','2026-08-25T04:00:00.000Z'),
-    'committed_at','2026-08-17T04:00:00.000Z'
+      'status','ACTIVE','expires_at',
+      app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp()+interval '1 day'),
+      'legal_hold',false,'ref_count',1,'tombstoned_at',null,'backup_expires_at',
+      app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp()+interval '8 days')),
+    'committed_at',app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp())
   );
   artifact := artifact || pg_catalog.jsonb_build_object(
     'receipt_hash',app_data_agent.u2_canonical_sha256(artifact)
