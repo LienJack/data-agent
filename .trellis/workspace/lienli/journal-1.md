@@ -568,3 +568,24 @@ Added centralized accessible glass material tokens and fallbacks, mapped Q&A chr
 ### Status
 
 [OK] **Completed**
+
+
+## Session 26: Retire legacy attribution surface
+
+**Date**: 2026-08-22
+**Task**: Retire legacy attribution surface
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Removed the legacy Attribution Analysis product entry and root workbench fallback, added authorization-first workspace redirect, verified stable deferred attribution admission across rollout modes, and preserved shared eval/audit assets with a read-only cleanup inventory. Historical deletion remains HOLD for the separate destructive task.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `16f2734` | (see git log) |
+
+### Status
+
+[OK] **Completed**

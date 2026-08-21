@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 25
+- **Total Sessions**: 26
 - **Last Active**: 2026-08-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~570 | Active |
+| `journal-1.md` | ~591 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 26 | 2026-08-22 | Retire legacy attribution surface | `16f2734` | `feat/datafoundry-platform-modules` |
 | 25 | 2026-08-22 | Accessible Apple Glass Q&A presentation | `320b8f3` | `feat/datafoundry-platform-modules` |
 | 24 | 2026-08-22 | Audited admin conversation plane | `6def992` | `feat/datafoundry-platform-modules` |
 | 23 | 2026-08-22 | Private conversation directory and 30-day trash | `65d49ec` | `feat/datafoundry-platform-modules` |
