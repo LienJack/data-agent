@@ -15,6 +15,7 @@ import { create } from "zustand";
 import {
   commandRun,
   createQaRun,
+  DeferredRunAdmissionError,
   fetchConversationTrajectory,
   getRun,
   resolveWorkspaceId,
@@ -751,6 +752,25 @@ export const useQAStore = create<QAStore>((set, get) => ({
       }));
       return true;
     } catch (err) {
+      if (err instanceof DeferredRunAdmissionError) {
+        const blockedMessage: Message = {
+          id: `local-deferred-${err.receipt.run_id}`,
+          conversationId,
+          role: "agent",
+          content: "该请求暂时无法进入执行队列。",
+          type: "error",
+          deferredAdmission: err.receipt,
+          createdAt: new Date().toISOString(),
+        };
+        set((current) => ({
+          messages: [...current.messages, blockedMessage],
+          sending: false,
+          connection: "closed",
+          activeRunId: null,
+          error: undefined,
+        }));
+        return true;
+      }
       const errorContent = err instanceof Error ? err.message : "分析请求失败";
       if (finalAnswerProjected) {
         set({

@@ -107,6 +107,10 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 | Artifact ref is absent, unsupported, denied or hash-mismatched | No raw output/path fallback; show explicit non-success state |
 | Conversation or Run changes | Clear stale Inspector target and restore focus safely |
 | Projection API fails | Render explicit alert/error code, not a successful empty state |
+| Adaptive admission returns verified `DEFERRED` 409 | Render BLOCKED receipt details; do not create Run/SSE/Agent UI |
+| Adaptive `DEFERRED` receipt hash/schema is forged | Fail closed as request error; do not render authoritative BLOCKED details |
+| Markdown contains raw HTML, unsafe URL or image | Drop HTML/URL, block image request and keep readable fallback text |
+| Markdown Artifact link lacks an earlier exact reference | Render inert text; never infer from path, label or later event |
 | `OUTCOME_UNKNOWN` | Show Reconcile only; no ordinary Retry |
 | Journey checkpoint missing, duplicate or failed | Do not issue `GO` artifact |
 
@@ -131,6 +135,10 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Web: Inspector target schema/URL restore, baseline + SSE merge, stale target, cross-Run cleanup and focus return.
 - Web/API: Artifact Preview exact Workspace/scope/run/revision/hash, unsupported/denied/hash mismatch and no raw fallback.
 - Web: Chinese/English switching changes display text without pathname/query/hash or Workspace Store mutation.
+- Web: safe Markdown covers CJK emphasis, mapped headings, task lists, code, GFM table, unsafe URL/image and exact
+  prior ArtifactReference; user Markdown remains plain text.
+- Web/API: verified adaptive DEFERRED displays BLOCKED without Run/SSE/Agent; tampered receipt remains a generic
+  fail-closed request error.
 - Browser: 1440px and 390px have no document horizontal overflow; language and disclosure controls work with Enter.
 - Browser: Codex parity matrix covers Inspector open/switch/resize/close/restore and Subagent live updates with proof.
 - Provenance: every copied/adapted Harness source and test has an upstream/target mapping plus retained MIT notice.

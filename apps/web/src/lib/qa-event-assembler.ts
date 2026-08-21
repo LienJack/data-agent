@@ -272,6 +272,26 @@ function artifactIdentity(reference: ArtifactReference): string {
   return `${reference.artifact_id}:${reference.revision}:${reference.content_hash}`;
 }
 
+export function artifactReferencesBefore(
+  events: readonly PublicRunEvent[],
+  sequence: number,
+  runId: string,
+): ArtifactReference[] {
+  const references = new Map<string, ArtifactReference>();
+  for (const event of events) {
+    if (event.run_id !== runId || event.sequence >= sequence || event.type !== "tool") continue;
+    if (!("artifact_refs" in event.payload)) continue;
+    for (const reference of event.payload.artifact_refs) {
+      if (reference.run_id === runId) references.set(artifactIdentity(reference), reference);
+    }
+  }
+  return [...references.values()];
+}
+
+export function isRunTerminal(events: readonly PublicRunEvent[], runId: string): boolean {
+  return events.some((event) => event.run_id === runId && event.type === "terminal");
+}
+
 export function assembleTeamAgents(
   events: readonly PublicRunEvent[],
   runId: string,

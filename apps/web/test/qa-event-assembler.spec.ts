@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import { parseEventBlock } from "../src/lib/api-client";
 import {
   answerText,
+  artifactReferencesBefore,
   assembleConversationActivity,
   assembleProcessRows,
   assembleSubagentInspector,
   buildTrajectoryRecords,
   groupTrajectoryEvents,
+  isRunTerminal,
   mergePublicRunEvents,
   resumableRunFromReplay,
 } from "../src/lib/qa-event-assembler";
@@ -278,6 +280,11 @@ describe("Q&A public event assembly", () => {
       },
     });
     expect(assembleConversationActivity([...events].reverse(), runId)).toEqual(blocks);
+    expect(artifactReferencesBefore(events, 2, runId)).toEqual([]);
+    expect(artifactReferencesBefore(events, 6, runId)).toEqual([]);
+    expect(artifactReferencesBefore(events, 7, runId)).toEqual([reference]);
+    expect(isRunTerminal(events.slice(0, -1), runId)).toBe(false);
+    expect(isRunTerminal(events, runId)).toBe(true);
 
     const target = {
       kind: "subagent" as const,

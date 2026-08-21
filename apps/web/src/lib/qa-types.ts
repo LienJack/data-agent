@@ -2,6 +2,10 @@
  * Q&A 模块类型定义。
  */
 
+import type { AgentDispatchAdmissionResult } from "@data-agent/contracts";
+
+export type DeferredRunAdmission = Extract<AgentDispatchAdmissionResult, { kind: "DEFERRED" }>;
+
 /** 对话角色 */
 export type MessageRole = "user" | "agent";
 
@@ -31,6 +35,8 @@ export interface Message {
   runId?: string;
   /** 额外元数据 */
   metadata?: Record<string, unknown>;
+  /** 仅由通过 schema/hash 校验的 Web admission 409 在当前会话中设置。 */
+  deferredAdmission?: DeferredRunAdmission;
   createdAt: string;
 }
 

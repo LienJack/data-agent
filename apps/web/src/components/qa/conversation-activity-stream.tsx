@@ -1,12 +1,17 @@
 "use client";
 
-import type { QaInspectorTarget } from "@data-agent/contracts";
+import type { PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts";
 import { CaretDown, CaretRight, Robot } from "@phosphor-icons/react";
 import { useId, useState } from "react";
 import { useWorkspaceI18n } from "@/i18n";
-import type { ConversationActivityBlock, TeamAgentView } from "@/lib/qa-event-assembler";
+import {
+  artifactReferencesBefore,
+  type ConversationActivityBlock,
+  type TeamAgentView,
+} from "@/lib/qa-event-assembler";
 import { useQAStore } from "@/lib/qa-store";
 import { durationLabel, ProcessDisclosure, statusClass } from "./process-disclosure";
+import { SafeAssistantMarkdown } from "./safe-assistant-markdown";
 
 function AgentDisclosure({ agent }: { agent: TeamAgentView }) {
   const { t } = useWorkspaceI18n();
@@ -102,11 +107,6 @@ function AgentDisclosure({ agent }: { agent: TeamAgentView }) {
           {agent.children.map((row) => (
             <ProcessDisclosure key={row.id} row={row} nested />
           ))}
-          {agent.children.length === 0 && (
-            <p className="ml-9 border-l border-[var(--color-border-overlay)] px-3 py-2 text-[10px] text-[var(--color-text-muted)]">
-              {t("process.noPublicTools")}
-            </p>
-          )}
         </div>
       )}
     </div>
@@ -115,22 +115,36 @@ function AgentDisclosure({ agent }: { agent: TeamAgentView }) {
 
 export function ConversationActivityStream({
   blocks,
+  events,
+  runId,
+  streaming = false,
 }: {
   blocks: readonly ConversationActivityBlock[];
+  events: readonly PublicRunEvent[];
+  runId: string;
+  streaming?: boolean;
 }) {
   return (
-    <div className="agent-activity-stream" role="feed" aria-label="回答与公开执行活动">
-      {blocks.map((block) => {
-        if (block.kind === "text") {
-          return (
-            <div key={block.id} className="agent-answer whitespace-pre-wrap py-2.5">
-              {block.content}
-            </div>
-          );
-        }
-        if (block.kind === "agent") return <AgentDisclosure key={block.id} agent={block.agent} />;
-        return <ProcessDisclosure key={block.id} row={block.row} />;
-      })}
-    </div>
+    <article className="agent-activity-stream" aria-label="Data Agent 回答">
+      <section aria-label="回答与公开执行活动">
+        {blocks.map((block) => {
+          if (block.kind === "text") {
+            return (
+              <section key={block.id} className="agent-answer py-2.5" aria-label="回答正文">
+                <SafeAssistantMarkdown
+                  content={block.content}
+                  runId={runId}
+                  sequence={block.sequence}
+                  artifactReferences={artifactReferencesBefore(events, block.sequence, runId)}
+                  streaming={streaming}
+                />
+              </section>
+            );
+          }
+          if (block.kind === "agent") return <AgentDisclosure key={block.id} agent={block.agent} />;
+          return <ProcessDisclosure key={block.id} row={block.row} />;
+        })}
+      </section>
+    </article>
   );
 }

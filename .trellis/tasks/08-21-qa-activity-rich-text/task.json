@@ -3,7 +3,7 @@
   "name": "qa-activity-rich-text",
   "title": "Q&A Activity Stream and Safe Rich Text",
   "description": "Refine the sequence-ordered Harness-style activity stream and add safe accessible rich-text answer rendering.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

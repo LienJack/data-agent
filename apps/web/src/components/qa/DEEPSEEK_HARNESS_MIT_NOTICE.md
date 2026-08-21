@@ -1,7 +1,8 @@
 # DeepSeek Harness modified-source notice
 
-The Q&A activity assembler, disclosure rows, Inspector selection/material boundary, durable replay + live merge,
-and Inspector concession layout in this directory adapt implementation patterns from DeepSeek Harness at fixed commit
+The Q&A activity assembler, safe Assistant Markdown block composition, disclosure rows, Inspector selection/material
+boundary, durable replay + live merge, and Inspector concession layout in this directory adapt implementation patterns
+from DeepSeek Harness at fixed commit
 `47f943859bef60e4160492346772ded9b24f765a`.
 
 MIT License

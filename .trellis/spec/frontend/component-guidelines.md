@@ -71,14 +71,16 @@ Data Agent 前端组件只格式化已经在边界解析完成的领域投影。
 
 ## Accessibility
 
-<!-- A11y requirements and patterns -->
-
-(To be filled by the team)
+- 一个 Assistant answer 使用一个语义化 `article`；执行活动与正文 section 按 Public Event sequence 穿插。
+- Native button 是 disclosure 的键盘基线，必须暴露 `aria-expanded/aria-controls`；Inspector action 与 disclosure
+  action 保持兄弟关系，禁止 nested button。
+- 流式正文只对容器设置节流后的 `aria-busy`；不得把每个 token 作为 live-region 更新播报。
+- 用户消息始终是纯文本；legacy Assistant、Report、Hypothesis 仍经过同一安全 Markdown renderer。
 
 ---
 
 ## Common Mistakes
 
-<!-- Component-related mistakes your team has made -->
-
-(To be filled by the team)
+- 不要因空 children 显示“无工具”的 Agent placeholder；没有公开 Agent event 时不得出现 Agent DOM/target。
+- 不要把 HTTP 409 一律当失败 Run。经过 schema/hash 校验的 adaptive `DEFERRED` receipt 显示 BLOCKED、
+  public reason code 和 required capabilities，且不建立 SSE 或假 Subagent。

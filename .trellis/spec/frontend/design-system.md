@@ -23,6 +23,12 @@ amber/red 仅表达状态。避免营销 hero、装饰渐变、嵌套卡片和�
 ## Agent Conversation
 
 - Agent answer 是文档流，不使用聊天气泡；用户输入使用紧凑深色 bubble。
+- Assistant 正文统一经过 `SafeAssistantMarkdown`：模型 H1-H4 映射为页面 H2-H5，正文约 65ch；
+  GFM 表格和代码只在自身容器局部横向滚动，不能扩张页面或遮挡 Composer。
+- Markdown 以不可信输入处理：必须同时启用 `skipHtml`、显式 sanitize allowlist 与 URL transform；禁止
+  `rehype-raw`、`dangerouslySetInnerHTML`、远程/本地图片、`javascript:` 和 `data:`。
+- Artifact Markdown link 只有在当前正文 block 之前已经出现同 Run 的 exact
+  `artifact_id/revision/content_hash` reference 时才能打开 Inspector；否则渲染为不可点击文本。
 - `ProcessDisclosure` 按 reasoning/tool/progress 显示 icon、标题、公共摘要、状态、耗时和 caret。
 - disclosure 默认 `aria-expanded=false`；展开只显示允许的 input/output/summary 与 trace locator。
 - Semantic Authoring 的 `semantic-turn-*` 和 tool 使用 `<details>`；Team Trace 各组也使用 `<details>`。
