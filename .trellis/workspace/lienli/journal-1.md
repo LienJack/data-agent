@@ -547,3 +547,24 @@ Implemented the read-only Workspace Admin and Super Admin conversation audit pla
 ### Status
 
 [OK] **Completed**
+
+
+## Session 25: Accessible Apple Glass Q&A presentation
+
+**Date**: 2026-08-22
+**Task**: Accessible Apple Glass Q&A presentation
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Added centralized accessible glass material tokens and fallbacks, mapped Q&A chrome without changing authority or geometry, preserved opaque data reading surfaces, and validated desktop/tablet/mobile layouts with full Web tests and browser evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `320b8f3` | (see git log) |
+
+### Status
+
+[OK] **Completed**
