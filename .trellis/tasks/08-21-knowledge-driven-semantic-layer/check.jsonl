@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/knowledge-base.md", "reason": "检查 Knowledge Revision、ACL、投影与公开证据边界"}
+{"file": ".trellis/spec/backend/semantic-induction-maintenance.md", "reason": "检查 Candidate-only 与发布权限隔离"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "检查测试、边界与失败关闭"}
+{"file": ".trellis/spec/frontend/agent-public-events.md", "reason": "检查公开轨迹、脱敏与恢复"}
+{"file": ".trellis/tasks/08-21-knowledge-driven-semantic-layer/research/current-state-audit.md", "reason": "按当前状态审计高风险兼容点与完成证据"}

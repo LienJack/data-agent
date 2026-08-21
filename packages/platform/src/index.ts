@@ -172,6 +172,7 @@ export {
   type SemanticCompileFinishInput,
   type SemanticCompileFinishResult,
 } from "./semantic/postgres-semantic-candidate-compile.js";
+export { createPostgresSemanticCandidateRevisionStore } from "./semantic/postgres-semantic-candidate-revision.js";
 export {
   createPostgresSemanticExplorerReader,
   type PostgresSemanticExplorerReader,

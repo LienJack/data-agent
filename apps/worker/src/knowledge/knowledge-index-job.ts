@@ -4,6 +4,8 @@ import {
   type JobOutputReference,
   type JobWorkLease,
   type KnowledgeDataProjectionReceipt,
+  type KnowledgeDocumentCommitCommand,
+  type KnowledgeDocumentRevision,
   type KnowledgeGenerationReadyCommit,
   type KnowledgeGenerationStageCommand,
   type KnowledgeIndexGeneration,
@@ -13,6 +15,7 @@ import {
 } from "@data-agent/contracts";
 import { type KnowledgeIndex, projectKnowledgeChunkForEgress } from "@data-agent/platform";
 import type { JobHandler } from "../jobs/job-worker-runner.js";
+import { parseMarkdownKnowledgeDocument } from "./markdown-document-parser.js";
 
 type Registry = Readonly<{
   loadIndexTarget(
@@ -34,6 +37,11 @@ type Registry = Readonly<{
     lease: JobWorkLease,
     command: KnowledgeGenerationReadyCommit,
   ): Promise<PortResult<KnowledgeIndexGeneration>>;
+  commitDocument?(
+    capability: unknown,
+    lease: JobWorkLease,
+    command: KnowledgeDocumentCommitCommand,
+  ): Promise<PortResult<KnowledgeDocumentRevision>>;
 }>;
 
 type ContentReader = Readonly<{
@@ -181,6 +189,56 @@ export function createKnowledgeIndexJobHandler(
             "Knowledge source bytes are unavailable.",
             false,
           );
+        }
+        if (source.detected_mime === "text/markdown") {
+          if (!options.registry.commitDocument) {
+            return failure(
+              "KNOWLEDGE_DOCUMENT_AUTHORITY_NOT_CONFIGURED",
+              "Knowledge Markdown document authority is unavailable.",
+              false,
+            );
+          }
+          let markdown: string;
+          try {
+            markdown = new TextDecoder("utf-8", { fatal: true }).decode(content.value);
+          } catch {
+            return failure(
+              "KNOWLEDGE_SOURCE_ENCODING_INVALID",
+              "Knowledge source is not valid UTF-8.",
+              false,
+            );
+          }
+          let parsedDocument: Awaited<ReturnType<typeof parseMarkdownKnowledgeDocument>>;
+          try {
+            parsedDocument = await parseMarkdownKnowledgeDocument({
+              scope: target.knowledge_base.scope,
+              knowledge_base_ref: target.generation.knowledge_base_ref,
+              source_file_ref: source.file_ref,
+              document_revision: target.knowledge_base.revision,
+              parent_document_ref: null,
+              parser_version: target.embedding_profile.parser_version,
+              policy_version: target.embedding_profile.projection_policy_version,
+              markdown,
+              created_by_principal_id: lease.principal_id,
+              created_at: target.generation.created_at,
+            });
+          } catch (error) {
+            const code =
+              error instanceof Error && /^KNOWLEDGE_[A-Z0-9_]+$/.test(error.message)
+                ? error.message
+                : "KNOWLEDGE_MARKDOWN_PARSE_FAILED";
+            return failure(code, "Knowledge Markdown parsing failed.", false);
+          }
+          const committedDocument = await options.registry.commitDocument(
+            options.capability,
+            lease,
+            {
+              schema_version: "knowledge-document-commit@1.0.0",
+              document: parsedDocument.document,
+              blocks: [...parsedDocument.blocks],
+            },
+          );
+          if (!committedDocument.ok) return committedDocument;
         }
         const parsed = parseAndChunk(content.value, source.detected_mime);
         if (!parsed.ok) return parsed;

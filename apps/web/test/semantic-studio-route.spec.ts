@@ -6,6 +6,7 @@ vi.mock("server-only", () => ({}));
 import {
   handleGetSemanticAuthoringPublicFeed,
   handleLoadSemanticStudio,
+  handleStartSemanticAuthoring,
   handleStreamSemanticAuthoringRun,
 } from "../src/lib/semantic-studio-route";
 import type { SemanticStudioService } from "../src/lib/semantic-studio-service";
@@ -90,5 +91,31 @@ describe("Semantic Studio routes", () => {
       authoring_run_id: runId,
       after_sequence: 4,
     });
+  });
+
+  it("passes an exact evidence selection to the authoring service", async () => {
+    const start = vi.fn(async () => ({ ok: true as const, value: { marker: "started" } }));
+    const service = { start } as unknown as SemanticStudioService;
+    const evidenceSelectionId = "10000000-0000-4000-8000-000000000097";
+    const response = await handleStartSemanticAuthoring(
+      new NextRequest("http://localhost/api/workspaces/w/semantic/studio/authoring-runs", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          schema_version: "semantic-studio-authoring-intent@1.0.0",
+          semantic_domain: "ecommerce",
+          instruction: "根据选中的证据生成 GMV 指标。",
+          selected_node_id: null,
+          selected_edge_id: null,
+          evidence_selection_id: evidenceSelectionId,
+          idempotency_key: "10000000-0000-4000-8000-000000000096",
+        }),
+      }),
+      service,
+    );
+    expect(response.status).toBe(201);
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ evidence_selection_id: evidenceSelectionId }),
+    );
   });
 });

@@ -13,6 +13,7 @@ const labels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
   tests: "workspace.surface.tests",
   jobs: "workspace.surface.jobs",
   "data-sources": "workspace.surface.data-sources",
+  knowledge: "workspace.surface.knowledge",
   semantic: "workspace.surface.semantic",
   members: "workspace.surface.members",
   "platform-settings": "workspace.surface.platform-settings",
@@ -22,6 +23,7 @@ const primaryKeys = new Set<WorkspaceNavigationKey>([
   "analysis",
   "qa",
   "data-sources",
+  "knowledge",
   "semantic",
   "platform-settings",
 ]);

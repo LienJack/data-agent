@@ -2,9 +2,13 @@
 
 begin;
 
-insert into data_agent_auth."user" ("id", "name", "email", "emailVerified") values
-  ('00000000-0000-4000-8000-00000000a501', 'Pricing Admin', 'pricing-admin@example.test', true),
-  ('00000000-0000-4000-8000-00000000a502', 'Pricing User', 'pricing-user@example.test', true);
+insert into data_agent_auth."user" (
+  "id", "name", "email", "emailVerified", "username", "displayUsername"
+) values
+  ('00000000-0000-4000-8000-00000000a501', 'Pricing Admin', 'pricing-admin@example.test', true,
+    'pricing.admin', 'pricing.admin'),
+  ('00000000-0000-4000-8000-00000000a502', 'Pricing User', 'pricing-user@example.test', true,
+    'pricing.user', 'pricing.user');
 
 insert into app_data_agent.app_users (
   app_id, environment, principal_id, auth_user_id, email, display_name, system_role

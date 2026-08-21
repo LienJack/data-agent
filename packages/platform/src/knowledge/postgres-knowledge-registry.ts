@@ -4,22 +4,34 @@ import {
   jobWorkLeaseSchema,
   type KnowledgeBaseCreateCommand,
   type KnowledgeBaseRebuildCommand,
+  type KnowledgeCorrectionAnnotation,
   type KnowledgeDataProjectionReceipt,
   type KnowledgeDebugSearchRequest,
+  type KnowledgeDocumentCommitCommand,
+  type KnowledgeEvidenceSelection,
   type KnowledgeGenerationReadyCommit,
   type KnowledgeGenerationStageCommand,
   type KnowledgeIndexTarget,
   type KnowledgeRetrievalReceipt,
   knowledgeBaseMutationResultSchema,
   knowledgeBaseRevisionSchema,
+  knowledgeDocumentDetailSchema,
+  knowledgeDocumentRevisionSchema,
+  knowledgeEvidenceSelectionDetailSchema,
   knowledgeGenerationReadyCommitSchema,
   knowledgeQueryProjectionReceiptSchema,
   knowledgeRetrievalReceiptSchema,
+  sha256ContentHash,
   verifyEmbeddingProfileRevision,
   verifyKnowledgeBaseCreateCommand,
   verifyKnowledgeBaseRebuildCommand,
   verifyKnowledgeBaseRevision,
+  verifyKnowledgeCorrectionAnnotation,
   verifyKnowledgeDataProjectionReceipt,
+  verifyKnowledgeDocumentBlock,
+  verifyKnowledgeDocumentCommitCommand,
+  verifyKnowledgeDocumentRevision,
+  verifyKnowledgeEvidenceSelection,
   verifyKnowledgeGenerationStageCommand,
   verifyKnowledgeIndexGeneration,
   verifyKnowledgeIndexTarget,
@@ -206,6 +218,191 @@ export function createPostgresKnowledgeRegistry(
       );
     },
 
+    async listDocuments(capability: unknown, knowledgeBaseIdInput: string, limitInput = 100) {
+      const knowledgeBaseId = z.uuid().safeParse(knowledgeBaseIdInput);
+      const limit = z.number().int().min(1).max(200).safeParse(limitInput);
+      if (!knowledgeBaseId.success || !limit.success) {
+        return failure(
+          "KNOWLEDGE_DOCUMENT_LIST_INVALID",
+          "Knowledge document list input is invalid.",
+        );
+      }
+      return transaction(
+        capability,
+        "READ",
+        "knowledge.list_documents",
+        async ({ capability: current, client }) => {
+          const result = await client.query<{ value: unknown }>(
+            "select app_data_agent.list_knowledge_documents($1::uuid,$2::integer) as value",
+            [knowledgeBaseId.data, limit.data],
+          );
+          const rows = z.array(knowledgeDocumentRevisionSchema).safeParse(result.rows[0]?.value);
+          if (!rows.success) return contractInvalid("Knowledge document list result is invalid.");
+          const verified = await Promise.all(rows.data.map(verifyKnowledgeDocumentRevision));
+          if (
+            verified.some(
+              (document) =>
+                !sameScope(document.scope, current.scope) ||
+                document.knowledge_base_ref.knowledge_base_id !== knowledgeBaseId.data,
+            )
+          ) {
+            return contractInvalid("Knowledge document list authority was substituted.");
+          }
+          return verified;
+        },
+      );
+    },
+
+    async getDocument(capability: unknown, documentIdInput: string, revisionInput: number) {
+      const documentId = z.uuid().safeParse(documentIdInput);
+      const revision = z.number().int().positive().safe().safeParse(revisionInput);
+      if (!documentId.success || !revision.success) {
+        return failure("KNOWLEDGE_DOCUMENT_GET_INVALID", "Knowledge document input is invalid.");
+      }
+      return transaction(
+        capability,
+        "READ",
+        "knowledge.get_document",
+        async ({ capability: current, client }) => {
+          const result = await client.query<{ value: unknown }>(
+            "select app_data_agent.get_knowledge_document($1::uuid,$2::bigint) as value",
+            [documentId.data, revision.data],
+          );
+          const detail = knowledgeDocumentDetailSchema.safeParse(result.rows[0]?.value);
+          if (!detail.success) return contractInvalid("Knowledge document detail is invalid.");
+          const document = await verifyKnowledgeDocumentRevision(detail.data.document);
+          const blocks = await Promise.all(detail.data.blocks.map(verifyKnowledgeDocumentBlock));
+          if (
+            !sameScope(document.scope, current.scope) ||
+            document.document_id !== documentId.data ||
+            document.revision !== revision.data ||
+            blocks.length !== document.block_count ||
+            (await sha256ContentHash(blocks.map((block) => block.block_hash))) !==
+              document.block_manifest_hash
+          ) {
+            return contractInvalid("Knowledge document detail authority was substituted.");
+          }
+          return { ...detail.data, document, blocks };
+        },
+      );
+    },
+
+    async createEvidenceSelection(capability: unknown, selectionInput: KnowledgeEvidenceSelection) {
+      let selection: KnowledgeEvidenceSelection;
+      try {
+        selection = await verifyKnowledgeEvidenceSelection(selectionInput);
+      } catch {
+        return failure(
+          "KNOWLEDGE_EVIDENCE_SELECTION_INVALID",
+          "Knowledge evidence selection is invalid.",
+        );
+      }
+      return transaction(
+        capability,
+        "WRITE",
+        "knowledge.create_evidence_selection",
+        async ({ capability: current, client }) => {
+          if (
+            !sameScope(selection.scope, current.scope) ||
+            selection.selected_by_principal_id !== current.principal
+          ) {
+            return contractInvalid("Knowledge evidence selection authority was substituted.");
+          }
+          const result = await client.query<{ value: unknown }>(
+            "select app_data_agent.create_knowledge_evidence_selection($1::jsonb) as value",
+            [selection],
+          );
+          const committed = await verifyKnowledgeEvidenceSelection(result.rows[0]?.value);
+          if (
+            committed.selection_id !== selection.selection_id ||
+            committed.selection_hash !== selection.selection_hash ||
+            !sameScope(committed.scope, current.scope)
+          ) {
+            return contractInvalid("Knowledge evidence selection result was substituted.");
+          }
+          return committed;
+        },
+      );
+    },
+
+    async getEvidenceSelection(capability: unknown, selectionIdInput: string) {
+      const selectionId = z.uuid().safeParse(selectionIdInput);
+      if (!selectionId.success) {
+        return failure(
+          "KNOWLEDGE_EVIDENCE_SELECTION_INVALID",
+          "Knowledge evidence selection input is invalid.",
+        );
+      }
+      return transaction(
+        capability,
+        "READ",
+        "knowledge.get_evidence_selection",
+        async ({ capability: current, client }) => {
+          const result = await client.query<{ value: unknown }>(
+            "select app_data_agent.get_knowledge_evidence_selection($1::uuid) as value",
+            [selectionId.data],
+          );
+          const detail = knowledgeEvidenceSelectionDetailSchema.safeParse(result.rows[0]?.value);
+          if (!detail.success) {
+            return contractInvalid("Knowledge evidence selection detail is invalid.");
+          }
+          const selection = await verifyKnowledgeEvidenceSelection(detail.data.selection);
+          const blocks = await Promise.all(detail.data.blocks.map(verifyKnowledgeDocumentBlock));
+          const annotations = await Promise.all(
+            detail.data.annotations.map(verifyKnowledgeCorrectionAnnotation),
+          );
+          if (
+            !sameScope(selection.scope, current.scope) ||
+            selection.selection_id !== selectionId.data
+          ) {
+            return contractInvalid("Knowledge evidence selection authority was substituted.");
+          }
+          return { selection, blocks, annotations };
+        },
+      );
+    },
+
+    async createCorrectionAnnotation(
+      capability: unknown,
+      annotationInput: KnowledgeCorrectionAnnotation,
+    ) {
+      let annotation: KnowledgeCorrectionAnnotation;
+      try {
+        annotation = await verifyKnowledgeCorrectionAnnotation(annotationInput);
+      } catch {
+        return failure(
+          "KNOWLEDGE_CORRECTION_ANNOTATION_INVALID",
+          "Knowledge correction annotation is invalid.",
+        );
+      }
+      return transaction(
+        capability,
+        "WRITE",
+        "knowledge.create_correction_annotation",
+        async ({ capability: current, client }) => {
+          if (
+            !sameScope(annotation.scope, current.scope) ||
+            annotation.created_by_principal_id !== current.principal
+          ) {
+            return contractInvalid("Knowledge correction annotation authority was substituted.");
+          }
+          const result = await client.query<{ value: unknown }>(
+            "select app_data_agent.create_knowledge_correction_annotation($1::jsonb) as value",
+            [annotation],
+          );
+          const committed = await verifyKnowledgeCorrectionAnnotation(result.rows[0]?.value);
+          if (
+            committed.annotation_id !== annotation.annotation_id ||
+            committed.annotation_hash !== annotation.annotation_hash ||
+            !sameScope(committed.scope, current.scope)
+          ) {
+            return contractInvalid("Knowledge correction annotation result was substituted.");
+          }
+          return committed;
+        },
+      );
+    },
+
     async listProfiles(capability: unknown, limitInput = 100) {
       const limit = z.number().int().min(1).max(100).safeParse(limitInput);
       if (!limit.success) {
@@ -297,6 +494,50 @@ export function createPostgresKnowledgeRegistry(
             return contractInvalid("Knowledge stage result authority was substituted.");
           }
           return generation;
+        },
+      );
+    },
+
+    async commitDocument(
+      capability: unknown,
+      leaseInput: JobWorkLease,
+      commandInput: KnowledgeDocumentCommitCommand,
+    ) {
+      const lease = jobWorkLeaseSchema.safeParse(leaseInput);
+      let command: KnowledgeDocumentCommitCommand;
+      try {
+        command = await verifyKnowledgeDocumentCommitCommand(commandInput);
+      } catch {
+        return failure("KNOWLEDGE_DOCUMENT_COMMIT_INVALID", "Knowledge document is invalid.");
+      }
+      if (!lease.success || lease.data.kind !== "KNOWLEDGE_INDEX") {
+        return failure("KNOWLEDGE_DOCUMENT_COMMIT_INVALID", "Knowledge document is invalid.");
+      }
+      return transaction(
+        capability,
+        "WRITE",
+        "knowledge.commit_document",
+        async ({ capability: current, client }) => {
+          if (
+            !sameScope(command.document.scope, current.scope) ||
+            !sameScope(lease.data.scope, current.scope)
+          ) {
+            return contractInvalid("Knowledge document scope was substituted.");
+          }
+          const result = await client.query<{ value: unknown }>(
+            "select app_data_agent.commit_knowledge_document($1::jsonb,$2::jsonb) as value",
+            [lease.data, command],
+          );
+          const committed = await verifyKnowledgeDocumentRevision(result.rows[0]?.value);
+          if (
+            !sameScope(committed.scope, current.scope) ||
+            committed.document_id !== command.document.document_id ||
+            committed.revision !== command.document.revision ||
+            committed.revision_hash !== command.document.revision_hash
+          ) {
+            return contractInvalid("Knowledge document authority was substituted.");
+          }
+          return committed;
         },
       );
     },

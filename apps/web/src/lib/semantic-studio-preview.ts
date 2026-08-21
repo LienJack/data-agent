@@ -1,12 +1,13 @@
-import type {
-  SemanticEdgeFamily,
-  SemanticGraphCluster,
-  SemanticGraphEdge,
-  SemanticGraphFullResult,
-  SemanticGraphNode,
-  SemanticGraphReadEdge,
-  SemanticGraphReadIdentity,
-  SemanticGraphReadNode,
+import {
+  BUILTIN_SEMANTIC_EDGE_TYPES,
+  type SemanticEdgeFamily,
+  type SemanticGraphCluster,
+  type SemanticGraphEdge,
+  type SemanticGraphFullResult,
+  type SemanticGraphNode,
+  type SemanticGraphReadEdge,
+  type SemanticGraphReadIdentity,
+  type SemanticGraphReadNode,
 } from "@data-agent/contracts";
 import type { SemanticStudioSnapshot } from "./semantic-studio-api";
 
@@ -942,6 +943,7 @@ export function semanticStudioPreviewSnapshot(): SemanticStudioSnapshot {
     semantic_domain: "ecommerce",
     available_domains: ["ecommerce", "finance", "customer_success"],
     release: { release_id: RELEASE_ID, release_generation: 12, label: "Release 12" },
+    edge_type_registry: BUILTIN_SEMANTIC_EDGE_TYPES,
     list: {
       identity,
       items: readNodes,

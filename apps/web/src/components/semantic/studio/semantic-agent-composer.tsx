@@ -20,6 +20,7 @@ export function SemanticAgentComposer({
   releaseLabel,
   selectedNode,
   selectedEdge,
+  evidenceSelectionId,
   draft,
   state,
   events,
@@ -27,6 +28,7 @@ export function SemanticAgentComposer({
   error,
   onDraftChange,
   onClearSelection,
+  onClearEvidenceSelection,
   onSubmit,
   onResume,
   onOpenTrajectory,
@@ -35,6 +37,7 @@ export function SemanticAgentComposer({
   readonly releaseLabel: string;
   readonly selectedNode: SemanticGraphReadNode | null;
   readonly selectedEdge: SemanticGraphReadEdge | null;
+  readonly evidenceSelectionId: string | null;
   readonly draft: string;
   readonly state: SemanticStudioAuthoringState | null;
   readonly events: readonly SemanticAuthoringPublicEvent[];
@@ -42,6 +45,7 @@ export function SemanticAgentComposer({
   readonly error: string | null;
   readonly onDraftChange: (value: string) => void;
   readonly onClearSelection: () => void;
+  readonly onClearEvidenceSelection: () => void;
   readonly onSubmit: () => void;
   readonly onResume: (answer: string) => void;
   readonly onOpenTrajectory: () => void;
@@ -112,6 +116,17 @@ export function SemanticAgentComposer({
               className="inline-flex items-center gap-1.5 border-l border-[#d7ddd9] pl-3 font-medium text-[#356b5a] hover:text-[#285b4b]"
             >
               选区 · {selectedNode?.node.name ?? selectedEdge?.edge.edge_type}
+              <X className="size-3" aria-hidden="true" />
+            </button>
+          ) : null}
+          {evidenceSelectionId ? (
+            <button
+              type="button"
+              onClick={onClearEvidenceSelection}
+              className="inline-flex items-center gap-1.5 border-l border-[#d7ddd9] pl-3 font-medium text-[#356b5a] hover:text-[#285b4b]"
+              title={evidenceSelectionId}
+            >
+              精确知识证据 · {evidenceSelectionId.slice(0, 8)}
               <X className="size-3" aria-hidden="true" />
             </button>
           ) : null}

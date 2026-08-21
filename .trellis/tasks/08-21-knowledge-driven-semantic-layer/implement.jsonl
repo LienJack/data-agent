@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/knowledge-base.md", "reason": "复用现有 Knowledge Authority、Generation、Projection 与 ACL 边界"}
+{"file": ".trellis/spec/backend/semantic-induction-maintenance.md", "reason": "文档归纳只能创建 review-only U5 Candidate"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "新增 PostgreSQL Authority、RLS、Migration 与事务规则"}
+{"file": ".trellis/spec/frontend/design-system.md", "reason": "独立知识库与 Semantic Studio 编辑体验约定"}
+{"file": ".trellis/tasks/08-21-knowledge-driven-semantic-layer/research/current-state-audit.md", "reason": "当前 Knowledge/Authoring/Governance/Text2SQL 可复用接口、缺口与版本边界审计"}

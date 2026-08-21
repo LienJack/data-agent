@@ -2,11 +2,16 @@ import "server-only";
 
 import {
   createPostgresSemanticAuthoringStore,
+  createPostgresSemanticCandidateRevisionStore,
   createPostgresSemanticGraphStore,
 } from "@data-agent/platform";
 import type { NextRequest } from "next/server";
 import { createSemanticStudioService, type SemanticStudioService } from "./semantic-studio-service";
-import { getWorkspaceAuthority, getWorkspaceSqlPool } from "./workspace-identity";
+import {
+  getKnowledgeRegistry,
+  getWorkspaceAuthority,
+  getWorkspaceSqlPool,
+} from "./workspace-identity";
 import { authorizeWorkspaceRequest, workspaceErrorResponse } from "./workspace-request";
 
 export type SemanticStudioRuntimeResult =
@@ -35,6 +40,7 @@ export async function getSemanticStudioRuntime(
     ok: true,
     service: createSemanticStudioService({
       graph_store: createPostgresSemanticGraphStore({ pool, authorizer }),
+      candidate_revision_store: createPostgresSemanticCandidateRevisionStore({ pool, authorizer }),
       create_authoring_store: (semanticDomain) =>
         createPostgresSemanticAuthoringStore({
           pool,
@@ -46,6 +52,7 @@ export async function getSemanticStudioRuntime(
       scope: capability.scope,
       principal_id: capability.principal,
       allowed_domains: allowedDomains(),
+      knowledge_registry: getKnowledgeRegistry(),
     }),
   };
 }

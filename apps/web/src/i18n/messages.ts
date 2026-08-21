@@ -17,6 +17,7 @@ export const zhCNMessages = {
   "workspace.surface.tests": "能力测试",
   "workspace.surface.jobs": "任务中心",
   "workspace.surface.data-sources": "数据源",
+  "workspace.surface.knowledge": "知识库",
   "workspace.surface.semantic": "语义治理",
   "workspace.surface.members": "成员管理",
   "workspace.surface.platform-settings": "平台设置",
@@ -38,6 +39,7 @@ export const zhCNMessages = {
   "workspace.description.tests": "查看并运行当前工作空间的能力测试",
   "workspace.description.jobs": "查看后台任务、重试和取消状态",
   "workspace.description.data-sources": "管理连接与 SecretRef",
+  "workspace.description.knowledge": "管理公司知识资产、版本、段落证据和语义影响",
   "workspace.description.semantic": "编辑和审核语义候选",
   "workspace.description.members": "管理当前工作空间的成员角色",
   "workspace.description.platform-settings": "管理模型、价格、汇率和账务复核",
@@ -141,6 +143,7 @@ export const enUSMessages = {
   "workspace.surface.tests": "Test center",
   "workspace.surface.jobs": "Job center",
   "workspace.surface.data-sources": "Data sources",
+  "workspace.surface.knowledge": "Knowledge base",
   "workspace.surface.semantic": "Semantic governance",
   "workspace.surface.members": "Members",
   "workspace.surface.platform-settings": "Platform settings",
@@ -163,6 +166,8 @@ export const enUSMessages = {
   "workspace.description.tests": "Inspect and run workspace capability tests",
   "workspace.description.jobs": "Inspect background jobs, retries, and cancellation",
   "workspace.description.data-sources": "Manage connections and SecretRef identities",
+  "workspace.description.knowledge":
+    "Manage company knowledge, revisions, evidence blocks, and semantic impact",
   "workspace.description.semantic": "Edit and review semantic candidates",
   "workspace.description.members": "Manage workspace member roles",
   "workspace.description.platform-settings":
