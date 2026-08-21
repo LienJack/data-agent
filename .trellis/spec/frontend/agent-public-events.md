@@ -17,10 +17,29 @@ type PublicReasoning = {
 type PublicTool = {
   call_id: string;
   tool_name: string;
+  profile_id: AgentSpecialistProfileId | null;
+  task_id: string | null;
   status: "RUNNING" | "COMPLETED" | "FAILED";
   summary: string;
   error_code: string | null;
+  artifact_refs: ArtifactReference[];
 };
+
+type PublicAgentStatus = {
+  profile_id: AgentSpecialistProfileId;
+  task_id: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" |
+    "INTERRUPTED" | "SKIPPED" | "BLOCKED";
+  phase: string;
+  title: string;
+  summary: string;
+  duration_ms: number | null;
+  error_code: string | null;
+};
+
+type QAInspectorTarget =
+  | { kind: "subagent"; runId: string; profileId: AgentSpecialistProfileId; taskId: string; anchorSequence: number }
+  | { kind: "artifact"; runId: string; reference: ArtifactReference; anchorSequence: number };
 
 type SemanticThinkingStage = {
   type: "stage";
@@ -32,6 +51,10 @@ type SemanticThinkingStage = {
 };
 
 function assembleProcessRows(events: readonly PublicRunEvent[], runId: string): ProcessRow[];
+function assembleSubagentInspector(
+  events: readonly PublicRunEvent[],
+  target: Extract<QAInspectorTarget, { kind: "subagent" }>,
+): SubagentInspectorSnapshot;
 function assembleSemanticAuthoringProcessEvents(
   events: readonly SemanticAuthoringPublicEvent[],
 ): readonly SemanticAuthoringPublicEvent[];
@@ -44,6 +67,16 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
 - QA reasoning 按 `block_id` 合并，Semantic thinking stage 按 `phase` 合并，tool 按 `call_id` 合并；SSE 重连后的 durable replay 必须得到同一展示结果。
 - reasoning 只允许公开 `title/summary`。禁止 `reasoning_content`、private chain-of-thought、system prompt 和 raw context。
 - tool 只显示公共输入/结果投影、状态、耗时和错误码；SecretRef、Bearer Material、Provider 原始请求/响应不得进入事件。
+- Team tool 和 Agent status 以 exact `profile_id/task_id` 归属；Web 禁止从 input/output JSON 恢复 Agent identity。
+- Inline disclosure 与 Inspector entity link 必须是兄弟控件：前者展开就地详情，后者选择 Subagent/Artifact；禁止 nested button。
+- QA Inspector 只持有 `QAInspectorTarget` selection。Subagent material 从同一 Public Run Event replay 派生；
+  Artifact material 从 Workspace Preview API 派生，禁止第二份 Agent lifecycle store。
+- `task_id=null` 的 PENDING Agent 只允许 Inline disclosure；没有 durable task identity 时禁用 Inspector action，
+  禁止按 profile 选择“最近任务”或自动绑定未来 task。
+- Subagent Inspector 的 connection state 与 Agent authority 分离；断线只显示 reconnecting 并从最后 sequence
+  续接，不得把 RUNNING 改为失败/完成。
+- 只有完整 `ArtifactReference` 可渲染 file preview action；裸路径和 Tool output 中的 path-like 文本只作摘要。
+- desktop 空间不足时先收起 Inspector，移动端 Inspector 不得遮挡 Composer；关闭后焦点返回触发项。
 - reasoning 与 tool 默认折叠，按钮或原生 `summary` 必须可键盘操作并暴露 expanded state。
 - `WorkspaceJourneyEvidenceArtifact` 是 Goal/CI proof，不是 Authority Receipt；只有 required checkpoint 全 PASS 且 artifact hash 有效时才是 `GO`。
 
@@ -55,6 +88,11 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
 | `reasoning_content`, raw context, system prompt or SecretRef present | Reject before browser projection |
 | START without END when Run fails | Render the reasoning block as failed/incomplete, never completed |
 | Tool RUNNING without terminal boundary | Keep one running disclosure after replay |
+| Inspector SSE disconnects while Agent RUNNING | Keep RUNNING authority and show reconnecting separately |
+| Subagent target is absent after replay | Show stale target; never select a different Agent |
+| PENDING Agent has `task_id=null` | Keep Inline row and disable Inspector action with accessible reason |
+| Artifact ref is absent, unsupported, denied or hash-mismatched | No raw output/path fallback; show explicit non-success state |
+| Conversation or Run changes | Clear stale Inspector target and restore focus safely |
 | Projection API fails | Render explicit alert/error code, not a successful empty state |
 | `OUTCOME_UNKNOWN` | Show Reconcile only; no ordinary Retry |
 | Journey checkpoint missing, duplicate or failed | Do not issue `GO` artifact |
@@ -62,14 +100,20 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
 ## 5. Good / Base / Bad Cases
 
 - Good: START + multiple DELTA + END reconstruct one collapsed reasoning disclosure; tool START/END reconstruct one collapsed tool disclosure.
+- Good: selecting a Subagent derives baseline and live rows from the same event array used by Inline/trajectory.
+- Good: selecting a committed Artifact ref opens the existing safe preview renderer for the same revision/hash.
 - Base: a Run with no process event shows an explicit empty state and keeps the final answer contract unchanged.
-- Bad: rendering model `reasoning_content`, exposing checkpoint tool messages, or treating `completed` as `accepted`.
+- Base: a legacy Run without Artifact refs remains readable but has no synthetic file preview action.
+- Bad: rendering model `reasoning_content`, exposing checkpoint tool messages, treating `completed` as `accepted`,
+  or opening a path parsed from Tool output.
 
 ## 6. Tests Required
 
 - Contracts: strict reasoning schema rejects private fields; Journey Evidence verifies stable hash and required closure.
 - Worker/Semantic: every Agent turn emits ordered START/DELTA/END public summaries and never copies provider reasoning.
 - Web: replay grouping is deterministic; reasoning/tool controls start collapsed and expose keyboard semantics.
+- Web: Inspector target schema/URL restore, baseline + SSE merge, stale target, cross-Run cleanup and focus return.
+- Web/API: Artifact Preview exact Workspace/scope/run/revision/hash, unsupported/denied/hash mismatch and no raw fallback.
 - Web: Chinese/English switching changes display text without pathname/query/hash or Workspace Store mutation.
 - Browser: 1440px and 390px have no document horizontal overflow; language and disclosure controls work with Enter.
 
@@ -91,4 +135,6 @@ emit({
   },
 });
 const rows = assembleProcessRows(replayedEvents, runId);
+const inspector = assembleSubagentInspector(replayedEvents, selectedAgent);
+const preview = await fetchArtifactPreview(selectedArtifact.reference);
 ```

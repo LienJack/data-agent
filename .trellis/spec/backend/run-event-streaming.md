@@ -20,6 +20,7 @@ type PublicRunEvent =
   | { type: "progress"; run_id: string; sequence: number; payload: ProgressPayload }
   | { type: "reasoning"; run_id: string; sequence: number; payload: ReasoningSummaryPayload }
   | { type: "tool"; run_id: string; sequence: number; payload: ToolPayload }
+  | { type: "agent"; run_id: string; sequence: number; payload: AgentStatusPayload }
   | { type: "answer"; run_id: string; sequence: number; payload: { delta: string } }
   | { type: "terminal"; run_id: string; sequence: number; payload: TerminalPayload };
 
@@ -42,8 +43,16 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - `PublicRunEvent` 与 `ConversationTrajectory` 必须由 `@data-agent/contracts` 的 Zod Schema 解析。
 - display event 只允许严格、扁平、定长字段；写 `run_events` 前清理 Credential、Authorization、
   Connection Userinfo、Token 形态及 System Prompt 标记。
+- 新增 Agent identity/Artifact locator 时必须使用显式 v2 runtime/public schema；读取保留 v1 decoder 并规范化
+  旧 Tool event，禁止在 `@1.0.0` 下静默增加 required keys 或改写历史 sequence。
 - 前端以 `(run_id, sequence)` 去重。Chat 的 Process Row 和 Trajectory 必须共享同一事件数组。
 - 工具开始与完成通过 `call_id` 合并；安全 Input 来自 Start，Output/Duration/Status 来自终结事件。
+- Team Tool 使用 first-class `profile_id/task_id`，START/terminal identity 必须相等；terminal 的
+  `artifact_refs` 只能引用已经提交且 exact scope/run/revision/hash 可验证的 Artifact，START 固定为空数组。
+- `run.agent_status` 使用 `profile_id/task_id` 合并。Subagent Inspector 必须过滤同一组 Public Run Events，
+  不得建立 Mastra/Provider callback 旁路或第二条 Agent SSE authority。
+- SSE 只传严格 display event 和 Artifact locator，不传 Artifact body。Artifact Inspector 必须通过已有
+  Workspace Artifact Preview API 重新鉴权并读取严格 `ArtifactPreviewResult`。
 - 公开思考摘要通过 `block_id` 合并，固定 `START -> DELTA* -> END`。这些文本只能由应用根据已验证阶段生成，
   不接受 Provider `reasoning_content`、raw chain-of-thought 或 System Prompt。
 - `run.reasoning_*`、`run.tool_*`、`run.progress` 与 `run.answer_delta` 只能在活动 Lease/Fence 下追加；数据库
@@ -62,6 +71,8 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 | 同幂等键对应不同 payload | `RUN_DISPLAY_EVENT_REPLAY_MISMATCH` |
 | 输入含已知 Secret 形态 | 写库前替换为 `[REDACTED]` |
 | Run / Conversation 不属于当前 Workspace | `WORKSPACE_OBJECT_NOT_FOUND_OR_DENIED`，不泄露存在性 |
+| Team Tool START/terminal 的 Agent identity 不同 | exact-key/identity validator 失败关闭 |
+| Artifact ref 跨 Workspace/Run、revision/hash 不符或仅有裸路径 | 拒绝事件或 Preview，禁止回退 Tool output |
 | SSE 断线 | 客户端从最后 sequence 重连并去重 |
 | SSE 异常但 Run 已终态 | GET Projection 兜底生成最终非问题复述文案 |
 | Run 取消且工具未完成 | UI 派生 `INTERRUPTED`，不伪造 Tool Result |
@@ -70,6 +81,9 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 ### 5. Good / Base / Bad Cases
 
 - Good：Worker 在真实操作前后追加 `tool_started/tool_completed`，同一事件链同时驱动折叠行和轨迹。
+- Good：Subagent Inspector 先从 durable replay 重建 baseline，再从相同 Run sequence 续接增量；Inline、
+  Inspector 和 trajectory 的 identity/顺序一致。
+- Good：Tool 在 Artifact commit/hash verify 后发布 exact ref，Preview API 再做 Workspace READ 校验。
 - Base：旧 Run 只有 lifecycle/terminal；轨迹仍可回放，对话不显示空工具卡。
 - Bad：组件接收 `unknown` 后使用类型断言，或另建一个仅存在内存中的“轨迹状态”。
 - Bad：把 Chain-of-Thought、Provider Request、SQL Rows 或原始工具对象序列化进 `run_events`。
@@ -81,6 +95,8 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - PostgreSQL 17：display payload exact-key、活动 Lease/Fence、Reducer 保持 `RUNNING`、私有推理字段拒绝。
 - Platform/API：Conversation Run binding 的 READ/越权；`after_sequence` 缺口回放上限。
 - Web：SSE Schema Parse、`Last-Event-ID` 优先级、sequence 去重、回答增量排序。
+- Web：Subagent Inspector baseline + live increment、connection state 与 Agent authority 分离、stale identity。
+- Artifact：Tool terminal ref exactness、Preview READ/scope/revision/hash、unsupported/denied 无 raw fallback。
 - UI：Reasoning/Tool 默认折叠、原生 Button 键盘语义、失败/中断、长输出滚动。
 - Trajectory：按用户问题与 Run 分组、Duration/Turns/Calls、`runId + sequence` 双向定位。
 
@@ -101,6 +117,7 @@ setEvents((current) => mergePublicRunEvents(current, [event]));
 
 const processRows = assembleProcessRows(events, runId);
 const trajectory = groupTrajectoryEvents(events);
+const inspector = assembleSubagentInspector(events, selectedAgent);
 ```
 
 ## 场景：Semantic Authoring 独立公开轨迹

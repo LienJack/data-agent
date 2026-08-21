@@ -59,5 +59,36 @@ durable session/tool/subagent events
 
 新增 strict `run.agent_status` 事件，payload 至少包含 `profile_id`、`task_id|null`、`status`、
 `phase`、`summary`、`duration_ms|null`、`error_code|null`。Worker 在任务边界发事件；Contracts 转为
-`PublicRunEvent(type="agent")`；Web 通过 `assembleAgentStatuses(events, runId)` 得到三项固定投影，并在
-Agent answer 顶部渲染紧凑 orchestration rail。现有 `ProcessDisclosure` 继续承载通用 reasoning/tool 细节。
+`PublicRunEvent(type="agent")`；Web 通过 keyed assembler 得到 Agent 投影，并与 reasoning/tool/answer 按
+sequence 穿插成 Inline activity stream；右侧 Inspector 只从相同 replay 派生更聚焦的 Agent/Artifact 详情。
+
+## 2026-08-21 Understand Chat 复核：右侧 Inspector
+
+本轮按 `understand-anything:understand-chat` 流程重新检查 `.ua/knowledge-graph.json`。图谱提交、当前 HEAD
+均为 `47f943859bef60e4160492346772ded9b24f765a`，排除 `.ua/` 生成物后 committed/staged/unstaged/untracked
+源码漂移均为空，因此以下结论可作为当前固定提交的设计证据。
+
+### 相关子图
+
+- `packages/client/ui-layout/src/client/AppFrame.tsx` -> `columns.ts` / `stores.ts`：三栏 shell 固定挂载
+  sidebar/center/details；空间不足时 details 先缩小再自动归零，selection preference 不被覆盖。
+- `packages/client/ui-conversation/src/client/skeleton/DetailsPanel.tsx` -> `tool-node-reader.ts`：panel 从共享
+  store 读取 selection，再从 session snapshot 查找 material；panel 自身不持有第二份 Tool event truth。
+- `packages/client/runtime/src/client/sessions/session.ts` -> `conversation-assembler.ts`：Session 安装持久窗口，
+  再接收实时事件并构建 snapshot。
+- `packages/client/runtime/src/client/sessions/manager.ts` -> `ordered-baseline.ts` / `lineage.ts`：列表和
+  subagent catalog 以 baseline 为基础，再应用 live mutation/notification。
+- `packages/client/ui-subagent/src/client/SubagentCatalogAction.tsx`：只渲染 summary projection、running/done、
+  duration 和诊断态，完整 child material 通过稳定 address 导航读取。
+- `packages/client/ui-deliverables/src/client/ProducedFiles.tsx`：产物 path 点击后调用宿主 `openFile`。这是
+  单机 Harness 的能力，不适合直接迁移到 Data Agent 多租户 Web 边界。
+
+### 对本方案的约束
+
+1. Data Agent Inspector 只保存 `QAInspectorTarget` selection；Subagent 内容从同一组 parsed Public Run Events
+   派生，Artifact 内容从已有 Workspace Preview API 派生，禁止建立第二份生命周期状态。
+2. Subagent Inspector 使用 durable replay 作为 baseline，再从最后 Run sequence 接 SSE 增量；连接状态只能
+   显示“实时/重连中/已结束”，不能推断 Agent authority。
+3. 桌面采用可收起 details rail，空间不足时先保护中心回答列；移动端把 Inspector 放在 Composer 之上的内容区。
+4. “文件”只指完整、已提交、可校验的 `ArtifactReference`。不复制 Harness `openFile(path)`，不从 Tool output
+   或看似路径的字符串恢复 preview locator。

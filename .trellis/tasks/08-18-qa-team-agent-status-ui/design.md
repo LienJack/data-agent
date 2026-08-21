@@ -8,24 +8,68 @@ type ConversationActivityBlock =
   | { kind: "reasoning"; id: string; sequence: number; row: ProcessRow }
   | { kind: "tool"; id: string; sequence: number; row: ProcessRow }
   | { kind: "agent"; id: string; sequence: number; agent: TeamAgentView };
+
+type QAInspectorTarget =
+  | {
+      kind: "subagent";
+      runId: string;
+      profileId: AgentSpecialistProfileId;
+      taskId: string;
+      anchorSequence: number;
+    }
+  | {
+      kind: "artifact";
+      runId: string;
+      reference: ArtifactReference;
+      anchorSequence: number;
+    };
 ```
 
-`ConversationActivityStream` 只接收解析后的 blocks；`ActivityDisclosureRow` 复用现有 `openTrajectory` 行为。
-Subagent block 展开后渲染其归属 Tool rows；正文 text block 使用现有 answer typography。
+`ConversationActivityStream` 只接收解析后的 blocks；Subagent block 展开后渲染其归属 Tool rows；正文 text block
+使用现有 answer typography。`QAInspector` 只持有 target selection，详情从 QA store 中的 parsed events 或 Artifact
+Preview API 派生，不维护第二份 Agent lifecycle 状态。
 
 ## Layout
 
 - Think row：Brain icon + `Think` + truncated public summary。
 - Tool row：工具 icon + tool name + artifact/path/result summary。
 - Subagent row：Agent/Profile icon + specialist label + current phase/status；children 使用单层缩进线。
+- Artifact/file：只渲染有 exact `ArtifactReference` 的可点击文本；路径状摘要没有 preview affordance。
 - 状态色：pending neutral、running amber/accent、completed emerald、skipped muted、failed/blocked red、interrupted orange。
 - 状态仍靠文字和 `aria-live`，不只靠颜色；390px 摘要换行且 status 不挤出容器。
 
+## Interaction Model
+
+- 每个 activity row 使用兄弟控件，避免 nested interactive：Disclosure control 负责展开，Entity link 负责 Inspector selection。
+- PENDING row 若尚无 durable `task_id`，Entity link 为不可用说明态；不得让 Inspector 自动跟随同 profile 的“最近任务”。
+- 点击/Enter 激活 Subagent 名称或 Artifact link 后打开 Inspector；Space 遵循原生 button/link 语义。关闭后焦点回到触发控件。
+- Inspector header 显示类型、稳定 identity、权威状态、耗时和关闭按钮；提供“在轨迹中查看” deep-link。
+- Subagent tab 显示 `Overview / Live events / Artifacts`：baseline 来自已加载 replay，live events 只追加更大 sequence 并显示独立连接状态“实时/重连中/已结束”。连接状态不得覆盖 Agent authority status。
+- Artifact tab 复用 `ArtifactWorkspace` 的 REPORT/SQL/TABLE/CHART/MARKDOWN 安全 renderer，不展示 raw object 或 filesystem access。
+- desktop 默认 360px、可调 320–520px；center 小于 640px 时自动收起右栏但保留 selection。mobile 在主内容区打开 sheet，不遮挡 Composer。
+
 ## Motion
 
-只对 RUNNING 状态点使用 opacity pulse，对 disclosure caret 使用 transform；reduced motion 全部关闭。
+只对 RUNNING 状态点使用 opacity pulse，对 disclosure caret 和 Inspector track 使用 transform；reduced motion 全部关闭。Inspector 打开不得重置中心文档滚动位置。
 
 ## Harness Adaptation
 
-借鉴参考图的 inline Think/Tool 行，以及 Harness 的 StateDot、二级摘要、耗时和 keyed snapshot；不复制其
-336px 浮层、多级 lineage、token metrics，也不展示原始 chain-of-thought。
+借鉴参考图的 inline Think/Tool 行，以及 Harness 的 StateDot、二级摘要、耗时和 keyed snapshot。进一步参考：
+
+- `AppFrame` 的 sidebar/center/details 三栏让步链：空间不足先收起 details，保持中心列可读。
+- `DetailsPanel` 的“selection in store、material from snapshot”边界：Inspector 不拥有第二套事件数据。
+- `SessionManager/Session` 的 durable baseline + live increment，以及 Subagent catalog 的 summary projection。
+
+不复制 Harness 的多级 lineage、token metrics、品牌样式或 ProducedFiles 的宿主 `openFile`；Data Agent 文件预览只走受治理 Artifact API，也不展示原始 chain-of-thought。
+
+## Error Matrix
+
+| Condition | UI behavior |
+| --- | --- |
+| SSE disconnected, Agent still RUNNING | Keep RUNNING authority; show separate reconnecting badge and resume from last sequence |
+| Agent target absent after replay | Show stale target with close/trajectory actions; do not pick another Agent |
+| PENDING Agent has `task_id=null` | Keep Inline disclosure; disable Inspector action with accessible reason |
+| Artifact ref missing/unsupported | Non-success empty/error state; never parse Tool output as a file |
+| Artifact scope/hash denied | Show public error code; never reveal existence or fallback body |
+| Conversation/Run changed | Close stale Inspector and restore focus safely |
+| desktop width cannot keep center >= 640px | Auto-collapse Inspector without deleting selection |
