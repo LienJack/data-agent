@@ -1,10 +1,10 @@
 # 对话分析自适应 Agent 活动流与数据结果展示
 
-> 版本：v2 Draft
+> 版本：v2 Review Ready
 >
 > 日期：2026-08-21
 >
-> 状态：主体需求已确认，等待 VIEWER 权限决策与技术设计终审，不授权实现
+> 状态：产品决策已收口，等待最终实施批准，不授权实现
 
 ## Goal
 
@@ -197,8 +197,9 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 - **R42**：会话行的运行、等待审批、等待回答、失败和未读完成提示必须来自真实 Run/interaction projection；隐藏的
   Subagent child conversation 不作为普通顶级对话重复列出，只通过父对话活动流和 Inspector 进入。
 - **R43**：普通 `ANALYST` 可以列出、搜索、读取、订阅、预览和管理自己拥有的 Folder、Conversation、Message、Run 与
-  Artifact；`VIEWER` 至少保持本人范围的只读访问，是否允许整理个人目录由 OQ2 决定。Artifact Export 继续服从独立既有
-  capability，不因目录权限自动获得。用户 A 与用户 B 即使属于同一 Workspace，也不能共享或互相发现这些资源。
+  Artifact；`VIEWER` 只允许读取本人获授权内容，不得创建、重命名、排序、移动、归档、恢复或删除 Folder/Conversation。
+  Artifact Export 继续服从独立既有 capability，不因目录读取或管理权限自动获得。用户 A 与用户 B 即使属于同一 Workspace，
+  也不能共享或互相发现这些资源。
 - **R44**：`WORKSPACE_ADMIN` 可在当前 Workspace 的显式“全部用户”管理视图查看所有用户的文件夹和对话；
   `SUPER_ADMIN` 可在管理控制面按 Workspace/用户查看全局范围。普通日常侧栏仍默认显示管理员自己的对话，避免把管理视图
   与个人工作区混合。
@@ -373,12 +374,8 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 
 - **D1 — 对话删除保留策略**：已确认会话先进入可恢复回收站，从 authority `deleted_at` 起默认保留 30 天；保留期内 owner
   可以恢复，期满后由后台保留任务按审计、Artifact、计费与法定边界分批清理。Web 不直接级联物理删除权威记录。
-
-## Open Product Question
-
-- **OQ2 — VIEWER 的个人目录权限**：现有 `VIEWER` 只有 `WORKSPACE_RESULT_READ`，没有创建 Q&A Run 或通用写权限。
-  需确认 VIEWER 是保持只读，还是新增仅限本人 Folder/Conversation 整理的窄 `QA_DIRECTORY_SELF_MANAGE` capability；
-  无论选择哪种都不授予通用 Workspace WRITE、Artifact Export 或其他领域写权限，也不允许访问其他 owner。
+- **D2 — VIEWER 目录权限**：已确认 `VIEWER` 保持只读，不新增 `QA_DIRECTORY_SELF_MANAGE`；其本人目录 mutation 全部拒绝，
+  且不因只读访问获得通用 Workspace WRITE、Artifact Export 或其他领域写权限。
 
 ## Relationship To Previous Delivery
 

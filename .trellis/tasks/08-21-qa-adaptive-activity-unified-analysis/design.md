@@ -1,6 +1,6 @@
 # 对话分析自适应活动流与私有目录技术设计
 
-> 状态：Final Review
+> 状态：产品与技术设计已收口，等待最终实施批准
 >
 > 本文是技术设计，不授权产品代码、依赖安装、Migration 或数据删除。
 
@@ -351,9 +351,10 @@ Markdown 选型依据 `react-markdown` 官方安全说明，仍显式叠加 `reh
 | Resource/action | Owner with Q&A write | VIEWER | Workspace Admin cross-owner | Super Admin cross-workspace |
 | --- | --- | --- | --- | --- |
 | Personal directory read | own only | own only | own in personal mode | own in personal mode |
-| Folder/conversation mutation | own only | **OQ2 pending** | own only | own only |
+| Folder/conversation mutation | own only | denied | own only | own only |
 | Message/Run/SSE/Trajectory read | own only | own only | audited read-only projection | audited read-only projection |
-| Subagent/Artifact Preview/Export | own only | own only | audited read-only projection | audited read-only projection |
+| Subagent/Artifact Preview | own only | own only | audited read-only projection | audited read-only projection |
+| Artifact Export | existing export capability only | existing export capability only | existing export capability + audit | existing export capability + audit |
 | Continue Run or mutate another owner | denied | denied | denied | denied |
 
 所有 `SECURITY DEFINER` read/purge function 采用专用无登录 owner、空 search path、全限定名、最小 EXECUTE grant 和

@@ -1,6 +1,6 @@
 # 对话分析自适应活动流与私有目录实施计划
 
-> 状态：等待技术设计终审
+> 状态：计划已收口，等待最终实施批准
 >
 > 执行前置：用户在看到本轮最终规划摘要后，再发一条明确批准实施的消息；之后才运行 `task.py start`。
 
@@ -93,6 +93,8 @@ Rollback point：旧 executor 仅服务既有 Run；adaptive plan 无法验证�
   取消和 non-enumeration。
 - [ ] 所有 cookie-authenticated POST/PATCH/DELETE 复用 workspace mutation guard：校验 allowlisted Origin/Host 和
   `Sec-Fetch-Site`，拒绝 missing/null/cross-site Origin；service-to-service 仅允许非 Cookie 专用身份。补齐每条 mutation route tests。
+- [ ] `VIEWER` 只获得本人目录、消息、Run、SSE、Trajectory、Subagent 与 Artifact Preview 的只读 projection；所有本人
+  folder/conversation mutation 均以稳定 capability-denied 失败，且不新增 `QA_DIRECTORY_SELF_MANAGE`。Artifact Export 继续单独鉴权。
 - [ ] 新增独立只读 admin routes/RPC：directory、messages、events/SSE、trajectory、Subagent、Preview/Export，以及
   app-scoped Super Admin global directory；逐次写不可变 audit receipt，绝不复用 owner mutation/read bypass。
 - [ ] Harden SECURITY DEFINER：专用无登录 owner、空 search path、全限定名、最小 grant、FORCE RLS、actor 来自 DB session。
@@ -179,6 +181,7 @@ pnpm test:security
 
 - [ ] 启动并分别报告 database、Migration Ledger、Web、Worker、Indexer 与可选服务 health。
 - [ ] 使用两个普通用户证明 Folder/Conversation/Message/Run/SSE/Inspector/Artifact/Search/URL 完整隔离。
+- [ ] 使用 VIEWER 证明本人只读路径可用、全部目录 mutation 被拒绝，且目录读取不会隐式获得 Artifact Export。
 - [ ] 使用 Workspace Admin/Super Admin 证明显式只读审计、过滤和 audit receipt，不能代用户写入。
 - [ ] 真实运行简单 DIRECT 问题与多种 TEAM 问题，证明只有实际 Subagent 出现，refresh/SSE reconnect 顺序不变。
 - [ ] 真实 SQL 返回 TABLE，趋势问题返回 VChart，富文本标题/代码/链接安全，Artifact hash/denied 失败关闭。
