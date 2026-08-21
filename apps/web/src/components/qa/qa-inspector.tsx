@@ -53,8 +53,8 @@ function ArtifactInspector({
   if (!seenInReplay && loadingReplay) {
     return (
       <div className="space-y-3 p-4" role="status" aria-label={t("inspector.loadingArtifact")}>
-        <div className="h-4 w-3/5 animate-pulse rounded bg-[var(--color-bg-overlay)]" />
-        <div className="h-28 animate-pulse rounded bg-[var(--color-bg-overlay)]" />
+        <div className="skeleton-shimmer h-4 w-3/5 rounded bg-[var(--color-bg-overlay)]" />
+        <div className="skeleton-shimmer h-28 rounded bg-[var(--color-bg-overlay)]" />
       </div>
     );
   }
@@ -325,7 +325,7 @@ export function QAInspector() {
     <aside
       ref={inspectorRef}
       aria-label="Q&A Inspector"
-      className="qa-inspector min-h-0 flex-col bg-[var(--color-bg-surface)]"
+      className="qa-inspector glass-surface-strong min-h-0 flex-col"
       data-auto-collapsed={desktopAutoCollapsed || undefined}
       style={
         {
@@ -348,7 +348,7 @@ export function QAInspector() {
           type="button"
           onClick={() => openTrajectory({ runId: target.run_id, sequence: target.anchor_sequence })}
           aria-label={t("process.locate")}
-          className="flex size-7 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"
+          className="glass-control-radius flex size-7 items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"
         >
           <Path aria-hidden="true" size={14} />
         </button>
@@ -356,7 +356,7 @@ export function QAInspector() {
           type="button"
           onClick={close}
           aria-label={t("inspector.close")}
-          className="flex size-7 items-center justify-center rounded text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"
+          className="glass-control-radius flex size-7 items-center justify-center text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"
         >
           <X aria-hidden="true" size={14} />
         </button>

@@ -59,7 +59,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
   return (
     <aside
       className={[
-        "hidden h-full shrink-0 flex-col border-r border-[var(--color-border-default)] bg-[var(--color-bg-canvas)] transition-[width] duration-200 lg:flex",
+        "glass-surface hidden h-full shrink-0 flex-col border-r transition-[width] duration-200 lg:flex",
         collapsed ? "w-16" : "w-[248px]",
       ].join(" ")}
     >

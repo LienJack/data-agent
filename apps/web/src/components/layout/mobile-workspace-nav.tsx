@@ -38,7 +38,7 @@ export function MobileWorkspaceNav({
   return (
     <nav
       aria-label={t("workspace.resources")}
-      className="fixed inset-x-0 bottom-0 z-20 grid h-16 border-t border-[var(--color-border-default)] bg-[color-mix(in_srgb,var(--color-bg-surface)_94%,transparent)] px-2 pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_32px_-28px_rgb(23_32_28_/_55%)] backdrop-blur-xl lg:hidden"
+      className="glass-surface-strong fixed inset-x-0 bottom-0 z-20 grid h-16 border-t px-2 pb-[env(safe-area-inset-bottom)] lg:hidden"
       style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}
     >
       {items.map((item) => {

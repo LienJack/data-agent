@@ -630,12 +630,12 @@ export function ConversationDirectory(props: {
       </div>
 
       {editor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/25 p-4 backdrop-blur-[2px]">
+        <div className="glass-overlay fixed inset-0 z-50 flex items-center justify-center p-4">
           <form
             ref={dialogRef}
             onSubmit={submitEditor}
             onKeyDown={handleDialogKeyDown}
-            className="w-full max-w-sm rounded-2xl border border-white/60 bg-[var(--color-bg-overlay)] p-4 shadow-2xl"
+            className="glass-panel-radius glass-surface-strong w-full max-w-sm border p-4"
             role="dialog"
             aria-modal="true"
             aria-labelledby="directory-editor-title"
@@ -673,7 +673,7 @@ export function ConversationDirectory(props: {
                 <select
                   value={editor.folderId}
                   onChange={(event) => setEditor({ ...editor, folderId: event.target.value })}
-                  className="mt-1 h-10 w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-[12px]"
+                  className="glass-control-radius mt-1 h-10 w-full border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-[12px]"
                 >
                   <option value="">{copy(locale, "未分类", "Ungrouped")}</option>
                   {sortedFolders
@@ -695,7 +695,7 @@ export function ConversationDirectory(props: {
                   maxLength={editor.kind === "rename-conversation" ? 255 : 80}
                   value={editor.value}
                   onChange={(event) => setEditor({ ...editor, value: event.target.value })}
-                  className="mt-1 h-10 w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-[12px] focus:border-[var(--color-border-focused)] focus:outline-none"
+                  className="glass-control-radius mt-1 h-10 w-full border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-[12px] focus:border-[var(--color-border-focused)] focus:outline-none"
                 />
               </label>
             )}
@@ -703,13 +703,13 @@ export function ConversationDirectory(props: {
               <button
                 type="button"
                 onClick={closeEditor}
-                className="h-9 rounded-lg px-3 text-[11px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
+                className="glass-control-radius h-9 px-3 text-[11px] font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)]"
               >
                 {copy(locale, "取消", "Cancel")}
               </button>
               <button
                 type="submit"
-                className={`h-9 rounded-lg px-3 text-[11px] font-semibold text-white ${
+                className={`glass-control-radius h-9 px-3 text-[11px] font-semibold text-white ${
                   editor.kind === "delete-folder" || editor.kind === "trash-conversation"
                     ? "bg-red-600 hover:bg-red-700"
                     : "bg-[var(--color-text-primary)] hover:bg-[var(--color-accent-hover)]"

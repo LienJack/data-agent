@@ -125,7 +125,7 @@ function ArtifactActivity({
     block.reference.artifact_type === "ArtifactWorkspaceDocument" ? ChartLine : Table;
   return (
     <section
-      className="my-3 overflow-hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_16px_42px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+      className="reading-surface glass-panel-radius my-3 overflow-hidden border p-2"
       aria-label={`${block.reference.artifact_type} 数据展示`}
     >
       <div className="flex items-center justify-between gap-3 px-2 py-1.5">

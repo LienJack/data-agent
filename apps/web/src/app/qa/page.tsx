@@ -45,9 +45,9 @@ export default function QAPage() {
     })();
   }, [openConversation, openTrajectory, restoreInspector, selectConversation, setView]);
   return (
-    <div className="qa-page-frame min-w-0 bg-[var(--color-bg-primary)]">
+    <div className="qa-page-frame min-w-0 bg-transparent">
       <nav
-        className="col-start-1 row-start-1 flex h-11 shrink-0 items-center gap-1 border-b border-[var(--color-border-default)] bg-[var(--color-bg-surface)] px-3 sm:px-5"
+        className="glass-surface col-start-1 row-start-1 flex h-11 shrink-0 items-center gap-1 border-b px-3 sm:px-5"
         aria-label="对话视图"
       >
         {(["conversation", "trajectory"] as const).map((candidate) => (
@@ -56,7 +56,7 @@ export default function QAPage() {
             type="button"
             aria-current={view === candidate ? "page" : undefined}
             onClick={() => setView(candidate)}
-            className={`flex h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium ${view === candidate ? "bg-[color-mix(in_srgb,var(--color-accent)_9%,transparent)] text-[var(--color-accent)]" : "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"}`}
+            className={`glass-control-radius flex h-8 items-center gap-1.5 px-2.5 text-xs font-medium ${view === candidate ? "bg-[color-mix(in_srgb,var(--color-accent)_9%,transparent)] text-[var(--color-accent)]" : "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]"}`}
           >
             {candidate === "conversation" ? (
               <ChatCircleDots aria-hidden="true" size={15} />

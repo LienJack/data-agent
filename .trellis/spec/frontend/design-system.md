@@ -47,3 +47,43 @@ amber/red 仅表达状态。避免营销 hero、装饰渐变、嵌套卡片和�
 - 1440x1000：Workspace home、QA、Tests、Data Sources、Semantic Preview、Settings。
 - 390x844：Login、Workspace home、Analysis、QA、Tests、Members、Semantic Preview。
 - Agent preview：collapsed screenshot、expanded tool screenshot、Enter keyboard toggle。
+
+## Q&A Glass Material Contract
+
+Q&A chrome 使用 `design-system.css` 的语义材质，而不是在组件内散落 blur：
+
+```css
+:root {
+  --glass-fill: rgb(247 250 247 / 72%);
+  --glass-fill-strong: rgb(251 253 250 / 88%);
+  --glass-border-inner: rgb(255 255 255 / 82%);
+  --glass-shadow-tint: rgb(31 56 44 / 18%);
+  --glass-blur: 24px;
+  --glass-saturate: 132%;
+}
+
+.glass-surface {
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturate));
+}
+```
+
+- `.glass-surface/.glass-surface-strong` 只用于 Sidebar、Topbar、Composer、Inspector 和移动导航；
+  `.glass-overlay` 配对 drawer/dialog backdrop；正文、Table、VChart、code 使用 `.reading-surface`，不继承 blur。
+- Composer 必须保留在 `qa-page-frame` 的 row 3，Inspector 继续由 `computeInspectorColumns` 和 container
+  `ResizeObserver` 让步。禁止用 fixed Composer 或视觉层重新计算 geometry。
+- `@supports not (backdrop-filter...)`、`prefers-reduced-transparency` 和 print 必须切换为 opaque surface；
+  `prefers-reduced-motion` 必须停止 running pulse 与 skeleton shimmer。
+- running/shimmer 仅动画 pseudo-element 的 `transform/opacity`；不能用 React state 驱动逐帧效果。
+
+Good：组件只写 `className="glass-surface-strong"`，材质数值由 token 统一控制。
+
+Base：不支持透明度时仍呈现带边界的浅色实体 panel，交互和 DOM 顺序不变。
+
+Bad：在每个 Think/Tool/Artifact 行写 `backdrop-blur-xl bg-white/60 shadow-*`，造成卡片堆、数值漂移和 fallback 缺失。
+
+必需测试：
+
+- CSS contract 锁定六个 token、四个 surface class 和四类 fallback；
+- 1440/1024/768/767/390 断言 `scrollWidth === clientWidth` 与 Composer/Inspector 无交叠；
+- 1280/1000/959 保留 Inspector concession；
+- computed style 证明 chrome 有 token blur，reading surface 为 `backdrop-filter: none`，reduced-motion 的动画名为 `none`。

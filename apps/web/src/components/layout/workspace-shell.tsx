@@ -35,7 +35,7 @@ export function WorkspaceShell({ access, navigation, children }: WorkspaceShellP
 
   return (
     <WorkspaceI18nProvider>
-      <div className="flex min-h-[100dvh] flex-row bg-[var(--color-bg-canvas)]">
+      <div className="workspace-glass-canvas flex min-h-[100dvh] flex-row">
         <Sidebar access={access} navigation={navigation} />
         <div className="flex min-h-[100dvh] min-w-0 flex-1 flex-col">
           <WorkspaceTopbar access={access} />

@@ -71,7 +71,7 @@ export function ChatInput() {
   }, [input, resourcesComplete, selectedFiles, sendMessage, sending, switching]);
 
   return (
-    <div className="shrink-0 border-t border-[var(--color-border-default)] bg-[color-mix(in_srgb,var(--color-bg-surface)_96%,transparent)] px-3 pb-3 pt-3 backdrop-blur-xl sm:px-5">
+    <div className="qa-composer-stage shrink-0 border-t border-transparent px-3 pb-3 pt-3 sm:px-5">
       <div className="mx-auto w-full max-w-[920px]">
         {(resourceError || resourceNotice) && (
           <div
@@ -93,7 +93,7 @@ export function ChatInput() {
           </div>
         )}
 
-        <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2.5 pb-2.5 pt-3 shadow-[var(--shadow-float)] transition-[border-color,box-shadow] focus-within:border-[var(--color-border-focused)] sm:px-3 sm:pb-3">
+        <div className="glass-panel-radius glass-surface-strong border px-2.5 pb-2.5 pt-3 transition-[border-color,box-shadow] focus-within:border-[var(--color-border-focused)] sm:px-3 sm:pb-3">
           <label htmlFor="qa-composer-input" className="sr-only">
             给数据分析 Agent 发送消息
           </label>
@@ -132,7 +132,7 @@ export function ChatInput() {
             <div className="flex min-w-0 w-full items-center justify-end gap-1.5 sm:w-auto sm:flex-none">
               {sending && (
                 <span className="hidden items-center gap-1 text-[10px] text-[var(--color-text-muted)] md:flex">
-                  <span className="size-1.5 rounded-full bg-[var(--color-accent)]" />
+                  <span className="qa-running-pulse size-1.5 rounded-full bg-[var(--color-accent)]" />
                   {connection === "reconnecting" ? "恢复连接" : "执行中"}
                 </span>
               )}

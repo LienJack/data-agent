@@ -1,6 +1,6 @@
 # DeepSeek Harness modified-source notice
 
-The Q&A activity assembler, safe Assistant Markdown block composition, disclosure rows, Inspector selection/material
+The Q&A activity assembler, safe Assistant Markdown block composition, disclosure rows, Inspector selection/detail
 boundary, durable replay + live merge, and Inspector concession layout in this directory adapt implementation patterns
 from DeepSeek Harness at fixed commit
 `47f943859bef60e4160492346772ded9b24f765a`.
@@ -26,3 +26,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+The Apple-style glass tokens, CSS fallbacks, Q&A surface mapping, motion CSS, and Data Agent visual treatment are
+original Data Agent presentation work. They do not copy Apple, Codex, Reasonix, or DeepSeek Harness source and do not
+expand this modified-source notice beyond the adapted conversation and Inspector behavior identified above.
