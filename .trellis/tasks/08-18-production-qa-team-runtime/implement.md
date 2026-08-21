@@ -1,5 +1,6 @@
 # Implementation Plan
 
+- [ ] 建立 Harness runtime 来源映射，优先移植 persistence/checkpoint/replay/subagent lifecycle 与 crash-recovery test 结构，保留 MIT notice。
 - [ ] 写 production runtime wiring 失败测试，证明 stub 被移除且无 legacy fallback。
 - [ ] 实现 deterministic root/child task 与 Team Store authority adapter。
 - [ ] 实现 Semantic readiness/skip decision 和 status emission。

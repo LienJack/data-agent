@@ -17,6 +17,10 @@ lease + effective config + resolved context
 组合现有 `PostgresTeamRunStore`、`MastraTeamRuntime`、`TeamWorkflowRegistry`、Provider Dispatch、
 Resolved Context、Semantic read、Text2SQL compiler/sandbox、Artifact store 和 Report projector。新增组合层，不复制领域逻辑。
 
+控制面实现优先移植/改造 DeepSeek Harness 的 session persistence coordinator、checkpoint-before-dispatch、
+append-only/replay、subagent lifecycle 和 crash-recovery 测试结构；Text2SQL/Semantic/Report 领域 ports、PostgreSQL
+Team Store、Provider billing、Artifact/Acceptance authority 保持 Data Agent 原实现。这里的“不复制领域逻辑”不表示禁止复制 Harness 通用控制面代码。
+
 ## Reliability
 
 - Persist-before-emit：task transition 成功后才发 Agent event。

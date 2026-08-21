@@ -17,6 +17,10 @@
 - Subagent Inspector 先从当前 durable replay 构建 baseline，再消费同一 Run SSE 增量，按 sequence 展示该 Agent 的 status、Tool 与 Artifact；只展示严格 Public Run Event，不显示 raw frame、Provider callback 或 chain-of-thought。
 - Artifact Inspector 复用现有 Workspace Artifact Preview API/renderer，支持 loading/unsupported/denied/hash mismatch/stale ref；“文件”必须是 governed ArtifactReference，不读取浏览器给出的任意本地路径。
 - 桌面为可关闭/可调整的右栏；空间不足先自动收起 Inspector，不压坏中心 answer。390px 使用内容区 sheet，Composer 仍可见可操作，关闭后焦点返回触发项。
+- DeepSeek Harness 是主要代码实现参考：优先移植并改造其 assembler/snapshot、ReasoningRow/ToolRow、
+  AppFrame/details rail、selection store、Subagent baseline/live 和 E2E 结构；保留来源与 MIT notice。
+- 功能尽可能对标 Codex 桌面端：Inline 顺序、折叠行为、文件/Artifact Inspector、Subagent live Inspector、
+  右栏调宽/关闭/恢复、键盘与焦点行为必须逐项验证；视觉继续使用 Data Agent design system。
 - 无事件、排队、失败、取消、断线、旧 Run、stale trace 都有明确非成功状态。
 - 中英文、键盘、screen reader、focus-visible、reduced motion 完整。
 - 内部 role Model profiles 不出现在用户可选模型菜单。
@@ -29,3 +33,4 @@
 - [ ] 点击 Subagent 名称打开实时 Inspector；点击 Artifact/file link 打开安全预览；chevron 仍只控制 Inline 折叠，键盘与焦点返回正确。
 - [ ] Inspector baseline + SSE、断线重连、刷新 URL 恢复、Conversation/Run 切换和 stale target 都有确定性测试，顺序与 trajectory 一致。
 - [ ] Tool/Subagent/Artifact 均可从 Inspector 定位 trajectory，错误状态展示公开 reason code。
+- [ ] Codex 桌面功能矩阵逐项达到 MATCH/ADAPTED；DeepSeek Harness source-reuse ledger 覆盖所有移植文件、测试、修改点和 MIT 归属。

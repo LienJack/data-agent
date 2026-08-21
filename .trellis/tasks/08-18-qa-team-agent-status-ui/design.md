@@ -52,15 +52,27 @@ Preview API 派生，不维护第二份 Agent lifecycle 状态。
 
 只对 RUNNING 状态点使用 opacity pulse，对 disclosure caret 和 Inspector track 使用 transform；reduced motion 全部关闭。Inspector 打开不得重置中心文档滚动位置。
 
-## Harness Adaptation
+## Primary Code Reuse: DeepSeek Harness
 
-借鉴参考图的 inline Think/Tool 行，以及 Harness 的 StateDot、二级摘要、耗时和 keyed snapshot。进一步参考：
+DeepSeek Harness 固定 commit `47f943859bef60e4160492346772ded9b24f765a` 是 UI 实现的主要源码基线。
+实现时优先复制/裁剪/改造以下代码与测试结构，不以“保持项目独立”为由全部重写：
 
-- `AppFrame` 的 sidebar/center/details 三栏让步链：空间不足先收起 details，保持中心列可读。
-- `DetailsPanel` 的“selection in store、material from snapshot”边界：Inspector 不拥有第二套事件数据。
-- `SessionManager/Session` 的 durable baseline + live increment，以及 Subagent catalog 的 summary projection。
+- `AppFrame.tsx`、`columns.ts`、`stores.ts`：移植 sidebar/center/details 让步链、resize、selection preference。
+- `DetailsPanel.tsx`、`tool-node-reader.ts`：移植“selection in store、material from snapshot”边界。
+- `conversation-assembler.ts`、`chat-snapshot-builder.ts`、`trajectory-snapshot-builder.ts`：移植 keyed incremental projection。
+- `ReasoningRow.tsx`、`ToolRow.tsx`、Disclosure primitives：移植折叠、状态、键盘、reduced-motion 结构。
+- `SessionManager/Session`、`SubagentCatalogAction.tsx`：移植 durable baseline + live increment、状态/耗时/诊断。
+- 对应 client specs 与 Web E2E：优先改写 fixture/断言，不从零发明另一套测试语义。
 
-不复制 Harness 的多级 lineage、token metrics、品牌样式或 ProducedFiles 的宿主 `openFile`；Data Agent 文件预览只走受治理 Artifact API，也不展示原始 chain-of-thought。
+移植后替换 Cordis/plugin shares、SessionEvent、host `openFile`、品牌 token、多级 lineage 和私有 payload；接入
+Data Agent 的 `PublicRunEvent`、QA store、Workspace RBAC、Artifact Preview、Phosphor icons 与一层 Team depth。
+实质性复制保留 DeepSeek MIT notice 和 modified-source 记录。
+
+## Codex Desktop Functional Target
+
+Codex 桌面端是黑盒行为基准。目标不是外观截图近似，而是操作结果尽可能一致：事件插入正文、默认折叠、
+点击文件/Artifact 打开右侧预览、点击 Subagent 打开持续更新的右栏、selection 切换、关闭/调宽、刷新恢复、
+错误/中断/耗时、键盘和焦点返回。无法适用的本地文件系统与私有推理明确标为 ADAPTED/OUT_OF_SCOPE。
 
 ## Error Matrix
 

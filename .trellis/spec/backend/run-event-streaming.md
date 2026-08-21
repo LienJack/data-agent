@@ -1,8 +1,9 @@
 # Run 公开事件流
 
-> Q&A 对话过程与轨迹必须由同一条 PostgreSQL `run_events` 追加日志派生。交互职责明确参考
-> `deepseek-harness` 的 `ReasoningRow`、`ToolRow` 与 `TrajectorySnapshotBuilder`，但不复制其
-> 源码、样式资产、依赖或另建一套客户端状态机。
+> Q&A 对话过程与轨迹必须由同一条 PostgreSQL `run_events` 追加日志派生。DeepSeek Harness 固定
+> commit `47f943859bef60e4160492346772ded9b24f765a` 是主要代码基线：在 MIT 条款下优先移植并改造
+> `ReasoningRow`、`ToolRow`、assembler/snapshot、details layout 和相关测试，避免另建近似状态机；
+> 同时必须替换为 Data Agent 的事件、权限、Artifact 和设计 token，并保留上游版权/许可与修改记录。
 
 ## 场景：对话实时过程与对话级轨迹
 
@@ -43,6 +44,8 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - `PublicRunEvent` 与 `ConversationTrajectory` 必须由 `@data-agent/contracts` 的 Zod Schema 解析。
 - display event 只允许严格、扁平、定长字段；写 `run_events` 前清理 Credential、Authorization、
   Connection Userinfo、Token 形态及 System Prompt 标记。
+- 复制/改造 Harness 实质性代码时维护 upstream path + commit + target path + modified status 来源清单，
+  保留 `Copyright (c) 2026 DeepSeek` 与 MIT permission notice；Codex 桌面仅作为黑盒功能验收基准。
 - 新增 Agent identity/Artifact locator 时必须使用显式 v2 runtime/public schema；读取保留 v1 decoder 并规范化
   旧 Tool event，禁止在 `@1.0.0` 下静默增加 required keys 或改写历史 sequence。
 - 前端以 `(run_id, sequence)` 去重。Chat 的 Process Row 和 Trajectory 必须共享同一事件数组。
@@ -86,6 +89,7 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - Good：Tool 在 Artifact commit/hash verify 后发布 exact ref，Preview API 再做 Workspace READ 校验。
 - Base：旧 Run 只有 lifecycle/terminal；轨迹仍可回放，对话不显示空工具卡。
 - Bad：组件接收 `unknown` 后使用类型断言，或另建一个仅存在内存中的“轨迹状态”。
+- Bad：已有 Harness assembler/details 实现可适配却无理由从零重写，或复制后删除 MIT 来源记录。
 - Bad：把 Chain-of-Thought、Provider Request、SQL Rows 或原始工具对象序列化进 `run_events`。
 
 ### 6. Tests Required
@@ -99,6 +103,7 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - Artifact：Tool terminal ref exactness、Preview READ/scope/revision/hash、unsupported/denied 无 raw fallback。
 - UI：Reasoning/Tool 默认折叠、原生 Button 键盘语义、失败/中断、长输出滚动。
 - Trajectory：按用户问题与 Run 分组、Duration/Turns/Calls、`runId + sequence` 双向定位。
+- Provenance：source-reuse ledger 覆盖所有 copied/adapted Harness 文件，notice/commit/modified status 完整。
 
 ### 7. Wrong vs Correct
 

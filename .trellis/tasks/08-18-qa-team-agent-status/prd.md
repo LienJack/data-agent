@@ -16,6 +16,9 @@
 - DeepSeek Harness 固定参考提交 `47f943859bef60e4160492346772ded9b24f765a` 使用
   durable event -> keyed assembler -> snapshot -> UI 的分层；subagent UI 只读取 summary/lineage projection，
   不直接拼接原始事件或私有推理。
+- DeepSeek Harness 根许可证为 MIT。它是本任务的主要代码参考，不只作为视觉灵感：在 Data Agent 边界兼容时，
+  优先移植并改造其 assembler、snapshot、details layout、disclosure/tool row、subagent baseline/live merge 与测试结构，
+  避免重复发明；复制实质性代码必须记录上游文件、固定提交、修改点并保留 MIT 版权/许可声明。
 - 2026-08-21 通过 Understand Anything fresh graph 复核：Harness details panel 的选择写入共享 store、内容从 session snapshot 派生；session/subagent 使用 durable baseline + live increment；三栏空间不足时优先收起 details。Harness ProducedFiles 走宿主 `openFile`，该行为不适用于 Data Agent 的多租户 Artifact 权威。
 
 ## Requirements
@@ -40,6 +43,12 @@
 - R11：Q&A conversation 增加 Codex 风格右侧 Inspector。选择 Subagent 名称时显示从同一 Run public event replay + SSE 派生的实时公开 feed；选择 Artifact/file link 时通过现有 Workspace Artifact Preview API 显示安全预览。
 - R12：Inspector selection 使用严格 `subagent`/`artifact` 判别联合并可通过 URL 恢复；连接状态与 Agent authority 分离，切换 Conversation/Run 时不得保留 stale identity。
 - R13：只有完整 `ArtifactReference` 才可成为 file preview target；禁止浏览器传任意本地路径、从 Tool output 猜文件、把 raw SSE frame/Provider callback/private reasoning 展示在 Inspector。
+- R14：功能尽可能对标 Codex 桌面端当前可观察体验：回答内事件顺序、默认折叠、文件/Artifact 右栏预览、
+  Subagent 右栏实时活动、selection 切换、面板关闭/调宽、刷新恢复、键盘和 focus return 均进入验收矩阵。
+  Codex 是黑盒功能基准，不假定或复制其私有源码、协议和品牌资产。
+- R15：实现优先级固定为“Data Agent 权威合同 > Codex 桌面功能语义 > DeepSeek Harness 可复用实现 > Data Agent 视觉 token”。
+  若 Harness 实现与 PostgreSQL authority、Workspace RBAC、ArtifactReference 或一层 Team 深度冲突，只改造冲突边界，
+  不以“重新手写”为默认选择。
 
 ## Acceptance Criteria
 
@@ -50,13 +59,16 @@
 - [ ] Tool/Subagent 行可见 RUNNING/COMPLETED/FAILED/BLOCKED 等状态；默认折叠且 Enter/Space 可操作。
 - [ ] Subagent Inspector 先加载 durable baseline，再从相同 Run sequence 续接 SSE；刷新、断线重连和 terminal closure 后与 Inline stream/trajectory 字节级 identity 一致。
 - [ ] Artifact/file link 只使用 exact reference，预览支持既有 REPORT/SQL/TABLE/CHART/MARKDOWN renderer；unsupported/denied/hash mismatch 不回退 raw output。
+- [ ] 建立 Codex 桌面功能对标矩阵并完成逐项 browser proof；每项标注 `MATCH/ADAPTED/OUT_OF_SCOPE`，不得只写“类似 Codex”。
+- [ ] 建立 DeepSeek Harness 来源清单，记录复用/改造的上游文件、commit、Data Agent 目标文件、差异和 MIT notice；可复用项无理由重写视为 Review finding。
 - [ ] 1440x1000 和 390x844 浏览器截图无重叠、裁切或横向溢出，reduced motion 下无持续动画。
 - [ ] Worker/Web/contracts focused tests、typecheck、Biome、migration renderer/static 与浏览器实际运行验证通过。
 
 ## Out of Scope
 
 - 不展示 private chain-of-thought、provider `reasoning_content`、原始 prompt/context 或凭据。
-- 不复制 Harness 的通用多级子会话目录、token 计费面板、无限递归 lineage 或品牌视觉。
+- 不引入 Harness 超出当前需求的通用多级子会话目录、token 计费面板、无限递归 lineage 或品牌视觉；
+  这些范围之外，允许并鼓励直接移植可兼容的源码、纯函数、状态机、组件结构和测试夹具。
 - 不照搬 Harness 的宿主本地 `openFile`，不允许浏览器预览 Workspace 之外的任意路径。
 - 不展示 Screenshot 中可能来自模型的原始 Think 文本；只展示 Data Agent 生成并通过严格合同的公共摘要。
 - 不把本地 optimistic 状态、SSE 连接状态或“正在生成回答”当作 Agent authority。

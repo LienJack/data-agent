@@ -77,6 +77,11 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
   续接，不得把 RUNNING 改为失败/完成。
 - 只有完整 `ArtifactReference` 可渲染 file preview action；裸路径和 Tool output 中的 path-like 文本只作摘要。
 - desktop 空间不足时先收起 Inspector，移动端 Inspector 不得遮挡 Composer；关闭后焦点返回触发项。
+- UI 实现以 DeepSeek Harness 固定 commit `47f943859bef60e4160492346772ded9b24f765a` 为主要源码基线，
+  优先移植 assembler/snapshot、ReasoningRow/ToolRow、AppFrame/details、Subagent baseline/live 与测试；
+  替换 Cordis/SessionEvent/host openFile/品牌 token 为 Data Agent 边界，并保留 MIT 来源/修改记录。
+- Codex 桌面端是黑盒功能基准；Inline 顺序、折叠、文件/Agent Inspector、面板生命周期、键盘和焦点必须进入
+  `MATCH/ADAPTED/OUT_OF_SCOPE` 验收矩阵，禁止用静态视觉相似替代功能 proof。
 - reasoning 与 tool 默认折叠，按钮或原生 `summary` 必须可键盘操作并暴露 expanded state。
 - `WorkspaceJourneyEvidenceArtifact` 是 Goal/CI proof，不是 Authority Receipt；只有 required checkpoint 全 PASS 且 artifact hash 有效时才是 `GO`。
 
@@ -106,6 +111,8 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
 - Base: a legacy Run without Artifact refs remains readable but has no synthetic file preview action.
 - Bad: rendering model `reasoning_content`, exposing checkpoint tool messages, treating `completed` as `accepted`,
   or opening a path parsed from Tool output.
+- Bad: rebuilding a parallel UI state machine when the pinned Harness implementation can be adapted, or copying it
+  without upstream path/commit/MIT/modified-source records.
 
 ## 6. Tests Required
 
@@ -116,6 +123,8 @@ QA 使用 `/api/workspaces/:workspaceId/runs/:runId/events/stream`，并采用 `
 - Web/API: Artifact Preview exact Workspace/scope/run/revision/hash, unsupported/denied/hash mismatch and no raw fallback.
 - Web: Chinese/English switching changes display text without pathname/query/hash or Workspace Store mutation.
 - Browser: 1440px and 390px have no document horizontal overflow; language and disclosure controls work with Enter.
+- Browser: Codex parity matrix covers Inspector open/switch/resize/close/restore and Subagent live updates with proof.
+- Provenance: every copied/adapted Harness source and test has an upstream/target mapping plus retained MIT notice.
 
 ## 7. Wrong vs Correct
 

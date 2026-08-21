@@ -5,6 +5,32 @@
 延续 Data Agent 冷中性色、墨绿 accent 和高密度工作台语言，把执行过程做成回答正文的一部分：
 公共 Think、Tool、Context、Subagent 是轻量单行 disclosure，正文在其间自然流动；右侧 Inspector 承载需要持续观察或较大阅读面积的 Subagent live feed 与 Artifact preview。
 
+## Reference Priority And Code Reuse
+
+本纵向切片明确采用两类参考，职责不同：
+
+1. **Codex 桌面端 = 功能基准**：以当前可观察交互定义用户体验和验收，不推断其私有实现。
+2. **DeepSeek Harness = 主要代码基线**：固定 commit `47f943859bef60e4160492346772ded9b24f765a`，
+   在 MIT 条款下优先复制、裁剪和改造可兼容实现，而不是只看界面后重新手写。
+3. **Data Agent = 权威与视觉边界**：保留 PostgreSQL Run Events、Workspace RBAC、ArtifactReference、现有组件和设计 token。
+
+预计 Inline UI、Inspector shell、assembler/snapshot、Subagent baseline/live merge 与相应测试的大部分代码来自
+Harness 移植改造；Data Agent 新写部分主要集中在 v2 事件合同、PostgreSQL validator、Workspace/Artifact authority
+和 Semantic/Text2SQL/Report 领域适配。
+
+复用源码或测试时，在目标文件头或仓库第三方来源清单记录 upstream path + commit + modified status，保留
+`Copyright (c) 2026 DeepSeek` 与 MIT 许可文本。Codex 只形成行为验收记录，不形成代码来源条目。
+
+| Data Agent deliverable | DeepSeek Harness primary source | Reuse mode |
+| --- | --- | --- |
+| event -> keyed block projection | `conversation-assembler.ts`, `chat-snapshot-builder.ts`, `trajectory-snapshot-builder.ts` | 移植状态机/排序/增量刷新结构，替换为 `PublicRunEvent` identity |
+| inline Think/Tool disclosure | `ReasoningRow.tsx`, `ToolRow.tsx`, `DisclosureRow` primitives | 移植组件结构、状态语义、键盘与测试，换用 Data Agent token/icon |
+| three-column Inspector shell | `AppFrame.tsx`, `columns.ts`, `stores.ts` | 移植 details rail、让步链、resize/persist 逻辑，接入 Workspace shell |
+| Inspector material lookup | `DetailsPanel.tsx`, `tool-node-reader.ts` | 移植 selection-in-store/material-from-snapshot 边界，扩展 Agent/Artifact target |
+| Subagent baseline + live | `session.ts`, `manager.ts`, `subagent-lineage.ts`, `SubagentCatalogAction.tsx` | 移植 baseline/live merge、状态/耗时/诊断模式，限制为一层 Team depth |
+| produced file affordance | `ProducedFiles.tsx`, `turn-deliverables.ts` | 可复用 chip/测宽/可访问交互；把宿主 `openFile(path)` 替换为 Artifact Preview |
+| replay/browser proof | Harness assembler、details lifecycle、subagent conversation/interrupt E2E | 移植 fixture 和断言结构，改写为真实 Web + Worker + SSE |
+
 ## Content Plan
 
 ```text
@@ -32,6 +58,22 @@ Subagent · Report · report accepted             [COMPLETED]
 - Disclosure control 展开 Inline details；Subagent 名称和 Artifact/file link 是独立 Inspector action，使用兄弟控件避免 nested button。
 - Subagent 展开显示一层 Tool/Artifact children；Inspector 中“在轨迹中查看”跳到对应 sequence。
 - Inspector 关闭后焦点返回触发项，切换 Conversation/Run 时关闭 stale target；自动收起只隐藏 panel，不删除当前 selection。
+
+## Codex Desktop Parity Matrix
+
+| Observable capability | Required level |
+| --- | --- |
+| Think/Tool/Subagent 与正文按真实顺序穿插 | MATCH |
+| Think、Tool、Subagent 默认折叠及 Enter/Space | MATCH |
+| 点击文件/Artifact 在右栏预览并保持对话上下文 | MATCH，文件权威改为 ArtifactReference |
+| 点击 Subagent 在右栏观察持续更新的公开活动 | MATCH，数据源改为 durable Run SSE |
+| 右栏选择切换、关闭、调宽、刷新恢复 | MATCH |
+| running/completed/failed/skipped/blocked、耗时、公开错误 | MATCH |
+| 桌面双栏和窄屏可用性、focus return | MATCH/ADAPTED |
+| 私有 chain-of-thought、Codex 私有工具协议、任意本地文件系统 | OUT_OF_SCOPE |
+
+来源与对标账本分别维护在 `research/deepseek-harness-source-reuse-ledger.md` 和
+`research/codex-desktop-parity-matrix.md`；实现和验收过程中持续补充，不只在最终总结中回忆。
 
 ## Cross-Layer Flow
 
@@ -145,6 +187,8 @@ function assembleSubagentInspector(
 - Worker：persist-before-emit、commit-before-publish、retry/reconcile 不重复 Provider/Tool effect。
 - Web assembler/store：Inline 与 Inspector 同源、URL restore、stale target、Conversation/Run switch、focus restore。
 - Browser：真实 SSE reconnect、Artifact Preview denied/unsupported、1440x1000/390x844、center scroll 与 Composer 可操作。
+- Reference parity：Codex capability matrix 每行必须有截图、ARIA snapshot 或交互断言；DeepSeek Harness 来源清单中的
+  每个复用项必须有对应 Data Agent test，并验证没有带入 host `openFile`、多级 lineage 或私有 event payload。
 
 ## Wrong vs Correct
 
@@ -165,6 +209,7 @@ const preview = await fetchArtifactPreview(target.reference);
 - 旧 Run 没有 `artifact_refs` 时不从 path/output 回填，Artifact Inspector 不可用但现有 answer/trajectory 保持可读。
 - 新写入使用 `run-runtime-event@2.0.0` / `public-run-event@2.0.0`；v1 decoder 保留并规范化旧 Tool event，数据库 migration 前后原子部署，历史 sequence/row 不改写。
 - 回滚 UI 不删除事件；回滚 runtime 时新 Run 明确 BLOCKED，不回退 legacy Research。
+- 回滚或重写已移植的 Harness 代码时保留来源/许可记录；替换实现不等于删除第三方归属历史。
 
 ## Task Ordering
 

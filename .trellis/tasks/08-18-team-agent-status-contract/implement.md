@@ -1,5 +1,6 @@
 # Implementation Plan
 
+- [ ] 建立 Harness contract/persistence 来源映射，优先移植 known-event refusal、sequence/replay、normalizer 和 property-test helper；记录 MIT notice。
 - [ ] 先写 Contracts strict/tamper/round-trip 失败测试，覆盖 Agent identity、Tool identity 和 `artifact_refs`。
 - [ ] 扩展 runtime/public event schemas、display input 和 `toPublicRunEvent`。
 - [ ] 新增 PostgreSQL migration/source/renderer 和 assertion vectors。

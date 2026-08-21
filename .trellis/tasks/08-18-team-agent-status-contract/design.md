@@ -4,6 +4,10 @@
 
 Contracts 定义唯一 DTO；PostgreSQL 验证 authoritative runtime event；Web 的 Inline stream、Subagent Inspector 和 trajectory 只消费同一 public projection。Artifact Preview 继续通过已有 Workspace Artifact API 读取，不把文件内容塞进 SSE。
 
+DeepSeek Harness 的 SessionEvent surface、known-event refusal、append-only sequence、assembler identity 和
+persistence contract 是本子任务的主要代码/测试参考；允许在 MIT 条款下移植 validator、normalizer、property-test
+与 replay helper 的结构。Data Agent 仍定义自己的 v2 DTO、PostgreSQL validator 和 Workspace scope，不能直接暴露 Harness 私有事件。
+
 ## Data Model
 
 - `run.agent_status` 是 display-only event，不改变 Run Projection status。

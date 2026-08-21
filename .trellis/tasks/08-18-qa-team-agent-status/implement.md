@@ -1,5 +1,6 @@
 # Parent Integration Plan
 
+- [ ] 维护 `research/codex-desktop-parity-matrix.md` 与 `research/deepseek-harness-source-reuse-ledger.md`；固定 Harness commit、MIT 许可、上游/目标文件和改造理由。
 - [ ] 完成并提交 `08-18-team-agent-status-contract`。
 - [ ] 完成并提交 `08-18-production-qa-team-runtime`。
 - [ ] 完成并提交 `08-18-qa-team-agent-status-ui`。
@@ -10,6 +11,7 @@
 - [ ] 点击 SqlArtifact/AnalysisReport file link，验证右栏使用 exact ArtifactReference 安全预览；unsupported/denied/hash mismatch 无 raw fallback。
 - [ ] 验证 SSE 断开重连、页面刷新、Inspector URL restore、Conversation/Run 切换、trajectory deep-link 后三处状态一致。
 - [ ] 使用浏览器截图验证 1440x1000、390x844、Inspector open/closed、reduced motion、Composer 可操作且无横向溢出。
+- [ ] 对 Codex parity matrix 逐项给出 `MATCH/ADAPTED/OUT_OF_SCOPE` 证据；对 Harness ledger 逐项确认复用代码、测试和许可 notice。
 - [ ] 运行跨层 Contracts/Platform/Worker/Web/PostgreSQL checks，更新 specs 并提交父任务收口。
 
 ## Integration Gates
@@ -18,4 +20,5 @@
 - 任一 Agent/Tool durable identity 与 Public event identity 不一致即 HOLD。
 - 任一 Artifact preview 不可证明 exact scope/run/revision/hash，或使用裸路径/raw Tool output，即 HOLD。
 - Subagent Inspector 若依赖旁路 callback/SSE 或用连接状态推进权威状态，即 HOLD。
+- 可直接适配的 Harness 实现被无理由重写、实质性复制未记录 MIT 来源，或只做“视觉类似 Codex”而无功能 proof，即 HOLD。
 - 最终回答只来自 accepted `AnalysisReport`；Text2SQL/Report failure 不得显示成功。
