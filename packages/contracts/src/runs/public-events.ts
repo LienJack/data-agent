@@ -1,95 +1,142 @@
 import { z } from "zod";
+import { agentSpecialistProfileIdSchema } from "../agents/profile-registry.js";
+import { artifactReferenceSchema } from "../artifacts/envelope.js";
 import { immutableIdSchema, timestampSchema, versionIdentifierSchema } from "../common/index.js";
-import { runRuntimeEventSchema } from "./runtime.js";
+import { runAgentStatusSchema, runRuntimeEventSchema } from "./runtime.js";
 
-const publicEventBase = {
+const publicEventV1Base = {
   schema_version: z.literal("public-run-event@1.0.0"),
   event_id: immutableIdSchema,
   run_id: immutableIdSchema,
   sequence: z.number().int().positive().safe(),
   occurred_at: timestampSchema,
 } as const;
-
+const publicEventV2Base = {
+  ...publicEventV1Base,
+  schema_version: z.literal("public-run-event@2.0.0"),
+} as const;
 const publicTextSchema = z.string().max(200_000);
 
-export const publicRunEventSchema = z.discriminatedUnion("type", [
+const lifecyclePayload = z.strictObject({
+  name: z.string().min(1).max(128),
+  status: z.enum(["QUEUED", "RUNNING", "WAITING"]),
+  summary: z.string().min(1).max(512),
+});
+const progressPayload = z.strictObject({
+  phase: versionIdentifierSchema,
+  title: z.string().min(1).max(128),
+  summary: publicTextSchema,
+  status: z.enum(["RUNNING", "COMPLETED"]),
+});
+const answerPayload = z.strictObject({ delta: z.string().min(1).max(100_000) });
+const reasoningPayload = z.discriminatedUnion("phase", [
   z.strictObject({
-    ...publicEventBase,
-    type: z.literal("lifecycle"),
-    payload: z.strictObject({
-      name: z.string().min(1).max(128),
-      status: z.enum(["QUEUED", "RUNNING", "WAITING"]),
-      summary: z.string().min(1).max(512),
-    }),
+    phase: z.literal("START"),
+    block_id: z.string().min(1).max(256),
+    title: z.string().min(1).max(128),
   }),
   z.strictObject({
-    ...publicEventBase,
-    type: z.literal("progress"),
-    payload: z.strictObject({
-      phase: versionIdentifierSchema,
-      title: z.string().min(1).max(128),
-      summary: publicTextSchema,
-      status: z.enum(["RUNNING", "COMPLETED"]),
-    }),
+    phase: z.literal("DELTA"),
+    block_id: z.string().min(1).max(256),
+    delta: z.string().min(1).max(4_096),
   }),
   z.strictObject({
-    ...publicEventBase,
-    type: z.literal("tool"),
-    payload: z.strictObject({
-      call_id: z.string().min(1).max(256),
-      tool_name: versionIdentifierSchema,
-      title: z.string().min(1).max(128),
-      summary: publicTextSchema,
-      status: z.enum(["RUNNING", "COMPLETED", "FAILED"]),
-      input: publicTextSchema.nullable(),
-      output: publicTextSchema.nullable(),
-      duration_ms: z.number().int().nonnegative().safe().nullable(),
-      error_code: versionIdentifierSchema.nullable(),
-    }),
-  }),
-  z.strictObject({
-    ...publicEventBase,
-    type: z.literal("answer"),
-    payload: z.strictObject({ delta: z.string().min(1).max(100_000) }),
-  }),
-  z.strictObject({
-    ...publicEventBase,
-    type: z.literal("reasoning"),
-    payload: z.discriminatedUnion("phase", [
-      z.strictObject({
-        phase: z.literal("START"),
-        block_id: z.string().min(1).max(256),
-        title: z.string().min(1).max(128),
-      }),
-      z.strictObject({
-        phase: z.literal("DELTA"),
-        block_id: z.string().min(1).max(256),
-        delta: z.string().min(1).max(4_096),
-      }),
-      z.strictObject({
-        phase: z.literal("END"),
-        block_id: z.string().min(1).max(256),
-        summary: publicTextSchema,
-        duration_ms: z.number().int().nonnegative().safe(),
-      }),
-    ]),
-  }),
-  z.strictObject({
-    ...publicEventBase,
-    type: z.literal("terminal"),
-    payload: z.strictObject({
-      status: z.enum(["COMPLETED", "FAILED", "CANCELLED"]),
-      summary: z.string().min(1).max(512),
-      error_code: versionIdentifierSchema.nullable(),
-    }),
+    phase: z.literal("END"),
+    block_id: z.string().min(1).max(256),
+    summary: publicTextSchema,
+    duration_ms: z.number().int().nonnegative().safe(),
   }),
 ]);
-
-export const conversationTrajectorySchema = z.strictObject({
-  schema_version: z.literal("conversation-trajectory@1.0.0"),
-  conversation_id: immutableIdSchema,
-  events: z.array(publicRunEventSchema).max(10_000),
+const terminalPayload = z.strictObject({
+  status: z.enum(["COMPLETED", "FAILED", "CANCELLED"]),
+  summary: z.string().min(1).max(512),
+  error_code: versionIdentifierSchema.nullable(),
 });
+const toolV1Payload = z.strictObject({
+  call_id: z.string().min(1).max(256),
+  tool_name: versionIdentifierSchema,
+  title: z.string().min(1).max(128),
+  summary: publicTextSchema,
+  status: z.enum(["RUNNING", "COMPLETED", "FAILED"]),
+  input: publicTextSchema.nullable(),
+  output: publicTextSchema.nullable(),
+  duration_ms: z.number().int().nonnegative().safe().nullable(),
+  error_code: versionIdentifierSchema.nullable(),
+});
+const toolV2Payload = toolV1Payload.extend({
+  profile_id: agentSpecialistProfileIdSchema.nullable(),
+  task_id: immutableIdSchema.nullable(),
+  artifact_refs: z.array(artifactReferenceSchema).max(32),
+});
+const agentPayload = z.strictObject({
+  profile_id: agentSpecialistProfileIdSchema,
+  task_id: immutableIdSchema.nullable(),
+  status: runAgentStatusSchema,
+  phase: versionIdentifierSchema,
+  title: z.string().min(1).max(128),
+  summary: publicTextSchema,
+  duration_ms: z.number().int().nonnegative().safe().nullable(),
+  error_code: versionIdentifierSchema.nullable(),
+});
+
+export const publicRunEventV1Schema = z.discriminatedUnion("type", [
+  z.strictObject({ ...publicEventV1Base, type: z.literal("lifecycle"), payload: lifecyclePayload }),
+  z.strictObject({ ...publicEventV1Base, type: z.literal("progress"), payload: progressPayload }),
+  z.strictObject({ ...publicEventV1Base, type: z.literal("tool"), payload: toolV1Payload }),
+  z.strictObject({ ...publicEventV1Base, type: z.literal("answer"), payload: answerPayload }),
+  z.strictObject({ ...publicEventV1Base, type: z.literal("reasoning"), payload: reasoningPayload }),
+  z.strictObject({ ...publicEventV1Base, type: z.literal("terminal"), payload: terminalPayload }),
+]);
+
+export const publicRunEventV2Schema = z.discriminatedUnion("type", [
+  z.strictObject({ ...publicEventV2Base, type: z.literal("lifecycle"), payload: lifecyclePayload }),
+  z.strictObject({ ...publicEventV2Base, type: z.literal("progress"), payload: progressPayload }),
+  z.strictObject({ ...publicEventV2Base, type: z.literal("tool"), payload: toolV2Payload }),
+  z.strictObject({ ...publicEventV2Base, type: z.literal("agent"), payload: agentPayload }),
+  z.strictObject({ ...publicEventV2Base, type: z.literal("answer"), payload: answerPayload }),
+  z.strictObject({ ...publicEventV2Base, type: z.literal("reasoning"), payload: reasoningPayload }),
+  z.strictObject({ ...publicEventV2Base, type: z.literal("terminal"), payload: terminalPayload }),
+]);
+
+/** Reads retained v1 history and current v2 public events without rewriting either. */
+export const publicRunEventSchema = z.union([publicRunEventV1Schema, publicRunEventV2Schema]);
+export const conversationTrajectorySchema = z.union([
+  z.strictObject({
+    schema_version: z.literal("conversation-trajectory@1.0.0"),
+    conversation_id: immutableIdSchema,
+    events: z.array(publicRunEventV1Schema).max(10_000),
+  }),
+  z.strictObject({
+    schema_version: z.literal("conversation-trajectory@2.0.0"),
+    conversation_id: immutableIdSchema,
+    events: z.array(publicRunEventV2Schema).max(10_000),
+  }),
+]);
+export const qaInspectorTargetSchema = z
+  .discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("artifact"),
+      run_id: immutableIdSchema,
+      reference: artifactReferenceSchema,
+      anchor_sequence: z.number().int().positive().safe(),
+    }),
+    z.strictObject({
+      kind: z.literal("subagent"),
+      run_id: immutableIdSchema,
+      profile_id: agentSpecialistProfileIdSchema,
+      task_id: immutableIdSchema,
+      anchor_sequence: z.number().int().positive().safe(),
+    }),
+  ])
+  .superRefine((target, ctx) => {
+    if (target.kind === "artifact" && target.reference.run_id !== target.run_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Artifact Inspector target 的 Run identity 必须与引用一致。",
+        path: ["reference", "run_id"],
+      });
+    }
+  });
 
 const SECRET_PATTERNS: readonly RegExp[] = [
   /\b(?:bearer|basic)\s+[a-z0-9._~+/=-]+/gi,
@@ -100,7 +147,6 @@ const SECRET_PATTERNS: readonly RegExp[] = [
   /(?:^|\n)\s*(?:system prompt|internal prompt|系统提示词|内部系统提示)\s*[:：].*(?=\n|$)/gi,
 ];
 
-/** Redact display text before it can enter a durable Run event. */
 export function redactPublicDisplayText(input: string): string {
   let output = input;
   for (const pattern of SECRET_PATTERNS) output = output.replace(pattern, "[REDACTED]");
@@ -109,39 +155,55 @@ export function redactPublicDisplayText(input: string): string {
 
 function base(event: z.infer<typeof runRuntimeEventSchema>) {
   return {
-    schema_version: "public-run-event@1.0.0" as const,
+    schema_version: "public-run-event@2.0.0" as const,
     event_id: event.event_id,
     run_id: event.run_id,
     sequence: event.sequence,
     occurred_at: event.occurred_at,
   };
 }
+function toolIdentity(event: z.infer<typeof runRuntimeEventSchema>) {
+  if (
+    event.schema_version === "run-runtime-event@2.0.0" &&
+    (event.event_type === "run.tool_started" ||
+      event.event_type === "run.tool_completed" ||
+      event.event_type === "run.tool_failed")
+  ) {
+    return {
+      profile_id: event.payload.profile_id,
+      task_id: event.payload.task_id,
+      artifact_refs: event.payload.artifact_refs,
+    };
+  }
+  return { profile_id: null, task_id: null, artifact_refs: [] };
+}
 
-/** Convert the authoritative event into the only DTO exposed to Web consumers. */
-export function toPublicRunEvent(input: unknown): PublicRunEvent {
+/** Convert an authoritative v1/v2 event into the current public v2 projection. */
+export function toPublicRunEvent(input: unknown): PublicRunEventV2 {
   const event = runRuntimeEventSchema.parse(input);
   const common = base(event);
+  const parse = (value: unknown) => publicRunEventV2Schema.parse(value);
   switch (event.event_type) {
     case "run.accepted":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "lifecycle",
         payload: { name: event.event_type, status: "QUEUED", summary: "任务已进入执行队列" },
       });
     case "run.leased":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "lifecycle",
         payload: { name: event.event_type, status: "RUNNING", summary: "Worker 已开始执行" },
       });
     case "run.checkpointed":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "lifecycle",
         payload: { name: event.event_type, status: "RUNNING", summary: "执行检查点已持久化" },
       });
     case "run.side_effect_committed":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "lifecycle",
         payload: {
@@ -151,13 +213,14 @@ export function toPublicRunEvent(input: unknown): PublicRunEvent {
         },
       });
     case "run.progress":
-      return publicRunEventSchema.parse({ ...common, type: "progress", payload: event.payload });
+      return parse({ ...common, type: "progress", payload: event.payload });
     case "run.tool_started":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "tool",
         payload: {
           ...event.payload,
+          ...toolIdentity(event),
           status: "RUNNING",
           output: null,
           duration_ms: null,
@@ -165,11 +228,12 @@ export function toPublicRunEvent(input: unknown): PublicRunEvent {
         },
       });
     case "run.tool_completed":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "tool",
         payload: {
           ...event.payload,
+          ...toolIdentity(event),
           title: event.payload.tool_name,
           status: "COMPLETED",
           input: null,
@@ -177,63 +241,54 @@ export function toPublicRunEvent(input: unknown): PublicRunEvent {
         },
       });
     case "run.tool_failed":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "tool",
         payload: {
           ...event.payload,
+          ...toolIdentity(event),
           title: event.payload.tool_name,
           status: "FAILED",
           input: null,
         },
       });
+    case "run.agent_status":
+      return parse({ ...common, type: "agent", payload: event.payload });
     case "run.answer_delta":
-      return publicRunEventSchema.parse({ ...common, type: "answer", payload: event.payload });
+      return parse({ ...common, type: "answer", payload: event.payload });
     case "run.reasoning_started":
-      return publicRunEventSchema.parse({
-        ...common,
-        type: "reasoning",
-        payload: { phase: "START", ...event.payload },
-      });
+      return parse({ ...common, type: "reasoning", payload: { phase: "START", ...event.payload } });
     case "run.reasoning_delta":
-      return publicRunEventSchema.parse({
-        ...common,
-        type: "reasoning",
-        payload: { phase: "DELTA", ...event.payload },
-      });
+      return parse({ ...common, type: "reasoning", payload: { phase: "DELTA", ...event.payload } });
     case "run.reasoning_completed":
-      return publicRunEventSchema.parse({
-        ...common,
-        type: "reasoning",
-        payload: { phase: "END", ...event.payload },
-      });
+      return parse({ ...common, type: "reasoning", payload: { phase: "END", ...event.payload } });
     case "run.suspended":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "lifecycle",
         payload: { name: event.event_type, status: "WAITING", summary: "任务等待后续处理" },
       });
     case "run.resumed":
     case "run.retry_scheduled":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "lifecycle",
         payload: { name: event.event_type, status: "QUEUED", summary: "任务已重新进入队列" },
       });
     case "run.cancel_requested":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "terminal",
         payload: { status: "CANCELLED", summary: "任务已取消", error_code: null },
       });
     case "run.completed":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "terminal",
         payload: { status: "COMPLETED", summary: "分析已完成", error_code: null },
       });
     case "run.failed":
-      return publicRunEventSchema.parse({
+      return parse({
         ...common,
         type: "terminal",
         payload: {
@@ -245,5 +300,90 @@ export function toPublicRunEvent(input: unknown): PublicRunEvent {
   }
 }
 
+/** Validate a complete durable replay before a surface renders or derives inspector state. */
+export function projectPublicRunEventStream(
+  eventsInput: readonly unknown[],
+): readonly PublicRunEventV2[] {
+  const events = eventsInput.map((input) => publicRunEventV2Schema.parse(input));
+  const openCalls = new Map<string, Extract<PublicRunEventV2, { type: "tool" }>["payload"]>();
+  let previousSequence = 0;
+  let runId: string | null = null;
+  for (const event of events) {
+    if (runId !== null && event.run_id !== runId) throw new Error("PUBLIC_RUN_EVENT_RUN_MISMATCH");
+    if (event.sequence <= previousSequence) throw new Error("PUBLIC_RUN_EVENT_SEQUENCE_INVALID");
+    runId = event.run_id;
+    previousSequence = event.sequence;
+    if (event.type !== "tool") continue;
+    if (event.payload.status === "RUNNING") {
+      if (openCalls.has(event.payload.call_id)) throw new Error("PUBLIC_TOOL_CALL_DUPLICATE_START");
+      openCalls.set(event.payload.call_id, event.payload);
+      continue;
+    }
+    const started = openCalls.get(event.payload.call_id);
+    if (!started) throw new Error("PUBLIC_TOOL_CALL_MISSING_START");
+    if (
+      started.tool_name !== event.payload.tool_name ||
+      started.profile_id !== event.payload.profile_id ||
+      started.task_id !== event.payload.task_id
+    ) {
+      throw new Error("PUBLIC_TOOL_CALL_IDENTITY_MISMATCH");
+    }
+    openCalls.delete(event.payload.call_id);
+  }
+  return events;
+}
+
+export const publicRunEventPageSchema = z.strictObject({
+  events: z.array(publicRunEventV2Schema).max(500),
+  cursor: z.number().int().nonnegative().safe(),
+  terminal: z.boolean(),
+});
+
+/** Shared cursor/terminal projection used by Web SSE and headless/Desktop/TUI adapters. */
+export function projectPublicRunEventPage(
+  runtimeEvents: readonly unknown[],
+  afterSequence: number,
+): PublicRunEventPage {
+  if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+    throw new Error("PUBLIC_RUN_EVENT_CURSOR_INVALID");
+  }
+  const events = runtimeEvents
+    .map(toPublicRunEvent)
+    .filter((event) => event.sequence > afterSequence);
+  let previous = afterSequence;
+  for (const event of events) {
+    if (event.sequence <= previous) throw new Error("PUBLIC_RUN_EVENT_SEQUENCE_INVALID");
+    previous = event.sequence;
+  }
+  return publicRunEventPageSchema.parse({
+    events,
+    cursor: events.at(-1)?.sequence ?? afterSequence,
+    terminal: events.some((event) => event.type === "terminal"),
+  });
+}
+
+/** Derive a Subagent inspector feed from the same public log, never a private side channel. */
+export function selectSubagentPublicEvents(
+  eventsInput: readonly unknown[],
+  targetInput: unknown,
+): readonly PublicRunEventV2[] {
+  const target = qaInspectorTargetSchema.parse(targetInput);
+  if (target.kind !== "subagent") throw new Error("PUBLIC_INSPECTOR_TARGET_KIND_INVALID");
+  return eventsInput
+    .map((event) => publicRunEventV2Schema.parse(event))
+    .filter((event) => {
+      if (event.run_id !== target.run_id || (event.type !== "agent" && event.type !== "tool"))
+        return false;
+      return (
+        event.payload.profile_id === target.profile_id && event.payload.task_id === target.task_id
+      );
+    })
+    .sort((left, right) => left.sequence - right.sequence);
+}
+
+export type PublicRunEventV1 = z.infer<typeof publicRunEventV1Schema>;
+export type PublicRunEventV2 = z.infer<typeof publicRunEventV2Schema>;
 export type PublicRunEvent = z.infer<typeof publicRunEventSchema>;
 export type ConversationTrajectory = z.infer<typeof conversationTrajectorySchema>;
+export type QaInspectorTarget = z.infer<typeof qaInspectorTargetSchema>;
+export type PublicRunEventPage = z.infer<typeof publicRunEventPageSchema>;

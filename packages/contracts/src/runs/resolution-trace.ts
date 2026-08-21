@@ -24,6 +24,10 @@ const traceStatusSchema = z.enum([
   "COMPLETED",
   "FAILED",
   "CANCELLED",
+  "PENDING",
+  "INTERRUPTED",
+  "SKIPPED",
+  "BLOCKED",
   "AVAILABLE",
 ]);
 
@@ -32,6 +36,7 @@ export const resolutionTraceNodeSchema = z.strictObject({
   kind: z.enum([
     "LIFECYCLE",
     "PROGRESS",
+    "AGENT",
     "REASONING",
     "TOOL",
     "ANSWER",

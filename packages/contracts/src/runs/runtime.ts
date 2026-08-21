@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { agentSpecialistProfileIdSchema } from "../agents/profile-registry.js";
 import { type ArtifactReference, artifactReferenceSchema } from "../artifacts/envelope.js";
 import {
   type AppScope,
@@ -38,6 +39,11 @@ const runtimeEventFields = {
   worker_fence: nonNegativeSafeIntegerSchema,
   idempotency_key: eventIdempotencyKeySchema,
   occurred_at: runtimeTimestampSchema,
+} as const;
+
+const runtimeEventV2Fields = {
+  ...runtimeEventFields,
+  schema_version: z.literal("run-runtime-event@2.0.0"),
 } as const;
 
 const displayTextSchema = z.string().trim().min(1).max(100_000);
@@ -137,6 +143,83 @@ const runToolFailedEventSchema = z.strictObject({
   }),
 });
 
+const toolAgentIdentityFields = {
+  profile_id: agentSpecialistProfileIdSchema.nullable(),
+  task_id: immutableIdSchema.nullable(),
+} as const;
+
+const toolArtifactFields = {
+  artifact_refs: z.array(artifactReferenceSchema).max(32),
+} as const;
+
+const runToolStartedV2EventSchema = z.strictObject({
+  ...runtimeEventV2Fields,
+  event_type: z.literal("run.tool_started"),
+  payload: z.strictObject({
+    call_id: displayCallIdSchema,
+    tool_name: versionIdentifierSchema,
+    title: z.string().trim().min(1).max(128),
+    summary: displayTextSchema,
+    input: z.string().max(100_000).nullable(),
+    ...toolAgentIdentityFields,
+    ...toolArtifactFields,
+  }),
+});
+
+const runToolCompletedV2EventSchema = z.strictObject({
+  ...runtimeEventV2Fields,
+  event_type: z.literal("run.tool_completed"),
+  payload: z.strictObject({
+    call_id: displayCallIdSchema,
+    tool_name: versionIdentifierSchema,
+    summary: displayTextSchema,
+    output: z.string().max(200_000).nullable(),
+    duration_ms: nonNegativeSafeIntegerSchema,
+    ...toolAgentIdentityFields,
+    ...toolArtifactFields,
+  }),
+});
+
+const runToolFailedV2EventSchema = z.strictObject({
+  ...runtimeEventV2Fields,
+  event_type: z.literal("run.tool_failed"),
+  payload: z.strictObject({
+    call_id: displayCallIdSchema,
+    tool_name: versionIdentifierSchema,
+    summary: displayTextSchema,
+    error_code: runtimeIdentifierSchema,
+    output: z.string().max(200_000).nullable(),
+    duration_ms: nonNegativeSafeIntegerSchema,
+    ...toolAgentIdentityFields,
+    ...toolArtifactFields,
+  }),
+});
+
+export const runAgentStatusSchema = z.enum([
+  "PENDING",
+  "RUNNING",
+  "COMPLETED",
+  "FAILED",
+  "INTERRUPTED",
+  "SKIPPED",
+  "BLOCKED",
+]);
+
+const runAgentStatusEventSchema = z.strictObject({
+  ...runtimeEventV2Fields,
+  event_type: z.literal("run.agent_status"),
+  payload: z.strictObject({
+    profile_id: agentSpecialistProfileIdSchema,
+    task_id: immutableIdSchema.nullable(),
+    status: runAgentStatusSchema,
+    phase: runtimeIdentifierSchema,
+    title: z.string().trim().min(1).max(128),
+    summary: displayTextSchema,
+    duration_ms: nonNegativeSafeIntegerSchema.nullable(),
+    error_code: runtimeIdentifierSchema.nullable(),
+  }),
+});
+
 const runAnswerDeltaEventSchema = z.strictObject({
   ...runtimeEventFields,
   event_type: z.literal("run.answer_delta"),
@@ -233,69 +316,116 @@ const runFailedEventSchema = z.strictObject({
   }),
 });
 
-export const runRuntimeEventSchema = z
-  .discriminatedUnion("event_type", [
-    runAcceptedEventSchema,
-    runLeasedEventSchema,
-    runCheckpointedEventSchema,
-    runSideEffectCommittedEventSchema,
-    runProgressEventSchema,
-    runToolStartedEventSchema,
-    runToolCompletedEventSchema,
-    runToolFailedEventSchema,
-    runAnswerDeltaEventSchema,
-    runReasoningStartedEventSchema,
-    runReasoningDeltaEventSchema,
-    runReasoningCompletedEventSchema,
-    runSuspendedEventSchema,
-    runResumedEventSchema,
-    runRetryScheduledEventSchema,
-    runCancelRequestedEventSchema,
-    runCompletedEventSchema,
-    runFailedEventSchema,
-  ])
-  .superRefine((event, ctx) => {
-    if (
-      event.event_type === "run.checkpointed" &&
-      event.payload.active_artifact_ref &&
-      !referenceBelongsToRun(event.payload.active_artifact_ref, event.scope, event.run_id)
-    ) {
+const runRuntimeEventV1Schema = z.discriminatedUnion("event_type", [
+  runAcceptedEventSchema,
+  runLeasedEventSchema,
+  runCheckpointedEventSchema,
+  runSideEffectCommittedEventSchema,
+  runProgressEventSchema,
+  runToolStartedEventSchema,
+  runToolCompletedEventSchema,
+  runToolFailedEventSchema,
+  runAnswerDeltaEventSchema,
+  runReasoningStartedEventSchema,
+  runReasoningDeltaEventSchema,
+  runReasoningCompletedEventSchema,
+  runSuspendedEventSchema,
+  runResumedEventSchema,
+  runRetryScheduledEventSchema,
+  runCancelRequestedEventSchema,
+  runCompletedEventSchema,
+  runFailedEventSchema,
+]);
+
+const runRuntimeEventV2Schema = z.union([
+  runToolStartedV2EventSchema,
+  runToolCompletedV2EventSchema,
+  runToolFailedV2EventSchema,
+  runAgentStatusEventSchema,
+]);
+
+function validateRuntimeEventRelationships(
+  event: z.infer<typeof runRuntimeEventV1Schema> | z.infer<typeof runRuntimeEventV2Schema>,
+  ctx: z.RefinementCtx,
+): void {
+  if (
+    event.event_type === "run.checkpointed" &&
+    event.payload.active_artifact_ref &&
+    !referenceBelongsToRun(event.payload.active_artifact_ref, event.scope, event.run_id)
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "Checkpoint 的 Active Artifact 必须属于同一 App/Tenant/Environment/Run。",
+      path: ["payload", "active_artifact_ref"],
+    });
+  }
+  if (
+    event.schema_version === "run-runtime-event@2.0.0" &&
+    (event.event_type === "run.tool_started" ||
+      event.event_type === "run.tool_completed" ||
+      event.event_type === "run.tool_failed")
+  ) {
+    const { profile_id, task_id, artifact_refs } = event.payload;
+    if ((profile_id === null) !== (task_id === null)) {
       ctx.addIssue({
         code: "custom",
-        message: "Checkpoint 的 Active Artifact 必须属于同一 App/Tenant/Environment/Run。",
-        path: ["payload", "active_artifact_ref"],
+        message: "Tool 的 profile_id 与 task_id 必须同时为空或同时存在。",
+        path: ["payload", "profile_id"],
       });
     }
-  });
+    if (event.event_type === "run.tool_started" && artifact_refs.length !== 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Tool START 不能提前声明 ArtifactReference。",
+        path: ["payload", "artifact_refs"],
+      });
+    }
+    artifact_refs.forEach((reference, index) => {
+      if (!referenceBelongsToRun(reference, event.scope, event.run_id)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Tool ArtifactReference 必须属于同一 App/Tenant/Environment/Run。",
+          path: ["payload", "artifact_refs", index],
+        });
+      }
+    });
+  }
+  if (
+    event.schema_version === "run-runtime-event@2.0.0" &&
+    event.event_type === "run.agent_status" &&
+    event.payload.task_id === null &&
+    event.payload.status !== "PENDING"
+  ) {
+    ctx.addIssue({
+      code: "custom",
+      message: "只有 PENDING Agent 状态允许 task_id 为空。",
+      path: ["payload", "task_id"],
+    });
+  }
+}
+
+export const runRuntimeEventSchema = z
+  .union([runRuntimeEventV1Schema, runRuntimeEventV2Schema])
+  .superRefine(validateRuntimeEventRelationships);
+
+const workerRunRuntimeEventV1Schema = z.discriminatedUnion("event_type", [
+  runLeasedEventSchema,
+  runCheckpointedEventSchema,
+  runSideEffectCommittedEventSchema,
+  runProgressEventSchema,
+  runToolStartedEventSchema,
+  runToolCompletedEventSchema,
+  runToolFailedEventSchema,
+  runAnswerDeltaEventSchema,
+  runSuspendedEventSchema,
+  runRetryScheduledEventSchema,
+  runCompletedEventSchema,
+  runFailedEventSchema,
+]);
 
 export const workerRunRuntimeEventSchema = z
-  .discriminatedUnion("event_type", [
-    runLeasedEventSchema,
-    runCheckpointedEventSchema,
-    runSideEffectCommittedEventSchema,
-    runProgressEventSchema,
-    runToolStartedEventSchema,
-    runToolCompletedEventSchema,
-    runToolFailedEventSchema,
-    runAnswerDeltaEventSchema,
-    runSuspendedEventSchema,
-    runRetryScheduledEventSchema,
-    runCompletedEventSchema,
-    runFailedEventSchema,
-  ])
-  .superRefine((event, ctx) => {
-    if (
-      event.event_type === "run.checkpointed" &&
-      event.payload.active_artifact_ref &&
-      !referenceBelongsToRun(event.payload.active_artifact_ref, event.scope, event.run_id)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Checkpoint 的 Active Artifact 必须属于同一 App/Tenant/Environment/Run。",
-        path: ["payload", "active_artifact_ref"],
-      });
-    }
-  });
+  .union([workerRunRuntimeEventV1Schema, runRuntimeEventV2Schema])
+  .superRefine(validateRuntimeEventRelationships);
 
 export const runProjectionSchema = z.strictObject({
   schema_version: z.literal("1.0.0"),
@@ -493,6 +623,7 @@ export function reduceRunProjection(
     case "run.reasoning_started":
     case "run.reasoning_delta":
     case "run.reasoning_completed":
+    case "run.agent_status":
       requireCurrentFence(previous, event);
       requireState(previous, ["RUNNING"], event);
       next = updateProjection(previous, event, {});

@@ -21,12 +21,12 @@
 
 ## Acceptance Criteria
 
-- [ ] Contracts 接受规范事件并拒绝未知 profile/status/key/private field。
-- [ ] PostgreSQL 17 接受并重放 Agent status，projection state 不被 display event 擅自推进。
-- [ ] Tool START/END identity 必须相等；profile/task 替换或缺失在 Team tool 上失败关闭。
-- [ ] Artifact refs 必须 exact scope/run/type/revision/hash，未知字段、跨 Workspace/Run 引用、裸路径和 hash 不一致均失败关闭。
-- [ ] SSE cursor replay 与 direct public projection 字节等价。
-- [ ] v1 历史 Tool event 可规范化回放，v2 新事件严格拒绝缺失 identity/ref keys；版本混合 Run 的 sequence 不变。
-- [ ] 同一组 replayed events 可确定性构建 Inline stream、Subagent Inspector feed 与 trajectory，三处 sequence/identity 一致。
-- [ ] Web SSE adapter 与无 DOM headless adapter 的 conformance fixture 保持 public event identity、cursor、terminal
+- [x] Contracts 接受规范事件并拒绝未知 profile/status/key/private field。
+- [x] PostgreSQL 17 接受并重放 Agent status，projection state 不被 display event 擅自推进。
+- [x] Tool START/END identity 必须相等；profile/task 替换或缺失在 Team tool 上失败关闭。
+- [x] Artifact refs 必须 exact scope/run/type/revision/hash，未知字段、跨 Workspace/Run 引用、裸路径和 hash 不一致均失败关闭。
+- [x] SSE cursor replay 与 direct public projection 字节等价。
+- [x] v1 历史 Tool event 可规范化回放，v2 新事件严格拒绝缺失 identity/ref keys；版本混合 Run 的 sequence 不变。
+- [x] 同一组 replayed events 可确定性构建 Inline stream、Subagent Inspector feed 与 trajectory，三处 sequence/identity 一致。
+- [x] Web SSE adapter 与无 DOM headless adapter 的 conformance fixture 保持 public event identity、cursor、terminal
       closure、Inspector target 和错误码一致；合同测试不要求交付 Desktop/TUI。

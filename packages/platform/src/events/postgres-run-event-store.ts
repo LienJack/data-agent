@@ -202,7 +202,7 @@ function eventFromRow(row: RunEventRow): RunRuntimeEvent {
   const relationalProjection = parseStoredEnvelope(
     runRuntimeEventSchema,
     {
-      schema_version: "1.0.0",
+      schema_version: event.schema_version,
       event_id: row.event_id,
       scope: {
         app_id: row.app_id,

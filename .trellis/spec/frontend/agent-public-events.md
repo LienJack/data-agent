@@ -28,7 +28,7 @@ type PublicTool = {
 
 type PublicAgentStatus = {
   profile_id: AgentSpecialistProfileId;
-  task_id: string;
+  task_id: string | null; // null only while PENDING and not Inspector-addressable
   status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" |
     "INTERRUPTED" | "SKIPPED" | "BLOCKED";
   phase: string;

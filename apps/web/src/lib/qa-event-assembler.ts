@@ -223,10 +223,12 @@ function schemaFor(
   role: TrajectoryRole,
   eventType: string,
   source: "qa_messages" | "run_events",
+  sourceSchemaVersion?: string,
 ): TrajectoryRecord["schema"] {
   return {
     schema_version:
-      source === "run_events" ? "public-run-event@1.0.0" : "workspace-conversation-message@1.0.0",
+      sourceSchemaVersion ??
+      (source === "run_events" ? "public-run-event@1.0.0" : "workspace-conversation-message@1.0.0"),
     event_type: eventType,
     role,
     source,
@@ -274,6 +276,37 @@ export function buildTrajectoryRecords(
 
     for (const event of group.events) {
       if (event.type === "answer" || event.type === "reasoning" || event.type === "tool") continue;
+      if (event.type === "agent") {
+        records.push({
+          id: `event:${event.run_id}:${event.sequence}`,
+          runId: event.run_id,
+          sequences: [event.sequence],
+          sequence: event.sequence,
+          turn,
+          role: "assistant",
+          eventType: "agent",
+          label: event.payload.title,
+          summary: event.payload.summary,
+          status: event.payload.status,
+          occurredAt: event.occurred_at,
+          completedAt: ["COMPLETED", "FAILED", "INTERRUPTED", "SKIPPED", "BLOCKED"].includes(
+            event.payload.status,
+          )
+            ? event.occurred_at
+            : null,
+          durationMs: event.payload.duration_ms,
+          payload: event.payload,
+          result:
+            event.payload.status === "RUNNING" || event.payload.status === "PENDING"
+              ? null
+              : {
+                  status: event.payload.status,
+                  error_code: event.payload.error_code,
+                },
+          schema: schemaFor("assistant", "agent", "run_events", event.schema_version),
+        });
+        continue;
+      }
       if (event.type === "progress") {
         records.push({
           id: `event:${event.run_id}:${event.sequence}`,
@@ -291,7 +324,7 @@ export function buildTrajectoryRecords(
           durationMs: null,
           payload: event.payload,
           result: event.payload.status === "COMPLETED" ? { summary: event.payload.summary } : null,
-          schema: schemaFor("assistant", "progress", "run_events"),
+          schema: schemaFor("assistant", "progress", "run_events", event.schema_version),
         });
         continue;
       }
@@ -316,7 +349,7 @@ export function buildTrajectoryRecords(
           event.type === "terminal"
             ? { status: event.payload.status, error_code: event.payload.error_code }
             : null,
-        schema: schemaFor("system", event.type, "run_events"),
+        schema: schemaFor("system", event.type, "run_events", event.schema_version),
       });
     }
 
@@ -364,7 +397,7 @@ export function buildTrajectoryRecords(
           duration_ms: row.durationMs,
           error_code: completed.payload.error_code,
         },
-        schema: schemaFor("tool", "tool", "run_events"),
+        schema: schemaFor("tool", "tool", "run_events", started.schema_version),
       });
     }
 
@@ -397,7 +430,7 @@ export function buildTrajectoryRecords(
         payload: { block_id: blockId, visibility: "PUBLIC_SUMMARY_ONLY" },
         result:
           row.status === "COMPLETED" ? { summary: row.summary, duration_ms: row.durationMs } : null,
-        schema: schemaFor("assistant", "reasoning", "run_events"),
+        schema: schemaFor("assistant", "reasoning", "run_events", started.schema_version),
       });
     }
 

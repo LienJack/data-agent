@@ -68,7 +68,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
   return NextResponse.json({
     data: conversationTrajectorySchema.parse({
-      schema_version: "conversation-trajectory@1.0.0",
+      schema_version: "conversation-trajectory@2.0.0",
       conversation_id: conversationId,
       events,
     }),

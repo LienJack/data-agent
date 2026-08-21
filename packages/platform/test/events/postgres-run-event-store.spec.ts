@@ -422,6 +422,62 @@ describe("PostgreSQL Run Event Store", () => {
     ]);
   });
 
+  it("preserves the v2 schema version while verifying relational Event columns", async () => {
+    const v2 = runRuntimeEventSchema.parse({
+      schema_version: "run-runtime-event@2.0.0",
+      event_id: ids.eventSequenceConflict,
+      scope,
+      run_id: ids.run,
+      sequence: 3,
+      worker_fence: 1,
+      idempotency_key: "v2:agent:running",
+      occurred_at: "2026-07-25T00:00:02.000Z",
+      event_type: "run.agent_status",
+      payload: {
+        profile_id: "governed-text2sql-agent",
+        task_id: "00000000-0000-4000-8000-000000000777",
+        status: "RUNNING",
+        phase: "compile.query",
+        title: "Text2SQL",
+        summary: "正在编译查询",
+        duration_ms: null,
+        error_code: null,
+      },
+    });
+    const v2Hash = await sha256ContentHash(v2);
+    const fixture = scriptedPool((text) => {
+      if (text.includes("sequence > $5") && !text.includes("order by sequence desc")) {
+        return {
+          rows: [
+            {
+              ...acceptedRow(),
+              event_id: v2.event_id,
+              sequence: "3",
+              event_type: v2.event_type,
+              payload_json: v2.payload,
+              worker_fence: "1",
+              dedupe_key: v2.idempotency_key,
+              event_hash: v2Hash,
+              event_document: v2,
+              created_at: v2.occurred_at,
+            },
+          ],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+    const authority = issueCapability();
+    const store = createPostgresRunEventStore(
+      fixture.pool,
+      authority.authorizer,
+      authority.capability,
+    );
+    await expect(
+      store.listEvents({ scope, run_id: ids.run, after_sequence: 2, limit: 100 }),
+    ).resolves.toEqual({ ok: true, value: [v2] });
+  });
+
   it("rejects an unbounded Event gap request before database I/O", async () => {
     const fixture = scriptedPool(() => undefined);
     const authority = issueCapability();

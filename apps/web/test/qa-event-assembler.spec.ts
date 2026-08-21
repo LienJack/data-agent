@@ -74,6 +74,27 @@ function event(
   });
 }
 
+function agentEvent(sequence: number): PublicRunEvent {
+  return publicRunEventSchema.parse({
+    schema_version: "public-run-event@2.0.0",
+    event_id: `21000000-0000-4000-8000-${String(sequence).padStart(12, "0")}`,
+    run_id: runId,
+    sequence,
+    occurred_at: `2026-08-14T00:00:0${sequence}.000Z`,
+    type: "agent",
+    payload: {
+      profile_id: "governed-text2sql-agent",
+      task_id: "22000000-0000-4000-8000-000000000001",
+      status: "RUNNING",
+      phase: "compile.query",
+      title: "Text2SQL",
+      summary: "正在编译查询",
+      duration_ms: null,
+      error_code: null,
+    },
+  });
+}
+
 describe("Q&A public event assembly", () => {
   it("prefers a valid Last-Event-ID and safely falls back to the query cursor", () => {
     expect(selectSseCursor("12", "4")).toBe(12);
@@ -113,6 +134,19 @@ describe("Q&A public event assembly", () => {
         summary: "任务等待后续处理",
       },
     });
+  });
+
+  it("decodes a v2 Agent event into the trajectory without changing its public schema", () => {
+    const agent = agentEvent(3);
+    const records = buildTrajectoryRecords([agent], []);
+    expect(records).toEqual([
+      expect.objectContaining({
+        eventType: "agent",
+        status: "RUNNING",
+        schema: expect.objectContaining({ schema_version: "public-run-event@2.0.0" }),
+        payload: expect.objectContaining({ profile_id: "governed-text2sql-agent" }),
+      }),
+    ]);
   });
 
   it("merges tool start and completion without losing the safe input", () => {

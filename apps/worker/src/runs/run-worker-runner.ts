@@ -1,5 +1,7 @@
 import {
   type AppScope,
+  agentSpecialistProfileIdSchema,
+  artifactReferenceSchema,
   type ContextReceiptBinding,
   type ContractError,
   canonicalizeJson,
@@ -86,6 +88,9 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     title: z.string().min(1).max(128),
     summary: z.string().min(1).max(100_000),
     input: z.string().max(100_000).nullable(),
+    profile_id: agentSpecialistProfileIdSchema.nullable().optional(),
+    task_id: z.uuid().nullable().optional(),
+    artifact_refs: z.array(artifactReferenceSchema).max(32).optional(),
   }),
   z.strictObject({
     kind: z.literal("tool_completed"),
@@ -95,6 +100,9 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     summary: z.string().min(1).max(100_000),
     output: z.string().max(200_000).nullable(),
     duration_ms: z.number().int().nonnegative().safe(),
+    profile_id: agentSpecialistProfileIdSchema.nullable().optional(),
+    task_id: z.uuid().nullable().optional(),
+    artifact_refs: z.array(artifactReferenceSchema).max(32).optional(),
   }),
   z.strictObject({
     kind: z.literal("tool_failed"),
@@ -105,6 +113,29 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     error_code: stableReasonCodeSchema,
     output: z.string().max(200_000).nullable(),
     duration_ms: z.number().int().nonnegative().safe(),
+    profile_id: agentSpecialistProfileIdSchema.nullable().optional(),
+    task_id: z.uuid().nullable().optional(),
+    artifact_refs: z.array(artifactReferenceSchema).max(32).optional(),
+  }),
+  z.strictObject({
+    kind: z.literal("agent_status"),
+    key: z.string().min(1).max(128),
+    profile_id: agentSpecialistProfileIdSchema,
+    task_id: z.uuid().nullable(),
+    status: z.enum([
+      "PENDING",
+      "RUNNING",
+      "COMPLETED",
+      "FAILED",
+      "INTERRUPTED",
+      "SKIPPED",
+      "BLOCKED",
+    ]),
+    phase: z.string().min(1).max(128),
+    title: z.string().min(1).max(128),
+    summary: z.string().min(1).max(100_000),
+    duration_ms: z.number().int().nonnegative().safe().nullable(),
+    error_code: stableReasonCodeSchema.nullable(),
   }),
   z.strictObject({
     kind: z.literal("answer_delta"),
@@ -554,8 +585,16 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       return failure("RUN_DISPLAY_EVENT_INPUT_INVALID", "显示事件不满足项目契约。", false);
     }
     const { key, kind, ...rawPayload } = parsed.data;
+    const normalizedPayload = kind.startsWith("tool_")
+      ? {
+          ...rawPayload,
+          profile_id: "profile_id" in rawPayload ? (rawPayload.profile_id ?? null) : null,
+          task_id: "task_id" in rawPayload ? (rawPayload.task_id ?? null) : null,
+          artifact_refs: "artifact_refs" in rawPayload ? (rawPayload.artifact_refs ?? []) : [],
+        }
+      : rawPayload;
     const payload = Object.fromEntries(
-      Object.entries(rawPayload).map(([field, value]) => [
+      Object.entries(normalizedPayload).map(([field, value]) => [
         field,
         typeof value === "string" ? redactPublicDisplayText(value) : value,
       ]),
@@ -582,7 +621,8 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       return success({ sequence: existing.value.sequence });
     }
     const appended = await appendWhileRunning(lease, (record) => ({
-      schema_version: "1.0.0",
+      schema_version:
+        kind.startsWith("tool_") || kind === "agent_status" ? "run-runtime-event@2.0.0" : "1.0.0",
       event_id: createId(),
       event_type: eventType,
       scope: lease.scope,

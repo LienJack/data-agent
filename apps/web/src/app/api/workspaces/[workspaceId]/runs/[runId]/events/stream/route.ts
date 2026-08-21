@@ -1,4 +1,4 @@
-import { toPublicRunEvent } from "@data-agent/contracts";
+import { projectPublicRunEventPage } from "@data-agent/contracts";
 import { createPostgresRepository, createPostgresRunEventStore } from "@data-agent/platform";
 import type { NextRequest } from "next/server";
 import { selectSseCursor } from "@/lib/sse-cursor";
@@ -77,9 +77,8 @@ export async function GET(
             });
             if (!result.ok) throw new Error(result.error.code);
 
-            for (const durableEvent of result.value) {
-              if (durableEvent.sequence <= cursor) continue;
-              const publicEvent = toPublicRunEvent(durableEvent);
+            const page = projectPublicRunEventPage(result.value, cursor);
+            for (const publicEvent of page.events) {
               controller.enqueue(
                 encoder.encode(
                   `id: ${publicEvent.sequence}\ndata: ${JSON.stringify(publicEvent)}\n\n`,

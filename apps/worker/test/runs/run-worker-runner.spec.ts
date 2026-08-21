@@ -290,7 +290,13 @@ describe("Run Worker Runner", () => {
       .filter(({ event_type }) => event_type === "run.tool_started");
     expect(displayEvents).toHaveLength(1);
     expect(displayEvents[0]).toMatchObject({
-      payload: { input: "dataset=orders [REDACTED]" },
+      schema_version: "run-runtime-event@2.0.0",
+      payload: {
+        input: "dataset=orders [REDACTED]",
+        profile_id: null,
+        task_id: null,
+        artifact_refs: [],
+      },
     });
   });
 

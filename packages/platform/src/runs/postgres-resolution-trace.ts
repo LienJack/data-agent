@@ -361,6 +361,19 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
         title: publicEvent.payload.title,
         summary: redactPublicDisplayText(publicEvent.payload.summary).slice(0, 2_000),
         duration_ms: publicEvent.payload.duration_ms,
+        artifact_refs: publicEvent.payload.artifact_refs,
+      };
+    case "agent":
+      return {
+        node_id: `event:${event.event_id}`,
+        kind: "AGENT",
+        source_event_id: event.event_id,
+        sequence: event.sequence,
+        occurred_at: event.occurred_at,
+        status: publicEvent.payload.status,
+        title: publicEvent.payload.title,
+        summary: redactPublicDisplayText(publicEvent.payload.summary).slice(0, 2_000),
+        duration_ms: publicEvent.payload.duration_ms,
         artifact_refs: [],
       };
     case "answer":
