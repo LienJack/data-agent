@@ -357,3 +357,24 @@ Added deterministic schema/document/foundational/metric induction, impact planni
 ### Status
 
 [OK] **Completed**
+
+
+## Session 16: 外部开源项目源码阅读规范
+
+**Date**: 2026-08-21
+**Task**: 外部开源项目源码阅读规范
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+新增跨包源码阅读指南：优先使用 Understand Anything 图谱导航，按固定提交检查新鲜度，并以源码、测试和运行证据核验；补充许可证、只读与敏感信息边界。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f41de7f` | (see git log) |
+
+### Status
+
+[OK] **Completed**
