@@ -24,6 +24,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Semantic Relationship Index](./semantic-relationship-index.md) | PostgreSQL 权威、Neo4j 投影、搜索回退与索引器闭环 | 已建立 |
 | [工作空间、身份与计费权威](./workspace-identity-billing.md) | Workspace Scope、RBAC、幂等管理命令和账务精度/状态机 | 已建立 |
 | [Q&A 对话资源绑定](./qa-conversation-resource-binding.md) | Composer、Conversation 冻结、Run 快照与 Worker 发布门禁 | 已建立，真实执行 HOLD |
+| [Q&A 管理员审计平面](./qa-admin-audit-plane.md) | 跨 owner 只读 projection、不可变回执、Admin SSE 与 Artifact 双门禁 | 已建立 |
 | [Provider Invocation Authority](./provider-invocation-authority.md) | U2 配置到 Provider Intent、Dispatch、Response、Usage 的持久权威链 | 已建立 |
 | [统一 Job Center](./job-center.md) | 后台 Job、Lease/Fence、Handler Heartbeat 与 Capability Readiness | 已建立 |
 | [Knowledge Base Authority](./knowledge-base.md) | U6 File 到 U10 索引、Neo4j 投影、检索证据与 U2 冻结 | 已建立 |

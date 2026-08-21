@@ -3,7 +3,7 @@
   "name": "qa-admin-audit",
   "title": "Admin Conversation Audit Plane",
   "description": "Deliver explicit audited read-only workspace and super-admin conversation inspection without weakening owner RLS.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

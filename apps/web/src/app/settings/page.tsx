@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
 import { ExtensionsPanel } from "@/components/settings/extensions-panel";
@@ -52,6 +53,14 @@ export default async function SettingsPage() {
             <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
               {session.value.principal_id} · {session.value.system_role}
             </p>
+            {isSuperAdmin ? (
+              <Link
+                href="/admin/qa"
+                className="text-xs font-semibold text-[var(--color-accent)] hover:underline"
+              >
+                打开全局对话审计 →
+              </Link>
+            ) : null}
           </div>
         </header>
 

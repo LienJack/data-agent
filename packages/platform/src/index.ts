@@ -216,5 +216,6 @@ export type {
 } from "./tenancy/capability.js";
 export * from "./tenancy/postgres-authority.js";
 export * from "./tenancy/postgres-operations-admin.js";
+export * from "./tenancy/postgres-qa-admin-audit.js";
 export * from "./tenancy/postgres-workspace-authority.js";
 export type { TransactionalCapabilityAuthorizer } from "./tenancy/transactional-authority.internal.js";

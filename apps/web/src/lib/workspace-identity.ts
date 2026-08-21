@@ -21,6 +21,7 @@ import {
   createPostgresOperationsAdminRepository,
   createPostgresPricingControlRepository,
   createPostgresProviderInvocationStore,
+  createPostgresQaAdminAuditRepository,
   createPostgresResolutionTraceProjector,
   createPostgresResolvedContextRegistry,
   createPostgresSemanticInductionRegistry,
@@ -312,6 +313,13 @@ export function getOperationsAdminRepository() {
     getWorkspaceSqlPool(),
   );
   return runtime.operationsAdminRepository;
+}
+
+export function getQaAdminAuditRepository() {
+  return createPostgresQaAdminAuditRepository(
+    getWorkspaceSqlPool(),
+    getWorkspaceAuthority().authorizer,
+  );
 }
 
 export function getSemanticPortabilityRepository() {

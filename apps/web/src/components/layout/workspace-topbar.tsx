@@ -1,7 +1,8 @@
 "use client";
 
 import type { WorkspaceAccessProjection } from "@data-agent/contracts";
-import { CaretRight, FolderOpen, Globe, X } from "@phosphor-icons/react";
+import { CaretRight, FolderOpen, Globe, ShieldCheck, X } from "@phosphor-icons/react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import type { MessageKey } from "@/i18n";
@@ -79,6 +80,15 @@ export function WorkspaceTopbar({ access }: { readonly access: WorkspaceAccessPr
       </nav>
 
       <div className="flex shrink-0 items-center gap-2">
+        {surface === "qa" && access.role === "WORKSPACE_ADMIN" && (
+          <Link
+            href={`/w/${workspaceId}/qa/admin`}
+            className="hidden h-8 items-center gap-1.5 rounded-md border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-2.5 text-[10px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] sm:flex"
+          >
+            <ShieldCheck aria-hidden="true" size={14} />
+            对话审计
+          </Link>
+        )}
         {surface === "qa" && (
           <button
             type="button"

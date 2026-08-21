@@ -86,6 +86,7 @@ describe("platform package public surface", () => {
       "createPostgresProviderInvocationSmokeJob",
       "createPostgresProviderInvocationStore",
       "createPostgresProviderStaleMarkerRecoveryJob",
+      "createPostgresQaAdminAuditRepository",
       "createPostgresRelationshipIndexStore",
       "createPostgresRepository",
       "createPostgresResearchAuthority",
