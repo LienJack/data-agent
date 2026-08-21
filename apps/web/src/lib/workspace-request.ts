@@ -57,7 +57,15 @@ function statusForWorkspaceError(code: string): number {
     return 404;
   }
   if (code.endsWith("_INPUT_INVALID") || code.endsWith("_REQUIRED")) return 400;
-  if (code.endsWith("_CONFLICT") || code.endsWith("_FROZEN") || code.endsWith("_IN_USE")) {
+  if (
+    code.endsWith("_CONFLICT") ||
+    code.endsWith("_FROZEN") ||
+    code.endsWith("_IN_USE") ||
+    code.endsWith("_BLOCKED_BY_ACTIVE_RUN") ||
+    code.endsWith("_STATE_TRANSITION_INVALID") ||
+    code.endsWith("_REPLAY_MISMATCH") ||
+    code.endsWith("_CLAIM_STALE")
+  ) {
     return 409;
   }
   if (code.endsWith("_UNAVAILABLE") || code.endsWith("_FAILED")) return 503;

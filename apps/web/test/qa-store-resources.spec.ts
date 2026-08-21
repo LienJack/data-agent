@@ -20,6 +20,10 @@ function conversation(id: string, messageCount: number) {
     modelProfileId: ids.model,
     resourceVersion: 3,
     messageCount,
+    sortOrder: 0,
+    lifecycle: "ACTIVE" as const,
+    liveState: "IDLE" as const,
+    unreadCompleted: false,
     createdAt: now,
     updatedAt: now,
   };

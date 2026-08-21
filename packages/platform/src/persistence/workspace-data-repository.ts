@@ -3,6 +3,13 @@ import {
   appendWorkspaceConversationMessageInputSchema,
   bindWorkspaceConversationDatasourceInputSchema,
   bindWorkspaceRunInputSchema,
+  buildWorkspaceConversationDirectoryCommand,
+  type ConversationTrashRetentionClaim,
+  type ConversationTrashRetentionReceipt,
+  conversationTrashRetentionClaimInputSchema,
+  conversationTrashRetentionClaimSchema,
+  conversationTrashRetentionCompleteInputSchema,
+  conversationTrashRetentionReceiptSchema,
   createWorkspaceConversationInputSchema,
   createWorkspaceDatasourceInputSchema,
   type PortResult,
@@ -10,10 +17,16 @@ import {
   qaConversationResourceSwitchInputSchema,
   qaConversationResourceSwitchResultSchema,
   updateWorkspaceConversationModelInputSchema,
+  verifyWorkspaceConversationDirectoryCommand,
   type WorkspaceConversation,
+  type WorkspaceConversationDirectoryCommandResult,
+  type WorkspaceConversationDirectoryPage,
   type WorkspaceConversationMessage,
   type WorkspaceDatasource,
   type WorkspaceRunBinding,
+  workspaceConversationDirectoryCommandResultSchema,
+  workspaceConversationDirectoryPageSchema,
+  workspaceConversationDirectoryQuerySchema,
   workspaceConversationMessageSchema,
   workspaceConversationSchema,
   workspaceDatasourceSchema,
@@ -241,6 +254,27 @@ function mapWorkspaceDataDatabaseError(error: unknown): PortResult<never> | null
   if (marker.includes("CONVERSATION_NOT_FOUND_OR_DENIED")) {
     return invalid("CONVERSATION_NOT_FOUND_OR_DENIED", "对话不存在或无权访问。");
   }
+  if (marker.includes("FOLDER_NOT_FOUND_OR_DENIED")) {
+    return invalid("FOLDER_NOT_FOUND_OR_DENIED", "文件夹不存在或无权访问。");
+  }
+  if (marker.includes("CONVERSATION_DELETE_BLOCKED_BY_ACTIVE_RUN")) {
+    return invalid(
+      "CONVERSATION_DELETE_BLOCKED_BY_ACTIVE_RUN",
+      "对话仍有运行中或等待交互的分析，请先终止后再删除。",
+    );
+  }
+  if (marker.includes("DIRECTORY_RESOURCE_VERSION_CONFLICT")) {
+    return invalid("DIRECTORY_RESOURCE_VERSION_CONFLICT", "目录资源已更新，请刷新后重试。");
+  }
+  if (marker.includes("DIRECTORY_STATE_TRANSITION_INVALID")) {
+    return invalid("DIRECTORY_STATE_TRANSITION_INVALID", "目录资源当前状态不允许此操作。");
+  }
+  if (marker.includes("DIRECTORY_OPERATION_REPLAY_MISMATCH")) {
+    return invalid("DIRECTORY_OPERATION_REPLAY_MISMATCH", "重复目录操作与原请求不一致。");
+  }
+  if (marker.includes("QA_RETENTION_CLAIM_STALE")) {
+    return invalid("QA_RETENTION_CLAIM_STALE", "回收站清理租约已失效。");
+  }
   if (candidate?.code === "23505") {
     return invalid("IDENTITY_OPERATION_CONFLICT", "同名或同标识的工作空间对象已经存在。");
   }
@@ -264,6 +298,22 @@ export interface PostgresWorkspaceDataRepository {
   listConversations(
     capabilityInput: unknown,
   ): Promise<PortResult<readonly WorkspaceConversation[]>>;
+  listConversationDirectory(
+    capabilityInput: unknown,
+    input: unknown,
+  ): Promise<PortResult<WorkspaceConversationDirectoryPage>>;
+  applyConversationDirectoryCommand(
+    capabilityInput: unknown,
+    input: unknown,
+  ): Promise<PortResult<WorkspaceConversationDirectoryCommandResult>>;
+  claimConversationRetention(
+    capabilityInput: unknown,
+    input: unknown,
+  ): Promise<PortResult<readonly ConversationTrashRetentionClaim[]>>;
+  completeConversationRetention(
+    capabilityInput: unknown,
+    input: unknown,
+  ): Promise<PortResult<ConversationTrashRetentionReceipt>>;
   getConversation(
     capabilityInput: unknown,
     conversationId: unknown,
@@ -486,9 +536,113 @@ export function createPostgresWorkspaceDataRepository(
         async ({ client }) => {
           const result = await client.query<ConversationRow>(
             `select ${conversationColumns} from qa_conversations as conversation
+             where conversation.deleted_at is null and conversation.archived_at is null
+               and (conversation.folder_id is null or exists (
+                 select 1 from qa_conversation_folders as folder
+                 where folder.folder_id = conversation.folder_id
+                   and folder.owner_principal_id = conversation.owner_principal_id
+                   and folder.archived_at is null
+               ))
              order by conversation.updated_at desc, conversation.conversation_id`,
           );
           return result.rows.map(conversation);
+        },
+      );
+    },
+
+    async listConversationDirectory(capabilityInput, input) {
+      const query = workspaceConversationDirectoryQuerySchema.safeParse(input);
+      if (!query.success) return invalid("QA_DIRECTORY_QUERY_INVALID", "目录查询不符合契约。");
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          operation_name: "workspace.conversation.directory",
+          ...transactionOptions,
+        },
+        async ({ client }) => {
+          const result = await client.query<{ readonly result: unknown }>(
+            "select app_data_agent.list_qa_conversation_directory($1::jsonb) as result",
+            [query.data],
+          );
+          return workspaceConversationDirectoryPageSchema.parse(result.rows[0]?.result);
+        },
+      );
+    },
+
+    async applyConversationDirectoryCommand(capabilityInput, input) {
+      let command: Awaited<ReturnType<typeof verifyWorkspaceConversationDirectoryCommand>>;
+      try {
+        command = await verifyWorkspaceConversationDirectoryCommand(input);
+      } catch {
+        return invalid("QA_DIRECTORY_COMMAND_INVALID", "目录操作不符合契约。");
+      }
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "workspace.conversation.directory.command",
+          ...transactionOptions,
+        },
+        async ({ client }) => {
+          const result = await client.query<{ readonly result: unknown }>(
+            "select app_data_agent.apply_qa_directory_command($1::jsonb) as result",
+            [command],
+          );
+          return workspaceConversationDirectoryCommandResultSchema.parse(result.rows[0]?.result);
+        },
+      );
+    },
+
+    async claimConversationRetention(capabilityInput, input) {
+      const parsed = conversationTrashRetentionClaimInputSchema.safeParse(input);
+      if (!parsed.success) return invalid("QA_RETENTION_CLAIM_INPUT_INVALID", "清理领取参数无效。");
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "workspace.conversation.retention.claim",
+          ...transactionOptions,
+        },
+        async ({ client }) => {
+          const result = await client.query<{ readonly result: unknown }>(
+            "select app_data_agent.claim_qa_conversation_retention($1::integer,$2::integer) as result",
+            [parsed.data.limit, parsed.data.lease_duration_ms],
+          );
+          return conversationTrashRetentionClaimSchema.array().parse(result.rows[0]?.result);
+        },
+      );
+    },
+
+    async completeConversationRetention(capabilityInput, input) {
+      const parsed = conversationTrashRetentionCompleteInputSchema.safeParse(input);
+      if (!parsed.success) {
+        return invalid("QA_RETENTION_COMPLETION_INVALID", "清理完成参数无效。");
+      }
+      return withAppTransaction(
+        pool,
+        authorizer,
+        capabilityInput,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          operation_name: "workspace.conversation.retention.complete",
+          ...transactionOptions,
+        },
+        async ({ client }) => {
+          const result = await client.query<{ readonly result: unknown }>(
+            "select app_data_agent.complete_qa_conversation_retention($1::jsonb) as result",
+            [parsed.data],
+          );
+          return conversationTrashRetentionReceiptSchema.parse(result.rows[0]?.result);
         },
       );
     },
@@ -504,7 +658,8 @@ export function createPostgresWorkspaceDataRepository(
         async ({ client }) => {
           const result = await client.query<ConversationRow>(
             `select ${conversationColumns} from qa_conversations as conversation
-             where conversation.conversation_id = $1::uuid`,
+             where conversation.conversation_id = $1::uuid
+               and conversation.deleted_at is null`,
             [parsed.data.id],
           );
           return result.rows[0] ? conversation(result.rows[0]) : null;
@@ -689,16 +844,28 @@ export function createPostgresWorkspaceDataRepository(
         capabilityInput,
         { access: "WRITE", operation_name: "workspace.conversation.delete", ...transactionOptions },
         async ({ client }) => {
-          const result = await client.query(
-            "delete from qa_conversations where conversation_id = $1::uuid",
+          const current = await client.query<{ readonly resource_version: string | number }>(
+            "select resource_version from qa_conversations where conversation_id = $1::uuid and deleted_at is null for update",
             [parsed.data.id],
           );
-          if (result.rowCount !== 1) {
+          if (current.rowCount !== 1 || !current.rows[0]) {
             throw new PersistenceBoundaryError(
               "CONVERSATION_NOT_FOUND_OR_DENIED",
               "对话不存在或无权访问。",
             );
           }
+          const command = await buildWorkspaceConversationDirectoryCommand({
+            schema_version: "workspace-conversation-directory-command@1.0.0",
+            operation_id: randomUUID(),
+            idempotency_key: `legacy-trash:${randomUUID()}`,
+            action: "CONVERSATION_TRASH",
+            conversation_id: parsed.data.id,
+            expected_resource_version: Number(current.rows[0].resource_version),
+            confirmed: true,
+          });
+          await client.query("select app_data_agent.apply_qa_directory_command($1::jsonb)", [
+            command,
+          ]);
           return true;
         },
       );
@@ -714,7 +881,7 @@ export function createPostgresWorkspaceDataRepository(
         { access: "READ", operation_name: "workspace.message.list", ...transactionOptions },
         async ({ client }) => {
           const current = await client.query(
-            "select 1 from qa_conversations where conversation_id = $1::uuid",
+            "select 1 from qa_conversations where conversation_id = $1::uuid and deleted_at is null",
             [parsed.data.id],
           );
           if (current.rowCount !== 1) {
@@ -753,6 +920,16 @@ export function createPostgresWorkspaceDataRepository(
         capabilityInput,
         { access: "WRITE", operation_name: "workspace.message.append", ...transactionOptions },
         async ({ capability, client }) => {
+          const current = await client.query(
+            "select 1 from qa_conversations where conversation_id = $1::uuid and deleted_at is null for share",
+            [parsedId.data.id],
+          );
+          if (current.rowCount !== 1) {
+            throw new PersistenceBoundaryError(
+              "CONVERSATION_NOT_FOUND_OR_DENIED",
+              "对话不存在或无权访问。",
+            );
+          }
           const result = await client.query<MessageRow>(
             `insert into qa_messages (
                app_id, tenant_id, environment, conversation_id, message_id,
@@ -838,9 +1015,18 @@ export function createPostgresWorkspaceDataRepository(
         { access: "READ", operation_name: "workspace.run.binding", ...transactionOptions },
         async ({ client }) => {
           const result = await client.query<RunBindingRow>(
-            `select app_id, tenant_id, environment, run_id, datasource_id,
-                    conversation_id, principal_id, created_at
-             from workspace_run_bindings where run_id = $1::uuid`,
+            `select binding.app_id, binding.tenant_id, binding.environment, binding.run_id,
+                    binding.datasource_id, binding.conversation_id, binding.principal_id,
+                    binding.created_at
+             from workspace_run_bindings as binding
+             join qa_conversations as conversation
+               on conversation.app_id = binding.app_id
+              and conversation.tenant_id = binding.tenant_id
+              and conversation.environment = binding.environment
+              and conversation.owner_principal_id = binding.principal_id
+              and conversation.conversation_id = binding.conversation_id
+              and conversation.deleted_at is null
+             where binding.run_id = $1::uuid`,
             [parsed.data.id],
           );
           return result.rows[0] ? runBinding(result.rows[0]) : null;
@@ -864,7 +1050,7 @@ export function createPostgresWorkspaceDataRepository(
         },
         async ({ client }) => {
           const current = await client.query(
-            "select 1 from qa_conversations where conversation_id = $1::uuid",
+            "select 1 from qa_conversations where conversation_id = $1::uuid and deleted_at is null",
             [parsed.data.id],
           );
           if (current.rowCount !== 1) {

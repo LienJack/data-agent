@@ -15,6 +15,8 @@ const state = vi.hoisted(() => ({
   loads: 0,
   enqueues: 0,
   accesses: [] as string[],
+  bindingAvailable: true,
+  bindingReads: 0,
 }));
 
 vi.mock("@data-agent/platform", () => ({
@@ -52,6 +54,17 @@ vi.mock("@data-agent/platform", () => ({
 
 vi.mock("@/lib/workspace-identity", () => ({
   getWorkspaceAuthority: () => ({ authorizer: {} }),
+  getWorkspaceDataRepository: () => ({
+    getRunBinding: async () => {
+      state.bindingReads += 1;
+      return {
+        ok: true,
+        value: state.bindingAvailable
+          ? { run_id: ids.run, conversation_id: "00000000-0000-4000-8000-000000007306" }
+          : null,
+      };
+    },
+  }),
   getWorkspaceSqlPool: () => ({}),
 }));
 
@@ -104,6 +117,8 @@ describe("Artifact preview/export routes", () => {
     state.loads = 0;
     state.enqueues = 0;
     state.accesses = [];
+    state.bindingAvailable = true;
+    state.bindingReads = 0;
   });
 
   it("returns a safe no-store preview bound to the path artifact id", async () => {
@@ -119,6 +134,7 @@ describe("Artifact preview/export routes", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     await expect(response.json()).resolves.toMatchObject({ source_ref: item.reference });
+    expect(state.bindingReads).toBe(1);
   });
 
   it("enqueues Artifact Export and does not render bytes in the request", async () => {
@@ -170,6 +186,25 @@ describe("Artifact preview/export routes", () => {
       params: Promise.resolve({ workspaceId: ids.workspace, artifactId: ids.artifact }),
     });
     expect(response.status).toBe(400);
+    expect(state.resolves).toBe(0);
+    expect(state.bindingReads).toBe(0);
+  });
+
+  it("denies preview when the Run binding belongs to a trashed conversation", async () => {
+    const { GET } = await import(
+      "../src/app/api/workspaces/[workspaceId]/artifacts/[artifactId]/route"
+    );
+    const item = await fixture();
+    state.document = item.document;
+    state.bindingAvailable = false;
+    const encoded = Buffer.from(JSON.stringify(item.reference)).toString("base64url");
+
+    const response = await GET(new NextRequest(`http://localhost/artifact?reference=${encoded}`), {
+      params: Promise.resolve({ workspaceId: ids.workspace, artifactId: ids.artifact }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(state.bindingReads).toBe(1);
     expect(state.resolves).toBe(0);
   });
 });

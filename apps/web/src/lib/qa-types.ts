@@ -20,6 +20,15 @@ export interface Conversation {
   modelProfileId?: string;
   resourceVersion: number;
   messageCount: number;
+  folderId?: string;
+  sortOrder: number;
+  lifecycle: "ACTIVE" | "ARCHIVED" | "TRASH";
+  archivedAt?: string;
+  deletedAt?: string;
+  purgeAfter?: string;
+  liveState: "IDLE" | "RUNNING" | "WAITING_APPROVAL" | "WAITING_ANSWER" | "FAILED" | "COMPLETED";
+  unreadCompleted: boolean;
+  searchSnippet?: string;
   createdAt: string;
   updatedAt: string;
 }

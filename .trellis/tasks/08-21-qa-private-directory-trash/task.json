@@ -3,9 +3,9 @@
   "name": "qa-private-directory-trash",
   "title": "Private Conversation Directory and Trash",
   "description": "Deliver owner-isolated folders, conversation lifecycle actions, search, and 30-day recoverable trash retention.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
-  "scope": null,
+  "scope": "contracts, platform persistence, PostgreSQL 10673, owner Q&A directory APIs, QA store/sidebar/mobile directory, retention job authority",
   "package": null,
   "priority": "P1",
   "creator": "lienli",
@@ -22,5 +22,8 @@
   "parent": "08-21-qa-adaptive-activity-unified-analysis",
   "relatedFiles": [],
   "notes": "",
-  "meta": {}
+  "meta": {
+    "dev_type": "feature",
+    "package": "cross-layer"
+  }
 }

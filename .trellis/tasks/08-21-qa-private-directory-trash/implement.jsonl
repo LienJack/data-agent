@@ -1,1 +1,11 @@
-{"_example": "Fill with {\"file\": \"<path>\", \"reason\": \"<why>\"}. Put spec/research files only — no code paths. Run `python3 .trellis/scripts/get_context.py --mode packages` to list available specs. Delete this line once real entries are added."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL authority, FORCE RLS, full scope and migration rules"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"workspace role, exact principal and revocation authority"}
+{"file":".trellis/spec/backend/job-center.md","reason":"retention job lease, fence and idempotent receipt conventions"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"stable public error codes and fail-closed boundaries"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"immutable audit and redaction limits"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"trash conversation SSE and trajectory authorization boundary"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"single parsed projection and accessible disclosure controls"}
+{"file":".trellis/spec/frontend/design-system.md","reason":"workspace sidebar, responsive and accessibility conventions"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"strict DTO parsing and exhaustive client states"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"directory contract flow spans database, API, store and UI"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"reuse existing workspace repository and QA store seams"}

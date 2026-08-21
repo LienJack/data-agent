@@ -31,6 +31,7 @@ import {
   createPostgresRunQueue,
   createPostgresSemanticInductionRegistry,
   createPostgresTeamRunStore,
+  createPostgresWorkspaceDataRepository,
   createPostgresWorkspaceFiles,
   createUnavailableKnowledgeIndex,
   createWorkspaceContentNamespace,
@@ -41,6 +42,7 @@ import { createResolvedContextService } from "@data-agent/semantic";
 import pg from "pg";
 import { z } from "zod";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
+import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
 import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
@@ -433,6 +435,7 @@ export async function runWorkerProcess(
     });
 
     let jobPrincipalCursor = 0;
+    const nextRetentionCycleAt = new Map<string, number>();
     const jobRunner = {
       async runOnce(input: {
         scope: typeof appCapability.scope;
@@ -461,6 +464,18 @@ export async function runWorkerProcess(
           });
           if (!principalCapability.ok) continue;
           const capability = principalCapability.value;
+          const now = Date.now();
+          if (now >= (nextRetentionCycleAt.get(principalId) ?? 0)) {
+            nextRetentionCycleAt.set(principalId, now + 60_000);
+            const retention = await runConversationRetentionCycle({
+              authority: createPostgresWorkspaceDataRepository(
+                sqlPool,
+                capabilityAuthority.authorizer,
+              ),
+              capability,
+            });
+            if (!retention.ok) return retention;
+          }
           const queue = createPostgresJobQueue(
             sqlPool,
             capabilityAuthority.authorizer,

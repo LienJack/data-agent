@@ -5,11 +5,17 @@ import type {
   QaInspectorTarget,
   QaResourceCatalog,
   WorkspaceConversation,
+  WorkspaceConversationDirectoryView,
+  WorkspaceConversationFolder,
   WorkspaceConversationMessage,
+  WorkspaceConversationV2,
 } from "@data-agent/contracts";
 import {
+  buildWorkspaceConversationDirectoryCommand,
   qaConversationResourceSwitchResultSchema,
   qaResourceCatalogSchema,
+  workspaceConversationDirectoryCommandResultSchema,
+  workspaceConversationDirectoryPageSchema,
 } from "@data-agent/contracts";
 import { create } from "zustand";
 import {
@@ -45,6 +51,12 @@ import type { RunConnectionState, RunProjection } from "./run-projection";
 interface QAState {
   /** 对话列表 */
   conversations: Conversation[];
+  folders: WorkspaceConversationFolder[];
+  directoryView: WorkspaceConversationDirectoryView;
+  directoryQuery: string;
+  directoryNextCursor: string | null;
+  expandedFolderIds: string[];
+  pendingDirectoryIds: string[];
   /** 当前选中的对话 ID */
   activeConversationId: string | null;
   /** 当前对话的消息列表 */
@@ -82,6 +94,22 @@ interface SelectConversationOptions {
 interface QAActions {
   /** 加载对话列表 */
   loadConversations: () => Promise<void>;
+  setDirectoryView: (view: WorkspaceConversationDirectoryView) => Promise<void>;
+  setDirectoryQuery: (query: string) => Promise<void>;
+  toggleFolderExpanded: (folderId: string) => void;
+  createFolder: (name: string) => Promise<boolean>;
+  renameFolder: (folderId: string, name: string) => Promise<boolean>;
+  reorderFolder: (folderId: string, sortOrder: number) => Promise<boolean>;
+  archiveFolder: (folderId: string) => Promise<boolean>;
+  restoreFolder: (folderId: string) => Promise<boolean>;
+  deleteFolder: (folderId: string) => Promise<boolean>;
+  renameConversation: (conversationId: string, title: string) => Promise<boolean>;
+  reorderConversation: (conversationId: string, sortOrder: number) => Promise<boolean>;
+  moveConversation: (conversationId: string, folderId: string | null) => Promise<boolean>;
+  archiveConversation: (conversationId: string) => Promise<boolean>;
+  restoreConversation: (conversationId: string) => Promise<boolean>;
+  trashConversation: (conversationId: string) => Promise<boolean>;
+  restoreConversationFromTrash: (conversationId: string) => Promise<boolean>;
   /** 创建新对话 */
   createConversation: (input: CreateConversationInput) => Promise<Conversation | null>;
   /** 删除对话 */
@@ -122,6 +150,12 @@ export type QAStore = QAState & QAActions;
 
 const initialState: QAState = {
   conversations: [],
+  folders: [],
+  directoryView: "active",
+  directoryQuery: "",
+  directoryNextCursor: null,
+  expandedFolderIds: [],
+  pendingDirectoryIds: [],
   activeConversationId: null,
   messages: [],
   events: [],
@@ -149,7 +183,10 @@ function workspaceQaPath(path = ""): string {
   return `/api/workspaces/${encodeURIComponent(workspaceId)}/qa${path}`;
 }
 
-function conversationFromContract(value: WorkspaceConversation): Conversation {
+function conversationFromContract(
+  value: WorkspaceConversation | WorkspaceConversationV2,
+): Conversation {
+  const directory = value.schema_version === "workspace-conversation@2.0.0" ? value : null;
   return {
     id: value.conversation_id,
     title: value.title,
@@ -157,6 +194,15 @@ function conversationFromContract(value: WorkspaceConversation): Conversation {
     modelProfileId: value.model_profile_id ?? value.model_id ?? undefined,
     resourceVersion: value.resource_version ?? 1,
     messageCount: value.message_count,
+    folderId: directory?.folder_id ?? undefined,
+    sortOrder: directory?.sort_order ?? 0,
+    lifecycle: directory?.lifecycle ?? "ACTIVE",
+    archivedAt: directory?.archived_at ?? undefined,
+    deletedAt: directory?.deleted_at ?? undefined,
+    purgeAfter: directory?.purge_after ?? undefined,
+    liveState: directory?.live_state ?? "IDLE",
+    unreadCompleted: directory?.unread_completed ?? false,
+    searchSnippet: directory?.search_snippet ?? undefined,
     createdAt: value.created_at,
     updatedAt: value.updated_at,
   };
@@ -173,6 +219,59 @@ function messageFromContract(value: WorkspaceConversationMessage): Message {
     metadata: value.metadata,
     createdAt: value.created_at,
   };
+}
+
+function directoryCommandBase(action: string) {
+  const nonce = crypto.randomUUID();
+  return {
+    schema_version: "workspace-conversation-directory-command@1.0.0" as const,
+    operation_id: nonce,
+    idempotency_key: `directory:${action.toLocaleLowerCase()}:${nonce}`,
+    action,
+  };
+}
+
+async function executeDirectoryCommand(
+  draft: unknown,
+  pendingIds: readonly string[],
+): Promise<boolean> {
+  useQAStore.setState((state) => ({
+    error: undefined,
+    pendingDirectoryIds: [...new Set([...state.pendingDirectoryIds, ...pendingIds])],
+  }));
+  try {
+    const command = await buildWorkspaceConversationDirectoryCommand(draft);
+    const response = await fetch(workspaceQaPath("/directory/commands"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    });
+    const raw: unknown = await response.json();
+    if (!response.ok) {
+      const candidate = raw as {
+        readonly error?: { readonly code?: unknown; readonly message?: unknown };
+      };
+      const code =
+        typeof candidate.error?.code === "string"
+          ? candidate.error.code
+          : "QA_DIRECTORY_COMMAND_FAILED";
+      const message =
+        typeof candidate.error?.message === "string" ? candidate.error.message : "目录操作失败";
+      throw new Error(`${code} · ${message}`);
+    }
+    workspaceConversationDirectoryCommandResultSchema.parse(
+      (raw as { readonly data?: unknown }).data,
+    );
+    await useQAStore.getState().loadConversations();
+    return true;
+  } catch (error) {
+    useQAStore.setState({ error: error instanceof Error ? error.message : "目录操作失败" });
+    return false;
+  } finally {
+    useQAStore.setState((state) => ({
+      pendingDirectoryIds: state.pendingDirectoryIds.filter((id) => !pendingIds.includes(id)),
+    }));
+  }
 }
 
 function replaceMessage(messages: Message[], id: string, patch: Partial<Message>): Message[] {
@@ -201,6 +300,7 @@ function replayTerminalAnswer(events: readonly PublicRunEvent[], runId: string):
 }
 
 let activeStreamController: AbortController | null = null;
+let directoryRequestGeneration = 0;
 
 export function acceptsRunStreamFrame(
   activeConversationId: string | null,
@@ -290,15 +390,233 @@ export const useQAStore = create<QAStore>((set, get) => ({
   ...initialState,
 
   loadConversations: async () => {
+    const generation = ++directoryRequestGeneration;
     set({ loading: true, error: undefined });
     try {
-      const response = await fetch(workspaceQaPath("/conversations"));
+      const state = get();
+      const parameters = new URLSearchParams({ view: state.directoryView, limit: "50" });
+      if (state.directoryQuery.trim()) parameters.set("q", state.directoryQuery.trim());
+      const response = await fetch(workspaceQaPath(`/conversations?${parameters.toString()}`));
       if (!response.ok) throw new Error("加载对话列表失败");
-      const json = (await response.json()) as { data: WorkspaceConversation[] };
-      set({ conversations: json.data.map(conversationFromContract), loading: false });
+      const json: unknown = await response.json();
+      const page = workspaceConversationDirectoryPageSchema.parse(
+        (json as { readonly data?: unknown }).data,
+      );
+      if (generation !== directoryRequestGeneration) return;
+      const conversations = page.conversations.map(conversationFromContract);
+      const activeStillVisible = conversations.some(
+        (conversation) => conversation.id === get().activeConversationId,
+      );
+      if (!activeStillVisible && get().directoryView !== "active") {
+        activeStreamController?.abort();
+        activeStreamController = null;
+      }
+      set({
+        conversations,
+        folders: page.folders,
+        directoryNextCursor: page.next_cursor,
+        activeConversationId:
+          activeStillVisible || get().directoryView !== "active"
+            ? get().activeConversationId
+            : (conversations[0]?.id ?? null),
+        loading: false,
+      });
     } catch (err) {
+      if (generation !== directoryRequestGeneration) return;
       set({ error: err instanceof Error ? err.message : "加载对话列表失败", loading: false });
     }
+  },
+
+  setDirectoryView: async (view) => {
+    set({ directoryView: view, directoryNextCursor: null });
+    await get().loadConversations();
+  },
+
+  setDirectoryQuery: async (query) => {
+    set({ directoryQuery: query, directoryNextCursor: null });
+    await get().loadConversations();
+  },
+
+  toggleFolderExpanded: (folderId) => {
+    set((state) => ({
+      expandedFolderIds: state.expandedFolderIds.includes(folderId)
+        ? state.expandedFolderIds.filter((id) => id !== folderId)
+        : [...state.expandedFolderIds, folderId],
+    }));
+  },
+
+  createFolder: async (name) =>
+    executeDirectoryCommand(
+      {
+        ...directoryCommandBase("FOLDER_CREATE"),
+        folder_id: crypto.randomUUID(),
+        name,
+        sort_order: 0,
+      },
+      [],
+    ),
+
+  renameFolder: async (folderId, name) => {
+    const folder = get().folders.find((candidate) => candidate.folder_id === folderId);
+    if (!folder) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("FOLDER_RENAME"),
+        folder_id: folderId,
+        expected_resource_version: folder.resource_version,
+        name,
+      },
+      [folderId],
+    );
+  },
+
+  reorderFolder: async (folderId, sortOrder) => {
+    const folder = get().folders.find((candidate) => candidate.folder_id === folderId);
+    if (!folder) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("FOLDER_REORDER"),
+        folder_id: folderId,
+        expected_resource_version: folder.resource_version,
+        sort_order: sortOrder,
+      },
+      [folderId],
+    );
+  },
+
+  archiveFolder: async (folderId) => {
+    const folder = get().folders.find((candidate) => candidate.folder_id === folderId);
+    if (!folder) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("FOLDER_ARCHIVE"),
+        folder_id: folderId,
+        expected_resource_version: folder.resource_version,
+      },
+      [folderId],
+    );
+  },
+
+  restoreFolder: async (folderId) => {
+    const folder = get().folders.find((candidate) => candidate.folder_id === folderId);
+    if (!folder) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("FOLDER_RESTORE"),
+        folder_id: folderId,
+        expected_resource_version: folder.resource_version,
+      },
+      [folderId],
+    );
+  },
+
+  deleteFolder: async (folderId) => {
+    const folder = get().folders.find((candidate) => candidate.folder_id === folderId);
+    if (!folder) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("FOLDER_DELETE"),
+        folder_id: folderId,
+        expected_resource_version: folder.resource_version,
+        confirmed: true,
+      },
+      [folderId],
+    );
+  },
+
+  renameConversation: async (conversationId, title) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_RENAME"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+        title,
+      },
+      [conversationId],
+    );
+  },
+
+  reorderConversation: async (conversationId, sortOrder) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_REORDER"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+        sort_order: sortOrder,
+      },
+      [conversationId],
+    );
+  },
+
+  moveConversation: async (conversationId, folderId) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_MOVE"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+        folder_id: folderId,
+      },
+      [conversationId, ...(folderId ? [folderId] : [])],
+    );
+  },
+
+  archiveConversation: async (conversationId) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_ARCHIVE"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+      },
+      [conversationId],
+    );
+  },
+
+  restoreConversation: async (conversationId) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_RESTORE"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+      },
+      [conversationId],
+    );
+  },
+
+  trashConversation: async (conversationId) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_TRASH"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+        confirmed: true,
+      },
+      [conversationId],
+    );
+  },
+
+  restoreConversationFromTrash: async (conversationId) => {
+    const conversation = get().conversations.find((candidate) => candidate.id === conversationId);
+    if (!conversation) return false;
+    return executeDirectoryCommand(
+      {
+        ...directoryCommandBase("CONVERSATION_RESTORE_FROM_TRASH"),
+        conversation_id: conversationId,
+        expected_resource_version: conversation.resourceVersion,
+      },
+      [conversationId],
+    );
   },
 
   createConversation: async (input) => {
@@ -345,38 +663,18 @@ export const useQAStore = create<QAStore>((set, get) => ({
   },
 
   deleteConversation: async (id) => {
-    set({ error: undefined });
-    try {
-      const response = await fetch(workspaceQaPath(`/conversations/${encodeURIComponent(id)}`), {
-        method: "DELETE",
+    const trashed = await get().trashConversation(id);
+    if (trashed && get().activeConversationId === id) {
+      activeStreamController?.abort();
+      activeStreamController = null;
+      set({
+        activeConversationId: null,
+        messages: [],
+        events: [],
+        trajectoryFocus: null,
+        inspectorTarget: null,
+        inspectorTriggerId: null,
       });
-      if (!response.ok) throw new Error("删除对话失败");
-      if (get().activeConversationId === id) {
-        activeStreamController?.abort();
-        activeStreamController = null;
-      }
-      set((state) => {
-        const deletingActive = state.activeConversationId === id;
-        const conversations = state.conversations.filter((c) => c.id !== id);
-        const activeConversationId = deletingActive
-          ? (conversations[0]?.id ?? null)
-          : state.activeConversationId;
-        return {
-          conversations,
-          activeConversationId,
-          ...(deletingActive
-            ? {
-                messages: [],
-                events: [],
-                trajectoryFocus: null,
-                inspectorTarget: null,
-                inspectorTriggerId: null,
-              }
-            : {}),
-        };
-      });
-    } catch (err) {
-      set({ error: err instanceof Error ? err.message : "删除对话失败" });
     }
   },
 
@@ -924,6 +1222,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
   clearError: () => set({ error: undefined }),
 
   reset: () => {
+    directoryRequestGeneration += 1;
     activeStreamController?.abort();
     activeStreamController = null;
     set(initialState);
@@ -938,6 +1237,12 @@ export const useQAStore = create<QAStore>((set, get) => ({
 // ─── Selector Hooks ──────────────────────────────────────────────────────────
 
 export const useQAConversations = () => useQAStore((s) => s.conversations);
+export const useQAFolders = () => useQAStore((s) => s.folders);
+export const useQADirectoryView = () => useQAStore((s) => s.directoryView);
+export const useQADirectoryQuery = () => useQAStore((s) => s.directoryQuery);
+export const useQADirectoryNextCursor = () => useQAStore((s) => s.directoryNextCursor);
+export const useQAExpandedFolderIds = () => useQAStore((s) => s.expandedFolderIds);
+export const useQAPendingDirectoryIds = () => useQAStore((s) => s.pendingDirectoryIds);
 export const useQAActiveConversationId = () => useQAStore((s) => s.activeConversationId);
 export const useQAMessages = () => useQAStore((s) => s.messages);
 export const useQAEvents = () => useQAStore((s) => s.events);

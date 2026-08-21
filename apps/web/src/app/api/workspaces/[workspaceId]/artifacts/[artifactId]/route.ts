@@ -8,7 +8,11 @@ import {
   ArtifactWorkspaceError,
   createArtifactWorkspaceService,
 } from "@/lib/artifact-workspace-service";
-import { getWorkspaceAuthority, getWorkspaceSqlPool } from "@/lib/workspace-identity";
+import {
+  getWorkspaceAuthority,
+  getWorkspaceDataRepository,
+  getWorkspaceSqlPool,
+} from "@/lib/workspace-identity";
 import { authorizeWorkspaceRequest, workspaceErrorResponse } from "@/lib/workspace-request";
 
 function decodeReference(value: string | null): unknown {
@@ -49,6 +53,18 @@ export async function GET(
       decodeReference(request.nextUrl.searchParams.get("reference")),
     );
     if (reference.artifact_id !== artifactId || reference.tenant_id !== workspaceId) {
+      return workspaceErrorResponse({
+        code: "WORKSPACE_OBJECT_NOT_FOUND_OR_DENIED",
+        message: "Artifact 不存在或无权访问。",
+        retryable: false,
+      });
+    }
+    const binding = await getWorkspaceDataRepository().getRunBinding(
+      authorized.value.capability,
+      reference.run_id,
+    );
+    if (!binding.ok) return workspaceErrorResponse(binding.error);
+    if (!binding.value) {
       return workspaceErrorResponse({
         code: "WORKSPACE_OBJECT_NOT_FOUND_OR_DENIED",
         message: "Artifact 不存在或无权访问。",

@@ -1,18 +1,18 @@
 "use client";
 
 import type { WorkspaceAccessProjection } from "@data-agent/contracts";
-import { ChatCircleDots, MagnifyingGlass, Plus, SidebarSimple } from "@phosphor-icons/react";
+import { ChatCircleDots, Plus, SidebarSimple } from "@phosphor-icons/react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
 import { useLayoutStore, useSidebarCollapsed } from "@/lib/layout-store";
-import { qaConversationHref } from "@/lib/qa-inspector-target";
-import { useQAConversations, useQAStore } from "@/lib/qa-store";
+import { useQAStore } from "@/lib/qa-store";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 import type { WorkspaceNavigationItem, WorkspaceNavigationKey } from "@/lib/workspace-navigation";
 import { workspacePath } from "@/lib/workspace-routes";
+import { ConversationDirectory } from "../qa/conversation-directory";
 import { SidebarItem } from "./sidebar-item";
 import { WorkspaceNavIcon } from "./workspace-nav-icon";
 
@@ -39,18 +39,14 @@ interface SidebarProps {
  * 底部能力状态来自 Workbench authority，不在视觉层伪造用户或环境信息。
  */
 export function Sidebar({ access, navigation }: SidebarProps) {
-  const { locale, t } = useWorkspaceI18n();
+  const { t } = useWorkspaceI18n();
   const pathname = usePathname();
-  const router = useRouter();
   const collapsed = useSidebarCollapsed();
   const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
   const loadConversations = useQAStore((state) => state.loadConversations);
-  const selectConversation = useQAStore((state) => state.selectConversation);
-  const conversations = useQAConversations();
   const projection = useWorkbenchStore((state) => state.projection);
   const coreL2Verdict = useWorkbenchStore((state) => state.coreL2Verdict);
   const attributionF9Status = useWorkbenchStore((state) => state.attributionF9Status);
-  const [search, setSearch] = useState("");
   const workspaceId = access.workspace.workspace_id;
   const workspaceHome = workspacePath(workspaceId);
   const analysisItem = navigation.find((item) => item.key === "analysis");
@@ -59,14 +55,6 @@ export function Sidebar({ access, navigation }: SidebarProps) {
   useEffect(() => {
     if (qaItem) void loadConversations();
   }, [loadConversations, qaItem]);
-
-  const filteredConversations = useMemo(() => {
-    const query = search.trim().toLocaleLowerCase(locale);
-    if (!query) return conversations;
-    return conversations.filter((conversation) =>
-      conversation.title.toLocaleLowerCase(locale).includes(query),
-    );
-  }, [conversations, locale, search]);
 
   return (
     <aside
@@ -108,7 +96,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div data-directory-menu-boundary className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <nav className="px-2 py-4" aria-label={t("workspace.resources")}>
           {!collapsed && (
             <p className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
@@ -141,21 +129,6 @@ export function Sidebar({ access, navigation }: SidebarProps) {
               {t("workspace.newQuestion")}
             </Link>
 
-            <label className="relative mt-3 block">
-              <span className="sr-only">{t("workspace.searchConversations")}</span>
-              <MagnifyingGlass
-                aria-hidden="true"
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]"
-                size={15}
-              />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("workspace.searchRecent")}
-                className="h-10 w-full rounded-lg border border-[var(--color-border-default)] bg-white pl-9 pr-3 text-[13px] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-border-focused)] focus:outline-none"
-              />
-            </label>
-
             <div className="mt-3 space-y-1">
               {projection && analysisItem && (
                 <Link
@@ -176,40 +149,14 @@ export function Sidebar({ access, navigation }: SidebarProps) {
                   <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-[var(--color-success)]" />
                 </Link>
               )}
-
-              {filteredConversations.slice(0, 8).map((conversation) => (
-                <button
-                  key={conversation.id}
-                  type="button"
-                  onClick={() => {
-                    void selectConversation(conversation.id);
-                    router.push(qaConversationHref(qaItem.href, conversation.id));
-                  }}
-                  className="flex w-full items-start gap-2 rounded-lg px-2 py-2 text-left hover:bg-white/70"
-                >
-                  <ChatCircleDots
-                    aria-hidden="true"
-                    className="mt-0.5 shrink-0 text-[var(--color-text-muted)]"
-                    size={16}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--color-text-secondary)]">
-                    {conversation.title}
-                  </span>
-                </button>
-              ))}
-
-              {!projection && filteredConversations.length === 0 && (
-                <p className="px-2 py-4 text-center text-[11px] text-[var(--color-text-muted)]">
-                  {t("workspace.noConversations")}
-                </p>
-              )}
             </div>
+            <ConversationDirectory qaHref={qaItem.href} className="mt-3" />
           </section>
         )}
       </div>
 
       {!collapsed && (
-        <div className="shrink-0 border-t border-[var(--color-border-default)] px-3 py-2">
+        <div className="relative z-0 shrink-0 border-t border-[var(--color-border-default)] px-3 py-2">
           <div className="flex min-h-12 items-center gap-2">
             <span className="flex size-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-[10px] font-bold text-amber-700">
               L2
