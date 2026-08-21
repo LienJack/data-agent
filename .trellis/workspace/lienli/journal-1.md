@@ -484,3 +484,24 @@ Delivered sequence-stable actual-agent activity rendering, sanitized rich Markdo
 ### Status
 
 [OK] **Completed**
+
+
+## Session 22: Governed Table and VChart Answers
+
+**Date**: 2026-08-22
+**Task**: Governed Table and VChart Answers
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Added deterministic visualization intent, committed QueryEvidence chart companions, shared Inline/Inspector previews, controlled VChart rendering, responsive evidence, and full validation.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a328269` | (see git log) |
+
+### Status
+
+[OK] **Completed**
