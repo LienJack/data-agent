@@ -1,4 +1,3 @@
-import type { ArtifactReference } from "@data-agent/contracts";
 import type { ProductProfileToolPort } from "../mastra-profile-composition.js";
 
 export interface Text2SqlToolDependencies {
@@ -11,7 +10,7 @@ export function createText2SqlTools(
   dependencies: Text2SqlToolDependencies,
 ): ProductProfileToolPort {
   return {
-    async invoke(input): Promise<ArtifactReference | null> {
+    async invoke(input) {
       if (
         input.task.profile_id !== "governed-text2sql-agent" ||
         input.profile.revision.profile_id !== "governed-text2sql-agent"

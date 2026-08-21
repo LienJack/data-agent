@@ -7,10 +7,16 @@ import {
   type AgentProductProfileRegistryItem,
   type AgentSpecialistProfileId,
   type ArtifactReference,
+  artifactReferenceIdentity,
   type PortResult,
   verifyAgentProductProfileRevision,
 } from "@data-agent/contracts";
 import type { RunDisplayEventInput } from "../runs/run-worker-runner.js";
+
+export interface ProductProfileToolResult {
+  readonly output_ref: ArtifactReference | null;
+  readonly public_artifact_refs: readonly ArtifactReference[];
+}
 
 export interface ProductProfileToolPort {
   invoke(input: {
@@ -19,7 +25,7 @@ export interface ProductProfileToolPort {
     readonly tool_id: string;
     readonly context_epoch: Readonly<{ epoch_id: string; build_signature: string }>;
     readonly signal?: AbortSignal;
-  }): Promise<ArtifactReference | null>;
+  }): Promise<ArtifactReference | null | ProductProfileToolResult>;
 }
 
 export interface ProductProfileToolVisibilityPort {
@@ -32,6 +38,35 @@ class ProductProfileToolVisibilityError extends Error {
   constructor(readonly code: string) {
     super(code);
   }
+}
+
+function normalizeToolResult(
+  result: ArtifactReference | null | ProductProfileToolResult,
+  task: TeamTaskV2,
+): ProductProfileToolResult {
+  const normalized =
+    result && "output_ref" in result
+      ? result
+      : { output_ref: result, public_artifact_refs: result ? [result] : [] };
+  const refs = new Map<string, ArtifactReference>();
+  for (const reference of normalized.public_artifact_refs) {
+    if (
+      reference.run_id !== task.run_id ||
+      reference.app_id !== task.scope.app_id ||
+      reference.tenant_id !== task.scope.tenant_id ||
+      reference.environment !== task.scope.environment
+    ) {
+      throw new TypeError("TEAM_TOOL_PUBLIC_ARTIFACT_SCOPE_INVALID");
+    }
+    refs.set(artifactReferenceIdentity(reference), reference);
+  }
+  if (normalized.output_ref) {
+    refs.set(artifactReferenceIdentity(normalized.output_ref), normalized.output_ref);
+  }
+  return Object.freeze({
+    output_ref: normalized.output_ref,
+    public_artifact_refs: Object.freeze([...refs.values()]),
+  });
 }
 
 function visibleToolPort(input: {
@@ -62,7 +97,7 @@ function visibleToolPort(input: {
       });
       if (!started.ok) throw new ProductProfileToolVisibilityError(started.error.code);
       try {
-        const result = await input.tools.invoke(invocation);
+        const result = normalizeToolResult(await input.tools.invoke(invocation), invocation.task);
         const completed = await input.visibility.emit({
           kind: "tool_completed",
           key: `${key}.completed`,
@@ -71,13 +106,13 @@ function visibleToolPort(input: {
           summary: "受治理工具调用已完成",
           profile_id: invocation.profile.revision.profile_id,
           task_id: invocation.task.task_id,
-          artifact_refs: result ? [result] : [],
-          output: result
+          artifact_refs: [...result.public_artifact_refs],
+          output: result.output_ref
             ? JSON.stringify({
-                artifact_id: result.artifact_id,
-                artifact_type: result.artifact_type,
-                revision: result.revision,
-                content_hash: result.content_hash,
+                artifact_id: result.output_ref.artifact_id,
+                artifact_type: result.output_ref.artifact_type,
+                revision: result.output_ref.revision,
+                content_hash: result.output_ref.content_hash,
               })
             : null,
           duration_ms: Math.max(0, input.now() - startedAt),
@@ -196,14 +231,17 @@ export async function createMastraProfileComposition(input: {
         if (!runtimeProfile.direct_tool_allowlist.includes(toolId)) {
           throw new TypeError("TEAM_DIRECT_TOOL_DENIED");
         }
-        const candidate = await tools.invoke({
+        const candidate = normalizeToolResult(
+          await tools.invoke({
+            task,
+            profile: productProfile,
+            tool_id: toolId,
+            context_epoch,
+            ...(signal ? { signal } : {}),
+          }),
           task,
-          profile: productProfile,
-          tool_id: toolId,
-          context_epoch,
-          ...(signal ? { signal } : {}),
-        });
-        if (candidate) output = candidate;
+        );
+        if (candidate.output_ref) output = candidate.output_ref;
       }
       if (!output || !task.acceptance.required_artifact_types.includes(output.artifact_type)) {
         return { status: "FAILED", task_id: task.task_id, output_ref: null };

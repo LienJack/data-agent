@@ -559,6 +559,13 @@ issueCapabilityDeliveryReceipt(
   提交后若发生撤权，重放只能返回 `CURRENT_READINESS_REVOKED`，不能复用旧 GO 品牌。
 - L3–L5 不能注册 Workflow、Route、Tool 或签发 Receipt。
 
+### Governed chart companion
+
+- `ArtifactWorkspaceDocument` V2 Chart 只能由已提交的同 Scope/Run `QueryEvidence` 确定性派生；它是公开 companion，不得替换专职任务验收使用的 `output_ref`。
+- Chart document 必须原子携带完整 bounded dataset（LINE ≤100、BAR ≤30、PIE ≤12，`total_rows === rows.length`），并把 source ref、transform version、dataset hash 与 Resolved Context package/receipt identity 纳入 document hash。
+- PostgreSQL commit 必须在有效 Worker fence 下重验 exact source revision/hash；VChart spec、Provider/模型 JSON、客户端行或 Tool output 都不是 Artifact authority。
+- Preview 只返回 strict V1/V2 projection。V2 dataset/hash/document hash 任一不一致时失败关闭，不得回退到 `document_json` 或 raw Tool output。
+
 ### 7. Wrong vs Correct
 
 #### Wrong

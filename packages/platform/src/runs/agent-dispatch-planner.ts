@@ -83,6 +83,28 @@ export function classifyAgentQuestion(question: string): AgentQuestionClass {
   return explicitConceptExplanation && !businessInstanceSignal ? "EXPLANATION" : "DATA_QUERY";
 }
 
+export type AgentVisualizationIntent = "TREND" | "COMPARISON" | "COMPOSITION";
+
+export function classifyAgentVisualizationIntent(
+  question: string,
+): AgentVisualizationIntent | null {
+  const normalized = question.trim().toLocaleLowerCase("zh-CN");
+  if (/(占比|构成|份额|比例|percentage|share|composition)/u.test(normalized)) {
+    return "COMPOSITION";
+  }
+  if (/(趋势|走势|变化|按月|每月|月度|按周|每周|按日|每日|over time|trend)/u.test(normalized)) {
+    return "TREND";
+  }
+  if (/(比较|对比|排名|排行|top\s*\d*|最高|最低|按类别|comparison|ranking)/u.test(normalized)) {
+    return "COMPARISON";
+  }
+  return null;
+}
+
+function codeUnitSort(values: readonly string[]): string[] {
+  return [...values].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
 function selectedIds(questionClass: AgentQuestionClass) {
   switch (questionClass) {
     case "EXPLANATION":
@@ -107,6 +129,7 @@ async function adaptivePlan(input: {
   >;
   readonly capability_snapshot_hash: string;
   readonly policy_version: string;
+  readonly visualization_intent: AgentVisualizationIntent | null;
 }): Promise<AgentDispatchPlan | Extract<AgentDispatchAdmissionResult, { kind: "DEFERRED" }>> {
   if (input.question_class === "ATTRIBUTION") {
     return buildAgentDispatchDeferredReceipt({
@@ -174,11 +197,15 @@ async function adaptivePlan(input: {
           : input.question_class === "DATA_QUERY"
             ? ["ACCEPTED_QUERY_EVIDENCE", "FROZEN_SEMANTIC_RELEASE"]
             : ["ACCEPTED_QUERY_EVIDENCE", "ACCEPTED_REPORT_ARTIFACT", "FROZEN_SEMANTIC_RELEASE"],
-    reason_codes: [
+    reason_codes: codeUnitSort([
       input.question_class === "EXPLANATION"
         ? "DIRECT_EXPLANATION_ADMISSIBLE"
         : `${input.question_class}_SPECIALIST_REQUIRED`,
-    ],
+      ...(input.visualization_intent &&
+      (input.question_class === "DATA_QUERY" || input.question_class === "REPORT")
+        ? [`DATA_QUERY_${input.visualization_intent}_VISUALIZATION`]
+        : []),
+    ]),
     capability_snapshot_hash: input.capability_snapshot_hash,
     policy_version: input.policy_version,
     direct_admissibility_receipt: direct,
@@ -193,6 +220,7 @@ export async function planAgentDispatch(input: {
   readonly policy_version: string;
 }): Promise<PlannedAgentDispatch> {
   const questionClass = classifyAgentQuestion(input.question);
+  const visualizationIntent = classifyAgentVisualizationIntent(input.question);
   const refs = exactEnabledReferences(input.enabled_profiles);
   const canonicalRefs = profileOrder.flatMap((profileId) => {
     const ref = refs.get(profileId);
@@ -224,6 +252,7 @@ export async function planAgentDispatch(input: {
     refs,
     capability_snapshot_hash: capabilitySnapshotHash,
     policy_version: input.policy_version,
+    visualization_intent: visualizationIntent,
   });
   if ("kind" in planned) {
     return { admission: planned, shadow_plan: null };

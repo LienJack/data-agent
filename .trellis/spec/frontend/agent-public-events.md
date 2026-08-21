@@ -80,6 +80,8 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Subagent Inspector 的 connection state 与 Agent authority 分离；断线只显示 reconnecting 并从最后 sequence
   续接，不得把 RUNNING 改为失败/完成。
 - 只有完整 `ArtifactReference` 可渲染 file preview action；裸路径和 Tool output 中的 path-like 文本只作摘要。
+- Tool COMPLETED 可以公开多个已提交 `artifact_refs`。Assembler 只能在该 sequence 后按 exact identity 插入 Artifact block；QueryEvidence 与派生 Chart 是 sequence peers，不能从 Tool START、正文或未来事件推断。
+- Inline 与 Inspector 必须复用同一 `ArtifactPreviewPanel` 和 strict preview union。V2 Chart 只通过动态 `vchart-simple` leaf 构造本地 LINE/BAR/PIE spec；图表始终有同源 native table，Core 实例必须在 effect cleanup 中 `release()`。
 - desktop 空间不足时先收起 Inspector，移动端 Inspector 不得遮挡 Composer；关闭后焦点返回触发项。
 - UI 实现以 DeepSeek Harness 固定 commit `47f943859bef60e4160492346772ded9b24f765a` 为主要源码基线，
   优先移植 assembler/snapshot、ReasoningRow/ToolRow、AppFrame/details、Subagent baseline/live 与测试；
@@ -105,6 +107,7 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 | Subagent target is absent after replay | Show stale target; never select a different Agent |
 | PENDING Agent has `task_id=null` | Keep Inline row and disable Inspector action with accessible reason |
 | Artifact ref is absent, unsupported, denied or hash-mismatched | No raw output/path fallback; show explicit non-success state |
+| V2 Chart dataset/document hash, shape or source identity invalid | Stable preview error; keep no raw Chart/table fallback |
 | Conversation or Run changes | Clear stale Inspector target and restore focus safely |
 | Projection API fails | Render explicit alert/error code, not a successful empty state |
 | Adaptive admission returns verified `DEFERRED` 409 | Render BLOCKED receipt details; do not create Run/SSE/Agent UI |

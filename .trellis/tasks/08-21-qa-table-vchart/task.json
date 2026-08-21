@@ -3,7 +3,7 @@
   "name": "qa-table-vchart",
   "title": "Governed Table and VChart Answers",
   "description": "Render accepted query evidence as governed inline TABLE and VChart artifacts with provenance and accessible equivalent tables.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

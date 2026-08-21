@@ -1,4 +1,22 @@
-import type { ArtifactPreviewResult } from "@data-agent/contracts";
+"use client";
+
+import type {
+  ArtifactPreviewResult,
+  ArtifactWorkspaceTableProjection,
+} from "@data-agent/contracts";
+import dynamic from "next/dynamic";
+import { useId } from "react";
+
+const GovernedVChart = dynamic(() => import("./governed-vchart"), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="h-[320px] rounded-lg bg-[var(--color-bg-overlay)] motion-safe:animate-pulse"
+      role="status"
+      aria-label="正在加载图表"
+    />
+  ),
+});
 
 function artifactReferenceHref(reference: ArtifactPreviewResult["source_ref"]): string {
   return `/api/workspaces/${reference.tenant_id}/artifacts/${reference.artifact_id}?reference=${encodeURIComponent(JSON.stringify(reference))}`;
@@ -10,6 +28,7 @@ export interface ArtifactWorkspaceProps {
     csv?: string;
     xlsx?: string;
   }>;
+  readonly onPageChange?: (offset: number) => void;
 }
 
 function keyedRows(rows: readonly Record<string, string | number | boolean | null>[]) {
@@ -32,12 +51,112 @@ function SourceIdentity({ preview }: { readonly preview: ArtifactPreviewResult }
   );
 }
 
-export function ArtifactWorkspace({ preview, exportActions }: ArtifactWorkspaceProps) {
+function ArtifactWorkspaceTable({
+  projection,
+  range,
+  onPageChange,
+}: {
+  readonly projection: ArtifactWorkspaceTableProjection;
+  readonly range?: ArtifactPreviewResult["viewport"];
+  readonly onPageChange?: (offset: number) => void;
+}) {
+  const start = range ? range.offset + (projection.rows.length > 0 ? 1 : 0) : 1;
+  const end = range ? range.offset + projection.rows.length : projection.rows.length;
+  const total = range?.total_rows ?? projection.total_rows;
+  const previousEnabled = Boolean(range && range.offset > 0 && onPageChange);
+  const nextEnabled = Boolean(
+    range && onPageChange && total !== null && range.offset + projection.rows.length < total,
+  );
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full border-collapse text-left text-xs">
+        <thead>
+          <tr>
+            {projection.columns.map((column) => (
+              <th
+                className="whitespace-nowrap border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,var(--color-bg-tertiary)_78%,transparent)] px-3 py-2 font-semibold"
+                key={column.key}
+                scope="col"
+              >
+                {column.label}
+                <span className="ml-1 font-mono text-[9px] font-normal text-[var(--color-text-muted)]">
+                  {column.data_type}
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {keyedRows(projection.rows).map(({ row, key }) => (
+            <tr className="hover:bg-[var(--color-bg-overlay)]" key={key}>
+              {projection.columns.map((column) => (
+                <td
+                  className="border-b border-[var(--color-border-default)] px-3 py-2 align-top tabular-nums"
+                  key={column.key}
+                >
+                  {row[column.key] === null ? (
+                    <>
+                      <span className="sr-only">空值</span>
+                      <span aria-hidden="true" className="text-[var(--color-text-muted)]">
+                        —
+                      </span>
+                    </>
+                  ) : (
+                    String(row[column.key])
+                  )}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {range ? (
+        <footer className="flex items-center justify-between gap-3 px-4 py-3 text-[11px] text-[var(--color-text-muted)]">
+          <span>
+            {start}–{end} / {total ?? "?"}
+            {range.truncated ? " · 已分页" : ""}
+          </span>
+          {onPageChange ? (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!previousEnabled}
+                onClick={() => onPageChange(Math.max(0, range.offset - range.limit))}
+                className="rounded-md border border-[var(--color-border-default)] px-2 py-1 font-medium text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                上一页
+              </button>
+              <button
+                type="button"
+                disabled={!nextEnabled}
+                onClick={() => onPageChange(range.offset + range.limit)}
+                className="rounded-md border border-[var(--color-border-default)] px-2 py-1 font-medium text-[var(--color-text-secondary)] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                下一页
+              </button>
+            </div>
+          ) : null}
+        </footer>
+      ) : null}
+    </div>
+  );
+}
+
+export function ArtifactWorkspace({
+  preview,
+  exportActions,
+  onPageChange,
+}: ArtifactWorkspaceProps) {
+  const chartDescriptionId = useId();
   const projection = preview.projection;
+  const previewV2 = preview.schema_version === "artifact-preview-result@2.0.0" ? preview : null;
+  const chartV2 = previewV2?.projection ?? null;
+  const previewV1 = preview.schema_version === "artifact-preview-result@1.0.0" ? preview : null;
+  const chartV1 = previewV1?.projection.kind === "CHART" ? previewV1.projection : null;
   return (
     <section
       aria-label="Artifact 工作区"
-      className="overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-white"
+      className="overflow-hidden rounded-2xl border border-white/60 bg-[color-mix(in_srgb,var(--color-bg-surface)_92%,transparent)] shadow-[0_12px_36px_rgba(15,23,42,0.08)] backdrop-blur-xl"
       data-artifact-id={preview.source_ref.artifact_id}
       data-content-hash={preview.source_ref.content_hash}
     >
@@ -83,51 +202,84 @@ export function ArtifactWorkspace({ preview, exportActions }: ArtifactWorkspaceP
       ) : null}
 
       {projection.kind === "TABLE" ? (
-        <div className="overflow-auto">
-          <table className="min-w-full border-collapse text-left text-xs">
-            <thead>
-              <tr>
-                {projection.columns.map((column) => (
-                  <th
-                    className="border-b border-[var(--color-border-default)] bg-[var(--color-bg-tertiary)] px-3 py-2 font-semibold"
-                    key={column.key}
-                    scope="col"
-                  >
-                    {column.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {keyedRows(projection.rows).map(({ row, key }) => (
-                <tr key={key}>
-                  {projection.columns.map((column) => (
-                    <td
-                      className="border-b border-[var(--color-border-default)] px-3 py-2 align-top"
-                      key={column.key}
-                    >
-                      {row[column.key] === null ? "—" : String(row[column.key])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="px-4 py-3 text-[11px] text-[var(--color-text-muted)]">
-            {preview.viewport.offset + 1}–{preview.viewport.offset + projection.rows.length} /{" "}
-            {projection.total_rows}
+        <ArtifactWorkspaceTable
+          projection={projection}
+          range={preview.viewport}
+          onPageChange={onPageChange}
+        />
+      ) : null}
+
+      {chartV2 ? (
+        <div className="px-5 py-4">
+          <div className="mb-3">
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
+              {chartV2.title}
+            </h2>
+            <div
+              id={chartDescriptionId}
+              className="mt-1 space-y-1 text-xs text-[var(--color-text-muted)]"
+            >
+              {chartV2.description ? <p>{chartV2.description}</p> : null}
+              <p>
+                {chartV2.unit ? `单位：${chartV2.unit} · ` : ""}
+                {preview.viewport.offset + (chartV2.table.rows.length > 0 ? 1 : 0)}–
+                {preview.viewport.offset + chartV2.table.rows.length} /{" "}
+                {preview.viewport.total_rows ?? "?"}
+                {preview.viewport.truncated ? " · 已截断" : ""}
+              </p>
+            </div>
+          </div>
+          <GovernedVChart projection={chartV2} describedBy={chartDescriptionId} />
+          <details className="mt-3 rounded-xl border border-[var(--color-border-default)]" open>
+            <summary className="cursor-pointer px-3 py-2 text-xs font-semibold">
+              查看数据表（与图表同源）
+            </summary>
+            <ArtifactWorkspaceTable
+              projection={chartV2.table}
+              range={preview.viewport}
+              onPageChange={onPageChange}
+            />
+          </details>
+          <p className="mt-3 break-all font-mono text-[9px] text-[var(--color-text-muted)]">
+            dataset {previewV2?.provenance.dataset_hash}
           </p>
+          <details className="mt-2 text-[10px] text-[var(--color-text-muted)]">
+            <summary className="cursor-pointer font-semibold">治理来源</summary>
+            <dl className="mt-2 grid gap-1 border-l border-[var(--color-border-default)] pl-3 font-mono">
+              <div>
+                <dt className="inline font-sans">QueryEvidence：</dt>{" "}
+                <dd className="inline break-all">
+                  rev {previewV2?.source_refs[0].revision} ·{" "}
+                  {previewV2?.source_refs[0].content_hash}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline font-sans">Context package：</dt>{" "}
+                <dd className="inline break-all">
+                  {previewV2?.provenance.resolved_context.package_id} ·{" "}
+                  {previewV2?.provenance.resolved_context.package_hash}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline font-sans">Context receipt：</dt>{" "}
+                <dd className="inline break-all">
+                  {previewV2?.provenance.resolved_context.receipt_id} ·{" "}
+                  {previewV2?.provenance.resolved_context.receipt_hash}
+                </dd>
+              </div>
+            </dl>
+          </details>
         </div>
       ) : null}
 
-      {projection.kind === "CHART" ? (
+      {chartV1 ? (
         <div className="px-5 py-4">
-          <h2 className="text-sm font-semibold">{projection.title}</h2>
+          <h2 className="text-sm font-semibold">{chartV1.title}</h2>
           <dl className="mt-3 grid gap-2">
-            {keyedRows(projection.table.rows).map(({ row, key }) => (
+            {keyedRows(chartV1.table.rows).map(({ row, key }) => (
               <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-4" key={key}>
-                <dt>{String(row[projection.x_key] ?? "—")}</dt>
-                <dd className="font-mono">{String(row[projection.y_key] ?? "—")}</dd>
+                <dt>{String(row[chartV1.x_key] ?? "—")}</dt>
+                <dd className="font-mono">{String(row[chartV1.y_key] ?? "—")}</dd>
               </div>
             ))}
           </dl>

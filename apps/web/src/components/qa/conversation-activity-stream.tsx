@@ -1,8 +1,9 @@
 "use client";
 
 import type { PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts";
-import { CaretDown, CaretRight, Robot } from "@phosphor-icons/react";
+import { CaretDown, CaretRight, ChartLine, Robot, Table } from "@phosphor-icons/react";
 import { useId, useState } from "react";
+import { ArtifactPreviewPanel } from "@/components/workbench/artifact-preview-panel";
 import { useWorkspaceI18n } from "@/i18n";
 import {
   artifactReferencesBefore,
@@ -113,6 +114,56 @@ function AgentDisclosure({ agent }: { agent: TeamAgentView }) {
   );
 }
 
+function ArtifactActivity({
+  block,
+}: {
+  block: Extract<ConversationActivityBlock, { kind: "artifact" }>;
+}) {
+  const selectInspector = useQAStore((state) => state.selectInspector);
+  const triggerId = `qa-inline-artifact-${block.reference.artifact_id}-${block.reference.revision}`;
+  const ChartIcon =
+    block.reference.artifact_type === "ArtifactWorkspaceDocument" ? ChartLine : Table;
+  return (
+    <section
+      className="my-3 overflow-hidden rounded-2xl border border-white/70 bg-white/60 p-2 shadow-[0_16px_42px_rgba(15,23,42,0.08)] backdrop-blur-xl"
+      aria-label={`${block.reference.artifact_type} 数据展示`}
+    >
+      <div className="flex items-center justify-between gap-3 px-2 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-[color-mix(in_srgb,var(--color-accent)_10%,transparent)] text-[var(--color-accent)]">
+            <ChartIcon aria-hidden="true" size={15} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-xs font-semibold">{block.reference.artifact_type}</p>
+            <p className="truncate font-mono text-[9px] text-[var(--color-text-muted)]">
+              rev {block.reference.revision} · {block.reference.content_hash}
+            </p>
+          </div>
+        </div>
+        <button
+          id={triggerId}
+          type="button"
+          onClick={() =>
+            selectInspector(
+              {
+                kind: "artifact",
+                run_id: block.runId,
+                reference: block.reference,
+                anchor_sequence: block.sequence,
+              },
+              triggerId,
+            )
+          }
+          className="shrink-0 rounded-lg border border-[var(--color-border-default)] bg-white/70 px-2.5 py-1.5 text-[10px] font-semibold text-[var(--color-accent)] hover:border-[var(--color-accent)]"
+        >
+          侧栏查看
+        </button>
+      </div>
+      <ArtifactPreviewPanel reference={block.reference} pageSize={50} />
+    </section>
+  );
+}
+
 export function ConversationActivityStream({
   blocks,
   events,
@@ -142,6 +193,7 @@ export function ConversationActivityStream({
             );
           }
           if (block.kind === "agent") return <AgentDisclosure key={block.id} agent={block.agent} />;
+          if (block.kind === "artifact") return <ArtifactActivity key={block.id} block={block} />;
           return <ProcessDisclosure key={block.id} row={block.row} />;
         })}
       </section>

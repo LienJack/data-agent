@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assertEcommerceBenchmarkReadOnlySql,
+  compileEcommerceMonthlyOrderTrendSql,
   compileEcommerceTableCountSql,
 } from "../../src/sandbox/postgres-ecommerce-benchmark-executor.js";
 
@@ -16,6 +17,16 @@ describe("E-commerce benchmark PostgreSQL policy", () => {
         "with x as (select order_id from demo_adb_ecommerce_mart.fact_order) select count(*) from x",
       ),
     ).resolves.toContain("select count(*)");
+  });
+
+  it("compiles an ordered bounded monthly order trend", async () => {
+    const sql = compileEcommerceMonthlyOrderTrendSql();
+    expect(sql).toContain("demo_adb_ecommerce_mart.fact_order");
+    expect(sql).toContain("purchase_date");
+    expect(sql).toContain("order_count");
+    await expect(assertEcommerceBenchmarkReadOnlySql(sql)).resolves.toContain(
+      "order by pg_catalog.date_trunc",
+    );
   });
 
   it.each([

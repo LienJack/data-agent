@@ -1,6 +1,10 @@
 import type { AgentProductProfileRegistryItem } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { classifyAgentQuestion, planAgentDispatch } from "../../src/runs/agent-dispatch-planner.js";
+import {
+  classifyAgentQuestion,
+  classifyAgentVisualizationIntent,
+  planAgentDispatch,
+} from "../../src/runs/agent-dispatch-planner.js";
 
 const runId = "00000000-0000-4000-8000-000000000101";
 const policyVersion = "adaptive-routing@1.0.0+rollout.2";
@@ -45,6 +49,13 @@ describe("adaptive Agent dispatch planner", () => {
     expect(classifyAgentQuestion("输出周报")).toBe("REPORT");
   });
 
+  it("freezes visualization intent only for explicit trend, comparison, or composition questions", () => {
+    expect(classifyAgentVisualizationIntent("按月展示订单趋势")).toBe("TREND");
+    expect(classifyAgentVisualizationIntent("比较各品类销售额排名")).toBe("COMPARISON");
+    expect(classifyAgentVisualizationIntent("各渠道订单占比")).toBe("COMPOSITION");
+    expect(classifyAgentVisualizationIntent("本月订单是多少")).toBeNull();
+  });
+
   it("freezes ENFORCED DIRECT with zero profiles and Text2SQL-only TEAM", async () => {
     const direct = await planAgentDispatch({
       run_id: runId,
@@ -77,6 +88,20 @@ describe("adaptive Agent dispatch planner", () => {
       plan: {
         question_class: "DATA_QUERY",
         selected_profile_refs: [{ profile_id: "governed-text2sql-agent" }],
+      },
+    });
+
+    const trend = await planAgentDispatch({
+      run_id: runId,
+      question: "按月展示订单趋势",
+      enabled_profiles: catalog,
+      rollout_mode: "ENFORCED",
+      policy_version: policyVersion,
+    });
+    expect(trend.admission).toMatchObject({
+      kind: "EXECUTE",
+      plan: {
+        reason_codes: ["DATA_QUERY_SPECIALIST_REQUIRED", "DATA_QUERY_TREND_VISUALIZATION"],
       },
     });
   });

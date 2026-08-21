@@ -1,9 +1,11 @@
 import {
   type ArtifactReference,
+  type ArtifactWorkspaceChartDocumentV2,
   canonicalizeJson,
   type PortResult,
   type ProductTeamArtifactDocument,
   runWorkLeaseSchema,
+  verifyArtifactWorkspaceChartDocumentV2,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import {
@@ -61,6 +63,117 @@ async function sourceExists(
   return result.rowCount === 1;
 }
 
+async function commitVerifiedDocument(input: {
+  readonly options: PostgresProductTeamArtifactStoreOptions;
+  readonly capabilityInput: unknown;
+  readonly lease: ReturnType<typeof runWorkLeaseSchema.parse>;
+  readonly document: unknown;
+  readonly reference: ArtifactReference;
+  readonly sourceRefs: readonly ArtifactReference[];
+  readonly committedAt: string;
+  readonly operationName: string;
+  readonly scopeErrorCode: string;
+  readonly conflictCode: string;
+}) {
+  return withAppTransaction(
+    input.options.pool,
+    input.options.authorizer,
+    input.capabilityInput,
+    {
+      access: "WRITE",
+      operation_name: input.operationName,
+      correlation_id: input.reference.artifact_id,
+    },
+    async ({ capability, client }) => {
+      if (
+        capability.principal !== input.lease.principal_id ||
+        capability.scope.app_id !== input.reference.app_id ||
+        capability.scope.tenant_id !== input.reference.tenant_id ||
+        capability.scope.environment !== input.reference.environment
+      ) {
+        throw new PersistenceBoundaryError(
+          input.scopeErrorCode,
+          "Artifact capability 与 Worker lease 不一致。",
+        );
+      }
+      const fence = await client.query<{ readonly active_fence: number | string | null }>(
+        "select app_data_agent.lock_owned_run_fence($1::uuid) as active_fence",
+        [input.reference.run_id],
+      );
+      if (BigInt(fence.rows[0]?.active_fence ?? 0) !== BigInt(input.lease.worker_fence)) {
+        throw new PersistenceBoundaryError(
+          "WORKER_FENCE_STALE",
+          "过期 Worker Fence 不能提交 Artifact。",
+          true,
+        );
+      }
+      for (const source of input.sourceRefs) {
+        if (!(await sourceExists(client, source, capability.principal))) {
+          throw new PersistenceBoundaryError(
+            "ARTIFACT_INPUT_NOT_COMMITTED",
+            "Artifact 引用了尚未提交的 source ref。",
+          );
+        }
+      }
+      const inserted = await client.query(
+        `insert into artifacts (
+           app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
+           content_hash,document_json,worker_fence,is_active,parent_revision,
+           parent_content_hash,created_at
+         ) values (
+           $1::uuid,$2::uuid,$3::text,$4::uuid,$5::uuid,$6::text,$7::integer,
+           $8::text,$9::jsonb,$10::bigint,true,null,null,$11::timestamptz
+         ) on conflict do nothing`,
+        [
+          input.reference.app_id,
+          input.reference.tenant_id,
+          input.reference.environment,
+          input.reference.run_id,
+          input.reference.artifact_id,
+          input.reference.artifact_type,
+          input.reference.revision,
+          input.reference.content_hash,
+          canonicalizeJson(input.document),
+          input.lease.worker_fence,
+          input.committedAt,
+        ],
+      );
+      if (inserted.rowCount === 1) return input.reference;
+      const existing = await client.query<{
+        readonly content_hash: string;
+        readonly document_json: unknown;
+      }>(
+        `select content_hash,document_json
+           from artifacts
+          where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
+            and run_id=$4::uuid and artifact_id=$5::uuid and artifact_type=$6::text
+            and revision=$7::integer`,
+        [
+          input.reference.app_id,
+          input.reference.tenant_id,
+          input.reference.environment,
+          input.reference.run_id,
+          input.reference.artifact_id,
+          input.reference.artifact_type,
+          input.reference.revision,
+        ],
+      );
+      const row = existing.rows[0];
+      if (
+        !row ||
+        row.content_hash !== input.reference.content_hash ||
+        canonicalizeJson(row.document_json) !== canonicalizeJson(input.document)
+      ) {
+        throw new PersistenceBoundaryError(
+          input.conflictCode,
+          "同一 Artifact identity 已绑定不同内容。",
+        );
+      }
+      return input.reference;
+    },
+  );
+}
+
 export function createPostgresProductTeamArtifactStore(
   options: PostgresProductTeamArtifactStoreOptions,
 ) {
@@ -98,104 +211,68 @@ export function createPostgresProductTeamArtifactStore(
           "Product Team Artifact 与 Worker lease 不属于同一 Scope/Run。",
         );
       }
-      return withAppTransaction(
-        options.pool,
-        options.authorizer,
+      return commitVerifiedDocument({
+        options,
         capabilityInput,
-        {
-          access: "WRITE",
-          operation_name: "agent-team.commit-product-artifact",
-          correlation_id: reference.artifact_id,
-        },
-        async ({ capability, client }) => {
-          if (
-            capability.principal !== lease.data.principal_id ||
-            capability.scope.app_id !== reference.app_id ||
-            capability.scope.tenant_id !== reference.tenant_id ||
-            capability.scope.environment !== reference.environment
-          ) {
-            throw new PersistenceBoundaryError(
-              "PRODUCT_TEAM_ARTIFACT_SCOPE_MISMATCH",
-              "Artifact capability 与 Worker lease 不一致。",
-            );
-          }
-          const fence = await client.query<{ readonly active_fence: number | string | null }>(
-            "select app_data_agent.lock_owned_run_fence($1::uuid) as active_fence",
-            [reference.run_id],
-          );
-          if (BigInt(fence.rows[0]?.active_fence ?? 0) !== BigInt(lease.data.worker_fence)) {
-            throw new PersistenceBoundaryError(
-              "WORKER_FENCE_STALE",
-              "过期 Worker Fence 不能提交 Product Team Artifact。",
-              true,
-            );
-          }
-          for (const source of document.source_refs) {
-            if (!(await sourceExists(client, source, capability.principal))) {
-              throw new PersistenceBoundaryError(
-                "ARTIFACT_INPUT_NOT_COMMITTED",
-                "Product Team Artifact 引用了尚未提交的 source ref。",
-              );
-            }
-          }
-          const inserted = await client.query(
-            `insert into artifacts (
-               app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
-               content_hash,document_json,worker_fence,is_active,parent_revision,
-               parent_content_hash,created_at
-             ) values (
-               $1::uuid,$2::uuid,$3::text,$4::uuid,$5::uuid,$6::text,$7::integer,
-               $8::text,$9::jsonb,$10::bigint,true,null,null,$11::timestamptz
-             ) on conflict do nothing`,
-            [
-              reference.app_id,
-              reference.tenant_id,
-              reference.environment,
-              reference.run_id,
-              reference.artifact_id,
-              reference.artifact_type,
-              reference.revision,
-              reference.content_hash,
-              canonicalizeJson(document),
-              lease.data.worker_fence,
-              document.committed_at,
-            ],
-          );
-          if (inserted.rowCount === 1) return reference;
-          const existing = await client.query<{
-            readonly content_hash: string;
-            readonly document_json: unknown;
-            readonly worker_fence: number | string;
-          }>(
-            `select content_hash,document_json,worker_fence
-               from artifacts
-              where app_id=$1::uuid and tenant_id=$2::uuid and environment=$3::text
-                and run_id=$4::uuid and artifact_id=$5::uuid and artifact_type=$6::text
-                and revision=$7::integer`,
-            [
-              reference.app_id,
-              reference.tenant_id,
-              reference.environment,
-              reference.run_id,
-              reference.artifact_id,
-              reference.artifact_type,
-              reference.revision,
-            ],
-          );
-          const row = existing.rows[0];
-          if (
-            !row ||
-            row.content_hash !== reference.content_hash ||
-            canonicalizeJson(row.document_json) !== canonicalizeJson(document)
-          ) {
-            throw new PersistenceBoundaryError(
-              "PRODUCT_TEAM_ARTIFACT_IDEMPOTENCY_CONFLICT",
-              "同一 Product Team Artifact identity 已绑定不同内容。",
-            );
-          }
-          return reference;
-        },
-      );
+        lease: lease.data,
+        document,
+        reference,
+        sourceRefs: document.source_refs,
+        committedAt: document.committed_at,
+        operationName: "agent-team.commit-product-artifact",
+        scopeErrorCode: "PRODUCT_TEAM_ARTIFACT_SCOPE_MISMATCH",
+        conflictCode: "PRODUCT_TEAM_ARTIFACT_IDEMPOTENCY_CONFLICT",
+      });
+    },
+
+    async commitWorkspaceChart(
+      capabilityInput: unknown,
+      leaseInput: unknown,
+      documentInput: unknown,
+    ): Promise<PortResult<ArtifactReference>> {
+      const lease = runWorkLeaseSchema.safeParse(leaseInput);
+      let document: ArtifactWorkspaceChartDocumentV2;
+      try {
+        document = await verifyArtifactWorkspaceChartDocumentV2(documentInput);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "ARTIFACT_WORKSPACE_CHART_INVALID";
+        return invalid(
+          code === "CHART_DATA_LIMIT_EXCEEDED" ? code : "ARTIFACT_WORKSPACE_CHART_INVALID",
+          "Chart Artifact 未通过 strict schema/hash 校验。",
+        );
+      }
+      if (!lease.success || containsPotentialPlaintextSecret(document)) {
+        return invalid(
+          "ARTIFACT_WORKSPACE_CHART_INVALID",
+          "Chart Artifact lease 或公开内容不符合安全契约。",
+        );
+      }
+      const reference = document.document_ref;
+      if (
+        reference.app_id !== lease.data.scope.app_id ||
+        reference.tenant_id !== lease.data.scope.tenant_id ||
+        reference.environment !== lease.data.scope.environment ||
+        reference.run_id !== lease.data.run_id
+      ) {
+        return invalid(
+          "ARTIFACT_WORKSPACE_CHART_SCOPE_MISMATCH",
+          "Chart Artifact 与 Worker lease 不属于同一 Scope/Run。",
+        );
+      }
+      return commitVerifiedDocument({
+        options,
+        capabilityInput,
+        lease: lease.data,
+        document,
+        reference,
+        sourceRefs: document.source_refs,
+        committedAt: new Date(
+          Date.parse(lease.data.expires_at) - lease.data.lease_duration_ms,
+        ).toISOString(),
+        operationName: "agent-team.commit-workspace-chart",
+        scopeErrorCode: "ARTIFACT_WORKSPACE_CHART_SCOPE_MISMATCH",
+        conflictCode: "ARTIFACT_WORKSPACE_CHART_IDEMPOTENCY_CONFLICT",
+      });
     },
 
     async verifyCommitted(

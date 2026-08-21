@@ -2,18 +2,11 @@
 
 /** Modified from DeepSeek Harness AppFrame/DetailsPanel and durable Session baseline/live flow. */
 
-import {
-  type ArtifactPreviewResult,
-  type ArtifactReference,
-  artifactPreviewResultSchema,
-  type PublicRunEvent,
-  type QaInspectorTarget,
-} from "@data-agent/contracts";
+import type { ArtifactReference, PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts";
 import { FileCode, Path, Robot, X } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArtifactWorkspace } from "@/components/workbench/artifact-workspace";
+import { ArtifactPreviewPanel } from "@/components/workbench/artifact-preview-panel";
 import { useWorkspaceI18n } from "@/i18n";
-import { resolveWorkspaceId, workspaceRequestHeaders } from "@/lib/api-client";
 import { assembleSubagentInspector } from "@/lib/qa-event-assembler";
 import { computeInspectorColumns } from "@/lib/qa-inspector-layout";
 import {
@@ -47,11 +40,6 @@ function ArtifactInspector({
   loadingReplay: boolean;
 }) {
   const { t } = useWorkspaceI18n();
-  const [state, setState] = useState<
-    | { kind: "loading" }
-    | { kind: "ready"; preview: ArtifactPreviewResult }
-    | { kind: "error"; code: string; message: string }
-  >({ kind: "loading" });
   const seenInReplay = events.some(
     (event) =>
       event.run_id === target.run_id &&
@@ -62,51 +50,7 @@ function ArtifactInspector({
       ),
   );
 
-  useEffect(() => {
-    if (!seenInReplay && !loadingReplay) {
-      setState({
-        kind: "error",
-        code: "ARTIFACT_INSPECTOR_TARGET_STALE",
-        message: t("inspector.staleArtifact"),
-      });
-      return;
-    }
-    if (!seenInReplay) return;
-    const controller = new AbortController();
-    setState({ kind: "loading" });
-    const workspaceId = resolveWorkspaceId();
-    const reference = encodeURIComponent(JSON.stringify(target.reference));
-    void fetch(
-      `/api/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(target.reference.artifact_id)}?reference=${reference}`,
-      { headers: workspaceRequestHeaders(workspaceId), signal: controller.signal },
-    )
-      .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as {
-          error?: { code?: string; message?: string };
-        } | null;
-        if (!response.ok) {
-          throw Object.assign(new Error(body?.error?.message ?? "Artifact 预览失败"), {
-            code: body?.error?.code ?? "ARTIFACT_PREVIEW_FAILED",
-          });
-        }
-        return artifactPreviewResultSchema.parse(body);
-      })
-      .then((preview) => setState({ kind: "ready", preview }))
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setState({
-          kind: "error",
-          code:
-            typeof error === "object" && error && "code" in error
-              ? String(error.code)
-              : "ARTIFACT_PREVIEW_INVALID",
-          message: error instanceof Error ? error.message : "Artifact 预览失败",
-        });
-      });
-    return () => controller.abort();
-  }, [loadingReplay, seenInReplay, t, target.reference]);
-
-  if (state.kind === "loading") {
+  if (!seenInReplay && loadingReplay) {
     return (
       <div className="space-y-3 p-4" role="status" aria-label={t("inspector.loadingArtifact")}>
         <div className="h-4 w-3/5 animate-pulse rounded bg-[var(--color-bg-overlay)]" />
@@ -114,18 +58,24 @@ function ArtifactInspector({
       </div>
     );
   }
-  if (state.kind === "error") {
+  if (!seenInReplay) {
     return (
       <div className="m-4 border-l-2 border-[var(--color-error)] bg-red-50 px-3 py-3">
         <p className="text-xs font-semibold text-red-800">{t("inspector.previewFailed")}</p>
-        <p className="mt-1 text-xs text-red-700">{state.message}</p>
-        <code className="mt-2 block font-mono text-[10px] text-red-700">{state.code}</code>
+        <p className="mt-1 text-xs text-red-700">{t("inspector.staleArtifact")}</p>
+        <code className="mt-2 block font-mono text-[10px] text-red-700">
+          ARTIFACT_INSPECTOR_TARGET_STALE
+        </code>
       </div>
     );
   }
   return (
     <div className="p-3">
-      <ArtifactWorkspace preview={state.preview} />
+      <ArtifactPreviewPanel
+        key={referenceIdentity(target.reference)}
+        reference={target.reference}
+        pageSize={100}
+      />
     </div>
   );
 }

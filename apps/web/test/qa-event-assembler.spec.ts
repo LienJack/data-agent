@@ -192,7 +192,7 @@ describe("Q&A public event assembly", () => {
     const taskId = "22000000-0000-4000-8000-000000000001";
     const reference = {
       artifact_id: "24000000-0000-4000-8000-000000000001",
-      artifact_type: "AnalysisReport" as const,
+      artifact_type: "QueryEvidence" as const,
       app_id: "24000000-0000-4000-8000-000000000002",
       tenant_id: "24000000-0000-4000-8000-000000000003",
       environment: "test" as const,
@@ -264,6 +264,7 @@ describe("Q&A public event assembly", () => {
       ["reasoning", 1],
       ["text", 2],
       ["agent", 4],
+      ["artifact", 6],
       ["text", 7],
     ]);
     expect(blocks[1]).toMatchObject({ kind: "text", content: "中间回答" });
@@ -278,6 +279,11 @@ describe("Q&A public event assembly", () => {
           }),
         ],
       },
+    });
+    expect(blocks[3]).toMatchObject({
+      kind: "artifact",
+      sequence: 6,
+      reference,
     });
     expect(assembleConversationActivity([...events].reverse(), runId)).toEqual(blocks);
     expect(artifactReferencesBefore(events, 2, runId)).toEqual([]);

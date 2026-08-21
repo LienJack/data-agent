@@ -14,6 +14,7 @@ import {
   type TeamTaskV2,
 } from "@data-agent/agent-runtime";
 import {
+  type AgentDispatchPlan,
   type AgentProductProfileRegistryItem,
   type AgentSpecialistProfileId,
   type ArtifactReference,
@@ -66,6 +67,7 @@ export interface ProductionTeamToolFactoryInput {
     DataAgentProductTeamRuntimePort["execute"]
   >[0]["resolved_context_ref"];
   readonly accepted_evidence_ref: ArtifactReference | null;
+  readonly dispatch_plan: AgentDispatchPlan | null;
 }
 
 class ProductionTeamRuntimeError extends Error {
@@ -572,6 +574,7 @@ export function createProductionTeamRuntime(
               execution_context: input.execution_context,
               resolved_context_ref: input.resolved_context_ref,
               accepted_evidence_ref: evidenceRef,
+              dispatch_plan: input.dispatch_plan ?? null,
             }) ?? dependencies.tools;
           if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
           const registry = await createMastraProfileComposition({

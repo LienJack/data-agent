@@ -52,7 +52,14 @@ export interface TeamAgentView {
 export type ConversationActivityBlock =
   | { kind: "text"; id: string; sequence: number; content: string }
   | { kind: "reasoning" | "progress" | "tool"; id: string; sequence: number; row: ProcessRow }
-  | { kind: "agent"; id: string; sequence: number; agent: TeamAgentView };
+  | { kind: "agent"; id: string; sequence: number; agent: TeamAgentView }
+  | {
+      kind: "artifact";
+      id: string;
+      sequence: number;
+      runId: string;
+      reference: ArtifactReference;
+    };
 
 export interface SubagentInspectorSnapshot {
   target: Extract<QaInspectorTarget, { kind: "subagent" }>;
@@ -379,6 +386,7 @@ export function assembleConversationActivity(
   const ownedToolIds = new Set(agents.flatMap((agent) => agent.children.map((child) => child.id)));
   const rowBySequence = new Map(rows.map((row) => [row.sequence, row]));
   const agentBySequence = new Map(agents.map((agent) => [agent.sequence, agent]));
+  const emittedArtifactIds = new Set<string>();
   let text: Extract<ConversationActivityBlock, { kind: "text" }> | null = null;
 
   const flushText = () => {
@@ -405,6 +413,28 @@ export function assembleConversationActivity(
       continue;
     }
     flushText();
+    if (event.type === "tool" && event.payload.status === "COMPLETED") {
+      const visibleReferences =
+        "artifact_refs" in event.payload
+          ? event.payload.artifact_refs.filter(
+              (reference) =>
+                reference.artifact_type === "QueryEvidence" ||
+                reference.artifact_type === "ArtifactWorkspaceDocument",
+            )
+          : [];
+      for (const reference of visibleReferences) {
+        const id = `${runId}:${event.sequence}:${artifactIdentity(reference)}`;
+        if (emittedArtifactIds.has(id)) continue;
+        emittedArtifactIds.add(id);
+        blocks.push({
+          kind: "artifact",
+          id,
+          sequence: event.sequence,
+          runId,
+          reference,
+        });
+      }
+    }
     const agent = agentBySequence.get(event.sequence);
     if (agent) {
       blocks.push({ kind: "agent", id: agent.id, sequence: agent.sequence, agent });

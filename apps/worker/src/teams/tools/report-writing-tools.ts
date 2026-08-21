@@ -1,4 +1,3 @@
-import type { ArtifactReference } from "@data-agent/contracts";
 import type { ProductProfileToolPort } from "../mastra-profile-composition.js";
 
 export interface ReportWritingToolDependencies {
@@ -10,7 +9,7 @@ export function createReportWritingTools(
   dependencies: ReportWritingToolDependencies,
 ): ProductProfileToolPort {
   return {
-    async invoke(input): Promise<ArtifactReference | null> {
+    async invoke(input) {
       if (
         input.task.profile_id !== "report-writing-agent" ||
         input.profile.revision.profile_id !== "report-writing-agent"

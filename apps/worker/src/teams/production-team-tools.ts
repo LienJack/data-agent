@@ -1,16 +1,22 @@
 import {
   type ArtifactReference,
+  type ArtifactWorkspaceChartDocumentV2,
   buildProductTeamArtifactDocument,
   type PortResult,
   type ProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import {
+  buildQueryEvidenceChartDocument,
+  compileEcommerceMonthlyOrderTrendSql,
   compileEcommerceTableCountSql,
   type EcommerceBenchmarkQueryExecutor,
 } from "@data-agent/platform";
 import { z } from "zod";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
-import type { ProductProfileToolPort } from "./mastra-profile-composition.js";
+import type {
+  ProductProfileToolPort,
+  ProductProfileToolResult,
+} from "./mastra-profile-composition.js";
 import {
   type ProductionTeamToolFactoryInput,
   productionTeamRuntimeInternals,
@@ -24,10 +30,32 @@ export interface ProductionTeamArtifactPort {
     lease: ProductionTeamToolFactoryInput["lease"],
     document: ProductTeamArtifactDocument,
   ): Promise<PortResult<ArtifactReference>>;
+  commitWorkspaceChart(
+    capability: unknown,
+    lease: ProductionTeamToolFactoryInput["lease"],
+    document: ArtifactWorkspaceChartDocumentV2,
+  ): Promise<PortResult<ArtifactReference>>;
   resolveCommitted(
     capability: unknown,
     reference: ArtifactReference,
   ): Promise<PortResult<ProductTeamArtifactDocument | null>>;
+}
+
+function toolResult(
+  outputRef: ArtifactReference | null,
+  publicArtifactRefs: readonly ArtifactReference[] = outputRef ? [outputRef] : [],
+): ProductProfileToolResult {
+  return Object.freeze({ output_ref: outputRef, public_artifact_refs: publicArtifactRefs });
+}
+
+function visualizationIntent(
+  plan: ProductionTeamToolFactoryInput["dispatch_plan"],
+): "TREND" | "COMPARISON" | "COMPOSITION" | null {
+  if (!plan) return null;
+  if (plan.reason_codes.includes("DATA_QUERY_TREND_VISUALIZATION")) return "TREND";
+  if (plan.reason_codes.includes("DATA_QUERY_COMPARISON_VISUALIZATION")) return "COMPARISON";
+  if (plan.reason_codes.includes("DATA_QUERY_COMPOSITION_VISUALIZATION")) return "COMPOSITION";
+  return null;
 }
 
 export interface ProductionTeamToolsDependencies {
@@ -124,6 +152,7 @@ export function createProductionTeamTools(
     provider_answer: string | null;
     semantic_ref: ArtifactReference | null;
   } = { sql_ref: null, provider_answer: null, semantic_ref: null };
+  const intent = visualizationIntent(factoryInput.dispatch_plan);
 
   return Object.freeze({
     async invoke(input: Parameters<ProductProfileToolPort["invoke"]>[0]) {
@@ -152,15 +181,18 @@ export function createProductionTeamTools(
               ],
             },
           });
-          return state.semantic_ref;
+          return toolResult(state.semantic_ref);
         }
         throw new ProductionTeamToolError("SEMANTIC_AGENT_TOOL_DENIED");
       }
       if (input.task.profile_id === "governed-text2sql-agent") {
-        if (input.tool_id === "semantic.release.read") return null;
+        if (input.tool_id === "semantic.release.read") return toolResult(null);
         if (input.tool_id === "sql.compiler.compile") {
           state.provider_answer = await providerAnswer(factoryInput, "text2sql");
-          const sql = compileEcommerceTableCountSql();
+          const sql =
+            intent === "TREND"
+              ? compileEcommerceMonthlyOrderTrendSql()
+              : compileEcommerceTableCountSql();
           state.sql_ref = await commitArtifact(dependencies, factoryInput, {
             artifact_type: "SqlArtifact",
             profile_id: "governed-text2sql-agent",
@@ -168,30 +200,64 @@ export function createProductionTeamTools(
             source_refs: [],
             projection: { kind: "SQL", dialect: "postgresql", sql },
           });
-          return state.sql_ref;
+          return toolResult(state.sql_ref);
         }
         if (input.tool_id === "sql.sandbox.execute") {
           if (!state.sql_ref || !state.provider_answer) {
             throw new ProductionTeamToolError("TEAM_TEXT2SQL_COMPILE_REQUIRED");
           }
-          const result = await dependencies.sandbox.executeTableCount({
-            timeout_ms: Math.min(30_000, input.task.bounds.timeout_ms),
-          });
+          const timeout = Math.min(30_000, input.task.bounds.timeout_ms);
+          const result =
+            intent === "TREND"
+              ? await dependencies.sandbox.executeMonthlyOrderTrend({ timeout_ms: timeout })
+              : await dependencies.sandbox.executeTableCount({ timeout_ms: timeout });
           const columns = result.columns.map((column) => ({
             key: column,
             label: column,
-            data_type: "NUMBER" as const,
+            data_type:
+              intent === "TREND" && column === "month" ? ("STRING" as const) : ("NUMBER" as const),
           }));
           const rows = result.rows.map((row) =>
             Object.fromEntries(columns.map((column, index) => [column.key, row[index] ?? null])),
           );
-          return commitArtifact(dependencies, factoryInput, {
+          const evidenceRef = await commitArtifact(dependencies, factoryInput, {
             artifact_type: "QueryEvidence",
             profile_id: "governed-text2sql-agent",
             task_id: input.task.task_id,
             source_refs: [state.sql_ref],
             projection: { kind: "TABLE", columns, rows, total_rows: rows.length },
           });
+          if (!intent) return toolResult(evidenceRef);
+          const evidence = portValue(
+            await dependencies.artifacts.resolveCommitted(dependencies.capability, evidenceRef),
+          );
+          if (!evidence) throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_NOT_COMMITTED");
+          const chartDocument = await buildQueryEvidenceChartDocument({
+            intent,
+            document_ref: {
+              artifact_id: productionTeamRuntimeInternals.identity(
+                factoryInput.lease.run_id,
+                "artifact:ArtifactWorkspaceDocument",
+              ),
+              artifact_type: "ArtifactWorkspaceDocument",
+              ...factoryInput.lease.scope,
+              run_id: factoryInput.lease.run_id,
+              revision: 1,
+              content_hash: `sha256:${"0".repeat(64)}`,
+            },
+            evidence,
+            resolved_context: factoryInput.resolved_context_ref,
+            unit: "单",
+          });
+          if (!chartDocument) return toolResult(evidenceRef);
+          const chartRef = portValue(
+            await dependencies.artifacts.commitWorkspaceChart(
+              dependencies.capability,
+              factoryInput.lease,
+              chartDocument,
+            ),
+          );
+          return toolResult(evidenceRef, [evidenceRef, chartRef]);
         }
         throw new ProductionTeamToolError("TEXT2SQL_AGENT_TOOL_DENIED");
       }
@@ -201,7 +267,7 @@ export function createProductionTeamTools(
         if (evidenceRef?.artifact_type !== "QueryEvidence") {
           throw new ProductionTeamToolError("TEAM_ACCEPTED_QUERY_EVIDENCE_REQUIRED");
         }
-        if (input.tool_id === "evidence.read") return evidenceRef;
+        if (input.tool_id === "evidence.read") return toolResult(evidenceRef);
         if (input.tool_id === "report.project") {
           const evidence = portValue(
             await dependencies.artifacts.resolveCommitted(dependencies.capability, evidenceRef),
@@ -210,19 +276,23 @@ export function createProductionTeamTools(
             throw new ProductionTeamToolError("TEAM_QUERY_EVIDENCE_NOT_COMMITTED");
           }
           await providerAnswer(factoryInput, "report");
-          const tableCount = evidence.projection.rows[0]?.table_count;
-          if (typeof tableCount !== "number" || !Number.isInteger(tableCount)) {
+          const firstRow = evidence.projection.rows[0];
+          const tableCount = firstRow?.table_count;
+          const isTrend = evidence.projection.columns.some(({ key }) => key === "month");
+          if (!isTrend && (typeof tableCount !== "number" || !Number.isInteger(tableCount))) {
             throw new ProductionTeamToolError("TEAM_TABLE_COUNT_EVIDENCE_INVALID");
           }
-          const answer = `当前受治理 E-commerce 数据库共有 ${tableCount} 张已批准业务表。`;
-          return commitArtifact(dependencies, factoryInput, {
+          const answer = isTrend
+            ? `已基于 ${evidence.projection.rows.length} 个有序月份生成受治理订单趋势。`
+            : `当前受治理 E-commerce 数据库共有 ${tableCount} 张已批准业务表。`;
+          const reportRef = await commitArtifact(dependencies, factoryInput, {
             artifact_type: "AnalysisReport",
             profile_id: "report-writing-agent",
             task_id: input.task.task_id,
             source_refs: [evidenceRef],
             projection: {
               kind: "REPORT",
-              title: "E-commerce 数据库表数量",
+              title: isTrend ? "E-commerce 月度订单趋势" : "E-commerce 数据库表数量",
               sections: [
                 {
                   heading: "结论",
@@ -232,6 +302,7 @@ export function createProductionTeamTools(
               ],
             },
           });
+          return toolResult(reportRef);
         }
         throw new ProductionTeamToolError("REPORT_AGENT_TOOL_DENIED");
       }

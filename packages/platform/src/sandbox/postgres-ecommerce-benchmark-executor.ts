@@ -53,6 +53,9 @@ export interface EcommerceBenchmarkQueryExecutor {
     readonly max_rows: number;
   }): Promise<EcommerceBenchmarkQueryResult>;
   executeTableCount(input: { readonly timeout_ms: number }): Promise<EcommerceBenchmarkQueryResult>;
+  executeMonthlyOrderTrend(input: {
+    readonly timeout_ms: number;
+  }): Promise<EcommerceBenchmarkQueryResult>;
 }
 
 export function compileEcommerceTableCountSql(): string {
@@ -62,6 +65,15 @@ join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
 where namespace.nspname = '${ALLOWED_SCHEMA}'
   and relation.relkind in ('r', 'p')
   and relation.relname = any($1::text[])`;
+}
+
+export function compileEcommerceMonthlyOrderTrendSql(): string {
+  return `select pg_catalog.to_char(pg_catalog.date_trunc('month', purchase_date), 'YYYY-MM') as month,
+       count(*)::integer as order_count
+from ${ALLOWED_SCHEMA}.fact_order
+where purchase_date is not null
+group by pg_catalog.date_trunc('month', purchase_date)
+order by pg_catalog.date_trunc('month', purchase_date)`;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -234,6 +246,14 @@ export function createPostgresEcommerceBenchmarkExecutor(input: {
       } finally {
         client.release();
       }
+    },
+
+    async executeMonthlyOrderTrend(request: { readonly timeout_ms: number }) {
+      return executor.execute({
+        sql: compileEcommerceMonthlyOrderTrendSql(),
+        timeout_ms: request.timeout_ms,
+        max_rows: 100,
+      });
     },
   };
   return Object.freeze(executor);

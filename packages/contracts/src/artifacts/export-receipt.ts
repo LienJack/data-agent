@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { contentHashSchema, sha256ContentHash, timestampSchema } from "../common/index.js";
+import {
+  canonicalizeJson,
+  contentHashSchema,
+  immutableIdSchema,
+  sha256ContentHash,
+  timestampSchema,
+} from "../common/index.js";
 import { workspaceIdempotencyKeySchema } from "../workspaces/identity.js";
 import {
   type ArtifactReference,
@@ -9,6 +15,8 @@ import {
 } from "./envelope.js";
 
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION = "artifact-workspace-renderer@1.0.0";
+export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V2 = "artifact-workspace-renderer@2.0.0";
+export const QUERY_EVIDENCE_CHART_TRANSFORM_VERSION = "query-evidence-chart@1.0.0";
 export const ARTIFACT_WORKSPACE_EXPORTER_VERSION = "artifact-workspace-exporter@1.0.0";
 export const SPREADSHEET_FORMULA_POLICY_VERSION = "spreadsheet-formula-neutralization@1.0.0";
 
@@ -135,6 +143,209 @@ export const artifactWorkspaceProjectionSchema = z
     }
   });
 
+const artifactWorkspaceResolvedContextIdentitySchema = z.strictObject({
+  package_id: immutableIdSchema,
+  package_hash: contentHashSchema,
+  receipt_id: immutableIdSchema,
+  receipt_hash: contentHashSchema,
+});
+
+export const artifactWorkspaceChartProjectionV2Schema = z
+  .strictObject({
+    kind: z.literal("CHART"),
+    chart_type: z.enum(["LINE", "BAR", "PIE"]),
+    title: z.string().min(1).max(160),
+    description: z.string().max(1_000).nullable(),
+    unit: z.string().min(1).max(64).nullable(),
+    x_key: columnKeySchema,
+    y_keys: z.array(columnKeySchema).min(1).max(4),
+    legend: z.strictObject({ visible: z.boolean() }),
+    table: artifactWorkspaceTableProjectionSchema,
+  })
+  .superRefine((projection, ctx) => {
+    const keys = new Set(projection.table.columns.map(({ key }) => key));
+    if (!keys.has(projection.x_key)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Chart x_key 必须引用 table column。",
+        path: ["x_key"],
+      });
+    }
+    if (new Set(projection.y_keys).size !== projection.y_keys.length) {
+      ctx.addIssue({ code: "custom", message: "Chart y_keys 必须唯一。", path: ["y_keys"] });
+    }
+    for (const [index, key] of projection.y_keys.entries()) {
+      const column = projection.table.columns.find((candidate) => candidate.key === key);
+      if (column?.data_type !== "NUMBER") {
+        ctx.addIssue({
+          code: "custom",
+          message: "Chart y_key 必须引用 NUMBER column。",
+          path: ["y_keys", index],
+        });
+      }
+    }
+    const rows = projection.table.rows;
+    const maxRows =
+      projection.chart_type === "LINE" ? 100 : projection.chart_type === "BAR" ? 30 : 12;
+    if (rows.length < 2 || rows.length > maxRows) {
+      ctx.addIssue({
+        code: "custom",
+        message: "CHART_DATA_LIMIT_EXCEEDED",
+        path: ["table", "rows"],
+      });
+    }
+    if (projection.table.total_rows !== rows.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Chart document 必须携带完整的受限 dataset。",
+        path: ["table", "total_rows"],
+      });
+    }
+    if (projection.chart_type === "PIE" && projection.y_keys.length !== 1) {
+      ctx.addIssue({
+        code: "custom",
+        message: "PIE 只允许一个 numeric series。",
+        path: ["y_keys"],
+      });
+    }
+    let pieTotal = 0;
+    for (const [rowIndex, row] of rows.entries()) {
+      const label = row[projection.x_key];
+      if (label === null || String(label).length > 200) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Chart label 必须非空且不超过 200 字。",
+          path: ["table", "rows", rowIndex, projection.x_key],
+        });
+      }
+      for (const key of projection.y_keys) {
+        const value = row[key];
+        if (typeof value !== "number" || !Number.isFinite(value)) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Chart series value 必须是 finite number。",
+            path: ["table", "rows", rowIndex, key],
+          });
+          continue;
+        }
+        if (projection.chart_type === "PIE") {
+          if (value < 0) {
+            ctx.addIssue({
+              code: "custom",
+              message: "PIE value 不能为负数。",
+              path: ["table", "rows", rowIndex, key],
+            });
+          }
+          pieTotal += value;
+        }
+      }
+    }
+    if (projection.chart_type === "PIE" && pieTotal <= 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: "PIE value 合计必须大于 0。",
+        path: ["table", "rows"],
+      });
+    }
+    if (new TextEncoder().encode(canonicalizeJson(projection)).byteLength > 256 * 1024) {
+      ctx.addIssue({ code: "custom", message: "CHART_DATA_LIMIT_EXCEEDED" });
+    }
+  });
+
+const artifactWorkspaceChartProvenanceV2Schema = z.strictObject({
+  transform_version: z.literal(QUERY_EVIDENCE_CHART_TRANSFORM_VERSION),
+  dataset_hash: contentHashSchema,
+  resolved_context: artifactWorkspaceResolvedContextIdentitySchema,
+});
+
+const artifactWorkspaceChartDocumentV2ObjectSchema = z
+  .strictObject({
+    schema_version: z.literal("artifact-workspace-chart-document@2.0.0"),
+    document_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
+    source_refs: z.tuple([artifactReferenceFor("QueryEvidence")]),
+    provenance: artifactWorkspaceChartProvenanceV2Schema,
+    projection: artifactWorkspaceChartProjectionV2Schema,
+  })
+  .superRefine((document, ctx) => {
+    if (!sameScopeAndRun(document.document_ref, document.source_refs[0])) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Chart QueryEvidence source 必须属于 document 的 exact scope/run。",
+        path: ["source_refs", 0],
+      });
+    }
+  });
+
+export const artifactWorkspaceChartDocumentV2Schema = artifactWorkspaceChartDocumentV2ObjectSchema;
+
+export async function computeArtifactWorkspaceChartDatasetHash(input: unknown) {
+  const projection = artifactWorkspaceChartProjectionV2Schema.parse(input);
+  return sha256ContentHash({
+    chart_type: projection.chart_type,
+    x_key: projection.x_key,
+    y_keys: projection.y_keys,
+    unit: projection.unit,
+    columns: projection.table.columns,
+    rows: projection.table.rows,
+  });
+}
+
+export async function computeArtifactWorkspaceChartDocumentV2Hash(input: unknown) {
+  const document = artifactWorkspaceChartDocumentV2Schema.parse(input);
+  const { content_hash: _contentHash, ...documentReference } = document.document_ref;
+  return sha256ContentHash({
+    schema_version: document.schema_version,
+    document_ref: documentReference,
+    source_refs: document.source_refs,
+    provenance: document.provenance,
+    projection: document.projection,
+  });
+}
+
+export async function buildArtifactWorkspaceChartDocumentV2(input: unknown) {
+  const document = artifactWorkspaceChartDocumentV2Schema.parse(input);
+  const datasetHash = await computeArtifactWorkspaceChartDatasetHash(document.projection);
+  const withDatasetHash = artifactWorkspaceChartDocumentV2Schema.parse({
+    ...document,
+    provenance: { ...document.provenance, dataset_hash: datasetHash },
+  });
+  return artifactWorkspaceChartDocumentV2Schema.parse({
+    ...withDatasetHash,
+    document_ref: {
+      ...withDatasetHash.document_ref,
+      content_hash: await computeArtifactWorkspaceChartDocumentV2Hash(withDatasetHash),
+    },
+  });
+}
+
+export async function verifyArtifactWorkspaceChartDocumentV2(input: unknown) {
+  let document: z.infer<typeof artifactWorkspaceChartDocumentV2Schema>;
+  try {
+    document = artifactWorkspaceChartDocumentV2Schema.parse(input);
+  } catch (error) {
+    if (
+      error instanceof z.ZodError &&
+      error.issues.some(({ message }) => message === "CHART_DATA_LIMIT_EXCEEDED")
+    ) {
+      throw new TypeError("CHART_DATA_LIMIT_EXCEEDED");
+    }
+    throw error;
+  }
+  if (
+    (await computeArtifactWorkspaceChartDatasetHash(document.projection)) !==
+    document.provenance.dataset_hash
+  ) {
+    throw new TypeError("ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH");
+  }
+  if (
+    (await computeArtifactWorkspaceChartDocumentV2Hash(document)) !==
+    document.document_ref.content_hash
+  ) {
+    throw new TypeError("ARTIFACT_WORKSPACE_CHART_DOCUMENT_HASH_MISMATCH");
+  }
+  return document;
+}
+
 function sameScopeAndRun(left: ArtifactReference, right: ArtifactReference): boolean {
   return (
     left.app_id === right.app_id &&
@@ -198,7 +409,7 @@ export async function verifyArtifactWorkspaceDocument(input: unknown) {
   return document;
 }
 
-export const artifactPreviewResultSchema = z.strictObject({
+export const artifactPreviewResultV1Schema = z.strictObject({
   schema_version: z.literal("artifact-preview-result@1.0.0"),
   source_ref: artifactReferenceSchema,
   renderer_version: z.literal(ARTIFACT_WORKSPACE_RENDERER_VERSION),
@@ -210,6 +421,26 @@ export const artifactPreviewResultSchema = z.strictObject({
     truncated: z.boolean(),
   }),
 });
+
+export const artifactPreviewResultV2Schema = z.strictObject({
+  schema_version: z.literal("artifact-preview-result@2.0.0"),
+  source_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
+  renderer_version: z.literal(ARTIFACT_WORKSPACE_RENDERER_VERSION_V2),
+  source_refs: z.tuple([artifactReferenceFor("QueryEvidence")]),
+  provenance: artifactWorkspaceChartProvenanceV2Schema,
+  projection: artifactWorkspaceChartProjectionV2Schema,
+  viewport: z.strictObject({
+    offset: z.number().int().nonnegative(),
+    limit: z.number().int().positive().max(1_000),
+    total_rows: z.number().int().nonnegative().nullable(),
+    truncated: z.boolean(),
+  }),
+});
+
+export const artifactPreviewResultSchema = z.discriminatedUnion("schema_version", [
+  artifactPreviewResultV1Schema,
+  artifactPreviewResultV2Schema,
+]);
 
 export const artifactExportFormatSchema = z.enum(["CSV", "XLSX"]);
 const filenameStemSchema = z
@@ -359,10 +590,18 @@ export const loadArtifactExportResultSchema = z.strictObject({
 });
 
 export type ArtifactWorkspaceProjection = z.infer<typeof artifactWorkspaceProjectionSchema>;
+export type ArtifactWorkspaceChartProjectionV2 = z.infer<
+  typeof artifactWorkspaceChartProjectionV2Schema
+>;
+export type ArtifactWorkspaceChartDocumentV2 = z.infer<
+  typeof artifactWorkspaceChartDocumentV2Schema
+>;
 export type ArtifactWorkspaceTableProjection = z.infer<
   typeof artifactWorkspaceTableProjectionSchema
 >;
 export type ArtifactPreviewResult = z.infer<typeof artifactPreviewResultSchema>;
+export type ArtifactPreviewResultV1 = z.infer<typeof artifactPreviewResultV1Schema>;
+export type ArtifactPreviewResultV2 = z.infer<typeof artifactPreviewResultV2Schema>;
 export type ArtifactExportCommand = z.infer<typeof artifactExportCommandSchema>;
 export type ArtifactExportReceipt = z.infer<typeof artifactExportReceiptSchema>;
 export type CreateArtifactExportResult = z.infer<typeof createArtifactExportResultSchema>;

@@ -74,7 +74,7 @@ describe("Mastra specialist profile composition", () => {
           invoked.set(task.profile_id, [...(invoked.get(task.profile_id) ?? []), tool_id]);
           const artifactType = task.acceptance.required_artifact_types.at(0);
           if (!artifactType) throw new Error("missing required artifact type");
-          return {
+          const output = {
             artifact_id: id(
               80 + profileIds.indexOf(task.profile_id as (typeof profileIds)[number]),
             ),
@@ -84,6 +84,22 @@ describe("Mastra specialist profile composition", () => {
             revision: 1,
             content_hash: hash("f"),
           };
+          return tool_id === "sql.sandbox.execute"
+            ? {
+                output_ref: output,
+                public_artifact_refs: [
+                  output,
+                  {
+                    artifact_id: id(89),
+                    artifact_type: "ArtifactWorkspaceDocument",
+                    ...scope,
+                    run_id: task.run_id,
+                    revision: 1,
+                    content_hash: hash("c"),
+                  },
+                ],
+              }
+            : output;
         },
       },
     });
@@ -130,6 +146,16 @@ describe("Mastra specialist profile composition", () => {
     expect(
       displayEvents.filter((event) => (event as { kind: string }).kind === "tool_completed"),
     ).toHaveLength(7);
+    expect(displayEvents).toContainEqual(
+      expect.objectContaining({
+        kind: "tool_completed",
+        tool_name: "sql.sandbox.execute",
+        artifact_refs: [
+          expect.objectContaining({ artifact_type: "QueryEvidence" }),
+          expect.objectContaining({ artifact_type: "ArtifactWorkspaceDocument" }),
+        ],
+      }),
+    );
     expect(JSON.stringify(displayEvents)).not.toMatch(/raw|prompt|reasoning_content/i);
   });
 
