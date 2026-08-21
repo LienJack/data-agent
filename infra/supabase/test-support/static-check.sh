@@ -150,6 +150,8 @@ for migration_file in $migration_files; do
     20260725010675_app_data_agent_qa_admin_audit.sql) renderer="scripts/render-10675-migration.ts" ;;
     20260725010676_app_data_agent_qa_admin_audit_coalesce_repair.sql) renderer="scripts/render-10676-migration.ts" ;;
     20260725010677_app_data_agent_qa_admin_audit_failure_repair.sql) renderer="scripts/render-10677-migration.ts" ;;
+    20260725010678_app_data_agent_legacy_attribution_cleanup.sql) renderer="scripts/render-10678-migration.ts" ;;
+    20260725010679_app_data_agent_legacy_attribution_scope_repair.sql) renderer="scripts/render-10679-migration.ts" ;;
     *) renderer="" ;;
   esac
   if [ -n "$renderer" ]; then

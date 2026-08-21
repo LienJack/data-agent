@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      pg:
+        specifier: 8.22.0
+        version: 8.22.0
     devDependencies:
       '@biomejs/biome':
         specifier: 2.5.5
@@ -14,6 +18,9 @@ importers:
       '@types/node':
         specifier: 26.1.1
         version: 26.1.1
+      '@types/pg':
+        specifier: 8.20.0
+        version: 8.20.0
       tsx:
         specifier: 4.23.1
         version: 4.23.1

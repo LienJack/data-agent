@@ -3,7 +3,7 @@
   "name": "qa-attribution-cleanup",
   "title": "Legacy Attribution Destructive Cleanup",
   "description": "Separately inventory and, only after a new destructive approval, remove proven attribution-only historical authority records.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
