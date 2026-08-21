@@ -1,6 +1,5 @@
 import {
   Briefcase,
-  ChartLineUp,
   ChatCircleDots,
   Database,
   Flask,
@@ -11,7 +10,6 @@ import {
 import type { WorkspaceNavigationKey } from "@/lib/workspace-navigation";
 
 const icons = {
-  analysis: ChartLineUp,
   qa: ChatCircleDots,
   tests: Flask,
   jobs: Briefcase,

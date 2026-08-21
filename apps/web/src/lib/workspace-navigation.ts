@@ -10,7 +10,6 @@ export interface WorkspaceNavigationItem {
 }
 
 export type WorkspaceNavigationKey =
-  | "analysis"
   | "qa"
   | "tests"
   | "jobs"
@@ -24,14 +23,6 @@ interface WorkspaceNavigationDefinition extends Omit<WorkspaceNavigationItem, "h
 }
 
 const navigationDefinitions = [
-  {
-    key: "analysis",
-    label: "归因分析",
-    description: "创建研究与归因分析运行",
-    path: "analysis",
-    requiredAction: "ANALYSIS_RUN_CREATE",
-    phase: "AVAILABLE",
-  },
   {
     key: "qa",
     label: "对话分析",

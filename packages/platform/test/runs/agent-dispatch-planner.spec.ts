@@ -56,6 +56,28 @@ describe("adaptive Agent dispatch planner", () => {
     expect(classifyAgentVisualizationIntent("本月订单是多少")).toBeNull();
   });
 
+  it("always defers formal attribution before every rollout executor branch", async () => {
+    for (const rolloutMode of ["SHADOW", "ENFORCED", "ROOT_ONLY_DEFER_DATA"] as const) {
+      await expect(
+        planAgentDispatch({
+          run_id: runId,
+          question: "请给出订单下降的正式归因结论",
+          enabled_profiles: catalog,
+          rollout_mode: rolloutMode,
+          policy_version: policyVersion,
+        }),
+      ).resolves.toMatchObject({
+        admission: {
+          kind: "DEFERRED",
+          question_class: "ATTRIBUTION",
+          reason_code: "ATTRIBUTION_RUNTIME_NOT_READY",
+          required_capabilities: ["attribution.acceptance@1.0.0"],
+        },
+        shadow_plan: null,
+      });
+    }
+  });
+
   it("freezes ENFORCED DIRECT with zero profiles and Text2SQL-only TEAM", async () => {
     const direct = await planAgentDispatch({
       run_id: runId,

@@ -12,7 +12,6 @@ import { workspacePath } from "@/lib/workspace-routes";
 import { ConversationDirectory } from "../qa/conversation-directory";
 
 const surfaceKeys: Readonly<Record<string, MessageKey>> = {
-  analysis: "workspace.surface.analysis",
   qa: "workspace.surface.qa",
   tests: "workspace.surface.tests",
   jobs: "workspace.surface.jobs",

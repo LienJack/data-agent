@@ -3,7 +3,7 @@
   "name": "qa-attribution-retirement",
   "title": "Legacy Attribution Route and Runtime Retirement",
   "description": "Retire the old Attribution Analysis entry points and runtime while preserving shared governed evaluation and audit assets.",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

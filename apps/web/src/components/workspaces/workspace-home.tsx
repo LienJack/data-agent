@@ -10,7 +10,6 @@ import { AccountControls } from "./account-controls";
 import { GreenfieldJourneyPanel } from "./greenfield-journey-panel";
 
 const labels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
-  analysis: "workspace.surface.analysis",
   qa: "workspace.surface.qa",
   tests: "workspace.surface.tests",
   jobs: "workspace.surface.jobs",
@@ -21,7 +20,6 @@ const labels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
 };
 
 const descriptions: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
-  analysis: "workspace.description.analysis",
   qa: "workspace.description.qa",
   tests: "workspace.description.tests",
   jobs: "workspace.description.jobs",

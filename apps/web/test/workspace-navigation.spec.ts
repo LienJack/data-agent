@@ -1,5 +1,6 @@
 import type { WorkspaceAction } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
+import { enUSMessages, zhCNMessages } from "@/i18n/messages";
 import { navigationForWorkspace } from "@/lib/workspace-navigation";
 
 function access(
@@ -28,6 +29,13 @@ function access(
 }
 
 describe("workspace role navigation", () => {
+  it("keeps conversation analysis as the only bilingual analysis product label", () => {
+    expect(zhCNMessages["workspace.surface.qa"]).toBe("对话分析");
+    expect(enUSMessages["workspace.surface.qa"]).toBe("Conversation Analysis");
+    expect("workspace.surface.analysis" in zhCNMessages).toBe(false);
+    expect("workspace.surface.analysis" in enUSMessages).toBe(false);
+  });
+
   it("hides management entries from viewers", () => {
     const items = navigationForWorkspace(access("VIEWER", ["WORKSPACE_RESULT_READ"]));
     expect(items.map((item) => item.label)).toEqual(["能力测试", "任务中心"]);
@@ -50,7 +58,8 @@ describe("workspace role navigation", () => {
         "SEMANTIC_REVIEW",
       ]),
     );
-    expect(items.map((item) => item.key)).toEqual(["analysis", "qa", "tests", "jobs", "semantic"]);
+    expect(items.map((item) => item.key)).toEqual(["qa", "tests", "jobs", "semantic"]);
+    expect(items.some((item) => item.href.endsWith("/analysis"))).toBe(false);
     expect(
       items.every((item) => item.href.startsWith("/w/00000000-0000-4000-8000-00000000aa11/")),
     ).toBe(true);

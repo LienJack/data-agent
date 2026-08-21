@@ -7,6 +7,7 @@ const workspaceAnalysisPageSource = readFileSync(
   new URL("../src/app/w/[workspaceId]/analysis/page.tsx", import.meta.url),
   "utf8",
 );
+const rootPageSource = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
 
 describe("legacy workspace routes", () => {
   it("redirects every legacy business entry to explicit workspace selection", () => {
@@ -30,8 +31,27 @@ describe("legacy workspace routes", () => {
     expect(apiClientSource).toContain("workspaceIdFromPathname(window.location.pathname)");
   });
 
-  it("maps workspace analysis to the attribution workbench instead of QA", () => {
-    expect(workspaceAnalysisPageSource).toContain('from "../../../page"');
-    expect(workspaceAnalysisPageSource).not.toContain('from "../../../qa/page"');
+  it("authorizes the legacy analysis route before redirecting to workspace QA", () => {
+    expect(workspaceAnalysisPageSource).toContain("getCurrentWorkspaceSession");
+    expect(workspaceAnalysisPageSource).toContain("listSessionWorkspaces");
+    expect(workspaceAnalysisPageSource).toContain("resolveSessionWorkspaceCapability");
+    expect(workspaceAnalysisPageSource).toContain(
+      'allowed_actions.includes("ANALYSIS_RUN_CREATE")',
+    );
+    expect(workspaceAnalysisPageSource).toContain('redirect(workspacePath(workspaceId, "qa"))');
+    expect(workspaceAnalysisPageSource).not.toContain('from "../../../page"');
+
+    const authorizationIndex = workspaceAnalysisPageSource.indexOf("getCurrentWorkspaceSession()");
+    const redirectIndex = workspaceAnalysisPageSource.indexOf(
+      'redirect(workspacePath(workspaceId, "qa"))',
+    );
+    expect(authorizationIndex).toBeGreaterThan(-1);
+    expect(redirectIndex).toBeGreaterThan(authorizationIndex);
+  });
+
+  it("keeps the root page from becoming a legacy workbench fallback", () => {
+    expect(rootPageSource).toContain('redirect("/workspaces")');
+    expect(rootPageSource).not.toContain("submitBoundAnalysisRun");
+    expect(rootPageSource).not.toContain("AnalysisReportDocument");
   });
 });

@@ -8,7 +8,6 @@ import type { WorkspaceNavigationItem, WorkspaceNavigationKey } from "@/lib/work
 import { WorkspaceNavIcon } from "./workspace-nav-icon";
 
 const labels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
-  analysis: "workspace.surface.analysis",
   qa: "workspace.surface.qa",
   tests: "workspace.surface.tests",
   jobs: "workspace.surface.jobs",
@@ -19,7 +18,6 @@ const labels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
 };
 
 const primaryKeys = new Set<WorkspaceNavigationKey>([
-  "analysis",
   "qa",
   "data-sources",
   "semantic",

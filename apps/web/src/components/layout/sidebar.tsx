@@ -1,9 +1,8 @@
 "use client";
 
 import type { WorkspaceAccessProjection } from "@data-agent/contracts";
-import { ChatCircleDots, Plus, SidebarSimple } from "@phosphor-icons/react";
+import { Plus, SidebarSimple } from "@phosphor-icons/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
@@ -17,7 +16,6 @@ import { SidebarItem } from "./sidebar-item";
 import { WorkspaceNavIcon } from "./workspace-nav-icon";
 
 const navigationLabels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
-  analysis: "workspace.surface.analysis",
   qa: "workspace.surface.qa",
   tests: "workspace.surface.tests",
   jobs: "workspace.surface.jobs",
@@ -40,16 +38,13 @@ interface SidebarProps {
  */
 export function Sidebar({ access, navigation }: SidebarProps) {
   const { t } = useWorkspaceI18n();
-  const pathname = usePathname();
   const collapsed = useSidebarCollapsed();
   const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
   const loadConversations = useQAStore((state) => state.loadConversations);
-  const projection = useWorkbenchStore((state) => state.projection);
   const coreL2Verdict = useWorkbenchStore((state) => state.coreL2Verdict);
   const attributionF9Status = useWorkbenchStore((state) => state.attributionF9Status);
   const workspaceId = access.workspace.workspace_id;
   const workspaceHome = workspacePath(workspaceId);
-  const analysisItem = navigation.find((item) => item.key === "analysis");
   const qaItem = navigation.find((item) => item.key === "qa");
 
   useEffect(() => {
@@ -129,27 +124,6 @@ export function Sidebar({ access, navigation }: SidebarProps) {
               {t("workspace.newQuestion")}
             </Link>
 
-            <div className="mt-3 space-y-1">
-              {projection && analysisItem && (
-                <Link
-                  href={analysisItem.href}
-                  className={[
-                    "group flex items-start gap-2 rounded-lg px-2 py-2 text-left",
-                    pathname === analysisItem.href ? "bg-white shadow-sm" : "hover:bg-white/70",
-                  ].join(" ")}
-                >
-                  <ChatCircleDots
-                    aria-hidden="true"
-                    className="mt-0.5 shrink-0 text-[var(--color-text-muted)]"
-                    size={16}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--color-text-primary)]">
-                    {projection.question}
-                  </span>
-                  <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-[var(--color-success)]" />
-                </Link>
-              )}
-            </div>
             <ConversationDirectory qaHref={qaItem.href} className="mt-3" />
           </section>
         )}

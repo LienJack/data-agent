@@ -23,9 +23,7 @@ export function WorkspaceShell({ access, navigation, children }: WorkspaceShellP
   const pathname = usePathname();
   const workspaceId = access.workspace.workspace_id;
   const boundWorkspaceId = useRef<string | null>(null);
-  const usesEmbeddedRunStatus =
-    pathname === workspacePath(workspaceId, "analysis") ||
-    pathname === workspacePath(workspaceId, "qa");
+  const usesEmbeddedRunStatus = pathname === workspacePath(workspaceId, "qa");
 
   useLayoutEffect(() => {
     if (boundWorkspaceId.current === workspaceId) return;
