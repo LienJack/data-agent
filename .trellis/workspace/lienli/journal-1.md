@@ -463,3 +463,24 @@ Delivered versioned DIRECT/TEAM/DEFERRED admission, PostgreSQL 10674 authority, 
 ### Status
 
 [OK] **Completed**
+
+
+## Session 21: Q&A Activity Stream and Safe Rich Text
+
+**Date**: 2026-08-22
+**Task**: Q&A Activity Stream and Safe Rich Text
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Delivered sequence-stable actual-agent activity rendering, sanitized rich Markdown with exact prior Artifact authorization, verified DEFERRED BLOCKED UX, responsive browser proof, and Harness provenance; full Web lint remains held only by two unchanged committed formatting issues.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `fc0cd2a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
