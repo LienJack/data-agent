@@ -589,3 +589,24 @@ Removed the legacy Attribution Analysis product entry and root workbench fallbac
 ### Status
 
 [OK] **Completed**
+
+
+## Session 27: Legacy Attribution Cleanup
+
+**Date**: 2026-08-22
+**Task**: Legacy Attribution Cleanup
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Installed guarded 10678 cleanup authority and 10679 app/environment scope repair; created and fully restored a PostgreSQL custom backup; executed a persisted truthful NOOP receipt because all 12 attribution-only tables were empty; preserved generic data and live services.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6841506` | (see git log) |
+
+### Status
+
+[OK] **Completed**
