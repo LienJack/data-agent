@@ -4,7 +4,7 @@
 >
 > 日期：2026-08-21
 >
-> 状态：等待产品确认，不授权实现
+> 状态：主体需求已确认，等待 VIEWER 权限决策与技术设计终审，不授权实现
 
 ## Goal
 
@@ -144,7 +144,7 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 
   当前仓库未安装这两个依赖，本 PRD 提交不得假装已经可 import。首批至少支持折线图、柱状图和饼/环图；
   数据合同允许时可扩展面积图和散点图。图表必须具备标题、图例或序列标签、坐标/单位、tooltip 和空状态。
-- **R23**：每个图表必须提供等价的可访问数据表或摘要，支持键盘与屏幕阅读器；移动端不横向撑破回答列，
+- **R23**：每个图表必须提供等价的可访问数据表；可读摘要只能作为补充。数据表支持键盘与屏幕阅读器；移动端不横向撑破回答列，
   `prefers-reduced-motion` 下禁用非必要动画。
 - **R24**：内联表格/图表只读取 strict `ArtifactPreviewResult`，展示 source identity、revision、content hash、
   数据范围/截断状态和可用的来源引用。unsupported、denied、stale、hash mismatch 必须显示明确错误，不能回退到 raw Tool output。
@@ -187,16 +187,18 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
   `workspace_id`、`owner_principal_id`、名称、排序位置、创建/更新时间和归档状态；不得使用本地文件路径作为 identity。
 - **R38**：首批只支持一层文件夹，不支持递归嵌套。没有 `folder_id` 的对话进入系统“未分组”区；未分组不是可删除的
   普通文件夹，也不要求为每个用户预建数据库行。
-- **R39**：用户可以创建、重命名、排序和归档自己的文件夹，把自己的对话移动到文件夹、移回未分组、重命名、排序、归档、
-  恢复和删除。删除/归档文件夹不得删除其中对话，所属对话原子移动到未分组；任何目录操作都不得改变 `owner_principal_id`。
+- **R39**：用户可以创建、重命名、排序、归档、恢复和删除自己的文件夹，把自己的对话移动到文件夹、移回未分组、重命名、
+  排序、归档、恢复和删除。归档文件夹保留 membership 和排序并可完整恢复；删除文件夹需要二次确认，并把所属对话原子移动到
+  未分组而不删除会话。任何目录操作都不得改变 `owner_principal_id`。
 - **R40**：文件夹内默认显示最近 5 条对话并可“展开其余 N 个会话”；折叠状态、显示数量和用户选择可作为个人视图偏好，
   但 Folder membership、标题和排序必须服务端持久化并跨浏览器一致。
 - **R41**：搜索同时覆盖当前可见范围内的会话标题、文件夹名称和授权的消息内容，支持取消过期请求、结果上限、失败降级与
   owner/admin scope；普通用户的搜索响应和计数不能泄露其他用户是否存在匹配内容。
 - **R42**：会话行的运行、等待审批、等待回答、失败和未读完成提示必须来自真实 Run/interaction projection；隐藏的
   Subagent child conversation 不作为普通顶级对话重复列出，只通过父对话活动流和 Inspector 进入。
-- **R43**：普通 `WORKSPACE_ANALYST/WORKSPACE_VIEWER` 只能列出、搜索、读取、订阅、预览、导出和管理自己拥有的 Folder、
-  Conversation、Message、Run 与 Artifact。用户 A 与用户 B 即使属于同一 Workspace，也不能共享或互相发现这些资源。
+- **R43**：普通 `ANALYST` 可以列出、搜索、读取、订阅、预览和管理自己拥有的 Folder、Conversation、Message、Run 与
+  Artifact；`VIEWER` 至少保持本人范围的只读访问，是否允许整理个人目录由 OQ2 决定。Artifact Export 继续服从独立既有
+  capability，不因目录权限自动获得。用户 A 与用户 B 即使属于同一 Workspace，也不能共享或互相发现这些资源。
 - **R44**：`WORKSPACE_ADMIN` 可在当前 Workspace 的显式“全部用户”管理视图查看所有用户的文件夹和对话；
   `SUPER_ADMIN` 可在管理控制面按 Workspace/用户查看全局范围。普通日常侧栏仍默认显示管理员自己的对话，避免把管理视图
   与个人工作区混合。
@@ -288,16 +290,19 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 - [ ] **AC16**：桌面/移动导航与中英文文案仅有“对话分析 / Conversation Analysis”，不存在并列“归因分析”入口。
 - [ ] **AC17**：旧 `/w/:workspaceId/analysis` 在授权校验后进入相同工作空间的 `/qa` 首页；旧结果 deep link 不恢复旧详情，
   非法 workspace/deep link 不越权回退。
-- [ ] **AC18**：固定旧归因 fixture 的 Run/result projection/页面专用 Artifact/索引经独立清理计划后不可再从用户 API、搜索或页面发现；
-  删除 receipt、目标数量、引用校验和保留的通用审计/计费边界可复核，未误删普通 Q&A 数据。
+- [ ] **AC18**：固定旧归因 fixture 不再能从旧入口/runtime/deep link 恢复；只读 inventory 已冻结并证明 generic Run/Artifact
+  没有可靠 origin discriminator，因此父任务不做启发式 DELETE。物理删除、deletion receipt、数量和引用校验移入独立
+  Legacy Attribution Cleanup child，并在父任务验收后重新批准。
 - [ ] **AC19**：未来重做上线前，正式归因问题返回稳定 deferred/capability-not-available；系统不调用旧 runtime，普通相关性分析与图表
   不标记为正式归因结论。
 
 ### Conversation Directory And Privacy
 
-- [ ] **AC20 / Folder operations**：用户可创建/重命名/排序/归档自己的文件夹，把自己的对话移动到文件夹或未分组；
-  文件夹归档后对话仍存在且 owner 不变，刷新和另一浏览器登录后 membership/order 一致。
-- [ ] **AC21 / Conversation actions**：会话菜单可重命名、归档、恢复和删除；重命名不改 identity，归档可恢复，删除需确认并
+- [ ] **AC20 / Folder operations**：用户可创建/重命名/排序/归档/恢复/删除自己的文件夹，把自己的对话移动到文件夹或未分组；
+  文件夹归档保留 membership/order 并可完整恢复，文件夹删除则把对话原子移到未分组；对话始终存在且 owner 不变，刷新和
+  另一浏览器登录后结果一致。
+- [ ] **AC21 / Conversation actions**：会话菜单可重命名、排序、归档、恢复和删除；重命名与排序不改 identity，排序跨刷新和
+  另一浏览器保持一致，归档可恢复，删除需确认并
   进入回收站；`deleted_at` 后 30 天内 owner 可恢复，第 30 天到期前后台任务不得清理，到期后按保留边界清理；
   Running/等待交互对话没有 durable terminal receipt 时删除失败关闭。
 - [ ] **AC22 / User isolation**：同一 Workspace 的用户 A 与用户 B 各创建文件夹、对话、Run 和 Artifact 后，双方的列表、计数、
@@ -350,6 +355,8 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 - 复制 DeepSeek Harness、Reasonix、DataFoundry、Codex 或 Apple 的品牌资产、私有协议或完整产品外观；Apple 只定义材质语言。
 - 在普通用户之间共享/转让 Folder、Conversation、Run 或 Artifact，或提供公开链接/匿名访问。
 - 首批实现递归文件夹、多选批量删除、由管理员默认代替用户操作，或绕过保留策略的即时物理清除。
+- “知识库上传 → 公式/指标抽取 → 自动生成 Semantic Candidate → Agent/手工修改 → 审核发布”作为独立后续任务，
+  不并入本任务；本任务只消费已经发布且由 Effective Config 冻结的语义层。
 
 ## Migration And Compatibility Constraints
 
@@ -367,9 +374,16 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 - **D1 — 对话删除保留策略**：已确认会话先进入可恢复回收站，从 authority `deleted_at` 起默认保留 30 天；保留期内 owner
   可以恢复，期满后由后台保留任务按审计、Artifact、计费与法定边界分批清理。Web 不直接级联物理删除权威记录。
 
+## Open Product Question
+
+- **OQ2 — VIEWER 的个人目录权限**：现有 `VIEWER` 只有 `WORKSPACE_RESULT_READ`，没有创建 Q&A Run 或通用写权限。
+  需确认 VIEWER 是保持只读，还是新增仅限本人 Folder/Conversation 整理的窄 `QA_DIRECTORY_SELF_MANAGE` capability；
+  无论选择哪种都不授予通用 Workspace WRITE、Artifact Export 或其他领域写权限，也不允许访问其他 owner。
+
 ## Relationship To Previous Delivery
 
 - 本 PRD 是 `08-18-qa-team-agent-status` 的后续产品版本，不回写或伪装已归档任务的验收结果。
-- 后续若批准实现，应重新拆分为：自适应 Team 调度合同/runtime、活动流与富文本修订、Apple 玻璃视觉系统、
-  VChart Artifact renderer、私有会话文件夹与管理员审计、旧归因入口/结果退场与 destructive migration 验收。
+- 后续批准实现后，本任务转为父任务并强制拆分为：自适应调度 runtime、活动流与安全富文本、受治理 TABLE/VChart、
+  私有会话目录与回收站、管理员只读审计、Apple 玻璃视觉、旧归因入口/runtime 退役，以及独立的历史归因 destructive cleanup。
+  destructive cleanup 只能在父任务新路径验收完成后单独批准和执行。
 - 本文获批前不得运行 `task.py start` 或修改产品代码。
