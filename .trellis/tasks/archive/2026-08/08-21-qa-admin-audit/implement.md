@@ -54,7 +54,7 @@
 - [x] 使用 `trellis-check` 做 security/data-integrity/correctness review，修复 P0/P1/P2 或记录 HOLD。
 - [x] 使用 `trellis-update-spec` 将 admin audited read pattern 写入 backend/frontend executable spec。
 - [x] 只 stage owned paths，创建 scoped implementation commit。
-- [ ] archive child、记录 journal，再进入 `qa-apple-glass`。
+- [x] archive child、记录 journal，再进入 `qa-apple-glass`。
 
 ### Validation HOLD
 
