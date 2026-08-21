@@ -23,6 +23,7 @@ These guides help you **ask the right questions before coding**.
 |-------|---------|-------------|
 | [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md) | Identify patterns and reduce duplication | When you notice repeated patterns |
 | [Cross-Layer Thinking Guide](./cross-layer-thinking-guide.md) | Think through data flow across layers | Features spanning multiple layers |
+| [外部开源项目源码阅读指南](./external-open-source-reading-guide.md) | 用知识图谱导航，并以当前源码、测试和运行证据核验 | 阅读或借鉴其他开源项目时 |
 
 ---
 
@@ -50,6 +51,16 @@ These guides help you **ask the right questions before coding**.
 - [ ] Multiple branches update the same derived state from `kind` / `action`
 
 → Read [Code Reuse Thinking Guide](./code-reuse-thinking-guide.md)
+
+### 阅读外部开源项目源码时
+
+- [ ] 任务需要借鉴、比较或审计其他开源项目
+- [ ] 结论将用于 PRD、设计、实现或评审
+- [ ] 目标项目已有 Understand Anything 知识图谱
+- [ ] 需要判断某项能力是 README 声明、源码实现还是已验证运行行为
+- [ ] 准备复制或改造外部实现，需要检查许可证和 Data Agent 边界
+
+→ 阅读 [外部开源项目源码阅读指南](./external-open-source-reading-guide.md)
 
 ### When Verifying AI Cross-Review Results
 
