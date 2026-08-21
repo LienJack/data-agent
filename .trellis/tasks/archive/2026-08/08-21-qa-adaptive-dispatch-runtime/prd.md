@@ -34,21 +34,21 @@ Root DIRECT 回答；需要专职能力时只创建实际选中的 Agent；无�
 
 ## Acceptance Criteria
 
-- [ ] **AC1 / Contract**：good/base/bad fixtures 证明 DIRECT、TEAM 子集和 DEFERRED 可解析、哈希可复算；unknown、duplicate、
+- [x] **AC1 / Contract**：good/base/bad fixtures 证明 DIRECT、TEAM 子集和 DEFERRED 可解析、哈希可复算；unknown、duplicate、
   dependency gap、unauthorized profile、tamper 全部失败关闭。
-- [ ] **AC2 / Direct**：解释类 fixture 创建 root execution，无 child task/handoff/agent status；公开回答来自真实 Provider authority。
-- [ ] **AC3 / Selective Team**：Semantic-only、Text2SQL-only、Text2SQL+Report 与全链 fixture 只出现实际 selected Agent；未选择
+- [x] **AC2 / Direct**：解释类 fixture 创建 root execution，无 child task/handoff/agent status；公开回答来自真实 Provider authority。
+- [x] **AC3 / Selective Team**：Semantic-only、Text2SQL-only、Text2SQL+Report 与全链 fixture 只出现实际 selected Agent；未选择
   Agent 没有 Task、PENDING、SKIPPED、Tool 或 Artifact。
-- [ ] **AC4 / Deferred**：DATA_QUERY/REPORT/ATTRIBUTION 在 capability 不足时只持久化同一 deterministic deferred receipt，
+- [x] **AC4 / Deferred**：DATA_QUERY/REPORT/ATTRIBUTION 在 capability 不足时只持久化同一 deterministic deferred receipt，
   API 重放返回相同结果，Worker 不可领取伪 Run。
-- [ ] **AC5 / Authority**：PostgreSQL 17 direct smoke 接受合法 DIRECT/单 Agent/多 Agent/legacy lease，拒绝 bad hash、bad executor、
+- [x] **AC5 / Authority**：PostgreSQL 17 direct smoke 接受合法 DIRECT/单 Agent/多 Agent/legacy lease，拒绝 bad hash、bad executor、
   profile mismatch、非法依赖和 payload/command kind mismatch。
-- [ ] **AC6 / Rollout**：SHADOW Run 实际 executor 为 LEGACY_FIXED 且只保存 shadow plan；ENFORCED cutover 后新 Run 使用 ADAPTIVE；
+- [x] **AC6 / Rollout**：SHADOW Run 实际 executor 为 LEGACY_FIXED 且只保存 shadow plan；ENFORCED cutover 后新 Run 使用 ADAPTIVE；
   回退不改变任何在途 Run。
-- [ ] **AC7 / Replay**：crash/replay 不重复创建 Task、不改变 dispatch plan，不给未选择 Agent 补事件；已有 legacy Run 继续三 Agent
+- [x] **AC7 / Replay**：crash/replay 不重复创建 Task、不改变 dispatch plan，不给未选择 Agent 补事件；已有 legacy Run 继续三 Agent
   闭环到终态。
-- [ ] **AC8 / Regression**：Contracts、Platform、Worker focused tests、PostgreSQL smoke、typecheck 与现有 public event replay 全通过。
-- [ ] **AC9 / Evidence**：真实 Web + Worker + PostgreSQL 至少证明一个 DIRECT、一个 selective TEAM 和一个 DEFERRED，保存脱敏
+- [x] **AC8 / Regression**：Contracts、Platform、Worker focused tests、PostgreSQL smoke、typecheck 与现有 public event replay 全通过。
+- [x] **AC9 / Evidence**：真实 Web + Worker + PostgreSQL 至少证明一个 DIRECT、一个 selective TEAM 和一个 DEFERRED，保存脱敏
   dispatch/lease/event receipts；不以 mock-only 证据宣称完成。
 
 ## Out Of Scope
