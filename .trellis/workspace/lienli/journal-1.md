@@ -442,3 +442,24 @@ Added strict v2 Agent/Tool/Artifact runtime and public events, PostgreSQL 17 val
 ### Status
 
 [OK] **Completed**
+
+
+## Session 20: Adaptive Agent Dispatch Runtime
+
+**Date**: 2026-08-22
+**Task**: Adaptive Agent Dispatch Runtime
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+Delivered versioned DIRECT/TEAM/DEFERRED admission, PostgreSQL 10674 authority, selective Worker execution, rollout CAS, and real Web/Worker/PostgreSQL evidence.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c174d4b` | (see git log) |
+
+### Status
+
+[OK] **Completed**
