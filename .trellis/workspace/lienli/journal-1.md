@@ -717,3 +717,37 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Next Steps
 
 - 修复并行语义/knowledge 改动导致的两项旧断言漂移后恢复全套 Web unit 全绿
+
+
+## Session 32: 白蓝主题收口
+
+**Date**: 2026-08-22
+**Task**: 白蓝主题收口
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+删除 system/dark 主题与持久化入口，将登录身份区和全站外观固定为白色、冷浅灰与 Data Agent Blue。
+
+### Main Changes
+
+- 移除暗色 token、prefers-color-scheme dark 和主题启动脚本
+- 删除设置页外观切换，登录页改为浅蓝白材质
+- 同步前端规范和主题回归测试
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2271e92` | (see git log) |
+
+### Testing
+
+- [OK] Biome scoped check passed
+- [OK] Focused design tests: 11 passed
+- [OK] Web typecheck and production build passed
+- [OK] Browser verified 1280 desktop and 390x844 mobile light-only rendering
+
+### Status
+
+[OK] **Completed**
