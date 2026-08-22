@@ -277,6 +277,43 @@ describe("PostgreSQL semantic authoring store", () => {
 });
 
 describe("PostgreSQL semantic authoring Provider lifecycle", () => {
+  it("loads the exact un-dispatched intent attempt for recovery through a scoped RPC", async () => {
+    const current = authority();
+    const fixture = scriptedPool((text) =>
+      text.includes("semantic.get_authoring_pending_provider_attempt")
+        ? { rows: [{ value: ids.attempt }], rowCount: 1 }
+        : undefined,
+    );
+    const lifecycle = createPostgresSemanticAuthoringProviderInvocation({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+      capability: current.capability,
+      semantic_domain: "ecommerce",
+    });
+
+    await expect(
+      lifecycle.loadPendingIntentAttempt({
+        run_id: ids.run,
+        turn_index: 1,
+        request_id: ids.request,
+      }),
+    ).resolves.toBe(ids.attempt);
+
+    const rpc = fixture.calls.find((call) =>
+      call.text.includes("semantic.get_authoring_pending_provider_attempt"),
+    );
+    expect(rpc?.values).toEqual([
+      ids.app,
+      ids.tenant,
+      "test",
+      ids.principal,
+      "ecommerce",
+      ids.run,
+      1,
+      ids.request,
+    ]);
+  });
+
   it("persists intent, dispatch, observation, and terminal through exact domain-scoped RPCs", async () => {
     const current = authority();
     const fixture = scriptedPool((text) =>

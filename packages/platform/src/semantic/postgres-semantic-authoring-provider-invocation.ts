@@ -22,6 +22,10 @@ interface BooleanRow {
   readonly value: boolean;
 }
 
+interface NullableAttemptRow {
+  readonly value: string | null;
+}
+
 type TerminalEvent = Extract<
   ModelProviderEvent,
   { event_type: "COMPLETED" | "FAILED" | "THROTTLED" }
@@ -71,6 +75,16 @@ export interface PostgresSemanticAuthoringProviderInvocationOptions {
 }
 
 export interface PostgresSemanticAuthoringProviderInvocation {
+  /**
+   * Returns an intent attempt that is known not to have crossed the network
+   * boundary yet. Recovery must reuse this exact identity before it can mark
+   * dispatch; a new attempt would conflict with the durable intent.
+   */
+  loadPendingIntentAttempt(input: {
+    readonly run_id: string;
+    readonly turn_index: number;
+    readonly request_id: string;
+  }): Promise<string | null>;
   commitIntent(request: AuthoritativeModelProviderInvocation): Promise<boolean>;
   markDispatched(request: AuthoritativeModelProviderInvocation): Promise<void>;
   markResponseObserved(input: {
@@ -123,6 +137,54 @@ export function createPostgresSemanticAuthoringProviderInvocation(
   };
 
   const authority: PostgresSemanticAuthoringProviderInvocation = {
+    async loadPendingIntentAttempt(input) {
+      const runId = z.uuid().parse(input.run_id);
+      const turnIndex = z.number().int().min(1).parse(input.turn_index);
+      const requestId = z.uuid().parse(input.request_id);
+      const result = await withAppTransaction(
+        options.pool,
+        options.authorizer,
+        options.capability,
+        {
+          access: "READ",
+          operation_name: "semantic.get_authoring_pending_provider_attempt",
+          correlation_id: semanticDomain,
+          map_database_error: mapDatabaseError,
+        },
+        async ({ capability, client }) => {
+          await client.query("select pg_catalog.set_config('app.semantic_domain', $1, true)", [
+            semanticDomain,
+          ]);
+          const query = await client.query<NullableAttemptRow>(
+            `select semantic.get_authoring_pending_provider_attempt(
+               $1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::uuid,$7::integer,$8::uuid
+             ) as value`,
+            [
+              capability.scope.app_id,
+              capability.scope.tenant_id,
+              capability.scope.environment,
+              capability.principal,
+              semanticDomain,
+              runId,
+              turnIndex,
+              requestId,
+            ],
+          );
+          if (query.rows.length !== 1) {
+            throw new PersistenceBoundaryError(
+              "SEMANTIC_PROVIDER_DATABASE_CONTRACT_INVALID",
+              "Semantic authoring Provider pending intent RPC 返回无效行数。",
+            );
+          }
+          return z.uuid().nullable().parse(query.rows[0]?.value);
+        },
+      );
+      if (!result.ok) {
+        throw new PersistenceBoundaryError(result.error.code, result.error.message);
+      }
+      return result.value;
+    },
+
     async commitIntent(request) {
       const payloadHash = await sha256ContentHash(request);
       await transaction(

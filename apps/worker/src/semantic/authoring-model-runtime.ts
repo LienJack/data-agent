@@ -36,6 +36,24 @@ const SEMANTIC_AGENT_RESPONSE_SCHEMA_VERSION = "semantic-agent-turn@1.0.0";
 const MODEL_RESPONSE_SCHEMA_OVERHEAD_BYTES = 4_096;
 type ModelExecutionCertificationClaims = z.infer<typeof modelExecutionCertificationClaimsSchema>;
 
+export async function resolveSemanticAuthoringProviderAttempt(input: {
+  readonly lifecycle: Pick<
+    ReturnType<typeof createPostgresSemanticAuthoringProviderInvocation>,
+    "loadPendingIntentAttempt"
+  >;
+  readonly authoring_run_id: string;
+  readonly turn_index: number;
+  readonly request_id: string;
+  readonly new_id?: () => string;
+}): Promise<string> {
+  const persistedAttempt = await input.lifecycle.loadPendingIntentAttempt({
+    run_id: input.authoring_run_id,
+    turn_index: input.turn_index,
+    request_id: input.request_id,
+  });
+  return persistedAttempt ?? (input.new_id ?? randomUUID)();
+}
+
 interface StoredCertificationReceiptRow {
   readonly run_id: string;
   readonly artifact_id: string;
@@ -278,11 +296,17 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
           tool_allowlist: material.tool_allowlist,
           turn_index: material.turn.turn_index,
         });
+        const attemptId = await resolveSemanticAuthoringProviderAttempt({
+          lifecycle,
+          authoring_run_id: material.turn.authoring_run_id,
+          turn_index: material.turn.turn_index,
+          request_id: material.turn.request_id,
+        });
         return authorizeSemanticAuthoringModelProviderInvocation(
           {
             schema_version: "semantic-provider@1",
             request_id: material.turn.request_id,
-            attempt_id: randomUUID(),
+            attempt_id: attemptId,
             scope: material.turn.scope,
             run_id: material.turn.authoring_run_id,
             provider: profile.provider,
