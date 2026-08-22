@@ -672,15 +672,17 @@ export function SemanticStudio({
 
   if (!snapshot && loading) {
     return (
-      <main className="grid min-h-[70vh] place-items-center bg-[#f3f5f3] px-6">
-        <div className="w-full max-w-sm border-l-2 border-[#356b5a] pl-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#356b5a]">
+      <main className="grid min-h-[70vh] place-items-center bg-[var(--color-bg-canvas)] px-6">
+        <div className="w-full max-w-sm border-l-2 border-[var(--color-accent)] pl-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-accent)]">
             Semantic authority
           </p>
-          <p className="mt-2 text-sm font-medium text-[#27322e]">正在读取 Graph v2 权威投影</p>
-          <div className="mt-4 h-px w-full overflow-hidden bg-[#dbe1dd]">
+          <p className="mt-2 text-sm font-medium text-[var(--color-text-primary)]">
+            正在读取 Graph v2 权威投影
+          </p>
+          <div className="mt-4 h-px w-full overflow-hidden bg-[var(--color-border-default)]">
             <motion.div
-              className="h-full w-1/3 bg-[#356b5a]"
+              className="h-full w-1/3 bg-[var(--color-accent)]"
               animate={prefersReducedMotion ? undefined : { x: ["-100%", "300%"] }}
               transition={
                 prefersReducedMotion
@@ -695,13 +697,13 @@ export function SemanticStudio({
   }
   if (!snapshot) {
     return (
-      <main className="grid min-h-[70vh] place-items-center bg-[#f3f5f3] px-6 py-20">
-        <div className="w-full max-w-xl border-y border-[#d8dfda] bg-white px-8 py-12 text-center shadow-[0_18px_50px_rgba(42,55,49,0.06)]">
-          <Database className="mx-auto size-6 text-[#356b5a]" aria-hidden="true" />
-          <h1 className="mt-5 text-lg font-semibold tracking-[-0.02em] text-[#26312d]">
+      <main className="grid min-h-[70vh] place-items-center bg-[var(--color-bg-canvas)] px-6 py-20">
+        <div className="surface-reading w-full max-w-xl rounded-[var(--radius-panel)] border px-8 py-12 text-center">
+          <Database className="mx-auto size-6 text-[var(--color-accent)]" aria-hidden="true" />
+          <h1 className="mt-5 text-lg font-semibold tracking-[-0.02em] text-[var(--color-text-primary)]">
             Semantic Studio 尚无可浏览的 Graph v2
           </h1>
-          <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[#66726d]">
+          <p className="mx-auto mt-2 max-w-md text-xs leading-5 text-[var(--color-text-secondary)]">
             {error ?? "当前工作空间没有已绑定的 Graph v2 release。请先运行确定性迁移并发布候选。"}
           </p>
         </div>
@@ -711,46 +713,49 @@ export function SemanticStudio({
 
   return (
     <MotionConfig reducedMotion="user">
-      <main className="min-h-screen bg-[#f2f4f2] text-[#26312d]">
+      <main className="min-h-screen bg-[var(--color-bg-canvas)] text-[var(--color-text-primary)]">
         <div className="mx-auto max-w-[1760px] px-3 pb-4 pt-3 sm:px-5 lg:px-6">
-          <header className="border-b border-[#d7ddd9] pb-5 pt-2">
+          <header className="border-b border-[var(--color-border-default)] pb-5 pt-2">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="max-w-3xl">
-                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#356b5a]">
+                <div className="flex flex-wrap items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-accent)]">
                   <span>Semantic layer</span>
-                  <span className="text-[#a4ada8]">/</span>
+                  <span className="text-[var(--color-text-muted)]">/</span>
                   <span>Ontology workspace</span>
                   {preview ? (
                     <span className="border-l border-amber-300 pl-2 text-amber-700">交互预览</span>
                   ) : null}
                 </div>
-                <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-[#202a26] sm:text-[28px]">
+                <h1 className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-[var(--color-text-primary)] sm:text-[28px]">
                   语义本体工作台
                 </h1>
-                <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[#63706a]">
+                <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[var(--color-text-secondary)]">
                   Node 保存对象身份，Edge 表达业务、分析、公式与物理关系。Agent 与直接编辑
                   共同写入未保存 ChangeSet。
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px]">
-                <label className="font-medium text-[#65716c]" htmlFor="semantic-domain">
+                <label
+                  className="font-medium text-[var(--color-text-secondary)]"
+                  htmlFor="semantic-domain"
+                >
                   语义域
                 </label>
                 <select
                   id="semantic-domain"
                   value={snapshot.semantic_domain}
                   onChange={(event) => void load({ domain: event.target.value })}
-                  className="h-9 border border-[#cfd7d2] bg-white px-3 text-[#2d3934] outline-none transition-colors focus:border-[#356b5a]"
+                  className="h-9 border border-[var(--color-border-default)] bg-white px-3 text-[var(--color-text-primary)] outline-none transition-colors focus:border-[var(--color-accent)]"
                 >
                   {snapshot.available_domains.map((domain) => (
                     <option key={domain}>{domain}</option>
                   ))}
                 </select>
-                <span className="border-l border-[#d7ddd9] pl-3 font-mono text-[10px] text-[#6c7772]">
+                <span className="border-l border-[var(--color-border-default)] pl-3 font-mono text-[10px] text-[var(--color-text-secondary)]">
                   {snapshot.release.label}
                 </span>
                 <span
-                  className={`inline-flex h-7 items-center gap-1.5 px-2.5 font-semibold ${candidateCount > 0 ? "bg-[#fff4df] text-[#80530c]" : "bg-[#e8f2ed] text-[#2f6b58]"}`}
+                  className={`inline-flex h-7 items-center gap-1.5 px-2.5 font-semibold ${candidateCount > 0 ? "bg-[#fff4df] text-[#80530c]" : "bg-[var(--color-accent-soft)] text-[var(--color-accent-pressed)]"}`}
                 >
                   <span className="size-1.5 rounded-full bg-current" aria-hidden="true" />
                   {candidateCount > 0 ? `Candidate · ${candidateCount}` : "Published"}
@@ -759,11 +764,11 @@ export function SemanticStudio({
             </div>
           </header>
 
-          <details className="mt-4 border-y border-[#d7ddd9] bg-white">
-            <summary className="cursor-pointer list-none px-4 py-3 text-xs font-semibold text-[#34413b] outline-none focus-visible:ring-2 focus-visible:ring-[#356b5a]">
+          <details className="surface-reading mt-4 overflow-hidden rounded-[var(--radius-item)] border">
+            <summary className="cursor-pointer list-none px-4 py-3 text-xs font-semibold text-[var(--color-text-secondary)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]">
               Context Preview
             </summary>
-            <div className="border-t border-[#d7ddd9] p-3">
+            <div className="border-t border-[var(--color-border-default)] p-3">
               <ContextPreviewWorkbench workspaceId={workspaceId} />
             </div>
           </details>
@@ -796,7 +801,7 @@ export function SemanticStudio({
           />
 
           <section
-            className="mt-3 border-y border-[#cfd8d3] bg-white px-3 py-3"
+            className="surface-reading mt-3 rounded-[var(--radius-panel)] border px-3 py-3"
             aria-label="Candidate Revision actions"
           >
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -805,7 +810,7 @@ export function SemanticStudio({
                   type="button"
                   onClick={() => void openDirectEditor("ADD_NODE")}
                   disabled={authoringBusy}
-                  className="inline-flex h-9 items-center gap-2 border border-[#a9bbb2] px-3 text-[11px] font-semibold text-[#315f50] hover:bg-[#eef4f1] disabled:opacity-50"
+                  className="control-pressable inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-border-overlay)] px-3 text-[11px] font-semibold text-[var(--color-accent-pressed)] hover:bg-[var(--color-accent-soft)] disabled:opacity-50"
                 >
                   <Plus className="size-4" />
                   直接新建对象
@@ -814,7 +819,7 @@ export function SemanticStudio({
                   type="button"
                   onClick={() => void openDirectEditor("ADD_EDGE")}
                   disabled={authoringBusy}
-                  className="inline-flex h-9 items-center gap-2 border border-[#a9bbb2] px-3 text-[11px] font-semibold text-[#315f50] hover:bg-[#eef4f1] disabled:opacity-50"
+                  className="control-pressable inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-border-overlay)] px-3 text-[11px] font-semibold text-[var(--color-accent-pressed)] hover:bg-[var(--color-accent-soft)] disabled:opacity-50"
                 >
                   <ShareNetwork className="size-4" />
                   直接新建关系
@@ -823,25 +828,25 @@ export function SemanticStudio({
                   type="button"
                   onClick={() => void openDirectEditor("PROPOSE_EDGE_TYPE")}
                   disabled={authoringBusy}
-                  className="inline-flex h-9 items-center gap-2 border border-[#a9bbb2] px-3 text-[11px] font-semibold text-[#315f50] hover:bg-[#eef4f1] disabled:opacity-50"
+                  className="control-pressable inline-flex h-9 items-center gap-2 rounded-[var(--radius-control)] border border-[var(--color-border-overlay)] px-3 text-[11px] font-semibold text-[var(--color-accent-pressed)] hover:bg-[var(--color-accent-soft)] disabled:opacity-50"
                 >
                   <Sparkle className="size-4" />
                   提案新关系类型
                 </button>
                 <span
-                  className={`px-2 py-1 text-[10px] font-semibold ${manualEdits.length > 0 ? "bg-amber-100 text-amber-800" : "bg-[#edf2ef] text-[#66736d]"}`}
+                  className={`px-2 py-1 text-[10px] font-semibold ${manualEdits.length > 0 ? "bg-amber-100 text-amber-800" : "bg-[var(--color-bg-overlay)] text-[var(--color-text-secondary)]"}`}
                 >
                   {manualEdits.length > 0
                     ? `${manualEdits.length} 项未保存修改`
                     : "没有未保存的手工修改"}
                 </span>
                 {lastSavedRevision ? (
-                  <span className="font-mono text-[10px] text-[#356b5a]">
+                  <span className="font-mono text-[10px] text-[var(--color-accent)]">
                     已保存 r{lastSavedRevision.revision_number}
                   </span>
                 ) : null}
                 {publishedRelease ? (
-                  <span className="font-mono text-[10px] text-[#356b5a]">
+                  <span className="font-mono text-[10px] text-[var(--color-accent)]">
                     已发布 Release g{publishedRelease.generation}
                   </span>
                 ) : null}
@@ -851,14 +856,14 @@ export function SemanticStudio({
                   value={saveSummary}
                   onChange={(event) => setSaveSummary(event.target.value)}
                   maxLength={2048}
-                  className="h-9 min-w-0 border border-[#cfd7d2] px-3 text-[11px] outline-none focus:border-[#356b5a] sm:w-72"
+                  className="h-9 min-w-0 rounded-[var(--radius-control)] border border-[var(--color-border-default)] px-3 text-[11px] outline-none focus:border-[var(--color-accent)] sm:w-72"
                   aria-label="Revision 保存摘要"
                 />
                 <button
                   type="button"
                   onClick={() => void saveDraftRevision()}
                   disabled={authoringBusy || authoringState?.run.status !== "READY_FOR_REVIEW"}
-                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 bg-[#356b5a] px-4 text-[11px] font-semibold text-white hover:bg-[#285b4b] disabled:cursor-not-allowed disabled:bg-[#9cada5]"
+                  className="control-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--color-accent)] px-4 text-[11px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   保存草稿 Revision
                 </button>
@@ -866,13 +871,13 @@ export function SemanticStudio({
                   type="button"
                   onClick={() => void selfReviewAndPublish()}
                   disabled={authoringBusy || !lastSavedRevision || manualEdits.length > 0}
-                  className="inline-flex h-9 shrink-0 items-center justify-center border border-[#356b5a] px-4 text-[11px] font-semibold text-[#285b4b] hover:bg-[#edf4f0] disabled:cursor-not-allowed disabled:border-[#cbd4cf] disabled:text-[#9aa59f]"
+                  className="control-pressable inline-flex h-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-accent)] px-4 text-[11px] font-semibold text-[var(--color-accent-hover)] hover:bg-[var(--color-accent-soft)] disabled:cursor-not-allowed disabled:border-[var(--color-border-default)] disabled:text-[var(--color-text-muted)]"
                 >
                   审核并发布
                 </button>
               </div>
             </div>
-            <p className="mt-2 text-[10px] leading-4 text-[#6f7b75]">
+            <p className="mt-2 text-[10px] leading-4 text-[var(--color-text-muted)]">
               编辑过程不会自动生成
               Revision。保存草稿与提交审核是两个独立动作；离开含未保存修改的页面会收到浏览器提示。
             </p>
@@ -895,10 +900,10 @@ export function SemanticStudio({
             className={`mt-4 grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)] ${inspectorVisible ? "xl:grid-cols-[184px_minmax(0,1fr)_286px]" : "xl:grid-cols-[184px_minmax(0,1fr)]"}`}
           >
             <aside
-              className="border-b border-[#d7ddd9] pb-3 lg:sticky lg:top-3 lg:self-start lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
+              className="border-b border-[var(--color-border-default)] pb-3 lg:sticky lg:top-3 lg:self-start lg:border-b-0 lg:border-r lg:pb-0 lg:pr-3"
               aria-label="语义工作台导航"
             >
-              <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7a8580]">
+              <p className="px-2 pb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                 视图
               </p>
               <nav
@@ -917,12 +922,12 @@ export function SemanticStudio({
                     type="button"
                     onClick={() => setView(key)}
                     aria-current={view === key ? "page" : undefined}
-                    className={`relative flex w-full items-center gap-2.5 px-2.5 py-2.5 text-left text-[12px] transition-colors ${view === key ? "text-[#285b4b]" : "text-[#66726d] hover:bg-white hover:text-[#2f3a36]"}`}
+                    className={`relative flex w-full items-center gap-2.5 px-2.5 py-2.5 text-left text-[12px] transition-colors ${view === key ? "text-[var(--color-accent-hover)]" : "text-[var(--color-text-secondary)] hover:bg-white hover:text-[var(--color-text-primary)]"}`}
                   >
                     {view === key ? (
                       <motion.span
                         layoutId="semantic-view-marker"
-                        className="absolute inset-y-1 left-0 w-0.5 bg-[#356b5a]"
+                        className="absolute inset-y-1 left-0 w-0.5 bg-[var(--color-accent)]"
                       />
                     ) : null}
                     <Icon
@@ -931,17 +936,21 @@ export function SemanticStudio({
                       aria-hidden="true"
                     />
                     <span className="font-medium">{label}</span>
-                    <span className="ml-auto font-mono text-[10px] text-[#8a948f]">{count}</span>
+                    <span className="ml-auto font-mono text-[10px] text-[var(--color-text-muted)]">
+                      {count}
+                    </span>
                   </button>
                 ))}
               </nav>
 
-              <div className="mt-7 hidden border-t border-[#d7ddd9] px-2 pt-5 lg:block">
+              <div className="mt-7 hidden border-t border-[var(--color-border-default)] px-2 pt-5 lg:block">
                 <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#7a8580]">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
                     对象类型
                   </p>
-                  <span className="font-mono text-[9px] text-[#9aa39f]">当前页</span>
+                  <span className="font-mono text-[9px] text-[var(--color-text-muted)]">
+                    当前页
+                  </span>
                 </div>
                 <div className="mt-3 space-y-2.5">
                   {NODE_TYPES.map((item) => {
@@ -954,7 +963,7 @@ export function SemanticStudio({
                           setNodeType(item);
                           setView("nodes");
                         }}
-                        className="flex w-full items-center gap-2 text-[11px] text-[#66726d] transition-colors hover:text-[#26312d]"
+                        className="flex w-full items-center gap-2 text-[11px] text-[var(--color-text-secondary)] transition-colors hover:text-[var(--color-text-primary)]"
                       >
                         <span
                           className="size-2 rounded-full"
@@ -971,20 +980,22 @@ export function SemanticStudio({
                 </div>
               </div>
 
-              <div className="mt-6 hidden border-l-2 border-[#b6c9c1] px-3 py-1 lg:block">
-                <p className="text-[10px] font-semibold text-[#356b5a]">Unified ChangeSet</p>
-                <p className="mt-1 text-[10px] leading-4 text-[#74807a]">
+              <div className="mt-6 hidden border-l-2 border-[var(--color-border-overlay)] px-3 py-1 lg:block">
+                <p className="text-[10px] font-semibold text-[var(--color-accent)]">
+                  Unified ChangeSet
+                </p>
+                <p className="mt-1 text-[10px] leading-4 text-[var(--color-text-muted)]">
                   Agent 与直接编辑使用同一 Candidate Patch；物理事实保持只读。
                 </p>
               </div>
             </aside>
 
             <motion.section layout className="min-w-0" aria-label="语义工作区">
-              <div className="border border-[#d7ddd9] bg-white shadow-[0_12px_34px_rgba(38,52,45,0.045)]">
-                <div className="flex flex-col gap-2 border-b border-[#d7ddd9] p-2.5 sm:flex-row sm:items-center">
+              <div className="surface-reading overflow-hidden rounded-[var(--radius-panel)] border">
+                <div className="flex flex-col gap-2 border-b border-[var(--color-border-default)] p-2.5 sm:flex-row sm:items-center">
                   <label className="relative min-w-0 flex-1">
                     <MagnifyingGlass
-                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[#82908a]"
+                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--color-text-muted)]"
                       aria-hidden="true"
                     />
                     <span className="sr-only">搜索语义节点</span>
@@ -992,7 +1003,7 @@ export function SemanticStudio({
                       value={search}
                       onChange={(event) => setSearch(event.target.value)}
                       placeholder="搜索名称、定义、稳定 ID…"
-                      className="h-10 w-full border border-[#d4dbd7] bg-[#f8faf8] pl-9 pr-3 text-[12px] outline-none transition-colors placeholder:text-[#9aa49f] focus:border-[#356b5a] focus:bg-white"
+                      className="h-10 w-full border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] pl-9 pr-3 text-[12px] outline-none transition-colors placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:bg-white"
                     />
                   </label>
                   <select
@@ -1001,7 +1012,7 @@ export function SemanticStudio({
                     onChange={(event) =>
                       setNodeType(event.target.value as SemanticNodeType | "ALL")
                     }
-                    className="h-10 border border-[#d4dbd7] bg-white px-3 text-[11px] text-[#4f5c56] outline-none focus:border-[#356b5a]"
+                    className="h-10 border border-[var(--color-border-default)] bg-white px-3 text-[11px] text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)]"
                   >
                     <option value="ALL">全部类型</option>
                     {NODE_TYPES.map((item) => (
@@ -1016,7 +1027,7 @@ export function SemanticStudio({
                     onChange={(event) =>
                       setStatus(event.target.value as SemanticGraphEntryStatus | "ALL")
                     }
-                    className="h-10 border border-[#d4dbd7] bg-white px-3 text-[11px] text-[#4f5c56] outline-none focus:border-[#356b5a]"
+                    className="h-10 border border-[var(--color-border-default)] bg-white px-3 text-[11px] text-[var(--color-text-secondary)] outline-none focus:border-[var(--color-accent)]"
                   >
                     <option value="ALL">全部状态</option>
                     {STATUSES.map((item) => (
@@ -1030,7 +1041,7 @@ export function SemanticStudio({
                       type="button"
                       onClick={() => setFiltersOpen((current) => !current)}
                       aria-expanded={filtersOpen}
-                      className={`inline-flex h-10 items-center justify-center gap-2 border px-3 text-[11px] font-medium transition-colors ${filtersOpen ? "border-[#7fa293] bg-[#edf4f0] text-[#285b4b]" : "border-[#d4dbd7] text-[#59665f] hover:border-[#9aaba3]"}`}
+                      className={`inline-flex h-10 items-center justify-center gap-2 border px-3 text-[11px] font-medium transition-colors ${filtersOpen ? "border-[var(--color-border-overlay)] bg-[var(--color-accent-soft)] text-[var(--color-accent-hover)]" : "border-[var(--color-border-default)] text-[var(--color-text-secondary)] hover:border-[var(--color-border-overlay)]"}`}
                     >
                       <SlidersHorizontal className="size-4" aria-hidden="true" />
                       高级筛选
@@ -1039,7 +1050,7 @@ export function SemanticStudio({
                   <button
                     type="button"
                     onClick={() => setDraft("新增语义节点：")}
-                    className="inline-flex h-10 items-center justify-center gap-2 bg-[#356b5a] px-4 text-[11px] font-semibold text-white transition-colors hover:bg-[#285b4b] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#356b5a]"
+                    className="inline-flex h-10 items-center justify-center gap-2 bg-[var(--color-accent)] px-4 text-[11px] font-semibold text-white transition-colors hover:bg-[var(--color-accent-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
                   >
                     <Plus className="size-4" weight="bold" aria-hidden="true" />
                     Agent 新增
@@ -1051,13 +1062,13 @@ export function SemanticStudio({
                     layout
                     initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="grid gap-2 border-b border-[#d7ddd9] bg-[#f8faf8] p-3 sm:grid-cols-[1fr_150px_150px_auto]"
+                    className="grid gap-2 border-b border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] p-3 sm:grid-cols-[1fr_150px_150px_auto]"
                   >
                     <select
                       aria-label="按 Node 领域筛选"
                       value={nodeDomain}
                       onChange={(event) => setNodeDomain(event.target.value)}
-                      className="h-9 border border-[#d4dbd7] bg-white px-3 text-[11px]"
+                      className="h-9 border border-[var(--color-border-default)] bg-white px-3 text-[11px]"
                     >
                       <option value="">全部 Node 领域</option>
                       {snapshot.list.domains.map((domain) => (
@@ -1070,7 +1081,7 @@ export function SemanticStudio({
                       value={owner}
                       onChange={(event) => setOwner(event.target.value)}
                       placeholder="Owner"
-                      className="h-9 border border-[#d4dbd7] bg-white px-3 text-[11px] outline-none focus:border-[#356b5a]"
+                      className="h-9 border border-[var(--color-border-default)] bg-white px-3 text-[11px] outline-none focus:border-[var(--color-accent)]"
                     />
                     <select
                       aria-label="按生命周期筛选"
@@ -1078,7 +1089,7 @@ export function SemanticStudio({
                       onChange={(event) =>
                         setLifecycle(event.target.value as SemanticGraphNode["lifecycle"] | "ALL")
                       }
-                      className="h-9 border border-[#d4dbd7] bg-white px-3 text-[11px]"
+                      className="h-9 border border-[var(--color-border-default)] bg-white px-3 text-[11px]"
                     >
                       <option value="ALL">全部生命周期</option>
                       <option value="ACTIVE">Active</option>
@@ -1088,7 +1099,7 @@ export function SemanticStudio({
                     <button
                       type="button"
                       onClick={() => void applyListFilters(0)}
-                      className="h-9 bg-[#dfeae5] px-4 text-[11px] font-semibold text-[#285b4b] hover:bg-[#d3e2db]"
+                      className="h-9 bg-[var(--color-accent-soft)] px-4 text-[11px] font-semibold text-[var(--color-accent-hover)] hover:bg-[var(--color-accent-soft)]"
                     >
                       应用筛选
                     </button>
@@ -1096,20 +1107,20 @@ export function SemanticStudio({
                 ) : null}
 
                 {view === "local" ? (
-                  <div className="flex flex-col gap-2 border-b border-[#d7ddd9] bg-[#f8faf8] px-3 py-2 text-[11px] text-[#64716b] sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex flex-col gap-2 border-b border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-3 py-2 text-[11px] text-[var(--color-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
                     <span>
                       中心节点{" "}
-                      <strong className="font-medium text-[#2e3a35]">
+                      <strong className="font-medium text-[var(--color-text-primary)]">
                         {selectedNode?.node.name ?? snapshot.local?.center_node_id ?? "未选择"}
                       </strong>
                     </span>
-                    <div className="inline-flex border border-[#d4dbd7] bg-white p-0.5">
+                    <div className="inline-flex border border-[var(--color-border-default)] bg-white p-0.5">
                       {[1, 2].map((hop) => (
                         <button
                           key={hop}
                           type="button"
                           onClick={() => void changeHops(hop as 1 | 2)}
-                          className={`px-3 py-1.5 font-mono text-[10px] ${hops === hop ? "bg-[#e4eee9] text-[#285b4b]" : "text-[#74807a]"}`}
+                          className={`px-3 py-1.5 font-mono text-[10px] ${hops === hop ? "bg-[var(--color-accent-soft)] text-[var(--color-accent-hover)]" : "text-[var(--color-text-muted)]"}`}
                         >
                           {hop}-hop
                         </button>
@@ -1119,14 +1130,14 @@ export function SemanticStudio({
                 ) : null}
 
                 {view !== "nodes" ? (
-                  <div className="flex flex-wrap items-center gap-1.5 border-b border-[#d7ddd9] bg-white px-3 py-2">
-                    <span className="mr-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[#7b8781]">
+                  <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-border-default)] bg-white px-3 py-2">
+                    <span className="mr-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
                       关系家族
                     </span>
                     <button
                       type="button"
                       onClick={() => setEdgeFamily("ALL")}
-                      className={`border px-2 py-1 text-[9px] transition-colors ${edgeFamily === "ALL" ? "border-[#7fa293] bg-[#e7f0eb] font-semibold text-[#285b4b]" : "border-[#d8dfdb] text-[#6f7b75] hover:border-[#aebbb4]"}`}
+                      className={`rounded-full border px-2 py-1 text-[9px] transition-colors ${edgeFamily === "ALL" ? "border-[var(--color-border-overlay)] bg-[var(--color-accent-soft)] font-semibold text-[var(--color-accent-hover)]" : "border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:border-[var(--color-border-overlay)]"}`}
                     >
                       全部
                     </button>
@@ -1136,7 +1147,7 @@ export function SemanticStudio({
                         type="button"
                         title={SEMANTIC_EDGE_FAMILY_PRESENTATION[family].description}
                         onClick={() => setEdgeFamily(family)}
-                        className={`border px-2 py-1 text-[9px] transition-colors ${edgeFamily === family ? "border-[#7fa293] bg-[#e7f0eb] font-semibold text-[#285b4b]" : "border-[#d8dfdb] text-[#6f7b75] hover:border-[#aebbb4]"}`}
+                        className={`rounded-full border px-2 py-1 text-[9px] transition-colors ${edgeFamily === family ? "border-[var(--color-border-overlay)] bg-[var(--color-accent-soft)] font-semibold text-[var(--color-accent-hover)]" : "border-[var(--color-border-default)] text-[var(--color-text-muted)] hover:border-[var(--color-border-overlay)]"}`}
                       >
                         {SEMANTIC_EDGE_FAMILY_PRESENTATION[family].label}
                       </button>

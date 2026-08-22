@@ -56,29 +56,29 @@ export function SemanticAgentComposer({
     <section className="mt-4" aria-label="Agent 语义编辑器">
       <motion.div
         layout
-        className="border border-[#bfcac4] bg-white/96 px-3 py-3 shadow-[0_18px_50px_rgba(32,45,39,0.14)] backdrop-blur-md sm:px-4"
+        className="surface-floating-strong rounded-[var(--radius-panel)] border px-3 py-3 sm:px-4"
       >
         {state ? (
           <motion.div
             layout
-            className="mb-3 flex flex-col gap-2 border border-[#d7ddd9] bg-[#f8faf8] px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+            className="mb-3 flex flex-col gap-2 rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
           >
-            <div className="flex items-center gap-2 text-[11px] text-[#59665f]">
+            <div className="flex items-center gap-2 text-[11px] text-[var(--color-text-secondary)]">
               <Pulse
-                className={`size-4 ${running ? "animate-pulse text-[#356b5a]" : "text-[#89938e]"}`}
+                className={`size-4 ${running ? "animate-pulse text-[var(--color-accent)]" : "text-[var(--color-text-muted)]"}`}
                 aria-hidden="true"
               />
               <span className="font-semibold">
                 {running ? "Agent 任务仍在执行" : "这次 Agent 任务已有执行记录"}
               </span>
-              <span className="font-mono text-[10px] text-[#89938e]">
+              <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
                 {events.length} 个公开事件
               </span>
             </div>
             <button
               type="button"
               onClick={onOpenTrajectory}
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#356b5a] hover:text-[#285b4b]"
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
             >
               打开全屏轨迹
               <ArrowSquareOut className="size-3.5" aria-hidden="true" />
@@ -87,7 +87,7 @@ export function SemanticAgentComposer({
         ) : null}
 
         {clarification && clarification.answer === null ? (
-          <div className="mb-3 border-l-2 border-sky-500 bg-sky-50 px-3 py-3">
+          <div className="mb-3 rounded-[var(--radius-control)] border border-sky-200 bg-sky-50 px-3 py-3">
             <p className="text-xs font-semibold text-sky-900">Agent 需要确认</p>
             <p className="mt-1 text-xs leading-5 text-sky-800">{clarification.question}</p>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -97,7 +97,7 @@ export function SemanticAgentComposer({
                   type="button"
                   disabled={busy}
                   onClick={() => onResume(option)}
-                  className="border border-sky-300 bg-white px-3 py-1.5 text-[11px] font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
+                  className="control-pressable rounded-[var(--radius-control)] border border-sky-300 bg-white px-3 py-1.5 text-[11px] font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-50"
                 >
                   {option}
                 </button>
@@ -106,14 +106,16 @@ export function SemanticAgentComposer({
           </div>
         ) : null}
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pb-2 text-[10px] text-[#65716b]">
-          <span className="border-r border-[#d7ddd9] pr-3 font-mono">Domain · {domain}</span>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 pb-2 text-[10px] text-[var(--color-text-secondary)]">
+          <span className="border-r border-[var(--color-border-default)] pr-3 font-mono">
+            Domain · {domain}
+          </span>
           <span className="font-mono">{releaseLabel}</span>
           {selectedNode || selectedEdge ? (
             <button
               type="button"
               onClick={onClearSelection}
-              className="inline-flex items-center gap-1.5 border-l border-[#d7ddd9] pl-3 font-medium text-[#356b5a] hover:text-[#285b4b]"
+              className="inline-flex items-center gap-1.5 border-l border-[var(--color-border-default)] pl-3 font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
             >
               选区 · {selectedNode?.node.name ?? selectedEdge?.edge.edge_type}
               <X className="size-3" aria-hidden="true" />
@@ -123,7 +125,7 @@ export function SemanticAgentComposer({
             <button
               type="button"
               onClick={onClearEvidenceSelection}
-              className="inline-flex items-center gap-1.5 border-l border-[#d7ddd9] pl-3 font-medium text-[#356b5a] hover:text-[#285b4b]"
+              className="inline-flex items-center gap-1.5 border-l border-[var(--color-border-default)] pl-3 font-medium text-[var(--color-accent)] hover:text-[var(--color-accent-hover)]"
               title={evidenceSelectionId}
             >
               精确知识证据 · {evidenceSelectionId.slice(0, 8)}
@@ -135,7 +137,7 @@ export function SemanticAgentComposer({
           </span>
         </div>
 
-        <div className="flex flex-col gap-2 border border-[#7fa293] bg-white p-2 transition-shadow focus-within:shadow-[0_0_0_3px_rgba(53,107,90,0.12)] sm:flex-row sm:items-end">
+        <div className="flex flex-col gap-2 rounded-[var(--radius-item)] border border-[var(--color-border-overlay)] bg-white p-2 transition-shadow focus-within:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)] sm:flex-row sm:items-end">
           <textarea
             value={draft}
             rows={2}
@@ -148,7 +150,7 @@ export function SemanticAgentComposer({
               }
             }}
             placeholder="告诉 Agent 要新增或修改什么。可以直接输入业务口径、公式或关系，例如：把成交商品数改成只统计已支付订单……"
-            className="min-h-[52px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-[13px] leading-5 text-[#26312d] outline-none placeholder:text-[#929d97] disabled:opacity-60"
+            className="min-h-[52px] flex-1 resize-none border-0 bg-transparent px-2 py-1 text-[13px] leading-5 text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)] disabled:opacity-60"
           />
           <button
             type="button"
@@ -156,7 +158,7 @@ export function SemanticAgentComposer({
               busy || (!running && draft.trim().length === 0) || clarification?.answer === null
             }
             onClick={running ? onOpenTrajectory : onSubmit}
-            className="inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 bg-[#356b5a] px-4 text-xs font-semibold text-white transition-colors hover:bg-[#285b4b] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
+            className="control-pressable inline-flex h-10 w-full shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--color-accent)] px-4 text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45 sm:w-auto"
           >
             {busy ? (
               <Sparkle className="size-4 animate-pulse" aria-hidden="true" />
@@ -176,7 +178,7 @@ export function SemanticAgentComposer({
                 key={example}
                 type="button"
                 onClick={() => onDraftChange(example)}
-                className="whitespace-nowrap border border-[#d4dbd7] px-3 py-1.5 text-[10px] text-[#65716b] transition-colors hover:border-[#7fa293] hover:text-[#285b4b]"
+                className="control-pressable whitespace-nowrap rounded-full border border-[var(--color-border-default)] px-3 py-1.5 text-[10px] text-[var(--color-text-secondary)] hover:border-[var(--color-border-overlay)] hover:text-[var(--color-accent-hover)]"
               >
                 {example}
               </button>

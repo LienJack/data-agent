@@ -47,7 +47,7 @@ export function SemanticNodeList({
         className="max-h-[min(70vh,760px)] overflow-auto"
       >
         <table className="w-full table-fixed text-left sm:min-w-[760px]">
-          <thead className="sticky top-0 z-10 border-b border-[#d7ddd9] bg-[#f8faf8] text-[9px] uppercase tracking-[0.15em] text-[#76817c]">
+          <thead className="sticky top-0 z-10 border-b border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] text-[9px] uppercase tracking-[0.15em] text-[var(--color-text-muted)]">
             <tr>
               <th className="w-[64%] px-4 py-3 font-semibold sm:w-[38%]">节点</th>
               <th className="w-[36%] px-3 py-3 font-semibold sm:w-[14%]">类型</th>
@@ -71,7 +71,7 @@ export function SemanticNodeList({
               return (
                 <tr
                   key={item.node.node_id}
-                  className={`border-b border-[#e1e6e3] last:border-b-0 transition-colors ${selected ? "bg-[#eaf1ed] shadow-[inset_2px_0_0_#356b5a]" : "hover:bg-[#fafbfa]"}`}
+                  className={`border-b border-[var(--color-border-default)] last:border-b-0 transition-colors ${selected ? "bg-[var(--color-accent-soft)] shadow-[inset_2px_0_0_var(--color-accent)]" : "hover:bg-[var(--color-bg-canvas)]"}`}
                 >
                   <td className="px-4 py-3">
                     <button
@@ -86,16 +86,18 @@ export function SemanticNodeList({
                         {type.short}
                       </span>
                       <span className="min-w-0">
-                        <span className="block truncate text-[13px] font-semibold tracking-[-0.01em] text-[#28332e]">
+                        <span className="block truncate text-[13px] font-semibold tracking-[-0.01em] text-[var(--color-text-primary)]">
                           {item.node.name}
                         </span>
-                        <span className="mt-1 block truncate text-[10px] text-[#77827d]">
+                        <span className="mt-1 block truncate text-[10px] text-[var(--color-text-muted)]">
                           {item.node.description || item.node.node_id}
                         </span>
                       </span>
                     </button>
                   </td>
-                  <td className="px-3 py-3 text-[11px] text-[#5e6b65]">{type.label}</td>
+                  <td className="px-3 py-3 text-[11px] text-[var(--color-text-secondary)]">
+                    {type.label}
+                  </td>
                   <td className="hidden px-3 py-3 sm:table-cell">
                     <span
                       className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-medium"
@@ -109,8 +111,11 @@ export function SemanticNodeList({
                     </span>
                   </td>
                   <td className="hidden px-3 py-3 text-right md:table-cell">
-                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-[#5e6b65]">
-                      <CirclesThree className="size-3.5 text-[#82908a]" aria-hidden="true" />
+                    <span className="inline-flex items-center gap-1.5 font-mono text-[11px] text-[var(--color-text-secondary)]">
+                      <CirclesThree
+                        className="size-3.5 text-[var(--color-text-muted)]"
+                        aria-hidden="true"
+                      />
                       {item.relation_count.total}
                     </span>
                   </td>
@@ -118,7 +123,7 @@ export function SemanticNodeList({
                     <button
                       type="button"
                       onClick={() => onOpenGraph(item)}
-                      className="inline-flex items-center gap-1.5 border border-[#d2dad5] px-2.5 py-1.5 text-[10px] font-medium text-[#59665f] transition-colors hover:border-[#7fa293] hover:text-[#285b4b]"
+                      className="inline-flex items-center gap-1.5 border border-[var(--color-border-default)] px-2.5 py-1.5 text-[10px] font-medium text-[var(--color-text-secondary)] transition-colors hover:border-[var(--color-border-overlay)] hover:text-[var(--color-accent-hover)]"
                     >
                       查看关系 <ArrowRight className="size-3" aria-hidden="true" />
                     </button>
@@ -136,12 +141,19 @@ export function SemanticNodeList({
       </div>
       {nodes.length === 0 ? (
         <div className="px-4 py-20 text-center">
-          <CirclesThree className="mx-auto size-6 text-[#99a39e]" aria-hidden="true" />
-          <p className="mt-3 text-sm font-medium text-[#3d4943]">没有符合当前筛选的节点</p>
-          <p className="mt-1 text-[10px] text-[#7b8781]">调整类型、状态或关键词后重试</p>
+          <CirclesThree
+            className="mx-auto size-6 text-[var(--color-text-muted)]"
+            aria-hidden="true"
+          />
+          <p className="mt-3 text-sm font-medium text-[var(--color-text-secondary)]">
+            没有符合当前筛选的节点
+          </p>
+          <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+            调整类型、状态或关键词后重试
+          </p>
         </div>
       ) : null}
-      <div className="flex items-center justify-between border-t border-[#d7ddd9] bg-[#f8faf8] px-4 py-2 text-[10px] text-[#6e7a74]">
+      <div className="flex items-center justify-between border-t border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-4 py-2 text-[10px] text-[var(--color-text-secondary)]">
         <span>
           {from}–{to} / {total} · 可视窗口仅渲染当前行
         </span>
@@ -150,7 +162,7 @@ export function SemanticNodeList({
             type="button"
             disabled={cursor === 0}
             onClick={() => onPage(Math.max(0, cursor - 250))}
-            className="inline-flex h-7 items-center gap-1 border border-[#d2dad5] bg-white px-2 text-[10px] transition-colors hover:border-[#9aaba3] disabled:opacity-40"
+            className="inline-flex h-7 items-center gap-1 border border-[var(--color-border-default)] bg-white px-2 text-[10px] transition-colors hover:border-[var(--color-border-overlay)] disabled:opacity-40"
           >
             <CaretLeft className="size-3" aria-hidden="true" />
             上一页
@@ -159,7 +171,7 @@ export function SemanticNodeList({
             type="button"
             disabled={nextCursor === null}
             onClick={() => nextCursor !== null && onPage(nextCursor)}
-            className="inline-flex h-7 items-center gap-1 border border-[#d2dad5] bg-white px-2 text-[10px] transition-colors hover:border-[#9aaba3] disabled:opacity-40"
+            className="inline-flex h-7 items-center gap-1 border border-[var(--color-border-default)] bg-white px-2 text-[10px] transition-colors hover:border-[var(--color-border-overlay)] disabled:opacity-40"
           >
             下一页
             <CaretRight className="size-3" aria-hidden="true" />

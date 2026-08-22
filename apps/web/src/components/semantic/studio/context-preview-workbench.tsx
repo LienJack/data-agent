@@ -39,9 +39,12 @@ export function ContextPreviewWorkbench({ workspaceId }: { readonly workspaceId:
   }
 
   return (
-    <section className="border border-[#d7ddd9] bg-white" aria-label={t("context.preview")}>
+    <section
+      className="border border-[var(--color-border-default)] bg-white"
+      aria-label={t("context.preview")}
+    >
       <form
-        className="flex flex-col gap-2 border-b border-[#d7ddd9] bg-[#f8faf8] p-3 sm:flex-row"
+        className="flex flex-col gap-2 border-b border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] p-3 sm:flex-row"
         onSubmit={(event) => {
           event.preventDefault();
           void resolveContext();
@@ -54,13 +57,13 @@ export function ContextPreviewWorkbench({ workspaceId }: { readonly workspaceId:
             onChange={(event) => setQuestion(event.target.value)}
             maxLength={4_000}
             placeholder={t("context.questionPlaceholder")}
-            className="h-9 w-full border border-[#cfd7d2] bg-white px-3 text-xs outline-none focus:border-[#356b5a]"
+            className="h-9 w-full border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-accent)]"
           />
         </label>
         <button
           type="submit"
           disabled={question.trim().length === 0 || state.kind === "RESOLVING"}
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 bg-[#356b5a] px-3 text-xs font-semibold text-white hover:bg-[#285b4b] disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 bg-[var(--color-accent)] px-3 text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           {state.kind === "RESOLVING" ? (
             <SpinnerGap className="size-4 animate-spin" aria-hidden="true" />

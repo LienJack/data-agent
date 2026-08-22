@@ -179,12 +179,12 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                   delay: 80,
                   containerStyle: {
                     background: "rgba(255, 255, 255, 0.94)",
-                    border: "1px solid #d8dedb",
+                    border: "1px solid #d5dae2",
                     borderRadius: "10px",
                     overflow: "hidden",
                     boxShadow: "0 10px 30px rgba(38, 52, 45, 0.08)",
                   },
-                  maskStyle: { border: "1px solid #507d70" },
+                  maskStyle: { border: "1px solid #6f86df" },
                 },
               ]
             : [],
@@ -196,8 +196,8 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                     opacity: 1,
                     size: 42,
                     lineWidth: 3,
-                    stroke: "#244f43",
-                    shadowColor: "rgba(36, 79, 67, 0.24)",
+                    stroke: "#2647a8",
+                    shadowColor: "rgba(38, 71, 168, 0.24)",
                     shadowBlur: 20,
                     shadowOffsetY: 7,
                     labelText:
@@ -207,18 +207,18 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                     labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
                     labelFontSize: 36,
                     labelFontWeight: 720,
-                    labelFill: "#15241e",
+                    labelFill: "#181b22",
                     labelBackground: true,
                     labelBackgroundFill: "rgba(250, 252, 251, 0.99)",
-                    labelBackgroundStroke: "#87a49a",
+                    labelBackgroundStroke: "#9aabec",
                     labelBackgroundLineWidth: 1.5,
                     labelBackgroundRadius: 6,
                     labelPadding: [4, 9],
                   })
                 : {
                     lineWidth: 3,
-                    stroke: "#244f43",
-                    shadowColor: "rgba(36, 79, 67, 0.2)",
+                    stroke: "#2647a8",
+                    shadowColor: "rgba(38, 71, 168, 0.2)",
                     shadowBlur: 20,
                     shadowOffsetY: 7,
                   },
@@ -228,7 +228,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                     opacity: 1,
                     size: 40,
                     lineWidth: 2,
-                    shadowColor: "rgba(36, 79, 67, 0.16)",
+                    shadowColor: "rgba(38, 71, 168, 0.16)",
                     shadowBlur: 12,
                     labelText:
                       typeof datum.data?.label === "string" ? datum.data.label : "语义节点",
@@ -237,10 +237,10 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                     labelFontFamily: "var(--font-geist-sans), Geist, sans-serif",
                     labelFontSize: 32,
                     labelFontWeight: 700,
-                    labelFill: "#1f2d27",
+                    labelFill: "#292e39",
                     labelBackground: true,
                     labelBackgroundFill: "rgba(250, 252, 251, 0.98)",
-                    labelBackgroundStroke: "#c7d2cc",
+                    labelBackgroundStroke: "#d5dae2",
                     labelBackgroundLineWidth: 1,
                     labelBackgroundRadius: 6,
                     labelPadding: [4, 9],
@@ -248,14 +248,14 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
                 : {
                     opacity: 1,
                     lineWidth: 2.5,
-                    shadowColor: "rgba(36, 79, 67, 0.14)",
+                    shadowColor: "rgba(38, 71, 168, 0.14)",
                     shadowBlur: 14,
                   },
             related: {
               opacity: 1,
               size: 34,
               lineWidth: 1.75,
-              shadowColor: "rgba(36, 79, 67, 0.12)",
+              shadowColor: "rgba(38, 71, 168, 0.12)",
               shadowBlur: 8,
             },
             inactive: { opacity: 0.48, size: 34 },
@@ -266,16 +266,16 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
           state: {
             selected: (datum) => ({
               lineWidth: 3,
-              stroke: "#244f43",
+              stroke: "#2647a8",
               opacity: 1,
               labelText: typeof datum.data?.label === "string" ? datum.data.label : "关系",
               labelFontFamily: "var(--font-geist-mono), monospace",
               labelFontSize: 9,
               labelFontWeight: 650,
-              labelFill: "#2c3b35",
+              labelFill: "#292e39",
               labelBackground: true,
               labelBackgroundFill: "rgba(255, 255, 255, 0.97)",
-              labelBackgroundStroke: "#87a49a",
+              labelBackgroundStroke: "#9aabec",
               labelBackgroundLineWidth: 1,
               labelBackgroundRadius: 6,
               labelPadding: [3, 6],
@@ -286,10 +286,10 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               labelText: typeof datum.data?.label === "string" ? datum.data.label : "关系",
               labelFontFamily: "var(--font-geist-mono), monospace",
               labelFontSize: 8.5,
-              labelFill: "#4c5b55",
+              labelFill: "#626976",
               labelBackground: true,
               labelBackgroundFill: "rgba(255, 255, 255, 0.96)",
-              labelBackgroundStroke: "#d8dfdb",
+              labelBackgroundStroke: "#e1e4e9",
               labelBackgroundLineWidth: 1,
               labelBackgroundRadius: 5,
               labelPadding: [2, 5],
@@ -377,14 +377,14 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
       data-layout-zoom={props.mode === "full" ? FULL_GRAPH_VIEW_ZOOM : undefined}
       data-focus-node-count={props.mode === "full" ? fullFocus.focusedNodeIds.size : undefined}
       data-focus-edge-count={props.mode === "full" ? fullFocus.focusedEdgeIds.size : undefined}
-      className="relative min-h-[560px] overflow-hidden bg-[#f7f9f7]"
+      className="relative min-h-[560px] overflow-hidden bg-[#f6f7f9]"
       aria-label={props.mode === "local" ? "节点局部关系图" : "语义全图"}
     >
-      <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-136px)] rounded-[10px] border border-white/80 bg-white/88 px-3 py-2 shadow-[0_8px_24px_rgba(38,52,45,0.06)] backdrop-blur-sm sm:left-4 sm:top-4">
-        <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#356b5a]">
+      <div className="pointer-events-none absolute left-3 top-3 z-10 max-w-[calc(100%-136px)] rounded-[10px] border border-white/80 bg-white/88 px-3 py-2 shadow-[0_8px_24px_rgba(38,71,168,0.06)] backdrop-blur-sm sm:left-4 sm:top-4">
+        <p className="font-mono text-[9px] font-semibold uppercase tracking-[0.14em] text-[#3f63e8]">
           {props.mode === "local" ? "Ontology flow" : "Force graph"}
         </p>
-        <p className="mt-0.5 text-[9px] text-[#74807a]">
+        <p className="mt-0.5 text-[9px] text-[#8b929e]">
           {props.mode === "local"
             ? "按语义方向分层 · 悬停显示关系名"
             : props.selectedNodeId
@@ -392,13 +392,13 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
               : `${fullGraph.nodes.length} Node · ${fullGraphTypeCount} 类社区 · 点击节点聚焦`}
         </p>
       </div>
-      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-white/80 bg-white/90 p-1 shadow-[0_8px_24px_rgba(38,52,45,0.08)] backdrop-blur-sm sm:right-4 sm:top-4">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-0.5 rounded-[10px] border border-white/80 bg-white/90 p-1 shadow-[0_8px_24px_rgba(38,71,168,0.08)] backdrop-blur-sm sm:right-4 sm:top-4">
         {props.mode === "full" ? (
           <button
             type="button"
             aria-label="重新计算力导向布局"
             onClick={() => void graphRef.current?.layout()}
-            className="grid size-7 place-items-center rounded-[7px] text-[#627069] transition-[background-color,color,transform] duration-200 hover:bg-[#edf1ee] hover:text-[#285b4b] active:scale-[0.96]"
+            className="grid size-7 place-items-center rounded-[7px] text-[#626976] transition-[background-color,color,transform] duration-200 hover:bg-[#eef2ff] hover:text-[#315bd8] active:scale-[0.96]"
             title="重新布局"
           >
             <ArrowClockwise className="size-3.5" aria-hidden="true" />
@@ -408,7 +408,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
           type="button"
           aria-label="放大关系图"
           onClick={() => void graphRef.current?.zoomBy(1.2)}
-          className="grid size-7 place-items-center rounded-[7px] text-[#627069] transition-[background-color,color,transform] duration-200 hover:bg-[#edf1ee] hover:text-[#285b4b] active:scale-[0.96]"
+          className="grid size-7 place-items-center rounded-[7px] text-[#626976] transition-[background-color,color,transform] duration-200 hover:bg-[#eef2ff] hover:text-[#315bd8] active:scale-[0.96]"
           title="放大"
         >
           <Plus className="size-3.5" weight="bold" aria-hidden="true" />
@@ -417,7 +417,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
           type="button"
           aria-label="缩小关系图"
           onClick={() => void graphRef.current?.zoomBy(0.8)}
-          className="grid size-7 place-items-center rounded-[7px] text-[#627069] transition-[background-color,color,transform] duration-200 hover:bg-[#edf1ee] hover:text-[#285b4b] active:scale-[0.96]"
+          className="grid size-7 place-items-center rounded-[7px] text-[#626976] transition-[background-color,color,transform] duration-200 hover:bg-[#eef2ff] hover:text-[#315bd8] active:scale-[0.96]"
           title="缩小"
         >
           <Minus className="size-3.5" weight="bold" aria-hidden="true" />
@@ -434,7 +434,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
             }
             void instance.fitView();
           }}
-          className="grid size-7 place-items-center rounded-[7px] text-[#627069] transition-[background-color,color,transform] duration-200 hover:bg-[#edf1ee] hover:text-[#285b4b] active:scale-[0.96]"
+          className="grid size-7 place-items-center rounded-[7px] text-[#626976] transition-[background-color,color,transform] duration-200 hover:bg-[#eef2ff] hover:text-[#315bd8] active:scale-[0.96]"
           title="适应视图"
         >
           <CornersOut className="size-3.5" aria-hidden="true" />
@@ -452,7 +452,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         </div>
       ) : null}
       {empty ? (
-        <div className="flex min-h-[560px] items-center justify-center text-sm text-[#6d7973]">
+        <div className="flex min-h-[560px] items-center justify-center text-sm text-[#8b929e]">
           当前范围没有可见节点
         </div>
       ) : (
@@ -468,7 +468,7 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
             className="h-[calc(100dvh-402px)] min-h-[560px] max-h-[780px] w-full bg-[radial-gradient(circle_at_50%_44%,rgba(214,231,223,0.42),transparent_42%),linear-gradient(rgba(245,248,246,0.94),rgba(250,251,250,0.98))]"
           />
           {!ready && !renderError ? (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center bg-[#f7f9f7]/72 text-xs text-[#6d7973]">
+            <div className="pointer-events-none absolute inset-0 grid place-items-center bg-[#f6f7f9]/72 text-xs text-[#8b929e]">
               <div className="flex flex-col items-center gap-4">
                 <div
                   className="relative h-20 w-32 animate-pulse motion-reduce:animate-none"
@@ -493,8 +493,8 @@ export function SemanticGraphCanvas(props: SemanticGraphCanvasProps) {
         </>
       )}
       {graph ? (
-        <details className="border-t border-[#d7ddd9] bg-white px-4 py-2 text-xs">
-          <summary className="cursor-pointer font-medium text-[#65716b]">
+        <details className="border-t border-[#e1e4e9] bg-white px-4 py-2 text-xs">
+          <summary className="cursor-pointer font-medium text-[#626976]">
             键盘与读屏表格视图
           </summary>
           <div className="mt-3 max-h-56 overflow-auto">

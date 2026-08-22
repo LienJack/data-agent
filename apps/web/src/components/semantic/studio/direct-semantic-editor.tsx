@@ -120,7 +120,7 @@ function baseNode(type: SemanticNodeType, id: string, name: string, owner: strin
 }
 
 const fieldClass =
-  "h-9 w-full border border-[#cfd7d2] bg-white px-3 text-[11px] text-[#2f3a35] outline-none focus:border-[#356b5a]";
+  "h-9 w-full border border-[var(--color-border-default)] bg-white px-3 text-[11px] text-[var(--color-text-primary)] outline-none focus:border-[var(--color-accent)]";
 
 type EdgeAttributes = SemanticGraphEdge["attributes"];
 
@@ -190,7 +190,7 @@ function EnumSelect<const T extends string>({
   readonly onChange: (value: T) => void;
 }) {
   return (
-    <label className="text-[10px] text-[#6d7973]">
+    <label className="text-[10px] text-[var(--color-text-secondary)]">
       {label}
       <select
         className={`${fieldClass} mt-1`}
@@ -216,7 +216,7 @@ function FormulaExpressionEditor({
   readonly depth?: number;
   readonly path?: string;
 }) {
-  const nestedClass = depth === 0 ? "" : "border-l border-[#d7ddd9] pl-3";
+  const nestedClass = depth === 0 ? "" : "border-l border-[var(--color-border-default)] pl-3";
   return (
     <div className={`grid gap-2 ${nestedClass}`}>
       <EnumSelect
@@ -235,7 +235,7 @@ function FormulaExpressionEditor({
         onChange={(kind) => onChange(defaultFormulaExpression(kind))}
       />
       {value.kind === "LITERAL" ? (
-        <label className="text-[10px] text-[#6d7973]">
+        <label className="text-[10px] text-[var(--color-text-secondary)]">
           常量
           <input
             className={`${fieldClass} mt-1 font-mono`}
@@ -258,7 +258,7 @@ function FormulaExpressionEditor({
         </label>
       ) : null}
       {value.kind === "SLOT" ? (
-        <label className="text-[10px] text-[#6d7973]">
+        <label className="text-[10px] text-[var(--color-text-secondary)]">
           Slot ID
           <input
             className={`${fieldClass} mt-1 font-mono`}
@@ -342,7 +342,7 @@ function FormulaExpressionEditor({
           ))}
           <button
             type="button"
-            className="justify-self-start text-[10px] font-semibold text-[#356b5a]"
+            className="justify-self-start text-[10px] font-semibold text-[var(--color-accent)]"
             onClick={() =>
               onChange({
                 ...value,
@@ -386,7 +386,7 @@ function FormulaExpressionEditor({
             options={["SUM", "COUNT", "COUNT_DISTINCT", "AVG", "MIN", "MAX"]}
             onChange={(aggregateFunction) => onChange({ ...value, function: aggregateFunction })}
           />
-          <label className="flex items-center gap-2 text-[10px] text-[#6d7973]">
+          <label className="flex items-center gap-2 text-[10px] text-[var(--color-text-secondary)]">
             <input
               type="checkbox"
               checked={value.distinct}
@@ -404,7 +404,7 @@ function FormulaExpressionEditor({
           ) : (
             <button
               type="button"
-              className="justify-self-start text-[10px] text-[#356b5a]"
+              className="justify-self-start text-[10px] text-[var(--color-accent)]"
               onClick={() => onChange({ ...value, input: { kind: "SLOT", slot_id: "value" } })}
             >
               + 添加聚合输入
@@ -420,7 +420,7 @@ function FormulaExpressionEditor({
           ) : (
             <button
               type="button"
-              className="justify-self-start text-[10px] text-[#356b5a]"
+              className="justify-self-start text-[10px] text-[var(--color-accent)]"
               onClick={() => onChange({ ...value, filter: { kind: "LITERAL", value: true } })}
             >
               + 添加过滤条件
@@ -434,9 +434,11 @@ function FormulaExpressionEditor({
             <div
               // biome-ignore lint/suspicious/noArrayIndexKey: formula AST branches have no persisted identity and remain fully controlled.
               key={`${path}.branches.${index}`}
-              className="grid gap-2 border-l border-[#b9cbc2] pl-3"
+              className="grid gap-2 border-l border-[var(--color-border-overlay)] pl-3"
             >
-              <span className="text-[10px] font-semibold text-[#356b5a]">分支 {index + 1}</span>
+              <span className="text-[10px] font-semibold text-[var(--color-accent)]">
+                分支 {index + 1}
+              </span>
               <FormulaExpressionEditor
                 value={branch.when}
                 depth={depth + 1}
@@ -467,7 +469,7 @@ function FormulaExpressionEditor({
           ))}
           <button
             type="button"
-            className="justify-self-start text-[10px] font-semibold text-[#356b5a]"
+            className="justify-self-start text-[10px] font-semibold text-[var(--color-accent)]"
             onClick={() =>
               onChange({
                 ...value,
@@ -493,7 +495,7 @@ function FormulaExpressionEditor({
           ) : (
             <button
               type="button"
-              className="justify-self-start text-[10px] text-[#356b5a]"
+              className="justify-self-start text-[10px] text-[var(--color-accent)]"
               onClick={() => onChange({ ...value, otherwise: { kind: "LITERAL", value: 0 } })}
             >
               + 添加 ELSE
@@ -513,12 +515,12 @@ function EdgeAttributesEditor({
   readonly onChange: (value: EdgeAttributes) => void;
 }) {
   if (value.kind === "NONE") {
-    return <p className="text-[10px] text-[#87918c]">此关系类型没有可编辑属性。</p>;
+    return <p className="text-[10px] text-[var(--color-text-muted)]">此关系类型没有可编辑属性。</p>;
   }
   if (value.kind === "BUSINESS_RELATION") {
     return (
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-[10px] text-[#6d7973]">
+        <label className="text-[10px] text-[var(--color-text-secondary)]">
           关系名称
           <input
             className={`${fieldClass} mt-1`}
@@ -538,7 +540,7 @@ function EdgeAttributesEditor({
   if (value.kind === "SLOT_BINDING") {
     return (
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-[10px] text-[#6d7973]">
+        <label className="text-[10px] text-[var(--color-text-secondary)]">
           Slot ID
           <input
             className={`${fieldClass} mt-1 font-mono`}
@@ -568,7 +570,7 @@ function EdgeAttributesEditor({
   if (value.kind === "GRAIN_BINDING") {
     return (
       <div className="grid gap-2 sm:grid-cols-2">
-        <label className="text-[10px] text-[#6d7973]">
+        <label className="text-[10px] text-[var(--color-text-secondary)]">
           粒度 ID
           <input
             className={`${fieldClass} mt-1 font-mono`}
@@ -614,10 +616,10 @@ function EdgeAttributesEditor({
           options={["DDL_ENFORCED", "SNAPSHOT_CERTIFIED", "DECLARED_ONLY"]}
           onChange={(proof_kind) => onChange({ ...value, proof_kind })}
         />
-        <label className="text-[10px] text-[#6d7973] sm:col-span-2">
+        <label className="text-[10px] text-[var(--color-text-secondary)] sm:col-span-2">
           证明说明
           <textarea
-            className="mt-1 min-h-16 w-full border border-[#cfd7d2] p-3 text-xs"
+            className="mt-1 min-h-16 w-full border border-[var(--color-border-default)] p-3 text-xs"
             value={value.proof_detail ?? ""}
             onChange={(event) => onChange({ ...value, proof_detail: event.target.value || null })}
           />
@@ -634,7 +636,7 @@ function EdgeAttributesEditor({
           options={["DERIVED", "SUPPORTED", "MIGRATED"]}
           onChange={(derivation_kind) => onChange({ ...value, derivation_kind })}
         />
-        <label className="text-[10px] text-[#6d7973]">
+        <label className="text-[10px] text-[var(--color-text-secondary)]">
           说明
           <input
             className={`${fieldClass} mt-1`}
@@ -898,10 +900,10 @@ export function DirectSemanticEditor({
   const nodeMode = mode === "ADD_NODE" || (mode === "EDIT_SELECTION" && selectedNode !== null);
   const proposalMode = mode === "PROPOSE_EDGE_TYPE";
   return (
-    <section className="mt-4 border border-[#b8c8c0] bg-white shadow-[0_16px_38px_rgba(37,57,48,0.08)]">
-      <div className="flex items-center justify-between border-b border-[#d7ddd9] px-4 py-3">
+    <section className="mt-4 border border-[var(--color-border-overlay)] bg-white shadow-[0_16px_38px_rgba(37,57,48,0.08)]">
+      <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#356b5a]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-accent)]">
             Direct ChangeSet editor
           </p>
           <h2 className="mt-1 text-sm font-semibold text-[#27332e]">
@@ -917,7 +919,7 @@ export function DirectSemanticEditor({
         <button
           type="button"
           onClick={onClose}
-          className="grid size-8 place-items-center hover:bg-[#f0f3f1]"
+          className="control-pressable grid size-8 place-items-center rounded-[var(--radius-control)] hover:bg-[var(--color-bg-overlay)]"
           aria-label="关闭直接编辑器"
         >
           <X className="size-4" />
@@ -932,7 +934,7 @@ export function DirectSemanticEditor({
         <div className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4">
           {proposalMode ? (
             <>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 稳定类型 ID
                 <input
                   className={`${fieldClass} mt-1 font-mono`}
@@ -940,7 +942,7 @@ export function DirectSemanticEditor({
                   onChange={(event) => setProposedEdgeType(event.target.value.toUpperCase())}
                 />
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 显示名称
                 <input
                   className={`${fieldClass} mt-1`}
@@ -976,8 +978,10 @@ export function DirectSemanticEditor({
                 options={["FORBID", "ALLOW_DISTINCT_ATTRIBUTES"]}
                 onChange={setProposedParallelPolicy}
               />
-              <fieldset className="border border-[#cfd7d2] p-3 md:col-span-2">
-                <legend className="px-1 text-[10px] text-[#6d7973]">允许的 Source 类型</legend>
+              <fieldset className="border border-[var(--color-border-default)] p-3 md:col-span-2">
+                <legend className="px-1 text-[10px] text-[var(--color-text-secondary)]">
+                  允许的 Source 类型
+                </legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {AUTHORABLE_NODE_TYPES.concat(["PHYSICAL_TABLE", "PHYSICAL_COLUMN"]).map(
                     (type) => (
@@ -999,8 +1003,10 @@ export function DirectSemanticEditor({
                   )}
                 </div>
               </fieldset>
-              <fieldset className="border border-[#cfd7d2] p-3 md:col-span-2">
-                <legend className="px-1 text-[10px] text-[#6d7973]">允许的 Target 类型</legend>
+              <fieldset className="border border-[var(--color-border-default)] p-3 md:col-span-2">
+                <legend className="px-1 text-[10px] text-[var(--color-text-secondary)]">
+                  允许的 Target 类型
+                </legend>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {AUTHORABLE_NODE_TYPES.concat(["PHYSICAL_TABLE", "PHYSICAL_COLUMN"]).map(
                     (type) => (
@@ -1022,7 +1028,7 @@ export function DirectSemanticEditor({
                   )}
                 </div>
               </fieldset>
-              <div className="border-l-2 border-[#b9cbc2] pl-3 text-[10px] leading-4 text-[#68746e] md:col-span-2 xl:col-span-4">
+              <div className="border-l-2 border-[var(--color-border-overlay)] pl-3 text-[10px] leading-4 text-[#68746e] md:col-span-2 xl:col-span-4">
                 此处只生成独立的 <span className="font-mono">ADD_EDGE_TYPE</span> Candidate
                 operation，不会创建关系实例或直接修改正式
                 Registry。保存、验证、自审和发布门禁保持不变。
@@ -1030,7 +1036,7 @@ export function DirectSemanticEditor({
             </>
           ) : nodeMode ? (
             <>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 对象类型
                 <select
                   className={`${fieldClass} mt-1`}
@@ -1043,7 +1049,7 @@ export function DirectSemanticEditor({
                   ))}
                 </select>
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 稳定 ID
                 <input
                   className={`${fieldClass} mt-1 font-mono`}
@@ -1052,7 +1058,7 @@ export function DirectSemanticEditor({
                   onChange={(event) => setNodeId(event.target.value)}
                 />
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 名称
                 <input
                   className={`${fieldClass} mt-1`}
@@ -1060,7 +1066,7 @@ export function DirectSemanticEditor({
                   onChange={(event) => setName(event.target.value)}
                 />
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 生命周期
                 <select
                   className={`${fieldClass} mt-1`}
@@ -1072,24 +1078,24 @@ export function DirectSemanticEditor({
                   <option>RETIRED</option>
                 </select>
               </label>
-              <label className="text-[10px] text-[#6d7973] md:col-span-2 xl:col-span-4">
+              <label className="text-[10px] text-[var(--color-text-secondary)] md:col-span-2 xl:col-span-4">
                 业务定义
                 <textarea
-                  className="mt-1 min-h-20 w-full border border-[#cfd7d2] p-3 text-xs outline-none focus:border-[#356b5a]"
+                  className="mt-1 min-h-20 w-full border border-[var(--color-border-default)] p-3 text-xs outline-none focus:border-[var(--color-accent)]"
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                 />
               </label>
               {nodeType === "FORMULA" ? (
-                <div className="text-[10px] text-[#6d7973] md:col-span-2 xl:col-span-4">
+                <div className="text-[10px] text-[var(--color-text-secondary)] md:col-span-2 xl:col-span-4">
                   <p>公式构建器 · semantic-formula-ast@1</p>
-                  <div className="mt-1 border border-[#cfd7d2] p-3">
+                  <div className="mt-1 border border-[var(--color-border-default)] p-3">
                     <FormulaExpressionEditor
                       value={formulaExpression}
                       onChange={setFormulaExpression}
                     />
                   </div>
-                  <span className="mt-1 block text-[9px] leading-4 text-[#87918c]">
+                  <span className="mt-1 block text-[9px] leading-4 text-[var(--color-text-muted)]">
                     保存前按 Formula AST 严格校验；非法字段、循环依赖或无法 Lower 的表达式会被拒绝。
                   </span>
                 </div>
@@ -1097,7 +1103,7 @@ export function DirectSemanticEditor({
             </>
           ) : (
             <>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 已注册关系类型
                 <select
                   className={`${fieldClass} mt-1`}
@@ -1125,7 +1131,7 @@ export function DirectSemanticEditor({
                   ))}
                 </select>
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 Edge ID
                 <input
                   className={`${fieldClass} mt-1 font-mono`}
@@ -1134,7 +1140,7 @@ export function DirectSemanticEditor({
                   onChange={(event) => setEdgeId(event.target.value)}
                 />
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 Source
                 <select
                   className={`${fieldClass} mt-1`}
@@ -1148,7 +1154,7 @@ export function DirectSemanticEditor({
                   ))}
                 </select>
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 Target
                 <select
                   className={`${fieldClass} mt-1`}
@@ -1162,7 +1168,7 @@ export function DirectSemanticEditor({
                   ))}
                 </select>
               </label>
-              <label className="text-[10px] text-[#6d7973]">
+              <label className="text-[10px] text-[var(--color-text-secondary)]">
                 生命周期
                 <select
                   className={`${fieldClass} mt-1`}
@@ -1174,14 +1180,14 @@ export function DirectSemanticEditor({
                   <option>RETIRED</option>
                 </select>
               </label>
-              <div className="text-[10px] text-[#6d7973] md:col-span-2 xl:col-span-3">
+              <div className="text-[10px] text-[var(--color-text-secondary)] md:col-span-2 xl:col-span-3">
                 <p>关系属性 · {selectedDefinition?.attribute_kind ?? "未选择类型"}</p>
-                <div className="mt-1 border border-[#cfd7d2] p-3">
+                <div className="mt-1 border border-[var(--color-border-default)] p-3">
                   <EdgeAttributesEditor value={edgeAttributes} onChange={setEdgeAttributes} />
                 </div>
               </div>
-              <div className="md:col-span-2 xl:col-span-4 flex items-center gap-2 border-l-2 border-[#b9cbc2] pl-3 text-[10px] text-[#68746e]">
-                <Link className="size-4 text-[#356b5a]" />
+              <div className="md:col-span-2 xl:col-span-4 flex items-center gap-2 border-l-2 border-[var(--color-border-overlay)] pl-3 text-[10px] text-[#68746e]">
+                <Link className="size-4 text-[var(--color-accent)]" />
                 端点与属性由注册类型约束。关系编辑器不允许临时创建新类型。
               </div>
             </>
@@ -1193,7 +1199,7 @@ export function DirectSemanticEditor({
             <button
               type="button"
               onClick={proposalMode ? applyEdgeTypeProposal : nodeMode ? applyNode : applyEdge}
-              className="inline-flex h-9 items-center gap-2 bg-[#356b5a] px-4 text-xs font-semibold text-white hover:bg-[#285b4b]"
+              className="inline-flex h-9 items-center gap-2 bg-[var(--color-accent)] px-4 text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)]"
             >
               {mode === "ADD_NODE" || mode === "PROPOSE_EDGE_TYPE" ? (
                 <Plus className="size-4" />
