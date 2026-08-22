@@ -1,6 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
+import { pathToFileURL } from "node:url";
+import {
+  loadRuntimeBuildIdentity,
+  loadRuntimeMigrationFact,
+  projectPublicRuntimeBuildIdentity,
+  type RuntimeBuildIdentity,
+  RuntimeBuildIdentityConfigurationError,
+  type RuntimeMigrationFact,
+} from "@data-agent/contracts/server";
 import {
   adaptPgPool,
   createNeo4jRelationshipGraphAdapterFromEnvironment,
@@ -85,9 +94,37 @@ function parseDomains(value: string): readonly string[] {
     );
 }
 
+export interface RelationshipIndexerHealthState {
+  initialized: boolean;
+  last_cycle_at: string | null;
+}
+
+export function projectRelationshipIndexerHealthResponse(
+  health: RelationshipIndexerHealthState,
+  identity: RuntimeBuildIdentity,
+  migration: RuntimeMigrationFact | null = null,
+) {
+  return {
+    status: health.initialized ? ("ready" as const) : ("starting" as const),
+    ...health,
+    ...projectPublicRuntimeBuildIdentity(identity),
+    ...(migration
+      ? {
+          migration_ready: migration.migration_ready,
+          migration_frontier: migration.migration_frontier,
+        }
+      : {}),
+  };
+}
+
 export async function runRelationshipIndexerProcess(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  const runtimeIdentity = loadRuntimeBuildIdentity({
+    expectedRole: "relationship-indexer",
+    environment,
+  });
+  const migrationFact = loadRuntimeMigrationFact(environment);
   const config = parseEnvironment(environment);
   const domains = parseDomains(config.SEMANTIC_RELATIONSHIP_DOMAINS);
   const workerId = config.SEMANTIC_RELATIONSHIP_INDEX_WORKER_ID ?? randomUUID();
@@ -138,14 +175,21 @@ export async function runRelationshipIndexerProcess(
     },
   });
   const abort = new AbortController();
-  const health = { initialized: false, last_cycle_at: null as string | null };
+  const health: RelationshipIndexerHealthState = { initialized: false, last_cycle_at: null };
   const server = createServer((request, response) => {
     if (request.url !== "/live") {
       response.writeHead(404).end();
       return;
     }
-    response.writeHead(health.initialized ? 200 : 503, { "Content-Type": "application/json" });
-    response.end(JSON.stringify({ status: health.initialized ? "ready" : "starting", ...health }));
+    response.writeHead(health.initialized ? 200 : 503, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    });
+    response.end(
+      JSON.stringify(
+        projectRelationshipIndexerHealthResponse(health, runtimeIdentity, migrationFact),
+      ),
+    );
   });
   const stop = () => abort.abort();
   process.once("SIGINT", stop);
@@ -155,6 +199,21 @@ export async function runRelationshipIndexerProcess(
     await indexer.initialize();
     health.initialized = true;
     server.listen(config.SEMANTIC_RELATIONSHIP_INDEX_HEALTH_PORT, "0.0.0.0");
+    console.info(
+      JSON.stringify({
+        event: "semantic_relationship_indexer_started",
+        build_id: runtimeIdentity.build_id,
+        generation_id: runtimeIdentity.generation_id,
+        git_commit: runtimeIdentity.git_commit,
+        git_dirty: runtimeIdentity.git_dirty,
+        ...(migrationFact
+          ? {
+              migration_ready: migrationFact.migration_ready,
+              migration_frontier: migrationFact.migration_frontier,
+            }
+          : {}),
+      }),
+    );
     while (!abort.signal.aborted) {
       for (const semanticDomain of domains) {
         const resolved = await authority.resolveForServerContext({
@@ -213,12 +272,19 @@ export async function runRelationshipIndexerProcess(
   }
 }
 
-void runRelationshipIndexerProcess().catch((error: unknown) => {
-  console.error(
-    JSON.stringify({
-      event: "semantic_relationship_indexer_stopped",
-      code: error instanceof z.ZodError ? "CONFIG_INVALID" : "INDEXER_UNAVAILABLE",
-    }),
-  );
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  void runRelationshipIndexerProcess().catch((error: unknown) => {
+    console.error(
+      JSON.stringify({
+        event: "semantic_relationship_indexer_stopped",
+        code:
+          error instanceof RuntimeBuildIdentityConfigurationError
+            ? error.code
+            : error instanceof z.ZodError
+              ? "CONFIG_INVALID"
+              : "INDEXER_UNAVAILABLE",
+      }),
+    );
+    process.exitCode = 1;
+  });
+}

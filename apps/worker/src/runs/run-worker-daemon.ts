@@ -96,6 +96,12 @@ export type WorkerCycleLogRecord = Readonly<{
   cycle_kind?: RunWorkerCycleOutcome["kind"];
   run_id?: string;
   final_event_sequence?: number;
+  build_id?: `sha256:${string}`;
+  generation_id?: `sha256:${string}`;
+  git_commit?: string;
+  git_dirty?: boolean;
+  migration_ready?: true;
+  migration_frontier?: `sha256:${string}`;
 }>;
 
 export type WorkerCycleLogger = (record: WorkerCycleLogRecord) => void;

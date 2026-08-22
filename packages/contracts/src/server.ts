@@ -45,6 +45,26 @@ export {
   type ResultOracleReceiptAuthorityOptions,
 } from "./artifacts/text2sql-evidence-authority.js";
 export {
+  RUNTIME_BUILD_IDENTITY_VERSION,
+  type RuntimeBuildConsumerRole,
+  type RuntimeBuildIdentity,
+  runtimeBuildConsumerRoleSchema,
+  runtimeBuildIdentitySchema,
+} from "./operations/runtime-build-identity.js";
+export {
+  loadRuntimeBuildIdentity,
+  loadRuntimeMigrationFact,
+  projectPublicRuntimeBuildIdentity,
+  RuntimeBuildIdentityConfigurationError,
+  type RuntimeBuildIdentityConfigurationErrorCode,
+  type RuntimeIdentityEnvironment,
+} from "./operations/runtime-build-identity-node.js";
+export {
+  RUNTIME_MIGRATION_FACT_VERSION,
+  type RuntimeMigrationFact,
+  runtimeMigrationFactSchema,
+} from "./operations/runtime-migration-fact.js";
+export {
   type AuthoritativeSandboxExecutionIdentity,
   type AuthoritativeSandboxExecutionReceipt,
   type AuthoritativeSandboxResult,

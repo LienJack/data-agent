@@ -8,6 +8,14 @@ import {
   type RunWorkLease,
 } from "@data-agent/contracts";
 import {
+  loadRuntimeBuildIdentity,
+  loadRuntimeMigrationFact,
+  projectPublicRuntimeBuildIdentity,
+  type RuntimeBuildIdentity,
+  RuntimeBuildIdentityConfigurationError,
+  type RuntimeMigrationFact,
+} from "@data-agent/contracts/server";
+import {
   adaptPgPool,
   createClamAvInstreamClient,
   createFileScanPort,
@@ -129,7 +137,29 @@ function writeLog(record: WorkerCycleLogRecord): void {
   }
 }
 
-function createHealthServer(health: WorkerHealthState): Server {
+export function projectWorkerHealthResponse(
+  health: WorkerHealthState,
+  identity: RuntimeBuildIdentity,
+  migration: RuntimeMigrationFact | null = null,
+) {
+  return {
+    status: health.initialized ? ("ready" as const) : ("starting" as const),
+    ...health,
+    ...projectPublicRuntimeBuildIdentity(identity),
+    ...(migration
+      ? {
+          migration_ready: migration.migration_ready,
+          migration_frontier: migration.migration_frontier,
+        }
+      : {}),
+  };
+}
+
+function createHealthServer(
+  health: WorkerHealthState,
+  identity: RuntimeBuildIdentity,
+  migration: RuntimeMigrationFact | null,
+): Server {
   return createServer((request, response) => {
     if (request.method !== "GET" || request.url !== "/live") {
       response.writeHead(404).end();
@@ -139,12 +169,7 @@ function createHealthServer(health: WorkerHealthState): Server {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
     });
-    response.end(
-      JSON.stringify({
-        status: health.initialized ? "ready" : "starting",
-        ...health,
-      }),
-    );
+    response.end(JSON.stringify(projectWorkerHealthResponse(health, identity, migration)));
   });
 }
 
@@ -180,6 +205,11 @@ export async function runWorkerProcess(
   ) {
     throw new RunWorkerStartupError("EXPLICIT_CONFIRMATION_REQUIRED");
   }
+  const runtimeIdentity = loadRuntimeBuildIdentity({
+    expectedRole: "worker",
+    environment,
+  });
+  const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
   const smokeTarget =
@@ -252,7 +282,7 @@ export async function runWorkerProcess(
   const embeddingProviderFactory = createOpenAiCompatibleEmbeddingProviderFactory(environment);
   const controller = new AbortController();
   const health = createInitialWorkerHealth(config.research_authority_capability_id !== null);
-  const healthServer = createHealthServer(health);
+  const healthServer = createHealthServer(health, runtimeIdentity, migrationFact);
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
@@ -646,6 +676,16 @@ export async function runWorkerProcess(
     writeLog({
       level: "info",
       event_name: "run_worker_started",
+      build_id: runtimeIdentity.build_id,
+      generation_id: runtimeIdentity.generation_id,
+      git_commit: runtimeIdentity.git_commit,
+      git_dirty: runtimeIdentity.git_dirty,
+      ...(migrationFact
+        ? {
+            migration_ready: migrationFact.migration_ready,
+            migration_frontier: migrationFact.migration_frontier,
+          }
+        : {}),
       reason_code: config.research_authority_capability_id
         ? "RESEARCH_AUTHORITY_CONFIGURED"
         : "RESEARCH_AUTHORITY_NOT_CONFIGURED",
@@ -696,9 +736,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         reason_code:
           error instanceof z.ZodError
             ? "WORKER_CONFIG_INVALID"
-            : error instanceof RunWorkerStartupError
+            : error instanceof RuntimeBuildIdentityConfigurationError
               ? error.code
-              : "WORKER_STARTUP_FAILED",
+              : error instanceof RunWorkerStartupError
+                ? error.code
+                : "WORKER_STARTUP_FAILED",
       }),
     );
     process.exitCode = 1;

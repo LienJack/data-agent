@@ -1,4 +1,5 @@
 import { type ChildProcess, execFileSync, spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, type FSWatcher, readdirSync, readFileSync, watch } from "node:fs";
 import { connect } from "node:net";
 import { dirname, resolve } from "node:path";
@@ -811,6 +812,11 @@ interface ExpectedMigration {
   readonly migration_checksum: string;
 }
 
+interface VerifiedMigrationRuntimeFact {
+  readonly migration_ready: true;
+  readonly migration_frontier: `sha256:${string}`;
+}
+
 const MIGRATION_CALL_PATTERN =
   /platform\.assert_migration_checksum\(\s*'(platform|app)'\s*,\s*(null|'([0-9a-f-]{36})'::uuid)\s*,\s*'([0-9]{14}_[a-z][a-z0-9_]{1,96})'\s*,\s*'(sha256:[0-9a-f]{64})'\s*\)/g;
 
@@ -893,7 +899,7 @@ function readMigrationLedger(): Map<string, string> {
   return ledger;
 }
 
-function assertMigrationLedgerCurrent(): void {
+function assertMigrationLedgerCurrent(): VerifiedMigrationRuntimeFact {
   const expected = readExpectedMigrations();
   const ledger = readMigrationLedger();
   const failures: string[] = [];
@@ -907,6 +913,14 @@ function assertMigrationLedgerCurrent(): void {
   if (failures.length > 0) {
     throw new Error(`DEV_MIGRATIONS_NOT_READY:${failures.join(",")}\nRun: pnpm dev:migrate`);
   }
+  return {
+    migration_ready: true,
+    migration_frontier: `sha256:${createHash("sha256")
+      .update(
+        JSON.stringify([...ledger.entries()].sort(([left], [right]) => left.localeCompare(right))),
+      )
+      .digest("hex")}`,
+  };
 }
 
 function assertAuthorityMapping(environment: NodeJS.ProcessEnv): void {
@@ -1001,13 +1015,16 @@ function assertNoExistingNextDevelopmentProcess(): void {
   }
 }
 
-async function runDevelopmentCheck(environment: NodeJS.ProcessEnv): Promise<void> {
+async function runDevelopmentCheck(
+  environment: NodeJS.ProcessEnv,
+): Promise<VerifiedMigrationRuntimeFact> {
   assertDatabaseContainersHealthy();
-  assertMigrationLedgerCurrent();
+  const migrationFact = assertMigrationLedgerCurrent();
   assertAuthorityMapping(environment);
   assertNoExistingNextDevelopmentProcess();
   await assertApplicationPortsFree();
   console.info("Development readiness passed: databases, migrations, authority, and ports.");
+  return migrationFact;
 }
 
 async function superviseApplications(
@@ -1179,15 +1196,21 @@ async function main(command: RuntimeCommand | undefined): Promise<number> {
     case "build":
       await refreshWorkspaceBuildReadiness(buildLocalApplicationProcessSpecs(), environment);
       return 0;
-    case "dev":
+    case "dev": {
       await main("infra");
       // Admin sync depends on the newest governed SQL surface. Keep the
       // existing migration-ledger diagnostic ahead of any optional write so a
       // stale local database still receives the actionable migrate message.
       assertMigrationLedgerCurrent();
       environment = runOptionalLocalSuperadminSync(environment);
-      await runDevelopmentCheck(environment);
+      const migrationFact = await runDevelopmentCheck(environment);
+      environment = {
+        ...environment,
+        DATA_AGENT_MIGRATION_READY: String(migrationFact.migration_ready),
+        DATA_AGENT_MIGRATION_FRONTIER: migrationFact.migration_frontier,
+      };
       return superviseApplications(buildLocalApplicationProcessSpecs(), environment);
+    }
     case "apps":
     case "web":
     case "worker":

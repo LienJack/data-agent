@@ -2,6 +2,8 @@
   "$schema": "https://turborepo.dev/schema.json",
   "globalPassThroughEnv": [
     "DATA_AGENT_BUILD_ATTESTATION_FILE",
+    "DATA_AGENT_MIGRATION_FRONTIER",
+    "DATA_AGENT_MIGRATION_READY",
     "DATA_AGENT_RUNTIME_BUILD_CONSUMER_ROLE",
     "DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE"
   ],

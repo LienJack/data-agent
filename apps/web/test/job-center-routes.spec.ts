@@ -1,5 +1,7 @@
+import { RUNTIME_BUILD_IDENTITY_VERSION } from "@data-agent/contracts";
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { setWebRuntimeBuildIdentityForTest } from "../src/lib/runtime-build-identity.js";
 
 const ids = {
   workspace: "00000000-0000-4000-8000-000000007402",
@@ -65,6 +67,15 @@ vi.mock("@/lib/job-center", () => ({
 
 describe("Job Center routes", () => {
   beforeEach(() => {
+    setWebRuntimeBuildIdentityForTest({
+      schema_version: RUNTIME_BUILD_IDENTITY_VERSION,
+      consumer_role: "web",
+      generation_id: `sha256:${"a".repeat(64)}`,
+      build_id: `sha256:${"b".repeat(64)}`,
+      built_at: "2026-08-22T00:00:00.000Z",
+      git_commit: "c".repeat(40),
+      git_dirty: true,
+    });
     state.accesses = [];
     state.listInputs = [];
     state.cancelInputs = [];
@@ -118,7 +129,17 @@ describe("Job Center routes", () => {
   it("keeps public readiness minimal and only projects authorized details", async () => {
     const { GET } = await import("../src/app/api/ready/route");
     const publicResponse = await GET(new NextRequest("http://localhost/api/ready"));
-    await expect(publicResponse.json()).resolves.toEqual({ live: true, ready: true });
+    const publicBody = await publicResponse.json();
+    expect(publicBody).toEqual({
+      live: true,
+      ready: true,
+      build_id: `sha256:${"b".repeat(64)}`,
+      generation_id: `sha256:${"a".repeat(64)}`,
+    });
+    expect(JSON.stringify(publicBody)).not.toContain("git_commit");
+    expect(JSON.stringify(publicBody)).not.toContain("git_dirty");
+    expect(JSON.stringify(publicBody)).not.toContain("package_tasks");
+    expect(publicResponse.headers.get("cache-control")).toBe("no-store");
     expect(state.accesses).toEqual([]);
     expect(state.readinessInputs).toEqual([]);
 

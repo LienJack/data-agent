@@ -1,6 +1,13 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { AvailableExecutionModelProfile } from "@data-agent/contracts";
 import {
+  loadRuntimeBuildIdentity,
+  loadRuntimeMigrationFact,
+  type RuntimeBuildIdentity,
+  RuntimeBuildIdentityConfigurationError,
+  type RuntimeMigrationFact,
+} from "@data-agent/contracts/server";
+import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
   createPostgresSemanticAuthoringQueue,
@@ -102,10 +109,40 @@ function log(record: Readonly<Record<string, unknown>>): void {
   process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
+export function semanticAuthoringStartedRecord(
+  input: Readonly<{
+    identity: RuntimeBuildIdentity;
+    modelReady: boolean;
+    semanticDomains: readonly string[];
+    migration?: RuntimeMigrationFact | null;
+  }>,
+): Readonly<Record<string, unknown>> {
+  return Object.freeze({
+    event_name: "semantic_authoring_worker_started",
+    model_ready: input.modelReady,
+    semantic_domains: input.semanticDomains,
+    build_id: input.identity.build_id,
+    generation_id: input.identity.generation_id,
+    git_commit: input.identity.git_commit,
+    git_dirty: input.identity.git_dirty,
+    ...(input.migration
+      ? {
+          migration_ready: input.migration.migration_ready,
+          migration_frontier: input.migration.migration_frontier,
+        }
+      : {}),
+  });
+}
+
 export async function runSemanticAuthoringWorkerProcess(
   environmentInput?: NodeJS.ProcessEnv,
 ): Promise<void> {
   const environment = environmentInput ?? loadEnvironment();
+  const runtimeIdentity = loadRuntimeBuildIdentity({
+    expectedRole: "semantic-authoring",
+    environment,
+  });
+  const migrationFact = loadRuntimeMigrationFact(environment);
   const config = parseConfiguration(environment);
   const pool = new pg.Pool({
     connectionString: config.database_url,
@@ -137,11 +174,14 @@ export async function runSemanticAuthoringWorkerProcess(
       capability,
       environment,
     });
-    log({
-      event_name: "semantic_authoring_worker_started",
-      model_ready: modelRuntime !== null,
-      semantic_domains: config.semantic_domains,
-    });
+    log(
+      semanticAuthoringStartedRecord({
+        identity: runtimeIdentity,
+        modelReady: modelRuntime !== null,
+        semanticDomains: config.semantic_domains,
+        migration: migrationFact,
+      }),
+    );
 
     while (!abort.signal.aborted) {
       if (modelRuntime === null) {
@@ -232,7 +272,12 @@ if (
   void runSemanticAuthoringWorkerProcess().catch((error: unknown) => {
     log({
       event_name: "semantic_authoring_worker_stopped",
-      reason_code: error instanceof z.ZodError ? "WORKER_CONFIG_INVALID" : "WORKER_STARTUP_FAILED",
+      reason_code:
+        error instanceof RuntimeBuildIdentityConfigurationError
+          ? error.code
+          : error instanceof z.ZodError
+            ? "WORKER_CONFIG_INVALID"
+            : "WORKER_STARTUP_FAILED",
     });
     process.exitCode = 1;
   });
