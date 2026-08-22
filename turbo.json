@@ -1,5 +1,10 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
+  "globalPassThroughEnv": [
+    "DATA_AGENT_BUILD_ATTESTATION_FILE",
+    "DATA_AGENT_RUNTIME_BUILD_CONSUMER_ROLE",
+    "DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

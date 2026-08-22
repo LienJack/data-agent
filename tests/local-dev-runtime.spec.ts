@@ -1,16 +1,22 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyLocalSuperadminAuthority,
   buildLocalApplicationProcessSpecs,
   isLocalSuperadminSyncEnabled,
   mergeLocalDevelopmentEnvironment,
+  RecoverableWorkspaceBuildCoordinator,
   readExpectedMigrations,
+  type WorkspaceBuildCoordinatorAdapter,
 } from "../scripts/local-dev-runtime.js";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 function composeServices(...args: string[]): string[] {
   return execFileSync("docker", ["compose", ...args, "config", "--services"], {
@@ -87,32 +93,88 @@ describe("local development runtime modes", () => {
     const environment = deploymentComposeConfig().services.web.environment;
     expect(environment.SEMANTIC_EXPLORER_ENABLED).toBe("true");
     expect(environment.SEMANTIC_RELATIONSHIP_INDEX_ENABLED).toBe("true");
-    expect(environment.SEMANTIC_ALLOWED_DOMAINS.split(",")).toContain("ecommerce");
+    expect(environment.SEMANTIC_ALLOWED_DOMAINS?.split(",")).toContain("ecommerce");
   });
 
   it("四个本地应用命令均为 watch/dev 入口，不执行 Docker 应用容器", () => {
     expect(buildLocalApplicationProcessSpecs()).toEqual([
       {
         name: "web",
+        consumerRole: "web",
+        moduleName: "@data-agent/web",
         command: "pnpm",
-        args: ["--filter", "@data-agent/web", "dev"],
+        args: ["--filter", "@data-agent/web", "dev:guarded"],
       },
       {
         name: "worker",
+        consumerRole: "worker",
+        moduleName: "@data-agent/worker",
         command: "pnpm",
-        args: ["--filter", "@data-agent/worker", "dev"],
+        args: ["--filter", "@data-agent/worker", "dev:guarded"],
       },
       {
         name: "indexer",
+        consumerRole: "relationship-indexer",
+        moduleName: "@data-agent/worker",
         command: "pnpm",
-        args: ["--filter", "@data-agent/worker", "dev:indexer"],
+        args: ["--filter", "@data-agent/worker", "dev:guarded:indexer"],
       },
       {
         name: "semantic-authoring",
+        consumerRole: "semantic-authoring",
+        moduleName: "@data-agent/worker",
         command: "pnpm",
-        args: ["--filter", "@data-agent/worker", "dev:semantic-authoring"],
+        args: ["--filter", "@data-agent/worker", "dev:guarded:semantic-authoring"],
       },
     ]);
+  });
+
+  it("package public dev scripts 回到根协调器，raw Next/tsx 只能经过 guarded entry", () => {
+    const root = JSON.parse(readFileSync(`${repositoryRoot}/package.json`, "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    const web = JSON.parse(readFileSync(`${repositoryRoot}/apps/web/package.json`, "utf8")) as {
+      scripts: Record<string, string>;
+    };
+    const worker = JSON.parse(
+      readFileSync(`${repositoryRoot}/apps/worker/package.json`, "utf8"),
+    ) as {
+      scripts: Record<string, string>;
+    };
+
+    expect(web.scripts.dev).toBe("pnpm --dir ../.. dev:web");
+    expect(root.scripts["dev:build"]).toBe("tsx scripts/local-dev-runtime.ts build");
+    expect(web.scripts["dev:guarded"]).toContain("guarded-app-entry.ts web");
+    expect(worker.scripts.dev).toBe("pnpm --dir ../.. dev:worker");
+    expect(worker.scripts["dev:indexer"]).toBe("pnpm --dir ../.. dev:indexer");
+    expect(worker.scripts["dev:semantic-authoring"]).toBe(
+      "pnpm --dir ../.. dev:semantic-authoring",
+    );
+    for (const guarded of [
+      worker.scripts["dev:guarded"],
+      worker.scripts["dev:guarded:indexer"],
+      worker.scripts["dev:guarded:semantic-authoring"],
+    ]) {
+      expect(guarded).toContain("guarded-app-entry.ts");
+    }
+  });
+
+  it("guarded raw entry 在证明缺失时失败关闭，不启动应用命令", () => {
+    const environment = { ...process.env };
+    delete environment.DATA_AGENT_BUILD_ATTESTATION_FILE;
+    delete environment.DATA_AGENT_RUNTIME_BUILD_CONSUMER_ROLE;
+    delete environment.DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE;
+    const result = spawnSync("pnpm", ["exec", "tsx", "scripts/guarded-app-entry.ts", "web"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+      env: environment,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "DEV_WORKSPACE_BUILD_GUARD_MISSING:DATA_AGENT_RUNTIME_BUILD_CONSUMER_ROLE",
+    );
+    expect(result.stderr).not.toContain("Local:");
   });
 
   it("仅显式 YES 启用管理员同步，并只在内存环境绑定数据库返回的主体", () => {
@@ -167,5 +229,152 @@ describe("local development runtime modes", () => {
         ),
       ).toContain("transaction_timeout");
     }
+  });
+});
+
+describe("workspace build recovery coordinator", () => {
+  type Generation = { readonly id: string };
+
+  function adapter(input: {
+    readonly events: string[];
+    readonly prepare?: (roles: readonly string[]) => Promise<Generation>;
+  }): WorkspaceBuildCoordinatorAdapter<string, Generation> {
+    return {
+      accept: async (generation, roles) => {
+        input.events.push(`accept:${generation.id}:${[...roles].sort().join(",")}`);
+      },
+      prepare: async (roles) => {
+        input.events.push(`prepare:${[...roles].sort().join(",")}`);
+        return input.prepare?.(roles) ?? { id: "generation" };
+      },
+      start: async (roles, generation) => {
+        input.events.push(`start:${generation.id}:${[...roles].sort().join(",")}`);
+      },
+      stop: async (roles) => {
+        input.events.push(`stop:${[...roles].sort().join(",")}`);
+      },
+    };
+  }
+
+  it("初始 generation 在 accept 后才启动全部选中角色", async () => {
+    const events: string[] = [];
+    const coordinator = new RecoverableWorkspaceBuildCoordinator(
+      ["web", "worker"],
+      adapter({ events }),
+      { debounceMs: 10 },
+    );
+
+    await coordinator.start();
+
+    expect(events).toEqual([
+      "stop:web,worker",
+      "prepare:web,worker",
+      "accept:generation:web,worker",
+      "start:generation:web,worker",
+    ]);
+    expect(coordinator.state).toBe("running");
+  });
+
+  it("失效立即停 affected role；build 失败保持 blocked，显式 retry 可恢复", async () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    let fail = false;
+    let generation = 0;
+    const coordinator = new RecoverableWorkspaceBuildCoordinator(
+      ["web", "worker"],
+      adapter({
+        events,
+        prepare: async () => {
+          if (fail) throw new Error("BUILD_FAILED");
+          generation += 1;
+          return { id: `g${generation}` };
+        },
+      }),
+      { debounceMs: 25 },
+    );
+    await coordinator.start();
+    events.length = 0;
+
+    fail = true;
+    await coordinator.invalidate(["web"]);
+    expect(events).toEqual(["stop:web"]);
+    await vi.advanceTimersByTimeAsync(25);
+    await coordinator.waitForIdle();
+    expect(coordinator.state).toBe("blocked");
+    expect(events).toEqual(["stop:web", "prepare:web"]);
+
+    fail = false;
+    await coordinator.retry();
+    expect(coordinator.state).toBe("running");
+    expect(events.slice(-3)).toEqual(["prepare:web", "accept:g2:web", "start:g2:web"]);
+  });
+
+  it("burst invalidation 合并为一次构建，构建中再变化会丢弃旧 generation", async () => {
+    vi.useFakeTimers();
+    const events: string[] = [];
+    let resolveBuild: ((generation: Generation) => void) | undefined;
+    let prepareCount = 0;
+    const coordinator = new RecoverableWorkspaceBuildCoordinator(
+      ["web", "worker"],
+      adapter({
+        events,
+        prepare: async () => {
+          prepareCount += 1;
+          if (prepareCount === 1) return { id: "initial" };
+          if (prepareCount === 2) {
+            return new Promise<Generation>((resolve) => {
+              resolveBuild = resolve;
+            });
+          }
+          return { id: "latest" };
+        },
+      }),
+      { debounceMs: 20 },
+    );
+    await coordinator.start();
+    events.length = 0;
+
+    await Promise.all([coordinator.invalidate(["web"]), coordinator.invalidate(["worker"])]);
+    await vi.advanceTimersByTimeAsync(20);
+    await vi.waitFor(() => expect(resolveBuild).toBeTypeOf("function"));
+    await coordinator.invalidate(["web"]);
+    resolveBuild?.({ id: "discarded" });
+    await coordinator.waitForIdle();
+
+    expect(events).not.toContain("accept:discarded:web,worker");
+    expect(events).toContain("accept:latest:web,worker");
+    expect(events.filter((event) => event.startsWith("accept:"))).toHaveLength(1);
+  });
+
+  it("shutdown 在 building 状态不接受迟到 generation，并清理全部角色", async () => {
+    let resolveBuild: ((generation: Generation) => void) | undefined;
+    let prepareCount = 0;
+    const events: string[] = [];
+    const coordinator = new RecoverableWorkspaceBuildCoordinator(
+      ["web", "worker"],
+      adapter({
+        events,
+        prepare: async () => {
+          prepareCount += 1;
+          if (prepareCount === 1) return { id: "initial" };
+          return new Promise<Generation>((resolve) => {
+            resolveBuild = resolve;
+          });
+        },
+      }),
+      { debounceMs: 0 },
+    );
+    await coordinator.start();
+    events.length = 0;
+
+    const invalidation = coordinator.invalidate(["web"]);
+    await vi.waitFor(() => expect(resolveBuild).toBeTypeOf("function"));
+    const shutdown = coordinator.shutdown();
+    resolveBuild?.({ id: "late" });
+    await Promise.all([invalidation, shutdown]);
+
+    expect(coordinator.state).toBe("stopped");
+    expect(events).not.toContain("accept:late:web");
+    expect(events.at(-1)).toBe("stop:web,worker");
   });
 });

@@ -11,6 +11,7 @@
   "scripts": {
     "benchmark:ecommerce:acceptance": "pnpm --filter @data-agent/web ecommerce:agent:acceptance",
     "dev": "tsx scripts/local-dev-runtime.ts dev",
+    "dev:build": "tsx scripts/local-dev-runtime.ts build",
     "dev:infra": "tsx scripts/local-dev-runtime.ts infra",
     "dev:migrate": "tsx scripts/local-dev-runtime.ts migrate",
     "dev:check": "tsx scripts/local-dev-runtime.ts check",

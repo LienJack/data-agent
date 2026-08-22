@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "pnpm --dir ../.. dev:web",
+    "dev:guarded": "tsx ../../scripts/guarded-app-entry.ts web",
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
