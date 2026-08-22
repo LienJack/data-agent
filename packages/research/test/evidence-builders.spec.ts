@@ -180,7 +180,7 @@ async function sealResearchDocument(
       ...draft.envelope,
       content_hash: contentHash,
     },
-  });
+  }) as L2ResearchDocumentCandidate;
 }
 
 interface ObligationSpec {

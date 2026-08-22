@@ -20,6 +20,8 @@ describe("@data-agent/research 导出边界", () => {
         "compileEvidencePlanCandidate",
         "compileHypothesisSetCandidate",
         "compileResearchBriefCandidate",
+        "computeAnalysisDerivationHash",
+        "computeAnalysisProgramHash",
         "deriveContributionClosure",
         "deriveCoverageStateCandidate",
         "derivePreStopReadinessFacts",
@@ -29,7 +31,11 @@ describe("@data-agent/research 导出边界", () => {
         "materialSchemaFrontierMatches",
         "projectAnalysisReportCandidate",
         "unresolvedCoverageObligationRefs",
+        "verifyAnalysisDerivation",
+        "verifyAnalysisProgram",
+        "verifyAnalysisResult",
         "verifyAtomicClaimDocumentDerivation",
+        "verifyScaleMetamorphism",
       ].sort(),
     );
     for (const forbidden of [

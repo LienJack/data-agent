@@ -192,7 +192,27 @@ type WritableResearchPayload =
   | z.infer<typeof reportReadyCertificateV3PayloadSchema>
   | z.infer<typeof readinessRevocationReceiptPayloadSchema>;
 
+type KernelWritableResearchPayload = Exclude<
+  WritableResearchPayload,
+  {
+    protocol_version:
+      | "research-brief@3.0.0"
+      | "atomic-claim@3.0.0"
+      | "evidence-relation@3.0.0"
+      | "evidence-check@2.0.0"
+      | "report-manifest@3.0.0"
+      | "analysis-report@3.0.0";
+  }
+>;
+
+/** Stable payload surface consumed by the existing V2 Research Kernel. */
 export type L2ResearchDocumentCandidate = {
+  envelope: ArtifactEnvelope;
+  payload: KernelWritableResearchPayload;
+};
+
+/** Full registered writer surface, including the deterministic-analysis V3 lane. */
+export type VersionedL2ResearchDocumentCandidate = {
   envelope: ArtifactEnvelope;
   payload: WritableResearchPayload;
 };
@@ -639,7 +659,15 @@ export function readHistoricalVersionedL2ResearchDocument(
   });
 }
 
-export function parseL2ResearchDocumentCandidate(input: unknown): L2ResearchDocumentCandidate {
+export function parseL2ResearchDocumentCandidate<
+  const T extends VersionedL2ResearchDocumentCandidate,
+>(input: T): T;
+export function parseL2ResearchDocumentCandidate(
+  input: unknown,
+): VersionedL2ResearchDocumentCandidate;
+export function parseL2ResearchDocumentCandidate(
+  input: unknown,
+): VersionedL2ResearchDocumentCandidate {
   preflightRawL2ResearchJsonObject(input, "Research Document");
   const documentShape = l2ResearchDocumentShapeSchema.parse(input);
   const payload = parseL2ResearchPayloadForEnvelopeAfterPreflight(
@@ -682,7 +710,7 @@ export function readHistoricalL2ResearchDocument(input: unknown): HistoricalL2Re
   });
 }
 
-function envelopeContentHashMaterial(document: L2ResearchDocumentCandidate) {
+function envelopeContentHashMaterial(document: VersionedL2ResearchDocumentCandidate) {
   const {
     content_hash: _contentHash,
     created_at: _createdAt,
@@ -702,7 +730,7 @@ export async function computeL2ResearchEnvelopeContentHash(
 }
 
 export async function parseAndHashL2ResearchDocumentCandidate(input: unknown): Promise<{
-  readonly document: L2ResearchDocumentCandidate;
+  readonly document: VersionedL2ResearchDocumentCandidate;
   readonly content_hash: `sha256:${string}`;
 }> {
   const document = parseL2ResearchDocumentCandidate(input);

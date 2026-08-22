@@ -1,14 +1,14 @@
 # syntax=docker/dockerfile:1.7
 FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
 
-ARG PYTHON_SANDBOX_RUNTIME_DIGEST=sha256:d12fa711343a0f062da016443c4a48f73632124e3d788e36faa464c5548905fa
-ARG PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=sha256:01d14aff09f223e4f53538640e85ec0ae80d2b652140a653d3bf79071ffb9bfe
+ARG PYTHON_SANDBOX_RUNTIME_DIGEST=sha256:cf53e6e9995520f696d5ec631eb2913fa758be5919c5243f94b398bfa1096f6b
+ARG PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=sha256:abb7bc1c586daa2f9f5b3291d86dba32e28dbf9d015027bf1888ab6b51f8f1e9
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHON_SANDBOX_RUNTIME_DIGEST=${PYTHON_SANDBOX_RUNTIME_DIGEST} \
     PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=${PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST} \
-    PYTHON_SANDBOX_IMPORT_PROFILE=CORE_ANALYSIS \
+    PYTHON_SANDBOX_IMPORT_PROFILE=ML_DIAGNOSTIC \
     PYTHON_SANDBOX_POLICY_VERSION=python-policy@1.0.0 \
     PYTHON_SANDBOX_EXECUTOR_UID=65532 \
     PYTHON_SANDBOX_EXECUTOR_GID=65532 \
@@ -17,7 +17,7 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHON_SANDBOX_NETWORK_NONE=1 \
     PYTHON_SANDBOX_READ_ONLY_ROOT=1
 
-COPY infra/docker/python-sandbox-requirements.lock /tmp/requirements.lock
+COPY infra/docker/python-sandbox-requirements.ml.lock /tmp/requirements.lock
 RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock && \
     rm /tmp/requirements.lock && \
     groupadd --gid 10010 sandbox-ipc && \
@@ -28,7 +28,7 @@ RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.l
 
 COPY services/sandbox/src/data_agent_sandbox /usr/local/lib/python3.12/site-packages/data_agent_sandbox
 
-ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:287f74c6cf6e9152029881b78e02118da59dd7e12ece00b478ef1c221493d53c
+ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:e8b17cd47fdaca72580d964394f59322dc5f7eac0db6fe14d262a6d1e000597b
 ENV PYTHON_SANDBOX_IMAGE_DIGEST=${PYTHON_SANDBOX_IMAGE_DIGEST}
 
 WORKDIR /var/empty

@@ -1,12 +1,26 @@
 {
-  "schema_version": "python-sandbox-attestation@1.0.0",
+  "schema_version": "python-sandbox-attestation@2.0.0",
   "python_version": "3.12.10",
   "sdk_version": "data-agent-sandbox-sdk@1.0.0",
   "policy_version": "python-policy@1.0.0",
   "base_image_digest": "sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
-  "dependency_lock_digest": "sha256:6896730ae912ccb5a5e434f39921de0e6dd718cf070dc4ee18f253422ecf62cf",
-  "requirements_lock_digest": "sha256:01d14aff09f223e4f53538640e85ec0ae80d2b652140a653d3bf79071ffb9bfe",
-  "runtime_digest": "sha256:fb87dca4ebb60441f626c11504270c1fce2e30dc3f9ab52f0443c81024766841",
+  "source_lock_digest": "sha256:ed261d5c1e7bb51e7e1ee226605b39b420370ee6435f98855bbd2785a03b9a85",
   "hardening_profile": "network-none,read-only-root,no-new-privileges,cap-kill,setgid,setuid,ipc-setgid-v1",
-  "image_attestation_digest": "sha256:c71118b58f7778eaca279ab89805b8dbb58430472005e308ba89ecebf7836957"
+  "profiles": {
+    "CORE_ANALYSIS": {
+      "dependency_lock_digest": "sha256:01d14aff09f223e4f53538640e85ec0ae80d2b652140a653d3bf79071ffb9bfe",
+      "runtime_digest": "sha256:d12fa711343a0f062da016443c4a48f73632124e3d788e36faa464c5548905fa",
+      "image_attestation_digest": "sha256:287f74c6cf6e9152029881b78e02118da59dd7e12ece00b478ef1c221493d53c"
+    },
+    "ML_DIAGNOSTIC": {
+      "dependency_lock_digest": "sha256:abb7bc1c586daa2f9f5b3291d86dba32e28dbf9d015027bf1888ab6b51f8f1e9",
+      "runtime_digest": "sha256:cf53e6e9995520f696d5ec631eb2913fa758be5919c5243f94b398bfa1096f6b",
+      "image_attestation_digest": "sha256:e8b17cd47fdaca72580d964394f59322dc5f7eac0db6fe14d262a6d1e000597b"
+    },
+    "CAUSAL_L5": {
+      "dependency_lock_digest": "sha256:aeb9f52e741a72906ae0886f51c7627e138a6586e2bca32a339d67eaa4ff8f46",
+      "runtime_digest": "sha256:827024d346661f074031448bfb4b7048e8f2671d6e995b2ece01086d93bab128",
+      "image_attestation_digest": "sha256:80d3f0a2951aab47e8fd1411f16b066b6d88e08bd5040e5c7cf1d37b6e3ff5ba"
+    }
+  }
 }

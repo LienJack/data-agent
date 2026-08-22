@@ -1,14 +1,26 @@
 # syntax=docker/dockerfile:1.7
+FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
+
+COPY infra/docker/python-sandbox-requirements.causal.lock /tmp/requirements.lock
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends build-essential && \
+    python -m pip install \
+      --no-cache-dir \
+      --require-hashes \
+      --target /opt/causal-site-packages \
+      -r /tmp/requirements.lock && \
+    rm -rf /var/lib/apt/lists/* /tmp/requirements.lock
+
 FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
 
-ARG PYTHON_SANDBOX_RUNTIME_DIGEST=sha256:d12fa711343a0f062da016443c4a48f73632124e3d788e36faa464c5548905fa
-ARG PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=sha256:01d14aff09f223e4f53538640e85ec0ae80d2b652140a653d3bf79071ffb9bfe
+ARG PYTHON_SANDBOX_RUNTIME_DIGEST=sha256:827024d346661f074031448bfb4b7048e8f2671d6e995b2ece01086d93bab128
+ARG PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=sha256:aeb9f52e741a72906ae0886f51c7627e138a6586e2bca32a339d67eaa4ff8f46
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHON_SANDBOX_RUNTIME_DIGEST=${PYTHON_SANDBOX_RUNTIME_DIGEST} \
     PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=${PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST} \
-    PYTHON_SANDBOX_IMPORT_PROFILE=CORE_ANALYSIS \
+    PYTHON_SANDBOX_IMPORT_PROFILE=CAUSAL_L5 \
     PYTHON_SANDBOX_POLICY_VERSION=python-policy@1.0.0 \
     PYTHON_SANDBOX_EXECUTOR_UID=65532 \
     PYTHON_SANDBOX_EXECUTOR_GID=65532 \
@@ -17,9 +29,10 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHON_SANDBOX_NETWORK_NONE=1 \
     PYTHON_SANDBOX_READ_ONLY_ROOT=1
 
-COPY infra/docker/python-sandbox-requirements.lock /tmp/requirements.lock
-RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock && \
-    rm /tmp/requirements.lock && \
+COPY --from=builder /opt/causal-site-packages /usr/local/lib/python3.12/site-packages
+RUN apt-get update && \
+    apt-get install --yes --no-install-recommends libgomp1 && \
+    rm -rf /var/lib/apt/lists/* && \
     groupadd --gid 10010 sandbox-ipc && \
     groupadd --gid 65532 sandbox-executor && \
     useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin sandbox-executor && \
@@ -28,7 +41,7 @@ RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.l
 
 COPY services/sandbox/src/data_agent_sandbox /usr/local/lib/python3.12/site-packages/data_agent_sandbox
 
-ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:287f74c6cf6e9152029881b78e02118da59dd7e12ece00b478ef1c221493d53c
+ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:80d3f0a2951aab47e8fd1411f16b066b6d88e08bd5040e5c7cf1d37b6e3ff5ba
 ENV PYTHON_SANDBOX_IMAGE_DIGEST=${PYTHON_SANDBOX_IMAGE_DIGEST}
 
 WORKDIR /var/empty

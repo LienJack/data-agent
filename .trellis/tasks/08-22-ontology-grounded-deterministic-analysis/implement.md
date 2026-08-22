@@ -10,7 +10,7 @@ green sub-slice as completion of the full task.
 - [x] U1 Versioned Analysis Contracts: add versioned refs/payloads/wire/public events, preserve @2 semantics, and add strict/hash/scope tests.
 - [x] U2 Semantic Context and Applicability: publish explicit analysis semantics, compile deterministic context/transform witnesses, and add
   fail-closed applicability tests.
-- [ ] U3 Attested Python Runtime and Programs: close existing sandbox HOLD gates first, then add Core/ML/Causal locks, standard programs,
+- [x] U3 Attested Python Runtime and Programs: close existing sandbox HOLD gates first, then add Core/ML/Causal locks, standard programs,
   admission policy, independent oracles, malicious fixtures, replay/cancel/resource tests, and attestation evidence.
 - [ ] U4 Planner and Worker: register server-owned descriptors/tools, controlled import, bounded DAG planning, governed query reuse, sandbox
   execution, idempotent artifact submission, repair/fence semantics, and integration coverage.
@@ -71,3 +71,22 @@ green sub-slice as completion of the full task.
 - Validation:
   - Contracts build/typecheck and full suite: 81 files / 855 tests passed.
   - Semantic build/typecheck and full suite: 18 files / 149 tests passed.
+
+### U3 Attested Python Runtime and Standard Analysis Programs
+
+- Added independently attested `CORE_ANALYSIS`, `ML_DIAGNOSTIC`, and `CAUSAL_L5` dependency locks, runtime/image digests, explicit import
+  profiles, and profile-specific images. The causal image compiles ARM64-only native wheels in a builder stage and leaves the final image
+  with runtime libraries only.
+- Added server-owned Data Profile plus trend, contribution/concentration, robust anomaly, association/quality, and forecast/backtest programs
+  on the production SDK/Input/Output/Receipt path. Generated-program admission now closes AST/import/profile/source-size/output/seed/runtime/
+  lock policy, and Research independently verifies result invariants, metamorphism, references, policy and derivation hashes.
+- Added exact-scope process-group cancellation, threaded control IPC, zero-output failure handling, and per-idempotency-key in-flight coordination
+  so concurrent retries execute once and hash conflicts fail closed.
+- Validation:
+  - Attestation verifier: all three profiles `VERIFIED`.
+  - Core, ML, and Causal Docker images built. Hardened no-network/read-only/no-new-privileges container execution passed for all three; Core
+    success/malicious/timeout/cancel terminals were respectively `SUCCEEDED`, `PYTHON_POLICY_REJECTED`, `PYTHON_TIMEOUT`, and
+    `PYTHON_CANCELLED`, with zero outputs for every non-success terminal.
+  - Sandbox Ruff format/lint passed; full Python suite: 93 passed / 17 PostgreSQL-configured integration tests skipped.
+  - Contracts typecheck and full suite: 81 files / 855 tests passed.
+  - Research typecheck, unit suite (19 files / 136 tests), and architecture suite (1 file / 10 tests) passed.

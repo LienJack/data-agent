@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hmac
 import json
 import os
 import socketserver
@@ -9,7 +10,11 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from data_agent_sandbox.python_runtime.models import PythonExecutionEnvelope
+from data_agent_sandbox.python_runtime.models import (
+    PythonCancellationOutcome,
+    PythonCancellationRequest,
+    PythonExecutionEnvelope,
+)
 from data_agent_sandbox.python_runtime.supervisor import (
     PythonSandboxSupervisor,
     SandboxConfiguration,
@@ -26,6 +31,31 @@ class _PythonSandboxHandler(socketserver.StreamRequestHandler):
             return
         try:
             document: Any = json.loads(raw)
+            if document.get("operation") == "CANCEL":
+                cancellation = PythonCancellationRequest.model_validate(document)
+                if not hmac.compare_digest(
+                    cancellation.authorization,
+                    self.server.supervisor.configuration.authorization,  # type: ignore[attr-defined]
+                ):
+                    status = "REJECTED"
+                else:
+                    status = (
+                        "CANCEL_REQUESTED"
+                        if self.server.supervisor.cancel(  # type: ignore[attr-defined]
+                            workspace_id=cancellation.workspace_id,
+                            run_id=cancellation.run_id,
+                            idempotency_key=cancellation.idempotency_key,
+                            fence_token=cancellation.fence_token,
+                        )
+                        else "NOT_ACTIVE"
+                    )
+                outcome = PythonCancellationOutcome(
+                    protocol_version="data-agent-python-sandbox-control@1.0.0",
+                    operation="CANCEL",
+                    status=status,
+                )
+                self.wfile.write(outcome.model_dump_json().encode("utf-8") + b"\n")
+                return
             envelope = PythonExecutionEnvelope.model_validate(document)
             outcome = self.server.supervisor.execute(envelope)  # type: ignore[attr-defined]
             self.wfile.write(outcome.model_dump_json().encode("utf-8") + b"\n")
@@ -47,8 +77,9 @@ class _PythonSandboxHandler(socketserver.StreamRequestHandler):
         )
 
 
-class PythonSandboxUnixServer(socketserver.UnixStreamServer):
+class PythonSandboxUnixServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     allow_reuse_address = True
+    daemon_threads = True
 
     def __init__(self, path: str, supervisor: PythonSandboxSupervisor):
         self.supervisor = supervisor

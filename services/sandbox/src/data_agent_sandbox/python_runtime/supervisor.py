@@ -11,6 +11,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,7 +28,12 @@ from data_agent_sandbox.python_runtime.models import (
     PythonSandboxReceipt,
     PythonSandboxTransportOutcome,
 )
-from data_agent_sandbox.python_runtime.policy import PythonPolicyError, validate_python_source
+from data_agent_sandbox.python_runtime.policy import (
+    PROFILE_IMPORT_ROOTS,
+    AnalysisImportProfile,
+    PythonPolicyError,
+    validate_python_source,
+)
 from data_agent_sandbox.python_runtime.sdk import SDK_VERSION
 
 _OUTPUT_SUFFIX = {
@@ -59,6 +65,7 @@ class SandboxConfiguration:
     max_output_bytes: int
     max_pids: int
     max_open_files: int
+    import_profile: AnalysisImportProfile = "CORE_ANALYSIS"
 
     @classmethod
     def from_environment(cls) -> SandboxConfiguration:
@@ -78,6 +85,9 @@ class SandboxConfiguration:
         executor_uid = os.environ.get("PYTHON_SANDBOX_EXECUTOR_UID")
         executor_gid = os.environ.get("PYTHON_SANDBOX_EXECUTOR_GID")
         attested = os.environ.get("PYTHON_SANDBOX_CONTAINER_ATTESTED") == "1"
+        import_profile = os.environ.get("PYTHON_SANDBOX_IMPORT_PROFILE", "CORE_ANALYSIS")
+        if import_profile not in PROFILE_IMPORT_ROOTS:
+            raise RuntimeError("PYTHON_SANDBOX_IMPORT_PROFILE is not registered")
         return cls(
             authorization=authorization,
             image_digest=_digest_environment("PYTHON_SANDBOX_IMAGE_DIGEST"),
@@ -102,6 +112,7 @@ class SandboxConfiguration:
             max_output_bytes=integer("PYTHON_SANDBOX_MAX_OUTPUT_BYTES", 67_108_864),
             max_pids=integer("PYTHON_SANDBOX_MAX_PIDS", 32),
             max_open_files=integer("PYTHON_SANDBOX_MAX_OPEN_FILES", 128),
+            import_profile=import_profile,  # type: ignore[arg-type]
         )
 
 
@@ -206,20 +217,70 @@ class PythonSandboxSupervisor:
     def __init__(self, configuration: SandboxConfiguration):
         self.configuration = configuration
         self._idempotency: dict[str, tuple[str, PythonSandboxTransportOutcome]] = {}
+        self._inflight: dict[str, threading.Event] = {}
+        self._active: dict[str, tuple[str, str, str, subprocess.Popen[bytes]]] = {}
+        self._cancelled: set[str] = set()
+        self._lock = threading.RLock()
+
+    def cancel(
+        self,
+        *,
+        workspace_id: str,
+        run_id: str,
+        idempotency_key: str,
+        fence_token: str,
+    ) -> bool:
+        """Cancel only an exactly scoped active request and its full process group."""
+
+        with self._lock:
+            active = self._active.get(idempotency_key)
+            if active is None or active[:3] != (workspace_id, run_id, fence_token):
+                return False
+            process = active[3]
+            self._cancelled.add(idempotency_key)
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            with self._lock:
+                self._cancelled.discard(idempotency_key)
+            return False
+        return True
 
     def execute(self, envelope: PythonExecutionEnvelope) -> PythonSandboxTransportOutcome:
         started_at = _utc_now()
         monotonic_started = time.monotonic()
         request_hash = _canonical_hash(envelope.request.model_dump(mode="json"))
-        prior = self._idempotency.get(envelope.request.idempotency_key)
-        if prior is not None:
-            if prior[0] == request_hash:
-                return prior[1]
-            return self._failure(
-                envelope, request_hash, started_at, monotonic_started, "PYTHON_POLICY_REJECTED"
-            )
-        outcome = self._execute_once(envelope, request_hash, started_at, monotonic_started)
-        self._idempotency[envelope.request.idempotency_key] = (request_hash, outcome)
+        key = envelope.request.idempotency_key
+        while True:
+            with self._lock:
+                prior = self._idempotency.get(key)
+                if prior is not None:
+                    if prior[0] == request_hash:
+                        return prior[1]
+                    return self._failure(
+                        envelope,
+                        request_hash,
+                        started_at,
+                        monotonic_started,
+                        "PYTHON_POLICY_REJECTED",
+                    )
+                completion = self._inflight.get(key)
+                if completion is None:
+                    completion = threading.Event()
+                    self._inflight[key] = completion
+                    break
+            completion.wait()
+        try:
+            outcome = self._execute_once(envelope, request_hash, started_at, monotonic_started)
+        except BaseException:
+            with self._lock:
+                self._inflight.pop(key, None)
+                completion.set()
+            raise
+        with self._lock:
+            self._idempotency[key] = (request_hash, outcome)
+            self._inflight.pop(key, None)
+            completion.set()
         return outcome
 
     def _execute_once(
@@ -251,7 +312,7 @@ class PythonSandboxSupervisor:
             if _sha256(source) != request.source_sha256:
                 raise ValueError("source digest mismatch")
             source_text = source.decode("utf-8")
-            validate_python_source(source_text)
+            validate_python_source(source_text, self.configuration.import_profile)
             decoded_inputs = [_decode(item.content_base64) for item in envelope.inputs]
             for item, content in zip(envelope.inputs, decoded_inputs, strict=True):
                 if _sha256(content) != item.reference.content_hash:
@@ -299,7 +360,11 @@ class PythonSandboxSupervisor:
             control_path = job_root / "control.json"
             control_path.write_text(
                 json.dumps(
-                    {"inputs": input_descriptors, "outputs": output_descriptors},
+                    {
+                        "inputs": input_descriptors,
+                        "outputs": output_descriptors,
+                        "import_profile": self.configuration.import_profile,
+                    },
                     sort_keys=True,
                     separators=(",", ":"),
                 ),
@@ -327,6 +392,13 @@ class PythonSandboxSupervisor:
                 start_new_session=False,
                 preexec_fn=_preexec(self.configuration, request.budgets),
             )
+            with self._lock:
+                self._active[request.idempotency_key] = (
+                    request.workspace_id,
+                    request.run_id,
+                    request.fence_token,
+                    process,
+                )
             try:
                 stdout_raw, stderr_raw = process.communicate(
                     timeout=min(request.budgets.wall_time_ms, self.configuration.max_wall_ms) / 1000
@@ -334,12 +406,33 @@ class PythonSandboxSupervisor:
             except subprocess.TimeoutExpired:
                 os.killpg(process.pid, signal.SIGKILL)
                 stdout_raw, stderr_raw = process.communicate()
+                with self._lock:
+                    cancelled = request.idempotency_key in self._cancelled
+                    self._cancelled.discard(request.idempotency_key)
                 return self._failure(
                     envelope,
                     request_hash,
                     started_at,
                     monotonic_started,
-                    "PYTHON_TIMEOUT",
+                    "PYTHON_CANCELLED" if cancelled else "PYTHON_TIMEOUT",
+                    process,
+                    before,
+                    stdout_raw,
+                    stderr_raw,
+                )
+            finally:
+                with self._lock:
+                    self._active.pop(request.idempotency_key, None)
+            with self._lock:
+                cancelled = request.idempotency_key in self._cancelled
+                self._cancelled.discard(request.idempotency_key)
+            if cancelled:
+                return self._failure(
+                    envelope,
+                    request_hash,
+                    started_at,
+                    monotonic_started,
+                    "PYTHON_CANCELLED",
                     process,
                     before,
                     stdout_raw,

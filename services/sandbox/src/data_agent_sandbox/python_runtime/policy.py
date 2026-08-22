@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import ast
 from dataclasses import dataclass
+from typing import Literal
 
-ALLOWED_IMPORT_ROOTS = frozenset(
+AnalysisImportProfile = Literal["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]
+
+CORE_IMPORT_ROOTS = frozenset(
     {
         "collections",
         "datetime",
@@ -19,6 +22,16 @@ ALLOWED_IMPORT_ROOTS = frozenset(
         "statistics",
     }
 )
+PROFILE_IMPORT_ROOTS: dict[AnalysisImportProfile, frozenset[str]] = {
+    "CORE_ANALYSIS": CORE_IMPORT_ROOTS,
+    "ML_DIAGNOSTIC": CORE_IMPORT_ROOTS | frozenset({"sklearn", "statsmodels"}),
+    "CAUSAL_L5": CORE_IMPORT_ROOTS
+    | frozenset({"dowhy", "econml", "networkx", "sklearn", "statsmodels"}),
+}
+# Backward-compatible name for callers that have not yet selected a profile.
+ALLOWED_IMPORT_ROOTS = CORE_IMPORT_ROOTS
+MAX_SOURCE_BYTES = 262_144
+MAX_AST_NODES = 25_000
 BANNED_NAMES = frozenset(
     {
         "__import__",
@@ -107,7 +120,22 @@ class PythonPolicyError(ValueError):
         super().__init__("; ".join(f"{item.code}@{item.line}" for item in violations))
 
 
-def validate_python_source(source: str) -> ast.Module:
+def allowed_import_roots(profile: AnalysisImportProfile) -> frozenset[str]:
+    try:
+        return PROFILE_IMPORT_ROOTS[profile]
+    except KeyError as error:
+        raise PythonPolicyError(
+            (PolicyViolation("IMPORT_PROFILE_DENIED", 1, "unknown import profile"),)
+        ) from error
+
+
+def validate_python_source(
+    source: str, profile: AnalysisImportProfile = "CORE_ANALYSIS"
+) -> ast.Module:
+    if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
+        raise PythonPolicyError(
+            (PolicyViolation("SOURCE_TOO_LARGE", 1, "source exceeds policy byte limit"),)
+        )
     if "\x00" in source:
         raise PythonPolicyError((PolicyViolation("SOURCE_NUL", 1, "NUL is forbidden"),))
     try:
@@ -116,6 +144,12 @@ def validate_python_source(source: str) -> ast.Module:
         raise PythonPolicyError(
             (PolicyViolation("SOURCE_SYNTAX", error.lineno or 1, "invalid Python syntax"),)
         ) from error
+    nodes = tuple(ast.walk(tree))
+    if len(nodes) > MAX_AST_NODES:
+        raise PythonPolicyError(
+            (PolicyViolation("AST_TOO_LARGE", 1, "AST exceeds policy node limit"),)
+        )
+    import_roots = allowed_import_roots(profile)
     violations: list[PolicyViolation] = []
     main_functions = [
         node
@@ -152,7 +186,7 @@ def validate_python_source(source: str) -> ast.Module:
             )
         )
 
-    for node in ast.walk(tree):
+    for node in nodes:
         line = getattr(node, "lineno", 1)
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = (
@@ -160,7 +194,7 @@ def validate_python_source(source: str) -> ast.Module:
                 if isinstance(node, ast.Import)
                 else [node.module or ""]
             )
-            if any(name.split(".", 1)[0] not in ALLOWED_IMPORT_ROOTS for name in names):
+            if any(name.split(".", 1)[0] not in import_roots for name in names):
                 violations.append(PolicyViolation("IMPORT_DENIED", line, ",".join(names)))
         elif isinstance(node, ast.Name) and node.id in BANNED_NAMES | BANNED_ROOTS:
             violations.append(PolicyViolation("NAME_DENIED", line, node.id))

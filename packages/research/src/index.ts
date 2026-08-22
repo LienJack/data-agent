@@ -1,4 +1,17 @@
 export {
+  computeAnalysisDerivationHash,
+  computeAnalysisProgramHash,
+  type DerivationFailure,
+  type OracleFailure,
+  type ProgramVerification,
+  type ProgramVerificationFailure,
+  type ResultOracleVerdict,
+  verifyAnalysisDerivation,
+  verifyAnalysisProgram,
+  verifyAnalysisResult,
+  verifyScaleMetamorphism,
+} from "./analysis-evidence/index.js";
+export {
   type AtomicClaimDocumentResolution,
   type DeriveCoverageStateInput,
   deriveCoverageStateCandidate,
