@@ -580,6 +580,61 @@ def test_concurrent_idempotent_requests_execute_once(
     assert all(outcome == outcomes[0] for outcome in outcomes)
 
 
+def test_replica_serializes_distinct_requests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor = PythonSandboxSupervisor(configuration(tmp_path))
+    original_execute_once = supervisor._execute_once
+    active = 0
+    maximum_active = 0
+    counter_lock = threading.Lock()
+
+    def observed_execute_once(*args: object, **kwargs: object) -> object:
+        nonlocal active, maximum_active
+        with counter_lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        try:
+            time.sleep(0.05)
+            return original_execute_once(*args, **kwargs)  # type: ignore[arg-type]
+        finally:
+            with counter_lock:
+                active -= 1
+
+    monkeypatch.setattr(supervisor, "_execute_once", observed_execute_once)
+    requests = [
+        envelope(
+            "trend_change",
+            {"rows": []},
+            {
+                "result": {
+                    "result_kind": "TREND_CHANGE",
+                    "points": [],
+                    "first_value": None,
+                    "last_value": None,
+                }
+            },
+            identifier=f"replica-serial-{index}",
+        )
+        for index in range(3)
+    ]
+    outcomes = []
+    threads = [
+        threading.Thread(
+            target=lambda request=request: outcomes.append(supervisor.execute(request))
+        )
+        for request in requests
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+    assert all(not thread.is_alive() for thread in threads)
+    assert maximum_active == 1
+    assert len(outcomes) == 3
+    assert all(outcome.receipt.status == "SUCCEEDED" for outcome in outcomes)
+
+
 def test_replay_is_byte_stable_and_bounded_fixture_finishes(tmp_path: Path) -> None:
     rows = [
         {"period_start": f"2026-01-{index % 28 + 1:02d}T00:00:00Z", "value": index % 17 - 8}

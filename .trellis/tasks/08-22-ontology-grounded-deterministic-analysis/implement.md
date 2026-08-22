@@ -80,13 +80,13 @@ green sub-slice as completion of the full task.
 - Added server-owned Data Profile plus trend, contribution/concentration, robust anomaly, association/quality, and forecast/backtest programs
   on the production SDK/Input/Output/Receipt path. Generated-program admission now closes AST/import/profile/source-size/output/seed/runtime/
   lock policy, and Research independently verifies result invariants, metamorphism, references, policy and derivation hashes.
-- Added exact-scope process-group cancellation, threaded control IPC, zero-output failure handling, and per-idempotency-key in-flight coordination
-  so concurrent retries execute once and hash conflicts fail closed.
+- Added exact-scope process-group cancellation, threaded control IPC, zero-output failure handling, a single execution slot per sandbox replica,
+  and per-idempotency-key in-flight coordination so concurrent retries execute once and hash conflicts fail closed.
 - Validation:
   - Attestation verifier: all three profiles `VERIFIED`.
   - Core, ML, and Causal Docker images built. Hardened no-network/read-only/no-new-privileges container execution passed for all three; Core
     success/malicious/timeout/cancel terminals were respectively `SUCCEEDED`, `PYTHON_POLICY_REJECTED`, `PYTHON_TIMEOUT`, and
     `PYTHON_CANCELLED`, with zero outputs for every non-success terminal.
-  - Sandbox Ruff format/lint passed; full Python suite: 93 passed / 17 PostgreSQL-configured integration tests skipped.
+  - Sandbox Ruff format/lint passed; full Python suite: 94 passed / 17 PostgreSQL-configured integration tests skipped.
   - Contracts typecheck and full suite: 81 files / 855 tests passed.
   - Research typecheck, unit suite (19 files / 136 tests), and architecture suite (1 file / 10 tests) passed.

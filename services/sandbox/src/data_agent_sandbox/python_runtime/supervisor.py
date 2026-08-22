@@ -221,6 +221,7 @@ class PythonSandboxSupervisor:
         self._active: dict[str, tuple[str, str, str, subprocess.Popen[bytes]]] = {}
         self._cancelled: set[str] = set()
         self._lock = threading.RLock()
+        self._execution_slot = threading.Lock()
 
     def cancel(
         self,
@@ -271,7 +272,8 @@ class PythonSandboxSupervisor:
                     break
             completion.wait()
         try:
-            outcome = self._execute_once(envelope, request_hash, started_at, monotonic_started)
+            with self._execution_slot:
+                outcome = self._execute_once(envelope, request_hash, started_at, monotonic_started)
         except BaseException:
             with self._lock:
                 self._inflight.pop(key, None)
