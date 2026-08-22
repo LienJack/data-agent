@@ -9,7 +9,6 @@ import { OperationsAdminPanel } from "@/components/settings/operations-admin-pan
 import { PlatformSettingsTabs } from "@/components/settings/platform-settings-tabs";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
-import { ThemeModeControl } from "@/components/settings/theme-mode-control";
 import { isBillingUiEnabled } from "@/lib/billing-ui";
 import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
 
@@ -64,8 +63,6 @@ export default async function SettingsPage() {
             </p>
           </div>
         </header>
-
-        <ThemeModeControl />
 
         <PlatformSettingsTabs
           model={<ModelProvidersPanel isSuperAdmin={isSuperAdmin} />}

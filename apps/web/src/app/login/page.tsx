@@ -40,53 +40,59 @@ export default function LoginPage() {
 
   return (
     <main className="grid min-h-[100dvh] bg-[var(--color-bg-canvas)] lg:grid-cols-[minmax(380px,0.92fr)_minmax(520px,1.08fr)]">
-      <aside className="relative isolate flex min-h-[180px] overflow-hidden bg-[#0b1437] px-6 py-6 text-white sm:min-h-[220px] sm:px-10 sm:py-8 lg:min-h-[100dvh] lg:px-[clamp(40px,5vw,76px)] lg:py-10">
+      <aside className="relative isolate flex min-h-[180px] overflow-hidden border-b border-[#dce5ff] bg-[#eef3ff] px-6 py-6 text-[var(--color-text-primary)] sm:min-h-[220px] sm:px-10 sm:py-8 lg:min-h-[100dvh] lg:border-b-0 lg:border-r lg:px-[clamp(40px,5vw,76px)] lg:py-10">
         <div
           aria-hidden="true"
-          className="absolute -right-20 top-[18%] -z-10 size-[420px] rounded-full bg-[#315bd8]/30 blur-[110px]"
+          className="absolute -right-20 top-[18%] -z-10 size-[420px] rounded-full bg-white/80 blur-[110px]"
         />
         <div
           aria-hidden="true"
-          className="absolute -bottom-52 -left-32 -z-10 size-[500px] rounded-full bg-[#6f8cff]/16 blur-[130px]"
+          className="absolute -bottom-52 -left-32 -z-10 size-[500px] rounded-full bg-[#cbd8ff]/60 blur-[130px]"
         />
 
         <div className="flex w-full flex-col justify-between gap-12">
           <div className="flex items-center gap-3">
-            <span className="flex size-9 items-center justify-center rounded-[10px] bg-white text-[#16275e] shadow-[0_10px_30px_rgb(0_0_0_/_0.2)]">
+            <span className="flex size-9 items-center justify-center rounded-[10px] bg-[var(--color-accent)] text-white shadow-[0_12px_28px_-16px_rgb(38_71_168_/_0.72)]">
               <CirclesFour aria-hidden="true" size={19} weight="fill" />
             </span>
             <div>
               <p className="text-sm font-semibold tracking-[-0.01em]">Data Agent</p>
-              <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-white/48">
+              <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
                 Analytics workspace
               </p>
             </div>
           </div>
 
           <div className="hidden max-w-[520px] lg:block">
-            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.09em] text-[#9fb2ff]">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.09em] text-[var(--color-accent)]">
               Governed intelligence
             </p>
-            <h2 className="mt-5 text-[clamp(34px,4vw,58px)] font-semibold leading-[1.04] tracking-[-0.055em] text-white">
+            <h2 className="mt-5 text-[clamp(34px,4vw,58px)] font-semibold leading-[1.04] tracking-[-0.055em] text-[var(--color-text-primary)]">
               从可信数据，
               <br />
               到可执行答案。
             </h2>
-            <p className="mt-6 max-w-md text-sm leading-7 text-white/56">
+            <p className="mt-6 max-w-md text-sm leading-7 text-[var(--color-text-secondary)]">
               在一个工作空间中完成数据连接、语义治理、分析运行与评测，让每一个结论都有边界和依据。
             </p>
           </div>
 
           <div className="hidden grid-cols-2 gap-3 lg:grid">
-            <div className="rounded-[16px] border border-white/10 bg-white/[0.055] p-4 backdrop-blur-sm">
-              <Database aria-hidden="true" className="text-[#aebdff]" size={18} />
-              <p className="mt-5 text-xs font-medium text-white/88">Evidence grounded</p>
-              <p className="mt-1 text-[11px] leading-5 text-white/42">数据、语义与运行证据可追溯</p>
+            <div className="rounded-[16px] border border-white/90 bg-white/66 p-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.9)] backdrop-blur-sm">
+              <Database aria-hidden="true" className="text-[var(--color-accent)]" size={18} />
+              <p className="mt-5 text-xs font-medium text-[var(--color-text-primary)]">
+                Evidence grounded
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-[var(--color-text-muted)]">
+                数据、语义与运行证据可追溯
+              </p>
             </div>
-            <div className="rounded-[16px] border border-white/10 bg-white/[0.055] p-4 backdrop-blur-sm">
-              <ShieldCheck aria-hidden="true" className="text-[#aebdff]" size={18} />
-              <p className="mt-5 text-xs font-medium text-white/88">Authority first</p>
-              <p className="mt-1 text-[11px] leading-5 text-white/42">
+            <div className="rounded-[16px] border border-white/90 bg-white/66 p-4 shadow-[inset_0_1px_0_rgb(255_255_255_/_0.9)] backdrop-blur-sm">
+              <ShieldCheck aria-hidden="true" className="text-[var(--color-accent)]" size={18} />
+              <p className="mt-5 text-xs font-medium text-[var(--color-text-primary)]">
+                Authority first
+              </p>
+              <p className="mt-1 text-[11px] leading-5 text-[var(--color-text-muted)]">
                 身份、角色与环境共同约束能力
               </p>
             </div>

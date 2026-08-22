@@ -5,10 +5,10 @@ const source = (path: string) => readFileSync(new URL(path, import.meta.url), "u
 const connectionList = source("../src/components/data-sources/connection-list.tsx");
 const connectionForm = source("../src/components/data-sources/connection-form.tsx");
 const settingsTabs = source("../src/components/settings/platform-settings-tabs.tsx");
-const themeControl = source("../src/components/settings/theme-mode-control.tsx");
 const members = source("../src/components/workspaces/workspace-members-panel.tsx");
 const designSystem = source("../src/app/design-system.css");
 const login = source("../src/app/login/page.tsx");
+const layout = source("../src/app/layout.tsx");
 
 describe("Apple blue operations and administration surfaces", () => {
   it("keeps configured connections in a scannable operational directory", () => {
@@ -33,11 +33,12 @@ describe("Apple blue operations and administration surfaces", () => {
     expect(members).not.toContain("animate-pulse");
   });
 
-  it("supports persisted system, light and dark appearance modes", () => {
-    expect(themeControl).toContain('type ThemeMode = "system" | "light" | "dark"');
-    expect(themeControl).toContain('localStorage.setItem("data-agent-theme", mode)');
-    expect(designSystem).toContain(':root[data-theme="dark"]');
-    expect(designSystem).toContain("@media (prefers-color-scheme: dark)");
+  it("keeps the product on a white and blue appearance", () => {
+    expect(designSystem).not.toContain(':root[data-theme="dark"]');
+    expect(designSystem).not.toContain("@media (prefers-color-scheme: dark)");
+    expect(layout).not.toContain("data-agent-theme");
+    expect(login).toContain("bg-[#eef3ff]");
+    expect(login).not.toContain("bg-[#0b1437]");
     expect(login).toContain("bg-[var(--color-bg-canvas)]");
     expect(login).toContain("bg-[var(--color-bg-primary)]");
   });

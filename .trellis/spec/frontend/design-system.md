@@ -24,15 +24,14 @@ Data Agent 是高频分析与治理工作台，默认视觉密度 7/10。界面�
 - 页面 header 使用 `.page-heading/.page-eyebrow/.page-title/.page-description`。
 - 数据表与导航列表以 border/divide 分组；card 只用于重复 item、modal 和真实 framed tool。
 
-## Appearance Modes
+## White And Blue Appearance
 
-- 默认跟随 `prefers-color-scheme`；用户在平台设置选择 light/dark 时，写入
-  `data-agent-theme` 并以根节点 `data-theme` 覆盖系统值。
-- light/dark 必须复用同一 Data Agent Blue `#3f63e8`，通过 canvas、surface、text、border、glass 和
-  reading token 调整对比度；禁止 `filter: invert()` 或在组件内维护第二套主题。
-- 持久化主题在 React hydration 前恢复，避免首屏闪烁；system 模式移除 `data-theme`，继续响应系统变化。
-- 登录、表单和目录不得硬编码 `bg-white` 作为页面/输入背景；使用 `--color-bg-canvas`、
-  `--color-bg-primary` 或语义 surface，确保深色文本对比度。
+- 产品固定使用 light color scheme：白色 reading surface、冷浅灰 canvas 与单一 Data Agent Blue
+  `#3f63e8`。不提供 system/dark 外观入口，也不跟随系统深色模式。
+- 页面、Sidebar、Topbar、表单和设置控制面不得使用黑色或深海军蓝作为大面积背景；层级通过白色透明度、
+  浅蓝 selection、冷灰 border 和轻量蓝色阴影表达。
+- 深色只用于有明确功能语义的局部内容，例如代码块、模态遮罩和用户消息；不能扩展成页面主题。
+- 登录身份区使用浅蓝白材质，输入与正文使用白色 surface，品牌按钮和 icon 使用 Data Agent Blue。
 
 ## Operational Control Planes
 

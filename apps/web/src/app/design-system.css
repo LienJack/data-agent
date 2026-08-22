@@ -61,40 +61,6 @@
   --font-mono: "Geist Mono", "SFMono-Regular", "Roboto Mono", ui-monospace, monospace;
 }
 
-:root[data-theme="dark"] {
-  color-scheme: dark;
-  --color-bg-canvas: #10131a;
-  --color-bg-surface: #171b24;
-  --color-bg-overlay: #1d2330;
-  --color-bg-primary: var(--color-bg-surface);
-  --color-bg-secondary: var(--color-bg-canvas);
-  --color-bg-tertiary: #252c3a;
-  --color-text-primary: #f3f5f9;
-  --color-text-emphasis: #e6eaf2;
-  --color-text-secondary: #b0b7c5;
-  --color-text-muted: #858e9f;
-  --color-text-tertiary: var(--color-text-muted);
-  --color-text-disabled: #5c6472;
-  --color-border-default: #2c3442;
-  --color-border-overlay: #3a4558;
-  --color-selection-selected-bg: #202b51;
-  --color-selection-border: #31457f;
-  --color-selection-selected-title: #b9c9ff;
-  --color-selection-selected-desc: #a3afd2;
-  --shadow-float: 0 24px 60px -34px rgb(0 0 0 / 70%);
-  --shadow-panel: 0 18px 42px -30px rgb(0 0 0 / 64%);
-  --glass-fill: rgb(20 25 35 / 78%);
-  --glass-fill-strong: rgb(23 28 39 / 92%);
-  --glass-border-inner: rgb(255 255 255 / 7%);
-  --glass-shadow-tint: rgb(0 0 0 / 52%);
-  --glass-opaque-strong: #171c27;
-  --reading-fill: rgb(23 27 36 / 97%);
-  --canvas-glow-primary: rgb(63 99 232 / 18%);
-  --canvas-glow-secondary: rgb(42 54 90 / 34%);
-  --canvas-glow-surface: rgb(255 255 255 / 2%);
-  --skeleton-highlight: rgb(255 255 255 / 8%);
-}
-
 html {
   min-width: 320px;
   color-scheme: light;
@@ -536,42 +502,6 @@ tbody tr:hover {
   .qa-running-pulse::after,
   .skeleton-shimmer::after {
     animation: none !important;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    color-scheme: dark;
-    --color-bg-canvas: #10131a;
-    --color-bg-surface: #171b24;
-    --color-bg-overlay: #1d2330;
-    --color-bg-primary: var(--color-bg-surface);
-    --color-bg-secondary: var(--color-bg-canvas);
-    --color-bg-tertiary: #252c3a;
-    --color-text-primary: #f3f5f9;
-    --color-text-emphasis: #e6eaf2;
-    --color-text-secondary: #b0b7c5;
-    --color-text-muted: #858e9f;
-    --color-text-tertiary: var(--color-text-muted);
-    --color-text-disabled: #5c6472;
-    --color-border-default: #2c3442;
-    --color-border-overlay: #3a4558;
-    --color-selection-selected-bg: #202b51;
-    --color-selection-border: #31457f;
-    --color-selection-selected-title: #b9c9ff;
-    --color-selection-selected-desc: #a3afd2;
-    --shadow-float: 0 24px 60px -34px rgb(0 0 0 / 70%);
-    --shadow-panel: 0 18px 42px -30px rgb(0 0 0 / 64%);
-    --glass-fill: rgb(20 25 35 / 78%);
-    --glass-fill-strong: rgb(23 28 39 / 92%);
-    --glass-border-inner: rgb(255 255 255 / 7%);
-    --glass-shadow-tint: rgb(0 0 0 / 52%);
-    --glass-opaque-strong: #171c27;
-    --reading-fill: rgb(23 27 36 / 97%);
-    --canvas-glow-primary: rgb(63 99 232 / 18%);
-    --canvas-glow-secondary: rgb(42 54 90 / 34%);
-    --canvas-glow-surface: rgb(255 255 255 / 2%);
-    --skeleton-highlight: rgb(255 255 255 / 8%);
   }
 }
 

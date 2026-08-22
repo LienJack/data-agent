@@ -16,8 +16,9 @@ const journeySource = readFileSync(
 );
 
 describe("Apple blue entry and workspace surfaces", () => {
-  it("uses a governed dark identity field and accessible login states", () => {
-    expect(loginSource).toContain("bg-[#0b1437]");
+  it("uses a governed light-blue identity field and accessible login states", () => {
+    expect(loginSource).toContain("bg-[#eef3ff]");
+    expect(loginSource).not.toContain("bg-[#0b1437]");
     expect(loginSource).toContain('role="alert"');
     expect(loginSource).toContain('autoComplete="current-password"');
     expect(loginSource).toContain("disabled:cursor-wait");
