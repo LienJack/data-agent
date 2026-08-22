@@ -786,3 +786,24 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Next Steps
 
 - 用户可在现有已登录 Q&A 页面重新提交问题做现场 UI 确认
+
+
+## Session 34: 修复新建业务问题对话导航
+
+**Date**: 2026-08-22
+**Task**: 修复新建业务问题对话导航
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+将 Q&A 侧边栏新建入口从同路由链接改为真实创建动作；创建成功后进入带 conversation ID 的可刷新 URL，创建期间防止重复提交，并补充成功、失败和并发点击回归测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e443e1f` | (see git log) |
+
+### Status
+
+[OK] **Completed**

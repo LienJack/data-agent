@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 33
+- **Total Sessions**: 34
 - **Last Active**: 2026-08-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~788 | Active |
+| `journal-1.md` | ~809 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 34 | 2026-08-22 | 修复新建业务问题对话导航 | `e443e1f` | `feat/datafoundry-platform-modules` |
 | 33 | 2026-08-22 | 修复 Q&A 持久化事务失败 | `d55e67f` | `feat/datafoundry-platform-modules` |
 | 32 | 2026-08-22 | 白蓝主题收口 | `2271e92` | `feat/datafoundry-platform-modules` |
 | 31 | 2026-08-22 | Apple OpenAI 蓝色全站前端重构 | `2b91f47`, `0209f0c`, `9eb86bc`, `b914e37`, `36a6354` | `feat/datafoundry-platform-modules` |
