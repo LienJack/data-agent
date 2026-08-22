@@ -316,7 +316,8 @@ describe("deterministic analysis contracts", () => {
       entrypoint: "main",
       source_sha256: hashes.input,
       source_text_ref: sourceRef,
-      input_refs: [reference("QueryEvidence", 116)],
+      query_evidence_refs: [reference("QueryEvidence", 116)],
+      input_refs: [reference("SandboxResult", 117)],
       output_contract: {
         schema_version: "python-output-contract@1.0.0",
         outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_048_576 }],

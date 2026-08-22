@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { ServerOwnedToolRegistry, type ToolRegistryError } from "../src/tools/registry.js";
+import {
+  ServerOwnedExecutableToolRegistry,
+  ServerOwnedToolRegistry,
+  type ToolRegistryError,
+} from "../src/tools/registry.js";
 
 const semanticTool = {
   tool_name: "semantic-query@1",
@@ -80,5 +84,29 @@ describe("ServerOwnedToolRegistry", () => {
         code: "MODEL_TOOL_REGISTRY_CONFLICT",
       }) as ToolRegistryError,
     );
+  });
+
+  it("binds the server executor and parses input before invocation", async () => {
+    const seen: unknown[] = [];
+    const registry = new ServerOwnedExecutableToolRegistry([
+      {
+        ...semanticTool,
+        executor: {
+          async execute(input) {
+            seen.push(input);
+            return { accepted: true };
+          },
+        },
+      },
+    ]);
+
+    const resolved = registry.resolve("semantic-query@1");
+    await expect(resolved.execute({ metric: "gross_revenue" }, null)).resolves.toEqual({
+      accepted: true,
+    });
+    expect(seen).toEqual([{ metric: "gross_revenue" }]);
+    await expect(
+      resolved.execute({ metric: "gross_revenue", executor: "caller-owned" }, null),
+    ).rejects.toThrow();
   });
 });

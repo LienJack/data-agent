@@ -367,6 +367,11 @@ export const analysisSandboxProgramPayloadSchema = z
     entrypoint: z.literal("main"),
     source_sha256: contentHashSchema,
     source_text_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
+    query_evidence_refs: uniqueReferences(
+      queryEvidenceRefSchema,
+      1,
+      ANALYSIS_LIMITS.max_query_evidence_refs,
+    ),
     input_refs: uniqueReferences(artifactReferenceSchema, 1, 64),
     output_contract: pythonOutputContractSchema,
     import_profile: analysisRuntimeProfileSchema,
@@ -382,6 +387,13 @@ export const analysisSandboxProgramPayloadSchema = z
         code: "custom",
         message: "source_sha256 必须绑定 SensitiveExecutionArtifact。",
         path: ["source_sha256"],
+      });
+    }
+    if (program.query_evidence_refs.length !== program.input_refs.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "每个 QueryEvidence 必须恰好绑定一个物化 Sandbox 输入。",
+        path: ["input_refs"],
       });
     }
   });

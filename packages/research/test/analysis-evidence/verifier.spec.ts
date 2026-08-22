@@ -22,6 +22,7 @@ const programRef = reference("SandboxProgram", "71");
 const receiptRef = reference("SandboxExecutionReceipt", "72");
 const queryRef = reference("QueryEvidence", "73");
 const resultRef = reference("SandboxResult", "74");
+const inputResultRef = reference("SandboxResult", "79");
 const sourceRef = reference("SensitiveExecutionArtifact", "75");
 const sourceText = "def main(context):\n    context.write_json('result', {'ok': True})\n";
 const sourceHash = `sha256:${createHash("sha256").update(sourceText).digest("hex")}` as const;
@@ -79,7 +80,8 @@ async function programFixture(): Promise<AnalysisSandboxProgramPayload> {
     entrypoint: "main",
     source_sha256: sourceHash,
     source_text_ref: { ...sourceRef, content_hash: sourceHash },
-    input_refs: [queryRef],
+    query_evidence_refs: [queryRef],
+    input_refs: [inputResultRef],
     output_contract: outputContract,
     import_profile: "CORE_ANALYSIS",
     random_seed: 0,
@@ -391,6 +393,7 @@ describe("deterministic analysis program and derivation verification", () => {
       evidence,
       materializedResultRefs: [resultRef],
       materializedQueryRefs: [queryRef],
+      materializedInputRefs: [inputResultRef],
       allowedProfiles: ["CORE_ANALYSIS"] as const,
     };
     await expect(verifyAnalysisDerivation(base)).resolves.toEqual({ ok: true });
@@ -439,13 +442,25 @@ describe("deterministic analysis program and derivation verification", () => {
     await expect(
       verifyAnalysisDerivation({
         ...base,
-        program: { ...program, input_refs: [reference("QueryEvidence", "78")] },
+        program: { ...program, query_evidence_refs: [reference("QueryEvidence", "78")] },
       }),
     ).resolves.toMatchObject({
       ok: false,
       failures: expect.arrayContaining([
         "PROGRAM_VERIFICATION_FAILED",
         "QUERY_REFERENCE_CLOSURE_FAILED",
+      ]),
+    });
+    await expect(
+      verifyAnalysisDerivation({
+        ...base,
+        program: { ...program, input_refs: [reference("SandboxResult", "80")] },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      failures: expect.arrayContaining([
+        "PROGRAM_VERIFICATION_FAILED",
+        "INPUT_REFERENCE_CLOSURE_FAILED",
       ]),
     });
   });

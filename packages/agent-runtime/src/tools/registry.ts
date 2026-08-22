@@ -29,6 +29,24 @@ export interface RegisteredServerOwnedToolDescriptor {
   readonly network_access: ServerOwnedToolNetworkAccess;
 }
 
+export interface ServerOwnedToolExecutor<TContext = unknown, TResult = unknown> {
+  execute(input: unknown, context: TContext): Promise<TResult>;
+}
+
+export interface ServerOwnedExecutableTool<TContext = unknown, TResult = unknown>
+  extends ServerOwnedToolDescriptor {
+  /**
+   * Executor is registered by server composition and is never projected into
+   * a model request. The model only receives the frozen descriptor.
+   */
+  readonly executor: ServerOwnedToolExecutor<TContext, TResult>;
+}
+
+export interface ResolvedServerOwnedExecutableTool<TContext = unknown, TResult = unknown> {
+  readonly descriptor: RegisteredServerOwnedToolDescriptor;
+  execute(input: unknown, context: TContext): Promise<TResult>;
+}
+
 export class ToolRegistryError extends Error {
   override readonly name = "ToolRegistryError";
 
@@ -111,6 +129,47 @@ export class ServerOwnedToolRegistry {
     }
 
     return Object.freeze(resolved);
+  }
+}
+
+/**
+ * Server-side companion to the descriptor registry. It closes the common gap
+ * where a caller resolves an allowlisted name but then supplies a different
+ * executor. Input is parsed by the registered Zod schema before the server
+ * executor is invoked.
+ */
+export class ServerOwnedExecutableToolRegistry<TContext = unknown, TResult = unknown> {
+  readonly #descriptors: ServerOwnedToolRegistry;
+  readonly #executors: ReadonlyMap<string, ServerOwnedToolExecutor<TContext, TResult>>;
+
+  constructor(tools: readonly ServerOwnedExecutableTool<TContext, TResult>[]) {
+    this.#descriptors = new ServerOwnedToolRegistry(tools);
+    this.#executors = new Map(tools.map(({ tool_name, executor }) => [tool_name, executor]));
+  }
+
+  resolve(toolName: string): ResolvedServerOwnedExecutableTool<TContext, TResult> {
+    const descriptor = this.#descriptors.resolve(toolName);
+    const executor = this.#executors.get(descriptor.tool_name);
+    if (!executor) {
+      throw new ToolRegistryError(
+        "MODEL_TOOL_NOT_REGISTERED",
+        "Server Tool 没有注册对应 Executor。",
+      );
+    }
+    return Object.freeze({
+      descriptor,
+      execute: async (input: unknown, context: TContext) =>
+        executor.execute(descriptor.input_schema.parse(input), context),
+    });
+  }
+
+  resolveAllowlist(
+    toolAllowlist: readonly string[],
+  ): readonly ResolvedServerOwnedExecutableTool<TContext, TResult>[] {
+    // Resolve descriptors first so duplicate names and unknown names fail
+    // before any executable handle is returned.
+    const descriptors = this.#descriptors.resolveAllowlist(toolAllowlist);
+    return Object.freeze(descriptors.map(({ tool_name }) => this.resolve(tool_name)));
   }
 }
 

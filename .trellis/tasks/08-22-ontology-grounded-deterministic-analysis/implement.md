@@ -12,7 +12,7 @@ green sub-slice as completion of the full task.
   fail-closed applicability tests.
 - [x] U3 Attested Python Runtime and Programs: close existing sandbox HOLD gates first, then add Core/ML/Causal locks, standard programs,
   admission policy, independent oracles, malicious fixtures, replay/cancel/resource tests, and attestation evidence.
-- [ ] U4 Planner and Worker: register server-owned descriptors/tools, controlled import, bounded DAG planning, governed query reuse, sandbox
+- [x] U4 Planner and Worker: register server-owned descriptors/tools, controlled import, bounded DAG planning, governed query reuse, sandbox
   execution, idempotent artifact submission, repair/fence semantics, and integration coverage.
 - [ ] U8 Root Cause and L5: implement bounded ontology-grounded discovery, reuse Attribution authority, add identification/estimate/certificate
   payloads and gates, and keep insufficient evidence HOLD.
@@ -90,3 +90,27 @@ green sub-slice as completion of the full task.
   - Sandbox Ruff format/lint passed; full Python suite: 94 passed / 17 PostgreSQL-configured integration tests skipped.
   - Contracts typecheck and full suite: 81 files / 855 tests passed.
   - Research typecheck, unit suite (19 files / 136 tests), and architecture suite (1 file / 10 tests) passed.
+
+### U4 Analysis Planner, Query Compilation and Worker Orchestration
+
+- Added a strict server-owned executable tool registry and a frozen ten-skill catalog; caller payloads cannot select unregistered executors,
+  override runtime/lock/output contracts, or pass undeclared fields.
+- Added deterministic primary-metric/approved-dimension planning, plan hash/scope/budget/applicability gates, dependency-wave execution,
+  synchronous Run budget reservation, governed QueryEvidence materialization, one bounded generated-program repair, pre/post fence checks, and
+  `READY`/`PARTIAL`/`HOLD` completion semantics.
+- Added controlled CSV/XLSX import admission, governed DataProfile construction, and evidence-grounded chart-story selection. Zip expansion,
+  macros, external links, formulas, sheet/row/column/cell limits, ambiguous encodings, timeouts, cross-scope references, and narrated numbers are
+  rejected with no imported outputs.
+- Added append-only PostgreSQL authority for SandboxProgram/Receipt/Result and routed current DataProfile/AnalysisPlan/DerivedEvidence/
+  Completion through a dedicated analysis L2 RPC. The system RPC validates exact U6 command protocol, capability, lease/fence, raw and
+  canonical hashes, idempotency, scope, and immutable storage. Analysis L2 types are reserved from the generic artifact bypass.
+- Corrected the SandboxProgram closure to bind QueryEvidence refs separately from materialized sandbox input refs; historical wire readers were
+  left unchanged after compatibility regression testing.
+- Added optional Production Team composition that accepts only committed QueryEvidence and exposes only committed accepted analysis evidence;
+  the concrete real-database end-to-end adapter and independent fixture score remain owned by U6 and the final completion gate.
+- Validation:
+  - Contracts: 81 files / 855 tests passed; Research: 19 files / 136 tests; Semantic: 18 files / 149 tests; Agent Runtime: 25 files / 160 tests.
+  - Worker existing unit: 10 files / 74 tests; U4 targeted: 3 files / 19 tests; Python analysis/runtime: 41 tests; all three sandbox profile
+    attestations `VERIFIED`.
+  - Platform targeted research/chart authority: 2 files / 21 tests; filtered disposable PostgreSQL migration/assertion smoke passed.
+  - The new migration has exactly one normalized self-checksum literal and its declared/computed SHA-256 values match.

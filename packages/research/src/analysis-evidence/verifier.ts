@@ -22,6 +22,7 @@ export type DerivationFailure =
   | "RECEIPT_SCOPE_MISMATCH"
   | "RESULT_REFERENCE_CLOSURE_FAILED"
   | "QUERY_REFERENCE_CLOSURE_FAILED"
+  | "INPUT_REFERENCE_CLOSURE_FAILED"
   | "RESULT_ORACLE_FAILED"
   | "DERIVATION_HASH_MISMATCH"
   | "EVIDENCE_SCHEMA_INVALID";
@@ -60,6 +61,7 @@ export async function verifyAnalysisDerivation(input: {
   evidence: DerivedAnalysisEvidencePayload;
   materializedResultRefs: readonly ArtifactReference[];
   materializedQueryRefs: readonly ArtifactReference[];
+  materializedInputRefs: readonly ArtifactReference[];
   allowedProfiles: readonly AnalysisSandboxProgramPayload["import_profile"][];
 }): Promise<{ ok: true } | { ok: false; failures: readonly DerivationFailure[] }> {
   const evidenceParse = derivedAnalysisEvidencePayloadSchema.safeParse(input.evidence);
@@ -115,9 +117,12 @@ export async function verifyAnalysisDerivation(input: {
   }
   if (
     !sameReferenceSet(evidence.query_evidence_refs, input.materializedQueryRefs) ||
-    !sameReferenceSet(input.program.input_refs, input.materializedQueryRefs)
+    !sameReferenceSet(input.program.query_evidence_refs, input.materializedQueryRefs)
   ) {
     failures.push("QUERY_REFERENCE_CLOSURE_FAILED");
+  }
+  if (!sameReferenceSet(input.program.input_refs, input.materializedInputRefs)) {
+    failures.push("INPUT_REFERENCE_CLOSURE_FAILED");
   }
   if (verifyAnalysisResult(evidence.result).verdict !== "PASS") {
     failures.push("RESULT_ORACLE_FAILED");
