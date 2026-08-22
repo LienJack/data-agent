@@ -3,11 +3,12 @@
 import type { WorkspaceAccessProjection } from "@data-agent/contracts";
 import { Plus, SidebarSimple } from "@phosphor-icons/react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
 import { useLayoutStore, useSidebarCollapsed } from "@/lib/layout-store";
+import { createAndOpenNewQuestion } from "@/lib/qa-new-question";
 import { useQAStore } from "@/lib/qa-store";
 import { useWorkbenchStore } from "@/lib/workbench-store";
 import type { WorkspaceNavigationItem, WorkspaceNavigationKey } from "@/lib/workspace-navigation";
@@ -41,9 +42,13 @@ interface SidebarProps {
 export function Sidebar({ access, navigation }: SidebarProps) {
   const { t } = useWorkspaceI18n();
   const pathname = usePathname();
+  const router = useRouter();
   const collapsed = useSidebarCollapsed();
   const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
+  const createConversation = useQAStore((state) => state.createConversation);
   const loadConversations = useQAStore((state) => state.loadConversations);
+  const newQuestionPending = useRef(false);
+  const [creatingQuestion, setCreatingQuestion] = useState(false);
   const coreL2Verdict = useWorkbenchStore((state) => state.coreL2Verdict);
   const attributionF9Status = useWorkbenchStore((state) => state.attributionF9Status);
   const workspaceId = access.workspace.workspace_id;
@@ -56,6 +61,18 @@ export function Sidebar({ access, navigation }: SidebarProps) {
   useEffect(() => {
     if (isQaSurface) void loadConversations();
   }, [isQaSurface, loadConversations]);
+
+  const handleNewQuestion = () => {
+    if (!qaItem) return;
+    void createAndOpenNewQuestion({
+      qaHref: qaItem.href,
+      title: t("workspace.newQuestion"),
+      pending: newQuestionPending,
+      createConversation,
+      navigate: (href) => router.push(href),
+      onPendingChange: setCreatingQuestion,
+    });
+  };
 
   return (
     <aside
@@ -122,14 +139,17 @@ export function Sidebar({ access, navigation }: SidebarProps) {
             className="border-t border-[var(--color-border-default)] px-3 py-3"
             aria-label={t("workspace.surface.qa")}
           >
-            <Link
-              href={qaItem.href}
+            <button
+              type="button"
+              onClick={handleNewQuestion}
+              disabled={creatingQuestion}
+              aria-busy={creatingQuestion}
               data-pressable="true"
-              className="flex h-9 items-center justify-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-accent)] text-[12px] font-semibold text-white shadow-[0_8px_18px_-12px_rgb(38_71_168_/_0.72)] hover:bg-[var(--color-accent-hover)]"
+              className="flex h-9 w-full items-center justify-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-accent)] text-[12px] font-semibold text-white shadow-[0_8px_18px_-12px_rgb(38_71_168_/_0.72)] hover:bg-[var(--color-accent-hover)] disabled:cursor-wait disabled:opacity-70"
             >
               <Plus aria-hidden="true" size={14} />
               {t("workspace.newQuestion")}
-            </Link>
+            </button>
 
             <ConversationDirectory qaHref={qaItem.href} className="mt-3" />
           </section>
