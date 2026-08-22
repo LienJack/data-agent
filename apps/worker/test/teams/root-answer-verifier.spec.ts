@@ -71,6 +71,49 @@ describe("Root answer verifier", () => {
     });
   });
 
+  it("accepts provided context only when the cited message is frozen as visible", async () => {
+    const verifier = createRootAnswerVerifier({
+      artifacts: { resolveCommitted: async () => ({ ok: true, value: null }) },
+    });
+    const messageId = id(20);
+    const candidate: RootAgentDecisionCandidate = {
+      schema_version: "root-agent-turn-candidate@1.0.0",
+      kind: "FINAL_ANSWER",
+      scope,
+      run_id: id(3),
+      catalog_snapshot_hash: hash("1"),
+      sections: [
+        {
+          kind: "GENERAL_TEXT",
+          text: "你刚才要求优先读取语义图。",
+          basis: "PROVIDED_CONTEXT",
+          source_message_refs: [messageId],
+        },
+      ],
+      public_summary: "主 Agent 根据可见用户消息直接回答。",
+    };
+    await expect(
+      verifier.verify({
+        decision: candidate,
+        visible_message_refs: [],
+        accepted_artifact_refs: [],
+      }),
+    ).resolves.toMatchObject({
+      status: "EVIDENCE_REQUIRED",
+      reason_code: "ROOT_ANSWER_MESSAGE_SOURCE_NOT_VISIBLE",
+    });
+    await expect(
+      verifier.verify({
+        decision: candidate,
+        visible_message_refs: [messageId],
+        accepted_artifact_refs: [],
+      }),
+    ).resolves.toMatchObject({
+      status: "ACCEPTED",
+      rendered_text: "你刚才要求优先读取语义图。",
+    });
+  });
+
   it("requires the exact accepted Artifact before rendering workspace facts", async () => {
     const document = await report();
     const verifier = createRootAnswerVerifier({

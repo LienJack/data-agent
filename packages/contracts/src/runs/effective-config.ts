@@ -578,6 +578,7 @@ export const rootHarnessEffectiveConfigTeamLeasePayloadSchema = z.strictObject({
   executor_version: z.literal("ROOT_HARNESS@1"),
   effective_config_ref: effectiveRunConfigReferenceSchema,
   catalog_snapshot: subagentCapabilityCatalogSnapshotSchema,
+  visible_message_refs: z.array(canonicalImmutableIdSchema).min(1).max(64),
 });
 
 export const effectiveConfigRunLeasePayloadSchema = z.union([

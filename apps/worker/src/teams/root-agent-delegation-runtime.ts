@@ -169,7 +169,7 @@ export function createRootAgentDelegationRuntime(
         if (input.decision.kind === "FINAL_ANSWER") {
           const verification = await answerVerifier.verify({
             decision: input.decision,
-            visible_message_refs: [],
+            visible_message_refs: payload.visible_message_refs,
             accepted_artifact_refs: [],
           });
           if (verification.status !== "ACCEPTED") {

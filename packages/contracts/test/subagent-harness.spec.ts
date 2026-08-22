@@ -213,6 +213,7 @@ describe("Model-driven Subagent Harness contracts", () => {
           config_hash: hash("d"),
         },
         catalog_snapshot: catalog,
+        visible_message_refs: [id(41)],
       }),
     ).not.toHaveProperty("profile_refs");
   });

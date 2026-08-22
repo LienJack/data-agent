@@ -559,6 +559,7 @@ describe("Data Agent Team runner", () => {
         executor_version: "ROOT_HARNESS@1",
         effective_config_ref: effectiveConfigRef(effectiveConfig),
         catalog_snapshot: catalog,
+        visible_message_refs: [id(81)],
       },
     };
     const decision = {

@@ -41,6 +41,9 @@ begin
     or pg_catalog.strpos(pg_catalog.pg_get_functiondef(
       'app_data_agent.accept_question_run_with_effective_config(jsonb,jsonb)'::regprocedure),
       'subagent_catalog_snapshot')=0
+    or pg_catalog.strpos(pg_catalog.pg_get_functiondef(
+      'app_data_agent.list_agent_profile_revisions_v2(boolean)'::regprocedure),
+      'skill_signer_revocations')=0
     or exists(select 1 from app_data_agent.agent_product_profile_heads head
       join app_data_agent.agent_product_profile_revisions revision
         on revision.app_id=head.app_id and revision.tenant_id=head.tenant_id

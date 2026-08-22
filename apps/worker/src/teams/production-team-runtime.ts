@@ -23,6 +23,7 @@ import {
   artifactReferenceIdentity,
   canonicalizeJson,
   type PortResult,
+  type ProductTeamArtifactDocument,
   type SideEffectReceipt,
   sha256ContentHash,
   verifyProductTeamArtifactDocument,
@@ -348,9 +349,34 @@ async function commitAcceptedCompletion(input: {
     artifactReferenceIdentity(document.artifact_ref) !==
       artifactReferenceIdentity(input.output_ref) ||
     document.profile_id !== input.task.profile_id ||
-    document.task_id !== input.task.task_id
+    document.task_id !== input.task.task_id ||
+    document.artifact_ref.app_id !== input.task.scope.app_id ||
+    document.artifact_ref.tenant_id !== input.task.scope.tenant_id ||
+    document.artifact_ref.environment !== input.task.scope.environment ||
+    document.artifact_ref.run_id !== input.task.run_id
   ) {
     throw new ProductionTeamRuntimeError("TEAM_OUTPUT_ARTIFACT_CORRELATION_INVALID");
+  }
+  if (
+    !input.task.acceptance.required_artifact_types.includes(document.artifact_ref.artifact_type)
+  ) {
+    throw new ProductionTeamRuntimeError("TEAM_OUTPUT_ARTIFACT_TYPE_NOT_ACCEPTED");
+  }
+  if (
+    (input.task.profile_id === "semantic-management-agent" &&
+      (document.artifact_ref.artifact_type !== "AnalysisReport" ||
+        document.projection.kind !== "REPORT")) ||
+    (input.task.profile_id === "governed-text2sql-agent" &&
+      (document.artifact_ref.artifact_type !== "QueryEvidence" ||
+        document.projection.kind !== "TABLE")) ||
+    (input.task.profile_id === "report-writing-agent" &&
+      (document.artifact_ref.artifact_type !== "AnalysisReport" ||
+        document.projection.kind !== "REPORT" ||
+        !document.source_refs.some(
+          ({ artifact_type: artifactType }) => artifactType === "QueryEvidence",
+        )))
+  ) {
+    throw new ProductionTeamRuntimeError("TEAM_OUTPUT_VERIFIER_CONTRACT_FAILED");
   }
   for (const sourceRef of document.source_refs) {
     if (!portValue(await input.artifacts.verifyCommitted(sourceRef))) {
@@ -433,6 +459,27 @@ function acceptedOutput(snapshot: unknown): ArtifactReference | null {
   return (completion?.output_ref as ArtifactReference | undefined) ?? null;
 }
 
+function renderAcceptedArtifact(document: ProductTeamArtifactDocument): string {
+  if (document.projection.kind === "REPORT") {
+    return document.projection.sections.map(({ body_text: bodyText }) => bodyText).join("\n\n");
+  }
+  if (document.projection.kind === "TABLE") {
+    const tableCountColumn = document.projection.columns.find(({ key }) => key === "table_count");
+    const tableCount = tableCountColumn
+      ? document.projection.rows[0]?.[tableCountColumn.key]
+      : undefined;
+    if (typeof tableCount === "number" && Number.isInteger(tableCount)) {
+      return `当前受治理数据库共有 ${tableCount} 张已批准业务表。`;
+    }
+    const hasMonth = document.projection.columns.some(({ key }) => key === "month");
+    if (hasMonth) {
+      return `已生成并验收 ${document.projection.total_rows} 个有序月份的数据趋势。`;
+    }
+    return `已生成并验收 ${document.projection.total_rows} 行受治理数据结果。`;
+  }
+  throw new ProductionTeamRuntimeError("TEAM_FINAL_OUTPUT_NOT_RENDERABLE");
+}
+
 function selectedExecutionOrder(
   input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0],
 ): readonly AgentSpecialistProfileId[] {
@@ -491,7 +538,28 @@ export function createProductionTeamRuntime(
           ),
         );
         const replay = loadedReplay as { readonly document?: unknown };
-        if (acceptedOutput(replay.document)) {
+        const replayOutput = acceptedOutput(replay.document);
+        if (replayOutput) {
+          const document = await verifyProductTeamArtifactDocument(
+            portValue(await dependencies.artifacts.resolveCommitted(replayOutput)),
+          );
+          if (
+            artifactReferenceIdentity(document.artifact_ref) !==
+              artifactReferenceIdentity(replayOutput) ||
+            document.task_id !== replayTaskId ||
+            document.profile_id !== replayProfileId ||
+            document.artifact_ref.app_id !== input.lease.scope.app_id ||
+            document.artifact_ref.tenant_id !== input.lease.scope.tenant_id ||
+            document.artifact_ref.environment !== input.lease.scope.environment ||
+            document.artifact_ref.run_id !== input.lease.run_id
+          ) {
+            throw new ProductionTeamRuntimeError("TEAM_ACCEPTED_REPLAY_CORRELATION_INVALID");
+          }
+          await emit(input.execution_context, {
+            kind: "answer_delta",
+            key: `team.answer.${replayTaskId}`,
+            delta: renderAcceptedArtifact(document),
+          });
           return { status: "ACCEPTED", reason_code: "TEAM_ACCEPTED_REPLAY" };
         }
 
@@ -591,7 +659,12 @@ export function createProductionTeamRuntime(
         for (const [executionIndex, profileId] of executionOrder.entries()) {
           const task = tasks.get(profileId);
           if (!task) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_TASK_MISSING");
-          if (!input.dispatch_plan && profileId === "semantic-management-agent") {
+          const admittedDelegation = input.admitted_delegations?.[executionIndex] ?? null;
+          if (
+            !input.admitted_delegations &&
+            !input.dispatch_plan &&
+            profileId === "semantic-management-agent"
+          ) {
             await emit(input.execution_context, {
               kind: "agent_status",
               key: `team.agent.${task.task_id}.skipped`,
@@ -659,13 +732,19 @@ export function createProductionTeamRuntime(
               },
             },
             now: () => now().getTime(),
-            ...(input.dispatch_plan?.question_class === "SEMANTIC_READ"
+            ...(admittedDelegation
               ? {
                   execution_tool_allowlists: {
-                    "semantic-management-agent": ["semantic.catalog.read"],
+                    [profileId]: admittedDelegation.receipt.tool_allowlist,
                   },
                 }
-              : {}),
+              : input.dispatch_plan?.question_class === "SEMANTIC_READ"
+                ? {
+                    execution_tool_allowlists: {
+                      "semantic-management-agent": ["semantic.catalog.read"],
+                    },
+                  }
+                : {}),
           });
           const effect: SideEffectReceipt = portValue(
             await input.execution_context.executeSideEffectOnce({
@@ -752,14 +831,10 @@ export function createProductionTeamRuntime(
             ) {
               throw new ProductionTeamRuntimeError("TEAM_OUTPUT_PROJECTION_INVALID");
             }
-            const answer =
-              artifact.projection.kind === "REPORT"
-                ? artifact.projection.sections.map(({ body_text: body }) => body).join("\n\n")
-                : `已生成并验收 ${artifact.artifact_ref.artifact_type} 数据结果。`;
             await emit(input.execution_context, {
               kind: "answer_delta",
               key: `team.answer.${task.task_id}`,
-              delta: answer,
+              delta: renderAcceptedArtifact(artifact),
             });
           }
           evidenceRef = outputRef;
