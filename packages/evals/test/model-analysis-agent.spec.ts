@@ -4,6 +4,7 @@ import {
   type AuthoritativeModelProviderInvocation,
   authorizeAvailableModelProfile,
   computeModelProfileHash,
+  configureAvailableModelProfile,
   isAuthoritativeModelProviderInvocation,
   type ModelProfile,
   type ModelProviderPort,
@@ -87,6 +88,34 @@ async function availableProfile(
       probe_hash: receiptHash,
       verdict: "PASS",
     }),
+  });
+}
+
+function configuredProfile() {
+  return configureAvailableModelProfile({
+    profile_id: "51000000-0000-4000-8000-000000000005",
+    scope,
+    provider: "openai",
+    model_id: "fixture-model",
+    profile_version: "1.0.0",
+    capabilities: {
+      structured_output: true,
+      tool_calling: false,
+      streaming: true,
+      reasoning: false,
+      vision: false,
+    },
+    operational_constraints: {
+      context_window: {
+        verification_status: "VERIFIED",
+        max_context_tokens: 64_000,
+        max_output_tokens: 4_096,
+      },
+      region_privacy: { verification_status: "UNVERIFIED" },
+      pricing: { verification_status: "UNVERIFIED" },
+      fallback_compatibility: { verification_status: "UNVERIFIED" },
+    },
+    certification_status: "CONFIGURED",
   });
 }
 
@@ -303,6 +332,36 @@ describe("CertifiedModelAnalysisAgent", () => {
       }),
     ).rejects.toBeInstanceOf(CertifiedModelAnalysisAgentError);
     expect(providerCalled).toBe(false);
+  });
+
+  it("calls a configured model without certification or pricing authorization", async () => {
+    const profile = configuredProfile();
+    let providerCalled = false;
+    const agent = new CertifiedModelAnalysisAgent({
+      profile,
+      model_provider: {
+        stream(request) {
+          providerCalled = true;
+          return eventsFor(request, report);
+        },
+      },
+      budget: { ...budget, max_cost_micros: 0 },
+    });
+    const answer = await agent.answer({
+      test_case: await publicCase(),
+      csv_text: "category,value\nA,2\nB,1\n",
+      seed: 42,
+      invocation: {
+        run_id: randomUUID(),
+        attempt_id: randomUUID(),
+        attempt_index: 0,
+        timeout_ms: 5_000,
+        max_output_tokens: 1_000,
+      },
+    });
+
+    expect(providerCalled).toBe(true);
+    expect(answer.usage.cost_micros).toBe(0);
   });
 });
 

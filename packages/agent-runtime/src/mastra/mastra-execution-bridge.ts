@@ -111,6 +111,7 @@ function resolveTools(
 ): {
   readonly descriptors: readonly ServerOwnedToolDescriptor[];
   readonly mastraTools: Record<string, ReturnType<typeof createTool>>;
+  readonly canonicalToolNameByProviderName: ReadonlyMap<string, string>;
 } {
   let descriptors: readonly ServerOwnedToolDescriptor[];
   try {
@@ -130,21 +131,37 @@ function resolveTools(
     );
   }
 
-  const entries = descriptors.map(
-    (descriptor) =>
-      [
-        descriptor.tool_name,
-        createTool({
-          id: descriptor.tool_name,
-          description: descriptor.description,
-          inputSchema: descriptor.input_schema,
-        }),
-      ] as const,
-  );
+  const canonicalToolNameByProviderName = new Map<string, string>();
+  const entries = descriptors.map((descriptor) => {
+    const providerToolName = descriptor.tool_name
+      .replace(/@(\d+)/g, "_v$1")
+      .replace(/[^A-Za-z0-9_-]/g, "_");
+    if (
+      providerToolName.length < 1 ||
+      providerToolName.length > 64 ||
+      canonicalToolNameByProviderName.has(providerToolName)
+    ) {
+      throw new MastraExecutionError(
+        "MODEL_STREAM_PROTOCOL_VIOLATION",
+        false,
+        "Server Tool 无法映射为唯一的 Provider-safe Tool Name。",
+      );
+    }
+    canonicalToolNameByProviderName.set(providerToolName, descriptor.tool_name);
+    return [
+      providerToolName,
+      createTool({
+        id: providerToolName,
+        description: descriptor.description,
+        inputSchema: descriptor.input_schema,
+      }),
+    ] as const;
+  });
 
   return {
     descriptors,
     mastraTools: Object.fromEntries(entries),
+    canonicalToolNameByProviderName,
   };
 }
 
@@ -421,7 +438,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     }
     assertBinding(input.request, binding);
 
-    const { descriptors, mastraTools } = resolveTools(
+    const { descriptors, mastraTools, canonicalToolNameByProviderName } = resolveTools(
       this.#toolRegistry,
       input.request.tool_allowlist,
     );
@@ -462,7 +479,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     const usesToolCalling = descriptors.length > 0;
     const commonExecutionOptions = {
       abortSignal: input.signal,
-      activeTools: descriptors.map((descriptor) => descriptor.tool_name),
+      activeTools: [...canonicalToolNameByProviderName.keys()],
       maxSteps: 1,
       modelSettings: {
         maxOutputTokens: input.request.budget.max_output_tokens,
@@ -484,7 +501,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     const output = usesToolCalling
       ? await agent.stream(projected.messages, {
           ...commonExecutionOptions,
-          toolChoice: "auto",
+          toolChoice: "required",
         })
       : await agent.stream(projected.messages, {
           ...commonExecutionOptions,
@@ -512,7 +529,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
               };
             }
             break;
-          case "tool-call":
+          case "tool-call": {
             if (chunk.payload.providerExecuted === true) {
               throw new MastraExecutionError(
                 "MODEL_PROVIDER_TOOL_EXECUTION_FORBIDDEN",
@@ -521,13 +538,22 @@ class MastraExecutionBridge implements ModelExecutionBridge {
               );
             }
             observedToolCalls += 1;
+            const canonicalToolName = canonicalToolNameByProviderName.get(chunk.payload.toolName);
+            if (!canonicalToolName) {
+              throw new MastraExecutionError(
+                "MODEL_TOOL_NOT_ALLOWED",
+                false,
+                "Provider 返回了未映射到授权 Canonical Tool 的调用。",
+              );
+            }
             yield {
               chunk_type: "TOOL_CALL_CANDIDATE",
               tool_call_id: chunk.payload.toolCallId,
-              tool_name: chunk.payload.toolName,
+              tool_name: canonicalToolName,
               arguments: parseToolArguments(chunk.payload.args),
             };
             break;
+          }
           case "tool-result":
             throw new MastraExecutionError(
               "MODEL_PROVIDER_TOOL_EXECUTION_FORBIDDEN",

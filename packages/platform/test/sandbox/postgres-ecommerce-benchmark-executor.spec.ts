@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   assertEcommerceBenchmarkReadOnlySql,
   compileEcommerceMonthlyOrderTrendSql,
+  compileEcommerceSalesAnomalySql,
+  compileEcommerceSalesReportSummarySql,
   compileEcommerceTableCountSql,
 } from "../../src/sandbox/postgres-ecommerce-benchmark-executor.js";
 
@@ -24,9 +26,19 @@ describe("E-commerce benchmark PostgreSQL policy", () => {
     expect(sql).toContain("demo_adb_ecommerce_mart.fact_order");
     expect(sql).toContain("purchase_date");
     expect(sql).toContain("order_count");
+    expect(sql).toContain("sales_amount_brl");
     await expect(assertEcommerceBenchmarkReadOnlySql(sql)).resolves.toContain(
-      "order by pg_catalog.date_trunc",
+      "order by month_start",
     );
+  });
+
+  it("compiles anomaly and report queries inside the same read-only allowlist", async () => {
+    await expect(
+      assertEcommerceBenchmarkReadOnlySql(compileEcommerceSalesAnomalySql()),
+    ).resolves.toContain("MONTHLY_SALES_CHANGE");
+    await expect(
+      assertEcommerceBenchmarkReadOnlySql(compileEcommerceSalesReportSummarySql()),
+    ).resolves.toContain("average_review_score");
   });
 
   it.each([

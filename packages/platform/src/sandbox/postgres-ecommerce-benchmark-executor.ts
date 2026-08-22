@@ -68,12 +68,95 @@ where namespace.nspname = '${ALLOWED_SCHEMA}'
 }
 
 export function compileEcommerceMonthlyOrderTrendSql(): string {
-  return `select pg_catalog.to_char(pg_catalog.date_trunc('month', purchase_date), 'YYYY-MM') as month,
-       count(*)::integer as order_count
-from ${ALLOWED_SCHEMA}.fact_order
-where purchase_date is not null
-group by pg_catalog.date_trunc('month', purchase_date)
-order by pg_catalog.date_trunc('month', purchase_date)`;
+  return `with payment_by_order as (
+  select order_id, sum(payment_value_brl)::numeric as sales_amount
+  from ${ALLOWED_SCHEMA}.fact_payment
+  group by order_id
+), monthly as (
+  select pg_catalog.date_trunc('month', orders.purchase_date) as month_start,
+         count(*)::integer as order_count,
+         round(coalesce(sum(payment.sales_amount), 0), 2)::double precision as sales_amount_brl
+  from ${ALLOWED_SCHEMA}.fact_order orders
+  left join payment_by_order payment on payment.order_id = orders.order_id
+  where orders.purchase_date is not null
+  group by pg_catalog.date_trunc('month', orders.purchase_date)
+)
+select pg_catalog.to_char(month_start, 'YYYY-MM') as month,
+       order_count,
+       sales_amount_brl,
+       round((
+         (sales_amount_brl - lag(sales_amount_brl) over (order by month_start)) * 100
+         / nullif(lag(sales_amount_brl) over (order by month_start), 0)
+       )::numeric, 2)::double precision as sales_mom_pct
+from monthly
+order by month_start`;
+}
+
+export function compileEcommerceSalesAnomalySql(): string {
+  return `with payment_by_order as (
+  select order_id, sum(payment_value_brl)::numeric as sales_amount
+  from ${ALLOWED_SCHEMA}.fact_payment
+  group by order_id
+), monthly as (
+  select pg_catalog.date_trunc('month', orders.purchase_date) as month_start,
+         count(*)::integer as order_count,
+         round(coalesce(sum(payment.sales_amount), 0), 2)::double precision as sales_amount_brl
+  from ${ALLOWED_SCHEMA}.fact_order orders
+  left join payment_by_order payment on payment.order_id = orders.order_id
+  where orders.purchase_date is not null
+  group by pg_catalog.date_trunc('month', orders.purchase_date)
+), monthly_change as (
+  select month_start,
+         order_count,
+         sales_amount_brl,
+         round((
+           (sales_amount_brl - lag(sales_amount_brl) over (order by month_start)) * 100
+           / nullif(lag(sales_amount_brl) over (order by month_start), 0)
+         )::numeric, 2)::double precision as mom_pct
+  from monthly
+), anomalies as (
+  select 'MONTHLY_SALES_CHANGE'::text as anomaly_type,
+         pg_catalog.to_char(month_start, 'YYYY-MM')::text as entity,
+         mom_pct::double precision as metric_value,
+         ('sales=' || sales_amount_brl::text || ' BRL; orders=' || order_count::text)::text as detail
+  from monthly_change
+  where abs(mom_pct) >= 50
+  union all
+  select 'DELIVERY_DELAY'::text,
+         order_id::text,
+         round(delivery_delay_days::numeric, 2)::double precision,
+         ('status=' || coalesce(order_status, 'NULL'))::text
+  from ${ALLOWED_SCHEMA}.fact_order
+  where delivery_delay_days >= 100
+)
+select anomaly_type, entity, metric_value, detail
+from anomalies
+order by anomaly_type, abs(metric_value) desc, entity
+limit 100`;
+}
+
+export function compileEcommerceSalesReportSummarySql(): string {
+  return `with payment_by_order as (
+  select order_id, sum(payment_value_brl)::numeric as sales_amount
+  from ${ALLOWED_SCHEMA}.fact_payment
+  group by order_id
+), review_by_order as (
+  select order_id, avg(review_score)::numeric as review_score
+  from ${ALLOWED_SCHEMA}.fact_review
+  group by order_id
+)
+select min(orders.purchase_date)::text as period_start,
+       max(orders.purchase_date)::text as period_end,
+       count(*)::integer as total_orders,
+       round(coalesce(sum(payment.sales_amount), 0), 2)::double precision as total_sales_brl,
+       round(coalesce(avg(payment.sales_amount), 0), 2)::double precision as average_order_value_brl,
+       count(*) filter (where orders.delivery_delay_days > 0)::integer as delayed_orders,
+       round(coalesce(avg(orders.delivery_delay_days) filter (where orders.delivery_delay_days > 0), 0)::numeric, 2)::double precision as average_delay_days,
+       round(coalesce(max(orders.delivery_delay_days), 0)::numeric, 2)::double precision as maximum_delay_days,
+       round(coalesce(avg(review.review_score), 0), 2)::double precision as average_review_score
+from ${ALLOWED_SCHEMA}.fact_order orders
+left join payment_by_order payment on payment.order_id = orders.order_id
+left join review_by_order review on review.order_id = orders.order_id`;
 }
 
 function isRecord(value: unknown): value is JsonRecord {

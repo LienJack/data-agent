@@ -225,6 +225,20 @@ describe("Q&A immutable resource contracts", () => {
         models: [{ ...catalog.models[0], profile_version: "model-profile@3" }],
       }).success,
     ).toBe(false);
+
+    const directCatalog = {
+      ...catalog,
+      models: [
+        {
+          ...catalog.models[0],
+          certification_receipt_ref: null,
+          effective_context_ceiling_tokens: null,
+          effective_output_ceiling_tokens: null,
+          api_authentication_state: "NOT_CERTIFIED",
+        },
+      ],
+    } as const;
+    expect(qaResourceCatalogSchema.parse(directCatalog)).toEqual(directCatalog);
     expect(
       qaResourceCatalogSchema.safeParse({
         ...catalog,
@@ -235,12 +249,6 @@ describe("Q&A immutable resource contracts", () => {
             selectable: false,
           },
         ],
-      }).success,
-    ).toBe(false);
-    expect(
-      qaResourceCatalogSchema.safeParse({
-        ...catalog,
-        models: [{ ...catalog.models[0], effective_output_ceiling_tokens: null }],
       }).success,
     ).toBe(false);
     expect(

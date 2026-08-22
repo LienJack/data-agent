@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
   type AvailableModelProfile,
-  authorizeModelProviderInvocation,
   type BenchmarkAgentDescriptor,
   type BenchmarkAnalysisReport,
   type BenchmarkOracleFeedback,
@@ -10,6 +9,7 @@ import {
   benchmarkAgentDescriptorSchema,
   benchmarkAnalysisReportSchema,
   CERTIFIED_MODEL_ANALYSIS_AGENT_ID,
+  createDirectModelProviderInvocation,
   isAvailableModelProfile,
   type ModelProviderEvent,
   type ModelProviderPort,
@@ -46,7 +46,6 @@ export class CertifiedModelAnalysisAgentError extends Error {
     readonly code:
       | "MODEL_ANALYSIS_PROFILE_NOT_AUTHORIZED"
       | "MODEL_ANALYSIS_CONTEXT_NOT_VERIFIED"
-      | "MODEL_ANALYSIS_PRICING_NOT_VERIFIED"
       | "MODEL_ANALYSIS_INPUT_TOO_LARGE"
       | "MODEL_ANALYSIS_BUDGET_EXCEEDED"
       | "MODEL_ANALYSIS_PROVIDER_FAILED"
@@ -146,10 +145,7 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     AvailableModelProfile["operational_constraints"]["context_window"],
     { readonly verification_status: "VERIFIED" }
   >;
-  readonly #pricing: Extract<
-    AvailableModelProfile["operational_constraints"]["pricing"],
-    { readonly verification_status: "VERIFIED" }
-  >;
+  readonly #pricing: AvailableModelProfile["operational_constraints"]["pricing"];
   #spentCostMicros = 0;
 
   constructor(input: {
@@ -160,7 +156,7 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     if (!isAvailableModelProfile(input.profile)) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_PROFILE_NOT_AUTHORIZED",
-        "InsightBench 模型 Agent 只接受经过持久化 Receipt 重验的 AVAILABLE Profile。",
+        "InsightBench 模型 Agent 只接受服务端配置的可用 Profile。",
       );
     }
     const contextWindow = input.profile.operational_constraints.context_window;
@@ -171,16 +167,10 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
       );
     }
     const pricing = input.profile.operational_constraints.pricing;
-    if (pricing.verification_status !== "VERIFIED" || pricing.currency !== "USD") {
-      throw new CertifiedModelAnalysisAgentError(
-        "MODEL_ANALYSIS_PRICING_NOT_VERIFIED",
-        "InsightBench 模型 Agent 需要以 USD 表示的已验证定价约束。",
-      );
-    }
     if (input.budget.max_output_tokens_per_attempt > contextWindow.max_output_tokens) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_BUDGET_EXCEEDED",
-        "冻结的单次输出预算超过认证 Profile 的输出上限。",
+        "冻结的单次输出预算超过配置 Profile 的输出上限。",
       );
     }
     this.#profile = input.profile;
@@ -219,15 +209,10 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     ) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_INPUT_TOO_LARGE",
-        "题目与 CSV 超出认证 Profile 的 Context Window。",
+        "题目与 CSV 超出配置 Profile 的 Context Window。",
       );
     }
-    const maximumAttemptCost = estimateCostMicros({
-      input_tokens: inputTokenBudget,
-      output_tokens: maxOutputTokens,
-      input_rate: this.#pricing.input_microunits_per_million_tokens,
-      output_rate: this.#pricing.output_microunits_per_million_tokens,
-    });
+    const maximumAttemptCost = this.#cost(inputTokenBudget, maxOutputTokens);
     if (this.#spentCostMicros + maximumAttemptCost > this.#budget.max_cost_micros) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_BUDGET_EXCEEDED",
@@ -235,44 +220,35 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
       );
     }
 
-    const request = await authorizeModelProviderInvocation(
-      {
-        schema_version: "1.0.0",
-        request_id: randomUUID(),
-        attempt_id: input.invocation.attempt_id,
-        scope: this.#profile.scope,
+    const request = createDirectModelProviderInvocation({
+      schema_version: "1.0.0",
+      request_id: randomUUID(),
+      attempt_id: input.invocation.attempt_id,
+      scope: this.#profile.scope,
+      run_id: input.invocation.run_id,
+      provider: this.#profile.provider,
+      profile_id: this.#profile.profile_id,
+      profile_version: this.#profile.profile_version,
+      model_id: this.#profile.model_id,
+      task_ref: {
+        artifact_id: input.test_case.case_id,
+        artifact_type: "EvalCase",
+        ...this.#profile.scope,
         run_id: input.invocation.run_id,
-        provider: this.#profile.provider,
-        profile_id: this.#profile.profile_id,
-        profile_version: this.#profile.profile_version,
-        model_id: this.#profile.model_id,
-        task_ref: {
-          artifact_id: input.test_case.case_id,
-          artifact_type: "EvalCase",
-          ...this.#profile.scope,
-          run_id: input.invocation.run_id,
-          revision: 1,
-          content_hash: input.test_case.public_case_hash,
-        },
-        context_refs: [],
-        messages: input.messages,
-        tool_allowlist: [],
-        response_schema_version: input.response_schema_version,
-        budget: {
-          timeout_ms: input.invocation.timeout_ms,
-          max_input_tokens: inputTokenBudget,
-          max_output_tokens: maxOutputTokens,
-          max_tool_calls: 0,
-        },
+        revision: 1,
+        content_hash: input.test_case.public_case_hash,
       },
-      async ({ scope, profile_id }) =>
-        scope.app_id === this.#profile.scope.app_id &&
-        scope.tenant_id === this.#profile.scope.tenant_id &&
-        scope.environment === this.#profile.scope.environment &&
-        profile_id === this.#profile.profile_id
-          ? this.#profile
-          : null,
-    );
+      context_refs: [],
+      messages: input.messages,
+      tool_allowlist: [],
+      response_schema_version: input.response_schema_version,
+      budget: {
+        timeout_ms: input.invocation.timeout_ms,
+        max_input_tokens: inputTokenBudget,
+        max_output_tokens: maxOutputTokens,
+        max_tool_calls: 0,
+      },
+    });
 
     const started = performance.now();
     let completed: CompletedModelEvent | null = null;
@@ -280,7 +256,7 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
       if (event.event_type === "FAILED") {
         throw new CertifiedModelAnalysisAgentError(
           "MODEL_ANALYSIS_PROVIDER_FAILED",
-          `认证模型调用失败：${event.reason_code}`,
+          `模型调用失败：${event.reason_code}`,
           event.reason_code,
         );
       }
@@ -289,16 +265,11 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     if (!completed) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_PROVIDER_FAILED",
-        "认证模型调用未返回完成事件。",
+        "模型调用未返回完成事件。",
       );
     }
     const tokenCounts = reportedTokenCounts(completed.usage);
-    const actualCost = estimateCostMicros({
-      input_tokens: tokenCounts.input_tokens,
-      output_tokens: tokenCounts.output_tokens,
-      input_rate: this.#pricing.input_microunits_per_million_tokens,
-      output_rate: this.#pricing.output_microunits_per_million_tokens,
-    });
+    const actualCost = this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens);
     this.#spentCostMicros += actualCost;
     let output: unknown;
     try {
@@ -306,7 +277,7 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     } catch {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_RESPONSE_INVALID",
-        "认证模型返回的结构化结果不是合法 JSON。",
+        "模型返回的结构化结果不是合法 JSON。",
       );
     }
     return {
@@ -314,6 +285,17 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
       event: completed,
       latency_ms: Math.max(0, Math.round(performance.now() - started)),
     };
+  }
+
+  #cost(inputTokens: number, outputTokens: number): number {
+    return this.#pricing.verification_status === "VERIFIED" && this.#pricing.currency === "USD"
+      ? estimateCostMicros({
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          input_rate: this.#pricing.input_microunits_per_million_tokens,
+          output_rate: this.#pricing.output_microunits_per_million_tokens,
+        })
+      : 0;
   }
 
   async answer(input: {
@@ -335,7 +317,7 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     if (!report.success) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_RESPONSE_INVALID",
-        "认证模型返回的首答不符合分析报告契约。",
+        "模型返回的首答不符合分析报告契约。",
       );
     }
     const tokenCounts = reportedTokenCounts(result.event.usage);
@@ -344,12 +326,7 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
       usage: {
         input_tokens: tokenCounts.input_tokens,
         output_tokens: tokenCounts.output_tokens,
-        cost_micros: estimateCostMicros({
-          input_tokens: tokenCounts.input_tokens,
-          output_tokens: tokenCounts.output_tokens,
-          input_rate: this.#pricing.input_microunits_per_million_tokens,
-          output_rate: this.#pricing.output_microunits_per_million_tokens,
-        }),
+        cost_micros: this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens),
         currency: "USD",
       },
       latency_ms: result.latency_ms,
@@ -377,19 +354,14 @@ export class CertifiedModelAnalysisAgent implements BenchmarkAnalysisAgent {
     if (!reflection.success) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_RESPONSE_INVALID",
-        "认证模型返回的反省不符合结构化契约。",
+        "模型返回的反省不符合结构化契约。",
       );
     }
     const tokenCounts = reportedTokenCounts(result.event.usage);
     const usage = {
       input_tokens: tokenCounts.input_tokens,
       output_tokens: tokenCounts.output_tokens,
-      cost_micros: estimateCostMicros({
-        input_tokens: tokenCounts.input_tokens,
-        output_tokens: tokenCounts.output_tokens,
-        input_rate: this.#pricing.input_microunits_per_million_tokens,
-        output_rate: this.#pricing.output_microunits_per_million_tokens,
-      }),
+      cost_micros: this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens),
       currency: "USD" as const,
     };
     return {

@@ -1,11 +1,16 @@
 # Model API Authentication
 
+> 历史兼容状态（2026-08-23）：模型认证不再是任何生产模型调用或 Q&A 选择的前置条件。
+> 既有页面、API、RPC 与状态只用于读取历史记录；活动运行时不得调用、刷新或消费这些状态。
+> 模型可调用性由服务端配置的 Provider/Model binding 与环境凭据直接决定。
+
 ## Scenario: 用一次模型目录请求开放 Q&A 选择
 
 ### 1. Scope / Trigger
 
 - 修改设置页认证按钮、认证 API、模型目录认证字段或 Q&A 选择状态时适用。
 - 本流程只证明服务端凭据能读取非空模型目录，不是模型能力或质量认证。
+- 新代码不得把本流程接入模型调用、Semantic Authoring、Test Center、Falcon 或 Q&A readiness。
 
 ### 2. Signatures
 
@@ -23,6 +28,7 @@ platform.list_model_api_authentication_views(deployment_id uuid, principal_id uu
 - 状态仅为 `NOT_CERTIFIED | PASS`；没有 Job、进度或证书引用。
 - `PASS` 仅在认证 config version 等于模型当前 config version 时有效。
 - Provider 响应正文、Header、Credential 和 URL query 不得持久化或公开。
+- 活动生产入口不读取 `PASS/NOT_CERTIFIED`，不创建认证记录，也不因缺少认证记录禁用模型。
 
 ### 4. Validation & Error Matrix
 
@@ -46,6 +52,7 @@ platform.list_model_api_authentication_views(deployment_id uuid, principal_id uu
 - Route：非空成功、空响应、权限拒绝、path/body mismatch、无 Secret。
 - Repository/SQL：参数闭合、幂等、config stale、回滚后无测试状态。
 - Q&A：相同 profile/config 的 `PASS` 才覆盖为 `AVAILABLE/selectable=true`。
+- 回归：配置有效且服务端凭据存在时，即使没有认证记录也能完成直连；调用前后认证记录不增加。
 - Browser：按钮 loading、成功刷新、错误保留状态、移动端无溢出。
 
 ### 7. Wrong vs Correct

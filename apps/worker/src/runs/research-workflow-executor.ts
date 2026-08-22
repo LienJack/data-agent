@@ -477,9 +477,9 @@ export function createResearchWorkflowExecutor(
       await emitDisplayEvent(context, {
         kind: "progress",
         key: "provider-authority-prepare",
-        phase: "provider.authority.prepare",
+        phase: "provider.direct.prepare",
         title: "核验模型调用权限",
-        summary: "正在核验冻结配置、数据投影与持久化调用权限",
+        summary: "正在读取冻结模型配置并准备直连调用",
         status: "RUNNING",
       });
       await emitDisplayEvent(context, {
@@ -488,8 +488,8 @@ export function createResearchWorkflowExecutor(
         call_id: providerCallId,
         tool_name: "provider.dispatch",
         title: "调用模型 Provider",
-        summary: "正在通过 Provider Invocation Authority 执行受审计调用",
-        input: "冻结配置与已批准数据投影",
+        summary: "正在通过轻量模型网关执行直连调用",
+        input: "冻结配置与 Run 问题",
       });
       const providerResult = await providerDispatch.invoke({
         logical_call_id: lease.command_id,
@@ -500,7 +500,7 @@ export function createResearchWorkflowExecutor(
           key: "provider-dispatch-failed",
           call_id: providerCallId,
           tool_name: "provider.dispatch",
-          summary: "审计 Provider 调用未形成可释放结果",
+          summary: "模型直连调用未形成可释放结果",
           error_code: providerResult.error.code,
           output: null,
           duration_ms: Math.max(0, deps.now().getTime() - providerStartedAt),
@@ -512,7 +512,7 @@ export function createResearchWorkflowExecutor(
         key: "provider-dispatch-complete",
         call_id: providerCallId,
         tool_name: "provider.dispatch",
-        summary: "Provider terminal receipt 与 protected response 已提交",
+        summary: "模型直连调用已完成",
         output: `invocation=${providerResult.value.projection.invocation_id}; status=${providerResult.value.projection.status}`,
         duration_ms: Math.max(0, deps.now().getTime() - providerStartedAt),
       });
@@ -520,7 +520,7 @@ export function createResearchWorkflowExecutor(
         kind: "reasoning_delta",
         key: "research.reasoning.provider",
         block_id: `research-${lease.attempt_id}`,
-        delta: "Provider 回执已验证，继续执行确定性研究内核与证据门禁。",
+        delta: "模型响应已完成，继续执行确定性研究内核与证据门禁。",
       });
 
       const protocolInput: ResearchProtocolInput = {

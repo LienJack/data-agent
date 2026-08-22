@@ -17,9 +17,9 @@ import { ResourceCardPicker } from "./resource-card-picker";
 
 const readinessLabels = {
   AVAILABLE: "可运行",
-  CERTIFICATION_REQUIRED: "待认证",
+  CERTIFICATION_REQUIRED: "可直连",
   CREDENTIAL_UNAVAILABLE: "缺少凭据",
-  CONTEXT_WINDOW_UNVERIFIED: "上下文窗口未认证",
+  CONTEXT_WINDOW_UNVERIFIED: "可直连",
   DISABLED: "已停用",
   STALE: "配置已过期",
 } as const;
@@ -54,11 +54,7 @@ export function ModelSelector({
         description: [
           `${model.provider} · ${model.model_id}`,
           model.profile_version,
-          model.api_authentication_state === "PASS"
-            ? "API 已认证"
-            : model.certification_receipt_ref === null
-              ? "无当前执行认证"
-              : `认证 r${model.certification_receipt_ref.revision}`,
+          "服务端直连",
           model.effective_context_ceiling_tokens === null
             ? null
             : `Context ${model.effective_context_ceiling_tokens.toLocaleString()}`,

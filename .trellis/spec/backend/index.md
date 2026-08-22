@@ -23,9 +23,9 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Falcon Agent Release Gate](./falcon-agent-release-gate.md) | 28 库/500 题 Agent Team、隔离、恢复、冷启动与绝对发布门禁 | 已建立 |
 | [Semantic Relationship Index](./semantic-relationship-index.md) | PostgreSQL 权威、Neo4j 投影、搜索回退与索引器闭环 | 已建立 |
 | [工作空间、身份与计费权威](./workspace-identity-billing.md) | Workspace Scope、RBAC、幂等管理命令和账务精度/状态机 | 已建立 |
-| [Q&A 对话资源绑定](./qa-conversation-resource-binding.md) | Composer、Conversation 冻结、Run 快照与 Worker 发布门禁 | 已建立，真实执行 HOLD |
+| [Q&A 对话资源绑定](./qa-conversation-resource-binding.md) | Composer、Conversation 冻结、Run 快照与直接分析执行 | 已建立，五项真实门禁通过 |
 | [Q&A 管理员审计平面](./qa-admin-audit-plane.md) | 跨 owner 只读 projection、不可变回执、Admin SSE 与 Artifact 双门禁 | 已建立 |
-| [Provider Invocation Authority](./provider-invocation-authority.md) | U2 配置到 Provider Intent、Dispatch、Response、Usage 的持久权威链 | 已建立 |
+| [Provider Invocation Authority](./provider-invocation-authority.md) | 当前轻量直连与历史 Intent/Permit 兼容边界 | 已建立，生产直连 |
 | [统一 Job Center](./job-center.md) | 后台 Job、Lease/Fence、Handler Heartbeat 与 Capability Readiness | 已建立 |
 | [Knowledge Base Authority](./knowledge-base.md) | U6 File 到 U10 索引、Neo4j 投影、检索证据与 U2 冻结 | 已建立 |
 | [Semantic Induction Maintenance](./semantic-induction-maintenance.md) | U10 Job 到 U5 review-only Candidate 的稳定归纳、漂移影响与 Metric dry-run | 已建立 |
@@ -41,7 +41,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Run 公开事件流](./run-event-streaming.md) | Durable SSE、公开事件 DTO、对话轨迹与前端装配 | 已建立 |
 | [Agent Team Product Runtime](./agent-team-runtime.md) | Product Profile、Skill、Team 命令、专职 Tool 与 Acceptance 边界 | 已建立 |
 | [Datasource Adapter Runtime](./datasource-adapters.md) | 五类 Registry、方言 Firewall、只读 Transport 与认证报告 | 已建立 |
-| [Model API Authentication](./model-api-authentication.md) | 模型目录认证、权限、幂等与 Q&A readiness | 已建立 |
+| [Model API Authentication](./model-api-authentication.md) | 历史模型认证读取面；不参与生产调用 readiness | 历史兼容 |
 
 ---
 

@@ -206,7 +206,8 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
   通用 `artifacts` 镜像不能代替领域 Authority。Browser 角色不得读取或写入，Backend
   只能在当前 App/Tenant/Environment 下读取并调用窄状态转换函数。
 - Model Provider、External Agent 与 Benchmark Suite 使用彼此独立的版本化 Port；所有请求和响应 Artifact Reference 都必须与事件属于同一 App/Tenant/Environment/Run。
-- Model Provider Port 只接受绑定同 Scope、Profile Version、Model ID 且已经 `AVAILABLE` 授权的调用。
+- 活动生产 Model Provider Port 接受绑定同 Scope、Run、Attempt、Profile Version、Model ID 与服务端凭据的
+  direct 调用，不要求 `AVAILABLE` 认证或持久 Permit；历史持久 Port 的 `AVAILABLE` 规则只用于旧记录回放。
 - External Agent Port 只接受由服务端 Profile Resolver 授权的调用；请求只能收窄 Workspace Root、可写权限、Tool、Command ID 与超时预算，不能自行扩权。
 - Model、External Agent 与 Benchmark 的每个流事件都必须用原始请求校验 Scope、Run、Attempt 及各自的 Request/Invocation/Adapter ID 与版本元组，不能只做孤立 Schema Parse。
 - 所有 U6 Port 固定使用 `method(capabilityInput, strictInput)`。Adapter 先从
@@ -349,7 +350,7 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
 | Datasource 已结束但没有可提交的完整 Outcome | `SANDBOX_EXECUTION_OUTCOME_UNKNOWN`，由 Lease Recovery 收敛 |
 | Receipt 回显期望值但与数据库实际事务、Settings、Snapshot 不一致 | `SANDBOX_EXECUTION_RECEIPT_NOT_AUTHORITATIVE` |
 | Result 行列形状、字节数、Hash、Schema 或 Execution 绑定不一致 | `SANDBOX_RESULT_NOT_AUTHORITATIVE` |
-| Model 请求未绑定 `AVAILABLE` Profile | `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED` |
+| Direct Model 请求的 Scope/Run/Attempt/Profile/Model/凭据任一不闭合 | `MODEL_PROVIDER_INVOCATION_NOT_AUTHORIZED` 或稳定直连错误码 |
 | External Agent 请求扩大 Workspace/Permission/Budget | `EXTERNAL_AGENT_INVOCATION_NOT_AUTHORIZED` |
 | 流事件与原始请求的 ID、Scope、Run、Attempt 或版本不一致 | `PORT_EVENT_CORRELATION_MISMATCH` |
 | Benchmark/Sandbox 成功 Receipt 未提交或未授权 | 对应领域 Authority Error |

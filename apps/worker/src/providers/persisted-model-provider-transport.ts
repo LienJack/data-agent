@@ -77,6 +77,18 @@ export function createPersistedModelProviderTransport(input: {
         return failure("RUN_EXECUTION_ABORTED", "Provider local prepare 前 Run 已中止。");
       }
       const request = modelProviderRequestSchema.safeParse(payload);
+      if (!request.success) {
+        console.warn(
+          JSON.stringify({
+            event: "provider_transport_request_preflight_rejected",
+            issues: request.error.issues.map(({ code, path, message }) => ({
+              code,
+              path,
+              message,
+            })),
+          }),
+        );
+      }
       return request.success
         ? { ok: true as const, value: { prepared: request.data } }
         : failure(
@@ -124,6 +136,16 @@ export function createPersistedModelProviderTransport(input: {
       const toolCalls: unknown[] = [];
       let terminal: AuditedProviderTransportResult | null = null;
       for await (const event of provider.stream(request)) {
+        if (event.event_type === "FAILED") {
+          console.warn(
+            JSON.stringify({
+              event: "provider_transport_model_failed",
+              reason_code: event.reason_code,
+              retryable: event.retryable,
+              delivery_certainty: event.delivery_certainty,
+            }),
+          );
+        }
         if (event.event_type === "TOOL_CALL_CANDIDATE") {
           toolCalls.push({
             tool_call_id: event.tool_call_id,

@@ -758,6 +758,7 @@ describe("Mastra execution bridge integration", () => {
   it("projects an offline Mastra tool call as a candidate without executing it", async () => {
     const binding = getModelProviderBinding("openai");
     let receivedResponseFormat: unknown = "not-called";
+    let receivedToolChoice: unknown = "not-called";
     const fakeModel = {
       specificationVersion: "v4",
       provider: "offline-test",
@@ -766,8 +767,12 @@ describe("Mastra execution bridge integration", () => {
       doGenerate: async () => {
         throw new Error("The integration uses streaming only.");
       },
-      doStream: async (options: { readonly responseFormat?: unknown }) => {
+      doStream: async (options: {
+        readonly responseFormat?: unknown;
+        readonly toolChoice?: unknown;
+      }) => {
         receivedResponseFormat = options.responseFormat;
+        receivedToolChoice = options.toolChoice;
         return {
           stream: new ReadableStream({
             start(controller) {
@@ -778,7 +783,7 @@ describe("Mastra execution bridge integration", () => {
               controller.enqueue({
                 type: "tool-call",
                 toolCallId: "tool-call-1",
-                toolName: "semantic-query@1",
+                toolName: "semantic-query_v1",
                 input: JSON.stringify({ metric: "revenue" }),
               });
               controller.enqueue({
@@ -864,6 +869,7 @@ describe("Mastra execution bridge integration", () => {
       arguments: { metric: "revenue" },
     });
     expect(receivedResponseFormat).toBeUndefined();
+    expect(receivedToolChoice).toEqual({ type: "required" });
     expect(events.at(-1)).toMatchObject({
       event_type: "COMPLETED",
       output_text: '{"summary":"需要工具候选","confidence":0.5}',

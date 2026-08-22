@@ -23,6 +23,7 @@ import type {
 } from "./data-agent-team-runner.js";
 import { verifySelectedProductProfiles } from "./mastra-profile-composition.js";
 import { createRootAnswerVerifier } from "./root-answer-verifier.js";
+import { deriveTeamRuntimeTaskBounds } from "./team-runtime-bounds.js";
 
 type RootExecution = Parameters<RunWorkflowExecutorPort["execute"]>[0];
 
@@ -70,13 +71,10 @@ async function emit(
 
 function runCeiling(execution: RootExecution): SubagentAdmissionBudget {
   const config = execution.context.getEffectiveConfig();
+  const taskBounds = deriveTeamRuntimeTaskBounds(config);
   return {
-    timeout_ms: Math.min(600_000, config.execution_safety_policy.max_elapsed_ms),
+    ...taskBounds,
     max_steps: Math.max(1, Math.min(128, config.execution_safety_policy.max_tool_calls + 1)),
-    max_input_tokens: Math.max(1, Math.min(2_000_000, config.context_policy.max_context_tokens)),
-    max_output_tokens: Math.max(1, Math.min(4_096, config.context_policy.max_context_tokens)),
-    max_tool_calls: Math.min(1_000, config.execution_safety_policy.max_tool_calls),
-    max_context_bytes: 65_536,
   };
 }
 

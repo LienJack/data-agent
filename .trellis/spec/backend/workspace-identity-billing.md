@@ -158,10 +158,14 @@ select app_data_agent.decide_billing_mode(
 
 ## 9. Scenario: 登录用户到 Agent 计费主体的贯通
 
+> 历史兼容状态（2026-08-23）：登录身份、Workspace RBAC 与 Run principal 绑定继续生效；
+> 模型积分、Hold、扣费、价格/FX 解析和 `ModelBillingPort` 不再位于任何生产模型调用路径。
+> 既有账务表与接口只读保留用于历史数据，不得阻断或授权 Provider 调用。
+
 ### 1. Scope / Trigger
 
-- 新增或修改登录标识、用户创建、Run Worker 或真实 Model Provider 调用时，必须验证本节。
-- 目标是让认证、角色、Run 和积分共享同一个稳定 `principal_id`，同时禁止 Worker 串账。
+- 新增或修改登录标识、用户创建或 Run Worker 时，必须验证身份与 Scope 部分。
+- 目标是让认证、角色和 Run 共享同一个稳定 `principal_id`，同时禁止 Worker 跨用户访问。
 
 ### 2. Signatures
 
@@ -183,8 +187,7 @@ ModelBillingPort.finalize({ deployment_id, principal_id }, terminal)
   principal 必须相等。
 - Worker 静态身份不能作为 Run owner；lease 必须携带数据库返回的 owner principal，并在
   执行前解析该用户的实时 workspace capability。
-- Provider 只有在 model billing authorize 返回 `provider_call_allowed=true` 后可调用；终态
-  必须 finalize，不能丢失或猜测 usage。
+- Provider 调用不得读取或等待 model billing authorize/finalize；无需积分、Hold、价格或 usage 账务记录。
 
 ### 4. Validation & Error Matrix
 
@@ -192,25 +195,21 @@ ModelBillingPort.finalize({ deployment_id, principal_id }, terminal)
 | --- | --- |
 | username 冲突或非法 | 用户创建失败，补偿删除 auth orphan |
 | Run principal 与 capability principal 不同 | `WORKSPACE_ACCESS_DENIED` / scope mismatch |
-| 积分不足 | `CREDIT_AVAILABLE_INSUFFICIENT`，Provider 调用次数为 0 |
-| price/FX/profile/reservation 不完整 | model billing authorize 失败关闭 |
-| Provider 明确未开始 | release/cancel-before-start |
-| Provider 已开始但终态或 usage 不确定 | `OUTCOME_UNKNOWN` / `REVIEW_REQUIRED`，不得释放 hold |
+| 积分、价格、FX、reservation 或账务状态缺失 | 不影响 Provider 调用 |
+| Run principal 与 Workspace 权限不匹配 | 数据与模型调用前失败关闭 |
 
 ### 5. Good / Base / Bad Cases
 
-- Good：普通用户登录后发起 Run，自己的积分被冻结，真实 usage 结算为自己的 ledger entry。
-- Base：修改 username 或密码后继续使用原 principal、角色、余额和历史账单。
-- Bad：Worker 使用启动时管理员 principal 执行其他用户 Run，或先调用 Provider 后补写账单。
+- Good：普通用户登录后发起 Run，Worker 使用该 Run principal 校验 Workspace 与数据权限后直连模型。
+- Base：修改 username 或密码后继续使用原 principal、角色和历史 Run。
+- Bad：Worker 使用启动时管理员 principal 执行其他用户 Run，或让历史账务状态决定 Provider 可调用性。
 
 ### 6. Tests Required
 
 - Contract：username normalization、Run lease principal 和未知字段失败。
-- PostgreSQL：新用户自动积分账户、两个用户同 workspace 不串账、余额不足不产生 Provider
-  side effect、SYSTEM_FUNDED 不修改积分。
-- Worker：lease owner 与 capability/billing context 一致；Provider 成功、失败前、失败后和
-  outcome unknown 四种终态都形成正确账务状态。
-- E2E：邮箱和 username 登录同一用户，分别发起问答后个人账单接口只返回自己的账单。
+- PostgreSQL：两个用户同 workspace 不串权；历史账务记录保持可读但不参与新调用授权。
+- Worker：lease owner 与 Workspace capability 一致；调用前后不新增积分 Hold、账单或 ledger entry。
+- E2E：邮箱和 username 登录同一用户后都能发起问答，且仍只能读取自己有权访问的 Run。
 
 ### 7. Wrong vs Correct
 
@@ -218,6 +217,7 @@ ModelBillingPort.finalize({ deployment_id, principal_id }, terminal)
 // Wrong: 用服务启动账号给所有 Run 计费。
 const billingContext = { deployment_id, principal_id: process.env.WORKER_PRINCIPAL_ID };
 
-// Correct: principal 来自数据库权威 Run lease，并在执行前重新解析 capability。
-const billingContext = { deployment_id, principal_id: lease.principal_id };
+// Correct: principal 来自数据库权威 Run lease，并在执行前重新解析 Workspace capability；
+// 模型调用本身不创建 billing context。
+const workspaceContext = { deployment_id, principal_id: lease.principal_id };
 ```

@@ -1,6 +1,10 @@
 # Agent Team Product Runtime
 
 > U20 把 U19 Team v2 Authority、U14 Skill Registry、U12 Resolved Context 与公开 Run SSE 接成三个专职 Product Profile。
+>
+> 当前约定（2026-08-23）：Q&A 的活动 `START_DATA_AGENT_TEAM` 命令由单一直接分析执行器消费，
+> 不再创建 Root、Handoff、Child Task 或 Specialist。下文 Team v2/Profile 约定保留为历史协议兼容面；
+> 不得把它重新作为 Q&A 或通用模型调用的运行前置条件。
 
 ## 1. Scope / Trigger
 
@@ -53,10 +57,15 @@ GET /api/workspaces/{workspaceId}/runs/{runId}/team-trace
   canonical payload hash、`run.accepted` event payload hash 和 event hash。Command、Idempotency、Event、Outbox、
   Audit 六处必须提交同一个 Team hash；禁止依赖 `commands` 的单表 BEFORE INSERT trigger 事后改写。
 - Worker 在任何领域调用前重新读取并验证 selected exact Profile refs、dispatch plan/binding、trusted RunExecutionContext 和
-  U12 Package/Receipt identity；只为实际 selected profiles 创建 Handoff/Task/Capability/Event。DIRECT 走现有受审计 Provider authority，
-  不创建 child、Agent 或 Tool 事件。
+  U12 Package/Receipt identity；只为实际 selected profiles 创建 Handoff/Task/Capability/Event。历史 DIRECT 不创建
+  child、Agent 或 Tool 事件；当前 Q&A direct 走轻量模型网关且不消费持久 Provider authority。
 - 每个专职 Tool 必须先写 `tool_started`，再写唯一 `tool_completed` 或 `tool_failed`；开始事件失败时领域调用数必须为 0。事件只公开 Profile/Task/Artifact 身份。
 - Team 成功只能来自 runtime `ACCEPTED`；`COMPLETED`、模型文本或 Mastra snapshot 不能自行升级为 Acceptance。
+- 当前 Q&A 直接执行器按问题类型选择确定性只读分析；表数量、关系、趋势、异常和销售报告均直接提交
+  `SqlArtifact`、`QueryEvidence` 或 `AnalysisReport`，不通过 Root 再委派 Specialist。
+- 通用问题通过服务端配置的直连模型网关处理；不创建模型认证、持久调用许可或 Team 子任务事件。
+- 为读取历史 Artifact，当前投影可能继续携带闭集 `profile_id` 作为生产者分类标签；该字段不表示对应
+  Specialist 被实例化或调用。
 
 ## 4. Validation & Error Matrix
 
@@ -91,6 +100,8 @@ GET /api/workspaces/{workspaceId}/runs/{runId}/team-trace
 - Platform：fail-closed classifier、数据库 policy version 冻结、Owner rollout CAS、Analyst denial、DB result substitution、
   Team Trace narrow RPC。
 - Worker：九 Skill/三 Profile 唯一 hash、Tool isolation、visible started/completed/failed、Profile stale、Resolved Context identity-only、Team/Research 路由零 fallback。
+- Q&A direct：五类确定性分析路由、通用模型直连、缺少只读/Resolved Context 权限时失败关闭，并断言
+  Root/Handoff/Child/Specialist 事件数为 0。
 - Web：Profile Route 服务端注入 actor/scope/operation ID；缺 Profile 在 acceptance 前拒绝；Team Trace 空/任务/Verifier 状态。
 - PostgreSQL 17：10667/10670/10674 renderer/static、NOLOGIN owner、FORCE RLS、direct DML deny、Skill disabled、
   old 7-key 与 adaptive 9-key atomic acceptance、rollout CAS、DEFERRED no-Run replay；断言

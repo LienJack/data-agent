@@ -48,23 +48,18 @@ export const qaModelResourceSchema = z
         path: ["profile_version"],
       });
     }
-    const hasCompleteExecutionAuthority =
-      model.certification_receipt_ref !== null &&
-      model.effective_context_ceiling_tokens !== null &&
-      model.effective_output_ceiling_tokens !== null;
-    const hasApiAuthentication = model.api_authentication_state === "PASS";
     const hasAnyExecutionAuthority =
       model.certification_receipt_ref !== null ||
       model.effective_context_ceiling_tokens !== null ||
       model.effective_output_ceiling_tokens !== null;
     if (
       model.readiness === "AVAILABLE"
-        ? !model.selectable || (!hasCompleteExecutionAuthority && !hasApiAuthentication)
-        : model.selectable || hasAnyExecutionAuthority || hasApiAuthentication
+        ? !model.selectable
+        : model.selectable || hasAnyExecutionAuthority || model.api_authentication_state === "PASS"
     ) {
       ctx.addIssue({
         code: "custom",
-        message: "QA Model 只有 AVAILABLE 分支可选且携带完整执行认证与技术上限。",
+        message: "QA Model 只有 AVAILABLE 分支可选；认证字段仅用于历史投影。",
         path: ["readiness"],
       });
     }

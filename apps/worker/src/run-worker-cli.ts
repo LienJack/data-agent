@@ -22,7 +22,6 @@ import {
   createFileSystemStorageClient,
   createNeo4jKnowledgeIndexFromEnvironment,
   createOpenAiCompatibleEmbeddingProviderFactory,
-  createPostgresAgentProfileRegistry,
   createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
   createPostgresEcommerceBenchmarkExecutor,
@@ -39,7 +38,6 @@ import {
   createPostgresRunQueue,
   createPostgresSemanticExplorerReader,
   createPostgresSemanticInductionRegistry,
-  createPostgresTeamRunStore,
   createPostgresWorkspaceDataRepository,
   createPostgresWorkspaceFiles,
   createUnavailableKnowledgeIndex,
@@ -58,7 +56,7 @@ import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createSemanticInductionJobHandler } from "./jobs/semantic-induction-job-handler.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
-import { createProductionRunBoundProviderDispatcher } from "./providers/production-run-bound-provider-dispatcher.js";
+import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
 import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
 import {
@@ -77,11 +75,7 @@ import {
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
 import { createFrozenSemanticRelationshipReadPort } from "./semantic/semantic-relationship-read-port.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
-import { createDirectAnswerExecutor } from "./teams/direct-answer-executor.js";
-import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
-import { createProductionTeamTools } from "./teams/production-team-tools.js";
-import { createRootAgentDelegationRuntime } from "./teams/root-agent-delegation-runtime.js";
-import { createRootAgentTurnExecutor } from "./teams/root-agent-turn-executor.js";
+import { createDirectQaAnalysisExecutor } from "./teams/direct-qa-analysis-executor.js";
 import { createRunWorkflowExecutorRouter } from "./teams/run-workflow-executor-router.js";
 
 class RunWorkerStartupError extends Error {
@@ -345,9 +339,9 @@ export async function runWorkerProcess(
         });
         if (!principalCapability.ok) return principalCapability;
         const capability = principalCapability.value;
-        const providerDispatch = createProductionRunBoundProviderDispatcher({
-          pool: sqlPool,
-          authorizer: capabilityAuthority.authorizer,
+        const runRepository = createPostgresRepository(sqlPool, capabilityAuthority.authorizer);
+        const providerDispatch = createDirectRunBoundProviderDispatcher({
+          runs: runRepository,
           capability,
           environment,
         });
@@ -372,14 +366,6 @@ export async function runWorkerProcess(
           create_id: randomUUID,
           now: () => new Date(),
         });
-        const profileRegistry = createPostgresAgentProfileRegistry({
-          pool: sqlPool,
-          authorizer: capabilityAuthority.authorizer,
-        });
-        const teamStore = createPostgresTeamRunStore({
-          pool: sqlPool,
-          authorizer: capabilityAuthority.authorizer,
-        });
         const teamArtifacts = createPostgresProductTeamArtifactStore({
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
@@ -391,46 +377,14 @@ export async function runWorkerProcess(
             authorizer: capabilityAuthority.authorizer,
           }),
         );
-        const productionTeamRuntime = createProductionTeamRuntime({
-          store: teamStore,
-          capability,
-          artifacts: {
-            verifyCommitted: (reference) => teamArtifacts.verifyCommitted(capability, reference),
-            resolveCommitted: (reference) => teamArtifacts.resolveCommitted(capability, reference),
-          },
-          create_tools: (input) =>
-            createProductionTeamTools(
-              {
-                capability,
-                artifacts: teamArtifacts,
-                sandbox: ecommerceSandbox,
-                semantic_relationships: semanticRelationships,
-              },
-              input,
-            ),
-        });
-        const profilePorts = {
-          listEnabled: (profileCapability: unknown) =>
-            profileRegistry.list(profileCapability, true),
-          listDiscoverable: (profileCapability: unknown) =>
-            profileRegistry.listDiscoverable(profileCapability),
-        };
         const teamExecutor = createDataAgentTeamRunner({
-          profiles: profilePorts,
-          profile_capability_input: capability,
-          direct: createDirectAnswerExecutor(),
-          root: createRootAgentTurnExecutor(),
-          root_runtime: createRootAgentDelegationRuntime({
-            profiles: profilePorts,
-            profile_capability_input: capability,
-            runtime: productionTeamRuntime,
-            artifacts: {
-              verifyCommitted: (reference) => teamArtifacts.verifyCommitted(capability, reference),
-              resolveCommitted: (reference) =>
-                teamArtifacts.resolveCommitted(capability, reference),
-            },
+          direct_analysis: createDirectQaAnalysisExecutor({
+            capability,
+            runs: runRepository,
+            artifacts: teamArtifacts,
+            sandbox: ecommerceSandbox,
+            semantic_relationships: semanticRelationships,
           }),
-          runtime: productionTeamRuntime,
         });
         const executor = smokeTarget
           ? createProviderSmokeExecutor()

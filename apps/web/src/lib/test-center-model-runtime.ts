@@ -8,17 +8,14 @@ import {
 } from "@data-agent/agent-runtime";
 import {
   type AppScope,
-  type ArtifactReference,
   type AvailableModelProfile,
-  artifactReferenceIdentity,
-  authorizeAvailableModelProfile,
   type BenchmarkAgentDescriptor,
   type BenchmarkRunBudget,
   benchmarkAgentDescriptorSchema,
   CERTIFIED_MODEL_ANALYSIS_AGENT_ID,
   CERTIFIED_MODEL_MULTIPLE_CHOICE_AGENT_ID,
   CERTIFIED_MODEL_SQL_AGENT_ID,
-  type ModelCertificationClaims,
+  configureAvailableModelProfile,
   type ModelProviderPort,
   modelProviderSchema,
   semanticAgentCandidateOutputSchema,
@@ -40,15 +37,6 @@ import {
 } from "@data-agent/evals";
 
 const MODEL_RESPONSE_SCHEMA_OVERHEAD_BYTES = 4_096;
-
-export interface PersistedModelCertificationReceipt {
-  readonly reference: ArtifactReference;
-  readonly claims: ModelCertificationClaims;
-}
-
-export type PersistedModelCertificationReceiptResolver = (
-  binding: ModelProviderBinding,
-) => Promise<PersistedModelCertificationReceipt | null>;
 
 export type CertifiedTestCenterModelRuntime = {
   readonly available: true;
@@ -137,7 +125,7 @@ function configuredBinding(
       descriptor: unavailableDescriptor({
         provider: null,
         model_id: null,
-        reason: "未设置 TEST_CENTER_MODEL_PROVIDER，认证模型 Agent 保持关闭。",
+        reason: "未设置 TEST_CENTER_MODEL_PROVIDER，模型 Agent 保持关闭。",
       }),
     };
   }
@@ -184,7 +172,6 @@ function trustedInputTokenUpperBound(input: {
 
 export async function resolveTestCenterModelRuntime(input: {
   readonly scope: AppScope;
-  readonly resolve_receipt: PersistedModelCertificationReceiptResolver;
   readonly environment?: NodeJS.ProcessEnv;
 }): Promise<TestCenterModelRuntime> {
   const environment = input.environment ?? process.env;
@@ -204,65 +191,34 @@ export async function resolveTestCenterModelRuntime(input: {
     );
   }
 
-  let receipt: PersistedModelCertificationReceipt | null;
-  try {
-    receipt = await input.resolve_receipt(binding);
-  } catch {
-    receipt = null;
-  }
-  if (!receipt) {
-    return unavailableRuntime(
-      unavailableDescriptor({
-        provider: binding.provider,
-        model_id: binding.default_model_id,
-        reason: "PostgreSQL 中没有匹配当前绑定的已提交 Model Certification Receipt。",
-      }),
-    );
-  }
-
-  const referenceIdentity = artifactReferenceIdentity(receipt.reference);
   let profile: AvailableModelProfile;
   try {
-    profile = await authorizeAvailableModelProfile(
-      {
-        profile_id: binding.profile_id,
-        scope: input.scope,
-        provider: binding.provider,
-        model_id: binding.default_model_id,
-        profile_version: binding.profile_version,
-        capabilities: binding.capabilities,
-        operational_constraints: binding.operational_constraints,
-        certification_status: "AVAILABLE",
-        certification_receipt_ref: receipt.reference,
-        certified_model_id: binding.default_model_id,
-      },
-      {
-        resolve: async (reference) =>
-          artifactReferenceIdentity(reference) === referenceIdentity ? receipt.claims : null,
-        verifyCommitted: async (reference) =>
-          artifactReferenceIdentity(reference) === referenceIdentity,
-      },
-    );
+    profile = configureAvailableModelProfile({
+      profile_id: binding.profile_id,
+      scope: input.scope,
+      provider: binding.provider,
+      model_id: binding.default_model_id,
+      profile_version: binding.profile_version,
+      capabilities: binding.capabilities,
+      operational_constraints: binding.operational_constraints,
+      certification_status: "CONFIGURED",
+    });
   } catch {
     return unavailableRuntime(
       unavailableDescriptor({
         provider: binding.provider,
         model_id: binding.default_model_id,
-        reason: "持久化 Receipt 未能重验当前 Provider、Model、Profile Version 与约束 Hash。",
+        reason: "服务端模型绑定无法形成可用的直连 Profile。",
       }),
     );
   }
 
-  if (
-    profile.operational_constraints.context_window.verification_status !== "VERIFIED" ||
-    profile.operational_constraints.pricing.verification_status !== "VERIFIED" ||
-    profile.operational_constraints.pricing.currency !== "USD"
-  ) {
+  if (profile.operational_constraints.context_window.verification_status !== "VERIFIED") {
     return unavailableRuntime(
       unavailableDescriptor({
         provider: binding.provider,
         model_id: binding.default_model_id,
-        reason: "认证 Profile 尚未冻结已验证 Context Window 与 USD 定价，评测预算无法失败关闭。",
+        reason: "配置 Profile 未提供 Context Window，评测预算无法失败关闭。",
       }),
     );
   }

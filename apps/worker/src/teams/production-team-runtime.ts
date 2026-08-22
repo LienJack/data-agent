@@ -38,6 +38,7 @@ import {
   createMastraProfileComposition,
   type ProductProfileToolPort,
 } from "./mastra-profile-composition.js";
+import { deriveTeamRuntimeTaskBounds } from "./team-runtime-bounds.js";
 
 type TeamStoreMethod = (capability: unknown, command: unknown) => Promise<PortResult<unknown>>;
 
@@ -154,15 +155,7 @@ async function persist(
 }
 
 function bounds(input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]) {
-  const safety = input.execution_context.getEffectiveConfig().execution_safety_policy;
-  const context = input.execution_context.getEffectiveConfig().context_policy;
-  return {
-    max_context_bytes: 65_536,
-    max_input_tokens: Math.max(1, Math.min(32_768, context.max_context_tokens)),
-    max_output_tokens: 4_096,
-    max_tool_calls: Math.min(32, safety.max_tool_calls),
-    timeout_ms: Math.min(600_000, safety.max_elapsed_ms),
-  } as const;
+  return deriveTeamRuntimeTaskBounds(input.execution_context.getEffectiveConfig());
 }
 
 function delegationBounds(delegation: AdmittedSubagentDelegation) {
@@ -174,6 +167,19 @@ function delegationBounds(delegation: AdmittedSubagentDelegation) {
     max_tool_calls: budget.max_tool_calls,
     timeout_ms: budget.timeout_ms,
   } as const;
+}
+
+function delegationExecutionTools(
+  profileId: AgentSpecialistProfileId,
+  delegation: AdmittedSubagentDelegation,
+): readonly string[] {
+  if (
+    profileId === "semantic-management-agent" &&
+    delegation.profile.revision.discovery.access_mode === "READ_ONLY"
+  ) {
+    return delegation.receipt.tool_allowlist.filter((toolId) => toolId === "semantic.catalog.read");
+  }
+  return delegation.receipt.tool_allowlist;
 }
 
 async function emit(
@@ -735,7 +741,7 @@ export function createProductionTeamRuntime(
             ...(admittedDelegation
               ? {
                   execution_tool_allowlists: {
-                    [profileId]: admittedDelegation.receipt.tool_allowlist,
+                    [profileId]: delegationExecutionTools(profileId, admittedDelegation),
                   },
                 }
               : input.dispatch_plan?.question_class === "SEMANTIC_READ"

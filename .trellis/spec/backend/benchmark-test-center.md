@@ -16,8 +16,8 @@
 
 - 原始 Key 只存在于服务端进程环境，不写入 Model Store、数据库、日志、API 或浏览器状态。
 - 公共 Model API 只返回配置状态和脱敏后的 Profile；系统 Profile 不允许通过 Settings 修改或删除。
-- 真实作答前必须把 Profile 认证为 `AVAILABLE`，并验证 Context Window、USD 定价和 Provider
-  调用。开发会话探测不能冒充生产持久化 Certification Receipt。
+- 真实作答直接使用服务端配置的 Profile 与环境凭据，不要求模型认证、USD 定价、积分、扣费或
+  持久化调用许可。Context Window 与调用预算仍由服务端配置约束。
 
 ## 场景：初始化 Test Center Web 持久化
 
@@ -134,7 +134,7 @@ return resolveTestCenterRuntimeConfig(process.env);
 
 - 题库或 Demo 声明“可运行”“已接入”或“验收通过”时适用；只展示题面、预置 SQL、Gold 回放或
   单独验证 Sandbox 均不构成闭环。
-- 最小验收必须由用户从 Test Center 选择公开题目，并由 certified model/Data Agent 在不知道 Gold、
+- 最小验收必须由用户从 Test Center 选择公开题目，并由 configured model/Data Agent 在不知道 Gold、
   Rubric 和隐藏 Validator 的前提下生成候选答案。
 
 ### 2. 签名
@@ -175,7 +175,7 @@ executeBenchmarkAcceptance(input: {
 
 ### 5. Good / Base / Bad
 
-- Good：复杂题由 certified model/Data Agent 查询真实 PostgreSQL，Python 题再调用隔离 Sandbox，
+- Good：复杂题由 configured model/Data Agent 查询真实 PostgreSQL，Python 题再调用隔离 Sandbox，
   Oracle 用 Sealed Case 判分，页面能从 PostgreSQL 回读 ScoreCard 与证据链。
 - Base：先完成一道人为不可伪造的多表 SQL Demo 题闭环并保持 Production Suite `HOLD`，随后再以
   Hard SQL+Python 题完成最终 GO 门槛。
@@ -186,7 +186,7 @@ executeBenchmarkAcceptance(input: {
 
 - Unit：Sealed 摘要、Candidate/Gold 独立执行、顺序/无序结果、数值容差及失败分类。
 - Security：公共 API/Prompt/SSE/日志不出现 Sealed 字段；只读角色拒绝跨 Schema、DDL/DML、多语句。
-- Integration：真实 PostgreSQL 上至少一道人为不可伪造的多表题由 certified model 作答并生成
+- Integration：真实 PostgreSQL 上至少一道人为不可伪造的多表题由 configured model 作答并生成
   ScoreCard；最终验收另需一道人为不可伪造的 Hard SQL+Python 题通过真实 Worker/Sandbox。
 - Browser：选择题目、启动 Agent、查看公开执行阶段，并按 `batch_run_id` 回读同一 ScoreCard。
 
@@ -225,4 +225,4 @@ return persistScorecard(aggregate(publicCase, answer, evaluation));
 - Agent 只能生成 `REVIEW_REQUIRED` Candidate；人工 Review/Publish 前不能把候选冒充 active
   semantic release。
 - pipeline probe 只证明 32/17/309 case 执行与分类完成，不是模型准确率。真实成绩必须由
-  certified model/Data Agent 作答并由严格 result-equivalence Oracle 产生。
+  configured model/Data Agent 作答并由严格 result-equivalence Oracle 产生。

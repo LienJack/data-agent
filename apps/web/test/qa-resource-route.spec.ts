@@ -65,9 +65,6 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
-  getPricingControlRepository: () => ({
-    listModelAuthentications: vi.fn(async () => ({ ok: true, value: [] })),
-  }),
   getProviderInvocationStore: () => ({
     listExecutionProfiles: mocks.listExecutionProfiles,
   }),
@@ -88,7 +85,7 @@ beforeEach(() => {
 });
 
 describe("Q&A resource route", () => {
-  it("returns the pricing-free PostgreSQL execution readiness projection", async () => {
+  it("returns the authentication- and pricing-free direct execution projection", async () => {
     const response = await GET(
       new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/qa/resources`),
       { params: Promise.resolve({ workspaceId: ids.workspace }) },

@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
   type AvailableModelProfile,
-  authorizeModelProviderInvocation,
   type BenchmarkAgentDescriptor,
   type BenchmarkOracleFeedback,
   type BenchmarkRunBudget,
@@ -10,6 +9,7 @@ import {
   benchmarkAgentDescriptorSchema,
   benchmarkSqlAnswerSchema,
   CERTIFIED_MODEL_SQL_AGENT_ID,
+  createDirectModelProviderInvocation,
   isAvailableModelProfile,
   type ModelProviderEvent,
   type ModelProviderPort,
@@ -199,7 +199,7 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
     if (!isAvailableModelProfile(input.profile)) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_PROFILE_NOT_AUTHORIZED",
-        "SQL 模型 Agent 只接受经过持久化 Receipt 重验的 AVAILABLE Profile。",
+        "SQL 模型 Agent 只接受服务端配置的可用 Profile。",
       );
     }
     const contextWindow = input.profile.operational_constraints.context_window;
@@ -210,16 +210,10 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
         "SQL 模型 Agent 需要已验证的 Context Window 约束。",
       );
     }
-    if (pricing.verification_status === "VERIFIED" && pricing.currency !== "USD") {
-      throw new CertifiedModelAnalysisAgentError(
-        "MODEL_ANALYSIS_PRICING_NOT_VERIFIED",
-        "SQL 模型 Agent 的已验证定价必须使用 USD。",
-      );
-    }
     if (input.budget.max_output_tokens_per_attempt > contextWindow.max_output_tokens) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_BUDGET_EXCEEDED",
-        "冻结的单次输出预算超过认证 Profile 的输出上限。",
+        "冻结的单次输出预算超过配置 Profile 的输出上限。",
       );
     }
     this.#profile = input.profile;
@@ -268,44 +262,35 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
         "模型调用的保守成本上界超过冻结批次预算。",
       );
     }
-    const request = await authorizeModelProviderInvocation(
-      {
-        schema_version: "1.0.0",
-        request_id: randomUUID(),
-        attempt_id: input.invocation.attempt_id,
-        scope: this.#profile.scope,
+    const request = createDirectModelProviderInvocation({
+      schema_version: "1.0.0",
+      request_id: randomUUID(),
+      attempt_id: input.invocation.attempt_id,
+      scope: this.#profile.scope,
+      run_id: input.invocation.run_id,
+      provider: this.#profile.provider,
+      profile_id: this.#profile.profile_id,
+      profile_version: this.#profile.profile_version,
+      model_id: this.#profile.model_id,
+      task_ref: {
+        artifact_id: input.test_case.case_id,
+        artifact_type: "EvalCase",
+        ...this.#profile.scope,
         run_id: input.invocation.run_id,
-        provider: this.#profile.provider,
-        profile_id: this.#profile.profile_id,
-        profile_version: this.#profile.profile_version,
-        model_id: this.#profile.model_id,
-        task_ref: {
-          artifact_id: input.test_case.case_id,
-          artifact_type: "EvalCase",
-          ...this.#profile.scope,
-          run_id: input.invocation.run_id,
-          revision: 1,
-          content_hash: input.test_case.public_case_hash,
-        },
-        context_refs: [],
-        messages: input.messages,
-        tool_allowlist: [],
-        response_schema_version: input.response_schema_version,
-        budget: {
-          timeout_ms: input.invocation.timeout_ms,
-          max_input_tokens: inputTokenBudget,
-          max_output_tokens: maxOutputTokens,
-          max_tool_calls: 0,
-        },
+        revision: 1,
+        content_hash: input.test_case.public_case_hash,
       },
-      async ({ scope, profile_id }) =>
-        scope.app_id === this.#profile.scope.app_id &&
-        scope.tenant_id === this.#profile.scope.tenant_id &&
-        scope.environment === this.#profile.scope.environment &&
-        profile_id === this.#profile.profile_id
-          ? this.#profile
-          : null,
-    );
+      context_refs: [],
+      messages: input.messages,
+      tool_allowlist: [],
+      response_schema_version: input.response_schema_version,
+      budget: {
+        timeout_ms: input.invocation.timeout_ms,
+        max_input_tokens: inputTokenBudget,
+        max_output_tokens: maxOutputTokens,
+        max_tool_calls: 0,
+      },
+    });
     const started = performance.now();
     let completed: CompletedModelEvent | null = null;
     for await (const event of this.#modelProvider.stream(request)) {

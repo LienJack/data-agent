@@ -8,10 +8,7 @@ export {
   type PrivateAuditedProviderTransport,
   type ProtectedProviderResponseStore,
 } from "./audited-model-provider.js";
-export {
-  createPersistedModelProviderTransport,
-  type PersistedModelProviderPortFactory,
-} from "./persisted-model-provider-transport.js";
+export { createDirectRunBoundProviderDispatcher } from "./direct-run-bound-provider-dispatcher.js";
 export {
   type CommittedProjectionReceiptResolver,
   createPostgresAgentDataProjectionReceiptStore,
@@ -22,12 +19,8 @@ export {
   createPostgresProviderTaskArtifactAuthority,
   type ProviderTaskArtifactAuthority,
 } from "./postgres-provider-task-artifact.js";
-export { createProductionRunBoundProviderDispatcher } from "./production-run-bound-provider-dispatcher.js";
-export {
-  createRunBoundProviderDispatcher,
-  type ProviderExecutionProfileAuthority,
-} from "./run-bound-provider-dispatcher.js";
 export {
   computeTrustedInputTokenUpperBound,
+  computeTrustedInputTokenUpperBoundForRequestMessages,
   createTrustedUtf8InputTokenUpperBoundCounter,
 } from "./trusted-input-token-upper-bound.js";

@@ -1,12 +1,18 @@
 # Provider Invocation Authority
 
-> 本规范记录 U3 已实现的非商业 Provider 调用权威链。Falcon scoring、业务数据导入和最终发布验收不属于本场景。
+> 本规范记录历史 U3 持久调用权威链，以及当前生产模型直连边界。Falcon scoring、业务数据导入和最终发布验收不属于本场景。
+>
+> 当前约定（2026-08-23）：所有生产模型入口统一使用服务端配置的轻量直连网关，不再要求模型认证、
+> `provider_invocation_intents` / `provider_invocation_permits` 或其他持久化调用许可。既有 U3 表、RPC、
+> 迁移与读取器只用于历史数据兼容、审计和回放，不得重新接入 Q&A、Semantic Authoring、Test Center 或
+> Falcon 的活动调用路径。
 
 ## Scenario: 从 U2 Effective Config 发起可恢复的 Provider 调用
 
 ### 1. Scope / Trigger
 
 - 修改 Model Selector、Q&A Run selection、Provider transport、Worker 调度、Usage Receipt 或 `10654` 时适用。
+- 本节生命周期仅适用于历史持久调用记录的兼容与回放，不是新生产调用的前置条件。
 - PostgreSQL 是 Intent、Permit、Dispatch、Response Observation、Terminal、Usage 与受保护 Response Artifact 的唯一权威。
 - Zod Parse、Mastra event、调用方自报 hash 或进程内对象都不能授予持久 Authority。
 
@@ -103,3 +109,21 @@ return committed.protectedResponse;
 ```
 
 只有 `committed` Authority 可以释放输出；任何持久步骤不确定都必须 load/replay，不得重调 Provider。
+
+## Scenario: 生产模型轻量直连
+
+### Contracts
+
+- Provider、Profile、Model、上下文预算和超时仍由服务端冻结；浏览器、模型输出和调用方不得覆盖。
+- 凭据只从服务端环境解析，不写入数据库、Artifact、Event、日志或浏览器投影。
+- 调用请求必须绑定 exact Scope、Run、Attempt、Model 与响应 Schema，并在边界解析所有 Provider 事件。
+- 不读取模型认证状态，不创建 Intent/Permit/Dispatch/Usage 权威记录，也不执行积分、额度或扣费步骤。
+- 允许对明确可重试的网络、限流、超时或不可用错误做一次进程内重试；不确定是否送达时不得无限重试。
+- 直连结果不是 SQL、Evidence 或业务结论权威。数据问题仍必须先走只读 Sandbox，并提交 QueryEvidence；
+  通用问答输出只能作为 Run 的公开回答投影。
+
+### Required tests
+
+- Contract 测试证明直连请求不需要 Certification Receipt 或 Permit 仍可获得严格品牌。
+- Worker 测试覆盖 Scope/Run/Attempt 换绑、缺凭据、非法请求、Provider 稳定错误码与单次重试上限。
+- 真实运行证明调用前后持久 Intent/Permit 行数不增加，且公开 Event 不出现 Root/Specialist 生命周期。

@@ -14,7 +14,6 @@ import {
   sha256ContentHash,
   sideEffectReceiptSchema,
 } from "@data-agent/contracts";
-import type { AuditedModelProviderResult } from "../providers/audited-model-provider.js";
 import type { RunDisplayEventInput, RunExecutionContext } from "./run-worker-runner.js";
 import { failure, occurredAt, receiptMatchesRequest, success } from "./run-worker-shared.js";
 
@@ -36,8 +35,19 @@ export interface RunProviderDispatchCapability {
       profile_id: string;
       objective: string;
     }>;
-  }): Promise<PortResult<AuditedModelProviderResult>>;
+  }): Promise<PortResult<RunModelProviderResult>>;
 }
+
+export type RunModelProviderResult = Readonly<{
+  output_text: string;
+  tool_calls: readonly unknown[];
+  projection: Readonly<{
+    invocation_id: string;
+    status: "STARTED" | "COMPLETED" | "FAILED" | "THROTTLED" | "OUTCOME_UNKNOWN";
+    provider: string;
+    model_id: string;
+  }>;
+}>;
 
 export interface RunBoundProviderDispatcher {
   invoke(input: {
@@ -47,7 +57,7 @@ export interface RunBoundProviderDispatcher {
     readonly logical_call_id: string;
     readonly turn?: Parameters<RunProviderDispatchCapability["invoke"]>[0]["turn"];
     readonly signal: AbortSignal;
-  }): Promise<PortResult<AuditedModelProviderResult>>;
+  }): Promise<PortResult<RunModelProviderResult>>;
 }
 
 export interface RunResolvedContextCapability {
@@ -141,7 +151,7 @@ export function createRunExecutionContext({
   const providerDispatchCapability = providerDispatch
     ? Object.freeze({
         invoke(input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) {
-          if (runSignal.aborted) return Promise.resolve(aborted<AuditedModelProviderResult>());
+          if (runSignal.aborted) return Promise.resolve(aborted<RunModelProviderResult>());
           const logicalCallId = canonicalImmutableIdSchema.safeParse(input.logical_call_id);
           if (!logicalCallId.success) {
             return Promise.resolve(

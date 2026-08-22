@@ -41,7 +41,7 @@ export interface ModelProviderPortCompositionInput {
   readonly clock?: ModelProviderAdapterClock;
 }
 
-/** Product composition for PostgreSQL-audited semantic authoring traffic. */
+/** @deprecated Use createDirectModelProviderPort. */
 export function createSemanticAuthoringModelProviderPort(
   input: ModelProviderPortCompositionInput & {
     readonly terminal_recorder: ProviderTerminalRecorder;
@@ -58,16 +58,17 @@ export function createSemanticAuthoringModelProviderPort(
     bridge,
     dispatch_marker: input.dispatch_marker,
     terminal_recorder: input.terminal_recorder,
-    authorization: "SEMANTIC_AUTHORING_PERSISTED",
+    authorization: "DIRECT",
     ...(input.abort_signal ? { abort_signal: input.abort_signal } : {}),
     ...(input.clock ? { clock: input.clock } : {}),
   });
 }
 
 /**
- * 项目稳定的 ModelProviderPort 组合入口。
+ * 项目稳定的轻量 ModelProviderPort 组合入口。
  *
  * Mastra 是内部执行实现；调用方只获得项目自有 Port，不能依赖框架构造器。
+ * 此入口不读取认证 Receipt，也不消费持久化调用 Permit。
  */
 export function createModelProviderPort(
   input: ModelProviderPortCompositionInput,
@@ -84,16 +85,21 @@ export function createModelProviderPort(
   return new MastraModelProviderAdapter({
     bridge,
     dispatch_marker: input.dispatch_marker,
-    authorization: "PERSISTENT_PERMIT",
+    authorization: "DIRECT",
     ...(input.abort_signal ? { abort_signal: input.abort_signal } : {}),
     ...(input.clock ? { clock: input.clock } : {}),
   });
 }
 
 /**
- * Isolated benchmark boundary. Requests still require an authoritative,
- * persisted-certification-backed model profile, but do not impersonate a U3
- * run dispatch permit. Product Run execution must use createModelProviderPort.
+ * Explicit name for the lightweight server-configured model path. It performs
+ * no certification lookup and consumes no persisted invocation permit.
+ */
+export const createDirectModelProviderPort = createModelProviderPort;
+
+/**
+ * @deprecated Compatibility alias for isolated benchmarks. It now uses the
+ * same direct request boundary and does not require certification.
  */
 export function createCertifiedEvaluationModelProviderPort(
   input: ModelProviderPortCompositionInput,
@@ -108,7 +114,7 @@ export function createCertifiedEvaluationModelProviderPort(
   return new MastraModelProviderAdapter({
     bridge,
     dispatch_marker: input.dispatch_marker,
-    authorization: "CERTIFIED_EVALUATION",
+    authorization: "DIRECT",
     ...(input.abort_signal ? { abort_signal: input.abort_signal } : {}),
     ...(input.clock ? { clock: input.clock } : {}),
   });

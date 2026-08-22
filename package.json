@@ -64,8 +64,6 @@
     "test:deploy:docker": "./scripts/test-deploy-docker.sh",
     "test:deploy:hosted": "tsx scripts/pending-gate.ts test:deploy:hosted U9",
     "capability:probe": "tsx scripts/capability-probe.ts",
-    "capability:probe:credentialed": "pnpm --filter @data-agent/worker credentialed:smoke",
-    "model:certify:local": "pnpm --filter @data-agent/worker system-models:certify",
     "verify:release": "tsx scripts/verify-release.ts",
     "cleanup:legacy-attribution": "tsx scripts/legacy-attribution-cleanup.ts"
   },

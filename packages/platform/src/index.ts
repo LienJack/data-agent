@@ -104,6 +104,8 @@ export {
 export {
   assertEcommerceBenchmarkReadOnlySql,
   compileEcommerceMonthlyOrderTrendSql,
+  compileEcommerceSalesAnomalySql,
+  compileEcommerceSalesReportSummarySql,
   compileEcommerceTableCountSql,
   createPostgresEcommerceBenchmarkExecutor,
   type EcommerceBenchmarkQueryExecutor,

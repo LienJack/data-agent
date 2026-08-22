@@ -1,7 +1,6 @@
 # Q&A 对话资源绑定
 
-> 本规范记录 Q&A Composer、Conversation、Run 与 Worker 之间已经实现的资源绑定契约，并明确
-> Provider/Text2SQL 尚未接通时的发布 No-Go。
+> 本规范记录 Q&A Composer、Conversation、Run 与 Worker 之间已经实现的资源绑定契约。
 
 ## Scenario: 按对话冻结模型与数据源
 
@@ -11,8 +10,8 @@
   使用本节。
 - `model_profile_id + datasource_id` 是同一份服务端权威 Conversation Projection；浏览器不能维护
   第二份 committed binding。
-- 当前实现已经完成 Conversation 冻结、Replacement、Run snapshot 和公开 binding verify 事件；在
-  Worker 真实消费所选 Provider、Billing、Schema、Sandbox 前，发布状态必须保持 `HOLD`。
+- 当前实现已经完成 Conversation 冻结、Replacement、Run snapshot、直接分析执行、只读 Sandbox、
+  QueryEvidence/AnalysisReport 与公开执行事件。模型认证、Billing 和持久调用许可不属于发布前置条件。
 
 ### 2. Signatures
 
@@ -37,10 +36,8 @@ datasource_id, model_profile_id, expected_resource_version
 ### 3. Contracts
 
 - Resource Catalog 只返回安全投影；Credential、SecretRef locator、连接串和价格明细不得返回浏览器。
-- 环境 Credential Profile 必须先通过安全元数据 RPC 同步到 PostgreSQL 权威目录；同步命令不得包含
-  Credential。计费模式为 `SHADOW` 时该 Profile 可进入 `ACTIVE + selectable=true`，暂停用户额度
-  Hold/扣减；切回 `ENFORCED` 后，缺少完整价格链的 Profile 必须恢复为
-  `UNBILLABLE + selectable=false`。
+- 环境 Credential Profile 通过安全元数据同步为可选模型；同步命令不得包含 Credential。模型选择不依赖
+  认证、计费模式、价格链、积分或额度状态。
 - 空对话切换返回 `UPDATED_CURRENT` 并把 `resource_version` 加一；已有消息的对话返回
   `CREATED_REPLACEMENT`，新对话消息数为 0，旧 ID、消息和 Run 不变。
 - Q&A Run start 的浏览器请求只含 `question + idempotency_key`。Repository 从 Conversation 解析
@@ -51,8 +48,8 @@ datasource_id, model_profile_id, expected_resource_version
   `model_catalog_entries`。
 - `qa_resource_switch_operations` 使用 `SELECT ... FOR UPDATE`，所以 Backend ACL 必须是
   `SELECT, INSERT, UPDATE`；只有 `SELECT, INSERT` 会在运行时得到 `42501`。
-- Worker 当前只解析完整绑定并产生脱敏的 `resource.binding.verify` 公开工具事件；这不是 Provider、
-  Billing 或 datasource query 的执行证明。
+- Worker 解析完整绑定后直接执行确定性分析或服务端模型直连。数据事实必须由同 Run 的只读查询与
+  Evidence Artifact 证明；`resource.binding.verify` 本身仍不是 datasource query 的执行证明。
 
 ### 4. Validation & Error Matrix
 
@@ -65,8 +62,8 @@ datasource_id, model_profile_id, expected_resource_version
 | model profile 不在 active authority catalog | `MODEL_PROFILE_NOT_AVAILABLE` |
 | 已有消息后绕过 switch RPC 原地改资源 | `CONVERSATION_RESOURCES_FROZEN` |
 | Q&A Run 缺少完整模型/数据源快照 | `CONVERSATION_RESOURCES_REQUIRED` / `QA_RUN_BINDING_INVALID` |
-| `SHADOW` 且环境 Profile 已安全同步 | UI 显示可运行，可冻结到 Conversation |
-| `ENFORCED` 且 Profile 缺少完整价格链 | UI 显示不可计费，Send 禁用 |
+| 环境 Profile 已安全同步且服务端凭据存在 | UI 显示可运行，可冻结到 Conversation |
+| 缺少模型认证、积分、价格链或持久调用许可 | 不影响模型选择或调用 |
 
 ### 5. Good / Base / Bad Cases
 
@@ -84,8 +81,8 @@ datasource_id, model_profile_id, expected_resource_version
   消息数为 0；迁移 renderer 必须固定 checksum。
 - Web：Store 覆盖无 active Conversation 时资源选择创建空对话、Replacement 激活、目录失败不静默
   fallback；浏览器覆盖 320/375/768、无横向溢出、弹层 collision、Arrow/Home/End/Escape 和焦点归还。
-- Worker：完整/不完整 binding 失败关闭；真实发布前还必须新增两个 Profile 的 Provider/Billing 观察证据
-  和两个 datasource 的 schema/query/sandbox 隔离证据。
+- Worker：完整/不完整 binding 失败关闭；五个 Q&A 门禁分别提供真实 Run、Artifact 和只读查询证据；
+  通用问答证明直连成功且调用前后持久 Intent/Permit 行数不增加。
 
 ### 7. Wrong vs Correct
 
@@ -103,6 +100,6 @@ where model_profile_id = :profile_id;
 // Wrong: 下拉框选中就宣称真实模型切换完成。
 conversation.modelProfileId = selectedProfileId;
 
-// Correct: Conversation -> immutable Run snapshot -> Worker Provider/Billing/SQL evidence
-// 全链路一致后才能解除 HOLD。
+// Correct: Conversation -> immutable Run snapshot -> direct Worker -> SQL/Evidence or direct model
+// 数据事实仍由只读查询和 Artifact 证明。
 ```

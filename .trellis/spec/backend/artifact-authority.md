@@ -414,7 +414,8 @@ issueCapabilityDeliveryReceipt(
 - `ScoreCard` 必须绑定权威 `OracleVerdictReceipt`，并逐项匹配 Case、EvalRun、Suite、Suite/Dataset/Oracle Version、Oracle Type 与 Deterministic Verdict。
 - `ScoreCard.comparison` 明确区分 `SINGLE` 与 `PAIRED`；`PAIRED` 必须绑定不同的权威且已完成 Baseline/Candidate EvalRun，Candidate 等于当前 ScoreCard EvalRun，并携带版本化 Metric Interval、Confidence、Sample Size 与 Method。
 - `DELIVERED` 只能由运行时验证过的 `AuthoritativeReleaseDecision` 签发；类型断言或普通 Schema Parse 不构成授权。
-- Provider `AVAILABLE`、Eval Registry Assignment 与 `PASS ScoreCard` 都有独立的 Resolver/Authorizer；Schema Parse 只产生声明，不产生可用或通过状态。
+- 历史 Provider `AVAILABLE`、Eval Registry Assignment 与 `PASS ScoreCard` 仍有独立 Resolver/Authorizer；
+  活动模型直连不消费 `AVAILABLE` 或 Certification Receipt。Schema Parse 仍不能产生 SQL、Evidence 或发布权威。
 
 ### 4. 校验与错误矩阵
 
@@ -547,7 +548,8 @@ issueCapabilityDeliveryReceipt(
 - 模块拆分后必须保持包根 API、旧 `u6-candidate-set@1` golden hash 与 4 个 focused
   derivation 测试文件不变，并用静态导入扫描证明叶模块无 facade/index/wire/platform
   回指。
-- Provider 假 Receipt 或不匹配 Capability Hash 不能成为 `AVAILABLE`；EvalCase 不能被重新标为 Demo/Holdout；未完成 EvalRun、未提交 Evidence 或孤立 `PASS ScoreCard` 不能授权。
+- 历史 Provider 假 Receipt 或不匹配 Capability Hash 不能成为 `AVAILABLE`；活动直连不得读取该状态。
+  EvalCase 不能被重新标为 Demo/Holdout；未完成 EvalRun、未提交 Evidence 或孤立 `PASS ScoreCard` 不能授权。
 - Oracle Receipt 拒绝未提交、Hash 漂移、Reference 不匹配、Suite/Oracle Type 错配和服务端 Oracle 验真失败。
 - ScoreCard 拒绝伪造 Oracle 品牌、自报 PASS、Receipt Verdict/Version/Reference 不匹配；Paired ScoreCard 拒绝 Candidate 漂移、未授权 Baseline 与非法 Interval。
 - `GO` 拒绝失败/不确定 ScoreCard、非零 Safety Counter、领域伪造 Receipt、策略不匹配、

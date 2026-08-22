@@ -173,7 +173,7 @@ export const modelProfileSchema = z
     operational_constraints: modelOperationalConstraintsSchema.default(
       UNVERIFIED_MODEL_OPERATIONAL_CONSTRAINTS,
     ),
-    certification_status: z.enum(["UNVERIFIED", "AVAILABLE", "UNAVAILABLE"]),
+    certification_status: z.enum(["UNVERIFIED", "CONFIGURED", "AVAILABLE", "UNAVAILABLE"]),
     certification_receipt_ref: modelCertificationReceiptReferenceSchema.optional(),
     certified_model_id: z.string().min(1).max(256).optional(),
   })
@@ -539,9 +539,19 @@ declare const availableModelProfile: unique symbol;
 const availableModelProfiles = new WeakSet<object>();
 
 export type AvailableModelProfile = z.infer<typeof modelProfileSchema> & {
-  readonly certification_status: "AVAILABLE";
+  readonly certification_status: "CONFIGURED" | "AVAILABLE";
   readonly [availableModelProfile]: true;
 };
+
+/** Admit a server-configured profile without any certification receipt lookup. */
+export function configureAvailableModelProfile(input: unknown): AvailableModelProfile {
+  const profile = modelProfileSchema.parse(input);
+  if (profile.certification_status !== "CONFIGURED") {
+    throw new ModelCertificationError("Direct model profile must be CONFIGURED.");
+  }
+  availableModelProfiles.add(profile);
+  return deepFreeze(profile) as AvailableModelProfile;
+}
 
 export async function authorizeAvailableModelProfile(
   input: unknown,

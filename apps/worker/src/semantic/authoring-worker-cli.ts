@@ -1,5 +1,4 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { AvailableExecutionModelProfile } from "@data-agent/contracts";
 import {
   loadRuntimeBuildIdentity,
   loadRuntimeMigrationFact,
@@ -16,7 +15,10 @@ import {
 import nextEnvironment from "@next/env";
 import pg from "pg";
 import { z } from "zod";
-import { resolveSemanticAuthoringModelRuntime } from "./authoring-model-runtime.js";
+import {
+  type DirectConfiguredModelProfile,
+  resolveSemanticAuthoringModelRuntime,
+} from "./authoring-model-runtime.js";
 import { createWorkerSemanticAuthoringRunner } from "./authoring-runner.js";
 import { createSemanticAuthoringWorkerCycleRunner } from "./authoring-worker-runner.js";
 
@@ -26,7 +28,7 @@ const LOCAL_PRINCIPAL_ID = "00000000-0000-4000-8000-000000000003";
 const AUTHORING_INPUT_TOKEN_CEILING = 128_000;
 const AUTHORING_OUTPUT_TOKEN_CEILING = 8_000;
 
-function authoringProviderBudget(profile: AvailableExecutionModelProfile) {
+function authoringProviderBudget(profile: DirectConfiguredModelProfile) {
   const context = profile.operational_constraints.context_window;
   if (context.verification_status !== "VERIFIED") {
     return {

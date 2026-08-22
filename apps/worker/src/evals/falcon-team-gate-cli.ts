@@ -3,16 +3,14 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
-  createCertifiedEvaluationModelProviderPort,
+  createDirectModelProviderPort,
   createModelProviderBindings,
   ServerModelResponseSchemaRegistry,
   SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
 } from "@data-agent/agent-runtime";
 import {
-  type ArtifactReference,
-  authorizeAvailableModelProfile,
+  configureAvailableModelProfile,
   type ModelProviderPort,
-  modelCertificationClaimsSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
@@ -180,7 +178,7 @@ async function buildBundleIndex(pool: Pool) {
   return { bundleIndex, physicalColumnsByDatabase };
 }
 
-async function resolveCertifiedRuntime(pool: Pool, environment: NodeJS.ProcessEnv) {
+async function resolveDirectRuntime(environment: NodeJS.ProcessEnv) {
   const modelId = environment.FALCON_MODEL_ID?.trim() || "deepseek-v4-flash";
   const bindingOverrides =
     modelId === "deepseek-v4-flash"
@@ -205,63 +203,25 @@ async function resolveCertifiedRuntime(pool: Pool, environment: NodeJS.ProcessEn
     ({ provider }) => provider === "deepseek",
   );
   if (!binding) throw new Error("FALCON_DEEPSEEK_BINDING_MISSING");
-  const result = await pool.query<{
-    run_id: string;
-    artifact_id: string;
-    content_hash: string;
-    document_json: unknown;
-  }>(
-    `select run_id::text, artifact_id::text, content_hash, document_json
-       from app_data_agent.artifacts
-      where app_id = $1::uuid
-        and tenant_id = $2::uuid
-        and environment = $3::text
-        and artifact_type = 'ModelCertificationReceipt'
-        and document_json ->> 'provider' = 'deepseek'
-        and document_json ->> 'model_id' = $4::text
-        and document_json ->> 'verdict' = 'PASS'
-      order by created_at desc
-      limit 1`,
-    [
-      PROFILE_SCOPE.app_id,
-      PROFILE_SCOPE.tenant_id,
-      PROFILE_SCOPE.environment,
-      binding.default_model_id,
-    ],
-  );
-  const row = result.rows[0];
-  if (!row) throw new Error("FALCON_DEEPSEEK_CERTIFICATION_MISSING");
-  const claims = modelCertificationClaimsSchema.parse(row.document_json);
-  const receiptReference: ArtifactReference = {
-    artifact_id: row.artifact_id,
-    artifact_type: "ModelCertificationReceipt",
-    ...PROFILE_SCOPE,
-    run_id: row.run_id,
-    revision: 1,
-    content_hash: z.string().parse(row.content_hash) as `sha256:${string}`,
-  };
-  const profile = await authorizeAvailableModelProfile(
-    {
-      profile_id: binding.profile_id,
-      scope: PROFILE_SCOPE,
+  const profile = configureAvailableModelProfile({
+    profile_id: binding.profile_id,
+    scope: PROFILE_SCOPE,
+    provider: binding.provider,
+    model_id: binding.default_model_id,
+    profile_version: binding.profile_version,
+    capabilities: binding.capabilities,
+    operational_constraints: binding.operational_constraints,
+    certification_status: "CONFIGURED",
+  });
+  const profileReference = {
+    resource_id: binding.profile_id,
+    resource_revision: 1,
+    resource_hash: await sha256ContentHash({
       provider: binding.provider,
       model_id: binding.default_model_id,
       profile_version: binding.profile_version,
-      capabilities: binding.capabilities,
-      operational_constraints: binding.operational_constraints,
-      certification_status: "AVAILABLE",
-      certification_receipt_ref: receiptReference,
-      certified_model_id: binding.default_model_id,
-    },
-    {
-      resolve: async (reference) =>
-        "artifact_id" in reference && reference.artifact_id === receiptReference.artifact_id
-          ? claims
-          : null,
-      verifyCommitted: async (reference) =>
-        "artifact_id" in reference && reference.artifact_id === receiptReference.artifact_id,
-    },
-  );
+    }),
+  };
   const credential = environment[binding.credential_env]?.trim();
   if (!credential) throw new Error("FALCON_DEEPSEEK_CREDENTIAL_MISSING");
   const registry = new ServerModelResponseSchemaRegistry([
@@ -274,7 +234,7 @@ async function resolveCertifiedRuntime(pool: Pool, environment: NodeJS.ProcessEn
       schema: modelSqlReflectionResponseSchema,
     },
   ]);
-  const base = createCertifiedEvaluationModelProviderPort({
+  const base = createDirectModelProviderPort({
     credential_resolver: {
       resolve: async (request) =>
         request.provider === binding.provider && request.credential_env === binding.credential_env
@@ -325,7 +285,7 @@ async function resolveCertifiedRuntime(pool: Pool, environment: NodeJS.ProcessEn
       return stream();
     },
   };
-  return { binding, profile, port: observedPort, observations, receiptReference };
+  return { binding, profile, port: observedPort, observations, profileReference };
 }
 
 async function mapConcurrent<T>(
@@ -405,7 +365,7 @@ async function main(): Promise<void> {
     if (verification.rows[0]?.count !== "28") throw new Error("FALCON_DATABASE_SET_NOT_READY");
     const [bundle, runtime, devDataset, testCases] = await Promise.all([
       buildBundleIndex(pool),
-      resolveCertifiedRuntime(pool, environment),
+      resolveDirectRuntime(environment),
       loadFalconDevDataset(),
       loadFalconTestCases(),
     ]);
@@ -618,7 +578,7 @@ async function main(): Promise<void> {
               model_id: runtime.binding.default_model_id,
               source_digest: devDataset.installed_digest,
               semantic_bundle_index: bundleIndex,
-              model_profile_ref: runtime.receiptReference,
+              model_profile_ref: runtime.profileReference,
               cases: [...results].sort((left, right) => left.case_id.localeCompare(right.case_id)),
             },
             null,

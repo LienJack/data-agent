@@ -188,6 +188,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
   readonly #clock: ModelProviderAdapterClock;
   readonly #dispatchMarker: ProviderDispatchMarker;
   readonly #authorization:
+    | "DIRECT"
     | "PERSISTENT_PERMIT"
     | "SEMANTIC_AUTHORING_PERSISTED"
     | "CERTIFIED_EVALUATION"
@@ -200,6 +201,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
     readonly clock?: ModelProviderAdapterClock;
     readonly dispatch_marker: ProviderDispatchMarker;
     readonly authorization:
+      | "DIRECT"
       | "PERSISTENT_PERMIT"
       | "SEMANTIC_AUTHORING_PERSISTED"
       | "CERTIFIED_EVALUATION"
@@ -221,7 +223,8 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
         !isAuthoritativePersistedModelProviderInvocation(input)) ||
       (this.#authorization === "SEMANTIC_AUTHORING_PERSISTED" &&
         !isAuthoritativeSemanticAuthoringModelProviderInvocation(input)) ||
-      ((this.#authorization === "CERTIFIED_EVALUATION" ||
+      ((this.#authorization === "DIRECT" ||
+        this.#authorization === "CERTIFIED_EVALUATION" ||
         this.#authorization === "LEGACY_TEST_ONLY") &&
         !isAuthoritativeModelProviderInvocation(input))
     ) {

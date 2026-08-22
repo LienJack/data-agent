@@ -3,7 +3,6 @@ import "server-only";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import {
-  type ArtifactReference,
   type BenchmarkAgentDescriptor,
   type BenchmarkEvalBatchRun,
   benchmarkEvalBatchRunSchema,
@@ -11,7 +10,6 @@ import {
   CERTIFIED_MODEL_MULTIPLE_CHOICE_AGENT_ID,
   CERTIFIED_MODEL_SQL_AGENT_ID,
   createBenchmarkRunInputSchema,
-  modelCertificationClaimsSchema,
   PROFILE_ANALYSIS_AGENT_ID,
   PUBLISHED_BASELINE_AGENT_ID,
   SUBMITTED_ANSWER_AGENT_ID,
@@ -52,10 +50,7 @@ import {
 import pg from "pg";
 import { z } from "zod";
 import { ensureRootEnvironmentLoaded } from "./root-env";
-import {
-  type PersistedModelCertificationReceipt,
-  resolveTestCenterModelRuntime,
-} from "./test-center-model-runtime";
+import { resolveTestCenterModelRuntime } from "./test-center-model-runtime";
 
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 const workspaceContextSchema = z.strictObject({
@@ -77,14 +72,6 @@ const runtimeConfigSchema = z.strictObject({
 interface StoredRunRow {
   readonly request_hash: string;
   readonly run_document: unknown;
-}
-
-interface StoredCertificationReceiptRow {
-  readonly run_id: string;
-  readonly artifact_id: string;
-  readonly revision: number;
-  readonly content_hash: string;
-  readonly document_json: unknown;
 }
 
 export class TestCenterRuntimeError extends Error {
@@ -309,60 +296,9 @@ function currentScope() {
   } as const;
 }
 
-async function resolvePersistedModelCertificationReceipt(input: {
-  readonly profile_id: string;
-  readonly provider: string;
-  readonly default_model_id: string;
-  readonly profile_version: string;
-}): Promise<PersistedModelCertificationReceipt | null> {
-  const current = config();
-  return withScopedClient(async (client) => {
-    const result = await client.query<StoredCertificationReceiptRow>(
-      `select run_id, artifact_id, revision, content_hash, document_json
-         from app_data_agent.artifacts
-        where app_id = $1::uuid
-          and tenant_id = $2::uuid
-          and environment = $3::text
-          and artifact_type = 'ModelCertificationReceipt'
-          and revision = 1
-          and is_active
-          and document_json ->> 'profile_id' = $4::text
-          and document_json ->> 'provider' = $5::text
-          and document_json ->> 'model_id' = $6::text
-          and document_json ->> 'profile_version' = $7::text
-          and document_json ->> 'verdict' = 'PASS'
-        order by created_at desc
-        limit 1`,
-      [
-        currentAppId(),
-        current.tenantId,
-        current.environment,
-        input.profile_id,
-        input.provider,
-        input.default_model_id,
-        input.profile_version,
-      ],
-    );
-    const row = result.rows[0];
-    if (!row) return null;
-    const reference: ArtifactReference = {
-      artifact_id: row.artifact_id,
-      artifact_type: "ModelCertificationReceipt",
-      ...currentScope(),
-      run_id: row.run_id,
-      revision: row.revision,
-      content_hash: row.content_hash as `sha256:${string}`,
-    };
-    const claims = modelCertificationClaimsSchema.safeParse(row.document_json);
-    if (!claims.success) return null;
-    return Object.freeze({ reference, claims: claims.data });
-  });
-}
-
 async function modelRuntime() {
   return resolveTestCenterModelRuntime({
     scope: currentScope(),
-    resolve_receipt: (binding) => resolvePersistedModelCertificationReceipt(binding),
   });
 }
 

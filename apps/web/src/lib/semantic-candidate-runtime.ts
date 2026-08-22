@@ -1,6 +1,5 @@
 import "server-only";
 
-import { type ArtifactReference, modelCertificationClaimsSchema } from "@data-agent/contracts";
 import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
@@ -9,23 +8,18 @@ import {
   createPostgresSemanticExplorerReader,
   type SqlPool,
   type TransactionalCapabilityAuthorizer,
-  withAppTransaction,
 } from "@data-agent/platform";
 import pg from "pg";
 import { PostgresSemanticGovernanceService } from "./postgres-semantic-governance-service";
 import {
   createPostgresSemanticAuthorityResolver,
-  type SemanticAuthorityContext,
   type SemanticAuthorityResolver,
 } from "./semantic-authority";
 import {
   createSemanticCandidateService,
   type SemanticCandidateService,
 } from "./semantic-candidate-service";
-import {
-  type PersistedModelCertificationReceipt,
-  resolveTestCenterModelRuntime,
-} from "./test-center-model-runtime";
+import { resolveTestCenterModelRuntime } from "./test-center-model-runtime";
 
 interface SemanticCandidateEnvironment extends NodeJS.ProcessEnv {
   readonly SEMANTIC_CANDIDATE_DATABASE_URL?: string;
@@ -35,14 +29,6 @@ interface SemanticCandidateEnvironment extends NodeJS.ProcessEnv {
   readonly SEMANTIC_PRINCIPAL_ID?: string;
   readonly SEMANTIC_ALLOWED_DOMAINS?: string;
   readonly SEMANTIC_CANDIDATE_MODEL_PROVIDER?: string;
-}
-
-interface StoredCertificationReceiptRow {
-  readonly run_id: string;
-  readonly artifact_id: string;
-  readonly revision: number;
-  readonly content_hash: string;
-  readonly document_json: unknown;
 }
 
 export interface SemanticCandidateRuntime {
@@ -68,73 +54,6 @@ function configuredAllowedDomains(environment: SemanticCandidateEnvironment): re
     .split(",")
     .map((domain) => domain.trim())
     .filter((domain) => domain.length > 0);
-}
-
-async function resolvePersistedReceipt(input: {
-  readonly sqlPool: SqlPool;
-  readonly authorizer: TransactionalCapabilityAuthorizer;
-  readonly authority: SemanticAuthorityContext;
-  readonly binding: {
-    readonly profile_id: string;
-    readonly provider: string;
-    readonly default_model_id: string;
-    readonly profile_version: string;
-  };
-}): Promise<PersistedModelCertificationReceipt | null> {
-  const result = await withAppTransaction(
-    input.sqlPool,
-    input.authorizer,
-    input.authority.capabilityInput,
-    {
-      access: "READ",
-      allowed_roles: ["OWNER", "ANALYST", "VIEWER"],
-      operation_name: "semantic.resolve_candidate_model_receipt",
-    },
-    async ({ capability, client }) => {
-      const query = await client.query<StoredCertificationReceiptRow>(
-        `select run_id, artifact_id, revision, content_hash, document_json
-           from app_data_agent.artifacts
-          where app_id = $1::uuid
-            and tenant_id = $2::uuid
-            and environment = $3::text
-            and artifact_type = 'ModelCertificationReceipt'
-            and revision = 1
-            and is_active
-            and document_json ->> 'profile_id' = $4::text
-            and document_json ->> 'provider' = $5::text
-            and document_json ->> 'model_id' = $6::text
-            and document_json ->> 'profile_version' = $7::text
-            and document_json ->> 'verdict' = 'PASS'
-          order by created_at desc
-          limit 1`,
-        [
-          capability.scope.app_id,
-          capability.scope.tenant_id,
-          capability.scope.environment,
-          input.binding.profile_id,
-          input.binding.provider,
-          input.binding.default_model_id,
-          input.binding.profile_version,
-        ],
-      );
-      return query.rows[0] ?? null;
-    },
-  );
-  if (!result.ok || !result.value) return null;
-  const row = result.value;
-  const claims = modelCertificationClaimsSchema.safeParse(row.document_json);
-  if (!claims.success) return null;
-  const reference: ArtifactReference = {
-    artifact_id: row.artifact_id,
-    artifact_type: "ModelCertificationReceipt",
-    app_id: input.authority.scope.appId,
-    tenant_id: input.authority.scope.tenantId,
-    environment: input.authority.scope.environment,
-    run_id: row.run_id,
-    revision: row.revision,
-    content_hash: row.content_hash as `sha256:${string}`,
-  };
-  return Object.freeze({ reference, claims: claims.data });
 }
 
 export function createSemanticCandidateRuntime(
@@ -198,8 +117,6 @@ export function createSemanticCandidateRuntime(
                 environment.SEMANTIC_CANDIDATE_MODEL_PROVIDER ??
                 environment.TEST_CENTER_MODEL_PROVIDER,
             },
-            resolve_receipt: (binding) =>
-              resolvePersistedReceipt({ sqlPool, authorizer, authority, binding }),
           }),
       },
     }),

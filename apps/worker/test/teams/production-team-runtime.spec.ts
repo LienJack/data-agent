@@ -103,7 +103,7 @@ async function admittedSemanticDelegation(
     model_profile_ref: legacy.revision.model_profile_ref,
     prompt_ref: legacy.revision.prompt_ref,
     workflow_ref: legacy.revision.workflow_ref,
-    direct_tool_allowlist: ["semantic.catalog.read"],
+    direct_tool_allowlist: ["semantic.candidate.write", "semantic.catalog.read"],
     skill_refs: legacy.revision.skill_refs,
     context_policy_ref: legacy.revision.context_policy_ref,
     execution_safety_policy_ref: legacy.revision.execution_safety_policy_ref,

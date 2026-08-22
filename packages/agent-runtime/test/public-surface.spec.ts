@@ -19,6 +19,7 @@ describe("Agent Runtime 公共出口", () => {
 
     expect(exports).toContain("createLiveProviderCredentialedSmoke");
     expect(exports).toContain("createModelProviderPort");
+    expect(exports).toContain("createDirectModelProviderPort");
     expect(exports).toContain("ServerModelResponseSchemaRegistry");
     expect(exports).not.toContain("Agent");
     expect(exports).not.toContain("Mastra");

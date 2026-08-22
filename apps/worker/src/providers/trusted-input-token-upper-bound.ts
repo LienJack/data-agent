@@ -23,6 +23,32 @@ export function computeTrustedInputTokenUpperBound(input: {
   return Buffer.byteLength(projected, "utf8") + input.canonical_schema_bytes;
 }
 
+export function computeTrustedInputTokenUpperBoundForRequestMessages(input: {
+  readonly messages: readonly {
+    readonly role: "system" | "user" | "assistant";
+    readonly content: string;
+  }[];
+  readonly tool_names: readonly string[];
+  readonly response_schema_version: string;
+  readonly canonical_schema_bytes: number;
+}): number {
+  const systemMessages = input.messages
+    .filter(({ role }) => role === "system")
+    .map(({ content }) => content);
+  const projectedMessages = input.messages.filter(
+    (message): message is { readonly role: "user" | "assistant"; readonly content: string } =>
+      message.role !== "system",
+  );
+  return computeTrustedInputTokenUpperBound({
+    instructions:
+      systemMessages.length > 0 ? systemMessages.join("\n\n") : U3_MODEL_SYSTEM_INSTRUCTIONS,
+    messages: projectedMessages,
+    tool_names: input.tool_names,
+    response_schema_version: input.response_schema_version,
+    canonical_schema_bytes: input.canonical_schema_bytes,
+  });
+}
+
 export function createTrustedUtf8InputTokenUpperBoundCounter(): TrustedModelInputTokenCounter {
   return Object.freeze({
     count: async (context: Parameters<TrustedModelInputTokenCounter["count"]>[0]) =>

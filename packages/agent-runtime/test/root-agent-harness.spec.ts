@@ -130,6 +130,9 @@ describe("Root Agent Harness", () => {
     const message = await buildRootAgentSystemMessage(frozenCatalog);
     expect(message).toContain("semantic-management-agent");
     expect(message).toContain("never route by keyword lists");
+    expect(message).toContain("native tool call");
+    expect(message).toContain('{"kind":"FINAL_ANSWER","sections"');
+    expect(message).toContain('Never output a "final_answer" wrapper');
     expect(message).not.toMatch(/prompt_ref|prompt_hash|secret_ref/);
   });
 });

@@ -181,6 +181,21 @@ export type AuthoritativeModelProviderInvocation = ModelProviderRequest & {
   readonly [authoritativeModelProviderInvocation]: true;
 };
 
+/**
+ * Build a scope-bound direct invocation from server-owned configuration.
+ *
+ * This path deliberately has no model-certification or persisted-dispatch
+ * permit dependency. Callers must still supply a schema-valid request whose
+ * artifact references belong to the same app/tenant/environment/run.
+ */
+export function createDirectModelProviderInvocation(
+  input: unknown,
+): AuthoritativeModelProviderInvocation {
+  const request = modelProviderRequestSchema.parse(input);
+  authorizedModelProviderInvocations.add(request);
+  return deepFreeze(request) as AuthoritativeModelProviderInvocation;
+}
+
 export async function authorizeModelProviderInvocation(
   input: unknown,
   resolveProfile: ModelProviderProfileResolver,

@@ -21,7 +21,7 @@ import {
   inspectProviderTaskProjection,
 } from "./provider-data-projector.internal.js";
 import {
-  computeTrustedInputTokenUpperBound,
+  computeTrustedInputTokenUpperBoundForRequestMessages,
   U3_MODEL_SYSTEM_INSTRUCTIONS,
 } from "./trusted-input-token-upper-bound.js";
 
@@ -225,8 +225,7 @@ export function createRunBoundProviderDispatcher(input: {
       });
       if (!inspected.ok) return { ok: false, error: inspected.error };
       const messages = inspected.value.messages;
-      const trustedInputTokenUpperBound = computeTrustedInputTokenUpperBound({
-        instructions: trustedSystemInstruction,
+      const trustedInputTokenUpperBound = computeTrustedInputTokenUpperBoundForRequestMessages({
         messages,
         tool_names: toolAllowlist,
         response_schema_version: responseSchemaVersion,

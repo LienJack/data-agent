@@ -200,17 +200,17 @@ describe("Semantic Explorer read-model kernel", () => {
     ).toBe(false);
   });
 
-  it("fails closed on exact release/projection binding mismatch", async () => {
+  it("accepts immutable projection reuse across releases when the bound digest is exact", async () => {
     const envelope = await createRawExplorerEnvelope();
-    const mismatch = {
+    const reused = {
       ...envelope,
       executable_projection: {
         ...envelope.executable_projection,
         release_id: "00000000-0000-4000-8000-000000000099",
       },
     };
-    await expect(buildSemanticExplorerSnapshot(mismatch)).rejects.toMatchObject({
-      code: "SEMANTIC_EXPLORER_SOURCE_BINDING_MISMATCH",
+    await expect(buildSemanticExplorerSnapshot(reused)).resolves.toMatchObject({
+      release_identity: { release_id: envelope.release.release_id },
     });
   });
 

@@ -1,10 +1,10 @@
 import {
   type AuthoritativeModelProviderInvocation,
   type AvailableModelProfile,
-  authorizeModelProviderInvocation,
   canonicalizeJson,
   computeModelProfileHash,
   computeSemanticChangeProposalDigest,
+  createDirectModelProviderInvocation,
   type ModelProviderPort,
   type SchemaFeaturePacket,
   type SemanticAgentReceipt,
@@ -120,48 +120,39 @@ export async function runSemanticCandidateAgent(
 
   let request: AuthoritativeModelProviderInvocation;
   try {
-    request = await authorizeModelProviderInvocation(
-      {
-        schema_version: "semantic-model-request@1.0.0",
-        request_id: input.request_id,
-        attempt_id: input.attempt_id,
-        scope: input.profile.scope,
+    request = createDirectModelProviderInvocation({
+      schema_version: "semantic-model-request@1.0.0",
+      request_id: input.request_id,
+      attempt_id: input.attempt_id,
+      scope: input.profile.scope,
+      run_id: input.compile_run_id,
+      provider: input.profile.provider,
+      profile_id: input.profile.profile_id,
+      profile_version: input.profile.profile_version,
+      model_id: input.profile.model_id,
+      task_ref: {
+        artifact_id: input.packet.snapshot_id,
+        artifact_type: "SchemaSnapshot",
+        ...input.profile.scope,
         run_id: input.compile_run_id,
-        provider: input.profile.provider,
-        profile_id: input.profile.profile_id,
-        profile_version: input.profile.profile_version,
-        model_id: input.profile.model_id,
-        task_ref: {
-          artifact_id: input.packet.snapshot_id,
-          artifact_type: "SchemaSnapshot",
-          ...input.profile.scope,
-          run_id: input.compile_run_id,
-          revision: 1,
-          content_hash: input.packet.snapshot_digest,
-        },
-        context_refs: [],
-        messages: [
-          { role: "system", content: SEMANTIC_CANDIDATE_SYSTEM_PROMPT },
-          { role: "user", content: userMessage },
-        ],
-        tool_allowlist: [],
-        response_schema_version: SEMANTIC_AGENT_CANDIDATE_OUTPUT_VERSION,
-        budget: { ...input.budget, max_tool_calls: 0 },
+        revision: 1,
+        content_hash: input.packet.snapshot_digest,
       },
-      async ({ scope, profile_id }) =>
-        scope.app_id === input.profile.scope.app_id &&
-        scope.tenant_id === input.profile.scope.tenant_id &&
-        scope.environment === input.profile.scope.environment &&
-        profile_id === input.profile.profile_id
-          ? input.profile
-          : null,
-    );
+      context_refs: [],
+      messages: [
+        { role: "system", content: SEMANTIC_CANDIDATE_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      tool_allowlist: [],
+      response_schema_version: SEMANTIC_AGENT_CANDIDATE_OUTPUT_VERSION,
+      budget: { ...input.budget, max_tool_calls: 0 },
+    });
   } catch {
     return {
       terminal: "AGENT_UNAVAILABLE",
       proposal: null,
       agent_receipt: agentReceipt,
-      failure_code: "MODEL_INVOCATION_NOT_AUTHORIZED",
+      failure_code: "DIRECT_MODEL_REQUEST_INVALID",
     };
   }
 

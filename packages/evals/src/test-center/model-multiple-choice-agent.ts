@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import {
   type AvailableModelProfile,
-  authorizeModelProviderInvocation,
   type BenchmarkAgentDescriptor,
   type BenchmarkMultipleChoiceAnswer,
   type BenchmarkRunBudget,
@@ -10,6 +9,7 @@ import {
   benchmarkAgentDescriptorSchema,
   benchmarkMultipleChoiceAnswerSchema,
   CERTIFIED_MODEL_MULTIPLE_CHOICE_AGENT_ID,
+  createDirectModelProviderInvocation,
   isAvailableModelProfile,
   type ModelProviderEvent,
   type ModelProviderPort,
@@ -105,10 +105,7 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     AvailableModelProfile["operational_constraints"]["context_window"],
     { readonly verification_status: "VERIFIED" }
   >;
-  readonly #pricing: Extract<
-    AvailableModelProfile["operational_constraints"]["pricing"],
-    { readonly verification_status: "VERIFIED" }
-  >;
+  readonly #pricing: AvailableModelProfile["operational_constraints"]["pricing"];
   #spentCostMicros = 0;
 
   constructor(input: {
@@ -119,7 +116,7 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     if (!isAvailableModelProfile(input.profile)) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_PROFILE_NOT_AUTHORIZED",
-        "选择题模型 Agent 只接受经过持久化 Receipt 重验的 AVAILABLE Profile。",
+        "选择题模型 Agent 只接受服务端配置的可用 Profile。",
       );
     }
     const contextWindow = input.profile.operational_constraints.context_window;
@@ -128,12 +125,6 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_CONTEXT_NOT_VERIFIED",
         "选择题模型 Agent 需要已验证的 Context Window。",
-      );
-    }
-    if (pricing.verification_status !== "VERIFIED" || pricing.currency !== "USD") {
-      throw new CertifiedModelAnalysisAgentError(
-        "MODEL_ANALYSIS_PRICING_NOT_VERIFIED",
-        "选择题模型 Agent 需要已验证的 USD 定价。",
       );
     }
     this.#profile = input.profile;
@@ -170,66 +161,52 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     if (inputTokenBudget + maxOutputTokens > this.#contextWindow.max_context_tokens) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_INPUT_TOO_LARGE",
-        "选择题内容超出认证 Profile 的 Context Window。",
+        "选择题内容超出配置 Profile 的 Context Window。",
       );
     }
-    const maximumCost = estimateCostMicros({
-      input_tokens: inputTokenBudget,
-      output_tokens: maxOutputTokens,
-      input_rate: this.#pricing.input_microunits_per_million_tokens,
-      output_rate: this.#pricing.output_microunits_per_million_tokens,
-    });
+    const maximumCost = this.#cost(inputTokenBudget, maxOutputTokens);
     if (this.#spentCostMicros + maximumCost > this.#budget.max_cost_micros) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_BUDGET_EXCEEDED",
         "选择题模型调用的成本上界超过冻结预算。",
       );
     }
-    const request = await authorizeModelProviderInvocation(
-      {
-        schema_version: "1.0.0",
-        request_id: randomUUID(),
-        attempt_id: input.invocation.attempt_id,
-        scope: this.#profile.scope,
+    const request = createDirectModelProviderInvocation({
+      schema_version: "1.0.0",
+      request_id: randomUUID(),
+      attempt_id: input.invocation.attempt_id,
+      scope: this.#profile.scope,
+      run_id: input.invocation.run_id,
+      provider: this.#profile.provider,
+      profile_id: this.#profile.profile_id,
+      profile_version: this.#profile.profile_version,
+      model_id: this.#profile.model_id,
+      task_ref: {
+        artifact_id: input.test_case.case_id,
+        artifact_type: "EvalCase",
+        ...this.#profile.scope,
         run_id: input.invocation.run_id,
-        provider: this.#profile.provider,
-        profile_id: this.#profile.profile_id,
-        profile_version: this.#profile.profile_version,
-        model_id: this.#profile.model_id,
-        task_ref: {
-          artifact_id: input.test_case.case_id,
-          artifact_type: "EvalCase",
-          ...this.#profile.scope,
-          run_id: input.invocation.run_id,
-          revision: 1,
-          content_hash: input.test_case.public_case_hash,
-        },
-        context_refs: [],
-        messages: promptMessages,
-        tool_allowlist: [],
-        response_schema_version: MULTIPLE_CHOICE_RESPONSE_SCHEMA_VERSION,
-        budget: {
-          timeout_ms: input.invocation.timeout_ms,
-          max_input_tokens: inputTokenBudget,
-          max_output_tokens: maxOutputTokens,
-          max_tool_calls: 0,
-        },
+        revision: 1,
+        content_hash: input.test_case.public_case_hash,
       },
-      async ({ scope, profile_id }) =>
-        scope.app_id === this.#profile.scope.app_id &&
-        scope.tenant_id === this.#profile.scope.tenant_id &&
-        scope.environment === this.#profile.scope.environment &&
-        profile_id === this.#profile.profile_id
-          ? this.#profile
-          : null,
-    );
+      context_refs: [],
+      messages: promptMessages,
+      tool_allowlist: [],
+      response_schema_version: MULTIPLE_CHOICE_RESPONSE_SCHEMA_VERSION,
+      budget: {
+        timeout_ms: input.invocation.timeout_ms,
+        max_input_tokens: inputTokenBudget,
+        max_output_tokens: maxOutputTokens,
+        max_tool_calls: 0,
+      },
+    });
     const started = performance.now();
     let completed: CompletedModelEvent | null = null;
     for await (const event of this.#modelProvider.stream(request)) {
       if (event.event_type === "FAILED") {
         throw new CertifiedModelAnalysisAgentError(
           "MODEL_ANALYSIS_PROVIDER_FAILED",
-          `认证模型调用失败：${event.reason_code}`,
+          `模型调用失败：${event.reason_code}`,
           event.reason_code,
         );
       }
@@ -238,7 +215,7 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     if (!completed) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_PROVIDER_FAILED",
-        "认证模型调用未返回完成事件。",
+        "模型调用未返回完成事件。",
       );
     }
     let output: unknown;
@@ -247,23 +224,18 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     } catch {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_RESPONSE_INVALID",
-        "认证模型返回的选择题结果不是合法 JSON。",
+        "模型返回的选择题结果不是合法 JSON。",
       );
     }
     const answer = modelMultipleChoiceResponseSchema.safeParse(output);
     if (!answer.success) {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_RESPONSE_INVALID",
-        "认证模型返回的选择题结果不符合契约。",
+        "模型返回的选择题结果不符合契约。",
       );
     }
     const tokenCounts = reportedTokenCounts(completed.usage);
-    const cost = estimateCostMicros({
-      input_tokens: tokenCounts.input_tokens,
-      output_tokens: tokenCounts.output_tokens,
-      input_rate: this.#pricing.input_microunits_per_million_tokens,
-      output_rate: this.#pricing.output_microunits_per_million_tokens,
-    });
+    const cost = this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens);
     this.#spentCostMicros += cost;
     return {
       answer: answer.data,
@@ -275,5 +247,16 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
       },
       latency_ms: Math.max(0, Math.round(performance.now() - started)),
     };
+  }
+
+  #cost(inputTokens: number, outputTokens: number): number {
+    return this.#pricing.verification_status === "VERIFIED" && this.#pricing.currency === "USD"
+      ? estimateCostMicros({
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          input_rate: this.#pricing.input_microunits_per_million_tokens,
+          output_rate: this.#pricing.output_microunits_per_million_tokens,
+        })
+      : 0;
   }
 }

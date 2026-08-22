@@ -149,7 +149,7 @@ describe("Q&A resource catalog", () => {
     ]);
   });
 
-  it("keeps an unavailable Authority profile non-selectable without inventing certification details", () => {
+  it("makes a configured profile selectable without certification", () => {
     const unavailable = {
       model_profile_id: ids.profile,
       model_config_version: 4,
@@ -165,8 +165,8 @@ describe("Q&A resource catalog", () => {
 
     expect(buildQaResourceCatalog({ models: [unavailable], datasources: [] }).models).toEqual([
       expect.objectContaining({
-        readiness: "CERTIFICATION_REQUIRED",
-        selectable: false,
+        readiness: "AVAILABLE",
+        selectable: true,
         certification_receipt_ref: null,
         effective_context_ceiling_tokens: null,
         effective_output_ceiling_tokens: null,
@@ -174,7 +174,7 @@ describe("Q&A resource catalog", () => {
     ]);
   });
 
-  it("makes the current model version selectable after a simple API authentication", () => {
+  it("ignores historical API authentication when deciding direct-call availability", () => {
     const unavailable = {
       model_profile_id: ids.profile,
       model_config_version: 4,
@@ -190,17 +190,6 @@ describe("Q&A resource catalog", () => {
 
     const catalog = buildQaResourceCatalog({
       models: [unavailable],
-      authentications: [
-        {
-          schema_version: "model-certification-view@1.0.0",
-          model_profile_id: ids.profile,
-          model_config_version: 4,
-          provider: "deepseek",
-          model_id: "deepseek-v4-flash",
-          state: "PASS",
-          completed_at: "2026-08-18T00:00:00.000Z",
-        },
-      ],
       datasources: [],
     });
 
@@ -208,8 +197,31 @@ describe("Q&A resource catalog", () => {
       expect.objectContaining({
         readiness: "AVAILABLE",
         selectable: true,
-        api_authentication_state: "PASS",
+        api_authentication_state: "NOT_CERTIFIED",
         certification_receipt_ref: null,
+      }),
+    ]);
+  });
+
+  it("keeps a profile without a server credential unavailable", () => {
+    const unavailable = {
+      model_profile_id: ids.profile,
+      model_config_version: 4,
+      resource_hash: hash("a"),
+      profile_version: "model-profile@4",
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      display_name: "DeepSeek V4 Flash",
+      readiness: "CREDENTIAL_UNAVAILABLE",
+      selectable: false,
+      unavailable_reason: "MODEL_CREDENTIAL_UNAVAILABLE",
+    } as const satisfies ProviderExecutionProfile;
+
+    expect(buildQaResourceCatalog({ models: [unavailable], datasources: [] }).models).toEqual([
+      expect.objectContaining({
+        readiness: "CREDENTIAL_UNAVAILABLE",
+        selectable: false,
+        api_authentication_state: "NOT_CERTIFIED",
       }),
     ]);
   });

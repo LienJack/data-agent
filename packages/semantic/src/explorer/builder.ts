@@ -291,9 +291,7 @@ function validateEnvelopeBindings(
   if (
     bindings.some(
       ({ row, releaseRef, releaseDigest }) =>
-        row.release_id !== release.release_id ||
-        row.projection_id !== releaseRef ||
-        row.projection_digest !== releaseDigest,
+        row.projection_id !== releaseRef || row.projection_digest !== releaseDigest,
     )
   ) {
     explorerFailure("SEMANTIC_EXPLORER_SOURCE_BINDING_MISMATCH");

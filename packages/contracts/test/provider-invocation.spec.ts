@@ -8,12 +8,16 @@ import { knownArtifactTypeSchema } from "../src/artifacts/types.js";
 import {
   authorizePersistedModelProviderInvocation,
   computeModelProviderPayloadHash,
+  createDirectModelProviderInvocation,
+  isAuthoritativeModelProviderInvocation,
   verifyPersistedModelProviderProjectionClosure,
 } from "../src/ports/model-provider.js";
 import {
   authorizeAvailableExecutionModelProfile,
   buildModelExecutionCertificationClaims,
   computeModelExecutionProfileHash,
+  configureAvailableModelProfile,
+  isAvailableModelProfile,
   modelExecutionProfileSchema,
   projectModelExecutionProfileSnapshot,
 } from "../src/providers/index.js";
@@ -611,6 +615,62 @@ async function persistedInvocationFixture() {
 }
 
 describe("U3 provider invocation contracts", () => {
+  it("admits a configured model profile without a certification receipt", () => {
+    const profile = configureAvailableModelProfile({
+      profile_id: ids.profile,
+      scope: { app_id: ids.app, tenant_id: ids.workspace, environment: "test" },
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      profile_version: "model-profile@1",
+      capabilities: {
+        structured_output: true,
+        tool_calling: true,
+        streaming: true,
+        reasoning: true,
+        vision: false,
+      },
+      certification_status: "CONFIGURED",
+    });
+    expect(isAvailableModelProfile(profile)).toBe(true);
+    expect(profile.certification_receipt_ref).toBeUndefined();
+  });
+
+  it("creates a direct invocation without certification or a persisted permit", () => {
+    const request = createDirectModelProviderInvocation({
+      schema_version: "direct-model-request@1.0.0",
+      request_id: ids.invocation,
+      attempt_id: ids.attempt,
+      scope: { app_id: ids.app, tenant_id: ids.workspace, environment: "test" },
+      run_id: ids.run,
+      provider: "deepseek",
+      profile_id: ids.profile,
+      profile_version: "model-profile@1",
+      model_id: "deepseek-v4-flash",
+      task_ref: {
+        artifact_id: ids.task,
+        artifact_type: "ProviderTaskArtifact",
+        app_id: ids.app,
+        tenant_id: ids.workspace,
+        environment: "test",
+        run_id: ids.run,
+        revision: 1,
+        content_hash: hash("1"),
+      },
+      context_refs: [],
+      messages: [{ role: "user", content: "question" }],
+      tool_allowlist: [],
+      response_schema_version: "answer@1.0.0",
+      budget: {
+        timeout_ms: 30_000,
+        max_input_tokens: 8_000,
+        max_output_tokens: 2_000,
+        max_tool_calls: 0,
+      },
+    });
+    expect(isAuthoritativeModelProviderInvocation(request)).toBe(true);
+    expect(request).not.toHaveProperty("certification_receipt_ref");
+  });
+
   it("recognizes RESPONSE_OBSERVED as a durable internal state", () => {
     expect(providerInvocationInternalStateSchema.parse("RESPONSE_OBSERVED")).toBe(
       "RESPONSE_OBSERVED",
