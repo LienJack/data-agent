@@ -3,7 +3,9 @@ import {
   agentDispatchAdmissionResultSchema,
   canonicalImmutableIdSchema,
   sha256ContentHash,
+  subagentCapabilityCatalogSnapshotSchema,
   verifyAgentDispatchAdmissionResult,
+  verifySubagentCapabilityCatalogSnapshot,
   workspaceIdempotencyKeySchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
@@ -130,6 +132,50 @@ export function createPostgresAgentDispatchAuthority(input: {
             );
           }
           return agentDispatchAdmissionResultSchema.parse(replayed) as DeferredReceipt;
+        },
+      );
+    },
+
+    async loadCatalogSnapshot(
+      capabilityInput: unknown,
+      request: { readonly run_id: unknown; readonly catalog_id: unknown },
+    ) {
+      const runId = canonicalImmutableIdSchema.parse(request.run_id);
+      const catalogId = canonicalImmutableIdSchema.parse(request.catalog_id);
+      return withAppTransaction(
+        input.pool,
+        input.authorizer,
+        capabilityInput,
+        {
+          access: "READ",
+          allowed_roles: ["OWNER", "ANALYST", "VIEWER"],
+          operation_name: "agent-dispatch.load-catalog-snapshot",
+          correlation_id: runId,
+        },
+        async ({ capability, client }) => {
+          const result = await client.query<JsonRow>(
+            "select app_data_agent.load_subagent_catalog_snapshot($1::uuid,$2::uuid) as value",
+            [runId, catalogId],
+          );
+          const raw = exact(result.rows);
+          if (raw === null) return null;
+          const snapshot = await verifySubagentCapabilityCatalogSnapshot(
+            subagentCapabilityCatalogSnapshotSchema.parse(raw),
+          );
+          if (
+            snapshot.run_id !== runId ||
+            snapshot.catalog_id !== catalogId ||
+            snapshot.scope.app_id !== capability.scope.app_id ||
+            snapshot.scope.tenant_id !== capability.scope.tenant_id ||
+            snapshot.scope.environment !== capability.scope.environment ||
+            snapshot.principal_id !== capability.principal
+          ) {
+            throw new PersistenceBoundaryError(
+              "AGENT_DISPATCH_DATABASE_CONTRACT_INVALID",
+              "Subagent catalog snapshot escaped its frozen authority.",
+            );
+          }
+          return snapshot;
         },
       );
     },

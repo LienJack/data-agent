@@ -1,14 +1,19 @@
-import type { AgentProductProfileRegistryItem } from "@data-agent/contracts";
+import {
+  type AgentProductProfileRegistryItem,
+  buildAgentProductProfileRevisionV2,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   classifyAgentQuestion,
   classifyAgentVisualizationIntent,
+  freezeSubagentCapabilityCatalog,
   planAgentDispatch,
 } from "../../src/runs/agent-dispatch-planner.js";
 
 const runId = "00000000-0000-4000-8000-000000000101";
 const policyVersion = "adaptive-routing@1.0.0+rollout.2";
 const hash = (value: string) => `sha256:${value.repeat(64)}`;
+const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
 function profile(
   profileId: "governed-text2sql-agent" | "report-writing-agent" | "semantic-management-agent",
@@ -39,6 +44,84 @@ const catalog = [
 ];
 
 describe("adaptive Agent dispatch planner", () => {
+  it("freezes an eligible catalog without classifying or preselecting a Specialist", async () => {
+    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+    const revision = await buildAgentProductProfileRevisionV2({
+      schema_version: "agent-product-profile-revision@2.0.0",
+      scope,
+      profile_id: "semantic-management-agent",
+      revision: 3,
+      discovery: {
+        schema_version: "subagent-discovery-descriptor@1.0.0",
+        display_name: "Semantic Management Agent",
+        description: "Reads frozen semantic relationships and lineage.",
+        when_to_use: ["Use for relationship and dependency questions."],
+        when_not_to_use: ["Do not execute arbitrary SQL."],
+        examples: [],
+        accepted_input_artifact_types: [],
+        produced_artifact_types: ["AnalysisReport"],
+        access_mode: "READ_ONLY",
+      },
+      runtime_profile_ref: {
+        profile_id: "semantic-management-agent",
+        revision: 2,
+        profile_hash: hash("1"),
+      },
+      model_profile_ref: { resource_id: id(3), resource_revision: 1, resource_hash: hash("2") },
+      prompt_ref: { prompt_id: "prompt.semantic", revision: 1, prompt_hash: hash("3") },
+      workflow_ref: {
+        workflow_id: "workflow.semantic",
+        revision: 1,
+        workflow_hash: hash("4"),
+      },
+      direct_tool_allowlist: ["semantic.catalog.read", "task.complete"],
+      skill_refs: [{ skill_id: id(4), revision: 1, revision_hash: hash("5") }],
+      context_policy_ref: { resource_id: id(5), resource_revision: 1, resource_hash: hash("6") },
+      execution_safety_policy_ref: {
+        resource_id: id(6),
+        resource_revision: 1,
+        resource_hash: hash("7"),
+      },
+      expected_output_artifact_types: ["AnalysisReport"],
+      verifier_contract_hash: hash("8"),
+      approval_status: "APPROVED",
+    });
+    const snapshot = await freezeSubagentCapabilityCatalog({
+      run_id: runId,
+      scope,
+      principal_id: id(7),
+      enabled_profiles: [
+        {
+          schema_version: "agent-product-profile-registry-item@2.0.0",
+          revision,
+          head: {
+            schema_version: "agent-product-profile-head@2.0.0",
+            scope,
+            profile_id: revision.profile_id,
+            active_revision: revision.revision,
+            active_revision_hash: revision.revision_hash,
+            lifecycle: "ENABLED",
+            version: 4,
+            updated_at: "2026-08-22T12:00:00.000Z",
+          },
+        },
+      ],
+      policy_version: policyVersion,
+    });
+
+    expect(snapshot.items).toEqual([
+      expect.objectContaining({
+        profile_ref: {
+          profile_id: "semantic-management-agent",
+          revision: 3,
+          revision_hash: revision.revision_hash,
+        },
+      }),
+    ]);
+    expect(snapshot).not.toHaveProperty("selected_profile_refs");
+    expect(snapshot.snapshot_hash).toMatch(/^sha256:/);
+  });
+
   it("classifies ambiguous business questions fail-closed", () => {
     expect(classifyAgentQuestion("为什么订单下降")).toBe("DATA_QUERY");
     expect(classifyAgentQuestion("解释本月销售变化")).toBe("DATA_QUERY");

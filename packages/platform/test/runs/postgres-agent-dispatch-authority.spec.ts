@@ -1,3 +1,4 @@
+import { buildSubagentCapabilityCatalogSnapshot } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresAgentDispatchAuthority } from "../../src/runs/postgres-agent-dispatch-authority.js";
@@ -80,5 +81,31 @@ describe("PostgreSQL Agent dispatch authority", () => {
       authority.setRolloutPolicy(analyst, { mode: "SHADOW", expected_version: 2 }),
     ).resolves.toMatchObject({ ok: false });
     expect(calls.slice(callsBeforeAnalyst)).toEqual([]);
+  });
+
+  it("loads the exact principal-scoped frozen catalog snapshot", async () => {
+    const { analyst, authorizer } = authorities();
+    const runId = id(20);
+    const catalogId = id(21);
+    const snapshot = await buildSubagentCapabilityCatalogSnapshot({
+      schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+      catalog_id: catalogId,
+      scope: { app_id: ids.app, tenant_id: ids.tenant, environment: "test" },
+      run_id: runId,
+      principal_id: ids.analyst,
+      policy_version: "adaptive-routing@1.0.0+rollout.1",
+      items: [],
+    });
+    const { calls, pool } = scriptedPool((text) =>
+      text.includes("load_subagent_catalog_snapshot")
+        ? { rows: [{ value: snapshot }], rowCount: 1 }
+        : undefined,
+    );
+    const authority = createPostgresAgentDispatchAuthority({ pool, authorizer });
+
+    await expect(
+      authority.loadCatalogSnapshot(analyst, { run_id: runId, catalog_id: catalogId }),
+    ).resolves.toMatchObject({ ok: true, value: { snapshot_hash: snapshot.snapshot_hash } });
+    expect(calls.some((call) => call.includes("load_subagent_catalog_snapshot"))).toBe(true);
   });
 });

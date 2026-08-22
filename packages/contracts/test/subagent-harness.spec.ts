@@ -3,6 +3,8 @@ import {
   agentProductProfileListResultV2Schema,
   buildAgentProductProfileRevisionV2,
   buildSubagentCapabilityCatalogSnapshot,
+  effectiveConfigRunCommandEnvelopeSchema,
+  effectiveConfigRunLeasePayloadSchema,
   projectSubagentCapabilityCatalogItem,
   rootAgentDecisionCandidateSchema,
   validateRootAgentDecisionAgainstCatalog,
@@ -184,6 +186,35 @@ describe("Model-driven Subagent Harness contracts", () => {
     await expect(
       validateRootAgentDecisionAgainstCatalog({ candidate, catalog }),
     ).resolves.toMatchObject({ kind: "FINAL_ANSWER" });
+  });
+
+  it("freezes the catalog in a v3 Run lease before any Specialist selection", async () => {
+    const catalog = await catalogFor(["semantic-management-agent"]);
+    expect(
+      effectiveConfigRunCommandEnvelopeSchema.parse({
+        run_id: runId,
+        command_id: id(40),
+        event_id: id(41),
+        outbox_id: id(42),
+        audit_id: id(43),
+        idempotency_key: "root-harness-run-001",
+        question: "Explain table dependencies.",
+        subagent_catalog_snapshot: catalog,
+      }),
+    ).toHaveProperty("subagent_catalog_snapshot.snapshot_hash", catalog.snapshot_hash);
+    expect(
+      effectiveConfigRunLeasePayloadSchema.parse({
+        schema_version: "effective-config-team-lease@3.0.0",
+        kind: "START_DATA_AGENT_TEAM",
+        executor_version: "ROOT_HARNESS@1",
+        effective_config_ref: {
+          config_id: id(44),
+          config_revision: 1,
+          config_hash: hash("d"),
+        },
+        catalog_snapshot: catalog,
+      }),
+    ).not.toHaveProperty("profile_refs");
   });
 
   it("lets the model select a catalog Profile through one generic tool", async () => {

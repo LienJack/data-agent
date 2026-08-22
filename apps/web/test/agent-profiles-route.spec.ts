@@ -12,6 +12,7 @@ const state = vi.hoisted(() => ({
   accesses: [] as string[],
   commits: [] as unknown[],
   listEnabled: [] as boolean[],
+  discoverableReads: 0,
   revision: null as unknown,
   traceInputs: [] as unknown[],
 }));
@@ -32,6 +33,10 @@ vi.mock("@/lib/workspace-identity", () => ({
   getAgentProfileRegistry: () => ({
     list: async (_capability: unknown, enabled: boolean) => {
       state.listEnabled.push(enabled);
+      return { ok: true, value: [] };
+    },
+    listDiscoverable: async () => {
+      state.discoverableReads += 1;
       return { ok: true, value: [] };
     },
     commit: async (_capability: unknown, command: unknown) => {
@@ -84,6 +89,7 @@ describe("workspace Agent Profile route", () => {
     state.accesses = [];
     state.commits = [];
     state.listEnabled = [];
+    state.discoverableReads = 0;
     state.traceInputs = [];
   });
 
@@ -108,6 +114,20 @@ describe("workspace Agent Profile route", () => {
     expect(response.status).toBe(200);
     expect(state.accesses).toEqual(["READ"]);
     expect(state.listEnabled).toEqual([true]);
+  });
+
+  it("projects only public discovery fields from the Subagent capability endpoint", async () => {
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/subagent-capabilities/route"
+    );
+    const response = await route.GET(new NextRequest("http://localhost/subagent-capabilities"), {
+      params: Promise.resolve({ workspaceId }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      data: { schema_version: "subagent-capability-catalog-view@1.0.0", items: [] },
+    });
+    expect(state.discoverableReads).toBe(1);
   });
 
   it("injects server scope, actor and deterministic operation identity", async () => {

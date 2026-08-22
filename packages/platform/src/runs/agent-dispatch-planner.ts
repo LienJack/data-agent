@@ -4,12 +4,16 @@ import {
   type AgentDispatchPlan,
   type AgentProductProfileReference,
   type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   type AgentQuestionClass,
+  type AppScope,
   buildAgentDispatchDeferredReceipt,
   buildAgentDispatchExecuteAdmission,
   buildAgentDispatchExecutionBinding,
   buildAgentDispatchPlan,
   buildDirectAdmissibilityReceipt,
+  buildSubagentCapabilityCatalogSnapshot,
+  projectSubagentCapabilityCatalogItem,
   sha256ContentHash,
 } from "@data-agent/contracts";
 
@@ -19,6 +23,32 @@ export type PlannedAgentDispatch = Readonly<{
   admission: AgentDispatchAdmissionResult;
   shadow_plan: AgentDispatchPlan | null;
 }>;
+
+export async function freezeSubagentCapabilityCatalog(input: {
+  readonly run_id: string;
+  readonly scope: AppScope;
+  readonly principal_id: string;
+  readonly enabled_profiles: readonly AgentProductProfileRegistryItemV2[];
+  readonly policy_version: string;
+}) {
+  const profiles = [...input.enabled_profiles].sort((left, right) =>
+    left.revision.profile_id < right.revision.profile_id
+      ? -1
+      : left.revision.profile_id > right.revision.profile_id
+        ? 1
+        : 0,
+  );
+  const items = await Promise.all(profiles.map(projectSubagentCapabilityCatalogItem));
+  return buildSubagentCapabilityCatalogSnapshot({
+    schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+    catalog_id: uuid(`${input.run_id}:subagent-capability-catalog`),
+    scope: input.scope,
+    run_id: input.run_id,
+    principal_id: input.principal_id,
+    policy_version: input.policy_version,
+    items,
+  });
+}
 
 const profileOrder = [
   "governed-text2sql-agent",
@@ -350,3 +380,6 @@ export async function planAgentDispatch(input: {
     shadow_plan: null,
   };
 }
+
+/** Legacy keyword baseline retained only for v1 replay and shadow evaluation. */
+export const legacyKeywordDispatchBaseline = planAgentDispatch;

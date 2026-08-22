@@ -262,6 +262,48 @@ export const agentProductProfileListResultV2Schema = z
     }
   });
 
+const agentProductProfileCommitCommandV2DraftSchema = z.strictObject({
+  schema_version: z.literal("agent-product-profile-commit-command@2.0.0"),
+  operation_id: immutableIdSchema,
+  idempotency_key: workspaceIdempotencyKeySchema,
+  actor_principal_id: immutableIdSchema,
+  revision: agentProductProfileRevisionV2Schema,
+  expected_head_version: z.number().int().nonnegative().safe(),
+  target_lifecycle: z.enum(["ENABLED", "DISABLED", "QUARANTINED"]),
+});
+
+export const agentProductProfileCommitCommandV2Schema =
+  agentProductProfileCommitCommandV2DraftSchema.extend({ command_hash: contentHashSchema });
+
+export async function buildAgentProductProfileCommitCommandV2(input: unknown) {
+  const draft = agentProductProfileCommitCommandV2DraftSchema.parse(input);
+  return deepFreeze(
+    agentProductProfileCommitCommandV2Schema.parse({
+      ...draft,
+      command_hash: await sha256ContentHash(draft),
+    }),
+  );
+}
+
+export async function verifyAgentProductProfileCommitCommandV2(input: unknown) {
+  const command = agentProductProfileCommitCommandV2Schema.parse(input);
+  const { command_hash: actual, ...draft } = command;
+  if (
+    (await sha256ContentHash(agentProductProfileCommitCommandV2DraftSchema.parse(draft))) !== actual
+  ) {
+    throw new TypeError("AGENT_PRODUCT_PROFILE_COMMIT_V2_HASH_MISMATCH");
+  }
+  return deepFreeze(command);
+}
+
+export const agentProductProfileCommitResultV2Schema = z.strictObject({
+  schema_version: z.literal("agent-product-profile-commit-result@2.0.0"),
+  disposition: z.enum(["COMMITTED", "REPLAYED"]),
+  operation_id: immutableIdSchema,
+  command_hash: contentHashSchema,
+  item: agentProductProfileRegistryItemV2Schema,
+});
+
 export const agentProductProfileHeadSchema = z.strictObject({
   schema_version: z.literal("agent-product-profile-head@1.0.0"),
   scope: appScopeSchema,
@@ -362,4 +404,7 @@ export type AgentProductProfileRevisionV2 = z.infer<typeof agentProductProfileRe
 export type AgentProductProfileHeadV2 = z.infer<typeof agentProductProfileHeadV2Schema>;
 export type AgentProductProfileRegistryItemV2 = z.infer<
   typeof agentProductProfileRegistryItemV2Schema
+>;
+export type AgentProductProfileCommitCommandV2 = z.infer<
+  typeof agentProductProfileCommitCommandV2Schema
 >;

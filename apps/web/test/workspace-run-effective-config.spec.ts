@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => ({
   listProfiles: vi.fn(),
   resolveRollout: vi.fn(),
   commitDeferred: vi.fn(),
-  planDispatch: vi.fn(),
+  freezeCatalog: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -64,7 +64,7 @@ vi.mock("@/lib/workspace-identity", () => ({
     commitDeferred: mocks.commitDeferred,
   }),
   getAgentProfileRegistry: () => ({
-    list: mocks.listProfiles,
+    listDiscoverable: mocks.listProfiles,
   }),
   getEffectiveConfigResolver: () => ({
     getWorkspaceDefaults: mocks.getDefaults,
@@ -83,7 +83,7 @@ vi.mock("@/lib/workspace-identity", () => ({
 
 vi.mock("@data-agent/platform", () => ({
   createPostgresRepository: () => ({ getRun: mocks.getRun }),
-  planAgentDispatch: mocks.planDispatch,
+  freezeSubagentCapabilityCatalog: mocks.freezeCatalog,
 }));
 
 vi.mock("@/lib/workspace-run", () => ({
@@ -225,9 +225,11 @@ beforeEach(async () => {
       policy_version: "adaptive-routing@1.0.0+rollout.1",
     },
   });
-  mocks.planDispatch.mockResolvedValue({
-    admission: { kind: "EXECUTE", plan: {}, binding: {} },
-    shadow_plan: null,
+  mocks.freezeCatalog.mockResolvedValue({
+    schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+    run_id: ids.run,
+    snapshot_hash: H1,
+    items: [],
   });
 });
 
@@ -319,25 +321,14 @@ describe("workspace Effective Config routes", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(mocks.planDispatch).toHaveBeenCalledWith(
+    expect(mocks.freezeCatalog).toHaveBeenCalledWith(
       expect.objectContaining({
         enabled_profiles: [{ revision: { profile_id: "governed-text2sql-agent" } }],
       }),
     );
   });
 
-  it("replays a durable DEFERRED receipt and obeys the DB-frozen rollout mode", async () => {
-    const receipt = {
-      kind: "DEFERRED",
-      schema_version: "agent-dispatch-deferred-receipt@1.0.0",
-      run_id: ids.run,
-      question_class: "DATA_QUERY",
-      reason_code: "ROOT_ONLY_DEFER_DATA",
-      required_capabilities: ["adaptive-team-runtime@1.0.0"],
-      policy_version: "adaptive-routing@1.0.0+rollout.1",
-      capability_snapshot_hash: H1,
-      receipt_hash: H2,
-    } as const;
+  it("freezes the Root Harness catalog even when the legacy baseline is root-only", async () => {
     mocks.resolveRollout.mockResolvedValue({
       ok: true,
       value: {
@@ -346,8 +337,6 @@ describe("workspace Effective Config routes", () => {
         policy_version: "adaptive-routing@1.0.0+rollout.1",
       },
     });
-    mocks.planDispatch.mockResolvedValue({ admission: receipt, shadow_plan: null });
-    mocks.commitDeferred.mockResolvedValue({ ok: true, value: receipt });
     const makeRequest = () =>
       new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/runs`, {
         method: "POST",
@@ -365,17 +354,17 @@ describe("workspace Effective Config routes", () => {
     const replay = await genericPost(makeRequest(), {
       params: Promise.resolve({ workspaceId: ids.workspace }),
     });
-    expect(first.status).toBe(409);
-    expect(replay.status).toBe(409);
-    await expect(replay.json()).resolves.toEqual({ dispatch: receipt });
-    expect(mocks.planDispatch).toHaveBeenCalledWith(
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(mocks.freezeCatalog).toHaveBeenCalledWith(
       expect.objectContaining({
-        rollout_mode: "ROOT_ONLY_DEFER_DATA",
         policy_version: "adaptive-routing@1.0.0+rollout.1",
       }),
     );
-    expect(mocks.commitDeferred).toHaveBeenCalledTimes(2);
-    expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
+    expect(mocks.resolveAndAccept).toHaveBeenCalledTimes(2);
+    expect(mocks.resolveAndAccept.mock.calls[0]?.[1].command).toHaveProperty(
+      "subagent_catalog_snapshot",
+    );
   });
 
   it("derives the same Defaults operation identity for an idempotent PATCH retry", async () => {

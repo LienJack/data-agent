@@ -4,7 +4,7 @@ import {
   workspaceFileReferenceSchema,
   workspaceIdempotencyKeySchema,
 } from "@data-agent/contracts";
-import { createPostgresRepository, planAgentDispatch } from "@data-agent/platform";
+import { createPostgresRepository, freezeSubagentCapabilityCatalog } from "@data-agent/platform";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
@@ -108,7 +108,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       conversation_id: conversation.value.conversation_id,
       expected_resource_version: conversationVersion.data,
     }),
-    getAgentProfileRegistry().list(authorized.value.capability, true),
+    getAgentProfileRegistry().listDiscoverable(authorized.value.capability),
   ]);
   if (!defaults.ok) return workspaceErrorResponse(defaults.error);
   if (!selections.ok) return workspaceErrorResponse(selections.error);
@@ -132,22 +132,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     process.env.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
   );
   if (!rollout.ok) return workspaceErrorResponse(rollout.error);
-  const dispatch = await planAgentDispatch({
+  const catalogSnapshot = await freezeSubagentCapabilityCatalog({
     run_id: runId,
-    question: input.data.question,
+    scope: authorized.value.capability.scope,
+    principal_id: authorized.value.capability.principal,
     enabled_profiles: profiles.value,
-    rollout_mode: rollout.value.mode,
     policy_version: rollout.value.policy_version,
   });
-  if (dispatch.admission.kind === "DEFERRED") {
-    const deferred = await getAgentDispatchAuthority().commitDeferred(authorized.value.capability, {
-      idempotency_key: input.data.idempotency_key,
-      question: input.data.question,
-      receipt: dispatch.admission,
-    });
-    if (!deferred.ok) return workspaceErrorResponse(deferred.error);
-    return NextResponse.json({ dispatch: deferred.value }, { status: 409 });
-  }
   const configRequest = await buildRunConfigRequestCandidate({
     schema_version: "run-config-request@1.0.0",
     operation: "QUESTION_RUN",
@@ -208,8 +199,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       audit_id: identities.audit_id,
       idempotency_key: input.data.idempotency_key,
       question: input.data.question,
-      dispatch_admission: dispatch.admission,
-      shadow_dispatch_plan: dispatch.shadow_plan,
+      subagent_catalog_snapshot: catalogSnapshot,
     },
   });
   if (!accepted.ok) return workspaceErrorResponse(accepted.error);

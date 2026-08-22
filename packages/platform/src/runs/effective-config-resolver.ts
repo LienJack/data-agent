@@ -22,6 +22,7 @@ import {
   verifyEffectiveRunConfigReceiptCandidate,
   verifyRunConfigRequestCandidate,
   verifyRunConfigResolutionReceiptCandidate,
+  verifySubagentCapabilityCatalogSnapshot,
   verifyWorkspaceDefaultsCasUpdateCommand,
   verifyWorkspaceDefaultsRevision,
   type WorkspaceDefaultsCasUpdateCommand,
@@ -805,6 +806,28 @@ export function createPostgresEffectiveConfigResolver(
           );
         }
       }
+      if (
+        request.operation === "QUESTION_RUN" &&
+        command?.success &&
+        command.data.subagent_catalog_snapshot
+      ) {
+        try {
+          const catalog = await verifySubagentCapabilityCatalogSnapshot(
+            command.data.subagent_catalog_snapshot,
+          );
+          if (catalog.run_id !== request.run_id) {
+            return failure(
+              "SUBAGENT_CATALOG_RECEIPT_MISMATCH",
+              "Subagent capability catalog 与 Run identity 不一致。",
+            );
+          }
+        } catch {
+          return failure(
+            "SUBAGENT_CATALOG_RECEIPT_MISMATCH",
+            "Subagent capability catalog 未通过内容寻址校验。",
+          );
+        }
+      }
       if (request.operation === "SEMANTIC_BOOTSTRAP_JOB" && input.command !== undefined) {
         return failure(
           "EFFECTIVE_CONFIG_REQUEST_INVALID",
@@ -834,6 +857,23 @@ export function createPostgresEffectiveConfigResolver(
           map_database_error: mapDatabaseFailure,
         },
         async ({ capability, client }) => {
+          if (
+            request.operation === "QUESTION_RUN" &&
+            command?.success &&
+            command.data.subagent_catalog_snapshot &&
+            (command.data.subagent_catalog_snapshot.scope.app_id !== capability.scope.app_id ||
+              command.data.subagent_catalog_snapshot.scope.tenant_id !==
+                capability.scope.tenant_id ||
+              command.data.subagent_catalog_snapshot.scope.environment !==
+                capability.scope.environment ||
+              command.data.subagent_catalog_snapshot.principal_id !== capability.principal)
+          ) {
+            throw new PersistenceBoundaryError(
+              "SUBAGENT_CATALOG_SCOPE_DENIED",
+              "Subagent capability catalog 与当前 authority 不一致。",
+              false,
+            );
+          }
           const result =
             request.operation === "QUESTION_RUN" && command?.success
               ? await client.query<JsonValueRow>(

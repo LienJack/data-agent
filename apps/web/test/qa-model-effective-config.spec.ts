@@ -26,7 +26,7 @@ const mocks = vi.hoisted(() => ({
   getRun: vi.fn(),
   resolveRollout: vi.fn(),
   commitDeferred: vi.fn(),
-  planDispatch: vi.fn(),
+  freezeCatalog: vi.fn(),
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -46,7 +46,7 @@ vi.mock("@/lib/workspace-identity", () => ({
     commitDeferred: mocks.commitDeferred,
   }),
   getAgentProfileRegistry: () => ({
-    list: async () => ({
+    listDiscoverable: async () => ({
       ok: true,
       value: [
         { revision: { profile_id: "governed-text2sql-agent" } },
@@ -70,7 +70,7 @@ vi.mock("@/lib/workspace-identity", () => ({
 
 vi.mock("@data-agent/platform", () => ({
   createPostgresRepository: () => ({ getRun: mocks.getRun }),
-  planAgentDispatch: mocks.planDispatch,
+  freezeSubagentCapabilityCatalog: mocks.freezeCatalog,
 }));
 
 vi.mock("@/lib/workspace-run", () => ({
@@ -142,9 +142,11 @@ beforeEach(() => {
       policy_version: "adaptive-routing@1.0.0+rollout.1",
     },
   });
-  mocks.planDispatch.mockResolvedValue({
-    admission: { kind: "EXECUTE", plan: {}, binding: {} },
-    shadow_plan: null,
+  mocks.freezeCatalog.mockResolvedValue({
+    schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+    run_id: ids.run,
+    snapshot_hash: H1,
+    items: [],
   });
 });
 
