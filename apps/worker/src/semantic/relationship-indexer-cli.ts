@@ -16,6 +16,7 @@ import {
   createPostgresCapabilityAuthority,
   createPostgresRelationshipIndexStore,
   createPostgresSemanticExplorerReader,
+  registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
 import { buildSemanticExplorerReadModel } from "@data-agent/semantic";
 import pg from "pg";
@@ -194,6 +195,10 @@ export async function runRelationshipIndexerProcess(
   const stop = () => abort.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  const releasePersistenceDiagnostics = registerPersistenceDiagnosticLogger({
+    identity: runtimeIdentity,
+    logger: (record) => console.error(JSON.stringify(record)),
+  });
 
   try {
     await indexer.initialize();
@@ -261,6 +266,7 @@ export async function runRelationshipIndexerProcess(
       }).catch(() => undefined);
     }
   } finally {
+    releasePersistenceDiagnostics();
     health.initialized = false;
     if (server.listening) {
       await new Promise<void>((resolve) => server.close(() => resolve()));

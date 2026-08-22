@@ -1,5 +1,6 @@
 import { channel } from "node:diagnostics_channel";
 import { describe, expect, it } from "vitest";
+import { registerPersistenceDiagnosticLogger } from "../../src/persistence/diagnostic-logger.js";
 import { mapDatabaseRuntimeFailure } from "../../src/persistence/runtime-database-errors.js";
 import {
   PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL,
@@ -168,6 +169,20 @@ describe("App-aware PostgreSQL transaction", () => {
       diagnostics.push(message as PersistenceTransactionDiagnostic);
     };
     diagnosticChannel.subscribe(capture);
+    const releaseFailingLogger = registerPersistenceDiagnosticLogger({
+      identity: {
+        schema_version: "runtime-build-identity@1.0.0",
+        consumer_role: "web",
+        generation_id: `sha256:${"a".repeat(64)}`,
+        build_id: `sha256:${"b".repeat(64)}`,
+        built_at: "2026-08-22T00:00:00.000Z",
+        git_commit: "abcdef1",
+        git_dirty: false,
+      },
+      logger: () => {
+        throw new Error("LOG_SINK_FAILED");
+      },
+    });
     const result = await withAppTransaction(
       fixture.pool,
       authority.authorizer,
@@ -181,12 +196,14 @@ describe("App-aware PostgreSQL transaction", () => {
         await client.query("select work");
       },
     );
+    releaseFailingLogger();
     diagnosticChannel.unsubscribe(capture);
 
-    expect(result).toMatchObject({
+    expect(result).toEqual({
       ok: false,
       error: {
         code: "PERSISTENCE_TRANSACTION_FAILED",
+        message: "持久化事务失败；数据库错误细节已从公开响应中移除。",
         retryable: true,
       },
     });

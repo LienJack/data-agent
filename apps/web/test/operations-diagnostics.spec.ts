@@ -7,6 +7,7 @@ import {
   OPERATIONS_DIAGNOSTIC_CHANNEL,
   type OperationsDiagnostic,
   publishOperationsDiagnostic,
+  writeWebPersistenceDiagnostic,
 } from "@/lib/operations-diagnostics";
 
 const diagnostics = channel(OPERATIONS_DIAGNOSTIC_CHANNEL);
@@ -70,5 +71,39 @@ describe("operations diagnostics", () => {
     expect(serialized).not.toContain("password");
     expect(serialized).not.toContain("Bearer");
     expect(serialized).not.toContain("database table");
+  });
+
+  it("writes only the persistence diagnostic allowlist", () => {
+    const writer = vi.fn();
+    writeWebPersistenceDiagnostic(
+      {
+        event_name: "persistence_transaction_failed",
+        operation_name: "runtime.accept",
+        correlation_id: "safe-correlation-id",
+        sqlstate: "42703",
+        process_role: "web",
+        build_id: `sha256:${"b".repeat(64)}`,
+        generation_id: `sha256:${"a".repeat(64)}`,
+        error: new Error("select secret from runs"),
+        connection_string: "postgres://admin:secret@database.internal/app",
+        parameters: ["Bearer raw-token"],
+      },
+      writer,
+    );
+
+    expect(writer).toHaveBeenCalledWith(
+      JSON.stringify({
+        event_name: "persistence_transaction_failed",
+        operation_name: "runtime.accept",
+        correlation_id: "safe-correlation-id",
+        sqlstate: "42703",
+        process_role: "web",
+        build_id: `sha256:${"b".repeat(64)}`,
+        generation_id: `sha256:${"a".repeat(64)}`,
+      }),
+    );
+    expect(writer.mock.calls[0]?.[0]).not.toContain("select secret");
+    expect(writer.mock.calls[0]?.[0]).not.toContain("postgres://");
+    expect(writer.mock.calls[0]?.[0]).not.toContain("Bearer");
   });
 });

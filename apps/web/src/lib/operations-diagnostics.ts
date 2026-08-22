@@ -19,6 +19,10 @@ const diagnosticChannel = channel(OPERATIONS_DIAGNOSTIC_CHANNEL);
 const eventNamePattern = /^[a-z][a-z0-9._:-]{0,127}$/;
 const reasonCodePattern = /^[A-Z][A-Z0-9_]{0,127}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const operationPattern = /^[a-z][a-z0-9._:-]{0,127}$/;
+const correlationPattern = /^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/;
+const sqlstatePattern = /^[0-9A-Z]{5}$/;
+const buildIdentityPattern = /^sha256:[a-f0-9]{64}$/;
 
 function record(value: unknown): Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
@@ -67,4 +71,49 @@ export function publishOperationsDiagnostic(input: unknown): void {
       ...(count === undefined ? {} : { count }),
     } satisfies OperationsDiagnostic),
   );
+}
+
+export function writeWebPersistenceDiagnostic(
+  input: unknown,
+  writer: (line: string) => void = console.error,
+): void {
+  const candidate = record(input);
+  const operationName =
+    typeof candidate.operation_name === "string" && operationPattern.test(candidate.operation_name)
+      ? candidate.operation_name
+      : "unknown";
+  const correlationId =
+    typeof candidate.correlation_id === "string" &&
+    correlationPattern.test(candidate.correlation_id)
+      ? candidate.correlation_id
+      : null;
+  const sqlstate =
+    typeof candidate.sqlstate === "string" && sqlstatePattern.test(candidate.sqlstate)
+      ? candidate.sqlstate
+      : null;
+  const buildId =
+    typeof candidate.build_id === "string" && buildIdentityPattern.test(candidate.build_id)
+      ? candidate.build_id
+      : "unknown";
+  const generationId =
+    typeof candidate.generation_id === "string" &&
+    buildIdentityPattern.test(candidate.generation_id)
+      ? candidate.generation_id
+      : "unknown";
+
+  try {
+    writer(
+      JSON.stringify({
+        event_name: "persistence_transaction_failed",
+        operation_name: operationName,
+        correlation_id: correlationId,
+        sqlstate,
+        process_role: "web",
+        build_id: buildId,
+        generation_id: generationId,
+      }),
+    );
+  } catch {
+    // Observability failures must not affect the public request path.
+  }
 }

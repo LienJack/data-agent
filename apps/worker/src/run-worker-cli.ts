@@ -46,6 +46,7 @@ import {
   createWorkspaceContentNamespace,
   type KnowledgeIndex,
   providerInvocationSmokeClaimSchema,
+  registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
 import { createResolvedContextService } from "@data-agent/semantic";
 import pg from "pg";
@@ -267,18 +268,6 @@ export async function runWorkerProcess(
     policy_version: fileScanPolicyVersion,
   });
   let knowledgeIndex: KnowledgeIndex = createUnavailableKnowledgeIndex();
-  try {
-    const configuredIndex = createNeo4jKnowledgeIndexFromEnvironment(environment);
-    try {
-      await configuredIndex.initialize();
-      knowledgeIndex = configuredIndex;
-    } catch {
-      await configuredIndex.close();
-    }
-  } catch {
-    // Missing Neo4j configuration keeps the handler fail-closed without
-    // preventing unrelated Run and Job capabilities from starting.
-  }
   const embeddingProviderFactory = createOpenAiCompatibleEmbeddingProviderFactory(environment);
   const controller = new AbortController();
   const health = createInitialWorkerHealth(config.research_authority_capability_id !== null);
@@ -286,8 +275,24 @@ export async function runWorkerProcess(
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  const releasePersistenceDiagnostics = registerPersistenceDiagnosticLogger({
+    identity: runtimeIdentity,
+    logger: (record) => console.error(JSON.stringify(record)),
+  });
 
   try {
+    try {
+      const configuredIndex = createNeo4jKnowledgeIndexFromEnvironment(environment);
+      try {
+        await configuredIndex.initialize();
+        knowledgeIndex = configuredIndex;
+      } catch {
+        await configuredIndex.close();
+      }
+    } catch {
+      // Missing Neo4j configuration keeps the handler fail-closed without
+      // preventing unrelated Run and Job capabilities from starting.
+    }
     const resolved = await capabilityAuthority.resolveForServerContext({
       deployment_id: config.deployment_id,
       tenant_id: config.tenant_id,
@@ -717,6 +722,7 @@ export async function runWorkerProcess(
       }),
     ]);
   } finally {
+    releasePersistenceDiagnostics();
     health.initialized = false;
     controller.abort();
     await closeServer(healthServer);

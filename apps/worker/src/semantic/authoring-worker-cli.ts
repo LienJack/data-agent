@@ -11,6 +11,7 @@ import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
   createPostgresSemanticAuthoringQueue,
+  registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
 import nextEnvironment from "@next/env";
 import pg from "pg";
@@ -105,7 +106,7 @@ function parseConfiguration(environment: NodeJS.ProcessEnv) {
   });
 }
 
-function log(record: Readonly<Record<string, unknown>>): void {
+function log(record: object): void {
   process.stdout.write(`${JSON.stringify(record)}\n`);
 }
 
@@ -158,6 +159,10 @@ export async function runSemanticAuthoringWorkerProcess(
   const stop = () => abort.abort();
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
+  const releasePersistenceDiagnostics = registerPersistenceDiagnosticLogger({
+    identity: runtimeIdentity,
+    logger: log,
+  });
 
   try {
     const capabilityResult = await authority.resolveForServerContext({
@@ -258,6 +263,7 @@ export async function runSemanticAuthoringWorkerProcess(
       }
     }
   } finally {
+    releasePersistenceDiagnostics();
     abort.abort();
     await pool.end();
     process.off("SIGINT", stop);

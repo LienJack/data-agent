@@ -2,6 +2,12 @@ export async function register(): Promise<void> {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { initializeWebRuntimeBuildIdentity } = await import("./lib/runtime-build-identity");
   const identity = initializeWebRuntimeBuildIdentity();
+  const [{ registerPersistenceDiagnosticLogger }, { writeWebPersistenceDiagnostic }] =
+    await Promise.all([import("@data-agent/platform"), import("./lib/operations-diagnostics")]);
+  registerPersistenceDiagnosticLogger({
+    identity,
+    logger: writeWebPersistenceDiagnostic,
+  });
   console.info(
     JSON.stringify({
       event_name: "web_runtime_started",
