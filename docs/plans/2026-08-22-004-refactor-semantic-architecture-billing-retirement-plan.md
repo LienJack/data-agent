@@ -1,12 +1,12 @@
 ---
-title: "refactor: 语义层架构收敛与计费退役"
+title: "refactor: 语义层单一当前代重构与计费退役"
 type: refactor
 date: 2026-08-22
 status: active
 deepened: 2026-08-23
 ---
 
-# refactor: 语义层架构收敛与计费退役
+# refactor: 语义层单一当前代重构与计费退役
 
 ## Summary
 
@@ -23,6 +23,12 @@ deepened: 2026-08-23
 项目采用绿地 V2-only 基线：V2 是唯一受支持的语义合同和数据模型，V1 schema、读写路径、转换器、fixture 与
 公共导出直接删除，不建设兼容层、双读或 sunset window，也不迁移、回填或保留 V1 语义数据。仍依赖
 V2→V1 投影的当前代码必须在同一实施单元改为原生消费 V2，验收环境从干净的 V2 数据开始。
+
+“V2-only”是语义核心架构代际，不是把仓库内所有 `@1` 字符串机械改成 `@2`。同一业务概念只能保留一个当前
+合同、一个实现、每项操作一个 route、一个 composition root 和一个数据模型：确有旧/新两代或本次结构性重设计的合同，
+直接发布新合同并在同一实施单元改完消费者、删除旧合同；只有一代且语义仍正确的独立合同即使版本为 `@1`，
+仍作为唯一当前合同保留。禁止通过 adapter、re-export、dual read/write、fallback、redirect 或 tombstone 延长已
+退役 surface 的生命周期。
 
 计费功能完整退出产品和运行时，但不误删模型调用所需的非计费能力。先把模型目录、供应商连接、认证、技术
 可用性与 token/context/call 限额从 `billing.ts` 和 Pricing Repository 中拆出，再移除价格、汇率、积分、
@@ -42,6 +48,7 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 | 运行时重复 | `workspace-semantic-runtime.ts` 已提供 Workspace-aware 组合，但 Explorer/Governance 仍保留 env singleton、mock/postgres 分支与 route fallback | 生产路径和测试路径可能使用不同 Authority，配置错误被 fallback 掩盖 |
 | UI 组件过载 | `semantic-studio.tsx`、`direct-semantic-editor.tsx` 均超过千行并混合数据请求、SSE、状态、编辑、保存、发布与渲染 | 状态转换不可局部验证，后续功能只能继续堆叠 |
 | 遗留入口仍占维护面 | `/semantic/:path*`、`/data-link/:path*` 已被重定向，但旧 Review Inbox/Detail、store、mock auth、Data Link Editor 仍在代码和测试中 | 无实际用户价值，却持续增加类型、测试和认知成本 |
+| 兼容策略散落 | Graph V2 编译成 V1 bundle、合同保留 legacy closure/equivalence 字段、旧 route redirect、运行时 singleton/mock fallback、Model Control 临时 re-export 与 Billing tombstone 均可能形成第二条路径 | 即使每处都声称“临时”，组合后仍会形成长期双轨和模糊 Authority |
 | 计费与模型控制耦合 | `packages/contracts/src/workspaces/billing.ts` 同时定义 provider/model catalog/auth 与 price/fx/credit/bill；`postgres-pricing-control.ts` 同时实现两类仓储 | 直接删除计费会破坏模型发现、供应商管理、认证与语义候选运行时 |
 | 金额门禁渗入执行链 | Test Center、model router、认证、bootstrap、模型可用性 SQL 依赖 `pricing`、`UNBILLABLE` 或 `billing_runtime_state` | 即使 UI 隐藏计费，运行时仍受商业状态控制 |
 | 数据库演进难追踪 | 语义迁移从早期版本延续到 `10699`，存在多个相同数字前缀；旧维护 manifest 只覆盖很小一部分历史 | 历史迁移不能重命名，但新维护者难以判断权威链、修复链与当前 frontier |
@@ -52,6 +59,7 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 |---|---|
 | 语义领域 | Canonical Authoring、Governance Workflow、Published Read Model、Runtime Context 与 Search Projection 各有明确合同和所有者 |
 | 语义版本 | V2 是唯一合同、读写模型和测试基线；V1 代码与数据均不保留 |
+| 合同代际 | 每个概念只有一个当前 wire contract；只在语义发生破坏性变化时升版，不做全仓机械 `@1`→`@2` 改名 |
 | 应用编排 | 可复用的语义用例位于 `packages/semantic`，只依赖合同 Port；App 只做边界解析和组合 |
 | 平台适配 | PostgreSQL 是持久 Authority，Neo4j 是可重建投影；Platform 不承载领域流程 |
 | 运行时 | 每个请求/作业只从一个 Workspace-aware composition root 获取依赖；生产路径不存在隐式 mock/global fallback |
@@ -59,6 +67,7 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 | 计费 | 金额、价格、汇率、积分、账单、结算和对账从产品、运行时与公共 API 完整移除 |
 | 模型能力 | Provider connection、model catalog、credential reference、certification、technical readiness 独立保留 |
 | 调用记录 | 保留无商业字段的 Usage Receipt 和 Provider Invocation Authority；不计算或展示金额 |
+| 退役行为 | 旧 import、route、API 与页面直接不存在；不通过 re-export、adapter、redirect、410 或兼容/composition fallback 模拟兼容；权威数据源的显式韧性降级不在此列 |
 
 ## Requirements
 
@@ -90,11 +99,17 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
   数据转换；从新迁移开始强制完整 filename stem 唯一、数字序号唯一、ledger declaration 与文件名一致。
 - R15. 每个实施单元先补足或保留目标主路径的 characterization coverage，再改变行为；U6 只刻画 V2 目标行为，
   不为待删除的 V1 增加保留性测试。每个单元独立验证、独立 scoped commit。
+- R16. 语义子系统及本计划直接耦合的 Model Control、Billing、Web Route/Runtime 必须遵守“单一当前代”：同一概念
+  不得同时存在旧/新 schema、adapter、兼容 re-export、双读写、隐式 fallback、旧路径 redirect 或退役 API
+  tombstone。消费者必须在所属实施单元原子切换，随后立即删除旧 surface。该规则不删除 Relationship Index 在
+  Neo4j 不可用时显式回到 PostgreSQL Authority 等有独立可靠性语义、可观测 reason code 且不解析旧合同的降级路径。
 
 ## Scope Boundaries
 
 - 不重写 Text2SQL、Agent Team、Knowledge Registry 或 Provider Invocation 生命周期；只调整它们与语义/计费的
   接口和依赖。
+- “其他模块一起重构”的范围限定为语义子系统及其直接耦合的 Contracts、Platform Adapter、Model Control、Billing、
+  Web/Worker composition、API 与 UI；不把 Q&A、Agent Team、Research 等无关 bounded context 仅为统一编号而升到 V2。
 - 不把 `SemanticGraphSource`、`SemanticExplorerSnapshot` 和 Relationship Index 合并为同一持久模型；它们分别
   是编辑源、发布读投影和可重建搜索投影。
 - 不改变 Workspace Auth、RBAC、Capability Receipt、Provider SecretRef 与 Model API Authentication 的安全边界。
@@ -104,6 +119,8 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 - 不修改或重命名已经进入 migration ledger 的 SQL 文件。
 - 不为 V1 数据创建 backup/restore、export/import 或 archive 流程；V2-only cleanup 的作用就是使最终 schema 和数据面
   不再包含 V1。执行范围必须先确认是本新项目环境，不得误用到另一个共享/生产数据库。
+- 不支持仓库外旧客户端继续调用已退役 Semantic/Data Link/Billing surface；本项目为绿地，不设置兼容观察期、访问日志
+  决策分支或调用方特例。旧客户端若存在，应与本项目一起升级到唯一当前合同。
 - 不物理删除历史计费表、账本或审计记录；后续若有合规删除需求，另行制定可恢复的数据处置计划。
 
 ## Context & Research
@@ -125,6 +142,12 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 - `packages/semantic/src/graph-v2/compiler.ts` 当前虽然接收 Graph V2，却产出 V1 `SemanticSourceBundle`；
   `compiler/u5-compiler.ts`、contribution lowering 和多组测试也以 V1 为执行合同。现有 V2 只覆盖分析上下文，且
   invariant 仍先投影到 V1。这意味着 U6 必须建立原生 V2 runtime content/compiler，而不是仅删除转换函数。
+- `packages/contracts/src/artifacts/semantic-control-plane.ts` 仍包含 legacy contract status、equivalence attempt、
+  compatible mirror、closure authorization；`semantic-governance-requests.ts` 仍暴露 `conditional_legacy_plan` 与
+  `committed_legacy_attempt_ref`。这些是旧控制面协议的一部分，不应换名后继续进入当前合同。
+- `apps/web/next.config.mjs`、`apps/web/src/app/data-link/` 与 Workspace Data Link route 仍提供旧路径 redirect；
+  `semantic-explorer-route.ts`、`semantic-candidate-route.ts` 又允许缺省 runtime/global getter，形成 route 和 runtime 两类
+  兼容入口。绿地目标中这些入口都应直接删除。
 - `scripts/local-dev-runtime.ts` 以完整 migration filename stem 和 checksum 校验 ledger；重复数字前缀不会直接覆盖
   ledger key，但会造成排序和维护歧义。
 
@@ -150,7 +173,9 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 | 决策面 | 选择 | 理由 |
 |---|---|---|
 | 重构策略 | 按实施单元小步交付，但 V1→V2 不设兼容期 | 计费和职责移动仍需分段；语义版本则在 U6 内完成消费者切换和 V1 删除 |
+| 当前代策略 | 每个实施单元原子切换消费者并删除旧 surface | 小步交付不等于双轨运行；单元边界内可审阅，单元合入后只有一条生产路径 |
 | 语义 canonical model | V2-only，每个生命周期一个 canonical contract | 新项目没有兼容负担，直接消除 V1/V2 双轨和长期维护成本 |
+| 合同升版规则 | 语义或结构发生破坏性变化才升版；单代且仍正确的 `@1` 保持唯一当前版本 | 避免无意义全仓改名、hash 漂移和消费者 churn，同时不保留真实兼容层 |
 | V2 内容与 Authority | 一个生命周期中立的 V2 runtime content，加 Preview/Published 等显式 Authority envelope | Preview 需要编译但不能冒充 Published；共享内容避免再造两份指标/维度/关系结构 |
 | Package 公共面 | 使用按能力命名的 subpath exports，逐步收窄 root barrel | 调用方能看出依赖的是 authoring、read 还是 runtime，不再借用内部实现 |
 | 用例所有权 | 纯业务编排进入 `packages/semantic`，I/O 通过 contracts Port | 兼顾复用、确定性测试和既有依赖规则 |
@@ -161,6 +186,15 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 | 数据处置 | V1 语义数据直接放弃；历史计费对象仍前向冻结 | 用户明确无需语义数据迁移；计费审计数据是另一范围，继续避免未经审批的销毁 |
 | 迁移编号 | 已应用文件不改名；新文件同时校验完整 stem 与数字序号唯一 | 保持 ledger checksum，降低今后重复编号风险 |
 
+合同 inventory 使用以下判定，不以文件名中的数字直接决定动作：
+
+| 当前形态 | 动作 | 计划内例子 |
+|---|---|---|
+| 同一概念同时存在旧/新两代，且新代仍向旧代投影 | `REPLACE_WITH_CURRENT`：改完全部消费者后删除旧 schema、projection、fixture 与 export | `SemanticSourceBundle@1/@2`、Graph V2 → V1 runtime bundle |
+| 仅为旧系统关闭、等价验证或镜像服务 | `DELETE`：不换成 V2 名称，不进入新治理状态机 | legacy equivalence/mirror/closure、conditional legacy plan |
+| 单代合同且语义、Authority、所有者均仍正确 | `KEEP_CURRENT`：保留当前 wire version，只收窄到唯一受控 export | Authoring/Induction/Relationship Index 中经 inventory 证明无双代的合同 |
+| 职责从错误 bounded context 移出且 payload 发生破坏性变化 | `MOVE_AS_CURRENT`：定义目标合同、同步切消费者、删除旧合同；新版本号由实际 wire change 决定 | 从 Billing/Pricing 提取 Model Control |
+
 ## Alternative Approaches Considered
 
 | 方案 | 结论 | 原因 |
@@ -168,9 +202,10 @@ hold、账单、结算、对账、UI、API、Worker 调度和公共导出。Prov
 | 只删明显 dead code | 拒绝 | 无法修复 Web 持有领域编排、公共面过宽和 runtime fallback，废弃代码还会继续产生 |
 | 一次性重写整个语义层 | 拒绝 | 跨合同、数据库、Worker、UI 的大爆炸迁移无法用现有 Authority 和 characterization 安全兜底 |
 | 为 V1 建兼容 adapter 或双读 | 拒绝 | 新项目无需承受历史包袱；用户明确要求直接抛弃 V1 且不迁移数据 |
+| 把所有 `@1` 合同机械改名为 `@2` | 拒绝 | 版本号属于各自 wire contract；机械改名不能改善边界，反而制造无语义变化的协议 churn |
 | 直接删除整个 Billing/Pricing 模块 | 拒绝 | 当前模块混有 Model Catalog、Provider Connection 和 Authentication，会让模型调用与语义候选失效 |
 | 物理 DROP 所有计费表 | 本计划不采用 | 产品退役不要求不可恢复的数据销毁；历史记录需先只读冻结并接受独立处置审批 |
-| 建立新边界后逐步迁移和退役 | 采用 | 每个阶段可验证、可提交、可回滚消费者，同时最终删除不需要的产品面 |
+| 建立新边界后按单元原子切换 | 采用 | 每个阶段可验证、可提交；单元内先改消费者后删旧面，合入态不保留兼容出口 |
 
 ## High-Level Technical Design
 
@@ -226,7 +261,7 @@ flowchart TB
 
 ### U1 — 建立 Characterization、依赖护栏与退役清单
 
-**Goals / requirements:** 为 R3、R4、R5、R9、R10、R14、R15 建立重构前安全网，明确每个待删除 surface 的
+**Goals / requirements:** 为 R3、R4、R5、R9、R10、R14、R15、R16 建立重构前安全网，明确每个待删除 surface 的
 生产消费者、测试消费者、数据库对象和替代入口。
 
 **Files:**
@@ -243,8 +278,9 @@ flowchart TB
 
 **Approach:**
 
-- 记录 Semantic/Billing 的 route、export、runtime、SQL object、UI 和活跃消费者，分类为 `KEEP`、`MOVE`、
-  `COMPATIBILITY`、`DELETE`、`ARCHIVE_DATA`，每项写明替代路径与退出门槛。
+- 记录 Semantic/Billing 的 route、export、runtime、SQL object、UI 和活跃消费者，分类为 `KEEP_CURRENT`、
+  `MOVE_DIRECT`、`DELETE`、`ARCHIVE_DATA`，每项写明唯一当前路径与所属原子切换单元；ledger 不允许
+  `COMPATIBILITY`、`DEPRECATE_LATER` 或无退出日期的临时分类。
 - 扩展架构测试，禁止 Semantic Package 导入 Platform/App，禁止 App 重新定义公共 Semantic schema；为后续 subpath
   exports 和 billing forbidden scan 预留规则。
 - 新增 migration inventory 静态校验：完整 stem 唯一、14 位序号唯一、ledger declaration 与文件名一致；历史重复
@@ -256,14 +292,18 @@ flowchart TB
 
 1. Semantic 内核引入 Platform/App 模块时，dependency boundary test 明确失败。
 2. 新迁移复用已存在数字序号、stem 与声明不一致或缺少 checksum 时，静态校验失败；现有历史文件仍通过。
-3. 所有标记 `DELETE` 的 surface 必须具有“无生产消费者 + 替代入口 + 相关测试处置”三项证据，否则 ledger 校验失败。
+3. 所有标记 `DELETE` 的 surface 必须具有“当前消费者完整清单 + 原子切换单元 + 唯一当前入口或明确 404 + 相关测试
+   处置”证据，否则 ledger 校验失败；U1 不假设待迁移的当前消费者已经归零。
 4. Workspace Semantic 与 Model Provider 活跃路由仍被 characterization tests 覆盖，避免后续删除误伤。
+5. ledger 出现 compatibility adapter、re-export、dual read/write、redirect、tombstone 或 composition fallback
+   计划时校验失败；测试显式注入的 fake 和 Relationship Index 等领域可靠性降级可以通过，但必须写明 Authority、
+   reason code、可观测性及其不解析旧合同的证据。
 
 **Verification:** 退役清单不存在无替代路径的 `DELETE` 条目；架构与迁移规则能以受控坏例证明会失败。
 
 ### U2 — 从计费中提取 Model Control 合同与仓储
 
-**Goals / requirements:** 实现 R10、R11，为删除计费建立非商业模型控制边界。
+**Goals / requirements:** 实现 R10、R11、R16，为删除计费建立非商业模型控制边界。
 
 **Dependencies:** U1。
 
@@ -297,15 +337,16 @@ flowchart TB
   管理、认证、Q&A resource resolution 和 bootstrap 消费新仓储。
 - `workspace-identity.ts` 不再把 pricing、credit、billing repositories 聚合进通用 Workspace runtime state；Model
   Control 使用独立 getter/composition。
-- Model Control 文件移动期间可保留一个薄 re-export 并在 U4 删除；它只服务非语义模型控制重命名，不构成 V1/V2
-  兼容层。
+- 在同一实施单元新增 Model Control bounded surface、切换全部生产/测试消费者、收窄 root exports，并删除
+  `billing.ts`/Pricing surface 中对应旧符号；不保留薄 re-export、路径 alias 或旧 getter。工作区内可按依赖顺序编辑，
+  但 U2 的 scoped commit 只能在消费者切换与旧 surface 删除同时完成后创建。
 
 **Test scenarios:**
 
 1. 管理员创建 provider connection、绑定 SecretRef、登记模型并认证时，只访问 Model Control Repository。
 2. 普通用户读取可用模型目录时不会收到 price、currency、credit 或 billing mode 字段。
 3. 无效/越权 workspace、environment、provider/model binding 继续 fail closed，不因移除 Pricing Admin helper 放宽 RBAC。
-4. Model Control 临时 re-export 与新 subpath 在迁移期解析到同一 schema/result，且 forbidden test 阻止新增旧 import；
+4. 旧 billing/pricing import path、symbol 与 getter 在完成切换的 commit 中无法解析；forbidden test 阻止重新引入，且
    该测试不得引入任何 Semantic V1 合同。
 
 **Verification:** 模型目录和 provider 管理的生产调用图对 Pricing/Billing Repository 为零依赖，现有鉴权与 SecretRef
@@ -355,14 +396,15 @@ flowchart TB
    Semantic Candidate 与 Q&A。
 2. 缺 credential、认证过期、certification 不匹配、deployment disabled 或 token/context 超限时仍在网络调用前拒绝。
 3. Provider 未返回 token 时 Receipt 使用 `UNAVAILABLE/null`，不得写 0 或计算估算金额。
-4. 旧 `UNBILLABLE` 记录经前向投影后成为技术可用/不可用的确定状态，不产生隐式 fallback。
+4. 当前 Model Control schema 不接受或产生 `UNBILLABLE`；绿地 fixture 与最终数据库约束只允许技术状态，不提供
+   `UNBILLABLE` 转换、别名或运行时 fallback。
 
 **Verification:** 全仓生产代码不再以 monetary price/fx/billing state 决定模型可用性；Provider Authority 的
 preflight、dispatch、response、terminal、usage 链不变。
 
 ### U4 — 删除计费产品面与运行时代码
 
-**Goals / requirements:** 实现 R10，并删除无运行时价值的 legacy billing composition。
+**Goals / requirements:** 实现 R10、R16，并删除无运行时价值的 legacy billing composition。
 
 **Dependencies:** U3。
 
@@ -404,14 +446,15 @@ preflight、dispatch、response、terminal、usage 链不变。
   schedulers、routes、panels、navigation 和 public exports。
 - 删除 `createWorkerMastraComposition` 的 legacy billing path 与只被测试/root export 使用的 pricing sync；保留真正的
   Provider Invocation 与 Worker composition。
-- Billing API 若经 U1 发现存在仓库外消费者，则先返回一个版本的明确 `410 Gone` tombstone；若调用图与部署清单均
-  证明无外部合同，直接删除。不得无限保留隐藏 API。
+- Billing API、route handlers 和旧 URL 直接删除，不提供 `410 Gone` tombstone、redirect、空成功响应或 compatibility
+  handler。仓库内消费者必须在 U4 一起删除或切换；仓库外旧客户端不在绿地项目支持范围内。
 - 删除只证明已退役行为的测试，保留/改写能够保护非计费 Model Control、RBAC 和 Usage Receipt 的测试。
 
 **Test scenarios:**
 
 1. Settings、Workspace Home、Admin navigation 不再显示计费、价格、积分或账单入口。
-2. 已删除 API 不可执行任何 billing mutation；采用 tombstone 时返回稳定 410 且不访问数据库。
+2. 已删除 Billing API route 返回框架默认 404/不存在，且 build manifest 中没有对应 handler；不存在 410/redirect
+   compatibility code，也不可执行任何 billing mutation。
 3. Package root 不再导出 billing/pricing symbols，新增生产 import 会被 forbidden scan 捕获。
 4. Model Provider、认证、认证证书、Q&A 模型选择和 Provider 调用仍通过各自非计费测试。
 
@@ -450,7 +493,8 @@ Credit、Pricing、FX、Bill Settlement 能力。
   EXECUTE 和相关表写权限。
 - 历史 price/fx/credit/hold/bill/audit 表保留只读归档；记录 retirement receipt、对象清单、row count/digest 与生效
   migration version。默认不 DROP table/function，以便回溯和独立审批后的后续处置。
-- 对仍可能被历史客户端调用的函数，选择 revoke 或稳定 retired error，不能静默 no-op 成功。
+- 撤销权限后直接 DROP 仅服务计费 mutation 的 function/view/trigger；历史表保留只读并不意味着保留旧 RPC。不得为
+  历史客户端提供 retired error wrapper、同名空实现或参数兼容函数。
 - 扩充维护 manifest，覆盖当前语义迁移权威链、修复链、billing retirement 和最新 frontier；新迁移执行唯一编号规则。
 
 **Test scenarios:**
@@ -458,7 +502,8 @@ Credit、Pricing、FX、Bill Settlement 能力。
 1. Fresh PostgreSQL 从零应用到 `10700` 后，模型目录、Provider Invocation、Semantic Studio/Explorer 所需 RPC 可用，
    不需要 billing tables 参与运行时判断。
 2. 从包含历史账单/积分/hold 的升级数据库应用 `10700` 后，历史 row count/digest 保持，应用角色不能新增或修改记录。
-3. 调用 retired billing mutation 时明确拒绝或返回 retired error，不产生账本、hold、账单或审计新增行。
+3. 旧 billing mutation function/RPC 在最终 catalog 中不存在；应用角色无法调用，也不产生账本、hold、账单或审计
+   新增行。
 4. Migration ledger 校验完整 stem/checksum；编号重复、manifest 缺 frontier 或 migration 源与渲染结果漂移时失败。
 
 **Verification:** 新部署和升级部署均不产生计费写入；历史对象只读可审计；PostgreSQL authority、RLS、NOLOGIN owner
@@ -466,7 +511,7 @@ Credit、Pricing、FX、Bill Settlement 能力。
 
 ### U6 — 确立 V2-only 语义合同、生命周期与 Package 公共面
 
-**Goals / requirements:** 实现 R1、R2、R3、R6、R7，为后续移动用例建立稳定接口。
+**Goals / requirements:** 实现 R1、R2、R3、R6、R7、R16，为后续移动用例建立稳定接口。
 
 **Dependencies:** U1、U5。合同和消费者改写可与 U2–U5 并行开发，但 V2-only 数据库清理迁移在 `10700` 之后落地。
 
@@ -474,6 +519,7 @@ Credit、Pricing、FX、Bill Settlement 能力。
 
 - `packages/contracts/src/artifacts/semantic-control-plane.ts`
 - `packages/contracts/src/artifacts/semantic-governance.ts`
+- `packages/contracts/src/artifacts/semantic-governance-requests.ts`
 - `packages/contracts/src/artifacts/semantic-authoring.ts`
 - `packages/contracts/src/artifacts/semantic-explorer.ts`
 - `packages/contracts/src/artifacts/semantic-graph-v2.ts`
@@ -512,7 +558,8 @@ Credit、Pricing、FX、Bill Settlement 能力。
 **Approach:**
 
 - 先按生命周期建立 contract map：Authoring Source/Revision、Candidate/Governance、Published Read、Resolved Runtime、
-  Relationship Projection；禁止同一命名在多个文件表达不同 Authority。
+  Relationship Projection；每项再分类为“本次破坏性重设计并以新当前合同替换”或“单代合同原样保留”。禁止同一命名
+  在多个文件表达不同 Authority，也禁止仅为追求 `@2` 外观而修改无语义变化合同的 wire identity/hash。
 - 从 V2 合同中提取唯一的 lifecycle-neutral runtime content，承载公式、指标、维度、关系、本体、物理绑定、治理、
   runtime authorization 与分析语义；Preview/Published 只用不同 Authority envelope 包装同一内容。Preview 不得通过
   `publication_status=PUBLISHED` 冒充发布物。
@@ -524,6 +571,9 @@ Credit、Pricing、FX、Bill Settlement 能力。
   保持解析兼容，也不新增 version bridge。由于 V1 数据不迁移，允许在 U6 内一次性收紧 V2 合同并重建干净 fixture。
 - 盘点所有 V1 type/schema/helper/import，先把 `analysis/context-compiler.ts` 等真实消费者改为直接消费 V2，再在同一
   单元删除 V1 schema、V2→V1 投影函数、旧 fixture、旧测试和 root re-export。禁止保留隐藏 fallback。
+- 从当前 control-plane/governance request 中删除 legacy status、equivalence attempt/mirror/receipt、closure
+  authorization、`conditional_legacy_plan`、`committed_legacy_attempt_ref` 及其仓储/SQL/测试消费者；V2 治理状态机
+  只表达 Candidate、Review、Revision、Release 和必要恢复语义，不把旧链路信息换名后塞回扩展字段。
 - 用 `10701` forward migration 显式 DROP V1-only function/view/table/column/type 与相关 grant/trigger；不复制、不转换、
   不归档 V1 rows。迁移必须先断言 app/environment 属于本绿地项目，并记录删除对象清单，避免作用于错误数据库。
 - 为 `@data-agent/semantic/authoring`、`/governance`、`/read-model`、`/runtime-context`、`/relationship-index` 建立受控
@@ -544,13 +594,15 @@ Credit、Pricing、FX、Bill Settlement 能力。
 7. 新 Candidate 不能调用 publish port；只有 Governance command 在授权后产生 Revision/Release。
 8. Authoring Source 投影到 Explorer/Runtime/Relationship Index 时保持业务对象类型和一等关系，不丢失 formula、grain、
    physical binding 或 evidence identity。
+9. 合同 inventory 中的单代当前 `@1` 合同保持原 wire identity 并只有一个 export/consumer path；被判定为破坏性重设计
+   的合同只有新版本可解析，旧 schema/字段/别名均不可解析。
 
 **Verification:** 每个合同有唯一生命周期和所有者；公共 subpath 与真实消费者对应；生产代码、测试基线与最终
 PostgreSQL catalog 中的 V1 symbol、V2→V1 projection、V1 fixture/runtime row、V1-only object 和 re-export 均为 0。
 
 ### U7 — 将语义应用用例移出 Web 并统一生产运行时
 
-**Goals / requirements:** 实现 R2、R4、R5、R8，消除 App 领域层和重复 runtime。
+**Goals / requirements:** 实现 R2、R4、R5、R8、R16，消除 App 领域层和重复 runtime。
 
 **Dependencies:** U6。
 
@@ -592,8 +644,10 @@ PostgreSQL catalog 中的 V1 symbol、V2→V1 projection、V1 fixture/runtime ro
   不创建 mock、不读取 fallback singleton、不复制 schema。
 - `workspace-semantic-runtime.ts` 成为 Web 唯一组合入口；Worker 建立等价 job-scoped composition。显式 fixture 在测试
   中注入，不再通过生产 env 切换 mock backend。
-- 合并 Governance candidates/inbox 重复 GET 合同；删除旧 endpoint 前先迁移 Studio 调用方并验证权限/分页/错误语义
-  等价。
+- Route/use case 不再给 runtime 参数设置 global getter 默认值；测试必须显式传 fake composition，生产必须显式传
+  Workspace/job composition，缺失即 fail closed。
+- 合并 Governance candidates/inbox 重复 GET 合同；在同一实施单元迁移 Studio 调用方、验证权限/分页/错误语义并
+  删除旧 endpoint，不提供 proxy route、redirect、response mapper 或旧 URL tombstone。
 
 **Test scenarios:**
 
@@ -603,13 +657,15 @@ PostgreSQL catalog 中的 V1 symbol、V2→V1 projection、V1 fixture/runtime ro
 4. Candidate 创建、人工 review、publish、rollback、Explorer read 与 Relationship Search 保持跨层集成行为；AI Candidate
    无法绕过 review publish。
 5. 重复 inbox endpoint 退役后，Studio 使用唯一合同并保持分页、筛选、empty/error 状态。
+6. 旧 endpoint、global runtime getter、mock backend env switch 与缺省 runtime 参数无法从生产代码解析；已删除 route
+   呈现默认 404，不重定向到新 endpoint。
 
 **Verification:** Web `semantic-*service` 只剩边界 adapter 或被删除；核心用例可在无 Next.js/PostgreSQL 的 Semantic
 Package tests 中运行；所有生产 route 走 Workspace composition。
 
 ### U8 — 分解 Semantic UI、迁移共享组件并删除遗留代码
 
-**Goals / requirements:** 实现 R8、R9，降低未来 Studio/Explorer 迭代的局部复杂度并完成文档收口。
+**Goals / requirements:** 实现 R8、R9、R16，降低未来 Studio/Explorer 迭代的局部复杂度并完成文档收口。
 
 **Dependencies:** U7。
 
@@ -650,8 +706,10 @@ Package tests 中运行；所有生产 route 走 Workspace composition。
 - Direct Editor 与 Studio 共享 schema-driven editor state 和 command adapter，不再复制保存/校验逻辑；避免建立新的
   全局 client authority。
 - 把 Explorer page component 从旧 route 文件迁到 `components/semantic/explorer`，Workspace route 直接引用；然后删除
-  已被全局 redirect 覆盖的旧 `/semantic` route、Review Inbox/Detail/store/mock auth 和无消费者 Data Link Editor。
-- Workspace 切换状态只重置仍存在的 Workspace-scoped stores；删除对旧 semantic store 的兼容 reset。
+  旧 `/semantic`、`/data-link`、Workspace Data Link route 文件，以及 `next.config.mjs` 对应 redirect 规则、Review
+  Inbox/Detail/store/mock auth 和无消费者 Data Link Editor。唯一入口是 Workspace Semantic Studio/Explorer。
+- Workspace 切换状态只重置仍存在的 Workspace-scoped stores；删除对旧 semantic store 的兼容 reset，不保留空 store、
+  no-op action 或旧 key alias。
 - 更新 Trellis 规范：把 Workspace Identity/Model Control 与已退役 Billing 拆开；记录新的语义层目录、唯一 runtime、
   Candidate/Publish 边界和历史计费数据只读策略。
 
@@ -662,11 +720,12 @@ Package tests 中运行；所有生产 route 走 Workspace composition。
 2. Workspace 切换后 draft、selection、SSE connection 与错误状态被正确隔离，不残留上一个 workspace 数据。
 3. Workspace Semantic Studio/Explorer 可导航并覆盖 loading、empty、error、read-only、editing、publishing 状态；键盘和
    aria 语义不因拆组件退化。
-4. `/semantic/:path*` 与 `/data-link/:path*` 兼容重定向仍有效，但旧页面/组件/store 不再进入 bundle 或测试依赖图。
+4. `/semantic/:path*`、`/data-link/:path*` 与 Workspace Data Link 旧路径返回默认 404/不存在；Next redirect manifest、
+   bundle 和测试依赖图中都没有对应兼容入口。
 5. 删除旧 mock auth 后，所有写操作都从真实 Workspace request/capability 获得身份。
 
-**Verification:** Semantic Studio/Editor/Explorer 的状态与渲染职责可独立测试；旧入口只剩明确 redirect 配置；文档与
-architecture tests 描述同一套边界。
+**Verification:** Semantic Studio/Editor/Explorer 的状态与渲染职责可独立测试；旧入口、redirect、store alias 与 mock
+authority 均为 0；文档与 architecture tests 描述同一套边界。
 
 ## System-Wide Impact
 
@@ -686,14 +745,15 @@ flowchart TB
   Worker --> Provider[Model provider]
 ```
 
-- **Contracts:** 当前 V2 wire identity 与 payload hash 是唯一边界；无需解析 V1 payload，也不对 V1 hash 或数据库记录
-  提供兼容保证。
+- **Contracts:** 语义核心当前 V2 wire identity 与 payload hash 是唯一边界；无需解析 V1 payload，也不对 V1 hash 或
+  数据库记录提供兼容保证。其他合同按各自语义独立版本化，不因架构代际机械改名，但任何概念都只有一个可解析版本。
 - **Web:** Semantic 与 Model Admin 路由会减少，但 Workspace/RBAC 门禁保持；删除 Billing UI 时要同步 navigation、
   loading state、client cache 和 route tests。
 - **Worker:** 语义 authoring/induction/relationship jobs 保留；pricing sync 与 legacy billing gate 删除；Provider
   Invocation receipt 保留且不得引入金额字段。
 - **Database:** `10700` 先让运行时不再读取计费状态并冻结旧写入，`10701` 再直接清理 V1-only Semantic 对象和数据。
-  发布顺序错误会造成新代码访问旧函数或旧代码继续写入，因此必须用部署交叠窗口和 Go/No-Go 查询验证。
+  单元发布顺序错误会造成新代码访问旧函数或旧代码继续写入，因此必须在合入/部署前完成消费者扫描、drain 与
+  Go/No-Go 查询；不通过部署交叠窗口维持双版本服务。
 - **Search projection:** Neo4j/relationship index 可按 Published Release 重建，重构期间不得把其 digest 与 Source
   Revision digest 混为同一比较域。
 - **Observability:** 删除 billing metrics/dashboard 后仍要保留 provider invocation count、tokens unavailable rate、
@@ -702,15 +762,16 @@ flowchart TB
 ## Rollout and Operational Sequence
 
 1. **Guard phase:** 交付 U1，冻结现有主路径行为与待删 surface ledger。
-2. **Model decoupling phase:** 交付 U2/U3，双入口仅用于代码兼容，不双写商业状态；验证无价格数据时模型和语义主路径
-   正常。
-3. **Billing code retirement phase:** 交付 U4，确认生产构建、部署清单和访问日志中没有 billing caller。
+2. **Model decoupling phase:** 交付 U2/U3，在每个可合入单元内切换全部消费者并删除旧 import/getter/export；验证无
+   价格数据时模型和语义主路径正常，合入态不出现双入口。
+3. **Billing code retirement phase:** 交付 U4，直接删除 Billing route、UI、Worker 和 exports；生产构建与部署清单中
+   不存在 handler、redirect 或 tombstone。
 4. **Database retirement phase:** 交付 U5，先应用 forward migration，再部署只使用非计费路径的最终代码；验证零新增
    billing rows 和历史 digest 不变。
 5. **Semantic boundary phase:** U6 的合同/消费者改写可提前并行，但 `10701` 在 `10700` 后落地；U7 在 V2-only 合同稳定后
    迁移用例，U8 最后删除旧入口和拆 UI。
-6. **Exit gate:** U6 在同一单元完成 V2 消费者切换与 V1 删除；不存在 compatibility export、双读观察期或旧 payload
-   写入门槛。其他 legacy route/API 仍按各自调用证据退出，不与 V1 版本兼容混为一谈。
+6. **Exit gate:** U6 在同一单元完成 V2 消费者切换与 V1 删除；U7/U8 原子删除重复 runtime、API 与页面。不存在
+   compatibility export、双读观察期、旧 payload 写入、redirect、tombstone 或 compatibility/composition fallback。
 
 ## Success Metrics
 
@@ -724,18 +785,23 @@ flowchart TB
 - V2 canonical payload 的 schema version/hash 与 V2 fixtures 一致；V1 symbol、fixture、转换器、runtime data dependency
   与最终 PostgreSQL V1-only object 均为 0；Candidate 无法直接发布，Published Release 可以重建
   Explorer/Resolved Context/Relationship Index。
-- Legacy `/semantic`、`/data-link` 页面代码不再进入 bundle，兼容 redirect 仍通过；Studio/Explorer 的关键状态转换有
-  独立 controller/reducer 覆盖。
+- 每个 semantic/model-control 概念只有一个当前 schema/export/operation route/runtime/data model；目标生产范围内旧
+  adapter、re-export、dual read/write、compatibility/composition fallback、redirect 与 tombstone 数量为 0；
+  Relationship Index 等显式 Authority 韧性降级仍按 reason code 测试和观测。
+- Legacy `/semantic`、`/data-link` 页面及 redirect 不再进入 route/build manifest，旧 URL 为默认 404；Studio/Explorer
+  的关键状态转换有独立 controller/reducer 覆盖。
 
 ### Rollback posture
 
-- U2/U3 回滚只允许切回非语义的 Model Control 临时 adapter，不能重新启用价格/积分扣减。
-- U4 删除代码后若发现未知 Billing API caller，可临时恢复只返回 410 的 tombstone，不恢复 mutation。
+- U2/U3 不保留 Model Control 临时 adapter。失败时回退整个未部署单元 commit，或在干净分支修复唯一当前路径；不能
+  通过恢复旧 import/re-export 形成双轨，也不能重新启用价格/积分扣减。
+- U4 删除代码后不恢复 Billing tombstone/redirect。若发现遗漏的内部调用方，回退整个未部署单元并在同一修复单元
+  切换调用方；仓库外旧客户端不构成本项目恢复兼容层的理由。
 - U5 不提供自动 reverse migration。回滚应用版本时，旧计费写路径因权限已撤销会 fail closed；需要恢复写权限属于新的
   明确审批操作。
 - U6/U7 与 `10701` 不提供 V1 rollback。回滚以完整单元提交和重新创建干净 V2 数据库为边界；不回填或恢复 V1
   对象与数据。
-- U8 UI 回滚只能恢复 Workspace route 上的前一版组件；不恢复已重定向的 legacy authority/mock auth。
+- U8 UI 回滚只能恢复 Workspace route 上的前一版当前组件；不恢复 legacy route、redirect、authority 或 mock auth。
 
 ## Risks and Mitigations
 
@@ -747,7 +813,8 @@ flowchart TB
 | 大规模移动导致循环依赖 | 构建失败或 Apps/Platform 反向进入领域层 | U1 architecture guard；Semantic 只依赖 contracts Port |
 | 隐式 runtime fallback 被误用 | 测试通过而生产使用错误 Authority | 生产 composition 必须显式；缺依赖 fail closed；mock 只通过 test injection |
 | Billing DB 仍被旧进程写入 | 退役后继续产生账单/积分状态 | 部署前 drain 旧 Worker，U5 revoke mutation grants，并验证 row count/digest |
-| 旧 API 存在未知外部调用者 | 删除后客户端报错 | U1 consumer/access-log inventory；必要时一个版本 410 tombstone |
+| 旧 API 存在未知外部调用者 | 删除后旧客户端报错 | 绿地项目不支持旧客户端；发布前公布唯一当前合同并要求调用方同步升级，不增加 tombstone/redirect |
+| 把“零兼容”误解为全仓机械升版 | 大量无语义 hash/fixture churn，掩盖真正架构问题 | U6 contract map 逐概念判定；只有破坏性变化升版，单代正确合同保持唯一当前版本 |
 | UI 拆分产生 SSE/草稿竞态 | 重复提交、stale publish、跨 Workspace 泄漏 | reducer/controller characterization，使用 revision/attempt identity 拒绝 stale event |
 | 一次性 PR 过大难审阅 | 回归定位困难 | 每个 U 单独 scoped commit，先合同/护栏后迁移消费者，禁止跨 U 顺手清理 |
 
@@ -756,15 +823,18 @@ flowchart TB
 - “移除计费”指移除商业计费能力，而不是移除模型调用的技术配额、Provider Auth 或 Usage Receipt。
 - 历史计费数据不在本计划中物理删除；产品与运行时退役通过断依赖、撤权限和只读冻结完成。
 - V2 是唯一受支持的语义版本；V1 合同、代码、fixture 与数据直接放弃，不建立兼容层，也不做迁移或回填。
+- “V2”指语义核心新架构代际，不要求无语义变化的独立 `@1` 合同机械升版；判定标准是每个概念只有一份当前合同，
+  而不是版本号外观统一。
+- 零兼容原则覆盖语义直接耦合的 Model Control/Billing/Route/Runtime：不保留 adapter、re-export、dual read/write、
+  compatibility/composition fallback、redirect 或 410 tombstone，消费者在所属实施单元同步切换；显式 Authority
+  韧性降级不属于版本兼容层。
 - 历史 migration 文件不重写；`10701` 负责让最终数据库状态 V2-only，并直接删除 V1-only 对象和 rows。
 - 语义层不是压成一个 Package/文件；重构重点是生命周期、依赖和公共面的清晰，而不是减少概念数量。
 - 已应用 migration 不改名；新迁移从 `10700` 起恢复唯一数字序号并加自动校验。
-- 现有 Workspace Semantic Studio/Explorer 是未来入口；旧 `/semantic` 与 `/data-link` 页面只承担兼容重定向。
+- 现有 Workspace Semantic Studio/Explorer 是唯一未来入口；旧 `/semantic`、`/data-link` 页面及其重定向直接删除。
 
 ## Deferred to Implementation
 
-- U1 需用部署访问日志或网关清单确认 Billing API 是否有仓库外调用者；这决定直接删除还是短期保留 410 tombstone，
-  不改变“计费 mutation 必须退役”的产品决策。
 - U5 根据现有 migration renderer 约定决定 `10700` 是否拆分源文件；最终 SQL 文件名、ledger declaration 和 checksum
   必须一致。
 - UI 大组件拆分的具体 panel 粒度由 characterization tests 和交互职责决定，不预设组件数量或引入新框架。
