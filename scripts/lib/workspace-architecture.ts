@@ -78,6 +78,69 @@ export interface WorkspaceModule {
   readonly runtimeDependencies: readonly string[];
 }
 
+export interface WorkspaceConsumerDescriptor {
+  readonly consumerId: string;
+  readonly moduleName: string;
+}
+
+export interface WorkspaceConsumerDependencyResolution extends WorkspaceConsumerDescriptor {
+  readonly dependencyNames: readonly string[];
+}
+
+export function resolveWorkspaceConsumerDependencies(
+  modules: readonly WorkspaceModule[],
+  consumers: readonly WorkspaceConsumerDescriptor[],
+): WorkspaceConsumerDependencyResolution[] {
+  const moduleByName = new Map(modules.map((module) => [module.name, module]));
+
+  const collectDependencies = (moduleName: string): string[] => {
+    if (!moduleByName.has(moduleName)) {
+      throw new Error(`受管理进程引用了不存在的 Workspace Package ${moduleName}。`);
+    }
+
+    const collected = new Set<string>();
+    const visit = (name: string): void => {
+      const module = moduleByName.get(name);
+      if (!module) {
+        return;
+      }
+      for (const dependency of module.allDependencies) {
+        if (!moduleByName.has(dependency) || collected.has(dependency)) {
+          continue;
+        }
+        collected.add(dependency);
+        visit(dependency);
+      }
+    };
+
+    visit(moduleName);
+    collected.delete(moduleName);
+    return [...collected].sort();
+  };
+
+  return consumers
+    .map((consumer) => ({
+      ...consumer,
+      dependencyNames: collectDependencies(consumer.moduleName),
+    }))
+    .sort((left, right) => left.consumerId.localeCompare(right.consumerId));
+}
+
+export function resolveImpactedWorkspaceConsumers(
+  resolutions: readonly WorkspaceConsumerDependencyResolution[],
+  changedModuleNames: readonly string[],
+): string[] {
+  const changed = new Set(changedModuleNames);
+  return resolutions
+    .filter(
+      (resolution) =>
+        changed.has(resolution.moduleName) ||
+        resolution.dependencyNames.some((dependency) => changed.has(dependency)),
+    )
+    .map((resolution) => resolution.consumerId)
+    .sort();
+}
+
 export interface WorkspaceSource {
   readonly moduleName: string;
   readonly path: string;
