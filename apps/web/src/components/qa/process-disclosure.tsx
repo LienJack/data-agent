@@ -54,7 +54,7 @@ export function ProcessDisclosure({ row, nested = false }: { row: ProcessRow; ne
         aria-expanded={expanded}
         aria-controls={panelId}
         onClick={() => setExpanded((current) => !current)}
-        className="group flex min-h-10 w-full items-center gap-2 px-1.5 py-2 text-left outline-none hover:bg-[color-mix(in_srgb,var(--color-accent)_5%,transparent)] active:translate-y-px focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+        className="control-pressable group flex min-h-10 w-full items-center gap-2 rounded-[var(--radius-control)] px-1.5 py-2 text-left outline-none hover:bg-[var(--color-accent-soft)] focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded bg-[var(--color-bg-overlay)] text-[var(--color-text-secondary)]">
           <ProcessIcon aria-hidden="true" size={14} />
@@ -91,7 +91,7 @@ export function ProcessDisclosure({ row, nested = false }: { row: ProcessRow; ne
       {expanded && (
         <div
           id={panelId}
-          className="mb-2 ml-8 border-l-2 border-[var(--color-border-overlay)] bg-[var(--color-bg-overlay)] p-3"
+          className="mb-3 ml-8 rounded-[var(--radius-item)] border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] p-3"
         >
           {row.input !== null && (
             <section className="mb-3">

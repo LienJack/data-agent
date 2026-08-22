@@ -425,7 +425,7 @@ export function ConversationDirectory(props: {
             role="treeitem"
             aria-level={1}
             onClick={() => store.toggleFolderExpanded(folderId)}
-            className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-[var(--color-bg-primary)]/70"
+            className="flex min-w-0 flex-1 items-center gap-1.5 rounded-[var(--radius-control)] px-1.5 py-1 text-left hover:bg-[var(--color-bg-primary)]/70"
             aria-expanded={expanded}
           >
             {expanded ? (
@@ -531,7 +531,7 @@ export function ConversationDirectory(props: {
           <button
             type="button"
             onClick={() => setEditor({ kind: "create-folder", value: "" })}
-            className="flex size-7 items-center justify-center rounded-md text-[var(--color-text-muted)] hover:bg-[var(--color-bg-primary)] hover:text-[var(--color-text-primary)]"
+            className="control-pressable flex size-7 items-center justify-center rounded-[var(--radius-control)] text-[var(--color-text-muted)] hover:bg-[var(--color-bg-primary)] hover:text-[var(--color-text-primary)]"
             aria-label={copy(locale, "新建文件夹", "New folder")}
           >
             <Folder aria-hidden="true" size={15} />
@@ -552,7 +552,7 @@ export function ConversationDirectory(props: {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder={copy(locale, "搜索我的对话", "Search my conversations")}
-            className="h-9 w-full rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] pl-8 pr-8 text-[12px] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-border-focused)] focus:outline-none"
+            className="h-9 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] pl-8 pr-8 text-[12px] placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-border-focused)] focus:outline-none"
           />
         </label>
         {search && (
@@ -571,7 +571,7 @@ export function ConversationDirectory(props: {
       </form>
 
       <div
-        className="mt-2 grid grid-cols-3 rounded-lg bg-[var(--color-bg-tertiary)] p-0.5"
+        className="mt-2 grid grid-cols-3 rounded-[var(--radius-control)] bg-[var(--color-bg-tertiary)] p-0.5"
         role="tablist"
       >
         {(["active", "archived", "trash"] as const).map((view) => (
@@ -581,7 +581,7 @@ export function ConversationDirectory(props: {
             key={view}
             aria-selected={directoryView === view}
             onClick={() => void store.setDirectoryView(view)}
-            className={`h-7 rounded-md text-[10px] font-medium ${
+            className={`control-pressable h-7 rounded-[8px] text-[10px] font-medium ${
               directoryView === view
                 ? "bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] shadow-sm"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"

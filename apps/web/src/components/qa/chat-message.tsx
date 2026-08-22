@@ -34,12 +34,12 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
   return (
     <div
       id={message.runId ? `chat-run-${message.runId}` : undefined}
-      className={`mb-6 flex ${isUser ? "justify-end" : "justify-start"} scroll-m-20`}
+      className={`mb-8 flex ${isUser ? "justify-end" : "justify-start"} scroll-m-20`}
     >
       <div
-        className={`${isUser ? "max-w-[82%] rounded-lg px-3.5 py-2.5" : "w-full"} ${
+        className={`${isUser ? "max-w-[84%] rounded-[var(--radius-item)] px-4 py-3" : "w-full"} ${
           isUser
-            ? "bg-[var(--color-text-primary)] text-white shadow-[var(--shadow-float)]"
+            ? "bg-[#27304a] text-white shadow-[0_14px_28px_-22px_rgb(21_29_53_/_0.8)]"
             : isDeferred
               ? "border-l-2 border-amber-500 bg-amber-50/70 px-4 py-3 text-amber-950"
               : message.type === "error"
@@ -48,8 +48,8 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
         }`}
       >
         {!isUser && (
-          <div className="mb-2.5 flex items-center gap-2">
-            <span className="flex size-7 items-center justify-center rounded-md bg-[var(--color-text-primary)] text-white">
+          <div className="mb-3 flex items-center gap-2.5">
+            <span className="flex size-7 items-center justify-center rounded-[9px] bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
               <Cpu aria-hidden="true" size={15} />
             </span>
             <div className="min-w-0">

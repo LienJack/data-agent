@@ -72,7 +72,7 @@ export function ChatInput() {
 
   return (
     <div className="qa-composer-stage shrink-0 border-t border-transparent px-3 pb-3 pt-3 sm:px-5">
-      <div className="mx-auto w-full max-w-[920px]">
+      <div className="mx-auto w-full max-w-[840px]">
         {(resourceError || resourceNotice) && (
           <div
             className={cn(
@@ -93,7 +93,7 @@ export function ChatInput() {
           </div>
         )}
 
-        <div className="glass-panel-radius glass-surface-strong border px-2.5 pb-2.5 pt-3 transition-[border-color,box-shadow] focus-within:border-[var(--color-border-focused)] sm:px-3 sm:pb-3">
+        <div className="surface-floating-strong rounded-[var(--radius-panel)] border px-2.5 pb-2.5 pt-3 transition-[border-color,box-shadow] focus-within:border-[var(--color-border-focused)] focus-within:shadow-[0_18px_46px_-30px_rgb(38_71_168_/_0.45)] sm:px-3 sm:pb-3">
           <label htmlFor="qa-composer-input" className="sr-only">
             给数据分析 Agent 发送消息
           </label>
@@ -151,7 +151,7 @@ export function ChatInput() {
                   onClick={() => void stopMessage()}
                   aria-label="停止当前分析"
                   title="停止当前分析"
-                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-text-primary)] text-[var(--color-bg-primary)] transition-transform hover:scale-[1.03] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focused)]"
+                  className="control-pressable flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-text-primary)] text-[var(--color-bg-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focused)]"
                 >
                   <Stop className="size-4" weight="fill" aria-hidden="true" />
                 </button>
@@ -162,7 +162,7 @@ export function ChatInput() {
                   disabled={sendDisabled}
                   aria-label="发送消息"
                   title={unavailableReason ?? "发送消息"}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-white transition-[transform,background-color,opacity] hover:scale-[1.03] hover:bg-[var(--color-accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focused)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                  className="control-pressable flex size-10 shrink-0 items-center justify-center rounded-full bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-border-focused)] disabled:cursor-not-allowed disabled:opacity-35"
                 >
                   <PaperPlaneTilt className="size-[18px]" weight="fill" aria-hidden="true" />
                 </button>

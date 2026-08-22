@@ -327,9 +327,9 @@ export default function TestCenterPage() {
               key={suite.suite_id}
               onClick={() => chooseSuite(suite)}
               className={[
-                "min-h-32 min-w-[230px] snap-start rounded-lg border bg-[var(--color-bg-surface)] p-4 text-left transition hover:-translate-y-0.5",
+                "control-pressable min-h-32 min-w-[230px] snap-start rounded-[var(--radius-item)] border bg-[var(--color-bg-surface)] p-4 text-left",
                 activeSuiteId === suite.suite_id
-                  ? "border-[#6a8e81] ring-2 ring-[#6a8e81]/10"
+                  ? "border-[var(--color-accent)] bg-[var(--color-accent-soft)] ring-2 ring-[color-mix(in_srgb,var(--color-accent)_10%,transparent)]"
                   : "border-[var(--color-border-default)]",
               ].join(" ")}
             >
@@ -387,7 +387,7 @@ export default function TestCenterPage() {
                           ),
                     )
                   }
-                  className="text-[11px] font-medium text-[#527c70]"
+                  className="text-[11px] font-medium text-[var(--color-accent)]"
                 >
                   {selectedCaseIds.size === cases.filter((testCase) => testCase.runnable).length
                     ? "取消全选"
@@ -413,7 +413,7 @@ export default function TestCenterPage() {
                       className={[
                         "mb-1 flex items-start gap-2 rounded-lg border p-2.5",
                         activeCaseId === testCase.case_id
-                          ? "border-[#9bb3aa] bg-[#f2f6f4]"
+                          ? "border-[color-mix(in_srgb,var(--color-accent)_38%,white)] bg-[var(--color-accent-soft)]"
                           : "border-transparent hover:bg-[var(--color-bg-canvas)]",
                       ].join(" ")}
                     >
@@ -423,7 +423,7 @@ export default function TestCenterPage() {
                         checked={selectedCaseIds.has(testCase.case_id)}
                         disabled={!activeSuite?.runnable || !testCase.runnable}
                         onChange={() => toggleCase(testCase.case_id)}
-                        className="mt-0.5 accent-[#527c70]"
+                        className="mt-0.5 accent-[#3f63e8]"
                       />
                       <button
                         type="button"
@@ -494,7 +494,7 @@ export default function TestCenterPage() {
                         type="button"
                         disabled={running || !activeSuite?.runnable || !activeCase.runnable}
                         onClick={() => void execute("single-baseline")}
-                        className="rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium hover:bg-[var(--color-bg-canvas)] disabled:opacity-50"
+                        className="control-pressable rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium hover:bg-[var(--color-bg-overlay)] disabled:opacity-50"
                       >
                         运行所选 Agent 单题
                       </button>
@@ -502,7 +502,7 @@ export default function TestCenterPage() {
                         type="button"
                         disabled={running || selectedCaseIds.size === 0 || !activeSuite?.runnable}
                         onClick={() => void execute("batch-baseline")}
-                        className="rounded-lg bg-[#171a18] px-3 py-2 text-xs font-semibold text-white hover:bg-black disabled:opacity-50"
+                        className="control-pressable rounded-[var(--radius-control)] bg-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                       >
                         {running ? "执行中…" : `批量运行所选 Agent · ${selectedCaseIds.size} 题`}
                       </button>
@@ -521,7 +521,7 @@ export default function TestCenterPage() {
                   <div className="mt-5 grid gap-4 lg:grid-cols-2">
                     <div>
                       <h3 className="text-xs font-semibold">公开 Schema</h3>
-                      <div className="mt-2 max-h-56 overflow-y-auto rounded-lg border border-[var(--color-border-default)] bg-[#fafbfa] p-3 font-mono text-[10px] leading-5">
+                      <div className="mt-2 max-h-56 overflow-y-auto rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] p-3 font-mono text-[10px] leading-5">
                         {activeCase.schema.length === 0 ? (
                           <div className="font-sans text-[11px] text-[var(--color-text-muted)]">
                             本题不使用数据库 Schema；题面与研究上下文就是全部公开输入。
@@ -529,7 +529,9 @@ export default function TestCenterPage() {
                         ) : (
                           activeCase.schema.map((table) => (
                             <div key={table.name} className="mb-3 last:mb-0">
-                              <div className="font-semibold text-[#42685e]">{table.name}</div>
+                              <div className="font-semibold text-[var(--color-accent-pressed)]">
+                                {table.name}
+                              </div>
                               <div className="text-[var(--color-text-secondary)]">
                                 {table.columns
                                   .map((column) => `${column.name}: ${column.data_type}`)
@@ -541,7 +543,7 @@ export default function TestCenterPage() {
                       </div>
                     </div>
                     {agents.length > 0 ? (
-                      <div className="rounded-lg border border-[#bfd0ca] bg-[#f2f6f4] p-4 text-xs leading-6 text-[#42685e]">
+                      <div className="rounded-[var(--radius-item)] border border-[color-mix(in_srgb,var(--color-accent)_24%,white)] bg-[var(--color-accent-soft)] p-4 text-xs leading-6 text-[var(--color-accent-pressed)]">
                         <div className="font-semibold">运行 Agent</div>
                         <div className="mt-3 space-y-2">
                           {agents.map((agent) => (
@@ -553,8 +555,8 @@ export default function TestCenterPage() {
                               className={[
                                 "w-full rounded-lg border px-3 py-2 text-left transition disabled:cursor-not-allowed disabled:opacity-55",
                                 selectedAgentId === agent.agent_id
-                                  ? "border-[#527c70] bg-white"
-                                  : "border-[#cfddd8] bg-white/60 hover:bg-white",
+                                  ? "border-[var(--color-accent)] bg-white"
+                                  : "border-[var(--color-border-default)] bg-white/60 hover:bg-white",
                               ].join(" ")}
                             >
                               <span className="flex items-center justify-between gap-2">
@@ -600,7 +602,7 @@ export default function TestCenterPage() {
                             running || !sql.trim() || !activeSuite?.runnable || !activeCase.runnable
                           }
                           onClick={() => void execute("submitted")}
-                          className="mt-2 w-full rounded-lg border border-[#527c70] px-3 py-2 text-xs font-semibold text-[#42685e] hover:bg-[#edf2ef] disabled:opacity-50"
+                          className="control-pressable mt-2 w-full rounded-[var(--radius-control)] border border-[var(--color-accent)] px-3 py-2 text-xs font-semibold text-[var(--color-accent-pressed)] hover:bg-[var(--color-accent-soft)] disabled:opacity-50"
                         >
                           提交并确定性判分
                         </button>
@@ -622,7 +624,7 @@ export default function TestCenterPage() {
                         type="button"
                         disabled={installing}
                         onClick={() => void installActiveSuite()}
-                        className="rounded-lg bg-[#171a18] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+                        className="control-pressable rounded-[var(--radius-control)] bg-[var(--color-accent)] px-4 py-2.5 text-xs font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
                       >
                         {installing
                           ? "正在下载并校验…"

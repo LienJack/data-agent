@@ -65,58 +65,53 @@ export function JobCenterView({ workspaceId }: { readonly workspaceId: string })
   }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-8 md:px-8 md:py-10">
-      <header className="grid gap-6 border-b border-[var(--color-border-default)] pb-7 md:grid-cols-[minmax(0,1fr)_240px] md:items-end">
+    <main className="page-frame max-w-[1400px]">
+      <header className="page-heading">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
-            Background authority
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em] text-[var(--color-text-primary)]">
-            任务中心
-          </h1>
-          <p className="mt-3 max-w-[65ch] text-sm leading-6 text-[var(--color-text-secondary)]">
+          <p className="page-eyebrow">Background authority</p>
+          <h1 className="page-title">任务中心</h1>
+          <p className="page-description">
             这里展示 PostgreSQL 已接纳的后台任务。任务状态、租约、重试与输出回执均由数据库签发。
           </p>
         </div>
-        <div className="border-l border-[var(--color-border-default)] pl-5">
-          <div className="font-mono text-3xl font-semibold tabular-nums">{activeCount}</div>
-          <div className="mt-1 text-xs text-[var(--color-text-muted)]">当前非终态任务</div>
+        <div className="surface-reading min-w-48 rounded-[var(--radius-item)] border px-4 py-3">
+          <div className="font-mono text-2xl font-semibold tabular-nums text-[var(--color-accent)]">
+            {activeCount}
+          </div>
+          <div className="mt-1 text-[11px] text-[var(--color-text-muted)]">当前非终态任务</div>
         </div>
       </header>
 
       {error && (
-        <div className="mt-6 border-l-2 border-rose-500 bg-rose-50 px-4 py-3 text-sm text-rose-900">
+        <div className="mt-6 rounded-[var(--radius-control)] border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900">
           {error}
         </div>
       )}
 
       <section className="mt-8" aria-live="polite">
         {loading ? (
-          <div className="divide-y divide-[var(--color-border-default)] border-y border-[var(--color-border-default)]">
+          <div className="surface-reading divide-y divide-[var(--color-border-default)] overflow-hidden rounded-[var(--radius-panel)] border">
             {[0, 1, 2].map((item) => (
-              <div
-                key={item}
-                className="grid animate-pulse gap-3 py-5 md:grid-cols-[1fr_180px_120px]"
-              >
-                <div className="h-4 w-48 bg-slate-200" />
-                <div className="h-4 w-28 bg-slate-100" />
-                <div className="h-4 w-20 bg-slate-100" />
+              <div key={item} className="grid gap-3 px-5 py-5 md:grid-cols-[1fr_180px_120px]">
+                <div className="skeleton-shimmer h-4 w-48 rounded bg-[var(--color-bg-overlay)]" />
+                <div className="skeleton-shimmer h-4 w-28 rounded bg-[var(--color-bg-overlay)]" />
+                <div className="skeleton-shimmer h-4 w-20 rounded bg-[var(--color-bg-overlay)]" />
               </div>
             ))}
           </div>
         ) : jobs.length === 0 ? (
-          <div className="border-y border-[var(--color-border-default)] py-16">
+          <div className="surface-reading rounded-[var(--radius-panel)] border px-6 py-16 text-center">
             <p className="text-lg font-medium">尚无后台任务</p>
             <p className="mt-2 text-sm text-[var(--color-text-muted)]">
               从 Artifact Workspace 发起导出后，任务会出现在这里。
             </p>
           </div>
         ) : (
-          <div className="divide-y divide-[var(--color-border-default)] border-y border-[var(--color-border-default)]">
+          <div className="surface-reading divide-y divide-[var(--color-border-default)] overflow-hidden rounded-[var(--radius-panel)] border">
             {jobs.map((job) => (
               <article
                 key={job.job_id}
-                className="grid gap-4 py-5 md:grid-cols-[minmax(0,1fr)_180px_150px] md:items-center"
+                className="grid gap-4 px-5 py-5 hover:bg-[var(--color-accent-soft)] md:grid-cols-[minmax(0,1fr)_180px_150px] md:items-center"
               >
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-3">
@@ -145,7 +140,7 @@ export function JobCenterView({ workspaceId }: { readonly workspaceId: string })
                       type="button"
                       disabled={cancelling === job.job_id}
                       onClick={() => void cancel(job.job_id)}
-                      className="border border-[var(--color-border-default)] px-3 py-2 text-xs font-medium transition-transform active:-translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
+                      className="control-pressable rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium hover:border-[var(--color-border-overlay)] hover:bg-[var(--color-bg-overlay)] disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {cancelling === job.job_id ? "正在请求取消" : "取消任务"}
                     </button>
