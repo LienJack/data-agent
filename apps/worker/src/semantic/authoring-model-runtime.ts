@@ -1,26 +1,27 @@
 import { randomUUID } from "node:crypto";
 import {
   createModelProviderBindings,
-  createModelProviderPort,
+  createSemanticAuthoringModelProviderPort,
   type ModelProviderBinding,
+  type ModelProviderPortCompositionInput,
   type SemanticAgentTurnInvocationFactory,
   ServerModelResponseSchemaRegistry,
   SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
 } from "@data-agent/agent-runtime";
 import {
   type ArtifactReference,
-  type AvailableModelProfile,
+  type AvailableExecutionModelProfile,
   artifactReferenceIdentity,
   artifactReferenceSchema,
-  authorizeAvailableModelProfile,
-  authorizeModelProviderInvocation,
-  type ModelCertificationClaims,
-  modelCertificationClaimsSchema,
+  authorizeAvailableExecutionModelProfile,
+  authorizeSemanticAuthoringModelProviderInvocation,
+  modelExecutionCertificationClaimsSchema,
   modelProviderSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
   type AppCapability,
+  createPostgresSemanticAuthoringProviderInvocation,
   type SqlPool,
   type TransactionalCapabilityAuthorizer,
   withAppTransaction,
@@ -33,6 +34,7 @@ import { z } from "zod";
 
 const SEMANTIC_AGENT_RESPONSE_SCHEMA_VERSION = "semantic-agent-turn@1.0.0";
 const MODEL_RESPONSE_SCHEMA_OVERHEAD_BYTES = 4_096;
+type ModelExecutionCertificationClaims = z.infer<typeof modelExecutionCertificationClaimsSchema>;
 
 interface StoredCertificationReceiptRow {
   readonly run_id: string;
@@ -43,10 +45,12 @@ interface StoredCertificationReceiptRow {
 }
 
 export interface SemanticAuthoringModelRuntime {
-  readonly profile: AvailableModelProfile;
+  readonly profile: AvailableExecutionModelProfile;
   readonly binding: ModelProviderBinding;
-  readonly model_provider: ReturnType<typeof createModelProviderPort>;
-  readonly create_invocation: SemanticAgentTurnInvocationFactory;
+  readonly for_domain: (semanticDomain: string) => {
+    readonly model_provider: ReturnType<typeof createSemanticAuthoringModelProviderPort>;
+    readonly create_invocation: SemanticAgentTurnInvocationFactory;
+  };
 }
 
 function configuredBinding(environment: NodeJS.ProcessEnv): ModelProviderBinding | null {
@@ -78,7 +82,7 @@ async function resolvePersistedReceipt(input: {
   readonly binding: ModelProviderBinding;
 }): Promise<{
   readonly reference: ArtifactReference;
-  readonly claims: ModelCertificationClaims;
+  readonly claims: ModelExecutionCertificationClaims;
 } | null> {
   const result = await withAppTransaction(
     input.pool,
@@ -101,7 +105,6 @@ async function resolvePersistedReceipt(input: {
             and document_json ->> 'profile_id' = $4::text
             and document_json ->> 'provider' = $5::text
             and document_json ->> 'model_id' = $6::text
-            and document_json ->> 'profile_version' = $7::text
             and document_json ->> 'verdict' = 'PASS'
           order by created_at desc
           limit 1`,
@@ -112,14 +115,13 @@ async function resolvePersistedReceipt(input: {
           input.binding.profile_id,
           input.binding.provider,
           input.binding.default_model_id,
-          input.binding.profile_version,
         ],
       );
       return query.rows[0] ?? null;
     },
   );
   if (!result.ok || !result.value) return null;
-  const claims = modelCertificationClaimsSchema.safeParse(result.value.document_json);
+  const claims = modelExecutionCertificationClaimsSchema.safeParse(result.value.document_json);
   const reference = artifactReferenceSchema.safeParse({
     artifact_id: result.value.artifact_id,
     artifact_type: "ModelCertificationReceipt",
@@ -164,20 +166,38 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
   const receipt = await resolvePersistedReceipt({ ...input, binding });
   if (!receipt) return null;
   const receiptIdentity = artifactReferenceIdentity(receipt.reference);
-  let profile: AvailableModelProfile;
+  const snapshot = receipt.claims.execution_profile_snapshot;
+  const certifiedBinding: ModelProviderBinding = Object.freeze({
+    ...binding,
+    default_model_id: snapshot.model_id,
+    profile_version: snapshot.profile_version,
+    adapter_version: snapshot.adapter_version,
+    capabilities: snapshot.capabilities,
+    operational_constraints: {
+      context_window: snapshot.context_window,
+      region_privacy: snapshot.region_privacy,
+      pricing: { verification_status: "UNVERIFIED" as const },
+      fallback_compatibility: snapshot.fallback_compatibility,
+    },
+  });
+  let profile: AvailableExecutionModelProfile;
   try {
-    profile = await authorizeAvailableModelProfile(
+    profile = await authorizeAvailableExecutionModelProfile(
       {
-        profile_id: binding.profile_id,
-        scope: input.capability.scope,
-        provider: binding.provider,
-        model_id: binding.default_model_id,
-        profile_version: binding.profile_version,
-        capabilities: binding.capabilities,
-        operational_constraints: binding.operational_constraints,
+        profile_id: snapshot.profile_id,
+        scope: snapshot.scope,
+        provider: snapshot.provider,
+        model_id: snapshot.model_id,
+        model_config_version: snapshot.model_config_version,
+        profile_version: snapshot.profile_version,
+        adapter_version: snapshot.adapter_version,
+        capabilities: snapshot.capabilities,
+        operational_constraints: certifiedBinding.operational_constraints,
+        recovery_capabilities: snapshot.recovery_capabilities,
+        connection: snapshot.connection,
         certification_status: "AVAILABLE",
         certification_receipt_ref: receipt.reference,
-        certified_model_id: binding.default_model_id,
+        certified_model_id: snapshot.model_id,
       },
       {
         resolve: async (reference) =>
@@ -202,15 +222,18 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
   ]);
   const tools = semanticAuthoringModelToolCatalog();
   const tokenCountTools = semanticAuthoringToolCatalog();
-  const modelProvider = createModelProviderPort({
+  const commonComposition: Omit<
+    ModelProviderPortCompositionInput,
+    "dispatch_marker" | "terminal_recorder"
+  > = {
     credential_resolver: {
       resolve: async (request) =>
         request.scope.app_id === input.capability.scope.app_id &&
         request.scope.tenant_id === input.capability.scope.tenant_id &&
         request.scope.environment === input.capability.scope.environment &&
-        request.provider === binding.provider &&
-        request.credential_env === binding.credential_env
-          ? (environment[binding.credential_env]?.trim() ?? null)
+        request.provider === certifiedBinding.provider &&
+        request.credential_env === certifiedBinding.credential_env
+          ? (environment[certifiedBinding.credential_env]?.trim() ?? null)
           : null,
     },
     binding_resolver: {
@@ -218,71 +241,79 @@ export async function resolveSemanticAuthoringModelRuntime(input: {
         request.scope.app_id === input.capability.scope.app_id &&
         request.scope.tenant_id === input.capability.scope.tenant_id &&
         request.scope.environment === input.capability.scope.environment &&
-        request.provider === binding.provider &&
-        request.profile_id === binding.profile_id &&
-        request.profile_version === binding.profile_version
-          ? binding
+        request.provider === certifiedBinding.provider &&
+        request.profile_id === certifiedBinding.profile_id &&
+        request.profile_version === certifiedBinding.profile_version
+          ? certifiedBinding
           : null,
     },
     response_schema_registry: responseSchemas,
     input_token_counter: {
       count: async (context) => trustedInputTokenUpperBound({ ...context, tools: tokenCountTools }),
     },
-    dispatch_marker: {
-      // Semantic authoring has no PostgreSQL provider-invocation marker yet.
-      // Keep this legacy composition unable to cross the network.
-      mark_dispatched: async () => {
-        throw new Error("PROVIDER_PERSISTENT_DISPATCH_MARKER_REQUIRED");
-      },
-    },
     tools,
-  });
-
-  const createInvocation: SemanticAgentTurnInvocationFactory = async (material) => {
-    const contentHash = await sha256ContentHash({
-      messages: material.messages,
-      tool_allowlist: material.tool_allowlist,
-      turn_index: material.turn.turn_index,
-    });
-    return authorizeModelProviderInvocation(
-      {
-        schema_version: "semantic-provider@1",
-        request_id: material.turn.request_id,
-        attempt_id: randomUUID(),
-        scope: material.turn.scope,
-        run_id: material.turn.authoring_run_id,
-        provider: profile.provider,
-        profile_id: profile.profile_id,
-        profile_version: profile.profile_version,
-        model_id: profile.model_id,
-        task_ref: {
-          artifact_id: material.turn.candidate_id,
-          artifact_type: "SemanticGraphCandidate",
-          ...material.turn.scope,
-          run_id: material.turn.authoring_run_id,
-          revision: material.turn.turn_index,
-          content_hash: contentHash,
-        },
-        context_refs: [],
-        messages: material.messages,
-        tool_allowlist: material.tool_allowlist,
-        response_schema_version: SEMANTIC_AGENT_RESPONSE_SCHEMA_VERSION,
-        budget: material.budget,
-      },
-      async ({ scope, profile_id: profileId }) =>
-        scope.app_id === profile.scope.app_id &&
-        scope.tenant_id === profile.scope.tenant_id &&
-        scope.environment === profile.scope.environment &&
-        profileId === profile.profile_id
-          ? profile
-          : null,
-    );
-  };
+  } as const;
 
   return Object.freeze({
     profile,
-    binding,
-    model_provider: modelProvider,
-    create_invocation: createInvocation,
+    binding: certifiedBinding,
+    for_domain: (semanticDomain: string) => {
+      const lifecycle = createPostgresSemanticAuthoringProviderInvocation({
+        pool: input.pool,
+        authorizer: input.authorizer,
+        capability: input.capability,
+        semantic_domain: semanticDomain,
+      });
+      const modelProvider = createSemanticAuthoringModelProviderPort({
+        ...commonComposition,
+        dispatch_marker: { mark_dispatched: (request) => lifecycle.markDispatched(request) },
+        terminal_recorder: {
+          mark_response_observed: (value) => lifecycle.markResponseObserved(value),
+          commit_terminal: (value) => lifecycle.commitTerminal(value),
+        },
+      });
+      const createInvocation: SemanticAgentTurnInvocationFactory = async (material) => {
+        const contentHash = await sha256ContentHash({
+          messages: material.messages,
+          tool_allowlist: material.tool_allowlist,
+          turn_index: material.turn.turn_index,
+        });
+        return authorizeSemanticAuthoringModelProviderInvocation(
+          {
+            schema_version: "semantic-provider@1",
+            request_id: material.turn.request_id,
+            attempt_id: randomUUID(),
+            scope: material.turn.scope,
+            run_id: material.turn.authoring_run_id,
+            provider: profile.provider,
+            profile_id: profile.profile_id,
+            profile_version: profile.profile_version,
+            model_id: profile.model_id,
+            task_ref: {
+              artifact_id: material.turn.candidate_id,
+              artifact_type: "SemanticGraphCandidate",
+              ...material.turn.scope,
+              run_id: material.turn.authoring_run_id,
+              revision: material.turn.turn_index,
+              content_hash: contentHash,
+            },
+            context_refs: [],
+            messages: material.messages,
+            tool_allowlist: material.tool_allowlist,
+            response_schema_version: SEMANTIC_AGENT_RESPONSE_SCHEMA_VERSION,
+            budget: material.budget,
+          },
+          async ({ scope, profile_id: profileId }) =>
+            scope.app_id === profile.scope.app_id &&
+            scope.tenant_id === profile.scope.tenant_id &&
+            scope.environment === profile.scope.environment &&
+            profileId === profile.profile_id
+              ? profile
+              : null,
+          (request) => lifecycle.commitIntent(request),
+        );
+      };
+      return Object.freeze({ model_provider: modelProvider, create_invocation: createInvocation });
+    },
   });
 }

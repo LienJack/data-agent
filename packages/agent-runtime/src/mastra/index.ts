@@ -1,3 +1,5 @@
+export * from "./context-compiler.js";
+export * from "./context-epoch-adapter.js";
 export {
   MastraExecutionError,
   MODEL_EXECUTION_REASON_CODES,
@@ -22,7 +24,9 @@ export {
   MastraModelProviderAdapter,
   type ModelProviderAdapterClock,
   type ProviderDispatchMarker,
+  type ProviderTerminalRecorder,
 } from "./model-provider-adapter.js";
+export * from "./provider-dispatch-envelope.js";
 export {
   EMPTY_SERVER_MODEL_RESPONSE_SCHEMA_REGISTRY,
   type RegisteredServerModelResponseSchema,
@@ -30,7 +34,4 @@ export {
   ServerModelResponseSchemaRegistry,
   type ServerModelStructuredOutput,
 } from "./response-schema-registry.js";
-export * from "./context-compiler.js";
-export * from "./context-epoch-adapter.js";
-export * from "./provider-dispatch-envelope.js";
 export * from "./subagent-controller.js";

@@ -2,11 +2,14 @@
 
 import type {
   SemanticAuthoringPublicEvent,
+  SemanticCandidateRevisionSaveResult,
   SemanticEdgeFamily,
+  SemanticEdgeTypeDefinition,
   SemanticGraphEntryStatus,
   SemanticGraphNode,
   SemanticGraphReadEdge,
   SemanticGraphReadNode,
+  SemanticManualEdit,
   SemanticNodeType,
 } from "@data-agent/contracts";
 import {
@@ -28,6 +31,9 @@ import {
   resumeSemanticAuthoring,
   type SemanticStudioAuthoringState,
   type SemanticStudioSnapshot,
+  saveSemanticCandidateRevision,
+  selfPublishSemanticCandidate,
+  startManualSemanticSession,
   startSemanticAuthoring,
   subscribeSemanticAuthoringEvents,
 } from "@/lib/semantic-studio-api";
@@ -40,6 +46,7 @@ import {
   type SemanticStudioView,
 } from "@/lib/semantic-studio-model";
 import { ContextPreviewWorkbench } from "./context-preview-workbench";
+import { type DirectEditorMode, DirectSemanticEditor } from "./direct-semantic-editor";
 import { SemanticAgentComposer } from "./semantic-agent-composer";
 import { SemanticGraphCanvas } from "./semantic-graph-canvas";
 import { SemanticInspector } from "./semantic-inspector";
@@ -82,6 +89,8 @@ export function SemanticStudio({
   initialDraft = "",
   initialDomain,
   initialRunId,
+  initialEvidenceSelectionId,
+  initialEvidenceSelectionHash,
   preview = false,
 }: {
   readonly workspaceId: string;
@@ -89,6 +98,8 @@ export function SemanticStudio({
   readonly initialDraft?: string;
   readonly initialDomain?: string;
   readonly initialRunId?: string;
+  readonly initialEvidenceSelectionId?: string;
+  readonly initialEvidenceSelectionHash?: string;
   readonly preview?: boolean;
 }) {
   const router = useRouter();
@@ -116,6 +127,9 @@ export function SemanticStudio({
   const [selectedEdge, setSelectedEdge] = useState<SemanticGraphReadEdge | null>(null);
   const [hops, setHops] = useState<1 | 2>(1);
   const [draft, setDraft] = useState(initialDraft);
+  const [evidenceSelectionId, setEvidenceSelectionId] = useState(
+    initialEvidenceSelectionId ?? null,
+  );
   const [authoringState, setAuthoringState] = useState<SemanticStudioAuthoringState | null>(
     initialSnapshot?.authoring?.state ?? null,
   );
@@ -123,6 +137,17 @@ export function SemanticStudio({
     initialSnapshot?.authoring?.events ?? [],
   );
   const [authoringBusy, setAuthoringBusy] = useState(false);
+  const [directEditorMode, setDirectEditorMode] = useState<DirectEditorMode | null>(null);
+  const [manualEdits, setManualEdits] = useState<readonly SemanticManualEdit[]>([]);
+  const [saveSummary, setSaveSummary] = useState("保存语义 Working ChangeSet");
+  const [lastSavedRevision, setLastSavedRevision] =
+    useState<SemanticCandidateRevisionSaveResult | null>(
+      initialSnapshot?.authoring?.saved_revision ?? null,
+    );
+  const [publishedRelease, setPublishedRelease] = useState<{
+    readonly releaseId: string;
+    readonly generation: number;
+  } | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const setSidebarCollapsed = useLayoutStore((state) => state.setSidebarCollapsed);
   const activeRequest = useRef<AbortController | null>(null);
@@ -157,10 +182,11 @@ export function SemanticStudio({
         );
         if (controller.signal.aborted) return;
         setSnapshot(loaded);
-        if (loaded.authoring) {
-          setAuthoringState(loaded.authoring.state);
-          setEvents((current) => mergeAuthoringEvents(current, loaded.authoring?.events ?? []));
-        }
+        setAuthoringState(loaded.authoring?.state ?? null);
+        setLastSavedRevision(loaded.authoring?.saved_revision ?? null);
+        setEvents((current) =>
+          loaded.authoring ? mergeAuthoringEvents(current, loaded.authoring.events) : [],
+        );
       } catch (caught) {
         if (!controller.signal.aborted)
           setError(caught instanceof Error ? caught.message : "Semantic Studio 暂时不可用。");
@@ -187,6 +213,22 @@ export function SemanticStudio({
     media.addEventListener("change", collapseForSmallScreen);
     return () => media.removeEventListener("change", collapseForSmallScreen);
   }, [setSidebarCollapsed]);
+
+  const hasUnsavedChanges =
+    manualEdits.length > 0 ||
+    (authoringState?.run.status === "READY_FOR_REVIEW" &&
+      authoringState.run.working_revision > 0 &&
+      lastSavedRevision === null);
+
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     eventCursor.current = events.at(-1)?.sequence ?? eventCursor.current;
@@ -268,7 +310,92 @@ export function SemanticStudio({
     return { nodeCount, candidateCount, nodeTypeCounts: counts };
   }, [snapshot?.full.clusters, snapshot?.full.nodes]);
   const candidateCount = graphSummary.candidateCount;
+  const directEditorNodes = useMemo(() => {
+    const indexed = new Map<string, SemanticGraphNode>();
+    for (const item of snapshot?.list.items ?? []) indexed.set(item.node.node_id, item.node);
+    for (const item of snapshot?.full.nodes ?? []) indexed.set(item.node.node_id, item.node);
+    for (const edit of manualEdits) {
+      if (edit.operation === "ADD_NODE" || edit.operation === "UPDATE_NODE") {
+        indexed.set(edit.node.node_id, edit.node);
+      } else if (edit.operation === "RETIRE_NODE") {
+        const node = indexed.get(edit.node_id);
+        if (node) indexed.set(edit.node_id, { ...node, lifecycle: "RETIRED" });
+      }
+    }
+    return [...indexed.values()].sort((left, right) => left.name.localeCompare(right.name));
+  }, [manualEdits, snapshot?.full.nodes, snapshot?.list.items]);
+  const directEditorEdgeTypes = useMemo(() => {
+    const indexed = new Map<string, SemanticEdgeTypeDefinition>();
+    for (const definition of snapshot?.edge_type_registry ?? []) {
+      indexed.set(definition.edge_type, definition);
+    }
+    for (const edit of manualEdits) {
+      if (edit.operation === "ADD_EDGE_TYPE") {
+        indexed.set(edit.edge_type_definition.edge_type, edit.edge_type_definition);
+      }
+    }
+    return [...indexed.values()];
+  }, [manualEdits, snapshot?.edge_type_registry]);
   const inspectorVisible = view !== "full" || selectedNode !== null || selectedEdge !== null;
+
+  function appendManualEdit(edit: SemanticManualEdit) {
+    setManualEdits((current) => [...current, edit]);
+    if (edit.operation === "ADD_NODE") {
+      setSelectedNode({
+        node: edit.node,
+        status: "ADDED",
+        relation_count: {
+          incoming: 0,
+          outgoing: 0,
+          total: 0,
+          by_family: {
+            BUSINESS: 0,
+            ANALYTICAL: 0,
+            FORMULA: 0,
+            PHYSICAL: 0,
+            JOIN: 0,
+            PROVENANCE: 0,
+            TERMINOLOGY: 0,
+          },
+        },
+      });
+      setSelectedEdge(null);
+    } else if (edit.operation === "UPDATE_NODE") {
+      setSelectedNode((current) =>
+        current?.node.node_id === edit.node.node_id
+          ? {
+              ...current,
+              node: edit.node,
+              status: current.status === "PUBLISHED" ? "MODIFIED" : current.status,
+            }
+          : current,
+      );
+    } else if (edit.operation === "RETIRE_NODE") {
+      setSelectedNode((current) =>
+        current?.node.node_id === edit.node_id
+          ? { ...current, node: { ...current.node, lifecycle: "RETIRED" }, status: "RETIRED" }
+          : current,
+      );
+    } else if (edit.operation === "ADD_EDGE") {
+      setSelectedEdge({ edge: edit.edge, status: "ADDED" });
+      setSelectedNode(null);
+    } else if (edit.operation === "UPDATE_EDGE") {
+      setSelectedEdge((current) =>
+        current?.edge.edge_id === edit.edge.edge_id
+          ? {
+              edge: edit.edge,
+              status: current.status === "PUBLISHED" ? "MODIFIED" : current.status,
+            }
+          : current,
+      );
+    } else if (edit.operation === "RETIRE_EDGE") {
+      setSelectedEdge((current) =>
+        current?.edge.edge_id === edit.edge_id
+          ? { edge: { ...current.edge, lifecycle: "RETIRED" }, status: "RETIRED" }
+          : current,
+      );
+    }
+  }
 
   async function selectAndLoadNode(node: SemanticGraphReadNode, openGraph: boolean) {
     setSelectedNode(node);
@@ -388,6 +515,8 @@ export function SemanticStudio({
       ];
       setEvents(previewEvents);
       setDraft("");
+      setLastSavedRevision(null);
+      setPublishedRelease(null);
       window.setTimeout(() => setAuthoringBusy(false), 350);
       return;
     }
@@ -397,16 +526,124 @@ export function SemanticStudio({
         instruction: draft.trim(),
         selected_node_id: selectedNode?.node.node_id ?? null,
         selected_edge_id: selectedEdge?.edge.edge_id ?? null,
+        evidence_selection_id: evidenceSelectionId,
         idempotency_key: crypto.randomUUID(),
       });
       setAuthoringState(result.state);
       setEvents((current) => mergeAuthoringEvents(current, result.events));
       setDraft("");
-      router.push(
-        `/w/${encodeURIComponent(workspaceId)}/semantic/authoring/${encodeURIComponent(result.state.run.authoring_run_id)}?domain=${encodeURIComponent(snapshot.semantic_domain)}`,
-      );
+      setLastSavedRevision(null);
+      setPublishedRelease(null);
+      const query = new URLSearchParams({
+        domain: snapshot.semantic_domain,
+        runId: result.state.run.authoring_run_id,
+      });
+      if (evidenceSelectionId) query.set("evidenceSelectionId", evidenceSelectionId);
+      if (initialEvidenceSelectionHash) {
+        query.set("evidenceSelectionHash", initialEvidenceSelectionHash);
+      }
+      router.replace(`/w/${encodeURIComponent(workspaceId)}/semantic?${query.toString()}`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Agent 语义创作未能启动。");
+    } finally {
+      setAuthoringBusy(false);
+    }
+  }
+
+  async function openDirectEditor(mode: DirectEditorMode) {
+    if (!snapshot || authoringBusy) return;
+    if (authoringRunOpen) {
+      setError("Agent 正在写入 Working ChangeSet，请等待确定性校验完成后再直接编辑。");
+      return;
+    }
+    if (authoringState === null || authoringState.run.status !== "READY_FOR_REVIEW") {
+      setAuthoringBusy(true);
+      setError(null);
+      try {
+        const started = await startManualSemanticSession(workspaceId, snapshot.semantic_domain);
+        setAuthoringState({ run: started.run });
+        setLastSavedRevision(null);
+        setPublishedRelease(null);
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : "无法创建直接编辑会话。");
+        return;
+      } finally {
+        setAuthoringBusy(false);
+      }
+    }
+    setDirectEditorMode(mode);
+  }
+
+  async function saveDraftRevision() {
+    if (!snapshot || !authoringState || authoringState.run.status !== "READY_FOR_REVIEW") {
+      setError("Working ChangeSet 尚未通过确定性校验，不能保存 Revision。");
+      return;
+    }
+    setAuthoringBusy(true);
+    setError(null);
+    try {
+      const saved = await saveSemanticCandidateRevision(workspaceId, {
+        semantic_domain: snapshot.semantic_domain,
+        authoring_run_id: authoringState.run.authoring_run_id,
+        expected_working_revision: authoringState.run.working_revision,
+        expected_graph_digest: authoringState.run.graph_digest,
+        manual_edits: manualEdits,
+        evidence_selection_refs:
+          evidenceSelectionId && initialEvidenceSelectionHash
+            ? [
+                {
+                  selection_id: evidenceSelectionId,
+                  selection_hash: initialEvidenceSelectionHash,
+                },
+              ]
+            : [],
+        summary: saveSummary.trim() || "保存语义 Working ChangeSet",
+      });
+      setManualEdits([]);
+      setLastSavedRevision(saved);
+      await load({
+        domain: snapshot.semantic_domain,
+        selectedNodeId: selectedNode?.node.node_id,
+        runId: authoringState.run.authoring_run_id,
+        hops,
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "保存 Candidate Revision 失败。");
+    } finally {
+      setAuthoringBusy(false);
+    }
+  }
+
+  async function selfReviewAndPublish() {
+    if (!snapshot || !authoringState || !lastSavedRevision || manualEdits.length > 0) {
+      setError("请先保存当前草稿 Revision，再执行审核发布。");
+      return;
+    }
+    setAuthoringBusy(true);
+    setError(null);
+    try {
+      const published = await selfPublishSemanticCandidate(workspaceId, {
+        semantic_domain: snapshot.semantic_domain,
+        authoring_run_id: authoringState.run.authoring_run_id,
+        candidate_id: lastSavedRevision.candidate_id,
+        candidate_revision_id: lastSavedRevision.candidate_revision_id,
+        revision_number: lastSavedRevision.revision_number,
+        source_revision_id: lastSavedRevision.source_revision_id,
+        review_reason: saveSummary.trim() || "创建者审核通过并发布",
+      });
+      setPublishedRelease({
+        releaseId: published.release_id,
+        generation: published.release_generation,
+      });
+      setLastSavedRevision(null);
+      setAuthoringState(null);
+      setEvents([]);
+      router.replace(
+        `/w/${encodeURIComponent(workspaceId)}/semantic?domain=${encodeURIComponent(snapshot.semantic_domain)}`,
+      );
+      await load({ domain: snapshot.semantic_domain, hops });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "审核发布失败，Candidate 未发布。");
     } finally {
       setAuthoringBusy(false);
     }
@@ -491,8 +728,8 @@ export function SemanticStudio({
                   语义本体工作台
                 </h1>
                 <p className="mt-2 max-w-2xl text-[12px] leading-5 text-[#63706a]">
-                  Node 保存对象身份，Edge 表达业务、分析、公式与物理关系。所有编辑由 Agent
-                  写入候选图。
+                  Node 保存对象身份，Edge 表达业务、分析、公式与物理关系。Agent 与直接编辑
+                  共同写入未保存 ChangeSet。
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[11px]">
@@ -536,6 +773,7 @@ export function SemanticStudio({
             releaseLabel={snapshot.release.label}
             selectedNode={selectedNode}
             selectedEdge={selectedEdge}
+            evidenceSelectionId={evidenceSelectionId}
             draft={draft}
             state={authoringState}
             events={events}
@@ -546,6 +784,7 @@ export function SemanticStudio({
               setSelectedNode(null);
               setSelectedEdge(null);
             }}
+            onClearEvidenceSelection={() => setEvidenceSelectionId(null)}
             onSubmit={() => void submitAuthoring()}
             onResume={(answer) => void resume(answer)}
             onOpenTrajectory={() => {
@@ -555,6 +794,102 @@ export function SemanticStudio({
               );
             }}
           />
+
+          <section
+            className="mt-3 border-y border-[#cfd8d3] bg-white px-3 py-3"
+            aria-label="Candidate Revision actions"
+          >
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void openDirectEditor("ADD_NODE")}
+                  disabled={authoringBusy}
+                  className="inline-flex h-9 items-center gap-2 border border-[#a9bbb2] px-3 text-[11px] font-semibold text-[#315f50] hover:bg-[#eef4f1] disabled:opacity-50"
+                >
+                  <Plus className="size-4" />
+                  直接新建对象
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openDirectEditor("ADD_EDGE")}
+                  disabled={authoringBusy}
+                  className="inline-flex h-9 items-center gap-2 border border-[#a9bbb2] px-3 text-[11px] font-semibold text-[#315f50] hover:bg-[#eef4f1] disabled:opacity-50"
+                >
+                  <ShareNetwork className="size-4" />
+                  直接新建关系
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openDirectEditor("PROPOSE_EDGE_TYPE")}
+                  disabled={authoringBusy}
+                  className="inline-flex h-9 items-center gap-2 border border-[#a9bbb2] px-3 text-[11px] font-semibold text-[#315f50] hover:bg-[#eef4f1] disabled:opacity-50"
+                >
+                  <Sparkle className="size-4" />
+                  提案新关系类型
+                </button>
+                <span
+                  className={`px-2 py-1 text-[10px] font-semibold ${manualEdits.length > 0 ? "bg-amber-100 text-amber-800" : "bg-[#edf2ef] text-[#66736d]"}`}
+                >
+                  {manualEdits.length > 0
+                    ? `${manualEdits.length} 项未保存修改`
+                    : "没有未保存的手工修改"}
+                </span>
+                {lastSavedRevision ? (
+                  <span className="font-mono text-[10px] text-[#356b5a]">
+                    已保存 r{lastSavedRevision.revision_number}
+                  </span>
+                ) : null}
+                {publishedRelease ? (
+                  <span className="font-mono text-[10px] text-[#356b5a]">
+                    已发布 Release g{publishedRelease.generation}
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+                <input
+                  value={saveSummary}
+                  onChange={(event) => setSaveSummary(event.target.value)}
+                  maxLength={2048}
+                  className="h-9 min-w-0 border border-[#cfd7d2] px-3 text-[11px] outline-none focus:border-[#356b5a] sm:w-72"
+                  aria-label="Revision 保存摘要"
+                />
+                <button
+                  type="button"
+                  onClick={() => void saveDraftRevision()}
+                  disabled={authoringBusy || authoringState?.run.status !== "READY_FOR_REVIEW"}
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-2 bg-[#356b5a] px-4 text-[11px] font-semibold text-white hover:bg-[#285b4b] disabled:cursor-not-allowed disabled:bg-[#9cada5]"
+                >
+                  保存草稿 Revision
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void selfReviewAndPublish()}
+                  disabled={authoringBusy || !lastSavedRevision || manualEdits.length > 0}
+                  className="inline-flex h-9 shrink-0 items-center justify-center border border-[#356b5a] px-4 text-[11px] font-semibold text-[#285b4b] hover:bg-[#edf4f0] disabled:cursor-not-allowed disabled:border-[#cbd4cf] disabled:text-[#9aa59f]"
+                >
+                  审核并发布
+                </button>
+              </div>
+            </div>
+            <p className="mt-2 text-[10px] leading-4 text-[#6f7b75]">
+              编辑过程不会自动生成
+              Revision。保存草稿与提交审核是两个独立动作；离开含未保存修改的页面会收到浏览器提示。
+            </p>
+          </section>
+
+          {directEditorMode ? (
+            <DirectSemanticEditor
+              mode={directEditorMode}
+              selectedNode={selectedNode}
+              selectedEdge={selectedEdge}
+              nodes={directEditorNodes}
+              edgeTypes={directEditorEdgeTypes}
+              ownerRef={authoringState?.run.principal_id ?? "semantic-owner"}
+              onApply={appendManualEdit}
+              onClose={() => setDirectEditorMode(null)}
+            />
+          ) : null}
 
           <div
             className={`mt-4 grid gap-4 lg:grid-cols-[176px_minmax(0,1fr)] ${inspectorVisible ? "xl:grid-cols-[184px_minmax(0,1fr)_286px]" : "xl:grid-cols-[184px_minmax(0,1fr)]"}`}
@@ -637,9 +972,9 @@ export function SemanticStudio({
               </div>
 
               <div className="mt-6 hidden border-l-2 border-[#b6c9c1] px-3 py-1 lg:block">
-                <p className="text-[10px] font-semibold text-[#356b5a]">Agent-only authoring</p>
+                <p className="text-[10px] font-semibold text-[#356b5a]">Unified ChangeSet</p>
                 <p className="mt-1 text-[10px] leading-4 text-[#74807a]">
-                  视图操作不写语义；变更只进入 Candidate。
+                  Agent 与直接编辑使用同一 Candidate Patch；物理事实保持只读。
                 </p>
               </div>
             </aside>
@@ -858,6 +1193,7 @@ export function SemanticStudio({
                     setSelectedEdge(null);
                   }}
                   onAskAgent={setDraft}
+                  onDirectEdit={() => void openDirectEditor("EDIT_SELECTION")}
                 />
               </div>
             ) : null}

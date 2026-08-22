@@ -12,7 +12,10 @@ import {
 } from "../src/graph-v2/canonicalize.js";
 import { compileSemanticGraphV2 } from "../src/graph-v2/compiler.js";
 import { SemanticGraphErrorCode } from "../src/graph-v2/errors.js";
-import { applySemanticGraphPatch } from "../src/graph-v2/patch-reducer.js";
+import {
+  applySemanticGraphPatch,
+  createSemanticGraphPatch,
+} from "../src/graph-v2/patch-reducer.js";
 import {
   createSemanticOntologyCoverageReceipt,
   validateSemanticGraph,
@@ -363,6 +366,71 @@ describe("Semantic Graph v2 kernel", () => {
     });
     expect(result.nodes.some((node) => node.node_id === "subject-customer")).toBe(true);
     expect(await computeSemanticGraphDigest(result)).toBe(afterDigest);
+  });
+
+  it("adds an Agent-authored Edge type and its first Edge in one ordered ChangeSet", async () => {
+    const graph = canonicalizeSemanticGraph(createSemanticGraphV2Fixture());
+    const term: SemanticGraphNode = {
+      node_id: "term-net-gmv",
+      node_version: 1,
+      node_type: "GLOSSARY_TERM",
+      name: "净 GMV",
+      aliases: [],
+      owner_ref: "data-team",
+      lifecycle: "ACTIVE",
+      evidence_refs: [],
+      tags: [],
+      definition: "不含全额退款的成交金额。",
+      language: "zh-CN",
+      term_kind: "BUSINESS",
+      abbreviation: null,
+    };
+    const result = await createSemanticGraphPatch(graph, {
+      patch_id: "00000000-0000-1000-8000-000000000210",
+      candidate_id: "00000000-0000-1000-8000-000000000211",
+      from_working_revision: 0,
+      operations: [
+        {
+          operation: "ADD_NODE",
+          node: term,
+        },
+        {
+          operation: "ADD_EDGE_TYPE",
+          edge_type_definition: {
+            edge_type: "NET_GMV_SYNONYM",
+            display_name: "净 GMV 同义词",
+            family: "TERMINOLOGY",
+            source_node_types: ["GLOSSARY_TERM"],
+            target_node_types: ["GLOSSARY_TERM"],
+            direction: "DIRECTED",
+            parallel_policy: "ALLOW_DISTINCT_ATTRIBUTES",
+            authoring_policy: "AGENT_AUTHORED",
+            attribute_kind: "TERM_LINK",
+          },
+        },
+        {
+          operation: "ADD_EDGE",
+          edge: {
+            edge_id: "edge-net-gmv-synonym",
+            edge_version: 1,
+            edge_type: "NET_GMV_SYNONYM",
+            family: "TERMINOLOGY",
+            source_node_id: term.node_id,
+            target_node_id: "term-order-line",
+            lifecycle: "ACTIVE",
+            attributes: { kind: "TERM_LINK", lexical_role: "SYNONYM" },
+            evidence_refs: [],
+          },
+        },
+      ],
+    });
+
+    expect(result.next_graph.edge_type_registry).toContainEqual(
+      expect.objectContaining({ edge_type: "NET_GMV_SYNONYM" }),
+    );
+    expect(result.next_graph.edges).toContainEqual(
+      expect.objectContaining({ edge_id: "edge-net-gmv-synonym" }),
+    );
   });
 
   it("keeps active relation selection explicit", () => {

@@ -152,6 +152,26 @@ for migration_file in $migration_files; do
     20260725010677_app_data_agent_qa_admin_audit_failure_repair.sql) renderer="scripts/render-10677-migration.ts" ;;
     20260725010678_app_data_agent_legacy_attribution_cleanup.sql) renderer="scripts/render-10678-migration.ts" ;;
     20260725010679_app_data_agent_legacy_attribution_scope_repair.sql) renderer="scripts/render-10679-migration.ts" ;;
+    20260725010680_*) renderer="scripts/render-10680-migration.ts" ;;
+    20260725010681_*) renderer="scripts/render-10681-migration.ts" ;;
+    20260725010682_*) renderer="scripts/render-10682-migration.ts" ;;
+    20260725010683_*) renderer="scripts/render-10683-migration.ts" ;;
+    20260725010684_*) renderer="scripts/render-10684-migration.ts" ;;
+    20260725010685_*) renderer="scripts/render-10685-migration.ts" ;;
+    20260725010686_*) renderer="scripts/render-10686-migration.ts" ;;
+    20260725010687_*) renderer="scripts/render-10687-migration.ts" ;;
+    20260725010688_*) renderer="scripts/render-10688-migration.ts" ;;
+    20260725010689_*) renderer="scripts/render-10689-migration.ts" ;;
+    20260725010690_*) renderer="scripts/render-10690-migration.ts" ;;
+    20260725010691_*) renderer="scripts/render-10691-migration.ts" ;;
+    20260725010692_*) renderer="scripts/render-10692-migration.ts" ;;
+    20260725010693_*) renderer="scripts/render-10693-migration.ts" ;;
+    20260725010694_*) renderer="scripts/render-10694-migration.ts" ;;
+    20260725010695_*) renderer="scripts/render-10695-migration.ts" ;;
+    20260725010696_*) renderer="scripts/render-10696-migration.ts" ;;
+    20260725010697_*) renderer="scripts/render-10697-migration.ts" ;;
+    20260725010698_*) renderer="scripts/render-10698-migration.ts" ;;
+    20260725010699_*) renderer="scripts/render-10699-migration.ts" ;;
     *) renderer="" ;;
   esac
   if [ -n "$renderer" ]; then

@@ -10,6 +10,9 @@ const ids = {
   profile: "00000000-0000-4000-8000-000000006704",
   base: "00000000-0000-4000-8000-000000006705",
   generation: "00000000-0000-4000-8000-000000006706",
+  document: "00000000-0000-5000-8000-000000006707",
+  block: "00000000-0000-5000-8000-000000006708",
+  selection: "00000000-0000-4000-8000-000000006709",
 } as const;
 const digest = `sha256:${"a".repeat(64)}` as const;
 const scope = {
@@ -23,6 +26,11 @@ const state = vi.hoisted(() => ({
   creates: [] as unknown[],
   rebuilds: [] as unknown[],
   searches: [] as unknown[],
+  documentLists: [] as unknown[],
+  documentGets: [] as unknown[],
+  selections: [] as unknown[],
+  selectionGets: [] as unknown[],
+  annotations: [] as unknown[],
 }));
 
 vi.mock("@/lib/workspace-request", () => ({
@@ -44,6 +52,41 @@ vi.mock("@/lib/workspace-identity", () => ({
     rebuild: async (_capability: unknown, command: unknown) => {
       state.rebuilds.push(command);
       return { ok: true, value: { knowledge_base: {}, generation: {} } };
+    },
+    listDocuments: async (_capability: unknown, knowledgeBaseId: string, limit: number) => {
+      state.documentLists.push({ knowledgeBaseId, limit });
+      return { ok: true, value: [] };
+    },
+    getDocument: async (_capability: unknown, documentId: string, revision: number) => {
+      state.documentGets.push({ documentId, revision });
+      return {
+        ok: true,
+        value: {
+          document: { knowledge_base_ref: { knowledge_base_id: ids.base } },
+          blocks: [],
+          annotations: [],
+          usage: [],
+        },
+      };
+    },
+    createEvidenceSelection: async (_capability: unknown, selection: unknown) => {
+      state.selections.push(selection);
+      return { ok: true, value: selection };
+    },
+    getEvidenceSelection: async (_capability: unknown, selectionId: string) => {
+      state.selectionGets.push(selectionId);
+      return {
+        ok: true,
+        value: {
+          selection: { knowledge_base_ref: { knowledge_base_id: ids.base } },
+          blocks: [],
+          annotations: [],
+        },
+      };
+    },
+    createCorrectionAnnotation: async (_capability: unknown, annotation: unknown) => {
+      state.annotations.push(annotation);
+      return { ok: true, value: annotation };
     },
   }),
 }));
@@ -71,6 +114,11 @@ describe("Knowledge Base routes", () => {
     state.creates = [];
     state.rebuilds = [];
     state.searches = [];
+    state.documentLists = [];
+    state.documentGets = [];
+    state.selections = [];
+    state.selectionGets = [];
+    state.annotations = [];
   });
 
   it("builds a hashed create command from exact READY file/profile references", async () => {
@@ -153,5 +201,110 @@ describe("Knowledge Base routes", () => {
     expect(response.status).toBe(200);
     expect(state.searches).toHaveLength(1);
     expect(JSON.stringify(await response.json())).not.toMatch(/normalized_text|vector|storage_key/);
+  });
+
+  it("lists exact Markdown document revisions through the workspace authority", async () => {
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/knowledge-bases/[knowledgeBaseId]/documents/route"
+    );
+    const response = await route.GET(new NextRequest("http://localhost/knowledge/documents"), {
+      params: Promise.resolve({ workspaceId: ids.workspace, knowledgeBaseId: ids.base }),
+    });
+    expect(response.status).toBe(200);
+    expect(state.documentLists).toEqual([{ knowledgeBaseId: ids.base, limit: 200 }]);
+  });
+
+  it("creates a principal-bound canonical evidence selection", async () => {
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/knowledge-bases/[knowledgeBaseId]/evidence-selections/route"
+    );
+    const response = await route.POST(
+      new NextRequest("http://localhost/knowledge/evidence-selections", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          knowledge_base_ref: {
+            knowledge_base_id: ids.base,
+            revision: 2,
+            revision_hash: digest,
+          },
+          intended_semantic_domain: "ecommerce",
+          block_refs: [
+            {
+              document_ref: {
+                document_id: ids.document,
+                revision: 2,
+                canonical_markdown_hash: digest,
+              },
+              block_id: ids.block,
+              block_hash: digest,
+            },
+          ],
+        }),
+      }),
+      { params: Promise.resolve({ workspaceId: ids.workspace, knowledgeBaseId: ids.base }) },
+    );
+    expect(response.status).toBe(201);
+    expect(state.selections).toHaveLength(1);
+    expect(state.selections[0]).toMatchObject({
+      schema_version: "knowledge-evidence-selection@1.0.0",
+      selected_by_principal_id: ids.principal,
+      knowledge_base_ref: { knowledge_base_id: ids.base },
+      selection_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
+  });
+
+  it("creates an immutable principal-bound correction annotation", async () => {
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/knowledge-bases/[knowledgeBaseId]/annotations/route"
+    );
+    const response = await route.POST(
+      new NextRequest("http://localhost/knowledge/annotations", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          knowledge_base_ref: {
+            knowledge_base_id: ids.base,
+            revision: 2,
+            revision_hash: digest,
+          },
+          block_ref: {
+            document_ref: {
+              document_id: ids.document,
+              revision: 1,
+              canonical_markdown_hash: digest,
+            },
+            block_id: ids.block,
+            block_hash: digest,
+          },
+          annotation_kind: "CORRECTION",
+          correction_text: "GMV 不含退款订单。",
+          reason: "财务确认新口径。",
+        }),
+      }),
+      { params: Promise.resolve({ workspaceId: ids.workspace, knowledgeBaseId: ids.base }) },
+    );
+    expect(response.status).toBe(201);
+    expect(state.annotations[0]).toMatchObject({
+      schema_version: "knowledge-correction-annotation@1.0.0",
+      effective_knowledge_base_revision: 2,
+      created_by_principal_id: ids.principal,
+      annotation_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
+    });
+  });
+
+  it("reads only the exact authorized evidence selection", async () => {
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/knowledge-bases/[knowledgeBaseId]/evidence-selections/[selectionId]/route"
+    );
+    const response = await route.GET(new NextRequest("http://localhost/knowledge/selection"), {
+      params: Promise.resolve({
+        workspaceId: ids.workspace,
+        knowledgeBaseId: ids.base,
+        selectionId: ids.selection,
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(state.selectionGets).toEqual([ids.selection]);
   });
 });

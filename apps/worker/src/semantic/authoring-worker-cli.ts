@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import type { AvailableModelProfile } from "@data-agent/contracts";
+import type { AvailableExecutionModelProfile } from "@data-agent/contracts";
 import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
@@ -18,7 +18,7 @@ const LOCAL_PRINCIPAL_ID = "00000000-0000-4000-8000-000000000003";
 const AUTHORING_INPUT_TOKEN_CEILING = 128_000;
 const AUTHORING_OUTPUT_TOKEN_CEILING = 8_000;
 
-function authoringProviderBudget(profile: AvailableModelProfile) {
+function authoringProviderBudget(profile: AvailableExecutionModelProfile) {
   const context = profile.operational_constraints.context_window;
   if (context.verification_status !== "VERIFIED") {
     return {
@@ -171,12 +171,13 @@ export async function runSemanticAuthoringWorkerProcess(
           capability,
           semantic_domain: semanticDomain,
         });
+        const domainModelRuntime = activeModelRuntime.for_domain(semanticDomain);
         const cycle = createSemanticAuthoringWorkerCycleRunner({
           queue,
           create_runner: (heartbeat) =>
             createWorkerSemanticAuthoringRunner({
-              provider: activeModelRuntime.model_provider,
-              create_invocation: activeModelRuntime.create_invocation,
+              provider: domainModelRuntime.model_provider,
+              create_invocation: domainModelRuntime.create_invocation,
               store: {
                 pool: sqlPool,
                 authorizer: authority.authorizer,

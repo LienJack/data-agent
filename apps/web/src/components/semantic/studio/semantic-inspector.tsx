@@ -1,7 +1,14 @@
 "use client";
 
 import type { SemanticGraphReadEdge, SemanticGraphReadNode } from "@data-agent/contracts";
-import { ArrowRight, BracketsCurly, CirclesThree, Sparkle, X } from "@phosphor-icons/react";
+import {
+  ArrowRight,
+  BracketsCurly,
+  CirclesThree,
+  NotePencil,
+  Sparkle,
+  X,
+} from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import {
   edgeLabel,
@@ -28,11 +35,13 @@ export function SemanticInspector({
   node,
   edge,
   onAskAgent,
+  onDirectEdit,
   onClose,
 }: {
   readonly node: SemanticGraphReadNode | null;
   readonly edge: SemanticGraphReadEdge | null;
   readonly onAskAgent: (draft: string) => void;
+  readonly onDirectEdit: () => void;
   readonly onClose: () => void;
 }) {
   const selected = node ?? edge;
@@ -223,8 +232,16 @@ export function SemanticInspector({
             >
               <Sparkle className="size-4" weight="fill" aria-hidden="true" />让 Agent 修改
             </button>
+            <button
+              type="button"
+              onClick={onDirectEdit}
+              className="mt-2 inline-flex h-10 w-full items-center justify-center gap-2 border border-[#a9bbb2] px-3 text-xs font-semibold text-[#315f50] transition-colors hover:bg-[#eef4f1] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#356b5a]"
+            >
+              <NotePencil className="size-4" aria-hidden="true" />
+              直接编辑 ChangeSet
+            </button>
             <p className="mt-2 text-[10px] leading-4 text-[#748079]">
-              只提交编辑意图，不直接写 Node 或 Edge。
+              两种入口都先进入未保存 ChangeSet；只有点击“保存草稿”才生成可恢复 Revision。
             </p>
           </div>
         </motion.div>

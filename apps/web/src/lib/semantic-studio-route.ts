@@ -39,6 +39,7 @@ const intentSchema = z.strictObject({
   instruction: z.string().trim().min(1).max(20_000),
   selected_node_id: z.string().min(1).max(128).nullable(),
   selected_edge_id: z.string().min(1).max(128).nullable(),
+  evidence_selection_id: immutableIdSchema.nullable().default(null),
   idempotency_key: z.string().min(8).max(256),
 });
 const runQuerySchema = z.strictObject({

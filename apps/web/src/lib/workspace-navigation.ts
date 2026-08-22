@@ -14,6 +14,7 @@ export type WorkspaceNavigationKey =
   | "tests"
   | "jobs"
   | "data-sources"
+  | "knowledge"
   | "semantic"
   | "members"
   | "platform-settings";
@@ -53,6 +54,14 @@ const navigationDefinitions = [
     description: "管理连接与 SecretRef",
     path: "data-sources",
     requiredAction: "DATASOURCE_MANAGE",
+    phase: "AVAILABLE",
+  },
+  {
+    key: "knowledge",
+    label: "知识库",
+    description: "管理公司知识资产、版本与语义证据",
+    path: "knowledge",
+    requiredAction: "SEMANTIC_EDIT",
     phase: "AVAILABLE",
   },
   {

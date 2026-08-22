@@ -2,6 +2,8 @@
 
 grant usage on schema test_support to data_agent_backend;
 grant execute on all functions in schema test_support to data_agent_backend;
+grant execute on function semantic.authoring_sha256(jsonb) to data_agent_backend;
+grant execute on function semantic.authoring_canonical_json(jsonb) to data_agent_backend;
 
 begin;
 
@@ -143,7 +145,8 @@ begin
       'timeout_ms', 30000, 'max_input_tokens', 4000, 'max_output_tokens', 2000
     )
   );
-  v_request_digest := platform.canonical_sha256(v_request);
+  -- 10643 deliberately binds the authoring protocol to its cross-runtime digest.
+  v_request_digest := semantic.authoring_sha256(v_request);
   v_checkpoint := pg_catalog.jsonb_set(
     v_started -> 'checkpoint', '{pending_agent_request}', v_request
   );
@@ -204,7 +207,7 @@ begin
     ))
   );
   v_patch := v_patch_material || pg_catalog.jsonb_build_object(
-    'patch_digest', platform.canonical_sha256(v_patch_material)
+    'patch_digest', semantic.authoring_sha256(v_patch_material)
   );
   v_receipt_material := pg_catalog.jsonb_build_object(
     'receipt_version', 'semantic-authoring-tool-receipt@1.0.0',
@@ -229,7 +232,7 @@ begin
     'committed_at', '2026-08-15T00:00:01.000Z'
   );
   v_receipt := v_receipt_material || pg_catalog.jsonb_build_object(
-    'receipt_digest', platform.canonical_sha256(v_receipt_material)
+    'receipt_digest', semantic.authoring_sha256(v_receipt_material)
   );
   begin
     perform semantic.commit_semantic_authoring_tool(
@@ -266,6 +269,9 @@ select test_support.assert_raises(
 );
 
 rollback;
+
+revoke execute on function semantic.authoring_sha256(jsonb) from data_agent_backend;
+revoke execute on function semantic.authoring_canonical_json(jsonb) from data_agent_backend;
 
 select test_support.assert_true(
   not pg_catalog.has_table_privilege(

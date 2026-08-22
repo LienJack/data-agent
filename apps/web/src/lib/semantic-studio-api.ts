@@ -3,13 +3,18 @@
 import {
   type SemanticAuthoringPublicEvent,
   type SemanticAuthoringRun,
+  type SemanticEdgeTypeDefinition,
   type SemanticGraphEntryStatus,
   type SemanticGraphFullResult,
   type SemanticGraphNeighborhoodResult,
   type SemanticGraphNodeListResult,
+  type SemanticManualEdit,
   type SemanticNodeType,
   semanticAuthoringPublicEventSchema,
   semanticAuthoringRunSchema,
+  semanticAuthoringStateSchema,
+  semanticCandidateRevisionSaveResultSchema,
+  semanticCandidateSelfPublishResultSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
@@ -41,12 +46,14 @@ export interface SemanticStudioSnapshot {
   readonly semantic_domain: string;
   readonly available_domains: readonly string[];
   readonly release: SemanticStudioReleaseIdentity;
+  readonly edge_type_registry: readonly SemanticEdgeTypeDefinition[];
   readonly list: SemanticGraphNodeListResult;
   readonly full: SemanticGraphFullResult;
   readonly local: SemanticGraphNeighborhoodResult | null;
   readonly authoring: {
     readonly state: SemanticStudioAuthoringState;
     readonly events: readonly SemanticAuthoringPublicEvent[];
+    readonly saved_revision: z.infer<typeof semanticCandidateRevisionSaveResultSchema> | null;
   } | null;
 }
 
@@ -156,6 +163,7 @@ export function startSemanticAuthoring(
     readonly instruction: string;
     readonly selected_node_id: string | null;
     readonly selected_edge_id: string | null;
+    readonly evidence_selection_id: string | null;
     readonly idempotency_key: string;
   },
 ): Promise<SemanticStudioStartResult> {
@@ -163,6 +171,64 @@ export function startSemanticAuthoring(
     method: "POST",
     body: JSON.stringify({ schema_version: "semantic-studio-authoring-intent@1.0.0", ...input }),
   });
+}
+
+export function startManualSemanticSession(workspaceId: string, semanticDomain: string) {
+  return api(`${studioApiBase(workspaceId)}/manual-sessions`, {
+    method: "POST",
+    body: JSON.stringify({
+      schema_version: "semantic-manual-session-start-request@1.0.0",
+      semantic_domain: semanticDomain,
+      idempotency_key: crypto.randomUUID(),
+    }),
+  }).then((value) => semanticAuthoringStateSchema.parse(value));
+}
+
+export function saveSemanticCandidateRevision(
+  workspaceId: string,
+  input: {
+    readonly semantic_domain: string;
+    readonly authoring_run_id: string;
+    readonly expected_working_revision: number;
+    readonly expected_graph_digest: string;
+    readonly manual_edits: readonly SemanticManualEdit[];
+    readonly evidence_selection_refs: readonly {
+      readonly selection_id: string;
+      readonly selection_hash: string;
+    }[];
+    readonly summary: string;
+  },
+) {
+  return api(`${studioApiBase(workspaceId)}/candidate-revisions`, {
+    method: "POST",
+    body: JSON.stringify({
+      schema_version: "semantic-candidate-revision-save-request@1.0.0",
+      ...input,
+      idempotency_key: crypto.randomUUID(),
+    }),
+  }).then((value) => semanticCandidateRevisionSaveResultSchema.parse(value));
+}
+
+export function selfPublishSemanticCandidate(
+  workspaceId: string,
+  input: {
+    readonly semantic_domain: string;
+    readonly authoring_run_id: string;
+    readonly candidate_id: string;
+    readonly candidate_revision_id: string;
+    readonly revision_number: number;
+    readonly source_revision_id: string;
+    readonly review_reason: string;
+  },
+) {
+  return api(`${studioApiBase(workspaceId)}/self-publish`, {
+    method: "POST",
+    body: JSON.stringify({
+      schema_version: "semantic-candidate-self-publish-request@1.0.0",
+      ...input,
+      idempotency_key: crypto.randomUUID(),
+    }),
+  }).then((value) => semanticCandidateSelfPublishResultSchema.parse(value));
 }
 
 export function loadSemanticAuthoringEvents(

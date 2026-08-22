@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 27
+- **Total Sessions**: 28
 - **Last Active**: 2026-08-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~612 | Active |
+| `journal-1.md` | ~635 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 28 | 2026-08-22 | 完成知识库驱动语义层闭环 | `0c3dcc6`, `432a199`, `c56466c` | `codex/knowledge-driven-semantic-layer` |
 | 27 | 2026-08-22 | Legacy Attribution Cleanup | `6841506` | `feat/datafoundry-platform-modules` |
 | 26 | 2026-08-22 | Retire legacy attribution surface | `16f2734` | `feat/datafoundry-platform-modules` |
 | 25 | 2026-08-22 | Accessible Apple Glass Q&A presentation | `320b8f3` | `feat/datafoundry-platform-modules` |

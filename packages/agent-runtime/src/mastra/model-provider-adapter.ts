@@ -2,6 +2,7 @@ import {
   type AuthoritativeModelProviderInvocation,
   isAuthoritativeModelProviderInvocation,
   isAuthoritativePersistedModelProviderInvocation,
+  isAuthoritativeSemanticAuthoringModelProviderInvocation,
   type ModelProviderEvent,
   type ModelProviderPort,
   parseModelProviderEventForRequest,
@@ -20,6 +21,23 @@ export interface ModelProviderAdapterClock {
 
 export interface ProviderDispatchMarker {
   mark_dispatched(input: AuthoritativeModelProviderInvocation): Promise<void>;
+}
+
+export interface ProviderTerminalRecorder {
+  mark_response_observed(input: {
+    readonly request: AuthoritativeModelProviderInvocation;
+    readonly event: Extract<
+      ModelProviderEvent,
+      { event_type: "COMPLETED" | "FAILED" | "THROTTLED" }
+    >;
+  }): Promise<void>;
+  commit_terminal(input: {
+    readonly request: AuthoritativeModelProviderInvocation;
+    readonly event: Extract<
+      ModelProviderEvent,
+      { event_type: "COMPLETED" | "FAILED" | "THROTTLED" }
+    >;
+  }): Promise<void>;
 }
 
 const systemClock: ModelProviderAdapterClock = {
@@ -169,20 +187,31 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
   readonly #bridge: ModelExecutionBridge;
   readonly #clock: ModelProviderAdapterClock;
   readonly #dispatchMarker: ProviderDispatchMarker;
-  readonly #authorization: "PERSISTENT_PERMIT" | "CERTIFIED_EVALUATION" | "LEGACY_TEST_ONLY";
+  readonly #authorization:
+    | "PERSISTENT_PERMIT"
+    | "SEMANTIC_AUTHORING_PERSISTED"
+    | "CERTIFIED_EVALUATION"
+    | "LEGACY_TEST_ONLY";
+  readonly #terminalRecorder: ProviderTerminalRecorder | undefined;
   readonly #abortSignal: AbortSignal | undefined;
 
   constructor(options: {
     readonly bridge: ModelExecutionBridge;
     readonly clock?: ModelProviderAdapterClock;
     readonly dispatch_marker: ProviderDispatchMarker;
-    readonly authorization: "PERSISTENT_PERMIT" | "CERTIFIED_EVALUATION" | "LEGACY_TEST_ONLY";
+    readonly authorization:
+      | "PERSISTENT_PERMIT"
+      | "SEMANTIC_AUTHORING_PERSISTED"
+      | "CERTIFIED_EVALUATION"
+      | "LEGACY_TEST_ONLY";
+    readonly terminal_recorder?: ProviderTerminalRecorder;
     readonly abort_signal?: AbortSignal;
   }) {
     this.#bridge = options.bridge;
     this.#clock = options.clock ?? systemClock;
     this.#dispatchMarker = options.dispatch_marker;
     this.#authorization = options.authorization;
+    this.#terminalRecorder = options.terminal_recorder;
     this.#abortSignal = options.abort_signal;
   }
 
@@ -190,6 +219,8 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
     if (
       (this.#authorization === "PERSISTENT_PERMIT" &&
         !isAuthoritativePersistedModelProviderInvocation(input)) ||
+      (this.#authorization === "SEMANTIC_AUTHORING_PERSISTED" &&
+        !isAuthoritativeSemanticAuthoringModelProviderInvocation(input)) ||
       ((this.#authorization === "CERTIFIED_EVALUATION" ||
         this.#authorization === "LEGACY_TEST_ONLY") &&
         !isAuthoritativeModelProviderInvocation(input))
@@ -355,7 +386,7 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
         output_text: completion.output_text,
         tool_calls: responseToolCalls,
       });
-      yield nextSequenceEvent(input, this.#clock, sequence, {
+      const completedEvent = nextSequenceEvent(input, this.#clock, sequence, {
         event_type: "COMPLETED",
         output_text: completion.output_text,
         response_hash: responseHash,
@@ -378,6 +409,15 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
                 unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE",
               },
       });
+      await this.#terminalRecorder?.mark_response_observed({
+        request: input,
+        event: completedEvent as Extract<ModelProviderEvent, { event_type: "COMPLETED" }>,
+      });
+      await this.#terminalRecorder?.commit_terminal({
+        request: input,
+        event: completedEvent as Extract<ModelProviderEvent, { event_type: "COMPLETED" }>,
+      });
+      yield completedEvent;
     } catch (error) {
       const normalizedError =
         error instanceof InvocationTimeoutError
@@ -387,7 +427,22 @@ export class MastraModelProviderAdapter implements ModelProviderPort {
               "Model Provider 调用超过授权超时预算。",
             )
           : error;
-      yield failedEvent(input, this.#clock, sequence, normalizedError, dispatchMarked);
+      const terminalEvent = failedEvent(
+        input,
+        this.#clock,
+        sequence,
+        normalizedError,
+        dispatchMarked,
+      );
+      await this.#terminalRecorder?.mark_response_observed({
+        request: input,
+        event: terminalEvent as Extract<ModelProviderEvent, { event_type: "FAILED" | "THROTTLED" }>,
+      });
+      await this.#terminalRecorder?.commit_terminal({
+        request: input,
+        event: terminalEvent as Extract<ModelProviderEvent, { event_type: "FAILED" | "THROTTLED" }>,
+      });
+      yield terminalEvent;
     } finally {
       if (timeoutHandle !== undefined) {
         clearTimeout(timeoutHandle);

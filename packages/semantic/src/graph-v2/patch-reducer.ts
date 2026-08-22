@@ -52,10 +52,23 @@ async function reduceSemanticGraphOperations(
   operations: readonly SemanticGraphPatchOperation[],
   validateResult = true,
 ): Promise<SemanticGraphSource> {
+  const agentManagedEdgeTypes = new Set(
+    current.edge_type_registry
+      .filter((definition) => definition.authoring_policy === "AGENT_AUTHORED")
+      .map((definition) => definition.edge_type),
+  );
   for (const operation of operations) {
     if (operation.operation === "ADD_NODE") assertAgentManagedNode(current, operation.node);
     if (operation.operation === "UPDATE_NODE") assertAgentManagedNode(current, operation.node);
-    if (operation.operation === "ADD_EDGE") assertAgentManagedEdge(current, operation.edge);
+    if (
+      operation.operation === "ADD_EDGE" &&
+      !agentManagedEdgeTypes.has(operation.edge.edge_type)
+    ) {
+      throw new SemanticGraphError(
+        SemanticGraphErrorCode.SYSTEM_MANAGED_MUTATION,
+        `Agent 不得修改 system-managed Edge ${operation.edge.edge_id}。`,
+      );
+    }
     if (operation.operation === "UPDATE_EDGE") assertAgentManagedEdge(current, operation.edge);
     if (
       operation.operation === "ADD_EDGE_TYPE" &&
@@ -65,6 +78,9 @@ async function reduceSemanticGraphOperations(
         SemanticGraphErrorCode.SYSTEM_MANAGED_MUTATION,
         `Agent 不得新增 system-managed Edge type ${operation.edge_type_definition.edge_type}。`,
       );
+    }
+    if (operation.operation === "ADD_EDGE_TYPE") {
+      agentManagedEdgeTypes.add(operation.edge_type_definition.edge_type);
     }
     if (operation.operation === "RETIRE_NODE") {
       const node = current.nodes.find((entry) => entry.node_id === operation.node_id);

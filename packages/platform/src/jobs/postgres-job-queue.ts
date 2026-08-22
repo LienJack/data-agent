@@ -268,7 +268,9 @@ export function createPostgresJobQueue(
           assertPrincipal(parsed.data.principal_id, capability.principal);
           const result = await client.query<{ value: unknown }>(
             "select app_data_agent.succeed_job_work($1::jsonb,$2::jsonb) as value",
-            [parsed.data, output_refs],
+            // node-postgres encodes JavaScript arrays as PostgreSQL array literals.
+            // The RPC expects JSONB, so preserve the domain-reference array as JSON.
+            [parsed.data, JSON.stringify(output_refs)],
           );
           return verifyJobOutputReceipt(result.rows[0]?.value);
         },

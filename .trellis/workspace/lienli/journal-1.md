@@ -610,3 +610,26 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 28: 完成知识库驱动语义层闭环
+
+**Date**: 2026-08-22
+**Task**: 完成知识库驱动语义层闭环
+**Branch**: `codex/knowledge-driven-semantic-layer`
+
+### Summary
+
+跑通 Markdown 知识文档、精确段落证据、真实 Provider Agent 安全失败、可视化 ChangeSet、显式 Revision、创建者自审发布及 generation 3 Resolved Context/Text2SQL 消费，并补齐投影复用、权限护栏及并行迁移编号顺延。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `0c3dcc6` | (see git log) |
+| `432a199` | (see git log) |
+| `c56466c` | (see git log) |
+
+### Status
+
+[OK] **Completed**

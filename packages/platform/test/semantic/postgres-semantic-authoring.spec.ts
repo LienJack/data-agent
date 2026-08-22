@@ -1,4 +1,5 @@
 import {
+  type AuthoritativeModelProviderInvocation,
   BUILTIN_SEMANTIC_EDGE_TYPES,
   BUILTIN_SEMANTIC_NODE_TYPES,
   SEMANTIC_AUTHORING_CHECKPOINT_VERSION,
@@ -11,6 +12,7 @@ import {
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresSemanticAuthoringStore } from "../../src/semantic/postgres-semantic-authoring.js";
+import { createPostgresSemanticAuthoringProviderInvocation } from "../../src/semantic/postgres-semantic-authoring-provider-invocation.js";
 import { createPostgresSemanticAuthoringQueue } from "../../src/semantic/postgres-semantic-authoring-queue.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
 import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
@@ -23,7 +25,9 @@ const ids = {
   graph: "00000000-0000-4000-8000-000000000405",
   candidate: "00000000-0000-4000-8000-000000000406",
   run: "00000000-0000-4000-8000-000000000407",
+  request: "00000000-0000-4000-8000-000000000408",
   lease: "00000000-0000-4000-8000-000000000409",
+  attempt: "00000000-0000-4000-8000-000000000410",
 } as const;
 const digest = `sha256:${"a".repeat(64)}` as const;
 const timestamp = "2026-08-15T00:00:00.000Z";
@@ -269,6 +273,103 @@ describe("PostgreSQL semantic authoring store", () => {
         retryable: true,
       },
     });
+  });
+});
+
+describe("PostgreSQL semantic authoring Provider lifecycle", () => {
+  it("persists intent, dispatch, observation, and terminal through exact domain-scoped RPCs", async () => {
+    const current = authority();
+    const fixture = scriptedPool((text) =>
+      text.includes("semantic.commit_authoring_provider_intent") ||
+      text.includes("semantic.mark_authoring_provider_dispatched") ||
+      text.includes("semantic.mark_authoring_provider_response_observed") ||
+      text.includes("semantic.commit_authoring_provider_terminal")
+        ? { rows: [{ value: true }], rowCount: 1 }
+        : undefined,
+    );
+    const lifecycle = createPostgresSemanticAuthoringProviderInvocation({
+      pool: fixture.pool,
+      authorizer: current.authorizer,
+      capability: current.capability,
+      semantic_domain: "ecommerce",
+    });
+    const request = {
+      schema_version: "semantic-provider@1",
+      request_id: ids.request,
+      attempt_id: ids.attempt,
+      scope: graph.metadata.scope,
+      run_id: ids.run,
+      provider: "deepseek",
+      profile_id: "00000000-0000-4000-8000-000000000411",
+      profile_version: "semantic-profile@1.0.0",
+      model_id: "deepseek-v4-flash",
+      task_ref: {
+        artifact_id: ids.candidate,
+        artifact_type: "SemanticGraphCandidate",
+        ...graph.metadata.scope,
+        run_id: ids.run,
+        revision: 1,
+        content_hash: digest,
+      },
+      context_refs: [],
+      messages: [{ role: "user", content: "生成语义关系" }],
+      tool_allowlist: [],
+      response_schema_version: "semantic-agent-turn@1.0.0",
+      budget: {
+        timeout_ms: 60_000,
+        max_input_tokens: 1_000,
+        max_output_tokens: 1_000,
+        max_tool_calls: 0,
+      },
+    } as unknown as AuthoritativeModelProviderInvocation;
+    const completed = {
+      schema_version: "semantic-provider-event@1",
+      event_type: "COMPLETED" as const,
+      request_id: ids.request,
+      attempt_id: ids.attempt,
+      scope: graph.metadata.scope,
+      run_id: ids.run,
+      provider: "deepseek" as const,
+      profile_id: "00000000-0000-4000-8000-000000000411",
+      profile_version: "semantic-profile@1.0.0",
+      model_id: "deepseek-v4-flash",
+      sequence: 2,
+      observed_at: timestamp,
+      output_text: "完成",
+      response_hash: digest,
+      usage: {
+        availability: "AVAILABLE" as const,
+        source: "PROVIDER_REPORTED" as const,
+        input_tokens: 12,
+        output_tokens: 2,
+        tool_calls: 0,
+        unavailable_reason: null,
+      },
+    };
+
+    await expect(lifecycle.commitIntent(request)).resolves.toBe(true);
+    await expect(lifecycle.markDispatched(request)).resolves.toBeUndefined();
+    await expect(
+      lifecycle.markResponseObserved({ request, event: completed }),
+    ).resolves.toBeUndefined();
+    await expect(lifecycle.commitTerminal({ request, event: completed })).resolves.toBeUndefined();
+
+    const rpcCalls = fixture.calls.filter(
+      (call) => call.text.includes("semantic.") && call.values.length > 5,
+    );
+    expect(rpcCalls.map((call) => call.text.match(/semantic\.([a-z_]+)/u)?.[1])).toEqual([
+      "commit_authoring_provider_intent",
+      "mark_authoring_provider_dispatched",
+      "mark_authoring_provider_response_observed",
+      "commit_authoring_provider_terminal",
+    ]);
+    expect(
+      rpcCalls.every(
+        (call) =>
+          call.values.slice(0, 5).join(":") ===
+          [ids.app, ids.tenant, "test", ids.principal, "ecommerce"].join(":"),
+      ),
+    ).toBe(true);
   });
 });
 

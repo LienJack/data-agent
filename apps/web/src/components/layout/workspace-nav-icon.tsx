@@ -1,4 +1,5 @@
 import {
+  Books,
   Briefcase,
   ChatCircleDots,
   Database,
@@ -14,6 +15,7 @@ const icons = {
   tests: Flask,
   jobs: Briefcase,
   "data-sources": Database,
+  knowledge: Books,
   semantic: Graph,
   members: UsersThree,
   "platform-settings": GearSix,

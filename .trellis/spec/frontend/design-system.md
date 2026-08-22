@@ -87,3 +87,19 @@ Bad：在每个 Think/Tool/Artifact 行写 `backdrop-blur-xl bg-white/60 shadow-
 - 1440/1024/768/767/390 断言 `scrollWidth === clientWidth` 与 Composer/Inspector 无交叠；
 - 1280/1000/959 保留 Inspector concession；
 - computed style 证明 chrome 有 token blur，reading surface 为 `backdrop-filter: none`，reduced-motion 的动画名为 `none`。
+
+## Knowledge 与 Semantic Authoring
+
+- Knowledge Base 是 Workspace 一级公司资产页面；`/settings` 只提供说明和跳转，禁止维护第二套创建、重建
+  或检索调试表单。
+- Markdown Document 详情以版本、Block locator、Annotation、Usage 和 Evidence Selection 为主轴；用户选择
+  exact Block 后再进入 Semantic Agent，不自动扩展证据或创建 Candidate。
+- Semantic Studio 保持 Agent 为主要创作入口，同时提供 Node、Edge instance、Formula AST 与 Edge
+  attributes 的判别式表单。禁止任意 JSON Patch；system-managed physical facts 必须显示锁定原因。
+- 新关系类型使用独立 `ADD_EDGE_TYPE` proposal 表单，不能在普通 Edge instance editor 临时注册；proposal
+  与实例修改都先进入未保存 ChangeSet。
+- 未保存 typed operations 必须按顺序本地投影：新增 Node/Edge Type 立即可被后续 Edge 使用，重复编辑同一
+  Node/Edge 必须基于前一次本地版本继续递增；服务端保存时仍重放同一 operation 序列并最终裁决。
+- 不使用 autosave 创建治理 Revision。界面必须持续显示 dirty/saved 状态，用户显式点击保存才形成可恢复
+  Candidate Revision；刷新按 exact Authoring Run 恢复 last saved Revision，创建者自审发布只对该 Revision
+  启用。
