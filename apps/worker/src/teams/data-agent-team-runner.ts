@@ -138,15 +138,42 @@ export function createDataAgentTeamRunner(
         if (!dependencies.root || !dependencies.root_runtime) {
           return failed("ROOT_AGENT_HARNESS_NOT_CONFIGURED");
         }
+        const rootBlockId = `root-${input.lease.attempt_id}`;
+        const started = await emitPublicReasoning(input.context, {
+          kind: "reasoning_started",
+          key: "root.decision.started",
+          block_id: rootBlockId,
+          title: "主 Agent 正在判断是否调用专职 Agent",
+        });
+        if (started) return failed(started);
         const decision = await dependencies.root.decide(input);
         if (!decision.ok) return failed(decision.error.code);
+        const selected = await emitPublicReasoning(input.context, {
+          kind: "reasoning_delta",
+          key: "root.decision.selected",
+          block_id: rootBlockId,
+          delta:
+            decision.value.kind === "FINAL_ANSWER"
+              ? "主 Agent 选择直接回答；未调用 Subagent。"
+              : `主 Agent 从冻结能力目录选择 ${decision.value.tool_calls.map(({ profile_id: profileId }) => profileId).join("、")}。`,
+        });
+        if (selected) return failed(selected);
         const rootResult = runtimeResultSchema.safeParse(
           await dependencies.root_runtime.execute({ decision: decision.value, execution: input }),
         );
         if (!rootResult.success) return failed("ROOT_AGENT_RUNTIME_RESULT_INVALID");
-        return rootResult.data.status === "ACCEPTED"
-          ? runExecutorResultSchema.parse({ kind: "COMPLETED" })
-          : failed(rootResult.data.reason_code);
+        if (rootResult.data.status !== "ACCEPTED") return failed(rootResult.data.reason_code);
+        const completed = await emitPublicReasoning(input.context, {
+          kind: "reasoning_completed",
+          key: "root.answer.completed",
+          block_id: rootBlockId,
+          summary:
+            decision.value.kind === "FINAL_ANSWER"
+              ? "主 Agent 直接回答已通过公开输出验证。"
+              : "主 Agent 选择的专职执行与 Artifact 验收已完成。",
+          duration_ms: 0,
+        });
+        return completed ? failed(completed) : runExecutorResultSchema.parse({ kind: "COMPLETED" });
       }
       let dispatchPlan: AgentDispatchPlan | null = null;
       if (payload.data.schema_version === "effective-config-team-lease@2.0.0") {

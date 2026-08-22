@@ -566,15 +566,18 @@ export function createProductionTeamRuntime(
             bounds: taskBounds,
           });
           tasks.set(profileId, task);
+          const admittedDelegation = input.admitted_delegations?.[executionIndex] ?? null;
           await emit(input.execution_context, {
             kind: "agent_status",
             key: `team.agent.${task.task_id}.pending`,
             profile_id: profileId,
             task_id: task.task_id,
             status: "PENDING",
-            phase: "handoff.committed",
-            title: profileId,
-            summary: "专职任务与 Handoff 已持久化",
+            phase: admittedDelegation ? "root.subagent.selected" : "handoff.committed",
+            title: admittedDelegation?.profile.revision.discovery.display_name ?? profileId,
+            summary: admittedDelegation
+              ? `主 Agent 已选择 Product Profile ${profileId} r${admittedDelegation.profile.revision.revision}；Handoff 已持久化。`
+              : "专职任务与 Handoff 已持久化",
             duration_ms: null,
             error_code: null,
           });
@@ -623,7 +626,7 @@ export function createProductionTeamRuntime(
                 : profileId === "report-writing-agent"
                   ? "Report"
                   : "Semantic",
-            summary: "受治理 Context Epoch 已激活，开始执行专职 Tool 链",
+            summary: "受治理 Context Epoch 已激活，Subagent 开始执行专职 Tool 链",
             duration_ms: null,
             error_code: null,
           });
@@ -716,7 +719,7 @@ export function createProductionTeamRuntime(
                 : profileId === "report-writing-agent"
                   ? "Report"
                   : "Semantic",
-            summary: "Completion、Verifier 与 Acceptance 已持久化并验收",
+            summary: "Subagent Completion、Verifier 与 Artifact Acceptance 已持久化并验收",
             duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
             error_code: null,
           });

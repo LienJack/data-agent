@@ -419,7 +419,8 @@ export function assembleConversationActivity(
           ? event.payload.artifact_refs.filter(
               (reference) =>
                 reference.artifact_type === "QueryEvidence" ||
-                reference.artifact_type === "ArtifactWorkspaceDocument",
+                reference.artifact_type === "ArtifactWorkspaceDocument" ||
+                reference.artifact_type === "AnalysisReport",
             )
           : [];
       for (const reference of visibleReferences) {

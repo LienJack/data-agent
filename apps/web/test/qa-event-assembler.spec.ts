@@ -497,6 +497,46 @@ describe("Q&A public event assembly", () => {
     });
   });
 
+  it("surfaces an accepted AnalysisReport once across replayed Subagent events", () => {
+    const taskId = "22000000-0000-4000-8000-000000000002";
+    const report = {
+      artifact_id: "24000000-0000-4000-8000-000000000011",
+      artifact_type: "AnalysisReport" as const,
+      app_id: "24000000-0000-4000-8000-000000000012",
+      tenant_id: "24000000-0000-4000-8000-000000000013",
+      environment: "test" as const,
+      run_id: runId,
+      revision: 1,
+      content_hash: `sha256:${"b".repeat(64)}` as const,
+    };
+    const completed = teamEvent(12, "tool", {
+      call_id: "semantic-read-1",
+      tool_name: "semantic.catalog.read",
+      profile_id: "semantic-management-agent",
+      task_id: taskId,
+      title: "读取语义关系图",
+      summary: "已生成受治理分析报告",
+      status: "COMPLETED",
+      input: null,
+      output: "已读取冻结语义发布版本",
+      duration_ms: 31,
+      error_code: null,
+      artifact_refs: [report],
+    });
+    const replayed = mergePublicRunEvents([completed], [completed]);
+    const artifacts = assembleConversationActivity(replayed, runId).filter(
+      (block) => block.kind === "artifact",
+    );
+
+    expect(artifacts).toEqual([
+      expect.objectContaining({
+        kind: "artifact",
+        sequence: 12,
+        reference: report,
+      }),
+    ]);
+  });
+
   it("projects user, assistant and merged tool records for the draggable inspector", () => {
     const progress = event(1, {
       type: "progress",

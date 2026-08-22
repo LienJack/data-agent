@@ -541,7 +541,7 @@ describe("Data Agent Team runner", () => {
   });
 
   it("hands a v3 frozen Catalog decision to the Root runtime without legacy routing", async () => {
-    const { context, lease, effectiveConfig } = await harness();
+    const { context, lease, effectiveConfig, displayEvents } = await harness();
     const catalog = await buildSubagentCapabilityCatalogSnapshot({
       schema_version: "subagent-capability-catalog-snapshot@1.0.0",
       catalog_id: id(80),
@@ -605,5 +605,22 @@ describe("Data Agent Team runner", () => {
     expect(root.decide).toHaveBeenCalledOnce();
     expect(rootRuntime.execute).toHaveBeenCalledOnce();
     expect(listEnabled).not.toHaveBeenCalled();
+    expect(displayEvents).toEqual([
+      expect.objectContaining({
+        kind: "reasoning_started",
+        key: "root.decision.started",
+        title: "主 Agent 正在判断是否调用专职 Agent",
+      }),
+      expect.objectContaining({
+        kind: "reasoning_delta",
+        key: "root.decision.selected",
+        delta: "主 Agent 选择直接回答；未调用 Subagent。",
+      }),
+      expect.objectContaining({
+        kind: "reasoning_completed",
+        key: "root.answer.completed",
+        summary: "主 Agent 直接回答已通过公开输出验证。",
+      }),
+    ]);
   });
 });
