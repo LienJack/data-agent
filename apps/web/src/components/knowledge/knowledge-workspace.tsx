@@ -5,8 +5,10 @@ import {
   embeddingProfileRevisionSchema,
   type KnowledgeBaseRevision,
   type KnowledgeDocumentBlock,
+  type KnowledgeDocumentBlockReference,
   type KnowledgeDocumentDetail,
   type KnowledgeDocumentRevision,
+  type KnowledgeUsageReference,
   knowledgeBaseMutationResultSchema,
   knowledgeBaseRevisionSchema,
   knowledgeCorrectionAnnotationSchema,
@@ -92,8 +94,12 @@ function blockLabel(block: KnowledgeDocumentBlock): string {
   }
 }
 
-function referenceIdentity(block: KnowledgeDocumentBlock): string {
+function referenceIdentity(block: KnowledgeDocumentBlockReference): string {
   return `${block.document_ref.document_id}:${String(block.document_ref.revision).padStart(16, "0")}:${block.block_id}:${block.block_hash}`;
+}
+
+export function knowledgeUsageIdentity(usage: KnowledgeUsageReference): string {
+  return `${usage.usage_kind}:${usage.subject_id}:${usage.subject_revision}:${referenceIdentity(usage.evidence_ref)}`;
 }
 
 export function KnowledgeWorkspace({ workspaceId }: Props) {
@@ -810,9 +816,7 @@ export function KnowledgeWorkspace({ workspaceId }: Props) {
                           <h4 className="text-xs font-semibold">下游使用记录</h4>
                           <ul className="mt-2 space-y-1 font-mono text-[9px] text-[var(--color-text-muted)]">
                             {detail.usage.map((usage) => (
-                              <li
-                                key={`${usage.usage_kind}:${usage.subject_id}:${usage.subject_revision}`}
-                              >
+                              <li key={knowledgeUsageIdentity(usage)}>
                                 {usage.usage_kind} · {usage.semantic_domain} · r
                                 {usage.subject_revision}
                               </li>
