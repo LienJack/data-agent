@@ -3,7 +3,10 @@ import {
   type AnalysisDisclosureCode,
   type AnalysisSandboxProgramPayload,
   type AnalysisSkillId,
+  type AuthoritativeReleaseManifest,
   analysisSkillIdSchema,
+  isAuthoritativeReleaseManifest,
+  isDeterministicAnalysisCapabilityExecutable,
   type PythonOutputContractV1,
   pythonOutputContractSchema,
   versionIdentifierSchema,
@@ -16,23 +19,23 @@ export const ANALYSIS_RUNTIME_ATTESTATIONS = Object.freeze({
   CORE_ANALYSIS: Object.freeze({
     runtime_digest: "sha256:88afbcbf7ea99b332372bec95302d02b79f8f1494ecf034e0c280c4aa467d644",
     dependency_lock_digest:
-      "sha256:01d14aff09f223e4f53538640e85ec0ae80d2b652140a653d3bf79071ffb9bfe",
+      "sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8",
     image_attestation_digest:
-      "sha256:48f940a3e47c8e51fbbaa6576ca42991ba89f4455a3fe63b158568ce5a054931",
+      "sha256:3b45b0364b02861ba70790bba24b5fa6ca6f3da0ef0990b84a74cd37d372ff0c",
   }),
   ML_DIAGNOSTIC: Object.freeze({
     runtime_digest: "sha256:dfc051f7aed19605e4e64e54052969d4e92faf1a58f60df6973d7a9007f02a51",
     dependency_lock_digest:
-      "sha256:abb7bc1c586daa2f9f5b3291d86dba32e28dbf9d015027bf1888ab6b51f8f1e9",
+      "sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293",
     image_attestation_digest:
-      "sha256:9a93ffb1ca0d558df1377eef8ad352c010d1de5654eb83fa41e82dc15333194c",
+      "sha256:6df3bb94161d41c8c18b358b54f05f8b8be3f9b4eb13680abf058587181f28d6",
   }),
   CAUSAL_L5: Object.freeze({
     runtime_digest: "sha256:53e0c7dbf85327d03602422cca565e75f98bc14337f2fe8bc0d1a096effb24c8",
     dependency_lock_digest:
-      "sha256:aeb9f52e741a72906ae0886f51c7627e138a6586e2bca32a339d67eaa4ff8f46",
+      "sha256:73bbc0d20938684a2e25c111c3bb80ac6beee877f64d03986e53acae16e4b22d",
     image_attestation_digest:
-      "sha256:a1d745124403682db637212cc3dbe83314d4904cc4be0166c7dd059a224a045a",
+      "sha256:6523b77a3c061f0715128f811ef47ee558b9cb8aba60a16b2eed7f8d52d6d4e7",
   }),
 } as const satisfies Record<
   AnalysisRuntimeProfile,
@@ -89,7 +92,8 @@ export class AnalysisSkillCatalogError extends TypeError {
     readonly code:
       | "ANALYSIS_SKILL_NOT_REGISTERED"
       | "ANALYSIS_SKILL_REGISTRY_CONFLICT"
-      | "ANALYSIS_SKILL_PARAMETER_INVALID",
+      | "ANALYSIS_SKILL_PARAMETER_INVALID"
+      | "ANALYSIS_RELEASE_MANIFEST_NOT_AUTHORITATIVE",
   ) {
     super(code);
   }
@@ -316,3 +320,33 @@ export class AnalysisSkillCatalog {
 }
 
 export const DEFAULT_ANALYSIS_SKILL_CATALOG = new AnalysisSkillCatalog();
+
+/**
+ * Builds the server-owned executable catalog after release-manifest kill switches
+ * have been resolved. This boundary is intentionally not exposed as a tool input:
+ * callers can select parameters, but cannot re-register a killed executor.
+ */
+export function createServerOwnedAnalysisSkillCatalog(
+  killedSkillIds: ReadonlySet<AnalysisSkillId>,
+): AnalysisSkillCatalog {
+  for (const skillId of killedSkillIds) analysisSkillIdSchema.parse(skillId);
+  return new AnalysisSkillCatalog(
+    DEFAULT_ANALYSIS_SKILL_DESCRIPTORS.filter(({ skill_id }) => !killedSkillIds.has(skill_id)),
+  );
+}
+
+export function createServerOwnedAnalysisSkillCatalogFromReleaseManifest(
+  manifest: AuthoritativeReleaseManifest,
+): AnalysisSkillCatalog {
+  if (!isAuthoritativeReleaseManifest(manifest) || !manifest.deterministic_analysis_rollout) {
+    throw new AnalysisSkillCatalogError("ANALYSIS_RELEASE_MANIFEST_NOT_AUTHORITATIVE");
+  }
+  const rollout = manifest.deterministic_analysis_rollout;
+  return createServerOwnedAnalysisSkillCatalog(
+    new Set(
+      ANALYSIS_SKILL_IDS.filter(
+        (skillId) => !isDeterministicAnalysisCapabilityExecutable(rollout, skillId),
+      ),
+    ),
+  );
+}

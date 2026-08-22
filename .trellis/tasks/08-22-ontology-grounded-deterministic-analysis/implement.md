@@ -20,7 +20,7 @@ green sub-slice as completion of the full task.
   report UI, evidence drawer, and disclosure/sensitivity tests.
 - [x] U6 Independent Evaluation: add deterministic/generated/causal oracles, semantic e-commerce fixtures, cross-layer acceptance, adversarial
   cases, and hard-fail scoring.
-- [ ] U7 Rollout: add per-skill staged registration, probes, release verification, runbook, kill switches, and rollback checks.
+- [x] U7 Rollout: add per-skill staged registration, probes, release verification, runbook, kill switches, and rollback checks.
 - [ ] Full completion audit: map every R1-R17, Verification Matrix row, failure/recovery row, Slice 1-8 deliverable, and Definition of Done item to
   direct current evidence. Continue implementation for every missing item.
 - [ ] Run scoped and full validation, review the complete diff, update specs when new durable conventions were learned, stage explicit owned
@@ -184,3 +184,26 @@ green sub-slice as completion of the full task.
   - Repository PostgreSQL smoke is independently blocked by a pre-existing duplicate self-checksum literal in migration 10694. The subsequent
     Platform integration passed 13 tests with 1 skipped, then its unrelated schema-discovery fixture failed because it supplies the non-UUID
     string `schema-discovery-integration` to a UUID column. Neither failure touches the U6 owned paths.
+
+### U7 Shadow Rollout and Release Gate
+
+- Added a hash-bound optional deterministic-analysis section to `ReleaseManifest`, with exact 11-capability coverage, Stage 0-4/state
+  invariants, per-skill execution/visibility/generated-code policy, independent kill switches, committed evidence refs, supply-chain state,
+  Text2SQL isolation, F9 registration and expiring L5 gate. Authorization independently verifies the nested rollout hash and evidence closure.
+- Added a server-owned catalog factory that accepts only an authoritative Release Manifest. A killed skill is removed from executable
+  registration while another analysis skill and the independent Text2SQL tool path remain available; an untrusted rollout document is rejected.
+- Remediated `PYSEC-2026-113` / `CVE-2026-25087` by upgrading PyArrow from 20.0.0 to 23.0.1, regenerating the Core/ML/Causal locks and all
+  runtime/image attestations, rebuilding all three images, and re-running locked `pip-audit` scans with zero known vulnerabilities.
+- Added a content-addressed lock-SBOM/supply-chain attestation. License metadata gaps remain explicit `REVIEW_REQUIRED`, so the release verifier
+  returns `SHADOW_READY` with `ga_decision=HOLD` instead of overstating GA readiness.
+- Capability Probe now reports per-skill Stage 1 template Shadow, Stage 2 generated Shadow, Stage 3 internal standard/generated/L4, and Stage 4
+  Certified Causal `NOT_REGISTERED`; F9 absence does not block standard/L4 analysis. The release verifier checks all hard gates, independent
+  rollback behavior, and current implementation anchors. The Chinese runbook defines promotion, observation, kill, rollback and recovery.
+- Validation:
+  - Core/ML/Causal images rebuilt; hardened no-network/read-only/no-new-privileges smoke passed for all profiles. Core malicious/timeout/cancel
+    ended `PYTHON_POLICY_REJECTED` / `PYTHON_TIMEOUT` / `PYTHON_CANCELLED` with zero outputs.
+  - Runtime and supply-chain attestations verified; all three `pip-audit 2.10.1` locked scans found zero known vulnerabilities.
+  - Python Ruff passed; Sandbox suite: 94 passed / 17 PostgreSQL-configured tests skipped.
+  - Contracts full suite before the final expiry invariant: 81 files / 858 tests; final targeted release-manifest suite: 8 tests. Worker
+    typecheck and rollout/analysis runtime: 16 tests. Evals full suite: 10 files / 78 tests.
+  - Capability Probe emitted all 11 states; deterministic release verification returned `SHADOW_READY`, `ga_decision=HOLD`, no failed checks.

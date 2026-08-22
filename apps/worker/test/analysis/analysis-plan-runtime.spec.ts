@@ -13,6 +13,8 @@ import {
   admitAnalysisProgramRepair,
   computeAnalysisPlanHash,
   createAnalysisPlanExecutor,
+  createServerOwnedAnalysisSkillCatalog,
+  createServerOwnedAnalysisSkillCatalogFromReleaseManifest,
   DEFAULT_ANALYSIS_SKILL_CATALOG,
   executeControlledTabularImport,
   gateAnalysisPlan,
@@ -190,6 +192,21 @@ describe("deterministic analysis worker runtime", () => {
     expect(() => DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("invented@1")).toThrow(
       "ANALYSIS_SKILL_NOT_REGISTERED",
     );
+  });
+
+  it("applies each server-owned skill kill switch independently", () => {
+    const catalog = createServerOwnedAnalysisSkillCatalog(new Set(["trend-change@1"]));
+    expect(() => catalog.resolve("trend-change@1")).toThrow("ANALYSIS_SKILL_NOT_REGISTERED");
+    expect(catalog.resolve("data-profile@1").skill_id).toBe("data-profile@1");
+    expect(catalog.list()).toHaveLength(DEFAULT_ANALYSIS_SKILL_CATALOG.list().length - 1);
+  });
+
+  it("does not accept an untrusted rollout document as server registration authority", () => {
+    expect(() =>
+      createServerOwnedAnalysisSkillCatalogFromReleaseManifest({
+        deterministic_analysis_rollout: {},
+      } as never),
+    ).toThrow("ANALYSIS_RELEASE_MANIFEST_NOT_AUTHORITATIVE");
   });
 
   it("rejects unauthorized dimensions, budgets, comparison windows, and cross-run refs", async () => {

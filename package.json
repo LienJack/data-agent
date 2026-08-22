@@ -47,6 +47,7 @@
     "benchmark:ecommerce:semantic": "tsx scripts/build-ecommerce-semantic-bundle.ts",
     "benchmark:ecommerce:suite": "tsx scripts/build-ecommerce-production-suite.ts",
     "sandbox:python:attest": "tsx scripts/verify-python-sandbox-attestation.ts",
+    "sandbox:python:supply-chain": "tsx scripts/verify-python-sandbox-supply-chain.ts",
     "bootstrap:superadmin": "tsx apps/web/src/cli/bootstrap-superadmin.ts",
     "bootstrap:ecommerce-demo": "tsx apps/web/src/cli/bootstrap-ecommerce-demo.ts",
     "falcon:bundle:verify": "tsx scripts/falcon.ts bundle:verify",
