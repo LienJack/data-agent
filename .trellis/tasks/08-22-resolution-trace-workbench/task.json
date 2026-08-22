@@ -2,10 +2,10 @@
   "id": "resolution-trace-workbench",
   "name": "resolution-trace-workbench",
   "title": "运行轨迹工作台升级",
-  "description": "参考 DeepSeek Harness，将运行与证据轨迹升级为带多泳道时间轴、搜索、折叠、联动记录表和高信息密度 Inspector 的只读工作台。",
+  "description": "参考 DeepSeek Harness，将运行与证据轨迹升级为带多泳道时间轴、搜索、折叠、联动记录表，以及将 Run/Config/Profile/Task/Call/SQL/Context/Receipt/Artifact 从 ID 展开为真实公共内容的只读工作台。",
   "status": "planning",
   "dev_type": null,
-  "scope": "运行与证据 > 轨迹页签的产品需求；不进入实现",
+  "scope": "运行与证据 > 轨迹主视图及 Overview/Team/SQL/Artifact 的关联内容详情；不进入实现",
   "package": "web",
   "priority": "P2",
   "creator": "lienli",
@@ -23,7 +23,14 @@
   "relatedFiles": [
     "apps/web/src/components/qa/resolution-trace-view.tsx",
     "apps/web/src/components/qa/trajectory-view.tsx",
-    "packages/contracts/src/runs/resolution-trace.ts"
+    "apps/web/src/components/workbench/artifact-preview-panel.tsx",
+    "apps/web/src/components/workbench/artifact-workspace.tsx",
+    "packages/contracts/src/runs/resolution-trace.ts",
+    "packages/contracts/src/runs/public-events.ts",
+    "packages/contracts/src/agents/team-trace.ts",
+    "packages/contracts/src/agents/profile-registry.ts",
+    "packages/contracts/src/workspaces/qa-resources.ts",
+    "packages/contracts/src/context/resolved-context-package.ts"
   ],
   "notes": "",
   "meta": {}
