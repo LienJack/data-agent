@@ -55,6 +55,7 @@ interface QAState {
   directoryView: WorkspaceConversationDirectoryView;
   directoryQuery: string;
   directoryNextCursor: string | null;
+  ungroupedName: string | null;
   expandedFolderIds: string[];
   pendingDirectoryIds: string[];
   /** 当前选中的对话 ID */
@@ -96,6 +97,8 @@ interface QAActions {
   loadConversations: () => Promise<void>;
   setDirectoryView: (view: WorkspaceConversationDirectoryView) => Promise<void>;
   setDirectoryQuery: (query: string) => Promise<void>;
+  renameUngrouped: (name: string) => boolean;
+  hydrateUngroupedName: () => void;
   toggleFolderExpanded: (folderId: string) => void;
   createFolder: (name: string) => Promise<boolean>;
   renameFolder: (folderId: string, name: string) => Promise<boolean>;
@@ -154,6 +157,7 @@ const initialState: QAState = {
   directoryView: "active",
   directoryQuery: "",
   directoryNextCursor: null,
+  ungroupedName: null,
   expandedFolderIds: [],
   pendingDirectoryIds: [],
   activeConversationId: null,
@@ -181,6 +185,11 @@ function workspaceQaPath(path = ""): string {
   const workspaceId = resolveWorkspaceId();
   if (!workspaceId) throw new Error("请先选择工作空间");
   return `/api/workspaces/${encodeURIComponent(workspaceId)}/qa${path}`;
+}
+
+function ungroupedNameStorageKey(): string | null {
+  const workspaceId = resolveWorkspaceId();
+  return workspaceId ? `data-agent.qa-ungrouped-name:${workspaceId}` : null;
 }
 
 function conversationFromContract(
@@ -391,6 +400,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
 
   loadConversations: async () => {
     const generation = ++directoryRequestGeneration;
+    get().hydrateUngroupedName();
     set({ loading: true, error: undefined });
     try {
       const state = get();
@@ -435,6 +445,29 @@ export const useQAStore = create<QAStore>((set, get) => ({
   setDirectoryQuery: async (query) => {
     set({ directoryQuery: query, directoryNextCursor: null });
     await get().loadConversations();
+  },
+
+  renameUngrouped: (name) => {
+    const normalized = name.trim();
+    if (!normalized || normalized.length > 80) return false;
+    set({ ungroupedName: normalized });
+    try {
+      const storageKey = ungroupedNameStorageKey();
+      if (storageKey) window.localStorage.setItem(storageKey, normalized);
+    } catch {
+      // A blocked display preference must not affect the conversation directory.
+    }
+    return true;
+  },
+
+  hydrateUngroupedName: () => {
+    try {
+      const storageKey = ungroupedNameStorageKey();
+      const stored = storageKey ? window.localStorage.getItem(storageKey)?.trim() : null;
+      set({ ungroupedName: stored && stored.length <= 80 ? stored : null });
+    } catch {
+      set({ ungroupedName: null });
+    }
   },
 
   toggleFolderExpanded: (folderId) => {
@@ -1241,6 +1274,7 @@ export const useQAFolders = () => useQAStore((s) => s.folders);
 export const useQADirectoryView = () => useQAStore((s) => s.directoryView);
 export const useQADirectoryQuery = () => useQAStore((s) => s.directoryQuery);
 export const useQADirectoryNextCursor = () => useQAStore((s) => s.directoryNextCursor);
+export const useQAUngroupedName = () => useQAStore((s) => s.ungroupedName);
 export const useQAExpandedFolderIds = () => useQAStore((s) => s.expandedFolderIds);
 export const useQAPendingDirectoryIds = () => useQAStore((s) => s.pendingDirectoryIds);
 export const useQAActiveConversationId = () => useQAStore((s) => s.activeConversationId);

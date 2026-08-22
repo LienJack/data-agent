@@ -11,6 +11,7 @@ const directoryState = vi.hoisted(() => ({
   activeConversationId: null as string | null,
   directoryView: "active" as "active" | "archived" | "trash",
   directoryQuery: "",
+  ungroupedName: null as string | null,
   expandedFolderIds: [] as string[],
   pendingDirectoryIds: [] as string[],
   store: {
@@ -18,6 +19,7 @@ const directoryState = vi.hoisted(() => ({
     setDirectoryQuery: vi.fn(),
     createFolder: vi.fn(),
     renameFolder: vi.fn(),
+    renameUngrouped: vi.fn(),
     renameConversation: vi.fn(),
     moveConversation: vi.fn(),
     deleteFolder: vi.fn(),
@@ -39,6 +41,7 @@ vi.mock("@/lib/qa-store", () => ({
   useQAConversations: () => directoryState.conversations,
   useQADirectoryQuery: () => directoryState.directoryQuery,
   useQADirectoryView: () => directoryState.directoryView,
+  useQAUngroupedName: () => directoryState.ungroupedName,
   useQAExpandedFolderIds: () => directoryState.expandedFolderIds,
   useQAFolders: () => directoryState.folders,
   useQAPendingDirectoryIds: () => directoryState.pendingDirectoryIds,
@@ -69,6 +72,7 @@ afterEach(() => {
   directoryState.conversations = [];
   directoryState.directoryView = "active";
   directoryState.directoryQuery = "";
+  directoryState.ungroupedName = null;
   directoryState.expandedFolderIds = [];
   directoryState.pendingDirectoryIds = [];
   vi.useRealTimers();
@@ -154,5 +158,20 @@ describe("ConversationDirectory", () => {
     expect(html).toContain("未分类");
     expect(html).toContain("研究对话 1");
     expect(html).toContain("恢复到对话");
+  });
+
+  it("lets the workspace rename the ungrouped category", () => {
+    directoryState.ungroupedName = "待整理";
+    directoryState.conversations = [{ ...conversation(1), folderId: undefined }];
+
+    const html = renderToStaticMarkup(
+      <WorkspaceI18nProvider>
+        <ConversationDirectory qaHref="/w/workspace/qa" />
+      </WorkspaceI18nProvider>,
+    );
+
+    expect(html).toContain("待整理");
+    expect(html).toContain("管理分类：待整理");
+    expect(html).toContain("重命名");
   });
 });

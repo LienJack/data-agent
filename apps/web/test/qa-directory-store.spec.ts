@@ -62,12 +62,17 @@ function page(title = "订单分析") {
 }
 
 beforeEach(() => {
+  const storage = new Map<string, string>();
   vi.stubGlobal("window", {
     location: {
       pathname: `/w/${ids.workspace}/qa`,
       href: `http://localhost:3000/w/${ids.workspace}/qa`,
     },
     history: { replaceState: vi.fn() },
+    localStorage: {
+      getItem: vi.fn((key: string) => storage.get(key) ?? null),
+      setItem: vi.fn((key: string, value: string) => storage.set(key, value)),
+    },
   });
   useQAStore.getState().reset();
 });
@@ -78,6 +83,20 @@ afterEach(() => {
 });
 
 describe("Q&A private directory store", () => {
+  it("persists and hydrates the workspace ungrouped category name", () => {
+    expect(useQAStore.getState().renameUngrouped("  待整理  ")).toBe(true);
+    expect(useQAStore.getState().ungroupedName).toBe("待整理");
+    expect(window.localStorage.setItem).toHaveBeenCalledWith(
+      `data-agent.qa-ungrouped-name:${ids.workspace}`,
+      "待整理",
+    );
+
+    useQAStore.setState({ ungroupedName: null });
+    useQAStore.getState().hydrateUngroupedName();
+
+    expect(useQAStore.getState().ungroupedName).toBe("待整理");
+  });
+
   it("accepts only the strict server directory snapshot", async () => {
     vi.stubGlobal(
       "fetch",

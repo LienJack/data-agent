@@ -37,6 +37,7 @@ import {
   useQAFolders,
   useQAPendingDirectoryIds,
   useQAStore,
+  useQAUngroupedName,
 } from "@/lib/qa-store";
 import type { Conversation } from "@/lib/qa-types";
 
@@ -46,6 +47,7 @@ const DEFAULT_VISIBLE_COUNT = 5;
 type EditorState =
   | { readonly kind: "create-folder"; readonly value: string }
   | { readonly kind: "rename-folder"; readonly id: string; readonly value: string }
+  | { readonly kind: "rename-ungrouped"; readonly value: string }
   | { readonly kind: "rename-conversation"; readonly id: string; readonly value: string }
   | { readonly kind: "move-conversation"; readonly id: string; readonly folderId: string }
   | { readonly kind: "delete-folder"; readonly id: string; readonly name: string }
@@ -159,6 +161,7 @@ export function ConversationDirectory(props: {
   const activeConversationId = useQAActiveConversationId();
   const directoryView = useQADirectoryView();
   const directoryQuery = useQADirectoryQuery();
+  const ungroupedName = useQAUngroupedName();
   const expandedFolderIds = useQAExpandedFolderIds();
   const pendingIds = useQAPendingDirectoryIds();
   const store = useQAStore();
@@ -167,6 +170,7 @@ export function ConversationDirectory(props: {
   const directoryRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLFormElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const ungroupedLabel = ungroupedName ?? copy(locale, "未分类", "Ungrouped");
 
   const editorKind = editor?.kind;
   useEffect(() => {
@@ -261,6 +265,7 @@ export function ConversationDirectory(props: {
     if (editor.kind === "create-folder") completed = await store.createFolder(editor.value);
     if (editor.kind === "rename-folder")
       completed = await store.renameFolder(editor.id, editor.value);
+    if (editor.kind === "rename-ungrouped") completed = store.renameUngrouped(editor.value);
     if (editor.kind === "rename-conversation")
       completed = await store.renameConversation(editor.id, editor.value);
     if (editor.kind === "move-conversation")
@@ -416,6 +421,7 @@ export function ConversationDirectory(props: {
     const expanded = expandedFolderIds.includes(folderId);
     const visible = expanded ? items : items.slice(0, DEFAULT_VISIBLE_COUNT);
     const folder = folders.find((candidate) => candidate.folder_id === folderId);
+    const isUngrouped = folderId === UNGROUPED_ID;
     const pending = pendingIds.includes(folderId);
     return (
       <section key={folderId} role="presentation" className="mt-1">
@@ -441,20 +447,28 @@ export function ConversationDirectory(props: {
             <span className="min-w-0 flex-1 truncate text-[11px] font-semibold">{label}</span>
             <span className="text-[9px] text-[var(--color-text-muted)]">{items.length}</span>
           </button>
-          {folder && directoryView !== "trash" && (
+          {(folder || isUngrouped) && directoryView !== "trash" && (
             <RowMenu
-              label={copy(locale, `管理文件夹：${label}`, `Manage folder ${label}`)}
+              label={
+                isUngrouped
+                  ? copy(locale, `管理分类：${label}`, `Manage category ${label}`)
+                  : copy(locale, `管理文件夹：${label}`, `Manage folder ${label}`)
+              }
               disabled={pending}
             >
               <ActionButton
                 label={copy(locale, "重命名", "Rename")}
                 onClick={() =>
-                  setEditor({ kind: "rename-folder", id: folder.folder_id, value: folder.name })
+                  setEditor(
+                    folder
+                      ? { kind: "rename-folder", id: folder.folder_id, value: folder.name }
+                      : { kind: "rename-ungrouped", value: label },
+                  )
                 }
               >
                 <PencilSimple aria-hidden="true" size={14} />
               </ActionButton>
-              {directoryView === "active" ? (
+              {folder && directoryView === "active" ? (
                 <>
                   <ActionButton
                     label={copy(locale, "上移", "Move up")}
@@ -477,23 +491,25 @@ export function ConversationDirectory(props: {
                     <Archive aria-hidden="true" size={14} />
                   </ActionButton>
                 </>
-              ) : (
+              ) : folder ? (
                 <ActionButton
                   label={copy(locale, "恢复文件夹", "Restore folder")}
                   onClick={() => void store.restoreFolder(folder.folder_id)}
                 >
                   <ArrowCounterClockwise aria-hidden="true" size={14} />
                 </ActionButton>
+              ) : null}
+              {folder && (
+                <ActionButton
+                  destructive
+                  label={copy(locale, "删除文件夹", "Delete folder")}
+                  onClick={() =>
+                    setEditor({ kind: "delete-folder", id: folder.folder_id, name: folder.name })
+                  }
+                >
+                  <Trash aria-hidden="true" size={14} />
+                </ActionButton>
               )}
-              <ActionButton
-                destructive
-                label={copy(locale, "删除文件夹", "Delete folder")}
-                onClick={() =>
-                  setEditor({ kind: "delete-folder", id: folder.folder_id, name: folder.name })
-                }
-              >
-                <Trash aria-hidden="true" size={14} />
-              </ActionButton>
             </RowMenu>
           )}
         </div>
@@ -607,7 +623,7 @@ export function ConversationDirectory(props: {
         {(byFolder.get(UNGROUPED_ID)?.length ?? 0) > 0 &&
           renderGroup(
             UNGROUPED_ID,
-            copy(locale, "未分类", "Ungrouped"),
+            ungroupedLabel,
             byFolder.get(UNGROUPED_ID) ?? [],
             sortedFolders.length,
           )}
@@ -643,7 +659,9 @@ export function ConversationDirectory(props: {
             <h2 id="directory-editor-title" className="text-sm font-semibold">
               {editor.kind === "create-folder"
                 ? copy(locale, "新建文件夹", "New folder")
-                : editor.kind === "rename-folder" || editor.kind === "rename-conversation"
+                : editor.kind === "rename-folder" ||
+                    editor.kind === "rename-ungrouped" ||
+                    editor.kind === "rename-conversation"
                   ? copy(locale, "重命名", "Rename")
                   : editor.kind === "move-conversation"
                     ? copy(locale, "移动对话", "Move conversation")
@@ -655,8 +673,8 @@ export function ConversationDirectory(props: {
               <p className="mt-3 text-[12px] leading-5 text-[var(--color-text-secondary)]">
                 {copy(
                   locale,
-                  `删除“${editor.name}”后，其中的对话会保留并移到未分类。`,
-                  `Deleting “${editor.name}” keeps its conversations and moves them to Ungrouped.`,
+                  `删除“${editor.name}”后，其中的对话会保留并移到“${ungroupedLabel}”。`,
+                  `Deleting “${editor.name}” keeps its conversations and moves them to “${ungroupedLabel}”.`,
                 )}
               </p>
             ) : editor.kind === "trash-conversation" ? (
@@ -675,7 +693,7 @@ export function ConversationDirectory(props: {
                   onChange={(event) => setEditor({ ...editor, folderId: event.target.value })}
                   className="glass-control-radius mt-1 h-10 w-full border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-[12px]"
                 >
-                  <option value="">{copy(locale, "未分类", "Ungrouped")}</option>
+                  <option value="">{ungroupedLabel}</option>
                   {sortedFolders
                     .filter((folder) => folder.archived_at === null)
                     .map((folder) => (
@@ -689,7 +707,9 @@ export function ConversationDirectory(props: {
               <label className="mt-3 block text-[11px] text-[var(--color-text-secondary)]">
                 {editor.kind === "rename-conversation"
                   ? copy(locale, "对话名称", "Conversation name")
-                  : copy(locale, "文件夹名称", "Folder name")}
+                  : editor.kind === "rename-ungrouped"
+                    ? copy(locale, "分类名称", "Category name")
+                    : copy(locale, "文件夹名称", "Folder name")}
                 <input
                   required
                   maxLength={editor.kind === "rename-conversation" ? 255 : 80}
