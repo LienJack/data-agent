@@ -11,17 +11,21 @@ import {
   immutableIdSchema,
   l2ArtifactDocumentSchema,
   type PortResult,
+  type PublicRunEventV2,
   productTeamArtifactDocumentSchema,
   type ResolutionTrace,
+  type ResolutionTraceDetail,
   type ResolutionTraceEdge,
   type ResolutionTraceNode,
   type RunRuntimeEvent,
   redactPublicDisplayText,
+  resolutionTraceDetailSchema,
   type SqlHistoryEntry,
   type SqlHistoryResult,
   sha256ContentHash,
   timestampSchema,
   toPublicRunEvent,
+  verifyEffectiveRunConfigReceiptCandidate,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import { loadVerifiedRunEvents } from "../events/postgres-run-event-store.js";
@@ -34,6 +38,13 @@ import {
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
 
 const traceLookupSchema = z.strictObject({ scope: appScopeSchema, run_id: immutableIdSchema });
+const traceDetailLookupSchema = traceLookupSchema.extend({
+  node_id: z
+    .string()
+    .min(1)
+    .max(320)
+    .regex(/^(?:event|artifact|context|config):/),
+});
 const sqlHistoryLookupSchema = z
   .strictObject({
     scope: appScopeSchema,
@@ -66,6 +77,12 @@ interface RunAuthorityRow {
   readonly config_hash: string | null;
   readonly schema_snapshot_hash: string | null;
   readonly config_committed_at: Date | string | null;
+  readonly effective_config_json: unknown | null;
+  readonly question: string;
+  readonly run_status: string;
+  readonly active_fence: string | number;
+  readonly run_created_at: Date | string;
+  readonly run_updated_at: Date | string;
 }
 
 interface ArtifactRow {
@@ -97,6 +114,12 @@ interface VerifiedRunAuthority {
   } | null;
   readonly schema_snapshot_hash: string | null;
   readonly config_committed_at: string | null;
+  readonly effective_config_json: unknown | null;
+  readonly question: string;
+  readonly run_status: string;
+  readonly active_fence: number;
+  readonly run_created_at: string;
+  readonly run_updated_at: string;
 }
 
 function invalid<T>(code: string, message: string): PortResult<T> {
@@ -143,7 +166,13 @@ async function loadRunAuthority(
        config.config_revision,
        config.config_hash,
        config.schema_snapshot_hash,
-       config.committed_at as config_committed_at
+       config.committed_at as config_committed_at,
+       config.effective_config_json,
+       run.question,
+       coalesce(projection.status, run.status) as run_status,
+       run.active_fence,
+       run.created_at as run_created_at,
+       run.updated_at as run_updated_at
      from runs as run
      left join workspace_run_bindings as binding
        on binding.app_id = run.app_id
@@ -155,6 +184,16 @@ async function loadRunAuthority(
       and config.tenant_id = run.tenant_id
       and config.environment = run.environment
       and config.run_id = run.run_id
+     left join lateral (
+       select candidate.status
+       from run_projections as candidate
+       where candidate.app_id = run.app_id
+         and candidate.tenant_id = run.tenant_id
+         and candidate.environment = run.environment
+         and candidate.run_id = run.run_id
+       order by candidate.version desc
+       limit 1
+     ) as projection on true
      where run.app_id = $1
        and run.tenant_id = $2
        and run.environment = $3
@@ -206,6 +245,12 @@ async function loadRunAuthority(
         ? contentHashSchema.parse(row.schema_snapshot_hash)
         : null,
       config_committed_at: hasCompleteConfig ? iso(row.config_committed_at as Date | string) : null,
+      effective_config_json: hasCompleteConfig ? row.effective_config_json : null,
+      question: z.string().min(1).max(4_000).parse(row.question),
+      run_status: z.string().min(1).max(64).parse(row.run_status),
+      active_fence: z.coerce.number().int().nonnegative().safe().parse(row.active_fence),
+      run_created_at: iso(row.run_created_at),
+      run_updated_at: iso(row.run_updated_at),
     };
   });
 }
@@ -390,7 +435,9 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
         occurred_at: event.occurred_at,
         status: publicEvent.payload.status,
         title: publicEvent.payload.title,
-        summary: redactPublicDisplayText(publicEvent.payload.summary).slice(0, 2_000),
+        summary: redactPublicDisplayText(
+          `${publicEvent.payload.summary}${publicEvent.payload.error_code ? ` · ${publicEvent.payload.error_code}` : ""}`,
+        ).slice(0, 2_000),
         duration_ms: publicEvent.payload.duration_ms,
         artifact_refs: publicEvent.payload.artifact_refs,
       };
@@ -403,7 +450,9 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
         occurred_at: event.occurred_at,
         status: publicEvent.payload.status,
         title: publicEvent.payload.title,
-        summary: redactPublicDisplayText(publicEvent.payload.summary).slice(0, 2_000),
+        summary: redactPublicDisplayText(
+          `${publicEvent.payload.summary}${publicEvent.payload.error_code ? ` · ${publicEvent.payload.error_code}` : ""}`,
+        ).slice(0, 2_000),
         duration_ms: publicEvent.payload.duration_ms,
         artifact_refs: [],
       };
@@ -447,7 +496,9 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
         occurred_at: event.occurred_at,
         status: publicEvent.payload.status,
         title: "Run terminal",
-        summary: publicEvent.payload.summary,
+        summary: redactPublicDisplayText(
+          `${publicEvent.payload.summary}${publicEvent.payload.error_code ? ` · ${publicEvent.payload.error_code}` : ""}`,
+        ).slice(0, 2_000),
         duration_ms: null,
         artifact_refs: [],
       };
@@ -535,6 +586,421 @@ async function projectTrace(
     config_ref: authority.config_ref,
     nodes,
     edges,
+  });
+}
+
+type DetailSection = ResolutionTraceDetail["payload"];
+
+function unavailableSection(reasonCode: string, message: string): DetailSection {
+  return { state: "UNAVAILABLE", reason_code: reasonCode, message };
+}
+
+function textSection(text: string | null): DetailSection {
+  const publicText = text
+    ? redactPublicDisplayText(text).replace(
+        /\b(?:reasoning_content|chain[- ]of[- ]thought|secretref|provider[_ -]?payload)\b/gi,
+        "[REDACTED]",
+      )
+    : text;
+  return publicText === null || publicText.length === 0
+    ? unavailableSection("PUBLIC_CONTENT_UNAVAILABLE", "该记录没有发布可展示的公共内容。")
+    : { state: "AVAILABLE", format: "TEXT", text: publicText, fields: [] };
+}
+
+function fieldsSection(fields: readonly { label: string; value: string }[]): DetailSection {
+  return fields.length === 0
+    ? unavailableSection("PUBLIC_CONTENT_UNAVAILABLE", "该记录没有发布可展示的公共字段。")
+    : {
+        state: "AVAILABLE",
+        format: "FIELDS",
+        text: null,
+        fields: fields.map((field) => ({
+          ...field,
+          value: redactPublicDisplayText(field.value).replace(
+            /\b(?:reasoning_content|chain[- ]of[- ]thought|secretref|provider[_ -]?payload)\b/gi,
+            "[REDACTED]",
+          ),
+        })),
+      };
+}
+
+function detailRelations(
+  trace: ResolutionTrace,
+  nodeId: string,
+): ResolutionTraceDetail["relations"] {
+  const relations: ResolutionTraceDetail["relations"][number][] = [];
+  for (const edge of trace.edges) {
+    if (edge.from_node_id === nodeId)
+      relations.push({ direction: "OUTGOING", kind: edge.kind, node_id: edge.to_node_id });
+    if (edge.to_node_id === nodeId)
+      relations.push({ direction: "INCOMING", kind: edge.kind, node_id: edge.from_node_id });
+  }
+  return relations;
+}
+
+function detailIdentity(
+  label: string,
+  value: string | number | null,
+  valueKind: ResolutionTraceDetail["identity"][number]["value_kind"],
+): ResolutionTraceDetail["identity"][number][] {
+  return value === null ? [] : [{ label, value: String(value), value_kind: valueKind }];
+}
+
+function detailSchema(
+  name: string,
+  version: string,
+  fields: readonly string[],
+): ResolutionTraceDetail["schema"] {
+  return {
+    state: "AVAILABLE",
+    schema_name: name,
+    schema_version: version,
+    fields: fields.map((field) => ({ name: field, type: "public", availability: "AVAILABLE" })),
+  };
+}
+
+async function projectDetail(
+  authority: VerifiedRunAuthority,
+  trace: ResolutionTrace,
+  events: readonly RunRuntimeEvent[],
+  artifacts: readonly VerifiedArtifact[],
+  nodeId: string,
+): Promise<ResolutionTraceDetail | null> {
+  const node = trace.nodes.find((candidate) => candidate.node_id === nodeId);
+  if (!node) return null;
+  const relations = detailRelations(trace, node.node_id);
+  const baseIdentity: ResolutionTraceDetail["identity"] = [
+    ...detailIdentity("Run ID", trace.run_id, "ID"),
+    ...detailIdentity("Node ID", node.node_id, "ID"),
+    ...detailIdentity("Sequence", node.sequence, "VERSION"),
+  ];
+  let identity = baseIdentity;
+  let payload: DetailSection = fieldsSection([
+    { label: "问题", value: authority.question },
+    { label: "Run 状态", value: authority.run_status },
+  ]);
+  let result: DetailSection = unavailableSection(
+    "PUBLIC_RESULT_UNAVAILABLE",
+    "该记录尚未发布公共结果。",
+  );
+  let schema: ResolutionTraceDetail["schema"] = {
+    state: "UNAVAILABLE",
+    reason_code: "PUBLIC_SCHEMA_UNAVAILABLE",
+    message: "该记录没有发布公共 Schema。",
+  };
+  let sourceEventIds: string[] = node.source_event_id ? [node.source_event_id] : [];
+  let startedAt: string | null = null;
+  let completedAt: string | null = null;
+  let durationMs = node.duration_ms;
+
+  if (node.source_event_id) {
+    const source = events.find((event) => event.event_id === node.source_event_id);
+    if (!source) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_EVENT_CORRUPT",
+        "Trace node 的 source event 无法在同一权威快照中解析。",
+      );
+    }
+    const publicEvent = toPublicRunEvent(source);
+    schema = detailSchema(
+      "public-run-event",
+      publicEvent.schema_version,
+      Object.keys(publicEvent.payload).map((key) => `payload.${key}`),
+    );
+    switch (publicEvent.type) {
+      case "tool": {
+        const related = events
+          .map(toPublicRunEvent)
+          .filter(
+            (event): event is Extract<PublicRunEventV2, { type: "tool" }> =>
+              event.type === "tool" && event.payload.call_id === publicEvent.payload.call_id,
+          );
+        const start = related.find(
+          (event) => event.type === "tool" && event.payload.status === "RUNNING",
+        );
+        const terminal = related.find(
+          (event) => event.type === "tool" && event.payload.status !== "RUNNING",
+        );
+        if (
+          related.some(
+            (event) =>
+              event.payload.tool_name !== publicEvent.payload.tool_name ||
+              event.payload.profile_id !== publicEvent.payload.profile_id ||
+              event.payload.task_id !== publicEvent.payload.task_id,
+          )
+        ) {
+          throw new PersistenceBoundaryError(
+            "RESOLUTION_TRACE_TOOL_IDENTITY_MISMATCH",
+            "同一 Tool call 的公开 identity 不一致。",
+          );
+        }
+        sourceEventIds = related.map(({ event_id }) => event_id);
+        startedAt = start?.occurred_at ?? null;
+        completedAt = terminal?.occurred_at ?? null;
+        durationMs = terminal?.payload.duration_ms ?? node.duration_ms;
+        identity = [
+          ...baseIdentity,
+          ...detailIdentity("Tool", publicEvent.payload.tool_name, "NAME"),
+          ...detailIdentity("Call ID", publicEvent.payload.call_id, "ID"),
+          ...detailIdentity("Agent Profile", publicEvent.payload.profile_id, "NAME"),
+          ...detailIdentity("Task ID", publicEvent.payload.task_id, "ID"),
+          ...detailIdentity("Error code", terminal?.payload.error_code ?? null, "STATUS"),
+        ];
+        payload = textSection(start?.payload.input ?? publicEvent.payload.input);
+        result = terminal?.payload.output
+          ? textSection(terminal.payload.output)
+          : node.artifact_refs.length > 0
+            ? {
+                state: "AVAILABLE",
+                format: "ARTIFACTS",
+                text: `${node.artifact_refs.length} 个可预览 Artifact`,
+                fields: node.artifact_refs.map((reference) => ({
+                  label: reference.artifact_type,
+                  value: `${reference.artifact_id} · r${reference.revision}`,
+                })),
+              }
+            : terminal?.payload.error_code
+              ? fieldsSection([
+                  { label: "错误码", value: terminal.payload.error_code },
+                  { label: "摘要", value: terminal.payload.summary },
+                ])
+              : unavailableSection("PUBLIC_RESULT_UNAVAILABLE", "Tool 尚未发布公共结果。");
+        break;
+      }
+      case "agent": {
+        const related = publicEvent.payload.task_id
+          ? events
+              .map(toPublicRunEvent)
+              .filter(
+                (event): event is Extract<PublicRunEventV2, { type: "agent" }> =>
+                  event.type === "agent" &&
+                  event.payload.profile_id === publicEvent.payload.profile_id &&
+                  event.payload.task_id === publicEvent.payload.task_id,
+              )
+          : [publicEvent];
+        const start = related.find(({ payload: candidate }) =>
+          ["PENDING", "RUNNING"].includes(candidate.status),
+        );
+        const terminal = related.find(({ payload: candidate }) =>
+          ["COMPLETED", "FAILED", "INTERRUPTED", "SKIPPED", "BLOCKED"].includes(candidate.status),
+        );
+        sourceEventIds = related.map(({ event_id }) => event_id);
+        startedAt = start?.occurred_at ?? null;
+        completedAt = terminal?.occurred_at ?? null;
+        durationMs = terminal?.payload.duration_ms ?? node.duration_ms;
+        identity = [
+          ...baseIdentity,
+          ...detailIdentity("Agent Profile", publicEvent.payload.profile_id, "NAME"),
+          ...detailIdentity("Task ID", publicEvent.payload.task_id, "ID"),
+          ...detailIdentity("Phase", publicEvent.payload.phase, "VERSION"),
+          ...detailIdentity("Error code", publicEvent.payload.error_code, "STATUS"),
+        ];
+        payload = fieldsSection([
+          { label: "阶段", value: publicEvent.payload.phase },
+          { label: "公开摘要", value: publicEvent.payload.summary },
+        ]);
+        result =
+          terminal?.payload.status === "COMPLETED"
+            ? textSection(terminal.payload.summary)
+            : unavailableSection("AGENT_RESULT_NOT_COMPLETED", "Agent 尚未发布完成结果。");
+        break;
+      }
+      case "progress":
+        identity = [
+          ...baseIdentity,
+          ...detailIdentity("Phase", publicEvent.payload.phase, "VERSION"),
+        ];
+        payload = fieldsSection([
+          { label: "阶段", value: publicEvent.payload.phase },
+          { label: "公开摘要", value: publicEvent.payload.summary },
+        ]);
+        break;
+      case "answer":
+        payload = unavailableSection("ANSWER_PAYLOAD_NOT_PUBLIC", "Answer 只发布公共正文增量。");
+        result = textSection(publicEvent.payload.delta);
+        break;
+      case "reasoning": {
+        const related = events
+          .map(toPublicRunEvent)
+          .filter(
+            (event): event is Extract<PublicRunEventV2, { type: "reasoning" }> =>
+              event.type === "reasoning" && event.payload.block_id === publicEvent.payload.block_id,
+          );
+        const start = related.find(({ payload: candidate }) => candidate.phase === "START");
+        const end = related.find(({ payload: candidate }) => candidate.phase === "END");
+        const deltas = related.flatMap(({ payload: candidate }) =>
+          candidate.phase === "DELTA" ? [candidate.delta] : [],
+        );
+        sourceEventIds = related.map(({ event_id }) => event_id);
+        startedAt = start?.occurred_at ?? null;
+        completedAt = end?.occurred_at ?? null;
+        durationMs = end?.payload.phase === "END" ? end.payload.duration_ms : node.duration_ms;
+        identity = [
+          ...baseIdentity,
+          ...detailIdentity("Block ID", publicEvent.payload.block_id, "ID"),
+          ...detailIdentity("Phase", publicEvent.payload.phase, "STATUS"),
+        ];
+        payload = textSection(
+          start?.payload.phase === "START" ? start.payload.title : node.summary,
+        );
+        result =
+          end?.payload.phase === "END"
+            ? textSection(end.payload.summary)
+            : deltas.length > 0
+              ? textSection(deltas.join("\n"))
+              : unavailableSection("REASONING_RESULT_INCOMPLETE", "公开思考摘要尚未结束。");
+        break;
+      }
+      case "lifecycle":
+        identity = [
+          ...baseIdentity,
+          ...detailIdentity("Lifecycle event", publicEvent.payload.name, "NAME"),
+          ...detailIdentity("Active fence", authority.active_fence, "VERSION"),
+        ];
+        payload = fieldsSection([
+          { label: "用户问题", value: authority.question },
+          { label: "权威 Run 状态", value: authority.run_status },
+          { label: "事件说明", value: publicEvent.payload.summary },
+        ]);
+        break;
+      case "terminal":
+        identity = [
+          ...baseIdentity,
+          ...detailIdentity("Error code", publicEvent.payload.error_code, "STATUS"),
+        ];
+        payload = fieldsSection([
+          { label: "用户问题", value: authority.question },
+          { label: "权威 Run 状态", value: authority.run_status },
+        ]);
+        result = textSection(publicEvent.payload.summary);
+        break;
+    }
+  } else if (node.node_id.startsWith("config:") && authority.effective_config_json) {
+    const config = await verifyEffectiveRunConfigReceiptCandidate(authority.effective_config_json);
+    identity = [
+      ...baseIdentity,
+      ...detailIdentity("Config ID", config.config_id, "ID"),
+      ...detailIdentity("Config revision", config.config_revision, "VERSION"),
+      ...detailIdentity("Config hash", config.config_hash, "HASH"),
+    ];
+    payload = fieldsSection([
+      { label: "模型", value: config.model.model_id },
+      { label: "Provider", value: config.model.provider },
+      { label: "Model profile version", value: config.model.profile_version },
+      {
+        label: "数据源",
+        value: `${config.datasource.resource_id} · r${config.datasource.resource_revision}`,
+      },
+      {
+        label: "Semantic Release",
+        value: `${config.semantic_release.resource_id} · generation ${config.semantic_release.semantic_generation}`,
+      },
+      {
+        label: "Schema Snapshot",
+        value: `${config.schema_snapshot.resource_id} · r${config.schema_snapshot.resource_revision}`,
+      },
+      {
+        label: "Context Policy",
+        value: `${config.context_policy.resource_id} · r${config.context_policy.resource_revision}`,
+      },
+      {
+        label: "Egress Policy",
+        value: `${config.egress_policy.resource_id} · r${config.egress_policy.resource_revision}`,
+      },
+      {
+        label: "Safety Policy",
+        value: `${config.execution_safety_policy.resource_id} · r${config.execution_safety_policy.resource_revision}`,
+      },
+    ]);
+    result = fieldsSection([
+      { label: "提交时间", value: authority.config_committed_at ?? node.occurred_at },
+      { label: "Resource bindings", value: String(config.resource_bindings.length) },
+    ]);
+    schema = detailSchema("effective-run-config-receipt", config.schema_version, [
+      "model",
+      "datasource",
+      "semantic_release",
+      "schema_snapshot",
+      "context_policy",
+      "egress_policy",
+      "execution_safety_policy",
+      "resource_bindings",
+    ]);
+  } else if (node.artifact_refs.length > 0) {
+    const verifiedReferences = node.artifact_refs.filter((reference) =>
+      artifacts.some(
+        (artifact) =>
+          artifactReferenceIdentity(artifact.reference) === artifactReferenceIdentity(reference),
+      ),
+    );
+    if (verifiedReferences.length !== node.artifact_refs.length) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
+        "Trace detail Artifact reference 无法在同一权威快照中验证。",
+      );
+    }
+    const first = verifiedReferences[0];
+    identity = [
+      ...baseIdentity,
+      ...(first ? detailIdentity("Artifact ID", first.artifact_id, "ID") : []),
+      ...(first ? detailIdentity("Artifact type", first.artifact_type, "NAME") : []),
+      ...(first ? detailIdentity("Revision", first.revision, "VERSION") : []),
+      ...(first ? detailIdentity("Content hash", first.content_hash, "HASH") : []),
+    ];
+    payload = fieldsSection(
+      verifiedReferences.map((reference) => ({
+        label: reference.artifact_type,
+        value: `${reference.artifact_id} · r${reference.revision}`,
+      })),
+    );
+    result = {
+      state: "AVAILABLE",
+      format: "ARTIFACTS",
+      text: `${verifiedReferences.length} 个 exact Artifact 可安全预览`,
+      fields: [],
+    };
+    schema = detailSchema("artifact-reference", "artifact-reference@1.0.0", [
+      "artifact_id",
+      "artifact_type",
+      "revision",
+      "content_hash",
+      "scope",
+      "run_id",
+    ]);
+  }
+
+  return resolutionTraceDetailSchema.parse({
+    schema_version: "resolution-trace-detail@1.0.0",
+    scope: trace.scope,
+    run_id: trace.run_id,
+    node_id: node.node_id,
+    kind: node.kind,
+    sequence: node.sequence,
+    source_event_ids: sourceEventIds,
+    title: node.title,
+    status: node.status,
+    summary: node.summary,
+    hierarchy: {
+      parent_node_ids: relations
+        .filter(({ direction }) => direction === "INCOMING")
+        .map(({ node_id }) => node_id),
+      child_node_ids: relations
+        .filter(({ direction }) => direction === "OUTGOING")
+        .map(({ node_id }) => node_id),
+    },
+    identity,
+    payload,
+    result,
+    schema,
+    timing: {
+      occurred_at: node.occurred_at,
+      started_at: startedAt,
+      completed_at: completedAt,
+      duration_ms: durationMs,
+      source: node.source_event_id ? "SESSION_TIMESTAMPS" : "ARTIFACT_TIMESTAMP",
+    },
+    relations,
+    artifact_refs: node.artifact_refs,
   });
 }
 
@@ -685,6 +1151,38 @@ export function createPostgresResolutionTraceProjector(
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
           const artifacts = await loadVerifiedArtifacts(client, authority);
           return projectTrace(authority, events, artifacts);
+        },
+      );
+    },
+
+    async loadDetail(
+      capabilityInput: unknown,
+      input: unknown,
+    ): Promise<PortResult<ResolutionTraceDetail | null>> {
+      const lookup = traceDetailLookupSchema.safeParse(input);
+      if (!lookup.success)
+        return invalid(
+          "RESOLUTION_TRACE_DETAIL_LOOKUP_INVALID",
+          "Resolution Trace detail lookup 不符合契约。",
+        );
+      return withAppTransaction(
+        options.pool,
+        options.authorizer,
+        capabilityInput,
+        { access: "READ", operation_name: "resolution-trace.detail.load" },
+        async ({ capability, client }) => {
+          assertScope(lookup.data.scope, capability.scope);
+          const [authority] = await loadRunAuthority(
+            client,
+            capability.scope,
+            capability.principal,
+            lookup.data.run_id,
+          );
+          if (!authority) return null;
+          const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
+          const artifacts = await loadVerifiedArtifacts(client, authority);
+          const trace = await projectTrace(authority, events, artifacts);
+          return projectDetail(authority, trace, events, artifacts, lookup.data.node_id);
         },
       );
     },

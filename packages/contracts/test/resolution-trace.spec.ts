@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildResolutionTrace,
   buildSqlHistoryEntry,
+  resolutionTraceDetailSchema,
   resolutionTraceSchema,
   sqlHistoryResultSchema,
   verifyResolutionTrace,
@@ -135,6 +136,70 @@ describe("resolution trace contracts", () => {
       prompt: "private system prompt",
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it("parses a content-first public detail and rejects private payload fields", () => {
+    const detail = {
+      schema_version: "resolution-trace-detail@1.0.0",
+      scope,
+      run_id: id(4),
+      node_id: `event:${id(7)}`,
+      kind: "TOOL",
+      sequence: 1,
+      source_event_ids: [id(7)],
+      title: "读取业务文档",
+      status: "COMPLETED",
+      summary: "已读取 14 行公开内容",
+      hierarchy: { parent_node_ids: [], child_node_ids: [] },
+      identity: [
+        { label: "Tool", value: "read", value_kind: "NAME" },
+        { label: "Call ID", value: "call-1", value_kind: "ID" },
+      ],
+      payload: {
+        state: "AVAILABLE",
+        format: "TEXT",
+        text: '{"file_path":"notes.md","limit":14}',
+        fields: [],
+      },
+      result: {
+        state: "AVAILABLE",
+        format: "TEXT",
+        text: "文件正文预览",
+        fields: [],
+      },
+      schema: {
+        state: "AVAILABLE",
+        schema_name: "public-run-event",
+        schema_version: "public-run-event@2.0.0",
+        fields: [{ name: "payload.input", type: "string | null", availability: "AVAILABLE" }],
+      },
+      timing: {
+        occurred_at: occurredAt,
+        started_at: null,
+        completed_at: null,
+        duration_ms: 40,
+        source: "SESSION_TIMESTAMPS",
+      },
+      relations: [],
+      artifact_refs: [],
+    } as const;
+
+    expect(resolutionTraceDetailSchema.parse(detail).result).toMatchObject({
+      state: "AVAILABLE",
+      text: "文件正文预览",
+    });
+    expect(
+      resolutionTraceDetailSchema.safeParse({
+        ...detail,
+        provider_payload: { authorization: "Bearer secret" },
+      }).success,
+    ).toBe(false);
+    expect(
+      resolutionTraceDetailSchema.safeParse({
+        ...detail,
+        payload: { ...detail.payload, reasoning_content: "private chain of thought" },
+      }).success,
+    ).toBe(false);
   });
 });
 

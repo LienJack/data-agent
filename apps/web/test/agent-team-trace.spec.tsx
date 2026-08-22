@@ -138,7 +138,11 @@ describe("Agent Team trace", () => {
     expect(html).toContain("Report");
     expect(html).toContain("workflow.report");
     expect(html).toContain("2 direct");
-    expect(html).toContain("data-agent-orchestrator");
+    expect(html).toContain("Data Agent Orchestrator");
+    expect(html).toContain("负责规划并汇总本次 Agent Team 执行");
+    expect(html).toContain("evidence.read, report.project");
+    expect(html).toContain("outputs AnalysisReport");
+    expect(html).toContain("历史 Profile 内容不可用");
     expect(html).toContain("Tasks");
     expect(html).toContain("Handoffs · 1");
     expect(html).toContain("Context epochs · 1");

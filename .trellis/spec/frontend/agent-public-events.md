@@ -75,6 +75,15 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Inline disclosure 与 Inspector entity link 必须是兄弟控件：前者展开就地详情，后者选择 Subagent/Artifact；禁止 nested button。
 - QA Inspector 只持有 `QAInspectorTarget` selection。Subagent material 从同一 Public Run Event replay 派生；
   Artifact material 从 Workspace Preview API 派生，禁止第二份 Agent lifecycle store。
+- Resolution Trace Workbench 使用同一个 `selectedNodeId` 驱动四泳道时间轴、sequence 列表与五页签
+  Inspector。10,000 节点列表只渲染可视窗口；时间轴按泳道有界采样，但必须优先保留当前选择、搜索命中和
+  FAILED/WAITING/BLOCKED/INTERRUPTED 等异常记录，并明确提示时间轴已聚合、列表仍保留全部记录。
+- Inspector 采用内容优先顺序：公开名称/问题/输入/结果/决策在前，ID/revision/hash 收进“身份与来源”。
+  Tool/Agent 详情只能按同一 Run 内 exact event identity 聚合；Artifact/SQL/Schema 内容必须通过 exact
+  `ArtifactReference` 进入现有 `ArtifactPreviewPanel`，不得按 ID 查 latest 或直接读取 raw document。
+- Resolution Trace Detail 缺少公开内容时必须显示稳定 `UNAVAILABLE/FORBIDDEN/UNSUPPORTED/STALE`
+  状态与 reason code。历史 Profile/Config 名称不存在时保留 exact identity 并说明不可用，不得回查当前
+  Catalog 冒充历史名称。
 - `task_id=null` 的 PENDING Agent 只允许 Inline disclosure；没有 durable task identity 时禁用 Inspector action，
   禁止按 profile 选择“最近任务”或自动绑定未来 task。
 - Subagent Inspector 的 connection state 与 Agent authority 分离；断线只显示 reconnecting 并从最后 sequence
@@ -143,6 +152,10 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Web/API: verified adaptive DEFERRED displays BLOCKED without Run/SSE/Agent; tampered receipt remains a generic
   fail-closed request error.
 - Browser: 1440px and 390px have no document horizontal overflow; language and disclosure controls work with Enter.
+- Browser: Resolution Trace 搜索命中后行内仍直接显示公开摘要；时间轴区间拖选/缩放/平移/重置、Inspector
+  resize/close/focus restore 和窄屏纵向布局均有证明，控制台无新增错误。
+- Performance: 10,000-node fixture 保留完整可搜索模型，记录 DOM 窗口有界，四泳道时间轴投影也有严格上限，
+  且选中、命中和异常节点不会因采样静默消失。
 - Browser: Codex parity matrix covers Inspector open/switch/resize/close/restore and Subagent live updates with proof.
 - Provenance: every copied/adapted Harness source and test has an upstream/target mapping plus retained MIT notice.
 - Multi-surface conformance: the Web adapter and a headless adapter process the same fixture into identical block/Inspector

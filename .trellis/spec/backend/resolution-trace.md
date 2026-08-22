@@ -22,6 +22,7 @@ createPostgresResolutionTraceProjector({ pool, authorizer });
 
 ```text
 GET /api/workspaces/{workspaceId}/runs/{runId}/resolution-trace
+GET /api/workspaces/{workspaceId}/runs/{runId}/resolution-trace/details?node_id=
 GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_after=&occurred_before=&limit=
 ```
 
@@ -39,12 +40,25 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   `product-team-artifact@1.0.0`；两者都必须与 relational exact identity 一致，禁止因 schema variant 跳过校验。
 - Trace 只保存 bounded summary、status、duration、时间和 typed refs。禁止 Prompt、私有推理、raw Context、
   raw SQL、参数值、Result rows、credential 与 Provider body。
+- `resolution-trace-detail@1.0.0` 是按 `run_id + node_id` 懒加载的严格公共投影。服务端必须先在同一
+  Trace 快照中解析 node，再以 `source_event_id + sequence + exact ArtifactReference` 关闭身份；不得让请求方
+  仅凭 call/artifact/config ID 读取对象。Tool detail 按 exact `call_id + profile_id + task_id + tool_name`
+  合并 START/terminal，仅公开经过 `PublicRunEvent` 脱敏的 input/output/error/duration。
+- Detail 的 Payload/Result/Schema 使用 `AVAILABLE/UNAVAILABLE/FORBIDDEN/UNSUPPORTED/STALE` 判别状态；
+  缺少公共内容时返回稳定 reason code。Artifact 正文不进入 detail DTO，Web 必须继续通过 exact-reference
+  Artifact Preview API 鉴权、验 source identity 并有界读取。
+- Effective Config detail 只能消费本 Run 的 immutable `effective_config_json + config_hash`，展示冻结
+  Provider/model/datasource/release/snapshot/policy/resource binding；禁止回查当前 Resource Catalog 覆盖历史。
 - SQL History 固定 SqlArtifact、ExecutionReceipt、QueryEvidence、SandboxResult、Schema Snapshot 引用/哈希，
   compiler/AST/statement/parameter/query hash、status/time 与 `entry_hash`；statement/parameter 只公开 SHA-256。
 - SQL 条目必须有权威 Conversation binding。`conversation_href` 必须逐字等于
   `/w/{tenant_id}/qa?conversation={conversation_id}&run={run_id}&tab=conversation`；不得生成 latest/none fallback。
 - Client 对 route 响应再次执行 strict parse + hash verify。QA 入口消费 conversation/run 查询参数，轨迹与 SQL
   Tab 只格式化 DTO；移动端宽表只在表容器内横向滚动，页面本身不得溢出。
+- Web Workbench 的四泳道、统计、时间/sequence domain、搜索与 edge hierarchy 由无 React/DOM 的纯模型从
+  同一 `ResolutionTrace` 构建。时间轴、列表和 Inspector 只共享一个 `selectedNodeId`；10,000 节点列表必须
+  使用有界虚拟窗口，时间轴按泳道有界采样并优先保留选中、搜索命中和异常状态。SQL/Artifact/Tool 只要有
+  exact ref 就直接进入内容预览，不能以裸 ID/hash 作为完成态。
 
 ## 4. Validation & Error Matrix
 

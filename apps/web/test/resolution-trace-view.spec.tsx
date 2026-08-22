@@ -40,6 +40,57 @@ describe("Resolution Trace panel", () => {
     expect(html).toContain('aria-current="step"');
     expect(html).toContain(`id="resolution-trace-event:${id(5)}"`);
     expect(html).not.toContain("private reasoning");
+    expect(html).toContain("真实耗时");
+    expect(html).toContain("展开阶段");
+    expect(html).toContain("展开调用");
+    expect(html).toContain("调整轨迹详情宽度");
+    expect(html).toContain("Run");
+    expect(html).toContain("Agent");
+    expect(html).toContain("Tools");
+    expect(html).toContain("Evidence");
+    expect(html).toContain("Summary");
+    expect(html).toContain("Payload");
+    expect(html).toContain("Result");
+    expect(html).toContain("Schema");
+    expect(html).toContain("Timing");
+  });
+
+  it("opens exact Artifact content from a selected Tool instead of ending at its ID", async () => {
+    const reference = {
+      artifact_id: id(9),
+      artifact_type: "AnalysisReport" as const,
+      ...scope,
+      run_id: id(3),
+      revision: 2,
+      content_hash: hash("9"),
+    };
+    const trace = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [
+        {
+          node_id: `event:${id(8)}`,
+          kind: "TOOL",
+          source_event_id: id(8),
+          sequence: 1,
+          occurred_at: "2026-08-18T12:00:00.000Z",
+          status: "COMPLETED",
+          title: "report.write",
+          summary: "报告已提交，可直接查看正文",
+          duration_ms: 80,
+          artifact_refs: [reference],
+        },
+      ],
+      edges: [],
+    });
+    const html = renderToStaticMarkup(<ResolutionTracePanel trace={trace} sql={[]} />);
+    expect(html).toContain("Artifact 内容");
+    expect(html).toContain("正在加载 Artifact");
+    expect(html).toContain("AnalysisReport");
+    expect(html).not.toContain(`>${reference.artifact_id}<`);
   });
 
   it("renders hash-only SQL history with a conversation deep link", async () => {

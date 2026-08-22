@@ -10,11 +10,13 @@ import {
   type PublicRunEvent,
   publicRunEventSchema,
   type ResolutionTrace,
+  type ResolutionTraceDetail,
   type SqlHistoryResult,
   verifyAgentDispatchAdmissionResult,
   verifyAgentProductProfileRevision,
   verifyAgentTeamPublicTrace,
   verifyResolutionTrace,
+  verifyResolutionTraceDetail,
   verifySqlHistoryResult,
 } from "@data-agent/contracts";
 import type { DeferredRunAdmission } from "./qa-types";
@@ -313,6 +315,23 @@ export async function fetchResolutionTrace(
     resolvedWorkspace,
   );
   return verifyResolutionTrace(response.data);
+}
+
+export async function fetchResolutionTraceDetail(
+  runId: string,
+  nodeId: string,
+  workspaceId?: string,
+  signal?: AbortSignal,
+): Promise<ResolutionTraceDetail> {
+  const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
+  if (!resolvedWorkspace) throw new Error("请先选择工作空间");
+  const parameters = new URLSearchParams({ node_id: nodeId });
+  const response = await request<{ data: unknown }>(
+    `/api/workspaces/${encodeURIComponent(resolvedWorkspace)}/runs/${encodeURIComponent(runId)}/resolution-trace/details?${parameters.toString()}`,
+    { signal },
+    resolvedWorkspace,
+  );
+  return verifyResolutionTraceDetail(response.data);
 }
 
 export async function fetchSqlHistory(

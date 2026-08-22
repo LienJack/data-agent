@@ -185,6 +185,107 @@ export const resolutionTraceSchema = resolutionTraceDraftSchema
   .extend({ trace_hash: contentHashSchema })
   .superRefine(addTraceIssues);
 
+const detailReasonCodeSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Z][A-Z0-9_]*$/);
+
+export const resolutionTraceDetailIdentitySchema = z.strictObject({
+  label: z.string().min(1).max(80),
+  value: z.string().min(1).max(2_000),
+  value_kind: z.enum(["NAME", "ID", "HASH", "VERSION", "STATUS", "TIME"]),
+});
+
+export const resolutionTraceDetailSectionSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("AVAILABLE"),
+    format: z.enum(["TEXT", "MARKDOWN", "JSON", "FIELDS", "ARTIFACTS"]),
+    text: z.string().max(200_000).nullable(),
+    fields: z
+      .array(
+        z.strictObject({
+          label: z.string().min(1).max(80),
+          value: z.string().max(20_000),
+        }),
+      )
+      .max(256),
+  }),
+  z.strictObject({
+    state: z.enum(["UNAVAILABLE", "FORBIDDEN", "UNSUPPORTED", "STALE"]),
+    reason_code: detailReasonCodeSchema,
+    message: z.string().min(1).max(512),
+  }),
+]);
+
+export const resolutionTraceDetailSchemaSectionSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("AVAILABLE"),
+    schema_name: z.string().min(1).max(128),
+    schema_version: z.string().min(1).max(128),
+    fields: z
+      .array(
+        z.strictObject({
+          name: z.string().min(1).max(256),
+          type: z.string().min(1).max(256),
+          availability: z.enum(["AVAILABLE", "UNAVAILABLE", "FORBIDDEN"]),
+        }),
+      )
+      .max(256),
+  }),
+  z.strictObject({
+    state: z.enum(["UNAVAILABLE", "FORBIDDEN", "UNSUPPORTED", "STALE"]),
+    reason_code: detailReasonCodeSchema,
+    message: z.string().min(1).max(512),
+  }),
+]);
+
+export const resolutionTraceDetailSchema = z.strictObject({
+  schema_version: z.literal("resolution-trace-detail@1.0.0"),
+  scope: z.strictObject({
+    app_id: immutableIdSchema,
+    tenant_id: immutableIdSchema,
+    environment: environmentSchema,
+  }),
+  run_id: immutableIdSchema,
+  node_id: traceNodeIdSchema,
+  kind: resolutionTraceNodeSchema.shape.kind,
+  sequence: z.number().int().positive().safe().nullable(),
+  source_event_ids: z.array(immutableIdSchema).max(64),
+  title: z.string().min(1).max(160),
+  status: traceStatusSchema,
+  summary: traceTextSchema,
+  hierarchy: z.strictObject({
+    parent_node_ids: z.array(traceNodeIdSchema).max(20_000),
+    child_node_ids: z.array(traceNodeIdSchema).max(20_000),
+  }),
+  identity: z.array(resolutionTraceDetailIdentitySchema).max(256),
+  payload: resolutionTraceDetailSectionSchema,
+  result: resolutionTraceDetailSectionSchema,
+  schema: resolutionTraceDetailSchemaSectionSchema,
+  timing: z.strictObject({
+    occurred_at: timestampSchema,
+    started_at: timestampSchema.nullable(),
+    completed_at: timestampSchema.nullable(),
+    duration_ms: z.number().int().nonnegative().safe().nullable(),
+    source: z.enum(["EVENT_TIMESTAMP", "SESSION_TIMESTAMPS", "ARTIFACT_TIMESTAMP"]),
+  }),
+  relations: z
+    .array(
+      z.strictObject({
+        direction: z.enum(["INCOMING", "OUTGOING"]),
+        kind: resolutionTraceEdgeSchema.shape.kind,
+        node_id: traceNodeIdSchema,
+      }),
+    )
+    .max(20_000),
+  artifact_refs: z.array(artifactReferenceSchema).max(64),
+});
+
+export function verifyResolutionTraceDetail(input: unknown): ResolutionTraceDetail {
+  return deepFreeze(resolutionTraceDetailSchema.parse(input));
+}
+
 export async function buildResolutionTrace(
   input: z.input<typeof resolutionTraceDraftSchema>,
 ): Promise<ResolutionTrace> {
@@ -334,5 +435,7 @@ export async function verifySqlHistoryResult(input: unknown): Promise<SqlHistory
 export type ResolutionTraceNode = z.infer<typeof resolutionTraceNodeSchema>;
 export type ResolutionTraceEdge = z.infer<typeof resolutionTraceEdgeSchema>;
 export type ResolutionTrace = z.infer<typeof resolutionTraceSchema>;
+export type ResolutionTraceDetail = z.infer<typeof resolutionTraceDetailSchema>;
+export type ResolutionTraceDetailSection = z.infer<typeof resolutionTraceDetailSectionSchema>;
 export type SqlHistoryEntry = z.infer<typeof sqlHistoryEntrySchema>;
 export type SqlHistoryResult = z.infer<typeof sqlHistoryResultSchema>;

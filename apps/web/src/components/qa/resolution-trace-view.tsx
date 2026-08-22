@@ -1,6 +1,13 @@
 "use client";
 
-import type { ResolutionTrace, ResolutionTraceNode, SqlHistoryEntry } from "@data-agent/contracts";
+import type {
+  ArtifactReference,
+  ResolutionTrace,
+  ResolutionTraceDetail,
+  ResolutionTraceDetailSection,
+  ResolutionTraceNode,
+  SqlHistoryEntry,
+} from "@data-agent/contracts";
 import {
   ArrowSquareOut,
   BracketsCurly,
@@ -11,16 +18,31 @@ import {
   Table,
 } from "@phosphor-icons/react";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import {
+  type ReactNode,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AgentTeamTrace } from "@/components/qa/agent-team-trace";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ArtifactPreviewPanel } from "@/components/workbench/artifact-preview-panel";
 import {
   fetchAgentProfiles,
   fetchAgentTeamTrace,
   fetchResolutionTrace,
+  fetchResolutionTraceDetail,
   fetchSqlHistory,
 } from "@/lib/api-client";
 import { useQAActiveConversationId, useQAEvents, useQATrajectoryFocus } from "@/lib/qa-store";
+import {
+  buildResolutionTraceWorkbenchModel,
+  projectTimelineRecords,
+  type ResolutionTraceLane,
+  type ResolutionTraceWorkbenchRecord,
+} from "@/lib/resolution-trace-workbench";
 
 type TraceTab = "overview" | "team" | "trace" | "sql" | "artifacts";
 type LoadState =
@@ -48,14 +70,27 @@ const tabs: readonly {
 ];
 
 function statusClass(status: ResolutionTraceNode["status"]): string {
-  if (status === "FAILED" || status === "CANCELLED") return "bg-red-500";
-  if (status === "WAITING") return "bg-amber-500";
+  if (["FAILED", "CANCELLED", "BLOCKED", "INTERRUPTED"].includes(status)) return "bg-red-500";
+  if (status === "WAITING" || status === "PENDING") return "bg-amber-500";
   if (status === "RUNNING" || status === "QUEUED") return "bg-sky-500";
   return "bg-emerald-500";
 }
 
+function statusShapeClass(status: ResolutionTraceNode["status"]): string {
+  if (["FAILED", "CANCELLED", "BLOCKED", "INTERRUPTED"].includes(status)) return "rotate-45";
+  if (status === "WAITING" || status === "PENDING") return "rounded-none ring-1 ring-current";
+  if (status === "RUNNING" || status === "QUEUED") return "rounded-full ring-2 ring-current";
+  return "rounded-full";
+}
+
 function formatTime(value: string): string {
   return new Date(value).toLocaleString("zh-CN", { hour12: false });
+}
+
+function formatDuration(value: number | null): string {
+  if (value === null) return "耗时不可用";
+  if (value < 1_000) return `${value} ms`;
+  return `${(value / 1_000).toFixed(value < 10_000 ? 2 : 1)} s`;
 }
 
 function Overview({ trace, sql }: { trace: ResolutionTrace; sql: readonly SqlHistoryEntry[] }) {
@@ -77,110 +112,886 @@ function Overview({ trace, sql }: { trace: ResolutionTrace; sql: readonly SqlHis
   );
 }
 
-function TraceList({
-  nodes,
-  focusedSequence = null,
-}: {
-  nodes: readonly ResolutionTraceNode[];
-  focusedSequence?: number | null;
-}) {
-  const focusedNode = nodes.find((node) => node.sequence === focusedSequence);
-  const [expanded, setExpanded] = useState<string | null>(
-    focusedNode?.node_id ?? nodes.at(-1)?.node_id ?? null,
-  );
-  useEffect(() => {
-    if (!focusedNode) return;
-    setExpanded(focusedNode.node_id);
-    document
-      .getElementById(`resolution-trace-${focusedNode.node_id}`)
-      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [focusedNode]);
-  if (nodes.length === 0)
-    return <EmptyState title="暂无运行节点" description="当前 Run 尚未提交公开事件或工件" />;
+const laneLabels: Record<ResolutionTraceLane, string> = {
+  RUN: "Run",
+  AGENT: "Agent",
+  TOOL: "Tools",
+  EVIDENCE: "Evidence",
+};
+
+function referenceIdentity(reference: ArtifactReference): string {
+  return `${reference.artifact_id}:${reference.revision}:${reference.content_hash}`;
+}
+
+function isPresent<T>(value: T | null): value is T {
+  return value !== null;
+}
+
+function DetailSectionView({ section }: { section: ResolutionTraceDetailSection }) {
+  if (section.state !== "AVAILABLE") {
+    return (
+      <div className="border-l-2 border-[var(--color-border-strong)] bg-[var(--color-bg-canvas)] px-3 py-2 text-[11px] text-[var(--color-text-secondary)]">
+        <p>{section.message}</p>
+        <code className="mt-1 block font-mono text-[9px] text-[var(--color-text-muted)]">
+          {section.reason_code}
+        </code>
+      </div>
+    );
+  }
   return (
-    <ol className="divide-y divide-[var(--color-border-default)]">
-      {nodes.map((node) => (
-        <li
-          key={node.node_id}
-          id={`resolution-trace-${node.node_id}`}
-          className={
-            node.sequence === focusedSequence
-              ? "bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
-              : undefined
-          }
+    <div className="min-w-0 space-y-2">
+      {section.text !== null && (
+        <pre className="reading-surface max-h-80 max-w-full overflow-auto whitespace-pre-wrap break-words border border-[var(--color-border-default)] p-3 font-mono text-[10px] leading-5">
+          {section.text}
+        </pre>
+      )}
+      {section.fields.length > 0 && (
+        <dl className="grid min-w-0 grid-cols-[minmax(88px,auto)_minmax(0,1fr)] gap-x-3 gap-y-2 text-[10px]">
+          {section.fields.map((field) => (
+            <div key={`${field.label}:${field.value}`} className="contents">
+              <dt className="text-[var(--color-text-muted)]">{field.label}</dt>
+              <dd className="min-w-0 break-words text-[var(--color-text-primary)]">
+                {field.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+type DetailTab = "summary" | "payload" | "result" | "schema" | "timing";
+
+function TraceInspector({
+  node,
+  detail,
+  detailError,
+  inspectorWidth,
+  onInspectorWidthChange,
+  onClose,
+}: {
+  node: ResolutionTraceNode;
+  detail: ResolutionTraceDetail | null;
+  detailError: string | null;
+  inspectorWidth: number;
+  onInspectorWidthChange(width: number): void;
+  onClose(): void;
+}) {
+  const [tab, setTab] = useState<DetailTab>("summary");
+  const [artifactIndex, setArtifactIndex] = useState(0);
+  const references = detail?.artifact_refs ?? node.artifact_refs;
+  const selectedReference = references[artifactIndex] ?? references[0] ?? null;
+  const section = (title: string, content: ReactNode) => (
+    <section className="border-b border-[var(--color-border-default)] px-4 py-3">
+      <h4 className="mb-2 text-[10px] font-semibold uppercase text-[var(--color-text-muted)]">
+        {title}
+      </h4>
+      {content}
+    </section>
+  );
+  const unavailable = (
+    <div
+      className="px-4 py-5 text-[11px] text-[var(--color-text-muted)]"
+      role={detailError ? "alert" : "status"}
+    >
+      {detailError ?? "正在加载公开详情…"}
+    </div>
+  );
+
+  return (
+    <aside
+      className="glass-surface-strong relative flex min-h-0 min-w-0 flex-col border-l border-[var(--color-border-default)] max-lg:border-l-0 max-lg:border-t"
+      aria-label="轨迹详情 Inspector"
+    >
+      <hr
+        tabIndex={0}
+        aria-label="调整轨迹详情宽度"
+        aria-orientation="vertical"
+        aria-valuemin={320}
+        aria-valuemax={620}
+        aria-valuenow={inspectorWidth}
+        onPointerDown={(event) => {
+          const startX = event.clientX;
+          const startWidth = inspectorWidth;
+          const move = (pointerEvent: PointerEvent) =>
+            onInspectorWidthChange(
+              Math.min(620, Math.max(320, startWidth + startX - pointerEvent.clientX)),
+            );
+          const stop = () => {
+            window.removeEventListener("pointermove", move);
+            window.removeEventListener("pointerup", stop);
+          };
+          window.addEventListener("pointermove", move);
+          window.addEventListener("pointerup", stop, { once: true });
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") onInspectorWidthChange(Math.min(620, inspectorWidth + 16));
+          if (event.key === "ArrowRight")
+            onInspectorWidthChange(Math.max(320, inspectorWidth - 16));
+        }}
+        className="absolute inset-y-0 -left-1 z-20 hidden w-2 cursor-col-resize outline-none focus-visible:bg-[var(--color-accent)] lg:block"
+      />
+      <header className="flex items-start justify-between gap-3 border-b border-[var(--color-border-default)] px-4 py-3">
+        <div className="min-w-0">
+          <p className="flex flex-wrap items-center gap-2 text-[10px] text-[var(--color-text-muted)]">
+            <span className="rounded border border-[var(--color-border-default)] px-1.5 py-0.5 font-mono">
+              {node.kind}
+            </span>
+            <span>Step {node.sequence ?? "derived"}</span>
+            <span>{node.status}</span>
+          </p>
+          <h3 className="mt-1 break-words text-sm font-semibold">{node.title}</h3>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="关闭轨迹详情"
+          title="关闭轨迹详情"
+          className="size-7 shrink-0 rounded border border-[var(--color-border-default)] text-xs"
         >
+          ×
+        </button>
+      </header>
+      <div
+        className="flex shrink-0 overflow-x-auto border-b border-[var(--color-border-default)] px-2"
+        role="tablist"
+      >
+        {(["summary", "payload", "result", "schema", "timing"] as const).map((candidate) => (
           <button
+            key={candidate}
             type="button"
-            aria-expanded={expanded === node.node_id}
-            aria-current={node.sequence === focusedSequence ? "step" : undefined}
-            onClick={() => setExpanded(expanded === node.node_id ? null : node.node_id)}
-            className="grid w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-3 px-5 py-3 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]"
+            role="tab"
+            aria-selected={tab === candidate}
+            onClick={() => setTab(candidate)}
+            className={`border-b-2 px-2 py-2 text-[10px] ${tab === candidate ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-transparent text-[var(--color-text-muted)]"}`}
           >
-            <span className={`mt-1.5 size-2 rounded-full ${statusClass(node.status)}`} />
-            <span className="min-w-0">
-              <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <strong className="text-xs">{node.title}</strong>
-                <span className="text-[10px] text-[var(--color-text-muted)]">{node.kind}</span>
-              </span>
-              <span className="mt-1 block break-words text-[11px] leading-5 text-[var(--color-text-secondary)]">
-                {expanded === node.node_id
-                  ? node.summary
-                  : `${node.summary.slice(0, 180)}${node.summary.length > 180 ? "..." : ""}`}
-              </span>
-              {expanded === node.node_id && (
-                <span className="mt-2 block font-mono text-[10px] text-[var(--color-text-muted)]">
-                  {node.source_event_id ? `event ${node.source_event_id}` : node.node_id}
-                </span>
-              )}
-            </span>
-            <span className="whitespace-nowrap text-[10px] tabular-nums text-[var(--color-text-muted)]">
-              {formatTime(node.occurred_at)}
-            </span>
+            {candidate === "summary" ? "Summary" : candidate[0]?.toUpperCase() + candidate.slice(1)}
           </button>
-        </li>
-      ))}
-    </ol>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {!detail ? (
+          unavailable
+        ) : (
+          <>
+            {tab === "summary" && (
+              <>
+                {section(
+                  "Hierarchy",
+                  <dl className="space-y-2 break-words text-[10px]">
+                    <div>
+                      <dt className="text-[var(--color-text-muted)]">Parents</dt>
+                      <dd>
+                        {detail.hierarchy.parent_node_ids.length > 0
+                          ? detail.hierarchy.parent_node_ids.join(" → ")
+                          : "Run root"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[var(--color-text-muted)]">Children</dt>
+                      <dd>{detail.hierarchy.child_node_ids.join(" · ") || "无"}</dd>
+                    </div>
+                  </dl>,
+                )}
+                {section("Status", <p className="text-xs font-semibold">{detail.status}</p>)}
+                {section(
+                  "Summary",
+                  <p className="whitespace-pre-wrap break-words text-[10px] leading-5">
+                    {detail.summary}
+                  </p>,
+                )}
+                {section(
+                  "Identity",
+                  <dl className="space-y-2">
+                    {detail.identity.map((item) => (
+                      <div
+                        key={`${item.label}:${item.value}`}
+                        className="grid grid-cols-[90px_minmax(0,1fr)] gap-2 text-[10px]"
+                      >
+                        <dt className="text-[var(--color-text-muted)]">{item.label}</dt>
+                        <dd className="flex min-w-0 items-start gap-1">
+                          <code className="min-w-0 flex-1 break-all">{item.value}</code>
+                          <button
+                            type="button"
+                            aria-label={`复制 ${item.label}`}
+                            title={`复制 ${item.label}`}
+                            onClick={() => void navigator.clipboard?.writeText(item.value)}
+                            className="shrink-0 rounded border border-[var(--color-border-default)] px-1 py-0.5 text-[8px]"
+                          >
+                            复制
+                          </button>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>,
+                )}
+                {section("Payload", <DetailSectionView section={detail.payload} />)}
+                {section("Result", <DetailSectionView section={detail.result} />)}
+                {section(
+                  "Schema",
+                  detail.schema.state === "AVAILABLE" ? (
+                    <p className="text-[10px]">
+                      {detail.schema.schema_name} · {detail.schema.schema_version} ·{" "}
+                      {detail.schema.fields.length} fields
+                    </p>
+                  ) : (
+                    <p className="text-[10px] text-[var(--color-text-muted)]">
+                      {detail.schema.message} · {detail.schema.reason_code}
+                    </p>
+                  ),
+                )}
+                {section(
+                  "Timing",
+                  <dl className="grid grid-cols-[90px_minmax(0,1fr)] gap-2 text-[10px]">
+                    <dt className="text-[var(--color-text-muted)]">Occurred</dt>
+                    <dd>{formatTime(detail.timing.occurred_at)}</dd>
+                    <dt className="text-[var(--color-text-muted)]">Duration</dt>
+                    <dd>{formatDuration(detail.timing.duration_ms)}</dd>
+                    <dt className="text-[var(--color-text-muted)]">Source</dt>
+                    <dd>{detail.timing.source}</dd>
+                  </dl>,
+                )}
+              </>
+            )}
+            {tab === "payload" &&
+              section("Payload", <DetailSectionView section={detail.payload} />)}
+            {tab === "result" && section("Result", <DetailSectionView section={detail.result} />)}
+            {tab === "schema" &&
+              section(
+                "Schema",
+                detail.schema.state === "AVAILABLE" ? (
+                  <dl className="space-y-2 text-[10px]">
+                    <div>
+                      {detail.schema.schema_name} · {detail.schema.schema_version}
+                    </div>
+                    {detail.schema.fields.map((field) => (
+                      <div key={field.name} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                        <code>{field.name}</code>
+                        <span>{field.type}</span>
+                      </div>
+                    ))}
+                  </dl>
+                ) : (
+                  <p className="text-[10px]">
+                    {detail.schema.message} · {detail.schema.reason_code}
+                  </p>
+                ),
+              )}
+            {tab === "timing" &&
+              section(
+                "Timing",
+                <dl className="grid grid-cols-[100px_minmax(0,1fr)] gap-2 text-[10px]">
+                  <dt>Occurred</dt>
+                  <dd>{detail.timing.occurred_at}</dd>
+                  <dt>Started</dt>
+                  <dd>{detail.timing.started_at ?? "不可用"}</dd>
+                  <dt>Completed</dt>
+                  <dd>{detail.timing.completed_at ?? "不可用"}</dd>
+                  <dt>Duration</dt>
+                  <dd>{formatDuration(detail.timing.duration_ms)}</dd>
+                  <dt>Timing source</dt>
+                  <dd>{detail.timing.source}</dd>
+                </dl>,
+              )}
+          </>
+        )}
+        {references.length > 0 &&
+          (tab === "summary" || tab === "result") &&
+          section(
+            "Artifact 内容",
+            <div className="space-y-3">
+              {references.length > 1 && (
+                <div className="flex max-w-full gap-1 overflow-x-auto">
+                  {references.map((reference, index) => (
+                    <button
+                      key={referenceIdentity(reference)}
+                      type="button"
+                      onClick={() => setArtifactIndex(index)}
+                      className={`shrink-0 rounded border px-2 py-1 text-[9px] ${index === artifactIndex ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border-default)]"}`}
+                    >
+                      {reference.artifact_type} r{reference.revision}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedReference && (
+                <>
+                  <p className="text-[10px] font-medium">
+                    {selectedReference.artifact_type} · revision {selectedReference.revision}
+                  </p>
+                  <ArtifactPreviewPanel
+                    key={referenceIdentity(selectedReference)}
+                    reference={selectedReference}
+                    pageSize={100}
+                  />
+                </>
+              )}
+            </div>,
+          )}
+      </div>
+    </aside>
+  );
+}
+
+function TraceTimeline({
+  records,
+  selectedNodeId,
+  matches,
+  durationMode,
+  windowRange,
+  onWindowRangeChange,
+  onSelect,
+}: {
+  records: readonly ResolutionTraceWorkbenchRecord[];
+  selectedNodeId: string | null;
+  matches: ReadonlySet<string>;
+  durationMode: boolean;
+  windowRange: readonly [number, number];
+  onWindowRangeChange(range: readonly [number, number]): void;
+  onSelect(nodeId: string): void;
+}) {
+  const domainStart = durationMode ? Math.min(...records.map(({ start_ms }) => start_ms)) : 1;
+  const domainEnd = durationMode
+    ? Math.max(...records.map(({ end_ms, start_ms }) => Math.max(end_ms, start_ms + 1)))
+    : Math.max(1, records.length);
+  const span = Math.max(1, domainEnd - domainStart);
+  const dragStart = useRef<number | null>(null);
+  const pointerRatio = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (event.clientX - box.left) / Math.max(1, box.width)));
+  };
+  const lanes = ["RUN", "AGENT", "TOOL", "EVIDENCE"] as const;
+  const windowSpan = Math.max(0.02, windowRange[1] - windowRange[0]);
+  const projectedRecords = useMemo(
+    () => projectTimelineRecords(records, { selectedNodeId, matchNodeIds: matches }),
+    [matches, records, selectedNodeId],
+  );
+  return (
+    <div className="select-none border-b border-[var(--color-border-default)] bg-[var(--color-bg-canvas)]">
+      <div className="grid grid-cols-[64px_minmax(0,1fr)]">
+        {lanes.map((lane) => (
+          <div key={lane} className="contents">
+            <div className="border-b border-r border-[var(--color-border-default)] px-2 py-2 text-[9px] font-medium uppercase text-[var(--color-text-muted)]">
+              {laneLabels[lane]}
+            </div>
+            <div
+              className="relative h-8 overflow-hidden border-b border-[var(--color-border-default)]"
+              onPointerDown={(event) => {
+                dragStart.current = pointerRatio(event);
+                event.currentTarget.setPointerCapture(event.pointerId);
+              }}
+              onPointerUp={(event) => {
+                const end = pointerRatio(event);
+                const start = dragStart.current;
+                dragStart.current = null;
+                if (start !== null && Math.abs(end - start) > 0.02)
+                  onWindowRangeChange([Math.min(start, end), Math.max(start, end)]);
+              }}
+              onWheel={(event) => {
+                event.preventDefault();
+                const factor = event.deltaY > 0 ? 1.25 : 0.8;
+                const nextSpan = Math.min(1, Math.max(0.04, windowSpan * factor));
+                const center = (windowRange[0] + windowRange[1]) / 2;
+                onWindowRangeChange([
+                  Math.max(0, center - nextSpan / 2),
+                  Math.min(1, center + nextSpan / 2),
+                ]);
+              }}
+              onDoubleClick={() => onWindowRangeChange([0, 1])}
+              role="application"
+              aria-label={`${laneLabels[lane]} 时间轴，拖动选择区间，滚轮缩放，双击重置`}
+            >
+              {projectedRecords
+                .filter((record) => record.lane === lane)
+                .map((record) => {
+                  const rawStart = durationMode
+                    ? (record.start_ms - domainStart) / span
+                    : (record.sequence_position - 1) / Math.max(1, records.length);
+                  const rawEnd = durationMode
+                    ? (Math.max(record.end_ms, record.start_ms + span * 0.004) - domainStart) / span
+                    : rawStart + 1 / Math.max(1, records.length);
+                  const left = ((rawStart - windowRange[0]) / windowSpan) * 100;
+                  const width = Math.max(0.5, ((rawEnd - rawStart) / windowSpan) * 100);
+                  if (left > 100 || left + width < 0) return null;
+                  const matched = matches.size === 0 || matches.has(record.node_id);
+                  return (
+                    <button
+                      key={record.node_id}
+                      type="button"
+                      title={`${record.node.title} · ${record.node.kind} · ${record.node.status} · ${formatTime(record.node.occurred_at)} · ${formatDuration(record.node.duration_ms)} · sequence ${record.node.sequence ?? "derived"}`}
+                      aria-label={`${record.node.title}，${record.node.status}，sequence ${record.node.sequence ?? "derived"}`}
+                      onClick={() => onSelect(record.node_id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") onWindowRangeChange([0, 1]);
+                        if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+                          const next = records[records.indexOf(record) + 1];
+                          if (next) onSelect(next.node_id);
+                        }
+                        if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                          const previous = records[records.indexOf(record) - 1];
+                          if (previous) onSelect(previous.node_id);
+                        }
+                      }}
+                      className={`absolute top-2 h-4 min-w-1 border outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] ${statusShapeClass(record.node.status)} ${record.node_id === selectedNodeId ? "z-10 border-[var(--color-text-primary)] bg-[var(--color-accent)]" : `${statusClass(record.node.status)} border-transparent`} ${matched ? "opacity-100" : "opacity-15"}`}
+                      style={{ left: `${left}%`, width: `${width}%` }}
+                    />
+                  );
+                })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {projectedRecords.length < records.length && (
+        <p className="px-2 py-1 text-[9px] text-[var(--color-text-muted)]">
+          时间轴已聚合显示 {projectedRecords.length}/{records.length} 条；下方列表与搜索保留全部记录
+        </p>
+      )}
+      {windowSpan < 0.999 && (
+        <button
+          type="button"
+          onClick={() => onWindowRangeChange([0, 1])}
+          className="m-2 rounded border border-[var(--color-border-default)] px-2 py-1 text-[9px]"
+        >
+          重置时间范围
+        </button>
+      )}
+    </div>
+  );
+}
+
+function TraceWorkbench({
+  trace,
+  focusedSequence = null,
+  workspaceId = "",
+  initialDetails = [],
+}: {
+  trace: ResolutionTrace;
+  focusedSequence?: number | null;
+  workspaceId?: string;
+  initialDetails?: readonly ResolutionTraceDetail[];
+}) {
+  const model = useMemo(() => buildResolutionTraceWorkbenchModel(trace), [trace]);
+  const focused = model.records.find(({ node }) => node.sequence === focusedSequence);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
+    focused?.node_id ?? model.records.at(-1)?.node_id ?? null,
+  );
+  const [query, setQuery] = useState("");
+  const [durationMode, setDurationMode] = useState(true);
+  const [timelineWindow, setTimelineWindow] = useState<readonly [number, number]>([0, 1]);
+  const [stageDetailsExpanded, setStageDetailsExpanded] = useState(false);
+  const [callDetailsExpanded, setCallDetailsExpanded] = useState(false);
+  const [inspectorWidth, setInspectorWidth] = useState(420);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [detail, setDetail] = useState<ResolutionTraceDetail | null>(
+    initialDetails.find(({ node_id }) => node_id === (focused?.node_id ?? selectedNodeId)) ?? null,
+  );
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const detailCache = useRef(
+    new Map(
+      initialDetails.map((candidate) => [`${trace.trace_hash}:${candidate.node_id}`, candidate]),
+    ),
+  );
+  const traceIdentity = useRef({ runId: trace.run_id, hash: trace.trace_hash });
+  const rowTriggers = useRef(new Map<string, HTMLButtonElement>());
+  const selected = model.records.find(({ node_id }) => node_id === selectedNodeId)?.node ?? null;
+  const searchResults = useMemo(() => model.search(query), [model, query]);
+  const matches = useMemo(
+    () => new Set(searchResults.map(({ node_id }) => node_id)),
+    [searchResults],
+  );
+  const candidateRecords = query.trim() ? searchResults : model.records;
+  const filtered = candidateRecords.filter((record) => {
+    if (timelineWindow[0] <= 0 && timelineWindow[1] >= 1) return true;
+    if (durationMode) {
+      const span = Math.max(1, model.real_time_domain.duration_ms);
+      const start = (record.start_ms - model.real_time_domain.start_ms) / span;
+      const end =
+        (Math.max(record.end_ms, record.start_ms + 1) - model.real_time_domain.start_ms) / span;
+      return end >= timelineWindow[0] && start <= timelineWindow[1];
+    }
+    const span = Math.max(1, model.records.length);
+    const start = (record.sequence_position - 1) / span;
+    const end = record.sequence_position / span;
+    return end >= timelineWindow[0] && start <= timelineWindow[1];
+  });
+  const rowHeight = 62;
+  const virtual = filtered.length > 200;
+  const start = virtual ? Math.max(0, Math.floor(scrollTop / rowHeight) - 8) : 0;
+  const end = virtual ? Math.min(filtered.length, start + 80) : filtered.length;
+  const visible = filtered.slice(start, end);
+
+  useEffect(() => {
+    if (!focused) return;
+    setSelectedNodeId(focused.node_id);
+  }, [focused]);
+  useEffect(() => {
+    if (traceIdentity.current.hash === trace.trace_hash) return;
+    const runChanged = traceIdentity.current.runId !== trace.run_id;
+    traceIdentity.current = { runId: trace.run_id, hash: trace.trace_hash };
+    detailCache.current.clear();
+    for (const candidate of initialDetails)
+      detailCache.current.set(`${trace.trace_hash}:${candidate.node_id}`, candidate);
+    const nextNodeId =
+      focused?.node_id ?? (runChanged ? model.records.at(-1)?.node_id : selectedNodeId);
+    setSelectedNodeId(nextNodeId ?? null);
+    setDetail(initialDetails.find(({ node_id }) => node_id === nextNodeId) ?? null);
+    setDetailError(null);
+    if (runChanged) {
+      setQuery("");
+      setTimelineWindow([0, 1]);
+      setScrollTop(0);
+    }
+  }, [
+    focused?.node_id,
+    initialDetails,
+    model.records,
+    selectedNodeId,
+    trace.run_id,
+    trace.trace_hash,
+  ]);
+  useEffect(() => {
+    if (!selectedNodeId) {
+      setDetail(null);
+      setDetailError(null);
+      return;
+    }
+    const cacheKey = `${trace.trace_hash}:${selectedNodeId}`;
+    const cached = detailCache.current.get(cacheKey);
+    if (cached) {
+      setDetail(cached);
+      setDetailError(null);
+      return;
+    }
+    if (!workspaceId) {
+      setDetail(null);
+      setDetailError(null);
+      return;
+    }
+    const controller = new AbortController();
+    setDetail(null);
+    setDetailError(null);
+    void fetchResolutionTraceDetail(trace.run_id, selectedNodeId, workspaceId, controller.signal)
+      .then((value) => {
+        if (!controller.signal.aborted) {
+          detailCache.current.set(cacheKey, value);
+          setDetail(value);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted)
+          setDetailError(error instanceof Error ? error.message : "公开详情加载失败");
+      });
+    return () => controller.abort();
+  }, [selectedNodeId, trace.run_id, trace.trace_hash, workspaceId]);
+  useEffect(() => {
+    if (!selectedNodeId) return;
+    const index = filtered.findIndex(({ node_id }) => node_id === selectedNodeId);
+    if (virtual && index >= 0) {
+      const nextTop = Math.max(0, index * rowHeight - rowHeight * 3);
+      listRef.current?.scrollTo({ top: nextTop, behavior: "smooth" });
+      setScrollTop(nextTop);
+      return;
+    }
+    document.getElementById(`resolution-trace-${selectedNodeId}`)?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [filtered, selectedNodeId, virtual]);
+
+  if (model.records.length === 0)
+    return <EmptyState title="暂无运行节点" description="当前 Run 尚未提交公开事件或工件" />;
+  const panTimeline = (direction: -1 | 1) => {
+    const span = timelineWindow[1] - timelineWindow[0];
+    const offset = span * 0.3 * direction;
+    const nextStart = Math.min(1 - span, Math.max(0, timelineWindow[0] + offset));
+    setTimelineWindow([nextStart, nextStart + span]);
+  };
+  const closeInspector = () => {
+    const trigger = selectedNodeId ? rowTriggers.current.get(selectedNodeId) : null;
+    setSelectedNodeId(null);
+    requestAnimationFrame(() => trigger?.focus());
+  };
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--color-border-default)] px-3 py-2 text-[10px]">
+        <span className="font-medium">{formatDuration(model.stats.duration_ms)}</span>
+        <span>{model.stats.nodes} 节点</span>
+        <span>{model.stats.calls} 调用</span>
+        <span>{model.stats.failed_or_waiting} 失败/等待</span>
+        <button
+          type="button"
+          onClick={() => setStageDetailsExpanded((value) => !value)}
+          aria-pressed={stageDetailsExpanded}
+          className="rounded border border-[var(--color-border-default)] px-2 py-1"
+        >
+          {stageDetailsExpanded ? "折叠阶段" : "展开阶段"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setCallDetailsExpanded((value) => !value)}
+          aria-pressed={callDetailsExpanded}
+          className="rounded border border-[var(--color-border-default)] px-2 py-1"
+        >
+          {callDetailsExpanded ? "折叠调用" : "展开调用"}
+        </button>
+        {timelineWindow[1] - timelineWindow[0] < 0.999 && (
+          <fieldset className="inline-flex items-center gap-1">
+            <legend className="sr-only">平移时间范围</legend>
+            <button
+              type="button"
+              onClick={() => panTimeline(-1)}
+              className="rounded border border-[var(--color-border-default)] px-2 py-1"
+              aria-label="时间范围向前平移"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => panTimeline(1)}
+              className="rounded border border-[var(--color-border-default)] px-2 py-1"
+              aria-label="时间范围向后平移"
+            >
+              →
+            </button>
+          </fieldset>
+        )}
+        <label className="ml-auto inline-flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={durationMode}
+            onChange={(event) => setDurationMode(event.currentTarget.checked)}
+          />
+          真实耗时
+        </label>
+        <label className="relative min-w-[160px] flex-1 sm:max-w-[280px]">
+          <span className="sr-only">搜索公开轨迹</span>
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder="搜索标题、摘要、状态、sequence"
+            className="h-7 w-full rounded border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+          />
+        </label>
+        {query && <span>{filtered.length} 命中</span>}
+      </div>
+      <TraceTimeline
+        records={model.records}
+        selectedNodeId={selectedNodeId}
+        matches={query ? matches : new Set()}
+        durationMode={durationMode}
+        windowRange={timelineWindow}
+        onWindowRangeChange={setTimelineWindow}
+        onSelect={setSelectedNodeId}
+      />
+      <div
+        className={`grid min-h-0 flex-1 ${selected ? "lg:grid-cols-[minmax(0,1fr)_var(--trace-inspector-width)]" : "grid-cols-1"}`}
+        style={{ "--trace-inspector-width": `${inspectorWidth}px` } as React.CSSProperties}
+      >
+        <div
+          ref={listRef}
+          className="min-h-[240px] min-w-0 overflow-y-auto"
+          onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        >
+          <ol
+            className="relative divide-y divide-[var(--color-border-default)]"
+            style={virtual ? { height: filtered.length * rowHeight } : undefined}
+          >
+            {visible.map((record, visibleIndex) => (
+              <li
+                key={record.node_id}
+                id={`resolution-trace-${record.node_id}`}
+                className={`${selectedNodeId === record.node_id ? "border-l-2 border-l-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]" : "border-l-2 border-l-transparent"} ${virtual ? "absolute inset-x-0" : ""}`}
+                style={
+                  virtual
+                    ? { top: (start + visibleIndex) * rowHeight, height: rowHeight }
+                    : undefined
+                }
+              >
+                <button
+                  ref={(element) => {
+                    if (element) rowTriggers.current.set(record.node_id, element);
+                    else rowTriggers.current.delete(record.node_id);
+                  }}
+                  type="button"
+                  aria-current={selectedNodeId === record.node_id ? "step" : undefined}
+                  onClick={() => setSelectedNodeId(record.node_id)}
+                  className="grid h-full w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-2 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]"
+                >
+                  <span
+                    className={`mt-1.5 size-2 ${statusShapeClass(record.node.status)} ${statusClass(record.node.status)}`}
+                  />
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <strong className="truncate text-[11px]">{record.node.title}</strong>
+                      <span className="text-[9px] text-[var(--color-text-muted)]">
+                        {record.node.kind}
+                      </span>
+                      <span className="font-mono text-[9px] text-[var(--color-text-muted)]">
+                        #{record.node.sequence ?? "derived"}
+                      </span>
+                    </span>
+                    {(query.trim().length > 0 ||
+                      !["PROGRESS", "REASONING", "AGENT"].includes(record.node.kind) ||
+                      stageDetailsExpanded) &&
+                      (query.trim().length > 0 ||
+                        !["TOOL", "SQL"].includes(record.node.kind) ||
+                        callDetailsExpanded) && (
+                        <span className="mt-1 block truncate text-[10px] text-[var(--color-text-secondary)]">
+                          {record.node.summary}
+                        </span>
+                      )}
+                  </span>
+                  <span className="whitespace-nowrap text-right font-mono text-[9px] text-[var(--color-text-muted)]">
+                    {formatDuration(record.node.duration_ms)}
+                    <br />
+                    {new Date(record.node.occurred_at).toLocaleTimeString("zh-CN", {
+                      hour12: false,
+                    })}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+          {filtered.length === 0 && (
+            <EmptyState title="没有匹配记录" description="请调整搜索关键词" />
+          )}
+        </div>
+        {selected && (
+          <TraceInspector
+            key={selected.node_id}
+            node={selected}
+            detail={detail}
+            detailError={detailError}
+            inspectorWidth={inspectorWidth}
+            onInspectorWidthChange={setInspectorWidth}
+            onClose={closeInspector}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
 function SqlList({ entries }: { entries: readonly SqlHistoryEntry[] }) {
+  const [selectedHash, setSelectedHash] = useState<string | null>(null);
+  const [selectedReferenceIdentity, setSelectedReferenceIdentity] = useState<string | null>(null);
+  const selected =
+    entries.find(({ entry_hash }) => entry_hash === selectedHash) ?? entries[0] ?? null;
+  const selectedReferences = selected
+    ? [
+        selected.sql_artifact_ref,
+        selected.execution_receipt_ref,
+        selected.query_evidence_ref,
+        selected.result_ref,
+        selected.schema_snapshot_ref,
+      ].filter(isPresent)
+    : [];
+  const activeReference =
+    selectedReferences.find(
+      (reference) => referenceIdentity(reference) === selectedReferenceIdentity,
+    ) ??
+    selectedReferences[0] ??
+    null;
   if (entries.length === 0)
     return <EmptyState title="暂无 SQL 记录" description="当前 Run 尚未提交 SqlArtifact" />;
   return (
-    <div className="w-full max-w-full overflow-x-auto">
-      <table className="w-full min-w-[760px] border-collapse text-left text-[11px]">
-        <thead className="bg-[var(--color-bg-canvas)] text-[var(--color-text-muted)]">
-          <tr>
-            <th className="px-4 py-2 font-medium">状态</th>
-            <th className="px-4 py-2 font-medium">Compiler</th>
-            <th className="px-4 py-2 font-medium">Query hash</th>
-            <th className="px-4 py-2 font-medium">时间</th>
-            <th className="w-12 px-4 py-2" aria-label="打开会话" />
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--color-border-default)]">
-          {entries.map((entry) => (
-            <tr key={entry.entry_hash} className="hover:bg-[var(--color-bg-tertiary)]">
-              <td className="px-4 py-3 font-semibold">{entry.status}</td>
-              <td className="px-4 py-3">{entry.compiler_version}</td>
-              <td className="max-w-[240px] truncate px-4 py-3 font-mono" title={entry.query_hash}>
-                {entry.query_hash}
-              </td>
-              <td className="whitespace-nowrap px-4 py-3">{formatTime(entry.occurred_at)}</td>
-              <td className="px-4 py-3">
-                <a
-                  href={entry.conversation_href}
-                  aria-label="打开原会话"
-                  title="打开原会话"
-                  className="inline-flex size-7 items-center justify-center rounded-md hover:bg-[var(--color-bg-canvas)]"
-                >
-                  <ArrowSquareOut size={16} />
-                </a>
-              </td>
+    <div className="grid min-h-full min-w-0 lg:grid-cols-[minmax(0,3fr)_minmax(320px,2fr)]">
+      <div className="w-full max-w-full overflow-x-auto border-r border-[var(--color-border-default)]">
+        <table className="w-full min-w-[760px] border-collapse text-left text-[11px]">
+          <thead className="bg-[var(--color-bg-canvas)] text-[var(--color-text-muted)]">
+            <tr>
+              <th className="px-4 py-2 font-medium">状态</th>
+              <th className="px-4 py-2 font-medium">Compiler</th>
+              <th className="px-4 py-2 font-medium">Query hash</th>
+              <th className="px-4 py-2 font-medium">时间</th>
+              <th className="w-12 px-4 py-2" aria-label="打开会话" />
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--color-border-default)]">
+            {entries.map((entry) => (
+              <tr
+                key={entry.entry_hash}
+                className={
+                  selected?.entry_hash === entry.entry_hash
+                    ? "bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
+                    : "hover:bg-[var(--color-bg-tertiary)]"
+                }
+              >
+                <td className="px-4 py-3 font-semibold">{entry.status}</td>
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedHash(entry.entry_hash)}
+                    className="text-left underline-offset-2 hover:underline"
+                  >
+                    {entry.compiler_version}
+                  </button>
+                </td>
+                <td className="max-w-[240px] truncate px-4 py-3 font-mono" title={entry.query_hash}>
+                  {entry.query_hash}
+                </td>
+                <td className="whitespace-nowrap px-4 py-3">{formatTime(entry.occurred_at)}</td>
+                <td className="px-4 py-3">
+                  <a
+                    href={entry.conversation_href}
+                    aria-label="打开原会话"
+                    title="打开原会话"
+                    className="inline-flex size-7 items-center justify-center rounded-md hover:bg-[var(--color-bg-canvas)]"
+                  >
+                    <ArrowSquareOut size={16} />
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="min-w-0 overflow-y-auto p-3">
+        {selected && (
+          <>
+            <div className="mb-3">
+              <h3 className="text-xs font-semibold">SQL 内容与证据</h3>
+              <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                {selected.status} · {selected.compiler_version}
+              </p>
+            </div>
+            <fieldset className="mb-3 flex max-w-full gap-1 overflow-x-auto">
+              <legend className="sr-only">SQL 内容类型</legend>
+              {selectedReferences.map((reference) => (
+                <button
+                  key={referenceIdentity(reference)}
+                  type="button"
+                  onClick={() => setSelectedReferenceIdentity(referenceIdentity(reference))}
+                  className={`shrink-0 rounded border px-2 py-1 text-[9px] ${activeReference && referenceIdentity(activeReference) === referenceIdentity(reference) ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border-default)]"}`}
+                >
+                  {reference.artifact_type}
+                </button>
+              ))}
+            </fieldset>
+            {activeReference && (
+              <ArtifactPreviewPanel
+                key={referenceIdentity(activeReference)}
+                reference={activeReference}
+                pageSize={100}
+              />
+            )}
+            <details className="mt-3 border-t border-[var(--color-border-default)] pt-2 text-[9px] text-[var(--color-text-muted)]">
+              <summary className="cursor-pointer">身份与来源</summary>
+              <dl className="mt-2 grid grid-cols-[110px_minmax(0,1fr)] gap-1 font-mono">
+                <dt>Query hash</dt>
+                <dd className="break-all">{selected.query_hash}</dd>
+                <dt>Statement hash</dt>
+                <dd className="break-all">{selected.statement_hash}</dd>
+                <dt>Parameter hash</dt>
+                <dd className="break-all">{selected.parameter_hash}</dd>
+                <dt>Schema hash</dt>
+                <dd className="break-all">{selected.schema_snapshot_hash}</dd>
+              </dl>
+            </details>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -196,33 +1007,44 @@ function ArtifactList({ trace }: { trace: ResolutionTrace }) {
         );
     return [...byIdentity.values()];
   }, [trace]);
+  const [selectedIdentity, setSelectedIdentity] = useState<string | null>(null);
+  const selected =
+    artifacts.find((reference) => referenceIdentity(reference) === selectedIdentity) ??
+    artifacts[0] ??
+    null;
   if (artifacts.length === 0)
     return <EmptyState title="暂无工件" description="当前轨迹没有公开 Artifact reference" />;
   return (
-    <ul className="divide-y divide-[var(--color-border-default)]">
-      {artifacts.map((reference) => (
-        <li
-          key={`${reference.artifact_id}:${reference.revision}`}
-          className="grid grid-cols-[auto_minmax(0,1fr)] gap-3 px-5 py-3"
-        >
-          <BracketsCurly className="mt-0.5 text-[var(--color-text-muted)]" size={18} />
-          <div className="min-w-0">
-            <p className="text-xs font-semibold">
-              {reference.artifact_type}{" "}
-              <span className="font-normal text-[var(--color-text-muted)]">
-                r{reference.revision}
-              </span>
-            </p>
-            <p
-              className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]"
-              title={reference.content_hash}
+    <div className="grid min-h-full min-w-0 lg:grid-cols-[260px_minmax(0,1fr)]">
+      <ul className="divide-y divide-[var(--color-border-default)] border-r border-[var(--color-border-default)]">
+        {artifacts.map((reference) => (
+          <li key={`${reference.artifact_id}:${reference.revision}`}>
+            <button
+              type="button"
+              onClick={() => setSelectedIdentity(referenceIdentity(reference))}
+              className={`grid w-full grid-cols-[auto_minmax(0,1fr)] gap-3 px-4 py-3 text-left ${selected && referenceIdentity(reference) === referenceIdentity(selected) ? "bg-[color-mix(in_srgb,var(--color-accent)_8%,transparent)]" : "hover:bg-[var(--color-bg-tertiary)]"}`}
             >
-              {reference.content_hash}
-            </p>
-          </div>
-        </li>
-      ))}
-    </ul>
+              <BracketsCurly className="mt-0.5 text-[var(--color-text-muted)]" size={18} />
+              <span className="min-w-0">
+                <strong className="block text-xs">{reference.artifact_type}</strong>
+                <span className="mt-1 block text-[10px] text-[var(--color-text-muted)]">
+                  revision {reference.revision} · 点击查看内容
+                </span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <div className="min-w-0 overflow-y-auto p-3">
+        {selected && (
+          <ArtifactPreviewPanel
+            key={referenceIdentity(selected)}
+            reference={selected}
+            pageSize={100}
+          />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -303,6 +1125,7 @@ export function ResolutionTraceView() {
       profiles={state.profiles}
       teamTrace={state.teamTrace}
       teamError={state.teamError}
+      workspaceId={workspaceId}
     />
   );
 }
@@ -315,6 +1138,8 @@ export function ResolutionTracePanel({
   teamError = null,
   initialTab = "trace",
   focusSequence = null,
+  workspaceId = "",
+  initialDetails = [],
 }: {
   readonly trace: ResolutionTrace;
   readonly sql: readonly SqlHistoryEntry[];
@@ -323,6 +1148,8 @@ export function ResolutionTracePanel({
   readonly teamError?: string | null;
   readonly initialTab?: TraceTab;
   readonly focusSequence?: number | null;
+  readonly workspaceId?: string;
+  readonly initialDetails?: readonly ResolutionTraceDetail[];
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
 
@@ -354,7 +1181,14 @@ export function ResolutionTracePanel({
       </header>
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
         {tab === "overview" && <Overview trace={trace} sql={sql} />}
-        {tab === "trace" && <TraceList nodes={trace.nodes} focusedSequence={focusSequence} />}
+        {tab === "trace" && (
+          <TraceWorkbench
+            trace={trace}
+            focusedSequence={focusSequence}
+            workspaceId={workspaceId}
+            initialDetails={initialDetails}
+          />
+        )}
         {tab === "team" && (
           <AgentTeamTrace profiles={profiles} trace={teamTrace} error={teamError} />
         )}

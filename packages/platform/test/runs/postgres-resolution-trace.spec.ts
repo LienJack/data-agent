@@ -112,6 +112,12 @@ function authorityRow() {
     config_hash: hash("2"),
     schema_snapshot_hash: hash("3"),
     config_committed_at: occurredAt,
+    effective_config_json: null,
+    question: "统计本月订单",
+    run_status: "RUNNING",
+    active_fence: 1,
+    run_created_at: occurredAt,
+    run_updated_at: occurredAt,
   };
 }
 
@@ -206,6 +212,111 @@ async function productTeamSqlArtifactRow() {
 }
 
 describe("PostgreSQL Resolution Trace projector", () => {
+  it("projects exact public Tool input and result into a content-first detail", async () => {
+    const startedEvent = runRuntimeEventSchema.parse({
+      schema_version: "run-runtime-event@2.0.0",
+      event_id: ids.event,
+      scope,
+      run_id: ids.run,
+      sequence: 1,
+      worker_fence: 1,
+      idempotency_key: `event:${ids.event}`,
+      occurred_at: occurredAt,
+      event_type: "run.tool_started",
+      payload: {
+        call_id: "call-1",
+        tool_name: "semantic.release.read",
+        profile_id: "governed-text2sql-agent",
+        task_id: ids.attempt,
+        title: "读取语义层",
+        summary: "读取已发布语义层",
+        input: '{"semantic_domain":"sales"}',
+        artifact_refs: [],
+      },
+    });
+    const toolEvent = runRuntimeEventSchema.parse({
+      schema_version: "run-runtime-event@2.0.0",
+      event_id: id(13),
+      scope,
+      run_id: ids.run,
+      sequence: 2,
+      worker_fence: 1,
+      idempotency_key: `event:${id(13)}`,
+      occurred_at: "2026-08-18T12:00:00.040Z",
+      event_type: "run.tool_completed",
+      payload: {
+        call_id: "call-1",
+        tool_name: "semantic.release.read",
+        profile_id: "governed-text2sql-agent",
+        task_id: ids.attempt,
+        summary: "读取已发布语义层",
+        output: "订单事实表与月份维度",
+        duration_ms: 40,
+        artifact_refs: [],
+      },
+    });
+    const rowFor = async (event: typeof startedEvent | typeof toolEvent) => ({
+      app_id: scope.app_id,
+      tenant_id: scope.tenant_id,
+      environment: scope.environment,
+      event_id: event.event_id,
+      run_id: event.run_id,
+      sequence: event.sequence,
+      event_type: event.event_type,
+      payload_json: event.payload,
+      worker_fence: event.worker_fence,
+      dedupe_key: event.idempotency_key,
+      event_hash: await sha256ContentHash(event),
+      event_document: event,
+      created_at: event.occurred_at,
+    });
+    const rows = [await rowFor(startedEvent), await rowFor(toolEvent)];
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows, rowCount: 2 };
+      if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
+      return undefined;
+    });
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadDetail(
+      capability,
+      { scope, run_id: ids.run, node_id: `event:${toolEvent.event_id}` },
+    );
+    expect(result.ok && result.value).toMatchObject({
+      kind: "TOOL",
+      title: "semantic.release.read",
+      identity: expect.arrayContaining([
+        { label: "Call ID", value: "call-1", value_kind: "ID" },
+        { label: "Agent Profile", value: "governed-text2sql-agent", value_kind: "NAME" },
+      ]),
+      result: { state: "AVAILABLE", text: "订单事实表与月份维度" },
+      payload: { state: "AVAILABLE", text: '{"semantic_domain":"sales"}' },
+      timing: {
+        started_at: occurredAt,
+        completed_at: "2026-08-18T12:00:00.040Z",
+        duration_ms: 40,
+      },
+      source_event_ids: [startedEvent.event_id, toolEvent.event_id],
+    });
+    expect(JSON.stringify(result)).not.toMatch(/reasoning_content|authorization|secretref/i);
+  });
+
+  it("does not resolve a detail by an artifact or event outside the verified trace", async () => {
+    const row = await eventRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
+      return undefined;
+    });
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadDetail(
+      capability,
+      { scope, run_id: ids.run, node_id: `event:${id(999)}` },
+    );
+    expect(result).toMatchObject({ ok: true, value: null });
+  });
+
   it("projects verified Product Team artifacts without requiring a legacy L2 envelope", async () => {
     const row = await eventRow();
     const sql = await productTeamSqlArtifactRow();

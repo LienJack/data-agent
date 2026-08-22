@@ -6,10 +6,15 @@ import type { ReactNode } from "react";
 import { useWorkspaceI18n } from "@/i18n";
 
 const labels = {
+  "data-agent-orchestrator": "Data Agent Orchestrator",
   "governed-text2sql-agent": "Text2SQL",
   "report-writing-agent": "Report",
   "semantic-management-agent": "Semantic",
 } as const;
+
+function profileLabel(profileId: string): string {
+  return labels[profileId as keyof typeof labels] ?? profileId;
+}
 
 function shortIdentity(value: string): string {
   return value.length > 24 ? `${value.slice(0, 12)}...${value.slice(-8)}` : value;
@@ -39,6 +44,14 @@ export function AgentTeamTrace({
       </p>
     );
   }
+  const taskById = new Map(trace?.tasks.map((task) => [task.task_id, task]) ?? []);
+  const exactProfileFor = (task: NonNullable<typeof trace>["tasks"][number]) =>
+    profiles.find(
+      ({ revision }) =>
+        revision.profile_id === task.profile_id &&
+        revision.revision === task.profile_revision &&
+        revision.revision_hash === task.profile_hash,
+    );
   return (
     <div>
       {trace && (
@@ -64,10 +77,35 @@ export function AgentTeamTrace({
               className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-5 py-3 text-[11px]"
             >
               <div className="min-w-0">
-                <p className="truncate font-semibold">{task.profile_id}</p>
-                <p className="mt-1 truncate font-mono text-[10px] text-[var(--color-text-muted)]">
-                  {task.task_id}
+                <p className="truncate font-semibold">{profileLabel(task.profile_id)}</p>
+                <p className="mt-1 text-[10px] text-[var(--color-text-secondary)]">
+                  {task.parent_task_id
+                    ? `由 ${profileLabel(taskById.get(task.parent_task_id)?.profile_id ?? "未知 Agent")} 分派`
+                    : "负责规划并汇总本次 Agent Team 执行"}
                 </p>
+                <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
+                  {new Date(task.created_at).toLocaleString()} · task r{task.task_revision} ·
+                  attempt {task.attempt_id.slice(0, 8)} · fence {task.worker_fence}
+                </p>
+                {!exactProfileFor(task) && task.profile_id !== "data-agent-orchestrator" && (
+                  <p className="mt-1 text-[10px] text-amber-700">
+                    历史 Profile 内容不可用；保留 exact r{task.profile_revision} 身份
+                  </p>
+                )}
+                <details className="mt-2 text-[9px] text-[var(--color-text-muted)]">
+                  <summary className="cursor-pointer">身份与来源</summary>
+                  <dl className="mt-1 grid grid-cols-[80px_minmax(0,1fr)] gap-1 font-mono">
+                    <dt>Task ID</dt>
+                    <dd className="break-all">{task.task_id}</dd>
+                    <dt>Profile</dt>
+                    <dd className="break-all">
+                      {task.profile_id} · r{task.profile_revision} ·{" "}
+                      {shortIdentity(task.profile_hash)}
+                    </dd>
+                    <dt>Attempt</dt>
+                    <dd className="break-all">{task.attempt_id}</dd>
+                  </dl>
+                </details>
               </div>
               <span className="self-start rounded border border-[var(--color-border-default)] px-2 py-1 text-[10px]">
                 {task.status}
@@ -84,10 +122,14 @@ export function AgentTeamTrace({
             <TraceDisclosure title={t("team.handoffs")} count={trace.handoffs.length}>
               {trace.handoffs.map((handoff) => (
                 <li key={handoff.handoff_id}>
-                  <code>{shortIdentity(handoff.parent_task_id)}</code> →{" "}
-                  <code>{shortIdentity(handoff.child_task_id)}</code>
+                  {profileLabel(taskById.get(handoff.parent_task_id)?.profile_id ?? "未知 Agent")} →{" "}
+                  {profileLabel(taskById.get(handoff.child_task_id)?.profile_id ?? "未知 Agent")}
                   <span className="mt-1 block text-[var(--color-text-muted)]">
-                    r{handoff.parent_expected_revision} · {shortIdentity(handoff.request_hash)}
+                    {new Date(handoff.created_at).toLocaleString()} · parent r
+                    {handoff.parent_expected_revision}
+                  </span>
+                  <span className="mt-1 block font-mono text-[var(--color-text-muted)]">
+                    {shortIdentity(handoff.request_hash)}
                   </span>
                 </li>
               ))}
@@ -95,9 +137,13 @@ export function AgentTeamTrace({
             <TraceDisclosure title={t("team.epochs")} count={trace.epochs.length}>
               {trace.epochs.map((epoch) => (
                 <li key={`${epoch.task_id}:${epoch.epoch_id}:${epoch.epoch_revision}`}>
-                  <code>{shortIdentity(epoch.task_id)}</code> · {epoch.phase}
+                  {profileLabel(taskById.get(epoch.task_id)?.profile_id ?? "未知 Agent")} ·{" "}
+                  {epoch.phase}
                   <span className="mt-1 block text-[var(--color-text-muted)]">
-                    epoch r{epoch.epoch_revision} · {shortIdentity(epoch.build_signature)}
+                    {new Date(epoch.created_at).toLocaleString()} · epoch r{epoch.epoch_revision}
+                  </span>
+                  <span className="mt-1 block font-mono text-[var(--color-text-muted)]">
+                    {shortIdentity(epoch.build_signature)}
                   </span>
                 </li>
               ))}
@@ -105,8 +151,13 @@ export function AgentTeamTrace({
             <TraceDisclosure title={t("team.verifiers")} count={trace.verifier_decisions.length}>
               {trace.verifier_decisions.map((decision) => (
                 <li key={decision.decision_id}>
-                  <code>{shortIdentity(decision.task_id)}</code> · task r{decision.task_revision}
+                  {profileLabel(taskById.get(decision.task_id)?.profile_id ?? "未知 Agent")} ·
+                  已提交验证决定
                   <span className="mt-1 block text-[var(--color-text-muted)]">
+                    {new Date(decision.created_at).toLocaleString()} · task r
+                    {decision.task_revision}
+                  </span>
+                  <span className="mt-1 block font-mono text-[var(--color-text-muted)]">
                     {shortIdentity(decision.decision_hash)}
                   </span>
                 </li>
@@ -123,7 +174,7 @@ export function AgentTeamTrace({
                   <span
                     className={`size-2 rounded-full ${head.lifecycle === "ENABLED" ? "bg-emerald-500" : "bg-amber-500"}`}
                   />
-                  <h3 className="text-xs font-semibold">{labels[revision.profile_id]}</h3>
+                  <h3 className="text-xs font-semibold">{profileLabel(revision.profile_id)}</h3>
                   <span className="text-[10px] text-[var(--color-text-muted)]">
                     r{revision.revision} · {head.lifecycle}
                   </span>
@@ -150,7 +201,8 @@ export function AgentTeamTrace({
                   <ShieldCheck size={13} /> {t("team.skills")}
                 </dt>
                 <dd className="mt-1 tabular-nums">
-                  {revision.skill_refs.length} {t("team.revisions")}
+                  {revision.skill_refs.length} {t("team.revisions")} · outputs{" "}
+                  {revision.expected_output_artifact_types.join(", ")}
                 </dd>
               </div>
               <div>
@@ -158,7 +210,8 @@ export function AgentTeamTrace({
                   <Hammer size={13} /> {t("team.tools")}
                 </dt>
                 <dd className="mt-1 tabular-nums">
-                  {revision.direct_tool_allowlist.length} {t("team.direct")}
+                  {revision.direct_tool_allowlist.length} {t("team.direct")} ·{" "}
+                  {revision.direct_tool_allowlist.join(", ")}
                 </dd>
               </div>
             </dl>

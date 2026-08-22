@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   trace: null as unknown,
   sql: null as unknown,
   traceInputs: [] as unknown[],
+  detailInputs: [] as unknown[],
+  detail: null as unknown,
   sqlInputs: [] as unknown[],
   accesses: [] as string[],
 }));
@@ -34,6 +36,10 @@ vi.mock("@/lib/workspace-identity", () => ({
       state.traceInputs.push(input);
       return { ok: true, value: state.trace };
     },
+    loadDetail: async (_capability: unknown, input: unknown) => {
+      state.detailInputs.push(input);
+      return { ok: true, value: state.detail };
+    },
     listSqlHistory: async (_capability: unknown, input: unknown) => {
       state.sqlInputs.push(input);
       return { ok: true, value: state.sql };
@@ -52,13 +58,67 @@ beforeAll(async () => {
     edges: [],
   });
   state.sql = { schema_version: "sql-history-result@1.0.0", items: [], next_cursor: null };
+  state.detail = {
+    schema_version: "resolution-trace-detail@1.0.0",
+    scope,
+    run_id: runId,
+    node_id: `event:${id(7)}`,
+    kind: "TOOL",
+    sequence: 1,
+    source_event_ids: [id(7)],
+    title: "read",
+    status: "COMPLETED",
+    summary: "读取完成",
+    hierarchy: { parent_node_ids: [], child_node_ids: [] },
+    identity: [],
+    payload: {
+      state: "UNAVAILABLE",
+      reason_code: "PUBLIC_CONTENT_UNAVAILABLE",
+      message: "无公开输入",
+    },
+    result: { state: "AVAILABLE", format: "TEXT", text: "文档正文", fields: [] },
+    schema: {
+      state: "UNAVAILABLE",
+      reason_code: "PUBLIC_SCHEMA_UNAVAILABLE",
+      message: "无 Schema",
+    },
+    timing: {
+      occurred_at: "2026-08-22T00:00:00.000Z",
+      started_at: null,
+      completed_at: null,
+      duration_ms: 40,
+      source: "SESSION_TIMESTAMPS",
+    },
+    relations: [],
+    artifact_refs: [],
+  };
 });
 
 describe("Resolution Trace workspace routes", () => {
   beforeEach(() => {
     state.traceInputs = [];
+    state.detailInputs = [];
     state.sqlInputs = [];
     state.accesses = [];
+  });
+
+  it("loads one exact public detail by the authorized Run and node identity", async () => {
+    const route = await import(
+      "../src/app/api/workspaces/[workspaceId]/runs/[runId]/resolution-trace/details/route"
+    );
+    const nodeId = `event:${id(7)}`;
+    const response = await route.GET(
+      new NextRequest(
+        `http://localhost/api/workspaces/${workspaceId}/runs/${runId}/resolution-trace/details?node_id=${encodeURIComponent(nodeId)}`,
+      ),
+      { params: Promise.resolve({ workspaceId, runId }) },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { node_id: nodeId, result: { text: "文档正文" } },
+    });
+    expect(state.detailInputs).toEqual([{ scope, run_id: runId, node_id: nodeId }]);
+    expect(state.accesses).toEqual(["READ"]);
   });
 
   it("injects the authorized scope and returns the hashed Run trace", async () => {
