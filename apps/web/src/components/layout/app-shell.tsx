@@ -30,13 +30,13 @@ export function AppShell({ children }: AppShellProps) {
     <div className="flex min-h-[100dvh] flex-col bg-[var(--color-bg-canvas)]">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {usesResponsiveControlPlaneShell && (
-          <header className="flex h-13 shrink-0 items-center justify-between border-b border-[var(--color-border-default)] bg-[color-mix(in_srgb,var(--color-bg-surface)_92%,transparent)] px-4 backdrop-blur-xl">
+          <header className="surface-floating-strong flex h-13 shrink-0 items-center justify-between border-b px-4">
             <Link
               href="/workspaces"
               className="flex items-center gap-2 text-sm font-semibold"
               aria-label="返回 data agent 首页"
             >
-              <span className="flex size-7 items-center justify-center rounded-md bg-[var(--color-text-primary)] text-white">
+              <span className="flex size-7 items-center justify-center rounded-[8px] bg-[var(--color-accent)] text-white">
                 <CirclesFour aria-hidden="true" size={15} weight="fill" />
               </span>
               data agent

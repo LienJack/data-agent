@@ -6,11 +6,11 @@ interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
 }
 
 const variantStyles: Record<string, string> = {
-  default: "bg-[var(--color-accent)]/20 text-[var(--color-accent)]",
+  default: "bg-[var(--color-accent-soft)] text-[var(--color-accent)]",
   secondary: "bg-[var(--color-bg-tertiary)] text-[var(--color-text-secondary)]",
-  success: "bg-emerald-900/30 text-[#88C980]",
-  warning: "bg-yellow-900/30 text-[#D8B76A]",
-  danger: "bg-red-900/30 text-[#F87171]",
+  success: "bg-emerald-50 text-emerald-700",
+  warning: "bg-amber-50 text-amber-700",
+  danger: "bg-red-50 text-red-700",
   outline: "border border-[var(--color-border-default)] text-[var(--color-text-secondary)]",
 };
 

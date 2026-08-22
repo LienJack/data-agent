@@ -2,19 +2,23 @@
 
 ## Product Character
 
-Data Agent 是高频分析与治理工作台，默认视觉密度 7/10。界面使用冷中性色和单一墨绿 accent；
-amber/red 仅表达状态。避免营销 hero、装饰渐变、嵌套卡片和大圆角。
+Data Agent 是高频分析与治理工作台，默认视觉密度 7/10。界面使用冷中性色和单一 Data Agent Blue
+`#3f63e8` accent；green/amber/red 仅表达成功、警告和失败状态。避免营销 hero、蓝紫渐变、外发光、
+嵌套卡片和无层级的大圆角。
 
 ## Tokens And Typography
 
 - Token 实现在 `apps/web/src/app/design-system.css`，必须在 `globals.css` 后加载。
 - UI font 使用 Geist 风格 sans fallback；ID、时间、数字、SQL、状态码使用 mono。
-- letter-spacing 固定为 0；页面标题 24-34px，panel/card 内标题不超过 16px。
-- command control radius 4-6px，业务 item/card 最多 8px；圆形只用于 icon button、avatar 或 status dot。
+- tracking 随字号变化：页面标题约 `-0.035em`，正文接近 0，小号 uppercase label 约 `0.06-0.08em`；
+  页面标题 24-34px，panel/card 内标题不超过 16px。
+- control radius 10px、item 14px、panel 18px、sheet 24px；圆形只用于 icon button、avatar 或 status dot。
+- 色彩 token 只在 `design-system.css` 定义；`globals.css` 只允许兼容 alias，不得维护第二套主题值。
 
 ## Layout
 
-- `WorkspaceShell` desktop 为 sidebar/topbar/content/status，sidebar 展开 248px、折叠 64px。
+- `WorkspaceShell` desktop 为 sidebar/topbar/content/status，sidebar 展开 248px、折叠 64px；会话目录只在
+  Q&A route 上下文加载和显示，其他页面只保留产品导航。
 - `<1024px` 隐藏 desktop sidebar/status，使用顶部 workspace breadcrumb 和 5 项底部导航。
 - 页面内容使用 `.page-frame` 或 `.workspace-container`，最大 1440px；图、QA、分析 split pane 可 full bleed。
 - 页面 header 使用 `.page-heading/.page-eyebrow/.page-title/.page-description`。
@@ -54,12 +58,12 @@ Q&A chrome 使用 `design-system.css` 的语义材质，而不是在组件内散
 
 ```css
 :root {
-  --glass-fill: rgb(247 250 247 / 72%);
-  --glass-fill-strong: rgb(251 253 250 / 88%);
-  --glass-border-inner: rgb(255 255 255 / 82%);
-  --glass-shadow-tint: rgb(31 56 44 / 18%);
+  --glass-fill: rgb(248 250 255 / 74%);
+  --glass-fill-strong: rgb(252 253 255 / 90%);
+  --glass-border-inner: rgb(255 255 255 / 88%);
+  --glass-shadow-tint: rgb(42 66 138 / 16%);
   --glass-blur: 24px;
-  --glass-saturate: 132%;
+  --glass-saturate: 138%;
 }
 
 .glass-surface {

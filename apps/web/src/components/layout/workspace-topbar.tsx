@@ -43,9 +43,9 @@ export function WorkspaceTopbar({ access }: { readonly access: WorkspaceAccessPr
   ] as const;
 
   return (
-    <header className="glass-surface-strong relative z-40 flex min-h-13 shrink-0 items-center justify-between gap-3 border-b px-3 sm:px-4">
+    <header className="surface-floating-strong relative z-40 flex min-h-13 shrink-0 items-center justify-between gap-3 border-b px-3 sm:px-4">
       <nav className="flex min-w-0 items-center gap-1.5 text-[11px]" aria-label="Breadcrumb">
-        <span className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-text-primary)] text-[9px] font-semibold text-white lg:hidden">
+        <span className="mr-1 flex size-7 shrink-0 items-center justify-center rounded-[8px] bg-[var(--color-accent)] text-[9px] font-semibold text-white shadow-[0_6px_16px_-10px_rgb(38_71_168_/_0.8)] lg:hidden">
           DA
         </span>
         <span className="max-w-36 truncate font-semibold text-[var(--color-text-primary)]">
@@ -83,7 +83,8 @@ export function WorkspaceTopbar({ access }: { readonly access: WorkspaceAccessPr
         {surface === "qa" && access.role === "WORKSPACE_ADMIN" && (
           <Link
             href={`/w/${workspaceId}/qa/admin`}
-            className="glass-control-radius hidden h-8 items-center gap-1.5 border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-2.5 text-[10px] font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] sm:flex"
+            data-pressable="true"
+            className="glass-control-radius hidden h-8 items-center gap-1.5 border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-2.5 text-[10px] font-medium text-[var(--color-text-secondary)] hover:border-[var(--color-border-overlay)] hover:text-[var(--color-text-primary)] sm:flex"
           >
             <ShieldCheck aria-hidden="true" size={14} />
             对话审计
@@ -103,7 +104,7 @@ export function WorkspaceTopbar({ access }: { readonly access: WorkspaceAccessPr
             <FolderOpen aria-hidden="true" size={15} />
           </button>
         )}
-        <fieldset className="glass-control-radius flex h-8 shrink-0 items-center border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] p-0.5">
+        <fieldset className="surface-control flex h-8 shrink-0 items-center p-0.5">
           <legend className="sr-only">{t("locale.switch")}</legend>
           <Globe aria-hidden="true" className="mx-1 text-[var(--color-text-muted)]" size={14} />
           {(["zh-CN", "en-US"] as const).map((candidate) => (
@@ -114,7 +115,7 @@ export function WorkspaceTopbar({ access }: { readonly access: WorkspaceAccessPr
               onClick={() => setLocale(candidate)}
               className={`h-6 rounded-[4px] px-2 text-[10px] font-medium ${
                 locale === candidate
-                  ? "bg-[var(--color-bg-primary)] text-[var(--color-text-primary)] shadow-sm"
+                  ? "bg-[var(--color-bg-primary)] text-[var(--color-accent)] shadow-[0_1px_3px_rgb(42_66_138_/_0.14)]"
                   : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
               }`}
             >
@@ -127,7 +128,7 @@ export function WorkspaceTopbar({ access }: { readonly access: WorkspaceAccessPr
         <div className="glass-overlay fixed inset-x-0 top-0 z-50 h-[100dvh] lg:hidden">
           <aside
             data-directory-menu-boundary
-            className="glass-surface-strong absolute inset-y-0 left-0 w-[min(88vw,340px)] overflow-y-auto border-r p-4 [border-radius:0_var(--glass-panel-radius)_var(--glass-panel-radius)_0]"
+            className="surface-floating-strong absolute inset-y-0 left-0 w-[min(88vw,340px)] overflow-y-auto border-r p-4 [border-radius:0_var(--radius-sheet)_var(--radius-sheet)_0]"
             aria-label={locale === "zh-CN" ? "对话目录" : "Conversation directory"}
           >
             <div className="mb-3 flex items-center justify-between">

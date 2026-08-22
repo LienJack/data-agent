@@ -28,7 +28,10 @@ export function Tabs({ tabs, defaultTab, className, onChange }: TabsProps) {
 
   return (
     <div className={className}>
-      <div role="tablist" className="flex border-b border-[var(--color-border-default)]">
+      <div
+        role="tablist"
+        className="surface-control flex w-fit max-w-full gap-0.5 overflow-x-auto p-1"
+      >
         {tabs.map((tab) => (
           <button
             type="button"
@@ -38,23 +41,23 @@ export function Tabs({ tabs, defaultTab, className, onChange }: TabsProps) {
             disabled={tab.disabled}
             onClick={() => handleTabChange(tab.id)}
             className={cn(
-              "relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium whitespace-nowrap transition-colors",
+              "control-pressable relative flex min-h-8 items-center gap-1.5 whitespace-nowrap rounded-[7px] px-3 py-1.5 text-xs font-medium",
               tab.id === activeTab
-                ? "text-[var(--color-accent)] after:absolute after:bottom-0 after:left-0 after:h-0.5 after:w-full after:bg-[var(--color-accent)]"
+                ? "bg-[var(--color-bg-surface)] text-[var(--color-accent)] shadow-[0_1px_3px_rgb(42_66_138_/_0.14)]"
                 : "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
               tab.disabled && "cursor-not-allowed opacity-50",
             )}
           >
             {tab.label}
             {tab.badge != null && (
-              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-accent)] px-1 text-[10px] font-medium text-white">
+              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--color-accent-soft)] px-1 text-[10px] font-semibold text-[var(--color-accent)]">
                 {tab.badge}
               </span>
             )}
           </button>
         ))}
       </div>
-      <div role="tabpanel" className="pt-3">
+      <div role="tabpanel" className="pt-4">
         {activeContent}
       </div>
     </div>

@@ -38,7 +38,7 @@ export function MobileWorkspaceNav({
   return (
     <nav
       aria-label={t("workspace.resources")}
-      className="glass-surface-strong fixed inset-x-0 bottom-0 z-20 grid h-16 border-t px-2 pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="surface-floating-strong fixed inset-x-0 bottom-0 z-20 grid h-16 border-t px-2 pb-[env(safe-area-inset-bottom)] lg:hidden"
       style={{ gridTemplateColumns: `repeat(${Math.max(items.length, 1)}, minmax(0, 1fr))` }}
     >
       {items.map((item) => {
@@ -48,14 +48,20 @@ export function MobileWorkspaceNav({
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`relative flex min-w-0 flex-col items-center justify-center gap-1 text-[9px] font-medium ${
+            data-pressable="true"
+            className={`relative flex min-w-0 flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] text-[9px] font-medium ${
               active
                 ? "text-[var(--color-accent)]"
                 : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
             }`}
           >
-            {active && <span className="absolute inset-x-4 top-0 h-0.5 bg-[var(--color-accent)]" />}
-            <WorkspaceNavIcon navigationKey={item.key} size={19} />
+            <span
+              className={`grid size-8 place-items-center rounded-[9px] ${
+                active ? "bg-[var(--color-accent-soft)]" : ""
+              }`}
+            >
+              <WorkspaceNavIcon navigationKey={item.key} size={19} />
+            </span>
             <span className="max-w-full truncate">{t(labels[item.key])}</span>
           </Link>
         );

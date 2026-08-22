@@ -2,55 +2,7 @@
 
 @layer base {
   :root {
-    /* ── DataFoundry 语义化色彩令牌 ────────────────────────────────────── */
-    /* Background */
-    --color-bg-canvas: #f7f8f7;
-    --color-bg-surface: #ffffff;
-    --color-bg-overlay: #f1f3f1;
-    --color-bg-primary: var(--color-bg-surface);
-    --color-bg-secondary: var(--color-bg-canvas);
-    --color-bg-tertiary: #f0f2f0;
-
-    /* Text */
-    --color-text-primary: #171a18;
-    --color-text-emphasis: #2f3431;
-    --color-text-secondary: #626965;
-    --color-text-muted: #909793;
-    --color-text-tertiary: var(--color-text-muted);
-    --color-text-disabled: #b8bdb9;
-
-    /* Border */
-    --color-border-default: #e2e5e2;
-    --color-border-focused: #6a8e81;
-    --color-border-overlay: #d8ddda;
-    --color-border: var(--color-border-default);
-
-    /* Structure */
-    --color-accent: #527c70;
-    --color-accent-hover: #42685e;
-    --color-structure-focus: #6a8e81;
-
-    /* Interaction */
-    --color-interaction-accent: #527c70;
-
-    /* Status */
-    --color-success: #4f8374;
-    --color-warning: #a7772f;
-    --color-error: #c04f3c;
-
-    /* Selection */
-    --color-selection-bg: #f7f8f7;
-    --color-selection-selected-bg: #edf2ef;
-    --color-selection-border: #d9dfdb;
-    --color-selection-heading: #26302c;
-    --color-selection-selected-title: #26302c;
-    --color-selection-title: #4e5954;
-    --color-selection-accent: #527c70;
-    --color-selection-selected-desc: #68736e;
-    --color-selection-desc: #858e89;
-    --color-selection-disabled: #b8bdb9;
-
-    /* Info (for compatibility) */
+    /* Compatibility aliases. Theme values are owned by design-system.css. */
     --color-info: var(--color-accent);
   }
 }
@@ -139,31 +91,4 @@
 
 .diff-modified {
   @apply bg-amber-50 text-amber-800;
-}
-
-html,
-body {
-  color-scheme: light;
-}
-
-body {
-  font-family: "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
-}
-
-button,
-a,
-input,
-textarea,
-select {
-  transition-duration: 160ms;
-  transition-property: color, background-color, border-color, opacity, box-shadow, transform;
-}
-
-button:focus-visible,
-a:focus-visible,
-input:focus-visible,
-textarea:focus-visible,
-select:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
-  outline-offset: 2px;
 }

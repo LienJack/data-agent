@@ -14,12 +14,12 @@ interface SkeletonProps {
 export function Skeleton({ className, variant = "text" }: SkeletonProps) {
   if (variant === "card") {
     return (
-      <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-4">
+      <div className="surface-reading rounded-[var(--radius-item)] border p-4">
         <div className="space-y-3">
-          <div className="h-3 w-3/4 animate-pulse rounded bg-[var(--color-bg-tertiary)]" />
-          <div className="h-3 w-1/2 animate-pulse rounded bg-[var(--color-bg-tertiary)]" />
-          <div className="h-2 w-full animate-pulse rounded bg-[var(--color-bg-tertiary)]" />
-          <div className="h-2 w-5/6 animate-pulse rounded bg-[var(--color-bg-tertiary)]" />
+          <div className="skeleton-shimmer h-3 w-3/4 rounded bg-[var(--color-bg-tertiary)]" />
+          <div className="skeleton-shimmer h-3 w-1/2 rounded bg-[var(--color-bg-tertiary)]" />
+          <div className="skeleton-shimmer h-2 w-full rounded bg-[var(--color-bg-tertiary)]" />
+          <div className="skeleton-shimmer h-2 w-5/6 rounded bg-[var(--color-bg-tertiary)]" />
         </div>
       </div>
     );
@@ -28,7 +28,7 @@ export function Skeleton({ className, variant = "text" }: SkeletonProps) {
   return (
     <div
       className={cn(
-        "animate-pulse bg-[var(--color-bg-tertiary)]",
+        "skeleton-shimmer bg-[var(--color-bg-tertiary)]",
         variant === "circle" ? "rounded-full" : "rounded",
         className || "h-3 w-full",
       )}

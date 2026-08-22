@@ -77,14 +77,14 @@ interface StatusConfig {
 function statusConfig(connection: RunConnectionState): StatusConfig {
   switch (connection) {
     case "live":
-      return { labelKey: "status.live", color: "#33745c", spinning: false };
+      return { labelKey: "status.live", color: "var(--color-success)", spinning: false };
     case "connecting":
-      return { labelKey: "status.connecting", color: "#9a6a1d", spinning: true };
+      return { labelKey: "status.connecting", color: "var(--color-warning)", spinning: true };
     case "reconnecting":
-      return { labelKey: "status.reconnecting", color: "#9a6a1d", spinning: true };
+      return { labelKey: "status.reconnecting", color: "var(--color-warning)", spinning: true };
     case "closed":
-      return { labelKey: "status.closed", color: "#7b8781", spinning: false };
+      return { labelKey: "status.closed", color: "var(--color-text-muted)", spinning: false };
     default:
-      return { labelKey: "status.ready", color: "#33745c", spinning: false };
+      return { labelKey: "status.ready", color: "var(--color-success)", spinning: false };
   }
 }

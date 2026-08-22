@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "./empty-state";
-import { Spinner } from "./spinner";
+import { Skeleton } from "./skeleton";
 
 /**
  * ViewState 渲染组件。
@@ -24,8 +24,22 @@ export function StateBlock({ state, className }: StateBlockProps) {
   switch (state.kind) {
     case "loading":
       return (
-        <div className={cn("flex min-h-[200px] items-center justify-center", className)}>
-          <Spinner size="lg" />
+        <div
+          className={cn(
+            "surface-reading min-h-[200px] space-y-4 rounded-[var(--radius-panel)] border p-5",
+            className,
+          )}
+          aria-busy="true"
+          aria-label="正在加载"
+          role="status"
+        >
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+          <div className="grid gap-3 pt-3 sm:grid-cols-2">
+            <Skeleton variant="card" />
+            <Skeleton variant="card" />
+          </div>
         </div>
       );
 
@@ -43,7 +57,7 @@ export function StateBlock({ state, className }: StateBlockProps) {
       return (
         <div
           className={cn(
-            "flex flex-col items-center justify-center gap-3 rounded-lg border border-[var(--color-error)]/20 bg-[var(--color-error)]/5 p-6 text-center",
+            "flex flex-col items-center justify-center gap-3 rounded-[var(--radius-item)] border border-[var(--color-error)]/20 bg-[color-mix(in_srgb,var(--color-error)_6%,white)] p-6 text-center",
             className,
           )}
         >
@@ -52,7 +66,7 @@ export function StateBlock({ state, className }: StateBlockProps) {
             <button
               type="button"
               onClick={state.onRetry}
-              className="rounded-md bg-[var(--color-error)] px-3 py-1.5 text-xs font-medium text-white transition-colors hover:opacity-90"
+              className="control-pressable rounded-[var(--radius-control)] bg-[var(--color-error)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
             >
               重试
             </button>

@@ -27,16 +27,16 @@ export function SidebarItem({ href, label, icon, collapsed, count }: SidebarItem
     <Link
       href={href}
       className={cn(
-        "relative flex min-h-9 items-center gap-2 rounded-md px-2 text-[12px] font-medium transition-colors",
+        "control-pressable relative flex min-h-9 items-center gap-2 rounded-[var(--radius-control)] px-2 text-[12px] font-medium",
         collapsed ? "justify-center px-2" : "",
         isActive
-          ? "bg-[color-mix(in_srgb,var(--color-accent)_9%,transparent)] text-[var(--color-accent)]"
+          ? "bg-[var(--color-accent-soft)] text-[var(--color-accent)] shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--color-accent)_8%,transparent)]"
           : "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]",
       )}
       title={collapsed ? label : undefined}
     >
       {isActive && !collapsed && (
-        <span className="absolute inset-y-2 left-0 w-0.5 bg-[var(--color-accent)]" />
+        <span className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--color-accent)]" />
       )}
       <span className="flex h-5 w-5 shrink-0 items-center justify-center">{icon}</span>
       {!collapsed && <span className="truncate">{label}</span>}

@@ -10,7 +10,7 @@ export function Card({ className, size = "default", ...props }: CardProps) {
     <div
       data-slot="card"
       className={cn(
-        "flex flex-col gap-3 overflow-hidden rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] py-3",
+        "surface-reading flex flex-col gap-3 overflow-hidden rounded-[var(--radius-item)] border py-3 shadow-[var(--shadow-panel)]",
         size === "sm" && "gap-2 py-2",
         className,
       )}
@@ -29,7 +29,7 @@ export function CardTitle({ className, ...props }: HTMLAttributes<HTMLDivElement
   return (
     <div
       data-slot="card-title"
-      className={cn("text-sm font-semibold leading-none tracking-tight", className)}
+      className={cn("text-sm font-semibold leading-none tracking-[-0.012em]", className)}
       {...props}
     />
   );

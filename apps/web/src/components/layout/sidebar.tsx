@@ -3,6 +3,7 @@
 import type { WorkspaceAccessProjection } from "@data-agent/contracts";
 import { Plus, SidebarSimple } from "@phosphor-icons/react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
@@ -39,6 +40,7 @@ interface SidebarProps {
  */
 export function Sidebar({ access, navigation }: SidebarProps) {
   const { t } = useWorkspaceI18n();
+  const pathname = usePathname();
   const collapsed = useSidebarCollapsed();
   const toggleSidebar = useLayoutStore((state) => state.toggleSidebar);
   const loadConversations = useQAStore((state) => state.loadConversations);
@@ -47,15 +49,18 @@ export function Sidebar({ access, navigation }: SidebarProps) {
   const workspaceId = access.workspace.workspace_id;
   const workspaceHome = workspacePath(workspaceId);
   const qaItem = navigation.find((item) => item.key === "qa");
+  const isQaSurface = Boolean(
+    qaItem && (pathname === qaItem.href || pathname.startsWith(`${qaItem.href}/`)),
+  );
 
   useEffect(() => {
-    if (qaItem) void loadConversations();
-  }, [loadConversations, qaItem]);
+    if (isQaSurface) void loadConversations();
+  }, [isQaSurface, loadConversations]);
 
   return (
     <aside
       className={[
-        "glass-surface hidden h-full shrink-0 flex-col border-r transition-[width] duration-200 lg:flex",
+        "surface-floating hidden h-full shrink-0 flex-col border-r transition-[width] duration-200 lg:flex",
         collapsed ? "w-16" : "w-[248px]",
       ].join(" ")}
     >
@@ -112,14 +117,15 @@ export function Sidebar({ access, navigation }: SidebarProps) {
           </div>
         </nav>
 
-        {!collapsed && qaItem && (
+        {!collapsed && qaItem && isQaSurface && (
           <section
             className="border-t border-[var(--color-border-default)] px-3 py-3"
             aria-label={t("workspace.surface.qa")}
           >
             <Link
               href={qaItem.href}
-              className="flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--color-text-primary)] text-[12px] font-semibold text-white hover:bg-[var(--color-accent-hover)]"
+              data-pressable="true"
+              className="flex h-9 items-center justify-center gap-1.5 rounded-[var(--radius-control)] bg-[var(--color-accent)] text-[12px] font-semibold text-white shadow-[0_8px_18px_-12px_rgb(38_71_168_/_0.72)] hover:bg-[var(--color-accent-hover)]"
             >
               <Plus aria-hidden="true" size={14} />
               {t("workspace.newQuestion")}
@@ -133,7 +139,7 @@ export function Sidebar({ access, navigation }: SidebarProps) {
       {!collapsed && (
         <div className="relative z-0 shrink-0 border-t border-[var(--color-border-default)] px-3 py-2">
           <div className="flex min-h-12 items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-[10px] font-bold text-amber-700">
+            <span className="flex size-8 items-center justify-center rounded-[var(--radius-control)] border border-amber-200 bg-amber-50 text-[10px] font-bold text-amber-700">
               L2
             </span>
             <div className="min-w-0 flex-1">

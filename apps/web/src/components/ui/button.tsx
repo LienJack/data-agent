@@ -8,18 +8,19 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<string, string> = {
-  primary: "bg-[var(--color-accent)] text-white hover:bg-[var(--color-accent-hover)]",
+  primary:
+    "border border-transparent bg-[var(--color-accent)] text-white shadow-[0_8px_18px_-12px_rgb(38_71_168_/_0.72)] hover:bg-[var(--color-accent-hover)] active:bg-[var(--color-accent-pressed)]",
   secondary:
-    "border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]",
+    "border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] text-[var(--color-text-secondary)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.82)] hover:border-[var(--color-border-overlay)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]",
   ghost:
     "text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] hover:text-[var(--color-text-primary)]",
-  danger: "border border-red-700 bg-red-900/30 text-[#F87171] hover:bg-red-900/50",
+  danger: "border border-red-200 bg-red-50 text-red-700 hover:border-red-300 hover:bg-red-100",
 };
 
 const sizeClasses: Record<string, string> = {
-  sm: "px-2 py-1 text-xs",
-  md: "px-3 py-1.5 text-sm",
-  lg: "px-4 py-2 text-sm",
+  sm: "min-h-8 px-2.5 py-1 text-xs",
+  md: "min-h-9 px-3.5 py-1.5 text-sm",
+  lg: "min-h-11 px-[18px] py-2 text-sm",
 };
 
 export function Button({
@@ -32,7 +33,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-50",
+        "control-pressable inline-flex items-center justify-center gap-1.5 rounded-[var(--radius-control)] font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] disabled:pointer-events-none disabled:opacity-45",
         variantClasses[variant],
         sizeClasses[size],
         loading && "cursor-wait",
