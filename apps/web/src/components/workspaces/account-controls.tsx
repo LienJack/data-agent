@@ -21,7 +21,7 @@ export function AccountControls() {
           router.refresh();
         });
       }}
-      className="rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-[var(--color-bg-tertiary)] disabled:opacity-50"
+      className="control-pressable rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.8)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)] disabled:opacity-50"
     >
       {pending ? t("workspace.signingOut") : t("workspace.signOut")}
     </button>

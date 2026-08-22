@@ -1,4 +1,4 @@
-import { ArrowUpRight, Buildings, Warning } from "@phosphor-icons/react/dist/ssr";
+import { ArrowRight, Buildings, CirclesFour, Warning } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AccountControls } from "@/components/workspaces/account-controls";
@@ -17,58 +17,85 @@ export default async function WorkspacePickerPage() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-[var(--color-bg-secondary)]">
-      <div className="page-frame max-w-6xl">
-        <header className="page-heading">
-          <div>
-            <p className="page-eyebrow">Data Agent / Workspaces</p>
-            <h1 className="page-title">选择分析工作空间</h1>
-            <p className="page-description font-mono text-[11px]">
-              当前账号：{session.value.principal_id} · {session.value.system_role}
-            </p>
+    <main className="min-h-[100dvh] bg-[var(--color-bg-canvas)] px-5 py-6 sm:px-8 sm:py-8">
+      <div className="mx-auto w-full max-w-[920px]">
+        <header className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-[10px] bg-[var(--color-accent)] text-white shadow-[0_10px_24px_-14px_rgb(38_71_168_/_0.8)]">
+              <CirclesFour aria-hidden="true" size={18} weight="fill" />
+            </span>
+            <span className="text-sm font-semibold tracking-[-0.02em]">Data Agent</span>
           </div>
           <AccountControls />
         </header>
 
+        <section className="pb-8 pt-20 sm:pb-10 sm:pt-28">
+          <p className="page-eyebrow">Your workspaces</p>
+          <h1 className="page-title max-w-2xl">选择要继续工作的空间</h1>
+          <p className="page-description">
+            你只会看到当前身份有权访问的工作空间。角色和能力将在进入后重新校验。
+          </p>
+        </section>
+
         {workspaces.value.length === 0 ? (
-          <section className="mt-10 border-y border-dashed border-[var(--color-border-default)] py-16 text-center">
-            <Buildings
-              aria-hidden="true"
-              className="mx-auto text-[var(--color-text-muted)]"
-              size={28}
-            />
-            <h2 className="text-base font-semibold">尚无可访问的工作空间</h2>
-            <p className="mt-2 text-sm text-[var(--color-text-secondary)]">
+          <section className="surface-reading flex min-h-64 flex-col items-center justify-center rounded-[var(--radius-panel)] border px-6 text-center">
+            <span className="flex size-11 items-center justify-center rounded-[14px] bg-[var(--color-accent-soft)] text-[var(--color-accent)]">
+              <Buildings aria-hidden="true" size={22} />
+            </span>
+            <h2 className="mt-5 text-base font-semibold">尚无可访问的工作空间</h2>
+            <p className="mt-2 max-w-md text-sm leading-6 text-[var(--color-text-secondary)]">
               请联系超级管理员创建工作空间并分配成员角色。
             </p>
           </section>
         ) : (
-          <section className="mt-8 grid gap-3 md:grid-cols-2">
-            {workspaces.value.map((access) => (
-              <Link
-                key={access.workspace.workspace_id}
-                href={`/w/${access.workspace.workspace_id}`}
-                className="group rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-surface)] p-5 shadow-[var(--shadow-float)] hover:-translate-y-0.5 hover:border-[var(--color-border-focused)]"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-semibold">{access.workspace.display_name}</h2>
-                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">
-                      {access.workspace.slug}
-                    </p>
-                  </div>
-                  <span className="rounded bg-emerald-50 px-2 py-1 font-mono text-[9px] font-semibold text-emerald-700">
-                    {access.role}
+          <section
+            className="surface-reading overflow-hidden rounded-[var(--radius-panel)] border"
+            aria-label="可访问的工作空间"
+          >
+            <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-5 py-3.5">
+              <p className="text-xs font-medium text-[var(--color-text-secondary)]">工作空间</p>
+              <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
+                {workspaces.value.length} AVAILABLE
+              </p>
+            </div>
+            <div className="divide-y divide-[var(--color-border-default)]">
+              {workspaces.value.map((access) => (
+                <Link
+                  key={access.workspace.workspace_id}
+                  href={`/w/${access.workspace.workspace_id}`}
+                  className="control-pressable group grid min-h-20 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-4 px-4 py-3 hover:bg-[var(--color-accent-soft)] sm:px-5"
+                >
+                  <span className="flex size-10 items-center justify-center rounded-[12px] border border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] text-sm font-semibold text-[var(--color-accent)] group-hover:border-[color-mix(in_srgb,var(--color-accent)_24%,white)] group-hover:bg-white">
+                    {access.workspace.display_name.slice(0, 1).toUpperCase()}
                   </span>
-                </div>
-                <div className="mt-6 flex items-center justify-between text-xs text-[var(--color-text-secondary)] group-hover:text-[var(--color-accent)]">
-                  <span>进入工作空间</span>
-                  <ArrowUpRight aria-hidden="true" size={17} />
-                </div>
-              </Link>
-            ))}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">
+                      {access.workspace.display_name}
+                    </span>
+                    <span className="mt-1 block truncate font-mono text-[10px] text-[var(--color-text-muted)]">
+                      {access.workspace.slug}
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-3">
+                    <span className="hidden rounded-full bg-[var(--color-accent-soft)] px-2.5 py-1 font-mono text-[9px] font-semibold text-[var(--color-accent)] sm:inline">
+                      {access.role}
+                    </span>
+                    <ArrowRight
+                      aria-hidden="true"
+                      className="text-[var(--color-text-muted)] transition-transform group-hover:translate-x-0.5 group-hover:text-[var(--color-accent)]"
+                      size={17}
+                    />
+                  </span>
+                </Link>
+              ))}
+            </div>
           </section>
         )}
+
+        <footer className="mt-6 flex flex-wrap items-center justify-between gap-3 text-[10px] text-[var(--color-text-muted)]">
+          <span className="font-mono">{session.value.principal_id}</span>
+          <span className="font-mono">SYSTEM ROLE · {session.value.system_role}</span>
+        </footer>
       </div>
     </main>
   );
@@ -76,11 +103,13 @@ export default async function WorkspacePickerPage() {
 
 function IdentityUnavailable({ message }: { message: string }) {
   return (
-    <main className="flex min-h-[100dvh] items-center justify-center bg-[var(--color-bg-secondary)] p-6">
-      <section className="w-full max-w-md border-l-2 border-amber-500 bg-amber-50 px-5 py-4">
-        <Warning aria-hidden="true" className="mb-3 text-amber-700" size={22} />
-        <h1 className="font-semibold text-amber-900">身份服务尚未就绪</h1>
-        <p className="mt-2 text-sm text-amber-800">{message}</p>
+    <main className="flex min-h-[100dvh] items-center justify-center bg-[var(--color-bg-canvas)] p-6">
+      <section className="surface-reading w-full max-w-md rounded-[var(--radius-panel)] border p-6">
+        <span className="flex size-10 items-center justify-center rounded-[12px] bg-amber-50 text-amber-700">
+          <Warning aria-hidden="true" size={20} weight="fill" />
+        </span>
+        <h1 className="mt-5 text-lg font-semibold tracking-[-0.025em]">身份服务尚未就绪</h1>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{message}</p>
       </section>
     </main>
   );

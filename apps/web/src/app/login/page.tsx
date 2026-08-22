@@ -1,6 +1,6 @@
 "use client";
 
-import { CirclesFour, ShieldCheck } from "@phosphor-icons/react";
+import { ArrowRight, CirclesFour, Database, LockKey, ShieldCheck } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { authClient } from "@/lib/auth-client";
@@ -39,35 +39,71 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-[100dvh] grid-rows-[128px_minmax(0,1fr)] bg-[var(--color-bg-surface)] lg:grid-cols-[minmax(300px,0.8fr)_minmax(520px,1.2fr)] lg:grid-rows-1">
-      <aside className="relative flex min-h-28 flex-col justify-between overflow-hidden bg-[var(--color-text-primary)] p-5 text-white sm:p-8 lg:min-h-[100dvh] lg:p-10">
-        <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-md bg-white text-[var(--color-text-primary)]">
-            <CirclesFour aria-hidden="true" size={19} weight="fill" />
-          </span>
-          <div>
-            <p className="text-sm font-semibold">Data Agent</p>
-            <p className="font-mono text-[9px] text-white/55">ANALYTICS CONTROL PLANE</p>
-          </div>
-        </div>
-        <div className="hidden max-w-sm lg:block">
-          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-4 border-t border-white/15 pt-5 text-xs">
-            <ShieldCheck aria-hidden="true" className="text-emerald-300" size={18} />
+    <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(380px,0.92fr)_minmax(520px,1.08fr)]">
+      <aside className="relative isolate flex min-h-[180px] overflow-hidden bg-[#0b1437] px-6 py-6 text-white sm:min-h-[220px] sm:px-10 sm:py-8 lg:min-h-[100dvh] lg:px-[clamp(40px,5vw,76px)] lg:py-10">
+        <div
+          aria-hidden="true"
+          className="absolute -right-20 top-[18%] -z-10 size-[420px] rounded-full bg-[#315bd8]/30 blur-[110px]"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -bottom-52 -left-32 -z-10 size-[500px] rounded-full bg-[#6f8cff]/16 blur-[130px]"
+        />
+
+        <div className="flex w-full flex-col justify-between gap-12">
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-[10px] bg-white text-[#16275e] shadow-[0_10px_30px_rgb(0_0_0_/_0.2)]">
+              <CirclesFour aria-hidden="true" size={19} weight="fill" />
+            </span>
             <div>
-              <p className="font-medium text-white/90">Workspace authority</p>
-              <p className="mt-1 leading-5 text-white/50">Identity · role · environment</p>
+              <p className="text-sm font-semibold tracking-[-0.01em]">Data Agent</p>
+              <p className="mt-0.5 font-mono text-[9px] uppercase tracking-[0.08em] text-white/48">
+                Analytics workspace
+              </p>
+            </div>
+          </div>
+
+          <div className="hidden max-w-[520px] lg:block">
+            <p className="font-mono text-[10px] font-semibold uppercase tracking-[0.09em] text-[#9fb2ff]">
+              Governed intelligence
+            </p>
+            <h2 className="mt-5 text-[clamp(34px,4vw,58px)] font-semibold leading-[1.04] tracking-[-0.055em] text-white">
+              从可信数据，
+              <br />
+              到可执行答案。
+            </h2>
+            <p className="mt-6 max-w-md text-sm leading-7 text-white/56">
+              在一个工作空间中完成数据连接、语义治理、分析运行与评测，让每一个结论都有边界和依据。
+            </p>
+          </div>
+
+          <div className="hidden grid-cols-2 gap-3 lg:grid">
+            <div className="rounded-[16px] border border-white/10 bg-white/[0.055] p-4 backdrop-blur-sm">
+              <Database aria-hidden="true" className="text-[#aebdff]" size={18} />
+              <p className="mt-5 text-xs font-medium text-white/88">Evidence grounded</p>
+              <p className="mt-1 text-[11px] leading-5 text-white/42">数据、语义与运行证据可追溯</p>
+            </div>
+            <div className="rounded-[16px] border border-white/10 bg-white/[0.055] p-4 backdrop-blur-sm">
+              <ShieldCheck aria-hidden="true" className="text-[#aebdff]" size={18} />
+              <p className="mt-5 text-xs font-medium text-white/88">Authority first</p>
+              <p className="mt-1 text-[11px] leading-5 text-white/42">
+                身份、角色与环境共同约束能力
+              </p>
             </div>
           </div>
         </div>
       </aside>
 
-      <section className="flex items-center px-5 py-12 sm:px-10 lg:px-[10vw]">
+      <section className="flex items-center justify-center px-6 py-10 sm:px-10 sm:py-12 lg:px-[8vw]">
         <div className="w-full max-w-[420px]">
+          <div className="mb-10 flex size-11 items-center justify-center rounded-[14px] bg-[var(--color-accent-soft)] text-[var(--color-accent)] lg:hidden">
+            <LockKey aria-hidden="true" size={21} weight="fill" />
+          </div>
           <p className="page-eyebrow">Secure access</p>
-          <h1 className="page-title">登录工作台</h1>
-          <p className="page-description">账号由超级管理员创建，系统不开放自主注册。</p>
+          <h1 className="page-title">欢迎回来</h1>
+          <p className="page-description">登录 Data Agent 工作台，继续你的分析与治理任务。</p>
 
-          <form onSubmit={submit} className="mt-8 space-y-5">
+          <form onSubmit={submit} className="mt-9 space-y-5">
             <label className="block">
               <span className="text-xs font-medium text-[var(--color-text-secondary)]">
                 邮箱或用户名
@@ -77,7 +113,7 @@ export default function LoginPage() {
                 type="text"
                 autoComplete="username"
                 required
-                className="mt-2 h-12 w-full rounded-md border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
+                className="mt-2 h-12 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[var(--color-border-focused)] focus:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)]"
               />
             </label>
             <label className="block">
@@ -87,13 +123,13 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
-                className="mt-2 h-12 w-full rounded-md border border-[var(--color-border-default)] px-3 text-sm outline-none focus:border-[var(--color-border-focused)]"
+                className="mt-2 h-12 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[var(--color-border-focused)] focus:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)]"
               />
             </label>
             {error && (
               <p
                 role="alert"
-                className="border-l-2 border-red-500 bg-red-50 px-3 py-2 text-xs text-red-700"
+                className="rounded-[var(--radius-control)] border border-red-200 bg-red-50 px-3.5 py-3 text-xs leading-5 text-red-700"
               >
                 {error}
               </p>
@@ -101,11 +137,17 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={pending}
-              className="h-12 w-full rounded-md bg-[var(--color-text-primary)] text-sm font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:opacity-50"
+              className="control-pressable flex h-12 w-full items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--color-accent)] text-sm font-semibold text-white shadow-[0_12px_26px_-16px_rgb(38_71_168_/_0.78)] hover:bg-[var(--color-accent-hover)] disabled:cursor-wait disabled:opacity-55"
             >
-              {pending ? "正在验证…" : "登录"}
+              <span>{pending ? "正在验证…" : "登录工作台"}</span>
+              {!pending && <ArrowRight aria-hidden="true" size={16} weight="bold" />}
             </button>
           </form>
+
+          <div className="mt-8 flex items-start gap-2.5 border-t border-[var(--color-border-default)] pt-5 text-[11px] leading-5 text-[var(--color-text-muted)]">
+            <LockKey aria-hidden="true" className="mt-0.5 shrink-0" size={14} />
+            <p>账号由超级管理员创建，系统不开放自主注册。登录行为会按工作空间权限审计。</p>
+          </div>
         </div>
       </section>
     </main>
