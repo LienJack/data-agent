@@ -6,6 +6,7 @@ import {
   analysisSandboxProgramPayloadSchema,
   atomicClaimV3PayloadSchema,
   buildAnalysisContext,
+  type CausalAttributionAuthorityClosure,
   type CausalEstimatePayload,
   causalAttributionAuthorityClosureSchema,
   sha256ContentHash,
@@ -173,7 +174,7 @@ async function contextFixture(
 }
 
 async function authorityFixture(questionHash: string) {
-  const material = {
+  const material: Omit<CausalAttributionAuthorityClosure, "closure_hash"> = {
     protocol_version: "causal-attribution-authority-closure@1.0.0",
     eligibility: {
       decision_id: id(30),
@@ -278,7 +279,7 @@ async function authorityFixture(questionHash: string) {
       data_generating_process_version: "scm-promotion@1",
       metadata: {},
     },
-  } as const;
+  };
   return causalAttributionAuthorityClosureSchema.parse({
     ...material,
     closure_hash: await computeAttributionAuthorityClosureHash(material),

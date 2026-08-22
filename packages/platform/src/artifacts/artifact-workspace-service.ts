@@ -4,6 +4,7 @@ import {
   ARTIFACT_WORKSPACE_EXPORTER_VERSION,
   ARTIFACT_WORKSPACE_RENDERER_VERSION,
   ARTIFACT_WORKSPACE_RENDERER_VERSION_V2,
+  ARTIFACT_WORKSPACE_RENDERER_VERSION_V3,
   type ArtifactExportCommand,
   type ArtifactExportReceipt,
   type ArtifactPreviewResult,
@@ -13,6 +14,7 @@ import {
   artifactExportCommandSchema,
   artifactPreviewResultSchema,
   artifactPreviewResultV2Schema,
+  artifactPreviewResultV3Schema,
   artifactReferenceIdentity,
   artifactReferenceSchema,
   artifactWorkspaceProjectionSchema,
@@ -25,6 +27,7 @@ import {
   SPREADSHEET_FORMULA_POLICY_VERSION,
   sandboxResultSchema,
   verifyArtifactWorkspaceChartDocumentV2,
+  verifyArtifactWorkspaceChartDocumentV3,
   verifyArtifactWorkspaceDocument,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
@@ -92,6 +95,50 @@ export async function projectArtifactDocument(
   sourceReference: ArtifactReference,
   viewport: Readonly<{ offset: number; limit: number }>,
 ): Promise<ArtifactPreviewResult> {
+  const isChartV3 =
+    typeof documentInput === "object" &&
+    documentInput !== null &&
+    "schema_version" in documentInput &&
+    documentInput.schema_version === "artifact-workspace-chart-document@3.0.0";
+  if (isChartV3) {
+    let document: Awaited<ReturnType<typeof verifyArtifactWorkspaceChartDocumentV3>>;
+    try {
+      document = await verifyArtifactWorkspaceChartDocumentV3(documentInput);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "ARTIFACT_PREVIEW_INPUT_INVALID";
+      if (code === "CHART_DATA_LIMIT_EXCEEDED") {
+        throw new ArtifactWorkspaceError(code, "Analysis Chart projection 超出受治理数据上限。");
+      }
+      if (code === "ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH") {
+        throw new ArtifactWorkspaceError(code, "Analysis Chart dataset hash 与投影不一致。");
+      }
+      if (code === "ARTIFACT_WORKSPACE_CHART_DOCUMENT_HASH_MISMATCH") {
+        throw new ArtifactWorkspaceError(
+          "ARTIFACT_SOURCE_HASH_MISMATCH",
+          "Analysis Chart document hash 不一致。",
+        );
+      }
+      throw new ArtifactWorkspaceError(
+        "ARTIFACT_PREVIEW_INPUT_INVALID",
+        "Analysis Chart document 未通过 strict preview contract。",
+      );
+    }
+    requireSourceIdentity(sourceReference, document.document_ref);
+    return artifactPreviewResultV3Schema.parse({
+      schema_version: "artifact-preview-result@3.0.0",
+      source_ref: document.document_ref,
+      renderer_version: ARTIFACT_WORKSPACE_RENDERER_VERSION_V3,
+      source_refs: document.source_refs,
+      provenance: document.provenance,
+      projection: document.projection,
+      viewport: {
+        offset: 0,
+        limit: Math.max(1, document.projection.table.rows.length),
+        total_rows: document.projection.table.total_rows,
+        truncated: false,
+      },
+    });
+  }
   const isChartV2 =
     typeof documentInput === "object" &&
     documentInput !== null &&

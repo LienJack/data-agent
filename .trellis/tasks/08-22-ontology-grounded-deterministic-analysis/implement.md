@@ -16,7 +16,7 @@ green sub-slice as completion of the full task.
   execution, idempotent artifact submission, repair/fence semantics, and integration coverage.
 - [x] U8 Root Cause and L5: implement bounded ontology-grounded discovery, reuse Attribution authority, add identification/estimate/certificate
   payloads and gates, and keep insufficient evidence HOLD.
-- [ ] U5 Projection and Workbench: add safe platform projections, chart protocol evolution, evidence-grounded insight selection, replay-stable
+- [x] U5 Projection and Workbench: add safe platform projections, chart protocol evolution, evidence-grounded insight selection, replay-stable
   report UI, evidence drawer, and disclosure/sensitivity tests.
 - [ ] U6 Independent Evaluation: add deterministic/generated/causal oracles, semantic e-commerce fixtures, cross-layer acceptance, adversarial
   cases, and hard-fail scoring.
@@ -137,3 +137,23 @@ green sub-slice as completion of the full task.
   - Contracts full unit: 81 files / 855 tests passed.
   - Research full unit: 20 files / 143 tests passed; targeted root-cause suite: 7 tests.
   - Worker typecheck passed; targeted L4/L5 runtime suite: 2 tests, including the complete attested certificate chain and pre-sandbox HOLD.
+
+### U5 Artifact Projection and Analysis Workbench
+
+- Added sealed `ArtifactWorkspaceChartDocumentV3`/preview contracts that bind QueryEvidence plus DerivedAnalysisEvidence, retain V2 readers,
+  enforce bounded finite tables and support deterministic trend, interval, relationship, distribution, anomaly, signed-contribution, priority,
+  and forecast chart mappings without browser expressions.
+- Added server-owned chart and Run Projection builders. They verify exact payload hashes, scope/run, plan/completion/node/evidence closure, accept
+  methods and charts only from successful committed nodes, suppress failed forecasts and oversized chart data, downgrade invalid/stale L5
+  certificates to HOLD, and sort public output for replay stability.
+- Added evidence-grounded Fact/Pattern/Driver/Interpretation/Recommendation Candidate selection. Statements must be exact accepted Claim content;
+  invented numbers, entities, causes, duplicate findings, non-diagnostic drivers, and recommendations without a published playbook are rejected.
+- Added the deterministic workbench section and VChart V3 renderer with READY/PARTIAL/HOLD, L2/L4/L5 labels, Candidate disclosure, table fallback,
+  root-cause ladder, methods/Evidence Drawer, runtime/lock/program/receipt hashes, and unified limitations. A live Next.js render was inspected at
+  desktop and narrow layout; the information hierarchy, disclosures, fallback structure, and accessibility tree were coherent.
+- Validation:
+  - Contracts full unit: 81 files / 855 tests passed; Contracts/Platform/Research/Web typechecks passed.
+  - Research full unit: 23 files / 157 tests passed; Platform artifact suites: 4 files / 12 tests.
+  - U5 targeted Web/Platform/Research: 6 files / 27 tests passed after final chart allowlist update.
+  - Web full suite: 116 files / 444 tests passed, 1 skipped, with two unrelated pre-existing failures in workspace-navigation and
+    semantic-studio-agent-only source assertions; all U5 Web suites passed.

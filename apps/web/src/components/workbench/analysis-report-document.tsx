@@ -1,4 +1,5 @@
 import type { RunProjection } from "@/lib/run-projection";
+import { DeterministicAnalysisSections } from "./deterministic-analysis-sections";
 
 interface AnalysisReportDocumentProps {
   projection: RunProjection | null;
@@ -123,6 +124,10 @@ export function AnalysisReportDocument({
           <p className="mt-3 text-sm text-[var(--color-text-muted)]">尚无已封存的声明与证据。</p>
         )}
       </section>
+
+      {projection.analysis ? (
+        <DeterministicAnalysisSections analysis={projection.analysis} />
+      ) : null}
 
       <section
         className="border-t border-[var(--color-border-default)] py-7"

@@ -44,6 +44,7 @@ describe("@data-agent/research 导出边界", () => {
         "evaluateObservationPredicate",
         "materialSchemaFrontierMatches",
         "projectAnalysisReportCandidate",
+        "selectEvidenceGroundedInsights",
         "unresolvedCoverageObligationRefs",
         "verifyAnalysisDerivation",
         "verifyAnalysisProgram",

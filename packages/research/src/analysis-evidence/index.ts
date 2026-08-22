@@ -12,6 +12,13 @@ export {
   createIdentificationPlan,
 } from "./causal-identification.js";
 export {
+  type AcceptedInsightClaim,
+  type InsightCandidate,
+  type InsightTier,
+  type SelectedInsight,
+  selectEvidenceGroundedInsights,
+} from "./insight-selector.js";
+export {
   computeAnalysisProgramHash,
   type ProgramVerification,
   type ProgramVerificationFailure,

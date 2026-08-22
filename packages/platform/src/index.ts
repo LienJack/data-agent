@@ -4,6 +4,7 @@ export * from "./agents/postgres-agent-team-trace.js";
 export * from "./agents/postgres-product-team-artifact-store.js";
 export * from "./agents/postgres-team-run-store.js";
 export * from "./artifacts/artifact-workspace-service.js";
+export * from "./artifacts/derived-analysis-projection.js";
 export * from "./artifacts/postgres-artifact-workspace-store.js";
 export * from "./artifacts/query-evidence-chart.js";
 export * from "./attribution/published-f9-lifecycle.js";

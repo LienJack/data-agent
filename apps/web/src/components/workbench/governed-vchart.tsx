@@ -1,11 +1,13 @@
 "use client";
 
-import type { ArtifactPreviewResultV2 } from "@data-agent/contracts";
+import type { ArtifactPreviewResultV2, ArtifactPreviewResultV3 } from "@data-agent/contracts";
 import VChartCore from "@visactor/vchart/esm/vchart-simple";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toGovernedVChartSpec } from "./governed-vchart-spec";
 
-type ChartProjection = ArtifactPreviewResultV2["projection"];
+type ChartProjection =
+  | ArtifactPreviewResultV2["projection"]
+  | ArtifactPreviewResultV3["projection"];
 
 export default function GovernedVChart({
   projection,

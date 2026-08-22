@@ -1,3 +1,5 @@
+import type { DeterministicAnalysisRunProjection } from "@data-agent/contracts";
+
 /**
  * 前端 Run Projection 数据类型。
  *
@@ -31,6 +33,8 @@ export interface RunProjection {
   experienceOnly?: boolean;
   /** L3–L5 路线未交付标记 */
   l2Only: boolean;
+  /** 仅由服务端 strict projection 注入；组件不得从原始事件重建。 */
+  analysis?: DeterministicAnalysisRunProjection;
 }
 
 export interface Hypothesis {

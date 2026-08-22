@@ -17,6 +17,8 @@ import {
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION = "artifact-workspace-renderer@1.0.0";
 export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V2 = "artifact-workspace-renderer@2.0.0";
 export const QUERY_EVIDENCE_CHART_TRANSFORM_VERSION = "query-evidence-chart@1.0.0";
+export const ARTIFACT_WORKSPACE_RENDERER_VERSION_V3 = "artifact-workspace-renderer@3.0.0";
+export const DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION = "derived-analysis-chart@1.0.0";
 export const ARTIFACT_WORKSPACE_EXPORTER_VERSION = "artifact-workspace-exporter@1.0.0";
 export const SPREADSHEET_FORMULA_POLICY_VERSION = "spreadsheet-formula-neutralization@1.0.0";
 
@@ -346,6 +348,210 @@ export async function verifyArtifactWorkspaceChartDocumentV2(input: unknown) {
   return document;
 }
 
+export const artifactWorkspaceChartProjectionV3Schema = z
+  .strictObject({
+    kind: z.literal("CHART"),
+    chart_type: z.enum([
+      "LINE",
+      "BAR",
+      "HORIZONTAL_BAR",
+      "AREA_RANGE",
+      "SCATTER",
+      "RELATIONSHIP",
+      "DISTRIBUTION",
+      "SIGNED_CONTRIBUTION",
+      "PRIORITY_MATRIX",
+      "FORECAST_INTERVAL",
+    ]),
+    title: z.string().min(1).max(160),
+    description: z.string().max(1_000).nullable(),
+    unit: z.string().min(1).max(64).nullable(),
+    x_key: columnKeySchema,
+    y_keys: z.array(columnKeySchema).min(1).max(4),
+    lower_bound_key: columnKeySchema.nullable(),
+    upper_bound_key: columnKeySchema.nullable(),
+    series_key: columnKeySchema.nullable(),
+    legend: z.strictObject({ visible: z.boolean() }),
+    evidence_level: z.enum(["L2_OBSERVATION", "L4_DISCOVERY", "L5_CERTIFIED"]),
+    table: artifactWorkspaceTableProjectionSchema,
+  })
+  .superRefine((projection, ctx) => {
+    const columns = new Map(projection.table.columns.map((column) => [column.key, column]));
+    const numericKeys = [
+      ...projection.y_keys,
+      ...(projection.lower_bound_key ? [projection.lower_bound_key] : []),
+      ...(projection.upper_bound_key ? [projection.upper_bound_key] : []),
+    ];
+    if (!columns.has(projection.x_key)) {
+      ctx.addIssue({ code: "custom", message: "Chart V3 x_key 必须引用 table column。" });
+    }
+    if (
+      (projection.lower_bound_key === null) !== (projection.upper_bound_key === null) ||
+      (["AREA_RANGE", "FORECAST_INTERVAL"].includes(projection.chart_type) &&
+        projection.lower_bound_key === null) ||
+      (!["AREA_RANGE", "FORECAST_INTERVAL"].includes(projection.chart_type) &&
+        projection.lower_bound_key !== null) ||
+      new Set(projection.y_keys).size !== projection.y_keys.length ||
+      numericKeys.some((key) => columns.get(key)?.data_type !== "NUMBER") ||
+      (projection.series_key !== null && !columns.has(projection.series_key))
+    ) {
+      ctx.addIssue({ code: "custom", message: "Chart V3 field binding 无效。" });
+    }
+    const maximumRows = ["LINE", "AREA_RANGE", "FORECAST_INTERVAL"].includes(projection.chart_type)
+      ? 512
+      : ["SCATTER", "RELATIONSHIP", "DISTRIBUTION", "PRIORITY_MATRIX"].includes(
+            projection.chart_type,
+          )
+        ? 2_000
+        : 64;
+    if (
+      projection.table.rows.length < 1 ||
+      projection.table.rows.length > maximumRows ||
+      projection.table.total_rows !== projection.table.rows.length
+    ) {
+      ctx.addIssue({ code: "custom", message: "CHART_DATA_LIMIT_EXCEEDED" });
+    }
+    for (const [rowIndex, row] of projection.table.rows.entries()) {
+      for (const key of numericKeys) {
+        if (typeof row[key] !== "number" || !Number.isFinite(row[key])) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Chart V3 numeric field 必须是 finite number。",
+            path: ["table", "rows", rowIndex, key],
+          });
+        }
+      }
+      if (
+        projection.lower_bound_key &&
+        projection.upper_bound_key &&
+        Number(row[projection.lower_bound_key]) > Number(row[projection.upper_bound_key])
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Chart V3 interval lower 不能大于 upper。",
+          path: ["table", "rows", rowIndex],
+        });
+      }
+    }
+    if (new TextEncoder().encode(canonicalizeJson(projection)).byteLength > 512 * 1024) {
+      ctx.addIssue({ code: "custom", message: "CHART_DATA_LIMIT_EXCEEDED" });
+    }
+  });
+
+const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
+  transform_version: z.literal(DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION),
+  dataset_hash: contentHashSchema,
+  resolved_context: artifactWorkspaceResolvedContextIdentitySchema,
+  algorithm_version: z.string().min(1).max(128),
+  parameter_hash: contentHashSchema,
+  input_closure_hash: contentHashSchema,
+  runtime_digest: contentHashSchema,
+  dependency_lock_digest: contentHashSchema,
+});
+
+export const artifactWorkspaceChartDocumentV3Schema = z
+  .strictObject({
+    schema_version: z.literal("artifact-workspace-chart-document@3.0.0"),
+    document_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
+    source_refs: z.strictObject({
+      query_evidence_refs: z.array(artifactReferenceFor("QueryEvidence")).min(1).max(16),
+      derived_evidence_ref: artifactReferenceFor("DerivedAnalysisEvidence"),
+    }),
+    provenance: artifactWorkspaceChartProvenanceV3Schema,
+    projection: artifactWorkspaceChartProjectionV3Schema,
+  })
+  .superRefine((document, ctx) => {
+    const sources = [
+      ...document.source_refs.query_evidence_refs,
+      document.source_refs.derived_evidence_ref,
+    ];
+    if (sources.some((reference) => !sameScopeAndRun(document.document_ref, reference))) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Chart V3 sources 必须属于 document exact scope/run。",
+      });
+    }
+    if (
+      new Set(document.source_refs.query_evidence_refs.map(artifactReferenceIdentity)).size !==
+      document.source_refs.query_evidence_refs.length
+    ) {
+      ctx.addIssue({ code: "custom", message: "Chart V3 QueryEvidence refs 必须唯一。" });
+    }
+  });
+
+export async function computeArtifactWorkspaceChartDatasetV3Hash(input: unknown) {
+  const projection = artifactWorkspaceChartProjectionV3Schema.parse(input);
+  return sha256ContentHash({
+    chart_type: projection.chart_type,
+    x_key: projection.x_key,
+    y_keys: projection.y_keys,
+    lower_bound_key: projection.lower_bound_key,
+    upper_bound_key: projection.upper_bound_key,
+    series_key: projection.series_key,
+    unit: projection.unit,
+    columns: projection.table.columns,
+    rows: projection.table.rows,
+  });
+}
+
+export async function computeArtifactWorkspaceChartDocumentV3Hash(input: unknown) {
+  const document = artifactWorkspaceChartDocumentV3Schema.parse(input);
+  const { content_hash: _contentHash, ...documentReference } = document.document_ref;
+  return sha256ContentHash({
+    schema_version: document.schema_version,
+    document_ref: documentReference,
+    source_refs: document.source_refs,
+    provenance: document.provenance,
+    projection: document.projection,
+  });
+}
+
+export async function buildArtifactWorkspaceChartDocumentV3(input: unknown) {
+  const document = artifactWorkspaceChartDocumentV3Schema.parse(input);
+  const withDatasetHash = artifactWorkspaceChartDocumentV3Schema.parse({
+    ...document,
+    provenance: {
+      ...document.provenance,
+      dataset_hash: await computeArtifactWorkspaceChartDatasetV3Hash(document.projection),
+    },
+  });
+  return artifactWorkspaceChartDocumentV3Schema.parse({
+    ...withDatasetHash,
+    document_ref: {
+      ...withDatasetHash.document_ref,
+      content_hash: await computeArtifactWorkspaceChartDocumentV3Hash(withDatasetHash),
+    },
+  });
+}
+
+export async function verifyArtifactWorkspaceChartDocumentV3(input: unknown) {
+  let document: z.infer<typeof artifactWorkspaceChartDocumentV3Schema>;
+  try {
+    document = artifactWorkspaceChartDocumentV3Schema.parse(input);
+  } catch (error) {
+    if (
+      error instanceof z.ZodError &&
+      error.issues.some(({ message }) => message === "CHART_DATA_LIMIT_EXCEEDED")
+    ) {
+      throw new TypeError("CHART_DATA_LIMIT_EXCEEDED");
+    }
+    throw error;
+  }
+  if (
+    (await computeArtifactWorkspaceChartDatasetV3Hash(document.projection)) !==
+    document.provenance.dataset_hash
+  ) {
+    throw new TypeError("ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH");
+  }
+  if (
+    (await computeArtifactWorkspaceChartDocumentV3Hash(document)) !==
+    document.document_ref.content_hash
+  ) {
+    throw new TypeError("ARTIFACT_WORKSPACE_CHART_DOCUMENT_HASH_MISMATCH");
+  }
+  return document;
+}
+
 function sameScopeAndRun(left: ArtifactReference, right: ArtifactReference): boolean {
   return (
     left.app_id === right.app_id &&
@@ -437,10 +643,143 @@ export const artifactPreviewResultV2Schema = z.strictObject({
   }),
 });
 
+export const artifactPreviewResultV3Schema = z.strictObject({
+  schema_version: z.literal("artifact-preview-result@3.0.0"),
+  source_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
+  renderer_version: z.literal(ARTIFACT_WORKSPACE_RENDERER_VERSION_V3),
+  source_refs: z.strictObject({
+    query_evidence_refs: z.array(artifactReferenceFor("QueryEvidence")).min(1).max(16),
+    derived_evidence_ref: artifactReferenceFor("DerivedAnalysisEvidence"),
+  }),
+  provenance: artifactWorkspaceChartProvenanceV3Schema,
+  projection: artifactWorkspaceChartProjectionV3Schema,
+  viewport: z.strictObject({
+    offset: z.number().int().nonnegative(),
+    limit: z.number().int().positive().max(2_000),
+    total_rows: z.number().int().nonnegative().nullable(),
+    truncated: z.boolean(),
+  }),
+});
+
 export const artifactPreviewResultSchema = z.discriminatedUnion("schema_version", [
   artifactPreviewResultV1Schema,
   artifactPreviewResultV2Schema,
+  artifactPreviewResultV3Schema,
 ]);
+
+const deterministicAnalysisFindingSchema = z.strictObject({
+  finding_id: z.string().min(1).max(128),
+  tier: z.enum(["FACT", "PATTERN", "DRIVER", "INTERPRETATION", "RECOMMENDATION_CANDIDATE"]),
+  statement: z.string().min(1).max(2_000),
+  evidence_ref: z.union([
+    artifactReferenceFor("DerivedAnalysisEvidence"),
+    artifactReferenceFor("DiscoveryCandidate"),
+    artifactReferenceFor("CausalEstimate"),
+  ]),
+  evidence_level: z.enum(["L2_OBSERVATION", "L4_DISCOVERY", "L5_CERTIFIED"]),
+  status: z.enum(["ACCEPTED", "CANDIDATE", "HOLD"]),
+  disclosure_codes: z.array(z.string().min(1).max(128)).max(16),
+});
+
+export const deterministicAnalysisRunProjectionSchema = z
+  .strictObject({
+    schema_version: z.literal("deterministic-analysis-run-projection@1.0.0"),
+    terminal: z.enum(["READY", "PARTIAL", "HOLD"]),
+    completion_ref: artifactReferenceFor("AnalysisCompletionReceipt"),
+    nodes: z
+      .array(
+        z.strictObject({
+          node_id: z.string().min(1).max(128),
+          skill_id: z.string().min(1).max(128),
+          criticality: z.enum(["CRITICAL", "OPTIONAL"]),
+          status: z.enum(["SUCCEEDED", "SKIPPED", "FAILED", "CANCELLED"]),
+          evidence_ref: artifactReferenceFor("DerivedAnalysisEvidence").nullable(),
+          reason_codes: z.array(z.string().min(1).max(128)).max(16),
+        }),
+      )
+      .min(1)
+      .max(64),
+    findings: z.array(deterministicAnalysisFindingSchema).max(64),
+    charts: z.array(artifactReferenceFor("ArtifactWorkspaceDocument")).max(16),
+    methods: z
+      .array(
+        z.strictObject({
+          evidence_ref: artifactReferenceFor("DerivedAnalysisEvidence"),
+          skill_id: z.string().min(1).max(128),
+          algorithm_version: z.string().min(1).max(128),
+          parameter_hash: contentHashSchema,
+          input_closure_hash: contentHashSchema,
+          program_ref: artifactReferenceFor("SandboxProgram"),
+          receipt_ref: artifactReferenceFor("SandboxExecutionReceipt"),
+          runtime_digest: contentHashSchema,
+          dependency_lock_digest: contentHashSchema,
+          sample_size: z.number().int().nonnegative(),
+          limitation_codes: z.array(z.string().min(1).max(128)).max(32),
+        }),
+      )
+      .max(64),
+    root_cause: z.strictObject({
+      level: z.enum(["NONE", "L4_DISCOVERY", "L5_CERTIFIED", "HOLD"]),
+      candidate_ref: artifactReferenceFor("DiscoveryCandidate").nullable(),
+      estimate_ref: artifactReferenceFor("CausalEstimate").nullable(),
+      certificate_ref: artifactReferenceFor("IdentificationCertificate").nullable(),
+      disclosures: z.array(z.string().min(1).max(256)).max(16),
+    }),
+    limitations: z.array(z.string().min(1).max(500)).max(64),
+  })
+  .superRefine((projection, ctx) => {
+    const criticalFailure = projection.nodes.some(
+      ({ criticality, status }) => criticality === "CRITICAL" && status !== "SUCCEEDED",
+    );
+    const optionalFailure = projection.nodes.some(
+      ({ criticality, status }) => criticality === "OPTIONAL" && status !== "SUCCEEDED",
+    );
+    if (
+      (criticalFailure && projection.terminal !== "HOLD") ||
+      (!criticalFailure && optionalFailure && projection.terminal !== "PARTIAL") ||
+      (!criticalFailure && !optionalFailure && projection.terminal !== "READY")
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Analysis Projection terminal 与节点 closure 不一致。",
+      });
+    }
+    if (
+      projection.root_cause.level === "L5_CERTIFIED" &&
+      (!projection.root_cause.candidate_ref ||
+        !projection.root_cause.estimate_ref ||
+        !projection.root_cause.certificate_ref)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "L5_CERTIFIED 必须绑定 Candidate/Estimate/Certificate。",
+      });
+    }
+    if (
+      projection.root_cause.level !== "L5_CERTIFIED" &&
+      projection.root_cause.certificate_ref !== null
+    ) {
+      ctx.addIssue({ code: "custom", message: "非 L5 Certified 不能公开 Certificate。" });
+    }
+    const acceptedEvidence = new Set(
+      projection.nodes.flatMap(({ status, evidence_ref }) =>
+        status === "SUCCEEDED" && evidence_ref ? [artifactReferenceIdentity(evidence_ref)] : [],
+      ),
+    );
+    for (const [index, finding] of projection.findings.entries()) {
+      if (
+        finding.status === "ACCEPTED" &&
+        finding.evidence_ref.artifact_type === "DerivedAnalysisEvidence" &&
+        !acceptedEvidence.has(artifactReferenceIdentity(finding.evidence_ref))
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Accepted Finding 必须引用成功节点 Evidence。",
+          path: ["findings", index],
+        });
+      }
+    }
+  });
 
 export const artifactExportFormatSchema = z.enum(["CSV", "XLSX"]);
 const filenameStemSchema = z
@@ -596,12 +935,22 @@ export type ArtifactWorkspaceChartProjectionV2 = z.infer<
 export type ArtifactWorkspaceChartDocumentV2 = z.infer<
   typeof artifactWorkspaceChartDocumentV2Schema
 >;
+export type ArtifactWorkspaceChartProjectionV3 = z.infer<
+  typeof artifactWorkspaceChartProjectionV3Schema
+>;
+export type ArtifactWorkspaceChartDocumentV3 = z.infer<
+  typeof artifactWorkspaceChartDocumentV3Schema
+>;
 export type ArtifactWorkspaceTableProjection = z.infer<
   typeof artifactWorkspaceTableProjectionSchema
 >;
 export type ArtifactPreviewResult = z.infer<typeof artifactPreviewResultSchema>;
 export type ArtifactPreviewResultV1 = z.infer<typeof artifactPreviewResultV1Schema>;
 export type ArtifactPreviewResultV2 = z.infer<typeof artifactPreviewResultV2Schema>;
+export type ArtifactPreviewResultV3 = z.infer<typeof artifactPreviewResultV3Schema>;
+export type DeterministicAnalysisRunProjection = z.infer<
+  typeof deterministicAnalysisRunProjectionSchema
+>;
 export type ArtifactExportCommand = z.infer<typeof artifactExportCommandSchema>;
 export type ArtifactExportReceipt = z.infer<typeof artifactExportReceiptSchema>;
 export type CreateArtifactExportResult = z.infer<typeof createArtifactExportResultSchema>;
