@@ -8,7 +8,7 @@ green sub-slice as completion of the full task.
 
 - [x] Baseline audit: inspect existing implementations, active HOLD gates, package specs, test commands, and file overlap before editing.
 - [x] U1 Versioned Analysis Contracts: add versioned refs/payloads/wire/public events, preserve @2 semantics, and add strict/hash/scope tests.
-- [ ] U2 Semantic Context and Applicability: publish explicit analysis semantics, compile deterministic context/transform witnesses, and add
+- [x] U2 Semantic Context and Applicability: publish explicit analysis semantics, compile deterministic context/transform witnesses, and add
   fail-closed applicability tests.
 - [ ] U3 Attested Python Runtime and Programs: close existing sandbox HOLD gates first, then add Core/ML/Causal locks, standard programs,
   admission policy, independent oracles, malicious fixtures, replay/cancel/resource tests, and attestation evidence.
@@ -59,3 +59,15 @@ green sub-slice as completion of the full task.
   - `pnpm --filter @data-agent/contracts exec vitest run test --testTimeout=30000 --maxWorkers=2` with
     `NODE_OPTIONS=--max-old-space-size=8192`: 81 files / 855 tests passed before the final contract-hardening additions.
   - Final targeted contract, wire, sandbox, dependency-boundary, and compatibility suites: 5 files / 64 tests passed.
+
+### U2 Semantic Context and Applicability
+
+- Added published-only `SemanticSourceBundle@2` analysis semantics, content-addressed Ontology analysis binding, Run receipt-bound
+  `AnalysisContext@1`, deterministic applicability decisions, and bounded Filter/GroupBy/Join/Pivot/Window/Derived/Chart transforms.
+- Kept `SemanticSourceBundle@1` strict and hash semantics unchanged; compiler projects @2 through the existing @1 invariant and Contribution
+  Profile lowering before admitting contribution capabilities.
+- Fail-closed coverage includes release/source hash drift, unresolved metrics, candidate material, missing time/seasonality, non-additive and
+  ratio metrics, grain/unit/timezone/null conflicts, sensitive dimensions, fanout, and L5 role/DAG/policy/adjustment closure.
+- Validation:
+  - Contracts build/typecheck and full suite: 81 files / 855 tests passed.
+  - Semantic build/typecheck and full suite: 18 files / 149 tests passed.

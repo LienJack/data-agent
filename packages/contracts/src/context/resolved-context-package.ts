@@ -1,4 +1,13 @@
 import { z } from "zod";
+import { artifactReferenceFor } from "../artifacts/envelope.js";
+import {
+  analysisCapabilitySchema,
+  analysisCausalRoleSchema,
+  grainSchema,
+  missingPeriodPolicySchema,
+  timeDomainSchema,
+  unitSchema,
+} from "../artifacts/semantic-governance.js";
 import {
   appScopeSchema,
   contentHashSchema,
@@ -410,6 +419,150 @@ export const resolvedContextPackageSchema = resolvedContextPackageMaterialSchema
   package_hash: contentHashSchema,
 });
 
+export const analysisMetricReferenceSchema = z.strictObject({
+  container_ref: artifactReferenceFor("SemanticRelease"),
+  node_id: versionIdentifierSchema,
+});
+
+export const analysisDimensionContextSchema = z.strictObject({
+  dimension_id: versionIdentifierSchema,
+  grain: grainSchema,
+  data_type: versionIdentifierSchema,
+  sensitivity: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED", "SECRET"]),
+  groupable: z.boolean(),
+  pivotable: z.boolean(),
+  causal_role: analysisCausalRoleSchema.nullable(),
+});
+
+export const analysisMetricContextSchema = z.strictObject({
+  metric_ref: analysisMetricReferenceSchema,
+  formula_hash: contentHashSchema,
+  unit: unitSchema.nullable(),
+  grain: grainSchema,
+  time_domain: timeDomainSchema.nullable(),
+  time_dimension_ref: versionIdentifierSchema.nullable(),
+  additivity: z.enum(["additive", "semi-additive", "non-additive"]),
+  null_policy: z.enum(["preserve", "coalesce-zero", "exclude", "propagate"]),
+  missing_period_policy: missingPeriodPolicySchema,
+  seasonality: z
+    .strictObject({
+      kind: z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"]),
+      period_count: z.number().int().positive().max(10_000),
+      minimum_history_points: z.number().int().positive().max(50_000),
+    })
+    .nullable(),
+  priority: z.number().int().min(0).max(10_000),
+  causal_role: analysisCausalRoleSchema.nullable(),
+  allowed_dimensions: z.array(analysisDimensionContextSchema).max(256),
+  analysis_capabilities: z.array(analysisCapabilitySchema).max(32),
+});
+
+export const analysisRelationshipContextSchema = z.strictObject({
+  relationship_id: versionIdentifierSchema,
+  left_table_id: versionIdentifierSchema,
+  right_table_id: versionIdentifierSchema,
+  cardinality: z.enum(["one-to-one", "one-to-many", "many-to-one", "many-to-many"]),
+  fanout_closed: z.boolean(),
+  ontology_path: z.array(versionIdentifierSchema).min(1).max(64),
+});
+
+export const analysisCausalContextSchema = z.strictObject({
+  policy_refs: z.array(artifactReferenceFor("PolicyReceipt")).min(1).max(32),
+  intervention_semantics_refs: z.array(versionIdentifierSchema).min(1).max(64),
+  adjustment_set_object_ids: z.array(versionIdentifierSchema).max(64),
+  excluded_mediator_ids: z.array(versionIdentifierSchema).max(64),
+  excluded_collider_ids: z.array(versionIdentifierSchema).max(64),
+  directed_edges: z
+    .array(
+      z.strictObject({
+        source_object_id: versionIdentifierSchema,
+        target_object_id: versionIdentifierSchema,
+        mechanism_ref: versionIdentifierSchema,
+        ontology_path: z.array(versionIdentifierSchema).min(1).max(64),
+      }),
+    )
+    .min(1)
+    .max(512),
+});
+
+const analysisContextMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("analysis-context@1.0.0"),
+    scope: appScopeSchema,
+    resolved_context_binding: z.strictObject({
+      package_id: canonicalImmutableIdSchema,
+      package_hash: contentHashSchema,
+      receipt_id: canonicalImmutableIdSchema,
+      receipt_hash: contentHashSchema,
+    }),
+    semantic_release_ref: artifactReferenceFor("SemanticRelease"),
+    schema_snapshot_ref: artifactReferenceFor("SchemaSnapshot"),
+    policy_receipt_ref: artifactReferenceFor("PolicyReceipt"),
+    semantic_source_bundle_ref: artifactReferenceFor("SemanticSourceBundle"),
+    ontology_analysis_binding_hash: contentHashSchema,
+    metrics: z.array(analysisMetricContextSchema).min(1).max(128),
+    relationships: z.array(analysisRelationshipContextSchema).max(512),
+    causal_policy: analysisCausalContextSchema.nullable(),
+  })
+  .superRefine((context, ctx) => {
+    const scopeRefs = [
+      context.semantic_release_ref,
+      context.schema_snapshot_ref,
+      context.policy_receipt_ref,
+      context.semantic_source_bundle_ref,
+      ...(context.causal_policy?.policy_refs ?? []),
+    ];
+    for (const [index, reference] of scopeRefs.entries()) {
+      if (
+        reference.app_id !== context.scope.app_id ||
+        reference.tenant_id !== context.scope.tenant_id ||
+        reference.environment !== context.scope.environment
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Analysis Context Reference 必须绑定同一 Scope。",
+          path: ["references", index],
+        });
+      }
+    }
+    const metricIds = context.metrics.map(({ metric_ref }) => metric_ref.node_id);
+    if (new Set(metricIds).size !== metricIds.length) {
+      ctx.addIssue({ code: "custom", message: "Analysis Metric 必须唯一。", path: ["metrics"] });
+    }
+  });
+
+export const analysisContextSchema = analysisContextMaterialSchema.extend({
+  context_hash: contentHashSchema,
+});
+
+export async function computeAnalysisContextHash(input: unknown) {
+  const full = analysisContextSchema.safeParse(input);
+  const material = full.success
+    ? analysisContextMaterialSchema.parse(
+        Object.fromEntries(Object.entries(full.data).filter(([key]) => key !== "context_hash")),
+      )
+    : analysisContextMaterialSchema.parse(input);
+  return sha256ContentHash(material);
+}
+
+export async function buildAnalysisContext(input: unknown) {
+  const material = analysisContextMaterialSchema.parse(input);
+  return deepFreeze(
+    analysisContextSchema.parse({
+      ...material,
+      context_hash: await computeAnalysisContextHash(material),
+    }),
+  );
+}
+
+export async function verifyAnalysisContext(input: unknown) {
+  const context = analysisContextSchema.parse(input);
+  if ((await computeAnalysisContextHash(context)) !== context.context_hash) {
+    throw new TypeError("ANALYSIS_CONTEXT_HASH_MISMATCH");
+  }
+  return context;
+}
+
 function uuidV8FromHash(hash: string): string {
   const digits = hash.slice("sha256:".length, "sha256:".length + 32).split("");
   digits[12] = "8";
@@ -597,6 +750,12 @@ export type ContextCapacityItem = z.infer<typeof contextCapacityItemSchema>;
 export type ContextCapacityPlan = z.infer<typeof contextCapacityPlanSchema>;
 export type ResolvedContextEvidenceSummary = z.infer<typeof resolvedContextEvidenceSummarySchema>;
 export type ResolvedContextPackage = z.infer<typeof resolvedContextPackageSchema>;
+export type AnalysisMetricReference = z.infer<typeof analysisMetricReferenceSchema>;
+export type AnalysisDimensionContext = z.infer<typeof analysisDimensionContextSchema>;
+export type AnalysisMetricContext = z.infer<typeof analysisMetricContextSchema>;
+export type AnalysisRelationshipContext = z.infer<typeof analysisRelationshipContextSchema>;
+export type AnalysisCausalContext = z.infer<typeof analysisCausalContextSchema>;
+export type AnalysisContext = z.infer<typeof analysisContextSchema>;
 export type ResolvedContextReceipt = z.infer<typeof resolvedContextReceiptSchema>;
 export type ResolvedContextCommitCommand = z.infer<typeof resolvedContextCommitCommandSchema>;
 export type ResolvedContextCommitResult = z.infer<typeof resolvedContextCommitResultSchema>;

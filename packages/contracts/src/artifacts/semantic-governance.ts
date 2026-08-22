@@ -25,6 +25,7 @@ import {
 // ─── Version constant ─────────────────────────────────────────────────────────
 
 export const SEMANTIC_SOURCE_BUNDLE_VERSION = "semantic-source-bundle@1" as const;
+export const SEMANTIC_SOURCE_BUNDLE_V2_VERSION = "semantic-source-bundle@2" as const;
 export const U5_EXECUTABLE_SUBSET = "U5_EXECUTABLE_SUBSET" as const;
 export const U13_EXECUTABLE_SUBSET = "U13_EXECUTABLE_SUBSET" as const;
 export type CapabilityProfile = typeof U5_EXECUTABLE_SUBSET | typeof U13_EXECUTABLE_SUBSET;
@@ -381,8 +382,143 @@ export const semanticSourceBundleSchema = z.strictObject({
   contribution_profile: descriptiveContributionProfileSchema.optional(),
 });
 
+export const analysisCapabilitySchema = z.enum([
+  "DATA_PROFILE",
+  "TREND_CHANGE",
+  "CONTRIBUTION",
+  "CONCENTRATION",
+  "ROBUST_ANOMALY",
+  "ASSOCIATION",
+  "FORECAST",
+  "ROOT_CAUSE_DISCOVERY",
+  "CAUSAL_IDENTIFICATION",
+  "CHART_DATASET",
+]);
+
+export const missingPeriodPolicySchema = z.enum([
+  "ZERO_IF_SEMANTICALLY_EMPTY",
+  "NULL",
+  "REJECT_GAP",
+]);
+
+export const analysisCausalRoleSchema = z.enum([
+  "OUTCOME",
+  "TREATMENT",
+  "CANDIDATE_CONFOUNDER",
+  "MEDIATOR",
+  "COLLIDER",
+]);
+
+const canonicalVersionIdentifiers = (max: number) =>
+  z
+    .array(versionIdentifierSchema)
+    .max(max)
+    .superRefine((values, ctx) => {
+      values.forEach((value, index) => {
+        if (index > 0 && (values[index - 1] ?? "") >= value) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Values must be unique and canonically sorted.",
+            path: [index],
+          });
+        }
+      });
+    });
+
+export const analysisSeasonalitySchema = z.strictObject({
+  kind: z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"]),
+  period_count: z.number().int().positive().max(10_000),
+  minimum_history_points: z.number().int().positive().max(50_000),
+});
+
+export const semanticMetricV2Schema = semanticMetricSchema.extend({
+  analysis: z.strictObject({
+    primary: z.boolean(),
+    priority: z.number().int().min(0).max(10_000),
+    missing_period_policy: missingPeriodPolicySchema,
+    seasonality: analysisSeasonalitySchema.nullable(),
+    allowed_dimension_ids: canonicalVersionIdentifiers(256),
+    capabilities: z
+      .array(analysisCapabilitySchema)
+      .max(analysisCapabilitySchema.options.length)
+      .superRefine((values, ctx) => {
+        values.forEach((value, index) => {
+          if (index > 0 && (values[index - 1] ?? "") >= value) {
+            ctx.addIssue({
+              code: "custom",
+              message: "Analysis capabilities must be unique and canonically sorted.",
+              path: [index],
+            });
+          }
+        });
+      }),
+    causal_role: analysisCausalRoleSchema.nullable(),
+  }),
+});
+
+export const semanticDimensionV2Schema = semanticDimensionSchema.extend({
+  analysis: z.strictObject({
+    groupable: z.boolean(),
+    pivotable: z.boolean(),
+    causal_role: analysisCausalRoleSchema.nullable(),
+  }),
+});
+
+export const semanticRelationshipV2Schema = semanticRelationshipSchema.extend({
+  analysis: z.strictObject({
+    join_allowed: z.boolean(),
+    fanout_closed: z.boolean(),
+    ontology_path: canonicalVersionIdentifiers(64),
+  }),
+});
+
+export const domainCausalPolicySchema = z.strictObject({
+  policy_refs: z.array(artifactReferenceSchema).min(1).max(32),
+  intervention_semantics_refs: canonicalVersionIdentifiers(64).min(1),
+  adjustment_set_object_ids: canonicalVersionIdentifiers(64),
+  excluded_mediator_ids: canonicalVersionIdentifiers(64),
+  excluded_collider_ids: canonicalVersionIdentifiers(64),
+  directed_edges: z
+    .array(
+      z.strictObject({
+        source_object_id: versionIdentifierSchema,
+        target_object_id: versionIdentifierSchema,
+        mechanism_ref: versionIdentifierSchema,
+        ontology_path: canonicalVersionIdentifiers(64).min(1),
+      }),
+    )
+    .min(1)
+    .max(512),
+});
+
+export const semanticSourceBundleV2MetadataSchema = semanticSourceBundleMetadataSchema.extend({
+  bundle_version: z.literal(SEMANTIC_SOURCE_BUNDLE_V2_VERSION),
+  publication_status: z.literal("PUBLISHED"),
+});
+
+export const semanticSourceBundleV2Schema = z.strictObject({
+  metadata: semanticSourceBundleV2MetadataSchema,
+  formulas: z.array(formulaSignatureSchema).default([]),
+  metrics: z.array(semanticMetricV2Schema).min(1),
+  dimensions: z.array(semanticDimensionV2Schema).default([]),
+  relationships: z.array(semanticRelationshipV2Schema).default([]),
+  business_ontology: businessOntologySchema.optional(),
+  physical_binding: physicalBindingSchema.optional(),
+  catalog_governance: catalogGovernanceSchema.optional(),
+  runtime_authorization: runtimeAuthSchema.optional(),
+  contribution_profile: descriptiveContributionProfileSchema.optional(),
+  domain_causal_policy: domainCausalPolicySchema.nullable(),
+});
+
 export type SemanticSourceBundle = z.infer<typeof semanticSourceBundleSchema>;
 export type SemanticSourceBundleMetadata = z.infer<typeof semanticSourceBundleMetadataSchema>;
+export type SemanticSourceBundleV2 = z.infer<typeof semanticSourceBundleV2Schema>;
+export type SemanticMetricV2 = z.infer<typeof semanticMetricV2Schema>;
+export type SemanticDimensionV2 = z.infer<typeof semanticDimensionV2Schema>;
+export type SemanticRelationshipV2 = z.infer<typeof semanticRelationshipV2Schema>;
+export type AnalysisCapability = z.infer<typeof analysisCapabilitySchema>;
+export type MissingPeriodPolicy = z.infer<typeof missingPeriodPolicySchema>;
+export type AnalysisCausalRole = z.infer<typeof analysisCausalRoleSchema>;
 export type SemanticMetric = z.infer<typeof semanticMetricSchema>;
 export type SemanticDimension = z.infer<typeof semanticDimensionSchema>;
 export type SemanticRelationship = z.infer<typeof semanticRelationshipSchema>;
@@ -440,6 +576,12 @@ export async function computeSemanticSourceBundleHash(
   bundle: SemanticSourceBundle,
 ): Promise<`sha256:${string}`> {
   return sha256ContentHash(bundle);
+}
+
+export async function computeSemanticSourceBundleV2Hash(
+  bundle: SemanticSourceBundleV2,
+): Promise<`sha256:${string}`> {
+  return sha256ContentHash(semanticSourceBundleV2Schema.parse(bundle));
 }
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
@@ -583,6 +725,149 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
         );
       }
     }
+  }
+}
+
+export function projectSemanticSourceBundleV2ToV1(
+  bundle: SemanticSourceBundleV2,
+): SemanticSourceBundle {
+  const parsed = semanticSourceBundleV2Schema.parse(bundle);
+  const {
+    domain_causal_policy: _domainCausalPolicy,
+    metadata,
+    metrics,
+    dimensions,
+    relationships,
+    ...shared
+  } = parsed;
+  const { publication_status: _publicationStatus, ...v1Metadata } = metadata;
+  return semanticSourceBundleSchema.parse({
+    ...shared,
+    metadata: { ...v1Metadata, bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION },
+    metrics: metrics.map(({ analysis: _analysis, ...metric }) => metric),
+    dimensions: dimensions.map(({ analysis: _analysis, ...dimension }) => dimension),
+    relationships: relationships.map(({ analysis: _analysis, ...relationship }) => relationship),
+  });
+}
+
+export function assertSemanticSourceBundleV2Invariants(bundle: SemanticSourceBundleV2): void {
+  const parsed = semanticSourceBundleV2Schema.parse(bundle);
+  assertSemanticSourceBundleInvariants(projectSemanticSourceBundleV2ToV1(parsed));
+  const assertCanonicalOrder = <T>(
+    values: readonly T[],
+    identity: (value: T) => string,
+    label: string,
+  ): void => {
+    values.forEach((value, index) => {
+      const previous = values[index - 1];
+      if (previous !== undefined && identity(previous) >= identity(value)) {
+        throw new SemanticGovernanceError(`${label} 必须唯一并按身份 canonical 排序。`);
+      }
+    });
+  };
+  assertCanonicalOrder(parsed.metrics, ({ metric_id }) => metric_id, "Analysis Metrics");
+  assertCanonicalOrder(
+    parsed.dimensions,
+    ({ dimension_id }) => dimension_id,
+    "Analysis Dimensions",
+  );
+  assertCanonicalOrder(
+    parsed.relationships,
+    ({ relationship_id }) => relationship_id,
+    "Analysis Relationships",
+  );
+  assertCanonicalOrder(parsed.formulas, ({ formula_id }) => formula_id, "Analysis Formulas");
+  if (parsed.domain_causal_policy) {
+    assertCanonicalOrder(
+      parsed.domain_causal_policy.policy_refs,
+      (reference) =>
+        `${reference.app_id}\0${reference.tenant_id}\0${reference.environment}\0${reference.artifact_id}\0${reference.revision}`,
+      "Causal Policy References",
+    );
+    assertCanonicalOrder(
+      parsed.domain_causal_policy.directed_edges,
+      ({ source_object_id, target_object_id, mechanism_ref }) =>
+        `${source_object_id}\0${target_object_id}\0${mechanism_ref}`,
+      "Causal Directed Edges",
+    );
+  }
+  const metricIds = new Set(parsed.metrics.map(({ metric_id }) => metric_id));
+  const dimensionIds = new Set(parsed.dimensions.map(({ dimension_id }) => dimension_id));
+  const relationshipIds = new Set(
+    parsed.relationships.map(({ relationship_id }) => relationship_id),
+  );
+  if (metricIds.size !== parsed.metrics.length) {
+    throw new SemanticGovernanceError("SemanticSourceBundle@2 不能包含重复的 Metric ID。");
+  }
+  if (dimensionIds.size !== parsed.dimensions.length) {
+    throw new SemanticGovernanceError("SemanticSourceBundle@2 不能包含重复的 Dimension ID。");
+  }
+  if (relationshipIds.size !== parsed.relationships.length) {
+    throw new SemanticGovernanceError("SemanticSourceBundle@2 不能包含重复的 Relationship ID。");
+  }
+  if (!parsed.metrics.some(({ analysis }) => analysis.primary)) {
+    throw new SemanticGovernanceError("SemanticSourceBundle@2 必须声明至少一个 Primary Metric。");
+  }
+  for (const metric of parsed.metrics) {
+    const unknownDimension = metric.analysis.allowed_dimension_ids.find(
+      (dimensionId) => !dimensionIds.has(dimensionId),
+    );
+    if (unknownDimension) {
+      throw new SemanticGovernanceError(
+        `Metric ${metric.metric_id} 引用未发布的 Analysis Dimension ${unknownDimension}。`,
+      );
+    }
+    if (
+      metric.analysis.capabilities.includes("FORECAST") &&
+      (metric.time_domain === null ||
+        metric.time_column_id === null ||
+        metric.analysis.seasonality === null)
+    ) {
+      throw new SemanticGovernanceError(
+        `Metric ${metric.metric_id} 的 FORECAST 能力缺少时间域或已发布 seasonality。`,
+      );
+    }
+  }
+  const causalObjects = new Set([...metricIds, ...dimensionIds]);
+  const causalRoleById = new Map([
+    ...parsed.metrics.map(({ metric_id, analysis }) => [metric_id, analysis.causal_role] as const),
+    ...parsed.dimensions.map(
+      ({ dimension_id, analysis }) => [dimension_id, analysis.causal_role] as const,
+    ),
+  ]);
+  for (const edge of parsed.domain_causal_policy?.directed_edges ?? []) {
+    if (
+      !causalObjects.has(edge.source_object_id) ||
+      !causalObjects.has(edge.target_object_id) ||
+      edge.source_object_id === edge.target_object_id
+    ) {
+      throw new SemanticGovernanceError("Domain Causal Policy Edge 必须引用不同的已发布对象。");
+    }
+  }
+  for (const adjustmentId of parsed.domain_causal_policy?.adjustment_set_object_ids ?? []) {
+    if (causalRoleById.get(adjustmentId) !== "CANDIDATE_CONFOUNDER") {
+      throw new SemanticGovernanceError(
+        "Causal Adjustment Set 只能包含已发布的 CANDIDATE_CONFOUNDER。",
+      );
+    }
+  }
+  for (const mediatorId of parsed.domain_causal_policy?.excluded_mediator_ids ?? []) {
+    if (causalRoleById.get(mediatorId) !== "MEDIATOR") {
+      throw new SemanticGovernanceError("Mediator Exclusion 必须引用已发布 MEDIATOR。");
+    }
+  }
+  for (const colliderId of parsed.domain_causal_policy?.excluded_collider_ids ?? []) {
+    if (causalRoleById.get(colliderId) !== "COLLIDER") {
+      throw new SemanticGovernanceError("Collider Exclusion 必须引用已发布 COLLIDER。");
+    }
+  }
+  if (
+    parsed.metrics.some(({ analysis }) =>
+      analysis.capabilities.includes("CAUSAL_IDENTIFICATION"),
+    ) &&
+    parsed.domain_causal_policy === null
+  ) {
+    throw new SemanticGovernanceError("CAUSAL_IDENTIFICATION 必须绑定 Domain Causal Policy。");
   }
 }
 

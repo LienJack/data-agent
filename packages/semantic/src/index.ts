@@ -60,6 +60,7 @@ export {
   type Unit,
   unitSchema,
 } from "@data-agent/contracts";
+export * from "./analysis/index.js";
 export * from "./authoring/index.js";
 export * from "./candidate-generation/index.js";
 export {
