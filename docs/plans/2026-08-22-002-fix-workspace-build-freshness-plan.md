@@ -472,7 +472,7 @@ flowchart TB
 - 修改 `apps/web/test/operations-diagnostics.spec.ts`
 - 修改 `apps/worker/src/run-worker-cli.ts`
 - 修改 `apps/worker/src/semantic/relationship-indexer-cli.ts`
-- 修改 Semantic Authoring 对应 CLI bootstrap
+- 修改 `apps/worker/src/semantic/authoring-worker-cli.ts`
 - 新增 `apps/worker/test/persistence-diagnostics.spec.ts`
 
 **Approach**
@@ -640,9 +640,8 @@ flowchart TB
 
 按以下顺序交付，每一阶段都是独立 scoped commit，不跨单元提交用户并行改动：
 
-1. U1 先以纯 helper/tests 落地，不改变当前启动行为。
-2. U2 在 local dev 默认启用 fail-closed coordinator；若必须提供短期观察期，只允许显式
-   `DATA_AGENT_DEV_BUILD_GUARD=observe`，默认仍为 enforce，且 observe 不能进入 release/Docker。
+1. U1 先落地 tooling helper、portable identity contract、Turbo output 声明和测试，不改变当前启动行为。
+2. U2 在所有受支持 local dev 入口直接启用 fail-closed coordinator，不提供绕过旧构建门禁的 observe 模式。
 3. U3/U4 补齐 build identity、health 与 safe diagnostics 后，运行当前 Q&A 复现验证。
 4. U5 将相同证明接入 Docker/release，并删除任何临时 observe 路径。
 
