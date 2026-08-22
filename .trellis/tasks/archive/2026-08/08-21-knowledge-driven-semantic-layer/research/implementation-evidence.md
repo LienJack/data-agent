@@ -16,7 +16,7 @@ implicit Revision, and handed control back to the user as designed.
 | AC3 | VERIFIED | Browser selected Evidence Selection `308b95c3-218f-481b-bd88-e440ee5ef558`; hash `sha256:044db923…de298` was frozen on Candidate Revision and Published Release usage. | None. |
 | AC4 | VERIFIED | A real DeepSeek Agent run persisted four Provider turns, failed safely with `SEMANTIC_AGENT_STOPPED_WITHOUT_COMPLETE`, created no Revision, then the typed manual editor continued on the same Candidate. | None. |
 | AC5 | VERIFIED | Browser created glossary term `净 GMV`, proposed `NET_GMV_SYNONYM`, and linked it to `成交总额`; ordered ChangeSet regression covers adding a relationship type and its first relationship together. | None. |
-| AC6 | IMPLEMENTED AT DETERMINISTIC CORE | Existing Graph v2 reducer/compiler/validator is reused server-side for every save/publish. Semantic package: 17 files / 142 tests passed. 10674/10675 recompile and compare exact digests before persistence/activation. | No new browser display matrix for every stable reason code. |
+| AC6 | IMPLEMENTED AT DETERMINISTIC CORE | Existing Graph v2 reducer/compiler/validator is reused server-side for every save/publish. Semantic package: 17 files / 142 tests passed. 10681/10682 recompile and compare exact digests before persistence/activation. | No new browser display matrix for every stable reason code. |
 | AC7 | VERIFIED | Before the explicit click the Candidate had two local edits and zero database Revisions. Clicking `保存草稿 Revision` created only Revision 1 (`7d120257…ecd`) with graph digest `sha256:a9c2e909…5aada`. | None. |
 | AC8 | VERIFIED | Creator `b5e7d34f…b160` clicked `审核并发布`, authored the APPROVE decision, closed the review packet, and atomically activated Release `7222a507…d3a1` generation 3. | None. |
 | AC9 | VERIFIED | Context Preview bound Release `7222a507…d3a1 · r3`, produced package `sha256:dc6e7151…2f39e0`, and included `TERM: 净 GMV`. Direct projection checks returned 32 metrics, 82 ontology objects and 580 relationships including `NET_GMV_SYNONYM`. | The prior isolated Text2SQL fixture currently needs its workspace-FK setup refreshed; live authenticated Resolved Context proof is green. |
@@ -36,8 +36,8 @@ Passed:
 - Web focused Vitest: 3 files / 14 tests
 - Worker Markdown parser Vitest: 1 file / 3 tests
 - Semantic unit suite: 17 files / 142 tests
-- Supabase static migration checks, including exact 10673–10675 renderer checksums
-- Fresh PostgreSQL 17 applied 10673–10675 and passed behavioral self-publish, replay, audit,
+- Supabase static migration checks, including exact 10680–10682 renderer checksums
+- Fresh PostgreSQL 17 applied 10680–10682 and passed behavioral self-publish, replay, audit,
   evidence-usage, Resolved Context and rollback assertions:
   `KNOWLEDGE_SEMANTIC_RELEASE_ASSERTIONS_PASSED`
 - Fresh Text2SQL/PostgreSQL E2E passed with exact release/binding/AST/SQL hashes and real result rows;
@@ -58,7 +58,7 @@ Passed:
 - Typecheck passed for contracts, semantic, agent-runtime, platform, worker and web.
 - Focused tests passed: semantic 12, platform job queue 4, Provider lifecycle/store 7,
   contracts 2, agent-runtime 15, web 16 and Markdown parser 3.
-- Migration renderers 10676–10692 and the full Supabase static check passed.
+- Migration renderers 10683–10699 and the full Supabase static check passed.
 
 Known baseline failures, not treated as green:
 

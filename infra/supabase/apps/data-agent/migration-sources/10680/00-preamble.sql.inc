@@ -1,18 +1,18 @@
--- 10680 grants the semantic Provider RPC owner its exact shared validator dependency.
+-- 10680 adds immutable Markdown Knowledge Documents, selectable blocks and evidence selections.
 begin;
 
 do $bootstrap$
 begin
   if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999 then
-    raise exception using errcode='0A000',message='SEMANTIC_PROVIDER_VALIDATOR_GRANT_POSTGRES_VERSION_UNSUPPORTED';
+    raise exception using errcode='0A000',message='KNOWLEDGE_DOCUMENT_POSTGRES_VERSION_UNSUPPORTED';
   end if;
   if session_user<>'postgres' or current_user<>'postgres' then
-    raise exception using errcode='42501',message='SEMANTIC_PROVIDER_VALIDATOR_GRANT_EXECUTOR_UNSAFE';
+    raise exception using errcode='42501',message='KNOWLEDGE_DOCUMENT_MIGRATION_EXECUTOR_UNSAFE';
   end if;
   if not exists(select 1 from platform.migration_ledger where owner_kind='app'
     and app_id='00000000-0000-4000-8000-00000000da01'::uuid
-    and migration_version='20260725010679_app_data_agent_knowledge_evidence_revision_repair')
-  then raise exception using errcode='P0001',message='SEMANTIC_PROVIDER_VALIDATOR_GRANT_BASELINE_10679_MISSING'; end if;
+    and migration_version='20260725010679_app_data_agent_legacy_attribution_scope_repair')
+  then raise exception using errcode='P0001',message='KNOWLEDGE_DOCUMENT_BASELINE_10679_MISSING'; end if;
 end
 $bootstrap$;
 

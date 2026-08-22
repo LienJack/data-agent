@@ -1,18 +1,12 @@
-do $postconditions$ begin
-  if not exists(select 1 from pg_catalog.pg_trigger
-      where tgrelid='semantic.semantic_publish_attempt'::regclass
-        and tgname='semantic_publish_attempt_projection_reuse' and not tgisinternal)
-    or not exists(select 1 from pg_catalog.pg_trigger
-      where tgrelid='semantic.semantic_source_release'::regclass
-        and tgname='semantic_source_release_projection_reuse' and not tgisinternal)
-    or not exists(select 1 from pg_catalog.pg_trigger
-      where tgrelid='semantic.semantic_executable_projection'::regclass
-        and tgname='semantic_executable_projection_reuse' and not tgisinternal)
-    or not exists(select 1 from pg_catalog.pg_trigger
-      where tgrelid='semantic.semantic_relationship_projection'::regclass
-        and tgname='semantic_relationship_projection_reuse' and not tgisinternal)
-    or not exists(select 1 from pg_catalog.pg_trigger
-      where tgrelid='semantic.semantic_runtime_restriction_projection'::regclass
-        and tgname='semantic_restriction_projection_reuse' and not tgisinternal)
-  then raise exception using errcode='P0001',message='SEMANTIC_PROJECTION_REUSE_POSTCONDITION_FAILED'; end if;
-end $postconditions$;
+do $postconditions$
+begin
+  if not exists(
+    select 1 from pg_catalog.pg_policy policy
+    where policy.polrelid='app_data_agent.audit_log'::pg_catalog.regclass
+      and policy.polname='audit_log_semantic_manual_session_rpc_insert'
+  ) or not pg_catalog.has_table_privilege(
+    'data_agent_u6_rpc_owner','app_data_agent.audit_log','INSERT'
+  )
+  then raise exception using errcode='P0001',message='SEMANTIC_MANUAL_AUDIT_POLICY_POSTCONDITION_FAILED'; end if;
+end
+$postconditions$;

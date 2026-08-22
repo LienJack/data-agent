@@ -33,7 +33,7 @@ begin
 
   if not exists(select 1 from platform.migration_ledger where owner_kind='app'
     and app_id='00000000-0000-4000-8000-00000000da01'::uuid
-    and migration_version='20260725010675_app_data_agent_semantic_self_publish')
+    and migration_version='20260725010682_app_data_agent_semantic_self_publish')
   then raise exception 'SEMANTIC_SELF_PUBLISH_LEDGER_MISSING'; end if;
 end
 $assertions$;

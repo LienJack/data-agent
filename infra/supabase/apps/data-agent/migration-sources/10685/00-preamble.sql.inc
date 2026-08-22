@@ -1,18 +1,18 @@
--- 10685 grants the row-lock privilege required by the Revision-save idempotency lookup.
+-- 10685 removes an ambiguous PL/pgSQL variable from evidence selection writes.
 begin;
 
 do $bootstrap$
 begin
   if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999 then
-    raise exception using errcode='0A000',message='SEMANTIC_REVISION_IDEMPOTENCY_LOCK_POSTGRES_VERSION_UNSUPPORTED';
+    raise exception using errcode='0A000',message='KNOWLEDGE_EVIDENCE_REPAIR_POSTGRES_VERSION_UNSUPPORTED';
   end if;
   if session_user<>'postgres' or current_user<>'postgres' then
-    raise exception using errcode='42501',message='SEMANTIC_REVISION_IDEMPOTENCY_LOCK_EXECUTOR_UNSAFE';
+    raise exception using errcode='42501',message='KNOWLEDGE_EVIDENCE_REPAIR_EXECUTOR_UNSAFE';
   end if;
   if not exists(select 1 from platform.migration_ledger where owner_kind='app'
     and app_id='00000000-0000-4000-8000-00000000da01'::uuid
-    and migration_version='20260725010684_app_data_agent_semantic_revision_save_repair')
-  then raise exception using errcode='P0001',message='SEMANTIC_REVISION_IDEMPOTENCY_LOCK_BASELINE_10684_MISSING'; end if;
+    and migration_version='20260725010684_app_data_agent_knowledge_document_authority_repair')
+  then raise exception using errcode='P0001',message='KNOWLEDGE_EVIDENCE_REPAIR_BASELINE_10684_MISSING'; end if;
 end
 $bootstrap$;
 

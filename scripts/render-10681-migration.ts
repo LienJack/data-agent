@@ -1,16 +1,18 @@
-/** Render the reviewed 10681 semantic authoring digest repair migration. */
+/** Render the reviewed 10681 explicit Semantic Candidate Revision migration. */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
-const MIGRATION_NAME = "20260725010681_app_data_agent_semantic_authoring_digest_repair.sql";
+const MIGRATION_NAME = "20260725010681_app_data_agent_semantic_explicit_revisions.sql";
 const SOURCE_SEGMENTS = [
   "00-preamble.sql.inc",
-  "10-repair.sql.inc",
-  "90-postconditions.sql.inc",
+  "10-authority.sql.inc",
+  "20-working-session-rpcs.sql.inc",
+  "30-save-rpcs.sql.inc",
+  "90-grants-postconditions.sql.inc",
   "99-ledger.sql.inc",
 ] as const;
-const PLACEHOLDER = "__SEMANTIC_AUTHORING_DIGEST_REPAIR_MIGRATION_CHECKSUM__";
+const CHECKSUM_PLACEHOLDER = "__SEMANTIC_EXPLICIT_REVISION_MIGRATION_CHECKSUM__";
 const ZERO = `sha256:${"0".repeat(64)}`;
 const digest = (value: string): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -30,12 +32,13 @@ if (JSON.stringify(actual) !== JSON.stringify([...SOURCE_SEGMENTS].sort())) {
 const body = SOURCE_SEGMENTS.map((segment) =>
   normalize(readFileSync(resolve(sourceRoot, segment), "utf8")),
 ).join("");
-if (body.split(PLACEHOLDER).length - 1 !== 1)
+if (body.split(CHECKSUM_PLACEHOLDER).length - 1 !== 1) {
   throw new Error("10681 checksum placeholder mismatch");
+}
 const checksum = digest(
-  `-- semantic_authoring_digest_repair_migration_checksum: ${ZERO}\n${body.replace(PLACEHOLDER, ZERO)}`,
+  `-- semantic_explicit_revision_migration_checksum: ${ZERO}\n${body.replace(CHECKSUM_PLACEHOLDER, ZERO)}`,
 );
-const content = `-- semantic_authoring_digest_repair_migration_checksum: ${checksum}\n${body.replace(PLACEHOLDER, checksum)}`;
+const content = `-- semantic_explicit_revision_migration_checksum: ${checksum}\n${body.replace(CHECKSUM_PLACEHOLDER, checksum)}`;
 if (content.split(checksum).length - 1 !== 2) throw new Error("10681 checksum count mismatch");
 if (process.argv.includes("--verify")) {
   if (!existsSync(output) || readFileSync(output, "utf8") !== content) {

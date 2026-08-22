@@ -1,18 +1,18 @@
--- 10681 aligns explicit semantic authoring RPC validation with the TypeScript canonical JSON contract.
+-- 10681 separates Working ChangeSets from explicit, recoverable Candidate Revisions.
 begin;
 
 do $bootstrap$
 begin
   if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999 then
-    raise exception using errcode='0A000',message='SEMANTIC_AUTHORING_DIGEST_REPAIR_POSTGRES_VERSION_UNSUPPORTED';
+    raise exception using errcode='0A000',message='SEMANTIC_EXPLICIT_REVISION_POSTGRES_VERSION_UNSUPPORTED';
   end if;
   if session_user<>'postgres' or current_user<>'postgres' then
-    raise exception using errcode='42501',message='SEMANTIC_AUTHORING_DIGEST_REPAIR_EXECUTOR_UNSAFE';
+    raise exception using errcode='42501',message='SEMANTIC_EXPLICIT_REVISION_MIGRATION_EXECUTOR_UNSAFE';
   end if;
   if not exists(select 1 from platform.migration_ledger where owner_kind='app'
     and app_id='00000000-0000-4000-8000-00000000da01'::uuid
-    and migration_version='20260725010680_app_data_agent_semantic_provider_validator_grant')
-  then raise exception using errcode='P0001',message='SEMANTIC_AUTHORING_DIGEST_REPAIR_BASELINE_10680_MISSING'; end if;
+    and migration_version='20260725010680_app_data_agent_knowledge_documents')
+  then raise exception using errcode='P0001',message='SEMANTIC_EXPLICIT_REVISION_BASELINE_10680_MISSING'; end if;
 end
 $bootstrap$;
 
