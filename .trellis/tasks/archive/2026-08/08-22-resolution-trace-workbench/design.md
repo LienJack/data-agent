@@ -8,7 +8,7 @@
 PostgreSQL authority
   -> ResolutionTrace index (nodes / edges / timing / refs)
   -> ResolutionTraceDetail projector (exact run + node + sequence/ref)
-  -> owner/admin audited API
+  -> owner detail API / existing admin audited event + artifact APIs
   -> timeline model + virtual list + inspector
   -> exact Artifact Preview / typed renderer
 ```
@@ -64,7 +64,8 @@ Owner API：
 GET /api/workspaces/:workspaceId/runs/:runId/resolution-trace/details?node_id=:nodeId
 ```
 
-管理员跨 owner 读取使用独立 admin route，复用已有 authorization + immutable audit receipt；不能由 owner route 接受伪造 owner 参数。
+管理员跨 owner 读取复用现有 audited public-event 与 exact Artifact routes，它们已经生成 immutable audit
+receipt；不新增一条语义重叠且可能漏审计的 admin detail route，也不能由 owner route 接受伪造 owner 参数。
 
 ## 4. 客户端投影模型
 
@@ -112,7 +113,8 @@ GET /api/workspaces/:workspaceId/runs/:runId/resolution-trace/details?node_id=:n
 - `ResolutionTraceDetail` 是 allowlist 公共投影，不是 raw event passthrough。
 - 搜索、复制、DOM 与客户端缓存只含公开字段。
 - Artifact preview 与 export 分开授权；预览成功不产生导出权限。
-- 管理员跨 owner 打开 trace/detail/artifact/sql 均沿用不可变审计回执。
+- 管理员跨 owner 打开 public event 与 Artifact 内容沿用既有不可变审计回执；owner detail route 不承担
+  管理员跨 owner 读取。
 - Markdown 沿用安全 renderer，禁止 raw HTML、javascript/data URL 和未授权外部内容。
 
 ## 8. 参考实现边界
@@ -130,3 +132,6 @@ DeepSeek Harness 固定参考 commit `47f943859bef60e4160492346772ded9b24f765a`�
 ## 10. 迁移策略
 
 现有 `resolution-trace@1.0.0` 和 `/resolution-trace` API 保持兼容；新 detail 合同和 endpoint 为加法变更。先接入新工作台并保留现有一级页签，再逐步将 Team/SQL/Artifact 中的裸 ID 链接统一指向相同 Inspector。无需数据迁移；历史数据缺少公共内容时诚实显示 unavailable reason code。
+
+完整 Resolved Context material 若没有 exact Artifact preview target，则保持 unavailable。本任务不绕过已撤销的
+直接表读取权限；新增普通 owner 可读的 Context 公共 RPC 属于后续独立 authority/migration 变更。
