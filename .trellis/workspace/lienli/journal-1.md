@@ -675,3 +675,45 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 31: Apple OpenAI 蓝色全站前端重构
+
+**Date**: 2026-08-22
+**Task**: Apple OpenAI 蓝色全站前端重构
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+建立 Data Agent Blue 设计系统，重构入口、工作空间、QA、分析、Semantic Studio、数据源与管理控制面，并补齐 system/light/dark 外观。
+
+### Main Changes
+
+- 统一 #3f63e8 蓝色 palette、Apple/OpenAI 材质、字体、圆角、动效与响应式 shell
+- 重构登录、工作空间、QA、测试、任务、语义、数据源、成员和设置页面层级
+- 新增持久化 system/light/dark 外观控制与暗色 token
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2b91f47` | (see git log) |
+| `0209f0c` | (see git log) |
+| `9eb86bc` | (see git log) |
+| `b914e37` | (see git log) |
+| `36a6354` | (see git log) |
+
+### Testing
+
+- [OK] Biome scoped check passed
+- [OK] Focused Web tests: 24 passed
+- [OK] Web typecheck and production build passed
+- [OK] Browser verified desktop dark theme and 390x844 overflow
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 修复并行语义/knowledge 改动导致的两项旧断言漂移后恢复全套 Web unit 全绿
