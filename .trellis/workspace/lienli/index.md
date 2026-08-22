@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 35
+- **Total Sessions**: 36
 - **Last Active**: 2026-08-22
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~830 | Active |
+| `journal-1.md` | ~855 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 36 | 2026-08-22 | Workspace 构建新鲜度防复发 | `bcbe95b`, `e75ab13`, `e9f9cba`, `fc63e99`, `2dc27ea` | `feat/datafoundry-platform-modules` |
 | 35 | 2026-08-22 | 修复 Knowledge usage 重复 React key | `8bd3409` | `feat/datafoundry-platform-modules` |
 | 34 | 2026-08-22 | 修复新建业务问题对话导航 | `e443e1f` | `feat/datafoundry-platform-modules` |
 | 33 | 2026-08-22 | 修复 Q&A 持久化事务失败 | `d55e67f` | `feat/datafoundry-platform-modules` |

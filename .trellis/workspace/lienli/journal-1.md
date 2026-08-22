@@ -828,3 +828,28 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 36: Workspace 构建新鲜度防复发
+
+**Date**: 2026-08-22
+**Task**: Workspace 构建新鲜度防复发
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+完成 Workspace build attestation、fail-closed 本地协调器、运行时 build identity、安全持久化诊断及 Docker/Release gate，并通过真实镜像与发布验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `bcbe95b` | (see git log) |
+| `e75ab13` | (see git log) |
+| `e9f9cba` | (see git log) |
+| `fc63e99` | (see git log) |
+| `2dc27ea` | (see git log) |
+
+### Status
+
+[OK] **Completed**
