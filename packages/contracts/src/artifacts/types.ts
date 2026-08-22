@@ -15,6 +15,10 @@ export const L2_ARTIFACT_TYPES = [
   "ValidationReceipt",
   "ExecutionReceipt",
   "QueryEvidence",
+  "DataProfile",
+  "AnalysisPlan",
+  "DerivedAnalysisEvidence",
+  "AnalysisCompletionReceipt",
   "AtomicClaim",
   "EvidenceRelation",
   "ObligationExecutionDecision",
@@ -45,6 +49,7 @@ export const DEFERRED_ARTIFACT_TYPES = [
 ] as const;
 
 export const SYSTEM_ARTIFACT_TYPES = [
+  "TabularImportReceipt",
   "ArtifactExportReceipt",
   "ArtifactWorkspaceDocument",
   "SensitiveExecutionArtifact",

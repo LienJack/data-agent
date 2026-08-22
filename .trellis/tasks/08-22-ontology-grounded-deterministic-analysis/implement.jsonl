@@ -1,0 +1,4 @@
+{"file":"docs/plans/2026-08-22-003-feat-ontology-grounded-deterministic-analysis-plan.md","reason":"Canonical R1-R17, U1-U8, verification, recovery, slices, and Definition of Done"}
+{"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Required sandbox source/input/runtime/fence/output authority and HOLD gates"}
+{"file":".trellis/spec/backend/index.md","reason":"Backend pre-development and quality-check routing"}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend projection and quality-check routing"}

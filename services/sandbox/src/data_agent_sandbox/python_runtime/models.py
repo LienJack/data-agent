@@ -211,3 +211,19 @@ class PythonSandboxTransportOutcome(StrictModel):
         if self.receipt.status != "SUCCEEDED" and self.outputs:
             raise ValueError("failed transport outcomes cannot retain outputs")
         return self
+
+
+class PythonCancellationRequest(StrictModel):
+    protocol_version: Literal["data-agent-python-sandbox-control@1.0.0"]
+    operation: Literal["CANCEL"]
+    authorization: Annotated[str, Field(min_length=32, max_length=512)]
+    workspace_id: UuidString
+    run_id: UuidString
+    idempotency_key: Annotated[str, Field(min_length=8, max_length=256)]
+    fence_token: Annotated[str, Field(min_length=1, max_length=256)]
+
+
+class PythonCancellationOutcome(StrictModel):
+    protocol_version: Literal["data-agent-python-sandbox-control@1.0.0"]
+    operation: Literal["CANCEL"]
+    status: Literal["CANCEL_REQUESTED", "NOT_ACTIVE", "REJECTED"]

@@ -91,10 +91,59 @@ const historicalDocumentSchema = z
 
 const historicalReadResultSchema = z.union([z.null(), historicalDocumentSchema]);
 
+const analysisSystemArtifactTypeSchema = z.enum([
+  "SandboxProgram",
+  "SandboxExecutionReceipt",
+  "SandboxResult",
+]);
+
+const analysisSystemArtifactCommandSchema = z.strictObject({
+  schema_version: z.literal("1.0.0"),
+  scope: appScopeSchema,
+  run_id: immutableIdSchema,
+  principal_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(256),
+  attempt_id: immutableIdSchema,
+  worker_fence: z.number().int().positive(),
+  reference: artifactReferenceSchema.extend({ artifact_type: analysisSystemArtifactTypeSchema }),
+  payload: z.record(z.string(), z.unknown()),
+});
+
+const analysisSystemArtifactResultSchema = z.union([
+  z.strictObject({
+    ok: z.literal(true),
+    created: z.boolean(),
+    reference: artifactReferenceSchema.extend({ artifact_type: analysisSystemArtifactTypeSchema }),
+  }),
+  z.strictObject({
+    ok: z.literal(false),
+    error_code: z.enum([
+      "ANALYSIS_SYSTEM_ARTIFACT_CONTRACT_INVALID",
+      "ANALYSIS_SYSTEM_ARTIFACT_CONTENT_HASH_MISMATCH",
+      "ANALYSIS_SYSTEM_ARTIFACT_IDEMPOTENCY_CONFLICT",
+      "RESEARCH_AUTHORITY_FENCE_MISMATCH",
+      "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+      "RESEARCH_DATABASE_AUTHORITY_REQUIRED",
+      "RESEARCH_DATABASE_CONTRACT_INVALID",
+      "RESEARCH_PERSISTENCE_UNAVAILABLE",
+      "RESEARCH_AUTHORITY_LOCK_CONTENDED",
+    ]),
+  }),
+]);
+
+export type AnalysisSystemArtifactCommand = z.infer<typeof analysisSystemArtifactCommandSchema>;
+export type AnalysisSystemArtifactResult = z.infer<typeof analysisSystemArtifactResultSchema>;
+
 type ResearchAuthorityPorts = ResearchArtifactAuthorityPort &
   ResearchVersionFrontierPort &
   CurrentReadinessPort &
-  ResearchStopTerminalPort;
+  ResearchStopTerminalPort & {
+    commitAnalysisSystem(
+      capabilityInput: unknown,
+      command: AnalysisSystemArtifactCommand,
+      content: Uint8Array | null,
+    ): Promise<AnalysisSystemArtifactResult>;
+  };
 
 type ResearchCommand = {
   readonly scope: AppScope;
@@ -115,6 +164,7 @@ type AccessPolicy =
 type RpcSpec<TCommand extends ResearchCommand, TResult> = AccessPolicy & {
   readonly function_name:
     | "commit_current_l2_artifact"
+    | "commit_current_analysis_artifact"
     | "initialize_research_version_frontier"
     | "advance_research_version_frontier"
     | "commit_research_stop_terminal"
@@ -440,6 +490,13 @@ export function createPostgresResearchAuthority(
     command_schema: researchArtifactCommitInputSchema,
     result_schema: committedResearchArtifactSchema,
   } as const;
+  const analysisArtifactCommitSpec = {
+    function_name: "commit_current_analysis_artifact",
+    access: "WRITE",
+    allowed_roles: ["OWNER", "ANALYST"],
+    command_schema: researchArtifactCommitInputSchema,
+    result_schema: committedResearchArtifactSchema,
+  } as const;
   const frontierInitializeSpec = {
     function_name: "initialize_research_version_frontier",
     access: "WRITE",
@@ -526,7 +583,20 @@ export function createPostgresResearchAuthority(
 
   const authority: PostgresResearchAuthority = {
     commitCurrent(capabilityInput, input) {
-      return executePrepared(capabilityInput, input, artifactCommitSpec);
+      const parsed = researchArtifactCommitInputSchema.safeParse(input);
+      const analysisTypes = new Set([
+        "DataProfile",
+        "AnalysisPlan",
+        "DerivedAnalysisEvidence",
+        "AnalysisCompletionReceipt",
+      ]);
+      return executePrepared(
+        capabilityInput,
+        input,
+        parsed.success && analysisTypes.has(parsed.data.candidate.payload.artifact_type)
+          ? analysisArtifactCommitSpec
+          : artifactCommitSpec,
+      );
     },
     readHistorical(capabilityInput, reference) {
       return executeHistoricalRead(capabilityInput, reference, historicalReadSpec);
@@ -565,6 +635,63 @@ export function createPostgresResearchAuthority(
     },
     commitGo(capabilityInput, input) {
       return executePrepared(capabilityInput, input, commitGoSpec);
+    },
+    async commitAnalysisSystem(capabilityInput, commandInput, content) {
+      const capabilityBundle = capabilityInputSchema.safeParse(capabilityInput);
+      const command = analysisSystemArtifactCommandSchema.safeParse(commandInput);
+      if (!capabilityBundle.success || !command.success) {
+        return { ok: false, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
+      }
+      const envelope = {
+        protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
+        authority_capability_id: capabilityBundle.data.authority_capability_id,
+        command: command.data,
+      } as const;
+      const transaction = await withAppTransaction(
+        options.pool,
+        options.authorizer,
+        capabilityBundle.data.app_capability,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          map_database_error: databaseFailure,
+          operation_name: "research_authority.commit_analysis_system_artifact",
+          correlation_id: command.data.run_id,
+        },
+        async ({ capability, client }) => {
+          if (!scopeMatches(command.data, capability)) {
+            throw new PersistenceBoundaryError(
+              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+              "Analysis System Artifact 与事务内 App Capability Scope/Principal 不一致。",
+            );
+          }
+          const databaseResult = await client.query<JsonResultRow>(
+            "select app_data_agent.commit_analysis_system_artifact($1::jsonb, $2::bytea) as result",
+            [envelope, content],
+          );
+          const parsed = analysisSystemArtifactResultSchema.safeParse(
+            databaseResult.rows[0]?.result,
+          );
+          if (!parsed.success) {
+            throw new PersistenceBoundaryError(
+              "RESEARCH_DATABASE_CONTRACT_INVALID",
+              "Analysis System Artifact RPC 返回了不符合冻结协议的 Result。",
+            );
+          }
+          return parsed.data;
+        },
+      );
+      if (transaction.ok) return transaction.value;
+      const failure = boundaryFailureToU6<never>(transaction.error);
+      if (failure.ok) {
+        throw new ResearchAuthorityTransportError(
+          "Analysis System Artifact 的事务失败被错误映射为成功。",
+        );
+      }
+      return {
+        ok: false,
+        error_code: failure.error.code,
+      } as AnalysisSystemArtifactResult;
     },
   };
   return Object.freeze(authority);

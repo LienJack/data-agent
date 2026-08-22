@@ -25,7 +25,10 @@ import {
   schemaSnapshotRefSchema,
   semanticReleaseRefSchema,
 } from "./references.js";
-import { type L2ResearchDocumentCandidate, parseL2ResearchDocumentCandidate } from "./wire.js";
+import {
+  parseL2ResearchDocumentCandidate,
+  type VersionedL2ResearchDocumentCandidate,
+} from "./wire.js";
 
 export const U6_PLATFORM_SCHEMA_VERSION = "1.0.0" as const;
 export const U6_DB_RESULT_PROTOCOL_VERSION = "u6-db-result@1.0.0" as const;
@@ -567,7 +570,7 @@ export type ResearchArtifactCommitInput = Omit<
   z.infer<typeof researchArtifactCommitInputSchema>,
   "candidate"
 > & {
-  readonly candidate: L2ResearchDocumentCandidate;
+  readonly candidate: VersionedL2ResearchDocumentCandidate;
 };
 export type CommittedResearchArtifact = z.infer<typeof committedResearchArtifactSchema>;
 export type PublishCurrentInput = z.infer<typeof publishCurrentInputSchema>;

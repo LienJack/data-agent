@@ -1,0 +1,152 @@
+[
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000001",
+    "slug": "monthly-gmv-trend",
+    "title": "月度 GMV 趋势与缺期",
+    "question": "月度 GMV 趋势与缺期；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "trend-change@1"
+    ],
+    "expected_evidence_level": "L2_OBSERVATION",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:73bcea0eb977708e342789ecd1399d520e09846dfac9a98615b05a27aa11bb04"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000002",
+    "slug": "state-contribution",
+    "title": "州贡献、负值与净变化抵消",
+    "question": "州贡献、负值与净变化抵消；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "contribution-concentration@1"
+    ],
+    "expected_evidence_level": "L2_OBSERVATION",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:42e790dbf26a8248027032c5b34f2385d27b02d6daf6cc02743a770530e1c739"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000003",
+    "slug": "return-anomaly",
+    "title": "退货状态异常与稳健基线",
+    "question": "退货状态异常与稳健基线；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "robust-anomaly@1"
+    ],
+    "expected_evidence_level": "L2_OBSERVATION",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:bc98630188db13f7b9dd2304bc9c1d3e06996d29386945d7680b51adf799e9e3"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000004",
+    "slug": "delivery-satisfaction",
+    "title": "履约与低评分关联及离群敏感性",
+    "question": "履约与低评分关联及离群敏感性；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "association-outlier-completeness@1"
+    ],
+    "expected_evidence_level": "L2_OBSERVATION",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:f9ecdb643cbac30385eb08a31a9384d9842405252a0ac3a7d9f34c4362679036"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000005",
+    "slug": "honest-forecast",
+    "title": "月度 GMV 无泄漏回测",
+    "question": "月度 GMV 无泄漏回测；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "baseline-forecast-backtest@1"
+    ],
+    "expected_evidence_level": "L2_OBSERVATION",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:a9a10cb33a43bd6c7afe1f71e8708c5cc00c4540ff882cb20f8257826db53cb6"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000006",
+    "slug": "sales-return-report",
+    "title": "销售退货完整证据报告",
+    "question": "销售退货完整证据报告；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "data-profile@1",
+      "semantic-transform@1",
+      "trend-change@1",
+      "contribution-concentration@1",
+      "robust-anomaly@1",
+      "open-python-analysis@1",
+      "visual-insight-story@1"
+    ],
+    "expected_evidence_level": "L4_DISCOVERY",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:5c30b8788b8df196221532da5a632df12ff7374dee1713bb2c68f6bfbdddf55e"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000007",
+    "slug": "root-cause-discovery",
+    "title": "退货根因候选与竞争解释",
+    "question": "退货根因候选与竞争解释；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "root-cause-investigation@1"
+    ],
+    "expected_evidence_level": "L4_DISCOVERY",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:e10de2cbff903bffec21f8ad106284a4d7399377ab16df7af44928763f662f88"
+  },
+  {
+    "case_id": "ec200000-0000-4000-8000-000000000008",
+    "slug": "certified-causal",
+    "title": "履约干预的认证因果估计",
+    "question": "履约干预的认证因果估计；必须使用发布语义、治理 SQL、受证明 Python、独立 Oracle 和安全报告投影。",
+    "required_skills": [
+      "causal-identification@1"
+    ],
+    "expected_evidence_level": "L5_CERTIFIED",
+    "semantic_frontier": {
+      "semantic_release_id": "ec200000-0000-4000-8000-000000000001",
+      "semantic_release_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "schema_snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy_receipt_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "dataset_version": "adb-ecommerce-bounded-v1",
+    "public_case_hash": "sha256:e77a5024a033ea5141bac5e5c19c5c3366c2472f66b5c82826b28cdb179f1390"
+  }
+]

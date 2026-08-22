@@ -8,7 +8,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from data_agent_sandbox.python_runtime.policy import ALLOWED_IMPORT_ROOTS
+from data_agent_sandbox.python_runtime.policy import allowed_import_roots
 from data_agent_sandbox.python_runtime.sdk import AnalysisContext
 
 _SAFE_BUILTINS = {
@@ -59,9 +59,11 @@ def _controlled_import(
     locals: dict[str, Any] | None = None,
     fromlist: tuple[str, ...] = (),
     level: int = 0,
+    *,
+    allowed_roots: frozenset[str],
 ) -> Any:
     del globals, locals
-    if level != 0 or name.split(".", 1)[0] not in ALLOWED_IMPORT_ROOTS:
+    if level != 0 or name.split(".", 1)[0] not in allowed_roots:
         raise ImportError("PYTHON_IMPORT_DENIED")
     return builtins.__import__(name, {}, {}, fromlist, 0)
 
@@ -77,10 +79,25 @@ def run(control_path: Path) -> int:
         item["name"]: (item["type"], job_root / "output" / item["file_name"])
         for item in control["outputs"]
     }
+    allowed_roots = allowed_import_roots(control["import_profile"])
     context = AnalysisContext(inputs, outputs)
     source = (job_root / "program.py").read_text(encoding="utf-8")
     namespace: dict[str, Any] = {
-        "__builtins__": MappingProxyType({**_SAFE_BUILTINS, "__import__": _controlled_import}),
+        "__builtins__": MappingProxyType(
+            {
+                **_SAFE_BUILTINS,
+                "__import__": lambda name, globals=None, locals=None, fromlist=(), level=0: (
+                    _controlled_import(
+                        name,
+                        globals,
+                        locals,
+                        fromlist,
+                        level,
+                        allowed_roots=allowed_roots,
+                    )
+                ),
+            }
+        ),
         "__name__": "sandbox_program",
     }
     try:

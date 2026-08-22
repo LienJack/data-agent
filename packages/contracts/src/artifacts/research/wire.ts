@@ -8,6 +8,15 @@ import {
   l2ArtifactEnvelopeSchema,
 } from "../envelope.js";
 import { l2ArtifactDocumentSchema } from "../l2.js";
+import {
+  analysisCompletionReceiptPayloadSchema,
+  analysisPlanPayloadSchema,
+  atomicClaimV3PayloadSchema,
+  dataProfilePayloadSchema,
+  derivedAnalysisEvidencePayloadSchema,
+  evidenceRelationV3PayloadSchema,
+  researchBriefV3PayloadSchema,
+} from "./analysis.js";
 import { coverageStatePayloadSchema } from "./coverage.js";
 import {
   coverageStatePayloadV2Schema,
@@ -22,6 +31,7 @@ import { U6_WIRE_LIMITS } from "./primitives.js";
 import {
   atomicClaimV2PayloadSchema,
   evidenceCheckReceiptPayloadSchema,
+  evidenceCheckReceiptV2PayloadSchema,
   evidenceRelationV2PayloadSchema,
   hypothesisAssessmentPayloadSchema,
   obligationExecutionDecisionPayloadSchema,
@@ -36,8 +46,10 @@ import {
 } from "./readiness.js";
 import {
   analysisReportV2PayloadSchema,
+  analysisReportV3PayloadSchema,
   reportManifestV1PayloadSchema,
   reportManifestV2PayloadSchema,
+  reportManifestV3PayloadSchema,
   reportProjectionReceiptPayloadSchema,
 } from "./reporting.js";
 import { researchStopDecisionPayloadSchema } from "./stop.js";
@@ -45,6 +57,7 @@ import { isHistoricalOnlyL2ResearchArtifactType, L2ResearchWireError } from "./v
 
 const writableVersionedPayloadSchemas = new Map<string, z.ZodType>([
   ["ResearchBrief\0" + "2.0.0\0research-brief@2.0.0", researchBriefV2PayloadSchema],
+  ["ResearchBrief\0" + "3.0.0\0research-brief@3.0.0", researchBriefV3PayloadSchema],
   ["HypothesisSet\0" + "2.0.0\0hypothesis-set@2.0.0", hypothesisSetV2PayloadSchema],
   ["EvidencePlan\0" + "2.0.0\0evidence-plan@2.0.0", evidencePlanV2PayloadSchema],
   [
@@ -52,9 +65,22 @@ const writableVersionedPayloadSchemas = new Map<string, z.ZodType>([
     obligationExecutionDecisionPayloadSchema,
   ],
   ["QueryEvidence\0" + "2.0.0\0query-evidence@2.0.0", queryEvidenceV2PayloadSchema],
+  ["DataProfile\0" + "1.0.0\0data-profile@1.0.0", dataProfilePayloadSchema],
+  ["AnalysisPlan\0" + "1.0.0\0analysis-plan@1.0.0", analysisPlanPayloadSchema],
+  [
+    "DerivedAnalysisEvidence\0" + "1.0.0\0derived-analysis-evidence@1.0.0",
+    derivedAnalysisEvidencePayloadSchema,
+  ],
+  [
+    "AnalysisCompletionReceipt\0" + "1.0.0\0analysis-completion@1.0.0",
+    analysisCompletionReceiptPayloadSchema,
+  ],
   ["AtomicClaim\0" + "2.0.0\0atomic-claim@2.0.0", atomicClaimV2PayloadSchema],
+  ["AtomicClaim\0" + "3.0.0\0atomic-claim@3.0.0", atomicClaimV3PayloadSchema],
   ["EvidenceRelation\0" + "2.0.0\0evidence-relation@2.0.0", evidenceRelationV2PayloadSchema],
+  ["EvidenceRelation\0" + "3.0.0\0evidence-relation@3.0.0", evidenceRelationV3PayloadSchema],
   ["EvidenceCheckReceipt\0" + "1.0.0\0evidence-check@1.0.0", evidenceCheckReceiptPayloadSchema],
+  ["EvidenceCheckReceipt\0" + "2.0.0\0evidence-check@2.0.0", evidenceCheckReceiptV2PayloadSchema],
   ["SupportDecision\0" + "1.0.0\0support-decision@1.0.0", supportDecisionPayloadSchema],
   [
     "HypothesisAssessment\0" + "1.0.0\0hypothesis-assessment@1.0.0",
@@ -65,7 +91,9 @@ const writableVersionedPayloadSchemas = new Map<string, z.ZodType>([
   ["ResearchStopDecision\0" + "1.0.0\0research-stop@1.0.0", researchStopDecisionPayloadSchema],
   ["ResearchStopDecision\0" + "2.0.0\0research-stop@2.0.0", researchStopDecisionPayloadV2Schema],
   ["ReportManifest\0" + "2.0.0\0report-manifest@2.0.0", reportManifestV2PayloadSchema],
+  ["ReportManifest\0" + "3.0.0\0report-manifest@3.0.0", reportManifestV3PayloadSchema],
   ["AnalysisReport\0" + "2.0.0\0analysis-report@2.0.0", analysisReportV2PayloadSchema],
+  ["AnalysisReport\0" + "3.0.0\0analysis-report@3.0.0", analysisReportV3PayloadSchema],
   [
     "ReportProjectionReceipt\0" + "1.0.0\0report-projection@1.0.0",
     reportProjectionReceiptPayloadSchema,
@@ -85,13 +113,21 @@ const historicalVersionedPayloadSchemas = new Map<string, z.ZodType>([
 
 export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["ResearchBrief", "2.0.0", "research-brief@2.0.0"],
+  ["ResearchBrief", "3.0.0", "research-brief@3.0.0"],
   ["HypothesisSet", "2.0.0", "hypothesis-set@2.0.0"],
   ["EvidencePlan", "2.0.0", "evidence-plan@2.0.0"],
   ["ObligationExecutionDecision", "2.0.0", "obligation-execution@2.0.0"],
   ["QueryEvidence", "2.0.0", "query-evidence@2.0.0"],
+  ["DataProfile", "1.0.0", "data-profile@1.0.0"],
+  ["AnalysisPlan", "1.0.0", "analysis-plan@1.0.0"],
+  ["DerivedAnalysisEvidence", "1.0.0", "derived-analysis-evidence@1.0.0"],
+  ["AnalysisCompletionReceipt", "1.0.0", "analysis-completion@1.0.0"],
   ["AtomicClaim", "2.0.0", "atomic-claim@2.0.0"],
+  ["AtomicClaim", "3.0.0", "atomic-claim@3.0.0"],
   ["EvidenceRelation", "2.0.0", "evidence-relation@2.0.0"],
+  ["EvidenceRelation", "3.0.0", "evidence-relation@3.0.0"],
   ["EvidenceCheckReceipt", "1.0.0", "evidence-check@1.0.0"],
+  ["EvidenceCheckReceipt", "2.0.0", "evidence-check@2.0.0"],
   ["SupportDecision", "1.0.0", "support-decision@1.0.0"],
   ["HypothesisAssessment", "1.0.0", "hypothesis-assessment@1.0.0"],
   ["CoverageState", "1.0.0", "coverage-state@1.0.0"],
@@ -99,7 +135,9 @@ export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["ResearchStopDecision", "1.0.0", "research-stop@1.0.0"],
   ["ResearchStopDecision", "2.0.0", "research-stop@2.0.0"],
   ["ReportManifest", "2.0.0", "report-manifest@2.0.0"],
+  ["ReportManifest", "3.0.0", "report-manifest@3.0.0"],
   ["AnalysisReport", "2.0.0", "analysis-report@2.0.0"],
+  ["AnalysisReport", "3.0.0", "analysis-report@3.0.0"],
   ["ReportProjectionReceipt", "1.0.0", "report-projection@1.0.0"],
   ["EvidenceGateReceipt", "1.0.0", "evidence-gate@1.0.0"],
   ["ReportReadyCertificate", "3.0.0", "report-ready@3.0.0"],
@@ -124,13 +162,21 @@ export const L2_RESEARCH_HISTORICAL_VERSIONED_TUPLES = Object.freeze([
 
 type WritableResearchPayload =
   | z.infer<typeof researchBriefV2PayloadSchema>
+  | z.infer<typeof researchBriefV3PayloadSchema>
   | z.infer<typeof hypothesisSetV2PayloadSchema>
   | z.infer<typeof evidencePlanV2PayloadSchema>
   | z.infer<typeof obligationExecutionDecisionPayloadSchema>
   | z.infer<typeof queryEvidenceV2PayloadSchema>
+  | z.infer<typeof dataProfilePayloadSchema>
+  | z.infer<typeof analysisPlanPayloadSchema>
+  | z.infer<typeof derivedAnalysisEvidencePayloadSchema>
+  | z.infer<typeof analysisCompletionReceiptPayloadSchema>
   | z.infer<typeof atomicClaimV2PayloadSchema>
+  | z.infer<typeof atomicClaimV3PayloadSchema>
   | z.infer<typeof evidenceRelationV2PayloadSchema>
+  | z.infer<typeof evidenceRelationV3PayloadSchema>
   | z.infer<typeof evidenceCheckReceiptPayloadSchema>
+  | z.infer<typeof evidenceCheckReceiptV2PayloadSchema>
   | z.infer<typeof supportDecisionPayloadSchema>
   | z.infer<typeof hypothesisAssessmentPayloadSchema>
   | z.infer<typeof coverageStatePayloadSchema>
@@ -138,13 +184,35 @@ type WritableResearchPayload =
   | z.infer<typeof researchStopDecisionPayloadSchema>
   | z.infer<typeof researchStopDecisionPayloadV2Schema>
   | z.infer<typeof reportManifestV2PayloadSchema>
+  | z.infer<typeof reportManifestV3PayloadSchema>
   | z.infer<typeof analysisReportV2PayloadSchema>
+  | z.infer<typeof analysisReportV3PayloadSchema>
   | z.infer<typeof reportProjectionReceiptPayloadSchema>
   | z.infer<typeof evidenceGateReceiptPayloadSchema>
   | z.infer<typeof reportReadyCertificateV3PayloadSchema>
   | z.infer<typeof readinessRevocationReceiptPayloadSchema>;
 
+type KernelWritableResearchPayload = Exclude<
+  WritableResearchPayload,
+  {
+    protocol_version:
+      | "research-brief@3.0.0"
+      | "atomic-claim@3.0.0"
+      | "evidence-relation@3.0.0"
+      | "evidence-check@2.0.0"
+      | "report-manifest@3.0.0"
+      | "analysis-report@3.0.0";
+  }
+>;
+
+/** Stable payload surface consumed by the existing V2 Research Kernel. */
 export type L2ResearchDocumentCandidate = {
+  envelope: ArtifactEnvelope;
+  payload: KernelWritableResearchPayload;
+};
+
+/** Full registered writer surface, including the deterministic-analysis V3 lane. */
+export type VersionedL2ResearchDocumentCandidate = {
   envelope: ArtifactEnvelope;
   payload: WritableResearchPayload;
 };
@@ -591,7 +659,15 @@ export function readHistoricalVersionedL2ResearchDocument(
   });
 }
 
-export function parseL2ResearchDocumentCandidate(input: unknown): L2ResearchDocumentCandidate {
+export function parseL2ResearchDocumentCandidate<
+  const T extends VersionedL2ResearchDocumentCandidate,
+>(input: T): T;
+export function parseL2ResearchDocumentCandidate(
+  input: unknown,
+): VersionedL2ResearchDocumentCandidate;
+export function parseL2ResearchDocumentCandidate(
+  input: unknown,
+): VersionedL2ResearchDocumentCandidate {
   preflightRawL2ResearchJsonObject(input, "Research Document");
   const documentShape = l2ResearchDocumentShapeSchema.parse(input);
   const payload = parseL2ResearchPayloadForEnvelopeAfterPreflight(
@@ -634,7 +710,7 @@ export function readHistoricalL2ResearchDocument(input: unknown): HistoricalL2Re
   });
 }
 
-function envelopeContentHashMaterial(document: L2ResearchDocumentCandidate) {
+function envelopeContentHashMaterial(document: VersionedL2ResearchDocumentCandidate) {
   const {
     content_hash: _contentHash,
     created_at: _createdAt,
@@ -654,7 +730,7 @@ export async function computeL2ResearchEnvelopeContentHash(
 }
 
 export async function parseAndHashL2ResearchDocumentCandidate(input: unknown): Promise<{
-  readonly document: L2ResearchDocumentCandidate;
+  readonly document: VersionedL2ResearchDocumentCandidate;
   readonly content_hash: `sha256:${string}`;
 }> {
   const document = parseL2ResearchDocumentCandidate(input);

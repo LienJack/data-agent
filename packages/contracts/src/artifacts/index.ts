@@ -52,6 +52,7 @@ export * from "./semantic-governance-requests.js";
 export * from "./semantic-induction.js";
 export * from "./semantic-relationship-index.js";
 export * from "./sensitive-execution-artifact.js";
+export * from "./tabular-import.js";
 export * from "./text2sql-evidence.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,

@@ -317,6 +317,14 @@ export function scanModuleImports(source: string): ModuleImportScan {
   const tokens: ScannerToken[] = [];
 
   for (let kind = scanner.scan(); kind !== SyntaxKind.EndOfFile; kind = scanner.scan()) {
+    // TypeScript 7's standalone scanner can return a zero-width Unknown token for
+    // characters that are only meaningful after a parser rescan (for example `#`
+    // inside a regular-expression literal). Always make progress so architecture
+    // validation fails closed instead of exhausting memory on valid source text.
+    if (scanner.getTokenEnd() <= scanner.getTokenStart()) {
+      scanner.resetTokenState(scanner.getTokenStart() + 1);
+      continue;
+    }
     tokens.push({ kind, value: scanner.getTokenValue() });
   }
 

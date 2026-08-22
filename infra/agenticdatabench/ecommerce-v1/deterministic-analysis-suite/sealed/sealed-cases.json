@@ -1,0 +1,168 @@
+[
+  {
+    "public_case_hash": "sha256:73bcea0eb977708e342789ecd1399d520e09846dfac9a98615b05a27aa11bb04",
+    "query_evidence_hashes": [
+      "sha256:0f1782c27c0091a9d3d14449738b5516941a7f89f0e12bc1fa122f6f492c44a8"
+    ],
+    "golden_result_hashes": [
+      "sha256:cd8540d964b8717a90e48bf2a985846b5efd3a7413e5cadc445f17b5071394b8"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_MISSING_PERIOD_ZERO_FILL_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "MISSING_PERIOD_ZERO_FILL"
+    ],
+    "expected_terminal": "READY",
+    "sealed_case_hash": "sha256:081671fa721236c4d285d368c602c77a7aebc6b7229ade41d0b201cefd7c1665"
+  },
+  {
+    "public_case_hash": "sha256:42e790dbf26a8248027032c5b34f2385d27b02d6daf6cc02743a770530e1c739",
+    "query_evidence_hashes": [
+      "sha256:14e0143df6527e590996752fb778a3125dc07682a7537b8abba48a0b8179ddaf"
+    ],
+    "golden_result_hashes": [
+      "sha256:13b6dde25c73dcb895ccd69dec38d5ea195f47c667bf117836599547c2039657"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_NET_CHANGE_CANCELLATION_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "NET_CHANGE_CANCELLATION"
+    ],
+    "expected_terminal": "READY",
+    "sealed_case_hash": "sha256:b3037889abc7e6ada43093332b5c0e9f9846685c49764570eecafdc80c9c3348"
+  },
+  {
+    "public_case_hash": "sha256:bc98630188db13f7b9dd2304bc9c1d3e06996d29386945d7680b51adf799e9e3",
+    "query_evidence_hashes": [
+      "sha256:49d284cd906159aeee1106942899cd02461c48b1b0cf5b04888299b80e4c51e4"
+    ],
+    "golden_result_hashes": [
+      "sha256:5156c19be3414517a230c756f2ac8546659da0b277baddf57987c126bad6eba9"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_ROBUST_OUTLIER_SENSITIVITY_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "ROBUST_OUTLIER_SENSITIVITY"
+    ],
+    "expected_terminal": "READY",
+    "sealed_case_hash": "sha256:d9e67d6480f5ca92f32083526ccb91cc66b65d64f4e18e551357fc9773a6d342"
+  },
+  {
+    "public_case_hash": "sha256:f9ecdb643cbac30385eb08a31a9384d9842405252a0ac3a7d9f34c4362679036",
+    "query_evidence_hashes": [
+      "sha256:5d2bdea8fd02b546a073f612dca5495325fbe058648d8ebb9113cafdd6e6bd58"
+    ],
+    "golden_result_hashes": [
+      "sha256:9866651f27cbaf103fb56da6aae11076ce70c7e051079489294213f6d6a66066"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_CORRELATION_OUTLIER_SENSITIVITY_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "CORRELATION_OUTLIER_SENSITIVITY"
+    ],
+    "expected_terminal": "READY",
+    "sealed_case_hash": "sha256:1ac3d614ac08cf34d42aed25fac21450c7bf8167bf3a1880d57b1be1436c32f4"
+  },
+  {
+    "public_case_hash": "sha256:a9a10cb33a43bd6c7afe1f71e8708c5cc00c4540ff882cb20f8257826db53cb6",
+    "query_evidence_hashes": [
+      "sha256:1dd1931e0582bbf38beeec8e45be2b8618a7816d4f687caccc7a8378fb3f26a7"
+    ],
+    "golden_result_hashes": [
+      "sha256:55e29e5fb54c64de47971ef49cef38ed09341404aed13d1ea58a69587a4b3926"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_SEASONAL_LEAKAGE_NOT_HELD",
+      "ADVERSARIAL_UNPUBLISHED_SEASONAL_PERIOD_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "SEASONAL_LEAKAGE",
+      "UNPUBLISHED_SEASONAL_PERIOD"
+    ],
+    "expected_terminal": "READY",
+    "sealed_case_hash": "sha256:49757e9c8ef17aafb1ca2262b20f70bb664b7569639ace3b161f51b8596f8189"
+  },
+  {
+    "public_case_hash": "sha256:5c30b8788b8df196221532da5a632df12ff7374dee1713bb2c68f6bfbdddf55e",
+    "query_evidence_hashes": [
+      "sha256:a90bfaa939ece0eab8486af5ffdf02675b251734b9273f8ff78a4197641fba14"
+    ],
+    "golden_result_hashes": [
+      "sha256:50b7f56e0bb97e036a5cd9a6c51c3c3a131abc6ba1ed6f6a5adcbf7a02ec8058"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_PUBLIC_SOURCE_OR_STDOUT_DISCLOSURE_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "PUBLIC_SOURCE_OR_STDOUT_DISCLOSURE"
+    ],
+    "expected_terminal": "L4_DISCOVERY",
+    "sealed_case_hash": "sha256:51d64c39c771ddd7e6ab39d549dfeb3791810db0f0e6ae00be3f9217f337df53"
+  },
+  {
+    "public_case_hash": "sha256:e10de2cbff903bffec21f8ad106284a4d7399377ab16df7af44928763f662f88",
+    "query_evidence_hashes": [
+      "sha256:2d69d18978fa38e30101dfd82c309bf0dec1eb83ce445e3338ac663281bb728c"
+    ],
+    "golden_result_hashes": [
+      "sha256:b8d4085b46584ccde90338281c78d148c3fa90ad0e69f97bd12c4973a264d201"
+    ],
+    "hard_failures": [
+      "NUMERIC_OR_STRUCTURE_MISMATCH",
+      "EVIDENCE_QUALITY_NOT_PASS",
+      "ADVERSARIAL_SIMPSON_PARADOX_NOT_HELD",
+      "ADVERSARIAL_REVERSE_CAUSALITY_NOT_HELD",
+      "ADVERSARIAL_COLLIDER_OR_CONFOUNDER_MISUSE_NOT_HELD",
+      "ADVERSARIAL_PERMISSION_DIMENSION_INDUCTION_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "SIMPSON_PARADOX",
+      "REVERSE_CAUSALITY",
+      "COLLIDER_OR_CONFOUNDER_MISUSE",
+      "PERMISSION_DIMENSION_INDUCTION"
+    ],
+    "expected_terminal": "L4_DISCOVERY",
+    "sealed_case_hash": "sha256:83dd148e3032584c4a9a850a5e49cdf5cd3078357c0f0f382f146b2b2835a5c0"
+  },
+  {
+    "public_case_hash": "sha256:e77a5024a033ea5141bac5e5c19c5c3366c2472f66b5c82826b28cdb179f1390",
+    "query_evidence_hashes": [
+      "sha256:ce861952a7221f14032da9ed5eb13fb5581eede635b0995df5e3a612ce23a49b"
+    ],
+    "golden_result_hashes": [
+      "sha256:a108fdafd642f63d882e5927579105c95aad33425451bd1d12d68984530ec721"
+    ],
+    "hard_failures": [
+      "SCM_EFFECT_DIRECTION_OR_INTERVAL_MISMATCH",
+      "CERTIFICATE_OR_PUBLIC_LEVEL_INVALID",
+      "ADVERSARIAL_POST_TREATMENT_LEAKAGE_NOT_HELD",
+      "ADVERSARIAL_SMALL_SAMPLE_NOT_HELD",
+      "ADVERSARIAL_MISSING_NOT_AT_RANDOM_NOT_HELD",
+      "ADVERSARIAL_MULTIPLE_TESTING_NOT_HELD"
+    ],
+    "adversarial_cases": [
+      "POST_TREATMENT_LEAKAGE",
+      "SMALL_SAMPLE",
+      "MISSING_NOT_AT_RANDOM",
+      "MULTIPLE_TESTING"
+    ],
+    "expected_terminal": "L5_CERTIFIED",
+    "sealed_case_hash": "sha256:10003571e2079554966aa95f8ecf05fe352c64c85dd05fd9ea3fcded68794336"
+  }
+]

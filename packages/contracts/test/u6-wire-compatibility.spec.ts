@@ -97,12 +97,16 @@ describe("U6 Wire Compatibility: VersionFrontier schema", () => {
   });
 });
 
-// ─── 2. L2_RESEARCH_WIRE_VERSION_MATRIX 无新增 Artifact Type ──────────────────
+// ─── 2. L2_RESEARCH_WIRE_VERSION_MATRIX 仅包含显式批准的 Artifact Type ─────────
 
 describe("U6 Wire Compatibility: Version Matrix", () => {
-  // 冻结的基线：U6 注册的 artifact types，不含 U10 新增
+  // 冻结的基线：U6 + deterministic-analysis U1 显式注册的 artifact types，不含 U10 新增
   const frozenTypes = [
     "ResearchBrief",
+    "DataProfile",
+    "AnalysisPlan",
+    "DerivedAnalysisEvidence",
+    "AnalysisCompletionReceipt",
     "HypothesisSet",
     "EvidencePlan",
     "ObligationExecutionDecision",

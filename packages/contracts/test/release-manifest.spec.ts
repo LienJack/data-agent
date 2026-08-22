@@ -1,8 +1,12 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   authorizeReleaseManifest,
+  computeDeterministicAnalysisRolloutHash,
   computeReleaseManifestHash,
+  DETERMINISTIC_ANALYSIS_CAPABILITY_IDS,
+  deterministicAnalysisRolloutSchema,
   isAuthoritativeReleaseManifest,
+  isDeterministicAnalysisCapabilityExecutable,
   type ReleaseManifest,
   ReleaseManifestAuthorityError,
   releaseManifestSchema,
@@ -35,6 +39,66 @@ function makeReleaseManifestDraft() {
   };
 }
 
+function makeRolloutDraft() {
+  return {
+    schema_version: "deterministic-analysis-rollout@1.0.0" as const,
+    suite_version: "ecommerce-analysis-suite@1.0.0",
+    suite_hash: hashes.input,
+    supply_chain: {
+      attestation_hash: hashes.execution,
+      sbom_hash: hashes.artifact,
+      cve_scan_status: "PASS" as const,
+      license_scan_status: "REVIEW_REQUIRED" as const,
+      evidence_refs: [makeArtifactReference("OracleVerdictReceipt")],
+    },
+    f9: {
+      registration_status: "NOT_REGISTERED" as const,
+      evidence_refs: [],
+    },
+    l5_gate: {
+      decision: "HOLD" as const,
+      expires_at: null,
+      evidence_refs: [],
+    },
+    text2sql_isolation: {
+      independent_path_verified: true as const,
+      verification_hash: hashes.input,
+    },
+    capabilities: DETERMINISTIC_ANALYSIS_CAPABILITY_IDS.map((capability_id) => ({
+      capability_id,
+      stage: 0 as const,
+      registration_state:
+        capability_id === "certified-causal-estimate@1"
+          ? ("NOT_REGISTERED" as const)
+          : ("FIXTURE_ONLY" as const),
+      execution_enabled: false,
+      user_visible: false,
+      generated_programs_allowed: false,
+      kill_switch: {
+        engaged: true,
+        reason_code: "STAGE_NOT_EXECUTABLE",
+      },
+      evidence_refs: [],
+      promotion_blockers: ["SHADOW_NOT_COMPLETE"],
+      shadow_metrics: {
+        oracle_score: 100,
+        replay_match_rate: 1,
+        safety_rejection_rate: null,
+        p95_elapsed_ms: null,
+      },
+    })),
+    rollout_hash: hashes.input,
+  };
+}
+
+async function makeRollout() {
+  const draft = makeRolloutDraft();
+  return {
+    ...draft,
+    rollout_hash: await computeDeterministicAnalysisRolloutHash(draft),
+  };
+}
+
 async function makeReleaseManifest() {
   const draft = makeReleaseManifestDraft();
   const manifestHash = await computeReleaseManifestHash(draft);
@@ -58,6 +122,134 @@ describe("ReleaseManifest 权威契约", () => {
 
     expect(isAuthoritativeReleaseManifest(authoritative)).toBe(true);
     expect(Object.isFrozen(authoritative.deployment_evidence)).toBe(true);
+  });
+
+  it("把完整逐技能 rollout 纳入独立 hash，且 kill switch 关闭单项执行", async () => {
+    const rollout = await makeRollout();
+    expect(deterministicAnalysisRolloutSchema.parse(rollout).capabilities).toHaveLength(11);
+    expect(isDeterministicAnalysisCapabilityExecutable(rollout, "trend-change@1")).toBe(false);
+    expect(
+      await computeDeterministicAnalysisRolloutHash({
+        ...rollout,
+        suite_version: "ecommerce-analysis-suite@1.0.1",
+      }),
+    ).not.toBe(rollout.rollout_hash);
+
+    const trendEnabled = {
+      ...rollout,
+      capabilities: rollout.capabilities.map((capability) =>
+        capability.capability_id === "trend-change@1"
+          ? { ...capability, execution_enabled: true }
+          : capability,
+      ),
+    };
+    expect(deterministicAnalysisRolloutSchema.safeParse(trendEnabled).success).toBe(false);
+  });
+
+  it("F9 未注册或 L5 独立门 HOLD 时拒绝启用 Certified Causal", async () => {
+    const rollout = await makeRollout();
+    const invalid = {
+      ...rollout,
+      capabilities: rollout.capabilities.map((capability) =>
+        capability.capability_id === "certified-causal-estimate@1"
+          ? {
+              ...capability,
+              stage: 4 as const,
+              registration_state: "GENERAL_AVAILABILITY" as const,
+              execution_enabled: true,
+              user_visible: true,
+              kill_switch: { engaged: false, reason_code: null },
+              evidence_refs: [makeArtifactReference("ResultOracleReceipt")],
+              promotion_blockers: [],
+            }
+          : capability,
+      ),
+    };
+    expect(deterministicAnalysisRolloutSchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it("Certified Causal 在 F9/L5 证据闭合后仍按证书有效期失效", async () => {
+    const rollout = await makeRollout();
+    const valid = deterministicAnalysisRolloutSchema.parse({
+      ...rollout,
+      supply_chain: { ...rollout.supply_chain, license_scan_status: "PASS" },
+      f9: {
+        registration_status: "REGISTERED",
+        evidence_refs: [makeArtifactReference("BenchmarkAdapterReceipt")],
+      },
+      l5_gate: {
+        decision: "GO",
+        expires_at: "2026-09-01T00:00:00.000Z",
+        evidence_refs: [makeArtifactReference("SandboxExecutionReceipt")],
+      },
+      capabilities: rollout.capabilities.map((capability) =>
+        capability.capability_id === "certified-causal-estimate@1"
+          ? {
+              ...capability,
+              stage: 4,
+              registration_state: "GENERAL_AVAILABILITY",
+              execution_enabled: true,
+              user_visible: true,
+              kill_switch: { engaged: false, reason_code: null },
+              evidence_refs: [makeArtifactReference("ResultOracleReceipt")],
+              promotion_blockers: [],
+            }
+          : capability,
+      ),
+    });
+    expect(
+      isDeterministicAnalysisCapabilityExecutable(
+        valid,
+        "certified-causal-estimate@1",
+        new Date("2026-08-31T00:00:00.000Z"),
+      ),
+    ).toBe(true);
+    expect(
+      isDeterministicAnalysisCapabilityExecutable(
+        valid,
+        "certified-causal-estimate@1",
+        new Date("2026-09-01T00:00:00.000Z"),
+      ),
+    ).toBe(false);
+  });
+
+  it("授权时同时验证 rollout 内容 hash", async () => {
+    const rollout = await makeRollout();
+    const draft = { ...makeReleaseManifestDraft(), deterministic_analysis_rollout: rollout };
+    const manifestHash = await computeReleaseManifestHash(draft);
+    const manifest = {
+      ...draft,
+      manifest_ref: { ...draft.manifest_ref, content_hash: manifestHash },
+      manifest_hash: manifestHash,
+    };
+    await expect(
+      authorizeReleaseManifest(manifest.manifest_ref, {
+        resolveCommitted: async () => manifest,
+        verifyCommitted: async () => true,
+      }),
+    ).resolves.toSatisfy(isAuthoritativeReleaseManifest);
+
+    const drifted = {
+      ...manifest,
+      deterministic_analysis_rollout: {
+        ...manifest.deterministic_analysis_rollout,
+        rollout_hash: hashes.input,
+      },
+    };
+    const driftedManifestHash = await computeReleaseManifestHash(drifted);
+    await expect(
+      authorizeReleaseManifest(
+        { ...drifted.manifest_ref, content_hash: driftedManifestHash },
+        {
+          resolveCommitted: async () => ({
+            ...drifted,
+            manifest_ref: { ...drifted.manifest_ref, content_hash: driftedManifestHash },
+            manifest_hash: driftedManifestHash,
+          }),
+          verifyCommitted: async () => true,
+        },
+      ),
+    ).rejects.toBeInstanceOf(ReleaseManifestAuthorityError);
   });
 
   it("缺少 Hosted 或 Docker Evidence 时不能构造 PASS Manifest", () => {

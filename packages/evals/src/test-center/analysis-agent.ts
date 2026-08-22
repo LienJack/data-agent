@@ -10,6 +10,9 @@ import {
 } from "@data-agent/contracts";
 import { parseBenchmarkCsv } from "./csv.js";
 
+/** Benchmark-only profiler. It has no governed QueryEvidence/Sandbox/Oracle closure. */
+export const DETERMINISTIC_PROFILE_ANALYSIS_PRODUCTION_ELIGIBLE = false;
+
 export interface BenchmarkAnalysisAgentAnswer {
   readonly report: BenchmarkAnalysisReport;
   readonly usage: BenchmarkUsage;

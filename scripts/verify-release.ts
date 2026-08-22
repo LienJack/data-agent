@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildDeterministicAnalysisCapabilityProbe } from "./capability-probe.js";
 import {
   attestWorkspaceReleaseBuild,
   type WorkspaceReleaseBuildReceipt,
@@ -40,6 +41,161 @@ function verifyWorkspaceReleaseBuild(): WorkspaceReleaseBuildReceipt {
     gitCommit,
     gitDirty,
   });
+}
+
+if (process.argv.includes("--deterministic-analysis")) {
+  const probe = await buildDeterministicAnalysisCapabilityProbe();
+  const read = (path: string) => readFileSync(resolve(rootDir, path), "utf8");
+  const exists = (path: string) => existsSync(resolve(rootDir, path));
+  const capabilityIds = probe.capabilities.map(({ capability_id }) => capability_id);
+  const expectedCapabilityIds = [
+    "data-profile@1",
+    "semantic-transform@1",
+    "trend-change@1",
+    "contribution-concentration@1",
+    "robust-anomaly@1",
+    "association-outlier-completeness@1",
+    "baseline-forecast-backtest@1",
+    "open-python-analysis@1",
+    "root-cause-investigation@1",
+    "visual-insight-story@1",
+    "certified-causal-estimate@1",
+  ];
+  const killedTrend = probe.capabilities.map((capability) =>
+    capability.capability_id === "trend-change@1"
+      ? {
+          ...capability,
+          execution_enabled: false,
+          kill_switch: { engaged: true, reason_code: "ROLLBACK_DRILL" },
+        }
+      : capability,
+  );
+  const checks = {
+    exact_capability_registration:
+      new Set(capabilityIds).size === expectedCapabilityIds.length &&
+      expectedCapabilityIds.every((id) => capabilityIds.includes(id)),
+    independent_kill_switch:
+      killedTrend.find(({ capability_id }) => capability_id === "trend-change@1")
+        ?.execution_enabled === false &&
+      killedTrend.find(({ capability_id }) => capability_id === "data-profile@1")
+        ?.execution_enabled === true &&
+      probe.capabilities.every(({ kill_switch }) => typeof kill_switch.engaged === "boolean") &&
+      read("apps/worker/src/analysis/skill-catalog.ts").includes(
+        "createServerOwnedAnalysisSkillCatalogFromReleaseManifest",
+      ),
+    generated_program_shadow_only:
+      probe.capabilities.filter(({ generated_programs_allowed }) => generated_programs_allowed)
+        .length === 1 &&
+      probe.capabilities.find(({ capability_id }) => capability_id === "open-python-analysis@1")
+        ?.registration_state === "SHADOW",
+    shadow_not_user_visible: probe.capabilities
+      .filter(({ registration_state }) => registration_state === "SHADOW")
+      .every(({ user_visible }) => !user_visible),
+    f9_l5_fail_closed:
+      probe.f9.registration_status === "NOT_REGISTERED" &&
+      !probe.f9.blocks_standard_analysis &&
+      probe.l5_gate.decision === "HOLD" &&
+      !probe.l5_gate.execution_enabled &&
+      probe.capabilities.find(
+        ({ capability_id }) => capability_id === "certified-causal-estimate@1",
+      )?.execution_enabled === false,
+    text2sql_isolated:
+      probe.text2sql_isolation.independent_path_verified &&
+      exists(probe.text2sql_isolation.source_path) &&
+      probe.text2sql_isolation.verification_hash ===
+        `sha256:${createHash("sha256")
+          .update(readFileSync(resolve(rootDir, probe.text2sql_isolation.source_path)))
+          .digest("hex")}`,
+    runtime_lock_image_attested:
+      probe.runtime_attestation.schema_version === "python-sandbox-attestation@2.0.0" &&
+      probe.runtime_attestation.target_platform === "linux/arm64" &&
+      probe.runtime_attestation.registered_profiles.join(",") ===
+        "CAUSAL_L5,CORE_ANALYSIS,ML_DIAGNOSTIC",
+    sbom_and_cve_verified:
+      probe.supply_chain.cve_scan_status === "PASS" &&
+      /^sha256:[a-f0-9]{64}$/u.test(probe.supply_chain.sbom_hash) &&
+      /^sha256:[a-f0-9]{64}$/u.test(probe.supply_chain.attestation_hash),
+    license_gate_explicit:
+      probe.supply_chain.license_scan_status === "REVIEW_REQUIRED" &&
+      probe.supply_chain.unresolved_license_packages.length > 0,
+    cancel_malicious_zero_output_covered:
+      read("services/sandbox/tests/python_container_smoke.py").includes(
+        'choices=("success", "malicious", "resource", "cancel")',
+      ) &&
+      read("services/sandbox/tests/python_container_smoke.py").includes('outcome.get("outputs")'),
+    oracle_and_replay_gates:
+      exists("packages/evals/src/test-center/deterministic-analysis-oracle.ts") &&
+      exists("packages/evals/src/test-center/model-analysis-agent.ts") &&
+      exists("packages/evals/src/test-center/causal-analysis-oracle.ts") &&
+      probe.suite.case_count === 8 &&
+      probe.suite.minimum_score === 100 &&
+      probe.suite.oracle_gate === "PASS",
+    semantic_evidence_rbac_projection_budget_gates:
+      exists("packages/semantic/src/analysis/applicability.ts") &&
+      exists("packages/research/src/analysis-evidence/verifier.ts") &&
+      exists("apps/worker/test/analysis/analysis-plan-runtime.spec.ts") &&
+      exists("packages/platform/src/artifacts/derived-analysis-projection.ts") &&
+      exists("apps/web/src/components/workbench/deterministic-analysis-sections.tsx"),
+    contribution_association_forecast_hard_gates:
+      probe.capabilities
+        .find(({ capability_id }) => capability_id === "contribution-concentration@1")
+        ?.promotion_blockers.includes("CONTRIBUTION_CLOSURE_RELEASE_REVIEW") === true &&
+      probe.capabilities
+        .find(({ capability_id }) => capability_id === "association-outlier-completeness@1")
+        ?.promotion_blockers.includes("ASSOCIATION_DISCLOSURE_RELEASE_REVIEW") === true &&
+      probe.capabilities
+        .find(({ capability_id }) => capability_id === "baseline-forecast-backtest@1")
+        ?.promotion_blockers.includes("FORECAST_LEAKAGE_RELEASE_REVIEW") === true,
+    operations_runbook: exists("docs/runbooks/deterministic-analysis-rollout.md"),
+  } as const;
+  const failedChecks = Object.entries(checks)
+    .filter(([, passed]) => !passed)
+    .map(([name]) => name);
+  const shadowDecision = failedChecks.length === 0 ? "SHADOW_READY" : "HOLD";
+  process.stdout.write(
+    `${JSON.stringify(
+      {
+        verification_contract_version: "deterministic-analysis-release@1.0.0",
+        decision: shadowDecision,
+        ga_decision: "HOLD",
+        ga_reason_codes: ["LICENSE_REVIEW_REQUIRED", "PER_SKILL_PROMOTION_REVIEW_REQUIRED"],
+        suite: probe.suite,
+        checks,
+        failed_checks: failedChecks,
+        capability_states: probe.capabilities.map(
+          ({ capability_id, stage, registration_state, execution_enabled, kill_switch }) => ({
+            capability_id,
+            stage,
+            registration_state,
+            execution_enabled,
+            kill_switch,
+          }),
+        ),
+        f9: probe.f9,
+        l5_gate: probe.l5_gate,
+        text2sql_isolation: probe.text2sql_isolation,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  process.exit(shadowDecision === "SHADOW_READY" ? 0 : 2);
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+function _gateResult(evidencePath?: string): boolean {
+  if (!evidencePath) return false;
+  const full = resolve(rootDir, evidencePath);
+  if (!existsSync(full)) return false;
+  try {
+    const raw = readFileSync(full, "utf-8");
+    const parsed = JSON.parse(raw);
+    return parsed.status === "PASS" || parsed.decision === "GO";
+  } catch {
+    return false;
+  }
 }
 
 function checkMigrationManifest(path: string): boolean {

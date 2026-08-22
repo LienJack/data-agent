@@ -1,3 +1,4 @@
+export * from "./analysis/index.js";
 export * from "./evals/index.js";
 export * from "./jobs/artifact-export-job-handler.js";
 export * from "./jobs/job-worker-daemon.js";

@@ -1,0 +1,600 @@
+import { createHash } from "node:crypto";
+import {
+  type AnalysisContext,
+  type AnalysisSandboxProgramPayload,
+  type ArtifactReference,
+  analysisSandboxProgramPayloadSchema,
+  atomicClaimV3PayloadSchema,
+  buildAnalysisContext,
+  type CausalAttributionAuthorityClosure,
+  type CausalEstimatePayload,
+  causalAttributionAuthorityClosureSchema,
+  sha256ContentHash,
+} from "@data-agent/contracts";
+import { describe, expect, it } from "vitest";
+import {
+  computeAnalysisProgramHash,
+  computeAttributionAuthorityClosureHash,
+  createCausalEstimate,
+  createCausalQuestion,
+  createIdentificationCertificate,
+  createIdentificationPlan,
+  createRootCauseDiscoveryCandidate,
+  createRootCauseDiscoveryReceipt,
+} from "../../src/index.js";
+
+const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+const hash = (value: string) => `sha256:${value.repeat(64)}` as const;
+const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+const runId = id(3);
+const now = "2026-08-22T00:00:00.000Z";
+const window = {
+  start: "2026-07-01T00:00:00.000Z",
+  end: "2026-08-01T00:00:00.000Z",
+  timezone: "Asia/Shanghai",
+  semantics: "HALF_OPEN" as const,
+};
+
+function reference(
+  artifact_type: ArtifactReference["artifact_type"],
+  suffix: number,
+  content_hash: `sha256:${string}` = hash(String(suffix % 10)),
+): ArtifactReference {
+  return {
+    artifact_id: id(suffix),
+    artifact_type,
+    ...scope,
+    run_id: runId,
+    revision: 1,
+    content_hash,
+  };
+}
+
+async function contextFixture(
+  options: {
+    readonly ontology_analysis_binding_hash?: `sha256:${string}`;
+    readonly adjustment_set_object_ids?: readonly string[];
+    readonly reverse_edge?: boolean;
+  } = {},
+) {
+  const semanticReleaseRef = reference("SemanticRelease", 10);
+  return buildAnalysisContext({
+    schema_version: "analysis-context@1.0.0",
+    scope,
+    resolved_context_binding: {
+      package_id: id(11),
+      package_hash: hash("a"),
+      receipt_id: id(12),
+      receipt_hash: hash("b"),
+    },
+    semantic_release_ref: semanticReleaseRef,
+    schema_snapshot_ref: reference("SchemaSnapshot", 13),
+    policy_receipt_ref: reference("PolicyReceipt", 14),
+    semantic_source_bundle_ref: reference("SemanticSourceBundle", 15),
+    ontology_analysis_binding_hash: options.ontology_analysis_binding_hash ?? hash("c"),
+    metrics: [
+      {
+        metric_ref: { container_ref: semanticReleaseRef, node_id: "revenue" },
+        formula_hash: hash("d"),
+        unit: null,
+        grain: { grain_id: "order-day", granularity: "day" },
+        time_domain: {
+          time_domain_id: "order-time",
+          calendar: "gregorian",
+          timezone: "Asia/Shanghai",
+          min_time: null,
+          max_time: null,
+        },
+        time_dimension_ref: "ordered_at",
+        additivity: "additive",
+        null_policy: "preserve",
+        missing_period_policy: "NULL",
+        seasonality: null,
+        priority: 10_000,
+        causal_role: "OUTCOME",
+        allowed_dimensions: [
+          {
+            dimension_id: "promotion",
+            grain: { grain_id: "order-day", granularity: "day" },
+            data_type: "boolean",
+            sensitivity: "PUBLIC",
+            groupable: true,
+            pivotable: true,
+            causal_role: "TREATMENT",
+          },
+          {
+            dimension_id: "region",
+            grain: { grain_id: "order-day", granularity: "day" },
+            data_type: "text",
+            sensitivity: "PUBLIC",
+            groupable: true,
+            pivotable: true,
+            causal_role: "CANDIDATE_CONFOUNDER",
+          },
+          {
+            dimension_id: "visits",
+            grain: { grain_id: "order-day", granularity: "day" },
+            data_type: "number",
+            sensitivity: "PUBLIC",
+            groupable: true,
+            pivotable: false,
+            causal_role: "MEDIATOR",
+          },
+          {
+            dimension_id: "selection",
+            grain: { grain_id: "order-day", granularity: "day" },
+            data_type: "boolean",
+            sensitivity: "PUBLIC",
+            groupable: true,
+            pivotable: false,
+            causal_role: "COLLIDER",
+          },
+        ],
+        analysis_capabilities: ["CAUSAL_IDENTIFICATION", "ROOT_CAUSE_DISCOVERY"],
+      },
+    ],
+    relationships: [
+      {
+        relationship_id: "promotion-revenue",
+        left_table_id: "promotion",
+        right_table_id: "revenue",
+        cardinality: "many-to-one",
+        fanout_closed: true,
+        ontology_path: ["promotion", "influences", "revenue"],
+      },
+    ],
+    causal_policy: {
+      policy_refs: [reference("PolicyReceipt", 16)],
+      intervention_semantics_refs: ["promotion-toggle@1"],
+      adjustment_set_object_ids: options.adjustment_set_object_ids ?? ["region"],
+      excluded_mediator_ids: ["visits"],
+      excluded_collider_ids: ["selection"],
+      directed_edges: [
+        {
+          source_object_id: options.reverse_edge ? "revenue" : "promotion",
+          target_object_id: options.reverse_edge ? "promotion" : "revenue",
+          mechanism_ref: "promotion-revenue@1",
+          ontology_path: ["promotion", "influences", "revenue"],
+        },
+        {
+          source_object_id: "region",
+          target_object_id: "promotion",
+          mechanism_ref: "region-promotion@1",
+          ontology_path: ["region", "influences", "promotion"],
+        },
+        {
+          source_object_id: "region",
+          target_object_id: "revenue",
+          mechanism_ref: "region-revenue@1",
+          ontology_path: ["region", "influences", "revenue"],
+        },
+      ],
+    },
+  });
+}
+
+async function authorityFixture(questionHash: string) {
+  const material: Omit<CausalAttributionAuthorityClosure, "closure_hash"> = {
+    protocol_version: "causal-attribution-authority-closure@1.0.0",
+    eligibility: {
+      decision_id: id(30),
+      ...scope,
+      request_id: id(31),
+      subject_id: "promotion->revenue",
+      eligibility_criteria: [
+        {
+          criterion_id: "published-policy",
+          criterion_name: "Published policy",
+          is_satisfied: true,
+        },
+      ],
+      overall_eligible: true,
+      decision: "ELIGIBLE",
+      decided_by: "attribution-authority",
+      decided_at: now,
+      frozen_question_hash: questionHash,
+    },
+    safety: {
+      verdict_id: id(32),
+      ...scope,
+      run_id: runId,
+      evidence_id: id(33),
+      verdict: "GO",
+      verdict_reason: "All causal publication safety dimensions passed.",
+      verdict_dimensions: [
+        { dimension_name: "privacy", dimension_result: "PASS" },
+        { dimension_name: "identification", dimension_result: "PASS" },
+      ],
+      determined_by: "attribution-safety-authority",
+      determined_at: now,
+      evidence_hash: hash("f"),
+      auto_approve: false,
+      ttl_seconds: 3600,
+    },
+    feasibility: {
+      protocol_version: "attribution-feasibility-verdict@1",
+      verdict_id: id(34),
+      kernel_evidence_ref: id(33),
+      truth_contract_ref: "scm-truth@1",
+      verdict: "FEASIBLE_FOR_PUBLISHED_INTEGRATION",
+      oracle_check: {
+        check_type: "ORACLE",
+        status: "PASS",
+        pattern_match_count: 1,
+        pattern_total_count: 1,
+        evidence_match_count: 1,
+        evidence_total_count: 1,
+        closure_verdict: "PASS",
+        details: [{ pattern_id: "effect", status: "PASS", message: "Effect recovered." }],
+      },
+      mutation_check: {
+        check_type: "MUTATION",
+        status: "PASS",
+        mutation_count: 1,
+        detected_count: 1,
+        undetected_count: 0,
+        detection_rate: 1,
+        details: [
+          {
+            mutation_id: id(35),
+            mutation_type: "CONFOUNDER_REMOVAL",
+            expected_response: "HOLD",
+            actual_response: "HOLD",
+            status: "PASS",
+            message: "Missing confounder was rejected.",
+          },
+        ],
+      },
+      holdout_check: {
+        check_type: "HOLDOUT",
+        status: "PASS",
+        holdout_count: 1,
+        holdout_pass_count: 1,
+        holdout_fail_count: 0,
+        details: [
+          { dataset_id: "scm-holdout", split: "HOLDOUT", status: "PASS", message: "Passed." },
+        ],
+      },
+      summary: "All independent checks passed.",
+      reason_codes: ["ALL_CHECKS_PASSED"],
+      evaluated_at: now,
+      evaluator_version: "causal-evaluator@1",
+      verdict_hash: hash("1"),
+    },
+    scm_truth: {
+      causal_id: id(36),
+      kind: "SCM_CAUSAL",
+      label: "promotion effect",
+      description: "Known synthetic promotion effect.",
+      treatment_variable: "promotion",
+      outcome_variable: "revenue",
+      expected_effect: "POSITIVE",
+      effect_size: 2,
+      effect_interval: { low: 1.5, high: 2.5 },
+      directed_edges: [{ source: "promotion", target: "revenue" }],
+      observed_confounders: ["region"],
+      unobserved_confounders: [],
+      mediators: ["visits"],
+      colliders: ["selection"],
+      data_generating_process_version: "scm-promotion@1",
+      metadata: {},
+    },
+  };
+  return causalAttributionAuthorityClosureSchema.parse({
+    ...material,
+    closure_hash: await computeAttributionAuthorityClosureHash(material),
+  });
+}
+
+async function causalChain(
+  computation: { overlap_score?: number; fail_refutation?: boolean } = {},
+  suppliedContext?: AnalysisContext,
+) {
+  const context = suppliedContext ?? (await contextFixture());
+  const planRef = reference("AnalysisPlan", 40);
+  const candidate = await createRootCauseDiscoveryCandidate({
+    context,
+    plan_ref: planRef,
+    source_evidence_refs: [reference("DerivedAnalysisEvidence", 41)],
+    outcome_metric_ref:
+      context.metrics[0]?.metric_ref ??
+      (() => {
+        throw new Error();
+      })(),
+    observations: [
+      {
+        factor_id: "promotion",
+        factor_kind: "DIMENSION",
+        ontology_path: ["promotion", "influences", "revenue"],
+        temporal_order: "PRECEDES",
+        method: "conditional-association@1",
+        effect_direction: "POSITIVE",
+        effect_size: 2,
+        interval_low: 1.5,
+        interval_high: 2.5,
+        raw_p_value: 0.01,
+        sample_size: 1_000,
+        competing_explanations: ["Regional campaign allocation"],
+        uncovered_boundaries: ["Unobserved intent"],
+      },
+    ],
+  });
+  const candidateRef = reference("DiscoveryCandidate", 42, await sha256ContentHash(candidate));
+  const receipt = await createRootCauseDiscoveryReceipt({
+    context,
+    candidate,
+    candidate_ref: candidateRef,
+  });
+  const receiptRef = reference("DiscoveryReceipt", 43, await sha256ContentHash(receipt));
+  const question = await createCausalQuestion({
+    context,
+    candidate,
+    candidate_ref: candidateRef,
+    treatment_object_id: "promotion",
+    population: "published ecommerce orders",
+    estimand: "ATE",
+    time_zero: window.start,
+    intervention_semantics_ref: "promotion-toggle@1",
+    target_window: window,
+  });
+  const questionRef = reference("CausalQuestion", 44, await sha256ContentHash(question));
+  const plan = await createIdentificationPlan({
+    context,
+    question,
+    question_ref: questionRef,
+    candidate,
+    receipt,
+    receipt_ref: receiptRef,
+    estimator: "ECONML_DML",
+    runtime_digest: hash("2"),
+    dependency_lock_digest: hash("3"),
+  });
+  const identificationPlanRef = reference("IdentificationPlan", 45, await sha256ContentHash(plan));
+  const source = "def main(sdk):\n    return None\n";
+  const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
+  const queryRef = reference("QueryEvidence", 46);
+  const inputRef = reference("SandboxResult", 47);
+  const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
+    artifact_type: "SandboxProgram",
+    protocol_version: "analysis-sandbox-program@1.0.0",
+    plan_ref: planRef as AnalysisSandboxProgramPayload["plan_ref"],
+    node_id: "root-cause",
+    language: "PYTHON_3_12",
+    entrypoint: "main",
+    source_sha256: sourceHash,
+    source_text_ref: reference(
+      "SensitiveExecutionArtifact",
+      48,
+      sourceHash,
+    ) as AnalysisSandboxProgramPayload["source_text_ref"],
+    query_evidence_refs: [queryRef] as AnalysisSandboxProgramPayload["query_evidence_refs"],
+    input_refs: [inputRef],
+    output_contract: {
+      schema_version: "python-output-contract@1.0.0",
+      outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_000_000 }],
+    },
+    import_profile: "CAUSAL_L5",
+    random_seed: 7,
+    runtime_digest: plan.frontier.runtime_digest ?? hash("2"),
+    dependency_lock_digest: plan.frontier.dependency_lock_digest ?? hash("3"),
+    policy_version: "python-policy@1.0.0",
+  };
+  const program = analysisSandboxProgramPayloadSchema.parse({
+    ...programMaterial,
+    program_hash: await computeAnalysisProgramHash(programMaterial),
+  });
+  const programRef = reference("SandboxProgram", 49, await sha256ContentHash(program));
+  const estimate = await createCausalEstimate({
+    question,
+    question_ref: questionRef,
+    plan,
+    plan_ref: identificationPlanRef,
+    sandbox_program_ref: programRef,
+    sandbox_execution_receipt_ref: reference("SandboxExecutionReceipt", 50),
+    sandbox_result_refs: [reference("SandboxResult", 51)],
+    computation: {
+      point_estimate: 2,
+      interval_low: 1.5,
+      interval_high: 2.5,
+      effective_sample_size: 800,
+      overlap_score: computation.overlap_score ?? 0.8,
+      maximum_standardized_mean_difference: 0.05,
+      refutations: [
+        "PLACEBO_TREATMENT",
+        "RANDOM_COMMON_CAUSE",
+        "DATA_SUBSET",
+        "BOOTSTRAP",
+        "NEGATIVE_CONTROL",
+        "SENSITIVITY",
+      ].map((refuter, index) => ({
+        refuter,
+        verdict: computation.fail_refutation && index === 0 ? ("FAIL" as const) : ("PASS" as const),
+        observed_statistic: 0,
+        threshold: 0.05,
+      })) as CausalEstimatePayload["refutations"],
+      sensitivity: {
+        robustness_value: 2,
+        negative_control_passed: true,
+        unobserved_confounding_bound: 0.2,
+      },
+      limitation_codes: [],
+    },
+  });
+  const estimateRef = reference("CausalEstimate", 52, await sha256ContentHash(estimate));
+  return {
+    context,
+    planRef,
+    candidate,
+    candidateRef,
+    receipt,
+    receiptRef,
+    question,
+    questionRef,
+    plan,
+    identificationPlanRef,
+    program,
+    estimate,
+    estimateRef,
+  };
+}
+
+describe("root cause discovery and causal identification", () => {
+  it("keeps ontology-grounded L4 discovery non-causal and multiple-testing bounded", async () => {
+    const chain = await causalChain();
+    expect(chain.candidate).toMatchObject({ evidence_level: "L4_DISCOVERY" });
+    expect(chain.candidate.candidates[0]?.statistical_support.adjusted_p_value).toBe(0.01);
+    expect(chain.receipt.validation_verdict).toBe("PASS");
+    expect(
+      atomicClaimV3PayloadSchema.safeParse({
+        artifact_type: "AtomicClaim",
+        protocol_version: "atomic-claim@3.0.0",
+        claim_id: "causal",
+        observation_bindings: [
+          {
+            binding_id: "effect",
+            evidence_ref: chain.estimateRef,
+            metric_ref: null,
+            output_alias: "ate",
+            observed_value: 2,
+            result_cell_hash: hash("4"),
+          },
+        ],
+        predicate: { claim_mode: "CAUSAL_ESTIMATE", binding_ids: ["effect"] },
+        statement: "Promotion causes revenue to increase.",
+        statement_hash: hash("5"),
+        evidence_refs: [chain.estimateRef],
+        limitations: [],
+        disclosures: ["CAUSAL_ESTIMATE_ASSUMPTION_BOUND"],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("keeps weak or temporally ambiguous discovery on HOLD", async () => {
+    const context = await contextFixture();
+    const candidate = await createRootCauseDiscoveryCandidate({
+      context,
+      plan_ref: reference("AnalysisPlan", 60),
+      source_evidence_refs: [reference("DerivedAnalysisEvidence", 61)],
+      outcome_metric_ref:
+        context.metrics[0]?.metric_ref ??
+        (() => {
+          throw new Error();
+        })(),
+      observations: [
+        {
+          factor_id: "promotion",
+          factor_kind: "DIMENSION",
+          ontology_path: ["promotion", "influences", "revenue"],
+          temporal_order: "UNKNOWN",
+          method: "conditional-association@1",
+          effect_direction: "UNKNOWN",
+          effect_size: null,
+          interval_low: null,
+          interval_high: null,
+          raw_p_value: 0.2,
+          sample_size: 50,
+          competing_explanations: ["Reverse causality"],
+          uncovered_boundaries: ["Small sample"],
+        },
+      ],
+    });
+    const receipt = await createRootCauseDiscoveryReceipt({
+      context,
+      candidate,
+      candidate_ref: reference("DiscoveryCandidate", 62, await sha256ContentHash(candidate)),
+    });
+    expect(receipt).toMatchObject({
+      temporal_order_verdict: "HOLD",
+      multiple_testing_verdict: "HOLD",
+      validation_verdict: "HOLD",
+      reason_codes: ["ROOT_CAUSE_NOT_IDENTIFIABLE"],
+    });
+  });
+
+  it("certifies only the complete current Attribution authority chain", async () => {
+    const chain = await causalChain();
+    const authority = await authorityFixture(chain.question.question_hash);
+    const certificate = await createIdentificationCertificate({
+      now: new Date("2026-08-22T00:30:00.000Z"),
+      context: chain.context,
+      question: chain.question,
+      question_ref: chain.questionRef,
+      plan: chain.plan,
+      plan_ref: chain.identificationPlanRef,
+      estimate: chain.estimate,
+      estimate_ref: chain.estimateRef,
+      receipt_ref: chain.receiptRef,
+      program: chain.program,
+      authority,
+    });
+    expect(certificate.verdict).toBe("CERTIFIED");
+    expect(certificate.gates).toHaveLength(10);
+    expect(certificate.gates.every(({ verdict }) => verdict === "PASS")).toBe(true);
+  });
+
+  it("stops reverse causality and mediator adjustment before estimator execution", async () => {
+    await expect(causalChain({}, await contextFixture({ reverse_edge: true }))).rejects.toThrow(
+      "IDENTIFICATION_DAG_ADJUSTMENT_INVALID",
+    );
+    await expect(
+      causalChain({}, await contextFixture({ adjustment_set_object_ids: ["visits"] })),
+    ).rejects.toThrow("IDENTIFICATION_DAG_ADJUSTMENT_INVALID");
+  });
+
+  it.each([
+    ["overlap", { overlap_score: 0.01 }, "CAUSAL_OVERLAP_INSUFFICIENT"],
+    ["refutation", { fail_refutation: true }, "CAUSAL_REFUTATION_FAILED"],
+  ] as const)("holds on failed %s gate", async (_name, computation, reason) => {
+    const chain = await causalChain(computation);
+    const certificate = await createIdentificationCertificate({
+      now: new Date("2026-08-22T00:30:00.000Z"),
+      context: chain.context,
+      question: chain.question,
+      question_ref: chain.questionRef,
+      plan: chain.plan,
+      plan_ref: chain.identificationPlanRef,
+      estimate: chain.estimate,
+      estimate_ref: chain.estimateRef,
+      receipt_ref: chain.receiptRef,
+      program: chain.program,
+      authority: await authorityFixture(chain.question.question_hash),
+    });
+    expect(certificate.verdict).toBe("HOLD");
+    expect(certificate.reason_codes).toContain(reason);
+  });
+
+  it("invalidates expired authority and semantic drift instead of reviving on replay", async () => {
+    const chain = await causalChain();
+    const expired = await createIdentificationCertificate({
+      now: new Date("2026-08-22T02:00:00.000Z"),
+      context: chain.context,
+      question: chain.question,
+      question_ref: chain.questionRef,
+      plan: chain.plan,
+      plan_ref: chain.identificationPlanRef,
+      estimate: chain.estimate,
+      estimate_ref: chain.estimateRef,
+      receipt_ref: chain.receiptRef,
+      program: chain.program,
+      authority: await authorityFixture(chain.question.question_hash),
+    });
+    expect(expired).toMatchObject({ verdict: "HOLD", reason_codes: ["CAUSAL_REFUTATION_FAILED"] });
+
+    const driftedContext = await contextFixture({ ontology_analysis_binding_hash: hash("9") });
+    const drifted = await createIdentificationCertificate({
+      now: new Date("2026-08-22T00:30:00.000Z"),
+      context: driftedContext,
+      question: chain.question,
+      question_ref: chain.questionRef,
+      plan: chain.plan,
+      plan_ref: chain.identificationPlanRef,
+      estimate: chain.estimate,
+      estimate_ref: chain.estimateRef,
+      receipt_ref: chain.receiptRef,
+      program: chain.program,
+      authority: await authorityFixture(chain.question.question_hash),
+    });
+    expect(drifted.verdict).toBe("HOLD");
+    expect(drifted.reason_codes).toContain("ROOT_CAUSE_NOT_IDENTIFIABLE");
+  });
+});

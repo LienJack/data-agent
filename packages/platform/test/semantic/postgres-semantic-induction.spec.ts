@@ -94,7 +94,22 @@ describe("PostgreSQL semantic induction registry", () => {
       source_kind: "FOUNDATIONAL_ONTOLOGY",
       resource_id: ids.source,
       resource_revision: 1,
-      content: { metric_format: null, facts: [], metrics: [], dependencies: [] },
+      content: {
+        metric_format: null,
+        facts: [
+          {
+            namespace: "commerce",
+            object_role: "ONTOLOGY_ALIGNMENT",
+            name: "Commerce alignment",
+            aliases: [],
+            mapping_identities: ["ontology:commerce"],
+            evidence_identities: ["release:commerce-v1"],
+            payload: { relation: "aligns_with" },
+          },
+        ],
+        metrics: [],
+        dependencies: [],
+      },
     });
     const scripted = poolWith(command.source.source_ref);
     const registry = createPostgresSemanticInductionRegistry({

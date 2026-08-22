@@ -19,6 +19,8 @@ export const MANDATORY_RELEASE_MANIFEST_VERSION = "mandatory-release-manifest@1.
 export const ONTOLOGY_PACKAGE_VALIDATION_RECEIPT_VERSION =
   "ontology-package-validation@1.0.0" as const;
 export const ONTOLOGY_PACKAGE_PREVIEW_VERSION = "ontology-package-preview@1.0.0" as const;
+export const ONTOLOGY_ANALYSIS_SOURCE_BINDING_VERSION =
+  "ontology-analysis-source-binding@1.0.0" as const;
 
 const stablePathSegmentSchema = z
   .string()
@@ -145,6 +147,63 @@ export const ontologyPackageSourceBindingSchema = z.strictObject({
   policy: ontologySourceIdentitySchema,
   datasource_id: immutableIdSchema,
 });
+
+const ontologyAnalysisSourceBindingMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal(ONTOLOGY_ANALYSIS_SOURCE_BINDING_VERSION),
+    namespace_id: immutableIdSchema,
+    package_id: immutableIdSchema,
+    package_version: z.number().int().positive().safe(),
+    package_hash: contentHashSchema,
+    semantic_release_id: immutableIdSchema,
+    semantic_release_revision: z.number().int().positive().safe(),
+    semantic_release_hash: contentHashSchema,
+    semantic_source_bundle: ontologySourceIdentitySchema,
+  })
+  .superRefine((binding, ctx) => {
+    if (
+      binding.semantic_source_bundle.source_class !== "BUSINESS_CONTEXT" ||
+      binding.semantic_source_bundle.source_role !== "BUSINESS_SOURCE_BUNDLE" ||
+      binding.semantic_source_bundle.source_version < 2
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Analysis Source Binding 必须绑定 SemanticSourceBundle@2 或更高版本。",
+        path: ["semantic_source_bundle"],
+      });
+    }
+  });
+
+export const ontologyAnalysisSourceBindingSchema =
+  ontologyAnalysisSourceBindingMaterialSchema.extend({ binding_hash: contentHashSchema });
+
+export async function computeOntologyAnalysisSourceBindingHash(input: unknown) {
+  const full = ontologyAnalysisSourceBindingSchema.safeParse(input);
+  const material = full.success
+    ? ontologyAnalysisSourceBindingMaterialSchema.parse(
+        Object.fromEntries(Object.entries(full.data).filter(([key]) => key !== "binding_hash")),
+      )
+    : ontologyAnalysisSourceBindingMaterialSchema.parse(input);
+  return sha256ContentHash(material);
+}
+
+export async function buildOntologyAnalysisSourceBinding(input: unknown) {
+  const material = ontologyAnalysisSourceBindingMaterialSchema.parse(input);
+  return deepFreeze(
+    ontologyAnalysisSourceBindingSchema.parse({
+      ...material,
+      binding_hash: await computeOntologyAnalysisSourceBindingHash(material),
+    }),
+  );
+}
+
+export async function verifyOntologyAnalysisSourceBinding(input: unknown) {
+  const binding = ontologyAnalysisSourceBindingSchema.parse(input);
+  if ((await computeOntologyAnalysisSourceBindingHash(binding)) !== binding.binding_hash) {
+    throw new TypeError("ONTOLOGY_ANALYSIS_SOURCE_BINDING_HASH_MISMATCH");
+  }
+  return binding;
+}
 
 export const ontologyBusinessSubjectSemanticsSchema = z.strictObject({
   object_id: immutableIdSchema,
@@ -401,6 +460,7 @@ export type OntologyNamespace = z.infer<typeof ontologyNamespaceSchema>;
 export type OntologySourceIdentity = z.infer<typeof ontologySourceIdentitySchema>;
 export type OntologySemanticRole = z.infer<typeof ontologySemanticRoleSchema>;
 export type OntologyPackageCandidateDraft = z.infer<typeof ontologyPackageCandidateDraftSchema>;
+export type OntologyAnalysisSourceBinding = z.infer<typeof ontologyAnalysisSourceBindingSchema>;
 export type OntologyPackageCandidate = z.infer<typeof ontologyPackageCandidateSchema>;
 export type OntologyPackageValidationReceipt = z.infer<
   typeof ontologyPackageValidationReceiptSchema

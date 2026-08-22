@@ -14,7 +14,13 @@ import {
   versionIdentifierSchema,
 } from "./primitives.js";
 import {
+  analysisCompletionReceiptRefSchema,
+  analysisPlanRefSchema,
   atomicClaimRefSchema,
+  causalEstimateRefSchema,
+  derivedAnalysisEvidenceRefSchema,
+  discoveryCandidateRefSchema,
+  discoveryReceiptRefSchema,
   embeddedNodeReferenceIdentity,
   evidenceCheckReceiptRefSchema,
   evidenceRelationRefSchema,
@@ -28,6 +34,7 @@ import {
   queryEvidenceRefSchema,
   researchBriefRefSchema,
   sandboxExecutionReceiptRefSchema,
+  sandboxProgramRefSchema,
   sandboxResultRefSchema,
   schemaSnapshotRefSchema,
   semanticReleaseRefSchema,
@@ -334,6 +341,35 @@ export const evidenceCheckReceiptPayloadSchema = z.strictObject({
   check_input_hash: contentHashSchema,
 });
 
+export const evidenceCheckInputRefV2Schema = z.union([
+  evidenceCheckInputRefSchema,
+  analysisPlanRefSchema,
+  analysisCompletionReceiptRefSchema,
+  derivedAnalysisEvidenceRefSchema,
+  sandboxProgramRefSchema,
+  discoveryCandidateRefSchema,
+  discoveryReceiptRefSchema,
+  causalEstimateRefSchema,
+]);
+
+export const evidenceCheckReceiptV2PayloadSchema = z.strictObject({
+  artifact_type: z.literal("EvidenceCheckReceipt"),
+  protocol_version: z.literal("evidence-check@2.0.0"),
+  relation_ref: evidenceRelationRefSchema,
+  check_kind: z.enum([
+    "DETERMINISTIC_CHECK",
+    "PROVENANCE_CHECK",
+    "PROGRAM_CLOSURE_CHECK",
+    "CAUSAL_CERTIFICATE_CHECK",
+  ]),
+  verdict: z.enum(["PASS", "FAIL"]),
+  observed_contract_hash: contentHashSchema,
+  evaluated_refs: uniqueArtifactReferenceArray(evidenceCheckInputRefV2Schema, 1, 128),
+  reason_codes: z.array(identifierSchema).max(U6_WIRE_LIMITS.max_reason_codes),
+  evaluator_version: versionIdentifierSchema,
+  check_input_hash: contentHashSchema,
+});
+
 export const supportDecisionPayloadSchema = z.strictObject({
   artifact_type: z.literal("SupportDecision"),
   protocol_version: z.literal("support-decision@1.0.0"),
@@ -389,5 +425,6 @@ export type AtomicClaimPredicate = z.infer<typeof atomicClaimPredicateSchema>;
 export type AtomicClaimV2Payload = z.infer<typeof atomicClaimV2PayloadSchema>;
 export type EvidenceRelationV2Payload = z.infer<typeof evidenceRelationV2PayloadSchema>;
 export type EvidenceCheckReceiptPayload = z.infer<typeof evidenceCheckReceiptPayloadSchema>;
+export type EvidenceCheckReceiptV2Payload = z.infer<typeof evidenceCheckReceiptV2PayloadSchema>;
 export type SupportDecisionPayload = z.infer<typeof supportDecisionPayloadSchema>;
 export type HypothesisAssessmentPayload = z.infer<typeof hypothesisAssessmentPayloadSchema>;

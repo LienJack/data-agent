@@ -170,6 +170,13 @@ def test_policy_accepts_capability_shaped_analysis() -> None:
     )
 
 
+def test_attested_target_platform_mismatch_fails_before_runtime_start(monkeypatch) -> None:
+    monkeypatch.setenv("PYTHON_SANDBOX_AUTH_TOKEN", TOKEN)
+    monkeypatch.setenv("PYTHON_SANDBOX_TARGET_PLATFORM", "linux/not-this-architecture")
+    with pytest.raises(RuntimeError, match="does not match the executing platform"):
+        SandboxConfiguration.from_environment()
+
+
 def test_supervisor_executes_in_fresh_process_and_replays_receipt(tmp_path: Path) -> None:
     expected = b'{"sum":6}\n'
     request = envelope_for(

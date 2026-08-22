@@ -693,4 +693,49 @@ describe("PostgreSQL Research Authority Adapter", () => {
     });
     expect(database.calls.filter((call) => call.text === "ROLLBACK")).toHaveLength(1);
   });
+
+  it("以同一事务 Capability 和 fence 提交 system analysis artifact", async () => {
+    const auth = capabilities();
+    const reference = {
+      ...certificateRef(),
+      artifact_id: ids.operation,
+      artifact_type: "SandboxProgram" as const,
+      content_hash: hash("d"),
+    };
+    const database = scriptedPool((text) => {
+      if (!text.includes("commit_analysis_system_artifact")) return undefined;
+      return resultRow({ ok: true, created: true, reference });
+    });
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+    });
+    const result = await authority.commitAnalysisSystem(
+      auth.analyst,
+      {
+        schema_version: "1.0.0",
+        scope,
+        run_id: ids.run,
+        principal_id: ids.analyst,
+        idempotency_key: "analysis-program:test",
+        attempt_id: ids.terminal,
+        worker_fence: 7,
+        reference,
+        payload: { artifact_type: "SandboxProgram" },
+      },
+      null,
+    );
+
+    expect(result).toEqual({ ok: true, created: true, reference });
+    const rpc = database.calls.find((call) =>
+      call.text.includes("commit_analysis_system_artifact"),
+    );
+    expect(rpc?.values[0]).toMatchObject({
+      protocol_version: "u6-db-command@1.0.0",
+      authority_capability_id: ids.authority,
+      command: { attempt_id: ids.terminal, worker_fence: 7 },
+    });
+    expect(rpc?.values[1]).toBeNull();
+    expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
+  });
 });

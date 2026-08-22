@@ -150,7 +150,8 @@ export function ArtifactWorkspace({
   const chartDescriptionId = useId();
   const projection = preview.projection;
   const previewV2 = preview.schema_version === "artifact-preview-result@2.0.0" ? preview : null;
-  const chartV2 = previewV2?.projection ?? null;
+  const previewV3 = preview.schema_version === "artifact-preview-result@3.0.0" ? preview : null;
+  const governedChart = previewV3?.projection ?? previewV2?.projection ?? null;
   const previewV1 = preview.schema_version === "artifact-preview-result@1.0.0" ? preview : null;
   const chartV1 = previewV1?.projection.kind === "CHART" ? previewV1.projection : null;
   return (
@@ -209,39 +210,39 @@ export function ArtifactWorkspace({
         />
       ) : null}
 
-      {chartV2 ? (
+      {governedChart ? (
         <div className="px-5 py-4">
           <div className="mb-3">
             <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-              {chartV2.title}
+              {governedChart.title}
             </h2>
             <div
               id={chartDescriptionId}
               className="mt-1 space-y-1 text-xs text-[var(--color-text-muted)]"
             >
-              {chartV2.description ? <p>{chartV2.description}</p> : null}
+              {governedChart.description ? <p>{governedChart.description}</p> : null}
               <p>
-                {chartV2.unit ? `单位：${chartV2.unit} · ` : ""}
-                {preview.viewport.offset + (chartV2.table.rows.length > 0 ? 1 : 0)}–
-                {preview.viewport.offset + chartV2.table.rows.length} /{" "}
+                {governedChart.unit ? `单位：${governedChart.unit} · ` : ""}
+                {preview.viewport.offset + (governedChart.table.rows.length > 0 ? 1 : 0)}–
+                {preview.viewport.offset + governedChart.table.rows.length} /{" "}
                 {preview.viewport.total_rows ?? "?"}
                 {preview.viewport.truncated ? " · 已截断" : ""}
               </p>
             </div>
           </div>
-          <GovernedVChart projection={chartV2} describedBy={chartDescriptionId} />
+          <GovernedVChart projection={governedChart} describedBy={chartDescriptionId} />
           <details className="mt-3 rounded-xl border border-[var(--color-border-default)]" open>
             <summary className="cursor-pointer px-3 py-2 text-xs font-semibold">
               查看数据表（与图表同源）
             </summary>
             <ArtifactWorkspaceTable
-              projection={chartV2.table}
+              projection={governedChart.table}
               range={preview.viewport}
               onPageChange={onPageChange}
             />
           </details>
           <p className="mt-3 break-all font-mono text-[9px] text-[var(--color-text-muted)]">
-            dataset {previewV2?.provenance.dataset_hash}
+            dataset {(previewV3 ?? previewV2)?.provenance.dataset_hash}
           </p>
           <details className="mt-2 text-[10px] text-[var(--color-text-muted)]">
             <summary className="cursor-pointer font-semibold">治理来源</summary>
@@ -249,24 +250,43 @@ export function ArtifactWorkspace({
               <div>
                 <dt className="inline font-sans">QueryEvidence：</dt>{" "}
                 <dd className="inline break-all">
-                  rev {previewV2?.source_refs[0].revision} ·{" "}
-                  {previewV2?.source_refs[0].content_hash}
+                  {previewV3
+                    ? `${previewV3.source_refs.query_evidence_refs.length} refs`
+                    : `rev ${previewV2?.source_refs[0].revision} · ${previewV2?.source_refs[0].content_hash}`}
                 </dd>
               </div>
               <div>
                 <dt className="inline font-sans">Context package：</dt>{" "}
                 <dd className="inline break-all">
-                  {previewV2?.provenance.resolved_context.package_id} ·{" "}
-                  {previewV2?.provenance.resolved_context.package_hash}
+                  {(previewV3 ?? previewV2)?.provenance.resolved_context.package_id} ·{" "}
+                  {(previewV3 ?? previewV2)?.provenance.resolved_context.package_hash}
                 </dd>
               </div>
               <div>
                 <dt className="inline font-sans">Context receipt：</dt>{" "}
                 <dd className="inline break-all">
-                  {previewV2?.provenance.resolved_context.receipt_id} ·{" "}
-                  {previewV2?.provenance.resolved_context.receipt_hash}
+                  {(previewV3 ?? previewV2)?.provenance.resolved_context.receipt_id} ·{" "}
+                  {(previewV3 ?? previewV2)?.provenance.resolved_context.receipt_hash}
                 </dd>
               </div>
+              {previewV3 ? (
+                <>
+                  <div>
+                    <dt className="inline font-sans">Derived evidence：</dt>{" "}
+                    <dd className="inline break-all">
+                      rev {previewV3.source_refs.derived_evidence_ref.revision} ·{" "}
+                      {previewV3.source_refs.derived_evidence_ref.content_hash}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="inline font-sans">Algorithm / Runtime：</dt>{" "}
+                    <dd className="inline break-all">
+                      {previewV3.provenance.algorithm_version} ·{" "}
+                      {previewV3.provenance.runtime_digest}
+                    </dd>
+                  </div>
+                </>
+              ) : null}
             </dl>
           </details>
         </div>

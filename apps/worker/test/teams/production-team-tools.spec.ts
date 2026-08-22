@@ -185,6 +185,25 @@ describe("Production Team governed chart publication", () => {
     });
     const productDocuments = new Map<string, ProductTeamArtifactDocument>();
     let chartDocument: ArtifactWorkspaceChartDocumentV2 | null = null;
+    const analysisCompletionRef = {
+      artifact_id: id(30),
+      artifact_type: "AnalysisCompletionReceipt" as const,
+      ...scope,
+      run_id: lease.run_id,
+      revision: 1,
+      content_hash: hash("f"),
+    };
+    const derivedEvidenceRef = {
+      ...analysisCompletionRef,
+      artifact_id: id(31),
+      artifact_type: "DerivedAnalysisEvidence" as const,
+      content_hash: hash("9"),
+    };
+    const deterministicAnalysis = vi.fn(async () => ({
+      terminal: "READY" as const,
+      completion_ref: analysisCompletionRef,
+      accepted_evidence_refs: [derivedEvidenceRef],
+    }));
     const tools = createProductionTeamTools(
       {
         capability: {},
@@ -219,6 +238,7 @@ describe("Production Team governed chart publication", () => {
             error: { code: "UNUSED", message: "unused", retryable: false },
           })),
         },
+        deterministic_analysis: { executeAcceptedQuery: deterministicAnalysis },
       },
       {
         lease: lease as ProductionTeamToolFactoryInput["lease"],
@@ -266,6 +286,8 @@ describe("Production Team governed chart publication", () => {
       public_artifact_refs: [
         { artifact_type: "QueryEvidence" },
         { artifact_type: "ArtifactWorkspaceDocument" },
+        { artifact_type: "AnalysisCompletionReceipt" },
+        { artifact_type: "DerivedAnalysisEvidence" },
       ],
     });
     expect(chartDocument).toMatchObject({
@@ -273,6 +295,14 @@ describe("Production Team governed chart publication", () => {
       projection: { kind: "CHART", chart_type: "LINE", x_key: "month" },
     });
     expect(provider).toHaveBeenCalledOnce();
+    expect(deterministicAnalysis).toHaveBeenCalledWith(
+      expect.objectContaining({
+        lease,
+        principal_id: lease.principal_id,
+        query_kind: "MONTHLY_ORDER_TREND",
+        query_evidence_ref: expect.objectContaining({ artifact_type: "QueryEvidence" }),
+      }),
+    );
     expect(provider.mock.calls[0]?.[0]).toMatchObject({
       turn: {
         kind: "SPECIALIST",

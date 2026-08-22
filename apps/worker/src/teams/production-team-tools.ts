@@ -67,6 +67,23 @@ export interface ProductionTeamToolsDependencies {
   readonly artifacts: ProductionTeamArtifactPort;
   readonly sandbox: EcommerceBenchmarkQueryExecutor;
   readonly semantic_relationships: FrozenSemanticRelationshipReadPort;
+  /**
+   * Optional production composition hook. It only receives a committed
+   * QueryEvidence ref; the adapter owns brief/context/plan resolution and may
+   * return public refs only after its completion authority accepted them.
+   */
+  readonly deterministic_analysis?: {
+    executeAcceptedQuery(input: {
+      readonly lease: ProductionTeamToolFactoryInput["lease"];
+      readonly principal_id: string;
+      readonly query_evidence_ref: ArtifactReference;
+      readonly query_kind: "TABLE_COUNT" | "MONTHLY_ORDER_TREND";
+    }): Promise<{
+      readonly terminal: "READY" | "PARTIAL" | "HOLD";
+      readonly completion_ref: ArtifactReference;
+      readonly accepted_evidence_refs: readonly ArtifactReference[];
+    }>;
+  };
 }
 
 class ProductionTeamToolError extends Error {
@@ -285,7 +302,21 @@ export function createProductionTeamTools(
             source_refs: [state.sql_ref],
             projection: { kind: "TABLE", columns, rows, total_rows: rows.length },
           });
-          if (!intent) return toolResult(evidenceRef);
+          const analysis = dependencies.deterministic_analysis
+            ? await dependencies.deterministic_analysis.executeAcceptedQuery({
+                lease: factoryInput.lease,
+                principal_id: factoryInput.lease.principal_id,
+                query_evidence_ref: evidenceRef,
+                query_kind: queryKind,
+              })
+            : null;
+          const acceptedAnalysisRefs = analysis
+            ? [
+                analysis.completion_ref,
+                ...(analysis.terminal === "HOLD" ? [] : analysis.accepted_evidence_refs),
+              ]
+            : [];
+          if (!intent) return toolResult(evidenceRef, [evidenceRef, ...acceptedAnalysisRefs]);
           const evidence = portValue(
             await dependencies.artifacts.resolveCommitted(dependencies.capability, evidenceRef),
           );
@@ -312,7 +343,9 @@ export function createProductionTeamTools(
             },
             unit: "单",
           });
-          if (!chartDocument) return toolResult(evidenceRef);
+          if (!chartDocument) {
+            return toolResult(evidenceRef, [evidenceRef, ...acceptedAnalysisRefs]);
+          }
           const chartRef = portValue(
             await dependencies.artifacts.commitWorkspaceChart(
               dependencies.capability,
@@ -320,7 +353,7 @@ export function createProductionTeamTools(
               chartDocument,
             ),
           );
-          return toolResult(evidenceRef, [evidenceRef, chartRef]);
+          return toolResult(evidenceRef, [evidenceRef, chartRef, ...acceptedAnalysisRefs]);
         }
         throw new ProductionTeamToolError("TEXT2SQL_AGENT_TOOL_DENIED");
       }
