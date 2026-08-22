@@ -807,3 +807,24 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 35: 修复 Knowledge usage 重复 React key
+
+**Date**: 2026-08-22
+**Task**: 修复 Knowledge usage 重复 React key
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+确认 usage 投影按 evidence block 展开；以 semantic subject 加 exact evidence reference 生成稳定行身份，添加回归测试并通过 Web typecheck、Biome 与相关测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `8bd3409` | (see git log) |
+
+### Status
+
+[OK] **Completed**
