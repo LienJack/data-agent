@@ -1,0 +1,30 @@
+{
+  "id": "resolution-trace-workbench",
+  "name": "resolution-trace-workbench",
+  "title": "运行轨迹工作台升级",
+  "description": "参考 DeepSeek Harness，将运行与证据轨迹升级为带多泳道时间轴、搜索、折叠、联动记录表和高信息密度 Inspector 的只读工作台。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "运行与证据 > 轨迹页签的产品需求；不进入实现",
+  "package": "web",
+  "priority": "P2",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-22",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "apps/web/src/components/qa/resolution-trace-view.tsx",
+    "apps/web/src/components/qa/trajectory-view.tsx",
+    "packages/contracts/src/runs/resolution-trace.ts"
+  ],
+  "notes": "",
+  "meta": {}
+}
