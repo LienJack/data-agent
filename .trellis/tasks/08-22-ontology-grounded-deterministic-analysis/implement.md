@@ -21,9 +21,9 @@ green sub-slice as completion of the full task.
 - [x] U6 Independent Evaluation: add deterministic/generated/causal oracles, semantic e-commerce fixtures, cross-layer acceptance, adversarial
   cases, and hard-fail scoring.
 - [x] U7 Rollout: add per-skill staged registration, probes, release verification, runbook, kill switches, and rollback checks.
-- [ ] Full completion audit: map every R1-R17, Verification Matrix row, failure/recovery row, Slice 1-8 deliverable, and Definition of Done item to
+- [x] Full completion audit: map every R1-R17, Verification Matrix row, failure/recovery row, Slice 1-8 deliverable, and Definition of Done item to
   direct current evidence. Continue implementation for every missing item.
-- [ ] Run scoped and full validation, review the complete diff, update specs when new durable conventions were learned, stage explicit owned
+- [x] Run scoped and full validation, review the complete diff, update specs when new durable conventions were learned, stage explicit owned
   paths, run `git diff --cached --check`, and create scoped commit(s).
 
 ## Validation matrix

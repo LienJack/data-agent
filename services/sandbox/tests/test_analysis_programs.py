@@ -673,3 +673,43 @@ def test_replay_is_byte_stable_and_bounded_fixture_finishes(tmp_path: Path) -> N
     assert time.monotonic() - started < 3
     assert first == replay
     assert first.receipt.status == "SUCCEEDED", first.stderr
+
+
+def test_identical_fixture_executes_100_times_with_byte_stable_outputs(tmp_path: Path) -> None:
+    rows = [
+        {"period_start": "2026-01-01T00:00:00Z", "value": 10.0},
+        {"period_start": "2026-01-02T00:00:00Z", "value": 12.0},
+    ]
+    expected = {
+        "result_kind": "TREND_CHANGE",
+        "points": [
+            {
+                "period_start": "2026-01-01T00:00:00Z",
+                "value": 10.0,
+                "absolute_delta": None,
+                "relative_delta": None,
+            },
+            {
+                "period_start": "2026-01-02T00:00:00Z",
+                "value": 12.0,
+                "absolute_delta": 2.0,
+                "relative_delta": 0.2,
+            },
+        ],
+        "first_value": 10.0,
+        "last_value": 12.0,
+    }
+    supervisor = PythonSandboxSupervisor(configuration(tmp_path))
+    outputs = []
+    for index in range(100):
+        outcome = supervisor.execute(
+            envelope(
+                "trend_change",
+                {"rows": rows},
+                {"result": expected},
+                identifier=f"hundred-replay-{index}",
+            )
+        )
+        assert outcome.receipt.status == "SUCCEEDED", outcome.stderr
+        outputs.append(outcome.outputs)
+    assert all(output == outputs[0] for output in outputs)

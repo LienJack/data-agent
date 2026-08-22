@@ -23,6 +23,7 @@ const schema = z.strictObject({
   schema_version: z.literal("python-sandbox-supply-chain@1.0.0"),
   generated_at: z.iso.datetime(),
   base_image_digest: digestSchema,
+  target_platform: z.literal("linux/arm64"),
   scanner: z.strictObject({
     name: z.literal("pip-audit"),
     version: z.literal("2.10.1"),

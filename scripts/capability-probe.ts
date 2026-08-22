@@ -17,6 +17,7 @@ const supplyChainSchema = z.strictObject({
   schema_version: z.literal("python-sandbox-supply-chain@1.0.0"),
   generated_at: z.iso.datetime(),
   base_image_digest: z.string(),
+  target_platform: z.literal("linux/arm64"),
   scanner: z.strictObject({ name: z.literal("pip-audit"), version: z.string(), mode: z.string() }),
   profiles: z.record(
     z.string(),
@@ -78,7 +79,11 @@ export async function buildDeterministicAnalysisCapabilityProbe() {
       new URL("../infra/docker/python-sandbox-attestation.json", import.meta.url),
       "utf8",
     ),
-  ) as { schema_version: string; profiles: Record<string, unknown> };
+  ) as {
+    schema_version: string;
+    target_platform: string;
+    profiles: Record<string, unknown>;
+  };
   const text2sqlSource = readFileSync(
     new URL("../apps/worker/src/teams/tools/text2sql-tools.ts", import.meta.url),
   );
@@ -120,6 +125,7 @@ export async function buildDeterministicAnalysisCapabilityProbe() {
     },
     supply_chain: {
       schema_version: supplyChain.schema_version,
+      target_platform: supplyChain.target_platform,
       attestation_hash: supplyChain.attestation_hash,
       sbom_hash: supplyChain.sbom_hash,
       cve_scan_status: "PASS",
@@ -130,6 +136,7 @@ export async function buildDeterministicAnalysisCapabilityProbe() {
     },
     runtime_attestation: {
       schema_version: runtimeAttestation.schema_version,
+      target_platform: runtimeAttestation.target_platform,
       registered_profiles: Object.keys(runtimeAttestation.profiles).sort(),
     },
     f9: { registration_status: "NOT_REGISTERED", blocks_standard_analysis: false },

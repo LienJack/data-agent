@@ -72,6 +72,7 @@ if (process.argv.includes("--deterministic-analysis")) {
           .digest("hex")}`,
     runtime_lock_image_attested:
       probe.runtime_attestation.schema_version === "python-sandbox-attestation@2.0.0" &&
+      probe.runtime_attestation.target_platform === "linux/arm64" &&
       probe.runtime_attestation.registered_profiles.join(",") ===
         "CAUSAL_L5,CORE_ANALYSIS,ML_DIAGNOSTIC",
     sbom_and_cve_verified:

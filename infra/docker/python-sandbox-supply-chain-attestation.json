@@ -2,6 +2,7 @@
   "schema_version": "python-sandbox-supply-chain@1.0.0",
   "generated_at": "2026-08-22T13:50:00.000Z",
   "base_image_digest": "sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
+  "target_platform": "linux/arm64",
   "scanner": {
     "name": "pip-audit",
     "version": "2.10.1",
@@ -11,7 +12,7 @@
     "CORE_ANALYSIS": {
       "lock_path": "infra/docker/python-sandbox-requirements.lock",
       "lock_digest": "sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8",
-      "image_attestation_digest": "sha256:3b45b0364b02861ba70790bba24b5fa6ca6f3da0ef0990b84a74cd37d372ff0c",
+      "image_attestation_digest": "sha256:8cb675f606863fc669aeaa074d47d10648ee1fe2177ca2270d611a226e4c45cd",
       "package_count": 24,
       "cve_scan": { "status": "PASS", "known_vulnerability_count": 0 },
       "license_scan": { "status": "REVIEW_REQUIRED", "unresolved_packages": ["rfc8785"] }
@@ -19,7 +20,7 @@
     "ML_DIAGNOSTIC": {
       "lock_path": "infra/docker/python-sandbox-requirements.ml.lock",
       "lock_digest": "sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293",
-      "image_attestation_digest": "sha256:6df3bb94161d41c8c18b358b54f05f8b8be3f9b4eb13680abf058587181f28d6",
+      "image_attestation_digest": "sha256:7d3a060834aca6a7e3101f38a3bdee4cc84a700295bcda155fd5e4227f883804",
       "package_count": 29,
       "cve_scan": { "status": "PASS", "known_vulnerability_count": 0 },
       "license_scan": { "status": "REVIEW_REQUIRED", "unresolved_packages": ["rfc8785"] }
@@ -27,7 +28,7 @@
     "CAUSAL_L5": {
       "lock_path": "infra/docker/python-sandbox-requirements.causal.lock",
       "lock_digest": "sha256:73bbc0d20938684a2e25c111c3bb80ac6beee877f64d03986e53acae16e4b22d",
-      "image_attestation_digest": "sha256:6523b77a3c061f0715128f811ef47ee558b9cb8aba60a16b2eed7f8d52d6d4e7",
+      "image_attestation_digest": "sha256:14ca067ad4066270781a69f35083f4fc4f002ef38eaa5fc8671d4c066e67e895",
       "package_count": 60,
       "cve_scan": { "status": "PASS", "known_vulnerability_count": 0 },
       "license_scan": {
@@ -37,5 +38,5 @@
     }
   },
   "sbom_hash": "sha256:3ca57dbaea8cdccb098e8c8419febc24a707b8a7fee7b907ffb27ba6a9ed0513",
-  "attestation_hash": "sha256:8df33253670af30ae0382b92e8fc0579ee5d089622ad0337be4a367a4f205319"
+  "attestation_hash": "sha256:c48ddf1061bd9472835041c36289c5228c69b4a49dae4ce77dc26538c4d8f696"
 }

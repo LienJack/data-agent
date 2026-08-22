@@ -13,6 +13,7 @@ const profileSchema = z.strictObject({
 const attestationSchema = z.strictObject({
   schema_version: z.literal("python-sandbox-attestation@2.0.0"),
   python_version: z.literal("3.12.10"),
+  target_platform: z.literal("linux/arm64"),
   sdk_version: z.literal("data-agent-sandbox-sdk@1.0.0"),
   policy_version: z.literal("python-policy@1.0.0"),
   base_image_digest: digestSchema,
@@ -64,6 +65,7 @@ const expectedProfiles = Object.fromEntries(
           "python-sandbox-runtime@2.0.0",
           `profile=${profile}`,
           `python=${attestation.python_version}`,
+          `platform=${attestation.target_platform}`,
           `sdk=${attestation.sdk_version}`,
           `policy=${attestation.policy_version}`,
           ...sourceRows,
@@ -113,6 +115,9 @@ for (const profile of profileNames) {
   }
   if (!dockerfile.includes(`PYTHON_SANDBOX_IMPORT_PROFILE=${profile}`)) {
     throw new Error(`PYTHON_SANDBOX_PROFILE_BINDING_MISSING:${profile}`);
+  }
+  if (!dockerfile.includes(`PYTHON_SANDBOX_TARGET_PLATFORM=${attestation.target_platform}`)) {
+    throw new Error(`PYTHON_SANDBOX_PLATFORM_BINDING_MISSING:${profile}`);
   }
 }
 

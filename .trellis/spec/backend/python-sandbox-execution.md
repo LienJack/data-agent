@@ -74,7 +74,8 @@ executePython(
 
 ### 3. 契约
 
-- Runtime 固定 CPython 3.12；首版镜像只包含锁版本的 `pandas`、`numpy`、`scipy`、`matplotlib`、`pyarrow` 和 `data_agent_sandbox_sdk`。新增库必须更新 lock digest、镜像 digest、Policy 与安全回归。
+- Runtime 固定 CPython 3.12；`CORE_ANALYSIS` 只包含锁版本的基础数值/表格/绘图库，开放生成分析必须使用允许 `statsmodels`、`scikit-learn` 的 `ML_DIAGNOSTIC`，因果识别只能使用 `CAUSAL_L5`。技能目录必须服务端绑定唯一画像，调用方不得选择或降级画像。新增库必须更新 lock digest、镜像 digest、Policy 与安全回归。
+- Runtime 身份必须绑定规范化 `target_platform`（当前为 `linux/arm64`），并将平台写入 runtime/image attestation、runtime digest 和容器环境。Supervisor 必须在启动执行前校验实际 OS/CPU 架构；不匹配时失败关闭。跨架构构建必须产生不同 runtime digest，并使用独立数值容差验证，不能宣称字节级等价重放。
 - Worker 只提交已授权、内容寻址的 Python source 与 Arrow/CSV/JSON 输入 Artifact。Sandbox 不接受 SQL、DSN、SecretRef、宿主路径或任意 URL。
 - 入口固定为 `def main(context): ...`；`context` 只暴露只读输入与声明式输出方法，不暴露文件描述符、数据库连接、网络、进程、包安装或动态模块加载能力。
 - 每个请求启动新的 `python -I` 子进程和新的 job tmpfs；`/input` 只读，`/output` 仅允许声明的文件名和类型。结束后销毁进程、目录、import/global/module 状态。

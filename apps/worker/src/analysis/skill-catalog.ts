@@ -17,25 +17,25 @@ type AnalysisRuntimeProfile = AnalysisSandboxProgramPayload["import_profile"];
 
 export const ANALYSIS_RUNTIME_ATTESTATIONS = Object.freeze({
   CORE_ANALYSIS: Object.freeze({
-    runtime_digest: "sha256:88afbcbf7ea99b332372bec95302d02b79f8f1494ecf034e0c280c4aa467d644",
+    runtime_digest: "sha256:ba715fb76f683bb538df7553616dcfb0e54c506ca90bf40c7b88ca6c99d5fe84",
     dependency_lock_digest:
       "sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8",
     image_attestation_digest:
-      "sha256:3b45b0364b02861ba70790bba24b5fa6ca6f3da0ef0990b84a74cd37d372ff0c",
+      "sha256:8cb675f606863fc669aeaa074d47d10648ee1fe2177ca2270d611a226e4c45cd",
   }),
   ML_DIAGNOSTIC: Object.freeze({
-    runtime_digest: "sha256:dfc051f7aed19605e4e64e54052969d4e92faf1a58f60df6973d7a9007f02a51",
+    runtime_digest: "sha256:62df15371985556658e195b231e774f7c3c0e866af3a8c2a1735952afc62ae4d",
     dependency_lock_digest:
       "sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293",
     image_attestation_digest:
-      "sha256:6df3bb94161d41c8c18b358b54f05f8b8be3f9b4eb13680abf058587181f28d6",
+      "sha256:7d3a060834aca6a7e3101f38a3bdee4cc84a700295bcda155fd5e4227f883804",
   }),
   CAUSAL_L5: Object.freeze({
-    runtime_digest: "sha256:53e0c7dbf85327d03602422cca565e75f98bc14337f2fe8bc0d1a096effb24c8",
+    runtime_digest: "sha256:41c1cd91523cd3af0c654521b05b308370ec278badd10df4c3ae4b41a5850e42",
     dependency_lock_digest:
       "sha256:73bbc0d20938684a2e25c111c3bb80ac6beee877f64d03986e53acae16e4b22d",
     image_attestation_digest:
-      "sha256:6523b77a3c061f0715128f811ef47ee558b9cb8aba60a16b2eed7f8d52d6d4e7",
+      "sha256:14ca067ad4066270781a69f35083f4fc4f002ef38eaa5fc8671d4c066e67e895",
   }),
 } as const satisfies Record<
   AnalysisRuntimeProfile,
@@ -246,7 +246,7 @@ export const DEFAULT_ANALYSIS_SKILL_DESCRIPTORS: readonly AnalysisSkillDescripto
       parameter_schema: generatedParameters,
       algorithm_version: "open-python-analysis@1.0.0",
       program_mode: "MODEL_GENERATED",
-      python_import_profile: "CORE_ANALYSIS",
+      python_import_profile: "ML_DIAGNOSTIC",
       output_contract: resultOnlyContract,
       standard_program: null,
       mandatory_disclosures: [],

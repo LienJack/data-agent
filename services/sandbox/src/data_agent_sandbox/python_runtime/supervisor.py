@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import os
+import platform
 import resource
 import signal
 import subprocess
@@ -72,6 +73,15 @@ class SandboxConfiguration:
         authorization = os.environ.get("PYTHON_SANDBOX_AUTH_TOKEN", "")
         if len(authorization) < 32:
             raise RuntimeError("PYTHON_SANDBOX_AUTH_TOKEN must contain at least 32 characters")
+        target_platform = os.environ.get("PYTHON_SANDBOX_TARGET_PLATFORM", "")
+        machine = {"aarch64": "arm64", "x86_64": "amd64"}.get(
+            platform.machine(), platform.machine()
+        )
+        actual_platform = f"{sys.platform}/{machine}"
+        if target_platform and target_platform != actual_platform:
+            raise RuntimeError(
+                "PYTHON_SANDBOX_TARGET_PLATFORM does not match the executing platform"
+            )
 
         def integer(name: str, default: int) -> int:
             try:

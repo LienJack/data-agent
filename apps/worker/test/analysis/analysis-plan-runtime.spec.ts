@@ -13,6 +13,7 @@ import {
   admitAnalysisProgramRepair,
   computeAnalysisPlanHash,
   createAnalysisPlanExecutor,
+  createDefaultAnalysisPlan,
   createServerOwnedAnalysisSkillCatalog,
   createServerOwnedAnalysisSkillCatalogFromReleaseManifest,
   DEFAULT_ANALYSIS_SKILL_CATALOG,
@@ -192,6 +193,9 @@ describe("deterministic analysis worker runtime", () => {
     expect(() => DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("invented@1")).toThrow(
       "ANALYSIS_SKILL_NOT_REGISTERED",
     );
+    expect(
+      DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("open-python-analysis@1").python_import_profile,
+    ).toBe("ML_DIAGNOSTIC");
   });
 
   it("applies each server-owned skill kill switch independently", () => {
@@ -207,6 +211,37 @@ describe("deterministic analysis worker runtime", () => {
         deterministic_analysis_rollout: {},
       } as never),
     ).toThrow("ANALYSIS_RELEASE_MANIFEST_NOT_AUTHORITATIVE");
+  });
+
+  it("builds the automatic plan from primary metrics and approved dimensions only", async () => {
+    const base = await fixture();
+    const { context_hash: _contextHash, ...contextMaterial } = base.context;
+    const primary = base.context.metrics[0];
+    if (!primary) throw new TypeError("missing primary metric fixture");
+    const context = await buildAnalysisContext({
+      ...contextMaterial,
+      metrics: [
+        primary,
+        {
+          ...primary,
+          metric_ref: { ...primary.metric_ref, node_id: "unrequested_metric" },
+          formula_hash: hash("f"),
+        },
+      ],
+    });
+    const plan = await createDefaultAnalysisPlan({
+      brief: base.brief,
+      brief_ref: base.briefRef,
+      context,
+      time_window: window,
+    });
+    expect(plan.planner_kind).toBe("DETERMINISTIC_DEFAULT");
+    expect(
+      plan.nodes.flatMap(({ metric_refs }) => metric_refs.map(({ node_id }) => node_id)),
+    ).toEqual(plan.nodes.map(() => "gross_revenue"));
+    expect(
+      plan.nodes.every(({ dimension_refs }) => dimension_refs.every((id) => id === "region")),
+    ).toBe(true);
   });
 
   it("rejects unauthorized dimensions, budgets, comparison windows, and cross-run refs", async () => {
@@ -415,123 +450,138 @@ describe("deterministic analysis worker runtime", () => {
     ]);
   });
 
-  it("stale fence produces HOLD and commits no receipt, result, or derived evidence", async () => {
-    const base = await fixture();
-    const l2: string[] = [];
-    const system: string[] = [];
-    const source = "def main(sdk):\n    return None\n";
-    const sourceRef = reference(
-      "SensitiveExecutionArtifact",
-      50,
-      `sha256:${createHash("sha256").update(source).digest("hex")}`,
-    );
-    const queryRef = reference("QueryEvidence", 51);
-    const inputRef = reference("SandboxResult", 52);
-    const executor = createAnalysisPlanExecutor({
-      artifacts: {
-        async commitL2({ payload }) {
-          const artifactType = payload.artifact_type;
-          l2.push(artifactType);
-          return reference(artifactType, 60 + l2.length, await sha256ContentHash(payload));
+  it.each([
+    ["CRITICAL", "HOLD"],
+    ["OPTIONAL", "PARTIAL"],
+  ] as const)(
+    "stale fence on a %s node produces %s and commits no receipt, result, or derived evidence",
+    async (criticality, expectedTerminal) => {
+      const base = await fixture();
+      const { plan_hash: _planHash, ...planMaterial } = base.plan;
+      const changedMaterial = {
+        ...planMaterial,
+        nodes: base.plan.nodes.map((node) => ({ ...node, criticality })),
+      };
+      const plan = analysisPlanPayloadSchema.parse({
+        ...changedMaterial,
+        plan_hash: await computeAnalysisPlanHash(changedMaterial),
+      });
+      const l2: string[] = [];
+      const system: string[] = [];
+      const source = "def main(sdk):\n    return None\n";
+      const sourceRef = reference(
+        "SensitiveExecutionArtifact",
+        50,
+        `sha256:${createHash("sha256").update(source).digest("hex")}`,
+      );
+      const queryRef = reference("QueryEvidence", 51);
+      const inputRef = reference("SandboxResult", 52);
+      const executor = createAnalysisPlanExecutor({
+        artifacts: {
+          async commitL2({ payload }) {
+            const artifactType = payload.artifact_type;
+            l2.push(artifactType);
+            return reference(artifactType, 60 + l2.length, await sha256ContentHash(payload));
+          },
+          async commitSystem({ reference: output }) {
+            system.push(output.artifact_type);
+            return output;
+          },
+          async resolveCommitted() {
+            return null;
+          },
         },
-        async commitSystem({ reference: output }) {
-          system.push(output.artifact_type);
-          return output;
+        queries: {
+          async execute() {
+            return [
+              {
+                name: "input",
+                format: "JSON",
+                query_evidence_ref: queryRef,
+                query_evidence_document: {},
+                input_ref: inputRef,
+                content: Buffer.from("{}"),
+              },
+            ];
+          },
         },
-        async resolveCommitted() {
-          return null;
+        programs: {
+          async load() {
+            return { source_text: source, source_text_ref: sourceRef };
+          },
         },
-      },
-      queries: {
-        async execute() {
-          return [
-            {
-              name: "input",
-              format: "JSON",
-              query_evidence_ref: queryRef,
-              query_evidence_document: {},
-              input_ref: inputRef,
-              content: Buffer.from("{}"),
-            },
-          ];
+        oracle: {
+          async expect() {
+            return {
+              expected_outputs: [{ name: "result", type: "JSON", content: Buffer.from("{}") }],
+              result: {
+                result_kind: "TREND_CHANGE",
+                points: [],
+                first_value: null,
+                last_value: null,
+              },
+              sample_size: 0,
+              coverage_ratio: 0,
+              limitation_codes: ["INSUFFICIENT_SAMPLE_SIZE"],
+              material_change: false,
+            };
+          },
         },
-      },
-      programs: {
-        async load() {
-          return { source_text: source, source_text_ref: sourceRef };
+        sandbox: {
+          async execute() {
+            throw new Error("stale fence must stop before transport");
+          },
+          async cancel() {
+            return {
+              protocol_version: "data-agent-python-sandbox-control@1.0.0",
+              status: "NOT_FOUND",
+            };
+          },
         },
-      },
-      oracle: {
-        async expect() {
-          return {
-            expected_outputs: [{ name: "result", type: "JSON", content: Buffer.from("{}") }],
-            result: {
-              result_kind: "TREND_CHANGE",
-              points: [],
-              first_value: null,
-              last_value: null,
-            },
-            sample_size: 0,
-            coverage_ratio: 0,
-            limitation_codes: ["INSUFFICIENT_SAMPLE_SIZE"],
-            material_change: false,
-          };
+        sandbox_authorization: "test-authorization-token-with-32-chars",
+        fence_guard: {
+          async isCurrent() {
+            return false;
+          },
         },
-      },
-      sandbox: {
-        async execute() {
-          throw new Error("stale fence must stop before transport");
+        references: {
+          createSystem({ artifact_type, content_hash }) {
+            return reference(artifact_type, 70 + system.length, content_hash);
+          },
+          create({ content_hash }) {
+            return reference("SandboxResult", 80, content_hash);
+          },
         },
-        async cancel() {
-          return {
-            protocol_version: "data-agent-python-sandbox-control@1.0.0",
-            status: "NOT_FOUND",
-          };
+        now: () => new Date(timestamp),
+      });
+      const result = await executor.execute({
+        lease: {
+          scope,
+          principal_id: principalId,
+          outbox_id: id(90),
+          run_id: runId,
+          command_id: id(91),
+          command_kind: "START_L2_RESEARCH",
+          attempt_id: id(92),
+          attempt_no: 1,
+          delivery_attempt_no: 1,
+          lease_duration_ms: 60_000,
+          worker_id: "analysis-worker",
+          lease_token: 1,
+          worker_fence: 1,
+          expires_at: "2026-08-22T00:01:00.000Z",
+          payload: {},
         },
-      },
-      sandbox_authorization: "test-authorization-token-with-32-chars",
-      fence_guard: {
-        async isCurrent() {
-          return false;
-        },
-      },
-      references: {
-        createSystem({ artifact_type, content_hash }) {
-          return reference(artifact_type, 70 + system.length, content_hash);
-        },
-        create({ content_hash }) {
-          return reference("SandboxResult", 80, content_hash);
-        },
-      },
-      now: () => new Date(timestamp),
-    });
-    const result = await executor.execute({
-      lease: {
-        scope,
         principal_id: principalId,
-        outbox_id: id(90),
-        run_id: runId,
-        command_id: id(91),
-        command_kind: "START_L2_RESEARCH",
-        attempt_id: id(92),
-        attempt_no: 1,
-        delivery_attempt_no: 1,
-        lease_duration_ms: 60_000,
-        worker_id: "analysis-worker",
-        lease_token: 1,
-        worker_fence: 1,
-        expires_at: "2026-08-22T00:01:00.000Z",
-        payload: {},
-      },
-      principal_id: principalId,
-      brief: base.brief,
-      brief_ref: base.briefRef,
-      context: base.context,
-      plan: base.plan,
-    });
-    expect(result.completion.terminal).toBe("HOLD");
-    expect(result.completion.limitation_codes).toContain("SANDBOX_FENCE_STALE");
-    expect(system).toEqual(["SandboxProgram"]);
-    expect(l2).toEqual(["AnalysisPlan", "AnalysisCompletionReceipt"]);
-  });
+        brief: base.brief,
+        brief_ref: base.briefRef,
+        context: base.context,
+        plan,
+      });
+      expect(result.completion.terminal).toBe(expectedTerminal);
+      expect(result.completion.limitation_codes).toContain("SANDBOX_FENCE_STALE");
+      expect(system).toEqual(["SandboxProgram"]);
+      expect(l2).toEqual(["AnalysisPlan", "AnalysisCompletionReceipt"]);
+    },
+  );
 });
