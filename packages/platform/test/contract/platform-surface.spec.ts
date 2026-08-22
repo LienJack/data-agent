@@ -26,6 +26,8 @@ describe("platform package public surface", () => {
       "buildAgentTeamStoreCommand",
       "buildBuiltinDatasourceAdapterCertifications",
       "buildBuiltinDatasourceAdapterDescriptors",
+      "buildDerivedAnalysisChartDocument",
+      "buildDeterministicAnalysisRunProjection",
       "buildQueryEvidenceChartDocument",
       "calculateModelCost",
       "ceilRationalMicrocredits",
@@ -138,6 +140,7 @@ describe("platform package public surface", () => {
       "providerInvocationUnknownClassificationSchema",
       "renderArtifactExport",
       "roundHalfUpMicrocredits",
+      "sameAnalysisEvidenceIdentity",
       "subtractMicrocredits",
       "withAppTransaction",
     ]);
