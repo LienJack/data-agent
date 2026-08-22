@@ -192,7 +192,7 @@ async function loadRunAuthority(
        run.question,
        coalesce(projection.status, run.status) as run_status,
        run.active_fence,
-       run.active_attempt_id,
+       active_attempt.attempt_id as active_attempt_id,
        (select pg_catalog.count(*)
         from run_attempts as attempt
         where attempt.app_id = run.app_id
@@ -228,6 +228,17 @@ async function loadRunAuthority(
        order by candidate.version desc
        limit 1
      ) as projection on true
+     left join lateral (
+       select active_candidate.attempt_id
+       from run_attempts as active_candidate
+       where active_candidate.app_id = run.app_id
+         and active_candidate.tenant_id = run.tenant_id
+         and active_candidate.environment = run.environment
+         and active_candidate.run_id = run.run_id
+         and active_candidate.status = 'ACTIVE'
+       order by active_candidate.attempt_no desc
+       limit 1
+     ) as active_attempt on true
      where run.app_id = $1
        and run.tenant_id = $2
        and run.environment = $3

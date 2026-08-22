@@ -54,24 +54,7 @@ begin
   where head.app_id=authority.app_id and head.tenant_id=authority.tenant_id
     and head.environment=authority.environment
     and revision.document_json->>'schema_version'='agent-product-profile-revision@2.0.0'
-    and (not enabled_only or (head.lifecycle='ENABLED' and revision.approval_status='APPROVED'
-      and not exists(
-        select 1 from pg_catalog.jsonb_array_elements(revision.document_json->'skill_refs') skill_ref(document)
-        where not exists(
-          select 1 from app_data_agent.skill_revisions skill
-          join app_data_agent.skill_heads skill_head on skill_head.app_id=skill.app_id
-            and skill_head.tenant_id=skill.tenant_id and skill_head.environment=skill.environment
-            and skill_head.skill_id=skill.skill_id and skill_head.active_revision=skill.revision
-            and skill_head.active_revision_hash=skill.revision_hash
-          where skill.app_id=revision.app_id and skill.tenant_id=revision.tenant_id
-            and skill.environment=revision.environment
-            and skill.skill_id=(skill_ref.document->>'skill_id')::uuid
-            and skill.revision=(skill_ref.document->>'revision')::bigint
-            and skill.revision_hash=skill_ref.document->>'revision_hash'
-            and skill.approval_status='APPROVED' and skill_head.lifecycle='ENABLED'
-            and not exists(select 1 from app_data_agent.skill_signer_revocations revocation
-              where revocation.app_id=skill.app_id and revocation.tenant_id=skill.tenant_id
-                and revocation.environment=skill.environment and revocation.signer_id=skill.signer_id)))));
+    and (not enabled_only or (head.lifecycle='ENABLED' and revision.approval_status='APPROVED'));
   return pg_catalog.jsonb_build_object(
     'schema_version','agent-product-profile-list-result@2.0.0','items',items);
 end

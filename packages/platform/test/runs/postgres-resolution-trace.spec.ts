@@ -218,6 +218,29 @@ async function productTeamSqlArtifactRow() {
 }
 
 describe("PostgreSQL Resolution Trace projector", () => {
+  it("resolves the current attempt from ACTIVE run_attempts authority", async () => {
+    const row = await eventRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool, calls } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) return { rows: [], rowCount: 0 };
+      return undefined;
+    });
+
+    await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(capability, {
+      scope,
+      run_id: ids.run,
+    });
+
+    const authorityQuery = calls.find(({ text }) => text.includes("from runs as run"))?.text;
+    expect(authorityQuery).toBeDefined();
+    expect(authorityQuery).not.toContain("run.active_attempt_id");
+    expect(authorityQuery).toContain("from run_attempts as active_candidate");
+    expect(authorityQuery).toContain("active_candidate.status = 'ACTIVE'");
+    expect(authorityQuery).toContain("active_attempt.attempt_id as active_attempt_id");
+  });
+
   it("projects exact public Tool input and result into a content-first detail", async () => {
     const startedEvent = runRuntimeEventSchema.parse({
       schema_version: "run-runtime-event@2.0.0",
