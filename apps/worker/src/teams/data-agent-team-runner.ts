@@ -1,3 +1,4 @@
+import type { AdmittedSubagentDelegation } from "@data-agent/agent-runtime";
 import {
   type AgentDispatchPlan,
   type AgentProductProfileReference,
@@ -44,6 +45,7 @@ export interface DataAgentProductTeamRuntimePort {
       AgentProductProfileRegistryItem
     >;
     readonly dispatch_plan?: AgentDispatchPlan | null;
+    readonly admitted_delegations?: readonly AdmittedSubagentDelegation[];
     readonly resolved_context_ref: Readonly<{
       package_id: string;
       package_hash: string;

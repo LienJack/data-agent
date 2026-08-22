@@ -3,6 +3,7 @@ export * from "./builtin-profile-assets.js";
 export * from "./context-projection.js";
 export * from "./contracts.js";
 export * from "./handoff.js";
+export * from "./host-delegation-admission.js";
 export * from "./materialize-builtin-team.js";
 export * from "./roles.js";
 export * from "./root-agent-harness.js";

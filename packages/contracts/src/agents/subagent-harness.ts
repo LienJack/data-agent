@@ -300,6 +300,87 @@ export type SubagentCapabilityCatalogSnapshot = z.infer<
   typeof subagentCapabilityCatalogSnapshotSchema
 >;
 
+const subagentDelegationReceiptDraftSchema = z
+  .strictObject({
+    schema_version: z.literal("subagent-delegation-receipt@1.0.0"),
+    delegation_id: immutableIdSchema,
+    scope: appScopeSchema,
+    run_id: immutableIdSchema,
+    catalog_snapshot_hash: contentHashSchema,
+    tool_call_id: z.string().min(1).max(256),
+    profile_ref: agentProductProfileReferenceV2Schema,
+    task_id: immutableIdSchema,
+    attempt_id: immutableIdSchema,
+    objective_hash: contentHashSchema,
+    input_artifact_refs: z.array(artifactReferenceSchema).max(64),
+    requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
+    effective_budget: subagentRequestedBudgetSchema,
+    tool_allowlist: z.array(versionIdentifierSchema).min(1).max(64),
+    idempotency_key: z
+      .string()
+      .min(8)
+      .max(128)
+      .regex(/^[A-Za-z0-9][A-Za-z0-9._:@/+~-]*$/),
+  })
+  .superRefine((receipt, ctx) => {
+    if (!isCanonicallySorted(receipt.requested_artifact_types)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Delegation output types must be unique and canonically sorted.",
+        path: ["requested_artifact_types"],
+      });
+    }
+    if (!isCanonicallySorted(receipt.tool_allowlist)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Delegation tools must be unique and canonically sorted.",
+        path: ["tool_allowlist"],
+      });
+    }
+    const artifactIdentities = receipt.input_artifact_refs.map(artifactReferenceIdentity);
+    if (!isCanonicallySorted(artifactIdentities)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Delegation input Artifacts must be unique and canonically sorted.",
+        path: ["input_artifact_refs"],
+      });
+    }
+    receipt.input_artifact_refs.forEach((reference, index) => {
+      if (!isSameScope(receipt.scope, reference) || receipt.run_id !== reference.run_id) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Delegation input Artifact escaped the admitted Run.",
+          path: ["input_artifact_refs", index],
+        });
+      }
+    });
+  });
+
+export const subagentDelegationReceiptSchema = subagentDelegationReceiptDraftSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+
+export type SubagentDelegationReceipt = z.infer<typeof subagentDelegationReceiptSchema>;
+
+export async function buildSubagentDelegationReceipt(input: unknown) {
+  const draft = subagentDelegationReceiptDraftSchema.parse(input);
+  return deepFreeze(
+    subagentDelegationReceiptSchema.parse({
+      ...draft,
+      receipt_hash: await sha256ContentHash(draft),
+    }),
+  );
+}
+
+export async function verifySubagentDelegationReceipt(input: unknown) {
+  const receipt = subagentDelegationReceiptSchema.parse(input);
+  const { receipt_hash: actual, ...draft } = receipt;
+  if ((await sha256ContentHash(subagentDelegationReceiptDraftSchema.parse(draft))) !== actual) {
+    throw new TypeError("SUBAGENT_DELEGATION_RECEIPT_HASH_MISMATCH");
+  }
+  return deepFreeze(receipt);
+}
+
 function artifactTypesAreSubset(allowed: readonly string[], requested: readonly string[]): boolean {
   const allowedTypes = new Set(allowed);
   return requested.every((artifactType) => allowedTypes.has(artifactType));

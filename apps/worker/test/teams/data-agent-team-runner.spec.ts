@@ -7,6 +7,7 @@ import {
   buildResolvedContextPackage,
   buildResolvedContextReceipt,
   buildResolvedContextRequest,
+  buildSubagentCapabilityCatalogSnapshot,
   type RunWorkLease,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -534,5 +535,72 @@ describe("Data Agent Team runner", () => {
       }),
     ).resolves.toEqual({ kind: "FAILED", error_code: "AGENT_DISPATCH_RECEIPT_MISMATCH" });
     expect(direct.execute).toHaveBeenCalledOnce();
+  });
+
+  it("hands a v3 frozen Catalog decision to the Root runtime without legacy routing", async () => {
+    const { context, lease, effectiveConfig } = await harness();
+    const catalog = await buildSubagentCapabilityCatalogSnapshot({
+      schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+      catalog_id: id(80),
+      scope,
+      run_id: lease.run_id,
+      principal_id: principalId,
+      policy_version: "root-harness@1.0.0",
+      items: [],
+    });
+    const v3Lease: RunWorkLease = {
+      ...lease,
+      payload: {
+        schema_version: "effective-config-team-lease@3.0.0",
+        kind: "START_DATA_AGENT_TEAM",
+        executor_version: "ROOT_HARNESS@1",
+        effective_config_ref: effectiveConfigRef(effectiveConfig),
+        catalog_snapshot: catalog,
+      },
+    };
+    const decision = {
+      schema_version: "root-agent-turn-candidate@1.0.0" as const,
+      kind: "FINAL_ANSWER" as const,
+      scope,
+      run_id: lease.run_id,
+      catalog_snapshot_hash: catalog.snapshot_hash,
+      sections: [
+        {
+          kind: "GENERAL_TEXT" as const,
+          text: "同比是与上年同一时期比较。",
+          basis: "GENERAL_KNOWLEDGE" as const,
+          source_message_refs: [],
+        },
+      ],
+      public_summary: "主 Agent 直接解释通用概念。",
+    };
+    const listEnabled = vi.fn();
+    const root = { decide: vi.fn(async () => ({ ok: true as const, value: decision })) };
+    const rootRuntime = {
+      execute: vi.fn(async ({ decision: selected }) => {
+        expect(selected).toEqual(decision);
+        return { status: "ACCEPTED" as const, reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED" };
+      }),
+    };
+    const runner = createDataAgentTeamRunner({
+      profiles: { listEnabled },
+      profile_capability_input: {},
+      runtime: { execute: vi.fn() },
+      root,
+      root_runtime: rootRuntime,
+    });
+
+    await expect(
+      runner.execute({
+        lease: v3Lease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:05:00.000Z",
+      }),
+    ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(root.decide).toHaveBeenCalledOnce();
+    expect(rootRuntime.execute).toHaveBeenCalledOnce();
+    expect(listEnabled).not.toHaveBeenCalled();
   });
 });

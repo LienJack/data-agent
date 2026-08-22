@@ -69,6 +69,8 @@ import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
 import { createDirectAnswerExecutor } from "./teams/direct-answer-executor.js";
 import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
 import { createProductionTeamTools } from "./teams/production-team-tools.js";
+import { createRootAgentDelegationRuntime } from "./teams/root-agent-delegation-runtime.js";
+import { createRootAgentTurnExecutor } from "./teams/root-agent-turn-executor.js";
 import { createRunWorkflowExecutorRouter } from "./teams/run-workflow-executor-router.js";
 
 class RunWorkerStartupError extends Error {
@@ -346,30 +348,43 @@ export async function runWorkerProcess(
           authorizer: capabilityAuthority.authorizer,
         });
         const ecommerceSandbox = createPostgresEcommerceBenchmarkExecutor({ pool });
-        const teamExecutor = createDataAgentTeamRunner({
-          profiles: {
-            listEnabled: (profileCapability) => profileRegistry.list(profileCapability, true),
+        const productionTeamRuntime = createProductionTeamRuntime({
+          store: teamStore,
+          capability,
+          artifacts: {
+            verifyCommitted: (reference) => teamArtifacts.verifyCommitted(capability, reference),
+            resolveCommitted: (reference) => teamArtifacts.resolveCommitted(capability, reference),
           },
+          create_tools: (input) =>
+            createProductionTeamTools(
+              {
+                capability,
+                artifacts: teamArtifacts,
+                sandbox: ecommerceSandbox,
+              },
+              input,
+            ),
+        });
+        const profilePorts = {
+          listEnabled: (profileCapability: unknown) =>
+            profileRegistry.list(profileCapability, true),
+          listDiscoverable: (profileCapability: unknown) =>
+            profileRegistry.listDiscoverable(profileCapability),
+        };
+        const teamExecutor = createDataAgentTeamRunner({
+          profiles: profilePorts,
           profile_capability_input: capability,
           direct: createDirectAnswerExecutor(),
-          runtime: createProductionTeamRuntime({
-            store: teamStore,
-            capability,
+          root: createRootAgentTurnExecutor(),
+          root_runtime: createRootAgentDelegationRuntime({
+            profiles: profilePorts,
+            profile_capability_input: capability,
+            runtime: productionTeamRuntime,
             artifacts: {
               verifyCommitted: (reference) => teamArtifacts.verifyCommitted(capability, reference),
-              resolveCommitted: (reference) =>
-                teamArtifacts.resolveCommitted(capability, reference),
             },
-            create_tools: (input) =>
-              createProductionTeamTools(
-                {
-                  capability,
-                  artifacts: teamArtifacts,
-                  sandbox: ecommerceSandbox,
-                },
-                input,
-              ),
           }),
+          runtime: productionTeamRuntime,
         });
         const executor = smokeTarget
           ? createProviderSmokeExecutor()

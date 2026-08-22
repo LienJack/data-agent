@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+  type AdmittedSubagentDelegation,
   advanceContextEpochTransition,
   authorizePersistedTaskCapability,
   buildOpenObligationLedger,
@@ -18,6 +19,7 @@ import {
   type AgentProductProfileRegistryItem,
   type AgentSpecialistProfileId,
   type ArtifactReference,
+  agentSpecialistProfileIdSchema,
   artifactReferenceIdentity,
   canonicalizeJson,
   type PortResult,
@@ -161,6 +163,17 @@ function bounds(input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]
   } as const;
 }
 
+function delegationBounds(delegation: AdmittedSubagentDelegation) {
+  const budget = delegation.receipt.effective_budget;
+  return {
+    max_context_bytes: budget.max_context_bytes,
+    max_input_tokens: budget.max_input_tokens,
+    max_output_tokens: budget.max_output_tokens,
+    max_tool_calls: budget.max_tool_calls,
+    timeout_ms: budget.timeout_ms,
+  } as const;
+}
+
 async function emit(
   context: RunExecutionContext,
   event: Parameters<NonNullable<RunExecutionContext["emitDisplayEvent"]>>[0],
@@ -190,7 +203,7 @@ async function createCapability(input: {
     profile_id: input.task.profile_id,
     profile_revision: input.task.profile_revision,
     profile_hash: input.task.profile_hash,
-    artifact_ref_identities: [],
+    artifact_ref_identities: input.task.artifact_refs.map(artifactReferenceIdentity),
     operation_audiences: ["HANDOFF_PREPARE", "TASK_COMPLETE", "TOOL_INVOKE"],
     issuer: { principal_id: input.lease.principal_id, key_id: "team-runtime-key@1.0.0" },
     issued_at: input.issued_at,
@@ -219,32 +232,41 @@ async function createChild(input: {
   readonly root_capability: Awaited<ReturnType<typeof createCapability>>;
   readonly profile_id: AgentSpecialistProfileId;
   readonly profile: AgentProductProfileRegistryItem;
+  readonly delegation?: AdmittedSubagentDelegation;
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
   readonly bounds: ReturnType<typeof bounds>;
 }) {
-  const taskId = identity(input.lease.run_id, `task:${input.profile_id}`);
+  const taskId =
+    input.delegation?.receipt.task_id ?? identity(input.lease.run_id, `task:${input.profile_id}`);
   const delegation = createSubagentDelegationCommand(input.root, input.root_capability, {
     schema_version: "subagent-delegation-request@2.0.0",
-    handoff_id: identity(input.lease.run_id, `handoff:${input.profile_id}`),
+    handoff_id:
+      input.delegation?.receipt.delegation_id ??
+      identity(input.lease.run_id, `handoff:${input.profile_id}`),
     child_task_id: taskId,
-    child_attempt_id: identity(input.lease.run_id, `attempt:${input.profile_id}`),
+    child_attempt_id:
+      input.delegation?.receipt.attempt_id ??
+      identity(input.lease.run_id, `attempt:${input.profile_id}`),
     child_profile_id: input.profile_id,
     child_profile_revision: input.profile.revision.runtime_profile_ref.revision,
     child_profile_hash: input.profile.revision.runtime_profile_ref.profile_hash,
     parent_expected_revision: input.root.task_revision,
-    objective_hash: await sha256ContentHash({
-      run_id: input.lease.run_id,
-      profile_id: input.profile_id,
-    }),
-    artifact_refs: [],
-    bounds: input.bounds,
-    idempotency_key: `team:${input.lease.run_id}:${input.profile_id}`,
+    objective_hash:
+      input.delegation?.receipt.objective_hash ??
+      (await sha256ContentHash({
+        run_id: input.lease.run_id,
+        profile_id: input.profile_id,
+      })),
+    artifact_refs: input.delegation?.receipt.input_artifact_refs ?? [],
+    bounds: input.delegation ? delegationBounds(input.delegation) : input.bounds,
+    idempotency_key:
+      input.delegation?.receipt.idempotency_key ?? `team:${input.lease.run_id}:${input.profile_id}`,
   });
   await persist(input.store.prepareHandoff, input.capability, {
     operation: "PREPARE_HANDOFF",
-    label: `prepare-handoff:${input.profile_id}`,
+    label: `prepare-handoff:${input.delegation?.receipt.delegation_id ?? input.profile_id}`,
     task_id: input.root.task_id,
     expected_revision: input.root.task_revision,
     document: delegation,
@@ -397,6 +419,11 @@ function acceptedOutput(snapshot: unknown): ArtifactReference | null {
 function selectedExecutionOrder(
   input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0],
 ): readonly AgentSpecialistProfileId[] {
+  if (input.admitted_delegations) {
+    return input.admitted_delegations.map(({ profile }) =>
+      agentSpecialistProfileIdSchema.parse(profile.revision.profile_id),
+    );
+  }
   if (!input.dispatch_plan) {
     return ["semantic-management-agent", "governed-text2sql-agent", "report-writing-agent"];
   }
@@ -430,7 +457,9 @@ export function createProductionTeamRuntime(
         const executionOrder = selectedExecutionOrder(input);
         const replayProfileId = executionOrder.at(-1);
         if (!replayProfileId) throw new ProductionTeamRuntimeError("AGENT_DISPATCH_PLAN_INVALID");
-        const replayTaskId = identity(input.lease.run_id, `task:${replayProfileId}`);
+        const replayTaskId =
+          input.admitted_delegations?.at(-1)?.receipt.task_id ??
+          identity(input.lease.run_id, `task:${replayProfileId}`);
         const loadedReplay = portValue(
           await dependencies.store.loadRun(
             dependencies.capability,
@@ -466,7 +495,17 @@ export function createProductionTeamRuntime(
           goal_revision: 1,
           attempt_id: input.lease.attempt_id,
           worker_fence: input.lease.worker_fence,
-          artifact_refs: [],
+          artifact_refs: input.admitted_delegations
+            ? [
+                ...new Map(
+                  input.admitted_delegations
+                    .flatMap(({ receipt }) => receipt.input_artifact_refs)
+                    .map((reference) => [artifactReferenceIdentity(reference), reference] as const),
+                ).values(),
+              ].sort((left, right) =>
+                artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+              )
+            : [],
           context_epoch_ref: null,
           bounds: taskBounds,
           acceptance: {
@@ -491,7 +530,7 @@ export function createProductionTeamRuntime(
         });
 
         const tasks = new Map<AgentSpecialistProfileId, TeamTaskV2>();
-        for (const profileId of executionOrder) {
+        for (const [executionIndex, profileId] of executionOrder.entries()) {
           const selectedProfile = input.profiles.get(profileId);
           if (!selectedProfile) {
             throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
@@ -501,6 +540,9 @@ export function createProductionTeamRuntime(
             root_capability: rootCapability,
             profile_id: profileId,
             profile: selectedProfile,
+            ...(input.admitted_delegations?.[executionIndex]
+              ? { delegation: input.admitted_delegations[executionIndex] }
+              : {}),
             lease: input.lease,
             store: dependencies.store,
             capability: dependencies.capability,
