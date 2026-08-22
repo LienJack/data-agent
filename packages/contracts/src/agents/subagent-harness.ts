@@ -134,10 +134,8 @@ export const subagentRequestedBudgetSchema = z.strictObject({
   max_context_bytes: z.number().int().positive().max(65_536),
 });
 
-export const delegateToSubagentCallSchema = z
+export const delegateToSubagentArgumentsSchema = z
   .strictObject({
-    tool_name: z.literal(DELEGATE_TO_SUBAGENT_TOOL_NAME),
-    tool_call_id: z.string().min(1).max(256),
     profile_id: agentProfileIdSchema,
     objective: z.string().trim().min(1).max(4_000),
     requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
@@ -159,6 +157,11 @@ export const delegateToSubagentCallSchema = z
       "Input Artifact references cannot be duplicated.",
     );
   });
+
+export const delegateToSubagentCallSchema = delegateToSubagentArgumentsSchema.safeExtend({
+  tool_name: z.literal(DELEGATE_TO_SUBAGENT_TOOL_NAME),
+  tool_call_id: z.string().min(1).max(256),
+});
 
 const sourceMessageRefsSchema = z
   .array(immutableIdSchema)

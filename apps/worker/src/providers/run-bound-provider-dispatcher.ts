@@ -1,8 +1,10 @@
+import { buildRootAgentSystemMessage, ROOT_AGENT_TOOL_ALLOWLIST } from "@data-agent/agent-runtime";
 import {
   agentDataProjectionReceiptReferenceSchema,
   buildProviderDispatchEnvelopeCandidate,
   computeModelProviderPayloadHash,
   type EffectiveRunConfigReceiptCandidate,
+  effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type ProviderExecutionProfile,
 } from "@data-agent/contracts";
@@ -64,6 +66,8 @@ export function createRunBoundProviderDispatcher(input: {
   readonly required_recovery_capabilities: readonly string[];
   readonly response_schema_version: string;
   readonly response_schema_bytes: number;
+  readonly root_response_schema_version?: string;
+  readonly root_response_schema_bytes?: number;
 }): RunBoundProviderDispatcher {
   return Object.freeze({
     async invoke({
@@ -152,18 +156,43 @@ export function createRunBoundProviderDispatcher(input: {
         workspace_id: lease.scope.tenant_id,
         principal_id: lease.principal_id,
       } as const;
+      const leasePayload = effectiveConfigRunLeasePayloadSchema.safeParse(lease.payload);
+      const rootCatalog =
+        leasePayload.success &&
+        leasePayload.data.kind === "START_DATA_AGENT_TEAM" &&
+        leasePayload.data.schema_version === "effective-config-team-lease@3.0.0"
+          ? leasePayload.data.catalog_snapshot
+          : null;
+      let trustedSystemInstruction = U3_MODEL_SYSTEM_INSTRUCTIONS;
+      let responseSchemaVersion = input.response_schema_version;
+      let responseSchemaBytes = input.response_schema_bytes;
+      if (rootCatalog) {
+        const rootResponseSchemaVersion = input.root_response_schema_version;
+        const rootResponseSchemaBytes = input.root_response_schema_bytes;
+        if (!rootResponseSchemaVersion || !rootResponseSchemaBytes) {
+          return failure(
+            "ROOT_TOOL_CALLING_UNSUPPORTED",
+            "Root Harness response schema or tool-calling capability is not configured.",
+          );
+        }
+        trustedSystemInstruction = await buildRootAgentSystemMessage(rootCatalog);
+        responseSchemaVersion = rootResponseSchemaVersion;
+        responseSchemaBytes = rootResponseSchemaBytes;
+      }
+      const toolAllowlist = rootCatalog ? ROOT_AGENT_TOOL_ALLOWLIST : [];
       const inspected = inspectProviderTaskProjection({
         question: task.value.document.question,
         allowed_audiences: config.effective_egress.allowed_audiences,
+        ...(rootCatalog ? { trusted_system_instruction: trustedSystemInstruction } : {}),
       });
       if (!inspected.ok) return { ok: false, error: inspected.error };
       const messages = inspected.value.messages;
       const trustedInputTokenUpperBound = computeTrustedInputTokenUpperBound({
-        instructions: U3_MODEL_SYSTEM_INSTRUCTIONS,
+        instructions: trustedSystemInstruction,
         messages,
-        tool_names: [],
-        response_schema_version: input.response_schema_version,
-        canonical_schema_bytes: input.response_schema_bytes,
+        tool_names: toolAllowlist,
+        response_schema_version: responseSchemaVersion,
+        canonical_schema_bytes: responseSchemaBytes,
       });
       const effectiveContextCeiling = Math.min(
         config.context_policy.max_context_tokens,
@@ -194,13 +223,13 @@ export function createRunBoundProviderDispatcher(input: {
         task_ref: task.value.reference,
         context_refs: [],
         messages,
-        tool_allowlist: [],
-        response_schema_version: input.response_schema_version,
+        tool_allowlist: toolAllowlist,
+        response_schema_version: responseSchemaVersion,
         budget: {
           timeout_ms: Math.min(config.execution_safety_policy.max_elapsed_ms, 600_000),
           max_input_tokens: effectiveContextCeiling,
           max_output_tokens: maxOutputTokens,
-          max_tool_calls: 0,
+          max_tool_calls: rootCatalog ? 8 : 0,
         },
       } as const;
       const payloadHash = await computeModelProviderPayloadHash(request);
@@ -275,8 +304,8 @@ export function createRunBoundProviderDispatcher(input: {
         },
         connection: profile.connection,
         request_policy: {
-          response_schema_version: input.response_schema_version,
-          tool_allowlist: [],
+          response_schema_version: responseSchemaVersion,
+          tool_allowlist: toolAllowlist,
           budget: {
             ...request.budget,
             provider_call_limit: 1,

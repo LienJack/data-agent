@@ -5,6 +5,8 @@ export * from "./contracts.js";
 export * from "./handoff.js";
 export * from "./materialize-builtin-team.js";
 export * from "./roles.js";
+export * from "./root-agent-harness.js";
+export * from "./subagent-delegation-tool.js";
 export * from "./task-completion.js";
 export * from "./team-orchestrator.js";
 export * from "./tool-policy.js";

@@ -8,7 +8,11 @@ const credentialMaterial =
   /(?:["']?\b(?:password|passwd|token|secret|api\s*[_-]?\s*key|authorization)["']?\s*[:=]\s*["']?\S+|\bbearer\s+[A-Za-z0-9._~+/-]{8,}={0,2}|\bsk-[A-Za-z0-9_-]{12,}|\bgh[pousr]_[A-Za-z0-9_]{20,}|\bglpat-[A-Za-z0-9_-]{20,}|\bxox[baprs]-[A-Za-z0-9-]{10,}|\b(?:AKIA|ASIA)[A-Z0-9]{16}|-----BEGIN\s+[A-Z ]*PRIVATE\s+KEY-----)/i;
 
 interface InspectedProjection {
-  readonly messages: readonly [{ readonly role: "user"; readonly content: string }];
+  readonly messages: readonly {
+    readonly role: "system" | "user";
+    readonly content: string;
+  }[];
+  readonly approved_fields: readonly string[];
 }
 
 const inspectedProjections = new WeakSet<object>();
@@ -20,12 +24,19 @@ function failure<T>(code: string, message: string): PortResult<T> {
 export function inspectProviderTaskProjection(input: {
   readonly question: string;
   readonly allowed_audiences: readonly string[];
+  readonly trusted_system_instruction?: string;
 }): PortResult<InspectedProjection> {
   if (!input.allowed_audiences.includes("PRIVATE")) {
     return failure("PROVIDER_EGRESS_DENIED", "Effective Egress 未允许 PRIVATE data audience。");
   }
   const normalizedQuestion = input.question.replace(/\\(["'])/g, "$1").replace(/\s+/g, " ");
-  if (credentialMaterial.test(normalizedQuestion)) {
+  const normalizedSystemInstruction = input.trusted_system_instruction
+    ?.replace(/\\(["'])/g, "$1")
+    .replace(/\s+/g, " ");
+  if (
+    credentialMaterial.test(normalizedQuestion) ||
+    (normalizedSystemInstruction && credentialMaterial.test(normalizedSystemInstruction))
+  ) {
     return failure(
       "PROVIDER_DATA_PROJECTION_DLP_REJECTED",
       "Provider task 命中 credential DLP；U3 fail-closed policy 不向外部模型发送该内容。",
@@ -33,8 +44,19 @@ export function inspectProviderTaskProjection(input: {
   }
   const projection = Object.freeze({
     messages: Object.freeze([
+      ...(input.trusted_system_instruction
+        ? [
+            Object.freeze({
+              role: "system" as const,
+              content: input.trusted_system_instruction,
+            }),
+          ]
+        : []),
       Object.freeze({ role: "user" as const, content: input.question }),
-    ]) as readonly [{ readonly role: "user"; readonly content: string }],
+    ]),
+    approved_fields: Object.freeze(
+      input.trusted_system_instruction ? ["question", "subagent_catalog"] : ["question"],
+    ),
   });
   inspectedProjections.add(projection);
   return { ok: true, value: projection };
@@ -80,7 +102,7 @@ export async function createGovernedAgentDataProjectionReceipt(input: {
       principal_id: input.principal_id,
       model_execution_profile_hash: input.model_execution_profile_hash,
       input_refs: [input.task_ref],
-      approved_fields: ["question"],
+      approved_fields: [...input.inspected.approved_fields],
       classification: input.classification,
       payload_hash: input.payload_hash,
       token_bound_policy_version: input.token_bound_policy_version,

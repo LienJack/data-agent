@@ -2,7 +2,10 @@ import {
   createModelProviderExecutionBinding,
   createModelProviderPort,
   getModelProviderBinding,
+  ROOT_AGENT_RESPONSE_SCHEMA_VERSION,
+  rootAgentFinalAnswerOutputSchema,
   ServerModelResponseSchemaRegistry,
+  SUBAGENT_DELEGATION_TOOL_DESCRIPTOR,
 } from "@data-agent/agent-runtime";
 import {
   type AvailableExecutionModelProfile,
@@ -156,11 +159,19 @@ export function createProductionRunBoundProviderDispatcher(input: {
       response_schema_version: U3_RESPONSE_SCHEMA_VERSION,
       schema: z.strictObject({ answer: z.string().min(1) }),
     },
+    {
+      response_schema_version: ROOT_AGENT_RESPONSE_SCHEMA_VERSION,
+      schema: rootAgentFinalAnswerOutputSchema,
+    },
   ]);
   const deepseekTemplate = getModelProviderBinding("deepseek");
   const registeredResponseSchema = responseSchemas.resolve(U3_RESPONSE_SCHEMA_VERSION);
+  const registeredRootResponseSchema = responseSchemas.resolve(ROOT_AGENT_RESPONSE_SCHEMA_VERSION);
   if (!registeredResponseSchema) {
     throw new TypeError("U3_RESPONSE_SCHEMA_NOT_REGISTERED");
+  }
+  if (!registeredRootResponseSchema) {
+    throw new TypeError("ROOT_AGENT_RESPONSE_SCHEMA_NOT_REGISTERED");
   }
   const transport = createPersistedModelProviderTransport({
     profile_resolver: resolveAvailableProfile,
@@ -218,6 +229,7 @@ export function createProductionRunBoundProviderDispatcher(input: {
           input_token_counter: createTrustedUtf8InputTokenUpperBoundCounter(),
           dispatch_marker: { mark_dispatched: markDispatched },
           abort_signal: signal,
+          tools: [SUBAGENT_DELEGATION_TOOL_DESCRIPTOR],
         }),
     },
   });
@@ -239,5 +251,7 @@ export function createProductionRunBoundProviderDispatcher(input: {
     required_recovery_capabilities: ["AT_LEAST_ONCE_ONLY"],
     response_schema_version: U3_RESPONSE_SCHEMA_VERSION,
     response_schema_bytes: registeredResponseSchema.canonical_schema_bytes,
+    root_response_schema_version: ROOT_AGENT_RESPONSE_SCHEMA_VERSION,
+    root_response_schema_bytes: registeredRootResponseSchema.canonical_schema_bytes,
   });
 }

@@ -5,6 +5,7 @@ import {
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type ResolvedContextCommitResult,
+  type RootAgentDecisionCandidate,
   verifyAgentDispatchAdmissionResult,
   verifyResolvedContextCommitResult,
 } from "@data-agent/contracts";
@@ -24,6 +25,7 @@ import {
   verifyProductProfileSet,
   verifySelectedProductProfiles,
 } from "./mastra-profile-composition.js";
+import type { RootAgentTurnPort } from "./root-agent-turn-executor.js";
 
 const runtimeResultSchema = z.strictObject({
   status: z.enum(["ACCEPTED", "FAILED", "NEEDS_CLARIFICATION"]),
@@ -66,6 +68,13 @@ export interface DataAgentTeamRunnerDependencies {
   readonly profile_capability_input: unknown;
   readonly runtime: DataAgentProductTeamRuntimePort;
   readonly direct?: RunWorkflowExecutorPort;
+  readonly root?: RootAgentTurnPort;
+  readonly root_runtime?: {
+    execute(input: {
+      readonly decision: RootAgentDecisionCandidate;
+      readonly execution: Parameters<RunWorkflowExecutorPort["execute"]>[0];
+    }): Promise<unknown>;
+  };
 }
 
 function failed(errorCode: string): RunExecutorResult {
@@ -119,6 +128,20 @@ export function createDataAgentTeamRunner(
         input.lease.command_kind !== "START_DATA_AGENT_TEAM"
       ) {
         return failed("DATA_AGENT_TEAM_LEASE_INVALID");
+      }
+      if (payload.data.schema_version === "effective-config-team-lease@3.0.0") {
+        if (!dependencies.root || !dependencies.root_runtime) {
+          return failed("ROOT_AGENT_HARNESS_NOT_CONFIGURED");
+        }
+        const decision = await dependencies.root.decide(input);
+        if (!decision.ok) return failed(decision.error.code);
+        const rootResult = runtimeResultSchema.safeParse(
+          await dependencies.root_runtime.execute({ decision: decision.value, execution: input }),
+        );
+        if (!rootResult.success) return failed("ROOT_AGENT_RUNTIME_RESULT_INVALID");
+        return rootResult.data.status === "ACCEPTED"
+          ? runExecutorResultSchema.parse({ kind: "COMPLETED" })
+          : failed(rootResult.data.reason_code);
       }
       let dispatchPlan: AgentDispatchPlan | null = null;
       if (payload.data.schema_version === "effective-config-team-lease@2.0.0") {
