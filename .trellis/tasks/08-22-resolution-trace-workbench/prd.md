@@ -1,6 +1,6 @@
 # 运行轨迹工作台升级
 
-> 状态：v0.2 评审稿，仅定义产品需求，不代表已批准实现。
+> 状态：v0.3 已批准执行；范围已依据当前代码入口收敛。
 
 ## 1. Goal
 
@@ -196,6 +196,9 @@
 - Contract 上限为 10,000 节点，因此虚拟化、搜索索引节流和稳定滚动锚点属于产品验收的一部分，而非事后性能优化。
 - 实时追加与用户主动浏览历史存在焦点竞争；默认以“不打断用户”为优先，仅在用户已位于尾部时自动跟随。
 
-## 10. Open Question
+## 10. Resolved Decisions
 
-- **OQ1（阻塞最终收敛）**：MVP 是只升级图一对应的“运行与证据 > 轨迹”页签，还是同时把 Q&A 顶层 `TrajectoryView` 也统一成同一套外观与交互？当前评审稿推荐前者：先解决明确入口，并复用已有底层交互语义；同时改两个入口会扩大回归范围，也容易在数据合同尚未统一时形成表面一致、语义不同的两套 UI。
+- **D1 / 单一生效入口**：当前 Q&A 页面在外层“轨迹”入口实际渲染 `ResolutionTraceView`；旧 `TrajectoryView` 未接入该页面。因此本任务直接升级 `ResolutionTraceView`，不维护第二套并行 UI。
+- **D2 / 轻索引、懒详情**：现有 `ResolutionTrace` 继续承担时间轴、排序和摘要索引；大 Payload、Result、Schema、Artifact 正文不塞入首次响应，而是在用户选中记录后按 exact identity 懒加载公共详情。
+- **D3 / 历史优先**：详情只显示本 Run 冻结或记录时的绑定。若权威存储没有历史显示名，则展示稳定的“历史名称不可用”状态与 exact ID，不用当前 Catalog 名称覆盖历史事实。
+- **D4 / 内容读取边界**：Artifact 内容继续复用 exact-reference Preview API；Event、Config、Team、SQL、Context 与 Receipt 内容由服务端明确的公共详情投影提供，浏览器不拼接 raw 表或 Provider 数据。

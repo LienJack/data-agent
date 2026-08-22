@@ -5,7 +5,7 @@
   "description": "参考 DeepSeek Harness，将运行与证据轨迹升级为带多泳道时间轴、搜索、折叠、联动记录表，以及将 Run/Config/Profile/Task/Call/SQL/Context/Receipt/Artifact 从 ID 展开为真实公共内容的只读工作台。",
   "status": "planning",
   "dev_type": null,
-  "scope": "运行与证据 > 轨迹主视图及 Overview/Team/SQL/Artifact 的关联内容详情；不进入实现",
+  "scope": "运行与证据 > 轨迹主视图及 Overview/Team/SQL/Artifact 的关联公共内容详情；已批准进入实现",
   "package": "web",
   "priority": "P2",
   "creator": "lienli",
