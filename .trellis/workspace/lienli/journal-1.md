@@ -751,3 +751,38 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 33: 修复 Q&A 持久化事务失败
+
+**Date**: 2026-08-22
+**Task**: 修复 Q&A 持久化事务失败
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+恢复 10696 不可变 checksum，新增 10698 前向权限与 Root Harness 修复，并改用 ACTIVE run_attempt 权威读取轨迹。
+
+### Main Changes
+
+- 应用 10697/10698 并修复 validator 最小 ACL
+- Resolution Trace 不再读取不存在的 runs.active_attempt_id
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d55e67f` | (see git log) |
+
+### Testing
+
+- [OK] Focused Vitest 11/11、Platform typecheck、Biome、renderer verify 通过
+- [OK] 目标 workspace 前后计数一致，零数据删除
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户可在现有已登录 Q&A 页面重新提交问题做现场 UI 确认
