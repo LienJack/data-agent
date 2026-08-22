@@ -18,7 +18,7 @@ green sub-slice as completion of the full task.
   payloads and gates, and keep insufficient evidence HOLD.
 - [x] U5 Projection and Workbench: add safe platform projections, chart protocol evolution, evidence-grounded insight selection, replay-stable
   report UI, evidence drawer, and disclosure/sensitivity tests.
-- [ ] U6 Independent Evaluation: add deterministic/generated/causal oracles, semantic e-commerce fixtures, cross-layer acceptance, adversarial
+- [x] U6 Independent Evaluation: add deterministic/generated/causal oracles, semantic e-commerce fixtures, cross-layer acceptance, adversarial
   cases, and hard-fail scoring.
 - [ ] U7 Rollout: add per-skill staged registration, probes, release verification, runbook, kill switches, and rollback checks.
 - [ ] Full completion audit: map every R1-R17, Verification Matrix row, failure/recovery row, Slice 1-8 deliverable, and Definition of Done item to
@@ -157,3 +157,30 @@ green sub-slice as completion of the full task.
   - U5 targeted Web/Platform/Research: 6 files / 27 tests passed after final chart allowlist update.
   - Web full suite: 116 files / 444 tests passed, 1 skipped, with two unrelated pre-existing failures in workspace-navigation and
     semantic-studio-agent-only source assertions; all U5 Web suites passed.
+
+### U6 Program Oracle, Semantic/Causal Fixtures and End-to-End Evaluation
+
+- Added independent TypeScript math Oracles for all five standard skills, including missing-period, signed contribution closure, robust MAD,
+  rank correlation/outlier sensitivity, and expanding-window forecast backtest. Oracle receipts bind algorithm/result hashes, and the aggregate
+  gate requires every declared case to score 100; Golden changes without an algorithm-version change hard-fail.
+- Added a generated-program gate that independently rehashes source, rejects environment/process/network/native/dynamic/non-deterministic code,
+  verifies runtime/lock/replay, permits at most one repair, and commits zero output on failure or unavailable Sandbox. The historical CSV
+  deterministic profile is explicitly marked benchmark-only and production-ineligible.
+- Added a separate SCM Oracle for known positive, negative, and zero effects. L5 requires correct direction/interval, sample/overlap,
+  mediator/collider-free adjustment, four refuters, negative control, sensitivity, Attribution authority, certificate, and public-level closure;
+  nine causal adversarial families fail closed at L4/HOLD.
+- Added a content-addressed eight-case E-commerce suite with Published Semantic/Schema/Policy frontier, sealed QueryEvidence/Golden truth,
+  score-100 hard gate, and explicit adversarial coverage for missing zero-fill, net cancellation, outlier sensitivity, seasonal leakage,
+  permission-dimension induction, Simpson/reverse/collider-confounder mistakes, post-treatment leakage, small samples, MNAR, multiple testing,
+  and public source/stdout disclosure. The suite remains `HOLD` until U7.
+- Added Worker cross-layer acceptance from semantic frontier and QueryEvidence through attested program refs, independent Oracle, V3 chart,
+  L4 sales-return candidate disclosure, replay-stable report projection, and hard-fail output suppression. The existing live acceptance CLI now
+  reports the suite version/hash/case threshold/readiness under its explicit execution confirmation.
+- Validation:
+  - Evals typecheck and full package tests passed; deterministic/generated/causal/suite targeted suite: 24 tests.
+  - Contracts build and full unit: 81 files / 855 tests; Platform full unit: 89 files / 527 tests.
+  - Worker U4/U8/U6 integration selection: 3 files / 18 tests; Web typecheck passed.
+  - All three Python runtime attestations `VERIFIED`; Python Sandbox full suite: 111 tests; Platform Python process integration: 1 test.
+  - Repository PostgreSQL smoke is independently blocked by a pre-existing duplicate self-checksum literal in migration 10694. The subsequent
+    Platform integration passed 13 tests with 1 skipped, then its unrelated schema-discovery fixture failed because it supplies the non-UUID
+    string `schema-discovery-integration` to a UUID column. Neither failure touches the U6 owned paths.

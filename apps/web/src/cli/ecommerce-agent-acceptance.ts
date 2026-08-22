@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { SYSTEM_MODEL_DEPLOYMENT_OVERRIDES } from "@data-agent/agent-runtime";
 import { CERTIFIED_MODEL_SQL_AGENT_ID } from "@data-agent/contracts";
+import { loadEcommerceDeterministicAnalysisSuite } from "@data-agent/evals";
 import { executeTestCenterRun } from "../lib/test-center-runtime";
 
 const CONFIRMATION = "DATA_AGENT_ALLOW_ECOMMERCE_AGENT_ACCEPTANCE";
@@ -20,6 +21,7 @@ if (process.env[CONFIRMATION]?.trim() !== "YES") {
   process.exitCode = 2;
 } else {
   try {
+    const deterministicSuite = await loadEcommerceDeterministicAnalysisSuite();
     process.env.TEST_CENTER_MODEL_PROVIDER ||= "deepseek";
     process.env.DATA_AGENT_MODEL_PROVIDER_OVERRIDES ||= JSON.stringify(
       SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
@@ -59,6 +61,15 @@ if (process.env[CONFIRMATION]?.trim() !== "YES") {
       post_reflection_pass_rate: run.scorecard?.post_reflection_pass_rate,
       cost_micros: attempt?.usage.cost_micros,
       latency_ms: attempt?.latency_ms,
+      deterministic_analysis_suite: {
+        version: deterministicSuite.manifest.suite_version,
+        manifest_hash: deterministicSuite.manifest.manifest_hash,
+        case_count: deterministicSuite.manifest.case_count,
+        minimum_score: deterministicSuite.manifest.minimum_score,
+        hard_fail_on_any_case: deterministicSuite.manifest.hard_fail_on_any_case,
+        release_readiness: deterministicSuite.manifest.readiness,
+        release_readiness_reason: deterministicSuite.manifest.readiness_reason,
+      },
     });
   } catch (error) {
     report({
