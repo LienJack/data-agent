@@ -17,6 +17,90 @@ const publicEventV2Base = {
 } as const;
 const publicTextSchema = z.string().max(200_000);
 
+const publicAnalysisEventBase = {
+  schema_version: z.literal("public-analysis-event@1.0.0"),
+  event_id: immutableIdSchema,
+  run_id: immutableIdSchema,
+  sequence: z.number().int().positive().safe(),
+  occurred_at: timestampSchema,
+} as const;
+
+/**
+ * Safe, replayable analysis progress projection. It intentionally contains no
+ * Python source, stdout/stderr, SQL parameters, raw rows, or model reasoning.
+ */
+export const publicAnalysisRunEventV1Schema = z
+  .discriminatedUnion("type", [
+    z.strictObject({
+      ...publicAnalysisEventBase,
+      type: z.literal("analysis.plan"),
+      payload: z.strictObject({
+        plan_ref: artifactReferenceSchema,
+        status: z.enum(["ADMITTED", "HOLD"]),
+        node_count: z.number().int().nonnegative().max(64),
+        summary: z.string().min(1).max(512),
+        reason_code: versionIdentifierSchema.nullable(),
+      }),
+    }),
+    z.strictObject({
+      ...publicAnalysisEventBase,
+      type: z.literal("analysis.node"),
+      payload: z.strictObject({
+        plan_ref: artifactReferenceSchema,
+        node_id: versionIdentifierSchema,
+        skill_id: versionIdentifierSchema,
+        status: z.enum(["QUEUED", "RUNNING", "SKIPPED", "SUCCEEDED", "FAILED", "CANCELLED"]),
+        summary: z.string().min(1).max(512),
+        artifact_refs: z.array(artifactReferenceSchema).max(16),
+        reason_code: versionIdentifierSchema.nullable(),
+      }),
+    }),
+    z.strictObject({
+      ...publicAnalysisEventBase,
+      type: z.literal("analysis.evidence"),
+      payload: z.strictObject({
+        evidence_ref: artifactReferenceSchema,
+        status: z.literal("ACCEPTED"),
+        method: versionIdentifierSchema,
+        disclosures: z.array(versionIdentifierSchema).max(32),
+        summary: z.string().min(1).max(512),
+      }),
+    }),
+    z.strictObject({
+      ...publicAnalysisEventBase,
+      type: z.literal("analysis.terminal"),
+      payload: z.strictObject({
+        completion_receipt_ref: artifactReferenceSchema,
+        status: z.enum(["READY", "PARTIAL", "HOLD"]),
+        summary: z.string().min(1).max(512),
+        reason_codes: z.array(versionIdentifierSchema).max(32),
+      }),
+    }),
+  ])
+  .superRefine((event, ctx) => {
+    const references = (() => {
+      switch (event.type) {
+        case "analysis.plan":
+          return [event.payload.plan_ref];
+        case "analysis.node":
+          return [event.payload.plan_ref, ...event.payload.artifact_refs];
+        case "analysis.evidence":
+          return [event.payload.evidence_ref];
+        case "analysis.terminal":
+          return [event.payload.completion_receipt_ref];
+      }
+    })();
+    for (const [index, reference] of references.entries()) {
+      if (reference.run_id !== event.run_id) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Public Analysis Event Reference 必须绑定同一 Run。",
+          path: ["payload", "artifact_refs", index],
+        });
+      }
+    }
+  });
+
 const lifecyclePayload = z.strictObject({
   name: z.string().min(1).max(128),
   status: z.enum(["QUEUED", "RUNNING", "WAITING"]),
@@ -382,6 +466,7 @@ export function selectSubagentPublicEvents(
 }
 
 export type PublicRunEventV1 = z.infer<typeof publicRunEventV1Schema>;
+export type PublicAnalysisRunEventV1 = z.infer<typeof publicAnalysisRunEventV1Schema>;
 export type PublicRunEventV2 = z.infer<typeof publicRunEventV2Schema>;
 export type PublicRunEvent = z.infer<typeof publicRunEventSchema>;
 export type ConversationTrajectory = z.infer<typeof conversationTrajectorySchema>;

@@ -22,6 +22,17 @@ export const U6_REFERENCE_TARGETS = [
   "SandboxExecutionReceipt",
   "ObligationExecutionDecision",
   "QueryEvidence",
+  "DataProfile",
+  "AnalysisPlan",
+  "DerivedAnalysisEvidence",
+  "AnalysisCompletionReceipt",
+  "SandboxProgram",
+  "DiscoveryCandidate",
+  "DiscoveryReceipt",
+  "CausalQuestion",
+  "IdentificationPlan",
+  "CausalEstimate",
+  "IdentificationCertificate",
   "AtomicClaim",
   "EvidenceRelation",
   "EvidenceCheckReceipt",
@@ -60,6 +71,17 @@ export const obligationExecutionDecisionRefSchema = artifactReferenceFor(
   "ObligationExecutionDecision",
 );
 export const queryEvidenceRefSchema = artifactReferenceFor("QueryEvidence");
+export const dataProfileRefSchema = artifactReferenceFor("DataProfile");
+export const analysisPlanRefSchema = artifactReferenceFor("AnalysisPlan");
+export const derivedAnalysisEvidenceRefSchema = artifactReferenceFor("DerivedAnalysisEvidence");
+export const analysisCompletionReceiptRefSchema = artifactReferenceFor("AnalysisCompletionReceipt");
+export const sandboxProgramRefSchema = artifactReferenceFor("SandboxProgram");
+export const discoveryCandidateRefSchema = artifactReferenceFor("DiscoveryCandidate");
+export const discoveryReceiptRefSchema = artifactReferenceFor("DiscoveryReceipt");
+export const causalQuestionRefSchema = artifactReferenceFor("CausalQuestion");
+export const identificationPlanRefSchema = artifactReferenceFor("IdentificationPlan");
+export const causalEstimateRefSchema = artifactReferenceFor("CausalEstimate");
+export const identificationCertificateRefSchema = artifactReferenceFor("IdentificationCertificate");
 export const atomicClaimRefSchema = artifactReferenceFor("AtomicClaim");
 export const evidenceRelationRefSchema = artifactReferenceFor("EvidenceRelation");
 export const evidenceCheckReceiptRefSchema = artifactReferenceFor("EvidenceCheckReceipt");
@@ -116,6 +138,17 @@ export type SandboxResultRef = z.infer<typeof sandboxResultRefSchema>;
 export type SandboxExecutionReceiptRef = z.infer<typeof sandboxExecutionReceiptRefSchema>;
 export type ObligationExecutionDecisionRef = z.infer<typeof obligationExecutionDecisionRefSchema>;
 export type QueryEvidenceRef = z.infer<typeof queryEvidenceRefSchema>;
+export type DataProfileRef = z.infer<typeof dataProfileRefSchema>;
+export type AnalysisPlanRef = z.infer<typeof analysisPlanRefSchema>;
+export type DerivedAnalysisEvidenceRef = z.infer<typeof derivedAnalysisEvidenceRefSchema>;
+export type AnalysisCompletionReceiptRef = z.infer<typeof analysisCompletionReceiptRefSchema>;
+export type SandboxProgramRef = z.infer<typeof sandboxProgramRefSchema>;
+export type DiscoveryCandidateRef = z.infer<typeof discoveryCandidateRefSchema>;
+export type DiscoveryReceiptRef = z.infer<typeof discoveryReceiptRefSchema>;
+export type CausalQuestionRef = z.infer<typeof causalQuestionRefSchema>;
+export type IdentificationPlanRef = z.infer<typeof identificationPlanRefSchema>;
+export type CausalEstimateRef = z.infer<typeof causalEstimateRefSchema>;
+export type IdentificationCertificateRef = z.infer<typeof identificationCertificateRefSchema>;
 export type AtomicClaimRef = z.infer<typeof atomicClaimRefSchema>;
 export type EvidenceRelationRef = z.infer<typeof evidenceRelationRefSchema>;
 export type EvidenceCheckReceiptRef = z.infer<typeof evidenceCheckReceiptRefSchema>;

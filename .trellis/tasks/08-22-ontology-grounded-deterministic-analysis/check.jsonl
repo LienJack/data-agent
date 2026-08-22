@@ -1,0 +1,4 @@
+{"file":"docs/plans/2026-08-22-003-feat-ontology-grounded-deterministic-analysis-plan.md","reason":"Audit every normative requirement and gate against authoritative current evidence"}
+{"file":".trellis/spec/backend/python-sandbox-execution.md","reason":"Verify hardened runtime, cancellation, malicious container, Worker tool, E2E, and attestation gates"}
+{"file":".trellis/spec/backend/index.md","reason":"Backend quality-check routing"}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend projection and quality-check routing"}

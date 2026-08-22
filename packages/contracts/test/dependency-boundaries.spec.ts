@@ -234,6 +234,16 @@ describe("Workspace 依赖边界", () => {
     expect(scan.nonLiteralModuleLoads).toEqual(["require"]);
   });
 
+  it("扫描含正则特殊字符的源码时保持前进并继续识别 import", () => {
+    const scan = scanModuleImports(`
+      const heading = /^ {0,3}(#{1,6})[\\t ]+(.+?)[\\t ]*#*[\\t ]*$/;
+      const client = await import("@data-agent/contracts");
+    `);
+
+    expect(scan.moduleSpecifiers).toContain("@data-agent/contracts");
+    expect(scan.nonLiteralModuleLoads).toEqual([]);
+  });
+
   it("全 Workspace src 扫描对插值 dynamic import 失败关闭", () => {
     const contracts = workspaceModule(
       "packages/contracts",

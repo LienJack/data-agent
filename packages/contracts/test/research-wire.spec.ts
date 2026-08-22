@@ -623,7 +623,7 @@ describe("U6 Research Wire", () => {
   });
 
   it("V1 只能显式作为 historical read，未知版本元组失败", () => {
-    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toHaveLength(20);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toHaveLength(30);
     expect(new Set(L2_RESEARCH_WIRE_VERSION_MATRIX.map((tuple) => tuple.join("\0"))).size).toBe(
       L2_RESEARCH_WIRE_VERSION_MATRIX.length,
     );

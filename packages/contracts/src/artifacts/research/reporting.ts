@@ -10,8 +10,12 @@ import {
   versionIdentifierSchema,
 } from "./primitives.js";
 import {
+  analysisCompletionReceiptRefSchema,
+  analysisPlanRefSchema,
   analysisReportRefSchema,
   atomicClaimRefSchema,
+  causalEstimateRefSchema,
+  discoveryCandidateRefSchema,
   evidenceRelationRefSchema,
   hypothesisAssessmentRefSchema,
   reportManifestRefSchema,
@@ -245,6 +249,134 @@ export const reportProjectionReceiptPayloadSchema = z.strictObject({
   reason_codes: uniqueReasonCodeArraySchema(),
 });
 
+export const ANALYSIS_REPORT_SECTION_IDS = [
+  "EXECUTIVE_SUMMARY",
+  "DATA_PROFILE",
+  "TREND_AND_CHANGE",
+  "CONTRIBUTION_AND_CONCENTRATION",
+  "ANOMALY_AND_QUALITY",
+  "ASSOCIATION",
+  "FORECAST",
+  "ROOT_CAUSE_EVIDENCE",
+  "METHOD",
+  "LIMITATIONS",
+] as const;
+export const analysisReportSectionIdSchema = z.enum(ANALYSIS_REPORT_SECTION_IDS);
+
+export const analysisReportManifestSectionSchema = z.strictObject({
+  section_id: analysisReportSectionIdSchema,
+  claim_refs: uniqueArtifactReferences(atomicClaimRefSchema, 0, U6_WIRE_LIMITS.max_obligations),
+  discovery_candidate_refs: uniqueArtifactReferences(discoveryCandidateRefSchema, 0, 20),
+  causal_estimate_refs: uniqueArtifactReferences(causalEstimateRefSchema, 0, 5),
+  limitation_codes: uniqueIdentifierArraySchema(0, U6_WIRE_LIMITS.max_required_disclosures),
+});
+
+export const reportManifestV3PayloadSchema = z
+  .strictObject({
+    artifact_type: z.literal("ReportManifest"),
+    protocol_version: z.literal("report-manifest@3.0.0"),
+    brief_ref: researchBriefRefSchema,
+    analysis_plan_ref: analysisPlanRefSchema,
+    completion_receipt_ref: analysisCompletionReceiptRefSchema,
+    sections: z
+      .array(analysisReportManifestSectionSchema)
+      .min(1)
+      .max(ANALYSIS_REPORT_SECTION_IDS.length),
+    material_claim_refs: uniqueArtifactReferences(
+      atomicClaimRefSchema,
+      0,
+      U6_WIRE_LIMITS.max_obligations,
+    ),
+    required_disclosures: uniqueIdentifierArraySchema(1, U6_WIRE_LIMITS.max_required_disclosures),
+    allowed_style_profile: z.literal("ZH_DETERMINISTIC_ANALYSIS_V1"),
+    manifest_hash: contentHashSchema,
+  })
+  .superRefine((manifest, ctx) => {
+    addUniqueIssues(
+      manifest.sections,
+      ({ section_id }) => section_id,
+      ctx,
+      ["sections"],
+      "Analysis Report Section ID 必须唯一。",
+    );
+    const expectedMaterialClaims = new Set(
+      manifest.sections.flatMap(({ claim_refs }) => claim_refs).map(artifactReferenceIdentity),
+    );
+    const actualMaterialClaims = new Set(
+      manifest.material_claim_refs.map(artifactReferenceIdentity),
+    );
+    if (
+      expectedMaterialClaims.size !== actualMaterialClaims.size ||
+      [...expectedMaterialClaims].some((identity) => !actualMaterialClaims.has(identity))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "material_claim_refs 必须精确等于 Analysis Section Claim 并集。",
+        path: ["material_claim_refs"],
+      });
+    }
+    const rootCauseSection = manifest.sections.find(
+      ({ section_id }) => section_id === "ROOT_CAUSE_EVIDENCE",
+    );
+    if (
+      manifest.sections.some(
+        ({ discovery_candidate_refs, causal_estimate_refs }) =>
+          discovery_candidate_refs.length > 0 || causal_estimate_refs.length > 0,
+      ) &&
+      (!rootCauseSection ||
+        manifest.sections.some(
+          ({ section_id, discovery_candidate_refs, causal_estimate_refs }) =>
+            section_id !== "ROOT_CAUSE_EVIDENCE" &&
+            (discovery_candidate_refs.length > 0 || causal_estimate_refs.length > 0),
+        ))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Discovery/Causal Evidence 只能出现在 ROOT_CAUSE_EVIDENCE Section。",
+        path: ["sections"],
+      });
+    }
+  });
+
+export const analysisReportV3PayloadSchema = z
+  .strictObject({
+    artifact_type: z.literal("AnalysisReport"),
+    protocol_version: z.literal("analysis-report@3.0.0"),
+    manifest_ref: reportManifestRefSchema,
+    title_template_id: z.literal("ZH_DETERMINISTIC_ANALYSIS_TITLE_V1"),
+    title: nonEmptyTextSchema,
+    title_hash: contentHashSchema,
+    sections: z
+      .array(
+        z.strictObject({
+          section_id: analysisReportSectionIdSchema,
+          statement_units: z.array(nonEmptyTextSchema).max(128),
+        }),
+      )
+      .min(1)
+      .max(ANALYSIS_REPORT_SECTION_IDS.length),
+    disclosures: uniqueIdentifierArraySchema(1, U6_WIRE_LIMITS.max_required_disclosures),
+    projection_hash: contentHashSchema,
+  })
+  .superRefine((report, ctx) => {
+    addUniqueIssues(
+      report.sections,
+      ({ section_id }) => section_id,
+      ctx,
+      ["sections"],
+      "AnalysisReport@3 Section ID 必须唯一。",
+    );
+    if (
+      report.sections.reduce((total, section) => total + section.statement_units.length, 0) > 128
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "AnalysisReport@3 的 Statement Unit 总数不能超过 128。",
+        path: ["sections"],
+      });
+    }
+  });
+
 export type ReportSectionId = z.infer<typeof reportSectionIdSchema>;
 export type ReportManifestSection = z.infer<typeof reportManifestSectionSchema>;
 export type ReportManifestV1Payload = z.infer<typeof reportManifestV1PayloadSchema>;
@@ -252,4 +384,7 @@ export type ReportManifestV2Payload = z.infer<typeof reportManifestV2PayloadSche
 /** @deprecated Use an explicit versioned payload type. */
 export type ReportManifestPayload = ReportManifestV1Payload;
 export type AnalysisReportV2Payload = z.infer<typeof analysisReportV2PayloadSchema>;
+export type AnalysisReportManifestSection = z.infer<typeof analysisReportManifestSectionSchema>;
+export type ReportManifestV3Payload = z.infer<typeof reportManifestV3PayloadSchema>;
+export type AnalysisReportV3Payload = z.infer<typeof analysisReportV3PayloadSchema>;
 export type ReportProjectionReceiptPayload = z.infer<typeof reportProjectionReceiptPayloadSchema>;
