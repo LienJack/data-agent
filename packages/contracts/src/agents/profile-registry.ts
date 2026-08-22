@@ -11,6 +11,7 @@ import {
 } from "../common/index.js";
 import { versionedResourceReferenceSchema } from "../workspaces/defaults.js";
 import { workspaceIdempotencyKeySchema } from "../workspaces/identity.js";
+import { agentProfileIdSchema, subagentDiscoveryDescriptorSchema } from "./subagent-discovery.js";
 
 export const agentSpecialistProfileIdSchema = z.enum([
   "governed-text2sql-agent",
@@ -112,6 +113,155 @@ export async function verifyAgentProductProfileRevision(input: unknown) {
   return deepFreeze(revision);
 }
 
+/**
+ * Generic Product Profile contracts used by the model-driven Subagent Harness.
+ *
+ * The v1 schemas above intentionally remain exported while persisted legacy runs
+ * still carry the fixed three-profile identity. New authority paths must use v2.
+ */
+export const agentProductProfileReferenceV2Schema = z.strictObject({
+  profile_id: agentProfileIdSchema,
+  revision: z.number().int().positive().safe(),
+  revision_hash: contentHashSchema,
+});
+
+const runtimeProfileRefV2Schema = z.strictObject({
+  profile_id: agentProfileIdSchema,
+  revision: z.number().int().positive().safe(),
+  profile_hash: contentHashSchema,
+});
+
+const agentProductProfileRevisionV2DraftSchema = z
+  .strictObject({
+    schema_version: z.literal("agent-product-profile-revision@2.0.0"),
+    scope: appScopeSchema,
+    profile_id: agentProfileIdSchema,
+    revision: z.number().int().positive().safe(),
+    discovery: subagentDiscoveryDescriptorSchema,
+    runtime_profile_ref: runtimeProfileRefV2Schema,
+    model_profile_ref: versionedResourceReferenceSchema,
+    prompt_ref: z.strictObject({
+      prompt_id: versionIdentifierSchema,
+      revision: z.number().int().positive().safe(),
+      prompt_hash: contentHashSchema,
+    }),
+    workflow_ref: z.strictObject({
+      workflow_id: versionIdentifierSchema,
+      revision: z.number().int().positive().safe(),
+      workflow_hash: contentHashSchema,
+    }),
+    direct_tool_allowlist: z.array(versionIdentifierSchema).min(1).max(64),
+    skill_refs: z.array(skillRefSchema).min(1).max(16),
+    context_policy_ref: versionedResourceReferenceSchema,
+    execution_safety_policy_ref: versionedResourceReferenceSchema,
+    expected_output_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
+    verifier_contract_hash: contentHashSchema,
+    approval_status: z.enum(["APPROVED", "QUARANTINED"]),
+  })
+  .superRefine((revision, ctx) => {
+    if (revision.runtime_profile_ref.profile_id !== revision.profile_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Product Profile and runtime Profile identity must match.",
+        path: ["runtime_profile_ref", "profile_id"],
+      });
+    }
+    for (const [field, values] of [
+      ["direct_tool_allowlist", revision.direct_tool_allowlist],
+      ["skill_refs", revision.skill_refs.map(({ skill_id }) => skill_id)],
+      ["expected_output_artifact_types", revision.expected_output_artifact_types],
+    ] as const) {
+      if (!canonicalValues(values)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${field} must be unique and canonically sorted.`,
+          path: [field],
+        });
+      }
+    }
+    if (
+      revision.expected_output_artifact_types.length !==
+        revision.discovery.produced_artifact_types.length ||
+      revision.expected_output_artifact_types.some(
+        (artifactType, index) => artifactType !== revision.discovery.produced_artifact_types[index],
+      )
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Discovery output types must exactly match the Product Profile output contract.",
+        path: ["discovery", "produced_artifact_types"],
+      });
+    }
+  });
+
+export const agentProductProfileRevisionV2Schema = agentProductProfileRevisionV2DraftSchema.extend({
+  revision_hash: contentHashSchema,
+});
+
+export async function buildAgentProductProfileRevisionV2(input: unknown) {
+  const draft = agentProductProfileRevisionV2DraftSchema.parse(input);
+  return deepFreeze(
+    agentProductProfileRevisionV2Schema.parse({
+      ...draft,
+      revision_hash: await sha256ContentHash(draft),
+    }),
+  );
+}
+
+export async function verifyAgentProductProfileRevisionV2(input: unknown) {
+  const revision = agentProductProfileRevisionV2Schema.parse(input);
+  const { revision_hash: actual, ...draft } = revision;
+  if ((await sha256ContentHash(agentProductProfileRevisionV2DraftSchema.parse(draft))) !== actual) {
+    throw new TypeError("AGENT_PRODUCT_PROFILE_REVISION_V2_HASH_MISMATCH");
+  }
+  return deepFreeze(revision);
+}
+
+export const agentProductProfileHeadV2Schema = z.strictObject({
+  schema_version: z.literal("agent-product-profile-head@2.0.0"),
+  scope: appScopeSchema,
+  profile_id: agentProfileIdSchema,
+  active_revision: z.number().int().positive().safe(),
+  active_revision_hash: contentHashSchema,
+  lifecycle: z.enum(["ENABLED", "DISABLED", "QUARANTINED", "REVOKED"]),
+  version: z.number().int().positive().safe(),
+  updated_at: timestampSchema,
+});
+
+export const agentProductProfileRegistryItemV2Schema = z
+  .strictObject({
+    schema_version: z.literal("agent-product-profile-registry-item@2.0.0"),
+    revision: agentProductProfileRevisionV2Schema,
+    head: agentProductProfileHeadV2Schema,
+  })
+  .superRefine((item, ctx) => {
+    if (
+      item.revision.profile_id !== item.head.profile_id ||
+      item.revision.scope.app_id !== item.head.scope.app_id ||
+      item.revision.scope.tenant_id !== item.head.scope.tenant_id ||
+      item.revision.scope.environment !== item.head.scope.environment ||
+      item.revision.revision !== item.head.active_revision ||
+      item.revision.revision_hash !== item.head.active_revision_hash
+    ) {
+      ctx.addIssue({ code: "custom", message: "Profile Head must close over the exact Revision." });
+    }
+  });
+
+export const agentProductProfileListResultV2Schema = z
+  .strictObject({
+    schema_version: z.literal("agent-product-profile-list-result@2.0.0"),
+    items: z.array(agentProductProfileRegistryItemV2Schema).max(64),
+  })
+  .superRefine((result, ctx) => {
+    if (!canonicalValues(result.items.map(({ revision }) => revision.profile_id))) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Agent Product Profile items must be unique and canonically sorted.",
+        path: ["items"],
+      });
+    }
+  });
+
 export const agentProductProfileHeadSchema = z.strictObject({
   schema_version: z.literal("agent-product-profile-head@1.0.0"),
   scope: appScopeSchema,
@@ -206,4 +356,10 @@ export type AgentProductProfileHead = z.infer<typeof agentProductProfileHeadSche
 export type AgentProductProfileRegistryItem = z.infer<typeof agentProductProfileRegistryItemSchema>;
 export type AgentProductProfileCommitCommand = z.infer<
   typeof agentProductProfileCommitCommandSchema
+>;
+export type AgentProductProfileReferenceV2 = z.infer<typeof agentProductProfileReferenceV2Schema>;
+export type AgentProductProfileRevisionV2 = z.infer<typeof agentProductProfileRevisionV2Schema>;
+export type AgentProductProfileHeadV2 = z.infer<typeof agentProductProfileHeadV2Schema>;
+export type AgentProductProfileRegistryItemV2 = z.infer<
+  typeof agentProductProfileRegistryItemV2Schema
 >;
