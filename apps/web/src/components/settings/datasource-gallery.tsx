@@ -40,7 +40,7 @@ export function DatasourceGallery({
         {snapshot.items.map(({ descriptor, certification, effective_capability }) => (
           <li
             key={descriptor.adapter_id}
-            className="min-w-0 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-3"
+            className="surface-reading min-w-0 rounded-[var(--radius-item)] border border-[var(--color-border-default)] p-3"
           >
             <div className="flex items-start gap-2.5">
               <DataSourceMark type={descriptor.adapter_id} size="sm" />

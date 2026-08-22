@@ -9,6 +9,7 @@ import { OperationsAdminPanel } from "@/components/settings/operations-admin-pan
 import { PlatformSettingsTabs } from "@/components/settings/platform-settings-tabs";
 import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
+import { ThemeModeControl } from "@/components/settings/theme-mode-control";
 import { isBillingUiEnabled } from "@/lib/billing-ui";
 import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
 
@@ -36,23 +37,20 @@ export default async function SettingsPage() {
   const workspaces = workspaceAccess.ok ? workspaceAccess.value : [];
   return (
     <div className="h-full overflow-y-auto">
-      <div className="workspace-container">
-        <header className="border-b border-[var(--color-border-default)] pb-4">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
-            Platform settings
-          </p>
-          <div className="mt-1 flex flex-col justify-between gap-2 sm:flex-row sm:items-end">
+      <div className="page-frame">
+        <header className="page-heading">
+          <div>
+            <p className="page-eyebrow">Platform settings</p>
             <div>
-              <h1 className="text-2xl font-semibold tracking-[-0.03em]">平台设置</h1>
-              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
+              <h1 className="page-title">平台设置</h1>
+              <p className="page-description">
                 {billingUiEnabled
                   ? "账户、模型与计费输入的数据库权威控制面。"
                   : "账户、工作空间与语义治理的数据库权威控制面。"}
               </p>
             </div>
-            <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
-              {session.value.principal_id} · {session.value.system_role}
-            </p>
+          </div>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
             {isSuperAdmin ? (
               <Link
                 href="/admin/qa"
@@ -61,8 +59,13 @@ export default async function SettingsPage() {
                 打开全局对话审计 →
               </Link>
             ) : null}
+            <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
+              {session.value.principal_id} · {session.value.system_role}
+            </p>
           </div>
         </header>
+
+        <ThemeModeControl />
 
         <PlatformSettingsTabs
           model={<ModelProvidersPanel isSuperAdmin={isSuperAdmin} />}

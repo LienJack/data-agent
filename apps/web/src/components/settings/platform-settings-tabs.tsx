@@ -31,11 +31,11 @@ export function PlatformSettingsTabs({
   const content = { model, operations, semantic, extensions }[activeTab];
 
   return (
-    <div className="mt-5">
+    <div className="mt-5 grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-start">
       <div
         role="tablist"
         aria-label="平台设置分类"
-        className="flex gap-1 overflow-x-auto border-b border-[var(--color-border-default)]"
+        className="surface-floating flex gap-1 overflow-x-auto rounded-[var(--radius-item)] border border-[var(--color-border-default)] p-1 lg:sticky lg:top-5 lg:flex-col lg:overflow-visible lg:p-2"
       >
         {TABS.map((tab) => {
           const active = activeTab === tab.id;
@@ -50,10 +50,10 @@ export function PlatformSettingsTabs({
               id={`platform-settings-tab-${tab.id}`}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "relative inline-flex min-h-11 shrink-0 items-center gap-2 px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--color-accent)]",
+                "relative inline-flex min-h-10 shrink-0 items-center gap-2 rounded-[var(--radius-control)] px-3 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--color-accent)] lg:w-full",
                 active
-                  ? "text-[var(--color-text-primary)] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:bg-[var(--color-accent)]"
-                  : "text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]",
+                  ? "bg-[var(--color-accent-soft)] text-[var(--color-selection-selected-title)] shadow-[inset_0_0_0_1px_var(--color-selection-border)]"
+                  : "text-[var(--color-text-muted)] hover:bg-[var(--color-bg-overlay)] hover:text-[var(--color-text-primary)]",
               )}
             >
               <Icon size={17} weight={active ? "fill" : "regular"} />
@@ -66,7 +66,7 @@ export function PlatformSettingsTabs({
         role="tabpanel"
         id={`platform-settings-panel-${activeTab}`}
         aria-labelledby={`platform-settings-tab-${activeTab}`}
-        className="py-7"
+        className="min-w-0 rounded-[var(--radius-panel)] lg:pt-1"
       >
         {content}
       </section>

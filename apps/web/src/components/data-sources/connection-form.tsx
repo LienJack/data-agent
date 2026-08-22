@@ -149,9 +149,17 @@ export function ConnectionForm() {
   }, [name, type, values, requiredFields, fields, supportsSsl, config, readValue, addConnection]);
 
   return (
-    <div className="rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-4">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">添加数据源连接</h3>
+    <div className="surface-reading rounded-[var(--radius-panel)] border border-[var(--color-border-default)] p-4 sm:p-5">
+      <div className="mb-5 flex items-start justify-between gap-4 border-b border-[var(--color-border-default)] pb-4">
+        <div>
+          <p className="page-eyebrow">New connection</p>
+          <h2 className="mt-2 text-lg font-semibold tracking-[-0.025em] text-[var(--color-text-primary)]">
+            添加数据源连接
+          </h2>
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
+            凭据通过服务端引用管理，表单不接收明文密码。
+          </p>
+        </div>
         <Button variant="ghost" size="sm" onClick={() => setShowForm(false)}>
           取消
         </Button>
@@ -189,10 +197,10 @@ export function ConnectionForm() {
                   aria-pressed={selected}
                   onClick={() => handleTypeChange(dbType)}
                   className={cn(
-                    "relative min-h-28 rounded-lg border p-3 text-left transition-colors",
+                    "relative min-h-28 rounded-[var(--radius-item)] border p-3 text-left transition-colors",
                     selected
                       ? "border-[var(--color-border-focused)] bg-[var(--color-selection-selected-bg)] shadow-[0_0_0_2px_color-mix(in_srgb,var(--color-accent)_10%,transparent)]"
-                      : "border-[var(--color-border-default)] bg-white hover:border-[var(--color-border-focused)]",
+                      : "border-[var(--color-border-default)] bg-[var(--color-bg-primary)] hover:border-[var(--color-border-focused)]",
                   )}
                 >
                   <span className="flex items-start gap-2.5">
@@ -301,8 +309,10 @@ export function ConnectionForm() {
         {/* 测试结果 */}
         {testResult && (
           <div
-            className={`rounded-md px-3 py-2 text-xs ${
-              testResult.success ? "bg-green-900/20 text-green-400" : "bg-red-900/20 text-red-400"
+            className={`rounded-[var(--radius-control)] border px-3 py-2 text-xs ${
+              testResult.success
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-red-200 bg-red-50 text-red-800"
             }`}
           >
             {testResult.success
@@ -313,7 +323,9 @@ export function ConnectionForm() {
 
         {/* 错误信息 */}
         {error && (
-          <div className="rounded-md bg-red-900/20 px-3 py-2 text-xs text-red-400">{error}</div>
+          <div className="rounded-[var(--radius-control)] border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+            {error}
+          </div>
         )}
 
         {/* 操作按钮 */}

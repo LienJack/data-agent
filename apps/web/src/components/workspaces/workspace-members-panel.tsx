@@ -95,7 +95,7 @@ function RoleSelect({
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value as WorkspaceRole)}
-      className="h-8 rounded-md border border-[var(--color-border-default)] bg-white px-2 text-xs outline-none focus:border-[var(--color-accent)] disabled:bg-[var(--color-bg-secondary)]"
+      className="h-8 rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-2 text-xs outline-none focus:border-[var(--color-accent)] disabled:bg-[var(--color-bg-secondary)]"
     >
       {workspaceRoles.map((role) => (
         <option key={role} value={role}>
@@ -245,7 +245,7 @@ export function WorkspaceMembersPanel({
 
   if (!canManage) {
     return (
-      <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-amber-950">
+      <section className="rounded-[var(--radius-panel)] border border-amber-200 bg-amber-50 p-6 text-amber-950">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">
           Member manage required
         </p>
@@ -286,7 +286,7 @@ export function WorkspaceMembersPanel({
         </Button>
       </header>
 
-      <div className="grid overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-white sm:grid-cols-3">
+      <div className="surface-reading grid overflow-hidden rounded-[var(--radius-panel)] border border-[var(--color-border-default)] sm:grid-cols-3">
         <div className="border-b border-[var(--color-border-default)] px-5 py-4 sm:border-b-0 sm:border-r">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--color-text-muted)]">
             有效成员
@@ -311,7 +311,7 @@ export function WorkspaceMembersPanel({
 
       <form
         onSubmit={addMember}
-        className="rounded-xl border border-[var(--color-border-default)] bg-white p-4"
+        className="surface-reading rounded-[var(--radius-panel)] border border-[var(--color-border-default)] p-4"
       >
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_auto] lg:items-end">
           <label className="grid gap-1.5 text-xs font-medium">
@@ -320,7 +320,7 @@ export function WorkspaceMembersPanel({
               required
               value={selectedPrincipalId}
               onChange={(event) => setSelectedPrincipalId(event.target.value)}
-              className="h-9 min-w-0 rounded-md border border-[var(--color-border-default)] bg-white px-3 text-xs outline-none focus:border-[var(--color-accent)]"
+              className="h-9 min-w-0 rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3 text-xs outline-none focus:border-[var(--color-accent)]"
             >
               <option value="">选择已有账号</option>
               {candidates.map((candidate) => (
@@ -366,7 +366,7 @@ export function WorkspaceMembersPanel({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-[var(--color-border-default)] bg-white">
+      <div className="surface-reading overflow-hidden rounded-[var(--radius-panel)] border border-[var(--color-border-default)]">
         <div className="flex items-center justify-between border-b border-[var(--color-border-default)] px-4 py-3">
           <div>
             <h2 className="text-sm font-semibold">成员目录</h2>
@@ -384,7 +384,7 @@ export function WorkspaceMembersPanel({
             {[0, 1, 2].map((item) => (
               <div
                 key={item}
-                className="h-12 animate-pulse rounded-lg bg-[var(--color-bg-secondary)]"
+                className="skeleton-shimmer h-12 rounded-[var(--radius-control)] bg-[var(--color-bg-secondary)]"
               />
             ))}
           </div>

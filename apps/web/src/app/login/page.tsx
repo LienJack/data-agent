@@ -39,7 +39,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(380px,0.92fr)_minmax(520px,1.08fr)]">
+    <main className="grid min-h-[100dvh] bg-[var(--color-bg-canvas)] lg:grid-cols-[minmax(380px,0.92fr)_minmax(520px,1.08fr)]">
       <aside className="relative isolate flex min-h-[180px] overflow-hidden bg-[#0b1437] px-6 py-6 text-white sm:min-h-[220px] sm:px-10 sm:py-8 lg:min-h-[100dvh] lg:px-[clamp(40px,5vw,76px)] lg:py-10">
         <div
           aria-hidden="true"
@@ -113,7 +113,7 @@ export default function LoginPage() {
                 type="text"
                 autoComplete="username"
                 required
-                className="mt-2 h-12 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[var(--color-border-focused)] focus:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)]"
+                className="mt-2 h-12 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[var(--color-border-focused)] focus:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)]"
               />
             </label>
             <label className="block">
@@ -123,7 +123,7 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
-                className="mt-2 h-12 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-white px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[var(--color-border-focused)] focus:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)]"
+                className="mt-2 h-12 w-full rounded-[var(--radius-control)] border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] px-3.5 text-sm outline-none transition-[border-color,box-shadow] focus:border-[var(--color-border-focused)] focus:shadow-[0_0_0_3px_rgb(63_99_232_/_0.12)]"
               />
             </label>
             {error && (

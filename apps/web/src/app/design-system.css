@@ -45,6 +45,11 @@
   --glass-blur: 24px;
   --glass-saturate: 138%;
   --glass-opaque-strong: #fcfdff;
+  --reading-fill: rgb(255 255 255 / 97%);
+  --canvas-glow-primary: rgb(113 143 246 / 16%);
+  --canvas-glow-secondary: rgb(224 230 250 / 58%);
+  --canvas-glow-surface: rgb(255 255 255 / 62%);
+  --skeleton-highlight: rgb(255 255 255 / 70%);
   --radius-control: 10px;
   --radius-item: 14px;
   --radius-panel: 18px;
@@ -56,6 +61,40 @@
   --font-mono: "Geist Mono", "SFMono-Regular", "Roboto Mono", ui-monospace, monospace;
 }
 
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-bg-canvas: #10131a;
+  --color-bg-surface: #171b24;
+  --color-bg-overlay: #1d2330;
+  --color-bg-primary: var(--color-bg-surface);
+  --color-bg-secondary: var(--color-bg-canvas);
+  --color-bg-tertiary: #252c3a;
+  --color-text-primary: #f3f5f9;
+  --color-text-emphasis: #e6eaf2;
+  --color-text-secondary: #b0b7c5;
+  --color-text-muted: #858e9f;
+  --color-text-tertiary: var(--color-text-muted);
+  --color-text-disabled: #5c6472;
+  --color-border-default: #2c3442;
+  --color-border-overlay: #3a4558;
+  --color-selection-selected-bg: #202b51;
+  --color-selection-border: #31457f;
+  --color-selection-selected-title: #b9c9ff;
+  --color-selection-selected-desc: #a3afd2;
+  --shadow-float: 0 24px 60px -34px rgb(0 0 0 / 70%);
+  --shadow-panel: 0 18px 42px -30px rgb(0 0 0 / 64%);
+  --glass-fill: rgb(20 25 35 / 78%);
+  --glass-fill-strong: rgb(23 28 39 / 92%);
+  --glass-border-inner: rgb(255 255 255 / 7%);
+  --glass-shadow-tint: rgb(0 0 0 / 52%);
+  --glass-opaque-strong: #171c27;
+  --reading-fill: rgb(23 27 36 / 97%);
+  --canvas-glow-primary: rgb(63 99 232 / 18%);
+  --canvas-glow-secondary: rgb(42 54 90 / 34%);
+  --canvas-glow-surface: rgb(255 255 255 / 2%);
+  --skeleton-highlight: rgb(255 255 255 / 8%);
+}
+
 html {
   min-width: 320px;
   color-scheme: light;
@@ -65,9 +104,9 @@ html {
 body {
   min-height: 100dvh;
   background:
-    radial-gradient(circle at 82% -16%, rgb(113 143 246 / 16%), transparent 36rem),
-    radial-gradient(circle at -10% 78%, rgb(224 230 250 / 58%), transparent 30rem),
-    linear-gradient(rgb(255 255 255 / 62%), rgb(255 255 255 / 0%) 280px),
+    radial-gradient(circle at 82% -16%, var(--canvas-glow-primary), transparent 36rem),
+    radial-gradient(circle at -10% 78%, var(--canvas-glow-secondary), transparent 30rem),
+    linear-gradient(var(--canvas-glow-surface), transparent 280px),
     var(--color-bg-canvas);
   font-family: var(--font-ui);
   letter-spacing: 0.002em;
@@ -107,7 +146,7 @@ body {
 .reading-surface,
 .surface-reading {
   border-color: var(--color-border-default);
-  background: rgb(255 255 255 / 97%);
+  background: var(--reading-fill);
   box-shadow: 0 16px 42px -38px var(--glass-shadow-tint);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -178,7 +217,7 @@ body {
   background: linear-gradient(
     100deg,
     transparent 24%,
-    rgb(255 255 255 / 70%) 48%,
+    var(--skeleton-highlight) 48%,
     transparent 72%
   );
   content: "";
@@ -497,6 +536,42 @@ tbody tr:hover {
   .qa-running-pulse::after,
   .skeleton-shimmer::after {
     animation: none !important;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-bg-canvas: #10131a;
+    --color-bg-surface: #171b24;
+    --color-bg-overlay: #1d2330;
+    --color-bg-primary: var(--color-bg-surface);
+    --color-bg-secondary: var(--color-bg-canvas);
+    --color-bg-tertiary: #252c3a;
+    --color-text-primary: #f3f5f9;
+    --color-text-emphasis: #e6eaf2;
+    --color-text-secondary: #b0b7c5;
+    --color-text-muted: #858e9f;
+    --color-text-tertiary: var(--color-text-muted);
+    --color-text-disabled: #5c6472;
+    --color-border-default: #2c3442;
+    --color-border-overlay: #3a4558;
+    --color-selection-selected-bg: #202b51;
+    --color-selection-border: #31457f;
+    --color-selection-selected-title: #b9c9ff;
+    --color-selection-selected-desc: #a3afd2;
+    --shadow-float: 0 24px 60px -34px rgb(0 0 0 / 70%);
+    --shadow-panel: 0 18px 42px -30px rgb(0 0 0 / 64%);
+    --glass-fill: rgb(20 25 35 / 78%);
+    --glass-fill-strong: rgb(23 28 39 / 92%);
+    --glass-border-inner: rgb(255 255 255 / 7%);
+    --glass-shadow-tint: rgb(0 0 0 / 52%);
+    --glass-opaque-strong: #171c27;
+    --reading-fill: rgb(23 27 36 / 97%);
+    --canvas-glow-primary: rgb(63 99 232 / 18%);
+    --canvas-glow-secondary: rgb(42 54 90 / 34%);
+    --canvas-glow-surface: rgb(255 255 255 / 2%);
+    --skeleton-highlight: rgb(255 255 255 / 8%);
   }
 }
 

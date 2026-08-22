@@ -56,7 +56,20 @@ export default function DataSourcesPage() {
           )}
         </header>
 
-        {showForm && <ConnectionForm />}
+        {showForm && (
+          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,880px)_minmax(240px,1fr)]">
+            <ConnectionForm />
+            <aside className="surface-floating h-fit rounded-[var(--radius-panel)] border border-[var(--color-border-default)] p-5">
+              <p className="page-eyebrow">Connection policy</p>
+              <h2 className="mt-2 text-sm font-semibold">连接前检查</h2>
+              <ol className="mt-4 space-y-3 text-xs leading-5 text-[var(--color-text-secondary)]">
+                <li>1. 确认目标网络与端口可从运行环境访问。</li>
+                <li>2. 生产凭据仅通过 Secret Provider 引用。</li>
+                <li>3. 保存前先执行连接测试，避免无效配置进入目录。</li>
+              </ol>
+            </aside>
+          </div>
+        )}
 
         {!showForm && (
           <div className="mt-5 space-y-5">

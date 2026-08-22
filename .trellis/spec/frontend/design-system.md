@@ -24,6 +24,25 @@ Data Agent 是高频分析与治理工作台，默认视觉密度 7/10。界面�
 - 页面 header 使用 `.page-heading/.page-eyebrow/.page-title/.page-description`。
 - 数据表与导航列表以 border/divide 分组；card 只用于重复 item、modal 和真实 framed tool。
 
+## Appearance Modes
+
+- 默认跟随 `prefers-color-scheme`；用户在平台设置选择 light/dark 时，写入
+  `data-agent-theme` 并以根节点 `data-theme` 覆盖系统值。
+- light/dark 必须复用同一 Data Agent Blue `#3f63e8`，通过 canvas、surface、text、border、glass 和
+  reading token 调整对比度；禁止 `filter: invert()` 或在组件内维护第二套主题。
+- 持久化主题在 React hydration 前恢复，避免首屏闪烁；system 模式移除 `data-theme`，继续响应系统变化。
+- 登录、表单和目录不得硬编码 `bg-white` 作为页面/输入背景；使用 `--color-bg-canvas`、
+  `--color-bg-primary` 或语义 surface，确保深色文本对比度。
+
+## Operational Control Planes
+
+- Data Sources 以单一连接目录为主，连接状态、目标、SSL 和更新时间按行扫描；Adapter Registry 是真实连接器
+  catalog，可以保留重复 item grid。新增连接使用上下文 reading panel，不把每个连接做成悬浮 dashboard card。
+- Members 由摘要、成员操作和审计目录组成，desktop 使用 table、mobile 使用等价 article；权限、撤销和
+  SYSTEM_ROLE 状态不能被视觉简化隐藏。
+- Settings 在 desktop 使用左侧 category rail 和右侧内容，mobile 使用局部横向滚动的 segmented tab；所有
+  tab 保持 `role=tab/tablist/tabpanel` 与 `aria-selected`。
+
 ## Agent Conversation
 
 - Agent answer 是文档流，不使用聊天气泡；用户输入使用紧凑深色 bubble。
