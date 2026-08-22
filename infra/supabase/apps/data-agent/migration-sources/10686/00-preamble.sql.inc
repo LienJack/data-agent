@@ -1,18 +1,18 @@
--- 10686 permits READY revisions to select immutable blocks from their retained sources.
+-- 10686 removes a redundant active-pointer row lock hidden by its read-only RLS policy.
 begin;
 
 do $bootstrap$
 begin
   if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999 then
-    raise exception using errcode='0A000',message='KNOWLEDGE_EVIDENCE_REVISION_REPAIR_POSTGRES_VERSION_UNSUPPORTED';
+    raise exception using errcode='0A000',message='SEMANTIC_REVISION_POINTER_READ_REPAIR_POSTGRES_VERSION_UNSUPPORTED';
   end if;
   if session_user<>'postgres' or current_user<>'postgres' then
-    raise exception using errcode='42501',message='KNOWLEDGE_EVIDENCE_REVISION_REPAIR_EXECUTOR_UNSAFE';
+    raise exception using errcode='42501',message='SEMANTIC_REVISION_POINTER_READ_REPAIR_EXECUTOR_UNSAFE';
   end if;
   if not exists(select 1 from platform.migration_ledger where owner_kind='app'
     and app_id='00000000-0000-4000-8000-00000000da01'::uuid
-    and migration_version='20260725010685_app_data_agent_knowledge_evidence_authority_repair')
-  then raise exception using errcode='P0001',message='KNOWLEDGE_EVIDENCE_REVISION_REPAIR_BASELINE_10685_MISSING'; end if;
+    and migration_version='20260725010685_app_data_agent_semantic_revision_idempotency_lock')
+  then raise exception using errcode='P0001',message='SEMANTIC_REVISION_POINTER_READ_REPAIR_BASELINE_10685_MISSING'; end if;
 end
 $bootstrap$;
 

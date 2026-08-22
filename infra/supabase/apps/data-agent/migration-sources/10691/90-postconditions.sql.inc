@@ -1,16 +1,12 @@
-do $postconditions$
-declare function_definition text;
-begin
-  function_definition:=pg_catalog.pg_get_functiondef(
-    'semantic.save_semantic_candidate_revision(jsonb)'::pg_catalog.regprocedure
-  );
-  if pg_catalog.strpos(function_definition,'platform.canonical_sha256')>0
-    or (pg_catalog.length(function_definition)-pg_catalog.length(
-      pg_catalog.replace(function_definition,'semantic.authoring_sha256','')
-    ))/pg_catalog.length('semantic.authoring_sha256')<>3
-    or not exists(select 1 from pg_catalog.pg_policy policy
-      where policy.polrelid='app_data_agent.audit_log'::pg_catalog.regclass
-        and policy.polname='audit_log_semantic_revision_save_rpc_insert')
-  then raise exception using errcode='P0001',message='SEMANTIC_REVISION_SAVE_REPAIR_POSTCONDITION_FAILED'; end if;
-end
-$postconditions$;
+do $postconditions$ begin
+  if not exists(select 1 from pg_catalog.pg_trigger
+      where tgrelid='semantic.semantic_active_pointer'::regclass
+        and tgname='semantic_active_release_defaults_promotion' and not tgisinternal)
+    or pg_catalog.strpos(pg_catalog.pg_get_functiondef(
+      'app_data_agent.resolved_context_metric_projection(uuid,uuid,text,text,uuid)'::regprocedure),
+      'projection.release_id=release.release_id')>0
+    or pg_catalog.strpos(pg_catalog.pg_get_functiondef(
+      'app_data_agent.resolved_context_ontology_projection(uuid,uuid,text,text,uuid)'::regprocedure),
+      'executable.release_id=release.release_id')>0
+  then raise exception using errcode='P0001',message='SEMANTIC_TEXT2SQL_PROMOTION_POSTCONDITION_FAILED'; end if;
+end $postconditions$;

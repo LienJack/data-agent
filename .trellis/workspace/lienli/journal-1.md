@@ -620,7 +620,7 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 
 ### Summary
 
-跑通 Markdown 知识文档、精确段落证据、真实 Provider Agent 安全失败、可视化 ChangeSet、显式 Revision、创建者自审发布及 generation 3 Resolved Context/Text2SQL 消费，并补齐投影复用、权限护栏及并行迁移编号顺延。
+跑通 Markdown 知识文档、精确段落证据、真实 Provider Agent 安全失败、可视化 ChangeSet、显式 Revision、创建者自审发布及 generation 3 Resolved Context/Text2SQL 消费，并补齐投影复用、权限护栏及并行迁移渲染路径消歧。
 
 ### Git Commits
 

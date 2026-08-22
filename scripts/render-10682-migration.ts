@@ -1,18 +1,16 @@
-/** Render the reviewed 10682 Semantic self-review + publish migration. */
+/** Render the reviewed 10682 semantic relationship retry repair migration. */
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 
-const MIGRATION_NAME = "20260725010682_app_data_agent_semantic_self_publish.sql";
+const MIGRATION_NAME = "20260725010682_app_data_agent_semantic_relationship_retry_repair.sql";
 const SOURCE_SEGMENTS = [
   "00-preamble.sql.inc",
-  "10-authority.sql.inc",
-  "20-self-publish-rpc.sql.inc",
-  "30-resolved-context-bridge.sql.inc",
-  "90-grants-postconditions.sql.inc",
+  "10-repair.sql.inc",
+  "90-postconditions.sql.inc",
   "99-ledger.sql.inc",
 ] as const;
-const CHECKSUM_PLACEHOLDER = "__SEMANTIC_SELF_PUBLISH_MIGRATION_CHECKSUM__";
+const PLACEHOLDER = "__SEMANTIC_RELATIONSHIP_RETRY_REPAIR_MIGRATION_CHECKSUM__";
 const ZERO = `sha256:${"0".repeat(64)}`;
 const digest = (value: string): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -32,16 +30,17 @@ if (JSON.stringify(actual) !== JSON.stringify([...SOURCE_SEGMENTS].sort())) {
 const body = SOURCE_SEGMENTS.map((segment) =>
   normalize(readFileSync(resolve(sourceRoot, segment), "utf8")),
 ).join("");
-if (body.split(CHECKSUM_PLACEHOLDER).length - 1 !== 1)
+if (body.split(PLACEHOLDER).length - 1 !== 1)
   throw new Error("10682 checksum placeholder mismatch");
 const checksum = digest(
-  `-- semantic_self_publish_migration_checksum: ${ZERO}\n${body.replace(CHECKSUM_PLACEHOLDER, ZERO)}`,
+  `-- semantic_relationship_retry_repair_migration_checksum: ${ZERO}\n${body.replace(PLACEHOLDER, ZERO)}`,
 );
-const content = `-- semantic_self_publish_migration_checksum: ${checksum}\n${body.replace(CHECKSUM_PLACEHOLDER, checksum)}`;
+const content = `-- semantic_relationship_retry_repair_migration_checksum: ${checksum}\n${body.replace(PLACEHOLDER, checksum)}`;
 if (content.split(checksum).length - 1 !== 2) throw new Error("10682 checksum count mismatch");
 if (process.argv.includes("--verify")) {
-  if (!existsSync(output) || readFileSync(output, "utf8") !== content)
+  if (!existsSync(output) || readFileSync(output, "utf8") !== content) {
     throw new Error("10682 migration does not match source");
+  }
   console.log(`10682 migration verified: ${basename(output)} checksum=${checksum}`);
 } else {
   writeFileSync(output, content);

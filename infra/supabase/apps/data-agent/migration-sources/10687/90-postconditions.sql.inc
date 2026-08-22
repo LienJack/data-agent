@@ -1,13 +1,13 @@
 do $postconditions$
 begin
-  if not pg_catalog.has_schema_privilege('data_agent_u6_rpc_owner','app_data_agent','USAGE')
-    or not pg_catalog.has_function_privilege(
-      'data_agent_u6_rpc_owner',
-      'app_data_agent.provider_json_object_has_exact_keys(jsonb,text[])',
-      'EXECUTE'
+  if not pg_catalog.has_table_privilege(
+    'data_agent_u6_rpc_owner','app_data_agent.knowledge_evidence_selections','SELECT'
+  ) or not exists(select 1 from pg_catalog.pg_policy policy
+    where policy.polrelid='app_data_agent.knowledge_evidence_selections'::pg_catalog.regclass
+      and policy.polname='knowledge_evidence_selections_semantic_revision_select')
+    or pg_catalog.has_table_privilege(
+      'data_agent_backend','app_data_agent.knowledge_evidence_selections','SELECT'
     )
-    or pg_catalog.has_function_privilege(
-      'anon','semantic.commit_authoring_provider_intent(uuid,uuid,text,uuid,text,uuid,integer,uuid,uuid,text,jsonb)','EXECUTE')
-  then raise exception using errcode='P0001',message='SEMANTIC_PROVIDER_VALIDATOR_GRANT_POSTCONDITION_FAILED'; end if;
+  then raise exception using errcode='P0001',message='SEMANTIC_REVISION_EVIDENCE_READ_POSTCONDITION_FAILED'; end if;
 end
 $postconditions$;
