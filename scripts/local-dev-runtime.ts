@@ -122,6 +122,25 @@ export function mergeLocalDevelopmentEnvironment(
   return merged;
 }
 
+export function injectDockerBuildProvenance(
+  environment: NodeJS.ProcessEnv,
+  repositoryRoot = REPOSITORY_ROOT,
+): NodeJS.ProcessEnv {
+  return {
+    ...environment,
+    DATA_AGENT_GIT_COMMIT: execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+    }).trim(),
+    DATA_AGENT_GIT_DIRTY: String(
+      execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=normal"], {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+      }).trim().length > 0,
+    ),
+  };
+}
+
 function readEnvironmentFile(path: string): Record<string, string> {
   if (!existsSync(path)) return {};
   return Object.fromEntries(
@@ -1227,6 +1246,7 @@ async function main(command: RuntimeCommand | undefined): Promise<number> {
       assertMigrationLedgerCurrent();
       return 0;
     case "docker-up":
+      environment = injectDockerBuildProvenance(environment);
       runCommand(
         "docker",
         ["compose", "--profile", "deploy", "up", "--build", "-d", "--wait"],

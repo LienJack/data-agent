@@ -8,6 +8,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+export DATA_AGENT_GIT_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD)"
+if [ -n "$(git -C "$ROOT_DIR" status --porcelain=v1 --untracked-files=normal)" ]; then
+  export DATA_AGENT_GIT_DIRTY=true
+else
+  export DATA_AGENT_GIT_DIRTY=false
+fi
 
 echo "=== U9-Core: Docker Compose Smoke Test ==="
 
@@ -79,19 +85,30 @@ docker compose -f "${ROOT_DIR}/compose.yaml" config > /dev/null 2>&1 || {
 }
 echo "  ✓ compose.yaml is valid"
 
-# ---- Step 7: Check runbook ----
-echo "--- Step 7: Checking runbook ---"
+# ---- Step 7: Build and inspect guarded application images ----
+echo "--- Step 7: Building guarded application images ---"
+docker compose -f "${ROOT_DIR}/compose.yaml" --profile deploy build web worker
+docker compose -f "${ROOT_DIR}/compose.yaml" --profile deploy run --rm --no-deps \
+  --entrypoint sh web -c \
+  'test -f /app/runtime-build-identity/web.json && test ! -e /app/.git && test ! -e /app/.turbo && test ! -e /app/runtime-build-identity/attestation.json'
+docker compose -f "${ROOT_DIR}/compose.yaml" --profile deploy run --rm --no-deps \
+  --entrypoint sh worker -c \
+  'test -f /app/runtime-build-identity/worker.json && test -f /app/runtime-build-identity/relationship-indexer.json && test -f /app/runtime-build-identity/semantic-authoring.json && test ! -e /app/.git && test ! -e /app/.turbo && test ! -e /app/runtime-build-identity/attestation.json'
+echo "  ✓ runtime identities present; internal build evidence absent"
+
+# ---- Step 8: Check runbook ----
+echo "--- Step 8: Checking runbook ---"
 if [ ! -f "${ROOT_DIR}/docs/runbooks/deployment-operations.md" ]; then
   echo "FAIL: deployment-operations.md not found"
   exit 1
 fi
 echo "  ✓ deployment-operations.md exists"
 
-# ---- Step 8: Verify release gate ----
-echo "--- Step 8: Running full verify:release ---"
+# ---- Step 9: Verify release gate ----
+echo "--- Step 9: Running full verify:release ---"
 cd "${ROOT_DIR}"
-pnpm verify:release 2>&1 || true
-echo "  ✓ verify:release executed (HOLD expected without live PostgreSQL)"
+pnpm verify:release
+echo "  ✓ verify:release passed workspace build integrity"
 
 # ---- Summary ----
 echo ""

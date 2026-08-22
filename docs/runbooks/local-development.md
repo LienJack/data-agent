@@ -39,6 +39,17 @@ pnpm dev
 `pnpm dev` 的顺序是 `dev:infra -> 可选 dev:admin-sync -> dev:check -> dev:apps`。Ledger 缺失或 checksum
 不一致时，它会以非零状态停止并提示执行 `pnpm dev:migrate`，不会隐式重放 SQL。
 
+应用端口绑定前，根协调器会按 Turbo dependency graph 构建 Workspace package、核对导出文件与 output
+digest，并为 Web、Worker、Indexer、Semantic Authoring 分别写入 opaque build identity。只准备构建证明、不启动
+应用时执行：
+
+```bash
+pnpm dev:build
+pnpm dev:check
+```
+
+`dev:check` 只验证已有证明，不会代替 build，也不会执行 migration。
+
 ## 3. 单服务调试
 
 ```bash
@@ -49,6 +60,11 @@ pnpm dev:indexer   # Relationship Indexer watch，/live 端口 9090
 
 Worker 与 Indexer 均使用 `tsx watch`。修改对应 `apps/worker/src/**` 文件后，进程自动
 重启；Web 源码变化由 Next.js/Turbopack 热更新。
+
+修改 `packages/**`、package manifest、lockfile、`turbo.json` 或根 TypeScript 配置时，协调器会先停止受影响
+进程，再合并变更、重建并核对新 generation。构建失败期间旧进程不会继续占用端口；修复文件后协调器会自动
+重试。不要直接运行 `next dev`、`tsx watch` 或 `node packages/*/dist/**`，这些 raw 命令不属于受支持入口，
+会绕过 freshness gate。
 
 聚合命令收到 `SIGINT`/`SIGTERM` 时会转发给三个子进程。任一子进程意外退出时，其余
 进程也会被停止，聚合命令返回非零状态，避免留下半套运行环境。
@@ -108,6 +124,19 @@ curl --fail http://127.0.0.1:9090/live
 `pnpm dev:infra` 只移除这三个无状态应用容器，不删除 PostgreSQL 或 Neo4j
 的数据卷。
 
+`/`、Worker `/live` 与 Indexer `/live` 返回的 `build_id`、`generation_id` 是可公开比较的 opaque ID。
+它们一致地指向当前受控 generation，但不会暴露 Git SHA、绝对路径或 package digest。
+
+页面出现 `PERSISTENCE_TRANSACTION_FAILED` 时，按以下顺序定位，不要先反复刷新或猜缓存：
+
+1. 记录 Web/Worker/Indexer health 的 `build_id` 与 `generation_id`；
+2. 查看协调器最后接受的 generation；
+3. 在服务端日志查 `persistence_transaction_failed` 的 correlation、operation、SQLSTATE 与 process role；
+4. 核对 `migration_ready` / `migration_frontier`；
+5. 最后按 correlation 与时间范围查 PostgreSQL 日志。
+
+安全诊断不会输出 SQL、参数、数据库 message、stack、DSN 或 Secret。
+
 ## 6. 端口与停止
 
 | 服务 | 本地端口 |
@@ -140,5 +169,9 @@ docker compose --profile deploy ps
 ```bash
 pnpm docker:down
 ```
+
+`pnpm docker:up` 会从当前 checkout 注入 Git SHA 与 dirty boolean。直接运行 `docker compose --profile deploy
+build` 时必须显式设置 `DATA_AGENT_GIT_COMMIT` 和 `DATA_AGENT_GIT_DIRTY=true|false`；缺失或非法值会在镜像
+构建阶段失败关闭。镜像只携带每个进程的 portable identity，不携带本地 `.turbo` 或完整 attestation。
 
 部署细节见 [deployment-operations.md](./deployment-operations.md)。

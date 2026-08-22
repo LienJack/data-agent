@@ -299,6 +299,52 @@ describe("Workspace build attestation", () => {
     expect(readFileSync(path, "utf8")).toBe("{");
   });
 
+  it("拒绝 resolution trace 源码已修但 dist 仍执行旧 runs.active_attempt_id", async () => {
+    const root = await createBuildFixture();
+    const sourcePath = join(root, "packages/platform/src/index.ts");
+    const outputPath = join(root, "packages/platform/dist/index.js");
+    await writeFile(sourcePath, "export const query = 'run.active_attempt_id';");
+    await writeFile(outputPath, "export const query = 'run.active_attempt_id';");
+    const staleAttestation = createWorkspaceBuildAttestation({
+      repoRoot: root,
+      beforeBuild: buildDryRun("1"),
+      afterBuild: buildDryRun("1"),
+      consumers: [{ consumerRole: "web", packageNames: ["@data-agent/platform"] }],
+      builtAt: "2026-08-22T00:00:00.000Z",
+      gitCommit: "a".repeat(40),
+      gitDirty: false,
+    });
+
+    await writeFile(sourcePath, "export const query = 'from run_attempts as active_candidate';");
+    expect(readFileSync(outputPath, "utf8")).toContain("run.active_attempt_id");
+    expect(() =>
+      verifyWorkspaceBuildAttestation({
+        repoRoot: root,
+        attestation: staleAttestation,
+        currentBuild: buildDryRun("2"),
+      }),
+    ).toThrowError(expect.objectContaining({ code: "DEV_WORKSPACE_BUILD_STALE" }));
+
+    await writeFile(outputPath, "export const query = 'from run_attempts as active_candidate';");
+    const rebuiltAttestation = createWorkspaceBuildAttestation({
+      repoRoot: root,
+      beforeBuild: buildDryRun("2"),
+      afterBuild: buildDryRun("2"),
+      consumers: [{ consumerRole: "web", packageNames: ["@data-agent/platform"] }],
+      builtAt: "2026-08-22T00:00:01.000Z",
+      gitCommit: "a".repeat(40),
+      gitDirty: false,
+    });
+    expect(
+      verifyWorkspaceBuildAttestation({
+        repoRoot: root,
+        attestation: rebuiltAttestation,
+        currentBuild: buildDryRun("2"),
+      }),
+    ).toEqual(rebuiltAttestation);
+    expect(readFileSync(outputPath, "utf8")).not.toContain("run.active_attempt_id");
+  });
+
   it("拒绝 export 指向声明 outputs 之外或缺失的文件", async () => {
     const root = await createBuildFixture();
     await writeFile(

@@ -22,10 +22,21 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 # ---------- Stage 3: build ----------
 FROM deps AS builder
+ARG DATA_AGENT_GIT_COMMIT
+ARG DATA_AGENT_GIT_DIRTY
 COPY tsconfig.base.json ./
+COPY scripts/workspace-build-release.ts scripts/workspace-build-release.ts
+COPY scripts/qa-readiness-bootstrap.ts scripts/qa-readiness-bootstrap.ts
+COPY scripts/lib/workspace-architecture.ts scripts/lib/workspace-architecture.ts
+COPY scripts/lib/workspace-build-integrity.ts scripts/lib/workspace-build-integrity.ts
 COPY apps/web/next.config.mjs apps/web/postcss.config.ts apps/web/tsconfig.json apps/web/
 COPY apps/web/src apps/web/src
-RUN pnpm --filter @data-agent/web... build
+RUN pnpm --filter @data-agent/web... build && \
+    pnpm exec tsx scripts/workspace-build-release.ts \
+      --roles=web \
+      --output=/app/.release-build-identities \
+      --git-commit="${DATA_AGENT_GIT_COMMIT}" \
+      --git-dirty="${DATA_AGENT_GIT_DIRTY}"
 
 # ---------- Stage 4: production runner ----------
 FROM node:${NODE_VERSION} AS runner
@@ -41,6 +52,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder --chown=nextjs:nodejs /app/.release-build-identities/web.json /app/runtime-build-identity/web.json
 COPY --chown=nextjs:nodejs infra/agenticdatabench/ecommerce-v1/production-suite/manifest.json ./infra/agenticdatabench/ecommerce-v1/production-suite/manifest.json
 COPY --chown=nextjs:nodejs infra/agenticdatabench/ecommerce-v1/production-suite/public-cases.json ./infra/agenticdatabench/ecommerce-v1/production-suite/public-cases.json
 COPY --chown=nextjs:nodejs infra/agenticdatabench/ecommerce-v1/semantic/ecommerce-source-bundle.json ./infra/agenticdatabench/ecommerce-v1/semantic/ecommerce-source-bundle.json
@@ -50,5 +62,6 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE="/app/runtime-build-identity/web.json"
 
 CMD ["node", "apps/web/server.js"]

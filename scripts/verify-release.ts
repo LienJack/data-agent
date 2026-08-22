@@ -1,25 +1,45 @@
+import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  attestWorkspaceReleaseBuild,
+  type WorkspaceReleaseBuildReceipt,
+} from "./workspace-build-release.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(__dirname, "..");
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function gateResult(evidencePath?: string): boolean {
-  if (!evidencePath) return false;
-  const full = resolve(rootDir, evidencePath);
-  if (!existsSync(full)) return false;
-  try {
-    const raw = readFileSync(full, "utf-8");
-    const parsed = JSON.parse(raw);
-    return parsed.status === "PASS" || parsed.decision === "GO";
-  } catch {
-    return false;
-  }
+function verifyWorkspaceReleaseBuild(): WorkspaceReleaseBuildReceipt {
+  execFileSync(
+    "pnpm",
+    [
+      "turbo",
+      "run",
+      "build",
+      "--force",
+      "--filter=@data-agent/web...",
+      "--filter=@data-agent/worker...",
+    ],
+    { cwd: rootDir, stdio: "inherit" },
+  );
+  const gitCommit = execFileSync("git", ["rev-parse", "HEAD"], {
+    cwd: rootDir,
+    encoding: "utf8",
+  }).trim();
+  const gitDirty =
+    execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=normal"], {
+      cwd: rootDir,
+      encoding: "utf8",
+    }).trim().length > 0;
+  return attestWorkspaceReleaseBuild({
+    repoRoot: rootDir,
+    outputDirectory: resolve(rootDir, ".turbo/data-agent-release"),
+    roles: ["web", "worker", "relationship-indexer", "semantic-authoring"],
+    gitCommit,
+    gitDirty,
+  });
 }
 
 function checkMigrationManifest(path: string): boolean {
@@ -88,6 +108,17 @@ interface EvidenceItem {
   informative?: boolean;
 }
 
+let workspaceBuildReceipt: WorkspaceReleaseBuildReceipt | null = null;
+let workspaceBuildFailure: string | null = null;
+try {
+  workspaceBuildReceipt = verifyWorkspaceReleaseBuild();
+} catch (error) {
+  workspaceBuildFailure =
+    error instanceof Error && /^[A-Z0-9_:.-]{1,160}$/.test(error.message)
+      ? error.message
+      : "RELEASE_WORKSPACE_BUILD_INTEGRITY_FAILED";
+}
+
 const evidence: EvidenceItem[] = [
   {
     unit: "U1",
@@ -119,11 +150,10 @@ const evidence: EvidenceItem[] = [
   },
   {
     unit: "U5",
-    evidence_type: "LOCAL_GATE_RECEIPT",
-    required_command: "pnpm test:sandbox",
-    reason_code: "RELEASE_GATE_NOT_ATTESTED",
-    passed: false,
-    informative: true,
+    evidence_type: "WORKSPACE_BUILD_INTEGRITY_RECEIPT",
+    required_command: "pnpm verify:release",
+    reason_code: workspaceBuildFailure ?? "RELEASE_WORKSPACE_BUILD_INTEGRITY_FAILED",
+    passed: workspaceBuildReceipt !== null,
   },
   {
     unit: "U6",
@@ -233,7 +263,7 @@ const reasonCode = blockingMissing.length === 0 ? "RELEASE_READY" : "RELEASE_EVI
 process.stdout.write(
   `${JSON.stringify(
     {
-      verification_contract_version: "1.3.0",
+      verification_contract_version: "1.4.0",
       decision_id: randomUUID(),
       app_id: "00000000-0000-4000-8000-00000000da01",
       tenant_id: "00000000-0000-4000-8000-00000000ta01",
@@ -273,6 +303,11 @@ process.stdout.write(
         migration_manifest_attested: migrationManifestResult.attested,
         migration_manifest_hash: migrationManifestResult.hash,
         runbook: runbookExists,
+      },
+      workspace_build_integrity: workspaceBuildReceipt ?? {
+        schema_version: "workspace-release-build-integrity@1.0.0",
+        status: "HOLD",
+        reason_code: workspaceBuildFailure,
       },
     },
     null,

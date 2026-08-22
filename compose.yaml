@@ -167,6 +167,9 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.web
+      args:
+        DATA_AGENT_GIT_COMMIT: ${DATA_AGENT_GIT_COMMIT:-UNSET}
+        DATA_AGENT_GIT_DIRTY: ${DATA_AGENT_GIT_DIRTY:-UNSET}
     container_name: data-agent-web
     profiles: ["deploy"]
     restart: unless-stopped
@@ -221,6 +224,9 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.worker
+      args:
+        DATA_AGENT_GIT_COMMIT: ${DATA_AGENT_GIT_COMMIT:-UNSET}
+        DATA_AGENT_GIT_DIRTY: ${DATA_AGENT_GIT_DIRTY:-UNSET}
     container_name: data-agent-worker
     profiles: ["deploy"]
     restart: unless-stopped
@@ -280,6 +286,9 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.worker
+      args:
+        DATA_AGENT_GIT_COMMIT: ${DATA_AGENT_GIT_COMMIT:-UNSET}
+        DATA_AGENT_GIT_DIRTY: ${DATA_AGENT_GIT_DIRTY:-UNSET}
     container_name: data-agent-relationship-indexer
     profiles: ["deploy"]
     restart: unless-stopped
@@ -291,6 +300,7 @@ services:
     command: ["node", "apps/worker/dist/semantic/relationship-indexer-cli.js"]
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE: /app/runtime-build-identity/relationship-indexer.json
       SEMANTIC_RELATIONSHIP_INDEX_ENABLED: "true"
       SEMANTIC_DEPLOYMENT_ID: ${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}
       SEMANTIC_TENANT_ID: ${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}

@@ -15,6 +15,7 @@
 pnpm dev:infra     # 当前 PostgreSQL + Neo4j；Sandbox 落地后再加入 python-sandbox
 pnpm dev:migrate   # 显式应用缺失迁移并核验 Ledger
 pnpm dev:check     # 只读健康、Ledger、Authority 和端口门禁
+pnpm dev:build     # 构建并证明全部受管理 consumer，不绑定端口
 pnpm dev           # dev:infra -> dev:check -> 三个本地 watch 进程
 pnpm docker:migrate
 pnpm docker:up     # deploy profile 的五个长期服务
@@ -40,6 +41,16 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   身份不能读取 supervisor socket。
 - 本地 Web 使用 Next/Turbopack，Worker 和 Indexer 使用 `tsx watch`。Worker 的
   watch 与 Docker CMD 必须执行同一个 `run-worker-cli` 组合入口。
+- 所有公开 dev 入口必须先经过根级 freshness coordinator。Coordinator 以 Turbo task hash 作为 input
+  identity，以实际 output digest 验证磁盘产物；package/root input 变化时先停止 affected consumer，构建
+  失败期间不得恢复旧 generation。raw `next dev` / `tsx watch` / `node dist` 不属于受支持入口。
+- Web/Worker/Indexer/Semantic Authoring 在任何数据库或端口访问前必须加载与 role 匹配的绝对路径 runtime
+  identity。公开 health 只暴露 opaque `build_id` / `generation_id`；Git、路径、task/output digest 只留在
+  受控证据或启动日志。
+- Docker/Release 必须复用同一 output verifier。镜像 builder 接受显式 Git SHA/dirty provenance，runner 只
+  复制 portable identity；不得复制 `.git`、本地 `.turbo`、完整 attestation 或公开 package digest。
+- persistence transaction 失败的公开 code/message 保持脱敏；进程级 diagnostics subscriber 必须幂等、
+  reference-counted，并只记录 operation、correlation、SQLSTATE、process role 与 opaque build identity。
 - 宿主机 DSN 使用 `127.0.0.1`；容器 DSN 使用 Compose 服务名
   `postgres` / `neo4j`，不得混用。
 - 本地环境优先级是 `process > .env.local > .env > safe defaults`；Secret 只能来自
@@ -68,6 +79,14 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 | 固定 Server Context 无 Authority | `DEV_AUTHORITY_MAPPING_NOT_READY` |
 | 3000/9090/9091 已占用 | `DEV_PORT_IN_USE:<service>:<port>` |
 | 既有 Next dev lock 仍对应存活进程 | `DEV_NEXT_PROCESS_ALREADY_RUNNING:<pid>:<port>` |
+| Turbo graph 缺 consumer/package | `DEV_WORKSPACE_BUILD_GRAPH_INVALID`，零应用端口 |
+| source/root input 与证明不同 | `DEV_WORKSPACE_BUILD_STALE`，停止 affected consumer |
+| output 缺失或被替换 | `DEV_WORKSPACE_BUILD_OUTPUT_MISSING/MISMATCH`，失败关闭 |
+| build 中输入继续变化 | 丢弃旧 generation，合并后重建 |
+| build 失败 | `DEV_WORKSPACE_BUILD_FAILED`，保持 blocked；后续变化/显式 retry 可恢复 |
+| runtime identity 缺失/非法/role 不符 | `RUNTIME_BUILD_IDENTITY_*`，数据库与 health 端口均未创建 |
+| Docker Git provenance 缺失/非法 | `RELEASE_BUILD_GIT_*_INVALID`，镜像构建失败 |
+| persistence transaction 失败 | 公开脱敏；服务端 safe event 可按 correlation/build 定位 |
 | Docker/Next 构建后根级 Vitest 扫描 `.next/standalone` | 排除 `**/.next/**`，只执行源码测试 |
 | Worker 配置越界 | `WORKER_CONFIG_INVALID` 并非零退出 |
 | U6 Authority Capability 未配置 | Run 进入明确 `FAILED`，Reason Code 不泄漏 Secret |
@@ -90,6 +109,12 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   六个长期服务，并断言 sandbox 无网络/数据库 Secret/公共端口、只读 root 与硬资源限制。
 - Worker Unit/Integration：严格 env、IDLE 退避、日志脱敏、Lease/Heartbeat/Fence/终态。
 - Migration：已应用版本跳过，缺失版本应用，checksum 漂移非零退出。
+- Workspace freshness：graph/attestation contract、source 已变但旧 dist、output tamper、build 中漂移、burst
+  coalescing、失败恢复、signal cleanup、四 role guard 与 opaque health identity。
+- Docker/Release：Web/Worker/Indexer identity 存在；非法 provenance、stale/tampered output 非零；runner 不含
+  `.git`、`.turbo`、完整 attestation、绝对路径或 package digest。
+- Diagnostics：重复 bootstrap 只有一个 subscriber；logger throw 不改变公开事务结果；SQL/message/params/
+  stack/DSN/Secret 不进入日志。
 - Q&A readiness：未确认/production 零调用、步骤顺序、早期失败不激活 Profile、真实本地执行与幂等重跑；
   浏览器 POST 必须从 readiness 400 变为 201。
 - 在执行过 Next/Docker 生产构建的工作区运行根级 Vitest 时，命令必须显式使用
@@ -105,6 +130,8 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 
 ```bash
 docker compose up -d  # 误以为这是完整部署，或一边运行容器应用一边做热更新
+next dev              # 绕过根级 freshness coordinator
+node packages/platform/dist/index.js  # 直接相信可能过期的 output
 pnpm exec vitest run apps/web/test/integration/example.spec.ts  # 构建后可能重复扫描 .next
 ```
 
@@ -112,6 +139,7 @@ pnpm exec vitest run apps/web/test/integration/example.spec.ts  # 构建后可�
 
 ```bash
 pnpm dev              # 开发：Docker 数据库 + 本地 watch
+pnpm dev:build && pnpm dev:check  # 只刷新并核对受管理 build 证明
 pnpm docker:migrate && pnpm docker:up  # 部署：显式迁移 + 五服务容器
 pnpm exec vitest run --exclude '**/.next/**' apps/web/test/integration/example.spec.ts
 DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP=YES NODE_OPTIONS=--conditions=react-server \

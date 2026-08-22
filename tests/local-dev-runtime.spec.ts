@@ -5,12 +5,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   applyLocalSuperadminAuthority,
   buildLocalApplicationProcessSpecs,
+  injectDockerBuildProvenance,
   isLocalSuperadminSyncEnabled,
   mergeLocalDevelopmentEnvironment,
   RecoverableWorkspaceBuildCoordinator,
   readExpectedMigrations,
   type WorkspaceBuildCoordinatorAdapter,
 } from "../scripts/local-dev-runtime.js";
+import { parseManagedBuildProvenance } from "../scripts/workspace-build-release.js";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 
@@ -30,14 +32,17 @@ function composeServices(...args: string[]): string[] {
 }
 
 function deploymentComposeConfig(): {
-  services: { web: { environment: Record<string, string> } };
+  services: Record<
+    "web" | "worker" | "relationship-indexer",
+    { build: { args: Record<string, string> }; environment: Record<string, string> }
+  >;
 } {
   return JSON.parse(
     execFileSync("docker", ["compose", "--profile", "deploy", "config", "--format", "json"], {
       cwd: repositoryRoot,
       encoding: "utf8",
     }),
-  ) as { services: { web: { environment: Record<string, string> } } };
+  ) as ReturnType<typeof deploymentComposeConfig>;
 }
 
 describe("local development runtime modes", () => {
@@ -94,6 +99,29 @@ describe("local development runtime modes", () => {
     expect(environment.SEMANTIC_EXPLORER_ENABLED).toBe("true");
     expect(environment.SEMANTIC_RELATIONSHIP_INDEX_ENABLED).toBe("true");
     expect(environment.SEMANTIC_ALLOWED_DOMAINS?.split(",")).toContain("ecommerce");
+  });
+
+  it("Docker build provenance 来自当前 checkout，缺失或非法输入失败关闭", () => {
+    const environment = injectDockerBuildProvenance({});
+    expect(environment.DATA_AGENT_GIT_COMMIT).toMatch(/^[a-f0-9]{7,64}$/);
+    expect(environment.DATA_AGENT_GIT_DIRTY).toMatch(/^(true|false)$/);
+    expect(() =>
+      parseManagedBuildProvenance({ gitCommit: "UNSET", gitDirty: "UNSET" }),
+    ).toThrowError("RELEASE_BUILD_GIT_COMMIT_INVALID");
+  });
+
+  it("Compose 为 Web、Worker 与 Indexer 显式绑定 build provenance 和 identity", () => {
+    const config = deploymentComposeConfig();
+    for (const service of ["web", "worker", "relationship-indexer"] as const) {
+      expect(config.services[service].build.args).toMatchObject({
+        DATA_AGENT_GIT_COMMIT: expect.any(String),
+        DATA_AGENT_GIT_DIRTY: expect.any(String),
+      });
+    }
+    expect(config.services.web.environment.DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE).toBeUndefined();
+    expect(
+      config.services["relationship-indexer"].environment.DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE,
+    ).toBe("/app/runtime-build-identity/relationship-indexer.json");
   });
 
   it("四个本地应用命令均为 watch/dev 入口，不执行 Docker 应用容器", () => {
@@ -199,11 +227,16 @@ describe("local development runtime modes", () => {
     const dockerfile = readFileSync(`${repositoryRoot}/infra/docker/Dockerfile.worker`, "utf8");
     expect(dockerfile).toContain('CMD ["node", "apps/worker/dist/run-worker-cli.js"]');
     expect(dockerfile).not.toContain('CMD ["node", "apps/worker/dist/index.js"]');
+    expect(dockerfile).toContain("--roles=worker,relationship-indexer,semantic-authoring");
+    expect(dockerfile).toContain(
+      'ENV DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE="/app/runtime-build-identity/worker.json"',
+    );
+    expect(dockerfile).not.toContain("attestation.json /app/runtime-build-identity");
   });
 
   it("从每个迁移的固定 ledger 声明读取版本与 checksum", () => {
     const migrations = readExpectedMigrations(repositoryRoot);
-    expect(migrations).toHaveLength(74);
+    expect(migrations).toHaveLength(109);
     expect(migrations[0]).toMatchObject({
       owner_kind: "platform",
       app_id: null,
@@ -212,7 +245,7 @@ describe("local development runtime modes", () => {
     expect(migrations.at(-1)).toMatchObject({
       owner_kind: "app",
       app_id: "00000000-0000-4000-8000-00000000da01",
-      migration_version: "20260725010670_app_data_agent_atomic_team_acceptance",
+      migration_version: "20260725010698_app_data_agent_subagent_harness_runtime_repair",
     });
   });
 

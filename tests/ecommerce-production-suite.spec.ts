@@ -38,5 +38,15 @@ describe("E-commerce Production Suite", () => {
     );
     expect(dockerfile).not.toContain("production-suite/sealed");
     expect(dockerfile).not.toContain("production-suite/ ");
+    expect(dockerfile).toContain(
+      "COPY scripts/qa-readiness-bootstrap.ts scripts/qa-readiness-bootstrap.ts",
+    );
+    expect(dockerfile).toContain("--roles=web");
+    expect(dockerfile).toContain(
+      "/app/.release-build-identities/web.json /app/runtime-build-identity/web.json",
+    );
+    expect(dockerfile).not.toContain(
+      "/app/.release-build-identities/attestation.json /app/runtime-build-identity",
+    );
   });
 });

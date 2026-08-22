@@ -22,10 +22,20 @@ RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
 
 # ---------- Stage 3: build ----------
 FROM deps AS builder
+ARG DATA_AGENT_GIT_COMMIT
+ARG DATA_AGENT_GIT_DIRTY
 COPY tsconfig.base.json ./
+COPY scripts/workspace-build-release.ts scripts/workspace-build-release.ts
+COPY scripts/lib/workspace-architecture.ts scripts/lib/workspace-architecture.ts
+COPY scripts/lib/workspace-build-integrity.ts scripts/lib/workspace-build-integrity.ts
 COPY apps/worker/tsconfig.json apps/worker/tsconfig.build.json apps/worker/
 COPY apps/worker/src apps/worker/src
-RUN pnpm --filter @data-agent/worker... build
+RUN pnpm --filter @data-agent/worker... build && \
+    pnpm exec tsx scripts/workspace-build-release.ts \
+      --roles=worker,relationship-indexer,semantic-authoring \
+      --output=/app/.release-build-identities \
+      --git-commit="${DATA_AGENT_GIT_COMMIT}" \
+      --git-dirty="${DATA_AGENT_GIT_DIRTY}"
 
 # ---------- Stage 4: production runner ----------
 FROM node:${NODE_VERSION} AS runner
@@ -42,6 +52,9 @@ RUN addgroup --system --gid 1001 worker && \
     chown -R worker:worker /app/.data
 
 COPY --from=builder --chown=worker:worker /app/apps/worker/dist ./apps/worker/dist
+COPY --from=builder --chown=worker:worker /app/.release-build-identities/worker.json /app/runtime-build-identity/worker.json
+COPY --from=builder --chown=worker:worker /app/.release-build-identities/relationship-indexer.json /app/runtime-build-identity/relationship-indexer.json
+COPY --from=builder --chown=worker:worker /app/.release-build-identities/semantic-authoring.json /app/runtime-build-identity/semantic-authoring.json
 COPY --from=builder --chown=worker:worker /app/packages ./packages
 COPY --from=builder --chown=worker:worker /app/node_modules/.pnpm ./node_modules/.pnpm
 COPY --from=builder --chown=worker:worker /app/package.json ./package.json
@@ -54,5 +67,7 @@ RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate && \
     pnpm --filter @data-agent/worker... install --frozen-lockfile --prefer-offline --prod
 
 USER worker
+
+ENV DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE="/app/runtime-build-identity/worker.json"
 
 CMD ["node", "apps/worker/dist/run-worker-cli.js"]

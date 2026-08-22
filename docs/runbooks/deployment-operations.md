@@ -28,6 +28,19 @@ pnpm docker:up
 docker compose --profile deploy logs -f
 ```
 
+受支持的 `pnpm docker:up` wrapper 会把当前 checkout 的 Git SHA 与 dirty boolean 作为 Docker build args
+注入。CI 或直接使用 Compose 时必须显式提供：
+
+```bash
+export DATA_AGENT_GIT_COMMIT="$(git rev-parse HEAD)"
+export DATA_AGENT_GIT_DIRTY=false
+docker compose --profile deploy build web worker relationship-indexer
+```
+
+缺失/非法 provenance 会令 builder 失败。builder 在 filtered build 后用 Turbo task identity 与 output digest
+生成 portable runtime identity；runner 只复制对应 role 的 identity JSON，不复制 `.git`、`.turbo`、完整
+attestation、绝对路径或 package digest。
+
 裸 `docker compose up -d` 只启动 PostgreSQL 与 Neo4j，属于本地开发基础设施模式，
 不会启动 Web、Worker 或 Relationship Indexer。完整部署必须使用 `deploy` profile。
 
@@ -63,6 +76,9 @@ docker compose --profile deploy exec -T worker node -e \
 docker compose --profile deploy exec -T relationship-indexer node -e \
   "fetch('http://127.0.0.1:9090/live').then(async r=>{console.log(await r.text());if(!r.ok)process.exit(1)})"
 ```
+
+Web、Worker 与 Indexer 响应中的 `build_id` / `generation_id` 只用于比较当前代际。Git SHA 与 dirty 状态只在
+受控启动日志中出现，不属于公开 health contract。
 
 ### 1.5 数据持久化
 
@@ -159,6 +175,10 @@ pnpm test:deploy:docker
 pnpm docker:migrate
 pnpm docker:up
 ```
+
+`verify:release` 会强制执行 Web/Worker 依赖构建，随后重新读取 Turbo dry-run identity、核对实际 outputs，
+并生成 `workspace_build_integrity` receipt。任一 task hash、export、output digest 或 provenance 不一致都返回
+`HOLD`，不能用已有旧 `dist` 继续发布。它只检查 Migration Ledger/manifest readiness，不自动执行 SQL。
 
 ### 3.2 回滚流程
 
@@ -287,6 +307,18 @@ docker compose logs -f postgres
 ---
 
 ## 7. 故障恢复
+
+### 7.0 `PERSISTENCE_TRANSACTION_FAILED` 定位顺序
+
+1. 比较 Web/Worker/Indexer health 的 `build_id` 与 `generation_id`；
+2. 核对部署 receipt 的 `workspace_build_integrity` generation；
+3. 查服务端 `persistence_transaction_failed`，按 correlation、operation、SQLSTATE、process role 和 build ID
+   定位；
+4. 核对 `migration_ready` 与 `migration_frontier`；
+5. 最后按 correlation/时间窗口查询 PostgreSQL 日志。
+
+浏览器只保留稳定 `PERSISTENCE_TRANSACTION_FAILED` code 与脱敏 message。安全日志禁止包含 raw Error、SQL、
+parameters、stack、DSN、Secret 或任意额外对象。
 
 ### 7.1 PostgreSQL 崩溃恢复
 
