@@ -633,3 +633,24 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 29: 交付内容优先的运行轨迹工作台
+
+**Date**: 2026-08-22
+**Task**: 交付内容优先的运行轨迹工作台
+**Branch**: `feat/datafoundry-platform-modules`
+
+### Summary
+
+新增四泳道时间轴、搜索与虚拟列表、五页签公共详情 Inspector、exact Artifact/SQL 内容预览、Team 内容化展示、严格详情合同和 owner API；完成万级投影、管理员审计复用、1440/390 浏览器与三包构建验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `37d103d` | (see git log) |
+
+### Status
+
+[OK] **Completed**
