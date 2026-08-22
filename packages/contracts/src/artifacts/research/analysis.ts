@@ -21,8 +21,12 @@ import { claimScalarValueSchema } from "./proof.js";
 import {
   analysisPlanRefSchema,
   causalEstimateRefSchema,
+  causalQuestionRefSchema,
   derivedAnalysisEvidenceRefSchema,
   discoveryCandidateRefSchema,
+  discoveryReceiptRefSchema,
+  identificationCertificateRefSchema,
+  identificationPlanRefSchema,
   metricRefSchema,
   policyReceiptRefSchema,
   queryEvidenceRefSchema,
@@ -647,6 +651,307 @@ export const analysisCompletionReceiptPayloadSchema = z
     }
   });
 
+const causalOntologyPathSchema = z
+  .array(versionIdentifierSchema)
+  .min(1)
+  .max(64)
+  .superRefine((path, ctx) => {
+    if (new Set(path).size !== path.length) {
+      ctx.addIssue({ code: "custom", message: "Ontology Path 不能包含环。" });
+    }
+  });
+
+const causalFrontierSchema = z.strictObject({
+  semantic_release_ref: semanticReleaseRefSchema,
+  schema_snapshot_ref: schemaSnapshotRefSchema,
+  policy_receipt_ref: policyReceiptRefSchema,
+  analysis_context_hash: contentHashSchema,
+  runtime_digest: contentHashSchema.nullable(),
+  dependency_lock_digest: contentHashSchema.nullable(),
+});
+
+export const rootCauseDiscoveryCandidatePayloadSchema = z
+  .strictObject({
+    artifact_type: z.literal("DiscoveryCandidate"),
+    protocol_version: z.literal("root-cause-discovery@1.0.0"),
+    plan_ref: analysisPlanRefSchema,
+    analysis_context_hash: contentHashSchema,
+    source_evidence_refs: uniqueReferences(
+      z.union([queryEvidenceRefSchema, derivedAnalysisEvidenceRefSchema]),
+      1,
+      64,
+    ),
+    outcome_metric_ref: metricRefSchema,
+    candidate_kind: z.enum(["ROOT_CAUSE", "CAUSAL_GRAPH"]),
+    candidates: z
+      .array(
+        z.strictObject({
+          factor_id: versionIdentifierSchema,
+          factor_kind: z.enum(["METRIC", "DIMENSION", "EVENT", "RELATIONSHIP"]),
+          ontology_path: causalOntologyPathSchema,
+          temporal_order: z.enum(["PRECEDES", "SAME_WINDOW", "UNKNOWN"]),
+          statistical_support: z.strictObject({
+            method: versionIdentifierSchema,
+            effect_direction: z.enum(["POSITIVE", "NEGATIVE", "ZERO", "UNKNOWN"]),
+            effect_size: finiteNumberSchema.nullable(),
+            interval_low: finiteNumberSchema.nullable(),
+            interval_high: finiteNumberSchema.nullable(),
+            raw_p_value: finiteNumberSchema.min(0).max(1).nullable(),
+            adjusted_p_value: finiteNumberSchema.min(0).max(1).nullable(),
+            sample_size: nonNegativeIntSchema,
+          }),
+          competing_explanations: z.array(nonEmptyTextSchema).min(1).max(16),
+          uncovered_boundaries: z.array(nonEmptyTextSchema).min(1).max(16),
+        }),
+      )
+      .min(1)
+      .max(64),
+    evidence_level: z.literal("L4_DISCOVERY"),
+    multiple_testing_policy_version: versionIdentifierSchema,
+    limitation_codes: z.array(analysisReasonCodeSchema).max(32),
+    candidate_hash: contentHashSchema,
+  })
+  .superRefine((artifact, ctx) => {
+    addUniqueIssues(
+      artifact.candidates,
+      ({ factor_id }) => factor_id,
+      ctx,
+      ["candidates"],
+      "Root Cause Candidate factor_id 必须唯一。",
+    );
+    for (const [index, candidate] of artifact.candidates.entries()) {
+      const support = candidate.statistical_support;
+      if (
+        (support.interval_low === null) !== (support.interval_high === null) ||
+        (support.interval_low !== null &&
+          support.interval_high !== null &&
+          support.interval_low > support.interval_high) ||
+        (support.raw_p_value === null) !== (support.adjusted_p_value === null) ||
+        (support.raw_p_value !== null &&
+          support.adjusted_p_value !== null &&
+          support.adjusted_p_value < support.raw_p_value)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Candidate interval 与 multiple-testing closure 无效。",
+          path: ["candidates", index, "statistical_support"],
+        });
+      }
+    }
+  });
+
+export const rootCauseDiscoveryReceiptPayloadSchema = z.strictObject({
+  artifact_type: z.literal("DiscoveryReceipt"),
+  protocol_version: z.literal("root-cause-discovery-receipt@1.0.0"),
+  candidate_ref: discoveryCandidateRefSchema,
+  frontier: causalFrontierSchema,
+  input_closure_hash: contentHashSchema,
+  novelty_verdict: z.enum(["PASS", "HOLD"]),
+  multiple_testing_verdict: z.enum(["PASS", "HOLD"]),
+  temporal_order_verdict: z.enum(["PASS", "HOLD"]),
+  validation_verdict: z.enum(["PASS", "HOLD"]),
+  reason_codes: z.array(analysisReasonCodeSchema).max(32),
+  receipt_hash: contentHashSchema,
+});
+
+export const causalQuestionPayloadSchema = z.strictObject({
+  artifact_type: z.literal("CausalQuestion"),
+  protocol_version: z.literal("causal-question@1.0.0"),
+  discovery_candidate_ref: discoveryCandidateRefSchema,
+  outcome_metric_ref: metricRefSchema,
+  treatment_object_id: versionIdentifierSchema,
+  population: nonEmptyTextSchema,
+  estimand: z.enum(["ATE", "ATT", "CATE"]),
+  time_zero: timestampSchema,
+  intervention_semantics_ref: versionIdentifierSchema,
+  target_window: halfOpenTimeWindowSchema,
+  question_hash: contentHashSchema,
+});
+
+const causalDagEdgeSchema = z.strictObject({
+  source_object_id: versionIdentifierSchema,
+  target_object_id: versionIdentifierSchema,
+  mechanism_ref: versionIdentifierSchema,
+  ontology_path: causalOntologyPathSchema,
+});
+
+export const identificationPlanPayloadSchema = z
+  .strictObject({
+    artifact_type: z.literal("IdentificationPlan"),
+    protocol_version: z.literal("identification-plan@1.0.0"),
+    causal_question_ref: causalQuestionRefSchema,
+    discovery_receipt_ref: discoveryReceiptRefSchema,
+    frontier: causalFrontierSchema,
+    dag_edges: z.array(causalDagEdgeSchema).min(1).max(512),
+    adjustment_set_object_ids: uniqueIdentifierArraySchema(0, 64),
+    excluded_mediator_ids: uniqueIdentifierArraySchema(0, 64),
+    excluded_collider_ids: uniqueIdentifierArraySchema(0, 64),
+    assumptions: z
+      .array(
+        z.enum([
+          "CONSISTENCY",
+          "SUTVA",
+          "EXCHANGEABILITY",
+          "POSITIVITY",
+          "NO_POST_TREATMENT_ADJUSTMENT",
+          "MISSING_AT_RANDOM",
+        ]),
+      )
+      .min(4)
+      .max(6),
+    minimum_effective_sample_size: positiveIntSchema,
+    minimum_overlap: finiteNumberSchema.min(0).max(1),
+    estimator: z.enum(["DOWHY_LINEAR", "DOWHY_PROPENSITY", "ECONML_DML"]),
+    refuters: z
+      .array(
+        z.enum([
+          "PLACEBO_TREATMENT",
+          "RANDOM_COMMON_CAUSE",
+          "DATA_SUBSET",
+          "BOOTSTRAP",
+          "NEGATIVE_CONTROL",
+          "SENSITIVITY",
+        ]),
+      )
+      .min(4)
+      .max(6),
+    plan_hash: contentHashSchema,
+  })
+  .superRefine((plan, ctx) => {
+    const adjustment = new Set(plan.adjustment_set_object_ids);
+    if (
+      plan.excluded_mediator_ids.some((id) => adjustment.has(id)) ||
+      plan.excluded_collider_ids.some((id) => adjustment.has(id))
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Adjustment Set 不能包含 Mediator 或 Collider。",
+        path: ["adjustment_set_object_ids"],
+      });
+    }
+  });
+
+const causalRefutationSchema = z.strictObject({
+  refuter: z.enum([
+    "PLACEBO_TREATMENT",
+    "RANDOM_COMMON_CAUSE",
+    "DATA_SUBSET",
+    "BOOTSTRAP",
+    "NEGATIVE_CONTROL",
+    "SENSITIVITY",
+  ]),
+  verdict: z.enum(["PASS", "FAIL"]),
+  observed_statistic: finiteNumberSchema.nullable(),
+  threshold: finiteNumberSchema.nullable(),
+});
+
+export const causalEstimatePayloadSchema = z
+  .strictObject({
+    artifact_type: z.literal("CausalEstimate"),
+    protocol_version: z.literal("causal-estimate@1.0.0"),
+    causal_question_ref: causalQuestionRefSchema,
+    identification_plan_ref: identificationPlanRefSchema,
+    sandbox_program_ref: sandboxProgramRefSchema,
+    sandbox_execution_receipt_ref: sandboxExecutionReceiptRefSchema,
+    sandbox_result_refs: uniqueReferences(sandboxResultRefSchema, 1, 16),
+    estimand: z.enum(["ATE", "ATT", "CATE"]),
+    point_estimate: finiteNumberSchema,
+    interval_low: finiteNumberSchema,
+    interval_high: finiteNumberSchema,
+    effective_sample_size: positiveIntSchema,
+    overlap_score: finiteNumberSchema.min(0).max(1),
+    maximum_standardized_mean_difference: finiteNumberSchema.min(0),
+    refutations: z.array(causalRefutationSchema).min(4).max(6),
+    sensitivity: z.strictObject({
+      robustness_value: finiteNumberSchema.min(0),
+      negative_control_passed: z.boolean(),
+      unobserved_confounding_bound: finiteNumberSchema.min(0).nullable(),
+    }),
+    limitation_codes: z.array(analysisReasonCodeSchema).max(32),
+    estimate_hash: contentHashSchema,
+  })
+  .superRefine((estimate, ctx) => {
+    if (
+      estimate.interval_low > estimate.interval_high ||
+      estimate.point_estimate < estimate.interval_low ||
+      estimate.point_estimate > estimate.interval_high
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Causal Estimate 必须落在有效区间内。",
+        path: ["point_estimate"],
+      });
+    }
+    addUniqueIssues(
+      estimate.refutations,
+      ({ refuter }) => refuter,
+      ctx,
+      ["refutations"],
+      "Causal Refuter 必须唯一。",
+    );
+  });
+
+const identificationGateSchema = z.strictObject({
+  gate: z.enum([
+    "SCHEMA_FRONTIER",
+    "SEMANTIC_FRONTIER",
+    "POLICY_FRONTIER",
+    "PROGRAM_RUNTIME_LOCK",
+    "DAG_ADJUSTMENT",
+    "DATA_SUFFICIENCY",
+    "OVERLAP_BALANCE",
+    "REFUTATION",
+    "SENSITIVITY",
+    "ATTRIBUTION_AUTHORITY",
+  ]),
+  verdict: z.enum(["PASS", "HOLD"]),
+  evidence_hash: contentHashSchema,
+});
+
+export const identificationCertificatePayloadSchema = z
+  .strictObject({
+    artifact_type: z.literal("IdentificationCertificate"),
+    protocol_version: z.literal("identification-certificate@1.0.0"),
+    causal_question_ref: causalQuestionRefSchema,
+    identification_plan_ref: identificationPlanRefSchema,
+    causal_estimate_ref: causalEstimateRefSchema,
+    discovery_receipt_ref: discoveryReceiptRefSchema,
+    frontier: causalFrontierSchema,
+    attribution_authority_hash: contentHashSchema,
+    gates: z.array(identificationGateSchema).length(10),
+    verdict: z.enum(["CERTIFIED", "HOLD"]),
+    reason_codes: z.array(analysisReasonCodeSchema).max(32),
+    invalidation_hashes: z.strictObject({
+      semantic_release_hash: contentHashSchema,
+      schema_snapshot_hash: contentHashSchema,
+      policy_receipt_hash: contentHashSchema,
+      program_hash: contentHashSchema,
+      runtime_digest: contentHashSchema,
+      dependency_lock_digest: contentHashSchema,
+    }),
+    certificate_hash: contentHashSchema,
+  })
+  .superRefine((certificate, ctx) => {
+    addUniqueIssues(
+      certificate.gates,
+      ({ gate }) => gate,
+      ctx,
+      ["gates"],
+      "Identification Gate 必须唯一且完整。",
+    );
+    const allPass = certificate.gates.every(({ verdict }) => verdict === "PASS");
+    if (
+      (certificate.verdict === "CERTIFIED") !== allPass ||
+      (certificate.verdict === "HOLD") !== certificate.reason_codes.length > 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Certificate verdict 必须由十道 Gate 和 Reason closure 决定。",
+        path: ["verdict"],
+      });
+    }
+  });
+
 export const analysisClaimEvidenceRefSchema = z.union([
   queryEvidenceRefSchema,
   derivedAnalysisEvidenceRefSchema,
@@ -717,6 +1022,7 @@ export const atomicClaimV3PayloadSchema = z
     ),
     limitations: z.array(nonEmptyTextSchema).max(32),
     disclosures: z.array(analysisDisclosureCodeSchema).max(ANALYSIS_LIMITS.max_disclosures),
+    identification_certificate_ref: identificationCertificateRefSchema.nullable().default(null),
   })
   .superRefine((claim, ctx) => {
     addUniqueIssues(
@@ -779,12 +1085,20 @@ export const atomicClaimV3PayloadSchema = z
       (claim.observation_bindings.some(
         ({ evidence_ref }) => evidence_ref.artifact_type !== "CausalEstimate",
       ) ||
-        !claim.disclosures.includes("CAUSAL_ESTIMATE_ASSUMPTION_BOUND"))
+        !claim.disclosures.includes("CAUSAL_ESTIMATE_ASSUMPTION_BOUND") ||
+        claim.identification_certificate_ref === null)
     ) {
       ctx.addIssue({
         code: "custom",
         message: "CAUSAL_ESTIMATE 必须仅消费 CausalEstimate 并披露假设边界。",
         path: ["observation_bindings"],
+      });
+    }
+    if (mode !== "CAUSAL_ESTIMATE" && claim.identification_certificate_ref !== null) {
+      ctx.addIssue({
+        code: "custom",
+        message: "只有 CAUSAL_ESTIMATE Claim 可以绑定 Identification Certificate。",
+        path: ["identification_certificate_ref"],
       });
     }
     if (mode === "PREDICTIVE" && !claim.disclosures.includes("BASELINE_FORECAST_NOT_COMMITMENT")) {
@@ -816,6 +1130,18 @@ export type AnalysisSandboxProgramPayload = z.infer<typeof analysisSandboxProgra
 export type DerivedAnalysisEvidencePayload = z.infer<typeof derivedAnalysisEvidencePayloadSchema>;
 export type AnalysisCompletionReceiptPayload = z.infer<
   typeof analysisCompletionReceiptPayloadSchema
+>;
+export type RootCauseDiscoveryCandidatePayload = z.infer<
+  typeof rootCauseDiscoveryCandidatePayloadSchema
+>;
+export type RootCauseDiscoveryReceiptPayload = z.infer<
+  typeof rootCauseDiscoveryReceiptPayloadSchema
+>;
+export type CausalQuestionPayload = z.infer<typeof causalQuestionPayloadSchema>;
+export type IdentificationPlanPayload = z.infer<typeof identificationPlanPayloadSchema>;
+export type CausalEstimatePayload = z.infer<typeof causalEstimatePayloadSchema>;
+export type IdentificationCertificatePayload = z.infer<
+  typeof identificationCertificatePayloadSchema
 >;
 export type AtomicClaimV3Payload = z.infer<typeof atomicClaimV3PayloadSchema>;
 export type EvidenceRelationV3Payload = z.infer<typeof evidenceRelationV3PayloadSchema>;

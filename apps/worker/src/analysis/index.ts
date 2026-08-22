@@ -4,6 +4,7 @@ export * from "./default-plan.js";
 export * from "./executor.js";
 export * from "./plan-gate.js";
 export * from "./program-admission.js";
+export * from "./root-cause-executor.js";
 export * from "./sandbox-executor.js";
 export * from "./skill-catalog.js";
 export * from "./tabular-import.js";

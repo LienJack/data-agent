@@ -14,7 +14,7 @@ green sub-slice as completion of the full task.
   admission policy, independent oracles, malicious fixtures, replay/cancel/resource tests, and attestation evidence.
 - [x] U4 Planner and Worker: register server-owned descriptors/tools, controlled import, bounded DAG planning, governed query reuse, sandbox
   execution, idempotent artifact submission, repair/fence semantics, and integration coverage.
-- [ ] U8 Root Cause and L5: implement bounded ontology-grounded discovery, reuse Attribution authority, add identification/estimate/certificate
+- [x] U8 Root Cause and L5: implement bounded ontology-grounded discovery, reuse Attribution authority, add identification/estimate/certificate
   payloads and gates, and keep insufficient evidence HOLD.
 - [ ] U5 Projection and Workbench: add safe platform projections, chart protocol evolution, evidence-grounded insight selection, replay-stable
   report UI, evidence drawer, and disclosure/sensitivity tests.
@@ -114,3 +114,26 @@ green sub-slice as completion of the full task.
     attestations `VERIFIED`.
   - Platform targeted research/chart authority: 2 files / 21 tests; filtered disposable PostgreSQL migration/assertion smoke passed.
   - The new migration has exactly one normalized self-checksum literal and its declared/computed SHA-256 values match.
+
+### U8 Root Cause Evidence Ladder and L5 Causal Identification
+
+- Added versioned, strict payloads for L4 `DiscoveryCandidate`/`DiscoveryReceipt` and L5 `CausalQuestion`, `IdentificationPlan`,
+  `CausalEstimate`, and `IdentificationCertificate`. `AtomicClaim@3 CAUSAL_ESTIMATE` now requires an Identification Certificate ref;
+  all other Claim modes reject one.
+- L4 discovery is a bounded, ontology-path-grounded Universe with deterministic ranking, Bonferroni correction, time precedence,
+  competing-explanation and uncovered-boundary closure. Weak, temporally ambiguous, ungrounded, or cross-scope candidates remain HOLD and
+  never start the causal sandbox.
+- L5 compilation consumes only the published causal policy and rejects reverse paths, mediator/collider adjustment, missing confounder roles,
+  unpublished intervention semantics, or stale discovery receipts. Candidate/model DAGs are never promoted into identification authority.
+- Causal estimates bind the CAUSAL_L5 Program/Runtime/Lock, Receipt/Result closure, estimand, interval, effective sample, overlap, balance,
+  refutation, negative control, and sensitivity outputs. The ten-gate certificate independently rehashes all payloads and invalidates on
+  Semantic/Schema/Policy/Program/Runtime/Lock drift.
+- Reused Attribution Capability/Eligibility/Safety/Truth/Feasibility as the sole causal authority. Worker resolves this closure through a
+  server-owned dependency after freezing the Causal Question; callers cannot provide a GO. The certificate checks question identity, TTL,
+  SCM direction/interval, and exact Safety/Feasibility evidence identity.
+- Kept causal artifacts `IMPLEMENTING/executable=false` and the executable registry unchanged. U7 owns migration/registration/release gates;
+  U6 owns the comprehensive independent positive/negative/zero SCM and adversarial benchmark score.
+- Validation:
+  - Contracts full unit: 81 files / 855 tests passed.
+  - Research full unit: 20 files / 143 tests passed; targeted root-cause suite: 7 tests.
+  - Worker typecheck passed; targeted L4/L5 runtime suite: 2 tests, including the complete attested certificate chain and pre-sandbox HOLD.

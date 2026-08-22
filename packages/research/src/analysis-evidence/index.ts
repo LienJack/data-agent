@@ -1,4 +1,17 @@
 export {
+  assertCausalClaimAuthorized,
+  type CausalEstimateComputation,
+  computeAttributionAuthorityClosureHash,
+  computeCausalEstimateHash,
+  computeCausalQuestionHash,
+  computeIdentificationCertificateHash,
+  computeIdentificationPlanHash,
+  createCausalEstimate,
+  createCausalQuestion,
+  createIdentificationCertificate,
+  createIdentificationPlan,
+} from "./causal-identification.js";
+export {
   computeAnalysisProgramHash,
   type ProgramVerification,
   type ProgramVerificationFailure,
@@ -11,6 +24,13 @@ export {
   verifyAnalysisResult,
   verifyScaleMetamorphism,
 } from "./result-oracles.js";
+export {
+  computeRootCauseCandidateHash,
+  computeRootCauseReceiptHash,
+  createRootCauseDiscoveryCandidate,
+  createRootCauseDiscoveryReceipt,
+  type RootCauseFactorObservation,
+} from "./root-cause.js";
 export {
   computeAnalysisDerivationHash,
   type DerivationFailure,

@@ -478,6 +478,14 @@ describe("deterministic analysis contracts", () => {
         observation_bindings: [analysisBinding("effect", causalRef)],
         evidence_refs: [causalRef],
       }).success,
+    ).toBe(false);
+    expect(
+      atomicClaimV3PayloadSchema.safeParse({
+        ...fakeCausal,
+        observation_bindings: [analysisBinding("effect", causalRef)],
+        evidence_refs: [causalRef],
+        identification_certificate_ref: reference("IdentificationCertificate", 125),
+      }).success,
     ).toBe(true);
 
     const acceptedAssociation = {

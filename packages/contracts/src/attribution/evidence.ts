@@ -5,8 +5,12 @@ import {
   immutableIdSchema,
   timestampSchema,
 } from "../common/index.js";
-import { type ClosureVerdict, closureVerdictSchema } from "./contribution-closure-receipt.js";
+import { attributionFeasibilityVerdictSchema } from "./attribution-feasibility-verdict.js";
+import { attributionEligibilityDecisionSchema } from "./capability.js";
+import { closureVerdictSchema } from "./contribution-closure-receipt.js";
+import { publishedAttributionSafetyVerdictSchema } from "./safety.js";
 import { fixtureConclusionCandidateSchema } from "./truth-contract.js";
+import { contributionScmCausalTruthSchema } from "./truth-types.js";
 
 export const ATTRIBUTION_KERNEL_EVIDENCE_VERSION = "attribution-kernel-evidence@1" as const;
 
@@ -81,3 +85,51 @@ export const attributionKernelEvidenceSchema = z.strictObject({
 });
 
 export type AttributionKernelEvidence = z.infer<typeof attributionKernelEvidenceSchema>;
+
+export const causalAttributionAuthorityClosureSchema = z
+  .strictObject({
+    protocol_version: z.literal("causal-attribution-authority-closure@1.0.0"),
+    eligibility: attributionEligibilityDecisionSchema,
+    safety: publishedAttributionSafetyVerdictSchema,
+    feasibility: attributionFeasibilityVerdictSchema,
+    scm_truth: contributionScmCausalTruthSchema,
+    closure_hash: contentHashSchema,
+  })
+  .superRefine((closure, ctx) => {
+    if (
+      closure.eligibility.app_id !== closure.safety.app_id ||
+      closure.eligibility.tenant_id !== closure.safety.tenant_id ||
+      closure.eligibility.environment !== closure.safety.environment
+    ) {
+      ctx.addIssue({ code: "custom", message: "Attribution Authority Closure Scope 不一致。" });
+    }
+    if (
+      !closure.eligibility.overall_eligible ||
+      closure.eligibility.decision !== "ELIGIBLE" ||
+      closure.safety.verdict !== "GO" ||
+      closure.safety.auto_approve ||
+      closure.feasibility.verdict !== "FEASIBLE_FOR_PUBLISHED_INTEGRATION"
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "因果识别必须复用通过 Eligibility/Safety/Feasibility 的 Attribution Authority。",
+      });
+    }
+    if (
+      closure.scm_truth.expected_effect === "UNKNOWN" ||
+      !closure.scm_truth.directed_edges?.length ||
+      !closure.scm_truth.data_generating_process_version
+    ) {
+      ctx.addIssue({ code: "custom", message: "SCM Truth 必须冻结图、DGP 与已知效应方向。" });
+    }
+    if (closure.feasibility.kernel_evidence_ref !== closure.safety.evidence_id) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Feasibility 必须消费同一 Safety Evidence identity。",
+      });
+    }
+  });
+
+export type CausalAttributionAuthorityClosure = z.infer<
+  typeof causalAttributionAuthorityClosureSchema
+>;

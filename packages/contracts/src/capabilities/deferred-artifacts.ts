@@ -48,3 +48,11 @@ export const deferredCapabilityArtifactSchema = z.discriminatedUnion("level", [
 export type L3ContractArtifact = z.infer<typeof l3ContractArtifactSchema>;
 export type L4ContractArtifact = z.infer<typeof l4ContractArtifactSchema>;
 export type L5ContractArtifact = z.infer<typeof l5ContractArtifactSchema>;
+
+/** Runtime payloads exist, but registration remains fail-closed until U7 release evidence. */
+export const CAUSAL_ARTIFACT_IMPLEMENTATION_STATUS = Object.freeze({
+  contract_version: "causal-artifact-family@1.0.0",
+  delivery_state: "IMPLEMENTING",
+  executable: false,
+  public_message: "待发布门验证",
+} as const);

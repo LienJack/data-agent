@@ -33,6 +33,7 @@ export const attributionCapabilityDirectorySchema = z.strictObject({
         "PROFILE_PROJECTION",
         "CONCLUSION_AUTHORITY",
         "ELIGIBILITY",
+        "CAUSAL_IDENTIFICATION",
       ]),
       is_available: z.boolean(),
       min_required_role: z.string().min(1).max(128),

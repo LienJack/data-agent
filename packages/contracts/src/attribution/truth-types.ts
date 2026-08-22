@@ -87,17 +87,46 @@ export type ContributionExpertPriorityTruth = z.infer<typeof contributionExpertP
  * SCM causal truth: structural causal model causal truth.
  * This is a DEFERRED type for future implementation.
  */
-export const contributionScmCausalTruthSchema = z.strictObject({
-  causal_id: immutableIdSchema,
-  kind: z.literal("SCM_CAUSAL"),
-  label: z.string().min(1).max(256),
-  description: z.string().min(1).max(2048),
-  treatment_variable: z.string().min(1).max(256),
-  outcome_variable: z.string().min(1).max(256),
-  expected_effect: z.enum(["POSITIVE", "NEGATIVE", "ZERO", "UNKNOWN"]),
-  effect_size: z.number().finite().optional(),
-  metadata: z.record(z.string(), z.unknown()).default({}),
-});
+export const contributionScmCausalTruthSchema = z
+  .strictObject({
+    causal_id: immutableIdSchema,
+    kind: z.literal("SCM_CAUSAL"),
+    label: z.string().min(1).max(256),
+    description: z.string().min(1).max(2048),
+    treatment_variable: z.string().min(1).max(256),
+    outcome_variable: z.string().min(1).max(256),
+    expected_effect: z.enum(["POSITIVE", "NEGATIVE", "ZERO", "UNKNOWN"]),
+    effect_size: z.number().finite().optional(),
+    effect_interval: z
+      .strictObject({ low: z.number().finite(), high: z.number().finite() })
+      .optional(),
+    directed_edges: z
+      .array(
+        z.strictObject({
+          source: z.string().min(1).max(256),
+          target: z.string().min(1).max(256),
+        }),
+      )
+      .max(512)
+      .optional(),
+    observed_confounders: z.array(z.string().min(1).max(256)).max(64).optional(),
+    unobserved_confounders: z.array(z.string().min(1).max(256)).max(64).optional(),
+    mediators: z.array(z.string().min(1).max(256)).max(64).optional(),
+    colliders: z.array(z.string().min(1).max(256)).max(64).optional(),
+    data_generating_process_version: z.string().min(1).max(64).optional(),
+    metadata: z.record(z.string(), z.unknown()).default({}),
+  })
+  .superRefine((truth, ctx) => {
+    if (
+      truth.effect_interval &&
+      (truth.effect_interval.low > truth.effect_interval.high ||
+        (truth.effect_size !== undefined &&
+          (truth.effect_size < truth.effect_interval.low ||
+            truth.effect_size > truth.effect_interval.high)))
+    ) {
+      ctx.addIssue({ code: "custom", message: "SCM effect truth interval 无效。" });
+    }
+  });
 export type ContributionScmCausalTruth = z.infer<typeof contributionScmCausalTruthSchema>;
 
 // ─── Union type for all truth kinds ────────────────────────────────────────────
