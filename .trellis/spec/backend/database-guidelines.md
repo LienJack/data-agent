@@ -275,6 +275,58 @@ Owner 冒充、Retention expiry/replay、迟到 Usage 和零旁路 I/O Oracle。
 
 ## Migration
 
+### 场景：Graph v2 Revision Digest 与内容 Digest 校验
+
+#### 1. Scope / Trigger
+
+- Graph v2 的 read、bind、publish RPC 同时读取 `semantic_source_revision`、
+  `semantic_graph_projection` 与 `semantic_source_release_graph_projection` 时适用。
+
+#### 2. Signatures
+
+- Read RPC：`semantic.get_active_semantic_graph_studio(uuid,uuid,text,uuid,text) -> jsonb`。
+- `semantic_source_revision.source_digest` 是完整 Source Revision 的存储摘要。
+- `semantic_graph_projection.source_digest` 与 `projection_payload.source_digest` 是 Graph
+  内容摘要；binding 同名列冻结该值。
+
+#### 3. Contracts
+
+- Revision 摘要只与 `binding.source_revision_digest` 比较。
+- Graph 内容摘要必须在 projection 列、projection payload 与 binding 三方 exact match。
+- Projection storage 摘要、source revision ID、graph ID 与 graph version 仍独立校验，不能因
+  digest 修复而放宽。
+
+#### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| Revision 摘要与 binding 不同 | `SEMANTIC_GRAPH_STUDIO_SOURCE_BINDING_MISMATCH` |
+| Graph 内容摘要三方任一不同 | `SEMANTIC_GRAPH_STUDIO_SOURCE_BINDING_MISMATCH` |
+| 误把 Graph 内容摘要与 Revision 摘要比较 | 合法 release 会被错误拒绝，必须由 forward migration 修复 |
+
+#### 5. Good / Base / Bad Cases
+
+- Good：分别冻结并核对 Revision、Graph content、Projection storage 三类摘要。
+- Base：同一类摘要只在其权威列和序列化 payload 之间比较。
+- Bad：因为字段都叫 `source_digest`，跨 `source_revision` 与 projection payload 直接比较。
+
+#### 6. Tests Required
+
+- Migration 静态测试必须断言 payload `source_digest` 与
+  `v_projection.source_digest` 比较，并拒绝与 `v_source.source_digest` 比较。
+- PostgreSQL clean-install 必须执行 renderer、checksum、owner/ACL postcondition。
+- 已发布 Graph 的浏览器/API 回归必须返回 200，并显示 exact release generation。
+
+#### 7. Wrong vs Correct
+
+```sql
+-- Wrong: 两列代表不同内容域
+projection_payload ->> 'source_digest' is distinct from source_revision.source_digest
+
+-- Correct: Graph 内容摘要与 Graph 内容摘要比较
+projection_payload ->> 'source_digest' is distinct from graph_projection.source_digest
+```
+
 - Platform Migration 位于 `infra/supabase/platform/migrations/`；唯一例外是 U6
   `10590` 内由 Database Surface 冻结的 `platform.lock_u6_authority_binding`、
   `platform.lock_u6_cleanup_platform_evidence` 与 Lifecycle identity guard，禁止拆出
