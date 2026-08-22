@@ -4,6 +4,7 @@ import {
   type ArtifactReference,
   buildAgentDispatchPlan,
   buildProductTeamArtifactDocument,
+  type ProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -210,19 +211,7 @@ describe("Production Team runtime", () => {
     const calls: Array<{ operation: string; document: unknown }> = [];
     const events: unknown[] = [];
     const invoked: string[] = [];
-    const reportDocument = await buildProductTeamArtifactDocument({
-      schema_version: "product-team-artifact@1.0.0",
-      artifact_ref: reference("AnalysisReport", id(83)),
-      profile_id: "report-writing-agent",
-      task_id: id(83),
-      source_refs: [],
-      projection: {
-        kind: "REPORT",
-        title: "E-commerce 数据库表数量",
-        sections: [{ heading: "结论", body_text: "共有 14 张表。", source_refs: [] }],
-      },
-      committed_at: "2026-08-18T12:00:00.000Z",
-    });
+    const documents = new Map<string, ProductTeamArtifactDocument>();
     const runtime = createProductionTeamRuntime({
       store: store(calls),
       capability: {},
@@ -230,15 +219,53 @@ describe("Production Team runtime", () => {
         async invoke({ task, tool_id }) {
           invoked.push(`${task.profile_id}:${tool_id}`);
           if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(81));
-          if (tool_id === "sql.sandbox.execute") return reference("QueryEvidence", id(82));
+          if (tool_id === "sql.sandbox.execute") {
+            const output = reference("QueryEvidence", id(82));
+            const document = await buildProductTeamArtifactDocument({
+              schema_version: "product-team-artifact@1.0.0",
+              artifact_ref: output,
+              profile_id: "governed-text2sql-agent",
+              task_id: task.task_id,
+              source_refs: [],
+              projection: {
+                kind: "TABLE",
+                columns: [{ key: "table_count", label: "table_count", data_type: "NUMBER" }],
+                rows: [{ table_count: 14 }],
+                total_rows: 1,
+              },
+              committed_at: "2026-08-18T12:00:00.000Z",
+            });
+            documents.set(output.artifact_id, document);
+            return document.artifact_ref;
+          }
           if (tool_id === "evidence.read") return reference("QueryEvidence", id(82));
-          if (tool_id === "report.project") return reportDocument.artifact_ref;
+          if (tool_id === "report.project") {
+            const output = reference("AnalysisReport", id(83));
+            const document = await buildProductTeamArtifactDocument({
+              schema_version: "product-team-artifact@1.0.0",
+              artifact_ref: output,
+              profile_id: "report-writing-agent",
+              task_id: task.task_id,
+              source_refs: [reference("QueryEvidence", id(82))],
+              projection: {
+                kind: "REPORT",
+                title: "E-commerce 数据库表数量",
+                sections: [{ heading: "结论", body_text: "共有 14 张表。", source_refs: [] }],
+              },
+              committed_at: "2026-08-18T12:00:00.000Z",
+            });
+            documents.set(output.artifact_id, document);
+            return document.artifact_ref;
+          }
           return null;
         },
       },
       artifacts: {
         verifyCommitted: async () => ({ ok: true, value: true }),
-        resolveCommitted: async () => ({ ok: true, value: reportDocument }),
+        resolveCommitted: async (artifactReference) => ({
+          ok: true,
+          value: documents.get(artifactReference.artifact_id) ?? null,
+        }),
       },
       now: () => new Date("2026-08-18T12:00:01.000Z"),
     });
@@ -371,34 +398,60 @@ describe("Production Team runtime", () => {
     });
     const calls: Array<{ operation: string; document: unknown }> = [];
     const events: unknown[] = [];
-    const reportDocument = await buildProductTeamArtifactDocument({
-      schema_version: "product-team-artifact@1.0.0",
-      artifact_ref: reference("AnalysisReport", id(94)),
-      profile_id: "report-writing-agent",
-      task_id: id(94),
-      source_refs: [reference("QueryEvidence", id(93))],
-      projection: {
-        kind: "REPORT",
-        title: "Adaptive Report",
-        sections: [{ heading: "结论", body_text: "已验收。", source_refs: [] }],
-      },
-      committed_at: "2026-08-18T12:00:00.000Z",
-    });
+    const documents = new Map<string, ProductTeamArtifactDocument>();
     const runtime = createProductionTeamRuntime({
       store: store(calls),
       capability: {},
       tools: {
-        async invoke({ tool_id }) {
+        async invoke({ task, tool_id }) {
           if (tool_id === "sql.compiler.compile") return reference("SqlArtifact", id(91));
-          if (tool_id === "sql.sandbox.execute") return reference("QueryEvidence", id(93));
+          if (tool_id === "sql.sandbox.execute") {
+            const output = reference("QueryEvidence", id(93));
+            const document = await buildProductTeamArtifactDocument({
+              schema_version: "product-team-artifact@1.0.0",
+              artifact_ref: output,
+              profile_id: "governed-text2sql-agent",
+              task_id: task.task_id,
+              source_refs: [],
+              projection: {
+                kind: "TABLE",
+                columns: [{ key: "value", label: "value", data_type: "NUMBER" }],
+                rows: [{ value: 1 }],
+                total_rows: 1,
+              },
+              committed_at: "2026-08-18T12:00:00.000Z",
+            });
+            documents.set(output.artifact_id, document);
+            return document.artifact_ref;
+          }
           if (tool_id === "evidence.read") return reference("QueryEvidence", id(93));
-          if (tool_id === "report.project") return reportDocument.artifact_ref;
+          if (tool_id === "report.project") {
+            const output = reference("AnalysisReport", id(94));
+            const document = await buildProductTeamArtifactDocument({
+              schema_version: "product-team-artifact@1.0.0",
+              artifact_ref: output,
+              profile_id: "report-writing-agent",
+              task_id: task.task_id,
+              source_refs: [reference("QueryEvidence", id(93))],
+              projection: {
+                kind: "REPORT",
+                title: "Adaptive Report",
+                sections: [{ heading: "结论", body_text: "已验收。", source_refs: [] }],
+              },
+              committed_at: "2026-08-18T12:00:00.000Z",
+            });
+            documents.set(output.artifact_id, document);
+            return document.artifact_ref;
+          }
           return null;
         },
       },
       artifacts: {
         verifyCommitted: async () => ({ ok: true, value: true }),
-        resolveCommitted: async () => ({ ok: true, value: reportDocument }),
+        resolveCommitted: async (artifactReference) => ({
+          ok: true,
+          value: documents.get(artifactReference.artifact_id) ?? null,
+        }),
       },
       now: () => new Date("2026-08-18T12:00:01.000Z"),
     });
@@ -465,33 +518,34 @@ describe("Production Team runtime", () => {
     const calls: Array<{ operation: string; document: unknown }> = [];
     const events: unknown[] = [];
     const invoked: string[] = [];
-    const draftOutput = reference("AnalysisReport", id(96));
-    const document = await buildProductTeamArtifactDocument({
-      schema_version: "product-team-artifact@1.0.0",
-      artifact_ref: draftOutput,
-      profile_id: "semantic-management-agent",
-      task_id: id(96),
-      source_refs: [],
-      projection: {
-        kind: "REPORT",
-        title: "冻结语义层说明",
-        sections: [{ heading: "语义层", body_text: "只读语义层。", source_refs: [] }],
-      },
-      committed_at: "2026-08-18T12:00:00.000Z",
-    });
-    const output = document.artifact_ref;
+    const documents: ProductTeamArtifactDocument[] = [];
     const runtime = createProductionTeamRuntime({
       store: store(calls),
       capability: {},
       tools: {
-        async invoke({ tool_id }) {
+        async invoke({ task, tool_id }) {
           invoked.push(tool_id);
-          return output;
+          const output = reference("AnalysisReport", id(96));
+          const document = await buildProductTeamArtifactDocument({
+            schema_version: "product-team-artifact@1.0.0",
+            artifact_ref: output,
+            profile_id: "semantic-management-agent",
+            task_id: task.task_id,
+            source_refs: [],
+            projection: {
+              kind: "REPORT",
+              title: "冻结语义层说明",
+              sections: [{ heading: "语义层", body_text: "只读语义层。", source_refs: [] }],
+            },
+            committed_at: "2026-08-18T12:00:00.000Z",
+          });
+          documents.push(document);
+          return document.artifact_ref;
         },
       },
       artifacts: {
         verifyCommitted: async () => ({ ok: true, value: true }),
-        resolveCommitted: async () => ({ ok: true, value: document }),
+        resolveCommitted: async () => ({ ok: true, value: documents.at(-1) ?? null }),
       },
       now: () => new Date("2026-08-18T12:00:01.000Z"),
     });
@@ -517,7 +571,7 @@ describe("Production Team runtime", () => {
     ).resolves.toEqual({ status: "ACCEPTED", reason_code: "TEAM_ACCEPTED" });
     expect(invoked).toEqual(["semantic.catalog.read"]);
     expect(invoked).not.toContain("semantic.candidate.write");
-    expect(document.artifact_ref.artifact_type).toBe("AnalysisReport");
+    expect(documents[0]?.artifact_ref.artifact_type).toBe("AnalysisReport");
     expect(
       JSON.stringify(calls.filter(({ operation }) => operation === "COMMIT_COMPLETION")),
     ).not.toContain("SemanticGraphCandidate");

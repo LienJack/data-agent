@@ -341,6 +341,22 @@ async function commitAcceptedCompletion(input: {
   if (!portValue(await input.artifacts.verifyCommitted(input.output_ref))) {
     throw new ProductionTeamRuntimeError("TEAM_OUTPUT_ARTIFACT_NOT_COMMITTED");
   }
+  const document = await verifyProductTeamArtifactDocument(
+    portValue(await input.artifacts.resolveCommitted(input.output_ref)),
+  );
+  if (
+    artifactReferenceIdentity(document.artifact_ref) !==
+      artifactReferenceIdentity(input.output_ref) ||
+    document.profile_id !== input.task.profile_id ||
+    document.task_id !== input.task.task_id
+  ) {
+    throw new ProductionTeamRuntimeError("TEAM_OUTPUT_ARTIFACT_CORRELATION_INVALID");
+  }
+  for (const sourceRef of document.source_refs) {
+    if (!portValue(await input.artifacts.verifyCommitted(sourceRef))) {
+      throw new ProductionTeamRuntimeError("TEAM_SOURCE_ARTIFACT_NOT_COMMITTED");
+    }
+  }
   const completion = await buildTaskCompletionReceipt(input.task, input.task_capability, {
     schema_version: "task-completion-command@2.0.0",
     completion_id: identity(input.lease.run_id, `completion:${input.task.task_id}`),

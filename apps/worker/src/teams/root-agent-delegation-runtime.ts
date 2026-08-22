@@ -10,6 +10,7 @@ import {
   agentSpecialistProfileIdSchema,
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
+  type ProductTeamArtifactDocument,
   type ResolvedContextCommitResult,
   type RootAgentDecisionCandidate,
   verifyResolvedContextCommitResult,
@@ -21,6 +22,7 @@ import type {
   DataAgentTeamRunnerDependencies,
 } from "./data-agent-team-runner.js";
 import { verifySelectedProductProfiles } from "./mastra-profile-composition.js";
+import { createRootAnswerVerifier } from "./root-answer-verifier.js";
 
 type RootExecution = Parameters<RunWorkflowExecutorPort["execute"]>[0];
 
@@ -37,6 +39,9 @@ export interface RootAgentDelegationRuntimeDependencies {
   readonly runtime: DataAgentProductTeamRuntimePort;
   readonly artifacts: {
     verifyCommitted(reference: ArtifactReference): Promise<PortResult<boolean>>;
+    resolveCommitted(
+      reference: ArtifactReference,
+    ): Promise<PortResult<ProductTeamArtifactDocument | null>>;
   };
 }
 
@@ -141,26 +146,12 @@ function selectLegacyRuntimeProfiles(input: {
   return selected;
 }
 
-async function emitDirectAnswer(decision: RootAgentDecisionCandidate, execution: RootExecution) {
-  if (decision.kind !== "FINAL_ANSWER") {
-    throw new RootAgentDelegationRuntimeError("ROOT_AGENT_DECISION_KIND_INVALID");
-  }
-  const unsupported = decision.sections.some(({ kind }) => kind !== "GENERAL_TEXT");
-  if (unsupported) {
-    throw new RootAgentDelegationRuntimeError("ROOT_ANSWER_ARTIFACT_SYNTHESIS_REQUIRED");
-  }
-  await emit(execution, {
-    kind: "answer_delta",
-    key: "root.answer.direct",
-    delta: decision.sections
-      .map((section) => (section.kind === "GENERAL_TEXT" ? section.text : ""))
-      .join("\n\n"),
-  });
-}
-
 export function createRootAgentDelegationRuntime(
   dependencies: RootAgentDelegationRuntimeDependencies,
 ): NonNullable<DataAgentTeamRunnerDependencies["root_runtime"]> {
+  const answerVerifier = createRootAnswerVerifier({
+    artifacts: { resolveCommitted: dependencies.artifacts.resolveCommitted },
+  });
   return Object.freeze({
     async execute(input: {
       readonly decision: RootAgentDecisionCandidate;
@@ -176,7 +167,19 @@ export function createRootAgentDelegationRuntime(
           throw new RootAgentDelegationRuntimeError("ROOT_AGENT_LEASE_INVALID");
         }
         if (input.decision.kind === "FINAL_ANSWER") {
-          await emitDirectAnswer(input.decision, input.execution);
+          const verification = await answerVerifier.verify({
+            decision: input.decision,
+            visible_message_refs: [],
+            accepted_artifact_refs: [],
+          });
+          if (verification.status !== "ACCEPTED") {
+            throw new RootAgentDelegationRuntimeError(verification.reason_code);
+          }
+          await emit(input.execution, {
+            kind: "answer_delta",
+            key: "root.answer.direct",
+            delta: verification.rendered_text,
+          });
           return { status: "ACCEPTED", reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED" };
         }
 

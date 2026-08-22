@@ -391,6 +391,8 @@ export async function runWorkerProcess(
             runtime: productionTeamRuntime,
             artifacts: {
               verifyCommitted: (reference) => teamArtifacts.verifyCommitted(capability, reference),
+              resolveCommitted: (reference) =>
+                teamArtifacts.resolveCommitted(capability, reference),
             },
           }),
           runtime: productionTeamRuntime,

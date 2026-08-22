@@ -5,7 +5,7 @@ import {
   type RootAgentDecisionCandidate,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { admitRootAgentDelegations, type SubagentDelegationAdmissionError } from "../src/index.js";
+import { admitRootAgentDelegations } from "../src/index.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -171,7 +171,7 @@ describe("Host Subagent delegation admission", () => {
         profile_ceiling: () => runCeiling,
         artifact_is_accepted: async () => false,
       }),
-    ).rejects.toMatchObject<Partial<SubagentDelegationAdmissionError>>({
+    ).rejects.toMatchObject({
       code: "SUBAGENT_PROFILE_CATALOG_BINDING_STALE",
     });
     await expect(
@@ -183,7 +183,7 @@ describe("Host Subagent delegation admission", () => {
         profile_ceiling: () => runCeiling,
         artifact_is_accepted: async () => false,
       }),
-    ).rejects.toMatchObject<Partial<SubagentDelegationAdmissionError>>({
+    ).rejects.toMatchObject({
       code: "SUBAGENT_INPUT_ARTIFACT_NOT_ACCEPTED",
     });
   });
