@@ -95,6 +95,7 @@ function exactEnabledReferences(
   return result;
 }
 
+/** @deprecated Offline legacy-baseline classification only. Never use for runtime dispatch. */
 export function classifyAgentQuestion(question: string): AgentQuestionClass {
   const normalized = question.trim().toLocaleLowerCase("zh-CN");
   if (/(归因|因果|causal|attribution)/u.test(normalized)) return "ATTRIBUTION";
@@ -115,6 +116,7 @@ export function classifyAgentQuestion(question: string): AgentQuestionClass {
 
 export type AgentVisualizationIntent = "TREND" | "COMPARISON" | "COMPOSITION";
 
+/** @deprecated Offline legacy-baseline classification only. Never use for runtime dispatch. */
 export function classifyAgentVisualizationIntent(
   question: string,
 ): AgentVisualizationIntent | null {
@@ -242,7 +244,7 @@ async function adaptivePlan(input: {
   });
 }
 
-export async function planAgentDispatch(input: {
+async function planLegacyKeywordDispatch(input: {
   readonly run_id: string;
   readonly question: string;
   readonly enabled_profiles: readonly AgentProductProfileRegistryItem[];
@@ -381,5 +383,12 @@ export async function planAgentDispatch(input: {
   };
 }
 
-/** Legacy keyword baseline retained only for v1 replay and shadow evaluation. */
-export const legacyKeywordDispatchBaseline = planAgentDispatch;
+/**
+ * Offline legacy keyword baseline retained for historical replay and shadow comparison.
+ * Production Run creation and Worker execution must use a frozen Subagent Catalog plus Root Harness.
+ */
+export async function legacyKeywordDispatchBaseline(
+  input: Parameters<typeof planLegacyKeywordDispatch>[0],
+): Promise<PlannedAgentDispatch> {
+  return planLegacyKeywordDispatch(input);
+}

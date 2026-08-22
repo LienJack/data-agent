@@ -15,6 +15,8 @@ import {
   scoreCardReference,
 } from "@data-agent/contracts";
 
+export * from "./agent-routing/harness-routing-oracle.js";
+export * from "./agent-routing/harness-routing-suite.js";
 export * from "./test-center/index.js";
 
 // ============================================================

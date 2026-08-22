@@ -7,7 +7,7 @@ import {
   classifyAgentQuestion,
   classifyAgentVisualizationIntent,
   freezeSubagentCapabilityCatalog,
-  planAgentDispatch,
+  legacyKeywordDispatchBaseline,
 } from "../../src/runs/agent-dispatch-planner.js";
 
 const runId = "00000000-0000-4000-8000-000000000101";
@@ -142,7 +142,7 @@ describe("adaptive Agent dispatch planner", () => {
   it("always defers formal attribution before every rollout executor branch", async () => {
     for (const rolloutMode of ["SHADOW", "ENFORCED", "ROOT_ONLY_DEFER_DATA"] as const) {
       await expect(
-        planAgentDispatch({
+        legacyKeywordDispatchBaseline({
           run_id: runId,
           question: "请给出订单下降的正式归因结论",
           enabled_profiles: catalog,
@@ -162,7 +162,7 @@ describe("adaptive Agent dispatch planner", () => {
   });
 
   it("freezes ENFORCED DIRECT with zero profiles and Text2SQL-only TEAM", async () => {
-    const direct = await planAgentDispatch({
+    const direct = await legacyKeywordDispatchBaseline({
       run_id: runId,
       question: "什么是同比",
       enabled_profiles: catalog,
@@ -181,7 +181,7 @@ describe("adaptive Agent dispatch planner", () => {
       },
       shadow_plan: null,
     });
-    const data = await planAgentDispatch({
+    const data = await legacyKeywordDispatchBaseline({
       run_id: runId,
       question: "本月订单是多少",
       enabled_profiles: catalog,
@@ -196,7 +196,7 @@ describe("adaptive Agent dispatch planner", () => {
       },
     });
 
-    const trend = await planAgentDispatch({
+    const trend = await legacyKeywordDispatchBaseline({
       run_id: runId,
       question: "按月展示订单趋势",
       enabled_profiles: catalog,
@@ -212,7 +212,7 @@ describe("adaptive Agent dispatch planner", () => {
   });
 
   it("freezes Report DAG and legacy SHADOW binding", async () => {
-    const enforced = await planAgentDispatch({
+    const enforced = await legacyKeywordDispatchBaseline({
       run_id: runId,
       question: "生成正式报告",
       enabled_profiles: catalog,
@@ -235,7 +235,7 @@ describe("adaptive Agent dispatch planner", () => {
         ],
       },
     });
-    const shadow = await planAgentDispatch({
+    const shadow = await legacyKeywordDispatchBaseline({
       run_id: runId,
       question: "本月订单是多少",
       enabled_profiles: catalog,
@@ -257,7 +257,7 @@ describe("adaptive Agent dispatch planner", () => {
 
   it("returns durable-admission DEFERRED decisions for root-only and missing capability", async () => {
     await expect(
-      planAgentDispatch({
+      legacyKeywordDispatchBaseline({
         run_id: runId,
         question: "本月订单是多少",
         enabled_profiles: catalog,
@@ -268,7 +268,7 @@ describe("adaptive Agent dispatch planner", () => {
       admission: { kind: "DEFERRED", reason_code: "ROOT_ONLY_DEFER_DATA" },
     });
     await expect(
-      planAgentDispatch({
+      legacyKeywordDispatchBaseline({
         run_id: runId,
         question: "生成正式报告",
         enabled_profiles: catalog.filter(
@@ -281,7 +281,7 @@ describe("adaptive Agent dispatch planner", () => {
       admission: { kind: "DEFERRED", reason_code: "AGENT_PROFILE_NOT_ALLOWED" },
     });
     await expect(
-      planAgentDispatch({
+      legacyKeywordDispatchBaseline({
         run_id: runId,
         question: "修改指标定义并发布语义层",
         enabled_profiles: catalog,

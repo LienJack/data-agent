@@ -80,7 +80,7 @@ export {
   type PostgresResearchResourceInvocation,
   type PostgresResearchResourceInvocationOptions,
 } from "./research/postgres-research-resource-invocation.js";
-export * from "./runs/agent-dispatch-planner.js";
+export { freezeSubagentCapabilityCatalog } from "./runs/agent-dispatch-planner.js";
 export {
   createPostgresEffectiveConfigResolver,
   type EffectiveConfigLookup,
