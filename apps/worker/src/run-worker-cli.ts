@@ -29,6 +29,7 @@ import {
   createPostgresResolvedContextRegistry,
   createPostgresRunEventStore,
   createPostgresRunQueue,
+  createPostgresSemanticExplorerReader,
   createPostgresSemanticInductionRegistry,
   createPostgresTeamRunStore,
   createPostgresWorkspaceDataRepository,
@@ -65,6 +66,7 @@ import {
   type WorkerHealthState,
 } from "./runs/run-worker-daemon.js";
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
+import { createFrozenSemanticRelationshipReadPort } from "./semantic/semantic-relationship-read-port.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
 import { createDirectAnswerExecutor } from "./teams/direct-answer-executor.js";
 import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
@@ -348,6 +350,12 @@ export async function runWorkerProcess(
           authorizer: capabilityAuthority.authorizer,
         });
         const ecommerceSandbox = createPostgresEcommerceBenchmarkExecutor({ pool });
+        const semanticRelationships = createFrozenSemanticRelationshipReadPort(
+          createPostgresSemanticExplorerReader({
+            pool: sqlPool,
+            authorizer: capabilityAuthority.authorizer,
+          }),
+        );
         const productionTeamRuntime = createProductionTeamRuntime({
           store: teamStore,
           capability,
@@ -361,6 +369,7 @@ export async function runWorkerProcess(
                 capability,
                 artifacts: teamArtifacts,
                 sandbox: ecommerceSandbox,
+                semantic_relationships: semanticRelationships,
               },
               input,
             ),

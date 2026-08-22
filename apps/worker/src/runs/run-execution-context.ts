@@ -30,6 +30,12 @@ const trustedResolvedContextCapabilities = new WeakSet<object>();
 export interface RunProviderDispatchCapability {
   invoke(input: {
     readonly logical_call_id: string;
+    readonly turn?: Readonly<{
+      kind: "SPECIALIST";
+      stage: "TEXT2SQL" | "REPORT";
+      profile_id: string;
+      objective: string;
+    }>;
   }): Promise<PortResult<AuditedModelProviderResult>>;
 }
 
@@ -39,6 +45,7 @@ export interface RunBoundProviderDispatcher {
     readonly effective_config: EffectiveRunConfigReceiptCandidate;
     readonly context_receipt: ContextReceiptBinding;
     readonly logical_call_id: string;
+    readonly turn?: Parameters<RunProviderDispatchCapability["invoke"]>[0]["turn"];
     readonly signal: AbortSignal;
   }): Promise<PortResult<AuditedModelProviderResult>>;
 }
@@ -169,6 +176,7 @@ export function createRunExecutionContext({
             effective_config: effectiveConfig,
             context_receipt: contextReceipt,
             logical_call_id: logicalCallId.data,
+            ...(input.turn ? { turn: input.turn } : {}),
             signal: runSignal,
           });
         },

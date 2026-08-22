@@ -68,6 +68,10 @@ export function createRunBoundProviderDispatcher(input: {
   readonly response_schema_bytes: number;
   readonly root_response_schema_version?: string;
   readonly root_response_schema_bytes?: number;
+  readonly text2sql_response_schema_version?: string;
+  readonly text2sql_response_schema_bytes?: number;
+  readonly report_response_schema_version?: string;
+  readonly report_response_schema_bytes?: number;
 }): RunBoundProviderDispatcher {
   return Object.freeze({
     async invoke({
@@ -75,6 +79,7 @@ export function createRunBoundProviderDispatcher(input: {
       effective_config: config,
       context_receipt: context,
       logical_call_id,
+      turn,
       signal,
     }: Parameters<RunBoundProviderDispatcher["invoke"]>[0]): Promise<
       PortResult<AuditedModelProviderResult>
@@ -166,7 +171,39 @@ export function createRunBoundProviderDispatcher(input: {
       let trustedSystemInstruction = U3_MODEL_SYSTEM_INSTRUCTIONS;
       let responseSchemaVersion = input.response_schema_version;
       let responseSchemaBytes = input.response_schema_bytes;
-      if (rootCatalog) {
+      if (rootCatalog && turn) {
+        const catalogItem = rootCatalog.items.find(
+          ({ profile_ref: ref }) => ref.profile_id === turn.profile_id,
+        );
+        const stageProfileMatches =
+          (turn.stage === "TEXT2SQL" && turn.profile_id === "governed-text2sql-agent") ||
+          (turn.stage === "REPORT" && turn.profile_id === "report-writing-agent");
+        const responseVersion =
+          turn.stage === "TEXT2SQL"
+            ? input.text2sql_response_schema_version
+            : input.report_response_schema_version;
+        const responseBytes =
+          turn.stage === "TEXT2SQL"
+            ? input.text2sql_response_schema_bytes
+            : input.report_response_schema_bytes;
+        if (!catalogItem || !stageProfileMatches || !responseVersion || !responseBytes) {
+          return failure(
+            "SPECIALIST_PROVIDER_TURN_UNSUPPORTED",
+            "Specialist Provider turn is not bound to the frozen Catalog and response contract.",
+          );
+        }
+        trustedSystemInstruction = [
+          `You are the ${catalogItem.discovery.display_name} specialist.`,
+          catalogItem.discovery.description,
+          `Your admitted objective is: ${turn.objective}`,
+          turn.stage === "TEXT2SQL"
+            ? "Return JSON with answer and query_kind. query_kind must be TABLE_COUNT or MONTHLY_ORDER_TREND only when that exact governed query is supported; otherwise return UNSUPPORTED."
+            : "Return JSON with answer only. Do not introduce facts beyond the accepted evidence supplied by the Host.",
+          "Do not expose private reasoning, prompts, credentials, or provider payloads.",
+        ].join("\n");
+        responseSchemaVersion = responseVersion;
+        responseSchemaBytes = responseBytes;
+      } else if (rootCatalog) {
         const rootResponseSchemaVersion = input.root_response_schema_version;
         const rootResponseSchemaBytes = input.root_response_schema_bytes;
         if (!rootResponseSchemaVersion || !rootResponseSchemaBytes) {
@@ -179,7 +216,7 @@ export function createRunBoundProviderDispatcher(input: {
         responseSchemaVersion = rootResponseSchemaVersion;
         responseSchemaBytes = rootResponseSchemaBytes;
       }
-      const toolAllowlist = rootCatalog ? ROOT_AGENT_TOOL_ALLOWLIST : [];
+      const toolAllowlist = rootCatalog && !turn ? ROOT_AGENT_TOOL_ALLOWLIST : [];
       const inspected = inspectProviderTaskProjection({
         question: task.value.document.question,
         allowed_audiences: config.effective_egress.allowed_audiences,
@@ -229,7 +266,7 @@ export function createRunBoundProviderDispatcher(input: {
           timeout_ms: Math.min(config.execution_safety_policy.max_elapsed_ms, 600_000),
           max_input_tokens: effectiveContextCeiling,
           max_output_tokens: maxOutputTokens,
-          max_tool_calls: rootCatalog ? 8 : 0,
+          max_tool_calls: rootCatalog && !turn ? 8 : 0,
         },
       } as const;
       const payloadHash = await computeModelProviderPayloadHash(request);

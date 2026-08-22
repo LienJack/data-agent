@@ -17,6 +17,99 @@ const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 describe("Production Team governed chart publication", () => {
+  it("reads frozen semantic relationships without invoking Text2SQL or table count", async () => {
+    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+    const lease = {
+      scope,
+      run_id: id(5),
+      lease_duration_ms: 30_000,
+      expires_at: "2026-08-22T01:00:30.000Z",
+    } as ProductionTeamToolFactoryInput["lease"];
+    let committed: ProductTeamArtifactDocument | null = null;
+    const tableCount = vi.fn();
+    const relationshipRead = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        release_identity: { release_id: id(22), release_digest: hash("c") },
+        nodes: [
+          { node_key: hash("1"), name: "orders" },
+          { node_key: hash("2"), name: "customers" },
+        ],
+        edges: [
+          {
+            category: "JOIN",
+            source_node_key: hash("1"),
+            target_node_key: hash("2"),
+            label: "orders.customer_id -> customers.id",
+          },
+        ],
+      },
+    }));
+    const tools = createProductionTeamTools(
+      {
+        capability: {},
+        artifacts: {
+          async commit(_capability, _lease, document) {
+            committed = document;
+            return { ok: true, value: document.artifact_ref };
+          },
+          commitWorkspaceChart: vi.fn(),
+          resolveCommitted: vi.fn(),
+        },
+        sandbox: {
+          execute: vi.fn(),
+          executeTableCount: tableCount,
+          executeMonthlyOrderTrend: vi.fn(),
+        },
+        semantic_relationships: { read: relationshipRead as never },
+      },
+      {
+        lease,
+        execution_context: {} as ProductionTeamToolFactoryInput["execution_context"],
+        resolved_context_ref: {
+          package_id: id(20),
+          package_hash: hash("a"),
+          receipt_id: id(21),
+          receipt_hash: hash("b"),
+          semantic_domain: "commerce",
+          semantic_release_id: id(22),
+          semantic_release_hash: hash("c"),
+        },
+        accepted_evidence_ref: null,
+        dispatch_plan: null,
+        delegation: null,
+      },
+    );
+    const result = await tools.invoke({
+      task: {
+        task_id: id(24),
+        run_id: lease.run_id,
+        profile_id: "semantic-management-agent",
+        scope,
+      } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"],
+      profile: {
+        revision: { profile_id: "semantic-management-agent" },
+      } as AgentProductProfileRegistryItem,
+      tool_id: "semantic.catalog.read",
+      context_epoch: { epoch_id: id(25), build_signature: hash("e") },
+    });
+
+    expect(result).toMatchObject({ output_ref: { artifact_type: "AnalysisReport" } });
+    expect(relationshipRead).toHaveBeenCalledOnce();
+    expect(tableCount).not.toHaveBeenCalled();
+    expect(committed).toMatchObject({
+      projection: {
+        kind: "REPORT",
+        title: "冻结语义图关系证据",
+        sections: expect.arrayContaining([
+          expect.objectContaining({
+            body_text: expect.stringContaining("[JOIN] orders -> customers"),
+          }),
+        ]),
+      },
+    });
+  });
+
   it("keeps QueryEvidence as output and publishes a sealed chart companion for trend intent", async () => {
     const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
     const lease = {
@@ -42,10 +135,13 @@ describe("Production Team governed chart publication", () => {
       principal_id: lease.principal_id,
       run_id: lease.run_id,
     });
-    const provider = vi.fn(async () => ({
+    const provider = vi.fn(async (_input: unknown) => ({
       ok: true as const,
       value: {
-        output_text: JSON.stringify({ answer: "按月统计订单趋势。" }),
+        output_text: JSON.stringify({
+          answer: "按月统计订单趋势。",
+          query_kind: "MONTHLY_ORDER_TREND",
+        }),
         tool_calls: [],
         projection: { status: "COMPLETED" as const },
       },
@@ -117,6 +213,12 @@ describe("Production Team governed chart publication", () => {
             ],
           })),
         },
+        semantic_relationships: {
+          read: vi.fn(async () => ({
+            ok: false as const,
+            error: { code: "UNUSED", message: "unused", retryable: false },
+          })),
+        },
       },
       {
         lease: lease as ProductionTeamToolFactoryInput["lease"],
@@ -126,9 +228,16 @@ describe("Production Team governed chart publication", () => {
           package_hash: hash("a"),
           receipt_id: id(21),
           receipt_hash: hash("b"),
+          semantic_domain: "commerce",
+          semantic_release_id: id(22),
+          semantic_release_hash: hash("c"),
         },
         accepted_evidence_ref: null,
         dispatch_plan: plan,
+        delegation: {
+          profile: { revision: { profile_id: "governed-text2sql-agent" } },
+          call: { objective: "查询每月订单趋势" },
+        } as ProductionTeamToolFactoryInput["delegation"],
       },
     );
     const task = {
@@ -164,5 +273,13 @@ describe("Production Team governed chart publication", () => {
       projection: { kind: "CHART", chart_type: "LINE", x_key: "month" },
     });
     expect(provider).toHaveBeenCalledOnce();
+    expect(provider.mock.calls[0]?.[0]).toMatchObject({
+      turn: {
+        kind: "SPECIALIST",
+        stage: "TEXT2SQL",
+        profile_id: "governed-text2sql-agent",
+        objective: "查询每月订单趋势",
+      },
+    });
   });
 });

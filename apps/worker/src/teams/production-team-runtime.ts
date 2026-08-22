@@ -70,6 +70,7 @@ export interface ProductionTeamToolFactoryInput {
   >[0]["resolved_context_ref"];
   readonly accepted_evidence_ref: ArtifactReference | null;
   readonly dispatch_plan: AgentDispatchPlan | null;
+  readonly delegation: AdmittedSubagentDelegation | null;
 }
 
 class ProductionTeamRuntimeError extends Error {
@@ -568,7 +569,7 @@ export function createProductionTeamRuntime(
           profiles: [...input.profiles.values()].map(({ revision }) => revision.revision_hash),
         });
         let evidenceRef: ArtifactReference | null = null;
-        for (const profileId of executionOrder) {
+        for (const [executionIndex, profileId] of executionOrder.entries()) {
           const task = tasks.get(profileId);
           if (!task) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_TASK_MISSING");
           if (!input.dispatch_plan && profileId === "semantic-management-agent") {
@@ -617,6 +618,7 @@ export function createProductionTeamRuntime(
               resolved_context_ref: input.resolved_context_ref,
               accepted_evidence_ref: evidenceRef,
               dispatch_plan: input.dispatch_plan ?? null,
+              delegation: input.admitted_delegations?.[executionIndex] ?? null,
             }) ?? dependencies.tools;
           if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
           const registry = await createMastraProfileComposition({

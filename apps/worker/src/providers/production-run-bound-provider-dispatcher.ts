@@ -33,6 +33,8 @@ import { createRunBoundProviderDispatcher } from "./run-bound-provider-dispatche
 import { createTrustedUtf8InputTokenUpperBoundCounter } from "./trusted-input-token-upper-bound.js";
 
 const U3_RESPONSE_SCHEMA_VERSION = "qa-answer@1.0.0";
+export const TEXT2SQL_SPECIALIST_RESPONSE_SCHEMA_VERSION = "text2sql-specialist-answer@1.0.0";
+export const REPORT_SPECIALIST_RESPONSE_SCHEMA_VERSION = "report-specialist-answer@1.0.0";
 
 /** Credential presence can never widen the production connection Authority. */
 export function resolveProductionProviderConnectionKinds(
@@ -157,21 +159,44 @@ export function createProductionRunBoundProviderDispatcher(input: {
   const responseSchemas = new ServerModelResponseSchemaRegistry([
     {
       response_schema_version: U3_RESPONSE_SCHEMA_VERSION,
-      schema: z.strictObject({ answer: z.string().min(1) }),
+      schema: z.strictObject({
+        answer: z.string().min(1),
+        query_kind: z.enum(["TABLE_COUNT", "MONTHLY_ORDER_TREND", "UNSUPPORTED"]).optional(),
+      }),
     },
     {
       response_schema_version: ROOT_AGENT_RESPONSE_SCHEMA_VERSION,
       schema: rootAgentFinalAnswerOutputSchema,
     },
+    {
+      response_schema_version: TEXT2SQL_SPECIALIST_RESPONSE_SCHEMA_VERSION,
+      schema: z.strictObject({
+        answer: z.string().min(1),
+        query_kind: z.enum(["TABLE_COUNT", "MONTHLY_ORDER_TREND", "UNSUPPORTED"]),
+      }),
+    },
+    {
+      response_schema_version: REPORT_SPECIALIST_RESPONSE_SCHEMA_VERSION,
+      schema: z.strictObject({ answer: z.string().min(1) }),
+    },
   ]);
   const deepseekTemplate = getModelProviderBinding("deepseek");
   const registeredResponseSchema = responseSchemas.resolve(U3_RESPONSE_SCHEMA_VERSION);
   const registeredRootResponseSchema = responseSchemas.resolve(ROOT_AGENT_RESPONSE_SCHEMA_VERSION);
+  const registeredText2SqlResponseSchema = responseSchemas.resolve(
+    TEXT2SQL_SPECIALIST_RESPONSE_SCHEMA_VERSION,
+  );
+  const registeredReportResponseSchema = responseSchemas.resolve(
+    REPORT_SPECIALIST_RESPONSE_SCHEMA_VERSION,
+  );
   if (!registeredResponseSchema) {
     throw new TypeError("U3_RESPONSE_SCHEMA_NOT_REGISTERED");
   }
   if (!registeredRootResponseSchema) {
     throw new TypeError("ROOT_AGENT_RESPONSE_SCHEMA_NOT_REGISTERED");
+  }
+  if (!registeredText2SqlResponseSchema || !registeredReportResponseSchema) {
+    throw new TypeError("SPECIALIST_RESPONSE_SCHEMA_NOT_REGISTERED");
   }
   const transport = createPersistedModelProviderTransport({
     profile_resolver: resolveAvailableProfile,
@@ -253,5 +278,9 @@ export function createProductionRunBoundProviderDispatcher(input: {
     response_schema_bytes: registeredResponseSchema.canonical_schema_bytes,
     root_response_schema_version: ROOT_AGENT_RESPONSE_SCHEMA_VERSION,
     root_response_schema_bytes: registeredRootResponseSchema.canonical_schema_bytes,
+    text2sql_response_schema_version: TEXT2SQL_SPECIALIST_RESPONSE_SCHEMA_VERSION,
+    text2sql_response_schema_bytes: registeredText2SqlResponseSchema.canonical_schema_bytes,
+    report_response_schema_version: REPORT_SPECIALIST_RESPONSE_SCHEMA_VERSION,
+    report_response_schema_bytes: registeredReportResponseSchema.canonical_schema_bytes,
   });
 }

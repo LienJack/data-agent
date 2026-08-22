@@ -320,6 +320,9 @@ describe("Data Agent Team runner", () => {
           package_hash: resolved.package.package_hash,
           receipt_id: resolved.receipt.receipt_id,
           receipt_hash: resolved.receipt.receipt_hash,
+          semantic_domain: resolved.package.semantic_domain,
+          semantic_release_id: resolved.package.semantic_release.resource_id,
+          semantic_release_hash: resolved.package.semantic_release.resource_hash,
         },
       }),
     );

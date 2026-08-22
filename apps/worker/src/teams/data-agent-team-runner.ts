@@ -51,6 +51,9 @@ export interface DataAgentProductTeamRuntimePort {
       package_hash: string;
       receipt_id: string;
       receipt_hash: string;
+      semantic_domain: string;
+      semantic_release_id: string;
+      semantic_release_hash: string;
     }>;
     readonly restored_snapshot: Parameters<
       RunWorkflowExecutorPort["execute"]
@@ -249,6 +252,9 @@ export function createDataAgentTeamRunner(
             package_hash: context.package.package_hash,
             receipt_id: context.receipt.receipt_id,
             receipt_hash: context.receipt.receipt_hash,
+            semantic_domain: context.package.semantic_domain,
+            semantic_release_id: context.package.semantic_release.resource_id,
+            semantic_release_hash: context.package.semantic_release.resource_hash,
           },
           restored_snapshot: input.restored_snapshot,
           execution_context: input.context,

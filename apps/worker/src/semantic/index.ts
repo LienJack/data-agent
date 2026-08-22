@@ -19,3 +19,7 @@ export {
   type SemanticRelationshipIndexer,
 } from "./relationship-indexer.js";
 export { createWorkerSemanticExplorerToolExecutor } from "./semantic-explorer-tool-executor.js";
+export {
+  createFrozenSemanticRelationshipReadPort,
+  type FrozenSemanticRelationshipReadPort,
+} from "./semantic-relationship-read-port.js";

@@ -13,6 +13,7 @@ import {
 } from "@data-agent/platform";
 import { z } from "zod";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
+import type { FrozenSemanticRelationshipReadPort } from "../semantic/semantic-relationship-read-port.js";
 import type {
   ProductProfileToolPort,
   ProductProfileToolResult,
@@ -22,7 +23,10 @@ import {
   productionTeamRuntimeInternals,
 } from "./production-team-runtime.js";
 
-const providerAnswerSchema = z.strictObject({ answer: z.string().min(1) });
+const providerAnswerSchema = z.strictObject({
+  answer: z.string().min(1),
+  query_kind: z.enum(["TABLE_COUNT", "MONTHLY_ORDER_TREND", "UNSUPPORTED"]).optional(),
+});
 
 export interface ProductionTeamArtifactPort {
   commit(
@@ -62,6 +66,7 @@ export interface ProductionTeamToolsDependencies {
   readonly capability: unknown;
   readonly artifacts: ProductionTeamArtifactPort;
   readonly sandbox: EcommerceBenchmarkQueryExecutor;
+  readonly semantic_relationships: FrozenSemanticRelationshipReadPort;
 }
 
 class ProductionTeamToolError extends Error {
@@ -92,6 +97,16 @@ async function providerAnswer(input: ProductionTeamToolFactoryInput, stage: "tex
         input.lease.run_id,
         `provider:${stage}`,
       ),
+      ...(input.delegation
+        ? {
+            turn: {
+              kind: "SPECIALIST" as const,
+              stage: stage === "text2sql" ? ("TEXT2SQL" as const) : ("REPORT" as const),
+              profile_id: input.delegation.profile.revision.profile_id,
+              objective: input.delegation.call.objective,
+            },
+          }
+        : {}),
     }),
   );
   let parsed: unknown;
@@ -102,7 +117,7 @@ async function providerAnswer(input: ProductionTeamToolFactoryInput, stage: "tex
   }
   const answer = providerAnswerSchema.safeParse(parsed);
   if (!answer.success) throw new ProductionTeamToolError("TEAM_PROVIDER_RESPONSE_INVALID");
-  return answer.data.answer;
+  return answer.data;
 }
 
 async function commitArtifact(
@@ -124,7 +139,7 @@ async function commitArtifact(
     artifact_ref: {
       artifact_id: productionTeamRuntimeInternals.identity(
         factoryInput.lease.run_id,
-        `artifact:${input.artifact_type}`,
+        `artifact:${input.task_id}:${input.artifact_type}`,
       ),
       artifact_type: input.artifact_type,
       ...factoryInput.lease.scope,
@@ -150,8 +165,9 @@ export function createProductionTeamTools(
   const state: {
     sql_ref: ArtifactReference | null;
     provider_answer: string | null;
+    query_kind: "TABLE_COUNT" | "MONTHLY_ORDER_TREND" | null;
     semantic_ref: ArtifactReference | null;
-  } = { sql_ref: null, provider_answer: null, semantic_ref: null };
+  } = { sql_ref: null, provider_answer: null, query_kind: null, semantic_ref: null };
   const intent = visualizationIntent(factoryInput.dispatch_plan);
 
   return Object.freeze({
@@ -164,6 +180,23 @@ export function createProductionTeamTools(
       }
       if (input.task.profile_id === "semantic-management-agent") {
         if (input.tool_id === "semantic.catalog.read") {
+          const relationships = portValue(
+            await dependencies.semantic_relationships.read({
+              capability: dependencies.capability,
+              scope: factoryInput.lease.scope,
+              semantic_domain: factoryInput.resolved_context_ref.semantic_domain,
+              release_id: factoryInput.resolved_context_ref.semantic_release_id,
+              release_hash: factoryInput.resolved_context_ref.semantic_release_hash,
+            }),
+          );
+          const nodes = new Map(
+            relationships.nodes.map((node) => [node.node_key, node.name] as const),
+          );
+          const relationshipLines = relationships.edges.map((edge) => {
+            const source = nodes.get(edge.source_node_key) ?? edge.source_node_key;
+            const target = nodes.get(edge.target_node_key) ?? edge.target_node_key;
+            return `[${edge.category}] ${source} -> ${target}: ${edge.label}`;
+          });
           state.semantic_ref = await commitArtifact(dependencies, factoryInput, {
             artifact_type: "AnalysisReport",
             profile_id: "semantic-management-agent",
@@ -171,11 +204,25 @@ export function createProductionTeamTools(
             source_refs: [],
             projection: {
               kind: "REPORT",
-              title: "冻结语义层说明",
+              title: "冻结语义图关系证据",
               sections: [
                 {
-                  heading: "语义层",
-                  body_text: "已读取本次 Run 冻结的 Published Semantic Release。",
+                  heading: "冻结版本",
+                  body_text: `已读取 Semantic Release ${relationships.release_identity.release_id}（digest ${relationships.release_identity.release_digest}）的关系投影。`,
+                  source_refs: [],
+                },
+                {
+                  heading: "关系与依赖",
+                  body_text:
+                    relationshipLines.length > 0
+                      ? relationshipLines.join("\n")
+                      : "该冻结 Release 的关系投影中没有返回符合边界的关系边。",
+                  source_refs: [],
+                },
+                {
+                  heading: "关系类型边界",
+                  body_text:
+                    "BIZ 表示业务关系，JOIN 表示分析连接，FORMULA 表示公式或层级依赖，BIND 表示物理绑定，GOVERN 表示发布治理关系；这些类型不会互相替代。",
                   source_refs: [],
                 },
               ],
@@ -188,9 +235,16 @@ export function createProductionTeamTools(
       if (input.task.profile_id === "governed-text2sql-agent") {
         if (input.tool_id === "semantic.release.read") return toolResult(null);
         if (input.tool_id === "sql.compiler.compile") {
-          state.provider_answer = await providerAnswer(factoryInput, "text2sql");
+          const provider = await providerAnswer(factoryInput, "text2sql");
+          state.provider_answer = provider.answer;
+          const queryKind =
+            provider.query_kind ?? (intent === "TREND" ? "MONTHLY_ORDER_TREND" : "UNSUPPORTED");
+          if (queryKind === "UNSUPPORTED") {
+            throw new ProductionTeamToolError("TEAM_TEXT2SQL_INTENT_UNSUPPORTED");
+          }
+          state.query_kind = queryKind;
           const sql =
-            intent === "TREND"
+            queryKind === "MONTHLY_ORDER_TREND"
               ? compileEcommerceMonthlyOrderTrendSql()
               : compileEcommerceTableCountSql();
           state.sql_ref = await commitArtifact(dependencies, factoryInput, {
@@ -207,15 +261,19 @@ export function createProductionTeamTools(
             throw new ProductionTeamToolError("TEAM_TEXT2SQL_COMPILE_REQUIRED");
           }
           const timeout = Math.min(30_000, input.task.bounds.timeout_ms);
+          const queryKind = state.query_kind;
+          if (!queryKind) throw new ProductionTeamToolError("TEAM_TEXT2SQL_COMPILE_REQUIRED");
           const result =
-            intent === "TREND"
+            queryKind === "MONTHLY_ORDER_TREND"
               ? await dependencies.sandbox.executeMonthlyOrderTrend({ timeout_ms: timeout })
               : await dependencies.sandbox.executeTableCount({ timeout_ms: timeout });
           const columns = result.columns.map((column) => ({
             key: column,
             label: column,
             data_type:
-              intent === "TREND" && column === "month" ? ("STRING" as const) : ("NUMBER" as const),
+              queryKind === "MONTHLY_ORDER_TREND" && column === "month"
+                ? ("STRING" as const)
+                : ("NUMBER" as const),
           }));
           const rows = result.rows.map((row) =>
             Object.fromEntries(columns.map((column, index) => [column.key, row[index] ?? null])),
@@ -246,7 +304,12 @@ export function createProductionTeamTools(
               content_hash: `sha256:${"0".repeat(64)}`,
             },
             evidence,
-            resolved_context: factoryInput.resolved_context_ref,
+            resolved_context: {
+              package_id: factoryInput.resolved_context_ref.package_id,
+              package_hash: factoryInput.resolved_context_ref.package_hash,
+              receipt_id: factoryInput.resolved_context_ref.receipt_id,
+              receipt_hash: factoryInput.resolved_context_ref.receipt_hash,
+            },
             unit: "单",
           });
           if (!chartDocument) return toolResult(evidenceRef);
