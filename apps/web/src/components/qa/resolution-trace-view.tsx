@@ -36,13 +36,20 @@ import {
   fetchResolutionTraceDetail,
   fetchSqlHistory,
 } from "@/lib/api-client";
-import { useQAActiveConversationId, useQAEvents, useQATrajectoryFocus } from "@/lib/qa-store";
+import {
+  useQAActiveConversationId,
+  useQAConnection,
+  useQAEvents,
+  useQATrajectoryFocus,
+} from "@/lib/qa-store";
 import {
   buildResolutionTraceWorkbenchModel,
   projectTimelineRecords,
   type ResolutionTraceLane,
   type ResolutionTraceWorkbenchRecord,
+  resolveResolutionTraceRefresh,
 } from "@/lib/resolution-trace-workbench";
+import type { RunConnectionState } from "@/lib/run-projection";
 
 type TraceTab = "overview" | "team" | "trace" | "sql" | "artifacts";
 type LoadState =
@@ -301,6 +308,7 @@ function TraceInspector({
                     {detail.summary}
                   </p>,
                 )}
+                {section("Run 与对话", <DetailSectionView section={detail.run_context} />)}
                 {section(
                   "Identity",
                   <dl className="space-y-2">
@@ -438,6 +446,7 @@ function TraceTimeline({
   records,
   selectedNodeId,
   matches,
+  searchActive,
   durationMode,
   windowRange,
   onWindowRangeChange,
@@ -446,6 +455,7 @@ function TraceTimeline({
   records: readonly ResolutionTraceWorkbenchRecord[];
   selectedNodeId: string | null;
   matches: ReadonlySet<string>;
+  searchActive: boolean;
   durationMode: boolean;
   windowRange: readonly [number, number];
   onWindowRangeChange(range: readonly [number, number]): void;
@@ -514,7 +524,7 @@ function TraceTimeline({
                   const left = ((rawStart - windowRange[0]) / windowSpan) * 100;
                   const width = Math.max(0.5, ((rawEnd - rawStart) / windowSpan) * 100);
                   if (left > 100 || left + width < 0) return null;
-                  const matched = matches.size === 0 || matches.has(record.node_id);
+                  const matched = !searchActive || matches.has(record.node_id);
                   return (
                     <button
                       key={record.node_id}
@@ -565,11 +575,13 @@ function TraceWorkbench({
   focusedSequence = null,
   workspaceId = "",
   initialDetails = [],
+  connectionState = null,
 }: {
   trace: ResolutionTrace;
   focusedSequence?: number | null;
   workspaceId?: string;
   initialDetails?: readonly ResolutionTraceDetail[];
+  connectionState?: RunConnectionState | null;
 }) {
   const model = useMemo(() => buildResolutionTraceWorkbenchModel(trace), [trace]);
   const focused = model.records.find(({ node }) => node.sequence === focusedSequence);
@@ -583,6 +595,7 @@ function TraceWorkbench({
   const [callDetailsExpanded, setCallDetailsExpanded] = useState(false);
   const [inspectorWidth, setInspectorWidth] = useState(420);
   const [scrollTop, setScrollTop] = useState(0);
+  const [pendingNewCount, setPendingNewCount] = useState(0);
   const [detail, setDetail] = useState<ResolutionTraceDetail | null>(
     initialDetails.find(({ node_id }) => node_id === (focused?.node_id ?? selectedNodeId)) ?? null,
   );
@@ -594,8 +607,16 @@ function TraceWorkbench({
     ),
   );
   const traceIdentity = useRef({ runId: trace.run_id, hash: trace.trace_hash });
+  const previousRecords = useRef({
+    count: model.records.length,
+    lastNodeId: model.records.at(-1)?.node_id ?? null,
+  });
   const rowTriggers = useRef(new Map<string, HTMLButtonElement>());
   const selected = model.records.find(({ node_id }) => node_id === selectedNodeId)?.node ?? null;
+  const runContextFields =
+    detail?.run_context.state === "AVAILABLE" ? detail.run_context.fields : [];
+  const runContextValue = (label: string) =>
+    runContextFields.find((field) => field.label === label)?.value ?? null;
   const searchResults = useMemo(() => model.search(query), [model, query]);
   const matches = useMemo(
     () => new Set(searchResults.map(({ node_id }) => node_id)),
@@ -629,20 +650,36 @@ function TraceWorkbench({
   useEffect(() => {
     if (traceIdentity.current.hash === trace.trace_hash) return;
     const runChanged = traceIdentity.current.runId !== trace.run_id;
+    const refresh = resolveResolutionTraceRefresh({
+      runChanged,
+      focusedNodeId: focused?.node_id ?? null,
+      selectedNodeId,
+      selectedNodeStillExists: model.records.some(({ node_id }) => node_id === selectedNodeId),
+      previousLastNodeId: previousRecords.current.lastNodeId,
+      nextLastNodeId: model.records.at(-1)?.node_id ?? null,
+      previousCount: previousRecords.current.count,
+      nextCount: model.records.length,
+    });
     traceIdentity.current = { runId: trace.run_id, hash: trace.trace_hash };
     detailCache.current.clear();
     for (const candidate of initialDetails)
       detailCache.current.set(`${trace.trace_hash}:${candidate.node_id}`, candidate);
-    const nextNodeId =
-      focused?.node_id ?? (runChanged ? model.records.at(-1)?.node_id : selectedNodeId);
+    const nextNodeId = refresh.selectedNodeId;
     setSelectedNodeId(nextNodeId ?? null);
     setDetail(initialDetails.find(({ node_id }) => node_id === nextNodeId) ?? null);
     setDetailError(null);
-    if (runChanged) {
+    if (refresh.resetView) {
       setQuery("");
       setTimelineWindow([0, 1]);
       setScrollTop(0);
+      setPendingNewCount(0);
+    } else if (refresh.appendedCount > 0 && !refresh.followedTail) {
+      setPendingNewCount((current) => current + refresh.appendedCount);
     }
+    previousRecords.current = {
+      count: model.records.length,
+      lastNodeId: model.records.at(-1)?.node_id ?? null,
+    };
   }, [
     focused?.node_id,
     initialDetails,
@@ -715,6 +752,31 @@ function TraceWorkbench({
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-[var(--color-border-default)] px-3 py-2 text-[10px]">
+        {runContextFields.length > 0 && (
+          <div className="mb-1 grid w-full min-w-0 gap-1 border-b border-[var(--color-border-default)] pb-2 sm:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+            <div className="min-w-0">
+              <p className="text-[9px] text-[var(--color-text-muted)]">用户问题</p>
+              <p
+                className="truncate text-[11px] font-medium"
+                title={runContextValue("用户问题") ?? ""}
+              >
+                {runContextValue("用户问题")}
+              </p>
+            </div>
+            {[
+              ["Run 状态", runContextValue("Run 状态")],
+              ["所属对话", runContextValue("所属对话")],
+              ["冻结模型", runContextValue("冻结模型")],
+            ].map(([label, value]) => (
+              <div key={label} className="min-w-0">
+                <p className="text-[9px] text-[var(--color-text-muted)]">{label}</p>
+                <p className="truncate" title={value ?? ""}>
+                  {value ?? "不可用"}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
         <span className="font-medium">{formatDuration(model.stats.duration_ms)}</span>
         <span>{model.stats.nodes} 节点</span>
         <span>{model.stats.calls} 调用</span>
@@ -774,11 +836,29 @@ function TraceWorkbench({
           />
         </label>
         {query && <span>{filtered.length} 命中</span>}
+        {pendingNewCount > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedNodeId(model.records.at(-1)?.node_id ?? null);
+              setPendingNewCount(0);
+            }}
+            className="rounded border border-[var(--color-accent)] px-2 py-1 text-[var(--color-accent)]"
+          >
+            {pendingNewCount} 条新记录
+          </button>
+        )}
+        {connectionState === "reconnecting" && (
+          <span className="rounded border border-amber-500 px-2 py-1 text-amber-700" role="status">
+            正在恢复轨迹连接；Run 状态保持不变
+          </span>
+        )}
       </div>
       <TraceTimeline
         records={model.records}
         selectedNodeId={selectedNodeId}
         matches={query ? matches : new Set()}
+        searchActive={query.trim().length > 0}
         durationMode={durationMode}
         windowRange={timelineWindow}
         onWindowRangeChange={setTimelineWindow}
@@ -1054,6 +1134,7 @@ export function ResolutionTraceView() {
   const conversationId = useQAActiveConversationId();
   const focus = useQATrajectoryFocus();
   const events = useQAEvents();
+  const connection = useQAConnection();
   const runId = focus?.runId ?? events.at(-1)?.run_id ?? null;
   const eventCursor = runId
     ? events.reduce(
@@ -1069,7 +1150,7 @@ export function ResolutionTraceView() {
       return;
     }
     let active = true;
-    setState({ status: "loading" });
+    setState((current) => (current.status === "ready" ? current : { status: "loading" }));
     const team = Promise.all([
       fetchAgentProfiles(workspaceId),
       fetchAgentTeamTrace(runId, workspaceId),
@@ -1090,10 +1171,14 @@ export function ResolutionTraceView() {
       })
       .catch((error: unknown) => {
         if (active)
-          setState({
-            status: "error",
-            message: error instanceof Error ? error.message : "轨迹加载失败",
-          });
+          setState((current) =>
+            current.status === "ready"
+              ? current
+              : {
+                  status: "error",
+                  message: error instanceof Error ? error.message : "轨迹加载失败",
+                },
+          );
       });
     return () => {
       active = false;
@@ -1126,6 +1211,7 @@ export function ResolutionTraceView() {
       teamTrace={state.teamTrace}
       teamError={state.teamError}
       workspaceId={workspaceId}
+      connectionState={connection}
     />
   );
 }
@@ -1140,6 +1226,7 @@ export function ResolutionTracePanel({
   focusSequence = null,
   workspaceId = "",
   initialDetails = [],
+  connectionState = null,
 }: {
   readonly trace: ResolutionTrace;
   readonly sql: readonly SqlHistoryEntry[];
@@ -1150,6 +1237,7 @@ export function ResolutionTracePanel({
   readonly focusSequence?: number | null;
   readonly workspaceId?: string;
   readonly initialDetails?: readonly ResolutionTraceDetail[];
+  readonly connectionState?: RunConnectionState | null;
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
 
@@ -1187,6 +1275,7 @@ export function ResolutionTracePanel({
             focusedSequence={focusSequence}
             workspaceId={workspaceId}
             initialDetails={initialDetails}
+            connectionState={connectionState}
           />
         )}
         {tab === "team" && (

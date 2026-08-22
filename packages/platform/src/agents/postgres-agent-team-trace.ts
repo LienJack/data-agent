@@ -1,9 +1,9 @@
 import {
   type AgentTeamPublicTrace,
-  agentTeamTraceEpochSchema,
-  agentTeamTraceHandoffSchema,
-  agentTeamTraceTaskSchema,
-  agentTeamTraceVerifierSchema,
+  agentTeamTraceEpochV2Schema,
+  agentTeamTraceHandoffV2Schema,
+  agentTeamTraceTaskV2Schema,
+  agentTeamTraceVerifierV2Schema,
   appScopeSchema,
   buildAgentTeamPublicTrace,
   immutableIdSchema,
@@ -18,11 +18,11 @@ import {
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
 
 const lookupSchema = z.strictObject({ scope: appScopeSchema, run_id: immutableIdSchema });
-const projectionSchema = z.strictObject({
-  tasks: z.array(agentTeamTraceTaskSchema).max(1_000),
-  handoffs: z.array(agentTeamTraceHandoffSchema).max(1_000),
-  epochs: z.array(agentTeamTraceEpochSchema).max(10_000),
-  verifier_decisions: z.array(agentTeamTraceVerifierSchema).max(1_000),
+const projectionV2Schema = z.strictObject({
+  tasks: z.array(agentTeamTraceTaskV2Schema).max(1_000),
+  handoffs: z.array(agentTeamTraceHandoffV2Schema).max(1_000),
+  epochs: z.array(agentTeamTraceEpochV2Schema).max(10_000),
+  verifier_decisions: z.array(agentTeamTraceVerifierV2Schema).max(1_000),
 });
 
 function invalid(code: string, message: string): PortResult<never> {
@@ -70,11 +70,11 @@ export function createPostgresAgentTeamTraceProjector(options: {
             );
           }
           const query = await client.query<{ readonly value: unknown }>(
-            "select app_data_agent.load_agent_team_public_projection($1::uuid) as value",
+            "select app_data_agent.load_agent_team_public_projection_v2($1::uuid) as value",
             [lookup.data.run_id],
           );
           if (query.rows[0]?.value == null) return null;
-          const projection = projectionSchema.safeParse(query.rows[0].value);
+          const projection = projectionV2Schema.safeParse(query.rows[0].value);
           if (!projection.success) {
             throw new PersistenceBoundaryError(
               "AGENT_TEAM_TRACE_DATABASE_CONTRACT_INVALID",
@@ -82,7 +82,7 @@ export function createPostgresAgentTeamTraceProjector(options: {
             );
           }
           return buildAgentTeamPublicTrace({
-            schema_version: "agent-team-public-trace@1.0.0",
+            schema_version: "agent-team-public-trace@2.0.0",
             scope: capability.scope,
             run_id: lookup.data.run_id,
             ...projection.data,

@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/resolution-trace.md","reason":"Resolution Trace authority/detail/SQL exact-reference rules"}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Public event, Inspector, replay, Artifact and workbench rules"}
+{"file":".trellis/spec/backend/agent-team-runtime.md","reason":"Agent Team authority and public projection rules"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Forward migration, RLS and RPC requirements"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Contract to storage to API to UI flow audit"}

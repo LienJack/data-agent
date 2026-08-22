@@ -15,6 +15,25 @@ const sourceRef = {
 };
 
 describe("ArtifactWorkspace", () => {
+  it("renders exact SQL content as code instead of stopping at the Artifact ID", () => {
+    const preview: ArtifactPreviewResult = {
+      schema_version: "artifact-preview-result@1.0.0",
+      source_ref: { ...sourceRef, artifact_type: "SqlArtifact" },
+      renderer_version: "artifact-workspace-renderer@1.0.0",
+      projection: {
+        kind: "SQL",
+        dialect: "postgresql",
+        sql: "select store_name, refund_rate from governed_refunds order by refund_rate desc",
+      },
+      viewport: { offset: 0, limit: 100, total_rows: null, truncated: false },
+    };
+    const markup = renderToStaticMarkup(<ArtifactWorkspace preview={preview} />);
+    expect(markup).toContain("select store_name, refund_rate");
+    expect(markup).toContain("governed_refunds");
+    expect(markup).toContain("<code>");
+    expect(markup).not.toContain(`>${sourceRef.artifact_id}<`);
+  });
+
   it("renders untrusted markup as escaped text and exposes the exact source hash", () => {
     const preview: ArtifactPreviewResult = {
       schema_version: "artifact-preview-result@1.0.0",

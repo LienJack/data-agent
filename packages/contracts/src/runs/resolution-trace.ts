@@ -241,7 +241,7 @@ export const resolutionTraceDetailSchemaSectionSchema = z.discriminatedUnion("st
 ]);
 
 export const resolutionTraceDetailSchema = z.strictObject({
-  schema_version: z.literal("resolution-trace-detail@1.0.0"),
+  schema_version: z.literal("resolution-trace-detail@2.0.0"),
   scope: z.strictObject({
     app_id: immutableIdSchema,
     tenant_id: immutableIdSchema,
@@ -259,6 +259,7 @@ export const resolutionTraceDetailSchema = z.strictObject({
     parent_node_ids: z.array(traceNodeIdSchema).max(20_000),
     child_node_ids: z.array(traceNodeIdSchema).max(20_000),
   }),
+  run_context: resolutionTraceDetailSectionSchema,
   identity: z.array(resolutionTraceDetailIdentitySchema).max(256),
   payload: resolutionTraceDetailSectionSchema,
   result: resolutionTraceDetailSectionSchema,

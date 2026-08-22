@@ -40,7 +40,8 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   `product-team-artifact@1.0.0`；两者都必须与 relational exact identity 一致，禁止因 schema variant 跳过校验。
 - Trace 只保存 bounded summary、status、duration、时间和 typed refs。禁止 Prompt、私有推理、raw Context、
   raw SQL、参数值、Result rows、credential 与 Provider body。
-- `resolution-trace-detail@1.0.0` 是按 `run_id + node_id` 懒加载的严格公共投影。服务端必须先在同一
+- `resolution-trace-detail@2.0.0` 是按 `run_id + node_id` 懒加载的严格公共投影，并为所有节点携带
+  content-first `run_context`。服务端必须先在同一
   Trace 快照中解析 node，再以 `source_event_id + sequence + exact ArtifactReference` 关闭身份；不得让请求方
   仅凭 call/artifact/config ID 读取对象。Tool detail 按 exact `call_id + profile_id + task_id + tool_name`
   合并 START/terminal，仅公开经过 `PublicRunEvent` 脱敏的 input/output/error/duration。
@@ -110,3 +111,81 @@ const trace = await verifyResolutionTrace((await response.json()).data);
 ```
 
 只有同事务重验后的 Event/Artifact projection 与客户端再次验签的 DTO 可以标记为可审计轨迹。
+
+## Scenario: Content-first Resolution Trace Detail v2
+
+### 1. Scope / Trigger
+
+- 任何新增 Run/Conversation/Config/Event/Artifact/Team Inspector 字段，或把 ID/hash 展示升级为可读内容时适用。
+- 该场景跨 Contracts、PostgreSQL projection、Platform projector 与 Web Inspector，必须版本化并失败关闭。
+
+### 2. Signatures
+
+```ts
+type ResolutionTraceDetailV2 = {
+  schema_version: "resolution-trace-detail@2.0.0";
+  run_context: ResolutionTraceDetailSection;
+  payload: ResolutionTraceDetailSection;
+  result: ResolutionTraceDetailSection;
+  // identity/timing/schema/relations/artifact_refs unchanged and strict
+};
+
+type AgentTeamPublicTraceV2 = {
+  schema_version: "agent-team-public-trace@2.0.0";
+  tasks: TeamTaskPublicContent[];
+  handoffs: TeamHandoffPublicContent[];
+  epochs: TeamEpochPublicContent[];
+  verifier_decisions: TeamVerifierPublicContent[];
+  trace_hash: ContentHash;
+};
+
+load_agent_team_public_projection_v2(requested_run_id uuid) returns jsonb;
+```
+
+### 3. Contracts
+
+- `run_context` 在同一 owner READ transaction 中提供用户问题、权威 Run 状态/时间、attempt count、active attempt/fence、Conversation title/version/message count、Datasource binding、公开回答摘要和冻结模型。
+- 历史 Config/Resource 没有冻结 display name 时返回 exact identity 和 `HISTORICAL_DISPLAY_NAME_UNAVAILABLE`；禁止查询当前 Catalog 补名。
+- Artifact 行内摘要只允许从已校验 committed document 的安全字段生成；正文仍按 exact `ArtifactReference` 进入 Preview API。
+- Team v2 只能投影 hash-verified authority document 的 allowlist：goal/bounds/required outputs/output ref、handoff child bounds、obligation counts、verifier dimensions/semantic status、acceptance status/reason/time。
+- Team v1 保持可解析；Platform owner projector 调用 v2 RPC。RPC 必须先调用 v1 relational/document/hash closure，不得复制一套较弱校验。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| Detail v1 携带 v2 字段或未知字段 | strict reject |
+| Artifact ref scope/run/revision/hash 不闭合 | `RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING` 或 corrupt，禁止内容 fallback |
+| Config 只有 exact identity、无历史公共 receipt | `HISTORICAL_CONFIG_CONTENT_UNAVAILABLE` + `HISTORICAL_DISPLAY_NAME_UNAVAILABLE` |
+| Team obligation open/unknown/resolved 之和不等于 total | contract reject |
+| Team completion output type 不在 required types | contract reject |
+| Team v2 RPC owner predicate失败 | `null`/not-found-or-denied，不暴露对象存在性 |
+| private reasoning/prompt/provider payload/SecretRef 出现 | projection/strict contract reject |
+
+### 5. Good / Base / Bad Cases
+
+- Good：Artifact 节点行内显示报告标题/SQL/行列摘要，Inspector 首屏直接加载 exact preview，ID/hash 收进身份区。
+- Good：Team verifier 显示七项 verdict 与 acceptance reason；hash 只作为来源证明。
+- Base：历史资源没有冻结名称，显示 unavailable reason 与 exact revision/hash。
+- Bad：按 Datasource/Profile ID 回查当前 Catalog，把今天的名称显示成历史 Run 名称。
+- Bad：把 verified document 整体 `JSON.stringify` 给浏览器。
+
+### 6. Tests Required
+
+- Contracts：Detail v2 十类节点矩阵；Team v1/v2 hash、unknown/private key、scope/run、output type、obligation closure。
+- Platform：Run/Conversation/attempt/datasource 内容；Tool exact group；Artifact content summary；Config no-current-Catalog fallback；Team v2 RPC strict parse。
+- Migration：baseline 10696、checksum、security definer/search_path、public revoke/backend grant、v1 verification call、allowlist source assertions。
+- Web：Run context 主信息、Team goal/bounds/output/verifier/acceptance、Artifact exact preview，DOM 无 private material。
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong: current mutable lookup masquerades as historical content.
+const displayName = await catalog.getLatest(config.datasource.resource_id);
+
+// Correct: frozen content when present; explicit unavailable otherwise.
+const displayName = frozen.datasource_display_name ?? {
+  state: "UNAVAILABLE",
+  reason_code: "HISTORICAL_DISPLAY_NAME_UNAVAILABLE",
+};
+```

@@ -59,7 +59,7 @@ beforeAll(async () => {
   });
   state.sql = { schema_version: "sql-history-result@1.0.0", items: [], next_cursor: null };
   state.detail = {
-    schema_version: "resolution-trace-detail@1.0.0",
+    schema_version: "resolution-trace-detail@2.0.0",
     scope,
     run_id: runId,
     node_id: `event:${id(7)}`,
@@ -70,6 +70,12 @@ beforeAll(async () => {
     status: "COMPLETED",
     summary: "读取完成",
     hierarchy: { parent_node_ids: [], child_node_ids: [] },
+    run_context: {
+      state: "AVAILABLE",
+      format: "FIELDS",
+      text: null,
+      fields: [{ label: "用户问题", value: "统计收入" }],
+    },
     identity: [],
     payload: {
       state: "UNAVAILABLE",

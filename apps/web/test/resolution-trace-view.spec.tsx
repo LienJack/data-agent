@@ -1,4 +1,8 @@
-import { buildResolutionTrace, buildSqlHistoryEntry } from "@data-agent/contracts";
+import {
+  buildResolutionTrace,
+  buildSqlHistoryEntry,
+  verifyResolutionTraceDetail,
+} from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ResolutionTracePanel } from "@/components/qa/resolution-trace-view";
@@ -31,8 +35,63 @@ describe("Resolution Trace panel", () => {
       ],
       edges: [],
     });
+    const detail = verifyResolutionTraceDetail({
+      schema_version: "resolution-trace-detail@2.0.0",
+      scope,
+      run_id: id(3),
+      node_id: `event:${id(5)}`,
+      kind: "PROGRESS",
+      sequence: 1,
+      source_event_ids: [id(5)],
+      title: "Evidence planning",
+      status: "RUNNING",
+      summary: "正在建立证据计划",
+      hierarchy: { parent_node_ids: [], child_node_ids: [] },
+      run_context: {
+        state: "AVAILABLE",
+        format: "FIELDS",
+        text: null,
+        fields: [
+          { label: "用户问题", value: "统计本月订单并解释异常" },
+          { label: "所属对话", value: "月度订单分析" },
+          { label: "冻结模型", value: "deepseek / deepseek-v4" },
+        ],
+      },
+      identity: [{ label: "Run ID", value: id(3), value_kind: "ID" }],
+      payload: {
+        state: "AVAILABLE",
+        format: "TEXT",
+        text: "正在建立证据计划",
+        fields: [],
+      },
+      result: {
+        state: "UNAVAILABLE",
+        reason_code: "PUBLIC_RESULT_UNAVAILABLE",
+        message: "尚无公开结果。",
+      },
+      schema: {
+        state: "UNAVAILABLE",
+        reason_code: "PUBLIC_SCHEMA_UNAVAILABLE",
+        message: "尚无公开 Schema。",
+      },
+      timing: {
+        occurred_at: "2026-08-18T12:00:00.000Z",
+        started_at: null,
+        completed_at: null,
+        duration_ms: null,
+        source: "SESSION_TIMESTAMPS",
+      },
+      relations: [],
+      artifact_refs: [],
+    });
     const html = renderToStaticMarkup(
-      <ResolutionTracePanel trace={trace} sql={[]} focusSequence={1} />,
+      <ResolutionTracePanel
+        trace={trace}
+        sql={[]}
+        focusSequence={1}
+        initialDetails={[detail]}
+        connectionState="reconnecting"
+      />,
     );
     expect(html).toContain("运行与证据");
     expect(html).toContain("Evidence planning");
@@ -53,6 +112,11 @@ describe("Resolution Trace panel", () => {
     expect(html).toContain("Result");
     expect(html).toContain("Schema");
     expect(html).toContain("Timing");
+    expect(html).toContain("Run 与对话");
+    expect(html).toContain("统计本月订单并解释异常");
+    expect(html).toContain("月度订单分析");
+    expect(html).toContain("deepseek / deepseek-v4");
+    expect(html).toContain("正在恢复轨迹连接；Run 状态保持不变");
   });
 
   it("opens exact Artifact content from a selected Tool instead of ending at its ID", async () => {

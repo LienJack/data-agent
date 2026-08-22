@@ -4,8 +4,16 @@ import { ResolutionTracePanel } from "@/components/qa/resolution-trace-view";
 
 const id = (suffix: number) => `10000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 
-export default async function ResolutionTracePreviewPage() {
+export default async function ResolutionTracePreviewPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ nodes?: string }>;
+}) {
   if (process.env.NODE_ENV === "production") notFound();
+  const requestedNodes = Number((await searchParams).nodes ?? 80);
+  const nodeCount = Number.isSafeInteger(requestedNodes)
+    ? Math.min(10_000, Math.max(80, requestedNodes))
+    : 80;
   const kinds = [
     "LIFECYCLE",
     "PROGRESS",
@@ -18,24 +26,29 @@ export default async function ResolutionTracePreviewPage() {
     "CONTEXT",
     "TERMINAL",
   ] as const;
+  const statuses = [
+    "QUEUED",
+    "RUNNING",
+    "WAITING",
+    "COMPLETED",
+    "FAILED",
+    "CANCELLED",
+    "PENDING",
+    "INTERRUPTED",
+    "SKIPPED",
+    "BLOCKED",
+    "AVAILABLE",
+  ] as const;
   const trace = await buildResolutionTrace({
     schema_version: "resolution-trace@1.0.0",
     scope: { app_id: id(1), tenant_id: id(2), environment: "test" },
     run_id: id(3),
     conversation_id: id(4),
     config_ref: null,
-    nodes: Array.from({ length: 80 }, (_, index) => {
+    nodes: Array.from({ length: nodeCount }, (_, index) => {
       const kind = kinds[index % kinds.length] ?? "PROGRESS";
       const status =
-        index === 42
-          ? ("FAILED" as const)
-          : index % 13 === 0
-            ? ("WAITING" as const)
-            : index === 79
-              ? ("COMPLETED" as const)
-              : index % 7 === 0
-                ? ("RUNNING" as const)
-                : ("COMPLETED" as const);
+        index === 42 ? ("FAILED" as const) : (statuses[index % statuses.length] ?? "COMPLETED");
       return {
         node_id: `event:${id(index + 10)}`,
         kind,
@@ -55,14 +68,14 @@ export default async function ResolutionTracePreviewPage() {
         artifact_refs: [],
       };
     }),
-    edges: Array.from({ length: 79 }, (_, index) => ({
+    edges: Array.from({ length: nodeCount - 1 }, (_, index) => ({
       from_node_id: `event:${id(index + 10)}`,
       to_node_id: `event:${id(index + 11)}`,
       kind: "SEQUENCE" as const,
     })),
   });
   const detail = verifyResolutionTraceDetail({
-    schema_version: "resolution-trace-detail@1.0.0",
+    schema_version: "resolution-trace-detail@2.0.0",
     scope: trace.scope,
     run_id: trace.run_id,
     node_id: `event:${id(52)}`,
@@ -75,6 +88,16 @@ export default async function ResolutionTracePreviewPage() {
     hierarchy: {
       parent_node_ids: [`event:${id(51)}`],
       child_node_ids: [`event:${id(53)}`],
+    },
+    run_context: {
+      state: "AVAILABLE",
+      format: "FIELDS",
+      text: null,
+      fields: [
+        { label: "用户问题", value: "找出近 30 天退款率最高的门店并解释原因" },
+        { label: "Run 状态", value: "FAILED" },
+        { label: "所属对话", value: "退款率异常分析" },
+      ],
     },
     identity: [
       { label: "Agent", value: "Text2SQL 专家", value_kind: "NAME" },

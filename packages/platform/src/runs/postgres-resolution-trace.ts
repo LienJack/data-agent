@@ -72,6 +72,10 @@ interface RunAuthorityRow {
   readonly run_id: string;
   readonly principal_id: string;
   readonly conversation_id: string | null;
+  readonly conversation_title: string | null;
+  readonly conversation_resource_version: string | number | null;
+  readonly conversation_message_count: string | number;
+  readonly datasource_id: string | null;
   readonly config_id: string | null;
   readonly config_revision: string | number | null;
   readonly config_hash: string | null;
@@ -81,6 +85,8 @@ interface RunAuthorityRow {
   readonly question: string;
   readonly run_status: string;
   readonly active_fence: string | number;
+  readonly active_attempt_id: string | null;
+  readonly attempt_count: string | number;
   readonly run_created_at: Date | string;
   readonly run_updated_at: Date | string;
 }
@@ -107,6 +113,10 @@ interface VerifiedRunAuthority {
   readonly scope: AppScope;
   readonly run_id: string;
   readonly conversation_id: string | null;
+  readonly conversation_title: string | null;
+  readonly conversation_resource_version: number | null;
+  readonly conversation_message_count: number;
+  readonly datasource_id: string | null;
   readonly config_ref: {
     readonly config_id: string;
     readonly config_revision: number;
@@ -118,6 +128,8 @@ interface VerifiedRunAuthority {
   readonly question: string;
   readonly run_status: string;
   readonly active_fence: number;
+  readonly active_attempt_id: string | null;
+  readonly attempt_count: number;
   readonly run_created_at: string;
   readonly run_updated_at: string;
 }
@@ -162,6 +174,15 @@ async function loadRunAuthority(
        run.run_id,
        run.principal_id,
        binding.conversation_id,
+       conversation.title as conversation_title,
+       conversation.resource_version as conversation_resource_version,
+       binding.datasource_id,
+       (select pg_catalog.count(*)
+        from qa_messages as message
+        where message.app_id = binding.app_id
+          and message.tenant_id = binding.tenant_id
+          and message.environment = binding.environment
+          and message.conversation_id = binding.conversation_id) as conversation_message_count,
        config.config_id,
        config.config_revision,
        config.config_hash,
@@ -171,6 +192,13 @@ async function loadRunAuthority(
        run.question,
        coalesce(projection.status, run.status) as run_status,
        run.active_fence,
+       run.active_attempt_id,
+       (select pg_catalog.count(*)
+        from run_attempts as attempt
+        where attempt.app_id = run.app_id
+          and attempt.tenant_id = run.tenant_id
+          and attempt.environment = run.environment
+          and attempt.run_id = run.run_id) as attempt_count,
        run.created_at as run_created_at,
        run.updated_at as run_updated_at
      from runs as run
@@ -179,6 +207,12 @@ async function loadRunAuthority(
       and binding.tenant_id = run.tenant_id
       and binding.environment = run.environment
       and binding.run_id = run.run_id
+     left join qa_conversations as conversation
+       on conversation.app_id = binding.app_id
+      and conversation.tenant_id = binding.tenant_id
+      and conversation.environment = binding.environment
+      and conversation.conversation_id = binding.conversation_id
+      and conversation.owner_principal_id = binding.principal_id
      left join effective_run_config_receipts as config
        on config.app_id = run.app_id
       and config.tenant_id = run.tenant_id
@@ -234,6 +268,21 @@ async function loadRunAuthority(
       run_id: immutableIdSchema.parse(row.run_id),
       conversation_id:
         row.conversation_id === null ? null : immutableIdSchema.parse(row.conversation_id),
+      conversation_title:
+        row.conversation_title === null
+          ? null
+          : z.string().min(1).max(255).parse(row.conversation_title),
+      conversation_resource_version:
+        row.conversation_resource_version === null
+          ? null
+          : z.coerce.number().int().positive().safe().parse(row.conversation_resource_version),
+      conversation_message_count: z.coerce
+        .number()
+        .int()
+        .nonnegative()
+        .safe()
+        .parse(row.conversation_message_count),
+      datasource_id: row.datasource_id === null ? null : immutableIdSchema.parse(row.datasource_id),
       config_ref: hasCompleteConfig
         ? {
             config_id: immutableIdSchema.parse(row.config_id),
@@ -249,6 +298,9 @@ async function loadRunAuthority(
       question: z.string().min(1).max(4_000).parse(row.question),
       run_status: z.string().min(1).max(64).parse(row.run_status),
       active_fence: z.coerce.number().int().nonnegative().safe().parse(row.active_fence),
+      active_attempt_id:
+        row.active_attempt_id === null ? null : immutableIdSchema.parse(row.active_attempt_id),
+      attempt_count: z.coerce.number().int().nonnegative().safe().parse(row.attempt_count),
       run_created_at: iso(row.run_created_at),
       run_updated_at: iso(row.run_updated_at),
     };
@@ -505,6 +557,46 @@ function eventNode(event: RunRuntimeEvent): ResolutionTraceNode {
   }
 }
 
+function artifactPublicSummary(artifact: VerifiedArtifact): string {
+  const document = artifact.document;
+  if (!document) return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
+  if ("projection" in document) {
+    switch (document.projection.kind) {
+      case "SQL":
+        return redactPublicDisplayText(document.projection.sql).slice(0, 2_000);
+      case "TABLE":
+        return `${document.projection.total_rows} 行 · ${document.projection.columns
+          .map(({ label }) => label)
+          .join("、")}`.slice(0, 2_000);
+      case "MARKDOWN":
+        return redactPublicDisplayText(document.projection.plain_text).slice(0, 2_000);
+      case "REPORT":
+        return `${document.projection.title} · ${document.projection.sections.length} 个章节`;
+      case "CHART":
+        return `${document.projection.title} · ${document.projection.mark} · ${document.projection.table.total_rows} 行`;
+    }
+  }
+  switch (document.payload.artifact_type) {
+    case "SqlArtifact":
+      return redactPublicDisplayText(document.payload.sql).slice(0, 2_000);
+    case "ExecutionReceipt":
+      return `${document.payload.row_count} 行 · ${document.payload.replay_state} · ${document.payload.observed_at}`;
+    case "QueryEvidence": {
+      const passed = document.payload.invariant_verdicts.filter(
+        ({ verdict }) => verdict === "PASS",
+      ).length;
+      return `${passed}/${document.payload.invariant_verdicts.length} 项结果不变量通过`;
+    }
+    case "AnalysisReport":
+      return `${document.payload.title} · ${document.payload.claim_refs.length} 项声明${document.payload.limitations[0] ? ` · 限制：${document.payload.limitations[0]}` : ""}`.slice(
+        0,
+        2_000,
+      );
+    default:
+      return `${artifact.reference.artifact_type} 内容可通过 exact preview 查看`;
+  }
+}
+
 function artifactNode(artifact: VerifiedArtifact): ResolutionTraceNode {
   const type = artifact.reference.artifact_type;
   return {
@@ -515,7 +607,7 @@ function artifactNode(artifact: VerifiedArtifact): ResolutionTraceNode {
     occurred_at: artifact.created_at,
     status: "AVAILABLE",
     title: type,
-    summary: `${type} revision ${artifact.reference.revision}`,
+    summary: artifactPublicSummary(artifact),
     duration_ms: null,
     artifact_refs: [artifact.reference],
   };
@@ -668,12 +760,57 @@ async function projectDetail(
 ): Promise<ResolutionTraceDetail | null> {
   const node = trace.nodes.find((candidate) => candidate.node_id === nodeId);
   if (!node) return null;
+  const effectiveConfig = authority.effective_config_json
+    ? await verifyEffectiveRunConfigReceiptCandidate(authority.effective_config_json)
+    : null;
+  const answerSummary = events
+    .map(toPublicRunEvent)
+    .flatMap((event) => (event.type === "answer" ? [event.payload.delta] : []))
+    .join("")
+    .trim();
   const relations = detailRelations(trace, node.node_id);
   const baseIdentity: ResolutionTraceDetail["identity"] = [
     ...detailIdentity("Run ID", trace.run_id, "ID"),
     ...detailIdentity("Node ID", node.node_id, "ID"),
     ...detailIdentity("Sequence", node.sequence, "VERSION"),
   ];
+  const runContext = fieldsSection([
+    { label: "用户问题", value: authority.question },
+    { label: "Run 状态", value: authority.run_status },
+    { label: "创建时间", value: authority.run_created_at },
+    { label: "更新时间", value: authority.run_updated_at },
+    { label: "当前执行尝试", value: authority.active_attempt_id ?? "当前没有 active attempt" },
+    { label: "尝试次数", value: String(authority.attempt_count) },
+    { label: "Worker fence", value: String(authority.active_fence) },
+    { label: "所属对话", value: authority.conversation_title ?? "对话标题不可用" },
+    { label: "对话绑定", value: authority.conversation_id ?? "该 Run 没有 Conversation binding" },
+    {
+      label: "对话资源版本",
+      value: authority.conversation_resource_version
+        ? String(authority.conversation_resource_version)
+        : "不可用",
+    },
+    { label: "对话消息数", value: String(authority.conversation_message_count) },
+    {
+      label: "数据源绑定",
+      value: authority.datasource_id
+        ? `${authority.datasource_id} · 历史显示名未冻结`
+        : "该 Run 没有 Datasource binding",
+    },
+    { label: "公开回答摘要", value: answerSummary || "尚未发布公开回答" },
+    {
+      label: "冻结模型",
+      value: effectiveConfig
+        ? `${effectiveConfig.model.provider} / ${effectiveConfig.model.model_id} · ${effectiveConfig.model.profile_version}`
+        : "该 Run 没有 Effective Config",
+    },
+    {
+      label: "冻结配置",
+      value: authority.config_ref
+        ? `${authority.config_ref.config_id} · r${authority.config_ref.config_revision}`
+        : "该 Run 没有 Effective Config",
+    },
+  ]);
   let identity = baseIdentity;
   let payload: DetailSection = fieldsSection([
     { label: "问题", value: authority.question },
@@ -875,8 +1012,8 @@ async function projectDetail(
         result = textSection(publicEvent.payload.summary);
         break;
     }
-  } else if (node.node_id.startsWith("config:") && authority.effective_config_json) {
-    const config = await verifyEffectiveRunConfigReceiptCandidate(authority.effective_config_json);
+  } else if (node.node_id.startsWith("config:") && effectiveConfig) {
+    const config = effectiveConfig;
     identity = [
       ...baseIdentity,
       ...detailIdentity("Config ID", config.config_id, "ID"),
@@ -889,27 +1026,31 @@ async function projectDetail(
       { label: "Model profile version", value: config.model.profile_version },
       {
         label: "数据源",
-        value: `${config.datasource.resource_id} · r${config.datasource.resource_revision}`,
+        value: `${config.datasource.resource_id} · r${config.datasource.resource_revision} · 历史显示名未冻结`,
       },
       {
         label: "Semantic Release",
-        value: `${config.semantic_release.resource_id} · generation ${config.semantic_release.semantic_generation}`,
+        value: `${config.semantic_release.resource_id} · generation ${config.semantic_release.semantic_generation} · 历史显示名未冻结`,
       },
       {
         label: "Schema Snapshot",
-        value: `${config.schema_snapshot.resource_id} · r${config.schema_snapshot.resource_revision}`,
+        value: `${config.schema_snapshot.resource_id} · r${config.schema_snapshot.resource_revision} · 历史显示名未冻结`,
       },
       {
         label: "Context Policy",
-        value: `${config.context_policy.resource_id} · r${config.context_policy.resource_revision}`,
+        value: `${config.context_policy.resource_id} · r${config.context_policy.resource_revision} · 历史显示名未冻结`,
       },
       {
         label: "Egress Policy",
-        value: `${config.egress_policy.resource_id} · r${config.egress_policy.resource_revision}`,
+        value: `${config.egress_policy.resource_id} · r${config.egress_policy.resource_revision} · 历史显示名未冻结`,
       },
       {
         label: "Safety Policy",
-        value: `${config.execution_safety_policy.resource_id} · r${config.execution_safety_policy.resource_revision}`,
+        value: `${config.execution_safety_policy.resource_id} · r${config.execution_safety_policy.resource_revision} · 历史显示名未冻结`,
+      },
+      {
+        label: "历史名称状态",
+        value: "HISTORICAL_DISPLAY_NAME_UNAVAILABLE",
       },
     ]);
     result = fieldsSection([
@@ -926,6 +1067,25 @@ async function projectDetail(
       "execution_safety_policy",
       "resource_bindings",
     ]);
+  } else if (node.node_id.startsWith("config:")) {
+    identity = [
+      ...baseIdentity,
+      ...(authority.config_ref
+        ? [
+            ...detailIdentity("Config ID", authority.config_ref.config_id, "ID"),
+            ...detailIdentity("Config revision", authority.config_ref.config_revision, "VERSION"),
+            ...detailIdentity("Config hash", authority.config_ref.config_hash, "HASH"),
+          ]
+        : []),
+    ];
+    payload = unavailableSection(
+      "HISTORICAL_CONFIG_CONTENT_UNAVAILABLE",
+      "该 Run 保留了 exact Config 身份，但没有可公开读取的历史配置内容。",
+    );
+    result = unavailableSection(
+      "HISTORICAL_DISPLAY_NAME_UNAVAILABLE",
+      "禁止从当前 Catalog 回查名称冒充历史绑定。",
+    );
   } else if (node.artifact_refs.length > 0) {
     const verifiedReferences = node.artifact_refs.filter((reference) =>
       artifacts.some(
@@ -947,12 +1107,22 @@ async function projectDetail(
       ...(first ? detailIdentity("Revision", first.revision, "VERSION") : []),
       ...(first ? detailIdentity("Content hash", first.content_hash, "HASH") : []),
     ];
-    payload = fieldsSection(
-      verifiedReferences.map((reference) => ({
+    const publicSummaries = verifiedReferences.map((reference) => {
+      const artifact = artifacts.find(
+        (candidate) =>
+          artifactReferenceIdentity(candidate.reference) === artifactReferenceIdentity(reference),
+      );
+      return artifact ? artifactPublicSummary(artifact) : "公开内容不可用";
+    });
+    payload = {
+      state: "AVAILABLE",
+      format: "TEXT",
+      text: publicSummaries.join("\n\n"),
+      fields: verifiedReferences.map((reference) => ({
         label: reference.artifact_type,
-        value: `${reference.artifact_id} · r${reference.revision}`,
+        value: `revision ${reference.revision} · exact preview`,
       })),
-    );
+    };
     result = {
       state: "AVAILABLE",
       format: "ARTIFACTS",
@@ -970,7 +1140,7 @@ async function projectDetail(
   }
 
   return resolutionTraceDetailSchema.parse({
-    schema_version: "resolution-trace-detail@1.0.0",
+    schema_version: "resolution-trace-detail@2.0.0",
     scope: trace.scope,
     run_id: trace.run_id,
     node_id: node.node_id,
@@ -988,6 +1158,7 @@ async function projectDetail(
         .filter(({ direction }) => direction === "OUTGOING")
         .map(({ node_id }) => node_id),
     },
+    run_context: runContext,
     identity,
     payload,
     result,

@@ -44,6 +44,35 @@ export interface ResolutionTraceWorkbenchModel {
   search(query: string): readonly ResolutionTraceWorkbenchRecord[];
 }
 
+export interface ResolutionTraceRefreshDecision {
+  readonly selectedNodeId: string | null;
+  readonly appendedCount: number;
+  readonly resetView: boolean;
+  readonly followedTail: boolean;
+}
+
+export function resolveResolutionTraceRefresh(input: {
+  readonly runChanged: boolean;
+  readonly focusedNodeId: string | null;
+  readonly selectedNodeId: string | null;
+  readonly selectedNodeStillExists: boolean;
+  readonly previousLastNodeId: string | null;
+  readonly nextLastNodeId: string | null;
+  readonly previousCount: number;
+  readonly nextCount: number;
+}): ResolutionTraceRefreshDecision {
+  const appendedCount = Math.max(0, input.nextCount - input.previousCount);
+  const wasFollowingTail = input.selectedNodeId === input.previousLastNodeId;
+  const followedTail = input.runChanged || wasFollowingTail || !input.selectedNodeStillExists;
+  return {
+    selectedNodeId:
+      input.focusedNodeId ?? (followedTail ? input.nextLastNodeId : input.selectedNodeId),
+    appendedCount,
+    resetView: input.runChanged,
+    followedTail,
+  };
+}
+
 const priorityStatuses = new Set(["FAILED", "CANCELLED", "WAITING", "BLOCKED", "INTERRUPTED"]);
 
 export function projectTimelineRecords(
@@ -65,20 +94,28 @@ export function projectTimelineRecords(
       continue;
     }
 
-    const priority = laneRecords.filter(
+    const laneIncluded = new Set<string>();
+    const include = (record: ResolutionTraceWorkbenchRecord) => {
+      laneIncluded.add(record.node_id);
+      included.add(record.node_id);
+    };
+    const pinned = laneRecords.filter(
       (record) =>
-        record.node_id === options.selectedNodeId ||
-        priorityStatuses.has(record.node.status) ||
-        options.matchNodeIds?.has(record.node_id),
+        record.node_id === options.selectedNodeId || options.matchNodeIds?.has(record.node_id),
     );
-    for (const record of priority.slice(0, maxPerLane)) included.add(record.node_id);
+    for (const record of pinned.slice(0, maxPerLane)) include(record);
+    const priority = laneRecords.filter(
+      (record) => !laneIncluded.has(record.node_id) && priorityStatuses.has(record.node.status),
+    );
+    const priorityCapacity = Math.max(0, maxPerLane - laneIncluded.size);
+    for (const record of priority.slice(0, priorityCapacity)) include(record);
 
-    const remaining = maxPerLane - Math.min(priority.length, maxPerLane);
+    const remaining = maxPerLane - laneIncluded.size;
     if (remaining <= 0) continue;
-    const candidates = laneRecords.filter((record) => !included.has(record.node_id));
+    const candidates = laneRecords.filter((record) => !laneIncluded.has(record.node_id));
     for (let index = 0; index < remaining; index += 1) {
       const candidate = candidates[Math.floor((index * candidates.length) / remaining)];
-      if (candidate) included.add(candidate.node_id);
+      if (candidate) include(candidate);
     }
   }
 

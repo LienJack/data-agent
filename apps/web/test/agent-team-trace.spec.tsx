@@ -49,7 +49,7 @@ describe("Agent Team trace", () => {
       approval_status: "APPROVED",
     });
     const trace = await buildAgentTeamPublicTrace({
-      schema_version: "agent-team-public-trace@1.0.0",
+      schema_version: "agent-team-public-trace@2.0.0",
       scope,
       run_id: id(20),
       tasks: [
@@ -65,6 +65,19 @@ describe("Agent Team trace", () => {
           worker_fence: 1,
           status: "RUNNING",
           created_at: "2026-08-18T12:00:00.000Z",
+          goal_revision: 3,
+          bounds: {
+            max_context_bytes: 32_768,
+            max_input_tokens: 8_000,
+            max_output_tokens: 2_000,
+            max_tool_calls: 12,
+            timeout_ms: 120_000,
+          },
+          required_artifact_types: ["AnalysisReport"],
+          artifact_refs: [],
+          context_epoch_ref: null,
+          completion: null,
+          acceptance: null,
         },
         {
           task_id: id(22),
@@ -78,6 +91,33 @@ describe("Agent Team trace", () => {
           worker_fence: 1,
           status: "ACCEPTED",
           created_at: "2026-08-18T12:00:01.000Z",
+          goal_revision: 3,
+          bounds: {
+            max_context_bytes: 16_384,
+            max_input_tokens: 4_000,
+            max_output_tokens: 1_500,
+            max_tool_calls: 6,
+            timeout_ms: 60_000,
+          },
+          required_artifact_types: ["AnalysisReport"],
+          artifact_refs: [],
+          context_epoch_ref: { epoch_id: id(31), build_signature: hash("c") },
+          completion: {
+            output_ref: {
+              artifact_id: id(40),
+              artifact_type: "AnalysisReport",
+              ...scope,
+              run_id: id(20),
+              revision: 2,
+              content_hash: hash("1"),
+            },
+            completed_at: "2026-08-18T12:00:04.000Z",
+          },
+          acceptance: {
+            status: "ACCEPTED",
+            reason: null,
+            accepted_at: "2026-08-18T12:00:05.000Z",
+          },
         },
       ],
       handoffs: [
@@ -88,6 +128,14 @@ describe("Agent Team trace", () => {
           parent_expected_revision: 1,
           request_hash: hash("b"),
           created_at: "2026-08-18T12:00:02.000Z",
+          child_required_artifact_types: ["AnalysisReport"],
+          child_bounds: {
+            max_context_bytes: 16_384,
+            max_input_tokens: 4_000,
+            max_output_tokens: 1_500,
+            max_tool_calls: 6,
+            timeout_ms: 60_000,
+          },
         },
       ],
       epochs: [
@@ -99,6 +147,7 @@ describe("Agent Team trace", () => {
           build_signature: hash("c"),
           obligation_ledger_hash: hash("d"),
           created_at: "2026-08-18T12:00:03.000Z",
+          obligation_counts: { total: 2, open: 0, unknown: 0, resolved: 2 },
         },
       ],
       verifier_decisions: [
@@ -109,6 +158,22 @@ describe("Agent Team trace", () => {
           completion_hash: hash("e"),
           decision_hash: hash("f"),
           created_at: "2026-08-18T12:00:04.000Z",
+          dimensions: {
+            schema_valid: "PASS",
+            scope_valid: "PASS",
+            policy_valid: "PASS",
+            provenance_valid: "PASS",
+            execution_valid: "PASS",
+            intent_grounded: "PASS",
+            oracle_verified: "PASS",
+          },
+          semantic_status: "VERIFIED",
+          decided_at: "2026-08-18T12:00:04.000Z",
+          acceptance: {
+            status: "ACCEPTED",
+            reason: null,
+            accepted_at: "2026-08-18T12:00:05.000Z",
+          },
         },
       ],
     });
@@ -147,6 +212,11 @@ describe("Agent Team trace", () => {
     expect(html).toContain("Handoffs · 1");
     expect(html).toContain("Context epochs · 1");
     expect(html).toContain("Verifier decisions · 1");
+    expect(html).toContain("goal r3 · AnalysisReport");
+    expect(html).toContain("要求输出 AnalysisReport");
+    expect(html).toContain("obligations 2 · open 0 · unknown 0 · resolved 2");
+    expect(html).toContain("schema_valid=PASS");
+    expect(html).toContain("ACCEPTED · 全部规则通过");
     expect(html).toContain("<details");
     expect(html).not.toMatch(/system prompt|private reasoning|raw context|credential/i);
   });

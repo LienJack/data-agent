@@ -140,7 +140,7 @@ describe("resolution trace contracts", () => {
 
   it("parses a content-first public detail and rejects private payload fields", () => {
     const detail = {
-      schema_version: "resolution-trace-detail@1.0.0",
+      schema_version: "resolution-trace-detail@2.0.0",
       scope,
       run_id: id(4),
       node_id: `event:${id(7)}`,
@@ -151,6 +151,15 @@ describe("resolution trace contracts", () => {
       status: "COMPLETED",
       summary: "已读取 14 行公开内容",
       hierarchy: { parent_node_ids: [], child_node_ids: [] },
+      run_context: {
+        state: "AVAILABLE",
+        format: "FIELDS",
+        text: null,
+        fields: [
+          { label: "用户问题", value: "统计本月订单" },
+          { label: "Run 状态", value: "SUCCEEDED" },
+        ],
+      },
       identity: [
         { label: "Tool", value: "read", value_kind: "NAME" },
         { label: "Call ID", value: "call-1", value_kind: "ID" },
@@ -200,6 +209,73 @@ describe("resolution trace contracts", () => {
         payload: { ...detail.payload, reasoning_content: "private chain of thought" },
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps a strict content-first detail shape for all ten node kinds", () => {
+    const kinds = [
+      "LIFECYCLE",
+      "PROGRESS",
+      "AGENT",
+      "REASONING",
+      "TOOL",
+      "ANSWER",
+      "TERMINAL",
+      "ARTIFACT",
+      "SQL",
+      "CONTEXT",
+    ] as const;
+    for (const [index, kind] of kinds.entries()) {
+      const derived = ["ARTIFACT", "SQL", "CONTEXT"].includes(kind);
+      const parsed = resolutionTraceDetailSchema.parse({
+        schema_version: "resolution-trace-detail@2.0.0",
+        scope,
+        run_id: id(4),
+        node_id: derived ? `artifact:${id(index + 30)}:1` : `event:${id(index + 30)}`,
+        kind,
+        sequence: derived ? null : index + 1,
+        source_event_ids: derived ? [] : [id(index + 30)],
+        title: `${kind} 标题`,
+        status: kind === "CONTEXT" || kind === "ARTIFACT" ? "AVAILABLE" : "COMPLETED",
+        summary: `${kind} 公开摘要`,
+        hierarchy: { parent_node_ids: [], child_node_ids: [] },
+        run_context: {
+          state: "AVAILABLE",
+          format: "FIELDS",
+          text: null,
+          fields: [{ label: "用户问题", value: "分析订单趋势" }],
+        },
+        identity: [{ label: "Node ID", value: id(index + 30), value_kind: "ID" }],
+        payload: {
+          state: "AVAILABLE",
+          format: "TEXT",
+          text: `${kind} 公开输入或正文`,
+          fields: [],
+        },
+        result: {
+          state: "AVAILABLE",
+          format: "TEXT",
+          text: `${kind} 公共结果或决策`,
+          fields: [],
+        },
+        schema: {
+          state: "AVAILABLE",
+          schema_name: "public-detail",
+          schema_version: "2.0.0",
+          fields: [{ name: "summary", type: "string", availability: "AVAILABLE" }],
+        },
+        timing: {
+          occurred_at: occurredAt,
+          started_at: occurredAt,
+          completed_at: occurredAt,
+          duration_ms: 0,
+          source: derived ? "ARTIFACT_TIMESTAMP" : "SESSION_TIMESTAMPS",
+        },
+        relations: [],
+        artifact_refs: [],
+      });
+      expect(parsed.kind).toBe(kind);
+      expect(parsed.run_context.state).toBe("AVAILABLE");
+    }
   });
 });
 

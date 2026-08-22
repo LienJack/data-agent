@@ -48,6 +48,14 @@ function pool(projection: unknown, error?: Error) {
 }
 
 function projection() {
+  const outputRef = {
+    artifact_id: id(30),
+    artifact_type: "AnalysisReport",
+    ...scope,
+    run_id: ids.run,
+    revision: 1,
+    content_hash: `sha256:${"3".repeat(64)}`,
+  };
   return {
     tasks: [
       {
@@ -62,6 +70,19 @@ function projection() {
         worker_fence: 1,
         status: "RUNNING",
         created_at: "2026-08-18T12:00:00.000Z",
+        goal_revision: 3,
+        bounds: {
+          max_context_bytes: 32_768,
+          max_input_tokens: 8_000,
+          max_output_tokens: 2_000,
+          max_tool_calls: 12,
+          timeout_ms: 120_000,
+        },
+        required_artifact_types: ["AnalysisReport"],
+        artifact_refs: [outputRef],
+        context_epoch_ref: null,
+        completion: null,
+        acceptance: null,
       },
     ],
     handoffs: [],
@@ -83,12 +104,13 @@ describe("PostgreSQL Agent Team trace projector", () => {
       value: {
         run_id: ids.run,
         tasks: [{ profile_id: "data-agent-orchestrator", status: "RUNNING" }],
+        schema_version: "agent-team-public-trace@2.0.0",
         trace_hash: expect.stringMatching(/^sha256:/),
       },
     });
-    expect(database.calls.some((text) => text.includes("load_agent_team_public_projection"))).toBe(
-      true,
-    );
+    expect(
+      database.calls.some((text) => text.includes("load_agent_team_public_projection_v2")),
+    ).toBe(true);
     expect(JSON.stringify(result)).not.toMatch(/task_json|prompt|message|tool_args/i);
   });
 

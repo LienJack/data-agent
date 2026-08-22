@@ -87,6 +87,44 @@ export function AgentTeamTrace({
                   {new Date(task.created_at).toLocaleString()} · task r{task.task_revision} ·
                   attempt {task.attempt_id.slice(0, 8)} · fence {task.worker_fence}
                 </p>
+                {"goal_revision" in task && (
+                  <dl className="mt-2 grid gap-1 text-[10px] text-[var(--color-text-secondary)] sm:grid-cols-2">
+                    <div>
+                      <dt className="text-[var(--color-text-muted)]">目标与输出</dt>
+                      <dd>
+                        goal r{task.goal_revision} · {task.required_artifact_types.join(", ")}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[var(--color-text-muted)]">执行边界</dt>
+                      <dd>
+                        {task.bounds.max_tool_calls} tools · {task.bounds.timeout_ms} ms · output{" "}
+                        {task.bounds.max_output_tokens} tokens
+                      </dd>
+                    </div>
+                    {task.completion && (
+                      <div>
+                        <dt className="text-[var(--color-text-muted)]">已提交输出</dt>
+                        <dd>
+                          {task.completion.output_ref.artifact_type} · r
+                          {task.completion.output_ref.revision} ·{" "}
+                          {new Date(task.completion.completed_at).toLocaleString()}
+                        </dd>
+                      </div>
+                    )}
+                    {task.acceptance && (
+                      <div>
+                        <dt className="text-[var(--color-text-muted)]">验收结果</dt>
+                        <dd>
+                          {task.acceptance.status}
+                          {task.acceptance.reason
+                            ? ` · ${task.acceptance.reason}`
+                            : " · 全部规则通过"}
+                        </dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
                 {!exactProfileFor(task) && task.profile_id !== "data-agent-orchestrator" && (
                   <p className="mt-1 text-[10px] text-amber-700">
                     历史 Profile 内容不可用；保留 exact r{task.profile_revision} 身份
@@ -128,6 +166,13 @@ export function AgentTeamTrace({
                     {new Date(handoff.created_at).toLocaleString()} · parent r
                     {handoff.parent_expected_revision}
                   </span>
+                  {"child_required_artifact_types" in handoff && (
+                    <span className="mt-1 block">
+                      要求输出 {handoff.child_required_artifact_types.join(", ")} · 最多{" "}
+                      {handoff.child_bounds.max_tool_calls} 次 Tool ·{" "}
+                      {handoff.child_bounds.timeout_ms} ms
+                    </span>
+                  )}
                   <span className="mt-1 block font-mono text-[var(--color-text-muted)]">
                     {shortIdentity(handoff.request_hash)}
                   </span>
@@ -142,6 +187,13 @@ export function AgentTeamTrace({
                   <span className="mt-1 block text-[var(--color-text-muted)]">
                     {new Date(epoch.created_at).toLocaleString()} · epoch r{epoch.epoch_revision}
                   </span>
+                  {"obligation_counts" in epoch && (
+                    <span className="mt-1 block">
+                      obligations {epoch.obligation_counts.total} · open{" "}
+                      {epoch.obligation_counts.open} · unknown {epoch.obligation_counts.unknown} ·
+                      resolved {epoch.obligation_counts.resolved}
+                    </span>
+                  )}
                   <span className="mt-1 block font-mono text-[var(--color-text-muted)]">
                     {shortIdentity(epoch.build_signature)}
                   </span>
@@ -157,6 +209,17 @@ export function AgentTeamTrace({
                     {new Date(decision.created_at).toLocaleString()} · task r
                     {decision.task_revision}
                   </span>
+                  {"dimensions" in decision && (
+                    <span className="mt-1 block">
+                      {decision.semantic_status} ·{" "}
+                      {Object.entries(decision.dimensions)
+                        .map(([name, status]) => `${name}=${status}`)
+                        .join(" · ")}
+                      {decision.acceptance
+                        ? ` · ${decision.acceptance.status}${decision.acceptance.reason ? ` (${decision.acceptance.reason})` : ""}`
+                        : " · 尚无验收决定"}
+                    </span>
+                  )}
                   <span className="mt-1 block font-mono text-[var(--color-text-muted)]">
                     {shortIdentity(decision.decision_hash)}
                   </span>

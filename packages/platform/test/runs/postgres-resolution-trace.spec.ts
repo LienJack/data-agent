@@ -107,6 +107,10 @@ function authorityRow() {
     run_id: ids.run,
     principal_id: ids.principal,
     conversation_id: ids.conversation,
+    conversation_title: "订单分析",
+    conversation_resource_version: 3,
+    conversation_message_count: 4,
+    datasource_id: id(14),
     config_id: ids.config,
     config_revision: 1,
     config_hash: hash("2"),
@@ -116,6 +120,8 @@ function authorityRow() {
     question: "统计本月订单",
     run_status: "RUNNING",
     active_fence: 1,
+    active_attempt_id: ids.attempt,
+    attempt_count: 2,
     run_created_at: occurredAt,
     run_updated_at: occurredAt,
   };
@@ -291,6 +297,17 @@ describe("PostgreSQL Resolution Trace projector", () => {
       ]),
       result: { state: "AVAILABLE", text: "订单事实表与月份维度" },
       payload: { state: "AVAILABLE", text: '{"semantic_domain":"sales"}' },
+      run_context: {
+        state: "AVAILABLE",
+        fields: expect.arrayContaining([
+          { label: "用户问题", value: "统计本月订单" },
+          { label: "所属对话", value: "订单分析" },
+          { label: "当前执行尝试", value: ids.attempt },
+          { label: "尝试次数", value: "2" },
+          { label: "对话消息数", value: "4" },
+          { label: "数据源绑定", value: `${id(14)} · 历史显示名未冻结` },
+        ]),
+      },
       timing: {
         started_at: occurredAt,
         completed_at: "2026-08-18T12:00:00.040Z",
@@ -337,6 +354,7 @@ describe("PostgreSQL Resolution Trace projector", () => {
       expect.arrayContaining([
         expect.objectContaining({
           kind: "SQL",
+          summary: "select count(*) from orders",
           artifact_refs: [
             expect.objectContaining({
               artifact_id: sql.artifact_id,
@@ -346,6 +364,14 @@ describe("PostgreSQL Resolution Trace projector", () => {
         }),
       ]),
     );
+    const detail = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadDetail(
+      capability,
+      { scope, run_id: ids.run, node_id: `artifact:${sql.artifact_id}:${sql.revision}` },
+    );
+    expect(detail.ok && detail.value?.payload).toMatchObject({
+      state: "AVAILABLE",
+      text: "select count(*) from orders",
+    });
   });
 
   it("projects stable trace and redacted SQL history from verified authority rows", async () => {
@@ -369,6 +395,16 @@ describe("PostgreSQL Resolution Trace projector", () => {
     );
     expect(first.ok && first.value?.nodes.some(({ kind }) => kind === "SQL")).toBe(true);
 
+    const configDetail = await projector.loadDetail(capability, {
+      scope,
+      run_id: ids.run,
+      node_id: `config:${ids.config}:1`,
+    });
+    expect(configDetail.ok && configDetail.value).toMatchObject({
+      kind: "CONTEXT",
+      payload: { state: "UNAVAILABLE", reason_code: "HISTORICAL_CONFIG_CONTENT_UNAVAILABLE" },
+      result: { state: "UNAVAILABLE", reason_code: "HISTORICAL_DISPLAY_NAME_UNAVAILABLE" },
+    });
     const history = await projector.listSqlHistory(capability, {
       scope,
       run_id: ids.run,

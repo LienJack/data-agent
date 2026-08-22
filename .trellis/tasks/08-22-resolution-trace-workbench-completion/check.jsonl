@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/resolution-trace.md","reason":"Verify detail identity, historical binding and tests"}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Verify UI, scale, replay, accessibility and browser proof"}
+{"file":".trellis/spec/backend/agent-team-runtime.md","reason":"Verify public Team content remains authority-safe"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify forward migration and grants"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Verify end-to-end data flow and error propagation"}
