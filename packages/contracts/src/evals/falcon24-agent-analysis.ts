@@ -77,10 +77,15 @@ const falcon24MethodReceiptSchema = z.strictObject({
 });
 
 export const falcon24AnalysisOracleReceiptSchema = z.strictObject({
-  schema_version: z.literal("falcon24-analysis-oracle@1.0.0"),
+  schema_version: z.literal("falcon24-analysis-oracle@2.0.0"),
+  oracle_kind: z.literal("ARROW_INPUT_RECOMPUTE"),
   case_id: falcon24AnalysisCaseIdSchema,
   verdict: z.literal("PASS"),
+  input_hash: contentHashSchema,
+  input_materialization_receipt_hash: contentHashSchema,
+  query_evidence_hash: contentHashSchema,
   output_hash: contentHashSchema,
+  verification_hash: contentHashSchema,
   method_receipts: z.array(falcon24MethodReceiptSchema).min(1).max(32),
   disclosures: z.array(versionIdentifierSchema).max(32),
   quality_findings: z.array(versionIdentifierSchema).max(32),
@@ -99,7 +104,7 @@ export async function verifyFalcon24AnalysisOracleReceipt(input: unknown) {
 
 export const falcon24AgentAnalysisRunResultSchema = z
   .strictObject({
-    schema_version: z.literal("falcon24-agent-analysis-run@1.0.0"),
+    schema_version: z.literal("falcon24-agent-analysis-run@2.0.0"),
     case_id: falcon24AnalysisCaseIdSchema,
     run_id: immutableIdSchema,
     run_variant: z.enum(["COLD", "WARM"]),
@@ -213,7 +218,11 @@ export async function buildFalcon24AgentAnalysisGate(input: {
     for (const result of caseRuns) {
       if (
         result.oracle_receipt.case_id !== result.case_id ||
-        result.oracle_receipt.output_hash !== result.answer_hash
+        result.oracle_receipt.output_hash !== result.answer_hash ||
+        result.oracle_receipt.method_receipts.some(
+          ({ evidence_hash: evidenceHash }) =>
+            evidenceHash !== result.oracle_receipt.verification_hash,
+        )
       ) {
         throw new TypeError("FALCON24_ANALYSIS_ORACLE_BINDING_INVALID");
       }

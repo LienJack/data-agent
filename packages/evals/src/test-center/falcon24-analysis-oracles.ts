@@ -1,7 +1,6 @@
 import {
   type Falcon24AgentAnalysisCase,
   falcon24AnalysisCaseIdSchema,
-  falcon24AnalysisOracleReceiptSchema,
 } from "@data-agent/contracts/evals";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import { z } from "zod";
@@ -385,7 +384,7 @@ const evaluators = {
   "falcon24-cohort-retention-m0-m6": evaluateCohort,
 } as const;
 
-export async function evaluateFalcon24AnalysisOutput(input: {
+export async function validateFalcon24AnalysisOutput(input: {
   readonly test_case: Falcon24AgentAnalysisCase;
   readonly output: unknown;
 }) {
@@ -395,24 +394,7 @@ export async function evaluateFalcon24AnalysisOutput(input: {
   assertMethodEvidence(output, input.test_case);
   (evaluators[caseId] as (value: never) => void)(output as never);
   const outputHash = await sha256ContentHash(output);
-  const material = {
-    schema_version: "falcon24-analysis-oracle@1.0.0" as const,
-    case_id: caseId,
-    verdict: "PASS" as const,
-    output_hash: outputHash,
-    method_receipts: input.test_case.required_methods.map((methodId) => ({
-      method_id: methodId,
-      status: "PASS" as const,
-      evidence_hash: outputHash,
-    })),
-    disclosures: input.test_case.required_disclosures,
-    quality_findings: input.test_case.required_quality_findings,
-    terminal: input.test_case.expected_terminal,
-  };
-  return falcon24AnalysisOracleReceiptSchema.parse({
-    ...material,
-    receipt_hash: await sha256ContentHash(material),
-  });
+  return Object.freeze({ output, output_hash: outputHash });
 }
 
 export const falcon24AnalysisOracleInternals = Object.freeze({ evaluators });

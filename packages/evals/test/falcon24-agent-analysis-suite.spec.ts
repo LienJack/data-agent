@@ -61,22 +61,28 @@ describe("Falcon24 agent analysis acceptance", () => {
           [1, 2, 3].map(async (repetition) => {
             runSuffix += 1;
             const runId = id(runSuffix);
+            const verificationHash = hash(((caseIndex + 6) % 10).toString());
             const oracleMaterial = {
-              schema_version: "falcon24-analysis-oracle@1.0.0" as const,
+              schema_version: "falcon24-analysis-oracle@2.0.0" as const,
+              oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
               case_id: testCase.case_id,
               verdict: "PASS" as const,
+              input_hash: hash("a"),
+              input_materialization_receipt_hash: hash("b"),
+              query_evidence_hash: hash("c"),
               output_hash: hash((caseIndex + 1).toString()),
-              method_receipts: testCase.required_methods.map((methodId, methodIndex) => ({
+              verification_hash: verificationHash,
+              method_receipts: testCase.required_methods.map((methodId) => ({
                 method_id: methodId,
                 status: "PASS" as const,
-                evidence_hash: hash(((methodIndex + 1) % 10).toString()),
+                evidence_hash: verificationHash,
               })),
               disclosures: testCase.required_disclosures,
               quality_findings: testCase.required_quality_findings,
               terminal: testCase.expected_terminal,
             };
             return falcon24AgentAnalysisRunResultSchema.parse({
-              schema_version: "falcon24-agent-analysis-run@1.0.0",
+              schema_version: "falcon24-agent-analysis-run@2.0.0",
               case_id: testCase.case_id,
               run_id: runId,
               run_variant: runVariant,
@@ -142,7 +148,7 @@ describe("Falcon24 agent analysis acceptance", () => {
 
   it("rejects model override or missing generated Python before gate evaluation", () => {
     const base = {
-      schema_version: "falcon24-agent-analysis-run@1.0.0",
+      schema_version: "falcon24-agent-analysis-run@2.0.0",
       case_id: "falcon24-business-review-18m",
       run_id: id(500),
       run_variant: "COLD",
@@ -165,10 +171,15 @@ describe("Falcon24 agent analysis acceptance", () => {
       sandbox_receipt_refs: [artifact("SandboxExecutionReceipt", id(500), 505)],
       model_generated_node_count: 1,
       oracle_receipt: {
-        schema_version: "falcon24-analysis-oracle@1.0.0",
+        schema_version: "falcon24-analysis-oracle@2.0.0",
+        oracle_kind: "ARROW_INPUT_RECOMPUTE",
         case_id: "falcon24-business-review-18m",
         verdict: "PASS",
+        input_hash: hash("a"),
+        input_materialization_receipt_hash: hash("b"),
+        query_evidence_hash: hash("c"),
         output_hash: hash("3"),
+        verification_hash: hash("2"),
         method_receipts: [
           { method_id: "full-month-window", status: "PASS", evidence_hash: hash("2") },
         ],

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "../src/test-center/falcon24-agent-analysis-suite.js";
 import {
-  evaluateFalcon24AnalysisOutput,
   falcon24AnalysisOutputSchema,
+  validateFalcon24AnalysisOutput,
 } from "../src/test-center/falcon24-analysis-oracles.js";
 
 function methodEvidence(methods: readonly string[]) {
@@ -203,18 +203,17 @@ function outputFor(caseId: string, methods: readonly string[]) {
 }
 
 describe("Falcon24 independent analysis oracles", () => {
-  it("accepts all five case-specific output contracts and binds receipts to output hashes", async () => {
+  it("accepts all five case-specific output contracts and hashes their normalized outputs", async () => {
     const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
     const receipts = await Promise.all(
       suite.cases.map((testCase) =>
-        evaluateFalcon24AnalysisOutput({
+        validateFalcon24AnalysisOutput({
           test_case: testCase,
           output: outputFor(testCase.case_id, testCase.required_methods),
         }),
       ),
     );
     expect(receipts).toHaveLength(5);
-    expect(receipts.every(({ verdict }) => verdict === "PASS")).toBe(true);
     expect(new Set(receipts.map(({ output_hash }) => output_hash)).size).toBe(5);
   });
 
@@ -229,7 +228,7 @@ describe("Falcon24 independent analysis oracles", () => {
     const q1Output = falcon24AnalysisOutputSchema.parse(outputFor(q1.case_id, q1.required_methods));
     if (q1Output.case_id !== "falcon24-business-review-18m") throw new Error("wrong fixture");
     await expect(
-      evaluateFalcon24AnalysisOutput({
+      validateFalcon24AnalysisOutput({
         test_case: q1,
         output: {
           ...q1Output,
@@ -238,7 +237,7 @@ describe("Falcon24 independent analysis oracles", () => {
       }),
     ).rejects.toThrow("FALCON24_Q1_SHAPLEY_NOT_CLOSED");
     await expect(
-      evaluateFalcon24AnalysisOutput({
+      validateFalcon24AnalysisOutput({
         test_case: q2,
         output: {
           ...outputFor(q2.case_id, q2.required_methods),
@@ -249,7 +248,7 @@ describe("Falcon24 independent analysis oracles", () => {
     const q3Output = falcon24AnalysisOutputSchema.parse(outputFor(q3.case_id, q3.required_methods));
     if (q3Output.case_id !== "falcon24-inventory-damage-12m") throw new Error("wrong fixture");
     await expect(
-      evaluateFalcon24AnalysisOutput({
+      validateFalcon24AnalysisOutput({
         test_case: q3,
         output: {
           ...q3Output,
@@ -263,7 +262,7 @@ describe("Falcon24 independent analysis oracles", () => {
     const q5Output = falcon24AnalysisOutputSchema.parse(outputFor(q5.case_id, q5.required_methods));
     if (q5Output.case_id !== "falcon24-cohort-retention-m0-m6") throw new Error("wrong fixture");
     await expect(
-      evaluateFalcon24AnalysisOutput({
+      validateFalcon24AnalysisOutput({
         test_case: q5,
         output: {
           ...q5Output,
