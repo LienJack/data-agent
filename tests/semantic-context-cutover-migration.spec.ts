@@ -21,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010724");
+    expect(inventory.frontier).toBe("20260725010725");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -96,6 +96,21 @@ describe("10708 unique semantic lifecycle cutover", () => {
     expect(validation).toContain("SEMANTIC_CONTEXT_PACKAGE_ID_INVALID");
     expect(validation).toContain("SEMANTIC_CONTEXT_RESOLVED_AT_INVALID");
     expect(validation).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
+  });
+
+  it("maps stacked database context to bounded public rejection codes", () => {
+    const projection = readFileSync(
+      resolve(
+        root,
+        "infra/supabase/apps/data-agent/migration-sources/10725/20-safe-exception-projection.sql.inc",
+      ),
+      "utf8",
+    );
+
+    expect(projection).toContain("get stacked diagnostics failure_context=pg_exception_context");
+    expect(projection).toContain("SEMANTIC_CONTEXT_PERSISTENCE_ROW_INVALID");
+    expect(projection).not.toContain("message=sqlerrm");
+    expect(projection).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
   });
 
   it("accepts AnalysisProgram only in the active artifact authority", () => {
