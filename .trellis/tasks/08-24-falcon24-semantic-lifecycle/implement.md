@@ -10,7 +10,7 @@
   - 增加 `SemanticAssertionCandidate@1`、`SemanticChangeSet@1`、provenance/conflict/validation contracts。
   - 实现候选归一化、identity resolution、change compilation、deterministic validator 与 publish projection tests。
   - 保持 PostgreSQL authority 和现有 Candidate/Release V2 兼容。
-- [ ] U2 Hybrid retrieval, inference and pruning
+- [x] U2 Hybrid retrieval, inference and pruning
   - 增加 retrieval/inference receipts 与 `ResolvedContextPackage@3`。
   - 实现 route adapters、RRF、typed expansion、mandatory closure、budget pruning 和 PG fallback。
   - 替换 deferred routes，补 golden/metamorphic/permission/frontier/degradation tests。
@@ -31,6 +31,7 @@
   - 冷/暖各三次；记录外部 provider/DB 阻断时的准确 HOLD 证据，不用 fixture 冒充 live。
   - 执行 correctness/security/maintainability/testing/agent-native review，修复所有 confirmed findings。
   - 更新 durable specs，逐路径 stage，`git diff --cached --check`，完成 scoped commits。
+  - 删除 V2/AnalysisPlan@1/旧 resolver、reader、compat fixture 与 dead tests；运行依赖边界扫描证明唯一生产路径。
   - 预检与 `dev` 的 merge-tree overlap，合并回 dirty base，恢复并复验用户原有改动。
 
 ## Validation matrix

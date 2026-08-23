@@ -35,7 +35,7 @@ import {
   semanticLexicalEntrySchema,
   semanticLexicalMatchKindSchema,
   verifySemanticLexicalEntry,
-} from "./semantic-retrieval.js";
+} from "./semantic-lexical.js";
 
 const positiveSafeIntegerSchema = z.number().int().positive().safe();
 const RESOLVED_CONTEXT_CAPABILITY_CHAIN = [

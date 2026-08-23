@@ -7,8 +7,9 @@ PostgreSQL Published Semantic Release、Schema Snapshot、Policy Snapshot 和 Re
 revision 后才形成新 release。Neo4j、vector、sparse 和 lexicon index 均由 release event 重建，索引失败不回滚权威发布，但消费路径
 必须记录降级。
 
-`ResolvedContextPackage@3` 以 additive projection 包装 V2 核心字段，新增 retrieval/inference receipts、mandatory closure 和 analysis
-capabilities。`AnalysisPlan@2` 保留 AnalysisPlan@1 reader，新增多输入、多指标 DAG 与 node kind；`SandboxProgram@1` 不改 wire 语义。
+`ResolvedContextPackage@3` 在迁移切片中可暂时包装 V2 核心字段以便逐层编译，但最终会吸收权威字段并删除 V2 schema、builder、reader
+和旧 resolver。`AnalysisPlan@2` 同样在所有消费者迁移后删除 AnalysisPlan@1。最终生产态只允许一个 Resolved Context 和一个
+Analysis Plan 合同；`SandboxProgram@1` 保持唯一且不另起平行版本。
 
 ## Production pipeline
 
@@ -80,6 +81,7 @@ downgrade、program/runtime/receipt hashes。LLM confidence 不参与 pass/fail�
 - policy/sandbox/output/oracle failure：zero partial commit；最多一次等能力 repair；再次失败 HOLD/PARTIAL。
 - 任一 suite hard gate 失败：release HOLD；Text2SQL 和已发布 V2 路径保持可用。
 - 新能力按 production、retrieval、generated-python、suite 分别 kill switch；回滚只关闭投影/执行，不删除 Published authority 或历史 evidence。
+- 回滚通过 Git/发布版本和数据迁移恢复，不在运行时保留永久双读、旧 reader 或兼容 adapter。
 
 ## Security and public projection
 

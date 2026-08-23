@@ -3,7 +3,7 @@ import {
   buildSemanticLexicalEntry,
   semanticLexicalEntrySchema,
   verifySemanticLexicalEntry,
-} from "../src/context/semantic-retrieval.js";
+} from "../src/context/semantic-lexical.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;

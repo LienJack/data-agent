@@ -35,7 +35,7 @@
 
 ### R3. Resolved context and analysis planning
 
-- `ResolvedContextPackage@3` 承载检索/推断回执、mandatory closure 与分析能力，同时保留 V2 读取兼容。
+- `ResolvedContextPackage@3` 承载检索/推断回执、mandatory closure 与分析能力；迁移完成后删除 V2 reader 与旧 resolver，运行时只保留 V3。
 - `AnalysisPlan@2` 支持多输入、多指标、依赖 DAG、数据质量节点、模型生成 Python 节点、Oracle 节点和公开结论节点。
 - 所有分析绑定 frozen datasource/schema/semantic release/policy/model/runtime/frontier；漂移产生新 revision，不静默复用。
 
@@ -78,7 +78,7 @@
 
 - PostgreSQL Published Semantic Release/Resolved Context 是权威；Neo4j、向量和稀疏索引均为可重建投影。
 - 不暴露 chain-of-thought、原始 provider payload、凭据、DSN、未授权行或密封答案。
-- 先兼容既有 V2/AnalysisPlan@1，再通过显式版本迁移；禁止静默改变历史 hash/wire 语义。
+- 迁移期间允许短暂双轨以保持提交可验证；最终验收前删除 V2、AnalysisPlan@1、旧 resolver/reader 和 dead tests，生产运行时只保留唯一合同与实现。
 - 配送与营销只报告调整后的统计关联，不声称因果。
 - 保持现有 Text2SQL 路径可用；各新能力独立 kill switch 和可降级。
 
@@ -91,6 +91,7 @@
 - [ ] U5 五题 suite 达到 5/5，且每题有独立 Oracle、生成 Python 证据、正确结论级别和完整限制披露。
 - [ ] 同一 frozen input 重放得到相同规范化 plan/evidence/result hash；权限、版本或 frontier 漂移 fail closed。
 - [ ] 公开 UI/事件只展示接受后的安全投影，刷新与 replay 状态一致。
+- [ ] 依赖边界扫描证明不存在 V2/AnalysisPlan@1/旧 resolver 的生产引用，不存在双读、兼容 adapter 或同义长期 fallback。
 - [ ] 相关 package 单测、类型检查、跨层测试、`git diff --cached --check` 通过；所有任务改动以范围清晰的提交完成。
 
 ## Out of scope
