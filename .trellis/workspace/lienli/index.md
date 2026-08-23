@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 37
+- **Total Sessions**: 38
 - **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~876 | Active |
+| `journal-1.md` | ~901 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 38 | 2026-08-23 | Semantic refactor U2 Model Control extraction | `c84f85e` | `refactor/semantic-v2-billing-retirement` |
 | 37 | 2026-08-23 | Semantic V2 refactor U1 guards | `1ebaba6` | `refactor/semantic-v2-billing-retirement` |
 | 36 | 2026-08-22 | Workspace 构建新鲜度防复发 | `bcbe95b`, `e75ab13`, `e9f9cba`, `fc63e99`, `2dc27ea` | `feat/datafoundry-platform-modules` |
 | 35 | 2026-08-22 | 修复 Knowledge usage 重复 React key | `8bd3409` | `feat/datafoundry-platform-modules` |

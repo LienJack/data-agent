@@ -874,3 +874,28 @@ Added executable semantic and billing retirement ledger, dependency guards, migr
 ### Status
 
 [OK] **Completed**
+
+
+## Session 38: Semantic refactor U2 Model Control extraction
+
+**Date**: 2026-08-23
+**Task**: Semantic refactor U2 Model Control extraction
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+Extracted provider, model catalog, SecretRef metadata, authentication readiness, and admin routes into a noncommercial Model Control boundary. Removed model-control symbols from Billing contracts and Pricing persistence, added executable architecture guards and updated the backend spec.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c84f85e` | (see git log) |
+
+### Testing
+
+- [OK] contracts 15, platform 10, web 16, architecture ledger 7, pnpm test:architecture, pnpm typecheck
+
+### Status
+
+[OK] **Completed**
