@@ -1102,3 +1102,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 47: M3 语义绑定影响候选
+
+**Date**: 2026-08-23
+**Task**: M3 语义绑定影响候选
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+完成 Schema Drift 到精确 Published Release 的确定性 binding impact；复用共享依赖闭包与现有 DRAFT Candidate，新增 10706 append-only authority、safe projection、事务内 stale recheck，并通过 Contracts/Semantic/Platform、静态迁移与 fresh PostgreSQL 17 门禁。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a11475e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
