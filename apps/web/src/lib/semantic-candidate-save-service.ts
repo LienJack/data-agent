@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   buildSemanticCandidateRevisionSaveCommand,
-  buildSemanticCandidateSelfPublishCommand,
   buildSemanticManualSessionStartCommand,
   type KnowledgeEvidenceSelectionDetail,
   type PortResult,
@@ -10,8 +9,6 @@ import {
   type SemanticAuthoringValidationReceipt,
   type SemanticCandidateRevisionSaveRequest,
   type SemanticCandidateRevisionSaveResult,
-  type SemanticCandidateSelfPublishRequest,
-  type SemanticCandidateSelfPublishResult,
   type SemanticGraphPatchOperation,
   type SemanticGraphSource,
   type SemanticManualEdit,
@@ -22,11 +19,11 @@ import type {
   createPostgresSemanticCandidateRevisionStore,
   PostgresSemanticGraphStore,
 } from "@data-agent/platform";
+import { createSemanticGraphPatch } from "@data-agent/semantic/authoring";
 import {
   compileSemanticGraphV2,
-  createSemanticGraphPatch,
   SEMANTIC_GRAPH_COMPILER_VERSION,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/governance";
 
 interface Dependencies {
   readonly capability: unknown;
@@ -261,87 +258,6 @@ export function createSemanticCandidateSaveService(dependencies: Dependencies) {
         saved_at: dependencies.now().toISOString(),
       });
       return dependencies.candidate_revision_store.save(dependencies.capability, command);
-    },
-
-    async selfPublish(
-      request: SemanticCandidateSelfPublishRequest,
-    ): Promise<PortResult<SemanticCandidateSelfPublishResult>> {
-      const store = dependencies.create_authoring_store(request.semantic_domain);
-      const loaded = await store.load({
-        scope: dependencies.scope,
-        semantic_domain: request.semantic_domain,
-        authoring_run_id: request.authoring_run_id,
-      });
-      if (!loaded.ok) return loaded;
-      if (loaded.value === null) {
-        return failure("SEMANTIC_AUTHORING_NOT_FOUND", "语义创作任务不存在或无权访问。");
-      }
-      const state = loaded.value;
-      if (
-        state.run.principal_id !== dependencies.principal_id ||
-        state.run.candidate_id !== request.candidate_id ||
-        state.run.status !== "READY_FOR_REVIEW"
-      ) {
-        return failure(
-          "SEMANTIC_CANDIDATE_SELF_PUBLISH_CONFLICT",
-          "只能审核并发布本人已保存且已完成确定性校验的 Candidate Revision。",
-        );
-      }
-      let compilation: Awaited<ReturnType<typeof compileSemanticGraphV2>>;
-      try {
-        compilation = await compileSemanticGraphV2(state.working_graph);
-      } catch (error) {
-        return failure(
-          "SEMANTIC_CANDIDATE_VALIDATION_FAILED",
-          error instanceof Error ? error.message : "语义图未通过确定性校验。",
-        );
-      }
-      if (
-        compilation.source_digest !== state.run.graph_digest ||
-        state.run.base_release_id === null
-      ) {
-        return failure(
-          "SEMANTIC_CANDIDATE_SELF_PUBLISH_CONFLICT",
-          "当前 Working Graph 与已保存 Revision 不一致，请先再次保存草稿。",
-          true,
-        );
-      }
-      const executableProjectionHash = await sha256ContentHash(compilation.u5_projection.semantic);
-      const relationshipProjectionHash = await sha256ContentHash(
-        compilation.u5_projection.relationship,
-      );
-      const restrictionProjectionHash = await sha256ContentHash(
-        compilation.u5_projection.restriction,
-      );
-      const command = await buildSemanticCandidateSelfPublishCommand({
-        schema_version: "semantic-candidate-self-publish-command@1.0.0",
-        command_id: dependencies.new_id(),
-        scope: dependencies.scope,
-        semantic_domain: request.semantic_domain,
-        principal_id: dependencies.principal_id,
-        candidate_id: request.candidate_id,
-        candidate_revision_id: request.candidate_revision_id,
-        revision_number: request.revision_number,
-        source_revision_id: request.source_revision_id,
-        source_graph_digest: compilation.source_digest,
-        base_release_id: state.run.base_release_id,
-        graph_projection_id: dependencies.new_id(),
-        graph_projection: compilation.native_projection,
-        executable_projection_id: dependencies.new_id(),
-        executable_projection_hash: executableProjectionHash,
-        executable_projection: compilation.u5_projection.semantic,
-        relationship_projection_id: dependencies.new_id(),
-        relationship_projection_hash: relationshipProjectionHash,
-        relationship_projection: compilation.u5_projection.relationship,
-        runtime_restriction_projection_id: dependencies.new_id(),
-        runtime_restriction_projection_hash: restrictionProjectionHash,
-        runtime_restriction_projection: compilation.u5_projection.restriction,
-        compiler_bundle_digest: compilation.u5_projection.bundleHash,
-        review_reason: request.review_reason,
-        idempotency_key: request.idempotency_key,
-        reviewed_at: dependencies.now().toISOString(),
-      });
-      return dependencies.candidate_revision_store.selfPublish(dependencies.capability, command);
     },
   });
 }

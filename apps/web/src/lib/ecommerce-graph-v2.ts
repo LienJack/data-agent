@@ -17,11 +17,14 @@ import {
   semanticSourceBundleSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
-import { canonicalizeSemanticGraph, materializePhysicalOntology } from "@data-agent/semantic";
+import {
+  canonicalizeSemanticGraph,
+  materializePhysicalOntology,
+} from "@data-agent/semantic/authoring";
 
 const OWNER_REF = "ecommerce-semantic-agent";
 const SCHEMA_NAME = "demo_adb_ecommerce_mart";
-const SOURCE_EVIDENCE_ID = "evidence-ecommerce-source-bundle@1";
+const SOURCE_EVIDENCE_ID = "evidence-ecommerce-source-bundle@2";
 
 interface SubjectMapping {
   readonly subject_id: string;
@@ -355,7 +358,7 @@ export async function buildEcommerceGraphV2(
       evidence_id: SOURCE_EVIDENCE_ID,
       kind: "BUSINESS_DOCUMENT",
       content_hash: sourceDigest,
-      description: "AgenticDataBench E-commerce immutable semantic source bundle v1",
+      description: "AgenticDataBench E-commerce immutable Semantic V2 runtime content",
     }),
   ];
   const nodes: SemanticGraphNode[] = [...physical.nodes];
@@ -414,7 +417,7 @@ export async function buildEcommerceGraphV2(
       attributes: {
         kind: "PROVENANCE",
         derivation_kind: "MIGRATED",
-        note: "Graph v1 table binding",
+        note: "Semantic Graph V2 table binding",
       },
       evidence_refs: [SOURCE_EVIDENCE_ID, ...table.evidence_refs],
     });
@@ -460,6 +463,7 @@ export async function buildEcommerceGraphV2(
         data_type: dimension.data_type,
         sensitivity: dimension.sensitivity,
         filter_semantics: filterSemantics(dimension),
+        analysis: dimension.analysis,
       }),
     );
     await addEdge({
@@ -486,7 +490,7 @@ export async function buildEcommerceGraphV2(
       attributes: {
         kind: "PROVENANCE",
         derivation_kind: "MIGRATED",
-        note: "Graph v1 dimension binding",
+        note: "Semantic Graph V2 dimension binding",
       },
       evidence_refs: [SOURCE_EVIDENCE_ID, ...binding.evidence_refs],
     });
@@ -536,6 +540,7 @@ export async function buildEcommerceGraphV2(
         additivity: metric.additivity,
         null_policy: metric.null_policy,
         fanout_policy: metric.fanout_policy,
+        analysis: metric.analysis,
       }),
       semanticGraphNodeSchema.parse({
         ...commonNode([SOURCE_EVIDENCE_ID]),
@@ -622,7 +627,7 @@ export async function buildEcommerceGraphV2(
         attributes: {
           kind: "PROVENANCE",
           derivation_kind: "MIGRATED",
-          note: "Graph v1 metric binding",
+          note: "Semantic Graph V2 metric binding",
         },
         evidence_refs: [SOURCE_EVIDENCE_ID, ...measure.evidence_refs],
       });
@@ -664,6 +669,7 @@ export async function buildEcommerceGraphV2(
           right_row_preservation: relationship.right_row_preservation,
           proof_kind: "SNAPSHOT_CERTIFIED",
           proof_detail: joinEvidence.description,
+          analysis: relationship.analysis,
         },
         evidence_refs: [evidenceId, ...left.evidence_refs],
         discriminator: { relationship_id: relationship.relationship_id, index },

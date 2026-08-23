@@ -7,6 +7,26 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./authoring": {
+      "types": "./dist/public/authoring.d.ts",
+      "import": "./dist/public/authoring.js"
+    },
+    "./governance": {
+      "types": "./dist/public/governance.d.ts",
+      "import": "./dist/public/governance.js"
+    },
+    "./read-model": {
+      "types": "./dist/public/read-model.d.ts",
+      "import": "./dist/public/read-model.js"
+    },
+    "./runtime-context": {
+      "types": "./dist/public/runtime-context.d.ts",
+      "import": "./dist/public/runtime-context.js"
+    },
+    "./relationship-index": {
+      "types": "./dist/public/relationship-index.d.ts",
+      "import": "./dist/public/relationship-index.js"
     }
   },
   "files": [

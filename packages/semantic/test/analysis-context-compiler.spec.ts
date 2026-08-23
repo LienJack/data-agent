@@ -3,11 +3,10 @@ import {
   buildOntologyAnalysisSourceBinding,
   buildResolvedContextPackage,
   buildResolvedContextReceipt,
-  computeSemanticSourceBundleV2Hash,
-  SEMANTIC_SOURCE_BUNDLE_V2_VERSION,
-  type SemanticSourceBundleV2,
+  computeSemanticSourceBundleHash,
+  SEMANTIC_SOURCE_BUNDLE_VERSION,
+  type SemanticSourceBundle,
   semanticSourceBundleSchema,
-  semanticSourceBundleV2Schema,
   U13_EXECUTABLE_SUBSET,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
@@ -52,11 +51,16 @@ function reference(
   };
 }
 
-function sourceBundle(): SemanticSourceBundleV2 {
-  return semanticSourceBundleV2Schema.parse({
+function sourceBundle(): SemanticSourceBundle {
+  return semanticSourceBundleSchema.parse({
     metadata: {
-      bundle_version: SEMANTIC_SOURCE_BUNDLE_V2_VERSION,
-      publication_status: "PUBLISHED",
+      bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION,
+      authority_envelope: {
+        kind: "PUBLISHED",
+        release_id: id(30),
+        release_revision: 1,
+        released_at: "2026-08-22T00:00:00.000Z",
+      },
       capability_profile: U13_EXECUTABLE_SUBSET,
       bundle_id: id(20),
       scope,
@@ -320,7 +324,7 @@ async function fixture(bundle = sourceBundle()) {
     })),
     knowledge_refs: [],
   });
-  const sourceHash = await computeSemanticSourceBundleV2Hash(bundle);
+  const sourceHash = await computeSemanticSourceBundleHash(bundle);
   const semanticReleaseRef = reference("SemanticRelease", id(4), hash("2"));
   const sourceRef = reference("SemanticSourceBundle", id(20), sourceHash);
   const ontologyBinding = await buildOntologyAnalysisSourceBinding({
@@ -375,13 +379,13 @@ async function fixture(bundle = sourceBundle()) {
 }
 
 describe("analysis context compiler", () => {
-  it("preserves @1 strict semantics and compiles deterministic @2 authority", async () => {
+  it("rejects V1 identity and compiles deterministic V2 authority", async () => {
     const bundle = sourceBundle();
-    expect(semanticSourceBundleSchema.safeParse(bundle).success).toBe(false);
+    expect(semanticSourceBundleSchema.safeParse(bundle).success).toBe(true);
     expect(
-      semanticSourceBundleV2Schema.safeParse({
+      semanticSourceBundleSchema.safeParse({
         ...bundle,
-        metadata: { ...bundle.metadata, publication_status: "CANDIDATE" },
+        metadata: { ...bundle.metadata, bundle_version: "semantic-source-bundle@1" },
       }).success,
     ).toBe(false);
     const missingPeriodPolicy = structuredClone(bundle);
@@ -393,7 +397,7 @@ describe("analysis context compiler", () => {
       ...(metricWithoutPolicy.analysis as Record<string, unknown>),
       missing_period_policy: undefined,
     };
-    expect(semanticSourceBundleV2Schema.safeParse(missingPeriodPolicy).success).toBe(false);
+    expect(semanticSourceBundleSchema.safeParse(missingPeriodPolicy).success).toBe(false);
     const { input } = await fixture(bundle);
     const first = await compileAnalysisContext(input);
     const second = await compileAnalysisContext(input);

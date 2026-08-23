@@ -19,7 +19,12 @@ const baseMetadata = {
   authority: {
     kind: "deterministic" as const,
     id: "semantic-authority",
-    policy_version: "semantic-authority@1.0.0",
+    policy_version: "semantic-authority@2.0.0",
+  },
+  authority_envelope: {
+    kind: "PREVIEW" as const,
+    candidate_id: "00000000-0000-1000-8000-000000000003",
+    working_revision: 1,
   },
   created_at: "2026-08-04T00:00:00Z",
 };
@@ -52,6 +57,15 @@ const baseMetric = {
   fanout_policy: "preaggregate" as const,
   dependency_column_ids: ["orders.amount"],
   tags: [] as string[],
+  analysis: {
+    primary: true,
+    priority: 0,
+    missing_period_policy: "NULL" as const,
+    seasonality: null,
+    allowed_dimension_ids: [] as string[],
+    capabilities: [] as ("DATA_PROFILE" | "CHART_DATASET")[],
+    causal_role: null,
+  },
 };
 
 describe("Semantic Content Digest", () => {
@@ -108,6 +122,7 @@ describe("Semantic Content Digest", () => {
           proof_kind: "DDL_ENFORCED" as const,
           proof_detail: null,
           tags: [],
+          analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
         },
       ],
       runtime_authorization: undefined,
@@ -129,6 +144,7 @@ describe("Semantic Content Digest", () => {
           proof_kind: "DDL_ENFORCED" as const,
           proof_detail: null,
           tags: [] as string[],
+          analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] as string[] },
         },
       ],
     };

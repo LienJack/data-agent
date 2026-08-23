@@ -2,7 +2,6 @@ import "server-only";
 
 import {
   semanticCandidateRevisionSaveRequestSchema,
-  semanticCandidateSelfPublishRequestSchema,
   semanticManualSessionStartRequestSchema,
 } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
@@ -23,7 +22,7 @@ function response<T>(
       },
   options: {
     readonly created?: boolean;
-    readonly mutation: "START_MANUAL_SESSION" | "EXPLICIT_SAVE" | "SELF_REVIEW_AND_PUBLISH";
+    readonly mutation: "START_MANUAL_SESSION" | "EXPLICIT_SAVE";
   },
 ) {
   return result.ok
@@ -74,22 +73,6 @@ export async function handleSaveSemanticCandidateRevision(
     return response(
       await service.save(semanticCandidateRevisionSaveRequestSchema.parse(await request.json())),
       { created: true, mutation: "EXPLICIT_SAVE" },
-    );
-  } catch (error) {
-    return invalid(error);
-  }
-}
-
-export async function handleSelfPublishSemanticCandidate(
-  request: NextRequest,
-  service: SemanticCandidateSaveService,
-) {
-  try {
-    return response(
-      await service.selfPublish(
-        semanticCandidateSelfPublishRequestSchema.parse(await request.json()),
-      ),
-      { created: true, mutation: "SELF_REVIEW_AND_PUBLISH" },
     );
   } catch (error) {
     return invalid(error);

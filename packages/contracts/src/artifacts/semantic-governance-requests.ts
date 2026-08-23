@@ -82,7 +82,6 @@ export const semanticPreparePublishInputSchema = z.strictObject({
   dependency_generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   target_generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
   idempotency_digest: contentHashSchema,
-  conditional_legacy_plan: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const semanticCommitPublishInputSchema = z.strictObject({
@@ -97,7 +96,6 @@ export const semanticCommitPublishInputSchema = z.strictObject({
   runtime_restriction_projection_ref: immutableIdSchema,
   runtime_restriction_projection_hash: contentHashSchema,
   profile_child_manifest: z.record(z.string(), z.unknown()).optional(),
-  committed_legacy_attempt_ref: immutableIdSchema.optional(),
 });
 
 export const semanticRollbackInputSchema = z.strictObject({

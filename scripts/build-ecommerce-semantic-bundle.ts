@@ -123,6 +123,15 @@ const metrics = metricDefinitions.map(([id, name, table, column, aggregation, di
   fanout_policy: "preaggregate" as const,
   dependency_column_ids: [`${table}.${column}`],
   tags: ["ecommerce", table],
+  analysis: {
+    primary: id === "gmv-brl",
+    priority: id === "gmv-brl" ? 100 : 0,
+    missing_period_policy: "NULL" as const,
+    seasonality: null,
+    allowed_dimension_ids: [],
+    capabilities: ["CHART_DATASET", "DATA_PROFILE"] as const,
+    causal_role: null,
+  },
 }));
 
 const dimensionDefinitions = [
@@ -155,6 +164,7 @@ const dimensions = dimensionDefinitions.map(([id, name, table, column, dataType]
   hierarchical: id.endsWith("state") || id === "purchase-date",
   parent_dimension_id: null,
   tags: ["ecommerce", "dimension"],
+  analysis: { groupable: true, pivotable: true, causal_role: null },
 }));
 
 const relationshipDefinitions = [
@@ -197,6 +207,7 @@ const relationships = relationshipDefinitions.map(
     proof_kind: "DDL_ENFORCED" as const,
     proof_detail: "PostgreSQL mart key and import quality receipt",
     tags: ["ecommerce", "join"],
+    analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
   }),
 );
 
@@ -272,7 +283,7 @@ const tables = [
 ];
 const bundle = semanticSourceBundleSchema.parse({
   metadata: {
-    bundle_version: "semantic-source-bundle@1",
+    bundle_version: "semantic-source-bundle@2",
     capability_profile: "U5_EXECUTABLE_SUBSET",
     bundle_id: "00000000-0000-4000-8000-00000000ec10",
     scope: {
@@ -286,14 +297,22 @@ const bundle = semanticSourceBundleSchema.parse({
       id: "semantic-authority",
       policy_version: "ecommerce-semantic-policy@1.0.0",
     },
+    authority_envelope: {
+      kind: "PREVIEW",
+      candidate_id: "00000000-0000-4000-8000-00000000ec20",
+      working_revision: 1,
+    },
     created_at: "2026-08-15T00:00:00Z",
-    description:
-      "AgenticDataBench E-commerce Demo v1 固定、可审核并由 Workspace bootstrap 发布的语义源。",
+    description: "AgenticDataBench E-commerce Demo 的 V2-only 语义运行时内容。",
   },
   formulas: [],
-  metrics,
-  dimensions,
-  relationships,
+  metrics: metrics.toSorted((left, right) => left.metric_id.localeCompare(right.metric_id)),
+  dimensions: dimensions.toSorted((left, right) =>
+    left.dimension_id.localeCompare(right.dimension_id),
+  ),
+  relationships: relationships.toSorted((left, right) =>
+    left.relationship_id.localeCompare(right.relationship_id),
+  ),
   business_ontology: {
     domain: "ecommerce",
     owner: "Data Agent Demo",
@@ -319,7 +338,7 @@ const bundle = semanticSourceBundleSchema.parse({
     terms: termNames.map((name, index) => ({
       term_id: `ecommerce-term-${index + 1}@1`,
       name,
-      definition: `${name}：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。`,
+      definition: `${name}：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。`,
       domain: "ecommerce",
       aliases: [name],
     })),

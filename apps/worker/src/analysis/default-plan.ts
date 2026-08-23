@@ -10,7 +10,7 @@ import {
   sha256ContentHash,
   verifyAnalysisContext,
 } from "@data-agent/contracts";
-import { evaluateAnalysisApplicability } from "@data-agent/semantic";
+import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
 import {
   type AnalysisSkillCatalog,
   type AnalysisSkillDescriptor,

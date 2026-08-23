@@ -54,6 +54,15 @@ function metric(
     fanout_policy: "preaggregate" as const,
     dependency_column_ids: dependencyColumnIds,
     tags: [] as string[],
+    analysis: {
+      primary: metricId === "metric-gross",
+      priority: metricId === "metric-gross" ? 0 : 1,
+      missing_period_policy: "NULL" as const,
+      seasonality: null,
+      allowed_dimension_ids: ["dimension-region"],
+      capabilities: [] as ("DATA_PROFILE" | "CHART_DATASET")[],
+      causal_role: null,
+    },
   };
 }
 
@@ -81,7 +90,13 @@ export function createCompleteSemanticSourceBundle(
       authority: {
         kind: "deterministic",
         id: "semantic-authority",
-        policy_version: "semantic-authority@1.0.0",
+        policy_version: "semantic-authority@2.0.0",
+      },
+      authority_envelope: {
+        kind: "PUBLISHED",
+        release_id: explorerIds.release,
+        release_revision: 7,
+        released_at: "2026-08-09T00:00:00.000Z",
       },
       created_at: "2026-08-09T00:00:00.000Z",
     },
@@ -137,6 +152,7 @@ export function createCompleteSemanticSourceBundle(
         hierarchical: false,
         parent_dimension_id: null,
         tags: [],
+        analysis: { groupable: true, pivotable: true, causal_role: null },
       },
     ],
     relationships: [
@@ -154,6 +170,7 @@ export function createCompleteSemanticSourceBundle(
         proof_kind: "DDL_ENFORCED",
         proof_detail: "orders.customer_id references customers.id",
         tags: [],
+        analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
       },
     ],
     business_ontology: {

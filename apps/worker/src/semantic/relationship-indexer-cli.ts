@@ -18,7 +18,7 @@ import {
   createPostgresSemanticExplorerReader,
   registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
-import { buildSemanticExplorerReadModel } from "@data-agent/semantic";
+import { buildSemanticExplorerReadModel } from "@data-agent/semantic/read-model";
 import pg from "pg";
 import { z } from "zod";
 import { createSemanticRelationshipIndexer } from "./relationship-indexer.js";

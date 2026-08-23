@@ -25,6 +25,11 @@ const baseMetadata = {
   scope,
   producer: { kind: "deterministic" as const, id: "test-producer" },
   authority: { kind: "deterministic" as const, id: "test-authority", policy_version: "1.0.0" },
+  authority_envelope: {
+    kind: "PREVIEW" as const,
+    candidate_id: ids.appA,
+    working_revision: 1,
+  },
   created_at: "2026-08-04T00:00:00.000Z",
 };
 
@@ -82,6 +87,15 @@ function makeMetric(overrides: Record<string, unknown> = {}) {
     null_policy: "coalesce-zero" as const,
     fanout_policy: "preaggregate" as const,
     dependency_column_ids: ["order_id", "customer_id"],
+    analysis: {
+      primary: true,
+      priority: 0,
+      missing_period_policy: "NULL" as const,
+      seasonality: null,
+      allowed_dimension_ids: [],
+      capabilities: [],
+      causal_role: null,
+    },
     ...overrides,
   };
 }
@@ -243,7 +257,6 @@ describe("assertSemanticSourceBundleInvariants", () => {
             columns: [
               {
                 column_id: columnId,
-                column_name: "amount",
                 nullable: false,
                 data_type: "numeric",
                 constraint_refs: [],

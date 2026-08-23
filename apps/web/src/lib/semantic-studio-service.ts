@@ -20,7 +20,7 @@ import type {
 import {
   createSemanticGraphReadModel,
   projectSemanticGraphSourceForRead,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/read-model";
 import {
   buildSemanticAuthoringPublicFeed,
   type SemanticAuthoringPublicFeed,

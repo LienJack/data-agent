@@ -871,6 +871,7 @@ export function buildFalconDb24OntologyGraph(
       data_type: graphDataType(column.data_type),
       sensitivity: "PUBLIC",
       filter_semantics: dimension.filter_semantics,
+      analysis: { groupable: true, pivotable: true, causal_role: null },
     });
     addEdge("HAS_DIMENSION", "ANALYTICAL", dimension.subject_id, dimension.dimension_id, {
       kind: "NONE",
@@ -922,6 +923,15 @@ export function buildFalconDb24OntologyGraph(
         additivity: metric.additivity,
         null_policy: "exclude",
         fanout_policy: metric.fanout_policy,
+        analysis: {
+          primary: metric === METRICS[0],
+          priority: METRICS.indexOf(metric),
+          missing_period_policy: "NULL",
+          seasonality: null,
+          allowed_dimension_ids: [metric.dimension_id],
+          capabilities: ["CHART_DATASET", "DATA_PROFILE"],
+          causal_role: null,
+        },
       },
       {
         ...commonNode(),
@@ -991,6 +1001,11 @@ export function buildFalconDb24OntologyGraph(
         right_row_preservation: "optional",
         proof_kind: "SNAPSHOT_CERTIFIED",
         proof_detail: joinEvidence.description,
+        analysis: {
+          join_allowed: true,
+          fanout_closed: joinEvidence.cardinality !== "many-to-many",
+          ontology_path: [],
+        },
       },
       [`falcon-db24-join-${join.join_id}`],
     );

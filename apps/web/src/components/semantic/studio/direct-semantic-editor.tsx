@@ -50,6 +50,7 @@ function defaultAttributes(kind: SemanticEdgeTypeDefinition["attribute_kind"], e
         right_row_preservation: "optional",
         proof_kind: "DECLARED_ONLY",
         proof_detail: null,
+        analysis: { join_allowed: false, fanout_closed: false, ontology_path: [] as string[] },
       } as const;
     case "PROVENANCE":
       return { kind, derivation_kind: "DERIVED", note: null } as const;
@@ -84,6 +85,7 @@ function baseNode(type: SemanticNodeType, id: string, name: string, owner: strin
         data_type: "text",
         sensitivity: "PUBLIC",
         filter_semantics: "EXACT",
+        analysis: { groupable: true, pivotable: true, causal_role: null },
       };
     case "METRIC":
       return {
@@ -93,6 +95,15 @@ function baseNode(type: SemanticNodeType, id: string, name: string, owner: strin
         additivity: "non-additive",
         null_policy: "preserve",
         fanout_policy: "reject",
+        analysis: {
+          primary: false,
+          priority: 100,
+          missing_period_policy: "NULL",
+          seasonality: null,
+          allowed_dimension_ids: [],
+          capabilities: [],
+          causal_role: null,
+        },
       };
     case "FORMULA":
       return {

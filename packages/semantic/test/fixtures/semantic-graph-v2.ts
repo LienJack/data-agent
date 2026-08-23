@@ -65,6 +65,7 @@ export function createSemanticGraphV2Fixture(): SemanticGraphSource {
         data_type: "text",
         sensitivity: "PUBLIC",
         filter_semantics: "EXACT",
+        analysis: { groupable: true, pivotable: true, causal_role: null },
       },
       {
         ...common,
@@ -81,6 +82,15 @@ export function createSemanticGraphV2Fixture(): SemanticGraphSource {
         additivity: "non-additive",
         null_policy: "exclude",
         fanout_policy: "reject",
+        analysis: {
+          primary: true,
+          priority: 0,
+          missing_period_policy: "NULL",
+          seasonality: null,
+          allowed_dimension_ids: ["dimension-product"],
+          capabilities: ["CHART_DATASET", "DATA_PROFILE"],
+          causal_role: null,
+        },
       },
       {
         ...common,

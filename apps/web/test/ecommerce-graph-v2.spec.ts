@@ -7,10 +7,10 @@ import {
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
-  compileSemanticGraphV2,
   validateSemanticGraph,
   validateSemanticOntologyCoverage,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/authoring";
+import { compileSemanticGraphV2 } from "@data-agent/semantic/governance";
 import { describe, expect, it } from "vitest";
 import { buildEcommerceGraphV2 } from "../src/lib/ecommerce-graph-v2";
 

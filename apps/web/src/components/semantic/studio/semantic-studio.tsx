@@ -32,7 +32,6 @@ import {
   type SemanticStudioAuthoringState,
   type SemanticStudioSnapshot,
   saveSemanticCandidateRevision,
-  selfPublishSemanticCandidate,
   startManualSemanticSession,
   startSemanticAuthoring,
   subscribeSemanticAuthoringEvents,
@@ -144,10 +143,6 @@ export function SemanticStudio({
     useState<SemanticCandidateRevisionSaveResult | null>(
       initialSnapshot?.authoring?.saved_revision ?? null,
     );
-  const [publishedRelease, setPublishedRelease] = useState<{
-    readonly releaseId: string;
-    readonly generation: number;
-  } | null>(null);
   const prefersReducedMotion = useReducedMotion();
   const setSidebarCollapsed = useLayoutStore((state) => state.setSidebarCollapsed);
   const activeRequest = useRef<AbortController | null>(null);
@@ -516,7 +511,6 @@ export function SemanticStudio({
       setEvents(previewEvents);
       setDraft("");
       setLastSavedRevision(null);
-      setPublishedRelease(null);
       window.setTimeout(() => setAuthoringBusy(false), 350);
       return;
     }
@@ -533,7 +527,6 @@ export function SemanticStudio({
       setEvents((current) => mergeAuthoringEvents(current, result.events));
       setDraft("");
       setLastSavedRevision(null);
-      setPublishedRelease(null);
       const query = new URLSearchParams({
         domain: snapshot.semantic_domain,
         runId: result.state.run.authoring_run_id,
@@ -563,7 +556,6 @@ export function SemanticStudio({
         const started = await startManualSemanticSession(workspaceId, snapshot.semantic_domain);
         setAuthoringState({ run: started.run });
         setLastSavedRevision(null);
-        setPublishedRelease(null);
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : "无法创建直接编辑会话。");
         return;
@@ -609,41 +601,6 @@ export function SemanticStudio({
       });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "保存 Candidate Revision 失败。");
-    } finally {
-      setAuthoringBusy(false);
-    }
-  }
-
-  async function selfReviewAndPublish() {
-    if (!snapshot || !authoringState || !lastSavedRevision || manualEdits.length > 0) {
-      setError("请先保存当前草稿 Revision，再执行审核发布。");
-      return;
-    }
-    setAuthoringBusy(true);
-    setError(null);
-    try {
-      const published = await selfPublishSemanticCandidate(workspaceId, {
-        semantic_domain: snapshot.semantic_domain,
-        authoring_run_id: authoringState.run.authoring_run_id,
-        candidate_id: lastSavedRevision.candidate_id,
-        candidate_revision_id: lastSavedRevision.candidate_revision_id,
-        revision_number: lastSavedRevision.revision_number,
-        source_revision_id: lastSavedRevision.source_revision_id,
-        review_reason: saveSummary.trim() || "创建者审核通过并发布",
-      });
-      setPublishedRelease({
-        releaseId: published.release_id,
-        generation: published.release_generation,
-      });
-      setLastSavedRevision(null);
-      setAuthoringState(null);
-      setEvents([]);
-      router.replace(
-        `/w/${encodeURIComponent(workspaceId)}/semantic?domain=${encodeURIComponent(snapshot.semantic_domain)}`,
-      );
-      await load({ domain: snapshot.semantic_domain, hops });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "审核发布失败，Candidate 未发布。");
     } finally {
       setAuthoringBusy(false);
     }
@@ -845,11 +802,6 @@ export function SemanticStudio({
                     已保存 r{lastSavedRevision.revision_number}
                   </span>
                 ) : null}
-                {publishedRelease ? (
-                  <span className="font-mono text-[10px] text-[var(--color-accent)]">
-                    已发布 Release g{publishedRelease.generation}
-                  </span>
-                ) : null}
               </div>
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                 <input
@@ -866,14 +818,6 @@ export function SemanticStudio({
                   className="control-pressable inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-[var(--radius-control)] bg-[var(--color-accent)] px-4 text-[11px] font-semibold text-white hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   保存草稿 Revision
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void selfReviewAndPublish()}
-                  disabled={authoringBusy || !lastSavedRevision || manualEdits.length > 0}
-                  className="control-pressable inline-flex h-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-[var(--color-accent)] px-4 text-[11px] font-semibold text-[var(--color-accent-hover)] hover:bg-[var(--color-accent-soft)] disabled:cursor-not-allowed disabled:border-[var(--color-border-default)] disabled:text-[var(--color-text-muted)]"
-                >
-                  审核并发布
                 </button>
               </div>
             </div>

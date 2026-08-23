@@ -22,11 +22,11 @@ import {
   buildSemanticExplorerCandidateComparison,
   buildSemanticExplorerLineage,
   buildSemanticExplorerReadModel,
-  createSemanticRelationshipSearchService,
   diffSemanticExplorerSnapshots,
   SemanticExplorerKernelError,
   semanticExplorerIdentityKey,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/read-model";
+import { createSemanticRelationshipSearchService } from "@data-agent/semantic/relationship-index";
 import type { SemanticAuthorityContext } from "./semantic-authority";
 
 export interface SemanticExplorerLineageRequest {

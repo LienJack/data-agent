@@ -320,6 +320,7 @@ describe("semantic candidate generation kernel", () => {
         proof_kind: "DDL_ENFORCED",
         proof_detail: "猜测的外键",
         tags: [],
+        analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
       },
     };
     const { proposal, packet } = await proposalWith(relationship);

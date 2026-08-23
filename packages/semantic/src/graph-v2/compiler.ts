@@ -297,6 +297,7 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
         fanout_policy: metric.fanout_policy,
         dependency_column_ids: [...new Set(dependencyColumnIds)].sort(),
         tags: [...metric.tags],
+        analysis: metric.analysis,
       };
     });
   const dimensions = graph.nodes
@@ -330,6 +331,7 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
         hierarchical: parentEdge !== undefined,
         parent_dimension_id: parentEdge?.target_node_id ?? null,
         tags: [...dimension.tags],
+        analysis: dimension.analysis,
       };
     });
 
@@ -366,6 +368,7 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
       proof_kind: edge.attributes.proof_kind,
       proof_detail: edge.attributes.proof_detail,
       tags: [],
+      analysis: edge.attributes.analysis,
     };
   });
 
@@ -466,8 +469,13 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
       scope: graph.metadata.scope,
       producer: graph.metadata.producer,
       authority: graph.metadata.authority,
+      authority_envelope: {
+        kind: "PREVIEW",
+        candidate_id: graph.metadata.graph_id,
+        working_revision: 1,
+      },
       created_at: graph.metadata.created_at,
-      description: "Deterministic Graph v2 compatibility projection",
+      description: "Deterministic Graph v2 runtime content",
     },
     formulas: [],
     metrics,
@@ -476,6 +484,7 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
     ...(businessOntology === undefined ? {} : { business_ontology: businessOntology }),
     physical_binding: { entries: physicalBindingEntries, default_datasource_id: null },
     catalog_governance: catalogGovernance,
+    domain_causal_policy: null,
   });
   assertSemanticSourceBundleInvariants(bundle);
   return bundle;
@@ -518,7 +527,7 @@ export async function compileSemanticGraphV2(input: unknown): Promise<SemanticGr
   if (u5Projection.errors.length > 0) {
     throw new SemanticGraphError(
       SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
-      "Graph v2 compatibility projection 未通过现有 U5 compiler。",
+      "Graph v2 runtime content 未通过 U5 compiler。",
       u5Projection.errors.map((entry) => `${entry.code}: ${entry.message}`),
     );
   }

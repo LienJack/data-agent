@@ -93,6 +93,12 @@ for (const contractCase of PORT_CONFORMANCE_CASES) {
   await contractCase.run(createAdapterHarness);
 }
 
+// Semantic V2-only Ports 由 @data-agent/contracts/ports/semantic 唯一定义：
+// - SemanticCandidatePort 只允许 create/submit，不能 publish；
+// - SemanticGovernancePublishPort 独占 prepare/commit；
+// - SemanticPublishedReadPort 只读 Published Release。
+// Adapter 不得合并这些能力，也不得提供 candidate self-publish 兼容方法。
+
 // 所有 U6 public Port 的 capabilityInput 固定为 unknown，且与 strictInput 分参；
 // strictInput 的 scope/principal 只是待比较声明，不能自证 Authority。
 // ResearchArtifactAuthorityPort、ResearchArtifactCommitInput、

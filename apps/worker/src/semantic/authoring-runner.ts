@@ -13,7 +13,7 @@ import {
   createPostgresSemanticAuthoringStore,
   type PostgresSemanticAuthoringStoreOptions,
 } from "@data-agent/platform";
-import { createSemanticAuthoringOrchestrator } from "@data-agent/semantic";
+import { createSemanticAuthoringOrchestrator } from "@data-agent/semantic/authoring";
 
 export interface WorkerSemanticAuthoringRunner {
   start(input: SemanticAuthoringStartInput): Promise<PortResult<SemanticAuthoringState>>;

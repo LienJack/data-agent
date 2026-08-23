@@ -81,7 +81,6 @@ describe("semantic governance route material gates", () => {
         dependency_generation: 11,
         target_generation: 12,
         idempotency_digest: hash,
-        conditional_legacy_plan: { mode: "exact" },
       },
     } as const;
 

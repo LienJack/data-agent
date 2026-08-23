@@ -14,7 +14,6 @@ import {
   semanticAuthoringRunSchema,
   semanticAuthoringStateSchema,
   semanticCandidateRevisionSaveResultSchema,
-  semanticCandidateSelfPublishResultSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
@@ -207,28 +206,6 @@ export function saveSemanticCandidateRevision(
       idempotency_key: crypto.randomUUID(),
     }),
   }).then((value) => semanticCandidateRevisionSaveResultSchema.parse(value));
-}
-
-export function selfPublishSemanticCandidate(
-  workspaceId: string,
-  input: {
-    readonly semantic_domain: string;
-    readonly authoring_run_id: string;
-    readonly candidate_id: string;
-    readonly candidate_revision_id: string;
-    readonly revision_number: number;
-    readonly source_revision_id: string;
-    readonly review_reason: string;
-  },
-) {
-  return api(`${studioApiBase(workspaceId)}/self-publish`, {
-    method: "POST",
-    body: JSON.stringify({
-      schema_version: "semantic-candidate-self-publish-request@1.0.0",
-      ...input,
-      idempotency_key: crypto.randomUUID(),
-    }),
-  }).then((value) => semanticCandidateSelfPublishResultSchema.parse(value));
 }
 
 export function loadSemanticAuthoringEvents(

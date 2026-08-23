@@ -3,14 +3,13 @@ import {
   type AnalysisContext,
   type ArtifactReference,
   artifactReferenceIdentity,
-  assertSemanticSourceBundleV2Invariants,
+  assertSemanticSourceBundleInvariants,
   buildAnalysisContext,
-  computeSemanticSourceBundleV2Hash,
+  computeSemanticSourceBundleHash,
   type OntologyAnalysisSourceBinding,
-  projectSemanticSourceBundleV2ToV1,
   type ResolvedContextPackage,
   type ResolvedContextReceipt,
-  type SemanticSourceBundleV2,
+  type SemanticSourceBundle,
   sha256ContentHash,
   verifyOntologyAnalysisSourceBinding,
   verifyResolvedContextPackage,
@@ -47,7 +46,7 @@ export interface CompileAnalysisContextInput {
   readonly schema_snapshot_ref: ArtifactReference;
   readonly policy_receipt_ref: ArtifactReference;
   readonly semantic_source_bundle_ref: ArtifactReference;
-  readonly semantic_source_bundle: SemanticSourceBundleV2;
+  readonly semantic_source_bundle: SemanticSourceBundle;
   readonly ontology_analysis_binding: OntologyAnalysisSourceBinding;
   readonly requested_metric_ids: readonly string[];
 }
@@ -72,8 +71,8 @@ function exactResourceReference(
 }
 
 function effectiveCapabilities(
-  metric: SemanticSourceBundleV2["metrics"][number],
-  bundle: SemanticSourceBundleV2,
+  metric: SemanticSourceBundle["metrics"][number],
+  bundle: SemanticSourceBundle,
   contributionLowerable: boolean,
 ): AnalysisCapability[] {
   return metric.analysis.capabilities.filter((capability) => {
@@ -98,20 +97,18 @@ function effectiveCapabilities(
           metric.analysis.seasonality !== null
         );
       case "CAUSAL_IDENTIFICATION":
-        return bundle.domain_causal_policy !== null && metric.analysis.causal_role !== null;
+        return bundle.domain_causal_policy != null && metric.analysis.causal_role !== null;
       default:
         return true;
     }
   });
 }
 
-function hasLowerableContributionProfile(bundle: SemanticSourceBundleV2): boolean {
+function hasLowerableContributionProfile(bundle: SemanticSourceBundle): boolean {
   if (!bundle.contribution_profile) return false;
   return (
-    lowerDescriptiveContributionProfile(
-      projectSemanticSourceBundleV2ToV1(bundle),
-      bundle.contribution_profile,
-    ).status === ContributionLoweringStatus.LOWERED
+    lowerDescriptiveContributionProfile(bundle, bundle.contribution_profile).status ===
+    ContributionLoweringStatus.LOWERED
   );
 }
 
@@ -165,8 +162,8 @@ export async function compileAnalysisContext(
   }
 
   const sourceBundle = input.semantic_source_bundle;
-  assertSemanticSourceBundleV2Invariants(sourceBundle);
-  const sourceBundleHash = await computeSemanticSourceBundleV2Hash(sourceBundle);
+  assertSemanticSourceBundleInvariants(sourceBundle);
+  const sourceBundleHash = await computeSemanticSourceBundleHash(sourceBundle);
   if (
     input.semantic_source_bundle_ref.artifact_type !== "SemanticSourceBundle" ||
     input.semantic_source_bundle_ref.content_hash !== sourceBundleHash
@@ -295,7 +292,7 @@ export async function compileAnalysisContext(
       }))
       .sort((left, right) => left.relationship_id.localeCompare(right.relationship_id)),
     causal_policy:
-      sourceBundle.domain_causal_policy === null
+      sourceBundle.domain_causal_policy == null
         ? null
         : {
             ...sourceBundle.domain_causal_policy,

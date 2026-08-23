@@ -46,7 +46,7 @@ import {
   providerInvocationSmokeClaimSchema,
   registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
-import { createResolvedContextService } from "@data-agent/semantic";
+import { createResolvedContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";

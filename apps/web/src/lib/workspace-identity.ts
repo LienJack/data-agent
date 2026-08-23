@@ -32,7 +32,7 @@ import {
   createWorkspaceContentNamespace,
   type ResolvedSessionPrincipal,
 } from "@data-agent/platform";
-import { createResolvedContextService } from "@data-agent/semantic";
+import { createResolvedContextService } from "@data-agent/semantic/runtime-context";
 import { headers } from "next/headers";
 import pg from "pg";
 import { z } from "zod";

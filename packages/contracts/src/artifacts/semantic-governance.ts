@@ -24,8 +24,7 @@ import {
 
 // ─── Version constant ─────────────────────────────────────────────────────────
 
-export const SEMANTIC_SOURCE_BUNDLE_VERSION = "semantic-source-bundle@1" as const;
-export const SEMANTIC_SOURCE_BUNDLE_V2_VERSION = "semantic-source-bundle@2" as const;
+export const SEMANTIC_SOURCE_BUNDLE_VERSION = "semantic-source-bundle@2" as const;
 export const U5_EXECUTABLE_SUBSET = "U5_EXECUTABLE_SUBSET" as const;
 export const U13_EXECUTABLE_SUBSET = "U13_EXECUTABLE_SUBSET" as const;
 export type CapabilityProfile = typeof U5_EXECUTABLE_SUBSET | typeof U13_EXECUTABLE_SUBSET;
@@ -53,6 +52,92 @@ export const timeDomainSchema = z.strictObject({
   timezone: z.string().max(64).nullable(),
   min_time: z.string().nullable(),
   max_time: z.string().nullable(),
+});
+
+// ─── Analysis semantics ──────────────────────────────────────────────────────
+
+export const analysisCapabilitySchema = z.enum([
+  "DATA_PROFILE",
+  "TREND_CHANGE",
+  "CONTRIBUTION",
+  "CONCENTRATION",
+  "ROBUST_ANOMALY",
+  "ASSOCIATION",
+  "FORECAST",
+  "ROOT_CAUSE_DISCOVERY",
+  "CAUSAL_IDENTIFICATION",
+  "CHART_DATASET",
+]);
+
+export const missingPeriodPolicySchema = z.enum([
+  "ZERO_IF_SEMANTICALLY_EMPTY",
+  "NULL",
+  "REJECT_GAP",
+]);
+
+export const analysisCausalRoleSchema = z.enum([
+  "OUTCOME",
+  "TREATMENT",
+  "CANDIDATE_CONFOUNDER",
+  "MEDIATOR",
+  "COLLIDER",
+]);
+
+const canonicalVersionIdentifiers = (max: number) =>
+  z
+    .array(versionIdentifierSchema)
+    .max(max)
+    .superRefine((values, ctx) => {
+      values.forEach((value, index) => {
+        if (index > 0 && (values[index - 1] ?? "") >= value) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Values must be unique and canonically sorted.",
+            path: [index],
+          });
+        }
+      });
+    });
+
+export const analysisSeasonalitySchema = z.strictObject({
+  kind: z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"]),
+  period_count: z.number().int().positive().max(10_000),
+  minimum_history_points: z.number().int().positive().max(50_000),
+});
+
+export const semanticMetricAnalysisSchema = z.strictObject({
+  primary: z.boolean(),
+  priority: z.number().int().min(0).max(10_000),
+  missing_period_policy: missingPeriodPolicySchema,
+  seasonality: analysisSeasonalitySchema.nullable(),
+  allowed_dimension_ids: canonicalVersionIdentifiers(256),
+  capabilities: z
+    .array(analysisCapabilitySchema)
+    .max(analysisCapabilitySchema.options.length)
+    .superRefine((values, ctx) => {
+      values.forEach((value, index) => {
+        if (index > 0 && (values[index - 1] ?? "") >= value) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Analysis capabilities must be unique and canonically sorted.",
+            path: [index],
+          });
+        }
+      });
+    }),
+  causal_role: analysisCausalRoleSchema.nullable(),
+});
+
+export const semanticDimensionAnalysisSchema = z.strictObject({
+  groupable: z.boolean(),
+  pivotable: z.boolean(),
+  causal_role: analysisCausalRoleSchema.nullable(),
+});
+
+export const semanticRelationshipAnalysisSchema = z.strictObject({
+  join_allowed: z.boolean(),
+  fanout_closed: z.boolean(),
+  ontology_path: canonicalVersionIdentifiers(64),
 });
 
 // ─── Formula AST ──────────────────────────────────────────────────────────────
@@ -107,6 +192,7 @@ export const semanticMetricSchema = z.strictObject({
   fanout_policy: z.enum(METRIC_FANOUT_POLICY),
   dependency_column_ids: z.array(z.string().min(1).max(256)).min(1),
   tags: z.array(z.string().min(1).max(128)).default([]),
+  analysis: semanticMetricAnalysisSchema,
 });
 
 export const semanticDimensionSchema = z.strictObject({
@@ -122,6 +208,7 @@ export const semanticDimensionSchema = z.strictObject({
   hierarchical: z.boolean().default(false),
   parent_dimension_id: versionIdentifierSchema.nullable(),
   tags: z.array(z.string().min(1).max(128)).default([]),
+  analysis: semanticDimensionAnalysisSchema,
 });
 
 // ─── Relationship ─────────────────────────────────────────────────────────────
@@ -154,6 +241,7 @@ export const semanticRelationshipSchema = z.strictObject({
   proof_kind: relationshipProofKindSchema,
   proof_detail: z.string().max(1024).nullable(),
   tags: z.array(z.string().min(1).max(128)).default([]),
+  analysis: semanticRelationshipAnalysisSchema,
 });
 
 // ─── Runtime Authorization ────────────────────────────────────────────────────
@@ -352,7 +440,21 @@ export const descriptiveContributionProfileSchema = z.strictObject({
   declared_max_bound: z.number().int().positive(),
 });
 
-// ─── SemanticSourceBundle@1 Envelope ──────────────────────────────────────────
+// ─── SemanticSourceBundle@2 content and authority envelope ───────────────────
+
+export const semanticRuntimeAuthorityEnvelopeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({
+    kind: z.literal("PREVIEW"),
+    candidate_id: immutableIdSchema,
+    working_revision: z.number().int().positive(),
+  }),
+  z.strictObject({
+    kind: z.literal("PUBLISHED"),
+    release_id: immutableIdSchema,
+    release_revision: z.number().int().positive(),
+    released_at: timestampSchema,
+  }),
+]);
 
 export const semanticSourceBundleMetadataSchema = z.strictObject({
   bundle_version: z.literal(SEMANTIC_SOURCE_BUNDLE_VERSION),
@@ -365,111 +467,9 @@ export const semanticSourceBundleMetadataSchema = z.strictObject({
   }),
   producer: artifactProducerSchema,
   authority: deterministicAuthoritySchema,
+  authority_envelope: semanticRuntimeAuthorityEnvelopeSchema,
   created_at: timestampSchema,
   description: z.string().max(2048).optional(),
-});
-
-export const semanticSourceBundleSchema = z.strictObject({
-  metadata: semanticSourceBundleMetadataSchema,
-  formulas: z.array(formulaSignatureSchema).default([]),
-  metrics: z.array(semanticMetricSchema).min(1),
-  dimensions: z.array(semanticDimensionSchema).default([]),
-  relationships: z.array(semanticRelationshipSchema).default([]),
-  business_ontology: businessOntologySchema.optional(),
-  physical_binding: physicalBindingSchema.optional(),
-  catalog_governance: catalogGovernanceSchema.optional(),
-  runtime_authorization: runtimeAuthSchema.optional(),
-  contribution_profile: descriptiveContributionProfileSchema.optional(),
-});
-
-export const analysisCapabilitySchema = z.enum([
-  "DATA_PROFILE",
-  "TREND_CHANGE",
-  "CONTRIBUTION",
-  "CONCENTRATION",
-  "ROBUST_ANOMALY",
-  "ASSOCIATION",
-  "FORECAST",
-  "ROOT_CAUSE_DISCOVERY",
-  "CAUSAL_IDENTIFICATION",
-  "CHART_DATASET",
-]);
-
-export const missingPeriodPolicySchema = z.enum([
-  "ZERO_IF_SEMANTICALLY_EMPTY",
-  "NULL",
-  "REJECT_GAP",
-]);
-
-export const analysisCausalRoleSchema = z.enum([
-  "OUTCOME",
-  "TREATMENT",
-  "CANDIDATE_CONFOUNDER",
-  "MEDIATOR",
-  "COLLIDER",
-]);
-
-const canonicalVersionIdentifiers = (max: number) =>
-  z
-    .array(versionIdentifierSchema)
-    .max(max)
-    .superRefine((values, ctx) => {
-      values.forEach((value, index) => {
-        if (index > 0 && (values[index - 1] ?? "") >= value) {
-          ctx.addIssue({
-            code: "custom",
-            message: "Values must be unique and canonically sorted.",
-            path: [index],
-          });
-        }
-      });
-    });
-
-export const analysisSeasonalitySchema = z.strictObject({
-  kind: z.enum(["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY", "CUSTOM"]),
-  period_count: z.number().int().positive().max(10_000),
-  minimum_history_points: z.number().int().positive().max(50_000),
-});
-
-export const semanticMetricV2Schema = semanticMetricSchema.extend({
-  analysis: z.strictObject({
-    primary: z.boolean(),
-    priority: z.number().int().min(0).max(10_000),
-    missing_period_policy: missingPeriodPolicySchema,
-    seasonality: analysisSeasonalitySchema.nullable(),
-    allowed_dimension_ids: canonicalVersionIdentifiers(256),
-    capabilities: z
-      .array(analysisCapabilitySchema)
-      .max(analysisCapabilitySchema.options.length)
-      .superRefine((values, ctx) => {
-        values.forEach((value, index) => {
-          if (index > 0 && (values[index - 1] ?? "") >= value) {
-            ctx.addIssue({
-              code: "custom",
-              message: "Analysis capabilities must be unique and canonically sorted.",
-              path: [index],
-            });
-          }
-        });
-      }),
-    causal_role: analysisCausalRoleSchema.nullable(),
-  }),
-});
-
-export const semanticDimensionV2Schema = semanticDimensionSchema.extend({
-  analysis: z.strictObject({
-    groupable: z.boolean(),
-    pivotable: z.boolean(),
-    causal_role: analysisCausalRoleSchema.nullable(),
-  }),
-});
-
-export const semanticRelationshipV2Schema = semanticRelationshipSchema.extend({
-  analysis: z.strictObject({
-    join_allowed: z.boolean(),
-    fanout_closed: z.boolean(),
-    ontology_path: canonicalVersionIdentifiers(64),
-  }),
 });
 
 export const domainCausalPolicySchema = z.strictObject({
@@ -491,31 +491,30 @@ export const domainCausalPolicySchema = z.strictObject({
     .max(512),
 });
 
-export const semanticSourceBundleV2MetadataSchema = semanticSourceBundleMetadataSchema.extend({
-  bundle_version: z.literal(SEMANTIC_SOURCE_BUNDLE_V2_VERSION),
-  publication_status: z.literal("PUBLISHED"),
-});
-
-export const semanticSourceBundleV2Schema = z.strictObject({
-  metadata: semanticSourceBundleV2MetadataSchema,
+export const semanticRuntimeContentSchema = z.strictObject({
   formulas: z.array(formulaSignatureSchema).default([]),
-  metrics: z.array(semanticMetricV2Schema).min(1),
-  dimensions: z.array(semanticDimensionV2Schema).default([]),
-  relationships: z.array(semanticRelationshipV2Schema).default([]),
+  metrics: z.array(semanticMetricSchema).min(1),
+  dimensions: z.array(semanticDimensionSchema).default([]),
+  relationships: z.array(semanticRelationshipSchema).default([]),
   business_ontology: businessOntologySchema.optional(),
   physical_binding: physicalBindingSchema.optional(),
   catalog_governance: catalogGovernanceSchema.optional(),
   runtime_authorization: runtimeAuthSchema.optional(),
   contribution_profile: descriptiveContributionProfileSchema.optional(),
-  domain_causal_policy: domainCausalPolicySchema.nullable(),
+  domain_causal_policy: domainCausalPolicySchema.nullish(),
+});
+
+export const semanticSourceBundleSchema = z.strictObject({
+  metadata: semanticSourceBundleMetadataSchema,
+  ...semanticRuntimeContentSchema.shape,
 });
 
 export type SemanticSourceBundle = z.infer<typeof semanticSourceBundleSchema>;
 export type SemanticSourceBundleMetadata = z.infer<typeof semanticSourceBundleMetadataSchema>;
-export type SemanticSourceBundleV2 = z.infer<typeof semanticSourceBundleV2Schema>;
-export type SemanticMetricV2 = z.infer<typeof semanticMetricV2Schema>;
-export type SemanticDimensionV2 = z.infer<typeof semanticDimensionV2Schema>;
-export type SemanticRelationshipV2 = z.infer<typeof semanticRelationshipV2Schema>;
+export type SemanticRuntimeContent = z.infer<typeof semanticRuntimeContentSchema>;
+export type SemanticRuntimeAuthorityEnvelope = z.infer<
+  typeof semanticRuntimeAuthorityEnvelopeSchema
+>;
 export type AnalysisCapability = z.infer<typeof analysisCapabilitySchema>;
 export type MissingPeriodPolicy = z.infer<typeof missingPeriodPolicySchema>;
 export type AnalysisCausalRole = z.infer<typeof analysisCausalRoleSchema>;
@@ -568,25 +567,25 @@ export type RuntimeAuthorization = RuntimeAuth;
 export async function computeExecutableSemanticDigest(
   bundle: SemanticSourceBundle,
 ): Promise<`sha256:${string}`> {
-  const { metadata: _metadata, ...executableContent } = bundle;
-  return await sha256ContentHash(executableContent);
+  return await sha256ContentHash(extractSemanticRuntimeContent(bundle));
 }
 
 export async function computeSemanticSourceBundleHash(
   bundle: SemanticSourceBundle,
 ): Promise<`sha256:${string}`> {
-  return sha256ContentHash(bundle);
+  return sha256ContentHash(semanticSourceBundleSchema.parse(bundle));
 }
 
-export async function computeSemanticSourceBundleV2Hash(
-  bundle: SemanticSourceBundleV2,
-): Promise<`sha256:${string}`> {
-  return sha256ContentHash(semanticSourceBundleV2Schema.parse(bundle));
+export function extractSemanticRuntimeContent(
+  bundle: SemanticSourceBundle,
+): SemanticRuntimeContent {
+  const { metadata: _metadata, ...content } = semanticSourceBundleSchema.parse(bundle);
+  return semanticRuntimeContentSchema.parse(content);
 }
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
-export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundle): void {
+function assertSemanticSourceBundleStructuralInvariants(bundle: SemanticSourceBundle): void {
   if (bundle.metrics.length === 0) {
     throw new SemanticGovernanceError("SemanticSourceBundle 必须包含至少一个 Metric。");
   }
@@ -599,7 +598,7 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
     );
   }
   if (bundle.metadata.bundle_version !== SEMANTIC_SOURCE_BUNDLE_VERSION) {
-    throw new SemanticGovernanceError("BundleVersion 必须为 semantic-source-bundle@1。");
+    throw new SemanticGovernanceError("BundleVersion 必须为 semantic-source-bundle@2。");
   }
 
   const metricIds = new Set(bundle.metrics.map((m) => m.metric_id));
@@ -728,31 +727,17 @@ export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundl
   }
 }
 
-export function projectSemanticSourceBundleV2ToV1(
-  bundle: SemanticSourceBundleV2,
-): SemanticSourceBundle {
-  const parsed = semanticSourceBundleV2Schema.parse(bundle);
-  const {
-    domain_causal_policy: _domainCausalPolicy,
-    metadata,
-    metrics,
-    dimensions,
-    relationships,
-    ...shared
-  } = parsed;
-  const { publication_status: _publicationStatus, ...v1Metadata } = metadata;
-  return semanticSourceBundleSchema.parse({
-    ...shared,
-    metadata: { ...v1Metadata, bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION },
-    metrics: metrics.map(({ analysis: _analysis, ...metric }) => metric),
-    dimensions: dimensions.map(({ analysis: _analysis, ...dimension }) => dimension),
-    relationships: relationships.map(({ analysis: _analysis, ...relationship }) => relationship),
-  });
-}
-
-export function assertSemanticSourceBundleV2Invariants(bundle: SemanticSourceBundleV2): void {
-  const parsed = semanticSourceBundleV2Schema.parse(bundle);
-  assertSemanticSourceBundleInvariants(projectSemanticSourceBundleV2ToV1(parsed));
+export function assertSemanticSourceBundleInvariants(bundle: SemanticSourceBundle): void {
+  if (
+    bundle.metadata.capability_profile !== U5_EXECUTABLE_SUBSET &&
+    bundle.metadata.capability_profile !== U13_EXECUTABLE_SUBSET
+  ) {
+    throw new SemanticGovernanceError(
+      "CapabilityProfile 必须为 U5_EXECUTABLE_SUBSET 或 U13_EXECUTABLE_SUBSET。",
+    );
+  }
+  const parsed = semanticSourceBundleSchema.parse(bundle);
+  assertSemanticSourceBundleStructuralInvariants(parsed);
   const assertCanonicalOrder = <T>(
     values: readonly T[],
     identity: (value: T) => string,

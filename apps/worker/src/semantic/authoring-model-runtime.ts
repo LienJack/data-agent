@@ -22,7 +22,7 @@ import type {
 import {
   semanticAuthoringModelToolCatalog,
   semanticAuthoringToolCatalog,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/authoring";
 import { z } from "zod";
 
 const SEMANTIC_AGENT_RESPONSE_SCHEMA_VERSION = "semantic-agent-turn@1.0.0";

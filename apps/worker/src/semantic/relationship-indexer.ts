@@ -11,7 +11,7 @@ import type {
   PostgresRelationshipIndexStore,
   SemanticRelationshipGraphAdapter,
 } from "@data-agent/platform";
-import { buildSemanticRelationshipGraphManifest } from "@data-agent/semantic";
+import { buildSemanticRelationshipGraphManifest } from "@data-agent/semantic/relationship-index";
 import { z } from "zod";
 
 const runInputSchema = z.strictObject({

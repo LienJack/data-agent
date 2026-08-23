@@ -7,7 +7,14 @@ import {
   versionIdentifierSchema,
 } from "../common/index.js";
 import { artifactProducerSchema, deterministicAuthoritySchema } from "./envelope.js";
-import { grainSchema, timeDomainSchema, unitSchema } from "./semantic-governance.js";
+import {
+  grainSchema,
+  semanticDimensionAnalysisSchema,
+  semanticMetricAnalysisSchema,
+  semanticRelationshipAnalysisSchema,
+  timeDomainSchema,
+  unitSchema,
+} from "./semantic-governance.js";
 import {
   DATA_TYPE,
   METRIC_ADDITIVITY,
@@ -213,6 +220,7 @@ export const dimensionNodeSchema = z.strictObject({
   data_type: z.enum(DATA_TYPE),
   sensitivity: z.enum(SENSITIVITY_LEVEL).default("PUBLIC"),
   filter_semantics: z.enum(["EXACT", "RANGE", "HIERARCHICAL", "TEMPORAL"]),
+  analysis: semanticDimensionAnalysisSchema,
 });
 export const metricNodeSchema = z.strictObject({
   ...semanticNodeCommonShape,
@@ -221,6 +229,7 @@ export const metricNodeSchema = z.strictObject({
   additivity: z.enum(METRIC_ADDITIVITY),
   null_policy: z.enum(METRIC_NULL_POLICY),
   fanout_policy: z.enum(METRIC_FANOUT_POLICY),
+  analysis: semanticMetricAnalysisSchema,
 });
 export const formulaNodeSchema = z.strictObject({
   ...semanticNodeCommonShape,
@@ -308,6 +317,7 @@ export const semanticEdgeAttributesSchema = z.discriminatedUnion("kind", [
     right_row_preservation: z.enum(["required", "optional"]),
     proof_kind: z.enum(["DDL_ENFORCED", "SNAPSHOT_CERTIFIED", "DECLARED_ONLY"]),
     proof_detail: z.string().max(1024).nullable(),
+    analysis: semanticRelationshipAnalysisSchema,
   }),
   z.strictObject({
     kind: z.literal("PHYSICAL_FACT"),

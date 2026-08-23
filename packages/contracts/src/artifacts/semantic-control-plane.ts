@@ -6,7 +6,6 @@ import {
   sha256ContentHash,
   timestampSchema,
 } from "../common/index.js";
-import { SemanticGovernanceError } from "./semantic-governance.js";
 
 // ─── Version constant ─────────────────────────────────────────────────────────
 
@@ -364,11 +363,7 @@ export type ValidationOutcome = z.infer<typeof validationOutcomeSchema>;
 
 // ─── Review Task ──────────────────────────────────────────────────────────────
 
-export const packetKindSchema = z.enum([
-  "CANDIDATE_REVIEW",
-  "ROLLBACK_REVIEW",
-  "LEGACY_CLOSURE_REVIEW",
-]);
+export const packetKindSchema = z.enum(["CANDIDATE_REVIEW", "ROLLBACK_REVIEW"]);
 
 export const decisionWindowStatusSchema = z.enum(["OPEN", "CLOSED"]);
 export const reviewOutcomeSchema = z.enum(["PENDING", "APPROVED", "VETOED", "EXPIRED"]);
@@ -455,11 +450,9 @@ export const publishAttemptSchema = z.strictObject({
   runtime_restriction_projection_hash: contentHashSchema.optional(),
   target_generation: z.number().int().min(0).max(9007199254740991),
   idempotency_digest: contentHashSchema,
-  conditional_legacy_plan: z.record(z.string(), z.unknown()).optional(),
   terminal_code: z.string().max(256).optional(),
   terminal_detail_digest: contentHashSchema.optional(),
   committed_release_ref: immutableIdSchema.optional(),
-  committed_legacy_attempt_ref: immutableIdSchema.optional(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
@@ -655,10 +648,6 @@ export type RuntimeProjectionBinding = z.infer<typeof runtimeProjectionBindingSc
 
 // ─── Runtime Activation ───────────────────────────────────────────────────────
 
-export const runtimeModeSchema = z.enum(["LEGACY", "SHADOW", "PUBLISHED_ONLY"]);
-export const rollbackWindowStatusSchema = z.enum(["OPEN", "CLOSED"]);
-export const legacyContractStatusSchema = z.enum(["AVAILABLE", "CLOSED"]);
-
 export const runtimeActivationSchema = z.strictObject({
   app_id: immutableIdSchema,
   tenant_id: immutableIdSchema,
@@ -668,120 +657,15 @@ export const runtimeActivationSchema = z.strictObject({
     .min(1)
     .max(64)
     .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
-  runtime_mode: runtimeModeSchema.default("LEGACY"),
   activation_generation: z.number().int().min(1).max(9007199254740991).default(1),
-  rollback_window_status: rollbackWindowStatusSchema.default("OPEN"),
-  legacy_contract_status: legacyContractStatusSchema.default("AVAILABLE"),
   current_release_id: immutableIdSchema.optional(),
   current_release_generation: z.number().int().min(0).max(9007199254740991).default(0),
   last_governance_readiness_receipt_digest: contentHashSchema.optional(),
-  closure_authorization_digest: contentHashSchema.optional(),
   created_at: timestampSchema,
   updated_at: timestampSchema,
 });
 
 export type RuntimeActivation = z.infer<typeof runtimeActivationSchema>;
-export type RuntimeMode = z.infer<typeof runtimeModeSchema>;
-export type RollbackWindowStatus = z.infer<typeof rollbackWindowStatusSchema>;
-export type LegacyContractStatus = z.infer<typeof legacyContractStatusSchema>;
-
-// ─── Legacy Equivalence Attempt ───────────────────────────────────────────────
-
-export const legacyEquivalenceAttemptSchema = z.strictObject({
-  app_id: immutableIdSchema,
-  tenant_id: immutableIdSchema,
-  environment: environmentSchema,
-  semantic_domain: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
-  attempt_id: immutableIdSchema,
-  release_id: immutableIdSchema,
-  target_generation: z.number().int().min(0).max(9007199254740991),
-  executable_projection_hash: contentHashSchema,
-  relationship_projection_hash: contentHashSchema,
-  runtime_restriction_projection_hash: contentHashSchema,
-  catalog_fence_epoch: z.number().int().min(0),
-  suite_digest: contentHashSchema,
-  expires_at: timestampSchema,
-  created_at: timestampSchema,
-});
-
-export type LegacyEquivalenceAttempt = z.infer<typeof legacyEquivalenceAttemptSchema>;
-
-// ─── Legacy Compatible Mirror ─────────────────────────────────────────────────
-
-export const legacyCompatibleMirrorSchema = z.strictObject({
-  app_id: immutableIdSchema,
-  tenant_id: immutableIdSchema,
-  environment: environmentSchema,
-  semantic_domain: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
-  mirror_id: immutableIdSchema,
-  attempt_id: immutableIdSchema,
-  release_id: immutableIdSchema,
-  target_generation: z.number().int().min(0).max(9007199254740991),
-  content_digest: contentHashSchema,
-  minimum_reader_version: z.string().min(1).max(64),
-  minimum_materializer_version: z.string().min(1).max(64),
-  mirror_payload: z.record(z.string(), z.unknown()),
-  created_at: timestampSchema,
-});
-
-export type LegacyCompatibleMirror = z.infer<typeof legacyCompatibleMirrorSchema>;
-
-// ─── Legacy Equivalence Receipt ───────────────────────────────────────────────
-
-export const legacyEquivalenceReceiptSchema = z.strictObject({
-  app_id: immutableIdSchema,
-  tenant_id: immutableIdSchema,
-  environment: environmentSchema,
-  semantic_domain: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
-  receipt_id: immutableIdSchema,
-  release_id: immutableIdSchema,
-  attempt_id: immutableIdSchema,
-  suite_digest: contentHashSchema,
-  receipt_digest: contentHashSchema,
-  created_at: timestampSchema,
-});
-
-export type LegacyEquivalenceReceipt = z.infer<typeof legacyEquivalenceReceiptSchema>;
-
-// ─── Legacy Closure Authorization ─────────────────────────────────────────────
-
-export const legacyClosureAuthorizationSchema = z.strictObject({
-  app_id: immutableIdSchema,
-  tenant_id: immutableIdSchema,
-  environment: environmentSchema,
-  semantic_domain: z
-    .string()
-    .min(1)
-    .max(64)
-    .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
-  authorization_id: immutableIdSchema,
-  release_id: immutableIdSchema,
-  closure_digest: contentHashSchema,
-  instance_digest: contentHashSchema,
-  traffic_digest: contentHashSchema,
-  cache_digest: contentHashSchema,
-  outbox_digest: contentHashSchema,
-  rehearsal_digest: contentHashSchema,
-  nonce: immutableIdSchema,
-  expires_at: timestampSchema,
-  is_consumed: z.boolean().default(false),
-  created_at: timestampSchema,
-  consumed_at: timestampSchema.optional(),
-});
-
-export type LegacyClosureAuthorization = z.infer<typeof legacyClosureAuthorizationSchema>;
 
 // ─── Rollback Authorization ───────────────────────────────────────────────────
 
@@ -859,12 +743,6 @@ export const outboxEventTypeSchema = z.enum([
   "ROLLBACK_EXECUTED",
   "RUNTIME_ACTIVATION_CHANGED",
   "APPLICATION_ROLLBACK_EXECUTED",
-  "LEGACY_CONTRACT_CLOSED",
-  "LEGACY_EQUIVALENCE_ATTEMPTED",
-  "LEGACY_EQUIVALENCE_COMMITTED",
-  "LEGACY_CLOSURE_AUTHORIZED",
-  "LEGACY_MIRROR_CREATED",
-  "LEGACY_EQUIVALENCE_RECEIPT_ISSUED",
 ]);
 
 export const counterKindSchema = z.enum(["RELEASE", "ACTIVATION"]);
@@ -900,7 +778,6 @@ export const bootstrapDomainResultSchema = z.strictObject({
   bootstrap_packet_digest: contentHashSchema,
   initial_policy_version: z.number().int().positive(),
   initial_reviewer_count: z.number().int().min(0),
-  runtime_mode: runtimeModeSchema,
 });
 
 export type BootstrapDomainResult = z.infer<typeof bootstrapDomainResultSchema>;
@@ -964,8 +841,7 @@ export const semanticControlPlaneErrorCodeSchema = z.enum([
   "SEMANTIC_FENCE_NOT_FOUND",
   "SEMANTIC_VALIDATION_FAILED",
   "SEMANTIC_PROJECTION_MISMATCH",
-  "SEMANTIC_LEGACY_EQUIVALENCE_FAILED",
-  "SEMANTIC_CLOSURE_AUTHORIZATION_EXPIRED",
+  "SEMANTIC_AUTHORIZATION_EXPIRED",
   "SEMANTIC_NONCE_CONSUMED",
   "SEMANTIC_SCOPE_MISMATCH",
 ]);
@@ -1062,7 +938,7 @@ export function assertCandidateStatusTransition(
   };
 
   const allowed = validTransitions[current];
-  if (!allowed || !allowed.includes(target)) {
+  if (!allowed?.includes(target)) {
     throw new SemanticControlPlaneError(
       "SEMANTIC_CANDIDATE_WRONG_STATE",
       `候选状态不能从 ${current} 转为 ${target}。`,
@@ -1109,7 +985,7 @@ export function assertRollbackAuthorizationFresh(auth: RollbackAuthorization): v
   }
   if (new Date(auth.expires_at) < new Date()) {
     throw new SemanticControlPlaneError(
-      "SEMANTIC_CLOSURE_AUTHORIZATION_EXPIRED",
+      "SEMANTIC_AUTHORIZATION_EXPIRED",
       "Rollback Authorization 已过期。",
     );
   }

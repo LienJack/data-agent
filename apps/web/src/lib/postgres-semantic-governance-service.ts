@@ -846,7 +846,6 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           dependency_generation: input.dependency_generation,
           target_generation: input.target_generation,
           idempotency_digest: input.idempotency_digest,
-          conditional_legacy_plan: input.conditional_legacy_plan ?? null,
         };
         const result = await client.query<{ prepare_publish_attempt: Record<string, unknown> }>(
           "select semantic.human_prepare_publish_attempt($1::jsonb) as prepare_publish_attempt",
@@ -919,7 +918,6 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           runtime_restriction_projection_ref: input.runtime_restriction_projection_ref,
           runtime_restriction_projection_hash: input.runtime_restriction_projection_hash,
           profile_child_manifest: input.profile_child_manifest ?? null,
-          committed_legacy_attempt_ref: input.committed_legacy_attempt_ref ?? null,
         };
         const result = await client.query<{ commit_publish_attempt: Record<string, unknown> }>(
           "select semantic.human_commit_publish_attempt($1::jsonb) as commit_publish_attempt",

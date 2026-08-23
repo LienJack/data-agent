@@ -10,7 +10,7 @@ import {
   semanticInductionCommitResultSchema,
   semanticInductionTargetSchema,
 } from "@data-agent/contracts";
-import { processSemanticInduction } from "@data-agent/semantic";
+import { processSemanticInduction } from "@data-agent/semantic/authoring";
 import type { JobHandler } from "./job-worker-runner.js";
 
 export type SemanticInductionRegistry = Readonly<{

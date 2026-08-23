@@ -2,10 +2,7 @@ import {
   type BusinessOntology,
   type CatalogGovernance,
   type PhysicalBinding,
-  type SemanticDimension,
-  SemanticGovernanceError,
-  type SemanticMetric,
-  type SemanticRelationship,
+  SEMANTIC_SOURCE_BUNDLE_VERSION,
   type SemanticSourceBundle,
   U5_EXECUTABLE_SUBSET,
   U13_EXECUTABLE_SUBSET,
@@ -55,11 +52,11 @@ export function validateSourceBundle(bundle: SemanticSourceBundle): ValidationRe
   const issues: ValidationIssue[] = [];
 
   // 1. 检查 bundle 版本
-  if (bundle.metadata.bundle_version !== "semantic-source-bundle@1") {
+  if (bundle.metadata.bundle_version !== SEMANTIC_SOURCE_BUNDLE_VERSION) {
     issues.push({
       severity: ValidationSeverity.ERROR,
       code: "INVALID_BUNDLE_VERSION",
-      message: `Bundle 版本必须为 semantic-source-bundle@1，当前为 ${bundle.metadata.bundle_version}。`,
+      message: `Bundle 版本必须为 ${SEMANTIC_SOURCE_BUNDLE_VERSION}，当前为 ${bundle.metadata.bundle_version}。`,
       path: "metadata.bundle_version",
     });
   }

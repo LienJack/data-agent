@@ -69,6 +69,7 @@ const nodes: SemanticGraphNode[] = [
     data_type: "text",
     sensitivity: "PUBLIC",
     filter_semantics: "HIERARCHICAL",
+    analysis: { groupable: true, pivotable: true, causal_role: null },
   },
   {
     ...common,
@@ -79,6 +80,7 @@ const nodes: SemanticGraphNode[] = [
     data_type: "date",
     sensitivity: "PUBLIC",
     filter_semantics: "TEMPORAL",
+    analysis: { groupable: true, pivotable: true, causal_role: null },
   },
   {
     ...common,
@@ -89,6 +91,7 @@ const nodes: SemanticGraphNode[] = [
     data_type: "text",
     sensitivity: "PUBLIC",
     filter_semantics: "HIERARCHICAL",
+    analysis: { groupable: true, pivotable: true, causal_role: null },
   },
   {
     ...common,
@@ -101,6 +104,15 @@ const nodes: SemanticGraphNode[] = [
     additivity: "non-additive",
     null_policy: "exclude",
     fanout_policy: "preaggregate",
+    analysis: {
+      primary: false,
+      priority: 10,
+      missing_period_policy: "NULL",
+      seasonality: null,
+      allowed_dimension_ids: ["dimension-product"],
+      capabilities: ["CHART_DATASET", "DATA_PROFILE"],
+      causal_role: null,
+    },
   },
   {
     ...common,
@@ -112,6 +124,15 @@ const nodes: SemanticGraphNode[] = [
     additivity: "additive",
     null_policy: "coalesce-zero",
     fanout_policy: "reject",
+    analysis: {
+      primary: true,
+      priority: 0,
+      missing_period_policy: "NULL",
+      seasonality: null,
+      allowed_dimension_ids: ["dimension-calendar", "dimension-product", "dimension-region"],
+      capabilities: ["CHART_DATASET", "DATA_PROFILE", "TREND_CHANGE"],
+      causal_role: null,
+    },
   },
   {
     ...common,
@@ -354,6 +375,7 @@ const joinable = (edgeId: string, sourceId: string, targetId: string, cardinalit
       right_row_preservation: "optional",
       proof_kind: "SNAPSHOT_CERTIFIED",
       proof_detail: "schema snapshot + uniqueness profile",
+      analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
     },
     ["evidence-schema-snapshot"],
   );

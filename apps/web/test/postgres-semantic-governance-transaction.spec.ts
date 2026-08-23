@@ -20,7 +20,6 @@ const ids = {
   executableProjection: "00000000-0000-4000-8000-000000000013",
   relationshipProjection: "00000000-0000-4000-8000-000000000014",
   restrictionProjection: "00000000-0000-4000-8000-000000000015",
-  legacyAttempt: "00000000-0000-4000-8000-000000000016",
   authorization: "00000000-0000-4000-8000-000000000017",
   nonce: "00000000-0000-4000-8000-000000000018",
 } as const;
@@ -363,7 +362,6 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
     const hashA = `sha256:${"a".repeat(64)}`;
     const hashB = `sha256:${"b".repeat(64)}`;
     const hashC = `sha256:${"c".repeat(64)}`;
-    const legacyPlan = { strategy: "preserve", generation: 12 };
     const childManifest = { children: ["one", "two"] };
 
     await fixture.service.preparePublish(fixture.context, {
@@ -375,7 +373,6 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
       dependency_generation: 11,
       target_generation: 12,
       idempotency_digest: hashB,
-      conditional_legacy_plan: legacyPlan,
     });
     await fixture.service.commitPublish(fixture.context, {
       schema_version: "semantic-commit-publish@1.0.0",
@@ -389,7 +386,6 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
       runtime_restriction_projection_ref: ids.restrictionProjection,
       runtime_restriction_projection_hash: hashC,
       profile_child_manifest: childManifest,
-      committed_legacy_attempt_ref: ids.legacyAttempt,
     });
     await fixture.service.executeRollback(fixture.context, {
       schema_version: "semantic-rollback@1.0.0",
@@ -420,7 +416,6 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
         dependency_generation: 11,
         target_generation: 12,
         idempotency_digest: hashB,
-        conditional_legacy_plan: legacyPlan,
       },
     ]);
 
@@ -445,7 +440,6 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
         runtime_restriction_projection_ref: ids.restrictionProjection,
         runtime_restriction_projection_hash: hashC,
         profile_child_manifest: childManifest,
-        committed_legacy_attempt_ref: ids.legacyAttempt,
       },
     ]);
 

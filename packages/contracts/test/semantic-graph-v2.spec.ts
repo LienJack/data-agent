@@ -59,6 +59,7 @@ function validGraph() {
         data_type: "text" as const,
         sensitivity: "PUBLIC" as const,
         filter_semantics: "EXACT" as const,
+        analysis: { groupable: true, pivotable: true, causal_role: null },
       },
       {
         ...common,
@@ -74,6 +75,15 @@ function validGraph() {
         additivity: "non-additive" as const,
         null_policy: "exclude" as const,
         fanout_policy: "reject" as const,
+        analysis: {
+          primary: true,
+          priority: 0,
+          missing_period_policy: "NULL" as const,
+          seasonality: null,
+          allowed_dimension_ids: ["dimension-product"],
+          capabilities: [],
+          causal_role: null,
+        },
       },
       {
         ...common,

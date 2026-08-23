@@ -6,10 +6,8 @@ import {
   semanticRelationshipSearchResultSchema,
 } from "@data-agent/contracts";
 import type { PostgresSemanticExplorerReader } from "@data-agent/platform";
-import {
-  buildSemanticExplorerReadModel,
-  createSemanticRelationshipSearchService,
-} from "@data-agent/semantic";
+import { buildSemanticExplorerReadModel } from "@data-agent/semantic/read-model";
+import { createSemanticRelationshipSearchService } from "@data-agent/semantic/relationship-index";
 
 export interface FrozenSemanticRelationshipReadPort {
   read(input: {

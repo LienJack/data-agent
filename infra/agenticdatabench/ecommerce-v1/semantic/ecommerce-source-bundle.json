@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "bundle_version": "semantic-source-bundle@1",
+    "bundle_version": "semantic-source-bundle@2",
     "capability_profile": "U5_EXECUTABLE_SUBSET",
     "bundle_id": "00000000-0000-4000-8000-00000000ec10",
     "scope": {
@@ -17,246 +17,31 @@
       "id": "semantic-authority",
       "policy_version": "ecommerce-semantic-policy@1.0.0"
     },
+    "authority_envelope": {
+      "kind": "PREVIEW",
+      "candidate_id": "00000000-0000-4000-8000-00000000ec20",
+      "working_revision": 1
+    },
     "created_at": "2026-08-15T00:00:00Z",
-    "description": "AgenticDataBench E-commerce Demo v1 固定、可审核并由 Workspace bootstrap 发布的语义源。"
+    "description": "AgenticDataBench E-commerce Demo 的 V2-only 语义运行时内容。"
   },
   "formulas": [],
   "metrics": [
     {
-      "metric_id": "ecommerce-order-count@1",
-      "name": "订单量",
-      "description": "订单量；按 fact_order.order_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "metric_id": "ecommerce-amazon-price-avg@1",
+      "name": "Amazon 平均标价",
+      "description": "Amazon 平均标价；按 dim_amazon_product.price_usd 计算，必须遵守声明粒度与 fanout 策略。",
       "aliases": [
-        "订单量",
-        "order-count"
+        "Amazon 平均标价",
+        "amazon-price-avg"
       ],
-      "table_id": "fact_order",
-      "column_id": "fact_order.order_id",
-      "aggregation": "count_distinct",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order-grain@1",
-        "description": "fact_order 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": "fact_order.purchased_at",
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order.order_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-customer-count@1",
-      "name": "下单客户数",
-      "description": "下单客户数；按 fact_order.customer_id 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "下单客户数",
-        "customer-count"
-      ],
-      "table_id": "fact_order",
-      "column_id": "fact_order.customer_id",
-      "aggregation": "count_distinct",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order-grain@1",
-        "description": "fact_order 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": "fact_order.purchased_at",
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order.customer_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-delivery-delay-avg@1",
-      "name": "平均配送延迟天数",
-      "description": "平均配送延迟天数；按 fact_order.delivery_delay_days 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "平均配送延迟天数",
-        "delivery-delay-avg"
-      ],
-      "table_id": "fact_order",
-      "column_id": "fact_order.delivery_delay_days",
+      "table_id": "dim_amazon_product",
+      "column_id": "dim_amazon_product.price_usd",
       "aggregation": "avg",
       "formula": null,
       "grain": {
-        "grain_id": "ecommerce-fact_order-grain@1",
-        "description": "fact_order 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-duration-unit@1",
-        "description": "E-commerce duration unit",
-        "dimension": "duration",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": "fact_order.purchased_at",
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order.delivery_delay_days"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-delivery-delay-max@1",
-      "name": "最大配送延迟天数",
-      "description": "最大配送延迟天数；按 fact_order.delivery_delay_days 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "最大配送延迟天数",
-        "delivery-delay-max"
-      ],
-      "table_id": "fact_order",
-      "column_id": "fact_order.delivery_delay_days",
-      "aggregation": "max",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order-grain@1",
-        "description": "fact_order 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-duration-unit@1",
-        "description": "E-commerce duration unit",
-        "dimension": "duration",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": "fact_order.purchased_at",
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order.delivery_delay_days"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-item-count@1",
-      "name": "商品件数",
-      "description": "商品件数；按 fact_order_item.order_item_id 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "商品件数",
-        "item-count"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.order_item_id",
-      "aggregation": "count",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.order_item_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-gmv-brl@1",
-      "name": "成交总额 GMV",
-      "description": "成交总额 GMV；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "成交总额 GMV",
-        "gmv-brl"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.price_brl",
-      "aggregation": "sum",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
+        "grain_id": "ecommerce-dim_amazon_product-grain@1",
+        "description": "dim_amazon_product 业务粒度",
         "granularity": "atomic"
       },
       "unit": {
@@ -266,773 +51,30 @@
         "base_unit": null,
         "conversion_factor": null
       },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.price_brl"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-item-price-avg@1",
-      "name": "平均商品成交价",
-      "description": "平均商品成交价；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "平均商品成交价",
-        "item-price-avg"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.price_brl",
-      "aggregation": "avg",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
+      "time_domain": null,
       "time_column_id": null,
       "additivity": "non-additive",
       "null_policy": "exclude",
       "fanout_policy": "preaggregate",
       "dependency_column_ids": [
-        "fact_order_item.price_brl"
+        "dim_amazon_product.price_usd"
       ],
       "tags": [
         "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-item-price-min@1",
-      "name": "最低商品成交价",
-      "description": "最低商品成交价；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "最低商品成交价",
-        "item-price-min"
+        "dim_amazon_product"
       ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.price_brl",
-      "aggregation": "min",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.price_brl"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-item-price-max@1",
-      "name": "最高商品成交价",
-      "description": "最高商品成交价；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "最高商品成交价",
-        "item-price-max"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.price_brl",
-      "aggregation": "max",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.price_brl"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-freight-total@1",
-      "name": "运费总额",
-      "description": "运费总额；按 fact_order_item.freight_value_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "运费总额",
-        "freight-total"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.freight_value_brl",
-      "aggregation": "sum",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.freight_value_brl"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-freight-avg@1",
-      "name": "平均运费",
-      "description": "平均运费；按 fact_order_item.freight_value_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "平均运费",
-        "freight-avg"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.freight_value_brl",
-      "aggregation": "avg",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.freight_value_brl"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-seller-count@1",
-      "name": "活跃卖家数",
-      "description": "活跃卖家数；按 fact_order_item.seller_id 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "活跃卖家数",
-        "seller-count"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.seller_id",
-      "aggregation": "count_distinct",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.seller_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-product-count@1",
-      "name": "成交商品数",
-      "description": "成交商品数；按 fact_order_item.product_id 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "成交商品数",
-        "product-count"
-      ],
-      "table_id": "fact_order_item",
-      "column_id": "fact_order_item.product_id",
-      "aggregation": "count_distinct",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_order_item-grain@1",
-        "description": "fact_order_item 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_order_item.product_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_order_item"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-payment-total@1",
-      "name": "支付总额",
-      "description": "支付总额；按 fact_payment.payment_value_brl 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "支付总额",
-        "payment-total"
-      ],
-      "table_id": "fact_payment",
-      "column_id": "fact_payment.payment_value_brl",
-      "aggregation": "sum",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_payment-grain@1",
-        "description": "fact_payment 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_payment.payment_value_brl"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_payment"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-payment-count@1",
-      "name": "支付笔数",
-      "description": "支付笔数；按 fact_payment.payment_sequence 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "支付笔数",
-        "payment-count"
-      ],
-      "table_id": "fact_payment",
-      "column_id": "fact_payment.payment_sequence",
-      "aggregation": "count",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_payment-grain@1",
-        "description": "fact_payment 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_payment.payment_sequence"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_payment"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-installments-avg@1",
-      "name": "平均分期数",
-      "description": "平均分期数；按 fact_payment.installments 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "平均分期数",
-        "installments-avg"
-      ],
-      "table_id": "fact_payment",
-      "column_id": "fact_payment.installments",
-      "aggregation": "avg",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_payment-grain@1",
-        "description": "fact_payment 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_payment.installments"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_payment"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-installments-max@1",
-      "name": "最大分期数",
-      "description": "最大分期数；按 fact_payment.installments 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "最大分期数",
-        "installments-max"
-      ],
-      "table_id": "fact_payment",
-      "column_id": "fact_payment.installments",
-      "aggregation": "max",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_payment-grain@1",
-        "description": "fact_payment 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_payment.installments"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_payment"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-review-count@1",
-      "name": "评价数",
-      "description": "评价数；按 fact_review.review_row_id 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "评价数",
-        "review-count"
-      ],
-      "table_id": "fact_review",
-      "column_id": "fact_review.review_row_id",
-      "aggregation": "count",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_review-grain@1",
-        "description": "fact_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_review.review_row_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_review"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-review-score-avg@1",
-      "name": "平均评价分",
-      "description": "平均评价分；按 fact_review.review_score 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "平均评价分",
-        "review-score-avg"
-      ],
-      "table_id": "fact_review",
-      "column_id": "fact_review.review_score",
-      "aggregation": "avg",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_review-grain@1",
-        "description": "fact_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-ratio-unit@1",
-        "description": "E-commerce ratio unit",
-        "dimension": "ratio",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_review.review_score"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_review"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-review-score-min@1",
-      "name": "最低评价分",
-      "description": "最低评价分；按 fact_review.review_score 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "最低评价分",
-        "review-score-min"
-      ],
-      "table_id": "fact_review",
-      "column_id": "fact_review.review_score",
-      "aggregation": "min",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_review-grain@1",
-        "description": "fact_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-ratio-unit@1",
-        "description": "E-commerce ratio unit",
-        "dimension": "ratio",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_review.review_score"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_review"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-review-score-max@1",
-      "name": "最高评价分",
-      "description": "最高评价分；按 fact_review.review_score 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "最高评价分",
-        "review-score-max"
-      ],
-      "table_id": "fact_review",
-      "column_id": "fact_review.review_score",
-      "aggregation": "max",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_review-grain@1",
-        "description": "fact_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-ratio-unit@1",
-        "description": "E-commerce ratio unit",
-        "dimension": "ratio",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_review.review_score"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_review"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-amazon-review-count@1",
-      "name": "Amazon 评价数",
-      "description": "Amazon 评价数；按 fact_amazon_review.review_row_id 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "Amazon 评价数",
-        "amazon-review-count"
-      ],
-      "table_id": "fact_amazon_review",
-      "column_id": "fact_amazon_review.review_row_id",
-      "aggregation": "count",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_amazon_review-grain@1",
-        "description": "fact_amazon_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-count-unit@1",
-        "description": "E-commerce count unit",
-        "dimension": "count",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "additive",
-      "null_policy": "coalesce-zero",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_amazon_review.review_row_id"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_amazon_review"
-      ]
-    },
-    {
-      "metric_id": "ecommerce-amazon-rating-avg@1",
-      "name": "Amazon 平均评分",
-      "description": "Amazon 平均评分；按 fact_amazon_review.rating 计算，必须遵守声明粒度与 fanout 策略。",
-      "aliases": [
-        "Amazon 平均评分",
-        "amazon-rating-avg"
-      ],
-      "table_id": "fact_amazon_review",
-      "column_id": "fact_amazon_review.rating",
-      "aggregation": "avg",
-      "formula": null,
-      "grain": {
-        "grain_id": "ecommerce-fact_amazon_review-grain@1",
-        "description": "fact_amazon_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "unit": {
-        "unit_id": "ecommerce-ratio-unit@1",
-        "description": "E-commerce ratio unit",
-        "dimension": "ratio",
-        "base_unit": null,
-        "conversion_factor": null
-      },
-      "time_domain": {
-        "time_domain_id": "ecommerce-order-time@1",
-        "description": "Olist 订单购买时间，UTC 存储",
-        "calendar": "gregorian",
-        "timezone": "UTC",
-        "min_time": "2016-09-01",
-        "max_time": "2018-10-31"
-      },
-      "time_column_id": null,
-      "additivity": "non-additive",
-      "null_policy": "exclude",
-      "fanout_policy": "preaggregate",
-      "dependency_column_ids": [
-        "fact_amazon_review.rating"
-      ],
-      "tags": [
-        "ecommerce",
-        "fact_amazon_review"
-      ]
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-amazon-product-count@1",
@@ -1076,44 +118,299 @@
       "tags": [
         "ecommerce",
         "fact_amazon_review"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
-      "metric_id": "ecommerce-amazon-price-avg@1",
-      "name": "Amazon 平均标价",
-      "description": "Amazon 平均标价；按 dim_amazon_product.price_usd 计算，必须遵守声明粒度与 fanout 策略。",
+      "metric_id": "ecommerce-amazon-rating-avg@1",
+      "name": "Amazon 平均评分",
+      "description": "Amazon 平均评分；按 fact_amazon_review.rating 计算，必须遵守声明粒度与 fanout 策略。",
       "aliases": [
-        "Amazon 平均标价",
-        "amazon-price-avg"
+        "Amazon 平均评分",
+        "amazon-rating-avg"
       ],
-      "table_id": "dim_amazon_product",
-      "column_id": "dim_amazon_product.price_usd",
+      "table_id": "fact_amazon_review",
+      "column_id": "fact_amazon_review.rating",
       "aggregation": "avg",
       "formula": null,
       "grain": {
-        "grain_id": "ecommerce-dim_amazon_product-grain@1",
-        "description": "dim_amazon_product 业务粒度",
+        "grain_id": "ecommerce-fact_amazon_review-grain@1",
+        "description": "fact_amazon_review 业务粒度",
         "granularity": "atomic"
       },
       "unit": {
-        "unit_id": "ecommerce-currency-unit@1",
-        "description": "E-commerce currency unit",
-        "dimension": "currency",
+        "unit_id": "ecommerce-ratio-unit@1",
+        "description": "E-commerce ratio unit",
+        "dimension": "ratio",
         "base_unit": null,
         "conversion_factor": null
       },
-      "time_domain": null,
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
       "time_column_id": null,
       "additivity": "non-additive",
       "null_policy": "exclude",
       "fanout_policy": "preaggregate",
       "dependency_column_ids": [
-        "dim_amazon_product.price_usd"
+        "fact_amazon_review.rating"
       ],
       "tags": [
         "ecommerce",
-        "dim_amazon_product"
-      ]
+        "fact_amazon_review"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-amazon-review-count@1",
+      "name": "Amazon 评价数",
+      "description": "Amazon 评价数；按 fact_amazon_review.review_row_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "Amazon 评价数",
+        "amazon-review-count"
+      ],
+      "table_id": "fact_amazon_review",
+      "column_id": "fact_amazon_review.review_row_id",
+      "aggregation": "count",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_amazon_review-grain@1",
+        "description": "fact_amazon_review 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_amazon_review.review_row_id"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_amazon_review"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-customer-count@1",
+      "name": "下单客户数",
+      "description": "下单客户数；按 fact_order.customer_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "下单客户数",
+        "customer-count"
+      ],
+      "table_id": "fact_order",
+      "column_id": "fact_order.customer_id",
+      "aggregation": "count_distinct",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order-grain@1",
+        "description": "fact_order 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": "fact_order.purchased_at",
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order.customer_id"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-delivery-delay-avg@1",
+      "name": "平均配送延迟天数",
+      "description": "平均配送延迟天数；按 fact_order.delivery_delay_days 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "平均配送延迟天数",
+        "delivery-delay-avg"
+      ],
+      "table_id": "fact_order",
+      "column_id": "fact_order.delivery_delay_days",
+      "aggregation": "avg",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order-grain@1",
+        "description": "fact_order 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-duration-unit@1",
+        "description": "E-commerce duration unit",
+        "dimension": "duration",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": "fact_order.purchased_at",
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order.delivery_delay_days"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-delivery-delay-max@1",
+      "name": "最大配送延迟天数",
+      "description": "最大配送延迟天数；按 fact_order.delivery_delay_days 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "最大配送延迟天数",
+        "delivery-delay-max"
+      ],
+      "table_id": "fact_order",
+      "column_id": "fact_order.delivery_delay_days",
+      "aggregation": "max",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order-grain@1",
+        "description": "fact_order 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-duration-unit@1",
+        "description": "E-commerce duration unit",
+        "dimension": "duration",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": "fact_order.purchased_at",
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order.delivery_delay_days"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-ebay-listing-count@1",
@@ -1150,7 +447,19 @@
       "tags": [
         "ecommerce",
         "dim_ebay_listing"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-ebay-price-avg@1",
@@ -1187,7 +496,19 @@
       "tags": [
         "ecommerce",
         "dim_ebay_listing"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-ebay-ram-avg@1",
@@ -1224,7 +545,19 @@
       "tags": [
         "ecommerce",
         "dim_ebay_listing"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-ebay-ssd-avg@1",
@@ -1261,24 +594,316 @@
       "tags": [
         "ecommerce",
         "dim_ebay_listing"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
-      "metric_id": "ecommerce-state-pair-orders@1",
-      "name": "州对月订单量",
-      "description": "州对月订单量；按 fact_delivery_state_month.total_orders 计算，必须遵守声明粒度与 fanout 策略。",
+      "metric_id": "ecommerce-freight-avg@1",
+      "name": "平均运费",
+      "description": "平均运费；按 fact_order_item.freight_value_brl 计算，必须遵守声明粒度与 fanout 策略。",
       "aliases": [
-        "州对月订单量",
-        "state-pair-orders"
+        "平均运费",
+        "freight-avg"
       ],
-      "table_id": "fact_delivery_state_month",
-      "column_id": "fact_delivery_state_month.total_orders",
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.freight_value_brl",
+      "aggregation": "avg",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.freight_value_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-freight-total@1",
+      "name": "运费总额",
+      "description": "运费总额；按 fact_order_item.freight_value_brl 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "运费总额",
+        "freight-total"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.freight_value_brl",
       "aggregation": "sum",
       "formula": null,
       "grain": {
-        "grain_id": "ecommerce-fact_delivery_state_month-grain@1",
-        "description": "fact_delivery_state_month 业务粒度",
-        "granularity": "month"
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.freight_value_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-gmv-brl@1",
+      "name": "成交总额 GMV",
+      "description": "成交总额 GMV；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "成交总额 GMV",
+        "gmv-brl"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.price_brl",
+      "aggregation": "sum",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.price_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": true,
+        "priority": 100,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-installments-avg@1",
+      "name": "平均分期数",
+      "description": "平均分期数；按 fact_payment.installments 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "平均分期数",
+        "installments-avg"
+      ],
+      "table_id": "fact_payment",
+      "column_id": "fact_payment.installments",
+      "aggregation": "avg",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_payment-grain@1",
+        "description": "fact_payment 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_payment.installments"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_payment"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-installments-max@1",
+      "name": "最大分期数",
+      "description": "最大分期数；按 fact_payment.installments 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "最大分期数",
+        "installments-max"
+      ],
+      "table_id": "fact_payment",
+      "column_id": "fact_payment.installments",
+      "aggregation": "max",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_payment-grain@1",
+        "description": "fact_payment 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_payment.installments"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_payment"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-item-count@1",
+      "name": "商品件数",
+      "description": "商品件数；按 fact_order_item.order_item_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "商品件数",
+        "item-count"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.order_item_id",
+      "aggregation": "count",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
       },
       "unit": {
         "unit_id": "ecommerce-count-unit@1",
@@ -1300,12 +925,696 @@
       "null_policy": "coalesce-zero",
       "fanout_policy": "preaggregate",
       "dependency_column_ids": [
-        "fact_delivery_state_month.total_orders"
+        "fact_order_item.order_item_id"
       ],
       "tags": [
         "ecommerce",
-        "fact_delivery_state_month"
-      ]
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-item-price-avg@1",
+      "name": "平均商品成交价",
+      "description": "平均商品成交价；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "平均商品成交价",
+        "item-price-avg"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.price_brl",
+      "aggregation": "avg",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.price_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-item-price-max@1",
+      "name": "最高商品成交价",
+      "description": "最高商品成交价；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "最高商品成交价",
+        "item-price-max"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.price_brl",
+      "aggregation": "max",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.price_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-item-price-min@1",
+      "name": "最低商品成交价",
+      "description": "最低商品成交价；按 fact_order_item.price_brl 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "最低商品成交价",
+        "item-price-min"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.price_brl",
+      "aggregation": "min",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.price_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-order-count@1",
+      "name": "订单量",
+      "description": "订单量；按 fact_order.order_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "订单量",
+        "order-count"
+      ],
+      "table_id": "fact_order",
+      "column_id": "fact_order.order_id",
+      "aggregation": "count_distinct",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order-grain@1",
+        "description": "fact_order 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": "fact_order.purchased_at",
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order.order_id"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-payment-count@1",
+      "name": "支付笔数",
+      "description": "支付笔数；按 fact_payment.payment_sequence 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "支付笔数",
+        "payment-count"
+      ],
+      "table_id": "fact_payment",
+      "column_id": "fact_payment.payment_sequence",
+      "aggregation": "count",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_payment-grain@1",
+        "description": "fact_payment 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_payment.payment_sequence"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_payment"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-payment-total@1",
+      "name": "支付总额",
+      "description": "支付总额；按 fact_payment.payment_value_brl 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "支付总额",
+        "payment-total"
+      ],
+      "table_id": "fact_payment",
+      "column_id": "fact_payment.payment_value_brl",
+      "aggregation": "sum",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_payment-grain@1",
+        "description": "fact_payment 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-currency-unit@1",
+        "description": "E-commerce currency unit",
+        "dimension": "currency",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_payment.payment_value_brl"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_payment"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-product-count@1",
+      "name": "成交商品数",
+      "description": "成交商品数；按 fact_order_item.product_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "成交商品数",
+        "product-count"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.product_id",
+      "aggregation": "count_distinct",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.product_id"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-review-count@1",
+      "name": "评价数",
+      "description": "评价数；按 fact_review.review_row_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "评价数",
+        "review-count"
+      ],
+      "table_id": "fact_review",
+      "column_id": "fact_review.review_row_id",
+      "aggregation": "count",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_review-grain@1",
+        "description": "fact_review 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_review.review_row_id"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_review"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-review-score-avg@1",
+      "name": "平均评价分",
+      "description": "平均评价分；按 fact_review.review_score 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "平均评价分",
+        "review-score-avg"
+      ],
+      "table_id": "fact_review",
+      "column_id": "fact_review.review_score",
+      "aggregation": "avg",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_review-grain@1",
+        "description": "fact_review 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-ratio-unit@1",
+        "description": "E-commerce ratio unit",
+        "dimension": "ratio",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_review.review_score"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_review"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-review-score-max@1",
+      "name": "最高评价分",
+      "description": "最高评价分；按 fact_review.review_score 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "最高评价分",
+        "review-score-max"
+      ],
+      "table_id": "fact_review",
+      "column_id": "fact_review.review_score",
+      "aggregation": "max",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_review-grain@1",
+        "description": "fact_review 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-ratio-unit@1",
+        "description": "E-commerce ratio unit",
+        "dimension": "ratio",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_review.review_score"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_review"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-review-score-min@1",
+      "name": "最低评价分",
+      "description": "最低评价分；按 fact_review.review_score 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "最低评价分",
+        "review-score-min"
+      ],
+      "table_id": "fact_review",
+      "column_id": "fact_review.review_score",
+      "aggregation": "min",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_review-grain@1",
+        "description": "fact_review 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-ratio-unit@1",
+        "description": "E-commerce ratio unit",
+        "dimension": "ratio",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_review.review_score"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_review"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-seller-count@1",
+      "name": "活跃卖家数",
+      "description": "活跃卖家数；按 fact_order_item.seller_id 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "活跃卖家数",
+        "seller-count"
+      ],
+      "table_id": "fact_order_item",
+      "column_id": "fact_order_item.seller_id",
+      "aggregation": "count_distinct",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_order_item-grain@1",
+        "description": "fact_order_item 业务粒度",
+        "granularity": "atomic"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "non-additive",
+      "null_policy": "exclude",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_order_item.seller_id"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_order_item"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-state-pair-delay-avg@1",
@@ -1349,7 +1658,19 @@
       "tags": [
         "ecommerce",
         "fact_delivery_state_month"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     },
     {
       "metric_id": "ecommerce-state-pair-distance-avg@1",
@@ -1393,154 +1714,78 @@
       "tags": [
         "ecommerce",
         "fact_delivery_state_month"
-      ]
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
+    },
+    {
+      "metric_id": "ecommerce-state-pair-orders@1",
+      "name": "州对月订单量",
+      "description": "州对月订单量；按 fact_delivery_state_month.total_orders 计算，必须遵守声明粒度与 fanout 策略。",
+      "aliases": [
+        "州对月订单量",
+        "state-pair-orders"
+      ],
+      "table_id": "fact_delivery_state_month",
+      "column_id": "fact_delivery_state_month.total_orders",
+      "aggregation": "sum",
+      "formula": null,
+      "grain": {
+        "grain_id": "ecommerce-fact_delivery_state_month-grain@1",
+        "description": "fact_delivery_state_month 业务粒度",
+        "granularity": "month"
+      },
+      "unit": {
+        "unit_id": "ecommerce-count-unit@1",
+        "description": "E-commerce count unit",
+        "dimension": "count",
+        "base_unit": null,
+        "conversion_factor": null
+      },
+      "time_domain": {
+        "time_domain_id": "ecommerce-order-time@1",
+        "description": "Olist 订单购买时间，UTC 存储",
+        "calendar": "gregorian",
+        "timezone": "UTC",
+        "min_time": "2016-09-01",
+        "max_time": "2018-10-31"
+      },
+      "time_column_id": null,
+      "additivity": "additive",
+      "null_policy": "coalesce-zero",
+      "fanout_policy": "preaggregate",
+      "dependency_column_ids": [
+        "fact_delivery_state_month.total_orders"
+      ],
+      "tags": [
+        "ecommerce",
+        "fact_delivery_state_month"
+      ],
+      "analysis": {
+        "primary": false,
+        "priority": 0,
+        "missing_period_policy": "NULL",
+        "seasonality": null,
+        "allowed_dimension_ids": [],
+        "capabilities": [
+          "CHART_DATASET",
+          "DATA_PROFILE"
+        ],
+        "causal_role": null
+      }
     }
   ],
   "dimensions": [
-    {
-      "dimension_id": "ecommerce-customer-state@1",
-      "name": "客户州",
-      "description": "客户州维度，来源 dim_customer.state。",
-      "aliases": [
-        "客户州",
-        "customer-state"
-      ],
-      "table_id": "dim_customer",
-      "column_id": "dim_customer.state",
-      "grain": {
-        "grain_id": "ecommerce-dim_customer-grain@1",
-        "description": "dim_customer 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": true,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-customer-city@1",
-      "name": "客户城市",
-      "description": "客户城市维度，来源 dim_customer.city。",
-      "aliases": [
-        "客户城市",
-        "customer-city"
-      ],
-      "table_id": "dim_customer",
-      "column_id": "dim_customer.city",
-      "grain": {
-        "grain_id": "ecommerce-dim_customer-grain@1",
-        "description": "dim_customer 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": false,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-seller-state@1",
-      "name": "卖家州",
-      "description": "卖家州维度，来源 dim_seller.state。",
-      "aliases": [
-        "卖家州",
-        "seller-state"
-      ],
-      "table_id": "dim_seller",
-      "column_id": "dim_seller.state",
-      "grain": {
-        "grain_id": "ecommerce-dim_seller-grain@1",
-        "description": "dim_seller 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": true,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-seller-city@1",
-      "name": "卖家城市",
-      "description": "卖家城市维度，来源 dim_seller.city。",
-      "aliases": [
-        "卖家城市",
-        "seller-city"
-      ],
-      "table_id": "dim_seller",
-      "column_id": "dim_seller.city",
-      "grain": {
-        "grain_id": "ecommerce-dim_seller-grain@1",
-        "description": "dim_seller 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": false,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-category@1",
-      "name": "商品类目",
-      "description": "商品类目维度，来源 dim_product.category_name_english。",
-      "aliases": [
-        "商品类目",
-        "category"
-      ],
-      "table_id": "dim_product",
-      "column_id": "dim_product.category_name_english",
-      "grain": {
-        "grain_id": "ecommerce-dim_product-grain@1",
-        "description": "dim_product 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": false,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-product@1",
-      "name": "商品",
-      "description": "商品维度，来源 dim_product.product_id。",
-      "aliases": [
-        "商品",
-        "product"
-      ],
-      "table_id": "dim_product",
-      "column_id": "dim_product.product_id",
-      "grain": {
-        "grain_id": "ecommerce-dim_product-grain@1",
-        "description": "dim_product 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": false,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
-    },
     {
       "dimension_id": "ecommerce-amazon-brand@1",
       "name": "Amazon 品牌",
@@ -1563,7 +1808,12 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     },
     {
       "dimension_id": "ecommerce-amazon-category@1",
@@ -1587,7 +1837,99 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-category@1",
+      "name": "商品类目",
+      "description": "商品类目维度，来源 dim_product.category_name_english。",
+      "aliases": [
+        "商品类目",
+        "category"
+      ],
+      "table_id": "dim_product",
+      "column_id": "dim_product.category_name_english",
+      "grain": {
+        "grain_id": "ecommerce-dim_product-grain@1",
+        "description": "dim_product 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": false,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-customer-city@1",
+      "name": "客户城市",
+      "description": "客户城市维度，来源 dim_customer.city。",
+      "aliases": [
+        "客户城市",
+        "customer-city"
+      ],
+      "table_id": "dim_customer",
+      "column_id": "dim_customer.city",
+      "grain": {
+        "grain_id": "ecommerce-dim_customer-grain@1",
+        "description": "dim_customer 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": false,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-customer-state@1",
+      "name": "客户州",
+      "description": "客户州维度，来源 dim_customer.state。",
+      "aliases": [
+        "客户州",
+        "customer-state"
+      ],
+      "table_id": "dim_customer",
+      "column_id": "dim_customer.state",
+      "grain": {
+        "grain_id": "ecommerce-dim_customer-grain@1",
+        "description": "dim_customer 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": true,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     },
     {
       "dimension_id": "ecommerce-ebay-brand@1",
@@ -1611,7 +1953,12 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     },
     {
       "dimension_id": "ecommerce-ebay-os@1",
@@ -1635,31 +1982,12 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-payment-type@1",
-      "name": "支付方式",
-      "description": "支付方式维度，来源 fact_payment.payment_type。",
-      "aliases": [
-        "支付方式",
-        "payment-type"
       ],
-      "table_id": "fact_payment",
-      "column_id": "fact_payment.payment_type",
-      "grain": {
-        "grain_id": "ecommerce-fact_payment-grain@1",
-        "description": "fact_payment 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "text",
-      "sensitivity": "PUBLIC",
-      "hierarchical": false,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     },
     {
       "dimension_id": "ecommerce-order-status@1",
@@ -1683,7 +2011,70 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-payment-type@1",
+      "name": "支付方式",
+      "description": "支付方式维度，来源 fact_payment.payment_type。",
+      "aliases": [
+        "支付方式",
+        "payment-type"
+      ],
+      "table_id": "fact_payment",
+      "column_id": "fact_payment.payment_type",
+      "grain": {
+        "grain_id": "ecommerce-fact_payment-grain@1",
+        "description": "fact_payment 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": false,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-product@1",
+      "name": "商品",
+      "description": "商品维度，来源 dim_product.product_id。",
+      "aliases": [
+        "商品",
+        "product"
+      ],
+      "table_id": "dim_product",
+      "column_id": "dim_product.product_id",
+      "grain": {
+        "grain_id": "ecommerce-dim_product-grain@1",
+        "description": "dim_product 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": false,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     },
     {
       "dimension_id": "ecommerce-purchase-date@1",
@@ -1707,31 +2098,12 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
-    },
-    {
-      "dimension_id": "ecommerce-review-score@1",
-      "name": "评价星级",
-      "description": "评价星级维度，来源 fact_review.review_score。",
-      "aliases": [
-        "评价星级",
-        "review-score"
       ],
-      "table_id": "fact_review",
-      "column_id": "fact_review.review_score",
-      "grain": {
-        "grain_id": "ecommerce-fact_review-grain@1",
-        "description": "fact_review 业务粒度",
-        "granularity": "atomic"
-      },
-      "data_type": "integer",
-      "sensitivity": "PUBLIC",
-      "hierarchical": false,
-      "parent_dimension_id": null,
-      "tags": [
-        "ecommerce",
-        "dimension"
-      ]
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     },
     {
       "dimension_id": "ecommerce-purchase-month@1",
@@ -1755,22 +2127,114 @@
       "tags": [
         "ecommerce",
         "dimension"
-      ]
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-review-score@1",
+      "name": "评价星级",
+      "description": "评价星级维度，来源 fact_review.review_score。",
+      "aliases": [
+        "评价星级",
+        "review-score"
+      ],
+      "table_id": "fact_review",
+      "column_id": "fact_review.review_score",
+      "grain": {
+        "grain_id": "ecommerce-fact_review-grain@1",
+        "description": "fact_review 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "integer",
+      "sensitivity": "PUBLIC",
+      "hierarchical": false,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-seller-city@1",
+      "name": "卖家城市",
+      "description": "卖家城市维度，来源 dim_seller.city。",
+      "aliases": [
+        "卖家城市",
+        "seller-city"
+      ],
+      "table_id": "dim_seller",
+      "column_id": "dim_seller.city",
+      "grain": {
+        "grain_id": "ecommerce-dim_seller-grain@1",
+        "description": "dim_seller 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": false,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
+    },
+    {
+      "dimension_id": "ecommerce-seller-state@1",
+      "name": "卖家州",
+      "description": "卖家州维度，来源 dim_seller.state。",
+      "aliases": [
+        "卖家州",
+        "seller-state"
+      ],
+      "table_id": "dim_seller",
+      "column_id": "dim_seller.state",
+      "grain": {
+        "grain_id": "ecommerce-dim_seller-grain@1",
+        "description": "dim_seller 业务粒度",
+        "granularity": "atomic"
+      },
+      "data_type": "text",
+      "sensitivity": "PUBLIC",
+      "hierarchical": true,
+      "parent_dimension_id": null,
+      "tags": [
+        "ecommerce",
+        "dimension"
+      ],
+      "analysis": {
+        "groupable": true,
+        "pivotable": true,
+        "causal_role": null
+      }
     }
   ],
   "relationships": [
     {
-      "relationship_id": "ecommerce-order-customer@1",
-      "name": "order-customer",
-      "description": "fact_order.customer_id → dim_customer.customer_id",
+      "relationship_id": "ecommerce-amazon-review-product@1",
+      "name": "amazon-review-product",
+      "description": "fact_amazon_review.asin → dim_amazon_product.asin",
       "kind": "physical",
-      "left_table_id": "fact_order",
+      "left_table_id": "fact_amazon_review",
       "left_column_ids": [
-        "fact_order.customer_id"
+        "fact_amazon_review.asin"
       ],
-      "right_table_id": "dim_customer",
+      "right_table_id": "dim_amazon_product",
       "right_column_ids": [
-        "dim_customer.customer_id"
+        "dim_amazon_product.asin"
       ],
       "cardinality": "many-to-one",
       "left_row_preservation": "required",
@@ -1780,7 +2244,12 @@
       "tags": [
         "ecommerce",
         "join"
-      ]
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
     },
     {
       "relationship_id": "ecommerce-item-order@1",
@@ -1803,7 +2272,12 @@
       "tags": [
         "ecommerce",
         "join"
-      ]
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
     },
     {
       "relationship_id": "ecommerce-item-product@1",
@@ -1826,7 +2300,12 @@
       "tags": [
         "ecommerce",
         "join"
-      ]
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
     },
     {
       "relationship_id": "ecommerce-item-seller@1",
@@ -1849,7 +2328,40 @@
       "tags": [
         "ecommerce",
         "join"
-      ]
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
+    },
+    {
+      "relationship_id": "ecommerce-order-customer@1",
+      "name": "order-customer",
+      "description": "fact_order.customer_id → dim_customer.customer_id",
+      "kind": "physical",
+      "left_table_id": "fact_order",
+      "left_column_ids": [
+        "fact_order.customer_id"
+      ],
+      "right_table_id": "dim_customer",
+      "right_column_ids": [
+        "dim_customer.customer_id"
+      ],
+      "cardinality": "many-to-one",
+      "left_row_preservation": "required",
+      "right_row_preservation": "optional",
+      "proof_kind": "DDL_ENFORCED",
+      "proof_detail": "PostgreSQL mart key and import quality receipt",
+      "tags": [
+        "ecommerce",
+        "join"
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
     },
     {
       "relationship_id": "ecommerce-payment-order@1",
@@ -1872,53 +2384,12 @@
       "tags": [
         "ecommerce",
         "join"
-      ]
-    },
-    {
-      "relationship_id": "ecommerce-review-order@1",
-      "name": "review-order",
-      "description": "fact_review.order_id → fact_order.order_id",
-      "kind": "physical",
-      "left_table_id": "fact_review",
-      "left_column_ids": [
-        "fact_review.order_id"
       ],
-      "right_table_id": "fact_order",
-      "right_column_ids": [
-        "fact_order.order_id"
-      ],
-      "cardinality": "many-to-one",
-      "left_row_preservation": "required",
-      "right_row_preservation": "optional",
-      "proof_kind": "DDL_ENFORCED",
-      "proof_detail": "PostgreSQL mart key and import quality receipt",
-      "tags": [
-        "ecommerce",
-        "join"
-      ]
-    },
-    {
-      "relationship_id": "ecommerce-amazon-review-product@1",
-      "name": "amazon-review-product",
-      "description": "fact_amazon_review.asin → dim_amazon_product.asin",
-      "kind": "physical",
-      "left_table_id": "fact_amazon_review",
-      "left_column_ids": [
-        "fact_amazon_review.asin"
-      ],
-      "right_table_id": "dim_amazon_product",
-      "right_column_ids": [
-        "dim_amazon_product.asin"
-      ],
-      "cardinality": "many-to-one",
-      "left_row_preservation": "required",
-      "right_row_preservation": "optional",
-      "proof_kind": "DDL_ENFORCED",
-      "proof_detail": "PostgreSQL mart key and import quality receipt",
-      "tags": [
-        "ecommerce",
-        "join"
-      ]
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
     },
     {
       "relationship_id": "ecommerce-product-category@1",
@@ -1941,7 +2412,40 @@
       "tags": [
         "ecommerce",
         "join"
-      ]
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
+    },
+    {
+      "relationship_id": "ecommerce-review-order@1",
+      "name": "review-order",
+      "description": "fact_review.order_id → fact_order.order_id",
+      "kind": "physical",
+      "left_table_id": "fact_review",
+      "left_column_ids": [
+        "fact_review.order_id"
+      ],
+      "right_table_id": "fact_order",
+      "right_column_ids": [
+        "fact_order.order_id"
+      ],
+      "cardinality": "many-to-one",
+      "left_row_preservation": "required",
+      "right_row_preservation": "optional",
+      "proof_kind": "DDL_ENFORCED",
+      "proof_detail": "PostgreSQL mart key and import quality receipt",
+      "tags": [
+        "ecommerce",
+        "join"
+      ],
+      "analysis": {
+        "join_allowed": true,
+        "fanout_closed": true,
+        "ontology_path": []
+      }
     }
   ],
   "business_ontology": {
@@ -2162,7 +2666,7 @@
       {
         "term_id": "ecommerce-term-1@1",
         "name": "成交总额",
-        "definition": "成交总额：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "成交总额：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "成交总额"
@@ -2171,7 +2675,7 @@
       {
         "term_id": "ecommerce-term-2@1",
         "name": "订单量",
-        "definition": "订单量：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "订单量：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "订单量"
@@ -2180,7 +2684,7 @@
       {
         "term_id": "ecommerce-term-3@1",
         "name": "客单价",
-        "definition": "客单价：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "客单价：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "客单价"
@@ -2189,7 +2693,7 @@
       {
         "term_id": "ecommerce-term-4@1",
         "name": "件单价",
-        "definition": "件单价：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "件单价：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "件单价"
@@ -2198,7 +2702,7 @@
       {
         "term_id": "ecommerce-term-5@1",
         "name": "复购客户",
-        "definition": "复购客户：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "复购客户：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "复购客户"
@@ -2207,7 +2711,7 @@
       {
         "term_id": "ecommerce-term-6@1",
         "name": "复购率",
-        "definition": "复购率：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "复购率：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "复购率"
@@ -2216,7 +2720,7 @@
       {
         "term_id": "ecommerce-term-7@1",
         "name": "活跃客户",
-        "definition": "活跃客户：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "活跃客户：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "活跃客户"
@@ -2225,7 +2729,7 @@
       {
         "term_id": "ecommerce-term-8@1",
         "name": "活跃卖家",
-        "definition": "活跃卖家：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "活跃卖家：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "活跃卖家"
@@ -2234,7 +2738,7 @@
       {
         "term_id": "ecommerce-term-9@1",
         "name": "支付笔数",
-        "definition": "支付笔数：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "支付笔数：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "支付笔数"
@@ -2243,7 +2747,7 @@
       {
         "term_id": "ecommerce-term-10@1",
         "name": "分期支付",
-        "definition": "分期支付：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "分期支付：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "分期支付"
@@ -2252,7 +2756,7 @@
       {
         "term_id": "ecommerce-term-11@1",
         "name": "评价分",
-        "definition": "评价分：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "评价分：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "评价分"
@@ -2261,7 +2765,7 @@
       {
         "term_id": "ecommerce-term-12@1",
         "name": "低评分",
-        "definition": "低评分：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "低评分：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "低评分"
@@ -2270,7 +2774,7 @@
       {
         "term_id": "ecommerce-term-13@1",
         "name": "好评率",
-        "definition": "好评率：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "好评率：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "好评率"
@@ -2279,7 +2783,7 @@
       {
         "term_id": "ecommerce-term-14@1",
         "name": "配送时长",
-        "definition": "配送时长：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "配送时长：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "配送时长"
@@ -2288,7 +2792,7 @@
       {
         "term_id": "ecommerce-term-15@1",
         "name": "配送延迟",
-        "definition": "配送延迟：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "配送延迟：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "配送延迟"
@@ -2297,7 +2801,7 @@
       {
         "term_id": "ecommerce-term-16@1",
         "name": "准时送达",
-        "definition": "准时送达：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "准时送达：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "准时送达"
@@ -2306,7 +2810,7 @@
       {
         "term_id": "ecommerce-term-17@1",
         "name": "延迟配送率",
-        "definition": "延迟配送率：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "延迟配送率：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "延迟配送率"
@@ -2315,7 +2819,7 @@
       {
         "term_id": "ecommerce-term-18@1",
         "name": "运费",
-        "definition": "运费：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "运费：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "运费"
@@ -2324,7 +2828,7 @@
       {
         "term_id": "ecommerce-term-19@1",
         "name": "运费率",
-        "definition": "运费率：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "运费率：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "运费率"
@@ -2333,7 +2837,7 @@
       {
         "term_id": "ecommerce-term-20@1",
         "name": "卖家履约",
-        "definition": "卖家履约：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "卖家履约：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "卖家履约"
@@ -2342,7 +2846,7 @@
       {
         "term_id": "ecommerce-term-21@1",
         "name": "类目满意度",
-        "definition": "类目满意度：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "类目满意度：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "类目满意度"
@@ -2351,7 +2855,7 @@
       {
         "term_id": "ecommerce-term-22@1",
         "name": "电子产品",
-        "definition": "电子产品：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "电子产品：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "电子产品"
@@ -2360,7 +2864,7 @@
       {
         "term_id": "ecommerce-term-23@1",
         "name": "价格带",
-        "definition": "价格带：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "价格带：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "价格带"
@@ -2369,7 +2873,7 @@
       {
         "term_id": "ecommerce-term-24@1",
         "name": "价格四分位",
-        "definition": "价格四分位：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "价格四分位：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "价格四分位"
@@ -2378,7 +2882,7 @@
       {
         "term_id": "ecommerce-term-25@1",
         "name": "跨平台商品",
-        "definition": "跨平台商品：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "跨平台商品：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "跨平台商品"
@@ -2387,7 +2891,7 @@
       {
         "term_id": "ecommerce-term-26@1",
         "name": "候选匹配",
-        "definition": "候选匹配：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "候选匹配：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "候选匹配"
@@ -2396,7 +2900,7 @@
       {
         "term_id": "ecommerce-term-27@1",
         "name": "匹配置信度",
-        "definition": "匹配置信度：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "匹配置信度：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "匹配置信度"
@@ -2405,7 +2909,7 @@
       {
         "term_id": "ecommerce-term-28@1",
         "name": "人工审阅",
-        "definition": "人工审阅：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "人工审阅：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "人工审阅"
@@ -2414,7 +2918,7 @@
       {
         "term_id": "ecommerce-term-29@1",
         "name": "Amazon 标价",
-        "definition": "Amazon 标价：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "Amazon 标价：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "Amazon 标价"
@@ -2423,7 +2927,7 @@
       {
         "term_id": "ecommerce-term-30@1",
         "name": "eBay 刊登价",
-        "definition": "eBay 刊登价：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "eBay 刊登价：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "eBay 刊登价"
@@ -2432,7 +2936,7 @@
       {
         "term_id": "ecommerce-term-31@1",
         "name": "Olist 成交价",
-        "definition": "Olist 成交价：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "Olist 成交价：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "Olist 成交价"
@@ -2441,7 +2945,7 @@
       {
         "term_id": "ecommerce-term-32@1",
         "name": "客户州",
-        "definition": "客户州：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "客户州：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "客户州"
@@ -2450,7 +2954,7 @@
       {
         "term_id": "ecommerce-term-33@1",
         "name": "卖家州",
-        "definition": "卖家州：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "卖家州：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "卖家州"
@@ -2459,7 +2963,7 @@
       {
         "term_id": "ecommerce-term-34@1",
         "name": "州对",
-        "definition": "州对：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "州对：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "州对"
@@ -2468,7 +2972,7 @@
       {
         "term_id": "ecommerce-term-35@1",
         "name": "购买月份",
-        "definition": "购买月份：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "购买月份：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "购买月份"
@@ -2477,7 +2981,7 @@
       {
         "term_id": "ecommerce-term-36@1",
         "name": "运输距离",
-        "definition": "运输距离：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "运输距离：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "运输距离"
@@ -2486,7 +2990,7 @@
       {
         "term_id": "ecommerce-term-37@1",
         "name": "Haversine 距离",
-        "definition": "Haversine 距离：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "Haversine 距离：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "Haversine 距离"
@@ -2495,7 +2999,7 @@
       {
         "term_id": "ecommerce-term-38@1",
         "name": "品牌",
-        "definition": "品牌：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "品牌：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "品牌"
@@ -2504,7 +3008,7 @@
       {
         "term_id": "ecommerce-term-39@1",
         "name": "内存容量",
-        "definition": "内存容量：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "内存容量：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "内存容量"
@@ -2513,7 +3017,7 @@
       {
         "term_id": "ecommerce-term-40@1",
         "name": "固态硬盘容量",
-        "definition": "固态硬盘容量：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "固态硬盘容量：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "固态硬盘容量"
@@ -2522,7 +3026,7 @@
       {
         "term_id": "ecommerce-term-41@1",
         "name": "订单状态",
-        "definition": "订单状态：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "订单状态：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "订单状态"
@@ -2531,7 +3035,7 @@
       {
         "term_id": "ecommerce-term-42@1",
         "name": "支付方式",
-        "definition": "支付方式：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "支付方式：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "支付方式"
@@ -2540,7 +3044,7 @@
       {
         "term_id": "ecommerce-term-43@1",
         "name": "商品重量",
-        "definition": "商品重量：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "商品重量：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "商品重量"
@@ -2549,7 +3053,7 @@
       {
         "term_id": "ecommerce-term-44@1",
         "name": "商品体积",
-        "definition": "商品体积：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "商品体积：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "商品体积"
@@ -2558,7 +3062,7 @@
       {
         "term_id": "ecommerce-term-45@1",
         "name": "评论文本",
-        "definition": "评论文本：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "评论文本：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "评论文本"
@@ -2567,7 +3071,7 @@
       {
         "term_id": "ecommerce-term-46@1",
         "name": "数据快照",
-        "definition": "数据快照：E-commerce Demo v1 中按已发布指标、维度和数据质量规则解释的中文业务术语。",
+        "definition": "数据快照：E-commerce Demo 中按 V2 指标、维度和数据质量规则解释的中文业务术语。",
         "domain": "ecommerce",
         "aliases": [
           "数据快照"

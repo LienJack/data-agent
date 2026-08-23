@@ -28,7 +28,7 @@ describe("E-commerce semantic candidate bundle", () => {
       bundle.business_ontology?.terms.length,
     );
 
-    const projection = await compileU5Projection(bundle, "ecommerce-demo-v1");
+    const projection = await compileU5Projection(bundle, "ecommerce-demo-v2");
     expect(
       projection.errors,
       projection.errors.flatMap(({ code, details }) => [code, ...details]).join("\n"),

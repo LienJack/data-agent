@@ -9,7 +9,7 @@ import {
   type ResearchBriefV3Payload,
   verifyAnalysisContext,
 } from "@data-agent/contracts";
-import { evaluateAnalysisApplicability } from "@data-agent/semantic";
+import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
 import { computeAnalysisPlanHash } from "./default-plan.js";
 import {
   type AnalysisSkillCatalog,

@@ -24,7 +24,7 @@ import {
   buildSemanticAgentReceipt,
   runSemanticCandidateAgent,
   validateSemanticChangeProposal,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/authoring";
 import type { SemanticAuthorityContext } from "./semantic-authority";
 import type { SemanticGovernanceService } from "./semantic-governance-service";
 import type {

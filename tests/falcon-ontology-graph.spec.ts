@@ -4,10 +4,8 @@ import {
   FALCON_DB24_JOIN_SPECS,
   loadFalconPreview,
 } from "../packages/evals/src/index";
-import {
-  compileSemanticGraphV2,
-  createSemanticOntologyCoverageReceipt,
-} from "../packages/semantic/src/index";
+import { createSemanticOntologyCoverageReceipt } from "../packages/semantic/src/public/authoring";
+import { compileSemanticGraphV2 } from "../packages/semantic/src/public/governance";
 
 describe("Falcon db24 ontology graph", () => {
   it("compiles a complete node/edge ontology without merging the inventory snapshots", async () => {

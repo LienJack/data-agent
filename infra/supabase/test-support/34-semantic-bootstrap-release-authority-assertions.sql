@@ -60,10 +60,6 @@ begin
     end if;
   end loop;
   if pg_catalog.has_function_privilege(
-    'data_agent_backend',
-    'semantic.bootstrap_domain(uuid,uuid,text,text,uuid,text,text,text,text,text,text,jsonb,text,jsonb,text,text,text,uuid,timestamptz)',
-    'EXECUTE'
-  ) or pg_catalog.has_function_privilege(
     'anon',
     'semantic.publish_initial_semantic_release_set(jsonb)',
     'EXECUTE'
@@ -652,7 +648,6 @@ begin
     select 1 from semantic.semantic_runtime_activation as activation
     where activation.tenant_id='00000000-0000-4000-8000-00000000a501'::uuid
       and activation.semantic_domain='commerce'
-      and activation.runtime_mode='PUBLISHED_ONLY'
       and activation.current_release_generation=1
   ) or not exists (
     select 1 from semantic.semantic_bootstrap_publisher_grants as publisher_grant
@@ -748,8 +743,7 @@ update u5_human_governance_results set prepare_result=semantic.human_prepare_pub
     'candidate_id','00000000-0000-4000-8000-00000000a560',
     'compiler_bundle_digest','sha256:' || pg_catalog.repeat('6',64),
     'catalog_fence_epoch',0,'dependency_generation',0,'target_generation',2,
-    'idempotency_digest','sha256:' || pg_catalog.repeat('7',64),
-    'conditional_legacy_plan',null
+    'idempotency_digest','sha256:' || pg_catalog.repeat('7',64)
   )
 );
 update u5_human_governance_results set commit_result=semantic.human_commit_publish_attempt(
@@ -767,7 +761,7 @@ update u5_human_governance_results set commit_result=semantic.human_commit_publi
     'relationship_projection_hash','sha256:' || pg_catalog.repeat('2',64),
     'runtime_restriction_projection_ref','00000000-0000-4000-8000-00000000a573',
     'runtime_restriction_projection_hash','sha256:' || pg_catalog.repeat('3',64),
-    'profile_child_manifest',null,'committed_legacy_attempt_ref',null
+    'profile_child_manifest',null
   )
 );
 reset role;

@@ -1,28 +1,8 @@
-import { SEMANTIC_SOURCE_BUNDLE_VERSION, U5_EXECUTABLE_SUBSET } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   assertNoRelationshipIdCollision,
-  lowerAllRelationships,
   lowerRelationship,
 } from "../src/compiler/relationship-lowering.js";
-
-const baseMetadata = {
-  bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION,
-  capability_profile: U5_EXECUTABLE_SUBSET,
-  bundle_id: "00000000-0000-1000-8000-000000000003",
-  scope: {
-    app_id: "00000000-0000-1000-8000-000000000004",
-    tenant_id: "00000000-0000-1000-8000-000000000005",
-    environment: "test",
-  },
-  producer: { kind: "deterministic" as const, id: "semantic-compiler" },
-  authority: {
-    kind: "deterministic" as const,
-    id: "semantic-authority",
-    policy_version: "semantic-authority@1.0.0",
-  },
-  created_at: "2026-08-04T00:00:00Z",
-};
 
 describe("Relationship Safety", () => {
   it("business/physical relationship cannot impersonate analytical join", () => {
@@ -40,6 +20,7 @@ describe("Relationship Safety", () => {
       proof_kind: "DDL_ENFORCED" as const,
       proof_detail: null,
       tags: [] as string[],
+      analysis: { join_allowed: false, fanout_closed: true, ontology_path: [] as string[] },
     };
     // business relationships are valid but should not be treated as analytical
     // They lower to edges with analyticalId = relationshipId
@@ -64,6 +45,7 @@ describe("Relationship Safety", () => {
       proof_kind: "DDL_ENFORCED" as const,
       proof_detail: "FK constraint orders.customer_id -> customers.id",
       tags: [] as string[],
+      analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] as string[] },
     };
     const edge = lowerRelationship(physicalRel, "default-catalog");
     expect(edge.proofKind).toBe("DDL_ENFORCED");
@@ -86,6 +68,7 @@ describe("Relationship Safety", () => {
       proof_kind: "DECLARED_ONLY" as const,
       proof_detail: "Declared mapping without FK constraint",
       tags: [] as string[],
+      analysis: { join_allowed: false, fanout_closed: true, ontology_path: [] as string[] },
     };
     const edge = lowerRelationship(analyticalRel, "default-catalog");
     expect(edge.proofKind).toBe("DECLARED_ONLY");
@@ -107,6 +90,7 @@ describe("Relationship Safety", () => {
       proof_kind: "DDL_ENFORCED" as const,
       proof_detail: null,
       tags: [] as string[],
+      analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] as string[] },
     };
     const edge = lowerRelationship(rel, "default-catalog");
     expect(edge.rowPreservation).toBe("inner");
@@ -127,6 +111,7 @@ describe("Relationship Safety", () => {
       proof_kind: "DDL_ENFORCED" as const,
       proof_detail: null,
       tags: [] as string[],
+      analysis: { join_allowed: true, fanout_closed: false, ontology_path: [] as string[] },
     };
     const edge = lowerRelationship(rel, "default-catalog");
     expect(edge.fanoutGrainProof).toContain("FANOUT_WARNING");
@@ -150,6 +135,7 @@ describe("Relationship Safety", () => {
           proof_kind: "DDL_ENFORCED" as const,
           proof_detail: null,
           tags: [],
+          analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
         },
         "catalog",
       ),
@@ -168,6 +154,7 @@ describe("Relationship Safety", () => {
           proof_kind: "DDL_ENFORCED" as const,
           proof_detail: null,
           tags: [],
+          analysis: { join_allowed: true, fanout_closed: true, ontology_path: [] },
         },
         "catalog",
       ),

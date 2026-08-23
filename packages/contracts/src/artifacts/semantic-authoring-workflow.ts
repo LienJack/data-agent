@@ -16,7 +16,6 @@ import {
   semanticGraphEdgeSchema,
   semanticGraphNodeSchema,
   semanticGraphPatchSchema,
-  semanticGraphProjectionSchema,
   semanticGraphSourceSchema,
 } from "./semantic-graph-v2.js";
 
@@ -190,86 +189,6 @@ export const semanticCandidateRevisionSaveResultSchema = z.strictObject({
   saved_at: timestampSchema,
 });
 
-export const semanticCandidateSelfPublishRequestSchema = z.strictObject({
-  schema_version: z.literal("semantic-candidate-self-publish-request@1.0.0"),
-  semantic_domain: semanticDomainSchema,
-  authoring_run_id: immutableIdSchema,
-  candidate_id: immutableIdSchema,
-  candidate_revision_id: immutableIdSchema,
-  revision_number: positiveSafeIntegerSchema,
-  source_revision_id: immutableIdSchema,
-  review_reason: z.string().trim().min(1).max(2_048),
-  idempotency_key: immutableIdSchema,
-});
-
-const semanticCandidateSelfPublishCommandDraftSchema = z.strictObject({
-  schema_version: z.literal("semantic-candidate-self-publish-command@1.0.0"),
-  command_id: immutableIdSchema,
-  scope: appScopeSchema,
-  semantic_domain: semanticDomainSchema,
-  principal_id: immutableIdSchema,
-  candidate_id: immutableIdSchema,
-  candidate_revision_id: immutableIdSchema,
-  revision_number: positiveSafeIntegerSchema,
-  source_revision_id: immutableIdSchema,
-  source_graph_digest: contentHashSchema,
-  base_release_id: immutableIdSchema,
-  graph_projection_id: immutableIdSchema,
-  graph_projection: semanticGraphProjectionSchema,
-  executable_projection_id: immutableIdSchema,
-  executable_projection_hash: contentHashSchema,
-  executable_projection: z.json(),
-  relationship_projection_id: immutableIdSchema,
-  relationship_projection_hash: contentHashSchema,
-  relationship_projection: z.json(),
-  runtime_restriction_projection_id: immutableIdSchema,
-  runtime_restriction_projection_hash: contentHashSchema,
-  runtime_restriction_projection: z.json(),
-  compiler_bundle_digest: contentHashSchema,
-  review_reason: z.string().trim().min(1).max(2_048),
-  idempotency_key: immutableIdSchema,
-  reviewed_at: timestampSchema,
-});
-
-export const semanticCandidateSelfPublishCommandSchema =
-  semanticCandidateSelfPublishCommandDraftSchema.extend({ command_hash: contentHashSchema });
-
-export async function buildSemanticCandidateSelfPublishCommand(input: unknown) {
-  const draft = semanticCandidateSelfPublishCommandDraftSchema.parse(input);
-  return deepFreeze(
-    semanticCandidateSelfPublishCommandSchema.parse({
-      ...draft,
-      command_hash: await sha256ContentHash(draft),
-    }),
-  );
-}
-
-export async function verifySemanticCandidateSelfPublishCommand(input: unknown) {
-  const command = semanticCandidateSelfPublishCommandSchema.parse(input);
-  const { command_hash: _hash, ...draft } = command;
-  if ((await sha256ContentHash(draft)) !== command.command_hash) {
-    throw new TypeError("SEMANTIC_CANDIDATE_SELF_PUBLISH_HASH_MISMATCH");
-  }
-  return deepFreeze(command);
-}
-
-export const semanticCandidateSelfPublishResultSchema = z.strictObject({
-  schema_version: z.literal("semantic-candidate-self-publish-result@1.0.0"),
-  disposition: z.enum(["PUBLISHED", "REPLAYED"]),
-  candidate_id: immutableIdSchema,
-  candidate_revision_id: immutableIdSchema,
-  packet_id: immutableIdSchema,
-  decision_id: immutableIdSchema,
-  publish_attempt_id: immutableIdSchema,
-  release_id: immutableIdSchema,
-  release_generation: positiveSafeIntegerSchema,
-  release_digest: contentHashSchema,
-  graph_projection_id: immutableIdSchema,
-  source_graph_digest: contentHashSchema,
-  reviewed_at: timestampSchema,
-  published_at: timestampSchema,
-});
-
 export type SemanticManualEdit = z.infer<typeof semanticManualEditSchema>;
 export type SemanticManualSessionStartRequest = z.infer<
   typeof semanticManualSessionStartRequestSchema
@@ -285,13 +204,4 @@ export type SemanticCandidateRevisionSaveCommand = z.infer<
 >;
 export type SemanticCandidateRevisionSaveResult = z.infer<
   typeof semanticCandidateRevisionSaveResultSchema
->;
-export type SemanticCandidateSelfPublishRequest = z.infer<
-  typeof semanticCandidateSelfPublishRequestSchema
->;
-export type SemanticCandidateSelfPublishCommand = z.infer<
-  typeof semanticCandidateSelfPublishCommandSchema
->;
-export type SemanticCandidateSelfPublishResult = z.infer<
-  typeof semanticCandidateSelfPublishResultSchema
 >;

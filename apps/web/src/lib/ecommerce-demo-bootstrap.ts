@@ -6,7 +6,7 @@ import {
   semanticSourceBundleSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
-import { compileU5Projection } from "@data-agent/semantic";
+import { compileU5Projection } from "@data-agent/semantic/runtime-context";
 import type { ClientBase } from "pg";
 import { z } from "zod";
 
@@ -98,7 +98,7 @@ async function publishEcommerceDemoSemanticRelease(
   scope: EcommerceDemoBootstrapScope,
 ): Promise<EcommerceDemoSemanticReleaseResult> {
   const bundle = await loadSemanticBundle();
-  const projection = await compileU5Projection(bundle, "adb-ecommerce-v1");
+  const projection = await compileU5Projection(bundle, "adb-ecommerce-v2");
   if (projection.errors.length > 0 || !projection.semantic.lowerabilityResult.overallLowerable) {
     throw new Error("ECOMMERCE_DEMO_SEMANTIC_NOT_LOWERABLE");
   }
@@ -351,9 +351,9 @@ async function publishEcommerceDemoSemanticRelease(
     );
     await client.query(
       `insert into semantic.semantic_runtime_activation (
-         app_id, tenant_id, environment, semantic_domain, runtime_mode,
+         app_id, tenant_id, environment, semantic_domain,
          activation_generation, current_release_generation
-       ) values ($1::uuid, $2::uuid, $3::text, $4::text, 'LEGACY', 1, 0)`,
+       ) values ($1::uuid, $2::uuid, $3::text, $4::text, 1, 0)`,
       [scope.appId, scope.workspaceId, scope.environment, SEMANTIC_DOMAIN],
     );
     await client.query(
@@ -606,7 +606,7 @@ async function publishEcommerceDemoSemanticRelease(
   );
   await client.query(
     `update semantic.semantic_runtime_activation
-        set runtime_mode = 'SHADOW', current_release_id = $5::uuid,
+        set current_release_id = $5::uuid,
             current_release_generation = 1, activation_generation = activation_generation + 1,
             updated_at = pg_catalog.clock_timestamp()
       where app_id = $1::uuid and tenant_id = $2::uuid and environment = $3::text

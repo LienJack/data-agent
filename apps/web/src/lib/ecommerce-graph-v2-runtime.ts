@@ -10,11 +10,11 @@ import {
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { adaptPgCatalogPool, createPostgresCatalogScanner } from "@data-agent/platform";
+import { createSemanticOntologyCoverageReceipt } from "@data-agent/semantic/authoring";
 import {
   compileSemanticGraphV2,
-  createSemanticOntologyCoverageReceipt,
   type SemanticGraphCompilation,
-} from "@data-agent/semantic";
+} from "@data-agent/semantic/governance";
 import type { Pool } from "pg";
 import { buildEcommerceGraphV2, type EcommerceGraphJoinEvidence } from "./ecommerce-graph-v2";
 
