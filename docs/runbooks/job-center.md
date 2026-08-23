@@ -33,7 +33,7 @@ Export POST 返回 `202` 和 Job submission receipt，不同步生成文件。Wo
 ## 数据库验证
 
 ```bash
-pnpm exec tsx scripts/render-10659-migration.ts --verify
+pnpm exec tsx scripts/render-migration.ts 10659 --verify
 infra/supabase/test-support/static-check.sh
 psql -v ON_ERROR_STOP=1 -f infra/supabase/test-support/37-job-center-authority-assertions.sql
 ```

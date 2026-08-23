@@ -275,6 +275,65 @@ Owner 冒充、Retention expiry/replay、迟到 Usage 和零旁路 I/O Oracle。
 
 ## Migration
 
+### 场景：常规 Migration 声明式渲染
+
+#### 1. Scope / Trigger
+
+- 新增由有序 sql.inc segments、单一 checksum placeholder 和 checksum header 组成的 App Migration 时适用。
+- 只有旧函数抽取、结构变换、额外 manifest hash 或已冻结历史 checksum 行为才保留专用 renderer。
+
+#### 2. Signatures
+
+```text
+pnpm exec tsx scripts/render-migration.ts <manifest-id> [--verify]
+pnpm exec tsx scripts/render-migration.ts --all --verify
+```
+
+Manifest 固定字段为 id、migration_name、source_directory、segments、placeholder、
+checksum_header 和可选 postcondition.checksum_occurrences。专用例外必须登记 renderer、reason 与
+verification_command。
+
+#### 3. Contracts
+
+- scripts/migration-manifests.json 是常规 renderer 与专用例外的单一注册点，严格拒绝未知字段和重复 ID。
+- 通用 renderer 精确校验 segment closure，统一 CRLF/LF 与末尾换行，要求 placeholder 恰好出现一次。
+- checksum 对“header 与 body checksum 均归零”的完整内容计算；--verify 必须逐字节比较已发布 SQL。
+- 不允许为已删除的独立 renderer 保留长期 wrapper；调用方直接使用 manifest ID。
+- 历史无 header 或零占位符异常不得由通用 renderer 自动修复，也不得改写已执行 SQL。
+
+#### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| segment 缺少、额外或重命名 | MIGRATION_SEGMENT_CLOSURE_DRIFT |
+| placeholder 为 0 次或多次 | MIGRATION_PLACEHOLDER_DRIFT |
+| postcondition 不满足 | MIGRATION_POSTCONDITION_FAILED |
+| 已生成 SQL 字节不同 | MIGRATION_RENDER_DRIFT |
+| manifest 未登记或重复 | MIGRATION_MANIFEST_NOT_FOUND / MIGRATION_MANIFEST_DUPLICATE_ID |
+
+#### 5. Good / Base / Bad Cases
+
+- Good：新增 source 目录和一项 manifest，先运行单项 --verify，再运行 --all --verify。
+- Base：确有结构变换时保留专用脚本，并在 exceptions 中记录原因和验证命令。
+- Bad：复制现有 50 行 renderer、保留旧 wrapper，或为统一接口重算历史 Migration。
+
+#### 6. Tests Required
+
+- tests/migration-renderer.spec.ts 覆盖生成、verify、segment/placeholder/checksum drift。
+- 同一测试逐项验证仓库全部 manifest 与已发布 SQL 字节一致，并核对剩余 renderer 等于 exceptions。
+- infra/supabase/test-support/static-check.sh 必须从 manifest 动态解析常规 renderer。
+- tests/workspace-migration-inventory.spec.ts 继续证明 frontier、重复序号与 checksum 历史豁免。
+
+#### 7. Wrong vs Correct
+
+```text
+# Wrong
+pnpm exec tsx scripts/render-10706-migration.ts --verify
+
+# Correct
+pnpm exec tsx scripts/render-migration.ts 10706 --verify
+```
+
 ### 场景：Graph v2 Revision Digest 与内容 Digest 校验
 
 #### 1. Scope / Trigger

@@ -187,7 +187,7 @@ flowchart TB
 - 修改 `packages/contracts/src/context/index.ts`
 - 修改 `packages/platform/src/semantic/postgres-resolved-context.ts`
 - 新增 `infra/supabase/apps/data-agent/migration-sources/10705/`（已确认并实现）
-- 新增 `scripts/render-10705-migration.ts` 与 `infra/supabase/apps/data-agent/migrations/20260725010705_app_data_agent_resolved_context_lexicon.sql`
+- 新增通用 renderer manifest `10705` 与 `infra/supabase/apps/data-agent/migrations/20260725010705_app_data_agent_resolved_context_lexicon.sql`
 - 修改 `infra/supabase/test-support/41-resolved-context-authority-assertions.sql`
 - 新增 `packages/contracts/test/semantic-retrieval.spec.ts`
 - 修改 `packages/contracts/test/resolved-context-package.spec.ts`
@@ -246,7 +246,7 @@ flowchart TB
 - 复用 `packages/semantic/src/induction/impact-planner.ts`
 - 新增 `packages/platform/src/semantic/postgres-semantic-binding-impact.ts`
 - 新增 `packages/platform/test/semantic/postgres-semantic-binding-impact.spec.ts`
-- 新增 `infra/supabase/apps/data-agent/migration-sources/10706/`、`scripts/render-10706-migration.ts` 与 `infra/supabase/apps/data-agent/migrations/20260725010706_app_data_agent_semantic_binding_impact.sql`（暂定编号，实施前确认未被并行任务占用）
+- 新增 `infra/supabase/apps/data-agent/migration-sources/10706/`、通用 renderer manifest `10706` 与 `infra/supabase/apps/data-agent/migrations/20260725010706_app_data_agent_semantic_binding_impact.sql`（实施前确认未被并行任务占用）
 - 新增 `packages/contracts/test/semantic-binding-impact.spec.ts`
 - 新增 `packages/semantic/test/binding-impact-planner.spec.ts`
 

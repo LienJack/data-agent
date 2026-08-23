@@ -1,0 +1,1427 @@
+{
+  "schema_version": "migration-renderer-manifests@1.0.0",
+  "entries": [
+    {
+      "id": "10609",
+      "migration_name": "20260725010609_app_data_agent_semantic_publish_grant_compatibility.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10609",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-fail-closed-overload.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_COMPATIBILITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_compatibility_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10619",
+      "migration_name": "20260725010619_app_data_agent_attribution_canonical_compatibility.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10619",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-fail-closed-helper.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__ATTRIBUTION_COMPATIBILITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "attribution_compatibility_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10622",
+      "migration_name": "20260725010622_app_data_agent_semantic_candidate_draft.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10622",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-idempotency.sql.inc",
+        "15-candidate-authority-grants.sql.inc",
+        "20-candidate-rpc.sql.inc",
+        "30-publish-nullability.sql.inc",
+        "32-semantic-lock-key-repair.sql.inc",
+        "35-digest-compatibility-cleanup.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_DRAFT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_draft_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10623",
+      "migration_name": "20260725010623_app_data_agent_schema_discovery.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10623",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-authority-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SCHEMA_DISCOVERY_MIGRATION_CHECKSUM__",
+      "checksum_header": "schema_discovery_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10624",
+      "migration_name": "20260725010624_app_data_agent_semantic_explorer.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10624",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-read-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_EXPLORER_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_explorer_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10625",
+      "migration_name": "20260725010625_app_data_agent_semantic_relationship_index.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10625",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-operations-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_RELATIONSHIP_INDEX_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_relationship_index_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10626",
+      "migration_name": "20260725010626_app_data_agent_semantic_candidate_compile.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10626",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-compile-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CANDIDATE_COMPILE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_candidate_compile_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10627",
+      "migration_name": "20260725010627_app_data_agent_workspace_identity.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10627",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-better-auth.sql.inc",
+        "20-identity-workspace-tables.sql.inc",
+        "30-workspace-authority.sql.inc",
+        "40-identity-commands.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__WORKSPACE_IDENTITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "workspace_identity_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10628",
+      "migration_name": "20260725010628_app_data_agent_workspace_data_isolation.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10628",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-workspace-data-tables.sql.inc",
+        "30-workspace-data-guards.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__WORKSPACE_DATA_ISOLATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "workspace_data_isolation_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10629",
+      "migration_name": "20260725010629_app_data_agent_model_price_fx_control.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10629",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-control-plane-tables.sql.inc",
+        "30-control-plane-functions.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__MODEL_PRICE_FX_CONTROL_MIGRATION_CHECKSUM__",
+      "checksum_header": "model_price_fx_control_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10630",
+      "migration_name": "20260725010630_app_data_agent_credit_ledger.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10630",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-credit-ledger-tables.sql.inc",
+        "30-credit-read-functions.sql.inc",
+        "40-credit-command-functions.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__CREDIT_LEDGER_MIGRATION_CHECKSUM__",
+      "checksum_header": "credit_ledger_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10631",
+      "migration_name": "20260725010631_app_data_agent_model_billing_settlement.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10631",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-model-billing-tables.sql.inc",
+        "30-model-billing-read-cost.sql.inc",
+        "35-research-billing-bridge.sql.inc",
+        "40-model-billing-authorization.sql.inc",
+        "50-model-billing-terminal.sql.inc",
+        "60-model-billing-review-mode.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__MODEL_BILLING_SETTLEMENT_MIGRATION_CHECKSUM__",
+      "checksum_header": "model_billing_settlement_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10632",
+      "migration_name": "20260725010632_app_data_agent_semantic_json_portability.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10632",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-import-authority.sql.inc",
+        "30-read-bridges.sql.inc",
+        "40-authorization.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_JSON_PORTABILITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_json_portability_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10633",
+      "migration_name": "20260725010633_app_data_agent_operations_admin.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10633",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-admin-read-models.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__OPERATIONS_ADMIN_MIGRATION_CHECKSUM__",
+      "checksum_header": "operations_admin_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10634",
+      "migration_name": "20260725010634_app_data_agent_username_login.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10634",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-username-schema.sql.inc",
+        "30-local-superadmin-sync.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__USERNAME_LOGIN_MIGRATION_CHECKSUM__",
+      "checksum_header": "username_login_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10635",
+      "migration_name": "20260725010635_app_data_agent_superadmin_email_sync.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10635",
+      "segments": [
+        "00-preamble.sql.inc",
+        "30-local-superadmin-email-sync.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SUPERADMIN_EMAIL_SYNC_MIGRATION_CHECKSUM__",
+      "checksum_header": "superadmin_email_sync_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10636",
+      "migration_name": "20260725010636_app_data_agent_adb_ecommerce_demo.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10636",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-schemas-roles.sql.inc",
+        "20-raw-tables.sql.inc",
+        "30-mart-tables.sql.inc",
+        "40-views-receipts.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__ADB_ECOMMERCE_MIGRATION_CHECKSUM__",
+      "checksum_header": "adb_ecommerce_demo_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10637",
+      "migration_name": "20260725010637_app_data_agent_adb_ecommerce_workspace.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10637",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-workspace-receipt.sql.inc",
+        "30-reader-login.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__ADB_ECOMMERCE_WORKSPACE_MIGRATION_CHECKSUM__",
+      "checksum_header": "adb_ecommerce_workspace_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10638",
+      "migration_name": "20260725010638_app_data_agent_semantic_graph_v2.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10638",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-projection-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_GRAPH_V2_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_graph_v2_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10639",
+      "migration_name": "20260725010639_app_data_agent_semantic_authoring.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10639",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-runtime-rpcs.sql.inc",
+        "30-tool-terminal-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_AUTHORING_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_authoring_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10640",
+      "migration_name": "20260725010640_app_data_agent_semantic_graph_studio.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10640",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-studio-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_GRAPH_STUDIO_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_graph_studio_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10641",
+      "migration_name": "20260725010641_app_data_agent_semantic_authoring_queue.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10641",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-lease-queue.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_AUTHORING_QUEUE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_authoring_queue_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10646",
+      "migration_name": "20260725010646_app_data_agent_falcon_import.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10646",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-import-receipt.sql.inc",
+        "20-import-authority.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__FALCON_IMPORT_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon_import_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10647",
+      "migration_name": "20260725010647_app_data_agent_workspace_command_payload.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10647",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-command-payload-validator.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__WORKSPACE_COMMAND_PAYLOAD_MIGRATION_CHECKSUM__",
+      "checksum_header": "workspace_command_payload_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10649",
+      "migration_name": "20260725010649_app_data_agent_model_provider_connections.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10649",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-provider-tables.sql.inc",
+        "20-provider-functions.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__MODEL_PROVIDER_CONNECTION_MIGRATION_CHECKSUM__",
+      "checksum_header": "model_provider_connection_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10650",
+      "migration_name": "20260725010650_app_data_agent_model_provider_command_guard.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10650",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-provider-command-guard.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__MODEL_PROVIDER_COMMAND_GUARD_MIGRATION_CHECKSUM__",
+      "checksum_header": "model_provider_command_guard_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10651",
+      "migration_name": "20260725010651_app_data_agent_environment_model_availability.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10651",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-environment-model-catalog.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__ENVIRONMENT_MODEL_AVAILABILITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "environment_model_availability_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10652",
+      "migration_name": "20260725010652_app_data_agent_environment_model_sync_concurrency.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10652",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-environment-model-sync-concurrency.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__ENVIRONMENT_MODEL_SYNC_CONCURRENCY_MIGRATION_CHECKSUM__",
+      "checksum_header": "environment_model_sync_concurrency_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10653",
+      "migration_name": "20260725010653_app_data_agent_effective_run_config.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10653",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-authority-guards.sql.inc",
+        "25-command-payload.sql.inc",
+        "30-defaults-rpc.sql.inc",
+        "40-run-acceptance-rpc.sql.inc",
+        "50-worker-revalidation-rpc.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__EFFECTIVE_RUN_CONFIG_MIGRATION_CHECKSUM__",
+      "checksum_header": "effective_run_config_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10654",
+      "migration_name": "20260725010654_app_data_agent_provider_invocation_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10654",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-authority-guards.sql.inc",
+        "30-selection-profile-rpc.sql.inc",
+        "40-invocation-rpc.sql.inc",
+        "50-reconcile-load-rpc.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__PROVIDER_INVOCATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "provider_invocation_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10655",
+      "migration_name": "20260725010655_app_data_agent_ontology_package_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10655",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority-tables.sql.inc",
+        "20-authority-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__ONTOLOGY_PACKAGE_MIGRATION_CHECKSUM__",
+      "checksum_header": "ontology_package_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10656",
+      "migration_name": "20260725010656_app_data_agent_semantic_bootstrap_release.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10656",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-governance-hardening.sql.inc",
+        "20-authority-tables.sql.inc",
+        "30-authority-helpers.sql.inc",
+        "40-domain-grant-rpcs.sql.inc",
+        "50-publish-rpcs.sql.inc",
+        "60-human-governance-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger-commit.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_BOOTSTRAP_RELEASE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_bootstrap_release_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10657",
+      "migration_name": "20260725010657_app_data_agent_artifact_export_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10657",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-rpcs.sql.inc",
+        "90-grants.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ARTIFACT_EXPORT_MIGRATION_CHECKSUM__",
+      "checksum_header": "artifact_export_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10658",
+      "migration_name": "20260725010658_app_data_agent_agent_team_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10658",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-rpcs.sql.inc",
+        "30-sensitive-artifact-rpcs.sql.inc",
+        "90-grants.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__AGENT_TEAM_MIGRATION_CHECKSUM__",
+      "checksum_header": "agent_team_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10659",
+      "migration_name": "20260725010659_app_data_agent_job_center.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10659",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-internal.sql.inc",
+        "30-queue-rpcs.sql.inc",
+        "40-readiness-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__JOB_CENTER_MIGRATION_CHECKSUM__",
+      "checksum_header": "job_center_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10660",
+      "migration_name": "20260725010660_app_data_agent_workspace_files.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10660",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-internal.sql.inc",
+        "30-file-rpcs.sql.inc",
+        "35-job-manifest-successor.sql.inc",
+        "40-scan-job-effective.sql.inc",
+        "50-gc-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__WORKSPACE_FILES_MIGRATION_CHECKSUM__",
+      "checksum_header": "workspace_files_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10661",
+      "migration_name": "20260725010661_app_data_agent_knowledge_base.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10661",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-helpers.sql.inc",
+        "30-registry-rpcs.sql.inc",
+        "40-index-job-rpcs.sql.inc",
+        "45-job-successor.sql.inc",
+        "46-job-manifest-successor.sql.inc",
+        "50-search-rpcs.sql.inc",
+        "60-effective-config-successor.sql.inc",
+        "65-defaults-successor.sql.inc",
+        "80-integrity.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__KNOWLEDGE_BASE_MIGRATION_CHECKSUM__",
+      "checksum_header": "knowledge_base_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10662",
+      "migration_name": "20260725010662_app_data_agent_semantic_induction.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10662",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-helpers.sql.inc",
+        "30-source-target-rpcs.sql.inc",
+        "40-commit-rpc.sql.inc",
+        "45-job-successor.sql.inc",
+        "80-integrity.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_INDUCTION_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_induction_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10663",
+      "migration_name": "20260725010663_app_data_agent_resolved_context.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10663",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-helpers.sql.inc",
+        "30-load-rpc.sql.inc",
+        "40-commit-rpc.sql.inc",
+        "80-integrity.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__RESOLVED_CONTEXT_MIGRATION_CHECKSUM__",
+      "checksum_header": "resolved_context_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10664",
+      "migration_name": "20260725010664_app_data_agent_resolved_context_text2sql.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10664",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-verifier.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__U13_TEXT2SQL_MIGRATION_CHECKSUM__",
+      "checksum_header": "u13_text2sql_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10665",
+      "migration_name": "20260725010665_app_data_agent_extension_registry.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10665",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-registry.sql.inc",
+        "20-rpcs.sql.inc",
+        "25-effective-config.sql.inc",
+        "30-effects.sql.inc",
+        "90-grants.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__U14_EXTENSION_MIGRATION_CHECKSUM__",
+      "checksum_header": "u14_extension_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10666",
+      "migration_name": "20260725010666_app_data_agent_session_recovery.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10666",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-rpcs.sql.inc",
+        "30-branch-read.sql.inc",
+        "90-grants.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__U8_RECOVERY_MIGRATION_CHECKSUM__",
+      "checksum_header": "u8_recovery_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10668",
+      "migration_name": "20260725010668_app_data_agent_datasource_adapters.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10668",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-datasource-types.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__U16_DATASOURCE_ADAPTER_MIGRATION_CHECKSUM__",
+      "checksum_header": "u16_datasource_adapter_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10669",
+      "migration_name": "20260725010669_app_data_agent_model_certification.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10669",
+      "segments": [
+        "00-model-certification.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__MODEL_CERTIFICATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "model_certification_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10670",
+      "migration_name": "20260725010670_app_data_agent_atomic_team_acceptance.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10670",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-atomic-team-acceptance.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__U20_TEAM_ACCEPTANCE_MIGRATION_CHECKSUM__",
+      "checksum_header": "u20_team_acceptance_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10672",
+      "migration_name": "20260725010672_app_data_agent_team_runtime_repairs.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10672",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-runtime-authority-repairs.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__TEAM_RUNTIME_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "team_runtime_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10673",
+      "migration_name": "20260725010673_app_data_agent_qa_conversation_directory.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10673",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-schema.sql.inc",
+        "20-projections.sql.inc",
+        "30-commands.sql.inc",
+        "40-retention.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__QA_DIRECTORY_MIGRATION_CHECKSUM__",
+      "checksum_header": "qa_directory_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10673-knowledge-semantic",
+      "migration_name": "20260725010673_app_data_agent_knowledge_documents.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10673-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__KNOWLEDGE_DOCUMENT_MIGRATION_CHECKSUM__",
+      "checksum_header": "knowledge_document_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10674",
+      "migration_name": "20260725010674_app_data_agent_adaptive_dispatch.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10674",
+      "segments": [
+        "00-preamble.sql.inc",
+        "05-semantic-read-profile.sql.inc",
+        "10-dispatch-authority.sql.inc",
+        "20-command-lease-upgrade.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__AGENT_DISPATCH_MIGRATION_CHECKSUM__",
+      "checksum_header": "agent_dispatch_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10674-knowledge-semantic",
+      "migration_name": "20260725010674_app_data_agent_semantic_explicit_revisions.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10674-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-working-session-rpcs.sql.inc",
+        "30-save-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_EXPLICIT_REVISION_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_explicit_revision_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10675",
+      "migration_name": "20260725010675_app_data_agent_qa_admin_audit.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10675",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-projections.sql.inc",
+        "30-events-artifacts.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__QA_ADMIN_AUDIT_MIGRATION_CHECKSUM__",
+      "checksum_header": "qa_admin_audit_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10675-knowledge-semantic",
+      "migration_name": "20260725010675_app_data_agent_semantic_self_publish.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10675-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-self-publish-rpc.sql.inc",
+        "30-resolved-context-bridge.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_SELF_PUBLISH_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_self_publish_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10676",
+      "migration_name": "20260725010676_app_data_agent_qa_admin_audit_coalesce_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10676",
+      "segments": [
+        "00-repair.sql.inc"
+      ],
+      "placeholder": "__QA_ADMIN_AUDIT_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "qa_admin_audit_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10676-knowledge-semantic",
+      "migration_name": "20260725010676_app_data_agent_semantic_provider_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10676-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_PROVIDER_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_provider_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10677",
+      "migration_name": "20260725010677_app_data_agent_qa_admin_audit_failure_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10677",
+      "segments": [
+        "00-receipt-failure.sql.inc"
+      ],
+      "placeholder": "__QA_ADMIN_AUDIT_FAILURE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "qa_admin_audit_failure_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10677-knowledge-semantic",
+      "migration_name": "20260725010677_app_data_agent_knowledge_document_authority_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10677-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__KNOWLEDGE_DOCUMENT_AUTHORITY_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "knowledge_document_authority_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10678",
+      "migration_name": "20260725010678_app_data_agent_legacy_attribution_cleanup.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10678",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-functions.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__LEGACY_ATTRIBUTION_CLEANUP_MIGRATION_CHECKSUM__",
+      "checksum_header": "legacy_attribution_cleanup_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10678-knowledge-semantic",
+      "migration_name": "20260725010678_app_data_agent_knowledge_evidence_authority_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10678-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__KNOWLEDGE_EVIDENCE_AUTHORITY_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "knowledge_evidence_authority_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10679",
+      "migration_name": "20260725010679_app_data_agent_legacy_attribution_scope_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10679",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-scope-repair.sql.inc",
+        "90-postconditions-ledger.sql.inc"
+      ],
+      "placeholder": "__LEGACY_ATTRIBUTION_SCOPE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "legacy_attribution_scope_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10679-knowledge-semantic",
+      "migration_name": "20260725010679_app_data_agent_knowledge_evidence_revision_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10679-knowledge-semantic",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__KNOWLEDGE_EVIDENCE_REVISION_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "knowledge_evidence_revision_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10680",
+      "migration_name": "20260725010680_app_data_agent_semantic_provider_validator_grant.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10680",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-grant.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_PROVIDER_VALIDATOR_GRANT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_provider_validator_grant_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10681",
+      "migration_name": "20260725010681_app_data_agent_semantic_authoring_digest_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10681",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_AUTHORING_DIGEST_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_authoring_digest_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10682",
+      "migration_name": "20260725010682_app_data_agent_semantic_relationship_retry_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10682",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_RELATIONSHIP_RETRY_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_relationship_retry_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10683",
+      "migration_name": "20260725010683_app_data_agent_semantic_manual_audit_policy.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10683",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-policy.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_MANUAL_AUDIT_POLICY_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_manual_audit_policy_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10684",
+      "migration_name": "20260725010684_app_data_agent_semantic_revision_save_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10684",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_REVISION_SAVE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_revision_save_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10685",
+      "migration_name": "20260725010685_app_data_agent_semantic_revision_idempotency_lock.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10685",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-grant.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_REVISION_IDEMPOTENCY_LOCK_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_revision_idempotency_lock_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10686",
+      "migration_name": "20260725010686_app_data_agent_semantic_revision_pointer_read_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10686",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_REVISION_POINTER_READ_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_revision_pointer_read_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10687",
+      "migration_name": "20260725010687_app_data_agent_semantic_revision_evidence_read.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10687",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-policy.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_REVISION_EVIDENCE_READ_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_revision_evidence_read_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10688",
+      "migration_name": "20260725010688_app_data_agent_semantic_self_publish_digest_grant.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10688",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-grant.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_SELF_PUBLISH_DIGEST_GRANT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_self_publish_digest_grant_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10689",
+      "migration_name": "20260725010689_app_data_agent_semantic_self_publish_canonicalizer_grant.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10689",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-grant.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_SELF_PUBLISH_CANONICALIZER_GRANT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_self_publish_canonicalizer_grant_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10690",
+      "migration_name": "20260725010690_app_data_agent_semantic_projection_reuse.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10690",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-projection-reuse.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_PROJECTION_REUSE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_projection_reuse_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10691",
+      "migration_name": "20260725010691_app_data_agent_semantic_text2sql_promotion.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10691",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-defaults-promotion.sql.inc",
+        "20-resolved-context-reuse.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_TEXT2SQL_PROMOTION_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_text2sql_promotion_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10692",
+      "migration_name": "20260725010692_app_data_agent_resolved_context_promotion_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10692",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-model-visibility.sql.inc",
+        "20-defaults-promotion-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__RESOLVED_CONTEXT_PROMOTION_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "resolved_context_promotion_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10693",
+      "migration_name": "20260725010693_app_data_agent_semantic_graph_studio_digest_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10693",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-studio-read-digest-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_GRAPH_STUDIO_DIGEST_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_graph_studio_digest_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10694",
+      "migration_name": "20260725010694_app_data_agent_semantic_provider_pending_attempt_recovery.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10694",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-pending-attempt.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_PROVIDER_PENDING_ATTEMPT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_provider_pending_attempt_recovery_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10695",
+      "migration_name": "20260725010695_app_data_agent_semantic_provider_preflight_failure_recovery.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10695",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-preflight-failure.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_PROVIDER_PREFLIGHT_FAILURE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_provider_preflight_failure_recovery_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10696",
+      "migration_name": "20260725010696_app_data_agent_model_driven_subagent_harness.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10696",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-profile-v2.sql.inc",
+        "15-profile-v2-commit.sql.inc",
+        "20-catalog-authority.sql.inc",
+        "30-run-v3.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__MODEL_DRIVEN_SUBAGENT_HARNESS_MIGRATION_CHECKSUM__",
+      "checksum_header": "model_driven_subagent_harness_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10698",
+      "migration_name": "20260725010698_app_data_agent_subagent_harness_runtime_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10698",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-profile-revocation.sql.inc",
+        "20-root-harness-visible-messages.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SUBAGENT_HARNESS_RUNTIME_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "subagent_harness_runtime_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10703",
+      "migration_name": "20260725010703_app_data_agent_commercial_archive_retirement.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10703",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-model-control-authority.sql.inc",
+        "20-model-control-rewrite.sql.inc",
+        "30-commercial-archive.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__COMMERCIAL_ARCHIVE_RETIREMENT_MIGRATION_CHECKSUM__",
+      "checksum_header": "commercial_archive_retirement_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10704",
+      "migration_name": "20260725010704_app_data_agent_semantic_v2_only.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10704",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-retire-v1-authority.sql.inc",
+        "20-v2-publish-rpcs.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_V2_ONLY_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_v2_only_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10705",
+      "migration_name": "20260725010705_app_data_agent_resolved_context_lexicon.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10705",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-published-lexicon.sql.inc",
+        "20-current-rpc-contract.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__RESOLVED_CONTEXT_LEXICON_MIGRATION_CHECKSUM__",
+      "checksum_header": "resolved_context_lexicon_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10706",
+      "migration_name": "20260725010706_app_data_agent_semantic_binding_impact.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10706",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-authority.sql.inc",
+        "20-rpcs.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_BINDING_IMPACT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_binding_impact_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    }
+  ],
+  "exceptions": [
+    {"id":"10610-semantic","renderer":"scripts/render-semantic-migration.ts","reason":"Computes and injects a separate semantic manifest hash and validates exact public function closure.","verification_command":"pnpm exec tsx scripts/render-semantic-migration.ts --verify"},
+    {"id":"10615","renderer":"scripts/render-10615-migration.ts","reason":"Frozen historical zero-placeholder substitution behavior must remain byte-identical.","verification_command":"pnpm exec tsx scripts/render-10615-migration.ts --verify"},
+    {"id":"10620-u20","renderer":"scripts/render-u20-migration.ts","reason":"Builds a signed maintenance manifest and validates an exact function inventory.","verification_command":"pnpm exec tsx scripts/render-u20-migration.ts --verify"},
+    {"id":"10621","renderer":"scripts/render-10621-migration.ts","reason":"Frozen historical zero-placeholder substitution behavior must remain byte-identical.","verification_command":"pnpm exec tsx scripts/render-10621-migration.ts --verify"},
+    {"id":"10642","renderer":"scripts/render-10642-migration.ts","reason":"Frozen historical migration has an embedded checksum only and no checksum header.","verification_command":"pnpm exec tsx scripts/render-10642-migration.ts --verify"},
+    {"id":"10643","renderer":"scripts/render-10643-migration.ts","reason":"Frozen historical migration has an embedded checksum only and no checksum header.","verification_command":"pnpm exec tsx scripts/render-10643-migration.ts --verify"},
+    {"id":"10644","renderer":"scripts/render-10644-migration.ts","reason":"Frozen historical migration has an embedded checksum only and no checksum header.","verification_command":"pnpm exec tsx scripts/render-10644-migration.ts --verify"},
+    {"id":"10645","renderer":"scripts/render-10645-migration.ts","reason":"Frozen historical migration has an embedded checksum only and no checksum header.","verification_command":"pnpm exec tsx scripts/render-10645-migration.ts --verify"},
+    {"id":"10648","renderer":"scripts/render-10648-migration.ts","reason":"Frozen historical zero-placeholder substitution behavior must remain byte-identical.","verification_command":"pnpm exec tsx scripts/render-10648-migration.ts --verify"},
+    {"id":"10667","renderer":"scripts/render-10667-migration.ts","reason":"Extracts reviewed functions from earlier migrations and applies guarded structural transforms.","verification_command":"pnpm exec tsx scripts/render-10667-migration.ts --verify"},
+    {"id":"10671","renderer":"scripts/render-10671-migration.ts","reason":"Extracts and rewrites reviewed public event functions from migration 10667.","verification_command":"pnpm exec tsx scripts/render-10671-migration.ts --verify"},
+    {"id":"u6","renderer":"scripts/render-u6-migration.ts","reason":"Composes the U6 authority migration with exact schema and function safety assertions.","verification_command":"pnpm exec tsx scripts/render-u6-migration.ts --verify"},
+    {"id":"u6-c2","renderer":"scripts/render-u6-c2-migration.ts","reason":"Generates the U6 C2 migration from physical descriptors and validates generated closure.","verification_command":"pnpm exec tsx scripts/render-u6-c2-migration.ts --verify-generated"}
+  ]
+}

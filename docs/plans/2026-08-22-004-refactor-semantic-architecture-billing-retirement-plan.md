@@ -502,7 +502,7 @@ Credit、Pricing、FX、Bill Settlement 能力。
 **Files:**
 
 - `infra/supabase/apps/data-agent/migrations/20260725010703_app_data_agent_billing_retirement.sql`（新增）
-- `scripts/render-10703-migration.ts`（新增，若该仓库的生成模式要求 renderer）
+- `scripts/migration-manifests.json` 中的 `10703` 通用 renderer manifest
 - `infra/supabase/apps/data-agent/migration-sources/`（按现有生成模式新增源文件）
 - `scripts/local-dev-runtime.ts`
 - `scripts/run-postgres-smoke.sh`
@@ -570,7 +570,7 @@ Credit、Pricing、FX、Bill Settlement 能力。
 - `packages/semantic/src/index.ts`
 - `packages/semantic/package.json`
 - `infra/supabase/apps/data-agent/migrations/20260725010704_app_data_agent_semantic_v2_only.sql`（新增）
-- `scripts/render-10704-migration.ts`（新增，若该仓库的生成模式要求 renderer）
+- `scripts/migration-manifests.json` 中的 `10704` 通用 renderer manifest
 - `infra/supabase/apps/data-agent/migration-sources/`（按现有生成模式新增 V2-only 清理源）
 - `infra/supabase/test-support/54-semantic-v2-only-assertions.sql`（新增）
 - `infra/supabase/test-support/run-postgres-smoke.sh`

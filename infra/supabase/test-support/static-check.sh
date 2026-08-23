@@ -77,6 +77,7 @@ for migration_file in $migration_files; do
 done
 
 zero_hash=$(printf '%064d' 0)
+pnpm --dir "$repo_dir" exec tsx scripts/render-migration.ts --all --verify
 for migration_file in $migration_files; do
   u6_migration_kind=$(sh "$script_dir/assert-u6-migration-path.sh" "$infra_dir" "$migration_file")
   if [ "$u6_migration_kind" = "C1" ]; then
@@ -87,94 +88,27 @@ for migration_file in $migration_files; do
     pnpm --dir "$repo_dir" exec tsx scripts/render-u6-c2-migration.ts --verify-generated
     continue
   fi
-  case "$(basename "$migration_file")" in
-    20260725010609_*) renderer="scripts/render-10609-migration.ts" ;;
+  migration_basename=$(basename "$migration_file")
+  manifest_id=$(
+    jq -r --arg name "$migration_basename" \
+      '.entries[] | select(.migration_name == $name) | .id' \
+      "$repo_dir/scripts/migration-manifests.json"
+  )
+  if [ -n "$manifest_id" ]; then
+    continue
+  fi
+  case "$migration_basename" in
     20260725010610_*) renderer="scripts/render-semantic-migration.ts" ;;
     20260725010615_*) renderer="scripts/render-10615-migration.ts" ;;
-    20260725010619_*) renderer="scripts/render-10619-migration.ts" ;;
     20260725010620_*) renderer="scripts/render-u20-migration.ts" ;;
     20260725010621_*) renderer="scripts/render-10621-migration.ts" ;;
-    20260725010622_*) renderer="scripts/render-10622-migration.ts" ;;
-    20260725010623_*) renderer="scripts/render-10623-migration.ts" ;;
-    20260725010624_*) renderer="scripts/render-10624-migration.ts" ;;
-    20260725010625_*) renderer="scripts/render-10625-migration.ts" ;;
-    20260725010626_*) renderer="scripts/render-10626-migration.ts" ;;
-    20260725010627_*) renderer="scripts/render-10627-migration.ts" ;;
-    20260725010628_*) renderer="scripts/render-10628-migration.ts" ;;
-    20260725010629_*) renderer="scripts/render-10629-migration.ts" ;;
-    20260725010630_*) renderer="scripts/render-10630-migration.ts" ;;
-    20260725010631_*) renderer="scripts/render-10631-migration.ts" ;;
-    20260725010632_*) renderer="scripts/render-10632-migration.ts" ;;
-    20260725010633_*) renderer="scripts/render-10633-migration.ts" ;;
-    20260725010634_*) renderer="scripts/render-10634-migration.ts" ;;
-    20260725010635_*) renderer="scripts/render-10635-migration.ts" ;;
-    20260725010636_*) renderer="scripts/render-10636-migration.ts" ;;
-    20260725010637_*) renderer="scripts/render-10637-migration.ts" ;;
-    20260725010638_*) renderer="scripts/render-10638-migration.ts" ;;
-    20260725010639_*) renderer="scripts/render-10639-migration.ts" ;;
-    20260725010640_*) renderer="scripts/render-10640-migration.ts" ;;
-    20260725010641_*) renderer="scripts/render-10641-migration.ts" ;;
     20260725010642_*) renderer="scripts/render-10642-migration.ts" ;;
     20260725010643_*) renderer="scripts/render-10643-migration.ts" ;;
     20260725010644_*) renderer="scripts/render-10644-migration.ts" ;;
     20260725010645_*) renderer="scripts/render-10645-migration.ts" ;;
-    20260725010646_*) renderer="scripts/render-10646-migration.ts" ;;
-    20260725010647_*) renderer="scripts/render-10647-migration.ts" ;;
     20260725010648_*) renderer="scripts/render-10648-migration.ts" ;;
-    20260725010649_*) renderer="scripts/render-10649-migration.ts" ;;
-    20260725010650_*) renderer="scripts/render-10650-migration.ts" ;;
-    20260725010651_*) renderer="scripts/render-10651-migration.ts" ;;
-    20260725010652_*) renderer="scripts/render-10652-migration.ts" ;;
-    20260725010653_*) renderer="scripts/render-10653-migration.ts" ;;
-    20260725010654_*) renderer="scripts/render-10654-migration.ts" ;;
-    20260725010655_*) renderer="scripts/render-10655-migration.ts" ;;
-    20260725010656_*) renderer="scripts/render-10656-migration.ts" ;;
-    20260725010657_*) renderer="scripts/render-10657-migration.ts" ;;
-    20260725010658_*) renderer="scripts/render-10658-migration.ts" ;;
-    20260725010659_*) renderer="scripts/render-10659-migration.ts" ;;
-    20260725010660_*) renderer="scripts/render-10660-migration.ts" ;;
-    20260725010661_*) renderer="scripts/render-10661-migration.ts" ;;
-    20260725010662_*) renderer="scripts/render-10662-migration.ts" ;;
-    20260725010663_*) renderer="scripts/render-10663-migration.ts" ;;
-    20260725010664_*) renderer="scripts/render-10664-migration.ts" ;;
-    20260725010665_*) renderer="scripts/render-10665-migration.ts" ;;
-    20260725010666_*) renderer="scripts/render-10666-migration.ts" ;;
     20260725010667_*) renderer="scripts/render-10667-migration.ts" ;;
-    20260725010668_*) renderer="scripts/render-10668-migration.ts" ;;
-    20260725010669_*) renderer="scripts/render-10669-migration.ts" ;;
-    20260725010670_*) renderer="scripts/render-10670-migration.ts" ;;
     20260725010671_*) renderer="scripts/render-10671-migration.ts" ;;
-    20260725010672_*) renderer="scripts/render-10672-migration.ts" ;;
-    20260725010673_app_data_agent_qa_conversation_directory.sql) renderer="scripts/render-10673-migration.ts" ;;
-    20260725010673_app_data_agent_knowledge_documents.sql) renderer="scripts/render-10673-knowledge-semantic-migration.ts" ;;
-    20260725010674_app_data_agent_adaptive_dispatch.sql) renderer="scripts/render-10674-migration.ts" ;;
-    20260725010674_app_data_agent_semantic_explicit_revisions.sql) renderer="scripts/render-10674-knowledge-semantic-migration.ts" ;;
-    20260725010675_app_data_agent_qa_admin_audit.sql) renderer="scripts/render-10675-migration.ts" ;;
-    20260725010675_app_data_agent_semantic_self_publish.sql) renderer="scripts/render-10675-knowledge-semantic-migration.ts" ;;
-    20260725010676_app_data_agent_qa_admin_audit_coalesce_repair.sql) renderer="scripts/render-10676-migration.ts" ;;
-    20260725010676_app_data_agent_semantic_provider_authority.sql) renderer="scripts/render-10676-knowledge-semantic-migration.ts" ;;
-    20260725010677_app_data_agent_qa_admin_audit_failure_repair.sql) renderer="scripts/render-10677-migration.ts" ;;
-    20260725010677_app_data_agent_knowledge_document_authority_repair.sql) renderer="scripts/render-10677-knowledge-semantic-migration.ts" ;;
-    20260725010678_app_data_agent_legacy_attribution_cleanup.sql) renderer="scripts/render-10678-migration.ts" ;;
-    20260725010678_app_data_agent_knowledge_evidence_authority_repair.sql) renderer="scripts/render-10678-knowledge-semantic-migration.ts" ;;
-    20260725010679_app_data_agent_legacy_attribution_scope_repair.sql) renderer="scripts/render-10679-migration.ts" ;;
-    20260725010679_app_data_agent_knowledge_evidence_revision_repair.sql) renderer="scripts/render-10679-knowledge-semantic-migration.ts" ;;
-    20260725010680_*) renderer="scripts/render-10680-migration.ts" ;;
-    20260725010681_*) renderer="scripts/render-10681-migration.ts" ;;
-    20260725010682_*) renderer="scripts/render-10682-migration.ts" ;;
-    20260725010683_*) renderer="scripts/render-10683-migration.ts" ;;
-    20260725010684_*) renderer="scripts/render-10684-migration.ts" ;;
-    20260725010685_*) renderer="scripts/render-10685-migration.ts" ;;
-    20260725010686_*) renderer="scripts/render-10686-migration.ts" ;;
-    20260725010687_*) renderer="scripts/render-10687-migration.ts" ;;
-    20260725010688_*) renderer="scripts/render-10688-migration.ts" ;;
-    20260725010689_*) renderer="scripts/render-10689-migration.ts" ;;
-    20260725010690_*) renderer="scripts/render-10690-migration.ts" ;;
-    20260725010691_*) renderer="scripts/render-10691-migration.ts" ;;
-    20260725010692_*) renderer="scripts/render-10692-migration.ts" ;;
-    20260725010693_*) renderer="scripts/render-10693-migration.ts" ;;
-    20260725010705_*) renderer="scripts/render-10705-migration.ts" ;;
-    20260725010706_*) renderer="scripts/render-10706-migration.ts" ;;
     *) renderer="" ;;
   esac
   if [ -n "$renderer" ]; then

@@ -60,7 +60,7 @@ Orphan GC 不接受调用方声称的 Scope 或“无引用”结论。不要用
 
 ## 验证与审计
 
-- `pnpm exec tsx scripts/render-10660-migration.ts --verify`
+- `pnpm exec tsx scripts/render-migration.ts 10660 --verify`
 - fresh PostgreSQL 17、数据导入 hook 映射 `/dev/null` 后运行
   `infra/supabase/test-support/38-workspace-files-authority-assertions.sql`
 - 查看领域 Receipt/Revision/Job event 时只使用 PostgreSQL 窄查询或 Platform Port，不输出原始文件内容。

@@ -20,8 +20,8 @@ Test Center 中的 `E-commerce Production` 已开放 24 道公开题预览，包
 ```bash
 pnpm install
 pnpm benchmark:ecommerce:verify
-pnpm exec tsx scripts/render-10636-migration.ts --verify
-pnpm exec tsx scripts/render-10637-migration.ts --verify
+pnpm exec tsx scripts/render-migration.ts 10636 --verify
+pnpm exec tsx scripts/render-migration.ts 10637 --verify
 pnpm dev:infra
 pnpm dev:migrate
 pnpm dev:check
