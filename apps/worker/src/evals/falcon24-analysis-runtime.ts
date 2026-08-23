@@ -111,12 +111,10 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly sensitive_artifacts: AnalysisInputSensitiveArtifactAuthority;
   readonly research_capability_input: unknown;
   readonly app_capability_input: unknown;
-  readonly datasource_id: string;
   readonly sandbox: PythonSandboxClient;
   readonly environment: NodeJS.ProcessEnv;
   readonly now?: () => Date;
 }): GovernedAgentAnalysisPort {
-  const datasourceId = z.uuid().parse(input.datasource_id);
   const inputEncryption = resolveAnalysisInputEncryption(input.environment);
   if (!inputEncryption) throw new TypeError("ANALYSIS_INPUT_ENCRYPTION_CONFIG_REQUIRED");
   const sourceEncryption = resolveAnalysisPythonSourceEncryption(input.environment);
@@ -151,9 +149,11 @@ export function createFalcon24AnalysisRuntime(input: {
   const snapshotAuthority = createFalcon24AnalysisDataOracle(input.pool);
 
   return createFalcon24GovernedAgentAnalysisPort({
-    datasource_id: datasourceId,
     artifacts,
     create_executor(runtime) {
+      const datasourceId = z
+        .uuid()
+        .parse(runtime.semantic_context.package.semantic_release.datasource_id);
       const spec = FALCON24_ANALYSIS_QUERY_SPECS[runtime.test_case.case_id];
       const evidenceAuthority = createFalcon24ExactQueryEvidenceAuthority({
         analysis_context: runtime.analysis_context,

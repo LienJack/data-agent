@@ -19,7 +19,6 @@ function createRuntime(environment: NodeJS.ProcessEnv) {
     sensitive_artifacts: {} as never,
     research_capability_input: { authority: "research" },
     app_capability_input: { authority: "application" },
-    datasource_id: id(1),
     sandbox: {} as never,
     environment,
   });

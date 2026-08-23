@@ -427,7 +427,6 @@ export async function runWorkerProcess(
         const falcon24Analysis =
           researchCapabilityInput &&
           pythonSandbox &&
-          environment.DATA_AGENT_FALCON24_DATASOURCE_ID?.trim() &&
           environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
           environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim() &&
           environment.PYTHON_SANDBOX_AUTH_TOKEN?.trim()
@@ -437,7 +436,6 @@ export async function runWorkerProcess(
                 sensitive_artifacts: sensitiveArtifacts,
                 research_capability_input: researchCapabilityInput,
                 app_capability_input: capability,
-                datasource_id: environment.DATA_AGENT_FALCON24_DATASOURCE_ID,
                 sandbox: pythonSandbox,
                 environment,
                 now: () => new Date(),

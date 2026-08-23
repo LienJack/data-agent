@@ -138,7 +138,6 @@ function decodeValidatedOutput(
 }
 
 export function createFalcon24GovernedAgentAnalysisPort(input: {
-  readonly datasource_id: string;
   readonly artifacts: AnalysisArtifactCommitPort;
   readonly create_executor: (context: {
     readonly analysis_context: AnalysisContext;
@@ -166,7 +165,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
         test_case: command.test_case,
         question: command.question,
         context,
-        datasource_id: input.datasource_id,
+        datasource_id: command.semantic_context.package.semantic_release.datasource_id,
       });
       const briefRef = await input.artifacts.commitL2({
         lease: command.lease,

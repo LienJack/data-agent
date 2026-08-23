@@ -189,13 +189,15 @@ describe("Falcon24 governed Agent analysis bridge", () => {
         ],
       } as never;
     });
-    const semanticCommit = { receipt: { receipt_id: id(40) }, package: {} } as never;
+    const semanticCommit = {
+      receipt: { receipt_id: id(40) },
+      package: { semantic_release: { datasource_id: id(50) } },
+    } as never;
     const compileContext = vi.fn(async (input) => {
       expect(input.semantic_context).toBe(semanticCommit);
       return { context: analysisContext, metric_ids: ["metric.order_revenue"] as const };
     });
     const port = createFalcon24GovernedAgentAnalysisPort({
-      datasource_id: id(50),
       artifacts,
       create_executor: () => ({ execute }),
       compile_context: compileContext as never,
