@@ -268,7 +268,7 @@ export async function compileAnalysisContext(
   }
 
   return buildAnalysisContext({
-    schema_version: "analysis-context@1.0.0",
+    schema_version: "analysis-context@2.0.0",
     scope: resolvedPackage.scope,
     semantic_context_binding: {
       package_id: resolvedPackage.package_id,
@@ -279,8 +279,8 @@ export async function compileAnalysisContext(
     semantic_release_ref: input.semantic_release_ref,
     schema_snapshot_ref: input.schema_snapshot_ref,
     policy_receipt_ref: input.policy_receipt_ref,
-    semantic_source_bundle_ref: input.semantic_source_bundle_ref,
-    ontology_analysis_binding_hash: ontologyBinding.binding_hash,
+    semantic_retrieval_receipt_hash: resolvedPackage.retrieval_receipt.receipt_hash,
+    semantic_inference_receipt_hash: resolvedPackage.inference_receipt.receipt_hash,
     metrics,
     relationships: sourceBundle.relationships
       .filter(({ analysis, proof_kind }) => analysis.join_allowed && proof_kind !== "DECLARED_ONLY")

@@ -45,7 +45,7 @@ function reference(
 async function contextFixture() {
   const semanticReleaseRef = reference("SemanticRelease", 10);
   return buildAnalysisContext({
-    schema_version: "analysis-context@1.0.0",
+    schema_version: "analysis-context@2.0.0",
     scope,
     semantic_context_binding: {
       package_id: id(11),
@@ -56,8 +56,8 @@ async function contextFixture() {
     semantic_release_ref: semanticReleaseRef,
     schema_snapshot_ref: reference("SchemaSnapshot", 13),
     policy_receipt_ref: reference("PolicyReceipt", 14),
-    semantic_source_bundle_ref: reference("SemanticSourceBundle", 15),
-    ontology_analysis_binding_hash: hash("c"),
+    semantic_retrieval_receipt_hash: hash("b"),
+    semantic_inference_receipt_hash: hash("c"),
     metrics: [
       {
         metric_ref: { container_ref: semanticReleaseRef, node_id: "revenue" },

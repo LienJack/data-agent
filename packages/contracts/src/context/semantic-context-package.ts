@@ -715,7 +715,7 @@ export const analysisCausalContextSchema = z.strictObject({
 
 const analysisContextMaterialSchema = z
   .strictObject({
-    schema_version: z.literal("analysis-context@1.0.0"),
+    schema_version: z.literal("analysis-context@2.0.0"),
     scope: appScopeSchema,
     semantic_context_binding: z.strictObject({
       package_id: canonicalImmutableIdSchema,
@@ -726,8 +726,8 @@ const analysisContextMaterialSchema = z
     semantic_release_ref: artifactReferenceFor("SemanticRelease"),
     schema_snapshot_ref: artifactReferenceFor("SchemaSnapshot"),
     policy_receipt_ref: artifactReferenceFor("PolicyReceipt"),
-    semantic_source_bundle_ref: artifactReferenceFor("SemanticSourceBundle"),
-    ontology_analysis_binding_hash: contentHashSchema,
+    semantic_retrieval_receipt_hash: contentHashSchema,
+    semantic_inference_receipt_hash: contentHashSchema,
     metrics: z.array(analysisMetricContextSchema).min(1).max(128),
     relationships: z.array(analysisRelationshipContextSchema).max(512),
     causal_policy: analysisCausalContextSchema.nullable(),
@@ -737,7 +737,6 @@ const analysisContextMaterialSchema = z
       context.semantic_release_ref,
       context.schema_snapshot_ref,
       context.policy_receipt_ref,
-      context.semantic_source_bundle_ref,
       ...(context.causal_policy?.policy_refs ?? []),
     ];
     for (const [index, reference] of scopeRefs.entries()) {
