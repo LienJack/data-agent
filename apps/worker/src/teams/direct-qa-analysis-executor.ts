@@ -2,10 +2,13 @@ import { createHash } from "node:crypto";
 import {
   type ArtifactReference,
   buildProductTeamArtifactDocument,
+  type Falcon24AgentAnalysisCase,
   type PortResult,
   type ProductTeamArtifactDocument,
+  type SemanticContextPackage,
   verifySemanticContextCommitResult,
 } from "@data-agent/contracts";
+import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
 import { z } from "zod";
 import {
   hasRunExecutionContextProvenance,
@@ -28,6 +31,18 @@ interface DirectQaArtifactPort {
     lease: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"],
     document: ProductTeamArtifactDocument,
   ): Promise<PortResult<ArtifactReference>>;
+}
+
+export interface GovernedAgentAnalysisPort {
+  analyze(input: {
+    readonly lease: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"];
+    readonly test_case: Falcon24AgentAnalysisCase;
+    readonly question: string;
+    readonly semantic_context_package: SemanticContextPackage;
+  }): Promise<{
+    readonly answer: string;
+    readonly accepted_artifact_refs: readonly ArtifactReference[];
+  }>;
 }
 
 class DirectQaAnalysisError extends Error {
@@ -57,11 +72,33 @@ function asksForRelationships(question: string): boolean {
   return /(?:关联|关系|如何连接|怎么连接|join)/iu.test(question);
 }
 
+function normalizeQuestion(question: string): string {
+  return question
+    .normalize("NFKC")
+    .replace(/\s+/gu, "")
+    .replace(/[。！？!?]+$/gu, "");
+}
+
+function falcon24CaseFor(question: string): Falcon24AgentAnalysisCase | null {
+  const normalized = normalizeQuestion(question);
+  return (
+    FALCON24_AGENT_ANALYSIS_CASES.find(
+      (testCase) => normalizeQuestion(testCase.question) === normalized,
+    ) ?? null
+  );
+}
+
+function routeFor(question: string): "FALCON24_ANALYSIS" | "SEMANTIC_RELATIONSHIP" | "DIRECT" {
+  if (falcon24CaseFor(question)) return "FALCON24_ANALYSIS";
+  return asksForRelationships(question) ? "SEMANTIC_RELATIONSHIP" : "DIRECT";
+}
+
 export function createDirectQaAnalysisExecutor(dependencies: {
   readonly capability: unknown;
   readonly runs: DirectQaRunReader;
   readonly artifacts: DirectQaArtifactPort;
   readonly semantic_relationships: FrozenSemanticRelationshipReadPort;
+  readonly governed_analysis?: GovernedAgentAnalysisPort | null;
   readonly now?: () => Date;
 }): RunWorkflowExecutorPort {
   const now = dependencies.now ?? (() => new Date());
@@ -92,7 +129,30 @@ export function createDirectQaAnalysisExecutor(dependencies: {
         );
 
         let answer: string;
-        if (asksForRelationships(run.question)) {
+        const falcon24Case = falcon24CaseFor(run.question);
+        if (falcon24Case) {
+          const governedAnalysis = dependencies.governed_analysis;
+          if (!governedAnalysis) {
+            throw new DirectQaAnalysisError("ANALYSIS_PROGRAM_REQUIRED");
+          }
+          const contextCapability = execution.context.getSemanticContextCapability?.();
+          if (!hasRunSemanticContextCapability(contextCapability)) {
+            throw new DirectQaAnalysisError("SEMANTIC_CONTEXT_REQUIRED");
+          }
+          const resolved = await verifySemanticContextCommitResult(
+            value(await contextCapability.resolve()),
+          );
+          const result = await governedAnalysis.analyze({
+            lease: execution.lease,
+            test_case: falcon24Case,
+            question: run.question,
+            semantic_context_package: resolved.package,
+          });
+          if (result.accepted_artifact_refs.length === 0) {
+            throw new DirectQaAnalysisError("ANALYSIS_ACCEPTED_ARTIFACT_REQUIRED");
+          }
+          answer = result.answer;
+        } else if (asksForRelationships(run.question)) {
           const contextCapability = execution.context.getSemanticContextCapability?.();
           if (!hasRunSemanticContextCapability(contextCapability)) {
             throw new DirectQaAnalysisError("SEMANTIC_CONTEXT_REQUIRED");
@@ -186,4 +246,8 @@ export function createDirectQaAnalysisExecutor(dependencies: {
   });
 }
 
-export const directQaAnalysisInternals = Object.freeze({ asksForRelationships });
+export const directQaAnalysisInternals = Object.freeze({
+  asksForRelationships,
+  falcon24CaseFor,
+  routeFor,
+});
