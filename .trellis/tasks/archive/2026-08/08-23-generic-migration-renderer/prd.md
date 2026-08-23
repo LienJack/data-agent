@@ -14,10 +14,10 @@
 
 ## Acceptance Criteria
 
-- [ ] 通用 renderer 的单元测试覆盖生成、verify、segment drift、placeholder drift 和 checksum drift。
-- [ ] 迁移后的每个 SQL 与实施前 Git 内容字节一致。
-- [ ] 常规独立 renderer 数量显著收缩，剩余例外有显式原因和测试。
-- [ ] migration inventory、相关 PG 静态测试、Biome/typecheck 通过并创建 scoped commit。
+- [x] 通用 renderer 的单元测试覆盖生成、verify、segment drift、placeholder drift 和 checksum drift。
+- [x] 迁移后的每个 SQL 与实施前 Git 内容字节一致。
+- [x] 常规独立 renderer 数量显著收缩，剩余例外有显式原因和测试。
+- [x] migration inventory、相关 PG 静态测试、Biome/typecheck 通过并创建 scoped commit。
 
 ## Notes
 
