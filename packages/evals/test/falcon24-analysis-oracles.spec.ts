@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "../src/test-center/falcon24-agent-analysis-suite.js";
 import {
+  falcon24AnalysisOutputJsonSchema,
   falcon24AnalysisOutputSchema,
   validateFalcon24AnalysisOutput,
 } from "../src/test-center/falcon24-analysis-oracles.js";
@@ -203,6 +204,15 @@ function outputFor(caseId: string, methods: readonly string[]) {
 }
 
 describe("Falcon24 independent analysis oracles", () => {
+  it("publishes an exact per-case JSON schema for model-generated Python", async () => {
+    const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
+    for (const testCase of suite.cases) {
+      const schema = falcon24AnalysisOutputJsonSchema(testCase.case_id);
+      expect(schema).toMatchObject({ type: "object", additionalProperties: false });
+      expect(JSON.stringify(schema)).toContain(testCase.case_id);
+    }
+  });
+
   it("accepts all five case-specific output contracts and hashes their normalized outputs", async () => {
     const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
     const receipts = await Promise.all(

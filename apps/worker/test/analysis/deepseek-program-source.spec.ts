@@ -13,6 +13,15 @@ const id = (suffix: number) => `30000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
+const analysisContract = {
+  case_id: "falcon24-business-review-18m",
+  statistical_method_contract: ["Compute monthly KPIs at order grain."],
+  output_json_schema: {
+    type: "object",
+    required: ["case_id"],
+    properties: { case_id: { const: "falcon24-business-review-18m" } },
+  },
+} as const;
 
 function reference(
   artifact_type: ArtifactReference["artifact_type"],
@@ -160,7 +169,8 @@ describe("DeepSeek governed Python source", () => {
   it("replays committed source before loading context or calling DeepSeek", async () => {
     const base = await fixture();
     const existing = "import pandas as pd\ndef main(sdk):\n    sdk.write_json('result', {})\n";
-    const existingHash = `sha256:${createHash("sha256").update(existing, "utf8").digest("hex")}` as const;
+    const existingHash =
+      `sha256:${createHash("sha256").update(existing, "utf8").digest("hex")}` as const;
     const source = createDeepSeekAnalysisProgramSource({
       contexts: {
         async load() {
@@ -212,6 +222,7 @@ describe("DeepSeek governed Python source", () => {
         async load() {
           return {
             semantic_context_package: base.contextPackage,
+            analysis_contract: analysisContract,
             input_schemas: [
               {
                 input_name: "monthly_orders",
@@ -276,6 +287,8 @@ describe("DeepSeek governed Python source", () => {
     const serialized = JSON.stringify(requests[0]);
     expect(serialized).toContain(base.contextPackage.package_hash);
     expect(serialized).toContain("monthly_orders");
+    expect(serialized).toContain("statistical_method_contract");
+    expect(serialized).toContain("output_json_schema");
     expect(serialized).not.toMatch(/postgres(?:ql)?:\/\//iu);
     expect(serialized).not.toMatch(/password|api[_-]?key|raw_rows|row_values/iu);
   });
@@ -287,7 +300,11 @@ describe("DeepSeek governed Python source", () => {
     const source = createDeepSeekAnalysisProgramSource({
       contexts: {
         async load() {
-          return { semantic_context_package: base.contextPackage, input_schemas: [] };
+          return {
+            semantic_context_package: base.contextPackage,
+            analysis_contract: analysisContract,
+            input_schemas: [],
+          };
         },
       },
       model: {

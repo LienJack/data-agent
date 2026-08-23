@@ -1,8 +1,8 @@
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type Falcon24AgentAnalysisCase,
   falcon24AnalysisCaseIdSchema,
 } from "@data-agent/contracts/evals";
-import { sha256ContentHash } from "@data-agent/contracts/common";
 import { z } from "zod";
 
 const finite = z.number().finite();
@@ -204,6 +204,14 @@ const cohortSchema = z.strictObject({
   conclusion: z.string().min(1),
 });
 
+const outputSchemas = {
+  "falcon24-business-review-18m": businessReviewSchema,
+  "falcon24-delivery-experience-12m": deliverySchema,
+  "falcon24-inventory-damage-12m": inventorySchema,
+  "falcon24-marketing-lag-effect": marketingSchema,
+  "falcon24-cohort-retention-m0-m6": cohortSchema,
+} as const;
+
 export const falcon24AnalysisOutputSchema = z.discriminatedUnion("case_id", [
   businessReviewSchema,
   deliverySchema,
@@ -211,6 +219,10 @@ export const falcon24AnalysisOutputSchema = z.discriminatedUnion("case_id", [
   marketingSchema,
   cohortSchema,
 ]);
+
+export function falcon24AnalysisOutputJsonSchema(caseId: Falcon24AgentAnalysisCase["case_id"]) {
+  return z.toJSONSchema(outputSchemas[caseId]);
+}
 
 type AnalysisOutput = z.infer<typeof falcon24AnalysisOutputSchema>;
 

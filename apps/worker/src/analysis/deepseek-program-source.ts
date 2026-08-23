@@ -38,12 +38,23 @@ const inputSchemaProjectionSchema = z.strictObject({
     .max(512),
 });
 
+const analysisContractProjectionSchema = z.strictObject({
+  case_id: z.string().trim().min(1).max(128),
+  statistical_method_contract: z.array(z.string().trim().min(1).max(1_024)).min(1).max(32),
+  output_json_schema: z.json(),
+});
+
 const modelResponseSchema = z.strictObject({
   schema_version: z.literal(RESPONSE_SCHEMA_VERSION),
   python_source: z.string().min(1).max(MAX_GENERATED_SOURCE_BYTES),
 });
 
 export type AnalysisPythonInputSchemaProjection = z.infer<typeof inputSchemaProjectionSchema>;
+export interface AnalysisPythonContractProjection {
+  readonly case_id: string;
+  readonly statistical_method_contract: readonly string[];
+  readonly output_json_schema: unknown;
+}
 
 export interface AnalysisPythonGenerationContextPort {
   load(input: {
@@ -54,6 +65,7 @@ export interface AnalysisPythonGenerationContextPort {
   }): Promise<{
     readonly semantic_context_package: SemanticContextPackage;
     readonly input_schemas: readonly AnalysisPythonInputSchemaProjection[];
+    readonly analysis_contract: AnalysisPythonContractProjection;
   }>;
 }
 
@@ -138,6 +150,7 @@ async function boundedPrompt(input: {
   readonly semanticContextPackage: SemanticContextPackage;
   readonly node: AnalysisProgramNode;
   readonly inputSchemas: readonly AnalysisPythonInputSchemaProjection[];
+  readonly analysisContract: AnalysisPythonContractProjection;
   readonly importProfile: "CORE_ANALYSIS" | "ML_DIAGNOSTIC" | "CAUSAL_L5";
   readonly repair: null | { readonly source: string; readonly failure_code: string };
 }) {
@@ -172,6 +185,7 @@ async function boundedPrompt(input: {
       parameters: input.node.parameters,
       output_contract: input.node.output_contract,
     },
+    analysis_contract: analysisContractProjectionSchema.parse(input.analysisContract),
     input_schemas: input.inputSchemas.map((schema) => inputSchemaProjectionSchema.parse(schema)),
     runtime_policy: {
       network: "DENIED",
@@ -318,6 +332,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
         semanticContextPackage: semanticContext,
         node: options.node,
         inputSchemas: context.input_schemas,
+        analysisContract: context.analysis_contract,
         importProfile: descriptor.python_import_profile,
         repair: options.repair,
       }),

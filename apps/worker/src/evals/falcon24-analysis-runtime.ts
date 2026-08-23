@@ -4,6 +4,7 @@ import {
   type ResearchArtifactAuthorityPort,
   type RunWorkLease,
 } from "@data-agent/contracts";
+import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
 import type { SqlPool } from "@data-agent/platform/persistence";
 import { z } from "zod";
 import { createRunBoundDeepSeekPythonGenerationProvider } from "../analysis/deepseek-generation-provider.js";
@@ -27,6 +28,7 @@ import { createResearchAnalysisArtifactPort } from "../analysis/research-artifac
 import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
+import { falcon24AnalysisProgramInternals } from "./falcon24-analysis-program.js";
 import {
   FALCON24_ANALYSIS_QUERY_SPECS,
   type Falcon24AnalysisQueryColumn,
@@ -174,6 +176,12 @@ export function createFalcon24AnalysisRuntime(input: {
             }
             return {
               semantic_context_package: runtime.semantic_context.package,
+              analysis_contract: {
+                case_id: runtime.test_case.case_id,
+                statistical_method_contract:
+                  falcon24AnalysisProgramInternals.method_contracts[runtime.test_case.case_id],
+                output_json_schema: falcon24AnalysisOutputJsonSchema(runtime.test_case.case_id),
+              },
               input_schemas: [
                 {
                   input_name: spec.input_name,
