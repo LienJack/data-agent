@@ -10,7 +10,7 @@
 2. 修改现有 context preview route，并新增 `apps/web/src/lib/semantic-binding-impact-route.ts` 与 `apps/web/src/app/api/workspaces/[workspaceId]/semantic/binding-impacts/[impactId]/route.ts`；只投影安全字段与 artifact reference，所有未知/敏感字段 fail closed。
 3. 为消歧、投影回退、影响未知、Candidate 待审、验证失败和可发布补齐 loading/empty/error/keyboard/a11y 状态。
 4. 扩展 `packages/contracts/src/evals/falcon-semantic-release-set.ts` 的安全评估摘要，保留既有 oracle、bundle、receipt 与发布门禁。
-5. 建立 B0 exact-only、B1 lexical、B2 lexical + governed retrieval/graph 三组对照，先 shadow，再 lexical-on，再 workspace canary。
+5. 在固定 fixture/Falcon artifact 中建立 B0 exact、B1 lexical、B2 lexical + governed retrieval/graph 三组评测标签；它们不是三套运行时代码。交付时只有通过门禁的当前路径存在。
 6. 做合同、语义、平台、浏览器、冷重启和投影故障验证；达到门禁后才扩大启用范围。
 
 用户从 Context Preview 查看命中证据；遇到歧义先选择候选再预览。绑定影响从 schema drift/通知进入现有 Candidate comparison，按风险、直接影响、传递影响逐层展开，最终只能拒绝、返回编辑或进入现有验证/发布流程。查看证据复用 workspace READ capability；创建和提交 Candidate 复用 WRITE capability；关闭页面不产生语义写入。
@@ -40,8 +40,8 @@ TIS 的 Falcon 计划值得借鉴其检索与 SQL 等价验证的分层意识，
 - B1 对 exact 基线零回退，B2 不降低批准的 Falcon first/final pass；
 - 歧义误选、跨 release 污染、未授权召回均为零；
 - 冷重启结果 hash 稳定，Neo4j/知识索引故障自动回退且 reason 可见；
-- feature flag 可关闭 M2/M3 新路径，Published Release 与历史 artifact 无需回滚。
+- 单个 scoped commit 可独立回退；运行时不保留 M2/M3 旧路径或兼容开关，Published Release 与历史 artifact 无需回写。
 
 ## 备注
 
-发布按 shadow → lexical-on → governed retrieval canary → binding impact preview → general availability 进行。任何阶段出现权威不一致、敏感投影、静默歧义或 Falcon 回退，立即停止扩大范围并退回上一阶段。
+发布按离线门禁 → lexical 原子切换 → 可选 governed retrieval 独立任务 → binding impact preview → 完整验收进行。任何阶段出现权威不一致、敏感投影、静默歧义或 Falcon 回退，停止交付并回退对应 scoped commit；不恢复旧运行路径。

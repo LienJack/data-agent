@@ -1,11 +1,13 @@
 ---
 title: "refactor: TIS 本体实践借鉴与定向重构方案"
 type: refactor
-status: proposed
+status: approved
 date: 2026-08-23
 origin: none
 decision_basis: user-confirmed
 deepened: 2026-08-23
+execution_baseline: 858446e
+compatibility_policy: current-only-no-data-migration
 ---
 
 # TIS 本体实践借鉴与定向重构方案
@@ -83,7 +85,7 @@ Data Agent 当前 `packages/semantic/src/context/context-router.ts` 对本体对
 ### 4.3 价值门禁与最小交付
 
 - U1–U2 是可独立交付的最小切片，先证明显式词汇关系比当前 exact-only 路由增加有效命中，同时不增加静默误选。
-- U3 不是默认必做项。只有 shadow 数据证明 M1 之后仍存在可量化的关系/知识召回缺口，且该缺口不能由补充 glossary/alias 解决，才进入 governed retrieval 实现。
+- U3 不是默认必做项。只有离线回放与 Falcon 数据证明 M1 之后仍存在可量化的关系/知识召回缺口，且该缺口不能由补充 glossary/alias 解决，才进入 governed retrieval 实现。
 - U4 是独立维护能力，不依赖 U3；其价值以“提前识别受影响发布对象、减少人工逐项排查”为准，而不是以自动修复率为准。
 - U5–U6 只覆盖已通过前述门禁的能力；不为暂缓的 U3 预建空 UI、通用插件框架或专用向量后端。
 
@@ -170,7 +172,7 @@ flowchart TB
 - `docs/plans/2026-08-23-001-refactor-tis-ontology-adoption-plan.md`
 - `docs/plans/tis-ontology-adoption/*.md`
 
-**前置条件**：当前 `refactor/semantic-v2-billing-retirement` 相关改动在实施本方案前形成可识别的已提交基线；受影响路径无未归属的重叠编辑。若仍有并行工作，使用独立 worktree。
+**前置条件**：当前 `refactor/semantic-v2-billing-retirement` 已在 `858446e` 形成可识别基线；受影响路径无未归属的重叠编辑。若仍有并行工作，使用独立 worktree。
 
 **验收**：参考 commit 可复现；采用/拒绝项有证据；不包含实现代码；所有后续单元都有测试路径、失败模式与回滚边界。
 
@@ -193,7 +195,7 @@ flowchart TB
 
 **契约要点**：release ref、object/term id、term role、match kind、canonical phrase、evidence hash、projection checkpoint、relationship path、score availability、fallback reason；数组必须 canonical sort，hash 必须可验证。当前 authority snapshot 没有 preferred/synonym/abbreviation 的独立投影，因此 migration 必须从已发布语义图生成 `published_lexicon`，不能由 Web 或模型临时拼接。
 
-严格 schema 不做原地扩字段：新增 `resolved-context-authority-snapshot@2.0.0`、对应 route/package v2 和 `_v2` PostgreSQL RPC；v1 保持可读可提交。平台在 shadow 阶段同时计算 v1/v2 比较结果，切换后仍保留 v1 回退窗口，避免现有 Text2SQL fixture 和外部消费者被一次性破坏。
+严格 schema 不做原地扩字段：以 `resolved-context-authority-snapshot@2.0.0`、对应 current route/package 与 `_v2` PostgreSQL RPC 原子替换旧契约。仓库内消费者、fixture、导出和调用点在同一实施单元一起切换；旧 schema/RPC 不再可读、可提交或回退。新的 forward-only DDL 可以删除被替代的数据库对象，但不复制、回填或迁移旧数据；历史 migration 文件本身保持不可变。
 
 **验收场景**：重复项拒绝、乱序拒绝、hash 篡改拒绝、跨 release ref 拒绝、分数缺失可表达、Candidate/未发布对象不能构造 runtime evidence。
 
@@ -217,7 +219,7 @@ flowchart TB
 
 **目标**：在确定性落点之后，按需加入知识候选和相关关系子图，替换 `KNOWLEDGE_RETRIEVAL_DEFERRED` / `GRAPH_TRAVERSAL_DEFERRED` 的占位行为。
 
-**进入门禁**：先用 U2 shadow 结果统计 unresolved/clarification/正确命中变化。若补齐显式 glossary/alias 已达到批准的目标，U3 维持暂缓；不得仅因为 TIS 存在四路召回就实施。
+**进入门禁**：先用 U2 的固定回放数据统计 unresolved/clarification/正确命中变化。若补齐显式 glossary/alias 已达到批准的目标，U3 维持暂缓；不得仅因为 TIS 存在四路召回就实施，也不得为对照保留旧 runtime resolver。
 
 **主要路径**：
 
@@ -318,7 +320,7 @@ flowchart TB
 - **生命周期**：Published Release 发布后构建词汇与图投影；schema drift 落库后异步生成影响候选；候选验证与人工接受后才发布新版本。
 - **缓存与一致性**：缓存键至少包含 workspace、datasource、semantic release hash、schema snapshot hash、policy hash；发布或漂移后旧缓存不可被新请求复用。
 - **可观测性**：记录公开 artifact id/hash、命中类型、候选数、裁剪数、fallback reason、延迟和投影 checkpoint；不记录用户原问题全文、原始 prompt/SQL/rows/DSN。
-- **向后兼容**：先新增 contract 读兼容，再双读比较，最后启用新 resolver；旧 reason code 在过渡期保留映射，避免既有消费者立即破坏。
+- **单版本切换**：contract、authority、resolver、consumer 与 fixture 同批原子切换；删除旧 reason code 映射、旧读路径和兼容导出。评估对照只使用固定 fixture/Falcon artifact，不在运行时双读或双算。
 
 ### 8.1 计划级威胁模型
 
@@ -338,7 +340,7 @@ flowchart TB
 - 词汇优先级、歧义、去重、同名跨 kind、未发布隔离；
 - schema operation → direct binding → dependency closure 的确定性映射；
 - 同一输入重复执行 artifact hash 一致。
-- v1/v2 resolved-context 并存期的 parse、commit、shadow comparison 与回退兼容。
+- current resolved-context 的 parse、commit、canonical hash、跨 release 拒绝，以及仓库内旧 schema/RPC/export 引用归零。
 
 ### 9.2 集成与故障测试
 
@@ -365,15 +367,15 @@ flowchart TB
 
 ## 10. 发布、回滚与运维
 
-1. **Shadow**：只计算 lexical/graph/binding impact 结果，落安全比较 artifact，不改变路由；
-2. **Lexical-on**：启用 U2，保留知识/图 shadow，观察歧义率与 exact regression；
-3. **Governed retrieval canary**：按 workspace allowlist 开启 U3；投影故障自动回到 lexical-only；
+1. **离线门禁**：在固定 fixture/Falcon 中比较 exact 与 lexical，不运行旧 resolver 生产分支；
+2. **Lexical cutover**：contracts、authority、resolver 与消费者原子切换到唯一当前版本；
+3. **Governed retrieval gate**：只有离线缺口门禁批准后才实现 U3；投影故障在当前版本内降级到 lexical authority；
 4. **Binding impact preview**：仅展示和创建 Candidate，不允许自动应用；
-5. **General availability**：Falcon/Test Center 与稳定性门禁通过后扩大范围。
+5. **General availability**：Falcon/Test Center、稳定性与安全门禁通过后完成交付。
 
-回滚通过关闭能力标志、停止消费新 evidence kind、回到 exact-only resolver 完成；PostgreSQL 发布语义和 drift event 不需要回滚。新 artifact 保留只读审计，不做破坏性删除。若 contract 已被外部消费者采用，先恢复旧读路径，再按版本弃用流程处理。
+代码回滚只能回退整个 scoped commit，不保留运行时旧实现、feature flag 或 compatibility adapter。已产生的新 artifact 保留只读审计；Published Release 与 drift event 不做破坏性回写。若 current contract 已被外部消费者采用，必须在同一变更中更新该消费者，不能恢复旧读路径。
 
-数据库变更全部 forward-only：不得修改已安装的 `10663` resolved-context migration 或历史 schema-drift migration。`10705/10706` 只是当前快照下的暂定编号，实施开始时必须重新扫描 migration inventory；若已被占用，source directory、renderer、rendered migration、ledger 和测试引用整体顺延。
+数据库变更全部 forward-only：不得修改已安装的 `10663` resolved-context migration 或历史 schema-drift migration。`10705/10706` 只是当前快照下的暂定编号，实施开始时必须重新扫描 migration inventory；若已被占用，source directory、renderer、rendered migration、ledger 和测试引用整体顺延。新 DDL 不搬运旧数据，并显式删除不再使用的旧 runtime RPC/表面。
 
 ## 11. 风险与缓解
 
