@@ -33,11 +33,12 @@
 - 返回 `SemanticRetrievalReceipt@1` 与 `SemanticInferenceReceipt@1`，包括候选来源、分数、扩展路径、规则、截枝与降级原因。
 - Neo4j/vector 不可用时回退 PostgreSQL，但必须披露路线降级；不得返回 deferred 占位。
 
-### R3. Resolved context and analysis planning
+### R3. Semantic context and analysis program
 
-- `ResolvedContextPackage@3` 承载检索/推断回执、mandatory closure 与分析能力；迁移完成后删除 V2 reader 与旧 resolver，运行时只保留 V3。
-- `AnalysisPlan@2` 支持多输入、多指标、依赖 DAG、数据质量节点、模型生成 Python 节点、Oracle 节点和公开结论节点。
+- 唯一 `SemanticContextPackage@1` 承载检索/推断回执、mandatory closure 与分析能力；不包装或读取任何旧 Resolved Context 合同。
+- 唯一 `AnalysisProgram@1` 支持多输入、多指标、依赖 DAG、数据质量节点、模型生成 Python 节点、Oracle 节点和公开结论节点。
 - 所有分析绑定 frozen datasource/schema/semantic release/policy/model/runtime/frontier；漂移产生新 revision，不静默复用。
+- 最终运行时只有一个语义解析入口和一个分析执行入口；旧合同、resolver、planner、reader、adapter、fixture 与 dead tests 必须删除。
 
 ### R4. Falcon24 semantic assets
 
@@ -78,9 +79,9 @@
 
 - PostgreSQL Published Semantic Release/Resolved Context 是权威；Neo4j、向量和稀疏索引均为可重建投影。
 - 不暴露 chain-of-thought、原始 provider payload、凭据、DSN、未授权行或密封答案。
-- 迁移期间允许短暂双轨以保持提交可验证；最终验收前删除 V2、AnalysisPlan@1、旧 resolver/reader 和 dead tests，生产运行时只保留唯一合同与实现。
+- 在隔离 worktree 内完成原子跨层切换；不实现双读、兼容 adapter、旧入口 fallback 或并存 feature flag。失败时整体回滚提交/迁移。
 - 配送与营销只报告调整后的统计关联，不声称因果。
-- 保持现有 Text2SQL 路径可用；各新能力独立 kill switch 和可降级。
+- Text2SQL 消费者在同一次原子切换中改用唯一 `SemanticContextPackage`；索引可降级，语义合同和解析入口不可降级到旧实现。
 
 ## Acceptance Criteria
 
@@ -91,7 +92,7 @@
 - [ ] U5 五题 suite 达到 5/5，且每题有独立 Oracle、生成 Python 证据、正确结论级别和完整限制披露。
 - [ ] 同一 frozen input 重放得到相同规范化 plan/evidence/result hash；权限、版本或 frontier 漂移 fail closed。
 - [ ] 公开 UI/事件只展示接受后的安全投影，刷新与 replay 状态一致。
-- [ ] 依赖边界扫描证明不存在 V2/AnalysisPlan@1/旧 resolver 的生产引用，不存在双读、兼容 adapter 或同义长期 fallback。
+- [ ] 依赖边界扫描证明不存在 ResolvedContextPackage/V2/V3、AnalysisPlan、旧 resolver/planner 的生产引用，不存在双读、兼容 adapter 或同义 fallback。
 - [ ] 相关 package 单测、类型检查、跨层测试、`git diff --cached --check` 通过；所有任务改动以范围清晰的提交完成。
 
 ## Out of scope

@@ -1,66 +1,86 @@
-# Implementation plan: Falcon24 语义生命周期与 Agent 分析验收
+# Implementation plan: Falcon24 语义生命周期唯一实现
 
-## Ordered units
+## 执行状态
 
-- [x] U0 Baseline and task setup
-  - 固定 `dev@ec28800e`，记录 dirty-base 隔离和 overlap preflight。
-  - 读取相关 backend/frontend specs、既有语义/分析/沙箱/评测实现与历史 acceptance artifacts。
-  - 建立 scoped validation matrix 和每单元 commit 边界。
-- [x] U1 Semantic production lifecycle
-  - 增加 `SemanticAssertionCandidate@1`、`SemanticChangeSet@1`、provenance/conflict/validation contracts。
-  - 实现候选归一化、identity resolution、change compilation、deterministic validator 与 publish projection tests。
-  - 保持 PostgreSQL authority；本单元产物是候选实现，最终按 Semantica 评审方案并入唯一合同，不保留旧版本兼容。
-- [x] U2 Hybrid retrieval, inference and pruning
-  - 增加 retrieval/inference receipts 与探索性 `ResolvedContextPackage@3`；最终切换时由唯一 `SemanticContextPackage` 取代并删除包装器。
-  - 实现 route adapters、RRF、typed expansion、mandatory closure、budget pruning 和 PG fallback。
-  - 替换 deferred routes，补 golden/metamorphic/permission/frontier/degradation tests。
-- [ ] U3 Falcon24 semantic package
-  - 扩展 Falcon24 ontology/analysis semantics、公式、血缘、时间窗口、统计方法 applicability 和 data-quality assertions。
-  - 构建可重放 manifest/coverage，明确订单金额、库存双源和客户时序异常权威边界。
-  - 增加覆盖/identity/hash/schema-drift tests。
-- [ ] U4 DeepSeek generated Python path
-  - 增加固定 `deepseek-v4-flash` 的 `AnalysisProgramSourcePort` production adapter。
-  - 增加 AnalysisPlan@2 multi-input DAG、五题 program descriptors、static admission、一次修复和 receipt binding。
-  - 验证 provider payload redaction、profile non-escalation、sandbox zero-output 和 replay identity。
-- [ ] U5 Five-question acceptance and UI
-  - 建立 `falcon24-agent-analysis-suite@1` public/sealed fixtures 与五个独立 Oracle。
-  - 实现五题完整 Agent E2E、正确 association/HOLD projection、5/5 hard gate、每题 generated-Python gate。
-  - 将安全 report/receipt/limitations 投影到现有 Q&A/Test Center UI，并验证 live/refresh/replay 一致。
-- [ ] U6 Final review and integration
-  - 跑 contracts/semantic/research/evals/worker/platform/web/sandbox targeted tests、typecheck 与 cross-layer acceptance。
-  - 冷/暖各三次；记录外部 provider/DB 阻断时的准确 HOLD 证据，不用 fixture 冒充 live。
-  - 执行 correctness/security/maintainability/testing/agent-native review，修复所有 confirmed findings。
-  - 更新 durable specs，逐路径 stage，`git diff --cached --check`，完成 scoped commits。
-  - 删除 V2/AnalysisPlan@1/旧 resolver、reader、compat fixture 与 dead tests；运行依赖边界扫描证明唯一生产路径。
-  - 预检与 `dev` 的 merge-tree overlap，合并回 dirty base，恢复并复验用户原有改动。
+- [x] M0 固定基线、隔离 worktree、Falcon24 数据事实与 Semantica 固定快照。
+- [x] 探索提交：Candidate/ChangeSet 与 hybrid retrieval 原型。它们是实现证据，不是最终合同；V3 包装必须删除。
+- [ ] M1 唯一合同与权威切换。
+- [ ] M2 语义生产工厂。
+- [ ] M3 多路召回与血缘扩展。
+- [ ] M4 逻辑推理与闭包裁剪。
+- [ ] M5 DeepSeek Python Agent。
+- [ ] M6 Falcon24 五题验收、反馈迭代与旧路径删除。
+- [ ] Finish 全量检查、规范更新、提交、合并和 dirty-base 复验。
 
-> Semantica 固定提交 `6c2ccfd3afae2c12ba903c61c08a3c3b1970af45` 的源码评审后，后续实施以
-> `semantica-plan/0 大纲.md` 和 M1-M6 为准。U1/U2 中的版本包装只作为探索证据，不能进入最终生产态。
+后续实现以 `semantica-plan/0 大纲.md` 与 M1-M6 为唯一执行依据。旧 U1/U2 命名和任何 V2/V3、AnalysisPlan 兼容设计均不再有效。
+
+## M1 唯一合同与权威切换
+
+- 定义唯一 `SemanticContextPackage@1` 与 `AnalysisProgram@1`，内容寻址并绑定 release/schema/permission/evidence hashes。
+- 更新 contracts、semantic、Text2SQL、worker、platform、evals、web 全部消费者。
+- 在同一原子切换中删除 Resolved Context V2/V3、AnalysisPlan、旧 resolver/planner、reader、adapter、fixture 和导出。
+- 增加 architecture boundary test，禁止旧符号和第二入口重新出现。
+
+## M2 语义生产工厂
+
+- 统一 Knowledge/Schema/Lineage/Human/Model proposal 为 `SemanticAssertionCandidate` 和 `SemanticChangeSet`。
+- 完成 identity、conflict、shape、Formula AST、grain/join/time/policy/quality/cycle 校验。
+- 建立可执行 Competency Cases、人审冻结、PostgreSQL 发布事务、rollback/drift/binding-impact receipt。
+- 索引和图只订阅发布事件并可完整重建。
+
+## M3 多路召回与血缘扩展
+
+- 在每条 route 前执行 workspace/RBAC/published/valid-time/sensitivity/conflict 硬过滤。
+- 并行 exact alias、fuzzy/BM25、vector、typed graph，固定 RRF `k=60`。
+- 关系模板驱动 Formula/Join/Bind/Lineage/Time/Policy/Quality 扩展，上限 3 hop/80 nodes/160 edges。
+- 每个 route、路径、淘汰和降级进入 `SemanticRetrievalReceipt`。
+
+## M4 逻辑推理与闭包裁剪
+
+- 编译可终止、可解释的分层 Datalog/前向规则子集。
+- 为每个结论记录 premises/rule/release/valid-time，并支持 premise 失效传播。
+- 构造 mandatory closure；只裁 optional semantic clusters，保持路径连通。
+- mandatory closure 超预算时 fail/clarify，不返回残缺上下文。
+
+## M5 DeepSeek Python Agent
+
+- 固定 `deepseek-v4-flash` 的 `AnalysisProgramSourcePort`，只接收 bounded semantic/schema/evidence。
+- 每题至少一个真实 `MODEL_GENERATED` Python 节点；Arrow/Parquet 输入，无 DSN/凭据/全量原始行。
+- 完成 AST admission、固定 runtime/lock/seed、无网络 sandbox、资源预算、zero partial commit。
+- Attempt 0 保留；最多一次 scrubbed、非扩权 repair；独立 Oracle 决定接受。
+
+## M6 Falcon24 五题验收与唯一切换
+
+- 发布覆盖 9 表/70 字段、公式、Join、血缘、时间和异常规则的 Falcon24 Semantic Release。
+- 建立 public/sealed 分离的 `falcon24-agent-analysis-suite@1` 与五个独立 Oracle。
+- 完成五题 Web Agent E2E、安全 report/receipt/limitation projection、refresh/replay。
+- 达到 5/5、generated Python=5/5、冷 3 次+暖 3 次、flake=0、无硬 HOLD。
+- 将 miss/drift/Oracle failure 转为 Candidate，经 shadow+人审进入下一 Release。
+- 运行旧符号/依赖扫描并删除所有旧路径；Neo4j/vector/sparse 删除后可从 PostgreSQL 重建。
 
 ## Validation matrix
 
-- Contracts: `pnpm --filter @data-agent/contracts build && pnpm --filter @data-agent/contracts test:unit`
-- Semantic: `pnpm --filter @data-agent/semantic build && pnpm --filter @data-agent/semantic test:unit`
-- Research/Sandbox: targeted Vitest plus `services/sandbox` policy/runtime tests and runtime attestation.
-- Evals: Falcon24 suite public/sealed boundary, five Oracles, adversarial and replay suites.
-- Worker/Platform: provider adapter, planner/executor, repair/fence/idempotency and cross-layer suites.
-- Web: report/receipt/limitation projection tests plus browser acceptance when the stack is available.
-- Release: 5/5, generated Python=5/5, model profile exact match, 3 cold + 3 warm, flake=0, no hard HOLD.
-- Git: `git diff --check`, explicit staging, `git diff --cached --check`, scoped commit log, merge-tree preflight.
+- Contracts: build、unit、architecture boundary。
+- Semantic: production/retrieval/inference/pruning golden、metamorphic、permission、frontier、degradation。
+- Worker/Platform/Text2SQL: context/program binding、provider、repair、fence、idempotency、public projection。
+- Sandbox: policy、attestation、timeout/OOM/cancel/malicious/zero-output、replay identity。
+- Evals: public/sealed boundary、五个 Oracle、adversarial、cold/warm replay。
+- Web: Test Center 和 Q&A 全 Agent browser acceptance。
+- Git: `git diff --check`、显式 staging、`git diff --cached --check`、merge-tree overlap preflight。
 
 ## Commit boundaries
 
-1. `chore(task): plan Falcon24 semantic lifecycle acceptance`
-2. `feat(semantic): govern assertion production lifecycle`
-3. `feat(semantic): retrieve and infer bounded semantic context`
+1. `refactor(semantic): establish unique context and program contracts`
+2. `feat(semantic): publish governed semantic lifecycle`
+3. `feat(semantic): compile bounded retrieval and inference context`
 4. `feat(falcon): publish analysis semantics for db24`
-5. `feat(analysis): execute DeepSeek generated Python plans`
+5. `feat(analysis): execute DeepSeek generated Python programs`
 6. `test(evals): certify Falcon24 agent analysis suite`
 7. `chore(task): close Falcon24 semantic lifecycle acceptance`
 
 ## Rollback points
 
-- 最终跨层切换作为一个原子提交/迁移回滚，不保留旧合同双读或 runtime adapter。
-- 未通过 route/projection gate 时保持新 Release HOLD，不启用唯一入口；不是回退到旧 resolver。
-- 未通过 generated-code gate 时保持 AnalysisProgram HOLD，不用旧 AnalysisPlan 代跑。
-- 未通过 5/5 时保持 suite/release HOLD，不删除证据，也不宣称完成唯一切换。
+- 原子合同切换未通过完整门禁时不合并；已切换后只允许整体 Git/数据库迁移回滚。
+- 索引故障在同一新编译器中使用 PostgreSQL 权威数据并记录 DEGRADED，不调用旧 resolver。
+- Provider/Sandbox/Oracle 未通过时 AnalysisProgram 保持 HOLD，不用模板或旧 AnalysisPlan 代跑。
+- 五题未达 5/5 时 Release 保持 HOLD，证据保留，任务不完成。

@@ -2,14 +2,14 @@
 
 ## Authority and versioning
 
-PostgreSQL Published Semantic Release、Schema Snapshot、Policy Snapshot 和 Resolved Context Package 是运行权威。知识、Schema、旧版本、
+PostgreSQL Published Semantic Release、Schema Snapshot、Policy Snapshot 和 `SemanticContextPackage` 是运行权威。知识、Schema、旧版本、
 用户编辑和模型结果先归一化成 `SemanticAssertionCandidate@1`，再聚合为 `SemanticChangeSet@1`。确定性 validator 与人审冻结 exact
 revision 后才形成新 release。Neo4j、vector、sparse 和 lexicon index 均由 release event 重建，索引失败不回滚权威发布，但消费路径
 必须记录降级。
 
-`ResolvedContextPackage@3` 在迁移切片中可暂时包装 V2 核心字段以便逐层编译，但最终会吸收权威字段并删除 V2 schema、builder、reader
-和旧 resolver。`AnalysisPlan@2` 同样在所有消费者迁移后删除 AnalysisPlan@1。最终生产态只允许一个 Resolved Context 和一个
-Analysis Plan 合同；`SandboxProgram@1` 保持唯一且不另起平行版本。
+`SemanticContextPackage@1` 是唯一语义消费合同，`AnalysisProgram@1` 是唯一分析执行合同。隔离 worktree 内直接更新所有消费者并删除
+Resolved Context V2/V3、AnalysisPlan、旧 builder/reader/resolver/planner 与 adapter；没有包装、双读或运行时兼容期。`SandboxProgram@1`
+继续作为 AnalysisProgram 的隔离执行载荷，不另起平行分析合同。
 
 ## Production pipeline
 
@@ -37,14 +37,14 @@ Knowledge/Schema/Published/Agent
 5. 对 top seeds 按类型注册表扩展最多 3 hop/80 nodes/160 edges。
 6. 规则引擎构造 Formula、Join、lineage、time、quality、policy 和 selected-evidence mandatory closure。
 7. 预算截枝先删除低分 optional paths；mandatory closure 不截。闭包超预算时 fail closed，不返回残缺上下文。
-8. 生成可 hash 的 `SemanticRetrievalReceipt@1`、`SemanticInferenceReceipt@1` 和 RCP@3。
+8. 生成可 hash 的 `SemanticRetrievalReceipt@1`、`SemanticInferenceReceipt@1` 和唯一 `SemanticContextPackage@1`。
 
 图规则采用显式 allowlist：Formula dependency、Metric subject、Dimension hierarchy、Physical binding、Join、Lineage、Quality constraint。
 OWL 风格规则只运行已注册、安全且可解释的有限子集；推断结论必须带 rule id、premises 和 path。
 
 ## Falcon24 analysis flow
 
-每题先由语义解析得到 RCP@3，再由 planner 生成 AnalysisPlan@2：
+每题先由唯一语义解析入口得到 `SemanticContextPackage@1`，再编译唯一 `AnalysisProgram@1`：
 
 ```text
 governed SQL inputs -> bounded artifacts -> DeepSeek source generation
@@ -75,13 +75,13 @@ downgrade、program/runtime/receipt hashes。LLM confidence 不参与 pass/fail�
 
 ## Failure and rollback
 
-- route/index failure：允许 PostgreSQL lexical/relationship fallback，receipt 明示 DEGRADED；mandatory closure 不完整则 HOLD。
+- route/index failure：允许同一新编译器内使用 PostgreSQL 权威数据完成检索，receipt 明示 DEGRADED；不得调用旧 resolver，mandatory closure 不完整则 HOLD。
 - semantic conflict、formula/join/ACL/frontier drift：fail closed 并产生新 Candidate/plan revision。
 - provider unavailable：节点 HOLD，不用模板冒充生成 Python。
 - policy/sandbox/output/oracle failure：zero partial commit；最多一次等能力 repair；再次失败 HOLD/PARTIAL。
-- 任一 suite hard gate 失败：release HOLD；Text2SQL 和已发布 V2 路径保持可用。
-- 新能力按 production、retrieval、generated-python、suite 分别 kill switch；回滚只关闭投影/执行，不删除 Published authority 或历史 evidence。
-- 回滚通过 Git/发布版本和数据迁移恢复，不在运行时保留永久双读、旧 reader 或兼容 adapter。
+- 任一 suite hard gate 失败：新 release HOLD，原子切换不得合并或发布；不能用旧路径冒充可用。
+- Neo4j/vector/sparse 投影可独立关闭并由 PostgreSQL 重建；语义合同与执行入口没有双轨 kill switch。
+- 回滚通过 Git、发布版本和数据迁移整体恢复，不在运行时保留双读、旧 reader 或兼容 adapter。
 
 ## Security and public projection
 
