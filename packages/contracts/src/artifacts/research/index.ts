@@ -1,5 +1,5 @@
-export * from "./controlled-fixture.js";
 export * from "./analysis.js";
+export * from "./controlled-fixture.js";
 export * from "./coverage.js";
 export * from "./derivation-primitives.js";
 export * from "./derivation-wire.js";

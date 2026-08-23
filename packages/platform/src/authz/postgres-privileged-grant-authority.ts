@@ -6,13 +6,13 @@ import {
   type PortResult,
   sha256ContentHash,
 } from "@data-agent/contracts";
+import { createPostgresTeamRunStore } from "../agents/postgres-team-run-store.js";
 import {
   PersistenceBoundaryError,
   type SqlPool,
   withAppTransaction,
 } from "../persistence/transaction.js";
 import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
-import { createPostgresTeamRunStore } from "../agents/postgres-team-run-store.js";
 
 interface JsonValueRow {
   readonly value: unknown;

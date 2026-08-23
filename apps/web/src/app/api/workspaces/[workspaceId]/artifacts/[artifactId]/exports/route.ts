@@ -12,8 +12,8 @@ import {
   ArtifactWorkspaceError,
   createArtifactWorkspaceService,
 } from "@/lib/artifact-workspace-service";
-import { getWorkspaceAuthority, getWorkspaceSqlPool } from "@/lib/workspace-identity";
 import { getWorkspaceJobQueue } from "@/lib/job-center";
+import { getWorkspaceAuthority, getWorkspaceSqlPool } from "@/lib/workspace-identity";
 import { authorizeWorkspaceRequest, workspaceErrorResponse } from "@/lib/workspace-request";
 
 function workspaceService() {

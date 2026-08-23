@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { createGunzip, createGzip } from "node:zlib";
 import { z } from "zod";
@@ -68,7 +68,11 @@ export const bundleEntrySchema = z.strictObject({
 export const bundleManifestSchema = z.strictObject({
   schemaVersion: z.literal("agenticdatabench-ecommerce-bundle-manifest@1"),
   sourceManifestSha256: digestSchema,
-  compression: z.strictObject({ algorithm: z.literal("gzip"), level: z.literal(9), mtime: z.literal(0) }),
+  compression: z.strictObject({
+    algorithm: z.literal("gzip"),
+    level: z.literal(9),
+    mtime: z.literal(0),
+  }),
   totalCompressedBytes: z.number().int().positive().max(MAX_BUNDLE_BYTES),
   entries: z.array(bundleEntrySchema).length(12),
   bundleDigest: digestSchema,
@@ -108,7 +112,10 @@ function assertContained(root: string, candidate: string): string {
   return absoluteCandidate;
 }
 
-async function countRecords(chunks: AsyncIterable<Buffer | string>, format: "csv" | "jsonl"): Promise<number> {
+async function countRecords(
+  chunks: AsyncIterable<Buffer | string>,
+  format: "csv" | "jsonl",
+): Promise<number> {
   let count = 0;
   let sawByte = false;
   let finalByte = -1;
@@ -136,7 +143,11 @@ async function gzipDeterministic(source: string, destination: string): Promise<v
 }
 
 function computeBundleDigest(entries: BundleManifest["entries"]): string {
-  return sha256(canonicalJson(entries.map(({ id, path, compressedSha256 }) => ({ id, path, compressedSha256 }))));
+  return sha256(
+    canonicalJson(
+      entries.map(({ id, path, compressedSha256 }) => ({ id, path, compressedSha256 })),
+    ),
+  );
 }
 
 export async function readSourceManifest(path: string): Promise<SourceManifest> {
@@ -147,13 +158,17 @@ export async function readBundleManifest(path: string): Promise<BundleManifest> 
   return bundleManifestSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
 }
 
-export async function buildBundle(sourceDirectory: string, outputDirectory: string): Promise<BundleManifest> {
+export async function buildBundle(
+  sourceDirectory: string,
+  outputDirectory: string,
+): Promise<BundleManifest> {
   const sourceManifestPath = join(outputDirectory, "source-manifest.json");
   const sourceManifest = await readSourceManifest(sourceManifestPath);
   const sourceIds = new Set<string>();
   const sourcePaths = new Set<string>();
   for (const entry of sourceManifest.sources) {
-    if (sourceIds.has(entry.id) || sourcePaths.has(entry.bundlePath)) throw new Error(`SOURCE_DUPLICATE: ${entry.id}`);
+    if (sourceIds.has(entry.id) || sourcePaths.has(entry.bundlePath))
+      throw new Error(`SOURCE_DUPLICATE: ${entry.id}`);
     sourceIds.add(entry.id);
     sourcePaths.add(entry.bundlePath);
   }
@@ -164,8 +179,10 @@ export async function buildBundle(sourceDirectory: string, outputDirectory: stri
     const actualStat = await stat(sourcePath);
     const actualHash = await hashFile(sourcePath);
     const actualRows = await countRecords(createReadStream(sourcePath), source.format);
-    if (actualStat.size !== source.materializedBytes) throw new Error(`SOURCE_SIZE_MISMATCH: ${source.id}`);
-    if (actualHash !== source.materializedSha256) throw new Error(`SOURCE_HASH_MISMATCH: ${source.id}`);
+    if (actualStat.size !== source.materializedBytes)
+      throw new Error(`SOURCE_SIZE_MISMATCH: ${source.id}`);
+    if (actualHash !== source.materializedSha256)
+      throw new Error(`SOURCE_HASH_MISMATCH: ${source.id}`);
     if (actualRows !== source.rows) throw new Error(`SOURCE_ROW_COUNT_MISMATCH: ${source.id}`);
     if (source.materialization === "head_physical_records" && actualRows !== source.recordLimit) {
       throw new Error(`SOURCE_SLICE_ORDER_MISMATCH: ${source.id}`);
@@ -174,7 +191,8 @@ export async function buildBundle(sourceDirectory: string, outputDirectory: stri
     const destination = assertContained(outputDirectory, source.bundlePath);
     await gzipDeterministic(sourcePath, destination);
     const compressedStat = await stat(destination);
-    if (compressedStat.size > MAX_CHUNK_BYTES) throw new Error(`BUNDLE_CHUNK_TOO_LARGE: ${source.id}`);
+    if (compressedStat.size > MAX_CHUNK_BYTES)
+      throw new Error(`BUNDLE_CHUNK_TOO_LARGE: ${source.id}`);
     entries.push({
       id: source.id,
       path: source.bundlePath,
@@ -197,7 +215,11 @@ export async function buildBundle(sourceDirectory: string, outputDirectory: stri
     entries,
     bundleDigest: computeBundleDigest(entries),
   });
-  await writeFile(join(outputDirectory, "bundle-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await writeFile(
+    join(outputDirectory, "bundle-manifest.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   return manifest;
 }
 
@@ -207,7 +229,8 @@ export async function verifyBundle(bundleDirectory: string): Promise<BundleManif
   if (manifest.sourceManifestSha256 !== sha256(canonicalJson(sourceManifest))) {
     throw new Error("BUNDLE_SOURCE_MANIFEST_MISMATCH");
   }
-  if (manifest.bundleDigest !== computeBundleDigest(manifest.entries)) throw new Error("BUNDLE_DIGEST_MISMATCH");
+  if (manifest.bundleDigest !== computeBundleDigest(manifest.entries))
+    throw new Error("BUNDLE_DIGEST_MISMATCH");
   const ids = new Set<string>();
   let total = 0;
   for (const entry of manifest.entries) {
@@ -215,8 +238,10 @@ export async function verifyBundle(bundleDirectory: string): Promise<BundleManif
     ids.add(entry.id);
     const path = assertContained(bundleDirectory, entry.path);
     const actualStat = await stat(path);
-    if (actualStat.size !== entry.compressedBytes) throw new Error(`BUNDLE_SIZE_MISMATCH: ${entry.id}`);
-    if ((await hashFile(path)) !== entry.compressedSha256) throw new Error(`BUNDLE_HASH_MISMATCH: ${entry.id}`);
+    if (actualStat.size !== entry.compressedBytes)
+      throw new Error(`BUNDLE_SIZE_MISMATCH: ${entry.id}`);
+    if ((await hashFile(path)) !== entry.compressedSha256)
+      throw new Error(`BUNDLE_HASH_MISMATCH: ${entry.id}`);
     total += actualStat.size;
 
     const hash = createHash("sha256");
@@ -237,7 +262,8 @@ export async function verifyBundle(bundleDirectory: string): Promise<BundleManif
       })(),
       source.format,
     );
-    if (bytes !== entry.materializedBytes) throw new Error(`BUNDLE_OUTPUT_SIZE_MISMATCH: ${entry.id}`);
+    if (bytes !== entry.materializedBytes)
+      throw new Error(`BUNDLE_OUTPUT_SIZE_MISMATCH: ${entry.id}`);
     if (`sha256:${hash.digest("hex")}` !== entry.materializedSha256) {
       throw new Error(`BUNDLE_OUTPUT_HASH_MISMATCH: ${entry.id}`);
     }
@@ -248,7 +274,10 @@ export async function verifyBundle(bundleDirectory: string): Promise<BundleManif
 }
 
 export function defaultBundleDirectory(): string {
-  return resolve(dirname(new URL(import.meta.url).pathname), "../../infra/agenticdatabench/ecommerce-v1");
+  return resolve(
+    dirname(new URL(import.meta.url).pathname),
+    "../../infra/agenticdatabench/ecommerce-v1",
+  );
 }
 
 export function formatBundleSummary(manifest: BundleManifest): string {

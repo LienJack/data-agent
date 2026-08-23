@@ -1,23 +1,25 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  FIXED_DATASET_REVISION,
-  FIXED_REPOSITORY_COMMIT,
   buildBundle,
   bundleManifestSchema,
   canonicalJson,
+  FIXED_DATASET_REVISION,
+  FIXED_REPOSITORY_COMMIT,
+  type SourceManifest,
   sha256,
   sourceManifestSchema,
   verifyBundle,
-  type SourceManifest,
 } from "../scripts/lib/agenticdatabench-ecommerce-bundle.js";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })));
+  await Promise.all(
+    temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
+  );
 });
 
 function sourceManifest(content: string): SourceManifest {
@@ -33,7 +35,11 @@ function sourceManifest(content: string): SourceManifest {
       revision: FIXED_DATASET_REVISION,
       declaredLicense: "apache-2.0",
     },
-    slicePolicy: { order: "physical_file_order", amazonRecordLimit: 10_000, lineEnding: "preserve_upstream" },
+    slicePolicy: {
+      order: "physical_file_order",
+      amazonRecordLimit: 10_000,
+      lineEnding: "preserve_upstream",
+    },
     sources: Array.from({ length: 12 }, (_, index) => ({
       id: `source_${index.toString().padStart(2, "0")}`,
       upstreamPath: `fixed/source-${index}.csv`,
@@ -53,7 +59,12 @@ function sourceManifest(content: string): SourceManifest {
   };
 }
 
-async function fixture(): Promise<{ root: string; source: string; output: string; manifest: SourceManifest }> {
+async function fixture(): Promise<{
+  root: string;
+  source: string;
+  output: string;
+  manifest: SourceManifest;
+}> {
   const root = await mkdtemp(join(tmpdir(), "adb-ecommerce-bundle-"));
   temporaryDirectories.push(root);
   const source = join(root, "source");
@@ -61,8 +72,14 @@ async function fixture(): Promise<{ root: string; source: string; output: string
   await Promise.all([mkdir(source), mkdir(output)]);
   const content = "value\n1\n";
   const manifest = sourceManifest(content);
-  await Promise.all(manifest.sources.map((entry) => writeFile(join(source, entry.sourceFile), content, "utf8")));
-  await writeFile(join(output, "source-manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  await Promise.all(
+    manifest.sources.map((entry) => writeFile(join(source, entry.sourceFile), content, "utf8")),
+  );
+  await writeFile(
+    join(output, "source-manifest.json"),
+    `${JSON.stringify(manifest, null, 2)}\n`,
+    "utf8",
+  );
   return { root, source, output, manifest };
 }
 
@@ -71,7 +88,10 @@ describe("AgenticDataBench E-commerce bundle contracts", () => {
     const manifest = sourceManifest("value\n1\n");
     expect(() => sourceManifestSchema.parse({ ...manifest, unexpected: true })).toThrow();
     expect(() =>
-      sourceManifestSchema.parse({ ...manifest, dataset: { ...manifest.dataset, revision: "moving-main" } }),
+      sourceManifestSchema.parse({
+        ...manifest,
+        dataset: { ...manifest.dataset, revision: "moving-main" },
+      }),
     ).toThrow();
   });
 
@@ -115,15 +135,25 @@ describe("AgenticDataBench E-commerce bundle contracts", () => {
   it("rejects source hash and row-count drift", async () => {
     const hashFixture = await fixture();
     await writeFile(join(hashFixture.source, "source-0.csv"), "value\n2\n", "utf8");
-    await expect(buildBundle(hashFixture.source, hashFixture.output)).rejects.toThrow("SOURCE_HASH_MISMATCH");
+    await expect(buildBundle(hashFixture.source, hashFixture.output)).rejects.toThrow(
+      "SOURCE_HASH_MISMATCH",
+    );
 
     const rowFixture = await fixture();
     const changed = {
       ...rowFixture.manifest,
-      sources: rowFixture.manifest.sources.map((entry, index) => (index === 0 ? { ...entry, rows: 2 } : entry)),
+      sources: rowFixture.manifest.sources.map((entry, index) =>
+        index === 0 ? { ...entry, rows: 2 } : entry,
+      ),
     };
-    await writeFile(join(rowFixture.output, "source-manifest.json"), JSON.stringify(changed), "utf8");
-    await expect(buildBundle(rowFixture.source, rowFixture.output)).rejects.toThrow("SOURCE_ROW_COUNT_MISMATCH");
+    await writeFile(
+      join(rowFixture.output, "source-manifest.json"),
+      JSON.stringify(changed),
+      "utf8",
+    );
+    await expect(buildBundle(rowFixture.source, rowFixture.output)).rejects.toThrow(
+      "SOURCE_ROW_COUNT_MISMATCH",
+    );
   });
 
   it("builds reproducibly and detects compressed-byte tampering", async () => {
@@ -139,7 +169,9 @@ describe("AgenticDataBench E-commerce bundle contracts", () => {
     const secondManifest = await buildBundle(first.source, secondOutput);
     expect(canonicalJson(secondManifest)).toBe(canonicalJson(firstManifest));
     for (const entry of firstManifest.entries) {
-      expect(await readFile(join(secondOutput, entry.path))).toEqual(await readFile(join(first.output, entry.path)));
+      expect(await readFile(join(secondOutput, entry.path))).toEqual(
+        await readFile(join(first.output, entry.path)),
+      );
     }
     await verifyBundle(first.output);
 

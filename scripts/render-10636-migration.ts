@@ -27,13 +27,19 @@ const repositoryRoot = resolve(import.meta.dirname, "..");
 const appRoot = resolve(repositoryRoot, "infra/supabase/apps/data-agent");
 const sourceDirectory = resolve(appRoot, "migration-sources/10636");
 const migrationPath = resolve(appRoot, "migrations", MIGRATION_NAME);
-if (!existsSync(sourceDirectory)) throw new Error(`10636 source directory missing: ${sourceDirectory}`);
-const actual = readdirSync(sourceDirectory).filter((entry) => entry.endsWith(".sql.inc")).sort();
+if (!existsSync(sourceDirectory))
+  throw new Error(`10636 source directory missing: ${sourceDirectory}`);
+const actual = readdirSync(sourceDirectory)
+  .filter((entry) => entry.endsWith(".sql.inc"))
+  .sort();
 if (JSON.stringify(actual) !== JSON.stringify([...SOURCE_SEGMENTS].sort())) {
   throw new Error(`10636 source segment closure mismatch: actual=${actual.join(",")}`);
 }
-const body = SOURCE_SEGMENTS.map((segment) => normalize(readFileSync(resolve(sourceDirectory, segment), "utf8"))).join("");
-if (body.split(CHECKSUM_PLACEHOLDER).length - 1 !== 1) throw new Error("checksum placeholder must appear exactly once");
+const body = SOURCE_SEGMENTS.map((segment) =>
+  normalize(readFileSync(resolve(sourceDirectory, segment), "utf8")),
+).join("");
+if (body.split(CHECKSUM_PLACEHOLDER).length - 1 !== 1)
+  throw new Error("checksum placeholder must appear exactly once");
 const bodyWithZero = body.replace(CHECKSUM_PLACEHOLDER, ZERO_CHECKSUM);
 const normalized = `-- adb_ecommerce_demo_migration_checksum: ${ZERO_CHECKSUM}\n${bodyWithZero}`;
 const checksum = sha256(normalized);

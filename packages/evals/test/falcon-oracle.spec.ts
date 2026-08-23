@@ -87,7 +87,10 @@ describe("FalconResultOracle", () => {
       ],
     });
     const result = await evaluate(
-      executor({ columns: ["carrier", "average_days"], rows: [["DHL", 4.5011049723756906]] }),
+      executor({
+        columns: ["carrier", "average_days"],
+        rows: [["DHL", Number("4.5011049723756906")]],
+      }),
       rounded,
     );
     expect(result.verdict).toBe("PASS");

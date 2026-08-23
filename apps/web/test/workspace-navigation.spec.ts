@@ -40,9 +40,7 @@ describe("workspace role navigation", () => {
     const items = navigationForWorkspace(access("VIEWER", ["WORKSPACE_RESULT_READ"]));
     expect(items.map((item) => item.label)).toEqual(["能力测试", "任务中心", "语义浏览器"]);
     expect(items[0]?.href).toBe("/w/00000000-0000-4000-8000-00000000aa11/tests");
-    expect(items.at(-1)?.href).toBe(
-      "/w/00000000-0000-4000-8000-00000000aa11/semantic/explorer",
-    );
+    expect(items.at(-1)?.href).toBe("/w/00000000-0000-4000-8000-00000000aa11/semantic/explorer");
   });
 
   it("shows workspace administration only when the parsed projection allows it", () => {

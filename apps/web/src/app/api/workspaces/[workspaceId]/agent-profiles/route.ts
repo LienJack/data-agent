@@ -24,10 +24,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
   const authorized = await authorizeWorkspaceRequest(request, workspaceId, "READ");
   if (!authorized.ok) return workspaceErrorResponse(authorized.error);
   const enabledOnly = request.nextUrl.searchParams.get("enabled_only") === "true";
-  const result = await getAgentProfileRegistry().list(
-    authorized.value.capability,
-    enabledOnly,
-  );
+  const result = await getAgentProfileRegistry().list(authorized.value.capability, enabledOnly);
   return result.ok
     ? NextResponse.json({
         data: {
@@ -65,10 +62,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     expected_head_version: input.data.expected_head_version,
     target_lifecycle: input.data.target_lifecycle,
   });
-  const result = await getAgentProfileRegistry().commit(
-    authorized.value.capability,
-    command,
-  );
+  const result = await getAgentProfileRegistry().commit(authorized.value.capability, command);
   return result.ok
     ? NextResponse.json({ data: result.value }, { status: 201 })
     : workspaceErrorResponse(result.error);

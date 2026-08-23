@@ -23,7 +23,9 @@ const sourceRoot = resolve(appRoot, "migration-sources/10675");
 const output = resolve(appRoot, "migrations", MIGRATION_NAME);
 
 if (!existsSync(sourceRoot)) throw new Error("10675 source missing");
-const actual = readdirSync(sourceRoot).filter((entry) => entry.endsWith(".sql.inc")).sort();
+const actual = readdirSync(sourceRoot)
+  .filter((entry) => entry.endsWith(".sql.inc"))
+  .sort();
 if (JSON.stringify(actual) !== JSON.stringify([...SOURCE_SEGMENTS].sort())) {
   throw new Error(`10675 segment closure mismatch: ${actual.join(",")}`);
 }
