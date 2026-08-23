@@ -4,13 +4,17 @@
 
 - [x] M0 固定基线、隔离 worktree、Falcon24 数据事实与 Semantica 固定快照。
 - [x] 探索提交：Candidate/ChangeSet 与 hybrid retrieval 原型。它们是实现证据，不是最终合同；V3 包装必须删除。
-- [ ] M1 唯一合同与权威切换。
-- [ ] M2 语义生产工厂。
-- [ ] M3 多路召回与血缘扩展。
-- [ ] M4 逻辑推理与闭包裁剪。
+- [x] M1 唯一合同与权威切换。
+- [x] M2 语义生产工厂。
+- [x] M3 多路召回与血缘扩展。
+- [x] M4 逻辑推理与闭包裁剪。
 - [ ] M5 DeepSeek Python Agent。
 - [ ] M6 Falcon24 五题验收、反馈迭代与旧路径删除。
 - [ ] Finish 全量检查、规范更新、提交、合并和 dirty-base 复验。
+
+M5 当前已完成固定模型 Source Port、Provider 调用回执、一次 scrubbed repair、静态准入、Sandbox
+执行器、PostgreSQL Analysis Artifact Port 与五题生产路由。剩余工作是严格 QueryEvidence 物化、Sensitive
+Python Source 权威适配及真实 DeepSeek 冷暖运行；缺少凭据时必须保持 HOLD。
 
 后续实现以 `semantica-plan/0 大纲.md` 与 M1-M6 为唯一执行依据。旧 U1/U2 命名和任何 V2/V3、AnalysisPlan 兼容设计均不再有效。
 
