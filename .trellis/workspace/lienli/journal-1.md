@@ -945,3 +945,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 41: U5 商业权威退役与历史数据冻结
+
+**Date**: 2026-08-23
+**Task**: U5 商业权威退役与历史数据冻结
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+新增 10703 前向迁移，将 22 张历史价格、积分与账单表冻结为只读归档；删除旧商业 RPC 和 smoke，拆分独立 Model Control operation/audit authority，并以 PostgreSQL 17 验证非空历史行原样保留、拒写和备份恢复。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c041c21` | (see git log) |
+
+### Status
+
+[OK] **Completed**
