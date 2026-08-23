@@ -966,3 +966,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 42: U6 Semantic V2-only Runtime
+
+**Date**: 2026-08-23
+**Task**: U6 Semantic V2-only Runtime
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+统一 semantic-source-bundle@2 运行时内容与受控子路径，删除 V1 投影、候选自发布和 legacy governance surface，并以 10704 直接退役数据库 V1 authority。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c69712b` | (see git log) |
+
+### Status
+
+[OK] **Completed**
