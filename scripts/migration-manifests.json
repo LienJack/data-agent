@@ -1634,6 +1634,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10722",
+      "migration_name": "20260725010722_app_data_agent_semantic_context_jsonb_operator_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10722",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-jsonb-operator-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CONTEXT_JSONB_OPERATOR_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_context_jsonb_operator_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

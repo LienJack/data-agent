@@ -6,6 +6,10 @@ import { verifyMigrationInventory } from "../scripts/lib/workspace-migration-inv
 const root = resolve(import.meta.dirname, "..");
 const migrationRoot = resolve(root, "infra/supabase/apps/data-agent/migrations");
 const sourceRoot = resolve(root, "infra/supabase/apps/data-agent/migration-sources/10708");
+const operatorRepairRoot = resolve(
+  root,
+  "infra/supabase/apps/data-agent/migration-sources/10722",
+);
 const migrationName = "20260725010708_app_data_agent_semantic_context_cutover.sql";
 const migration = readFileSync(resolve(migrationRoot, migrationName), "utf8");
 
@@ -17,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010708");
+    expect(inventory.frontier).toBe("20260725010722");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -47,6 +51,22 @@ describe("10708 unique semantic lifecycle cutover", () => {
       "jsonb_array_length(requested#>'{package,mandatory_closure,object_ids}')>80",
     );
     expect(migration).toContain("hard_filter,excluded_objects");
+  });
+
+  it("types jsonb object-key subtraction without retaining a parallel commit function", () => {
+    const repair = readFileSync(
+      resolve(operatorRepairRoot, "20-jsonb-operator-repair.sql.inc"),
+      "utf8",
+    );
+    const postconditions = readFileSync(
+      resolve(operatorRepairRoot, "90-postconditions.sql.inc"),
+      "utf8",
+    );
+
+    expect(repair).toContain("commit_semantic_context_package(jsonb)");
+    expect(repair).toContain("'receipt_hash'::text");
+    expect(repair).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
+    expect(postconditions).toContain("SEMANTIC_CONTEXT_JSONB_OPERATOR_REPAIR_NOT_INSTALLED");
   });
 
   it("accepts AnalysisProgram only in the active artifact authority", () => {
