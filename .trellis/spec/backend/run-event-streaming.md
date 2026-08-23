@@ -56,6 +56,9 @@ GET /api/workspaces/:workspaceId/qa/conversations/:conversationId/trajectory
 - 新增 Agent identity/Artifact locator 时必须使用显式 v2 runtime/public schema；读取保留 v1 decoder 并规范化
   旧 Tool event，禁止在 `@1.0.0` 下静默增加 required keys 或改写历史 sequence。
 - 前端以 `(run_id, sequence)` 去重。Chat 的 Process Row 和 Trajectory 必须共享同一事件数组。
+- Web 的 cursor、重复帧过滤、重连次数、AbortController 和 terminal closure 统一由
+  `apps/web/src/lib/qa-run-stream.ts` 持有；Zustand Store 只消费 connection/event 投影，不得新增第二套
+  SSE while-loop。`sequence <= cursor` 的 replay frame 必须忽略。
 - 工具开始与完成通过 `call_id` 合并；安全 Input 来自 Start，Output/Duration/Status 来自终结事件。
 - Team Tool 使用 first-class `profile_id/task_id`，START/terminal identity 必须相等；terminal 的
   `artifact_refs` 只能引用已经提交且 exact scope/run/revision/hash 可验证的 Artifact，START 固定为空数组。

@@ -16,7 +16,7 @@ Questions to answer:
 - What are the patterns for derived state?
 -->
 
-(To be filled by the team)
+Q&A 使用 Zustand 保存跨组件 UI 状态，但持久化服务端状态仍来自严格 API/SSE Projection。
 
 ---
 
@@ -24,7 +24,9 @@ Questions to answer:
 
 <!-- Local state, global state, server state, URL state -->
 
-(To be filled by the team)
+- UI state：当前 Conversation、Inspector、Composer 和连接状态。
+- Server projection：Conversation directory、Run events、resource catalog；不得在浏览器重建权威绑定。
+- URL state：Workspace、Conversation 与 Inspector focus，必须通过既有 route helpers 同步。
 
 ---
 
@@ -32,7 +34,8 @@ Questions to answer:
 
 <!-- Criteria for promoting state to global -->
 
-(To be filled by the team)
+只有跨多个 Q&A surface 且需要在路由切换后保留的展示状态进入 `qa-store.ts`。协议状态机、网络重试、
+AbortController 和 sequence cursor 必须放在独立的 `qa-run-stream.ts`，通过 typed callback 投影给 Store。
 
 ---
 
@@ -40,7 +43,8 @@ Questions to answer:
 
 <!-- How server data is cached and synchronized -->
 
-(To be filled by the team)
+服务端 Run/Conversation 数据不在 Zustand 中成为第二权威。断线恢复使用服务端 `sequence`，重复事件按
+`run_id + sequence` 去重，terminal 后再读取最终 Run Projection 兜底。
 
 ---
 
@@ -48,4 +52,6 @@ Questions to answer:
 
 <!-- State management mistakes your team has made -->
 
-(To be filled by the team)
+- 在 Store action 内复制 SSE reconnect while-loop。
+- 用数组长度、时间戳或客户端计数器代替服务端 `sequence`。
+- Route、Store 和组件各自持有一套 Run terminal 推导。

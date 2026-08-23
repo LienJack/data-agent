@@ -43,6 +43,9 @@ datasource_id, model_profile_id, expected_resource_version
 - Q&A Run start 的浏览器请求只含 `question + idempotency_key`。Repository 从 Conversation 解析
   `datasource_id + model_profile_id + model_config_version + provider + model_id +
   datasource_binding_hash`，再原子写入 Run binding 与 User Message。
+- Q&A Run start 的 Next Route 只做授权、严格输入解析和 HTTP 映射；Conversation/version、附件冻结、
+  Defaults/selection/catalog、Effective Config 接受和权威 Run Projection 读取统一由
+  `apps/web/src/server/qa/start-question-run.ts` 持有。禁止在 Route 再装配第二套 PostgreSQL 用例。
 - 模型解析必须调用
   `platform.list_active_model_catalog(deployment_id, principal_id)`；Backend 事务不能直接读取无 RLS 的
   `model_catalog_entries`。

@@ -78,11 +78,13 @@ vi.mock("@/lib/workspace-run", () => ({
 }));
 
 let post: typeof import("../src/app/api/workspaces/[workspaceId]/qa/conversations/[conversationId]/runs/route").POST;
+let startQuestionRun: typeof import("../src/server/qa/start-question-run").startQuestionRun;
 
 beforeAll(async () => {
   ({ POST: post } = await import(
     "../src/app/api/workspaces/[workspaceId]/qa/conversations/[conversationId]/runs/route"
   ));
+  ({ startQuestionRun } = await import("../src/server/qa/start-question-run"));
 });
 
 beforeEach(() => {
@@ -211,6 +213,51 @@ describe("QA effective model selection", () => {
     );
 
     expect(response.status).toBe(400);
+    expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
+  });
+});
+
+describe("startQuestionRun use-case", () => {
+  const capability = {
+    principal: ids.principal,
+    scope: { tenant_id: ids.workspace },
+  };
+  const input = () => ({
+    capability,
+    conversation_id: ids.conversation,
+    files: [],
+    idempotency_key: "use-case-direct",
+    principal_id: ids.principal,
+    question: "统计订单数",
+    rollout_bootstrap_mode: undefined,
+    scope: {
+      app_id: "81000000-0000-4000-8000-000000000010",
+      environment: "test",
+      tenant_id: ids.workspace,
+    },
+    workspace_id: ids.workspace,
+  });
+
+  it("独立完成资源冻结、接受和权威投影读取", async () => {
+    await expect(startQuestionRun(input())).resolves.toEqual(
+      expect.objectContaining({
+        kind: "CREATED",
+        projection: { runId: ids.run, status: "QUEUED" },
+      }),
+    );
+    expect(mocks.resolveAndAccept).toHaveBeenCalledOnce();
+    expect(mocks.getRun).toHaveBeenCalledOnce();
+  });
+
+  it("对话不存在时在接受前失败关闭", async () => {
+    mocks.getConversation.mockResolvedValueOnce({ ok: true, value: null });
+
+    await expect(startQuestionRun(input())).resolves.toEqual(
+      expect.objectContaining({
+        error: expect.objectContaining({ code: "CONVERSATION_NOT_FOUND_OR_DENIED" }),
+        kind: "ERROR",
+      }),
+    );
     expect(mocks.resolveAndAccept).not.toHaveBeenCalled();
   });
 });

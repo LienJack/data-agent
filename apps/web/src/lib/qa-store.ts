@@ -24,13 +24,12 @@ import {
   fetchConversationTrajectory,
   getRun,
   resolveWorkspaceId,
-  streamRunEvents,
-  waitWithBackoff,
 } from "./api-client";
 import { fetchDataSources } from "./datasource-api";
 import type { DataSourceConnection } from "./datasource-types";
 import { answerText, mergePublicRunEvents, resumableRunFromReplay } from "./qa-event-assembler";
 import { replaceQAInspectorTargetInBrowser } from "./qa-inspector-target";
+import { createQaRunStream, type QaRunStreamSession } from "./qa-run-stream";
 import type {
   Conversation,
   CreateConversationInput,
@@ -307,7 +306,7 @@ function replayTerminalAnswer(events: readonly PublicRunEvent[], runId: string):
   return "分析执行完成。";
 }
 
-let activeStreamController: AbortController | null = null;
+let activeStreamSession: QaRunStreamSession | null = null;
 let directoryRequestGeneration = 0;
 
 export function acceptsRunStreamFrame(
@@ -325,72 +324,56 @@ async function attachReplayRunStream(
   conversationId: string,
   initialCursor: number,
 ): Promise<void> {
-  if (activeStreamController && useQAStore.getState().activeRunId === runId) return;
-  activeStreamController?.abort();
-  const controller = new AbortController();
-  activeStreamController = controller;
-  let cursor = initialCursor;
-  let terminal = false;
-  let attempt = 0;
+  if (activeStreamSession && useQAStore.getState().activeRunId === runId) return;
+  activeStreamSession?.abort();
   if (useQAStore.getState().activeConversationId !== conversationId) return;
   useQAStore.setState({ activeRunId: runId, connection: "connecting" });
+  const session = createQaRunStream({
+    initial_cursor: initialCursor,
+    onConnection: (connection) => useQAStore.setState({ connection }),
+    onEvent: (event) => {
+      useQAStore.setState((state) => {
+        if (
+          !acceptsRunStreamFrame(
+            state.activeConversationId,
+            state.activeRunId,
+            conversationId,
+            runId,
+          )
+        ) {
+          return {};
+        }
+        const events = mergePublicRunEvents(state.events, [event]);
+        const content = answerText(events, runId);
+        return {
+          events,
+          messages: state.messages.map((message) =>
+            message.role === "agent" && message.runId === runId
+              ? { ...message, content: content || message.content }
+              : message,
+          ),
+        };
+      });
+    },
+    run_id: runId,
+    workspace_id: workspaceId,
+  });
+  activeStreamSession = session;
   try {
-    while (!terminal && !controller.signal.aborted) {
-      try {
-        useQAStore.setState({ connection: attempt === 0 ? "connecting" : "reconnecting" });
-        await streamRunEvents({
-          runId,
-          workspaceId,
-          cursor,
-          signal: controller.signal,
-          onEvent: (event) => {
-            cursor = Math.max(cursor, event.sequence);
-            terminal ||= event.type === "terminal";
-            useQAStore.setState((state) => {
-              if (
-                !acceptsRunStreamFrame(
-                  state.activeConversationId,
-                  state.activeRunId,
-                  conversationId,
-                  runId,
-                )
-              ) {
-                return {};
-              }
-              const events = mergePublicRunEvents(state.events, [event]);
-              const content = answerText(events, runId);
-              return {
-                events,
-                connection: terminal ? "closed" : "live",
-                messages: state.messages.map((message) =>
-                  message.role === "agent" && message.runId === runId
-                    ? { ...message, content: content || message.content }
-                    : message,
-                ),
-              };
-            });
-          },
-        });
-        if (!terminal) attempt += 1;
-      } catch {
-        if (controller.signal.aborted) break;
-        attempt += 1;
-      }
-      if (!terminal && attempt <= 8) await waitWithBackoff(attempt, controller.signal);
-      if (attempt > 8) {
-        useQAStore.setState({ connection: "reconnecting" });
-        return;
-      }
+    const result = await session.run();
+    if (result.exhausted) {
+      useQAStore.setState({ connection: "reconnecting" });
+      return;
     }
-  } finally {
-    if (activeStreamController === controller) activeStreamController = null;
     if (
-      terminal &&
+      result.terminal &&
       useQAStore.getState().activeConversationId === conversationId &&
       useQAStore.getState().activeRunId === runId
     ) {
       useQAStore.setState({ activeRunId: null, connection: "closed" });
     }
+  } finally {
+    if (activeStreamSession === session) activeStreamSession = null;
   }
 }
 
@@ -417,8 +400,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
         (conversation) => conversation.id === get().activeConversationId,
       );
       if (!activeStillVisible && get().directoryView !== "active") {
-        activeStreamController?.abort();
-        activeStreamController = null;
+        activeStreamSession?.abort();
+        activeStreamSession = null;
       }
       set({
         conversations,
@@ -652,8 +635,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
   },
 
   createConversation: async (input) => {
-    activeStreamController?.abort();
-    activeStreamController = null;
+    activeStreamSession?.abort();
+    activeStreamSession = null;
     set({ error: undefined });
     try {
       const catalog = get().resourceCatalog;
@@ -697,8 +680,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
   deleteConversation: async (id) => {
     const trashed = await get().trashConversation(id);
     if (trashed && get().activeConversationId === id) {
-      activeStreamController?.abort();
-      activeStreamController = null;
+      activeStreamSession?.abort();
+      activeStreamSession = null;
       set({
         activeConversationId: null,
         messages: [],
@@ -711,8 +694,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
   },
 
   selectConversation: async (id, options) => {
-    activeStreamController?.abort();
-    activeStreamController = null;
+    activeStreamSession?.abort();
+    activeStreamSession = null;
     if (!options?.preserveInspectorQuery) replaceQAInspectorTargetInBrowser(null, id);
     set({
       activeConversationId: id,
@@ -937,8 +920,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
       conversationId = conv.id;
     }
 
-    activeStreamController?.abort();
-    activeStreamController = null;
+    activeStreamSession?.abort();
+    activeStreamSession = null;
     set({ sending: true, error: undefined });
 
     // 添加用户消息到本地
@@ -985,59 +968,42 @@ export const useQAStore = create<QAStore>((set, get) => ({
       replaceQAInspectorTargetInBrowser(null, conversationId);
 
       // sequence 是断线补发、去重和恢复的唯一游标。
-      const controller = new AbortController();
-      activeStreamController = controller;
-      const timeout = setTimeout(() => controller.abort(), 10 * 60_000);
+      const session = createQaRunStream({
+        onConnection: (connection) => set({ connection }),
+        onEvent: (event) => {
+          set((current) => {
+            if (current.activeConversationId !== conversationId) return {};
+            const events = mergePublicRunEvents(current.events, [event]);
+            const streamedContent = answerText(events, run.runId);
+            return {
+              events,
+              messages: replaceMessage(current.messages, agentMessageId, {
+                content: streamedContent,
+                type: "text",
+              }),
+            };
+          });
+        },
+        run_id: run.runId,
+        workspace_id: workspaceId,
+      });
+      activeStreamSession = session;
+      const timeout = setTimeout(() => session.abort(), 10 * 60_000);
       let finalProjection: RunProjection | null = null;
-      let cursor = 0;
-      let terminal = false;
-      let reconnectAttempt = 0;
-      let streamError: unknown;
+      let streamResult: Awaited<ReturnType<QaRunStreamSession["run"]>>;
       try {
-        while (!terminal && !controller.signal.aborted) {
-          try {
-            set({ connection: reconnectAttempt === 0 ? "connecting" : "reconnecting" });
-            await streamRunEvents({
-              runId: run.runId,
-              workspaceId,
-              cursor,
-              signal: controller.signal,
-              onEvent: (event) => {
-                cursor = Math.max(cursor, event.sequence);
-                terminal ||= event.type === "terminal";
-                set((current) => {
-                  if (current.activeConversationId !== conversationId) return {};
-                  const events = mergePublicRunEvents(current.events, [event]);
-                  const content = answerText(events, run.runId);
-                  return {
-                    events,
-                    connection: "live",
-                    messages: replaceMessage(current.messages, agentMessageId, {
-                      content,
-                      type: "text",
-                    }),
-                  };
-                });
-              },
-            });
-            reconnectAttempt = terminal ? reconnectAttempt : reconnectAttempt + 1;
-          } catch (error) {
-            if (controller.signal.aborted) break;
-            reconnectAttempt += 1;
-            if (reconnectAttempt > 8) throw error;
-          }
-          if (!terminal) await waitWithBackoff(reconnectAttempt, controller.signal);
-        }
-      } catch (error) {
-        streamError = error;
+        streamResult = await session.run();
       } finally {
         clearTimeout(timeout);
-        if (activeStreamController === controller) activeStreamController = null;
+        if (activeStreamSession === session) activeStreamSession = null;
       }
 
       finalProjection = await getRun(run.runId, workspaceId);
-      if (!terminal && !["COMPLETED", "FAILED", "CANCELLED"].includes(finalProjection.status)) {
-        if (streamError instanceof Error) throw streamError;
+      if (
+        !streamResult.terminal &&
+        !["COMPLETED", "FAILED", "CANCELLED"].includes(finalProjection.status)
+      ) {
+        if (streamResult.error instanceof Error) throw streamResult.error;
         throw new Error("事件流连接超时，Run 仍在执行，可稍后从轨迹恢复");
       }
       const streamedAnswer = answerText(get().events, run.runId);
@@ -1047,7 +1013,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
         messages: replaceMessage(current.messages, agentMessageId, {
           content: finalContent,
           type: finalType,
-          metadata: { event_sequence: cursor },
+          metadata: { event_sequence: streamResult.cursor },
         }),
         sending: false,
         connection: "closed",
@@ -1067,7 +1033,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
             content: finalContent,
             type: finalType,
             run_id: run.runId,
-            metadata: { event_sequence: cursor },
+            metadata: { event_sequence: streamResult.cursor },
           }),
         },
       );
@@ -1148,7 +1114,7 @@ export const useQAStore = create<QAStore>((set, get) => ({
     set({ connection: "closed" });
     try {
       await commandRun(runId, "cancel", workspaceId);
-      activeStreamController?.abort();
+      activeStreamSession?.abort();
       set({ sending: false, activeRunId: null, resourceNotice: "已请求停止当前分析" });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "停止分析失败" });
@@ -1255,8 +1221,8 @@ export const useQAStore = create<QAStore>((set, get) => ({
 
   reset: () => {
     directoryRequestGeneration += 1;
-    activeStreamController?.abort();
-    activeStreamController = null;
+    activeStreamSession?.abort();
+    activeStreamSession = null;
     set(initialState);
   },
 
