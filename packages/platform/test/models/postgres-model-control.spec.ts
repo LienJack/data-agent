@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { createPostgresModelControlRepository } from "../../src/models/postgres-model-control.js";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
-import { createPostgresPricingControlRepository } from "../../src/pricing/postgres-pricing-control.js";
 
 const ids = {
   deployment: "00000000-0000-4000-8000-00000000de01",
@@ -67,11 +67,11 @@ const connectionRow = {
   updated_at: "2026-08-16T00:00:00.000Z",
 } as const;
 
-describe("PostgreSQL pricing control repository", () => {
+describe("PostgreSQL model control repository", () => {
   it("records one non-empty model API response without carrying credentials", async () => {
     let observedText = "";
     let observed: readonly unknown[] = [];
-    const repository = createPostgresPricingControlRepository(
+    const repository = createPostgresModelControlRepository(
       pool((text, values) => {
         observedText = text;
         observed = values;
@@ -112,10 +112,10 @@ describe("PostgreSQL pricing control repository", () => {
   });
 
   it("reads a shared database model projection", async () => {
-    const repositoryA = createPostgresPricingControlRepository(
+    const repositoryA = createPostgresModelControlRepository(
       pool(() => ({ rows: [row], rowCount: 1 })),
     );
-    const repositoryB = createPostgresPricingControlRepository(
+    const repositoryB = createPostgresModelControlRepository(
       pool(() => ({ rows: [row], rowCount: 1 })),
     );
     const context = { deployment_id: ids.deployment, principal_id: ids.principal };
@@ -131,7 +131,7 @@ describe("PostgreSQL pricing control repository", () => {
 
   it("passes only deployment, principal and strict command to the security-definer RPC", async () => {
     let observed: readonly unknown[] = [];
-    const repository = createPostgresPricingControlRepository(
+    const repository = createPostgresModelControlRepository(
       pool((_text, values) => {
         observed = values;
         return { rows: [{ result: row }], rowCount: 1 };
@@ -161,7 +161,7 @@ describe("PostgreSQL pricing control repository", () => {
   });
 
   it("maps database permission denial to the stable super-admin error", async () => {
-    const repository = createPostgresPricingControlRepository(
+    const repository = createPostgresModelControlRepository(
       pool(() => {
         throw Object.assign(new Error("SUPER_ADMIN_REQUIRED"), { code: "42501" });
       }),
@@ -172,7 +172,7 @@ describe("PostgreSQL pricing control repository", () => {
   });
 
   it("lists supplier connections and maps database versions to numbers", async () => {
-    const repository = createPostgresPricingControlRepository(
+    const repository = createPostgresModelControlRepository(
       pool(() => ({ rows: [connectionRow], rowCount: 1 })),
     );
     await expect(
@@ -189,7 +189,7 @@ describe("PostgreSQL pricing control repository", () => {
   it("sends multi-model selection to one security-definer RPC without plaintext credentials", async () => {
     let observedText = "";
     let observed: readonly unknown[] = [];
-    const repository = createPostgresPricingControlRepository(
+    const repository = createPostgresModelControlRepository(
       pool((text, values) => {
         observedText = text;
         observed = values;
@@ -225,7 +225,7 @@ describe("PostgreSQL pricing control repository", () => {
   it("syncs only secret-free environment model metadata through the narrow RPC", async () => {
     let observedText = "";
     let observed: readonly unknown[] = [];
-    const repository = createPostgresPricingControlRepository(
+    const repository = createPostgresModelControlRepository(
       pool((text, values) => {
         observedText = text;
         observed = values;

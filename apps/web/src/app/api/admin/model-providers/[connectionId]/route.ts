@@ -3,8 +3,11 @@ import {
   upsertModelProviderConnectionInputSchema,
 } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
+} from "@/lib/model-control-admin";
 import { findEnvironmentProviderView } from "@/lib/model-provider-admin";
-import { authorizePricingAdminRequest, pricingResultResponse } from "@/lib/pricing-admin";
 
 export const runtime = "nodejs";
 
@@ -26,7 +29,7 @@ function immutableResponse() {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const { connectionId } = await context.params;
   if (findEnvironmentProviderView(connectionId)) return immutableResponse();
@@ -45,7 +48,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       { status: 400 },
     );
   }
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.applyProviderConnectionCommand(
       authorized.value.context,
       parsed.data,
@@ -54,7 +57,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const { connectionId } = await context.params;
   if (findEnvironmentProviderView(connectionId)) return immutableResponse();
@@ -73,7 +76,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
       { status: 400 },
     );
   }
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.applyProviderConnectionCommand(
       authorized.value.context,
       parsed.data,

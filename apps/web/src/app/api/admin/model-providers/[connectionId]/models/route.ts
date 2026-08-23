@@ -1,5 +1,9 @@
 import { type ModelVendorId, modelProviderSelectionInputSchema } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
+} from "@/lib/model-control-admin";
 import { fetchProviderModelCatalog, ModelDiscoveryError } from "@/lib/model-discovery";
 import {
   findEnvironmentProviderView,
@@ -9,7 +13,6 @@ import {
   ModelProviderCredentialError,
   resolveManualProviderCredential,
 } from "@/lib/model-provider-credential";
-import { authorizePricingAdminRequest, pricingResultResponse } from "@/lib/pricing-admin";
 
 export const runtime = "nodejs";
 
@@ -18,7 +21,7 @@ interface RouteContext {
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const { connectionId } = await context.params;
   const environmentConnection = findEnvironmentProviderView(connectionId);
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     const connections = await authorized.value.repository.listProviderConnections(
       authorized.value.context,
     );
-    if (!connections.ok) return pricingResultResponse(connections);
+    if (!connections.ok) return modelControlResultResponse(connections);
     const connection = connections.value.find(
       (candidate) => candidate.provider_connection_id === connectionId,
     );
@@ -115,7 +118,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
 }
 
 export async function PUT(request: NextRequest, context: RouteContext) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const { connectionId } = await context.params;
   if (findEnvironmentProviderView(connectionId)) {
@@ -145,7 +148,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       { status: 400 },
     );
   }
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.applyProviderSelection(authorized.value.context, parsed.data),
   );
 }

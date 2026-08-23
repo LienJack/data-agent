@@ -1,12 +1,15 @@
 import type { NextRequest } from "next/server";
-import { authorizePricingAdminRequest, pricingResultResponse } from "@/lib/pricing-admin";
+import {
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
+} from "@/lib/model-control-admin";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.listModelAuthentications(authorized.value.context),
   );
 }

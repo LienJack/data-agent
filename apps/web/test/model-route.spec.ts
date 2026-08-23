@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
-  getPricingControlRepository: () => ({ listActiveModels: mocks.listActiveModels }),
+  getModelControlRepository: () => ({ listActiveModels: mocks.listActiveModels }),
   getWorkspaceDeploymentId: () => "00000000-0000-4000-8000-00000000de01",
   getWorkspaceSessionFromHeaders: mocks.session,
 }));

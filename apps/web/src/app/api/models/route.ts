@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { mergeSystemModelsWithCatalog, resolveSystemModelsFromProcess } from "@/lib/system-models";
 import {
-  getPricingControlRepository,
+  getModelControlRepository,
   getWorkspaceDeploymentId,
   getWorkspaceSessionFromHeaders,
 } from "@/lib/workspace-identity";
@@ -16,7 +16,7 @@ export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   const session = await getWorkspaceSessionFromHeaders(request.headers);
   if (!session.ok) return NextResponse.json({ error: session.error }, { status: 401 });
-  const result = await getPricingControlRepository().listActiveModels({
+  const result = await getModelControlRepository().listActiveModels({
     deployment_id: getWorkspaceDeploymentId(),
     principal_id: session.value.principal_id,
   });

@@ -1,24 +1,27 @@
 import { upsertModelProviderConnectionInputSchema } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
+} from "@/lib/model-control-admin";
 import { composeModelProviderViews } from "@/lib/model-provider-admin";
-import { authorizePricingAdminRequest, pricingResultResponse } from "@/lib/pricing-admin";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const [connections, models] = await Promise.all([
     authorized.value.repository.listProviderConnections(authorized.value.context),
     authorized.value.repository.listModels(authorized.value.context),
   ]);
-  if (!connections.ok) return pricingResultResponse(connections);
-  if (!models.ok) return pricingResultResponse(models);
+  if (!connections.ok) return modelControlResultResponse(connections);
+  if (!models.ok) return modelControlResultResponse(models);
   return NextResponse.json({ data: composeModelProviderViews(connections.value, models.value) });
 }
 
 export async function POST(request: NextRequest) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const parsed = upsertModelProviderConnectionInputSchema.safeParse(
     await request.json().catch(() => null),
@@ -35,7 +38,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.applyProviderConnectionCommand(
       authorized.value.context,
       parsed.data,

@@ -5,6 +5,7 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
+import { modelCertificationStateSchema } from "../models/index.js";
 import {
   modelCertificationReceiptReferenceSchema,
   modelProviderSchema,
@@ -13,7 +14,6 @@ import {
   providerInvocationScopeSchema,
 } from "../providers/index.js";
 import { runConfigRequestSchema } from "../runs/effective-config.js";
-import { modelCertificationStateSchema } from "./billing.js";
 import { workspaceConversationSchema, workspaceDatasourceTypeSchema } from "./data-isolation.js";
 
 export const qaModelReadinessSchema = z.enum([

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as platform from "../../src/index.js";
 
@@ -34,6 +35,8 @@ describe("platform package public surface", () => {
       "cnyAmountToMicrocredits",
       "comparePhysicalSchemaSnapshots",
       "compileEcommerceMonthlyOrderTrendSql",
+      "compileEcommerceSalesAnomalySql",
+      "compileEcommerceSalesReportSummarySql",
       "compileEcommerceTableCountSql",
       "containsPotentialPlaintextSecret",
       "createApiEmbeddingProvider",
@@ -78,6 +81,7 @@ describe("platform package public surface", () => {
       "createPostgresKnowledgeRegistry",
       "createPostgresMcpRegistry",
       "createPostgresModelBillingRepository",
+      "createPostgresModelControlRepository",
       "createPostgresOntologyPackageStore",
       "createPostgresOperationsAdminRepository",
       "createPostgresPricingControlRepository",
@@ -138,6 +142,7 @@ describe("platform package public surface", () => {
       "providerInvocationSmokeClaimSchema",
       "providerInvocationSmokeProofSchema",
       "providerInvocationUnknownClassificationSchema",
+      "registerPersistenceDiagnosticLogger",
       "renderArtifactExport",
       "roundHalfUpMicrocredits",
       "sameAnalysisEvidenceIdentity",
@@ -158,5 +163,17 @@ describe("platform package public surface", () => {
     expect(platform).not.toHaveProperty("capabilityInputSchema");
     expect(platform).not.toHaveProperty("historicalDocumentSchema");
     expect(platform).not.toHaveProperty("ResearchAuthorityTransportError");
+  });
+
+  it("keeps model control out of the retiring pricing repository", () => {
+    const pricingSource = readFileSync(
+      new URL("../../src/pricing/postgres-pricing-control.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(platform).toHaveProperty("createPostgresModelControlRepository");
+    expect(pricingSource).not.toMatch(
+      /listActiveModels|listModels|applyModelCommand|listProviderConnections|recordModelAuthentication/,
+    );
   });
 });

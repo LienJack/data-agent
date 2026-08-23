@@ -14,8 +14,10 @@
 | ./billing/model-cost.js | EXPORT | model billing repository | DELETE | U4 billing code retirement | noncommercial usage facts | packages/platform/src/index.ts | CURRENT |
 | ./billing/postgres-credit-ledger.js | EXPORT | credit admin routes | DELETE | U4 billing code retirement | 404 | packages/platform/src/index.ts | CURRENT |
 | ./billing/postgres-model-billing.js | EXPORT | billing admin and worker | DELETE | U4 billing code retirement | noncommercial invocation facts | packages/platform/src/index.ts | CURRENT |
-| ./pricing/postgres-pricing-control.js | EXPORT | Model Control and pricing sync | MOVE_DIRECT | U2 Model Control extraction | packages/platform/src/model-control | packages/platform/src/index.ts | CURRENT |
-| ./billing.js | EXPORT | Workspace identity, admin and QA resource contracts | MOVE_DIRECT | U2 then U4 contract split | workspaces/model-control.ts | packages/contracts/src/workspaces/index.ts | CURRENT |
+| ./models/postgres-model-control.js | EXPORT | Model Provider, Q&A resource resolution and bootstrap | KEEP_CURRENT | U2 Model Control extraction | unchanged | packages/platform/src/index.ts; packages/platform/test/models/postgres-model-control.spec.ts | CURRENT |
+| ./pricing/postgres-pricing-control.js | EXPORT | Worker pricing sync and price/FX admin | DELETE | U4 billing code retirement | none | packages/platform/src/index.ts | CURRENT |
+| packages/contracts/src/models/index.ts | EXPORT | Model Provider, Q&A resource and bootstrap contracts | KEEP_CURRENT | U2 Model Control extraction | unchanged | packages/contracts/src/index.ts; packages/contracts/test/model-control.spec.ts | CURRENT |
+| ./billing.js | EXPORT | Billing, credit, price and FX consumers | DELETE | U4 billing code retirement | none | packages/contracts/src/workspaces/index.ts | CURRENT |
 | packages/contracts/src/artifacts/semantic-control-plane.ts | SEMANTIC_V1 | governance runtime, Platform stores and SQL RPCs | DELETE | U6 Semantic V2-only | graph-v2 contracts | packages/contracts/src/artifacts/semantic-control-plane.ts | CURRENT |
 | packages/semantic/src/compiler/u5-compiler.ts | SEMANTIC_V1 | Graph V2 compatibility projection and candidate compile | DELETE | U6 native V2 compiler | graph-v2/compiler.ts | packages/semantic/src/compiler/u5-compiler.ts | CURRENT |
 | apps/web/src/lib/semantic-authoring-public.ts | APP_SCHEMA_COPY | Semantic Studio SSE client and routes | MOVE_DIRECT | U7 application runtime | contracts semantic authoring public schema | apps/web/src/lib/semantic-authoring-public.ts | CURRENT |
@@ -28,7 +30,7 @@
 | /api/workspaces/[workspaceId]/semantic/** | ROUTE | Workspace Semantic Studio and jobs | KEEP_CURRENT | U7 application runtime | unchanged | apps/web/src/app/api/workspaces/[workspaceId]/semantic | CURRENT |
 | apps/web/src/lib/workspace-semantic-runtime.ts | RUNTIME | schema discovery and semantic services | MOVE_DIRECT | U7 application runtime | explicit composition root | apps/web/src/lib/workspace-semantic-runtime.ts | CURRENT |
 | apps/web/src/lib/semantic-*-runtime.ts | RUNTIME | Semantic API route handlers | MOVE_DIRECT | U7 application runtime | semantic application services | apps/web/src/lib | CURRENT |
-| Model Provider admin surface | MODEL_CONTROL | Super Admin and runtime provider selection | MOVE_DIRECT | U2 Model Control extraction | /api/admin/model-providers and /api/admin/models | apps/web/src/app/api/admin/model-providers | CURRENT |
+| Model Provider admin surface | MODEL_CONTROL | Super Admin and runtime provider selection | KEEP_CURRENT | U2 Model Control extraction | unchanged | apps/web/src/app/api/admin/model-providers; apps/web/test/model-provider-routes.spec.ts | CURRENT |
 | Billing and Credit API surface | ROUTE | settings, admin pricing and billing clients | DELETE | U4 billing code retirement | 404 | apps/web/src/app/api/admin/billing | CURRENT |
 | Billing and Pricing UI surface | UI | settings, workspace home and admin | DELETE | U4 billing code retirement | removed navigation | apps/web/src/components/settings/model-billing-panel.tsx | CURRENT |
 | Worker pricing sync | WORKER | pricing synchronization cycle | DELETE | U4 billing code retirement | none | apps/worker/src/pricing | CURRENT |

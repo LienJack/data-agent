@@ -1,11 +1,14 @@
 import { startModelCertificationInputSchema } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
+import {
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
+} from "@/lib/model-control-admin";
 import { fetchProviderModelCatalog, ModelDiscoveryError } from "@/lib/model-discovery";
 import {
   findEnvironmentProviderView,
   resolveEnvironmentProviderCredential,
 } from "@/lib/model-provider-admin";
-import { authorizePricingAdminRequest, pricingResultResponse } from "@/lib/pricing-admin";
 
 export const runtime = "nodejs";
 
@@ -29,10 +32,10 @@ export async function POST(
       { status: 400 },
     );
   }
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const models = await authorized.value.repository.listModels(authorized.value.context);
-  if (!models.ok) return pricingResultResponse(models);
+  if (!models.ok) return modelControlResultResponse(models);
   const model = models.value.find(
     (candidate) =>
       candidate.model_profile_id === input.data.model_profile_id &&
@@ -118,5 +121,5 @@ export async function POST(
       idempotency_key: input.data.idempotency_key,
     },
   );
-  return pricingResultResponse(certified);
+  return modelControlResultResponse(certified);
 }

@@ -10,9 +10,9 @@ const mocks = vi.hoisted(() => ({
   listModels: vi.fn(),
 }));
 
-vi.mock("@/lib/pricing-admin", () => ({
-  authorizePricingAdminRequest: mocks.authorize,
-  pricingResultResponse: (result: { ok: boolean; value?: unknown; error?: unknown }) =>
+vi.mock("@/lib/model-control-admin", () => ({
+  authorizeModelControlAdminRequest: mocks.authorize,
+  modelControlResultResponse: (result: { ok: boolean; value?: unknown; error?: unknown }) =>
     result.ok
       ? NextResponse.json({ data: result.value })
       : NextResponse.json({ error: result.error }, { status: 409 }),

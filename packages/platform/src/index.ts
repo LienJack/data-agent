@@ -55,6 +55,7 @@ export * from "./knowledge/knowledge-index.js";
 export * from "./knowledge/knowledge-search-service.js";
 export * from "./knowledge/neo4j-knowledge-index.js";
 export * from "./knowledge/postgres-knowledge-registry.js";
+export * from "./models/postgres-model-control.js";
 export * from "./persistence/diagnostic-logger.js";
 export {
   type CommandAcceptance,

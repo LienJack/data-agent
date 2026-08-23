@@ -1,10 +1,10 @@
 import { modelCatalogStatusInputSchema } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  authorizePricingAdminRequest,
-  pricingResultResponse,
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
   rejectEnvironmentSystemModelMutation,
-} from "@/lib/pricing-admin";
+} from "@/lib/model-control-admin";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ modelProfileId: string }> },
 ) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const parsed = modelCatalogStatusInputSchema.safeParse(await request.json().catch(() => null));
   const { modelProfileId } = await params;
@@ -30,7 +30,7 @@ export async function POST(
   }
   const immutableResponse = rejectEnvironmentSystemModelMutation(modelProfileId);
   if (immutableResponse) return immutableResponse;
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.applyModelCommand(authorized.value.context, parsed.data),
   );
 }

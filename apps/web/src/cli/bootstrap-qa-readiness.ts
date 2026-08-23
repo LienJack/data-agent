@@ -16,7 +16,7 @@ import {
   createPostgresAgentProfileRegistry,
   createPostgresCapabilityAuthority,
   createPostgresEffectiveConfigResolver,
-  createPostgresPricingControlRepository,
+  createPostgresModelControlRepository,
   createPostgresSkillRegistry,
   createPostgresWorkspaceDataRepository,
 } from "@data-agent/platform";
@@ -147,7 +147,7 @@ async function createDependencies(input: {
     deployment_id: input.deploymentId,
     principal_id: input.capability.principal,
   };
-  const pricing = createPostgresPricingControlRepository(sqlPool);
+  const modelControl = createPostgresModelControlRepository(sqlPool);
   const workspaceRepository = createPostgresWorkspaceDataRepository(
     sqlPool,
     input.authority.authorizer,
@@ -179,13 +179,13 @@ async function createDependencies(input: {
   });
 
   async function models(): Promise<readonly ModelCatalogEntry[]> {
-    return requireValue(await pricing.listModels(adminContext));
+    return requireValue(await modelControl.listModels(adminContext));
   }
 
   async function authenticatedBaseModel(): Promise<ModelCatalogEntry> {
     const [catalog, authentications] = await Promise.all([
-      pricing.listModels(adminContext),
-      pricing.listModelAuthentications(adminContext),
+      modelControl.listModels(adminContext),
+      modelControl.listModelAuthentications(adminContext),
     ]);
     const available = requireValue(catalog);
     const passed = new Set(
@@ -342,7 +342,7 @@ async function createDependencies(input: {
         continue;
       }
       const key = `qa-readiness:model:${profileId}:v1`;
-      const committed = await pricing.applyModelCommand(adminContext, {
+      const committed = await modelControl.applyModelCommand(adminContext, {
         schema_version: "model-catalog-upsert@1.0.0",
         operation_id: operationId(input.capability, "qa-readiness-model", key),
         idempotency_key: key,

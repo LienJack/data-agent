@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
-  getPricingControlRepository: () => ({
+  getModelControlRepository: () => ({
     applyProviderConnectionCommand: mocks.applyProviderConnectionCommand,
     listModels: mocks.listModels,
     listProviderConnections: mocks.listProviderConnections,

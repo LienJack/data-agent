@@ -12,10 +12,10 @@
 
 ## Acceptance Criteria
 
-- [ ] 管理员可创建 provider connection、绑定 SecretRef、登记模型；普通目录不暴露商业字段。
-- [ ] Model Provider、Q&A resource resolution、bootstrap 只依赖 Model Control repository。
-- [ ] 旧 Billing/Pricing 模型控制符号无法解析，forbidden scan 防止回归。
-- [ ] RBAC、workspace/environment scope 与 SecretRef 测试保持通过。
+- [x] 管理员可创建 provider connection、绑定 SecretRef、登记模型；普通目录不暴露商业字段。
+- [x] Model Provider、Q&A resource resolution、bootstrap 只依赖 Model Control repository。
+- [x] 旧 Billing/Pricing 模型控制符号无法解析，forbidden scan 防止回归。
+- [x] RBAC、workspace/environment scope 与 SecretRef 测试保持通过。
 
 ## Notes
 

@@ -1,22 +1,24 @@
 import { upsertModelCatalogEntryInputSchema } from "@data-agent/contracts";
 import { type NextRequest, NextResponse } from "next/server";
 import {
-  authorizePricingAdminRequest,
-  pricingResultResponse,
+  authorizeModelControlAdminRequest,
+  modelControlResultResponse,
   rejectEnvironmentSystemModelMutation,
-} from "@/lib/pricing-admin";
+} from "@/lib/model-control-admin";
 
 export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   return authorized.ok
-    ? pricingResultResponse(await authorized.value.repository.listModels(authorized.value.context))
+    ? modelControlResultResponse(
+        await authorized.value.repository.listModels(authorized.value.context),
+      )
     : authorized.response;
 }
 
 export async function POST(request: NextRequest) {
-  const authorized = await authorizePricingAdminRequest(request);
+  const authorized = await authorizeModelControlAdminRequest(request);
   if (!authorized.ok) return authorized.response;
   const parsed = upsertModelCatalogEntryInputSchema.safeParse(
     await request.json().catch(() => null),
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
   const immutableResponse = rejectEnvironmentSystemModelMutation(parsed.data.model_profile_id);
   if (immutableResponse) return immutableResponse;
-  return pricingResultResponse(
+  return modelControlResultResponse(
     await authorized.value.repository.applyModelCommand(authorized.value.context, parsed.data),
     201,
   );
