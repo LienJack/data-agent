@@ -14,10 +14,10 @@
 
 ## Acceptance Criteria
 
-- [ ] Route 通过注入 use-case 测试 transport 行为；use-case 独立覆盖成功和关键失败。
-- [ ] SSE 状态模块覆盖 replay、duplicate、reconnect、terminal 和 abort。
-- [ ] 现有 Q&A/Web 单元测试、typecheck/build 通过，浏览器/API 行为无回归。
-- [ ] scoped commit 并归档子任务。
+- [x] Route 通过注入 use-case 测试 transport 行为；use-case 独立覆盖成功和关键失败。
+- [x] SSE 状态模块覆盖 replay、duplicate、reconnect、terminal 和 abort。
+- [x] 现有 Q&A/Web 单元测试、typecheck/build 通过，浏览器/API 行为无回归。
+- [x] scoped commit 并归档子任务。
 
 ## Notes
 
