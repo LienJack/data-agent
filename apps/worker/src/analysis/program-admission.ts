@@ -83,6 +83,7 @@ export async function admitAnalysisSandboxProgram(input: {
   readonly source_text_ref: ArtifactReference;
   readonly query_evidence_refs: readonly ArtifactReference[];
   readonly input_refs: readonly ArtifactReference[];
+  readonly input_materialization_receipt_refs: readonly ArtifactReference[];
   readonly catalog?: AnalysisSkillCatalog;
 }): Promise<ProgramAdmissionVerdict> {
   const parsedProgram = analysisProgramPayloadSchema.safeParse(input.analysis_program);
@@ -122,7 +123,11 @@ export async function admitAnalysisSandboxProgram(input: {
     queryEvidenceRefSchema.parse(reference),
   );
   if (
-    [...input.query_evidence_refs, ...input.input_refs].some(
+    [
+      ...input.query_evidence_refs,
+      ...input.input_refs,
+      ...input.input_materialization_receipt_refs,
+    ].some(
       (reference) =>
         reference.app_id !== analysisProgramRef.app_id ||
         reference.tenant_id !== analysisProgramRef.tenant_id ||
@@ -134,8 +139,13 @@ export async function admitAnalysisSandboxProgram(input: {
   }
   if (
     input.query_evidence_refs.length !== input.input_refs.length ||
+    input.input_materialization_receipt_refs.length !== input.input_refs.length ||
     input.query_evidence_refs.some(
       ({ artifact_type: artifactType }) => artifactType !== "QueryEvidence",
+    ) ||
+    input.input_materialization_receipt_refs.some(
+      ({ artifact_type: artifactType }) =>
+        artifactType !== "AnalysisInputMaterializationReceipt",
     )
   ) {
     return { ok: false, failure: "PROGRAM_INPUT_NOT_QUERY_EVIDENCE" };
@@ -155,7 +165,7 @@ export async function admitAnalysisSandboxProgram(input: {
   const attestation = ANALYSIS_RUNTIME_ATTESTATIONS[descriptor.python_import_profile];
   const material: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
-    protocol_version: "analysis-sandbox-program@1.0.0",
+    protocol_version: "analysis-sandbox-program@2.0.0",
     analysis_program_ref: analysisProgramRef,
     node_id: input.node_id,
     language: "PYTHON_3_12",
@@ -164,6 +174,9 @@ export async function admitAnalysisSandboxProgram(input: {
     source_text_ref: sourceTextRef,
     query_evidence_refs: queryEvidenceRefs,
     input_refs: [...input.input_refs],
+    input_materialization_receipt_refs: input.input_materialization_receipt_refs.map((reference) =>
+      artifactReferenceFor("AnalysisInputMaterializationReceipt").parse(reference),
+    ),
     output_contract: node.output_contract,
     import_profile: descriptor.python_import_profile,
     random_seed: derivedSeed(analysisProgramRef, input.node_id),
@@ -210,6 +223,8 @@ export async function admitAnalysisSandboxProgramRepair(input: {
     source_text_ref: input.repaired_source_text_ref,
     query_evidence_refs: input.previous_program.query_evidence_refs,
     input_refs: input.previous_program.input_refs,
+    input_materialization_receipt_refs:
+      input.previous_program.input_materialization_receipt_refs,
     ...(input.catalog ? { catalog: input.catalog } : {}),
   });
   if (!repaired.ok) return repaired;
@@ -223,6 +238,8 @@ export async function admitAnalysisSandboxProgramRepair(input: {
       canonicalizeJson(input.previous_program.query_evidence_refs) ||
     canonicalizeJson(repaired.program.input_refs) !==
       canonicalizeJson(input.previous_program.input_refs) ||
+    canonicalizeJson(repaired.program.input_materialization_receipt_refs) !==
+      canonicalizeJson(input.previous_program.input_materialization_receipt_refs) ||
     canonicalizeJson(repaired.program.output_contract) !==
       canonicalizeJson(input.previous_program.output_contract)
   ) {

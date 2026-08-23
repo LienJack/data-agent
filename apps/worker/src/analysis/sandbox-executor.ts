@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
+  analysisInputMaterializationReceiptSchema,
   type AnalysisSandboxProgramPayload,
   type ArtifactReference,
+  artifactReferenceFor,
   artifactReferenceIdentity,
   computeL2ResearchEnvelopeContentHash,
   computePythonExecutionAuthorizationHash,
@@ -11,6 +13,8 @@ import {
   type PythonSandboxTransportOutcomeV2,
   pythonExecutionEnvelopeSchema,
   queryEvidenceV2PayloadSchema,
+  sha256ContentHash,
+  verifyAnalysisInputMaterializationReceipt,
 } from "@data-agent/contracts";
 import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
 import { ANALYSIS_RUNTIME_ATTESTATIONS, type AnalysisSkillDescriptor } from "./skill-catalog.js";
@@ -21,6 +25,8 @@ export interface GovernedPythonInput {
   readonly query_evidence_ref: ArtifactReference;
   readonly query_evidence_document: unknown;
   readonly input_ref: ArtifactReference;
+  readonly materialization_receipt_ref: ArtifactReference;
+  readonly materialization_receipt_document: unknown;
   readonly content: Uint8Array;
 }
 
@@ -75,18 +81,31 @@ async function verifyGovernedInput(
     readonly payload?: unknown;
   };
   const payload = queryEvidenceV2PayloadSchema.parse(document.payload);
+  const materialization = await verifyAnalysisInputMaterializationReceipt(
+    input.materialization_receipt_document,
+  );
+  const materializationReference = artifactReferenceFor(
+    "AnalysisInputMaterializationReceipt",
+  ).parse(input.materialization_receipt_ref);
   if (
     !document.envelope ||
     !exactRef(document.envelope, input.query_evidence_ref) ||
     (await computeL2ResearchEnvelopeContentHash(input.query_evidence_document)) !==
       input.query_evidence_ref.content_hash ||
-    !exactRef(payload.sandbox_result_ref, input.input_ref) ||
-    payload.observation.result_hash !== input.input_ref.content_hash ||
+    !exactRef(materialization.query_evidence_ref, input.query_evidence_ref) ||
+    !exactRef(materialization.query_result_ref, payload.sandbox_result_ref) ||
+    materialization.source_result_hash !== payload.observation.result_hash ||
+    !exactRef(materialization.input_ref, input.input_ref) ||
+    !exactRef(materializationReference, input.materialization_receipt_ref) ||
+    materializationReference.content_hash !== (await sha256ContentHash(materialization)) ||
     bytesHash(input.content) !== input.input_ref.content_hash ||
     !program.query_evidence_refs.some((reference) =>
       exactRef(reference, input.query_evidence_ref),
     ) ||
-    !program.input_refs.some((reference) => exactRef(reference, input.input_ref))
+    !program.input_refs.some((reference) => exactRef(reference, input.input_ref)) ||
+    !program.input_materialization_receipt_refs.some((reference) =>
+      exactRef(reference, input.materialization_receipt_ref),
+    )
   ) {
     throw new TypeError("ANALYSIS_QUERY_EVIDENCE_MATERIALIZATION_INVALID");
   }

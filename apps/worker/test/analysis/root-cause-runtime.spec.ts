@@ -279,7 +279,7 @@ describe("root cause worker runtime", () => {
           const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
           const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
             artifact_type: "SandboxProgram",
-            protocol_version: "analysis-sandbox-program@1.0.0",
+            protocol_version: "analysis-sandbox-program@2.0.0",
             analysis_program_ref:
               input.analysis_program_ref as AnalysisSandboxProgramPayload["analysis_program_ref"],
             node_id: "root-cause",
@@ -295,6 +295,9 @@ describe("root cause worker runtime", () => {
               reference("QueryEvidence", 61),
             ] as AnalysisSandboxProgramPayload["query_evidence_refs"],
             input_refs: [reference("SandboxResult", 62)],
+            input_materialization_receipt_refs: [
+              reference("AnalysisInputMaterializationReceipt", 66),
+            ] as AnalysisSandboxProgramPayload["input_materialization_receipt_refs"],
             output_contract: {
               schema_version: "python-output-contract@1.0.0",
               outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_000_000 }],

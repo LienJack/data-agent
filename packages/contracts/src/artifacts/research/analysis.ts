@@ -365,7 +365,7 @@ export const analysisProgramPayloadSchema = z
 export const analysisSandboxProgramPayloadSchema = z
   .strictObject({
     artifact_type: z.literal("SandboxProgram"),
-    protocol_version: z.literal("analysis-sandbox-program@1.0.0"),
+    protocol_version: z.literal("analysis-sandbox-program@2.0.0"),
     analysis_program_ref: analysisProgramRefSchema,
     node_id: identifierSchema,
     language: z.literal("PYTHON_3_12"),
@@ -378,6 +378,11 @@ export const analysisSandboxProgramPayloadSchema = z
       ANALYSIS_LIMITS.max_query_evidence_refs,
     ),
     input_refs: uniqueReferences(artifactReferenceSchema, 1, 64),
+    input_materialization_receipt_refs: uniqueReferences(
+      artifactReferenceFor("AnalysisInputMaterializationReceipt"),
+      1,
+      64,
+    ),
     output_contract: pythonOutputContractSchema,
     import_profile: analysisRuntimeProfileSchema,
     random_seed: nonNegativeIntSchema,
@@ -394,10 +399,13 @@ export const analysisSandboxProgramPayloadSchema = z
         path: ["source_sha256"],
       });
     }
-    if (program.query_evidence_refs.length !== program.input_refs.length) {
+    if (
+      program.query_evidence_refs.length !== program.input_refs.length ||
+      program.input_materialization_receipt_refs.length !== program.input_refs.length
+    ) {
       ctx.addIssue({
         code: "custom",
-        message: "每个 QueryEvidence 必须恰好绑定一个物化 Sandbox 输入。",
+        message: "每个 QueryEvidence 必须经一个物化回执绑定一个 Sandbox 输入。",
         path: ["input_refs"],
       });
     }

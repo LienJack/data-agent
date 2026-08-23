@@ -100,6 +100,7 @@ const historicalDocumentSchema = z
 const historicalReadResultSchema = z.union([z.null(), historicalDocumentSchema]);
 
 const analysisSystemArtifactTypeSchema = z.enum([
+  "AnalysisInputMaterializationReceipt",
   "SandboxProgram",
   "SandboxExecutionReceipt",
   "SandboxResult",

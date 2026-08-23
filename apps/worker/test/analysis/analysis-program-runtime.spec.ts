@@ -332,7 +332,8 @@ describe("deterministic analysis worker runtime", () => {
     const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
     const sourceRef = reference("SensitiveExecutionArtifact", 21, sourceHash);
     const queryRef = reference("QueryEvidence", 22);
-    const inputRef = reference("SandboxResult", 23);
+    const inputRef = reference("SensitiveExecutionArtifact", 23);
+    const materializationRef = reference("AnalysisInputMaterializationReceipt", 26);
     const admitted = await admitAnalysisSandboxProgram({
       analysis_program: base.plan,
       analysis_program_ref: planRef,
@@ -341,6 +342,7 @@ describe("deterministic analysis worker runtime", () => {
       source_text_ref: sourceRef,
       query_evidence_refs: [queryRef],
       input_refs: [inputRef],
+      input_materialization_receipt_refs: [materializationRef],
     });
     expect(admitted.ok).toBe(true);
     if (!admitted.ok) return;
@@ -536,6 +538,11 @@ describe("deterministic analysis worker runtime", () => {
                 query_evidence_ref: queryRef,
                 query_evidence_document: {},
                 input_ref: inputRef,
+                materialization_receipt_ref: reference(
+                  "AnalysisInputMaterializationReceipt",
+                  53,
+                ),
+                materialization_receipt_document: {},
                 content: Buffer.from("{}"),
               },
             ];

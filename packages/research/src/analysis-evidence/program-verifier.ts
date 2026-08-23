@@ -29,7 +29,7 @@ export async function computeAnalysisSandboxProgramHash(
   program: Omit<AnalysisSandboxProgramPayload, "program_hash">,
 ): Promise<`sha256:${string}`> {
   return sha256ContentHash({
-    hash_domain: "analysis-sandbox-program@1.0.0",
+    hash_domain: "analysis-sandbox-program@2.0.0",
     value: program,
   });
 }

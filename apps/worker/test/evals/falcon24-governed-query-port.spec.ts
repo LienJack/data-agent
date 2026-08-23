@@ -55,6 +55,14 @@ const queryEvidenceRef: ArtifactReference = {
   revision: 1,
   content_hash: hash("c"),
 };
+const materializationReceiptRef: ArtifactReference = {
+  artifact_id: id(11),
+  artifact_type: "AnalysisInputMaterializationReceipt",
+  ...scope,
+  run_id: lease.run_id,
+  revision: 1,
+  content_hash: hash("e"),
+};
 
 const dataOracleReceipt = falcon24AnalysisDataOracleReceiptSchema.parse({
   schema_version: "falcon24-analysis-data-oracle@1.0.0",
@@ -137,6 +145,8 @@ describe("Falcon24 governed query port", () => {
         query_evidence_ref: queryEvidenceRef,
         query_evidence_document: {},
         input_ref: inputRef,
+        materialization_receipt_ref: materializationReceiptRef,
+        materialization_receipt_document: {},
         content: input.content,
       };
     });

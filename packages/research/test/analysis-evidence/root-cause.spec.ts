@@ -356,7 +356,7 @@ async function causalChain(
   const inputRef = reference("SandboxResult", 47);
   const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
-    protocol_version: "analysis-sandbox-program@1.0.0",
+    protocol_version: "analysis-sandbox-program@2.0.0",
     analysis_program_ref: planRef as AnalysisSandboxProgramPayload["analysis_program_ref"],
     node_id: "root-cause",
     language: "PYTHON_3_12",
@@ -369,6 +369,9 @@ async function causalChain(
     ) as AnalysisSandboxProgramPayload["source_text_ref"],
     query_evidence_refs: [queryRef] as AnalysisSandboxProgramPayload["query_evidence_refs"],
     input_refs: [inputRef],
+    input_materialization_receipt_refs: [
+      reference("AnalysisInputMaterializationReceipt", 49),
+    ] as AnalysisSandboxProgramPayload["input_materialization_receipt_refs"],
     output_contract: {
       schema_version: "python-output-contract@1.0.0",
       outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_000_000 }],

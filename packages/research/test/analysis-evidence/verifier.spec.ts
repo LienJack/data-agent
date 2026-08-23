@@ -74,7 +74,7 @@ const plan: AnalysisProgramPayload = {
 async function programFixture(): Promise<AnalysisSandboxProgramPayload> {
   const material: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
-    protocol_version: "analysis-sandbox-program@1.0.0",
+    protocol_version: "analysis-sandbox-program@2.0.0",
     analysis_program_ref: planRef,
     node_id: "trend-node",
     language: "PYTHON_3_12",
@@ -83,6 +83,9 @@ async function programFixture(): Promise<AnalysisSandboxProgramPayload> {
     source_text_ref: { ...sourceRef, content_hash: sourceHash },
     query_evidence_refs: [queryRef],
     input_refs: [inputResultRef],
+    input_materialization_receipt_refs: [
+      reference("AnalysisInputMaterializationReceipt", "79"),
+    ] as AnalysisSandboxProgramPayload["input_materialization_receipt_refs"],
     output_contract: outputContract,
     import_profile: "CORE_ANALYSIS",
     random_seed: 0,

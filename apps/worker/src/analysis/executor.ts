@@ -331,6 +331,9 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           source_text_ref: source.source_text_ref,
           query_evidence_refs: governedInputs.map(({ query_evidence_ref: reference }) => reference),
           input_refs: governedInputs.map(({ input_ref: reference }) => reference),
+          input_materialization_receipt_refs: governedInputs.map(
+            ({ materialization_receipt_ref: reference }) => reference,
+          ),
           catalog,
         });
         if (!admission.ok) return failedNode(node, "PROGRAM_POLICY_REJECTED");
@@ -512,6 +515,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         const inputClosureHash = await sha256ContentHash({
           query_evidence_refs: program.query_evidence_refs,
           input_refs: program.input_refs,
+          input_materialization_receipt_refs: program.input_materialization_receipt_refs,
         });
         const evidenceMaterial: Omit<DerivedAnalysisEvidencePayload, "derivation_hash"> = {
           artifact_type: "DerivedAnalysisEvidence",

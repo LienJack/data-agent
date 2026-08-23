@@ -49,6 +49,7 @@ export const DEFERRED_ARTIFACT_TYPES = [
 ] as const;
 
 export const SYSTEM_ARTIFACT_TYPES = [
+  "AnalysisInputMaterializationReceipt",
   "TabularImportReceipt",
   "ArtifactExportReceipt",
   "ArtifactWorkspaceDocument",

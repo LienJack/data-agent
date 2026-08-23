@@ -310,7 +310,7 @@ describe("deterministic analysis contracts", () => {
     };
     const program = {
       artifact_type: "SandboxProgram",
-      protocol_version: "analysis-sandbox-program@1.0.0",
+      protocol_version: "analysis-sandbox-program@2.0.0",
       analysis_program_ref: reference("AnalysisProgram", 115),
       node_id: "trend",
       language: "PYTHON_3_12",
@@ -319,6 +319,9 @@ describe("deterministic analysis contracts", () => {
       source_text_ref: sourceRef,
       query_evidence_refs: [reference("QueryEvidence", 116)],
       input_refs: [reference("SandboxResult", 117)],
+      input_materialization_receipt_refs: [
+        reference("AnalysisInputMaterializationReceipt", 118),
+      ],
       output_contract: {
         schema_version: "python-output-contract@1.0.0",
         outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_048_576 }],
