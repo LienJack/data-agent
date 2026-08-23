@@ -1,38 +1,106 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   findUntrackedAppSemanticSchemaCopies,
+  findUntrackedCompatibilitySurfaces,
   findUntrackedRetirementExports,
   parseRetirementSurfaceLedger,
+  type RetirementSource,
   validateRetirementSurfaceLedger,
 } from "../scripts/lib/retirement-surface-ledger.js";
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const ledger = parseRetirementSurfaceLedger(
-  readFileSync(resolve(repoRoot, "docs/architecture/semantic-billing-surface-ledger.md"), "utf8"),
+const ledgerSource = readFileSync(
+  resolve(repoRoot, "docs/architecture/retirement-surface-ledger.json"),
+  "utf8",
 );
+const ledger = parseRetirementSurfaceLedger(ledgerSource);
 
-describe("Semantic and Billing retirement surface ledger", () => {
-  it("covers every critical cutover surface with an executable final disposition", () => {
+function productionSources(directory: string): RetirementSource[] {
+  const sources: RetirementSource[] = [];
+  for (const name of readdirSync(directory)) {
+    if (["dist", "node_modules", ".next", "test", "tests", "fixtures"].includes(name)) continue;
+    const path = resolve(directory, name);
+    if (statSync(path).isDirectory()) {
+      sources.push(...productionSources(path));
+      continue;
+    }
+    if (!/\.(?:c|m)?(?:j|t)sx?$/.test(name) || /\.(?:spec|test)\.[jt]sx?$/.test(name)) continue;
+    sources.push({
+      path: relative(repoRoot, path),
+      source: readFileSync(path, "utf8"),
+    });
+  }
+  return sources;
+}
+
+describe("repository retirement surface ledger", () => {
+  it("strictly parses the authority and covers critical compatibility classes", () => {
     expect(
       validateRetirementSurfaceLedger(ledger, [
-        "./billing/billing-gated-model-provider.js",
-        "./pricing/postgres-pricing-control.js",
-        "packages/contracts/src/artifacts/semantic-control-plane.ts",
-        "packages/semantic/src/compiler/u5-compiler.ts",
-        "apps/web/src/lib/semantic-authoring-public.ts",
-        "/semantic and /data-link",
-        "/w/[workspaceId]/semantic",
-        "Billing ledger and settlement tables",
-        "Semantic V1 database objects and rows",
+        "apps/web/src/lib/root-env.ts#env:DeepSeekAPIKey",
+        "packages/agent-runtime/src/mastra/model-provider-adapter.ts#LEGACY_TEST_ONLY",
+        "tests/fixtures/text2sql/legacy-characterization",
+        "migration-history#duplicate-sequences-10673-10679",
+        "migration-history#missing-checksum-headers",
+        "migration-history#unverifiable-checksum-placeholders",
         "Relationship Index PostgreSQL fallback",
         "Server-configured direct Model Provider gateway",
       ]),
     ).toEqual([]);
+
+    const authority = JSON.parse(ledgerSource) as { entries: unknown[] };
+    expect(() =>
+      parseRetirementSurfaceLedger(
+        JSON.stringify({
+          ...authority,
+          entries: [{ ...(authority.entries[0] as object), surprise: true }],
+        }),
+      ),
+    ).toThrow();
+    expect(() =>
+      parseRetirementSurfaceLedger(
+        JSON.stringify({
+          ...authority,
+          entries: [{ ...(authority.entries[0] as object), disposition: "SOMEDAY" }],
+        }),
+      ),
+    ).toThrow();
+    const firstEntry = ledger[0];
+    if (!firstEntry) throw new Error("retirement ledger must not be empty");
+    expect(validateRetirementSurfaceLedger([firstEntry, firstEntry], [])).toContain(
+      `duplicate surface: ${firstEntry.surface}`,
+    );
   });
 
-  it("rejects a newly exported billing or compatibility module unless it is inventoried", () => {
+  it("rejects unregistered production compatibility markers", () => {
+    const sources = ["apps", "packages", "scripts", "services"]
+      .map((path) => resolve(repoRoot, path))
+      .filter((path) => {
+        try {
+          return statSync(path).isDirectory();
+        } catch {
+          return false;
+        }
+      })
+      .flatMap(productionSources);
+
+    expect(findUntrackedCompatibilitySurfaces(sources, ledger)).toEqual([]);
+    expect(
+      findUntrackedCompatibilitySurfaces(
+        [
+          {
+            path: "packages/example/src/index.ts",
+            source: "/** @deprecated Compatibility alias. */ export const legacyAlias = current;",
+          },
+        ],
+        ledger,
+      ),
+    ).toEqual(["packages/example/src/index.ts#legacyAlias"]);
+  });
+
+  it("rejects a newly exported compatibility module unless it is inventoried", () => {
     const platformIndex = readFileSync(resolve(repoRoot, "packages/platform/src/index.ts"), "utf8");
     const contractsWorkspaceIndex = readFileSync(
       resolve(repoRoot, "packages/contracts/src/workspaces/index.ts"),
@@ -46,26 +114,19 @@ describe("Semantic and Billing retirement surface ledger", () => {
     ).toEqual(["./billing/compat-v1.js"]);
   });
 
-  it("rejects compatibility transition plans but permits characterized reliability fallback", () => {
+  it("distinguishes characterized reliability fallbacks from migration debt", () => {
     const fake = ledger.map((entry) =>
-      entry.surface === "Monetary provider admission and UNBILLABLE"
-        ? { ...entry, finalTarget: "redirect through compatibility adapter" }
+      entry.surface === "Relationship Index PostgreSQL fallback"
+        ? { ...entry, disposition: "MIGRATE_THEN_DELETE" as const, deadline: "2026-09-30" }
         : entry,
     );
-
     expect(validateRetirementSurfaceLedger(fake, [])).toContain(
-      "compatibility transition is forbidden: Monetary provider admission and UNBILLABLE",
+      "reliability fallback needs explicit retention: Relationship Index PostgreSQL fallback",
     );
     expect(validateRetirementSurfaceLedger(ledger, [])).toEqual([]);
   });
 
   it("rejects new App-owned public Semantic schema copies", () => {
-    const trackedPath = "apps/web/src/lib/semantic-authoring-public.ts";
-    const trackedSource = readFileSync(resolve(repoRoot, trackedPath), "utf8");
-
-    expect(
-      findUntrackedAppSemanticSchemaCopies([{ path: trackedPath, source: trackedSource }], ledger),
-    ).toEqual([]);
     expect(
       findUntrackedAppSemanticSchemaCopies(
         [
