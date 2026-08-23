@@ -1,4 +1,4 @@
-import type { U6DbResult } from "@data-agent/contracts";
+import { buildAnalysisPythonSourceReceipt, type U6DbResult } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresResearchAuthority } from "../../src/research/postgres-research-authority.js";
@@ -737,5 +737,79 @@ describe("PostgreSQL Research Authority Adapter", () => {
     });
     expect(rpc?.values[1]).toBeNull();
     expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
+  });
+
+  it("只向专用 RPC 提交加密的 Analysis Python source", async () => {
+    const auth = capabilities();
+    const programRef = {
+      ...certificateRef(),
+      artifact_id: ids.operation,
+      artifact_type: "AnalysisProgram" as const,
+      content_hash: hash("d"),
+    };
+    const sourceRef = {
+      ...certificateRef(),
+      artifact_id: ids.grant,
+      artifact_type: "SensitiveExecutionArtifact" as const,
+      content_hash: hash("e"),
+    };
+    const receipt = await buildAnalysisPythonSourceReceipt({
+      schema_version: "analysis-python-source-receipt@1.0.0",
+      artifact_ref: sourceRef,
+      analysis_program_ref: programRef,
+      node_id: "falcon24-question-1",
+      generation_attempt: 0,
+      source_kind: "DEEPSEEK_GENERATED",
+      provider_invocation_ref: {
+        resource_id: ids.certificate,
+        resource_revision: 1,
+        resource_hash: hash("f"),
+      },
+      plaintext_hash: sourceRef.content_hash,
+      ciphertext_hash: hash("1"),
+      encryption: {
+        algorithm: "AES-256-GCM",
+        key_id: "analysis-python-source-v1",
+        iv_base64: "AQEBAQEBAQEBAQEB",
+        auth_tag_base64: "AgICAgICAgICAgICAgICAg==",
+      },
+      storage: "POSTGRES_ENCRYPTED_BYTEA",
+      committed_at: "2026-08-24T00:00:00.000Z",
+    });
+    const ciphertext = new Uint8Array([1, 2, 3]);
+    const database = scriptedPool((text) => {
+      if (!text.includes("commit_analysis_python_source")) return undefined;
+      return resultRow({ ok: true, created: true, receipt });
+    });
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+    });
+
+    const result = await authority.commitAnalysisPythonSource(
+      auth.analyst,
+      {
+        schema_version: "analysis-python-source-commit@1.0.0",
+        scope,
+        run_id: ids.run,
+        principal_id: ids.analyst,
+        attempt_id: ids.terminal,
+        worker_fence: 7,
+        idempotency_key: "analysis-python-source:test",
+        receipt,
+      },
+      ciphertext,
+    );
+
+    expect(result).toEqual({ ok: true, created: true, receipt });
+    const rpc = database.calls.find((call) =>
+      call.text.includes("commit_analysis_python_source"),
+    );
+    expect(rpc?.values[0]).toMatchObject({
+      protocol_version: "u6-db-command@1.0.0",
+      authority_capability_id: ids.authority,
+      command: { attempt_id: ids.terminal, worker_fence: 7 },
+    });
+    expect(rpc?.values[1]).toBe(ciphertext);
   });
 });

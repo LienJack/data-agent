@@ -1,4 +1,8 @@
 import {
+  type AnalysisPythonSourceCommitCommand,
+  type AnalysisPythonSourceCommitResult,
+  analysisPythonSourceCommitCommandSchema,
+  analysisPythonSourceCommitResultSchema,
   type AppScope,
   appScopeSchema,
   artifactReferenceSchema,
@@ -143,6 +147,11 @@ type ResearchAuthorityPorts = ResearchArtifactAuthorityPort &
       command: AnalysisSystemArtifactCommand,
       content: Uint8Array | null,
     ): Promise<AnalysisSystemArtifactResult>;
+    commitAnalysisPythonSource(
+      capabilityInput: unknown,
+      command: AnalysisPythonSourceCommitCommand,
+      ciphertext: Uint8Array,
+    ): Promise<AnalysisPythonSourceCommitResult>;
   };
 
 type ResearchCommand = {
@@ -692,6 +701,63 @@ export function createPostgresResearchAuthority(
         ok: false,
         error_code: failure.error.code,
       } as AnalysisSystemArtifactResult;
+    },
+    async commitAnalysisPythonSource(capabilityInput, commandInput, ciphertext) {
+      const capabilityBundle = capabilityInputSchema.safeParse(capabilityInput);
+      const command = analysisPythonSourceCommitCommandSchema.safeParse(commandInput);
+      if (!capabilityBundle.success || !command.success || ciphertext.byteLength === 0) {
+        return { ok: false, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
+      }
+      const envelope = {
+        protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
+        authority_capability_id: capabilityBundle.data.authority_capability_id,
+        command: command.data,
+      } as const;
+      const transaction = await withAppTransaction(
+        options.pool,
+        options.authorizer,
+        capabilityBundle.data.app_capability,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          map_database_error: databaseFailure,
+          operation_name: "research_authority.commit_analysis_python_source",
+          correlation_id: command.data.run_id,
+        },
+        async ({ capability, client }) => {
+          if (!scopeMatches(command.data, capability)) {
+            throw new PersistenceBoundaryError(
+              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+              "Analysis Python Source 与事务内 App Capability Scope/Principal 不一致。",
+            );
+          }
+          const databaseResult = await client.query<JsonResultRow>(
+            "select app_data_agent.commit_analysis_python_source($1::jsonb, $2::bytea) as result",
+            [envelope, ciphertext],
+          );
+          const parsed = analysisPythonSourceCommitResultSchema.safeParse(
+            databaseResult.rows[0]?.result,
+          );
+          if (!parsed.success) {
+            throw new PersistenceBoundaryError(
+              "RESEARCH_DATABASE_CONTRACT_INVALID",
+              "Analysis Python Source RPC 返回了不符合冻结协议的 Result。",
+            );
+          }
+          return parsed.data;
+        },
+      );
+      if (transaction.ok) return transaction.value;
+      const failure = boundaryFailureToU6<never>(transaction.error);
+      if (failure.ok) {
+        throw new ResearchAuthorityTransportError(
+          "Analysis Python Source 的事务失败被错误映射为成功。",
+        );
+      }
+      return {
+        ok: false,
+        error_code: failure.error.code,
+      } as AnalysisPythonSourceCommitResult;
     },
   };
   return Object.freeze(authority);
