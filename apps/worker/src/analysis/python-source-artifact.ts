@@ -39,7 +39,9 @@ function sourceHash(sourceText: string): `sha256:${string}` {
 
 function sourceAad(input: {
   readonly lease: RunWorkLease;
-  readonly analysis_program_ref: Parameters<AnalysisPythonSourceArtifactPort["commit"]>[0]["analysis_program_ref"];
+  readonly analysis_program_ref: Parameters<
+    AnalysisPythonSourceArtifactPort["commit"]
+  >[0]["analysis_program_ref"];
   readonly node_id: string;
   readonly generation_attempt: 0 | 1;
   readonly source_sha256: `sha256:${string}`;
@@ -77,10 +79,7 @@ function encryptSource(input: {
   }
   const cipher = createCipheriv("aes-256-gcm", input.key, input.iv);
   cipher.setAAD(input.aad);
-  const ciphertext = Buffer.concat([
-    cipher.update(input.plaintext, "utf8"),
-    cipher.final(),
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(input.plaintext, "utf8"), cipher.final()]);
   return {
     ciphertext,
     auth_tag: cipher.getAuthTag(),
@@ -187,7 +186,17 @@ export function createAnalysisPythonSourceArtifactPort(input: {
       if (sourceHash(sourceText) !== receipt.plaintext_hash) {
         throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_PLAINTEXT_INVALID");
       }
-      return { source_text: sourceText, source_text_ref: receipt.artifact_ref };
+      return {
+        source_text: sourceText,
+        source_text_ref: receipt.artifact_ref,
+        provider_invocation_ref:
+          receipt.provider_invocation_ref === null
+            ? null
+            : {
+                ...receipt.provider_invocation_ref,
+                resource_hash: receipt.provider_invocation_ref.resource_hash as `sha256:${string}`,
+              },
+      };
     },
     async commit(command: Parameters<AnalysisPythonSourceArtifactPort["commit"]>[0]) {
       if (

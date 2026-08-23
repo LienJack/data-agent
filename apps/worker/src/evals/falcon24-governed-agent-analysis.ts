@@ -11,6 +11,7 @@ import { falcon24AnalysisOutputSchema } from "@data-agent/evals";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
 import type { AnalysisArtifactCommitPort, AnalysisExecutionResult } from "../analysis/executor.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
+import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { compileFalcon24AnalysisContext } from "./falcon24-analysis-context.js";
 import {
   createFalcon24AnalysisProgram,
@@ -151,6 +152,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
     readonly fence_guard: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]["fence_guard"];
   }) => Falcon24ProgramExecutor;
   readonly compile_context?: typeof compileFalcon24AnalysisContext;
+  readonly acceptance_recorder?: Falcon24AnalysisAcceptanceRecorder | null;
 }): GovernedAgentAnalysisPort {
   const compileContext = input.compile_context ?? compileFalcon24AnalysisContext;
   return Object.freeze({
@@ -198,6 +200,16 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
         program,
       });
       const validated = decodeValidatedOutput(execution, command.test_case);
+      await input.acceptance_recorder?.record({
+        test_case: command.test_case,
+        semantic_context_ref: {
+          package_id: command.semantic_context.package.package_id,
+          package_revision: 1,
+          package_hash: command.semantic_context.package.package_hash as `sha256:${string}`,
+        },
+        execution,
+        completed_at: new Date().toISOString(),
+      });
       const acceptedArtifactRefs = [
         briefRef,
         execution.analysis_program_ref,

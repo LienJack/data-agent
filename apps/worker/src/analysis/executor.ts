@@ -81,7 +81,11 @@ export interface AnalysisProgramSourcePort {
     readonly analysis_program_ref: ArtifactReference;
     readonly node: AnalysisProgramNode;
     readonly standard_program: string | null;
-  }): Promise<{ readonly source_text: string; readonly source_text_ref: ArtifactReference }>;
+  }): Promise<{
+    readonly source_text: string;
+    readonly source_text_ref: ArtifactReference;
+    readonly provider_invocation_ref?: ProviderInvocationResourceRef | null;
+  }>;
   repair?(input: {
     readonly lease: RunWorkLease;
     readonly analysis_program: AnalysisProgramPayload;
@@ -90,7 +94,17 @@ export interface AnalysisProgramSourcePort {
     readonly previous_source_text: string;
     readonly failure_code: string;
     readonly attempt: 1;
-  }): Promise<{ readonly source_text: string; readonly source_text_ref: ArtifactReference }>;
+  }): Promise<{
+    readonly source_text: string;
+    readonly source_text_ref: ArtifactReference;
+    readonly provider_invocation_ref?: ProviderInvocationResourceRef | null;
+  }>;
+}
+
+export interface ProviderInvocationResourceRef {
+  readonly resource_id: string;
+  readonly resource_revision: 1;
+  readonly resource_hash: `sha256:${string}`;
 }
 
 export interface AnalysisOracleExpectation {
@@ -99,6 +113,7 @@ export interface AnalysisOracleExpectation {
   readonly coverage_ratio: number;
   readonly limitation_codes: readonly AnalysisReasonCode[];
   readonly material_change: boolean;
+  readonly oracle_receipt?: unknown;
 }
 
 export interface AnalysisOraclePort {
@@ -137,6 +152,10 @@ export interface AnalysisExecutionResult {
   readonly completion_ref: ArtifactReference;
   readonly completion: AnalysisCompletionReceiptPayload;
   readonly evidence_refs: readonly ArtifactReference[];
+  readonly generated_python_refs: readonly ArtifactReference[];
+  readonly sandbox_receipt_refs: readonly ArtifactReference[];
+  readonly provider_invocation_refs: readonly ProviderInvocationResourceRef[];
+  readonly oracle_receipts: readonly unknown[];
   readonly validated_outputs: readonly {
     readonly node_id: string;
     readonly output: PythonSandboxTransportOutcomeV2["outputs"][number];
@@ -295,6 +314,10 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const results = new Map<string, AnalysisCompletionReceiptPayload["node_results"][number]>();
       const expectations = new Map<string, AnalysisOracleExpectation>();
       const evidenceRefs: ArtifactReference[] = [];
+      const generatedPythonRefs: ArtifactReference[] = [];
+      const sandboxReceiptRefs: ArtifactReference[] = [];
+      const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
+      const oracleReceipts: unknown[] = [];
       const validatedOutputs = new Map<
         string,
         readonly PythonSandboxTransportOutcomeV2["outputs"][number][]
@@ -577,6 +600,17 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           }),
         );
         evidenceRefs.push(evidenceRef);
+        if (node.execution_mode === "MODEL_GENERATED") {
+          generatedPythonRefs.push(source.source_text_ref);
+          if (!source.provider_invocation_ref) {
+            throw new TypeError("ANALYSIS_MODEL_PROVIDER_INVOCATION_REF_REQUIRED");
+          }
+          providerInvocationRefs.push(source.provider_invocation_ref);
+        }
+        sandboxReceiptRefs.push(committedReceiptRef);
+        if (expectation.oracle_receipt !== undefined) {
+          oracleReceipts.push(expectation.oracle_receipt);
+        }
         validatedOutputs.set(node.node_id, sandbox.outcome.outputs);
         expectations.set(node.node_id, expectation);
         return {
@@ -663,6 +697,10 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         completion_ref: completionRef,
         completion,
         evidence_refs: Object.freeze(evidenceRefs),
+        generated_python_refs: Object.freeze(generatedPythonRefs),
+        sandbox_receipt_refs: Object.freeze(sandboxReceiptRefs),
+        provider_invocation_refs: Object.freeze(providerInvocationRefs),
+        oracle_receipts: Object.freeze(oracleReceipts),
         validated_outputs: Object.freeze(
           analysisProgram.nodes.flatMap((node) =>
             (validatedOutputs.get(node.node_id) ?? []).map((output) => ({

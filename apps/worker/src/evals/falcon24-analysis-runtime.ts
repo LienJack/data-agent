@@ -28,6 +28,7 @@ import { createResearchAnalysisArtifactPort } from "../analysis/research-artifac
 import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
+import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
 import { falcon24AnalysisProgramInternals } from "./falcon24-analysis-program.js";
 import {
@@ -115,6 +116,7 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly sandbox: PythonSandboxClient;
   readonly environment: NodeJS.ProcessEnv;
   readonly now?: () => Date;
+  readonly acceptance_recorder?: Falcon24AnalysisAcceptanceRecorder | null;
 }): GovernedAgentAnalysisPort {
   const inputEncryption = resolveAnalysisInputEncryption(input.environment);
   if (!inputEncryption) throw new TypeError("ANALYSIS_INPUT_ENCRYPTION_CONFIG_REQUIRED");
@@ -151,6 +153,9 @@ export function createFalcon24AnalysisRuntime(input: {
 
   return createFalcon24GovernedAgentAnalysisPort({
     artifacts,
+    ...(input.acceptance_recorder !== undefined
+      ? { acceptance_recorder: input.acceptance_recorder }
+      : {}),
     create_executor(runtime) {
       const datasourceId = z
         .uuid()

@@ -241,6 +241,7 @@ services:
     volumes:
       - python_sandbox_ipc:/run/data-agent-python
       - workspace_content:/app/.data/workspace-content
+      - ./artifacts/falcon24-agent-analysis:/app/artifacts/falcon24-agent-analysis
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
       NODE_ENV: production
@@ -259,6 +260,12 @@ services:
       DATA_AGENT_CLAMAV_PORT: "3310"
       DATA_AGENT_CLAMAV_TIMEOUT_MS: "30000"
       WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET: ${WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET:-}
+      DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64: ${DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64:-}
+      DATA_AGENT_ANALYSIS_INPUT_KEY_ID: ${DATA_AGENT_ANALYSIS_INPUT_KEY_ID:-analysis-input-v1}
+      DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64: ${DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64:-}
+      DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_ID: ${DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_ID:-analysis-python-source-v1}
+      FALCON24_ANALYSIS_RUN_MANIFEST: ${FALCON24_ANALYSIS_RUN_MANIFEST:-}
+      FALCON24_ANALYSIS_RESULTS: ${FALCON24_ANALYSIS_RESULTS:-}
       PYTHON_SANDBOX_ENABLED: ${PYTHON_SANDBOX_ENABLED:-true}
       PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
       PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}

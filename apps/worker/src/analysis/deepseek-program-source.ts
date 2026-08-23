@@ -103,6 +103,9 @@ export interface AnalysisPythonSourceArtifactPort {
   }): Promise<{
     readonly source_text: string;
     readonly source_text_ref: ArtifactReference;
+    readonly provider_invocation_ref?:
+      | Awaited<ReturnType<DeepSeekPythonGenerationPort["generate"]>>["provider_invocation_ref"]
+      | null;
   } | null>;
   commit(input: {
     readonly lease: Parameters<AnalysisProgramSourcePort["load"]>[0]["lease"];
@@ -264,6 +267,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
     });
     return {
       source_text: options.source_text,
+      provider_invocation_ref: options.provider_invocation_ref,
       source_text_ref: await verifyCommittedSource({
         reference,
         analysisProgramRef: options.analysis_program_ref,
@@ -289,6 +293,9 @@ export function createDeepSeekAnalysisProgramSource(input: {
     if (!loaded) return null;
     return {
       source_text: loaded.source_text,
+      ...(loaded.provider_invocation_ref !== undefined
+        ? { provider_invocation_ref: loaded.provider_invocation_ref }
+        : {}),
       source_text_ref: await verifyCommittedSource({
         reference: loaded.source_text_ref,
         analysisProgramRef: options.analysis_program_ref,

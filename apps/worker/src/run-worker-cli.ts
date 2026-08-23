@@ -67,6 +67,7 @@ import pg from "pg";
 import { z } from "zod";
 import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
 import { createEcommerceDirectQaRegistry } from "./evals/ecommerce-direct-qa-registry.js";
+import { createEnvironmentFalcon24AnalysisAcceptanceRecorder } from "./evals/falcon24-analysis-acceptance-recorder.js";
 import { createFalcon24AnalysisRuntime } from "./evals/falcon24-analysis-runtime.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
@@ -228,6 +229,8 @@ export async function runWorkerProcess(
   const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
+  const falcon24AcceptanceRecorder =
+    createEnvironmentFalcon24AnalysisAcceptanceRecorder(environment);
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
       ? z.strictObject({ run_id: z.uuid(), command_id: z.uuid() }).parse({
@@ -435,6 +438,7 @@ export async function runWorkerProcess(
                 sandbox: pythonSandbox,
                 environment,
                 now: () => new Date(),
+                acceptance_recorder: falcon24AcceptanceRecorder,
               })
             : null;
         const genericDirectQa = createDirectQaAnalysisExecutor({

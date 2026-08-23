@@ -122,7 +122,11 @@ describe("Analysis Python source artifact port", () => {
         node_id: "falcon24-question-1",
         generation_attempt: 0,
       }),
-    ).resolves.toEqual({ source_text: sourceText, source_text_ref: result });
+    ).resolves.toEqual({
+      source_text: sourceText,
+      source_text_ref: result,
+      provider_invocation_ref: sourceCommand.provider_invocation_ref,
+    });
     expect(result).toMatchObject({
       artifact_type: "SensitiveExecutionArtifact",
       content_hash: sourceHash,

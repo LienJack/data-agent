@@ -278,6 +278,11 @@ describe("DeepSeek governed Python source", () => {
     expect(result.source_text_ref.content_hash).toBe(
       `sha256:${createHash("sha256").update(result.source_text, "utf8").digest("hex")}`,
     );
+    expect(result.provider_invocation_ref).toEqual({
+      resource_id: id(90),
+      resource_revision: 1,
+      resource_hash: hash("9"),
+    });
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       provider: "deepseek",

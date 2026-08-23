@@ -1166,6 +1166,7 @@ export function createFalcon24ArrowBackedAnalysisOracle(): AnalysisOraclePort {
         coverage_ratio: 1,
         limitation_codes: [] satisfies readonly AnalysisReasonCode[],
         material_change: true,
+        oracle_receipt: verified.receipt,
       } satisfies AnalysisOracleExpectation;
     },
   });

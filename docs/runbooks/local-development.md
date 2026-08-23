@@ -120,6 +120,23 @@ deployment、非 `postgres` executor、目标邮箱冲突或多 active 超级管
 export WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET="$(pnpm --silent dev:research-authority)"
 ```
 
+Falcon24 真实 Agent 验收还需要显式开启证据记录器；两个路径必须同时提供，缺一时 Worker
+失败关闭。Manifest 使用 `falcon24-analysis-run-manifest@1.0.0`，逐个绑定真实 `run_id`、
+Case、`COLD|WARM` 与 repetition；记录器只写 Provider/语义上下文/AnalysisProgram/
+加密 Python Source/Sandbox Receipt/独立 Oracle 的安全引用和 Hash，不写源码、输入行或
+Provider 原文：
+
+```bash
+export FALCON24_ANALYSIS_RUN_MANIFEST=artifacts/falcon24-agent-analysis/run-manifest.json
+export FALCON24_ANALYSIS_RESULTS=artifacts/falcon24-agent-analysis/actual-runs.json
+export DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64='<32-byte-base64>'
+export DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64='<32-byte-base64>'
+```
+
+Compose Worker 将该 Artifact 目录绑定到 `/app/artifacts/falcon24-agent-analysis`；冷启动
+轮次须在每个 Run 前重启 Worker，暖启动轮次在同一 Worker 进程连续执行。只有 5 题各
+3 冷 + 3 暖共 30 条真实结果才能进入最终 Gate。
+
 命令从当前 `WORKER_DEPLOYMENT_ID / WORKER_TENANT_ID / WORKER_PRINCIPAL_ID` 解析有效
 Membership，数据库锁内签发 12 个 Artifact Domain 与一个 `REPORT_READ` Capability；
 默认有效 24 小时。调用者不能指定 Capability ID，重复的 exact Manifest 不会产生第二套。
