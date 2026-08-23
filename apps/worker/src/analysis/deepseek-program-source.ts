@@ -19,7 +19,7 @@ type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 
 const inputSchemaProjectionSchema = z.strictObject({
   input_name: z.string().trim().min(1).max(128),
-  format: z.enum(["JSON", "ARROW_IPC"]),
+  format: z.enum(["JSON", "CSV", "ARROW"]),
   row_count_upper_bound: z.number().int().nonnegative().max(5_000),
   fields: z
     .array(
@@ -53,6 +53,10 @@ export interface AnalysisPythonGenerationContextPort {
 
 export interface DeepSeekPythonGenerationPort {
   generate(input: {
+    readonly lease: Parameters<AnalysisProgramSourcePort["load"]>[0]["lease"];
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node_id: string;
+    readonly generation_attempt: 0 | 1;
     readonly provider: typeof DEEPSEEK_PROVIDER;
     readonly model_id: typeof DEEPSEEK_PYTHON_MODEL;
     readonly response_schema_version: typeof RESPONSE_SCHEMA_VERSION;
@@ -63,6 +67,11 @@ export interface DeepSeekPythonGenerationPort {
     readonly provider: typeof DEEPSEEK_PROVIDER;
     readonly model_id: typeof DEEPSEEK_PYTHON_MODEL;
     readonly output_text: string;
+    readonly provider_invocation_ref: {
+      readonly resource_id: string;
+      readonly resource_revision: 1;
+      readonly resource_hash: `sha256:${string}`;
+    };
   }>;
 }
 
@@ -73,6 +82,9 @@ export interface AnalysisPythonSourceArtifactPort {
     readonly analysis_program_ref: ArtifactReference;
     readonly node_id: string;
     readonly generation_attempt: 0 | 1;
+    readonly provider_invocation_ref:
+      | Awaited<ReturnType<DeepSeekPythonGenerationPort["generate"]>>["provider_invocation_ref"]
+      | null;
     readonly source_sha256: `sha256:${string}`;
     readonly source_text: string;
   }): Promise<ArtifactReference>;
@@ -152,7 +164,16 @@ async function boundedPrompt(input: {
       dynamic_code: "DENIED",
       random_seed: "HOST_INJECTED",
       allowed_imports: allowedImports(input.importProfile),
-      return_contract: "Write only declared outputs through the provided sdk.",
+      sdk: {
+        entrypoint: "def main(sdk)",
+        read_input: "sdk.read(input_name)",
+        write_json: "sdk.write_json(output_name, value)",
+        write_csv: "sdk.write_csv(output_name, value)",
+        write_arrow: "sdk.write_arrow(output_name, value)",
+        write_png: "sdk.write_png(output_name, figure)",
+      },
+      return_contract:
+        "Read only declared input names and write every declared output exactly once through the provided sdk.",
     },
     repair: input.repair,
   } as const;
@@ -192,6 +213,9 @@ export function createDeepSeekAnalysisProgramSource(input: {
     readonly analysis_program_ref: ArtifactReference;
     readonly node: AnalysisProgramNode;
     readonly generation_attempt: 0 | 1;
+    readonly provider_invocation_ref:
+      | Awaited<ReturnType<DeepSeekPythonGenerationPort["generate"]>>["provider_invocation_ref"]
+      | null;
     readonly source_text: string;
   }) => {
     if (Buffer.byteLength(options.source_text, "utf8") > MAX_GENERATED_SOURCE_BYTES) {
@@ -204,6 +228,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
       analysis_program_ref: options.analysis_program_ref,
       node_id: options.node.node_id,
       generation_attempt: options.generation_attempt,
+      provider_invocation_ref: options.provider_invocation_ref,
       source_sha256: sourceHash,
       source_text: options.source_text,
     });
@@ -237,6 +262,10 @@ export function createDeepSeekAnalysisProgramSource(input: {
       throw new TypeError("ANALYSIS_PYTHON_SEMANTIC_CONTEXT_MISMATCH");
     }
     const response = await input.model.generate({
+      lease: options.lease,
+      analysis_program_ref: options.analysis_program_ref,
+      node_id: options.node.node_id,
+      generation_attempt: options.generation_attempt,
       provider: DEEPSEEK_PROVIDER,
       model_id: DEEPSEEK_PYTHON_MODEL,
       response_schema_version: RESPONSE_SCHEMA_VERSION,
@@ -256,6 +285,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
     }
     return commit({
       ...options,
+      provider_invocation_ref: response.provider_invocation_ref,
       source_text: modelOutput(response.output_text).python_source,
     });
   };
@@ -270,6 +300,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
         return commit({
           ...options,
           generation_attempt: 0,
+          provider_invocation_ref: null,
           source_text: await input.standard_programs.load(options.standard_program),
         });
       }

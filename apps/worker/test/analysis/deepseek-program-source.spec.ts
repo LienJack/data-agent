@@ -149,7 +149,7 @@ async function fixture() {
     expires_at: "2026-08-24T00:02:00.000Z",
     payload: {},
   } as const;
-  const programRef = reference("AnalysisProgram", 15, program.program_hash);
+  const programRef = reference("AnalysisProgram", 15, program.program_hash as `sha256:${string}`);
   const node = program.nodes[0];
   if (!node) throw new TypeError("missing analysis node fixture");
   return { contextPackage, lease, node, program, programRef };
@@ -184,6 +184,11 @@ describe("DeepSeek governed Python source", () => {
           return {
             provider: "deepseek",
             model_id: "deepseek-v4-flash",
+            provider_invocation_ref: {
+              resource_id: id(90),
+              resource_revision: 1,
+              resource_hash: hash("9"),
+            },
             output_text: JSON.stringify({
               schema_version: "analysis-python-source@1.0.0",
               python_source:
@@ -240,6 +245,11 @@ describe("DeepSeek governed Python source", () => {
           return {
             provider: "deepseek",
             model_id: substituted ? ("deepseek-other" as never) : "deepseek-v4-flash",
+            provider_invocation_ref: {
+              resource_id: id(91),
+              resource_revision: 1,
+              resource_hash: hash("8"),
+            },
             output_text: JSON.stringify({
               schema_version: "analysis-python-source@1.0.0",
               python_source:
