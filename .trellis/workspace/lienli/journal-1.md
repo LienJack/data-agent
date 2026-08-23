@@ -987,3 +987,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 43: U7 统一语义应用与生产组合根
+
+**Date**: 2026-08-23
+**Task**: U7 统一语义应用与生产组合根
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+将 Candidate compile/save、Governance、Studio、Explorer 用例迁入 Semantic application，Platform 收敛为 Contracts Port adapters；Web/Worker 分别统一到唯一 request/job composition，删除 Mock/default/global runtime 与重复 inbox endpoint，并补齐 conformance、架构与跨层验证。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f606472` | (see git log) |
+
+### Status
+
+[OK] **Completed**

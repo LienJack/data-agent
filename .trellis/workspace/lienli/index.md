@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 42
+- **Total Sessions**: 43
 - **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~989 | Active |
+| `journal-1.md` | ~1010 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 43 | 2026-08-23 | U7 统一语义应用与生产组合根 | `f606472` | `refactor/semantic-v2-billing-retirement` |
 | 42 | 2026-08-23 | U6 Semantic V2-only Runtime | `c69712b` | `refactor/semantic-v2-billing-retirement` |
 | 41 | 2026-08-23 | U5 商业权威退役与历史数据冻结 | `c041c21` | `refactor/semantic-v2-billing-retirement` |
 | 40 | 2026-08-23 | U4 删除计费产品面与运行时 | `7806ea7` | `refactor/semantic-v2-billing-retirement` |
