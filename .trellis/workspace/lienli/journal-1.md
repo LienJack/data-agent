@@ -1081,3 +1081,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Next Steps
 
 - 创建并执行 M1 当前版本词汇证据与确定性解析任务
+
+
+## Session 46: 发布语义词汇解析重构
+
+**Date**: 2026-08-23
+**Task**: 发布语义词汇解析重构
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+统一 Published Release 词汇解析，删除旧 metric resolver，以 10705 原位升级 Resolved Context 当前契约和 PostgreSQL 投影。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `c7d71f2` | (see git log) |
+
+### Status
+
+[OK] **Completed**

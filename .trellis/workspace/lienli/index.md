@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 45
+- **Total Sessions**: 46
 - **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1083 | Active |
+| `journal-1.md` | ~1104 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 46 | 2026-08-23 | 发布语义词汇解析重构 | `c7d71f2` | `refactor/semantic-v2-billing-retirement` |
 | 45 | 2026-08-23 | M0 TIS V2-only 采用基线 | `760f35b` | `refactor/semantic-v2-billing-retirement` |
 | 44 | 2026-08-23 | U8 语义 UI 清理与 V2-only 前端收口 | `858446e`, `771b335` | `refactor/semantic-v2-billing-retirement` |
 | 43 | 2026-08-23 | U7 统一语义应用与生产组合根 | `f606472` | `refactor/semantic-v2-billing-retirement` |
