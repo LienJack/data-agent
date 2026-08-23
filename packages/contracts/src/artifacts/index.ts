@@ -1,5 +1,6 @@
 export * from "./envelope.js";
 export * from "./export-receipt.js";
+export * from "./analysis-python-source.js";
 export {
   assertGroundingAuthorityBundleConsistency,
   assertGroundingAuthorityOriginConsistency,
