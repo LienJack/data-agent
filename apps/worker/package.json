@@ -27,7 +27,8 @@
     "test:integration": "vitest run test/integration --passWithNoTests=false",
     "test:providers": "vitest run test/credentialed-provider-certification.spec.ts",
     "falcon:team": "tsx src/evals/falcon-team-gate-cli.ts",
-    "falcon:final": "tsx src/evals/falcon-final-gate-cli.ts"
+    "falcon:final": "tsx src/evals/falcon-final-gate-cli.ts",
+    "falcon24:analysis:gate": "tsx src/evals/falcon24-analysis-gate-cli.ts"
   },
   "dependencies": {
     "@data-agent/agent-runtime": "workspace:*",

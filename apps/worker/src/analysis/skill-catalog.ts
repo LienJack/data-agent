@@ -132,6 +132,12 @@ const storyParameters = z.strictObject({
 
 const generatedParameters = z.strictObject({
   declared_method: versionIdentifierSchema,
+  acceptance_case_id: versionIdentifierSchema.optional(),
+  question: z.string().trim().min(1).max(8_000).optional(),
+  required_methods: z.array(versionIdentifierSchema).min(1).max(32).optional(),
+  result_schema_version: versionIdentifierSchema.optional(),
+  required_output_fields: z.array(versionIdentifierSchema).min(1).max(64).optional(),
+  claim_strength: z.enum(["DESCRIPTIVE", "ASSOCIATION_ONLY", "HOLD_WITH_SENSITIVITY"]).optional(),
 });
 
 const commonLimits = Object.freeze({

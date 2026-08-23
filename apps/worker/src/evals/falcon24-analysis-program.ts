@@ -43,6 +43,73 @@ const FALCON24_WINDOWS = Object.freeze({
   },
 } as const);
 
+const FALCON24_RESULT_CONTRACTS = Object.freeze({
+  "falcon24-business-review-18m": {
+    schema_version: "falcon24-business-review-output@1.0.0",
+    required_fields: [
+      "window",
+      "monthly_kpis",
+      "worst_revenue_decline",
+      "shapley_decomposition",
+      "segment_drivers",
+      "method_evidence",
+      "conclusion",
+    ],
+    claim_strength: "DESCRIPTIVE",
+  },
+  "falcon24-delivery-experience-12m": {
+    schema_version: "falcon24-delivery-output@1.0.0",
+    required_fields: [
+      "window",
+      "six_vs_six",
+      "adjusted_binomial_glm",
+      "low_rating_scenarios",
+      "method_evidence",
+      "claim_strength",
+      "conclusion",
+    ],
+    claim_strength: "ASSOCIATION_ONLY",
+  },
+  "falcon24-inventory-damage-12m": {
+    schema_version: "falcon24-inventory-output@1.0.0",
+    required_fields: [
+      "window",
+      "primary_source",
+      "sensitivity_source",
+      "sensitivity_combined_with_primary",
+      "products",
+      "method_evidence",
+      "conclusion",
+    ],
+    claim_strength: "DESCRIPTIVE",
+  },
+  "falcon24-marketing-lag-effect": {
+    schema_version: "falcon24-marketing-output@1.0.0",
+    required_fields: [
+      "window",
+      "channel_audience_results",
+      "controls",
+      "method_evidence",
+      "claim_strength",
+      "conclusion",
+    ],
+    claim_strength: "ASSOCIATION_ONLY",
+  },
+  "falcon24-cohort-retention-m0-m6": {
+    schema_version: "falcon24-cohort-output@1.0.0",
+    required_fields: [
+      "cohort_window",
+      "anomaly_precheck",
+      "primary_reliable",
+      "cohorts",
+      "sensitivity",
+      "method_evidence",
+      "conclusion",
+    ],
+    claim_strength: "HOLD_WITH_SENSITIVITY",
+  },
+} as const);
+
 export async function createFalcon24AnalysisProgram(input: {
   readonly test_case: Falcon24AgentAnalysisCase;
   readonly brief_ref: ArtifactReference;
@@ -70,6 +137,7 @@ export async function createFalcon24AnalysisProgram(input: {
     ),
   );
   const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("open-python-analysis@1");
+  const resultContract = FALCON24_RESULT_CONTRACTS[input.test_case.case_id];
   const material: Omit<AnalysisProgramPayload, "program_hash"> = {
     artifact_type: "AnalysisProgram",
     protocol_version: "analysis-program@1.0.0",
@@ -84,7 +152,15 @@ export async function createFalcon24AnalysisProgram(input: {
         dimension_refs: dimensionRefs,
         time_window: FALCON24_WINDOWS[input.test_case.case_id],
         comparison_window: null,
-        parameters: { declared_method: input.test_case.required_methods.join("+") },
+        parameters: {
+          declared_method: input.test_case.required_methods.join("+"),
+          acceptance_case_id: input.test_case.case_id,
+          question: input.test_case.question,
+          required_methods: [...input.test_case.required_methods],
+          result_schema_version: resultContract.schema_version,
+          required_output_fields: [...resultContract.required_fields],
+          claim_strength: resultContract.claim_strength,
+        },
         execution_mode: "MODEL_GENERATED",
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
@@ -109,4 +185,7 @@ export async function createFalcon24AnalysisProgram(input: {
   });
 }
 
-export const falcon24AnalysisProgramInternals = Object.freeze({ windows: FALCON24_WINDOWS });
+export const falcon24AnalysisProgramInternals = Object.freeze({
+  windows: FALCON24_WINDOWS,
+  result_contracts: FALCON24_RESULT_CONTRACTS,
+});

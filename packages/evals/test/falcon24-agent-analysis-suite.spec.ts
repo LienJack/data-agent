@@ -1,3 +1,4 @@
+import { sha256ContentHash } from "@data-agent/contracts";
 import {
   buildFalcon24AgentAnalysisGate,
   falcon24AgentAnalysisRunResultSchema,
@@ -14,7 +15,7 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const completedAt = "2026-08-24T00:00:00.000Z";
 
 function artifact(
-  artifact_type: "AnalysisProgram" | "SensitiveExecutionArtifact",
+  artifact_type: "AnalysisProgram" | "SandboxExecutionReceipt" | "SensitiveExecutionArtifact",
   runId: string,
   suffix: number,
 ) {
@@ -54,42 +55,61 @@ describe("Falcon24 agent analysis acceptance", () => {
   it("opens only after five cases pass three cold and three warm runs with generated Python", async () => {
     const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
     let runSuffix = 100;
-    const results = suite.cases.flatMap((testCase, caseIndex) =>
-      (["COLD", "WARM"] as const).flatMap((runVariant) =>
-        [1, 2, 3].map((repetition) => {
-          runSuffix += 1;
-          const runId = id(runSuffix);
-          return falcon24AgentAnalysisRunResultSchema.parse({
-            schema_version: "falcon24-agent-analysis-run@1.0.0",
-            case_id: testCase.case_id,
-            run_id: runId,
-            run_variant: runVariant,
-            repetition,
-            provider: "deepseek",
-            model_id: "deepseek-v4-flash",
-            model_override_attempted: false,
-            semantic_context_ref: {
-              package_id: id(10 + caseIndex),
-              package_revision: 1,
-              package_hash: hash((caseIndex + 1).toString()),
-            },
-            analysis_program_ref: artifact("AnalysisProgram", runId, 20 + caseIndex),
-            generated_python_refs: [artifact("SensitiveExecutionArtifact", runId, 30 + caseIndex)],
-            model_generated_node_count: 1,
-            method_receipts: testCase.required_methods.map((methodId, methodIndex) => ({
-              method_id: methodId,
-              status: "PASS",
-              evidence_hash: hash(((methodIndex + 1) % 10).toString()),
-            })),
-            disclosures: testCase.required_disclosures,
-            quality_findings: testCase.required_quality_findings,
-            terminal: testCase.expected_terminal,
-            sandbox_status: "SUCCEEDED",
-            oracle_status: "PASS",
-            answer_hash: hash((caseIndex + 1).toString()),
-            completed_at: completedAt,
-          });
-        }),
+    const results = await Promise.all(
+      suite.cases.flatMap((testCase, caseIndex) =>
+        (["COLD", "WARM"] as const).flatMap((runVariant) =>
+          [1, 2, 3].map(async (repetition) => {
+            runSuffix += 1;
+            const runId = id(runSuffix);
+            const oracleMaterial = {
+              schema_version: "falcon24-analysis-oracle@1.0.0" as const,
+              case_id: testCase.case_id,
+              verdict: "PASS" as const,
+              output_hash: hash((caseIndex + 1).toString()),
+              method_receipts: testCase.required_methods.map((methodId, methodIndex) => ({
+                method_id: methodId,
+                status: "PASS" as const,
+                evidence_hash: hash(((methodIndex + 1) % 10).toString()),
+              })),
+              disclosures: testCase.required_disclosures,
+              quality_findings: testCase.required_quality_findings,
+              terminal: testCase.expected_terminal,
+            };
+            return falcon24AgentAnalysisRunResultSchema.parse({
+              schema_version: "falcon24-agent-analysis-run@1.0.0",
+              case_id: testCase.case_id,
+              run_id: runId,
+              run_variant: runVariant,
+              repetition,
+              provider: "deepseek",
+              model_id: "deepseek-v4-flash",
+              model_override_attempted: false,
+              provider_invocation_ref: {
+                resource_id: id(40 + caseIndex),
+                resource_revision: 1,
+                resource_hash: hash("9"),
+              },
+              semantic_context_ref: {
+                package_id: id(10 + caseIndex),
+                package_revision: 1,
+                package_hash: hash((caseIndex + 1).toString()),
+              },
+              analysis_program_ref: artifact("AnalysisProgram", runId, 20 + caseIndex),
+              generated_python_refs: [
+                artifact("SensitiveExecutionArtifact", runId, 30 + caseIndex),
+              ],
+              sandbox_receipt_refs: [artifact("SandboxExecutionReceipt", runId, 50 + caseIndex)],
+              model_generated_node_count: 1,
+              oracle_receipt: {
+                ...oracleMaterial,
+                receipt_hash: await sha256ContentHash(oracleMaterial),
+              },
+              sandbox_status: "SUCCEEDED",
+              answer_hash: hash((caseIndex + 1).toString()),
+              completed_at: completedAt,
+            });
+          }),
+        ),
       ),
     );
     await expect(
@@ -130,6 +150,11 @@ describe("Falcon24 agent analysis acceptance", () => {
       provider: "deepseek",
       model_id: "deepseek-v4-flash",
       model_override_attempted: false,
+      provider_invocation_ref: {
+        resource_id: id(504),
+        resource_revision: 1,
+        resource_hash: hash("5"),
+      },
       semantic_context_ref: {
         package_id: id(501),
         package_revision: 1,
@@ -137,15 +162,22 @@ describe("Falcon24 agent analysis acceptance", () => {
       },
       analysis_program_ref: artifact("AnalysisProgram", id(500), 502),
       generated_python_refs: [artifact("SensitiveExecutionArtifact", id(500), 503)],
+      sandbox_receipt_refs: [artifact("SandboxExecutionReceipt", id(500), 505)],
       model_generated_node_count: 1,
-      method_receipts: [
-        { method_id: "full-month-window", status: "PASS", evidence_hash: hash("2") },
-      ],
-      disclosures: [],
-      quality_findings: [],
-      terminal: "PASS",
+      oracle_receipt: {
+        schema_version: "falcon24-analysis-oracle@1.0.0",
+        case_id: "falcon24-business-review-18m",
+        verdict: "PASS",
+        output_hash: hash("3"),
+        method_receipts: [
+          { method_id: "full-month-window", status: "PASS", evidence_hash: hash("2") },
+        ],
+        disclosures: [],
+        quality_findings: [],
+        terminal: "PASS",
+        receipt_hash: hash("4"),
+      },
       sandbox_status: "SUCCEEDED",
-      oracle_status: "PASS",
       answer_hash: hash("3"),
       completed_at: completedAt,
     } as const;
