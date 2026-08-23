@@ -9,9 +9,9 @@
 - [x] U1 Semantic production lifecycle
   - 增加 `SemanticAssertionCandidate@1`、`SemanticChangeSet@1`、provenance/conflict/validation contracts。
   - 实现候选归一化、identity resolution、change compilation、deterministic validator 与 publish projection tests。
-  - 保持 PostgreSQL authority 和现有 Candidate/Release V2 兼容。
+  - 保持 PostgreSQL authority；本单元产物是候选实现，最终按 Semantica 评审方案并入唯一合同，不保留旧版本兼容。
 - [x] U2 Hybrid retrieval, inference and pruning
-  - 增加 retrieval/inference receipts 与 `ResolvedContextPackage@3`。
+  - 增加 retrieval/inference receipts 与探索性 `ResolvedContextPackage@3`；最终切换时由唯一 `SemanticContextPackage` 取代并删除包装器。
   - 实现 route adapters、RRF、typed expansion、mandatory closure、budget pruning 和 PG fallback。
   - 替换 deferred routes，补 golden/metamorphic/permission/frontier/degradation tests。
 - [ ] U3 Falcon24 semantic package
@@ -33,6 +33,9 @@
   - 更新 durable specs，逐路径 stage，`git diff --cached --check`，完成 scoped commits。
   - 删除 V2/AnalysisPlan@1/旧 resolver、reader、compat fixture 与 dead tests；运行依赖边界扫描证明唯一生产路径。
   - 预检与 `dev` 的 merge-tree overlap，合并回 dirty base，恢复并复验用户原有改动。
+
+> Semantica 固定提交 `6c2ccfd3afae2c12ba903c61c08a3c3b1970af45` 的源码评审后，后续实施以
+> `semantica-plan/0 大纲.md` 和 M1-M6 为准。U1/U2 中的版本包装只作为探索证据，不能进入最终生产态。
 
 ## Validation matrix
 
@@ -57,7 +60,7 @@
 
 ## Rollback points
 
-- 每个能力提交都可独立 revert；合同只做 additive versioning。
-- 未通过 route/projection gate 时保留 PG lexical path，不开启多路消费。
-- 未通过 generated-code gate 时关闭 generated-python skill，不影响标准分析/Text2SQL。
-- 未通过 5/5 时保持 suite/release HOLD，不删除证据。
+- 最终跨层切换作为一个原子提交/迁移回滚，不保留旧合同双读或 runtime adapter。
+- 未通过 route/projection gate 时保持新 Release HOLD，不启用唯一入口；不是回退到旧 resolver。
+- 未通过 generated-code gate 时保持 AnalysisProgram HOLD，不用旧 AnalysisPlan 代跑。
+- 未通过 5/5 时保持 suite/release HOLD，不删除证据，也不宣称完成唯一切换。
