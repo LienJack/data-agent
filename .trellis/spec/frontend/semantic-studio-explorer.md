@@ -24,6 +24,8 @@
 - Direct Editor 与 Studio 只产生经 strict schema 校验的 `SemanticManualEdit` command；显式 Save
   才形成 Candidate Revision。浏览器不产生 Release authority，也不 autosave。
 - Explorer 是 PostgreSQL published release 的只读投影；Candidate 只可作为明确标记的 comparison。
+- Context Preview 使用 Workspace READ capability 和只读 `ResolvedContextPreviewResult`；展示 exact release lexical evidence，澄清选择只留在本地且不产生 Receipt/Candidate/Run。
+- Binding Impact 只读取 `semantic-binding-impact-safe-projection@1.0.0`；Explorer 可从 `domain + impactId` 深链展示 counts/risk/action/reason/release，并复用 exact Candidate comparison，不能读取 plan/package/drift payload 或执行治理写入。
 
 ## UI 状态与可访问性
 

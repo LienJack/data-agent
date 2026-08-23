@@ -17,8 +17,9 @@ buildResolvedContextRequest(input): Promise<ResolvedContextRequest>;
 verifyResolvedContextRequest(input): Promise<ResolvedContextRequest>;
 buildResolvedContextAuthoritySnapshot(input): Promise<ResolvedContextAuthoritySnapshot>;
 resolveContextPackage(snapshot): Promise<ResolvedContextPackage>;
+createResolvedContextService({ authority }).preview(capability, previewRequest);
 verifyResolvedContextCommitCommand(input): Promise<ResolvedContextCommitCommand>;
-createResolvedContextService({ authority }).resolve(capability, request);
+createResolvedContextService({ authority }).resolve(capability, runRequest);
 ```
 
 ```sql
@@ -43,11 +44,12 @@ body = { question: string[1..4000] }
 - `resolved-context-route-decision@2.0.0` 携带精确 lexical evidence；澄清候选必须闭合 target、term、match kind、phrase 与 evidence hash。
 - `resolved-context-package@2.0.0` 将最终 lexical evidence 纳入 capacity/evidence；request、receipt、commit、capacity 与 Text2SQL binding 结构未变，继续使用各自 `@1.0.0`。
 - Package 身份分三层：`package_key_hash` 只哈希 authority identity；`package_id` 是该 key 前 128 bit 设置 UUIDv8/variant 位后的确定性 ID；`package_hash` 哈希包含 key/id 的完整 package draft。
-- Receipt 必须同时绑定 `request_id + request_hash`、consumer/run、package id/hash、snapshot hash、state/route。Receipt hash 是去掉 `receipt_hash` 后的 canonical SHA-256。
+- Browser Preview 使用 `resolved-context-preview-result@1.0.0` 只返回已验 hash 的 Package，不提交 Receipt；`preview` 只接受 PREVIEW request，`resolve` 只接受 RUN request，不能借 consumer 换绑进入另一条路径。
+- RUN Receipt 必须同时绑定 `request_id + request_hash`、consumer/run、package id/hash、snapshot hash、state/route。Receipt hash 是去掉 `receipt_hash` 后的 canonical SHA-256。
 - commit RPC 独立重载当前 Snapshot，并逐项比较 scope、domain、question/defaults、release/snapshot、policies、provider、knowledge refs、package key/ID/hash 与 Receipt 闭包；不能相信 TypeScript 已验证的字段。
 - PREVIEW 和 RUN 不把 consumer/request identity 放入 Package；相同归一化 Authority 输入产生相同 package hash，但 Receipt hash 可以不同。
 - Worker 必须先消费一次性、WeakSet 品牌化的 Resolved Context capability；只有 `READY/PARTIAL` 才能继续取得 Provider dispatch capability。
-- Context Preview 组件只接收已解析 `ResolvedContextCommitResult`，支持 `IDLE/RESOLVING/RESOLVED/ERROR` 视图并展示五种服务端状态；不得在组件内重建 package 或创建 Run。
+- Context Preview 组件只接收已解析 `ResolvedContextPreviewResult`，支持 `IDLE/RESOLVING/RESOLVED/ERROR` 视图并展示五种服务端状态；READ 请求只加载 Authority Snapshot 并运行同一 resolver，不提交 Receipt、不在组件内重建 package 或创建 Run。
 
 ### 4. Validation & Error Matrix
 
@@ -62,6 +64,8 @@ body = { question: string[1..4000] }
 | Receipt request/package/snapshot/state/route 换绑 | `RESOLVED_CONTEXT_COMMIT_CLOSURE_INVALID` |
 | 同 request identity 同载荷重放 | `REPLAYED`，返回原 package/receipt |
 | 同 request identity 异载荷 | `RESOLVED_CONTEXT_IDEMPOTENCY_CONFLICT` |
+| PREVIEW request 进入 durable `resolve` | `RESOLVED_CONTEXT_COMMIT_CONSUMER_INVALID`，数据库写入数为 0 |
+| RUN request 进入只读 `preview` | `RESOLVED_CONTEXT_PREVIEW_CONSUMER_INVALID`，数据库写入数为 0 |
 | Mandatory context 超过容量 | package=`REJECTED`；Worker Provider 调用数为 0 |
 | 低优先 Evidence 超限 | package=`PARTIAL`，记录 `CROPPED/ON_DEMAND` 原因 |
 
@@ -77,7 +81,7 @@ body = { question: string[1..4000] }
 - Semantic：canonical/preferred/alias/synonym/abbreviation/ambiguity、中文与 ASCII 边界、固定 route priority、输入顺序稳定、UTF-8 byte capacity 与裁剪原因。
 - Platform：SQL 参数、Scope、DB snapshot/result substitution、request hash 在 SQL 前失败关闭。
 - Worker：exact config/context/Attempt/Fence，缺失/拒绝 Context 时 Provider 调用数为 0，一次性 capability 不可复用。
-- Web：Preview Route 使用当前 Defaults、不创建 Run；组件覆盖 idle/resolving/ready/partial/clarification/rejected/stale/error，且无 raw context 字段。
+- Web：Preview Route 使用 READ capability 与当前 Defaults，不创建 Run/Receipt；组件覆盖 idle/resolving/ready/partial/clarification/rejected/stale/error、exact lexical evidence，且无 raw context 字段。
 - PostgreSQL 17：renderer/static、FORCE RLS、NOLOGIN owner、窄 grants、固定 request/package key/UUID 跨运行时向量与 integrity。可用：
 
 ```bash

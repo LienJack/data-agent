@@ -1,4 +1,5 @@
 import type {
+  SemanticBindingImpactSafeProjection,
   SemanticExplorerCandidateComparison,
   SemanticExplorerDiff,
   SemanticExplorerReleaseTimeline,
@@ -10,6 +11,7 @@ import { CandidateComparisonBand } from "./candidate-comparison-band";
 interface ReleaseControlsProps {
   readonly busy: boolean;
   readonly comparison: SemanticExplorerCandidateComparison | null;
+  readonly impact: SemanticBindingImpactSafeProjection | null;
   readonly diff: SemanticExplorerDiff | null;
   readonly snapshot: SemanticExplorerSnapshot;
   readonly timeline: SemanticExplorerReleaseTimeline | null;
@@ -21,6 +23,7 @@ interface ReleaseControlsProps {
 export function ReleaseControls({
   busy,
   comparison,
+  impact,
   diff,
   snapshot,
   timeline,
@@ -35,7 +38,7 @@ export function ReleaseControls({
 
   return (
     <div className="space-y-3">
-      <CandidateComparisonBand comparison={comparison} />
+      <CandidateComparisonBand comparison={comparison} impact={impact} />
       <section className="grid gap-3 rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(260px,0.75fr)]">
         <div className="min-w-0">
           <div className="flex items-center justify-between gap-2">

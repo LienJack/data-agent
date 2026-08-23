@@ -799,6 +799,19 @@ export async function verifyResolvedContextPackage(input: unknown) {
   return packageDocument;
 }
 
+export const resolvedContextPreviewResultSchema = z.strictObject({
+  schema_version: z.literal("resolved-context-preview-result@1.0.0"),
+  package: resolvedContextPackageSchema,
+});
+
+export async function verifyResolvedContextPreviewResult(input: unknown) {
+  const result = resolvedContextPreviewResultSchema.parse(input);
+  return deepFreeze({
+    ...result,
+    package: await verifyResolvedContextPackage(result.package),
+  });
+}
+
 export const resolvedContextPackageReferenceSchema = z.strictObject({
   package_id: canonicalImmutableIdSchema,
   package_revision: z.literal(1),
@@ -919,6 +932,7 @@ export type ContextCapacityItem = z.infer<typeof contextCapacityItemSchema>;
 export type ContextCapacityPlan = z.infer<typeof contextCapacityPlanSchema>;
 export type ResolvedContextEvidenceSummary = z.infer<typeof resolvedContextEvidenceSummarySchema>;
 export type ResolvedContextPackage = z.infer<typeof resolvedContextPackageSchema>;
+export type ResolvedContextPreviewResult = z.infer<typeof resolvedContextPreviewResultSchema>;
 export type AnalysisMetricReference = z.infer<typeof analysisMetricReferenceSchema>;
 export type AnalysisDimensionContext = z.infer<typeof analysisDimensionContextSchema>;
 export type AnalysisMetricContext = z.infer<typeof analysisMetricContextSchema>;

@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  SemanticBindingImpactSafeProjection,
   SemanticExplorerCandidateComparison,
   SemanticExplorerDiff,
   SemanticExplorerDomainSummary,
@@ -20,6 +21,7 @@ import {
   getExplorerLineage,
   getExplorerRelease,
   getExplorerTimeline,
+  getSemanticBindingImpact,
   SemanticExplorerApiError,
   searchExplorerRelationships,
 } from "@/lib/semantic-explorer-api";
@@ -34,7 +36,11 @@ import { ObjectTable } from "./object-table";
 import { RelationshipGraph } from "./relationship-graph";
 import { ReleaseControls } from "./release-controls";
 import { initialExplorerState, semanticExplorerReducer } from "./state";
-import { explorerIdentityKey, selectExplorerObjectWindow } from "./view-model";
+import {
+  explorerIdentityKey,
+  resolveExplorerDeepLink,
+  selectExplorerObjectWindow,
+} from "./view-model";
 
 function wasAborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
@@ -66,6 +72,9 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
   const [diff, setDiff] = useState<SemanticExplorerDiff | null>(null);
   const [lineage, setLineage] = useState<SemanticExplorerLineage | null>(null);
   const [comparison, setComparison] = useState<SemanticExplorerCandidateComparison | null>(null);
+  const [impact, setImpact] = useState<SemanticBindingImpactSafeProjection | null>(null);
+  const [impactError, setImpactError] = useState<string | null>(null);
+  const [impactBusy, setImpactBusy] = useState(false);
   const [auxiliaryError, setAuxiliaryError] = useState<string | null>(null);
   const [lineageError, setLineageError] = useState<string | null>(null);
   const [auxiliaryBusy, setAuxiliaryBusy] = useState(false);
@@ -85,6 +94,7 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
   const pointerGenerationFence = useRef(new Map<string, number>());
   const snapshotController = useRef<AbortController | null>(null);
   const relationshipController = useRef<AbortController | null>(null);
+  const impactController = useRef<AbortController | null>(null);
   const lineageGate = useRef<LatestExplorerOperationGate | null>(null);
   const auxiliaryGate = useRef<LatestExplorerOperationGate | null>(null);
   lineageGate.current ??= createLatestExplorerOperationGate();
@@ -109,6 +119,10 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
     async (domain: string, releaseId: string | null) => {
       snapshotController.current?.abort();
       relationshipController.current?.abort();
+      impactController.current?.abort();
+      setImpact(null);
+      setImpactError(null);
+      setImpactBusy(false);
       setRelationshipResult(null);
       setRelationshipError(null);
       setRelationshipBusy(false);
@@ -176,23 +190,57 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
     [cancelAuxiliaryOperation, cancelLineageOperation, workspaceId],
   );
 
+  const loadImpact = useCallback(
+    async (domain: string, impactId: string) => {
+      impactController.current?.abort();
+      const controller = new AbortController();
+      impactController.current = controller;
+      const epoch = requestEpoch.current;
+      setImpact(null);
+      setImpactError(null);
+      setImpactBusy(true);
+      try {
+        const loadedImpact = await getSemanticBindingImpact(
+          workspaceId,
+          domain,
+          impactId,
+          controller.signal,
+        );
+        if (controller.signal.aborted || requestEpoch.current !== epoch) return;
+        setImpact(loadedImpact);
+        const candidate = loadedImpact.candidate_ref;
+        if (!candidate) return;
+        const loadedComparison = await getExplorerCandidateComparison(
+          workspaceId,
+          domain,
+          candidate.candidate_id,
+          candidate.revision_id,
+          controller.signal,
+        );
+        if (!controller.signal.aborted && requestEpoch.current === epoch) {
+          setComparison(loadedComparison);
+        }
+      } catch (error) {
+        if (!wasAborted(error) && !controller.signal.aborted && requestEpoch.current === epoch) {
+          setImpactError(publicError(error).message);
+        }
+      } finally {
+        if (!controller.signal.aborted && requestEpoch.current === epoch) setImpactBusy(false);
+      }
+    },
+    [workspaceId],
+  );
+
   useEffect(() => {
     const controller = new AbortController();
     void getExplorerDomains(workspaceId, controller.signal)
       .then((loadedDomains) => {
         setDomains(loadedDomains);
         setDomainCatalogState("ready");
-        if (loadedDomains.length === 0) return;
-        const fallbackDomain = loadedDomains.at(0);
-        if (!fallbackDomain) return;
-        const params = new URLSearchParams(window.location.search);
-        const requestedDomain = params.get("domain");
-        const domain =
-          loadedDomains.find((item) => item.semantic_domain === requestedDomain)?.semantic_domain ??
-          loadedDomains.find((item) => item.has_current_release)?.semantic_domain ??
-          fallbackDomain.semantic_domain;
-        const releaseId = requestedDomain === domain ? params.get("releaseId") : null;
-        void loadSnapshot(domain, releaseId);
+        const deepLink = resolveExplorerDeepLink(loadedDomains, window.location.search);
+        if (!deepLink) return;
+        void loadSnapshot(deepLink.domain, deepLink.releaseId);
+        if (deepLink.impactId) void loadImpact(deepLink.domain, deepLink.impactId);
       })
       .catch((error) => {
         if (!wasAborted(error)) setDomainCatalogState("error");
@@ -201,10 +249,11 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
       controller.abort();
       snapshotController.current?.abort();
       relationshipController.current?.abort();
+      impactController.current?.abort();
       lineageGate.current?.cancel();
       auxiliaryGate.current?.cancel();
     };
-  }, [loadSnapshot, workspaceId]);
+  }, [loadImpact, loadSnapshot, workspaceId]);
 
   const snapshot: SemanticExplorerSnapshot | null =
     state.server.kind === "success" || state.server.kind === "empty" ? state.server.snapshot : null;
@@ -363,6 +412,10 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
   async function loadCandidate(candidateId: string, revisionId: string) {
     if (!state.domain) return;
     const epoch = requestEpoch.current;
+    impactController.current?.abort();
+    setImpact(null);
+    setImpactError(null);
+    setImpactBusy(false);
     cancelAuxiliaryOperation();
     const operation = auxiliaryGate.current?.begin();
     if (!operation) return;
@@ -501,9 +554,10 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
 
       <ReleaseControls
         key={activeDomain}
-        busy={auxiliaryBusy}
+        busy={auxiliaryBusy || impactBusy}
         comparison={comparison}
         diff={diff}
+        impact={impact}
         snapshot={snapshot}
         timeline={timeline}
         onCompareCandidate={(candidateId, revisionId) =>
@@ -528,6 +582,15 @@ export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: strin
           className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300"
         >
           {auxiliaryError}
+        </p>
+      ) : null}
+
+      {impactError ? (
+        <p
+          role="alert"
+          className="rounded-md border border-[#e4b75f] bg-[#fff9ec] px-3 py-2 text-xs text-[#80530c]"
+        >
+          Binding Impact 读取失败：{impactError}
         </p>
       ) : null}
 

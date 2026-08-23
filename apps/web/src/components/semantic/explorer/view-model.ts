@@ -1,4 +1,5 @@
 import type {
+  SemanticExplorerDomainSummary,
   SemanticExplorerObject,
   SemanticExplorerObjectIdentity,
   SemanticExplorerObjectKind,
@@ -23,6 +24,26 @@ export const EXPLORER_KINDS = Object.freeze(
 
 export function explorerIdentityKey(identity: SemanticExplorerObjectIdentity): string {
   return JSON.stringify([identity.kind, identity.object_id]);
+}
+
+export function resolveExplorerDeepLink(
+  domains: readonly SemanticExplorerDomainSummary[],
+  search: string,
+): Readonly<{ domain: string; releaseId: string | null; impactId: string | null }> | null {
+  const fallbackDomain = domains.at(0);
+  if (!fallbackDomain) return null;
+  const params = new URLSearchParams(search);
+  const requestedDomain = params.get("domain");
+  const domain =
+    domains.find((item) => item.semantic_domain === requestedDomain)?.semantic_domain ??
+    domains.find((item) => item.has_current_release)?.semantic_domain ??
+    fallbackDomain.semantic_domain;
+  const exactDomain = requestedDomain === domain;
+  return {
+    domain,
+    releaseId: exactDomain ? params.get("releaseId") : null,
+    impactId: exactDomain ? params.get("impactId") : null,
+  };
 }
 
 export interface ExplorerObjectWindow {

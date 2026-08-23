@@ -9,7 +9,10 @@ import {
   initialExplorerState,
   semanticExplorerReducer,
 } from "../src/components/semantic/explorer/state";
-import { selectExplorerObjectWindow } from "../src/components/semantic/explorer/view-model";
+import {
+  resolveExplorerDeepLink,
+  selectExplorerObjectWindow,
+} from "../src/components/semantic/explorer/view-model";
 
 function snapshot(generation: number, objectCount = 1): SemanticExplorerSnapshot {
   const objects = Array.from({ length: objectCount }, (_, index) => ({
@@ -113,6 +116,29 @@ function snapshot(generation: number, objectCount = 1): SemanticExplorerSnapshot
 }
 
 describe("Semantic Explorer client state", () => {
+  it("keeps release and impact deep links only when the requested domain is authoritative", () => {
+    const domains = [
+      {
+        schema_version: "semantic-explorer-domain-summary@1.0.0" as const,
+        semantic_domain: "revenue",
+        display_name: "Revenue",
+        description: null,
+        datasource_id: "00000000-0000-4000-8000-000000000010",
+        pointer_observation: snapshot(1).pointer_observation,
+        has_current_release: true,
+      },
+    ];
+    expect(
+      resolveExplorerDeepLink(domains, "?domain=revenue&releaseId=release-1&impactId=impact-1"),
+    ).toEqual({ domain: "revenue", releaseId: "release-1", impactId: "impact-1" });
+    expect(
+      resolveExplorerDeepLink(
+        domains,
+        "?domain=another-domain&releaseId=release-1&impactId=impact-1",
+      ),
+    ).toEqual({ domain: "revenue", releaseId: null, impactId: null });
+  });
+
   it("ignores superseded epochs and lower pointer generations", () => {
     let state = semanticExplorerReducer(initialExplorerState, {
       type: "request-started",

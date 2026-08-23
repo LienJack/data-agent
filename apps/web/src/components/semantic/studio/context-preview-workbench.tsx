@@ -1,6 +1,6 @@
 "use client";
 
-import { resolvedContextCommitResultSchema } from "@data-agent/contracts";
+import { resolvedContextPreviewResultSchema } from "@data-agent/contracts";
 import { MagnifyingGlass, SpinnerGap } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useWorkspaceI18n } from "@/i18n";
@@ -32,7 +32,10 @@ export function ContextPreviewWorkbench({ workspaceId }: { readonly workspaceId:
         setState({ kind: "ERROR", code: payload.error?.code ?? "RESOLVED_CONTEXT_UNAVAILABLE" });
         return;
       }
-      setState({ kind: "RESOLVED", result: resolvedContextCommitResultSchema.parse(payload.data) });
+      setState({
+        kind: "RESOLVED",
+        result: resolvedContextPreviewResultSchema.parse(payload.data),
+      });
     } catch {
       setState({ kind: "ERROR", code: "RESOLVED_CONTEXT_RESPONSE_INVALID" });
     }

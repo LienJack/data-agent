@@ -16,7 +16,7 @@ const previewInputSchema = z.strictObject({
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { workspaceId } = await context.params;
-  const authorized = await authorizeWorkspaceRequest(request, workspaceId, "WRITE");
+  const authorized = await authorizeWorkspaceRequest(request, workspaceId, "READ");
   if (!authorized.ok) return workspaceErrorResponse(authorized.error);
   const input = previewInputSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) {
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     question: input.data.question,
     basis: { consumer: "PREVIEW", defaults_ref: defaultsReference.data },
   });
-  const resolved = await getResolvedContextService().resolve(
+  const resolved = await getResolvedContextService().preview(
     authorized.value.capability,
     resolvedRequest,
   );

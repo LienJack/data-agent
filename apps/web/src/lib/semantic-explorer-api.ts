@@ -1,4 +1,5 @@
 import {
+  type SemanticBindingImpactSafeProjection,
   type SemanticExplorerCandidateComparison,
   type SemanticExplorerDiff,
   type SemanticExplorerDomainSummary,
@@ -8,6 +9,7 @@ import {
   type SemanticExplorerSnapshot,
   type SemanticRelationshipSearchRequest,
   type SemanticRelationshipSearchResult,
+  semanticBindingImpactSafeProjectionSchema,
   semanticExplorerCandidateComparisonSchema,
   semanticExplorerDiffSchema,
   semanticExplorerDomainSummarySchema,
@@ -247,6 +249,20 @@ export function getExplorerCandidateComparison(
       revisionId,
     })}`,
     semanticExplorerCandidateComparisonSchema,
+    signal,
+  );
+}
+
+export function getSemanticBindingImpact(
+  workspaceId: string,
+  domain: string,
+  impactId: string,
+  signal?: AbortSignal,
+): Promise<SemanticBindingImpactSafeProjection> {
+  return getData(
+    workspaceId,
+    `/api/workspaces/${encodeURIComponent(workspaceId)}/semantic/binding-impacts/${encodeURIComponent(impactId)}?${query({ domain })}`,
+    semanticBindingImpactSafeProjectionSchema,
     signal,
   );
 }

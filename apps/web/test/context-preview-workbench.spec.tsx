@@ -23,7 +23,7 @@ describe("Context Preview workbench", () => {
     );
     expect(source).toContain("/context/preview");
     expect(source).toContain("JSON.stringify({ question: normalizedQuestion })");
-    expect(source).toContain("resolvedContextCommitResultSchema.parse(payload.data)");
+    expect(source).toContain("resolvedContextPreviewResultSchema.parse(payload.data)");
     expect(source).not.toMatch(/raw_prompt|reasoning_content|secret_ref/i);
   });
 });

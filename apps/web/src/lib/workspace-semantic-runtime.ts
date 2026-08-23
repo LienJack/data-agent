@@ -5,13 +5,16 @@ import type { JobQueuePort, SemanticInductionRegistryPort } from "@data-agent/co
 import {
   createPostgresJobQueue,
   createPostgresSemanticAuthoringStore,
+  createPostgresSemanticBindingImpactStore,
   createPostgresSemanticCandidateRevisionStore,
   createPostgresSemanticGraphStore,
   createPostgresSemanticInductionRegistry,
 } from "@data-agent/platform";
 import {
+  createSemanticBindingImpactService,
   createSemanticCandidateSaveService,
   createSemanticStudioService,
+  type SemanticBindingImpactService,
   type SemanticCandidateSaveService,
   type SemanticStudioService,
 } from "@data-agent/semantic/application";
@@ -57,6 +60,7 @@ export type WorkspaceSemanticRuntimeResult<T> =
   | { readonly ok: false; readonly response: ReturnType<typeof workspaceErrorResponse> };
 
 type WorkspaceSemanticFeature =
+  | "BINDING_IMPACT"
   | "CANDIDATE"
   | "CANDIDATE_SAVE"
   | "EXPLORER"
@@ -72,6 +76,10 @@ interface WorkspaceSemanticRuntimeOptions<Feature extends WorkspaceSemanticFeatu
 }
 
 type WorkspaceSemanticRuntime =
+  | Readonly<{
+      authorityResolver: ReturnType<typeof createCapabilitySemanticAuthorityResolver>;
+      service: SemanticBindingImpactService;
+    }>
   | SemanticCandidateRuntime
   | SemanticCandidateSaveService
   | SemanticExplorerRuntime
@@ -108,6 +116,17 @@ function unavailableConfiguration(): WorkspaceSemanticRuntimeResult<never> {
   };
 }
 
+export function getWorkspaceSemanticRuntime(
+  request: NextRequest,
+  options: WorkspaceSemanticRuntimeOptions<"BINDING_IMPACT">,
+): Promise<
+  WorkspaceSemanticRuntimeResult<
+    Readonly<{
+      authorityResolver: ReturnType<typeof createCapabilitySemanticAuthorityResolver>;
+      service: SemanticBindingImpactService;
+    }>
+  >
+>;
 export function getWorkspaceSemanticRuntime(
   request: NextRequest,
   options: WorkspaceSemanticRuntimeOptions<"CANDIDATE">,
@@ -184,6 +203,16 @@ export async function getWorkspaceSemanticRuntime(
   const authorityResolver = createCapabilitySemanticAuthorityResolver(capability, allowedDomains);
 
   switch (options.feature) {
+    case "BINDING_IMPACT":
+      return {
+        ok: true,
+        runtime: Object.freeze({
+          authorityResolver,
+          service: createSemanticBindingImpactService({
+            store: createPostgresSemanticBindingImpactStore({ pool: sqlPool, authorizer }),
+          }),
+        }),
+      };
     case "CANDIDATE":
       return {
         ok: true,

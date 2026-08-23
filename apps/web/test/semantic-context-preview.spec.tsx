@@ -1,4 +1,4 @@
-import type { ResolvedContextCommitResult, ResolvedContextState } from "@data-agent/contracts";
+import type { ResolvedContextPreviewResult, ResolvedContextState } from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,13 +9,12 @@ import {
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
-function result(state: ResolvedContextState): ResolvedContextCommitResult {
+function result(state: ResolvedContextState): ResolvedContextPreviewResult {
   const route = state === "REJECTED" || state === "STALE" ? "NONE" : "METRIC";
   const packageId = "8f48fd68-e0e8-855f-b344-396133208144";
   const packageHash = hash("9");
   return {
-    schema_version: "resolved-context-commit-result@1.0.0",
-    disposition: "CREATED",
+    schema_version: "resolved-context-preview-result@1.0.0",
     package: {
       schema_version: "resolved-context-package@2.0.0",
       scope: { app_id: id(1), tenant_id: id(2), environment: "test" },
@@ -132,21 +131,6 @@ function result(state: ResolvedContextState): ResolvedContextCommitResult {
       package_key_hash: hash("8"),
       package_hash: packageHash,
     },
-    receipt: {
-      schema_version: "resolved-context-receipt@1.0.0",
-      receipt_id: id(10),
-      scope: { app_id: id(1), tenant_id: id(2), environment: "test" },
-      consumer: "PREVIEW",
-      request_id: id(10),
-      request_hash: hash("a"),
-      run_id: null,
-      package_ref: { package_id: packageId, package_revision: 1, package_hash: packageHash },
-      state,
-      route,
-      authority_snapshot_hash: hash("7"),
-      resolved_at: "2026-08-17T00:00:00.000Z",
-      receipt_hash: hash("b"),
-    },
   };
 }
 
@@ -177,5 +161,18 @@ describe("Semantic Context Preview", () => {
   ])("renders the $kind view state", (state) => {
     const markup = renderToStaticMarkup(<ContextPreview state={state} />);
     expect(markup).toContain('aria-label="上下文预览"');
+  });
+
+  it("renders exact lexical evidence and keyboard-native clarification without a default", () => {
+    const preview = result("NEEDS_CLARIFICATION");
+    const markup = renderToStaticMarkup(
+      <ContextPreview state={{ kind: "RESOLVED", result: preview }} />,
+    );
+    expect(markup).toContain("CANONICAL");
+    expect(markup).toContain("Gross Revenue");
+    expect(markup).toContain(preview.package.semantic_release.resource_hash);
+    expect(markup).toContain('type="radio"');
+    expect(markup).not.toContain('checked=""');
+    expect(markup).not.toMatch(/raw_prompt|raw_sql|parameters|dsn|provider_payload/i);
   });
 });

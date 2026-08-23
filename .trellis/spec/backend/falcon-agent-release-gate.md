@@ -52,3 +52,12 @@ final>=248、每库>=60%、DEMO 10/10、db14 32/32、db24 17/17、Holdout>=4/5�
 - Worker：blind pre-Oracle、candidate executable fallback、TEST unscored、final aggregation。
 - PostgreSQL 17：fresh migration、28 schema、reader role、冷启动。
 - Artifact：U17 hash、source digest、model receipt、submission hash、stability outcomes。
+
+## Semantic Accuracy Companion
+
+`falcon-semantic-accuracy-summary@1.0.0` 是 M1/M4 当前语义路径的内容寻址安全摘要，不替代上面的 Agent Release Gate，也不能从历史 Falcon GO 推断词法召回收益。
+
+- B0_EXACT 与 B1_LEXICAL 必须绑定同一 source commit、fixed corpus 与 exact Published Release；outcome 总数必须闭合。
+- B1 的 exact ready 不得低于 B0，READY 总数不得回退；ambiguity misselection、cross-release hit 与 unauthorized hit 必须为零。
+- B2_GOVERNED_RETRIEVAL 在 M2 NO-GO 期间只能是 `DEFERRED / M2_GATE_NO_GO`，不能标记 PASS 或构造第三条运行时代码。
+- Summary builder 重算 comparison 与 hash；未知字段、scope/workspace 换绑、计数不闭合、非零安全计数或 hash 漂移全部失败关闭。

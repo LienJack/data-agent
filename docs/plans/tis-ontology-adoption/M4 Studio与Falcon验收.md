@@ -45,3 +45,10 @@ TIS 的 Falcon 计划值得借鉴其检索与 SQL 等价验证的分层意识，
 ## 备注
 
 发布按离线门禁 → lexical 原子切换 → 可选 governed retrieval 独立任务 → binding impact preview → 完整验收进行。任何阶段出现权威不一致、敏感投影、静默歧义或 Falcon 回退，停止交付并回退对应 scoped commit；不恢复旧运行路径。
+
+## 2026-08-23 实施收敛
+
+- Context Preview 拆为只读 `preview` 与 Worker durable `resolve`：前者只接受 PREVIEW request、使用 READ capability、返回 strict `ResolvedContextPreviewResult` 且不提交 Receipt；后者只接受 RUN request。两者共用当前 resolver，不存在旧实现 fallback。
+- Studio 展开 M1 exact lexical evidence；歧义候选使用原生 radio、无默认选择，选择仅用于本地检查，不产生写入。
+- Binding Impact 只新增 Workspace-scoped GET safe projection，并在 Explorer 复用现有 Candidate comparison；没有浏览器 analyze/commit/publish 旁路。
+- Falcon 使用独立 `falcon-semantic-accuracy-summary@1.0.0` 表达同 corpus/release 的 B0/B1 非回归；B2 按 M2 门禁固定为 `DEFERRED / M2_GATE_NO_GO`，不伪造检索评估结果。

@@ -320,3 +320,145 @@ export async function verifyFalconAgentReleaseGateArtifact(input: unknown) {
 export type FalconSemanticBundleIndex = z.infer<typeof falconSemanticBundleIndexSchema>;
 export type FalconSemanticUsageReceipt = z.infer<typeof falconSemanticUsageReceiptSchema>;
 export type FalconAgentReleaseGateArtifact = z.infer<typeof falconAgentReleaseGateArtifactSchema>;
+
+export const FALCON_SEMANTIC_ACCURACY_SUMMARY_VERSION =
+  "falcon-semantic-accuracy-summary@1.0.0" as const;
+
+const falconSemanticRouteOutcomesSchema = z.strictObject({
+  ready: z.number().int().nonnegative().safe(),
+  needs_clarification: z.number().int().nonnegative().safe(),
+  partial: z.number().int().nonnegative().safe(),
+  rejected: z.number().int().nonnegative().safe(),
+});
+
+const falconSemanticAccuracyLaneMaterialSchema = z.strictObject({
+  case_count: z.number().int().positive().safe(),
+  outcomes: falconSemanticRouteOutcomesSchema,
+  exact_case_count: z.number().int().nonnegative().safe(),
+  exact_ready_count: z.number().int().nonnegative().safe(),
+  ambiguity_case_count: z.number().int().nonnegative().safe(),
+  ambiguity_misselection_count: z.number().int().nonnegative().safe(),
+  cross_release_hit_count: z.number().int().nonnegative().safe(),
+  unauthorized_hit_count: z.number().int().nonnegative().safe(),
+  result_set_hash: contentHashSchema,
+});
+
+const falconSemanticB0LaneSchema = falconSemanticAccuracyLaneMaterialSchema.extend({
+  lane: z.literal("B0_EXACT"),
+});
+
+const falconSemanticB1LaneSchema = falconSemanticAccuracyLaneMaterialSchema.extend({
+  lane: z.literal("B1_LEXICAL"),
+});
+
+const falconSemanticAccuracySummaryInputSchema = z.strictObject({
+  schema_version: z.literal(FALCON_SEMANTIC_ACCURACY_SUMMARY_VERSION),
+  artifact_id: immutableIdSchema,
+  scope: appScopeSchema,
+  workspace_id: immutableIdSchema,
+  semantic_domain: versionIdentifierSchema,
+  source_commit: z.string().regex(/^[0-9a-f]{40}$/u),
+  corpus_ref: publicReferenceSchema,
+  release_ref: publicReferenceSchema,
+  route_contract_version: z.literal("resolved-context-route-decision@2.0.0"),
+  b0_exact: falconSemanticB0LaneSchema,
+  b1_lexical: falconSemanticB1LaneSchema,
+  b2_governed_retrieval: z.strictObject({
+    lane: z.literal("B2_GOVERNED_RETRIEVAL"),
+    state: z.literal("DEFERRED"),
+    reason_code: z.literal("M2_GATE_NO_GO"),
+  }),
+  completed_at: timestampSchema,
+});
+
+const falconSemanticAccuracyComparisonSchema = z.strictObject({
+  exact_regression_count: z.literal(0),
+  lexical_ready_gain: z.number().int().nonnegative().safe(),
+});
+
+const falconSemanticAccuracySummaryDraftSchema = falconSemanticAccuracySummaryInputSchema.extend({
+  comparison: falconSemanticAccuracyComparisonSchema,
+});
+
+export const falconSemanticAccuracySummarySchema = falconSemanticAccuracySummaryDraftSchema.extend({
+  summary_hash: contentHashSchema,
+});
+
+function outcomeTotal(lane: z.infer<typeof falconSemanticAccuracyLaneMaterialSchema>): number {
+  return (
+    lane.outcomes.ready +
+    lane.outcomes.needs_clarification +
+    lane.outcomes.partial +
+    lane.outcomes.rejected
+  );
+}
+
+function assertFalconSemanticAccuracy(
+  input: z.infer<typeof falconSemanticAccuracySummaryInputSchema>,
+): z.infer<typeof falconSemanticAccuracyComparisonSchema> {
+  if (input.workspace_id !== input.scope.tenant_id) {
+    throw new Error("FALCON_SEMANTIC_ACCURACY_SCOPE_MISMATCH");
+  }
+  if (
+    outcomeTotal(input.b0_exact) !== input.b0_exact.case_count ||
+    outcomeTotal(input.b1_lexical) !== input.b1_lexical.case_count
+  ) {
+    throw new Error("FALCON_SEMANTIC_ACCURACY_OUTCOME_MISMATCH");
+  }
+  if (
+    input.b0_exact.case_count !== input.b1_lexical.case_count ||
+    input.b0_exact.exact_case_count !== input.b1_lexical.exact_case_count ||
+    input.b0_exact.ambiguity_case_count !== input.b1_lexical.ambiguity_case_count ||
+    input.b0_exact.exact_ready_count > input.b0_exact.exact_case_count ||
+    input.b1_lexical.exact_ready_count > input.b1_lexical.exact_case_count ||
+    input.b1_lexical.exact_ready_count < input.b0_exact.exact_ready_count ||
+    input.b1_lexical.outcomes.ready < input.b0_exact.outcomes.ready ||
+    input.b0_exact.ambiguity_misselection_count !== 0 ||
+    input.b1_lexical.ambiguity_misselection_count !== 0 ||
+    input.b0_exact.cross_release_hit_count !== 0 ||
+    input.b1_lexical.cross_release_hit_count !== 0 ||
+    input.b0_exact.unauthorized_hit_count !== 0 ||
+    input.b1_lexical.unauthorized_hit_count !== 0
+  ) {
+    throw new Error("FALCON_SEMANTIC_ACCURACY_HOLD");
+  }
+  return {
+    exact_regression_count: 0,
+    lexical_ready_gain: input.b1_lexical.outcomes.ready - input.b0_exact.outcomes.ready,
+  };
+}
+
+export async function buildFalconSemanticAccuracySummary(input: unknown) {
+  const material = falconSemanticAccuracySummaryInputSchema.parse(input);
+  const draft = falconSemanticAccuracySummaryDraftSchema.parse({
+    ...material,
+    comparison: assertFalconSemanticAccuracy(material),
+  });
+  return falconSemanticAccuracySummarySchema.parse({
+    ...draft,
+    summary_hash: await sha256ContentHash(draft),
+  });
+}
+
+export async function verifyFalconSemanticAccuracySummary(input: unknown) {
+  const summary = falconSemanticAccuracySummarySchema.parse(input);
+  const { summary_hash: actual, comparison, ...material } = summary;
+  const parsedMaterial = falconSemanticAccuracySummaryInputSchema.parse(material);
+  const expectedComparison = assertFalconSemanticAccuracy(parsedMaterial);
+  if (
+    comparison.exact_regression_count !== expectedComparison.exact_regression_count ||
+    comparison.lexical_ready_gain !== expectedComparison.lexical_ready_gain
+  ) {
+    throw new Error("FALCON_SEMANTIC_ACCURACY_COMPARISON_MISMATCH");
+  }
+  const draft = falconSemanticAccuracySummaryDraftSchema.parse({
+    ...parsedMaterial,
+    comparison,
+  });
+  if ((await sha256ContentHash(draft)) !== actual) {
+    throw new Error("FALCON_SEMANTIC_ACCURACY_HASH_MISMATCH");
+  }
+  return summary;
+}
+
+export type FalconSemanticAccuracySummary = z.infer<typeof falconSemanticAccuracySummarySchema>;

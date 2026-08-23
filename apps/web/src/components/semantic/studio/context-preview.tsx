@@ -1,14 +1,15 @@
 "use client";
 
-import type { ResolvedContextCommitResult, ResolvedContextState } from "@data-agent/contracts";
+import type { ResolvedContextPreviewResult, ResolvedContextState } from "@data-agent/contracts";
 import { Database, ShieldCheck, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
+import { useState } from "react";
 import type { MessageKey } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
 
 export type SemanticContextPreviewState =
   | { readonly kind: "IDLE" }
   | { readonly kind: "RESOLVING" }
-  | { readonly kind: "RESOLVED"; readonly result: ResolvedContextCommitResult }
+  | { readonly kind: "RESOLVED"; readonly result: ResolvedContextPreviewResult }
   | { readonly kind: "ERROR"; readonly code: string };
 
 const STATE_PRESENTATION: Record<
@@ -75,17 +76,24 @@ function EmptyPreview({
 }
 
 export function ContextPreview({ state }: { readonly state: SemanticContextPreviewState }) {
-  const { t } = useWorkspaceI18n();
   if (state.kind !== "RESOLVED") return <EmptyPreview state={state} />;
+  return <ResolvedPreview key={state.result.package.package_hash} result={state.result} />;
+}
 
-  const { package: contextPackage, receipt } = state.result;
-  const presentation = STATE_PRESENTATION[receipt.state];
+function ResolvedPreview({ result }: { readonly result: ResolvedContextPreviewResult }) {
+  const { t } = useWorkspaceI18n();
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const { package: contextPackage } = result;
+  const presentation = STATE_PRESENTATION[contextPackage.route_decision.state];
+  const selectedCandidate = contextPackage.route_decision.clarification_candidates.find(
+    (candidate) => candidate.candidate_id === selectedCandidateId,
+  );
   return (
     <section
       aria-label={t("context.preview")}
       className="overflow-hidden border border-[var(--color-border-default)] bg-white text-[var(--color-text-secondary)]"
       data-context-package-hash={contextPackage.package_hash}
-      data-context-state={receipt.state}
+      data-context-state={contextPackage.route_decision.state}
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-default)] bg-[var(--color-bg-overlay)] px-4 py-3">
         <div className="min-w-0">
@@ -98,7 +106,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
         </div>
         <div className="flex items-center gap-2">
           <span className="font-mono text-[10px] text-[var(--color-text-muted)]">
-            {receipt.route}
+            {contextPackage.route_decision.route}
           </span>
           <span className={`px-2 py-1 text-[10px] font-semibold ${presentation.className}`}>
             {t(presentation.labelKey)}
@@ -122,19 +130,85 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
           </div>
 
           {contextPackage.route_decision.clarification_candidates.length > 0 ? (
-            <section className="mt-4 border-l-2 border-[#d19a2d] bg-[#fff9ec] px-3 py-2">
-              <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#80530c]">
+            <fieldset className="mt-4 border-l-2 border-[#d19a2d] bg-[#fff9ec] px-3 py-3">
+              <legend className="px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#80530c]">
                 {t("context.clarification")}
-              </h3>
-              <ul className="mt-2 space-y-1 text-[11px] text-[#5f553f]">
+              </legend>
+              <p id="context-clarification-hint" className="text-[10px] leading-4 text-[#6f6043]">
+                {t("context.clarificationHint")}
+              </p>
+              <div className="mt-2 grid gap-2">
                 {contextPackage.route_decision.clarification_candidates.map((candidate) => (
-                  <li key={`${candidate.candidate_kind}:${candidate.candidate_id}`}>
-                    {candidate.label} · {candidate.candidate_kind}
+                  <label
+                    className="flex cursor-pointer items-start gap-2 border border-[#ead8ad] bg-white px-3 py-2 text-[11px] text-[#5f553f] focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-accent)]"
+                    key={`${candidate.candidate_kind}:${candidate.candidate_id}`}
+                  >
+                    <input
+                      type="radio"
+                      name="context-clarification-candidate"
+                      value={candidate.candidate_id}
+                      checked={selectedCandidateId === candidate.candidate_id}
+                      aria-describedby="context-clarification-hint"
+                      onChange={() => setSelectedCandidateId(candidate.candidate_id)}
+                      className="mt-0.5 accent-[var(--color-accent)]"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-semibold text-[#57491f]">{candidate.label}</span>
+                      <span className="mt-0.5 block break-all font-mono text-[9px] text-[#74694f]">
+                        {candidate.candidate_kind} · {candidate.match_kind} ·{" "}
+                        {candidate.matched_phrase}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+              {selectedCandidate ? (
+                <p role="status" className="mt-2 text-[10px] font-medium text-[#80530c]">
+                  {t("context.selectedCandidate")}：{selectedCandidate.label}
+                </p>
+              ) : null}
+            </fieldset>
+          ) : null}
+
+          <section className="mt-5">
+            <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
+              {t("context.lexicalEvidence")}
+            </h3>
+            {contextPackage.route_decision.lexical_evidence.length > 0 ? (
+              <ul className="mt-2 divide-y divide-[var(--color-border-default)] border-y border-[var(--color-border-default)]">
+                {contextPackage.route_decision.lexical_evidence.map((evidence) => (
+                  <li
+                    className="grid gap-2 py-3 sm:grid-cols-[110px_minmax(0,1fr)]"
+                    key={evidence.evidence_hash}
+                  >
+                    <span className="w-fit bg-[var(--color-accent-soft)] px-2 py-1 font-mono text-[9px] font-semibold text-[var(--color-accent-hover)]">
+                      {evidence.match_kind}
+                    </span>
+                    <dl className="grid min-w-0 gap-x-3 gap-y-1 text-[10px] sm:grid-cols-[90px_minmax(0,1fr)]">
+                      <dt className="text-[var(--color-text-muted)]">{t("context.target")}</dt>
+                      <dd className="break-all font-mono text-[var(--color-text-secondary)]">
+                        {evidence.target_kind} · {evidence.target_id}
+                      </dd>
+                      <dt className="text-[var(--color-text-muted)]">{t("context.phrase")}</dt>
+                      <dd className="break-words text-[var(--color-text-secondary)]">
+                        {evidence.phrase}
+                      </dd>
+                      <dt className="text-[var(--color-text-muted)]">{t("context.release")}</dt>
+                      <dd className="break-all font-mono text-[var(--color-text-muted)]">
+                        {evidence.release_ref.resource_id} · r
+                        {evidence.release_ref.resource_revision} ·{" "}
+                        {evidence.release_ref.resource_hash}
+                      </dd>
+                    </dl>
                   </li>
                 ))}
               </ul>
-            </section>
-          ) : null}
+            ) : (
+              <p className="mt-2 text-[11px] text-[var(--color-text-muted)]">
+                {t("context.noLexicalEvidence")}
+              </p>
+            )}
+          </section>
 
           <section className="mt-5">
             <h3 className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
@@ -224,7 +298,10 @@ function IdentityRow({
   readonly hash: string;
 }) {
   return (
-    <div className="min-w-0 border-l-2 border-[var(--color-border-overlay)] pl-3">
+    <div
+      className="min-w-0 border-l-2 border-[var(--color-border-overlay)] pl-3"
+      data-resource-hash={hash}
+    >
       <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">
         {label}
       </p>
