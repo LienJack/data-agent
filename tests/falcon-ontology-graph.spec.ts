@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildFalconDb24OntologyGraph,
@@ -8,6 +10,14 @@ import { createSemanticOntologyCoverageReceipt } from "../packages/semantic/src/
 import { compileSemanticGraphV2 } from "../packages/semantic/src/public/governance";
 
 describe("Falcon db24 ontology graph", () => {
+  it("uses governed Semantic V2 subpaths instead of the empty compatibility root", () => {
+    const source = readFileSync(resolve(import.meta.dirname, "../scripts/falcon.ts"), "utf8");
+
+    expect(source).toContain('from "../packages/semantic/src/public/authoring"');
+    expect(source).toContain('from "../packages/semantic/src/public/governance"');
+    expect(source).not.toContain('from "../packages/semantic/src/index"');
+  });
+
   it("compiles a complete node/edge ontology without merging the inventory snapshots", async () => {
     const preview = await loadFalconPreview();
     const mainDemoCase = preview.main_demo_cases[0];

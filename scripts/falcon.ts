@@ -28,10 +28,8 @@ import {
   verifyFalconBundle,
 } from "../packages/evals/src/index";
 import { createPostgresFalconBenchmarkExecutor } from "../packages/platform/src/index";
-import {
-  compileSemanticGraphV2,
-  createSemanticOntologyCoverageReceipt,
-} from "../packages/semantic/src/index";
+import { createSemanticOntologyCoverageReceipt } from "../packages/semantic/src/public/authoring";
+import { compileSemanticGraphV2 } from "../packages/semantic/src/public/governance";
 
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 
