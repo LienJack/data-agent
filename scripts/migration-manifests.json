@@ -1794,6 +1794,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10732",
+      "migration_name": "20260725010732_app_data_agent_qa_directory_semantic_helper_cutover.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10732",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-directory-helper-cutover.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__QA_DIRECTORY_SEMANTIC_HELPER_MIGRATION_CHECKSUM__",
+      "checksum_header": "qa_directory_semantic_helper_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
