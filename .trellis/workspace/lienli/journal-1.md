@@ -1046,3 +1046,38 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Next Steps
 
 - 按 TIS 定向方案创建 V2-only 词汇解析与绑定影响任务
+
+
+## Session 45: M0 TIS V2-only 采用基线
+
+**Date**: 2026-08-23
+**Task**: M0 TIS V2-only 采用基线
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+将 TIS 定向方案改为单版本执行，不保留 V1/V2 兼容、双读、旧 resolver 或旧数据迁移。
+
+### Main Changes
+
+- 固定语义 UI 重构基线 858446e
+- 当前 contracts、authority、resolver 与 consumers 采用原子替换策略
+- 运行时 rollout 改为离线门禁，不保留 shadow 分支或 feature flag
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `760f35b` | (see git log) |
+
+### Testing
+
+- [OK] Trellis task validate、关键禁用短语扫描、Markdown 路径与 git diff check 通过
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 创建并执行 M1 当前版本词汇证据与确定性解析任务
