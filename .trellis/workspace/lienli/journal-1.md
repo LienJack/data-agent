@@ -853,3 +853,24 @@ Installed guarded 10678 cleanup authority and 10679 app/environment scope repair
 ### Status
 
 [OK] **Completed**
+
+
+## Session 37: Semantic V2 refactor U1 guards
+
+**Date**: 2026-08-23
+**Task**: Semantic V2 refactor U1 guards
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+Added executable semantic and billing retirement ledger, dependency guards, migration identity inventory with exact historical exceptions, and active route characterization. Architecture and typecheck pass; full lint remains blocked by pre-existing unrelated errors.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `1ebaba6` | (see git log) |
+
+### Status
+
+[OK] **Completed**
