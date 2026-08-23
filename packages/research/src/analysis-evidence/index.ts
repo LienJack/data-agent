@@ -19,10 +19,10 @@ export {
   selectEvidenceGroundedInsights,
 } from "./insight-selector.js";
 export {
-  computeAnalysisProgramHash,
+  computeAnalysisSandboxProgramHash,
   type ProgramVerification,
   type ProgramVerificationFailure,
-  verifyAnalysisProgram,
+  verifyAnalysisSandboxProgram,
 } from "./program-verifier.js";
 export {
   type AnalysisResult,

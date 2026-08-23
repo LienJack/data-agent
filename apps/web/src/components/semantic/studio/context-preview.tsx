@@ -1,6 +1,6 @@
 "use client";
 
-import type { ResolvedContextPreviewResult, ResolvedContextState } from "@data-agent/contracts";
+import type { SemanticContextPreviewResult, SemanticContextState } from "@data-agent/contracts";
 import { Database, ShieldCheck, SpinnerGap, WarningCircle } from "@phosphor-icons/react";
 import { useState } from "react";
 import type { MessageKey } from "@/i18n";
@@ -9,11 +9,11 @@ import { useWorkspaceI18n } from "@/i18n";
 export type SemanticContextPreviewState =
   | { readonly kind: "IDLE" }
   | { readonly kind: "RESOLVING" }
-  | { readonly kind: "RESOLVED"; readonly result: ResolvedContextPreviewResult }
+  | { readonly kind: "RESOLVED"; readonly result: SemanticContextPreviewResult }
   | { readonly kind: "ERROR"; readonly code: string };
 
 const STATE_PRESENTATION: Record<
-  ResolvedContextState,
+  SemanticContextState,
   { readonly labelKey: MessageKey; readonly className: string }
 > = {
   READY: {
@@ -80,7 +80,7 @@ export function ContextPreview({ state }: { readonly state: SemanticContextPrevi
   return <ResolvedPreview key={state.result.package.package_hash} result={state.result} />;
 }
 
-function ResolvedPreview({ result }: { readonly result: ResolvedContextPreviewResult }) {
+function ResolvedPreview({ result }: { readonly result: SemanticContextPreviewResult }) {
   const { t } = useWorkspaceI18n();
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const { package: contextPackage } = result;

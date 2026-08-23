@@ -67,9 +67,9 @@ export interface ProductionTeamRuntimeDependencies {
 export interface ProductionTeamToolFactoryInput {
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly execution_context: RunExecutionContext;
-  readonly resolved_context_ref: Parameters<
+  readonly semantic_context_ref: Parameters<
     DataAgentProductTeamRuntimePort["execute"]
-  >[0]["resolved_context_ref"];
+  >[0]["semantic_context_ref"];
   readonly accepted_evidence_ref: ArtifactReference | null;
   readonly dispatch_plan: AgentDispatchPlan | null;
   readonly delegation: AdmittedSubagentDelegation | null;
@@ -287,7 +287,7 @@ async function commitContextEpoch(input: {
   readonly task: TeamTaskV2;
   readonly context_ref: Parameters<
     DataAgentProductTeamRuntimePort["execute"]
-  >[0]["resolved_context_ref"];
+  >[0]["semantic_context_ref"];
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
@@ -658,7 +658,7 @@ export function createProductionTeamRuntime(
         }
 
         const coverageHash = await sha256ContentHash({
-          resolved_context_ref: input.resolved_context_ref,
+          semantic_context_ref: input.semantic_context_ref,
           profiles: [...input.profiles.values()].map(({ revision }) => revision.revision_hash),
         });
         let evidenceRef: ArtifactReference | null = null;
@@ -687,7 +687,7 @@ export function createProductionTeamRuntime(
           }
           const epoch = await commitContextEpoch({
             task,
-            context_ref: input.resolved_context_ref,
+            context_ref: input.semantic_context_ref,
             lease: input.lease,
             store: dependencies.store,
             capability: dependencies.capability,
@@ -713,7 +713,7 @@ export function createProductionTeamRuntime(
             dependencies.create_tools?.({
               lease: input.lease,
               execution_context: input.execution_context,
-              resolved_context_ref: input.resolved_context_ref,
+              semantic_context_ref: input.semantic_context_ref,
               accepted_evidence_ref: evidenceRef,
               dispatch_plan: input.dispatch_plan ?? null,
               delegation: input.admitted_delegations?.[executionIndex] ?? null,

@@ -23,7 +23,7 @@ import {
 import { z } from "zod";
 import {
   hasRunExecutionContextProvenance,
-  hasRunResolvedContextCapability,
+  hasRunSemanticContextCapability,
 } from "./run-execution-context.js";
 import {
   type RunCheckpointInput,
@@ -431,30 +431,30 @@ export function createResearchWorkflowExecutor(
         duration_ms: 0,
       });
 
-      const resolvedContext = context.getResolvedContextCapability?.() ?? null;
-      if (!resolvedContext || !hasRunResolvedContextCapability(resolvedContext)) {
-        return researchErrorResult("RESOLVED_CONTEXT_AUTHORITY_NOT_CONFIGURED", false);
+      const semanticContext = context.getSemanticContextCapability?.() ?? null;
+      if (!semanticContext || !hasRunSemanticContextCapability(semanticContext)) {
+        return researchErrorResult("SEMANTIC_CONTEXT_AUTHORITY_NOT_CONFIGURED", false);
       }
-      const contextCallId = `${lease.attempt_id}:resolved-context`;
+      const contextCallId = `${lease.attempt_id}:semantic-context`;
       await emitDisplayEvent(context, {
         kind: "tool_started",
-        key: "resolved-context-start",
+        key: "semantic-context-start",
         call_id: contextCallId,
         tool_name: "context.resolve",
         title: "解析运行上下文",
-        summary: "正在加载并核验内容寻址的 Resolved Context",
+        summary: "正在加载并核验内容寻址的 Semantic Context",
         input: "仅传递上下文请求与权威引用",
       });
-      const resolved = await resolvedContext.resolve();
+      const resolved = await semanticContext.resolve();
       if (!resolved.ok) {
         return researchErrorResult(resolved.error.code, resolved.error.retryable);
       }
       if (!["READY", "PARTIAL"].includes(resolved.value.receipt.state)) {
-        return researchErrorResult(`RESOLVED_CONTEXT_${resolved.value.receipt.state}`, false);
+        return researchErrorResult(`SEMANTIC_CONTEXT_${resolved.value.receipt.state}`, false);
       }
       await emitDisplayEvent(context, {
         kind: "tool_completed",
-        key: "resolved-context-complete",
+        key: "semantic-context-complete",
         call_id: contextCallId,
         tool_name: "context.resolve",
         summary: `已冻结 ${resolved.value.receipt.route} 上下文包`,
@@ -465,7 +465,7 @@ export function createResearchWorkflowExecutor(
         kind: "reasoning_delta",
         key: "research.reasoning.context",
         block_id: `research-${lease.attempt_id}`,
-        delta: "已锁定配置、语义版本和 Resolved Context，进入受审计执行阶段。",
+        delta: "已锁定配置、语义版本和 Semantic Context，进入受审计执行阶段。",
       });
 
       const providerDispatch = context.getProviderDispatchCapability();

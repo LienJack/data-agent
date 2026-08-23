@@ -2,7 +2,7 @@ import {
   type ContextCapacityItem,
   type ContextCapacityPlan,
   canonicalizeJson,
-  type ResolvedContextEvidenceSummary,
+  type SemanticContextEvidenceSummary,
 } from "@data-agent/contracts";
 
 export interface ContextCapacityCandidate {
@@ -12,7 +12,7 @@ export interface ContextCapacityCandidate {
   readonly priority: number;
   readonly mandatory: boolean;
   readonly on_demand?: boolean;
-  readonly evidence: ResolvedContextEvidenceSummary | null;
+  readonly evidence: SemanticContextEvidenceSummary | null;
 }
 
 function byteSize(value: unknown): number {
@@ -28,7 +28,7 @@ export function applyContextCapacity(input: {
   readonly candidates: readonly ContextCapacityCandidate[];
 }): Readonly<{
   plan: ContextCapacityPlan;
-  included_evidence: readonly ResolvedContextEvidenceSummary[];
+  included_evidence: readonly SemanticContextEvidenceSummary[];
   mandatory_exceeded: boolean;
 }> {
   const maxBytes = input.max_context_tokens;
@@ -40,7 +40,7 @@ export function applyContextCapacity(input: {
     .reduce((total, candidate) => total + byteSize(candidate.evidence ?? candidate), 0);
   let usedBytes = mandatoryBytes;
   let croppedBytes = 0;
-  const includedEvidence: ResolvedContextEvidenceSummary[] = [];
+  const includedEvidence: SemanticContextEvidenceSummary[] = [];
   const items: ContextCapacityItem[] = candidates.map((candidate) => {
     const size = byteSize(candidate.evidence ?? candidate);
     if (candidate.mandatory) {

@@ -46,7 +46,7 @@ import {
 } from "@data-agent/platform/runs";
 import { createPostgresReadOnlyBenchmarkExecutor } from "@data-agent/platform/sandbox";
 import {
-  createPostgresResolvedContextRegistry,
+  createPostgresSemanticContextRegistry,
   createPostgresSemanticExplorerReader,
   createPostgresSemanticInductionRegistry,
 } from "@data-agent/platform/semantic-postgres";
@@ -61,7 +61,7 @@ import {
   createPostgresCapabilityAuthority,
   createPostgresOperationsAdminRepository,
 } from "@data-agent/platform/tenancy";
-import { createResolvedContextService } from "@data-agent/semantic/runtime-context";
+import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
 import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
@@ -80,7 +80,7 @@ import {
   isRunnableWorkspaceMember,
 } from "./runs/multi-principal-runner.js";
 import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
-import { createRunBoundResolvedContextResolver } from "./runs/run-bound-resolved-context.js";
+import { createRunBoundSemanticContextResolver } from "./runs/run-bound-semantic-context.js";
 import {
   createInitialWorkerHealth,
   parseRunWorkerEnvironment,
@@ -362,10 +362,10 @@ export async function runWorkerProcess(
           capability,
           environment,
         });
-        const resolvedContext = createRunBoundResolvedContextResolver({
+        const semanticContext = createRunBoundSemanticContextResolver({
           capability,
-          service: createResolvedContextService({
-            authority: createPostgresResolvedContextRegistry({
+          service: createSemanticContextService({
+            authority: createPostgresSemanticContextRegistry({
               pool: sqlPool,
               authorizer: capabilityAuthority.authorizer,
             }),
@@ -455,7 +455,7 @@ export async function runWorkerProcess(
             event_store: eventStore,
             executor,
             provider_dispatch: providerDispatch,
-            resolved_context: resolvedContext,
+            semantic_context: semanticContext,
             effective_config_loader: (lease) => {
               const payload = effectiveConfigRunLeasePayloadSchema.safeParse(lease.payload);
               if (!payload.success || lease.command_kind !== payload.data.kind) {

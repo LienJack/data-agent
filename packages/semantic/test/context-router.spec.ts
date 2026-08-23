@@ -1,13 +1,13 @@
 import {
-  buildResolvedContextAuthoritySnapshot,
+  buildSemanticContextAuthoritySnapshot,
   buildSemanticLexicalEntry,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   applyContextCapacity,
-  resolveContextPackage,
+  compileSemanticContextPackage,
   resolvePublishedLexicon,
-  routeResolvedContext,
+  routeSemanticContext,
 } from "../src/context/index.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -24,8 +24,8 @@ async function snapshot(input?: {
   maxTokens?: number;
 }) {
   const question = input?.question ?? "Gross Revenue by channel";
-  return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  return buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: "commerce",
     question,
@@ -145,7 +145,7 @@ describe("resolved context routing", () => {
         ],
         lexicon: [lexical],
       });
-      const decision = await routeResolvedContext(authority);
+      const decision = await routeSemanticContext(authority);
       expect(decision).toMatchObject({
         state: "READY",
         route: "METRIC",
@@ -169,7 +169,7 @@ describe("resolved context routing", () => {
         { ...shared, metric_id: "net", name: "Net Revenue", mapping_hash: hash("b") },
       ],
     });
-    const decision = await routeResolvedContext(authority);
+    const decision = await routeSemanticContext(authority);
     expect(decision.state).toBe("NEEDS_CLARIFICATION");
     expect(decision.route).toBe("METRIC");
     expect(decision.reason_codes).toEqual(["AMBIGUOUS_PUBLISHED_LEXICON"]);
@@ -191,14 +191,14 @@ describe("resolved context routing", () => {
     };
     expect(
       (
-        await routeResolvedContext(
+        await routeSemanticContext(
           await snapshot({ question: "Customer details", metrics: [], ontology: [ontology] }),
         )
       ).route,
     ).toBe("ONTOLOGY_TEXT2SQL");
     expect(
       (
-        await routeResolvedContext(
+        await routeSemanticContext(
           await snapshot({
             question: "Unknown policy",
             metrics: [],
@@ -209,7 +209,7 @@ describe("resolved context routing", () => {
     ).toBe("KNOWLEDGE");
     expect(
       (
-        await routeResolvedContext(
+        await routeSemanticContext(
           await snapshot({
             question: "Unknown relationship",
             metrics: [],
@@ -276,7 +276,7 @@ describe("resolved context routing", () => {
     expect(forward.plan.items[0]?.disposition).toBe("MANDATORY");
     expect(forward.included_evidence.map(({ evidence_id }) => evidence_id)).toEqual(["optional-a"]);
 
-    const packageDocument = await resolveContextPackage(
+    const packageDocument = await compileSemanticContextPackage(
       await snapshot({ question: "Gross Revenue", maxTokens: 1 }),
     );
     expect(packageDocument.route_decision.state).toBe("REJECTED");

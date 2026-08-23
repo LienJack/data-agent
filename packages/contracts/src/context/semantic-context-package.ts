@@ -36,9 +36,13 @@ import {
   semanticLexicalMatchKindSchema,
   verifySemanticLexicalEntry,
 } from "./semantic-lexical.js";
+import {
+  semanticInferenceReceiptSchema,
+  semanticRetrievalReceiptSchema,
+} from "./semantic-retrieval.js";
 
 const positiveSafeIntegerSchema = z.number().int().positive().safe();
-const RESOLVED_CONTEXT_CAPABILITY_CHAIN = [
+const SEMANTIC_CONTEXT_CAPABILITY_CHAIN = [
   "METRIC",
   "ONTOLOGY_TEXT2SQL",
   "KNOWLEDGE",
@@ -61,15 +65,15 @@ const canonicalStringArray = (limit: number) =>
       });
     });
 
-export const resolvedContextConsumerSchema = z.enum(["PREVIEW", "RUN"]);
-export const resolvedContextStateSchema = z.enum([
+export const semanticContextConsumerSchema = z.enum(["PREVIEW", "RUN"]);
+export const semanticContextStateSchema = z.enum([
   "READY",
   "PARTIAL",
   "NEEDS_CLARIFICATION",
   "REJECTED",
   "STALE",
 ]);
-export const resolvedContextRouteSchema = z.enum([
+export const semanticContextRouteSchema = z.enum([
   "METRIC",
   "ONTOLOGY_TEXT2SQL",
   "KNOWLEDGE",
@@ -92,53 +96,53 @@ const runContextBasisSchema = z.strictObject({
   }),
 });
 
-const resolvedContextRequestDraftSchema = z.union([
+const semanticContextRequestDraftSchema = z.union([
   z.strictObject({
-    schema_version: z.literal("resolved-context-request@1.0.0"),
+    schema_version: z.literal("semantic-context-request@1.0.0"),
     request_id: canonicalImmutableIdSchema,
     scope: appScopeSchema,
     question: z.string().trim().min(1).max(4_000),
     basis: previewContextBasisSchema,
   }),
   z.strictObject({
-    schema_version: z.literal("resolved-context-request@1.0.0"),
+    schema_version: z.literal("semantic-context-request@1.0.0"),
     request_id: canonicalImmutableIdSchema,
     scope: appScopeSchema,
     basis: runContextBasisSchema,
   }),
 ]);
 
-export const resolvedContextRequestSchema = z.union([
-  resolvedContextRequestDraftSchema.options[0].extend({ request_hash: contentHashSchema }),
-  resolvedContextRequestDraftSchema.options[1].extend({ request_hash: contentHashSchema }),
+export const semanticContextRequestSchema = z.union([
+  semanticContextRequestDraftSchema.options[0].extend({ request_hash: contentHashSchema }),
+  semanticContextRequestDraftSchema.options[1].extend({ request_hash: contentHashSchema }),
 ]);
 
-export async function computeResolvedContextRequestHash(input: unknown) {
-  const fullRequest = resolvedContextRequestSchema.safeParse(input);
+export async function computeSemanticContextRequestHash(input: unknown) {
+  const fullRequest = semanticContextRequestSchema.safeParse(input);
   const draft = fullRequest.success
-    ? resolvedContextRequestDraftSchema.parse(
+    ? semanticContextRequestDraftSchema.parse(
         Object.fromEntries(
           Object.entries(fullRequest.data).filter(([key]) => key !== "request_hash"),
         ),
       )
-    : resolvedContextRequestDraftSchema.parse(input);
+    : semanticContextRequestDraftSchema.parse(input);
   return sha256ContentHash(draft);
 }
 
-export async function buildResolvedContextRequest(input: unknown) {
-  const draft = resolvedContextRequestDraftSchema.parse(input);
+export async function buildSemanticContextRequest(input: unknown) {
+  const draft = semanticContextRequestDraftSchema.parse(input);
   return deepFreeze(
-    resolvedContextRequestSchema.parse({
+    semanticContextRequestSchema.parse({
       ...draft,
-      request_hash: await computeResolvedContextRequestHash(draft),
+      request_hash: await computeSemanticContextRequestHash(draft),
     }),
   );
 }
 
-export async function verifyResolvedContextRequest(input: unknown) {
-  const request = resolvedContextRequestSchema.parse(input);
-  if ((await computeResolvedContextRequestHash(request)) !== request.request_hash) {
-    throw new TypeError("RESOLVED_CONTEXT_REQUEST_HASH_MISMATCH");
+export async function verifySemanticContextRequest(input: unknown) {
+  const request = semanticContextRequestSchema.parse(input);
+  if ((await computeSemanticContextRequestHash(request)) !== request.request_hash) {
+    throw new TypeError("SEMANTIC_CONTEXT_REQUEST_HASH_MISMATCH");
   }
   return request;
 }
@@ -190,8 +194,8 @@ const canonicalVersionedResourceRefsSchema = z
     });
   });
 
-const resolvedContextAuthoritySnapshotDraftSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-authority-snapshot@2.0.0"),
+const semanticContextAuthoritySnapshotDraftSchema = z.strictObject({
+  schema_version: z.literal("semantic-context-authority-snapshot@1.0.0"),
   scope: appScopeSchema,
   semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
   question: z.string().trim().min(1).max(4_000),
@@ -226,8 +230,8 @@ function canonicalEntryArray<T extends { readonly [key: string]: unknown }>(key:
   });
 }
 
-const resolvedContextAuthoritySnapshotCanonicalDraftSchema =
-  resolvedContextAuthoritySnapshotDraftSchema
+const semanticContextAuthoritySnapshotCanonicalDraftSchema =
+  semanticContextAuthoritySnapshotDraftSchema
     .extend({
       published_metrics: canonicalEntryArray<z.infer<typeof publishedMetricContextSchema>>(
         "metric_id",
@@ -300,20 +304,20 @@ const resolvedContextAuthoritySnapshotCanonicalDraftSchema =
       }
     });
 
-export const resolvedContextAuthoritySnapshotSchema =
-  resolvedContextAuthoritySnapshotCanonicalDraftSchema.extend({ snapshot_hash: contentHashSchema });
+export const semanticContextAuthoritySnapshotSchema =
+  semanticContextAuthoritySnapshotCanonicalDraftSchema.extend({ snapshot_hash: contentHashSchema });
 
-const resolvedContextAuthoritySnapshotBuilderInputSchema =
-  resolvedContextAuthoritySnapshotDraftSchema
+const semanticContextAuthoritySnapshotBuilderInputSchema =
+  semanticContextAuthoritySnapshotDraftSchema
     .omit({ question_hash: true, published_lexicon: true })
     .extend({ published_lexicon: canonicalSemanticLexicalEntriesSchema.optional() });
 
-export async function computeResolvedContextAuthoritySnapshotHash(input: unknown) {
-  return sha256ContentHash(resolvedContextAuthoritySnapshotCanonicalDraftSchema.parse(input));
+export async function computeSemanticContextAuthoritySnapshotHash(input: unknown) {
+  return sha256ContentHash(semanticContextAuthoritySnapshotCanonicalDraftSchema.parse(input));
 }
 
-export async function buildResolvedContextAuthoritySnapshot(input: unknown) {
-  const builderInput = resolvedContextAuthoritySnapshotBuilderInputSchema.parse(input);
+export async function buildSemanticContextAuthoritySnapshot(input: unknown) {
+  const builderInput = semanticContextAuthoritySnapshotBuilderInputSchema.parse(input);
   const releaseRef = {
     resource_id: builderInput.semantic_release.resource_id,
     resource_revision: builderInput.semantic_release.resource_revision,
@@ -369,7 +373,7 @@ export async function buildResolvedContextAuthoritySnapshot(input: unknown) {
             ),
           ]),
       ]);
-  const draft = resolvedContextAuthoritySnapshotCanonicalDraftSchema.parse({
+  const draft = semanticContextAuthoritySnapshotCanonicalDraftSchema.parse({
     ...builderInput,
     published_lexicon: [...derivedLexicon].sort((left, right) => {
       const leftKey = semanticLexicalEntryKey(left);
@@ -379,27 +383,27 @@ export async function buildResolvedContextAuthoritySnapshot(input: unknown) {
     question_hash: await sha256ContentHash(builderInput.question),
   });
   return deepFreeze(
-    resolvedContextAuthoritySnapshotSchema.parse({
+    semanticContextAuthoritySnapshotSchema.parse({
       ...draft,
-      snapshot_hash: await computeResolvedContextAuthoritySnapshotHash(draft),
+      snapshot_hash: await computeSemanticContextAuthoritySnapshotHash(draft),
     }),
   );
 }
 
-export async function verifyResolvedContextAuthoritySnapshot(input: unknown) {
-  const snapshot = resolvedContextAuthoritySnapshotSchema.parse(input);
+export async function verifySemanticContextAuthoritySnapshot(input: unknown) {
+  const snapshot = semanticContextAuthoritySnapshotSchema.parse(input);
   await Promise.all(snapshot.published_lexicon.map(verifySemanticLexicalEntry));
   const { snapshot_hash: _snapshotHash, ...draft } = snapshot;
   if (
     (await sha256ContentHash(snapshot.question)) !== snapshot.question_hash ||
-    (await computeResolvedContextAuthoritySnapshotHash(draft)) !== snapshot.snapshot_hash
+    (await computeSemanticContextAuthoritySnapshotHash(draft)) !== snapshot.snapshot_hash
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_SNAPSHOT_HASH_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_SNAPSHOT_HASH_MISMATCH");
   }
   return snapshot;
 }
 
-export const resolvedContextClarificationSchema = z.strictObject({
+export const semanticContextClarificationSchema = z.strictObject({
   candidate_id: versionIdentifierSchema,
   candidate_kind: z.enum(["METRIC", "ONTOLOGY"]),
   label: z.string().trim().min(1).max(256),
@@ -409,22 +413,22 @@ export const resolvedContextClarificationSchema = z.strictObject({
   lexical_evidence_hash: contentHashSchema,
 });
 
-export const resolvedContextRouteDecisionSchema = z
+export const semanticContextRouteDecisionSchema = z
   .strictObject({
-    schema_version: z.literal("resolved-context-route-decision@2.0.0"),
-    state: resolvedContextStateSchema,
-    route: resolvedContextRouteSchema,
+    schema_version: z.literal("semantic-context-route-decision@1.0.0"),
+    state: semanticContextStateSchema,
+    route: semanticContextRouteSchema,
     selected_metric_id: versionIdentifierSchema.nullable(),
     selected_ontology_ids: canonicalStringArray(256),
-    clarification_candidates: z.array(resolvedContextClarificationSchema).max(128),
+    clarification_candidates: z.array(semanticContextClarificationSchema).max(128),
     lexical_evidence: canonicalSemanticLexicalEntriesSchema.pipe(
       z.array(semanticLexicalEntrySchema).max(128),
     ),
     capability_chain: z.tuple([
-      z.literal(RESOLVED_CONTEXT_CAPABILITY_CHAIN[0]),
-      z.literal(RESOLVED_CONTEXT_CAPABILITY_CHAIN[1]),
-      z.literal(RESOLVED_CONTEXT_CAPABILITY_CHAIN[2]),
-      z.literal(RESOLVED_CONTEXT_CAPABILITY_CHAIN[3]),
+      z.literal(SEMANTIC_CONTEXT_CAPABILITY_CHAIN[0]),
+      z.literal(SEMANTIC_CONTEXT_CAPABILITY_CHAIN[1]),
+      z.literal(SEMANTIC_CONTEXT_CAPABILITY_CHAIN[2]),
+      z.literal(SEMANTIC_CONTEXT_CAPABILITY_CHAIN[3]),
     ]),
     reason_codes: canonicalStringArray(32),
   })
@@ -529,7 +533,7 @@ export const contextCapacityPlanSchema = z
     }
   });
 
-export const resolvedContextEvidenceSummarySchema = z.strictObject({
+export const semanticContextEvidenceSummarySchema = z.strictObject({
   evidence_kind: z.enum(["LEXICAL", "METRIC", "ONTOLOGY", "MAPPING", "KNOWLEDGE", "GRAPH"]),
   evidence_id: z.string().trim().min(1).max(512),
   evidence_hash: contentHashSchema,
@@ -537,9 +541,9 @@ export const resolvedContextEvidenceSummarySchema = z.strictObject({
   source_ref: versionedResourceReferenceSchema.nullable(),
 });
 
-const resolvedContextPackageMaterialSchema = z
+const semanticContextPackageMaterialSchema = z
   .strictObject({
-    schema_version: z.literal("resolved-context-package@2.0.0"),
+    schema_version: z.literal("semantic-context-package@1.0.0"),
     scope: appScopeSchema,
     semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
     question_hash: contentHashSchema,
@@ -550,10 +554,18 @@ const resolvedContextPackageMaterialSchema = z
     egress_policy: effectiveEgressPolicySchema,
     provider: z.string().trim().min(1).max(64),
     authority_snapshot_hash: contentHashSchema,
-    route_decision: resolvedContextRouteDecisionSchema,
+    route_decision: semanticContextRouteDecisionSchema,
     capacity: contextCapacityPlanSchema,
-    evidence: z.array(resolvedContextEvidenceSummarySchema).max(2_048),
+    evidence: z.array(semanticContextEvidenceSummarySchema).max(2_048),
     knowledge_refs: canonicalVersionedResourceRefsSchema,
+    retrieval_receipt: semanticRetrievalReceiptSchema,
+    inference_receipt: semanticInferenceReceiptSchema,
+    mandatory_closure: z.strictObject({
+      object_ids: z.array(versionIdentifierSchema).max(80),
+      relationship_ids: z.array(versionIdentifierSchema).max(160),
+      closure_hash: contentHashSchema,
+    }),
+    analysis_capabilities: z.array(analysisCapabilitySchema).max(32),
   })
   .superRefine((packageDocument, ctx) => {
     for (const [index, entry] of packageDocument.route_decision.lexical_evidence.entries()) {
@@ -570,14 +582,68 @@ const resolvedContextPackageMaterialSchema = z
         });
       }
     }
+    if (
+      packageDocument.authority_snapshot_hash !==
+        packageDocument.retrieval_receipt.authority_snapshot_hash ||
+      packageDocument.semantic_release.resource_hash !==
+        packageDocument.retrieval_receipt.release_hash ||
+      packageDocument.question_hash !== packageDocument.retrieval_receipt.query_hash
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Retrieval receipt must bind the exact semantic authority snapshot.",
+        path: ["retrieval_receipt"],
+      });
+    }
+    if (
+      packageDocument.inference_receipt.retrieval_receipt_hash !==
+      packageDocument.retrieval_receipt.receipt_hash
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Inference receipt must bind the exact retrieval receipt.",
+        path: ["inference_receipt", "retrieval_receipt_hash"],
+      });
+    }
+    if (!packageDocument.inference_receipt.closure_complete) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Semantic Context Package cannot carry an incomplete mandatory closure.",
+        path: ["inference_receipt", "closure_complete"],
+      });
+    }
+    const closureObjects = [...packageDocument.mandatory_closure.object_ids].sort();
+    const inferredObjects = [...packageDocument.inference_receipt.mandatory_object_ids].sort();
+    const closureRelationships = [...packageDocument.mandatory_closure.relationship_ids].sort();
+    const inferredRelationships = [
+      ...packageDocument.inference_receipt.mandatory_relationship_ids,
+    ].sort();
+    if (
+      JSON.stringify(closureObjects) !== JSON.stringify(inferredObjects) ||
+      JSON.stringify(closureRelationships) !== JSON.stringify(inferredRelationships)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Mandatory closure must equal the inference receipt closure.",
+        path: ["mandatory_closure"],
+      });
+    }
+    const selectedObjects = new Set(packageDocument.retrieval_receipt.selected_object_ids);
+    if (closureObjects.some((objectId) => !selectedObjects.has(objectId))) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Mandatory closure objects cannot be pruned from retrieval.",
+        path: ["retrieval_receipt", "selected_object_ids"],
+      });
+    }
   });
 
-const resolvedContextPackageDraftSchema = resolvedContextPackageMaterialSchema.safeExtend({
+const semanticContextPackageDraftSchema = semanticContextPackageMaterialSchema.safeExtend({
   package_id: canonicalImmutableIdSchema,
   package_key_hash: contentHashSchema,
 });
 
-export const resolvedContextPackageSchema = resolvedContextPackageDraftSchema.safeExtend({
+export const semanticContextPackageSchema = semanticContextPackageDraftSchema.safeExtend({
   package_hash: contentHashSchema,
 });
 
@@ -651,7 +717,7 @@ const analysisContextMaterialSchema = z
   .strictObject({
     schema_version: z.literal("analysis-context@1.0.0"),
     scope: appScopeSchema,
-    resolved_context_binding: z.strictObject({
+    semantic_context_binding: z.strictObject({
       package_id: canonicalImmutableIdSchema,
       package_hash: contentHashSchema,
       receipt_id: canonicalImmutableIdSchema,
@@ -733,17 +799,17 @@ function uuidV8FromHash(hash: string): string {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20, 32)}`;
 }
 
-export async function computeResolvedContextPackageKeyHash(input: unknown) {
-  const fullPackage = resolvedContextPackageSchema.safeParse(input);
+export async function computeSemanticContextPackageKeyHash(input: unknown) {
+  const fullPackage = semanticContextPackageSchema.safeParse(input);
   const material = fullPackage.success
-    ? resolvedContextPackageMaterialSchema.parse(
+    ? semanticContextPackageMaterialSchema.parse(
         Object.fromEntries(
           Object.entries(fullPackage.data).filter(
             ([key]) => !["package_id", "package_key_hash", "package_hash"].includes(key),
           ),
         ),
       )
-    : resolvedContextPackageMaterialSchema.parse(input);
+    : semanticContextPackageMaterialSchema.parse(input);
   return sha256ContentHash({
     scope: material.scope,
     question_hash: material.question_hash,
@@ -757,119 +823,119 @@ export async function computeResolvedContextPackageKeyHash(input: unknown) {
   });
 }
 
-export async function computeResolvedContextPackageHash(input: unknown) {
-  const fullPackage = resolvedContextPackageSchema.safeParse(input);
+export async function computeSemanticContextPackageHash(input: unknown) {
+  const fullPackage = semanticContextPackageSchema.safeParse(input);
   const draft = fullPackage.success
-    ? resolvedContextPackageDraftSchema.parse(
+    ? semanticContextPackageDraftSchema.parse(
         Object.fromEntries(
           Object.entries(fullPackage.data).filter(([key]) => key !== "package_hash"),
         ),
       )
-    : resolvedContextPackageDraftSchema.parse(input);
+    : semanticContextPackageDraftSchema.parse(input);
   return sha256ContentHash(draft);
 }
 
-export async function buildResolvedContextPackage(input: unknown) {
-  const material = resolvedContextPackageMaterialSchema.parse(input);
-  const packageKeyHash = await computeResolvedContextPackageKeyHash(material);
-  const draft = resolvedContextPackageDraftSchema.parse({
+export async function buildSemanticContextPackage(input: unknown) {
+  const material = semanticContextPackageMaterialSchema.parse(input);
+  const packageKeyHash = await computeSemanticContextPackageKeyHash(material);
+  const draft = semanticContextPackageDraftSchema.parse({
     ...material,
     package_id: uuidV8FromHash(packageKeyHash),
     package_key_hash: packageKeyHash,
   });
   return deepFreeze(
-    resolvedContextPackageSchema.parse({
+    semanticContextPackageSchema.parse({
       ...draft,
       package_hash: await sha256ContentHash(draft),
     }),
   );
 }
 
-export async function verifyResolvedContextPackage(input: unknown) {
-  const packageDocument = resolvedContextPackageSchema.parse(input);
+export async function verifySemanticContextPackage(input: unknown) {
+  const packageDocument = semanticContextPackageSchema.parse(input);
   const { package_hash: _packageHash, ...draft } = packageDocument;
-  const expectedKeyHash = await computeResolvedContextPackageKeyHash(packageDocument);
+  const expectedKeyHash = await computeSemanticContextPackageKeyHash(packageDocument);
   if (
     packageDocument.package_key_hash !== expectedKeyHash ||
     packageDocument.package_id !== uuidV8FromHash(expectedKeyHash) ||
     (await sha256ContentHash(draft)) !== packageDocument.package_hash
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_PACKAGE_HASH_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_PACKAGE_HASH_MISMATCH");
   }
   return packageDocument;
 }
 
-export const resolvedContextPreviewResultSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-preview-result@1.0.0"),
-  package: resolvedContextPackageSchema,
+export const semanticContextPreviewResultSchema = z.strictObject({
+  schema_version: z.literal("semantic-context-preview-result@1.0.0"),
+  package: semanticContextPackageSchema,
 });
 
-export async function verifyResolvedContextPreviewResult(input: unknown) {
-  const result = resolvedContextPreviewResultSchema.parse(input);
+export async function verifySemanticContextPreviewResult(input: unknown) {
+  const result = semanticContextPreviewResultSchema.parse(input);
   return deepFreeze({
     ...result,
-    package: await verifyResolvedContextPackage(result.package),
+    package: await verifySemanticContextPackage(result.package),
   });
 }
 
-export const resolvedContextPackageReferenceSchema = z.strictObject({
+export const semanticContextPackageReferenceSchema = z.strictObject({
   package_id: canonicalImmutableIdSchema,
   package_revision: z.literal(1),
   package_hash: contentHashSchema,
 });
 
-const resolvedContextReceiptDraftSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-receipt@1.0.0"),
+const semanticContextReceiptDraftSchema = z.strictObject({
+  schema_version: z.literal("semantic-context-receipt@1.0.0"),
   receipt_id: canonicalImmutableIdSchema,
   scope: appScopeSchema,
-  consumer: resolvedContextConsumerSchema,
+  consumer: semanticContextConsumerSchema,
   request_id: canonicalImmutableIdSchema,
   request_hash: contentHashSchema,
   run_id: canonicalImmutableIdSchema.nullable(),
-  package_ref: resolvedContextPackageReferenceSchema,
-  state: resolvedContextStateSchema,
-  route: resolvedContextRouteSchema,
+  package_ref: semanticContextPackageReferenceSchema,
+  state: semanticContextStateSchema,
+  route: semanticContextRouteSchema,
   authority_snapshot_hash: contentHashSchema,
   resolved_at: timestampSchema,
 });
 
-export const resolvedContextReceiptSchema = resolvedContextReceiptDraftSchema.extend({
+export const semanticContextReceiptSchema = semanticContextReceiptDraftSchema.extend({
   receipt_hash: contentHashSchema,
 });
 
-export async function buildResolvedContextReceipt(input: unknown) {
-  const draft = resolvedContextReceiptDraftSchema.parse(input);
+export async function buildSemanticContextReceipt(input: unknown) {
+  const draft = semanticContextReceiptDraftSchema.parse(input);
   return deepFreeze(
-    resolvedContextReceiptSchema.parse({
+    semanticContextReceiptSchema.parse({
       ...draft,
       receipt_hash: await sha256ContentHash(draft),
     }),
   );
 }
 
-export async function verifyResolvedContextReceipt(input: unknown) {
-  const receipt = resolvedContextReceiptSchema.parse(input);
+export async function verifySemanticContextReceipt(input: unknown) {
+  const receipt = semanticContextReceiptSchema.parse(input);
   const { receipt_hash: _receiptHash, ...draft } = receipt;
   if ((await sha256ContentHash(draft)) !== receipt.receipt_hash) {
-    throw new TypeError("RESOLVED_CONTEXT_RECEIPT_HASH_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_RECEIPT_HASH_MISMATCH");
   }
   return receipt;
 }
 
-export const resolvedContextCommitCommandSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-commit@1.0.0"),
-  request: resolvedContextRequestSchema,
+export const semanticContextCommitCommandSchema = z.strictObject({
+  schema_version: z.literal("semantic-context-commit@1.0.0"),
+  request: semanticContextRequestSchema,
   authority_snapshot_hash: contentHashSchema,
-  package: resolvedContextPackageSchema,
-  receipt: resolvedContextReceiptSchema,
+  package: semanticContextPackageSchema,
+  receipt: semanticContextReceiptSchema,
 });
 
-export async function verifyResolvedContextCommitCommand(input: unknown) {
-  const command = resolvedContextCommitCommandSchema.parse(input);
+export async function verifySemanticContextCommitCommand(input: unknown) {
+  const command = semanticContextCommitCommandSchema.parse(input);
   const [request, packageDocument, receipt] = await Promise.all([
-    verifyResolvedContextRequest(command.request),
-    verifyResolvedContextPackage(command.package),
-    verifyResolvedContextReceipt(command.receipt),
+    verifySemanticContextRequest(command.request),
+    verifySemanticContextPackage(command.package),
+    verifySemanticContextReceipt(command.receipt),
   ]);
   const runId = request.basis.consumer === "RUN" ? request.basis.run_id : null;
   if (
@@ -890,23 +956,23 @@ export async function verifyResolvedContextCommitCommand(input: unknown) {
     receipt.route !== packageDocument.route_decision.route ||
     receipt.authority_snapshot_hash !== command.authority_snapshot_hash
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_COMMIT_CLOSURE_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_COMMIT_CLOSURE_MISMATCH");
   }
   return deepFreeze({ ...command, request, package: packageDocument, receipt });
 }
 
-export const resolvedContextCommitResultSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-commit-result@1.0.0"),
+export const semanticContextCommitResultSchema = z.strictObject({
+  schema_version: z.literal("semantic-context-commit-result@1.0.0"),
   disposition: z.enum(["CREATED", "REPLAYED"]),
-  package: resolvedContextPackageSchema,
-  receipt: resolvedContextReceiptSchema,
+  package: semanticContextPackageSchema,
+  receipt: semanticContextReceiptSchema,
 });
 
-export async function verifyResolvedContextCommitResult(input: unknown) {
-  const result = resolvedContextCommitResultSchema.parse(input);
+export async function verifySemanticContextCommitResult(input: unknown) {
+  const result = semanticContextCommitResultSchema.parse(input);
   const [packageDocument, receipt] = await Promise.all([
-    verifyResolvedContextPackage(result.package),
-    verifyResolvedContextReceipt(result.receipt),
+    verifySemanticContextPackage(result.package),
+    verifySemanticContextReceipt(result.receipt),
   ]);
   if (
     receipt.package_ref.package_id !== packageDocument.package_id ||
@@ -915,30 +981,30 @@ export async function verifyResolvedContextCommitResult(input: unknown) {
     receipt.state !== packageDocument.route_decision.state ||
     receipt.route !== packageDocument.route_decision.route
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_RESULT_CLOSURE_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_RESULT_CLOSURE_MISMATCH");
   }
   return deepFreeze({ ...result, package: packageDocument, receipt });
 }
 
-export type ResolvedContextRequest = z.infer<typeof resolvedContextRequestSchema>;
-export type ResolvedContextState = z.infer<typeof resolvedContextStateSchema>;
-export type ResolvedContextAuthoritySnapshot = z.infer<
-  typeof resolvedContextAuthoritySnapshotSchema
+export type SemanticContextRequest = z.infer<typeof semanticContextRequestSchema>;
+export type SemanticContextState = z.infer<typeof semanticContextStateSchema>;
+export type SemanticContextAuthoritySnapshot = z.infer<
+  typeof semanticContextAuthoritySnapshotSchema
 >;
 export type PublishedMetricContext = z.infer<typeof publishedMetricContextSchema>;
-export type ResolvedContextClarification = z.infer<typeof resolvedContextClarificationSchema>;
-export type ResolvedContextRouteDecision = z.infer<typeof resolvedContextRouteDecisionSchema>;
+export type SemanticContextClarification = z.infer<typeof semanticContextClarificationSchema>;
+export type SemanticContextRouteDecision = z.infer<typeof semanticContextRouteDecisionSchema>;
 export type ContextCapacityItem = z.infer<typeof contextCapacityItemSchema>;
 export type ContextCapacityPlan = z.infer<typeof contextCapacityPlanSchema>;
-export type ResolvedContextEvidenceSummary = z.infer<typeof resolvedContextEvidenceSummarySchema>;
-export type ResolvedContextPackage = z.infer<typeof resolvedContextPackageSchema>;
-export type ResolvedContextPreviewResult = z.infer<typeof resolvedContextPreviewResultSchema>;
+export type SemanticContextEvidenceSummary = z.infer<typeof semanticContextEvidenceSummarySchema>;
+export type SemanticContextPackage = z.infer<typeof semanticContextPackageSchema>;
+export type SemanticContextPreviewResult = z.infer<typeof semanticContextPreviewResultSchema>;
 export type AnalysisMetricReference = z.infer<typeof analysisMetricReferenceSchema>;
 export type AnalysisDimensionContext = z.infer<typeof analysisDimensionContextSchema>;
 export type AnalysisMetricContext = z.infer<typeof analysisMetricContextSchema>;
 export type AnalysisRelationshipContext = z.infer<typeof analysisRelationshipContextSchema>;
 export type AnalysisCausalContext = z.infer<typeof analysisCausalContextSchema>;
 export type AnalysisContext = z.infer<typeof analysisContextSchema>;
-export type ResolvedContextReceipt = z.infer<typeof resolvedContextReceiptSchema>;
-export type ResolvedContextCommitCommand = z.infer<typeof resolvedContextCommitCommandSchema>;
-export type ResolvedContextCommitResult = z.infer<typeof resolvedContextCommitResultSchema>;
+export type SemanticContextReceipt = z.infer<typeof semanticContextReceiptSchema>;
+export type SemanticContextCommitCommand = z.infer<typeof semanticContextCommitCommandSchema>;
+export type SemanticContextCommitResult = z.infer<typeof semanticContextCommitResultSchema>;

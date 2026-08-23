@@ -9,7 +9,7 @@ import {
 
 export type QueryEvidenceVisualizationIntent = "TREND" | "COMPARISON" | "COMPOSITION";
 
-export interface ResolvedContextChartIdentity {
+export interface SemanticContextChartIdentity {
   readonly package_id: string;
   readonly package_hash: string;
   readonly receipt_id: string;
@@ -48,7 +48,7 @@ export async function buildQueryEvidenceChartDocument(input: {
   readonly intent: QueryEvidenceVisualizationIntent;
   readonly document_ref: ArtifactReference;
   readonly evidence: ProductTeamArtifactDocument;
-  readonly resolved_context: ResolvedContextChartIdentity;
+  readonly semantic_context: SemanticContextChartIdentity;
   readonly unit?: string | null;
 }): Promise<ArtifactWorkspaceChartDocumentV2 | null> {
   const evidence = await verifyProductTeamArtifactDocument(input.evidence);
@@ -122,7 +122,7 @@ export async function buildQueryEvidenceChartDocument(input: {
     provenance: {
       transform_version: "query-evidence-chart@1.0.0",
       dataset_hash: `sha256:${"0".repeat(64)}`,
-      resolved_context: input.resolved_context,
+      semantic_context: input.semantic_context,
     },
     projection,
   });

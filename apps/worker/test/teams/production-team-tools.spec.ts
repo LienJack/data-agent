@@ -65,7 +65,7 @@ describe("Production Team governed chart publication", () => {
       {
         lease,
         execution_context: {} as ProductionTeamToolFactoryInput["execution_context"],
-        resolved_context_ref: {
+        semantic_context_ref: {
           package_id: id(20),
           package_hash: hash("a"),
           receipt_id: id(21),
@@ -244,7 +244,7 @@ describe("Production Team governed chart publication", () => {
       {
         lease: lease as ProductionTeamToolFactoryInput["lease"],
         execution_context: executionContext,
-        resolved_context_ref: {
+        semantic_context_ref: {
           package_id: id(20),
           package_hash: hash("a"),
           receipt_id: id(21),

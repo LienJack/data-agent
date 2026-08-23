@@ -136,7 +136,7 @@ export async function executeAnalysisSandbox(input: {
   readonly maximum_budgets?: Partial<PythonExecutionBudgetsV1>;
 }): Promise<AnalysisSandboxExecution> {
   const fence = {
-    run_id: input.program.plan_ref.run_id,
+    run_id: input.program.analysis_program_ref.run_id,
     attempt_id: input.attempt_id,
     worker_fence: input.worker_fence,
     fence_token: input.fence_token,
@@ -198,8 +198,8 @@ export async function executeAnalysisSandbox(input: {
     authorization: input.authorization,
     request: {
       schema_version: "1.0.0",
-      workspace_id: input.program.plan_ref.tenant_id,
-      run_id: input.program.plan_ref.run_id,
+      workspace_id: input.program.analysis_program_ref.tenant_id,
+      run_id: input.program.analysis_program_ref.run_id,
       attempt: input.attempt,
       fence_token: input.fence_token,
       idempotency_key: input.idempotency_key,

@@ -10,7 +10,7 @@ import {
 import { l2ArtifactDocumentSchema } from "../l2.js";
 import {
   analysisCompletionReceiptPayloadSchema,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   atomicClaimV3PayloadSchema,
   dataProfilePayloadSchema,
   derivedAnalysisEvidencePayloadSchema,
@@ -66,7 +66,7 @@ const writableVersionedPayloadSchemas = new Map<string, z.ZodType>([
   ],
   ["QueryEvidence\0" + "2.0.0\0query-evidence@2.0.0", queryEvidenceV2PayloadSchema],
   ["DataProfile\0" + "1.0.0\0data-profile@1.0.0", dataProfilePayloadSchema],
-  ["AnalysisPlan\0" + "1.0.0\0analysis-plan@1.0.0", analysisPlanPayloadSchema],
+  ["AnalysisProgram\0" + "1.0.0\0analysis-program@1.0.0", analysisProgramPayloadSchema],
   [
     "DerivedAnalysisEvidence\0" + "1.0.0\0derived-analysis-evidence@1.0.0",
     derivedAnalysisEvidencePayloadSchema,
@@ -119,7 +119,7 @@ export const L2_RESEARCH_WIRE_VERSION_MATRIX = Object.freeze([
   ["ObligationExecutionDecision", "2.0.0", "obligation-execution@2.0.0"],
   ["QueryEvidence", "2.0.0", "query-evidence@2.0.0"],
   ["DataProfile", "1.0.0", "data-profile@1.0.0"],
-  ["AnalysisPlan", "1.0.0", "analysis-plan@1.0.0"],
+  ["AnalysisProgram", "1.0.0", "analysis-program@1.0.0"],
   ["DerivedAnalysisEvidence", "1.0.0", "derived-analysis-evidence@1.0.0"],
   ["AnalysisCompletionReceipt", "1.0.0", "analysis-completion@1.0.0"],
   ["AtomicClaim", "2.0.0", "atomic-claim@2.0.0"],
@@ -168,7 +168,7 @@ type WritableResearchPayload =
   | z.infer<typeof obligationExecutionDecisionPayloadSchema>
   | z.infer<typeof queryEvidenceV2PayloadSchema>
   | z.infer<typeof dataProfilePayloadSchema>
-  | z.infer<typeof analysisPlanPayloadSchema>
+  | z.infer<typeof analysisProgramPayloadSchema>
   | z.infer<typeof derivedAnalysisEvidencePayloadSchema>
   | z.infer<typeof analysisCompletionReceiptPayloadSchema>
   | z.infer<typeof atomicClaimV2PayloadSchema>

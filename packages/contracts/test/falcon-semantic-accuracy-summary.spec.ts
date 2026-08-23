@@ -17,7 +17,7 @@ function input() {
     source_commit: "c7d71f28321c43b0e1fa946d8c4d6f4dd42f7b3c",
     corpus_ref: { resource_id: id(4), resource_revision: 1, resource_hash: hash("1") },
     release_ref: { resource_id: id(5), resource_revision: 3, resource_hash: hash("2") },
-    route_contract_version: "resolved-context-route-decision@2.0.0" as const,
+    route_contract_version: "semantic-context-route-decision@1.0.0" as const,
     b0_exact: {
       lane: "B0_EXACT" as const,
       case_count: 5,

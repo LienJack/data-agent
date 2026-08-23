@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ArtifactReference,
   analysisCompletionReceiptPayloadSchema,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   analysisSandboxProgramPayloadSchema,
   atomicClaimV2PayloadSchema,
   atomicClaimV3PayloadSchema,
@@ -43,10 +43,11 @@ const metricRef = { container_ref: semanticReleaseRef, node_id: "gross_profit" }
 
 function validPlan() {
   return {
-    artifact_type: "AnalysisPlan",
-    protocol_version: "analysis-plan@1.0.0",
+    artifact_type: "AnalysisProgram",
+    protocol_version: "analysis-program@1.0.0",
     brief_ref: briefRef,
     analysis_context_hash: hashes.artifact,
+    semantic_context_package_hash: hashes.input,
     nodes: [
       {
         node_id: "trend",
@@ -102,9 +103,9 @@ function validPlan() {
       max_group_rows: 100,
       max_elapsed_ms: 60_000,
     },
-    planner_kind: "MODEL_CANDIDATE_HOST_VERIFIED",
-    planner_version: "analysis-planner@1.0.0",
-    plan_hash: hashes.execution,
+    compiler_kind: "MODEL_CANDIDATE_HOST_VERIFIED",
+    compiler_version: "analysis-program-compiler@1.0.0",
+    program_hash: hashes.execution,
   } as const;
 }
 
@@ -131,7 +132,7 @@ describe("deterministic analysis contracts", () => {
   it("registers new L2 and system artifact identities without promoting L4/L5 placeholders", () => {
     for (const artifactType of [
       "DataProfile",
-      "AnalysisPlan",
+      "AnalysisProgram",
       "DerivedAnalysisEvidence",
       "AnalysisCompletionReceipt",
     ]) {
@@ -281,25 +282,25 @@ describe("deterministic analysis contracts", () => {
   });
 
   it("rejects cycles, unknown skills, and generated nodes without an output contract", () => {
-    expect(analysisPlanPayloadSchema.parse(validPlan()).nodes).toHaveLength(2);
+    expect(analysisProgramPayloadSchema.parse(validPlan()).nodes).toHaveLength(2);
     const plan = validPlan();
     const cyclic = {
       ...plan,
       nodes: [{ ...plan.nodes[0], dependency_node_ids: ["forecast"] }, plan.nodes[1]],
     };
-    expect(analysisPlanPayloadSchema.safeParse(cyclic).success).toBe(false);
+    expect(analysisProgramPayloadSchema.safeParse(cyclic).success).toBe(false);
 
     const unknownSkill = {
       ...plan,
       nodes: [{ ...plan.nodes[0], skill_id: "unknown-analysis@1" }, plan.nodes[1]],
     };
-    expect(analysisPlanPayloadSchema.safeParse(unknownSkill).success).toBe(false);
+    expect(analysisProgramPayloadSchema.safeParse(unknownSkill).success).toBe(false);
 
     const missingContract = {
       ...plan,
       nodes: [plan.nodes[0], { ...plan.nodes[1], output_contract: null }],
     };
-    expect(analysisPlanPayloadSchema.safeParse(missingContract).success).toBe(false);
+    expect(analysisProgramPayloadSchema.safeParse(missingContract).success).toBe(false);
   });
 
   it("binds sandbox source identity and only accepts Oracle-passing derived evidence", () => {
@@ -310,7 +311,7 @@ describe("deterministic analysis contracts", () => {
     const program = {
       artifact_type: "SandboxProgram",
       protocol_version: "analysis-sandbox-program@1.0.0",
-      plan_ref: reference("AnalysisPlan", 115),
+      analysis_program_ref: reference("AnalysisProgram", 115),
       node_id: "trend",
       language: "PYTHON_3_12",
       entrypoint: "main",
@@ -340,7 +341,7 @@ describe("deterministic analysis contracts", () => {
     const evidence = {
       artifact_type: "DerivedAnalysisEvidence",
       protocol_version: "derived-analysis-evidence@1.0.0",
-      plan_ref: program.plan_ref,
+      analysis_program_ref: program.analysis_program_ref,
       node_id: "trend",
       skill_id: "trend-change@1",
       algorithm_version: "trend-change@1.0.0",
@@ -381,7 +382,7 @@ describe("deterministic analysis contracts", () => {
     const base = {
       artifact_type: "AnalysisCompletionReceipt",
       protocol_version: "analysis-completion@1.0.0",
-      plan_ref: reference("AnalysisPlan", 122),
+      analysis_program_ref: reference("AnalysisProgram", 122),
       node_results: [
         {
           node_id: "trend",
@@ -517,13 +518,13 @@ describe("deterministic analysis contracts", () => {
     ).toThrow(/Artifact Reference 必须与 Envelope 属于同一/);
   });
 
-  it("registers AnalysisPlan wire tuples and hashes canonical candidates deterministically", async () => {
+  it("registers AnalysisProgram wire tuples and hashes canonical candidates deterministically", async () => {
     const payload = validPlan();
     const inputRefs = collectL2ResearchPayloadArtifactReferences(payload);
     const document = {
       envelope: {
         ...makeArtifactEnvelope(),
-        artifact_type: "AnalysisPlan",
+        artifact_type: "AnalysisProgram",
         schema_version: "1.0.0",
         input_refs: inputRefs,
       },
@@ -547,7 +548,7 @@ describe("deterministic analysis contracts", () => {
       artifact_type: "ReportManifest",
       protocol_version: "report-manifest@3.0.0",
       brief_ref: briefRef,
-      analysis_plan_ref: reference("AnalysisPlan", 126),
+      analysis_program_ref: reference("AnalysisProgram", 126),
       completion_receipt_ref: reference("AnalysisCompletionReceipt", 127),
       sections: [
         {
@@ -604,7 +605,7 @@ describe("deterministic analysis contracts", () => {
       occurred_at: timestamp,
       type: "analysis.node",
       payload: {
-        plan_ref: reference("AnalysisPlan", 128),
+        plan_ref: reference("AnalysisProgram", 128),
         node_id: "trend",
         skill_id: "trend-change@1",
         status: "SUCCEEDED",

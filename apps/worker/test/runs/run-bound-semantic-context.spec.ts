@@ -1,6 +1,6 @@
 import type { ContextReceiptBinding } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
-import { createRunBoundResolvedContextResolver } from "../../src/runs/run-bound-resolved-context.js";
+import { createRunBoundSemanticContextResolver } from "../../src/runs/run-bound-semantic-context.js";
 import {
   bindEffectiveConfigLease,
   buildWorkerEffectiveConfigFixture,
@@ -50,7 +50,7 @@ describe("run-bound resolved context", () => {
       ok: true as const,
       value: { request } as never,
     }));
-    const resolver = createRunBoundResolvedContextResolver({
+    const resolver = createRunBoundSemanticContextResolver({
       capability: { authority: "test" },
       service: { resolve: service },
     });
@@ -81,7 +81,7 @@ describe("run-bound resolved context", () => {
 
   it("rejects config substitution before invoking the authority service", async () => {
     const service = vi.fn();
-    const resolver = createRunBoundResolvedContextResolver({
+    const resolver = createRunBoundSemanticContextResolver({
       capability: {},
       service: { resolve: service },
     });
@@ -92,7 +92,7 @@ describe("run-bound resolved context", () => {
     });
     expect(result).toMatchObject({
       ok: false,
-      error: { code: "RESOLVED_CONTEXT_WORKER_AUTHORITY_MISMATCH" },
+      error: { code: "SEMANTIC_CONTEXT_WORKER_AUTHORITY_MISMATCH" },
     });
     expect(service).not.toHaveBeenCalled();
   });

@@ -70,7 +70,7 @@ export async function createRootCauseDiscoveryCandidate(input: {
   const context = await verifyAnalysisContext(input.context);
   const maximumCandidates = Math.min(64, Math.max(1, input.maximum_candidates ?? 16));
   if (
-    input.plan_ref.artifact_type !== "AnalysisPlan" ||
+    input.plan_ref.artifact_type !== "AnalysisProgram" ||
     !sameScope(input.plan_ref, context.scope, input.plan_ref.run_id) ||
     input.source_evidence_refs.length === 0 ||
     input.source_evidence_refs.some(
@@ -90,7 +90,7 @@ export async function createRootCauseDiscoveryCandidate(input: {
   if (input.observations.length === 0 || input.observations.length > 64) {
     throw new TypeError("ROOT_CAUSE_UNIVERSE_BOUNDS_INVALID");
   }
-  const planRef = input.plan_ref as RootCauseDiscoveryCandidatePayload["plan_ref"];
+  const planRef = input.plan_ref as RootCauseDiscoveryCandidatePayload["analysis_program_ref"];
   const sourceEvidenceRefs =
     input.source_evidence_refs as RootCauseDiscoveryCandidatePayload["source_evidence_refs"];
   const paths = ontologyPaths(context);
@@ -150,7 +150,7 @@ export async function createRootCauseDiscoveryCandidate(input: {
   const material: Omit<RootCauseDiscoveryCandidatePayload, "candidate_hash"> = {
     artifact_type: "DiscoveryCandidate",
     protocol_version: "root-cause-discovery@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     analysis_context_hash: context.context_hash,
     source_evidence_refs: [...sourceEvidenceRefs].sort((left, right) =>
       artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
@@ -187,7 +187,7 @@ export async function createRootCauseDiscoveryReceipt(input: {
   const { candidate_hash: _candidateHash, ...candidateMaterial } = candidate;
   if (
     input.candidate_ref.artifact_type !== "DiscoveryCandidate" ||
-    !sameScope(input.candidate_ref, context.scope, candidate.plan_ref.run_id) ||
+    !sameScope(input.candidate_ref, context.scope, candidate.analysis_program_ref.run_id) ||
     input.candidate_ref.content_hash !== (await sha256ContentHash(candidate)) ||
     candidate.analysis_context_hash !== context.context_hash ||
     candidate.candidate_hash !== (await computeRootCauseCandidateHash(candidateMaterial))

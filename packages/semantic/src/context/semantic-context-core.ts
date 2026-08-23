@@ -1,16 +1,12 @@
 import {
-  buildResolvedContextPackage,
-  type ResolvedContextAuthoritySnapshot,
-  type ResolvedContextEvidenceSummary,
-  type ResolvedContextPackage,
-} from "@data-agent/contracts";
+  type SemanticContextAuthoritySnapshot,
+  type SemanticContextEvidenceSummary,
+} from "@data-agent/contracts/context";
 import { applyContextCapacity, type ContextCapacityCandidate } from "./context-capacity-policy.js";
-import { routeResolvedContext } from "./context-router.js";
+import { routeSemanticContext } from "./semantic-context-router.js";
 
-export async function resolveContextPackage(
-  snapshot: ResolvedContextAuthoritySnapshot,
-): Promise<ResolvedContextPackage> {
-  const routeDecision = await routeResolvedContext(snapshot);
+export async function compileSemanticContextCore(snapshot: SemanticContextAuthoritySnapshot) {
+  const routeDecision = await routeSemanticContext(snapshot);
   const candidates: ContextCapacityCandidate[] = [
     {
       item_kind: "AUTHORITY",
@@ -52,7 +48,7 @@ export async function resolveContextPackage(
       ({ metric_id }) => metric_id === routeDecision.selected_metric_id,
     );
     if (metric) {
-      const evidence: ResolvedContextEvidenceSummary = {
+      const evidence: SemanticContextEvidenceSummary = {
         evidence_kind: "METRIC",
         evidence_id: metric.metric_id,
         evidence_hash: metric.mapping_hash,
@@ -145,8 +141,7 @@ export async function resolveContextPackage(
         }
       : routeDecision;
 
-  return buildResolvedContextPackage({
-    schema_version: "resolved-context-package@2.0.0",
+  return Object.freeze({
     scope: snapshot.scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,

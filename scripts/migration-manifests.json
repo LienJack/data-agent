@@ -1407,6 +1407,23 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10708",
+      "migration_name": "20260725010708_app_data_agent_semantic_context_cutover.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10708",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-semantic-context-cutover.sql.inc",
+        "20-analysis-program-cutover.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CONTEXT_CUTOVER_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_context_cutover_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

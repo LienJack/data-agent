@@ -7,13 +7,13 @@ import {
   buildAnalysisContext,
   computeSemanticSourceBundleHash,
   type OntologyAnalysisSourceBinding,
-  type ResolvedContextPackage,
-  type ResolvedContextReceipt,
+  type SemanticContextPackage,
+  type SemanticContextReceipt,
   type SemanticSourceBundle,
   sha256ContentHash,
   verifyOntologyAnalysisSourceBinding,
-  verifyResolvedContextPackage,
-  verifyResolvedContextReceipt,
+  verifySemanticContextPackage,
+  verifySemanticContextReceipt,
 } from "@data-agent/contracts";
 import {
   ContributionLoweringStatus,
@@ -40,8 +40,8 @@ export class AnalysisContextCompilationError extends TypeError {
 }
 
 export interface CompileAnalysisContextInput {
-  readonly package: ResolvedContextPackage;
-  readonly context_receipt: ResolvedContextReceipt;
+  readonly package: SemanticContextPackage;
+  readonly context_receipt: SemanticContextReceipt;
   readonly semantic_release_ref: ArtifactReference;
   readonly schema_snapshot_ref: ArtifactReference;
   readonly policy_receipt_ref: ArtifactReference;
@@ -51,7 +51,7 @@ export interface CompileAnalysisContextInput {
   readonly requested_metric_ids: readonly string[];
 }
 
-function sameScope(reference: ArtifactReference, scope: ResolvedContextPackage["scope"]): boolean {
+function sameScope(reference: ArtifactReference, scope: SemanticContextPackage["scope"]): boolean {
   return (
     reference.app_id === scope.app_id &&
     reference.tenant_id === scope.tenant_id &&
@@ -116,8 +116,8 @@ export async function compileAnalysisContext(
   input: CompileAnalysisContextInput,
 ): Promise<AnalysisContext> {
   const [resolvedPackage, contextReceipt, ontologyBinding] = await Promise.all([
-    verifyResolvedContextPackage(input.package),
-    verifyResolvedContextReceipt(input.context_receipt),
+    verifySemanticContextPackage(input.package),
+    verifySemanticContextReceipt(input.context_receipt),
     verifyOntologyAnalysisSourceBinding(input.ontology_analysis_binding),
   ]);
   if (
@@ -268,7 +268,7 @@ export async function compileAnalysisContext(
   return buildAnalysisContext({
     schema_version: "analysis-context@1.0.0",
     scope: resolvedPackage.scope,
-    resolved_context_binding: {
+    semantic_context_binding: {
       package_id: resolvedPackage.package_id,
       package_hash: resolvedPackage.package_hash,
       receipt_id: contextReceipt.receipt_id,

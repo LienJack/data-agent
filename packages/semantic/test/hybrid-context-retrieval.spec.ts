@@ -1,16 +1,16 @@
 import {
-  buildResolvedContextAuthoritySnapshot,
-  verifyResolvedContextPackageV3,
+  buildSemanticContextAuthoritySnapshot,
+  verifySemanticContextPackage,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { resolveHybridContextPackage } from "../src/context/hybrid-retrieval.js";
+import { compileSemanticContextPackage } from "../src/context/semantic-context-compiler.js";
 
 const id = (suffix: number) => `20000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
 async function snapshot() {
-  return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  return buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope: { app_id: id(1), tenant_id: id(2), environment: "test" },
     semantic_domain: "falcon24",
     question: "分析订单收入和客单价下降，并沿公式依赖找到订单量",
@@ -92,9 +92,7 @@ async function snapshot() {
         relationship_hash: hash("c"),
       },
     ],
-    knowledge_refs: [
-      { resource_id: id(9), resource_revision: 1, resource_hash: hash("d") },
-    ],
+    knowledge_refs: [{ resource_id: id(9), resource_revision: 1, resource_hash: hash("d") }],
     projection_hashes: [hash("e")],
   });
 }
@@ -102,7 +100,7 @@ async function snapshot() {
 describe("hybrid semantic retrieval", () => {
   it("fuses lexical, sparse and vector routes and closes typed formula lineage", async () => {
     const authority = await snapshot();
-    const document = await resolveHybridContextPackage(authority, {
+    const document = await compileSemanticContextPackage(authority, {
       vector: {
         async search() {
           return [
@@ -128,16 +126,24 @@ describe("hybrid semantic retrieval", () => {
       "aov_formula_order_revenue",
       "aov_formula_orders_count",
     ]);
-    await expect(verifyResolvedContextPackageV3(document)).resolves.toEqual(document);
+    await expect(verifySemanticContextPackage(document)).resolves.toEqual(document);
   });
 
   it("records vector degradation while keeping deterministic PostgreSQL projections", async () => {
     const authority = await snapshot();
-    const first = await resolveHybridContextPackage(authority, {
-      vector: { async search() { throw new Error("index unavailable"); } },
+    const first = await compileSemanticContextPackage(authority, {
+      vector: {
+        async search() {
+          throw new Error("index unavailable");
+        },
+      },
     });
-    const second = await resolveHybridContextPackage(authority, {
-      vector: { async search() { throw new Error("index unavailable"); } },
+    const second = await compileSemanticContextPackage(authority, {
+      vector: {
+        async search() {
+          throw new Error("index unavailable");
+        },
+      },
     });
     expect(first.retrieval_receipt.route_states.VECTOR).toBe("DEGRADED");
     expect(first.retrieval_receipt.fallback_reason_codes).toContain(
@@ -148,7 +154,25 @@ describe("hybrid semantic retrieval", () => {
 
   it("fails closed instead of pruning mandatory closure", async () => {
     await expect(
-      resolveHybridContextPackage(await snapshot(), { max_nodes: 2, max_edges: 1 }),
+      compileSemanticContextPackage(await snapshot(), { max_nodes: 2, max_edges: 1 }),
     ).rejects.toThrow("SEMANTIC_MANDATORY_CLOSURE_CAPACITY_EXCEEDED");
+  });
+
+  it("hard-filters denied objects before every retrieval route", async () => {
+    const document = await compileSemanticContextPackage(await snapshot(), {
+      excluded_objects: [{ object_id: "order_revenue", reason_code: "RBAC_DENIED" }],
+      vector: {
+        async search() {
+          return [{ object_id: "order_revenue", score: 0.99 }];
+        },
+      },
+    });
+    expect(document.retrieval_receipt.hard_filter.excluded_objects).toEqual([
+      { object_id: "order_revenue", reason_code: "RBAC_DENIED" },
+    ]);
+    expect(document.retrieval_receipt.hits).not.toContainEqual(
+      expect.objectContaining({ object_id: "order_revenue" }),
+    );
+    expect(document.mandatory_closure.object_ids).not.toContain("order_revenue");
   });
 });

@@ -258,15 +258,15 @@ export function ArtifactWorkspace({
               <div>
                 <dt className="inline font-sans">Context package：</dt>{" "}
                 <dd className="inline break-all">
-                  {(previewV3 ?? previewV2)?.provenance.resolved_context.package_id} ·{" "}
-                  {(previewV3 ?? previewV2)?.provenance.resolved_context.package_hash}
+                  {(previewV3 ?? previewV2)?.provenance.semantic_context.package_id} ·{" "}
+                  {(previewV3 ?? previewV2)?.provenance.semantic_context.package_hash}
                 </dd>
               </div>
               <div>
                 <dt className="inline font-sans">Context receipt：</dt>{" "}
                 <dd className="inline break-all">
-                  {(previewV3 ?? previewV2)?.provenance.resolved_context.receipt_id} ·{" "}
-                  {(previewV3 ?? previewV2)?.provenance.resolved_context.receipt_hash}
+                  {(previewV3 ?? previewV2)?.provenance.semantic_context.receipt_id} ·{" "}
+                  {(previewV3 ?? previewV2)?.provenance.semantic_context.receipt_hash}
                 </dd>
               </div>
               {previewV3 ? (

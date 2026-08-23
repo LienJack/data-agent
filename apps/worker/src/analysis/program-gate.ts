@@ -1,61 +1,63 @@
 import {
-  type AnalysisContext,
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type AnalysisReasonCode,
   type ArtifactReference,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   artifactReferenceIdentity,
-  canonicalizeJson,
   type ResearchBriefV3Payload,
+} from "@data-agent/contracts/artifacts";
+import { canonicalizeJson } from "@data-agent/contracts/common";
+import {
+  type AnalysisContext,
   verifyAnalysisContext,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/context";
 import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
-import { computeAnalysisPlanHash } from "./default-plan.js";
+import { computeAnalysisProgramHash } from "./default-program.js";
 import {
   type AnalysisSkillCatalog,
   type AnalysisSkillDescriptor,
   DEFAULT_ANALYSIS_SKILL_CATALOG,
 } from "./skill-catalog.js";
 
-export type AnalysisPlanGateFailure =
-  | "ANALYSIS_PLAN_SCHEMA_INVALID"
-  | "ANALYSIS_PLAN_HASH_MISMATCH"
-  | "ANALYSIS_PLAN_SCOPE_MISMATCH"
+export type AnalysisProgramGateFailure =
+  | "ANALYSIS_PROGRAM_SCHEMA_INVALID"
+  | "ANALYSIS_PROGRAM_HASH_MISMATCH"
+  | "ANALYSIS_PROGRAM_SCOPE_MISMATCH"
   | "ANALYSIS_CONTEXT_HASH_MISMATCH"
-  | "ANALYSIS_PLAN_BUDGET_EXCEEDED"
-  | "ANALYSIS_PLAN_SKILL_NOT_ALLOWED"
-  | "ANALYSIS_PLAN_PARAMETER_INVALID"
-  | "ANALYSIS_PLAN_METRIC_NOT_PRIMARY"
-  | "ANALYSIS_PLAN_DIMENSION_NOT_APPROVED"
-  | "ANALYSIS_PLAN_TIME_WINDOW_NOT_APPROVED"
-  | "ANALYSIS_PLAN_EXECUTION_MODE_INVALID"
-  | "ANALYSIS_PLAN_OUTPUT_CONTRACT_INVALID"
-  | "ANALYSIS_PLAN_SKILL_NOT_APPLICABLE";
+  | "ANALYSIS_PROGRAM_BUDGET_EXCEEDED"
+  | "ANALYSIS_PROGRAM_SKILL_NOT_ALLOWED"
+  | "ANALYSIS_PROGRAM_PARAMETER_INVALID"
+  | "ANALYSIS_PROGRAM_METRIC_NOT_PRIMARY"
+  | "ANALYSIS_PROGRAM_DIMENSION_NOT_APPROVED"
+  | "ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED"
+  | "ANALYSIS_PROGRAM_EXECUTION_MODE_INVALID"
+  | "ANALYSIS_PROGRAM_OUTPUT_CONTRACT_INVALID"
+  | "ANALYSIS_PROGRAM_SKILL_NOT_APPLICABLE";
 
-export type AnalysisPlanGateVerdict =
-  | { readonly ok: true; readonly plan: AnalysisPlanPayload }
+export type AnalysisProgramGateVerdict =
+  | { readonly ok: true; readonly program: AnalysisProgramPayload }
   | {
       readonly ok: false;
-      readonly failure: AnalysisPlanGateFailure;
+      readonly failure: AnalysisProgramGateFailure;
       readonly reason_codes: readonly AnalysisReasonCode[];
     };
 
 function reject(
-  failure: AnalysisPlanGateFailure,
+  failure: AnalysisProgramGateFailure,
   reasonCodes: readonly AnalysisReasonCode[] = [],
-): AnalysisPlanGateVerdict {
+): AnalysisProgramGateVerdict {
   return { ok: false, failure, reason_codes: Object.freeze([...new Set(reasonCodes)].sort()) };
 }
 
 function sameWindow(
-  left: AnalysisPlanPayload["nodes"][number]["time_window"],
+  left: AnalysisProgramPayload["nodes"][number]["time_window"],
   right: NonNullable<ResearchBriefV3Payload["requested_time_window"]>,
 ): boolean {
   return canonicalizeJson(left) === canonicalizeJson(right);
 }
 
 function approvedComparisonWindow(
-  comparison: NonNullable<AnalysisPlanPayload["nodes"][number]["comparison_window"]>,
+  comparison: NonNullable<AnalysisProgramPayload["nodes"][number]["comparison_window"]>,
   requested: NonNullable<ResearchBriefV3Payload["requested_time_window"]>,
 ): boolean {
   const requestedDuration = Date.parse(requested.end) - Date.parse(requested.start);
@@ -68,17 +70,17 @@ function approvedComparisonWindow(
   );
 }
 
-export async function gateAnalysisPlan(input: {
-  readonly plan: unknown;
-  readonly plan_ref?: ArtifactReference;
+export async function gateAnalysisProgram(input: {
+  readonly program: unknown;
+  readonly program_ref?: ArtifactReference;
   readonly brief: ResearchBriefV3Payload;
   readonly brief_ref: ArtifactReference;
   readonly context: AnalysisContext;
   readonly catalog?: AnalysisSkillCatalog;
-}): Promise<AnalysisPlanGateVerdict> {
-  const parsed = analysisPlanPayloadSchema.safeParse(input.plan);
-  if (!parsed.success) return reject("ANALYSIS_PLAN_SCHEMA_INVALID", ["ANALYSIS_PLAN_CYCLE"]);
-  const plan = parsed.data;
+}): Promise<AnalysisProgramGateVerdict> {
+  const parsed = analysisProgramPayloadSchema.safeParse(input.program);
+  if (!parsed.success) return reject("ANALYSIS_PROGRAM_SCHEMA_INVALID", ["ANALYSIS_PROGRAM_CYCLE"]);
+  const program = parsed.data;
   const catalog = input.catalog ?? DEFAULT_ANALYSIS_SKILL_CATALOG;
   let context: AnalysisContext;
   try {
@@ -86,29 +88,32 @@ export async function gateAnalysisPlan(input: {
   } catch {
     return reject("ANALYSIS_CONTEXT_HASH_MISMATCH", ["SEMANTIC_FRONTIER_STALE"]);
   }
-  const { plan_hash: observedHash, ...material } = plan;
-  if ((await computeAnalysisPlanHash(material)) !== observedHash) {
-    return reject("ANALYSIS_PLAN_HASH_MISMATCH");
+  const { program_hash: observedHash, ...material } = program;
+  if ((await computeAnalysisProgramHash(material)) !== observedHash) {
+    return reject("ANALYSIS_PROGRAM_HASH_MISMATCH");
   }
   if (
-    artifactReferenceIdentity(plan.brief_ref) !== artifactReferenceIdentity(input.brief_ref) ||
-    plan.brief_ref.run_id !== input.brief.question_frame_ref.run_id ||
-    (input.plan_ref?.run_id !== undefined && input.plan_ref.run_id !== input.brief_ref.run_id)
+    artifactReferenceIdentity(program.brief_ref) !== artifactReferenceIdentity(input.brief_ref) ||
+    program.brief_ref.run_id !== input.brief.question_frame_ref.run_id ||
+    (input.program_ref?.run_id !== undefined && input.program_ref.run_id !== input.brief_ref.run_id)
   ) {
-    return reject("ANALYSIS_PLAN_SCOPE_MISMATCH");
+    return reject("ANALYSIS_PROGRAM_SCOPE_MISMATCH");
   }
-  if (plan.analysis_context_hash !== context.context_hash) {
+  if (
+    program.analysis_context_hash !== context.context_hash ||
+    program.semantic_context_package_hash !== context.semantic_context_binding.package_hash
+  ) {
     return reject("ANALYSIS_CONTEXT_HASH_MISMATCH", ["SEMANTIC_FRONTIER_STALE"]);
   }
   if (
-    plan.nodes.length > input.brief.budget.max_steps ||
-    plan.budget.max_steps > input.brief.budget.max_steps ||
-    plan.budget.max_sql_executions > input.brief.budget.max_sql_executions ||
-    plan.budget.max_sandbox_executions > input.brief.budget.max_sandbox_executions ||
-    plan.budget.max_elapsed_ms > input.brief.budget.max_elapsed_ms ||
-    plan.nodes.length > plan.budget.max_steps
+    program.nodes.length > input.brief.budget.max_steps ||
+    program.budget.max_steps > input.brief.budget.max_steps ||
+    program.budget.max_sql_executions > input.brief.budget.max_sql_executions ||
+    program.budget.max_sandbox_executions > input.brief.budget.max_sandbox_executions ||
+    program.budget.max_elapsed_ms > input.brief.budget.max_elapsed_ms ||
+    program.nodes.length > program.budget.max_steps
   ) {
-    return reject("ANALYSIS_PLAN_BUDGET_EXCEEDED", ["ANALYSIS_BUDGET_EXCEEDED"]);
+    return reject("ANALYSIS_PROGRAM_BUDGET_EXCEEDED", ["ANALYSIS_BUDGET_EXCEEDED"]);
   }
 
   const primaryMetricIdentities = new Set(
@@ -118,25 +123,25 @@ export async function gateAnalysisPlan(input: {
     ),
   );
   const approvedDimensions = new Set(input.brief.approved_dimension_refs);
-  for (const node of plan.nodes) {
+  for (const node of program.nodes) {
     let descriptor: AnalysisSkillDescriptor;
     try {
       descriptor = catalog.resolve(node.skill_id);
     } catch {
-      return reject("ANALYSIS_PLAN_SKILL_NOT_ALLOWED", ["ANALYSIS_CAPABILITY_NOT_PUBLISHED"]);
+      return reject("ANALYSIS_PROGRAM_SKILL_NOT_ALLOWED", ["ANALYSIS_CAPABILITY_NOT_PUBLISHED"]);
     }
     try {
       catalog.parseParameters(node.skill_id, node.parameters);
     } catch {
-      return reject("ANALYSIS_PLAN_PARAMETER_INVALID", ["PROGRAM_POLICY_REJECTED"]);
+      return reject("ANALYSIS_PROGRAM_PARAMETER_INVALID", ["PROGRAM_POLICY_REJECTED"]);
     }
     if (
       node.metric_refs.length > descriptor.hard_limits.max_metrics ||
       node.dimension_refs.length > descriptor.hard_limits.max_dimensions ||
-      descriptor.hard_limits.max_sql_executions > plan.budget.max_sql_executions ||
-      descriptor.hard_limits.max_sandbox_executions > plan.budget.max_sandbox_executions
+      descriptor.hard_limits.max_sql_executions > program.budget.max_sql_executions ||
+      descriptor.hard_limits.max_sandbox_executions > program.budget.max_sandbox_executions
     ) {
-      return reject("ANALYSIS_PLAN_BUDGET_EXCEEDED", ["ANALYSIS_BUDGET_EXCEEDED"]);
+      return reject("ANALYSIS_PROGRAM_BUDGET_EXCEEDED", ["ANALYSIS_BUDGET_EXCEEDED"]);
     }
     if (
       node.metric_refs.some(
@@ -144,10 +149,10 @@ export async function gateAnalysisPlan(input: {
           !primaryMetricIdentities.has(`${artifactReferenceIdentity(containerRef)}\0${nodeId}`),
       )
     ) {
-      return reject("ANALYSIS_PLAN_METRIC_NOT_PRIMARY", ["UNPUBLISHED_SEMANTIC_INPUT"]);
+      return reject("ANALYSIS_PROGRAM_METRIC_NOT_PRIMARY", ["UNPUBLISHED_SEMANTIC_INPUT"]);
     }
     if (node.dimension_refs.some((dimensionId) => !approvedDimensions.has(dimensionId))) {
-      return reject("ANALYSIS_PLAN_DIMENSION_NOT_APPROVED", ["DIMENSION_NOT_ALLOWED"]);
+      return reject("ANALYSIS_PROGRAM_DIMENSION_NOT_APPROVED", ["DIMENSION_NOT_ALLOWED"]);
     }
     if (
       input.brief.requested_time_window &&
@@ -155,20 +160,20 @@ export async function gateAnalysisPlan(input: {
         (node.comparison_window !== null &&
           !approvedComparisonWindow(node.comparison_window, input.brief.requested_time_window)))
     ) {
-      return reject("ANALYSIS_PLAN_TIME_WINDOW_NOT_APPROVED", ["TIMEZONE_MISMATCH"]);
+      return reject("ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED", ["TIMEZONE_MISMATCH"]);
     }
     if (
       (descriptor.program_mode === "FROZEN_TEMPLATE" &&
         node.execution_mode !== "FROZEN_TEMPLATE") ||
       (descriptor.program_mode === "MODEL_GENERATED" && node.execution_mode !== "MODEL_GENERATED")
     ) {
-      return reject("ANALYSIS_PLAN_EXECUTION_MODE_INVALID", ["PROGRAM_POLICY_REJECTED"]);
+      return reject("ANALYSIS_PROGRAM_EXECUTION_MODE_INVALID", ["PROGRAM_POLICY_REJECTED"]);
     }
     if (
       node.output_contract === null ||
       canonicalizeJson(node.output_contract) !== canonicalizeJson(descriptor.output_contract)
     ) {
-      return reject("ANALYSIS_PLAN_OUTPUT_CONTRACT_INVALID", ["PROGRAM_OUTPUT_CONTRACT_FAILED"]);
+      return reject("ANALYSIS_PROGRAM_OUTPUT_CONTRACT_INVALID", ["PROGRAM_OUTPUT_CONTRACT_FAILED"]);
     }
     const applicability = await evaluateAnalysisApplicability(context, {
       skill_id: node.skill_id,
@@ -187,8 +192,8 @@ export async function gateAnalysisPlan(input: {
         : {}),
     });
     if (applicability.verdict !== "APPLICABLE") {
-      return reject("ANALYSIS_PLAN_SKILL_NOT_APPLICABLE", applicability.reason_codes);
+      return reject("ANALYSIS_PROGRAM_SKILL_NOT_APPLICABLE", applicability.reason_codes);
     }
   }
-  return { ok: true, plan };
+  return { ok: true, program };
 }

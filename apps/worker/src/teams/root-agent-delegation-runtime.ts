@@ -11,11 +11,11 @@ import {
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type ProductTeamArtifactDocument,
-  type ResolvedContextCommitResult,
   type RootAgentDecisionCandidate,
-  verifyResolvedContextCommitResult,
+  type SemanticContextCommitResult,
+  verifySemanticContextCommitResult,
 } from "@data-agent/contracts";
-import { hasRunResolvedContextCapability } from "../runs/run-execution-context.js";
+import { hasRunSemanticContextCapability } from "../runs/run-execution-context.js";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 import type {
   DataAgentProductTeamRuntimePort,
@@ -89,26 +89,26 @@ function profileCeiling(
   };
 }
 
-async function resolveContext(execution: RootExecution): Promise<ResolvedContextCommitResult> {
-  const capability = execution.context.getResolvedContextCapability?.();
-  if (!hasRunResolvedContextCapability(capability)) {
-    throw new RootAgentDelegationRuntimeError("RESOLVED_CONTEXT_REQUIRED");
+async function resolveContext(execution: RootExecution): Promise<SemanticContextCommitResult> {
+  const capability = execution.context.getSemanticContextCapability?.();
+  if (!hasRunSemanticContextCapability(capability)) {
+    throw new RootAgentDelegationRuntimeError("SEMANTIC_CONTEXT_REQUIRED");
   }
   const resolved = value(await capability.resolve());
   try {
-    const context = await verifyResolvedContextCommitResult(resolved);
+    const context = await verifySemanticContextCommitResult(resolved);
     const metadataFallback =
       context.package.route_decision.state === "REJECTED" &&
       context.package.route_decision.route === "NONE" &&
       context.package.route_decision.reason_codes.length === 1 &&
       context.package.route_decision.reason_codes[0] === "NO_GOVERNED_CONTEXT_ROUTE";
     if (!["READY", "PARTIAL"].includes(context.package.route_decision.state) && !metadataFallback) {
-      throw new RootAgentDelegationRuntimeError("RESOLVED_CONTEXT_NOT_RUNNABLE");
+      throw new RootAgentDelegationRuntimeError("SEMANTIC_CONTEXT_NOT_RUNNABLE");
     }
     return context;
   } catch (error) {
     if (error instanceof RootAgentDelegationRuntimeError) throw error;
-    throw new RootAgentDelegationRuntimeError("RESOLVED_CONTEXT_RESULT_INVALID");
+    throw new RootAgentDelegationRuntimeError("SEMANTIC_CONTEXT_RESULT_INVALID");
   }
 }
 
@@ -209,7 +209,7 @@ export function createRootAgentDelegationRuntime(
           profiles,
           dispatch_plan: null,
           admitted_delegations: admitted,
-          resolved_context_ref: {
+          semantic_context_ref: {
             package_id: context.package.package_id,
             package_hash: context.package.package_hash,
             receipt_id: context.receipt.receipt_id,

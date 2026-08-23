@@ -1,21 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildResolvedContextAuthoritySnapshot,
-  buildResolvedContextPackage,
-  buildResolvedContextReceipt,
-  buildResolvedContextRequest,
-  verifyResolvedContextCommitCommand,
-  verifyResolvedContextPackage,
-  verifyResolvedContextRequest,
-} from "../src/context/resolved-context-package.js";
+  buildSemanticContextAuthoritySnapshot,
+  buildSemanticContextPackage,
+  buildSemanticContextReceipt,
+  buildSemanticContextRequest,
+  verifySemanticContextCommitCommand,
+  verifySemanticContextPackage,
+  verifySemanticContextRequest,
+} from "../src/context/semantic-context-package.js";
+import {
+  buildSemanticInferenceReceipt,
+  buildSemanticRetrievalReceipt,
+} from "../src/context/semantic-retrieval.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "development" } as const;
 
 async function fixture() {
-  const snapshot = await buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  const snapshot = await buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue by channel",
@@ -67,8 +71,39 @@ async function fixture() {
     knowledge_refs: [],
     projection_hashes: [hash("7"), hash("8")],
   });
-  const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@2.0.0",
+  const retrievalReceipt = await buildSemanticRetrievalReceipt({
+    schema_version: "semantic-retrieval-receipt@1.0.0",
+    authority_snapshot_hash: snapshot.snapshot_hash,
+    release_hash: snapshot.semantic_release.resource_hash,
+    query_hash: snapshot.question_hash,
+    rrf_k: 60,
+    hard_filter: {
+      scope_hash: hash("d"),
+      publication_status: "PUBLISHED",
+      authority_mode: "POSTGRES_FILTERED_SNAPSHOT",
+      included_object_ids: ["gross_revenue"],
+      excluded_objects: [],
+    },
+    route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "UNAVAILABLE", GRAPH: "UNAVAILABLE" },
+    hits: [],
+    expansions: [],
+    selected_object_ids: ["gross_revenue"],
+    pruned_object_ids: [],
+    fallback_reason_codes: ["VECTOR_ROUTE_NOT_CONFIGURED"],
+  });
+  const inferenceReceipt = await buildSemanticInferenceReceipt({
+    schema_version: "semantic-inference-receipt@1.0.0",
+    retrieval_receipt_hash: retrievalReceipt.receipt_hash,
+    ruleset_id: "semantic-mandatory-closure@1",
+    ruleset_hash: hash("b"),
+    steps: [],
+    mandatory_object_ids: ["gross_revenue"],
+    mandatory_relationship_ids: [],
+    closure_complete: true,
+    reason_codes: [],
+  });
+  const packageDocument = await buildSemanticContextPackage({
+    schema_version: "semantic-context-package@1.0.0",
     scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,
@@ -80,7 +115,7 @@ async function fixture() {
     provider: snapshot.provider,
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: "gross_revenue",
@@ -121,11 +156,19 @@ async function fixture() {
       },
     ],
     knowledge_refs: [],
+    retrieval_receipt: retrievalReceipt,
+    inference_receipt: inferenceReceipt,
+    mandatory_closure: {
+      object_ids: ["gross_revenue"],
+      relationship_ids: [],
+      closure_hash: hash("c"),
+    },
+    analysis_capabilities: ["TREND_CHANGE"],
   });
   return { snapshot, packageDocument };
 }
 
-describe("resolved context package contracts", () => {
+describe("semantic context package contracts", () => {
   it("builds the same package identity for preview and run consumers", async () => {
     const { snapshot, packageDocument } = await fixture();
     const {
@@ -134,18 +177,18 @@ describe("resolved context package contracts", () => {
       package_hash: _packageHash,
       ...material
     } = packageDocument;
-    const rebuilt = await buildResolvedContextPackage(material);
+    const rebuilt = await buildSemanticContextPackage(material);
     expect(rebuilt).toEqual(packageDocument);
 
-    const previewRequest = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const previewRequest = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(21),
       scope,
       question: snapshot.question,
       basis: { consumer: "PREVIEW", defaults_ref: snapshot.defaults_ref },
     });
-    const runRequest = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const runRequest = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(23),
       scope,
       basis: {
@@ -155,8 +198,8 @@ describe("resolved context package contracts", () => {
         context_receipt_ref: { receipt_id: id(26), receipt_hash: hash("a") },
       },
     });
-    const preview = await buildResolvedContextReceipt({
-      schema_version: "resolved-context-receipt@1.0.0",
+    const preview = await buildSemanticContextReceipt({
+      schema_version: "semantic-context-receipt@1.0.0",
       receipt_id: id(20),
       scope,
       consumer: "PREVIEW",
@@ -174,7 +217,7 @@ describe("resolved context package contracts", () => {
       resolved_at: "2026-08-17T00:00:00.000Z",
     });
     const { receipt_hash: _receiptHash, ...previewDraft } = preview;
-    const run = await buildResolvedContextReceipt({
+    const run = await buildSemanticContextReceipt({
       ...previewDraft,
       receipt_id: id(22),
       consumer: "RUN",
@@ -189,21 +232,21 @@ describe("resolved context package contracts", () => {
   it("rejects tampered package hashes and cross-consumer commit splicing", async () => {
     const { snapshot, packageDocument } = await fixture();
     await expect(
-      verifyResolvedContextPackage({
+      verifySemanticContextPackage({
         ...packageDocument,
         capacity: { ...packageDocument.capacity, included_bytes: 65 },
       }),
     ).rejects.toThrow();
 
-    const previewRequest = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const previewRequest = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(31),
       scope,
       question: snapshot.question,
       basis: { consumer: "PREVIEW", defaults_ref: snapshot.defaults_ref },
     });
-    const receipt = await buildResolvedContextReceipt({
-      schema_version: "resolved-context-receipt@1.0.0",
+    const receipt = await buildSemanticContextReceipt({
+      schema_version: "semantic-context-receipt@1.0.0",
       receipt_id: id(30),
       scope,
       consumer: "PREVIEW",
@@ -220,8 +263,8 @@ describe("resolved context package contracts", () => {
       authority_snapshot_hash: snapshot.snapshot_hash,
       resolved_at: "2026-08-17T00:00:00.000Z",
     });
-    const runRequest = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const runRequest = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(31),
       scope,
       basis: {
@@ -232,37 +275,37 @@ describe("resolved context package contracts", () => {
       },
     });
     await expect(
-      verifyResolvedContextCommitCommand({
-        schema_version: "resolved-context-commit@1.0.0",
+      verifySemanticContextCommitCommand({
+        schema_version: "semantic-context-commit@1.0.0",
         request: runRequest,
         authority_snapshot_hash: snapshot.snapshot_hash,
         package: packageDocument,
         receipt,
       }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_COMMIT_CLOSURE_MISMATCH");
+    ).rejects.toThrow("SEMANTIC_CONTEXT_COMMIT_CLOSURE_MISMATCH");
   });
 
   it("closes request, package key, derived package id, and receipt identities", async () => {
     const { snapshot, packageDocument } = await fixture();
-    const request = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const request = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(40),
       scope,
       question: snapshot.question,
       basis: { consumer: "PREVIEW", defaults_ref: snapshot.defaults_ref },
     });
     await expect(
-      verifyResolvedContextRequest({ ...request, question: `${snapshot.question}?` }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_REQUEST_HASH_MISMATCH");
+      verifySemanticContextRequest({ ...request, question: `${snapshot.question}?` }),
+    ).rejects.toThrow("SEMANTIC_CONTEXT_REQUEST_HASH_MISMATCH");
     await expect(
-      verifyResolvedContextPackage({ ...packageDocument, package_key_hash: hash("f") }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_PACKAGE_HASH_MISMATCH");
+      verifySemanticContextPackage({ ...packageDocument, package_key_hash: hash("f") }),
+    ).rejects.toThrow("SEMANTIC_CONTEXT_PACKAGE_HASH_MISMATCH");
     await expect(
-      verifyResolvedContextPackage({ ...packageDocument, package_id: id(41) }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_PACKAGE_HASH_MISMATCH");
+      verifySemanticContextPackage({ ...packageDocument, package_id: id(41) }),
+    ).rejects.toThrow("SEMANTIC_CONTEXT_PACKAGE_HASH_MISMATCH");
 
-    const receipt = await buildResolvedContextReceipt({
-      schema_version: "resolved-context-receipt@1.0.0",
+    const receipt = await buildSemanticContextReceipt({
+      schema_version: "semantic-context-receipt@1.0.0",
       receipt_id: id(42),
       scope,
       consumer: "PREVIEW",
@@ -280,19 +323,19 @@ describe("resolved context package contracts", () => {
       resolved_at: "2026-08-17T00:00:00.000Z",
     });
     const { receipt_hash: _receiptHash, ...receiptDraft } = receipt;
-    const splicedReceipt = await buildResolvedContextReceipt({
+    const splicedReceipt = await buildSemanticContextReceipt({
       ...receiptDraft,
       request_hash: hash("e"),
     });
     await expect(
-      verifyResolvedContextCommitCommand({
-        schema_version: "resolved-context-commit@1.0.0",
+      verifySemanticContextCommitCommand({
+        schema_version: "semantic-context-commit@1.0.0",
         request,
         authority_snapshot_hash: snapshot.snapshot_hash,
         package: packageDocument,
         receipt: splicedReceipt,
       }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_COMMIT_CLOSURE_MISMATCH");
+    ).rejects.toThrow("SEMANTIC_CONTEXT_COMMIT_CLOSURE_MISMATCH");
   });
 
   it("rejects non-canonical authority, release/snapshot drift, and forged capacity totals", async () => {
@@ -303,7 +346,7 @@ describe("resolved context package contracts", () => {
       ...snapshotInput
     } = snapshot;
     await expect(
-      buildResolvedContextAuthoritySnapshot({
+      buildSemanticContextAuthoritySnapshot({
         ...snapshotInput,
         published_metrics: [
           { ...snapshot.published_metrics[0], metric_id: "z_metric" },
@@ -312,7 +355,7 @@ describe("resolved context package contracts", () => {
       }),
     ).rejects.toThrow();
     await expect(
-      buildResolvedContextAuthoritySnapshot({
+      buildSemanticContextAuthoritySnapshot({
         ...snapshotInput,
         schema_snapshot: { ...snapshot.schema_snapshot, semantic_generation: 9 },
       }),
@@ -324,7 +367,7 @@ describe("resolved context package contracts", () => {
       ...material
     } = packageDocument;
     await expect(
-      buildResolvedContextPackage({
+      buildSemanticContextPackage({
         ...material,
         capacity: { ...material.capacity, included_bytes: material.capacity.included_bytes + 1 },
       }),

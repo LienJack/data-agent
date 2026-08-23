@@ -1,6 +1,6 @@
 import {
   type AnalysisCompletionReceiptPayload,
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type ArtifactReference,
   type DerivedAnalysisEvidencePayload,
   sha256ContentHash,
@@ -43,9 +43,9 @@ async function runAcceptedEcommerceTrend() {
   const testCase = suite.public_cases.find(({ slug }) => slug === "monthly-gmv-trend");
   if (!testCase) throw new Error("e-commerce trend case missing");
   const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("trend-change@1");
-  const plan: AnalysisPlanPayload = {
-    artifact_type: "AnalysisPlan",
-    protocol_version: "analysis-plan@1.0.0",
+  const plan: AnalysisProgramPayload = {
+    artifact_type: "AnalysisProgram",
+    protocol_version: "analysis-program@1.0.0",
     brief_ref: ref("ResearchBrief", 4),
     analysis_context_hash: testCase.semantic_frontier.semantic_release_hash,
     nodes: [
@@ -78,10 +78,10 @@ async function runAcceptedEcommerceTrend() {
       max_elapsed_ms: 30_000,
     },
     planner_kind: "DETERMINISTIC_DEFAULT",
-    planner_version: "analysis-planner@1.0.0",
+    planner_version: "analysis-programner@1.0.0",
     plan_hash: hash("a"),
   };
-  const planRef = ref("AnalysisPlan", 5, await sha256ContentHash(plan));
+  const planRef = ref("AnalysisProgram", 5, await sha256ContentHash(plan));
   const fixture: DeterministicAnalysisFixture = {
     fixture_id: testCase.case_id,
     skill_id: "trend-change@1",
@@ -131,7 +131,7 @@ async function runAcceptedEcommerceTrend() {
     document_ref: ref("ArtifactWorkspaceDocument", 11),
     evidence_ref: evidenceRef,
     evidence,
-    resolved_context: {
+    semantic_context: {
       package_id: id(12),
       package_hash: contentHash(testCase.semantic_frontier.semantic_release_hash),
       receipt_id: id(13),

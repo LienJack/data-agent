@@ -47,7 +47,7 @@ async function contextFixture() {
   return buildAnalysisContext({
     schema_version: "analysis-context@1.0.0",
     scope,
-    resolved_context_binding: {
+    semantic_context_binding: {
       package_id: id(11),
       package_hash: hash("a"),
       receipt_id: id(12),
@@ -253,7 +253,7 @@ function observations(weak = false) {
 describe("root cause worker runtime", () => {
   it("executes the attested L5 chain and commits only certificate-authorized output", async () => {
     const context = await contextFixture();
-    const planRef = reference("AnalysisPlan", 30);
+    const planRef = reference("AnalysisProgram", 30);
     const committed: string[] = [];
     let sandboxExecutions = 0;
     const executor = createRootCauseExecutor({
@@ -280,7 +280,7 @@ describe("root cause worker runtime", () => {
           const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
             artifact_type: "SandboxProgram",
             protocol_version: "analysis-sandbox-program@1.0.0",
-            plan_ref: input.analysis_plan_ref as AnalysisSandboxProgramPayload["plan_ref"],
+            plan_ref: input.analysis_program_ref as AnalysisSandboxProgramPayload["plan_ref"],
             node_id: "root-cause",
             language: "PYTHON_3_12",
             entrypoint: "main",
@@ -401,7 +401,7 @@ describe("root cause worker runtime", () => {
       mode: "L5_CAUSAL",
       now: new Date(now),
       context,
-      plan_ref: reference("AnalysisPlan", 70),
+      plan_ref: reference("AnalysisProgram", 70),
       source_evidence_refs: [reference("DerivedAnalysisEvidence", 71)],
       outcome_metric_ref:
         context.metrics[0]?.metric_ref ??

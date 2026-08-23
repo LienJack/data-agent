@@ -1,10 +1,10 @@
 import {
-  buildResolvedContextAuthoritySnapshot,
-  buildResolvedContextRequest,
+  buildSemanticContextAuthoritySnapshot,
+  buildSemanticContextRequest,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import type { SqlClient, SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
-import { createPostgresResolvedContextRegistry } from "../../src/semantic/postgres-resolved-context.js";
+import { createPostgresSemanticContextRegistry } from "../../src/semantic/postgres-semantic-context.js";
 import { createDeploymentRegistry } from "../../src/tenancy/capability.js";
 import { asTransactionalTestAuthority } from "../support/transactional-authority.js";
 
@@ -32,7 +32,7 @@ function poolWith(value: unknown) {
       if (text.includes("backend_context_matches")) {
         return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
       }
-      if (text.includes("load_resolved_context_authority_snapshot")) {
+      if (text.includes("load_semantic_context_authority_snapshot")) {
         return { rows: [{ value }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
       }
       return { rows: [], rowCount: 0 } as SqlQueryResult<Row>;
@@ -43,8 +43,8 @@ function poolWith(value: unknown) {
 }
 
 async function snapshot(scope: { app_id: string; tenant_id: string; environment: string }) {
-  return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  return buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue",
@@ -94,12 +94,12 @@ describe("PostgreSQL resolved context registry", () => {
     const auth = authority();
     const document = await snapshot(auth.capability.scope);
     const scripted = poolWith(document);
-    const registry = createPostgresResolvedContextRegistry({
+    const registry = createPostgresSemanticContextRegistry({
       pool: scripted.pool,
       authorizer: auth.authorizer,
     });
-    const request = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const request = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(10),
       scope: auth.capability.scope,
       question: "Gross Revenue",
@@ -110,19 +110,19 @@ describe("PostgreSQL resolved context registry", () => {
       value: document,
     });
     expect(
-      scripted.calls.some(({ text }) => text.includes("load_resolved_context_authority_snapshot")),
+      scripted.calls.some(({ text }) => text.includes("load_semantic_context_authority_snapshot")),
     ).toBe(true);
   });
 
   it("rejects a DB snapshot with a stale hash", async () => {
     const auth = authority();
     const document = await snapshot(auth.capability.scope);
-    const registry = createPostgresResolvedContextRegistry({
+    const registry = createPostgresSemanticContextRegistry({
       pool: poolWith({ ...document, provider: "kimi" }).pool,
       authorizer: auth.authorizer,
     });
-    const request = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const request = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(11),
       scope: auth.capability.scope,
       question: "Gross Revenue",
@@ -131,7 +131,7 @@ describe("PostgreSQL resolved context registry", () => {
     const result = await registry.loadAuthoritySnapshot(auth.capability, request);
     expect(result).toMatchObject({
       ok: false,
-      error: { code: "RESOLVED_CONTEXT_DATABASE_CONTRACT_INVALID" },
+      error: { code: "SEMANTIC_CONTEXT_DATABASE_CONTRACT_INVALID" },
     });
   });
 
@@ -139,12 +139,12 @@ describe("PostgreSQL resolved context registry", () => {
     const auth = authority();
     const document = await snapshot(auth.capability.scope);
     const scripted = poolWith(document);
-    const registry = createPostgresResolvedContextRegistry({
+    const registry = createPostgresSemanticContextRegistry({
       pool: scripted.pool,
       authorizer: auth.authorizer,
     });
-    const request = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const request = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(12),
       scope: auth.capability.scope,
       question: "Gross Revenue",
@@ -154,10 +154,10 @@ describe("PostgreSQL resolved context registry", () => {
       registry.loadAuthoritySnapshot(auth.capability, { ...request, question: "Net Revenue" }),
     ).resolves.toMatchObject({
       ok: false,
-      error: { code: "RESOLVED_CONTEXT_REQUEST_INVALID" },
+      error: { code: "SEMANTIC_CONTEXT_REQUEST_INVALID" },
     });
     expect(
-      scripted.calls.some(({ text }) => text.includes("load_resolved_context_authority_snapshot")),
+      scripted.calls.some(({ text }) => text.includes("load_semantic_context_authority_snapshot")),
     ).toBe(false);
   });
 });

@@ -23,7 +23,7 @@ export const U6_REFERENCE_TARGETS = [
   "ObligationExecutionDecision",
   "QueryEvidence",
   "DataProfile",
-  "AnalysisPlan",
+  "AnalysisProgram",
   "DerivedAnalysisEvidence",
   "AnalysisCompletionReceipt",
   "SandboxProgram",
@@ -72,7 +72,7 @@ export const obligationExecutionDecisionRefSchema = artifactReferenceFor(
 );
 export const queryEvidenceRefSchema = artifactReferenceFor("QueryEvidence");
 export const dataProfileRefSchema = artifactReferenceFor("DataProfile");
-export const analysisPlanRefSchema = artifactReferenceFor("AnalysisPlan");
+export const analysisProgramRefSchema = artifactReferenceFor("AnalysisProgram");
 export const derivedAnalysisEvidenceRefSchema = artifactReferenceFor("DerivedAnalysisEvidence");
 export const analysisCompletionReceiptRefSchema = artifactReferenceFor("AnalysisCompletionReceipt");
 export const sandboxProgramRefSchema = artifactReferenceFor("SandboxProgram");
@@ -139,7 +139,7 @@ export type SandboxExecutionReceiptRef = z.infer<typeof sandboxExecutionReceiptR
 export type ObligationExecutionDecisionRef = z.infer<typeof obligationExecutionDecisionRefSchema>;
 export type QueryEvidenceRef = z.infer<typeof queryEvidenceRefSchema>;
 export type DataProfileRef = z.infer<typeof dataProfileRefSchema>;
-export type AnalysisPlanRef = z.infer<typeof analysisPlanRefSchema>;
+export type AnalysisProgramRef = z.infer<typeof analysisProgramRefSchema>;
 export type DerivedAnalysisEvidenceRef = z.infer<typeof derivedAnalysisEvidenceRefSchema>;
 export type AnalysisCompletionReceiptRef = z.infer<typeof analysisCompletionReceiptRefSchema>;
 export type SandboxProgramRef = z.infer<typeof sandboxProgramRefSchema>;

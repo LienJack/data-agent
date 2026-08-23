@@ -1,4 +1,4 @@
-import type { ResolvedContextPreviewResult, ResolvedContextState } from "@data-agent/contracts";
+import type { SemanticContextPreviewResult, SemanticContextState } from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,14 +9,14 @@ import {
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
-function result(state: ResolvedContextState): ResolvedContextPreviewResult {
+function result(state: SemanticContextState): SemanticContextPreviewResult {
   const route = state === "REJECTED" || state === "STALE" ? "NONE" : "METRIC";
   const packageId = "8f48fd68-e0e8-855f-b344-396133208144";
   const packageHash = hash("9");
   return {
-    schema_version: "resolved-context-preview-result@1.0.0",
+    schema_version: "semantic-context-preview-result@1.0.0",
     package: {
-      schema_version: "resolved-context-package@2.0.0",
+      schema_version: "semantic-context-package@1.0.0",
       scope: { app_id: id(1), tenant_id: id(2), environment: "test" },
       semantic_domain: "commerce",
       question_hash: hash("1"),
@@ -55,7 +55,7 @@ function result(state: ResolvedContextState): ResolvedContextPreviewResult {
       provider: "deepseek",
       authority_snapshot_hash: hash("7"),
       route_decision: {
-        schema_version: "resolved-context-route-decision@2.0.0",
+        schema_version: "semantic-context-route-decision@1.0.0",
         state,
         route,
         selected_metric_id: route === "METRIC" ? "gross_revenue" : null,
@@ -157,7 +157,7 @@ describe("Semantic Context Preview", () => {
   it.each<SemanticContextPreviewState>([
     { kind: "IDLE" },
     { kind: "RESOLVING" },
-    { kind: "ERROR", code: "RESOLVED_CONTEXT_RELEASE_STALE" },
+    { kind: "ERROR", code: "SEMANTIC_CONTEXT_RELEASE_STALE" },
   ])("renders the $kind view state", (state) => {
     const markup = renderToStaticMarkup(<ContextPreview state={state} />);
     expect(markup).toContain('aria-label="上下文预览"');

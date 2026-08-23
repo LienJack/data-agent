@@ -1,17 +1,20 @@
 import { createHash } from "node:crypto";
 import {
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type AnalysisSandboxProgramPayload,
   type ArtifactReference,
-  analysisPlanPayloadSchema,
-  analysisPlanRefSchema,
+  analysisProgramPayloadSchema,
+  analysisProgramRefSchema,
   analysisSandboxProgramPayloadSchema,
   artifactReferenceFor,
   artifactReferenceIdentity,
   canonicalizeJson,
   queryEvidenceRefSchema,
 } from "@data-agent/contracts";
-import { computeAnalysisProgramHash, verifyAnalysisProgram } from "@data-agent/research";
+import {
+  computeAnalysisSandboxProgramHash,
+  verifyAnalysisSandboxProgram,
+} from "@data-agent/research";
 import {
   ANALYSIS_RUNTIME_ATTESTATIONS,
   type AnalysisSkillCatalog,
@@ -65,16 +68,16 @@ function hostPolicyAllows(source: string): boolean {
   return !denied.some((pattern) => pattern.test(source));
 }
 
-function derivedSeed(planRef: ArtifactReference, nodeId: string): number {
+function derivedSeed(analysisProgramRef: ArtifactReference, nodeId: string): number {
   return createHash("sha256")
-    .update(`${artifactReferenceIdentity(planRef)}\0${nodeId}`)
+    .update(`${artifactReferenceIdentity(analysisProgramRef)}\0${nodeId}`)
     .digest()
     .readUInt32BE(0);
 }
 
-export async function admitAnalysisProgram(input: {
-  readonly plan: AnalysisPlanPayload;
-  readonly plan_ref: ArtifactReference;
+export async function admitAnalysisSandboxProgram(input: {
+  readonly analysis_program: AnalysisProgramPayload;
+  readonly analysis_program_ref: ArtifactReference;
   readonly node_id: string;
   readonly source_text: string;
   readonly source_text_ref: ArtifactReference;
@@ -82,14 +85,14 @@ export async function admitAnalysisProgram(input: {
   readonly input_refs: readonly ArtifactReference[];
   readonly catalog?: AnalysisSkillCatalog;
 }): Promise<ProgramAdmissionVerdict> {
-  const parsedPlan = analysisPlanPayloadSchema.safeParse(input.plan);
-  const parsedPlanRef = analysisPlanRefSchema.safeParse(input.plan_ref);
-  if (!parsedPlan.success || !parsedPlanRef.success) {
+  const parsedProgram = analysisProgramPayloadSchema.safeParse(input.analysis_program);
+  const parsedProgramRef = analysisProgramRefSchema.safeParse(input.analysis_program_ref);
+  if (!parsedProgram.success || !parsedProgramRef.success) {
     return { ok: false, failure: "PROGRAM_PLAN_INVALID" };
   }
-  const plan = parsedPlan.data;
-  const planRef = parsedPlanRef.data;
-  const node = plan.nodes.find(({ node_id: nodeId }) => nodeId === input.node_id);
+  const analysisProgram = parsedProgram.data;
+  const analysisProgramRef = parsedProgramRef.data;
+  const node = analysisProgram.nodes.find(({ node_id: nodeId }) => nodeId === input.node_id);
   if (!node) return { ok: false, failure: "PROGRAM_NODE_NOT_FOUND" };
   const catalog = input.catalog ?? DEFAULT_ANALYSIS_SKILL_CATALOG;
   const descriptor = catalog.resolve(node.skill_id);
@@ -102,10 +105,10 @@ export async function admitAnalysisProgram(input: {
   const sourceHash = sha256Text(input.source_text);
   if (
     input.source_text_ref.artifact_type !== "SensitiveExecutionArtifact" ||
-    input.source_text_ref.app_id !== planRef.app_id ||
-    input.source_text_ref.tenant_id !== planRef.tenant_id ||
-    input.source_text_ref.environment !== planRef.environment ||
-    input.source_text_ref.run_id !== planRef.run_id
+    input.source_text_ref.app_id !== analysisProgramRef.app_id ||
+    input.source_text_ref.tenant_id !== analysisProgramRef.tenant_id ||
+    input.source_text_ref.environment !== analysisProgramRef.environment ||
+    input.source_text_ref.run_id !== analysisProgramRef.run_id
   ) {
     return { ok: false, failure: "PROGRAM_SOURCE_SCOPE_MISMATCH" };
   }
@@ -121,10 +124,10 @@ export async function admitAnalysisProgram(input: {
   if (
     [...input.query_evidence_refs, ...input.input_refs].some(
       (reference) =>
-        reference.app_id !== planRef.app_id ||
-        reference.tenant_id !== planRef.tenant_id ||
-        reference.environment !== planRef.environment ||
-        reference.run_id !== planRef.run_id,
+        reference.app_id !== analysisProgramRef.app_id ||
+        reference.tenant_id !== analysisProgramRef.tenant_id ||
+        reference.environment !== analysisProgramRef.environment ||
+        reference.run_id !== analysisProgramRef.run_id,
     )
   ) {
     return { ok: false, failure: "PROGRAM_INPUT_SCOPE_MISMATCH" };
@@ -153,7 +156,7 @@ export async function admitAnalysisProgram(input: {
   const material: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
     protocol_version: "analysis-sandbox-program@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: analysisProgramRef,
     node_id: input.node_id,
     language: "PYTHON_3_12",
     entrypoint: "main",
@@ -163,18 +166,18 @@ export async function admitAnalysisProgram(input: {
     input_refs: [...input.input_refs],
     output_contract: node.output_contract,
     import_profile: descriptor.python_import_profile,
-    random_seed: derivedSeed(planRef, input.node_id),
+    random_seed: derivedSeed(analysisProgramRef, input.node_id),
     runtime_digest: attestation.runtime_digest,
     dependency_lock_digest: attestation.dependency_lock_digest,
     policy_version: ANALYSIS_PROGRAM_POLICY_VERSION,
   };
   const program = analysisSandboxProgramPayloadSchema.parse({
     ...material,
-    program_hash: await computeAnalysisProgramHash(material),
+    program_hash: await computeAnalysisSandboxProgramHash(material),
   });
-  const verification = await verifyAnalysisProgram({
-    plan,
-    planRef,
+  const verification = await verifyAnalysisSandboxProgram({
+    analysisProgram,
+    analysisProgramRef,
     program,
     sourceText: input.source_text,
     allowedProfiles: [descriptor.python_import_profile],
@@ -184,14 +187,14 @@ export async function admitAnalysisProgram(input: {
     : { ok: false, failure: "PROGRAM_VERIFICATION_FAILED" };
 }
 
-export async function admitAnalysisProgramRepair(input: {
+export async function admitAnalysisSandboxProgramRepair(input: {
   readonly attempt: number;
   readonly previous_program: AnalysisSandboxProgramPayload;
   readonly previous_source_text: string;
   readonly repaired_source_text: string;
   readonly repaired_source_text_ref: ArtifactReference;
-  readonly plan: AnalysisPlanPayload;
-  readonly plan_ref: ArtifactReference;
+  readonly analysis_program: AnalysisProgramPayload;
+  readonly analysis_program_ref: ArtifactReference;
   readonly catalog?: AnalysisSkillCatalog;
 }): Promise<ProgramAdmissionVerdict> {
   if (input.attempt !== 1) return { ok: false, failure: "PROGRAM_REPAIR_LIMIT_EXCEEDED" };
@@ -199,9 +202,9 @@ export async function admitAnalysisProgramRepair(input: {
   if ([...imports(input.repaired_source_text)].some((name) => !previousImports.has(name))) {
     return { ok: false, failure: "PROGRAM_REPAIR_EXPANDED_AUTHORITY" };
   }
-  const repaired = await admitAnalysisProgram({
-    plan: input.plan,
-    plan_ref: input.plan_ref,
+  const repaired = await admitAnalysisSandboxProgram({
+    analysis_program: input.analysis_program,
+    analysis_program_ref: input.analysis_program_ref,
     node_id: input.previous_program.node_id,
     source_text: input.repaired_source_text,
     source_text_ref: input.repaired_source_text_ref,

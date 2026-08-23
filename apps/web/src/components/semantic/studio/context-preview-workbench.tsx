@@ -1,6 +1,6 @@
 "use client";
 
-import { resolvedContextPreviewResultSchema } from "@data-agent/contracts";
+import { semanticContextPreviewResultSchema } from "@data-agent/contracts";
 import { MagnifyingGlass, SpinnerGap } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useWorkspaceI18n } from "@/i18n";
@@ -17,7 +17,7 @@ export function ContextPreviewWorkbench({ workspaceId }: { readonly workspaceId:
     setState({ kind: "RESOLVING" });
     try {
       const response = await fetch(
-        `/api/workspaces/${encodeURIComponent(workspaceId)}/context/preview`,
+        `/api/workspaces/${encodeURIComponent(workspaceId)}/semantic/context/preview`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
@@ -29,15 +29,15 @@ export function ContextPreviewWorkbench({ workspaceId }: { readonly workspaceId:
         readonly error?: { readonly code?: string };
       };
       if (!response.ok || payload.data === undefined) {
-        setState({ kind: "ERROR", code: payload.error?.code ?? "RESOLVED_CONTEXT_UNAVAILABLE" });
+        setState({ kind: "ERROR", code: payload.error?.code ?? "SEMANTIC_CONTEXT_UNAVAILABLE" });
         return;
       }
       setState({
         kind: "RESOLVED",
-        result: resolvedContextPreviewResultSchema.parse(payload.data),
+        result: semanticContextPreviewResultSchema.parse(payload.data),
       });
     } catch {
-      setState({ kind: "ERROR", code: "RESOLVED_CONTEXT_RESPONSE_INVALID" });
+      setState({ kind: "ERROR", code: "SEMANTIC_CONTEXT_RESPONSE_INVALID" });
     }
   }
 

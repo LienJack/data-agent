@@ -1,15 +1,17 @@
 import {
-  type AnalysisContext,
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type AnalysisSkillId,
   type ArtifactReference,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   artifactReferenceIdentity,
   type ResearchBriefV3Payload,
   researchBriefRefSchema,
-  sha256ContentHash,
+} from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import {
+  type AnalysisContext,
   verifyAnalysisContext,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/context";
 import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
 import {
   type AnalysisSkillCatalog,
@@ -17,9 +19,9 @@ import {
   DEFAULT_ANALYSIS_SKILL_CATALOG,
 } from "./skill-catalog.js";
 
-type TimeWindow = AnalysisPlanPayload["nodes"][number]["time_window"];
+type TimeWindow = AnalysisProgramPayload["nodes"][number]["time_window"];
 
-export interface DefaultAnalysisPlanInput {
+export interface DefaultAnalysisProgramInput {
   readonly brief: ResearchBriefV3Payload;
   readonly brief_ref: ArtifactReference;
   readonly context: AnalysisContext;
@@ -61,19 +63,19 @@ function boundedBudget(brief: ResearchBriefV3Payload, nodeCount: number) {
   } as const;
 }
 
-export async function computeAnalysisPlanHash(
-  plan: Omit<AnalysisPlanPayload, "plan_hash">,
+export async function computeAnalysisProgramHash(
+  program: Omit<AnalysisProgramPayload, "program_hash">,
 ): Promise<`sha256:${string}`> {
-  return sha256ContentHash({ hash_domain: "analysis-plan@1.0.0", value: plan });
+  return sha256ContentHash({ hash_domain: "analysis-program@1.0.0", value: program });
 }
 
 function executionMode(descriptor: AnalysisSkillDescriptor): "FROZEN_TEMPLATE" | "MODEL_GENERATED" {
   return descriptor.program_mode === "MODEL_GENERATED" ? "MODEL_GENERATED" : "FROZEN_TEMPLATE";
 }
 
-export async function createDefaultAnalysisPlan(
-  input: DefaultAnalysisPlanInput,
-): Promise<AnalysisPlanPayload> {
+export async function createDefaultAnalysisProgram(
+  input: DefaultAnalysisProgramInput,
+): Promise<AnalysisProgramPayload> {
   const context = await verifyAnalysisContext(input.context);
   const catalog = input.catalog ?? DEFAULT_ANALYSIS_SKILL_CATALOG;
   if (
@@ -84,7 +86,7 @@ export async function createDefaultAnalysisPlan(
     artifactReferenceIdentity(input.brief.semantic_release_ref) !==
       artifactReferenceIdentity(context.semantic_release_ref)
   ) {
-    throw new TypeError("ANALYSIS_DEFAULT_PLAN_CONTEXT_MISMATCH");
+    throw new TypeError("ANALYSIS_DEFAULT_PROGRAM_CONTEXT_MISMATCH");
   }
   const briefRef = researchBriefRefSchema.parse(input.brief_ref);
   const approvedDimensions = new Set(input.brief.approved_dimension_refs);
@@ -97,10 +99,10 @@ export async function createDefaultAnalysisPlan(
     ),
   );
   if (primaryMetrics.length !== input.brief.primary_metric_refs.length) {
-    throw new TypeError("ANALYSIS_DEFAULT_PLAN_PRIMARY_METRIC_INVALID");
+    throw new TypeError("ANALYSIS_DEFAULT_PROGRAM_PRIMARY_METRIC_INVALID");
   }
 
-  const nodes: AnalysisPlanPayload["nodes"] = [];
+  const nodes: AnalysisProgramPayload["nodes"] = [];
   for (const skillId of DEFAULT_SKILL_ORDER) {
     const descriptor = catalog.resolve(skillId);
     if (skillId === "association-outlier-completeness@1" && primaryMetrics.length < 2) continue;
@@ -156,19 +158,20 @@ export async function createDefaultAnalysisPlan(
 
   const budget = boundedBudget(input.brief, nodes.length);
   const boundedNodes = nodes.slice(0, budget.max_steps);
-  if (boundedNodes.length === 0) throw new TypeError("ANALYSIS_DEFAULT_PLAN_EMPTY");
+  if (boundedNodes.length === 0) throw new TypeError("ANALYSIS_DEFAULT_PROGRAM_EMPTY");
   const material = {
-    artifact_type: "AnalysisPlan",
-    protocol_version: "analysis-plan@1.0.0",
+    artifact_type: "AnalysisProgram",
+    protocol_version: "analysis-program@1.0.0",
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
+    semantic_context_package_hash: context.semantic_context_binding.package_hash,
     nodes: boundedNodes,
     budget: boundedBudget(input.brief, boundedNodes.length),
-    planner_kind: "DETERMINISTIC_DEFAULT",
-    planner_version: "analysis-planner@1.0.0",
+    compiler_kind: "DETERMINISTIC_DEFAULT",
+    compiler_version: "analysis-program-compiler@1.0.0",
   } as const;
-  return analysisPlanPayloadSchema.parse({
+  return analysisProgramPayloadSchema.parse({
     ...material,
-    plan_hash: await computeAnalysisPlanHash(material),
+    program_hash: await computeAnalysisProgramHash(material),
   });
 }

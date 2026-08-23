@@ -61,7 +61,7 @@ async function contextFixture(
   return buildAnalysisContext({
     schema_version: "analysis-context@1.0.0",
     scope,
-    resolved_context_binding: {
+    semantic_context_binding: {
       package_id: id(11),
       package_hash: hash("a"),
       receipt_id: id(12),
@@ -291,7 +291,7 @@ async function causalChain(
   suppliedContext?: AnalysisContext,
 ) {
   const context = suppliedContext ?? (await contextFixture());
-  const planRef = reference("AnalysisPlan", 40);
+  const planRef = reference("AnalysisProgram", 40);
   const candidate = await createRootCauseDiscoveryCandidate({
     context,
     plan_ref: planRef,
@@ -473,7 +473,7 @@ describe("root cause discovery and causal identification", () => {
     const context = await contextFixture();
     const candidate = await createRootCauseDiscoveryCandidate({
       context,
-      plan_ref: reference("AnalysisPlan", 60),
+      plan_ref: reference("AnalysisProgram", 60),
       source_evidence_refs: [reference("DerivedAnalysisEvidence", 61)],
       outcome_metric_ref:
         context.metrics[0]?.metric_ref ??

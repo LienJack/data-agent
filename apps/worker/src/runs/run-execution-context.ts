@@ -9,11 +9,11 @@ import {
   mastraSnapshotBindingBodySchema,
   modelRequestPerformanceSchema,
   type PortResult,
-  type ResolvedContextCommitResult,
   type RunEventStorePort,
   type RunProjectionRecord,
   type RunWorkLease,
   runCheckpointInputSchema,
+  type SemanticContextCommitResult,
   type SideEffectReceipt,
   sha256ContentHash,
   sideEffectReceiptSchema,
@@ -28,7 +28,7 @@ export type RunExecutionContextProvenance = Readonly<{
 
 const trustedRunExecutionContexts = new WeakSet<object>();
 const trustedProviderDispatchCapabilities = new WeakSet<object>();
-const trustedResolvedContextCapabilities = new WeakSet<object>();
+const trustedSemanticContextCapabilities = new WeakSet<object>();
 
 export interface RunProviderDispatchCapability {
   invoke(input: {
@@ -65,23 +65,23 @@ export interface RunBoundProviderDispatcher {
   }): Promise<PortResult<RunModelProviderResult>>;
 }
 
-export interface RunResolvedContextCapability {
-  resolve(): Promise<PortResult<ResolvedContextCommitResult>>;
+export interface RunSemanticContextCapability {
+  resolve(): Promise<PortResult<SemanticContextCommitResult>>;
 }
 
-export interface RunBoundResolvedContextResolver {
+export interface RunBoundSemanticContextResolver {
   resolve(input: {
     readonly lease: RunWorkLease;
     readonly effective_config: EffectiveRunConfigReceiptCandidate;
     readonly context_receipt: ContextReceiptBinding;
-  }): Promise<PortResult<ResolvedContextCommitResult>>;
+  }): Promise<PortResult<SemanticContextCommitResult>>;
 }
 
-export function hasRunResolvedContextCapability(
+export function hasRunSemanticContextCapability(
   input: unknown,
-): input is RunResolvedContextCapability {
+): input is RunSemanticContextCapability {
   return (
-    typeof input === "object" && input !== null && trustedResolvedContextCapabilities.has(input)
+    typeof input === "object" && input !== null && trustedSemanticContextCapabilities.has(input)
   );
 }
 
@@ -110,7 +110,7 @@ interface RunExecutionContextDependencies {
   readonly create_id: () => string;
   readonly side_effect_timeout_ms: number;
   readonly provider_dispatch: RunBoundProviderDispatcher | null;
-  readonly resolved_context?: RunBoundResolvedContextResolver | null;
+  readonly semantic_context?: RunBoundSemanticContextResolver | null;
   readonly heartbeat: () => Promise<PortResult<{ readonly expires_at: string }>>;
   readonly guard_running_lease: (
     lease: RunWorkLease,
@@ -137,7 +137,7 @@ export function createRunExecutionContext({
   create_id: createId,
   side_effect_timeout_ms: sideEffectTimeoutMs,
   provider_dispatch: providerDispatch,
-  resolved_context: resolvedContext,
+  semantic_context: semanticContext,
   heartbeat,
   guard_running_lease: guardRunningLease,
   append_checkpoint_event: appendCheckpointEvent,
@@ -310,22 +310,22 @@ export function createRunExecutionContext({
   if (providerDispatchCapability) {
     trustedProviderDispatchCapabilities.add(providerDispatchCapability);
   }
-  let resolvedContextUsed = false;
-  const resolvedContextCapability = resolvedContext
+  let semanticContextUsed = false;
+  const semanticContextCapability = semanticContext
     ? Object.freeze({
         resolve() {
-          if (runSignal.aborted) return Promise.resolve(aborted<ResolvedContextCommitResult>());
-          if (resolvedContextUsed) {
+          if (runSignal.aborted) return Promise.resolve(aborted<SemanticContextCommitResult>());
+          if (semanticContextUsed) {
             return Promise.resolve(
               failure(
-                "RESOLVED_CONTEXT_ALREADY_CONSUMED",
-                "Resolved Context capability can be consumed only once per Run attempt.",
+                "SEMANTIC_CONTEXT_ALREADY_CONSUMED",
+                "Semantic Context capability can be consumed only once per Run attempt.",
                 false,
               ),
             );
           }
-          resolvedContextUsed = true;
-          return resolvedContext.resolve({
+          semanticContextUsed = true;
+          return semanticContext.resolve({
             lease,
             effective_config: effectiveConfig,
             context_receipt: contextReceipt,
@@ -333,7 +333,7 @@ export function createRunExecutionContext({
         },
       })
     : null;
-  if (resolvedContextCapability) trustedResolvedContextCapabilities.add(resolvedContextCapability);
+  if (semanticContextCapability) trustedSemanticContextCapabilities.add(semanticContextCapability);
 
   const context = {
     getEffectiveConfig() {
@@ -348,8 +348,8 @@ export function createRunExecutionContext({
       return providerDispatchCapability;
     },
 
-    getResolvedContextCapability() {
-      return resolvedContextCapability;
+    getSemanticContextCapability() {
+      return semanticContextCapability;
     },
 
     async emitDisplayEvent(input) {

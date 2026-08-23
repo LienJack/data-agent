@@ -2,11 +2,11 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
-  buildResolvedContextAuthoritySnapshot,
-  buildResolvedContextPackage,
+  buildSemanticContextAuthoritySnapshot,
+  buildSemanticContextPackage,
   type QueryContractPayload,
 } from "@data-agent/contracts";
-import { buildResolvedContextText2SqlBinding } from "@data-agent/contracts/server";
+import { buildSemanticContextText2SqlBinding } from "@data-agent/contracts/server";
 import {
   buildLogicalPlan,
   buildSemanticQuery,
@@ -176,8 +176,8 @@ async function buildResolvedBinding(
         },
       ]
     : [];
-  const snapshot = await buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  const snapshot = await buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: semanticDomain,
     question,
@@ -226,8 +226,8 @@ async function buildResolvedBinding(
       ? [...new Set([normalizedMetric.mapping_hash, normalizedMetric.formula_hash])].sort()
       : [published.release_digest],
   });
-  const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@2.0.0",
+  const packageDocument = await buildSemanticContextPackage({
+    schema_version: "semantic-context-package@1.0.0",
     scope,
     semantic_domain: semanticDomain,
     question_hash: snapshot.question_hash,
@@ -240,7 +240,7 @@ async function buildResolvedBinding(
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: normalizedMetric
       ? {
-          schema_version: "resolved-context-route-decision@2.0.0",
+          schema_version: "semantic-context-route-decision@1.0.0",
           state: "READY",
           route: "METRIC",
           selected_metric_id: normalizedMetric.metric_id,
@@ -251,7 +251,7 @@ async function buildResolvedBinding(
           reason_codes: ["EXACT_PUBLISHED_METRIC"],
         }
       : {
-          schema_version: "resolved-context-route-decision@2.0.0",
+          schema_version: "semantic-context-route-decision@1.0.0",
           state: "REJECTED",
           route: "NONE",
           selected_metric_id: null,
@@ -287,7 +287,7 @@ async function buildResolvedBinding(
     evidence: [],
     knowledge_refs: knowledgeRefs,
   });
-  return buildResolvedContextText2SqlBinding({ package: packageDocument, snapshot });
+  return buildSemanticContextText2SqlBinding({ package: packageDocument, snapshot });
 }
 
 function sqlLiteral(value: unknown): string {
@@ -329,7 +329,7 @@ where pointer.app_id='${appId}'::uuid and pointer.tenant_id='${tenantId}'::uuid
     );
     const metrics = parseLastJson<PublishedMetric[]>(
       runPsql(`
-select app_data_agent.resolved_context_metric_projection(
+select app_data_agent.semantic_context_metric_projection(
   '${appId}'::uuid,'${tenantId}'::uuid,'test','${semanticDomain}',
   '${published.release_id}'::uuid
 )::text;
@@ -345,7 +345,7 @@ select app_data_agent.resolved_context_metric_projection(
     const compiled = await compilePostgresqlLogicalPlan({
       logical_plan_binding: compilerInput.logicalPlanBinding,
       grounding: compilerInput.grounding,
-      resolved_context_binding: resolvedBinding,
+      semantic_context_binding: resolvedBinding,
     });
     if (compiled.state !== "COMPILED") {
       throw new Error(`TEXT2SQL_COMPILE_FAILED:${compiled.reason_code}`);
@@ -364,7 +364,7 @@ rollback;
 `);
     expect(execution).toContain("enterprise|150");
     expect(execution).toContain("smb|30");
-    expect(compiled.compilation.proof.resolved_context_binding_hash).toBe(
+    expect(compiled.compilation.proof.semantic_context_binding_hash).toBe(
       resolvedBinding.binding_hash,
     );
     expect(resolvedBinding.semantic_release.resource_id).toBe(published.release_id);
@@ -448,7 +448,7 @@ where pointer.app_id='${appId}'::uuid and pointer.tenant_id='${tenantId}'::uuid
     );
     const rolledBackMetrics = parseLastJson<PublishedMetric[]>(
       runPsql(`
-select app_data_agent.resolved_context_metric_projection(
+select app_data_agent.semantic_context_metric_projection(
   '${appId}'::uuid,'${tenantId}'::uuid,'test','${semanticDomain}',
   '${rolledBack.release_id}'::uuid
 )::text;
@@ -463,7 +463,7 @@ select app_data_agent.resolved_context_metric_projection(
     );
     await expect(
       buildResolvedBinding(rolledBack, null, "按客户分层统计 2026 年 6 月已支付订单的净收入"),
-    ).rejects.toThrow("RESOLVED_CONTEXT_ROUTE_NOT_QUERYABLE");
+    ).rejects.toThrow("SEMANTIC_CONTEXT_ROUTE_NOT_QUERYABLE");
 
     console.info(
       JSON.stringify({
@@ -473,7 +473,7 @@ select app_data_agent.resolved_context_metric_projection(
         release_digest: published.release_digest,
         evidence_selection_id: "00000000-0000-4000-8000-000000006796",
         evidence_selection_hash: hash("b"),
-        resolved_context_binding_hash: resolvedBinding.binding_hash,
+        semantic_context_binding_hash: resolvedBinding.binding_hash,
         logical_plan_hash: compiled.compilation.proof.logical_plan_hash,
         ast_hash: artifact.ast_hash,
         sql_query_hash: artifact.query_hash,

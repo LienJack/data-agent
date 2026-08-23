@@ -6,10 +6,10 @@
  */
 
 export {
-  type AuthoritativeResolvedContextText2SqlBinding,
-  buildResolvedContextText2SqlBinding,
+  type AuthoritativeSemanticContextText2SqlBinding,
+  buildSemanticContextText2SqlBinding,
   coordinateGroundingBundle,
-  isAuthoritativeResolvedContextText2SqlBinding,
+  isAuthoritativeSemanticContextText2SqlBinding,
   issuePolicyReceipt,
   issueSchemaSnapshot,
   issueSemanticRelease,
@@ -19,7 +19,7 @@ export {
   registerTrustedPolicyReceiptIssuer,
   registerTrustedSchemaSnapshotIssuer,
   registerTrustedSemanticReleaseIssuer,
-  verifyResolvedContextText2SqlBinding,
+  verifySemanticContextText2SqlBinding,
 } from "./artifacts/grounding-materializer.js";
 export {
   type AuthoritativeMetamorphicFixtureReceipt,

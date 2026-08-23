@@ -1,16 +1,16 @@
 import {
-  buildResolvedContextAuthoritySnapshot,
-  buildResolvedContextPackage,
+  buildSemanticContextAuthoritySnapshot,
+  buildSemanticContextPackage,
 } from "@data-agent/contracts";
-import { buildResolvedContextText2SqlBinding } from "@data-agent/contracts/server";
+import { buildSemanticContextText2SqlBinding } from "@data-agent/contracts/server";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 
-export async function authoritativeResolvedContextBindingFixture() {
+export async function authoritativeSemanticContextBindingFixture() {
   const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
-  const snapshot = await buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  const snapshot = await buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Net Revenue by region",
@@ -62,8 +62,8 @@ export async function authoritativeResolvedContextBindingFixture() {
     knowledge_refs: [],
     projection_hashes: [hash("6"), hash("8")],
   });
-  const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@2.0.0",
+  const packageDocument = await buildSemanticContextPackage({
+    schema_version: "semantic-context-package@1.0.0",
     scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,
@@ -75,7 +75,7 @@ export async function authoritativeResolvedContextBindingFixture() {
     provider: snapshot.provider,
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: "net_revenue",
@@ -109,5 +109,5 @@ export async function authoritativeResolvedContextBindingFixture() {
     evidence: [],
     knowledge_refs: [],
   });
-  return buildResolvedContextText2SqlBinding({ package: packageDocument, snapshot });
+  return buildSemanticContextText2SqlBinding({ package: packageDocument, snapshot });
 }

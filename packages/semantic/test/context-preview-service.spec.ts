@@ -1,18 +1,18 @@
 import {
-  buildResolvedContextAuthoritySnapshot,
-  buildResolvedContextRequest,
-  verifyResolvedContextPreviewResult,
+  buildSemanticContextAuthoritySnapshot,
+  buildSemanticContextRequest,
+  verifySemanticContextPreviewResult,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { createResolvedContextService } from "../src/context/service.js";
+import { createSemanticContextService } from "../src/context/semantic-context-service.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 async function authoritySnapshot() {
-  return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  return buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue by channel",
@@ -71,7 +71,7 @@ describe("resolved context read-only preview", () => {
     const snapshot = await authoritySnapshot();
     let loadCount = 0;
     let commitCount = 0;
-    const service = createResolvedContextService({
+    const service = createSemanticContextService({
       authority: {
         loadAuthoritySnapshot: async () => {
           loadCount += 1;
@@ -90,8 +90,8 @@ describe("resolved context read-only preview", () => {
         },
       },
     });
-    const request = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const request = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(9),
       scope,
       question: "Gross Revenue by channel",
@@ -112,21 +112,21 @@ describe("resolved context read-only preview", () => {
     });
     expect(loadCount).toBe(1);
     expect(commitCount).toBe(0);
-    await expect(verifyResolvedContextPreviewResult(preview.value)).resolves.toEqual(preview.value);
+    await expect(verifySemanticContextPreviewResult(preview.value)).resolves.toEqual(preview.value);
     await expect(
-      verifyResolvedContextPreviewResult({ ...preview.value, receipt: { secret: true } }),
+      verifySemanticContextPreviewResult({ ...preview.value, receipt: { secret: true } }),
     ).rejects.toThrow();
 
     const committed = await service.resolve({ access: "WRITE" }, request);
     expect(committed).toMatchObject({
       ok: false,
-      error: { code: "RESOLVED_CONTEXT_COMMIT_CONSUMER_INVALID" },
+      error: { code: "SEMANTIC_CONTEXT_COMMIT_CONSUMER_INVALID" },
     });
     expect(loadCount).toBe(1);
     expect(commitCount).toBe(0);
 
-    const runRequest = await buildResolvedContextRequest({
-      schema_version: "resolved-context-request@1.0.0",
+    const runRequest = await buildSemanticContextRequest({
+      schema_version: "semantic-context-request@1.0.0",
       request_id: id(10),
       scope,
       basis: {
@@ -139,7 +139,7 @@ describe("resolved context read-only preview", () => {
     const invalidPreview = await service.preview({ access: "READ" }, runRequest);
     expect(invalidPreview).toMatchObject({
       ok: false,
-      error: { code: "RESOLVED_CONTEXT_PREVIEW_CONSUMER_INVALID" },
+      error: { code: "SEMANTIC_CONTEXT_PREVIEW_CONSUMER_INVALID" },
     });
     expect(loadCount).toBe(1);
     expect(commitCount).toBe(0);

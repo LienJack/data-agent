@@ -15,7 +15,7 @@ import {
 } from "./primitives.js";
 import {
   analysisCompletionReceiptRefSchema,
-  analysisPlanRefSchema,
+  analysisProgramRefSchema,
   atomicClaimRefSchema,
   causalEstimateRefSchema,
   derivedAnalysisEvidenceRefSchema,
@@ -343,7 +343,7 @@ export const evidenceCheckReceiptPayloadSchema = z.strictObject({
 
 export const evidenceCheckInputRefV2Schema = z.union([
   evidenceCheckInputRefSchema,
-  analysisPlanRefSchema,
+  analysisProgramRefSchema,
   analysisCompletionReceiptRefSchema,
   derivedAnalysisEvidenceRefSchema,
   sandboxProgramRefSchema,

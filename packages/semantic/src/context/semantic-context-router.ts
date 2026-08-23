@@ -1,18 +1,18 @@
 import type {
-  ResolvedContextAuthoritySnapshot,
-  ResolvedContextRouteDecision,
-} from "@data-agent/contracts";
-import { resolvePublishedLexicon } from "./lexical-resolver.js";
+  SemanticContextAuthoritySnapshot,
+  SemanticContextRouteDecision,
+} from "@data-agent/contracts/context";
+import { resolvePublishedLexicon } from "./lexical-matcher.js";
 
 const capabilityChain = ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"] as const;
 
-export async function routeResolvedContext(
-  snapshot: ResolvedContextAuthoritySnapshot,
-): Promise<ResolvedContextRouteDecision> {
+export async function routeSemanticContext(
+  snapshot: SemanticContextAuthoritySnapshot,
+): Promise<SemanticContextRouteDecision> {
   const lexical = await resolvePublishedLexicon(snapshot);
   if (lexical.matches.length > 1) {
     return {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "NEEDS_CLARIFICATION",
       route: lexical.matches.some((entry) => entry.target_kind === "METRIC")
         ? "METRIC"
@@ -28,7 +28,7 @@ export async function routeResolvedContext(
   const selected = lexical.matches[0];
   if (selected?.target_kind === "METRIC") {
     return {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: selected.target_id,
@@ -45,7 +45,7 @@ export async function routeResolvedContext(
       : undefined;
   if (ontology?.queryable && ontology.mapping_refs.length > 0) {
     return {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "READY",
       route: "ONTOLOGY_TEXT2SQL",
       selected_metric_id: null,
@@ -58,7 +58,7 @@ export async function routeResolvedContext(
   }
   if (snapshot.knowledge_refs.length > 0) {
     return {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "PARTIAL",
       route: "KNOWLEDGE",
       selected_metric_id: null,
@@ -73,7 +73,7 @@ export async function routeResolvedContext(
   }
   if (snapshot.published_relationships.length > 0) {
     return {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "PARTIAL",
       route: "GRAPH",
       selected_metric_id: null,
@@ -85,7 +85,7 @@ export async function routeResolvedContext(
     };
   }
   return {
-    schema_version: "resolved-context-route-decision@2.0.0",
+    schema_version: "semantic-context-route-decision@1.0.0",
     state: "REJECTED",
     route: "NONE",
     selected_metric_id: null,

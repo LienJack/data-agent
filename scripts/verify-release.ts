@@ -133,7 +133,7 @@ if (process.argv.includes("--deterministic-analysis")) {
     semantic_evidence_rbac_projection_budget_gates:
       exists("packages/semantic/src/analysis/applicability.ts") &&
       exists("packages/research/src/analysis-evidence/verifier.ts") &&
-      exists("apps/worker/test/analysis/analysis-plan-runtime.spec.ts") &&
+      exists("apps/worker/test/analysis/analysis-program-runtime.spec.ts") &&
       exists("packages/platform/src/artifacts/derived-analysis-projection.ts") &&
       exists("apps/web/src/components/workbench/deterministic-analysis-sections.tsx"),
     contribution_association_forecast_hard_gates:

@@ -3,7 +3,7 @@ export {
   assertCausalClaimAuthorized,
   type CausalEstimateComputation,
   computeAnalysisDerivationHash,
-  computeAnalysisProgramHash,
+  computeAnalysisSandboxProgramHash,
   computeAttributionAuthorityClosureHash,
   computeCausalEstimateHash,
   computeCausalQuestionHash,
@@ -28,8 +28,8 @@ export {
   type SelectedInsight,
   selectEvidenceGroundedInsights,
   verifyAnalysisDerivation,
-  verifyAnalysisProgram,
   verifyAnalysisResult,
+  verifyAnalysisSandboxProgram,
   verifyScaleMetamorphism,
 } from "./analysis-evidence/index.js";
 export {

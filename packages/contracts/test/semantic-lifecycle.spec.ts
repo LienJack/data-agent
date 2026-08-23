@@ -88,18 +88,24 @@ describe("semantic lifecycle contracts", () => {
       revision: 1,
       assertions: [assertion],
       conflicts: [],
+      competency_results: [],
       validation: {
         outcome: "PASS",
         reason_codes: [],
         formula_cycle_free: true,
         evidence_closed: true,
         identity_conflict_free: true,
+        shapes_valid: true,
+        formulas_valid: true,
+        grain_join_time_valid: true,
+        policy_quality_valid: true,
+        competency_cases_passed: true,
       },
       lifecycle_state: "VALIDATED",
     });
     await expect(verifySemanticChangeSet(changeSet)).resolves.toEqual(changeSet);
-    await expect(
-      verifySemanticChangeSet({ ...changeSet, revision: 2 }),
-    ).rejects.toThrow("SEMANTIC_CHANGE_SET_HASH_MISMATCH");
+    await expect(verifySemanticChangeSet({ ...changeSet, revision: 2 })).rejects.toThrow(
+      "SEMANTIC_CHANGE_SET_HASH_MISMATCH",
+    );
   });
 });

@@ -1,21 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildResolvedContextText2SqlBinding,
-  isAuthoritativeResolvedContextText2SqlBinding,
-  verifyResolvedContextText2SqlBinding,
+  buildSemanticContextText2SqlBinding,
+  isAuthoritativeSemanticContextText2SqlBinding,
+  verifySemanticContextText2SqlBinding,
 } from "../src/artifacts/grounding-materializer.js";
 import {
-  buildResolvedContextAuthoritySnapshot,
-  buildResolvedContextPackage,
-} from "../src/context/resolved-context-package.js";
+  buildSemanticContextAuthoritySnapshot,
+  buildSemanticContextPackage,
+} from "../src/context/semantic-context-package.js";
+import {
+  buildSemanticInferenceReceipt,
+  buildSemanticRetrievalReceipt,
+} from "../src/context/semantic-retrieval.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 async function authoritySnapshot(options: { readonly ontologyQueryable?: boolean } = {}) {
-  return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@2.0.0",
+  return buildSemanticContextAuthoritySnapshot({
+    schema_version: "semantic-context-authority-snapshot@1.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue by channel",
@@ -83,8 +87,40 @@ async function contextPackage(
   snapshot: Awaited<ReturnType<typeof authoritySnapshot>>,
   route: "METRIC" | "ONTOLOGY_TEXT2SQL" | "KNOWLEDGE",
 ) {
-  return buildResolvedContextPackage({
-    schema_version: "resolved-context-package@2.0.0",
+  const selectedObjectIds = route === "METRIC" ? ["gross_revenue"] : route === "ONTOLOGY_TEXT2SQL" ? ["sales_channel"] : [];
+  const retrievalReceipt = await buildSemanticRetrievalReceipt({
+    schema_version: "semantic-retrieval-receipt@1.0.0",
+    authority_snapshot_hash: snapshot.snapshot_hash,
+    release_hash: snapshot.semantic_release.resource_hash,
+    query_hash: snapshot.question_hash,
+    rrf_k: 60,
+    hard_filter: {
+      scope_hash: hash("b"),
+      publication_status: "PUBLISHED",
+      authority_mode: "POSTGRES_FILTERED_SNAPSHOT",
+      included_object_ids: selectedObjectIds,
+      excluded_objects: [],
+    },
+    route_states: { LEXICON: "READY", SPARSE: "READY", VECTOR: "UNAVAILABLE", GRAPH: "UNAVAILABLE" },
+    hits: [],
+    expansions: [],
+    selected_object_ids: selectedObjectIds,
+    pruned_object_ids: [],
+    fallback_reason_codes: ["VECTOR_ROUTE_NOT_CONFIGURED"],
+  });
+  const inferenceReceipt = await buildSemanticInferenceReceipt({
+    schema_version: "semantic-inference-receipt@1.0.0",
+    retrieval_receipt_hash: retrievalReceipt.receipt_hash,
+    ruleset_id: "semantic-mandatory-closure@1",
+    ruleset_hash: hash("9"),
+    steps: [],
+    mandatory_object_ids: selectedObjectIds,
+    mandatory_relationship_ids: [],
+    closure_complete: true,
+    reason_codes: [],
+  });
+  return buildSemanticContextPackage({
+    schema_version: "semantic-context-package@1.0.0",
     scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,
@@ -96,7 +132,7 @@ async function contextPackage(
     provider: snapshot.provider,
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: route === "KNOWLEDGE" ? "PARTIAL" : "READY",
       route,
       selected_metric_id: route === "METRIC" ? "gross_revenue" : null,
@@ -129,29 +165,37 @@ async function contextPackage(
     },
     evidence: [],
     knowledge_refs: [],
+    retrieval_receipt: retrievalReceipt,
+    inference_receipt: inferenceReceipt,
+    mandatory_closure: {
+      object_ids: selectedObjectIds,
+      relationship_ids: [],
+      closure_hash: hash("a"),
+    },
+    analysis_capabilities: [],
   });
 }
 
-describe("Resolved Context Text2SQL binding", () => {
+describe("Semantic Context Text2SQL binding", () => {
   it("derives a deterministic exact Metric mapping closure", async () => {
     const snapshot = await authoritySnapshot();
     const packageDocument = await contextPackage(snapshot, "METRIC");
-    const first = await buildResolvedContextText2SqlBinding({
+    const first = await buildSemanticContextText2SqlBinding({
       package: packageDocument,
       snapshot,
     });
-    const second = await buildResolvedContextText2SqlBinding({
+    const second = await buildSemanticContextText2SqlBinding({
       package: packageDocument,
       snapshot,
     });
     expect(first).toEqual(second);
-    expect(isAuthoritativeResolvedContextText2SqlBinding(first)).toBe(true);
+    expect(isAuthoritativeSemanticContextText2SqlBinding(first)).toBe(true);
     expect(first).toMatchObject({
       route: "METRIC",
       selected_metric_id: "gross_revenue",
       mapping_refs: ["mapping.amount", "mapping.channel"],
       semantic_projection_hashes: [hash("6"), hash("8")],
-      resolved_context_package_ref: {
+      semantic_context_package_ref: {
         package_id: packageDocument.package_id,
         package_hash: packageDocument.package_hash,
       },
@@ -162,7 +206,7 @@ describe("Resolved Context Text2SQL binding", () => {
     const snapshot = await authoritySnapshot();
     const packageDocument = await contextPackage(snapshot, "ONTOLOGY_TEXT2SQL");
     await expect(
-      buildResolvedContextText2SqlBinding({ package: packageDocument, snapshot }),
+      buildSemanticContextText2SqlBinding({ package: packageDocument, snapshot }),
     ).resolves.toMatchObject({
       route: "ONTOLOGY_TEXT2SQL",
       selected_ontology_ids: ["sales_channel"],
@@ -172,19 +216,19 @@ describe("Resolved Context Text2SQL binding", () => {
     const nonQueryable = await authoritySnapshot({ ontologyQueryable: false });
     const nonQueryablePackage = await contextPackage(nonQueryable, "ONTOLOGY_TEXT2SQL");
     await expect(
-      buildResolvedContextText2SqlBinding({
+      buildSemanticContextText2SqlBinding({
         package: nonQueryablePackage,
         snapshot: nonQueryable,
       }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_ONTOLOGY_MAPPING_NOT_QUERYABLE");
+    ).rejects.toThrow("SEMANTIC_CONTEXT_ONTOLOGY_MAPPING_NOT_QUERYABLE");
   });
 
   it("rejects non-query routes and cross-snapshot substitution", async () => {
     const snapshot = await authoritySnapshot();
     const knowledgePackage = await contextPackage(snapshot, "KNOWLEDGE");
     await expect(
-      buildResolvedContextText2SqlBinding({ package: knowledgePackage, snapshot }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_ROUTE_NOT_QUERYABLE");
+      buildSemanticContextText2SqlBinding({ package: knowledgePackage, snapshot }),
+    ).rejects.toThrow("SEMANTIC_CONTEXT_ROUTE_NOT_QUERYABLE");
 
     const metricPackage = await contextPackage(snapshot, "METRIC");
     const {
@@ -192,27 +236,27 @@ describe("Resolved Context Text2SQL binding", () => {
       question_hash: _questionHash,
       ...snapshotBuilderInput
     } = snapshot;
-    const otherSnapshot = await buildResolvedContextAuthoritySnapshot({
+    const otherSnapshot = await buildSemanticContextAuthoritySnapshot({
       ...snapshotBuilderInput,
       question: "Gross Revenue by region",
     });
     await expect(
-      buildResolvedContextText2SqlBinding({ package: metricPackage, snapshot: otherSnapshot }),
-    ).rejects.toThrow("RESOLVED_CONTEXT_TEXT2SQL_AUTHORITY_MISMATCH");
+      buildSemanticContextText2SqlBinding({ package: metricPackage, snapshot: otherSnapshot }),
+    ).rejects.toThrow("SEMANTIC_CONTEXT_TEXT2SQL_AUTHORITY_MISMATCH");
   });
 
   it("rejects a caller-tampered binding hash", async () => {
     const snapshot = await authoritySnapshot();
     const packageDocument = await contextPackage(snapshot, "METRIC");
-    const binding = await buildResolvedContextText2SqlBinding({
+    const binding = await buildSemanticContextText2SqlBinding({
       package: packageDocument,
       snapshot,
     });
     await expect(
-      verifyResolvedContextText2SqlBinding(
+      verifySemanticContextText2SqlBinding(
         { ...binding, mapping_closure_hash: hash("f") },
         { package: packageDocument, snapshot },
       ),
-    ).rejects.toThrow("RESOLVED_CONTEXT_TEXT2SQL_BINDING_MISMATCH");
+    ).rejects.toThrow("SEMANTIC_CONTEXT_TEXT2SQL_BINDING_MISMATCH");
   });
 });

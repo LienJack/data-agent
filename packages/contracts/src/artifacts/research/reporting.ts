@@ -11,7 +11,7 @@ import {
 } from "./primitives.js";
 import {
   analysisCompletionReceiptRefSchema,
-  analysisPlanRefSchema,
+  analysisProgramRefSchema,
   analysisReportRefSchema,
   atomicClaimRefSchema,
   causalEstimateRefSchema,
@@ -276,7 +276,7 @@ export const reportManifestV3PayloadSchema = z
     artifact_type: z.literal("ReportManifest"),
     protocol_version: z.literal("report-manifest@3.0.0"),
     brief_ref: researchBriefRefSchema,
-    analysis_plan_ref: analysisPlanRefSchema,
+    analysis_program_ref: analysisProgramRefSchema,
     completion_receipt_ref: analysisCompletionReceiptRefSchema,
     sections: z
       .array(analysisReportManifestSectionSchema)

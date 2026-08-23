@@ -16,7 +16,7 @@ export const L2_ARTIFACT_TYPES = [
   "ExecutionReceipt",
   "QueryEvidence",
   "DataProfile",
-  "AnalysisPlan",
+  "AnalysisProgram",
   "DerivedAnalysisEvidence",
   "AnalysisCompletionReceipt",
   "AtomicClaim",

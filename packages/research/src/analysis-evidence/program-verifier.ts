@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import {
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type AnalysisSandboxProgramPayload,
   type ArtifactReference,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   analysisSandboxProgramPayloadSchema,
   artifactReferenceIdentity,
   canonicalizeJson,
@@ -25,7 +25,7 @@ export type ProgramVerification =
   | { ok: true; program: AnalysisSandboxProgramPayload }
   | { ok: false; failures: readonly ProgramVerificationFailure[] };
 
-export async function computeAnalysisProgramHash(
+export async function computeAnalysisSandboxProgramHash(
   program: Omit<AnalysisSandboxProgramPayload, "program_hash">,
 ): Promise<`sha256:${string}`> {
   return sha256ContentHash({
@@ -34,14 +34,14 @@ export async function computeAnalysisProgramHash(
   });
 }
 
-export async function verifyAnalysisProgram(input: {
-  plan: AnalysisPlanPayload;
-  planRef: ArtifactReference;
+export async function verifyAnalysisSandboxProgram(input: {
+  analysisProgram: AnalysisProgramPayload;
+  analysisProgramRef: ArtifactReference;
   program: AnalysisSandboxProgramPayload;
   sourceText: string;
   allowedProfiles: readonly AnalysisSandboxProgramPayload["import_profile"][];
 }): Promise<ProgramVerification> {
-  const parsedPlan = analysisPlanPayloadSchema.safeParse(input.plan);
+  const parsedPlan = analysisProgramPayloadSchema.safeParse(input.analysisProgram);
   const parsedProgram = analysisSandboxProgramPayloadSchema.safeParse(input.program);
   if (!parsedPlan.success || !parsedProgram.success) {
     return { ok: false, failures: ["PROGRAM_SCHEMA_INVALID"] };
@@ -51,7 +51,10 @@ export async function verifyAnalysisProgram(input: {
   const failures: ProgramVerificationFailure[] = [];
   const node = plan.nodes.find(({ node_id }) => node_id === program.node_id);
   if (!node) failures.push("PROGRAM_NODE_NOT_FOUND");
-  if (artifactReferenceIdentity(program.plan_ref) !== artifactReferenceIdentity(input.planRef)) {
+  if (
+    artifactReferenceIdentity(program.analysis_program_ref) !==
+    artifactReferenceIdentity(input.analysisProgramRef)
+  ) {
     failures.push("PROGRAM_PLAN_BINDING_MISMATCH");
   }
   const sourceHash = `sha256:${createHash("sha256").update(input.sourceText, "utf8").digest("hex")}`;
@@ -101,7 +104,7 @@ export async function verifyAnalysisProgram(input: {
     }
   }
   const { program_hash: observedHash, ...material } = program;
-  if ((await computeAnalysisProgramHash(material)) !== observedHash) {
+  if ((await computeAnalysisSandboxProgramHash(material)) !== observedHash) {
     failures.push("PROGRAM_HASH_MISMATCH");
   }
   return failures.length === 0 ? { ok: true, program } : { ok: false, failures };

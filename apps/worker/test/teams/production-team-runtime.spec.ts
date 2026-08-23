@@ -390,7 +390,7 @@ describe("Production Team runtime", () => {
       runtime.execute({
         lease: lease(),
         profiles: await profiles(),
-        resolved_context_ref: {
+        semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
           receipt_id: id(61),
@@ -475,7 +475,7 @@ describe("Production Team runtime", () => {
       runtime.execute({
         lease: lease(),
         profiles: await profiles(),
-        resolved_context_ref: {
+        semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
           receipt_id: id(61),
@@ -598,7 +598,7 @@ describe("Production Team runtime", () => {
           ["report-writing-agent", report],
         ]),
         dispatch_plan: plan,
-        resolved_context_ref: {
+        semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
           receipt_id: id(61),
@@ -671,7 +671,7 @@ describe("Production Team runtime", () => {
         profiles: new Map([["semantic-management-agent", semantic]]),
         dispatch_plan: null,
         admitted_delegations: [delegation],
-        resolved_context_ref: {
+        semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
           receipt_id: id(61),

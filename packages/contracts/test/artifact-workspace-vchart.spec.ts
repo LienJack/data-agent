@@ -58,7 +58,7 @@ async function document(chartType: "LINE" | "BAR" | "PIE" = "LINE") {
     provenance: {
       transform_version: "query-evidence-chart@1.0.0",
       dataset_hash: hash("0"),
-      resolved_context: {
+      semantic_context: {
         package_id: id(6),
         package_hash: hash("b"),
         receipt_id: id(7),
@@ -70,7 +70,7 @@ async function document(chartType: "LINE" | "BAR" | "PIE" = "LINE") {
 }
 
 describe("Artifact Workspace V2 chart", () => {
-  it("seals dataset, source and resolved-context identity", async () => {
+  it("seals dataset, source and semantic-context identity", async () => {
     const sealed = await document();
     await expect(verifyArtifactWorkspaceChartDocumentV2(sealed)).resolves.toEqual(sealed);
     expect(sealed.document_ref.content_hash).not.toBe(hash("0"));
@@ -81,7 +81,7 @@ describe("Artifact Workspace V2 chart", () => {
         ...sealed,
         provenance: {
           ...sealed.provenance,
-          resolved_context: { ...sealed.provenance.resolved_context, receipt_hash: hash("d") },
+          semantic_context: { ...sealed.provenance.semantic_context, receipt_hash: hash("d") },
         },
       }),
     ).rejects.toThrow("ARTIFACT_WORKSPACE_CHART_DOCUMENT_HASH_MISMATCH");

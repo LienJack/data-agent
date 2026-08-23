@@ -96,7 +96,7 @@ describe("ArtifactWorkspace", () => {
       provenance: {
         transform_version: "query-evidence-chart@1.0.0",
         dataset_hash: `sha256:${"7".repeat(64)}`,
-        resolved_context: {
+        semantic_context: {
           package_id: "00000000-0000-4000-8000-000000007490",
           package_hash: `sha256:${"6".repeat(64)}`,
           receipt_id: "00000000-0000-4000-8000-000000007491",
@@ -135,7 +135,7 @@ describe("ArtifactWorkspace", () => {
     expect(markup).toContain("订单量");
     expect(markup).toContain(preview.provenance.dataset_hash);
     expect(markup).toContain(evidenceRef.content_hash);
-    expect(markup).toContain(preview.provenance.resolved_context.receipt_hash);
+    expect(markup).toContain(preview.provenance.semantic_context.receipt_hash);
     expect(markup).toContain("治理来源");
     expect(markup).toContain("单位：单");
     expect(markup).toContain("1–2 / 2");

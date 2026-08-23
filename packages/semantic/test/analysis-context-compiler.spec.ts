@@ -1,8 +1,8 @@
 import {
   type ArtifactReference,
   buildOntologyAnalysisSourceBinding,
-  buildResolvedContextPackage,
-  buildResolvedContextReceipt,
+  buildSemanticContextPackage,
+  buildSemanticContextReceipt,
   computeSemanticSourceBundleHash,
   SEMANTIC_SOURCE_BUNDLE_VERSION,
   type SemanticSourceBundle,
@@ -267,8 +267,8 @@ async function fixture(bundle = sourceBundle()) {
     max_context_tokens: 4_096,
     max_resource_bindings: 64,
   };
-  const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@2.0.0",
+  const packageDocument = await buildSemanticContextPackage({
+    schema_version: "semantic-context-package@1.0.0",
     scope,
     semantic_domain: "commerce",
     question_hash: hash("1"),
@@ -287,7 +287,7 @@ async function fixture(bundle = sourceBundle()) {
     provider: "deepseek",
     authority_snapshot_hash: hash("a"),
     route_decision: {
-      schema_version: "resolved-context-route-decision@2.0.0",
+      schema_version: "semantic-context-route-decision@1.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: "gross_revenue",
@@ -347,8 +347,8 @@ async function fixture(bundle = sourceBundle()) {
       object_path: ["semantic", "analysis"],
     },
   });
-  const contextReceipt = await buildResolvedContextReceipt({
-    schema_version: "resolved-context-receipt@1.0.0",
+  const contextReceipt = await buildSemanticContextReceipt({
+    schema_version: "semantic-context-receipt@1.0.0",
     receipt_id: id(40),
     scope,
     consumer: "RUN",
@@ -410,7 +410,7 @@ describe("analysis context compiler", () => {
     expect(first.metrics[0]?.analysis_capabilities).toContain("CONTRIBUTION");
   });
 
-  it("rejects release/hash drift and metrics outside Resolved Context", async () => {
+  it("rejects release/hash drift and metrics outside Semantic Context", async () => {
     const { input } = await fixture();
     await expect(
       compileAnalysisContext({

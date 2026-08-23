@@ -1,5 +1,5 @@
 import {
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type AnalysisSandboxProgramPayload,
   type ArtifactReference,
   artifactReferenceIdentity,
@@ -8,7 +8,7 @@ import {
   type PythonSandboxReceiptV1,
   sha256ContentHash,
 } from "@data-agent/contracts";
-import { verifyAnalysisProgram } from "./program-verifier.js";
+import { verifyAnalysisSandboxProgram } from "./program-verifier.js";
 import { verifyAnalysisResult } from "./result-oracles.js";
 
 export type DerivationFailure =
@@ -51,7 +51,7 @@ export async function computeAnalysisDerivationHash(
 }
 
 export async function verifyAnalysisDerivation(input: {
-  plan: AnalysisPlanPayload;
+  plan: AnalysisProgramPayload;
   planRef: ArtifactReference;
   program: AnalysisSandboxProgramPayload;
   programRef: ArtifactReference;
@@ -68,7 +68,13 @@ export async function verifyAnalysisDerivation(input: {
   if (!evidenceParse.success) return { ok: false, failures: ["EVIDENCE_SCHEMA_INVALID"] };
   const evidence = evidenceParse.data;
   const failures: DerivationFailure[] = [];
-  const programVerdict = await verifyAnalysisProgram(input);
+  const programVerdict = await verifyAnalysisSandboxProgram({
+    analysisProgram: input.plan,
+    analysisProgramRef: input.planRef,
+    program: input.program,
+    sourceText: input.sourceText,
+    allowedProfiles: input.allowedProfiles,
+  });
   if (!programVerdict.ok) failures.push("PROGRAM_VERIFICATION_FAILED");
   if (
     artifactReferenceIdentity(evidence.sandbox_program_ref) !==
@@ -84,8 +90,8 @@ export async function verifyAnalysisDerivation(input: {
   }
   if (
     input.program.node_id !== evidence.node_id ||
-    artifactReferenceIdentity(input.program.plan_ref) !==
-      artifactReferenceIdentity(evidence.plan_ref)
+    artifactReferenceIdentity(input.program.analysis_program_ref) !==
+      artifactReferenceIdentity(evidence.analysis_program_ref)
   ) {
     failures.push("PLAN_NODE_MISMATCH");
   }

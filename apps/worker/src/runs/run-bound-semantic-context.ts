@@ -1,27 +1,29 @@
 import type {
   ContextReceiptBinding,
   EffectiveRunConfigReceiptCandidate,
-  PortResult,
-  ResolvedContextCommitResult,
-  ResolvedContextRequest,
   RunWorkLease,
-} from "@data-agent/contracts";
-import { buildResolvedContextRequest } from "@data-agent/contracts";
-import type { RunBoundResolvedContextResolver } from "./run-execution-context.js";
+} from "@data-agent/contracts/runs";
+import type {
+  SemanticContextCommitResult,
+  SemanticContextRequest,
+} from "@data-agent/contracts/context";
+import { buildSemanticContextRequest } from "@data-agent/contracts/context";
+import type { PortResult } from "@data-agent/contracts/ports";
+import type { RunBoundSemanticContextResolver } from "./run-execution-context.js";
 
-export interface ResolvedContextServicePort {
+export interface SemanticContextServicePort {
   resolve(
     capability: unknown,
-    request: ResolvedContextRequest,
-  ): Promise<PortResult<ResolvedContextCommitResult>>;
+    request: SemanticContextRequest,
+  ): Promise<PortResult<SemanticContextCommitResult>>;
 }
 
-export function createRunBoundResolvedContextResolver(
+export function createRunBoundSemanticContextResolver(
   options: Readonly<{
     capability: unknown;
-    service: ResolvedContextServicePort;
+    service: SemanticContextServicePort;
   }>,
-): RunBoundResolvedContextResolver {
+): RunBoundSemanticContextResolver {
   return Object.freeze({
     async resolve(input: {
       readonly lease: RunWorkLease;
@@ -42,15 +44,15 @@ export function createRunBoundResolvedContextResolver(
         return {
           ok: false as const,
           error: {
-            code: "RESOLVED_CONTEXT_WORKER_AUTHORITY_MISMATCH",
+            code: "SEMANTIC_CONTEXT_WORKER_AUTHORITY_MISMATCH",
             message:
-              "Resolved Context requires the exact active Worker config and context receipt.",
+              "Semantic Context requires the exact active Worker config and context receipt.",
             retryable: false,
           },
         };
       }
-      const request = await buildResolvedContextRequest({
-        schema_version: "resolved-context-request@1.0.0",
+      const request = await buildSemanticContextRequest({
+        schema_version: "semantic-context-request@1.0.0",
         request_id: context.receipt_id,
         scope: lease.scope,
         basis: {

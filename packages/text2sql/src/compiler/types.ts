@@ -1,8 +1,8 @@
 import type {
-  ResolvedContextText2SqlBinding,
+  SemanticContextText2SqlBinding,
   SqlArtifactPayloadContract,
 } from "@data-agent/contracts";
-import type { AuthoritativeResolvedContextText2SqlBinding } from "@data-agent/contracts/server";
+import type { AuthoritativeSemanticContextText2SqlBinding } from "@data-agent/contracts/server";
 import type { GroundingPackageDraft } from "../grounding/types.js";
 import type { AuthoritativeLogicalPlanBinding } from "./internal.js";
 
@@ -13,7 +13,7 @@ export const POSTGRESQL_COMPILATION_REASON_CODES = [
   "POSTGRESQL_COMPILER_INPUT_INVALID",
   "POSTGRESQL_COMPILER_LOGICAL_PLAN_AUTHORITY_REQUIRED",
   "POSTGRESQL_COMPILER_LOGICAL_PLAN_VALIDATION_REQUIRED",
-  "POSTGRESQL_COMPILER_RESOLVED_CONTEXT_AUTHORITY_REQUIRED",
+  "POSTGRESQL_COMPILER_SEMANTIC_CONTEXT_AUTHORITY_REQUIRED",
   "POSTGRESQL_COMPILER_GROUNDING_HASH_MISMATCH",
   "POSTGRESQL_COMPILER_POLICY_BINDING_INVALID",
   "POSTGRESQL_COMPILER_POLICY_BINDING_UNSUPPORTED",
@@ -163,7 +163,7 @@ export type PostgresqlCompilationProof = Readonly<{
   policy_binding_hash: `sha256:${string}`;
   policy_binding_authority: "LOGICAL_PLAN_REF_AND_SERVER_PRINCIPAL_CAPABILITY";
   query_hash: SqlArtifactPayloadContract["query_hash"];
-  resolved_context_binding_hash?: ResolvedContextText2SqlBinding["binding_hash"];
+  semantic_context_binding_hash?: SemanticContextText2SqlBinding["binding_hash"];
   identifier_authority: "GROUNDING_PHYSICAL_NAME_ONLY";
   alias_strategy: "VALIDATED_LOGICAL_OUTPUT_ALIAS_QUOTED";
   parameterization: "POSTGRESQL_POSITIONAL_ALL_VALUES";
@@ -217,7 +217,7 @@ export function registerPostgresqlCompilation(
 export interface PostgresqlCompilerInput {
   readonly logical_plan_binding: AuthoritativeLogicalPlanBinding;
   readonly grounding: GroundingPackageDraft;
-  readonly resolved_context_binding?: AuthoritativeResolvedContextText2SqlBinding;
+  readonly semantic_context_binding?: AuthoritativeSemanticContextText2SqlBinding;
 }
 
 export interface SqlDialectCompilerInput extends PostgresqlCompilerInput {

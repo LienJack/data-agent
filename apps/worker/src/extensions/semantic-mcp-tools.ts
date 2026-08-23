@@ -26,10 +26,10 @@ export interface SemanticMcpToolServices {
       SemanticMcpToolCall,
       { tool_name: "query" }
     >["arguments"]["query_contract_ref"];
-    readonly resolved_context_binding: Extract<
+    readonly semantic_context_binding: Extract<
       SemanticMcpToolCall,
       { tool_name: "query" }
-    >["arguments"]["resolved_context_binding"];
+    >["arguments"]["semantic_context_binding"];
   }) => Promise<PortResult<unknown>>;
 }
 
@@ -66,7 +66,7 @@ export function createSemanticMcpToolExecutor(services: SemanticMcpToolServices)
           return services.query({
             capability,
             query_contract_ref: call.data.arguments.query_contract_ref,
-            resolved_context_binding: call.data.arguments.resolved_context_binding,
+            semantic_context_binding: call.data.arguments.semantic_context_binding,
           });
       }
     },

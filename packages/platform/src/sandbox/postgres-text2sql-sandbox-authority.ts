@@ -15,7 +15,7 @@ import {
   contentHashSchema,
   deepFreeze,
   l2ArtifactDocumentSchema,
-  type ResolvedContextText2SqlBinding,
+  type SemanticContextText2SqlBinding,
   sandboxAuthorityRevalidationSchema,
   sandboxExecutionRequestSchema,
   sandboxResultSchema,
@@ -220,10 +220,10 @@ export interface PostgresText2SqlSandboxAuthorityOptions {
    * descriptor hash. They are deliberately not derived from request SQL.
    */
   readonly snapshot_relation_manifests: readonly unknown[];
-  readonly require_resolved_context_binding?: boolean;
-  readonly resolved_context_binding_authority?: Readonly<{
+  readonly require_semantic_context_binding?: boolean;
+  readonly semantic_context_binding_authority?: Readonly<{
     verify(input: {
-      readonly binding: ResolvedContextText2SqlBinding;
+      readonly binding: SemanticContextText2SqlBinding;
       readonly scope: AppCapability["scope"];
       readonly run_id: string;
       readonly sql_artifact_ref: ArtifactReference;
@@ -717,21 +717,21 @@ export function createPostgresText2SqlSandboxAuthority(
     >,
   ) {
     return inAuthorityTransaction(async ({ client }) => {
-      const binding = input.request.payload.resolved_context_binding;
+      const binding = input.request.payload.semantic_context_binding;
       if (
         binding !== undefined &&
-        input.sql_artifact.resolved_context_binding_hash !== binding.binding_hash
+        input.sql_artifact.semantic_context_binding_hash !== binding.binding_hash
       ) {
         throw new SandboxExecutionAuthorityError(
-          "SqlArtifact and Resolved Context binding hashes do not match.",
+          "SqlArtifact and Semantic Context binding hashes do not match.",
           "SANDBOX_AUTHORITY_REJECTED",
         );
       }
       const bindingVerified =
         binding === undefined
           ? false
-          : options.resolved_context_binding_authority
-            ? await options.resolved_context_binding_authority.verify({
+          : options.semantic_context_binding_authority
+            ? await options.semantic_context_binding_authority.verify({
                 binding,
                 scope: input.request.scope,
                 run_id: input.request.run_id,
@@ -740,13 +740,13 @@ export function createPostgresText2SqlSandboxAuthority(
             : (
                 await queryAuthority<{ readonly value: unknown }>(
                   client,
-                  "select app_data_agent.verify_resolved_context_text2sql_binding($1::jsonb,$2::uuid) as value",
+                  "select app_data_agent.verify_semantic_context_text2sql_binding($1::jsonb,$2::uuid) as value",
                   [JSON.stringify(binding), input.request.run_id],
                 )
               ).rows[0]?.value === true;
-      if ((options.require_resolved_context_binding || binding !== undefined) && !bindingVerified) {
+      if ((options.require_semantic_context_binding || binding !== undefined) && !bindingVerified) {
         throw new SandboxExecutionAuthorityError(
-          "Resolved Context Text2SQL binding is not authoritative for this execution.",
+          "Semantic Context Text2SQL binding is not authoritative for this execution.",
           "SANDBOX_AUTHORITY_REJECTED",
         );
       }

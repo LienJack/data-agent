@@ -1,10 +1,10 @@
 import { deepFreeze, sha256ContentHash } from "../common/index.js";
 import {
-  type ResolvedContextAuthoritySnapshot,
-  type ResolvedContextPackage,
-  verifyResolvedContextAuthoritySnapshot,
-  verifyResolvedContextPackage,
-} from "../context/resolved-context-package.js";
+  type SemanticContextAuthoritySnapshot,
+  type SemanticContextPackage,
+  verifySemanticContextAuthoritySnapshot,
+  verifySemanticContextPackage,
+} from "../context/semantic-context-package.js";
 import {
   type ArtifactReference,
   artifactReferenceFor,
@@ -29,35 +29,35 @@ import {
   semanticReleaseDocumentSchema,
 } from "./grounding-authority.js";
 import {
-  type ResolvedContextText2SqlBinding,
-  resolvedContextText2SqlBindingDraftSchema,
-  resolvedContextText2SqlBindingSchema,
+  type SemanticContextText2SqlBinding,
+  semanticContextText2SqlBindingDraftSchema,
+  semanticContextText2SqlBindingSchema,
 } from "./text2sql-primitives.js";
 
-type ResolvedContextText2SqlBindingInput = Readonly<{
-  package: ResolvedContextPackage;
-  snapshot: ResolvedContextAuthoritySnapshot;
+type SemanticContextText2SqlBindingInput = Readonly<{
+  package: SemanticContextPackage;
+  snapshot: SemanticContextAuthoritySnapshot;
 }>;
 
-declare const authoritativeResolvedContextText2SqlBindingBrand: unique symbol;
-const authoritativeResolvedContextText2SqlBindings = new WeakSet<object>();
+declare const authoritativeSemanticContextText2SqlBindingBrand: unique symbol;
+const authoritativeSemanticContextText2SqlBindings = new WeakSet<object>();
 
-export type AuthoritativeResolvedContextText2SqlBinding = ResolvedContextText2SqlBinding &
-  Readonly<{ readonly [authoritativeResolvedContextText2SqlBindingBrand]: true }>;
+export type AuthoritativeSemanticContextText2SqlBinding = SemanticContextText2SqlBinding &
+  Readonly<{ readonly [authoritativeSemanticContextText2SqlBindingBrand]: true }>;
 
-export function isAuthoritativeResolvedContextText2SqlBinding(
+export function isAuthoritativeSemanticContextText2SqlBinding(
   input: unknown,
-): input is AuthoritativeResolvedContextText2SqlBinding {
+): input is AuthoritativeSemanticContextText2SqlBinding {
   return (
     typeof input === "object" &&
     input !== null &&
-    authoritativeResolvedContextText2SqlBindings.has(input)
+    authoritativeSemanticContextText2SqlBindings.has(input)
   );
 }
 
 function sameScope(
-  left: ResolvedContextPackage["scope"],
-  right: ResolvedContextAuthoritySnapshot["scope"],
+  left: SemanticContextPackage["scope"],
+  right: SemanticContextAuthoritySnapshot["scope"],
 ): boolean {
   return (
     left.app_id === right.app_id &&
@@ -66,18 +66,18 @@ function sameScope(
   );
 }
 
-export async function buildResolvedContextText2SqlBinding(
-  input: ResolvedContextText2SqlBindingInput,
-): Promise<AuthoritativeResolvedContextText2SqlBinding> {
+export async function buildSemanticContextText2SqlBinding(
+  input: SemanticContextText2SqlBindingInput,
+): Promise<AuthoritativeSemanticContextText2SqlBinding> {
   const [contextPackage, snapshot] = await Promise.all([
-    verifyResolvedContextPackage(input.package),
-    verifyResolvedContextAuthoritySnapshot(input.snapshot),
+    verifySemanticContextPackage(input.package),
+    verifySemanticContextAuthoritySnapshot(input.snapshot),
   ]);
   if (
     !["READY", "PARTIAL"].includes(contextPackage.route_decision.state) ||
     !["METRIC", "ONTOLOGY_TEXT2SQL"].includes(contextPackage.route_decision.route)
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_ROUTE_NOT_QUERYABLE");
+    throw new TypeError("SEMANTIC_CONTEXT_ROUTE_NOT_QUERYABLE");
   }
   if (
     !sameScope(contextPackage.scope, snapshot.scope) ||
@@ -85,7 +85,7 @@ export async function buildResolvedContextText2SqlBinding(
     contextPackage.semantic_release.resource_hash !== snapshot.semantic_release.resource_hash ||
     contextPackage.schema_snapshot.resource_hash !== snapshot.schema_snapshot.resource_hash
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_TEXT2SQL_AUTHORITY_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_TEXT2SQL_AUTHORITY_MISMATCH");
   }
 
   const route = contextPackage.route_decision.route;
@@ -98,7 +98,7 @@ export async function buildResolvedContextText2SqlBinding(
             ({ metric_id }) => metric_id === selectedMetricId,
           );
           if (!metric || metric.mapping_refs.length === 0) {
-            throw new TypeError("RESOLVED_CONTEXT_METRIC_MAPPING_NOT_QUERYABLE");
+            throw new TypeError("SEMANTIC_CONTEXT_METRIC_MAPPING_NOT_QUERYABLE");
           }
           return [
             {
@@ -114,7 +114,7 @@ export async function buildResolvedContextText2SqlBinding(
             ({ object_id }) => object_id === objectId,
           );
           if (!object?.queryable || object.mapping_refs.length === 0) {
-            throw new TypeError("RESOLVED_CONTEXT_ONTOLOGY_MAPPING_NOT_QUERYABLE");
+            throw new TypeError("SEMANTIC_CONTEXT_ONTOLOGY_MAPPING_NOT_QUERYABLE");
           }
           return {
             authority_kind: "ONTOLOGY" as const,
@@ -135,10 +135,10 @@ export async function buildResolvedContextText2SqlBinding(
     mapping_authorities: mappingAuthorities,
     semantic_projection_hashes: snapshot.projection_hashes,
   });
-  const draft = resolvedContextText2SqlBindingDraftSchema.parse({
-    schema_version: "resolved-context-text2sql-binding@1.0.0",
+  const draft = semanticContextText2SqlBindingDraftSchema.parse({
+    schema_version: "semantic-context-text2sql-binding@1.0.0",
     scope: contextPackage.scope,
-    resolved_context_package_ref: {
+    semantic_context_package_ref: {
       package_id: contextPackage.package_id,
       package_revision: 1,
       package_hash: contextPackage.package_hash,
@@ -154,30 +154,30 @@ export async function buildResolvedContextText2SqlBinding(
     mapping_closure_hash: mappingClosureHash,
   });
   const binding = deepFreeze(
-    resolvedContextText2SqlBindingSchema.parse({
+    semanticContextText2SqlBindingSchema.parse({
       ...draft,
       binding_hash: await sha256ContentHash(draft),
     }),
   );
-  authoritativeResolvedContextText2SqlBindings.add(binding);
-  return binding as AuthoritativeResolvedContextText2SqlBinding;
+  authoritativeSemanticContextText2SqlBindings.add(binding);
+  return binding as AuthoritativeSemanticContextText2SqlBinding;
 }
 
-export async function verifyResolvedContextText2SqlBinding(
+export async function verifySemanticContextText2SqlBinding(
   bindingInput: unknown,
-  authorityInput: ResolvedContextText2SqlBindingInput,
-): Promise<AuthoritativeResolvedContextText2SqlBinding> {
-  const binding = resolvedContextText2SqlBindingSchema.parse(bindingInput);
+  authorityInput: SemanticContextText2SqlBindingInput,
+): Promise<AuthoritativeSemanticContextText2SqlBinding> {
+  const binding = semanticContextText2SqlBindingSchema.parse(bindingInput);
   const { binding_hash: _bindingHash, ...draft } = binding;
-  const expected = await buildResolvedContextText2SqlBinding(authorityInput);
+  const expected = await buildSemanticContextText2SqlBinding(authorityInput);
   if (
     (await sha256ContentHash(draft)) !== binding.binding_hash ||
     binding.binding_hash !== expected.binding_hash
   ) {
-    throw new TypeError("RESOLVED_CONTEXT_TEXT2SQL_BINDING_MISMATCH");
+    throw new TypeError("SEMANTIC_CONTEXT_TEXT2SQL_BINDING_MISMATCH");
   }
-  authoritativeResolvedContextText2SqlBindings.add(binding);
-  return binding as AuthoritativeResolvedContextText2SqlBinding;
+  authoritativeSemanticContextText2SqlBindings.add(binding);
+  return binding as AuthoritativeSemanticContextText2SqlBinding;
 }
 
 // ─── WeakSet brands ───────────────────────────────────────────────────────────

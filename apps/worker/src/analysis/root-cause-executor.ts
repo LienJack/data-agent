@@ -42,7 +42,7 @@ export interface RootCauseArtifactAuthorityPort {
 export interface CausalIdentificationSandboxPort {
   execute(input: {
     readonly context: AnalysisContext;
-    readonly analysis_plan_ref: ArtifactReference;
+    readonly analysis_program_ref: ArtifactReference;
     readonly question: CausalQuestionPayload;
     readonly question_ref: ArtifactReference;
     readonly plan: IdentificationPlanPayload;
@@ -227,7 +227,7 @@ export function createRootCauseExecutor(dependencies: {
       });
       const execution = await dependencies.sandbox.execute({
         context: input.context,
-        analysis_plan_ref: input.plan_ref,
+        analysis_program_ref: input.plan_ref,
         question,
         question_ref: questionRef,
         plan: identificationPlan,
@@ -238,8 +238,8 @@ export function createRootCauseExecutor(dependencies: {
         execution.program.runtime_digest !== attestation.runtime_digest ||
         execution.program.dependency_lock_digest !== attestation.dependency_lock_digest ||
         execution.program_ref.artifact_type !== "SandboxProgram" ||
-        execution.program.plan_ref.artifact_type !== "AnalysisPlan" ||
-        artifactReferenceIdentity(execution.program.plan_ref) !==
+        execution.program.analysis_program_ref.artifact_type !== "AnalysisProgram" ||
+        artifactReferenceIdentity(execution.program.analysis_program_ref) !==
           artifactReferenceIdentity(input.plan_ref) ||
         !exactScope(execution.program_ref, input.plan_ref) ||
         execution.program_ref.content_hash !== (await sha256ContentHash(execution.program))

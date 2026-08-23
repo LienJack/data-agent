@@ -71,6 +71,7 @@ export {
   type SemanticRole,
   type SemanticViewState,
 } from "./semantic-governance-view.js";
+export * from "./semantic-graph-v2.js";
 export * from "./semantic-induction.js";
 export * from "./semantic-lifecycle.js";
 export * from "./semantic-relationship-index.js";

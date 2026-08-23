@@ -1,15 +1,15 @@
 import {
-  type PortResult,
-  type ResolvedContextAuthoritySnapshot,
-  type ResolvedContextCommitCommand,
-  type ResolvedContextCommitResult,
-  type ResolvedContextRequest,
-  resolvedContextAuthoritySnapshotSchema,
-  verifyResolvedContextAuthoritySnapshot,
-  verifyResolvedContextCommitCommand,
-  verifyResolvedContextCommitResult,
-  verifyResolvedContextRequest,
-} from "@data-agent/contracts";
+  type SemanticContextAuthoritySnapshot,
+  type SemanticContextCommitCommand,
+  type SemanticContextCommitResult,
+  type SemanticContextRequest,
+  semanticContextAuthoritySnapshotSchema,
+  verifySemanticContextAuthoritySnapshot,
+  verifySemanticContextCommitCommand,
+  verifySemanticContextCommitResult,
+  verifySemanticContextRequest,
+} from "@data-agent/contracts/context";
+import type { PortResult } from "@data-agent/contracts/ports";
 import {
   PersistenceBoundaryError,
   type SqlPool,
@@ -27,10 +27,10 @@ function mapDatabaseFailure(error: unknown) {
     typeof error === "object" && error !== null && "message" in error
       ? String((error as { message?: unknown }).message)
       : "";
-  if (/^RESOLVED_CONTEXT_[A-Z0-9_]+$/.test(marker)) {
+  if (/^SEMANTIC_CONTEXT_[A-Z0-9_]+$/.test(marker)) {
     return failure(
       marker,
-      "Resolved context authority rejected the request.",
+      "Semantic context authority rejected the request.",
       /STALE$/.test(marker),
     );
   }
@@ -51,14 +51,14 @@ function sameScope(
 function resultValue(rows: readonly Readonly<{ value?: unknown }>[]) {
   if (rows.length !== 1 || rows[0]?.value === undefined) {
     throw new PersistenceBoundaryError(
-      "RESOLVED_CONTEXT_DATABASE_CONTRACT_INVALID",
-      "Resolved context RPC returned no value.",
+      "SEMANTIC_CONTEXT_DATABASE_CONTRACT_INVALID",
+      "Semantic context RPC returned no value.",
     );
   }
   return rows[0].value;
 }
 
-export function createPostgresResolvedContextRegistry(
+export function createPostgresSemanticContextRegistry(
   options: Readonly<{
     pool: SqlPool;
     authorizer: TransactionalCapabilityAuthorizer;
@@ -67,13 +67,13 @@ export function createPostgresResolvedContextRegistry(
   return Object.freeze({
     async loadAuthoritySnapshot(
       capabilityInput: unknown,
-      requestInput: ResolvedContextRequest,
-    ): Promise<PortResult<ResolvedContextAuthoritySnapshot>> {
-      let request: ResolvedContextRequest;
+      requestInput: SemanticContextRequest,
+    ): Promise<PortResult<SemanticContextAuthoritySnapshot>> {
+      let request: SemanticContextRequest;
       try {
-        request = await verifyResolvedContextRequest(requestInput);
+        request = await verifySemanticContextRequest(requestInput);
       } catch {
-        return failure("RESOLVED_CONTEXT_REQUEST_INVALID", "Resolved context request is invalid.");
+        return failure("SEMANTIC_CONTEXT_REQUEST_INVALID", "Semantic context request is invalid.");
       }
       return withAppTransaction(
         options.pool,
@@ -82,38 +82,38 @@ export function createPostgresResolvedContextRegistry(
         {
           access: "READ",
           allowed_roles: ["OWNER", "ANALYST", "VIEWER"],
-          operation_name: "resolved_context.load_authority",
+          operation_name: "semantic_context.load_authority",
           correlation_id: request.request_id,
           map_database_error: mapDatabaseFailure,
         },
         async ({ capability, client }) => {
           if (!sameScope(request.scope, capability.scope)) {
             throw new PersistenceBoundaryError(
-              "RESOLVED_CONTEXT_SCOPE_MISMATCH",
-              "Resolved context scope is denied.",
+              "SEMANTIC_CONTEXT_SCOPE_MISMATCH",
+              "Semantic context scope is denied.",
             );
           }
           const query = await client.query<{ value: unknown }>(
-            "select app_data_agent.load_resolved_context_authority_snapshot($1::jsonb) as value",
+            "select app_data_agent.load_semantic_context_authority_snapshot($1::jsonb) as value",
             [request],
           );
-          const parsed = resolvedContextAuthoritySnapshotSchema.safeParse(resultValue(query.rows));
+          const parsed = semanticContextAuthoritySnapshotSchema.safeParse(resultValue(query.rows));
           if (!parsed.success || !sameScope(parsed.data.scope, request.scope)) {
             throw new PersistenceBoundaryError(
-              "RESOLVED_CONTEXT_DATABASE_CONTRACT_INVALID",
-              "Resolved context snapshot was substituted.",
+              "SEMANTIC_CONTEXT_DATABASE_CONTRACT_INVALID",
+              "Semantic context snapshot was substituted.",
             );
           }
           try {
-            const snapshot = await verifyResolvedContextAuthoritySnapshot(parsed.data);
+            const snapshot = await verifySemanticContextAuthoritySnapshot(parsed.data);
             if ("question" in request && snapshot.question !== request.question) {
               throw new TypeError("question");
             }
             return snapshot;
           } catch {
             throw new PersistenceBoundaryError(
-              "RESOLVED_CONTEXT_DATABASE_CONTRACT_INVALID",
-              "Resolved context snapshot hash is invalid.",
+              "SEMANTIC_CONTEXT_DATABASE_CONTRACT_INVALID",
+              "Semantic context snapshot hash is invalid.",
             );
           }
         },
@@ -122,13 +122,13 @@ export function createPostgresResolvedContextRegistry(
 
     async commit(
       capabilityInput: unknown,
-      commandInput: ResolvedContextCommitCommand,
-    ): Promise<PortResult<ResolvedContextCommitResult>> {
-      let command: ResolvedContextCommitCommand;
+      commandInput: SemanticContextCommitCommand,
+    ): Promise<PortResult<SemanticContextCommitResult>> {
+      let command: SemanticContextCommitCommand;
       try {
-        command = await verifyResolvedContextCommitCommand(commandInput);
+        command = await verifySemanticContextCommitCommand(commandInput);
       } catch {
-        return failure("RESOLVED_CONTEXT_COMMIT_INVALID", "Resolved context commit is invalid.");
+        return failure("SEMANTIC_CONTEXT_COMMIT_INVALID", "Semantic context commit is invalid.");
       }
       return withAppTransaction(
         options.pool,
@@ -137,23 +137,23 @@ export function createPostgresResolvedContextRegistry(
         {
           access: "WRITE",
           allowed_roles: ["OWNER", "ANALYST"],
-          operation_name: "resolved_context.commit",
+          operation_name: "semantic_context.commit",
           correlation_id: command.request.request_id,
           map_database_error: mapDatabaseFailure,
         },
         async ({ capability, client }) => {
           if (!sameScope(command.request.scope, capability.scope)) {
             throw new PersistenceBoundaryError(
-              "RESOLVED_CONTEXT_SCOPE_MISMATCH",
-              "Resolved context scope is denied.",
+              "SEMANTIC_CONTEXT_SCOPE_MISMATCH",
+              "Semantic context scope is denied.",
             );
           }
           const query = await client.query<{ value: unknown }>(
-            "select app_data_agent.commit_resolved_context_package($1::jsonb) as value",
+            "select app_data_agent.commit_semantic_context_package($1::jsonb) as value",
             [command],
           );
           try {
-            const result = await verifyResolvedContextCommitResult(resultValue(query.rows));
+            const result = await verifySemanticContextCommitResult(resultValue(query.rows));
             if (
               result.receipt.request_id !== command.request.request_id ||
               result.receipt.receipt_hash !== command.receipt.receipt_hash ||
@@ -164,8 +164,8 @@ export function createPostgresResolvedContextRegistry(
             return result;
           } catch {
             throw new PersistenceBoundaryError(
-              "RESOLVED_CONTEXT_DATABASE_CONTRACT_INVALID",
-              "Resolved context commit result is invalid.",
+              "SEMANTIC_CONTEXT_DATABASE_CONTRACT_INVALID",
+              "Semantic context commit result is invalid.",
             );
           }
         },
@@ -174,6 +174,6 @@ export function createPostgresResolvedContextRegistry(
   });
 }
 
-export type PostgresResolvedContextRegistry = ReturnType<
-  typeof createPostgresResolvedContextRegistry
+export type PostgresSemanticContextRegistry = ReturnType<
+  typeof createPostgresSemanticContextRegistry
 >;

@@ -15,10 +15,6 @@ export {
   type PostgresRelationshipIndexStore,
 } from "../semantic/postgres-relationship-index.js";
 export {
-  createPostgresResolvedContextRegistry,
-  type PostgresResolvedContextRegistry,
-} from "../semantic/postgres-resolved-context.js";
-export {
   createPostgresSemanticAuthoringStore,
   type PostgresSemanticAuthoringStoreOptions,
 } from "../semantic/postgres-semantic-authoring.js";
@@ -48,6 +44,10 @@ export {
   type SemanticCompileFinishResult,
 } from "../semantic/postgres-semantic-candidate-compile.js";
 export { createPostgresSemanticCandidateRevisionStore } from "../semantic/postgres-semantic-candidate-revision.js";
+export {
+  createPostgresSemanticContextRegistry,
+  type PostgresSemanticContextRegistry,
+} from "../semantic/postgres-semantic-context.js";
 export {
   createPostgresSemanticExplorerReader,
   type PostgresSemanticExplorerReader,

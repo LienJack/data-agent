@@ -104,7 +104,7 @@ describe("U6 Wire Compatibility: Version Matrix", () => {
   const frozenTypes = [
     "ResearchBrief",
     "DataProfile",
-    "AnalysisPlan",
+    "AnalysisProgram",
     "DerivedAnalysisEvidence",
     "AnalysisCompletionReceipt",
     "HypothesisSet",

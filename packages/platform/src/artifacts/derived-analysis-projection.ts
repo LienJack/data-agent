@@ -1,12 +1,12 @@
 import {
   type AnalysisCompletionReceiptPayload,
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV3,
   type ArtifactWorkspaceChartProjectionV3,
   type ArtifactWorkspaceTableProjection,
   analysisCompletionReceiptPayloadSchema,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   artifactReferenceIdentity,
   buildArtifactWorkspaceChartDocumentV3,
   type DerivedAnalysisEvidencePayload,
@@ -181,7 +181,7 @@ export async function buildDerivedAnalysisChartDocument(input: {
   readonly document_ref: ArtifactReference;
   readonly evidence_ref: ArtifactReference;
   readonly evidence: DerivedAnalysisEvidencePayload;
-  readonly resolved_context: DerivedAnalysisProjectionContext;
+  readonly semantic_context: DerivedAnalysisProjectionContext;
   readonly unit?: string | null;
   readonly forecast_table?: ArtifactWorkspaceTableProjection | null;
 }): Promise<ArtifactWorkspaceChartDocumentV3 | null> {
@@ -210,7 +210,7 @@ export async function buildDerivedAnalysisChartDocument(input: {
     provenance: {
       transform_version: "derived-analysis-chart@1.0.0",
       dataset_hash: `sha256:${"0".repeat(64)}`,
-      resolved_context: input.resolved_context,
+      semantic_context: input.semantic_context,
       algorithm_version: evidence.algorithm_version,
       parameter_hash: evidence.parameter_hash,
       input_closure_hash: evidence.input_closure_hash,
@@ -272,8 +272,8 @@ export interface DeterministicAnalysisRootCauseProjection {
  * never event fragments, so refresh and replay have identical output.
  */
 export async function buildDeterministicAnalysisRunProjection(input: {
-  readonly plan_ref: ArtifactReference;
-  readonly plan: AnalysisPlanPayload;
+  readonly analysis_program_ref: ArtifactReference;
+  readonly analysis_program: AnalysisProgramPayload;
   readonly completion_ref: ArtifactReference;
   readonly completion: AnalysisCompletionReceiptPayload;
   readonly evidence: readonly DeterministicAnalysisProjectionEvidence[];
@@ -281,29 +281,31 @@ export async function buildDeterministicAnalysisRunProjection(input: {
   readonly charts?: readonly ArtifactWorkspaceChartDocumentV3[];
   readonly root_cause?: DeterministicAnalysisRootCauseProjection;
 }): Promise<DeterministicAnalysisRunProjection> {
-  const plan = analysisPlanPayloadSchema.parse(input.plan);
+  const analysisProgram = analysisProgramPayloadSchema.parse(input.analysis_program);
   const completion = analysisCompletionReceiptPayloadSchema.parse(input.completion);
   await Promise.all([
-    requirePayloadReference(input.plan_ref, plan, "AnalysisPlan"),
+    requirePayloadReference(input.analysis_program_ref, analysisProgram, "AnalysisProgram"),
     requirePayloadReference(input.completion_ref, completion, "AnalysisCompletionReceipt"),
   ]);
   if (
-    artifactReferenceIdentity(completion.plan_ref) !== artifactReferenceIdentity(input.plan_ref) ||
-    !sameScopeAndRun(input.completion_ref, input.plan_ref)
+    artifactReferenceIdentity(completion.analysis_program_ref) !==
+      artifactReferenceIdentity(input.analysis_program_ref) ||
+    !sameScopeAndRun(input.completion_ref, input.analysis_program_ref)
   ) {
     throw new TypeError("ANALYSIS_RUN_PROJECTION_CLOSURE_INVALID");
   }
 
-  const planNodes = new Map(plan.nodes.map((node) => [node.node_id, node]));
+  const programNodes = new Map(analysisProgram.nodes.map((node) => [node.node_id, node]));
   const evidenceByIdentity = new Map<string, DerivedAnalysisEvidencePayload>();
   for (const item of input.evidence) {
     const evidence = derivedAnalysisEvidencePayloadSchema.parse(item.payload);
     await requirePayloadReference(item.ref, evidence, "DerivedAnalysisEvidence");
-    const node = planNodes.get(evidence.node_id);
+    const node = programNodes.get(evidence.node_id);
     if (
       !node ||
       node.skill_id !== evidence.skill_id ||
-      artifactReferenceIdentity(evidence.plan_ref) !== artifactReferenceIdentity(input.plan_ref) ||
+      artifactReferenceIdentity(evidence.analysis_program_ref) !==
+        artifactReferenceIdentity(input.analysis_program_ref) ||
       !sameScopeAndRun(input.completion_ref, item.ref)
     ) {
       throw new TypeError("ANALYSIS_RUN_PROJECTION_EVIDENCE_INVALID");
@@ -312,7 +314,7 @@ export async function buildDeterministicAnalysisRunProjection(input: {
   }
 
   const nodes = completion.node_results.map((result) => {
-    const node = planNodes.get(result.node_id);
+    const node = programNodes.get(result.node_id);
     if (!node || node.criticality !== result.criticality) {
       throw new TypeError("ANALYSIS_RUN_PROJECTION_NODE_INVALID");
     }
@@ -327,7 +329,10 @@ export async function buildDeterministicAnalysisRunProjection(input: {
       skill_id: node.skill_id,
     };
   });
-  if (nodes.length !== plan.nodes.length || nodes.some(({ node_id }) => !planNodes.has(node_id))) {
+  if (
+    nodes.length !== analysisProgram.nodes.length ||
+    nodes.some(({ node_id }) => !programNodes.has(node_id))
+  ) {
     throw new TypeError("ANALYSIS_RUN_PROJECTION_NODE_CLOSURE_INVALID");
   }
 

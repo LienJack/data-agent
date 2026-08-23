@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { artifactReferenceFor } from "../artifacts/envelope.js";
 import { semanticRelationshipSearchRequestSchema } from "../artifacts/semantic-relationship-index.js";
-import { resolvedContextText2SqlBindingSchema } from "../artifacts/text2sql-primitives.js";
+import { semanticContextText2SqlBindingSchema } from "../artifacts/text2sql-primitives.js";
 import {
   appScopeSchema,
   contentHashSchema,
@@ -328,7 +328,7 @@ export const semanticMcpToolCallSchema = z.discriminatedUnion("tool_name", [
     tool_name: z.literal("query"),
     arguments: z.strictObject({
       query_contract_ref: artifactReferenceFor("QueryContract"),
-      resolved_context_binding: resolvedContextText2SqlBindingSchema,
+      semantic_context_binding: semanticContextText2SqlBindingSchema,
     }),
   }),
 ]);

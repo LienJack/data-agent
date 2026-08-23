@@ -1,24 +1,24 @@
 import { createHash } from "node:crypto";
 import {
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type ArtifactReference,
-  analysisPlanPayloadSchema,
+  analysisProgramPayloadSchema,
   buildAnalysisContext,
   researchBriefV3PayloadSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  admitAnalysisProgram,
-  admitAnalysisProgramRepair,
-  computeAnalysisPlanHash,
-  createAnalysisPlanExecutor,
-  createDefaultAnalysisPlan,
+  admitAnalysisSandboxProgram,
+  admitAnalysisSandboxProgramRepair,
+  computeAnalysisProgramHash,
+  createAnalysisProgramExecutor,
+  createDefaultAnalysisProgram,
   createServerOwnedAnalysisSkillCatalog,
   createServerOwnedAnalysisSkillCatalogFromReleaseManifest,
   DEFAULT_ANALYSIS_SKILL_CATALOG,
   executeControlledTabularImport,
-  gateAnalysisPlan,
+  gateAnalysisProgram,
   selectEvidenceGroundedChartStory,
 } from "../../src/analysis/index.js";
 
@@ -56,7 +56,7 @@ async function fixture() {
   const context = await buildAnalysisContext({
     schema_version: "analysis-context@1.0.0",
     scope,
-    resolved_context_binding: {
+    semantic_context_binding: {
       package_id: id(11),
       package_hash: hash("a"),
       receipt_id: id(12),
@@ -137,11 +137,12 @@ async function fixture() {
     brief_hash: hash("e"),
   });
   const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("trend-change@1");
-  const material: Omit<AnalysisPlanPayload, "plan_hash"> = {
-    artifact_type: "AnalysisPlan",
-    protocol_version: "analysis-plan@1.0.0",
+  const material: Omit<AnalysisProgramPayload, "program_hash"> = {
+    artifact_type: "AnalysisProgram",
+    protocol_version: "analysis-program@1.0.0",
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
+    semantic_context_package_hash: context.semantic_context_binding.package_hash,
     nodes: [
       {
         node_id: "trend",
@@ -166,12 +167,12 @@ async function fixture() {
       max_group_rows: 100,
       max_elapsed_ms: 60_000,
     },
-    planner_kind: "MODEL_CANDIDATE_HOST_VERIFIED",
-    planner_version: "analysis-planner@1.0.0",
+    compiler_kind: "MODEL_CANDIDATE_HOST_VERIFIED",
+    compiler_version: "analysis-program-compiler@1.0.0",
   };
-  const plan = analysisPlanPayloadSchema.parse({
+  const plan = analysisProgramPayloadSchema.parse({
     ...material,
-    plan_hash: await computeAnalysisPlanHash(material),
+    program_hash: await computeAnalysisProgramHash(material),
   });
   return { brief, briefRef, context, plan };
 }
@@ -229,13 +230,13 @@ describe("deterministic analysis worker runtime", () => {
         },
       ],
     });
-    const plan = await createDefaultAnalysisPlan({
+    const plan = await createDefaultAnalysisProgram({
       brief: base.brief,
       brief_ref: base.briefRef,
       context,
       time_window: window,
     });
-    expect(plan.planner_kind).toBe("DETERMINISTIC_DEFAULT");
+    expect(plan.compiler_kind).toBe("DETERMINISTIC_DEFAULT");
     expect(
       plan.nodes.flatMap(({ metric_refs }) => metric_refs.map(({ node_id }) => node_id)),
     ).toEqual(plan.nodes.map(() => "gross_revenue"));
@@ -248,14 +249,14 @@ describe("deterministic analysis worker runtime", () => {
     const base = await fixture();
     const baseNode = base.plan.nodes[0];
     if (!baseNode) throw new TypeError("missing plan node fixture");
-    const variants: readonly [Partial<AnalysisPlanPayload>, string][] = [
+    const variants: readonly [Partial<AnalysisProgramPayload>, string][] = [
       [
         {
           nodes: [{ ...baseNode, dimension_refs: ["customer_secret"] }],
         },
-        "ANALYSIS_PLAN_DIMENSION_NOT_APPROVED",
+        "ANALYSIS_PROGRAM_DIMENSION_NOT_APPROVED",
       ],
-      [{ budget: { ...base.plan.budget, max_steps: 9 } }, "ANALYSIS_PLAN_BUDGET_EXCEEDED"],
+      [{ budget: { ...base.plan.budget, max_steps: 9 } }, "ANALYSIS_PROGRAM_BUDGET_EXCEEDED"],
       [
         {
           nodes: [
@@ -269,18 +270,18 @@ describe("deterministic analysis worker runtime", () => {
             },
           ],
         },
-        "ANALYSIS_PLAN_TIME_WINDOW_NOT_APPROVED",
+        "ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED",
       ],
-      [{ brief_ref: { ...base.plan.brief_ref, run_id: id(999) } }, "ANALYSIS_PLAN_SCOPE_MISMATCH"],
+      [{ brief_ref: { ...base.plan.brief_ref, run_id: id(999) } }, "ANALYSIS_PROGRAM_SCOPE_MISMATCH"],
     ];
     for (const [change, expected] of variants) {
-      const { plan_hash: _hash, ...changedMaterial } = { ...base.plan, ...change };
+      const { program_hash: _hash, ...changedMaterial } = { ...base.plan, ...change };
       const changed = {
         ...changedMaterial,
-        plan_hash: await computeAnalysisPlanHash(changedMaterial),
+        program_hash: await computeAnalysisProgramHash(changedMaterial),
       };
-      const verdict = await gateAnalysisPlan({
-        plan: changed,
+      const verdict = await gateAnalysisProgram({
+        program: changed,
         brief: base.brief,
         brief_ref: base.briefRef,
         context: base.context,
@@ -291,15 +292,15 @@ describe("deterministic analysis worker runtime", () => {
 
   it("admits one repair only and rejects imports or reference authority expansion", async () => {
     const base = await fixture();
-    const planRef = reference("AnalysisPlan", 20);
+    const planRef = reference("AnalysisProgram", 20);
     const source = "import math\ndef main(sdk):\n    return math.fsum([1.0])\n";
     const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
     const sourceRef = reference("SensitiveExecutionArtifact", 21, sourceHash);
     const queryRef = reference("QueryEvidence", 22);
     const inputRef = reference("SandboxResult", 23);
-    const admitted = await admitAnalysisProgram({
-      plan: base.plan,
-      plan_ref: planRef,
+    const admitted = await admitAnalysisSandboxProgram({
+      analysis_program: base.plan,
+      analysis_program_ref: planRef,
       node_id: "trend",
       source_text: source,
       source_text_ref: sourceRef,
@@ -315,30 +316,30 @@ describe("deterministic analysis worker runtime", () => {
       `sha256:${createHash("sha256").update(repaired).digest("hex")}`,
     );
     await expect(
-      admitAnalysisProgramRepair({
+      admitAnalysisSandboxProgramRepair({
         attempt: 1,
         previous_program: admitted.program,
         previous_source_text: source,
         repaired_source_text: repaired,
         repaired_source_text_ref: repairedRef,
-        plan: base.plan,
-        plan_ref: planRef,
+        analysis_program: base.plan,
+        analysis_program_ref: planRef,
       }),
     ).resolves.toMatchObject({ ok: true });
     await expect(
-      admitAnalysisProgramRepair({
+      admitAnalysisSandboxProgramRepair({
         attempt: 2,
         previous_program: admitted.program,
         previous_source_text: source,
         repaired_source_text: repaired,
         repaired_source_text_ref: repairedRef,
-        plan: base.plan,
-        plan_ref: planRef,
+        analysis_program: base.plan,
+        analysis_program_ref: planRef,
       }),
     ).resolves.toEqual({ ok: false, failure: "PROGRAM_REPAIR_LIMIT_EXCEEDED" });
     const expanded = `${repaired}\nimport pandas\n`;
     await expect(
-      admitAnalysisProgramRepair({
+      admitAnalysisSandboxProgramRepair({
         attempt: 1,
         previous_program: admitted.program,
         previous_source_text: source,
@@ -348,8 +349,8 @@ describe("deterministic analysis worker runtime", () => {
           25,
           `sha256:${createHash("sha256").update(expanded).digest("hex")}`,
         ),
-        plan: base.plan,
-        plan_ref: planRef,
+        analysis_program: base.plan,
+        analysis_program_ref: planRef,
       }),
     ).resolves.toEqual({ ok: false, failure: "PROGRAM_REPAIR_EXPANDED_AUTHORITY" });
   });
@@ -457,14 +458,14 @@ describe("deterministic analysis worker runtime", () => {
     "stale fence on a %s node produces %s and commits no receipt, result, or derived evidence",
     async (criticality, expectedTerminal) => {
       const base = await fixture();
-      const { plan_hash: _planHash, ...planMaterial } = base.plan;
+      const { program_hash: _planHash, ...planMaterial } = base.plan;
       const changedMaterial = {
         ...planMaterial,
         nodes: base.plan.nodes.map((node) => ({ ...node, criticality })),
       };
-      const plan = analysisPlanPayloadSchema.parse({
+      const plan = analysisProgramPayloadSchema.parse({
         ...changedMaterial,
-        plan_hash: await computeAnalysisPlanHash(changedMaterial),
+        program_hash: await computeAnalysisProgramHash(changedMaterial),
       });
       const l2: string[] = [];
       const system: string[] = [];
@@ -476,7 +477,7 @@ describe("deterministic analysis worker runtime", () => {
       );
       const queryRef = reference("QueryEvidence", 51);
       const inputRef = reference("SandboxResult", 52);
-      const executor = createAnalysisPlanExecutor({
+      const executor = createAnalysisProgramExecutor({
         artifacts: {
           async commitL2({ payload }) {
             const artifactType = payload.artifact_type;
@@ -576,12 +577,12 @@ describe("deterministic analysis worker runtime", () => {
         brief: base.brief,
         brief_ref: base.briefRef,
         context: base.context,
-        plan,
+        program: plan,
       });
       expect(result.completion.terminal).toBe(expectedTerminal);
       expect(result.completion.limitation_codes).toContain("SANDBOX_FENCE_STALE");
       expect(system).toEqual(["SandboxProgram"]);
-      expect(l2).toEqual(["AnalysisPlan", "AnalysisCompletionReceipt"]);
+      expect(l2).toEqual(["AnalysisProgram", "AnalysisCompletionReceipt"]);
     },
   );
 });

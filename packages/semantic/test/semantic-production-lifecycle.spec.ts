@@ -28,7 +28,24 @@ async function assertion(input: {
     target_kind: "FORMULA",
     canonical_key: input.key,
     applicability_scope: { datasource: "falcon_db_24" },
-    assertion_payload: input.payload,
+    assertion_payload: {
+      formula: {
+        node_id: input.key,
+        node_version: 1,
+        name: input.key,
+        aliases: [],
+        owner_ref: "falcon24-semantic-owner",
+        lifecycle: "ACTIVE",
+        evidence_refs: [],
+        tags: [],
+        node_type: "FORMULA",
+        formula_type: "other",
+        return_type: "numeric",
+        language: "semantic-ast",
+        language_version: "semantic-formula-ast@1",
+        expression: { kind: "LITERAL", value: JSON.stringify(input.payload) },
+      },
+    },
     source_kind: inferred ? "AGENT_INFERENCE" : "CURRENT_SEMANTIC_FACT",
     evidence: [
       {
@@ -67,8 +84,24 @@ describe("semantic production lifecycle", () => {
       base_release: { release_id: id(21), generation: 4, release_hash: hash("f") },
       revision: 1,
       assertions: [derived, base],
+      competency_cases: [
+        {
+          schema_version: "semantic-competency-case@1.0.0",
+          case_id: "falcon24-revenue-trend",
+          question: "复盘订单收入与客单价",
+          required_assertion_keys: ["average_order_value", "order_revenue"],
+          required_target_kinds: ["FORMULA"],
+          required_relationship_paths: [["average_order_value", "order_revenue"]],
+          expected_analysis_capabilities: ["trend-change@1"],
+        },
+      ],
     });
-    expect(changeSet.validation).toMatchObject({ outcome: "PASS", evidence_closed: true });
+    expect(changeSet.validation).toMatchObject({
+      outcome: "PASS",
+      evidence_closed: true,
+      shapes_valid: true,
+      competency_cases_passed: true,
+    });
     const canonicalKeys = changeSet.assertions.map(
       ({ identity_hash, assertion_hash }) => `${identity_hash}\u0000${assertion_hash}`,
     );
@@ -79,7 +112,11 @@ describe("semantic production lifecycle", () => {
   });
 
   it("blocks conflicting assertions and missing premise closure", async () => {
-    const left = await assertion({ id: 30, key: "damage_rate", payload: { denominator: "received" } });
+    const left = await assertion({
+      id: 30,
+      key: "damage_rate",
+      payload: { denominator: "received" },
+    });
     const right = await assertion({
       id: 31,
       key: "damage_rate",

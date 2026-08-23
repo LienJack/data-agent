@@ -21,7 +21,7 @@ import {
   createPostgresProviderInvocationStore,
   createPostgresQaAdminAuditRepository,
   createPostgresResolutionTraceProjector,
-  createPostgresResolvedContextRegistry,
+  createPostgresSemanticContextRegistry,
   createPostgresSemanticPortabilityRepository,
   createPostgresSessionRecovery,
   createPostgresSkillRegistry,
@@ -31,7 +31,7 @@ import {
   createWorkspaceContentNamespace,
   type ResolvedSessionPrincipal,
 } from "@data-agent/platform";
-import { createResolvedContextService } from "@data-agent/semantic/runtime-context";
+import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import { headers } from "next/headers";
 import pg from "pg";
 import { z } from "zod";
@@ -63,7 +63,7 @@ interface WorkspaceIdentityRuntimeState {
   skillRegistry?: ReturnType<typeof createPostgresSkillRegistry>;
   sessionRecovery?: ReturnType<typeof createPostgresSessionRecovery>;
   resolutionTraceProjector?: ReturnType<typeof createPostgresResolutionTraceProjector>;
-  resolvedContextService?: ReturnType<typeof createResolvedContextService>;
+  semanticContextService?: ReturnType<typeof createSemanticContextService>;
   workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
   agentProfileRegistry?: ReturnType<typeof createPostgresAgentProfileRegistry>;
   agentDispatchAuthority?: ReturnType<typeof createPostgresAgentDispatchAuthority>;
@@ -249,15 +249,15 @@ export function getResolutionTraceProjector() {
   return runtime.resolutionTraceProjector;
 }
 
-export function getResolvedContextService() {
+export function getSemanticContextService() {
   const runtime = state();
-  runtime.resolvedContextService ??= createResolvedContextService({
-    authority: createPostgresResolvedContextRegistry({
+  runtime.semanticContextService ??= createSemanticContextService({
+    authority: createPostgresSemanticContextRegistry({
       pool: getWorkspaceSqlPool(),
       authorizer: getWorkspaceAuthority().authorizer,
     }),
   });
-  return runtime.resolvedContextService;
+  return runtime.semanticContextService;
 }
 
 export function getWorkspaceContent() {

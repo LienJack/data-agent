@@ -204,9 +204,9 @@ export function createProductionTeamTools(
             await dependencies.semantic_relationships.read({
               capability: dependencies.capability,
               scope: factoryInput.lease.scope,
-              semantic_domain: factoryInput.resolved_context_ref.semantic_domain,
-              release_id: factoryInput.resolved_context_ref.semantic_release_id,
-              release_hash: factoryInput.resolved_context_ref.semantic_release_hash,
+              semantic_domain: factoryInput.semantic_context_ref.semantic_domain,
+              release_id: factoryInput.semantic_context_ref.semantic_release_id,
+              release_hash: factoryInput.semantic_context_ref.semantic_release_hash,
             }),
           );
           const nodes = new Map(
@@ -342,11 +342,11 @@ export function createProductionTeamTools(
               content_hash: `sha256:${"0".repeat(64)}`,
             },
             evidence,
-            resolved_context: {
-              package_id: factoryInput.resolved_context_ref.package_id,
-              package_hash: factoryInput.resolved_context_ref.package_hash,
-              receipt_id: factoryInput.resolved_context_ref.receipt_id,
-              receipt_hash: factoryInput.resolved_context_ref.receipt_hash,
+            semantic_context: {
+              package_id: factoryInput.semantic_context_ref.package_id,
+              package_hash: factoryInput.semantic_context_ref.package_hash,
+              receipt_id: factoryInput.semantic_context_ref.receipt_id,
+              receipt_hash: factoryInput.semantic_context_ref.receipt_hash,
             },
             unit: "单",
           });

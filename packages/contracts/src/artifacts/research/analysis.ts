@@ -19,7 +19,7 @@ import {
 } from "./primitives.js";
 import { claimScalarValueSchema } from "./proof.js";
 import {
-  analysisPlanRefSchema,
+  analysisProgramRefSchema,
   causalEstimateRefSchema,
   causalQuestionRefSchema,
   derivedAnalysisEvidenceRefSchema,
@@ -83,7 +83,7 @@ export const ANALYSIS_REASON_CODES = [
   "CAUSAL_POLICY_NOT_PUBLISHED",
   "CAUSAL_ROLE_INCOMPLETE",
   "ANALYSIS_BUDGET_EXCEEDED",
-  "ANALYSIS_PLAN_CYCLE",
+  "ANALYSIS_PROGRAM_CYCLE",
   "ANALYSIS_NODE_DEPENDENCY_FAILED",
   "NON_ADDITIVE_CONTRIBUTION_NOT_LOWERABLE",
   "CONCENTRATION_NOT_APPLICABLE",
@@ -256,7 +256,7 @@ export const researchBriefV3PayloadSchema = z
     }
   });
 
-const analysisPlanNodeSchema = z.strictObject({
+const analysisProgramNodeSchema = z.strictObject({
   node_id: identifierSchema,
   skill_id: analysisSkillIdSchema,
   metric_refs: z.array(metricRefSchema).max(ANALYSIS_LIMITS.max_metrics_per_node),
@@ -283,8 +283,8 @@ const analysisPlanNodeSchema = z.strictObject({
   criticality: z.enum(["CRITICAL", "OPTIONAL"]),
 });
 
-function validateAnalysisPlanGraph(
-  nodes: readonly z.infer<typeof analysisPlanNodeSchema>[],
+function validateAnalysisProgramGraph(
+  nodes: readonly z.infer<typeof analysisProgramNodeSchema>[],
   ctx: z.RefinementCtx,
 ): void {
   const byId = new Map(nodes.map((node) => [node.node_id, node]));
@@ -300,7 +300,7 @@ function validateAnalysisPlanGraph(
       if (!byId.has(dependency) || dependency === node.node_id) {
         ctx.addIssue({
           code: "custom",
-          message: "AnalysisPlan 依赖必须命中同图其他节点。",
+          message: "AnalysisProgram 依赖必须命中同图其他节点。",
           path: ["nodes", index, "dependency_node_ids"],
         });
       }
@@ -308,7 +308,7 @@ function validateAnalysisPlanGraph(
   }
   const visit = (nodeId: string): void => {
     if (visiting.has(nodeId)) {
-      ctx.addIssue({ code: "custom", message: "AnalysisPlan DAG 不能成环。", path: ["nodes"] });
+      ctx.addIssue({ code: "custom", message: "AnalysisProgram DAG 不能成环。", path: ["nodes"] });
       return;
     }
     if (visited.has(nodeId)) return;
@@ -328,13 +328,14 @@ function validateAnalysisPlanGraph(
   for (const nodeId of byId.keys()) visit(nodeId);
 }
 
-export const analysisPlanPayloadSchema = z
+export const analysisProgramPayloadSchema = z
   .strictObject({
-    artifact_type: z.literal("AnalysisPlan"),
-    protocol_version: z.literal("analysis-plan@1.0.0"),
+    artifact_type: z.literal("AnalysisProgram"),
+    protocol_version: z.literal("analysis-program@1.0.0"),
     brief_ref: researchBriefRefSchema,
     analysis_context_hash: contentHashSchema,
-    nodes: z.array(analysisPlanNodeSchema).min(1).max(ANALYSIS_LIMITS.max_plan_nodes),
+    semantic_context_package_hash: contentHashSchema,
+    nodes: z.array(analysisProgramNodeSchema).min(1).max(ANALYSIS_LIMITS.max_plan_nodes),
     budget: z.strictObject({
       max_steps: positiveIntSchema.max(64),
       max_sql_executions: nonNegativeIntSchema.max(16),
@@ -343,14 +344,14 @@ export const analysisPlanPayloadSchema = z
       max_group_rows: positiveIntSchema.max(ANALYSIS_LIMITS.max_groups),
       max_elapsed_ms: positiveIntSchema.max(600_000),
     }),
-    planner_kind: z.enum(["DETERMINISTIC_DEFAULT", "MODEL_CANDIDATE_HOST_VERIFIED"]),
-    planner_version: versionIdentifierSchema,
-    plan_hash: contentHashSchema,
+    compiler_kind: z.enum(["DETERMINISTIC_DEFAULT", "MODEL_CANDIDATE_HOST_VERIFIED"]),
+    compiler_version: versionIdentifierSchema,
+    program_hash: contentHashSchema,
   })
-  .superRefine((plan, ctx) => {
-    addUniqueIssues(plan.nodes, ({ node_id }) => node_id, ctx, ["nodes"], "node_id 必须唯一。");
-    validateAnalysisPlanGraph(plan.nodes, ctx);
-    for (const [index, node] of plan.nodes.entries()) {
+  .superRefine((program, ctx) => {
+    addUniqueIssues(program.nodes, ({ node_id }) => node_id, ctx, ["nodes"], "node_id 必须唯一。");
+    validateAnalysisProgramGraph(program.nodes, ctx);
+    for (const [index, node] of program.nodes.entries()) {
       if (node.execution_mode === "MODEL_GENERATED" && node.output_contract === null) {
         ctx.addIssue({
           code: "custom",
@@ -365,7 +366,7 @@ export const analysisSandboxProgramPayloadSchema = z
   .strictObject({
     artifact_type: z.literal("SandboxProgram"),
     protocol_version: z.literal("analysis-sandbox-program@1.0.0"),
-    plan_ref: analysisPlanRefSchema,
+    analysis_program_ref: analysisProgramRefSchema,
     node_id: identifierSchema,
     language: z.literal("PYTHON_3_12"),
     entrypoint: z.literal("main"),
@@ -507,7 +508,7 @@ export const derivedAnalysisEvidencePayloadSchema = z
   .strictObject({
     artifact_type: z.literal("DerivedAnalysisEvidence"),
     protocol_version: z.literal("derived-analysis-evidence@1.0.0"),
-    plan_ref: analysisPlanRefSchema,
+    analysis_program_ref: analysisProgramRefSchema,
     node_id: identifierSchema,
     skill_id: analysisSkillIdSchema,
     algorithm_version: versionIdentifierSchema,
@@ -565,7 +566,7 @@ export const analysisCompletionReceiptPayloadSchema = z
   .strictObject({
     artifact_type: z.literal("AnalysisCompletionReceipt"),
     protocol_version: z.literal("analysis-completion@1.0.0"),
-    plan_ref: analysisPlanRefSchema,
+    analysis_program_ref: analysisProgramRefSchema,
     node_results: z
       .array(
         z.strictObject({
@@ -674,7 +675,7 @@ export const rootCauseDiscoveryCandidatePayloadSchema = z
   .strictObject({
     artifact_type: z.literal("DiscoveryCandidate"),
     protocol_version: z.literal("root-cause-discovery@1.0.0"),
-    plan_ref: analysisPlanRefSchema,
+    analysis_program_ref: analysisProgramRefSchema,
     analysis_context_hash: contentHashSchema,
     source_evidence_refs: uniqueReferences(
       z.union([queryEvidenceRefSchema, derivedAnalysisEvidenceRefSchema]),
@@ -1125,7 +1126,7 @@ export type AnalysisReasonCode = z.infer<typeof analysisReasonCodeSchema>;
 export type AnalysisDisclosureCode = z.infer<typeof analysisDisclosureCodeSchema>;
 export type DataProfilePayload = z.infer<typeof dataProfilePayloadSchema>;
 export type ResearchBriefV3Payload = z.infer<typeof researchBriefV3PayloadSchema>;
-export type AnalysisPlanPayload = z.infer<typeof analysisPlanPayloadSchema>;
+export type AnalysisProgramPayload = z.infer<typeof analysisProgramPayloadSchema>;
 export type AnalysisSandboxProgramPayload = z.infer<typeof analysisSandboxProgramPayloadSchema>;
 export type DerivedAnalysisEvidencePayload = z.infer<typeof derivedAnalysisEvidencePayloadSchema>;
 export type AnalysisCompletionReceiptPayload = z.infer<

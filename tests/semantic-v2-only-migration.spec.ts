@@ -17,7 +17,7 @@ describe("10704 Semantic V2-only retirement", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010706");
+    expect(inventory.frontier).toBe("20260725010708");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-retire-v1-authority.sql.inc",

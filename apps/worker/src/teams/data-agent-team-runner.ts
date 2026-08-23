@@ -26,7 +26,7 @@ export interface DataAgentProductTeamRuntimePort {
     >;
     readonly dispatch_plan?: AgentDispatchPlan | null;
     readonly admitted_delegations?: readonly AdmittedSubagentDelegation[];
-    readonly resolved_context_ref: Readonly<{
+    readonly semantic_context_ref: Readonly<{
       package_id: string;
       package_hash: string;
       receipt_id: string;

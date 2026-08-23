@@ -23,7 +23,7 @@ import {
   sha256ContentHash,
   verifyAnalysisContext,
 } from "@data-agent/contracts";
-import { computeAnalysisProgramHash } from "./program-verifier.js";
+import { computeAnalysisSandboxProgramHash } from "./program-verifier.js";
 import { computeRootCauseCandidateHash, computeRootCauseReceiptHash } from "./root-cause.js";
 
 function exact(left: ArtifactReference, right: ArtifactReference) {
@@ -365,12 +365,12 @@ export async function createIdentificationCertificate(input: {
     question.question_hash === (await computeCausalQuestionHash(questionMaterial)) &&
     plan.plan_hash === (await computeIdentificationPlanHash(planMaterial)) &&
     estimate.estimate_hash === (await computeCausalEstimateHash(estimateMaterial)) &&
-    program.program_hash === (await computeAnalysisProgramHash(programMaterial)) &&
+    program.program_hash === (await computeAnalysisSandboxProgramHash(programMaterial)) &&
     exact(plan.causal_question_ref, input.question_ref) &&
     exact(estimate.causal_question_ref, input.question_ref) &&
     exact(estimate.identification_plan_ref, input.plan_ref) &&
     exact(plan.discovery_receipt_ref, input.receipt_ref) &&
-    sameRun(program.plan_ref, input.plan_ref);
+    sameRun(program.analysis_program_ref, input.plan_ref);
   const frontierPass =
     inputClosurePass &&
     plan.frontier.analysis_context_hash === context.context_hash &&

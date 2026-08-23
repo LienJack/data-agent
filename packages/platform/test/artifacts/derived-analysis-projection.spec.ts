@@ -1,6 +1,6 @@
 import {
   type AnalysisCompletionReceiptPayload,
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type ArtifactReference,
   type DerivedAnalysisEvidencePayload,
   sha256ContentHash,
@@ -33,11 +33,12 @@ function ref<const T extends ArtifactReference["artifact_type"]>(
 }
 
 async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
-  const plan: AnalysisPlanPayload = {
-    artifact_type: "AnalysisPlan",
-    protocol_version: "analysis-plan@1.0.0",
+  const plan: AnalysisProgramPayload = {
+    artifact_type: "AnalysisProgram",
+    protocol_version: "analysis-program@1.0.0",
     brief_ref: ref("ResearchBrief", 4),
     analysis_context_hash: hash("a"),
+    semantic_context_package_hash: hash("0"),
     nodes: [
       {
         node_id: "trend",
@@ -67,15 +68,15 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
       max_group_rows: 10,
       max_elapsed_ms: 1_000,
     },
-    planner_kind: "DETERMINISTIC_DEFAULT",
-    planner_version: "planner-v1",
-    plan_hash: hash("b"),
+    compiler_kind: "DETERMINISTIC_DEFAULT",
+    compiler_version: "planner-v1",
+    program_hash: hash("b"),
   };
-  const planRef = ref("AnalysisPlan", 5, await sha256ContentHash(plan));
+  const planRef = ref("AnalysisProgram", 5, await sha256ContentHash(plan));
   const evidence: DerivedAnalysisEvidencePayload = {
     artifact_type: "DerivedAnalysisEvidence",
     protocol_version: "derived-analysis-evidence@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     node_id: "trend",
     skill_id: "trend-change@1",
     algorithm_version: "trend-v1",
@@ -122,7 +123,7 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
   const completion: AnalysisCompletionReceiptPayload = {
     artifact_type: "AnalysisCompletionReceipt",
     protocol_version: "analysis-completion@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     node_results: [
       {
         node_id: "trend",
@@ -161,7 +162,7 @@ describe("Derived analysis projection", () => {
       document_ref: ref("ArtifactWorkspaceDocument", 12),
       evidence_ref: input.evidenceRef,
       evidence: input.evidence,
-      resolved_context: {
+      semantic_context: {
         package_id: id(13),
         package_hash: hash("3"),
         receipt_id: id(14),
@@ -201,7 +202,7 @@ describe("Derived analysis projection", () => {
       document_ref: ref("ArtifactWorkspaceDocument", 15),
       evidence_ref: contribution.evidenceRef,
       evidence: contribution.evidence,
-      resolved_context: {
+      semantic_context: {
         package_id: id(13),
         package_hash: hash("3"),
         receipt_id: id(14),
@@ -230,7 +231,7 @@ describe("Derived analysis projection", () => {
         document_ref: ref("ArtifactWorkspaceDocument", 16),
         evidence_ref: forecast.evidenceRef,
         evidence: forecast.evidence,
-        resolved_context: {
+        semantic_context: {
           package_id: id(13),
           package_hash: hash("3"),
           receipt_id: id(14),
@@ -243,8 +244,8 @@ describe("Derived analysis projection", () => {
   it("builds a replay-stable public run projection and rejects uncommitted evidence", async () => {
     const input = await fixture();
     const projectionInput = {
-      plan_ref: input.planRef,
-      plan: input.plan,
+      analysis_program_ref: input.planRef,
+      analysis_program: input.plan,
       completion_ref: input.completionRef,
       completion: input.completion,
       evidence: [{ ref: input.evidenceRef, payload: input.evidence }],

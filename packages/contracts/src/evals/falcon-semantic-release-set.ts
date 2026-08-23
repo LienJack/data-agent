@@ -360,7 +360,7 @@ const falconSemanticAccuracySummaryInputSchema = z.strictObject({
   source_commit: z.string().regex(/^[0-9a-f]{40}$/u),
   corpus_ref: publicReferenceSchema,
   release_ref: publicReferenceSchema,
-  route_contract_version: z.literal("resolved-context-route-decision@2.0.0"),
+  route_contract_version: z.literal("semantic-context-route-decision@1.0.0"),
   b0_exact: falconSemanticB0LaneSchema,
   b1_lexical: falconSemanticB1LaneSchema,
   b2_governed_retrieval: z.strictObject({

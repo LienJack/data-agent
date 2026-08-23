@@ -21,9 +21,9 @@ describe("Context Preview workbench", () => {
       new URL("../src/components/semantic/studio/context-preview-workbench.tsx", import.meta.url),
       "utf8",
     );
-    expect(source).toContain("/context/preview");
+    expect(source).toContain("/semantic/context/preview");
     expect(source).toContain("JSON.stringify({ question: normalizedQuestion })");
-    expect(source).toContain("resolvedContextPreviewResultSchema.parse(payload.data)");
+    expect(source).toContain("semanticContextPreviewResultSchema.parse(payload.data)");
     expect(source).not.toMatch(/raw_prompt|reasoning_content|secret_ref/i);
   });
 });

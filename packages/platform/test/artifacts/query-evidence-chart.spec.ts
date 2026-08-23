@@ -51,7 +51,7 @@ const documentRef = {
   content_hash: hash("0"),
 };
 
-const resolvedContext = {
+const semanticContext = {
   package_id: id(7),
   package_hash: hash("a"),
   receipt_id: id(8),
@@ -64,7 +64,7 @@ describe("QueryEvidence chart projection", () => {
       intent: "TREND",
       document_ref: documentRef,
       evidence: await evidence(),
-      resolved_context: resolvedContext,
+      semantic_context: semanticContext,
       unit: "单",
     });
     expect(chart?.projection.table.rows).toEqual([
@@ -90,7 +90,7 @@ describe("QueryEvidence chart projection", () => {
         intent: "TREND",
         document_ref: documentRef,
         evidence: await evidence([{ month: "2026-01", order_count: 137 }]),
-        resolved_context: resolvedContext,
+        semantic_context: semanticContext,
       }),
     ).resolves.toBeNull();
     await expect(
@@ -101,7 +101,7 @@ describe("QueryEvidence chart projection", () => {
           { month: "A", order_count: -1 },
           { month: "B", order_count: 1 },
         ]),
-        resolved_context: resolvedContext,
+        semantic_context: semanticContext,
       }),
     ).resolves.toBeNull();
     await expect(
@@ -112,7 +112,7 @@ describe("QueryEvidence chart projection", () => {
           { month: "A", order_count: null },
           { month: "B", order_count: 1 },
         ]),
-        resolved_context: resolvedContext,
+        semantic_context: semanticContext,
       }),
     ).resolves.toBeNull();
   });
@@ -128,7 +128,7 @@ describe("QueryEvidence chart projection", () => {
         { month: "B", order_count: 21 },
         { month: "A", order_count: 34 },
       ]),
-      resolved_context: resolvedContext,
+      semantic_context: semanticContext,
     });
     expect(chart?.projection.chart_type).toBe(chartType);
     expect(chart?.projection.table.rows[0]).toMatchObject({ month: "A", order_count: 34 });
@@ -139,7 +139,7 @@ describe("QueryEvidence chart projection", () => {
       intent: "TREND",
       document_ref: documentRef,
       evidence: await evidence(),
-      resolved_context: resolvedContext,
+      semantic_context: semanticContext,
     });
     if (!chart) throw new Error("expected chart");
     await expect(

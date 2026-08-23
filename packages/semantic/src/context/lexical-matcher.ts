@@ -1,12 +1,12 @@
 import {
   normalizeSemanticLexicalPhrase,
-  type ResolvedContextAuthoritySnapshot,
-  type ResolvedContextClarification,
+  type SemanticContextAuthoritySnapshot,
+  type SemanticContextClarification,
   type SemanticLexicalEntry,
   semanticLexicalEntryKey,
   semanticLexicalMatchRank,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/context";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 
 function phraseOccurs(normalizedQuestion: string, normalizedPhrase: string): boolean {
   if ([...normalizedPhrase].some((character) => (character.codePointAt(0) ?? 0) > 0x7f)) {
@@ -30,11 +30,11 @@ function compareEntries(left: SemanticLexicalEntry, right: SemanticLexicalEntry)
 
 export interface SemanticLexicalResolution {
   readonly matches: readonly SemanticLexicalEntry[];
-  readonly clarifications: readonly ResolvedContextClarification[];
+  readonly clarifications: readonly SemanticContextClarification[];
 }
 
 export async function resolvePublishedLexicon(
-  snapshot: ResolvedContextAuthoritySnapshot,
+  snapshot: SemanticContextAuthoritySnapshot,
 ): Promise<SemanticLexicalResolution> {
   const normalizedQuestion = normalizeSemanticLexicalPhrase(snapshot.question);
   const matching = snapshot.published_lexicon.filter((entry) =>
@@ -68,7 +68,7 @@ export async function resolvePublishedLexicon(
         match_kind: entry.match_kind,
         matched_phrase: entry.phrase,
         lexical_evidence_hash: entry.evidence_hash,
-      } satisfies ResolvedContextClarification;
+      } satisfies SemanticContextClarification;
     }),
   );
   return Object.freeze({

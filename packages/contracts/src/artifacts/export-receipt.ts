@@ -145,7 +145,7 @@ export const artifactWorkspaceProjectionSchema = z
     }
   });
 
-const artifactWorkspaceResolvedContextIdentitySchema = z.strictObject({
+const artifactWorkspaceSemanticContextIdentitySchema = z.strictObject({
   package_id: immutableIdSchema,
   package_hash: contentHashSchema,
   receipt_id: immutableIdSchema,
@@ -257,7 +257,7 @@ export const artifactWorkspaceChartProjectionV2Schema = z
 const artifactWorkspaceChartProvenanceV2Schema = z.strictObject({
   transform_version: z.literal(QUERY_EVIDENCE_CHART_TRANSFORM_VERSION),
   dataset_hash: contentHashSchema,
-  resolved_context: artifactWorkspaceResolvedContextIdentitySchema,
+  semantic_context: artifactWorkspaceSemanticContextIdentitySchema,
 });
 
 const artifactWorkspaceChartDocumentV2ObjectSchema = z
@@ -441,7 +441,7 @@ export const artifactWorkspaceChartProjectionV3Schema = z
 const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
   transform_version: z.literal(DERIVED_ANALYSIS_CHART_TRANSFORM_VERSION),
   dataset_hash: contentHashSchema,
-  resolved_context: artifactWorkspaceResolvedContextIdentitySchema,
+  semantic_context: artifactWorkspaceSemanticContextIdentitySchema,
   algorithm_version: z.string().min(1).max(128),
   parameter_hash: contentHashSchema,
   input_closure_hash: contentHashSchema,

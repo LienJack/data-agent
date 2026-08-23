@@ -586,7 +586,7 @@ export function createPostgresResearchAuthority(
       const parsed = researchArtifactCommitInputSchema.safeParse(input);
       const analysisTypes = new Set([
         "DataProfile",
-        "AnalysisPlan",
+        "AnalysisProgram",
         "DerivedAnalysisEvidence",
         "AnalysisCompletionReceipt",
       ]);

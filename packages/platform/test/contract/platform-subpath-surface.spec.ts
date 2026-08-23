@@ -53,8 +53,8 @@ describe("platform package responsibility subpaths", () => {
     expect(sandbox.createPostgresReadOnlyBenchmarkExecutor).toBe(
       platform.createPostgresReadOnlyBenchmarkExecutor,
     );
-    expect(semanticPostgres.createPostgresResolvedContextRegistry).toBe(
-      platform.createPostgresResolvedContextRegistry,
+    expect(semanticPostgres.createPostgresSemanticContextRegistry).toBe(
+      platform.createPostgresSemanticContextRegistry,
     );
     expect(storage.createPostgresWorkspaceFiles).toBe(platform.createPostgresWorkspaceFiles);
     expect(tenancy.createPostgresCapabilityAuthority).toBe(

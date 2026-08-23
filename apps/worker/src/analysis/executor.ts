@@ -1,11 +1,11 @@
 import {
   type AnalysisCompletionReceiptPayload,
   type AnalysisContext,
-  type AnalysisPlanPayload,
+  type AnalysisProgramPayload,
   type AnalysisReasonCode,
   type ArtifactReference,
   analysisCompletionReceiptPayloadSchema,
-  analysisPlanRefSchema,
+  analysisProgramRefSchema,
   analysisResultSchema,
   artifactReferenceIdentity,
   type DerivedAnalysisEvidencePayload,
@@ -24,8 +24,11 @@ import {
   verifyAnalysisResult,
 } from "@data-agent/research";
 import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
-import { gateAnalysisPlan } from "./plan-gate.js";
-import { admitAnalysisProgram, admitAnalysisProgramRepair } from "./program-admission.js";
+import {
+  admitAnalysisSandboxProgram,
+  admitAnalysisSandboxProgramRepair,
+} from "./program-admission.js";
+import { gateAnalysisProgram } from "./program-gate.js";
 import {
   type AnalysisFenceGuard,
   type AnalysisOutputReferenceFactory,
@@ -35,7 +38,7 @@ import {
 } from "./sandbox-executor.js";
 import { type AnalysisSkillCatalog, DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
 
-type PlanNode = AnalysisPlanPayload["nodes"][number];
+type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 
 export interface AnalysisArtifactCommitPort {
   commitL2(input: {
@@ -43,7 +46,7 @@ export interface AnalysisArtifactCommitPort {
     readonly principal_id: string;
     readonly idempotency_key: string;
     readonly payload:
-      | AnalysisPlanPayload
+      | AnalysisProgramPayload
       | DerivedAnalysisEvidencePayload
       | AnalysisCompletionReceiptPayload;
   }): Promise<ArtifactReference>;
@@ -61,8 +64,8 @@ export interface AnalysisArtifactCommitPort {
 export interface GovernedAnalysisQueryPort {
   execute(input: {
     readonly lease: RunWorkLease;
-    readonly plan_ref: ArtifactReference;
-    readonly node: PlanNode;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node: AnalysisProgramNode;
     readonly idempotency_key: string;
     readonly max_rows: number;
     readonly timeout_ms: number;
@@ -72,14 +75,14 @@ export interface GovernedAnalysisQueryPort {
 export interface AnalysisProgramSourcePort {
   load(input: {
     readonly lease: RunWorkLease;
-    readonly plan_ref: ArtifactReference;
-    readonly node: PlanNode;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node: AnalysisProgramNode;
     readonly standard_program: string | null;
   }): Promise<{ readonly source_text: string; readonly source_text_ref: ArtifactReference }>;
   repair?(input: {
     readonly lease: RunWorkLease;
-    readonly plan_ref: ArtifactReference;
-    readonly node: PlanNode;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node: AnalysisProgramNode;
     readonly previous_source_text: string;
     readonly failure_code: string;
     readonly attempt: 1;
@@ -97,7 +100,7 @@ export interface AnalysisOracleExpectation {
 
 export interface AnalysisOraclePort {
   expect(input: {
-    readonly node: PlanNode;
+    readonly node: AnalysisProgramNode;
     readonly governed_inputs: readonly GovernedPythonInput[];
     readonly source_text: string;
   }): Promise<AnalysisOracleExpectation>;
@@ -126,7 +129,7 @@ export interface AnalysisExecutorDependencies {
 }
 
 export interface AnalysisExecutionResult {
-  readonly plan_ref: ArtifactReference;
+  readonly analysis_program_ref: ArtifactReference;
   readonly completion_ref: ArtifactReference;
   readonly completion: AnalysisCompletionReceiptPayload;
   readonly evidence_refs: readonly ArtifactReference[];
@@ -140,17 +143,17 @@ class BudgetLedger {
   #groupRows = 0;
 
   constructor(
-    readonly plan: AnalysisPlanPayload,
+    readonly analysisProgram: AnalysisProgramPayload,
     readonly startedAtMs: number,
     readonly now: () => Date,
   ) {}
 
   reserveNode(): boolean {
     if (
-      this.#steps + 1 > this.plan.budget.max_steps ||
-      this.#sql + 1 > this.plan.budget.max_sql_executions ||
-      this.#sandbox + 1 > this.plan.budget.max_sandbox_executions ||
-      this.now().getTime() - this.startedAtMs >= this.plan.budget.max_elapsed_ms
+      this.#steps + 1 > this.analysisProgram.budget.max_steps ||
+      this.#sql + 1 > this.analysisProgram.budget.max_sql_executions ||
+      this.#sandbox + 1 > this.analysisProgram.budget.max_sandbox_executions ||
+      this.now().getTime() - this.startedAtMs >= this.analysisProgram.budget.max_elapsed_ms
     ) {
       return false;
     }
@@ -177,8 +180,8 @@ class BudgetLedger {
           ? result.paired_sample_size
           : 0;
     if (
-      this.#seriesRows + seriesRows > this.plan.budget.max_series_rows ||
-      this.#groupRows + groupRows > this.plan.budget.max_group_rows
+      this.#seriesRows + seriesRows > this.analysisProgram.budget.max_series_rows ||
+      this.#groupRows + groupRows > this.analysisProgram.budget.max_group_rows
     ) {
       return false;
     }
@@ -208,7 +211,7 @@ function uniqueReasons(values: readonly AnalysisReasonCode[]): AnalysisReasonCod
 }
 
 function failedNode(
-  node: PlanNode,
+  node: AnalysisProgramNode,
   reason: AnalysisReasonCode,
 ): AnalysisCompletionReceiptPayload["node_results"][number] {
   return {
@@ -221,7 +224,7 @@ function failedNode(
 }
 
 function activationSatisfied(
-  node: PlanNode,
+  node: AnalysisProgramNode,
   outcomes: ReadonlyMap<string, AnalysisOracleExpectation>,
 ): boolean {
   if (node.activation_rule.kind === "ALWAYS") return true;
@@ -231,7 +234,7 @@ function activationSatisfied(
   return source.sample_size >= node.activation_rule.minimum_points;
 }
 
-export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDependencies) {
+export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDependencies) {
   const catalog = dependencies.catalog ?? DEFAULT_ANALYSIS_SKILL_CATALOG;
   const now = dependencies.now ?? (() => new Date());
 
@@ -242,70 +245,73 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
       readonly brief: ResearchBriefV3Payload;
       readonly brief_ref: ArtifactReference;
       readonly context: AnalysisContext;
-      readonly plan: AnalysisPlanPayload;
+      readonly program: AnalysisProgramPayload;
       readonly signal?: AbortSignal;
     }): Promise<AnalysisExecutionResult> {
-      const gate = await gateAnalysisPlan({
-        plan: input.plan,
+      const gate = await gateAnalysisProgram({
+        program: input.program,
         brief: input.brief,
         brief_ref: input.brief_ref,
         context: input.context,
         catalog,
       });
       if (!gate.ok) throw new TypeError(gate.failure);
-      const plan = gate.plan;
-      const committedPlanRef = await dependencies.artifacts.commitL2({
+      const analysisProgram = gate.program;
+      const committedAnalysisProgramRef = await dependencies.artifacts.commitL2({
         lease: input.lease,
         principal_id: input.principal_id,
-        idempotency_key: `analysis-plan:${plan.plan_hash}`,
-        payload: plan,
+        idempotency_key: `analysis-program:${analysisProgram.program_hash}`,
+        payload: analysisProgram,
       });
       if (
-        committedPlanRef.artifact_type !== "AnalysisPlan" ||
-        committedPlanRef.run_id !== input.lease.run_id ||
-        committedPlanRef.app_id !== input.lease.scope.app_id ||
-        committedPlanRef.tenant_id !== input.lease.scope.tenant_id ||
-        committedPlanRef.environment !== input.lease.scope.environment
+        committedAnalysisProgramRef.artifact_type !== "AnalysisProgram" ||
+        committedAnalysisProgramRef.run_id !== input.lease.run_id ||
+        committedAnalysisProgramRef.app_id !== input.lease.scope.app_id ||
+        committedAnalysisProgramRef.tenant_id !== input.lease.scope.tenant_id ||
+        committedAnalysisProgramRef.environment !== input.lease.scope.environment
       ) {
-        throw new TypeError("ANALYSIS_PLAN_COMMIT_CORRELATION_INVALID");
+        throw new TypeError("ANALYSIS_PROGRAM_COMMIT_CORRELATION_INVALID");
       }
-      const planRef = analysisPlanRefSchema.parse(committedPlanRef);
+      const analysisProgramRef = analysisProgramRefSchema.parse(committedAnalysisProgramRef);
 
-      const ledger = new BudgetLedger(plan, now().getTime(), now);
-      const pending = new Map(plan.nodes.map((node) => [node.node_id, node] as const));
+      const ledger = new BudgetLedger(analysisProgram, now().getTime(), now);
+      const pending = new Map(analysisProgram.nodes.map((node) => [node.node_id, node] as const));
       const results = new Map<string, AnalysisCompletionReceiptPayload["node_results"][number]>();
       const expectations = new Map<string, AnalysisOracleExpectation>();
       const evidenceRefs: ArtifactReference[] = [];
 
-      const executeNode = async (node: PlanNode) => {
+      const executeNode = async (node: AnalysisProgramNode) => {
         if (input.signal?.aborted) return failedNode(node, "SANDBOX_EXECUTION_FAILED");
         if (!ledger.reserveNode()) return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
         const descriptor = catalog.resolve(node.skill_id);
         const governedInputs = await dependencies.queries.execute({
           lease: input.lease,
-          plan_ref: planRef,
+          analysis_program_ref: analysisProgramRef,
           node,
-          idempotency_key: `analysis-query:${plan.plan_hash}:${node.node_id}`,
+          idempotency_key: `analysis-query:${analysisProgram.program_hash}:${node.node_id}`,
           max_rows: Math.min(
             descriptor.hard_limits.max_series_points,
             descriptor.hard_limits.max_groups,
-            plan.budget.max_series_rows,
-            plan.budget.max_group_rows,
+            analysisProgram.budget.max_series_rows,
+            analysisProgram.budget.max_group_rows,
           ),
-          timeout_ms: Math.min(descriptor.hard_limits.wall_time_ms, plan.budget.max_elapsed_ms),
+          timeout_ms: Math.min(
+            descriptor.hard_limits.wall_time_ms,
+            analysisProgram.budget.max_elapsed_ms,
+          ),
         });
         if (governedInputs.length === 0) {
           return failedNode(node, "SANDBOX_EXECUTION_FAILED");
         }
         let source = await dependencies.programs.load({
           lease: input.lease,
-          plan_ref: planRef,
+          analysis_program_ref: analysisProgramRef,
           node,
           standard_program: descriptor.standard_program,
         });
-        const admission = await admitAnalysisProgram({
-          plan,
-          plan_ref: planRef,
+        const admission = await admitAnalysisSandboxProgram({
+          analysis_program: analysisProgram,
+          analysis_program_ref: analysisProgramRef,
           node_id: node.node_id,
           source_text: source.source_text,
           source_text_ref: source.source_text_ref,
@@ -327,7 +333,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
         let committedProgramRef = await dependencies.artifacts.commitSystem({
           lease: input.lease,
           principal_id: input.principal_id,
-          idempotency_key: `analysis-program:${plan.plan_hash}:${node.node_id}`,
+          idempotency_key: `analysis-program:${analysisProgram.program_hash}:${node.node_id}`,
           reference: programRef,
           payload: program,
           content: null,
@@ -354,7 +360,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
           attempt_id: input.lease.attempt_id,
           worker_fence: input.lease.worker_fence,
           fence_token: `${input.lease.attempt_id}:${input.lease.worker_fence}`,
-          idempotency_key: `analysis-sandbox:${plan.plan_hash}:${node.node_id}:${program.program_hash}`,
+          idempotency_key: `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}:${program.program_hash}`,
           fence_guard: dependencies.fence_guard,
           output_references: dependencies.references,
           ...(input.signal ? { signal: input.signal } : {}),
@@ -366,20 +372,20 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
         ) {
           const repairedSource = await dependencies.programs.repair({
             lease: input.lease,
-            plan_ref: planRef,
+            analysis_program_ref: analysisProgramRef,
             node,
             previous_source_text: source.source_text,
             failure_code: sandbox.reason_code,
             attempt: 1,
           });
-          const repairedAdmission = await admitAnalysisProgramRepair({
+          const repairedAdmission = await admitAnalysisSandboxProgramRepair({
             attempt: 1,
             previous_program: program,
             previous_source_text: source.source_text,
             repaired_source_text: repairedSource.source_text,
             repaired_source_text_ref: repairedSource.source_text_ref,
-            plan,
-            plan_ref: planRef,
+            analysis_program: analysisProgram,
+            analysis_program_ref: analysisProgramRef,
             catalog,
           });
           if (!repairedAdmission.ok) return failedNode(node, "PROGRAM_POLICY_REJECTED");
@@ -397,7 +403,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
           committedProgramRef = await dependencies.artifacts.commitSystem({
             lease: input.lease,
             principal_id: input.principal_id,
-            idempotency_key: `analysis-program:${plan.plan_hash}:${node.node_id}:repair-1`,
+            idempotency_key: `analysis-program:${analysisProgram.program_hash}:${node.node_id}:repair-1`,
             reference: programRef,
             payload: program,
             content: null,
@@ -424,7 +430,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
             attempt_id: input.lease.attempt_id,
             worker_fence: input.lease.worker_fence,
             fence_token: `${input.lease.attempt_id}:${input.lease.worker_fence}`,
-            idempotency_key: `analysis-sandbox:${plan.plan_hash}:${node.node_id}:${program.program_hash}`,
+            idempotency_key: `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}:${program.program_hash}`,
             fence_guard: dependencies.fence_guard,
             output_references: dependencies.references,
             ...(input.signal ? { signal: input.signal } : {}),
@@ -450,7 +456,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
           const committed = await dependencies.artifacts.commitSystem({
             lease: input.lease,
             principal_id: input.principal_id,
-            idempotency_key: `analysis-result:${plan.plan_hash}:${node.node_id}:${output.name}`,
+            idempotency_key: `analysis-result:${analysisProgram.program_hash}:${node.node_id}:${output.name}`,
             reference: outputRef,
             payload: { name: output.name, type: output.type, bytes: output.bytes },
             content: Buffer.from(output.content_base64, "base64"),
@@ -472,7 +478,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
         const committedReceiptRef = await dependencies.artifacts.commitSystem({
           lease: input.lease,
           principal_id: input.principal_id,
-          idempotency_key: `analysis-receipt:${plan.plan_hash}:${node.node_id}`,
+          idempotency_key: `analysis-receipt:${analysisProgram.program_hash}:${node.node_id}`,
           reference: receiptRef,
           payload: sandbox.outcome.receipt,
           content: null,
@@ -490,7 +496,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
         const evidenceMaterial: Omit<DerivedAnalysisEvidencePayload, "derivation_hash"> = {
           artifact_type: "DerivedAnalysisEvidence",
           protocol_version: "derived-analysis-evidence@1.0.0",
-          plan_ref: planRef,
+          analysis_program_ref: analysisProgramRef,
           node_id: node.node_id,
           skill_id: node.skill_id,
           algorithm_version: descriptor.algorithm_version,
@@ -517,8 +523,8 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
           derivation_hash: await computeAnalysisDerivationHash(evidenceMaterial),
         });
         const verification = await verifyAnalysisDerivation({
-          plan,
-          planRef,
+          plan: analysisProgram,
+          planRef: analysisProgramRef,
           program,
           programRef,
           sourceText: source.source_text,
@@ -535,7 +541,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
           await dependencies.artifacts.commitL2({
             lease: input.lease,
             principal_id: input.principal_id,
-            idempotency_key: `analysis-evidence:${plan.plan_hash}:${node.node_id}`,
+            idempotency_key: `analysis-evidence:${analysisProgram.program_hash}:${node.node_id}`,
             payload: evidence,
           }),
         );
@@ -554,8 +560,8 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
         const ready = [...pending.values()].filter((node) =>
           node.dependency_node_ids.every((dependency) => results.has(dependency)),
         );
-        if (ready.length === 0) throw new TypeError("ANALYSIS_PLAN_RUNTIME_CYCLE");
-        const runnable: PlanNode[] = [];
+        if (ready.length === 0) throw new TypeError("ANALYSIS_PROGRAM_RUNTIME_CYCLE");
+        const runnable: AnalysisProgramNode[] = [];
         for (const node of ready) {
           pending.delete(node.node_id);
           const dependencyFailed = node.dependency_node_ids.some(
@@ -584,7 +590,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
         for (const [nodeId, result] of completed) results.set(nodeId, result);
       }
 
-      const nodeResults = plan.nodes.map((node) => {
+      const nodeResults = analysisProgram.nodes.map((node) => {
         const result = results.get(node.node_id);
         if (!result) throw new TypeError("ANALYSIS_NODE_RESULT_MISSING");
         return result;
@@ -601,7 +607,7 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
       const completionMaterial = {
         artifact_type: "AnalysisCompletionReceipt",
         protocol_version: "analysis-completion@1.0.0",
-        plan_ref: planRef,
+        analysis_program_ref: analysisProgramRef,
         node_results: nodeResults,
         budget_usage: ledger.usage(),
         terminal: criticalFailure ? "HOLD" : optionalFailure ? "PARTIAL" : "READY",
@@ -617,11 +623,11 @@ export function createAnalysisPlanExecutor(dependencies: AnalysisExecutorDepende
       const completionRef = await dependencies.artifacts.commitL2({
         lease: input.lease,
         principal_id: input.principal_id,
-        idempotency_key: `analysis-completion:${plan.plan_hash}`,
+        idempotency_key: `analysis-completion:${analysisProgram.program_hash}`,
         payload: completion,
       });
       return Object.freeze({
-        plan_ref: planRef,
+        analysis_program_ref: analysisProgramRef,
         completion_ref: completionRef,
         completion,
         evidence_refs: Object.freeze(evidenceRefs),

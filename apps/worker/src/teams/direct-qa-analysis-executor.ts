@@ -4,13 +4,13 @@ import {
   buildProductTeamArtifactDocument,
   type PortResult,
   type ProductTeamArtifactDocument,
-  verifyResolvedContextCommitResult,
+  verifySemanticContextCommitResult,
 } from "@data-agent/contracts";
 import { z } from "zod";
 import {
   hasRunExecutionContextProvenance,
   hasRunProviderDispatchCapability,
-  hasRunResolvedContextCapability,
+  hasRunSemanticContextCapability,
 } from "../runs/run-execution-context.js";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 import type { FrozenSemanticRelationshipReadPort } from "../semantic/semantic-relationship-read-port.js";
@@ -93,11 +93,11 @@ export function createDirectQaAnalysisExecutor(dependencies: {
 
         let answer: string;
         if (asksForRelationships(run.question)) {
-          const contextCapability = execution.context.getResolvedContextCapability?.();
-          if (!hasRunResolvedContextCapability(contextCapability)) {
-            throw new DirectQaAnalysisError("RESOLVED_CONTEXT_REQUIRED");
+          const contextCapability = execution.context.getSemanticContextCapability?.();
+          if (!hasRunSemanticContextCapability(contextCapability)) {
+            throw new DirectQaAnalysisError("SEMANTIC_CONTEXT_REQUIRED");
           }
-          const resolved = await verifyResolvedContextCommitResult(
+          const resolved = await verifySemanticContextCommitResult(
             value(await contextCapability.resolve()),
           );
           const relationships = value(

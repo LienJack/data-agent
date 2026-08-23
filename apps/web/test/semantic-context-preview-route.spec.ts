@@ -45,7 +45,7 @@ vi.mock("@/lib/workspace-identity", () => ({
       },
     }),
   }),
-  getResolvedContextService: () => ({
+  getSemanticContextService: () => ({
     preview: async (_capability: unknown, request: unknown) => {
       state.requests.push(request);
       return {
@@ -63,9 +63,9 @@ describe("resolved context preview route", () => {
   });
 
   it("resolves a preview against the exact current Workspace Defaults", async () => {
-    const route = await import("../src/app/api/workspaces/[workspaceId]/context/preview/route");
+    const route = await import("../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route");
     const response = await route.POST(
-      new NextRequest("http://localhost/context/preview", {
+      new NextRequest("http://localhost/semantic/context/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ question: "Gross Revenue by channel" }),
@@ -86,9 +86,9 @@ describe("resolved context preview route", () => {
   });
 
   it("rejects an empty question without invoking the resolver", async () => {
-    const route = await import("../src/app/api/workspaces/[workspaceId]/context/preview/route");
+    const route = await import("../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route");
     const response = await route.POST(
-      new NextRequest("http://localhost/context/preview", {
+      new NextRequest("http://localhost/semantic/context/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ question: "   " }),
@@ -100,9 +100,9 @@ describe("resolved context preview route", () => {
   });
 
   it("rejects unknown request fields without invoking the resolver", async () => {
-    const route = await import("../src/app/api/workspaces/[workspaceId]/context/preview/route");
+    const route = await import("../src/app/api/workspaces/[workspaceId]/semantic/context/preview/route");
     const response = await route.POST(
-      new NextRequest("http://localhost/context/preview", {
+      new NextRequest("http://localhost/semantic/context/preview", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ question: "Gross Revenue", unexpected: true }),

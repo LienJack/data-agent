@@ -7,7 +7,7 @@ import {
   sha256ContentHash,
   sqlArtifactSchema,
 } from "@data-agent/contracts";
-import { isAuthoritativeResolvedContextText2SqlBinding } from "@data-agent/contracts/server";
+import { isAuthoritativeSemanticContextText2SqlBinding } from "@data-agent/contracts/server";
 import { z } from "zod";
 import { type GroundingPackageDraft, groundingPackageDraftSchema } from "../grounding/types.js";
 import type { LogicalOperationDraft } from "../planning/types.js";
@@ -45,7 +45,7 @@ import {
 const compilerInputSchema = z.strictObject({
   logical_plan_binding: z.unknown(),
   grounding: groundingPackageDraftSchema,
-  resolved_context_binding: z.unknown().optional(),
+  semantic_context_binding: z.unknown().optional(),
 });
 
 const dialectCompilerInputSchema = compilerInputSchema.extend({
@@ -1017,10 +1017,10 @@ async function compileParsedInput(
     return failed("POSTGRESQL_COMPILER_LOGICAL_PLAN_AUTHORITY_REQUIRED");
   }
   if (
-    parsed.resolved_context_binding !== undefined &&
-    !isAuthoritativeResolvedContextText2SqlBinding(parsed.resolved_context_binding)
+    parsed.semantic_context_binding !== undefined &&
+    !isAuthoritativeSemanticContextText2SqlBinding(parsed.semantic_context_binding)
   ) {
-    return failed("POSTGRESQL_COMPILER_RESOLVED_CONTEXT_AUTHORITY_REQUIRED");
+    return failed("POSTGRESQL_COMPILER_SEMANTIC_CONTEXT_AUTHORITY_REQUIRED");
   }
   const logicalPlan = parsed.logical_plan_binding.logical_plan;
   const logicalPlanReference = parsed.logical_plan_binding.reference;
@@ -1075,8 +1075,8 @@ async function compileParsedInput(
         sql,
         parameters,
         query_hash: queryHash,
-        ...(parsed.resolved_context_binding
-          ? { resolved_context_binding_hash: parsed.resolved_context_binding.binding_hash }
+        ...(parsed.semantic_context_binding
+          ? { semantic_context_binding_hash: parsed.semantic_context_binding.binding_hash }
           : {}),
       }),
     );
@@ -1090,8 +1090,8 @@ async function compileParsedInput(
       policy_binding_hash: policyBindingHash,
       policy_binding_authority: "LOGICAL_PLAN_REF_AND_SERVER_PRINCIPAL_CAPABILITY",
       query_hash: sqlArtifact.query_hash,
-      ...(parsed.resolved_context_binding
-        ? { resolved_context_binding_hash: parsed.resolved_context_binding.binding_hash }
+      ...(parsed.semantic_context_binding
+        ? { semantic_context_binding_hash: parsed.semantic_context_binding.binding_hash }
         : {}),
       identifier_authority: "GROUNDING_PHYSICAL_NAME_ONLY",
       alias_strategy: "VALIDATED_LOGICAL_OUTPUT_ALIAS_QUOTED",

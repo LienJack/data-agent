@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type {
-  AnalysisPlanPayload,
+  AnalysisProgramPayload,
   AnalysisSandboxProgramPayload,
   DerivedAnalysisEvidencePayload,
   PythonOutputContractV1,
@@ -9,15 +9,15 @@ import type {
 import { describe, expect, it } from "vitest";
 import {
   computeAnalysisDerivationHash,
-  computeAnalysisProgramHash,
+  computeAnalysisSandboxProgramHash,
   verifyAnalysisDerivation,
-  verifyAnalysisProgram,
   verifyAnalysisResult,
+  verifyAnalysisSandboxProgram,
   verifyScaleMetamorphism,
 } from "../../src/analysis-evidence/index.js";
 import { hashes, reference } from "../fixtures.js";
 
-const planRef = reference("AnalysisPlan", "70");
+const planRef = reference("AnalysisProgram", "70");
 const programRef = reference("SandboxProgram", "71");
 const receiptRef = reference("SandboxExecutionReceipt", "72");
 const queryRef = reference("QueryEvidence", "73");
@@ -31,11 +31,12 @@ const outputContract: PythonOutputContractV1 = {
   outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 4_096 }],
 };
 
-const plan: AnalysisPlanPayload = {
-  artifact_type: "AnalysisPlan",
-  protocol_version: "analysis-plan@1.0.0",
+const plan: AnalysisProgramPayload = {
+  artifact_type: "AnalysisProgram",
+  protocol_version: "analysis-program@1.0.0",
   brief_ref: reference("ResearchBrief", "76"),
   analysis_context_hash: hashes.b,
+  semantic_context_package_hash: hashes.c,
   nodes: [
     {
       node_id: "trend-node",
@@ -65,16 +66,16 @@ const plan: AnalysisPlanPayload = {
     max_group_rows: 100,
     max_elapsed_ms: 10_000,
   },
-  planner_kind: "DETERMINISTIC_DEFAULT",
-  planner_version: "analysis-planner@1.0.0",
-  plan_hash: hashes.a,
+  compiler_kind: "DETERMINISTIC_DEFAULT",
+  compiler_version: "analysis-program-compiler@1.0.0",
+  program_hash: hashes.a,
 };
 
 async function programFixture(): Promise<AnalysisSandboxProgramPayload> {
   const material: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
     protocol_version: "analysis-sandbox-program@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     node_id: "trend-node",
     language: "PYTHON_3_12",
     entrypoint: "main",
@@ -89,7 +90,7 @@ async function programFixture(): Promise<AnalysisSandboxProgramPayload> {
     dependency_lock_digest: hashes.c,
     policy_version: "python-policy@1.0.0",
   };
-  return { ...material, program_hash: await computeAnalysisProgramHash(material) };
+  return { ...material, program_hash: await computeAnalysisSandboxProgramHash(material) };
 }
 
 const trendResult: Extract<
@@ -158,7 +159,7 @@ async function evidenceFixture(): Promise<DerivedAnalysisEvidencePayload> {
   const material: Omit<DerivedAnalysisEvidencePayload, "derivation_hash"> = {
     artifact_type: "DerivedAnalysisEvidence",
     protocol_version: "derived-analysis-evidence@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     node_id: "trend-node",
     skill_id: "trend-change@1",
     algorithm_version: "trend-change@1.0.0",
@@ -187,9 +188,9 @@ describe("deterministic analysis program and derivation verification", () => {
   it("closes source, plan, output contract, profile and program hash", async () => {
     const program = await programFixture();
     await expect(
-      verifyAnalysisProgram({
-        plan,
-        planRef,
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
         program,
         sourceText,
         allowedProfiles: ["CORE_ANALYSIS"],
@@ -198,9 +199,9 @@ describe("deterministic analysis program and derivation verification", () => {
 
     const tampered = { ...program, runtime_digest: hashes.a };
     await expect(
-      verifyAnalysisProgram({
-        plan,
-        planRef,
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
         program: tampered,
         sourceText: `${sourceText}# tampered\n`,
         allowedProfiles: ["CORE_ANALYSIS"],
@@ -211,9 +212,9 @@ describe("deterministic analysis program and derivation verification", () => {
     });
 
     await expect(
-      verifyAnalysisProgram({
-        plan,
-        planRef,
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
         program: { ...program, node_id: "missing-node" },
         sourceText,
         allowedProfiles: ["CORE_ANALYSIS"],
@@ -228,9 +229,9 @@ describe("deterministic analysis program and derivation verification", () => {
     const randomSourceHash =
       `sha256:${createHash("sha256").update(randomSource).digest("hex")}` as const;
     await expect(
-      verifyAnalysisProgram({
-        plan,
-        planRef,
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
         program: {
           ...program,
           source_sha256: randomSourceHash,
@@ -249,9 +250,9 @@ describe("deterministic analysis program and derivation verification", () => {
     const globalRandomHash =
       `sha256:${createHash("sha256").update(globalRandomSource).digest("hex")}` as const;
     await expect(
-      verifyAnalysisProgram({
-        plan,
-        planRef,
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
         program: {
           ...program,
           source_sha256: globalRandomHash,
@@ -276,12 +277,12 @@ describe("deterministic analysis program and derivation verification", () => {
     };
     const seededProgram = {
       ...seededMaterial,
-      program_hash: await computeAnalysisProgramHash(seededMaterial),
+      program_hash: await computeAnalysisSandboxProgramHash(seededMaterial),
     };
     await expect(
-      verifyAnalysisProgram({
-        plan,
-        planRef,
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
         program: seededProgram,
         sourceText: seededSource,
         allowedProfiles: ["CORE_ANALYSIS"],
@@ -295,12 +296,12 @@ describe("deterministic analysis program and derivation verification", () => {
     const planNode = plan.nodes[0];
     if (!planNode) throw new Error("plan fixture must contain one node");
     await expect(
-      verifyAnalysisProgram({
-        plan: {
+      verifyAnalysisSandboxProgram({
+        analysisProgram: {
           ...plan,
           nodes: [{ ...planNode, output_contract: sensitiveContract }],
         },
-        planRef,
+        analysisProgramRef: planRef,
         program: { ...program, output_contract: sensitiveContract },
         sourceText,
         allowedProfiles: ["CORE_ANALYSIS"],

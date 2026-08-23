@@ -56,11 +56,11 @@ const canonicalProjectionHashesSchema = z
     });
   });
 
-export const resolvedContextText2SqlBindingDraftSchema = z
+export const semanticContextText2SqlBindingDraftSchema = z
   .strictObject({
-    schema_version: z.literal("resolved-context-text2sql-binding@1.0.0"),
+    schema_version: z.literal("semantic-context-text2sql-binding@1.0.0"),
     scope: appScopeSchema,
-    resolved_context_package_ref: z.strictObject({
+    semantic_context_package_ref: z.strictObject({
       package_id: z.uuid(),
       package_revision: z.literal(1),
       package_hash: contentHashSchema,
@@ -103,10 +103,10 @@ export const resolvedContextText2SqlBindingDraftSchema = z
     }
   });
 
-export const resolvedContextText2SqlBindingSchema =
-  resolvedContextText2SqlBindingDraftSchema.extend({ binding_hash: contentHashSchema });
+export const semanticContextText2SqlBindingSchema =
+  semanticContextText2SqlBindingDraftSchema.extend({ binding_hash: contentHashSchema });
 
-export type ResolvedContextText2SqlBinding = z.infer<typeof resolvedContextText2SqlBindingSchema>;
+export type SemanticContextText2SqlBinding = z.infer<typeof semanticContextText2SqlBindingSchema>;
 
 export const qualifiedColumnIdSchema = versionIdentifierSchema.refine(
   (value) => /^[A-Za-z0-9][A-Za-z0-9_:@/+~-]*\.[A-Za-z0-9][A-Za-z0-9_:@/+~-]*$/.test(value),
