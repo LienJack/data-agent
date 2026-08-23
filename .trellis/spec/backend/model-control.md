@@ -30,6 +30,8 @@
 - 环境变量托管的系统模型由服务端同步，管理 API 不允许修改、停用或删除。
 - Model Control 只证明模型配置与技术就绪；Provider 调用授权仍由独立的 invocation authority
   与 workspace capability 决定。
+- Provider/Test Center Usage 只保留 availability、provider-reported token、tool calls、latency 与
+  outcome；未报告 token 时必须保持 `UNAVAILABLE/null`，不得填 0 或估算金额。
 
 ## 4. 必需验证
 

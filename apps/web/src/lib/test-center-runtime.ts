@@ -474,7 +474,6 @@ export async function executeEcommerceSqlAcceptance(input: {
     max_case_duration_ms: 120_000,
     max_batch_duration_ms: 240_000,
     max_output_tokens_per_attempt: 4_096,
-    max_cost_micros: 2_000_000,
     concurrency: 1,
   } as const;
   const runtime = await modelRuntime();

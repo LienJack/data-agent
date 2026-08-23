@@ -341,7 +341,6 @@ try {
         max_case_duration_ms: 30_000,
         max_batch_duration_ms: 3_600_000,
         max_output_tokens_per_attempt: 64,
-        max_cost_micros: 0,
         concurrency: 1,
       },
       seed: 20260816,

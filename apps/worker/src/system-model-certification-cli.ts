@@ -6,15 +6,7 @@ import {
   getModelProviderBinding,
   SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
 } from "@data-agent/agent-runtime";
-import {
-  type AppCapability,
-  adaptPgPool,
-  createPostgresCapabilityAuthority,
-  createPostgresRunEventStore,
-  createPostgresRunQueue,
-  type SqlPool,
-  type TransactionalCapabilityAuthorizer,
-} from "@data-agent/platform";
+import { adaptPgPool, createPostgresCapabilityAuthority } from "@data-agent/platform";
 import nextEnvironment from "@next/env";
 import { Pool } from "pg";
 import { z } from "zod";
@@ -111,7 +103,7 @@ async function loadSystemExecutionBindings(adminPool: Pool, deploymentId: string
         and deployment.environment=catalog.environment
       where catalog.is_system_default
         and catalog.provider in ('deepseek','kimi')
-        and catalog.status in ('ACTIVE','UNBILLABLE')
+        and catalog.status = 'ACTIVE'
       order by catalog.provider`,
     [deploymentId],
   );
@@ -134,56 +126,6 @@ async function loadSystemExecutionBindings(adminPool: Pool, deploymentId: string
       operational_constraints: template.operational_constraints,
     });
   });
-}
-
-async function activateCertificationRun(input: {
-  readonly pool: SqlPool;
-  readonly authorizer: TransactionalCapabilityAuthorizer;
-  readonly capability: AppCapability;
-  readonly expected_run_id: string;
-}) {
-  const queue = createPostgresRunQueue(input.pool, input.authorizer, input.capability, {
-    lease_duration_ms: 900_000,
-  });
-  const leased = await queue.lease({
-    scope: input.capability.scope,
-    worker_id: "system-model-certifier",
-  });
-  if (!leased.ok) throw new Error(leased.error.code);
-  if (!leased.value || leased.value.run_id !== input.expected_run_id) {
-    throw new Error("MODEL_CERTIFICATION_RUN_NOT_LEASED");
-  }
-  const store = createPostgresRunEventStore(input.pool, input.authorizer, input.capability);
-  const projected = await store.readProjection({
-    scope: input.capability.scope,
-    run_id: leased.value.run_id,
-  });
-  if (!projected.ok || !projected.value) {
-    throw new Error(projected.ok ? "MODEL_CERTIFICATION_PROJECTION_MISSING" : projected.error.code);
-  }
-  const appended = await store.append({
-    lease: leased.value,
-    expected_projection: projected.value,
-    event: {
-      schema_version: "1.0.0",
-      event_id: randomUUID(),
-      event_type: "run.leased",
-      scope: leased.value.scope,
-      run_id: leased.value.run_id,
-      sequence: projected.value.projection.version + 1,
-      worker_fence: leased.value.worker_fence,
-      idempotency_key: `model-certification:${leased.value.attempt_id}:${leased.value.worker_fence}`,
-      occurred_at: new Date().toISOString(),
-      payload: {
-        command_id: leased.value.command_id,
-        lease_id: leased.value.attempt_id,
-        worker_id: leased.value.worker_id,
-        attempt: leased.value.attempt_no,
-      },
-    },
-  });
-  if (!appended.ok) throw new Error(appended.error.code);
-  return leased.value;
 }
 
 async function main(): Promise<void> {
@@ -265,12 +207,6 @@ async function main(): Promise<void> {
     });
     if (!capabilityResult.ok) throw new Error(capabilityResult.error.code);
     const capability = capabilityResult.value;
-    const certificationLease = await activateCertificationRun({
-      pool: sqlPool,
-      authorizer: authority.authorizer,
-      capability,
-      expected_run_id: configuration.data.certificationRunId,
-    });
     const receiptStore = createPostgresModelCertificationReceiptStore({
       pool: sqlPool,
       authorizer: authority.authorizer,
@@ -280,7 +216,7 @@ async function main(): Promise<void> {
     const certificationReport = await runCredentialedProviderCertification({
       scope: capability.scope,
       run_id: configuration.data.certificationRunId,
-      worker_fence: certificationLease.worker_fence,
+      worker_fence: configuration.data.certificationWorkerFence,
       bindings,
       resolve_credential: async (credentialEnvironment) =>
         process.env[credentialEnvironment]?.trim() ?? null,

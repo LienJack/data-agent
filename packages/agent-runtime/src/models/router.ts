@@ -34,18 +34,12 @@ const requiredRegionPrivacySchema = z.strictObject({
   required_privacy_tags: z.array(versionIdentifierSchema).max(64),
 });
 
-const maxCostBudgetSchema = z.strictObject({
-  currency: z.string().regex(/^[A-Z]{3}$/),
-  max_microunits: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
-});
-
 export const modelRoutingRequestSchema = z
   .strictObject({
     scope: appScopeSchema,
     required_capabilities: requiredCapabilitiesSchema,
     required_context: requiredContextSchema.optional(),
     required_region_privacy: requiredRegionPrivacySchema.optional(),
-    max_cost_budget: maxCostBudgetSchema.optional(),
     required_fallback_compatibility_tags: z.array(versionIdentifierSchema).max(64).default([]),
     allowed_profile_ids: z.array(immutableIdSchema).min(1),
     ordered_fallback_profile_ids: z.array(immutableIdSchema),
@@ -118,18 +112,6 @@ function hasEveryTag(actual: readonly string[], required: readonly string[]): bo
   return required.every((tag) => actualTags.has(tag));
 }
 
-function estimateCostMicrounits(
-  inputTokens: number,
-  outputTokens: number,
-  inputRate: number,
-  outputRate: number,
-): bigint {
-  const oneMillion = 1_000_000n;
-  const inputCost = (BigInt(inputTokens) * BigInt(inputRate) + oneMillion - 1n) / oneMillion;
-  const outputCost = (BigInt(outputTokens) * BigInt(outputRate) + oneMillion - 1n) / oneMillion;
-  return inputCost + outputCost;
-}
-
 function constraintFailureFor(
   profile: AvailableModelProfile,
   request: ModelRoutingRequest,
@@ -168,32 +150,6 @@ function constraintFailureFor(
       return {
         code: "MODEL_REGION_PRIVACY_NOT_SATISFIED",
         message: "Model Profile 的已验证 Region/Privacy 约束不满足请求。",
-      };
-    }
-  }
-
-  if (request.max_cost_budget) {
-    const constraint = profile.operational_constraints.pricing;
-    if (
-      constraint.verification_status !== "VERIFIED" ||
-      constraint.currency !== request.max_cost_budget.currency ||
-      !request.required_context
-    ) {
-      return {
-        code: "MODEL_COST_BUDGET_NOT_SATISFIED",
-        message: "Model Profile 缺少可用于预算判定的已验证定价或 Token 需求。",
-      };
-    }
-    const estimatedCost = estimateCostMicrounits(
-      request.required_context.input_tokens,
-      request.required_context.output_tokens,
-      constraint.input_microunits_per_million_tokens,
-      constraint.output_microunits_per_million_tokens,
-    );
-    if (estimatedCost > BigInt(request.max_cost_budget.max_microunits)) {
-      return {
-        code: "MODEL_COST_BUDGET_NOT_SATISFIED",
-        message: "Model Profile 的保守成本估算超过请求预算。",
       };
     }
   }

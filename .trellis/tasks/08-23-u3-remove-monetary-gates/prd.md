@@ -12,10 +12,10 @@
 
 ## Acceptance Criteria
 
-- [ ] 无 price/fx/credit fixture 时 Q&A、Test Center、Semantic Candidate 和 Worker Provider 正向场景通过。
-- [ ] 缺凭据、部署 disabled 或技术预算超限仍在网络前拒绝。
-- [ ] Provider 未报告 token 时保持 `UNAVAILABLE/null`，不计算成本。
-- [ ] 当前 schema、数据库约束和生产代码不接受/产生 `UNBILLABLE`。
+- [x] 无 price/fx/credit fixture 时 Q&A、Test Center、Semantic Candidate 和 Worker Provider 正向场景通过。
+- [x] 缺凭据、部署 disabled 或技术预算超限仍在网络前拒绝。
+- [x] Provider 未报告 token 时保持 `UNAVAILABLE/null`，不计算成本。
+- [x] 当前应用 schema 和生产代码不接受/产生 `UNBILLABLE`；历史迁移保持不可变，最终数据库约束由 U5 的 `10703` 前向迁移切换。
 
 ## Notes
 

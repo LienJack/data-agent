@@ -137,7 +137,6 @@ async function availableProfile() {
         max_output_tokens: 4_096,
       },
       region_privacy: { verification_status: "UNVERIFIED" },
-      pricing: { verification_status: "UNVERIFIED" },
       fallback_compatibility: { verification_status: "UNVERIFIED" },
     },
     certification_status: "AVAILABLE",

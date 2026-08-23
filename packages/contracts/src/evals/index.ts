@@ -336,7 +336,6 @@ export const evalReplayTupleSchema = z.strictObject({
   budget: z.strictObject({
     max_cases: z.number().int().positive(),
     max_duration_ms: z.number().int().positive(),
-    max_cost_micros: z.number().int().nonnegative(),
   }),
   trace: z.strictObject({
     trace_id: immutableIdSchema,
@@ -630,12 +629,18 @@ const scoreCardLatencySchema = z.strictObject({
   execution_ms: z.number().int().nonnegative(),
 });
 
-const scoreCardCostSchema = z.strictObject({
-  currency: z.literal("USD"),
-  amount_micros: z.number().int().nonnegative(),
-  input_tokens: z.number().int().nonnegative(),
-  output_tokens: z.number().int().nonnegative(),
-});
+const scoreCardUsageSchema = z.discriminatedUnion("availability", [
+  z.strictObject({
+    availability: z.literal("AVAILABLE"),
+    input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    availability: z.literal("UNAVAILABLE"),
+    input_tokens: z.null(),
+    output_tokens: z.null(),
+  }),
+]);
 
 const scoreCardSafetyCounterSchema = z.strictObject({
   counter_id: versionIdentifierSchema,
@@ -706,7 +711,7 @@ export const scoreCardSchema = z
       ]),
     ),
     latency: scoreCardLatencySchema,
-    cost: scoreCardCostSchema,
+    usage: scoreCardUsageSchema,
     safety_counters: z.array(scoreCardSafetyCounterSchema).min(1),
     failure_taxonomy: z.array(scoreCardFailureTaxonomySchema),
     scorecard_hash: contentHashSchema,

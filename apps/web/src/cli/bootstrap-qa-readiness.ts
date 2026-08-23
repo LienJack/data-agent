@@ -128,7 +128,7 @@ function exactRoleModel(model: ModelCatalogEntry, base: ModelCatalogEntry, profi
     model.provider === base.provider &&
     model.model_id === base.model_id &&
     model.base_url === base.base_url &&
-    model.status === "UNBILLABLE" &&
+    model.status === "ACTIVE" &&
     JSON.stringify(model.capabilities) === JSON.stringify(base.capabilities) &&
     JSON.stringify(model.credential_ref) === JSON.stringify(base.credential_ref)
   );
@@ -353,7 +353,7 @@ async function createDependencies(input: {
         base_url: base.base_url,
         capabilities: base.capabilities,
         credential_ref: base.credential_ref,
-        status: "UNBILLABLE",
+        status: "ACTIVE",
         is_system_default: false,
         expected_config_version: 0,
       });

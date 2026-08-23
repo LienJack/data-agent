@@ -12,20 +12,15 @@ import {
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BenchmarkSuite,
-  type BundleDigestCheckResult,
-  type ContaminationCheckResult,
   type EvalAdapter,
   type EvalAdapterContext,
   type EvalAdapterResult,
   EvalRunner,
   type EvalRunnerOptions,
   type HoldoutContaminationChecker,
-  type HookVerificationResult,
-  type LicenseCheckResult,
   type ManifestReplayer,
   type OracleRunner,
   type PairedComparisonRunner,
-  type PathBoundaryCheckResult,
   type SafetyCheckContext,
   type SafetyChecker,
 } from "../src/index.js";
@@ -178,7 +173,6 @@ describe("EvalRunner", () => {
       budget: {
         max_cases: 100,
         max_duration_ms: 60000,
-        max_cost_micros: 1000000,
       },
       trace: {
         trace_id: "trace-1",
@@ -226,9 +220,8 @@ describe("EvalRunner", () => {
     comparison: { mode: "SINGLE" },
     evidence_refs: [QUERY_EVIDENCE_REF],
     latency: { total_ms: 1500, model_ms: 1200, execution_ms: 300 },
-    cost: {
-      currency: "USD",
-      amount_micros: 10000,
+    usage: {
+      availability: "AVAILABLE",
       input_tokens: 5000,
       output_tokens: 1000,
     },

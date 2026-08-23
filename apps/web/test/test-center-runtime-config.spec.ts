@@ -51,7 +51,6 @@ describe("Test Center runtime configuration", () => {
             max_case_duration_ms: 10_000,
             max_batch_duration_ms: 10_000,
             max_output_tokens_per_attempt: 1_024,
-            max_cost_micros: 0,
             concurrency: 1,
           },
           submitted_answers: {

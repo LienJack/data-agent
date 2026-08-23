@@ -19,7 +19,6 @@ describe("Falcon contracts", () => {
         max_case_duration_ms: 60_000,
         max_batch_duration_ms: 3_600_000,
         max_output_tokens_per_attempt: 4_096,
-        max_cost_micros: 0,
         concurrency: 1,
       }).max_cases,
     ).toBe(500);

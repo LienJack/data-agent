@@ -46,7 +46,6 @@ export const benchmarkMutationDefinitionSchema = z.strictObject({
 export const benchmarkBudgetSchema = z.strictObject({
   max_cases: z.number().int().positive(),
   max_duration_ms: z.number().int().positive(),
-  max_cost_micros: z.number().int().nonnegative(),
   max_sql_queries: z.number().int().positive(),
   max_drivers: z.number().int().positive(),
 });
@@ -185,7 +184,6 @@ export const RETAIL_REVENUE_INVESTIGATION_V1_MUTATIONS = [
 export const RETAIL_REVENUE_INVESTIGATION_V1_BUDGET = {
   max_cases: 1,
   max_duration_ms: 600000,
-  max_cost_micros: 50000000,
   max_sql_queries: 16,
   max_drivers: 6,
 };
@@ -332,7 +330,6 @@ export const GOVERNANCE_SEMANTIC_REVIEW_V1_MUTATIONS = [
 export const GOVERNANCE_SEMANTIC_REVIEW_V1_BUDGET = {
   max_cases: 1,
   max_duration_ms: 600000,
-  max_cost_micros: 50000000,
   max_sql_queries: 16,
   max_drivers: 6,
 };
@@ -463,7 +460,6 @@ export const GOVERNANCE_DOMAIN_COVERAGE_V1_MUTATIONS = [
 export const GOVERNANCE_DOMAIN_COVERAGE_V1_BUDGET = {
   max_cases: 1,
   max_duration_ms: 600000,
-  max_cost_micros: 50000000,
   max_sql_queries: 16,
   max_drivers: 6,
 };
@@ -606,7 +602,6 @@ export const GOVERNANCE_ROLE_PERMISSION_V1_MUTATIONS = [
 export const GOVERNANCE_ROLE_PERMISSION_V1_BUDGET = {
   max_cases: 1,
   max_duration_ms: 600000,
-  max_cost_micros: 50000000,
   max_sql_queries: 16,
   max_drivers: 6,
 };

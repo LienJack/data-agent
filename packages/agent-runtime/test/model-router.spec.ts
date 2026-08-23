@@ -22,10 +22,6 @@ const baseRequest = {
     processing_region: "fixture-region",
     required_privacy_tags: ["no-training"],
   },
-  max_cost_budget: {
-    currency: "USD",
-    max_microunits: 20,
-  },
   required_fallback_compatibility_tags: ["json-v1"],
   allowed_profile_ids: [modelFixtureIds.profile, modelFixtureIds.profileFallback],
   ordered_fallback_profile_ids: [modelFixtureIds.profileFallback],
@@ -150,12 +146,6 @@ describe("Model Capability Router", () => {
           processing_regions: ["fixture-region"],
           privacy_tags: ["no-training"],
         },
-        pricing: {
-          verification_status: "VERIFIED",
-          currency: "USD",
-          input_microunits_per_million_tokens: 1_000,
-          output_microunits_per_million_tokens: 2_000,
-        },
         fallback_compatibility: {
           verification_status: "VERIFIED",
           tags: ["json-v1"],
@@ -191,12 +181,6 @@ describe("Model Capability Router", () => {
           processing_regions: ["other-fixture-region"],
           privacy_tags: ["tenant-isolated"],
         },
-        pricing: {
-          verification_status: "VERIFIED",
-          currency: "USD",
-          input_microunits_per_million_tokens: 1_000,
-          output_microunits_per_million_tokens: 2_000,
-        },
         fallback_compatibility: {
           verification_status: "VERIFIED",
           tags: ["json-v1"],
@@ -217,54 +201,22 @@ describe("Model Capability Router", () => {
     ).toThrowError(expect.objectContaining({ code: "MODEL_REGION_PRIVACY_NOT_SATISFIED" }));
   });
 
-  it("成本未知或保守估算超预算时都失败关闭", async () => {
-    const unknownCost = await makeAvailableProfile({
+  it("金额字段不属于路由请求或模型技术状态", async () => {
+    const profile = await makeAvailableProfile({
       provider: "openai",
-      model_id: "fixture-unknown-cost",
-      operational_constraints: {
-        context_window: {
-          verification_status: "VERIFIED",
-          max_context_tokens: 128_000,
-          max_output_tokens: 8_192,
-        },
-        region_privacy: {
-          verification_status: "VERIFIED",
-          processing_regions: ["fixture-region"],
-          privacy_tags: ["no-training"],
-        },
-        pricing: { verification_status: "UNVERIFIED" },
-        fallback_compatibility: {
-          verification_status: "VERIFIED",
-          tags: ["json-v1"],
-        },
-      },
+      model_id: "fixture-without-pricing",
     });
-    const overBudget = await makeAvailableProfile({
-      provider: "openai",
-      model_id: "fixture-over-budget",
-      operational_constraints: {
-        ...unknownCost.operational_constraints,
-        pricing: {
-          verification_status: "VERIFIED",
-          currency: "USD",
-          input_microunits_per_million_tokens: 10_000_000,
-          output_microunits_per_million_tokens: 20_000_000,
-        },
-      },
-    });
-    const request = {
-      ...baseRequest,
-      allowed_profile_ids: [modelFixtureIds.profile],
-      ordered_fallback_profile_ids: [],
-      required_fallback_compatibility_tags: [],
-    };
 
-    expect(() => routeAvailableModel(request, [unknownCost])).toThrowError(
-      expect.objectContaining({ code: "MODEL_COST_BUDGET_NOT_SATISFIED" }),
-    );
-    expect(() => routeAvailableModel(request, [overBudget])).toThrowError(
-      expect.objectContaining({ code: "MODEL_COST_BUDGET_NOT_SATISFIED" }),
-    );
+    expect(() =>
+      routeAvailableModel(
+        {
+          ...primaryOnlyRequest,
+          max_cost_budget: { currency: "USD", max_microunits: 20 },
+        },
+        [profile],
+      ),
+    ).toThrow();
+    expect(profile.operational_constraints).not.toHaveProperty("pricing");
   });
 
   it("显式 Fallback 的兼容标签不匹配时拒绝整条路由", async () => {

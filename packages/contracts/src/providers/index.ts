@@ -113,24 +113,6 @@ export const modelRegionPrivacyConstraintSchema = z.discriminatedUnion("verifica
   }),
 ]);
 
-export const modelPricingConstraintSchema = z.discriminatedUnion("verification_status", [
-  unverifiedOperationalConstraintSchema,
-  z.strictObject({
-    verification_status: z.literal("VERIFIED"),
-    currency: z.string().regex(/^[A-Z]{3}$/),
-    input_microunits_per_million_tokens: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER),
-    output_microunits_per_million_tokens: z
-      .number()
-      .int()
-      .nonnegative()
-      .max(Number.MAX_SAFE_INTEGER),
-  }),
-]);
-
 export const modelFallbackCompatibilityConstraintSchema = z.discriminatedUnion(
   "verification_status",
   [
@@ -145,7 +127,6 @@ export const modelFallbackCompatibilityConstraintSchema = z.discriminatedUnion(
 export const modelOperationalConstraintsSchema = z.strictObject({
   context_window: modelContextWindowConstraintSchema,
   region_privacy: modelRegionPrivacyConstraintSchema,
-  pricing: modelPricingConstraintSchema,
   fallback_compatibility: modelFallbackCompatibilityConstraintSchema,
 });
 
@@ -153,7 +134,6 @@ export const UNVERIFIED_MODEL_OPERATIONAL_CONSTRAINTS = deepFreeze(
   modelOperationalConstraintsSchema.parse({
     context_window: { verification_status: "UNVERIFIED" },
     region_privacy: { verification_status: "UNVERIFIED" },
-    pricing: { verification_status: "UNVERIFIED" },
     fallback_compatibility: { verification_status: "UNVERIFIED" },
   }),
 );

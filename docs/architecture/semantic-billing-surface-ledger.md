@@ -8,8 +8,8 @@
 
 | Surface | Kind | Current consumers | Action | Atomic switch unit | Final target | Evidence | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ./billing/billing-gated-model-provider.js | EXPORT | Worker audited model provider | DELETE | U3 monetary gates | direct ModelProvider invocation | packages/platform/src/index.ts | CURRENT |
-| ./billing/billing-gated-provider.js | EXPORT | Platform billing tests | DELETE | U3 monetary gates | direct provider invocation | packages/platform/src/index.ts | CURRENT |
+| ./billing/billing-gated-model-provider.js | EXPORT | none | DELETE | U3 monetary gates | direct ModelProvider invocation | packages/platform/src/index.ts; tests/model-runtime-noncommercial.spec.ts | REMOVED |
+| ./billing/billing-gated-provider.js | EXPORT | none | DELETE | U3 monetary gates | direct provider invocation | packages/platform/src/index.ts; tests/model-runtime-noncommercial.spec.ts | REMOVED |
 | ./billing/microcredits.js | EXPORT | billing and pricing repositories | DELETE | U4 billing code retirement | none | packages/platform/src/index.ts | CURRENT |
 | ./billing/model-cost.js | EXPORT | model billing repository | DELETE | U4 billing code retirement | noncommercial usage facts | packages/platform/src/index.ts | CURRENT |
 | ./billing/postgres-credit-ledger.js | EXPORT | credit admin routes | DELETE | U4 billing code retirement | 404 | packages/platform/src/index.ts | CURRENT |
@@ -34,7 +34,7 @@
 | Billing and Credit API surface | ROUTE | settings, admin pricing and billing clients | DELETE | U4 billing code retirement | 404 | apps/web/src/app/api/admin/billing | CURRENT |
 | Billing and Pricing UI surface | UI | settings, workspace home and admin | DELETE | U4 billing code retirement | removed navigation | apps/web/src/components/settings/model-billing-panel.tsx | CURRENT |
 | Worker pricing sync | WORKER | pricing synchronization cycle | DELETE | U4 billing code retirement | none | apps/worker/src/pricing | CURRENT |
-| Monetary provider admission and UNBILLABLE | RUNTIME_GATE | Worker model invocation | DELETE | U3 monetary gates | availability and capability only | apps/worker/src/providers/audited-model-provider.ts | CURRENT |
+| Monetary provider admission and UNBILLABLE | RUNTIME_GATE | none | DELETE | U3 monetary gates | availability and capability only | tests/model-runtime-noncommercial.spec.ts | REMOVED |
 | Billing ledger and settlement tables | DATABASE | historical billing facts and mutation RPCs | ARCHIVE_DATA | U5 migration 10703 | PostgreSQL read-only historical data | infra/supabase/apps/data-agent/migrations/20260725010630_app_data_agent_credit_ledger.sql | HISTORICAL |
 | Pricing tables mixed with model catalog | DATABASE | Model Provider control and pricing sync | MOVE_DIRECT | U5 migration 10703 | model-control tables only | infra/supabase/apps/data-agent/migrations/20260725010629_app_data_agent_model_price_fx_control.sql | CURRENT |
 | Semantic V1 database objects and rows | DATABASE | legacy equivalence, mirror and closure flow | DELETE | U6 migration 10704 | clean V2 authority | infra/supabase/apps/data-agent/migrations/20260725010610_app_data_agent_semantic_control_plane.sql | CURRENT |

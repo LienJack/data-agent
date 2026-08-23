@@ -54,6 +54,9 @@ describe("model control contracts", () => {
   });
 
   it("rejects commercial fields at strict model and provider boundaries", () => {
+    expect(modelCatalogEntrySchema.safeParse({ ...baseModel, status: "UNBILLABLE" }).success).toBe(
+      false,
+    );
     expect(modelCatalogEntrySchema.safeParse({ ...baseModel, unit_price: "1.00" }).success).toBe(
       false,
     );

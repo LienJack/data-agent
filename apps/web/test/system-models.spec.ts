@@ -88,12 +88,10 @@ describe("environment system models", () => {
     expect(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES).not.toContain("secret");
     const overrides = JSON.parse(environment.DATA_AGENT_MODEL_PROVIDER_OVERRIDES ?? "[]") as Array<{
       provider: string;
-      operational_constraints?: { pricing: { verification_status: string } };
+      operational_constraints?: Record<string, unknown>;
     }>;
-    expect(overrides[0]).toMatchObject({
-      provider: "deepseek",
-      operational_constraints: { pricing: { verification_status: "UNVERIFIED" } },
-    });
+    expect(overrides[0]).toMatchObject({ provider: "deepseek" });
+    expect(overrides[0]?.operational_constraints).not.toHaveProperty("pricing");
   });
 
   it("projects configured environment models into a secret-free database sync command", () => {

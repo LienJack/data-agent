@@ -63,7 +63,12 @@ async function failedAttempt(input: {
     verdict: "INFRA_FAILURE" as const,
     diagnostic_code: input.diagnostic_code,
     oracle_feedback: feedback,
-    usage: { input_tokens: 0, output_tokens: 0, cost_micros: 0, currency: "USD" as const },
+    usage: {
+      availability: "UNAVAILABLE" as const,
+      input_tokens: null,
+      output_tokens: null,
+      tool_calls: null,
+    },
     latency_ms: 0,
     trace_id: input.trace_id,
     started_at: input.started_at,

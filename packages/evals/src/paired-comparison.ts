@@ -54,7 +54,7 @@ export class PairedComparisonRunner {
         comparison: { mode: "SINGLE" as const },
         evidence_refs: [],
         latency: { total_ms: 0, model_ms: 0, execution_ms: 0 },
-        cost: { currency: "USD" as const, amount_micros: 0, input_tokens: 0, output_tokens: 0 },
+        usage: { availability: "UNAVAILABLE" as const, input_tokens: null, output_tokens: null },
         safety_counters: [
           { counter_id: "bundle-digest-v1", count: 0 },
           { counter_id: "license-v1", count: 0 },

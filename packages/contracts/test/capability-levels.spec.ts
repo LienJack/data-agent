@@ -78,7 +78,6 @@ const evalReplayTuple = {
   budget: {
     max_cases: 1,
     max_duration_ms: 30_000,
-    max_cost_micros: 1_000_000,
   },
   trace: {
     trace_id: ids.attempt,
@@ -92,9 +91,8 @@ const scoreCardOperationalFacts = {
     model_ms: 80,
     execution_ms: 40,
   },
-  cost: {
-    currency: "USD",
-    amount_micros: 25_000,
+  usage: {
+    availability: "AVAILABLE",
     input_tokens: 100,
     output_tokens: 50,
   },

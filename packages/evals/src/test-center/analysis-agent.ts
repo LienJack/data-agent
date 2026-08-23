@@ -54,10 +54,10 @@ export interface BenchmarkAnalysisAgent {
 }
 
 const zeroUsage: BenchmarkUsage = {
-  input_tokens: 0,
-  output_tokens: 0,
-  cost_micros: 0,
-  currency: "USD",
+  availability: "UNAVAILABLE",
+  input_tokens: null,
+  output_tokens: null,
+  tool_calls: null,
 };
 
 function percent(value: number): string {

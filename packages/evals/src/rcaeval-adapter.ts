@@ -67,7 +67,7 @@ export class RCAEvalAdapter {
         workflow_version: "1.0.0",
         evaluator_version: "1.0.0",
         seed: 42,
-        budget: { max_cases: 1, max_duration_ms: 600000, max_cost_micros: 50000000 },
+        budget: { max_cases: 1, max_duration_ms: 600000 },
         trace: {
           trace_id: `trace-${evalRunId}`,
           trace_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
@@ -164,7 +164,7 @@ export class RCAEvalAdapter {
       comparison: { mode: "SINGLE" },
       evidence_refs: [],
       latency: { total_ms: 0, model_ms: 0, execution_ms: 0 },
-      cost: { currency: "USD", amount_micros: 0, input_tokens: 0, output_tokens: 0 },
+      usage: { availability: "UNAVAILABLE", input_tokens: null, output_tokens: null },
       safety_counters: [
         { counter_id: "bundle-digest-v1", count: 0 },
         { counter_id: "license-v1", count: 0 },

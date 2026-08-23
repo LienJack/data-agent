@@ -89,7 +89,7 @@ function agent(onReflect?: () => void): BenchmarkEvalAgent {
     },
     answer: async () => ({
       sql: "select count(*) from products",
-      usage: { input_tokens: 10, output_tokens: 5, cost_micros: 0, currency: "USD" },
+      usage: { availability: "AVAILABLE", input_tokens: 10, output_tokens: 5, tool_calls: 0 },
       latency_ms: 1,
     }),
     reflect: async () => {
@@ -101,7 +101,7 @@ function agent(onReflect?: () => void): BenchmarkEvalAgent {
         retry_recommendation: "APPROVED",
         revised_answer: {
           sql: "select count(id) from products",
-          usage: { input_tokens: 10, output_tokens: 5, cost_micros: 0, currency: "USD" },
+          usage: { availability: "AVAILABLE", input_tokens: 10, output_tokens: 5, tool_calls: 0 },
           latency_ms: 1,
         },
       };

@@ -22,7 +22,6 @@ function operationalConstraintsFixture() {
       max_output_tokens: 8_192,
     },
     region_privacy: { verification_status: "UNVERIFIED" as const },
-    pricing: { verification_status: "UNVERIFIED" as const },
     fallback_compatibility: { verification_status: "UNVERIFIED" as const },
   };
 }
@@ -151,7 +150,7 @@ describe("七类 Model Provider 离线 Conformance", () => {
     ).toThrow();
   });
 
-  it("部署可冻结已验证运行约束，并把它们纳入后续 Profile Hash", () => {
+  it("部署可冻结已验证技术约束，并把它们纳入后续 Profile Hash", () => {
     const operationalConstraints = {
       context_window: {
         verification_status: "VERIFIED" as const,
@@ -159,12 +158,6 @@ describe("七类 Model Provider 离线 Conformance", () => {
         max_output_tokens: 8_192,
       },
       region_privacy: { verification_status: "UNVERIFIED" as const },
-      pricing: {
-        verification_status: "VERIFIED" as const,
-        currency: "USD",
-        input_microunits_per_million_tokens: 1_000,
-        output_microunits_per_million_tokens: 2_000,
-      },
       fallback_compatibility: { verification_status: "UNVERIFIED" as const },
     };
     const bindings = createModelProviderBindings([

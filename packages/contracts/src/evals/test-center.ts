@@ -236,7 +236,6 @@ export const benchmarkRunBudgetSchema = z.strictObject({
   max_case_duration_ms: z.number().int().positive().max(600_000),
   max_batch_duration_ms: z.number().int().positive().max(3_600_000),
   max_output_tokens_per_attempt: z.number().int().positive().max(32_768),
-  max_cost_micros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
   concurrency: z.number().int().positive().max(8),
 });
 
@@ -347,12 +346,20 @@ export const benchmarkAnswerSchema = z.discriminatedUnion("answer_type", [
   benchmarkMultipleChoiceAnswerSchema,
 ]);
 
-export const benchmarkUsageSchema = z.strictObject({
-  input_tokens: z.number().int().nonnegative(),
-  output_tokens: z.number().int().nonnegative(),
-  cost_micros: z.number().int().nonnegative(),
-  currency: z.literal("USD"),
-});
+export const benchmarkUsageSchema = z.discriminatedUnion("availability", [
+  z.strictObject({
+    availability: z.literal("AVAILABLE"),
+    input_tokens: z.number().int().nonnegative(),
+    output_tokens: z.number().int().nonnegative(),
+    tool_calls: z.number().int().nonnegative(),
+  }),
+  z.strictObject({
+    availability: z.literal("UNAVAILABLE"),
+    input_tokens: z.null(),
+    output_tokens: z.null(),
+    tool_calls: z.null(),
+  }),
+]);
 
 export const benchmarkOracleFeedbackSchema = z.strictObject({
   oracle_version: versionIdentifierSchema,
@@ -482,7 +489,6 @@ export const benchmarkBatchScorecardSchema = z.strictObject({
   total_latency_ms: z.number().int().nonnegative(),
   total_input_tokens: z.number().int().nonnegative(),
   total_output_tokens: z.number().int().nonnegative(),
-  total_cost_micros: z.number().int().nonnegative(),
   failure_taxonomy: z.array(benchmarkFailureCountSchema).max(32),
   slices: z.array(benchmarkScoreSliceSchema).max(256),
   generated_at: timestampSchema,

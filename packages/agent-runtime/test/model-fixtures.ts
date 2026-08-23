@@ -36,12 +36,6 @@ export const certifiedModelOperationalConstraints = {
     processing_regions: ["fixture-region"],
     privacy_tags: ["no-training", "tenant-isolated"],
   },
-  pricing: {
-    verification_status: "VERIFIED",
-    currency: "USD",
-    input_microunits_per_million_tokens: 1_000,
-    output_microunits_per_million_tokens: 2_000,
-  },
   fallback_compatibility: {
     verification_status: "VERIFIED",
     tags: ["json-v1", "tool-contract-v1"],

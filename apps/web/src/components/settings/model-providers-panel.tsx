@@ -101,9 +101,6 @@ function modelStatus(model: ProviderModelView): { label: string; className: stri
   if (model.status === "ACTIVE") {
     return { label: "运行中", className: "bg-emerald-50 text-emerald-700" };
   }
-  if (model.status === "UNBILLABLE") {
-    return { label: "待计费链", className: "bg-amber-50 text-amber-700" };
-  }
   return {
     label: "未启动",
     className: "bg-[var(--color-bg-tertiary)] text-[var(--color-text-muted)]",
@@ -175,7 +172,7 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
           next.map((provider) => [
             provider.provider_connection_id,
             provider.models
-              .filter((model) => model.status === "ACTIVE" || model.status === "UNBILLABLE")
+              .filter((model) => model.status === "ACTIVE")
               .map((model) => model.model_id),
           ]),
         ),

@@ -268,10 +268,10 @@ async function fixtureDataset(caseCount = 1): Promise<BirdMiniDevDataset> {
 }
 
 const usage = {
+  availability: "AVAILABLE" as const,
   input_tokens: 10,
   output_tokens: 5,
-  cost_micros: 25,
-  currency: "USD" as const,
+  tool_calls: 0,
 };
 
 class RecoveringAgent implements BenchmarkEvalAgent {
@@ -316,7 +316,6 @@ const budget = {
   max_case_duration_ms: 2_000,
   max_batch_duration_ms: 20_000,
   max_output_tokens_per_attempt: 1_000,
-  max_cost_micros: 10_000,
   concurrency: 1,
 };
 

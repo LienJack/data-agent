@@ -144,9 +144,14 @@ export async function aggregateBenchmarkScorecard(input: {
     recovery_rate: rate(recovered, initiallyFailed.length),
     regression_rate: rate(regressed, initiallyPassed.length),
     total_latency_ms: allAttempts.reduce((sum, attempt) => sum + attempt.latency_ms, 0),
-    total_input_tokens: allAttempts.reduce((sum, attempt) => sum + attempt.usage.input_tokens, 0),
-    total_output_tokens: allAttempts.reduce((sum, attempt) => sum + attempt.usage.output_tokens, 0),
-    total_cost_micros: allAttempts.reduce((sum, attempt) => sum + attempt.usage.cost_micros, 0),
+    total_input_tokens: allAttempts.reduce(
+      (sum, attempt) => sum + (attempt.usage.input_tokens ?? 0),
+      0,
+    ),
+    total_output_tokens: allAttempts.reduce(
+      (sum, attempt) => sum + (attempt.usage.output_tokens ?? 0),
+      0,
+    ),
     failure_taxonomy: [...failureCounts.entries()]
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([failure_type, count]) => ({ failure_type, count })),

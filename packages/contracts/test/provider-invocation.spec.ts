@@ -472,7 +472,6 @@ async function availableExecutionProfileFixture(input: {
         max_output_tokens: 2_000,
       },
       region_privacy: { verification_status: "UNVERIFIED" },
-      pricing: { verification_status: "UNVERIFIED" },
       fallback_compatibility: { verification_status: "UNVERIFIED" },
     },
     certification_status: "AVAILABLE",
@@ -1669,7 +1668,7 @@ describe("U3 provider invocation contracts", () => {
     ).rejects.toThrow();
   });
 
-  it("keeps the technical execution hash independent from pricing", async () => {
+  it("rejects pricing metadata from the technical execution profile", async () => {
     const profile = modelExecutionProfileSchema.parse({
       profile_id: ids.profile,
       scope: { app_id: ids.app, tenant_id: ids.workspace, environment: "test" },
@@ -1698,7 +1697,6 @@ describe("U3 provider invocation contracts", () => {
           processing_regions: ["cn"],
           privacy_tags: [],
         },
-        pricing: { verification_status: "UNVERIFIED" },
         fallback_compatibility: { verification_status: "UNVERIFIED" },
       },
       certification_status: "UNVERIFIED",
@@ -1715,9 +1713,8 @@ describe("U3 provider invocation contracts", () => {
         },
       },
     };
-    expect(await computeModelExecutionProfileHash(changedPricing)).toBe(
-      await computeModelExecutionProfileHash(profile),
-    );
+    expect(() => modelExecutionProfileSchema.parse(changedPricing)).toThrow();
+    await expect(computeModelExecutionProfileHash(profile)).resolves.toMatch(/^sha256:/);
   });
 
   it("replays one stable intent with a new permit before marker and blocks ALO redispatch after marker", async () => {

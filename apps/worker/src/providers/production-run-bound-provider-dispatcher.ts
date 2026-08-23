@@ -111,7 +111,6 @@ export function createProductionRunBoundProviderDispatcher(input: {
         operational_constraints: {
           context_window: snapshot.context_window,
           region_privacy: snapshot.region_privacy,
-          pricing: { verification_status: "UNVERIFIED" },
           fallback_compatibility: snapshot.fallback_compatibility,
         },
         recovery_capabilities: snapshot.recovery_capabilities,

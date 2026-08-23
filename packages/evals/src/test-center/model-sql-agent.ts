@@ -23,7 +23,7 @@ import type {
   BenchmarkSqlAgentInvocationContext,
 } from "./agents.js";
 import { CertifiedModelAnalysisAgentError } from "./model-analysis-agent.js";
-import { reportedTokenCounts } from "./model-provider-usage.js";
+import { projectProviderUsage } from "./model-provider-usage.js";
 
 export const SQL_ANSWER_RESPONSE_SCHEMA_VERSION = "benchmark-sql-answer@1.0.0";
 export const SQL_REFLECTION_RESPONSE_SCHEMA_VERSION = "benchmark-sql-reflection@1.1.0";
@@ -43,27 +43,6 @@ const RESPONSE_SCHEMA_INPUT_ALLOWANCE_BYTES = 8_192;
 const REFLECTION_DIAGNOSIS_MAX_LENGTH = 600;
 const REFLECTION_ACTION_MAX_LENGTH = 240;
 const REFLECTION_ACTION_MAX_COUNT = 4;
-
-function estimateCostMicros(input: {
-  readonly input_tokens: number;
-  readonly output_tokens: number;
-  readonly input_rate: number;
-  readonly output_rate: number;
-}): number {
-  const million = 1_000_000n;
-  const inputCost =
-    (BigInt(input.input_tokens) * BigInt(input.input_rate) + million - 1n) / million;
-  const outputCost =
-    (BigInt(input.output_tokens) * BigInt(input.output_rate) + million - 1n) / million;
-  const total = inputCost + outputCost;
-  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new CertifiedModelAnalysisAgentError(
-      "MODEL_ANALYSIS_BUDGET_EXCEEDED",
-      "模型调用成本超出安全整数范围。",
-    );
-  }
-  return Number(total);
-}
 
 function promptInputTokenUpperBound(messages: readonly { readonly content: string }[]): number {
   return (
@@ -183,13 +162,10 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
   readonly descriptor: BenchmarkAgentDescriptor;
   readonly #profile: AvailableModelProfile;
   readonly #modelProvider: ModelProviderPort;
-  readonly #budget: BenchmarkRunBudget;
   readonly #contextWindow: Extract<
     AvailableModelProfile["operational_constraints"]["context_window"],
     { readonly verification_status: "VERIFIED" }
   >;
-  readonly #pricing: AvailableModelProfile["operational_constraints"]["pricing"];
-  #spentCostMicros = 0;
 
   constructor(input: {
     readonly profile: AvailableModelProfile;
@@ -203,7 +179,6 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
       );
     }
     const contextWindow = input.profile.operational_constraints.context_window;
-    const pricing = input.profile.operational_constraints.pricing;
     if (contextWindow.verification_status !== "VERIFIED") {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_CONTEXT_NOT_VERIFIED",
@@ -218,9 +193,7 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
     }
     this.#profile = input.profile;
     this.#modelProvider = input.model_provider;
-    this.#budget = input.budget;
     this.#contextWindow = contextWindow;
-    this.#pricing = pricing;
     this.descriptor = benchmarkAgentDescriptorSchema.parse({
       agent_id: CERTIFIED_MODEL_SQL_AGENT_ID,
       agent_version: `certified-model-sql@${input.profile.profile_version}`,
@@ -253,13 +226,6 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_INPUT_TOO_LARGE",
         "题目与 Schema 超出认证 Profile 的 Context Window。",
-      );
-    }
-    const maximumAttemptCost = this.#cost(inputTokenBudget, maxOutputTokens);
-    if (this.#spentCostMicros + maximumAttemptCost > this.#budget.max_cost_micros) {
-      throw new CertifiedModelAnalysisAgentError(
-        "MODEL_ANALYSIS_BUDGET_EXCEEDED",
-        "模型调用的保守成本上界超过冻结批次预算。",
       );
     }
     const request = createDirectModelProviderInvocation({
@@ -309,9 +275,6 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
         "认证模型调用未返回完成事件。",
       );
     }
-    const tokenCounts = reportedTokenCounts(completed.usage);
-    const cost = this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens);
-    this.#spentCostMicros += cost;
     let output: unknown;
     try {
       output = JSON.parse(completed.output_text);
@@ -329,24 +292,7 @@ export class CertifiedModelSqlAgent implements BenchmarkEvalAgent {
   }
 
   #usage(event: CompletedModelEvent): BenchmarkUsage {
-    const tokenCounts = reportedTokenCounts(event.usage);
-    return {
-      input_tokens: tokenCounts.input_tokens,
-      output_tokens: tokenCounts.output_tokens,
-      cost_micros: this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens),
-      currency: "USD",
-    };
-  }
-
-  #cost(inputTokens: number, outputTokens: number): number {
-    return this.#pricing.verification_status === "VERIFIED"
-      ? estimateCostMicros({
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          input_rate: this.#pricing.input_microunits_per_million_tokens,
-          output_rate: this.#pricing.output_microunits_per_million_tokens,
-        })
-      : 0;
+    return projectProviderUsage(event.usage);
   }
 
   async answer(input: {

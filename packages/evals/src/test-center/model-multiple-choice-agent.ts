@@ -17,7 +17,7 @@ import {
 } from "@data-agent/contracts";
 import type { BenchmarkSqlAgentInvocationContext } from "./agents.js";
 import { CertifiedModelAnalysisAgentError } from "./model-analysis-agent.js";
-import { reportedTokenCounts } from "./model-provider-usage.js";
+import { projectProviderUsage } from "./model-provider-usage.js";
 
 export const MULTIPLE_CHOICE_RESPONSE_SCHEMA_VERSION = "benchmark-multiple-choice@1.0.0";
 export const modelMultipleChoiceResponseSchema = benchmarkMultipleChoiceAnswerSchema;
@@ -39,25 +39,6 @@ export interface BenchmarkMultipleChoiceAgent {
     readonly invocation: BenchmarkSqlAgentInvocationContext;
     readonly excluded_choices?: readonly ("A" | "B" | "C" | "D")[];
   }): Promise<BenchmarkMultipleChoiceAgentAnswer>;
-}
-
-function estimateCostMicros(input: {
-  readonly input_tokens: number;
-  readonly output_tokens: number;
-  readonly input_rate: number;
-  readonly output_rate: number;
-}): number {
-  const million = 1_000_000n;
-  const total =
-    (BigInt(input.input_tokens) * BigInt(input.input_rate) + million - 1n) / million +
-    (BigInt(input.output_tokens) * BigInt(input.output_rate) + million - 1n) / million;
-  if (total > BigInt(Number.MAX_SAFE_INTEGER)) {
-    throw new CertifiedModelAnalysisAgentError(
-      "MODEL_ANALYSIS_BUDGET_EXCEEDED",
-      "模型调用成本超出安全整数范围。",
-    );
-  }
-  return Number(total);
 }
 
 function messages(input: {
@@ -100,13 +81,10 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
   readonly descriptor: BenchmarkAgentDescriptor;
   readonly #profile: AvailableModelProfile;
   readonly #modelProvider: ModelProviderPort;
-  readonly #budget: BenchmarkRunBudget;
   readonly #contextWindow: Extract<
     AvailableModelProfile["operational_constraints"]["context_window"],
     { readonly verification_status: "VERIFIED" }
   >;
-  readonly #pricing: AvailableModelProfile["operational_constraints"]["pricing"];
-  #spentCostMicros = 0;
 
   constructor(input: {
     readonly profile: AvailableModelProfile;
@@ -120,7 +98,6 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
       );
     }
     const contextWindow = input.profile.operational_constraints.context_window;
-    const pricing = input.profile.operational_constraints.pricing;
     if (contextWindow.verification_status !== "VERIFIED") {
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_CONTEXT_NOT_VERIFIED",
@@ -129,9 +106,7 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
     }
     this.#profile = input.profile;
     this.#modelProvider = input.model_provider;
-    this.#budget = input.budget;
     this.#contextWindow = contextWindow;
-    this.#pricing = pricing;
     this.descriptor = benchmarkAgentDescriptorSchema.parse({
       agent_id: CERTIFIED_MODEL_MULTIPLE_CHOICE_AGENT_ID,
       agent_version: `certified-model-multiple-choice@${input.profile.profile_version}`,
@@ -162,13 +137,6 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
       throw new CertifiedModelAnalysisAgentError(
         "MODEL_ANALYSIS_INPUT_TOO_LARGE",
         "选择题内容超出配置 Profile 的 Context Window。",
-      );
-    }
-    const maximumCost = this.#cost(inputTokenBudget, maxOutputTokens);
-    if (this.#spentCostMicros + maximumCost > this.#budget.max_cost_micros) {
-      throw new CertifiedModelAnalysisAgentError(
-        "MODEL_ANALYSIS_BUDGET_EXCEEDED",
-        "选择题模型调用的成本上界超过冻结预算。",
       );
     }
     const request = createDirectModelProviderInvocation({
@@ -234,29 +202,11 @@ export class CertifiedModelMultipleChoiceAgent implements BenchmarkMultipleChoic
         "模型返回的选择题结果不符合契约。",
       );
     }
-    const tokenCounts = reportedTokenCounts(completed.usage);
-    const cost = this.#cost(tokenCounts.input_tokens, tokenCounts.output_tokens);
-    this.#spentCostMicros += cost;
+    const tokenCounts = projectProviderUsage(completed.usage);
     return {
       answer: answer.data,
-      usage: {
-        input_tokens: tokenCounts.input_tokens,
-        output_tokens: tokenCounts.output_tokens,
-        cost_micros: cost,
-        currency: "USD",
-      },
+      usage: tokenCounts,
       latency_ms: Math.max(0, Math.round(performance.now() - started)),
     };
-  }
-
-  #cost(inputTokens: number, outputTokens: number): number {
-    return this.#pricing.verification_status === "VERIFIED" && this.#pricing.currency === "USD"
-      ? estimateCostMicros({
-          input_tokens: inputTokens,
-          output_tokens: outputTokens,
-          input_rate: this.#pricing.input_microunits_per_million_tokens,
-          output_rate: this.#pricing.output_microunits_per_million_tokens,
-        })
-      : 0;
   }
 }

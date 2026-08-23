@@ -42,7 +42,6 @@ if (process.env[CONFIRMATION]?.trim() !== "YES") {
           max_case_duration_ms: 120_000,
           max_batch_duration_ms: 240_000,
           max_output_tokens_per_attempt: 4_096,
-          max_cost_micros: 2_000_000,
           concurrency: 1,
         },
       },
@@ -59,7 +58,7 @@ if (process.env[CONFIRMATION]?.trim() !== "YES") {
       oracle_receipt_hash: attempt?.oracle_feedback.oracle_receipt_hash,
       scorecard_hash: run.scorecard?.scorecard_hash,
       post_reflection_pass_rate: run.scorecard?.post_reflection_pass_rate,
-      cost_micros: attempt?.usage.cost_micros,
+      usage_availability: attempt?.usage.availability,
       latency_ms: attempt?.latency_ms,
       deterministic_analysis_suite: {
         version: deterministicSuite.manifest.suite_version,

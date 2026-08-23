@@ -14,7 +14,6 @@ const budget = {
   max_case_duration_ms: 10_000,
   max_batch_duration_ms: 30_000,
   max_output_tokens_per_attempt: 2_048,
-  max_cost_micros: 0,
   concurrency: 1,
 } as const;
 

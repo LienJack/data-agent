@@ -14,7 +14,6 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   CertifiedModelAnalysisAgent,
-  CertifiedModelAnalysisAgentError,
   INSIGHTBENCH_REFLECTION_RESPONSE_SCHEMA_VERSION,
   INSIGHTBENCH_REPORT_RESPONSE_SCHEMA_VERSION,
 } from "../src/test-center/model-analysis-agent.js";
@@ -31,14 +30,7 @@ const scope = {
 const receiptHash = `sha256:${"a".repeat(64)}` as const;
 const responseHash = `sha256:${"b".repeat(64)}` as const;
 
-async function availableProfile(
-  pricing: ModelProfile["operational_constraints"]["pricing"] = {
-    verification_status: "VERIFIED",
-    currency: "USD",
-    input_microunits_per_million_tokens: 1_000,
-    output_microunits_per_million_tokens: 2_000,
-  },
-) {
+async function availableProfile() {
   const receiptRef = {
     artifact_id: "51000000-0000-4000-8000-000000000003",
     artifact_type: "ModelCertificationReceipt",
@@ -67,7 +59,6 @@ async function availableProfile(
         max_output_tokens: 4_096,
       },
       region_privacy: { verification_status: "UNVERIFIED" },
-      pricing,
       fallback_compatibility: { verification_status: "UNVERIFIED" },
     },
     certification_status: "AVAILABLE",
@@ -112,7 +103,6 @@ function configuredProfile() {
         max_output_tokens: 4_096,
       },
       region_privacy: { verification_status: "UNVERIFIED" },
-      pricing: { verification_status: "UNVERIFIED" },
       fallback_compatibility: { verification_status: "UNVERIFIED" },
     },
     certification_status: "CONFIGURED",
@@ -148,6 +138,7 @@ async function publicCase() {
 function eventsFor(
   request: AuthoritativeModelProviderInvocation,
   output: unknown,
+  usageAvailable = true,
 ): ReturnType<ModelProviderPort["stream"]> {
   async function* stream() {
     yield {
@@ -179,14 +170,23 @@ function eventsFor(
       event_type: "COMPLETED" as const,
       output_text: JSON.stringify(output),
       response_hash: responseHash,
-      usage: {
-        availability: "AVAILABLE" as const,
-        source: "PROVIDER_REPORTED" as const,
-        input_tokens: 120,
-        output_tokens: 80,
-        tool_calls: 0,
-        unavailable_reason: null,
-      },
+      usage: usageAvailable
+        ? {
+            availability: "AVAILABLE" as const,
+            source: "PROVIDER_REPORTED" as const,
+            input_tokens: 120,
+            output_tokens: 80,
+            tool_calls: 0,
+            unavailable_reason: null,
+          }
+        : {
+            availability: "UNAVAILABLE" as const,
+            source: "UNAVAILABLE" as const,
+            input_tokens: null,
+            output_tokens: null,
+            tool_calls: null,
+            unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE" as const,
+          },
     };
   }
   return stream();
@@ -211,7 +211,6 @@ const budget = {
   max_case_duration_ms: 5_000,
   max_batch_duration_ms: 20_000,
   max_output_tokens_per_attempt: 1_000,
-  max_cost_micros: 1_000,
   concurrency: 1,
 };
 
@@ -255,10 +254,10 @@ describe("CertifiedModelAnalysisAgent", () => {
     });
     expect(answer.report).toEqual(report);
     expect(answer.usage).toEqual({
+      availability: "AVAILABLE",
       input_tokens: 120,
       output_tokens: 80,
-      cost_micros: 2,
-      currency: "USD",
+      tool_calls: 0,
     });
 
     const secondAttemptId = randomUUID();
@@ -295,7 +294,7 @@ describe("CertifiedModelAnalysisAgent", () => {
     ]);
   });
 
-  it("rejects an unbranded profile and a zero-cost budget before calling the provider", async () => {
+  it("rejects an unbranded profile and an invalid technical output budget before provider I/O", async () => {
     const profile = await availableProfile();
     expect(
       () =>
@@ -307,34 +306,27 @@ describe("CertifiedModelAnalysisAgent", () => {
     ).toThrowError(expect.objectContaining({ code: "MODEL_ANALYSIS_PROFILE_NOT_AUTHORIZED" }));
 
     let providerCalled = false;
-    const agent = new CertifiedModelAnalysisAgent({
-      profile,
-      model_provider: {
-        async *stream() {
-          providerCalled = true;
-          yield* [];
-        },
-      },
-      budget: { ...budget, max_cost_micros: 0 },
-    });
-    await expect(
-      agent.answer({
-        test_case: await publicCase(),
-        csv_text: "category,value\nA,2\n",
-        seed: 42,
-        invocation: {
-          run_id: randomUUID(),
-          attempt_id: randomUUID(),
-          attempt_index: 0,
-          timeout_ms: 5_000,
-          max_output_tokens: 1_000,
-        },
+    expect(
+      () =>
+        new CertifiedModelAnalysisAgent({
+          profile,
+          model_provider: {
+            async *stream() {
+              providerCalled = true;
+              yield* [];
+            },
+          },
+          budget: { ...budget, max_output_tokens_per_attempt: 5_000 },
+        }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "MODEL_ANALYSIS_BUDGET_EXCEEDED",
       }),
-    ).rejects.toBeInstanceOf(CertifiedModelAnalysisAgentError);
+    );
     expect(providerCalled).toBe(false);
   });
 
-  it("calls a configured model without certification or pricing authorization", async () => {
+  it("calls a configured model without certification or pricing metadata", async () => {
     const profile = configuredProfile();
     let providerCalled = false;
     const agent = new CertifiedModelAnalysisAgent({
@@ -345,7 +337,7 @@ describe("CertifiedModelAnalysisAgent", () => {
           return eventsFor(request, report);
         },
       },
-      budget: { ...budget, max_cost_micros: 0 },
+      budget,
     });
     const answer = await agent.answer({
       test_case: await publicCase(),
@@ -361,13 +353,18 @@ describe("CertifiedModelAnalysisAgent", () => {
     });
 
     expect(providerCalled).toBe(true);
-    expect(answer.usage.cost_micros).toBe(0);
+    expect(answer.usage).toEqual({
+      availability: "AVAILABLE",
+      input_tokens: 120,
+      output_tokens: 80,
+      tool_calls: 0,
+    });
   });
 });
 
 describe("CertifiedModelSqlAgent", () => {
-  it("runs with verified context limits when commercial pricing is unavailable", async () => {
-    const profile = await availableProfile({ verification_status: "UNVERIFIED" });
+  it("runs with verified context limits and no commercial metadata", async () => {
+    const profile = await availableProfile();
     const port: ModelProviderPort = {
       stream: (request) =>
         eventsFor(request, { answer_type: "SQL", sql: "SELECT category FROM dataset" }),
@@ -375,7 +372,7 @@ describe("CertifiedModelSqlAgent", () => {
     const agent = new CertifiedModelSqlAgent({
       profile,
       model_provider: port,
-      budget: { ...budget, max_cost_micros: 0 },
+      budget,
     });
     const answer = await agent.answer({
       test_case: await publicCase(),
@@ -389,7 +386,33 @@ describe("CertifiedModelSqlAgent", () => {
     });
 
     expect(answer.sql).toBe("SELECT category FROM dataset");
-    expect(answer.usage).toMatchObject({ cost_micros: 0, currency: "USD" });
+    expect(answer.usage).toMatchObject({ availability: "AVAILABLE", tool_calls: 0 });
+  });
+
+  it("preserves unavailable provider usage as null instead of inventing zero tokens", async () => {
+    const profile = await availableProfile();
+    const port: ModelProviderPort = {
+      stream: (request) =>
+        eventsFor(request, { answer_type: "SQL", sql: "SELECT category FROM dataset" }, false),
+    };
+    const agent = new CertifiedModelSqlAgent({ profile, model_provider: port, budget });
+    const answer = await agent.answer({
+      test_case: await publicCase(),
+      seed: 42,
+      invocation: {
+        run_id: randomUUID(),
+        attempt_id: randomUUID(),
+        timeout_ms: 5_000,
+        max_output_tokens: 1_000,
+      },
+    });
+
+    expect(answer.usage).toEqual({
+      availability: "UNAVAILABLE",
+      input_tokens: null,
+      output_tokens: null,
+      tool_calls: null,
+    });
   });
 
   it("compacts provider reflection overruns before creating an authoritative receipt", async () => {

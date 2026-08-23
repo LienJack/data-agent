@@ -51,8 +51,6 @@ function modelStatusLabel(status: ModelCatalogEntry["status"]) {
       return { label: "草稿", className: "border-sky-200 bg-sky-50 text-sky-700" };
     case "ACTIVE":
       return { label: "已启用", className: "border-emerald-200 bg-emerald-50 text-emerald-700" };
-    case "UNBILLABLE":
-      return { label: "不可计费", className: "border-amber-200 bg-amber-50 text-amber-700" };
     case "DISABLED":
       return { label: "已停用", className: "border-slate-200 bg-slate-100 text-slate-600" };
   }
@@ -130,14 +128,14 @@ export function PricingControlPanel() {
             vision: false,
           },
           credential_ref: null,
-          status: "UNBILLABLE",
+          status: "DRAFT",
           is_system_default: false,
           expected_config_version: 0,
         }),
       });
       setModelId("");
       setDisplayName("");
-      setNotice("不可计费模型草稿已创建；配置价格并完成审批前不会进入计费路径。");
+      setNotice("模型草稿已创建，可在技术配置验证后启用。");
       await reload();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "模型创建失败");
@@ -146,10 +144,7 @@ export function PricingControlPanel() {
     }
   };
 
-  const setStatus = async (
-    model: ModelCatalogEntry,
-    status: "ACTIVE" | "DISABLED" | "UNBILLABLE",
-  ) => {
+  const setStatus = async (model: ModelCatalogEntry, status: "ACTIVE" | "DISABLED") => {
     setError(null);
     setNotice(undefined);
     setActionPending(`${model.model_profile_id}:${status}`);
@@ -395,16 +390,6 @@ export function PricingControlPanel() {
                           onClick={() => void setStatus(model, "ACTIVE")}
                         >
                           启用
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          loading={actionPending === `${model.model_profile_id}:UNBILLABLE`}
-                          disabled={busy || model.status === "UNBILLABLE"}
-                          onClick={() => void setStatus(model, "UNBILLABLE")}
-                        >
-                          不可计费
                         </Button>
                         <Button
                           type="button"

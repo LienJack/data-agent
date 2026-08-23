@@ -258,8 +258,6 @@ export default function TestCenterPage() {
               max_case_duration_ms: 240_000,
               max_batch_duration_ms: 1_200_000,
               max_output_tokens_per_attempt: 2_048,
-              max_cost_micros:
-                activeAgent && certifiedModelAgentIds.has(activeAgent.agent_id) ? 3_000_000 : 0,
               concurrency: 1,
             },
             ...(mode === "submitted"

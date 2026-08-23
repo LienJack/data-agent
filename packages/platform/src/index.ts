@@ -13,8 +13,6 @@ export {
   type PostgresPrivilegedGrantAuthority,
   type PostgresPrivilegedGrantAuthorityOptions,
 } from "./authz/postgres-privileged-grant-authority.js";
-export * from "./billing/billing-gated-model-provider.js";
-export * from "./billing/billing-gated-provider.js";
 export * from "./billing/microcredits.js";
 export * from "./billing/model-cost.js";
 export * from "./billing/postgres-credit-ledger.js";

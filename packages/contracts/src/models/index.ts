@@ -146,7 +146,7 @@ export const modelCatalogEntrySchema = z.strictObject({
   base_url: z.url().max(2048),
   capabilities: modelCapabilitiesSchema,
   credential_ref: globalModelCredentialRefSchema.nullable(),
-  status: z.enum(["DRAFT", "ACTIVE", "DISABLED", "UNBILLABLE"]),
+  status: z.enum(["DRAFT", "ACTIVE", "DISABLED"]),
   config_version: z.number().int().positive(),
   is_system_default: z.boolean(),
   created_by: immutableIdSchema,
@@ -201,7 +201,7 @@ export const upsertModelCatalogEntryInputSchema = z.strictObject({
   base_url: z.url().max(2048),
   capabilities: modelCapabilitiesSchema,
   credential_ref: globalModelCredentialRefSchema.nullable(),
-  status: z.enum(["DRAFT", "ACTIVE", "DISABLED", "UNBILLABLE"]),
+  status: z.enum(["DRAFT", "ACTIVE", "DISABLED"]),
   is_system_default: z.boolean().default(false),
   expected_config_version: z.number().int().nonnegative(),
 });
@@ -211,7 +211,7 @@ export const modelCatalogStatusInputSchema = z.strictObject({
   operation_id: immutableIdSchema,
   idempotency_key: z.string().min(8).max(128),
   model_profile_id: immutableIdSchema,
-  status: z.enum(["ACTIVE", "DISABLED", "UNBILLABLE"]),
+  status: z.enum(["ACTIVE", "DISABLED"]),
   expected_config_version: z.number().int().positive(),
 });
 
