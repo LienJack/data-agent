@@ -14,10 +14,10 @@
 
 ## Acceptance Criteria
 
-- [ ] 静态架构测试证明通用 Worker/Platform 不再拥有电商业务常量和 SQL。
-- [ ] adapter 注册、适用/不适用、未注册和错误传播均有测试。
-- [ ] 电商 Demo focused suite、Worker unit/typecheck/build 通过。
-- [ ] scoped commit 并归档子任务。
+- [x] 静态架构测试证明通用 Worker/Platform 不再拥有电商业务常量和 SQL。
+- [x] adapter 注册、适用/不适用、未注册和错误传播均有测试。
+- [x] 电商 Demo focused suite、Worker unit/typecheck/build 通过。
+- [x] scoped commit 并归档子任务。
 
 ## Notes
 

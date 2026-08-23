@@ -6,10 +6,13 @@ import {
   type ProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import {
-  buildQueryEvidenceChartDocument,
   compileEcommerceMonthlyOrderTrendSql,
-  compileEcommerceTableCountSql,
-  type EcommerceBenchmarkQueryExecutor,
+  ECOMMERCE_DIRECT_QA_CAPABILITY,
+} from "@data-agent/evals/ecommerce-direct-qa";
+import {
+  buildQueryEvidenceChartDocument,
+  compilePostgresTableCountSql,
+  type PostgresReadOnlyBenchmarkQueryExecutor,
 } from "@data-agent/platform";
 import { z } from "zod";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
@@ -65,7 +68,7 @@ function visualizationIntent(
 export interface ProductionTeamToolsDependencies {
   readonly capability: unknown;
   readonly artifacts: ProductionTeamArtifactPort;
-  readonly sandbox: EcommerceBenchmarkQueryExecutor;
+  readonly sandbox: PostgresReadOnlyBenchmarkQueryExecutor;
   readonly semantic_relationships: FrozenSemanticRelationshipReadPort;
   /**
    * Optional production composition hook. It only receives a committed
@@ -263,7 +266,7 @@ export function createProductionTeamTools(
           const sql =
             queryKind === "MONTHLY_ORDER_TREND"
               ? compileEcommerceMonthlyOrderTrendSql()
-              : compileEcommerceTableCountSql();
+              : compilePostgresTableCountSql(ECOMMERCE_DIRECT_QA_CAPABILITY.allowed_schema);
           state.sql_ref = await commitArtifact(dependencies, factoryInput, {
             artifact_type: "SqlArtifact",
             profile_id: "governed-text2sql-agent",
@@ -282,7 +285,11 @@ export function createProductionTeamTools(
           if (!queryKind) throw new ProductionTeamToolError("TEAM_TEXT2SQL_COMPILE_REQUIRED");
           const result =
             queryKind === "MONTHLY_ORDER_TREND"
-              ? await dependencies.sandbox.executeMonthlyOrderTrend({ timeout_ms: timeout })
+              ? await dependencies.sandbox.execute({
+                  sql: compileEcommerceMonthlyOrderTrendSql(),
+                  timeout_ms: timeout,
+                  max_rows: 100,
+                })
               : await dependencies.sandbox.executeTableCount({ timeout_ms: timeout });
           const columns = result.columns.map((column) => ({
             key: column,

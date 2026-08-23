@@ -59,7 +59,6 @@ describe("Production Team governed chart publication", () => {
         sandbox: {
           execute: vi.fn(),
           executeTableCount: tableCount,
-          executeMonthlyOrderTrend: vi.fn(),
         },
         semantic_relationships: { read: relationshipRead as never },
       },
@@ -165,7 +164,10 @@ describe("Production Team governed chart publication", () => {
       guard_running_lease: vi.fn(),
       append_checkpoint_event: vi.fn(),
       append_side_effect_event: vi.fn(),
-      append_display_event: vi.fn(),
+      append_display_event: vi.fn(async () => ({
+        ok: true as const,
+        value: { sequence: 1 },
+      })),
     });
     const plan = await buildAgentDispatchPlan({
       schema_version: "agent-dispatch-plan@1.0.0",
@@ -221,9 +223,7 @@ describe("Production Team governed chart publication", () => {
           },
         },
         sandbox: {
-          execute: vi.fn(),
-          executeTableCount: vi.fn(),
-          executeMonthlyOrderTrend: vi.fn(async () => ({
+          execute: vi.fn(async () => ({
             columns: ["month", "order_count"],
             rows: [
               ["2026-01", 20],
@@ -231,6 +231,7 @@ describe("Production Team governed chart publication", () => {
               ["2026-03", 27],
             ],
           })),
+          executeTableCount: vi.fn(),
         },
         semantic_relationships: {
           read: vi.fn(async () => ({

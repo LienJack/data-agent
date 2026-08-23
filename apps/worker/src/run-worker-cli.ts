@@ -15,6 +15,7 @@ import {
   RuntimeBuildIdentityConfigurationError,
   type RuntimeMigrationFact,
 } from "@data-agent/contracts/server";
+import { ECOMMERCE_DIRECT_QA_CAPABILITY } from "@data-agent/evals/ecommerce-direct-qa";
 import {
   adaptPgPool,
   createClamAvInstreamClient,
@@ -24,13 +25,13 @@ import {
   createOpenAiCompatibleEmbeddingProviderFactory,
   createPostgresArtifactWorkspaceStore,
   createPostgresCapabilityAuthority,
-  createPostgresEcommerceBenchmarkExecutor,
   createPostgresEffectiveConfigResolver,
   createPostgresJobQueue,
   createPostgresKnowledgeRegistry,
   createPostgresOperationsAdminRepository,
   createPostgresProductTeamArtifactStore,
   createPostgresProviderInvocationSmokeJob,
+  createPostgresReadOnlyBenchmarkExecutor,
   createPostgresRepository,
   createPostgresResearchAuthority,
   createPostgresResolvedContextRegistry,
@@ -49,6 +50,8 @@ import {
 import { createResolvedContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
+import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
+import { createEcommerceDirectQaRegistry } from "./evals/ecommerce-direct-qa-registry.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
@@ -370,20 +373,40 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
-        const ecommerceSandbox = createPostgresEcommerceBenchmarkExecutor({ pool });
+        const ecommerceSandbox = createPostgresReadOnlyBenchmarkExecutor({
+          pool,
+          policy: ECOMMERCE_DIRECT_QA_CAPABILITY,
+        });
         const semanticRelationships = createFrozenSemanticRelationshipReadPort(
           createPostgresSemanticExplorerReader({
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           }),
         );
+        const genericDirectQa = createDirectQaAnalysisExecutor({
+          capability,
+          runs: runRepository,
+          artifacts: teamArtifacts,
+          semantic_relationships: semanticRelationships,
+        });
         const teamExecutor = createDataAgentTeamRunner({
-          direct_analysis: createDirectQaAnalysisExecutor({
-            capability,
-            runs: runRepository,
-            artifacts: teamArtifacts,
-            sandbox: ecommerceSandbox,
-            semantic_relationships: semanticRelationships,
+          direct_analysis: createEcommerceDirectQaRegistry({
+            fallback: genericDirectQa,
+            registrations: [
+              {
+                registration: {
+                  workspace_id: config.tenant_id,
+                  benchmark_profile_id: ECOMMERCE_DIRECT_QA_CAPABILITY.benchmark_profile_id,
+                },
+                executor: createEcommerceDirectQaAdapter({
+                  capability,
+                  fallback: genericDirectQa,
+                  runs: runRepository,
+                  artifacts: teamArtifacts,
+                  sandbox: ecommerceSandbox,
+                }),
+              },
+            ],
           }),
         });
         const executor = smokeTarget

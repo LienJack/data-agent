@@ -7,6 +7,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./ecommerce-direct-qa": {
+      "types": "./dist/ecommerce-direct-qa/index.d.ts",
+      "import": "./dist/ecommerce-direct-qa/index.js"
     }
   },
   "files": [

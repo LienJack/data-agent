@@ -2,24 +2,7 @@ import { canonicalizeJson } from "@data-agent/contracts/common";
 import type pg from "pg";
 import { parse } from "pgsql-parser";
 
-const ALLOWED_SCHEMA = "demo_adb_ecommerce_mart";
-const READER_ROLE = "data_agent_ecommerce_reader";
-const ALLOWED_RELATIONS = new Set([
-  "dim_date",
-  "dim_customer",
-  "dim_seller",
-  "dim_category",
-  "dim_product",
-  "dim_geolocation_zip",
-  "dim_amazon_product",
-  "dim_ebay_listing",
-  "fact_order",
-  "fact_order_item",
-  "fact_payment",
-  "fact_review",
-  "fact_amazon_review",
-  "fact_delivery_state_month",
-]);
+const POSTGRES_IDENTIFIER = /^[a-z_][a-z0-9_]*$/u;
 const DANGEROUS_NODE_NAMES = new Set([
   "AlterTableStmt",
   "CallStmt",
@@ -41,122 +24,58 @@ const DANGEROUS_FUNCTION =
 
 type JsonRecord = Record<string, unknown>;
 
-export interface EcommerceBenchmarkQueryResult {
+export interface PostgresReadOnlyBenchmarkQueryResult {
   readonly columns: readonly string[];
   readonly rows: readonly (readonly (null | string | number)[])[];
 }
 
-export interface EcommerceBenchmarkQueryExecutor {
+export interface PostgresReadOnlyBenchmarkQueryExecutor {
   execute(input: {
     readonly sql: string;
     readonly timeout_ms: number;
     readonly max_rows: number;
-  }): Promise<EcommerceBenchmarkQueryResult>;
-  executeTableCount(input: { readonly timeout_ms: number }): Promise<EcommerceBenchmarkQueryResult>;
-  executeMonthlyOrderTrend(input: {
+  }): Promise<PostgresReadOnlyBenchmarkQueryResult>;
+  executeTableCount(input: {
     readonly timeout_ms: number;
-  }): Promise<EcommerceBenchmarkQueryResult>;
+  }): Promise<PostgresReadOnlyBenchmarkQueryResult>;
 }
 
-export function compileEcommerceTableCountSql(): string {
+export interface PostgresReadOnlyBenchmarkPolicy {
+  readonly allowed_schema: string;
+  readonly reader_role: string;
+  readonly allowed_relations: readonly string[];
+}
+
+function validatePolicy(policy: PostgresReadOnlyBenchmarkPolicy): Readonly<{
+  allowed_schema: string;
+  reader_role: string;
+  allowed_relations: ReadonlySet<string>;
+}> {
+  if (
+    !POSTGRES_IDENTIFIER.test(policy.allowed_schema) ||
+    !POSTGRES_IDENTIFIER.test(policy.reader_role) ||
+    policy.allowed_relations.length === 0 ||
+    policy.allowed_relations.some((relation) => !POSTGRES_IDENTIFIER.test(relation))
+  ) {
+    throw new Error("POSTGRES_QUERY_POLICY_INVALID");
+  }
+  return Object.freeze({
+    allowed_schema: policy.allowed_schema,
+    reader_role: policy.reader_role,
+    allowed_relations: new Set(policy.allowed_relations),
+  });
+}
+
+export function compilePostgresTableCountSql(allowedSchema: string): string {
+  if (!POSTGRES_IDENTIFIER.test(allowedSchema)) {
+    throw new Error("POSTGRES_QUERY_POLICY_INVALID");
+  }
   return `select count(*)::integer as table_count
 from pg_catalog.pg_class relation
 join pg_catalog.pg_namespace namespace on namespace.oid = relation.relnamespace
-where namespace.nspname = '${ALLOWED_SCHEMA}'
+where namespace.nspname = '${allowedSchema}'
   and relation.relkind in ('r', 'p')
   and relation.relname = any($1::text[])`;
-}
-
-export function compileEcommerceMonthlyOrderTrendSql(): string {
-  return `with payment_by_order as (
-  select order_id, sum(payment_value_brl)::numeric as sales_amount
-  from ${ALLOWED_SCHEMA}.fact_payment
-  group by order_id
-), monthly as (
-  select pg_catalog.date_trunc('month', orders.purchase_date) as month_start,
-         count(*)::integer as order_count,
-         round(coalesce(sum(payment.sales_amount), 0), 2)::double precision as sales_amount_brl
-  from ${ALLOWED_SCHEMA}.fact_order orders
-  left join payment_by_order payment on payment.order_id = orders.order_id
-  where orders.purchase_date is not null
-  group by pg_catalog.date_trunc('month', orders.purchase_date)
-)
-select pg_catalog.to_char(month_start, 'YYYY-MM') as month,
-       order_count,
-       sales_amount_brl,
-       round((
-         (sales_amount_brl - lag(sales_amount_brl) over (order by month_start)) * 100
-         / nullif(lag(sales_amount_brl) over (order by month_start), 0)
-       )::numeric, 2)::double precision as sales_mom_pct
-from monthly
-order by month_start`;
-}
-
-export function compileEcommerceSalesAnomalySql(): string {
-  return `with payment_by_order as (
-  select order_id, sum(payment_value_brl)::numeric as sales_amount
-  from ${ALLOWED_SCHEMA}.fact_payment
-  group by order_id
-), monthly as (
-  select pg_catalog.date_trunc('month', orders.purchase_date) as month_start,
-         count(*)::integer as order_count,
-         round(coalesce(sum(payment.sales_amount), 0), 2)::double precision as sales_amount_brl
-  from ${ALLOWED_SCHEMA}.fact_order orders
-  left join payment_by_order payment on payment.order_id = orders.order_id
-  where orders.purchase_date is not null
-  group by pg_catalog.date_trunc('month', orders.purchase_date)
-), monthly_change as (
-  select month_start,
-         order_count,
-         sales_amount_brl,
-         round((
-           (sales_amount_brl - lag(sales_amount_brl) over (order by month_start)) * 100
-           / nullif(lag(sales_amount_brl) over (order by month_start), 0)
-         )::numeric, 2)::double precision as mom_pct
-  from monthly
-), anomalies as (
-  select 'MONTHLY_SALES_CHANGE'::text as anomaly_type,
-         pg_catalog.to_char(month_start, 'YYYY-MM')::text as entity,
-         mom_pct::double precision as metric_value,
-         ('sales=' || sales_amount_brl::text || ' BRL; orders=' || order_count::text)::text as detail
-  from monthly_change
-  where abs(mom_pct) >= 50
-  union all
-  select 'DELIVERY_DELAY'::text,
-         order_id::text,
-         round(delivery_delay_days::numeric, 2)::double precision,
-         ('status=' || coalesce(order_status, 'NULL'))::text
-  from ${ALLOWED_SCHEMA}.fact_order
-  where delivery_delay_days >= 100
-)
-select anomaly_type, entity, metric_value, detail
-from anomalies
-order by anomaly_type, abs(metric_value) desc, entity
-limit 100`;
-}
-
-export function compileEcommerceSalesReportSummarySql(): string {
-  return `with payment_by_order as (
-  select order_id, sum(payment_value_brl)::numeric as sales_amount
-  from ${ALLOWED_SCHEMA}.fact_payment
-  group by order_id
-), review_by_order as (
-  select order_id, avg(review_score)::numeric as review_score
-  from ${ALLOWED_SCHEMA}.fact_review
-  group by order_id
-)
-select min(orders.purchase_date)::text as period_start,
-       max(orders.purchase_date)::text as period_end,
-       count(*)::integer as total_orders,
-       round(coalesce(sum(payment.sales_amount), 0), 2)::double precision as total_sales_brl,
-       round(coalesce(avg(payment.sales_amount), 0), 2)::double precision as average_order_value_brl,
-       count(*) filter (where orders.delivery_delay_days > 0)::integer as delayed_orders,
-       round(coalesce(avg(orders.delivery_delay_days) filter (where orders.delivery_delay_days > 0), 0)::numeric, 2)::double precision as average_delay_days,
-       round(coalesce(max(orders.delivery_delay_days), 0)::numeric, 2)::double precision as maximum_delay_days,
-       round(coalesce(avg(review.review_score), 0), 2)::double precision as average_review_score
-from ${ALLOWED_SCHEMA}.fact_order orders
-left join payment_by_order payment on payment.order_id = orders.order_id
-left join review_by_order review on review.order_id = orders.order_id`;
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -184,7 +103,11 @@ function stringValues(value: unknown): string[] {
   );
 }
 
-export async function assertEcommerceBenchmarkReadOnlySql(sql: string): Promise<string> {
+export async function assertPostgresReadOnlyBenchmarkSql(
+  sql: string,
+  rawPolicy: PostgresReadOnlyBenchmarkPolicy,
+): Promise<string> {
+  const policy = validatePolicy(rawPolicy);
   const trimmed = sql.trim();
   if (trimmed.length === 0 || trimmed.length > 100_000) {
     throw new Error("POSTGRES_QUERY_POLICY_REJECTED");
@@ -225,8 +148,8 @@ export async function assertEcommerceBenchmarkReadOnlySql(sql: string): Promise<
     if (name !== "RangeVar" || typeof node.relname !== "string") return;
     if (node.schemaname === undefined && ctes.has(node.relname)) return;
     if (
-      (node.schemaname !== undefined && node.schemaname !== ALLOWED_SCHEMA) ||
-      !ALLOWED_RELATIONS.has(node.relname)
+      (node.schemaname !== undefined && node.schemaname !== policy.allowed_schema) ||
+      !policy.allowed_relations.has(node.relname)
     ) {
       throw new Error("POSTGRES_QUERY_POLICY_REJECTED");
     }
@@ -249,16 +172,18 @@ function normalize(value: unknown): null | string | number {
   throw new Error("POSTGRES_RESULT_CELL_UNSUPPORTED");
 }
 
-export function createPostgresEcommerceBenchmarkExecutor(input: {
+export function createPostgresReadOnlyBenchmarkExecutor(input: {
   readonly pool: pg.Pool;
-}): EcommerceBenchmarkQueryExecutor {
-  const executor: EcommerceBenchmarkQueryExecutor = {
+  readonly policy: PostgresReadOnlyBenchmarkPolicy;
+}): PostgresReadOnlyBenchmarkQueryExecutor {
+  const policy = validatePolicy(input.policy);
+  const executor: PostgresReadOnlyBenchmarkQueryExecutor = {
     async execute(request: {
       readonly sql: string;
       readonly timeout_ms: number;
       readonly max_rows: number;
     }) {
-      const sql = await assertEcommerceBenchmarkReadOnlySql(request.sql);
+      const sql = await assertPostgresReadOnlyBenchmarkSql(request.sql, input.policy);
       if (
         !Number.isInteger(request.timeout_ms) ||
         request.timeout_ms < 1 ||
@@ -272,10 +197,10 @@ export function createPostgresEcommerceBenchmarkExecutor(input: {
       const client = await input.pool.connect();
       try {
         await client.query("begin read only");
-        await client.query(`set local role ${READER_ROLE}`);
+        await client.query(`set local role ${policy.reader_role}`);
         await client.query(`set local statement_timeout = '${request.timeout_ms}ms'`);
         await client.query("set local lock_timeout = '1000ms'");
-        await client.query(`set local search_path = ${ALLOWED_SCHEMA}, pg_catalog`);
+        await client.query(`set local search_path = ${policy.allowed_schema}, pg_catalog`);
         const result = await client.query({
           text: `select * from (${sql}) as __ecommerce_candidate limit ${request.max_rows + 1}`,
           rowMode: "array",
@@ -310,12 +235,12 @@ export function createPostgresEcommerceBenchmarkExecutor(input: {
       const client = await input.pool.connect();
       try {
         await client.query("begin read only");
-        await client.query(`set local role ${READER_ROLE}`);
+        await client.query(`set local role ${policy.reader_role}`);
         await client.query(`set local statement_timeout = '${request.timeout_ms}ms'`);
         await client.query("set local lock_timeout = '1000ms'");
         const result = await client.query<{ readonly table_count: number | string }>(
-          compileEcommerceTableCountSql(),
-          [[...ALLOWED_RELATIONS].sort()],
+          compilePostgresTableCountSql(policy.allowed_schema),
+          [[...policy.allowed_relations].sort()],
         );
         await client.query("commit");
         return Object.freeze({
@@ -329,14 +254,6 @@ export function createPostgresEcommerceBenchmarkExecutor(input: {
       } finally {
         client.release();
       }
-    },
-
-    async executeMonthlyOrderTrend(request: { readonly timeout_ms: number }) {
-      return executor.execute({
-        sql: compileEcommerceMonthlyOrderTrendSql(),
-        timeout_ms: request.timeout_ms,
-        max_rows: 100,
-      });
     },
   };
   return Object.freeze(executor);

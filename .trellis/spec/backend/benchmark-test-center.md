@@ -161,6 +161,10 @@ executeBenchmarkAcceptance(input: {
   阶段、Artifact 引用、Oracle Feedback、ScoreCard、成本和时延。
 - 测试用 Fixture Agent、提交答案 Agent、预置 SQL 或直接执行 Gold 可以用于单元测试，但不得作为
   “真实 Agent 验收通过”的证据。
+- Demo 专用 direct-Q&A 规则、SQL 和呈现逻辑归属 `@data-agent/evals` 的显式 capability 子路径；
+  Platform 只提供由 schema、role、relation allowlist 参数化的通用只读 PostgreSQL 防火墙。
+  Worker 必须通过 registry 同时匹配 workspace、datasource、Semantic Release 和 benchmark profile
+  才能选择 Demo adapter；未注册或任一 binding 不匹配时进入通用模型路径，不能按问题关键词静默启用。
 
 ### 4. 校验与错误矩阵
 
@@ -185,6 +189,8 @@ executeBenchmarkAcceptance(input: {
 ### 6. 必需测试
 
 - Unit：Sealed 摘要、Candidate/Gold 独立执行、顺序/无序结果、数值容差及失败分类。
+- Architecture/Unit：通用 Worker/Platform 不包含 Demo 业务常量和 SQL；registry 覆盖适用、不适用、
+  空注册、重复注册与 adapter 错误传播。
 - Security：公共 API/Prompt/SSE/日志不出现 Sealed 字段；只读角色拒绝跨 Schema、DDL/DML、多语句。
 - Integration：真实 PostgreSQL 上至少一道人为不可伪造的多表题由 configured model 作答并生成
   ScoreCard；最终验收另需一道人为不可伪造的 Hard SQL+Python 题通过真实 Worker/Sandbox。

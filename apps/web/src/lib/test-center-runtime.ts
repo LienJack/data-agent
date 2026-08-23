@@ -43,9 +43,10 @@ import {
   SubmittedAnswerAgent,
   toFalconSqlBenchmarkDataset,
 } from "@data-agent/evals";
+import { ECOMMERCE_DIRECT_QA_CAPABILITY } from "@data-agent/evals/ecommerce-direct-qa";
 import {
-  createPostgresEcommerceBenchmarkExecutor,
   createPostgresFalconBenchmarkExecutor,
+  createPostgresReadOnlyBenchmarkExecutor,
 } from "@data-agent/platform";
 import pg from "pg";
 import { z } from "zod";
@@ -484,7 +485,10 @@ export async function executeEcommerceSqlAcceptance(input: {
       409,
     );
   }
-  const executor = createPostgresEcommerceBenchmarkExecutor({ pool: pool() });
+  const executor = createPostgresReadOnlyBenchmarkExecutor({
+    pool: pool(),
+    policy: ECOMMERCE_DIRECT_QA_CAPABILITY,
+  });
   const batchRunId = randomUUID();
   const execution = await executeSqlBenchmarkBatch({
     dataset,
@@ -708,7 +712,10 @@ export async function executeTestCenterRun(
       seed: request.seed,
       batch_run_id: batchRunId,
       oracle: new PostgresResultOracle({
-        executor: createPostgresEcommerceBenchmarkExecutor({ pool: pool() }),
+        executor: createPostgresReadOnlyBenchmarkExecutor({
+          pool: pool(),
+          policy: ECOMMERCE_DIRECT_QA_CAPABILITY,
+        }),
         timeout_ms: request.budget.max_case_duration_ms,
         max_rows: 100_000,
         oracle_version: "ecommerce-postgres-result-equivalence@1.0.0",

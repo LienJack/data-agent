@@ -96,22 +96,20 @@ export {
   createCoordinatedSandboxPort,
 } from "./sandbox/coordinated-sandbox-port.js";
 export {
-  assertEcommerceBenchmarkReadOnlySql,
-  compileEcommerceMonthlyOrderTrendSql,
-  compileEcommerceSalesAnomalySql,
-  compileEcommerceSalesReportSummarySql,
-  compileEcommerceTableCountSql,
-  createPostgresEcommerceBenchmarkExecutor,
-  type EcommerceBenchmarkQueryExecutor,
-  type EcommerceBenchmarkQueryResult,
-} from "./sandbox/postgres-ecommerce-benchmark-executor.js";
-export {
   assertFalconBenchmarkReadOnlySql,
   assertFalconDatabaseSchema,
   createPostgresFalconBenchmarkExecutor,
   type FalconBenchmarkQueryExecutor,
   type FalconBenchmarkQueryResult,
 } from "./sandbox/postgres-falcon-benchmark-executor.js";
+export {
+  assertPostgresReadOnlyBenchmarkSql,
+  compilePostgresTableCountSql,
+  createPostgresReadOnlyBenchmarkExecutor,
+  type PostgresReadOnlyBenchmarkPolicy,
+  type PostgresReadOnlyBenchmarkQueryExecutor,
+  type PostgresReadOnlyBenchmarkQueryResult,
+} from "./sandbox/postgres-read-only-benchmark-executor.js";
 export {
   createPostgresText2SqlSandboxAuthority,
   type PostgresText2SqlSandboxAuthorityOptions,
