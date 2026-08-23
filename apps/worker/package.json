@@ -37,6 +37,7 @@
     "@data-agent/platform": "workspace:*",
     "@data-agent/research": "workspace:*",
     "@data-agent/semantic": "workspace:*",
+    "apache-arrow": "21.2.0",
     "pg": "8.22.0",
     "zod": "4.4.3"
   },
