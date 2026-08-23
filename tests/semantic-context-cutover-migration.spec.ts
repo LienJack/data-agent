@@ -21,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010727");
+    expect(inventory.frontier).toBe("20260725010728");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -141,6 +141,22 @@ describe("10708 unique semantic lifecycle cutover", () => {
     expect(phases).toContain("failure_phase:='RETRIEVAL_HASH'");
     expect(phases).toContain("failure_phase:='INFERENCE_HASH'");
     expect(phases).toContain("SEMANTIC_CONTEXT_MANDATORY_CLOSURE_HASH_INPUT_INVALID");
+    expect(phases).not.toContain("message=failure_context");
+    expect(phases).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
+  });
+
+  it("isolates retrieval score and graph-expansion canonicalization", () => {
+    const phases = readFileSync(
+      resolve(
+        root,
+        "infra/supabase/apps/data-agent/migration-sources/10728/20-retrieval-hash-phase.sql.inc",
+      ),
+      "utf8",
+    );
+
+    expect(phases).toContain("failure_phase:='RETRIEVAL_ROUTE_SCORES'");
+    expect(phases).toContain("failure_phase:='RETRIEVAL_RRF_SCORES'");
+    expect(phases).toContain("SEMANTIC_CONTEXT_RETRIEVAL_EXPANSION_HASH_INPUT_INVALID");
     expect(phases).not.toContain("message=failure_context");
     expect(phases).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
   });

@@ -1730,6 +1730,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10728",
+      "migration_name": "20260725010728_app_data_agent_semantic_retrieval_hash_phase.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10728",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-retrieval-hash-phase.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_RETRIEVAL_HASH_PHASE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_retrieval_hash_phase_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
