@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   modelCatalogEntrySchema,
@@ -32,18 +31,6 @@ const baseModel = {
 } as const;
 
 describe("model control contracts", () => {
-  it("has no compatibility export from the retiring billing contract", () => {
-    const billingSource = readFileSync(
-      new URL("../src/workspaces/billing.ts", import.meta.url),
-      "utf8",
-    );
-
-    expect(billingSource).not.toMatch(
-      /modelCatalogEntrySchema|modelProviderConnectionSchema|globalModelCredentialRefSchema/,
-    );
-    expect(billingSource).not.toContain('from "../models/index.js"');
-  });
-
   it("projects technical model metadata without commercial fields", () => {
     const parsed = modelCatalogEntrySchema.parse(baseModel);
 

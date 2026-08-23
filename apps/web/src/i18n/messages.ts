@@ -30,7 +30,6 @@ export const zhCNMessages = {
   "workspace.identityNote":
     "身份、工作空间、数据源、对话、Schema Discovery 与语义请求均由当前 capability 隔离。",
   "workspace.extensionsLater": "平台级扩展能力将在后续阶段继续接入。",
-  "workspace.controlPlaneLater": "平台模型与计费控制面将在后续阶段继续接入。",
   "workspace.signOut": "退出登录",
   "workspace.signingOut": "正在退出...",
   "workspace.description.qa": "在当前工作空间创建和继续业务对话",
@@ -40,8 +39,7 @@ export const zhCNMessages = {
   "workspace.description.knowledge": "管理公司知识资产、版本、段落证据和语义影响",
   "workspace.description.semantic": "编辑和审核语义候选",
   "workspace.description.members": "管理当前工作空间的成员角色",
-  "workspace.description.platform-settings": "管理模型、价格、汇率和账务复核",
-  "workspace.description.platform-settingsPaused": "管理账户、工作空间与语义资产",
+  "workspace.description.platform-settings": "管理模型供应商与运行配置",
   "status.live": "实时",
   "status.connecting": "连接中",
   "status.reconnecting": "重新连接",
@@ -153,8 +151,6 @@ export const enUSMessages = {
   "workspace.identityNote":
     "The current capability isolates identity, workspace, data source, conversation, schema discovery, and semantic requests.",
   "workspace.extensionsLater": "Platform extensions continue in a later phase.",
-  "workspace.controlPlaneLater":
-    "The platform model and billing control plane continue in a later phase.",
   "workspace.signOut": "Sign out",
   "workspace.signingOut": "Signing out...",
   "workspace.description.qa": "Create and continue business conversations in this workspace",
@@ -165,10 +161,7 @@ export const enUSMessages = {
     "Manage company knowledge, revisions, evidence blocks, and semantic impact",
   "workspace.description.semantic": "Edit and review semantic candidates",
   "workspace.description.members": "Manage workspace member roles",
-  "workspace.description.platform-settings":
-    "Manage models, prices, exchange rates, and billing reconciliation",
-  "workspace.description.platform-settingsPaused":
-    "Manage accounts, workspaces, and semantic assets",
+  "workspace.description.platform-settings": "Manage model providers and runtime configuration",
   "status.live": "Live",
   "status.connecting": "Connecting",
   "status.reconnecting": "Reconnecting",

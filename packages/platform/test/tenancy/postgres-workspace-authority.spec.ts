@@ -177,7 +177,7 @@ describe("PostgreSQL workspace authority", () => {
     expect(workspaces.value[0]).toMatchObject({
       workspace: { workspace_id: authorityRow.tenant_id, lifecycle: "ACTIVE" },
       role: "WORKSPACE_ADMIN",
-      allowed_actions: expect.arrayContaining(["WORKSPACE_CREATE", "BILLING_REVIEW"]),
+      allowed_actions: expect.arrayContaining(["WORKSPACE_CREATE", "MODEL_MANAGE"]),
     });
   });
 

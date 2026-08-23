@@ -13,14 +13,11 @@ import {
   createPostgresAgentDispatchAuthority,
   createPostgresAgentProfileRegistry,
   createPostgresAgentTeamTraceProjector,
-  createPostgresCreditLedgerRepository,
   createPostgresEffectiveConfigResolver,
   createPostgresKnowledgeRegistry,
   createPostgresMcpRegistry,
-  createPostgresModelBillingRepository,
   createPostgresModelControlRepository,
   createPostgresOperationsAdminRepository,
-  createPostgresPricingControlRepository,
   createPostgresProviderInvocationStore,
   createPostgresQaAdminAuditRepository,
   createPostgresResolutionTraceProjector,
@@ -57,9 +54,6 @@ interface WorkspaceIdentityRuntimeState {
   authority?: ReturnType<typeof createPostgresWorkspaceAuthority>;
   workspaceDataRepository?: ReturnType<typeof createPostgresWorkspaceDataRepository>;
   modelControlRepository?: ReturnType<typeof createPostgresModelControlRepository>;
-  pricingControlRepository?: ReturnType<typeof createPostgresPricingControlRepository>;
-  creditLedgerRepository?: ReturnType<typeof createPostgresCreditLedgerRepository>;
-  modelBillingRepository?: ReturnType<typeof createPostgresModelBillingRepository>;
   operationsAdminRepository?: ReturnType<typeof createPostgresOperationsAdminRepository>;
   semanticPortabilityRepository?: ReturnType<typeof createPostgresSemanticPortabilityRepository>;
   effectiveConfigResolver?: ReturnType<typeof createPostgresEffectiveConfigResolver>;
@@ -289,30 +283,10 @@ export function getWorkspaceContent() {
   return runtime.workspaceContent;
 }
 
-export function getPricingControlRepository() {
-  const runtime = state();
-  runtime.pricingControlRepository ??= createPostgresPricingControlRepository(
-    getWorkspaceSqlPool(),
-  );
-  return runtime.pricingControlRepository;
-}
-
 export function getModelControlRepository() {
   const runtime = state();
   runtime.modelControlRepository ??= createPostgresModelControlRepository(getWorkspaceSqlPool());
   return runtime.modelControlRepository;
-}
-
-export function getCreditLedgerRepository() {
-  const runtime = state();
-  runtime.creditLedgerRepository ??= createPostgresCreditLedgerRepository(getWorkspaceSqlPool());
-  return runtime.creditLedgerRepository;
-}
-
-export function getModelBillingRepository() {
-  const runtime = state();
-  runtime.modelBillingRepository ??= createPostgresModelBillingRepository(getWorkspaceSqlPool());
-  return runtime.modelBillingRepository;
 }
 
 export function getOperationsAdminRepository() {

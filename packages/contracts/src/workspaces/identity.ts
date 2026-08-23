@@ -35,9 +35,6 @@ export const workspaceActionSchema = z.enum([
   "ANALYSIS_RUN_CREATE",
   "WORKSPACE_RESULT_READ",
   "MODEL_MANAGE",
-  "PRICING_MANAGE",
-  "CREDIT_MANAGE",
-  "BILLING_REVIEW",
 ]);
 
 export const identityScopeSchema = z.strictObject({

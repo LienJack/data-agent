@@ -1,15 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CreditLedgerPanel } from "@/components/settings/credit-ledger-panel";
 import { ExtensionsPanel } from "@/components/settings/extensions-panel";
 import { KnowledgeBasesPanel } from "@/components/settings/knowledge-bases-panel";
-import { ModelBillingPanel } from "@/components/settings/model-billing-panel";
 import { ModelProvidersPanel } from "@/components/settings/model-providers-panel";
 import { OperationsAdminPanel } from "@/components/settings/operations-admin-panel";
 import { PlatformSettingsTabs } from "@/components/settings/platform-settings-tabs";
-import { PricingControlPanel } from "@/components/settings/pricing-control-panel";
 import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
-import { isBillingUiEnabled } from "@/lib/billing-ui";
 import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
 
 /**
@@ -31,7 +27,6 @@ export default async function SettingsPage() {
     );
   }
   const isSuperAdmin = session.value.system_role === "SUPER_ADMIN";
-  const billingUiEnabled = isBillingUiEnabled();
   const workspaceAccess = await listSessionWorkspaces(session.value);
   const workspaces = workspaceAccess.ok ? workspaceAccess.value : [];
   return (
@@ -42,11 +37,7 @@ export default async function SettingsPage() {
             <p className="page-eyebrow">Platform settings</p>
             <div>
               <h1 className="page-title">平台设置</h1>
-              <p className="page-description">
-                {billingUiEnabled
-                  ? "账户、模型与计费输入的数据库权威控制面。"
-                  : "账户、工作空间与语义治理的数据库权威控制面。"}
-              </p>
+              <p className="page-description">账户、模型、工作空间与语义治理的数据库权威控制面。</p>
             </div>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
@@ -70,28 +61,10 @@ export default async function SettingsPage() {
             <div className="space-y-10">
               {isSuperAdmin && (
                 <div className="workspace-section">
-                  <OperationsAdminPanel
-                    currentPrincipalId={session.value.principal_id}
-                    billingUiEnabled={billingUiEnabled}
-                  />
+                  <OperationsAdminPanel currentPrincipalId={session.value.principal_id} />
                 </div>
               )}
-              {billingUiEnabled && (
-                <>
-                  <div className="border-t border-[var(--color-border-default)] pt-8 workspace-section">
-                    <CreditLedgerPanel isSuperAdmin={isSuperAdmin} />
-                  </div>
-                  <div className="border-t border-[var(--color-border-default)] pt-8">
-                    <ModelBillingPanel isSuperAdmin={isSuperAdmin} />
-                  </div>
-                </>
-              )}
-              {billingUiEnabled && isSuperAdmin && (
-                <div className="border-t border-[var(--color-border-default)] pt-8">
-                  <PricingControlPanel />
-                </div>
-              )}
-              {!isSuperAdmin && !billingUiEnabled && (
+              {!isSuperAdmin && (
                 <div className="border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-5 text-sm text-[var(--color-text-secondary)]">
                   组织与运维控制面仅向平台管理员开放。
                 </div>

@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { WorkspaceHome } from "@/components/workspaces/workspace-home";
-import { isBillingUiEnabled } from "@/lib/billing-ui";
 import {
   getCurrentWorkspaceSession,
   listSessionWorkspaces,
@@ -25,10 +24,7 @@ export default async function WorkspaceHomePage({
     (candidate) => candidate.workspace.workspace_id === workspaceId,
   );
   if (!access) redirect("/workspaces");
-  const billingUiEnabled = isBillingUiEnabled();
   const navigation = navigationForWorkspace(access);
 
-  return (
-    <WorkspaceHome access={access} navigation={navigation} controlPlaneEnabled={billingUiEnabled} />
-  );
+  return <WorkspaceHome access={access} navigation={navigation} />;
 }

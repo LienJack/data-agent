@@ -35,11 +35,9 @@ const descriptions: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
 export function WorkspaceHome({
   access,
   navigation,
-  controlPlaneEnabled,
 }: {
   readonly access: WorkspaceAccessProjection;
   readonly navigation: readonly WorkspaceNavigationItem[];
-  readonly controlPlaneEnabled: boolean;
 }) {
   const { t } = useWorkspaceI18n();
   const primaryAction = navigation.find((item) => item.key === "qa") ?? navigation[0];
@@ -111,9 +109,7 @@ export function WorkspaceHome({
                   <span className="min-w-0">
                     <span className="block text-sm font-semibold">{t(labels[item.key])}</span>
                     <span className="mt-1 block text-xs leading-5 text-[var(--color-text-secondary)]">
-                      {item.key === "platform-settings" && !controlPlaneEnabled
-                        ? t("workspace.description.platform-settingsPaused")
-                        : t(descriptions[item.key])}
+                      {t(descriptions[item.key])}
                     </span>
                   </span>
                   <span className="flex items-center gap-2">
@@ -164,10 +160,7 @@ export function WorkspaceHome({
                 </div>
               </dl>
               <p className="mt-5 border-t border-[var(--color-border-default)] pt-4 text-[11px] leading-5 text-[var(--color-text-muted)]">
-                {t("workspace.identityNote")}{" "}
-                {controlPlaneEnabled
-                  ? t("workspace.controlPlaneLater")
-                  : t("workspace.extensionsLater")}
+                {t("workspace.identityNote")} {t("workspace.extensionsLater")}
               </p>
             </section>
 

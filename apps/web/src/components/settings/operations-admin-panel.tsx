@@ -11,11 +11,9 @@ import Link from "next/link";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ReasonDialog } from "@/components/ui/reason-dialog";
-import { visibleOperationsHealthGates } from "@/lib/billing-ui-policy";
 
 interface OperationsAdminPanelProps {
   readonly currentPrincipalId: string;
-  readonly billingUiEnabled: boolean;
 }
 
 type PanelTab = "overview" | "users" | "workspaces";
@@ -78,11 +76,6 @@ function formatTime(value: string) {
 
 const gateLabels: Readonly<Record<OperationsHealthGate["key"], string>> = {
   IDENTITY_SIDE_EFFECTS: "身份副作用",
-  PRICING_SYNC: "价格同步",
-  PRICING_REVIEW: "价格审批",
-  BILLING_REVIEW: "账单复核",
-  BALANCE_INTEGRITY: "余额一致性",
-  SHADOW_RECONCILIATION: "影子对账",
 };
 
 function gateTone(status: OperationsHealthGate["status"]) {
@@ -172,10 +165,7 @@ function Metric(props: {
   );
 }
 
-export function OperationsAdminPanel({
-  currentPrincipalId,
-  billingUiEnabled,
-}: OperationsAdminPanelProps) {
+export function OperationsAdminPanel({ currentPrincipalId }: OperationsAdminPanelProps) {
   const [tab, setTab] = useState<PanelTab>("overview");
   const [users, setUsers] = useState<readonly AdminUserProjection[]>([]);
   const [workspaces, setWorkspaces] = useState<readonly AdminWorkspaceProjection[]>([]);
@@ -217,14 +207,14 @@ export function OperationsAdminPanel({
   useEffect(() => void reload(), [reload]);
 
   const summary = useMemo(() => {
-    const gates = visibleOperationsHealthGates(health?.gates ?? [], billingUiEnabled);
+    const gates = health?.gates ?? [];
     return {
       activeUsers: users.filter((user) => user.status === "ACTIVE").length,
       activeWorkspaces: workspaces.filter((workspace) => workspace.lifecycle === "ACTIVE").length,
       pending: gates.reduce((total, gate) => total + gate.count, 0),
       blocked: gates.filter((gate) => gate.status === "BLOCKED").length,
     };
-  }, [billingUiEnabled, health, users, workspaces]);
+  }, [health, users, workspaces]);
 
   async function createUser(event: FormEvent) {
     event.preventDefault();
@@ -423,7 +413,6 @@ export function OperationsAdminPanel({
         <div className="flex items-center gap-3">
           {health && (
             <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
-              {billingUiEnabled && `${health.billing_mode} · epoch ${health.billing_epoch} · `}
               {formatTime(health.generated_at)}
             </p>
           )}
@@ -543,7 +532,7 @@ export function OperationsAdminPanel({
             正在读取数据库权威状态…
           </div>
         ) : tab === "overview" ? (
-          <HealthOverview health={health} onNavigate={setTab} billingUiEnabled={billingUiEnabled} />
+          <HealthOverview health={health} onNavigate={setTab} />
         ) : tab === "users" ? (
           <UsersPanel
             users={users}
@@ -618,14 +607,12 @@ function AdminActionDialog(props: {
 function HealthOverview({
   health,
   onNavigate,
-  billingUiEnabled,
 }: {
   readonly health?: OperationsHealthProjection;
   readonly onNavigate: (tab: PanelTab) => void;
-  readonly billingUiEnabled: boolean;
 }) {
   if (!health) return null;
-  const gates = visibleOperationsHealthGates(health.gates, billingUiEnabled);
+  const gates = health.gates;
   return (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div className="overflow-hidden rounded-xl border border-[var(--color-border-default)]">
@@ -693,20 +680,10 @@ function HealthOverview({
           >
             管理工作空间 <span aria-hidden="true">→</span>
           </button>
-          {billingUiEnabled && (
-            <Link
-              href="/admin/pricing"
-              className="flex w-full items-center justify-between rounded-lg border border-[var(--color-border-default)] bg-white px-3 py-2.5 text-left text-xs hover:border-[var(--color-border-focused)]"
-            >
-              审批价格候选 <span aria-hidden="true">→</span>
-            </Link>
-          )}
         </div>
         <div className="mt-5 border-t border-[var(--color-border-default)] pt-4">
           <p className="text-[10px] leading-5 text-[var(--color-text-muted)]">
-            {billingUiEnabled
-              ? "身份副作用、账单复核与余额漂移会阻断上线；同步或待审批项显示为注意。"
-              : "身份副作用未完成时会阻断上线；待处理项显示为注意。"}
+            身份副作用未完成时会阻断上线；待处理项显示为注意。
           </p>
         </div>
       </aside>

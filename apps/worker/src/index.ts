@@ -6,7 +6,6 @@ export * from "./jobs/job-worker-runner.js";
 export * from "./jobs/semantic-induction-job-handler.js";
 export * from "./knowledge/markdown-document-parser.js";
 export * from "./mastra.js";
-export * from "./pricing/index.js";
 export * from "./runs/index.js";
 export * from "./semantic/index.js";
 export * from "./teams/index.js";

@@ -83,7 +83,7 @@ const navigationDefinitions = [
   {
     key: "platform-settings",
     label: "模型配置",
-    description: "管理模型、价格、汇率和账务复核",
+    description: "管理模型供应商与运行配置",
     path: "platform-settings",
     requiredAction: "MODEL_MANAGE",
     phase: "PHASE_2",

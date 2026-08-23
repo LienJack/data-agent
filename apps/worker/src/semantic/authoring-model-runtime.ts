@@ -108,7 +108,7 @@ function trustedInputTokenUpperBound(input: {
 
 /**
  * Resolve a server-configured semantic-authoring model directly. No model
- * certification receipt, invocation intent, dispatch permit, or billing
+ * certification receipt, invocation intent, dispatch permit, or commercial
  * lifecycle participates in this path.
  */
 export async function resolveSemanticAuthoringModelRuntime(input: {

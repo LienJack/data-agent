@@ -71,22 +71,15 @@ const member = {
 const health = {
   schema_version: "operations-health@1.0.0",
   generated_at: now,
-  billing_mode: "SHADOW",
-  billing_epoch: 1,
   gates: [
-    "IDENTITY_SIDE_EFFECTS",
-    "PRICING_SYNC",
-    "PRICING_REVIEW",
-    "BILLING_REVIEW",
-    "BALANCE_INTEGRITY",
-    "SHADOW_RECONCILIATION",
-  ].map((key) => ({
-    key,
-    status: "PASS",
-    count: 0,
-    reason_code: `${key}_CLEAR`,
-    last_observed_at: null,
-  })),
+    {
+      key: "IDENTITY_SIDE_EFFECTS",
+      status: "PASS",
+      count: 0,
+      reason_code: "IDENTITY_SIDE_EFFECTS_CLEAR",
+      last_observed_at: null,
+    },
+  ],
 } as const;
 
 describe("PostgreSQL operations admin repository", () => {
@@ -120,14 +113,7 @@ describe("PostgreSQL operations admin repository", () => {
     const healthResult = await repository.readHealth(context);
     expect(healthResult.ok).toBe(true);
     if (healthResult.ok) {
-      expect(healthResult.value.gates.map((gate) => gate.key)).toEqual([
-        "IDENTITY_SIDE_EFFECTS",
-        "PRICING_SYNC",
-        "PRICING_REVIEW",
-        "BILLING_REVIEW",
-        "BALANCE_INTEGRITY",
-        "SHADOW_RECONCILIATION",
-      ]);
+      expect(healthResult.value.gates.map((gate) => gate.key)).toEqual(["IDENTITY_SIDE_EFFECTS"]);
     }
 
     expect(observed).toHaveLength(4);

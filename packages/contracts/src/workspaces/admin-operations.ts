@@ -57,14 +57,7 @@ export const adminWorkspaceMemberProjectionSchema = z.strictObject({
 });
 
 export const operationsHealthGateSchema = z.strictObject({
-  key: z.enum([
-    "IDENTITY_SIDE_EFFECTS",
-    "PRICING_SYNC",
-    "PRICING_REVIEW",
-    "BILLING_REVIEW",
-    "BALANCE_INTEGRITY",
-    "SHADOW_RECONCILIATION",
-  ]),
+  key: z.literal("IDENTITY_SIDE_EFFECTS"),
   status: z.enum(["PASS", "WARNING", "BLOCKED"]),
   count: z.number().int().min(0),
   reason_code: z
@@ -78,9 +71,7 @@ export const operationsHealthGateSchema = z.strictObject({
 export const operationsHealthProjectionSchema = z.strictObject({
   schema_version: z.literal("operations-health@1.0.0"),
   generated_at: timestampSchema,
-  billing_mode: z.enum(["SHADOW", "ENFORCED"]),
-  billing_epoch: z.number().int().min(1),
-  gates: z.array(operationsHealthGateSchema).length(6),
+  gates: z.array(operationsHealthGateSchema).length(1),
 });
 
 export const createAdminUserInputSchema = z.strictObject({

@@ -13,10 +13,6 @@ export {
   type PostgresPrivilegedGrantAuthority,
   type PostgresPrivilegedGrantAuthorityOptions,
 } from "./authz/postgres-privileged-grant-authority.js";
-export * from "./billing/microcredits.js";
-export * from "./billing/model-cost.js";
-export * from "./billing/postgres-credit-ledger.js";
-export * from "./billing/postgres-model-billing.js";
 export * from "./cache/namespace.js";
 export * from "./cache/scoped-upstash.js";
 export * from "./catalog/physical-schema.js";
@@ -63,7 +59,6 @@ export {
 } from "./persistence/repository.js";
 export * from "./persistence/transaction.js";
 export * from "./persistence/workspace-data-repository.js";
-export * from "./pricing/postgres-pricing-control.js";
 export * from "./providers/index.js";
 export * from "./queue/postgres-run-queue.js";
 export {

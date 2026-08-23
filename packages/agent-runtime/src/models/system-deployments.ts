@@ -2,7 +2,7 @@
  * Opt-in deployment overrides for the repository-root system models.
  *
  * DeepSeek V4 Flash identity/context limits are deployment evidence. Model
- * availability is technical and never depends on pricing or currency metadata.
+ * availability is technical and never depends on commercial metadata.
  */
 export const SYSTEM_MODEL_DEPLOYMENT_OVERRIDES = Object.freeze([
   Object.freeze({

@@ -32,7 +32,7 @@ export function createWorkerMastraComposition(input: {
     tools: input.tools ?? [],
     dispatch_marker: {
       // Direct calls retain an in-process dispatch boundary only; no
-      // PostgreSQL invocation permit or billing lifecycle is involved.
+      // PostgreSQL invocation permit or commercial lifecycle is involved.
       mark_dispatched: async () => {},
     },
   });

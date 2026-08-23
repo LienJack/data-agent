@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as platform from "../../src/index.js";
 
@@ -9,16 +8,12 @@ describe("platform package public surface", () => {
       "CatalogContractError",
       "DatasourceAdapterPolicyError",
       "KnowledgeIndexError",
-      "MICROCREDITS_PER_CNY",
-      "MICROCREDITS_PER_CREDIT",
       "Neo4jRelationshipIndexError",
       "PERSISTENCE_TRANSACTION_DIAGNOSTIC_CHANNEL",
-      "POSTGRES_BIGINT_MAX",
       "PersistenceBoundaryError",
       "PythonSqlSandboxProtocolError",
       "adaptPgCatalogPool",
       "adaptPgPool",
-      "addMicrocredits",
       "agentTeamStoreCommandSchema",
       "assertEcommerceBenchmarkReadOnlySql",
       "assertFalconBenchmarkReadOnlySql",
@@ -29,9 +24,6 @@ describe("platform package public surface", () => {
       "buildDerivedAnalysisChartDocument",
       "buildDeterministicAnalysisRunProjection",
       "buildQueryEvidenceChartDocument",
-      "calculateModelCost",
-      "ceilRationalMicrocredits",
-      "cnyAmountToMicrocredits",
       "comparePhysicalSchemaSnapshots",
       "compileEcommerceMonthlyOrderTrendSql",
       "compileEcommerceSalesAnomalySql",
@@ -68,7 +60,6 @@ describe("platform package public surface", () => {
       "createPostgresCapabilityAuthority",
       "createPostgresCatalogScanner",
       "createPostgresControlledFixture",
-      "createPostgresCreditLedgerRepository",
       "createPostgresDatasourceEgress",
       "createPostgresEcommerceBenchmarkExecutor",
       "createPostgresEffectiveConfigResolver",
@@ -77,11 +68,9 @@ describe("platform package public surface", () => {
       "createPostgresJobQueue",
       "createPostgresKnowledgeRegistry",
       "createPostgresMcpRegistry",
-      "createPostgresModelBillingRepository",
       "createPostgresModelControlRepository",
       "createPostgresOntologyPackageStore",
       "createPostgresOperationsAdminRepository",
-      "createPostgresPricingControlRepository",
       "createPostgresPrivilegedGrantAuthority",
       "createPostgresProductTeamArtifactStore",
       "createPostgresProviderInvocationSmokeJob",
@@ -127,11 +116,8 @@ describe("platform package public surface", () => {
       "createWorkspaceContentGcService",
       "createWorkspaceContentNamespace",
       "createWorkspaceContentOrphanGc",
-      "creditAmountToMicrocredits",
       "freezeSubagentCapabilityCatalog",
       "knowledgeIndexFailure",
-      "microcreditsToCnyAmount",
-      "microcreditsToCreditAmount",
       "neutralizeSpreadsheetFormula",
       "projectArtifactDocument",
       "projectKnowledgeChunkForEgress",
@@ -141,9 +127,7 @@ describe("platform package public surface", () => {
       "providerInvocationUnknownClassificationSchema",
       "registerPersistenceDiagnosticLogger",
       "renderArtifactExport",
-      "roundHalfUpMicrocredits",
       "sameAnalysisEvidenceIdentity",
-      "subtractMicrocredits",
       "withAppTransaction",
     ]);
   });
@@ -162,15 +146,10 @@ describe("platform package public surface", () => {
     expect(platform).not.toHaveProperty("ResearchAuthorityTransportError");
   });
 
-  it("keeps model control out of the retiring pricing repository", () => {
-    const pricingSource = readFileSync(
-      new URL("../../src/pricing/postgres-pricing-control.ts", import.meta.url),
-      "utf8",
-    );
-
+  it("exports Model Control without a commercial repository", () => {
     expect(platform).toHaveProperty("createPostgresModelControlRepository");
-    expect(pricingSource).not.toMatch(
-      /listActiveModels|listModels|applyModelCommand|listProviderConnections|recordModelAuthentication/,
-    );
+    expect(platform).not.toHaveProperty("createPostgresPricingControlRepository");
+    expect(platform).not.toHaveProperty("createPostgresModelBillingRepository");
+    expect(platform).not.toHaveProperty("createPostgresCreditLedgerRepository");
   });
 });

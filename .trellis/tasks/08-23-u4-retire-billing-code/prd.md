@@ -12,11 +12,13 @@
 
 ## Acceptance Criteria
 
-- [ ] Settings、Workspace Home、Admin navigation 不出现计费、价格、积分或账单入口。
-- [ ] Billing API/build handler、Worker pricing scheduler、package root export 为 0。
-- [ ] Model Provider、Q&A 模型选择与 Provider 调用测试通过。
-- [ ] 除历史 migration/archive/negative fixture 外生产 TS/TSX 无商业计费 surface。
+- [x] Settings、Workspace Home、Admin navigation 不出现计费、价格、积分或账单入口。
+- [x] Billing API/build handler、Worker pricing scheduler、package root export 为 0。
+- [x] Model Provider、Q&A 模型选择与 Provider 调用测试通过。
+- [x] 除历史 migration/archive/negative fixture 外生产 TS/TSX 无商业计费 surface。
 
 ## Notes
 
 - 依赖：U3。
+- `tests/billing-code-retirement.spec.ts` 固化默认 404（路由文件不存在）、零公共导出与零商业组合根。
+- `pnpm typecheck`、Web production build、Model Provider/Q&A/Provider focused suites 均通过；构建仅保留既有动态文件追踪 warning。

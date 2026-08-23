@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -8,29 +8,26 @@ function source(path: string): string {
   return readFileSync(resolve(repoRoot, path), "utf8");
 }
 
-const modelControlSymbols =
-  /listActiveModels|listModels|applyModelCommand|listProviderConnections|recordModelAuthentication/;
 const commercialFields =
   /\b(?:price|currency|fx|credit|bill|cost|balance|hold|reservation|settlement)(?:_|\b)/i;
 
 describe("Model Control architecture boundary", () => {
-  it("keeps model contracts independent from the retiring Billing workspace", () => {
+  it("keeps model contracts independent after Billing retirement", () => {
     const modelContracts = source("packages/contracts/src/models/index.ts");
-    const billingContracts = source("packages/contracts/src/workspaces/billing.ts");
 
     expect(modelContracts).not.toMatch(commercialFields);
-    expect(billingContracts).not.toMatch(
-      /globalModelCredentialRefSchema|modelProviderConnectionSchema|modelCatalogEntrySchema/,
+    expect(existsSync(resolve(repoRoot, "packages/contracts/src/workspaces/billing.ts"))).toBe(
+      false,
     );
   });
 
-  it("keeps model persistence out of the retiring Pricing repository", () => {
+  it("keeps model persistence independent after Pricing retirement", () => {
     expect(source("packages/platform/src/models/postgres-model-control.ts")).not.toMatch(
       commercialFields,
     );
-    expect(source("packages/platform/src/pricing/postgres-pricing-control.ts")).not.toMatch(
-      modelControlSymbols,
-    );
+    expect(
+      existsSync(resolve(repoRoot, "packages/platform/src/pricing/postgres-pricing-control.ts")),
+    ).toBe(false);
   });
 
   it("routes model administration through Model Control only", () => {

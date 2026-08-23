@@ -413,7 +413,7 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
             </span>
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
-            一个 API 供应商连接可以获取多个模型。选择需要启动的模型后，平台会继续校验凭据与计费链。
+            一个 API 供应商连接可以获取多个模型。选择需要启动的模型后，平台会继续校验凭据与可用性。
           </p>
         </div>
         <Button size="md" onClick={() => setDraft(newDraft())}>
@@ -760,7 +760,7 @@ export function ModelProvidersPanel({ isSuperAdmin }: ModelProvidersPanelProps) 
                       <p className="text-[10px] text-[var(--color-text-muted)]">
                         {provider.immutable
                           ? ".env 供应商的启动状态由部署配置锁定"
-                          : "启动仍需通过凭据、价格与汇率链校验"}
+                          : "启动仍需通过凭据与可用性校验"}
                       </p>
                       {!provider.immutable && (
                         <Button

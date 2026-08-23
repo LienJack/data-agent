@@ -67,29 +67,24 @@ describe("admin operations contracts", () => {
     );
   });
 
-  it("keeps the six rollout gates closed and ordered by key", () => {
+  it("keeps the identity side-effect gate strict", () => {
     const at = "2026-08-14T00:00:00.000Z";
-    const keys = [
-      "IDENTITY_SIDE_EFFECTS",
-      "PRICING_SYNC",
-      "PRICING_REVIEW",
-      "BILLING_REVIEW",
-      "BALANCE_INTEGRITY",
-      "SHADOW_RECONCILIATION",
-    ] as const;
     const health = operationsHealthProjectionSchema.parse({
       schema_version: "operations-health@1.0.0",
       generated_at: at,
-      billing_mode: "SHADOW",
-      billing_epoch: 1,
-      gates: keys.map((key) => ({
-        key,
-        status: "PASS",
-        count: 0,
-        reason_code: `${key}_CLEAR`,
-        last_observed_at: null,
-      })),
+      gates: [
+        {
+          key: "IDENTITY_SIDE_EFFECTS",
+          status: "PASS",
+          count: 0,
+          reason_code: "IDENTITY_SIDE_EFFECTS_CLEAR",
+          last_observed_at: null,
+        },
+      ],
     });
-    expect(health.gates).toHaveLength(6);
+    expect(health.gates).toHaveLength(1);
+    expect(
+      operationsHealthProjectionSchema.safeParse({ ...health, billing_mode: "SHADOW" }).success,
+    ).toBe(false);
   });
 });
