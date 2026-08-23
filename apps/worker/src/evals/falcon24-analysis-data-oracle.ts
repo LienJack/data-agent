@@ -41,6 +41,10 @@ export const falcon24AnalysisDataOracleReceiptSchema = snapshotRowSchema.extend(
   receipt_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
 });
 
+export type Falcon24AnalysisDataOracleReceipt = z.infer<
+  typeof falcon24AnalysisDataOracleReceiptSchema
+>;
+
 const SNAPSHOT_SQL = `
 with order_dates as (
   select order_id,customer_id,order_date::date as order_date,order_total
