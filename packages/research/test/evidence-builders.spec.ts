@@ -36,7 +36,7 @@ import {
   verifyAtomicClaimDocumentDerivation,
 } from "../src/evidence-builders.js";
 import { computeResearchKernelHash } from "../src/internal/hash.js";
-import { issueTransientOedAssuranceForControlledKernel } from "../src/server/oed-assurance.js";
+import { issueTransientOedAssuranceFromExactVerifier } from "../src/server/oed-assurance.js";
 import { hashes } from "./fixtures.js";
 
 const scope = {
@@ -631,7 +631,7 @@ async function createQueryFixture(input: {
     semantic_release_ref: input.world.semantic_release_ref,
     policy_receipt_ref: input.world.policy_receipt_ref,
     evaluator_version: "evidence-builder-test@1.0.0",
-    assurance: issueTransientOedAssuranceForControlledKernel({
+    assurance: issueTransientOedAssuranceFromExactVerifier({
       binding: {
         brief_ref: input.world.brief_ref,
         evidence_plan_ref: planRef,
@@ -641,7 +641,7 @@ async function createQueryFixture(input: {
         policy_receipt_ref: input.world.policy_receipt_ref,
       },
       verifier_result: {
-        profile: "CONTROLLED_EXACT",
+        profile: "FROZEN_QUERY_REGISTRY",
         compiler_verifier_version: "evidence-builder-compiler-verifier@1.0.0",
         compiler_evidence_hash: queryHash,
         policy_verifier_version: "evidence-builder-policy-verifier@1.0.0",

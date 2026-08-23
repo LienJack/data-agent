@@ -62,7 +62,7 @@ describe("@data-agent/research 导出边界", () => {
       "evaluateObligationExecution",
       "getControlledFixtureHandle",
       "getTransientOedAssuranceMetadata",
-      "issueTransientOedAssuranceForControlledKernel",
+      "issueTransientOedAssuranceFromExactVerifier",
       "materializeControlledProtocolInput",
       "runControlledProtocolKernel",
       "sealKernelVerifiedReportReadyCandidate",
@@ -74,6 +74,7 @@ describe("@data-agent/research 导出边界", () => {
   it("server 子路径只开放受控输入、真实 Runner 与候选身份，不暴露 raw oracle", () => {
     expect(Object.keys(serverApi).sort()).toEqual(
       [
+        "buildFrozenQueryRegistryOedCandidate",
         "createResearchKernelCandidateAuthority",
         "getControlledFixtureHandle",
         "getKernelVerifiedCandidateMetadata",
@@ -91,7 +92,7 @@ describe("@data-agent/research 导出边界", () => {
       "listControlledPairCases",
       "projectControlledProtocolInputFromFixture",
       "getTransientOedAssuranceMetadata",
-      "issueTransientOedAssuranceForControlledKernel",
+      "issueTransientOedAssuranceFromExactVerifier",
     ]) {
       expect(forbidden in serverApi).toBe(false);
     }

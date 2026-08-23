@@ -123,7 +123,7 @@ import {
   type ControlledResearchProtocolInput,
   isControlledResearchProtocolInput,
 } from "./controlled-fixture.js";
-import { issueTransientOedAssuranceForControlledKernel } from "./oed-assurance.js";
+import { issueTransientOedAssuranceFromExactVerifier } from "./oed-assurance.js";
 
 const CONTROLLED_SCOPE = {
   app_id: "00000000-0000-4000-8000-000000000001",
@@ -819,7 +819,7 @@ async function prepareQuery(input: {
     obligation_id: input.obligation_id,
   };
   const metricMatches = obligationPayload.observation_contract.metric_ref.node_id === input.metric;
-  const assurance = issueTransientOedAssuranceForControlledKernel({
+  const assurance = issueTransientOedAssuranceFromExactVerifier({
     binding: {
       brief_ref: input.planning.brief_ref,
       evidence_plan_ref: input.planning.evidence_plan_ref,

@@ -63,7 +63,7 @@ import {
   compileHypothesisSetCandidate,
   compileResearchBriefCandidate,
 } from "../src/planning.js";
-import { issueTransientOedAssuranceForControlledKernel } from "../src/server/oed-assurance.js";
+import { issueTransientOedAssuranceFromExactVerifier } from "../src/server/oed-assurance.js";
 import {
   type DeriveResearchStopDecisionInput,
   deriveResearchStopDecisionFromDocumentsCandidate,
@@ -621,7 +621,7 @@ async function buildQueryFixture(input: BuildQueryFixtureInput) {
     semantic_release_ref: input.semantic_release_ref,
     policy_receipt_ref: input.policy_receipt_ref,
     evaluator_version: "document-fixture-oed@1.0.0",
-    assurance: issueTransientOedAssuranceForControlledKernel({
+    assurance: issueTransientOedAssuranceFromExactVerifier({
       binding: {
         brief_ref: await deriveExactResearchDocumentRef(input.brief_document, "ResearchBrief"),
         evidence_plan_ref: planRef,

@@ -27,8 +27,8 @@ export interface TransientOedAssuranceBinding {
   readonly policy_receipt_ref: ArtifactReference;
 }
 
-export interface ControlledOedVerifierResult {
-  readonly profile: "CONTROLLED_EXACT";
+export interface ExactOedVerifierResult {
+  readonly profile: "CONTROLLED_EXACT" | "FROZEN_QUERY_REGISTRY";
   readonly compiler_verifier_version: string;
   readonly compiler_evidence_hash: string;
   readonly policy_verifier_version: string;
@@ -36,9 +36,9 @@ export interface ControlledOedVerifierResult {
   readonly semantic_checks: Readonly<Record<(typeof OBLIGATION_SEMANTIC_CHECKS)[number], boolean>>;
 }
 
-export interface IssueTransientOedAssuranceInput {
+export interface IssueTransientExactOedAssuranceInput {
   readonly binding: TransientOedAssuranceBinding;
-  readonly verifier_result: ControlledOedVerifierResult;
+  readonly verifier_result: ExactOedVerifierResult;
 }
 
 function exactKeys(value: unknown, expected: readonly string[]): boolean {
@@ -76,8 +76,8 @@ function exactReferenceTypes(binding: TransientOedAssuranceBinding): boolean {
  * object carries no usable metadata: acceptance depends on WeakMap identity,
  * so clone/spread/JSON round trips cannot manufacture or transfer assurance.
  */
-export function issueTransientOedAssuranceForControlledKernel(
-  input: IssueTransientOedAssuranceInput,
+export function issueTransientOedAssuranceFromExactVerifier(
+  input: IssueTransientExactOedAssuranceInput,
 ): TransientOedAssurance {
   if (
     !exactKeys(input, ["binding", "verifier_result"]) ||
@@ -101,12 +101,12 @@ export function issueTransientOedAssuranceForControlledKernel(
     !Object.values(input.verifier_result.semantic_checks).every(
       (verdict) => typeof verdict === "boolean",
     ) ||
-    input.verifier_result.profile !== "CONTROLLED_EXACT" ||
+    !["CONTROLLED_EXACT", "FROZEN_QUERY_REGISTRY"].includes(input.verifier_result.profile) ||
     !exactReferenceTypes(input.binding) ||
     !versionIdentifierSchema.safeParse(input.verifier_result.compiler_verifier_version).success ||
     !versionIdentifierSchema.safeParse(input.verifier_result.policy_verifier_version).success
   ) {
-    throw new TypeError("CONTROLLED_OED_ASSURANCE_INPUT_INVALID");
+    throw new TypeError("EXACT_OED_ASSURANCE_INPUT_INVALID");
   }
   const compilerEvidenceHash = contentHashSchema.safeParse(
     input.verifier_result.compiler_evidence_hash,
@@ -115,7 +115,7 @@ export function issueTransientOedAssuranceForControlledKernel(
     input.verifier_result.policy_evidence_hash,
   );
   if (!compilerEvidenceHash.success || !policyEvidenceHash.success) {
-    throw new TypeError("CONTROLLED_OED_ASSURANCE_INPUT_INVALID");
+    throw new TypeError("EXACT_OED_ASSURANCE_INPUT_INVALID");
   }
   const verifiedCompilerEvidenceHash = compilerEvidenceHash.data as ContentHash;
   const verifiedPolicyEvidenceHash = policyEvidenceHash.data as ContentHash;

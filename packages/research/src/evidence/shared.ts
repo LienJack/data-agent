@@ -209,7 +209,7 @@ export interface BuildObligationExecutionDecisionCandidateInput {
   readonly policy_receipt_ref: PolicyReceiptRef;
   readonly evaluator_version: string;
   /**
-   * Opaque, process-local controlled-profile assurance. It is deliberately
+   * Opaque, process-local exact-verifier assurance. It is deliberately
    * typed as unknown because the issuer is not part of either package export.
    */
   readonly assurance?: unknown;

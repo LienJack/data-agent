@@ -28,3 +28,8 @@ export {
   isControlledFixtureHandle,
   materializeControlledProtocolInput,
 } from "./server/controlled-fixture.js";
+export {
+  type BuildFrozenQueryRegistryOedInput,
+  buildFrozenQueryRegistryOedCandidate,
+  type VerifiedExactOedCandidate,
+} from "./server/verified-exact-oed.js";
