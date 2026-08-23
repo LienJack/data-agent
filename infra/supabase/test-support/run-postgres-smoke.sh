@@ -68,6 +68,77 @@ apply_sql_with_prelude() {
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name"
 }
 
+prepare_commercial_archive_history_probe() {
+  docker exec "$container_name" \
+    psql -X -q -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "
+      insert into app_data_agent.pricing_control_state (
+        app_id, environment, pricing_epoch
+      ) values (
+        '00000000-0000-4000-8000-00000000da01'::uuid,
+        'u5-history-probe',
+        17
+      );
+    " >/dev/null
+  commercial_archive_probe_before=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "
+        select pg_catalog.to_jsonb(archived_row)::text
+        from app_data_agent.pricing_control_state as archived_row
+        where environment = 'u5-history-probe';
+      "
+  )
+}
+
+verify_commercial_archive_history_probe() {
+  commercial_archive_probe_after=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "
+        select pg_catalog.to_jsonb(archived_row)::text
+        from app_data_agent.pricing_control_state as archived_row
+        where environment = 'u5-history-probe';
+      "
+  )
+  if [ "$commercial_archive_probe_before" != "$commercial_archive_probe_after" ]; then
+    echo "Commercial archive migration changed historical row bytes." >&2
+    exit 1
+  fi
+
+  archive_receipt_count=$(
+    docker exec "$container_name" \
+      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+      -c "
+        select (relation_snapshots #>> '{pricing_control_state,row_count}')::bigint
+        from app_data_agent.commercial_archive_retirement_receipts
+        where migration_version =
+          '20260725010703_app_data_agent_commercial_archive_retirement';
+      "
+  )
+  if [ "$archive_receipt_count" -lt 1 ]; then
+    echo "Commercial archive receipt did not capture the history probe." >&2
+    exit 1
+  fi
+
+  archive_write_output=$(mktemp)
+  if docker exec "$container_name" \
+    psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
+    -c "update app_data_agent.pricing_control_state set pricing_epoch = 18 where environment = 'u5-history-probe';" \
+    >"$archive_write_output" 2>&1; then
+    echo "Commercial archive accepted a historical-row mutation." >&2
+    rm -f "$archive_write_output"
+    exit 1
+  fi
+  if ! rg -q "COMMERCIAL_ARCHIVE_READ_ONLY" "$archive_write_output"; then
+    echo "Commercial archive rejected mutation with the wrong reason." >&2
+    cat "$archive_write_output" >&2
+    rm -f "$archive_write_output"
+    exit 1
+  fi
+  rm -f "$archive_write_output"
+}
+
 prepare_u6_maintenance_binding() {
   docker exec "$container_name" \
     psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
@@ -419,77 +490,6 @@ run_concurrent_claim_probe() {
     exit 1
   fi
   rm -r -- "$claim_probe_dir"
-}
-
-run_credit_concurrency_probe() {
-  credit_deployment="00000000-0000-4000-8000-00000000de01"
-  credit_admin="00000000-0000-4000-8000-00000000b411"
-  credit_user="00000000-0000-4000-8000-00000000b412"
-  credit_workspace="00000000-0000-4000-8000-00000000aa11"
-  credit_probe_dir=$(mktemp -d)
-
-  run_credit_adjustment_session() {
-    suffix=$1
-    operation_id=$2
-    docker exec "$container_name" \
-      psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
-      -c "begin; set local role data_agent_backend; select app_data_agent.apply_credit_adjustment('$credit_deployment'::uuid, '$credit_admin'::uuid, jsonb_build_object('schema_version','credit-adjustment@1.0.0','operation_id','$operation_id','idempotency_key','credit-concurrent-adjust-$suffix','target_principal_id','$credit_user','signed_microcredits','10000000','reason','concurrent adjustment probe','expected_account_version',6)); select pg_catalog.pg_sleep(1); commit;" \
-      >"$credit_probe_dir/adjust-$suffix.log" 2>&1
-  }
-
-  run_credit_adjustment_session a "00000000-0000-4000-8000-00000000b433" &
-  credit_adjust_a_pid=$!
-  run_credit_adjustment_session b "00000000-0000-4000-8000-00000000b434" &
-  credit_adjust_b_pid=$!
-  if wait "$credit_adjust_a_pid"; then credit_adjust_a_status=0; else credit_adjust_a_status=$?; fi
-  if wait "$credit_adjust_b_pid"; then credit_adjust_b_status=0; else credit_adjust_b_status=$?; fi
-  if [ $((credit_adjust_a_status + credit_adjust_b_status)) -eq 0 ] \
-    || [ "$credit_adjust_a_status" -ne 0 ] && [ "$credit_adjust_b_status" -ne 0 ]; then
-    echo "Concurrent credit adjustments did not produce exactly one winner." >&2
-    cat "$credit_probe_dir"/adjust-*.log >&2
-    exit 1
-  fi
-
-  run_credit_hold_session() {
-    suffix=$1
-    operation_id=$2
-    hold_id=$3
-    invocation_id=$4
-    docker exec "$container_name" \
-      psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
-      -c "begin; set local role data_agent_backend; select app_data_agent.reserve_credit_hold('$credit_deployment'::uuid, '$credit_user'::uuid, jsonb_build_object('schema_version','credit-hold-reserve@1.0.0','operation_id','$operation_id','idempotency_key','credit-concurrent-hold-$suffix','hold_id','$hold_id','invocation_id','$invocation_id','workspace_id','$credit_workspace','reserved_microcredits','6000000','expected_account_version',7)); select pg_catalog.pg_sleep(1); commit;" \
-      >"$credit_probe_dir/hold-$suffix.log" 2>&1
-  }
-
-  run_credit_hold_session a \
-    "00000000-0000-4000-8000-00000000b435" \
-    "00000000-0000-4000-8000-00000000b436" \
-    "00000000-0000-4000-8000-00000000b437" &
-  credit_hold_a_pid=$!
-  run_credit_hold_session b \
-    "00000000-0000-4000-8000-00000000b438" \
-    "00000000-0000-4000-8000-00000000b439" \
-    "00000000-0000-4000-8000-00000000b440" &
-  credit_hold_b_pid=$!
-  if wait "$credit_hold_a_pid"; then credit_hold_a_status=0; else credit_hold_a_status=$?; fi
-  if wait "$credit_hold_b_pid"; then credit_hold_b_status=0; else credit_hold_b_status=$?; fi
-  if [ $((credit_hold_a_status + credit_hold_b_status)) -eq 0 ] \
-    || [ "$credit_hold_a_status" -ne 0 ] && [ "$credit_hold_b_status" -ne 0 ]; then
-    echo "Concurrent credit holds did not produce exactly one winner." >&2
-    cat "$credit_probe_dir"/hold-*.log >&2
-    exit 1
-  fi
-
-  credit_state=$(
-    docker exec "$container_name" \
-      psql -X -A -t -v ON_ERROR_STOP=1 -U postgres -d "$database_name" \
-      -c "select settled_microcredits || ':' || active_held_microcredits || ':' || available_microcredits || ':' || version from app_data_agent.credit_accounts where principal_id = '$credit_user'::uuid;"
-  )
-  if [ "$credit_state" != "10000000:6000000:4000000:8" ]; then
-    echo "Concurrent credit mutation produced an invalid projection: $credit_state" >&2
-    exit 1
-  fi
-  rm -r -- "$credit_probe_dir"
 }
 
 run_concurrent_accept_probe() {
@@ -1457,13 +1457,12 @@ operations_release_fingerprint() {
         (select pg_catalog.count(*) from app_data_agent.memberships) || ':' ||
         (select pg_catalog.count(*) from app_data_agent.identity_operation_receipts)
       union all
-      select 'credits=' || pg_catalog.count(*) || ':' ||
-        coalesce(pg_catalog.sum(signed_microcredits), 0)
-      from app_data_agent.credit_ledger_entries
+      select 'model_control=' ||
+        (select pg_catalog.count(*) from app_data_agent.model_control_operations) || ':' ||
+        (select pg_catalog.count(*) from app_data_agent.model_control_audit_log)
       union all
-      select 'billing=' || pg_catalog.count(*) || ':' ||
-        coalesce(pg_catalog.sum(charged_microcredits), 0)
-      from app_data_agent.model_bills;
+      select 'commercial_archive=' || pg_catalog.md5(relation_snapshots::text)
+      from app_data_agent.commercial_archive_retirement_receipts;
     "
 }
 
@@ -1487,71 +1486,7 @@ run_operations_release_drill() {
     exit 1
   fi
 
-  health_gate_count=$(
-    docker exec "$container_name" \
-      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
-      -c "
-        select pg_catalog.jsonb_array_length(health -> 'gates')
-        from platform.read_operations_health(
-          '00000000-0000-4000-8000-00000000de01',
-          '00000000-0000-4000-8000-00000000b411'
-        ) as health;
-      "
-  )
-  if [ "$health_gate_count" != "6" ]; then
-    echo "Restored operations health projection is invalid: $health_gate_count" >&2
-    exit 1
-  fi
-
-  reconciliation_ready=$(
-    docker exec "$container_name" \
-      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
-      -c "
-        select result ->> 'ready_for_enforced'
-        from app_data_agent.reconcile_model_billing(
-          '00000000-0000-4000-8000-00000000de01',
-          '00000000-0000-4000-8000-00000000b411'
-        ) as result;
-      "
-  )
-  if [ "$reconciliation_ready" != "true" ]; then
-    echo "Shadow reconciliation is not ready for enforced: $reconciliation_ready" >&2
-    exit 1
-  fi
-
-  billing_epoch=$(
-    docker exec "$container_name" \
-      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
-      -c "
-        select epoch from app_data_agent.billing_runtime_state
-        where deployment_id = '00000000-0000-4000-8000-00000000de01';
-      "
-  )
-  rollback_mode=$(
-    docker exec "$container_name" \
-      psql -X -q -A -t -v ON_ERROR_STOP=1 -U postgres -d "$restore_database" \
-      -c "
-        select result #>> '{state,mode}'
-        from app_data_agent.decide_billing_mode(
-          '00000000-0000-4000-8000-00000000de01',
-          '00000000-0000-4000-8000-00000000b411',
-          pg_catalog.jsonb_build_object(
-            'schema_version', 'billing-mode-decision@1.0.0',
-            'operation_id', '00000000-0000-4000-8000-00000000d7a1',
-            'idempotency_key', 'phase-seven-rollback-drill',
-            'target_mode', 'SHADOW',
-            'expected_epoch', $billing_epoch,
-            'reason', 'phase seven rollback rehearsal'
-          )
-        ) as result;
-      "
-  )
-  if [ "$rollback_mode" != "SHADOW" ]; then
-    echo "Billing rollback rehearsal did not return to SHADOW: $rollback_mode" >&2
-    exit 1
-  fi
-
-  echo "Operations release drill passed: clean install, reconciliation, backup/restore, rollback."
+  echo "Operations release drill passed: clean install and backup/restore."
 }
 
 run_reset_only_guard_probe
@@ -1581,6 +1516,11 @@ for sql_file in $(find "$infra_dir/apps/data-agent/migrations" -type f -name '*.
       apply_sql_with_prelude \
         "$infra_dir/apps/data-agent/migration-support/10610-local-maintenance-prelude.sql" \
         "$sql_file"
+      ;;
+    20260725010703_app_data_agent_commercial_archive_retirement.sql)
+      prepare_commercial_archive_history_probe
+      apply_sql "$sql_file"
+      verify_commercial_archive_history_probe
       ;;
     *)
       apply_sql "$sql_file"
@@ -1644,9 +1584,6 @@ for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | so
   esac
   apply_sql "$assertion_file"
   case "$assertion_file" in
-    *"/19zz-credit-ledger-assertions.sql")
-      run_credit_concurrency_probe
-      ;;
     *"/19zzzzz-operations-admin-assertions.sql")
       run_operations_release_drill
       ;;

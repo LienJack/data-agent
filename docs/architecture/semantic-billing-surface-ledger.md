@@ -4,7 +4,7 @@
 `KEEP_CURRENT`、`MOVE_DIRECT`、`DELETE`、`ARCHIVE_DATA`；不存在双写、别名、redirect、410 或延迟退役。
 `Status` 描述当前工作树，后续原子单元完成时必须将已删除项改成 `REMOVED` 并把消费者改成 `none`。
 
-当前迁移 frontier 是 `20260725010702`。原计划占用的 `10700/10701` 已存在，因此本次 Billing 数据库退役与 Semantic V2-only 迁移分别使用 `10703/10704`。
+当前迁移 frontier 是 `20260725010703`。Billing 数据库退役已由 `10703` 完成，Semantic V2-only 迁移使用 `10704`。
 
 | Surface | Kind | Current consumers | Action | Atomic switch unit | Final target | Evidence | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -35,8 +35,8 @@
 | Billing and Pricing UI surface | UI | none | DELETE | U4 billing code retirement | removed navigation | tests/billing-code-retirement.spec.ts | REMOVED |
 | Worker pricing sync | WORKER | none | DELETE | U4 billing code retirement | none | tests/billing-code-retirement.spec.ts | REMOVED |
 | Monetary provider admission and UNBILLABLE | RUNTIME_GATE | none | DELETE | U3 monetary gates | availability and capability only | tests/model-runtime-noncommercial.spec.ts | REMOVED |
-| Billing ledger and settlement tables | DATABASE | historical billing facts and mutation RPCs | ARCHIVE_DATA | U5 migration 10703 | PostgreSQL read-only historical data | infra/supabase/apps/data-agent/migrations/20260725010630_app_data_agent_credit_ledger.sql | HISTORICAL |
-| Pricing tables mixed with model catalog | DATABASE | Model Provider control and pricing sync | MOVE_DIRECT | U5 migration 10703 | model-control tables only | infra/supabase/apps/data-agent/migrations/20260725010629_app_data_agent_model_price_fx_control.sql | CURRENT |
+| Billing ledger and settlement tables | DATABASE | none | ARCHIVE_DATA | U5 migration 10703 | PostgreSQL read-only historical data | infra/supabase/apps/data-agent/migrations/20260725010703_app_data_agent_commercial_archive_retirement.sql; infra/supabase/test-support/19y-commercial-archive-retirement-assertions.sql | ARCHIVED |
+| Pricing tables coupled to Model Control | DATABASE | none | MOVE_DIRECT | U5 migration 10703 | independent model-control tables; pricing history archived | infra/supabase/apps/data-agent/migrations/20260725010703_app_data_agent_commercial_archive_retirement.sql; infra/supabase/test-support/19y-commercial-archive-retirement-assertions.sql | REMOVED |
 | Semantic V1 database objects and rows | DATABASE | legacy equivalence, mirror and closure flow | DELETE | U6 migration 10704 | clean V2 authority | infra/supabase/apps/data-agent/migrations/20260725010610_app_data_agent_semantic_control_plane.sql | CURRENT |
 | Relationship Index PostgreSQL fallback | RELIABILITY | Semantic Explorer and Semantic Agent reads | KEEP_CURRENT | U7 composition cleanup | unchanged | POSTGRESQL authority; INDEX_DISABLED reason; source and truncation observable; apps/web/test/semantic-explorer-route.spec.ts | CURRENT |
 | Neo4j Relationship Index projection | RELIABILITY | relationship indexer and graph search | KEEP_CURRENT | U7 composition cleanup | unchanged | PostgreSQL remains authority; adapter failure is observable; packages/platform/test/semantic/relationship-graph-adapter.spec.ts | CURRENT |

@@ -179,20 +179,33 @@ for migration_file in $migration_files; do
     pnpm --dir "$repo_dir" exec tsx "$renderer" --verify
     continue
   fi
-  checksum_count=$(rg -o 'sha256:[0-9a-f]{64}' "$migration_file" | wc -l | tr -d ' ')
-  if [ "$checksum_count" -ne 1 ]; then
-    echo "Expected exactly one self-checksum literal: $migration_file" >&2
-    echo "found=$checksum_count" >&2
+  declared_hash=$(
+    sed -nE \
+      's/^-- [a-z0-9_]+_migration_checksum: (sha256:[0-9a-f]{64})$/\1/p' \
+      "$migration_file"
+  )
+  if [ -z "$declared_hash" ]; then
+    checksum_count=$(rg -o 'sha256:[0-9a-f]{64}' "$migration_file" | wc -l | tr -d ' ')
+    if [ "$checksum_count" -ne 1 ]; then
+      echo "Expected one declared migration checksum: $migration_file" >&2
+      echo "found=$checksum_count" >&2
+      exit 1
+    fi
+    declared_hash=$(rg -o 'sha256:[0-9a-f]{64}' "$migration_file")
+  fi
+  declaration_count=$(printf '%s\n' "$declared_hash" | wc -l | tr -d ' ')
+  if [ "$declaration_count" -ne 1 ]; then
+    echo "Expected exactly one migration checksum declaration: $migration_file" >&2
+    echo "found=$declaration_count" >&2
     exit 1
   fi
-  declared_hash=$(rg -o 'sha256:[0-9a-f]{64}' "$migration_file")
   if [ -z "$declared_hash" ]; then
     echo "Missing declared migration checksum: $migration_file" >&2
     exit 1
   fi
 
   computed_hash=$(
-    sed -E "s/sha256:[0-9a-f]{64}/sha256:$zero_hash/g" "$migration_file" \
+    sed "s/$declared_hash/sha256:$zero_hash/g" "$migration_file" \
       | shasum -a 256 \
       | awk '{ print $1 }'
   )

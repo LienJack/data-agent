@@ -7,7 +7,6 @@ declare
   app_id constant uuid := '00000000-0000-4000-8000-00000000da01';
   tenant_id constant uuid := '00000000-0000-4000-8000-00000000aa22';
   principal_id constant uuid := '00000000-0000-4000-8000-000000001003';
-  deployment_id constant uuid := '00000000-0000-4000-8000-00000000de01';
   datasource_id constant uuid := '00000000-0000-4000-8000-000000002810';
   model_profile_id constant uuid := '00000000-0000-4000-8000-000000002811';
   snapshot_id constant uuid := '00000000-0000-4000-8000-000000002812';
@@ -24,8 +23,6 @@ begin
     app_id,environment,principal_id,auth_user_id,email,display_name,system_role,status,authz_epoch)
   values(app_id,'test',principal_id,'00000000-0000-4000-8000-000000002816',
     'u22@example.invalid','U22 acceptance','USER','ACTIVE',1);
-  insert into app_data_agent.billing_runtime_state(app_id,environment,deployment_id,mode,epoch)
-  values(app_id,'test',deployment_id,'SHADOW',1);
   insert into app_data_agent.model_catalog_entries(
     app_id,environment,model_profile_id,provider,model_id,display_name,base_url,
     capabilities,credential_ref,status,config_version,is_system_default,created_by)

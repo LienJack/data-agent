@@ -2,18 +2,40 @@
 
 begin;
 
-insert into data_agent_auth."user" ("id", "name", "email", "emailVerified") values
+insert into data_agent_auth."user" (
+  "id", "name", "email", "emailVerified", "username", "displayUsername"
+) values
+  (
+    '00000000-0000-4000-8000-00000000b401',
+    'Operations Super Admin',
+    'operations-admin@example.test',
+    true,
+    'operations.admin',
+    'operations.admin'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000b402',
+    'Operations User',
+    'operations-user@example.test',
+    true,
+    'operations.user',
+    'operations.user'
+  ),
   (
     '00000000-0000-4000-8000-00000000d701',
     'Workspace Admin',
     'workspace-admin@example.test',
-    true
+    true,
+    'workspace.admin',
+    'workspace.admin'
   ),
   (
     '00000000-0000-4000-8000-00000000d702',
     'Workspace Viewer',
     'workspace-viewer@example.test',
-    true
+    true,
+    'workspace.viewer',
+    'workspace.viewer'
   )
 on conflict ("id") do nothing;
 
@@ -21,6 +43,24 @@ insert into app_data_agent.app_users (
   app_id, environment, principal_id, auth_user_id,
   email, display_name, system_role
 ) values
+  (
+    '00000000-0000-4000-8000-00000000da01',
+    'test',
+    '00000000-0000-4000-8000-00000000b411',
+    '00000000-0000-4000-8000-00000000b401',
+    'operations-admin@example.test',
+    'Operations Super Admin',
+    'SUPER_ADMIN'
+  ),
+  (
+    '00000000-0000-4000-8000-00000000da01',
+    'test',
+    '00000000-0000-4000-8000-00000000b412',
+    '00000000-0000-4000-8000-00000000b402',
+    'operations-user@example.test',
+    'Operations User',
+    'USER'
+  ),
   (
     '00000000-0000-4000-8000-00000000da01',
     'test',
@@ -55,6 +95,9 @@ where app_id = '00000000-0000-4000-8000-00000000da01'::uuid
     '00000000-0000-4000-8000-000000001001'::uuid,
     '00000000-0000-4000-8000-000000001002'::uuid
   );
+
+grant usage on schema test_support to data_agent_backend;
+grant execute on all functions in schema test_support to data_agent_backend;
 
 set local role data_agent_backend;
 
@@ -170,26 +213,19 @@ select test_support.assert_true(
 select test_support.assert_true(
   (
     select health ->> 'schema_version' = 'operations-health@1.0.0'
-      and health ->> 'billing_mode' in ('SHADOW', 'ENFORCED')
-      and pg_catalog.jsonb_array_length(health -> 'gates') = 6
+      and not health ? 'billing_mode'
+      and pg_catalog.jsonb_array_length(health -> 'gates') = 1
       and (
         select pg_catalog.array_agg(gate ->> 'key' order by ordinal)
         from pg_catalog.jsonb_array_elements(health -> 'gates')
           with ordinality as gates(gate, ordinal)
-      ) = array[
-        'IDENTITY_SIDE_EFFECTS',
-        'PRICING_SYNC',
-        'PRICING_REVIEW',
-        'BILLING_REVIEW',
-        'BALANCE_INTEGRITY',
-        'SHADOW_RECONCILIATION'
-      ]
+      ) = array['IDENTITY_SIDE_EFFECTS']
     from platform.read_operations_health(
       '00000000-0000-4000-8000-00000000de01',
       '00000000-0000-4000-8000-00000000b411'
     ) as health
   ),
-  'operations health must preserve the six ordered production gates'
+  'operations health must expose only the identity side-effect gate'
 );
 
 select test_support.assert_raises(
@@ -215,7 +251,7 @@ select test_support.assert_true(
   and not pg_catalog.has_table_privilege(
     'data_agent_backend', 'app_data_agent.credit_accounts', 'SELECT'
   ),
-  'administration reads must not expose raw identity or billing tables'
+  'administration reads must not expose raw identity or commercial archive tables'
 );
 
 rollback;
