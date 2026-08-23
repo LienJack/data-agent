@@ -19,6 +19,7 @@ export default async function WorkspaceSemanticPage({
   const preview = query.preview === "1" && process.env.NODE_ENV !== "production";
   return (
     <SemanticStudio
+      key={workspaceId}
       workspaceId={workspaceId}
       initialSnapshot={preview ? semanticStudioPreviewSnapshot() : null}
       initialDraft={

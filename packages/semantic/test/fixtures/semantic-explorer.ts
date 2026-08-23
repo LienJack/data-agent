@@ -102,7 +102,7 @@ export function createCompleteSemanticSourceBundle(
     },
     formulas: [
       {
-        formula_id: "formula-gross",
+        formula_id: "formula-cost",
         formula_type: "additive_aggregate",
         return_type: "numeric",
         grain,
@@ -114,7 +114,7 @@ export function createCompleteSemanticSourceBundle(
         dependency_formula_ids: [],
       },
       {
-        formula_id: "formula-cost",
+        formula_id: "formula-gross",
         formula_type: "additive_aggregate",
         return_type: "numeric",
         grain,
@@ -138,7 +138,7 @@ export function createCompleteSemanticSourceBundle(
         dependency_formula_ids: ["formula-gross", "formula-cost"],
       },
     ],
-    metrics: [gross, cost, margin],
+    metrics: [cost, gross, margin],
     dimensions: [
       {
         dimension_id: "dimension-region",

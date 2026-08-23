@@ -15,6 +15,7 @@ import {
 } from "@data-agent/contracts";
 import { ArrowRight, FloppyDisk, Link, Plus, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
+import { createSemanticManualEditCommand } from "./manual-edit-command";
 
 export type DirectEditorMode = "EDIT_SELECTION" | "ADD_NODE" | "ADD_EDGE" | "PROPOSE_EDGE_TYPE";
 
@@ -814,13 +815,15 @@ export function DirectSemanticEditor({
         nodeType === "FORMULA" ? { ...draft, expression: formulaExpression } : draft,
       );
       onApply(
-        mode === "ADD_NODE"
-          ? { operation: "ADD_NODE", node }
-          : {
-              operation: "UPDATE_NODE",
-              node,
-              expected_node_version: selectedNode?.node.node_version ?? 0,
-            },
+        createSemanticManualEditCommand(
+          mode === "ADD_NODE"
+            ? { operation: "ADD_NODE", node }
+            : {
+                operation: "UPDATE_NODE",
+                node,
+                expected_node_version: selectedNode?.node.node_version ?? 0,
+              },
+        ),
       );
       onClose();
     } catch {
@@ -855,13 +858,15 @@ export function DirectSemanticEditor({
             },
       );
       onApply(
-        mode === "ADD_EDGE"
-          ? { operation: "ADD_EDGE", edge }
-          : {
-              operation: "UPDATE_EDGE",
-              edge,
-              expected_edge_version: selectedEdge?.edge.edge_version ?? 0,
-            },
+        createSemanticManualEditCommand(
+          mode === "ADD_EDGE"
+            ? { operation: "ADD_EDGE", edge }
+            : {
+                operation: "UPDATE_EDGE",
+                edge,
+                expected_edge_version: selectedEdge?.edge.edge_version ?? 0,
+              },
+        ),
       );
       onClose();
     } catch {
@@ -882,7 +887,12 @@ export function DirectSemanticEditor({
         authoring_policy: "AGENT_AUTHORED",
         attribute_kind: proposedAttributeKind,
       });
-      onApply({ operation: "ADD_EDGE_TYPE", edge_type_definition: edgeTypeDefinition });
+      onApply(
+        createSemanticManualEditCommand({
+          operation: "ADD_EDGE_TYPE",
+          edge_type_definition: edgeTypeDefinition,
+        }),
+      );
       onClose();
     } catch {
       setError("关系类型提案不符合注册合同；请检查稳定 ID、显示名称和允许端点。");
@@ -891,19 +901,23 @@ export function DirectSemanticEditor({
 
   function retire() {
     if (selectedNode) {
-      onApply({
-        operation: "RETIRE_NODE",
-        node_id: selectedNode.node.node_id,
-        expected_node_version: selectedNode.node.node_version,
-        retirement_reason: "用户在直接编辑器中退役",
-      });
+      onApply(
+        createSemanticManualEditCommand({
+          operation: "RETIRE_NODE",
+          node_id: selectedNode.node.node_id,
+          expected_node_version: selectedNode.node.node_version,
+          retirement_reason: "用户在直接编辑器中退役",
+        }),
+      );
     } else if (selectedEdge) {
-      onApply({
-        operation: "RETIRE_EDGE",
-        edge_id: selectedEdge.edge.edge_id,
-        expected_edge_version: selectedEdge.edge.edge_version,
-        retirement_reason: "用户在直接编辑器中断开关系",
-      });
+      onApply(
+        createSemanticManualEditCommand({
+          operation: "RETIRE_EDGE",
+          edge_id: selectedEdge.edge.edge_id,
+          expected_edge_version: selectedEdge.edge.edge_version,
+          retirement_reason: "用户在直接编辑器中断开关系",
+        }),
+      );
     }
     onClose();
   }

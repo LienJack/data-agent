@@ -11,7 +11,6 @@ import type {
   SemanticRelationshipEdgeCategory,
   SemanticRelationshipSearchResult,
 } from "@data-agent/contracts";
-import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   getActiveExplorerSnapshot,
@@ -56,8 +55,7 @@ function publicError(error: unknown): { code: string; message: string; permissio
   };
 }
 
-export function ExplorerWorkspace() {
-  const pathname = usePathname();
+export function ExplorerWorkspace({ workspaceId }: { readonly workspaceId: string }) {
   const [state, dispatch] = useReducer(semanticExplorerReducer, initialExplorerState);
   const [domains, setDomains] = useState<readonly SemanticExplorerDomainSummary[]>([]);
   const [domainCatalogState, setDomainCatalogState] = useState<"loading" | "ready" | "error">(
@@ -123,14 +121,14 @@ export function ExplorerWorkspace() {
       setTimeline(null);
       setTimelineError(null);
 
-      const timelinePromise = getExplorerTimeline(domain, controller.signal).then(
+      const timelinePromise = getExplorerTimeline(workspaceId, domain, controller.signal).then(
         (value) => ({ ok: true as const, value }),
         (error: unknown) => ({ ok: false as const, error }),
       );
       try {
         const snapshot = releaseId
-          ? await getExplorerRelease(domain, releaseId, controller.signal)
-          : await getActiveExplorerSnapshot(domain, controller.signal);
+          ? await getExplorerRelease(workspaceId, domain, releaseId, controller.signal)
+          : await getActiveExplorerSnapshot(workspaceId, domain, controller.signal);
         if (requestEpoch.current !== epoch) return;
         const highestObservedGeneration = pointerGenerationFence.current.get(domain) ?? 0;
         const stale = snapshot.pointer_observation.pointer_generation < highestObservedGeneration;
@@ -144,7 +142,11 @@ export function ExplorerWorkspace() {
           domain,
           releaseId: snapshot.release_identity.release_id,
         });
-        window.history.replaceState(null, "", `${pathname}?${params.toString()}`);
+        window.history.replaceState(
+          null,
+          "",
+          `/w/${encodeURIComponent(workspaceId)}/semantic/explorer?${params.toString()}`,
+        );
 
         const timelineResult = await timelinePromise;
         if (requestEpoch.current !== epoch) return;
@@ -171,12 +173,12 @@ export function ExplorerWorkspace() {
         });
       }
     },
-    [cancelAuxiliaryOperation, cancelLineageOperation, pathname],
+    [cancelAuxiliaryOperation, cancelLineageOperation, workspaceId],
   );
 
   useEffect(() => {
     const controller = new AbortController();
-    void getExplorerDomains(controller.signal)
+    void getExplorerDomains(workspaceId, controller.signal)
       .then((loadedDomains) => {
         setDomains(loadedDomains);
         setDomainCatalogState("ready");
@@ -202,7 +204,7 @@ export function ExplorerWorkspace() {
       lineageGate.current?.cancel();
       auxiliaryGate.current?.cancel();
     };
-  }, [loadSnapshot]);
+  }, [loadSnapshot, workspaceId]);
 
   const snapshot: SemanticExplorerSnapshot | null =
     state.server.kind === "success" || state.server.kind === "empty" ? state.server.snapshot : null;
@@ -242,6 +244,7 @@ export function ExplorerWorkspace() {
     try {
       const term = state.search.trim();
       const result = await searchExplorerRelationships(
+        workspaceId,
         {
           schema_version: "semantic-relationship-search-request@1.0.0",
           semantic_domain: state.domain,
@@ -276,6 +279,7 @@ export function ExplorerWorkspace() {
     state.domain,
     state.search,
     state.view,
+    workspaceId,
   ]);
 
   useEffect(() => {
@@ -299,6 +303,7 @@ export function ExplorerWorkspace() {
     setLineageError(null);
     try {
       const result = await getExplorerLineage(
+        workspaceId,
         state.domain,
         snapshot.release_identity.release_id,
         selectedIdentity,
@@ -331,6 +336,7 @@ export function ExplorerWorkspace() {
     setAuxiliaryBusy(true);
     try {
       const result = await getExplorerDiff(
+        workspaceId,
         state.domain,
         snapshot.release_identity.release_id,
         baseReleaseId,
@@ -363,6 +369,7 @@ export function ExplorerWorkspace() {
     setAuxiliaryBusy(true);
     try {
       const result = await getExplorerCandidateComparison(
+        workspaceId,
         state.domain,
         candidateId,
         revisionId,

@@ -1,5 +1,4 @@
-import { workspacePath } from "@/lib/workspace-routes";
-import SemanticExplorerPage from "../../../../semantic/explorer/page";
+import { SemanticExplorerPage } from "@/components/semantic/explorer/semantic-explorer-page";
 
 export default async function WorkspaceSemanticExplorerPage({
   params,
@@ -7,5 +6,5 @@ export default async function WorkspaceSemanticExplorerPage({
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  return <SemanticExplorerPage returnHref={workspacePath(workspaceId, "semantic")} />;
+  return <SemanticExplorerPage key={workspaceId} workspaceId={workspaceId} />;
 }

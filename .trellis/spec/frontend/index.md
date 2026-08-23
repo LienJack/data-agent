@@ -18,6 +18,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | 已建立 |
 | [Frontend Design System](./design-system.md) | 视觉 token、密度、shell、Agent 对话与响应式约定 | 已建立 |
 | [Agent Public Events](./agent-public-events.md) | SSE reasoning/tool disclosure, redaction and journey evidence | 已建立 |
+| [Semantic Studio 与 Explorer](./semantic-studio-explorer.md) | V2-only Workspace routes、controller/reducer 与 UI 状态 | 已建立 |
 | [Hook Guidelines](./hook-guidelines.md) | Custom hooks, data fetching patterns | To fill |
 | [State Management](./state-management.md) | Local state, global state, server state | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |

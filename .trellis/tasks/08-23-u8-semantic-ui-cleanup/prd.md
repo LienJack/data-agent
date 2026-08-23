@@ -13,11 +13,11 @@
 
 ## Acceptance Criteria
 
-- [ ] SSE reconnect/duplicate/stale/save conflict/publish 状态由 reducer/controller 确定处理。
-- [ ] Workspace 切换隔离 draft/selection/SSE/error；无旧 store alias/no-op reset。
-- [ ] Studio/Explorer loading/empty/error/read-only/edit/publish 与键盘/ARIA 测试通过。
-- [ ] 旧 URL 默认 404，route/build manifest、bundle 和 test graph 无 legacy entry/redirect。
-- [ ] Trellis 规范更新为 V2-only、Model Control 当前边界和 Billing Retirement 历史说明。
+- [x] SSE reconnect/duplicate/stale/save conflict/publish 状态由 reducer/controller 确定处理。
+- [x] Workspace 切换隔离 draft/selection/SSE/error；无旧 store alias/no-op reset。
+- [x] Studio/Explorer loading/empty/error/read-only/edit/publish 与键盘/ARIA 测试通过。
+- [x] 旧 URL 默认 404，route/build manifest、bundle 和 test graph 无 legacy entry/redirect。
+- [x] Trellis 规范更新为 V2-only、Model Control 当前边界和 Billing Retirement 历史说明。
 
 ## Notes
 

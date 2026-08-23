@@ -6,7 +6,7 @@ import {
 import { createOntologyPackageFixture } from "./fixtures/ontology-package.js";
 
 describe("Ontology Package compiler and validator", () => {
-  it("keeps optional unresolved objects in the candidate and out of the v1 runtime preview", async () => {
+  it("keeps optional unresolved objects in the candidate and out of the runtime preview", async () => {
     const candidate = await createOntologyPackageFixture();
     const validation = await validateOntologyPackageCandidate(candidate);
     const preview = await compileOntologyPackagePreview(candidate);

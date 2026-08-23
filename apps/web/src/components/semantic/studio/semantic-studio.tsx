@@ -2,12 +2,10 @@
 
 import type {
   SemanticAuthoringPublicEvent,
-  SemanticCandidateRevisionSaveResult,
   SemanticEdgeFamily,
   SemanticEdgeTypeDefinition,
   SemanticGraphEntryStatus,
   SemanticGraphNode,
-  SemanticGraphReadEdge,
   SemanticGraphReadNode,
   SemanticManualEdit,
   SemanticNodeType,
@@ -28,11 +26,12 @@ import {
 } from "@phosphor-icons/react";
 import { MotionConfig, motion, useReducedMotion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useLayoutStore } from "@/lib/layout-store";
 import {
   loadSemanticStudio,
   resumeSemanticAuthoring,
+  SemanticStudioApiError,
   saveSemanticCandidateRevision,
   startManualSemanticSession,
   startSemanticAuthoring,
@@ -40,7 +39,6 @@ import {
 } from "@/lib/semantic-studio-api";
 import {
   filterSemanticNodes,
-  mergeAuthoringEvents,
   SEMANTIC_EDGE_FAMILY_PRESENTATION,
   SEMANTIC_NODE_PRESENTATION,
   SEMANTIC_STATUS_PRESENTATION,
@@ -48,10 +46,12 @@ import {
 } from "@/lib/semantic-studio-model";
 import { ContextPreviewWorkbench } from "./context-preview-workbench";
 import { type DirectEditorMode, DirectSemanticEditor } from "./direct-semantic-editor";
+import { createSemanticManualEditCommand } from "./manual-edit-command";
 import { SemanticAgentComposer } from "./semantic-agent-composer";
 import { SemanticGraphCanvas } from "./semantic-graph-canvas";
 import { SemanticInspector } from "./semantic-inspector";
 import { SemanticNodeList } from "./semantic-node-list";
+import { createSemanticStudioControllerState, semanticStudioControllerReducer } from "./state";
 
 const NODE_TYPES = [
   "BUSINESS_SUBJECT",
@@ -104,10 +104,31 @@ export function SemanticStudio({
   readonly preview?: boolean;
 }) {
   const router = useRouter();
-  const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [controller, dispatch] = useReducer(
+    semanticStudioControllerReducer,
+    createSemanticStudioControllerState({
+      workspaceId,
+      snapshot: initialSnapshot,
+      draft: initialDraft,
+      evidenceSelectionId: initialEvidenceSelectionId ?? null,
+    }),
+  );
+  const {
+    snapshot,
+    loading,
+    error,
+    selectedNode,
+    selectedEdge,
+    draft,
+    evidenceSelectionId,
+    authoringState,
+    events,
+    authoringBusy,
+    manualEdits,
+    lastSavedRevision,
+    mutation,
+  } = controller;
   const [view, setView] = useState<SemanticStudioView>("nodes");
-  const [loading, setLoading] = useState(initialSnapshot === null);
-  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [nodeType, setNodeType] = useState<SemanticNodeType | "ALL">("ALL");
   const [status, setStatus] = useState<SemanticGraphEntryStatus | "ALL">("ALL");
@@ -117,34 +138,9 @@ export function SemanticStudio({
   const [lifecycle, setLifecycle] = useState<SemanticGraphNode["lifecycle"] | "ALL">("ALL");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [listCursor, setListCursor] = useState(0);
-  const [selectedNode, setSelectedNode] = useState<SemanticGraphReadNode | null>(() => {
-    if (!initialSnapshot?.local) return null;
-    return (
-      initialSnapshot.local.nodes.find(
-        ({ node }) => node.node_id === initialSnapshot.local?.center_node_id,
-      ) ?? null
-    );
-  });
-  const [selectedEdge, setSelectedEdge] = useState<SemanticGraphReadEdge | null>(null);
   const [hops, setHops] = useState<1 | 2>(1);
-  const [draft, setDraft] = useState(initialDraft);
-  const [evidenceSelectionId, setEvidenceSelectionId] = useState(
-    initialEvidenceSelectionId ?? null,
-  );
-  const [authoringState, setAuthoringState] = useState<SemanticStudioAuthoringState | null>(
-    initialSnapshot?.authoring?.state ?? null,
-  );
-  const [events, setEvents] = useState<readonly SemanticAuthoringPublicEvent[]>(
-    initialSnapshot?.authoring?.events ?? [],
-  );
-  const [authoringBusy, setAuthoringBusy] = useState(false);
   const [directEditorMode, setDirectEditorMode] = useState<DirectEditorMode | null>(null);
-  const [manualEdits, setManualEdits] = useState<readonly SemanticManualEdit[]>([]);
   const [saveSummary, setSaveSummary] = useState("保存语义 Working ChangeSet");
-  const [lastSavedRevision, setLastSavedRevision] =
-    useState<SemanticCandidateRevisionSaveResult | null>(
-      initialSnapshot?.authoring?.saved_revision ?? null,
-    );
   const prefersReducedMotion = useReducedMotion();
   const setSidebarCollapsed = useLayoutStore((state) => state.setSidebarCollapsed);
   const activeRequest = useRef<AbortController | null>(null);
@@ -169,8 +165,7 @@ export function SemanticStudio({
       activeRequest.current?.abort();
       const controller = new AbortController();
       activeRequest.current = controller;
-      setLoading(true);
-      setError(null);
+      dispatch({ type: "load-started" });
       try {
         const loaded = await loadSemanticStudio(
           workspaceId,
@@ -178,17 +173,13 @@ export function SemanticStudio({
           controller.signal,
         );
         if (controller.signal.aborted) return;
-        setSnapshot(loaded);
-        setAuthoringState(loaded.authoring?.state ?? null);
-        setLastSavedRevision(loaded.authoring?.saved_revision ?? null);
-        setEvents((current) =>
-          loaded.authoring ? mergeAuthoringEvents(current, loaded.authoring.events) : [],
-        );
+        dispatch({ type: "load-succeeded", snapshot: loaded });
       } catch (caught) {
         if (!controller.signal.aborted)
-          setError(caught instanceof Error ? caught.message : "Semantic Studio 暂时不可用。");
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+          dispatch({
+            type: "failed",
+            message: caught instanceof Error ? caught.message : "Semantic Studio 暂时不可用。",
+          });
       }
     },
     [preview, workspaceId],
@@ -246,9 +237,13 @@ export function SemanticStudio({
       },
       {
         onAuthoring: (result) => {
-          setAuthoringState(result.state);
-          setEvents((current) => mergeAuthoringEvents(current, result.events));
-          if (!runIsOpen(result.state)) setError(null);
+          dispatch({
+            type: "authoring-received",
+            authoringState: result.state,
+            events: result.events,
+          });
+          dispatch({ type: "connection-changed", connection: "live" });
+          if (!runIsOpen(result.state)) dispatch({ type: "error-cleared" });
           const newestPatch = [...result.events]
             .reverse()
             .find((event) => event.type === "graph_patch");
@@ -262,7 +257,10 @@ export function SemanticStudio({
             });
           }
         },
-        onError: setError,
+        onError: (message) => {
+          dispatch({ type: "connection-changed", connection: "reconnecting" });
+          dispatch({ type: "failed", message });
+        },
       },
     );
   }, [
@@ -336,67 +334,11 @@ export function SemanticStudio({
   const inspectorVisible = view !== "full" || selectedNode !== null || selectedEdge !== null;
 
   function appendManualEdit(edit: SemanticManualEdit) {
-    setManualEdits((current) => [...current, edit]);
-    if (edit.operation === "ADD_NODE") {
-      setSelectedNode({
-        node: edit.node,
-        status: "ADDED",
-        relation_count: {
-          incoming: 0,
-          outgoing: 0,
-          total: 0,
-          by_family: {
-            BUSINESS: 0,
-            ANALYTICAL: 0,
-            FORMULA: 0,
-            PHYSICAL: 0,
-            JOIN: 0,
-            PROVENANCE: 0,
-            TERMINOLOGY: 0,
-          },
-        },
-      });
-      setSelectedEdge(null);
-    } else if (edit.operation === "UPDATE_NODE") {
-      setSelectedNode((current) =>
-        current?.node.node_id === edit.node.node_id
-          ? {
-              ...current,
-              node: edit.node,
-              status: current.status === "PUBLISHED" ? "MODIFIED" : current.status,
-            }
-          : current,
-      );
-    } else if (edit.operation === "RETIRE_NODE") {
-      setSelectedNode((current) =>
-        current?.node.node_id === edit.node_id
-          ? { ...current, node: { ...current.node, lifecycle: "RETIRED" }, status: "RETIRED" }
-          : current,
-      );
-    } else if (edit.operation === "ADD_EDGE") {
-      setSelectedEdge({ edge: edit.edge, status: "ADDED" });
-      setSelectedNode(null);
-    } else if (edit.operation === "UPDATE_EDGE") {
-      setSelectedEdge((current) =>
-        current?.edge.edge_id === edit.edge.edge_id
-          ? {
-              edge: edit.edge,
-              status: current.status === "PUBLISHED" ? "MODIFIED" : current.status,
-            }
-          : current,
-      );
-    } else if (edit.operation === "RETIRE_EDGE") {
-      setSelectedEdge((current) =>
-        current?.edge.edge_id === edit.edge_id
-          ? { edge: { ...current.edge, lifecycle: "RETIRED" }, status: "RETIRED" }
-          : current,
-      );
-    }
+    dispatch({ type: "manual-edit-appended", edit: createSemanticManualEditCommand(edit) });
   }
 
   async function selectAndLoadNode(node: SemanticGraphReadNode, openGraph: boolean) {
-    setSelectedNode(node);
-    setSelectedEdge(null);
+    dispatch({ type: "selection-changed", node, edge: null });
     if (openGraph) setView("local");
     if (!preview && snapshot?.local?.center_node_id !== node.node.node_id) {
       await load({
@@ -443,8 +385,8 @@ export function SemanticStudio({
 
   async function submitAuthoring() {
     if (!snapshot || draft.trim().length === 0 || authoringBusy) return;
-    setAuthoringBusy(true);
-    setError(null);
+    dispatch({ type: "busy-changed", busy: true });
+    dispatch({ type: "error-cleared" });
     if (preview) {
       const previewEvents: readonly SemanticAuthoringPublicEvent[] = [
         {
@@ -510,10 +452,16 @@ export function SemanticStudio({
           },
         },
       ];
-      setEvents(previewEvents);
-      setDraft("");
-      setLastSavedRevision(null);
-      window.setTimeout(() => setAuthoringBusy(false), 350);
+      if (authoringState) {
+        dispatch({
+          type: "authoring-received",
+          authoringState,
+          events: previewEvents,
+        });
+      }
+      dispatch({ type: "draft-changed", draft: "" });
+      dispatch({ type: "saved-revision-cleared" });
+      window.setTimeout(() => dispatch({ type: "busy-changed", busy: false }), 350);
       return;
     }
     try {
@@ -525,10 +473,13 @@ export function SemanticStudio({
         evidence_selection_id: evidenceSelectionId,
         idempotency_key: crypto.randomUUID(),
       });
-      setAuthoringState(result.state);
-      setEvents((current) => mergeAuthoringEvents(current, result.events));
-      setDraft("");
-      setLastSavedRevision(null);
+      dispatch({
+        type: "authoring-received",
+        authoringState: result.state,
+        events: result.events,
+      });
+      dispatch({ type: "draft-changed", draft: "" });
+      dispatch({ type: "saved-revision-cleared" });
       const query = new URLSearchParams({
         domain: snapshot.semantic_domain,
         runId: result.state.run.authoring_run_id,
@@ -539,30 +490,47 @@ export function SemanticStudio({
       }
       router.replace(`/w/${encodeURIComponent(workspaceId)}/semantic?${query.toString()}`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Agent 语义创作未能启动。");
+      dispatch({
+        type: "failed",
+        message: caught instanceof Error ? caught.message : "Agent 语义创作未能启动。",
+      });
     } finally {
-      setAuthoringBusy(false);
+      dispatch({ type: "busy-changed", busy: false });
     }
   }
 
   async function openDirectEditor(mode: DirectEditorMode) {
     if (!snapshot || authoringBusy) return;
+    if (preview) {
+      setDirectEditorMode(mode);
+      return;
+    }
     if (authoringRunOpen) {
-      setError("Agent 正在写入 Working ChangeSet，请等待确定性校验完成后再直接编辑。");
+      dispatch({
+        type: "failed",
+        message: "Agent 正在写入 Working ChangeSet，请等待确定性校验完成后再直接编辑。",
+      });
       return;
     }
     if (authoringState === null || authoringState.run.status !== "READY_FOR_REVIEW") {
-      setAuthoringBusy(true);
-      setError(null);
+      dispatch({ type: "busy-changed", busy: true });
+      dispatch({ type: "error-cleared" });
       try {
         const started = await startManualSemanticSession(workspaceId, snapshot.semantic_domain);
-        setAuthoringState({ run: started.run });
-        setLastSavedRevision(null);
+        dispatch({
+          type: "authoring-received",
+          authoringState: { run: started.run },
+          events: [],
+        });
+        dispatch({ type: "saved-revision-cleared" });
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : "无法创建直接编辑会话。");
+        dispatch({
+          type: "failed",
+          message: caught instanceof Error ? caught.message : "无法创建直接编辑会话。",
+        });
         return;
       } finally {
-        setAuthoringBusy(false);
+        dispatch({ type: "busy-changed", busy: false });
       }
     }
     setDirectEditorMode(mode);
@@ -570,11 +538,13 @@ export function SemanticStudio({
 
   async function saveDraftRevision() {
     if (!snapshot || !authoringState || authoringState.run.status !== "READY_FOR_REVIEW") {
-      setError("Working ChangeSet 尚未通过确定性校验，不能保存 Revision。");
+      dispatch({
+        type: "failed",
+        message: "Working ChangeSet 尚未通过确定性校验，不能保存 Revision。",
+      });
       return;
     }
-    setAuthoringBusy(true);
-    setError(null);
+    dispatch({ type: "save-started" });
     try {
       const saved = await saveSemanticCandidateRevision(workspaceId, {
         semantic_domain: snapshot.semantic_domain,
@@ -593,8 +563,7 @@ export function SemanticStudio({
             : [],
         summary: saveSummary.trim() || "保存语义 Working ChangeSet",
       });
-      setManualEdits([]);
-      setLastSavedRevision(saved);
+      dispatch({ type: "save-succeeded", revision: saved });
       await load({
         domain: snapshot.semantic_domain,
         selectedNodeId: selectedNode?.node.node_id,
@@ -602,16 +571,21 @@ export function SemanticStudio({
         hops,
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "保存 Candidate Revision 失败。");
+      const message = caught instanceof Error ? caught.message : "保存 Candidate Revision 失败。";
+      if (caught instanceof SemanticStudioApiError && caught.code.includes("CONFLICT")) {
+        dispatch({ type: "save-conflicted", message });
+      } else {
+        dispatch({ type: "failed", message });
+      }
     } finally {
-      setAuthoringBusy(false);
+      dispatch({ type: "busy-changed", busy: false });
     }
   }
 
   async function resume(answer: string) {
     const clarification = authoringState?.run.clarification;
     if (!snapshot || !authoringState || !clarification) return;
-    setAuthoringBusy(true);
+    dispatch({ type: "busy-changed", busy: true });
     try {
       const result = await resumeSemanticAuthoring(workspaceId, {
         semantic_domain: snapshot.semantic_domain,
@@ -620,12 +594,18 @@ export function SemanticStudio({
         answer,
         idempotency_key: crypto.randomUUID(),
       });
-      setAuthoringState(result.state);
-      setEvents((current) => mergeAuthoringEvents(current, result.events));
+      dispatch({
+        type: "authoring-received",
+        authoringState: result.state,
+        events: result.events,
+      });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "无法提交澄清答案。");
+      dispatch({
+        type: "failed",
+        message: caught instanceof Error ? caught.message : "无法提交澄清答案。",
+      });
     } finally {
-      setAuthoringBusy(false);
+      dispatch({ type: "busy-changed", busy: false });
     }
   }
 
@@ -743,12 +723,11 @@ export function SemanticStudio({
             events={events}
             busy={authoringBusy}
             error={error}
-            onDraftChange={setDraft}
+            onDraftChange={(nextDraft) => dispatch({ type: "draft-changed", draft: nextDraft })}
             onClearSelection={() => {
-              setSelectedNode(null);
-              setSelectedEdge(null);
+              dispatch({ type: "selection-changed", node: null, edge: null });
             }}
-            onClearEvidenceSelection={() => setEvidenceSelectionId(null)}
+            onClearEvidenceSelection={() => dispatch({ type: "evidence-cleared" })}
             onSubmit={() => void submitAuthoring()}
             onResume={(answer) => void resume(answer)}
             onOpenTrajectory={() => {
@@ -804,6 +783,19 @@ export function SemanticStudio({
                     已保存 r{lastSavedRevision.revision_number}
                   </span>
                 ) : null}
+                <span className="sr-only" aria-live="polite">
+                  {mutation === "save-conflict"
+                    ? "保存冲突，请刷新后重试"
+                    : mutation === "ready-to-publish"
+                      ? "Revision 已保存，等待治理审核发布"
+                      : mutation === "publishing"
+                        ? "正在发布"
+                        : mutation === "published"
+                          ? "发布完成"
+                          : mutation === "editing"
+                            ? "存在未保存修改"
+                            : "只读状态"}
+                </span>
               </div>
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
                 <input
@@ -995,7 +987,7 @@ export function SemanticStudio({
                   ) : null}
                   <button
                     type="button"
-                    onClick={() => setDraft("新增语义节点：")}
+                    onClick={() => dispatch({ type: "draft-changed", draft: "新增语义节点：" })}
                     className="inline-flex h-10 items-center justify-center gap-2 bg-[var(--color-accent)] px-4 text-[11px] font-semibold text-white transition-colors hover:bg-[var(--color-accent-hover)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
                   >
                     <Plus className="size-4" weight="bold" aria-hidden="true" />
@@ -1123,16 +1115,13 @@ export function SemanticStudio({
                       selectedNodeId={selectedNode?.node.node_id ?? null}
                       selectedEdgeId={selectedEdge?.edge.edge_id ?? null}
                       onSelectNode={(node) => {
-                        setSelectedNode(node);
-                        setSelectedEdge(null);
+                        dispatch({ type: "selection-changed", node, edge: null });
                       }}
                       onSelectEdge={(edge) => {
-                        setSelectedEdge(edge);
-                        setSelectedNode(null);
+                        dispatch({ type: "selection-changed", node: null, edge });
                       }}
                       onClearSelection={() => {
-                        setSelectedNode(null);
-                        setSelectedEdge(null);
+                        dispatch({ type: "selection-changed", node: null, edge: null });
                       }}
                     />
                   )}
@@ -1146,10 +1135,9 @@ export function SemanticStudio({
                   node={selectedNode}
                   edge={selectedEdge}
                   onClose={() => {
-                    setSelectedNode(null);
-                    setSelectedEdge(null);
+                    dispatch({ type: "selection-changed", node: null, edge: null });
                   }}
-                  onAskAgent={setDraft}
+                  onAskAgent={(nextDraft) => dispatch({ type: "draft-changed", draft: nextDraft })}
                   onDirectEdit={() => void openDirectEditor("EDIT_SELECTION")}
                 />
               </div>

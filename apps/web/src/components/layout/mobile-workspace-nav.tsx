@@ -14,6 +14,7 @@ const labels: Readonly<Record<WorkspaceNavigationKey, MessageKey>> = {
   "data-sources": "workspace.surface.data-sources",
   knowledge: "workspace.surface.knowledge",
   semantic: "workspace.surface.semantic",
+  "semantic-explorer": "workspace.surface.semanticExplorer",
   members: "workspace.surface.members",
   "platform-settings": "workspace.surface.platform-settings",
 };

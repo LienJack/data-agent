@@ -153,6 +153,7 @@ export async function createOntologyPackageFixture() {
           data_type: "text",
           sensitivity: "PUBLIC",
           filter_semantics: "EXACT",
+          analysis: { groupable: true, pivotable: true, causal_role: null },
         },
       ],
       edges: [],

@@ -17,6 +17,7 @@ const icons = {
   "data-sources": Database,
   knowledge: Books,
   semantic: Graph,
+  "semantic-explorer": Graph,
   members: UsersThree,
   "platform-settings": GearSix,
 } as const;

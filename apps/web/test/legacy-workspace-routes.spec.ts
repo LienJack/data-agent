@@ -19,19 +19,13 @@ const modelProviderRouteSource = readFileSync(
 
 describe("legacy workspace routes", () => {
   it("redirects every legacy business entry to explicit workspace selection", () => {
-    for (const source of [
-      "/",
-      "/qa",
-      "/tests",
-      "/data-sources",
-      "/data-link/:path*",
-      "/semantic/:path*",
-      "/settings",
-    ]) {
+    for (const source of ["/", "/qa", "/tests", "/data-sources", "/settings"]) {
       expect(nextConfigSource).toContain(
         `{ source: "${source}", destination: "/workspaces", permanent: false }`,
       );
     }
+    expect(nextConfigSource).not.toContain('source: "/data-link/:path*"');
+    expect(nextConfigSource).not.toContain('source: "/semantic/:path*"');
   });
 
   it("does not recover workspace identity from browser storage", () => {

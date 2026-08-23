@@ -113,7 +113,7 @@ export async function validateOntologyPackageCandidate(
     );
     for (const graphIssue of validateSemanticGraph(candidate.graph_source)) {
       if (
-        graphIssue.code === "RUNTIME_COMPATIBILITY_UNSUPPORTED" &&
+        graphIssue.code === "RUNTIME_CAPABILITY_UNSUPPORTED" &&
         graphIssue.entry_id !== undefined &&
         unresolvedGraphEntries.has(graphIssue.entry_id)
       ) {

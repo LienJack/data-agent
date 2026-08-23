@@ -24,6 +24,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 | [Semantic Relationship Index](./semantic-relationship-index.md) | PostgreSQL 权威、Neo4j 投影、搜索回退与索引器闭环 | 已建立 |
 | [工作空间、身份与商业归档权威](./workspace-identity.md) | Workspace Scope、RBAC、幂等命令和历史商业表只读边界 | 已建立，10703 已冻结 |
 | [Model Control 边界](./model-control.md) | Provider、Model、SecretRef 元数据与技术就绪的非商业控制面 | 已建立 |
+| [商业计费退役记录](./billing-retirement.md) | 无商业计费运行时、历史数据库冻结与禁止兼容恢复 | 已建立 |
 | [Q&A 对话资源绑定](./qa-conversation-resource-binding.md) | Composer、Conversation 冻结、Run 快照与直接分析执行 | 已建立，五项真实门禁通过 |
 | [Q&A 管理员审计平面](./qa-admin-audit-plane.md) | 跨 owner 只读 projection、不可变回执、Admin SSE 与 Artifact 双门禁 | 已建立 |
 | [Provider Invocation Authority](./provider-invocation-authority.md) | 当前轻量直连与历史 Intent/Permit 兼容边界 | 已建立，生产直连 |

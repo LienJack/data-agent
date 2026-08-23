@@ -112,7 +112,7 @@ function requireNode(
   const node = nodesById.get(nodeId);
   if (node?.node_type !== nodeType) {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       `Runtime compiler 期望 ${nodeType} ${nodeId}。`,
     );
   }
@@ -136,7 +136,7 @@ function primaryColumnForDimension(
   );
   if (edge === undefined) {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       `Dimension ${dimension.node_id} 缺少 primary binding。`,
     );
   }
@@ -153,7 +153,7 @@ function formulaForMetric(
   );
   if (edge === undefined) {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       `Metric ${metric.node_id} 缺少 Formula。`,
     );
   }
@@ -169,7 +169,7 @@ function grainBindingFor(
   );
   if (edge?.attributes.kind !== "GRAIN_BINDING") {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       `${sourceNodeId} 缺少可编译的 AT_GRAIN Edge。`,
     );
   }
@@ -186,14 +186,14 @@ function directAggregateBinding(
 } {
   if (formula.expression.kind !== "AGGREGATE") {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       `Formula ${formula.node_id} 不是当前 runtime 支持的直接聚合。`,
       [renderExpression(formula.expression)],
     );
   }
   if (formula.expression.input?.kind !== "SLOT") {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       `Formula ${formula.node_id} 的直接聚合必须引用一个 slot。`,
     );
   }
@@ -240,8 +240,8 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
         activeEdges(graph, "DEPENDS_ON").some((edge) => edge.source_node_id === formula.node_id)
       ) {
         throw new SemanticGraphError(
-          SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
-          `Formula ${formula.node_id} 含 Formula dependency，当前 compatibility profile 不支持。`,
+          SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
+          `Formula ${formula.node_id} 含 Formula dependency，当前 runtime capability profile 不支持。`,
         );
       }
       const { column, aggregation } = directAggregateBinding(graph, formula, nodesById);
@@ -266,7 +266,7 @@ function buildRuntimeBundle(graph: SemanticGraphSource): SemanticSourceBundle {
           const dependencyTableId = tableByColumn.get(dependencyColumn.node_id);
           if (dependencyTableId !== table.node_id) {
             throw new SemanticGraphError(
-              SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+              SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
               `Metric ${metric.node_id} 的当前 runtime projection 不支持跨表 dependency。`,
             );
           }
@@ -526,7 +526,7 @@ export async function compileSemanticGraphV2(input: unknown): Promise<SemanticGr
   const u5Projection = await compileU5Projection(runtimeBundle);
   if (u5Projection.errors.length > 0) {
     throw new SemanticGraphError(
-      SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+      SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
       "Graph v2 runtime content 未通过 U5 compiler。",
       u5Projection.errors.map((entry) => `${entry.code}: ${entry.message}`),
     );

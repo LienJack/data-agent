@@ -8,11 +8,8 @@ import {
   semanticDimensionSchema,
   semanticMetricSchema,
   semanticRelationshipSchema,
-  semanticSourceBundleMetadataSchema,
   semanticSourceBundleSchema,
-  timeDomainSchema,
   U5_EXECUTABLE_SUBSET,
-  unitSchema,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 
@@ -50,6 +47,15 @@ const validMetric = {
   fanout_policy: "preaggregate",
   dependency_column_ids: ["orders.amount"],
   tags: [],
+  analysis: {
+    primary: true,
+    priority: 0,
+    missing_period_policy: "NULL",
+    seasonality: null,
+    allowed_dimension_ids: ["00000000-0000-1000-8000-000000000020"],
+    capabilities: [],
+    causal_role: null,
+  },
 };
 const validDimension = {
   dimension_id: "00000000-0000-1000-8000-000000000020",
@@ -63,6 +69,7 @@ const validDimension = {
   hierarchical: false,
   parent_dimension_id: null,
   tags: [],
+  analysis: { groupable: true, pivotable: true, causal_role: null },
 };
 const validMetadata = {
   bundle_version: SEMANTIC_SOURCE_BUNDLE_VERSION,
@@ -78,6 +85,11 @@ const validMetadata = {
     kind: "deterministic" as const,
     id: "semantic-authority",
     policy_version: "semantic-authority@1.0.0",
+  },
+  authority_envelope: {
+    kind: "PREVIEW" as const,
+    candidate_id: "00000000-0000-1000-8000-000000000008",
+    working_revision: 1,
   },
   created_at: "2026-08-04T00:00:00Z",
 };

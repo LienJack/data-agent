@@ -31,11 +31,15 @@ describe("Semantic Explorer browser API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await getExplorerTimelinePage("revenue", 3);
+    await getExplorerTimelinePage("workspace-1", "revenue", 3);
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/semantic/releases?domain=revenue&limit=50&cursor=3",
-      expect.objectContaining({ cache: "no-store", signal: expect.any(AbortSignal) }),
+      expect.objectContaining({
+        cache: "no-store",
+        headers: expect.objectContaining({ "x-workspace-id": "workspace-1" }),
+        signal: expect.any(AbortSignal),
+      }),
     );
   });
 });

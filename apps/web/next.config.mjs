@@ -12,8 +12,6 @@ const nextConfig = {
       { source: "/qa", destination: "/workspaces", permanent: false },
       { source: "/tests", destination: "/workspaces", permanent: false },
       { source: "/data-sources", destination: "/workspaces", permanent: false },
-      { source: "/data-link/:path*", destination: "/workspaces", permanent: false },
-      { source: "/semantic/:path*", destination: "/workspaces", permanent: false },
       { source: "/settings", destination: "/workspaces", permanent: false },
     ];
   },

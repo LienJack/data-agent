@@ -16,6 +16,7 @@ export type WorkspaceNavigationKey =
   | "data-sources"
   | "knowledge"
   | "semantic"
+  | "semantic-explorer"
   | "members"
   | "platform-settings";
 
@@ -66,10 +67,18 @@ const navigationDefinitions = [
   },
   {
     key: "semantic",
-    label: "语义治理",
-    description: "编辑和审核语义候选",
+    label: "语义工作台",
+    description: "编辑、保存和审核语义候选",
     path: "semantic",
     requiredAction: "SEMANTIC_EDIT",
+    phase: "AVAILABLE",
+  },
+  {
+    key: "semantic-explorer",
+    label: "语义浏览器",
+    description: "只读浏览已发布对象、关系与溯源",
+    path: "semantic/explorer",
+    requiredAction: "WORKSPACE_RESULT_READ",
     phase: "AVAILABLE",
   },
   {

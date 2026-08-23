@@ -42,12 +42,17 @@ export class SemanticExplorerApiError extends Error {
   }
 }
 
-async function getData<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+async function getData<T>(
+  workspaceId: string,
+  path: string,
+  schema: z.ZodType<T>,
+  signal?: AbortSignal,
+): Promise<T> {
   const timeoutSignal = AbortSignal.timeout(EXPLORER_FETCH_TIMEOUT_MS);
   const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
   const response = await fetch(path, {
     cache: "no-store",
-    headers: workspaceRequestHeaders(),
+    headers: workspaceRequestHeaders(workspaceId),
     signal: requestSignal,
   });
   const body: unknown = await response.json().catch(() => null);
@@ -78,6 +83,7 @@ async function getData<T>(path: string, schema: z.ZodType<T>, signal?: AbortSign
 }
 
 async function postData<T>(
+  workspaceId: string,
   path: string,
   payload: unknown,
   schema: z.ZodType<T>,
@@ -88,7 +94,7 @@ async function postData<T>(
   const response = await fetch(path, {
     method: "POST",
     cache: "no-store",
-    headers: workspaceRequestHeaders(),
+    headers: workspaceRequestHeaders(workspaceId),
     body: JSON.stringify(payload),
     signal: requestSignal,
   });
@@ -127,15 +133,25 @@ function query(values: Record<string, string | number | null | undefined>): stri
   return params.toString();
 }
 
-export function getExplorerDomains(signal?: AbortSignal): Promise<SemanticExplorerDomainSummary[]> {
-  return getData("/api/semantic/domains", z.array(semanticExplorerDomainSummarySchema), signal);
+export function getExplorerDomains(
+  workspaceId: string,
+  signal?: AbortSignal,
+): Promise<SemanticExplorerDomainSummary[]> {
+  return getData(
+    workspaceId,
+    "/api/semantic/domains",
+    z.array(semanticExplorerDomainSummarySchema),
+    signal,
+  );
 }
 
 export function getActiveExplorerSnapshot(
+  workspaceId: string,
   domain: string,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerSnapshot> {
   return getData(
+    workspaceId,
     `/api/semantic/releases/active?${query({ domain })}`,
     semanticExplorerSnapshotSchema,
     signal,
@@ -143,11 +159,13 @@ export function getActiveExplorerSnapshot(
 }
 
 export function getExplorerRelease(
+  workspaceId: string,
   domain: string,
   releaseId: string,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerSnapshot> {
   return getData(
+    workspaceId,
     `/api/semantic/releases/${encodeURIComponent(releaseId)}?${query({ domain })}`,
     semanticExplorerSnapshotSchema,
     signal,
@@ -155,18 +173,21 @@ export function getExplorerRelease(
 }
 
 export function getExplorerTimeline(
+  workspaceId: string,
   domain: string,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerReleaseTimeline> {
-  return getExplorerTimelinePage(domain, null, signal);
+  return getExplorerTimelinePage(workspaceId, domain, null, signal);
 }
 
 export function getExplorerTimelinePage(
+  workspaceId: string,
   domain: string,
   generationCursor: number | null,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerReleaseTimeline> {
   return getData(
+    workspaceId,
     `/api/semantic/releases?${query({ domain, limit: 50, cursor: generationCursor })}`,
     semanticExplorerReleaseTimelineSchema,
     signal,
@@ -174,12 +195,14 @@ export function getExplorerTimelinePage(
 }
 
 export function getExplorerDiff(
+  workspaceId: string,
   domain: string,
   targetReleaseId: string,
   baseReleaseId: string,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerDiff> {
   return getData(
+    workspaceId,
     `/api/semantic/releases/${encodeURIComponent(targetReleaseId)}/diff?${query({
       domain,
       base: baseReleaseId,
@@ -190,12 +213,14 @@ export function getExplorerDiff(
 }
 
 export function getExplorerLineage(
+  workspaceId: string,
   domain: string,
   releaseId: string,
   identity: SemanticExplorerObjectIdentity,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerLineage> {
   return getData(
+    workspaceId,
     `/api/semantic/objects/${encodeURIComponent(identity.object_id)}/lineage?${query({
       domain,
       releaseId,
@@ -209,12 +234,14 @@ export function getExplorerLineage(
 }
 
 export function getExplorerCandidateComparison(
+  workspaceId: string,
   domain: string,
   candidateId: string,
   revisionId: string,
   signal?: AbortSignal,
 ): Promise<SemanticExplorerCandidateComparison> {
   return getData(
+    workspaceId,
     `/api/semantic/candidates/${encodeURIComponent(candidateId)}/comparison?${query({
       domain,
       revisionId,
@@ -225,10 +252,12 @@ export function getExplorerCandidateComparison(
 }
 
 export function searchExplorerRelationships(
+  workspaceId: string,
   request: SemanticRelationshipSearchRequest,
   signal?: AbortSignal,
 ): Promise<SemanticRelationshipSearchResult> {
   return postData(
+    workspaceId,
     "/api/semantic/relationships/search",
     request,
     semanticRelationshipSearchResultSchema,

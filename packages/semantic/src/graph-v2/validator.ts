@@ -358,7 +358,7 @@ function validateFormulaSemantics(
         issue(
           grainEdges.length > 1
             ? SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_AMBIGUOUS
-            : SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+            : SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
           `Formula ${formula.node_id} 必须且只能有一个 active AT_GRAIN Edge。`,
           formula.node_id,
         ),
@@ -502,7 +502,7 @@ function validateCompatibility(graph: SemanticGraphSource): SemanticGraphValidat
         issue(
           definitions.length > 1
             ? SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_AMBIGUOUS
-            : SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+            : SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
           `Metric ${metric.node_id} 必须且只能有一个 active DEFINED_BY Edge。`,
           metric.node_id,
         ),
@@ -526,7 +526,7 @@ function validateCompatibility(graph: SemanticGraphSource): SemanticGraphValidat
         issue(
           primaryBindings.length > 1 || grains.length > 1
             ? SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_AMBIGUOUS
-            : SemanticGraphErrorCode.RUNTIME_COMPATIBILITY_UNSUPPORTED,
+            : SemanticGraphErrorCode.RUNTIME_CAPABILITY_UNSUPPORTED,
           `Dimension ${dimension.node_id} 必须有唯一 primary BOUND_TO 和 AT_GRAIN Edge。`,
           dimension.node_id,
         ),

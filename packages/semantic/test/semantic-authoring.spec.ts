@@ -142,6 +142,15 @@ describe("Semantic authoring Agent tool loop", () => {
       additivity: "non-additive" as const,
       null_policy: "exclude" as const,
       fanout_policy: "reject" as const,
+      analysis: {
+        primary: false,
+        priority: 100,
+        missing_period_policy: "NULL" as const,
+        seasonality: null,
+        allowed_dimension_ids: [],
+        capabilities: [],
+        causal_role: null,
+      },
     };
     const formula = {
       ...common,
