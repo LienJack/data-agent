@@ -186,8 +186,8 @@ flowchart TB
 - 修改 `packages/contracts/src/context/resolved-context-package.ts`
 - 修改 `packages/contracts/src/context/index.ts`
 - 修改 `packages/platform/src/semantic/postgres-resolved-context.ts`
-- 新增 `infra/supabase/apps/data-agent/migration-sources/10705/`（暂定编号，实施前重新确认未被并行任务占用）
-- 新增 `scripts/render-10705-migration.ts` 与 `infra/supabase/apps/data-agent/migrations/20260725010705_app_data_agent_resolved_context_lexicon.sql`（同上，若编号冲突整体顺延）
+- 新增 `infra/supabase/apps/data-agent/migration-sources/10705/`（已确认并实现）
+- 新增 `scripts/render-10705-migration.ts` 与 `infra/supabase/apps/data-agent/migrations/20260725010705_app_data_agent_resolved_context_lexicon.sql`
 - 修改 `infra/supabase/test-support/41-resolved-context-authority-assertions.sql`
 - 新增 `packages/contracts/test/semantic-retrieval.spec.ts`
 - 修改 `packages/contracts/test/resolved-context-package.spec.ts`
@@ -195,7 +195,7 @@ flowchart TB
 
 **契约要点**：release ref、object/term id、term role、match kind、canonical phrase、evidence hash、projection checkpoint、relationship path、score availability、fallback reason；数组必须 canonical sort，hash 必须可验证。当前 authority snapshot 没有 preferred/synonym/abbreviation 的独立投影，因此 migration 必须从已发布语义图生成 `published_lexicon`，不能由 Web 或模型临时拼接。
 
-严格 schema 不做原地扩字段：以 `resolved-context-authority-snapshot@2.0.0`、对应 current route/package 与 `_v2` PostgreSQL RPC 原子替换旧契约。仓库内消费者、fixture、导出和调用点在同一实施单元一起切换；旧 schema/RPC 不再可读、可提交或回退。新的 forward-only DDL 可以删除被替代的数据库对象，但不复制、回填或迁移旧数据；历史 migration 文件本身保持不可变。
+严格 schema 不原地扩字段：`resolved-context-authority-snapshot@2.0.0` 与 shape 同步变化的 route/package 原子替换旧契约；shape 未变化的 request/receipt/commit/Text2SQL binding 不做机械版本号翻新。仓库内消费者、fixture、导出和调用点同批切换，旧 Snapshot/Route/Package 不再解析。PostgreSQL 保持一组稳定 RPC 名称并用 forward-only DDL 原位替换实现，不建立 V1/V2 双 RPC，也不复制、回填或迁移旧数据；历史 migration 文件本身保持不可变。
 
 **验收场景**：重复项拒绝、乱序拒绝、hash 篡改拒绝、跨 release ref 拒绝、分数缺失可表达、Candidate/未发布对象不能构造 runtime evidence。
 
@@ -320,7 +320,7 @@ flowchart TB
 - **生命周期**：Published Release 发布后构建词汇与图投影；schema drift 落库后异步生成影响候选；候选验证与人工接受后才发布新版本。
 - **缓存与一致性**：缓存键至少包含 workspace、datasource、semantic release hash、schema snapshot hash、policy hash；发布或漂移后旧缓存不可被新请求复用。
 - **可观测性**：记录公开 artifact id/hash、命中类型、候选数、裁剪数、fallback reason、延迟和投影 checkpoint；不记录用户原问题全文、原始 prompt/SQL/rows/DSN。
-- **单版本切换**：contract、authority、resolver、consumer 与 fixture 同批原子切换；删除旧 reason code 映射、旧读路径和兼容导出。评估对照只使用固定 fixture/Falcon artifact，不在运行时双读或双算。
+- **单版本切换**：发生 shape 变化的 contract、authority、resolver、consumer 与 fixture 同批原子切换；结构未变协议保持版本，避免无价值 churn。删除旧 reason code 映射、旧读路径和兼容导出；评估对照只使用固定 fixture/Falcon artifact，不在运行时双读或双算。
 
 ### 8.1 计划级威胁模型
 
@@ -375,7 +375,7 @@ flowchart TB
 
 代码回滚只能回退整个 scoped commit，不保留运行时旧实现、feature flag 或 compatibility adapter。已产生的新 artifact 保留只读审计；Published Release 与 drift event 不做破坏性回写。若 current contract 已被外部消费者采用，必须在同一变更中更新该消费者，不能恢复旧读路径。
 
-数据库变更全部 forward-only：不得修改已安装的 `10663` resolved-context migration 或历史 schema-drift migration。`10705/10706` 只是当前快照下的暂定编号，实施开始时必须重新扫描 migration inventory；若已被占用，source directory、renderer、rendered migration、ledger 和测试引用整体顺延。新 DDL 不搬运旧数据，并显式删除不再使用的旧 runtime RPC/表面。
+数据库变更全部 forward-only：不得修改已安装的 `10663` resolved-context migration 或历史 schema-drift migration。M1 已使用 `10705`；后续任务实施时仍须重新扫描 migration inventory。新 DDL 不搬运旧数据，并显式删除不再使用的旧 runtime RPC/表面。
 
 ## 11. 风险与缓解
 

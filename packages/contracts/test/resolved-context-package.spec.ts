@@ -15,7 +15,7 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "development" } as
 
 async function fixture() {
   const snapshot = await buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@1.0.0",
+    schema_version: "resolved-context-authority-snapshot@2.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue by channel",
@@ -68,7 +68,7 @@ async function fixture() {
     projection_hashes: [hash("7"), hash("8")],
   });
   const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@1.0.0",
+    schema_version: "resolved-context-package@2.0.0",
     scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,
@@ -80,12 +80,13 @@ async function fixture() {
     provider: snapshot.provider,
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: {
-      schema_version: "resolved-context-route-decision@1.0.0",
+      schema_version: "resolved-context-route-decision@2.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: "gross_revenue",
       selected_ontology_ids: [],
       clarification_candidates: [],
+      lexical_evidence: [],
       capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
       reason_codes: ["EXACT_PUBLISHED_METRIC"],
     },

@@ -1,9 +1,12 @@
-import { buildResolvedContextAuthoritySnapshot } from "@data-agent/contracts";
+import {
+  buildResolvedContextAuthoritySnapshot,
+  buildSemanticLexicalEntry,
+} from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
   applyContextCapacity,
   resolveContextPackage,
-  resolvePublishedMetric,
+  resolvePublishedLexicon,
   routeResolvedContext,
 } from "../src/context/index.js";
 
@@ -17,11 +20,12 @@ async function snapshot(input?: {
   ontology?: readonly Record<string, unknown>[];
   relationships?: readonly Record<string, unknown>[];
   knowledge?: readonly Record<string, unknown>[];
+  lexicon?: readonly Record<string, unknown>[];
   maxTokens?: number;
 }) {
   const question = input?.question ?? "Gross Revenue by channel";
   return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@1.0.0",
+    schema_version: "resolved-context-authority-snapshot@2.0.0",
     scope,
     semantic_domain: "commerce",
     question,
@@ -70,22 +74,15 @@ async function snapshot(input?: {
     ],
     published_ontology: input?.ontology ?? [],
     published_relationships: input?.relationships ?? [],
+    published_lexicon: input?.lexicon,
     knowledge_refs: input?.knowledge ?? [],
     projection_hashes: [hash("6")],
   });
 }
 
 describe("resolved context routing", () => {
-  it("matches only exact published metric name or alias and is order independent", async () => {
+  it("matches only exact published lexical entries deterministically", async () => {
     const metrics = [
-      {
-        metric_id: "orders_count",
-        name: "Order Count",
-        aliases: ["Orders"],
-        mapping_refs: ["orders.id"],
-        mapping_hash: hash("7"),
-        formula_hash: hash("e"),
-      },
       {
         metric_id: "gross_revenue",
         name: "Gross Revenue",
@@ -94,13 +91,70 @@ describe("resolved context routing", () => {
         mapping_hash: hash("6"),
         formula_hash: hash("f"),
       },
+      {
+        metric_id: "orders_count",
+        name: "Order Count",
+        aliases: ["Orders"],
+        mapping_refs: ["orders.id"],
+        mapping_hash: hash("7"),
+        formula_hash: hash("e"),
+      },
     ];
-    const forward = await resolvePublishedMetric("Show GMV by channel", metrics);
-    const reverse = await resolvePublishedMetric("Show GMV by channel", [...metrics].reverse());
-    expect(forward).toEqual(reverse);
-    expect(forward.matches.map(({ metric_id }) => metric_id)).toEqual(["gross_revenue"]);
-    expect((await resolvePublishedMetric("Show gross margins", metrics)).matches).toEqual([]);
+    const forward = await resolvePublishedLexicon(
+      await snapshot({ question: "Show GMV by channel", metrics }),
+    );
+    expect(forward.matches.map(({ target_id }) => target_id)).toEqual(["gross_revenue"]);
+    expect(
+      (await resolvePublishedLexicon(await snapshot({ question: "Show gross margins", metrics })))
+        .matches,
+    ).toEqual([]);
   });
+
+  it.each([
+    ["PREFERRED", "成交总额"],
+    ["SYNONYM", "交易额"],
+    ["ABBREVIATION", "GMV"],
+  ] as const)(
+    "routes a published %s glossary term with exact evidence",
+    async (matchKind, phrase) => {
+      const lexical = await buildSemanticLexicalEntry({
+        schema_version: "semantic-lexical-entry@1.0.0",
+        release_ref: {
+          resource_id: id(4),
+          resource_revision: 1,
+          resource_hash: hash("2"),
+        },
+        target_kind: "METRIC",
+        target_id: "gross_revenue",
+        term_id: "term_gmv",
+        match_kind: matchKind,
+        phrase,
+      });
+      const authority = await snapshot({
+        question: `按渠道查看${phrase}`,
+        ontology: [
+          {
+            object_id: "term_gmv",
+            object_kind: "TERM",
+            name: "成交总额术语",
+            aliases: [],
+            queryable: false,
+            mapping_refs: [],
+            object_hash: hash("9"),
+          },
+        ],
+        lexicon: [lexical],
+      });
+      const decision = await routeResolvedContext(authority);
+      expect(decision).toMatchObject({
+        state: "READY",
+        route: "METRIC",
+        selected_metric_id: "gross_revenue",
+        lexical_evidence: [{ evidence_hash: lexical.evidence_hash, match_kind: matchKind }],
+        reason_codes: [`LEXICAL_${matchKind}_PUBLISHED_METRIC`],
+      });
+    },
+  );
 
   it("returns clarification for ambiguous published aliases", async () => {
     const shared = {
@@ -118,6 +172,7 @@ describe("resolved context routing", () => {
     const decision = await routeResolvedContext(authority);
     expect(decision.state).toBe("NEEDS_CLARIFICATION");
     expect(decision.route).toBe("METRIC");
+    expect(decision.reason_codes).toEqual(["AMBIGUOUS_PUBLISHED_LEXICON"]);
     expect(decision.clarification_candidates.map(({ candidate_id }) => candidate_id)).toEqual([
       "gross",
       "net",

@@ -15,7 +15,7 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 async function authoritySnapshot(options: { readonly ontologyQueryable?: boolean } = {}) {
   return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@1.0.0",
+    schema_version: "resolved-context-authority-snapshot@2.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue by channel",
@@ -84,7 +84,7 @@ async function contextPackage(
   route: "METRIC" | "ONTOLOGY_TEXT2SQL" | "KNOWLEDGE",
 ) {
   return buildResolvedContextPackage({
-    schema_version: "resolved-context-package@1.0.0",
+    schema_version: "resolved-context-package@2.0.0",
     scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,
@@ -96,12 +96,13 @@ async function contextPackage(
     provider: snapshot.provider,
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: {
-      schema_version: "resolved-context-route-decision@1.0.0",
+      schema_version: "resolved-context-route-decision@2.0.0",
       state: route === "KNOWLEDGE" ? "PARTIAL" : "READY",
       route,
       selected_metric_id: route === "METRIC" ? "gross_revenue" : null,
       selected_ontology_ids: route === "ONTOLOGY_TEXT2SQL" ? ["sales_channel"] : [],
       clarification_candidates: [],
+      lexical_evidence: [],
       capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
       reason_codes: [route === "METRIC" ? "EXACT_PUBLISHED_METRIC" : "EXACT_QUERYABLE_ONTOLOGY"],
     },

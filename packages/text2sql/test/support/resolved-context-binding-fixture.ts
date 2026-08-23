@@ -10,7 +10,7 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 export async function authoritativeResolvedContextBindingFixture() {
   const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
   const snapshot = await buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@1.0.0",
+    schema_version: "resolved-context-authority-snapshot@2.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Net Revenue by region",
@@ -63,7 +63,7 @@ export async function authoritativeResolvedContextBindingFixture() {
     projection_hashes: [hash("6"), hash("8")],
   });
   const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@1.0.0",
+    schema_version: "resolved-context-package@2.0.0",
     scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,
@@ -75,12 +75,13 @@ export async function authoritativeResolvedContextBindingFixture() {
     provider: snapshot.provider,
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: {
-      schema_version: "resolved-context-route-decision@1.0.0",
+      schema_version: "resolved-context-route-decision@2.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: "net_revenue",
       selected_ontology_ids: [],
       clarification_candidates: [],
+      lexical_evidence: [],
       capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
       reason_codes: ["EXACT_PUBLISHED_METRIC"],
     },

@@ -21,6 +21,7 @@ begin
     or pg_catalog.to_regprocedure('app_data_agent.assert_resolved_context_integrity()') is null
     or pg_catalog.to_regprocedure('app_data_agent.resolved_context_package_key_hash(jsonb)') is null
     or pg_catalog.to_regprocedure('app_data_agent.resolved_context_uuid_v8_from_hash(text)') is null
+    or pg_catalog.to_regprocedure('app_data_agent.resolved_context_published_lexicon(uuid,uuid,text,text,uuid)') is null
   then raise exception 'U12 narrow RPC closure missing'; end if;
   if pg_catalog.has_table_privilege('data_agent_backend','app_data_agent.resolved_context_receipts','INSERT,UPDATE,DELETE')
     or not pg_catalog.has_function_privilege('data_agent_backend','app_data_agent.load_resolved_context_authority_snapshot(jsonb)','EXECUTE')
@@ -44,8 +45,21 @@ begin
   if not exists (
     select 1 from platform.migration_ledger
     where owner_kind='app' and app_id='00000000-0000-4000-8000-00000000da01'::uuid
-      and migration_version='20260725010663_app_data_agent_resolved_context'
+      and migration_version='20260725010705_app_data_agent_resolved_context_lexicon'
   ) then raise exception 'U12 ledger entry missing'; end if;
+  if pg_catalog.strpos(pg_catalog.pg_get_functiondef(
+      'app_data_agent.load_resolved_context_authority_snapshot(jsonb)'::pg_catalog.regprocedure
+    ),'resolved-context-authority-snapshot@2.0.0')=0
+    or pg_catalog.strpos(pg_catalog.pg_get_functiondef(
+      'app_data_agent.load_resolved_context_authority_snapshot(jsonb)'::pg_catalog.regprocedure
+    ),'''published_lexicon''')=0
+    or pg_catalog.strpos(pg_catalog.pg_get_functiondef(
+      'app_data_agent.commit_resolved_context_package(jsonb)'::pg_catalog.regprocedure
+    ),'resolved-context-package@2.0.0')=0
+  then raise exception 'U12 current lexical contract missing'; end if;
+  if pg_catalog.to_regprocedure('app_data_agent.load_resolved_context_authority_snapshot_v1(jsonb)') is not null
+    or pg_catalog.to_regprocedure('app_data_agent.load_resolved_context_authority_snapshot_v2(jsonb)') is not null
+  then raise exception 'U12 compatibility RPC forbidden'; end if;
 
   perform app_data_agent.assert_resolved_context_request(
     '{"schema_version":"resolved-context-request@1.0.0","request_id":"00000000-0000-4000-8000-000000000008","scope":{"app_id":"00000000-0000-4000-8000-00000000da01","tenant_id":"00000000-0000-4000-8000-000000000001","environment":"test"},"question":"Gross Revenue","basis":{"consumer":"PREVIEW","defaults_ref":{"defaults_id":"00000000-0000-4000-8000-000000000002","defaults_revision":1,"defaults_hash":"sha256:2222222222222222222222222222222222222222222222222222222222222222"}},"request_hash":"sha256:386866f797c07ec4dc51b9ae9444112694074386016606fc5a444f39380a3d07"}'::jsonb

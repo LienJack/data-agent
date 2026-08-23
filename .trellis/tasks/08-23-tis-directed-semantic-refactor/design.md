@@ -11,7 +11,8 @@ Binding Impact Receipt → Candidate review → publish。Planner 不执行发�
 
 ## 单版本策略
 
-- “V2-only”表示当前实现只存在一个可调用契约和一条 runtime path，不表示保留 V1 适配器。
+- “V2-only”表示语义核心只有 Graph V2 与一条 runtime path，不要求把结构未变化的独立 `@1`
+  协议机械改名；只有 shape 变化的 contract 才升级并直接替换旧版本。
 - 历史 migration 文件保持不可变；新的 forward-only migration 可删除旧函数/表并建立当前对象，但不搬运
   历史数据。
 - Contract breaking change 同步修改所有仓库内消费者、fixture 与测试；完成前不提交半兼容状态。

@@ -17,7 +17,7 @@ function result(state: ResolvedContextState): ResolvedContextCommitResult {
     schema_version: "resolved-context-commit-result@1.0.0",
     disposition: "CREATED",
     package: {
-      schema_version: "resolved-context-package@1.0.0",
+      schema_version: "resolved-context-package@2.0.0",
       scope: { app_id: id(1), tenant_id: id(2), environment: "test" },
       semantic_domain: "commerce",
       question_hash: hash("1"),
@@ -56,7 +56,7 @@ function result(state: ResolvedContextState): ResolvedContextCommitResult {
       provider: "deepseek",
       authority_snapshot_hash: hash("7"),
       route_decision: {
-        schema_version: "resolved-context-route-decision@1.0.0",
+        schema_version: "resolved-context-route-decision@2.0.0",
         state,
         route,
         selected_metric_id: route === "METRIC" ? "gross_revenue" : null,
@@ -69,6 +69,28 @@ function result(state: ResolvedContextState): ResolvedContextCommitResult {
                   candidate_kind: "METRIC",
                   label: "Gross Revenue",
                   candidate_hash: hash("8"),
+                  match_kind: "CANONICAL",
+                  matched_phrase: "Gross Revenue",
+                  lexical_evidence_hash: hash("9"),
+                },
+              ]
+            : [],
+        lexical_evidence:
+          state === "NEEDS_CLARIFICATION"
+            ? [
+                {
+                  schema_version: "semantic-lexical-entry@1.0.0",
+                  release_ref: {
+                    resource_id: id(4),
+                    resource_revision: 3,
+                    resource_hash: hash("3"),
+                  },
+                  target_kind: "METRIC",
+                  target_id: "gross_revenue",
+                  term_id: null,
+                  match_kind: "CANONICAL",
+                  phrase: "Gross Revenue",
+                  evidence_hash: hash("9"),
                 },
               ]
             : [],

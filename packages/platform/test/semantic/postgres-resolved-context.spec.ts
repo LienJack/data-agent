@@ -44,7 +44,7 @@ function poolWith(value: unknown) {
 
 async function snapshot(scope: { app_id: string; tenant_id: string; environment: string }) {
   return buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@1.0.0",
+    schema_version: "resolved-context-authority-snapshot@2.0.0",
     scope,
     semantic_domain: "commerce",
     question: "Gross Revenue",

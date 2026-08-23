@@ -28,6 +28,14 @@ import {
   versionedResourceReferenceSchema,
   workspaceDefaultsReferenceSchema,
 } from "../workspaces/defaults.js";
+import {
+  buildSemanticLexicalEntry,
+  canonicalSemanticLexicalEntriesSchema,
+  semanticLexicalEntryKey,
+  semanticLexicalEntrySchema,
+  semanticLexicalMatchKindSchema,
+  verifySemanticLexicalEntry,
+} from "./semantic-retrieval.js";
 
 const positiveSafeIntegerSchema = z.number().int().positive().safe();
 const RESOLVED_CONTEXT_CAPABILITY_CHAIN = [
@@ -183,7 +191,7 @@ const canonicalVersionedResourceRefsSchema = z
   });
 
 const resolvedContextAuthoritySnapshotDraftSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-authority-snapshot@1.0.0"),
+  schema_version: z.literal("resolved-context-authority-snapshot@2.0.0"),
   scope: appScopeSchema,
   semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
   question: z.string().trim().min(1).max(4_000),
@@ -197,6 +205,7 @@ const resolvedContextAuthoritySnapshotDraftSchema = z.strictObject({
   published_metrics: z.array(publishedMetricContextSchema).max(50_000),
   published_ontology: z.array(publishedOntologyContextSchema).max(100_000),
   published_relationships: z.array(publishedRelationshipContextSchema).max(250_000),
+  published_lexicon: canonicalSemanticLexicalEntriesSchema,
   knowledge_refs: canonicalVersionedResourceRefsSchema,
   projection_hashes: canonicalStringArray(16).min(1),
 });
@@ -229,6 +238,7 @@ const resolvedContextAuthoritySnapshotCanonicalDraftSchema =
       published_relationships: canonicalEntryArray<
         z.infer<typeof publishedRelationshipContextSchema>
       >("relationship_id").pipe(z.array(publishedRelationshipContextSchema).max(250_000)),
+      published_lexicon: canonicalSemanticLexicalEntriesSchema,
     })
     .superRefine((snapshot, ctx) => {
       if (
@@ -242,6 +252,42 @@ const resolvedContextAuthoritySnapshotCanonicalDraftSchema =
           message: "Semantic release and schema snapshot authority must be exact.",
           path: ["schema_snapshot"],
         });
+      }
+      for (const [index, entry] of snapshot.published_lexicon.entries()) {
+        if (
+          entry.release_ref.resource_id !== snapshot.semantic_release.resource_id ||
+          entry.release_ref.resource_revision !== snapshot.semantic_release.resource_revision ||
+          entry.release_ref.resource_hash !== snapshot.semantic_release.resource_hash
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Lexical evidence must bind the exact semantic release.",
+            path: ["published_lexicon", index, "release_ref"],
+          });
+        }
+        const targetExists =
+          entry.target_kind === "METRIC"
+            ? snapshot.published_metrics.some((metric) => metric.metric_id === entry.target_id)
+            : snapshot.published_ontology.some((object) => object.object_id === entry.target_id);
+        if (!targetExists) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Lexical evidence target must exist in the exact authority snapshot.",
+            path: ["published_lexicon", index, "target_id"],
+          });
+        }
+        if (
+          entry.term_id !== null &&
+          !snapshot.published_ontology.some(
+            (object) => object.object_id === entry.term_id && object.object_kind === "TERM",
+          )
+        ) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Lexical term must exist in the exact authority snapshot.",
+            path: ["published_lexicon", index, "term_id"],
+          });
+        }
       }
       if (
         !snapshot.egress_policy.allowed_providers.some((provider) => provider === snapshot.provider)
@@ -258,7 +304,9 @@ export const resolvedContextAuthoritySnapshotSchema =
   resolvedContextAuthoritySnapshotCanonicalDraftSchema.extend({ snapshot_hash: contentHashSchema });
 
 const resolvedContextAuthoritySnapshotBuilderInputSchema =
-  resolvedContextAuthoritySnapshotDraftSchema.omit({ question_hash: true });
+  resolvedContextAuthoritySnapshotDraftSchema
+    .omit({ question_hash: true, published_lexicon: true })
+    .extend({ published_lexicon: canonicalSemanticLexicalEntriesSchema.optional() });
 
 export async function computeResolvedContextAuthoritySnapshotHash(input: unknown) {
   return sha256ContentHash(resolvedContextAuthoritySnapshotCanonicalDraftSchema.parse(input));
@@ -266,8 +314,68 @@ export async function computeResolvedContextAuthoritySnapshotHash(input: unknown
 
 export async function buildResolvedContextAuthoritySnapshot(input: unknown) {
   const builderInput = resolvedContextAuthoritySnapshotBuilderInputSchema.parse(input);
+  const releaseRef = {
+    resource_id: builderInput.semantic_release.resource_id,
+    resource_revision: builderInput.semantic_release.resource_revision,
+    resource_hash: builderInput.semantic_release.resource_hash,
+  };
+  const derivedLexicon = builderInput.published_lexicon
+    ? await Promise.all(builderInput.published_lexicon.map(verifySemanticLexicalEntry))
+    : await Promise.all([
+        ...builderInput.published_metrics.flatMap((metric) => [
+          buildSemanticLexicalEntry({
+            schema_version: "semantic-lexical-entry@1.0.0",
+            release_ref: releaseRef,
+            target_kind: "METRIC",
+            target_id: metric.metric_id,
+            term_id: null,
+            match_kind: "CANONICAL",
+            phrase: metric.name,
+          }),
+          ...metric.aliases.map((alias) =>
+            buildSemanticLexicalEntry({
+              schema_version: "semantic-lexical-entry@1.0.0",
+              release_ref: releaseRef,
+              target_kind: "METRIC",
+              target_id: metric.metric_id,
+              term_id: null,
+              match_kind: "ALIAS",
+              phrase: alias,
+            }),
+          ),
+        ]),
+        ...builderInput.published_ontology
+          .filter((object) => object.object_kind !== "TERM")
+          .flatMap((object) => [
+            buildSemanticLexicalEntry({
+              schema_version: "semantic-lexical-entry@1.0.0",
+              release_ref: releaseRef,
+              target_kind: "ONTOLOGY",
+              target_id: object.object_id,
+              term_id: null,
+              match_kind: "CANONICAL",
+              phrase: object.name,
+            }),
+            ...object.aliases.map((alias) =>
+              buildSemanticLexicalEntry({
+                schema_version: "semantic-lexical-entry@1.0.0",
+                release_ref: releaseRef,
+                target_kind: "ONTOLOGY",
+                target_id: object.object_id,
+                term_id: null,
+                match_kind: "ALIAS",
+                phrase: alias,
+              }),
+            ),
+          ]),
+      ]);
   const draft = resolvedContextAuthoritySnapshotCanonicalDraftSchema.parse({
     ...builderInput,
+    published_lexicon: [...derivedLexicon].sort((left, right) => {
+      const leftKey = semanticLexicalEntryKey(left);
+      const rightKey = semanticLexicalEntryKey(right);
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    }),
     question_hash: await sha256ContentHash(builderInput.question),
   });
   return deepFreeze(
@@ -280,6 +388,7 @@ export async function buildResolvedContextAuthoritySnapshot(input: unknown) {
 
 export async function verifyResolvedContextAuthoritySnapshot(input: unknown) {
   const snapshot = resolvedContextAuthoritySnapshotSchema.parse(input);
+  await Promise.all(snapshot.published_lexicon.map(verifySemanticLexicalEntry));
   const { snapshot_hash: _snapshotHash, ...draft } = snapshot;
   if (
     (await sha256ContentHash(snapshot.question)) !== snapshot.question_hash ||
@@ -295,16 +404,22 @@ export const resolvedContextClarificationSchema = z.strictObject({
   candidate_kind: z.enum(["METRIC", "ONTOLOGY"]),
   label: z.string().trim().min(1).max(256),
   candidate_hash: contentHashSchema,
+  match_kind: semanticLexicalMatchKindSchema,
+  matched_phrase: z.string().trim().min(1).max(256),
+  lexical_evidence_hash: contentHashSchema,
 });
 
 export const resolvedContextRouteDecisionSchema = z
   .strictObject({
-    schema_version: z.literal("resolved-context-route-decision@1.0.0"),
+    schema_version: z.literal("resolved-context-route-decision@2.0.0"),
     state: resolvedContextStateSchema,
     route: resolvedContextRouteSchema,
     selected_metric_id: versionIdentifierSchema.nullable(),
     selected_ontology_ids: canonicalStringArray(256),
     clarification_candidates: z.array(resolvedContextClarificationSchema).max(128),
+    lexical_evidence: canonicalSemanticLexicalEntriesSchema.pipe(
+      z.array(semanticLexicalEntrySchema).max(128),
+    ),
     capability_chain: z.tuple([
       z.literal(RESOLVED_CONTEXT_CAPABILITY_CHAIN[0]),
       z.literal(RESOLVED_CONTEXT_CAPABILITY_CHAIN[1]),
@@ -332,10 +447,37 @@ export const resolvedContextRouteDecisionSchema = z
     if (decision.route === "NONE" && decision.state !== "REJECTED") {
       ctx.addIssue({ code: "custom", message: "NONE route must be rejected.", path: ["state"] });
     }
+    for (const [index, candidate] of decision.clarification_candidates.entries()) {
+      const evidence = decision.lexical_evidence.find(
+        (entry) => entry.evidence_hash === candidate.lexical_evidence_hash,
+      );
+      if (
+        !evidence ||
+        evidence.target_id !== candidate.candidate_id ||
+        evidence.target_kind !== candidate.candidate_kind ||
+        evidence.match_kind !== candidate.match_kind ||
+        evidence.phrase !== candidate.matched_phrase
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Clarification candidate must close over exact lexical evidence.",
+          path: ["clarification_candidates", index, "lexical_evidence_hash"],
+        });
+      }
+    }
   });
 
 export const contextCapacityItemSchema = z.strictObject({
-  item_kind: z.enum(["AUTHORITY", "POLICY", "MAPPING", "METRIC", "ONTOLOGY", "KNOWLEDGE", "GRAPH"]),
+  item_kind: z.enum([
+    "AUTHORITY",
+    "POLICY",
+    "LEXICAL",
+    "MAPPING",
+    "METRIC",
+    "ONTOLOGY",
+    "KNOWLEDGE",
+    "GRAPH",
+  ]),
   item_id: z.string().trim().min(1).max(512),
   item_hash: contentHashSchema,
   byte_size: positiveSafeIntegerSchema,
@@ -388,34 +530,54 @@ export const contextCapacityPlanSchema = z
   });
 
 export const resolvedContextEvidenceSummarySchema = z.strictObject({
-  evidence_kind: z.enum(["METRIC", "ONTOLOGY", "MAPPING", "KNOWLEDGE", "GRAPH"]),
+  evidence_kind: z.enum(["LEXICAL", "METRIC", "ONTOLOGY", "MAPPING", "KNOWLEDGE", "GRAPH"]),
   evidence_id: z.string().trim().min(1).max(512),
   evidence_hash: contentHashSchema,
   summary: z.string().trim().min(1).max(2_048),
   source_ref: versionedResourceReferenceSchema.nullable(),
 });
 
-const resolvedContextPackageMaterialSchema = z.strictObject({
-  schema_version: z.literal("resolved-context-package@1.0.0"),
-  scope: appScopeSchema,
-  semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
-  question_hash: contentHashSchema,
-  defaults_ref: workspaceDefaultsReferenceSchema,
-  semantic_release: effectiveSemanticReleaseSchema,
-  schema_snapshot: effectiveSchemaSnapshotSchema,
-  context_policy: effectiveContextPolicySchema,
-  egress_policy: effectiveEgressPolicySchema,
-  provider: z.string().trim().min(1).max(64),
-  authority_snapshot_hash: contentHashSchema,
-  route_decision: resolvedContextRouteDecisionSchema,
-  capacity: contextCapacityPlanSchema,
-  evidence: z.array(resolvedContextEvidenceSummarySchema).max(2_048),
-  knowledge_refs: canonicalVersionedResourceRefsSchema,
-});
+const resolvedContextPackageMaterialSchema = z
+  .strictObject({
+    schema_version: z.literal("resolved-context-package@2.0.0"),
+    scope: appScopeSchema,
+    semantic_domain: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/),
+    question_hash: contentHashSchema,
+    defaults_ref: workspaceDefaultsReferenceSchema,
+    semantic_release: effectiveSemanticReleaseSchema,
+    schema_snapshot: effectiveSchemaSnapshotSchema,
+    context_policy: effectiveContextPolicySchema,
+    egress_policy: effectiveEgressPolicySchema,
+    provider: z.string().trim().min(1).max(64),
+    authority_snapshot_hash: contentHashSchema,
+    route_decision: resolvedContextRouteDecisionSchema,
+    capacity: contextCapacityPlanSchema,
+    evidence: z.array(resolvedContextEvidenceSummarySchema).max(2_048),
+    knowledge_refs: canonicalVersionedResourceRefsSchema,
+  })
+  .superRefine((packageDocument, ctx) => {
+    for (const [index, entry] of packageDocument.route_decision.lexical_evidence.entries()) {
+      if (
+        entry.release_ref.resource_id !== packageDocument.semantic_release.resource_id ||
+        entry.release_ref.resource_revision !==
+          packageDocument.semantic_release.resource_revision ||
+        entry.release_ref.resource_hash !== packageDocument.semantic_release.resource_hash
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Route lexical evidence must bind the package semantic release.",
+          path: ["route_decision", "lexical_evidence", index, "release_ref"],
+        });
+      }
+    }
+  });
 
-export const resolvedContextPackageSchema = resolvedContextPackageMaterialSchema.extend({
+const resolvedContextPackageDraftSchema = resolvedContextPackageMaterialSchema.safeExtend({
   package_id: canonicalImmutableIdSchema,
   package_key_hash: contentHashSchema,
+});
+
+export const resolvedContextPackageSchema = resolvedContextPackageDraftSchema.safeExtend({
   package_hash: contentHashSchema,
 });
 
@@ -596,14 +758,21 @@ export async function computeResolvedContextPackageKeyHash(input: unknown) {
 }
 
 export async function computeResolvedContextPackageHash(input: unknown) {
-  const parsed = resolvedContextPackageSchema.omit({ package_hash: true }).parse(input);
-  return sha256ContentHash(parsed);
+  const fullPackage = resolvedContextPackageSchema.safeParse(input);
+  const draft = fullPackage.success
+    ? resolvedContextPackageDraftSchema.parse(
+        Object.fromEntries(
+          Object.entries(fullPackage.data).filter(([key]) => key !== "package_hash"),
+        ),
+      )
+    : resolvedContextPackageDraftSchema.parse(input);
+  return sha256ContentHash(draft);
 }
 
 export async function buildResolvedContextPackage(input: unknown) {
   const material = resolvedContextPackageMaterialSchema.parse(input);
   const packageKeyHash = await computeResolvedContextPackageKeyHash(material);
-  const draft = resolvedContextPackageSchema.omit({ package_hash: true }).parse({
+  const draft = resolvedContextPackageDraftSchema.parse({
     ...material,
     package_id: uuidV8FromHash(packageKeyHash),
     package_key_hash: packageKeyHash,

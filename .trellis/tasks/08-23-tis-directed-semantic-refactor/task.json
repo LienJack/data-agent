@@ -19,7 +19,8 @@
   "pr_url": null,
   "subtasks": [],
   "children": [
-    "08-23-tis-v2-only-baseline"
+    "08-23-tis-v2-only-baseline",
+    "08-23-tis-current-lexical-resolution"
   ],
   "parent": null,
   "relatedFiles": [],

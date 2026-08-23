@@ -30,6 +30,23 @@ export async function resolveContextPackage(
     },
   ];
 
+  for (const lexical of routeDecision.lexical_evidence) {
+    candidates.push({
+      item_kind: "LEXICAL",
+      item_id: `${lexical.target_kind}:${lexical.target_id}:${lexical.evidence_hash}`,
+      item_hash: lexical.evidence_hash,
+      priority: 9_500,
+      mandatory: routeDecision.state === "READY",
+      evidence: {
+        evidence_kind: "LEXICAL",
+        evidence_id: lexical.evidence_hash,
+        evidence_hash: lexical.evidence_hash,
+        summary: `${lexical.match_kind}: ${lexical.phrase}`,
+        source_ref: null,
+      },
+    });
+  }
+
   if (routeDecision.selected_metric_id) {
     const metric = snapshot.published_metrics.find(
       ({ metric_id }) => metric_id === routeDecision.selected_metric_id,
@@ -129,7 +146,7 @@ export async function resolveContextPackage(
       : routeDecision;
 
   return buildResolvedContextPackage({
-    schema_version: "resolved-context-package@1.0.0",
+    schema_version: "resolved-context-package@2.0.0",
     scope: snapshot.scope,
     semantic_domain: snapshot.semantic_domain,
     question_hash: snapshot.question_hash,

@@ -8,8 +8,9 @@
 
 - PostgreSQL Published Semantic Release 继续作为唯一运行时语义权威；不得复制 TIS 的 ObjectType、
   Property、XML/file authority、通用 LINKED_TO 或 ChatBI SQL 执行链。
-- 所有新增语义契约只有一个当前版本。删除被替代的 V1 schema、export、consumer、fixture、RPC 和
-  runtime path；不提供 dual read/write、adapter、alias、fallback 或旧数据迁移。
+- 发生结构变化的语义契约只有一个当前版本，并直接删除被替代的 schema、export、consumer、fixture
+  和 runtime path；结构未变化的独立协议不做机械版本号翻新。不提供 dual read/write、adapter、
+  alias、旧实现 fallback 或旧数据迁移。
 - 先交付 exact-release lexical evidence 与显式消歧；知识/向量召回只有经过量化门禁后才实施，且
   只能产生候选证据。
 - Schema drift 只能生成 append-only binding impact receipt/Candidate；禁止自动重绑和自动发布。
@@ -18,12 +19,12 @@
 
 ## Acceptance Criteria
 
-- [ ] TIS 主方案及阶段文档与 V2-only 决策一致，不再出现兼容层、双读、V1 fallback 或数据迁移要求。
-- [ ] 发布词汇证据、优先级、歧义、hash、release scope 与 fallback reason 均有 strict typed contract。
-- [ ] 当前 resolver 只从精确 Published Release 解析，未发布、跨 workspace/release 与陈旧投影 fail closed。
+- [x] TIS 主方案及阶段文档与 V2-only 决策一致，不再出现兼容层、双读、V1 fallback 或数据迁移要求。
+- [x] 发布词汇证据、优先级、歧义、hash、release scope 与 fallback reason 均有 strict typed contract。
+- [x] 当前 resolver 只从精确 Published Release 解析，未发布、跨 workspace/release 与陈旧投影 fail closed。
 - [ ] Drift 能产生确定性、幂等、不可自动发布的 binding impact artifact 与 Candidate 引用。
 - [ ] Studio 展示安全证据和治理状态；Explorer 对只读角色可用，API/DOM 不暴露敏感载荷。
-- [ ] Contracts、Semantic、Platform、Web、Falcon/Test Center 与浏览器验收通过，历史 V1 代码引用归零。
+- [ ] Contracts、Semantic、Platform、Web、Falcon/Test Center 与浏览器验收通过，被替代的旧语义路径引用归零。
 
 ## Notes
 

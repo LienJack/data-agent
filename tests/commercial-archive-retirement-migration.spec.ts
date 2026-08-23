@@ -41,7 +41,7 @@ describe("10703 commercial archive retirement", () => {
       .map((entry) => ({ name: entry, sql: readFileSync(resolve(migrationRoot, entry), "utf8") }));
     const inventory = verifyMigrationInventory(migrationSources);
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010704");
+    expect(inventory.frontier).toBe("20260725010705");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-model-control-authority.sql.inc",

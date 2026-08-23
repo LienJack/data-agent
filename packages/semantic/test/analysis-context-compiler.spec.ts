@@ -268,7 +268,7 @@ async function fixture(bundle = sourceBundle()) {
     max_resource_bindings: 64,
   };
   const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@1.0.0",
+    schema_version: "resolved-context-package@2.0.0",
     scope,
     semantic_domain: "commerce",
     question_hash: hash("1"),
@@ -287,12 +287,13 @@ async function fixture(bundle = sourceBundle()) {
     provider: "deepseek",
     authority_snapshot_hash: hash("a"),
     route_decision: {
-      schema_version: "resolved-context-route-decision@1.0.0",
+      schema_version: "resolved-context-route-decision@2.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: "gross_revenue",
       selected_ontology_ids: [],
       clarification_candidates: [],
+      lexical_evidence: [],
       capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
       reason_codes: ["EXACT_PUBLISHED_METRIC"],
     },

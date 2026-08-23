@@ -177,7 +177,7 @@ async function buildResolvedBinding(
       ]
     : [];
   const snapshot = await buildResolvedContextAuthoritySnapshot({
-    schema_version: "resolved-context-authority-snapshot@1.0.0",
+    schema_version: "resolved-context-authority-snapshot@2.0.0",
     scope,
     semantic_domain: semanticDomain,
     question,
@@ -227,7 +227,7 @@ async function buildResolvedBinding(
       : [published.release_digest],
   });
   const packageDocument = await buildResolvedContextPackage({
-    schema_version: "resolved-context-package@1.0.0",
+    schema_version: "resolved-context-package@2.0.0",
     scope,
     semantic_domain: semanticDomain,
     question_hash: snapshot.question_hash,
@@ -240,29 +240,24 @@ async function buildResolvedBinding(
     authority_snapshot_hash: snapshot.snapshot_hash,
     route_decision: normalizedMetric
       ? {
-          schema_version: "resolved-context-route-decision@1.0.0",
+          schema_version: "resolved-context-route-decision@2.0.0",
           state: "READY",
           route: "METRIC",
           selected_metric_id: normalizedMetric.metric_id,
           selected_ontology_ids: [],
           clarification_candidates: [],
+          lexical_evidence: [],
           capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
           reason_codes: ["EXACT_PUBLISHED_METRIC"],
         }
       : {
-          schema_version: "resolved-context-route-decision@1.0.0",
-          state: "NEEDS_CLARIFICATION",
-          route: "METRIC",
+          schema_version: "resolved-context-route-decision@2.0.0",
+          state: "REJECTED",
+          route: "NONE",
           selected_metric_id: null,
           selected_ontology_ids: [],
-          clarification_candidates: [
-            {
-              candidate_id: "metric.net_revenue",
-              candidate_kind: "METRIC",
-              label: "回滚后的 Release 不包含净收入指标",
-              candidate_hash: hash("5"),
-            },
-          ],
+          clarification_candidates: [],
+          lexical_evidence: [],
           capability_chain: ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"],
           reason_codes: ["PUBLISHED_METRIC_NOT_FOUND"],
         },

@@ -44,6 +44,7 @@ const APP_GLOBAL_EXCEPTIONS = new Set([
   "app_data_agent.research_lifecycle_cleanup_batch_receipts",
   "app_data_agent.research_lifecycle_cleanup_operations",
   "app_data_agent.workspaces",
+  "semantic.semantic_v2_retirement_receipts",
 ]);
 
 const migrationDirectory = resolve(
