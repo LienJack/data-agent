@@ -14,10 +14,10 @@
 
 ## Acceptance Criteria
 
-- [ ] package exports、构建声明和源码入口一致，关键 symbols 有 conformance tests。
-- [ ] 架构门禁拒绝新增根导入并允许基线递减。
-- [ ] 受影响 Web/Worker/Platform build/typecheck/unit/contract/architecture tests 通过。
-- [ ] scoped commit 并归档子任务。
+- [x] package exports、构建声明和源码入口一致，关键 symbols 有 conformance tests。
+- [x] 架构门禁拒绝新增根导入并允许基线递减。
+- [x] 受影响 Web/Worker/Platform build/typecheck/unit/contract/architecture tests 通过。
+- [x] scoped commit 并归档子任务。
 
 ## Notes
 
