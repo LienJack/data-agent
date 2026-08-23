@@ -899,3 +899,28 @@ Extracted provider, model catalog, SecretRef metadata, authentication readiness,
 ### Status
 
 [OK] **Completed**
+
+
+## Session 39: Semantic refactor U3 monetary gate removal
+
+**Date**: 2026-08-23
+**Task**: Semantic refactor U3 monetary gate removal
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provider gates, and cost projections from Model Control, provider routing, Test Center, Eval scorecards, Web, Semantic Candidate, Q&A, and Worker runtime. Provider usage now preserves technical availability and nullable reported tokens.
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `965b451` | (see git log) |
+
+### Testing
+
+- [OK] typecheck 16/16; focused contracts 61, agent-runtime 37, evals 28, semantic 9, platform 3, web 29, worker 22, root architecture 11; pnpm test:architecture
+
+### Status
+
+[OK] **Completed**
