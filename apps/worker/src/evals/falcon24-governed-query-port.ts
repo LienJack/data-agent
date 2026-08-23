@@ -22,6 +22,9 @@ export interface Falcon24ExactQueryEvidenceAuthority {
     readonly spec_hash: `sha256:${string}`;
     readonly data_oracle_receipt: Falcon24AnalysisDataOracleReceipt;
     readonly rows: readonly Readonly<Record<string, unknown>>[];
+    readonly execution_started_at: string;
+    readonly execution_completed_at: string;
+    readonly statement_timeout_ms: number;
   }): Promise<{
     readonly query_evidence_ref: ArtifactReference & {
       readonly artifact_type: "QueryEvidence";
@@ -53,6 +56,7 @@ async function specHash(spec: Falcon24AnalysisQuerySpec): Promise<`sha256:${stri
     sql: spec.sql,
     columns: spec.columns,
     expected_rows: spec.expected_rows,
+    semantic_contract: spec.semantic_contract,
   });
 }
 
@@ -61,7 +65,9 @@ export function createFalcon24GovernedAnalysisQueryPort(input: {
   readonly snapshot_authority: Falcon24AnalysisSnapshotAuthority;
   readonly evidence_authority: Falcon24ExactQueryEvidenceAuthority;
   readonly materializer: Falcon24AnalysisInputMaterializer;
+  readonly now?: () => Date;
 }): GovernedAnalysisQueryPort {
+  const now = input.now ?? (() => new Date());
   return Object.freeze({
     async execute(request: Parameters<GovernedAnalysisQueryPort["execute"]>[0]) {
       const spec =
@@ -79,11 +85,13 @@ export function createFalcon24GovernedAnalysisQueryPort(input: {
       const querySpecHash = await specHash(spec);
       const client = await input.pool.connect();
       try {
+        const executionStartedAt = now().toISOString();
         await client.query("begin transaction isolation level repeatable read read only");
         await client.query(`set local statement_timeout = ${timeoutMs}`);
         const result = await client.query<Readonly<Record<string, unknown>>>(spec.sql);
         const arrow = materializeFalcon24Arrow(spec, result.rows);
         await client.query("commit");
+        const executionCompletedAt = now().toISOString();
         const evidence = await input.evidence_authority.issue({
           lease: request.lease,
           analysis_program_ref: request.analysis_program_ref,
@@ -93,6 +101,9 @@ export function createFalcon24GovernedAnalysisQueryPort(input: {
           spec_hash: querySpecHash,
           data_oracle_receipt: dataOracleReceipt,
           rows: result.rows,
+          execution_started_at: executionStartedAt,
+          execution_completed_at: executionCompletedAt,
+          statement_timeout_ms: timeoutMs,
         });
         const governed = await input.materializer.materialize({
           lease: request.lease,

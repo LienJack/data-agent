@@ -20,6 +20,12 @@ const MAX_TOTAL_VALUE_OCCURRENCES =
 export interface ResearchInputArrayLimit {
   readonly path: readonly string[];
   readonly max_items: number;
+  /**
+   * Allows this exact, descriptor-resolved array to exceed the generic
+   * artifact-edge limit while retaining its boundary cap and every global
+   * byte/depth/occurrence budget. Intended for schema-validated tabular rows.
+   */
+  readonly allow_wide_traversal?: true;
 }
 
 export interface ResearchInputBudgetOptions {
@@ -213,7 +219,7 @@ function strictDocumentIdentity(value: object): string | null {
 function inspectArrayLimit(
   root: unknown,
   limit: ResearchInputArrayLimit,
-): ResearchKernelResult<null> {
+): ResearchKernelResult<readonly unknown[] | null> {
   let current = root;
   for (const segment of limit.path) {
     if (typeof current !== "object" || current === null) {
@@ -237,7 +243,7 @@ function inspectArrayLimit(
       );
     }
   }
-  return researchKernelSuccess(null);
+  return researchKernelSuccess(Array.isArray(current) ? current : null);
 }
 
 /**
@@ -256,9 +262,13 @@ export function preflightResearchInput(
   options: ResearchInputBudgetOptions = {},
 ): ResearchKernelResult<ResearchInputBudget> {
   try {
+    const wideTraversalArrays = new Map<object, number>();
     for (const limit of options.array_limits ?? []) {
       const checked = inspectArrayLimit(input, limit);
       if (!checked.ok) return checked;
+      if (limit.allow_wide_traversal && checked.value !== null) {
+        wideTraversalArrays.set(checked.value, limit.max_items);
+      }
     }
 
     let recursiveClosureNodes = 0;
@@ -397,8 +407,9 @@ export function preflightResearchInput(
       if ((isArray && arrayLength === null) || (!isArray && !isPlainObject(frame.value))) {
         return limitFailure("输入闭包只允许 Array、plain object 与 JSON primitive。");
       }
-      if (arrayLength !== null && arrayLength > MAX_CONTAINER_ENTRIES) {
-        return limitFailure(`输入数组长度超过 ${MAX_CONTAINER_ENTRIES}。`);
+      const maximumArrayEntries = wideTraversalArrays.get(frame.value) ?? MAX_CONTAINER_ENTRIES;
+      if (arrayLength !== null && arrayLength > maximumArrayEntries) {
+        return limitFailure(`输入数组长度超过 ${maximumArrayEntries}。`);
       }
       activeAncestors.add(frame.value);
 
@@ -455,8 +466,8 @@ export function preflightResearchInput(
       });
 
       if (isArray) {
-        if (ownKeys.length - 1 > MAX_CONTAINER_ENTRIES) {
-          return limitFailure(`输入数组长度或自有元素数超过 ${MAX_CONTAINER_ENTRIES}。`);
+        if (ownKeys.length - 1 > maximumArrayEntries) {
+          return limitFailure(`输入数组长度或自有元素数超过 ${maximumArrayEntries}。`);
         }
         if (!addBytes(2 + Math.max(0, (arrayLength ?? 0) - 1), documentBudget)) {
           return limitFailure(byteLimitMessage(documentBudget));

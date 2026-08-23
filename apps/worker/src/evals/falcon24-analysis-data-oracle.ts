@@ -45,6 +45,15 @@ export type Falcon24AnalysisDataOracleReceipt = z.infer<
   typeof falcon24AnalysisDataOracleReceiptSchema
 >;
 
+export async function verifyFalcon24AnalysisDataOracleReceipt(input: unknown) {
+  const receipt = falcon24AnalysisDataOracleReceiptSchema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_DATA_ORACLE_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
 const SNAPSHOT_SQL = `
 with order_dates as (
   select order_id,customer_id,order_date::date as order_date,order_total

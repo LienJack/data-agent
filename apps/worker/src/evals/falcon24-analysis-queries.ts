@@ -463,21 +463,15 @@ function normalizeValue(
   return numeric;
 }
 
-export function materializeFalcon24Arrow(
+export function normalizeFalcon24QueryResult(
   spec: Falcon24AnalysisQuerySpec,
   rows: readonly Readonly<Record<string, unknown>>[],
-): Uint8Array {
+) {
   if (rows.length !== spec.expected_rows) {
     throw new TypeError(`FALCON24_QUERY_ROW_BUDGET_INVALID:${spec.case_id}:${rows.length}`);
   }
   const expectedNames = spec.columns.map(({ name }) => name);
-  const vectors: Record<string, readonly (string | number | null)[]> = {};
-  for (const column of spec.columns) {
-    vectors[column.name] = rows.map((row, rowIndex) =>
-      normalizeValue(column, row[column.name], rowIndex),
-    );
-  }
-  for (const [rowIndex, row] of rows.entries()) {
+  const normalizedRows = rows.map((row, rowIndex) => {
     const observedNames = Object.keys(row);
     if (
       observedNames.length !== expectedNames.length ||
@@ -485,6 +479,25 @@ export function materializeFalcon24Arrow(
     ) {
       throw new TypeError(`FALCON24_QUERY_COLUMN_CONTRACT_INVALID:${spec.case_id}:${rowIndex}`);
     }
+    return spec.columns.map((column) => normalizeValue(column, row[column.name], rowIndex));
+  });
+  return Object.freeze({
+    columns: spec.columns.map((column) => ({
+      name: column.name,
+      type: column.kind === "UTF8" ? ("STRING" as const) : ("NUMBER" as const),
+    })),
+    rows: normalizedRows,
+  });
+}
+
+export function materializeFalcon24Arrow(
+  spec: Falcon24AnalysisQuerySpec,
+  rows: readonly Readonly<Record<string, unknown>>[],
+): Uint8Array {
+  const normalized = normalizeFalcon24QueryResult(spec, rows);
+  const vectors: Record<string, readonly (string | number | null)[]> = {};
+  for (const [columnIndex, column] of spec.columns.entries()) {
+    vectors[column.name] = normalized.rows.map((row) => row[columnIndex] ?? null);
   }
   return tableToIPC(tableFromArrays(vectors), "file");
 }

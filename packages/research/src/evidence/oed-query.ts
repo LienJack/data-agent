@@ -18,6 +18,7 @@ import {
   queryEvidenceRefSchema,
   queryEvidenceV2PayloadSchema,
   researchBriefRefSchema,
+  SANDBOX_RESULT_LIMITS,
   type SandboxResult,
   type SuccessfulSandboxExecutionReceipt,
   sandboxResultSchema,
@@ -356,6 +357,11 @@ export async function buildQueryEvidenceCandidateWithReplayContext(
       {
         path: ["dependency_evidence_documents"],
         max_items: U6_WIRE_LIMITS.max_dependencies_per_obligation,
+      },
+      {
+        path: ["sandbox", "sandbox_result", "rows"],
+        max_items: SANDBOX_RESULT_LIMITS.max_rows,
+        allow_wide_traversal: true,
       },
     ],
   });

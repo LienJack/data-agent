@@ -142,6 +142,9 @@ describe("Falcon24 governed query port", () => {
       expect(input.spec_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
       expect(input.data_oracle_receipt).toBe(dataOracleReceipt);
       expect(input.rows).toHaveLength(4_612);
+      expect(input.execution_started_at).toBe("2026-08-24T00:00:00.000Z");
+      expect(input.execution_completed_at).toBe("2026-08-24T00:00:00.010Z");
+      expect(input.statement_timeout_ms).toBe(120_000);
       return {
         query_evidence_ref: typedQueryEvidenceRef,
         query_evidence_document: { strict: true },
@@ -173,6 +176,10 @@ describe("Falcon24 governed query port", () => {
       snapshot_authority: { inspect: async () => dataOracleReceipt },
       evidence_authority: { issue },
       materializer: { materialize },
+      now: (() => {
+        const values = [new Date("2026-08-24T00:00:00.000Z"), new Date("2026-08-24T00:00:00.010Z")];
+        return () => values.shift() ?? new Date("2026-08-24T00:00:00.010Z");
+      })(),
     });
     await expect(
       port.execute({

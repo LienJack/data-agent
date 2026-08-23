@@ -336,6 +336,27 @@ describe("Research input resource preflight", () => {
     expect(ownKeysTouched).toBe(false);
   });
 
+  it("只允许显式路径的表格 rows 越过通用 edge 上限", () => {
+    const rows = Array.from({ length: U6_WIRE_LIMITS.max_artifact_input_refs + 1 }, (_, index) => [
+      index,
+    ]);
+    expect(
+      preflightResearchInput(
+        { sandbox: { sandbox_result: { rows } } },
+        {
+          array_limits: [
+            {
+              path: ["sandbox", "sandbox_result", "rows"],
+              max_items: rows.length,
+              allow_wide_traversal: true,
+            },
+          ],
+        },
+      ),
+    ).toMatchObject({ ok: true });
+    expectResourceLimit(preflightResearchInput({ rows }));
+  });
+
   it("Proxy trap 异常被收敛为资源 failure，Transport 仍须先反序列化为 inert JSON", () => {
     const proxied = new Proxy(
       {},
