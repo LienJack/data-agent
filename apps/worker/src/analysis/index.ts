@@ -7,6 +7,7 @@ export * from "./default-program.js";
 export * from "./executor.js";
 export * from "./program-admission.js";
 export * from "./program-gate.js";
+export * from "./python-source-artifact.js";
 export * from "./research-artifact-port.js";
 export * from "./root-cause-executor.js";
 export * from "./sandbox-executor.js";
