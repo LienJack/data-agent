@@ -1123,3 +1123,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 48: M4 Studio 与 Falcon 验收
+
+**Date**: 2026-08-23
+**Task**: M4 Studio 与 Falcon 验收
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+完成只读 Context Preview、绑定影响证据深链和 Falcon 语义准确性摘要合同；定向测试、Web 生产构建与真实 Preview 浏览器验收通过，旧本地语义投影按无迁移策略 fail-closed。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7361284` | (see git log) |
+
+### Status
+
+[OK] **Completed**

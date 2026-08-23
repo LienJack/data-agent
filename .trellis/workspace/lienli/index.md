@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 47
+- **Total Sessions**: 48
 - **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1125 | Active |
+| `journal-1.md` | ~1146 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 48 | 2026-08-23 | M4 Studio 与 Falcon 验收 | `7361284` | `refactor/semantic-v2-billing-retirement` |
 | 47 | 2026-08-23 | M3 语义绑定影响候选 | `a11475e` | `refactor/semantic-v2-billing-retirement` |
 | 46 | 2026-08-23 | 发布语义词汇解析重构 | `c7d71f2` | `refactor/semantic-v2-billing-retirement` |
 | 45 | 2026-08-23 | M0 TIS V2-only 采用基线 | `760f35b` | `refactor/semantic-v2-billing-retirement` |
