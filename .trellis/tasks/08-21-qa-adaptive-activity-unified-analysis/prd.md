@@ -65,6 +65,20 @@ Reasonix 的轻量事件流呈现，并能在回答正文中直接展示受治�
 
 ## Requirements
 
+### 2026-08-23 增量验收：Conversation Trajectory Workbench
+
+- **RT1**：轨迹视图必须覆盖当前对话的全部 Run，并按对话内首次事件顺序形成 Turn 1..N；每个 Turn
+  提供状态、节点/调用数量、耗时与可折叠摘要，搜索命中时不得因 Turn 折叠而隐藏结果。
+- **RT2**：每次生产模型调用必须发布一个不含 prompt/响应正文/凭据的安全 Request 性能投影，至少包含
+  Provider、Model、Profile、状态、总耗时、实际尝试次数、上下文上限，以及 Provider 可用时的 input/output/total
+  token。不可用 usage 必须显式标为 unavailable，禁止用 0 或字符数伪造。
+- **RT3**：Composer 在当前模型与最近一次已完成 Request 的 Profile 一致、且 Provider 精确报告 input token 时，
+  显示可键盘操作的上下文占用入口；展开面板显示已用/上限、百分比、input/output token 与数据来源，并支持
+  Escape、外部点击关闭。证据不足时不显示旧数据或猜测值。
+- **RT4**：删除已无调用方的旧 `trajectory-view.tsx`；`ResolutionTraceView` 是唯一轨迹工作台入口。
+- **RT5**：参考 DeepSeek Harness 固定提交 `47f943859bef60e4160492346772ded9b24f765a` 的 Turn disclosure、
+  Request 行和 ContextMeter 交互，但保留 Data Agent 的 PostgreSQL Run event authority、公开信息边界和白蓝设计系统。
+
 ### A. 自适应 Agent 调度
 
 - **R1**：每次 Run 先根据用户问题、冻结的 Conversation Resources、Effective Config、Workspace Capability 和

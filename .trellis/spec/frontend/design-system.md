@@ -93,6 +93,9 @@ Q&A chrome 使用 `design-system.css` 的语义材质，而不是在组件内散
   `.glass-overlay` 配对 drawer/dialog backdrop；正文、Table、VChart、code 使用 `.reading-surface`，不继承 blur。
 - Composer 必须保留在 `qa-page-frame` 的 row 3，Inspector 继续由 `computeInspectorColumns` 和 container
   `ResizeObserver` 让步。禁止用 fixed Composer 或视觉层重新计算 geometry。
+- ContextMeter 是 ModelSelector 与发送按钮附近的圆形图标控件，不新建高视觉重量 Card；popover 使用
+  `surface-floating-strong`、Data Agent Blue 进度和冷灰文字。窄屏保持在 Composer 局部流内，不能越过 viewport，
+  usage/capacity 缺失时不渲染空占位。
 - `@supports not (backdrop-filter...)`、`prefers-reduced-transparency` 和 print 必须切换为 opaque surface；
   `prefers-reduced-motion` 必须停止 running pulse 与 skeleton shimmer。
 - running/shimmer 仅动画 pseudo-element 的 `transform/opacity`；不能用 React state 驱动逐帧效果。

@@ -37,13 +37,18 @@ import {
   fetchSqlHistory,
 } from "@/lib/api-client";
 import {
+  type ObservedModelRequestPerformance,
+  orderedConversationRunIds,
+  readModelRequestPerformances,
+} from "@/lib/model-request-performance";
+import {
   useQAActiveConversationId,
   useQAConnection,
   useQAEvents,
   useQATrajectoryFocus,
 } from "@/lib/qa-store";
 import {
-  buildResolutionTraceWorkbenchModel,
+  buildConversationResolutionTraceWorkbenchModel,
   projectTimelineRecords,
   type ResolutionTraceLane,
   type ResolutionTraceWorkbenchRecord,
@@ -58,11 +63,27 @@ type LoadState =
   | {
       readonly status: "ready";
       readonly trace: ResolutionTrace;
+      readonly traces: readonly ResolutionTrace[];
       readonly sql: readonly SqlHistoryEntry[];
       readonly profiles: Awaited<ReturnType<typeof fetchAgentProfiles>>;
       readonly teamTrace: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
       readonly teamError: string | null;
     };
+
+async function fetchConversationResolutionTraces(
+  runIds: readonly string[],
+  workspaceId: string,
+): Promise<readonly ResolutionTrace[]> {
+  const traces: ResolutionTrace[] = [];
+  for (let index = 0; index < runIds.length; index += 8) {
+    traces.push(
+      ...(await Promise.all(
+        runIds.slice(index, index + 8).map((runId) => fetchResolutionTrace(runId, workspaceId)),
+      )),
+    );
+  }
+  return traces;
+}
 
 const tabs: readonly {
   readonly id: TraceTab;
@@ -571,20 +592,26 @@ function TraceTimeline({
 }
 
 function TraceWorkbench({
-  trace,
+  traces,
+  focusedRunId = null,
   focusedSequence = null,
   workspaceId = "",
   initialDetails = [],
   connectionState = null,
+  requestPerformances = [],
 }: {
-  trace: ResolutionTrace;
+  traces: readonly ResolutionTrace[];
+  focusedRunId?: string | null;
   focusedSequence?: number | null;
   workspaceId?: string;
   initialDetails?: readonly ResolutionTraceDetail[];
   connectionState?: RunConnectionState | null;
+  requestPerformances?: readonly ObservedModelRequestPerformance[];
 }) {
-  const model = useMemo(() => buildResolutionTraceWorkbenchModel(trace), [trace]);
-  const focused = model.records.find(({ node }) => node.sequence === focusedSequence);
+  const model = useMemo(() => buildConversationResolutionTraceWorkbenchModel(traces), [traces]);
+  const focused = model.records.find(
+    ({ node, run_id }) => run_id === focusedRunId && node.sequence === focusedSequence,
+  );
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(
     focused?.node_id ?? model.records.at(-1)?.node_id ?? null,
   );
@@ -593,6 +620,14 @@ function TraceWorkbench({
   const [timelineWindow, setTimelineWindow] = useState<readonly [number, number]>([0, 1]);
   const [stageDetailsExpanded, setStageDetailsExpanded] = useState(false);
   const [callDetailsExpanded, setCallDetailsExpanded] = useState(false);
+  const [collapsedTurns, setCollapsedTurns] = useState<ReadonlySet<number>>(
+    () =>
+      new Set(
+        [...new Set(model.records.map(({ turn_index }) => turn_index))].filter(
+          (turnIndex) => turnIndex !== (focused?.turn_index ?? model.records.at(-1)?.turn_index),
+        ),
+      ),
+  );
   const [inspectorWidth, setInspectorWidth] = useState(420);
   const [scrollTop, setScrollTop] = useState(0);
   const [pendingNewCount, setPendingNewCount] = useState(0);
@@ -603,16 +638,21 @@ function TraceWorkbench({
   const listRef = useRef<HTMLDivElement>(null);
   const detailCache = useRef(
     new Map(
-      initialDetails.map((candidate) => [`${trace.trace_hash}:${candidate.node_id}`, candidate]),
+      initialDetails.map((candidate) => [
+        `${focusedRunId ?? traces.at(-1)?.run_id}:${candidate.node_id}`,
+        candidate,
+      ]),
     ),
   );
-  const traceIdentity = useRef({ runId: trace.run_id, hash: trace.trace_hash });
+  const traceHash = traces.map(({ trace_hash }) => trace_hash).join(":");
+  const traceIdentity = useRef({ runId: focusedRunId, hash: traceHash });
   const previousRecords = useRef({
     count: model.records.length,
     lastNodeId: model.records.at(-1)?.node_id ?? null,
   });
   const rowTriggers = useRef(new Map<string, HTMLButtonElement>());
-  const selected = model.records.find(({ node_id }) => node_id === selectedNodeId)?.node ?? null;
+  const selectedRecord = model.records.find(({ node_id }) => node_id === selectedNodeId) ?? null;
+  const selected = selectedRecord?.node ?? null;
   const runContextFields =
     detail?.run_context.state === "AVAILABLE" ? detail.run_context.fields : [];
   const runContextValue = (label: string) =>
@@ -637,19 +677,46 @@ function TraceWorkbench({
     const end = record.sequence_position / span;
     return end >= timelineWindow[0] && start <= timelineWindow[1];
   });
+  const turnIndexes = useMemo(
+    () => [...new Set(model.records.map(({ turn_index }) => turn_index))],
+    [model.records],
+  );
+  const listItems = useMemo(
+    () =>
+      turnIndexes.flatMap((turnIndex) => {
+        const allRecords = model.records.filter((record) => record.turn_index === turnIndex);
+        const visibleRecords = filtered.filter((record) => record.turn_index === turnIndex);
+        if (query.trim() && visibleRecords.length === 0) return [];
+        return [
+          { kind: "turn" as const, turnIndex, allRecords },
+          ...(!collapsedTurns.has(turnIndex) || query.trim()
+            ? visibleRecords.map((record) => ({ kind: "record" as const, record }))
+            : []),
+        ];
+      }),
+    [collapsedTurns, filtered, model.records, query, turnIndexes],
+  );
   const rowHeight = 62;
-  const virtual = filtered.length > 200;
+  const virtual = listItems.length > 200;
   const start = virtual ? Math.max(0, Math.floor(scrollTop / rowHeight) - 8) : 0;
-  const end = virtual ? Math.min(filtered.length, start + 80) : filtered.length;
-  const visible = filtered.slice(start, end);
+  const end = virtual ? Math.min(listItems.length, start + 80) : listItems.length;
+  const visible = listItems.slice(start, end);
 
   useEffect(() => {
     if (!focused) return;
     setSelectedNodeId(focused.node_id);
   }, [focused]);
   useEffect(() => {
-    if (traceIdentity.current.hash === trace.trace_hash) return;
-    const runChanged = traceIdentity.current.runId !== trace.run_id;
+    if (!selectedRecord || !collapsedTurns.has(selectedRecord.turn_index)) return;
+    setCollapsedTurns((current) => {
+      const next = new Set(current);
+      next.delete(selectedRecord.turn_index);
+      return next;
+    });
+  }, [collapsedTurns, selectedRecord]);
+  useEffect(() => {
+    if (traceIdentity.current.hash === traceHash) return;
+    const runChanged = traceIdentity.current.runId !== focusedRunId;
     const refresh = resolveResolutionTraceRefresh({
       runChanged,
       focusedNodeId: focused?.node_id ?? null,
@@ -660,10 +727,13 @@ function TraceWorkbench({
       previousCount: previousRecords.current.count,
       nextCount: model.records.length,
     });
-    traceIdentity.current = { runId: trace.run_id, hash: trace.trace_hash };
+    traceIdentity.current = { runId: focusedRunId, hash: traceHash };
     detailCache.current.clear();
     for (const candidate of initialDetails)
-      detailCache.current.set(`${trace.trace_hash}:${candidate.node_id}`, candidate);
+      detailCache.current.set(
+        `${focusedRunId ?? traces.at(-1)?.run_id}:${candidate.node_id}`,
+        candidate,
+      );
     const nextNodeId = refresh.selectedNodeId;
     setSelectedNodeId(nextNodeId ?? null);
     setDetail(initialDetails.find(({ node_id }) => node_id === nextNodeId) ?? null);
@@ -685,8 +755,9 @@ function TraceWorkbench({
     initialDetails,
     model.records,
     selectedNodeId,
-    trace.run_id,
-    trace.trace_hash,
+    focusedRunId,
+    traceHash,
+    traces,
   ]);
   useEffect(() => {
     if (!selectedNodeId) {
@@ -694,7 +765,8 @@ function TraceWorkbench({
       setDetailError(null);
       return;
     }
-    const cacheKey = `${trace.trace_hash}:${selectedNodeId}`;
+    if (!selectedRecord) return;
+    const cacheKey = `${selectedRecord.run_id}:${selectedRecord.node.node_id}`;
     const cached = detailCache.current.get(cacheKey);
     if (cached) {
       setDetail(cached);
@@ -709,7 +781,12 @@ function TraceWorkbench({
     const controller = new AbortController();
     setDetail(null);
     setDetailError(null);
-    void fetchResolutionTraceDetail(trace.run_id, selectedNodeId, workspaceId, controller.signal)
+    void fetchResolutionTraceDetail(
+      selectedRecord.run_id,
+      selectedRecord.node.node_id,
+      workspaceId,
+      controller.signal,
+    )
       .then((value) => {
         if (!controller.signal.aborted) {
           detailCache.current.set(cacheKey, value);
@@ -721,10 +798,12 @@ function TraceWorkbench({
           setDetailError(error instanceof Error ? error.message : "公开详情加载失败");
       });
     return () => controller.abort();
-  }, [selectedNodeId, trace.run_id, trace.trace_hash, workspaceId]);
+  }, [selectedNodeId, selectedRecord, workspaceId]);
   useEffect(() => {
     if (!selectedNodeId) return;
-    const index = filtered.findIndex(({ node_id }) => node_id === selectedNodeId);
+    const index = listItems.findIndex(
+      (item) => item.kind === "record" && item.record.node_id === selectedNodeId,
+    );
     if (virtual && index >= 0) {
       const nextTop = Math.max(0, index * rowHeight - rowHeight * 3);
       listRef.current?.scrollTo({ top: nextTop, behavior: "smooth" });
@@ -734,7 +813,7 @@ function TraceWorkbench({
     document.getElementById(`resolution-trace-${selectedNodeId}`)?.scrollIntoView({
       block: "nearest",
     });
-  }, [filtered, selectedNodeId, virtual]);
+  }, [listItems, selectedNodeId, virtual]);
 
   if (model.records.length === 0)
     return <EmptyState title="暂无运行节点" description="当前 Run 尚未提交公开事件或工件" />;
@@ -875,63 +954,174 @@ function TraceWorkbench({
         >
           <ol
             className="relative divide-y divide-[var(--color-border-default)]"
-            style={virtual ? { height: filtered.length * rowHeight } : undefined}
+            style={virtual ? { height: listItems.length * rowHeight } : undefined}
           >
-            {visible.map((record, visibleIndex) => (
-              <li
-                key={record.node_id}
-                id={`resolution-trace-${record.node_id}`}
-                className={`${selectedNodeId === record.node_id ? "border-l-2 border-l-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]" : "border-l-2 border-l-transparent"} ${virtual ? "absolute inset-x-0" : ""}`}
-                style={
-                  virtual
-                    ? { top: (start + visibleIndex) * rowHeight, height: rowHeight }
-                    : undefined
-                }
-              >
-                <button
-                  ref={(element) => {
-                    if (element) rowTriggers.current.set(record.node_id, element);
-                    else rowTriggers.current.delete(record.node_id);
-                  }}
-                  type="button"
-                  aria-current={selectedNodeId === record.node_id ? "step" : undefined}
-                  onClick={() => setSelectedNodeId(record.node_id)}
-                  className="grid h-full w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-2 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]"
-                >
-                  <span
-                    className={`mt-1.5 size-2 ${statusShapeClass(record.node.status)} ${statusClass(record.node.status)}`}
-                  />
-                  <span className="min-w-0">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <strong className="truncate text-[11px]">{record.node.title}</strong>
-                      <span className="text-[9px] text-[var(--color-text-muted)]">
-                        {record.node.kind}
-                      </span>
-                      <span className="font-mono text-[9px] text-[var(--color-text-muted)]">
-                        #{record.node.sequence ?? "derived"}
-                      </span>
-                    </span>
-                    {(query.trim().length > 0 ||
-                      !["PROGRESS", "REASONING", "AGENT"].includes(record.node.kind) ||
-                      stageDetailsExpanded) &&
-                      (query.trim().length > 0 ||
-                        !["TOOL", "SQL"].includes(record.node.kind) ||
-                        callDetailsExpanded) && (
-                        <span className="mt-1 block truncate text-[10px] text-[var(--color-text-secondary)]">
-                          {record.node.summary}
+            {visible.map((item, visibleIndex) => {
+              const positioning = virtual
+                ? { top: (start + visibleIndex) * rowHeight, height: rowHeight }
+                : undefined;
+              if (item.kind === "turn") {
+                const runId = item.allRecords[0]?.run_id ?? "";
+                const terminal = item.allRecords.findLast(({ node }) => node.kind === "TERMINAL");
+                const calls = item.allRecords.filter(({ node }) =>
+                  ["TOOL", "SQL"].includes(node.kind),
+                ).length;
+                const duration = Math.max(
+                  0,
+                  Math.max(...item.allRecords.map(({ end_ms }) => end_ms)) -
+                    Math.min(...item.allRecords.map(({ start_ms }) => start_ms)),
+                );
+                const requests = requestPerformances.filter((request) => request.run_id === runId);
+                const collapsed = collapsedTurns.has(item.turnIndex) && !query.trim();
+                return (
+                  <li
+                    key={`turn:${runId}`}
+                    className={`border-l-2 border-l-[var(--color-border-strong)] bg-[var(--color-bg-canvas)] ${virtual ? "absolute inset-x-0" : ""}`}
+                    style={positioning}
+                  >
+                    <div className="grid h-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2">
+                      <button
+                        type="button"
+                        aria-expanded={!collapsed}
+                        onClick={() =>
+                          setCollapsedTurns((current) => {
+                            const next = new Set(current);
+                            if (next.has(item.turnIndex)) next.delete(item.turnIndex);
+                            else next.add(item.turnIndex);
+                            return next;
+                          })
+                        }
+                        className="min-w-0 text-left outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)]"
+                      >
+                        <span className="flex items-center gap-2">
+                          <span className="text-[10px] text-[var(--color-text-muted)]">
+                            {collapsed ? "▸" : "▾"}
+                          </span>
+                          <strong className="text-[11px]">Turn {item.turnIndex + 1}</strong>
+                          <span className="text-[9px] text-[var(--color-text-muted)]">
+                            {terminal?.node.status ?? "RUNNING"}
+                          </span>
                         </span>
+                        <span className="mt-1 block truncate pl-5 text-[10px] text-[var(--color-text-secondary)]">
+                          {terminal?.node.summary ?? item.allRecords[0]?.node.summary} ·{" "}
+                          {item.allRecords.length} 节点 · {calls} 调用 · {formatDuration(duration)}
+                        </span>
+                      </button>
+                      {requests.length > 0 && (
+                        <details className="relative">
+                          <summary className="cursor-pointer list-none rounded border border-[var(--color-border-default)] px-2 py-1 text-[9px] text-[var(--color-text-secondary)]">
+                            Request {requests.length}
+                          </summary>
+                          <div className="surface-floating-strong absolute right-0 top-8 z-30 w-[330px] space-y-3 rounded-xl border border-[var(--color-border-default)] p-3 shadow-xl">
+                            {requests.map(({ performance }, index) => (
+                              <dl
+                                key={performance.request_id}
+                                className="grid grid-cols-[100px_minmax(0,1fr)] gap-x-2 gap-y-1 border-b border-[var(--color-border-default)] pb-3 text-[9px] last:border-0 last:pb-0"
+                              >
+                                <dt className="font-semibold">Request {index + 1}</dt>
+                                <dd className="truncate font-mono">{performance.request_id}</dd>
+                                <dt>Provider / Model</dt>
+                                <dd>
+                                  {performance.provider}/{performance.model_id}
+                                </dd>
+                                <dt>Model Profile</dt>
+                                <dd className="truncate font-mono">{performance.profile_id}</dd>
+                                <dt>Status / Attempts</dt>
+                                <dd>
+                                  {performance.status} · {performance.attempt_count}
+                                </dd>
+                                <dt>Duration</dt>
+                                <dd>{formatDuration(performance.duration_ms)}</dd>
+                                <dt>Context ceiling</dt>
+                                <dd>{performance.context_window_tokens.toLocaleString()} tokens</dd>
+                                <dt>Context used</dt>
+                                <dd>
+                                  {performance.usage.availability === "AVAILABLE"
+                                    ? `${Math.min(100, Math.round((performance.usage.input_tokens / performance.context_window_tokens) * 100))}%`
+                                    : "不可用"}
+                                </dd>
+                                <dt>Reserved output</dt>
+                                <dd>
+                                  {performance.reserved_output_tokens.toLocaleString()} tokens
+                                </dd>
+                                <dt>Input / Output</dt>
+                                <dd>
+                                  {performance.usage.availability === "AVAILABLE"
+                                    ? `${performance.usage.input_tokens.toLocaleString()} / ${performance.usage.output_tokens.toLocaleString()}`
+                                    : "Provider usage unavailable"}
+                                </dd>
+                                <dt>Total / Tool calls</dt>
+                                <dd>
+                                  {performance.usage.availability === "AVAILABLE"
+                                    ? `${performance.usage.total_tokens.toLocaleString()} / ${performance.usage.tool_calls}`
+                                    : "不可用"}
+                                </dd>
+                                <dt>Token source</dt>
+                                <dd>{performance.usage.source}</dd>
+                                <dt>TTFT / Decoding</dt>
+                                <dd>Provider 未提供</dd>
+                              </dl>
+                            ))}
+                          </div>
+                        </details>
                       )}
-                  </span>
-                  <span className="whitespace-nowrap text-right font-mono text-[9px] text-[var(--color-text-muted)]">
-                    {formatDuration(record.node.duration_ms)}
-                    <br />
-                    {new Date(record.node.occurred_at).toLocaleTimeString("zh-CN", {
-                      hour12: false,
-                    })}
-                  </span>
-                </button>
-              </li>
-            ))}
+                    </div>
+                  </li>
+                );
+              }
+              const record = item.record;
+              return (
+                <li
+                  key={`${record.run_id}:${record.node_id}`}
+                  id={`resolution-trace-${record.node_id}`}
+                  className={`${selectedNodeId === record.node_id ? "border-l-2 border-l-[var(--color-accent)] bg-[color-mix(in_srgb,var(--color-accent)_7%,transparent)]" : "border-l-2 border-l-transparent"} ${virtual ? "absolute inset-x-0" : ""}`}
+                  style={positioning}
+                >
+                  <button
+                    ref={(element) => {
+                      if (element) rowTriggers.current.set(record.node_id, element);
+                      else rowTriggers.current.delete(record.node_id);
+                    }}
+                    type="button"
+                    aria-current={selectedNodeId === record.node_id ? "step" : undefined}
+                    onClick={() => setSelectedNodeId(record.node_id)}
+                    className="grid h-full w-full grid-cols-[12px_minmax(0,1fr)_auto] items-start gap-3 px-4 py-2 pl-7 text-left outline-none hover:bg-[var(--color-bg-tertiary)] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-accent)]"
+                  >
+                    <span
+                      className={`mt-1.5 size-2 ${statusShapeClass(record.node.status)} ${statusClass(record.node.status)}`}
+                    />
+                    <span className="min-w-0">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <strong className="truncate text-[11px]">{record.node.title}</strong>
+                        <span className="text-[9px] text-[var(--color-text-muted)]">
+                          {record.node.kind}
+                        </span>
+                        <span className="font-mono text-[9px] text-[var(--color-text-muted)]">
+                          #{record.node.sequence ?? "derived"}
+                        </span>
+                      </span>
+                      {(query.trim().length > 0 ||
+                        !["PROGRESS", "REASONING", "AGENT"].includes(record.node.kind) ||
+                        stageDetailsExpanded) &&
+                        (query.trim().length > 0 ||
+                          !["TOOL", "SQL"].includes(record.node.kind) ||
+                          callDetailsExpanded) && (
+                          <span className="mt-1 block truncate text-[10px] text-[var(--color-text-secondary)]">
+                            {record.node.summary}
+                          </span>
+                        )}
+                    </span>
+                    <span className="whitespace-nowrap text-right font-mono text-[9px] text-[var(--color-text-muted)]">
+                      {formatDuration(record.node.duration_ms)}
+                      <br />
+                      {new Date(record.node.occurred_at).toLocaleTimeString("zh-CN", {
+                        hour12: false,
+                      })}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
           </ol>
           {filtered.length === 0 && (
             <EmptyState title="没有匹配记录" description="请调整搜索关键词" />
@@ -1135,17 +1325,14 @@ export function ResolutionTraceView() {
   const focus = useQATrajectoryFocus();
   const events = useQAEvents();
   const connection = useQAConnection();
-  const runId = focus?.runId ?? events.at(-1)?.run_id ?? null;
-  const eventCursor = runId
-    ? events.reduce(
-        (latest, event) => (event.run_id === runId ? Math.max(latest, event.sequence) : latest),
-        0,
-      )
-    : 0;
+  const runIds = useMemo(() => orderedConversationRunIds(events), [events]);
+  const runId =
+    focus?.runId && runIds.includes(focus.runId) ? focus.runId : (runIds.at(-1) ?? null);
+  const requestPerformances = useMemo(() => readModelRequestPerformances(events), [events]);
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
   useEffect(() => {
-    if (!workspaceId || !runId || !Number.isSafeInteger(eventCursor)) {
+    if (!workspaceId || !runId || runIds.length === 0) {
       setState({ status: "idle" });
       return;
     }
@@ -1162,12 +1349,14 @@ export function ResolutionTraceView() {
         teamError: error instanceof Error ? error.message : "Agent Team 轨迹加载失败",
       }));
     void Promise.all([
-      fetchResolutionTrace(runId, workspaceId),
+      fetchConversationResolutionTraces(runIds, workspaceId),
       fetchSqlHistory({ runId, ...(conversationId ? { conversationId } : {}) }, workspaceId),
       team,
     ])
-      .then(([trace, sql, teamState]) => {
-        if (active) setState({ status: "ready", trace, sql: sql.items, ...teamState });
+      .then(([traces, sql, teamState]) => {
+        const trace = traces.find((candidate) => candidate.run_id === runId) ?? traces.at(-1);
+        if (active && trace)
+          setState({ status: "ready", trace, traces, sql: sql.items, ...teamState });
       })
       .catch((error: unknown) => {
         if (active)
@@ -1183,7 +1372,7 @@ export function ResolutionTraceView() {
     return () => {
       active = false;
     };
-  }, [conversationId, eventCursor, runId, workspaceId]);
+  }, [conversationId, runId, runIds, workspaceId]);
 
   if (!conversationId)
     return <EmptyState title="选择一个对话" description="轨迹覆盖当前选中对话中的全部 Run" />;
@@ -1205,6 +1394,7 @@ export function ResolutionTraceView() {
   return (
     <ResolutionTracePanel
       trace={state.trace}
+      traces={state.traces}
       sql={state.sql}
       focusSequence={focus?.sequence ?? null}
       profiles={state.profiles}
@@ -1212,12 +1402,14 @@ export function ResolutionTraceView() {
       teamError={state.teamError}
       workspaceId={workspaceId}
       connectionState={connection}
+      requestPerformances={requestPerformances}
     />
   );
 }
 
 export function ResolutionTracePanel({
   trace,
+  traces = [trace],
   sql,
   profiles = [],
   teamTrace = null,
@@ -1227,8 +1419,10 @@ export function ResolutionTracePanel({
   workspaceId = "",
   initialDetails = [],
   connectionState = null,
+  requestPerformances = [],
 }: {
   readonly trace: ResolutionTrace;
+  readonly traces?: readonly ResolutionTrace[];
   readonly sql: readonly SqlHistoryEntry[];
   readonly profiles?: Awaited<ReturnType<typeof fetchAgentProfiles>>;
   readonly teamTrace?: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
@@ -1238,6 +1432,7 @@ export function ResolutionTracePanel({
   readonly workspaceId?: string;
   readonly initialDetails?: readonly ResolutionTraceDetail[];
   readonly connectionState?: RunConnectionState | null;
+  readonly requestPerformances?: readonly ObservedModelRequestPerformance[];
 }) {
   const [tab, setTab] = useState<TraceTab>(initialTab);
 
@@ -1247,7 +1442,7 @@ export function ResolutionTracePanel({
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">运行与证据</h2>
           <p className="truncate font-mono text-[10px] text-[var(--color-text-muted)]">
-            {trace.run_id}
+            {traces.length} Turn · {trace.run_id}
           </p>
         </div>
         <div className="flex items-center" aria-label="运行与证据视图" role="tablist">
@@ -1271,11 +1466,13 @@ export function ResolutionTracePanel({
         {tab === "overview" && <Overview trace={trace} sql={sql} />}
         {tab === "trace" && (
           <TraceWorkbench
-            trace={trace}
+            traces={traces}
+            focusedRunId={trace.run_id}
             focusedSequence={focusSequence}
             workspaceId={workspaceId}
             initialDetails={initialDetails}
             connectionState={connectionState}
+            requestPerformances={requestPerformances}
           />
         )}
         {tab === "team" && (

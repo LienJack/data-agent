@@ -56,8 +56,10 @@ GET /api/workspaces/{workspaceId}/sql-history?run_id=&conversation_id=&occurred_
   `/w/{tenant_id}/qa?conversation={conversation_id}&run={run_id}&tab=conversation`；不得生成 latest/none fallback。
 - Client 对 route 响应再次执行 strict parse + hash verify。QA 入口消费 conversation/run 查询参数，轨迹与 SQL
   Tab 只格式化 DTO；移动端宽表只在表容器内横向滚动，页面本身不得溢出。
-- Web Workbench 的四泳道、统计、时间/sequence domain、搜索与 edge hierarchy 由无 React/DOM 的纯模型从
-  同一 `ResolutionTrace` 构建。时间轴、列表和 Inspector 只共享一个 `selectedNodeId`；10,000 节点列表必须
+- Web Workbench 先逐 Run 验签 `ResolutionTrace`，再按 Conversation 中每个 Run 的最早公开事件时间形成稳定
+  Turn 1..N，并由无 React/DOM 的纯模型合并四泳道、统计、时间/sequence domain、搜索与 edge hierarchy。
+  UUID 或 replay 数组顺序不能决定 Turn 顺序。每条 record 必须保留真实 `run_id/turn_index`，Inspector 按所选 record
+  的 exact `run_id + node_id` 读取详情。时间轴、列表和 Inspector 只共享一个 `selectedNodeId`；10,000 节点列表必须
   使用有界虚拟窗口，时间轴按泳道有界采样并优先保留选中、搜索命中和异常状态。SQL/Artifact/Tool 只要有
   exact ref 就直接进入内容预览，不能以裸 ID/hash 作为完成态。
 

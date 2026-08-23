@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  modelRequestPerformanceSchema,
   projectPublicRunEventPage,
   projectPublicRunEventStream,
   publicRunEventSchema,
@@ -47,6 +48,65 @@ function v2Event(event_type: string, sequence: number, payload: unknown) {
 }
 
 describe("public Run events", () => {
+  it("validates exact model request performance without accepting private fields or false token totals", () => {
+    const performance = {
+      schema_version: "model-request-performance@1.0.0",
+      request_id: "00000000-0000-4000-8000-000000000090",
+      provider: "deepseek",
+      profile_id: "00000000-0000-4000-8000-000000000091",
+      model_id: "deepseek-v4-flash",
+      status: "COMPLETED",
+      attempt_count: 2,
+      duration_ms: 1_240,
+      context_window_tokens: 262_144,
+      reserved_output_tokens: 2_048,
+      usage: {
+        availability: "AVAILABLE",
+        source: "PROVIDER_REPORTED",
+        input_tokens: 162_000,
+        output_tokens: 800,
+        total_tokens: 162_800,
+        tool_calls: 0,
+        unavailable_reason: null,
+      },
+    } as const;
+    expect(modelRequestPerformanceSchema.parse(performance)).toEqual(performance);
+    expect(
+      modelRequestPerformanceSchema.safeParse({
+        ...performance,
+        usage: { ...performance.usage, total_tokens: 162_799 },
+      }).success,
+    ).toBe(false);
+    expect(
+      modelRequestPerformanceSchema.safeParse({ ...performance, prompt: "private" }).success,
+    ).toBe(false);
+  });
+
+  it("keeps unavailable model usage explicit instead of coercing missing counts to zero", () => {
+    const parsed = modelRequestPerformanceSchema.parse({
+      schema_version: "model-request-performance@1.0.0",
+      request_id: "00000000-0000-4000-8000-000000000090",
+      provider: "deepseek",
+      profile_id: "00000000-0000-4000-8000-000000000091",
+      model_id: "deepseek-v4-flash",
+      status: "COMPLETED",
+      attempt_count: 1,
+      duration_ms: 240,
+      context_window_tokens: 262_144,
+      reserved_output_tokens: 2_048,
+      usage: {
+        availability: "UNAVAILABLE",
+        source: "UNAVAILABLE",
+        input_tokens: null,
+        output_tokens: null,
+        total_tokens: null,
+        tool_calls: null,
+        unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE",
+      },
+    });
+    expect(parsed.usage.input_tokens).toBeNull();
+  });
+
   it("advances the projection without changing authority state for display events", () => {
     const accepted = event("run.accepted", 1, {
       command_id: "00000000-0000-4000-8000-000000000020",

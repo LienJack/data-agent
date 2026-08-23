@@ -6,6 +6,8 @@ import {
 } from "@data-agent/agent-runtime";
 import {
   createDirectModelProviderInvocation,
+  MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
+  modelRequestPerformanceSchema,
   type PortResult,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -155,7 +157,10 @@ export function createDirectRunBoundProviderDispatcher(input: {
         return failure("DIRECT_MODEL_REQUEST_INVALID", "模型直连请求不符合运行契约。");
       }
 
+      let attemptCount = 0;
+      const startedAt = Date.now();
       const invokeOnce = async (): Promise<PortResult<RunModelProviderResult>> => {
+        attemptCount += 1;
         const provider = createDirectModelProviderPort({
           credential_resolver: {
             resolve: async (candidate) =>
@@ -182,11 +187,31 @@ export function createDirectRunBoundProviderDispatcher(input: {
           for await (const event of provider.stream(request)) {
             if (event.event_type === "TOOL_CALL_CANDIDATE") toolCalls.push(event);
             if (event.event_type === "COMPLETED") {
+              const usage =
+                event.usage.availability === "AVAILABLE"
+                  ? {
+                      ...event.usage,
+                      total_tokens: event.usage.input_tokens + event.usage.output_tokens,
+                    }
+                  : { ...event.usage, total_tokens: null };
               return {
                 ok: true,
                 value: {
                   output_text: event.output_text,
                   tool_calls: Object.freeze(toolCalls),
+                  request_performance: modelRequestPerformanceSchema.parse({
+                    schema_version: MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
+                    request_id: logicalCallId,
+                    provider: config.model.provider,
+                    profile_id: config.model.resource_id,
+                    model_id: config.model.model_id,
+                    status: "COMPLETED",
+                    attempt_count: attemptCount,
+                    duration_ms: Math.max(0, Date.now() - startedAt),
+                    context_window_tokens: maxInputTokens,
+                    reserved_output_tokens: maxOutputTokens,
+                    usage,
+                  }),
                   projection: {
                     invocation_id: logicalCallId,
                     status: "COMPLETED",

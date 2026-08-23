@@ -19,6 +19,33 @@
 
 ## 2. Architecture
 
+### 2.1 2026-08-23 Trajectory 增量设计
+
+生产轻量直连仍不重新接入历史 `provider_invocation_*` authority。Provider terminal event 已提供 usage，Worker 在
+`RunExecutionContext` 的可信 capability 边界把一次逻辑模型调用投影为现有 `run.tool_started/completed/failed`：
+
+```text
+model.request started (no prompt/body)
+        |
+direct provider event + exact usage
+        |
+model.request performance@1.0.0 JSON (public, bounded, redacted)
+        +--> Conversation trajectory Turn request rows
+        +--> Composer context occupancy (exact input tokens only)
+```
+
+该投影只含 request identity、provider/model/profile、status、attempt count、duration、context/output ceilings 与 usage；
+不含 messages、prompt、response、tool arguments、headers 或 connection data。一次内部明确重试仍属于同一个逻辑 Request，
+以 `attempt_count` 表示，不伪造多个公共调用。
+
+Web 使用当前 Conversation 的 PublicRunEvent 首次出现顺序确定 Run/Turn 顺序，并并行读取每个 Run 的 ResolutionTrace。
+工作台模型给每条 record 添加 `run_id/turn_index`，列表以固定高度 Turn header + node row 虚拟化；折叠只影响列表，
+不删除时间轴、搜索或 Inspector 数据。Inspector 由选中 record 的真实 `run_id` 读取详情。
+
+Composer ContextMeter 只接受当前 model profile 对应的最近 `COMPLETED` 性能投影，且 `usage.availability=AVAILABLE`；
+占用量使用 Provider 报告的 `input_tokens`，容量使用该 Request 冻结的 `context_window_tokens`。模型切换、usage unavailable
+或容量缺失时立即隐藏，避免沿用旧 Profile 或启发式估算。
+
 ```text
 Question + Frozen Conversation Resources
                  |

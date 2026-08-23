@@ -18,6 +18,8 @@ const laneByKind: Record<ResolutionTraceNode["kind"], ResolutionTraceLane> = {
 export interface ResolutionTraceWorkbenchRecord {
   readonly node: ResolutionTraceNode;
   readonly node_id: string;
+  readonly run_id: string;
+  readonly turn_index: number;
   readonly lane: ResolutionTraceLane;
   readonly start_ms: number;
   readonly end_ms: number;
@@ -130,6 +132,7 @@ function normalizedSearchText(node: ResolutionTraceNode): string {
 
 export function buildResolutionTraceWorkbenchModel(
   trace: ResolutionTrace,
+  turnIndex = 0,
 ): ResolutionTraceWorkbenchModel {
   const parents = new Map<string, Set<string>>();
   const children = new Map<string, Set<string>>();
@@ -148,6 +151,8 @@ export function buildResolutionTraceWorkbenchModel(
     return {
       node,
       node_id: node.node_id,
+      run_id: trace.run_id,
+      turn_index: turnIndex,
       lane: laneByKind[node.kind],
       start_ms: start,
       end_ms: start + (node.duration_ms ?? 0),
@@ -179,6 +184,41 @@ export function buildResolutionTraceWorkbenchModel(
       return normalized.length === 0
         ? records
         : records.filter(({ search_text }) => search_text.includes(normalized));
+    },
+  };
+}
+
+export function buildConversationResolutionTraceWorkbenchModel(
+  traces: readonly ResolutionTrace[],
+): ResolutionTraceWorkbenchModel {
+  const records = traces
+    .flatMap((trace, turnIndex) => buildResolutionTraceWorkbenchModel(trace, turnIndex).records)
+    .map((record, index) => ({ ...record, sequence_position: index + 1 }));
+  const domainStart = records.length > 0 ? Math.min(...records.map(({ start_ms }) => start_ms)) : 0;
+  const domainEnd =
+    records.length > 0 ? Math.max(...records.map(({ end_ms }) => end_ms)) : domainStart;
+  const duration = Math.max(0, domainEnd - domainStart);
+  const stats = {
+    nodes: records.length,
+    calls: records.filter(({ node }) => node.kind === "TOOL" || node.kind === "SQL").length,
+    failed_or_waiting: records.filter(({ node }) =>
+      ["FAILED", "CANCELLED", "WAITING", "BLOCKED", "INTERRUPTED"].includes(node.status),
+    ).length,
+    duration_ms: duration,
+  };
+  return {
+    records,
+    stats,
+    real_time_domain: { start_ms: domainStart, end_ms: domainEnd, duration_ms: duration },
+    sequence_domain: { start: 1, end: Math.max(1, records.length) },
+    search(query) {
+      const normalized = query.trim().toLocaleLowerCase("zh-CN");
+      return normalized.length === 0
+        ? records
+        : records.filter(
+            ({ search_text, turn_index }) =>
+              search_text.includes(normalized) || `turn ${turn_index + 1}`.includes(normalized),
+          );
     },
   };
 }

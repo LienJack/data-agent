@@ -213,6 +213,26 @@ pnpm test:security
 - [ ] 按 Task Commit Policy 每个 child 创建一个 scoped commit，父任务只做集成验收/文档提交；禁止大爆炸单提交。
 - [ ] 运行 `trellis-finish-work`，记录验证、commit、未完成 HOLD 与后续独立语义知识库任务。
 
+## 9. 2026-08-23 Trajectory Workbench Increment
+
+- [x] Contracts：增加严格 `model-request-performance@1.0.0` 公共投影与 parser/tests；unknown field、token closure、
+  unavailable truth table、context/output ceiling 必须失败关闭。
+- [x] Worker：保留 Direct Provider terminal usage 和总耗时/attempt count；在可信 Run context 自动发布
+  `model.request` started/completed/failed，且事件内容通过公开脱敏边界。
+- [x] Web model：按 Conversation 全部 Run 构建稳定 Turn 记录，支持 Turn 摘要折叠、搜索自动可见、Inspector exact Run routing，
+  并保留大列表虚拟化和时间轴聚合。
+- [x] Web UI：增加 Request/模型性能 disclosure；Composer 增加 ContextMeter 的 ring trigger、popover、Escape/outside click、
+  profile switch/unavailable gating。
+- [x] 删除 `apps/web/src/components/qa/trajectory-view.tsx`，扫描证明无残留 import。
+- [x] 更新 DeepSeek Harness reuse ledger / MIT 来源记录；固定 reference commit 为
+  `47f943859bef60e4160492346772ded9b24f765a`。
+- [x] Focused validation：contracts、worker run context/direct dispatcher、web workbench/context meter/view、typecheck、lint、
+  `git diff --check`；只暂存本增量 owned paths并创建 scoped commit。
+
+验证结果：Contracts 82 files/864 tests、Worker 10 files/74 tests、Web 114 passed + 1 skipped files/434 passed +
+1 skipped tests；Contracts/Worker/Web typecheck、Contracts/Worker/Web build、Web Biome 全通过。Next build 保留 6 条既有
+dynamic filesystem tracing warning，本增量未新增 warning source。
+
 ## Risky Files And Ownership
 
 - Contracts：`packages/contracts/src/workspaces/**`、`packages/contracts/src/agents/**`、Artifact chart contracts；

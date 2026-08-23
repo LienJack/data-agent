@@ -2,7 +2,59 @@ import { z } from "zod";
 import { agentSpecialistProfileIdSchema } from "../agents/profile-registry.js";
 import { artifactReferenceSchema } from "../artifacts/envelope.js";
 import { immutableIdSchema, timestampSchema, versionIdentifierSchema } from "../common/index.js";
+import { modelProviderSchema } from "../providers/index.js";
 import { runAgentStatusSchema, runRuntimeEventSchema } from "./runtime.js";
+
+export const MODEL_REQUEST_TOOL_NAME = "model.request@1.0.0" as const;
+export const MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION = "model-request-performance@1.0.0" as const;
+
+const modelRequestUsageSchema = z.discriminatedUnion("availability", [
+  z
+    .strictObject({
+      availability: z.literal("AVAILABLE"),
+      source: z.literal("PROVIDER_REPORTED"),
+      input_tokens: z.number().int().nonnegative().safe(),
+      output_tokens: z.number().int().nonnegative().safe(),
+      total_tokens: z.number().int().nonnegative().safe(),
+      tool_calls: z.number().int().nonnegative().safe(),
+      unavailable_reason: z.null(),
+    })
+    .superRefine((usage, ctx) => {
+      if (usage.total_tokens !== usage.input_tokens + usage.output_tokens) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Model Request total_tokens 必须等于 input_tokens + output_tokens。",
+          path: ["total_tokens"],
+        });
+      }
+    }),
+  z.strictObject({
+    availability: z.literal("UNAVAILABLE"),
+    source: z.literal("UNAVAILABLE"),
+    input_tokens: z.null(),
+    output_tokens: z.null(),
+    total_tokens: z.null(),
+    tool_calls: z.null(),
+    unavailable_reason: z.literal("PROVIDER_DID_NOT_REPORT_USAGE"),
+  }),
+]);
+
+/** Safe, bounded performance projection for one logical production model request. */
+export const modelRequestPerformanceSchema = z.strictObject({
+  schema_version: z.literal(MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION),
+  request_id: immutableIdSchema,
+  provider: modelProviderSchema,
+  profile_id: immutableIdSchema,
+  model_id: z.string().trim().min(1).max(256),
+  status: z.literal("COMPLETED"),
+  attempt_count: z.number().int().positive().max(2),
+  duration_ms: z.number().int().nonnegative().safe(),
+  context_window_tokens: z.number().int().positive().safe(),
+  reserved_output_tokens: z.number().int().positive().safe(),
+  usage: modelRequestUsageSchema,
+});
+
+export type ModelRequestPerformance = z.infer<typeof modelRequestPerformanceSchema>;
 
 const publicEventV1Base = {
   schema_version: z.literal("public-run-event@1.0.0"),

@@ -3,10 +3,12 @@
 import type { WorkspaceFileReference } from "@data-agent/contracts";
 import { PaperPlaneTilt, Pulse, Stop, WarningCircle } from "@phosphor-icons/react";
 import { useCallback, useRef, useState } from "react";
+import { latestExactContextUsage } from "@/lib/model-request-performance";
 import {
   useQAActiveConversationId,
   useQAConnection,
   useQAConversations,
+  useQAEvents,
   useQAResourceCatalog,
   useQAResourceCatalogState,
   useQAResourceError,
@@ -16,6 +18,7 @@ import {
   useQAStore,
 } from "@/lib/qa-store";
 import { cn } from "@/lib/utils";
+import { ContextWindowMeter } from "./context-window-meter";
 import { DataSourceSelector } from "./data-source-selector";
 import { FileAttachmentSelector } from "./file-attachment-selector";
 import { ModelSelector } from "./model-selector";
@@ -31,6 +34,7 @@ export function ChatInput() {
   const resourceError = useQAResourceError();
   const resourceNotice = useQAResourceNotice();
   const conversations = useQAConversations();
+  const events = useQAEvents();
   const activeId = useQAActiveConversationId();
   const [input, setInput] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<readonly WorkspaceFileReference[]>([]);
@@ -38,6 +42,7 @@ export function ChatInput() {
   const composingRef = useRef(false);
 
   const activeConversation = conversations.find((conversation) => conversation.id === activeId);
+  const contextUsage = latestExactContextUsage(events, activeConversation?.modelProfileId);
   const hasCatalogDefaults = Boolean(
     catalog?.models.some((model) => model.selectable) &&
       catalog.datasources.some((datasource) => datasource.selectable),
@@ -139,6 +144,7 @@ export function ChatInput() {
               <div className="min-w-0 flex-1 sm:flex-none">
                 <ModelSelector />
               </div>
+              <ContextWindowMeter performance={contextUsage?.performance ?? null} />
               <FileAttachmentSelector
                 sessionId={activeId}
                 disabled={sending || switching}

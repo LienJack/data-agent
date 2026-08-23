@@ -1,6 +1,7 @@
 import {
   buildResolutionTrace,
   buildSqlHistoryEntry,
+  modelRequestPerformanceSchema,
   verifyResolutionTraceDetail,
 } from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,6 +13,76 @@ const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 describe("Resolution Trace panel", () => {
+  it("groups the whole conversation into collapsible Turns and exposes Request performance", async () => {
+    const buildTurn = (runSuffix: number, eventSuffix: number, second: number) =>
+      buildResolutionTrace({
+        schema_version: "resolution-trace@1.0.0",
+        scope,
+        run_id: id(runSuffix),
+        conversation_id: id(4),
+        config_ref: null,
+        nodes: [
+          {
+            node_id: `event:${id(eventSuffix)}`,
+            kind: "TERMINAL" as const,
+            source_event_id: id(eventSuffix),
+            sequence: 1,
+            occurred_at: new Date(Date.UTC(2026, 7, 23, 0, 0, second)).toISOString(),
+            status: "COMPLETED" as const,
+            title: `Turn ${runSuffix} complete`,
+            summary: "已完成",
+            duration_ms: 300,
+            artifact_refs: [],
+          },
+        ],
+        edges: [],
+      });
+    const first = await buildTurn(30, 40, 1);
+    const second = await buildTurn(31, 41, 2);
+    const performance = modelRequestPerformanceSchema.parse({
+      schema_version: "model-request-performance@1.0.0",
+      request_id: id(50),
+      provider: "deepseek",
+      profile_id: id(51),
+      model_id: "deepseek-v4-flash",
+      status: "COMPLETED",
+      attempt_count: 2,
+      duration_ms: 640,
+      context_window_tokens: 262_144,
+      reserved_output_tokens: 2_048,
+      usage: {
+        availability: "AVAILABLE",
+        source: "PROVIDER_REPORTED",
+        input_tokens: 162_000,
+        output_tokens: 1_000,
+        total_tokens: 163_000,
+        tool_calls: 0,
+        unavailable_reason: null,
+      },
+    });
+    const html = renderToStaticMarkup(
+      <ResolutionTracePanel
+        trace={second}
+        traces={[first, second]}
+        sql={[]}
+        requestPerformances={[
+          {
+            run_id: second.run_id,
+            sequence: 3,
+            occurred_at: "2026-08-23T00:00:02.000Z",
+            performance,
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain("2 Turn");
+    expect(html).toContain("Turn 1");
+    expect(html).toContain("Turn 2");
+    expect(html).toContain("Request 1");
+    expect(html).toContain("deepseek/deepseek-v4-flash");
+    expect(html).toContain("162,000 / 1,000");
+  });
+
   it("renders bounded server-authored trace nodes without horizontal overflow", async () => {
     const trace = await buildResolutionTrace({
       schema_version: "resolution-trace@1.0.0",

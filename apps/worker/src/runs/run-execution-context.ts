@@ -3,7 +3,11 @@ import {
   canonicalImmutableIdSchema,
   type EffectiveRunConfigReceiptCandidate,
   type MastraSnapshotBinding,
+  MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
+  MODEL_REQUEST_TOOL_NAME,
+  type ModelRequestPerformance,
   mastraSnapshotBindingBodySchema,
+  modelRequestPerformanceSchema,
   type PortResult,
   type ResolvedContextCommitResult,
   type RunEventStorePort,
@@ -41,6 +45,7 @@ export interface RunProviderDispatchCapability {
 export type RunModelProviderResult = Readonly<{
   output_text: string;
   tool_calls: readonly unknown[];
+  request_performance?: ModelRequestPerformance;
   projection: Readonly<{
     invocation_id: string;
     status: "STARTED" | "COMPLETED" | "FAILED" | "THROTTLED" | "OUTCOME_UNKNOWN";
@@ -150,7 +155,7 @@ export function createRunExecutionContext({
   const providerCallLimit = effectiveConfig.execution_safety_policy.max_provider_calls;
   const providerDispatchCapability = providerDispatch
     ? Object.freeze({
-        invoke(input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) {
+        async invoke(input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) {
           if (runSignal.aborted) return Promise.resolve(aborted<RunModelProviderResult>());
           const logicalCallId = canonicalImmutableIdSchema.safeParse(input.logical_call_id);
           if (!logicalCallId.success) {
@@ -181,14 +186,124 @@ export function createRunExecutionContext({
             );
           }
           providerLogicalCalls.add(logicalCallId.data);
-          return providerDispatch.invoke({
+          const callId = logicalCallId.data;
+          const provider = effectiveConfig.model.provider;
+          const modelId = effectiveConfig.model.model_id;
+          const startedAt = now().getTime();
+          const started = await appendDisplayEvent({
+            kind: "tool_started",
+            key: `model.request.started:${callId}`,
+            call_id: callId,
+            tool_name: MODEL_REQUEST_TOOL_NAME,
+            title: "模型请求",
+            summary: `正在调用 ${provider}/${modelId}`,
+            input: null,
+            profile_id: null,
+            task_id: null,
+            artifact_refs: [],
+          });
+          if (!started.ok) return started;
+          const result = await providerDispatch.invoke({
             lease,
             effective_config: effectiveConfig,
             context_receipt: contextReceipt,
-            logical_call_id: logicalCallId.data,
+            logical_call_id: callId,
             ...(input.turn ? { turn: input.turn } : {}),
             signal: runSignal,
           });
+          const measuredDuration = Math.max(0, now().getTime() - startedAt);
+          const failPerformanceProjection = async (code: string, message: string) => {
+            const failed = await appendDisplayEvent({
+              kind: "tool_failed" as const,
+              key: `model.request.failed:${callId}`,
+              call_id: callId,
+              tool_name: MODEL_REQUEST_TOOL_NAME,
+              summary: `模型请求性能投影失败 · ${provider}/${modelId}`,
+              error_code: code,
+              output: null,
+              duration_ms: measuredDuration,
+              profile_id: null,
+              task_id: null,
+              artifact_refs: [],
+            });
+            return failed.ok ? failure<RunModelProviderResult>(code, message, false) : failed;
+          };
+          if (!result.ok) {
+            const failed = await appendDisplayEvent({
+              kind: "tool_failed",
+              key: `model.request.failed:${callId}`,
+              call_id: callId,
+              tool_name: MODEL_REQUEST_TOOL_NAME,
+              summary: `模型请求失败 · ${provider}/${modelId}`,
+              error_code: result.error.code,
+              output: null,
+              duration_ms: measuredDuration,
+              profile_id: null,
+              task_id: null,
+              artifact_refs: [],
+            });
+            return failed.ok ? result : failed;
+          }
+          const reportedPerformance = result.value.request_performance;
+          if (
+            reportedPerformance &&
+            (reportedPerformance.request_id !== callId ||
+              reportedPerformance.provider !== provider ||
+              reportedPerformance.profile_id !== effectiveConfig.model.resource_id ||
+              reportedPerformance.model_id !== modelId)
+          ) {
+            return failPerformanceProjection(
+              "MODEL_REQUEST_PERFORMANCE_IDENTITY_MISMATCH",
+              "模型请求性能投影与冻结 Run/Model identity 不一致。",
+            );
+          }
+          const parsedPerformance = modelRequestPerformanceSchema.safeParse(
+            reportedPerformance
+              ? { ...reportedPerformance, duration_ms: measuredDuration }
+              : {
+                  schema_version: MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
+                  request_id: callId,
+                  provider,
+                  profile_id: effectiveConfig.model.resource_id,
+                  model_id: modelId,
+                  status: "COMPLETED",
+                  attempt_count: 1,
+                  duration_ms: measuredDuration,
+                  context_window_tokens: effectiveConfig.context_policy.max_context_tokens,
+                  reserved_output_tokens: 2_048,
+                  usage: {
+                    availability: "UNAVAILABLE",
+                    source: "UNAVAILABLE",
+                    input_tokens: null,
+                    output_tokens: null,
+                    total_tokens: null,
+                    tool_calls: null,
+                    unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE",
+                  },
+                },
+          );
+          if (!parsedPerformance.success) {
+            return failPerformanceProjection(
+              "MODEL_REQUEST_PERFORMANCE_INVALID",
+              "模型请求性能投影不满足公开契约。",
+            );
+          }
+          const performance = parsedPerformance.data;
+          const completed = await appendDisplayEvent({
+            kind: "tool_completed",
+            key: `model.request.completed:${callId}`,
+            call_id: callId,
+            tool_name: MODEL_REQUEST_TOOL_NAME,
+            summary: `模型请求完成 · ${provider}/${modelId}`,
+            output: JSON.stringify(performance),
+            duration_ms: performance.duration_ms,
+            profile_id: null,
+            task_id: null,
+            artifact_refs: [],
+          });
+          return completed.ok
+            ? { ok: true, value: { ...result.value, request_performance: performance } }
+            : completed;
         },
       })
     : null;

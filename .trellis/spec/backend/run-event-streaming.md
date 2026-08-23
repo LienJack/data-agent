@@ -138,6 +138,82 @@ const inspector = assembleSubagentInspector(events, selectedAgent);
 Surface adapter 可以改变 wire envelope 和渲染 view model，但 `events` 必须来自同一严格 projection；不得在 adapter
 内重新推导 Model、Run 或 Agent authority。
 
+## 场景：生产模型 Request 性能公开投影
+
+### 1. Scope / Trigger
+
+- 生产轻量直连需要向 Trajectory/Composer 提供模型、耗时、重试和 token usage 时适用。
+- 历史 `provider_invocation_*` 表只做兼容/回放，禁止为了 UI 指标重新接入生产调用。
+
+### 2. Signatures
+
+```ts
+type ModelRequestPerformance = {
+  schema_version: "model-request-performance@1.0.0";
+  request_id: UUID;
+  provider: ModelProvider;
+  profile_id: UUID;
+  model_id: string;
+  status: "COMPLETED";
+  attempt_count: 1 | 2;
+  duration_ms: number;
+  context_window_tokens: number;
+  reserved_output_tokens: number;
+  usage:
+    | { availability: "AVAILABLE"; source: "PROVIDER_REPORTED"; input_tokens: number;
+        output_tokens: number; total_tokens: number; tool_calls: number; unavailable_reason: null }
+    | { availability: "UNAVAILABLE"; source: "UNAVAILABLE"; input_tokens: null;
+        output_tokens: null; total_tokens: null; tool_calls: null;
+        unavailable_reason: "PROVIDER_DID_NOT_REPORT_USAGE" };
+};
+```
+
+`RunExecutionContext` 将一次可信 `provider.invoke(logical_call_id)` 自动闭合为同 `call_id` 的
+`model.request@1.0.0` START + COMPLETED/FAILED Tool event；COMPLETED 的安全 `output` 是上述严格 JSON。
+
+### 3. Contracts
+
+- Direct dispatcher 必须保留 Provider terminal event 的 exact usage、逻辑调用总耗时与实际 attempt count；
+  `total_tokens === input_tokens + output_tokens`。
+- `request_id/provider/profile_id/model_id` 必须与 logical call 和冻结 Effective Config 完全一致；Run context 在发布前
+  再次校验。投影 schema/identity 不一致时关闭 Tool 为失败，不释放为成功性能记录。
+- 公开 output 禁止 messages、prompt、response text、reasoning、tool arguments、header、credential、URL/connection。
+- Provider 未报告 usage 时所有 count 固定为 `null`；禁止用 `0`、字符数或 token upper bound 冒充实际 usage。
+- 内部一次明确重试仍是同一个逻辑 Request，以 `attempt_count=2` 表达；不得伪造两条公共 Request。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 结果 |
+| --- | --- |
+| Request/provider/profile/model 换绑 | `MODEL_REQUEST_PERFORMANCE_IDENTITY_MISMATCH` + `model.request` FAILED |
+| 性能 schema/token closure 非法 | `MODEL_REQUEST_PERFORMANCE_INVALID` + `model.request` FAILED |
+| Provider usage 缺失 | COMPLETED + explicit `UNAVAILABLE`，counts 全 null |
+| Provider 调用失败 | `model.request` FAILED，保留公开 error code/duration，不伪造 usage |
+| prompt/response/credential 进入 display string | 写前脱敏或 strict contract 拒绝 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：Provider 报告 162k input/1k output，Run event 保存同 Profile 的 exact 163k total 与耗时。
+- Base：Provider 未报告 usage，Request 仍显示模型/状态/耗时，Composer 不显示 context occupancy。
+- Bad：查询历史 Usage 表作为当前生产 truth，或以消息字符数估算 62%。
+
+### 6. Tests Required
+
+- Contracts：unknown/private field、token total mismatch、AVAILABLE/UNAVAILABLE truth table。
+- Worker：成功/失败 Tool closure、identity mismatch、exact usage、一次重试 attempt count、无 prompt/response。
+- Web：strict JSON + call identity parse；坏 JSON/换绑被忽略，不能驱动 Request 或 ContextMeter。
+
+### 7. Wrong vs Correct
+
+```ts
+// Wrong: heuristic and transient-only.
+const used = messages.map((message) => message.content.length / 4).reduce(sum, 0);
+
+// Correct: exact Provider usage carried by the durable public Tool terminal.
+const performance = modelRequestPerformanceSchema.parse(JSON.parse(tool.payload.output));
+if (performance.request_id !== tool.payload.call_id) return null;
+```
+
 ## 场景：Semantic Authoring 独立公开轨迹
 
 ### 1. Scope / Trigger

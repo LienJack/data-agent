@@ -5,6 +5,12 @@ boundary, durable replay + live merge, and Inspector concession layout in this d
 from DeepSeek Harness at fixed commit
 `47f943859bef60e4160492346772ded9b24f765a`.
 
+The 2026-08-23 trajectory increment additionally adapts the reference `TrajectoryView`/`TrajectoryTable` Turn
+disclosure and Request summary organization, plus `ContextMeter` trigger/popover, exact-capacity gating, outside-click
+and Escape interactions. Data Agent replaces Harness session/request state with durable public Run events, exposes no
+prompt or response body, and only renders context occupancy when the Provider reports exact input tokens for the
+currently selected model profile.
+
 MIT License
 
 Copyright (c) 2026 DeepSeek
@@ -29,4 +35,5 @@ SOFTWARE.
 
 The Apple-style glass tokens, CSS fallbacks, Q&A surface mapping, motion CSS, and Data Agent visual treatment are
 original Data Agent presentation work. They do not copy Apple, Codex, Reasonix, or DeepSeek Harness source and do not
-expand this modified-source notice beyond the adapted conversation and Inspector behavior identified above.
+expand this modified-source notice beyond the adapted conversation, trajectory, context meter, and Inspector behavior
+identified above.

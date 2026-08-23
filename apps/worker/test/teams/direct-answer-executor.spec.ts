@@ -96,11 +96,32 @@ describe("DIRECT answer executor", () => {
       }
     ).context_receipt;
     const displayEvents: unknown[] = [];
-    const dispatch = vi.fn(async () => ({
+    const dispatch = vi.fn(async (request: { logical_call_id: string }) => ({
       ok: true as const,
       value: {
         output_text: JSON.stringify({ answer: "同比用于比较本期与上年同期。" }),
         tool_calls: [],
+        request_performance: {
+          schema_version: "model-request-performance@1.0.0" as const,
+          request_id: request.logical_call_id,
+          provider: "deepseek" as const,
+          profile_id: config.model.resource_id,
+          model_id: config.model.model_id,
+          status: "COMPLETED" as const,
+          attempt_count: 1,
+          duration_ms: 25,
+          context_window_tokens: config.context_policy.max_context_tokens,
+          reserved_output_tokens: 2_048,
+          usage: {
+            availability: "AVAILABLE" as const,
+            source: "PROVIDER_REPORTED" as const,
+            input_tokens: 16_200,
+            output_tokens: 100,
+            total_tokens: 16_300,
+            tool_calls: 0,
+            unavailable_reason: null,
+          },
+        },
         projection: { status: "COMPLETED" as const },
       },
     }));
@@ -136,8 +157,20 @@ describe("DIRECT answer executor", () => {
     expect(dispatch).toHaveBeenCalledOnce();
     expect(displayEvents).toEqual([
       expect.objectContaining({ kind: "reasoning_started" }),
+      expect.objectContaining({
+        kind: "tool_started",
+        tool_name: "model.request@1.0.0",
+      }),
+      expect.objectContaining({
+        kind: "tool_completed",
+        tool_name: "model.request@1.0.0",
+        output: expect.stringContaining('"schema_version":"model-request-performance@1.0.0"'),
+      }),
       expect.objectContaining({ kind: "reasoning_completed" }),
       expect.objectContaining({ kind: "answer_delta", delta: "同比用于比较本期与上年同期。" }),
     ]);
+    expect(JSON.parse((displayEvents[2] as { output: string }).output)).toMatchObject({
+      usage: { input_tokens: 16_200, output_tokens: 100, total_tokens: 16_300 },
+    });
   });
 });

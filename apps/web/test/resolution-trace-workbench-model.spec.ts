@@ -1,6 +1,7 @@
 import { buildResolutionTrace } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
+  buildConversationResolutionTraceWorkbenchModel,
   buildResolutionTraceWorkbenchModel,
   projectTimelineRecords,
   resolveResolutionTraceRefresh,
@@ -10,6 +11,46 @@ const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStar
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 describe("Resolution Trace workbench model", () => {
+  it("keeps all conversation Runs in deterministic Turn order", async () => {
+    const buildTurn = (runSuffix: number, eventSuffix: number, second: number) =>
+      buildResolutionTrace({
+        schema_version: "resolution-trace@1.0.0",
+        scope,
+        run_id: id(runSuffix),
+        conversation_id: id(4),
+        config_ref: null,
+        nodes: [
+          {
+            node_id: `event:${id(eventSuffix)}`,
+            kind: "LIFECYCLE" as const,
+            source_event_id: id(eventSuffix),
+            sequence: 1,
+            occurred_at: new Date(Date.UTC(2026, 7, 23, 0, 0, second)).toISOString(),
+            status: "RUNNING" as const,
+            title: `Run ${runSuffix}`,
+            summary: "公开摘要",
+            duration_ms: null,
+            artifact_refs: [],
+          },
+        ],
+        edges: [],
+      });
+    const first = await buildTurn(30, 40, 1);
+    const second = await buildTurn(31, 41, 2);
+    const model = buildConversationResolutionTraceWorkbenchModel([first, second]);
+    expect(
+      model.records.map(({ run_id, turn_index, sequence_position }) => ({
+        run_id,
+        turn_index,
+        sequence_position,
+      })),
+    ).toEqual([
+      { run_id: id(30), turn_index: 0, sequence_position: 1 },
+      { run_id: id(31), turn_index: 1, sequence_position: 2 },
+    ]);
+    expect(model.search("turn 2").map(({ run_id }) => run_id)).toEqual([id(31)]);
+  });
+
   it("preserves historical focus on same-Run append and follows only an existing tail", () => {
     expect(
       resolveResolutionTraceRefresh({

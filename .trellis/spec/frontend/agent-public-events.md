@@ -78,6 +78,14 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Resolution Trace Workbench 使用同一个 `selectedNodeId` 驱动四泳道时间轴、sequence 列表与五页签
   Inspector。10,000 节点列表只渲染可视窗口；时间轴按泳道有界采样，但必须优先保留当前选择、搜索命中和
   FAILED/WAITING/BLOCKED/INTERRUPTED 等异常记录，并明确提示时间轴已聚合、列表仍保留全部记录。
+- Conversation Trajectory 必须覆盖当前对话的全部 Run，并按各 Run 最早 `occurred_at` 形成 Turn；Turn header
+  显示状态、公开终态摘要、节点/调用/耗时和 Request 数。旧 Turn 默认可折叠，但搜索命中、时间轴选择或 URL focus
+  必须自动显示其记录；折叠不能删除模型、搜索数据或 Inspector identity。
+- `model.request@1.0.0` terminal output 只有通过 `modelRequestPerformanceSchema` 且 `request_id === call_id` 才可
+  显示 Request/模型性能。模型 Profile、token unavailable 与 TTFT/decoding 未记录必须如实标示，不得估算。
+- Composer ContextMeter 只消费当前 Conversation 所选 `modelProfileId` 的最近 exact AVAILABLE usage；占用使用
+  Provider `input_tokens`。Profile 切换、capacity/usage 缺失时隐藏并关闭 popover，不沿用旧模型数据。trigger 必须
+  暴露百分比/expanded，popover 支持 outside click 与 Escape；说明不含当前未发送草稿。
 - Inspector 采用内容优先顺序：公开名称/问题/输入/结果/决策在前，ID/revision/hash 收进“身份与来源”。
   Tool/Agent 详情只能按同一 Run 内 exact event identity 聚合；Artifact/SQL/Schema 内容必须通过 exact
   `ArtifactReference` 进入现有 `ArtifactPreviewPanel`，不得按 ID 查 latest 或直接读取 raw document。
@@ -144,6 +152,10 @@ identity、replay/cursor/terminal 和 Inspector addressing；未来 surface 可�
 - Contracts: strict reasoning schema rejects private fields; Journey Evidence verifies stable hash and required closure.
 - Worker/Semantic: every Agent turn emits ordered START/DELTA/END public summaries and never copies provider reasoning.
 - Web: replay grouping is deterministic; reasoning/tool controls start collapsed and expose keyboard semantics.
+- Web: scrambled replay/UUID 仍按最早事件形成 Turn；Turn 折叠、搜索自动展开、cross-Run Inspector 路由和 Request
+  disclosure 均有断言。
+- Web: ContextMeter 覆盖 exact 62%、100% clamp、Profile mismatch、usage unavailable、capacity disappearance、
+  outside click 与 Escape；不得出现启发式 token。
 - Web: Inspector target schema/URL restore, baseline + SSE merge, stale target, cross-Run cleanup and focus return.
 - Web/API: Artifact Preview exact Workspace/scope/run/revision/hash, unsupported/denied/hash mismatch and no raw fallback.
 - Web: Chinese/English switching changes display text without pathname/query/hash or Workspace Store mutation.
