@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   type AnalysisProgramPayload,
   type ArtifactReference,
@@ -216,6 +217,9 @@ describe("DeepSeek governed Python source", () => {
       standard_program: null,
     });
     expect(result.source_text_ref.artifact_type).toBe("SensitiveExecutionArtifact");
+    expect(result.source_text_ref.content_hash).toBe(
+      `sha256:${createHash("sha256").update(result.source_text, "utf8").digest("hex")}`,
+    );
     expect(requests).toHaveLength(1);
     expect(requests[0]).toMatchObject({
       provider: "deepseek",

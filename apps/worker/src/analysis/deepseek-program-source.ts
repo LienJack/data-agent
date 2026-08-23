@@ -1,9 +1,9 @@
+import { createHash } from "node:crypto";
 import {
   type AnalysisProgramPayload,
   type ArtifactReference,
   artifactReferenceFor,
   type SemanticContextPackage,
-  sha256ContentHash,
   verifySemanticContextPackage,
 } from "@data-agent/contracts";
 import { z } from "zod";
@@ -14,6 +14,10 @@ const DEEPSEEK_PROVIDER = "deepseek" as const;
 const DEEPSEEK_PYTHON_MODEL = "deepseek-v4-flash" as const;
 const RESPONSE_SCHEMA_VERSION = "analysis-python-source@1.0.0" as const;
 const MAX_GENERATED_SOURCE_BYTES = 100_000;
+
+function sha256SourceText(sourceText: string): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(sourceText, "utf8").digest("hex")}`;
+}
 
 type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
 
@@ -221,7 +225,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
     if (Buffer.byteLength(options.source_text, "utf8") > MAX_GENERATED_SOURCE_BYTES) {
       throw new TypeError("ANALYSIS_PYTHON_SOURCE_TOO_LARGE");
     }
-    const sourceHash = await sha256ContentHash(options.source_text);
+    const sourceHash = sha256SourceText(options.source_text);
     const reference = await input.artifacts.commit({
       lease: options.lease,
       analysis_program: options.analysis_program,
@@ -323,5 +327,6 @@ export const deepSeekAnalysisProgramSourceInternals = Object.freeze({
   provider: DEEPSEEK_PROVIDER,
   model_id: DEEPSEEK_PYTHON_MODEL,
   response_schema_version: RESPONSE_SCHEMA_VERSION,
+  sha256SourceText,
   scrubFailureCode,
 });
