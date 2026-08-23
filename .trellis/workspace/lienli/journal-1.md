@@ -1165,3 +1165,25 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 50: 完成语义 V2-only 与计费退役重构
+
+**Date**: 2026-08-23
+**Task**: 完成语义 V2-only 与计费退役重构
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+完成 U1-U8 总体验收与归档；修复 current config authority 和可选资源绑定分派；全量 SQL、单元、契约、集成、架构及发布门禁通过，Semantic 仅保留 V2，商业计费已退役且无兼容层。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `aca91b0` | (see git log) |
+| `b80986e` | (see git log) |
+
+### Status
+
+[OK] **Completed**
