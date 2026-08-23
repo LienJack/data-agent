@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 43
+- **Total Sessions**: 44
 - **Last Active**: 2026-08-23
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1010 | Active |
+| `journal-1.md` | ~1048 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 44 | 2026-08-23 | U8 语义 UI 清理与 V2-only 前端收口 | `858446e`, `771b335` | `refactor/semantic-v2-billing-retirement` |
 | 43 | 2026-08-23 | U7 统一语义应用与生产组合根 | `f606472` | `refactor/semantic-v2-billing-retirement` |
 | 42 | 2026-08-23 | U6 Semantic V2-only Runtime | `c69712b` | `refactor/semantic-v2-billing-retirement` |
 | 41 | 2026-08-23 | U5 商业权威退役与历史数据冻结 | `c041c21` | `refactor/semantic-v2-billing-retirement` |

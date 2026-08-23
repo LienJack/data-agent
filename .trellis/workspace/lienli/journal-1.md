@@ -1008,3 +1008,41 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 44: U8 语义 UI 清理与 V2-only 前端收口
+
+**Date**: 2026-08-23
+**Task**: U8 语义 UI 清理与 V2-only 前端收口
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+删除遗留 Semantic/Data Link 入口和客户端权威状态，将 Studio/Explorer 收口为显式 Workspace V2 路径。
+
+### Main Changes
+
+- 删除全局 Semantic、Data Link、物理 schema、mock auth 与旧 store/redirect
+- 以 reducer 管理 Studio Workspace、SSE、selection、draft、save conflict 与发布生命周期
+- Explorer 改为显式 workspace API 身份并向只读角色开放
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `858446e` | (see git log) |
+| `771b335` | (see git log) |
+
+### Testing
+
+- [OK] Web unit 419 passed / 1 skipped，typecheck 与 production build 通过
+- [OK] Semantic unit 132 passed，contracts/platform/worker 定向验证通过
+- [OK] 390px 浏览器预览无横向溢出，旧 URL 默认 404
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 按 TIS 定向方案创建 V2-only 词汇解析与绑定影响任务
