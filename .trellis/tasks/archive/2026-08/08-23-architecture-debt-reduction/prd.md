@@ -16,14 +16,14 @@
 
 ## Acceptance Criteria
 
-- [ ] 七个子任务按指定顺序完成、验证并提交。
-- [ ] 新增兼容面、Contracts 根导入和 Platform 根导入均有机器可检查的增量门禁。
-- [ ] 通用迁移渲染器覆盖常规渲染路径，独立渲染脚本只保留确有自定义变换的例外。
-- [ ] Q&A Route/Store 不再独占完整用例编排与 SSE 状态机职责。
-- [ ] 旧环境变量别名只在唯一 Runtime Config 边界归一化。
-- [ ] 电商销售意图、SQL 与呈现逻辑不再属于通用 Worker/Platform 核心职责。
-- [ ] 受影响包的 build、typecheck、unit/contract/architecture tests 通过；全范围检查无未解释回归。
-- [ ] 隔离分支合并回 `dev` 后，主工作树原有未提交路径得到恢复和逐路径比对。
+- [x] 七个子任务按指定顺序完成、验证并提交。
+- [x] 新增兼容面、Contracts 根导入和 Platform 根导入均有机器可检查的增量门禁。
+- [x] 通用迁移渲染器覆盖常规渲染路径，独立渲染脚本只保留确有自定义变换的例外。
+- [x] Q&A Route/Store 不再独占完整用例编排与 SSE 状态机职责。
+- [x] 旧环境变量别名只在唯一 Runtime Config 边界归一化。
+- [x] 电商销售意图、SQL 与呈现逻辑不再属于通用 Worker/Platform 核心职责。
+- [x] 受影响包的 build、typecheck、unit/contract/architecture tests 通过；全范围检查无未解释回归。
+- [x] 隔离分支合并回 `dev` 后，主工作树原有未提交路径得到恢复和逐路径比对。
 
 ## Notes
 
