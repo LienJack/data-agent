@@ -2,11 +2,43 @@
 title: "refactor: 语义层单一当前代重构与计费退役"
 type: refactor
 date: 2026-08-22
-status: active
+status: completed
 deepened: 2026-08-23
 ---
 
 # refactor: 语义层单一当前代重构与计费退役
+
+## Completion Evidence
+
+计划于 2026-08-23 完成。U1–U8 均以独立实施提交交付并归档：`1ebaba6`、`c84f85e`、`965b451`、
+`7806ea7`、`c041c21`、`c69712b`、`f606472`、`858446e`。最终 catalog 以 `10703` 退役商业 Authority、
+`10704` 确立 Semantic V2-only；后续 `10705`–`10707` 分别补齐当前词汇解析、语义绑定影响与严格的可选资源
+绑定分派。这些迁移只面向当前代数据与合同，不迁移、解析或恢复 V1。
+
+R1–R16 已逐项由架构护栏、受控 exports、Candidate/Publish Authority、PostgreSQL smoke 与 forbidden surface
+ledger 覆盖。最终验证通过 lint、typecheck、全量 unit/contract、Platform/Web/Worker integration、53 组 PostgreSQL
+断言和生产构建；`pnpm verify:release` 返回 `GO / RELEASE_READY`。最终扫描未发现生产 V1 投影、双读写、旧 route、
+compatibility adapter 或商业计费 surface；Relationship Index 的显式 PostgreSQL Authority 降级继续以 reason code
+保留，它不解析旧合同，因此不构成兼容层。
+
+| Requirement | Final evidence |
+|---|---|
+| R1 | V2 bundle、Ontology、Formula AST、dimension/metric/physical binding 与一等 relationship 合同及编译测试通过。 |
+| R2 | Candidate application port 与 Governance publish port 分离；越权 publish characterization fail closed。 |
+| R3 | `10704`、semantic repository 与全量 PostgreSQL smoke 证明 PostgreSQL Authority；索引仍为可重建投影。 |
+| R4 | Semantic package dependency guard 通过，仅依赖 contracts/纯库，应用用例从 Web 下沉。 |
+| R5 | Platform surface guard 与 Web/Worker integration 证明 Adapter/组合/传输边界。 |
+| R6 | Semantic authoring/governance/read/runtime/relationship 受控 subpath exports 与唯一 V2 bundle 生效。 |
+| R7 | `semantic-source-bundle@2` 为唯一 runtime bundle；V1 schema/projection/fixture/data cleanup 由 `10704` 验证。 |
+| R8 | 生产 route 使用显式 Workspace/request composition；缺依赖 fail closed，无 global/mock getter。 |
+| R9 | Legacy Semantic/Data Link 页面、store、mock auth、redirect 与 Workspace Data Link route 已删除。 |
+| R10 | commercial surface ledger 全部为 `REMOVED` 或历史 `ARCHIVED`，运行时无金额门禁。 |
+| R11 | Model Control、认证、技术 readiness 与非商业 Provider Invocation receipt 的正向测试通过。 |
+| R12 | `UNBILLABLE` 与 price/fx/billing admission 已删除；模型只按技术和认证状态决策。 |
+| R13 | `10703` 冻结商业历史对象并撤销 mutation 权限，历史 digest 断言通过。 |
+| R14 | 历史 migration 未改写；10703–10707 的 stem、序号、声明与 checksum inventory 全部通过。 |
+| R15 | U1–U8 各自具有 characterization、验证、scoped implementation commit 和归档记录。 |
+| R16 | retirement ledger/forbidden scan 未发现 adapter、re-export、双读写、redirect、tombstone 或兼容 fallback。 |
 
 ## Summary
 
@@ -469,8 +501,8 @@ Credit、Pricing、FX、Bill Settlement 能力。
 
 **Files:**
 
-- `infra/supabase/apps/data-agent/migrations/20260725010700_app_data_agent_billing_retirement.sql`（新增）
-- `scripts/render-10700-migration.ts`（新增，若该仓库的生成模式要求 renderer）
+- `infra/supabase/apps/data-agent/migrations/20260725010703_app_data_agent_billing_retirement.sql`（新增）
+- `scripts/render-10703-migration.ts`（新增，若该仓库的生成模式要求 renderer）
 - `infra/supabase/apps/data-agent/migration-sources/`（按现有生成模式新增源文件）
 - `scripts/local-dev-runtime.ts`
 - `scripts/run-postgres-smoke.sh`
@@ -499,9 +531,9 @@ Credit、Pricing、FX、Bill Settlement 能力。
 
 **Test scenarios:**
 
-1. Fresh PostgreSQL 从零应用到 `10700` 后，模型目录、Provider Invocation、Semantic Studio/Explorer 所需 RPC 可用，
+1. Fresh PostgreSQL 从零应用到 `10703` 后，模型目录、Provider Invocation、Semantic Studio/Explorer 所需 RPC 可用，
    不需要 billing tables 参与运行时判断。
-2. 从包含历史账单/积分/hold 的升级数据库应用 `10700` 后，历史 row count/digest 保持，应用角色不能新增或修改记录。
+2. 从包含历史账单/积分/hold 的升级数据库应用 `10703` 后，历史 row count/digest 保持，应用角色不能新增或修改记录。
 3. 旧 billing mutation function/RPC 在最终 catalog 中不存在；应用角色无法调用，也不产生账本、hold、账单或审计
    新增行。
 4. Migration ledger 校验完整 stem/checksum；编号重复、manifest 缺 frontier 或 migration 源与渲染结果漂移时失败。
@@ -513,7 +545,7 @@ Credit、Pricing、FX、Bill Settlement 能力。
 
 **Goals / requirements:** 实现 R1、R2、R3、R6、R7、R16，为后续移动用例建立稳定接口。
 
-**Dependencies:** U1、U5。合同和消费者改写可与 U2–U5 并行开发，但 V2-only 数据库清理迁移在 `10700` 之后落地。
+**Dependencies:** U1、U5。合同和消费者改写可与 U2–U5 并行开发，但 V2-only 数据库清理迁移在 `10703` 之后落地。
 
 **Files:**
 
@@ -537,8 +569,8 @@ Credit、Pricing、FX、Bill Settlement 能力。
 - `packages/semantic/src/graph-v2/validator.ts`
 - `packages/semantic/src/index.ts`
 - `packages/semantic/package.json`
-- `infra/supabase/apps/data-agent/migrations/20260725010701_app_data_agent_semantic_v2_only.sql`（新增）
-- `scripts/render-10701-migration.ts`（新增，若该仓库的生成模式要求 renderer）
+- `infra/supabase/apps/data-agent/migrations/20260725010704_app_data_agent_semantic_v2_only.sql`（新增）
+- `scripts/render-10704-migration.ts`（新增，若该仓库的生成模式要求 renderer）
 - `infra/supabase/apps/data-agent/migration-sources/`（按现有生成模式新增 V2-only 清理源）
 - `infra/supabase/test-support/54-semantic-v2-only-assertions.sql`（新增）
 - `infra/supabase/test-support/run-postgres-smoke.sh`
@@ -574,7 +606,7 @@ Credit、Pricing、FX、Bill Settlement 能力。
 - 从当前 control-plane/governance request 中删除 legacy status、equivalence attempt/mirror/receipt、closure
   authorization、`conditional_legacy_plan`、`committed_legacy_attempt_ref` 及其仓储/SQL/测试消费者；V2 治理状态机
   只表达 Candidate、Review、Revision、Release 和必要恢复语义，不把旧链路信息换名后塞回扩展字段。
-- 用 `10701` forward migration 显式 DROP V1-only function/view/table/column/type 与相关 grant/trigger；不复制、不转换、
+- 用 `10704` forward migration 显式 DROP V1-only function/view/table/column/type 与相关 grant/trigger；不复制、不转换、
   不归档 V1 rows。迁移必须先断言 app/environment 属于本绿地项目，并记录删除对象清单，避免作用于错误数据库。
 - 为 `@data-agent/semantic/authoring`、`/governance`、`/read-model`、`/runtime-context`、`/relationship-index` 建立受控
   V2 exports；消费者切换后立即收窄根入口，不设置兼容窗口。
@@ -588,8 +620,8 @@ Credit、Pricing、FX、Bill Settlement 能力。
    不生成默认值，也不投影到 V1。
 4. V2 runtime content 通过 U5/formula/contribution/relationship/runtime-auth compiler 时保留 analysis metadata，并得到
    与 V2 content digest 绑定的确定结果。
-5. Fresh PostgreSQL 应用完整历史迁移和 `10701` 后，最终 catalog 中不存在 V1-only object/grant/trigger，V2 主链可用。
-6. 带 V1 fixture rows 的绿地测试库执行 `10701` 后，V1 objects/rows 被删除且没有产生 V2 backfill；scope 断言不匹配时
+5. Fresh PostgreSQL 应用完整历史迁移和 `10704` 后，最终 catalog 中不存在 V1-only object/grant/trigger，V2 主链可用。
+6. 带 V1 fixture rows 的绿地测试库执行 `10704` 后，V1 objects/rows 被删除且没有产生 V2 backfill；scope 断言不匹配时
    migration fail closed。
 7. 新 Candidate 不能调用 publish port；只有 Governance command 在授权后产生 Revision/Release。
 8. Authoring Source 投影到 Explorer/Runtime/Relationship Index 时保持业务对象类型和一等关系，不丢失 formula、grain、
@@ -751,7 +783,7 @@ flowchart TB
   loading state、client cache 和 route tests。
 - **Worker:** 语义 authoring/induction/relationship jobs 保留；pricing sync 与 legacy billing gate 删除；Provider
   Invocation receipt 保留且不得引入金额字段。
-- **Database:** `10700` 先让运行时不再读取计费状态并冻结旧写入，`10701` 再直接清理 V1-only Semantic 对象和数据。
+- **Database:** `10703` 先让运行时不再读取计费状态并冻结旧写入，`10704` 再直接清理 V1-only Semantic 对象和数据。
   单元发布顺序错误会造成新代码访问旧函数或旧代码继续写入，因此必须在合入/部署前完成消费者扫描、drain 与
   Go/No-Go 查询；不通过部署交叠窗口维持双版本服务。
 - **Search projection:** Neo4j/relationship index 可按 Published Release 重建，重构期间不得把其 digest 与 Source
@@ -768,7 +800,7 @@ flowchart TB
    不存在 handler、redirect 或 tombstone。
 4. **Database retirement phase:** 交付 U5，先应用 forward migration，再部署只使用非计费路径的最终代码；验证零新增
    billing rows 和历史 digest 不变。
-5. **Semantic boundary phase:** U6 的合同/消费者改写可提前并行，但 `10701` 在 `10700` 后落地；U7 在 V2-only 合同稳定后
+5. **Semantic boundary phase:** U6 的合同/消费者改写可提前并行，但 `10704` 在 `10703` 后落地；U7 在 V2-only 合同稳定后
    迁移用例，U8 最后删除旧入口和拆 UI。
 6. **Exit gate:** U6 在同一单元完成 V2 消费者切换与 V1 删除；U7/U8 原子删除重复 runtime、API 与页面。不存在
    compatibility export、双读观察期、旧 payload 写入、redirect、tombstone 或 compatibility/composition fallback。
@@ -799,7 +831,7 @@ flowchart TB
   切换调用方；仓库外旧客户端不构成本项目恢复兼容层的理由。
 - U5 不提供自动 reverse migration。回滚应用版本时，旧计费写路径因权限已撤销会 fail closed；需要恢复写权限属于新的
   明确审批操作。
-- U6/U7 与 `10701` 不提供 V1 rollback。回滚以完整单元提交和重新创建干净 V2 数据库为边界；不回填或恢复 V1
+- U6/U7 与 `10704` 不提供 V1 rollback。回滚以完整单元提交和重新创建干净 V2 数据库为边界；不回填或恢复 V1
   对象与数据。
 - U8 UI 回滚只能恢复 Workspace route 上的前一版当前组件；不恢复 legacy route、redirect、authority 或 mock auth。
 
@@ -809,7 +841,7 @@ flowchart TB
 |---|---|---|
 | 把模型控制误当计费删除 | Provider/语义候选/Q&A 全部不可用 | U2 先拆 Model Control，U3 以无价格数据的正向用例作为硬门槛 |
 | V2 消费者仍暗中依赖 V1 投影 | 删除 V1 后编译或运行失败 | U6 先列出并改写全部 V1 import/call site，再用 forbidden scan 和干净 V2 全链验证 |
-| V2-only 清理运行在错误数据库 | 不可恢复地删除不在本计划范围内的数据 | `10701` 先校验 app/environment/greenfield marker 与对象 inventory，不匹配即 fail closed |
+| V2-only 清理运行在错误数据库 | 不可恢复地删除不在本计划范围内的数据 | `10704` 先校验 app/environment/greenfield marker 与对象 inventory，不匹配即 fail closed |
 | 大规模移动导致循环依赖 | 构建失败或 Apps/Platform 反向进入领域层 | U1 architecture guard；Semantic 只依赖 contracts Port |
 | 隐式 runtime fallback 被误用 | 测试通过而生产使用错误 Authority | 生产 composition 必须显式；缺依赖 fail closed；mock 只通过 test injection |
 | Billing DB 仍被旧进程写入 | 退役后继续产生账单/积分状态 | 部署前 drain 旧 Worker，U5 revoke mutation grants，并验证 row count/digest |
@@ -828,14 +860,14 @@ flowchart TB
 - 零兼容原则覆盖语义直接耦合的 Model Control/Billing/Route/Runtime：不保留 adapter、re-export、dual read/write、
   compatibility/composition fallback、redirect 或 410 tombstone，消费者在所属实施单元同步切换；显式 Authority
   韧性降级不属于版本兼容层。
-- 历史 migration 文件不重写；`10701` 负责让最终数据库状态 V2-only，并直接删除 V1-only 对象和 rows。
+- 历史 migration 文件不重写；`10704` 负责让最终数据库状态 V2-only，并直接删除 V1-only 对象和 rows。
 - 语义层不是压成一个 Package/文件；重构重点是生命周期、依赖和公共面的清晰，而不是减少概念数量。
-- 已应用 migration 不改名；新迁移从 `10700` 起恢复唯一数字序号并加自动校验。
+- 已应用 migration 不改名；新迁移从 `10703` 起恢复唯一数字序号并加自动校验。
 - 现有 Workspace Semantic Studio/Explorer 是唯一未来入口；旧 `/semantic`、`/data-link` 页面及其重定向直接删除。
 
 ## Deferred to Implementation
 
-- U5 根据现有 migration renderer 约定决定 `10700` 是否拆分源文件；最终 SQL 文件名、ledger declaration 和 checksum
+- U5 根据现有 migration renderer 约定决定 `10703` 是否拆分源文件；最终 SQL 文件名、ledger declaration 和 checksum
   必须一致。
 - UI 大组件拆分的具体 panel 粒度由 characterization tests 和交互职责决定，不预设组件数量或引入新框架。
 

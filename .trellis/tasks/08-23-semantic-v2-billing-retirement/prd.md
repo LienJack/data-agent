@@ -23,13 +23,28 @@ PostgreSQL Authority 主路径可用。
 
 ## Acceptance Criteria
 
-- [ ] U1–U8 八个子任务全部通过各自验收并归档，每个子任务至少一个 scoped commit。
-- [ ] 生产代码不存在 Semantic V1、V2→V1 投影、Billing/Pricing/Credit/FX/Settlement surface 或旧路由兼容层。
-- [ ] Model Control、Provider 直连、Q&A、Test Center、Semantic Candidate/Authoring 在无价格/账务数据下可用。
-- [ ] V2 Candidate → Review → Release → Explorer/Resolved Context/Relationship Index 全链通过，Candidate 无法越权发布。
-- [ ] `10700`/`10701` forward migration、静态 inventory 和 PostgreSQL smoke 证明账务只读与 V2-only 最终 catalog。
-- [ ] lint、typecheck、相关 unit/contract/integration、Web production build、SQL static check 与最终全量门禁通过。
-- [ ] 计划状态改为 completed，最终范围审计逐项覆盖 R1–R16，无未处理 blocker 或兼容残留。
+- [x] U1–U8 八个子任务全部通过各自验收并归档，每个子任务至少一个 scoped commit。
+- [x] 生产代码不存在 Semantic Source Bundle V1、V2→V1 投影、商业 Billing/Pricing/Credit/FX/Settlement surface
+  或旧路由兼容层；独立的 Provider Invocation 技术对账不属于商业计费。
+- [x] Model Control、Provider 直连、Q&A、Test Center、Semantic Candidate/Authoring 在无价格/账务数据下可用。
+- [x] V2 Candidate → Review → Release → Explorer/Resolved Context/Relationship Index 全链通过，Candidate 无法越权发布。
+- [x] `10703`/`10704` forward migration、静态 inventory 和 PostgreSQL smoke 证明账务只读与 V2-only 最终 catalog；
+  `10705`–`10707` 继续收紧词汇解析、绑定影响与可选资源绑定。
+- [x] lint、typecheck、相关 unit/contract/integration、Web production build、SQL static check 与最终全量门禁通过。
+- [x] 计划状态改为 completed，最终范围审计逐项覆盖 R1–R16，无未处理 blocker 或兼容残留。
+
+## Final Evidence
+
+- 实施提交：U1 `1ebaba6`、U2 `c84f85e`、U3 `965b451`、U4 `7806ea7`、U5 `c041c21`、
+  U6 `c69712b`、U7 `f606472`、U8 `858446e`；八个子任务均位于 `.trellis/tasks/archive/2026-08/`。
+- 最终可靠性修复：`aca91b0` 恢复 effective config authority、resume payload 与 FILE/KNOWLEDGE/MCP/SKILL
+  严格资源分派，不解析旧合同，也不增加兼容入口。
+- 验证：`pnpm lint`、`pnpm typecheck`、`pnpm test:unit --concurrency=1`、
+  `pnpm test:contract --concurrency=1`、`pnpm test:integration --filter @data-agent/platform`、
+  `infra/supabase/test-support/run-postgres-smoke.sh` 与 `pnpm verify:release` 全部通过；最终发布判定为
+  `GO / RELEASE_READY`。
+- 范围扫描仅命中 retirement ledger 对禁用兼容模式的规则本身；生产实现未发现 V1 投影、双读写、旧路由或
+  commercial surface 残留。
 
 ## Notes
 

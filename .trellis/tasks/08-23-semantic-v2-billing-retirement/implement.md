@@ -2,14 +2,14 @@
 
 ## 执行顺序
 
-- [ ] U1 `08-23-u1-boundary-guards`：护栏、surface ledger、migration inventory。
-- [ ] U2 `08-23-u2-model-control`：提取 Model Control 并切换所有消费者。
-- [ ] U3 `08-23-u3-remove-monetary-gates`：删除金额 readiness 与 `UNBILLABLE`。
-- [ ] U4 `08-23-u4-retire-billing-code`：删除计费合同、代码、Route、Worker 和 UI。
-- [ ] U5 `08-23-u5-billing-db-retirement`：`10700` 与账务只读归档验证。
-- [ ] U6 `08-23-u6-semantic-v2-only`：V2 runtime content/compiler、Ports、`10701`。
-- [ ] U7 `08-23-u7-semantic-application-runtime`：用例下沉、Adapter 拆分、唯一 composition。
-- [ ] U8 `08-23-u8-semantic-ui-cleanup`：UI controller/panel、删除 legacy routes/stores/redirects。
+- [x] U1 `08-23-u1-boundary-guards`：护栏、surface ledger、migration inventory。
+- [x] U2 `08-23-u2-model-control`：提取 Model Control 并切换所有消费者。
+- [x] U3 `08-23-u3-remove-monetary-gates`：删除金额 readiness 与 `UNBILLABLE`。
+- [x] U4 `08-23-u4-retire-billing-code`：删除计费合同、代码、Route、Worker 和 UI。
+- [x] U5 `08-23-u5-billing-db-retirement`：`10703` 与账务只读归档验证。
+- [x] U6 `08-23-u6-semantic-v2-only`：V2 runtime content/compiler、Ports、`10704`。
+- [x] U7 `08-23-u7-semantic-application-runtime`：用例下沉、Adapter 拆分、唯一 composition。
+- [x] U8 `08-23-u8-semantic-ui-cleanup`：UI controller/panel、删除 legacy routes/stores/redirects。
 
 ## 每单元门禁
 
@@ -21,14 +21,15 @@
 
 ## 最终验证
 
-- [ ] `pnpm lint`
-- [ ] `pnpm typecheck`
-- [ ] 相关 package unit/contract/integration 全量测试（显式排除 `**/.next/**`）
-- [ ] `pnpm --filter @data-agent/web build`
-- [ ] `infra/supabase/test-support/static-check.sh`
-- [ ] `infra/supabase/test-support/run-postgres-smoke.sh`
-- [ ] forbidden scans：V1/V2→V1、Billing/Pricing/Credit/FX/Settlement、旧 route/runtime compatibility 均为 0
-- [ ] R1–R16 证据矩阵、代码审查与计划 `status: completed`
+- [x] `pnpm lint`
+- [x] `pnpm typecheck`
+- [x] 相关 package unit/contract/integration 全量测试（显式排除 `**/.next/**`）
+- [x] `pnpm --filter @data-agent/web build`（由 `pnpm verify:release` 强制执行）
+- [x] `infra/supabase/test-support/static-check.sh`
+- [x] `infra/supabase/test-support/run-postgres-smoke.sh`
+- [x] forbidden scans：Semantic Source Bundle V1/V2→V1、商业 Billing/Pricing/Credit/FX/Settlement、旧
+  route/runtime compatibility 均为 0
+- [x] R1–R16 证据矩阵、代码审查与计划 `status: completed`
 
 ## 硬阻塞
 

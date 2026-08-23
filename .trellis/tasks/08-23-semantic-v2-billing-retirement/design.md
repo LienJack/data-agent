@@ -29,8 +29,8 @@ Web / Worker composition
 
 1. U1 建立 consumer/surface/migration inventory 和 architecture guards。
 2. U2–U4 切换 Model Control，移除金额门禁和 Billing 代码。
-3. U5 应用 `10700`，撤销/删除计费 mutation，冻结历史表。
-4. U6 应用 V2-only 合同与 `10701`，直接删除 V1-only objects/rows。
+3. U5 应用 `10703`，撤销/删除计费 mutation，冻结历史表。
+4. U6 应用 V2-only 合同与 `10704`，直接删除 V1-only objects/rows。
 5. U7–U8 统一用例/runtime，拆分 UI 并删除旧入口。
 
 每个单元内部可按依赖顺序编辑，但只有旧 surface 已删除、目标测试通过后才创建 scoped commit。
@@ -45,5 +45,5 @@ Web / Worker composition
 ## 回滚
 
 - 未部署单元通过完整 commit 回退，不恢复兼容入口。
-- `10700` 不提供自动 reverse；旧写路径因撤权继续失败关闭。
-- `10701` 不恢复 V1；失败环境以干净 V2 数据库重建。
+- `10703` 不提供自动 reverse；旧写路径因撤权继续失败关闭。
+- `10704` 不恢复 V1；失败环境以干净 V2 数据库重建。
