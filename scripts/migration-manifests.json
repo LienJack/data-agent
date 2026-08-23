@@ -1746,6 +1746,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10729",
+      "migration_name": "20260725010729_app_data_agent_semantic_canonicalizer_exception_projection.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10729",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-canonicalizer-exception-projection.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CANONICALIZER_EXCEPTION_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_canonicalizer_exception_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

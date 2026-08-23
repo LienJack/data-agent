@@ -21,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010728");
+    expect(inventory.frontier).toBe("20260725010729");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -159,6 +159,22 @@ describe("10708 unique semantic lifecycle cutover", () => {
     expect(phases).toContain("SEMANTIC_CONTEXT_RETRIEVAL_EXPANSION_HASH_INPUT_INVALID");
     expect(phases).not.toContain("message=failure_context");
     expect(phases).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
+  });
+
+  it("projects canonicalizer failure classes without raw exception text", () => {
+    const projection = readFileSync(
+      resolve(
+        root,
+        "infra/supabase/apps/data-agent/migration-sources/10729/20-canonicalizer-exception-projection.sql.inc",
+      ),
+      "utf8",
+    );
+
+    expect(projection).toContain("SEMANTIC_CONTEXT_NUMBER_CANONICALIZATION_INVALID");
+    expect(projection).toContain("SEMANTIC_CONTEXT_KEY_CANONICALIZATION_INVALID");
+    expect(projection).toContain("SEMANTIC_CONTEXT_DOCUMENT_CANONICALIZATION_INVALID");
+    expect(projection).not.toContain("message=failure_context");
+    expect(projection).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
   });
 
   it("accepts AnalysisProgram only in the active artifact authority", () => {
