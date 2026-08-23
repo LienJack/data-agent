@@ -3,7 +3,7 @@
   "name": "tis-directed-semantic-refactor",
   "title": "TIS 本体实践定向语义重构",
   "description": "在 V2-only、无兼容层、无旧数据迁移前提下，吸收 TIS 的确定性词汇解析、绑定影响候选与可解释治理门禁。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,
