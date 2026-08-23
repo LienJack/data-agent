@@ -22,7 +22,7 @@
 - [x] TIS 主方案及阶段文档与 V2-only 决策一致，不再出现兼容层、双读、V1 fallback 或数据迁移要求。
 - [x] 发布词汇证据、优先级、歧义、hash、release scope 与 fallback reason 均有 strict typed contract。
 - [x] 当前 resolver 只从精确 Published Release 解析，未发布、跨 workspace/release 与陈旧投影 fail closed。
-- [ ] Drift 能产生确定性、幂等、不可自动发布的 binding impact artifact 与 Candidate 引用。
+- [x] Drift 能产生确定性、幂等、不可自动发布的 binding impact artifact 与 Candidate 引用。
 - [ ] Studio 展示安全证据和治理状态；Explorer 对只读角色可用，API/DOM 不暴露敏感载荷。
 - [ ] Contracts、Semantic、Platform、Web、Falcon/Test Center 与浏览器验收通过，被替代的旧语义路径引用归零。
 

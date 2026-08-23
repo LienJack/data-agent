@@ -16,7 +16,9 @@ export {
 } from "./features.js";
 export {
   type BuildAgentCandidateDraftInput,
+  type BuildSemanticCandidateDraftFromOperationsInput,
   buildAgentSemanticCandidateDraft,
+  buildSemanticCandidateDraftFromOperations,
 } from "./reducer.js";
 export {
   type CandidateProposalValidationIssue,

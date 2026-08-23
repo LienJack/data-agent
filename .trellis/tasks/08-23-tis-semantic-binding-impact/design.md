@@ -81,7 +81,7 @@ Binding dependency graph 由 exact Published Package 决定：
 
 `semantic.commit_semantic_binding_impact` 在同一事务内：
 
-1. 锁定 scope authority fence；
+1. 以 `FOR SHARE` 锁定唯一 active release pointer；Candidate 创建再使用既有 semantic authority fence；
 2. 重新解析 active release、drift 与 exact release package closure，重算 `authority_input_hash`；
 3. 验证 plan canonical hash 与 Candidate draft 对 plan hash/idempotency 的绑定；
 4. 调用现有 `semantic.create_candidate_draft`（若需要）；
@@ -93,12 +93,12 @@ Binding dependency graph 由 exact Published Package 决定：
 
 10706 新增：
 
-- `semantic.semantic_binding_impact_receipts`：完整 App/Tenant/Environment/Domain scope、datasource、drift
+- `app_data_agent.semantic_binding_impact_receipts`：完整 App/Tenant/Environment/Domain scope、datasource、drift
   identity/digest、release identity/digest、authority/plan/receipt hash、可空 Candidate FK、JSON receipt、
   committed_by/at；不可 update/delete。
-- `semantic.load_semantic_binding_impact_authority(...)`：READ capability，返回内部 strict bundle。
-- `semantic.commit_semantic_binding_impact(...)`：WRITE capability，原子 revalidation + Candidate reuse + receipt。
-- `semantic.get_semantic_binding_impact(...)`：READ capability，只返回 safe projection。
+- `app_data_agent.load_semantic_binding_impact_authority(jsonb)`：READ capability，返回内部 strict bundle。
+- `app_data_agent.commit_semantic_binding_impact(jsonb)`：WRITE capability，原子 revalidation + Candidate reuse + receipt。
+- `app_data_agent.get_semantic_binding_impact(jsonb)`：READ capability，只返回 safe projection。
 
 新 RPC 没有版本后缀，因为这是首个且唯一当前实现；后续 shape breaking change 直接 forward replace，不保留
 双函数。Migration 不读取或搬运历史 drift 数据，不自动创建历史 receipts。

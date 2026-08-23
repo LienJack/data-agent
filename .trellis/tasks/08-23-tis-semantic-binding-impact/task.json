@@ -3,7 +3,7 @@
   "name": "tis-semantic-binding-impact",
   "title": "M3 语义绑定影响候选",
   "description": "将不可变 Schema Drift 与精确当前 Published Release 的物理映射关联，生成确定性 binding impact receipt，并复用现有 Candidate 人审链标记受影响对象；不自动重绑或发布。",
-  "status": "planning",
+  "status": "in_progress",
   "dev_type": null,
   "scope": null,
   "package": null,

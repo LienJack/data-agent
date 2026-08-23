@@ -52,24 +52,24 @@
 
 ## Acceptance Criteria
 
-- [ ] AC1. relation/column 删除与类型、可空性、默认/生成规则变化能定位精确直接 mapping，并通过
+- [x] AC1. relation/column 删除与类型、可空性、默认/生成规则变化能定位精确直接 mapping，并通过
   Graph V2、metric binding 与 constraint dependency 得到稳定传递影响。
-- [ ] AC2. FK、PK、unique/check 的删除或变化能生成 join/formula/constraint 的复核建议；多映射、未知
+- [x] AC2. FK、PK、unique/check 的删除或变化能生成 join/formula/constraint 的复核建议；多映射、未知
   lineage 显式进入 `MANUAL_INVESTIGATION`。
-- [ ] AC3. comment、ordinal、index 变化以及新增未绑定 relation/column/constraint 产生可验证 no-op
+- [x] AC3. comment、ordinal、index 变化以及新增未绑定 relation/column/constraint 产生可验证 no-op
   receipt，不创建 Candidate。
-- [ ] AC4. 循环依赖终止；输入乱序、重复依赖和重复运行不改变 plan hash、排序或 Candidate idempotency。
-- [ ] AC5. stale release、release digest mismatch、drift digest mismatch、base/current snapshot mismatch、
+- [x] AC4. 循环依赖终止；输入乱序、重复依赖和重复运行不改变 plan hash、排序或 Candidate idempotency。
+- [x] AC5. stale release、release digest mismatch、drift digest mismatch、base/current snapshot mismatch、
   datasource/scope 越界全部 fail closed，且无 receipt/Candidate 写入。
-- [ ] AC6. review-required plan 与 Candidate 在一个 PostgreSQL 事务内提交；Candidate 为 DRAFT 且只有
+- [x] AC6. review-required plan 与 Candidate 在一个 PostgreSQL 事务内提交；Candidate 为 DRAFT 且只有
   `MARK_STALE` 建议，planner 和 RPC 都不能触发 Submit/Approve/Publish。
-- [ ] AC7. receipt 表不可 update/delete，重复提交返回 `created: false`；同 idempotency key 异 plan 返回
+- [x] AC7. receipt 表不可 update/delete，重复提交返回 `created: false`；同 idempotency key 异 plan 返回
   typed conflict；跨 workspace/datasource 读写被 RLS/capability 拒绝。
-- [ ] AC8. safe projection 可由 impact ref 读取，且敏感字段不在返回契约中；内部 bundle 和公开 projection
+- [x] AC8. safe projection 可由 impact ref 读取，且敏感字段不在返回契约中；内部 bundle 和公开 projection
   使用不同 strict schema。
-- [ ] AC9. Contracts、Semantic、Platform typecheck/unit tests、migration renderer/inventory/static tests 与
+- [x] AC9. Contracts、Semantic、Platform typecheck/unit tests、migration renderer/inventory/static tests 与
   PostgreSQL 17 focused smoke 通过；旧 `binding_impact: UNKNOWN` 事实仍通过既有测试。
-- [ ] AC10. 仓库中不存在新旧 binding-impact runtime 并存、兼容 adapter、fallback、数据迁移或第二套
+- [x] AC10. 仓库中不存在新旧 binding-impact runtime 并存、兼容 adapter、fallback、数据迁移或第二套
   Candidate/Publish 实现。
 
 ## Out of Scope

@@ -17,7 +17,7 @@ describe("10705 current resolved-context lexical authority", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010705");
+    expect(inventory.frontier).toBe("20260725010706");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-published-lexicon.sql.inc",

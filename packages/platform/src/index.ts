@@ -168,6 +168,10 @@ export {
   type PostgresSemanticAuthoringQueueOptions,
 } from "./semantic/postgres-semantic-authoring-queue.js";
 export {
+  createPostgresSemanticBindingImpactStore,
+  type PostgresSemanticBindingImpactStore,
+} from "./semantic/postgres-semantic-binding-impact.js";
+export {
   createPostgresSemanticCandidateCompileStore,
   type PostgresSemanticCandidateCompileStore,
   type SemanticCompileBeginInput,

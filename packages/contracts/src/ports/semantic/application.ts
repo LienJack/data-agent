@@ -3,6 +3,10 @@ import type {
   InboxItem,
   SchemaFeaturePacket,
   SemanticAgentReceipt,
+  SemanticBindingImpactAuthorityBundle,
+  SemanticBindingImpactCommitReceipt,
+  SemanticBindingImpactPlan,
+  SemanticBindingImpactSafeProjection,
   SemanticCandidateCreateResult,
   SemanticCandidateDraft,
   SemanticCandidateRevisionSaveCommand,
@@ -66,6 +70,31 @@ export interface SemanticSchemaSnapshotReadPort {
     capabilityInput: unknown,
     snapshotId: string,
   ): Promise<PortResult<PhysicalSchemaSnapshot>>;
+}
+
+export interface SemanticBindingImpactPort {
+  loadAuthority(
+    capabilityInput: unknown,
+    input: {
+      readonly semantic_domain: string;
+      readonly datasource_id: string;
+      readonly drift_event_id: string;
+    },
+  ): Promise<PortResult<SemanticBindingImpactAuthorityBundle>>;
+  commit(
+    capabilityInput: unknown,
+    input: {
+      readonly plan: SemanticBindingImpactPlan;
+      readonly candidate_draft: SemanticCandidateDraft | null;
+    },
+  ): Promise<PortResult<SemanticBindingImpactCommitReceipt>>;
+  getSafeProjection(
+    capabilityInput: unknown,
+    input: {
+      readonly semantic_domain: string;
+      readonly impact_id: string;
+    },
+  ): Promise<PortResult<SemanticBindingImpactSafeProjection>>;
 }
 
 export interface SemanticExplorerReadPort {

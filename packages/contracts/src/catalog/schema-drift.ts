@@ -172,10 +172,16 @@ export const schemaDriftOperationSchema = z.discriminatedUnion("operation_kind",
   ...namedObjectChangeSchemas,
 ]);
 
+export const schemaDriftDatasourceIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:@/-]{0,127}$/);
+
 export const schemaDriftEventSchema = z.strictObject({
   schema_version: z.literal("schema-drift-event@1.0.0"),
   drift_event_id: immutableIdSchema,
-  datasource_id: z.string().min(1).max(128),
+  datasource_id: schemaDriftDatasourceIdSchema,
   datasource_fingerprint: contentHashSchema,
   base_snapshot_content_hash: contentHashSchema,
   current_snapshot_content_hash: contentHashSchema,

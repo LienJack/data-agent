@@ -44,6 +44,7 @@ export * from "./ontology-package.js";
 export * from "./product-team-artifact.js";
 export * from "./research/index.js";
 export * from "./semantic-authoring-workflow.js";
+export * from "./semantic-binding-impact.js";
 export * from "./semantic-candidate-generation.js";
 export * from "./semantic-control-plane.js";
 export * from "./semantic-explorer.js";

@@ -7,6 +7,78 @@ type ImpactObject = Readonly<{
   next_hash: string;
 }>;
 
+export interface TransitiveDependency {
+  readonly source_object_id: string;
+  readonly dependent_object_id: string;
+}
+
+export interface TransitiveAffectedObject {
+  readonly object_id: string;
+  readonly source_object_ids: readonly string[];
+}
+
+function compareCanonical(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+export function collectTransitiveDependents(
+  input: Readonly<{
+    roots: readonly string[];
+    dependencies: readonly TransitiveDependency[];
+    known_object_ids?: ReadonlySet<string>;
+  }>,
+): readonly TransitiveAffectedObject[] {
+  const roots = [...new Set(input.roots)].sort(compareCanonical);
+  if (roots.length === 0) return [];
+  if (input.known_object_ids) {
+    for (const root of roots) {
+      if (!input.known_object_ids.has(root)) {
+        throw new TypeError("SEMANTIC_IMPACT_ROOT_UNKNOWN");
+      }
+    }
+  }
+
+  const dependents = new Map<string, Set<string>>();
+  for (const dependency of input.dependencies) {
+    if (
+      input.known_object_ids &&
+      (!input.known_object_ids.has(dependency.source_object_id) ||
+        !input.known_object_ids.has(dependency.dependent_object_id))
+    ) {
+      throw new TypeError("SEMANTIC_IMPACT_DEPENDENCY_UNKNOWN");
+    }
+    const values = dependents.get(dependency.source_object_id) ?? new Set<string>();
+    values.add(dependency.dependent_object_id);
+    dependents.set(dependency.source_object_id, values);
+  }
+
+  const sourcesByObject = new Map<string, Set<string>>();
+  const queue: Array<readonly [string, string]> = [];
+  for (const root of roots) {
+    sourcesByObject.set(root, new Set([root]));
+    queue.push([root, root]);
+  }
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (!next) continue;
+    const [objectId, root] = next;
+    for (const dependent of [...(dependents.get(objectId) ?? [])].sort(compareCanonical)) {
+      const sources = sourcesByObject.get(dependent) ?? new Set<string>();
+      if (sources.has(root)) continue;
+      sources.add(root);
+      sourcesByObject.set(dependent, sources);
+      queue.push([dependent, root]);
+    }
+  }
+
+  return [...sourcesByObject.entries()]
+    .map(([object_id, sourceIds]) => ({
+      object_id,
+      source_object_ids: [...sourceIds].sort(compareCanonical),
+    }))
+    .sort((left, right) => compareCanonical(left.object_id, right.object_id));
+}
+
 export async function planSemanticImpact(
   input: Readonly<{
     scope: SemanticImpactPlan["scope"];
@@ -24,30 +96,13 @@ export async function planSemanticImpact(
     .map((object) => object.object_id)
     .sort();
   if (changed.length === 0) throw new TypeError("SEMANTIC_IMPACT_CHANGE_REQUIRED");
-  const dependents = new Map<string, string[]>();
-  for (const dependency of input.dependencies) {
-    if (
-      !objectById.has(dependency.source_object_id) ||
-      !objectById.has(dependency.dependent_object_id)
-    ) {
-      throw new TypeError("SEMANTIC_IMPACT_DEPENDENCY_UNKNOWN");
-    }
-    const values = dependents.get(dependency.source_object_id) ?? [];
-    values.push(dependency.dependent_object_id);
-    dependents.set(dependency.source_object_id, values);
-  }
-  const affected = new Set(changed);
-  const queue = [...changed];
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) continue;
-    for (const dependent of [...(dependents.get(current) ?? [])].sort()) {
-      if (!affected.has(dependent)) {
-        affected.add(dependent);
-        queue.push(dependent);
-      }
-    }
-  }
+  const affected = new Set(
+    collectTransitiveDependents({
+      roots: changed,
+      dependencies: input.dependencies,
+      known_object_ids: new Set(objectById.keys()),
+    }).map(({ object_id }) => object_id),
+  );
   return buildSemanticImpactPlan({
     schema_version: "semantic-impact-plan@1.0.0",
     scope: input.scope,
