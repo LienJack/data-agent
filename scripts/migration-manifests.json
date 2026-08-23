@@ -1762,6 +1762,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10730",
+      "migration_name": "20260725010730_app_data_agent_semantic_receipt_hash_precedence.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10730",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-receipt-hash-precedence.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_RECEIPT_HASH_PRECEDENCE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_receipt_hash_precedence_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
