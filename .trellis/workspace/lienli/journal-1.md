@@ -924,3 +924,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 40: U4 删除计费产品面与运行时
+
+**Date**: 2026-08-23
+**Task**: U4 删除计费产品面与运行时
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+删除计费合同、仓储、Web API/UI 与 Worker 价格同步；运维健康门收敛为身份副作用，Model Control 与直连 Provider 保持非商业边界。通过全量类型检查、Web 生产构建和模型/Q&A/Provider 聚焦测试。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7806ea7` | (see git log) |
+
+### Status
+
+[OK] **Completed**
