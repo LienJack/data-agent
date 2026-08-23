@@ -106,12 +106,12 @@ function fixtureRows() {
   return Array.from({ length: spec.expected_rows }, (_, index) => ({
     order_id: `order-${index}`,
     order_date: "2024-10-01",
-    order_total: 10,
     payment_method: "cash",
     customer_id: `customer-${index}`,
     customer_segment: "new",
     product_category: "grocery",
     quantity: 1,
+    order_total: 10,
   }));
 }
 

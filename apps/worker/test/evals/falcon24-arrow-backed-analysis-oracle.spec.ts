@@ -22,12 +22,12 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       return {
         order_id: `order-${index}`,
         order_date: orderDate,
-        order_total: orderDate === months.at(-1) ? 1 : 10,
         payment_method: "cash",
         customer_id: `customer-${index}`,
         customer_segment: "regular",
         product_category: "grocery",
         quantity: 1,
+        order_total: orderDate === months.at(-1) ? 1 : 10,
       };
     });
     const grouped = new Map<string, typeof rows>();

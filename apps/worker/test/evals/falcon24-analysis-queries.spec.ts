@@ -15,6 +15,19 @@ const fixtureSpec: Falcon24AnalysisQuerySpec = {
     { name: "amount", kind: "FLOAT64", nullable: true },
   ],
   expected_rows: 2,
+  semantic_contract: {
+    primary_metric_id: "metric.fixture_amount",
+    metric_output: "amount",
+    formula_inputs: ["amount"],
+    grain: "fixture-row",
+    unit: "units",
+    time_range: {
+      start: "2024-01-01T00:00:00.000Z",
+      end: "2024-02-01T00:00:00.000Z",
+      timezone: "Asia/Shanghai",
+      semantics: "HALF_OPEN",
+    },
+  },
 };
 
 describe("Falcon24 bounded analysis queries", () => {
@@ -44,6 +57,12 @@ describe("Falcon24 bounded analysis queries", () => {
       expect(spec.sql).not.toMatch(/\b(insert|update|delete|truncate|alter|drop|copy)\b/iu);
       expect(spec.sql).not.toContain(";");
       expect(spec.columns.length).toBeGreaterThan(0);
+      expect(spec.columns.at(-1)?.name).toBe(spec.semantic_contract.metric_output);
+      expect(spec.semantic_contract.formula_inputs).toContain(spec.semantic_contract.metric_output);
+      expect(spec.semantic_contract.primary_metric_id).toMatch(/^metric\./u);
+      expect(Date.parse(spec.semantic_contract.time_range.start)).toBeLessThan(
+        Date.parse(spec.semantic_contract.time_range.end),
+      );
     }
   });
 

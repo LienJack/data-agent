@@ -1,5 +1,5 @@
-import { tableFromArrays, tableToIPC } from "apache-arrow";
 import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
+import { tableFromArrays, tableToIPC } from "apache-arrow";
 
 type Falcon24CaseId = Falcon24AgentAnalysisCase["case_id"];
 type ColumnKind = "FLOAT64" | "UTF8";
@@ -16,6 +16,19 @@ export interface Falcon24AnalysisQuerySpec {
   readonly sql: string;
   readonly columns: readonly Falcon24AnalysisQueryColumn[];
   readonly expected_rows: number;
+  readonly semantic_contract: {
+    readonly primary_metric_id: string;
+    readonly metric_output: string;
+    readonly formula_inputs: readonly string[];
+    readonly grain: string;
+    readonly unit: string;
+    readonly time_range: {
+      readonly start: string;
+      readonly end: string;
+      readonly timezone: "Asia/Shanghai";
+      readonly semantics: "HALF_OPEN";
+    };
+  };
 }
 
 const utf8 = (name: string, nullable = false): Falcon24AnalysisQueryColumn => ({
@@ -33,12 +46,12 @@ const BUSINESS_REVIEW_SQL = `
 select
   order_row.order_id::text as order_id,
   order_row.order_date::date::text as order_date,
-  order_row.order_total::float8 as order_total,
   order_row.payment_method,
   order_row.customer_id::text as customer_id,
   customer.customer_segment,
   coalesce(product.category,'UNKNOWN') as product_category,
-  coalesce(item.quantity,0)::float8 as quantity
+  coalesce(item.quantity,0)::float8 as quantity,
+  order_row.order_total::float8 as order_total
 from falcon_db_24.blinkit_orders order_row
 join falcon_db_24.blinkit_customers customer using(customer_id)
 left join falcon_db_24.blinkit_order_items item using(order_id)
@@ -52,7 +65,6 @@ const DELIVERY_EXPERIENCE_SQL = `
 select
   order_row.order_id::text as order_id,
   order_row.order_date::date::text as order_date,
-  delivery.delivery_time_minutes::float8 as delivery_time_minutes,
   delivery.delivery_status,
   order_row.order_total::float8 as order_total,
   customer.customer_segment,
@@ -60,7 +72,8 @@ select
   feedback.rating::float8 as rating,
   feedback.feedback_category,
   feedback.sentiment,
-  delivery.distance_km::float8 as distance_km
+  delivery.distance_km::float8 as distance_km,
+  delivery.delivery_time_minutes::float8 as delivery_time_minutes
 from falcon_db_24.blinkit_delivery_performance delivery
 join falcon_db_24.blinkit_orders order_row using(order_id)
 join falcon_db_24.blinkit_customers customer using(customer_id)
@@ -108,9 +121,9 @@ select
   product.category,
   coalesce(sales.sales_quantity,0)::float8 as sales_quantity,
   primary_inventory.stock_received,
-  primary_inventory.damaged_stock,
   sensitivity_inventory.sensitivity_stock_received,
-  sensitivity_inventory.sensitivity_damaged_stock
+  sensitivity_inventory.sensitivity_damaged_stock,
+  primary_inventory.damaged_stock
 from primary_inventory
 join falcon_db_24.blinkit_products product using(product_id)
 left join sales using(month_start,product_id)
@@ -156,12 +169,12 @@ select
   marketing.impressions,
   marketing.clicks,
   marketing.conversions,
-  marketing.spend,
   marketing.campaign_revenue,
   coalesce(orders.order_count,0)::float8 as order_count,
   coalesce(orders.active_customers,0)::float8 as active_customers,
   coalesce(orders.order_revenue,0)::float8 as order_revenue,
-  coalesce(registrations.new_customers,0)::float8 as new_customers
+  coalesce(registrations.new_customers,0)::float8 as new_customers,
+  marketing.spend
 from marketing
 left join orders using(week_start)
 left join registrations using(week_start)
@@ -238,8 +251,6 @@ select
   customer_month.customer_segment,
   customer_month.month_index::float8 as month_index,
   count(distinct customer_month.customer_id)::float8 as cohort_size,
-  count(distinct customer_month.customer_id) filter(where customer_month.order_count>0)::float8
-    as active_customers,
   count(distinct customer_month.customer_id) filter(where customer_month.order_count>1)::float8
     as repeat_customers,
   sum(customer_month.order_count)::float8 as order_count,
@@ -257,7 +268,9 @@ select
   anomaly.orders_before_registration,
   anomaly.customers_first_order_before_registration,
   anomaly.valid_ordering_customers,
-  anomaly.no_order_customers
+  anomaly.no_order_customers,
+  count(distinct customer_month.customer_id) filter(where customer_month.order_count>0)::float8
+    as active_customers
 from customer_month cross join anomaly
 group by customer_month.cohort_month,customer_month.customer_segment,customer_month.month_index,
   anomaly.orders_before_registration,anomaly.customers_first_order_before_registration,
@@ -273,14 +286,27 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     columns: [
       utf8("order_id"),
       utf8("order_date"),
-      float64("order_total"),
       utf8("payment_method"),
       utf8("customer_id"),
       utf8("customer_segment"),
       utf8("product_category"),
       float64("quantity"),
+      float64("order_total"),
     ],
     expected_rows: 4_612,
+    semantic_contract: {
+      primary_metric_id: "metric.order_revenue",
+      metric_output: "order_total",
+      formula_inputs: ["order_total"],
+      grain: "order-item",
+      unit: "CNY",
+      time_range: {
+        start: "2023-05-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+    },
   },
   "falcon24-delivery-experience-12m": {
     case_id: "falcon24-delivery-experience-12m",
@@ -289,7 +315,6 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     columns: [
       utf8("order_id"),
       utf8("order_date"),
-      float64("delivery_time_minutes"),
       utf8("delivery_status"),
       float64("order_total"),
       utf8("customer_segment"),
@@ -298,8 +323,22 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       utf8("feedback_category", true),
       utf8("sentiment", true),
       float64("distance_km"),
+      float64("delivery_time_minutes"),
     ],
     expected_rows: 3_059,
+    semantic_contract: {
+      primary_metric_id: "metric.delivery_minutes",
+      metric_output: "delivery_time_minutes",
+      formula_inputs: ["delivery_time_minutes"],
+      grain: "delivery-order-item",
+      unit: "minutes",
+      time_range: {
+        start: "2023-11-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+    },
   },
   "falcon24-inventory-damage-12m": {
     case_id: "falcon24-inventory-damage-12m",
@@ -312,11 +351,24 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       utf8("category"),
       float64("sales_quantity"),
       float64("stock_received"),
-      float64("damaged_stock"),
       float64("sensitivity_stock_received", true),
       float64("sensitivity_damaged_stock", true),
+      float64("damaged_stock"),
     ],
     expected_rows: 3_216,
+    semantic_contract: {
+      primary_metric_id: "metric.damaged_stock",
+      metric_output: "damaged_stock",
+      formula_inputs: ["damaged_stock", "stock_received"],
+      grain: "product-month",
+      unit: "units",
+      time_range: {
+        start: "2023-11-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+    },
   },
   "falcon24-marketing-lag-effect": {
     case_id: "falcon24-marketing-lag-effect",
@@ -329,14 +381,27 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       float64("impressions"),
       float64("clicks"),
       float64("conversions"),
-      float64("spend"),
       float64("campaign_revenue"),
       float64("order_count"),
       float64("active_customers"),
       float64("order_revenue"),
       float64("new_customers"),
+      float64("spend"),
     ],
     expected_rows: 1_238,
+    semantic_contract: {
+      primary_metric_id: "metric.marketing_spend",
+      metric_output: "spend",
+      formula_inputs: ["spend"],
+      grain: "channel-audience-week",
+      unit: "CNY",
+      time_range: {
+        start: "2023-05-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+    },
   },
   "falcon24-cohort-retention-m0-m6": {
     case_id: "falcon24-cohort-retention-m0-m6",
@@ -347,7 +412,6 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       utf8("customer_segment"),
       float64("month_index"),
       float64("cohort_size"),
-      float64("active_customers"),
       float64("repeat_customers"),
       float64("order_count"),
       float64("revenue"),
@@ -361,8 +425,22 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       float64("customers_first_order_before_registration"),
       float64("valid_ordering_customers"),
       float64("no_order_customers"),
+      float64("active_customers"),
     ],
     expected_rows: 336,
+    semantic_contract: {
+      primary_metric_id: "metric.cohort_retention",
+      metric_output: "active_customers",
+      formula_inputs: ["active_customers", "cohort_size"],
+      grain: "registration-cohort-segment-month-index",
+      unit: "ratio",
+      time_range: {
+        start: "2023-05-01T00:00:00.000Z",
+        end: "2024-11-01T00:00:00.000Z",
+        timezone: "Asia/Shanghai",
+        semantics: "HALF_OPEN",
+      },
+    },
   },
 } as const satisfies Record<Falcon24CaseId, Falcon24AnalysisQuerySpec>);
 
