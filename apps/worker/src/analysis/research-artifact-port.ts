@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import {
   type AnalysisCompletionReceiptPayload,
   type AnalysisProgramPayload,
@@ -12,6 +11,7 @@ import {
   sha256ContentHash,
 } from "@data-agent/contracts";
 import type { AnalysisArtifactCommitPort } from "./executor.js";
+import { deterministicAnalysisUuid } from "./deterministic-id.js";
 
 type AnalysisPayload =
   | AnalysisProgramPayload
@@ -27,14 +27,6 @@ interface AnalysisSystemArtifactAuthority {
     | { readonly ok: true; readonly created: boolean; readonly reference: ArtifactReference }
     | { readonly ok: false; readonly error_code: string }
   >;
-}
-
-function uuid(material: string): string {
-  const bytes = createHash("sha256").update(material).digest().subarray(0, 16);
-  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x50;
-  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
-  const value = bytes.toString("hex");
-  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
 function initialParent(payload: AnalysisPayload): ArtifactReference {
@@ -58,7 +50,7 @@ async function candidate(input: {
   readonly idempotency_key: string;
   readonly created_at: string;
 }) {
-  const artifactId = uuid(
+  const artifactId = deterministicAnalysisUuid(
     `analysis-l2\0${input.lease.run_id}\0${input.idempotency_key}\0${input.payload.artifact_type}`,
   );
   const draft = parseL2ResearchDocumentCandidate({
@@ -119,7 +111,9 @@ export function createResearchAnalysisArtifactPort(input: {
         run_id: command.lease.run_id,
         principal_id: command.principal_id,
         idempotency_key: command.idempotency_key,
-        commit_id: uuid(`analysis-l2-commit\0${command.lease.run_id}\0${command.idempotency_key}`),
+        commit_id: deterministicAnalysisUuid(
+          `analysis-l2-commit\0${command.lease.run_id}\0${command.idempotency_key}`,
+        ),
         attempt_id: command.lease.attempt_id,
         worker_fence: command.lease.worker_fence,
         candidate: document,
@@ -161,4 +155,7 @@ export function createResearchAnalysisArtifactPort(input: {
   });
 }
 
-export const researchAnalysisArtifactPortInternals = Object.freeze({ initialParent, uuid });
+export const researchAnalysisArtifactPortInternals = Object.freeze({
+  initialParent,
+  deterministicAnalysisUuid,
+});

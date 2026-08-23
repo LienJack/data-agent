@@ -2,6 +2,7 @@ export * from "./chart-story.js";
 export * from "./data-profile.js";
 export * from "./deepseek-generation-provider.js";
 export * from "./deepseek-program-source.js";
+export * from "./deterministic-id.js";
 export * from "./default-program.js";
 export * from "./executor.js";
 export * from "./program-admission.js";
