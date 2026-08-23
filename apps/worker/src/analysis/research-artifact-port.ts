@@ -5,15 +5,18 @@ import {
   collectL2ResearchPayloadArtifactReferences,
   computeL2ResearchEnvelopeContentHash,
   type DerivedAnalysisEvidencePayload,
+  L2_RESEARCH_WIRE_VERSION_MATRIX,
   parseL2ResearchDocumentCandidate,
+  type ResearchBriefV3Payload,
   researchArtifactCommitInputSchema,
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
-import type { AnalysisArtifactCommitPort } from "./executor.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
+import type { AnalysisArtifactCommitPort } from "./executor.js";
 
 type AnalysisPayload =
+  | ResearchBriefV3Payload
   | AnalysisProgramPayload
   | DerivedAnalysisEvidencePayload
   | AnalysisCompletionReceiptPayload;
@@ -29,8 +32,10 @@ interface AnalysisSystemArtifactAuthority {
   >;
 }
 
-function initialParent(payload: AnalysisPayload): ArtifactReference {
+function initialParent(payload: AnalysisPayload): ArtifactReference | null {
   switch (payload.artifact_type) {
+    case "ResearchBrief":
+      return null;
     case "AnalysisProgram":
       return payload.brief_ref;
     case "DerivedAnalysisEvidence":
@@ -42,6 +47,15 @@ function initialParent(payload: AnalysisPayload): ArtifactReference {
       return evidence.at(-1) ?? payload.analysis_program_ref;
     }
   }
+}
+
+function schemaVersion(payload: AnalysisPayload): string {
+  const tuple = L2_RESEARCH_WIRE_VERSION_MATRIX.find(
+    ([artifactType, , protocolVersion]) =>
+      artifactType === payload.artifact_type && protocolVersion === payload.protocol_version,
+  );
+  if (!tuple) throw new TypeError("ANALYSIS_RESEARCH_WIRE_VERSION_UNREGISTERED");
+  return tuple[1];
 }
 
 async function candidate(input: {
@@ -64,7 +78,7 @@ async function candidate(input: {
       attempt_id: input.lease.attempt_id,
       producer: { kind: "deterministic", id: "analysis-program-executor@1" },
       input_refs: collectL2ResearchPayloadArtifactReferences(input.payload),
-      schema_version: "1.0.0",
+      schema_version: schemaVersion(input.payload),
       semantic_version: "1.0.0",
       policy_version: "analysis-program-policy@1.0.0",
       model_profile_version: "deepseek-v4-flash@1.0.0",
@@ -89,7 +103,7 @@ export function createResearchAnalysisArtifactPort(input: {
   readonly now?: () => Date;
 }): AnalysisArtifactCommitPort {
   const now = input.now ?? (() => new Date());
-  const expectedParents = new Map<string, ArtifactReference>();
+  const expectedParents = new Map<string, ArtifactReference | null>();
   const latestByRun = new Map<string, ArtifactReference>();
 
   return Object.freeze({
@@ -100,10 +114,9 @@ export function createResearchAnalysisArtifactPort(input: {
         idempotency_key: command.idempotency_key,
         created_at: now().toISOString(),
       });
-      const expectedParent =
-        expectedParents.get(command.idempotency_key) ??
-        latestByRun.get(command.lease.run_id) ??
-        initialParent(command.payload);
+      const expectedParent = expectedParents.has(command.idempotency_key)
+        ? (expectedParents.get(command.idempotency_key) ?? null)
+        : (latestByRun.get(command.lease.run_id) ?? initialParent(command.payload));
       expectedParents.set(command.idempotency_key, expectedParent);
       const commit = researchArtifactCommitInputSchema.parse({
         schema_version: "1.0.0",

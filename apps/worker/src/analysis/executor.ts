@@ -47,6 +47,7 @@ export interface AnalysisArtifactCommitPort {
     readonly principal_id: string;
     readonly idempotency_key: string;
     readonly payload:
+      | ResearchBriefV3Payload
       | AnalysisProgramPayload
       | DerivedAnalysisEvidencePayload
       | AnalysisCompletionReceiptPayload;
@@ -136,6 +137,10 @@ export interface AnalysisExecutionResult {
   readonly completion_ref: ArtifactReference;
   readonly completion: AnalysisCompletionReceiptPayload;
   readonly evidence_refs: readonly ArtifactReference[];
+  readonly validated_outputs: readonly {
+    readonly node_id: string;
+    readonly output: PythonSandboxTransportOutcomeV2["outputs"][number];
+  }[];
 }
 
 export function analysisRepairFailureCode(
@@ -143,9 +148,7 @@ export function analysisRepairFailureCode(
   expectation: AnalysisOracleExpectation | null,
 ): string | null {
   if (sandbox.status === "FAILED") return sandbox.reason_code;
-  return sandbox.status === "SUCCEEDED" && expectation === null
-    ? "ANALYSIS_ORACLE_FAILED"
-    : null;
+  return sandbox.status === "SUCCEEDED" && expectation === null ? "ANALYSIS_ORACLE_FAILED" : null;
 }
 
 class BudgetLedger {
@@ -292,6 +295,10 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const results = new Map<string, AnalysisCompletionReceiptPayload["node_results"][number]>();
       const expectations = new Map<string, AnalysisOracleExpectation>();
       const evidenceRefs: ArtifactReference[] = [];
+      const validatedOutputs = new Map<
+        string,
+        readonly PythonSandboxTransportOutcomeV2["outputs"][number][]
+      >();
 
       const executeNode = async (node: AnalysisProgramNode) => {
         if (input.signal?.aborted) return failedNode(node, "SANDBOX_EXECUTION_FAILED");
@@ -570,6 +577,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           }),
         );
         evidenceRefs.push(evidenceRef);
+        validatedOutputs.set(node.node_id, sandbox.outcome.outputs);
         expectations.set(node.node_id, expectation);
         return {
           node_id: node.node_id,
@@ -655,6 +663,14 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         completion_ref: completionRef,
         completion,
         evidence_refs: Object.freeze(evidenceRefs),
+        validated_outputs: Object.freeze(
+          analysisProgram.nodes.flatMap((node) =>
+            (validatedOutputs.get(node.node_id) ?? []).map((output) => ({
+              node_id: node.node_id,
+              output,
+            })),
+          ),
+        ),
       });
     },
   });

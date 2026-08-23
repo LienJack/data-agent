@@ -5,7 +5,7 @@ import {
   type Falcon24AgentAnalysisCase,
   type PortResult,
   type ProductTeamArtifactDocument,
-  type SemanticContextPackage,
+  type SemanticContextCommitResult,
   verifySemanticContextCommitResult,
 } from "@data-agent/contracts";
 import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
@@ -38,7 +38,7 @@ export interface GovernedAgentAnalysisPort {
     readonly lease: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"];
     readonly test_case: Falcon24AgentAnalysisCase;
     readonly question: string;
-    readonly semantic_context_package: SemanticContextPackage;
+    readonly semantic_context: SemanticContextCommitResult;
   }): Promise<{
     readonly answer: string;
     readonly accepted_artifact_refs: readonly ArtifactReference[];
@@ -146,7 +146,7 @@ export function createDirectQaAnalysisExecutor(dependencies: {
             lease: execution.lease,
             test_case: falcon24Case,
             question: run.question,
-            semantic_context_package: resolved.package,
+            semantic_context: resolved,
           });
           if (result.accepted_artifact_refs.length === 0) {
             throw new DirectQaAnalysisError("ANALYSIS_ACCEPTED_ARTIFACT_REQUIRED");
