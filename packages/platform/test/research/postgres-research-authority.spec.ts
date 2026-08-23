@@ -812,4 +812,41 @@ describe("PostgreSQL Research Authority Adapter", () => {
     });
     expect(rpc?.values[1]).toBe(ciphertext);
   });
+
+  it("通过当前 lease 从专用 RPC 读取加密 source 用于重放", async () => {
+    const auth = capabilities();
+    const programRef = {
+      ...certificateRef(),
+      artifact_id: ids.operation,
+      artifact_type: "AnalysisProgram" as const,
+      content_hash: hash("d"),
+    };
+    const database = scriptedPool((text) => {
+      if (!text.includes("load_analysis_python_source")) return undefined;
+      return resultRow({ ok: true, source: null });
+    });
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+    });
+    const result = await authority.loadAnalysisPythonSource(auth.analyst, {
+      schema_version: "analysis-python-source-load@1.0.0",
+      scope,
+      run_id: ids.run,
+      principal_id: ids.analyst,
+      attempt_id: ids.terminal,
+      worker_fence: 7,
+      analysis_program_ref: programRef,
+      node_id: "falcon24-question-1",
+      generation_attempt: 0,
+    });
+
+    expect(result).toEqual({ ok: true, source: null });
+    const rpc = database.calls.find((call) => call.text.includes("load_analysis_python_source"));
+    expect(rpc?.values[0]).toMatchObject({
+      protocol_version: "u6-db-command@1.0.0",
+      authority_capability_id: ids.authority,
+      command: { attempt_id: ids.terminal, worker_fence: 7 },
+    });
+  });
 });

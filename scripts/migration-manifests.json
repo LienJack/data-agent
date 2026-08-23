@@ -1441,6 +1441,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10710",
+      "migration_name": "20260725010710_app_data_agent_analysis_python_source_replay.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10710",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-load-rpc.sql.inc",
+        "90-grants-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_PYTHON_SOURCE_REPLAY_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_python_source_replay_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

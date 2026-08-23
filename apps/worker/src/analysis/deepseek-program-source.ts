@@ -80,6 +80,16 @@ export interface DeepSeekPythonGenerationPort {
 }
 
 export interface AnalysisPythonSourceArtifactPort {
+  load?(input: {
+    readonly lease: Parameters<AnalysisProgramSourcePort["load"]>[0]["lease"];
+    readonly analysis_program: AnalysisProgramPayload;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node_id: string;
+    readonly generation_attempt: 0 | 1;
+  }): Promise<{
+    readonly source_text: string;
+    readonly source_text_ref: ArtifactReference;
+  } | null>;
   commit(input: {
     readonly lease: Parameters<AnalysisProgramSourcePort["load"]>[0]["lease"];
     readonly analysis_program: AnalysisProgramPayload;
@@ -246,6 +256,31 @@ export function createDeepSeekAnalysisProgramSource(input: {
     };
   };
 
+  const replay = async (options: {
+    readonly lease: Parameters<AnalysisProgramSourcePort["load"]>[0]["lease"];
+    readonly analysis_program: AnalysisProgramPayload;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node: AnalysisProgramNode;
+    readonly generation_attempt: 0 | 1;
+  }) => {
+    const loaded = await input.artifacts.load?.({
+      lease: options.lease,
+      analysis_program: options.analysis_program,
+      analysis_program_ref: options.analysis_program_ref,
+      node_id: options.node.node_id,
+      generation_attempt: options.generation_attempt,
+    });
+    if (!loaded) return null;
+    return {
+      source_text: loaded.source_text,
+      source_text_ref: await verifyCommittedSource({
+        reference: loaded.source_text_ref,
+        analysisProgramRef: options.analysis_program_ref,
+        sourceHash: sha256SourceText(loaded.source_text),
+      }),
+    };
+  };
+
   const generate = async (options: {
     readonly lease: Parameters<AnalysisProgramSourcePort["load"]>[0]["lease"];
     readonly analysis_program: AnalysisProgramPayload;
@@ -254,6 +289,8 @@ export function createDeepSeekAnalysisProgramSource(input: {
     readonly generation_attempt: 0 | 1;
     readonly repair: null | { readonly source: string; readonly failure_code: string };
   }) => {
+    const replayed = await replay(options);
+    if (replayed) return replayed;
     const descriptor = catalog.resolve(options.node.skill_id);
     const context = await input.contexts.load({
       lease: options.lease,
@@ -301,6 +338,8 @@ export function createDeepSeekAnalysisProgramSource(input: {
         if (!options.standard_program || descriptor.standard_program !== options.standard_program) {
           throw new TypeError("ANALYSIS_STANDARD_PROGRAM_MISMATCH");
         }
+        const replayed = await replay({ ...options, generation_attempt: 0 });
+        if (replayed) return replayed;
         return commit({
           ...options,
           generation_attempt: 0,

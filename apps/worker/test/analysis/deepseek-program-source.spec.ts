@@ -157,6 +157,53 @@ async function fixture() {
 }
 
 describe("DeepSeek governed Python source", () => {
+  it("replays committed source before loading context or calling DeepSeek", async () => {
+    const base = await fixture();
+    const existing = "import pandas as pd\ndef main(sdk):\n    sdk.write_json('result', {})\n";
+    const existingHash = `sha256:${createHash("sha256").update(existing, "utf8").digest("hex")}` as const;
+    const source = createDeepSeekAnalysisProgramSource({
+      contexts: {
+        async load() {
+          throw new Error("context must not load during replay");
+        },
+      },
+      model: {
+        async generate() {
+          throw new Error("provider must not run during replay");
+        },
+      },
+      artifacts: {
+        async load() {
+          return {
+            source_text: existing,
+            source_text_ref: reference("SensitiveExecutionArtifact", 18, existingHash),
+          };
+        },
+        async commit() {
+          throw new Error("source must not recommit during replay");
+        },
+      },
+      standard_programs: {
+        async load() {
+          throw new Error("standard program must not load");
+        },
+      },
+    });
+
+    await expect(
+      source.load({
+        lease: base.lease,
+        analysis_program: base.program,
+        analysis_program_ref: base.programRef,
+        node: base.node,
+        standard_program: null,
+      }),
+    ).resolves.toMatchObject({
+      source_text: existing,
+      source_text_ref: { content_hash: existingHash },
+    });
+  });
+
   it("uses the fixed model and sends semantic/schema projections without rows or secrets", async () => {
     const base = await fixture();
     const requests: unknown[] = [];

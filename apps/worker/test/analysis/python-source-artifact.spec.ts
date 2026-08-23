@@ -37,7 +37,7 @@ function fixture() {
   const analysisProgram = {
     artifact_type: "AnalysisProgram",
     protocol_version: "analysis-program@1.0.0",
-    nodes: [{ node_id: "falcon24-question-1" }],
+    nodes: [{ node_id: "falcon24-question-1", execution_mode: "MODEL_GENERATED" }],
     program_hash: hash("5"),
   } as AnalysisProgramPayload;
   const lease = {
@@ -70,6 +70,18 @@ describe("Analysis Python source artifact port", () => {
     }> = [];
     const artifacts = createAnalysisPythonSourceArtifactPort({
       authority: {
+        async loadAnalysisPythonSource() {
+          const current = captured[0];
+          return {
+            ok: true,
+            source: current
+              ? {
+                  receipt: current.command.receipt,
+                  ciphertext_base64: Buffer.from(current.ciphertext).toString("base64"),
+                }
+              : null,
+          };
+        },
         async commitAnalysisPythonSource(...input) {
           captured.push({ command: input[1], ciphertext: input[2] });
           return { ok: true, created: true, receipt: input[1].receipt };
@@ -102,6 +114,15 @@ describe("Analysis Python source artifact port", () => {
     const { command, ciphertext } = committed;
     expect(captured[1]?.command.receipt).toEqual(command.receipt);
     expect(captured[1]?.ciphertext).toEqual(ciphertext);
+    await expect(
+      artifacts.load?.({
+        lease: base.lease,
+        analysis_program: base.analysisProgram,
+        analysis_program_ref: base.analysisProgramRef,
+        node_id: "falcon24-question-1",
+        generation_attempt: 0,
+      }),
+    ).resolves.toEqual({ source_text: sourceText, source_text_ref: result });
     expect(result).toMatchObject({
       artifact_type: "SensitiveExecutionArtifact",
       content_hash: sourceHash,
@@ -143,7 +164,13 @@ describe("Analysis Python source artifact port", () => {
     ).toThrow("ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_INVALID");
     expect(() =>
       createAnalysisPythonSourceArtifactPort({
-        authority: { commitAnalysisPythonSource: async () => ({ ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" }) },
+        authority: {
+          loadAnalysisPythonSource: async () => ({ ok: true as const, source: null }),
+          commitAnalysisPythonSource: async () => ({
+            ok: false as const,
+            error_code: "RESEARCH_DATABASE_CONTRACT_INVALID",
+          }),
+        },
         capability_input: {},
         encryption_key: new Uint8Array(16),
         encryption_key_id: "analysis-python-source-v1",

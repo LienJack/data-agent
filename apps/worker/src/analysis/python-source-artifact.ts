@@ -1,7 +1,9 @@
-import { createCipheriv, createHash, createHmac } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, createHmac } from "node:crypto";
 import {
   type AnalysisPythonSourceCommitCommand,
   type AnalysisPythonSourceCommitResult,
+  type AnalysisPythonSourceLoadCommand,
+  type AnalysisPythonSourceLoadResult,
   artifactReferenceFor,
   buildAnalysisPythonSourceReceipt,
   canonicalizeJson,
@@ -21,6 +23,10 @@ export interface AnalysisPythonSourceAuthorityPort {
     command: AnalysisPythonSourceCommitCommand,
     ciphertext: Uint8Array,
   ): Promise<AnalysisPythonSourceCommitResult>;
+  loadAnalysisPythonSource(
+    capabilityInput: unknown,
+    command: AnalysisPythonSourceLoadCommand,
+  ): Promise<AnalysisPythonSourceLoadResult>;
 }
 
 function byteHash(bytes: Uint8Array): `sha256:${string}` {
@@ -81,6 +87,26 @@ function encryptSource(input: {
   } as const;
 }
 
+function decryptSource(input: {
+  readonly ciphertext: Uint8Array;
+  readonly key: Uint8Array;
+  readonly iv: Uint8Array;
+  readonly auth_tag: Uint8Array;
+  readonly aad: Uint8Array;
+}): string {
+  if (
+    input.key.byteLength !== 32 ||
+    input.iv.byteLength !== 12 ||
+    input.auth_tag.byteLength !== 16
+  ) {
+    throw new TypeError("ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_INVALID");
+  }
+  const decipher = createDecipheriv("aes-256-gcm", input.key, input.iv);
+  decipher.setAAD(input.aad);
+  decipher.setAuthTag(input.auth_tag);
+  return Buffer.concat([decipher.update(input.ciphertext), decipher.final()]).toString("utf8");
+}
+
 export function resolveAnalysisPythonSourceEncryption(
   environment: NodeJS.ProcessEnv,
 ): { readonly key: Uint8Array; readonly key_id: string } | null {
@@ -108,6 +134,61 @@ export function createAnalysisPythonSourceArtifactPort(input: {
   }
   const now = input.now ?? (() => new Date());
   return Object.freeze({
+    async load(command: Parameters<NonNullable<AnalysisPythonSourceArtifactPort["load"]>>[0]) {
+      const analysisProgramRef = artifactReferenceFor("AnalysisProgram").parse(
+        command.analysis_program_ref,
+      );
+      const result = await input.authority.loadAnalysisPythonSource(input.capability_input, {
+        schema_version: "analysis-python-source-load@1.0.0",
+        scope: command.lease.scope,
+        run_id: command.lease.run_id,
+        principal_id: command.lease.principal_id,
+        attempt_id: command.lease.attempt_id,
+        worker_fence: command.lease.worker_fence,
+        analysis_program_ref: analysisProgramRef,
+        node_id: command.node_id,
+        generation_attempt: command.generation_attempt,
+      });
+      if (!result.ok) throw new TypeError(result.error_code);
+      if (!result.source) return null;
+      const receipt = await verifyAnalysisPythonSourceReceipt(result.source.receipt);
+      const expectedKind =
+        command.analysis_program.nodes.find(({ node_id: nodeId }) => nodeId === command.node_id)
+          ?.execution_mode === "MODEL_GENERATED"
+          ? "DEEPSEEK_GENERATED"
+          : "STANDARD_PROGRAM";
+      if (
+        receipt.analysis_program_ref.artifact_id !== command.analysis_program_ref.artifact_id ||
+        receipt.analysis_program_ref.content_hash !== command.analysis_program_ref.content_hash ||
+        receipt.node_id !== command.node_id ||
+        receipt.generation_attempt !== command.generation_attempt ||
+        receipt.source_kind !== expectedKind ||
+        receipt.encryption.key_id !== input.encryption_key_id
+      ) {
+        throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_CORRELATION_INVALID");
+      }
+      const ciphertext = Buffer.from(result.source.ciphertext_base64, "base64");
+      if (byteHash(ciphertext) !== receipt.ciphertext_hash) {
+        throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_CIPHERTEXT_INVALID");
+      }
+      const sourceText = decryptSource({
+        ciphertext,
+        key: input.encryption_key,
+        iv: Buffer.from(receipt.encryption.iv_base64, "base64"),
+        auth_tag: Buffer.from(receipt.encryption.auth_tag_base64, "base64"),
+        aad: sourceAad({
+          lease: command.lease,
+          analysis_program_ref: analysisProgramRef,
+          node_id: command.node_id,
+          generation_attempt: command.generation_attempt,
+          source_sha256: receipt.plaintext_hash as `sha256:${string}`,
+        }),
+      });
+      if (sourceHash(sourceText) !== receipt.plaintext_hash) {
+        throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_PLAINTEXT_INVALID");
+      }
+      return { source_text: sourceText, source_text_ref: receipt.artifact_ref };
+    },
     async commit(command: Parameters<AnalysisPythonSourceArtifactPort["commit"]>[0]) {
       if (
         command.analysis_program_ref.run_id !== command.lease.run_id ||
@@ -188,6 +269,7 @@ export function createAnalysisPythonSourceArtifactPort(input: {
 
 export const analysisPythonSourceArtifactInternals = Object.freeze({
   byteHash,
+  decryptSource,
   deterministicIv,
   encryptSource,
   sourceAad,

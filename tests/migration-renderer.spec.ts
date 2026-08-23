@@ -127,7 +127,7 @@ describe("generic migration renderer", () => {
     const registry = parseMigrationRendererRegistry(
       readFileSync(resolve(repositoryRoot, "scripts/migration-manifests.json"), "utf8"),
     );
-    expect(registry.entries).toHaveLength(84);
+    expect(registry.entries).toHaveLength(85);
     for (const manifest of registry.entries) {
       expect(() => verifyMigration(manifest, repositoryRoot)).not.toThrow();
     }
