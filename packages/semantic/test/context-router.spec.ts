@@ -179,6 +179,73 @@ describe("resolved context routing", () => {
     ]);
   });
 
+  it("resolves distinct business concepts together without treating multi-intent as ambiguity", async () => {
+    const authority = await snapshot({
+      question: "查看收入与客户关系",
+      metrics: [
+        {
+          metric_id: "revenue",
+          name: "收入",
+          aliases: [],
+          mapping_refs: ["orders.amount"],
+          mapping_hash: hash("a"),
+          formula_hash: hash("b"),
+        },
+      ],
+      ontology: [
+        {
+          object_id: "customer",
+          object_kind: "ENTITY",
+          name: "客户",
+          aliases: [],
+          queryable: true,
+          mapping_refs: ["table:customers"],
+          object_hash: hash("c"),
+        },
+      ],
+    });
+    await expect(routeSemanticContext(authority)).resolves.toMatchObject({
+      state: "READY",
+      route: "METRIC",
+      selected_metric_id: "revenue",
+      selected_ontology_ids: ["customer"],
+      clarification_candidates: [],
+    });
+  });
+
+  it("uses an exact published concept as a ready typed-graph seed", async () => {
+    const authority = await snapshot({
+      question: "经营复盘",
+      metrics: [],
+      ontology: [
+        {
+          object_id: "case.business_review",
+          object_kind: "ENTITY",
+          name: "经营复盘",
+          aliases: [],
+          queryable: false,
+          mapping_refs: [],
+          object_hash: hash("c"),
+        },
+      ],
+      relationships: [
+        {
+          relationship_id: "case_requires_revenue",
+          source_object_id: "case.business_review",
+          target_object_id: "metric.revenue",
+          relationship_kind: "LINEAGE_REQUIREMENT",
+          relationship_hash: hash("d"),
+        },
+      ],
+    });
+    await expect(routeSemanticContext(authority)).resolves.toMatchObject({
+      state: "READY",
+      route: "GRAPH",
+      selected_ontology_ids: ["case.business_review"],
+      reason_codes: ["LEXICAL_CANONICAL_TYPED_GRAPH"],
+    });
+  });
+
   it("falls through ontology, knowledge and graph in fixed order", async () => {
     const ontology = {
       object_id: "customer",

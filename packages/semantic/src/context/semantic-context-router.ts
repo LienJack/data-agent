@@ -6,11 +6,24 @@ import { resolvePublishedLexicon } from "./lexical-matcher.js";
 
 const capabilityChain = ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"] as const;
 
+function ambiguousSamePhrase(
+  matches: readonly Awaited<ReturnType<typeof resolvePublishedLexicon>>["matches"][number][],
+): boolean {
+  const targetsByPhrase = new Map<string, Set<string>>();
+  for (const match of matches) {
+    const phrase = match.phrase.normalize("NFKC").toLocaleLowerCase("und").trim();
+    const targets = targetsByPhrase.get(phrase) ?? new Set<string>();
+    targets.add(`${match.target_kind}\0${match.target_id}`);
+    targetsByPhrase.set(phrase, targets);
+  }
+  return [...targetsByPhrase.values()].some((targets) => targets.size > 1);
+}
+
 export async function routeSemanticContext(
   snapshot: SemanticContextAuthoritySnapshot,
 ): Promise<SemanticContextRouteDecision> {
   const lexical = await resolvePublishedLexicon(snapshot);
-  if (lexical.matches.length > 1) {
+  if (ambiguousSamePhrase(lexical.matches)) {
     return {
       schema_version: "semantic-context-route-decision@1.0.0",
       state: "NEEDS_CLARIFICATION",
@@ -25,16 +38,20 @@ export async function routeSemanticContext(
       reason_codes: ["AMBIGUOUS_PUBLISHED_LEXICON"],
     };
   }
-  const selected = lexical.matches[0];
+  const selected =
+    lexical.matches.find((entry) => entry.target_kind === "METRIC") ?? lexical.matches[0];
   if (selected?.target_kind === "METRIC") {
     return {
       schema_version: "semantic-context-route-decision@1.0.0",
       state: "READY",
       route: "METRIC",
       selected_metric_id: selected.target_id,
-      selected_ontology_ids: [],
+      selected_ontology_ids: lexical.matches
+        .filter((entry) => entry.target_kind === "ONTOLOGY")
+        .map((entry) => entry.target_id)
+        .sort(),
       clarification_candidates: [],
-      lexical_evidence: [selected],
+      lexical_evidence: [...lexical.matches],
       capability_chain: [...capabilityChain],
       reason_codes: [`LEXICAL_${selected.match_kind}_PUBLISHED_METRIC`],
     };
@@ -54,6 +71,22 @@ export async function routeSemanticContext(
       lexical_evidence: selected ? [selected] : [],
       capability_chain: [...capabilityChain],
       reason_codes: [`LEXICAL_${selected?.match_kind ?? "CANONICAL"}_QUERYABLE_ONTOLOGY`],
+    };
+  }
+  if (ontology && snapshot.published_relationships.length > 0) {
+    return {
+      schema_version: "semantic-context-route-decision@1.0.0",
+      state: "READY",
+      route: "GRAPH",
+      selected_metric_id: null,
+      selected_ontology_ids: lexical.matches
+        .filter((entry) => entry.target_kind === "ONTOLOGY")
+        .map((entry) => entry.target_id)
+        .sort(),
+      clarification_candidates: [],
+      lexical_evidence: [...lexical.matches],
+      capability_chain: [...capabilityChain],
+      reason_codes: [`LEXICAL_${selected?.match_kind ?? "CANONICAL"}_TYPED_GRAPH`],
     };
   }
   if (snapshot.knowledge_refs.length > 0) {
