@@ -21,7 +21,7 @@ const fixedRow = {
   feedback_rows_12m: "3059",
   inventory_rows_12m: "45231",
   inventory_new_rows_12m: "9798",
-  marketing_week_count: "86",
+  marketing_week_count: "79",
   fully_observed_cohort_count: "12",
 };
 

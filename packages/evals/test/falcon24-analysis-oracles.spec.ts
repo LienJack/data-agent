@@ -138,7 +138,7 @@ function outputFor(caseId: string, methods: readonly string[]) {
     return {
       schema_version: "falcon24-marketing-output@1.0.0",
       case_id: caseId,
-      window: { start: "2023-05-01", end_exclusive: "2024-11-01", week_count: 86, grain: "WEEK" },
+      window: { start: "2023-05-01", end_exclusive: "2024-11-01", week_count: 79, grain: "WEEK" },
       channel_audience_results: [
         {
           channel: "Social",
@@ -227,6 +227,7 @@ describe("Falcon24 independent analysis oracles", () => {
     const q5 = byId.get("falcon24-cohort-retention-m0-m6");
     if (!q1 || !q2 || !q3 || !q5) throw new Error("test case missing");
     const q1Output = falcon24AnalysisOutputSchema.parse(outputFor(q1.case_id, q1.required_methods));
+    if (q1Output.case_id !== "falcon24-business-review-18m") throw new Error("wrong fixture");
     await expect(
       evaluateFalcon24AnalysisOutput({
         test_case: q1,
@@ -246,7 +247,7 @@ describe("Falcon24 independent analysis oracles", () => {
       }),
     ).rejects.toThrow("FALCON24_ORACLE_CAUSAL_LANGUAGE_REJECTED");
     const q3Output = falcon24AnalysisOutputSchema.parse(outputFor(q3.case_id, q3.required_methods));
-    if (q3Output.case_id !== q3.case_id) throw new Error("wrong fixture");
+    if (q3Output.case_id !== "falcon24-inventory-damage-12m") throw new Error("wrong fixture");
     await expect(
       evaluateFalcon24AnalysisOutput({
         test_case: q3,
@@ -260,7 +261,7 @@ describe("Falcon24 independent analysis oracles", () => {
       }),
     ).rejects.toThrow("FALCON24_Q3_PRIORITY_CLASSIFICATION_INVALID");
     const q5Output = falcon24AnalysisOutputSchema.parse(outputFor(q5.case_id, q5.required_methods));
-    if (q5Output.case_id !== q5.case_id) throw new Error("wrong fixture");
+    if (q5Output.case_id !== "falcon24-cohort-retention-m0-m6") throw new Error("wrong fixture");
     await expect(
       evaluateFalcon24AnalysisOutput({
         test_case: q5,

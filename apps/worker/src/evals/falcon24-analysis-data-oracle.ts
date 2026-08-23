@@ -129,7 +129,8 @@ select
       and to_date(inventory.date,'Mon-YY')<bounds.last_complete_month+interval '1 month') as inventory_new_rows_12m,
   (select count(distinct date_trunc('week',marketing.date::date))::text
     from falcon_db_24.blinkit_marketing_performance marketing
-    where marketing.date::date<bounds.last_complete_month+interval '1 month') as marketing_week_count,
+    where marketing.date::date>=bounds.last_complete_month-interval '17 months'
+      and marketing.date::date<bounds.last_complete_month+interval '1 month') as marketing_week_count,
   (select count(distinct date_trunc('month',customer.registration_date::date))::text
     from falcon_db_24.blinkit_customers customer
     where customer.registration_date::date>=bounds.last_complete_month-interval '17 months'
@@ -153,6 +154,7 @@ function assertFixedFalcon24Snapshot(snapshot: z.infer<typeof snapshotRowSchema>
     first_order_before_registration_customers: 1_438,
     valid_ordering_customers: 734,
     no_order_customers: 328,
+    marketing_week_count: 79,
     fully_observed_cohort_count: 12,
   } as const;
   for (const [key, expected] of Object.entries(exact)) {
@@ -165,7 +167,6 @@ function assertFixedFalcon24Snapshot(snapshot: z.infer<typeof snapshotRowSchema>
     "feedback_rows_12m",
     "inventory_rows_12m",
     "inventory_new_rows_12m",
-    "marketing_week_count",
   ] as const) {
     if (snapshot[key] <= 0) throw new TypeError(`FALCON24_CASE_INPUT_EMPTY:${key}`);
   }

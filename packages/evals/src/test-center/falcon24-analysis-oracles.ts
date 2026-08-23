@@ -335,7 +335,7 @@ function evaluateMarketing(
   if (
     output.window.start !== "2023-05-01" ||
     output.window.end_exclusive !== "2024-11-01" ||
-    output.window.week_count !== 86
+    output.window.week_count !== 79
   ) {
     throw new TypeError("FALCON24_Q4_WEEK_WINDOW_INVALID");
   }
