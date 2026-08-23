@@ -1,0 +1,1660 @@
+{
+  "manifest": {
+    "manifest_version": "1.0.0",
+    "suite_id": "falcon",
+    "suite_version": "1.0.0",
+    "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+    "dataset_digest": "sha256:20ad41ba54d24f70d69a981907ed223ccd7bc6ab0a5894f8e417c567c1d5df4e",
+    "source_commit": "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+    "oracle_version": "falcon-postgres-expected-result@1.0.0",
+    "agent": {
+      "agent_id": "8bb0cb75-1209-51b7-a668-017155d4f486",
+      "agent_version": "submitted-answer@1.0.0",
+      "display_name": "提交答案",
+      "kind": "SUBMITTED_ANSWER",
+      "provider": null,
+      "model_id": null,
+      "available": true,
+      "unavailable_reason": null,
+      "supports_reflection": false
+    },
+    "prompt_version": "falcon-pipeline-probe@1.0.0",
+    "workflow_version": "test-center-case-runner@1.0.0",
+    "evaluator_version": "falcon-postgres-evaluator@1.0.0",
+    "aggregator_version": "test-center-aggregator@1.0.0",
+    "case_ids": [
+      "bbffcf99-f4f4-520a-b86b-536f5bcd75e4",
+      "b0fa147b-6a67-5aeb-9f06-826f34491e10",
+      "99bd6a5f-537c-54ba-9e85-ec98fea45b7c",
+      "988704d1-ba90-591c-b76f-42d12d6d62cb",
+      "24396462-ae8e-57a1-b33b-30557deaaf7a",
+      "c6cff734-f004-5be6-9b0e-209dd361f25b",
+      "cd6568c4-7dfd-5b89-81a6-571aa04db196",
+      "7f068af4-459e-5b7e-b9ad-cae5d2efad47",
+      "200e0021-79a7-5766-add5-591d9f015bd0",
+      "e35e0671-2f7d-50cc-9a72-a47b7ebbba28",
+      "59aef56b-9508-5e47-87c4-7abe7e74b034",
+      "18ca1d0b-f828-5af4-b5f2-de194be68b9e",
+      "e018c06f-8461-5593-97a5-c536b7626181",
+      "5ca30053-6e64-513c-b7e9-71ef6b776f6c",
+      "b5554418-e158-5384-80d2-60a49a6044ba",
+      "376af44b-1713-5453-9b47-c3930849faf9",
+      "67bc4dc3-64e9-52fc-8cab-e03d07305281",
+      "7f4cfde5-3df6-5bb4-be26-c7af98448d50",
+      "ec66aa56-f8cd-522b-b213-f520e1e7b5dc",
+      "5e4e4d59-23b3-598a-a671-ebe87c34332b",
+      "95eecaf9-d506-506c-a8fb-7b43b4ef93bf",
+      "e2536bbf-37e3-561c-b0f1-8ec3c2ced280",
+      "f1bb427d-3300-5e74-ad90-9ec99b72738d",
+      "aa349c58-8a37-5417-9591-7058086109c9",
+      "3d7d8381-66c6-560b-84ef-e38e306065ea",
+      "a3e45f8e-0044-5169-8888-934aff83565f",
+      "62a3a764-6bd7-5227-84fb-bab3e01632fb",
+      "094cbd40-32ab-51af-bdf0-1d55af748354",
+      "10fe725d-0e7d-5497-b474-601a4f5b51f6",
+      "672a4848-1f83-5df9-bc35-6c396af853e0",
+      "25509452-a233-5b50-abe4-54371c827d9f",
+      "89d6dd41-72f5-5c49-be0e-403ddb300d93"
+    ],
+    "seed": 20260816,
+    "budget": {
+      "max_cases": 32,
+      "max_attempts_per_case": 1,
+      "max_case_duration_ms": 30000,
+      "max_batch_duration_ms": 3600000,
+      "max_output_tokens_per_attempt": 64,
+      "max_cost_micros": 0,
+      "concurrency": 1
+    },
+    "frozen_at": "2026-08-15T18:08:46.473Z",
+    "manifest_hash": "sha256:b65c7688274f18060196f09811e7947304ad4b11ee0ea7b06125a0bfde26a46f"
+  },
+  "case_runs": [
+    {
+      "case_run_id": "0fd5c9e2-8dff-4378-bf4d-76ea00d1f36a",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "bbffcf99-f4f4-520a-b86b-536f5bcd75e4",
+      "ordinal": 0,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "58a7f309-4f36-4b79-89c3-89089a428348",
+          "case_run_id": "0fd5c9e2-8dff-4378-bf4d-76ea00d1f36a",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 4,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:ef9301fea85c612d4b13863527bb16653c3b7ab0280c25dcab46dcf95dde57c5"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 15,
+          "trace_id": "c036e8a9-91bf-4f3f-a32f-a65596d21498",
+          "started_at": "2026-08-15T18:08:46.477Z",
+          "completed_at": "2026-08-15T18:08:46.492Z",
+          "attempt_receipt_hash": "sha256:f0861a0be070ff57152d9f0990c3eb6e3df65fd77a5345a4eb603a7d56230244"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "c036e8a9-91bf-4f3f-a32f-a65596d21498",
+      "started_at": "2026-08-15T18:08:46.477Z",
+      "completed_at": "2026-08-15T18:08:46.493Z"
+    },
+    {
+      "case_run_id": "5439a1b6-7a8f-47cf-8fdc-b610650ca308",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "b0fa147b-6a67-5aeb-9f06-826f34491e10",
+      "ordinal": 9,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "5f997802-6690-4947-ac5e-19c83585c207",
+          "case_run_id": "5439a1b6-7a8f-47cf-8fdc-b610650ca308",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 2,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:e0be40d6327ed8c86c1f8217163ff268716a41f81d05b291516c0704c3914e8b"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "fa0e7a19-5bbf-4552-bbc9-ba38f53187e8",
+          "started_at": "2026-08-15T18:08:46.493Z",
+          "completed_at": "2026-08-15T18:08:46.495Z",
+          "attempt_receipt_hash": "sha256:13251790bc2c6fe55dbb32092a5d52cfebed9469d98e8a953106c27bee6ec808"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "fa0e7a19-5bbf-4552-bbc9-ba38f53187e8",
+      "started_at": "2026-08-15T18:08:46.493Z",
+      "completed_at": "2026-08-15T18:08:46.495Z"
+    },
+    {
+      "case_run_id": "7e80e83a-be14-40aa-bd46-964a1e36b24d",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "99bd6a5f-537c-54ba-9e85-ec98fea45b7c",
+      "ordinal": 15,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "00fe306b-295b-4500-9da7-2e6456a150bd",
+          "case_run_id": "7e80e83a-be14-40aa-bd46-964a1e36b24d",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 4,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:ce39f336187ba22d9f27502b937ebbec25d5c91034237d3b133049be69f7fbd8"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "43c51461-a8b1-4413-8504-e6a1840d69d8",
+          "started_at": "2026-08-15T18:08:46.495Z",
+          "completed_at": "2026-08-15T18:08:46.496Z",
+          "attempt_receipt_hash": "sha256:55977c0822ca0ee9c35ba96404300f6429a60607b2a1980c621f49962fb5a2e4"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "43c51461-a8b1-4413-8504-e6a1840d69d8",
+      "started_at": "2026-08-15T18:08:46.495Z",
+      "completed_at": "2026-08-15T18:08:46.497Z"
+    },
+    {
+      "case_run_id": "ab60673a-8240-471b-b80a-3d5f3ea67e00",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "988704d1-ba90-591c-b76f-42d12d6d62cb",
+      "ordinal": 19,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "5e44e3a5-46ee-4782-98fb-f525836a629d",
+          "case_run_id": "ab60673a-8240-471b-b80a-3d5f3ea67e00",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 1,
+            "oracle_receipt_hash": "sha256:f6b385230552b05e975ee3123e33cd6fa83e49ef5b59f31dfc56895f152338a6"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "0010e3ce-8068-43d3-b822-d8a6401cb130",
+          "started_at": "2026-08-15T18:08:46.497Z",
+          "completed_at": "2026-08-15T18:08:46.498Z",
+          "attempt_receipt_hash": "sha256:8407201b2005d4e1ca371a48676733abd084fc15b7d8ee4b1eb0a6a7feb94377"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "0010e3ce-8068-43d3-b822-d8a6401cb130",
+      "started_at": "2026-08-15T18:08:46.497Z",
+      "completed_at": "2026-08-15T18:08:46.498Z"
+    },
+    {
+      "case_run_id": "ff5088b5-0c93-4e6d-a8e1-ed19fbd313ae",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "24396462-ae8e-57a1-b33b-30557deaaf7a",
+      "ordinal": 20,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "8ef4add4-20f2-4d07-8978-f19673d25098",
+          "case_run_id": "ff5088b5-0c93-4e6d-a8e1-ed19fbd313ae",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:9d52061885d012826459b5ea5a39d9f5f544542f09466d8c4d2ed70fc1e7b689"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "501285ae-3a0e-4c49-9041-fb93bb7fb368",
+          "started_at": "2026-08-15T18:08:46.498Z",
+          "completed_at": "2026-08-15T18:08:46.499Z",
+          "attempt_receipt_hash": "sha256:b7cad73346d1ab2c3afa6c64d081e57fcee638e4905db706977d83a0409ebce5"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "501285ae-3a0e-4c49-9041-fb93bb7fb368",
+      "started_at": "2026-08-15T18:08:46.498Z",
+      "completed_at": "2026-08-15T18:08:46.499Z"
+    },
+    {
+      "case_run_id": "998291c0-6017-4a4c-97df-172854c9952c",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "c6cff734-f004-5be6-9b0e-209dd361f25b",
+      "ordinal": 21,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "c3fcd57e-1e6c-4020-ba14-cf0a195b9cff",
+          "case_run_id": "998291c0-6017-4a4c-97df-172854c9952c",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 20,
+            "candidate_column_count": 1,
+            "gold_column_count": 4,
+            "oracle_receipt_hash": "sha256:39a14a1334206b45da64d464605d0991618ee3a47cfcd12c6beffd3a7f5c9b67"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 0,
+          "trace_id": "a6cc90aa-b259-41da-b749-d7e4d7626e03",
+          "started_at": "2026-08-15T18:08:46.500Z",
+          "completed_at": "2026-08-15T18:08:46.500Z",
+          "attempt_receipt_hash": "sha256:325fbbc3dd9bfd90f3ef0fa2c7d878748a221b4dc6204df76aa7b2c67a42310f"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "a6cc90aa-b259-41da-b749-d7e4d7626e03",
+      "started_at": "2026-08-15T18:08:46.500Z",
+      "completed_at": "2026-08-15T18:08:46.500Z"
+    },
+    {
+      "case_run_id": "be940a91-5ac3-4b30-b22b-3b33cef6cce7",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "cd6568c4-7dfd-5b89-81a6-571aa04db196",
+      "ordinal": 23,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "ff5c143d-9887-488d-afdc-6f6f8b20c6d2",
+          "case_run_id": "be940a91-5ac3-4b30-b22b-3b33cef6cce7",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 1,
+            "oracle_receipt_hash": "sha256:f6b385230552b05e975ee3123e33cd6fa83e49ef5b59f31dfc56895f152338a6"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "f7179f45-dfec-4ea6-bd03-2ea2a810cc72",
+          "started_at": "2026-08-15T18:08:46.501Z",
+          "completed_at": "2026-08-15T18:08:46.502Z",
+          "attempt_receipt_hash": "sha256:db9ff86c5deaeb7d69b4394f9290344ff6d6728c59bd151851bc9fd678429b54"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "f7179f45-dfec-4ea6-bd03-2ea2a810cc72",
+      "started_at": "2026-08-15T18:08:46.501Z",
+      "completed_at": "2026-08-15T18:08:46.502Z"
+    },
+    {
+      "case_run_id": "a7746c86-ca40-4547-8ef9-05ad10c64408",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "7f068af4-459e-5b7e-b9ad-cae5d2efad47",
+      "ordinal": 72,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "a8423ad9-2555-48c2-bdac-2f9c139f1250",
+          "case_run_id": "a7746c86-ca40-4547-8ef9-05ad10c64408",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 3,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:5c0b6e27af203adb9dd21e07e3996a15e187b5982b38f463b7bc9ac8faa36402"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "d5df6552-2374-4b84-aff8-4a21f256f24c",
+          "started_at": "2026-08-15T18:08:46.502Z",
+          "completed_at": "2026-08-15T18:08:46.503Z",
+          "attempt_receipt_hash": "sha256:712568de52428b199e166eb0f85ece223445c01883028fbaa9bc52420d27133f"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "d5df6552-2374-4b84-aff8-4a21f256f24c",
+      "started_at": "2026-08-15T18:08:46.502Z",
+      "completed_at": "2026-08-15T18:08:46.503Z"
+    },
+    {
+      "case_run_id": "339c1e3f-addf-4611-b883-69afc7ef3d51",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "200e0021-79a7-5766-add5-591d9f015bd0",
+      "ordinal": 74,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "75b889ee-e1c6-4250-9035-b236bf7a549a",
+          "case_run_id": "339c1e3f-addf-4611-b883-69afc7ef3d51",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 20,
+            "candidate_column_count": 1,
+            "gold_column_count": 5,
+            "oracle_receipt_hash": "sha256:115527ffe8aab4fe529ccd8cf730a753b017e05eb9acfb5fc6e9a08838a3644b"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "f24c0f74-a4cd-4c3f-8cc5-df1b3ce0d8d1",
+          "started_at": "2026-08-15T18:08:46.503Z",
+          "completed_at": "2026-08-15T18:08:46.504Z",
+          "attempt_receipt_hash": "sha256:f37755c0d459712ad1a185dc05c181f7ba6d606917c3398c5ac68da1e2b0450c"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "f24c0f74-a4cd-4c3f-8cc5-df1b3ce0d8d1",
+      "started_at": "2026-08-15T18:08:46.503Z",
+      "completed_at": "2026-08-15T18:08:46.504Z"
+    },
+    {
+      "case_run_id": "d67d70d7-3cf7-46c4-bc5d-456244c87f5d",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "e35e0671-2f7d-50cc-9a72-a47b7ebbba28",
+      "ordinal": 82,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "71903b90-6b53-4f92-a3cc-2963e082acf7",
+          "case_run_id": "d67d70d7-3cf7-46c4-bc5d-456244c87f5d",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 3,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:0461ef5f8acbe8d780645228c2a673eec9ad79e77255550cbb4af86823982a2d"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "ccc0e3cb-3724-4f26-888c-d290374bd797",
+          "started_at": "2026-08-15T18:08:46.504Z",
+          "completed_at": "2026-08-15T18:08:46.505Z",
+          "attempt_receipt_hash": "sha256:86f16b94155f54e3cc57a50f2792f0f9fb66b3b925adf5720a8f200a84fd82f9"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "ccc0e3cb-3724-4f26-888c-d290374bd797",
+      "started_at": "2026-08-15T18:08:46.504Z",
+      "completed_at": "2026-08-15T18:08:46.505Z"
+    },
+    {
+      "case_run_id": "4870d8bf-4b00-47c5-b164-d1eb1d0395fb",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "59aef56b-9508-5e47-87c4-7abe7e74b034",
+      "ordinal": 88,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "c8de7201-1b74-4aaa-9377-6ed3993d6058",
+          "case_run_id": "4870d8bf-4b00-47c5-b164-d1eb1d0395fb",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 4,
+            "candidate_column_count": 1,
+            "gold_column_count": 6,
+            "oracle_receipt_hash": "sha256:3ddc2fa678da4dfd534673fa51e7e90ab92cfce7a13fe3f621f6e8897bd9be10"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "9168a9f1-5733-494c-9ef3-57d697aa1888",
+          "started_at": "2026-08-15T18:08:46.505Z",
+          "completed_at": "2026-08-15T18:08:46.506Z",
+          "attempt_receipt_hash": "sha256:59bde2b03a3a606937b592b77e5f37ad2bffb2efa4d7f8023f20464a4b4b52aa"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "9168a9f1-5733-494c-9ef3-57d697aa1888",
+      "started_at": "2026-08-15T18:08:46.505Z",
+      "completed_at": "2026-08-15T18:08:46.506Z"
+    },
+    {
+      "case_run_id": "e66d47e5-a912-42b4-a510-c4137a6aa8fa",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "18ca1d0b-f828-5af4-b5f2-de194be68b9e",
+      "ordinal": 100,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "ca525314-5779-483f-8adb-a27354df91f7",
+          "case_run_id": "e66d47e5-a912-42b4-a510-c4137a6aa8fa",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 12,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:d84088def74a215b1d582f8253d3238326079ae0dd0eb68766bbb608903c2415"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "efdeee5a-2345-43d8-ac86-959e251f6c97",
+          "started_at": "2026-08-15T18:08:46.506Z",
+          "completed_at": "2026-08-15T18:08:46.507Z",
+          "attempt_receipt_hash": "sha256:b44ec2602f7c6265f8cfdec97bd04e439f006b9d26c245cc30333033c3791ae7"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "efdeee5a-2345-43d8-ac86-959e251f6c97",
+      "started_at": "2026-08-15T18:08:46.506Z",
+      "completed_at": "2026-08-15T18:08:46.507Z"
+    },
+    {
+      "case_run_id": "afbade83-d0f1-4da0-bc9c-3c4ef81dd571",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "e018c06f-8461-5593-97a5-c536b7626181",
+      "ordinal": 112,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "c54be800-3b63-4f1f-8a0d-2a5bb3ef4cef",
+          "case_run_id": "afbade83-d0f1-4da0-bc9c-3c4ef81dd571",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 5,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:2ff96029048bd4484083858505e7aec8df3f1805e817084d8d7e2286156efb8a"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "fd0dc46c-f8da-4da7-8d93-7f3d4906c5cd",
+          "started_at": "2026-08-15T18:08:46.507Z",
+          "completed_at": "2026-08-15T18:08:46.509Z",
+          "attempt_receipt_hash": "sha256:9c896aa0c59d3ee3ef6861010c9eb629bee8e9f197071451d69b4d30a6acb044"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "fd0dc46c-f8da-4da7-8d93-7f3d4906c5cd",
+      "started_at": "2026-08-15T18:08:46.507Z",
+      "completed_at": "2026-08-15T18:08:46.509Z"
+    },
+    {
+      "case_run_id": "7d1b84e7-baef-4c4c-8faa-28367d57cc49",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "5ca30053-6e64-513c-b7e9-71ef6b776f6c",
+      "ordinal": 120,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "7ab9dbf0-50b4-46bf-aeb8-fdd95f34bf36",
+          "case_run_id": "7d1b84e7-baef-4c4c-8faa-28367d57cc49",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 7,
+            "candidate_column_count": 1,
+            "gold_column_count": 1,
+            "oracle_receipt_hash": "sha256:fedf267b10a59789a796795349e99f82ccfe93cab681dc5f0061581bca855477"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 6,
+          "trace_id": "fca960e5-98ed-4619-b92b-d43dd2c984b3",
+          "started_at": "2026-08-15T18:08:46.509Z",
+          "completed_at": "2026-08-15T18:08:46.515Z",
+          "attempt_receipt_hash": "sha256:82c3ebe5615f005fced7160866fad026db0a1d501236b580ddd7f23f82127b0b"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "fca960e5-98ed-4619-b92b-d43dd2c984b3",
+      "started_at": "2026-08-15T18:08:46.509Z",
+      "completed_at": "2026-08-15T18:08:46.515Z"
+    },
+    {
+      "case_run_id": "0d805c66-8d13-4863-ba46-5cf85e1cb54e",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "b5554418-e158-5384-80d2-60a49a6044ba",
+      "ordinal": 134,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "c7a25704-7c45-420b-ae84-4858521d02b3",
+          "case_run_id": "0d805c66-8d13-4863-ba46-5cf85e1cb54e",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 9,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:bb5223b7c5c0f382ec63922eec76993be1078c6ab7ecf5ff2d5b7573b33eb777"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "fc717743-1911-425a-9867-0a2dc71e4818",
+          "started_at": "2026-08-15T18:08:46.515Z",
+          "completed_at": "2026-08-15T18:08:46.518Z",
+          "attempt_receipt_hash": "sha256:012c3b14ddb668abd8182737c0b401b3be8753659e4e4dbeaac5942e83e6065e"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "fc717743-1911-425a-9867-0a2dc71e4818",
+      "started_at": "2026-08-15T18:08:46.515Z",
+      "completed_at": "2026-08-15T18:08:46.518Z"
+    },
+    {
+      "case_run_id": "08b28b31-3b8d-4fc5-9019-6dc8d5ccec0f",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "376af44b-1713-5453-9b47-c3930849faf9",
+      "ordinal": 141,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "ccecc12a-e9c6-429e-9168-832d8e493338",
+          "case_run_id": "08b28b31-3b8d-4fc5-9019-6dc8d5ccec0f",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:9d52061885d012826459b5ea5a39d9f5f544542f09466d8c4d2ed70fc1e7b689"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "7a0e9df8-b311-4f82-9269-27b3963fedcb",
+          "started_at": "2026-08-15T18:08:46.518Z",
+          "completed_at": "2026-08-15T18:08:46.520Z",
+          "attempt_receipt_hash": "sha256:6b9eb9569b72cb90b555c6a3bd8515b5e1baaac66dcc30b5db6265ad18e1a095"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "7a0e9df8-b311-4f82-9269-27b3963fedcb",
+      "started_at": "2026-08-15T18:08:46.518Z",
+      "completed_at": "2026-08-15T18:08:46.520Z"
+    },
+    {
+      "case_run_id": "f1928652-b764-4b7a-af10-1cdb008fca2b",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "67bc4dc3-64e9-52fc-8cab-e03d07305281",
+      "ordinal": 142,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "abea84c5-4ad1-4d63-ae66-aaeb586b7778",
+          "case_run_id": "f1928652-b764-4b7a-af10-1cdb008fca2b",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 1,
+            "oracle_receipt_hash": "sha256:f6b385230552b05e975ee3123e33cd6fa83e49ef5b59f31dfc56895f152338a6"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 4,
+          "trace_id": "6ed18db2-c5d9-4b0c-9a22-4f19bc96101f",
+          "started_at": "2026-08-15T18:08:46.520Z",
+          "completed_at": "2026-08-15T18:08:46.524Z",
+          "attempt_receipt_hash": "sha256:7031a14243911a5c142c83972fb4353a1b22e5798dd8c1f32e36c46e7fdaaa7c"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "6ed18db2-c5d9-4b0c-9a22-4f19bc96101f",
+      "started_at": "2026-08-15T18:08:46.520Z",
+      "completed_at": "2026-08-15T18:08:46.524Z"
+    },
+    {
+      "case_run_id": "82f99a45-4c05-4f96-876c-68645b9ebd64",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "7f4cfde5-3df6-5bb4-be26-c7af98448d50",
+      "ordinal": 154,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "2b0b4a17-d5f6-41a3-9f3f-6d6f1d52f328",
+          "case_run_id": "82f99a45-4c05-4f96-876c-68645b9ebd64",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 8,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:21cffc5ce2bdf8079ee01fb18acefea5f7914e5c17e830a5b14e24da7d2d9efa"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "ced97653-8e00-409e-ac32-11583326d1b9",
+          "started_at": "2026-08-15T18:08:46.524Z",
+          "completed_at": "2026-08-15T18:08:46.527Z",
+          "attempt_receipt_hash": "sha256:c8f71ae4089106e0c9ac5733327f18aaa854a34856627005eb39fa82fa38b3b1"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "ced97653-8e00-409e-ac32-11583326d1b9",
+      "started_at": "2026-08-15T18:08:46.524Z",
+      "completed_at": "2026-08-15T18:08:46.527Z"
+    },
+    {
+      "case_run_id": "36137fa3-0b4c-451c-a1ae-f02add345210",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "ec66aa56-f8cd-522b-b213-f520e1e7b5dc",
+      "ordinal": 171,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "13baf2b7-b2f9-4fdf-b15e-b037d2cb2d2e",
+          "case_run_id": "36137fa3-0b4c-451c-a1ae-f02add345210",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 19,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:16863a97e65279f2e975e90a17ca5854bb70e1e5d764cc1fe2aef0d234d89138"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "e5cb4819-69b9-41ee-8455-21a06d01a768",
+          "started_at": "2026-08-15T18:08:46.527Z",
+          "completed_at": "2026-08-15T18:08:46.529Z",
+          "attempt_receipt_hash": "sha256:eb11017639003335c648e16a2dcfde8ff1be911f7d3bb9e9de33df58e99a48f4"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "e5cb4819-69b9-41ee-8455-21a06d01a768",
+      "started_at": "2026-08-15T18:08:46.527Z",
+      "completed_at": "2026-08-15T18:08:46.529Z"
+    },
+    {
+      "case_run_id": "e09bf624-e488-4f5f-98ab-abaac3ba52a6",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "5e4e4d59-23b3-598a-a671-ebe87c34332b",
+      "ordinal": 172,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "a5aa56d3-a28c-4bdc-b14e-7981a68b41cb",
+          "case_run_id": "e09bf624-e488-4f5f-98ab-abaac3ba52a6",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 11,
+            "candidate_column_count": 1,
+            "gold_column_count": 4,
+            "oracle_receipt_hash": "sha256:3e9c088fc2033cf5542eda44bb6e21fb55063572f4088de4269b00a2db3c6063"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "9d440ce1-bb40-4211-8aeb-8bbe4dc22029",
+          "started_at": "2026-08-15T18:08:46.529Z",
+          "completed_at": "2026-08-15T18:08:46.532Z",
+          "attempt_receipt_hash": "sha256:1c55ae3ed64b49782aae4c8f4229754440eefab34c8e5f649795043cabe7d5ca"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "9d440ce1-bb40-4211-8aeb-8bbe4dc22029",
+      "started_at": "2026-08-15T18:08:46.529Z",
+      "completed_at": "2026-08-15T18:08:46.532Z"
+    },
+    {
+      "case_run_id": "33f7e6d9-22fa-4f83-a953-5fbbd27f7dcb",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "95eecaf9-d506-506c-a8fb-7b43b4ef93bf",
+      "ordinal": 173,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "7cc26212-7483-4039-8503-02c338e90c14",
+          "case_run_id": "33f7e6d9-22fa-4f83-a953-5fbbd27f7dcb",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 12,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:c54d15100f4a897bdc471081b66687a3d869b15ee4256ecce564892625cc8b6d"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "d599e231-1081-4622-8574-8d9857a622a6",
+          "started_at": "2026-08-15T18:08:46.532Z",
+          "completed_at": "2026-08-15T18:08:46.535Z",
+          "attempt_receipt_hash": "sha256:982eddea320e6d3e66815bc84a9986df1ab23c4586b053920be10a285e592d9b"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "d599e231-1081-4622-8574-8d9857a622a6",
+      "started_at": "2026-08-15T18:08:46.532Z",
+      "completed_at": "2026-08-15T18:08:46.535Z"
+    },
+    {
+      "case_run_id": "216a1e60-db45-4927-b93c-40feb78ceb33",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "e2536bbf-37e3-561c-b0f1-8ec3c2ced280",
+      "ordinal": 193,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "86c72fe2-1a5b-4758-ba0b-805a1745a3db",
+          "case_run_id": "216a1e60-db45-4927-b93c-40feb78ceb33",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 19,
+            "candidate_column_count": 1,
+            "gold_column_count": 4,
+            "oracle_receipt_hash": "sha256:b6e71f4de538c0d49604b94b39e399ff131454d162e2f080f22a298ad41f8281"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "df397819-fcf0-4e0d-a686-33a330cddb89",
+          "started_at": "2026-08-15T18:08:46.535Z",
+          "completed_at": "2026-08-15T18:08:46.538Z",
+          "attempt_receipt_hash": "sha256:5fa6307702834b254741b4a948f80919dab48c4214f73916fe3c80e6e21fe845"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "df397819-fcf0-4e0d-a686-33a330cddb89",
+      "started_at": "2026-08-15T18:08:46.535Z",
+      "completed_at": "2026-08-15T18:08:46.538Z"
+    },
+    {
+      "case_run_id": "14445943-717b-49b3-af35-ba6c4f368395",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "f1bb427d-3300-5e74-ad90-9ec99b72738d",
+      "ordinal": 209,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "8fb9bb7a-3af4-43db-ba3c-c566dd509fbb",
+          "case_run_id": "14445943-717b-49b3-af35-ba6c4f368395",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:41baf52068d9363d1559f411134dc6584164893fadbfc1576e139cec7e4a7a4d"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "da973ea9-6fdb-4d95-a633-3c83361fcfe4",
+          "started_at": "2026-08-15T18:08:46.538Z",
+          "completed_at": "2026-08-15T18:08:46.541Z",
+          "attempt_receipt_hash": "sha256:4a73cbf4628eb1664728de5b9fa5e6f093a4e323e6702fe6e28e8260eb127749"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "da973ea9-6fdb-4d95-a633-3c83361fcfe4",
+      "started_at": "2026-08-15T18:08:46.538Z",
+      "completed_at": "2026-08-15T18:08:46.541Z"
+    },
+    {
+      "case_run_id": "e9207324-fcb2-4ecd-907d-66432a99a17b",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "aa349c58-8a37-5417-9591-7058086109c9",
+      "ordinal": 234,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "420e4358-5f8b-4641-bbbd-73bd54f35e7a",
+          "case_run_id": "e9207324-fcb2-4ecd-907d-66432a99a17b",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 3,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:0461ef5f8acbe8d780645228c2a673eec9ad79e77255550cbb4af86823982a2d"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "152e7b2b-df26-4c23-9539-965f85cb0334",
+          "started_at": "2026-08-15T18:08:46.541Z",
+          "completed_at": "2026-08-15T18:08:46.543Z",
+          "attempt_receipt_hash": "sha256:992d913ba55fe1dbef322f71961f0fdfb55b6bc2db7de5133ccc0560b46acf4f"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "152e7b2b-df26-4c23-9539-965f85cb0334",
+      "started_at": "2026-08-15T18:08:46.541Z",
+      "completed_at": "2026-08-15T18:08:46.543Z"
+    },
+    {
+      "case_run_id": "4c3d7c9a-6f99-4aec-9c4d-6558b71bd2f3",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "3d7d8381-66c6-560b-84ef-e38e306065ea",
+      "ordinal": 239,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "64583581-75ec-419c-95ef-987f4372028d",
+          "case_run_id": "4c3d7c9a-6f99-4aec-9c4d-6558b71bd2f3",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 4,
+            "candidate_column_count": 1,
+            "gold_column_count": 5,
+            "oracle_receipt_hash": "sha256:ffaff98e2bf0ec11d5d83aa2160057d7bd874bc1e2dab810231c6f3164520910"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "bf8ca71d-373a-4f66-8b04-4e1837aba3fe",
+          "started_at": "2026-08-15T18:08:46.543Z",
+          "completed_at": "2026-08-15T18:08:46.546Z",
+          "attempt_receipt_hash": "sha256:8bd7c229e21eefcbcabf5991399e2c834c4198d36dee6bbe8bdec3207770c053"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "bf8ca71d-373a-4f66-8b04-4e1837aba3fe",
+      "started_at": "2026-08-15T18:08:46.543Z",
+      "completed_at": "2026-08-15T18:08:46.546Z"
+    },
+    {
+      "case_run_id": "44c01754-65ec-4e7c-92a1-4386f8008d5e",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "a3e45f8e-0044-5169-8888-934aff83565f",
+      "ordinal": 257,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "f0e4bf5e-e06d-48c6-b9d8-83b4d533a466",
+          "case_run_id": "44c01754-65ec-4e7c-92a1-4386f8008d5e",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 13,
+            "candidate_column_count": 1,
+            "gold_column_count": 4,
+            "oracle_receipt_hash": "sha256:93725393efabefeec8fb8741252aa75dd138993560f913dc9969da2d4195ec85"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "ff18cd1c-1f18-4574-9af7-29d5d4a4b25f",
+          "started_at": "2026-08-15T18:08:46.546Z",
+          "completed_at": "2026-08-15T18:08:46.548Z",
+          "attempt_receipt_hash": "sha256:1da8a945c71693493f1afc91389a7ee4e346fd0d1bfab4c8e42a01ea937b5812"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "ff18cd1c-1f18-4574-9af7-29d5d4a4b25f",
+      "started_at": "2026-08-15T18:08:46.546Z",
+      "completed_at": "2026-08-15T18:08:46.548Z"
+    },
+    {
+      "case_run_id": "ccf8a73b-3a0d-4cc5-9ebb-7315b88dd087",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "62a3a764-6bd7-5227-84fb-bab3e01632fb",
+      "ordinal": 268,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "cb32cd61-01df-484a-9f70-362866cf98de",
+          "case_run_id": "ccf8a73b-3a0d-4cc5-9ebb-7315b88dd087",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 1,
+            "oracle_receipt_hash": "sha256:f6b385230552b05e975ee3123e33cd6fa83e49ef5b59f31dfc56895f152338a6"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 2,
+          "trace_id": "e03400eb-b45b-47d6-b2e2-21bbf32ce56f",
+          "started_at": "2026-08-15T18:08:46.549Z",
+          "completed_at": "2026-08-15T18:08:46.551Z",
+          "attempt_receipt_hash": "sha256:b5017e8ba9648b5dcef6e8f42c0a1db496f5abcc6b3c6a82356ec570aa6ae036"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "e03400eb-b45b-47d6-b2e2-21bbf32ce56f",
+      "started_at": "2026-08-15T18:08:46.549Z",
+      "completed_at": "2026-08-15T18:08:46.551Z"
+    },
+    {
+      "case_run_id": "a3fe317a-d139-40bd-9312-3ca72d7c871d",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "094cbd40-32ab-51af-bdf0-1d55af748354",
+      "ordinal": 283,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "fd2eb2e5-9556-475f-b321-5dca79c472a5",
+          "case_run_id": "a3fe317a-d139-40bd-9312-3ca72d7c871d",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:41baf52068d9363d1559f411134dc6584164893fadbfc1576e139cec7e4a7a4d"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 4,
+          "trace_id": "52bc4189-f1a3-46aa-9503-564fd52e5dc3",
+          "started_at": "2026-08-15T18:08:46.551Z",
+          "completed_at": "2026-08-15T18:08:46.555Z",
+          "attempt_receipt_hash": "sha256:e116b06fb78d8349b73ffc0933ca3dc479217e3993ca81c7b2ecce43d50fbacf"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "52bc4189-f1a3-46aa-9503-564fd52e5dc3",
+      "started_at": "2026-08-15T18:08:46.551Z",
+      "completed_at": "2026-08-15T18:08:46.555Z"
+    },
+    {
+      "case_run_id": "4cc4b7cd-21c9-49ec-a604-cabf2f3431f8",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "10fe725d-0e7d-5497-b474-601a4f5b51f6",
+      "ordinal": 293,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "a3354a1a-893e-496b-b9da-7755783adfd7",
+          "case_run_id": "4cc4b7cd-21c9-49ec-a604-cabf2f3431f8",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 6,
+            "oracle_receipt_hash": "sha256:a2cc8216b30deb066925d4172ce3c85bd16ddedd293b9018f6177d2612b4b010"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 3,
+          "trace_id": "ce67351c-43cf-4093-ba22-53b60251f77b",
+          "started_at": "2026-08-15T18:08:46.555Z",
+          "completed_at": "2026-08-15T18:08:46.558Z",
+          "attempt_receipt_hash": "sha256:dd65063b7b0c33f881912eb772902d935723006a5531e63ea852e8c900299e13"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "ce67351c-43cf-4093-ba22-53b60251f77b",
+      "started_at": "2026-08-15T18:08:46.555Z",
+      "completed_at": "2026-08-15T18:08:46.558Z"
+    },
+    {
+      "case_run_id": "dcddda01-968e-492d-827e-354d1180070c",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "672a4848-1f83-5df9-bc35-6c396af853e0",
+      "ordinal": 294,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "0d0b401a-1b9a-407e-ba22-c9fb0284190e",
+          "case_run_id": "dcddda01-968e-492d-827e-354d1180070c",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 7,
+            "candidate_column_count": 1,
+            "gold_column_count": 3,
+            "oracle_receipt_hash": "sha256:911b25f4a3b7c4a3244a9db1ecef4035633343f20162350e5dda4544d41d96a8"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "964d558f-2360-4695-b558-62b75da35127",
+          "started_at": "2026-08-15T18:08:46.558Z",
+          "completed_at": "2026-08-15T18:08:46.559Z",
+          "attempt_receipt_hash": "sha256:35b06bf4fdf4f96033b8b7dd26cdc4f6079e63b4484381f28ba957fb66f84002"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "964d558f-2360-4695-b558-62b75da35127",
+      "started_at": "2026-08-15T18:08:46.558Z",
+      "completed_at": "2026-08-15T18:08:46.559Z"
+    },
+    {
+      "case_run_id": "89445ec9-b89c-4088-9973-93cc0e41a6b4",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "25509452-a233-5b50-abe4-54371c827d9f",
+      "ordinal": 299,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "e337998d-b7d8-49a2-a026-e3c747effd03",
+          "case_run_id": "89445ec9-b89c-4088-9973-93cc0e41a6b4",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 1,
+            "candidate_column_count": 1,
+            "gold_column_count": 1,
+            "oracle_receipt_hash": "sha256:f6b385230552b05e975ee3123e33cd6fa83e49ef5b59f31dfc56895f152338a6"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "08b2420c-5269-4559-89e2-0be2edae2803",
+          "started_at": "2026-08-15T18:08:46.559Z",
+          "completed_at": "2026-08-15T18:08:46.560Z",
+          "attempt_receipt_hash": "sha256:fe23c427a078d03065c7df7d8493cfdead6e897c9f38420cd8a82525a6a88444"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "08b2420c-5269-4559-89e2-0be2edae2803",
+      "started_at": "2026-08-15T18:08:46.559Z",
+      "completed_at": "2026-08-15T18:08:46.560Z"
+    },
+    {
+      "case_run_id": "2f7c9b1c-7182-4150-85ff-ed00ba9e19d4",
+      "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+      "case_id": "89d6dd41-72f5-5c49-be0e-403ddb300d93",
+      "ordinal": 303,
+      "status": "FAIL",
+      "attempts": [
+        {
+          "attempt_id": "cb9f4c32-e40c-4933-955f-5be3d7f35ceb",
+          "case_run_id": "2f7c9b1c-7182-4150-85ff-ed00ba9e19d4",
+          "attempt_index": 0,
+          "answer": {
+            "answer_type": "SQL",
+            "sql": "select 1 as __falcon_pipeline_probe"
+          },
+          "answer_hash": "sha256:b0cc694cfe9e0d15eafeee9ce91e7d726ec321fcba109dc93c60e5f52f13443e",
+          "verdict": "FAIL",
+          "diagnostic_code": null,
+          "oracle_feedback": {
+            "oracle_version": "falcon-postgres-expected-result@1.0.0",
+            "failure_type": "ORACLE_MISMATCH",
+            "public_message": "候选结果与 Falcon Oracle 不等价；请复核连接、过滤、聚合、列名、排序和 NULL 语义。",
+            "candidate_row_count": 1,
+            "gold_row_count": 4,
+            "candidate_column_count": 1,
+            "gold_column_count": 2,
+            "oracle_receipt_hash": "sha256:ef9301fea85c612d4b13863527bb16653c3b7ab0280c25dcab46dcf95dde57c5"
+          },
+          "usage": {
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cost_micros": 0,
+            "currency": "USD"
+          },
+          "latency_ms": 1,
+          "trace_id": "804f419f-4061-48d7-b35b-a9c08d763adb",
+          "started_at": "2026-08-15T18:08:46.560Z",
+          "completed_at": "2026-08-15T18:08:46.561Z",
+          "attempt_receipt_hash": "sha256:d032378873b3b5ef3de93010e015c86c7a89433f4781e7a9f2dc1e20cedbd099"
+        }
+      ],
+      "reflection": null,
+      "normalized_score": 0,
+      "trace_id": "804f419f-4061-48d7-b35b-a9c08d763adb",
+      "started_at": "2026-08-15T18:08:46.560Z",
+      "completed_at": "2026-08-15T18:08:46.561Z"
+    }
+  ],
+  "scorecard": {
+    "scorecard_id": "38ae4a6b-f2af-4690-9106-ae9844ef64d6",
+    "scorecard_version": 1,
+    "batch_run_id": "7dcd6c5a-d923-4c00-920b-efcf7a11fc9c",
+    "suite_id": "falcon",
+    "suite_version": "1.0.0",
+    "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+    "oracle_version": "falcon-postgres-expected-result@1.0.0",
+    "aggregator_version": "test-center-aggregator@1.0.0",
+    "total_cases": 32,
+    "valid_cases": 32,
+    "first_pass_passed": 0,
+    "final_passed": 0,
+    "recovered_cases": 0,
+    "regressed_cases": 0,
+    "agent_failed_cases": 32,
+    "infra_failed_cases": 0,
+    "invalid_cases": 0,
+    "first_pass_pass_rate": 0,
+    "post_reflection_pass_rate": 0,
+    "recovery_rate": 0,
+    "regression_rate": null,
+    "total_latency_ms": 77,
+    "total_input_tokens": 0,
+    "total_output_tokens": 0,
+    "total_cost_micros": 0,
+    "failure_taxonomy": [
+      {
+        "failure_type": "ORACLE_MISMATCH",
+        "count": 32
+      }
+    ],
+    "slices": [
+      {
+        "slice_type": "capability",
+        "slice_value": "DATA_AGENT_END_TO_END",
+        "valid_cases": 32,
+        "first_pass_passed": 0,
+        "final_passed": 0,
+        "first_pass_pass_rate": 0,
+        "post_reflection_pass_rate": 0
+      },
+      {
+        "slice_type": "capability",
+        "slice_value": "TEXT_TO_SQL",
+        "valid_cases": 32,
+        "first_pass_passed": 0,
+        "final_passed": 0,
+        "first_pass_pass_rate": 0,
+        "post_reflection_pass_rate": 0
+      },
+      {
+        "slice_type": "database",
+        "slice_value": "falcon_db_14",
+        "valid_cases": 32,
+        "first_pass_passed": 0,
+        "final_passed": 0,
+        "first_pass_pass_rate": 0,
+        "post_reflection_pass_rate": 0
+      },
+      {
+        "slice_type": "difficulty",
+        "slice_value": "challenging",
+        "valid_cases": 7,
+        "first_pass_passed": 0,
+        "final_passed": 0,
+        "first_pass_pass_rate": 0,
+        "post_reflection_pass_rate": 0
+      },
+      {
+        "slice_type": "difficulty",
+        "slice_value": "moderate",
+        "valid_cases": 25,
+        "first_pass_passed": 0,
+        "final_passed": 0,
+        "first_pass_pass_rate": 0,
+        "post_reflection_pass_rate": 0
+      }
+    ],
+    "generated_at": "2026-08-15T18:08:46.561Z",
+    "scorecard_hash": "sha256:dcdeaeeebe9b6ec143ac8c6de057dd42e708bfd8b70547628e9f6fee629aeeb5"
+  }
+}

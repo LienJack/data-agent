@@ -1,0 +1,28 @@
+{
+  "receipt_version": "semantic-ontology-coverage@1",
+  "graph_id": "00000000-0000-4000-8000-00000000fa24",
+  "source_digest": "sha256:a2ac88f23a74d6a006ab3eaf94d0d8686086df9305caeb5238689e4fe9afc398",
+  "validator_version": "semantic-ontology-coverage-validator@1.0.0",
+  "valid": true,
+  "checked_at": "2026-08-15T18:42:21.439Z",
+  "active_node_counts": {
+    "BUSINESS_SUBJECT": 9,
+    "DIMENSION": 17,
+    "METRIC": 21,
+    "FORMULA": 21,
+    "PHYSICAL_TABLE": 9,
+    "PHYSICAL_COLUMN": 70,
+    "GLOSSARY_TERM": 10
+  },
+  "active_edge_family_counts": {
+    "BUSINESS": 9,
+    "ANALYTICAL": 115,
+    "FORMULA": 63,
+    "PHYSICAL": 70,
+    "JOIN": 8,
+    "PROVENANCE": 68,
+    "TERMINOLOGY": 10
+  },
+  "issues": [],
+  "receipt_digest": "sha256:d9b5b3e12163a243c2c617052b80849df05c5f6e32b5e5760c1019db1f39e9d9"
+}

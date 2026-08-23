@@ -1,0 +1,11 @@
+{
+  "receipt_version": "falcon-submission@1.0.0",
+  "suite_version": "1.0.0",
+  "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+  "source_commit": "8ff29caaa7fad5c7b8f8864f2fc19f9f698d39a5",
+  "scope": "OFFICIAL_TEST_BLIND",
+  "case_count": 191,
+  "entries_sha256": "sha256:5c1c85b68e683415f4743e84108d4090df96e5323a22fbbbeec5605e71bcabbe",
+  "artifact_sha256": "sha256:c468f9cea5aefb141efa06e37d0ab3e54378f2df2f2ac4cf4e70b230151ddc78",
+  "generated_at": "2026-08-15T18:08:56.938Z"
+}
