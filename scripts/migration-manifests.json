@@ -1666,6 +1666,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10724",
+      "migration_name": "20260725010724_app_data_agent_semantic_context_persistence_input_validation.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10724",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-persistence-input-validation.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CONTEXT_PERSISTENCE_INPUT_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_context_persistence_input_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

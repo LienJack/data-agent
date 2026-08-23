@@ -21,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010723");
+    expect(inventory.frontier).toBe("20260725010724");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -81,6 +81,21 @@ describe("10708 unique semantic lifecycle cutover", () => {
     expect(diagnostics).toContain("SEMANTIC_CONTEXT_RETRIEVAL_RECEIPT_HASH_INVALID");
     expect(diagnostics).toContain("SEMANTIC_CONTEXT_MANDATORY_CLOSURE_HASH_INVALID");
     expect(diagnostics).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
+  });
+
+  it("validates persisted identifiers before PostgreSQL casts", () => {
+    const validation = readFileSync(
+      resolve(
+        root,
+        "infra/supabase/apps/data-agent/migration-sources/10724/20-persistence-input-validation.sql.inc",
+      ),
+      "utf8",
+    );
+
+    expect(validation).toContain("pg_catalog.pg_input_is_valid");
+    expect(validation).toContain("SEMANTIC_CONTEXT_PACKAGE_ID_INVALID");
+    expect(validation).toContain("SEMANTIC_CONTEXT_RESOLVED_AT_INVALID");
+    expect(validation).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
   });
 
   it("accepts AnalysisProgram only in the active artifact authority", () => {
