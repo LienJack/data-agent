@@ -391,6 +391,7 @@ uv sync --project "$sandbox_dir" --dev
 pnpm --dir "$repo_dir" --filter @data-agent/platform test:integration
 pnpm --dir "$repo_dir" exec vitest run \
   --exclude '**/.next/**' \
+  --exclude '**/.worktrees/**' \
   apps/web/test/integration/schema-discovery-postgres.spec.ts \
   --testTimeout=30000
 pnpm --dir "$repo_dir" --filter @data-agent/worker test:integration

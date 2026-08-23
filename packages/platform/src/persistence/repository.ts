@@ -11,6 +11,7 @@ import {
   canonicalizeJson,
   computeGroundingAuthorityDocumentHash,
   computeL2ArtifactContentHash,
+  effectiveRunConfigReferenceSchema,
   type GroundingAuthorityDocument,
   GroundingAuthorityError,
   type GroundingAuthorityReference,
@@ -60,7 +61,7 @@ const stableCommandValue = z
 const commandSecretRef = z
   .string()
   .regex(/^secretref:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-const commandPayloadSchema = z
+const directCommandPayloadSchema = z
   .strictObject({
     kind: z.literal("START_L2_RESEARCH"),
     mode: z.literal("L2").optional(),
@@ -85,6 +86,21 @@ const commandPayloadSchema = z
       payload.datasource_id !== undefined ||
       payload.message_id !== undefined,
   );
+const commandPayloadSchema = z.union([
+  z.strictObject({
+    kind: z.literal("START_L2_RESEARCH"),
+    effective_config_ref: effectiveRunConfigReferenceSchema,
+    datasource_id: z.never().optional(),
+    conversation_id: z.never().optional(),
+    message_id: z.never().optional(),
+    model_profile_id: z.never().optional(),
+    model_config_version: z.never().optional(),
+    provider: z.never().optional(),
+    model_id: z.never().optional(),
+    datasource_binding_hash: z.never().optional(),
+  }),
+  directCommandPayloadSchema,
+]);
 const commandInputSchema = z.strictObject({
   run_id: uuid,
   command_id: uuid,

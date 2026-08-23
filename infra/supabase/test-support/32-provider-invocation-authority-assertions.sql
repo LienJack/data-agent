@@ -14,6 +14,7 @@ declare
   load_definition text;
   profile_list_definition text;
   lease_definition text;
+  lease_core_definition text;
   task_commit_definition text;
   stale_recovery_definition text;
   next_stale_recovery_definition text;
@@ -93,6 +94,11 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
   where namespace.nspname = 'app_data_agent'
     and procedure.proname = 'assert_provider_active_worker_lease';
+  select pg_catalog.pg_get_functiondef(procedure.oid) into strict lease_core_definition
+  from pg_catalog.pg_proc procedure
+  join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
+  where namespace.nspname = 'app_data_agent'
+    and procedure.proname = 'assert_provider_active_worker_lease_pre_u20';
   select pg_catalog.pg_get_functiondef(procedure.oid) into strict task_commit_definition
   from pg_catalog.pg_proc procedure
   join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
@@ -197,8 +203,10 @@ begin
     or pg_catalog.strpos(begin_definition,'if rejection_reason is not null then') = 0
     or profile_list_definition not like
       '%app_data_agent.u2_canonical_sha256(artifact.document_json #- ''{receipt_ref,content_hash}'')%'
-    or lease_definition not like '%attempt.lease_expires_at > pg_catalog.clock_timestamp()%'
-    or lease_definition not like '%message.lease_expires_at > pg_catalog.clock_timestamp()%'
+    or lease_definition not like '%START_DATA_AGENT_TEAM%'
+    or lease_definition not like '%assert_provider_active_worker_lease_pre_u20%'
+    or lease_core_definition not like '%attempt.lease_expires_at > pg_catalog.clock_timestamp()%'
+    or lease_core_definition not like '%message.lease_expires_at > pg_catalog.clock_timestamp()%'
     or task_commit_definition not like '%ProviderTaskArtifact%'
     or task_commit_definition not like '%event.event_type = ''run.accepted''%'
     or task_commit_definition not like '%message.message_id = event.event_id%'

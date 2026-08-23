@@ -54,11 +54,12 @@ begin
     raise exception 'JOB_CENTER_BACKEND_DIRECT_DML';
   end if;
 
-  if exists (
+  if not exists (
     select 1 from app_data_agent.job_handler_revisions
-    where kind='FILE_SCAN'
+    where kind='FILE_SCAN' and handler_revision='file-scan-handler@1.0.0'
+      and enabled and dependencies_ready and output_receipt_required
   ) then
-    raise exception 'JOB_CENTER_FILE_SCAN_PLACEHOLDER_FORBIDDEN';
+    raise exception 'JOB_CENTER_FILE_SCAN_HANDLER_INVALID';
   end if;
 end
 $assert$;

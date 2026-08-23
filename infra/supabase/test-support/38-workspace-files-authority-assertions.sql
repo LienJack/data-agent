@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 
 do $surface$
-declare relation_name text; function_definition text;
+declare relation_name text; function_definition text; file_resolver_definition text;
 begin
   if not exists (
     select 1 from platform.migration_ledger
@@ -46,9 +46,13 @@ begin
   select pg_catalog.pg_get_functiondef(procedure.oid) into strict function_definition
   from pg_catalog.pg_proc procedure join pg_catalog.pg_namespace namespace on namespace.oid=procedure.pronamespace
   where namespace.nspname='app_data_agent' and procedure.proname='build_requested_optional_resource_bindings';
-  if function_definition not like '%workspace_file_revisions%'
-    or function_definition not like '%status=''READY''%'
-    or function_definition not like '%RESOURCE_NOT_FOUND_OR_FORBIDDEN%'
+  select pg_catalog.pg_get_functiondef(procedure.oid) into strict file_resolver_definition
+  from pg_catalog.pg_proc procedure join pg_catalog.pg_namespace namespace on namespace.oid=procedure.pronamespace
+  where namespace.nspname='app_data_agent' and procedure.proname='resolve_workspace_file_config_reference';
+  if function_definition not like '%resolve_workspace_file_config_reference%'
+    or file_resolver_definition not like '%workspace_file_revisions%'
+    or file_resolver_definition not like '%revision_record.status%READY%'
+    or file_resolver_definition not like '%RESOURCE_NOT_FOUND_OR_FORBIDDEN%'
   then raise exception 'WORKSPACE_FILES_EFFECTIVE_CONFIG_RESOLVER_MISSING'; end if;
 end
 $surface$;

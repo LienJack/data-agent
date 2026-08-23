@@ -1,5 +1,11 @@
 \set ON_ERROR_STOP on
 
+begin;
+grant usage on schema test_support
+  to data_agent_backend,data_agent_job_authority,data_agent_secret_authority;
+grant execute on all functions in schema test_support
+  to data_agent_backend,data_agent_job_authority,data_agent_secret_authority;
+
 insert into app_data_agent.artifacts (
   app_id,
   tenant_id,
@@ -147,7 +153,7 @@ select test_support.assert_raises(
 );
 reset role;
 
-begin;
+savepoint authority_denied;
 set local role data_agent_backend;
 select test_support.assert_raises(
   $assert$
@@ -176,7 +182,8 @@ select test_support.assert_raises(
   $assert$,
   'permission denied'
 );
-rollback;
+rollback to savepoint authority_denied;
+release savepoint authority_denied;
 
 select platform.transition_app_lifecycle(
   '00000000-0000-4000-8000-00000000da01'::uuid,
@@ -817,3 +824,4 @@ select test_support.assert_raises(
   'DA_SCOPE_FORBIDDEN'
 );
 reset role;
+rollback;

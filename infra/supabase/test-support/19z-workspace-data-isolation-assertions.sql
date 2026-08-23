@@ -1,6 +1,51 @@
 -- Phase 2: datasource, Q&A and immutable run attribution are workspace scoped.
 
 begin;
+insert into data_agent_auth."user" (
+  "id", "name", "email", "emailVerified", "username", "displayUsername"
+) values (
+  '00000000-0000-4000-8000-000000001001',
+  'Workspace isolation owner',
+  'workspace-isolation-owner@example.invalid',
+  true,
+  'workspace_isolation_owner',
+  'workspace_isolation_owner'
+) on conflict ("id") do nothing;
+
+insert into app_data_agent.app_users (
+  app_id, environment, principal_id, auth_user_id, email, display_name,
+  system_role, status, authz_epoch
+) values (
+  '00000000-0000-4000-8000-00000000da01',
+  'test',
+  '00000000-0000-4000-8000-000000001001',
+  '00000000-0000-4000-8000-000000001001',
+  'workspace-isolation-owner@example.invalid',
+  'Workspace isolation owner',
+  'USER',
+  'ACTIVE',
+  1
+) on conflict (app_id, environment, principal_id) do nothing;
+
+insert into app_data_agent.model_catalog_entries (
+  app_id, environment, model_profile_id, provider, model_id, display_name,
+  base_url, capabilities, credential_ref, status, config_version,
+  is_system_default, created_by
+) values (
+  '00000000-0000-4000-8000-00000000da01',
+  'test',
+  '00000000-0000-4000-8000-00000000d212',
+  'openai',
+  'workspace-isolation-model',
+  'Workspace isolation model',
+  'https://example.invalid',
+  '{"structured_output":true,"tool_calling":true,"streaming":true,"reasoning":false,"vision":false}'::jsonb,
+  null,
+  'ACTIVE',
+  1,
+  false,
+  '00000000-0000-4000-8000-000000001001'
+);
 set local role data_agent_backend;
 select pg_catalog.set_config('data_agent.app_id', '00000000-0000-4000-8000-00000000da01', true);
 select pg_catalog.set_config('data_agent.tenant_id', '00000000-0000-4000-8000-00000000aa11', true);
@@ -25,7 +70,7 @@ insert into app_data_agent.datasource_connections (
 
 insert into app_data_agent.qa_conversations (
   app_id, tenant_id, environment, conversation_id, owner_principal_id,
-  title, datasource_id
+  title, datasource_id, model_id, model_profile_id
 ) values (
   '00000000-0000-4000-8000-00000000da01',
   '00000000-0000-4000-8000-00000000aa11',
@@ -33,7 +78,9 @@ insert into app_data_agent.qa_conversations (
   '00000000-0000-4000-8000-00000000c211',
   '00000000-0000-4000-8000-000000001001',
   'workspace one private conversation',
-  '00000000-0000-4000-8000-00000000d211'
+  '00000000-0000-4000-8000-00000000d211',
+  'workspace-isolation-model',
+  '00000000-0000-4000-8000-00000000d212'
 );
 
 insert into app_data_agent.qa_messages (

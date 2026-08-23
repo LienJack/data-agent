@@ -17,6 +17,11 @@ import {
 import { Pool } from "pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { createRunWorkerRunner, type RunWorkflowExecutorPort } from "../../src/runs/index.js";
+import {
+  buildWorkerEffectiveConfigFixture,
+  createEffectiveConfigFixtureLoader,
+  effectiveConfigRef,
+} from "../runs/support/effective-config-fixture.js";
 
 const DEPLOYMENT_ID = "00000000-0000-4000-8000-00000000de01";
 const databaseUrl = process.env.DATA_AGENT_TEST_DATABASE_URL;
@@ -29,17 +34,6 @@ function interruptedAppend(): PortResult<never> {
       code: "RUN_EVENT_APPEND_INTERRUPTED",
       message: "测试模拟 Receipt 提交后的进程中断。",
       retryable: true,
-    },
-  };
-}
-
-async function rejectLegacyRunWithoutEffectiveConfig(): Promise<PortResult<never>> {
-  return {
-    ok: false,
-    error: {
-      code: "EFFECTIVE_CONFIG_WORKER_CONSUMPTION_INVALID",
-      message: "Legacy integration fixture has no Effective Config authority receipt.",
-      retryable: false,
     },
   };
 }
@@ -74,25 +68,41 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
   async function acceptRun(question: string) {
     const authorized = await isolatedCapability();
     const repository = createPostgresRepository(sqlPool, authority.authorizer);
+    const runId = randomUUID();
+    const effectiveConfig = await buildWorkerEffectiveConfigFixture({
+      scope: authorized.scope,
+      workspace_id: authorized.scope.tenant_id,
+      principal_id: authorized.principal,
+      run_id: runId,
+    });
     const command = {
-      run_id: randomUUID(),
+      run_id: runId,
       command_id: randomUUID(),
       event_id: randomUUID(),
       outbox_id: randomUUID(),
       audit_id: randomUUID(),
       idempotency_key: `runtime-${randomUUID()}`,
       question,
-      payload: { kind: "START_L2_RESEARCH", mode: "L2" as const },
+      payload: {
+        kind: "START_L2_RESEARCH",
+        effective_config_ref: effectiveConfigRef(effectiveConfig),
+      },
     };
     const accepted = await repository.acceptCommand(authorized, command);
     if (!accepted.ok) throw new Error(`${accepted.error.code}: ${accepted.error.message}`);
-    return { authorized, command };
+    return {
+      authorized,
+      command,
+      effectiveConfigLoader: createEffectiveConfigFixtureLoader(effectiveConfig),
+    };
   }
 
   it("reclaims a crash before run.leased and projects the authoritative Attempt number", {
     timeout: 20_000,
   }, async () => {
-    const { authorized, command } = await acceptRun("验证 Lease Event 前崩溃仍能按 Attempt 2 恢复");
+    const { authorized, command, effectiveConfigLoader } = await acceptRun(
+      "验证 Lease Event 前崩溃仍能按 Attempt 2 恢复",
+    );
     const queue = createPostgresRunQueue(sqlPool, authority.authorizer, authorized, {
       lease_duration_ms: 5_000,
     });
@@ -119,7 +129,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const firstRunner = createRunWorkerRunner({
       queue,
       event_store: interruptedStore,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor,
     });
     await expect(
@@ -134,7 +144,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const secondRunner = createRunWorkerRunner({
       queue,
       event_store: store,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor,
     });
     await expect(
@@ -162,7 +172,9 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
   it("reclaims an expired crash with a higher Fence and reuses the committed Side Effect Receipt", {
     timeout: 20_000,
   }, async () => {
-    const { authorized, command } = await acceptRun("验证崩溃恢复不会重复执行 SQL");
+    const { authorized, command, effectiveConfigLoader } = await acceptRun(
+      "验证崩溃恢复不会重复执行 SQL",
+    );
     const queue = createPostgresRunQueue(sqlPool, authority.authorizer, authorized, {
       lease_duration_ms: 5_000,
     });
@@ -199,7 +211,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const firstRunner = createRunWorkerRunner({
       queue,
       event_store: interruptedStore,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor,
     });
 
@@ -215,7 +227,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const secondRunner = createRunWorkerRunner({
       queue,
       event_store: store,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor,
     });
     await expect(
@@ -263,7 +275,9 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
   });
 
   it("raises the cancel Fence during streaming and rejects the late completion", async () => {
-    const { authorized, command } = await acceptRun("验证 Provider Streaming 期间取消");
+    const { authorized, command, effectiveConfigLoader } = await acceptRun(
+      "验证 Provider Streaming 期间取消",
+    );
     const queue = createPostgresRunQueue(sqlPool, authority.authorizer, authorized, {
       lease_duration_ms: 10_000,
     });
@@ -272,7 +286,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const runner = createRunWorkerRunner({
       queue,
       event_store: store,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor: {
         async execute() {
           const cancelled = await control.submit({
@@ -393,7 +407,9 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
   });
 
   it("terminal Event commits queue settlement before a later acknowledgement can be lost", async () => {
-    const { authorized, command } = await acceptRun("验证终态 Event 与 Queue 结算原子提交");
+    const { authorized, command, effectiveConfigLoader } = await acceptRun(
+      "验证终态 Event 与 Queue 结算原子提交",
+    );
     const queue = createPostgresRunQueue(sqlPool, authority.authorizer, authorized, {
       lease_duration_ms: 10_000,
     });
@@ -414,7 +430,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const interruptedRunner = createRunWorkerRunner({
       queue: interruptedQueue,
       event_store: store,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor: {
         async execute() {
           return { kind: "COMPLETED" };
@@ -435,7 +451,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
       createRunWorkerRunner({
         queue,
         event_store: store,
-        effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+        effective_config_loader: effectiveConfigLoader,
         executor: {
           async execute() {
             throw new Error("settled work must not execute twice");
@@ -481,7 +497,9 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
   });
 
   it("propagates the database-authoritative Snapshot Hash through suspend and resume", async () => {
-    const { authorized, command } = await acceptRun("验证 Suspend/Resume 从持久 Snapshot 恢复");
+    const { authorized, command, effectiveConfigLoader } = await acceptRun(
+      "验证 Suspend/Resume 从持久 Snapshot 恢复",
+    );
     const queue = createPostgresRunQueue(sqlPool, authority.authorizer, authorized, {
       lease_duration_ms: 10_000,
     });
@@ -493,7 +511,7 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl)("PostgreSQL durable Run runti
     const runner = createRunWorkerRunner({
       queue,
       event_store: store,
-      effective_config_loader: rejectLegacyRunWithoutEffectiveConfig,
+      effective_config_loader: effectiveConfigLoader,
       executor: {
         async execute({ restored_snapshot }) {
           executions += 1;

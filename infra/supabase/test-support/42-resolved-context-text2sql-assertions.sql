@@ -40,14 +40,6 @@ $assertions$;
 
 begin;
 set local role data_agent_backend;
-select * from platform.revalidate_backend_authority(
-  '00000000-0000-4000-8000-00000000da01'::uuid,
-  '00000000-0000-4000-8000-00000000aa22'::uuid,
-  'test',
-  '00000000-0000-4000-8000-00000000de01'::uuid,
-  '00000000-0000-4000-8000-000000001003'::uuid,
-  'owner',1,1,false
-);
 select pg_catalog.set_config('data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
 select pg_catalog.set_config('data_agent.tenant_id','00000000-0000-4000-8000-00000000aa22',true);
 select pg_catalog.set_config('data_agent.environment','test',true);

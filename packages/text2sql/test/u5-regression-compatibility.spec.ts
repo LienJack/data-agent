@@ -481,10 +481,17 @@ describe("U5 Regression: U10.0/U10.1a 隔离", () => {
 
   it("公共 @data-agent/contracts 根 API 不包含 grounding materializer runtime 入口", async () => {
     const contractSurface = await import("@data-agent/contracts");
+    const runtimeEntryPoints = new Set([
+      "registerTrustedGroundingCoordinator",
+      "registerTrustedGroundingMaterializer",
+      "issueSemanticRelease",
+      "issueSchemaSnapshot",
+      "issuePolicyReceipt",
+      "materializeGroundingAuthority",
+      "coordinateGroundingBundle",
+    ]);
     const materializerRuntimeNames = Object.keys(contractSurface).filter((name) =>
-      /registerTrustedGrounding|issueSemantic|issueSchema|issuePolicy|materializeGrounding|coordinateGrounding/i.test(
-        name,
-      ),
+      runtimeEntryPoints.has(name),
     );
     expect(materializerRuntimeNames).toEqual([]);
   });

@@ -151,8 +151,14 @@ export function createPostgresRunQueue(
              work.outbox_id,
              work.run_id,
              work.command_id,
-             work.command_kind,
-             work.payload as payload_json,
+             case
+               when work.command_kind = 'RESUME_RUN' then original.command_kind
+               else work.command_kind
+             end as command_kind,
+             case
+               when work.command_kind = 'RESUME_RUN' then original.payload_json
+               else work.payload
+             end as payload_json,
              work.attempt_id,
              work.attempt_no,
              work.delivery_attempt_no,
@@ -167,7 +173,19 @@ export function createPostgresRunQueue(
             and run.tenant_id = $5::uuid
             and run.environment = $6::text
             and run.run_id = work.run_id
-            and run.principal_id = $7::uuid`,
+            and run.principal_id = $7::uuid
+           left join lateral (
+             select command.payload_json,
+                    command.payload_json ->> 'kind' as command_kind
+             from app_data_agent.commands as command
+             where command.app_id = run.app_id
+               and command.tenant_id = run.tenant_id
+               and command.environment = run.environment
+               and command.run_id = run.run_id
+               and command.payload_json ? 'effective_config_ref'
+             order by command.created_at, command.command_id
+             limit 1
+           ) as original on work.command_kind = 'RESUME_RUN'`,
           [
             parsedWorker.data,
             1,

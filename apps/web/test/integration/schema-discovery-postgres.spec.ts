@@ -17,7 +17,7 @@ const APP_ID = "00000000-0000-4000-8000-00000000da01";
 const DEPLOYMENT_ID = "00000000-0000-4000-8000-00000000de01";
 const TENANT_ID = "00000000-0000-4000-8000-00000000aa11";
 const PRINCIPAL_ID = "00000000-0000-4000-8000-000000001001";
-const DATASOURCE_ID = "schema-discovery-integration";
+const DATASOURCE_ID = "00000000-0000-4000-8000-00000000d101";
 const DATASOURCE_FINGERPRINT = `sha256:${"b".repeat(64)}` as const;
 
 const databaseUrl = process.env.DATA_AGENT_TEST_DATABASE_URL;
@@ -61,6 +61,20 @@ describe.skipIf(!databaseUrl || !adminDatabaseUrl || !datasourceUrl)(
     const quotedSchema = quoteIdentifier(schemaName);
 
     beforeAll(async () => {
+      await adminPool.query(
+        `insert into app_data_agent.datasource_connections (
+           app_id, tenant_id, environment, datasource_id, name, datasource_type,
+           file_path, created_by_principal_id
+         ) values ($1::uuid, $2::uuid, 'test', $3::uuid, $4, 'sqlite', $5, $6::uuid)`,
+        [
+          APP_ID,
+          TENANT_ID,
+          DATASOURCE_ID,
+          "Schema discovery integration",
+          "/tmp/schema-discovery-integration.sqlite",
+          PRINCIPAL_ID,
+        ],
+      );
       await adminPool.query(`
         create schema ${quotedSchema};
         create table ${quotedSchema}.orders (

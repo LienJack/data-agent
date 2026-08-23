@@ -114,10 +114,6 @@ grant execute on function app_data_agent.u2_canonical_sha256(jsonb)
 commit;
 
 begin;
-select * from platform.revalidate_backend_authority(
-  '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11','test',
-  '00000000-0000-4000-8000-00000000de01','00000000-0000-4000-8000-000000001001',
-  'owner',1,1,true);
 set session authorization data_agent_u24_behavior_session;
 select pg_catalog.set_config('data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
 select pg_catalog.set_config('data_agent.tenant_id','00000000-0000-4000-8000-00000000aa11',true);
@@ -279,6 +275,26 @@ $behavior$;
 
 reset session authorization;
 rollback;
+begin;
+set local session_replication_role=replica;
+delete from app_data_agent.qa_messages
+where conversation_id in (
+  '00000000-0000-4000-8000-000000002902','00000000-0000-4000-8000-000000002903',
+  '00000000-0000-4000-8000-000000002904','00000000-0000-4000-8000-000000002905',
+  '00000000-0000-4000-8000-000000002906','00000000-0000-4000-8000-000000002907');
+delete from app_data_agent.workspace_run_bindings
+where run_id='00000000-0000-4000-8000-000000002909';
+delete from app_data_agent.runs where run_id='00000000-0000-4000-8000-000000002909';
+delete from app_data_agent.qa_conversations
+where conversation_id in (
+  '00000000-0000-4000-8000-000000002902','00000000-0000-4000-8000-000000002903',
+  '00000000-0000-4000-8000-000000002904','00000000-0000-4000-8000-000000002905',
+  '00000000-0000-4000-8000-000000002906','00000000-0000-4000-8000-000000002907');
+delete from app_data_agent.qa_conversation_folders
+where folder_id='00000000-0000-4000-8000-000000002908';
+delete from app_data_agent.datasource_connections
+where datasource_id='00000000-0000-4000-8000-000000002901';
+commit;
 revoke execute on function app_data_agent.u2_canonical_sha256(jsonb)
   from data_agent_u24_behavior_session;
 revoke data_agent_backend from data_agent_u24_behavior_session;

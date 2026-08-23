@@ -326,6 +326,13 @@ begin
 end
 $strict_candidate_contract$;
 
+begin;
+select pg_catalog.set_config('data_agent.app_id','00000000-0000-4000-8000-00000000da01',true);
+select pg_catalog.set_config('data_agent.tenant_id','00000000-0000-4000-8000-00000000aa11',true);
+select pg_catalog.set_config('data_agent.environment','test',true);
+select pg_catalog.set_config('data_agent.principal_id','00000000-0000-4000-8000-000000001001',true);
+select pg_catalog.set_config('data_agent.role','owner',true);
+select pg_catalog.set_config('data_agent.deployment_id','00000000-0000-4000-8000-00000000de01',true);
 do $final_wire_contract$
 declare
   question_request jsonb;
@@ -573,6 +580,7 @@ begin
   end if;
 end
 $final_wire_contract$;
+rollback;
 
 begin;
 set local role data_agent_backend;

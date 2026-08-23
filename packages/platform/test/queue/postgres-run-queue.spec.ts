@@ -128,7 +128,13 @@ describe("PostgreSQL Run Queue", () => {
       ids.principal,
     ]);
     const claim = fixture.calls.find(({ text }) => text.includes("claim_run_work"));
-    expect(claim?.text).toContain("work.payload as payload_json");
+    expect(claim?.text).toContain(
+      "when work.command_kind = 'RESUME_RUN' then original.command_kind",
+    );
+    expect(claim?.text).toContain(
+      "when work.command_kind = 'RESUME_RUN' then original.payload_json",
+    );
+    expect(claim?.text).toContain("command.payload_json ? 'effective_config_ref'");
     expect(claim?.text).toContain("work.expires_at as lease_expires_at");
   });
 
