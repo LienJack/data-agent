@@ -1144,3 +1144,24 @@ Removed pricing constraints, UNBILLABLE, monetary route budgets, Billing provide
 ### Status
 
 [OK] **Completed**
+
+
+## Session 49: TIS 定向语义重构完成
+
+**Date**: 2026-08-23
+**Task**: TIS 定向语义重构完成
+**Branch**: `refactor/semantic-v2-billing-retirement`
+
+### Summary
+
+完成 V2-only TIS 定向语义重构五个子任务：当前发布词汇解析、显式消歧、确定性绑定影响 Candidate、只读 Studio/Explorer 证据及 Falcon 准确性门禁；M2 因证据不足保持 NO-GO，无兼容层和旧数据迁移。全仓 typecheck 与 verify:release GO，浏览器 Preview 验收通过。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `aae206a` | (see git log) |
+
+### Status
+
+[OK] **Completed**
