@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type SemanticSourceBundle,
   semanticSourceBundleSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/semantic";
 import { compileU5Projection } from "@data-agent/semantic/runtime-context";
 import type { ClientBase } from "pg";
 import { z } from "zod";

@@ -5,6 +5,7 @@ import {
   discoverWorkspaceModules,
   normalizeWorkspaceFilter,
   scanModuleImports,
+  validateRootPackageImportBaselines,
   validateWorkspaceArchitecture,
   validateWorkspaceModules,
   type WorkspaceModule,
@@ -273,6 +274,74 @@ describe("Workspace 依赖边界", () => {
 
     expect(scan.moduleSpecifiers).toContain("@data-agent/contracts");
     expect(scan.nonLiteralModuleLoads).toEqual([]);
+  });
+
+  it("Contracts 根入口只允许既有生产文件并允许基线递减", () => {
+    const baseline = [
+      {
+        files: ["apps/web/src/legacy-consumer.ts"],
+        package_name: "@data-agent/contracts",
+        root_specifier: "@data-agent/contracts",
+      },
+    ] as const;
+
+    expect(
+      validateRootPackageImportBaselines(
+        repoRoot,
+        [
+          {
+            moduleName: "@data-agent/web",
+            path: join(repoRoot, "apps/web/src/legacy-consumer.ts"),
+            source: 'import type { AppScope } from "@data-agent/contracts";',
+          },
+        ],
+        baseline,
+      ),
+    ).toEqual([]);
+
+    expect(
+      validateRootPackageImportBaselines(
+        repoRoot,
+        [
+          {
+            moduleName: "@data-agent/web",
+            path: join(repoRoot, "apps/web/src/new-consumer.ts"),
+            source: 'import type { AppScope } from "@data-agent/contracts";',
+          },
+        ],
+        baseline,
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        code: "ROOT_PACKAGE_IMPORT_BASELINE_EXPANSION",
+        dependency: "@data-agent/contracts",
+        module: "@data-agent/web",
+      }),
+      expect.objectContaining({
+        code: "ROOT_PACKAGE_IMPORT_BASELINE_STALE",
+        dependency: "@data-agent/contracts",
+        module: "@data-agent/contracts",
+      }),
+    ]);
+
+    expect(
+      validateRootPackageImportBaselines(
+        repoRoot,
+        [
+          {
+            moduleName: "@data-agent/web",
+            path: join(repoRoot, "apps/web/src/new-consumer.ts"),
+            source: 'import type { AppScope } from "@data-agent/contracts/workspaces";',
+          },
+          {
+            moduleName: "@data-agent/web",
+            path: join(repoRoot, "apps/web/src/new-consumer.spec.ts"),
+            source: 'import type { AppScope } from "@data-agent/contracts";',
+          },
+        ],
+        [],
+      ),
+    ).toEqual([]);
   });
 
   it("全 Workspace src 扫描对插值 dynamic import 失败关闭", () => {

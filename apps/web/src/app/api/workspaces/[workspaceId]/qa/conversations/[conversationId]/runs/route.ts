@@ -1,9 +1,9 @@
+import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
 import {
-  buildRunConfigRequestCandidate,
   qaRunStartInputSchema,
   workspaceFileReferenceSchema,
   workspaceIdempotencyKeySchema,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/workspaces";
 import { createPostgresRepository, freezeSubagentCapabilityCatalog } from "@data-agent/platform";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";

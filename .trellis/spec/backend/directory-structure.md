@@ -40,6 +40,9 @@ test/*.spec.ts
 ### 3. 契约
 
 - `contracts` 不得导入任何 App、Runtime 或平台 SDK。
+- `contracts` 的生产消费者必须优先使用 `agents`、`artifacts`、`common`、`context`、`evals`、
+  `ports`、`providers`、`runs`、`semantic`、`workspaces` 等显式领域子路径。根入口只为历史兼容
+  保留，并由 `scripts/workspace-root-import-baselines.json` 按生产文件冻结为只减不增基线。
 - `semantic` 根入口必须为空；调用方只能使用 `authoring`、`governance`、`read-model`、
   `application`、`runtime-context`、`relationship-index` 六个受控 subpath。语义合同与 Port 只定义在
   `contracts`，不得从 `semantic` 根入口重导出兼容 surface。
@@ -62,6 +65,7 @@ test/*.spec.ts
 | 条件 | 结果 |
 | --- | --- |
 | `contracts` 导入 `@mastra/*`、`@supabase/*`、Redis 或 Next.js | Architecture Test 失败 |
+| 新生产文件从 `@data-agent/contracts` 根入口导入 | Architecture Test 失败 |
 | 领域 Package 直接导入平台 SDK | Architecture Test 失败 |
 | App 在本地复制 Public Terminal 或 Artifact 类型 | Code Review/Type Test 失败 |
 | Web/Worker 绕过唯一 Workspace/job composition 创建 Semantic workflow | Architecture Test 失败 |
@@ -72,7 +76,7 @@ test/*.spec.ts
 ### 5. Good / Base / Bad
 
 - Good：`apps/worker` 注入 `ArtifactStorePort`，领域包只调用 Port。
-- Base：叶子 Package 仅依赖 `@data-agent/contracts`。
+- Base：历史叶子 Package 仍依赖 `@data-agent/contracts` 根入口，但文件已纳入可递减基线。
 - Bad：`packages/text2sql` 直接创建 Supabase Client 或 Mastra Agent。
 
 ### 6. 必需测试
@@ -98,7 +102,7 @@ export async function compileQuery() {
 #### Correct
 
 ```ts
-import type { ArtifactStorePort } from "@data-agent/contracts";
+import type { ArtifactStorePort } from "@data-agent/contracts/ports";
 export function createCompiler(store: ArtifactStorePort) {
   return { store };
 }

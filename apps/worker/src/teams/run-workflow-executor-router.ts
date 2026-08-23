@@ -1,4 +1,4 @@
-import { effectiveConfigRunLeasePayloadSchema } from "@data-agent/contracts";
+import { effectiveConfigRunLeasePayloadSchema } from "@data-agent/contracts/runs";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 
 export function createRunWorkflowExecutorRouter(input: {

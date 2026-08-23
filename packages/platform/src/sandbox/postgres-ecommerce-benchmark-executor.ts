@@ -1,4 +1,4 @@
-import { canonicalizeJson } from "@data-agent/contracts";
+import { canonicalizeJson } from "@data-agent/contracts/common";
 import type pg from "pg";
 import { parse } from "pgsql-parser";
 

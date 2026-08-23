@@ -2,7 +2,8 @@
  * Modified from DeepSeek Harness keyed conversation/snapshot assemblers.
  * Fixed upstream commit and MIT notice: components/qa/DEEPSEEK_HARNESS_MIT_NOTICE.md
  */
-import type { ArtifactReference, PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts";
+import type { ArtifactReference } from "@data-agent/contracts/artifacts";
+import type { PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts/runs";
 import type { Message } from "./qa-types";
 
 export type ProcessStatus =

@@ -162,6 +162,8 @@ export interface ArchitectureViolation {
     | "FORBIDDEN_ROLE_RUNTIME_DEPENDENCY"
     | "FORBIDDEN_ROLE_SOURCE_DEPENDENCY"
     | "NON_LITERAL_MODULE_LOAD"
+    | "ROOT_PACKAGE_IMPORT_BASELINE_EXPANSION"
+    | "ROOT_PACKAGE_IMPORT_BASELINE_STALE"
     | "UNDECLARED_INTERNAL_DEPENDENCY"
     | "UNKNOWN_INTERNAL_DEPENDENCY"
     | "UNKNOWN_WORKSPACE_MODULE";
@@ -169,6 +171,17 @@ export interface ArchitectureViolation {
   readonly file?: string;
   readonly message: string;
   readonly module: string;
+}
+
+export interface RootPackageImportBaseline {
+  readonly files: readonly string[];
+  readonly package_name: string;
+  readonly root_specifier: string;
+}
+
+interface RootPackageImportBaselineDocument {
+  readonly baselines: readonly RootPackageImportBaseline[];
+  readonly schema_version: "workspace-root-import-baselines@1.0.0";
 }
 
 interface ScannerToken {
@@ -182,6 +195,131 @@ function isJsonObject(value: unknown): value is JsonObject {
 
 function normalizeRelativePath(path: string): string {
   return path.split(sep).join("/").replace(/^\.\//, "").replace(/\/$/, "");
+}
+
+function isProductionSourcePath(path: string): boolean {
+  const normalized = normalizeRelativePath(path);
+  return (
+    !/(^|\/)(__tests__|test|tests)(\/|$)/.test(normalized) &&
+    !/\.(spec|test)\.(?:[cm]?ts|tsx)$/.test(normalized)
+  );
+}
+
+function parseRootPackageImportBaselines(path: string): RootPackageImportBaselineDocument {
+  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  if (
+    !isJsonObject(parsed) ||
+    parsed.schema_version !== "workspace-root-import-baselines@1.0.0" ||
+    !Array.isArray(parsed.baselines)
+  ) {
+    throw new Error(`${path} 不是有效的 Workspace root import baseline 文档。`);
+  }
+
+  const packageNames = new Set<string>();
+  const baselines = parsed.baselines.map((candidate, baselineIndex) => {
+    if (
+      !isJsonObject(candidate) ||
+      typeof candidate.package_name !== "string" ||
+      typeof candidate.root_specifier !== "string" ||
+      candidate.package_name !== candidate.root_specifier ||
+      !Array.isArray(candidate.files) ||
+      !candidate.files.every((file) => typeof file === "string" && file.length > 0)
+    ) {
+      throw new Error(`${path} baselines[${baselineIndex}] 的结构无效。`);
+    }
+    if (packageNames.has(candidate.package_name)) {
+      throw new Error(`${path} 重复声明 ${candidate.package_name} baseline。`);
+    }
+    packageNames.add(candidate.package_name);
+
+    const files = [...candidate.files];
+    const sortedFiles = [...new Set(files)].sort();
+    if (
+      files.length !== sortedFiles.length ||
+      files.some((file, index) => file !== sortedFiles[index])
+    ) {
+      throw new Error(`${path} 的 ${candidate.package_name} files 必须唯一并按字典序排序。`);
+    }
+    for (const file of files) {
+      if (file.startsWith("/") || file.startsWith("../") || !isProductionSourcePath(file)) {
+        throw new Error(`${path} 的 ${candidate.package_name} 包含无效生产源码路径 ${file}。`);
+      }
+    }
+
+    return {
+      files,
+      package_name: candidate.package_name,
+      root_specifier: candidate.root_specifier,
+    };
+  });
+
+  return { baselines, schema_version: parsed.schema_version };
+}
+
+export function validateRootPackageImportBaselines(
+  repoRoot: string,
+  sources: Iterable<WorkspaceSource>,
+  baselines: readonly RootPackageImportBaseline[],
+): ArchitectureViolation[] {
+  const allowedFilesBySpecifier = new Map(
+    baselines.map((baseline) => [baseline.root_specifier, new Set(baseline.files)]),
+  );
+  const packageNameBySpecifier = new Map(
+    baselines.map((baseline) => [baseline.root_specifier, baseline.package_name]),
+  );
+  const currentFilesBySpecifier = new Map(
+    baselines.map((baseline) => [baseline.root_specifier, new Set<string>()]),
+  );
+  const violations: ArchitectureViolation[] = [];
+
+  for (const source of sources) {
+    if (!isProductionSourcePath(source.path)) {
+      continue;
+    }
+    const relativePath = normalizeRelativePath(relative(repoRoot, source.path));
+    for (const specifier of scanModuleImports(source.source).moduleSpecifiers) {
+      const allowedFiles = allowedFilesBySpecifier.get(specifier);
+      if (!allowedFiles) {
+        continue;
+      }
+      currentFilesBySpecifier.get(specifier)?.add(relativePath);
+      if (allowedFiles.has(relativePath)) {
+        continue;
+      }
+      const packageName = packageNameBySpecifier.get(specifier) ?? specifier;
+      violations.push({
+        code: "ROOT_PACKAGE_IMPORT_BASELINE_EXPANSION",
+        dependency: specifier,
+        file: source.path,
+        message: `${relativePath} 新增了 ${specifier} 根入口依赖；请改用领域子路径。`,
+        module: source.moduleName || packageName,
+      });
+    }
+  }
+
+  for (const baseline of baselines) {
+    const currentFiles = currentFilesBySpecifier.get(baseline.root_specifier) ?? new Set<string>();
+    for (const file of baseline.files) {
+      if (currentFiles.has(file)) {
+        continue;
+      }
+      violations.push({
+        code: "ROOT_PACKAGE_IMPORT_BASELINE_STALE",
+        dependency: baseline.root_specifier,
+        file: join(repoRoot, file),
+        message: `${file} 已不再依赖 ${baseline.root_specifier} 根入口；必须从基线删除以防回归。`,
+        module: baseline.package_name,
+      });
+    }
+  }
+
+  return violations.sort((left, right) =>
+    [left.code, left.module, left.file ?? "", left.dependency ?? ""]
+      .join("\u0000")
+      .localeCompare(
+        [right.code, right.module, right.file ?? "", right.dependency ?? ""].join("\u0000"),
+      ),
+  );
 }
 
 function dependencyNames(manifest: JsonObject, fields: readonly DependencyField[]): string[] {
@@ -668,7 +806,20 @@ export function validateWorkspaceModules(
 
 export function validateWorkspaceArchitecture(repoRoot: string): ArchitectureViolation[] {
   const modules = discoverWorkspaceModules(repoRoot);
-  return validateWorkspaceModules(modules, readWorkspaceSources(modules));
+  const sources = [...readWorkspaceSources(modules)];
+  const baselineDocument = parseRootPackageImportBaselines(
+    join(repoRoot, "scripts", "workspace-root-import-baselines.json"),
+  );
+  return [
+    ...validateWorkspaceModules(modules, sources),
+    ...validateRootPackageImportBaselines(repoRoot, sources, baselineDocument.baselines),
+  ].sort((left, right) =>
+    [left.code, left.module, left.file ?? "", left.dependency ?? ""]
+      .join("\u0000")
+      .localeCompare(
+        [right.code, right.module, right.file ?? "", right.dependency ?? ""].join("\u0000"),
+      ),
+  );
 }
 
 function isBarePackageFilter(filter: string): boolean {

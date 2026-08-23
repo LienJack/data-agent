@@ -1,22 +1,21 @@
 "use client";
 
+import type { PublicRunEvent, QaInspectorTarget } from "@data-agent/contracts/runs";
 import type {
-  PublicRunEvent,
-  QaInspectorTarget,
   QaResourceCatalog,
   WorkspaceConversation,
   WorkspaceConversationDirectoryView,
   WorkspaceConversationFolder,
   WorkspaceConversationMessage,
   WorkspaceConversationV2,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/workspaces";
 import {
   buildWorkspaceConversationDirectoryCommand,
   qaConversationResourceSwitchResultSchema,
   qaResourceCatalogSchema,
   workspaceConversationDirectoryCommandResultSchema,
   workspaceConversationDirectoryPageSchema,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/workspaces";
 import { create } from "zustand";
 import {
   commandRun,
