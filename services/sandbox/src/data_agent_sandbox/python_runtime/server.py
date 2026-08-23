@@ -68,7 +68,7 @@ class _PythonSandboxHandler(socketserver.StreamRequestHandler):
         self.wfile.write(
             json.dumps(
                 {
-                    "protocol_version": "data-agent-python-sandbox-ipc@1.0.0",
+                    "protocol_version": "data-agent-python-sandbox-ipc@2.0.0",
                     "transport_error": code,
                 },
                 separators=(",", ":"),

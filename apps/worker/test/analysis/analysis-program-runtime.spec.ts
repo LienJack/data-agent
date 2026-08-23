@@ -272,7 +272,10 @@ describe("deterministic analysis worker runtime", () => {
         },
         "ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED",
       ],
-      [{ brief_ref: { ...base.plan.brief_ref, run_id: id(999) } }, "ANALYSIS_PROGRAM_SCOPE_MISMATCH"],
+      [
+        { brief_ref: { ...base.plan.brief_ref, run_id: id(999) } },
+        "ANALYSIS_PROGRAM_SCOPE_MISMATCH",
+      ],
     ];
     for (const [change, expected] of variants) {
       const { program_hash: _hash, ...changedMaterial } = { ...base.plan, ...change };
@@ -512,9 +515,8 @@ describe("deterministic analysis worker runtime", () => {
           },
         },
         oracle: {
-          async expect() {
+          async evaluate() {
             return {
-              expected_outputs: [{ name: "result", type: "JSON", content: Buffer.from("{}") }],
               result: {
                 result_kind: "TREND_CHANGE",
                 points: [],
@@ -549,8 +551,9 @@ describe("deterministic analysis worker runtime", () => {
           createSystem({ artifact_type, content_hash }) {
             return reference(artifact_type, 70 + system.length, content_hash);
           },
-          create({ content_hash }) {
-            return reference("SandboxResult", 80, content_hash);
+          create() {
+            const { content_hash: _contentHash, ...slot } = reference("SandboxResult", 80);
+            return { name: "result", ...slot };
           },
         },
         now: () => new Date(timestamp),

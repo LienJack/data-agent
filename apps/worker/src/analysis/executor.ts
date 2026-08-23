@@ -11,6 +11,7 @@ import {
   type DerivedAnalysisEvidencePayload,
   derivedAnalysisEvidencePayloadSchema,
   derivedAnalysisEvidenceRefSchema,
+  type PythonSandboxTransportOutcomeV2,
   type ResearchBriefV3Payload,
   type RunWorkLease,
   sandboxExecutionReceiptRefSchema,
@@ -31,8 +32,7 @@ import {
 import { gateAnalysisProgram } from "./program-gate.js";
 import {
   type AnalysisFenceGuard,
-  type AnalysisOutputReferenceFactory,
-  type ExpectedPythonOutput,
+  type AnalysisOutputSlotFactory,
   executeAnalysisSandbox,
   type GovernedPythonInput,
 } from "./sandbox-executor.js";
@@ -92,7 +92,6 @@ export interface AnalysisProgramSourcePort {
 }
 
 export interface AnalysisOracleExpectation {
-  readonly expected_outputs: readonly ExpectedPythonOutput[];
   readonly result: DerivedAnalysisEvidencePayload["result"];
   readonly sample_size: number;
   readonly coverage_ratio: number;
@@ -101,14 +100,15 @@ export interface AnalysisOracleExpectation {
 }
 
 export interface AnalysisOraclePort {
-  expect(input: {
+  evaluate(input: {
     readonly node: AnalysisProgramNode;
     readonly governed_inputs: readonly GovernedPythonInput[];
     readonly source_text: string;
+    readonly sandbox_outputs: PythonSandboxTransportOutcomeV2["outputs"];
   }): Promise<AnalysisOracleExpectation>;
 }
 
-export interface AnalysisReferenceFactory extends AnalysisOutputReferenceFactory {
+export interface AnalysisReferenceFactory extends AnalysisOutputSlotFactory {
   createSystem(input: {
     readonly artifact_type: "SandboxProgram" | "SandboxExecutionReceipt";
     readonly label: string;
@@ -346,17 +346,11 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         ) {
           throw new TypeError("ANALYSIS_PROGRAM_COMMIT_CORRELATION_INVALID");
         }
-        let expectation = await dependencies.oracle.expect({
-          node,
-          governed_inputs: governedInputs,
-          source_text: source.source_text,
-        });
         let sandbox = await executeAnalysisSandbox({
           program,
           descriptor,
           source_text: source.source_text,
           governed_inputs: governedInputs,
-          expected_outputs: expectation.expected_outputs,
           client: dependencies.sandbox,
           authorization: dependencies.sandbox_authorization,
           attempt: 0,
@@ -365,7 +359,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           fence_token: `${input.lease.attempt_id}:${input.lease.worker_fence}`,
           idempotency_key: `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}:${program.program_hash}`,
           fence_guard: dependencies.fence_guard,
-          output_references: dependencies.references,
+          output_slots: dependencies.references,
           ...(input.signal ? { signal: input.signal } : {}),
         });
         if (
@@ -417,17 +411,11 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           ) {
             throw new TypeError("ANALYSIS_PROGRAM_COMMIT_CORRELATION_INVALID");
           }
-          expectation = await dependencies.oracle.expect({
-            node,
-            governed_inputs: governedInputs,
-            source_text: source.source_text,
-          });
           sandbox = await executeAnalysisSandbox({
             program,
             descriptor,
             source_text: source.source_text,
             governed_inputs: governedInputs,
-            expected_outputs: expectation.expected_outputs,
             client: dependencies.sandbox,
             authorization: dependencies.sandbox_authorization,
             attempt: 1,
@@ -436,7 +424,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             fence_token: `${input.lease.attempt_id}:${input.lease.worker_fence}`,
             idempotency_key: `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}:${program.program_hash}`,
             fence_guard: dependencies.fence_guard,
-            output_references: dependencies.references,
+            output_slots: dependencies.references,
             ...(input.signal ? { signal: input.signal } : {}),
           });
         }
@@ -446,7 +434,18 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             sandbox.status === "STALE_FENCE" ? "SANDBOX_FENCE_STALE" : "SANDBOX_EXECUTION_FAILED",
           );
         }
-        analysisResultSchema.parse(expectation.result);
+        let expectation: AnalysisOracleExpectation;
+        try {
+          expectation = await dependencies.oracle.evaluate({
+            node,
+            governed_inputs: governedInputs,
+            source_text: source.source_text,
+            sandbox_outputs: sandbox.outcome.outputs,
+          });
+          analysisResultSchema.parse(expectation.result);
+        } catch {
+          return failedNode(node, "ANALYSIS_ORACLE_FAILED");
+        }
         if (verifyAnalysisResult(expectation.result).verdict !== "PASS") {
           return failedNode(node, "ANALYSIS_ORACLE_FAILED");
         }

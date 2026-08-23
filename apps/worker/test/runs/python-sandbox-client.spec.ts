@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  type PythonExecutionEnvelopeV1,
+  type PythonExecutionEnvelopeV2,
   pythonExecutionEnvelopeSchema,
   pythonSandboxTransportOutcomeSchema,
 } from "@data-agent/contracts";
@@ -34,8 +34,8 @@ const outputReference = {
   artifact_type: "SandboxResult" as const,
 };
 
-const envelope: PythonExecutionEnvelopeV1 = pythonExecutionEnvelopeSchema.parse({
-  protocol_version: "data-agent-python-sandbox-ipc@1.0.0",
+const envelope: PythonExecutionEnvelopeV2 = pythonExecutionEnvelopeSchema.parse({
+  protocol_version: "data-agent-python-sandbox-ipc@2.0.0",
   authorization: "test-authorization-token-with-32-chars",
   request: {
     schema_version: "1.0.0",
@@ -69,11 +69,13 @@ const envelope: PythonExecutionEnvelopeV1 = pythonExecutionEnvelopeSchema.parse(
   },
   source_code_base64: Buffer.from("def main(sdk): pass").toString("base64"),
   inputs: [],
-  output_references: [{ name: "result", reference: outputReference }],
+  output_slots: [
+    { name: "result", ...(({ content_hash: _hash, ...slot }) => slot)(outputReference) },
+  ],
 });
 
 const outcome = pythonSandboxTransportOutcomeSchema.parse({
-  protocol_version: "data-agent-python-sandbox-ipc@1.0.0",
+  protocol_version: "data-agent-python-sandbox-ipc@2.0.0",
   receipt: {
     schema_version: "1.0.0",
     workspace_id: workspaceId,
@@ -113,7 +115,14 @@ const outcome = pythonSandboxTransportOutcomeSchema.parse({
     stderr_ref: null,
   },
   outputs: [
-    { name: "result", type: "JSON", content_sha256: digest, content_base64: "e30=", bytes: 2 },
+    {
+      name: "result",
+      type: "JSON",
+      reference: outputReference,
+      content_sha256: digest,
+      content_base64: "e30=",
+      bytes: 2,
+    },
   ],
   stdout: "",
   stderr: "",

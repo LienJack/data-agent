@@ -5,7 +5,7 @@ import {
   artifactReferenceIdentity,
   type DerivedAnalysisEvidencePayload,
   derivedAnalysisEvidencePayloadSchema,
-  type PythonSandboxReceiptV1,
+  type PythonSandboxReceiptV2,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { verifyAnalysisSandboxProgram } from "./program-verifier.js";
@@ -56,7 +56,7 @@ export async function verifyAnalysisDerivation(input: {
   program: AnalysisSandboxProgramPayload;
   programRef: ArtifactReference;
   sourceText: string;
-  receipt: PythonSandboxReceiptV1;
+  receipt: PythonSandboxReceiptV2;
   receiptRef: ArtifactReference;
   evidence: DerivedAnalysisEvidencePayload;
   materializedResultRefs: readonly ArtifactReference[];

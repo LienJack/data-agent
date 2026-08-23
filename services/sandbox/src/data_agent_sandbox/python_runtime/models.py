@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-PYTHON_IPC_PROTOCOL_VERSION = "data-agent-python-sandbox-ipc@1.0.0"
+PYTHON_IPC_PROTOCOL_VERSION = "data-agent-python-sandbox-ipc@2.0.0"
 Sha256 = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 UuidString = Annotated[
     str,
@@ -96,18 +96,24 @@ class MaterializedPythonInput(StrictModel):
     content_base64: Annotated[str, Field(min_length=1)]
 
 
-class PythonOutputReferenceBinding(StrictModel):
+class PythonOutputSlot(StrictModel):
     name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
-    reference: PythonArtifactReference
+    artifact_id: UuidString
+    artifact_type: Literal["SandboxResult"]
+    app_id: UuidString
+    tenant_id: UuidString
+    environment: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")]
+    run_id: UuidString
+    revision: Annotated[int, Field(gt=0)]
 
 
 class PythonExecutionEnvelope(StrictModel):
-    protocol_version: Literal["data-agent-python-sandbox-ipc@1.0.0"]
+    protocol_version: Literal["data-agent-python-sandbox-ipc@2.0.0"]
     authorization: Annotated[str, Field(min_length=32, max_length=512)]
     request: PythonExecutionRequest
     source_code_base64: Annotated[str, Field(min_length=1)]
     inputs: Annotated[tuple[MaterializedPythonInput, ...], Field(max_length=64)]
-    output_references: Annotated[tuple[PythonOutputReferenceBinding, ...], Field(max_length=32)]
+    output_slots: Annotated[tuple[PythonOutputSlot, ...], Field(max_length=32)]
 
     @model_validator(mode="after")
     def bind_materialized_artifacts(self) -> PythonExecutionEnvelope:
@@ -116,16 +122,17 @@ class PythonExecutionEnvelope(StrictModel):
         if tuple(item.reference for item in self.inputs) != self.request.input_refs:
             raise ValueError("materialized inputs must exactly bind input_refs in order")
         expected = {output.name for output in self.request.output_contract.outputs}
-        actual = {output.name for output in self.output_references}
-        if expected != actual or len(actual) != len(self.output_references):
-            raise ValueError("output reference bindings must exactly close the output contract")
-        for binding in self.output_references:
-            reference = binding.reference
+        actual = {output.name for output in self.output_slots}
+        if expected != actual or len(actual) != len(self.output_slots):
+            raise ValueError("output slots must exactly close the output contract")
+        for slot in self.output_slots:
             if (
-                reference.tenant_id != self.request.workspace_id
-                or reference.run_id != self.request.run_id
+                slot.tenant_id != self.request.workspace_id
+                or slot.run_id != self.request.run_id
+                or slot.app_id != self.request.source_ref.app_id
+                or slot.environment != self.request.source_ref.environment
             ):
-                raise ValueError("output references must bind workspace and run")
+                raise ValueError("output slots must bind request scope and run")
         return self
 
 
@@ -194,13 +201,14 @@ class PythonSandboxReceipt(StrictModel):
 class MaterializedPythonOutput(StrictModel):
     name: str
     type: Literal["ARROW", "CSV", "JSON", "MARKDOWN", "VEGA_LITE", "PNG"]
+    reference: PythonArtifactReference
     content_sha256: Sha256
     content_base64: str
     bytes: Annotated[int, Field(ge=0)]
 
 
 class PythonSandboxTransportOutcome(StrictModel):
-    protocol_version: Literal["data-agent-python-sandbox-ipc@1.0.0"]
+    protocol_version: Literal["data-agent-python-sandbox-ipc@2.0.0"]
     receipt: PythonSandboxReceipt
     outputs: tuple[MaterializedPythonOutput, ...]
     stdout: str
@@ -210,6 +218,13 @@ class PythonSandboxTransportOutcome(StrictModel):
     def outputs_follow_receipt(self) -> PythonSandboxTransportOutcome:
         if self.receipt.status != "SUCCEEDED" and self.outputs:
             raise ValueError("failed transport outcomes cannot retain outputs")
+        if self.receipt.status == "SUCCEEDED":
+            if tuple(output.reference for output in self.outputs) != self.receipt.output_refs:
+                raise ValueError("successful outputs must exactly bind receipt references")
+            if any(
+                output.reference.content_hash != output.content_sha256 for output in self.outputs
+            ):
+                raise ValueError("successful output references must bind content hashes")
         return self
 
 

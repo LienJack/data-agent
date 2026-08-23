@@ -4,9 +4,11 @@ import {
   type ArtifactReference,
   artifactReferenceIdentity,
   computeL2ResearchEnvelopeContentHash,
-  type PythonExecutionBudgetsV1,
-  type PythonExecutionEnvelopeV1,
-  type PythonSandboxTransportOutcomeV1,
+  computePythonExecutionAuthorizationHash,
+  type PythonExecutionBudgetsV2,
+  type PythonExecutionEnvelopeV2,
+  type PythonOutputSlotV2,
+  type PythonSandboxTransportOutcomeV2,
   pythonExecutionEnvelopeSchema,
   queryEvidenceV2PayloadSchema,
 } from "@data-agent/contracts";
@@ -22,12 +24,6 @@ export interface GovernedPythonInput {
   readonly content: Uint8Array;
 }
 
-export interface ExpectedPythonOutput {
-  readonly name: string;
-  readonly type: "JSON" | "ARROW" | "CSV" | "PNG" | "SVG";
-  readonly content: Uint8Array;
-}
-
 export interface AnalysisFenceGuard {
   isCurrent(input: {
     readonly run_id: string;
@@ -37,25 +33,24 @@ export interface AnalysisFenceGuard {
   }): Promise<boolean>;
 }
 
-export interface AnalysisOutputReferenceFactory {
+export interface AnalysisOutputSlotFactory {
   create(input: {
     readonly name: string;
-    readonly type: ExpectedPythonOutput["type"];
-    readonly content_hash: `sha256:${string}`;
+    readonly type: AnalysisSandboxProgramPayload["output_contract"]["outputs"][number]["type"];
     readonly program: AnalysisSandboxProgramPayload;
-  }): ArtifactReference;
+  }): PythonOutputSlotV2;
 }
 
 export type AnalysisSandboxExecution =
   | {
       readonly status: "SUCCEEDED";
-      readonly outcome: PythonSandboxTransportOutcomeV1;
+      readonly outcome: PythonSandboxTransportOutcomeV2;
       readonly output_refs: readonly ArtifactReference[];
     }
   | {
       readonly status: "FAILED" | "CANCELLED" | "STALE_FENCE";
       readonly reason_code: string;
-      readonly outcome: PythonSandboxTransportOutcomeV1 | null;
+      readonly outcome: PythonSandboxTransportOutcomeV2 | null;
       readonly output_refs: readonly [];
     };
 
@@ -99,8 +94,8 @@ async function verifyGovernedInput(
 
 function executionBudgets(
   descriptor: AnalysisSkillDescriptor,
-  maximum: Partial<PythonExecutionBudgetsV1> = {},
-): PythonExecutionBudgetsV1 {
+  maximum: Partial<PythonExecutionBudgetsV2> = {},
+): PythonExecutionBudgetsV2 {
   return {
     wall_time_ms: Math.min(descriptor.hard_limits.wall_time_ms, maximum.wall_time_ms ?? 600_000),
     cpu_seconds: Math.min(120, maximum.cpu_seconds ?? 600),
@@ -122,7 +117,6 @@ export async function executeAnalysisSandbox(input: {
   readonly descriptor: AnalysisSkillDescriptor;
   readonly source_text: string;
   readonly governed_inputs: readonly GovernedPythonInput[];
-  readonly expected_outputs: readonly ExpectedPythonOutput[];
   readonly client: PythonSandboxClient;
   readonly authorization: string;
   readonly attempt: 0 | 1;
@@ -131,9 +125,9 @@ export async function executeAnalysisSandbox(input: {
   readonly fence_token: string;
   readonly idempotency_key: string;
   readonly fence_guard: AnalysisFenceGuard;
-  readonly output_references: AnalysisOutputReferenceFactory;
+  readonly output_slots: AnalysisOutputSlotFactory;
   readonly signal?: AbortSignal;
-  readonly maximum_budgets?: Partial<PythonExecutionBudgetsV1>;
+  readonly maximum_budgets?: Partial<PythonExecutionBudgetsV2>;
 }): Promise<AnalysisSandboxExecution> {
   const fence = {
     run_id: input.program.analysis_program_ref.run_id,
@@ -158,10 +152,7 @@ export async function executeAnalysisSandbox(input: {
   ) {
     throw new TypeError("ANALYSIS_PROGRAM_RUNTIME_ATTESTATION_MISMATCH");
   }
-  if (
-    input.governed_inputs.length !== input.program.input_refs.length ||
-    input.expected_outputs.length !== input.program.output_contract.outputs.length
-  ) {
+  if (input.governed_inputs.length !== input.program.input_refs.length) {
     throw new TypeError("ANALYSIS_SANDBOX_REFERENCE_CLOSURE_INVALID");
   }
   await Promise.all(
@@ -174,27 +165,15 @@ export async function executeAnalysisSandbox(input: {
     if (!materialized) throw new TypeError("ANALYSIS_SANDBOX_INPUT_ORDER_INVALID");
     return materialized;
   });
-  const outputReferences = input.program.output_contract.outputs.map((output) => {
-    const expected = input.expected_outputs.find(({ name }) => name === output.name);
-    if (
-      !expected ||
-      expected.type !== output.type ||
-      expected.content.byteLength > output.max_bytes
-    ) {
-      throw new TypeError("ANALYSIS_EXPECTED_OUTPUT_INVALID");
-    }
-    return {
+  const outputSlots = input.program.output_contract.outputs.map((output) =>
+    input.output_slots.create({
       name: output.name,
-      reference: input.output_references.create({
-        name: output.name,
-        type: expected.type,
-        content_hash: bytesHash(expected.content),
-        program: input.program,
-      }),
-    };
-  });
-  const envelope: PythonExecutionEnvelopeV1 = pythonExecutionEnvelopeSchema.parse({
-    protocol_version: "data-agent-python-sandbox-ipc@1.0.0",
+      type: output.type,
+      program: input.program,
+    }),
+  );
+  const envelope: PythonExecutionEnvelopeV2 = pythonExecutionEnvelopeSchema.parse({
+    protocol_version: "data-agent-python-sandbox-ipc@2.0.0",
     authorization: input.authorization,
     request: {
       schema_version: "1.0.0",
@@ -220,7 +199,7 @@ export async function executeAnalysisSandbox(input: {
       reference: materialized.input_ref,
       content_base64: Buffer.from(materialized.content).toString("base64"),
     })),
-    output_references: outputReferences,
+    output_slots: outputSlots,
   });
   const outcome = await input.client.execute(envelope, input.signal);
   if (!(await input.fence_guard.isCurrent(fence))) {
@@ -241,23 +220,31 @@ export async function executeAnalysisSandbox(input: {
   }
   const attestation = ANALYSIS_RUNTIME_ATTESTATIONS[input.program.import_profile];
   if (
+    outcome.receipt.request_hash !== (await computePythonExecutionAuthorizationHash(envelope)) ||
     outcome.receipt.sandbox_image_digest !== attestation.image_attestation_digest ||
     outcome.receipt.dependency_lock_digest !== input.program.dependency_lock_digest ||
     outcome.receipt.policy_version !== input.program.policy_version ||
     Object.values(outcome.receipt.hard_controls).some((value) => !value) ||
-    outcome.outputs.length !== outputReferences.length ||
+    outcome.outputs.length !== outputSlots.length ||
     outcome.outputs.some((output) => {
-      const binding = outputReferences.find(({ name }) => name === output.name);
-      const expected = input.expected_outputs.find(({ name }) => name === output.name);
+      const slot = outputSlots.find(({ name }) => name === output.name);
+      const contract = input.program.output_contract.outputs.find(
+        ({ name }) => name === output.name,
+      );
       return (
-        !binding ||
-        !expected ||
-        output.content_sha256 !== binding.reference.content_hash ||
+        !slot ||
+        !contract ||
+        output.type !== contract.type ||
+        output.bytes > contract.max_bytes ||
         bytesHash(Buffer.from(output.content_base64, "base64")) !== output.content_sha256 ||
-        Buffer.compare(
-          Buffer.from(output.content_base64, "base64"),
-          Buffer.from(expected.content),
-        ) !== 0
+        output.reference.artifact_id !== slot.artifact_id ||
+        output.reference.artifact_type !== slot.artifact_type ||
+        output.reference.app_id !== slot.app_id ||
+        output.reference.tenant_id !== slot.tenant_id ||
+        output.reference.environment !== slot.environment ||
+        output.reference.run_id !== slot.run_id ||
+        output.reference.revision !== slot.revision ||
+        output.reference.content_hash !== output.content_sha256
       );
     })
   ) {
@@ -271,6 +258,6 @@ export async function executeAnalysisSandbox(input: {
   return {
     status: "SUCCEEDED",
     outcome,
-    output_refs: Object.freeze(outputReferences.map(({ reference }) => reference)),
+    output_refs: Object.freeze(outcome.outputs.map(({ reference }) => reference)),
   };
 }

@@ -15,7 +15,7 @@ from data_agent_sandbox.python_runtime.models import (
     PythonExecutionRequest,
     PythonHardControls,
     PythonOutputContract,
-    PythonOutputReferenceBinding,
+    PythonOutputSlot,
     PythonOutputSpec,
 )
 from data_agent_sandbox.python_runtime.policy import PythonPolicyError, validate_python_source
@@ -91,7 +91,7 @@ def envelope_for(
     source_bytes = source.encode()
     source_ref = reference(SOURCE_ID, digest(source_bytes), "python-source")
     input_ref = reference(INPUT_ID, digest(input_value), "analysis-input")
-    output_ref = reference(OUTPUT_ID, digest(expected_output), "analysis-output")
+    output_ref = reference(OUTPUT_ID, digest(expected_output), "SandboxResult")
     request = PythonExecutionRequest(
         schema_version="1.0.0",
         workspace_id=WORKSPACE_ID,
@@ -123,7 +123,7 @@ def envelope_for(
         ),
     )
     return PythonExecutionEnvelope(
-        protocol_version="data-agent-python-sandbox-ipc@1.0.0",
+        protocol_version="data-agent-python-sandbox-ipc@2.0.0",
         authorization=authorization,
         request=request,
         source_code_base64=base64.b64encode(source_bytes).decode(),
@@ -135,7 +135,9 @@ def envelope_for(
                 content_base64=base64.b64encode(input_value).decode(),
             ),
         ),
-        output_references=(PythonOutputReferenceBinding(name="result", reference=output_ref),),
+        output_slots=(
+            PythonOutputSlot(name="result", **output_ref.model_dump(exclude={"content_hash"})),
+        ),
     )
 
 
@@ -220,16 +222,17 @@ def test_supervisor_rejects_unattested_runtime_without_starting(tmp_path: Path) 
     assert not tmp_path.exists() or list(tmp_path.iterdir()) == []
 
 
-def test_supervisor_rejects_bad_auth_hash_and_output_contract(tmp_path: Path) -> None:
+def test_supervisor_rejects_bad_auth_and_hashes_dynamic_output(tmp_path: Path) -> None:
     source = "def main(context):\n    context.write_json('result', {'ok': True})\n"
     bad_auth = envelope_for(source, b'{"ok":true}\n', authorization="x" * 32)
     auth_outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(bad_auth)
     assert auth_outcome.receipt.failure_code == "PYTHON_POLICY_REJECTED"
 
-    bad_output = envelope_for(source, b'{"ok":false}\n', identifier="sandbox-bad-output")
-    output_outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(bad_output)
-    assert output_outcome.receipt.failure_code == "PYTHON_OUTPUT_INVALID"
-    assert output_outcome.outputs == ()
+    dynamic_output = envelope_for(source, b'{"ok":false}\n', identifier="sandbox-dynamic-output")
+    output_outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(dynamic_output)
+    assert output_outcome.receipt.status == "SUCCEEDED"
+    assert output_outcome.outputs[0].content_sha256 == digest(b'{"ok":true}\n')
+    assert output_outcome.outputs[0].reference == output_outcome.receipt.output_refs[0]
 
 
 def test_supervisor_kills_process_group_on_timeout_and_commits_nothing(tmp_path: Path) -> None:
@@ -271,6 +274,21 @@ def test_same_idempotency_key_with_different_hash_fails_closed(tmp_path: Path) -
         b'{"value":2}\n',
         identifier="sandbox-conflict",
     )
+    assert supervisor.execute(first).receipt.status == "SUCCEEDED"
+    assert supervisor.execute(second).receipt.failure_code == "PYTHON_POLICY_REJECTED"
+
+
+def test_same_idempotency_key_with_different_output_slot_fails_closed(tmp_path: Path) -> None:
+    supervisor = PythonSandboxSupervisor(configuration(tmp_path))
+    first = envelope_for(
+        "def main(context):\n    context.write_json('result', {'value': 1})\n",
+        b'{"value":1}\n',
+        identifier="sandbox-output-slot-conflict",
+    )
+    changed_slot = first.output_slots[0].model_copy(
+        update={"artifact_id": "10000000-0000-4000-8000-000000000007"}
+    )
+    second = first.model_copy(update={"output_slots": (changed_slot,)})
     assert supervisor.execute(first).receipt.status == "SUCCEEDED"
     assert supervisor.execute(second).receipt.failure_code == "PYTHON_POLICY_REJECTED"
 

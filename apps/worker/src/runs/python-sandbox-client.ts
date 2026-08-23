@@ -1,7 +1,7 @@
 import { createConnection } from "node:net";
 import {
-  type PythonExecutionEnvelopeV1,
-  type PythonSandboxTransportOutcomeV1,
+  type PythonExecutionEnvelopeV2,
+  type PythonSandboxTransportOutcomeV2,
   pythonExecutionEnvelopeSchema,
   pythonSandboxTransportOutcomeSchema,
 } from "@data-agent/contracts";
@@ -26,9 +26,9 @@ export type PythonSandboxCancellationResultV1 = z.infer<typeof cancellationResul
 
 export interface PythonSandboxClient {
   execute(
-    envelope: PythonExecutionEnvelopeV1,
+    envelope: PythonExecutionEnvelopeV2,
     signal?: AbortSignal,
-  ): Promise<PythonSandboxTransportOutcomeV1>;
+  ): Promise<PythonSandboxTransportOutcomeV2>;
   cancel(input: PythonSandboxCancellationV1): Promise<PythonSandboxCancellationResultV1>;
 }
 

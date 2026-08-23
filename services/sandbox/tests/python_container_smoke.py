@@ -60,6 +60,7 @@ def envelope(
     output_ref = reference(
         "10000000-0000-4000-8000-000000000005", "SandboxResult", digest(output_value)
     )
+    output_slot = {key: value for key, value in output_ref.items() if key != "content_hash"}
     request = {
         "schema_version": "1.0.0",
         "workspace_id": WORKSPACE_ID,
@@ -91,7 +92,7 @@ def envelope(
         },
     }
     return {
-        "protocol_version": "data-agent-python-sandbox-ipc@1.0.0",
+        "protocol_version": "data-agent-python-sandbox-ipc@2.0.0",
         "authorization": token,
         "request": request,
         "source_code_base64": base64.b64encode(source).decode(),
@@ -103,7 +104,7 @@ def envelope(
                 "content_base64": base64.b64encode(input_value).decode(),
             }
         ],
-        "output_references": [{"name": "result", "reference": output_ref}],
+        "output_slots": [{"name": "result", **output_slot}],
     }
 
 

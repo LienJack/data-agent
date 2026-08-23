@@ -601,7 +601,7 @@ interface AnalysisSandboxProgramPayload {
 - Python 输入只允许同 Run 的 QueryEvidence 对应 Arrow/CSV/JSON Artifact；模型不能自行读取路径或发现输入。
 - Source Candidate 在存储和执行前必须通过 Secret/PII/Literal 扫描；代码只能用 `context.inputs` 取值，不得把原始行、
   SQL 参数、Token、路径或用户数据复制成源码常量。源码按 Sensitive Execution Artifact 存储并受独立审阅权限控制。
-- 标准模板和模型代码使用同一 `PythonExecutionRequestV1`、IPC、resource budgets、Receipt 和 output commit gate。
+- 标准模板和模型代码使用同一 `PythonExecutionRequestV2`、IPC、resource budgets、Receipt 和 output commit gate。
 - 模型代码失败可在同一 Plan Node 内进行最多一次基于公开错误码/经 Secret/PII/value scrubber 净化并截断的 stderr 修复；
   修复生成新 Program Revision，
   不覆盖失败源码或回执，也不能扩大 imports/预算。

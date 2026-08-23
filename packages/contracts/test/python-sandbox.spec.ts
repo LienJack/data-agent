@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  computePythonExecutionRequestHash,
+  computePythonExecutionAuthorizationHash,
+  pythonExecutionEnvelopeSchema,
   pythonExecutionRequestSchema,
   pythonSandboxReceiptSchema,
 } from "../src/ports/python-sandbox.js";
@@ -63,11 +64,29 @@ describe("Python Sandbox contracts", () => {
     ).toThrow();
   });
 
-  it("binds deterministic request hashes", async () => {
-    const parsed = pythonExecutionRequestSchema.parse(request);
-    expect(await computePythonExecutionRequestHash(parsed)).toMatch(/^sha256:[0-9a-f]{64}$/u);
-    expect(await computePythonExecutionRequestHash(parsed)).toBe(
-      await computePythonExecutionRequestHash(parsed),
+  it("binds deterministic execution authorization hashes including output slots", async () => {
+    const parsed = pythonExecutionEnvelopeSchema.parse({
+      protocol_version: "data-agent-python-sandbox-ipc@2.0.0",
+      authorization: "sandbox-authorization-token-at-least-32-characters",
+      request,
+      source_code_base64: "ZGVmIG1haW4oc2RrKTogcGFzcw==",
+      inputs: [],
+      output_slots: [
+        {
+          name: "summary",
+          artifact_id: "00000000-0000-4000-8000-00000000a104",
+          artifact_type: "SandboxResult",
+          app_id: sourceRef.app_id,
+          tenant_id: sourceRef.tenant_id,
+          environment: sourceRef.environment,
+          run_id: sourceRef.run_id,
+          revision: 1,
+        },
+      ],
+    });
+    expect(await computePythonExecutionAuthorizationHash(parsed)).toMatch(/^sha256:[0-9a-f]{64}$/u);
+    expect(await computePythonExecutionAuthorizationHash(parsed)).toBe(
+      await computePythonExecutionAuthorizationHash(parsed),
     );
   });
 

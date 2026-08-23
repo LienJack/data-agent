@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { artifactReferenceSchema } from "../artifacts/envelope.js";
+import { artifactReferenceIdentity, artifactReferenceSchema } from "../artifacts/envelope.js";
 import {
   contentHashSchema,
   immutableIdSchema,
@@ -152,9 +152,9 @@ export const pythonSandboxReceiptSchema = z
 
 export type PythonExecutionFailureCode = z.infer<typeof pythonExecutionFailureCodeSchema>;
 export type { PythonOutputContractV1 };
-export type PythonExecutionBudgetsV1 = z.infer<typeof pythonExecutionBudgetsSchema>;
-export type PythonExecutionRequestV1 = z.infer<typeof pythonExecutionRequestSchema>;
-export type PythonSandboxReceiptV1 = z.infer<typeof pythonSandboxReceiptSchema>;
+export type PythonExecutionBudgetsV2 = z.infer<typeof pythonExecutionBudgetsSchema>;
+export type PythonExecutionRequestV2 = z.infer<typeof pythonExecutionRequestSchema>;
+export type PythonSandboxReceiptV2 = z.infer<typeof pythonSandboxReceiptSchema>;
 
 export const materializedPythonInputSchema = z.strictObject({
   name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u),
@@ -163,19 +163,26 @@ export const materializedPythonInputSchema = z.strictObject({
   content_base64: z.string().min(1),
 });
 
-export const pythonOutputReferenceBindingSchema = z.strictObject({
+export const pythonOutputSlotSchema = z.strictObject({
   name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u),
-  reference: artifactReferenceSchema,
+  artifact_id: immutableIdSchema,
+  artifact_type: z.literal("SandboxResult"),
+  app_id: immutableIdSchema,
+  tenant_id: immutableIdSchema,
+  environment: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u),
+  run_id: immutableIdSchema,
+  revision: z.number().int().positive(),
 });
+export type PythonOutputSlotV2 = z.infer<typeof pythonOutputSlotSchema>;
 
 export const pythonExecutionEnvelopeSchema = z
   .strictObject({
-    protocol_version: z.literal("data-agent-python-sandbox-ipc@1.0.0"),
+    protocol_version: z.literal("data-agent-python-sandbox-ipc@2.0.0"),
     authorization: z.string().min(32).max(512),
     request: pythonExecutionRequestSchema,
     source_code_base64: z.string().min(1),
     inputs: z.array(materializedPythonInputSchema).max(64),
-    output_references: z.array(pythonOutputReferenceBindingSchema).max(32),
+    output_slots: z.array(pythonOutputSlotSchema).max(32),
   })
   .superRefine((envelope, context) => {
     const materialized = envelope.inputs.map(({ reference }) => reference);
@@ -187,19 +194,38 @@ export const pythonExecutionEnvelopeSchema = z
       });
     }
     const expected = new Set(envelope.request.output_contract.outputs.map(({ name }) => name));
-    const actual = new Set(envelope.output_references.map(({ name }) => name));
-    if (expected.size !== actual.size || [...expected].some((name) => !actual.has(name))) {
+    const actual = new Set(envelope.output_slots.map(({ name }) => name));
+    if (
+      expected.size !== actual.size ||
+      actual.size !== envelope.output_slots.length ||
+      [...expected].some((name) => !actual.has(name))
+    ) {
       context.addIssue({
         code: "custom",
-        path: ["output_references"],
-        message: "output references must exactly close the output contract",
+        path: ["output_slots"],
+        message: "output slots must exactly close the output contract",
       });
+    }
+    for (const [index, slot] of envelope.output_slots.entries()) {
+      if (
+        slot.tenant_id !== envelope.request.workspace_id ||
+        slot.run_id !== envelope.request.run_id ||
+        slot.app_id !== envelope.request.source_ref.app_id ||
+        slot.environment !== envelope.request.source_ref.environment
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["output_slots", index],
+          message: "output slots must bind request scope and run",
+        });
+      }
     }
   });
 
 export const materializedPythonOutputSchema = z.strictObject({
   name: z.string().min(1).max(63),
   type: pythonOutputTypeSchema,
+  reference: artifactReferenceSchema,
   content_sha256: contentHashSchema,
   content_base64: z.string(),
   bytes: z.number().int().nonnegative(),
@@ -207,7 +233,7 @@ export const materializedPythonOutputSchema = z.strictObject({
 
 export const pythonSandboxTransportOutcomeSchema = z
   .strictObject({
-    protocol_version: z.literal("data-agent-python-sandbox-ipc@1.0.0"),
+    protocol_version: z.literal("data-agent-python-sandbox-ipc@2.0.0"),
     receipt: pythonSandboxReceiptSchema,
     outputs: z.array(materializedPythonOutputSchema).max(32),
     stdout: z.string(),
@@ -221,11 +247,37 @@ export const pythonSandboxTransportOutcomeSchema = z
         message: "failed execution has no outputs",
       });
     }
+    if (
+      outcome.receipt.status === "SUCCEEDED" &&
+      (outcome.outputs.length !== outcome.receipt.output_refs.length ||
+        outcome.outputs.some((output, index) => {
+          const receiptReference = outcome.receipt.output_refs[index];
+          return (
+            !receiptReference ||
+            artifactReferenceIdentity(output.reference) !==
+              artifactReferenceIdentity(receiptReference) ||
+            output.reference.content_hash !== output.content_sha256
+          );
+        }))
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["outputs"],
+        message: "successful outputs must exactly bind receipt references and content hashes",
+      });
+    }
   });
 
-export type PythonExecutionEnvelopeV1 = z.infer<typeof pythonExecutionEnvelopeSchema>;
-export type PythonSandboxTransportOutcomeV1 = z.infer<typeof pythonSandboxTransportOutcomeSchema>;
+export type PythonExecutionEnvelopeV2 = z.infer<typeof pythonExecutionEnvelopeSchema>;
+export type PythonSandboxTransportOutcomeV2 = z.infer<typeof pythonSandboxTransportOutcomeSchema>;
 
-export async function computePythonExecutionRequestHash(request: PythonExecutionRequestV1) {
-  return sha256ContentHash(pythonExecutionRequestSchema.parse(request));
+export async function computePythonExecutionAuthorizationHash(
+  envelopeInput: PythonExecutionEnvelopeV2,
+) {
+  const envelope = pythonExecutionEnvelopeSchema.parse(envelopeInput);
+  return sha256ContentHash({
+    protocol_version: envelope.protocol_version,
+    request: envelope.request,
+    output_slots: envelope.output_slots,
+  });
 }

@@ -17,7 +17,7 @@ from data_agent_sandbox.python_runtime.models import (
     PythonExecutionRequest,
     PythonHardControls,
     PythonOutputContract,
-    PythonOutputReferenceBinding,
+    PythonOutputSlot,
     PythonOutputSpec,
 )
 from data_agent_sandbox.python_runtime.policy import PythonPolicyError, validate_python_source
@@ -93,7 +93,7 @@ def configuration(tmp_path: Path, profile: str = "CORE_ANALYSIS") -> SandboxConf
 def envelope(
     program_name: str,
     input_value: object,
-    expected_outputs: dict[str, object],
+    oracle_outputs: dict[str, object],
     *,
     identifier: str | None = None,
     wall_time_ms: int = 3_000,
@@ -104,16 +104,14 @@ def envelope(
     input_ref = reference(11, "QueryEvidence", digest(input_bytes))
     output_specs = []
     output_bindings = []
-    for index, (name, value) in enumerate(expected_outputs.items(), start=20):
+    for index, (name, value) in enumerate(oracle_outputs.items(), start=20):
         content = canonical_bytes(value)
         output_specs.append(
             PythonOutputSpec(name=name, type="JSON", required=True, max_bytes=1_048_576)
         )
+        output_ref = reference(index, "SandboxResult", digest(content))
         output_bindings.append(
-            PythonOutputReferenceBinding(
-                name=name,
-                reference=reference(index, "SandboxResult", digest(content)),
-            )
+            PythonOutputSlot(name=name, **output_ref.model_dump(exclude={"content_hash"}))
         )
     request = PythonExecutionRequest(
         schema_version="1.0.0",
@@ -145,7 +143,7 @@ def envelope(
         ),
     )
     return PythonExecutionEnvelope(
-        protocol_version="data-agent-python-sandbox-ipc@1.0.0",
+        protocol_version="data-agent-python-sandbox-ipc@2.0.0",
         authorization=TOKEN,
         request=request,
         source_code_base64=base64.b64encode(source).decode(),
@@ -157,7 +155,7 @@ def envelope(
                 content_base64=base64.b64encode(input_bytes).decode(),
             ),
         ),
-        output_references=tuple(output_bindings),
+        output_slots=tuple(output_bindings),
     )
 
 

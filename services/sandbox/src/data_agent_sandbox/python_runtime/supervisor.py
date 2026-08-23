@@ -23,6 +23,7 @@ import rfc8785
 
 from data_agent_sandbox.python_runtime.models import (
     MaterializedPythonOutput,
+    PythonArtifactReference,
     PythonExecutionEnvelope,
     PythonHardControls,
     PythonObservedResources,
@@ -260,7 +261,13 @@ class PythonSandboxSupervisor:
     def execute(self, envelope: PythonExecutionEnvelope) -> PythonSandboxTransportOutcome:
         started_at = _utc_now()
         monotonic_started = time.monotonic()
-        request_hash = _canonical_hash(envelope.request.model_dump(mode="json"))
+        request_hash = _canonical_hash(
+            {
+                "protocol_version": envelope.protocol_version,
+                "request": envelope.request.model_dump(mode="json"),
+                "output_slots": [slot.model_dump(mode="json") for slot in envelope.output_slots],
+            }
+        )
         key = envelope.request.idempotency_key
         while True:
             with self._lock:
@@ -480,7 +487,7 @@ class PythonSandboxSupervisor:
                 expected_paths = {worker_result_path}
                 materialized: list[MaterializedPythonOutput] = []
                 output_refs = []
-                bindings = {item.name: item.reference for item in envelope.output_references}
+                slots = {item.name: item for item in envelope.output_slots}
                 total_output_bytes = 0
                 for descriptor in output_descriptors:
                     path = output_root / descriptor["file_name"]
@@ -496,14 +503,23 @@ class PythonSandboxSupervisor:
                         raise ValueError("output item too large")
                     _validate_output(path, descriptor["type"])
                     digest = _sha256(content)
-                    reference = bindings[descriptor["name"]]
-                    if reference.content_hash != digest:
-                        raise ValueError("output digest does not match authorized reference")
+                    slot = slots[descriptor["name"]]
+                    reference = PythonArtifactReference(
+                        artifact_id=slot.artifact_id,
+                        artifact_type=slot.artifact_type,
+                        app_id=slot.app_id,
+                        tenant_id=slot.tenant_id,
+                        environment=slot.environment,
+                        run_id=slot.run_id,
+                        revision=slot.revision,
+                        content_hash=digest,
+                    )
                     output_refs.append(reference)
                     materialized.append(
                         MaterializedPythonOutput(
                             name=descriptor["name"],
                             type=descriptor["type"],
+                            reference=reference,
                             content_sha256=digest,
                             content_base64=base64.b64encode(content).decode("ascii"),
                             bytes=len(content),
@@ -555,7 +571,7 @@ class PythonSandboxSupervisor:
                 tuple(output_refs),
             )
             return PythonSandboxTransportOutcome(
-                protocol_version="data-agent-python-sandbox-ipc@1.0.0",
+                protocol_version="data-agent-python-sandbox-ipc@2.0.0",
                 receipt=receipt,
                 outputs=tuple(materialized),
                 stdout=stdout,
@@ -652,7 +668,7 @@ class PythonSandboxSupervisor:
             (),
         )
         return PythonSandboxTransportOutcome(
-            protocol_version="data-agent-python-sandbox-ipc@1.0.0",
+            protocol_version="data-agent-python-sandbox-ipc@2.0.0",
             receipt=receipt,
             outputs=(),
             stdout=stdout,

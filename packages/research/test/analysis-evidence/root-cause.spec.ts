@@ -13,7 +13,7 @@ import {
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  computeAnalysisProgramHash,
+  computeAnalysisSandboxProgramHash,
   computeAttributionAuthorityClosureHash,
   createCausalEstimate,
   createCausalQuestion,
@@ -357,7 +357,7 @@ async function causalChain(
   const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
     protocol_version: "analysis-sandbox-program@1.0.0",
-    plan_ref: planRef as AnalysisSandboxProgramPayload["plan_ref"],
+    analysis_program_ref: planRef as AnalysisSandboxProgramPayload["analysis_program_ref"],
     node_id: "root-cause",
     language: "PYTHON_3_12",
     entrypoint: "main",
@@ -381,7 +381,7 @@ async function causalChain(
   };
   const program = analysisSandboxProgramPayloadSchema.parse({
     ...programMaterial,
-    program_hash: await computeAnalysisProgramHash(programMaterial),
+    program_hash: await computeAnalysisSandboxProgramHash(programMaterial),
   });
   const programRef = reference("SandboxProgram", 49, await sha256ContentHash(program));
   const estimate = await createCausalEstimate({

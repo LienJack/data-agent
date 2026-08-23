@@ -4,7 +4,7 @@ import type {
   AnalysisSandboxProgramPayload,
   DerivedAnalysisEvidencePayload,
   PythonOutputContractV1,
-  PythonSandboxReceiptV1,
+  PythonSandboxReceiptV2,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
@@ -116,7 +116,7 @@ const trendResult: Extract<
   last_value: 12,
 };
 
-const receipt: PythonSandboxReceiptV1 = {
+const receipt: PythonSandboxReceiptV2 = {
   schema_version: "1.0.0",
   workspace_id: planRef.tenant_id,
   run_id: planRef.run_id,
