@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import { basename, resolve } from "node:path";
 import {
   createModelProviderBindings,
   createModelProviderExecutionBinding,
@@ -7,7 +6,7 @@ import {
   SYSTEM_MODEL_DEPLOYMENT_OVERRIDES,
 } from "@data-agent/agent-runtime";
 import { adaptPgPool, createPostgresCapabilityAuthority } from "@data-agent/platform";
-import nextEnvironment from "@next/env";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import { Pool } from "pg";
 import { z } from "zod";
 import { runCredentialedProviderCertification } from "./credentialed-provider-certification.js";
@@ -26,17 +25,8 @@ const configurationSchema = z.strictObject({
   certificationWorkerFence: z.coerce.number().int().nonnegative().safe(),
 });
 
-function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "worker" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
-}
-
 function loadRootEnvironment(): void {
-  nextEnvironment.loadEnvConfig(repositoryRoot(), true);
-  process.env.DEEPSEEK_API_KEY ||= process.env.DeepSeekAPIKey?.trim();
-  process.env.MOONSHOT_API_KEY ||= process.env.KimiAPIKey?.trim();
+  loadRuntimeEnvironment();
 }
 
 function report(value: unknown): void {

@@ -28,6 +28,7 @@ import {
   SubmittedAnswerAgent,
 } from "@data-agent/evals";
 import { createPostgresFalconBenchmarkExecutor } from "@data-agent/platform";
+import { resolveRuntimeRepositoryRoot } from "@data-agent/platform/runtime-config";
 import { Pool } from "pg";
 import { z } from "zod";
 import { loadRunWorkerEnvironment } from "../run-worker-environment.js";
@@ -52,7 +53,7 @@ function argument(name: string): string | undefined {
 }
 
 function repositoryRoot(): string {
-  return process.cwd().endsWith("/apps/worker") ? resolve(process.cwd(), "../..") : process.cwd();
+  return resolveRuntimeRepositoryRoot(process.cwd());
 }
 
 function stableUuid(material: string): string {

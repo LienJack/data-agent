@@ -19,9 +19,9 @@ beforeAll(async () => {
 });
 
 describe("environment system models", () => {
-  it("discovers both root .env aliases with stable public profiles", () => {
+  it("discovers normalized root credentials with stable public profiles", () => {
     const models = discoverSystemModels(
-      { DeepSeekAPIKey: "deepseek-secret", KimiAPIKey: "kimi-secret" },
+      { DEEPSEEK_API_KEY: "deepseek-secret", MOONSHOT_API_KEY: "kimi-secret" },
       "2026-08-10T00:00:00.000Z",
     );
 
@@ -58,8 +58,8 @@ describe("environment system models", () => {
 
   it("discovers GLM from its environment projection after DeepSeek and Kimi priority", () => {
     const models = discoverSystemModels({
-      DeepSeekAPIKey: "deepseek-secret",
-      KimiAPIKey: "kimi-secret",
+      DEEPSEEK_API_KEY: "deepseek-secret",
+      MOONSHOT_API_KEY: "kimi-secret",
       ZAI_API_KEY: "glm-secret",
     });
 

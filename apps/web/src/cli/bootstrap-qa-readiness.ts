@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { parseEnv } from "node:util";
 import { materializeBuiltinTeamProfiles } from "@data-agent/agent-runtime";
 import {
   type AgentSpecialistProfileId,
@@ -20,6 +17,7 @@ import {
   createPostgresSkillRegistry,
   createPostgresWorkspaceDataRepository,
 } from "@data-agent/platform";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import pg from "pg";
 import { z } from "zod";
 import {
@@ -74,24 +72,8 @@ interface BootstrapResources {
   readonly safety: VersionedResourceReference;
 }
 
-function repositoryRoot(): string {
-  return resolve(import.meta.dirname, "../../../..");
-}
-
 function loadEnvironment(): NodeJS.ProcessEnv {
-  const initial = { ...process.env };
-  for (const filename of [".env", ".env.local"]) {
-    try {
-      Object.assign(
-        process.env,
-        parseEnv(readFileSync(resolve(repositoryRoot(), filename), "utf8")),
-      );
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("ENOENT")) throw error;
-    }
-  }
-  Object.assign(process.env, initial);
-  return process.env;
+  return loadRuntimeEnvironment().environment;
 }
 
 function operationId(capability: AppCapability, kind: string, key: string): string {

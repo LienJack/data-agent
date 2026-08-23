@@ -14,10 +14,10 @@
 
 ## Acceptance Criteria
 
-- [ ] 搜索证明生产源码仅统一模块读取旧别名。
-- [ ] Web、Worker、Semantic Authoring、Certification 和本地 runtime 配置测试通过。
-- [ ] 规范值优先、别名 fallback、缺失值、不同 cwd 和幂等加载均有测试。
-- [ ] scoped commit 并归档子任务。
+- [x] 搜索证明生产源码仅统一模块读取旧别名。
+- [x] Web、Worker、Semantic Authoring、Certification 和本地 runtime 配置测试通过。
+- [x] 规范值优先、别名 fallback、缺失值、不同 cwd 和幂等加载均有测试。
+- [x] scoped commit 并归档子任务。
 
 ## Notes
 

@@ -15,6 +15,10 @@
     "./datasource-adapters": {
       "types": "./dist/datasources/adapters/index.d.ts",
       "import": "./dist/datasources/adapters/index.js"
+    },
+    "./runtime-config": {
+      "types": "./dist/runtime-config/index.d.ts",
+      "import": "./dist/runtime-config/index.js"
     }
   },
   "files": [
@@ -33,6 +37,7 @@
     "@clickhouse/client": "1.20.0",
     "@data-agent/contracts": "workspace:*",
     "@duckdb/node-api": "1.5.2-r.2",
+    "@next/env": "16.3.0",
     "@upstash/redis": "1.38.0",
     "ipaddr.js": "2.4.0",
     "mysql2": "3.23.2",

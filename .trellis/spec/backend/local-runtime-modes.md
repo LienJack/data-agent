@@ -55,6 +55,10 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
   `postgres` / `neo4j`，不得混用。
 - 本地环境优先级是 `process > .env.local > .env > safe defaults`；Secret 只能来自
   运行时环境，不得输出值。
+- Web、Worker、Semantic Authoring、Certification 和根级 CLI 必须复用
+  `@data-agent/platform/runtime-config` 的 server-only 边界加载根目录 dotenv 并归一化 Provider 变量；
+  App 与业务模块只能读取规范变量。规范变量优先于旧别名，兼容诊断只能包含变量名和 reason code，
+  不得包含 Secret 值。旧别名由 Retirement Surface Ledger 管理，连续两个 release 无使用证据后删除。
 - `SEMANTIC_GOVERNANCE_BACKEND=postgres`、`SEMANTIC_EXPLORER_ENABLED=true`与
   `SEMANTIC_RELATIONSHIP_INDEX_ENABLED=true` 在两种模式保持一致。Neo4j 不可用时
   Explorer 走 PostgreSQL fallback，Web 与 Governance 继续可用。
@@ -108,6 +112,8 @@ python-sandbox health  # 通过受控 IPC/容器 healthcheck，不开放公共 T
 - Python Sandbox 落地时同步把 Compose Contract 更新为 default 三个基础设施服务、deploy
   六个长期服务，并断言 sandbox 无网络/数据库 Secret/公共端口、只读 root 与硬资源限制。
 - Worker Unit/Integration：严格 env、IDLE 退避、日志脱敏、Lease/Heartbeat/Fence/终态。
+- Runtime Config：覆盖 repo root / Web / Worker cwd、dotenv 幂等、规范变量优先、旧别名提升、
+  缺失配置失败关闭和诊断不含 Secret。
 - Migration：已应用版本跳过，缺失版本应用，checksum 漂移非零退出。
 - Workspace freshness：graph/attestation contract、source 已变但旧 dist、output tamper、build 中漂移、burst
   coalescing、失败恢复、signal cleanup、四 role guard 与 opaque health identity。

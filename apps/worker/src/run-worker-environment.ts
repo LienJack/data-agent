@@ -1,27 +1,13 @@
-import { basename, resolve } from "node:path";
-import nextEnvironment from "@next/env";
+import {
+  loadRuntimeEnvironment,
+  resolveRuntimeRepositoryRoot,
+} from "@data-agent/platform/runtime-config";
 
-export function resolveRunWorkerRepositoryRoot(cwd: string): string {
-  const resolved = resolve(cwd);
-  return basename(resolved) === "worker" && basename(resolve(resolved, "..")) === "apps"
-    ? resolve(resolved, "../..")
-    : resolved;
-}
+export const resolveRunWorkerRepositoryRoot = resolveRuntimeRepositoryRoot;
 
-/** Loads root dotenv files and promotes only the supported DeepSeek alias. */
 export function loadRunWorkerEnvironment(
   environment: NodeJS.ProcessEnv = process.env,
   cwd = process.cwd(),
 ): NodeJS.ProcessEnv {
-  if (environment === process.env) {
-    nextEnvironment.loadEnvConfig(
-      resolveRunWorkerRepositoryRoot(cwd),
-      process.env.NODE_ENV !== "production",
-    );
-  }
-  if (!environment.DEEPSEEK_API_KEY?.trim()) {
-    const legacy = environment.DeepSeekAPIKey?.trim();
-    if (legacy) environment.DEEPSEEK_API_KEY = legacy;
-  }
-  return environment;
+  return loadRuntimeEnvironment({ cwd, environment }).environment;
 }

@@ -10,12 +10,12 @@ describe("run Worker root environment", () => {
     expect(resolveRunWorkerRepositoryRoot("/repo/apps/worker")).toBe("/repo");
   });
 
-  it("promotes only the DeepSeek legacy alias without overriding the canonical key", () => {
-    const legacy = { DeepSeekAPIKey: "legacy-secret", KimiAPIKey: "must-not-promote" };
+  it("promotes supported provider aliases without overriding canonical keys", () => {
+    const legacy = { DeepSeekAPIKey: "legacy-secret", KimiAPIKey: "legacy-kimi" };
     expect(loadRunWorkerEnvironment(legacy)).toMatchObject({
       DEEPSEEK_API_KEY: "legacy-secret",
+      MOONSHOT_API_KEY: "legacy-kimi",
     });
-    expect(legacy).not.toHaveProperty("MOONSHOT_API_KEY");
 
     const canonical = {
       DEEPSEEK_API_KEY: "canonical-secret",

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { basename, resolve } from "node:path";
-import nextEnvironment from "@next/env";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import { hashPassword } from "better-auth/crypto";
 import { Client } from "pg";
 import { z } from "zod";
@@ -33,19 +32,12 @@ const configurationSchema = z.strictObject({
   workspaceName: z.string().trim().min(1).max(128),
 });
 
-function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
-}
-
 function report(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
 async function main(): Promise<void> {
-  nextEnvironment.loadEnvConfig(repositoryRoot(), process.env.NODE_ENV !== "production");
+  loadRuntimeEnvironment();
 
   if (process.env[CONFIRMATION_VARIABLE]?.trim() !== "YES") {
     report({

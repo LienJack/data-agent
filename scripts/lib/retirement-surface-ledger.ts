@@ -140,7 +140,7 @@ export function findCompatibilitySurfaceMarkers(source: RetirementSource): strin
   if (/\bLEGACY_TEST_ONLY\b/.test(source.source)) {
     markers.push(`${source.path}#LEGACY_TEST_ONLY`);
   }
-  for (const alias of ["DeepSeekAPIKey", "KimiAPIKey"] as const) {
+  for (const alias of ["DeepSeekAPIKey", "MoonshotAPIKey", "KimiAPIKey", "GLMAPIKey"] as const) {
     if (new RegExp(`\\b${alias}\\b`).test(source.source)) {
       markers.push(`${source.path}#env:${alias}`);
     }

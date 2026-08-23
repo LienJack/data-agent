@@ -1,5 +1,4 @@
-import { basename, resolve } from "node:path";
-import nextEnvironment from "@next/env";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import { Pool } from "pg";
 import { z } from "zod";
 import { publishEcommerceGraphV2 } from "../lib/ecommerce-graph-v2-publish";
@@ -14,18 +13,11 @@ const configSchema = z.strictObject({
   base_release_id: z.uuid(),
 });
 
-function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
-}
-
 function report(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-nextEnvironment.loadEnvConfig(repositoryRoot(), process.env.NODE_ENV !== "production");
+loadRuntimeEnvironment();
 const config = configSchema.parse({
   database_url: process.env.AUTH_DATABASE_URL ?? process.env.DATABASE_URL,
   app_id: process.env.SEMANTIC_APP_ID ?? "00000000-0000-4000-8000-00000000da01",

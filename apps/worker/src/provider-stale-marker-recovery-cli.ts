@@ -8,10 +8,9 @@ import {
   createPostgresCapabilityAuthority,
   createPostgresProviderStaleMarkerRecoveryJob,
 } from "@data-agent/platform";
-import nextEnvironment from "@next/env";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import pg from "pg";
 import { z } from "zod";
-import { resolveRunWorkerRepositoryRoot } from "./run-worker-environment.js";
 
 const { Pool } = pg;
 
@@ -66,13 +65,7 @@ export function loadProviderRecoveryEnvironment(
   environment: NodeJS.ProcessEnv,
   cwd: string,
 ): NodeJS.ProcessEnv {
-  if (environment === process.env) {
-    nextEnvironment.loadEnvConfig(
-      resolveRunWorkerRepositoryRoot(cwd),
-      process.env.NODE_ENV !== "production",
-    );
-  }
-  return environment;
+  return loadRuntimeEnvironment({ cwd, environment }).environment;
 }
 
 export async function createProviderRecoveryJobConnection(

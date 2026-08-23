@@ -5,6 +5,7 @@ import { connect } from "node:net";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isDeepStrictEqual, parseEnv } from "node:util";
+import { normalizeRuntimeEnvironment } from "../packages/platform/src/runtime-config/index.js";
 import {
   discoverWorkspaceModules,
   resolveImpactedWorkspaceConsumers,
@@ -109,12 +110,7 @@ export function mergeLocalDevelopmentEnvironment(
       if (value !== undefined) merged[key] = value;
     }
   }
-  if (!merged.DEEPSEEK_API_KEY && merged.DeepSeekAPIKey) {
-    merged.DEEPSEEK_API_KEY = merged.DeepSeekAPIKey;
-  }
-  if (!merged.MOONSHOT_API_KEY && merged.KimiAPIKey) {
-    merged.MOONSHOT_API_KEY = merged.KimiAPIKey;
-  }
+  normalizeRuntimeEnvironment(merged);
   merged.WORKER_DEPLOYMENT_ID ||= merged.SEMANTIC_DEPLOYMENT_ID ?? LOCAL_DEPLOYMENT_ID;
   merged.WORKSPACE_DEPLOYMENT_ID ||= merged.SEMANTIC_DEPLOYMENT_ID ?? LOCAL_DEPLOYMENT_ID;
   merged.WORKER_TENANT_ID ||= merged.SEMANTIC_TENANT_ID ?? LOCAL_TENANT_ID;

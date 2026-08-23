@@ -52,6 +52,8 @@ test/*.spec.ts
 - `text2sql`、`research`、`evals` 只依赖 `contracts` 和显式 Port。
 - `agent-runtime` 可以适配 Mastra，但不能提交 SQL、Evidence 或 Release 真值。
 - `platform` 实现 Port，不导入领域 Workflow。
+- `platform/runtime-config` 是 server-only dotenv、仓库根解析和环境变量归一化边界；App、CLI 与领域模块
+  不得各自加载 dotenv 或读取受管旧别名。
 - `semantic/application` 持有 Candidate compile/save、Governance、Studio、Explorer 用例；
   不得导入 Next、PostgreSQL client 或 Platform。
 - `apps/web` 的生产语义路由只从一个 request-scoped Workspace composition 取得用例；

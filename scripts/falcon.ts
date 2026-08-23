@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import pg from "../apps/web/node_modules/pg/esm/index.mjs";
 import {
@@ -28,16 +28,14 @@ import {
   verifyFalconBundle,
 } from "../packages/evals/src/index";
 import { createPostgresFalconBenchmarkExecutor } from "../packages/platform/src/index";
+import { resolveRuntimeRepositoryRoot } from "../packages/platform/src/runtime-config/index";
 import { createSemanticOntologyCoverageReceipt } from "../packages/semantic/src/public/authoring";
 import { compileSemanticGraphV2 } from "../packages/semantic/src/public/governance";
 
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 
 function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
+  return resolveRuntimeRepositoryRoot(process.cwd());
 }
 
 function argument(name: string): string | undefined {

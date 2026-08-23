@@ -80,7 +80,9 @@ Worker 与 Indexer 均使用 `tsx watch`。修改对应 `apps/worker/src/**` 文
 Secret 只放在 Git 忽略的 `.env` 或 `.env.local`，不要写入 Compose、文档或提交历史。
 常用变量名：
 
-- `DEEPSEEK_API_KEY`、`MOONSHOT_API_KEY`；兼容旧别名 `DeepSeekAPIKey`、`KimiAPIKey`；
+- `DEEPSEEK_API_KEY`、`MOONSHOT_API_KEY`、`ZAI_API_KEY`；Platform 的 server-only Runtime Config
+  边界临时兼容 `DeepSeekAPIKey`、`MoonshotAPIKey` / `KimiAPIKey`、`GLMAPIKey`。规范变量始终优先，
+  兼容提升只记录变量名与 reason code，不记录值；连续两个 release 无使用证据后删除别名；
 - `SEMANTIC_DEPLOYMENT_ID`、`SEMANTIC_TENANT_ID`、`SEMANTIC_PRINCIPAL_ID`；
 - `SEMANTIC_EXPLORER_ENABLED`、`SEMANTIC_RELATIONSHIP_INDEX_ENABLED`；
 - `WORKER_DEPLOYMENT_ID`、`WORKER_TENANT_ID`、`WORKER_PRINCIPAL_ID`；

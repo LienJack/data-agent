@@ -1,5 +1,4 @@
-import { basename, resolve } from "node:path";
-import nextEnvironment from "@next/env";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import { Client } from "pg";
 import { z } from "zod";
 import {
@@ -13,17 +12,11 @@ const configSchema = z.strictObject({
   workspaceSlug: z.string().trim().min(2).max(63),
 });
 
-function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
-}
 function report(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
-nextEnvironment.loadEnvConfig(repositoryRoot(), process.env.NODE_ENV !== "production");
+loadRuntimeEnvironment();
 if (process.env[CONFIRMATION_VARIABLE]?.trim() !== "YES") {
   report({
     schema_version: "ecommerce-demo-workspace-bootstrap-result@1.0.0",

@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type SemanticSourceBundle,
   semanticSourceBundleSchema,
 } from "@data-agent/contracts/semantic";
+import { resolveRuntimeRepositoryRoot } from "@data-agent/platform/runtime-config";
 import { compileU5Projection } from "@data-agent/semantic/runtime-context";
 import type { ClientBase } from "pg";
 import { z } from "zod";
@@ -79,10 +80,7 @@ const SEMANTIC_IDS = Object.freeze({
 });
 
 function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
+  return resolveRuntimeRepositoryRoot(process.cwd());
 }
 
 async function loadSemanticBundle(): Promise<SemanticSourceBundle> {

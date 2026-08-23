@@ -18,7 +18,7 @@ type Environment = Readonly<Record<string, string | undefined>>;
 interface SystemModelDefinition {
   provider: Extract<ModelProvider, "deepseek" | "kimi" | "glm">;
   displayName: string;
-  credentialNames: readonly [standard: string, alias: string];
+  credentialName: "DEEPSEEK_API_KEY" | "MOONSHOT_API_KEY" | "ZAI_API_KEY";
 }
 
 export interface ResolvedSystemModel {
@@ -31,17 +31,17 @@ const SYSTEM_MODEL_DEFINITIONS: readonly SystemModelDefinition[] = Object.freeze
   {
     provider: "deepseek",
     displayName: "DeepSeek 系统模型",
-    credentialNames: ["DEEPSEEK_API_KEY", "DeepSeekAPIKey"],
+    credentialName: "DEEPSEEK_API_KEY",
   },
   {
     provider: "kimi",
     displayName: "Kimi 系统模型",
-    credentialNames: ["MOONSHOT_API_KEY", "KimiAPIKey"],
+    credentialName: "MOONSHOT_API_KEY",
   },
   {
     provider: "glm",
     displayName: "智谱 GLM 系统模型",
-    credentialNames: ["ZAI_API_KEY", "GLMAPIKey"],
+    credentialName: "ZAI_API_KEY",
   },
 ]);
 
@@ -55,13 +55,9 @@ function deploymentOverride(model: ResolvedSystemModel) {
 
 function credentialFrom(
   environment: Environment,
-  names: SystemModelDefinition["credentialNames"],
+  name: SystemModelDefinition["credentialName"],
 ): string | undefined {
-  for (const name of names) {
-    const value = environment[name]?.trim();
-    if (value) return value;
-  }
-  return undefined;
+  return environment[name]?.trim() || undefined;
 }
 
 export function discoverSystemModels(
@@ -69,7 +65,7 @@ export function discoverSystemModels(
   now = new Date(0).toISOString(),
 ): readonly ResolvedSystemModel[] {
   const configured = SYSTEM_MODEL_DEFINITIONS.flatMap((definition) => {
-    const credential = credentialFrom(environment, definition.credentialNames);
+    const credential = credentialFrom(environment, definition.credentialName);
     if (!credential) return [];
 
     const binding = getModelProviderBinding(definition.provider);
@@ -187,5 +183,5 @@ export function resolveSystemModelCredential(
   environment: Environment = process.env,
 ): string | undefined {
   const definition = SYSTEM_MODEL_DEFINITIONS.find((candidate) => candidate.provider === provider);
-  return definition ? credentialFrom(environment, definition.credentialNames) : undefined;
+  return definition ? credentialFrom(environment, definition.credentialName) : undefined;
 }

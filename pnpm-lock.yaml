@@ -57,9 +57,6 @@ importers:
       '@data-agent/semantic':
         specifier: workspace:*
         version: link:../../packages/semantic
-      '@next/env':
-        specifier: 16.3.0
-        version: 16.3.0
       '@phosphor-icons/react':
         specifier: ^2.1.10
         version: 2.1.10(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -151,9 +148,6 @@ importers:
       '@data-agent/semantic':
         specifier: workspace:*
         version: link:../../packages/semantic
-      '@next/env':
-        specifier: 16.3.0
-        version: 16.3.0
       pg:
         specifier: 8.22.0
         version: 8.22.0
@@ -263,6 +257,9 @@ importers:
       '@duckdb/node-api':
         specifier: 1.5.2-r.2
         version: 1.5.2-r.2
+      '@next/env':
+        specifier: 16.3.0
+        version: 16.3.0
       '@upstash/redis':
         specifier: 1.38.0
         version: 1.38.0

@@ -39,7 +39,10 @@ describe("repository retirement surface ledger", () => {
   it("strictly parses the authority and covers critical compatibility classes", () => {
     expect(
       validateRetirementSurfaceLedger(ledger, [
-        "apps/web/src/lib/root-env.ts#env:DeepSeekAPIKey",
+        "packages/platform/src/runtime-config/index.ts#env:DeepSeekAPIKey",
+        "packages/platform/src/runtime-config/index.ts#env:MoonshotAPIKey",
+        "packages/platform/src/runtime-config/index.ts#env:KimiAPIKey",
+        "packages/platform/src/runtime-config/index.ts#env:GLMAPIKey",
         "packages/agent-runtime/src/mastra/model-provider-adapter.ts#LEGACY_TEST_ONLY",
         "tests/fixtures/text2sql/legacy-characterization",
         "migration-history#duplicate-sequences-10673-10679",

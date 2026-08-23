@@ -13,7 +13,7 @@ import {
   createPostgresSemanticAuthoringStore,
   registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
-import nextEnvironment from "@next/env";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import pg from "pg";
 import { z } from "zod";
 import {
@@ -73,10 +73,7 @@ const configurationSchema = z.strictObject({
 });
 
 function loadEnvironment(): NodeJS.ProcessEnv {
-  nextEnvironment.loadEnvConfig(process.cwd(), true);
-  process.env.DEEPSEEK_API_KEY ||= process.env.DeepSeekAPIKey?.trim();
-  process.env.MOONSHOT_API_KEY ||= process.env.KimiAPIKey?.trim();
-  return process.env;
+  return loadRuntimeEnvironment().environment;
 }
 
 function parseConfiguration(environment: NodeJS.ProcessEnv) {

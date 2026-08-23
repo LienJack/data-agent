@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { basename, resolve } from "node:path";
-import nextEnvironment from "@next/env";
+import { resolve } from "node:path";
+import { loadRuntimeEnvironment } from "@data-agent/platform/runtime-config";
 import { hashPassword, verifyPassword } from "better-auth/crypto";
 import { Client } from "pg";
 import { z } from "zod";
@@ -47,13 +47,6 @@ interface SuperadminRow {
   readonly auth_email: string;
   readonly password_hash: string | null;
   readonly workspace_id: string | null;
-}
-
-function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
 }
 
 function hold(reasonCode: string): SafeSyncResult {
@@ -291,7 +284,7 @@ export async function runLocalSuperadminSync(
 }
 
 async function main(): Promise<void> {
-  nextEnvironment.loadEnvConfig(repositoryRoot(), process.env.NODE_ENV !== "production");
+  loadRuntimeEnvironment();
   const result = await runLocalSuperadminSync(process.env);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   if (result.terminal === "HOLD") process.exitCode = 2;

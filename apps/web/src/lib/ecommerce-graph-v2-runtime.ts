@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { basename, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   type PhysicalSchemaSnapshot,
   type SemanticGraphSource,
@@ -10,6 +10,7 @@ import {
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { adaptPgCatalogPool, createPostgresCatalogScanner } from "@data-agent/platform";
+import { resolveRuntimeRepositoryRoot } from "@data-agent/platform/runtime-config";
 import { createSemanticOntologyCoverageReceipt } from "@data-agent/semantic/authoring";
 import {
   compileSemanticGraphV2,
@@ -32,10 +33,7 @@ const SCHEMA_NAME = "demo_adb_ecommerce_mart";
 const CAPTURED_AT = "2026-08-16T00:00:00.000Z";
 
 function repositoryRoot(): string {
-  const cwd = resolve(process.cwd());
-  return basename(cwd) === "web" && basename(resolve(cwd, "..")) === "apps"
-    ? resolve(cwd, "../..")
-    : cwd;
+  return resolveRuntimeRepositoryRoot(process.cwd());
 }
 
 export async function loadEcommerceSemanticBundle(): Promise<SemanticSourceBundle> {

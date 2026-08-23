@@ -8,6 +8,7 @@ import {
   FALCON_DEV_DATABASE_CASE_COUNTS,
   sha256ContentHash,
 } from "@data-agent/contracts";
+import { resolveRuntimeRepositoryRoot } from "@data-agent/platform/runtime-config";
 import type { FalconTeamCaseResult } from "./falcon-team-runner.js";
 
 interface TeamBatch {
@@ -25,7 +26,7 @@ interface TeamBatch {
 }
 
 function repositoryRoot(): string {
-  return process.cwd().endsWith("/apps/worker") ? resolve(process.cwd(), "../..") : process.cwd();
+  return resolveRuntimeRepositoryRoot(process.cwd());
 }
 
 async function readJson<T>(path: string): Promise<T> {
