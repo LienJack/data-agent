@@ -72,6 +72,7 @@ export {
   type SemanticViewState,
 } from "./semantic-governance-view.js";
 export * from "./semantic-induction.js";
+export * from "./semantic-lifecycle.js";
 export * from "./semantic-relationship-index.js";
 export * from "./sensitive-execution-artifact.js";
 export * from "./tabular-import.js";

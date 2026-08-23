@@ -2,11 +2,11 @@
 
 ## Ordered units
 
-- [ ] U0 Baseline and task setup
+- [x] U0 Baseline and task setup
   - 固定 `dev@ec28800e`，记录 dirty-base 隔离和 overlap preflight。
   - 读取相关 backend/frontend specs、既有语义/分析/沙箱/评测实现与历史 acceptance artifacts。
   - 建立 scoped validation matrix 和每单元 commit 边界。
-- [ ] U1 Semantic production lifecycle
+- [x] U1 Semantic production lifecycle
   - 增加 `SemanticAssertionCandidate@1`、`SemanticChangeSet@1`、provenance/conflict/validation contracts。
   - 实现候选归一化、identity resolution、change compilation、deterministic validator 与 publish projection tests。
   - 保持 PostgreSQL authority 和现有 Candidate/Release V2 兼容。

@@ -31,6 +31,10 @@
     "./relationship-index": {
       "types": "./dist/public/relationship-index.d.ts",
       "import": "./dist/public/relationship-index.js"
+    },
+    "./production": {
+      "types": "./dist/public/production.d.ts",
+      "import": "./dist/public/production.js"
     }
   },
   "files": [

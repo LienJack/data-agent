@@ -9,6 +9,7 @@ export * from "../artifacts/semantic-governance-requests.js";
 export * from "../artifacts/semantic-graph-read.js";
 export * from "../artifacts/semantic-graph-v2.js";
 export * from "../artifacts/semantic-induction.js";
+export * from "../artifacts/semantic-lifecycle.js";
 export * from "../artifacts/semantic-relationship-index.js";
 export * from "../ports/semantic/index.js";
 export * from "../semantic/greenfield-bootstrap.js";
