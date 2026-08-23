@@ -1,0 +1,16 @@
+{
+  "schema_version": "data-agent-semantic-ambiguity/v1",
+  "case_id": "gross-vs-net-revenue",
+  "question": "收入为什么下降？",
+  "conflict_set": ["metric.revenue.gross", "metric.revenue.net"],
+  "before_resolution": {
+    "decision": "CLARIFY",
+    "query_contract_created": false,
+    "sql_candidate_created": false
+  },
+  "after_resolution": {
+    "selected_metric": "metric.revenue.net",
+    "create_new_query_contract_revision": true,
+    "invalidate_previous_candidates": true
+  }
+}

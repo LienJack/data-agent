@@ -1,0 +1,153 @@
+{
+  "schema_version": "workspace-journey-evidence@1.0.0",
+  "artifact_id": "00000000-0000-4000-8000-000000000017",
+  "scope": {
+    "app_id": "00000000-0000-4000-8000-000000000001",
+    "tenant_id": "00000000-0000-4000-8000-000000000002",
+    "environment": "local"
+  },
+  "workspace_id": "9e0ed5ae-7ab6-4896-b7eb-868e202f3725",
+  "goal_id": "datafoundry-coa-u17",
+  "result": "GO",
+  "locales": ["zh-CN", "en-US"],
+  "required_checkpoint_ids": [
+    "WORKSPACE_AUTHORIZATION",
+    "GREENFIELD_GUIDANCE",
+    "I18N_ZH_CN",
+    "I18N_EN_US",
+    "CONTEXT_PREVIEW",
+    "AGENT_PUBLIC_SSE",
+    "AGENT_TEAM_TRACE",
+    "RECOVERY_MATRIX",
+    "DESKTOP_VIEWPORT",
+    "MOBILE_VIEWPORT",
+    "KEYBOARD_NAVIGATION",
+    "PRIVATE_DATA_REDACTION"
+  ],
+  "checks": [
+    {
+      "checkpoint_id": "WORKSPACE_AUTHORIZATION",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "AUTOMATED_TEST",
+      "evidence_refs": ["sha256:ca2bdb6b021f2526d0f57e58cbed67265287af2c8848aa0be302de1789471fa4"],
+      "summary": "U17 verified WORKSPACE_AUTHORIZATION."
+    },
+    {
+      "checkpoint_id": "GREENFIELD_GUIDANCE",
+      "status": "PASS",
+      "actor_role": "WORKSPACE_ADMIN",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "AUTOMATED_TEST",
+      "evidence_refs": ["sha256:af76db66deb6cc0eddc16e8e12826fcddb0272431dea812a353f8a16560910c6"],
+      "summary": "U17 verified GREENFIELD_GUIDANCE."
+    },
+    {
+      "checkpoint_id": "I18N_ZH_CN",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:be042e6cd590dc1411f1328068b34a6cd787f7d4db6f0b741b009d57b4e1f87d"],
+      "summary": "U17 verified I18N_ZH_CN."
+    },
+    {
+      "checkpoint_id": "I18N_EN_US",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:d4191be21771989e14f2c95e59861f9de36cba52f78e4b05b98ad6c3b5a9600b"],
+      "summary": "U17 verified I18N_EN_US."
+    },
+    {
+      "checkpoint_id": "CONTEXT_PREVIEW",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/semantic?preview=1",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:1102868a064405a684b22c8acc1ac8c2357c810cd2d57310f5cef9b92ae4e7cd"],
+      "summary": "U17 verified CONTEXT_PREVIEW."
+    },
+    {
+      "checkpoint_id": "AGENT_PUBLIC_SSE",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:5125f1fdcd960e2e97b27442bdd0aafc41927386920fc7c8df22f3a604a04beb"],
+      "summary": "U17 verified AGENT_PUBLIC_SSE."
+    },
+    {
+      "checkpoint_id": "AGENT_TEAM_TRACE",
+      "status": "PASS",
+      "actor_role": "SYSTEM",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "AUTOMATED_TEST",
+      "evidence_refs": ["sha256:565563545725ab5b0e9474a10255c4c75c60f28fbe04819b6e20d0bac866a4f9"],
+      "summary": "U17 verified AGENT_TEAM_TRACE."
+    },
+    {
+      "checkpoint_id": "RECOVERY_MATRIX",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "AUTOMATED_TEST",
+      "evidence_refs": ["sha256:af76db66deb6cc0eddc16e8e12826fcddb0272431dea812a353f8a16560910c6"],
+      "summary": "U17 verified RECOVERY_MATRIX."
+    },
+    {
+      "checkpoint_id": "DESKTOP_VIEWPORT",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:d4191be21771989e14f2c95e59861f9de36cba52f78e4b05b98ad6c3b5a9600b"],
+      "summary": "U17 verified DESKTOP_VIEWPORT."
+    },
+    {
+      "checkpoint_id": "MOBILE_VIEWPORT",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:1102868a064405a684b22c8acc1ac8c2357c810cd2d57310f5cef9b92ae4e7cd"],
+      "summary": "U17 verified MOBILE_VIEWPORT."
+    },
+    {
+      "checkpoint_id": "KEYBOARD_NAVIGATION",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "BROWSER",
+      "evidence_refs": ["sha256:5125f1fdcd960e2e97b27442bdd0aafc41927386920fc7c8df22f3a604a04beb"],
+      "summary": "U17 verified KEYBOARD_NAVIGATION."
+    },
+    {
+      "checkpoint_id": "PRIVATE_DATA_REDACTION",
+      "status": "PASS",
+      "actor_role": "ANALYST",
+      "route": "/w/9e0ed5ae-7ab6-4896-b7eb-868e202f3725/qa",
+      "verification_method": "AUTOMATED_TEST",
+      "evidence_refs": ["sha256:01ed78c0e3cb02b5277481d2c3512040964c270007d3548fc07b671ca424ab99"],
+      "summary": "U17 verified PRIVATE_DATA_REDACTION."
+    }
+  ],
+  "viewports": [
+    {
+      "name": "DESKTOP",
+      "width": 1440,
+      "height": 1000,
+      "screenshot_hash": "sha256:d4191be21771989e14f2c95e59861f9de36cba52f78e4b05b98ad6c3b5a9600b"
+    },
+    {
+      "name": "MOBILE",
+      "width": 390,
+      "height": 844,
+      "screenshot_hash": "sha256:1102868a064405a684b22c8acc1ac8c2357c810cd2d57310f5cef9b92ae4e7cd"
+    }
+  ],
+  "validated_at": "2026-08-18T04:36:00+08:00",
+  "artifact_hash": "sha256:8bcd99d1bf6f244b5f945901942d21f78ad4c372e3df4eae9e64b01185cb162f"
+}

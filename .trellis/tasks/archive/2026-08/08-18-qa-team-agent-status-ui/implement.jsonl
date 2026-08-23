@@ -1,0 +1,6 @@
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"Inline activity、Inspector、Artifact preview、a11y 与 surface-neutral projection"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"Web SSE replay、Run identity、terminal closure 与 authority"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-status-design.md","reason":"Harness assembler、details、Subagent baseline live 主要实现基线"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-source-reuse-ledger.md","reason":"UI 和测试移植的 upstream target MIT 记录"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/codex-desktop-parity-matrix.md","reason":"Codex 桌面功能对标与 browser proof"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/reasonix-multi-surface-protocol-design.md","reason":"Projection core 与 Web-local layout/connection state 分离"}

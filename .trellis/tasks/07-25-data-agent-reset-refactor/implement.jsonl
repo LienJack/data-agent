@@ -1,0 +1,24 @@
+{"file":".trellis/tasks/07-25-data-agent-reset-refactor/u6-implementation-contract.md","reason":"U6 实现与检查的首要 compact 合同；完整承载双状态、旧 READY/GO/V1 旁路退役、Partial 前提、Schema Frontier、迁移路径、测试与 HOLD 门禁"}
+{"file":"docs/design/u6-research-planning-payload-contract.md","reason":"U6 Planning Wire primitive、ResearchBrief/HypothesisSet/EvidencePlan strict Payload 与精确 Reference 合同"}
+{"file":"docs/design/u6-research-oed-v2-contract.md","reason":"U6 OED v2 的 12 项语义检查、SqlArtifact exact closure、QueryEvidence replay 与 transient Candidate 边界"}
+{"file":"docs/design/u6-research-wire-payload-contract.md","reason":"U6 下游 Evidence/Proof/Stop/Projection/Certificate/Revocation strict Payload 与 Wire Registry 合同"}
+{"file":"docs/design/u6-research-derivation-wire-contract.md","reason":"U6 跨运行时 Research Hash、Coverage/Stop v2 delta、Enumerator Attestation 与逐 kind exact codec"}
+{"file":"docs/design/u6-research-derivation-receipt-contract.md","reason":"U6 跨运行时 Research Hash、Budget Event 双水位、DB-owned Coverage/Candidate/Stop Receipt 与 Input Watermark 合同"}
+{"file":"docs/design/u6-research-platform-contract.md","reason":"U6 Frontier、Research Terminal、current-ready、Grant、Revocation、GO 的 strict 平台事务、锁序与状态真值表"}
+{"file":"docs/design/u6-research-database-surface-contract.md","reason":"U6 数据库 Authority provenance、current Artifact Committer、全局锁入口、RPC exposure、GRANT/DML denylist、10590 与 Schema Inventory 合同"}
+{"file":"docs/design/u6-research-execution-storage-contract.md","reason":"U6 Resource/Invocation/System Record/Result/Key metadata 的物理表、非 Terminal 约束、nullable CHECK、TTL 与唯一锁序合同"}
+{"file":"docs/design/u6-research-resource-invocation-contract.md","reason":"U6 Resource Reservation、Model/SQL/Tool Invocation、System Record、用量与外发失败关闭合同"}
+{"file":"docs/design/u6-invocation-state-contract.md","reason":"U6 Invocation 的 AUTHORIZED/STARTED/OUTCOME_UNKNOWN/Terminal 状态图、Owner、CAS、幂等与 Crash Recovery 唯一合同"}
+{"file":"docs/design/u6-invocation-result-crypto-contract.md","reason":"U6 明文 Terminal Candidate、跨实例 claim、密文 DB Command、Resolver/Decrypt Authority、Key Version 与固定密码向量合同"}
+{"file":"docs/design/u6-result-key-lifecycle-contract.md","reason":"U6 Key metadata bootstrap、predecessor CAS、原子 replacement、compromise recovery 与部署函数 replay 合同"}
+{"file":"docs/design/u6-system-record-lifecycle-contract.md","reason":"U6 Adapter Termination、Tool Permit、Result Blob tombstone 与 Audit Purge strict union/replay 的 Owner、状态、幂等和恢复唯一合同"}
+{"file":"docs/design/u6-app-lifecycle-cleanup-contract.md","reason":"U6 DELETE_PENDING App/Environment 的 Job-only 排他清理、retained receipt、Legal Hold、FK deferral allowlist 与 residual=0 合同"}
+{"file":"docs/design/u6-controlled-fixture-contract.md","reason":"U6 受控两查询真值、14 Mutation、Partial 配对、竞态与篡改 Oracle；只证明 Synthetic Protocol"}
+{"file":"docs/research/u6-rq092-contract-evidence.md","reason":"RQ092 的 repo-relative 内容寻址证据快照；保留三个源 Hash、核心义务与证据边界，不依赖用户机器绝对路径"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"公开终态 Owner、公共/领域 Reason Code 分层、禁止 STOP_FAILED/STOP_STALE 与兜底 Partial"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"后端失败关闭、测试质量与真实证据要求"}
+{"file":"docs/runbooks/durable-run-runtime.md","reason":"Durable Runtime 不可变终态与 U6 Historical RunTerminal/CurrentReadiness 双状态、Grant Issue/Consume/Response/Expire 运行边界"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"跨 Contract、Research、Platform、Worker、API/UI 与持久化层的完整数据流"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"API/UI 必须如实投影 Historical Terminal、CurrentReadiness 与 Artifact 类型"}
+{"file":"docs/design/u6-terminal-reference-graph-contract.md","reason":"U6 Invocation/Preparation/Result/Blob/Receipt 的 reference key/FK、物理 discriminator 与 Audit 五组 nullable terminal 引用图"}
+{"file":"docs/design/u6-research-migration-safety-contract.md","reason":"U6 10590 的维护窗口、existing relation 容量与数据 preflight、fail-fast DDL、整事务回滚和 Hosted/Docker 对等合同"}

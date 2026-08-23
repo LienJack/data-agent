@@ -1,0 +1,9 @@
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Audit atomic intent/outcome/usage, RLS, grants and migration safety."}
+{"file": ".trellis/spec/backend/error-handling.md", "reason": "Audit stable provider error mapping and disclosure."}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "Audit receipt hashes, references and immutable authority."}
+{"file": ".trellis/spec/backend/port-conformance.md", "reason": "Audit replay, OUTCOME_UNKNOWN, fence and TOCTOU behavior."}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "Audit raw prompt, response, header and credential exclusion."}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Run final package, SQL, integration and adversarial checks."}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Audit selector DTO and runtime parsing."}
+{"file": ".trellis/tasks/08-16-u03-provider-invocation/research/u03-research-summary.md", "reason": "Check implementation against repository findings and shared-tree constraints."}
+{"file": ".trellis/spec/backend/provider-invocation-authority.md", "reason": "Verify RESPONSE_OBSERVED, terminal closure, canonical hash and no-commercial boundary"}

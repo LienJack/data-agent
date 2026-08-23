@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Strict unknown boundaries and package gates"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Datasource Egress and Secret denial verification"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Port behavior and sandbox conformance"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Registry DTO and view-state verification"}

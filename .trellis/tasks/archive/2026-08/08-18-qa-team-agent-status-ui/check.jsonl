@@ -1,0 +1,5 @@
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"验证公开事件、安全预览、Inspector lifecycle 与可访问性"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"验证 baseline SSE replay 和 trajectory 同源"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-source-reuse-ledger.md","reason":"验证所有实质性移植有来源、修改与 MIT notice"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/codex-desktop-parity-matrix.md","reason":"验证 Codex parity browser evidence"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/reasonix-multi-surface-protocol-design.md","reason":"验证 Web 是 adapter 且未实现额外 surface"}

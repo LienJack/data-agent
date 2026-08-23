@@ -1,0 +1,31 @@
+{
+  "id": "semantic-layer-m0-authority-safety",
+  "name": "semantic-layer-m0-authority-safety",
+  "title": "M0 Semantic Authority and Safety Foundation",
+  "description": "Harden semantic backend selection, server Authority, canonical Candidate persistence, publish material and datasource secret references.",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "packages/contracts,apps/web,packages/platform,infra/supabase semantic authority",
+  "package": null,
+  "priority": "P1",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-08",
+  "completedAt": "2026-08-08",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-08-semantic-layer-studio",
+  "relatedFiles": [
+    "docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md",
+    "apps/web/src/lib/semantic-governance-service.ts",
+    "apps/web/src/lib/postgres-semantic-governance-service.ts",
+    "infra/supabase/apps/data-agent/migrations/20260725010610_app_data_agent_semantic_control_plane.sql"
+  ],
+  "notes": "",
+  "meta": {}
+}

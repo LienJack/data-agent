@@ -1,0 +1,87 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ExtensionsPanel } from "@/components/settings/extensions-panel";
+import { KnowledgeBasesPanel } from "@/components/settings/knowledge-bases-panel";
+import { ModelProvidersPanel } from "@/components/settings/model-providers-panel";
+import { OperationsAdminPanel } from "@/components/settings/operations-admin-panel";
+import { PlatformSettingsTabs } from "@/components/settings/platform-settings-tabs";
+import { SemanticPortabilityPanel } from "@/components/settings/semantic-portability-panel";
+import { getCurrentWorkspaceSession, listSessionWorkspaces } from "@/lib/workspace-identity";
+
+/**
+ * Settings 设置页面 — 模型配置管理。
+ *
+ * 展示环境系统模型与手工供应商配置。
+ * 供应商使用卡片添加，供应商内按模型行选择。
+ */
+export default async function SettingsPage() {
+  const session = await getCurrentWorkspaceSession();
+  if (!session.ok) {
+    if (session.error.code.startsWith("AUTH_SESSION_")) redirect("/login");
+    return (
+      <main className="flex h-full items-center justify-center p-6">
+        <div className="max-w-md rounded-lg border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+          {session.error.message}
+        </div>
+      </main>
+    );
+  }
+  const isSuperAdmin = session.value.system_role === "SUPER_ADMIN";
+  const workspaceAccess = await listSessionWorkspaces(session.value);
+  const workspaces = workspaceAccess.ok ? workspaceAccess.value : [];
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="page-frame">
+        <header className="page-heading">
+          <div>
+            <p className="page-eyebrow">Platform settings</p>
+            <div>
+              <h1 className="page-title">平台设置</h1>
+              <p className="page-description">账户、模型、工作空间与语义治理的数据库权威控制面。</p>
+            </div>
+          </div>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            {isSuperAdmin ? (
+              <Link
+                href="/admin/qa"
+                className="text-xs font-semibold text-[var(--color-accent)] hover:underline"
+              >
+                打开全局对话审计 →
+              </Link>
+            ) : null}
+            <p className="font-mono text-[10px] text-[var(--color-text-muted)]">
+              {session.value.principal_id} · {session.value.system_role}
+            </p>
+          </div>
+        </header>
+
+        <PlatformSettingsTabs
+          model={<ModelProvidersPanel isSuperAdmin={isSuperAdmin} />}
+          operations={
+            <div className="space-y-10">
+              {isSuperAdmin && (
+                <div className="workspace-section">
+                  <OperationsAdminPanel currentPrincipalId={session.value.principal_id} />
+                </div>
+              )}
+              {!isSuperAdmin && (
+                <div className="border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-5 text-sm text-[var(--color-text-secondary)]">
+                  组织与运维控制面仅向平台管理员开放。
+                </div>
+              )}
+            </div>
+          }
+          semantic={
+            <div className="space-y-10">
+              <KnowledgeBasesPanel workspaces={workspaces} />
+              <div className="border-t border-[var(--color-border-default)] pt-8">
+                <SemanticPortabilityPanel workspaces={workspaces} />
+              </div>
+            </div>
+          }
+          extensions={<ExtensionsPanel workspaces={workspaces} />}
+        />
+      </div>
+    </div>
+  );
+}

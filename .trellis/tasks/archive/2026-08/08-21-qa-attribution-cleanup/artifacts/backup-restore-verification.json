@@ -1,0 +1,31 @@
+{
+  "schema_version": "legacy-attribution-backup-restore-verification@1.0.0",
+  "database_name": "data_agent",
+  "system_identifier": "7675232435726172194",
+  "inventory_digest": "sha256:eef3d45e2b3aeade797aa7e229070160c13abbe9a3608fc23054e439c1b6f3c7",
+  "backup_sha256": "sha256:52dce34d6eebb835ea80974038c5b30db42b6bb49f3d6a3e856aa38d9c76639a",
+  "backup_bytes": 156567272,
+  "archive_format": "CUSTOM",
+  "archive_toc_entries": 4939,
+  "dumped_database_version": "17.10",
+  "dump_tool_version": "17.10",
+  "restore_list_verified": true,
+  "container_and_host_hash_match": true,
+  "restore_database": "data_agent_cleanup_verify_20260822",
+  "restore_order": [
+    "pre-data",
+    "post-data",
+    "data --disable-triggers"
+  ],
+  "restore_completed": true,
+  "restored_counts": {
+    "runs": 39,
+    "artifacts": 90,
+    "qa_conversations": 9,
+    "migration_ledger": 102,
+    "legacy_attribution_cleanup_receipts": 0,
+    "legacy_attribution_target_rows": 0
+  },
+  "restored_10678_checksum": "sha256:6ad81cf69acc1af798706b089df747fb040d96ecc5d03b30e8eae2db2f0ce462",
+  "backup_created_at": "2026-08-21T23:02:33.213Z"
+}

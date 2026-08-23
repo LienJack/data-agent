@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    /* Compatibility aliases. Theme values are owned by design-system.css. */
+    --color-info: var(--color-accent);
+  }
+}
+
+@layer components {
+  .status-badge {
+    @apply inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium;
+  }
+
+  .status-badge--pass {
+    @apply bg-emerald-50 text-[#3f7465];
+  }
+
+  .status-badge--fail {
+    @apply bg-red-50 text-[#b44535];
+  }
+
+  .status-badge--inconclusive {
+    @apply bg-amber-50 text-[#966b2c];
+  }
+
+  .status-badge--hold {
+    @apply bg-amber-50 text-[#966b2c];
+  }
+
+  .status-badge--not-registered {
+    @apply bg-gray-100 text-[#7b837f];
+  }
+
+  .card {
+    @apply rounded-lg border border-[var(--color-border-default)] bg-[var(--color-bg-primary)] p-4;
+  }
+
+  .section-header {
+    @apply mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--color-text-secondary)];
+  }
+
+  /* ── DataFoundry-style 紧凑辅助类 ──────────────────────────────────── */
+  .workspace-container {
+    @apply mx-auto w-full max-w-7xl px-4 py-4;
+  }
+
+  .workspace-grid {
+    @apply flex flex-col gap-4;
+  }
+
+  .workspace-row {
+    @apply flex flex-row gap-4;
+  }
+
+  .workspace-section {
+    @apply flex flex-col gap-3;
+  }
+
+  .text-muted {
+    color: var(--color-text-muted);
+  }
+
+  .text-emphasis {
+    color: var(--color-text-emphasis);
+  }
+
+  .border-focused {
+    border-color: var(--color-border-focused);
+  }
+
+  .bg-overlay {
+    background-color: var(--color-bg-overlay);
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* ─── 语义审核组件 ─────────────────────────────────────────────────────── */
+.diff-added {
+  @apply bg-emerald-50 text-emerald-800;
+}
+
+.diff-removed {
+  @apply bg-red-50 text-red-800;
+}
+
+.diff-modified {
+  @apply bg-amber-50 text-amber-800;
+}

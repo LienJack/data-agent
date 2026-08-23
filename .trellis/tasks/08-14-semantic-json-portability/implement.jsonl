@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL authority, transaction, RLS and migration rules"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"Workspace scope, RBAC and clean-install boundary"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Immutable audit and secret redaction boundary"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Strict contract and failure-closed validation gates"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Decode DTOs before rendering import states"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Shared projection and accessible component conventions"}

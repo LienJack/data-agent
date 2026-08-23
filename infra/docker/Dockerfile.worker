@@ -1,0 +1,73 @@
+# =============================================================================
+# Worker App — Node.js durable worker
+# Target: production-like OCI image for compose.yaml / hosted deployment
+# =============================================================================
+ARG NODE_VERSION=24-alpine
+ARG PNPM_VERSION=10.33.2
+
+# ---------- Stage 1: base (shared toolchain) ----------
+FROM node:${NODE_VERSION} AS base
+ARG PNPM_VERSION
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+WORKDIR /app
+
+# ---------- Stage 2: dependencies ----------
+FROM base AS deps
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json ./
+COPY apps/web/package.json apps/web/
+COPY apps/worker/package.json apps/worker/
+COPY packages ./packages
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --prefer-offline
+
+# ---------- Stage 3: build ----------
+FROM deps AS builder
+ARG DATA_AGENT_GIT_COMMIT
+ARG DATA_AGENT_GIT_DIRTY
+COPY tsconfig.base.json ./
+COPY scripts/workspace-build-release.ts scripts/workspace-build-release.ts
+COPY scripts/lib/workspace-architecture.ts scripts/lib/workspace-architecture.ts
+COPY scripts/lib/workspace-build-integrity.ts scripts/lib/workspace-build-integrity.ts
+COPY apps/worker/tsconfig.json apps/worker/tsconfig.build.json apps/worker/
+COPY apps/worker/src apps/worker/src
+RUN pnpm --filter @data-agent/worker... build && \
+    pnpm exec tsx scripts/workspace-build-release.ts \
+      --roles=worker,relationship-indexer,semantic-authoring \
+      --output=/app/.release-build-identities \
+      --git-commit="${DATA_AGENT_GIT_COMMIT}" \
+      --git-dirty="${DATA_AGENT_GIT_DIRTY}"
+
+# ---------- Stage 4: production runner ----------
+FROM node:${NODE_VERSION} AS runner
+ARG PNPM_VERSION
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 worker && \
+    adduser --system --uid 1001 worker && \
+    addgroup --system --gid 10010 sandbox-ipc && \
+    addgroup worker sandbox-ipc && \
+    mkdir -p /app/.data/workspace-content && \
+    chown -R worker:worker /app/.data
+
+COPY --from=builder --chown=worker:worker /app/apps/worker/dist ./apps/worker/dist
+COPY --from=builder --chown=worker:worker /app/.release-build-identities/worker.json /app/runtime-build-identity/worker.json
+COPY --from=builder --chown=worker:worker /app/.release-build-identities/relationship-indexer.json /app/runtime-build-identity/relationship-indexer.json
+COPY --from=builder --chown=worker:worker /app/.release-build-identities/semantic-authoring.json /app/runtime-build-identity/semantic-authoring.json
+COPY --from=builder --chown=worker:worker /app/packages ./packages
+COPY --from=builder --chown=worker:worker /app/node_modules/.pnpm ./node_modules/.pnpm
+COPY --from=builder --chown=worker:worker /app/package.json ./package.json
+COPY --from=builder --chown=worker:worker /app/pnpm-lock.yaml ./pnpm-lock.yaml
+COPY --from=builder --chown=worker:worker /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder --chown=worker:worker /app/apps/worker/package.json ./apps/worker/package.json
+
+# Recreate the pnpm workspace links so the worker can resolve its workspace deps
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate && \
+    pnpm --filter @data-agent/worker... install --frozen-lockfile --prefer-offline --prod
+
+USER worker
+
+ENV DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE="/app/runtime-build-identity/worker.json"
+
+CMD ["node", "apps/worker/dist/run-worker-cli.js"]

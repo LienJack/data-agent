@@ -1,0 +1,332 @@
+# =============================================================================
+# Data Agent — Docker Compose
+# Default mode starts only PostgreSQL and Neo4j for local development.
+# Use the deploy profile for the complete self-hosted application stack.
+# =============================================================================
+name: data-agent
+
+services:
+  # ---------- PostgreSQL 17 (single instance, shared Supabase-style) ----------
+  postgres:
+    image: postgres:17-alpine
+    container_name: data-agent-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: data_agent
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/supabase:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d data_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # ---------- U16 opt-in Adapter certification fixtures ----------
+  mysql-adapter-certification:
+    image: mysql:8.4@sha256:b3b90af2a6552ae30c266fdb7d5dd55f3afb72404bb78d37fe8a23eb857fd3fb
+    profiles: ["adapter-certification"]
+    restart: "no"
+    environment:
+      MYSQL_ROOT_PASSWORD: data-agent-adapter-test
+      MYSQL_DATABASE: analytics
+      MYSQL_USER: reader
+      MYSQL_PASSWORD: data-agent-reader-test
+    tmpfs:
+      - /var/lib/mysql:size=512m
+    ports:
+      - "13306:3306"
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  clickhouse-adapter-certification:
+    image: clickhouse/clickhouse-server:25.8@sha256:f3f6c013eee7f922b130078afc77626e72d37b4071b85ba92a675aa002d59e34
+    profiles: ["adapter-certification"]
+    restart: "no"
+    environment:
+      CLICKHOUSE_DB: analytics
+      CLICKHOUSE_USER: reader
+      CLICKHOUSE_PASSWORD: data-agent-reader-test
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    tmpfs:
+      - /var/lib/clickhouse:size=512m
+      - /var/log/clickhouse-server:size=64m
+    ports:
+      - "18123:8123"
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+  # ---------- Rebuildable semantic relationship projection database ----------
+  neo4j:
+    image: neo4j:2026.06.0
+    container_name: data-agent-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:-data-agent-neo4j}
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4jdata:/data
+      - neo4jlogs:/logs
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "password=$${NEO4J_AUTH#*/}; cypher-shell -u neo4j -p \"$$password\" 'RETURN 1' >/dev/null 2>&1",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # ---------- Migration runner (one-shot init container) ----------
+  migration:
+    image: postgres:17-alpine
+    container_name: data-agent-migration
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      FALCON_READER_PASSWORD: ${FALCON_READER_PASSWORD:-data-agent-falcon-demo-change-me}
+    volumes:
+      - ./infra/docker/init-db.sh:/init-db.sh:ro
+      - ./infra/docker/import-agenticdatabench-ecommerce.sh:/import-agenticdatabench-ecommerce.sh:ro
+      - ./infra/docker/import-falcon.sh:/import-falcon.sh:ro
+      - ./infra/supabase:/migrations:ro
+      - ./infra/agenticdatabench/ecommerce-v1:/agenticdatabench/ecommerce-v1:ro
+      - ./infra/falcon/v1:/falcon/v1:ro
+    command: ["sh", "/init-db.sh"]
+    profiles:
+      - migrate
+
+  # ---------- Isolated CPython analysis execution (UDS only, no network) ----------
+  python-sandbox:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.python-sandbox
+    container_name: data-agent-python-sandbox
+    restart: unless-stopped
+    network_mode: none
+    read_only: true
+    init: true
+    cap_drop: ["ALL"]
+    cap_add: ["SETUID", "SETGID", "KILL"]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 40
+    mem_limit: 1200m
+    cpus: 1.0
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1100m,mode=1777
+    volumes:
+      - python_sandbox_ipc:/run/data-agent-python
+    environment:
+      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
+      PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
+      PYTHON_SANDBOX_MAX_WALL_MS: ${PYTHON_SANDBOX_MAX_WALL_MS:-120000}
+      PYTHON_SANDBOX_MAX_CPU_SECONDS: ${PYTHON_SANDBOX_MAX_CPU_SECONDS:-60}
+      PYTHON_SANDBOX_MAX_MEMORY_BYTES: ${PYTHON_SANDBOX_MAX_MEMORY_BYTES:-1073741824}
+      PYTHON_SANDBOX_MAX_INPUT_BYTES: ${PYTHON_SANDBOX_MAX_INPUT_BYTES:-268435456}
+      PYTHON_SANDBOX_MAX_OUTPUT_BYTES: ${PYTHON_SANDBOX_MAX_OUTPUT_BYTES:-67108864}
+      PYTHON_SANDBOX_MAX_PIDS: ${PYTHON_SANDBOX_MAX_PIDS:-32}
+      PYTHON_SANDBOX_MAX_OPEN_FILES: ${PYTHON_SANDBOX_MAX_OPEN_FILES:-128}
+
+  # ---------- Isolated malware scanner (no host port) ----------
+  clamav:
+    image: clamav/clamav:1.4.5-debian13-slim
+    container_name: data-agent-clamav
+    profiles: ["deploy"]
+    restart: unless-stopped
+    volumes:
+      - clamav_signatures:/var/lib/clamav
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 120s
+
+  # ---------- Web app (Next.js) ----------
+  web:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.web
+      args:
+        DATA_AGENT_GIT_COMMIT: ${DATA_AGENT_GIT_COMMIT:-UNSET}
+        DATA_AGENT_GIT_DIRTY: ${DATA_AGENT_GIT_DIRTY:-UNSET}
+    container_name: data-agent-web
+    profiles: ["deploy"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - workspace_content:/app/.data/workspace-content
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT: /app/.data/workspace-content
+      SEMANTIC_EXPLORER_ENABLED: ${SEMANTIC_EXPLORER_ENABLED:-true}
+      SEMANTIC_DEPLOYMENT_ID: ${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}
+      SEMANTIC_TENANT_ID: ${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}
+      SEMANTIC_PRINCIPAL_ID: ${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
+      SEMANTIC_ALLOWED_DOMAINS: ${SEMANTIC_ALLOWED_DOMAINS:-revenue,customer,marketing,sales,ecommerce}
+      TEST_CENTER_TENANT_ID: ${TEST_CENTER_TENANT_ID:-00000000-0000-4000-8000-000000000002}
+      TEST_CENTER_PRINCIPAL_ID: ${TEST_CENTER_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
+      TEST_CENTER_ENVIRONMENT: ${TEST_CENTER_ENVIRONMENT:-local}
+      DATA_AGENT_ECOMMERCE_HOST: ${DATA_AGENT_ECOMMERCE_HOST:-postgres}
+      DATA_AGENT_ECOMMERCE_PORT: ${DATA_AGENT_ECOMMERCE_PORT:-5432}
+      DATA_AGENT_ECOMMERCE_DATABASE: ${DATA_AGENT_ECOMMERCE_DATABASE:-data_agent}
+      DATA_AGENT_ECOMMERCE_READER_PASSWORD: ${DATA_AGENT_ECOMMERCE_READER_PASSWORD:-data-agent-ecommerce-demo-change-me}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
+      SEMANTIC_RELATIONSHIP_INDEX_ENABLED: ${SEMANTIC_RELATIONSHIP_INDEX_ENABLED:-true}
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-data-agent-neo4j}
+      NEO4J_DATABASE: neo4j
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  # ---------- Durable Worker (Node.js) ----------
+  worker:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker
+      args:
+        DATA_AGENT_GIT_COMMIT: ${DATA_AGENT_GIT_COMMIT:-UNSET}
+        DATA_AGENT_GIT_DIRTY: ${DATA_AGENT_GIT_DIRTY:-UNSET}
+    container_name: data-agent-worker
+    profiles: ["deploy"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      python-sandbox:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    group_add:
+      - "10010"
+    volumes:
+      - python_sandbox_ipc:/run/data-agent-python
+      - workspace_content:/app/.data/workspace-content
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      NODE_ENV: production
+      WORKER_DEPLOYMENT_ID: ${WORKER_DEPLOYMENT_ID:-${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}}
+      WORKER_TENANT_ID: ${WORKER_TENANT_ID:-${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}}
+      WORKER_PRINCIPAL_ID: ${WORKER_PRINCIPAL_ID:-${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}}
+      WORKER_ID: ${WORKER_ID:-worker-docker}
+      WORKER_POLL_INTERVAL_MS: ${WORKER_POLL_INTERVAL_MS:-1000}
+      WORKER_LEASE_DURATION_MS: ${WORKER_LEASE_DURATION_MS:-30000}
+      WORKER_HEARTBEAT_INTERVAL_MS: ${WORKER_HEARTBEAT_INTERVAL_MS:-10000}
+      WORKER_EXECUTION_TIMEOUT_MS: ${WORKER_EXECUTION_TIMEOUT_MS:-300000}
+      WORKER_SIDE_EFFECT_TIMEOUT_MS: ${WORKER_SIDE_EFFECT_TIMEOUT_MS:-60000}
+      WORKER_HEALTH_PORT: "9091"
+      DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT: /app/.data/workspace-content
+      DATA_AGENT_CLAMAV_HOST: clamav
+      DATA_AGENT_CLAMAV_PORT: "3310"
+      DATA_AGENT_CLAMAV_TIMEOUT_MS: "30000"
+      WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID: ${WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID:-}
+      PYTHON_SANDBOX_ENABLED: ${PYTHON_SANDBOX_ENABLED:-true}
+      PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
+      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
+      PYTHON_SANDBOX_RUNTIME_DIGEST: sha256:ba715fb76f683bb538df7553616dcfb0e54c506ca90bf40c7b88ca6c99d5fe84
+      PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST: sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8
+      PYTHON_SANDBOX_POLICY_VERSION: python-policy@1.0.0
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:9091/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  # ---------- Relationship projection indexer ----------
+  relationship-indexer:
+    build:
+      context: .
+      dockerfile: infra/docker/Dockerfile.worker
+      args:
+        DATA_AGENT_GIT_COMMIT: ${DATA_AGENT_GIT_COMMIT:-UNSET}
+        DATA_AGENT_GIT_DIRTY: ${DATA_AGENT_GIT_DIRTY:-UNSET}
+    container_name: data-agent-relationship-indexer
+    profiles: ["deploy"]
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    command: ["node", "apps/worker/dist/semantic/relationship-indexer-cli.js"]
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/data_agent
+      DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE: /app/runtime-build-identity/relationship-indexer.json
+      SEMANTIC_RELATIONSHIP_INDEX_ENABLED: "true"
+      SEMANTIC_DEPLOYMENT_ID: ${SEMANTIC_DEPLOYMENT_ID:-00000000-0000-4000-8000-000000000001}
+      SEMANTIC_TENANT_ID: ${SEMANTIC_TENANT_ID:-00000000-0000-4000-8000-000000000002}
+      SEMANTIC_PRINCIPAL_ID: ${SEMANTIC_PRINCIPAL_ID:-00000000-0000-4000-8000-000000000003}
+      SEMANTIC_RELATIONSHIP_DOMAINS: ${SEMANTIC_RELATIONSHIP_DOMAINS:-sales,ecommerce}
+      SEMANTIC_RELATIONSHIP_INDEX_HEALTH_PORT: "9090"
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USERNAME: neo4j
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-data-agent-neo4j}
+      NEO4J_DATABASE: neo4j
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:9090/live').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 20s
+
+volumes:
+  pgdata:
+  neo4jdata:
+  neo4jlogs:
+  python_sandbox_ipc:
+  workspace_content:
+  clamav_signatures:

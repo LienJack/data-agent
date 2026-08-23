@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Happy, edge, error and architecture verification."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Ensure contracts stay framework-neutral."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Ensure no private key or credential enters public artifacts."}
+{"file":".trellis/tasks/08-16-datafoundry-coa-greenfield/research/preflight-evidence.md","reason":"Verify U1 remains aligned with frozen preflight scope."}

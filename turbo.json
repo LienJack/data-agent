@@ -1,0 +1,63 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "globalPassThroughEnv": [
+    "DATA_AGENT_BUILD_ATTESTATION_FILE",
+    "DATA_AGENT_MIGRATION_FRONTIER",
+    "DATA_AGENT_MIGRATION_READY",
+    "DATA_AGENT_RUNTIME_BUILD_CONSUMER_ROLE",
+    "DATA_AGENT_RUNTIME_BUILD_IDENTITY_FILE"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
+    "@data-agent/web#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^build", "^typecheck"],
+      "outputs": []
+    },
+    "@data-agent/contracts#typecheck": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "@data-agent/text2sql#typecheck": {
+      "dependsOn": ["build"],
+      "outputs": []
+    },
+    "test:unit": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:contract": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:research": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:architecture": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:providers": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:integration": {
+      "cache": false,
+      "dependsOn": ["^build"],
+      "outputs": []
+    },
+    "test:security": {
+      "dependsOn": ["^build"],
+      "outputs": []
+    }
+  }
+}

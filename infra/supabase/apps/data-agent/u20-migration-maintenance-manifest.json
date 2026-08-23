@@ -1,0 +1,56 @@
+{
+  "protocol_version": "u20-migration-maintenance@1.0.0",
+  "migration_name": "20260725010620_app_data_agent_contribution_authority.sql",
+  "deployment_scope": {
+    "app_id": "00000000-0000-4000-8000-00000000da01",
+    "deployment_binding": "SESSION_ACTIVE_MAPPING",
+    "database_binding": "SESSION_DATABASE_IDENTITY"
+  },
+  "maintenance_window": {
+    "window_id": "00000000-0000-4000-8000-00000000da01",
+    "max_duration_ms": 600000
+  },
+  "timeouts": {
+    "lock_timeout_ms": 2000,
+    "statement_timeout_ms": 300000,
+    "idle_in_transaction_session_timeout_ms": 60000
+  },
+  "relation_limits": [
+    {
+      "qualified_name": "app_data_agent.attribution_owner_map_release",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 536870912
+    },
+    {
+      "qualified_name": "app_data_agent.attribution_relationship_promotion_receipt",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 536870912
+    },
+    {
+      "qualified_name": "app_data_agent.attribution_conclusion_policy",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 536870912
+    },
+    {
+      "qualified_name": "app_data_agent.attribution_signer_assignment",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 536870912
+    },
+    {
+      "qualified_name": "app_data_agent.attribution_verification_key_revision",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 536870912
+    },
+    {
+      "qualified_name": "app_data_agent.attribution_active_pointer",
+      "approved_max_rows": 100000,
+      "approved_max_total_bytes": 536870912
+    },
+    {
+      "qualified_name": "app_data_agent.attribution_nonce_ledger",
+      "approved_max_rows": 1000000,
+      "approved_max_total_bytes": 1073741824
+    }
+  ],
+  "manifest_hash": "sha256:19d2ddce1128ae6f07966907a2bd4bb07609601b55d09d49049fcdc6160356ed"
+}

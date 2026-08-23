@@ -1,0 +1,12 @@
+{
+  "protocol_version": "data-agent-sql-sandbox@1.0.0",
+  "frame_type": "CANCEL",
+  "grant_hash": "sha256:f7560a28cf9b4098b90ba54fe18b975f46a4728f7a4525c4330dbb91a9cee486",
+  "lease_id": "00000000-0000-4000-8000-00000000ce01",
+  "execution_id": "00000000-0000-4000-8000-00000000e101",
+  "attempt_id": "00000000-0000-4000-8000-00000000b101",
+  "execution_fence": 7,
+  "cancel_epoch": 1,
+  "requested_at": "2099-07-27T00:00:00.000Z",
+  "reason_code": "USER_CANCELLED"
+}

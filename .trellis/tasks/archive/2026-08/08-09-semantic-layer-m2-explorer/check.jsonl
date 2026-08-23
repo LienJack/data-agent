@@ -1,0 +1,11 @@
+{"file":"docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md","reason":"Verify every M2 user-visible result, gate, non-goal and rollback is actually closed."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Audit scope, one-snapshot read, grants, RLS, migration checksum/ledger and no direct Backend table access."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify projection mismatch, scope denial, not-found and unavailable failures are stable and redacted."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Challenge active truth derived from candidate/current source or ordinary parsed JSON."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify strict contracts, hostile fixtures, 10k benchmark, PG17 tests and exact negative paths."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Audit public DTOs, errors and logs for raw restrictions, candidate content, SQL and database internals."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Verify all views consume one snapshot and view state cannot mutate or relabel the projection."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Verify exhaustive view states, permission indistinguishability and no raw JSON interpretation in components."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace release ID, pointer generation, object identity and candidate separation across every layer."}
+{"file":".trellis/tasks/08-09-semantic-layer-m2-explorer/research/m2-semantic-explorer-baseline.md","reason":"Check implementation against the live projection, ontology and dirty-worktree constraints."}
+{"file":"/Users/lienli/Documents/work/深度调研/research/ontology-learning/answers/RQ014-Ontology-如何成为-Data-Agent-的-BusinessOntology-同时与-AnalyticalSemantics-RelationshipRegistry-PhysicalBinding-RuntimeAuthorization-Compiler-和-ResultOracle-分工.md","reason":"Reject any UI or graph inference that conflates business identity, analytical joins, binding, authorization or causality."}

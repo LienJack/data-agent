@@ -1,0 +1,10 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Respect package ownership and dependency direction."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL authority, RLS, RPC, migration ledger and transaction requirements."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Stable reason codes and fail-closed public terminal behavior."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Candidate, hash, reference and immutable receipt boundaries."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Scope, idempotency, fence and authority-port conformance."}
+{"file":".trellis/spec/backend/qa-conversation-resource-binding.md","reason":"Existing Q&A conversation/run binding and known HOLD boundary."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Secret-safe audit and structured evidence rules."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Backend validation and test requirements."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict Route DTO and runtime parsing conventions."}
+{"file":".trellis/tasks/08-16-u02-effective-run-config/research/u02-research-summary.md","reason":"Repository-specific U2 authority, route, worker and dirty-tree findings."}

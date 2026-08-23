@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"审查 durable event、replay 与多 surface authority 一致性"}
+{"file":".trellis/spec/frontend/agent-public-events.md","reason":"审查 Inline/Inspector 安全、可访问性与 projection 一致性"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-source-reuse-ledger.md","reason":"审查复用代码来源、修改记录与 MIT notice"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/codex-desktop-parity-matrix.md","reason":"审查 Codex 功能矩阵的 MATCH ADAPTED OUT_OF_SCOPE proof"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/reasonix-multi-surface-protocol-design.md","reason":"审查 Reasonix 仅作分层参考且没有扩大产品范围"}

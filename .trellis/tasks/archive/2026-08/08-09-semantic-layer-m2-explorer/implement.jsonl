@@ -1,0 +1,14 @@
+{"file":"docs/plans/2026-08-08-001-semantic-layer-studio-roadmap.md","reason":"Use the approved M2 user result, scope, gate and rollback as the delivery contract."}
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Keep public DTOs, semantic kernels, platform authority and Web composition in their owning layers."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Apply PostgreSQL sole authority, full scope predicates, narrow RPC grants, additive migration and ledger rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Return stable Explorer reason codes and redact SQL, raw payload and database failures."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Keep candidate and parsed JSON non-authoritative; consume only exact release-bound projections."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Require strict Zod, failing tests, malicious fixtures, PG17 evidence and type safety."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Prevent projection, policy predicate, candidate and database details from leaking through logs or errors."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Ensure tree, table, graph and detail receive one parsed projection and cannot override governance state."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Use strict boundary decoding and exhaustive loading, error, permission and success view states."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Trace exact release and pointer generation through PostgreSQL, adapter, API, state and every view."}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse semantic Authority, contracts and route patterns instead of creating a parallel model."}
+{"file":".trellis/tasks/08-09-semantic-layer-m2-explorer/research/m2-semantic-explorer-baseline.md","reason":"Use the verified live projection gaps, ontology boundary, dirty-file boundary and adopted sidecar decision."}
+{"file":"/Users/lienli/Documents/work/深度调研/research/ontology-learning/answers/RQ014-Ontology-如何成为-Data-Agent-的-BusinessOntology-同时与-AnalyticalSemantics-RelationshipRegistry-PhysicalBinding-RuntimeAuthorization-Compiler-和-ResultOracle-分工.md","reason":"Preserve separation between business meaning, analytical semantics, joins, bindings, authorization and correctness."}
+{"file":"/Users/lienli/Documents/work/深度调研/research/ontology-learning/answers/RQ013-如何用-SHACL-能力问题-推理测试-反例-溯源-版本-模块化与变更发布治理一个可演化-Ontology.md","reason":"Preserve explicit provenance, lifecycle, validation and version-governance boundaries."}

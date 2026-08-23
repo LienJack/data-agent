@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "agenticdatabench-ecommerce-compatibility@1",
+  "suiteId": "agenticdatabench-ecommerce",
+  "suiteVersion": "1.0.0",
+  "upstreamCommit": "61bb0d6be3439797d2c75a6ede198b0b296cc226",
+  "datasetRevision": "3b0ac3fde63fd615de92bf70c1dd93b73f92d92f",
+  "datasetDigest": "sha256:54632f39e190c872d2b5c176090ebc2d3b77e135b9bb5aecc96d6bf6d0fa4518",
+  "compatibleCaseIds": ["ecommerce_15", "ecommerce_16", "ecommerce_35"],
+  "caseCount": 3,
+  "readiness": "HOLD",
+  "limitations": [
+    "Upstream source files are deterministically materialized into PostgreSQL raw and mart schemas.",
+    "ecommerce_35 requests a SQLite output database, while the v1 Python Sandbox intentionally forbids executable database files and archives.",
+    "No official-compatible score may be reported until all output adapters and sealed upstream gold artifacts pass deterministic Oracle certification."
+  ]
+}

@@ -1,0 +1,10 @@
+[
+  { "name": "integer_float", "value": 1.0, "canonical": "1" },
+  { "name": "small_exponent", "value": 1e-7, "canonical": "1e-7" },
+  { "name": "large_exponent", "value": 1e21, "canonical": "1e+21" },
+  {
+    "name": "unicode_escape",
+    "value": { "𐀀": "emoji 😀", "": "中文\n\"quote\"\\slash", "null": null },
+    "canonical": "{\"null\":null,\"𐀀\":\"emoji 😀\",\"\":\"中文\\n\\\"quote\\\"\\\\slash\"}"
+  }
+]

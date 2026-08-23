@@ -1,0 +1,27 @@
+{
+  "schema_version": "python-sandbox-attestation@2.0.0",
+  "python_version": "3.12.10",
+  "target_platform": "linux/arm64",
+  "sdk_version": "data-agent-sandbox-sdk@1.0.0",
+  "policy_version": "python-policy@1.0.0",
+  "base_image_digest": "sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db",
+  "source_lock_digest": "sha256:f62d99ff4148c926cbb0505037f0039f7fdeaa1503ad877a2f991cf67af42314",
+  "hardening_profile": "network-none,read-only-root,no-new-privileges,cap-kill,setgid,setuid,ipc-setgid-v1",
+  "profiles": {
+    "CORE_ANALYSIS": {
+      "dependency_lock_digest": "sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8",
+      "runtime_digest": "sha256:ba715fb76f683bb538df7553616dcfb0e54c506ca90bf40c7b88ca6c99d5fe84",
+      "image_attestation_digest": "sha256:8cb675f606863fc669aeaa074d47d10648ee1fe2177ca2270d611a226e4c45cd"
+    },
+    "ML_DIAGNOSTIC": {
+      "dependency_lock_digest": "sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293",
+      "runtime_digest": "sha256:62df15371985556658e195b231e774f7c3c0e866af3a8c2a1735952afc62ae4d",
+      "image_attestation_digest": "sha256:7d3a060834aca6a7e3101f38a3bdee4cc84a700295bcda155fd5e4227f883804"
+    },
+    "CAUSAL_L5": {
+      "dependency_lock_digest": "sha256:73bbc0d20938684a2e25c111c3bb80ac6beee877f64d03986e53acae16e4b22d",
+      "runtime_digest": "sha256:41c1cd91523cd3af0c654521b05b308370ec278badd10df4c3ae4b41a5850e42",
+      "image_attestation_digest": "sha256:14ca067ad4066270781a69f35083f4fc4f002ef38eaa5fc8671d4c066e67e895"
+    }
+  }
+}

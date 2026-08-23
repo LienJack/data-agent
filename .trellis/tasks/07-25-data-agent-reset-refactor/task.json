@@ -1,0 +1,29 @@
+{
+  "id": "data-agent-reset-refactor",
+  "name": "data-agent-reset-refactor",
+  "title": "Data Agent 彻底重置重构规划",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-07-25",
+  "completedAt": null,
+  "branch": "codex/data-agent-l2-vertical-slice",
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": "3df1489",
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "00-bootstrap-guidelines"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "Core 泳道全部完成（M2-Core=GO, commit 88de18e）。F9 泳道：U13.0（PostgreSQL 部分）已完成 ✅，U13.1（Fixture Endpoint Kernel）已完成 ✅（typecheck + 448 contracts tests + 133 research tests 全部通过）。待完成：U7 Truth Contract、U13.1 U7 Eval Verdict、U8 M1-F9 Demo、M1-F9 复审、10620 Authority Foundation、U13.2 Published F9、M2-F9 Release Gate。当前 HEAD: 88de18e，分支: codex/data-agent-l2-vertical-slice。",
+  "notes": "M1 泳道全部完成。Core 泳道全部完成（M2-Core=GO, commit 88de18e）。F9 泳道：U13.0 ✅、U7 Truth Contract ✅（90930d6）、U13.1 ✅（4b1ca80）、U7 Eval Verdict ✅（c0d4761）、U8 M1-F9 Demo ✅（9e825ef）、M1-F9 Feasibility 复审 ✅（PASS FEASIBLE, 02b4699）、10620 Authority Foundation ✅（3df1489）、U13.2 schemas ✅（profile-request + safety/capability/eligibility/profile-projection 实现并测试通过）。待完成：(Core) U11 治理发布 → U7 published-governance delta → U9 部署闭环 → M2-Core；(F9) U13.2 Published F9 剩余实现 → M2-F9 Release Gate。当前 HEAD: 3df1489，分支: codex/data-agent-l2-vertical-slice。",
+  "meta": {}
+}

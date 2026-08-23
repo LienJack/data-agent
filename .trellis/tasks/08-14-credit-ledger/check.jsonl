@@ -1,0 +1,3 @@
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"复核权限、精度、负余额和状态机"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"复核 authority、RLS、幂等、不可变和真实 PostgreSQL 证据"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"复核 Web DTO 与边界解析"}

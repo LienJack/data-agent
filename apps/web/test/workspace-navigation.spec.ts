@@ -1,0 +1,81 @@
+import type { WorkspaceAction } from "@data-agent/contracts";
+import { describe, expect, it } from "vitest";
+import { enUSMessages, zhCNMessages } from "@/i18n/messages";
+import { navigationForWorkspace } from "@/lib/workspace-navigation";
+
+function access(
+  role: "WORKSPACE_ADMIN" | "ANALYST" | "VIEWER",
+  allowed_actions: WorkspaceAction[],
+) {
+  return {
+    schema_version: "workspace-access@1.0.0" as const,
+    workspace: {
+      schema_version: "workspace@1.0.0" as const,
+      app_id: "00000000-0000-4000-8000-00000000da01",
+      environment: "test",
+      workspace_id: "00000000-0000-4000-8000-00000000aa11",
+      slug: "main-workspace",
+      display_name: "Main workspace",
+      lifecycle: "ACTIVE" as const,
+      lifecycle_version: 1,
+      created_at: "2026-08-14T00:00:00.000Z",
+      archived_at: null,
+    },
+    principal_id: "00000000-0000-4000-8000-000000001001",
+    system_role: "USER" as const,
+    role,
+    allowed_actions,
+  };
+}
+
+describe("workspace role navigation", () => {
+  it("keeps conversation analysis as the only bilingual analysis product label", () => {
+    expect(zhCNMessages["workspace.surface.qa"]).toBe("对话分析");
+    expect(enUSMessages["workspace.surface.qa"]).toBe("Conversation Analysis");
+    expect("workspace.surface.analysis" in zhCNMessages).toBe(false);
+    expect("workspace.surface.analysis" in enUSMessages).toBe(false);
+  });
+
+  it("hides management entries from viewers", () => {
+    const items = navigationForWorkspace(access("VIEWER", ["WORKSPACE_RESULT_READ"]));
+    expect(items.map((item) => item.label)).toEqual(["能力测试", "任务中心", "语义浏览器"]);
+    expect(items[0]?.href).toBe("/w/00000000-0000-4000-8000-00000000aa11/tests");
+    expect(items.at(-1)?.href).toBe("/w/00000000-0000-4000-8000-00000000aa11/semantic/explorer");
+  });
+
+  it("shows workspace administration only when the parsed projection allows it", () => {
+    const items = navigationForWorkspace(
+      access("WORKSPACE_ADMIN", ["MEMBER_MANAGE", "DATASOURCE_MANAGE", "WORKSPACE_RESULT_READ"]),
+    );
+    expect(items.map((item) => item.label)).toEqual([
+      "能力测试",
+      "任务中心",
+      "数据源",
+      "语义浏览器",
+      "成员管理",
+    ]);
+  });
+
+  it("keeps all analyst routes inside the current workspace", () => {
+    const items = navigationForWorkspace(
+      access("ANALYST", [
+        "ANALYSIS_RUN_CREATE",
+        "WORKSPACE_RESULT_READ",
+        "SEMANTIC_EDIT",
+        "SEMANTIC_REVIEW",
+      ]),
+    );
+    expect(items.map((item) => item.key)).toEqual([
+      "qa",
+      "tests",
+      "jobs",
+      "knowledge",
+      "semantic",
+      "semantic-explorer",
+    ]);
+    expect(items.some((item) => item.href.endsWith("/analysis"))).toBe(false);
+    expect(
+      items.every((item) => item.href.startsWith("/w/00000000-0000-4000-8000-00000000aa11/")),
+    ).toBe(true);
+  });
+});

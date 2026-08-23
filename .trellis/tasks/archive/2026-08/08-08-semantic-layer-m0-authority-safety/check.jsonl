@@ -1,0 +1,6 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify scope, RLS, transaction, migration ledger and SecretRef behavior."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify stable failures and redaction."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Challenge placeholder, self-reported and non-current Authority paths."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Require failing tests, strict Zod, integration and security evidence."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Check all public and diagnostic outputs for secret leakage."}
+{"file":".trellis/tasks/08-08-semantic-layer-m0-authority-safety/research/current-baseline.md","reason":"Check intended fixes against pinned defects and user-owned changes."}

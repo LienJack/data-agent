@@ -1,0 +1,121 @@
+{
+  "schemaVersion": "agenticdatabench-ecommerce-bundle-manifest@1",
+  "sourceManifestSha256": "sha256:9a23ea0f9d768477d2f73e552f0d55163b71e8b6e7a89ff5c27ea5b7f9e1c483",
+  "compression": {
+    "algorithm": "gzip",
+    "level": 9,
+    "mtime": 0
+  },
+  "totalCompressedBytes": 50398148,
+  "entries": [
+    {
+      "id": "amazon_metadata",
+      "path": "seed/amazon_metadata_10000.jsonl.gz",
+      "compressedBytes": 5117265,
+      "compressedSha256": "sha256:dae04e5a7d5adb042c75aaed64735bd6e9238d135e66fa68ae576323b8e21073",
+      "materializedBytes": 34149031,
+      "materializedSha256": "sha256:075b267f64c778a9a55d331681f874a8b60e289eba56aded637b044c0af4e2f4",
+      "rows": 10000
+    },
+    {
+      "id": "amazon_reviews",
+      "path": "seed/amazon_reviews_10000.jsonl.gz",
+      "compressedBytes": 2746612,
+      "compressedSha256": "sha256:0394284897b9b8720befcbf269c9d264fbcff8061c0bc2600c58b0e1e77b4c28",
+      "materializedBytes": 8259456,
+      "materializedSha256": "sha256:7a5d4b34431be3abf3a981ecc1447dcf19f9ec5e0c03f76df905f86285debcf4",
+      "rows": 10000
+    },
+    {
+      "id": "ebay_laptops",
+      "path": "seed/ebay_laptops.csv.gz",
+      "compressedBytes": 334245,
+      "compressedSha256": "sha256:08ea5ada97bc164a2ab4dc7262eb501b963f409237da021254e976d19150e6d9",
+      "materializedBytes": 4145925,
+      "materializedSha256": "sha256:8b9627466b66dd2a920f69038e86a24142808fc403ca8e6f71aaeead10843036",
+      "rows": 6620
+    },
+    {
+      "id": "olist_category_translation",
+      "path": "seed/olist_category_translation.csv.gz",
+      "compressedBytes": 1090,
+      "compressedSha256": "sha256:f62b1889e6e354fd31e5c27ca6a85521c31aff7a2ef1909b8e44015bb1260968",
+      "materializedBytes": 2613,
+      "materializedSha256": "sha256:a81f0d1f27b27e7293f761bc79e3ce8f348ee39c4b3ed3e49bde38f478586278",
+      "rows": 71
+    },
+    {
+      "id": "olist_customers",
+      "path": "seed/olist_customers.csv.gz",
+      "compressedBytes": 4567194,
+      "compressedSha256": "sha256:5a30bd490756112c7d97c659c00daa476d823b6b5ca6e02f0b4b93df9c9ee038",
+      "materializedBytes": 9033957,
+      "materializedSha256": "sha256:983a422239e1712ded753b3bf9ecf47dc73f144d306029dcfa99e70a226883d2",
+      "rows": 99441
+    },
+    {
+      "id": "olist_geolocation",
+      "path": "seed/olist_geolocation.csv.gz",
+      "compressedBytes": 14770003,
+      "compressedSha256": "sha256:e66aa527bb444d4df5ff2b90c857317a03523a592d980a0cab708675b5f0e617",
+      "materializedBytes": 61273883,
+      "materializedSha256": "sha256:b514f6fc991b9566aeba02aa5d67e2c3630f034b60a0e05aa0d082a3b66d88d6",
+      "rows": 1000163
+    },
+    {
+      "id": "olist_order_items",
+      "path": "seed/olist_order_items.csv.gz",
+      "compressedBytes": 6298284,
+      "compressedSha256": "sha256:573fea40f1ca57c717f7ccf30a10f15d35f40d8b45972d91bacec40100c87332",
+      "materializedBytes": 15438671,
+      "materializedSha256": "sha256:0bc4d068c4fe38cbb01bd90e8746e3c613fe7b4baef75fab7b0e329701c3e279",
+      "rows": 112650
+    },
+    {
+      "id": "olist_order_payments",
+      "path": "seed/olist_order_payments.csv.gz",
+      "compressedBytes": 2430868,
+      "compressedSha256": "sha256:66d54cbe16d6fcbdcbd8b1e21186faf3f0393bbfdd862b46e2ae2aecf394c624",
+      "materializedBytes": 5777138,
+      "materializedSha256": "sha256:4f713964f2815dbbaa40b9488268c55aac3627bfce5aa96cf58d1f3616de3cc0",
+      "rows": 103886
+    },
+    {
+      "id": "olist_order_reviews",
+      "path": "seed/olist_order_reviews.csv.gz",
+      "compressedBytes": 6422997,
+      "compressedSha256": "sha256:5953f1005484591082539ca29e03d3c09bce89a27fdb3c95bb0bdf84eaf08300",
+      "materializedBytes": 14451670,
+      "materializedSha256": "sha256:012b61c7593e34f51fa614efdf802b9c7056ce6aae5307ddb93236e7cfc797d7",
+      "rows": 99224
+    },
+    {
+      "id": "olist_orders",
+      "path": "seed/olist_orders.csv.gz",
+      "compressedBytes": 6625717,
+      "compressedSha256": "sha256:210cbfe23e6fde9229ad8d87c29317187bd370e3e924d9cfef87cda2bcf3f578",
+      "materializedBytes": 17654914,
+      "materializedSha256": "sha256:8df58ef3d2d7e9944010f7beecd9b75367f5588ec6e3c91cec19ae3345ef9ecf",
+      "rows": 99441
+    },
+    {
+      "id": "olist_products",
+      "path": "seed/olist_products.csv.gz",
+      "compressedBytes": 1003992,
+      "compressedSha256": "sha256:f9f4567547460d80a3b65b1ae8b8d3c67529fcaaf9357a8f62071c5b594531c0",
+      "materializedBytes": 2379446,
+      "materializedSha256": "sha256:3e6569628a17fbc75fd206ee357b59e20364b9afa90f5b6cd5b4d624c58aa9cc",
+      "rows": 32951
+    },
+    {
+      "id": "olist_sellers",
+      "path": "seed/olist_sellers.csv.gz",
+      "compressedBytes": 79881,
+      "compressedSha256": "sha256:e30b91a3a4208227f22ddb781e819d590feda29d0e984afe72b9e7ff4f3cf535",
+      "materializedBytes": 174703,
+      "materializedSha256": "sha256:1f643d2b950373b85735e7794b20986f528d7a000432e7c6f9bcbb44d0846a0e",
+      "rows": 3095
+    }
+  ],
+  "bundleDigest": "sha256:54632f39e190c872d2b5c176090ebc2d3b77e135b9bb5aecc96d6bf6d0fa4518"
+}

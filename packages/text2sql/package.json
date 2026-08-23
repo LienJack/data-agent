@@ -1,0 +1,36 @@
+{
+  "name": "@data-agent/text2sql",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test --exclude 'test/integration/**' --exclude 'test/security/**' --passWithNoTests=false",
+    "test:contract": "vitest run test/legacy-characterization.spec.ts --passWithNoTests=false",
+    "test:integration": "vitest run test/integration --passWithNoTests=false",
+    "test:security": "vitest run test/security --passWithNoTests=false"
+  },
+  "dependencies": {
+    "@data-agent/contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

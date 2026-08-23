@@ -1,0 +1,28 @@
+{
+  "id": "agent-eval-self-reflection",
+  "name": "agent-eval-self-reflection",
+  "title": "公开题库驱动的 Agent 能力评测与自反省",
+  "description": "",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-09",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-15-falcon-demo-eval"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

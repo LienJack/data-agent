@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"检查唯一 workspace scope、角色矩阵、账务精度和 clean-install 约束。"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"检查 strict contract、真实 PostgreSQL 证据与未通过门禁的 HOLD 边界。"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"检查 migration checksum、权限、事务重验、锁和不可变 audit。"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"检查 bootstrap、认证和数据库错误不泄露密码、cookie 或 DSN。"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"检查 session principal 与角色导航只消费服务端 strict projection。"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"追踪 Better Auth 到 app user、workspace capability 和页面的跨层闭环。"}
+{"file":".trellis/tasks/08-14-workspace-identity-rbac/research/reason-code-matrix.md","reason":"核对身份、权限、幂等与 bootstrap 终态 reason code。"}

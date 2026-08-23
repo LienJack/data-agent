@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL Authority, Run lease/fence, RLS, transaction and migration rules"}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Content-addressed Artifact candidate, commit, resolver and authority-brand boundaries"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Scope, idempotency, lease/fence and adapter conformance"}
+{"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"U3 dispatch, projection, response and usage authority boundary"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Stable fail-closed error and terminal semantics"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Raw prompt, credential and sensitive execution data redaction rules"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Contracts to runtime to Platform to PostgreSQL round-trip analysis"}
+{"file":".trellis/spec/guides/code-reuse-thinking-guide.md","reason":"Reuse existing team, U3 and Artifact authority primitives"}
+{"phase":"implementation_complete","date":"2026-08-17","evidence":"Contracts private artifact wire; four immutable profiles; deterministic context compiler and epoch recovery; depth-1 capability-bound orchestration; completion/verifier/acceptance separation; PostgreSQL-backed Team and sensitive artifact authorities; no-network Mastra adapter; 10658 migration checksum sha256:c1cb243629c2ec06d27c6dad5f6a10342768dce14fafe617504f0db149d9b21e"}

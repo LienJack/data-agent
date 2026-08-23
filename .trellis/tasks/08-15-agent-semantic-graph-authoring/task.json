@@ -1,0 +1,38 @@
+{
+  "id": "agent-semantic-graph-authoring",
+  "name": "agent-semantic-graph-authoring",
+  "title": "Agent 原生 Node/Edge 语义图设计与编辑",
+  "description": "将语义层重构为独立 Node/Edge，并以 Agent-only 候选工具循环驱动公式与关系编辑、局部图和全图展示。",
+  "status": "planning",
+  "dev_type": null,
+  "scope": "semantic graph v2 contracts, agent authoring, formula candidate workflow, explorer UX and governance",
+  "package": null,
+  "priority": "P1",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-15",
+  "completedAt": null,
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-15-semantic-graph-v2-core",
+    "08-15-semantic-agent-authoring-runtime",
+    "08-15-semantic-graph-read-models",
+    "08-15-semantic-studio-graph-ux",
+    "08-15-semantic-graph-migration-rollout"
+  ],
+  "parent": null,
+  "relatedFiles": [
+    "packages/contracts/src/artifacts/semantic-governance.ts",
+    "packages/contracts/src/artifacts/semantic-explorer.ts",
+    "packages/semantic/src/explorer/builder.ts",
+    "packages/semantic/src/candidate-generation/agent.ts",
+    "apps/web/src/components/semantic/physical-schema-browser.tsx"
+  ],
+  "notes": "执行顺序：G6 已完成；先做 design-taste Studio 重构，再补齐本体关系与 GlossaryTerm/coverage receipt，再接真实 Worker 和迁移治理。只有语义层全绿后才能执行 08-15-falcon-demo-eval；28 库、db24 主 Demo、db14 smoke、DEV 309、TEST 191 submission 及 Falcon 全部回归未全绿前不得完成父任务。",
+  "meta": {}
+}

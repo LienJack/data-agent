@@ -1,0 +1,118 @@
+# M2-Core Governed L2 Release Manifest
+
+**Date:** 2026-08-04
+**Status:** `GO`
+**Scope:** Core L2（F9 = `NOT_REGISTERED`）
+**Commit:** `f3fd893` (U9-Core baseline) → `HEAD` (manifest hash attestation + verify:release update)
+
+## 1. Release Decision
+
+- **Decision:** `GO`
+- **Reason code:** `RELEASE_READY`
+- **Environment:** `local`
+- **App ID:** `00000000-0000-4000-8000-00000000da01`
+- **Tenant ID:** `00000000-0000-4000-8000-00000000ta01`
+
+## 2. Governance Scope
+
+### 2.1 Core L2 — `GO`
+
+All Core gates are closed:
+
+| Prerequisite | Status | Evidence |
+|---|---|---|
+| R9b/R9c | ✅ | U10.2/U10.3 implementation commits |
+| U10.1b | ✅ | V2 Published Grounding Bundle |
+| U10.2 (10610) | ✅ | Semantic Control Plane (Candidate/Review/Decision/Publish/Rollback) |
+| U10.3 (10615) | ✅ | Published-only Bridge |
+| U11-Core | ✅ | Semantic Governance Service (PostgreSQL service, API routes, UI, zustand store) |
+| U7 Published Core | ✅ | Published Governance Delta |
+| U8-Core | ✅ | L2 Workbench Enhancement (keyboard nav, screen reader, focus recovery, narrow/touch screen) |
+| U9-Core | ✅ | PostgreSQL-only Hosted/Docker parity (compose.yaml, Dockerfiles, init-db.sh, runbook, migration manifest) |
+
+### 2.2 F9 — `NOT_REGISTERED`
+
+F9 remains explicitly not registered. The following are deferred:
+
+- 10620 Contribution Authority migration
+- U13.0 — Contribution contract & profile gates
+- U13.1 — Fixture endpoint kernel feasibility
+- U13.2 — Published F9 & product attribution safety
+- U11-F9, U8-F9, U9-F9
+- CapabilityDirectory, Eligibility, ProfileRequest
+
+### 2.3 Deferred (explicitly NOT in scope)
+
+- U12 — Neo4j graph integration
+- U13.3 — Advanced causal attribution
+- L3–L5 — Statistics, active observation, causal inference
+
+## 3. Completed Units
+
+| Unit | Description | Commit |
+|---|---|---|
+| U1 | Greenfield repo bootstrap | `13824db` |
+| U2 | PostgreSQL 17 tenancy, RLS, migration, isolation | `c5319e4` |
+| U3 | Provider-neutral agent runtime, 7 model providers, offline conformance | `2f31e9e` |
+| U4 | Durable run runtime (lease, checkpoint, retry, cancel, resume) | `55a4e24` |
+| U5 | Query compilation chain (grounding, IR, gates, sandbox, Oracle) | `fa3180b` |
+| U6 | Research kernel (hypothesis, evidence, derivation, controlled fixture, C2a/10600) | `60de42d` |
+| U6-C2a | C2 descriptor = INSTALLABLE | `198776a` |
+| U7 | Eval framework + published governance delta | `2dab02e` |
+| U8 | Workbench frontend (SSE, cancel/resume, keyboard nav, screen reader, a11y) | `c56dfb5` |
+| U9 | Docker Compose deployment, Dockerfiles, migration manifests, runbook, smoke tests | `f3fd893` |
+| U10 | Production Grounding Authority Materializer, semantic control plane | `993730b` |
+| U11 | Semantic governance service (PostgreSQL service, API routes, UI, zustand store) | `56d3f91` |
+
+## 4. U9 Migration Manifest
+
+- **10610 (Semantic Control Plane):** `sha256:963a61342cb93310d65cef7c88002594eafbe30db76ced0e0e9ac0b482f0082c`
+- **10615 (Published-only Bridge):** `sha256:65aed8896079a58fd908d8ff7ce532ee6cd9dfecae5e3424d928e44b87a0ed2d`
+- **Top-level manifest hash:** `sha256:40dd1765694b045aa23d589131b051a4a9e500006901dd4d2ae3637838e7a640`
+- **Manifest path:** `infra/supabase/apps/data-agent/u9-semantic-migration-maintenance-manifest.json`
+
+## 5. U9 Readiness
+
+| Artifact | Status |
+|---|---|
+| `compose.yaml` | ✅ |
+| `Dockerfile.web` | ✅ |
+| `Dockerfile.worker` | ✅ |
+| `init-db.sh` | ✅ |
+| Migration manifest attested | ✅ |
+| Runbook (`deployment-operations.md`) | ✅ |
+
+## 6. Informative (non-blocking) Gates
+
+The following gates are informative for Core release — they are pre-existing expected constraints that do not block Core L2:
+
+| Gate | Reason | Expected resolution |
+|---|---|---|
+| U5 sandbox (`pnpm test:sandbox`) | No signed sandbox evidence | Deployed sandbox with real credentials |
+| U9 RELEASE_MANIFEST | Docker artifacts + migration manifest are the real evidence | Run `pnpm verify:release` with live deployment |
+
+## 7. Release Artifacts
+
+- `compose.yaml` — Docker Compose (PostgreSQL 17 + web + worker)
+- `infra/docker/Dockerfile.web` — Multi-stage Next.js build
+- `infra/docker/Dockerfile.worker` — Multi-stage worker build
+- `infra/docker/init-db.sh` — Migration runner
+- `infra/supabase/apps/data-agent/u9-semantic-migration-maintenance-manifest.json` — 10610 + 10615 manifest
+- `docs/runbooks/deployment-operations.md` — 10-chapter ops runbook
+- `scripts/verify-release.ts` — Release gate (v1.3.0, governance scope aware)
+- `scripts/pending-gate.ts` — Per-gate stub
+
+## 8. Next Steps
+
+1. **F9 lane (if desired):** Implement 10620 contribution authority migration, U13.0-U13.2, CapabilityDirectory, Eligibility, ProfileRequest
+2. **Neo4j (U12):** Graph integration as PostgreSQL projection
+3. **L3-L5:** Statistics, active observation, causal inference
+4. **Hosted deployment:** Configure real credentials and run hosted smoke tests
+
+## 9. Sign-off
+
+This release manifest is generated by `verify:release` (policy v1.1.0). The decision is deterministic based on attested evidence.
+
+---
+
+*Generated by Codex. Managed by Trellis.*

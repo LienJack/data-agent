@@ -1,0 +1,80 @@
+{
+  "app_id": "00000000-0000-4000-8000-00000000da01",
+  "targets": [
+    {
+      "row_count": 0,
+      "table_name": "attribution_active_pointer",
+      "schema_fingerprint": "sha256:511bedfbd14fcd7a0b1da753c7791de37b97de555d1b7a6792891c7992c4d148"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_capability_directory",
+      "schema_fingerprint": "sha256:a9029d058e4af37384fb643600ef103b5a583b66cd1c7d11bbf758b9753e70f9"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_conclusion_policy",
+      "schema_fingerprint": "sha256:452fec0edbb2a3be0a3edd9d1bafd7738b1075c80bb66c9cece63533191dc5ad"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_eligibility_decision",
+      "schema_fingerprint": "sha256:356a6707decc9927952d0feac11ca013e5764caba7f3e7bfdadd2e5d5b351cc3"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_nonce_ledger",
+      "schema_fingerprint": "sha256:dd4c5ecaec5aed3ea05678789e09bd4b1d00d535ada33c69feb1b331f0545c1e"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_owner_map_release",
+      "schema_fingerprint": "sha256:aa8a4547e7365931a21829f4b3079d82de05ee3545c35936793de6856d557b28"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_profile_projection",
+      "schema_fingerprint": "sha256:5717ba58f3a99592d6aacb481e79d895b5ddd0d877550f4677dfb5f7559bee97"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_profile_request",
+      "schema_fingerprint": "sha256:a156c9d4053a3ee2cb503dd48e6a9800ad5665c60307551a2d2f71986c9cdd28"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_relationship_promotion_receipt",
+      "schema_fingerprint": "sha256:890d43e0c2e5cacd5906aefbb72dff37ab797e7522c983e5eb1cb986072498d7"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_safety_verdict",
+      "schema_fingerprint": "sha256:c62481bc6b0290c8c12257a05742500053ee7e6de8dfd49f1931f3168c62d5bc"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_signer_assignment",
+      "schema_fingerprint": "sha256:4a3a5b37aae9e8c5e00a81b193ce5d943fc312b8262409d19e1814daeaf0a5ef"
+    },
+    {
+      "row_count": 0,
+      "table_name": "attribution_verification_key_revision",
+      "schema_fingerprint": "sha256:e165b8766132cd1190b559e171835bb7fcf499a61c565598cacd5ae118d07e5d"
+    }
+  ],
+  "total_rows": 0,
+  "environment": "local",
+  "database_name": "data_agent",
+  "deployment_id": "00000000-0000-4000-8000-000000000001",
+  "schema_version": "legacy-attribution-cleanup-inventory@1.0.0",
+  "inventory_digest": "sha256:eef3d45e2b3aeade797aa7e229070160c13abbe9a3608fc23054e439c1b6f3c7",
+  "external_fk_count": 0,
+  "hold_column_count": 0,
+  "system_identifier": "7675232435726172194",
+  "migration_attestation": {
+    "contribution_10620_ledger_checksum": "sha256:c2403b07f7cba81cfce9d4f4ed1aa7ffef636e14eb606f47906dbadf8452bc19",
+    "published_f9_10621_source_checksum": "sha256:2d86b6622d4009169137716e398cc54f495d83114b69877ca2dbbc6b9049d26e",
+    "published_f9_legacy_zero_ledger_attested": true,
+    "published_f9_10621_legacy_ledger_checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  }
+}

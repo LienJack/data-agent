@@ -1,0 +1,30 @@
+{
+  "id": "qa-team-agent-status",
+  "name": "qa-team-agent-status",
+  "title": "Q&A Team Run Agent 实时状态展示",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-18",
+  "completedAt": "2026-08-21",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-18-team-agent-status-contract",
+    "08-18-production-qa-team-runtime",
+    "08-18-qa-team-agent-status-ui"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

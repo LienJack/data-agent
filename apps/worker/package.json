@@ -1,0 +1,50 @@
+{
+  "name": "@data-agent/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "pnpm --dir ../.. dev:worker",
+    "dev:indexer": "pnpm --dir ../.. dev:indexer",
+    "dev:semantic-authoring": "pnpm --dir ../.. dev:semantic-authoring",
+    "dev:guarded": "tsx ../../scripts/guarded-app-entry.ts worker",
+    "dev:guarded:indexer": "tsx ../../scripts/guarded-app-entry.ts relationship-indexer",
+    "dev:guarded:semantic-authoring": "tsx ../../scripts/guarded-app-entry.ts semantic-authoring",
+    "start": "node dist/run-worker-cli.js",
+    "start:semantic-authoring": "node dist/semantic/authoring-worker-cli.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test/credentialed-provider-certification.spec.ts test/semantic-relationship-indexer.spec.ts test/runs",
+    "test:integration": "vitest run test/integration --passWithNoTests=false",
+    "test:providers": "vitest run test/credentialed-provider-certification.spec.ts",
+    "falcon:team": "tsx src/evals/falcon-team-gate-cli.ts",
+    "falcon:final": "tsx src/evals/falcon-final-gate-cli.ts"
+  },
+  "dependencies": {
+    "@data-agent/agent-runtime": "workspace:*",
+    "@data-agent/contracts": "workspace:*",
+    "@data-agent/evals": "workspace:*",
+    "@data-agent/platform": "workspace:*",
+    "@data-agent/research": "workspace:*",
+    "@data-agent/semantic": "workspace:*",
+    "@next/env": "16.3.0",
+    "pg": "8.22.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "@types/pg": "8.20.0",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

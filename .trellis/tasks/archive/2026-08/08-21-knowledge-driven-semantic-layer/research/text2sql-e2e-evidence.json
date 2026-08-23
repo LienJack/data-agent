@@ -1,0 +1,42 @@
+{
+  "evidence_version": "knowledge-semantic-text2sql-e2e@1.0.0",
+  "captured_at": "2026-08-22T01:41:22+08:00",
+  "postgresql_version": "17",
+  "fixture": "infra/supabase/test-support/18zzzza-knowledge-semantic-release-assertions.sql",
+  "test": "packages/text2sql/test/integration/knowledge-semantic-release.spec.ts",
+  "knowledge_evidence": {
+    "selection_id": "00000000-0000-4000-8000-000000006796",
+    "selection_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "markdown": "净收入 = 已支付订单净额之和，按客户分层统计；退款订单不计入。"
+  },
+  "published_release": {
+    "release_id": "cffa8ce9-d709-4a78-a216-cad6327640c3",
+    "release_generation": 2,
+    "release_digest": "sha256:63dc27bb2a8cb6c290e32df00deb3783b24d2b9667c977de8f65f56786025a51"
+  },
+  "text2sql": {
+    "question": "按客户分层统计 2026 年 6 月已支付订单的净收入",
+    "resolved_context_binding_hash": "sha256:c418746642a33247c4c4c592f29ca25dd90830d1ea3b21aeb94a55e0b6e84013",
+    "logical_plan_hash": "sha256:900906c802c0194fe9d4977a36528e052c68baf8914713dd652476cf4c14eb7a",
+    "ast_hash": "sha256:d421f80d44a82340a7cc70795d7c076fe479843492f2fa21ba65e96c37f9c8bc",
+    "sql_query_hash": "sha256:edbfda7bbc0f5e87552985df2c272d5d12e1e1b5e56f29c990f2b34c99a59b93",
+    "execution_state": "SUCCEEDED",
+    "result_summary": [
+      {
+        "customer_segment": "enterprise",
+        "net_revenue": "150"
+      },
+      {
+        "customer_segment": "smb",
+        "net_revenue": "30"
+      }
+    ]
+  },
+  "rollback": {
+    "release_id": "00000000-0000-4000-8000-000000006759",
+    "release_generation": 1,
+    "rerun_state": "NEEDS_CLARIFICATION",
+    "rerun_reason_code": "PUBLISHED_METRIC_NOT_FOUND",
+    "meaning": "The exact rolled-back release no longer exposes metric.net_revenue, so no Text2SQL binding or SQL execution is issued."
+  }
+}

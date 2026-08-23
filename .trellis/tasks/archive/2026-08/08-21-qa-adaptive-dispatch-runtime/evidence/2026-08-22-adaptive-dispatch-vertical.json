@@ -1,0 +1,73 @@
+{
+  "schema_version": "adaptive-dispatch-vertical-evidence@1.0.0",
+  "observed_at": "2026-08-22T01:20:42+08:00",
+  "scope": {
+    "environment": "local",
+    "workspace_id": "908daa22-1bb5-4029-a616-22d0dece1c0b"
+  },
+  "services": {
+    "web": "READY",
+    "worker": "READY",
+    "indexer": "READY",
+    "semantic_authoring": "RUNNING_MODEL_NOT_READY",
+    "postgres": "HEALTHY",
+    "neo4j": "HEALTHY"
+  },
+  "migration": {
+    "version": "20260725010674_app_data_agent_adaptive_dispatch",
+    "checksum": "sha256:65b2f5b06dea3b580c41dce18b28998cd46c40573918d9e86922002b6e714f56",
+    "ledger_applied": true
+  },
+  "rollout": {
+    "mode": "ENFORCED",
+    "version": 2,
+    "policy_version": "adaptive-routing@1.0.0+rollout.2"
+  },
+  "direct": {
+    "run_id": "129aa4b9-fcb3-882e-997b-cbe8281b5405",
+    "terminal": "SUCCEEDED",
+    "mode": "DIRECT",
+    "executor": "ADAPTIVE@1",
+    "selected_profile_count": 0,
+    "child_task_count": 0,
+    "agent_event_count": 0,
+    "tool_event_count": 0,
+    "provider_intent_count": 1,
+    "receipt_hash": "sha256:cfb9af4ddfd2653a1d2445047ce98dbc054ca318cb81329ad22b601702bde59e"
+  },
+  "selective_team": {
+    "run_id": "da3967be-67a3-8937-a554-f2b93dd0072b",
+    "terminal": "SUCCEEDED",
+    "question_class": "DATA_QUERY",
+    "mode": "TEAM",
+    "executor": "ADAPTIVE@1",
+    "selected_profiles": ["governed-text2sql-agent"],
+    "unselected_profiles": ["report-writing-agent", "semantic-management-agent"],
+    "child_task_count": 1,
+    "handoff_count": 1,
+    "acceptance_receipt_count": 1,
+    "agent_event_profiles": ["governed-text2sql-agent"],
+    "tool_names": ["semantic.release.read", "sql.compiler.compile", "sql.sandbox.execute"],
+    "artifact_types": ["SqlArtifact", "QueryEvidence"]
+  },
+  "deferred": {
+    "receipt_run_id": "18981d44-1600-8339-964a-166b028ba76e",
+    "question_class": "ATTRIBUTION",
+    "reason_code": "ATTRIBUTION_RUNTIME_NOT_READY",
+    "required_capabilities": ["attribution.acceptance@1.0.0"],
+    "receipt_hash": "sha256:6de440aeedbf3e3200004de13b8f2f32e881f025e3a62a35ee7efdca6f74e452",
+    "run_count": 0,
+    "outbox_count": 0,
+    "http_status": 409
+  },
+  "presentation": {
+    "screenshot": "evidence/2026-08-22-adaptive-dispatch-vertical.png",
+    "deferred_ui": "GENERIC_409_PENDING_ACTIVITY_UI_CHILD"
+  },
+  "redaction": {
+    "raw_prompt": false,
+    "provider_output": false,
+    "credentials": false,
+    "sql_rows": false
+  }
+}

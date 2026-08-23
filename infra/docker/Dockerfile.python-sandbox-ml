@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1.7
+FROM python:3.12.10-slim-bookworm@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db
+
+ARG PYTHON_SANDBOX_RUNTIME_DIGEST=sha256:62df15371985556658e195b231e774f7c3c0e866af3a8c2a1735952afc62ae4d
+ARG PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHON_SANDBOX_RUNTIME_DIGEST=${PYTHON_SANDBOX_RUNTIME_DIGEST} \
+    PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST=${PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST} \
+    PYTHON_SANDBOX_IMPORT_PROFILE=ML_DIAGNOSTIC \
+    PYTHON_SANDBOX_TARGET_PLATFORM=linux/arm64 \
+    PYTHON_SANDBOX_POLICY_VERSION=python-policy@1.0.0 \
+    PYTHON_SANDBOX_EXECUTOR_UID=65532 \
+    PYTHON_SANDBOX_EXECUTOR_GID=65532 \
+    PYTHON_SANDBOX_SOCKET_GID=10010 \
+    PYTHON_SANDBOX_CONTAINER_ATTESTED=1 \
+    PYTHON_SANDBOX_NETWORK_NONE=1 \
+    PYTHON_SANDBOX_READ_ONLY_ROOT=1
+
+COPY infra/docker/python-sandbox-requirements.ml.lock /tmp/requirements.lock
+RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.lock && \
+    rm /tmp/requirements.lock && \
+    groupadd --gid 10010 sandbox-ipc && \
+    groupadd --gid 65532 sandbox-executor && \
+    useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin sandbox-executor && \
+    install -d -m 0755 -o root -g root /tmp/data-agent-python-jobs && \
+    install -d -m 2770 -o root -g sandbox-ipc /run/data-agent-python
+
+COPY services/sandbox/src/data_agent_sandbox /usr/local/lib/python3.12/site-packages/data_agent_sandbox
+
+ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:7d3a060834aca6a7e3101f38a3bdee4cc84a700295bcda155fd5e4227f883804
+ENV PYTHON_SANDBOX_IMAGE_DIGEST=${PYTHON_SANDBOX_IMAGE_DIGEST}
+
+WORKDIR /var/empty
+STOPSIGNAL SIGTERM
+HEALTHCHECK --interval=5s --timeout=2s --retries=12 --start-period=10s \
+  CMD ["python", "-c", "import os; raise SystemExit(0 if os.path.exists('/run/data-agent-python/sandbox.sock') else 1)"]
+CMD ["python", "-m", "data_agent_sandbox", "python-server"]

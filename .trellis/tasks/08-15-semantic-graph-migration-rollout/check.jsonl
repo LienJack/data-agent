@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "full regression、failure closure 和 rollback 证据"}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "candidate 隔离、exact receipts 和旧 digest 检查"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "RLS、migration order、并发 publish 与 rebuild"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "端到端 intent-to-query 与跨层失败模式"}

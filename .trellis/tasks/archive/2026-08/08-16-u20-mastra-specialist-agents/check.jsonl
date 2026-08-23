@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Strict contracts, focused/full gates and scoped commit"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Capability/scope/idempotency and adapter conformance"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"Public Team trace redaction and replay"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Server-authored trace states and responsive UI"}

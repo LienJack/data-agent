@@ -1,0 +1,4 @@
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"Runtime durable transition、public event、Artifact locator 与 replay"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-status-design.md","reason":"Harness persistence、checkpoint、subagent lifecycle 与 recovery 基线"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/deepseek-harness-source-reuse-ledger.md","reason":"Runtime 控制面复用来源与 MIT 记录"}
+{"file":".trellis/tasks/08-18-qa-team-agent-status/research/reasonix-multi-surface-protocol-design.md","reason":"Runtime 不依赖 surface 且共享 command event authority"}

@@ -1,0 +1,3 @@
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "retry/crash/idempotency/policy 负例审查"}
+{"file": ".trellis/spec/backend/run-event-streaming.md", "reason": "cursor replay 与 graph patch 不重复检查"}
+{"file": ".trellis/spec/backend/logging-guidelines.md", "reason": "公开事件和 provider error 脱敏检查"}

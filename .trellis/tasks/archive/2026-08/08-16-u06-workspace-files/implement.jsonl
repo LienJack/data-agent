@@ -1,0 +1,9 @@
+{"file":".trellis/spec/backend/index.md","reason":"Contracts, PostgreSQL Authority, Worker, Storage and route pre-development checklist."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Content-addressed immutable revision and committed receipt authority rules."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Storage and scan adapter scope, idempotency, error and conformance semantics."}
+{"file":".trellis/spec/backend/job-center.md","reason":"U10 successor extension rules for FILE_SCAN handler, lease/fence and readiness."}
+{"file":".trellis/spec/frontend/index.md","reason":"Frontend/API boundary and DTO parsing conventions."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict public DTO and discriminated UI state requirements."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Cross-layer Contract to SQL to Worker to Web closure checklist."}
+{"file":"docs/plans/2026-08-16-001-feat-datafoundry-coa-migration-plan.md","reason":"Frozen U6 goal, dependencies, files, approach and acceptance scenarios."}
+{"file":".trellis/tasks/08-16-u10-job-center/design.md","reason":"Completed U10 Job Authority that U6 extends without a side queue."}

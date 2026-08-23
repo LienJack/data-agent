@@ -1,0 +1,32 @@
+{
+  "id": "apple-blue-frontend-redesign",
+  "name": "apple-blue-frontend-redesign",
+  "title": "Apple OpenAI 蓝色全站前端重构",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-22",
+  "completedAt": "2026-08-22",
+  "branch": null,
+  "base_branch": "main",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "08-22-apple-blue-foundation",
+    "08-22-apple-blue-entry-workspace",
+    "08-22-apple-blue-qa-analysis",
+    "08-22-apple-blue-semantic-knowledge",
+    "08-22-apple-blue-operations-admin"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

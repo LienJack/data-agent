@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/directory-structure.md","reason":"Keep contracts, platform adapters and Web composition in their owning layers."}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Apply PostgreSQL Authority, transaction, scope, RLS, migration and SecretRef rules."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Expose stable redacted reason codes and fail-closed terminals."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Treat Candidate payloads as untrusted and use DB-owned canonical revision hashes."}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Prevent credentials, DSNs, SQL and internal causes from leaking."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Parse shared DTOs at route/client boundaries instead of copying payload shapes."}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Keep contract, API, service, database and UI transitions consistent."}
+{"file":".trellis/tasks/08-08-semantic-layer-m0-authority-safety/research/current-baseline.md","reason":"Use pinned findings and preserve the dirty-worktree boundary."}

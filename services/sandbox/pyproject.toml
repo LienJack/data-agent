@@ -1,0 +1,52 @@
+[project]
+name = "data-agent-sandbox"
+version = "0.1.0"
+description = "Data Agent U5 PostgreSQL SQL sandbox"
+requires-python = ">=3.12"
+dependencies = [
+  "matplotlib==3.10.3",
+  "numpy==2.2.6",
+  "pandas==2.2.3",
+  "psycopg[binary]>=3.2,<4",
+  "pyarrow==23.0.1",
+  "pydantic>=2,<3",
+  "rfc8785==0.1.4",
+  "scipy==1.15.3",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.24,<2",
+  "ruff>=0.9,<1",
+]
+ml = [
+  "scikit-learn==1.6.1",
+  "statsmodels==0.14.5",
+]
+causal = [
+  "dowhy==0.13",
+  "econml==0.16.0",
+  "networkx==3.5",
+  "scikit-learn==1.6.1",
+  "statsmodels==0.14.5",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/data_agent_sandbox"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "ASYNC"]

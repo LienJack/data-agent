@@ -1,0 +1,20 @@
+{
+  "schema_version": "ecommerce-deterministic-analysis-suite@1.0.0",
+  "suite_version": "1.0.0",
+  "algorithm_versions": {
+    "trend": "trend-v1",
+    "contribution": "contribution-v1",
+    "anomaly": "anomaly-v1",
+    "association": "association-v1",
+    "forecast": "forecast-v1",
+    "causal": "causal-scm-independent-oracle@1.0.0"
+  },
+  "case_count": 8,
+  "public_cases_hash": "sha256:12e4cf668e5fc11b35340a74d862c2c310e0d06a1991995ad7a824ecb01ff382",
+  "sealed_cases_hash": "sha256:86fb334cc9249448ed09a02d38ba893ae9ca736f72fd9799b8d30a2497376006",
+  "minimum_score": 100,
+  "hard_fail_on_any_case": true,
+  "readiness": "HOLD",
+  "readiness_reason": "U7 release registration and staged rollout gate are not yet complete.",
+  "manifest_hash": "sha256:fdb288e0facb31ba91a1ea42a64802191e140c07700ea3da1a331772e0db44c7"
+}

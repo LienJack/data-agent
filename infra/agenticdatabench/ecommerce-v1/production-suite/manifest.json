@@ -1,0 +1,25 @@
+{
+  "schema_version": "ecommerce-production-suite-manifest@1.0.0",
+  "suite_id": "ecommerce-production",
+  "suite_version": "1.0.0",
+  "dataset_digest": "sha256:54632f39e190c872d2b5c176090ebc2d3b77e135b9bb5aecc96d6bf6d0fa4518",
+  "case_count": 24,
+  "registry_counts": {
+    "DEMO": 8,
+    "TUNING": 10,
+    "HOLDOUT": 6
+  },
+  "difficulty_counts": {
+    "simple": 6,
+    "moderate": 10,
+    "challenging": 8
+  },
+  "hard_six_table_count": 8,
+  "python_case_count": 8,
+  "chart_or_report_case_count": 6,
+  "public_cases_sha256": "sha256:19ff20270ae6ec1a87cdbede71ebcba093671d186f0f8b83782f04d213eae7bc",
+  "sealed_cases_sha256": "sha256:a46d2fc13030ce45c5d7cace06b6b983a844bc098d001aedcf65ef44eccb4dc6",
+  "readiness": "HOLD",
+  "readiness_reason": "Runner and sealed artifact Oracle require end-to-end certification before READY.",
+  "manifest_sha256": "sha256:8735d6ea8b67cdf45b3a4f0b4d4e9bbfea4a4ea13ee0d873566aca61163fa5c9"
+}

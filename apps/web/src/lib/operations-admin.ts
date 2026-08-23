@@ -1,0 +1,169 @@
+import "server-only";
+
+import type { SessionPrincipal } from "@data-agent/contracts";
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { publishOperationsDiagnostic } from "./operations-diagnostics";
+import {
+  getOperationsAdminRepository,
+  getWorkspaceDeploymentId,
+  getWorkspaceSessionFromHeaders,
+  resolveSessionWorkspaceCapability,
+} from "./workspace-identity";
+
+export type OperationsAdminRequest = Readonly<{
+  principal: SessionPrincipal;
+  context: { readonly deployment_id: string; readonly principal_id: string };
+  repository: ReturnType<typeof getOperationsAdminRepository>;
+}>;
+
+export type WorkspaceMembersRequest = Readonly<{
+  principal: SessionPrincipal;
+  context: {
+    readonly deployment_id: string;
+    readonly principal_id: string;
+    readonly workspace_id: string;
+  };
+  repository: ReturnType<typeof getOperationsAdminRepository>;
+}>;
+
+type Authorized<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly response: NextResponse };
+
+export async function authorizeOperationsAdminRequest(
+  request: NextRequest,
+): Promise<Authorized<OperationsAdminRequest>> {
+  const session = await getWorkspaceSessionFromHeaders(request.headers);
+  if (!session.ok) {
+    publishOperationsDiagnostic({
+      level: "warn",
+      event_name: "operations.admin.access_denied",
+      reason_code: session.error.code,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json({ error: session.error }, { status: 401 }),
+    };
+  }
+  if (session.value.system_role !== "SUPER_ADMIN") {
+    publishOperationsDiagnostic({
+      level: "warn",
+      event_name: "operations.admin.access_denied",
+      reason_code: "SUPER_ADMIN_REQUIRED",
+      principal_id: session.value.principal_id,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: {
+            code: "SUPER_ADMIN_REQUIRED",
+            message: "只有超级管理员可以访问全局运维控制面。",
+            retryable: false,
+          },
+        },
+        { status: 403 },
+      ),
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      principal: session.value,
+      context: {
+        deployment_id: getWorkspaceDeploymentId(),
+        principal_id: session.value.principal_id,
+      },
+      repository: getOperationsAdminRepository(),
+    },
+  };
+}
+
+export async function authorizeWorkspaceMembersRequest(
+  request: NextRequest,
+  workspaceId: string,
+): Promise<Authorized<WorkspaceMembersRequest>> {
+  const session = await getWorkspaceSessionFromHeaders(request.headers);
+  if (!session.ok) {
+    publishOperationsDiagnostic({
+      level: "warn",
+      event_name: "operations.member.access_denied",
+      reason_code: session.error.code,
+      workspace_id: workspaceId,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json({ error: session.error }, { status: 401 }),
+    };
+  }
+  const capability = await resolveSessionWorkspaceCapability(session.value, workspaceId, "WRITE");
+  if (!capability.ok || capability.value.role !== "OWNER") {
+    const retryable = !capability.ok && capability.error.retryable;
+    publishOperationsDiagnostic({
+      level: retryable ? "error" : "warn",
+      event_name: "operations.member.access_denied",
+      reason_code: "WORKSPACE_MEMBER_MANAGE_REQUIRED",
+      principal_id: session.value.principal_id,
+      workspace_id: workspaceId,
+    });
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: {
+            code: "WORKSPACE_MEMBER_MANAGE_REQUIRED",
+            message: retryable
+              ? "工作空间成员权限暂时无法验证。"
+              : "当前用户不能管理该工作空间成员。",
+            retryable,
+          },
+        },
+        { status: retryable ? 503 : 403 },
+      ),
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      principal: session.value,
+      context: {
+        deployment_id: getWorkspaceDeploymentId(),
+        principal_id: session.value.principal_id,
+        workspace_id: workspaceId,
+      },
+      repository: getOperationsAdminRepository(),
+    },
+  };
+}
+
+export function operationsResultResponse<T>(
+  result:
+    | { readonly ok: true; readonly value: T }
+    | {
+        readonly ok: false;
+        readonly error: {
+          readonly code: string;
+          readonly message: string;
+          readonly retryable: boolean;
+        };
+      },
+  successStatus = 200,
+) {
+  if (result.ok) return NextResponse.json({ data: result.value }, { status: successStatus });
+  publishOperationsDiagnostic({
+    level: result.error.retryable ? "error" : "warn",
+    event_name: "operations.request.failed",
+    reason_code: result.error.code,
+  });
+  const status =
+    result.error.code === "SUPER_ADMIN_REQUIRED" ||
+    result.error.code === "OPERATIONS_ADMIN_ACCESS_DENIED"
+      ? 403
+      : result.error.code.endsWith("_INVALID")
+        ? 400
+        : result.error.code.endsWith("_UNAVAILABLE") || result.error.retryable
+          ? 503
+          : 409;
+  return NextResponse.json({ error: result.error }, { status });
+}

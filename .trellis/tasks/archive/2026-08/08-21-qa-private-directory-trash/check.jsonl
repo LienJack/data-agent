@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"strict boundary, state machine and real integration gates"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"migration, isolation, idempotency and PostgreSQL 17 proof"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"two-user non-enumeration and revoked membership proof"}
+{"file":".trellis/spec/backend/job-center.md","reason":"retention claim, retry and fence verification"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"keyboard, focus and semantic structure review"}
+{"file":".trellis/spec/frontend/design-system.md","reason":"desktop/mobile no-overflow browser evidence"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"unknown payload and non-success UI checks"}

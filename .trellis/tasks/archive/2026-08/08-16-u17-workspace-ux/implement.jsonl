@@ -1,0 +1,3 @@
+{"file":".trellis/spec/frontend/index.md","reason":"Workspace frontend module routing and shared UX constraints."}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Component, state, accessibility and testing conventions."}
+{"file":".trellis/spec/backend/index.md","reason":"Contracts export and cross-layer authority boundary."}

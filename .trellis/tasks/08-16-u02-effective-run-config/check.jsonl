@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Audit atomicity, RLS, RPC grants and migration ledger safety."}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Audit stable public failures and information disclosure."}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Audit Candidate versus PostgreSQL Authority and receipt immutability."}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Audit scope, idempotency, replay, revocation and TOCTOU behavior."}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Run final package, integration and security checks."}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Audit Web DTO parsing and server/client boundary."}
+{"file":".trellis/tasks/08-16-u02-effective-run-config/research/u02-research-summary.md","reason":"Check implementation against repository findings and dirty-tree constraints."}

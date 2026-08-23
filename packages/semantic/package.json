@@ -1,0 +1,53 @@
+{
+  "name": "@data-agent/semantic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./authoring": {
+      "types": "./dist/public/authoring.d.ts",
+      "import": "./dist/public/authoring.js"
+    },
+    "./application": {
+      "types": "./dist/public/application.d.ts",
+      "import": "./dist/public/application.js"
+    },
+    "./governance": {
+      "types": "./dist/public/governance.d.ts",
+      "import": "./dist/public/governance.js"
+    },
+    "./read-model": {
+      "types": "./dist/public/read-model.d.ts",
+      "import": "./dist/public/read-model.js"
+    },
+    "./runtime-context": {
+      "types": "./dist/public/runtime-context.d.ts",
+      "import": "./dist/public/runtime-context.js"
+    },
+    "./relationship-index": {
+      "types": "./dist/public/relationship-index.d.ts",
+      "import": "./dist/public/relationship-index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:unit": "vitest run test --testTimeout=15000"
+  },
+  "dependencies": {
+    "@data-agent/contracts": "workspace:*",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.10"
+  }
+}

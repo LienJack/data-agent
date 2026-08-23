@@ -1,0 +1,31 @@
+{
+  "id": "full-site-frontend-redesign",
+  "name": "full-site-frontend-redesign",
+  "title": "全站前端信息架构与视觉重设计",
+  "description": "Falcon GO 后使用 design-taste-frontend 重设计全部前端页面、布局、信息密度、Agent SSE 工具/思考折叠与响应式体验。",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "web design system, shell, pages, agent conversation, responsive QA",
+  "package": null,
+  "priority": "P0",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-18",
+  "completedAt": "2026-08-18",
+  "branch": null,
+  "base_branch": "feat/datafoundry-platform-modules",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "apps/web/src/app/design-system.css",
+    "apps/web/src/components/layout/workspace-shell.tsx",
+    "apps/web/src/components/qa/process-disclosure.tsx",
+    "artifacts/frontend-redesign"
+  ],
+  "notes": "",
+  "meta": {}
+}

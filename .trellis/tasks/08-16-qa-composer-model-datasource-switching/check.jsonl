@@ -1,0 +1,7 @@
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"验证 Composer 多状态 accessibility 与资源投影唯一性"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"验证所有 API DTO unknown 输入与判别联合失败关闭"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"验证 workspace principal model profile billing 和 credential 隔离"}
+{"file":".trellis/spec/backend/run-event-streaming.md","reason":"验证选中资源对应的公开 tool answer terminal 与 replay"}
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"验证 Conversation 资源冻结 原子 Run binding RLS grant ledger"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"验证资源冲突 readiness drift 与 runtime 终态 reason code"}
+{"file":".trellis/tasks/08-16-qa-composer-model-datasource-switching/research/current-baseline.md","reason":"对照模型和数据源原有伪绑定缺口完成回归"}

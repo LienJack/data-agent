@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"Verify no second queue, exact lease/fence and narrow SQL grants"}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Verify sensitive artifact commit/load and no public preview bypass"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Verify result correlation, replay and adapter failure closure"}
+{"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Verify dispatch envelope reuses U3 authority and zero-network drift failures"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify stable non-leaking errors and terminal states"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Verify forbidden raw prompt, message, response and credential persistence"}
+{"file":".trellis/spec/guides/cross-layer-thinking-guide.md","reason":"Verify all fields survive exact cross-layer round trip"}
+{"phase":"check_complete","date":"2026-08-17","evidence":"Focused: Contracts 4, Agent Runtime v2 30 plus preserved v1 handoff 8, Platform 4. Full: Contracts 57 files/732 tests with 20s authority timeout, Agent Runtime 24 files/171 tests, Platform excluding known shared surface 55 files/404 plus 4 files/14 skipped. Contracts/Agent Runtime/Platform typecheck and build green. Fresh PostgreSQL 17 with both import hooks /dev/null passed assertion 36. Renderer verify, full SQL static-check, Biome, diff-check and forbidden scans green. Trellis cross-layer review repaired child budget/artifact/model-view closure, completion/acceptance database truth checks, and restored the v1 handoff compatibility suite before adding the v2 controller suite separately. No imports, Falcon, Provider, commercial path, Claude/Anthropic or ce tools."}

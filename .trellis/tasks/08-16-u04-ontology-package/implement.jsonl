@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/backend/directory-structure.md", "reason": "Contracts and package dependency boundaries"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "PostgreSQL authority and migration rules"}
+{"file": ".trellis/spec/backend/artifact-authority.md", "reason": "Candidate hash and authority boundaries"}
+{"file": ".trellis/spec/backend/quality-guidelines.md", "reason": "Test-first and strict contract gates"}
+{"file": ".trellis/spec/guides/cross-layer-thinking-guide.md", "reason": "Cross-layer package to SQL flow"}

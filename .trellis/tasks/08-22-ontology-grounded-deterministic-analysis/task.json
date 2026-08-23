@@ -1,0 +1,29 @@
+{
+  "id": "ontology-grounded-deterministic-analysis",
+  "name": "ontology-grounded-deterministic-analysis",
+  "title": "Ontology-grounded deterministic analysis",
+  "description": "Execute every implementation unit and gate in docs/plans/2026-08-22-003-feat-ontology-grounded-deterministic-analysis-plan.md",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": "cross-layer",
+  "package": null,
+  "priority": "P0",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-22",
+  "completedAt": null,
+  "branch": "codex/ontology-grounded-deterministic-analysis",
+  "base_branch": "feat/datafoundry-platform-modules",
+  "worktree_path": "/Users/lienli/Documents/GitHub/data-agent/.worktrees/codex/ontology-grounded-deterministic-analysis",
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "canonical_plan": "docs/plans/2026-08-22-003-feat-ontology-grounded-deterministic-analysis-plan.md",
+    "worktree_path": "/Users/lienli/Documents/GitHub/data-agent/.worktrees/codex/ontology-grounded-deterministic-analysis"
+  }
+}

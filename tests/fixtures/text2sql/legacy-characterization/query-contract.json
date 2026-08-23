@@ -1,0 +1,26 @@
+{
+  "schema_version": "data-agent-query-contract-mapping/v1",
+  "preserved_fields": ["question", "timezone", "time_range", "result_shape", "ambiguity_decision"],
+  "tightened_fields": [
+    "evidence_plan_ref",
+    "metric",
+    "dimensions",
+    "grain",
+    "unit",
+    "datasource_id",
+    "result_contract"
+  ],
+  "rejected_defaults": [
+    {
+      "field": "timezone",
+      "legacy_default": "UTC",
+      "current_rule": "require-explicit-or-clarify"
+    },
+    {
+      "field": "time_range",
+      "legacy_default": "unresolved_time_field",
+      "current_rule": "require-half-open-range-or-clarify"
+    }
+  ],
+  "revision_rule": "ambiguity-resolution-creates-new-query-contract-and-invalidates-old-candidates"
+}

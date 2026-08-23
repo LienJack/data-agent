@@ -1,0 +1,30 @@
+{
+  "id": "qa-sse-trajectory",
+  "name": "qa-sse-trajectory",
+  "title": "对话 SSE 与轨迹视图",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": "contracts run events; platform replay; worker emission; web Q&A SSE and trajectory",
+  "package": null,
+  "priority": "P2",
+  "creator": "codex",
+  "assignee": "codex",
+  "createdAt": "2026-08-14",
+  "completedAt": "2026-08-14",
+  "branch": "codex/qa-sse-trajectory",
+  "base_branch": "feat/datafoundry-platform-modules",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {
+    "validation": "scoped contracts/platform/worker/web tests pass; contracts and platform build; worker typecheck pass",
+    "baseline_blocker": "web typecheck/build/browser blocked by files referenced but absent from fixed baseline 549d597: sidebar, status-bar, provider-mark, model-types, platform-settings page, test-center-model-runtime",
+    "reference": "deepseek-harness ReasoningRow, ToolRow and TrajectorySnapshotBuilder responsibilities; no source or dependencies copied"
+  }
+}

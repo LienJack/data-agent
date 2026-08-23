@@ -1,0 +1,5 @@
+{"file":".trellis/spec/backend/database-guidelines.md","reason":"PostgreSQL authority, migration, RLS and atomic command rules"}
+{"file":".trellis/spec/backend/workspace-identity-billing.md","reason":"Identity, RBAC, billing and audit boundaries"}
+{"file":".trellis/spec/backend/logging-guidelines.md","reason":"Structured diagnostics and secret redaction"}
+{"file":".trellis/spec/frontend/component-guidelines.md","reason":"Admin tables, forms and responsive UI conventions"}
+{"file":".trellis/spec/frontend/type-safety.md","reason":"Strict DTO decoding and discriminated UI states"}

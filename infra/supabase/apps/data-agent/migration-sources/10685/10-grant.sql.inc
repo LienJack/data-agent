@@ -1,0 +1,2 @@
+grant update on semantic.semantic_candidate_revision_save_idempotency
+  to data_agent_u6_rpc_owner;

@@ -1,0 +1,768 @@
+[
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000001",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 1,
+      "title": "订单规模快照",
+      "question": "统计订单总量，并说明数据快照口径。",
+      "registry": "DEMO",
+      "difficulty": "simple",
+      "tables": [
+        "fact_order"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:988c0275f2a0498ca956d9706239c8ae02d71e76b391667243ecea39e5978a63"
+    },
+    "gold_sql": "select count(*)::bigint as order_count from demo_adb_ecommerce_mart.fact_order",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:a0173a24e8e2f05c193dac948912d1877dce418d1989bd7f15d5a3211becb462"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000002",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 2,
+      "title": "支付方式结构",
+      "question": "按支付方式统计支付笔数与金额，金额降序。",
+      "registry": "DEMO",
+      "difficulty": "simple",
+      "tables": [
+        "fact_payment"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:e561bcbaf94f9420ce4cc0373921a2335022a16a7ef25d282a52391a11523693"
+    },
+    "gold_sql": "select payment_type, count(*)::bigint payment_count, round(sum(payment_value_brl),2) payment_value_brl from demo_adb_ecommerce_mart.fact_payment group by payment_type order by payment_value_brl desc, payment_type",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:050aeeb4d425a7ae32ea9ba34a58e1d7757403f46303ad3e7b14283c81fd09a8"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000003",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 3,
+      "title": "Amazon 品牌价格",
+      "question": "统计有价格商品数最多的前十品牌及平均美元价格。",
+      "registry": "DEMO",
+      "difficulty": "simple",
+      "tables": [
+        "dim_amazon_product"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:2a081b8c47f46d2bae993ad78ddacd58a6dcb1e6baabf47cd462e6006a7bbab4"
+    },
+    "gold_sql": "select brand, count(*)::bigint product_count, round(avg(price_usd),2) avg_price_usd from demo_adb_ecommerce_mart.dim_amazon_product where brand is not null and price_usd is not null group by brand order by product_count desc, brand limit 10",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:341e71efc917729c60d031babf1327d8ae9de377510adc8b307bfce7bedd456c"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000004",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 4,
+      "title": "类目 GMV 与满意度",
+      "question": "关联商品、订单明细和评价，仅保留 is_electronics=true 的商品；按订单明细中的英文类目分组，输出英文类目、GMV（口径为 sum(price_brl)，不含运费，2 位小数）、去重订单量和平均评分（3 位小数），并按 GMV 降序；没有评价的订单也保留在 GMV 与订单量中。",
+      "registry": "DEMO",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_category",
+        "dim_product",
+        "fact_order_item",
+        "fact_review"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:c32b810dbc35c6f019a8f1a5866f4f2875c4baaad7d05e120a36a50e311dd2cc"
+    },
+    "gold_sql": "select i.category_name_english, round(sum(i.price_brl),2) gmv_brl, count(distinct i.order_id)::bigint orders, round(avg(r.review_score),3) avg_score from demo_adb_ecommerce_mart.fact_order_item i join demo_adb_ecommerce_mart.dim_product p on p.product_id=i.product_id join demo_adb_ecommerce_mart.dim_category c on c.category_name=p.category_name left join demo_adb_ecommerce_mart.fact_review r on r.order_id=i.order_id where c.is_electronics group by i.category_name_english order by gmv_brl desc",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:0a20544d9f61036129471991df57d772044bc2d7decf727cabadb33a946417eb"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000005",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 5,
+      "title": "卖家履约排行",
+      "question": "按卖家州计算订单、GMV、平均延迟和评分，只保留订单不少于 100 的州。",
+      "registry": "DEMO",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_seller",
+        "fact_order",
+        "fact_order_item",
+        "fact_review"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:9a89d4ec6e99408b1b3c3ef0e4becf27cc8ae228f2b15ea077bdf6086e825210"
+    },
+    "gold_sql": "select s.state seller_state,count(distinct o.order_id)::bigint orders,round(sum(i.price_brl),2) gmv_brl,round(avg(o.delivery_delay_days)::numeric,3) avg_delay,round(avg(r.review_score),3) avg_score from demo_adb_ecommerce_mart.fact_order o join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id join demo_adb_ecommerce_mart.dim_seller s on s.seller_id=i.seller_id left join demo_adb_ecommerce_mart.fact_review r on r.order_id=o.order_id group by s.state having count(distinct o.order_id)>=100 order by avg_delay, seller_state",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:cbe0070b3ce5d355f29f51ae15563e19b0f7bfd548c674bae475394bc903437d"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000006",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 6,
+      "title": "月度 GMV 异常",
+      "question": "计算月度 GMV 环比并用 Python 标准分数标记异常月份，输出 JSON。",
+      "registry": "DEMO",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_date",
+        "fact_order",
+        "fact_order_item"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON"
+      ],
+      "python_required": true,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:002cd4be86334126ed6ed47a30cac7dadc2fb0014cbb04850b690356ded4815a"
+    },
+    "gold_sql": "select to_char(o.purchase_date,'YYYY-MM') month_key,sum(i.price_brl)::double precision gmv_brl from demo_adb_ecommerce_mart.fact_order o join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id group by 1 order by 1",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:c088572418f059e702f285cdc33bbdeb49f12dd9bdc837e993debe29f78a9d1b"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000007",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 7,
+      "title": "客户复购与价值分层",
+      "question": "以客户唯一标识聚合订单、GMV、评分、延迟与支付，计算复购率和价值分层，并生成 Vega-Lite 与结论报告。",
+      "registry": "DEMO",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_customer",
+        "fact_order",
+        "fact_order_item",
+        "fact_payment",
+        "fact_review",
+        "dim_product"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON",
+        "VEGA_LITE",
+        "MARKDOWN"
+      ],
+      "python_required": true,
+      "chart_or_report_required": true,
+      "public_case_hash": "sha256:96784c5a9f7b45cab567cfccb50008ff07f01d5159b58111305b587595480bb1"
+    },
+    "gold_sql": "with x as (select c.customer_unique_id,count(distinct o.order_id) orders,sum(i.price_brl) gmv_brl,avg(r.review_score) avg_score,avg(o.delivery_delay_days) avg_delay from demo_adb_ecommerce_mart.dim_customer c join demo_adb_ecommerce_mart.fact_order o on o.customer_id=c.customer_id join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id left join demo_adb_ecommerce_mart.fact_review r on r.order_id=o.order_id group by c.customer_unique_id) select * from x order by gmv_brl desc, customer_unique_id",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:e6c2386ace5c74ab6a1a0da057a8449aabf07c2430917bcd9d2ae290923c5b54"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000008",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 8,
+      "title": "跨平台价格与满意度",
+      "question": "对 Olist、Amazon、eBay 电子商品构建价格分位与评分相关性分析，披露不可确定实体匹配并输出图表报告。",
+      "registry": "DEMO",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_category",
+        "dim_product",
+        "fact_order_item",
+        "fact_review",
+        "dim_amazon_product",
+        "fact_amazon_review",
+        "dim_ebay_listing"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON",
+        "VEGA_LITE",
+        "MARKDOWN"
+      ],
+      "python_required": true,
+      "chart_or_report_required": true,
+      "public_case_hash": "sha256:7e666fdd042cafc5796d1023cc30c3f0cd1220b3afe5765c32a9696ff1940263"
+    },
+    "gold_sql": "select 'olist' platform,i.price_brl::double precision price,r.review_score::double precision rating from demo_adb_ecommerce_mart.fact_order_item i join demo_adb_ecommerce_mart.fact_review r on r.order_id=i.order_id where i.category_name_english in ('telephony','computers_accessories','electronics','consoles_games') union all select 'amazon',p.price_usd::double precision,r.rating::double precision from demo_adb_ecommerce_mart.dim_amazon_product p join demo_adb_ecommerce_mart.fact_amazon_review r on r.asin=p.asin where p.price_usd is not null",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:3cbcd9bf073dae1344d7f567d801a685c80a609cc8949b10be9f465ba3618348"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000009",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 9,
+      "title": "评价分布",
+      "question": "按评价星级统计数量。",
+      "registry": "TUNING",
+      "difficulty": "simple",
+      "tables": [
+        "fact_review"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:1023b5f9dabdb46af21cd078ce5d1b2a531b3116788653ad7a9a27832afef1bc"
+    },
+    "gold_sql": "select review_score,count(*)::bigint review_count from demo_adb_ecommerce_mart.fact_review group by review_score order by review_score",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:7d39af0816f9ce5c8532b0d5a2353dbfb9a6933446d0135fcf36dfc7643f06db"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000010",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 10,
+      "title": "eBay 内存档位",
+      "question": "按内存容量统计刊登量和平均价格。",
+      "registry": "TUNING",
+      "difficulty": "simple",
+      "tables": [
+        "dim_ebay_listing"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:128eb6e0e36ec70393928fc18a7deb7381433d32b29cb1c560ee2b1af6e002dd"
+    },
+    "gold_sql": "select ram_gb,count(*)::bigint listings,round(avg(price_usd),2) avg_price_usd from demo_adb_ecommerce_mart.dim_ebay_listing where ram_gb is not null group by ram_gb order by ram_gb",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:220c6065541298968f4d2b474178997f328130b427875a64114929f139ce7d04"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000011",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 11,
+      "title": "客户地域贡献",
+      "question": "按客户州统计订单量、客户数与 GMV。",
+      "registry": "TUNING",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_customer",
+        "fact_order",
+        "fact_order_item"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:263ac81c58a4108ba19abf8865bb731d750271cd0f505b200824eaba62d1bc37"
+    },
+    "gold_sql": "select c.state,count(distinct o.order_id)::bigint orders,count(distinct c.customer_unique_id)::bigint customers,round(sum(i.price_brl),2) gmv_brl from demo_adb_ecommerce_mart.dim_customer c join demo_adb_ecommerce_mart.fact_order o on o.customer_id=c.customer_id join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id group by c.state order by gmv_brl desc",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:86c0e80d3b42771c4633d00df3c0f84073cc69caad26e84bbb4edd69f0ec2c44"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000012",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 12,
+      "title": "运费价格弹性",
+      "question": "按类目计算价格、运费及运费占比。",
+      "registry": "TUNING",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_product",
+        "fact_order_item"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:cabbf82cc0b7d5fb09ee42bc587dc1e30ce1ea9077c8ac7cf8d63c9461b59699"
+    },
+    "gold_sql": "select category_name_english,round(sum(price_brl),2) gmv_brl,round(sum(freight_value_brl),2) freight_brl,round(sum(freight_value_brl)/nullif(sum(price_brl),0),4) freight_rate from demo_adb_ecommerce_mart.fact_order_item group by category_name_english order by freight_rate desc nulls last",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:f309faba623960bf864e8ac8a1c51db41cabf973a8417f3150538add847e3047"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000013",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 13,
+      "title": "支付与客单价",
+      "question": "比较支付方式对应订单的客单价和分期数。",
+      "registry": "TUNING",
+      "difficulty": "moderate",
+      "tables": [
+        "fact_order",
+        "fact_order_item",
+        "fact_payment"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:0ed5482bb796c544b89b2da1c3639091dcb49d8c2722fda83e90e58a2eb7827a"
+    },
+    "gold_sql": "with g as (select order_id,sum(price_brl) gmv from demo_adb_ecommerce_mart.fact_order_item group by order_id) select p.payment_type,count(distinct p.order_id)::bigint orders,round(avg(g.gmv),2) avg_order_value,round(avg(p.installments),2) avg_installments from demo_adb_ecommerce_mart.fact_payment p join g on g.order_id=p.order_id group by p.payment_type order by orders desc",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:24125fc82baece8688575e394ca28b9ad8004bfa724a6f9929e8a46a07c3ab11"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000014",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 14,
+      "title": "配送分位诊断",
+      "question": "按卖家州计算配送延迟的 P50/P90/P95，并用 Python 输出异常州 JSON。",
+      "registry": "TUNING",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_seller",
+        "fact_order",
+        "fact_order_item"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON"
+      ],
+      "python_required": true,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:03047e194c33d8f483469cab6d0d8b36bba9a023e431d2bc17c41b348c1f38de"
+    },
+    "gold_sql": "select s.state,percentile_cont(0.5) within group(order by o.delivery_delay_days) p50,percentile_cont(0.9) within group(order by o.delivery_delay_days) p90,percentile_cont(0.95) within group(order by o.delivery_delay_days) p95 from demo_adb_ecommerce_mart.fact_order o join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id join demo_adb_ecommerce_mart.dim_seller s on s.seller_id=i.seller_id where o.delivery_delay_days is not null group by s.state order by p95 desc",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:787703f3bc3db1e872e8f936c7e983ead7f65af23aae0dad0e603a047ad24600"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000015",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 15,
+      "title": "电子类目漏斗",
+      "question": "构建购买、支付、签收、评价漏斗，按月和类目计算转化并生成报告。",
+      "registry": "TUNING",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_category",
+        "dim_product",
+        "fact_order",
+        "fact_order_item",
+        "fact_payment",
+        "fact_review"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON",
+        "VEGA_LITE",
+        "MARKDOWN"
+      ],
+      "python_required": true,
+      "chart_or_report_required": true,
+      "public_case_hash": "sha256:97321132fcd0ea8f2784d284dc99f58f6e672db0e999b105005b16f77f66cedd"
+    },
+    "gold_sql": "select to_char(o.purchase_date,'YYYY-MM') month_key,i.category_name_english,count(distinct o.order_id)::bigint purchased,count(distinct p.order_id)::bigint paid,count(distinct case when o.delivered_at is not null then o.order_id end)::bigint delivered,count(distinct r.order_id)::bigint reviewed from demo_adb_ecommerce_mart.fact_order o join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id join demo_adb_ecommerce_mart.dim_product pr on pr.product_id=i.product_id join demo_adb_ecommerce_mart.dim_category c on c.category_name=pr.category_name left join demo_adb_ecommerce_mart.fact_payment p on p.order_id=o.order_id left join demo_adb_ecommerce_mart.fact_review r on r.order_id=o.order_id where c.is_electronics group by 1,2 order by 1,2",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:7458981f8e2dad09e30d30f039e4f88f26f60f807eb961ece181b34cc254f720"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000016",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 16,
+      "title": "卖家风险综合评分",
+      "question": "综合 GMV、订单、延迟、低评分、运费和距离，以 Python 生成标准化风险分及解释。",
+      "registry": "TUNING",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_seller",
+        "dim_customer",
+        "dim_geolocation_zip",
+        "fact_order",
+        "fact_order_item",
+        "fact_review",
+        "fact_delivery_state_month"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON",
+        "VEGA_LITE",
+        "MARKDOWN"
+      ],
+      "python_required": true,
+      "chart_or_report_required": true,
+      "public_case_hash": "sha256:58d12430a9cdf3f2ee8496b679cee1bf1f99341a0ff4031a13f1927d38b9b010"
+    },
+    "gold_sql": "select s.seller_id,s.state,count(distinct o.order_id)::bigint orders,sum(i.price_brl)::double precision gmv,avg(o.delivery_delay_days) avg_delay,avg(case when r.review_score<=2 then 1.0 else 0.0 end) low_score_rate,avg(i.freight_value_brl) avg_freight from demo_adb_ecommerce_mart.dim_seller s join demo_adb_ecommerce_mart.fact_order_item i on i.seller_id=s.seller_id join demo_adb_ecommerce_mart.fact_order o on o.order_id=i.order_id left join demo_adb_ecommerce_mart.fact_review r on r.order_id=o.order_id group by s.seller_id,s.state",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:e9f1c469c875b8c8d31b644cd7bf1490c5cffa546d8053bd1bd853cb07f92e59"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000017",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 17,
+      "title": "州对履约趋势",
+      "question": "用窗口函数识别连续三个月恶化的州对，并关联客户卖家规模解释。",
+      "registry": "TUNING",
+      "difficulty": "challenging",
+      "tables": [
+        "fact_delivery_state_month",
+        "dim_customer",
+        "dim_seller",
+        "fact_order",
+        "fact_order_item",
+        "fact_review"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:8bc84aab39ae8ee86b0b758b89573c93d0128dce5064454c283d1f722d5084f3"
+    },
+    "gold_sql": "with x as (select *,lag(avg_delivery_delay_days) over(partition by seller_state,customer_state order by purchase_month) prev_delay from demo_adb_ecommerce_mart.fact_delivery_state_month) select * from x where avg_delivery_delay_days>prev_delay order by seller_state,customer_state,purchase_month",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:0cb8400a2e275ed44ea70b7d932c0a7f9d67d48a57393dd32c4cb72e8e2fac6f"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000018",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 18,
+      "title": "跨平台硬件价格模型",
+      "question": "联合 eBay RAM/SSD、Amazon 品牌价格和 Olist 电子品交易，计算相关性与稳健统计报告。",
+      "registry": "TUNING",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_ebay_listing",
+        "dim_amazon_product",
+        "fact_amazon_review",
+        "dim_product",
+        "dim_category",
+        "fact_order_item",
+        "fact_review"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON",
+        "VEGA_LITE",
+        "MARKDOWN"
+      ],
+      "python_required": true,
+      "chart_or_report_required": true,
+      "public_case_hash": "sha256:9dceaf7f920a29aded8aa3c45d164b5f210472e0458177f6689643175940a779"
+    },
+    "gold_sql": "select brand,ram_gb,ssd_gb,price_usd from demo_adb_ecommerce_mart.dim_ebay_listing where price_usd is not null and (ram_gb is not null or ssd_gb is not null)",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:eb841d096bf46006d86b19c070d6974322bf2312743c4b65b9162648a7ecb4e2"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000019",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 19,
+      "title": "订单状态",
+      "question": "按订单状态统计订单量。",
+      "registry": "HOLDOUT",
+      "difficulty": "simple",
+      "tables": [
+        "fact_order"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:548b54218960eac84c3ddd2bb1da4729a6f19d8c70e5c95cbf6d0d0dd1a8ef1d"
+    },
+    "gold_sql": "select order_status,count(*)::bigint orders from demo_adb_ecommerce_mart.fact_order group by order_status order by orders desc,order_status",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:73058ee04b93bbfbd9366a343bc7bef0e5c45ebc2fbfc950d7a20d098295554a"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000020",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 20,
+      "title": "商品体积与价格",
+      "question": "按类目比较商品体积、重量和成交价。",
+      "registry": "HOLDOUT",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_product",
+        "fact_order_item"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:3c180f3c16a7fe550421c24e69d8427caa25da2391a309913c255ff1eb150ba1"
+    },
+    "gold_sql": "select p.category_name_english,avg(p.length_cm*p.height_cm*p.width_cm) avg_volume_cm3,avg(p.weight_g) avg_weight_g,avg(i.price_brl) avg_price_brl from demo_adb_ecommerce_mart.dim_product p join demo_adb_ecommerce_mart.fact_order_item i on i.product_id=p.product_id group by p.category_name_english order by avg_price_brl desc nulls last",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:87470d66f0ebc66522824813ae6a00331fb2ca6fd2e7da87b8a8a764b9d2a3be"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000021",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 21,
+      "title": "复购间隔",
+      "question": "计算复购客户的首次、末次购买日期和复购间隔。",
+      "registry": "HOLDOUT",
+      "difficulty": "moderate",
+      "tables": [
+        "dim_customer",
+        "fact_order"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:70684fcfeaee519b287776a9202ff2fc3534bb9ce82d8112014fa3a1b83d7c3d"
+    },
+    "gold_sql": "select c.customer_unique_id,min(o.purchase_date) first_date,max(o.purchase_date) last_date,count(distinct o.order_id)::bigint orders,(max(o.purchase_date)-min(o.purchase_date)) repurchase_span_days from demo_adb_ecommerce_mart.dim_customer c join demo_adb_ecommerce_mart.fact_order o on o.customer_id=c.customer_id group by c.customer_unique_id having count(distinct o.order_id)>1 order by orders desc,customer_unique_id",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:e7fe765d259549c57d49481ce048f36dee89b6470469d56ce3d2ec85f46b62ce"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000022",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 22,
+      "title": "评分响应时效",
+      "question": "按评分统计评价创建到答复的平均时长。",
+      "registry": "HOLDOUT",
+      "difficulty": "moderate",
+      "tables": [
+        "fact_review",
+        "fact_order"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:178e283a22a9f9eeca66fa43b7d21892bef972a9da8c0f0aad5e890be954f224"
+    },
+    "gold_sql": "select review_score,avg(extract(epoch from (answered_at-created_at))/3600.0) avg_response_hours,count(*)::bigint reviews from demo_adb_ecommerce_mart.fact_review where answered_at>=created_at group by review_score order by review_score",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:8e2f7906867937aeae20f451708ac4d47a22aa7115a5500b31b5430a8a6e2e80"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000023",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 23,
+      "title": "履约与满意度归因",
+      "question": "分析配送延迟、距离、运费、商品价格、卖家州和客户州与低评分的关系。",
+      "registry": "HOLDOUT",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_customer",
+        "dim_seller",
+        "dim_geolocation_zip",
+        "fact_order",
+        "fact_order_item",
+        "fact_review",
+        "fact_delivery_state_month"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL"
+      ],
+      "outputs": [
+        "CSV"
+      ],
+      "python_required": false,
+      "chart_or_report_required": false,
+      "public_case_hash": "sha256:7fe6e21c2ddd3be21bbf4db7af43089bec9b42628773cb8ef1469d2cbe2c9a2f"
+    },
+    "gold_sql": "select s.state seller_state,c.state customer_state,avg(o.delivery_delay_days) avg_delay,avg(i.freight_value_brl) avg_freight,avg(i.price_brl) avg_price,avg(case when r.review_score<=2 then 1.0 else 0.0 end) low_score_rate,count(distinct o.order_id)::bigint orders from demo_adb_ecommerce_mart.fact_order o join demo_adb_ecommerce_mart.dim_customer c on c.customer_id=o.customer_id join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id join demo_adb_ecommerce_mart.dim_seller s on s.seller_id=i.seller_id left join demo_adb_ecommerce_mart.fact_review r on r.order_id=o.order_id group by s.state,c.state order by orders desc",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:21f405171423878a9b5b685cac8dbca6858dbdc2453360968d7c94a535cb2156"
+  },
+  {
+    "public_case": {
+      "case_id": "ec100000-0000-4000-8000-000000000024",
+      "suite_id": "ecommerce-production",
+      "suite_version": "1.0.0",
+      "dataset_version": "adb-ecommerce-bounded-v1",
+      "ordinal": 24,
+      "title": "季度经营复盘",
+      "question": "形成客户、卖家、类目、支付、评价、履约和跨平台价格的季度经营复盘，输出图表与可验证主张。",
+      "registry": "HOLDOUT",
+      "difficulty": "challenging",
+      "tables": [
+        "dim_customer",
+        "dim_seller",
+        "dim_category",
+        "dim_product",
+        "fact_order",
+        "fact_order_item",
+        "fact_payment",
+        "fact_review",
+        "dim_amazon_product",
+        "dim_ebay_listing"
+      ],
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "PYTHON_ANALYSIS",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "outputs": [
+        "JSON",
+        "VEGA_LITE",
+        "MARKDOWN"
+      ],
+      "python_required": true,
+      "chart_or_report_required": true,
+      "public_case_hash": "sha256:7150ae9ce79486cb5d0321c4bb088bcf474545d4fc0ffb16969b600c6a8c9983"
+    },
+    "gold_sql": "select to_char(o.purchase_date,'YYYY-Q') quarter,count(distinct o.order_id)::bigint orders,sum(i.price_brl)::double precision gmv,avg(r.review_score) avg_score,avg(o.delivery_delay_days) avg_delay from demo_adb_ecommerce_mart.fact_order o join demo_adb_ecommerce_mart.fact_order_item i on i.order_id=o.order_id left join demo_adb_ecommerce_mart.fact_review r on r.order_id=o.order_id group by 1 order by 1",
+    "oracle_policy": "postgres-result-and-artifact-rules@1.0.0",
+    "sealed_case_hash": "sha256:65fe13e553a8b3c95e4214d3adf8dc2446c9d1f6e86cfcc2ed8b832dea0c169c"
+  }
+]

@@ -1,0 +1,162 @@
+import { buildProductTeamArtifactDocument } from "@data-agent/contracts";
+import { describe, expect, it } from "vitest";
+import { projectArtifactDocument } from "../../src/artifacts/artifact-workspace-service.js";
+import { buildQueryEvidenceChartDocument } from "../../src/artifacts/query-evidence-chart.js";
+
+const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+const hash = (character: string) => `sha256:${character.repeat(64)}`;
+
+async function evidence(
+  rows: readonly Readonly<Record<string, string | number | boolean | null>>[] = [
+    { month: "2026-02", order_count: 149 },
+    { month: "2026-01", order_count: 137 },
+  ],
+) {
+  return buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@1.0.0",
+    artifact_ref: {
+      artifact_id: id(1),
+      artifact_type: "QueryEvidence",
+      app_id: id(2),
+      tenant_id: id(3),
+      environment: "test",
+      run_id: id(4),
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "governed-text2sql-agent",
+    task_id: id(5),
+    source_refs: [],
+    projection: {
+      kind: "TABLE",
+      columns: [
+        { key: "month", label: "月份", data_type: "STRING" },
+        { key: "order_count", label: "订单量", data_type: "NUMBER" },
+      ],
+      rows,
+      total_rows: rows.length,
+    },
+    committed_at: "2026-08-22T00:00:00.000Z",
+  });
+}
+
+const documentRef = {
+  artifact_id: id(6),
+  artifact_type: "ArtifactWorkspaceDocument" as const,
+  app_id: id(2),
+  tenant_id: id(3),
+  environment: "test" as const,
+  run_id: id(4),
+  revision: 1,
+  content_hash: hash("0"),
+};
+
+const resolvedContext = {
+  package_id: id(7),
+  package_hash: hash("a"),
+  receipt_id: id(8),
+  receipt_hash: hash("b"),
+};
+
+describe("QueryEvidence chart projection", () => {
+  it("projects ordered trend evidence into a sealed V2 chart preview", async () => {
+    const chart = await buildQueryEvidenceChartDocument({
+      intent: "TREND",
+      document_ref: documentRef,
+      evidence: await evidence(),
+      resolved_context: resolvedContext,
+      unit: "单",
+    });
+    expect(chart?.projection.table.rows).toEqual([
+      { month: "2026-01", order_count: 137 },
+      { month: "2026-02", order_count: 149 },
+    ]);
+    if (!chart) throw new Error("expected chart");
+    const preview = await projectArtifactDocument(chart, chart.document_ref, {
+      offset: 0,
+      limit: 100,
+    });
+    expect(preview).toMatchObject({
+      schema_version: "artifact-preview-result@2.0.0",
+      source_refs: [chart.source_refs[0]],
+      projection: { chart_type: "LINE", unit: "单" },
+      viewport: { offset: 0, total_rows: 2, truncated: false },
+    });
+  });
+
+  it("returns no chart when evidence is scalar or exceeds the intent shape", async () => {
+    await expect(
+      buildQueryEvidenceChartDocument({
+        intent: "TREND",
+        document_ref: documentRef,
+        evidence: await evidence([{ month: "2026-01", order_count: 137 }]),
+        resolved_context: resolvedContext,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      buildQueryEvidenceChartDocument({
+        intent: "COMPOSITION",
+        document_ref: documentRef,
+        evidence: await evidence([
+          { month: "A", order_count: -1 },
+          { month: "B", order_count: 1 },
+        ]),
+        resolved_context: resolvedContext,
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      buildQueryEvidenceChartDocument({
+        intent: "TREND",
+        document_ref: documentRef,
+        evidence: await evidence([
+          { month: "A", order_count: null },
+          { month: "B", order_count: 1 },
+        ]),
+        resolved_context: resolvedContext,
+      }),
+    ).resolves.toBeNull();
+  });
+
+  it.each([
+    ["COMPARISON", "BAR"],
+    ["COMPOSITION", "PIE"],
+  ] as const)("maps %s intent into a deterministic %s projection", async (intent, chartType) => {
+    const chart = await buildQueryEvidenceChartDocument({
+      intent,
+      document_ref: documentRef,
+      evidence: await evidence([
+        { month: "B", order_count: 21 },
+        { month: "A", order_count: 34 },
+      ]),
+      resolved_context: resolvedContext,
+    });
+    expect(chart?.projection.chart_type).toBe(chartType);
+    expect(chart?.projection.table.rows[0]).toMatchObject({ month: "A", order_count: 34 });
+  });
+
+  it("rejects preview after dataset tampering", async () => {
+    const chart = await buildQueryEvidenceChartDocument({
+      intent: "TREND",
+      document_ref: documentRef,
+      evidence: await evidence(),
+      resolved_context: resolvedContext,
+    });
+    if (!chart) throw new Error("expected chart");
+    await expect(
+      projectArtifactDocument(
+        {
+          ...chart,
+          projection: {
+            ...chart.projection,
+            table: {
+              ...chart.projection.table,
+              rows: [{ month: "2026-01", order_count: 9 }, chart.projection.table.rows[1]],
+            },
+          },
+        },
+        chart.document_ref,
+        { offset: 0, limit: 100 },
+      ),
+    ).rejects.toThrow("ARTIFACT_WORKSPACE_CHART_DATASET_HASH_MISMATCH");
+  });
+});

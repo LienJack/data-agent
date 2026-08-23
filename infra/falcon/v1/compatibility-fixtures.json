@@ -1,0 +1,1113 @@
+[
+  {
+    "expected_results": [
+      {
+        "columns": [
+          "product_name",
+          "stock_on_hand"
+        ],
+        "ordered": false,
+        "rows": [
+          [
+            "Deck Of Cards",
+            "44"
+          ],
+          [
+            "Etch A Sketch",
+            "13"
+          ],
+          [
+            "Lego Bricks",
+            "11"
+          ],
+          [
+            "Kids Makeup Kit",
+            "5"
+          ]
+        ]
+      }
+    ],
+    "fixture_kind": "WHERE",
+    "is_order": false,
+    "public_case": {
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "case_id": "bbffcf99-f4f4-520a-b86b-536f5bcd75e4",
+      "database_id": "falcon_db_14",
+      "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+      "difficulty": "moderate",
+      "evidence": "Falcon 固定快照 8ff29caa；db_id=14；question_id=0；4 张表。",
+      "ordinal": 0,
+      "public_case_hash": "sha256:60ae182976ada9aca38adbd4d08d2f97d65b1cc185d76a2db7b9673b3a6b3b91",
+      "question": "怎样获取Commercial区域库存量前十的产品及其当前库存量？",
+      "registry": "TUNING",
+      "runnable": true,
+      "schema": [
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "Product_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Product_Name",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Product_Category",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Product_Cost",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Product_Price",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "toy_products"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "Sale_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Date",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Store_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Product_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Units",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "toy_sales"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "Store_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Store_Name",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Store_City",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Store_Location",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Store_Open_Date",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "toy_stores"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "Store_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Product_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Stock_On_Hand",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "toy_inventory"
+        }
+      ],
+      "status_reason": null,
+      "suite_id": "falcon",
+      "suite_version": "1.0.0"
+    }
+  },
+  {
+    "expected_results": [
+      {
+        "columns": [
+          "城市",
+          "平均行程次数",
+          "平均评分"
+        ],
+        "ordered": false,
+        "rows": [
+          [
+            "Chicago",
+            "12.285714285714286",
+            "4.514285714285714"
+          ],
+          [
+            "Los Angeles",
+            "10.75",
+            "4.4624999999999995"
+          ],
+          [
+            "Miami",
+            "8.833333333333334",
+            "4.683333333333334"
+          ],
+          [
+            "New York",
+            "10.75",
+            "4.6499999999999995"
+          ],
+          [
+            "San Francisco",
+            "9.375",
+            "4.512499999999999"
+          ]
+        ]
+      }
+    ],
+    "fixture_kind": "COUNT(",
+    "is_order": false,
+    "public_case": {
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "case_id": "dd50806f-c6dd-5fd9-a8c2-6b07ad5c0ba5",
+      "database_id": "falcon_db_20",
+      "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+      "difficulty": "moderate",
+      "evidence": "Falcon 固定快照 8ff29caa；db_id=20；question_id=1；2 张表。",
+      "ordinal": 1,
+      "public_case_hash": "sha256:235427e3d11beadedf66b774758a9f965c2cafc0ae01dbcd5ef80b67945bcc65",
+      "question": "如何统计各城市活跃司机的平均行程次数及其平均评分？",
+      "registry": "TUNING",
+      "runnable": true,
+      "schema": [
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "Driver_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Name",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Age",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "City",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Experience_Years",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "double precision",
+              "name": "Average_Rating",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Active_Status",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "city_ride_drivers_data"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "Ride_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Driver_ID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "City",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Date",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "double precision",
+              "name": "Distance_km",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "Duration_min",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "double precision",
+              "name": "Fare",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "double precision",
+              "name": "Rating",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Promo_Code",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "city_ride_rides_data"
+        }
+      ],
+      "status_reason": null,
+      "suite_id": "falcon",
+      "suite_version": "1.0.0"
+    }
+  },
+  {
+    "expected_results": [
+      {
+        "columns": [
+          "科目名称",
+          "平均分"
+        ],
+        "ordered": false,
+        "rows": [
+          [
+            "Biology",
+            "94.5"
+          ],
+          [
+            "Computer Science",
+            "82.5"
+          ],
+          [
+            "English",
+            "80.0"
+          ],
+          [
+            "Geography",
+            "94.5"
+          ],
+          [
+            "History",
+            "83.5"
+          ],
+          [
+            "Mathematics",
+            "80.5"
+          ],
+          [
+            "Physics",
+            "89.5"
+          ],
+          [
+            "Science",
+            "90.0"
+          ],
+          [
+            "Chemistry",
+            "89.0"
+          ],
+          [
+            "Swahili",
+            "73.0"
+          ]
+        ]
+      }
+    ],
+    "fixture_kind": "JOIN",
+    "is_order": false,
+    "public_case": {
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "case_id": "015b9911-1ab5-5ab0-94fb-d955b0b1bbf8",
+      "database_id": "falcon_db_16",
+      "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+      "difficulty": "moderate",
+      "evidence": "Falcon 固定快照 8ff29caa；db_id=16；question_id=2；4 张表。",
+      "ordinal": 2,
+      "public_case_hash": "sha256:1c5c28b2dab4bd2cda8b4fd8352899d9dc2a20259218605a351212ac378193ba",
+      "question": "筛选每个科目中成绩排名前三的学生，计算这些学生的平均分及对应科目名称。",
+      "registry": "TUNING",
+      "runnable": true,
+      "schema": [
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "StudentID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "FirstName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "LastName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "DateOfBirth",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Address",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "ContactNumber",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Email",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_students"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "TeacherID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "FirstName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "LastName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "DateOfBirth",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Address",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "ContactNumber",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Email",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_teachers"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "MarkID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "StudentID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "SubjectID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "TeacherID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "MarkObtained",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "ExamDate",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_marks"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "SubjectID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "SubjectName",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_subjects"
+        }
+      ],
+      "status_reason": null,
+      "suite_id": "falcon",
+      "suite_version": "1.0.0"
+    }
+  },
+  {
+    "expected_results": [
+      {
+        "columns": [
+          "类别",
+          "应用名称",
+          "价格"
+        ],
+        "ordered": true,
+        "rows": [
+          [
+            "DATING",
+            "AMBW Dating App: Asian Men Black Women Interracial",
+            "$7.99"
+          ],
+          [
+            "PERSONALIZATION",
+            "BIG Launcher",
+            "$9.99"
+          ],
+          [
+            "EVENTS",
+            "BP Fitness Lead Scanner",
+            "$109.99"
+          ],
+          [
+            "VIDEO_PLAYERS",
+            "BSPlayer",
+            "$5.99"
+          ],
+          [
+            "PARENTING",
+            "Baby Connect (activity log)",
+            "$4.99"
+          ],
+          [
+            "MAPS_AND_NAVIGATION",
+            "BackCountry Navigator TOPO GPS PRO",
+            "$11.99"
+          ],
+          [
+            "MEDICAL",
+            "EP Cook Book",
+            "$200.0"
+          ],
+          [
+            "BOOKS_AND_REFERENCE",
+            "FN FAL rifle explained",
+            "$6.49"
+          ],
+          [
+            "BOOKS_AND_REFERENCE",
+            "FN model 1900 pistol explained",
+            "$6.49"
+          ],
+          [
+            "BOOKS_AND_REFERENCE",
+            "FN pistol model 1903 explained",
+            "$6.49"
+          ],
+          [
+            "AUTO_AND_VEHICLES",
+            "FORD V SERIES CALC - NO LIMIT",
+            "$9.99"
+          ],
+          [
+            "WEATHER",
+            "Florida Tides & Weather",
+            "$6.99"
+          ],
+          [
+            "EDUCATION",
+            "Fuzzy Numbers: Pre-K Number Foundation",
+            "$5.99"
+          ],
+          [
+            "TOOLS",
+            "G-NetReport Pro",
+            "$25.99"
+          ],
+          [
+            "SPORTS",
+            "Golfshot Plus: Golf GPS",
+            "$29.99"
+          ],
+          [
+            "PHOTOGRAPHY",
+            "Guide to Nikon Df",
+            "$29.99"
+          ],
+          [
+            "FINANCE",
+            "I AM RICH PRO PLUS",
+            "$399.99"
+          ],
+          [
+            "FINANCE",
+            "I Am Rich Premium",
+            "$399.99"
+          ],
+          [
+            "FAMILY",
+            "I Am Rich Pro",
+            "$399.99"
+          ],
+          [
+            "FINANCE",
+            "I am Rich",
+            "$399.99"
+          ],
+          [
+            "FAMILY",
+            "I am Rich Plus",
+            "$399.99"
+          ],
+          [
+            "FINANCE",
+            "I am Rich!",
+            "$399.99"
+          ],
+          [
+            "FINANCE",
+            "I am rich (Most expensive app)",
+            "$399.99"
+          ],
+          [
+            "FINANCE",
+            "I am rich(premium)",
+            "$399.99"
+          ],
+          [
+            "LIFESTYLE",
+            "I'm Rich - Trump Edition",
+            "$400.0"
+          ],
+          [
+            "BUSINESS",
+            "Lean EQ",
+            "$89.99"
+          ],
+          [
+            "TRAVEL_AND_LOCAL",
+            "Maps & GPS Navigation OsmAnd+",
+            "$8.99"
+          ],
+          [
+            "ENTERTAINMENT",
+            "My Talking Pet",
+            "$4.99"
+          ],
+          [
+            "FOOD_AND_DRINK",
+            "Paprika Recipe Manager",
+            "$4.99"
+          ],
+          [
+            "SHOPPING",
+            "Penny Finder",
+            "$2.99"
+          ],
+          [
+            "NEWS_AND_MAGAZINES",
+            "Q Alerts: QAnon Drop Notifications, Research +++",
+            "$0.99"
+          ],
+          [
+            "LIBRARIES_AND_DEMO",
+            "Socle Commun BO du 23-04-2015",
+            "$0.99"
+          ],
+          [
+            "BOOKS_AND_REFERENCE",
+            "The FN HP pistol explained",
+            "$6.49"
+          ],
+          [
+            "GAME",
+            "The World Ends With You",
+            "$17.99"
+          ],
+          [
+            "HEALTH_AND_FITNESS",
+            "Vital Tones EI Pro",
+            "$9.99"
+          ],
+          [
+            "SOCIAL",
+            "W-History Standalone",
+            "$0.99"
+          ],
+          [
+            "SOCIAL",
+            "WhatsFake Pro (Ad free)",
+            "$0.99"
+          ],
+          [
+            "ART_AND_DESIGN",
+            "X Launcher Prime: With OS Style Theme & No Ads",
+            "$1.99"
+          ],
+          [
+            "ART_AND_DESIGN",
+            "X Launcher Pro - IOS Style Theme & Control Center",
+            "$1.99"
+          ],
+          [
+            "ART_AND_DESIGN",
+            "X Launcher Pro: PhoneX Theme, OS11 Control Center",
+            "$1.99"
+          ],
+          [
+            "COMMUNICATION",
+            "Z PIVOT",
+            "$19.99"
+          ],
+          [
+            "PRODUCTIVITY",
+            "cronometra-br",
+            "$154.99"
+          ],
+          [
+            "FAMILY",
+            "most expensive app (H)",
+            "$399.99"
+          ]
+        ]
+      }
+    ],
+    "fixture_kind": "ORDER BY",
+    "is_order": true,
+    "public_case": {
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "case_id": "d7945c5f-c544-56af-a8b1-73f5af89ee53",
+      "database_id": "falcon_db_08",
+      "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+      "difficulty": "moderate",
+      "evidence": "Falcon 固定快照 8ff29caa；db_id=8；question_id=7；1 张表。",
+      "ordinal": 7,
+      "public_case_hash": "sha256:e7276bfe65cf82728ebbfdff3b5783734d6b7e2eefbb357f2a91f8cb4d7fd030",
+      "question": "列出每个类别中价格最高的付费应用，并按应用名称排序",
+      "registry": "TUNING",
+      "runnable": true,
+      "schema": [
+        {
+          "columns": [
+            {
+              "data_type": "text",
+              "name": "app",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "category",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "double precision",
+              "name": "rating",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "reviews",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "size",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "installs",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "type",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "price",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "content_rating",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "genres",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "last_updated",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "current_ver",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "android_ver",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "googleplaystore"
+        }
+      ],
+      "status_reason": null,
+      "suite_id": "falcon",
+      "suite_version": "1.0.0"
+    }
+  },
+  {
+    "expected_results": [
+      {
+        "columns": [
+          "科目名称",
+          "平均分"
+        ],
+        "ordered": false,
+        "rows": [
+          [
+            "Science",
+            "90.0"
+          ],
+          [
+            "Physics",
+            "89.5"
+          ],
+          [
+            "Biology",
+            "94.5"
+          ]
+        ]
+      }
+    ],
+    "fixture_kind": "WITH",
+    "is_order": false,
+    "public_case": {
+      "capabilities": [
+        "TEXT_TO_SQL",
+        "DATA_AGENT_END_TO_END"
+      ],
+      "case_id": "e43971c4-1872-551d-b888-3839d4429ee3",
+      "database_id": "falcon_db_16",
+      "dataset_version": "falcon-fixed-8ff29caa-postgres-v1",
+      "difficulty": "moderate",
+      "evidence": "Falcon 固定快照 8ff29caa；db_id=16；question_id=3；4 张表。",
+      "ordinal": 3,
+      "public_case_hash": "sha256:d8f56b797797499c574e9a5cebc85b32e68da230338207af9dbd49b00ddafb18",
+      "question": "找出各科平均分高于全校总平均分且教师年龄大于40岁（截止2025年12月31号）的科目名称及其平均分",
+      "registry": "TUNING",
+      "runnable": true,
+      "schema": [
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "StudentID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "FirstName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "LastName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "DateOfBirth",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Address",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "ContactNumber",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Email",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_students"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "TeacherID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "FirstName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "LastName",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "DateOfBirth",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Address",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "ContactNumber",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "Email",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_teachers"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "MarkID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "StudentID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "SubjectID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "TeacherID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "bigint",
+              "name": "MarkObtained",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "ExamDate",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_marks"
+        },
+        {
+          "columns": [
+            {
+              "data_type": "bigint",
+              "name": "SubjectID",
+              "nullable": true,
+              "primary_key": false
+            },
+            {
+              "data_type": "text",
+              "name": "SubjectName",
+              "nullable": true,
+              "primary_key": false
+            }
+          ],
+          "name": "school_subjects"
+        }
+      ],
+      "status_reason": null,
+      "suite_id": "falcon",
+      "suite_version": "1.0.0"
+    }
+  }
+]

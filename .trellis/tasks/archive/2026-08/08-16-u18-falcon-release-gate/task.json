@@ -1,0 +1,33 @@
+{
+  "id": "u18-falcon-release-gate",
+  "name": "u18-falcon-release-gate",
+  "title": "U18 Greenfield Semantic Mastra Team Falcon 端到端发布门禁",
+  "description": "冻结计划对应 U18 的独立实施、验证与 scoped commit。",
+  "status": "completed",
+  "dev_type": "fullstack",
+  "scope": "contracts,evals,platform,worker,web,postgres",
+  "package": "@data-agent/contracts,@data-agent/evals,@data-agent/platform,@data-agent/worker,@data-agent/web",
+  "priority": "P0",
+  "creator": "lienli",
+  "assignee": "lienli",
+  "createdAt": "2026-08-16",
+  "completedAt": "2026-08-18",
+  "branch": null,
+  "base_branch": "feat/datafoundry-platform-modules",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": "08-16-datafoundry-coa-greenfield",
+  "relatedFiles": [
+    "packages/contracts/src/evals/falcon-semantic-release-set.ts",
+    "apps/worker/src/evals/falcon-team-runner.ts",
+    "apps/worker/src/evals/falcon-team-gate-cli.ts",
+    "apps/worker/src/evals/falcon-final-gate-cli.ts",
+    "artifacts/falcon-agent-gate/falcon-agent-release-gate.json",
+    "artifacts/u17-workspace-journey/workspace-journey-evidence.json"
+  ],
+  "notes": "Use a dedicated fresh PostgreSQL 17 evaluation database; never rewrite the existing 10653 ledger. Real Provider execution is authorized only in U18.",
+  "meta": {}
+}

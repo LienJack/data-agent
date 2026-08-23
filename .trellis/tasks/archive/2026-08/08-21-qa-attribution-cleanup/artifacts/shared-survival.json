@@ -1,0 +1,30 @@
+{
+  "schema_version": "legacy-attribution-shared-survival@1.0.0",
+  "inventory_digest": "sha256:eef3d45e2b3aeade797aa7e229070160c13abbe9a3608fc23054e439c1b6f3c7",
+  "operation_id": "00000000-0000-4000-8000-000000000822",
+  "before": {
+    "runs": 39,
+    "artifacts": 90,
+    "qa_conversations": 9,
+    "migration_ledger": 102,
+    "legacy_attribution_cleanup_receipts": 0
+  },
+  "immediately_after_cleanup": {
+    "runs": 39,
+    "artifacts": 90,
+    "qa_conversations": 9,
+    "migration_ledger": 102,
+    "legacy_attribution_cleanup_receipts": 1
+  },
+  "after_scope_repair": {
+    "runs": 39,
+    "artifacts": 90,
+    "qa_conversations": 9,
+    "migration_ledger": 103,
+    "legacy_attribution_cleanup_receipts": 1
+  },
+  "shared_counts_unchanged": true,
+  "expected_receipt_delta": 1,
+  "expected_scope_repair_migration_delta": 1,
+  "controlled_attribution_eval_preserved": true
+}
