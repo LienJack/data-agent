@@ -33,6 +33,7 @@ const trustedSemanticContextCapabilities = new WeakSet<object>();
 export interface RunProviderDispatchCapability {
   invoke(input: {
     readonly logical_call_id: string;
+    readonly analysis_python?: RunAnalysisPythonGenerationRequest;
     readonly turn?: Readonly<{
       kind: "SPECIALIST";
       stage: "TEXT2SQL" | "REPORT";
@@ -40,6 +41,15 @@ export interface RunProviderDispatchCapability {
       objective: string;
     }>;
   }): Promise<PortResult<RunModelProviderResult>>;
+}
+
+export interface RunAnalysisPythonGenerationRequest {
+  readonly node_id: string;
+  readonly generation_attempt: 0 | 1;
+  readonly system: string;
+  readonly prompt: string;
+  readonly response_schema_version: "analysis-python-source@1.0.0";
+  readonly max_output_tokens: 8_192;
 }
 
 export type RunModelProviderResult = Readonly<{
@@ -60,6 +70,7 @@ export interface RunBoundProviderDispatcher {
     readonly effective_config: EffectiveRunConfigReceiptCandidate;
     readonly context_receipt: ContextReceiptBinding;
     readonly logical_call_id: string;
+    readonly analysis_python?: RunAnalysisPythonGenerationRequest;
     readonly turn?: Parameters<RunProviderDispatchCapability["invoke"]>[0]["turn"];
     readonly signal: AbortSignal;
   }): Promise<PortResult<RunModelProviderResult>>;
@@ -208,6 +219,7 @@ export function createRunExecutionContext({
             effective_config: effectiveConfig,
             context_receipt: contextReceipt,
             logical_call_id: callId,
+            ...(input.analysis_python ? { analysis_python: input.analysis_python } : {}),
             ...(input.turn ? { turn: input.turn } : {}),
             signal: runSignal,
           });

@@ -5,7 +5,11 @@ import {
   type ModelProviderPort,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
-import { createDeepSeekPythonGenerationProvider } from "../../src/analysis/deepseek-generation-provider.js";
+import {
+  createDeepSeekPythonGenerationProvider,
+  createRunBoundDeepSeekPythonGenerationProvider,
+} from "../../src/analysis/deepseek-generation-provider.js";
+import type { RunProviderDispatchCapability } from "../../src/runs/run-execution-context.js";
 
 const id = (suffix: number) => `32000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -135,6 +139,44 @@ function generationRequest() {
 }
 
 describe("DeepSeek Python generation provider", () => {
+  it("uses the run-bound capability for governed production generation", async () => {
+    const invoke = vi.fn(async (input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) => ({
+      ok: true as const,
+      value: {
+        output_text:
+          '{"schema_version":"analysis-python-source@1.0.0","python_source":"def main(sdk):\\n    pass\\n"}',
+        tool_calls: [],
+        projection: {
+          invocation_id: input.logical_call_id,
+          status: "COMPLETED" as const,
+          provider: "deepseek",
+          model_id: "deepseek-v4-flash",
+        },
+      },
+    }));
+    const generation = createRunBoundDeepSeekPythonGenerationProvider({ invoke });
+    const request = generationRequest();
+    const response = await generation.generate(request);
+    const call = invoke.mock.calls[0]?.[0];
+    expect(call).toMatchObject({
+      logical_call_id: expect.any(String),
+      analysis_python: {
+        node_id: request.node_id,
+        generation_attempt: 0,
+        response_schema_version: "analysis-python-source@1.0.0",
+        max_output_tokens: 8_192,
+      },
+    });
+    expect(response).toMatchObject({
+      provider: "deepseek",
+      model_id: "deepseek-v4-flash",
+      provider_invocation_ref: {
+        resource_id: call?.logical_call_id,
+        resource_revision: 1,
+      },
+    });
+  });
+
   it("binds the fixed model invocation and returns its durable receipt reference", async () => {
     const captured: { request: AuthoritativeModelProviderInvocation | null } = { request: null };
     const provider: ModelProviderPort = {
