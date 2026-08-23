@@ -1,39 +1,3 @@
-import "server-only";
-import type {
-  PortResult,
-  SemanticCandidateDraft,
-  SemanticCommitPublishInput,
-  SemanticDecisionInput,
-  SemanticPreparePublishInput,
-  SemanticRollbackInput,
-} from "@data-agent/contracts";
-import {
-  type SemanticCandidateCreateResult,
-  semanticCandidateCreateResultSchema,
-} from "@data-agent/contracts";
-import {
-  type AppCapability,
-  type AppCapabilityRole,
-  adaptPgPool,
-  type SqlClient,
-  type SqlPool,
-  type TransactionalCapabilityAuthorizer,
-  withAppTransaction,
-} from "@data-agent/platform";
-import type pg from "pg";
-import type { SemanticAuthorityContext } from "./semantic-authority";
-import {
-  isPublicSemanticGovernanceErrorCode,
-  type PublicSemanticGovernanceErrorCode,
-  publicSemanticGovernanceError,
-} from "./semantic-governance-error";
-import type {
-  DecisionResult,
-  DomainInfo,
-  SemanticGovernanceService,
-  SemanticScope,
-} from "./semantic-governance-service";
-import { SemanticGovernanceError } from "./semantic-governance-service";
 import type {
   ChangeClass,
   DiffEntry,
@@ -41,16 +5,75 @@ import type {
   InboxGroup,
   InboxItem,
   LineageRecord,
-  ReviewDecision,
+  PortResult,
+  SemanticReviewDecisionView as ReviewDecision,
   ReviewDecisionRecord,
   Reviewer,
   ReviewPacketStatus,
   RevisionRecord,
   RiskLevel,
-  SemanticDiff,
+  SemanticApplicationAuthority,
+  SemanticCandidateCreateResult,
+  SemanticCandidateDraft,
+  SemanticCommitPublishInput,
+  SemanticDecisionInput,
+  SemanticGovernanceDomainInfo,
+  SemanticGovernancePort,
+  SemanticPreparePublishInput,
   SemanticReviewPacket,
   SemanticRole,
-} from "./semantic-types";
+  SemanticRollbackInput,
+} from "@data-agent/contracts";
+import { semanticCandidateCreateResultSchema } from "@data-agent/contracts";
+import type pg from "pg";
+import {
+  adaptPgPool,
+  type SqlClient,
+  type SqlPool,
+  withAppTransaction,
+} from "../persistence/transaction.js";
+import type { AppCapability, AppCapabilityRole } from "../tenancy/capability.js";
+import type { TransactionalCapabilityAuthorizer } from "../tenancy/transactional-authority.internal.js";
+
+type SemanticScope = SemanticApplicationAuthority["scope"];
+type DomainInfo = SemanticGovernanceDomainInfo;
+type DecisionResult = import("@data-agent/contracts").SemanticGovernanceDecisionResult;
+type SemanticDiff = import("@data-agent/contracts").SemanticReviewDiff;
+
+const GOVERNANCE_ERRORS = {
+  SEMANTIC_SCOPE_FORBIDDEN: "当前身份无权访问该语义域。",
+  SEMANTIC_PACKET_NOT_FOUND: "语义审核包不存在。",
+  SEMANTIC_CANDIDATE_INVALID: "语义候选输入无效。",
+  SEMANTIC_CANDIDATE_CONFLICT: "相同幂等键已绑定其他语义候选内容。",
+  SEMANTIC_PUBLISH_CONFLICT: "语义发布状态已变化，请刷新后重试。",
+  SEMANTIC_GOVERNANCE_UNAVAILABLE: "语义治理服务暂时不可用。",
+} as const;
+
+type GovernanceErrorCode = keyof typeof GOVERNANCE_ERRORS;
+
+class SemanticGovernanceAdapterError extends Error {
+  override readonly name = "SemanticGovernanceAdapterError";
+
+  constructor(
+    readonly code: string,
+    message: string,
+    _status = 500,
+    readonly retryable = false,
+  ) {
+    super(message);
+  }
+}
+
+function isGovernanceErrorCode(code: string): code is GovernanceErrorCode {
+  return code in GOVERNANCE_ERRORS;
+}
+
+function governanceError(
+  code: GovernanceErrorCode,
+  retryable = false,
+): SemanticGovernanceAdapterError {
+  return new SemanticGovernanceAdapterError(code, GOVERNANCE_ERRORS[code], 500, retryable);
+}
 
 // ─── 状态映射 ──────────────────────────────────────────────────────────────────
 
@@ -200,7 +223,7 @@ function pluckStringArray(payload: Record<string, unknown>, key: string): string
 }
 
 function assertAuthorityMatches(
-  authority: SemanticAuthorityContext,
+  authority: SemanticApplicationAuthority,
   capability: AppCapability,
 ): void {
   if (
@@ -212,35 +235,31 @@ function assertAuthorityMatches(
     (authority.scope.semanticDomain !== "all" &&
       !authority.allowedDomains.includes(authority.scope.semanticDomain))
   ) {
-    throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+    throw governanceError("SEMANTIC_SCOPE_FORBIDDEN");
   }
 }
 
-function assertInputDomainMatches(
-  authority: SemanticAuthorityContext,
+function inputDomainMatches(
+  authority: SemanticApplicationAuthority,
   semanticDomain: string,
-): void {
-  if (authority.scope.semanticDomain !== semanticDomain) {
-    throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
-  }
+): boolean {
+  return authority.scope.semanticDomain === semanticDomain;
 }
 
-function authorizedReadDomains(authority: SemanticAuthorityContext): readonly string[] {
+function authorizedReadDomains(authority: SemanticApplicationAuthority): readonly string[] {
   return authority.scope.semanticDomain === "all"
     ? authority.allowedDomains
     : [authority.scope.semanticDomain];
 }
 
 function mapSemanticDatabaseError(error: unknown): PortResult<never> | null {
-  if (error instanceof SemanticGovernanceError) {
-    const code = isPublicSemanticGovernanceErrorCode(error.code)
-      ? error.code
-      : "SEMANTIC_GOVERNANCE_UNAVAILABLE";
+  if (error instanceof SemanticGovernanceAdapterError) {
+    const code = isGovernanceErrorCode(error.code) ? error.code : "SEMANTIC_GOVERNANCE_UNAVAILABLE";
     return {
       ok: false,
       error: {
         code,
-        message: publicSemanticGovernanceError(code).message,
+        message: governanceError(code).message,
         retryable: error.retryable,
       },
     };
@@ -254,7 +273,7 @@ function mapSemanticDatabaseError(error: unknown): PortResult<never> | null {
     typeof candidate?.message === "string"
       ? candidate.message.match(/SEMANTIC_[A-Z][A-Z0-9_]{1,126}/)?.[0]
       : undefined;
-  const markerMapping: Record<string, readonly [PublicSemanticGovernanceErrorCode, boolean]> = {
+  const markerMapping: Record<string, readonly [GovernanceErrorCode, boolean]> = {
     SEMANTIC_CANDIDATE_INVALID: ["SEMANTIC_CANDIDATE_INVALID", false],
     SEMANTIC_CANDIDATE_IDEMPOTENCY_CONFLICT: ["SEMANTIC_CANDIDATE_CONFLICT", false],
     SEMANTIC_SCOPE_FORBIDDEN: ["SEMANTIC_SCOPE_FORBIDDEN", false],
@@ -267,21 +286,21 @@ function mapSemanticDatabaseError(error: unknown): PortResult<never> | null {
   const markerMappingEntry = marker ? markerMapping[marker] : undefined;
   if (markerMappingEntry) {
     const [code, retryable] = markerMappingEntry;
-    const mapped = publicSemanticGovernanceError(code, retryable);
+    const mapped = governanceError(code, retryable);
     return {
       ok: false,
       error: { code: mapped.code, message: mapped.message, retryable },
     };
   }
   if (candidate?.code === "40001") {
-    const mapped = publicSemanticGovernanceError("SEMANTIC_PUBLISH_CONFLICT");
+    const mapped = governanceError("SEMANTIC_PUBLISH_CONFLICT");
     return {
       ok: false,
       error: { code: mapped.code, message: mapped.message, retryable: true },
     };
   }
   if (candidate?.code === "42501") {
-    const mapped = publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+    const mapped = governanceError("SEMANTIC_SCOPE_FORBIDDEN");
     return {
       ok: false,
       error: { code: mapped.code, message: mapped.message, retryable: false },
@@ -292,7 +311,7 @@ function mapSemanticDatabaseError(error: unknown): PortResult<never> | null {
 
 // ─── 服务实现 ──────────────────────────────────────────────────────────────────
 
-export class PostgresSemanticGovernanceService implements SemanticGovernanceService {
+export class PostgresSemanticGovernanceService implements SemanticGovernancePort {
   private readonly pool: SqlPool;
 
   constructor(
@@ -303,17 +322,13 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   }
 
   private async transaction<T>(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     access: "READ" | "WRITE",
     allowedRoles: readonly AppCapabilityRole[],
     operationName: string,
     work: (client: SqlClient, scope: SemanticScope, capability: AppCapability) => Promise<T>,
-  ): Promise<T> {
-    if (authority.authority !== "POSTGRESQL") {
-      throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
-    }
-
-    const transaction = await withAppTransaction(
+  ): Promise<PortResult<T>> {
+    return withAppTransaction(
       this.pool,
       this.authorizer,
       authority.capabilityInput,
@@ -325,25 +340,19 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
       async ({ client, capability }) => {
         assertAuthorityMatches(authority, capability);
         if (!allowedRoles.includes(capability.role)) {
-          throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
+          throw governanceError("SEMANTIC_SCOPE_FORBIDDEN");
         }
         await setSemanticScopeContext(client, authority.scope);
         return work(client, authority.scope, capability);
       },
     );
-
-    if (!transaction.ok) {
-      if (isPublicSemanticGovernanceErrorCode(transaction.error.code)) {
-        throw publicSemanticGovernanceError(transaction.error.code, transaction.error.retryable);
-      }
-      throw publicSemanticGovernanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE", true);
-    }
-    return transaction.value;
   }
 
   // ── listDomains ───────────────────────────────────────────────────────────────
 
-  async listDomains(authority: SemanticAuthorityContext): Promise<DomainInfo[]> {
+  async listDomains(
+    authority: SemanticApplicationAuthority,
+  ): Promise<PortResult<readonly DomainInfo[]>> {
     return this.transaction(
       authority,
       "READ",
@@ -378,9 +387,9 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── getInboxItems ─────────────────────────────────────────────────────────────
 
   async getInboxItems(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     group: InboxGroup,
-  ): Promise<InboxItem[]> {
+  ): Promise<PortResult<readonly InboxItem[]>> {
     return this.transaction(
       authority,
       "READ",
@@ -533,9 +542,9 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── getPacketDetail ───────────────────────────────────────────────────────────
 
   async getPacketDetail(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     packetId: string,
-  ): Promise<SemanticReviewPacket> {
+  ): Promise<PortResult<SemanticReviewPacket>> {
     return this.transaction(
       authority,
       "READ",
@@ -562,10 +571,10 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
         );
 
         if (taskResult.rows.length === 0) {
-          throw publicSemanticGovernanceError("SEMANTIC_PACKET_NOT_FOUND");
+          throw governanceError("SEMANTIC_PACKET_NOT_FOUND");
         }
         if (taskResult.rows.length !== 1) {
-          throw publicSemanticGovernanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE");
+          throw governanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE");
         }
 
         const task = taskResult.rows[0] as NonNullable<(typeof taskResult.rows)[0]>;
@@ -643,7 +652,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           reviewerName: row.principal,
           decision: row.decision === "APPROVE" ? "approved" : "rejected",
           decidedAt: row.created_at,
-          comment: row.decision_reason ?? undefined,
+          ...(row.decision_reason === null ? {} : { comment: row.decision_reason }),
           reauthenticated: false,
         }));
 
@@ -654,7 +663,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
             name: d.reviewerName,
             decision: d.decision,
             decidedAt: d.decidedAt,
-            comment: d.comment,
+            ...(d.comment === undefined ? {} : { comment: d.comment }),
           })),
         ];
 
@@ -697,10 +706,19 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── submitDecision ────────────────────────────────────────────────────────────
 
   async submitDecision(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     input: SemanticDecisionInput,
-  ): Promise<DecisionResult> {
-    assertInputDomainMatches(authority, input.semantic_domain);
+  ): Promise<PortResult<DecisionResult>> {
+    if (!inputDomainMatches(authority, input.semantic_domain)) {
+      return {
+        ok: false,
+        error: {
+          code: "SEMANTIC_SCOPE_FORBIDDEN",
+          message: GOVERNANCE_ERRORS.SEMANTIC_SCOPE_FORBIDDEN,
+          retryable: false,
+        },
+      };
+    }
     return this.transaction(
       authority,
       "WRITE",
@@ -731,7 +749,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
 
         const rpcResult = result.rows[0]?.record_review_decision;
         if (!rpcResult) {
-          throw new SemanticGovernanceError("RPC_FAILED", "审核决策 RPC 调用失败", 500);
+          throw new SemanticGovernanceAdapterError("RPC_FAILED", "审核决策 RPC 调用失败", 500);
         }
 
         return {
@@ -741,8 +759,12 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           outcome: (rpcResult.outcome ?? "PENDING") as "APPROVED" | "VETOED" | "PENDING",
           totalApprovals: (rpcResult.total_approvals as number) ?? 0,
           totalRejections: (rpcResult.total_rejections as number) ?? 0,
-          requiredApprovals: rpcResult.required_approvals as number | undefined,
-          decisionSetDigest: rpcResult.decision_set_digest as string | undefined,
+          ...(typeof rpcResult.required_approvals === "number"
+            ? { requiredApprovals: rpcResult.required_approvals }
+            : {}),
+          ...(typeof rpcResult.decision_set_digest === "string"
+            ? { decisionSetDigest: rpcResult.decision_set_digest }
+            : {}),
         };
       },
     );
@@ -751,10 +773,19 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── createCandidate ───────────────────────────────────────────────────────────
 
   async createCandidate(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     input: SemanticCandidateDraft,
-  ): Promise<SemanticCandidateCreateResult> {
-    assertInputDomainMatches(authority, input.semantic_domain);
+  ): Promise<PortResult<SemanticCandidateCreateResult>> {
+    if (!inputDomainMatches(authority, input.semantic_domain)) {
+      return {
+        ok: false,
+        error: {
+          code: "SEMANTIC_SCOPE_FORBIDDEN",
+          message: GOVERNANCE_ERRORS.SEMANTIC_SCOPE_FORBIDDEN,
+          retryable: false,
+        },
+      };
+    }
     return this.transaction(
       authority,
       "WRITE",
@@ -789,7 +820,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
           authority: "POSTGRESQL",
         });
         if (!parsed.success) {
-          throw publicSemanticGovernanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE", true);
+          throw governanceError("SEMANTIC_GOVERNANCE_UNAVAILABLE", true);
         }
         return parsed.data;
       },
@@ -799,10 +830,19 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── preparePublish ────────────────────────────────────────────────────────────
 
   async preparePublish(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     input: SemanticPreparePublishInput,
-  ): Promise<{ attemptId: string }> {
-    assertInputDomainMatches(authority, input.semantic_domain);
+  ): Promise<PortResult<{ attemptId: string }>> {
+    if (!inputDomainMatches(authority, input.semantic_domain)) {
+      return {
+        ok: false,
+        error: {
+          code: "SEMANTIC_SCOPE_FORBIDDEN",
+          message: GOVERNANCE_ERRORS.SEMANTIC_SCOPE_FORBIDDEN,
+          retryable: false,
+        },
+      };
+    }
     return this.transaction(
       authority,
       "WRITE",
@@ -822,12 +862,12 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
         );
 
         if (taskResult.rows.length === 0) {
-          throw new SemanticGovernanceError("PACKET_NOT_FOUND", "审核包不存在", 404);
+          throw new SemanticGovernanceAdapterError("PACKET_NOT_FOUND", "审核包不存在", 404);
         }
 
         const candidateId = taskResult.rows[0]?.candidate_id;
         if (!candidateId) {
-          throw new SemanticGovernanceError("NO_CANDIDATE", "审核包没有关联的提案", 400);
+          throw new SemanticGovernanceAdapterError("NO_CANDIDATE", "审核包没有关联的提案", 400);
         }
 
         const command = {
@@ -854,7 +894,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
 
         const rpcResult = result.rows[0]?.prepare_publish_attempt;
         if (!rpcResult) {
-          throw new SemanticGovernanceError("RPC_FAILED", "准备发布 RPC 调用失败", 500);
+          throw new SemanticGovernanceAdapterError("RPC_FAILED", "准备发布 RPC 调用失败", 500);
         }
 
         return { attemptId: rpcResult.attempt_id as string };
@@ -865,10 +905,19 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── commitPublish ─────────────────────────────────────────────────────────────
 
   async commitPublish(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     input: SemanticCommitPublishInput,
-  ): Promise<{ releaseId: string }> {
-    assertInputDomainMatches(authority, input.semantic_domain);
+  ): Promise<PortResult<{ releaseId: string }>> {
+    if (!inputDomainMatches(authority, input.semantic_domain)) {
+      return {
+        ok: false,
+        error: {
+          code: "SEMANTIC_SCOPE_FORBIDDEN",
+          message: GOVERNANCE_ERRORS.SEMANTIC_SCOPE_FORBIDDEN,
+          retryable: false,
+        },
+      };
+    }
     return this.transaction(
       authority,
       "WRITE",
@@ -898,7 +947,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
         );
 
         if (attemptResult.rows.length === 0) {
-          throw new SemanticGovernanceError("NO_ATTEMPT", "没有找到准备好的发布尝试", 400);
+          throw new SemanticGovernanceAdapterError("NO_ATTEMPT", "没有找到准备好的发布尝试", 400);
         }
 
         const command = {
@@ -926,7 +975,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
 
         const rpcResult = result.rows[0]?.commit_publish_attempt;
         if (!rpcResult) {
-          throw new SemanticGovernanceError("RPC_FAILED", "执行发布 RPC 调用失败", 500);
+          throw new SemanticGovernanceAdapterError("RPC_FAILED", "执行发布 RPC 调用失败", 500);
         }
 
         return { releaseId: rpcResult.release_id as string };
@@ -937,10 +986,19 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
   // ── executeRollback ───────────────────────────────────────────────────────────
 
   async executeRollback(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     input: SemanticRollbackInput,
-  ): Promise<{ receiptId: string }> {
-    assertInputDomainMatches(authority, input.semantic_domain);
+  ): Promise<PortResult<{ receiptId: string }>> {
+    if (!inputDomainMatches(authority, input.semantic_domain)) {
+      return {
+        ok: false,
+        error: {
+          code: "SEMANTIC_SCOPE_FORBIDDEN",
+          message: GOVERNANCE_ERRORS.SEMANTIC_SCOPE_FORBIDDEN,
+          retryable: false,
+        },
+      };
+    }
     return this.transaction(
       authority,
       "WRITE",
@@ -967,7 +1025,7 @@ export class PostgresSemanticGovernanceService implements SemanticGovernanceServ
 
         const rpcResult = result.rows[0]?.execute_rollback;
         if (!rpcResult) {
-          throw new SemanticGovernanceError("RPC_FAILED", "执行回滚 RPC 调用失败", 500);
+          throw new SemanticGovernanceAdapterError("RPC_FAILED", "执行回滚 RPC 调用失败", 500);
         }
 
         return { receiptId: rpcResult.receipt_id as string };

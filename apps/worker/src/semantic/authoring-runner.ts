@@ -8,11 +8,8 @@ import type {
   SemanticAuthoringResumeInput,
   SemanticAuthoringStartInput,
   SemanticAuthoringState,
+  SemanticAuthoringStorePort,
 } from "@data-agent/contracts";
-import {
-  createPostgresSemanticAuthoringStore,
-  type PostgresSemanticAuthoringStoreOptions,
-} from "@data-agent/platform";
 import { createSemanticAuthoringOrchestrator } from "@data-agent/semantic/authoring";
 
 export interface WorkerSemanticAuthoringRunner {
@@ -22,13 +19,13 @@ export interface WorkerSemanticAuthoringRunner {
 }
 
 /**
- * Worker composition root: provider proposes calls, while the Worker-owned
- * orchestrator and PostgreSQL store execute/fence every candidate mutation.
+ * Provider proposes calls, while the Worker-owned orchestrator and injected
+ * authoritative store execute/fence every candidate mutation.
  */
 export function createWorkerSemanticAuthoringRunner(input: {
   readonly provider: ModelProviderPort;
   readonly create_invocation: SemanticAgentTurnInvocationFactory;
-  readonly store: PostgresSemanticAuthoringStoreOptions;
+  readonly store: SemanticAuthoringStorePort;
   readonly new_id?: () => string;
   readonly now?: () => string;
   readonly compiler_version?: string;
@@ -43,10 +40,9 @@ export function createWorkerSemanticAuthoringRunner(input: {
     provider: input.provider,
     create_invocation: input.create_invocation,
   });
-  const store = createPostgresSemanticAuthoringStore(input.store);
   const orchestrator = createSemanticAuthoringOrchestrator({
     agent,
-    store,
+    store: input.store,
     ...(input.new_id === undefined ? {} : { new_id: input.new_id }),
     ...(input.now === undefined ? {} : { now: input.now }),
     ...(input.compiler_version === undefined ? {} : { compiler_version: input.compiler_version }),

@@ -2,33 +2,14 @@ import {
   type JobOutputReference,
   type JobWorkLease,
   type PortResult,
-  type SemanticInductionCommitCommand,
   type SemanticInductionCommitResult,
-  type SemanticInductionRejectCommand,
-  type SemanticInductionRejectResult,
+  type SemanticInductionExecutionPort,
   type SemanticInductionTarget,
   semanticInductionCommitResultSchema,
   semanticInductionTargetSchema,
 } from "@data-agent/contracts";
 import { processSemanticInduction } from "@data-agent/semantic/authoring";
 import type { JobHandler } from "./job-worker-runner.js";
-
-export type SemanticInductionRegistry = Readonly<{
-  loadTarget(
-    capability: unknown,
-    lease: JobWorkLease,
-  ): Promise<PortResult<SemanticInductionTarget>>;
-  commit(
-    capability: unknown,
-    lease: JobWorkLease,
-    command: SemanticInductionCommitCommand,
-  ): Promise<PortResult<SemanticInductionCommitResult>>;
-  reject(
-    capability: unknown,
-    lease: JobWorkLease,
-    command: SemanticInductionRejectCommand,
-  ): Promise<PortResult<SemanticInductionRejectResult>>;
-}>;
 
 function failure(code: string, message: string, retryable = false): PortResult<never> {
   return { ok: false, error: { code, message, retryable } };
@@ -37,7 +18,7 @@ function failure(code: string, message: string, retryable = false): PortResult<n
 export function createSemanticInductionJobHandler(
   options: Readonly<{
     capability: unknown;
-    registry: SemanticInductionRegistry;
+    registry: SemanticInductionExecutionPort;
     kind?: "SEMANTIC_INDUCTION" | "METRIC_IMPORT";
   }>,
 ): JobHandler {

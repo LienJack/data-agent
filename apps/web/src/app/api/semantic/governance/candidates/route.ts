@@ -5,11 +5,12 @@
  * POST /api/semantic/governance/candidates — 创建新候选提案
  */
 
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { z } from "zod";
 import {
   parseSemanticCandidateRequest,
   resolveSemanticRouteAuthority,
+  semanticGovernanceResultResponse,
   semanticRouteErrorResponse,
 } from "@/lib/semantic-governance-route";
 
@@ -39,7 +40,7 @@ export async function GET(request: NextRequest) {
     );
     const items = await runtime.service.getInboxItems(authority, query.group);
 
-    return NextResponse.json({ data: items, meta: { authority: authority.authority } });
+    return semanticGovernanceResultResponse(items);
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_PARAMS");
   }
@@ -58,10 +59,7 @@ export async function POST(request: NextRequest) {
     );
     const result = await runtime.service.createCandidate(authority, parsed);
 
-    return NextResponse.json(
-      { data: result, meta: { authority: authority.authority } },
-      { status: result.created ? 201 : 200 },
-    );
+    return semanticGovernanceResultResponse(result, result.ok && result.value.created ? 201 : 200);
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_BODY");
   }

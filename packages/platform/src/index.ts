@@ -187,6 +187,7 @@ export {
   type SemanticExplorerExactReleaseInput,
   type SemanticExplorerReleasePageInput,
 } from "./semantic/postgres-semantic-explorer.js";
+export { PostgresSemanticGovernanceService } from "./semantic/postgres-semantic-governance.js";
 export {
   createPostgresSemanticGraphStore,
   type PostgresSemanticGraphStore,

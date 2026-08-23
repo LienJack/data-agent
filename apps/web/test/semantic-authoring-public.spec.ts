@@ -1,6 +1,6 @@
 import type { SemanticAuthoringState } from "@data-agent/contracts";
+import { buildSemanticAuthoringPublicFeed } from "@data-agent/semantic/application";
 import { describe, expect, it } from "vitest";
-import { buildSemanticAuthoringPublicFeed } from "@/lib/semantic-authoring-public";
 
 const runId = "10000000-0000-4000-8000-000000000099";
 

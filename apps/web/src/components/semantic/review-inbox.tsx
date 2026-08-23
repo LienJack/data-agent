@@ -1,10 +1,10 @@
 "use client";
 
+import { INBOX_GROUPS, type InboxGroup, type InboxItem } from "@data-agent/contracts";
 import { useCallback, useEffect, useState } from "react";
 import { Badge, EmptyState, Spinner } from "@/components/ui";
 import { fetchInboxItems, fetchPacketDetail } from "@/lib/semantic-api";
 import { useSemanticStore } from "@/lib/semantic-store";
-import { INBOX_GROUPS, type InboxGroup, type InboxItem } from "@/lib/semantic-types";
 import { cn, relativeTime } from "@/lib/utils";
 
 /** 风险等级对应的颜色和标签 */

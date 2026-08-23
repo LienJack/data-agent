@@ -6,9 +6,10 @@
  */
 
 import { semanticDecisionInputSchema } from "@data-agent/contracts";
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   resolveSemanticRouteAuthority,
+  semanticGovernanceResultResponse,
   semanticRouteErrorResponse,
 } from "@/lib/semantic-governance-route";
 
@@ -25,10 +26,7 @@ export async function POST(request: NextRequest) {
     );
     const result = await runtime.service.submitDecision(authority, parsed);
 
-    return NextResponse.json(
-      { data: result, meta: { authority: authority.authority } },
-      { status: 201 },
-    );
+    return semanticGovernanceResultResponse(result, 201);
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_BODY");
   }

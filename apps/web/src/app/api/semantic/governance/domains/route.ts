@@ -5,10 +5,11 @@
  * 返回当前 scope 下的语义域列表。
  */
 
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { z } from "zod";
 import {
   resolveSemanticRouteAuthority,
+  semanticGovernanceResultResponse,
   semanticRouteErrorResponse,
 } from "@/lib/semantic-governance-route";
 
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
     );
     const domains = await runtime.service.listDomains(authority);
 
-    return NextResponse.json({ data: domains, meta: { authority: authority.authority } });
+    return semanticGovernanceResultResponse(domains);
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_PARAMS");
   }

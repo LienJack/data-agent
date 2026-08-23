@@ -5,10 +5,11 @@
  * 执行回滚操作。
  */
 
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   parseSemanticRollbackRequest,
   resolveSemanticRouteAuthority,
+  semanticGovernanceResultResponse,
   semanticRouteErrorResponse,
 } from "@/lib/semantic-governance-route";
 
@@ -25,10 +26,7 @@ export async function POST(request: NextRequest) {
     );
     const result = await runtime.service.executeRollback(authority, parsed);
 
-    return NextResponse.json(
-      { data: result, meta: { authority: authority.authority } },
-      { status: 201 },
-    );
+    return semanticGovernanceResultResponse(result, 201);
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_BODY");
   }

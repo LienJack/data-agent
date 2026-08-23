@@ -1,5 +1,7 @@
+import type { SemanticApplicationAuthority, SemanticGovernancePort } from "@data-agent/contracts";
 import type { SqlClient, SqlPool } from "@data-agent/platform";
 import { createPostgresCapabilityAuthority } from "@data-agent/platform";
+import { createSemanticGovernanceService } from "@data-agent/semantic/application";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
@@ -155,12 +157,10 @@ function createFixture(options: FixtureOptions = {}) {
   return { pool, calls, released };
 }
 
-let PostgresSemanticGovernanceService: typeof import("../src/lib/postgres-semantic-governance-service").PostgresSemanticGovernanceService;
+let PostgresSemanticGovernanceService: typeof import("@data-agent/platform").PostgresSemanticGovernanceService;
 
 beforeAll(async () => {
-  ({ PostgresSemanticGovernanceService } = await import(
-    "../src/lib/postgres-semantic-governance-service"
-  ));
+  ({ PostgresSemanticGovernanceService } = await import("@data-agent/platform"));
 });
 
 async function arrange(options: FixtureOptions = {}) {
@@ -196,10 +196,49 @@ async function arrange(options: FixtureOptions = {}) {
   };
 }
 
+const conformanceDomain = {
+  domain: "revenue",
+  displayName: "收入",
+  description: "",
+  datasourceId: ids.datasource,
+  isActive: true,
+  domainVersion: 1,
+} as const;
+
+async function expectGovernanceListConformance(
+  port: SemanticGovernancePort,
+  authority: SemanticApplicationAuthority,
+) {
+  await expect(createSemanticGovernanceService(port).listDomains(authority)).resolves.toEqual({
+    ok: true,
+    value: [conformanceDomain],
+  });
+}
+
 describe("PostgresSemanticGovernanceService transaction boundary", () => {
+  it("runs the same application conformance fixture against memory and PostgreSQL ports", async () => {
+    const fixture = await arrange();
+    const memoryPort = {
+      listDomains: vi.fn(async () => ({ ok: true as const, value: [conformanceDomain] })),
+      getInboxItems: vi.fn(),
+      getPacketDetail: vi.fn(),
+      submitDecision: vi.fn(),
+      createCandidate: vi.fn(),
+      preparePublish: vi.fn(),
+      commitPublish: vi.fn(),
+      executeRollback: vi.fn(),
+    } as unknown as SemanticGovernancePort;
+
+    await expectGovernanceListConformance(memoryPort, fixture.context);
+    await expectGovernanceListConformance(fixture.service, fixture.context);
+  });
+
   it("revalidates, sets local scope, runs business SQL and commits on one client", async () => {
     const fixture = await arrange();
-    await expect(fixture.service.listDomains(fixture.context)).resolves.toHaveLength(1);
+    await expect(fixture.service.listDomains(fixture.context)).resolves.toMatchObject({
+      ok: true,
+      value: [{ domain: "revenue" }],
+    });
 
     expect(new Set(fixture.calls.map((call) => call.clientId))).toEqual(new Set([2]));
     const statements = fixture.calls.map((call) => call.text);
@@ -219,9 +258,12 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
   it("rolls back and redacts a database cause", async () => {
     const fixture = await arrange({ failBusinessQuery: true });
 
-    await expect(fixture.service.listDomains(fixture.context)).rejects.toMatchObject({
-      code: "SEMANTIC_GOVERNANCE_UNAVAILABLE",
-      message: "语义治理服务暂时不可用。",
+    await expect(fixture.service.listDomains(fixture.context)).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "PERSISTENCE_TRANSACTION_FAILED",
+        message: "持久化事务失败；数据库错误细节已从公开响应中移除。",
+      },
     });
     expect(fixture.calls.map((call) => call.text).at(-1)).toBe("ROLLBACK");
     expect(fixture.released).toEqual([2]);
@@ -230,8 +272,9 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
   it("does not set scope or run business SQL after authority revalidation fails", async () => {
     const fixture = await arrange({ denyRevalidation: true });
 
-    await expect(fixture.service.listDomains(fixture.context)).rejects.toMatchObject({
-      code: "SEMANTIC_GOVERNANCE_UNAVAILABLE",
+    await expect(fixture.service.listDomains(fixture.context)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "APP_AUTHORITY_STALE_OR_FORBIDDEN" },
     });
     expect(fixture.calls.some((call) => call.text.includes("app.semantic_domain"))).toBe(false);
     expect(
@@ -252,7 +295,10 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
         authorization_nonce: ids.nonce,
         rollback_reason: "attacker-selected domain",
       }),
-    ).rejects.toMatchObject({ code: "SEMANTIC_SCOPE_FORBIDDEN" });
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "SEMANTIC_SCOPE_FORBIDDEN" },
+    });
     expect(fixture.calls).toEqual([]);
   });
 
@@ -264,7 +310,10 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
       allowedDomains: ["customer", "revenue"],
     };
 
-    await expect(fixture.service.getInboxItems(allContext, "completed")).resolves.toEqual([]);
+    await expect(fixture.service.getInboxItems(allContext, "completed")).resolves.toEqual({
+      ok: true,
+      value: [],
+    });
     const inboxQuery = fixture.calls.find((call) =>
       call.text.includes("SELECT task.semantic_domain"),
     );
@@ -301,9 +350,12 @@ describe("PostgresSemanticGovernanceService transaction boundary", () => {
           ],
         },
       }),
-    ).rejects.toMatchObject({
-      code: "SEMANTIC_CANDIDATE_INVALID",
-      message: "语义候选输入无效。",
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "SEMANTIC_CANDIDATE_INVALID",
+        message: "语义候选输入无效。",
+      },
     });
   });
 

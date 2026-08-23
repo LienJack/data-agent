@@ -3,13 +3,13 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+import type { SemanticStudioService } from "@data-agent/semantic/application";
 import {
   handleGetSemanticAuthoringPublicFeed,
   handleLoadSemanticStudio,
   handleStartSemanticAuthoring,
   handleStreamSemanticAuthoringRun,
 } from "../src/lib/semantic-studio-route";
-import type { SemanticStudioService } from "../src/lib/semantic-studio-service";
 
 const runId = "10000000-0000-4000-8000-000000000099";
 

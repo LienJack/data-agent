@@ -5,9 +5,9 @@ import type {
   SemanticGraphReadEdge,
   SemanticGraphReadNode,
 } from "@data-agent/contracts";
+import type { SemanticStudioAuthoringState } from "@data-agent/semantic/application";
 import { ArrowSquareOut, PaperPlaneTilt, Pulse, Sparkle, X } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
-import type { SemanticStudioAuthoringState } from "@/lib/semantic-studio-api";
 
 const EXAMPLES = [
   "新增“成交商品数”，按订单明细的 product_id 去重计算，单位是件。",

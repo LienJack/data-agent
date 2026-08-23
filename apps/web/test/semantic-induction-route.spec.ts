@@ -18,39 +18,34 @@ const scope = {
 const state = vi.hoisted(() => ({ registrations: [] as unknown[], enqueues: [] as unknown[] }));
 
 vi.mock("@/lib/workspace-request", () => ({
-  authorizeWorkspaceRequest: async () => ({
-    ok: true,
-    value: { capability: { scope, principal: ids.principal } },
-  }),
   workspaceErrorResponse: (error: unknown) => NextResponse.json({ error }, { status: 400 }),
 }));
 
-vi.mock("@/lib/workspace-identity", () => ({
-  getSemanticInductionRegistry: () => ({
-    registerSource: async (_capability: unknown, command: unknown) => {
-      state.registrations.push(command);
-      return {
-        ok: true,
-        value: (command as { source: { source_ref: unknown } }).source.source_ref,
-      };
+vi.mock("@/lib/workspace-semantic-runtime", () => ({
+  getWorkspaceSemanticRuntime: async () => ({
+    ok: true,
+    runtime: {
+      capabilityInput: { scope, principal: ids.principal },
+      scope,
+      principalId: ids.principal,
+      registry: {
+        registerSource: async (_capability: unknown, command: unknown) => {
+          state.registrations.push(command);
+          return {
+            ok: true,
+            value: (command as { source: { source_ref: unknown } }).source.source_ref,
+          };
+        },
+      },
+      queue: {
+        enqueue: async (command: unknown) => {
+          state.enqueues.push(command);
+          return { ok: true, value: { job_id: ids.snapshot } };
+        },
+      },
     },
   }),
-  getWorkspaceAuthority: () => ({ authorizer: {} }),
-  getWorkspaceSqlPool: () => ({}),
 }));
-
-vi.mock("@data-agent/platform", async (importOriginal) => {
-  const original = await importOriginal<typeof import("@data-agent/platform")>();
-  return {
-    ...original,
-    createPostgresJobQueue: () => ({
-      enqueue: async (command: unknown) => {
-        state.enqueues.push(command);
-        return { ok: true, value: { job_id: ids.snapshot } };
-      },
-    }),
-  };
-});
 
 describe("semantic induction route", () => {
   beforeEach(() => {

@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  type SemanticReviewDecisionView as ReviewDecision,
+  SEMANTIC_ROLE_LABELS,
+  type SemanticReviewPacket,
+} from "@data-agent/contracts";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Separator, Spinner, Tabs } from "@/components/ui";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -11,8 +16,6 @@ import {
 } from "@/hooks/use-semantic-auth";
 import { fetchPacketDetail, submitDecision } from "@/lib/semantic-api";
 import { useSemanticStore } from "@/lib/semantic-store";
-import type { ReviewDecision, SemanticReviewPacket } from "@/lib/semantic-types";
-import { SEMANTIC_ROLE_LABELS } from "@/lib/semantic-types";
 import { formatDateTime } from "@/lib/utils";
 
 interface ReviewDetailProps {

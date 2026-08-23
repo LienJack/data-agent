@@ -12,6 +12,10 @@
       "types": "./dist/public/authoring.d.ts",
       "import": "./dist/public/authoring.js"
     },
+    "./application": {
+      "types": "./dist/public/application.d.ts",
+      "import": "./dist/public/application.js"
+    },
     "./governance": {
       "types": "./dist/public/governance.d.ts",
       "import": "./dist/public/governance.js"

@@ -6,19 +6,19 @@ import {
   createPostgresSchemaSnapshotStore,
   createPostgresSemanticCandidateCompileStore,
   createPostgresSemanticExplorerReader,
+  PostgresSemanticGovernanceService,
   type SqlPool,
   type TransactionalCapabilityAuthorizer,
 } from "@data-agent/platform";
+import {
+  createSemanticCandidateService,
+  type SemanticCandidateService,
+} from "@data-agent/semantic/application";
 import pg from "pg";
-import { PostgresSemanticGovernanceService } from "./postgres-semantic-governance-service";
 import {
   createPostgresSemanticAuthorityResolver,
   type SemanticAuthorityResolver,
 } from "./semantic-authority";
-import {
-  createSemanticCandidateService,
-  type SemanticCandidateService,
-} from "./semantic-candidate-service";
 import { resolveTestCenterModelRuntime } from "./test-center-model-runtime";
 
 interface SemanticCandidateEnvironment extends NodeJS.ProcessEnv {
@@ -37,7 +37,7 @@ export interface SemanticCandidateRuntime {
 }
 
 export interface SemanticCandidateRuntimeDependencies {
-  readonly environment?: SemanticCandidateEnvironment;
+  readonly environment: SemanticCandidateEnvironment;
   readonly pool?: pg.Pool;
   readonly sqlPool?: SqlPool;
   readonly transactionalAuthorizer?: TransactionalCapabilityAuthorizer;
@@ -57,9 +57,9 @@ function configuredAllowedDomains(environment: SemanticCandidateEnvironment): re
 }
 
 export function createSemanticCandidateRuntime(
-  dependencies: SemanticCandidateRuntimeDependencies = {},
+  dependencies: SemanticCandidateRuntimeDependencies,
 ): SemanticCandidateRuntime {
-  const environment = dependencies.environment ?? process.env;
+  const environment = dependencies.environment;
   const connectionString = environment.SEMANTIC_CANDIDATE_DATABASE_URL ?? environment.DATABASE_URL;
   const allowedDomains = configuredAllowedDomains(environment);
   if (
@@ -102,7 +102,7 @@ export function createSemanticCandidateRuntime(
       snapshot_store: createPostgresSchemaSnapshotStore({ pool: sqlPool, authorizer }),
       explorer_reader: createPostgresSemanticExplorerReader({ pool: sqlPool, authorizer }),
       compile_store: createPostgresSemanticCandidateCompileStore({ pool: sqlPool, authorizer }),
-      governance_service: governanceService,
+      candidate_review: governanceService,
       model_runtime: {
         resolve: async (authority) =>
           resolveTestCenterModelRuntime({
@@ -121,11 +121,4 @@ export function createSemanticCandidateRuntime(
       },
     }),
   });
-}
-
-let runtimeInstance: SemanticCandidateRuntime | null = null;
-
-export function getSemanticCandidateRuntime(): SemanticCandidateRuntime {
-  runtimeInstance ??= createSemanticCandidateRuntime();
-  return runtimeInstance;
 }

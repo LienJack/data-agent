@@ -12,6 +12,10 @@ import type {
   SemanticManualEdit,
   SemanticNodeType,
 } from "@data-agent/contracts";
+import type {
+  SemanticStudioAuthoringState,
+  SemanticStudioSnapshot,
+} from "@data-agent/semantic/application";
 import {
   CirclesThree,
   Database,
@@ -29,8 +33,6 @@ import { useLayoutStore } from "@/lib/layout-store";
 import {
   loadSemanticStudio,
   resumeSemanticAuthoring,
-  type SemanticStudioAuthoringState,
-  type SemanticStudioSnapshot,
   saveSemanticCandidateRevision,
   startManualSemanticSession,
   startSemanticAuthoring,

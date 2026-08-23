@@ -12,6 +12,7 @@ export {
   type SemanticAuthoringWorkerCycleRunner,
   type WorkerSemanticAuthoringRunnerFactoryHeartbeat,
 } from "./authoring-worker-runner.js";
+export { createWorkerSemanticJobComposition } from "./job-composition.js";
 export {
   createSemanticRelationshipIndexer,
   type RelationshipIndexerRunResult,

@@ -4,6 +4,7 @@ import {
   type SemanticExplorerDomainSummary,
   type SemanticExplorerRawCandidateComparison,
   type SemanticExplorerRawSourceEnvelope,
+  type SemanticExplorerReadPort,
   type SemanticExplorerReleaseTimeline,
   semanticExplorerDomainSummarySchema,
   semanticExplorerRawCandidateComparisonSchema,
@@ -61,7 +62,7 @@ export interface SemanticExplorerCandidateComparisonInput {
   readonly revision_id: string;
 }
 
-export interface PostgresSemanticExplorerReader {
+export interface PostgresSemanticExplorerReader extends SemanticExplorerReadPort {
   listDomains(
     capability: unknown,
     semanticDomains: readonly string[],

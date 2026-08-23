@@ -1,14 +1,11 @@
 import type {
+  SemanticApplicationAuthority,
   SemanticExplorerDomainSummary,
   SemanticExplorerPointerObservation,
+  SemanticExplorerReadPort,
 } from "@data-agent/contracts";
-import type { PostgresSemanticExplorerReader } from "@data-agent/platform";
 import { describe, expect, it, vi } from "vitest";
-
-vi.mock("server-only", () => ({}));
-
-import type { SemanticAuthorityContext } from "../src/lib/semantic-authority";
-import { createSemanticExplorerService } from "../src/lib/semantic-explorer-service";
+import { createSemanticExplorerService } from "../src/application/explorer.js";
 
 const pointer: SemanticExplorerPointerObservation = {
   current_release_id: null,
@@ -30,8 +27,8 @@ function domain(semanticDomain: string): SemanticExplorerDomainSummary {
   };
 }
 
-describe("Semantic Explorer service", () => {
-  it("passes the server allowlist into PostgreSQL and filters a broad adapter response", async () => {
+describe("Semantic Explorer application service", () => {
+  it("passes the authority allowlist to its port and filters an over-broad response", async () => {
     const listDomains = vi.fn(async () => ({
       ok: true as const,
       value: [domain("revenue"), domain("inventory")],
@@ -42,8 +39,8 @@ describe("Semantic Explorer service", () => {
       getReleaseSource: vi.fn(),
       listReleases: vi.fn(),
       getCandidateComparison: vi.fn(),
-    } as unknown as PostgresSemanticExplorerReader;
-    const authority: SemanticAuthorityContext = {
+    } as unknown as SemanticExplorerReadPort;
+    const authority: SemanticApplicationAuthority = {
       authority: "POSTGRESQL",
       capabilityInput: { server: "capability" },
       scope: {

@@ -12,12 +12,12 @@ import {
   type SqlPool,
   type TransactionalCapabilityAuthorizer,
 } from "@data-agent/platform";
-import pg from "pg";
-import type { SemanticAuthorityResolver } from "./semantic-authority";
 import {
   createSemanticExplorerService,
   type SemanticExplorerService,
-} from "./semantic-explorer-service";
+} from "@data-agent/semantic/application";
+import pg from "pg";
+import type { SemanticAuthorityResolver } from "./semantic-authority";
 
 interface SemanticExplorerEnvironment extends NodeJS.ProcessEnv {
   readonly SEMANTIC_EXPLORER_ENABLED?: string;
@@ -35,7 +35,7 @@ export type SemanticExplorerRuntime =
     };
 
 export interface SemanticExplorerRuntimeDependencies {
-  readonly environment?: SemanticExplorerEnvironment;
+  readonly environment: SemanticExplorerEnvironment;
   readonly pool?: pg.Pool;
   readonly sqlPool?: SqlPool;
   readonly transactionalAuthorizer?: TransactionalCapabilityAuthorizer;
@@ -60,9 +60,9 @@ function featureEnabled(value: string | undefined): boolean {
 }
 
 export function createSemanticExplorerRuntime(
-  dependencies: SemanticExplorerRuntimeDependencies = {},
+  dependencies: SemanticExplorerRuntimeDependencies,
 ): SemanticExplorerRuntime {
-  const environment = dependencies.environment ?? process.env;
+  const environment = dependencies.environment;
   if (!featureEnabled(environment.SEMANTIC_EXPLORER_ENABLED)) {
     return Object.freeze({ enabled: false as const });
   }
@@ -129,11 +129,4 @@ export function createSemanticExplorerRuntime(
       disabledReason: relationshipIndexEnabled ? "INDEX_NOT_CONFIGURED" : "INDEX_DISABLED",
     }),
   });
-}
-
-let runtimeInstance: SemanticExplorerRuntime | null = null;
-
-export function getSemanticExplorerRuntime(): SemanticExplorerRuntime {
-  runtimeInstance ??= createSemanticExplorerRuntime();
-  return runtimeInstance;
 }

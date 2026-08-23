@@ -10,6 +10,7 @@ import {
   adaptPgPool,
   createPostgresCapabilityAuthority,
   createPostgresSemanticAuthoringQueue,
+  createPostgresSemanticAuthoringStore,
   registerPersistenceDiagnosticLogger,
 } from "@data-agent/platform";
 import nextEnvironment from "@next/env";
@@ -19,8 +20,8 @@ import {
   type DirectConfiguredModelProfile,
   resolveSemanticAuthoringModelRuntime,
 } from "./authoring-model-runtime.js";
-import { createWorkerSemanticAuthoringRunner } from "./authoring-runner.js";
 import { createSemanticAuthoringWorkerCycleRunner } from "./authoring-worker-runner.js";
+import { createWorkerSemanticJobComposition } from "./job-composition.js";
 
 const LOCAL_DEPLOYMENT_ID = "00000000-0000-4000-8000-000000000001";
 const LOCAL_TENANT_ID = "00000000-0000-4000-8000-000000000002";
@@ -222,15 +223,16 @@ export async function runSemanticAuthoringWorkerProcess(
         const cycle = createSemanticAuthoringWorkerCycleRunner({
           queue,
           create_runner: (heartbeat) =>
-            createWorkerSemanticAuthoringRunner({
+            createWorkerSemanticJobComposition({
+              feature: "AUTHORING",
               provider: domainModelRuntime.model_provider,
               create_invocation: domainModelRuntime.create_invocation,
-              store: {
+              store: createPostgresSemanticAuthoringStore({
                 pool: sqlPool,
                 authorizer: authority.authorizer,
                 capability,
                 semantic_domain: semanticDomain,
-              },
+              }),
               provider_budget: authoringProviderBudget(activeModelRuntime.profile),
               before_step: heartbeat,
             }),

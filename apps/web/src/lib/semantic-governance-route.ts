@@ -1,5 +1,6 @@
 import "server-only";
 import {
+  type PortResult,
   semanticCandidateDraftSchema,
   semanticCommitPublishInputSchema,
   semanticPreparePublishInputSchema,
@@ -12,7 +13,7 @@ import {
   redactSemanticGovernanceError,
   SemanticGovernanceError,
 } from "./semantic-governance-error";
-import { getWorkspaceSemanticGovernanceRuntime } from "./workspace-semantic-runtime";
+import { getWorkspaceSemanticRuntime } from "./workspace-semantic-runtime";
 
 class WorkspaceSemanticRouteError extends Error {
   override readonly name = "WorkspaceSemanticRouteError";
@@ -55,7 +56,10 @@ export async function resolveSemanticRouteAuthority(
   access: "READ" | "WRITE",
   semanticDomain: string,
 ) {
-  const resolved = await getWorkspaceSemanticGovernanceRuntime(request, access);
+  const resolved = await getWorkspaceSemanticRuntime(request, {
+    feature: "GOVERNANCE",
+    access,
+  });
   if (!resolved.ok) throw new WorkspaceSemanticRouteError(resolved.response);
   const runtime = resolved.runtime;
   const authority = await runtime.authorityResolver.resolve({
@@ -91,4 +95,24 @@ export function semanticRouteErrorResponse(
     },
     { status: publicError.status },
   );
+}
+
+function governanceStatus(code: string): number {
+  if (code.includes("NOT_FOUND")) return 404;
+  if (code.includes("FORBIDDEN")) return 403;
+  if (code.includes("CONFLICT")) return 409;
+  if (code.includes("INVALID") || code.includes("REQUIRED")) return 400;
+  return 503;
+}
+
+export function semanticGovernanceResultResponse<T>(
+  result: PortResult<T>,
+  successStatus = 200,
+): NextResponse {
+  return result.ok
+    ? NextResponse.json(
+        { data: result.value, meta: { authority: "POSTGRESQL" } },
+        { status: successStatus },
+      )
+    : NextResponse.json({ error: result.error }, { status: governanceStatus(result.error.code) });
 }

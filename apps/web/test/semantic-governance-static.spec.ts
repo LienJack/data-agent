@@ -3,7 +3,10 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const postgresServicePath = fileURLToPath(
-  new URL("../src/lib/postgres-semantic-governance-service.ts", import.meta.url),
+  new URL(
+    "../../../packages/platform/src/semantic/postgres-semantic-governance.ts",
+    import.meta.url,
+  ),
 );
 const compatibilityMigrationPath = fileURLToPath(
   new URL(

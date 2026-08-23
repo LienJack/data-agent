@@ -11,7 +11,6 @@ import {
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  getSemanticExplorerRuntime,
   type SemanticExplorerRuntime,
   SemanticExplorerRuntimeError,
 } from "./semantic-explorer-runtime";
@@ -163,11 +162,10 @@ function enabledRuntime(runtime: SemanticExplorerRuntime) {
 }
 
 export async function handleListExplorerDomains(
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
-    const enabled = enabledRuntime(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
     if (!enabled) {
       return json(
         {
@@ -192,13 +190,12 @@ export async function handleListExplorerDomains(
 
 export async function handleSearchExplorerRelationships(
   request: NextRequest,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const body = semanticRelationshipSearchRequestSchema.parse(await request.json());
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: body.semantic_domain,
@@ -211,13 +208,12 @@ export async function handleSearchExplorerRelationships(
 
 export async function handleGetActiveExplorerRelease(
   request: NextRequest,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const query = domainQuerySchema.parse(queryObject(request));
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,
@@ -230,14 +226,13 @@ export async function handleGetActiveExplorerRelease(
 
 export async function handleListExplorerReleases(
   request: NextRequest,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const raw = queryObject(request);
     const query = timelineQuerySchema.parse({ ...raw, cursor: raw.cursor ?? null });
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,
@@ -253,14 +248,13 @@ export async function handleListExplorerReleases(
 export async function handleGetExplorerRelease(
   request: NextRequest,
   params: Promise<{ releaseId: string }>,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const query = domainQuerySchema.parse(queryObject(request));
     const releaseId = immutableIdSchema.parse((await params).releaseId);
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,
@@ -274,14 +268,13 @@ export async function handleGetExplorerRelease(
 export async function handleDiffExplorerReleases(
   request: NextRequest,
   params: Promise<{ releaseId: string }>,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const query = diffQuerySchema.parse(queryObject(request));
     const targetReleaseId = immutableIdSchema.parse((await params).releaseId);
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,
@@ -297,14 +290,13 @@ export async function handleDiffExplorerReleases(
 export async function handleGetExplorerObject(
   request: NextRequest,
   params: Promise<{ objectId: string }>,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const query = objectQuerySchema.parse(queryObject(request));
     const objectId = versionIdentifierSchema.parse((await params).objectId);
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,
@@ -323,14 +315,13 @@ export async function handleGetExplorerObject(
 export async function handleGetExplorerLineage(
   request: NextRequest,
   params: Promise<{ objectId: string }>,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const query = lineageQuerySchema.parse(queryObject(request));
     const objectId = versionIdentifierSchema.parse((await params).objectId);
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,
@@ -352,14 +343,13 @@ export async function handleGetExplorerLineage(
 export async function handleGetExplorerCandidateComparison(
   request: NextRequest,
   params: Promise<{ candidateId: string }>,
-  runtime?: SemanticExplorerRuntime,
+  runtime: SemanticExplorerRuntime,
 ): Promise<NextResponse> {
   try {
-    const resolvedRuntime = runtime ?? getSemanticExplorerRuntime();
     const query = candidateQuerySchema.parse(queryObject(request));
     const candidateId = immutableIdSchema.parse((await params).candidateId);
-    const enabled = enabledRuntime(resolvedRuntime);
-    if (!enabled) return await handleListExplorerDomains(resolvedRuntime);
+    const enabled = enabledRuntime(runtime);
+    if (!enabled) return await handleListExplorerDomains(runtime);
     const authority = await enabled.authorityResolver.resolve({
       access: "READ",
       semanticDomain: query.domain,

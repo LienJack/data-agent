@@ -1,23 +1,20 @@
-import "server-only";
-
 import type {
   PortResult,
+  SemanticApplicationAuthority,
   SemanticExplorerCandidateComparison,
   SemanticExplorerDiff,
   SemanticExplorerDomainSummary,
   SemanticExplorerLineage,
   SemanticExplorerObject,
   SemanticExplorerObjectIdentity,
+  SemanticExplorerReadPort,
   SemanticExplorerReleaseTimeline,
   SemanticExplorerSnapshot,
+  SemanticRelationshipCheckpointPort,
+  SemanticRelationshipGraphPort,
   SemanticRelationshipSearchRequest,
   SemanticRelationshipSearchResult,
 } from "@data-agent/contracts";
-import type {
-  PostgresRelationshipIndexStore,
-  PostgresSemanticExplorerReader,
-  SemanticRelationshipGraphAdapter,
-} from "@data-agent/platform";
 import {
   buildSemanticExplorerCandidateComparison,
   buildSemanticExplorerLineage,
@@ -25,9 +22,8 @@ import {
   diffSemanticExplorerSnapshots,
   SemanticExplorerKernelError,
   semanticExplorerIdentityKey,
-} from "@data-agent/semantic/read-model";
-import { createSemanticRelationshipSearchService } from "@data-agent/semantic/relationship-index";
-import type { SemanticAuthorityContext } from "./semantic-authority";
+} from "../explorer/index.js";
+import { createSemanticRelationshipSearchService } from "../relationship-index/service.js";
 
 export interface SemanticExplorerLineageRequest {
   readonly semantic_domain: string;
@@ -39,47 +35,47 @@ export interface SemanticExplorerLineageRequest {
 
 export interface SemanticExplorerService {
   listDomains(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
   ): Promise<PortResult<readonly SemanticExplorerDomainSummary[]>>;
   getActive(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
   ): Promise<PortResult<SemanticExplorerSnapshot>>;
   getRelease(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
     releaseId: string,
   ): Promise<PortResult<SemanticExplorerSnapshot>>;
   listReleases(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
     limit: number,
     generationCursor: number | null,
   ): Promise<PortResult<SemanticExplorerReleaseTimeline>>;
   diffReleases(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
     baseReleaseId: string,
     targetReleaseId: string,
   ): Promise<PortResult<SemanticExplorerDiff>>;
   getObject(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
     releaseId: string,
     identity: SemanticExplorerObjectIdentity,
   ): Promise<PortResult<SemanticExplorerObject>>;
   getLineage(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     request: SemanticExplorerLineageRequest,
   ): Promise<PortResult<SemanticExplorerLineage>>;
   getCandidateComparison(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
     candidateId: string,
     revisionId: string,
   ): Promise<PortResult<SemanticExplorerCandidateComparison>>;
   searchRelationships(
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     request: SemanticRelationshipSearchRequest,
   ): Promise<PortResult<SemanticRelationshipSearchResult>>;
 }
@@ -117,7 +113,7 @@ function objectNotVisible<T>(): PortResult<T> {
 }
 
 async function buildSnapshot(
-  raw: Awaited<ReturnType<PostgresSemanticExplorerReader["getActiveSource"]>>,
+  raw: Awaited<ReturnType<SemanticExplorerReadPort["getActiveSource"]>>,
 ): Promise<PortResult<SemanticExplorerSnapshot>> {
   if (!raw.ok) return raw;
   try {
@@ -128,15 +124,15 @@ async function buildSnapshot(
 }
 
 export function createSemanticExplorerService(
-  reader: PostgresSemanticExplorerReader,
+  reader: SemanticExplorerReadPort,
   relationshipOptions: {
-    readonly store?: PostgresRelationshipIndexStore | null;
-    readonly graph?: SemanticRelationshipGraphAdapter | null;
+    readonly store?: SemanticRelationshipCheckpointPort | null;
+    readonly graph?: SemanticRelationshipGraphPort | null;
     readonly disabledReason?: "INDEX_DISABLED" | "INDEX_NOT_CONFIGURED";
   } = {},
 ): SemanticExplorerService {
   const getRelease = async (
-    authority: SemanticAuthorityContext,
+    authority: SemanticApplicationAuthority,
     semanticDomain: string,
     releaseId: string,
   ) =>
@@ -147,7 +143,7 @@ export function createSemanticExplorerService(
       }),
     );
 
-  const getActive = async (authority: SemanticAuthorityContext, semanticDomain: string) =>
+  const getActive = async (authority: SemanticApplicationAuthority, semanticDomain: string) =>
     buildSnapshot(await reader.getActiveSource(authority.capabilityInput, semanticDomain));
 
   const relationshipSearch = createSemanticRelationshipSearchService({

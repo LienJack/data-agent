@@ -4,6 +4,7 @@ import {
   type SemanticGraphProjection,
   type SemanticGraphProjectionReceipt,
   type SemanticGraphReleaseBinding,
+  type SemanticGraphStorePort,
   type SemanticGraphStudioSource,
   semanticGraphProjectionReceiptSchema,
   semanticGraphProjectionSchema,
@@ -52,7 +53,7 @@ export interface SemanticGraphReleaseBindingInput {
   readonly projection_id: string;
 }
 
-export interface PostgresSemanticGraphStore {
+export interface PostgresSemanticGraphStore extends SemanticGraphStorePort {
   commit(
     capability: unknown,
     input: SemanticGraphProjectionCommitInput,

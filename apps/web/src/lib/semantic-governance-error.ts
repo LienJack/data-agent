@@ -12,10 +12,6 @@ export class SemanticGovernanceError extends Error {
 }
 
 const PUBLIC_ERRORS = {
-  SEMANTIC_BACKEND_NOT_CONFIGURED: [500, "语义治理后端尚未配置。"],
-  SEMANTIC_BACKEND_INVALID: [500, "语义治理后端配置无效。"],
-  SEMANTIC_MOCK_FORBIDDEN: [500, "生产环境禁止使用语义治理 Mock 后端。"],
-  SEMANTIC_DATABASE_NOT_CONFIGURED: [500, "语义治理数据库尚未配置。"],
   SEMANTIC_AUTHORITY_NOT_CONFIGURED: [500, "语义治理身份解析器尚未配置。"],
   SEMANTIC_UNAUTHENTICATED: [401, "当前请求尚未通过服务端身份验证。"],
   SEMANTIC_SCOPE_FORBIDDEN: [403, "当前身份无权访问该语义域。"],

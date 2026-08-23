@@ -4,9 +4,9 @@ import {
   semanticCandidateRevisionSaveRequestSchema,
   semanticManualSessionStartRequestSchema,
 } from "@data-agent/contracts";
+import type { SemanticCandidateSaveService } from "@data-agent/semantic/application";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { SemanticCandidateSaveService } from "./semantic-candidate-save-service";
 import { workspaceErrorResponse } from "./workspace-request";
 
 function response<T>(

@@ -4,6 +4,7 @@ import {
   type PortResult,
   type SchemaFeaturePacket,
   type SemanticAgentReceipt,
+  type SemanticCandidateCompilePort,
   type SemanticChangeProposal,
   schemaDriftEventSchema,
   schemaFeaturePacketSchema,
@@ -98,7 +99,7 @@ export type SemanticCompileCandidateAttachment = z.infer<typeof attachmentResult
 export type SemanticCompileBundle = z.infer<typeof compileBundleSchema>;
 export type SemanticCompileDriftEvidence = z.infer<typeof driftEvidenceSchema>;
 
-export interface PostgresSemanticCandidateCompileStore {
+export interface PostgresSemanticCandidateCompileStore extends SemanticCandidateCompilePort {
   getDriftEvidence(
     capability: unknown,
     semanticDomain: string,

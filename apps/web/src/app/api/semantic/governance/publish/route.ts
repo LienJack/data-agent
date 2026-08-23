@@ -7,10 +7,11 @@
  *   { action: "commit",  packetId: "..." } → 执行发布
  */
 
-import { type NextRequest, NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import {
   parseSemanticPublishRequest,
   resolveSemanticRouteAuthority,
+  semanticGovernanceResultResponse,
   semanticRouteErrorResponse,
 } from "@/lib/semantic-governance-route";
 
@@ -29,16 +30,10 @@ export async function POST(request: NextRequest) {
 
     if (parsed.action === "prepare") {
       const result = await runtime.service.preparePublish(authority, parsed.input);
-      return NextResponse.json(
-        { data: result, meta: { authority: authority.authority } },
-        { status: 201 },
-      );
+      return semanticGovernanceResultResponse(result, 201);
     } else {
       const result = await runtime.service.commitPublish(authority, parsed.input);
-      return NextResponse.json(
-        { data: result, meta: { authority: authority.authority } },
-        { status: 201 },
-      );
+      return semanticGovernanceResultResponse(result, 201);
     }
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_BODY");

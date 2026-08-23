@@ -1,4 +1,5 @@
 import {
+  type SemanticApplicationAuthority,
   type SemanticExplorerCandidateComparison,
   type SemanticExplorerDiff,
   type SemanticExplorerDomainSummary,
@@ -15,11 +16,9 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+import type { SemanticExplorerService } from "@data-agent/semantic/application";
 import { NextRequest } from "next/server";
-import type {
-  SemanticAuthorityContext,
-  SemanticAuthorityResolver,
-} from "../src/lib/semantic-authority";
+import type { SemanticAuthorityResolver } from "../src/lib/semantic-authority";
 import {
   handleDiffExplorerReleases,
   handleGetActiveExplorerRelease,
@@ -32,7 +31,6 @@ import {
   handleSearchExplorerRelationships,
 } from "../src/lib/semantic-explorer-route";
 import type { SemanticExplorerRuntime } from "../src/lib/semantic-explorer-runtime";
-import type { SemanticExplorerService } from "../src/lib/semantic-explorer-service";
 
 const ids = {
   release: "00000000-0000-4000-8000-000000000101",
@@ -47,7 +45,7 @@ const ids = {
 } as const;
 
 function enabledRuntime() {
-  const authority: SemanticAuthorityContext = {
+  const authority: SemanticApplicationAuthority = {
     authority: "POSTGRESQL",
     capabilityInput: { server: "capability" },
     scope: {
@@ -497,24 +495,6 @@ describe("Semantic Explorer routes", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
     await expect(response.json()).resolves.toMatchObject({
       error: { code: "SEMANTIC_EXPLORER_DISABLED", retryable: false },
-    });
-  });
-
-  it("contains runtime bootstrap failures inside the stable public error envelope", async () => {
-    vi.stubEnv("SEMANTIC_EXPLORER_ENABLED", "invalid-feature-flag");
-
-    const response = await handleGetActiveExplorerRelease(
-      new NextRequest("http://localhost/api/semantic/releases/active?domain=revenue"),
-    );
-
-    expect(response.status).toBe(503);
-    expect(response.headers.get("cache-control")).toBe("private, no-store, max-age=0");
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: "SEMANTIC_EXPLORER_CONFIG_INVALID",
-        message: "语义 Explorer 服务端运行时尚未配置。",
-        retryable: false,
-      },
     });
   });
 });

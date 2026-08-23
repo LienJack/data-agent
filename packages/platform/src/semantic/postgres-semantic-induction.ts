@@ -4,6 +4,7 @@ import {
   type PortResult,
   type SemanticInductionCommitCommand,
   type SemanticInductionCommitResult,
+  type SemanticInductionRegistryPort,
   type SemanticInductionRejectCommand,
   type SemanticInductionRejectResult,
   type SemanticInductionSourceRegistrationCommand,
@@ -85,7 +86,7 @@ export function createPostgresSemanticInductionRegistry(
     pool: SqlPool;
     authorizer: TransactionalCapabilityAuthorizer;
   }>,
-) {
+): SemanticInductionRegistryPort {
   return Object.freeze({
     async registerSource(
       capabilityInput: unknown,

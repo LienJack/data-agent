@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+import type { SemanticCandidateSaveService } from "@data-agent/semantic/application";
 import { handleSaveSemanticCandidateRevision } from "../src/lib/semantic-candidate-save-route";
-import type { SemanticCandidateSaveService } from "../src/lib/semantic-candidate-save-service";
 
 const ids = {
   run: "10000000-0000-4000-8000-000000000001",

@@ -1,4 +1,5 @@
 import "server-only";
+import type { SemanticApplicationAuthority } from "@data-agent/contracts";
 import type { AppCapability, AppCapabilityRole, BoundaryResult } from "@data-agent/platform";
 import { z } from "zod";
 import { publicSemanticGovernanceError } from "./semantic-governance-error";
@@ -17,23 +18,8 @@ const semanticAuthorityRequestSchema = z.strictObject({
 export type SemanticAuthorityAccess = "READ" | "WRITE";
 export type SemanticAuthorityRole = "human-reviewer" | "publisher" | "admin" | "demo";
 
-export interface SemanticAuthorityContext {
-  readonly authority: "POSTGRESQL" | "NON_AUTHORITATIVE_MOCK";
-  readonly capabilityInput: unknown;
-  readonly scope: {
-    readonly appId: string;
-    readonly tenantId: string;
-    readonly environment: string;
-    readonly semanticDomain: string;
-  };
-  readonly deploymentId: string;
-  readonly principal: string;
-  readonly semanticRole: SemanticAuthorityRole;
-  readonly allowedDomains: readonly string[];
-}
-
 export interface SemanticAuthorityResolver {
-  resolve(input: unknown): Promise<SemanticAuthorityContext>;
+  resolve(input: unknown): Promise<SemanticApplicationAuthority>;
 }
 
 interface PostgresAuthority {
@@ -75,7 +61,7 @@ export function createPostgresSemanticAuthorityResolver(
   const allowedDomains = normalizeAllowedDomains(options.allowedDomains);
 
   return Object.freeze({
-    async resolve(input: unknown): Promise<SemanticAuthorityContext> {
+    async resolve(input: unknown): Promise<SemanticApplicationAuthority> {
       const parsed = semanticAuthorityRequestSchema.safeParse(input);
       if (!parsed.success) {
         throw publicSemanticGovernanceError("SEMANTIC_UNAUTHENTICATED");
@@ -140,7 +126,7 @@ export function createCapabilitySemanticAuthorityResolver(
     ? normalizeAllowedDomains(configuredDomains)
     : null;
   return Object.freeze({
-    async resolve(input: unknown): Promise<SemanticAuthorityContext> {
+    async resolve(input: unknown): Promise<SemanticApplicationAuthority> {
       const parsed = semanticAuthorityRequestSchema.safeParse(input);
       if (!parsed.success) {
         throw publicSemanticGovernanceError("SEMANTIC_UNAUTHENTICATED");
@@ -171,45 +157,6 @@ export function createCapabilitySemanticAuthorityResolver(
         principal: capability.principal,
         semanticRole: semanticRoleForCapability(capability.role),
         allowedDomains: allowedDomains ?? Object.freeze([]),
-      });
-    },
-  });
-}
-
-export function createExplicitMockSemanticAuthorityResolver(
-  allowedDomains: readonly string[],
-): SemanticAuthorityResolver {
-  const normalizedDomains = normalizeAllowedDomains(allowedDomains);
-  const mockId = "00000000-0000-4000-8000-000000000001";
-
-  return Object.freeze({
-    async resolve(input: unknown): Promise<SemanticAuthorityContext> {
-      const parsed = semanticAuthorityRequestSchema.safeParse(input);
-      if (!parsed.success) {
-        throw publicSemanticGovernanceError("SEMANTIC_UNAUTHENTICATED");
-      }
-      if (parsed.data.access === "WRITE" && parsed.data.semanticDomain === "all") {
-        throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
-      }
-      if (
-        parsed.data.semanticDomain !== "all" &&
-        !normalizedDomains.includes(parsed.data.semanticDomain)
-      ) {
-        throw publicSemanticGovernanceError("SEMANTIC_SCOPE_FORBIDDEN");
-      }
-      return Object.freeze({
-        authority: "NON_AUTHORITATIVE_MOCK" as const,
-        capabilityInput: Object.freeze({ kind: "semantic-demo-capability" }),
-        scope: Object.freeze({
-          appId: mockId,
-          tenantId: mockId,
-          environment: "development",
-          semanticDomain: parsed.data.semanticDomain,
-        }),
-        deploymentId: mockId,
-        principal: "semantic-demo-principal",
-        semanticRole: "demo" as const,
-        allowedDomains: normalizedDomains,
       });
     },
   });

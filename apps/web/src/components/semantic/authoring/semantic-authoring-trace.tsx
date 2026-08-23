@@ -2,6 +2,10 @@
 
 import type { SemanticAuthoringPublicEvent } from "@data-agent/contracts";
 import {
+  mergeSemanticAuthoringPublicFeeds,
+  type SemanticAuthoringPublicFeed,
+} from "@data-agent/semantic/application";
+import {
   ArrowLeft,
   Brain,
   CheckCircle,
@@ -21,10 +25,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { WorkspaceLocale } from "@/i18n";
 import { useWorkspaceI18n } from "@/i18n";
 import { useLayoutStore } from "@/lib/layout-store";
-import {
-  mergeSemanticAuthoringPublicFeeds,
-  type SemanticAuthoringPublicFeed,
-} from "@/lib/semantic-authoring-public";
 import {
   loadSemanticAuthoringPublicFeed,
   resumeSemanticAuthoring,

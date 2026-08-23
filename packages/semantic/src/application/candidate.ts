@@ -1,7 +1,16 @@
-import "server-only";
-
 import { randomUUID } from "node:crypto";
-import type { PortResult, SemanticBaseReleaseIdentity } from "@data-agent/contracts";
+import type {
+  PortResult,
+  SemanticApplicationAuthority,
+  SemanticBaseReleaseIdentity,
+  SemanticCandidateCompilePort,
+  SemanticCandidateModelRuntime,
+  SemanticCandidateModelRuntimePort,
+  SemanticCandidateReviewPort,
+  SemanticCompileBundle,
+  SemanticExplorerReadPort,
+  SemanticSchemaSnapshotReadPort,
+} from "@data-agent/contracts";
 import {
   computeSemanticChangeProposalDigest,
   computeSemanticCompileInputDigest,
@@ -12,25 +21,13 @@ import {
   semanticCompileRequestSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
-import type {
-  PostgresSchemaSnapshotStore,
-  PostgresSemanticCandidateCompileStore,
-  PostgresSemanticExplorerReader,
-  SemanticCompileBundle,
-} from "@data-agent/platform";
 import {
   buildAgentSemanticCandidateDraft,
   buildSchemaFeaturePacket,
   buildSemanticAgentReceipt,
   runSemanticCandidateAgent,
   validateSemanticChangeProposal,
-} from "@data-agent/semantic/authoring";
-import type { SemanticAuthorityContext } from "./semantic-authority";
-import type { SemanticGovernanceService } from "./semantic-governance-service";
-import type {
-  CertifiedTestCenterModelRuntime,
-  TestCenterModelRuntime,
-} from "./test-center-model-runtime";
+} from "../candidate-generation/index.js";
 
 export interface SemanticCompileSubmitInput {
   readonly semantic_domain: string;
@@ -40,16 +37,12 @@ export interface SemanticCompileSubmitInput {
   readonly edited_operations?: readonly SemanticCandidateOperation[];
 }
 
-export interface SemanticCandidateModelRuntimeResolver {
-  resolve(authority: SemanticAuthorityContext): Promise<TestCenterModelRuntime>;
-}
-
 export interface SemanticCandidateServiceDependencies {
-  readonly snapshot_store: PostgresSchemaSnapshotStore;
-  readonly explorer_reader: PostgresSemanticExplorerReader;
-  readonly compile_store: PostgresSemanticCandidateCompileStore;
-  readonly governance_service: SemanticGovernanceService;
-  readonly model_runtime: SemanticCandidateModelRuntimeResolver;
+  readonly snapshot_store: SemanticSchemaSnapshotReadPort;
+  readonly explorer_reader: SemanticExplorerReadPort;
+  readonly compile_store: SemanticCandidateCompilePort;
+  readonly candidate_review: SemanticCandidateReviewPort;
+  readonly model_runtime: SemanticCandidateModelRuntimePort;
 }
 
 function unavailableReceipt(): Promise<SemanticAgentReceipt> {
@@ -83,7 +76,7 @@ function failure<T>(code: string, message: string, retryable = false): PortResul
 }
 
 function baseReleaseFromActive(
-  active: Awaited<ReturnType<PostgresSemanticExplorerReader["getActiveSource"]>>,
+  active: Awaited<ReturnType<SemanticExplorerReadPort["getActiveSource"]>>,
 ): PortResult<SemanticBaseReleaseIdentity | null> {
   if (!active.ok) {
     if (active.error.code === "SEMANTIC_EXPLORER_RELEASE_NOT_FOUND") {
@@ -101,7 +94,10 @@ function baseReleaseFromActive(
   };
 }
 
-function modelBudget(runtime: CertifiedTestCenterModelRuntime, inputBytes: number) {
+function modelBudget(
+  runtime: Extract<SemanticCandidateModelRuntime, { available: true }>,
+  inputBytes: number,
+) {
   const context = runtime.profile.operational_constraints.context_window;
   if (context.verification_status !== "VERIFIED") return null;
   const maxOutputTokens = Math.min(8_192, context.max_output_tokens);
@@ -117,7 +113,7 @@ function modelBudget(runtime: CertifiedTestCenterModelRuntime, inputBytes: numbe
 export function createSemanticCandidateService(dependencies: SemanticCandidateServiceDependencies) {
   return Object.freeze({
     async compile(
-      authority: SemanticAuthorityContext,
+      authority: SemanticApplicationAuthority,
       requestInput: SemanticCompileRequest,
     ): Promise<PortResult<SemanticCompileBundle>> {
       const request = semanticCompileRequestSchema.parse(requestInput);
@@ -248,7 +244,7 @@ export function createSemanticCandidateService(dependencies: SemanticCandidateSe
     },
 
     get(
-      authority: SemanticAuthorityContext,
+      authority: SemanticApplicationAuthority,
       semanticDomain: string,
       compileRunId: string,
     ): Promise<PortResult<SemanticCompileBundle>> {
@@ -259,7 +255,7 @@ export function createSemanticCandidateService(dependencies: SemanticCandidateSe
       );
     },
 
-    async submit(authority: SemanticAuthorityContext, input: SemanticCompileSubmitInput) {
+    async submit(authority: SemanticApplicationAuthority, input: SemanticCompileSubmitInput) {
       const bundle = await dependencies.compile_store.get(
         authority.capabilityInput,
         input.semantic_domain,
@@ -329,15 +325,16 @@ export function createSemanticCandidateService(dependencies: SemanticCandidateSe
         selected_operation_ids: input.selected_operation_ids,
         origin_proposal_digest: originalProposal.proposal_digest,
       });
-      const candidate = await dependencies.governance_service.createCandidate(authority, draft);
+      const candidate = await dependencies.candidate_review.createCandidate(authority, draft);
+      if (!candidate.ok) return candidate;
       const attached = await dependencies.compile_store.attachCandidate(authority.capabilityInput, {
         semantic_domain: input.semantic_domain,
         compile_run_id: input.compile_run_id,
-        candidate_id: candidate.candidate_id,
-        candidate_revision_id: candidate.revision_id,
+        candidate_id: candidate.value.candidate_id,
+        candidate_revision_id: candidate.value.revision_id,
       });
       if (!attached.ok) return attached;
-      return { ok: true as const, value: candidate };
+      return candidate;
     },
   });
 }

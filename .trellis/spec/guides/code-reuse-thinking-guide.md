@@ -141,6 +141,8 @@ of that replay model.
 - [ ] Constants defined in one place
 - [ ] Similar patterns follow same structure
 - [ ] Reducer/action transitions live in one reducer or command dispatcher
+- [ ] Candidate、Governance、Studio、Explorer 用例只存在于 `semantic/application`；Web
+      只保留 transport mapping，未复制 service 或为旧 endpoint 增加兼容 wrapper
 
 ---
 

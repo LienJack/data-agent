@@ -7,6 +7,8 @@ import type {
 } from "../../artifacts/semantic-governance-requests.js";
 import type { AppScope, PortResult } from "../../common/index.js";
 
+export * from "./application.js";
+
 export interface SemanticCandidatePort {
   create(input: {
     readonly scope: AppScope;

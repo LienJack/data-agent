@@ -1,12 +1,12 @@
-import { create } from "zustand";
 import type {
   InboxGroup,
   InboxItem,
-  ReviewDecision,
+  SemanticReviewDecisionView as ReviewDecision,
   ReviewPacketStatus,
   SemanticReviewPacket,
   SemanticViewState,
-} from "./semantic-types";
+} from "@data-agent/contracts";
+import { create } from "zustand";
 
 // ─── Store 类型 ────────────────────────────────────────────────────────────────
 

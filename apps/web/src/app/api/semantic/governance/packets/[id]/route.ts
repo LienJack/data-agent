@@ -9,6 +9,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   resolveSemanticRouteAuthority,
+  semanticGovernanceResultResponse,
   semanticRouteErrorResponse,
 } from "@/lib/semantic-governance-route";
 
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     );
     const packet = await runtime.service.getPacketDetail(authority, id);
 
-    return NextResponse.json({ data: packet, meta: { authority: authority.authority } });
+    return semanticGovernanceResultResponse(packet);
   } catch (error) {
     return semanticRouteErrorResponse(error, "INVALID_PARAMS");
   }

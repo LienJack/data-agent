@@ -8,10 +8,7 @@ import {
   type TransactionalCapabilityAuthorizer,
 } from "@data-agent/platform";
 import pg from "pg";
-import {
-  type SchemaDiscoveryAuthorityResolver,
-  unavailableSchemaDiscoveryAuthorityResolver,
-} from "./schema-discovery-authority";
+import type { SchemaDiscoveryAuthorityResolver } from "./schema-discovery-authority";
 import {
   createSchemaDiscoveryService,
   type SchemaDiscoveryDatasourceResolver,
@@ -30,34 +27,22 @@ export interface SchemaDiscoveryRuntime {
 }
 
 export interface SchemaDiscoveryRuntimeDependencies {
-  readonly environment?: SchemaDiscoveryEnvironment;
+  readonly environment: SchemaDiscoveryEnvironment;
   readonly pool?: pg.Pool;
   readonly sqlPool?: SqlPool;
   readonly transactionalAuthorizer?: TransactionalCapabilityAuthorizer;
-  readonly authorityResolver?: SchemaDiscoveryAuthorityResolver;
+  readonly authorityResolver: SchemaDiscoveryAuthorityResolver;
   readonly datasourceResolver?: SchemaDiscoveryDatasourceResolver;
 }
 
 export function createSchemaDiscoveryRuntime(
-  dependencies: SchemaDiscoveryRuntimeDependencies = {},
+  dependencies: SchemaDiscoveryRuntimeDependencies,
 ): SchemaDiscoveryRuntime {
-  const environment = dependencies.environment ?? process.env;
+  const environment = dependencies.environment;
   const connectionString =
     environment.SCHEMA_DISCOVERY_DATABASE_URL ?? environment.DATABASE_URL ?? null;
-  if (
-    (!connectionString && (!dependencies.sqlPool || !dependencies.transactionalAuthorizer)) ||
-    !dependencies.authorityResolver
-  ) {
-    const unavailableStore = createUnavailableStore();
-    return Object.freeze({
-      authorityResolver:
-        dependencies.authorityResolver ?? unavailableSchemaDiscoveryAuthorityResolver(),
-      service: createSchemaDiscoveryService({
-        store: unavailableStore,
-        datasourceResolver:
-          dependencies.datasourceResolver ?? unavailableSchemaDiscoveryDatasourceResolver(),
-      }),
-    });
+  if (!connectionString && (!dependencies.sqlPool || !dependencies.transactionalAuthorizer)) {
+    throw new TypeError("SCHEMA_DISCOVERY_RUNTIME_NOT_CONFIGURED");
   }
   const sqlPool =
     dependencies.sqlPool ??
@@ -74,30 +59,4 @@ export function createSchemaDiscoveryRuntime(
         dependencies.datasourceResolver ?? unavailableSchemaDiscoveryDatasourceResolver(),
     }),
   });
-}
-
-function createUnavailableStore(): ReturnType<typeof createPostgresSchemaSnapshotStore> {
-  const unavailable = async () => ({
-    ok: false as const,
-    error: {
-      code: "SCHEMA_SCAN_DATASOURCE_UNAVAILABLE",
-      message: "Schema Discovery Authority 尚未配置。",
-      retryable: false,
-    },
-  });
-  return {
-    commitSuccess: unavailable,
-    commitFailure: unavailable,
-    commitDrift: unavailable,
-    getScan: unavailable,
-    getSnapshot: unavailable,
-    getDrift: unavailable,
-  };
-}
-
-let runtimeInstance: SchemaDiscoveryRuntime | null = null;
-
-export function getSchemaDiscoveryRuntime(): SchemaDiscoveryRuntime {
-  runtimeInstance ??= createSchemaDiscoveryRuntime();
-  return runtimeInstance;
 }

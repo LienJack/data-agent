@@ -187,7 +187,7 @@ export const schemaDriftEventSchema = z.strictObject({
 
 export const schemaDriftCommitResultSchema = z.strictObject({
   schema_version: z.literal("schema-drift-commit-result@1.0.0"),
-  authority: z.enum(["POSTGRESQL", "NON_AUTHORITATIVE_MOCK"]),
+  authority: z.literal("POSTGRESQL"),
   drift_event_id: immutableIdSchema,
   event_storage_digest: contentHashSchema,
   created: z.boolean(),

@@ -7,7 +7,7 @@ import {
   type SchemaDiscoveryAuthorityContext,
   SchemaDiscoveryAuthorityError,
 } from "./schema-discovery-authority";
-import { getSchemaDiscoveryRuntime, type SchemaDiscoveryRuntime } from "./schema-discovery-runtime";
+import type { SchemaDiscoveryRuntime } from "./schema-discovery-runtime";
 
 const datasourceIdSchema = schemaScanRequestSchema.shape.datasource_id;
 
@@ -86,7 +86,7 @@ async function authority(
 export async function handleStartSchemaScan(
   request: Request,
   params: Promise<{ id: string }>,
-  runtime: SchemaDiscoveryRuntime = getSchemaDiscoveryRuntime(),
+  runtime: SchemaDiscoveryRuntime,
 ): Promise<NextResponse> {
   try {
     const { id } = await params;
@@ -106,7 +106,7 @@ export async function handleStartSchemaScan(
 
 export async function handleGetSchemaScan(
   params: Promise<{ id: string; runId: string }>,
-  runtime: SchemaDiscoveryRuntime = getSchemaDiscoveryRuntime(),
+  runtime: SchemaDiscoveryRuntime,
 ): Promise<NextResponse> {
   try {
     const { id, runId } = await params;
@@ -123,7 +123,7 @@ export async function handleGetSchemaScan(
 
 export async function handleGetSchemaSnapshot(
   params: Promise<{ snapshotId: string }>,
-  runtime: SchemaDiscoveryRuntime = getSchemaDiscoveryRuntime(),
+  runtime: SchemaDiscoveryRuntime,
 ): Promise<NextResponse> {
   try {
     const { snapshotId } = await params;
@@ -138,7 +138,7 @@ export async function handleGetSchemaSnapshot(
 export async function handleGetSchemaDiff(
   request: Request,
   params: Promise<{ snapshotId: string }>,
-  runtime: SchemaDiscoveryRuntime = getSchemaDiscoveryRuntime(),
+  runtime: SchemaDiscoveryRuntime,
 ): Promise<NextResponse> {
   try {
     const { snapshotId } = await params;

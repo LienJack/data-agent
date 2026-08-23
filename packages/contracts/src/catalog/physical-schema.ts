@@ -184,7 +184,7 @@ export const schemaScanRunSchema = z.strictObject({
 
 export const schemaScanCommitResultSchema = z.strictObject({
   schema_version: z.literal("schema-scan-commit-result@1.0.0"),
-  authority: z.enum(["POSTGRESQL", "NON_AUTHORITATIVE_MOCK"]),
+  authority: z.literal("POSTGRESQL"),
   scan_run_id: immutableIdSchema,
   snapshot_id: immutableIdSchema.nullable(),
   snapshot_content_hash: contentHashSchema.nullable(),

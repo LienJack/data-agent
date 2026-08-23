@@ -54,7 +54,7 @@ export const semanticCandidateDraftSchema = z.strictObject({
 
 export const semanticCandidateCreateResultSchema = z.strictObject({
   schema_version: z.literal("semantic-candidate-create-result@1.0.0"),
-  authority: z.enum(["POSTGRESQL", "NON_AUTHORITATIVE_MOCK"]),
+  authority: z.literal("POSTGRESQL"),
   candidate_id: immutableIdSchema,
   revision_id: immutableIdSchema,
   source_revision_id: immutableIdSchema,

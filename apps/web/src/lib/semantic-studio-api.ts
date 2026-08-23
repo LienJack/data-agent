@@ -1,13 +1,8 @@
 "use client";
 
 import {
-  type SemanticAuthoringPublicEvent,
-  type SemanticAuthoringRun,
-  type SemanticEdgeTypeDefinition,
   type SemanticGraphEntryStatus,
   type SemanticGraphFullResult,
-  type SemanticGraphNeighborhoodResult,
-  type SemanticGraphNodeListResult,
   type SemanticManualEdit,
   type SemanticNodeType,
   semanticAuthoringPublicEventSchema,
@@ -15,11 +10,13 @@ import {
   semanticAuthoringStateSchema,
   semanticCandidateRevisionSaveResultSchema,
 } from "@data-agent/contracts";
+import type {
+  SemanticAuthoringPublicFeed,
+  SemanticStudioSnapshot,
+  SemanticStudioStartResult,
+} from "@data-agent/semantic/application";
+import { semanticAuthoringPublicFeedSchema } from "@data-agent/semantic/application";
 import { z } from "zod";
-import {
-  type SemanticAuthoringPublicFeed,
-  semanticAuthoringPublicFeedSchema,
-} from "./semantic-authoring-public";
 
 /*
  * The SSE stream is a browser boundary, so it must parse the same strict
@@ -29,37 +26,6 @@ const semanticStudioStartResultSchema = z.strictObject({
   state: z.strictObject({ run: semanticAuthoringRunSchema }),
   events: z.array(semanticAuthoringPublicEventSchema),
 });
-
-export interface SemanticStudioAuthoringState {
-  readonly run: SemanticAuthoringRun;
-}
-
-export interface SemanticStudioReleaseIdentity {
-  readonly release_id: string;
-  readonly release_generation: number;
-  readonly label: string;
-}
-
-export interface SemanticStudioSnapshot {
-  readonly schema_version: "semantic-studio-snapshot@1.0.0";
-  readonly semantic_domain: string;
-  readonly available_domains: readonly string[];
-  readonly release: SemanticStudioReleaseIdentity;
-  readonly edge_type_registry: readonly SemanticEdgeTypeDefinition[];
-  readonly list: SemanticGraphNodeListResult;
-  readonly full: SemanticGraphFullResult;
-  readonly local: SemanticGraphNeighborhoodResult | null;
-  readonly authoring: {
-    readonly state: SemanticStudioAuthoringState;
-    readonly events: readonly SemanticAuthoringPublicEvent[];
-    readonly saved_revision: z.infer<typeof semanticCandidateRevisionSaveResultSchema> | null;
-  } | null;
-}
-
-export interface SemanticStudioStartResult {
-  readonly state: SemanticStudioAuthoringState;
-  readonly events: readonly SemanticAuthoringPublicEvent[];
-}
 
 export class SemanticStudioApiError extends Error {
   override readonly name = "SemanticStudioApiError";

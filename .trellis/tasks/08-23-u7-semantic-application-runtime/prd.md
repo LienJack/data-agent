@@ -13,11 +13,11 @@
 
 ## Acceptance Criteria
 
-- [ ] Memory fake 与 PostgreSQL adapters 通过相同 use-case conformance fixture。
-- [ ] Route 在 SQL/use case 前验证 workspace/capability，缺配置 fail closed。
-- [ ] AI Candidate 无法绕过 Review Publish；publish/rollback/explorer/search 跨层集成通过。
-- [ ] 所有生产 Semantic route/job 使用唯一 Workspace/job composition，旧 endpoint 默认 404。
-- [ ] Web semantic service 仅剩 transport mapping 或被删除。
+- [x] Memory fake 与 PostgreSQL adapters 通过相同 use-case conformance fixture。
+- [x] Route 在 SQL/use case 前验证 workspace/capability，缺配置 fail closed。
+- [x] AI Candidate 无法绕过 Review Publish；publish/rollback/explorer/search 跨层集成通过。
+- [x] 所有生产 Semantic route/job 使用唯一 Workspace/job composition，旧 endpoint 默认 404。
+- [x] Web semantic service 仅剩 transport mapping 或被删除。
 
 ## Notes
 

@@ -6,9 +6,9 @@ import {
   semanticLifecycleSchema,
   semanticNodeTypeSchema,
 } from "@data-agent/contracts";
+import type { SemanticStudioService } from "@data-agent/semantic/application";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { SemanticStudioService } from "./semantic-studio-service";
 import { selectSseCursor } from "./sse-cursor";
 import { workspaceErrorResponse } from "./workspace-request";
 

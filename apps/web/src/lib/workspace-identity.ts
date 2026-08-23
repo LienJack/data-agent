@@ -22,7 +22,6 @@ import {
   createPostgresQaAdminAuditRepository,
   createPostgresResolutionTraceProjector,
   createPostgresResolvedContextRegistry,
-  createPostgresSemanticInductionRegistry,
   createPostgresSemanticPortabilityRepository,
   createPostgresSessionRecovery,
   createPostgresSkillRegistry,
@@ -62,7 +61,6 @@ interface WorkspaceIdentityRuntimeState {
   knowledgeRegistry?: ReturnType<typeof createPostgresKnowledgeRegistry>;
   mcpRegistry?: ReturnType<typeof createPostgresMcpRegistry>;
   skillRegistry?: ReturnType<typeof createPostgresSkillRegistry>;
-  semanticInductionRegistry?: ReturnType<typeof createPostgresSemanticInductionRegistry>;
   sessionRecovery?: ReturnType<typeof createPostgresSessionRecovery>;
   resolutionTraceProjector?: ReturnType<typeof createPostgresResolutionTraceProjector>;
   resolvedContextService?: ReturnType<typeof createResolvedContextService>;
@@ -231,15 +229,6 @@ export function getSkillRegistry() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.skillRegistry;
-}
-
-export function getSemanticInductionRegistry() {
-  const runtime = state();
-  runtime.semanticInductionRegistry ??= createPostgresSemanticInductionRegistry({
-    pool: getWorkspaceSqlPool(),
-    authorizer: getWorkspaceAuthority().authorizer,
-  });
-  return runtime.semanticInductionRegistry;
 }
 
 export function getSessionRecovery() {

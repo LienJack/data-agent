@@ -1,5 +1,3 @@
-import "server-only";
-
 import {
   buildSemanticCandidateRevisionSaveCommand,
   buildSemanticManualSessionStartCommand,
@@ -7,23 +5,19 @@ import {
   type PortResult,
   type SemanticAuthoringStorePort,
   type SemanticAuthoringValidationReceipt,
+  type SemanticCandidateRevisionPort,
   type SemanticCandidateRevisionSaveRequest,
   type SemanticCandidateRevisionSaveResult,
   type SemanticGraphPatchOperation,
   type SemanticGraphSource,
+  type SemanticGraphStorePort,
+  type SemanticKnowledgeEvidencePort,
   type SemanticManualEdit,
   type SemanticManualSessionStartRequest,
   sha256ContentHash,
 } from "@data-agent/contracts";
-import type {
-  createPostgresSemanticCandidateRevisionStore,
-  PostgresSemanticGraphStore,
-} from "@data-agent/platform";
-import { createSemanticGraphPatch } from "@data-agent/semantic/authoring";
-import {
-  compileSemanticGraphV2,
-  SEMANTIC_GRAPH_COMPILER_VERSION,
-} from "@data-agent/semantic/governance";
+import { compileSemanticGraphV2, SEMANTIC_GRAPH_COMPILER_VERSION } from "../graph-v2/compiler.js";
+import { createSemanticGraphPatch } from "../graph-v2/patch-reducer.js";
 
 interface Dependencies {
   readonly capability: unknown;
@@ -34,16 +28,9 @@ interface Dependencies {
   };
   readonly principal_id: string;
   readonly create_authoring_store: (semanticDomain: string) => SemanticAuthoringStorePort;
-  readonly graph_store: PostgresSemanticGraphStore;
-  readonly candidate_revision_store: ReturnType<
-    typeof createPostgresSemanticCandidateRevisionStore
-  >;
-  readonly knowledge_registry: Readonly<{
-    getEvidenceSelection(
-      capability: unknown,
-      selectionId: string,
-    ): Promise<PortResult<KnowledgeEvidenceSelectionDetail>>;
-  }>;
+  readonly graph_store: SemanticGraphStorePort;
+  readonly candidate_revision_store: SemanticCandidateRevisionPort;
+  readonly knowledge_registry: SemanticKnowledgeEvidencePort;
   readonly new_id: () => string;
   readonly now: () => Date;
 }

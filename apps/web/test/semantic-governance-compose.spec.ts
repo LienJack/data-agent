@@ -8,10 +8,8 @@ const composeSource = readFileSync(
 );
 
 describe("semantic governance compose runtime", () => {
-  it("injects the explicit PostgreSQL backend and fixed authority context into web", () => {
-    expect(composeSource).toContain(
-      `SEMANTIC_GOVERNANCE_BACKEND: \${SEMANTIC_GOVERNANCE_BACKEND:-postgres}`,
-    );
+  it("injects only the fixed workspace authority context into web", () => {
+    expect(composeSource).not.toContain("SEMANTIC_GOVERNANCE_BACKEND");
     expect(composeSource).toContain(`SEMANTIC_DEPLOYMENT_ID: \${SEMANTIC_DEPLOYMENT_ID:-`);
     expect(composeSource).toContain(`SEMANTIC_TENANT_ID: \${SEMANTIC_TENANT_ID:-`);
     expect(composeSource).toContain(`SEMANTIC_PRINCIPAL_ID: \${SEMANTIC_PRINCIPAL_ID:-`);

@@ -855,6 +855,9 @@ export async function verifySemanticInductionReceipt(input: unknown) {
 
 export type SemanticInductionRequest = z.infer<typeof semanticInductionRequestSchema>;
 export type SemanticInductionSource = z.infer<typeof semanticInductionSourceSchema>;
+export type SemanticInductionSourceReference = z.infer<
+  typeof semanticInductionSourceReferenceSchema
+>;
 export type SemanticStableObjectIdentityMaterial = z.infer<
   typeof semanticStableObjectIdentityMaterialSchema
 >;

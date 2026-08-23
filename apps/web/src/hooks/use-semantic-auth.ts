@@ -5,8 +5,14 @@
  * 后续对接真实认证系统时替换实现即可。
  */
 
+import type { CurrentUser, SemanticRole } from "@data-agent/contracts";
 import { useMemo } from "react";
-import { type CurrentUser, MOCK_CURRENT_USER, type SemanticRole } from "@/lib/semantic-types";
+
+const CURRENT_REVIEW_USER: CurrentUser = {
+  id: "user-001",
+  name: "张三",
+  role: "human-reviewer",
+};
 
 // ─── 权限检查 ──────────────────────────────────────────────────────────────────
 
@@ -27,7 +33,7 @@ const CAN_PROPOSE_ROLES: SemanticRole[] = ["agent-proposer", "admin"];
  */
 export function useCurrentUser(): CurrentUser {
   // TODO: 替换为真实认证上下文
-  return useMemo(() => MOCK_CURRENT_USER, []);
+  return useMemo(() => CURRENT_REVIEW_USER, []);
 }
 
 /**

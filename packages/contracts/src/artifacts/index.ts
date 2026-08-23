@@ -49,6 +49,27 @@ export * from "./semantic-control-plane.js";
 export * from "./semantic-explorer.js";
 export * from "./semantic-governance.js";
 export * from "./semantic-governance-requests.js";
+export {
+  type ChangeClass,
+  type CurrentUser,
+  type DiffEntry,
+  type ImpactAnalysis,
+  INBOX_GROUPS,
+  type InboxGroup,
+  type InboxItem,
+  type LineageRecord,
+  type ReviewDecision as SemanticReviewDecisionView,
+  type ReviewDecisionRecord,
+  type Reviewer,
+  type ReviewPacketStatus,
+  type RevisionRecord,
+  type RiskLevel,
+  SEMANTIC_ROLE_LABELS,
+  type SemanticDiff as SemanticReviewDiff,
+  type SemanticReviewPacket,
+  type SemanticRole,
+  type SemanticViewState,
+} from "./semantic-governance-view.js";
 export * from "./semantic-induction.js";
 export * from "./semantic-relationship-index.js";
 export * from "./sensitive-execution-artifact.js";

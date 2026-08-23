@@ -1,5 +1,6 @@
 import {
   type PortResult,
+  type SemanticCandidateRevisionPort,
   type SemanticCandidateRevisionSaveCommand,
   type SemanticManualSessionStartCommand,
   semanticCandidateRevisionSaveResultSchema,
@@ -56,7 +57,7 @@ export function createPostgresSemanticCandidateRevisionStore(
     pool: SqlPool;
     authorizer: TransactionalCapabilityAuthorizer;
   }>,
-) {
+): SemanticCandidateRevisionPort {
   return Object.freeze({
     async getSaved(
       capability: unknown,

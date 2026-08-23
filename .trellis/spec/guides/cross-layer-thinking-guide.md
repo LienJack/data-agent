@@ -120,6 +120,8 @@ After implementation:
       casting payload fields locally
 - [ ] Checked that derived state points back to the source event identifier
       (`seq`, `id`, `version`) instead of inventing a second cursor
+- [ ] Semantic route/job 先在唯一 Workspace/job composition 验证 Capability，再注入
+      Contracts Port；Route 未直接创建 PostgreSQL/Neo4j Adapter
 
 ---
 

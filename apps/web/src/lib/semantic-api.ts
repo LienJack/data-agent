@@ -5,16 +5,16 @@
  * 通过 Next.js API Routes 与服务层通信。
  */
 
-import type { SemanticCandidateCreateResult } from "@data-agent/contracts";
-import { workspaceRequestHeaders } from "./api-client";
 import type {
   ChangeClass,
   InboxGroup,
   InboxItem,
-  ReviewDecision,
+  SemanticReviewDecisionView as ReviewDecision,
   RiskLevel,
+  SemanticCandidateCreateResult,
   SemanticReviewPacket,
-} from "./semantic-types";
+} from "@data-agent/contracts";
+import { workspaceRequestHeaders } from "./api-client";
 
 // ─── API 基础路径 ──────────────────────────────────────────────────────────────
 
@@ -56,7 +56,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 /** 获取收件箱条目 */
 export async function fetchInboxItems(group: InboxGroup): Promise<InboxItem[]> {
   const params = new URLSearchParams({ group });
-  const response = await fetch(`${API_BASE}/inbox?${params}`, {
+  const response = await fetch(`${API_BASE}/candidates?${params}`, {
     headers: workspaceRequestHeaders(),
   });
   return handleResponse<InboxItem[]>(response);

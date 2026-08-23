@@ -9,7 +9,7 @@ import {
   type SemanticGraphReadIdentity,
   type SemanticGraphReadNode,
 } from "@data-agent/contracts";
-import type { SemanticStudioSnapshot } from "./semantic-studio-api";
+import type { SemanticStudioSnapshot } from "@data-agent/semantic/application";
 
 const HASH = `sha256:${"1".repeat(64)}` as const;
 const GRAPH_ID = "10000000-0000-4000-8000-000000000001";

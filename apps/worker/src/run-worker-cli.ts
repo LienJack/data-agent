@@ -54,7 +54,6 @@ import { runConversationRetentionCycle } from "./jobs/conversation-retention-cyc
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
 import { runJobWorkerLoop } from "./jobs/job-worker-daemon.js";
 import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
-import { createSemanticInductionJobHandler } from "./jobs/semantic-induction-job-handler.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
@@ -73,6 +72,7 @@ import {
   type WorkerHealthState,
 } from "./runs/run-worker-daemon.js";
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
+import { createWorkerSemanticJobComposition } from "./semantic/job-composition.js";
 import { createFrozenSemanticRelationshipReadPort } from "./semantic/semantic-relationship-read-port.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
 import { createDirectQaAnalysisExecutor } from "./teams/direct-qa-analysis-executor.js";
@@ -513,6 +513,11 @@ export async function runWorkerProcess(
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           });
+          const semanticHandlers = createWorkerSemanticJobComposition({
+            feature: "INDUCTION",
+            capability,
+            registry: semanticInductionRegistry,
+          });
           const workspaceContent = createWorkspaceContentNamespace(
             fileStorage,
             capabilityAuthority.authorizer,
@@ -544,15 +549,7 @@ export async function runWorkerProcess(
                 create_id: randomUUID,
                 now: () => new Date(),
               }),
-              createSemanticInductionJobHandler({
-                capability,
-                registry: semanticInductionRegistry,
-              }),
-              createSemanticInductionJobHandler({
-                capability,
-                registry: semanticInductionRegistry,
-                kind: "METRIC_IMPORT",
-              }),
+              ...semanticHandlers,
             ],
           });
           const cycle = await principalRunner.runOnce({

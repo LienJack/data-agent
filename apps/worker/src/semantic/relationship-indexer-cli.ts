@@ -21,7 +21,7 @@ import {
 import { buildSemanticExplorerReadModel } from "@data-agent/semantic/read-model";
 import pg from "pg";
 import { z } from "zod";
-import { createSemanticRelationshipIndexer } from "./relationship-indexer.js";
+import { createWorkerSemanticJobComposition } from "./job-composition.js";
 
 const environmentSchema = z.strictObject({
   DATABASE_URL: z.string().min(1),
@@ -144,7 +144,8 @@ export async function runRelationshipIndexerProcess(
   });
   const graph = createNeo4jRelationshipGraphAdapterFromEnvironment(environment);
   if (!graph) throw new Error("Relationship index is not enabled.");
-  const indexer = createSemanticRelationshipIndexer({
+  const indexer = createWorkerSemanticJobComposition({
+    feature: "RELATIONSHIP_INDEX",
     store: createPostgresRelationshipIndexStore({
       pool: sqlPool,
       authorizer: authority.authorizer,

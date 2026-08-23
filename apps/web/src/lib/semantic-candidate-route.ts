@@ -8,7 +8,6 @@ import {
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
-  getSemanticCandidateRuntime,
   type SemanticCandidateRuntime,
   SemanticCandidateRuntimeError,
 } from "./semantic-candidate-runtime";
@@ -105,7 +104,7 @@ async function resolveAuthority(
 
 export async function handleCompileSemanticCandidate(
   request: Request,
-  runtime: SemanticCandidateRuntime = getSemanticCandidateRuntime(),
+  runtime: SemanticCandidateRuntime,
 ) {
   try {
     const input = semanticCompileRequestSchema.parse(await request.json());
@@ -119,7 +118,7 @@ export async function handleCompileSemanticCandidate(
 export async function handleGetSemanticCandidateCompile(
   request: Request,
   params: Promise<{ compileRunId: string }>,
-  runtime: SemanticCandidateRuntime = getSemanticCandidateRuntime(),
+  runtime: SemanticCandidateRuntime,
 ) {
   try {
     const { compileRunId } = await params;
@@ -137,7 +136,7 @@ export async function handleGetSemanticCandidateCompile(
 export async function handleSubmitSemanticCandidateCompile(
   request: Request,
   params: Promise<{ compileRunId: string }>,
-  runtime: SemanticCandidateRuntime = getSemanticCandidateRuntime(),
+  runtime: SemanticCandidateRuntime,
 ) {
   try {
     const { compileRunId } = await params;

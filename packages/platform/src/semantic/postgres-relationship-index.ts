@@ -1,6 +1,7 @@
 import {
   immutableIdSchema,
   type PortResult,
+  type SemanticRelationshipCheckpointPort,
   type SemanticRelationshipIndexCheckpoint,
   type SemanticRelationshipIndexReasonCode,
   semanticRelationshipIndexCheckpointSchema,
@@ -161,7 +162,7 @@ async function setSemanticDomain(
   ]);
 }
 
-export interface PostgresRelationshipIndexStore {
+export interface PostgresRelationshipIndexStore extends SemanticRelationshipCheckpointPort {
   reconcile(capability: unknown, semanticDomain: string): Promise<PortResult<number>>;
   claim(capability: unknown, input: ClaimInput): Promise<PortResult<RelationshipIndexClaim | null>>;
   heartbeat(capability: unknown, input: HeartbeatInput): Promise<PortResult<string>>;

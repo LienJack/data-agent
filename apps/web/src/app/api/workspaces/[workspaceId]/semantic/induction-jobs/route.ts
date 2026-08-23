@@ -10,16 +10,11 @@ import {
   semanticMetricExchangeFormatSchema,
   workspaceIdempotencyKeySchema,
 } from "@data-agent/contracts";
-import { createPostgresJobQueue } from "@data-agent/platform";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { deriveIdempotentOperationId } from "@/lib/run-command-identity";
-import {
-  getSemanticInductionRegistry,
-  getWorkspaceAuthority,
-  getWorkspaceSqlPool,
-} from "@/lib/workspace-identity";
-import { authorizeWorkspaceRequest, workspaceErrorResponse } from "@/lib/workspace-request";
+import { workspaceErrorResponse } from "@/lib/workspace-request";
+import { getWorkspaceSemanticRuntime } from "@/lib/workspace-semantic-runtime";
 
 type RouteContext = { params: Promise<{ workspaceId: string }> };
 
@@ -88,8 +83,13 @@ function governedSource(source: z.infer<typeof existingSourceSchema>) {
 
 export async function POST(request: NextRequest, context: RouteContext) {
   const { workspaceId } = await context.params;
-  const authorized = await authorizeWorkspaceRequest(request, workspaceId, "WRITE");
-  if (!authorized.ok) return workspaceErrorResponse(authorized.error);
+  const resolved = await getWorkspaceSemanticRuntime(request, {
+    feature: "INDUCTION",
+    access: "WRITE",
+    workspaceId,
+  });
+  if (!resolved.ok) return resolved.response;
+  const { capabilityInput, principalId, queue, registry, scope } = resolved.runtime;
   const input = inputSchema.safeParse(await request.json().catch(() => null));
   if (!input.success) {
     return workspaceErrorResponse({
@@ -101,7 +101,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   const inductionId = deriveIdempotentOperationId({
     operation_kind: "semantic-induction",
     workspace_id: workspaceId,
-    principal_id: authorized.value.capability.principal,
+    principal_id: principalId,
     idempotency_key: input.data.idempotency_key,
   });
   const sources = [];
@@ -112,13 +112,13 @@ export async function POST(request: NextRequest, context: RouteContext) {
     }
     const command = await buildSemanticInductionSourceRegistrationCommand({
       schema_version: "semantic-induction-source-register@1.0.0",
-      scope: authorized.value.capability.scope,
+      scope,
       semantic_domain: input.data.semantic_domain,
       source_kind: source.source_kind,
       resource_id: deriveIdempotentOperationId({
         operation_kind: `semantic-induction-source-${index}`,
         workspace_id: workspaceId,
-        principal_id: authorized.value.capability.principal,
+        principal_id: principalId,
         idempotency_key: input.data.idempotency_key,
       }),
       resource_revision: source.resource_revision,
@@ -129,10 +129,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         dependencies: source.dependencies,
       },
     });
-    const registered = await getSemanticInductionRegistry().registerSource(
-      authorized.value.capability,
-      command,
-    );
+    const registered = await registry.registerSource(capabilityInput, command);
     if (!registered.ok) return workspaceErrorResponse(registered.error);
     sources.push(command.source);
   }
@@ -143,7 +140,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   });
   const inductionRequest = semanticInductionRequestSchema.parse({
     schema_version: "semantic-induction-request@1.0.0",
-    scope: authorized.value.capability.scope,
+    scope,
     semantic_domain: input.data.semantic_domain,
     induction_id: inductionId,
     induction_kind: input.data.induction_kind,
@@ -151,16 +148,10 @@ export async function POST(request: NextRequest, context: RouteContext) {
     sources,
     idempotency_key: input.data.idempotency_key,
   });
-  const queue = createPostgresJobQueue(
-    getWorkspaceSqlPool(),
-    getWorkspaceAuthority().authorizer,
-    authorized.value.capability,
-    { lease_duration_ms: 30_000 },
-  );
   const job = await queue.enqueue(
     await buildJobSubmissionCommand({
       schema_version: "job-submit@1.0.0",
-      scope: authorized.value.capability.scope,
+      scope,
       kind: input.data.induction_kind === "METRIC_IMPORT" ? "METRIC_IMPORT" : "SEMANTIC_INDUCTION",
       idempotency_key: input.data.idempotency_key,
       input: {

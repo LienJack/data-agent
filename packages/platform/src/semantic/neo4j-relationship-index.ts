@@ -5,7 +5,7 @@ import {
   type SemanticRelationshipGraphEdge,
   type SemanticRelationshipGraphManifest,
   type SemanticRelationshipGraphNode,
-  type SemanticRelationshipIndexCheckpoint,
+  type SemanticRelationshipGraphPort,
   type SemanticRelationshipSearchRequest,
   semanticRelationshipGraphEdgeSchema,
   semanticRelationshipGraphManifestMaterialSchema,
@@ -42,29 +42,7 @@ const graphSliceSchema = z.strictObject({
 
 export type SemanticRelationshipGraphSlice = z.infer<typeof graphSliceSchema>;
 
-export interface SemanticRelationshipGraphAdapter {
-  initialize(): Promise<void>;
-  stageBuild(input: {
-    readonly build_id: string;
-    readonly manifest: SemanticRelationshipGraphManifest;
-    readonly on_progress?: () => Promise<void>;
-  }): Promise<void>;
-  verifyAndSeal(input: {
-    readonly build_id: string;
-    readonly manifest: SemanticRelationshipGraphManifest;
-  }): Promise<{ readonly node_count: number; readonly edge_count: number }>;
-  search(input: {
-    readonly scope: AppScope;
-    readonly checkpoint: SemanticRelationshipIndexCheckpoint;
-    readonly request: SemanticRelationshipSearchRequest;
-  }): Promise<SemanticRelationshipGraphSlice>;
-  cleanup(input: {
-    readonly scope: AppScope;
-    readonly semantic_domain: string;
-    readonly keep_release_ids: readonly string[];
-  }): Promise<number>;
-  close(): Promise<void>;
-}
+export interface SemanticRelationshipGraphAdapter extends SemanticRelationshipGraphPort {}
 
 export class Neo4jRelationshipIndexError extends Error {
   readonly reason_code: "INDEX_UNAVAILABLE" | "INDEX_DIGEST_MISMATCH" | "INDEX_NOT_READY";

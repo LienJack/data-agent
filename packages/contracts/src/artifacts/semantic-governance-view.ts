@@ -209,10 +209,3 @@ export interface CurrentUser {
   role: SemanticRole;
   avatar?: string;
 }
-
-/** 默认当前用户（M1 演示阶段） */
-export const MOCK_CURRENT_USER: CurrentUser = {
-  id: "user-001",
-  name: "张三",
-  role: "human-reviewer",
-};

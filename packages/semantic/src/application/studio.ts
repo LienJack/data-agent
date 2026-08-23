@@ -1,5 +1,3 @@
-import "server-only";
-
 import { randomUUID } from "node:crypto";
 import type {
   KnowledgeEvidenceSelectionDetail,
@@ -9,44 +7,69 @@ import {
   type AppScope,
   type PortResult,
   SEMANTIC_AUTHORING_POLICY_VERSION,
+  type SemanticAuthoringPublicEvent,
   type SemanticAuthoringResumeInput,
+  type SemanticAuthoringRun,
   type SemanticAuthoringState,
+  type SemanticCandidateRevisionPort,
+  type SemanticCandidateRevisionSaveResult,
+  type SemanticEdgeTypeDefinition,
+  type SemanticGraphFullResult,
+  type SemanticGraphNeighborhoodResult,
   type SemanticGraphNodeListQuery,
+  type SemanticGraphNodeListResult,
+  type SemanticGraphStorePort,
+  type SemanticKnowledgeEvidencePort,
 } from "@data-agent/contracts";
-import type {
-  createPostgresSemanticCandidateRevisionStore,
-  PostgresSemanticGraphStore,
-} from "@data-agent/platform";
 import {
   createSemanticGraphReadModel,
   projectSemanticGraphSourceForRead,
-} from "@data-agent/semantic/read-model";
+} from "../read-model/index.js";
 import {
   buildSemanticAuthoringPublicFeed,
   type SemanticAuthoringPublicFeed,
-} from "./semantic-authoring-public";
-import type {
-  SemanticStudioAuthoringState,
-  SemanticStudioSnapshot,
-  SemanticStudioStartResult,
-} from "./semantic-studio-api";
+} from "./authoring-public.js";
+
+export interface SemanticStudioAuthoringState {
+  readonly run: SemanticAuthoringRun;
+}
+
+export interface SemanticStudioReleaseIdentity {
+  readonly release_id: string;
+  readonly release_generation: number;
+  readonly label: string;
+}
+
+export interface SemanticStudioSnapshot {
+  readonly schema_version: "semantic-studio-snapshot@1.0.0";
+  readonly semantic_domain: string;
+  readonly available_domains: readonly string[];
+  readonly release: SemanticStudioReleaseIdentity;
+  readonly edge_type_registry: readonly SemanticEdgeTypeDefinition[];
+  readonly list: SemanticGraphNodeListResult;
+  readonly full: SemanticGraphFullResult;
+  readonly local: SemanticGraphNeighborhoodResult | null;
+  readonly authoring: {
+    readonly state: SemanticStudioAuthoringState;
+    readonly events: readonly SemanticAuthoringPublicEvent[];
+    readonly saved_revision: SemanticCandidateRevisionSaveResult | null;
+  } | null;
+}
+
+export interface SemanticStudioStartResult {
+  readonly state: SemanticStudioAuthoringState;
+  readonly events: readonly SemanticAuthoringPublicEvent[];
+}
 
 export interface SemanticStudioServiceDependencies {
-  readonly graph_store: PostgresSemanticGraphStore;
-  readonly candidate_revision_store: ReturnType<
-    typeof createPostgresSemanticCandidateRevisionStore
-  >;
+  readonly graph_store: SemanticGraphStorePort;
+  readonly candidate_revision_store: SemanticCandidateRevisionPort;
   readonly create_authoring_store: (semanticDomain: string) => SemanticAuthoringStorePort;
   readonly capability: unknown;
   readonly scope: AppScope;
   readonly principal_id: string;
   readonly allowed_domains: readonly string[];
-  readonly knowledge_registry: Readonly<{
-    getEvidenceSelection(
-      capability: unknown,
-      selectionId: string,
-    ): Promise<PortResult<KnowledgeEvidenceSelectionDetail>>;
-  }>;
+  readonly knowledge_registry: SemanticKnowledgeEvidencePort;
   readonly new_id?: () => string;
 }
 

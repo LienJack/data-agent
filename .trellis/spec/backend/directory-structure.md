@@ -41,7 +41,7 @@ test/*.spec.ts
 
 - `contracts` 不得导入任何 App、Runtime 或平台 SDK。
 - `semantic` 根入口必须为空；调用方只能使用 `authoring`、`governance`、`read-model`、
-  `runtime-context`、`relationship-index` 五个受控 subpath。语义合同与 Port 只定义在
+  `application`、`runtime-context`、`relationship-index` 六个受控 subpath。语义合同与 Port 只定义在
   `contracts`，不得从 `semantic` 根入口重导出兼容 surface。
 - `semantic` 只接受 `semantic-source-bundle@2` 的 lifecycle-neutral runtime content。
   Preview 与 Published 复用同一 content，但必须携带不可互换的 Authority envelope；
@@ -49,7 +49,12 @@ test/*.spec.ts
 - `text2sql`、`research`、`evals` 只依赖 `contracts` 和显式 Port。
 - `agent-runtime` 可以适配 Mastra，但不能提交 SQL、Evidence 或 Release 真值。
 - `platform` 实现 Port，不导入领域 Workflow。
-- `apps` 只做组合与边界解析，不重新定义领域 Schema。
+- `semantic/application` 持有 Candidate compile/save、Governance、Studio、Explorer 用例；
+  不得导入 Next、PostgreSQL client 或 Platform。
+- `apps/web` 的生产语义路由只从一个 request-scoped Workspace composition 取得用例；
+  `apps/worker` 的生产语义作业只从一个 job-scoped composition 取得用例。禁止 global
+  runtime getter、缺省 runtime 参数、环境变量选择 Mock backend 或 App 内复制语义用例。
+- `apps` 只做组合、边界解析与 transport mapping，不重新定义领域 Schema。
 - Python 服务只通过版本化 Sandbox Protocol 交互。
 
 ### 4. 校验与错误矩阵
@@ -59,6 +64,7 @@ test/*.spec.ts
 | `contracts` 导入 `@mastra/*`、`@supabase/*`、Redis 或 Next.js | Architecture Test 失败 |
 | 领域 Package 直接导入平台 SDK | Architecture Test 失败 |
 | App 在本地复制 Public Terminal 或 Artifact 类型 | Code Review/Type Test 失败 |
+| Web/Worker 绕过唯一 Workspace/job composition 创建 Semantic workflow | Architecture Test 失败 |
 | 从 `@data-agent/semantic` 根入口导入，或出现 V1/投影兼容符号 | Architecture Test 失败 |
 | 跨语言载荷未绑定 `schema_version` | Runtime Validation 失败 |
 | L3–L5 出现 Workflow、Route 或 Tool | Capability Boundary Test 失败 |
