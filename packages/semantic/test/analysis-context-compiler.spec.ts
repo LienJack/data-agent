@@ -3,6 +3,8 @@ import {
   buildOntologyAnalysisSourceBinding,
   buildSemanticContextPackage,
   buildSemanticContextReceipt,
+  buildSemanticInferenceReceipt,
+  buildSemanticRetrievalReceipt,
   computeSemanticSourceBundleHash,
   SEMANTIC_SOURCE_BUNDLE_VERSION,
   type SemanticSourceBundle,
@@ -12,6 +14,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   AnalysisContextCompilationError,
+  analysisContextCompilerInternals,
   compileAnalysisContext,
   compileAnalysisTransform,
   evaluateAnalysisApplicability,
@@ -267,6 +270,43 @@ async function fixture(bundle = sourceBundle()) {
     max_context_tokens: 4_096,
     max_resource_bindings: 64,
   };
+  const metricIds = publishedMetrics.map(({ metric }) => metric.metric_id).sort();
+  const retrievalReceipt = await buildSemanticRetrievalReceipt({
+    schema_version: "semantic-retrieval-receipt@1.0.0",
+    authority_snapshot_hash: hash("a"),
+    release_hash: semanticRelease.resource_hash,
+    query_hash: hash("1"),
+    rrf_k: 60,
+    hard_filter: {
+      scope_hash: hash("d"),
+      publication_status: "PUBLISHED",
+      authority_mode: "POSTGRES_FILTERED_SNAPSHOT",
+      included_object_ids: metricIds,
+      excluded_objects: [],
+    },
+    route_states: {
+      LEXICON: "READY",
+      SPARSE: "READY",
+      VECTOR: "UNAVAILABLE",
+      GRAPH: "UNAVAILABLE",
+    },
+    hits: [],
+    expansions: [],
+    selected_object_ids: metricIds,
+    pruned_object_ids: [],
+    fallback_reason_codes: ["VECTOR_ROUTE_NOT_CONFIGURED"],
+  });
+  const inferenceReceipt = await buildSemanticInferenceReceipt({
+    schema_version: "semantic-inference-receipt@1.0.0",
+    retrieval_receipt_hash: retrievalReceipt.receipt_hash,
+    ruleset_id: "semantic-mandatory-closure@1",
+    ruleset_hash: hash("e"),
+    steps: [],
+    mandatory_object_ids: metricIds,
+    mandatory_relationship_ids: [],
+    closure_complete: true,
+    reason_codes: [],
+  });
   const packageDocument = await buildSemanticContextPackage({
     schema_version: "semantic-context-package@1.0.0",
     scope,
@@ -324,6 +364,14 @@ async function fixture(bundle = sourceBundle()) {
       source_ref: null,
     })),
     knowledge_refs: [],
+    retrieval_receipt: retrievalReceipt,
+    inference_receipt: inferenceReceipt,
+    mandatory_closure: {
+      object_ids: metricIds,
+      relationship_ids: [],
+      closure_hash: hash("f"),
+    },
+    analysis_capabilities: ["TREND_CHANGE"],
   });
   const sourceHash = await computeSemanticSourceBundleHash(bundle);
   const semanticReleaseRef = reference("SemanticRelease", id(4), hash("2"));
@@ -380,6 +428,37 @@ async function fixture(bundle = sourceBundle()) {
 }
 
 describe("analysis context compiler", () => {
+  it("keeps enough bounded metric capacity for composite Agent questions", async () => {
+    const bundle = sourceBundle();
+    const baseMetric = bundle.metrics[0];
+    const baseFormula = bundle.formulas[0];
+    if (!baseMetric?.formula || !baseFormula) throw new TypeError("missing metric fixture");
+    const metricIds = ["gross_revenue", "order_count", "new_customers", "marketing_spend"];
+    for (const metricId of metricIds.slice(1)) {
+      bundle.metrics.push({
+        ...structuredClone(baseMetric),
+        metric_id: metricId,
+        name: metricId,
+        aliases: [`${metricId}_alias`],
+        column_id: baseMetric.column_id,
+        formula: { ...baseMetric.formula, formula_id: `${metricId}-formula` },
+        analysis: { ...baseMetric.analysis, primary: false },
+      });
+      bundle.formulas.push({
+        ...structuredClone(baseFormula),
+        formula_id: `${metricId}-formula`,
+      });
+    }
+    bundle.metrics.sort((left, right) => left.metric_id.localeCompare(right.metric_id));
+    bundle.formulas.sort((left, right) => left.formula_id.localeCompare(right.formula_id));
+    const { input } = await fixture(bundle);
+    const context = await compileAnalysisContext({ ...input, requested_metric_ids: metricIds });
+    expect(context.metrics.map(({ metric_ref: metricRef }) => metricRef.node_id)).toEqual(
+      metricIds.toSorted(),
+    );
+    expect(analysisContextCompilerInternals.max_requested_analysis_metrics).toBe(16);
+  });
+
   it("rejects V1 identity and compiles deterministic V2 authority", async () => {
     const bundle = sourceBundle();
     expect(semanticSourceBundleSchema.safeParse(bundle).success).toBe(true);

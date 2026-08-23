@@ -39,6 +39,8 @@ export class AnalysisContextCompilationError extends TypeError {
   }
 }
 
+const MAX_REQUESTED_ANALYSIS_METRICS = 16;
+
 export interface CompileAnalysisContextInput {
   readonly package: SemanticContextPackage;
   readonly context_receipt: SemanticContextReceipt;
@@ -203,7 +205,7 @@ export async function compileAnalysisContext(
       : [...publishedMetricIds].sort();
   if (
     requestedMetricIds.length === 0 ||
-    requestedMetricIds.length > 3 ||
+    requestedMetricIds.length > MAX_REQUESTED_ANALYSIS_METRICS ||
     requestedMetricIds.some((metricId) => !publishedMetricIds.has(metricId))
   ) {
     throw new AnalysisContextCompilationError("ANALYSIS_CONTEXT_METRIC_NOT_RESOLVED");
@@ -308,3 +310,7 @@ export async function compileAnalysisContext(
           },
   });
 }
+
+export const analysisContextCompilerInternals = Object.freeze({
+  max_requested_analysis_metrics: MAX_REQUESTED_ANALYSIS_METRICS,
+});
