@@ -75,12 +75,14 @@ export interface GovernedAnalysisQueryPort {
 export interface AnalysisProgramSourcePort {
   load(input: {
     readonly lease: RunWorkLease;
+    readonly analysis_program: AnalysisProgramPayload;
     readonly analysis_program_ref: ArtifactReference;
     readonly node: AnalysisProgramNode;
     readonly standard_program: string | null;
   }): Promise<{ readonly source_text: string; readonly source_text_ref: ArtifactReference }>;
   repair?(input: {
     readonly lease: RunWorkLease;
+    readonly analysis_program: AnalysisProgramPayload;
     readonly analysis_program_ref: ArtifactReference;
     readonly node: AnalysisProgramNode;
     readonly previous_source_text: string;
@@ -305,6 +307,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         }
         let source = await dependencies.programs.load({
           lease: input.lease,
+          analysis_program: analysisProgram,
           analysis_program_ref: analysisProgramRef,
           node,
           standard_program: descriptor.standard_program,
@@ -372,6 +375,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         ) {
           const repairedSource = await dependencies.programs.repair({
             lease: input.lease,
+            analysis_program: analysisProgram,
             analysis_program_ref: analysisProgramRef,
             node,
             previous_source_text: source.source_text,

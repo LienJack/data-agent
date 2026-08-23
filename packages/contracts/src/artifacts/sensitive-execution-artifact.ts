@@ -17,6 +17,7 @@ export const SENSITIVE_EXECUTION_ARTIFACT_CONTENT_KINDS = [
   "OBLIGATION_LEDGER",
   "HANDOFF",
   "RECOVERY",
+  "PYTHON_SOURCE",
 ] as const;
 
 const canonicalUtcTimestampSchema = z.iso
