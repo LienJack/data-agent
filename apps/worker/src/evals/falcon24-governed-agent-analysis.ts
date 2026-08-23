@@ -140,7 +140,17 @@ function decodeValidatedOutput(
 export function createFalcon24GovernedAgentAnalysisPort(input: {
   readonly datasource_id: string;
   readonly artifacts: AnalysisArtifactCommitPort;
-  readonly executor: Falcon24ProgramExecutor;
+  readonly create_executor: (context: {
+    readonly analysis_context: AnalysisContext;
+    readonly semantic_context: Parameters<
+      GovernedAgentAnalysisPort["analyze"]
+    >[0]["semantic_context"];
+    readonly test_case: Falcon24AgentAnalysisCase;
+    readonly provider_dispatch: Parameters<
+      GovernedAgentAnalysisPort["analyze"]
+    >[0]["provider_dispatch"];
+    readonly fence_guard: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]["fence_guard"];
+  }) => Falcon24ProgramExecutor;
   readonly compile_context?: typeof compileFalcon24AnalysisContext;
 }): GovernedAgentAnalysisPort {
   const compileContext = input.compile_context ?? compileFalcon24AnalysisContext;
@@ -173,7 +183,14 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
         context,
         metric_ids: context.metrics.map(({ metric_ref }) => metric_ref.node_id),
       });
-      const execution = await input.executor.execute({
+      const executor = input.create_executor({
+        analysis_context: context,
+        semantic_context: command.semantic_context,
+        test_case: command.test_case,
+        provider_dispatch: command.provider_dispatch,
+        fence_guard: command.fence_guard,
+      });
+      const execution = await executor.execute({
         lease: command.lease,
         principal_id: command.lease.principal_id,
         brief,

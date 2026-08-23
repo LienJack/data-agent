@@ -143,10 +143,12 @@ export function createPythonSandboxClient(
   return client;
 }
 
-export function createEnvironmentPythonSandboxClient(): PythonSandboxClient | null {
-  if (process.env.PYTHON_SANDBOX_ENABLED !== "true") return null;
+export function createEnvironmentPythonSandboxClient(
+  environment: NodeJS.ProcessEnv = process.env,
+): PythonSandboxClient | null {
+  if (environment.PYTHON_SANDBOX_ENABLED !== "true") return null;
   return createPythonSandboxClient({
-    socketPath: process.env.PYTHON_SANDBOX_SOCKET_PATH ?? "/run/data-agent-python/sandbox.sock",
-    responseTimeoutMs: Number(process.env.PYTHON_SANDBOX_RESPONSE_TIMEOUT_MS ?? "125000"),
+    socketPath: environment.PYTHON_SANDBOX_SOCKET_PATH ?? "/run/data-agent-python/sandbox.sock",
+    responseTimeoutMs: Number(environment.PYTHON_SANDBOX_RESPONSE_TIMEOUT_MS ?? "125000"),
   });
 }

@@ -55,6 +55,7 @@ import {
   createFileScanPort,
   createFileSystemStorageClient,
   createPostgresWorkspaceFiles,
+  createSensitiveExecutionArtifactAuthority,
   createWorkspaceContentNamespace,
 } from "@data-agent/platform/storage";
 import {
@@ -66,6 +67,7 @@ import pg from "pg";
 import { z } from "zod";
 import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
 import { createEcommerceDirectQaRegistry } from "./evals/ecommerce-direct-qa-registry.js";
+import { createFalcon24AnalysisRuntime } from "./evals/falcon24-analysis-runtime.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
@@ -79,6 +81,7 @@ import {
   createMultiPrincipalRunWorkerRunner,
   isRunnableWorkspaceMember,
 } from "./runs/multi-principal-runner.js";
+import { createEnvironmentPythonSandboxClient } from "./runs/python-sandbox-client.js";
 import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
 import { createRunBoundSemanticContextResolver } from "./runs/run-bound-semantic-context.js";
 import {
@@ -256,6 +259,7 @@ export async function runWorkerProcess(
   const fileStorage = createFileSystemStorageClient(
     environment.DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT ?? ".data/workspace-content",
   );
+  const pythonSandbox = createEnvironmentPythonSandboxClient(environment);
   const fileScanPolicyVersion = "workspace-file-policy@1.0.0";
   const fileScanner = createFileScanPort({
     clamav: createClamAvInstreamClient({
@@ -324,6 +328,23 @@ export async function runWorkerProcess(
     const researchAuthority = createPostgresResearchAuthority({
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
+    });
+    const sensitiveArtifacts = createSensitiveExecutionArtifactAuthority({
+      pool: sqlPool,
+      authorizer: capabilityAuthority.authorizer,
+      blobs: {
+        async putIfAbsent(contentHash, bytes) {
+          await fileStorage.put(
+            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
+            bytes,
+          );
+        },
+        get(contentHash) {
+          return fileStorage.get(
+            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
+          );
+        },
+      },
     });
     const effectiveConfigResolver = createPostgresEffectiveConfigResolver({
       pool: sqlPool,
@@ -397,11 +418,37 @@ export async function runWorkerProcess(
             authorizer: capabilityAuthority.authorizer,
           }),
         );
+        const researchCapabilityInput = config.research_authority_capability_id
+          ? {
+              app_capability: capability,
+              authority_capability_id: config.research_authority_capability_id,
+            }
+          : null;
+        const falcon24Analysis =
+          researchCapabilityInput &&
+          pythonSandbox &&
+          environment.DATA_AGENT_FALCON24_DATASOURCE_ID?.trim() &&
+          environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
+          environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim() &&
+          environment.PYTHON_SANDBOX_AUTH_TOKEN?.trim()
+            ? createFalcon24AnalysisRuntime({
+                pool: sqlPool,
+                research_authority: researchAuthority,
+                sensitive_artifacts: sensitiveArtifacts,
+                research_capability_input: researchCapabilityInput,
+                app_capability_input: capability,
+                datasource_id: environment.DATA_AGENT_FALCON24_DATASOURCE_ID,
+                sandbox: pythonSandbox,
+                environment,
+                now: () => new Date(),
+              })
+            : null;
         const genericDirectQa = createDirectQaAnalysisExecutor({
           capability,
           runs: runRepository,
           artifacts: teamArtifacts,
           semantic_relationships: semanticRelationships,
+          governed_analysis: falcon24Analysis,
         });
         const teamExecutor = createDataAgentTeamRunner({
           direct_analysis: createEcommerceDirectQaRegistry({

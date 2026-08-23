@@ -194,5 +194,7 @@ describe("Python Sandbox UDS client", () => {
     expect(createEnvironmentPythonSandboxClient()).toBeNull();
     process.env.PYTHON_SANDBOX_ENABLED = "true";
     expect(createEnvironmentPythonSandboxClient()).not.toBeNull();
+    expect(createEnvironmentPythonSandboxClient({ PYTHON_SANDBOX_ENABLED: "false" })).toBeNull();
+    expect(createEnvironmentPythonSandboxClient({ PYTHON_SANDBOX_ENABLED: "true" })).not.toBeNull();
   });
 });

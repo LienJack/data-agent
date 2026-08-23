@@ -10,6 +10,8 @@ import {
 } from "@data-agent/contracts";
 import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
 import { z } from "zod";
+import type { AnalysisFenceGuard } from "../analysis/sandbox-executor.js";
+import type { RunProviderDispatchCapability } from "../runs/run-execution-context.js";
 import {
   hasRunExecutionContextProvenance,
   hasRunProviderDispatchCapability,
@@ -39,6 +41,8 @@ export interface GovernedAgentAnalysisPort {
     readonly test_case: Falcon24AgentAnalysisCase;
     readonly question: string;
     readonly semantic_context: SemanticContextCommitResult;
+    readonly provider_dispatch: RunProviderDispatchCapability;
+    readonly fence_guard: AnalysisFenceGuard;
   }): Promise<{
     readonly answer: string;
     readonly accepted_artifact_refs: readonly ArtifactReference[];
@@ -142,11 +146,30 @@ export function createDirectQaAnalysisExecutor(dependencies: {
           const resolved = await verifySemanticContextCommitResult(
             value(await contextCapability.resolve()),
           );
+          const provider = execution.context.getProviderDispatchCapability();
+          if (!hasRunProviderDispatchCapability(provider)) {
+            throw new DirectQaAnalysisError("DIRECT_MODEL_PROVIDER_REQUIRED");
+          }
           const result = await governedAnalysis.analyze({
             lease: execution.lease,
             test_case: falcon24Case,
             question: run.question,
             semantic_context: resolved,
+            provider_dispatch: provider,
+            fence_guard: {
+              async isCurrent(fence) {
+                if (
+                  fence.run_id !== execution.lease.run_id ||
+                  fence.attempt_id !== execution.lease.attempt_id ||
+                  fence.worker_fence !== execution.lease.worker_fence ||
+                  fence.fence_token !==
+                    `${execution.lease.attempt_id}:${execution.lease.worker_fence}`
+                ) {
+                  return false;
+                }
+                return (await execution.context.heartbeat()).ok;
+              },
+            },
           });
           if (result.accepted_artifact_refs.length === 0) {
             throw new DirectQaAnalysisError("ANALYSIS_ACCEPTED_ARTIFACT_REQUIRED");

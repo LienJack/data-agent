@@ -197,7 +197,7 @@ describe("Falcon24 governed Agent analysis bridge", () => {
     const port = createFalcon24GovernedAgentAnalysisPort({
       datasource_id: id(50),
       artifacts,
-      executor: { execute },
+      create_executor: () => ({ execute }),
       compile_context: compileContext as never,
     });
 
@@ -207,6 +207,8 @@ describe("Falcon24 governed Agent analysis bridge", () => {
         test_case: testCase,
         question: testCase.question,
         semantic_context: semanticCommit,
+        provider_dispatch: {} as never,
+        fence_guard: { isCurrent: async () => true },
       }),
     ).resolves.toEqual({
       answer: "2024-10 收入下降，购买人数、频次和客单价均有影响。",
