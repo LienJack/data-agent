@@ -21,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010722");
+    expect(inventory.frontier).toBe("20260725010723");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -67,6 +67,20 @@ describe("10708 unique semantic lifecycle cutover", () => {
     expect(repair).toContain("'receipt_hash'::text");
     expect(repair).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
     expect(postconditions).toContain("SEMANTIC_CONTEXT_JSONB_OPERATOR_REPAIR_NOT_INSTALLED");
+  });
+
+  it("projects safe commit rejection codes without adding a compatibility entrypoint", () => {
+    const diagnostics = readFileSync(
+      resolve(
+        root,
+        "infra/supabase/apps/data-agent/migration-sources/10723/20-commit-diagnostics.sql.inc",
+      ),
+      "utf8",
+    );
+
+    expect(diagnostics).toContain("SEMANTIC_CONTEXT_RETRIEVAL_RECEIPT_HASH_INVALID");
+    expect(diagnostics).toContain("SEMANTIC_CONTEXT_MANDATORY_CLOSURE_HASH_INVALID");
+    expect(diagnostics).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
   });
 
   it("accepts AnalysisProgram only in the active artifact authority", () => {

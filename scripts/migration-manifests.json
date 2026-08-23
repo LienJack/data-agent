@@ -1650,6 +1650,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10723",
+      "migration_name": "20260725010723_app_data_agent_semantic_context_commit_diagnostics.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10723",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-commit-diagnostics.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CONTEXT_COMMIT_DIAGNOSTICS_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_context_commit_diagnostics_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
