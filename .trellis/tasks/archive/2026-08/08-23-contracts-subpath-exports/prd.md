@@ -14,10 +14,10 @@
 
 ## Acceptance Criteria
 
-- [ ] package exports、声明输出和源码入口一致。
-- [ ] 架构测试拒绝新增根导入、允许基线递减并拒绝基线扩张。
-- [ ] 子路径 conformance 测试覆盖关键 symbol。
-- [ ] contracts build/typecheck/unit/contract 与 workspace architecture tests 通过并提交。
+- [x] package exports、声明输出和源码入口一致。
+- [x] 架构测试拒绝新增根导入、允许基线递减并拒绝基线扩张。
+- [x] 子路径 conformance 测试覆盖关键 symbol。
+- [x] contracts build/typecheck/unit/contract 与 workspace architecture tests 通过并提交。
 
 ## Notes
 
