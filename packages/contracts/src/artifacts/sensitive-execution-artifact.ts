@@ -18,6 +18,7 @@ export const SENSITIVE_EXECUTION_ARTIFACT_CONTENT_KINDS = [
   "HANDOFF",
   "RECOVERY",
   "PYTHON_SOURCE",
+  "ANALYSIS_INPUT",
 ] as const;
 
 const canonicalUtcTimestampSchema = z.iso

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AnalysisInputMaterializationReceipt,
   analysisInputMaterializationReceiptSchema,
+  buildAnalysisInputMaterializationReceipt,
   computeAnalysisInputMaterializationReceiptHash,
   verifyAnalysisInputMaterializationReceipt,
 } from "../src/index.js";
@@ -9,7 +10,13 @@ import {
 const id = (suffix: number) => `70000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test", run_id: id(3) } as const;
-const reference = <const T extends AnalysisInputMaterializationReceipt["artifact_type"] | "QueryEvidence" | "SandboxResult" | "SensitiveExecutionArtifact">(
+const reference = <
+  const T extends
+    | AnalysisInputMaterializationReceipt["artifact_type"]
+    | "QueryEvidence"
+    | "SandboxResult"
+    | "SensitiveExecutionArtifact",
+>(
   artifact_type: T,
   suffix: number,
   content_hash: `sha256:${string}`,
@@ -38,6 +45,14 @@ async function receipt() {
 }
 
 describe("analysis input materialization receipt", () => {
+  it("builds one immutable content-addressed receipt", async () => {
+    const value = await receipt();
+    const { receipt_hash: _receiptHash, ...material } = value;
+    const built = await buildAnalysisInputMaterializationReceipt(material);
+    expect(built).toEqual(value);
+    expect(Object.isFrozen(built)).toBe(true);
+  });
+
   it("binds a governed SQL result to distinct deterministic Arrow bytes", async () => {
     const value = await receipt();
     expect(value.query_result_ref.content_hash).toBe(hash("b"));
