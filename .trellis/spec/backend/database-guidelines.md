@@ -332,6 +332,14 @@ projection_payload ->> 'source_digest' is distinct from graph_projection.source_
   `platform.lock_u6_cleanup_platform_evidence` 与 Lifecycle identity guard，禁止拆出
   第二条 Platform migration chain。
 - App Migration 位于 `infra/supabase/apps/data-agent/migrations/`。
+- App Migration 文件名固定为 `<14 位数字序号>_<lowercase_stem>.sql`。完整文件 stem
+  必须与 `platform.assert_migration_checksum` 的 `migration_version` 完全一致，数字序号
+  也必须唯一；不能因为完整 stem 不同就复用同一序号。历史重复序号、缺 header 或旧
+  checksum 占位符只能在 `scripts/lib/workspace-migration-inventory.ts` 以 exact stem
+  grandfather，任何新 Migration 不得扩大 allowlist。
+- 新 Migration 落笔前必须运行 `pnpm tsx scripts/verify-workspace-migration-inventory.ts`
+  读取当前 frontier，禁止从计划文档直接沿用可能已被占用的序号。校验必须同时覆盖
+  header checksum、ledger checksum 与把 checksum 归零后的完整文件 SHA-256。
 - U6 `10590` 的生产安装还必须满足 Migration Safety 分册；clean install 不能替代
   populated relation、lock contention 与 rollback Oracle。
 - 每个 Migration 必须登记固定 SHA-256 Checksum；同名不同内容失败关闭。

@@ -8,6 +8,14 @@ const workspaceAnalysisPageSource = readFileSync(
   "utf8",
 );
 const rootPageSource = readFileSync(new URL("../src/app/page.tsx", import.meta.url), "utf8");
+const workspaceSemanticPageSource = readFileSync(
+  new URL("../src/app/w/[workspaceId]/semantic/page.tsx", import.meta.url),
+  "utf8",
+);
+const modelProviderRouteSource = readFileSync(
+  new URL("../src/app/api/admin/model-providers/route.ts", import.meta.url),
+  "utf8",
+);
 
 describe("legacy workspace routes", () => {
   it("redirects every legacy business entry to explicit workspace selection", () => {
@@ -53,5 +61,14 @@ describe("legacy workspace routes", () => {
     expect(rootPageSource).toContain('redirect("/workspaces")');
     expect(rootPageSource).not.toContain("submitBoundAnalysisRun");
     expect(rootPageSource).not.toContain("AnalysisReportDocument");
+  });
+
+  it("characterizes the active Workspace Semantic and Model Provider paths", () => {
+    expect(workspaceSemanticPageSource).toContain("<SemanticStudio");
+    expect(workspaceSemanticPageSource).toContain("workspaceId={workspaceId}");
+    expect(workspaceSemanticPageSource).not.toContain("redirect(");
+    expect(modelProviderRouteSource).toContain("composeModelProviderViews");
+    expect(modelProviderRouteSource).toContain("applyProviderConnectionCommand");
+    expect(modelProviderRouteSource).not.toContain("api_key:");
   });
 });

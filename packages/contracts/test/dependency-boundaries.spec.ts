@@ -187,6 +187,37 @@ describe("Workspace 依赖边界", () => {
     ]);
   });
 
+  it("Semantic 源码不得绕过 Port 直接导入 Platform 或 App", () => {
+    const semanticKernel = workspaceModule(
+      "packages/semantic",
+      "@data-agent/semantic",
+      "semantic",
+      ["@data-agent/contracts"],
+      ["@data-agent/contracts"],
+    );
+    const platform = workspaceModule("packages/platform", "@data-agent/platform", "platform");
+    const web = workspaceModule("apps/web", "@data-agent/web", "app");
+    const sourcePath = join(semanticKernel.absolutePath, "src", "invalid-runtime.ts");
+
+    const violations = validateWorkspaceModules(
+      [semanticKernel, platform, web],
+      [
+        {
+          moduleName: semanticKernel.name,
+          path: sourcePath,
+          source:
+            'import { createPostgresSemanticGraphStore } from "@data-agent/platform"; import page from "@data-agent/web";',
+        },
+      ],
+    );
+
+    expect(
+      violations
+        .filter(({ code }) => code === "FORBIDDEN_ROLE_DEPENDENCY")
+        .map(({ dependency }) => dependency),
+    ).toEqual(["@data-agent/platform", "@data-agent/web"]);
+  });
+
   it("contracts runtime allowlist 当前只允许 zod", () => {
     const contracts = workspaceModule(
       "packages/contracts",
