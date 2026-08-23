@@ -6,10 +6,10 @@ import {
   computeL2ResearchEnvelopeContentHash,
   type DerivedAnalysisEvidencePayload,
   parseL2ResearchDocumentCandidate,
-  type ResearchArtifactAuthorityPort,
   researchArtifactCommitInputSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
 import type { AnalysisArtifactCommitPort } from "./executor.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 

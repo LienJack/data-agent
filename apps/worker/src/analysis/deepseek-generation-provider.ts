@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import {
   type AvailableModelProfile,
-  createDirectModelProviderInvocation,
   isAvailableModelProfile,
+} from "@data-agent/contracts/providers";
+import {
+  createDirectModelProviderInvocation,
   type ModelProviderEvent,
   type ModelProviderPort,
   parseModelProviderEventForRequest,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/ports";
 import type { DeepSeekPythonGenerationPort } from "./deepseek-program-source.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 

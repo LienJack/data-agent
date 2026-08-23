@@ -1,9 +1,9 @@
 import {
   type ArtifactReference,
-  type RunWorkLease,
-  sha256ContentHash,
-} from "@data-agent/contracts";
-import type { SqlPool } from "@data-agent/platform";
+} from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import type { RunWorkLease } from "@data-agent/contracts/runs";
+import type { SqlPool } from "@data-agent/platform/persistence";
 import type { GovernedAnalysisQueryPort } from "../analysis/executor.js";
 import type { GovernedPythonInput } from "../analysis/sandbox-executor.js";
 import type { Falcon24AnalysisDataOracleReceipt } from "./falcon24-analysis-data-oracle.js";

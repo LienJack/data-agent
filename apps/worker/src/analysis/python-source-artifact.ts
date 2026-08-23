@@ -6,10 +6,10 @@ import {
   type AnalysisPythonSourceLoadResult,
   artifactReferenceFor,
   buildAnalysisPythonSourceReceipt,
-  canonicalizeJson,
-  type RunWorkLease,
   verifyAnalysisPythonSourceReceipt,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import { canonicalizeJson } from "@data-agent/contracts/common";
+import type { RunWorkLease } from "@data-agent/contracts/runs";
 import type { AnalysisPythonSourceArtifactPort } from "./deepseek-program-source.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 

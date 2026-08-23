@@ -1,5 +1,5 @@
 import { tableFromArrays, tableToIPC } from "apache-arrow";
-import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts";
+import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
 
 type Falcon24CaseId = Falcon24AgentAnalysisCase["case_id"];
 type ColumnKind = "FLOAT64" | "UTF8";

@@ -2,8 +2,8 @@ import {
   type Falcon24AgentAnalysisCase,
   falcon24AnalysisCaseIdSchema,
   falcon24AnalysisOracleReceiptSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/evals";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import { z } from "zod";
 
 const finite = z.number().finite();

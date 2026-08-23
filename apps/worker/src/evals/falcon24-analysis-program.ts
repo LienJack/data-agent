@@ -1,12 +1,14 @@
 import {
-  type AnalysisContext,
   type AnalysisProgramPayload,
   type ArtifactReference,
   analysisProgramPayloadSchema,
-  type Falcon24AgentAnalysisCase,
   researchBriefRefSchema,
+} from "@data-agent/contracts/artifacts";
+import {
+  type AnalysisContext,
   verifyAnalysisContext,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/context";
+import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
 import { computeAnalysisProgramHash } from "../analysis/default-program.js";
 import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../analysis/skill-catalog.js";
 

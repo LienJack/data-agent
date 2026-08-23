@@ -5,8 +5,8 @@ import {
   type SemanticAssertionTargetKind,
   type SemanticChangeSet,
   type SemanticFormulaExpression,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AgentAnalysisAcceptanceSuite,
   FALCON24_SEMANTIC_RELEASE_BLUEPRINT,

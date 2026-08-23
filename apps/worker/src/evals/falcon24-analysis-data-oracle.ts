@@ -1,5 +1,5 @@
-import { sha256ContentHash } from "@data-agent/contracts";
-import type { SqlPool } from "@data-agent/platform";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import type { SqlPool } from "@data-agent/platform/persistence";
 import { z } from "zod";
 
 const integerText = z.coerce.number().int().nonnegative().safe();

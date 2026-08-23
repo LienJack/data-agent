@@ -4,8 +4,8 @@ import { dirname, resolve } from "node:path";
 import {
   buildFalcon24AgentAnalysisGate,
   falcon24AgentAnalysisRunResultSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/evals";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { adaptPgPool } from "@data-agent/platform/persistence";
 import {

@@ -3,9 +3,11 @@ import {
   type AnalysisProgramPayload,
   type ArtifactReference,
   artifactReferenceFor,
+} from "@data-agent/contracts/artifacts";
+import {
   type SemanticContextPackage,
   verifySemanticContextPackage,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/context";
 import { z } from "zod";
 import type { AnalysisProgramSourcePort } from "./executor.js";
 import { type AnalysisSkillCatalog, DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
