@@ -1698,6 +1698,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10726",
+      "migration_name": "20260725010726_app_data_agent_semantic_context_failure_phase_projection.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10726",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-failure-phase-projection.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__SEMANTIC_CONTEXT_FAILURE_PHASE_MIGRATION_CHECKSUM__",
+      "checksum_header": "semantic_context_failure_phase_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

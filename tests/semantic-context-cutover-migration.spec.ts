@@ -21,7 +21,7 @@ describe("10708 unique semantic lifecycle cutover", () => {
         .map((name) => ({ name, sql: readFileSync(resolve(migrationRoot, name), "utf8") })),
     );
     expect(inventory.violations).toEqual([]);
-    expect(inventory.frontier).toBe("20260725010725");
+    expect(inventory.frontier).toBe("20260725010726");
     expect(readdirSync(sourceRoot).sort()).toEqual([
       "00-preamble.sql.inc",
       "10-semantic-context-cutover.sql.inc",
@@ -111,6 +111,22 @@ describe("10708 unique semantic lifecycle cutover", () => {
     expect(projection).toContain("SEMANTIC_CONTEXT_PERSISTENCE_ROW_INVALID");
     expect(projection).not.toContain("message=sqlerrm");
     expect(projection).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
+  });
+
+  it("tracks internal commit phases without exposing database context", () => {
+    const phases = readFileSync(
+      resolve(
+        root,
+        "infra/supabase/apps/data-agent/migration-sources/10726/20-failure-phase-projection.sql.inc",
+      ),
+      "utf8",
+    );
+
+    expect(phases).toContain("failure_phase:='PACKAGE_IDENTITY'");
+    expect(phases).toContain("failure_phase:='PERSISTENCE'");
+    expect(phases).toContain("SEMANTIC_CONTEXT_COMMIT_CLOSURE_INPUT_INVALID");
+    expect(phases).not.toContain("message=failure_context");
+    expect(phases).not.toMatch(/create\s+(?:or\s+replace\s+)?function/i);
   });
 
   it("accepts AnalysisProgram only in the active artifact authority", () => {
