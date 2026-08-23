@@ -121,8 +121,16 @@ const inventorySchema = z.strictObject({
   conclusion: z.string().min(1),
 });
 
+const marketingFindingSchema = z.enum([
+  "GROWTH_ASSOCIATION",
+  "SPEND_WITHOUT_IMPROVEMENT",
+  "NO_CLEAR_ASSOCIATION",
+]);
+
+const marketingOutcomeIds = ["order_revenue", "new_customers", "order_count"] as const;
+
 const marketingSchema = z.strictObject({
-  schema_version: z.literal("falcon24-marketing-output@1.0.0"),
+  schema_version: z.literal("falcon24-marketing-output@2.0.0"),
   case_id: z.literal("falcon24-marketing-lag-effect"),
   window: z.strictObject({
     start: z.string().date(),
@@ -143,15 +151,30 @@ const marketingSchema = z.strictObject({
         click_through_rate: probability,
         conversion_rate: probability,
         roas: nonnegative,
-        selected_lag_weeks: z.number().int().min(0).max(4),
-        lag_coefficient: finite,
-        hac_p_value: probability,
-        bh_q_value: probability,
-        finding: z.enum([
-          "GROWTH_ASSOCIATION",
-          "SPEND_WITHOUT_IMPROVEMENT",
-          "NO_CLEAR_ASSOCIATION",
-        ]),
+        business_outcomes: z
+          .array(
+            z.strictObject({
+              metric: z.enum(marketingOutcomeIds),
+              selected_lag_weeks: z.number().int().min(0).max(4),
+              lag_coefficient: finite,
+              hac_p_value: probability,
+              bh_q_value: probability,
+              finding: marketingFindingSchema,
+            }),
+          )
+          .length(3)
+          .superRefine((outcomes, context) => {
+            for (const [index, metric] of marketingOutcomeIds.entries()) {
+              if (outcomes[index]?.metric !== metric) {
+                context.addIssue({
+                  code: "custom",
+                  message: "Marketing business outcomes must use the canonical three-metric order.",
+                  path: [index, "metric"],
+                });
+              }
+            }
+          }),
+        group_finding: marketingFindingSchema,
       }),
     )
     .min(1),
@@ -353,6 +376,13 @@ function evaluateMarketing(
   const controls = new Set(output.controls);
   if (!controls.has("trend") || !controls.has("seasonality")) {
     throw new TypeError("FALCON24_Q4_CONTROL_MISSING");
+  }
+  for (const result of output.channel_audience_results) {
+    if (
+      result.business_outcomes.some(({ metric }, index) => metric !== marketingOutcomeIds[index])
+    ) {
+      throw new TypeError("FALCON24_Q4_BUSINESS_OUTCOME_COVERAGE_INVALID");
+    }
   }
   assertAssociationLanguage(output.conclusion);
 }

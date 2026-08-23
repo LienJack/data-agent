@@ -83,7 +83,7 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
     claim_strength: "DESCRIPTIVE",
   },
   "falcon24-marketing-lag-effect": {
-    schema_version: "falcon24-marketing-output@1.0.0",
+    schema_version: "falcon24-marketing-output@2.0.0",
     required_fields: [
       "window",
       "channel_audience_results",
@@ -134,10 +134,10 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
   ],
   "falcon24-marketing-lag-effect": [
     "Build the complete 79-week calendar from 2023-05-01 through 2024-10-28. At channel and target_audience grain, zero-fill missing marketing weeks while retaining the shared weekly business outcomes, then compute funnel totals, CTR, conversion rate, and ROAS.",
-    "For each lag 0 through 4, regress weekly order_revenue on lagged spend with intercept, linear trend, sin(2*pi*week/52), and cos(2*pi*week/52); drop leading rows introduced by the lag.",
+    "For each business outcome in the exact order order_revenue, new_customers, order_count and each lag 0 through 4, regress the weekly outcome on lagged spend with intercept, linear trend, sin(2*pi*week/52), and cos(2*pi*week/52); drop leading rows introduced by the lag.",
     "Compute the spend coefficient two-sided p-value using Newey-West HAC covariance with maxlags=4 and finite-sample factor n/(n-k).",
-    "Select the lag with the smallest HAC p-value, breaking ties toward the smaller lag; apply Benjamini-Hochberg correction to selected p-values across all channel/audience groups.",
-    "Classify GROWTH_ASSOCIATION iff coefficient > 0 and q <= 0.05; classify SPEND_WITHOUT_IMPROVEMENT iff the OLS slope of spend over week is positive and the selected result is not GROWTH_ASSOCIATION; otherwise NO_CLEAR_ASSOCIATION. Use association language only.",
+    "For each business outcome independently, select the lag with the smallest HAC p-value, breaking ties toward the smaller lag; apply Benjamini-Hochberg correction to selected p-values across all channel/audience groups for that same outcome.",
+    "Classify each business outcome as GROWTH_ASSOCIATION iff coefficient > 0 and q <= 0.05; classify it as SPEND_WITHOUT_IMPROVEMENT iff the OLS slope of spend over week is positive and that outcome is not GROWTH_ASSOCIATION; otherwise NO_CLEAR_ASSOCIATION. Classify the channel/audience group as GROWTH_ASSOCIATION iff any of its three outcomes has that finding, otherwise SPEND_WITHOUT_IMPROVEMENT iff spend slope is positive, otherwise NO_CLEAR_ASSOCIATION. Use association language only.",
   ],
   "falcon24-cohort-retention-m0-m6": [
     "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order.",

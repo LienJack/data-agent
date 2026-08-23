@@ -137,7 +137,7 @@ function outputFor(caseId: string, methods: readonly string[]) {
   }
   if (caseId === "falcon24-marketing-lag-effect") {
     return {
-      schema_version: "falcon24-marketing-output@1.0.0",
+      schema_version: "falcon24-marketing-output@2.0.0",
       case_id: caseId,
       window: { start: "2023-05-01", end_exclusive: "2024-11-01", week_count: 79, grain: "WEEK" },
       channel_audience_results: [
@@ -152,11 +152,33 @@ function outputFor(caseId: string, methods: readonly string[]) {
           click_through_rate: 0.1,
           conversion_rate: 0.1,
           roas: 2,
-          selected_lag_weeks: 2,
-          lag_coefficient: 0.4,
-          hac_p_value: 0.01,
-          bh_q_value: 0.04,
-          finding: "GROWTH_ASSOCIATION",
+          business_outcomes: [
+            {
+              metric: "order_revenue",
+              selected_lag_weeks: 2,
+              lag_coefficient: 0.4,
+              hac_p_value: 0.01,
+              bh_q_value: 0.04,
+              finding: "GROWTH_ASSOCIATION",
+            },
+            {
+              metric: "new_customers",
+              selected_lag_weeks: 1,
+              lag_coefficient: 0.1,
+              hac_p_value: 0.2,
+              bh_q_value: 0.3,
+              finding: "SPEND_WITHOUT_IMPROVEMENT",
+            },
+            {
+              metric: "order_count",
+              selected_lag_weeks: 0,
+              lag_coefficient: -0.1,
+              hac_p_value: 0.4,
+              bh_q_value: 0.5,
+              finding: "SPEND_WITHOUT_IMPROVEMENT",
+            },
+          ],
+          group_finding: "GROWTH_ASSOCIATION",
         },
       ],
       controls: ["trend", "seasonality"],
@@ -225,6 +247,41 @@ describe("Falcon24 independent analysis oracles", () => {
     );
     expect(receipts).toHaveLength(5);
     expect(new Set(receipts.map(({ output_hash }) => output_hash)).size).toBe(5);
+  });
+
+  it("rejects the retired single-outcome marketing contract", async () => {
+    const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
+    const testCase = suite.cases.find(
+      ({ case_id: caseId }) => caseId === "falcon24-marketing-lag-effect",
+    );
+    if (!testCase) throw new TypeError("marketing acceptance case missing");
+    const current = falcon24AnalysisOutputSchema.parse(
+      outputFor(testCase.case_id, testCase.required_methods),
+    );
+    if (current.case_id !== "falcon24-marketing-lag-effect") {
+      throw new TypeError("marketing output fixture mismatched");
+    }
+    const result = current.channel_audience_results[0];
+    if (!result) throw new TypeError("marketing output fixture missing");
+
+    expect(
+      falcon24AnalysisOutputSchema.safeParse({
+        ...current,
+        schema_version: "falcon24-marketing-output@1.0.0",
+        channel_audience_results: [
+          {
+            ...result,
+            business_outcomes: undefined,
+            group_finding: undefined,
+            selected_lag_weeks: 2,
+            lag_coefficient: 0.4,
+            hac_p_value: 0.01,
+            bh_q_value: 0.04,
+            finding: "GROWTH_ASSOCIATION",
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects causal overclaim, unclosed Shapley, invalid inventory priority, and bad cohort audit", async () => {

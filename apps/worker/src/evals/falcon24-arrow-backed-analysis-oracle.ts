@@ -822,6 +822,9 @@ function simpleSlope(values: readonly number[]): number {
   return denominator === 0 ? 0 : numerator / denominator;
 }
 
+const MARKETING_BUSINESS_OUTCOMES = ["order_revenue", "new_customers", "order_count"] as const;
+type MarketingBusinessOutcome = (typeof MARKETING_BUSINESS_OUTCOMES)[number];
+
 function verifyMarketing(
   rows: readonly Row[],
   output: Extract<Falcon24Output, { case_id: "falcon24-marketing-lag-effect" }>,
@@ -850,47 +853,65 @@ function verifyMarketing(
   const groupStatistics = new Map<
     string,
     {
-      readonly lag: number;
-      readonly coefficient: number;
-      readonly pValue: number;
       readonly spendSlope: number;
+      readonly outcomes: ReadonlyMap<
+        MarketingBusinessOutcome,
+        { readonly lag: number; readonly coefficient: number; readonly pValue: number }
+      >;
     }
   >();
   for (const [key, selected] of groups) {
     const rowsByWeek = new Map(selected.map((row) => [text(row, "week_start"), row]));
     const spend = weeks.map((week) => number(rowsByWeek.get(week) ?? { spend: 0 }, "spend"));
-    const outcome = weeks.map((week) =>
-      number(
-        businessByWeek.get(week) ?? fail("FALCON24_Q4_BUSINESS_WEEK_MISSING"),
-        "order_revenue",
-      ),
-    );
-    const candidates = Array.from({ length: 5 }, (_, lag) => {
-      const design = weeks.slice(lag).map((_week, offset) => {
-        const weekIndex = offset + lag;
-        return [
-          1,
-          spend[weekIndex - lag] ?? 0,
-          weekIndex,
-          Math.sin((2 * Math.PI * weekIndex) / 52),
-          Math.cos((2 * Math.PI * weekIndex) / 52),
-        ];
-      });
-      return {
-        lag,
-        ...olsHac({
-          design,
-          response: outcome.slice(lag),
-          coefficient_index: 1,
-          max_lag: 4,
-        }),
-      };
-    }).sort((left, right) => left.pValue - right.pValue || left.lag - right.lag);
-    const selectedLag = candidates[0] ?? fail("FALCON24_Q4_LAG_SELECTION_EMPTY");
-    groupStatistics.set(key, { ...selectedLag, spendSlope: simpleSlope(spend) });
+    const outcomes = new Map<
+      MarketingBusinessOutcome,
+      { readonly lag: number; readonly coefficient: number; readonly pValue: number }
+    >();
+    for (const outcomeId of MARKETING_BUSINESS_OUTCOMES) {
+      const outcome = weeks.map((week) =>
+        number(businessByWeek.get(week) ?? fail("FALCON24_Q4_BUSINESS_WEEK_MISSING"), outcomeId),
+      );
+      const candidates = Array.from({ length: 5 }, (_, lag) => {
+        const design = weeks.slice(lag).map((_week, offset) => {
+          const weekIndex = offset + lag;
+          return [
+            1,
+            spend[weekIndex - lag] ?? 0,
+            weekIndex,
+            Math.sin((2 * Math.PI * weekIndex) / 52),
+            Math.cos((2 * Math.PI * weekIndex) / 52),
+          ];
+        });
+        return {
+          lag,
+          ...olsHac({
+            design,
+            response: outcome.slice(lag),
+            coefficient_index: 1,
+            max_lag: 4,
+          }),
+        };
+      }).sort((left, right) => left.pValue - right.pValue || left.lag - right.lag);
+      outcomes.set(
+        outcomeId,
+        candidates[0] ?? fail(`FALCON24_Q4_LAG_SELECTION_EMPTY:${outcomeId}`),
+      );
+    }
+    groupStatistics.set(key, { outcomes, spendSlope: simpleSlope(spend) });
   }
-  const qValues = benjaminiHochberg(
-    new Map([...groupStatistics].map(([key, statistic]) => [key, statistic.pValue])),
+  const qValues = new Map(
+    MARKETING_BUSINESS_OUTCOMES.map((outcomeId) => [
+      outcomeId,
+      benjaminiHochberg(
+        new Map(
+          [...groupStatistics].map(([key, statistic]) => [
+            key,
+            statistic.outcomes.get(outcomeId)?.pValue ??
+              fail(`FALCON24_Q4_STATISTIC_MISSING:${outcomeId}`),
+          ]),
+        ),
+      ),
+    ]),
   );
   for (const result of output.channel_audience_results) {
     const key = `${result.channel}\u0000${result.target_audience}`;
@@ -922,18 +943,59 @@ function verifyMarketing(
     ] as const)
       close(actual, expected, code, 0.01);
     const statistic = groupStatistics.get(key) ?? fail("FALCON24_Q4_STATISTIC_MISSING");
-    if (result.selected_lag_weeks !== statistic.lag) fail("FALCON24_Q4_LAG_MISMATCH");
-    close(result.lag_coefficient, statistic.coefficient, "FALCON24_Q4_COEFFICIENT_MISMATCH", 1e-6);
-    close(result.hac_p_value, statistic.pValue, "FALCON24_Q4_HAC_P_MISMATCH", 1e-6);
-    const qValue = qValues.get(key) ?? fail("FALCON24_Q4_Q_VALUE_MISSING");
-    close(result.bh_q_value, qValue, "FALCON24_Q4_BH_Q_MISMATCH", 1e-6);
-    const finding =
-      statistic.coefficient > 0 && qValue <= 0.05
-        ? "GROWTH_ASSOCIATION"
-        : statistic.spendSlope > 0
-          ? "SPEND_WITHOUT_IMPROVEMENT"
-          : "NO_CLEAR_ASSOCIATION";
-    if (result.finding !== finding) fail("FALCON24_Q4_FINDING_MISMATCH");
+    if (
+      result.business_outcomes.length !== MARKETING_BUSINESS_OUTCOMES.length ||
+      result.business_outcomes.some(
+        ({ metric }, index) => metric !== MARKETING_BUSINESS_OUTCOMES[index],
+      )
+    ) {
+      fail("FALCON24_Q4_BUSINESS_OUTCOME_COVERAGE_MISMATCH");
+    }
+    const findings = result.business_outcomes.map((businessOutcome) => {
+      const outcomeStatistic =
+        statistic.outcomes.get(businessOutcome.metric) ??
+        fail(`FALCON24_Q4_STATISTIC_MISSING:${businessOutcome.metric}`);
+      if (businessOutcome.selected_lag_weeks !== outcomeStatistic.lag) {
+        fail(`FALCON24_Q4_LAG_MISMATCH:${businessOutcome.metric}`);
+      }
+      close(
+        businessOutcome.lag_coefficient,
+        outcomeStatistic.coefficient,
+        `FALCON24_Q4_COEFFICIENT_MISMATCH:${businessOutcome.metric}`,
+        1e-6,
+      );
+      close(
+        businessOutcome.hac_p_value,
+        outcomeStatistic.pValue,
+        `FALCON24_Q4_HAC_P_MISMATCH:${businessOutcome.metric}`,
+        1e-6,
+      );
+      const qValue =
+        qValues.get(businessOutcome.metric)?.get(key) ??
+        fail(`FALCON24_Q4_Q_VALUE_MISSING:${businessOutcome.metric}`);
+      close(
+        businessOutcome.bh_q_value,
+        qValue,
+        `FALCON24_Q4_BH_Q_MISMATCH:${businessOutcome.metric}`,
+        1e-6,
+      );
+      const finding =
+        outcomeStatistic.coefficient > 0 && qValue <= 0.05
+          ? "GROWTH_ASSOCIATION"
+          : statistic.spendSlope > 0
+            ? "SPEND_WITHOUT_IMPROVEMENT"
+            : "NO_CLEAR_ASSOCIATION";
+      if (businessOutcome.finding !== finding) {
+        fail(`FALCON24_Q4_FINDING_MISMATCH:${businessOutcome.metric}`);
+      }
+      return finding;
+    });
+    const groupFinding = findings.includes("GROWTH_ASSOCIATION")
+      ? "GROWTH_ASSOCIATION"
+      : statistic.spendSlope > 0
+        ? "SPEND_WITHOUT_IMPROVEMENT"
+        : "NO_CLEAR_ASSOCIATION";
+    if (result.group_finding !== groupFinding) fail("FALCON24_Q4_GROUP_FINDING_MISMATCH");
   }
 }
 

@@ -333,26 +333,29 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
         new_customers: 2 + (index % 5),
       };
     });
-    const candidates = Array.from({ length: 5 }, (_, lag) => ({
-      lag,
-      ...olsHac({
-        design: rows.slice(lag).map((_row, offset) => {
-          const index = offset + lag;
-          return [
-            1,
-            spendSeries[index - lag] ?? 0,
-            index,
-            Math.sin((2 * Math.PI * index) / 52),
-            Math.cos((2 * Math.PI * index) / 52),
-          ];
+    const selectedFor = (metric: "order_revenue" | "new_customers" | "order_count") => {
+      const candidates = Array.from({ length: 5 }, (_, lag) => ({
+        lag,
+        ...olsHac({
+          design: rows.slice(lag).map((_row, offset) => {
+            const index = offset + lag;
+            return [
+              1,
+              spendSeries[index - lag] ?? 0,
+              index,
+              Math.sin((2 * Math.PI * index) / 52),
+              Math.cos((2 * Math.PI * index) / 52),
+            ];
+          }),
+          response: rows.slice(lag).map((row) => row[metric]),
+          coefficient_index: 1,
+          max_lag: 4,
         }),
-        response: rows.slice(lag).map(({ order_revenue }) => order_revenue),
-        coefficient_index: 1,
-        max_lag: 4,
-      }),
-    })).sort((left, right) => left.pValue - right.pValue || left.lag - right.lag);
-    const selected = candidates[0];
-    if (!selected) throw new TypeError("marketing fixture missing selected lag");
+      })).sort((left, right) => left.pValue - right.pValue || left.lag - right.lag);
+      const selected = candidates[0];
+      if (!selected) throw new TypeError(`marketing fixture missing selected lag:${metric}`);
+      return selected;
+    };
     const sum = (key: "impressions" | "clicks" | "conversions" | "spend" | "campaign_revenue") =>
       rows.reduce((total, row) => total + row[key], 0);
     const impressions = sum("impressions");
@@ -360,6 +363,22 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
     const conversions = sum("conversions");
     const spend = sum("spend");
     const revenue = sum("campaign_revenue");
+    const business_outcomes = (["order_revenue", "new_customers", "order_count"] as const).map(
+      (metric) => {
+        const selected = selectedFor(metric);
+        return {
+          metric,
+          selected_lag_weeks: selected.lag,
+          lag_coefficient: selected.coefficient,
+          hac_p_value: selected.pValue,
+          bh_q_value: selected.pValue,
+          finding:
+            selected.coefficient > 0 && selected.pValue <= 0.05
+              ? ("GROWTH_ASSOCIATION" as const)
+              : ("SPEND_WITHOUT_IMPROVEMENT" as const),
+        };
+      },
+    );
     const result = {
       channel: "email",
       target_audience: "new",
@@ -371,14 +390,10 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       click_through_rate: clicks / impressions,
       conversion_rate: conversions / clicks,
       roas: revenue / spend,
-      selected_lag_weeks: selected.lag,
-      lag_coefficient: selected.coefficient,
-      hac_p_value: selected.pValue,
-      bh_q_value: selected.pValue,
-      finding:
-        selected.coefficient > 0 && selected.pValue <= 0.05
-          ? "GROWTH_ASSOCIATION"
-          : "SPEND_WITHOUT_IMPROVEMENT",
+      business_outcomes,
+      group_finding: business_outcomes.some(({ finding }) => finding === "GROWTH_ASSOCIATION")
+        ? "GROWTH_ASSOCIATION"
+        : "SPEND_WITHOUT_IMPROVEMENT",
     };
     expect(() =>
       verifiers["falcon24-marketing-lag-effect"](rows, {
