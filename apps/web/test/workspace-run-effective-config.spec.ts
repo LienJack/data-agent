@@ -81,8 +81,11 @@ vi.mock("@/lib/workspace-identity", () => ({
   getWorkspaceSqlPool: () => ({}),
 }));
 
-vi.mock("@data-agent/platform", () => ({
+vi.mock("@data-agent/platform/persistence", () => ({
   createPostgresRepository: () => ({ getRun: mocks.getRun }),
+}));
+
+vi.mock("@data-agent/platform/runs", () => ({
   freezeSubagentCapabilityCatalog: mocks.freezeCatalog,
 }));
 

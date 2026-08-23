@@ -12,13 +12,57 @@
       "types": "./dist/artifacts/artifact-workspace-service.d.ts",
       "import": "./dist/artifacts/artifact-workspace-service.js"
     },
+    "./artifacts": {
+      "types": "./dist/artifacts/index.d.ts",
+      "import": "./dist/artifacts/index.js"
+    },
     "./datasource-adapters": {
       "types": "./dist/datasources/adapters/index.d.ts",
       "import": "./dist/datasources/adapters/index.js"
     },
+    "./jobs": {
+      "types": "./dist/jobs/index.d.ts",
+      "import": "./dist/jobs/index.js"
+    },
+    "./knowledge": {
+      "types": "./dist/knowledge/index.d.ts",
+      "import": "./dist/knowledge/index.js"
+    },
+    "./persistence": {
+      "types": "./dist/persistence/index.d.ts",
+      "import": "./dist/persistence/index.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    },
+    "./research": {
+      "types": "./dist/research/index.d.ts",
+      "import": "./dist/research/index.js"
+    },
+    "./runs": {
+      "types": "./dist/runs/index.d.ts",
+      "import": "./dist/runs/index.js"
+    },
     "./runtime-config": {
       "types": "./dist/runtime-config/index.d.ts",
       "import": "./dist/runtime-config/index.js"
+    },
+    "./sandbox": {
+      "types": "./dist/sandbox/index.d.ts",
+      "import": "./dist/sandbox/index.js"
+    },
+    "./semantic-postgres": {
+      "types": "./dist/semantic-postgres/index.d.ts",
+      "import": "./dist/semantic-postgres/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "import": "./dist/storage/index.js"
+    },
+    "./tenancy": {
+      "types": "./dist/tenancy/index.d.ts",
+      "import": "./dist/tenancy/index.js"
     }
   },
   "files": [

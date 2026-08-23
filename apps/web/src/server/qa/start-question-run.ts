@@ -1,7 +1,8 @@
 import type { AppScope } from "@data-agent/contracts/common";
 import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
 import type { WorkspaceFileReference } from "@data-agent/contracts/workspaces";
-import { createPostgresRepository, freezeSubagentCapabilityCatalog } from "@data-agent/platform";
+import { createPostgresRepository } from "@data-agent/platform/persistence";
+import { freezeSubagentCapabilityCatalog } from "@data-agent/platform/runs";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
   getAgentDispatchAuthority,

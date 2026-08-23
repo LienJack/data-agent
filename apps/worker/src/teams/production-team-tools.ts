@@ -9,11 +9,11 @@ import {
   compileEcommerceMonthlyOrderTrendSql,
   ECOMMERCE_DIRECT_QA_CAPABILITY,
 } from "@data-agent/evals/ecommerce-direct-qa";
+import { buildQueryEvidenceChartDocument } from "@data-agent/platform/artifacts";
 import {
-  buildQueryEvidenceChartDocument,
   compilePostgresTableCountSql,
   type PostgresReadOnlyBenchmarkQueryExecutor,
-} from "@data-agent/platform";
+} from "@data-agent/platform/sandbox";
 import { z } from "zod";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
 import type { FrozenSemanticRelationshipReadPort } from "../semantic/semantic-relationship-read-port.js";

@@ -1,8 +1,7 @@
-import {
-  buildRunConfigRequestCandidate,
-  workspaceIdempotencyKeySchema,
-} from "@data-agent/contracts";
-import { createPostgresRepository, freezeSubagentCapabilityCatalog } from "@data-agent/platform";
+import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
+import { workspaceIdempotencyKeySchema } from "@data-agent/contracts/workspaces";
+import { createPostgresRepository } from "@data-agent/platform/persistence";
+import { freezeSubagentCapabilityCatalog } from "@data-agent/platform/runs";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";

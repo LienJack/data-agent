@@ -27,8 +27,8 @@ import {
   SQL_REFLECTION_RESPONSE_SCHEMA_VERSION,
   SubmittedAnswerAgent,
 } from "@data-agent/evals";
-import { createPostgresFalconBenchmarkExecutor } from "@data-agent/platform";
 import { resolveRuntimeRepositoryRoot } from "@data-agent/platform/runtime-config";
+import { createPostgresFalconBenchmarkExecutor } from "@data-agent/platform/sandbox";
 import { Pool } from "pg";
 import { z } from "zod";
 import { loadRunWorkerEnvironment } from "../run-worker-environment.js";

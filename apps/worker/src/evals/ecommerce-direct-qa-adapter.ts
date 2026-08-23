@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import {
   type ArtifactReference,
   buildProductTeamArtifactDocument,
-  type PortResult,
   type ProductTeamArtifactDocument,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import type { PortResult } from "@data-agent/contracts/ports";
 import {
   classifyEcommerceDirectQaIntent,
   compileEcommerceMonthlyOrderTrendSql,
@@ -14,7 +14,7 @@ import {
   renderEcommerceAnomalies,
   renderEcommerceTrend,
 } from "@data-agent/evals/ecommerce-direct-qa";
-import type { PostgresReadOnlyBenchmarkQueryExecutor } from "@data-agent/platform";
+import type { PostgresReadOnlyBenchmarkQueryExecutor } from "@data-agent/platform/sandbox";
 import { hasRunExecutionContextProvenance } from "../runs/run-execution-context.js";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 

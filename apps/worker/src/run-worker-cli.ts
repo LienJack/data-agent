@@ -17,36 +17,50 @@ import {
 } from "@data-agent/contracts/server";
 import { ECOMMERCE_DIRECT_QA_CAPABILITY } from "@data-agent/evals/ecommerce-direct-qa";
 import {
+  createPostgresArtifactWorkspaceStore,
+  createPostgresProductTeamArtifactStore,
+} from "@data-agent/platform/artifacts";
+import { createPostgresJobQueue } from "@data-agent/platform/jobs";
+import {
+  createNeo4jKnowledgeIndexFromEnvironment,
+  createOpenAiCompatibleEmbeddingProviderFactory,
+  createPostgresKnowledgeRegistry,
+  createUnavailableKnowledgeIndex,
+  type KnowledgeIndex,
+} from "@data-agent/platform/knowledge";
+import {
   adaptPgPool,
+  createPostgresRepository,
+  createPostgresWorkspaceDataRepository,
+  registerPersistenceDiagnosticLogger,
+} from "@data-agent/platform/persistence";
+import {
+  createPostgresProviderInvocationSmokeJob,
+  providerInvocationSmokeClaimSchema,
+} from "@data-agent/platform/providers";
+import { createPostgresResearchAuthority } from "@data-agent/platform/research";
+import {
+  createPostgresEffectiveConfigResolver,
+  createPostgresRunEventStore,
+  createPostgresRunQueue,
+} from "@data-agent/platform/runs";
+import { createPostgresReadOnlyBenchmarkExecutor } from "@data-agent/platform/sandbox";
+import {
+  createPostgresResolvedContextRegistry,
+  createPostgresSemanticExplorerReader,
+  createPostgresSemanticInductionRegistry,
+} from "@data-agent/platform/semantic-postgres";
+import {
   createClamAvInstreamClient,
   createFileScanPort,
   createFileSystemStorageClient,
-  createNeo4jKnowledgeIndexFromEnvironment,
-  createOpenAiCompatibleEmbeddingProviderFactory,
-  createPostgresArtifactWorkspaceStore,
-  createPostgresCapabilityAuthority,
-  createPostgresEffectiveConfigResolver,
-  createPostgresJobQueue,
-  createPostgresKnowledgeRegistry,
-  createPostgresOperationsAdminRepository,
-  createPostgresProductTeamArtifactStore,
-  createPostgresProviderInvocationSmokeJob,
-  createPostgresReadOnlyBenchmarkExecutor,
-  createPostgresRepository,
-  createPostgresResearchAuthority,
-  createPostgresResolvedContextRegistry,
-  createPostgresRunEventStore,
-  createPostgresRunQueue,
-  createPostgresSemanticExplorerReader,
-  createPostgresSemanticInductionRegistry,
-  createPostgresWorkspaceDataRepository,
   createPostgresWorkspaceFiles,
-  createUnavailableKnowledgeIndex,
   createWorkspaceContentNamespace,
-  type KnowledgeIndex,
-  providerInvocationSmokeClaimSchema,
-  registerPersistenceDiagnosticLogger,
-} from "@data-agent/platform";
+} from "@data-agent/platform/storage";
+import {
+  createPostgresCapabilityAuthority,
+  createPostgresOperationsAdminRepository,
+} from "@data-agent/platform/tenancy";
 import { createResolvedContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";

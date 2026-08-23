@@ -276,7 +276,7 @@ describe("Workspace 依赖边界", () => {
     expect(scan.nonLiteralModuleLoads).toEqual([]);
   });
 
-  it("Contracts 根入口只允许既有生产文件并允许基线递减", () => {
+  it("受治理 Package 根入口只允许既有生产文件并允许基线递减", () => {
     const baseline = [
       {
         files: ["apps/web/src/legacy-consumer.ts"],
@@ -342,6 +342,32 @@ describe("Workspace 依赖边界", () => {
         [],
       ),
     ).toEqual([]);
+
+    expect(
+      validateRootPackageImportBaselines(
+        repoRoot,
+        [
+          {
+            moduleName: "@data-agent/worker",
+            path: join(repoRoot, "apps/worker/src/new-platform-consumer.ts"),
+            source: 'import { createPostgresRepository } from "@data-agent/platform";',
+          },
+        ],
+        [
+          {
+            files: [],
+            package_name: "@data-agent/platform",
+            root_specifier: "@data-agent/platform",
+          },
+        ],
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        code: "ROOT_PACKAGE_IMPORT_BASELINE_EXPANSION",
+        dependency: "@data-agent/platform",
+        module: "@data-agent/worker",
+      }),
+    ]);
   });
 
   it("全 Workspace src 扫描对插值 dynamic import 失败关闭", () => {

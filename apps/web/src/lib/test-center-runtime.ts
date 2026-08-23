@@ -47,7 +47,7 @@ import { ECOMMERCE_DIRECT_QA_CAPABILITY } from "@data-agent/evals/ecommerce-dire
 import {
   createPostgresFalconBenchmarkExecutor,
   createPostgresReadOnlyBenchmarkExecutor,
-} from "@data-agent/platform";
+} from "@data-agent/platform/sandbox";
 import pg from "pg";
 import { z } from "zod";
 import { ensureRootEnvironmentLoaded } from "./root-env";

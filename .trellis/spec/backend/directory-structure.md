@@ -52,6 +52,10 @@ test/*.spec.ts
 - `text2sql`、`research`、`evals` 只依赖 `contracts` 和显式 Port。
 - `agent-runtime` 可以适配 Mastra，但不能提交 SQL、Evidence 或 Release 真值。
 - `platform` 实现 Port，不导入领域 Workflow。
+- `platform` 的生产消费者必须按职责使用 `persistence`、`runs`、`semantic-postgres`、`sandbox`、
+  `storage`、`tenancy`、`runtime-config` 等显式子路径。根入口只为历史兼容保留，并与
+  `contracts` 一样由 `scripts/workspace-root-import-baselines.json` 冻结为只减不增基线；子路径不得
+  重导出 `*.internal` 的事务或 Authority 实现。
 - `platform/runtime-config` 是 server-only dotenv、仓库根解析和环境变量归一化边界；App、CLI 与领域模块
   不得各自加载 dotenv 或读取受管旧别名。
 - `semantic/application` 持有 Candidate compile/save、Governance、Studio、Explorer 用例；
@@ -68,6 +72,7 @@ test/*.spec.ts
 | --- | --- |
 | `contracts` 导入 `@mastra/*`、`@supabase/*`、Redis 或 Next.js | Architecture Test 失败 |
 | 新生产文件从 `@data-agent/contracts` 根入口导入 | Architecture Test 失败 |
+| 新生产文件从 `@data-agent/platform` 根入口导入 | Architecture Test 失败 |
 | 领域 Package 直接导入平台 SDK | Architecture Test 失败 |
 | App 在本地复制 Public Terminal 或 Artifact 类型 | Code Review/Type Test 失败 |
 | Web/Worker 绕过唯一 Workspace/job composition 创建 Semantic workflow | Architecture Test 失败 |
