@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   admitAnalysisSandboxProgram,
   admitAnalysisSandboxProgramRepair,
+  analysisRepairFailureCode,
   computeAnalysisProgramHash,
   createAnalysisProgramExecutor,
   createDefaultAnalysisProgram,
@@ -178,6 +179,37 @@ async function fixture() {
 }
 
 describe("deterministic analysis worker runtime", () => {
+  it("permits bounded repair for sandbox or Oracle failure only", () => {
+    expect(
+      analysisRepairFailureCode(
+        { status: "FAILED", reason_code: "PYTHON_RUNTIME_FAILED", outcome: null, output_refs: [] },
+        null,
+      ),
+    ).toBe("PYTHON_RUNTIME_FAILED");
+    expect(
+      analysisRepairFailureCode(
+        { status: "SUCCEEDED", outcome: {} as never, output_refs: [] },
+        null,
+      ),
+    ).toBe("ANALYSIS_ORACLE_FAILED");
+    expect(
+      analysisRepairFailureCode(
+        { status: "SUCCEEDED", outcome: {} as never, output_refs: [] },
+        {} as never,
+      ),
+    ).toBeNull();
+    expect(
+      analysisRepairFailureCode(
+        {
+          status: "STALE_FENCE",
+          reason_code: "SANDBOX_FENCE_STALE",
+          outcome: null,
+          output_refs: [],
+        },
+        null,
+      ),
+    ).toBeNull();
+  });
   it("registers the complete frozen skill catalog and rejects unknown skills", () => {
     expect(DEFAULT_ANALYSIS_SKILL_CATALOG.list().map(({ skill_id }) => skill_id)).toEqual([
       "data-profile@1",

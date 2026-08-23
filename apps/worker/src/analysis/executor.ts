@@ -33,6 +33,7 @@ import { gateAnalysisProgram } from "./program-gate.js";
 import {
   type AnalysisFenceGuard,
   type AnalysisOutputSlotFactory,
+  type AnalysisSandboxExecution,
   executeAnalysisSandbox,
   type GovernedPythonInput,
 } from "./sandbox-executor.js";
@@ -135,6 +136,16 @@ export interface AnalysisExecutionResult {
   readonly completion_ref: ArtifactReference;
   readonly completion: AnalysisCompletionReceiptPayload;
   readonly evidence_refs: readonly ArtifactReference[];
+}
+
+export function analysisRepairFailureCode(
+  sandbox: AnalysisSandboxExecution,
+  expectation: AnalysisOracleExpectation | null,
+): string | null {
+  if (sandbox.status === "FAILED") return sandbox.reason_code;
+  return sandbox.status === "SUCCEEDED" && expectation === null
+    ? "ANALYSIS_ORACLE_FAILED"
+    : null;
 }
 
 class BudgetLedger {
@@ -362,8 +373,25 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           output_slots: dependencies.references,
           ...(input.signal ? { signal: input.signal } : {}),
         });
+        const evaluateSandbox = async (): Promise<AnalysisOracleExpectation | null> => {
+          if (sandbox.status !== "SUCCEEDED") return null;
+          try {
+            const evaluated = await dependencies.oracle.evaluate({
+              node,
+              governed_inputs: governedInputs,
+              source_text: source.source_text,
+              sandbox_outputs: sandbox.outcome.outputs,
+            });
+            analysisResultSchema.parse(evaluated.result);
+            return verifyAnalysisResult(evaluated.result).verdict === "PASS" ? evaluated : null;
+          } catch {
+            return null;
+          }
+        };
+        let expectation = await evaluateSandbox();
+        const repairFailureCode = analysisRepairFailureCode(sandbox, expectation);
         if (
-          sandbox.status === "FAILED" &&
+          repairFailureCode !== null &&
           descriptor.program_mode !== "FROZEN_TEMPLATE" &&
           dependencies.programs.repair
         ) {
@@ -373,7 +401,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             analysis_program_ref: analysisProgramRef,
             node,
             previous_source_text: source.source_text,
-            failure_code: sandbox.reason_code,
+            failure_code: repairFailureCode,
             attempt: 1,
           });
           const repairedAdmission = await admitAnalysisSandboxProgramRepair({
@@ -427,6 +455,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             output_slots: dependencies.references,
             ...(input.signal ? { signal: input.signal } : {}),
           });
+          expectation = await evaluateSandbox();
         }
         if (sandbox.status !== "SUCCEEDED") {
           return failedNode(
@@ -434,19 +463,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             sandbox.status === "STALE_FENCE" ? "SANDBOX_FENCE_STALE" : "SANDBOX_EXECUTION_FAILED",
           );
         }
-        let expectation: AnalysisOracleExpectation;
-        try {
-          expectation = await dependencies.oracle.evaluate({
-            node,
-            governed_inputs: governedInputs,
-            source_text: source.source_text,
-            sandbox_outputs: sandbox.outcome.outputs,
-          });
-          analysisResultSchema.parse(expectation.result);
-        } catch {
-          return failedNode(node, "ANALYSIS_ORACLE_FAILED");
-        }
-        if (verifyAnalysisResult(expectation.result).verdict !== "PASS") {
+        if (expectation === null) {
           return failedNode(node, "ANALYSIS_ORACLE_FAILED");
         }
         if (!ledger.observe(expectation)) return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
