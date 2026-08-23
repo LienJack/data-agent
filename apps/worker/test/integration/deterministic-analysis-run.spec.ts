@@ -48,6 +48,7 @@ async function runAcceptedEcommerceTrend() {
     protocol_version: "analysis-program@1.0.0",
     brief_ref: ref("ResearchBrief", 4),
     analysis_context_hash: testCase.semantic_frontier.semantic_release_hash,
+    semantic_context_package_hash: testCase.semantic_frontier.semantic_release_hash,
     nodes: [
       {
         node_id: "ecommerce-monthly-gmv",
@@ -77,9 +78,9 @@ async function runAcceptedEcommerceTrend() {
       max_group_rows: 1,
       max_elapsed_ms: 30_000,
     },
-    planner_kind: "DETERMINISTIC_DEFAULT",
-    planner_version: "analysis-programner@1.0.0",
-    plan_hash: hash("a"),
+    compiler_kind: "DETERMINISTIC_DEFAULT",
+    compiler_version: "analysis-program-compiler@1.0.0",
+    program_hash: hash("a"),
   };
   const planRef = ref("AnalysisProgram", 5, await sha256ContentHash(plan));
   const fixture: DeterministicAnalysisFixture = {
@@ -101,7 +102,7 @@ async function runAcceptedEcommerceTrend() {
   const evidence: DerivedAnalysisEvidencePayload = {
     artifact_type: "DerivedAnalysisEvidence",
     protocol_version: "derived-analysis-evidence@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     node_id: "ecommerce-monthly-gmv",
     skill_id: "trend-change@1",
     algorithm_version: fixture.algorithm_version,
@@ -143,7 +144,7 @@ async function runAcceptedEcommerceTrend() {
   const completion: AnalysisCompletionReceiptPayload = {
     artifact_type: "AnalysisCompletionReceipt",
     protocol_version: "analysis-completion@1.0.0",
-    plan_ref: planRef,
+    analysis_program_ref: planRef,
     node_results: [
       {
         node_id: "ecommerce-monthly-gmv",
@@ -167,8 +168,8 @@ async function runAcceptedEcommerceTrend() {
   };
   const completionRef = ref("AnalysisCompletionReceipt", 14, await sha256ContentHash(completion));
   const projection = await buildDeterministicAnalysisRunProjection({
-    plan_ref: planRef,
-    plan,
+    analysis_program_ref: planRef,
+    analysis_program: plan,
     completion_ref: completionRef,
     completion,
     evidence: [{ ref: evidenceRef, payload: evidence }],
@@ -186,8 +187,8 @@ async function runAcceptedEcommerceTrend() {
     ],
   });
   const reportProjection = await buildDeterministicAnalysisRunProjection({
-    plan_ref: planRef,
-    plan,
+    analysis_program_ref: planRef,
+    analysis_program: plan,
     completion_ref: completionRef,
     completion,
     evidence: [{ ref: evidenceRef, payload: evidence }],

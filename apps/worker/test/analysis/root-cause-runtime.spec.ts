@@ -9,7 +9,7 @@ import {
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
-  computeAnalysisProgramHash,
+  computeAnalysisSandboxProgramHash,
   computeAttributionAuthorityClosureHash,
 } from "@data-agent/research";
 import { describe, expect, it } from "vitest";
@@ -280,7 +280,8 @@ describe("root cause worker runtime", () => {
           const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
             artifact_type: "SandboxProgram",
             protocol_version: "analysis-sandbox-program@1.0.0",
-            plan_ref: input.analysis_program_ref as AnalysisSandboxProgramPayload["plan_ref"],
+            analysis_program_ref:
+              input.analysis_program_ref as AnalysisSandboxProgramPayload["analysis_program_ref"],
             node_id: "root-cause",
             language: "PYTHON_3_12",
             entrypoint: "main",
@@ -306,7 +307,7 @@ describe("root cause worker runtime", () => {
           };
           const program = analysisSandboxProgramPayloadSchema.parse({
             ...programMaterial,
-            program_hash: await computeAnalysisProgramHash(programMaterial),
+            program_hash: await computeAnalysisSandboxProgramHash(programMaterial),
           });
           return {
             program,
