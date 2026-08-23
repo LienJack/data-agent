@@ -207,7 +207,10 @@ describe("Falcon24 exact QueryEvidence authority", () => {
       analysis_context: context,
       datasource_id: id(40),
       research_artifacts: research.authority,
-      capability_input: { capability: true },
+      capabilities: {
+        forArtifactType: () => ({ capability: true }) as never,
+        forDomain: () => ({ capability: true }) as never,
+      },
     });
 
     const result = await authority.issue(await command());
@@ -233,7 +236,10 @@ describe("Falcon24 exact QueryEvidence authority", () => {
       analysis_context: await analysisContext(),
       datasource_id: id(40),
       research_artifacts: research.authority,
-      capability_input: {},
+      capabilities: {
+        forArtifactType: () => ({}) as never,
+        forDomain: () => ({}) as never,
+      },
     });
     const issued = await command();
     await expect(
@@ -251,7 +257,10 @@ describe("Falcon24 exact QueryEvidence authority", () => {
       analysis_context: await analysisContext(),
       datasource_id: id(40),
       research_artifacts: research.authority,
-      capability_input: {},
+      capabilities: {
+        forArtifactType: () => ({}) as never,
+        forDomain: () => ({}) as never,
+      },
     });
     const issued = await command();
     await expect(authority.issue({ ...issued, spec: { ...issued.spec } })).rejects.toThrow(

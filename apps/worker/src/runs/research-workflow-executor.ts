@@ -34,6 +34,7 @@ import {
   runCheckpointInputSchema,
   runExecutorResultSchema,
 } from "./run-worker-runner.js";
+import type { ResearchAuthorityCapabilityResolver } from "./research-authority-capabilities.js";
 
 export const RESEARCH_WORKFLOW_ID = "l2-research@1.0.0" as const;
 
@@ -57,10 +58,7 @@ export interface ResearchWorkflowExecutorDependencies {
   readonly create_id: () => string;
   readonly now: () => Date;
   readonly principal_id: string;
-  readonly authority_capability_input: Readonly<{
-    app_capability: unknown;
-    authority_capability_id: string;
-  }> | null;
+  readonly authority_capabilities: ResearchAuthorityCapabilityResolver | null;
 }
 
 class ResearchWorkflowAuthorityError extends Error {
@@ -220,14 +218,17 @@ export function createResearchWorkflowExecutor(
           candidate: document,
           expected_parent_ref: committedRefs[committedRefs.length - 1] ?? null,
         });
-        const capabilityInput = deps.authority_capability_input;
-        if (!capabilityInput) {
+        const capabilities = deps.authority_capabilities;
+        if (!capabilities) {
           throw new ResearchWorkflowAuthorityError(
             "RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED",
             false,
           );
         }
-        const result = await authority.commitCurrent(capabilityInput, commitInput);
+        const result = await authority.commitCurrent(
+          capabilities.forArtifactType(document.payload.artifact_type),
+          commitInput,
+        );
         if (!result.ok) {
           throw new ResearchWorkflowAuthorityError(result.error.code, result.error.retryable);
         }
@@ -398,7 +399,7 @@ export function createResearchWorkflowExecutor(
         return researchErrorResult("RUN_PRINCIPAL_MISMATCH", false);
       }
 
-      if (!deps.authority_capability_input) {
+      if (!deps.authority_capabilities) {
         return researchErrorResult("RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED", false);
       }
 

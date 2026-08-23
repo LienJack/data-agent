@@ -25,6 +25,29 @@ function environment(overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
   };
 }
 
+const authorityPurposes = [
+  "BRIEF_SEMANTIC",
+  "PLANNING",
+  "OBLIGATION_EXECUTION",
+  "EVIDENCE",
+  "CLAIM_STRUCTURE",
+  "RELATION",
+  "PROOF",
+  "COVERAGE",
+  "RESEARCH_STOP",
+  "PROJECTION",
+  "EVIDENCE_GATE",
+  "READINESS",
+  "REPORT_READ",
+] as const;
+
+const authorityCapabilitySet = Object.fromEntries(
+  authorityPurposes.map((purpose, index) => [
+    purpose,
+    `38000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+  ]),
+);
+
 describe("Run Worker daemon", () => {
   it("严格解析固定 Authority、轮询和健康配置", () => {
     expect(parseRunWorkerEnvironment(environment())).toMatchObject({
@@ -37,12 +60,20 @@ describe("Run Worker daemon", () => {
       lease_duration_ms: 30_000,
       heartbeat_interval_ms: 10_000,
       health_port: 9_091,
-      research_authority_capability_id: null,
+      research_authority_capability_ids: null,
     });
 
     expect(() =>
       parseRunWorkerEnvironment(environment({ WORKER_HEARTBEAT_INTERVAL_MS: "12000" })),
     ).toThrow(/Heartbeat/i);
+
+    expect(
+      parseRunWorkerEnvironment(
+        environment({
+          WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET: JSON.stringify(authorityCapabilitySet),
+        }),
+      ).research_authority_capability_ids,
+    ).toEqual(authorityCapabilitySet);
   });
 
   it("IDLE 周期退避，收到停止信号后不再领取新任务", async () => {

@@ -86,7 +86,8 @@ Secret 只放在 Git 忽略的 `.env` 或 `.env.local`，不要写入 Compose、
 - `SEMANTIC_DEPLOYMENT_ID`、`SEMANTIC_TENANT_ID`、`SEMANTIC_PRINCIPAL_ID`；
 - `SEMANTIC_EXPLORER_ENABLED`、`SEMANTIC_RELATIONSHIP_INDEX_ENABLED`；
 - `WORKER_DEPLOYMENT_ID`、`WORKER_TENANT_ID`、`WORKER_PRINCIPAL_ID`；
-- `WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID`；
+- `WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET`（严格 JSON，按 12 个 Artifact Domain 与
+  `REPORT_READ` 分别填写数据库签发的 Capability ID）；
 - `NEO4J_PASSWORD`。
 
 本地超级管理员可选同步使用以下变量名（值只写入 Git 忽略的 `.env` / `.env.local`）：
@@ -107,10 +108,11 @@ DATA_AGENT_BOOTSTRAP_WORKSPACE_NAME=Main Workspace
 deployment、非 `postgres` executor、目标邮箱冲突或多 active 超级管理员都会失败关闭。
 `pnpm dev:check` 始终只读，不执行同步。
 
-未配置 `WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID` 时，Worker 进程和 Queue 轮询保持
+未配置 `WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET` 时，Worker 进程和 Queue 轮询保持
 可用，但研究 Artifact 提交失败关闭为 `RESEARCH_ARTIFACT_AUTHORITY_NOT_CONFIGURED`；
 `/live` 会显示 `research_authority_configured=false`。不要用随机 ID 或空对象冒充数据库
-签发的 U6 Authority Capability。
+签发的 U6 Authority Capability。旧的单 ID 变量不再读取；跨 Domain 复用一个 Capability
+会破坏数据库 Authority 边界，因此没有兼容入口。
 
 ## 5. 健康检查
 

@@ -17,7 +17,10 @@ function createRuntime(environment: NodeJS.ProcessEnv) {
     pool: {} as never,
     research_authority: {} as never,
     sensitive_artifacts: {} as never,
-    research_capability_input: { authority: "research" },
+    research_capabilities: {
+      forArtifactType: () => ({ authority: "research" }) as never,
+      forDomain: () => ({ authority: "research" }) as never,
+    },
     app_capability_input: { authority: "application" },
     sandbox: {} as never,
     environment,

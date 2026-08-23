@@ -51,9 +51,15 @@ describe("RunExecutionContext provenance", () => {
     } as unknown as RunExecutionContext;
     const executor = createResearchWorkflowExecutor({
       research_authority: {} as never,
-      authority_capability_input: {
-        app_capability: {},
-        authority_capability_id: "a0000000-0000-4000-8000-000000000009",
+      authority_capabilities: {
+        forArtifactType: () => ({
+          app_capability: {},
+          authority_capability_id: "a0000000-0000-4000-8000-000000000009",
+        }),
+        forDomain: () => ({
+          app_capability: {},
+          authority_capability_id: "a0000000-0000-4000-8000-000000000009",
+        }),
       },
       principal_id: principalId,
       create_id: () => "a0000000-0000-4000-8000-00000000000a",

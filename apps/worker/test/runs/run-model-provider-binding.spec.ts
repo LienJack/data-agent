@@ -104,9 +104,15 @@ describe("Research Worker governed Provider binding", () => {
     });
     const executor = createResearchWorkflowExecutor({
       research_authority: {} as never,
-      authority_capability_input: {
-        app_capability: {},
-        authority_capability_id: "86000000-0000-4000-8000-000000000008",
+      authority_capabilities: {
+        forArtifactType: () => ({
+          app_capability: {},
+          authority_capability_id: "86000000-0000-4000-8000-000000000008",
+        }),
+        forDomain: () => ({
+          app_capability: {},
+          authority_capability_id: "86000000-0000-4000-8000-000000000008",
+        }),
       },
       principal_id: principalId,
       create_id: () => "86000000-0000-4000-8000-000000000009",

@@ -45,6 +45,7 @@ import {
   normalizeFalcon24QueryResult,
 } from "./falcon24-analysis-queries.js";
 import type { Falcon24ExactQueryEvidenceAuthority } from "./falcon24-governed-query-port.js";
+import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 
 type TypedReference<T extends ArtifactReference["artifact_type"]> = ArtifactReference & {
   readonly artifact_type: T;
@@ -289,7 +290,7 @@ export function createFalcon24ExactQueryEvidenceAuthority(input: {
   readonly analysis_context: AnalysisContext;
   readonly datasource_id: string;
   readonly research_artifacts: ResearchArtifactAuthorityPort;
-  readonly capability_input: unknown;
+  readonly capabilities: ResearchAuthorityCapabilityResolver;
 }): Falcon24ExactQueryEvidenceAuthority {
   return Object.freeze({
     async issue(command: Parameters<Falcon24ExactQueryEvidenceAuthority["issue"]>[0]) {
@@ -815,7 +816,7 @@ export function createFalcon24ExactQueryEvidenceAuthority(input: {
         expected_parent_ref: null,
       });
       const committed = await input.research_artifacts.commitCurrent(
-        input.capability_input,
+        input.capabilities.forArtifactType("QueryEvidence"),
         commit,
       );
       if (!committed.ok) fail(`FALCON24_QUERY_EVIDENCE_COMMIT_FAILED:${committed.error.code}`);

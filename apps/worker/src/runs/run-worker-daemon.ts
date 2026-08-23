@@ -2,6 +2,10 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { AppScope } from "@data-agent/contracts";
 import { z } from "zod";
 import type { RunWorkerCycleOutcome, RunWorkerRunner } from "./run-worker-runner.js";
+import {
+  parseResearchAuthorityCapabilityIds,
+  type ResearchAuthorityCapabilityIds,
+} from "./research-authority-capabilities.js";
 
 const workerEnvironmentSchema = z
   .strictObject({
@@ -20,7 +24,10 @@ const workerEnvironmentSchema = z
     execution_timeout_ms: z.coerce.number().int().min(10).max(3_600_000).default(300_000),
     side_effect_timeout_ms: z.coerce.number().int().min(10).max(900_000).default(60_000),
     health_port: z.coerce.number().int().min(1_024).max(65_535).default(9_091),
-    research_authority_capability_id: z.uuid().nullable().default(null),
+    research_authority_capability_ids: z
+      .custom<ResearchAuthorityCapabilityIds>()
+      .nullable()
+      .default(null),
   })
   .superRefine((config, context) => {
     if (config.heartbeat_interval_ms > Math.floor(config.lease_duration_ms / 3)) {
@@ -56,7 +63,9 @@ export function parseRunWorkerEnvironment(
     execution_timeout_ms: environment.WORKER_EXECUTION_TIMEOUT_MS,
     side_effect_timeout_ms: environment.WORKER_SIDE_EFFECT_TIMEOUT_MS,
     health_port: environment.WORKER_HEALTH_PORT,
-    research_authority_capability_id: environment.WORKER_RESEARCH_AUTHORITY_CAPABILITY_ID || null,
+    research_authority_capability_ids: parseResearchAuthorityCapabilityIds(
+      environment.WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET,
+    ),
   });
 }
 

@@ -14,6 +14,7 @@ import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { AnalysisArtifactCommitPort } from "./executor.js";
+import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 
 type AnalysisPayload =
   | ResearchBriefV3Payload
@@ -99,7 +100,7 @@ async function candidate(input: {
 
 export function createResearchAnalysisArtifactPort(input: {
   readonly authority: ResearchArtifactAuthorityPort & AnalysisSystemArtifactAuthority;
-  readonly capability_input: unknown;
+  readonly capabilities: ResearchAuthorityCapabilityResolver;
   readonly now?: () => Date;
 }): AnalysisArtifactCommitPort {
   const now = input.now ?? (() => new Date());
@@ -132,7 +133,10 @@ export function createResearchAnalysisArtifactPort(input: {
         candidate: document,
         expected_parent_ref: expectedParent,
       });
-      const result = await input.authority.commitCurrent(input.capability_input, commit);
+      const result = await input.authority.commitCurrent(
+        input.capabilities.forArtifactType(command.payload.artifact_type),
+        commit,
+      );
       if (!result.ok) throw new TypeError(result.error.code);
       latestByRun.set(command.lease.run_id, result.value.reference);
       return result.value.reference;
@@ -140,7 +144,7 @@ export function createResearchAnalysisArtifactPort(input: {
 
     async commitSystem(command: Parameters<AnalysisArtifactCommitPort["commitSystem"]>[0]) {
       const result = await input.authority.commitAnalysisSystem(
-        input.capability_input,
+        input.capabilities.forArtifactType(command.reference.artifact_type),
         {
           schema_version: "1.0.0",
           scope: command.lease.scope,
@@ -161,7 +165,10 @@ export function createResearchAnalysisArtifactPort(input: {
     async resolveCommitted(
       reference: Parameters<AnalysisArtifactCommitPort["resolveCommitted"]>[0],
     ) {
-      const result = await input.authority.readHistorical(input.capability_input, reference);
+      const result = await input.authority.readHistorical(
+        input.capabilities.forDomain("REPORT_READ"),
+        reference,
+      );
       if (!result.ok) throw new TypeError(result.error.code);
       return result.value?.document ?? null;
     },

@@ -103,7 +103,10 @@ describe("research analysis artifact port", () => {
       };
     });
     const artifacts = createResearchAnalysisArtifactPort({
-      capability_input: { authority: true },
+      capabilities: {
+        forArtifactType: (artifactType) => ({ authority: artifactType }) as never,
+        forDomain: (domain) => ({ authority: domain }) as never,
+      },
       authority: {
         commitCurrent: commitCurrent as never,
         readHistorical: vi.fn(async () => ({
@@ -150,7 +153,10 @@ describe("research analysis artifact port", () => {
       reference: systemRef,
     }));
     const artifacts = createResearchAnalysisArtifactPort({
-      capability_input: { authority: true },
+      capabilities: {
+        forArtifactType: (artifactType) => ({ authority: artifactType }) as never,
+        forDomain: (domain) => ({ authority: domain }) as never,
+      },
       authority: {
         commitCurrent: vi.fn() as never,
         readHistorical: vi.fn() as never,
@@ -168,7 +174,7 @@ describe("research analysis artifact port", () => {
       }),
     ).resolves.toEqual(systemRef);
     expect(commitAnalysisSystem).toHaveBeenCalledWith(
-      { authority: true },
+      { authority: "SandboxProgram" },
       expect.objectContaining({
         attempt_id: lease.attempt_id,
         worker_fence: lease.worker_fence,

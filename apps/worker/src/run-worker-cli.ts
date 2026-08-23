@@ -83,6 +83,7 @@ import {
 } from "./runs/multi-principal-runner.js";
 import { createEnvironmentPythonSandboxClient } from "./runs/python-sandbox-client.js";
 import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
+import { createResearchAuthorityCapabilityResolver } from "./runs/research-authority-capabilities.js";
 import { createRunBoundSemanticContextResolver } from "./runs/run-bound-semantic-context.js";
 import {
   createInitialWorkerHealth,
@@ -285,7 +286,7 @@ export async function runWorkerProcess(
   let knowledgeIndex: KnowledgeIndex = createUnavailableKnowledgeIndex();
   const embeddingProviderFactory = createOpenAiCompatibleEmbeddingProviderFactory(environment);
   const controller = new AbortController();
-  const health = createInitialWorkerHealth(config.research_authority_capability_id !== null);
+  const health = createInitialWorkerHealth(config.research_authority_capability_ids !== null);
   const healthServer = createHealthServer(health, runtimeIdentity, migrationFact);
   const stop = () => controller.abort();
   process.once("SIGINT", stop);
@@ -392,14 +393,15 @@ export async function runWorkerProcess(
             }),
           }),
         });
+        const researchCapabilities = config.research_authority_capability_ids
+          ? createResearchAuthorityCapabilityResolver({
+              app_capability: capability,
+              capability_ids: config.research_authority_capability_ids,
+            })
+          : null;
         const researchExecutor = createResearchWorkflowExecutor({
           research_authority: researchAuthority,
-          authority_capability_input: config.research_authority_capability_id
-            ? {
-                app_capability: capability,
-                authority_capability_id: config.research_authority_capability_id,
-              }
-            : null,
+          authority_capabilities: researchCapabilities,
           principal_id: principalId,
           create_id: randomUUID,
           now: () => new Date(),
@@ -418,14 +420,8 @@ export async function runWorkerProcess(
             authorizer: capabilityAuthority.authorizer,
           }),
         );
-        const researchCapabilityInput = config.research_authority_capability_id
-          ? {
-              app_capability: capability,
-              authority_capability_id: config.research_authority_capability_id,
-            }
-          : null;
         const falcon24Analysis =
-          researchCapabilityInput &&
+          researchCapabilities &&
           pythonSandbox &&
           environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
           environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim() &&
@@ -434,7 +430,7 @@ export async function runWorkerProcess(
                 pool: sqlPool,
                 research_authority: researchAuthority,
                 sensitive_artifacts: sensitiveArtifacts,
-                research_capability_input: researchCapabilityInput,
+                research_capabilities: researchCapabilities,
                 app_capability_input: capability,
                 sandbox: pythonSandbox,
                 environment,
@@ -724,7 +720,7 @@ export async function runWorkerProcess(
             migration_frontier: migrationFact.migration_frontier,
           }
         : {}),
-      reason_code: config.research_authority_capability_id
+      reason_code: config.research_authority_capability_ids
         ? "RESEARCH_AUTHORITY_CONFIGURED"
         : "RESEARCH_AUTHORITY_NOT_CONFIGURED",
     });

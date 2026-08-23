@@ -26,6 +26,7 @@ import {
 } from "../analysis/python-source-artifact.js";
 import { createResearchAnalysisArtifactPort } from "../analysis/research-artifact-port.js";
 import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
+import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
 import { falcon24AnalysisProgramInternals } from "./falcon24-analysis-program.js";
@@ -109,7 +110,7 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly pool: SqlPool;
   readonly research_authority: Falcon24ResearchAuthority;
   readonly sensitive_artifacts: AnalysisInputSensitiveArtifactAuthority;
-  readonly research_capability_input: unknown;
+  readonly research_capabilities: ResearchAuthorityCapabilityResolver;
   readonly app_capability_input: unknown;
   readonly sandbox: PythonSandboxClient;
   readonly environment: NodeJS.ProcessEnv;
@@ -129,7 +130,7 @@ export function createFalcon24AnalysisRuntime(input: {
   const now = input.now ?? (() => new Date());
   const artifacts: AnalysisArtifactCommitPort = createResearchAnalysisArtifactPort({
     authority: input.research_authority,
-    capability_input: input.research_capability_input,
+    capabilities: input.research_capabilities,
     now,
   });
   const materializer = createAnalysisInputMaterializer({
@@ -141,7 +142,7 @@ export function createFalcon24AnalysisRuntime(input: {
   });
   const sourceArtifacts = createAnalysisPythonSourceArtifactPort({
     authority: input.research_authority,
-    capability_input: input.research_capability_input,
+    capability_input: input.research_capabilities.forDomain("PLANNING"),
     encryption_key: sourceEncryption.key,
     encryption_key_id: sourceEncryption.key_id,
     now,
@@ -159,7 +160,7 @@ export function createFalcon24AnalysisRuntime(input: {
         analysis_context: runtime.analysis_context,
         datasource_id: datasourceId,
         research_artifacts: input.research_authority,
-        capability_input: input.research_capability_input,
+        capabilities: input.research_capabilities,
       });
       const queries = createFalcon24GovernedAnalysisQueryPort({
         pool: input.pool,
