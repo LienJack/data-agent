@@ -82,8 +82,8 @@ import {
   isRunnableWorkspaceMember,
 } from "./runs/multi-principal-runner.js";
 import { createEnvironmentPythonSandboxClient } from "./runs/python-sandbox-client.js";
-import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
 import { createResearchAuthorityCapabilityResolver } from "./runs/research-authority-capabilities.js";
+import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
 import { createRunBoundSemanticContextResolver } from "./runs/run-bound-semantic-context.js";
 import {
   createInitialWorkerHealth,

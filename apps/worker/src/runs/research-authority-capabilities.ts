@@ -15,9 +15,7 @@ export const researchArtifactAuthorityDomainSchema = z.enum([
   "READINESS",
 ]);
 
-export type ResearchArtifactAuthorityDomain = z.infer<
-  typeof researchArtifactAuthorityDomainSchema
->;
+export type ResearchArtifactAuthorityDomain = z.infer<typeof researchArtifactAuthorityDomainSchema>;
 export type ResearchAuthorityCapabilityPurpose = ResearchArtifactAuthorityDomain | "REPORT_READ";
 
 export const researchAuthorityCapabilityIdsSchema = z
@@ -45,9 +43,7 @@ export const researchAuthorityCapabilityIdsSchema = z
     }
   });
 
-export type ResearchAuthorityCapabilityIds = z.infer<
-  typeof researchAuthorityCapabilityIdsSchema
->;
+export type ResearchAuthorityCapabilityIds = z.infer<typeof researchAuthorityCapabilityIdsSchema>;
 
 export interface ResearchAuthorityCapabilityInput {
   readonly app_capability: unknown;
@@ -118,7 +114,8 @@ export function createResearchAuthorityCapabilityResolver(input: {
     forDomain,
     forArtifactType(artifactType: string) {
       const domain = ARTIFACT_DOMAIN[artifactType as keyof typeof ARTIFACT_DOMAIN];
-      if (!domain) throw new TypeError(`RESEARCH_ARTIFACT_AUTHORITY_DOMAIN_UNMAPPED:${artifactType}`);
+      if (!domain)
+        throw new TypeError(`RESEARCH_ARTIFACT_AUTHORITY_DOMAIN_UNMAPPED:${artifactType}`);
       return forDomain(domain);
     },
   });

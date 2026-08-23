@@ -1,11 +1,11 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { AppScope } from "@data-agent/contracts";
 import { z } from "zod";
-import type { RunWorkerCycleOutcome, RunWorkerRunner } from "./run-worker-runner.js";
 import {
   parseResearchAuthorityCapabilityIds,
   type ResearchAuthorityCapabilityIds,
 } from "./research-authority-capabilities.js";
+import type { RunWorkerCycleOutcome, RunWorkerRunner } from "./run-worker-runner.js";
 
 const workerEnvironmentSchema = z
   .strictObject({

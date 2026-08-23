@@ -21,6 +21,7 @@ import {
   sealKernelVerifiedReportReadyCandidate,
 } from "@data-agent/research/server";
 import { z } from "zod";
+import type { ResearchAuthorityCapabilityResolver } from "./research-authority-capabilities.js";
 import {
   hasRunExecutionContextProvenance,
   hasRunSemanticContextCapability,
@@ -34,7 +35,6 @@ import {
   runCheckpointInputSchema,
   runExecutorResultSchema,
 } from "./run-worker-runner.js";
-import type { ResearchAuthorityCapabilityResolver } from "./research-authority-capabilities.js";
 
 export const RESEARCH_WORKFLOW_ID = "l2-research@1.0.0" as const;
 

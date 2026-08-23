@@ -114,6 +114,16 @@ deployment、非 `postgres` executor、目标邮箱冲突或多 active 超级管
 签发的 U6 Authority Capability。旧的单 ID 变量不再读取；跨 Domain 复用一个 Capability
 会破坏数据库 Authority 边界，因此没有兼容入口。
 
+本地 PostgreSQL migration ready 后，由 Provisioner 签发完整集合并注入当前 shell：
+
+```bash
+export WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET="$(pnpm --silent dev:research-authority)"
+```
+
+命令从当前 `WORKER_DEPLOYMENT_ID / WORKER_TENANT_ID / WORKER_PRINCIPAL_ID` 解析有效
+Membership，数据库锁内签发 12 个 Artifact Domain 与一个 `REPORT_READ` Capability；
+默认有效 24 小时。调用者不能指定 Capability ID，重复的 exact Manifest 不会产生第二套。
+
 ## 5. 健康检查
 
 ```bash

@@ -185,6 +185,12 @@ codec。C1 七函数保持不变；C2 只新增第八个
 `provision_u6_derivation_policy_manifest`。Purge 仍是一个函数的 Retention/Subject
 Erasure 两个 strict protocol branch，不得误计为两个函数：
 
+`10712..10721` 只把 `provision_u6_authority_manifest` 收窄实现为固定
+`RESEARCH_ANALYSIS_WORKER` Profile。它仍使用本节同一 request codec，但调用方只提交
+Scope、Principal、Deployment、Role、Expiry 与 Profile；13 个 Assignment 及其
+Capability ID 必须由数据库生成。该实现不改变其余七个 deployment function 的交付
+状态，也不允许用任意 Assignment Manifest 绕过固定 Profile。
+
 ```text
 sha256(UTF8(protocol_version || "\0") ||
        UTF8(JCS(strict input object without request_hash)))

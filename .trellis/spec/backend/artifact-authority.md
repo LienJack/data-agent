@@ -12,6 +12,9 @@
 > U6-C2 物理 Schema Descriptor 另已冻结 15 core + 5 companion、11 existing
 > mutation 与 Candidate/target Inventory v2；其 `installable=false`，在正式
 > `10600`、PG17 Catalog 与双部署 Oracle 完成前仍不构成数据库 Authority。
+> `10712..10721` 已单独交付 `RESEARCH_ANALYSIS_WORKER` 固定 13-Purpose Authority
+> Provision Profile；这只解决 Worker 研究链的部署签发，不改变本文件所述 Root
+> Authority、currentness 与 Terminal 仍未完整交付的状态。
 
 ## 场景：创建或消费权威 Artifact 与成功态
 

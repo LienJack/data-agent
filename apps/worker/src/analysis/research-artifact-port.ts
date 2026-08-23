@@ -12,9 +12,9 @@ import {
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
+import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { AnalysisArtifactCommitPort } from "./executor.js";
-import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 
 type AnalysisPayload =
   | ResearchBriefV3Payload

@@ -1,7 +1,9 @@
 # U6 Research PostgreSQL Authority、Artifact Committer 与函数面合同
 
 > `FROZEN_DESIGN_CONTRACT / PARTIAL_IMPLEMENTATION` · `u6-research-database-surface@1.0.0`
-> `10590`/ACL/RLS/fail-close 已装；正向面、exact Catalog、Receipt/Crypto 未交付。
+> `10590`/ACL/RLS/fail-close 已装；`10712..10721` 已交付固定
+> `RESEARCH_ANALYSIS_WORKER` Authority Profile。其余通用正向面、exact Catalog、
+> Receipt/Crypto 仍未交付。
 
 本文只冻结 Authority/Artifact/RPC/ACL/Inventory/锁；派生 codec/事务取 Derivation
 Wire/Receipt，Terminal FK 取 Reference Graph。
@@ -87,6 +89,14 @@ OWNER|ANALYST privacy-service 入口，不能跨 Principal。
 Capability 仅 Owner/Provisioner 可写，Backend/Service/Browser/Agent 无 DML；
 Hosted/Docker 使用同一无 secret Manifest。
 
+当前唯一可用的 Authority Provision 输入不是任意 Capability 清单，而是固定
+`RESEARCH_ANALYSIS_WORKER` Profile：数据库根据当前 Deployment、Membership 与 App
+Epoch 签发 12 个 `RESEARCH_ARTIFACT_AUTHORITY` Domain 和 1 个
+`REPORT_READ_AUTHORITY`，并返回 `u6-authority-capability-set@1.0.0`。调用方不能自报
+Capability ID、Authority Kind、Domain、Epoch 或 Role；同一 exact Manifest 幂等重放，
+Profile 或绑定变化必须生成新的 Capability Set 并撤销对应旧 Head。Worker 只接受这
+13 个 Purpose 完整、值互异的严格 JSON，不保留单 Capability 环境变量兼容入口。
+
 Adapter 验证 App Capability 后封装 strict `U6DbCommand<T>`；public RPC 均为
 `(jsonb)→U6DbResult<T>`，拒绝 null/extra/non-UUID/裸 Command，并在事务内重锁
 Capability。预期拒绝可由子事务回滚业务写后保留 FAILED/REJECTED Operation；`55P03`、
@@ -147,6 +157,11 @@ Safety codec，stored result 不含 `created`。Authority 按 assignment bytes �
 PROVISION→Head→old→new；Policy
 按 kind/Ref/version/hash bytes 排序、append-only/Head CAS。仅 metadata/hash，
 Hosted/Docker 同输入；失败整事务回滚。
+
+实现状态须逐函数判断：当前只有 `provision_u6_authority_manifest` 的固定
+`RESEARCH_ANALYSIS_WORKER` 分支是正向可用实现；它不是允许调用方提交任意 Assignment
+的通用 Provision API。其余 Deployment-only 函数仍以各自迁移与验收证据为准，不能由
+本 Profile 的交付状态推断为已实现。
 
 ## 2. current Research Artifact Committer
 

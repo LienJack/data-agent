@@ -38,6 +38,7 @@ import {
 } from "@data-agent/research";
 import { buildFrozenQueryRegistryOedCandidate } from "@data-agent/research/server";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
+import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import { verifyFalcon24AnalysisDataOracleReceipt } from "./falcon24-analysis-data-oracle.js";
 import {
   FALCON24_ANALYSIS_QUERY_SPECS,
@@ -45,7 +46,6 @@ import {
   normalizeFalcon24QueryResult,
 } from "./falcon24-analysis-queries.js";
 import type { Falcon24ExactQueryEvidenceAuthority } from "./falcon24-governed-query-port.js";
-import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 
 type TypedReference<T extends ArtifactReference["artifact_type"]> = ArtifactReference & {
   readonly artifact_type: T;
