@@ -55,6 +55,9 @@ const queryEvidenceRef: ArtifactReference = {
   revision: 1,
   content_hash: hash("c"),
 };
+const typedQueryEvidenceRef = queryEvidenceRef as ArtifactReference & {
+  readonly artifact_type: "QueryEvidence";
+};
 const materializationReceiptRef: ArtifactReference = {
   artifact_id: id(11),
   artifact_type: "AnalysisInputMaterializationReceipt",
@@ -135,15 +138,30 @@ describe("Falcon24 governed query port", () => {
         released = true;
       },
     };
-    const materialize = vi.fn(async (input): Promise<GovernedPythonInput> => {
+    const issue = vi.fn(async (input) => {
       expect(input.spec_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
       expect(input.data_oracle_receipt).toBe(dataOracleReceipt);
+      expect(input.rows).toHaveLength(4_612);
+      return {
+        query_evidence_ref: typedQueryEvidenceRef,
+        query_evidence_document: { strict: true },
+      };
+    });
+    const materialize = vi.fn(async (input): Promise<GovernedPythonInput> => {
+      expect(input.spec_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
+      expect(input.snapshot_receipt_hash).toBe(dataOracleReceipt.receipt_hash);
+      expect(input.row_count).toBe(4_612);
+      expect(input.ordered_columns).toEqual(
+        FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"].columns.map(
+          ({ name }) => name,
+        ),
+      );
       expect(tableFromIPC(input.content).numRows).toBe(4_612);
       return {
-        name: input.spec.input_name,
+        name: input.input_name,
         format: "ARROW",
-        query_evidence_ref: queryEvidenceRef,
-        query_evidence_document: {},
+        query_evidence_ref: input.query_evidence_ref,
+        query_evidence_document: input.query_evidence_document,
         input_ref: inputRef,
         materialization_receipt_ref: materializationReceiptRef,
         materialization_receipt_document: {},
@@ -153,6 +171,7 @@ describe("Falcon24 governed query port", () => {
     const port = createFalcon24GovernedAnalysisQueryPort({
       pool: { connect: async () => client } satisfies SqlPool,
       snapshot_authority: { inspect: async () => dataOracleReceipt },
+      evidence_authority: { issue },
       materializer: { materialize },
     });
     await expect(
@@ -169,11 +188,10 @@ describe("Falcon24 governed query port", () => {
     ]);
     expect(statements[0]).toBe("begin transaction isolation level repeatable read read only");
     expect(statements[1]).toBe("set local statement_timeout = 120000");
-    expect(statements[2]).toBe(
-      FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"].sql,
-    );
+    expect(statements[2]).toBe(FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"].sql);
     expect(statements[3]).toBe("commit");
     expect(materialize).toHaveBeenCalledOnce();
+    expect(issue).toHaveBeenCalledOnce();
     expect(released).toBe(true);
   });
 
@@ -182,6 +200,7 @@ describe("Falcon24 governed query port", () => {
     const port = createFalcon24GovernedAnalysisQueryPort({
       pool: { connect } as SqlPool,
       snapshot_authority: { inspect: async () => dataOracleReceipt },
+      evidence_authority: { issue: vi.fn() },
       materializer: { materialize: vi.fn() },
     });
     await expect(
@@ -217,9 +236,11 @@ describe("Falcon24 governed query port", () => {
       release() {},
     };
     const materialize = vi.fn();
+    const issue = vi.fn();
     const port = createFalcon24GovernedAnalysisQueryPort({
       pool: { connect: async () => client },
       snapshot_authority: { inspect: async () => dataOracleReceipt },
+      evidence_authority: { issue },
       materializer: { materialize },
     });
     await expect(
@@ -234,5 +255,6 @@ describe("Falcon24 governed query port", () => {
     ).rejects.toThrow("FALCON24_QUERY_ROW_BUDGET_INVALID");
     expect(statements.at(-1)).toBe("rollback");
     expect(materialize).not.toHaveBeenCalled();
+    expect(issue).not.toHaveBeenCalled();
   });
 });
