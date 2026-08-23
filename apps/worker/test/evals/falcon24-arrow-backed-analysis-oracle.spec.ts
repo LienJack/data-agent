@@ -9,7 +9,8 @@ import {
   verifyFalcon24ArrowBackedOutput,
 } from "../../src/evals/falcon24-arrow-backed-analysis-oracle.js";
 
-const { verifiers } = falcon24ArrowBackedAnalysisOracleInternals;
+const { fitDeliveryGlm, mannKendallP, olsHac, quantile, shapleyThreeFactor, verifiers } =
+  falcon24ArrowBackedAnalysisOracleInternals;
 
 describe("Falcon24 Arrow-backed analysis oracle", () => {
   it("issues only a v2 receipt bound to Arrow, materialization, evidence, and output hashes", async () => {
@@ -50,6 +51,10 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
     const current = monthlyKpis.at(-1);
     if (!previous || !current) throw new Error("fixture month missing");
     const change = current.revenue - previous.revenue;
+    const [buyerContribution, frequencyContribution, aovContribution] = shapleyThreeFactor(
+      [previous.active_buyers, previous.orders_per_buyer, previous.average_order_value],
+      [current.active_buyers, current.orders_per_buyer, current.average_order_value],
+    );
     const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
     const testCase = suite.cases.find(({ case_id: caseId }) => caseId === spec.case_id);
     if (!testCase) throw new Error("fixture case missing");
@@ -71,9 +76,9 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       shapley_decomposition: {
         start_month: previous.month,
         end_month: current.month,
-        buyer_contribution: change,
-        frequency_contribution: 0,
-        aov_contribution: 0,
+        buyer_contribution: buyerContribution,
+        frequency_contribution: frequencyContribution,
+        aov_contribution: aovContribution,
         observed_revenue_change: change,
         closure_error: 0,
       },
@@ -178,49 +183,78 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
   });
 
   it("recomputes delivery splits, rated sample, and low-rating scenarios", () => {
-    const rows = [
-      {
-        order_id: "first",
-        order_date: "2024-01-01",
-        delivery_time_minutes: 10,
-        delivery_status: "On Time",
-        order_total: 20,
+    const rows = Array.from({ length: 72 }, (_, index) => {
+      const orderDate = new Date(Date.UTC(2023, 10 + Math.floor(index / 6), 1))
+        .toISOString()
+        .slice(0, 10);
+      const delayed = index % 3 === 0;
+      const lowRating = (index * 7 + Math.floor(index / 3)) % 11 < 3;
+      return {
+        order_id: `order-${index}`,
+        order_date: orderDate,
+        delivery_time_minutes: delayed ? 34 + (index % 5) : 16 + (index % 7),
+        delivery_status: delayed ? "Significantly Delayed" : "On Time",
+        order_total: 20 + (index % 7),
         customer_segment: "regular",
         product_category: "grocery",
-        rating: 5,
-        feedback_category: "positive",
-        sentiment: "positive",
-        distance_km: 1,
-      },
-      {
-        order_id: "second",
-        order_date: "2024-08-01",
-        delivery_time_minutes: 30,
-        delivery_status: "Significantly Delayed",
-        order_total: 40,
-        customer_segment: "regular",
+        rating: lowRating ? 1 : 4,
+        feedback_category: lowRating ? "negative" : "positive",
+        sentiment: lowRating ? "negative" : "positive",
+        distance_km: 1 + (index % 4),
+      };
+    });
+    const summarize = (selected: typeof rows) => ({
+      p50_minutes: quantile(
+        selected.map(({ delivery_time_minutes }) => delivery_time_minutes),
+        0.5,
+      ),
+      p90_minutes: quantile(
+        selected.map(({ delivery_time_minutes }) => delivery_time_minutes),
+        0.9,
+      ),
+      on_time_rate:
+        selected.filter(({ delivery_status }) => delivery_status === "On Time").length /
+        selected.length,
+      low_rating_rate: selected.filter(({ rating }) => rating <= 2).length / selected.length,
+    });
+    const glm = fitDeliveryGlm(rows);
+    const scenarioGroups = new Map<string, typeof rows>();
+    for (const row of rows) {
+      scenarioGroups.set(row.delivery_status, [
+        ...(scenarioGroups.get(row.delivery_status) ?? []),
+        row,
+      ]);
+    }
+    const scenarios = [...scenarioGroups]
+      .map(([deliveryStatus, selected]) => ({
         product_category: "grocery",
-        rating: 1,
-        feedback_category: "negative",
-        sentiment: "negative",
-        distance_km: 3,
-      },
-    ];
+        customer_segment: "regular",
+        delivery_status: deliveryStatus,
+        order_count: selected.length,
+        low_rating_rate: selected.filter(({ rating }) => rating <= 2).length / selected.length,
+        lowRatings: selected.filter(({ rating }) => rating <= 2).length,
+      }))
+      .sort(
+        (left, right) =>
+          right.lowRatings - left.lowRatings ||
+          right.low_rating_rate - left.low_rating_rate ||
+          right.order_count - left.order_count ||
+          `${left.product_category}\u0000${left.customer_segment}\u0000${left.delivery_status}`.localeCompare(
+            `${right.product_category}\u0000${right.customer_segment}\u0000${right.delivery_status}`,
+          ),
+      )
+      .map(({ lowRatings: _lowRatings, ...scenario }) => scenario);
     const output = {
       six_vs_six: {
-        first: { p50_minutes: 10, p90_minutes: 10, on_time_rate: 1, low_rating_rate: 0 },
-        second: { p50_minutes: 30, p90_minutes: 30, on_time_rate: 0, low_rating_rate: 1 },
+        first: summarize(rows.filter(({ order_date }) => order_date < "2024-05-01")),
+        second: summarize(rows.filter(({ order_date }) => order_date >= "2024-05-01")),
       },
-      adjusted_binomial_glm: { sample_size: 2 },
-      low_rating_scenarios: [
-        {
-          product_category: "grocery",
-          customer_segment: "regular",
-          delivery_status: "Significantly Delayed",
-          order_count: 1,
-          low_rating_rate: 1,
-        },
-      ],
+      adjusted_binomial_glm: {
+        delayed_coefficient: glm.coefficient,
+        delayed_p_value: glm.pValue,
+        sample_size: rows.length,
+      },
+      low_rating_scenarios: scenarios,
     };
     expect(() =>
       verifiers["falcon24-delivery-experience-12m"](rows, output as never),
@@ -228,7 +262,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
     expect(() =>
       verifiers["falcon24-delivery-experience-12m"](rows, {
         ...output,
-        adjusted_binomial_glm: { sample_size: 1 },
+        adjusted_binomial_glm: { ...output.adjusted_binomial_glm, sample_size: 1 },
       } as never),
     ).toThrow("FALCON24_Q2_GLM_SAMPLE_MISMATCH");
   });
@@ -245,6 +279,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       sensitivity_stock_received: null,
       sensitivity_damaged_stock: null,
     }));
+    const rawPValue = mannKendallP(rows.map(({ damaged_stock }) => damaged_stock / 100));
     const output = {
       products: [
         {
@@ -255,8 +290,8 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
           theil_sen_slope: 0.01,
           last3_damage_rate: 0.1,
           previous9_damage_rate: 0.04,
-          raw_p_value: 0.01,
-          bh_q_value: 0.01,
+          raw_p_value: rawPValue,
+          bh_q_value: rawPValue,
           status: "PRIORITY",
         },
       ],
@@ -270,38 +305,80 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
   });
 
   it("recomputes marketing funnel totals and ratios for every group", () => {
-    const rows = [
-      {
-        week_start: "2024-01-01",
+    const spendSeries = Array.from(
+      { length: 79 },
+      (_, index) => 20 + 0.3 * index + 4 * Math.sin(index * 0.7) + (index % 5),
+    );
+    const rows = Array.from({ length: 79 }, (_, index) => {
+      const impressions = 100 + index;
+      const clicks = 20 + (index % 11);
+      const conversions = 4 + (index % 3);
+      return {
+        week_start: new Date(Date.UTC(2023, 4, 1 + index * 7)).toISOString().slice(0, 10),
         channel: "email",
         target_audience: "new",
-        impressions: 100,
-        clicks: 20,
-        conversions: 4,
-        spend: 10,
-        campaign_revenue: 30,
-        order_count: 5,
-        active_customers: 4,
-        order_revenue: 40,
-        new_customers: 2,
-      },
-    ];
+        impressions,
+        clicks,
+        conversions,
+        spend: spendSeries[index] ?? 0,
+        campaign_revenue: conversions * 8,
+        order_count: 50 + index,
+        active_customers: 40 + index,
+        order_revenue:
+          200 +
+          0.5 * index +
+          8 * Math.sin((2 * Math.PI * index) / 52) +
+          1.5 * (spendSeries[Math.max(0, index - 2)] ?? 0) +
+          Math.cos(index * 1.3),
+        new_customers: 2 + (index % 5),
+      };
+    });
+    const candidates = Array.from({ length: 5 }, (_, lag) => ({
+      lag,
+      ...olsHac({
+        design: rows.slice(lag).map((_row, offset) => {
+          const index = offset + lag;
+          return [
+            1,
+            spendSeries[index - lag] ?? 0,
+            index,
+            Math.sin((2 * Math.PI * index) / 52),
+            Math.cos((2 * Math.PI * index) / 52),
+          ];
+        }),
+        response: rows.slice(lag).map(({ order_revenue }) => order_revenue),
+        coefficient_index: 1,
+        max_lag: 4,
+      }),
+    })).sort((left, right) => left.pValue - right.pValue || left.lag - right.lag);
+    const selected = candidates[0];
+    if (!selected) throw new TypeError("marketing fixture missing selected lag");
+    const sum = (key: "impressions" | "clicks" | "conversions" | "spend" | "campaign_revenue") =>
+      rows.reduce((total, row) => total + row[key], 0);
+    const impressions = sum("impressions");
+    const clicks = sum("clicks");
+    const conversions = sum("conversions");
+    const spend = sum("spend");
+    const revenue = sum("campaign_revenue");
     const result = {
       channel: "email",
       target_audience: "new",
-      impressions: 100,
-      clicks: 20,
-      conversions: 4,
-      spend: 10,
-      revenue_generated: 30,
-      click_through_rate: 0.2,
-      conversion_rate: 0.2,
-      roas: 3,
-      selected_lag_weeks: 1,
-      lag_coefficient: 0.1,
-      hac_p_value: 0.1,
-      bh_q_value: 0.1,
-      finding: "NO_CLEAR_ASSOCIATION",
+      impressions,
+      clicks,
+      conversions,
+      spend,
+      revenue_generated: revenue,
+      click_through_rate: clicks / impressions,
+      conversion_rate: conversions / clicks,
+      roas: revenue / spend,
+      selected_lag_weeks: selected.lag,
+      lag_coefficient: selected.coefficient,
+      hac_p_value: selected.pValue,
+      bh_q_value: selected.pValue,
+      finding:
+        selected.coefficient > 0 && selected.pValue <= 0.05
+          ? "GROWTH_ASSOCIATION"
+          : "SPEND_WITHOUT_IMPROVEMENT",
     };
     expect(() =>
       verifiers["falcon24-marketing-lag-effect"](rows, {
@@ -350,6 +427,11 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
         customers_first_order_before_registration: 1438,
         valid_ordering_customers: 734,
         no_order_customers: 328,
+      },
+      sensitivity: {
+        excluded_pre_registration_customers: 1438,
+        retained_no_order_customers: 328,
+        conclusion_changed: false,
       },
       cohorts: [{ registration_cohort: "2023-05", customer_segment: "regular", points }],
     };

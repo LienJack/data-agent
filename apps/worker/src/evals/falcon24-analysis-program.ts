@@ -115,13 +115,14 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Use exactly the 18 ordered calendar months 2023-05 through 2024-10 and identify the minimum absolute month-over-month revenue change.",
     "Close revenue = active_buyers * orders_per_buyer * average_order_value for every month.",
     "For the worst month transition, compute the three-factor buyer/frequency/AOV decomposition as the mean marginal contribution over all six factor permutations; require closure_error <= 0.01.",
-    "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, allocate each order_total across its item rows in proportion to nonnegative quantity, using equal shares when total quantity is zero.",
+    "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, allocate each order_total across its item rows in proportion to nonnegative quantity, using equal shares when total quantity is zero. Return exactly the most negative revenue-change member for each of the three dimensions, breaking ties lexicographically.",
   ],
   "falcon24-delivery-experience-12m": [
     "Deduplicate to one row per order_id before delivery summaries or modeling; reject conflicting order-level values.",
     "Compare 2023-11 through 2024-04 with 2024-05 through 2024-10 and use linear interpolation quantiles for p50 and p90.",
     "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'; fit a binomial-logit GLM on rated orders.",
     "The GLM design is intercept + delayed + log1p(order_total) + categorical month + product_category + customer_segment, with lexicographically first level as reference; report the delayed coefficient and two-sided Wald p-value.",
+    "For low-rating scenarios, use the lexicographically first product category per order, rank all category/segment/status groups by low-rating count descending, then rate descending, order count descending, and key ascending; return the first five or all groups when fewer exist.",
     "Only make association claims; never describe the delayed coefficient as causal.",
   ],
   "falcon24-inventory-damage-12m": [
@@ -132,7 +133,7 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Return every product satisfying high sales, positive Theil-Sen slope, and last-3 mean damage rate greater than previous-9 mean; classify PRIORITY iff BH q <= 0.05, otherwise WATCHLIST.",
   ],
   "falcon24-marketing-lag-effect": [
-    "At channel and target_audience grain, sort the 79 weekly rows and compute funnel totals, CTR, conversion rate, and ROAS.",
+    "Build the complete 79-week calendar from 2023-05-01 through 2024-10-28. At channel and target_audience grain, zero-fill missing marketing weeks while retaining the shared weekly business outcomes, then compute funnel totals, CTR, conversion rate, and ROAS.",
     "For each lag 0 through 4, regress weekly order_revenue on lagged spend with intercept, linear trend, sin(2*pi*week/52), and cos(2*pi*week/52); drop leading rows introduced by the lag.",
     "Compute the spend coefficient two-sided p-value using Newey-West HAC covariance with maxlags=4 and finite-sample factor n/(n-k).",
     "Select the lag with the smallest HAC p-value, breaking ties toward the smaller lag; apply Benjamini-Hochberg correction to selected p-values across all channel/audience groups.",
@@ -142,7 +143,7 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order.",
     "At each point compute retention = active_customers/cohort_size, repeat purchase = repeat_customers/cohort_size, average spend = revenue/active_customers or null when inactive, plus delivery and rating means.",
     "Report the frozen anomaly audit exactly and set primary_reliable=false because pre-registration orders materially invalidate the primary cohort interpretation.",
-    "Sensitivity excludes customers whose first order precedes registration, retains customers with no orders, and reports whether the substantive conclusion changes.",
+    "Sensitivity excludes customers whose first order precedes registration, retains customers with no orders, and sets conclusion_changed=true iff any cohort/segment/month primary retention differs from valid_active_customers/valid_timeline_customers by at least 0.05.",
     "The terminal conclusion must disclose that the primary analysis is unreliable/HOLD and must not silently promote sensitivity results to primary truth.",
   ],
 } as const);

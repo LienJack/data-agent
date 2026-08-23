@@ -73,22 +73,152 @@ function quantile(values: readonly number[], probability: number): number {
   return lowerValue + (upperValue - lowerValue) * (position - lower);
 }
 
-function deduplicate(rows: readonly Row[], key: string): Row[] {
-  const unique = new Map<string, Row>();
-  for (const row of rows) {
-    const identity = text(row, key);
-    const previous = unique.get(identity);
-    if (previous) {
-      for (const field of Object.keys(previous)) {
-        if (field !== "product_category" && previous[field] !== row[field]) {
-          fail(`FALCON24_ORACLE_DUPLICATE_CONFLICT:${key}:${identity}:${field}`);
-        }
+function normalCdf(value: number): number {
+  const sign = value < 0 ? -1 : 1;
+  const x = Math.abs(value) / Math.sqrt(2);
+  const t = 1 / (1 + 0.3275911 * x);
+  const polynomial =
+    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
+  const erf = sign * (1 - polynomial * Math.exp(-x * x));
+  return (1 + erf) / 2;
+}
+
+function twoSidedNormalP(zScore: number): number {
+  return Math.max(0, Math.min(1, 2 * (1 - normalCdf(Math.abs(zScore)))));
+}
+
+function zeroMatrix(rows: number, columns: number): number[][] {
+  return Array.from({ length: rows }, () => Array.from({ length: columns }, () => 0));
+}
+
+function solve(matrix: readonly (readonly number[])[], vector: readonly number[]): number[] {
+  const size = matrix.length;
+  if (size === 0 || vector.length !== size || matrix.some((row) => row.length !== size)) {
+    fail("FALCON24_ORACLE_MATRIX_SHAPE_INVALID");
+  }
+  const augmented = matrix.map((row, index) => [...row, vector[index] ?? 0]);
+  for (let column = 0; column < size; column += 1) {
+    let pivot = column;
+    for (let row = column + 1; row < size; row += 1) {
+      if (Math.abs(augmented[row]?.[column] ?? 0) > Math.abs(augmented[pivot]?.[column] ?? 0)) {
+        pivot = row;
       }
-    } else {
-      unique.set(identity, row);
+    }
+    if (Math.abs(augmented[pivot]?.[column] ?? 0) < 1e-12) {
+      fail("FALCON24_ORACLE_MATRIX_SINGULAR");
+    }
+    [augmented[column], augmented[pivot]] = [augmented[pivot] ?? [], augmented[column] ?? []];
+    const pivotRow = augmented[column] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+    const pivotValue = pivotRow[column] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+    for (let index = column; index <= size; index += 1) {
+      const current = pivotRow[index] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+      pivotRow[index] = current / pivotValue;
+    }
+    for (let row = 0; row < size; row += 1) {
+      if (row === column) continue;
+      const currentRow = augmented[row] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+      const factor = currentRow[column] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+      for (let index = column; index <= size; index += 1) {
+        const current = currentRow[index] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+        const pivotCurrent = pivotRow[index] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+        currentRow[index] = current - factor * pivotCurrent;
+      }
     }
   }
-  return [...unique.values()];
+  return augmented.map((row) => row[size] ?? fail("FALCON24_ORACLE_MATRIX_INVALID"));
+}
+
+function inverse(matrix: readonly (readonly number[])[]): number[][] {
+  return matrix
+    .map((_, column) =>
+      solve(
+        matrix,
+        Array.from({ length: matrix.length }, (_unused, row) => (row === column ? 1 : 0)),
+      ),
+    )
+    .reduce(
+      (result, column, columnIndex) => {
+        for (let row = 0; row < column.length; row += 1) {
+          const resultRow = result[row] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+          resultRow[columnIndex] = column[row] ?? 0;
+        }
+        return result;
+      },
+      zeroMatrix(matrix.length, matrix.length),
+    );
+}
+
+function crossProduct(
+  design: readonly (readonly number[])[],
+  weights?: readonly number[],
+): number[][] {
+  const width = design[0]?.length ?? fail("FALCON24_ORACLE_DESIGN_EMPTY");
+  const result = zeroMatrix(width, width);
+  for (let row = 0; row < design.length; row += 1) {
+    const values = design[row] ?? fail("FALCON24_ORACLE_DESIGN_INVALID");
+    const weight = weights?.[row] ?? 1;
+    for (let left = 0; left < width; left += 1) {
+      for (let right = 0; right < width; right += 1) {
+        const resultRow = result[left] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+        resultRow[right] =
+          (resultRow[right] ?? 0) + (values[left] ?? 0) * (values[right] ?? 0) * weight;
+      }
+    }
+  }
+  return result;
+}
+
+function crossVector(
+  design: readonly (readonly number[])[],
+  values: readonly number[],
+  weights?: readonly number[],
+): number[] {
+  const width = design[0]?.length ?? fail("FALCON24_ORACLE_DESIGN_EMPTY");
+  const result = Array.from({ length: width }, () => 0);
+  for (let row = 0; row < design.length; row += 1) {
+    const designRow = design[row] ?? fail("FALCON24_ORACLE_DESIGN_INVALID");
+    const weightedValue =
+      (values[row] ?? fail("FALCON24_ORACLE_VECTOR_INVALID")) * (weights?.[row] ?? 1);
+    for (let column = 0; column < width; column += 1) {
+      result[column] = (result[column] ?? 0) + (designRow[column] ?? 0) * weightedValue;
+    }
+  }
+  return result;
+}
+
+function multiply(
+  left: readonly (readonly number[])[],
+  right: readonly (readonly number[])[],
+): number[][] {
+  const rows = left.length;
+  const inner = left[0]?.length ?? 0;
+  const columns = right[0]?.length ?? 0;
+  if (inner === 0 || right.length !== inner) fail("FALCON24_ORACLE_MATRIX_SHAPE_INVALID");
+  const result = zeroMatrix(rows, columns);
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      for (let index = 0; index < inner; index += 1) {
+        const resultRow = result[row] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+        resultRow[column] =
+          (resultRow[column] ?? 0) + (left[row]?.[index] ?? 0) * (right[index]?.[column] ?? 0);
+      }
+    }
+  }
+  return result;
+}
+
+function benjaminiHochberg(values: ReadonlyMap<string, number>): Map<string, number> {
+  const sorted = [...values].sort(
+    ([leftId, left], [rightId, right]) => left - right || leftId.localeCompare(rightId),
+  );
+  const result = new Map<string, number>();
+  let next = 1;
+  for (let index = sorted.length - 1; index >= 0; index -= 1) {
+    const current = sorted[index] ?? fail("FALCON24_ORACLE_BH_INVALID");
+    next = Math.min(next, (current[1] * sorted.length) / (index + 1));
+    result.set(current[0], Math.max(0, Math.min(1, next)));
+  }
+  return result;
 }
 
 function decodeArrow(input: GovernedPythonInput, testCase: Falcon24AgentAnalysisCase): Row[] {
@@ -127,18 +257,75 @@ function parseResult(
   }
 }
 
+function groupBy(rows: readonly Row[], key: string): Map<string, Row[]> {
+  const groups = new Map<string, Row[]>();
+  for (const row of rows) {
+    const identity = text(row, key);
+    groups.set(identity, [...(groups.get(identity) ?? []), row]);
+  }
+  return groups;
+}
+
+function assertConstant(rows: readonly Row[], fields: readonly string[], code: string): Row {
+  const first = rows[0] ?? fail(`${code}:EMPTY`);
+  for (const row of rows.slice(1)) {
+    for (const field of fields) {
+      if (row[field] !== first[field]) fail(`${code}:${field}`);
+    }
+  }
+  return first;
+}
+
+function shapleyThreeFactor(
+  baseline: readonly [number, number, number],
+  comparison: readonly [number, number, number],
+): readonly [number, number, number] {
+  const permutations = [
+    [0, 1, 2],
+    [0, 2, 1],
+    [1, 0, 2],
+    [1, 2, 0],
+    [2, 0, 1],
+    [2, 1, 0],
+  ] as const;
+  const contributions = [0, 0, 0];
+  const product = (values: readonly number[]) => values.reduce((total, value) => total * value, 1);
+  for (const permutation of permutations) {
+    const values = [...baseline];
+    for (const factor of permutation) {
+      const before = product(values);
+      values[factor] = comparison[factor];
+      contributions[factor] = (contributions[factor] ?? 0) + product(values) - before;
+    }
+  }
+  return contributions.map((value) => value / permutations.length) as unknown as readonly [
+    number,
+    number,
+    number,
+  ];
+}
+
 function verifyBusiness(
   rows: readonly Row[],
   output: Extract<Falcon24Output, { case_id: "falcon24-business-review-18m" }>,
 ): void {
-  const orders = deduplicate(rows, "order_id");
+  const orderGroups = groupBy(rows, "order_id");
+  const orders = [...orderGroups].map(([orderId, orderRows]) => ({
+    order_id: orderId,
+    row: assertConstant(
+      orderRows,
+      ["order_date", "payment_method", "customer_id", "customer_segment", "order_total"],
+      `FALCON24_Q1_ORDER_CONFLICT:${orderId}`,
+    ),
+    item_rows: orderRows,
+  }));
   const monthly = new Map<string, { revenue: number; orders: number; buyers: Set<string> }>();
-  for (const row of orders) {
-    const month = text(row, "order_date").slice(0, 7);
+  for (const order of orders) {
+    const month = text(order.row, "order_date").slice(0, 7);
     const entry = monthly.get(month) ?? { revenue: 0, orders: 0, buyers: new Set<string>() };
-    entry.revenue += number(row, "order_total");
+    entry.revenue += number(order.row, "order_total");
     entry.orders += 1;
-    entry.buyers.add(text(row, "customer_id"));
+    entry.buyers.add(text(order.row, "customer_id"));
     monthly.set(month, entry);
   }
   if (monthly.size !== 18) fail("FALCON24_Q1_INPUT_MONTH_COUNT_INVALID");
@@ -182,37 +369,166 @@ function verifyBusiness(
     "FALCON24_Q1_SHAPLEY_OBSERVED_MISMATCH",
     0.01,
   );
-  const dimensions = {
-    customer_segment: "customer_segment",
-    product_category: "product_category",
-    payment_method: "payment_method",
-  } as const;
-  for (const driver of output.segment_drivers) {
-    const field = dimensions[driver.dimension];
-    let baseline = 0;
-    let comparison = 0;
-    for (const row of rows) {
-      if (text(row, field) !== driver.member) continue;
-      const month = text(row, "order_date").slice(0, 7);
-      if (month !== previous.month && month !== current.month) continue;
-      const value = number(row, "order_total");
-      if (month === previous.month) baseline += value;
-      else comparison += value;
+  const [buyerContribution, frequencyContribution, aovContribution] = shapleyThreeFactor(
+    [previous.active_buyers, previous.orders_per_buyer, previous.average_order_value],
+    [current.active_buyers, current.orders_per_buyer, current.average_order_value],
+  );
+  close(
+    output.shapley_decomposition.buyer_contribution,
+    buyerContribution,
+    "FALCON24_Q1_SHAPLEY_BUYER_MISMATCH",
+    0.01,
+  );
+  close(
+    output.shapley_decomposition.frequency_contribution,
+    frequencyContribution,
+    "FALCON24_Q1_SHAPLEY_FREQUENCY_MISMATCH",
+    0.01,
+  );
+  close(
+    output.shapley_decomposition.aov_contribution,
+    aovContribution,
+    "FALCON24_Q1_SHAPLEY_AOV_MISMATCH",
+    0.01,
+  );
+  close(output.shapley_decomposition.closure_error, 0, "FALCON24_Q1_SHAPLEY_ERROR_MISMATCH", 0.01);
+  const changes = new Map<string, Map<string, number>>([
+    ["customer_segment", new Map()],
+    ["product_category", new Map()],
+    ["payment_method", new Map()],
+  ]);
+  const add = (dimension: string, member: string, month: string, revenue: number) => {
+    if (month !== previous.month && month !== current.month) return;
+    const members = changes.get(dimension) ?? fail("FALCON24_Q1_DIMENSION_INVALID");
+    const signed = month === previous.month ? -revenue : revenue;
+    members.set(member, (members.get(member) ?? 0) + signed);
+  };
+  for (const order of orders) {
+    const month = text(order.row, "order_date").slice(0, 7);
+    const revenue = number(order.row, "order_total");
+    add("customer_segment", text(order.row, "customer_segment"), month, revenue);
+    add("payment_method", text(order.row, "payment_method"), month, revenue);
+    const categoryQuantities = new Map<string, number>();
+    for (const row of order.item_rows) {
+      const category = text(row, "product_category");
+      categoryQuantities.set(
+        category,
+        (categoryQuantities.get(category) ?? 0) + Math.max(0, number(row, "quantity")),
+      );
     }
-    close(
-      driver.revenue_change,
-      comparison - baseline,
-      "FALCON24_Q1_SEGMENT_DRIVER_MISMATCH",
-      0.01,
-    );
+    const totalQuantity = [...categoryQuantities.values()].reduce((sum, value) => sum + value, 0);
+    for (const [category, quantity] of categoryQuantities) {
+      const share = totalQuantity > 0 ? quantity / totalQuantity : 1 / categoryQuantities.size;
+      add("product_category", category, month, revenue * share);
+    }
   }
+  if (output.segment_drivers.length !== 3) fail("FALCON24_Q1_SEGMENT_DRIVER_COVERAGE_INVALID");
+  for (const driver of output.segment_drivers) {
+    const members = changes.get(driver.dimension) ?? fail("FALCON24_Q1_DIMENSION_INVALID");
+    const expected = [...members].sort(
+      ([leftMember, left], [rightMember, right]) =>
+        left - right || leftMember.localeCompare(rightMember),
+    )[0];
+    if (!expected || driver.member !== expected[0])
+      fail("FALCON24_Q1_SEGMENT_DRIVER_MEMBER_MISMATCH");
+    close(driver.revenue_change, expected[1], "FALCON24_Q1_SEGMENT_DRIVER_MISMATCH", 0.01);
+  }
+}
+
+function fitDeliveryGlm(rated: readonly Row[]) {
+  const levels = (key: string) =>
+    [...new Set(rated.map((row) => text(row, key)))].sort((left, right) =>
+      left.localeCompare(right),
+    );
+  const categorical = [
+    ["order_date", levels("order_date").map((value) => value.slice(0, 7))],
+    ["product_category", levels("product_category")],
+    ["customer_segment", levels("customer_segment")],
+  ] as const;
+  categorical[0][1].sort((left, right) => left.localeCompare(right));
+  const uniqueCategorical = categorical.map(
+    ([key, values]) => [key, [...new Set(values)]] as const,
+  );
+  const design = rated.map((row) => [
+    1,
+    text(row, "delivery_status") === "On Time" ? 0 : 1,
+    Math.log1p(number(row, "order_total")),
+    ...uniqueCategorical.flatMap(([key, values]) =>
+      values.slice(1).map((value) => {
+        const observed = key === "order_date" ? text(row, key).slice(0, 7) : text(row, key);
+        return observed === value ? 1 : 0;
+      }),
+    ),
+  ]);
+  const response = rated.map((row) => ((nullableNumber(row, "rating") ?? 5) <= 2 ? 1 : 0));
+  if (design.length <= (design[0]?.length ?? 0)) fail("FALCON24_Q2_GLM_UNDERSPECIFIED");
+  let coefficients = Array.from({ length: design[0]?.length ?? 0 }, () => 0);
+  for (let iteration = 0; iteration < 100; iteration += 1) {
+    const fitted = design.map((row) =>
+      row.reduce((sum, value, index) => sum + value * (coefficients[index] ?? 0), 0),
+    );
+    const probabilities = fitted.map(
+      (value) => 1 / (1 + Math.exp(-Math.max(-35, Math.min(35, value)))),
+    );
+    const weights = probabilities.map((value) => Math.max(1e-10, value * (1 - value)));
+    const adjusted = fitted.map(
+      (value, index) =>
+        value + ((response[index] ?? 0) - (probabilities[index] ?? 0)) / (weights[index] ?? 1),
+    );
+    const next = solve(crossProduct(design, weights), crossVector(design, adjusted, weights));
+    const difference = Math.max(
+      ...next.map((value, index) => Math.abs(value - (coefficients[index] ?? 0))),
+    );
+    coefficients = next;
+    if (difference < 1e-10) break;
+  }
+  const probabilities = design.map((row) => {
+    const fitted = row.reduce((sum, value, index) => sum + value * (coefficients[index] ?? 0), 0);
+    return 1 / (1 + Math.exp(-Math.max(-35, Math.min(35, fitted))));
+  });
+  const covariance = inverse(
+    crossProduct(
+      design,
+      probabilities.map((value) => Math.max(1e-10, value * (1 - value))),
+    ),
+  );
+  const coefficient = coefficients[1] ?? fail("FALCON24_Q2_GLM_COEFFICIENT_MISSING");
+  const variance = covariance[1]?.[1] ?? fail("FALCON24_Q2_GLM_VARIANCE_MISSING");
+  return {
+    coefficient,
+    pValue: variance <= 0 ? 1 : twoSidedNormalP(coefficient / Math.sqrt(variance)),
+  };
 }
 
 function verifyDelivery(
   rows: readonly Row[],
   output: Extract<Falcon24Output, { case_id: "falcon24-delivery-experience-12m" }>,
 ): void {
-  const orders = deduplicate(rows, "order_id");
+  const orders = [...groupBy(rows, "order_id")].map(([orderId, orderRows]) => {
+    const first = assertConstant(
+      orderRows,
+      [
+        "order_date",
+        "delivery_status",
+        "order_total",
+        "customer_segment",
+        "rating",
+        "feedback_category",
+        "sentiment",
+        "distance_km",
+        "delivery_time_minutes",
+      ],
+      `FALCON24_Q2_ORDER_CONFLICT:${orderId}`,
+    );
+    return {
+      ...first,
+      product_category:
+        orderRows
+          .map((row) => text(row, "product_category"))
+          .sort((left, right) => left.localeCompare(right))[0] ??
+        fail("FALCON24_Q2_CATEGORY_MISSING"),
+    };
+  });
   const summarize = (selected: readonly Row[]) => ({
     p50_minutes: quantile(
       selected.map((row) => number(row, "delivery_time_minutes")),
@@ -245,13 +561,54 @@ function verifyDelivery(
   const rated = orders.filter((row) => nullableNumber(row, "rating") !== null);
   if (output.adjusted_binomial_glm.sample_size !== rated.length)
     fail("FALCON24_Q2_GLM_SAMPLE_MISMATCH");
-  for (const scenario of output.low_rating_scenarios) {
-    const selected = orders.filter(
-      (row) =>
-        text(row, "product_category") === scenario.product_category &&
-        text(row, "customer_segment") === scenario.customer_segment &&
-        text(row, "delivery_status") === scenario.delivery_status,
-    );
+  const { coefficient: delayedCoefficient, pValue: delayedPValue } = fitDeliveryGlm(rated);
+  close(
+    output.adjusted_binomial_glm.delayed_coefficient,
+    delayedCoefficient,
+    "FALCON24_Q2_GLM_COEFFICIENT_MISMATCH",
+    1e-6,
+  );
+  close(
+    output.adjusted_binomial_glm.delayed_p_value,
+    delayedPValue,
+    "FALCON24_Q2_GLM_P_VALUE_MISMATCH",
+    1e-6,
+  );
+  const scenarioGroups = new Map<string, Row[]>();
+  for (const row of orders) {
+    const key = `${text(row, "product_category")}\u0000${text(row, "customer_segment")}\u0000${text(row, "delivery_status")}`;
+    scenarioGroups.set(key, [...(scenarioGroups.get(key) ?? []), row]);
+  }
+  const expectedScenarios = [...scenarioGroups]
+    .map(([key, selected]) => ({
+      key,
+      selected,
+      lowRatings: selected.filter(
+        (row) => (nullableNumber(row, "rating") ?? Number.POSITIVE_INFINITY) <= 2,
+      ).length,
+    }))
+    .sort(
+      (left, right) =>
+        right.lowRatings - left.lowRatings ||
+        right.lowRatings / right.selected.length - left.lowRatings / left.selected.length ||
+        right.selected.length - left.selected.length ||
+        left.key.localeCompare(right.key),
+    )
+    .slice(0, 5);
+  if (output.low_rating_scenarios.length !== expectedScenarios.length) {
+    fail("FALCON24_Q2_SCENARIO_COVERAGE_MISMATCH");
+  }
+  for (const [index, scenario] of output.low_rating_scenarios.entries()) {
+    const expectedScenario = expectedScenarios[index] ?? fail("FALCON24_Q2_SCENARIO_MISSING");
+    const [productCategory, customerSegment, deliveryStatus] = expectedScenario.key.split("\u0000");
+    if (
+      scenario.product_category !== productCategory ||
+      scenario.customer_segment !== customerSegment ||
+      scenario.delivery_status !== deliveryStatus
+    ) {
+      fail("FALCON24_Q2_SCENARIO_RANK_MISMATCH");
+    }
+    const selected = expectedScenario.selected;
     if (selected.length !== scenario.order_count) fail("FALCON24_Q2_SCENARIO_COUNT_MISMATCH");
     close(
       scenario.low_rating_rate,
@@ -278,6 +635,26 @@ function theilSen(points: readonly { x: number; y: number }[]): number {
   return quantile(slopes, 0.5);
 }
 
+function mannKendallP(values: readonly number[]): number {
+  let score = 0;
+  for (let left = 0; left < values.length; left += 1) {
+    for (let right = left + 1; right < values.length; right += 1) {
+      score += Math.sign((values[right] ?? 0) - (values[left] ?? 0));
+    }
+  }
+  const ties = new Map<number, number>();
+  for (const value of values) ties.set(value, (ties.get(value) ?? 0) + 1);
+  const tieAdjustment = [...ties.values()].reduce(
+    (sum, count) => sum + count * (count - 1) * (2 * count + 5),
+    0,
+  );
+  const variance =
+    (values.length * (values.length - 1) * (2 * values.length + 5) - tieAdjustment) / 18;
+  if (variance <= 0 || score === 0) return 1;
+  const zScore = score > 0 ? (score - 1) / Math.sqrt(variance) : (score + 1) / Math.sqrt(variance);
+  return twoSidedNormalP(zScore);
+}
+
 function verifyInventory(
   rows: readonly Row[],
   output: Extract<Falcon24Output, { case_id: "falcon24-inventory-damage-12m" }>,
@@ -301,41 +678,148 @@ function verifyInventory(
       salesTotals.get(productId) ?? 0,
     ]);
   }
-  for (const product of output.products) {
-    const productRows = byProduct
-      .get(product.product_id)
-      ?.slice()
-      .sort((a, b) => text(a, "month").localeCompare(text(b, "month")));
-    if (productRows?.length !== 12) fail("FALCON24_Q3_PRODUCT_SERIES_MISSING");
-    if (
-      text(productRows[0] ?? fail("FALCON24_Q3_PRODUCT_EMPTY"), "category") !== product.category
-    ) {
-      fail("FALCON24_Q3_CATEGORY_MISMATCH");
+  const statistics = new Map<
+    string,
+    {
+      readonly category: string;
+      readonly sales: number;
+      readonly categoryP75: number;
+      readonly slope: number;
+      readonly previous: number;
+      readonly recent: number;
+      readonly rawP: number;
     }
-    close(
-      product.sales_quantity,
-      salesTotals.get(product.product_id) ?? 0,
-      "FALCON24_Q3_SALES_MISMATCH",
-    );
-    close(
-      product.category_sales_p75,
-      percentile75(categorySales.get(product.category) ?? []),
-      "FALCON24_Q3_CATEGORY_P75_MISMATCH",
-    );
+  >();
+  for (const [productId, unsortedRows] of byProduct) {
+    const productRows = unsortedRows
+      .slice()
+      .sort((left, right) => text(left, "month").localeCompare(text(right, "month")));
+    if (productRows.length !== 12) fail("FALCON24_Q3_PRODUCT_SERIES_MISSING");
+    const category = text(productRows[0] ?? fail("FALCON24_Q3_PRODUCT_EMPTY"), "category");
+    if (productRows.some((row) => text(row, "category") !== category)) {
+      fail("FALCON24_Q3_CATEGORY_CONFLICT");
+    }
     const rates = productRows.map((row) => {
       const received = number(row, "stock_received");
       return received === 0 ? 0 : number(row, "damaged_stock") / received;
     });
-    const previous = rates.slice(0, 9).reduce((sum, value) => sum + value, 0) / 9;
-    const recent = rates.slice(9).reduce((sum, value) => sum + value, 0) / 3;
-    close(product.previous9_damage_rate, previous, "FALCON24_Q3_PREVIOUS_RATE_MISMATCH");
-    close(product.last3_damage_rate, recent, "FALCON24_Q3_RECENT_RATE_MISMATCH");
-    close(
-      product.theil_sen_slope,
-      theilSen(rates.map((y, x) => ({ x, y }))),
-      "FALCON24_Q3_THEIL_SEN_MISMATCH",
-    );
+    statistics.set(productId, {
+      category,
+      sales: salesTotals.get(productId) ?? 0,
+      categoryP75: percentile75(categorySales.get(category) ?? []),
+      slope: theilSen(rates.map((y, x) => ({ x, y }))),
+      previous: rates.slice(0, 9).reduce((sum, value) => sum + value, 0) / 9,
+      recent: rates.slice(9).reduce((sum, value) => sum + value, 0) / 3,
+      rawP: mannKendallP(rates),
+    });
   }
+  const qValues = benjaminiHochberg(
+    new Map([...statistics].map(([productId, statistic]) => [productId, statistic.rawP])),
+  );
+  const candidates = new Set(
+    [...statistics]
+      .filter(
+        ([, statistic]) =>
+          statistic.sales >= statistic.categoryP75 &&
+          statistic.slope > 0 &&
+          statistic.recent > statistic.previous,
+      )
+      .map(([productId]) => productId),
+  );
+  if (
+    output.products.length !== candidates.size ||
+    new Set(output.products.map(({ product_id }) => product_id)).size !== candidates.size
+  ) {
+    fail("FALCON24_Q3_PRODUCT_COVERAGE_MISMATCH");
+  }
+  for (const product of output.products) {
+    if (!candidates.has(product.product_id)) fail("FALCON24_Q3_PRODUCT_NOT_CANDIDATE");
+    const statistic = statistics.get(product.product_id) ?? fail("FALCON24_Q3_PRODUCT_MISSING");
+    if (statistic.category !== product.category) fail("FALCON24_Q3_CATEGORY_MISMATCH");
+    close(product.sales_quantity, statistic.sales, "FALCON24_Q3_SALES_MISMATCH");
+    close(product.category_sales_p75, statistic.categoryP75, "FALCON24_Q3_CATEGORY_P75_MISMATCH");
+    close(product.previous9_damage_rate, statistic.previous, "FALCON24_Q3_PREVIOUS_RATE_MISMATCH");
+    close(product.last3_damage_rate, statistic.recent, "FALCON24_Q3_RECENT_RATE_MISMATCH");
+    close(product.theil_sen_slope, statistic.slope, "FALCON24_Q3_THEIL_SEN_MISMATCH");
+    close(product.raw_p_value, statistic.rawP, "FALCON24_Q3_RAW_P_MISMATCH", 1e-6);
+    const qValue = qValues.get(product.product_id) ?? fail("FALCON24_Q3_Q_VALUE_MISSING");
+    close(product.bh_q_value, qValue, "FALCON24_Q3_BH_Q_MISMATCH", 1e-6);
+    if (product.status !== (qValue <= 0.05 ? "PRIORITY" : "WATCHLIST")) {
+      fail("FALCON24_Q3_STATUS_MISMATCH");
+    }
+  }
+}
+
+function olsHac(input: {
+  readonly design: readonly (readonly number[])[];
+  readonly response: readonly number[];
+  readonly coefficient_index: number;
+  readonly max_lag: number;
+}): { readonly coefficient: number; readonly pValue: number } {
+  const { design, response } = input;
+  const width = design[0]?.length ?? fail("FALCON24_Q4_DESIGN_EMPTY");
+  if (design.length !== response.length || design.length <= width) {
+    fail("FALCON24_Q4_DESIGN_UNDERSPECIFIED");
+  }
+  const bread = inverse(crossProduct(design));
+  const coefficients = solve(crossProduct(design), crossVector(design, response));
+  const residuals = design.map(
+    (row, index) =>
+      (response[index] ?? fail("FALCON24_Q4_RESPONSE_MISSING")) -
+      row.reduce((sum, value, column) => sum + value * (coefficients[column] ?? 0), 0),
+  );
+  const meat = zeroMatrix(width, width);
+  const addOuter = (left: readonly number[], right: readonly number[], weight: number) => {
+    for (let row = 0; row < width; row += 1) {
+      for (let column = 0; column < width; column += 1) {
+        const meatRow = meat[row] ?? fail("FALCON24_ORACLE_MATRIX_INVALID");
+        meatRow[column] = (meatRow[column] ?? 0) + (left[row] ?? 0) * (right[column] ?? 0) * weight;
+      }
+    }
+  };
+  for (let index = 0; index < design.length; index += 1) {
+    const row = design[index] ?? fail("FALCON24_Q4_DESIGN_INVALID");
+    addOuter(row, row, (residuals[index] ?? 0) ** 2);
+  }
+  const maxLag = Math.min(input.max_lag, design.length - 1);
+  for (let lag = 1; lag <= maxLag; lag += 1) {
+    const kernel = 1 - lag / (maxLag + 1);
+    for (let index = lag; index < design.length; index += 1) {
+      const current = design[index] ?? fail("FALCON24_Q4_DESIGN_INVALID");
+      const previous = design[index - lag] ?? fail("FALCON24_Q4_DESIGN_INVALID");
+      const weight = kernel * (residuals[index] ?? 0) * (residuals[index - lag] ?? 0);
+      addOuter(current, previous, weight);
+      addOuter(previous, current, weight);
+    }
+  }
+  const finiteSampleFactor = design.length / (design.length - width);
+  for (const row of meat) {
+    for (let column = 0; column < row.length; column += 1) {
+      row[column] = (row[column] ?? 0) * finiteSampleFactor;
+    }
+  }
+  const covariance = multiply(multiply(bread, meat), bread);
+  const coefficient =
+    coefficients[input.coefficient_index] ?? fail("FALCON24_Q4_COEFFICIENT_MISSING");
+  const variance =
+    covariance[input.coefficient_index]?.[input.coefficient_index] ??
+    fail("FALCON24_Q4_VARIANCE_MISSING");
+  return {
+    coefficient,
+    pValue: variance <= 0 ? 1 : twoSidedNormalP(coefficient / Math.sqrt(variance)),
+  };
+}
+
+function simpleSlope(values: readonly number[]): number {
+  const center = (values.length - 1) / 2;
+  let numerator = 0;
+  let denominator = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    const centered = index - center;
+    numerator += centered * (values[index] ?? 0);
+    denominator += centered * centered;
+  }
+  return denominator === 0 ? 0 : numerator / denominator;
 }
 
 function verifyMarketing(
@@ -343,14 +827,74 @@ function verifyMarketing(
   output: Extract<Falcon24Output, { case_id: "falcon24-marketing-lag-effect" }>,
 ): void {
   const groups = new Map<string, Row[]>();
+  const businessByWeek = new Map<string, Row>();
   for (const row of rows) {
     const key = `${text(row, "channel")}\u0000${text(row, "target_audience")}`;
     groups.set(key, [...(groups.get(key) ?? []), row]);
+    const week = text(row, "week_start");
+    const previous = businessByWeek.get(week);
+    if (previous) {
+      assertConstant(
+        [previous, row],
+        ["order_count", "active_customers", "order_revenue", "new_customers"],
+        `FALCON24_Q4_BUSINESS_WEEK_CONFLICT:${week}`,
+      );
+    } else {
+      businessByWeek.set(week, row);
+    }
   }
+  const weeks = [...businessByWeek.keys()].sort((left, right) => left.localeCompare(right));
+  if (weeks.length !== 79) fail("FALCON24_Q4_WEEK_COVERAGE_INVALID");
   if (output.channel_audience_results.length !== groups.size)
     fail("FALCON24_Q4_GROUP_COVERAGE_MISMATCH");
+  const groupStatistics = new Map<
+    string,
+    {
+      readonly lag: number;
+      readonly coefficient: number;
+      readonly pValue: number;
+      readonly spendSlope: number;
+    }
+  >();
+  for (const [key, selected] of groups) {
+    const rowsByWeek = new Map(selected.map((row) => [text(row, "week_start"), row]));
+    const spend = weeks.map((week) => number(rowsByWeek.get(week) ?? { spend: 0 }, "spend"));
+    const outcome = weeks.map((week) =>
+      number(
+        businessByWeek.get(week) ?? fail("FALCON24_Q4_BUSINESS_WEEK_MISSING"),
+        "order_revenue",
+      ),
+    );
+    const candidates = Array.from({ length: 5 }, (_, lag) => {
+      const design = weeks.slice(lag).map((_week, offset) => {
+        const weekIndex = offset + lag;
+        return [
+          1,
+          spend[weekIndex - lag] ?? 0,
+          weekIndex,
+          Math.sin((2 * Math.PI * weekIndex) / 52),
+          Math.cos((2 * Math.PI * weekIndex) / 52),
+        ];
+      });
+      return {
+        lag,
+        ...olsHac({
+          design,
+          response: outcome.slice(lag),
+          coefficient_index: 1,
+          max_lag: 4,
+        }),
+      };
+    }).sort((left, right) => left.pValue - right.pValue || left.lag - right.lag);
+    const selectedLag = candidates[0] ?? fail("FALCON24_Q4_LAG_SELECTION_EMPTY");
+    groupStatistics.set(key, { ...selectedLag, spendSlope: simpleSlope(spend) });
+  }
+  const qValues = benjaminiHochberg(
+    new Map([...groupStatistics].map(([key, statistic]) => [key, statistic.pValue])),
+  );
   for (const result of output.channel_audience_results) {
-    const selected = groups.get(`${result.channel}\u0000${result.target_audience}`);
+    const key = `${result.channel}\u0000${result.target_audience}`;
+    const selected = groups.get(key);
     if (!selected) fail("FALCON24_Q4_GROUP_MISSING");
     const sum = (key: string) => selected.reduce((total, row) => total + number(row, key), 0);
     const impressions = sum("impressions");
@@ -377,6 +921,19 @@ function verifyMarketing(
       [result.roas, spend === 0 ? 0 : revenue / spend, "FALCON24_Q4_ROAS_MISMATCH"],
     ] as const)
       close(actual, expected, code, 0.01);
+    const statistic = groupStatistics.get(key) ?? fail("FALCON24_Q4_STATISTIC_MISSING");
+    if (result.selected_lag_weeks !== statistic.lag) fail("FALCON24_Q4_LAG_MISMATCH");
+    close(result.lag_coefficient, statistic.coefficient, "FALCON24_Q4_COEFFICIENT_MISMATCH", 1e-6);
+    close(result.hac_p_value, statistic.pValue, "FALCON24_Q4_HAC_P_MISMATCH", 1e-6);
+    const qValue = qValues.get(key) ?? fail("FALCON24_Q4_Q_VALUE_MISSING");
+    close(result.bh_q_value, qValue, "FALCON24_Q4_BH_Q_MISMATCH", 1e-6);
+    const finding =
+      statistic.coefficient > 0 && qValue <= 0.05
+        ? "GROWTH_ASSOCIATION"
+        : statistic.spendSlope > 0
+          ? "SPEND_WITHOUT_IMPROVEMENT"
+          : "NO_CLEAR_ASSOCIATION";
+    if (result.finding !== finding) fail("FALCON24_Q4_FINDING_MISMATCH");
   }
 }
 
@@ -402,6 +959,25 @@ function verifyCohort(
     [anomaly.no_order_customers, "no_order_customers"],
   ] as const)
     close(actual, number(first, key), `FALCON24_Q5_${key.toUpperCase()}_MISMATCH`);
+  if (
+    output.sensitivity.excluded_pre_registration_customers !==
+      anomaly.customers_first_order_before_registration ||
+    output.sensitivity.retained_no_order_customers !== anomaly.no_order_customers
+  ) {
+    fail("FALCON24_Q5_SENSITIVITY_AUDIT_MISMATCH");
+  }
+  const sensitivityChanged = rows.some((row) => {
+    const cohortSize = number(row, "cohort_size");
+    const active = number(row, "active_customers");
+    const validSize = number(row, "valid_timeline_customers");
+    const validActive = number(row, "valid_active_customers");
+    const primaryRetention = cohortSize === 0 ? 0 : active / cohortSize;
+    const sensitivityRetention = validSize === 0 ? 0 : validActive / validSize;
+    return Math.abs(primaryRetention - sensitivityRetention) >= 0.05;
+  });
+  if (output.sensitivity.conclusion_changed !== sensitivityChanged) {
+    fail("FALCON24_Q5_SENSITIVITY_CONCLUSION_MISMATCH");
+  }
   for (const cohort of output.cohorts) {
     const selected = groups
       .get(`${cohort.registration_cohort}\u0000${cohort.customer_segment}`)
@@ -470,7 +1046,7 @@ export async function verifyFalcon24ArrowBackedOutput(input: {
       input.governed_input.materialization_receipt_ref.content_hash,
     query_evidence_hash: input.governed_input.query_evidence_ref.content_hash,
     output_hash: validated.output_hash,
-    verifier: "falcon24-arrow-input-recompute@2.0.0",
+    verifier: "falcon24-arrow-input-recompute@3.0.0",
   });
   const material = {
     schema_version: "falcon24-analysis-oracle@2.0.0" as const,
@@ -534,7 +1110,12 @@ export function createFalcon24ArrowBackedAnalysisOracle(): AnalysisOraclePort {
 }
 
 export const falcon24ArrowBackedAnalysisOracleInternals = Object.freeze({
+  benjaminiHochberg,
+  fitDeliveryGlm,
+  mannKendallP,
+  olsHac,
   quantile,
+  shapleyThreeFactor,
   theilSen,
   verifiers,
 });
