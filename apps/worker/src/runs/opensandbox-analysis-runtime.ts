@@ -17,6 +17,7 @@ import { z } from "zod";
 import type { AnalysisContextReplayAction } from "../analysis/governed-result-bridge.js";
 
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
+const FILE_TRANSFER_RETRY_DELAYS_MS = [50, 150] as const;
 
 export const ANALYSIS_AGENT_TOOL_NAME = "python_cell" as const;
 export const ANALYSIS_OPERATOR_TOOL_NAME = "statistical_operator" as const;
@@ -156,6 +157,27 @@ export class AnalysisSandboxRuntimeError extends Error {
     readonly reason_code: AnalysisSandboxFailureReasonCode | null = null,
   ) {
     super(code);
+  }
+}
+
+async function writeSandboxFiles(write: () => Promise<void>): Promise<void> {
+  for (let attempt = 0; attempt <= FILE_TRANSFER_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      await write();
+      return;
+    } catch {
+      const delay = FILE_TRANSFER_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        throw new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+          "FILE_TRANSFER",
+          true,
+        );
+      }
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, delay);
+      });
+    }
   }
 }
 
@@ -789,7 +811,7 @@ function buildFixedSymbolExtractionSource(input: {
 }): string {
   const specs = JSON.stringify(input.specs);
   const outputPath = JSON.stringify(input.output_path);
-  return `# server-owned-analysis-symbol-extractor@2.0.0
+  return `# server-owned-analysis-symbol-extractor@2.1.0
 import datetime as _analysis_datetime
 import decimal as _analysis_decimal
 import json as _analysis_json
@@ -806,6 +828,18 @@ def _analysis_wire(value, depth=0):
         raise TypeError("ANALYSIS_RESULT_NESTING_EXCEEDED")
     module = type(value).__module__
     name = type(value).__name__
+    if module == "numpy" and name == "ndarray":
+        if value.ndim > 2 or value.size > 100000:
+            raise TypeError("ANALYSIS_RESULT_ARRAY_LIMIT_EXCEEDED")
+        value = value.tolist()
+        module = type(value).__module__
+        name = type(value).__name__
+    elif module.startswith("pandas.") and name == "Series":
+        if len(value) > 100000:
+            raise TypeError("ANALYSIS_RESULT_ARRAY_LIMIT_EXCEEDED")
+        value = value.tolist()
+        module = type(value).__module__
+        name = type(value).__name__
     if module == "numpy" and name in {"bool_", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float16", "float32", "float64"}:
         value = value.item()
     elif module == "numpy" and name == "datetime64":
@@ -1492,15 +1526,9 @@ export function createOpenSandboxAnalysisRuntime(input: {
               false,
             );
           }
-          try {
-            await pair.agent.files.writeFiles([{ path, data: uploadInput.content, mode: 400 }]);
-          } catch {
-            throw new AnalysisSandboxRuntimeError(
-              "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-              "FILE_TRANSFER",
-              true,
-            );
-          }
+          await writeSandboxFiles(() =>
+            pair.agent.files.writeFiles([{ path, data: uploadInput.content, mode: 400 }]),
+          );
         },
         async bindGovernedInput(bindingInput) {
           assertContextActive();
@@ -1578,15 +1606,9 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${cellId}.policy.json`;
           const outputPath = `/workspace/operator-outputs/${cellId}.policy.json`;
-          try {
-            await pair.operator.files.writeFiles([{ path: requestPath, data: request, mode: 400 }]);
-          } catch {
-            throw new AnalysisSandboxRuntimeError(
-              "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-              "FILE_TRANSFER",
-              true,
-            );
-          }
+          await writeSandboxFiles(() =>
+            pair.operator.files.writeFiles([{ path: requestPath, data: request, mode: 400 }]),
+          );
           await runOperatorCommandWithDeadline({
             sandbox: operator,
             cell_id: `cell-policy-${cellId}`,
@@ -1696,9 +1718,11 @@ export function createOpenSandboxAnalysisRuntime(input: {
                 );
               }
               const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
-              await pair.agent.files.writeFiles([
-                { path: inputPath, data: action.authoritative_content, mode: 400 },
-              ]);
+              await writeSandboxFiles(() =>
+                pair.agent.files.writeFiles([
+                  { path: inputPath, data: action.authoritative_content, mode: 400 },
+                ]),
+              );
               await runCellWithDeadline({
                 codes: agentInterpreter.codes,
                 context: agentContext,
@@ -1757,9 +1781,11 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
           try {
-            await pair.agent.files.writeFiles([
-              { path: inputPath, data: bindingInput.authoritative_content, mode: 400 },
-            ]);
+            await writeSandboxFiles(() =>
+              pair.agent.files.writeFiles([
+                { path: inputPath, data: bindingInput.authoritative_content, mode: 400 },
+              ]),
+            );
             await runCellWithDeadline({
               codes: agentInterpreter.codes,
               context: agentContext,
@@ -1868,17 +1894,11 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${callId}.json`;
           const outputPath = `/workspace/operator-outputs/${callId}.json`;
-          try {
-            await pair.operator.files.writeFiles([
+          await writeSandboxFiles(() =>
+            pair.operator.files.writeFiles([
               { path: requestPath, data: operatorInput.request, mode: 400 },
-            ]);
-          } catch {
-            throw new AnalysisSandboxRuntimeError(
-              "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-              "FILE_TRANSFER",
-              true,
-            );
-          }
+            ]),
+          );
           const started = Date.now();
           const cell = await runOperatorCommandWithDeadline({
             sandbox: operator,
@@ -1915,17 +1935,11 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${finalizationId}.finalize.json`;
           const outputPath = `/workspace/operator-outputs/${finalizationId}.receipt.json`;
-          try {
-            await pair.operator.files.writeFiles([
+          await writeSandboxFiles(() =>
+            pair.operator.files.writeFiles([
               { path: requestPath, data: finalizationInput.request, mode: 400 },
-            ]);
-          } catch {
-            throw new AnalysisSandboxRuntimeError(
-              "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-              "FILE_TRANSFER",
-              true,
-            );
-          }
+            ]),
+          );
           const started = Date.now();
           const cell = await runOperatorCommandWithDeadline({
             sandbox: operator,

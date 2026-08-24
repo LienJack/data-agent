@@ -45,9 +45,11 @@ function fakeFactory(
     readonly fail_handle_kill?: boolean;
     readonly fail_manager_list_after?: number;
     readonly symbol_extraction_error?: string;
+    readonly write_failures?: number;
   } = {},
 ) {
   let managerListCalls = 0;
+  let writeFailuresRemaining = options.write_failures ?? 0;
   const connectionProxyModes: boolean[] = [];
   const created: Array<{
     readonly id: string;
@@ -59,6 +61,7 @@ function fakeFactory(
     closed: boolean;
     deleted_contexts: string[];
     executed_codes: string[];
+    write_attempts: number;
   }> = [];
   const factory: OpenSandboxSdkFactory = {
     async createSandbox(input) {
@@ -73,6 +76,7 @@ function fakeFactory(
         closed: false,
         deleted_contexts: [] as string[],
         executed_codes: [] as string[],
+        write_attempts: 0,
       };
       created.push(state);
       return {
@@ -128,6 +132,11 @@ function fakeFactory(
         files: {
           async createDirectories() {},
           async writeFiles(entries) {
+            state.write_attempts += 1;
+            if (writeFailuresRemaining > 0) {
+              writeFailuresRemaining -= 1;
+              throw new Error("transient file transfer failure");
+            }
             for (const entry of entries) state.files.set(entry.path, entry.data);
           },
           async readBytes(path) {
@@ -171,7 +180,7 @@ function fakeFactory(
                 });
               });
             }
-            if (_code.includes("server-owned-analysis-symbol-extractor@2.0.0")) {
+            if (_code.includes("server-owned-analysis-symbol-extractor@2.1.0")) {
               if (options.symbol_extraction_error) {
                 return {
                   id: `${state.id}-execution`,
@@ -296,6 +305,7 @@ function fakeFactory(
       closed: false,
       deleted_contexts: [],
       executed_codes: [],
+      write_attempts: 0,
     });
   };
   return { factory, created, seed, connectionProxyModes };
@@ -502,7 +512,9 @@ describe("OpenSandbox analysis runtime", () => {
       ],
     });
     const extractionSource = fake.created[0]?.executed_codes.at(-1) ?? "";
-    expect(extractionSource).toContain("server-owned-analysis-symbol-extractor@2.0.0");
+    expect(extractionSource).toContain("server-owned-analysis-symbol-extractor@2.1.0");
+    expect(extractionSource).toContain('module == "numpy" and name == "ndarray"');
+    expect(extractionSource).toContain('module.startswith("pandas.") and name == "Series"');
     expect(extractionSource).toContain("/workspace/intermediate/publish-1.symbols.json");
     expect(extractionSource).not.toContain("/workspace/outputs");
 
@@ -579,6 +591,53 @@ describe("OpenSandbox analysis runtime", () => {
       retryable: false,
     });
     await session.close();
+  });
+
+  it("retries bounded transient file writes and still fails closed when exhausted", async () => {
+    const content = Buffer.from("bytes");
+    const recoveredFactory = fakeFactory({ write_failures: 2 });
+    const recoveredRuntime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: recoveredFactory.factory,
+    });
+    const recovered = await recoveredRuntime.createSession({
+      run_id: "run-file-retry",
+      node_id: "node-file-retry",
+      profile: "CORE_ANALYSIS",
+    });
+    await expect(
+      recovered.uploadAgentFile({
+        path: "/workspace/inputs/orders.parquet",
+        content,
+        content_sha256: digest(content),
+      }),
+    ).resolves.toBeUndefined();
+    expect(recoveredFactory.created[0]?.write_attempts).toBe(3);
+    await recovered.close();
+
+    const exhaustedFactory = fakeFactory({ write_failures: 3 });
+    const exhaustedRuntime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: exhaustedFactory.factory,
+    });
+    const exhausted = await exhaustedRuntime.createSession({
+      run_id: "run-file-exhausted",
+      node_id: "node-file-exhausted",
+      profile: "CORE_ANALYSIS",
+    });
+    await expect(
+      exhausted.uploadAgentFile({
+        path: "/workspace/inputs/orders.parquet",
+        content,
+        content_sha256: digest(content),
+      }),
+    ).rejects.toMatchObject({
+      code: "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+      stage: "FILE_TRANSFER",
+      retryable: true,
+    });
+    expect(exhaustedFactory.created[0]?.write_attempts).toBe(3);
+    await exhausted.close();
   });
 
   it("interrupts a timed-out cell with a structured error", async () => {

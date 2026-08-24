@@ -103,6 +103,8 @@ function operatorCards(node: AnalysisProgramNode) {
       python_preparation_contract: {
         inputs_symbol: symbols.inputs_symbol,
         inputs_symbol_python_type: "dict",
+        nested_value_contract:
+          "Recursively JSON-native values only: dict, list, str, bool, built-in int, finite built-in float, or None. Convert pandas Series and numpy ndarray with .tolist(), and numpy scalar values with int(), float(), or bool().",
         inputs_mapping_required_keys: inputKeys,
         inputs_mapping_example: Object.fromEntries(
           inputKeys.map((name) => [name, `<prepared_${name}_value>`]),
@@ -173,6 +175,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "Do not reimplement any governed statistical formula. Invoke every statistical_operator obligation exactly once and in the declared order.",
       "Before each statistical_operator call, create the exact server-declared inputs_symbol and parameters_symbol in its python_preparation_contract. Their mapping keys must exactly follow the operator manifest. The statistical_operator arguments must equal its tool_call_contract.arguments_exact object: only call_id and operator_id. Never echo schema_version, inputs_symbol, or parameters_symbol into tool arguments.",
       "Each declared inputs_symbol and parameters_symbol must contain a Python dict, never a raw list, DataFrame, Series, ndarray, scalar, or one individual input value. Follow each obligation's python_preparation_contract names and mapping examples literally.",
+      "Every nested operator input and parameter value must be recursively JSON-native: dict, list, str, bool, built-in int, finite built-in float, or None. Convert pandas Series and numpy ndarray with .tolist(), and numpy scalar values with int(), float(), or bool(); never leave pandas or numpy containers nested inside the dict.",
       "After each statistical_operator call, the server returns a protected result symbol plus hash, shape, and receipt reference. Use that exact symbol in later Python and publish_analysis_result; never copy or overwrite it.",
       "At every required result_binding path, retain the protected operator collection itself. Never round-trip governed rows through pandas before publishing: pandas converts exact null values to NaN and breaks hash/equality closure. A separate DataFrame may be used only for derived selection while the bound collection remains untouched.",
       "A protected operator result symbol exactly follows its obligation's result_symbol contract. Read the declared collection path directly; never spend a Cell printing or probing its type, keys, contents, shape, or attributes.",
