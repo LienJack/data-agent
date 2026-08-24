@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   admitAnalysisSandboxProgram,
   admitAnalysisSandboxProgramRepair,
+  admitAnalysisSandboxProgramSourceRepair,
   analysisOracleFailureCode,
   analysisRepairFailureCode,
   computeAnalysisProgramHash,
@@ -369,6 +370,20 @@ describe("deterministic analysis worker runtime", () => {
         input_materialization_receipt_refs: [materializationRef],
       }),
     ).resolves.toEqual({ ok: false, failure: "PROGRAM_ENTRYPOINT_POLICY_REJECTED" });
+    await expect(
+      admitAnalysisSandboxProgramSourceRepair({
+        attempt: 1,
+        previous_source_text: legacyEntrypoint,
+        repaired_source_text: source,
+        repaired_source_text_ref: sourceRef,
+        analysis_program: base.plan,
+        analysis_program_ref: planRef,
+        node_id: "trend",
+        query_evidence_refs: [queryRef],
+        input_refs: [inputRef],
+        input_materialization_receipt_refs: [materializationRef],
+      }),
+    ).resolves.toMatchObject({ ok: true });
     const admitted = await admitAnalysisSandboxProgram({
       analysis_program: base.plan,
       analysis_program_ref: planRef,

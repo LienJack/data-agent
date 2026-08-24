@@ -210,6 +210,37 @@ export async function admitAnalysisSandboxProgram(input: {
     : { ok: false, failure: "PROGRAM_VERIFICATION_FAILED" };
 }
 
+export async function admitAnalysisSandboxProgramSourceRepair(input: {
+  readonly attempt: number;
+  readonly previous_source_text: string;
+  readonly repaired_source_text: string;
+  readonly repaired_source_text_ref: ArtifactReference;
+  readonly analysis_program: AnalysisProgramPayload;
+  readonly analysis_program_ref: ArtifactReference;
+  readonly node_id: string;
+  readonly query_evidence_refs: readonly ArtifactReference[];
+  readonly input_refs: readonly ArtifactReference[];
+  readonly input_materialization_receipt_refs: readonly ArtifactReference[];
+  readonly catalog?: AnalysisSkillCatalog;
+}): Promise<ProgramAdmissionVerdict> {
+  if (input.attempt !== 1) return { ok: false, failure: "PROGRAM_REPAIR_LIMIT_EXCEEDED" };
+  const previousImports = imports(input.previous_source_text);
+  if ([...imports(input.repaired_source_text)].some((name) => !previousImports.has(name))) {
+    return { ok: false, failure: "PROGRAM_REPAIR_EXPANDED_AUTHORITY" };
+  }
+  return admitAnalysisSandboxProgram({
+    analysis_program: input.analysis_program,
+    analysis_program_ref: input.analysis_program_ref,
+    node_id: input.node_id,
+    source_text: input.repaired_source_text,
+    source_text_ref: input.repaired_source_text_ref,
+    query_evidence_refs: input.query_evidence_refs,
+    input_refs: input.input_refs,
+    input_materialization_receipt_refs: input.input_materialization_receipt_refs,
+    ...(input.catalog ? { catalog: input.catalog } : {}),
+  });
+}
+
 export async function admitAnalysisSandboxProgramRepair(input: {
   readonly attempt: number;
   readonly previous_program: AnalysisSandboxProgramPayload;
@@ -220,17 +251,14 @@ export async function admitAnalysisSandboxProgramRepair(input: {
   readonly analysis_program_ref: ArtifactReference;
   readonly catalog?: AnalysisSkillCatalog;
 }): Promise<ProgramAdmissionVerdict> {
-  if (input.attempt !== 1) return { ok: false, failure: "PROGRAM_REPAIR_LIMIT_EXCEEDED" };
-  const previousImports = imports(input.previous_source_text);
-  if ([...imports(input.repaired_source_text)].some((name) => !previousImports.has(name))) {
-    return { ok: false, failure: "PROGRAM_REPAIR_EXPANDED_AUTHORITY" };
-  }
-  const repaired = await admitAnalysisSandboxProgram({
+  const repaired = await admitAnalysisSandboxProgramSourceRepair({
+    attempt: input.attempt,
+    previous_source_text: input.previous_source_text,
+    repaired_source_text: input.repaired_source_text,
+    repaired_source_text_ref: input.repaired_source_text_ref,
     analysis_program: input.analysis_program,
     analysis_program_ref: input.analysis_program_ref,
     node_id: input.previous_program.node_id,
-    source_text: input.repaired_source_text,
-    source_text_ref: input.repaired_source_text_ref,
     query_evidence_refs: input.previous_program.query_evidence_refs,
     input_refs: input.previous_program.input_refs,
     input_materialization_receipt_refs: input.previous_program.input_materialization_receipt_refs,

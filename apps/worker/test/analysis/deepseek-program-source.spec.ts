@@ -449,11 +449,27 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text:
+        "def main(context):\n    value = context.read('input')\n    hasattr(value, 'shape')\n",
+      failure_code: "PROGRAM_HOST_POLICY_REJECTED",
+      attempt: 1,
+    });
+    const hostPolicyRepair = JSON.parse(prompts[4] ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(hostPolicyRepair.repair?.required_correction).toContain("preserve or reduce");
+    expect(hostPolicyRepair.repair?.required_correction).toContain("context.read");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
     });
-    const typeRepair = JSON.parse(prompts[4] ?? "{}") as {
+    const typeRepair = JSON.parse(prompts[5] ?? "{}") as {
       repair?: { required_correction?: string };
     };
     expect(typeRepair.repair?.required_correction).toContain("argument counts identical");

@@ -29,6 +29,7 @@ import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
 import {
   admitAnalysisSandboxProgram,
   admitAnalysisSandboxProgramRepair,
+  admitAnalysisSandboxProgramSourceRepair,
 } from "./program-admission.js";
 import { gateAnalysisProgram } from "./program-gate.js";
 import {
@@ -377,19 +378,48 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           node,
           standard_program: descriptor.standard_program,
         });
-        const admission = await admitAnalysisSandboxProgram({
+        const admissionInput = {
           analysis_program: analysisProgram,
           analysis_program_ref: analysisProgramRef,
           node_id: node.node_id,
-          source_text: source.source_text,
-          source_text_ref: source.source_text_ref,
           query_evidence_refs: governedInputs.map(({ query_evidence_ref: reference }) => reference),
           input_refs: governedInputs.map(({ input_ref: reference }) => reference),
           input_materialization_receipt_refs: governedInputs.map(
             ({ materialization_receipt_ref: reference }) => reference,
           ),
           catalog,
+        } as const;
+        let admission = await admitAnalysisSandboxProgram({
+          ...admissionInput,
+          source_text: source.source_text,
+          source_text_ref: source.source_text_ref,
         });
+        let repairUsed = false;
+        if (
+          !admission.ok &&
+          descriptor.program_mode !== "FROZEN_TEMPLATE" &&
+          dependencies.programs.repair
+        ) {
+          const previousSource = source;
+          const repairedSource = await dependencies.programs.repair({
+            lease: input.lease,
+            analysis_program: analysisProgram,
+            analysis_program_ref: analysisProgramRef,
+            node,
+            previous_source_text: previousSource.source_text,
+            failure_code: admission.failure,
+            attempt: 1,
+          });
+          admission = await admitAnalysisSandboxProgramSourceRepair({
+            ...admissionInput,
+            attempt: 1,
+            previous_source_text: previousSource.source_text,
+            repaired_source_text: repairedSource.source_text,
+            repaired_source_text_ref: repairedSource.source_text_ref,
+          });
+          source = repairedSource;
+          repairUsed = true;
+        }
         if (!admission.ok) return failedNode(node, "PROGRAM_POLICY_REJECTED");
         let program = admission.program;
         let programHash = await contentHash(program);
@@ -493,6 +523,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         );
         if (
           repairFailureCode !== null &&
+          !repairUsed &&
           descriptor.program_mode !== "FROZEN_TEMPLATE" &&
           dependencies.programs.repair
         ) {
