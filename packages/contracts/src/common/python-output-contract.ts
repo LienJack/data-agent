@@ -2,11 +2,13 @@ import { z } from "zod";
 
 export const pythonOutputTypeSchema = z.enum([
   "ARROW",
+  "PARQUET",
   "CSV",
   "JSON",
   "MARKDOWN",
   "VEGA_LITE",
   "PNG",
+  "SVG",
 ]);
 
 export const pythonOutputSpecSchema = z.strictObject({

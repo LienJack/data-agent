@@ -5,6 +5,7 @@ import {
   type MastraSnapshotBinding,
   MODEL_REQUEST_PERFORMANCE_SCHEMA_VERSION,
   MODEL_REQUEST_TOOL_NAME,
+  type ModelProviderRequest,
   type ModelRequestPerformance,
   mastraSnapshotBindingBodySchema,
   modelRequestPerformanceSchema,
@@ -34,6 +35,7 @@ export interface RunProviderDispatchCapability {
   invoke(input: {
     readonly logical_call_id: string;
     readonly analysis_python?: RunAnalysisPythonGenerationRequest;
+    readonly analysis_agent?: RunAnalysisAgentTurnRequest;
     readonly turn?: Readonly<{
       kind: "SPECIALIST";
       stage: "TEXT2SQL" | "REPORT";
@@ -41,6 +43,15 @@ export interface RunProviderDispatchCapability {
       objective: string;
     }>;
   }): Promise<PortResult<RunModelProviderResult>>;
+}
+
+export interface RunAnalysisAgentTurnRequest {
+  readonly node_id: string;
+  readonly turn_index: number;
+  readonly phase: "TOOL" | "FINAL";
+  readonly messages: ModelProviderRequest["messages"];
+  readonly response_schema_version: "analysis-agent-final@1.0.0";
+  readonly max_output_tokens: number;
 }
 
 export interface RunAnalysisPythonGenerationRequest {
@@ -71,6 +82,7 @@ export interface RunBoundProviderDispatcher {
     readonly context_receipt: ContextReceiptBinding;
     readonly logical_call_id: string;
     readonly analysis_python?: RunAnalysisPythonGenerationRequest;
+    readonly analysis_agent?: RunAnalysisAgentTurnRequest;
     readonly turn?: Parameters<RunProviderDispatchCapability["invoke"]>[0]["turn"];
     readonly signal: AbortSignal;
   }): Promise<PortResult<RunModelProviderResult>>;
@@ -220,6 +232,7 @@ export function createRunExecutionContext({
             context_receipt: contextReceipt,
             logical_call_id: callId,
             ...(input.analysis_python ? { analysis_python: input.analysis_python } : {}),
+            ...(input.analysis_agent ? { analysis_agent: input.analysis_agent } : {}),
             ...(input.turn ? { turn: input.turn } : {}),
             signal: runSignal,
           });

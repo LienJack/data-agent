@@ -60,6 +60,54 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
       created.push(state);
       return {
         id: state.id,
+        commands: {
+          async run(command, _options, handlers) {
+            await handlers?.onInit?.({ id: `${state.id}-command` });
+            const match = command.match(
+              /dispatcher (call|finalize|validate-cell) "([^"]+)" "([^"]+)"/u,
+            );
+            if (!match) throw new Error("unexpected operator command");
+            const request = state.files.get(match[2] as string);
+            if (!request) throw new Error("operator command request missing");
+            if (match[1] === "call") {
+              state.files.set(
+                match[3] as string,
+                Buffer.from(JSON.stringify({ status: "PASS", request_hash: digest(request) })),
+              );
+            } else if (match[1] === "finalize") {
+              state.files.set(
+                match[3] as string,
+                Buffer.from(
+                  JSON.stringify({
+                    operator_receipts: [],
+                    operator_receipt_closure_hash: digest(request),
+                  }),
+                ),
+              );
+            } else {
+              const document = JSON.parse(request.toString()) as { cell_id: string };
+              state.files.set(
+                match[3] as string,
+                Buffer.from(
+                  JSON.stringify({
+                    schema_version: "analysis-cell-policy-result@1.0.0",
+                    cell_id: document.cell_id,
+                    status: "ADMITTED",
+                    violations: [],
+                  }),
+                ),
+              );
+            }
+            return {
+              id: `${state.id}-command`,
+              logs: { stdout: [], stderr: [] },
+              result: [],
+              complete: { timestamp: 1, executionTimeMs: 1 },
+              exitCode: 0,
+            };
+          },
+          async interrupt() {},
+        },
         files: {
           async createDirectories() {},
           async writeFiles(entries) {
@@ -96,36 +144,13 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
           async deleteContext(id) {
             state.deleted_contexts.push(id);
           },
-          async run(code, runOptions) {
+          async run(_code, runOptions) {
             if (options.hang_agent && state.id === "sandbox-1") {
               await new Promise<void>((_resolve, reject) => {
                 runOptions.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
                   once: true,
                 });
               });
-            }
-            const match = code.match(/execute_call_file\("([^"]+)", "([^"]+)"\)/u);
-            if (match) {
-              const request = state.files.get(match[1] as string);
-              if (!request) throw new Error("operator request missing");
-              state.files.set(
-                match[2] as string,
-                Buffer.from(JSON.stringify({ status: "PASS", request_hash: digest(request) })),
-              );
-            }
-            const finalizationMatch = code.match(/finalize_calls_file\("([^"]+)", "([^"]+)"\)/u);
-            if (finalizationMatch) {
-              const request = state.files.get(finalizationMatch[1] as string);
-              if (!request) throw new Error("operator finalization request missing");
-              state.files.set(
-                finalizationMatch[2] as string,
-                Buffer.from(
-                  JSON.stringify({
-                    operator_receipts: [],
-                    operator_receipt_closure_hash: digest(request),
-                  }),
-                ),
-              );
             }
             return {
               id: `${state.id}-execution`,
@@ -179,6 +204,15 @@ describe("OpenSandbox analysis runtime", () => {
       }),
     ).resolves.toEqual(input);
 
+    await expect(
+      session.admitAgentCell({
+        cell_id: "cell-1",
+        source: "value = 1",
+        generated_source_policy: "OPEN_ANALYSIS",
+        timeout_ms: 100,
+      }),
+    ).resolves.toMatchObject({ status: "ADMITTED", cell_id: "cell-1" });
+
     const cell = await session.runAgentCell({
       cell_id: "cell-1",
       source: "value = 1\nvalue",
@@ -211,9 +245,8 @@ describe("OpenSandbox analysis runtime", () => {
 
     await session.close();
     expect(fake.created.every(({ killed, closed }) => killed && closed)).toBe(true);
-    expect(fake.created.every(({ deleted_contexts: contexts }) => contexts.length === 1)).toBe(
-      true,
-    );
+    expect(fake.created[0]?.deleted_contexts).toHaveLength(1);
+    expect(fake.created[1]?.deleted_contexts).toHaveLength(0);
   });
 
   it("fails closed on a content hash mismatch", async () => {

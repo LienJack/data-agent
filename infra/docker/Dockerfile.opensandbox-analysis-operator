@@ -12,7 +12,9 @@ RUN source /opt/code-interpreter/code-interpreter-env.sh python 3.12 >/dev/null 
 COPY services/sandbox/src/data_agent_stats /opt/data-agent/data_agent_stats
 RUN source /opt/code-interpreter/code-interpreter-env.sh python 3.12 >/dev/null \
     && site_packages="$(python -c 'import site; print(site.getsitepackages()[0])')" \
+    && python_executable="$(command -v python)" \
     && ln -s /opt/data-agent/data_agent_stats "${site_packages}/data_agent_stats" \
+    && ln -s "${python_executable}" /usr/local/bin/python \
     && python -c "from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST; assert OPERATOR_REGISTRY_DIGEST.startswith('sha256:')"
 
 ENV PYTHON_VERSION=3.12 \

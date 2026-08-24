@@ -9,6 +9,7 @@ from data_agent_stats.dispatcher import (
     StatisticalOperatorToolCall,
     execute_call,
     finalize_calls,
+    main,
 )
 
 
@@ -116,3 +117,14 @@ def test_finalization_rejects_result_that_does_not_match_operator_output() -> No
 
     with pytest.raises(ValueError, match="PYTHON_OPERATOR_RESULT_BINDING_MISMATCH"):
         finalize_calls(finalization)
+
+
+def test_cli_rejects_unknown_operations_before_touching_files() -> None:
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "arbitrary-python",
+                "/workspace/operator-inputs/a.json",
+                "/workspace/operator-outputs/a.json",
+            ]
+        )

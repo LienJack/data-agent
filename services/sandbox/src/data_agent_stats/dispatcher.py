@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -8,6 +9,7 @@ import rfc8785
 from pydantic import Field, model_validator
 
 from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST
+from data_agent_stats.cell_policy import CellPolicyError, validate_cell_source
 from data_agent_stats.models import (
     StatisticalOperatorObligation,
     StrictModel,
@@ -17,9 +19,7 @@ from data_agent_stats.registry import StatisticalOperatorRegistry
 MAX_REQUEST_BYTES = 64 * 1024 * 1024
 MAX_OUTPUT_BYTES = 64 * 1024 * 1024
 _INPUT_PATH = re.compile(r"^/workspace/operator-inputs/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$")
-_OUTPUT_PATH = re.compile(
-    r"^/workspace/operator-outputs/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$"
-)
+_OUTPUT_PATH = re.compile(r"^/workspace/operator-outputs/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$")
 
 
 class StatisticalOperatorToolCall(StrictModel):
@@ -66,6 +66,14 @@ class StatisticalOperatorFinalizationRequest(StrictModel):
         ):
             raise ValueError("operator finalization calls must share one registry and profile")
         return self
+
+
+class AnalysisCellPolicyRequest(StrictModel):
+    schema_version: Literal["analysis-cell-policy-request@1.0.0"]
+    cell_id: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")]
+    source: Annotated[str, Field(min_length=1, max_length=100_000)]
+    runtime_profile: Literal["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]
+    generated_source_policy: Literal["OPEN_ANALYSIS", "GOVERNED_OPERATOR_ORCHESTRATION"]
 
 
 def execute_call(request: StatisticalOperatorToolCall) -> dict[str, Any]:
@@ -115,6 +123,31 @@ def finalize_calls(request: StatisticalOperatorFinalizationRequest) -> dict[str,
     }
 
 
+def validate_cell(request: AnalysisCellPolicyRequest) -> dict[str, Any]:
+    try:
+        validate_cell_source(
+            request.source,
+            request.runtime_profile,
+            request.generated_source_policy,
+        )
+    except CellPolicyError as error:
+        return {
+            "schema_version": "analysis-cell-policy-result@1.0.0",
+            "cell_id": request.cell_id,
+            "status": "REJECTED",
+            "violations": [
+                {"code": item.code, "line": item.line, "detail": item.detail}
+                for item in error.violations
+            ],
+        }
+    return {
+        "schema_version": "analysis-cell-policy-result@1.0.0",
+        "cell_id": request.cell_id,
+        "status": "ADMITTED",
+        "violations": [],
+    }
+
+
 def execute_call_file(request_path: str, output_path: str) -> None:
     if _INPUT_PATH.fullmatch(request_path) is None or _OUTPUT_PATH.fullmatch(output_path) is None:
         raise ValueError("PYTHON_OPERATOR_PATH_INVALID")
@@ -141,11 +174,44 @@ def finalize_calls_file(request_path: str, output_path: str) -> None:
     Path(output_path).write_bytes(encoded)
 
 
+def validate_cell_file(request_path: str, output_path: str) -> None:
+    if _INPUT_PATH.fullmatch(request_path) is None or _OUTPUT_PATH.fullmatch(output_path) is None:
+        raise ValueError("PYTHON_OPERATOR_PATH_INVALID")
+    request_bytes = Path(request_path).read_bytes()
+    if not 0 < len(request_bytes) <= MAX_REQUEST_BYTES:
+        raise ValueError("PYTHON_OPERATOR_INPUT_INVALID")
+    request = AnalysisCellPolicyRequest.model_validate_json(request_bytes)
+    Path(output_path).write_bytes(rfc8785.dumps(validate_cell(request)))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="data-agent-statistical-operator")
+    parser.add_argument("operation", choices=("call", "finalize", "validate-cell"))
+    parser.add_argument("request_path")
+    parser.add_argument("output_path")
+    arguments = parser.parse_args(argv)
+    operations = {
+        "call": execute_call_file,
+        "finalize": finalize_calls_file,
+        "validate-cell": validate_cell_file,
+    }
+    operations[arguments.operation](arguments.request_path, arguments.output_path)
+    return 0
+
+
 __all__ = [
     "StatisticalOperatorToolCall",
+    "AnalysisCellPolicyRequest",
     "execute_call",
     "execute_call_file",
     "StatisticalOperatorFinalizationRequest",
     "finalize_calls",
     "finalize_calls_file",
+    "validate_cell",
+    "validate_cell_file",
+    "main",
 ]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

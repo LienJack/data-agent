@@ -34,6 +34,7 @@ export type AnalysisSandboxRuntimeFailureCode =
   | "ANALYSIS_SANDBOX_CONTEXT_FAILED"
   | "ANALYSIS_SANDBOX_CELL_TIMEOUT"
   | "ANALYSIS_SANDBOX_CELL_CANCELLED"
+  | "ANALYSIS_SANDBOX_CELL_POLICY_REJECTED"
   | "ANALYSIS_SANDBOX_CELL_FAILED"
   | "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT"
   | "ANALYSIS_SANDBOX_OPERATOR_FAILED"
@@ -87,6 +88,17 @@ export interface AnalysisOperatorFinalizationObservation {
   readonly cell: AnalysisSandboxCellObservation;
 }
 
+export interface AnalysisCellPolicyObservation {
+  readonly schema_version: "analysis-cell-policy-result@1.0.0";
+  readonly cell_id: string;
+  readonly status: "ADMITTED" | "REJECTED";
+  readonly violations: readonly {
+    readonly code: string;
+    readonly line: number;
+    readonly detail: string;
+  }[];
+}
+
 export interface OpenSandboxAnalysisRuntimeConfig {
   readonly domain: string;
   readonly protocol: "http" | "https";
@@ -119,9 +131,26 @@ interface SandboxFilePort {
   getFileInfo(paths: string[]): Promise<Record<string, { readonly size?: number }>>;
 }
 
+interface SandboxCommandPort {
+  run(
+    command: string,
+    options: {
+      readonly workingDirectory?: string;
+      readonly timeoutSeconds?: number;
+      readonly envs?: Readonly<Record<string, string>>;
+    },
+    handlers?: {
+      readonly onInit?: (input: { readonly id: string }) => void | Promise<void>;
+    },
+    signal?: AbortSignal,
+  ): Promise<Execution>;
+  interrupt(commandId: string): Promise<void>;
+}
+
 interface AnalysisSandboxHandle {
   readonly id: string;
   readonly files: SandboxFilePort;
+  readonly commands: SandboxCommandPort;
   kill(): Promise<void>;
   close(): Promise<void>;
 }
@@ -162,6 +191,13 @@ export interface OpenSandboxAnalysisSession {
     readonly content: Uint8Array;
     readonly content_sha256: `sha256:${string}`;
   }): Promise<void>;
+  admitAgentCell(input: {
+    readonly cell_id: string;
+    readonly source: string;
+    readonly generated_source_policy: "OPEN_ANALYSIS" | "GOVERNED_OPERATOR_ORCHESTRATION";
+    readonly timeout_ms: number;
+    readonly signal?: AbortSignal;
+  }): Promise<AnalysisCellPolicyObservation>;
   runAgentCell(input: {
     readonly cell_id: string;
     readonly source: string;
@@ -238,6 +274,18 @@ const configSchema = z.strictObject({
 });
 
 const safeSegmentSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u);
+const cellPolicyObservationSchema = z.strictObject({
+  schema_version: z.literal("analysis-cell-policy-result@1.0.0"),
+  cell_id: safeSegmentSchema,
+  status: z.enum(["ADMITTED", "REJECTED"]),
+  violations: z.array(
+    z.strictObject({
+      code: z.string().regex(/^[A-Z][A-Z0-9_]*$/u),
+      line: z.number().int().positive(),
+      detail: z.string().max(1_024),
+    }),
+  ),
+});
 const sandboxPathSchema = z
   .string()
   .regex(
@@ -296,6 +344,7 @@ async function runCellWithDeadline(input: {
   >;
   readonly stdout_bytes: number;
   readonly stderr_bytes: number;
+  readonly return_python_error: boolean;
 }): Promise<AnalysisSandboxCellObservation> {
   const contextId = input.context.id;
   if (!contextId) {
@@ -306,19 +355,30 @@ async function runCellWithDeadline(input: {
   }
   const controller = new AbortController();
   let timedOut = false;
+  let cancelled = false;
+  let rejectBoundary: ((reason: Error) => void) | null = null;
+  const boundary = new Promise<never>((_resolve, reject) => {
+    rejectBoundary = reject;
+  });
   const timeout = setTimeout(() => {
     timedOut = true;
     controller.abort();
+    rejectBoundary?.(new Error("ANALYSIS_CELL_DEADLINE"));
   }, input.timeout_ms);
   timeout.unref();
-  const cancel = () => controller.abort();
+  const cancel = () => {
+    cancelled = true;
+    controller.abort();
+    rejectBoundary?.(new Error("ANALYSIS_CELL_CANCELLED"));
+  };
   input.signal?.addEventListener("abort", cancel, { once: true });
   const started = Date.now();
   try {
-    const execution = await input.codes.run(input.source, {
+    const executionPromise = input.codes.run(input.source, {
       context: input.context,
       signal: controller.signal,
     });
+    const execution = await Promise.race([executionPromise, boundary]);
     const observation = cellObservation({
       cell_id: input.cell_id,
       execution,
@@ -326,7 +386,7 @@ async function runCellWithDeadline(input: {
       stdout_bytes: input.stdout_bytes,
       stderr_bytes: input.stderr_bytes,
     });
-    if (observation.status === "FAILED") {
+    if (observation.status === "FAILED" && !input.return_python_error) {
       throw new AnalysisSandboxRuntimeError(
         input.failure_code,
         input.failure_code === "ANALYSIS_SANDBOX_OPERATOR_FAILED" ? "OPERATOR" : "CELL",
@@ -335,8 +395,14 @@ async function runCellWithDeadline(input: {
     }
     return observation;
   } catch (error) {
-    if (timedOut || input.signal?.aborted || controller.signal.aborted) {
-      await input.codes.interrupt(contextId).catch(() => {});
+    if (timedOut || cancelled || input.signal?.aborted || controller.signal.aborted) {
+      await Promise.race([
+        input.codes.interrupt(contextId).catch(() => {}),
+        new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 2_000);
+          timer.unref();
+        }),
+      ]);
       if (timedOut) {
         throw new AnalysisSandboxRuntimeError(
           input.timeout_code,
@@ -362,6 +428,97 @@ async function runCellWithDeadline(input: {
   }
 }
 
+async function runOperatorCommandWithDeadline(input: {
+  readonly sandbox: AnalysisSandboxHandle;
+  readonly cell_id: string;
+  readonly command: string;
+  readonly timeout_ms: number;
+  readonly signal?: AbortSignal;
+  readonly stdout_bytes: number;
+  readonly stderr_bytes: number;
+}): Promise<AnalysisSandboxCellObservation> {
+  const controller = new AbortController();
+  let commandId: string | null = null;
+  let timedOut = false;
+  let cancelled = false;
+  let rejectBoundary: ((reason: Error) => void) | null = null;
+  const boundary = new Promise<never>((_resolve, reject) => {
+    rejectBoundary = reject;
+  });
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+    rejectBoundary?.(new Error("ANALYSIS_OPERATOR_DEADLINE"));
+  }, input.timeout_ms);
+  timeout.unref();
+  const cancel = () => {
+    cancelled = true;
+    controller.abort();
+    rejectBoundary?.(new Error("ANALYSIS_OPERATOR_CANCELLED"));
+  };
+  input.signal?.addEventListener("abort", cancel, { once: true });
+  const started = Date.now();
+  try {
+    const executionPromise = input.sandbox.commands.run(
+      input.command,
+      {
+        workingDirectory: "/workspace",
+        timeoutSeconds: Math.max(1, Math.ceil(input.timeout_ms / 1_000)),
+        envs: {
+          PYTHONHASHSEED: "0",
+          MPLBACKEND: "Agg",
+          OMP_NUM_THREADS: "1",
+          OPENBLAS_NUM_THREADS: "1",
+          MKL_NUM_THREADS: "1",
+          NUMEXPR_NUM_THREADS: "1",
+          VECLIB_MAXIMUM_THREADS: "1",
+          BLIS_NUM_THREADS: "1",
+        },
+      },
+      {
+        onInit: (event) => {
+          commandId = event.id;
+        },
+      },
+      controller.signal,
+    );
+    const execution = await Promise.race([executionPromise, boundary]);
+    const observation = cellObservation({
+      cell_id: input.cell_id,
+      execution,
+      elapsed_ms: Math.max(0, Date.now() - started),
+      stdout_bytes: input.stdout_bytes,
+      stderr_bytes: input.stderr_bytes,
+    });
+    if (observation.status === "FAILED" || execution.exitCode !== 0) {
+      throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_OPERATOR_FAILED", "OPERATOR", false);
+    }
+    return observation;
+  } catch (error) {
+    if (timedOut || cancelled || input.signal?.aborted || controller.signal.aborted) {
+      if (commandId) {
+        await Promise.race([
+          input.sandbox.commands.interrupt(commandId).catch(() => {}),
+          new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, 2_000);
+            timer.unref();
+          }),
+        ]);
+      }
+      throw new AnalysisSandboxRuntimeError(
+        timedOut ? "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT" : "ANALYSIS_SANDBOX_CELL_CANCELLED",
+        "OPERATOR",
+        timedOut,
+      );
+    }
+    if (error instanceof AnalysisSandboxRuntimeError) throw error;
+    throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_OPERATOR_FAILED", "OPERATOR", false);
+  } finally {
+    clearTimeout(timeout);
+    input.signal?.removeEventListener("abort", cancel);
+  }
+}
+
 async function createSandboxPair(input: {
   readonly config: OpenSandboxAnalysisRuntimeConfig;
   readonly factory: OpenSandboxSdkFactory;
@@ -377,7 +534,6 @@ async function createSandboxPair(input: {
   });
   const base = {
     connectionConfig,
-    entrypoint: ["/opt/code-interpreter/code-interpreter.sh"],
     env: {
       PYTHONHASHSEED: "0",
       MPLBACKEND: "Agg",
@@ -401,12 +557,14 @@ async function createSandboxPair(input: {
   try {
     agent = await input.factory.createSandbox({
       ...base,
+      entrypoint: ["/opt/code-interpreter/code-interpreter.sh"],
       image: input.config.agent_images[input.profile],
       resource: input.config.agent_resource,
       metadata: { ...metadata, "data-agent-role": "agent" },
     });
     const operator = await input.factory.createSandbox({
       ...base,
+      entrypoint: ["tail", "-f", "/dev/null"],
       image: input.config.operator_image,
       resource: input.config.operator_resource,
       metadata: { ...metadata, "data-agent-role": "operator" },
@@ -444,6 +602,16 @@ async function initializeSandbox(sandbox: AnalysisSandboxHandle, factory: OpenSa
   return { interpreter, context };
 }
 
+async function initializeOperatorSandbox(sandbox: AnalysisSandboxHandle) {
+  await sandbox.files.createDirectories(
+    ["/workspace/operator-inputs", "/workspace/operator-outputs"].map((path) => ({
+      path,
+      mode: 700,
+    })),
+  );
+  return sandbox;
+}
+
 export function createOpenSandboxAnalysisRuntime(input: {
   readonly config: OpenSandboxAnalysisRuntimeConfig;
   readonly sdk_factory?: OpenSandboxSdkFactory;
@@ -463,11 +631,11 @@ export function createOpenSandboxAnalysisRuntime(input: {
       }
       const pair = await createSandboxPair({ ...sessionInput, config, factory });
       let agentRuntime: Awaited<ReturnType<typeof initializeSandbox>> | null = null;
-      let operatorRuntime: Awaited<ReturnType<typeof initializeSandbox>> | null = null;
+      let operatorRuntime: Awaited<ReturnType<typeof initializeOperatorSandbox>> | null = null;
       try {
         [agentRuntime, operatorRuntime] = await Promise.all([
           initializeSandbox(pair.agent, factory),
-          initializeSandbox(pair.operator, factory),
+          initializeOperatorSandbox(pair.operator),
         ]);
       } catch (error) {
         await Promise.allSettled([pair.agent.kill(), pair.operator.kill()]);
@@ -550,6 +718,59 @@ export function createOpenSandboxAnalysisRuntime(input: {
             );
           }
         },
+        async admitAgentCell(cellInput) {
+          assertOpen();
+          const cellId = safeSegmentSchema.parse(cellInput.cell_id);
+          const request = Buffer.from(
+            JSON.stringify({
+              schema_version: "analysis-cell-policy-request@1.0.0",
+              cell_id: cellId,
+              source: cellInput.source,
+              runtime_profile: sessionInput.profile,
+              generated_source_policy: cellInput.generated_source_policy,
+            }),
+            "utf8",
+          );
+          if (request.byteLength > config.max_file_bytes) {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_ARTIFACT_INVALID",
+              "ARTIFACT",
+              false,
+            );
+          }
+          const requestPath = `/workspace/operator-inputs/${cellId}.policy.json`;
+          const outputPath = `/workspace/operator-outputs/${cellId}.policy.json`;
+          try {
+            await pair.operator.files.writeFiles([{ path: requestPath, data: request, mode: 400 }]);
+          } catch {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+              "FILE_TRANSFER",
+              true,
+            );
+          }
+          await runOperatorCommandWithDeadline({
+            sandbox: operator,
+            cell_id: `cell-policy-${cellId}`,
+            command: `python -m data_agent_stats.dispatcher validate-cell ${JSON.stringify(requestPath)} ${JSON.stringify(outputPath)}`,
+            timeout_ms: cellInput.timeout_ms,
+            ...(cellInput.signal ? { signal: cellInput.signal } : {}),
+            stdout_bytes: config.stdout_bytes,
+            stderr_bytes: config.stderr_bytes,
+          });
+          const output = await read(pair.operator, outputPath);
+          try {
+            return cellPolicyObservationSchema.parse(
+              JSON.parse(Buffer.from(output).toString("utf8")),
+            );
+          } catch {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_OPERATOR_FAILED",
+              "OPERATOR",
+              false,
+            );
+          }
+        },
         runAgentCell(cellInput) {
           assertOpen();
           safeSegmentSchema.parse(cellInput.cell_id);
@@ -564,6 +785,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
             failure_code: "ANALYSIS_SANDBOX_CELL_FAILED",
             stdout_bytes: config.stdout_bytes,
             stderr_bytes: config.stderr_bytes,
+            return_python_error: true,
           });
         },
         readAgentFile(readInput) {
@@ -596,21 +818,13 @@ export function createOpenSandboxAnalysisRuntime(input: {
               true,
             );
           }
-          const source = [
-            "from data_agent_stats.dispatcher import execute_call_file",
-            `execute_call_file(${JSON.stringify(requestPath)}, ${JSON.stringify(outputPath)})`,
-            JSON.stringify(`operator:${callId}:completed`),
-          ].join("\n");
           const started = Date.now();
-          const cell = await runCellWithDeadline({
-            codes: operator.interpreter.codes,
-            context: operator.context,
+          const cell = await runOperatorCommandWithDeadline({
+            sandbox: operator,
             cell_id: `operator-${callId}`,
-            source,
+            command: `python -m data_agent_stats.dispatcher call ${JSON.stringify(requestPath)} ${JSON.stringify(outputPath)}`,
             timeout_ms: operatorInput.timeout_ms,
             ...(operatorInput.signal ? { signal: operatorInput.signal } : {}),
-            timeout_code: "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT",
-            failure_code: "ANALYSIS_SANDBOX_OPERATOR_FAILED",
             stdout_bytes: config.stdout_bytes,
             stderr_bytes: config.stderr_bytes,
           });
@@ -651,21 +865,13 @@ export function createOpenSandboxAnalysisRuntime(input: {
               true,
             );
           }
-          const source = [
-            "from data_agent_stats.dispatcher import finalize_calls_file",
-            `finalize_calls_file(${JSON.stringify(requestPath)}, ${JSON.stringify(outputPath)})`,
-            JSON.stringify(`operator-finalization:${finalizationId}:completed`),
-          ].join("\n");
           const started = Date.now();
-          const cell = await runCellWithDeadline({
-            codes: operator.interpreter.codes,
-            context: operator.context,
+          const cell = await runOperatorCommandWithDeadline({
+            sandbox: operator,
             cell_id: `operator-finalization-${finalizationId}`,
-            source,
+            command: `python -m data_agent_stats.dispatcher finalize ${JSON.stringify(requestPath)} ${JSON.stringify(outputPath)}`,
             timeout_ms: finalizationInput.timeout_ms,
             ...(finalizationInput.signal ? { signal: finalizationInput.signal } : {}),
-            timeout_code: "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT",
-            failure_code: "ANALYSIS_SANDBOX_OPERATOR_FAILED",
             stdout_bytes: config.stdout_bytes,
             stderr_bytes: config.stderr_bytes,
           });
@@ -685,7 +891,6 @@ export function createOpenSandboxAnalysisRuntime(input: {
           closed = true;
           const contextCleanup = await Promise.allSettled([
             agent.interpreter.codes.deleteContext(agent.context.id as string),
-            operator.interpreter.codes.deleteContext(operator.context.id as string),
           ]);
           const sandboxCleanup = await Promise.allSettled([
             pair.agent.kill(),

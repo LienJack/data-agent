@@ -1,6 +1,7 @@
 import type { AppScope, PortResult } from "../common/index.js";
 
 export type { AppScope, ContractError, PortResult } from "../common/index.js";
+export * from "./analysis-tools.js";
 export * from "./benchmark-suite.js";
 export * from "./embedding-provider.js";
 export * from "./event-correlation.js";

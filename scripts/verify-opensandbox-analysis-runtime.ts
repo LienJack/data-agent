@@ -84,38 +84,74 @@ try {
     content_sha256: sha256(input),
   });
 
-  const prepare = await session.runAgentCell({
-    cell_id: "prepare",
+  const isolation = await session.runAgentCell({
+    cell_id: "isolation",
     timeout_ms: 30_000,
     source: [
-      "import importlib.util, json, pandas as pd",
+      "import importlib.util, json",
       "assert importlib.util.find_spec('data_agent_stats') is None",
-      "frame = pd.read_json('/workspace/inputs/probe.json')",
-      "frame.to_parquet('/workspace/intermediate/probe.parquet', index=False)",
-      "json.dumps({'rows': len(frame), 'operator_package_absent': True}, sort_keys=True)",
+      "json.dumps({'operator_package_absent': True}, sort_keys=True)",
     ].join("\n"),
   });
-  checks.agent_operator_package_absent = prepare.result_text?.includes(
+  checks.agent_operator_package_absent = isolation.result_text?.includes(
     '"operator_package_absent": true',
   );
 
+  const prepareSource = [
+    "import json, pandas as pd",
+    "frame = pd.read_json('/workspace/inputs/probe.json')",
+    "frame.to_parquet('/workspace/intermediate/probe.parquet', index=False)",
+    "json.dumps({'rows': len(frame)}, sort_keys=True)",
+  ].join("\n");
+  const preparePolicy = await session.admitAgentCell({
+    cell_id: "prepare",
+    source: prepareSource,
+    generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+    timeout_ms: 30_000,
+  });
+  const deniedPolicy = await session.admitAgentCell({
+    cell_id: "denied-system-import",
+    source: "import subprocess",
+    generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+    timeout_ms: 30_000,
+  });
+  checks.cell_policy = {
+    admitted: preparePolicy.status === "ADMITTED",
+    denied_system_import: deniedPolicy.status === "REJECTED",
+  };
+  const prepare = await session.runAgentCell({
+    cell_id: "prepare",
+    timeout_ms: 30_000,
+    source: prepareSource,
+  });
+
+  const chartSource = [
+    "import matplotlib.pyplot as plt, pandas as pd",
+    "reloaded = pd.read_parquet('/workspace/intermediate/probe.parquet')",
+    "fig, ax = plt.subplots(figsize=(5, 3))",
+    "ax.plot(reloaded['month'], reloaded['revenue'], marker='o')",
+    "ax.set_ylabel('Revenue')",
+    "fig.tight_layout()",
+    "fig.savefig('/workspace/outputs/probe.png', dpi=120, metadata={})",
+    "fig.savefig('/workspace/outputs/probe.svg', metadata={})",
+    "plt.close(fig)",
+    "'chart-written'",
+  ].join("\n");
+  const chartPolicy = await session.admitAgentCell({
+    cell_id: "chart",
+    source: chartSource,
+    generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+    timeout_ms: 30_000,
+  });
   const chart = await session.runAgentCell({
     cell_id: "chart",
     timeout_ms: 30_000,
-    source: [
-      "import matplotlib.pyplot as plt, pandas as pd",
-      "reloaded = pd.read_parquet('/workspace/intermediate/probe.parquet')",
-      "fig, ax = plt.subplots(figsize=(5, 3))",
-      "ax.plot(reloaded['month'], reloaded['revenue'], marker='o')",
-      "ax.set_ylabel('Revenue')",
-      "fig.tight_layout()",
-      "fig.savefig('/workspace/outputs/probe.png', dpi=120, metadata={})",
-      "fig.savefig('/workspace/outputs/probe.svg', metadata={})",
-      "plt.close(fig)",
-      "'chart-written'",
-    ].join("\n"),
+    source: chartSource,
   });
-  checks.stateful_cells = chart.result_text?.includes("chart-written") === true;
+  checks.stateful_cells =
+    prepare.status === "SUCCEEDED" &&
+    chartPolicy.status === "ADMITTED" &&
+    chart.result_text?.includes("chart-written") === true;
 
   const parquet = await session.readAgentFile({ path: "/workspace/intermediate/probe.parquet" });
   const png = await session.readAgentFile({ path: "/workspace/outputs/probe.png" });
@@ -224,6 +260,9 @@ try {
   const pass =
     checks.distinct_sandboxes === true &&
     checks.agent_operator_package_absent === true &&
+    (checks.cell_policy as { admitted: boolean; denied_system_import: boolean }).admitted &&
+    (checks.cell_policy as { admitted: boolean; denied_system_import: boolean })
+      .denied_system_import &&
     checks.stateful_cells === true &&
     (checks.parquet as { magic_ok: boolean }).magic_ok &&
     (checks.png as { magic_ok: boolean }).magic_ok &&
