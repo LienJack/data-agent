@@ -606,6 +606,23 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context): pass",
+      failure_code: "FALCON24_Q4_CONTROL_MISSING",
+      standard_program: null,
+    });
+    const marketingControlRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(marketingControlRepair.repair?.required_correction).toContain("['trend','seasonality']");
+    expect(marketingControlRepair.repair?.required_correction).toContain(
+      "semantic evidence identifiers",
+    );
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
