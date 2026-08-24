@@ -46,6 +46,28 @@ class StatisticalOperatorToolCall(StrictModel):
         return self
 
 
+class StatisticalOperatorFinalizationRequest(StrictModel):
+    schema_version: Literal["statistical-operator-finalization@1.0.0"]
+    operator_registry_digest: Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
+    runtime_profile: Literal["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]
+    calls: Annotated[tuple[StatisticalOperatorToolCall, ...], Field(min_length=1, max_length=32)]
+    json_outputs: dict[str, Any]
+
+    @model_validator(mode="after")
+    def exact_call_set(self) -> StatisticalOperatorFinalizationRequest:
+        if self.operator_registry_digest != OPERATOR_REGISTRY_DIGEST:
+            raise ValueError("operator finalization must bind the exact registry")
+        if len({call.call_id for call in self.calls}) != len(self.calls):
+            raise ValueError("operator finalization call ids must be unique")
+        if any(
+            call.operator_registry_digest != self.operator_registry_digest
+            or call.runtime_profile != self.runtime_profile
+            for call in self.calls
+        ):
+            raise ValueError("operator finalization calls must share one registry and profile")
+        return self
+
+
 def execute_call(request: StatisticalOperatorToolCall) -> dict[str, Any]:
     registry = StatisticalOperatorRegistry(
         expected_registry_digest=request.operator_registry_digest,
@@ -71,6 +93,28 @@ def execute_call(request: StatisticalOperatorToolCall) -> dict[str, Any]:
     }
 
 
+def finalize_calls(request: StatisticalOperatorFinalizationRequest) -> dict[str, Any]:
+    registry = StatisticalOperatorRegistry(
+        expected_registry_digest=request.operator_registry_digest,
+        obligations=tuple(call.obligation for call in request.calls),
+        runtime_profile=request.runtime_profile,
+    )
+    for call in request.calls:
+        registry.call(
+            call.operator_id,
+            call_id=call.call_id,
+            inputs=call.inputs,
+            parameters=call.parameters,
+        )
+    receipts, closure_hash = registry.finalize(request.json_outputs)
+    return {
+        "schema_version": "statistical-operator-finalization-result@1.0.0",
+        "operator_registry_digest": request.operator_registry_digest,
+        "operator_receipts": [receipt.model_dump(mode="json") for receipt in receipts],
+        "operator_receipt_closure_hash": closure_hash,
+    }
+
+
 def execute_call_file(request_path: str, output_path: str) -> None:
     if _INPUT_PATH.fullmatch(request_path) is None or _OUTPUT_PATH.fullmatch(output_path) is None:
         raise ValueError("PYTHON_OPERATOR_PATH_INVALID")
@@ -84,8 +128,24 @@ def execute_call_file(request_path: str, output_path: str) -> None:
     Path(output_path).write_bytes(encoded)
 
 
+def finalize_calls_file(request_path: str, output_path: str) -> None:
+    if _INPUT_PATH.fullmatch(request_path) is None or _OUTPUT_PATH.fullmatch(output_path) is None:
+        raise ValueError("PYTHON_OPERATOR_PATH_INVALID")
+    request_bytes = Path(request_path).read_bytes()
+    if not 0 < len(request_bytes) <= MAX_REQUEST_BYTES:
+        raise ValueError("PYTHON_OPERATOR_INPUT_INVALID")
+    request = StatisticalOperatorFinalizationRequest.model_validate_json(request_bytes)
+    encoded = rfc8785.dumps(finalize_calls(request))
+    if len(encoded) > MAX_OUTPUT_BYTES:
+        raise ValueError("PYTHON_OPERATOR_NUMERIC_FAILURE")
+    Path(output_path).write_bytes(encoded)
+
+
 __all__ = [
     "StatisticalOperatorToolCall",
     "execute_call",
     "execute_call_file",
+    "StatisticalOperatorFinalizationRequest",
+    "finalize_calls",
+    "finalize_calls_file",
 ]

@@ -140,43 +140,42 @@ try {
     root_ok: decoder.decode(svg.subarray(0, 1_024)).includes("<svg"),
   };
 
-  const call = encoder.encode(
-    JSON.stringify({
-      schema_version: "statistical-operator-tool-call@1.0.0",
+  const callDocument = {
+    schema_version: "statistical-operator-tool-call@1.0.0",
+    call_id: "probe_bh",
+    operator_id: "multiple-testing.bh-fdr@1",
+    operator_registry_digest: REGISTRY_DIGEST,
+    runtime_profile: "CORE_ANALYSIS",
+    obligation: {
       call_id: "probe_bh",
       operator_id: "multiple-testing.bh-fdr@1",
-      operator_registry_digest: REGISTRY_DIGEST,
-      runtime_profile: "CORE_ANALYSIS",
-      obligation: {
-        call_id: "probe_bh",
-        operator_id: "multiple-testing.bh-fdr@1",
-        result_binding: {
-          result_output_name: "analysis_json",
-          result_collection_path: "/tests",
-          operator_collection_path: "/tests",
-          label_fields: ["label"],
-          value_bindings: [
-            {
-              result_field: "adjusted_p_value",
-              operator_field: "adjusted_p_value",
-              comparison: "NUMERIC_TOLERANCE",
-              absolute_tolerance: 1e-12,
-              relative_tolerance: 1e-12,
-            },
-          ],
-          require_exact_label_set: true,
-        },
-      },
-      inputs: {
-        tests: [
-          { label: "a", p_value: 0.01 },
-          { label: "b", p_value: 0.04 },
-          { label: "c", p_value: 0.2 },
+      result_binding: {
+        result_output_name: "analysis_json",
+        result_collection_path: "/tests",
+        operator_collection_path: "/tests",
+        label_fields: ["label"],
+        value_bindings: [
+          {
+            result_field: "adjusted_p_value",
+            operator_field: "adjusted_p_value",
+            comparison: "NUMERIC_TOLERANCE",
+            absolute_tolerance: 1e-12,
+            relative_tolerance: 1e-12,
+          },
         ],
+        require_exact_label_set: true,
       },
-      parameters: { alpha: 0.05, method: "bh" },
-    }),
-  );
+    },
+    inputs: {
+      tests: [
+        { label: "a", p_value: 0.01 },
+        { label: "b", p_value: 0.04 },
+        { label: "c", p_value: 0.2 },
+      ],
+    },
+    parameters: { alpha: 0.05, method: "bh" },
+  } as const;
+  const call = encoder.encode(JSON.stringify(callDocument));
   const operator = await session.runOperator({
     call_id: "probe_bh",
     request: call,
@@ -195,6 +194,32 @@ try {
     row_count: operatorResult.output?.tests?.length ?? 0,
     output_sha256: operator.output_sha256,
   };
+  const finalizationRequest = encoder.encode(
+    JSON.stringify({
+      schema_version: "statistical-operator-finalization@1.0.0",
+      operator_registry_digest: REGISTRY_DIGEST,
+      runtime_profile: "CORE_ANALYSIS",
+      calls: [callDocument],
+      json_outputs: { analysis_json: operatorResult.output },
+    }),
+  );
+  const finalization = await session.finalizeOperators({
+    finalization_id: "probe_receipts",
+    request: finalizationRequest,
+    request_sha256: sha256(finalizationRequest),
+    timeout_ms: 30_000,
+  });
+  const finalizationResult = JSON.parse(decoder.decode(finalization.output)) as {
+    operator_receipts?: unknown[];
+    operator_receipt_closure_hash?: string;
+  };
+  checks.operator_receipt_closure = {
+    receipt_count: finalizationResult.operator_receipts?.length ?? 0,
+    closure_hash: finalizationResult.operator_receipt_closure_hash ?? null,
+    bound:
+      finalizationResult.operator_receipts?.length === 1 &&
+      finalizationResult.operator_receipt_closure_hash?.startsWith("sha256:") === true,
+  };
 
   const pass =
     checks.distinct_sandboxes === true &&
@@ -204,7 +229,8 @@ try {
     (checks.png as { magic_ok: boolean }).magic_ok &&
     (checks.svg as { root_ok: boolean }).root_ok &&
     (checks.governed_operator as { succeeded: boolean; registry_bound: boolean }).succeeded &&
-    (checks.governed_operator as { succeeded: boolean; registry_bound: boolean }).registry_bound;
+    (checks.governed_operator as { succeeded: boolean; registry_bound: boolean }).registry_bound &&
+    (checks.operator_receipt_closure as { bound: boolean }).bound;
   report.status = pass ? "PASSED" : "FAILED";
   if (!pass) process.exitCode = 1;
 } catch (error) {

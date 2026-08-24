@@ -113,6 +113,20 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
                 Buffer.from(JSON.stringify({ status: "PASS", request_hash: digest(request) })),
               );
             }
+            const finalizationMatch = code.match(/finalize_calls_file\("([^"]+)", "([^"]+)"\)/u);
+            if (finalizationMatch) {
+              const request = state.files.get(finalizationMatch[1] as string);
+              if (!request) throw new Error("operator finalization request missing");
+              state.files.set(
+                finalizationMatch[2] as string,
+                Buffer.from(
+                  JSON.stringify({
+                    operator_receipts: [],
+                    operator_receipt_closure_hash: digest(request),
+                  }),
+                ),
+              );
+            }
             return {
               id: `${state.id}-execution`,
               executionCount: 1,
@@ -184,6 +198,16 @@ describe("OpenSandbox analysis runtime", () => {
     expect(operator.output_sha256).toBe(digest(operator.output as Uint8Array));
     expect(fake.created[0]?.files.has("/workspace/operator-inputs/call-1.json")).toBe(false);
     expect(fake.created[1]?.files.has("/workspace/operator-inputs/call-1.json")).toBe(true);
+
+    const finalizationRequest = Buffer.from(JSON.stringify({ calls: [] }));
+    const finalization = await session.finalizeOperators({
+      finalization_id: "final-1",
+      request: finalizationRequest,
+      request_sha256: digest(finalizationRequest),
+      timeout_ms: 100,
+    });
+    expect(finalization.status).toBe("SUCCEEDED");
+    expect(finalization.output_sha256).toBe(digest(finalization.output));
 
     await session.close();
     expect(fake.created.every(({ killed, closed }) => killed && closed)).toBe(true);

@@ -77,6 +77,16 @@ export interface AnalysisOperatorObservation {
   readonly cell: AnalysisSandboxCellObservation;
 }
 
+export interface AnalysisOperatorFinalizationObservation {
+  readonly finalization_id: string;
+  readonly status: "SUCCEEDED";
+  readonly elapsed_ms: number;
+  readonly request_sha256: `sha256:${string}`;
+  readonly output_sha256: `sha256:${string}`;
+  readonly output: Uint8Array;
+  readonly cell: AnalysisSandboxCellObservation;
+}
+
 export interface OpenSandboxAnalysisRuntimeConfig {
   readonly domain: string;
   readonly protocol: "http" | "https";
@@ -169,6 +179,13 @@ export interface OpenSandboxAnalysisSession {
     readonly timeout_ms: number;
     readonly signal?: AbortSignal;
   }): Promise<AnalysisOperatorObservation>;
+  finalizeOperators(input: {
+    readonly finalization_id: string;
+    readonly request: Uint8Array;
+    readonly request_sha256: `sha256:${string}`;
+    readonly timeout_ms: number;
+    readonly signal?: AbortSignal;
+  }): Promise<AnalysisOperatorFinalizationObservation>;
   close(): Promise<void>;
 }
 
@@ -603,6 +620,61 @@ export function createOpenSandboxAnalysisRuntime(input: {
             status: "SUCCEEDED" as const,
             elapsed_ms: Math.max(0, Date.now() - started),
             request_sha256: operatorInput.request_sha256,
+            output_sha256: digest(output),
+            output,
+            cell,
+          });
+        },
+        async finalizeOperators(finalizationInput) {
+          assertOpen();
+          const finalizationId = safeSegmentSchema.parse(finalizationInput.finalization_id);
+          if (
+            finalizationInput.request.byteLength > config.max_file_bytes ||
+            digest(finalizationInput.request) !== finalizationInput.request_sha256
+          ) {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_ARTIFACT_INVALID",
+              "ARTIFACT",
+              false,
+            );
+          }
+          const requestPath = `/workspace/operator-inputs/${finalizationId}.finalize.json`;
+          const outputPath = `/workspace/operator-outputs/${finalizationId}.receipt.json`;
+          try {
+            await pair.operator.files.writeFiles([
+              { path: requestPath, data: finalizationInput.request, mode: 400 },
+            ]);
+          } catch {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+              "FILE_TRANSFER",
+              true,
+            );
+          }
+          const source = [
+            "from data_agent_stats.dispatcher import finalize_calls_file",
+            `finalize_calls_file(${JSON.stringify(requestPath)}, ${JSON.stringify(outputPath)})`,
+            JSON.stringify(`operator-finalization:${finalizationId}:completed`),
+          ].join("\n");
+          const started = Date.now();
+          const cell = await runCellWithDeadline({
+            codes: operator.interpreter.codes,
+            context: operator.context,
+            cell_id: `operator-finalization-${finalizationId}`,
+            source,
+            timeout_ms: finalizationInput.timeout_ms,
+            ...(finalizationInput.signal ? { signal: finalizationInput.signal } : {}),
+            timeout_code: "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT",
+            failure_code: "ANALYSIS_SANDBOX_OPERATOR_FAILED",
+            stdout_bytes: config.stdout_bytes,
+            stderr_bytes: config.stderr_bytes,
+          });
+          const output = await read(pair.operator, outputPath);
+          return Object.freeze({
+            finalization_id: finalizationId,
+            status: "SUCCEEDED" as const,
+            elapsed_ms: Math.max(0, Date.now() - started),
+            request_sha256: finalizationInput.request_sha256,
             output_sha256: digest(output),
             output,
             cell,
