@@ -33,23 +33,6 @@ interface AnalysisSystemArtifactAuthority {
   >;
 }
 
-function initialParent(payload: AnalysisPayload): ArtifactReference | null {
-  switch (payload.artifact_type) {
-    case "ResearchBrief":
-      return null;
-    case "AnalysisProgram":
-      return payload.brief_ref;
-    case "DerivedAnalysisEvidence":
-      return payload.analysis_program_ref;
-    case "AnalysisCompletionReceipt": {
-      const evidence = payload.node_results.flatMap(({ evidence_ref: evidenceRef }) =>
-        evidenceRef ? [evidenceRef] : [],
-      );
-      return evidence.at(-1) ?? payload.analysis_program_ref;
-    }
-  }
-}
-
 function schemaVersion(payload: AnalysisPayload): string {
   const tuple = L2_RESEARCH_WIRE_VERSION_MATRIX.find(
     ([artifactType, , protocolVersion]) =>
@@ -104,8 +87,6 @@ export function createResearchAnalysisArtifactPort(input: {
   readonly now?: () => Date;
 }): AnalysisArtifactCommitPort {
   const now = input.now ?? (() => new Date());
-  const expectedParents = new Map<string, ArtifactReference | null>();
-  const latestByRun = new Map<string, ArtifactReference>();
 
   return Object.freeze({
     async commitL2(command: Parameters<AnalysisArtifactCommitPort["commitL2"]>[0]) {
@@ -115,10 +96,6 @@ export function createResearchAnalysisArtifactPort(input: {
         idempotency_key: command.idempotency_key,
         created_at: now().toISOString(),
       });
-      const expectedParent = expectedParents.has(command.idempotency_key)
-        ? (expectedParents.get(command.idempotency_key) ?? null)
-        : (latestByRun.get(command.lease.run_id) ?? initialParent(command.payload));
-      expectedParents.set(command.idempotency_key, expectedParent);
       const commit = researchArtifactCommitInputSchema.parse({
         schema_version: "1.0.0",
         scope: command.lease.scope,
@@ -131,14 +108,13 @@ export function createResearchAnalysisArtifactPort(input: {
         attempt_id: command.lease.attempt_id,
         worker_fence: command.lease.worker_fence,
         candidate: document,
-        expected_parent_ref: expectedParent,
+        expected_parent_ref: null,
       });
       const result = await input.authority.commitCurrent(
         input.capabilities.forArtifactType(command.payload.artifact_type),
         commit,
       );
       if (!result.ok) throw new TypeError(result.error.code);
-      latestByRun.set(command.lease.run_id, result.value.reference);
       return result.value.reference;
     },
 
@@ -176,6 +152,5 @@ export function createResearchAnalysisArtifactPort(input: {
 }
 
 export const researchAnalysisArtifactPortInternals = Object.freeze({
-  initialParent,
   deterministicAnalysisUuid,
 });

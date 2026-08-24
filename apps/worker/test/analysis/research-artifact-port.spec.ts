@@ -91,7 +91,7 @@ const lease = {
 } as const;
 
 describe("research analysis artifact port", () => {
-  it("seals L2 candidates and preserves the original parent on idempotent replay", async () => {
+  it("seals revision-one L2 candidates without confusing payload dependencies for revision parents", async () => {
     const commands: Array<Record<string, unknown>> = [];
     const commitCurrent = vi.fn(async (_capability: unknown, command: Record<string, unknown>) => {
       commands.push(command);
@@ -133,16 +133,17 @@ describe("research analysis artifact port", () => {
     expect(commands[0]).toMatchObject({
       attempt_id: lease.attempt_id,
       worker_fence: 2,
-      expected_parent_ref: payload.brief_ref,
+      expected_parent_ref: null,
       candidate: {
         envelope: {
           artifact_type: "AnalysisProgram",
+          parent_ref: null,
           producer: { kind: "deterministic", id: "analysis-program-executor@1" },
           status: "CANDIDATE",
         },
       },
     });
-    expect(commands[1]?.expected_parent_ref).toEqual(payload.brief_ref);
+    expect(commands[1]?.expected_parent_ref).toBeNull();
   });
 
   it("commits system artifacts through the fenced PostgreSQL authority", async () => {
