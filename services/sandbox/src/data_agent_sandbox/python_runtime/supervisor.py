@@ -47,6 +47,26 @@ _OUTPUT_SUFFIX = {
     "PNG": ".png",
 }
 _INPUT_SUFFIX = {"ARROW": ".arrow", "CSV": ".csv", "JSON": ".json"}
+_SAFE_WORKER_FAILURE_CODES = (
+    "PYTHON_IMPORT_DENIED",
+    "PYTHON_INPUT_FORMAT_INVALID",
+    "PYTHON_INPUT_NOT_DECLARED",
+    "PYTHON_OUTPUT_NOT_DECLARED",
+    "PYTHON_OUTPUT_TYPE_MISMATCH",
+    "PYTHON_OUTPUT_VALUE_INVALID",
+    "PYTHON_VEGA_LITE_INVALID",
+    "PYTHON_PNG_VALUE_INVALID",
+    "PYTHON_ENTRYPOINT_MISSING",
+    "PYTHON_ENTRYPOINT_RETURN_MUST_BE_NONE",
+)
+
+
+def _classify_worker_failure(stderr: bytes) -> str:
+    """Project only fixed SDK/runtime markers; never propagate model-controlled stderr."""
+    for code in _SAFE_WORKER_FAILURE_CODES:
+        if code.encode("ascii") in stderr:
+            return code
+    return "PYTHON_ERROR"
 
 
 @dataclass(frozen=True)
@@ -458,11 +478,11 @@ class PythonSandboxSupervisor:
                     stderr_raw,
                 )
             if process.returncode != 0:
-                failure: Literal["PYTHON_ERROR", "PYTHON_RESOURCE_LIMIT"] = (
+                failure: str = (
                     "PYTHON_RESOURCE_LIMIT"
                     if process.returncode < 0
                     and -process.returncode in {signal.SIGKILL, signal.SIGXCPU, signal.SIGXFSZ}
-                    else "PYTHON_ERROR"
+                    else _classify_worker_failure(stderr_raw)
                 )
                 return self._failure(
                     envelope,

@@ -248,6 +248,19 @@ def test_supervisor_kills_process_group_on_timeout_and_commits_nothing(tmp_path:
     assert outcome.outputs == ()
 
 
+def test_supervisor_projects_safe_sdk_failure_code_without_exposing_stderr(tmp_path: Path) -> None:
+    request = envelope_for(
+        "def main(context):\n    context.read('missing_input')\n",
+        b"{}\n",
+        identifier="sandbox-safe-failure-code",
+    )
+    outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)
+
+    assert outcome.receipt.failure_code == "PYTHON_INPUT_NOT_DECLARED"
+    assert outcome.receipt.status == "FAILED"
+    assert outcome.outputs == ()
+
+
 def test_each_request_has_fresh_module_state(tmp_path: Path) -> None:
     source = (
         "STATE = []\n"

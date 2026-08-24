@@ -406,6 +406,35 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           output_slots: dependencies.references,
           ...(input.signal ? { signal: input.signal } : {}),
         });
+        const commitFailedSandboxReceipt = async (
+          execution: AnalysisSandboxExecution,
+        ): Promise<void> => {
+          if (execution.status === "SUCCEEDED" || execution.outcome === null) return;
+          const receipt = execution.outcome.receipt;
+          const receiptHash = await contentHash(receipt);
+          const failedReceiptRef = sandboxExecutionReceiptRefSchema.parse(
+            dependencies.references.createSystem({
+              artifact_type: "SandboxExecutionReceipt",
+              label: `${node.node_id}:attempt-${receipt.attempt}:${receipt.request_hash}`,
+              content_hash: receiptHash,
+              lease: input.lease,
+            }),
+          );
+          const committed = await dependencies.artifacts.commitSystem({
+            lease: input.lease,
+            principal_id: input.principal_id,
+            idempotency_key: `analysis-receipt-failure:${analysisProgram.program_hash}:${node.node_id}:${receipt.attempt}`,
+            reference: failedReceiptRef,
+            payload: receipt,
+            content: null,
+          });
+          if (
+            artifactReferenceIdentity(committed) !== artifactReferenceIdentity(failedReceiptRef)
+          ) {
+            throw new TypeError("ANALYSIS_RECEIPT_COMMIT_CORRELATION_INVALID");
+          }
+        };
+        await commitFailedSandboxReceipt(sandbox);
         const evaluateSandbox = async (): Promise<AnalysisOracleExpectation | null> => {
           if (sandbox.status !== "SUCCEEDED") return null;
           try {
@@ -488,6 +517,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             output_slots: dependencies.references,
             ...(input.signal ? { signal: input.signal } : {}),
           });
+          await commitFailedSandboxReceipt(sandbox);
           expectation = await evaluateSandbox();
         }
         if (sandbox.status !== "SUCCEEDED") {
