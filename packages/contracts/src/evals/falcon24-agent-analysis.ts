@@ -165,11 +165,16 @@ export const falcon24AgentAnalysisRunResultSchema = z
     provider: z.literal("deepseek"),
     model_id: z.literal(FALCON24_DEEPSEEK_MODEL),
     model_override_attempted: z.literal(false),
-    provider_invocation_ref: z.strictObject({
-      resource_id: immutableIdSchema,
-      resource_revision: z.number().int().positive(),
-      resource_hash: contentHashSchema,
-    }),
+    provider_invocation_refs: z
+      .array(
+        z.strictObject({
+          resource_id: immutableIdSchema,
+          resource_revision: z.number().int().positive(),
+          resource_hash: contentHashSchema,
+        }),
+      )
+      .min(1)
+      .max(32),
     semantic_context_ref: z.strictObject({
       package_id: immutableIdSchema,
       package_revision: z.literal(1),
@@ -213,13 +218,28 @@ export const falcon24AgentAnalysisRunResultSchema = z
       });
     }
     if (
-      result.generated_python_refs.length !== result.model_generated_node_count ||
+      result.generated_python_refs.length < result.model_generated_node_count ||
       result.sandbox_receipt_refs.length !== result.model_generated_node_count
     ) {
       context.addIssue({
         code: "custom",
-        message: "Every model-generated node requires one source and sandbox receipt.",
+        message:
+          "Every model-generated node requires a sandbox receipt and one or more Python sources.",
         path: ["model_generated_node_count"],
+      });
+    }
+    const providerInvocationIdentities = result.provider_invocation_refs.map(
+      ({
+        resource_id: resourceId,
+        resource_revision: resourceRevision,
+        resource_hash: resourceHash,
+      }) => `${resourceId}\0${resourceRevision}\0${resourceHash}`,
+    );
+    if (new Set(providerInvocationIdentities).size !== providerInvocationIdentities.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 provider invocation evidence must not contain duplicates.",
+        path: ["provider_invocation_refs"],
       });
     }
     if (

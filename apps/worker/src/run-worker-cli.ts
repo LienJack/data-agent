@@ -81,7 +81,10 @@ import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
-import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
+import {
+  loadRunWorkerEnvironment,
+  resolveRunWorkerRepositoryRoot,
+} from "./run-worker-environment.js";
 import {
   createMultiPrincipalRunWorkerRunner,
   isRunnableWorkspaceMember,
@@ -241,6 +244,7 @@ async function closeServer(server: Server): Promise<void> {
 export async function runWorkerProcess(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  const repositoryRoot = resolveRunWorkerRepositoryRoot(process.cwd());
   if (
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES" &&
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_CONFIRM !== "YES"
@@ -254,8 +258,10 @@ export async function runWorkerProcess(
   const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
-  const falcon24AcceptanceRecorder =
-    createEnvironmentFalcon24AnalysisAcceptanceRecorder(environment);
+  const falcon24AcceptanceRecorder = createEnvironmentFalcon24AnalysisAcceptanceRecorder(
+    environment,
+    repositoryRoot,
+  );
   const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment);
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"

@@ -72,18 +72,15 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
     if (!metadata || metadata.case_id !== recordInput.test_case.case_id) {
       throw new TypeError("FALCON24_ANALYSIS_RUN_MANIFEST_MISMATCH");
     }
-    const providerInvocation = single(
-      recordInput.execution.provider_invocation_refs,
-      "FALCON24_ANALYSIS_PROVIDER_INVOCATION_REF_REQUIRED",
-    );
-    const generatedPython = single(
-      recordInput.execution.generated_python_refs,
-      "FALCON24_ANALYSIS_GENERATED_PYTHON_REF_REQUIRED",
-    );
-    const sandboxReceipt = single(
-      recordInput.execution.sandbox_receipt_refs,
-      "FALCON24_ANALYSIS_SANDBOX_RECEIPT_REF_REQUIRED",
-    );
+    if (recordInput.execution.provider_invocation_refs.length === 0) {
+      throw new TypeError("FALCON24_ANALYSIS_PROVIDER_INVOCATION_REF_REQUIRED");
+    }
+    if (recordInput.execution.generated_python_refs.length === 0) {
+      throw new TypeError("FALCON24_ANALYSIS_GENERATED_PYTHON_REF_REQUIRED");
+    }
+    if (recordInput.execution.sandbox_receipt_refs.length === 0) {
+      throw new TypeError("FALCON24_ANALYSIS_SANDBOX_RECEIPT_REF_REQUIRED");
+    }
     const oracleReceipt = falcon24AnalysisOracleReceiptSchema.parse(
       single(recordInput.execution.oracle_receipts, "FALCON24_ANALYSIS_ORACLE_RECEIPT_REQUIRED"),
     );
@@ -96,12 +93,12 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       provider: "deepseek",
       model_id: "deepseek-v4-flash",
       model_override_attempted: false,
-      provider_invocation_ref: providerInvocation,
+      provider_invocation_refs: [...recordInput.execution.provider_invocation_refs],
       semantic_context_ref: recordInput.semantic_context_ref,
       analysis_program_ref: recordInput.execution.analysis_program_ref,
-      generated_python_refs: [generatedPython],
-      sandbox_receipt_refs: [sandboxReceipt],
-      model_generated_node_count: 1,
+      generated_python_refs: [...recordInput.execution.generated_python_refs],
+      sandbox_receipt_refs: [...recordInput.execution.sandbox_receipt_refs],
+      model_generated_node_count: recordInput.execution.sandbox_receipt_refs.length,
       oracle_receipt: oracleReceipt,
       sandbox_status: "SUCCEEDED",
       answer_hash: oracleReceipt.output_hash,

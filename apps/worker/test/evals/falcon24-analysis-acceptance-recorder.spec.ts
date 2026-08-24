@@ -120,10 +120,15 @@ describe("Falcon24 analysis acceptance recorder", () => {
     const analysisProgramRef = reference("AnalysisProgram", metadata.run_id, 6);
     const execution = {
       analysis_program_ref: analysisProgramRef,
-      generated_python_refs: [reference("SensitiveExecutionArtifact", metadata.run_id, 7)],
+      generated_python_refs: [
+        reference("SensitiveExecutionArtifact", metadata.run_id, 7),
+        reference("SensitiveExecutionArtifact", metadata.run_id, 12),
+      ],
       sandbox_receipt_refs: [reference("SandboxExecutionReceipt", metadata.run_id, 8)],
       provider_invocation_refs: [
         { resource_id: id(9), resource_revision: 1, resource_hash: hash("9") },
+        { resource_id: id(13), resource_revision: 1, resource_hash: hash("d") },
+        { resource_id: id(14), resource_revision: 1, resource_hash: hash("e") },
       ],
       oracle_receipts: [oracleReceipt],
     } as unknown as AnalysisExecutionResult;
@@ -148,7 +153,8 @@ describe("Falcon24 analysis acceptance recorder", () => {
 
     const results = JSON.parse(await readFile(resultsPath, "utf8"));
     expect(results).toHaveLength(1);
-    expect(falcon24AgentAnalysisRunResultSchema.parse(results[0])).toMatchObject({
+    const parsedResult = falcon24AgentAnalysisRunResultSchema.parse(results[0]);
+    expect(parsedResult).toMatchObject({
       case_id: testCase.case_id,
       run_variant: "COLD",
       repetition: 1,
@@ -156,6 +162,8 @@ describe("Falcon24 analysis acceptance recorder", () => {
       chart_dataset_hash: oracleReceipt.chart_dataset_hash,
       model_generated_node_count: 1,
     });
+    expect(parsedResult.generated_python_refs).toHaveLength(2);
+    expect(parsedResult.provider_invocation_refs).toHaveLength(3);
 
     const changedOracleMaterial = {
       ...oracleMaterial,
