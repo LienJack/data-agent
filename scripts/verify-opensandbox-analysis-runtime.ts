@@ -17,6 +17,14 @@ function optional(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
 }
 
+function requiredBoolean(name: string): boolean {
+  const value = required(name);
+  if (value !== "true" && value !== "false") {
+    throw new Error(`Invalid boolean environment variable: ${name}`);
+  }
+  return value === "true";
+}
+
 function sha256(bytes: Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
@@ -32,6 +40,7 @@ const runtime = createOpenSandboxAnalysisRuntime({
     domain: required("ANALYSIS_SANDBOX_SERVER_DOMAIN"),
     protocol: required("ANALYSIS_SANDBOX_SERVER_PROTOCOL") === "https" ? "https" : "http",
     api_key: required("ANALYSIS_SANDBOX_API_KEY"),
+    use_server_proxy: requiredBoolean("ANALYSIS_SANDBOX_USE_SERVER_PROXY"),
     request_timeout_seconds: 120,
     ready_timeout_seconds: 180,
     sandbox_timeout_seconds: 600,
@@ -144,12 +153,7 @@ try {
     prepared: prepare.status === "SUCCEEDED",
     exact_closure:
       JSON.stringify(extractedNames) ===
-      JSON.stringify([
-        "result_document",
-        "trend_table",
-        "operator_inputs",
-        "operator_parameters",
-      ]),
+      JSON.stringify(["result_document", "trend_table", "operator_inputs", "operator_parameters"]),
   };
 
   const callDocument = {

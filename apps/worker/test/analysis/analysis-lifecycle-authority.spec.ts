@@ -1,17 +1,18 @@
 import { createHash } from "node:crypto";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildAnalysisAuthorityCommit,
   buildAnalysisContextJournalAppend,
   buildAnalysisContextJournalEntryHash,
 } from "@data-agent/contracts/ports";
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
 import {
-  createResearchAnalysisLifecycleAuthorityPort,
   type AnalysisLifecyclePersistenceAuthority,
+  analysisLifecycleAuthorityInternals,
+  createResearchAnalysisLifecycleAuthorityPort,
 } from "../../src/analysis/analysis-lifecycle-authority.js";
 import type { ResearchAuthorityCapabilityResolver } from "../../src/runs/research-authority-capabilities.js";
-import type { RunWorkLease } from "@data-agent/contracts/runs";
 
 const id = (suffix: number) => `93000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -187,7 +188,7 @@ describe("durable analysis lifecycle authority", () => {
           return { authority_capability_id: id(7) };
         },
       } as unknown as ResearchAuthorityCapabilityResolver,
-      now: () => new Date("2026-08-24T00:00:00.000Z"),
+      now: () => new Date("2026-08-24T00:59:00.000Z"),
     });
     const documents = [
       new TextEncoder().encode('{"result":1}'),
@@ -246,6 +247,7 @@ describe("durable analysis lifecycle authority", () => {
           return { authority_capability_id: id(7) };
         },
       } as unknown as ResearchAuthorityCapabilityResolver,
+      now: () => new Date("2026-08-24T01:00:00.000Z"),
     });
     const recoveredStage = await restartedLifecycle.recoverStage({
       lease,
@@ -257,6 +259,10 @@ describe("durable analysis lifecycle authority", () => {
       hash("9"),
     );
     expect(recoveredStage?.loaded.execution_snapshot.request_hash).toBe(hash("8"));
+    expect(stage.expires_at).toBe("2026-08-24T01:14:00.000Z");
+    expect(stage.expires_at).not.toBe(lease.expires_at);
+    expect(recoveredStage?.stage.expires_at).toBe(stage.expires_at);
+    expect(analysisLifecycleAuthorityInternals.stage_retention_ms).toBe(15 * 60 * 1_000);
     await lifecycle.freeze({ ...identity, stage });
     const loaded = await lifecycle.load({ ...identity, stage });
     const oracleReceipt = { schema_version: "oracle@1", verdict: "PASS" };

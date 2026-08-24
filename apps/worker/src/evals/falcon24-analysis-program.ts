@@ -1,6 +1,6 @@
 import {
-  type AnalysisResultContract,
   type AnalysisProgramPayload,
+  type AnalysisResultContract,
   type ArtifactReference,
   analysisProgramPayloadSchema,
   buildAnalysisResultContract,
@@ -66,6 +66,7 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
     schema_version: "falcon24-delivery-output@1.0.0",
     required_fields: [
       "window",
+      "data_quality_precheck",
       "six_vs_six",
       "adjusted_binomial_glm",
       "low_rating_scenarios",
@@ -211,7 +212,7 @@ const FALCON24_PRESENTATION_CONTRACTS = Object.freeze({
       tableColumn("month_index", "生命周期月", "INTEGER", "DIMENSION"),
       tableColumn("retention_rate", "留存率", "NUMBER", "METRIC"),
       tableColumn("repeat_purchase_rate", "复购率", "NUMBER", "METRIC"),
-      tableColumn("average_spend", "人均消费", "NUMBER", "METRIC"),
+      tableColumn("average_spend", "人均消费", "NUMBER", "METRIC", true),
       tableColumn("average_delivery_minutes", "平均配送分钟", "NUMBER", "METRIC", true),
       tableColumn("average_rating", "平均评分", "NUMBER", "METRIC", true),
       tableColumn("analysis_mode", "分析口径", "STRING", "DERIVED"),
@@ -244,7 +245,9 @@ function matchingDimensions(
 ): readonly string[] {
   const authorized = new Set(
     metrics.flatMap(({ allowed_dimensions }) =>
-      allowed_dimensions.filter(({ groupable }) => groupable).map(({ dimension_id }) => dimension_id),
+      allowed_dimensions
+        .filter(({ groupable }) => groupable)
+        .map(({ dimension_id }) => dimension_id),
     ),
   );
   return testCase.required_semantic_keys
@@ -273,13 +276,19 @@ async function compileFalcon24ResultContract(input: {
     ...input.dimension_ids,
   ];
   const physicalSources = query.columns.map(({ name }) => `${query.input_name}.${name}`);
-  const resultFields = resultShape.required_fields.map((field) => ({
-    field,
-    data_type: "JSON" as const,
-    nullable: false,
-    semantic_role: "DERIVED" as const,
-  }));
-  const timeDimension = input.dimension_ids.find((id) => /(?:month|week|cohort|date)/u.test(id)) ?? null;
+  const resultFields = ["schema_version", "case_id", ...resultShape.required_fields].map(
+    (field) => {
+      const identityField = field === "schema_version" || field === "case_id";
+      return {
+        field,
+        data_type: identityField ? ("STRING" as const) : ("JSON" as const),
+        nullable: false,
+        semantic_role: "DERIVED" as const,
+      };
+    },
+  );
+  const timeDimension =
+    input.dimension_ids.find((id) => /(?:month|week|cohort|date)/u.test(id)) ?? null;
   const timeGrain = timeDimension
     ? input.test_case.case_id === "falcon24-marketing-lag-effect"
       ? ("WEEK" as const)
@@ -454,7 +463,7 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
   "falcon24-cohort-retention-m0-m6": [
     ...(["primary", "sensitivity"] as const).map((mode) => ({
       call_id: `q5_${mode}_cohorts`,
-      operator_id: "cohort.registration-retention-m0-m6@1" as const,
+      operator_id: "cohort.registration-retention-m0-m6@2" as const,
       result_binding: resultBinding({
         result_collection_path: `/method_evidence/cohort-m0-m6/${mode}/cohort_periods`,
         operator_collection_path: "/cohort_periods",
@@ -479,18 +488,20 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
 const FALCON24_METHOD_CONTRACTS = Object.freeze({
   "falcon24-business-review-18m": [
     "Treat order_id as the order grain for revenue, order count, buyers, frequency, and AOV; never sum order_total once per item row.",
-    "Use exactly the 18 ordered calendar months 2023-05 through 2024-10 and identify the minimum absolute month-over-month revenue change. Report percent_change as the decimal ratio (current - previous) / previous, not percentage points.",
+    "Use exactly the 18 ordered calendar months 2023-05 through 2024-10 and identify the minimum signed month-over-month revenue change (the most negative current revenue minus previous revenue), never the smallest absolute magnitude. Report percent_change as the decimal ratio (current - previous) / previous, not percentage points.",
+    "For the worst-month comparison, set current_month from the selected ordered row and previous_month from the immediately preceding ordered row's month field; never use prev_revenue or another metric value as a time key. Assert that both month slices are non-empty and every Shapley factor is finite before invoking the operator, using data-free identifiers such as PREVIOUS_MONTH_EMPTY and SHAPLEY_FACTOR_NON_FINITE.",
     "Close revenue = active_buyers * orders_per_buyer * average_order_value for every month.",
-    "Prepare the worst-month buyer, frequency, and AOV baseline/current factors for the required exact product-Shapley operator. Use its returned contributions and closure evidence; do not implement Shapley permutations in generated Python.",
-    "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, allocate each order_total across its item rows in proportion to nonnegative quantity, using equal shares when total quantity is zero. Return exactly the most negative revenue-change member for each of the three dimensions, breaking ties lexicographically.",
+    "Prepare exactly one product-Shapley comparison labeled worst_month_revenue_change. Its baseline_factors and current_factors must use exactly the keys active_buyers, orders_per_buyer, and average_order_value. After the operator succeeds, index its protected contributions collection by factor. Set buyer_contribution from active_buyers, frequency_contribution from orders_per_buyer, and aov_contribution from average_order_value; set observed_revenue_change and closure_error from the operator rows' delta and closure_error evidence. Preserve all returned contribution rows at method_evidence['buyers-frequency-aov-shapley'].contributions. Never invent parallel scalar variables or implement Shapley permutations in generated Python.",
+    "Prepare and retain one monthly_kpis_table plus the selected current/previous month and signed/percent change before the operator call. After binding the operator result, reuse those named values directly for result and table publication; do not rebuild or replace monthly_kpis_table or access an unprepared abs_change column in a new object.",
+    "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, first clip every item-row quantity to max(quantity, 0), then allocate each order_total in proportion to those clipped quantities, using equal shares when their per-order total is zero. For all three dimensions, revenue_change is exclusively selected current worst-month revenue minus its immediately previous-month revenue, never the last calendar month's generic diff. Return exactly the most negative member for each dimension, breaking ties lexicographically.",
   ],
   "falcon24-delivery-experience-12m": [
-    "Deduplicate to one row per order_id before delivery summaries or modeling; reject conflicting order-level values.",
-    "Compare 2023-11 through 2024-04 with 2024-05 through 2024-10 and use linear interpolation quantiles for p50 and p90.",
-    "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'. Prepare the rated-order design for the required binomial-logit/Wald operator: delayed, log1p(order_total), month, product_category, and customer_segment, with lexicographically first categorical levels as references.",
-    "Use the operator's delayed coefficient, p-value, sample-size, rank, convergence, and iteration evidence. Set adjusted_binomial_glm.controls to exactly month, log_order_amount, product_category, and customer_segment; do not implement GLM fitting or Wald statistics in generated Python.",
+    "Deduplicate to one row per order_id before delivery summaries or modeling; reject conflicting order-level values. Assert invalid_delivery_orders is one repeated constant, report it exactly in data_quality_precheck, and exclude null delivery_time_minutes (server-normalized from negative source durations) from delivery-duration summaries while retaining those orders for rating and GLM analysis.",
+    "Compare 2023-11 through 2024-04 with 2024-05 through 2024-10 and use linear interpolation quantiles for p50 and p90 over valid non-negative delivery durations only. Build delivery_period_comparison with exactly two rows and the exact contract columns: average_delivery_minutes is the arithmetic mean of valid delivery_time_minutes, p90_delivery_minutes is that period's p90, low_rating_rate uses rated orders only, and order_revenue is the sum of order_total across all period orders. Every required table value is finite and non-null; never use NaN or a placeholder.",
+    "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'. Prepare exactly one rated-order model with label='delivery_low_rating_adjusted'. Its predictors mapping must use the exact keys delayed and log_order_amount, where log_order_amount is the natural logarithm np.log(order_total) after asserting strictly positive order_total, plus deterministic month=<YYYY-MM>, product_category=<level>, and customer_segment=<level> dummy keys with lexicographically first levels omitted as references.",
+    "From the protected coefficients collection select exactly one row with label='delivery_low_rating_adjusted' and term='delayed'; copy its coefficient, p_value, sample_size, rank, converged, and iterations evidence. Set adjusted_binomial_glm.controls to exactly month, log_order_amount, product_category, and customer_segment. Set finding to NOT_SIGNIFICANT when p_value>0.05, otherwise POSITIVE_SIGNIFICANT for a positive coefficient or NEGATIVE_SIGNIFICANT for a negative coefficient. Do not implement GLM fitting or Wald statistics in generated Python.",
     "For low-rating scenarios, use the lexicographically first product category per order, rank all category/segment/status groups by low-rating count descending, then rate descending, order count descending, and key ascending; return the first five or all groups when fewer exist.",
-    "Write conclusion in Chinese association language, include the exact word 关联, and never use 导致, 证明...影响, 驱动了, or any causal description for the delayed coefficient.",
+    "Write conclusion in Chinese association language and include the exact word 关联. Its final sentence must be exactly '该证据仅支持统计关联，不支持因果判断。'. Do not include the words 导致, 证明, 驱动 anywhere, including negations. Disclose exactly 932 invalid delivery durations. When finding is NOT_SIGNIFICANT, state that the adjusted association is not significant and that delivery delay cannot be identified as the main association factor; only POSITIVE_SIGNIFICANT may identify it as the main association factor, while NEGATIVE_SIGNIFICANT must state the opposite direction.",
   ],
   "falcon24-inventory-damage-12m": [
     "Use blinkit_inventory only for the primary damage calculation; blinkit_inventoryNew is sensitivity evidence and must not be combined with primary values.",
@@ -501,16 +512,17 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Return every product satisfying high sales, positive Theil-Sen slope, and last-3 mean damage rate greater than previous-9 mean; classify PRIORITY iff BH q <= 0.05, otherwise WATCHLIST.",
   ],
   "falcon24-marketing-lag-effect": [
-    "Build the complete 79-week calendar from Monday 2023-05-01 through Monday 2024-10-28. Set output.window to exactly {start:'2023-05-01', end_exclusive:'2024-11-01', week_count:79, grain:'WEEK'}; end_exclusive is the governed analysis boundary, not the day after the final Monday. First build one shared business_by_week series for order_revenue, new_customers, and order_count, asserting that duplicate input rows for a week agree. Analyze only distinct (channel,target_audience) tuples observed in the input; do not manufacture a Cartesian product. At that observed group grain, zero-fill only missing marketing measures (impressions, clicks, conversions, campaign_revenue, spend); every group-week must retain the shared business_by_week outcomes rather than replacing them with zero. Then compute funnel totals, CTR, conversion rate, and ROAS.",
+    "The governed input is already the complete 79-week grid for exactly the 16 observed (channel,target_audience) groups, from Monday 2023-05-01 through Monday 2024-10-28. The authoritative week field is week_start; there is no business_week field. Set output.window to exactly {start:'2023-05-01', end_exclusive:'2024-11-01', week_count:79, grain:'WEEK'} and assert each group has the same 79 ordered week_start values. Use the repeated order_revenue, new_customers, and order_count values as one shared business_by_week series after asserting duplicates agree. Marketing measures are already zero-filled by the governed query. Then compute funnel totals, CTR, conversion rate, and ROAS.",
     "For each business outcome in the exact order order_revenue, new_customers, order_count and each lag L from 0 through 4, prepare one OLS-HAC model: response business_outcome[L:79], predictors spend[0:79-L], absolute week index L..78, and annual sine/cosine controls. Also include one spend-over-week model per observed channel/audience group. Set controls to exactly ['trend','seasonality'].",
-    "Call the required OLS-HAC operator once for the complete model batch with maxlags=4, Bartlett kernel, finite-sample correction enabled, and normal inference. Select the smallest spend-term p-value per group/outcome with smaller-lag tie break.",
-    "For each business outcome separately, pass the selected full channel/audience p-value family to its required BH-FDR call. Classify from operator coefficients and adjusted p-values; use the spend-over-week operator coefficient for spend-growth status. Do not implement OLS, HAC covariance, p-values, or BH adjustment in generated Python, and use association language only.",
+    "Call the required OLS-HAC operator once for the complete model batch with maxlags=4, Bartlett kernel, finite-sample correction enabled, and normal inference. Use lag model labels exactly channel|target_audience|outcome|lagN (four pipe-separated parts) and spend trend labels exactly channel|target_audience|spend_over_week (three parts); parse those exact cardinalities after the operator returns. For four-part lag labels, retain only coefficient rows whose term is exactly 'spend' and ignore every intercept/control-term row. For three-part spend-trend labels, retain only the row whose term is exactly 'week_index'. Assert that this yields exactly 16*3*5 spend rows and exactly 16 week_index trend rows. Select the smallest retained spend-term p-value per group/outcome with smaller-lag tie break and assert all 16 labels exist in each BH family before its call.",
+    "For each business outcome separately, pass the selected full channel/audience p-value family to its required BH-FDR call. Classify each outcome as GROWTH_ASSOCIATION exactly when its selected coefficient is positive and adjusted p-value is <=0.05; otherwise classify SPEND_WITHOUT_IMPROVEMENT exactly when that channel/audience spend-over-week coefficient is positive, else NO_CLEAR_ASSOCIATION. Group finding is GROWTH_ASSOCIATION when any outcome has it, otherwise SPEND_WITHOUT_IMPROVEMENT when spend-over-week is positive, else NO_CLEAR_ASSOCIATION. Do not implement OLS, HAC covariance, p-values, or BH adjustment in generated Python, and use association language only.",
+    "At method_evidence['hac-standard-errors'].coefficients and each multiple-testing-fdr result_binding path, retain the exact protected operator collection without DataFrame conversion; null operator evidence must remain Python None rather than pandas NaN. Build marketing_lag_results only from selected finite spend-term coefficients and adjusted p-values, with no null, NaN, or infinity in its non-nullable columns.",
   ],
   "falcon24-cohort-retention-m0-m6": [
-    "Prepare unique customer registrations, deduplicated order events, and the observation end month for the required cohort operator. Execute q5_primary_cohorts with pre_registration_policy='hold_primary', then q5_sensitivity_cohorts with pre_registration_policy='exclude_sensitivity'; do not implement cohort rates in generated Python.",
-    "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order, copying retention, repeat purchase, spend, delivery, rating, and data-quality evidence from the operator outputs.",
-    "Report the frozen anomaly audit exactly and set primary_reliable=false because pre-registration orders materially invalidate the primary cohort interpretation.",
-    "Sensitivity excludes customers whose first order precedes registration, retains customers with no orders, and sets conclusion_changed=true iff any cohort/segment/month primary retention differs from valid_active_customers/valid_timeline_customers by at least 0.05.",
+    "The governed input is at registered-customer/order-event grain. Deduplicate customers by customer_id using the exact fields customer_id, registration_date, and customer_type. Build events only from rows with non-null order_id using the exact fields customer_id, event_date, order_id, revenue, delivery_minutes, and rating (source average_rating). Convert registration_date and non-null event_date values to exact ISO YYYY-MM-DD strings before the operator call; do not reduce them to months. Construct nullable numeric event fields explicitly as Python float or None; do not pass DataFrame.to_dict records containing pandas/numpy NaN. Convert negative delivery_minutes to None before the operator call and never use them in delivery averages. Assert observation_end_month and invalid_delivery_orders are each one repeated constant; pass integer invalid_delivery_orders as observation.invalid_delivery_event_count. Execute q5_primary_cohorts with pre_registration_policy='hold_primary', then q5_sensitivity_cohorts with pre_registration_policy='exclude_sensitivity'; both use horizon_months=6 and duplicate_customer_policy='reject'. Do not implement cohort rates in generated Python.",
+    "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order, copying retention, repeat purchase, spend, delivery, rating, and data-quality evidence from the operator outputs. Derive cohort_window only from the distinct protected primary cohort_periods.registration_month values, never from distinct registration_date days: first_cohort='2023-05', last_cohort='2024-04', cohort_count=12, observation_months=7.",
+    "Report the five constant cohort-scoped anomaly columns, including invalid_delivery_orders, from the governed input exactly and set primary_reliable=false because temporal anomalies materially invalidate the primary cohort interpretation and negative delivery durations invalidate unfiltered experience averages.",
+    "Sensitivity excludes the customers identified by the @2 operator from exact-day event_date < registration_date comparisons, retains customers with no orders, and sets conclusion_changed=true iff any cohort/segment/month primary and sensitivity retention_rate differ by at least 0.05.",
     "The terminal conclusion must disclose that the primary analysis is unreliable/HOLD and must not silently promote sensitivity results to primary truth.",
   ],
 } as const);

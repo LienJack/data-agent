@@ -12,7 +12,10 @@ import {
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   type StatisticalOperatorObligation,
 } from "@data-agent/contracts/statistical-operators";
-import type { OpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
+import {
+  governedInputBindingIdentity,
+  type OpenSandboxAnalysisRuntime,
+} from "../runs/opensandbox-analysis-runtime.js";
 import {
   type AnalysisAgentContextPort,
   buildAnalysisAgentInitialMessages,
@@ -119,10 +122,21 @@ export async function executeAnalysisAgentSandbox(input: {
     analysis_program_ref: input.analysis_program_ref,
     node: input.node,
   });
+  const inputBindings = input.governed_inputs.map((governed) => ({
+    input_name: governed.name,
+    input_symbol: governedInputBindingIdentity({
+      input_name: governed.name,
+      content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+    }).input_symbol,
+    content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+    materialization_receipt_hash: governed.materialization_receipt_ref
+      .content_hash as `sha256:${string}`,
+  }));
   const initialMessages = await buildAnalysisAgentInitialMessages({
     analysis_program: input.analysis_program,
     node: input.node,
     context,
+    input_bindings: inputBindings,
   });
   const requestHash = await sha256ContentHash({
     schema_version: "analysis-agent-sandbox-request@1.0.0",
@@ -254,17 +268,37 @@ export async function executeAnalysisAgentSandbox(input: {
     node_id: input.node.node_id,
     context_generation: contextGeneration,
     runtime_digest: runtimeDigest,
-    policy_version: "analysis-cell-policy@1.0.0",
+    policy_version: "analysis-cell-policy@1.1.0",
     operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   } as const;
   let durableStage: AnalysisResultStage | null = null;
   try {
     for (const governed of input.governed_inputs) {
+      const path = inputPath(governed);
       await session.uploadAgentFile({
-        path: inputPath(governed),
+        path,
         content: governed.content,
         content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
       });
+      const expected = governedInputBindingIdentity({
+        input_name: governed.name,
+        content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+      });
+      const binding = await session.bindGovernedInput({
+        input_name: governed.name,
+        input_path: path,
+        format: governed.format,
+        content_sha256: governed.input_ref.content_hash as `sha256:${string}`,
+        timeout_ms: 30_000,
+        ...(input.signal ? { signal: input.signal } : {}),
+      });
+      if (
+        binding.binding_id !== expected.binding_id ||
+        binding.input_symbol !== expected.input_symbol ||
+        binding.content_sha256 !== governed.input_ref.content_hash
+      ) {
+        throw new TypeError("ANALYSIS_GOVERNED_INPUT_BINDING_MISMATCH");
+      }
     }
     const governedResultBridge = createGovernedResultBridge({
       authority: input.governed_results,
@@ -275,7 +309,7 @@ export async function executeAnalysisAgentSandbox(input: {
       node_id: input.node.node_id,
       context_generation: contextGeneration,
       runtime_digest: runtimeDigest,
-      policy_version: "analysis-cell-policy@1.0.0",
+      policy_version: "analysis-cell-policy@1.1.0",
       operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     });
     const recoveredOperatorResults = await governedResultBridge.recover({

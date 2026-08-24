@@ -242,6 +242,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
             analysisAgent?.response_schema_version ??
             analysisPython?.response_schema_version ??
             DIRECT_QA_RESPONSE_SCHEMA_VERSION,
+          ...(analysisAgent ? { sampling: { temperature: 0 } } : {}),
           budget: {
             timeout_ms: Math.min(config.execution_safety_policy.max_elapsed_ms, 120_000),
             max_input_tokens: maxInputTokens,

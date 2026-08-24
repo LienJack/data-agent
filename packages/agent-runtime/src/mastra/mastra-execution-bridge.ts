@@ -1,3 +1,4 @@
+import { jsonSchema } from "@ai-sdk/provider-utils";
 import {
   type AppScope,
   type AuthoritativeModelProviderInvocation,
@@ -5,7 +6,6 @@ import {
   isAuthoritativePersistedModelProviderInvocation,
   type ModelProvider,
 } from "@data-agent/contracts";
-import { jsonSchema } from "@ai-sdk/provider-utils";
 import { Agent, type AgentExecutionOptionsBase } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
@@ -17,11 +17,11 @@ import {
 import { createProviderRuntimeModel } from "../models/provider-model-factory.js";
 import {
   EMPTY_SERVER_TOOL_REGISTRY,
+  projectDeepSeekStrictToolInputSchema,
   type RegisteredServerOwnedToolDescriptor,
   type ServerOwnedToolDescriptor,
   type ServerOwnedToolRegistry,
   ToolRegistryError,
-  projectDeepSeekStrictToolInputSchema,
 } from "../tools/index.js";
 import { MastraExecutionError } from "./errors.js";
 import type { ModelExecutionBridge, ModelExecutionChunk } from "./execution-bridge.js";
@@ -500,6 +500,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       maxSteps: 1,
       modelSettings: {
         maxOutputTokens: input.request.budget.max_output_tokens,
+        ...(input.request.sampling ? { temperature: input.request.sampling.temperature } : {}),
       },
       ...(providerOptions ? { providerOptions } : {}),
       runId: input.request.run_id,

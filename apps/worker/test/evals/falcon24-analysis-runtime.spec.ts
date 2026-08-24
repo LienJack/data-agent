@@ -13,6 +13,7 @@ const validEnvironment = {
   ANALYSIS_SANDBOX_SERVER_DOMAIN: "opensandbox.test:443",
   ANALYSIS_SANDBOX_SERVER_PROTOCOL: "https",
   ANALYSIS_SANDBOX_API_KEY: "falcon24-test-opensandbox-api-key",
+  ANALYSIS_SANDBOX_USE_SERVER_PROXY: "true",
   ANALYSIS_SANDBOX_SECURE_ACCESS: "true",
   ANALYSIS_SANDBOX_AGENT_CORE_IMAGE: "agent-core@sha256:test",
   ANALYSIS_SANDBOX_AGENT_ML_IMAGE: "agent-ml@sha256:test",
@@ -53,6 +54,10 @@ describe("Falcon24 production analysis runtime", () => {
       { ...validEnvironment, ANALYSIS_SANDBOX_SERVER_DOMAIN: undefined },
       "ANALYSIS_SANDBOX_CONFIGURATION_INVALID",
     ],
+    [
+      { ...validEnvironment, ANALYSIS_SANDBOX_USE_SERVER_PROXY: undefined },
+      "ANALYSIS_SANDBOX_CONFIGURATION_INVALID",
+    ],
   ] as const)("fails closed for incomplete production controls", (environment, errorCode) => {
     expect(() => createRuntime(environment)).toThrow(errorCode);
   });
@@ -81,7 +86,7 @@ describe("Falcon24 production analysis runtime", () => {
     expect(
       falcon24AnalysisRuntimeInternals.schemaType({
         name: "order_date",
-        kind: "UTF8",
+        kind: "DATE",
         nullable: false,
       }),
     ).toBe("DATE");
@@ -92,5 +97,12 @@ describe("Falcon24 production analysis runtime", () => {
         nullable: false,
       }),
     ).toBe("NUMBER");
+    expect(
+      falcon24AnalysisRuntimeInternals.schemaType({
+        name: "date_like_label",
+        kind: "UTF8",
+        nullable: false,
+      }),
+    ).toBe("STRING");
   });
 });

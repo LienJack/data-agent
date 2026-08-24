@@ -16,6 +16,7 @@ import {
   FALCON24_ANALYSIS_CHART_VERSION,
   falcon24AnalysisOutputSchema,
 } from "@data-agent/evals";
+import { z } from "zod";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
 import type { AnalysisArtifactCommitPort, AnalysisExecutionResult } from "../analysis/executor.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
@@ -195,164 +196,232 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
   }) => Falcon24ProgramExecutor;
   readonly compile_context?: typeof compileFalcon24AnalysisContext;
   readonly acceptance_recorder?: Falcon24AnalysisAcceptanceRecorder | null;
+  readonly diagnostics?: (event: {
+    readonly event_name: "falcon24_analysis_orchestration_rejected";
+    readonly run_id: string;
+    readonly case_id: string;
+    readonly stage: string;
+    readonly failure_code: string;
+    readonly error_name: string | null;
+    readonly validation_issues: readonly { readonly path: string; readonly code: string }[];
+  }) => void;
 }): GovernedAgentAnalysisPort {
   const compileContext = input.compile_context ?? compileFalcon24AnalysisContext;
-  return Object.freeze({
-    async analyze(command: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]) {
-      const { context, metric_ids: metricIds } = await compileContext({
-        lease: command.lease,
-        semantic_context: command.semantic_context,
-        test_case: command.test_case,
-      });
-      const brief = await buildBrief({
-        lease: command.lease,
-        test_case: command.test_case,
-        question: command.question,
-        context,
-        datasource_id: command.semantic_context.package.semantic_release.datasource_id,
-        primary_metric_id: metricIds[0],
-      });
-      const briefRef = await input.artifacts.commitL2({
-        lease: command.lease,
-        principal_id: command.lease.principal_id,
-        idempotency_key: `falcon24-analysis-brief:${command.test_case.case_id}`,
-        payload: brief,
-      });
-      if (briefRef.artifact_type !== "ResearchBrief") {
-        throw new TypeError("FALCON24_ANALYSIS_BRIEF_COMMIT_INVALID");
-      }
-      const program = await createFalcon24AnalysisProgram({
-        test_case: command.test_case,
-        brief_ref: briefRef,
-        context,
-        metric_ids: metricIds,
-      });
-      const executor = input.create_executor({
-        analysis_context: context,
-        semantic_context: command.semantic_context,
-        test_case: command.test_case,
-        provider_dispatch: command.provider_dispatch,
-        fence_guard: command.fence_guard,
-      });
-      const execution = await executor.execute({
-        lease: command.lease,
-        principal_id: command.lease.principal_id,
-        brief,
-        brief_ref: briefRef,
-        context,
-        program,
-      });
-      const validated = decodeValidatedOutput(execution, command.test_case);
-      const evidenceRef = exactlyOne(
-        execution.evidence_refs,
-        "FALCON24_ANALYSIS_DERIVED_EVIDENCE_REF_REQUIRED",
-      );
-      if (evidenceRef.artifact_type !== "DerivedAnalysisEvidence") {
-        throw new TypeError("FALCON24_ANALYSIS_DERIVED_EVIDENCE_REF_INVALID");
-      }
-      if (execution.query_evidence_refs.length === 0) {
-        throw new TypeError("FALCON24_ANALYSIS_QUERY_EVIDENCE_REFS_REQUIRED");
-      }
-      const oracleReceipt = exactlyOne(
-        execution.oracle_receipts,
-        "FALCON24_ANALYSIS_ORACLE_RECEIPT_REQUIRED",
-      ) as { readonly chart_dataset_hash?: string; readonly output_hash?: string };
-      const outputHash = await sha256ContentHash(validated.output);
-      if (oracleReceipt.output_hash !== outputHash || !oracleReceipt.chart_dataset_hash) {
-        throw new TypeError("FALCON24_ANALYSIS_ORACLE_OUTPUT_BINDING_INVALID");
-      }
-      const sandboxReceipt = exactlyOne(
-        execution.sandbox_receipts,
-        "FALCON24_ANALYSIS_SANDBOX_RECEIPT_REQUIRED",
-      );
-      const chartDocument = await buildArtifactWorkspaceChartDocumentV3({
-        schema_version: "artifact-workspace-chart-document@3.0.0",
-        document_ref: {
-          artifact_id: deterministicAnalysisUuid(
-            `falcon24-analysis-chart\0${command.lease.run_id}\0${command.test_case.case_id}`,
-          ),
-          artifact_type: "ArtifactWorkspaceDocument",
-          ...command.lease.scope,
-          run_id: command.lease.run_id,
-          revision: 1,
-          content_hash: `sha256:${"0".repeat(64)}`,
+  const analyze = async (
+    command: Parameters<GovernedAgentAnalysisPort["analyze"]>[0],
+    onStage: (stage: string) => void,
+  ) => {
+    onStage("COMPILE_CONTEXT");
+    const { context, metric_ids: metricIds } = await compileContext({
+      lease: command.lease,
+      semantic_context: command.semantic_context,
+      test_case: command.test_case,
+    });
+    const brief = await buildBrief({
+      lease: command.lease,
+      test_case: command.test_case,
+      question: command.question,
+      context,
+      datasource_id: command.semantic_context.package.semantic_release.datasource_id,
+      primary_metric_id: metricIds[0],
+    });
+    onStage("COMMIT_BRIEF");
+    const briefRef = await input.artifacts.commitL2({
+      lease: command.lease,
+      principal_id: command.lease.principal_id,
+      idempotency_key: `falcon24-analysis-brief:${command.test_case.case_id}`,
+      payload: brief,
+    });
+    if (briefRef.artifact_type !== "ResearchBrief") {
+      throw new TypeError("FALCON24_ANALYSIS_BRIEF_COMMIT_INVALID");
+    }
+    const program = await createFalcon24AnalysisProgram({
+      test_case: command.test_case,
+      brief_ref: briefRef,
+      context,
+      metric_ids: metricIds,
+    });
+    const executor = input.create_executor({
+      analysis_context: context,
+      semantic_context: command.semantic_context,
+      test_case: command.test_case,
+      provider_dispatch: command.provider_dispatch,
+      fence_guard: command.fence_guard,
+    });
+    onStage("EXECUTE_PROGRAM");
+    const execution = await executor.execute({
+      lease: command.lease,
+      principal_id: command.lease.principal_id,
+      brief,
+      brief_ref: briefRef,
+      context,
+      program,
+    });
+    onStage("VALIDATE_OUTPUT");
+    const validated = decodeValidatedOutput(execution, command.test_case);
+    const evidenceRef = exactlyOne(
+      execution.evidence_refs,
+      "FALCON24_ANALYSIS_DERIVED_EVIDENCE_REF_REQUIRED",
+    );
+    if (evidenceRef.artifact_type !== "DerivedAnalysisEvidence") {
+      throw new TypeError("FALCON24_ANALYSIS_DERIVED_EVIDENCE_REF_INVALID");
+    }
+    if (execution.query_evidence_refs.length === 0) {
+      throw new TypeError("FALCON24_ANALYSIS_QUERY_EVIDENCE_REFS_REQUIRED");
+    }
+    const oracleReceipt = exactlyOne(
+      execution.oracle_receipts,
+      "FALCON24_ANALYSIS_ORACLE_RECEIPT_REQUIRED",
+    ) as { readonly chart_dataset_hash?: string; readonly output_hash?: string };
+    const outputHash = await sha256ContentHash(validated.output);
+    if (oracleReceipt.output_hash !== outputHash || !oracleReceipt.chart_dataset_hash) {
+      throw new TypeError("FALCON24_ANALYSIS_ORACLE_OUTPUT_BINDING_INVALID");
+    }
+    const sandboxReceipt = exactlyOne(
+      execution.sandbox_receipts,
+      "FALCON24_ANALYSIS_SANDBOX_RECEIPT_REQUIRED",
+    );
+    onStage("BUILD_CHART");
+    const chartDocument = await buildArtifactWorkspaceChartDocumentV3({
+      schema_version: "artifact-workspace-chart-document@3.0.0",
+      document_ref: {
+        artifact_id: deterministicAnalysisUuid(
+          `falcon24-analysis-chart\0${command.lease.run_id}\0${command.test_case.case_id}`,
+        ),
+        artifact_type: "ArtifactWorkspaceDocument",
+        ...command.lease.scope,
+        run_id: command.lease.run_id,
+        revision: 1,
+        content_hash: `sha256:${"0".repeat(64)}`,
+      },
+      source_refs: {
+        query_evidence_refs: execution.query_evidence_refs,
+        derived_evidence_ref: evidenceRef,
+      },
+      provenance: {
+        transform_version: "derived-analysis-chart@1.0.0",
+        dataset_hash: `sha256:${"0".repeat(64)}`,
+        semantic_context: {
+          package_id: command.semantic_context.package.package_id,
+          package_hash: command.semantic_context.package.package_hash,
+          receipt_id: command.semantic_context.receipt.receipt_id,
+          receipt_hash: command.semantic_context.receipt.receipt_hash,
         },
-        source_refs: {
+        algorithm_version: FALCON24_ANALYSIS_CHART_VERSION,
+        parameter_hash: await sha256ContentHash({
+          case_id: command.test_case.case_id,
+          chart_version: FALCON24_ANALYSIS_CHART_VERSION,
+        }),
+        input_closure_hash: await sha256ContentHash({
+          output_ref: validated.output_ref,
+          output_hash: outputHash,
           query_evidence_refs: execution.query_evidence_refs,
           derived_evidence_ref: evidenceRef,
-        },
-        provenance: {
-          transform_version: "derived-analysis-chart@1.0.0",
-          dataset_hash: `sha256:${"0".repeat(64)}`,
-          semantic_context: {
-            package_id: command.semantic_context.package.package_id,
-            package_hash: command.semantic_context.package.package_hash,
-            receipt_id: command.semantic_context.receipt.receipt_id,
-            receipt_hash: command.semantic_context.receipt.receipt_hash,
-          },
-          algorithm_version: FALCON24_ANALYSIS_CHART_VERSION,
-          parameter_hash: await sha256ContentHash({
-            case_id: command.test_case.case_id,
-            chart_version: FALCON24_ANALYSIS_CHART_VERSION,
-          }),
-          input_closure_hash: await sha256ContentHash({
-            output_ref: validated.output_ref,
-            output_hash: outputHash,
-            query_evidence_refs: execution.query_evidence_refs,
-            derived_evidence_ref: evidenceRef,
-          }),
-          runtime_profile: sandboxReceipt.runtime_profile,
-          agent_image: sandboxReceipt.runtime.agent_image,
-          operator_image: sandboxReceipt.runtime.operator_image,
-        },
-        projection: buildFalcon24AnalysisChartProjection(validated.output),
-      });
-      if (chartDocument.provenance.dataset_hash !== oracleReceipt.chart_dataset_hash) {
-        throw new TypeError("FALCON24_ANALYSIS_CHART_ORACLE_BINDING_INVALID");
-      }
-      const chartRef = portValue(
-        await input.public_artifacts.commitDerivedAnalysisChart(
-          input.public_artifact_capability,
-          command.lease,
-          chartDocument,
-        ),
-      );
-      if (
-        artifactReferenceIdentity(chartRef) !==
-        artifactReferenceIdentity(chartDocument.document_ref)
-      ) {
-        throw new TypeError("FALCON24_ANALYSIS_CHART_COMMIT_CORRELATION_INVALID");
-      }
-      await input.acceptance_recorder?.record({
-        test_case: command.test_case,
-        semantic_context_ref: {
-          package_id: command.semantic_context.package.package_id,
-          package_revision: 1,
-          package_hash: command.semantic_context.package.package_hash as `sha256:${string}`,
-        },
-        execution,
-        chart_ref: chartRef,
-        completed_at: new Date().toISOString(),
-      });
-      const acceptedArtifactRefs = [
-        briefRef,
-        execution.analysis_program_ref,
-        ...execution.evidence_refs,
-        validated.output_ref,
-        chartRef,
-        execution.completion_ref,
-      ];
-      const seen = new Set<string>();
-      return {
-        answer: `${validated.output.conclusion}\n\n[查看对应图表](${artifactMarkdownHref(chartRef)})`,
-        public_artifact_refs: [chartRef],
-        accepted_artifact_refs: acceptedArtifactRefs.filter((reference) => {
-          const identity = `${reference.artifact_id}:${reference.revision}:${reference.content_hash}`;
-          if (seen.has(identity)) return false;
-          seen.add(identity);
-          return true;
         }),
-      };
+        runtime_profile: sandboxReceipt.runtime_profile,
+        agent_image: sandboxReceipt.runtime.agent_image,
+        operator_image: sandboxReceipt.runtime.operator_image,
+      },
+      projection: buildFalcon24AnalysisChartProjection(validated.output),
+    });
+    if (chartDocument.provenance.dataset_hash !== oracleReceipt.chart_dataset_hash) {
+      throw new TypeError("FALCON24_ANALYSIS_CHART_ORACLE_BINDING_INVALID");
+    }
+    onStage("COMMIT_CHART");
+    const chartRef = portValue(
+      await input.public_artifacts.commitDerivedAnalysisChart(
+        input.public_artifact_capability,
+        command.lease,
+        chartDocument,
+      ),
+    );
+    if (
+      artifactReferenceIdentity(chartRef) !== artifactReferenceIdentity(chartDocument.document_ref)
+    ) {
+      throw new TypeError("FALCON24_ANALYSIS_CHART_COMMIT_CORRELATION_INVALID");
+    }
+    onStage("RECORD_ACCEPTANCE");
+    await input.acceptance_recorder?.record({
+      test_case: command.test_case,
+      semantic_context_ref: {
+        package_id: command.semantic_context.package.package_id,
+        package_revision: 1,
+        package_hash: command.semantic_context.package.package_hash as `sha256:${string}`,
+      },
+      execution,
+      chart_ref: chartRef,
+      completed_at: new Date().toISOString(),
+    });
+    const acceptedArtifactRefs = [
+      briefRef,
+      execution.analysis_program_ref,
+      ...execution.evidence_refs,
+      validated.output_ref,
+      chartRef,
+      execution.completion_ref,
+    ];
+    const seen = new Set<string>();
+    return {
+      answer: `${validated.output.conclusion}\n\n[查看对应图表](${artifactMarkdownHref(chartRef)})`,
+      public_artifact_refs: [chartRef],
+      accepted_artifact_refs: acceptedArtifactRefs.filter((reference) => {
+        const identity = `${reference.artifact_id}:${reference.revision}:${reference.content_hash}`;
+        if (seen.has(identity)) return false;
+        seen.add(identity);
+        return true;
+      }),
+    };
+  };
+  return Object.freeze({
+    async analyze(command: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]) {
+      let stage = "START";
+      try {
+        return await analyze(command, (nextStage) => {
+          stage = nextStage;
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        const declaredCode =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof error.code === "string" &&
+          /^[A-Z][A-Z0-9_]{2,127}$/u.test(error.code)
+            ? error.code
+            : null;
+        const failureCode =
+          declaredCode ??
+          (error instanceof z.ZodError
+            ? "FALCON24_ANALYSIS_CONTRACT_INVALID"
+            : /^[A-Z][A-Z0-9_]{2,127}$/u.test(message)
+              ? message
+              : "FALCON24_ANALYSIS_ORCHESTRATION_FAILED");
+        input.diagnostics?.({
+          event_name: "falcon24_analysis_orchestration_rejected",
+          run_id: command.lease.run_id,
+          case_id: command.test_case.case_id,
+          stage,
+          failure_code: failureCode,
+          error_name:
+            error instanceof Error && /^[A-Za-z][A-Za-z0-9_.]{0,127}$/u.test(error.name)
+              ? error.name
+              : null,
+          validation_issues: Object.freeze(
+            error instanceof z.ZodError
+              ? error.issues.slice(0, 16).map((issue) =>
+                  Object.freeze({
+                    path: issue.path.length === 0 ? "$" : issue.path.map(String).join("."),
+                    code: issue.code,
+                  }),
+                )
+              : [],
+          ),
+        });
+        if (declaredCode || /^[A-Z][A-Z0-9_]{2,127}$/u.test(message)) {
+          throw new TypeError(failureCode);
+        }
+        throw new TypeError(failureCode);
+      }
     },
   });
 }

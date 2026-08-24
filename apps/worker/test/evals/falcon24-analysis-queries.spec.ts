@@ -9,8 +9,9 @@ import {
 const fixtureSpec: Falcon24AnalysisQuerySpec = {
   case_id: "falcon24-business-review-18m",
   input_name: "fixture",
-  sql: "select value, amount from fixed_source",
+  sql: "select period, value, amount from fixed_source",
   columns: [
+    { name: "period", kind: "DATE", nullable: false },
     { name: "value", kind: "UTF8", nullable: false },
     { name: "amount", kind: "FLOAT64", nullable: true },
   ],
@@ -48,8 +49,8 @@ describe("Falcon24 bounded analysis queries", () => {
       { case_id: "falcon24-business-review-18m", expected_rows: 4_612 },
       { case_id: "falcon24-delivery-experience-12m", expected_rows: 3_059 },
       { case_id: "falcon24-inventory-damage-12m", expected_rows: 3_216 },
-      { case_id: "falcon24-marketing-lag-effect", expected_rows: 1_238 },
-      { case_id: "falcon24-cohort-retention-m0-m6", expected_rows: 336 },
+      { case_id: "falcon24-marketing-lag-effect", expected_rows: 1_264 },
+      { case_id: "falcon24-cohort-retention-m0-m6", expected_rows: 3_188 },
     ]);
     for (const spec of Object.values(FALCON24_ANALYSIS_QUERY_SPECS)) {
       expect(spec.input_name).toMatch(/^falcon24_/u);
@@ -68,12 +69,15 @@ describe("Falcon24 bounded analysis queries", () => {
 
   it("materializes validated rows as an Arrow IPC file", () => {
     const bytes = materializeFalcon24Arrow(fixtureSpec, [
-      { value: "first", amount: 1.5 },
-      { value: "second", amount: null },
+      { period: "2024-01-01", value: "first", amount: 1.5 },
+      { period: "2024-02", value: "second", amount: null },
     ]);
     const table = tableFromIPC(bytes);
     expect(table.numRows).toBe(2);
-    expect(table.schema.fields.map((field) => field.name)).toEqual(["value", "amount"]);
+    expect(table.schema.fields.map((field) => field.name)).toEqual(["period", "value", "amount"]);
+    expect(String(table.getChild("period")?.type)).toBe("Date32<DAY>");
+    expect(table.getChild("period")?.get(0)).toBe(Date.parse("2024-01-01T00:00:00.000Z"));
+    expect(String(table.getChild("value")?.type)).toBe("Utf8");
     expect(table.getChild("value")?.toArray()).toEqual(["first", "second"]);
     expect(table.getChild("amount")?.toArray()).toEqual(new Float64Array([1.5, 0]));
     expect(table.getChild("amount")?.isValid(1)).toBe(false);
@@ -85,21 +89,27 @@ describe("Falcon24 bounded analysis queries", () => {
     );
     expect(() =>
       materializeFalcon24Arrow(fixtureSpec, [
-        { amount: 1, value: "reordered" },
-        { amount: 2, value: "columns" },
+        { amount: 1, value: "reordered", period: "2024-01-01" },
+        { amount: 2, value: "columns", period: "2024-02-01" },
       ]),
     ).toThrow("FALCON24_QUERY_COLUMN_CONTRACT_INVALID");
     expect(() =>
       materializeFalcon24Arrow(fixtureSpec, [
-        { value: null, amount: 1 },
-        { value: "second", amount: 2 },
+        { period: "2024-01-01", value: null, amount: 1 },
+        { period: "2024-02-01", value: "second", amount: 2 },
       ]),
     ).toThrow("FALCON24_QUERY_NULL_FORBIDDEN");
     expect(() =>
       materializeFalcon24Arrow(fixtureSpec, [
-        { value: "first", amount: Number.NaN },
-        { value: "second", amount: 2 },
+        { period: "2024-01-01", value: "first", amount: Number.NaN },
+        { period: "2024-02-01", value: "second", amount: 2 },
       ]),
     ).toThrow("FALCON24_QUERY_NUMBER_INVALID");
+    expect(() =>
+      materializeFalcon24Arrow(fixtureSpec, [
+        { period: "2024-02-30", value: "first", amount: 1 },
+        { period: "2024-02-01", value: "second", amount: 2 },
+      ]),
+    ).toThrow("FALCON24_QUERY_DATE_INVALID");
   });
 });

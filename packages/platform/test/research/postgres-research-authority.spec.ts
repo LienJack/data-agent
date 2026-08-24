@@ -321,6 +321,18 @@ describe("PostgreSQL Research Authority Adapter", () => {
     );
     expect(commitCall?.text).toContain("$3::bytea");
     expect(commitCall?.values.slice(1)).toEqual([requestContent, resultContent]);
+    const readCall = database.calls.find((call) =>
+      call.text.includes("read_governed_operator_result"),
+    );
+    expect(readCall?.values[0]).toMatchObject({
+      protocol_version: "u6-db-command@1.0.0",
+      authority_capability_id: ids.authority,
+      command: {
+        scope,
+        principal_id: ids.analyst,
+        result,
+      },
+    });
   });
   it("封装 strict U6DbCommand，并解析 strict U6DbResult", async () => {
     const auth = capabilities();
@@ -857,6 +869,60 @@ describe("PostgreSQL Research Authority Adapter", () => {
     expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
   });
 
+  it("分析生命周期事务对 55P03 使用同一冻结退避并重放同一命令", async () => {
+    const auth = capabilities();
+    const reference = {
+      ...certificateRef(),
+      artifact_id: ids.operation,
+      artifact_type: "SandboxExecutionReceipt" as const,
+      content_hash: hash("d"),
+    };
+    let rpcAttempts = 0;
+    const envelopes: unknown[] = [];
+    const database = scriptedPool((text, values) => {
+      if (!text.includes("commit_analysis_system_artifact")) return undefined;
+      rpcAttempts += 1;
+      envelopes.push(values[0]);
+      if (rpcAttempts <= 3) {
+        throw Object.assign(new Error("lock not available"), { code: "55P03" });
+      }
+      return resultRow({ ok: true, created: true, reference });
+    });
+    const waits: number[] = [];
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+      lock_retry_delays_ms: [1, 2, 3],
+      sleep: async (delayMs) => {
+        waits.push(delayMs);
+      },
+    });
+    const command = {
+      schema_version: "1.0.0" as const,
+      scope,
+      run_id: ids.run,
+      principal_id: ids.analyst,
+      idempotency_key: "analysis-system-lock-retry",
+      attempt_id: ids.terminal,
+      worker_fence: 7,
+      reference,
+      payload: { artifact_type: "SandboxExecutionReceipt" },
+    };
+
+    await expect(authority.commitAnalysisSystem(auth.analyst, command, null)).resolves.toEqual({
+      ok: true,
+      created: true,
+      reference,
+    });
+    expect(rpcAttempts).toBe(4);
+    expect(waits).toEqual([1, 2, 3]);
+    expect(envelopes.every((value) => JSON.stringify(value) === JSON.stringify(envelopes[0]))).toBe(
+      true,
+    );
+    expect(database.calls.filter((call) => call.text === "ROLLBACK")).toHaveLength(3);
+    expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
+  });
+
   it("只向专用 RPC 提交加密的 Analysis Python source", async () => {
     const auth = capabilities();
     const programRef = {
@@ -927,6 +993,39 @@ describe("PostgreSQL Research Authority Adapter", () => {
       command: { attempt_id: ids.terminal, worker_fence: 7 },
     });
     expect(rpc?.values[1]).toBe(ciphertext);
+  });
+
+  it("从事务内复核的 Capability 注入 Journal read principal", async () => {
+    const auth = capabilities();
+    const database = scriptedPool((text) => {
+      if (!text.includes("read_analysis_context_journal")) return undefined;
+      return resultRow({ ok: true, entries: [] });
+    });
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      authority.readAnalysisContextJournal(auth.analyst, {
+        scope,
+        run_id: ids.run,
+        node_id: "question-1",
+        attempt_id: ids.terminal,
+        context_generation: 1,
+      }),
+    ).resolves.toEqual({ ok: true, entries: [] });
+    const rpc = database.calls.find((call) => call.text.includes("read_analysis_context_journal"));
+    expect(rpc?.values[0]).toMatchObject({
+      protocol_version: "u6-db-command@1.0.0",
+      authority_capability_id: ids.authority,
+      command: {
+        scope,
+        principal_id: ids.analyst,
+        run_id: ids.run,
+        attempt_id: ids.terminal,
+      },
+    });
   });
 
   it("通过一次窄 RPC 原子暂存 Publisher closure 与 Journal", async () => {
@@ -1037,7 +1136,7 @@ describe("PostgreSQL Research Authority Adapter", () => {
       command: { stage_id: command.stage_id },
       journal_command: { event: { event_type: "PUBLISH_STAGE_CREATED" } },
     });
-    expect(rpc?.values[1]).toEqual(
+    expect(JSON.parse(String(rpc?.values[1]))).toEqual(
       contents.map((content) => Buffer.from(content).toString("base64")),
     );
     expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);

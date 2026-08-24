@@ -127,6 +127,18 @@ function text(row: Row, key: string): string {
   return value;
 }
 
+function nullableText(row: Row, key: string): string | null {
+  const value = row[key];
+  if (value === null) return null;
+  return text(row, key);
+}
+
+function monthOrdinal(value: string): number {
+  const match = /^(?<year>[1-9][0-9]{3})-(?<month>0[1-9]|1[0-2])$/u.exec(value);
+  if (!match?.groups) fail("FALCON24_ORACLE_MONTH_INVALID");
+  return Number(match.groups.year) * 12 + Number(match.groups.month) - 1;
+}
+
 function number(row: Row, key: string): number {
   const value = row[key];
   if (typeof value !== "number" || !Number.isFinite(value)) {
@@ -392,10 +404,13 @@ function decodeArrow(input: GovernedAnalysisInput, testCase: Falcon24AgentAnalys
   }
   return Array.from({ length: table.numRows }, (_, rowIndex) =>
     Object.fromEntries(
-      expectedColumns.map((column) => {
+      expectedColumns.map((column, columnIndex) => {
         const value = table.getChild(column)?.get(rowIndex) as string | number | null | undefined;
         if (value === undefined) fail(`FALCON24_ORACLE_INPUT_COLUMN_MISSING:${column}`);
-        return [column, value];
+        if (spec.columns[columnIndex]?.kind !== "DATE" || value === null) return [column, value];
+        const timestamp = typeof value === "number" ? value : Date.parse(value);
+        if (!Number.isFinite(timestamp)) fail(`FALCON24_ORACLE_INPUT_DATE_INVALID:${column}`);
+        return [column, new Date(timestamp).toISOString().slice(0, 10)];
       }),
     ),
   );
@@ -620,7 +635,7 @@ function fitDeliveryGlm(rated: readonly Row[]) {
   const design = rated.map((row) => [
     1,
     text(row, "delivery_status") === "On Time" ? 0 : 1,
-    Math.log1p(number(row, "order_total")),
+    Math.log(number(row, "order_total")),
     ...uniqueCategorical.flatMap(([key, values]) =>
       values.slice(1).map((value) => {
         const observed = key === "order_date" ? text(row, key).slice(0, 7) : text(row, key);
@@ -685,6 +700,7 @@ function verifyDelivery(
         "sentiment",
         "distance_km",
         "delivery_time_minutes",
+        "invalid_delivery_orders",
       ],
       `FALCON24_Q2_ORDER_CONFLICT:${orderId}`,
     );
@@ -697,23 +713,37 @@ function verifyDelivery(
         fail("FALCON24_Q2_CATEGORY_MISSING"),
     };
   });
-  const summarize = (selected: readonly Row[]) => ({
-    p50_minutes: quantile(
-      selected.map((row) => number(row, "delivery_time_minutes")),
-      0.5,
-    ),
-    p90_minutes: quantile(
-      selected.map((row) => number(row, "delivery_time_minutes")),
-      0.9,
-    ),
-    on_time_rate:
-      selected.filter((row) => text(row, "delivery_status") === "On Time").length / selected.length,
-    low_rating_rate:
-      selected.filter((row) => (nullableNumber(row, "rating") ?? Number.POSITIVE_INFINITY) <= 2)
-        .length / selected.length,
-  });
+  const summarize = (selected: readonly Row[]) => {
+    const validDurations = selected.flatMap((row) => {
+      const value = nullableNumber(row, "delivery_time_minutes");
+      return value === null ? [] : [value];
+    });
+    return {
+      p50_minutes: quantile(validDurations, 0.5),
+      p90_minutes: quantile(validDurations, 0.9),
+      on_time_rate:
+        selected.filter((row) => text(row, "delivery_status") === "On Time").length /
+        selected.length,
+      low_rating_rate:
+        selected.filter((row) => (nullableNumber(row, "rating") ?? Number.POSITIVE_INFINITY) <= 2)
+          .length / selected.length,
+    };
+  };
   const first = summarize(orders.filter((row) => text(row, "order_date") < "2024-05-01"));
   const second = summarize(orders.filter((row) => text(row, "order_date") >= "2024-05-01"));
+  const invalidDeliveryOrders = number(
+    orders[0] ?? fail("FALCON24_Q2_ORDER_EMPTY"),
+    "invalid_delivery_orders",
+  );
+  const validDeliveryOrders = orders.filter(
+    (row) => nullableNumber(row, "delivery_time_minutes") !== null,
+  ).length;
+  if (
+    output.data_quality_precheck.invalid_delivery_orders !== invalidDeliveryOrders ||
+    output.data_quality_precheck.valid_delivery_orders !== validDeliveryOrders
+  ) {
+    fail("FALCON24_Q2_DELIVERY_QUALITY_MISMATCH");
+  }
   for (const key of ["p50_minutes", "p90_minutes", "on_time_rate", "low_rating_rate"] as const) {
     close(
       output.six_vs_six.first[key],
@@ -978,18 +1008,6 @@ function olsHac(input: {
   };
 }
 
-function simpleSlope(values: readonly number[]): number {
-  const center = (values.length - 1) / 2;
-  let numerator = 0;
-  let denominator = 0;
-  for (let index = 0; index < values.length; index += 1) {
-    const centered = index - center;
-    numerator += centered * (values[index] ?? 0);
-    denominator += centered * centered;
-  }
-  return denominator === 0 ? 0 : numerator / denominator;
-}
-
 const MARKETING_BUSINESS_OUTCOMES = ["order_revenue", "new_customers", "order_count"] as const;
 type MarketingBusinessOutcome = (typeof MARKETING_BUSINESS_OUTCOMES)[number];
 
@@ -1065,7 +1083,18 @@ function verifyMarketing(
         candidates[0] ?? fail(`FALCON24_Q4_LAG_SELECTION_EMPTY:${outcomeId}`),
       );
     }
-    groupStatistics.set(key, { outcomes, spendSlope: simpleSlope(spend) });
+    const spendTrend = olsHac({
+      design: weeks.map((_week, weekIndex) => [
+        1,
+        weekIndex,
+        Math.sin((2 * Math.PI * weekIndex) / 52),
+        Math.cos((2 * Math.PI * weekIndex) / 52),
+      ]),
+      response: spend,
+      coefficient_index: 1,
+      max_lag: 4,
+    });
+    groupStatistics.set(key, { outcomes, spendSlope: spendTrend.coefficient });
   }
   const qValues = new Map(
     MARKETING_BUSINESS_OUTCOMES.map((outcomeId) => [
@@ -1171,77 +1200,203 @@ function verifyCohort(
   rows: readonly Row[],
   output: Extract<Falcon24Output, { case_id: "falcon24-cohort-retention-m0-m6" }>,
 ): void {
-  const groups = new Map<string, Row[]>();
-  for (const row of rows) {
-    const key = `${text(row, "registration_cohort")}\u0000${text(row, "customer_segment")}`;
-    groups.set(key, [...(groups.get(key) ?? []), row]);
-  }
-  if (output.cohorts.length !== groups.size) fail("FALCON24_Q5_COHORT_COVERAGE_MISMATCH");
+  type Customer = {
+    readonly customerId: string;
+    readonly customerType: string;
+    readonly registrationDate: string;
+    readonly registrationMonth: string;
+  };
+  type Event = {
+    readonly customerId: string;
+    readonly eventDate: string;
+    readonly eventMonth: string;
+    readonly revenue: number;
+    readonly deliveryMinutes: number | null;
+    readonly rating: number | null;
+  };
+  const customers = new Map<string, Customer>();
+  const events = new Map<string, Event>();
   const first = rows[0] ?? fail("FALCON24_Q5_INPUT_EMPTY");
+  const observationEndMonth = text(first, "observation_end_month");
+  if (observationEndMonth !== "2024-10") fail("FALCON24_Q5_OBSERVATION_MONTH_MISMATCH");
+  const anomalyKeys = [
+    "orders_before_registration",
+    "customers_first_order_before_registration",
+    "valid_ordering_customers",
+    "no_order_customers",
+    "invalid_delivery_orders",
+  ] as const;
+  for (const row of rows) {
+    if (
+      text(row, "observation_end_month") !== observationEndMonth ||
+      anomalyKeys.some((key) => number(row, key) !== number(first, key))
+    ) {
+      fail("FALCON24_Q5_INPUT_CONSTANT_DRIFT");
+    }
+    const customerId = text(row, "customer_id");
+    const registrationDate = text(row, "registration_date");
+    const candidate = {
+      customerId,
+      customerType: text(row, "customer_type"),
+      registrationDate,
+      registrationMonth: registrationDate.slice(0, 7),
+    } satisfies Customer;
+    const existing = customers.get(customerId);
+    if (existing && JSON.stringify(existing) !== JSON.stringify(candidate)) {
+      fail("FALCON24_Q5_CUSTOMER_IDENTITY_DRIFT");
+    }
+    customers.set(customerId, candidate);
+    const orderId = nullableText(row, "order_id");
+    if (orderId === null) {
+      if (row.event_date !== null || row.revenue !== null) {
+        fail("FALCON24_Q5_EMPTY_EVENT_INVALID");
+      }
+      continue;
+    }
+    if (events.has(orderId)) fail("FALCON24_Q5_ORDER_DUPLICATE");
+    const eventDate = text(row, "event_date");
+    const rawDeliveryMinutes = nullableNumber(row, "delivery_minutes");
+    events.set(orderId, {
+      customerId,
+      eventDate,
+      eventMonth: eventDate.slice(0, 7),
+      revenue: number(row, "revenue"),
+      deliveryMinutes:
+        rawDeliveryMinutes !== null && rawDeliveryMinutes < 0 ? null : rawDeliveryMinutes,
+      rating: nullableNumber(row, "average_rating"),
+    });
+  }
+
+  const eventsByCustomer = new Map<string, Event[]>();
+  const invalidTimelineCustomers = new Set<string>();
+  let ordersBeforeRegistration = 0;
+  let invalidDeliveryOrders = 0;
+  for (const event of events.values()) {
+    const customer = customers.get(event.customerId) ?? fail("FALCON24_Q5_EVENT_ORPHANED");
+    eventsByCustomer.set(event.customerId, [
+      ...(eventsByCustomer.get(event.customerId) ?? []),
+      event,
+    ]);
+    if (event.eventDate < customer.registrationDate) {
+      ordersBeforeRegistration += 1;
+      invalidTimelineCustomers.add(event.customerId);
+    }
+  }
+  for (const row of rows) {
+    if (nullableText(row, "order_id") !== null) {
+      const value = nullableNumber(row, "delivery_minutes");
+      if (value !== null && value < 0) invalidDeliveryOrders += 1;
+    }
+  }
+  const noOrderCustomers = [...customers].filter(
+    ([customerId]) => (eventsByCustomer.get(customerId)?.length ?? 0) === 0,
+  ).length;
+  const validOrderingCustomers = customers.size - invalidTimelineCustomers.size - noOrderCustomers;
+  const recomputedAnomaly = {
+    orders_before_registration: ordersBeforeRegistration,
+    customers_first_order_before_registration: invalidTimelineCustomers.size,
+    valid_ordering_customers: validOrderingCustomers,
+    no_order_customers: noOrderCustomers,
+    invalid_delivery_orders: invalidDeliveryOrders,
+  } as const;
   const anomaly = output.anomaly_precheck;
-  for (const [actual, key] of [
-    [anomaly.orders_before_registration, "orders_before_registration"],
-    [
-      anomaly.customers_first_order_before_registration,
-      "customers_first_order_before_registration",
-    ],
-    [anomaly.valid_ordering_customers, "valid_ordering_customers"],
-    [anomaly.no_order_customers, "no_order_customers"],
-  ] as const)
-    close(actual, number(first, key), `FALCON24_Q5_${key.toUpperCase()}_MISMATCH`);
+  for (const key of anomalyKeys) {
+    close(
+      number(first, key),
+      recomputedAnomaly[key],
+      `FALCON24_Q5_INPUT_${key.toUpperCase()}_MISMATCH`,
+    );
+    close(anomaly[key], recomputedAnomaly[key], `FALCON24_Q5_${key.toUpperCase()}_MISMATCH`);
+  }
   if (
-    output.sensitivity.excluded_pre_registration_customers !==
-      anomaly.customers_first_order_before_registration ||
-    output.sensitivity.retained_no_order_customers !== anomaly.no_order_customers
+    output.sensitivity.excluded_pre_registration_customers !== invalidTimelineCustomers.size ||
+    output.sensitivity.retained_no_order_customers !== noOrderCustomers
   ) {
     fail("FALCON24_Q5_SENSITIVITY_AUDIT_MISMATCH");
   }
-  const sensitivityChanged = rows.some((row) => {
-    const cohortSize = number(row, "cohort_size");
-    const active = number(row, "active_customers");
-    const validSize = number(row, "valid_timeline_customers");
-    const validActive = number(row, "valid_active_customers");
-    const primaryRetention = cohortSize === 0 ? 0 : active / cohortSize;
-    const sensitivityRetention = validSize === 0 ? 0 : validActive / validSize;
-    return Math.abs(primaryRetention - sensitivityRetention) >= 0.05;
-  });
-  if (output.sensitivity.conclusion_changed !== sensitivityChanged) {
-    fail("FALCON24_Q5_SENSITIVITY_CONCLUSION_MISMATCH");
+
+  const groups = new Map<string, Set<string>>();
+  for (const customer of customers.values()) {
+    const key = `${customer.registrationMonth}\u0000${customer.customerType}`;
+    const members = groups.get(key) ?? new Set<string>();
+    members.add(customer.customerId);
+    groups.set(key, members);
   }
+  if (output.cohorts.length !== groups.size) fail("FALCON24_Q5_COHORT_COVERAGE_MISMATCH");
+  const outputGroups = new Set<string>();
+  let sensitivityChanged = false;
   for (const cohort of output.cohorts) {
-    const selected = groups
-      .get(`${cohort.registration_cohort}\u0000${cohort.customer_segment}`)
-      ?.slice()
-      .sort((a, b) => number(a, "month_index") - number(b, "month_index"));
-    if (selected?.length !== 7) fail("FALCON24_Q5_COHORT_SERIES_MISSING");
+    const key = `${cohort.registration_cohort}\u0000${cohort.customer_segment}`;
+    if (outputGroups.has(key)) fail("FALCON24_Q5_COHORT_DUPLICATE");
+    outputGroups.add(key);
+    const members = groups.get(key) ?? fail("FALCON24_Q5_COHORT_GROUP_UNKNOWN");
+    const validMembers = new Set(
+      [...members].filter((customerId) => !invalidTimelineCustomers.has(customerId)),
+    );
     for (const point of cohort.points) {
-      const row = selected[point.month_index];
-      if (!row || number(row, "month_index") !== point.month_index)
-        fail("FALCON24_Q5_MONTH_POINT_MISSING");
-      const cohortSize = number(row, "cohort_size");
-      const active = number(row, "active_customers");
-      close(point.retention_rate, active / cohortSize, "FALCON24_Q5_RETENTION_MISMATCH");
+      const periodEvents = [...members].flatMap((customerId) => {
+        const customer = customers.get(customerId) ?? fail("FALCON24_Q5_CUSTOMER_MISSING");
+        return (eventsByCustomer.get(customerId) ?? []).filter(
+          (event) =>
+            monthOrdinal(event.eventMonth) - monthOrdinal(customer.registrationMonth) ===
+            point.month_index,
+        );
+      });
+      const activeCustomers = new Set(periodEvents.map(({ customerId }) => customerId));
+      const ordersByCustomer = new Map<string, number>();
+      for (const event of periodEvents) {
+        ordersByCustomer.set(event.customerId, (ordersByCustomer.get(event.customerId) ?? 0) + 1);
+      }
+      const repeatCustomers = [...ordersByCustomer.values()].filter((count) => count >= 2).length;
+      const revenue = periodEvents.reduce((sum, event) => sum + event.revenue, 0);
+      close(
+        point.retention_rate,
+        activeCustomers.size / members.size,
+        "FALCON24_Q5_RETENTION_MISMATCH",
+      );
       close(
         point.repeat_purchase_rate,
-        number(row, "repeat_customers") / cohortSize,
+        repeatCustomers / members.size,
         "FALCON24_Q5_REPEAT_MISMATCH",
       );
       nullableClose(
         point.average_spend,
-        active === 0 ? null : number(row, "revenue") / active,
+        activeCustomers.size === 0 ? null : revenue / activeCustomers.size,
         "FALCON24_Q5_SPEND_MISMATCH",
+      );
+      const deliveryValues = periodEvents.flatMap(({ deliveryMinutes }) =>
+        deliveryMinutes === null ? [] : [deliveryMinutes],
       );
       nullableClose(
         point.delivery_minutes,
-        nullableNumber(row, "delivery_minutes"),
+        deliveryValues.length === 0
+          ? null
+          : deliveryValues.reduce((sum, value) => sum + value, 0) / deliveryValues.length,
         "FALCON24_Q5_DELIVERY_MISMATCH",
       );
+      const ratingValues = periodEvents.flatMap(({ rating }) => (rating === null ? [] : [rating]));
       nullableClose(
         point.average_rating,
-        nullableNumber(row, "average_rating"),
+        ratingValues.length === 0
+          ? null
+          : ratingValues.reduce((sum, value) => sum + value, 0) / ratingValues.length,
         "FALCON24_Q5_RATING_MISMATCH",
       );
+      const sensitivityActive = new Set(
+        periodEvents
+          .filter(({ customerId }) => validMembers.has(customerId))
+          .map(({ customerId }) => customerId),
+      ).size;
+      const sensitivityRetention =
+        validMembers.size === 0 ? 0 : sensitivityActive / validMembers.size;
+      if (Math.abs(point.retention_rate - sensitivityRetention) >= 0.05) {
+        sensitivityChanged = true;
+      }
     }
+  }
+  if (outputGroups.size !== groups.size) fail("FALCON24_Q5_COHORT_COVERAGE_MISMATCH");
+  if (output.sensitivity.conclusion_changed !== sensitivityChanged) {
+    fail("FALCON24_Q5_SENSITIVITY_CONCLUSION_MISMATCH");
   }
 }
 

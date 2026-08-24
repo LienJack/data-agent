@@ -9,6 +9,7 @@ type JsonValue = JsonScalar | readonly JsonValue[] | { readonly [key: string]: J
 
 type RecordFieldShape =
   | "BINARY_NUMBER_ARRAY"
+  | "DATE_KEY"
   | "FINITE_NUMBER_ARRAY"
   | "MONTH_KEY"
   | "NAMED_FINITE_NUMBER_ARRAY_MAP"
@@ -63,10 +64,7 @@ type OperatorManifest = {
 };
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const manifestPath = resolve(
-  repositoryRoot,
-  "services/sandbox/src/data_agent_stats/manifest.json",
-);
+const manifestPath = resolve(repositoryRoot, "services/sandbox/src/data_agent_stats/manifest.json");
 const generatedPath = resolve(
   repositoryRoot,
   "packages/contracts/src/generated/statistical-operators.ts",
@@ -108,6 +106,7 @@ function assertStringArray(value: unknown, context: string): asserts value is re
 
 const RECORD_FIELD_SHAPES = new Set<RecordFieldShape>([
   "BINARY_NUMBER_ARRAY",
+  "DATE_KEY",
   "FINITE_NUMBER_ARRAY",
   "MONTH_KEY",
   "NAMED_FINITE_NUMBER_ARRAY_MAP",
@@ -130,6 +129,22 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isFiniteNumberArray(value: unknown): value is readonly number[] {
   return Array.isArray(value) && value.length > 0 && value.every(isFiniteNumber);
+}
+
+function isDateKey(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const match =
+    /^(?<year>[1-9][0-9]{3})-(?<month>0[1-9]|1[0-2])-(?<day>0[1-9]|[12][0-9]|3[01])$/u.exec(value);
+  if (!match?.groups) return false;
+  const year = Number(match.groups.year);
+  const month = Number(match.groups.month);
+  const day = Number(match.groups.day);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return (
+    parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+  );
 }
 
 function assertRecordExampleValue(value: unknown, shape: RecordFieldShape, context: string): void {
@@ -160,6 +175,7 @@ function assertRecordExampleValue(value: unknown, shape: RecordFieldShape, conte
       Array.isArray(value) &&
       value.length > 0 &&
       value.every((item) => item === 0 || item === 1)) ||
+    (shape === "DATE_KEY" && isDateKey(value)) ||
     (shape === "FINITE_NUMBER_ARRAY" && isFiniteNumberArray(value)) ||
     (shape === "MONTH_KEY" &&
       typeof value === "string" &&

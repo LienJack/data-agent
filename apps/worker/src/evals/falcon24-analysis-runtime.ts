@@ -7,6 +7,10 @@ import {
 import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
 import type { SqlPool } from "@data-agent/platform/persistence";
 import { z } from "zod";
+import {
+  type AnalysisLifecyclePersistenceAuthority,
+  createResearchAnalysisLifecycleAuthorityPort,
+} from "../analysis/analysis-lifecycle-authority.js";
 import { createRunBoundDeepSeekAnalysisAgentModel } from "../analysis/deepseek-analysis-agent.js";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
 import {
@@ -28,10 +32,6 @@ import {
   createResearchAnalysisArtifactPort,
   createResearchGovernedResultAuthorityPort,
 } from "../analysis/research-artifact-port.js";
-import {
-  type AnalysisLifecyclePersistenceAuthority,
-  createResearchAnalysisLifecycleAuthorityPort,
-} from "../analysis/analysis-lifecycle-authority.js";
 import { createEnvironmentOpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
@@ -70,7 +70,8 @@ type Falcon24ResearchAuthority = ResearchArtifactAuthorityPort &
 
 function schemaType(column: Falcon24AnalysisQueryColumn) {
   if (column.kind === "FLOAT64") return "NUMBER" as const;
-  return /(?:_date|date$|month$)/u.test(column.name) ? ("DATE" as const) : ("STRING" as const);
+  if (column.kind === "DATE") return "DATE" as const;
+  return "STRING" as const;
 }
 
 function referenceFactory() {
@@ -173,6 +174,9 @@ export function createFalcon24AnalysisRuntime(input: {
     ...(input.acceptance_recorder !== undefined
       ? { acceptance_recorder: input.acceptance_recorder }
       : {}),
+    diagnostics(event) {
+      console.error(JSON.stringify(event));
+    },
     create_executor(runtime) {
       const datasourceId = z
         .uuid()
@@ -199,9 +203,11 @@ export function createFalcon24AnalysisRuntime(input: {
           return {
             semantic_context_package: runtime.semantic_context.package,
             analysis_contract: {
+              schema_version: "governed-analysis-contract@2.0.0" as const,
               case_id: runtime.test_case.case_id,
               statistical_method_contract:
                 falcon24AnalysisProgramInternals.method_contracts[runtime.test_case.case_id],
+              required_method_evidence_keys: runtime.test_case.required_methods,
               semantic_contract: await buildFalcon24SemanticConsumptionProjection({
                 test_case: runtime.test_case,
                 semantic_release_hash:

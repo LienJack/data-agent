@@ -1970,6 +1970,150 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10752",
+      "migration_name": "20260725010752_app_data_agent_analysis_context_journal_coalesce_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10752",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-journal-coalesce-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_CONTEXT_JOURNAL_COALESCE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_context_journal_coalesce_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10753",
+      "migration_name": "20260725010753_app_data_agent_analysis_context_journal_lock_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10753",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-journal-lock-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_CONTEXT_JOURNAL_LOCK_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_context_journal_lock_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10754",
+      "migration_name": "20260725010754_app_data_agent_analysis_lifecycle_capability_envelope_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10754",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-capability-envelope-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_LIFECYCLE_CAPABILITY_ENVELOPE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_lifecycle_capability_envelope_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10755",
+      "migration_name": "20260725010755_app_data_agent_analysis_lifecycle_variable_conflict_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10755",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-stage-variable-conflict-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_LIFECYCLE_VARIABLE_CONFLICT_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_lifecycle_variable_conflict_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10756",
+      "migration_name": "20260725010756_app_data_agent_analysis_result_stage_ordinality_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10756",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-stage-ordinality-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_RESULT_STAGE_ORDINALITY_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_result_stage_ordinality_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10757",
+      "migration_name": "20260725010757_app_data_agent_analysis_lifecycle_closure_restore.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10757",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-lifecycle-closure-restore.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_LIFECYCLE_CLOSURE_RESTORE_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_lifecycle_closure_restore_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10758",
+      "migration_name": "20260725010758_app_data_agent_analysis_stage_observation_variable_repair.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10758",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-stage-observation-variable-conflict-repair.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_STAGE_OBSERVATION_VARIABLE_REPAIR_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_stage_observation_variable_repair_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10759",
+      "migration_name": "20260725010759_app_data_agent_analysis_authority_row_lock_grant.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10759",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-row-lock-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_AUTHORITY_ROW_LOCK_GRANT_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_authority_row_lock_grant_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10760",
+      "migration_name": "20260725010760_app_data_agent_analysis_authority_row_lock_policy.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10760",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-row-lock-policy.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_AUTHORITY_ROW_LOCK_POLICY_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_authority_row_lock_policy_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

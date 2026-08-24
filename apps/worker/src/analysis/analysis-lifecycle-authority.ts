@@ -1,26 +1,28 @@
 import { createHash } from "node:crypto";
-import type { AnalysisAgentFinalResponse } from "@data-agent/contracts/ports";
-import type { AnalysisOperatorFinalizationResult } from "@data-agent/contracts/ports";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
+import type {
+  AnalysisAgentFinalResponse,
+  AnalysisOperatorFinalizationResult,
+  GovernedOperatorResultRef,
+} from "@data-agent/contracts/ports";
 import {
   type AnalysisAuthorityCommit,
   type AnalysisAuthorityCommitReceipt,
   type AnalysisContextJournalEntry,
-  analysisContextJournalAppendCommandSchema,
   type AnalysisResultStage,
   type AnalysisResultStageCommand,
   type AnalysisResultStageExecutionSnapshot,
+  analysisContextJournalAppendCommandSchema,
   assertAnalysisContextJournalTransition,
   buildAnalysisContextJournalAppend,
   buildAnalysisResultStageCommand,
   verifyAnalysisContextJournalEntry,
   verifyAnalysisResultStageCommand,
 } from "@data-agent/contracts/ports";
-import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { AnalysisResultStagedClosure } from "./result-publisher.js";
-import type { GovernedOperatorResultRef } from "@data-agent/contracts/ports";
 
 type Identity = {
   readonly lease: RunWorkLease;
@@ -32,6 +34,8 @@ type Identity = {
 };
 
 type RecoveryIdentity = Pick<Identity, "lease" | "node_id" | "context_generation">;
+
+const ANALYSIS_RESULT_STAGE_RETENTION_MS = 15 * 60 * 1_000;
 
 export interface RecoveredAnalysisResultStage {
   readonly identity: Omit<Identity, "lease" | "node_id" | "context_generation">;
@@ -92,7 +96,7 @@ export interface AnalysisLifecyclePersistenceAuthority {
   ): Promise<
     | {
         readonly ok: true;
-      readonly stage_command: AnalysisResultStageCommand;
+        readonly stage_command: AnalysisResultStageCommand;
         readonly oracle_record: null | {
           readonly receipt_payload: Readonly<Record<string, unknown>>;
           readonly receipt_hash: `sha256:${string}`;
@@ -137,17 +141,20 @@ export interface AnalysisLifecyclePersistenceAuthority {
 
 export interface AnalysisLifecycleAuthorityPort {
   recoverStage(input: RecoveryIdentity): Promise<RecoveredAnalysisResultStage | null>;
-  stage(input: Identity & {
-    readonly closure: AnalysisResultStagedClosure;
-    readonly governed_results: readonly GovernedOperatorResultRef[];
-    readonly operator_finalization: AnalysisOperatorFinalizationResult;
-    readonly execution_snapshot: AnalysisResultStageExecutionSnapshot;
-  }): Promise<AnalysisResultStage>;
+  stage(
+    input: Identity & {
+      readonly closure: AnalysisResultStagedClosure;
+      readonly governed_results: readonly GovernedOperatorResultRef[];
+      readonly operator_finalization: AnalysisOperatorFinalizationResult;
+      readonly execution_snapshot: AnalysisResultStageExecutionSnapshot;
+    },
+  ): Promise<AnalysisResultStage>;
   load(input: Identity & { readonly stage: AnalysisResultStage }): Promise<
     AnalysisResultStagedClosure & {
       readonly governed_operator_results: readonly GovernedOperatorResultRef[];
       readonly operator_finalization: AnalysisOperatorFinalizationResult;
       readonly execution_snapshot: AnalysisResultStageExecutionSnapshot;
+      readonly stage_expires_at: string;
       readonly oracle_record: null | {
         readonly receipt_payload: Readonly<Record<string, unknown>>;
         readonly receipt_hash: `sha256:${string}`;
@@ -164,22 +171,28 @@ export interface AnalysisLifecycleAuthorityPort {
     }
   >;
   freeze(input: Identity & { readonly stage: AnalysisResultStage }): Promise<void>;
-  recordOracle(input: Identity & {
-    readonly stage: AnalysisResultStage;
-    readonly oracle_receipt: unknown;
-  }): Promise<`sha256:${string}`>;
-  recordExplanation(input: Identity & {
-    readonly stage: AnalysisResultStage;
-    readonly explanation: AnalysisAgentFinalResponse;
-    readonly provider_invocation_ref: {
-      readonly resource_id: string;
-      readonly resource_revision: 1;
-      readonly resource_hash: `sha256:${string}`;
-    };
-  }): Promise<`sha256:${string}`>;
-  commit(input: Identity & {
-    readonly command: AnalysisAuthorityCommit;
-  }): Promise<AnalysisAuthorityCommitReceipt>;
+  recordOracle(
+    input: Identity & {
+      readonly stage: AnalysisResultStage;
+      readonly oracle_receipt: unknown;
+    },
+  ): Promise<`sha256:${string}`>;
+  recordExplanation(
+    input: Identity & {
+      readonly stage: AnalysisResultStage;
+      readonly explanation: AnalysisAgentFinalResponse;
+      readonly provider_invocation_ref: {
+        readonly resource_id: string;
+        readonly resource_revision: 1;
+        readonly resource_hash: `sha256:${string}`;
+      };
+    },
+  ): Promise<`sha256:${string}`>;
+  commit(
+    input: Identity & {
+      readonly command: AnalysisAuthorityCommit;
+    },
+  ): Promise<AnalysisAuthorityCommitReceipt>;
   cleanup(input: Identity & { readonly stage: AnalysisResultStage }): Promise<void>;
 }
 
@@ -210,6 +223,9 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
   readonly capabilities: ResearchAuthorityCapabilityResolver;
   readonly now?: () => Date;
 }): AnalysisLifecycleAuthorityPort {
+  const now = input.now ?? (() => new Date());
+  const stageExpiration = () =>
+    new Date(now().getTime() + ANALYSIS_RESULT_STAGE_RETENTION_MS).toISOString();
   const capability = () => input.capabilities.forArtifactType("SandboxResult");
   const load = async (identity: RecoveryIdentity) => {
     const result = await input.authority.readAnalysisContextJournal(capability(), {
@@ -298,10 +314,7 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
         ) {
           throw new TypeError("ANALYSIS_CONTEXT_JOURNAL_IDENTITY_MISMATCH");
         }
-        if (
-          "stage_id" in entry.event &&
-          entry.event.stage_id !== stageEvent.event.stage_id
-        ) {
+        if ("stage_id" in entry.event && entry.event.stage_id !== stageEvent.event.stage_id) {
           throw new TypeError("ANALYSIS_CONTEXT_JOURNAL_STAGE_IDENTITY_MISMATCH");
         }
       }
@@ -313,16 +326,20 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
         policy_version: first.policy_version,
         operator_registry_digest: first.operator_registry_digest as `sha256:${string}`,
       } as const;
-      const stage = {
+      const provisionalStage = {
         schema_version: "analysis-result-stage@1.0.0" as const,
         stage_id: stageEvent.event.stage_id,
         stage_hash: stageEvent.event.stage_hash,
         closure_hash: stageEvent.event.closure_hash,
         status: "STAGED" as const,
         created: false,
-        expires_at: recoveryInput.lease.expires_at,
+        expires_at: stageExpiration(),
       };
-      const loaded = await port.load({ ...identity, stage });
+      const loaded = await port.load({ ...identity, stage: provisionalStage });
+      const stage = Object.freeze({
+        ...provisionalStage,
+        expires_at: loaded.stage_expires_at,
+      });
       return Object.freeze({
         identity: Object.freeze({
           runtime_digest: identity.runtime_digest,
@@ -357,8 +374,10 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
         governed_operator_results: [...stageInput.governed_results],
         operator_finalization: stageInput.operator_finalization,
         execution_snapshot: stageInput.execution_snapshot,
-        artifacts: stageInput.closure.artifacts.map(({ content: _content, ...artifact }) => artifact),
-        expires_at: stageInput.lease.expires_at,
+        artifacts: stageInput.closure.artifacts.map(
+          ({ content: _content, ...artifact }) => artifact,
+        ),
+        expires_at: stageExpiration(),
       });
       const journalCommand = await journal(stageInput, {
         event_type: "PUBLISH_STAGE_CREATED",
@@ -425,21 +444,26 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
         manifest_hash: command.manifest_hash as `sha256:${string}`,
         closure_hash: command.closure_hash as `sha256:${string}`,
         analytical_value_hashes: Object.freeze(
-          command.analytical_value_hashes.map((value) => Object.freeze({
-            symbol_name: value.symbol_name,
-            value_hash: value.value_hash as `sha256:${string}`,
-          })),
+          command.analytical_value_hashes.map((value) =>
+            Object.freeze({
+              symbol_name: value.symbol_name,
+              value_hash: value.value_hash as `sha256:${string}`,
+            }),
+          ),
         ),
         artifacts: Object.freeze(artifacts),
         governed_operator_results: Object.freeze([...command.governed_operator_results]),
         operator_finalization: command.operator_finalization,
         execution_snapshot: command.execution_snapshot,
+        stage_expires_at: command.expires_at,
         oracle_record: result.oracle_record,
         explanation_record: result.explanation_record,
       });
     },
     async recordOracle(oracleInput) {
-      const oracleHash = (await sha256ContentHash(oracleInput.oracle_receipt)) as `sha256:${string}`;
+      const oracleHash = (await sha256ContentHash(
+        oracleInput.oracle_receipt,
+      )) as `sha256:${string}`;
       const journalCommand = await journal(oracleInput, {
         event_type: "ORACLE_VERIFIED",
         stage_id: oracleInput.stage.stage_id,
@@ -529,4 +553,7 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
   return Object.freeze(port);
 }
 
-export const analysisLifecycleAuthorityInternals = Object.freeze({ cursor });
+export const analysisLifecycleAuthorityInternals = Object.freeze({
+  cursor,
+  stage_retention_ms: ANALYSIS_RESULT_STAGE_RETENTION_MS,
+});

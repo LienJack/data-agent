@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   type AnalysisOperatorArgumentExtractorPort,
   type AnalysisToolLoopProgressEvent,
+  analysisToolLoopInternals,
   executeAnalysisToolLoop,
 } from "../../src/analysis/analysis-tool-loop.js";
 import type {
@@ -21,7 +22,10 @@ import type {
   GovernedResultBridge,
   RecoveredGovernedOperatorResult,
 } from "../../src/analysis/governed-result-bridge.js";
-import type { OpenSandboxAnalysisSession } from "../../src/runs/opensandbox-analysis-runtime.js";
+import {
+  AnalysisSandboxRuntimeError,
+  type OpenSandboxAnalysisSession,
+} from "../../src/runs/opensandbox-analysis-runtime.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -29,6 +33,90 @@ const fakeDigest = `sha256:${"a".repeat(64)}` as const;
 const operatorOutput = {
   tests: [{ label: "a", adjusted_p_value: 0.01, rejected: true }],
 };
+
+describe("safe cell diagnostics", () => {
+  it("projects only allowlisted AST policy identifiers", () => {
+    expect(
+      analysisToolLoopInternals.safePolicyViolationIdentifier({
+        code: "IMPORT_DENIED",
+        detail: "os,pathlib.Path",
+      }),
+    ).toBe("os,pathlib.Path");
+    expect(
+      analysisToolLoopInternals.safePolicyViolationIdentifier({
+        code: "FILE_PATH_DENIED",
+        detail: "/workspace/secret.csv",
+      }),
+    ).toBeNull();
+    expect(
+      analysisToolLoopInternals.safePolicyViolationIdentifier({
+        code: "NAME_DENIED",
+        detail: "identifier with raw value",
+      }),
+    ).toBeNull();
+  });
+
+  it("repairs an allowlisted fixed extractor failure without exposing raw Python errors", () => {
+    expect(
+      analysisToolLoopInternals.repairablePublishFailureCode(
+        new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
+          "CELL",
+          false,
+          "ANALYSIS_RESULT_TIMESTAMP_TIMEZONE_REQUIRED",
+        ),
+      ),
+    ).toBe("ANALYSIS_RESULT_TIMESTAMP_TIMEZONE_REQUIRED");
+    expect(
+      analysisToolLoopInternals.repairablePublishFailureCode(
+        new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_ARTIFACT_INVALID", "ARTIFACT", false),
+      ),
+    ).toBeNull();
+  });
+
+  it("extracts only the missing attribute identifier", () => {
+    expect(
+      analysisToolLoopInternals.safeCellErrorIdentifier({
+        schema_version: "analysis-cell-observation@1.0.0",
+        cell_id: "failed-cell",
+        status: "FAILED",
+        execution_id: "execution-1",
+        execution_count: 1,
+        elapsed_ms: 1,
+        stdout: "",
+        stderr: "secret traceback",
+        result_text: null,
+        error: {
+          name: "AttributeError",
+          value: "'DataFrame' object has no attribute 'to_list'",
+        },
+      }),
+    ).toBe("to_list");
+  });
+
+  it("projects a data-free assertion code but rejects assertion text", () => {
+    const observation = (value: string) => ({
+      schema_version: "analysis-cell-observation@1.0.0" as const,
+      cell_id: "failed-cell",
+      status: "FAILED" as const,
+      execution_id: "execution-1",
+      execution_count: 1,
+      elapsed_ms: 1,
+      stdout: "",
+      stderr: "secret traceback",
+      result_text: null,
+      error: { name: "AssertionError", value },
+    });
+    expect(
+      analysisToolLoopInternals.safeCellErrorIdentifier(observation("SHAPLEY_FACTOR_NON_FINITE")),
+    ).toBe("SHAPLEY_FACTOR_NON_FINITE");
+    expect(
+      analysisToolLoopInternals.safeCellErrorIdentifier(
+        observation("factor value 3.14 was not finite"),
+      ),
+    ).toBeNull();
+  });
+});
 
 function digest(bytes: Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
@@ -234,6 +322,7 @@ function scriptedModel(
         return {
           phase: "INVALID_TOOL",
           error_code: "ANALYSIS_AGENT_TOOL_CALL_INVALID",
+          validation_issues: [{ path: "arguments.source", code: "invalid_type" }],
           provider_invocation_ref: providerRef(toolIndex),
         };
       }
@@ -383,6 +472,13 @@ function session(options: SessionOptions = {}): OpenSandboxAnalysisSession {
     async uploadAgentFile(input) {
       options.log?.push(`upload:${input.path}`);
       expect(digest(input.content)).toBe(input.content_sha256);
+    },
+    async bindGovernedInput(input) {
+      return {
+        binding_id: "input-binding-aaaaaaaaaaaaaaaaaaaaaaaa",
+        input_symbol: "__da_input_aaaaaaaaaaaaaaaaaaaaaaaa",
+        content_sha256: input.content_sha256,
+      };
     },
     async admitAgentCell(input) {
       if (options.policy_rejections?.has(input.cell_id)) {
@@ -716,7 +812,10 @@ async function run(input: {
     recovered_operator_results: input.recovered_operator_results ?? [],
     stage: {
       async stage({ closure }) {
-        return { stage_id: "019d2d97-110c-7735-8fbb-000000000099", closure_hash: closure.closure_hash };
+        return {
+          stage_id: "019d2d97-110c-7735-8fbb-000000000099",
+          closure_hash: closure.closure_hash,
+        };
       },
     },
     initial_messages: [{ role: "system", content: "Use governed tools." }],
@@ -790,6 +889,10 @@ describe("unique analysis Result Publisher state machine", () => {
       .flatMap(({ messages }) => messages)
       .find(({ content }) => content.includes('"status":"BOUND"'))?.content;
     expect(boundedOperatorResult).toContain('"result_symbol":"__da_gov_');
+    expect(boundedOperatorResult).toContain(
+      '"collection_expression":"__da_gov_aaaaaaaaaaaaaaaaaaaaaaaa[\\"tests\\"]"',
+    );
+    expect(boundedOperatorResult).toContain('"instruction":"Read this exact protected symbol');
     expect(boundedOperatorResult).not.toContain('"output"');
     expect(boundedOperatorResult).not.toContain("workspace");
     expect(boundedOperatorResult).not.toContain("execution_evidence");
@@ -860,6 +963,19 @@ describe("unique analysis Result Publisher state machine", () => {
       "CELL_EXECUTION",
       "PUBLISH_SYMBOL_CONTRACT",
     ]);
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        repair_category: "CELL_POLICY",
+        policy_violation_codes: ["IMPORT_NOT_ALLOWED"],
+      }),
+    );
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        repair_category: "CELL_EXECUTION",
+        cell_error_name: "ValueError",
+        cell_error_identifier: null,
+      }),
+    );
     const serializedProgress = JSON.stringify(progress);
     expect(serializedProgress).not.toContain("secret raw row");
     expect(serializedProgress).not.toContain("secret traceback");
@@ -887,19 +1003,25 @@ describe("unique analysis Result Publisher state machine", () => {
     ).rejects.toThrow("ANALYSIS_AGENT_REPAIR_BUDGET_EXHAUSTED_PUBLISH_SYMBOL_CONTRACT");
   });
 
-  it("terminates repeated non-progress calls even when the model changes cell ids", async () => {
+  it("spends the existing model-contract repair once, then terminates repeated non-progress", async () => {
     const repeatedSource = "raise ValueError('same failure')";
     const calls: Parameters<AnalysisAgentModelPort["turn"]>[0][] = [];
     await expect(
       run({
-        script: [cell("failed-1", repeatedSource), cell("failed-2", repeatedSource)],
+        script: [
+          cell("failed-1", repeatedSource),
+          cell("failed-2", repeatedSource),
+          cell("failed-3", repeatedSource),
+        ],
         obligations: [],
-        session: session({ runtime_failures: new Set(["failed-1", "failed-2"]) }),
+        session: session({
+          runtime_failures: new Set(["failed-1", "failed-2", "failed-3"]),
+        }),
         calls,
         max_tool_turns: 12,
       }),
-    ).rejects.toThrow("ANALYSIS_AGENT_REPEATED_TOOL_CALL");
-    expect(calls).toHaveLength(2);
+    ).rejects.toThrow("ANALYSIS_AGENT_REPAIR_BUDGET_EXHAUSTED_MODEL_TOOL_CONTRACT");
+    expect(calls).toHaveLength(3);
   });
 
   it("does not model-repair sandbox staging or governed receipt failures", async () => {

@@ -1,3 +1,4 @@
+import type { AnalysisResultContract } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type AnalysisAgentFinalResponse,
@@ -7,6 +8,10 @@ import {
   type ModelProviderRequest,
 } from "@data-agent/contracts/ports";
 import type { RunProviderDispatchCapability } from "../runs/run-execution-context.js";
+import {
+  analysisModelToolCallCandidateSchema,
+  analysisOperatorArgumentSymbols,
+} from "./analysis-tool-descriptors.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { ProviderInvocationResourceRef } from "./executor.js";
 
@@ -22,6 +27,7 @@ export type AnalysisAgentModelTurnResult =
       readonly error_code:
         | "ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID"
         | "ANALYSIS_AGENT_TOOL_CALL_INVALID";
+      readonly validation_issues: readonly AnalysisToolValidationIssue[];
       readonly provider_invocation_ref: ProviderInvocationResourceRef;
     }
   | {
@@ -30,6 +36,12 @@ export type AnalysisAgentModelTurnResult =
       readonly provider_invocation_ref: ProviderInvocationResourceRef;
     };
 
+export interface AnalysisToolValidationIssue {
+  readonly path: string;
+  readonly code: string;
+  readonly identifiers?: readonly string[];
+}
+
 export interface AnalysisAgentModelPort {
   turn(input: {
     readonly run_id: string;
@@ -37,6 +49,7 @@ export interface AnalysisAgentModelPort {
     readonly node_id: string;
     readonly turn_index: number;
     readonly phase: "TOOL" | "FINAL";
+    readonly result_contract: AnalysisResultContract;
     readonly allowed_tool_names: readonly AnalysisToolCallCandidate["tool_name"][];
     readonly messages: ModelProviderRequest["messages"];
     readonly max_output_tokens: number;
@@ -52,20 +65,125 @@ function parseJsonDocument(text: string): unknown {
   return JSON.parse(trimmed);
 }
 
-function toolCandidate(input: unknown): AnalysisToolCallCandidate {
+function safeValidationIssueIdentifiers(issue: {
+  readonly code: string;
+  readonly keys?: unknown;
+}): readonly string[] {
+  if (issue.code !== "unrecognized_keys" || !Array.isArray(issue.keys)) return [];
+  return Object.freeze(
+    issue.keys
+      .filter(
+        (key): key is string =>
+          typeof key === "string" && /^[A-Za-z_][A-Za-z0-9_-]{0,127}$/u.test(key),
+      )
+      .slice(0, 8),
+  );
+}
+
+function validateToolCandidate(
+  input: unknown,
+  identity: {
+    readonly run_id: string;
+    readonly node_id: string;
+    readonly turn_index: number;
+    readonly result_contract: AnalysisResultContract;
+  },
+):
+  | { readonly candidate: AnalysisToolCallCandidate; readonly issues: readonly [] }
+  | { readonly candidate: null; readonly issues: readonly AnalysisToolValidationIssue[] } {
   if (typeof input !== "object" || input === null) {
-    throw new TypeError("ANALYSIS_AGENT_TOOL_CALL_INVALID");
+    return {
+      candidate: null,
+      issues: Object.freeze([{ path: "$", code: "invalid_type" }]),
+    };
   }
   const candidate = input as {
     readonly tool_call_id?: unknown;
     readonly tool_name?: unknown;
     readonly arguments?: unknown;
   };
-  return analysisToolCallCandidateSchema.parse({
+  const parsed = analysisModelToolCallCandidateSchema.safeParse({
     tool_call_id: candidate.tool_call_id,
     tool_name: candidate.tool_name,
     arguments: candidate.arguments,
   });
+  if (parsed.success) {
+    const modelCandidate = parsed.data;
+    let argumentsWithServerIdentity: AnalysisToolCallCandidate["arguments"];
+    if (modelCandidate.tool_name === "python_cell") {
+      argumentsWithServerIdentity = {
+        schema_version: "analysis-python-cell-tool@1.0.0",
+        cell_id: `cell-${deterministicAnalysisUuid(
+          `analysis-model-cell\0${identity.run_id}\0${identity.node_id}\0${identity.turn_index}\0${modelCandidate.arguments.source}`,
+        )}`,
+        ...modelCandidate.arguments,
+      };
+    } else if (modelCandidate.tool_name === "statistical_operator") {
+      argumentsWithServerIdentity = {
+        schema_version: "analysis-statistical-operator-tool@1.0.0",
+        ...modelCandidate.arguments,
+        ...analysisOperatorArgumentSymbols(modelCandidate.arguments.call_id),
+      };
+    } else {
+      const modelArguments = modelCandidate.arguments;
+      const tableBindings = new Map(
+        modelArguments.table_bindings.map((binding) => [binding.table_id, binding]),
+      );
+      const chartBindings = [];
+      for (const binding of modelArguments.chart_bindings) {
+        const chart = identity.result_contract.charts.find(
+          ({ chart_id: chartId }) => chartId === binding.chart_id,
+        );
+        const tableBinding = chart ? tableBindings.get(chart.table_id) : undefined;
+        const templateId = chart?.allowed_template_ids[0];
+        if (!chart || !tableBinding || !templateId) {
+          return {
+            candidate: null,
+            issues: Object.freeze([
+              {
+                path: "arguments.chart_bindings",
+                code: "unknown_contract_binding",
+                identifiers: Object.freeze([binding.chart_id]),
+              },
+            ]),
+          };
+        }
+        chartBindings.push({
+          ...binding,
+          intent: chart.intent,
+          template_id: templateId,
+          data_symbol: tableBinding.data_symbol,
+        });
+      }
+      argumentsWithServerIdentity = {
+        schema_version: "analysis-result-publish-tool@1.0.0",
+        ...modelArguments,
+        chart_bindings: chartBindings,
+      };
+    }
+    return {
+      candidate: analysisToolCallCandidateSchema.parse({
+        ...modelCandidate,
+        arguments: argumentsWithServerIdentity,
+      }),
+      issues: [],
+    };
+  }
+  return {
+    candidate: null,
+    issues: Object.freeze(
+      parsed.error.issues.slice(0, 16).map((issue) =>
+        (() => {
+          const identifiers = safeValidationIssueIdentifiers(issue);
+          return Object.freeze({
+            path: issue.path.length === 0 ? "$" : issue.path.map(String).join("."),
+            code: issue.code,
+            ...(identifiers.length > 0 ? { identifiers } : {}),
+          });
+        })(),
+      ),
+    ),
+  };
 }
 
 export function createRunBoundDeepSeekAnalysisAgentModel(
@@ -112,23 +230,30 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
           return {
             phase: "INVALID_TOOL" as const,
             error_code: "ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID" as const,
+            validation_issues: Object.freeze([{ path: "tool_calls", code: "invalid_length" }]),
             provider_invocation_ref: providerInvocationRef,
           };
         }
-        try {
+        const validated = validateToolCandidate(result.value.tool_calls[0], {
+          run_id: input.run_id,
+          node_id: input.node_id,
+          turn_index: input.turn_index,
+          result_contract: input.result_contract,
+        });
+        if (validated.candidate !== null) {
           return {
             phase: "TOOL" as const,
-            tool_call: toolCandidate(result.value.tool_calls[0]),
+            tool_call: validated.candidate,
             assistant_text: result.value.output_text,
             provider_invocation_ref: providerInvocationRef,
           };
-        } catch {
-          return {
-            phase: "INVALID_TOOL" as const,
-            error_code: "ANALYSIS_AGENT_TOOL_CALL_INVALID" as const,
-            provider_invocation_ref: providerInvocationRef,
-          };
         }
+        return {
+          phase: "INVALID_TOOL" as const,
+          error_code: "ANALYSIS_AGENT_TOOL_CALL_INVALID" as const,
+          validation_issues: validated.issues,
+          provider_invocation_ref: providerInvocationRef,
+        };
       }
       if (result.value.tool_calls.length !== 0) {
         throw new TypeError("ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID");
@@ -144,4 +269,8 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
   });
 }
 
-export const deepSeekAnalysisAgentInternals = Object.freeze({ parseJsonDocument, toolCandidate });
+export const deepSeekAnalysisAgentInternals = Object.freeze({
+  parseJsonDocument,
+  validateToolCandidate,
+  safeValidationIssueIdentifiers,
+});

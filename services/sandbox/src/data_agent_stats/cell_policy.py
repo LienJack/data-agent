@@ -95,7 +95,11 @@ READ_PREFIXES = (
     "/workspace/inputs/",
 )
 WRITE_PREFIXES: tuple[str, ...] = ()
-PROTECTED_RESULT_PREFIX = "__da_gov_"
+PROTECTED_BINDING_PREFIXES = ("__da_gov_", "__da_input_")
+
+
+def _protected_binding(name: str) -> bool:
+    return name.startswith(PROTECTED_BINDING_PREFIXES)
 
 
 @dataclass(frozen=True)
@@ -155,28 +159,28 @@ def validate_cell_source(
             if any(name.split(".", 1)[0] not in import_roots for name in names):
                 violations.append(CellPolicyViolation("IMPORT_DENIED", line, ",".join(names)))
             if any(
-                (alias.asname or alias.name).startswith(PROTECTED_RESULT_PREFIX)
+                _protected_binding(alias.asname or alias.name)
                 for alias in node.names
             ):
                 violations.append(
-                    CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, "import alias")
+                    CellPolicyViolation("PROTECTED_BINDING_MUTATION", line, "import alias")
                 )
         elif isinstance(node, ast.Name) and node.id in BANNED_NAMES | BANNED_ROOTS:
             violations.append(CellPolicyViolation("NAME_DENIED", line, node.id))
         elif (
             isinstance(node, ast.Name)
-            and node.id.startswith(PROTECTED_RESULT_PREFIX)
+            and _protected_binding(node.id)
             and isinstance(node.ctx, (ast.Store, ast.Del))
         ):
-            violations.append(CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, node.id))
-        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name.startswith(
-            PROTECTED_RESULT_PREFIX
+            violations.append(CellPolicyViolation("PROTECTED_BINDING_MUTATION", line, node.id))
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)) and _protected_binding(node.name):
+            violations.append(CellPolicyViolation("PROTECTED_BINDING_MUTATION", line, node.name))
+        elif (
+            isinstance(node, ast.ExceptHandler)
+            and isinstance(node.name, str)
+            and _protected_binding(node.name)
         ):
-            violations.append(CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, node.name))
-        elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str) and node.name.startswith(
-            PROTECTED_RESULT_PREFIX
-        ):
-            violations.append(CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, node.name))
+            violations.append(CellPolicyViolation("PROTECTED_BINDING_MUTATION", line, node.name))
         elif isinstance(node, ast.Attribute):
             root = node
             while isinstance(root, ast.Attribute):

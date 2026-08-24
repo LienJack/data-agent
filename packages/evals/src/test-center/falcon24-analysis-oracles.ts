@@ -65,6 +65,10 @@ const deliverySchema = z.strictObject({
   schema_version: z.literal("falcon24-delivery-output@1.0.0"),
   case_id: z.literal("falcon24-delivery-experience-12m"),
   window: fullMonthWindowSchema,
+  data_quality_precheck: z.strictObject({
+    invalid_delivery_orders: z.number().int().nonnegative(),
+    valid_delivery_orders: z.number().int().nonnegative(),
+  }),
   six_vs_six: z.strictObject({
     first: z.strictObject({
       p50_minutes: nonnegative,
@@ -84,6 +88,7 @@ const deliverySchema = z.strictObject({
     delayed_p_value: probability,
     sample_size: z.number().int().positive(),
     controls: z.array(z.string()).min(4),
+    finding: z.enum(["POSITIVE_SIGNIFICANT", "NEGATIVE_SIGNIFICANT", "NOT_SIGNIFICANT"]),
   }),
   low_rating_scenarios: z
     .array(
@@ -212,6 +217,7 @@ const cohortSchema = z.strictObject({
     customers_first_order_before_registration: z.number().int().nonnegative(),
     valid_ordering_customers: z.number().int().nonnegative(),
     no_order_customers: z.number().int().nonnegative(),
+    invalid_delivery_orders: z.number().int().nonnegative(),
   }),
   primary_reliable: z.literal(false),
   cohorts: z
@@ -452,18 +458,14 @@ export function buildFalcon24AnalysisChartProjection(
       }
       case "falcon24-cohort-retention-m0-m6": {
         const rows = output.cohorts.flatMap((cohort) =>
-          cohort.points.flatMap((point) =>
-            [
-              { metric: "留存率", rate_pct: point.retention_rate * 100 },
-              { metric: "复购率", rate_pct: point.repeat_purchase_rate * 100 },
-            ].map((metric) => ({
-              series: `${cohort.registration_cohort} / ${cohort.customer_segment} / ${metric.metric}`,
-              registration_cohort: cohort.registration_cohort,
-              customer_segment: cohort.customer_segment,
-              month_index: point.month_index,
-              ...metric,
-            })),
-          ),
+          cohort.points.map((point) => ({
+            series: `${cohort.registration_cohort} / ${cohort.customer_segment}`,
+            registration_cohort: cohort.registration_cohort,
+            customer_segment: cohort.customer_segment,
+            month_index: point.month_index,
+            retention_rate_pct: point.retention_rate * 100,
+            repeat_purchase_rate_pct: point.repeat_purchase_rate * 100,
+          })),
         );
         return {
           kind: "CHART",
@@ -472,7 +474,7 @@ export function buildFalcon24AnalysisChartProjection(
           description: "按注册月份和客户类型展示；主结论仍受注册与订单时序异常限制。",
           unit: "%",
           x_key: "month_index",
-          y_keys: ["rate_pct"],
+          y_keys: ["retention_rate_pct", "repeat_purchase_rate_pct"],
           lower_bound_key: null,
           upper_bound_key: null,
           series_key: "series",
@@ -481,12 +483,12 @@ export function buildFalcon24AnalysisChartProjection(
           table: {
             kind: "TABLE",
             columns: [
-              chartColumn("series", "注册批次 / 客户类型 / 指标", "STRING"),
+              chartColumn("series", "注册批次 / 客户类型", "STRING"),
               chartColumn("registration_cohort", "注册批次", "STRING"),
               chartColumn("customer_segment", "客户类型", "STRING"),
               chartColumn("month_index", "月龄", "NUMBER"),
-              chartColumn("metric", "指标", "STRING"),
-              chartColumn("rate_pct", "比率", "NUMBER"),
+              chartColumn("retention_rate_pct", "留存率", "NUMBER"),
+              chartColumn("repeat_purchase_rate_pct", "复购率", "NUMBER"),
             ],
             rows,
             total_rows: rows.length,
@@ -597,6 +599,21 @@ function evaluateDelivery(
   for (const control of ["month", "log_order_amount", "product_category", "customer_segment"]) {
     if (!controls.has(control)) throw new TypeError("FALCON24_Q2_GLM_CONTROL_MISSING");
   }
+  if (
+    output.data_quality_precheck.invalid_delivery_orders !== 932 ||
+    output.data_quality_precheck.valid_delivery_orders !== 2_127
+  ) {
+    throw new TypeError("FALCON24_Q2_DELIVERY_QUALITY_AUDIT_INVALID");
+  }
+  const expectedFinding =
+    output.adjusted_binomial_glm.delayed_p_value > 0.05
+      ? "NOT_SIGNIFICANT"
+      : output.adjusted_binomial_glm.delayed_coefficient > 0
+        ? "POSITIVE_SIGNIFICANT"
+        : "NEGATIVE_SIGNIFICANT";
+  if (output.adjusted_binomial_glm.finding !== expectedFinding) {
+    throw new TypeError("FALCON24_Q2_GLM_FINDING_INVALID");
+  }
   assertAssociationLanguage(output.conclusion);
 }
 
@@ -652,12 +669,13 @@ function evaluateCohort(
   }
   const quality = output.anomaly_precheck;
   if (
-    quality.orders_before_registration !== 2_556 ||
-    quality.customers_first_order_before_registration !== 1_438 ||
-    quality.valid_ordering_customers !== 734 ||
-    quality.no_order_customers !== 328 ||
-    output.sensitivity.excluded_pre_registration_customers !== 1_438 ||
-    output.sensitivity.retained_no_order_customers !== 328
+    quality.orders_before_registration !== 1_186 ||
+    quality.customers_first_order_before_registration !== 767 ||
+    quality.valid_ordering_customers !== 531 ||
+    quality.no_order_customers !== 209 ||
+    quality.invalid_delivery_orders !== 931 ||
+    output.sensitivity.excluded_pre_registration_customers !== 767 ||
+    output.sensitivity.retained_no_order_customers !== 209
   ) {
     throw new TypeError("FALCON24_Q5_QUALITY_AUDIT_INVALID");
   }

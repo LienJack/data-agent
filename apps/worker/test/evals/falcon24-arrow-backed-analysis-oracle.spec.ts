@@ -306,6 +306,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
         feedback_category: lowRating ? "negative" : "positive",
         sentiment: lowRating ? "negative" : "positive",
         distance_km: 1 + (index % 4),
+        invalid_delivery_orders: 0,
       };
     });
     const summarize = (selected: typeof rows) => ({
@@ -350,6 +351,10 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       )
       .map(({ lowRatings: _lowRatings, ...scenario }) => scenario);
     const output = {
+      data_quality_precheck: {
+        invalid_delivery_orders: 0,
+        valid_delivery_orders: rows.length,
+      },
       six_vs_six: {
         first: summarize(rows.filter(({ order_date }) => order_date < "2024-05-01")),
         second: summarize(rows.filter(({ order_date }) => order_date >= "2024-05-01")),
@@ -358,6 +363,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
         delayed_coefficient: glm.coefficient,
         delayed_p_value: glm.pValue,
         sample_size: rows.length,
+        finding: glm.pValue > 0.05 ? "NOT_SIGNIFICANT" : "POSITIVE_SIGNIFICANT",
       },
       low_rating_scenarios: scenarios,
     };
@@ -513,45 +519,80 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
   });
 
   it("recomputes all M0-M6 cohort measures and anomaly counts", () => {
-    const rows = Array.from({ length: 7 }, (_, monthIndex) => ({
-      registration_cohort: "2023-05",
-      customer_segment: "regular",
+    const quality = {
+      observation_end_month: "2024-10",
+      orders_before_registration: 1,
+      customers_first_order_before_registration: 1,
+      valid_ordering_customers: 0,
+      no_order_customers: 1,
+      invalid_delivery_orders: 0,
+    };
+    const rows = [
+      {
+        customer_id: "c1",
+        customer_type: "regular",
+        registration_date: "2023-05-15",
+        order_id: "pre-c1",
+        event_date: "2023-04-30",
+        delivery_minutes: 50,
+        average_rating: 2,
+        revenue: 5,
+        ...quality,
+      },
+      {
+        customer_id: "c1",
+        customer_type: "regular",
+        registration_date: "2023-05-15",
+        order_id: "c1-m0-a",
+        event_date: "2023-05-16",
+        delivery_minutes: 30,
+        average_rating: 4,
+        revenue: 10,
+        ...quality,
+      },
+      {
+        customer_id: "c1",
+        customer_type: "regular",
+        registration_date: "2023-05-15",
+        order_id: "c1-m0-b",
+        event_date: "2023-05-17",
+        delivery_minutes: 40,
+        average_rating: 2,
+        revenue: 20,
+        ...quality,
+      },
+      {
+        customer_id: "c2",
+        customer_type: "regular",
+        registration_date: "2023-05-20",
+        order_id: null,
+        event_date: null,
+        delivery_minutes: null,
+        average_rating: null,
+        revenue: null,
+        ...quality,
+      },
+    ];
+    const points = Array.from({ length: 7 }, (_, monthIndex) => ({
       month_index: monthIndex,
-      cohort_size: 10,
-      active_customers: 5,
-      repeat_customers: 2,
-      order_count: 7,
-      revenue: 100,
-      delivery_minutes: 20,
-      average_rating: 4,
-      valid_timeline_customers: 8,
-      valid_active_customers: 4,
-      valid_order_count: 6,
-      valid_revenue: 80,
-      orders_before_registration: 2556,
-      customers_first_order_before_registration: 1438,
-      valid_ordering_customers: 734,
-      no_order_customers: 328,
-    }));
-    const points = rows.map((row) => ({
-      month_index: row.month_index,
-      retention_rate: 0.5,
-      repeat_purchase_rate: 0.2,
-      average_spend: 20,
-      delivery_minutes: 20,
-      average_rating: 4,
+      retention_rate: monthIndex === 0 ? 0.5 : 0,
+      repeat_purchase_rate: monthIndex === 0 ? 0.5 : 0,
+      average_spend: monthIndex === 0 ? 30 : null,
+      delivery_minutes: monthIndex === 0 ? 35 : null,
+      average_rating: monthIndex === 0 ? 3 : null,
     }));
     const output = {
       anomaly_precheck: {
-        orders_before_registration: 2556,
-        customers_first_order_before_registration: 1438,
-        valid_ordering_customers: 734,
-        no_order_customers: 328,
+        orders_before_registration: 1,
+        customers_first_order_before_registration: 1,
+        valid_ordering_customers: 0,
+        no_order_customers: 1,
+        invalid_delivery_orders: 0,
       },
       sensitivity: {
-        excluded_pre_registration_customers: 1438,
-        retained_no_order_customers: 328,
-        conclusion_changed: false,
+        excluded_pre_registration_customers: 1,
+        retained_no_order_customers: 1,
+        conclusion_changed: true,
       },
       cohorts: [{ registration_cohort: "2023-05", customer_segment: "regular", points }],
     };

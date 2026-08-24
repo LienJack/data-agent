@@ -100,6 +100,25 @@ describe("Falcon24 analysis program compiler", () => {
     );
     expect(programs).toHaveLength(5);
     expect(
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-business-review-18m"],
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("minimum signed month-over-month revenue change"),
+        expect.stringContaining("clip every item-row quantity"),
+        expect.stringContaining("exactly the keys active_buyers, orders_per_buyer"),
+        expect.stringContaining("Never invent parallel scalar variables"),
+      ]),
+    );
+    for (const [index, program] of programs.entries()) {
+      const testCase = suite.cases[index];
+      if (!testCase) throw new Error("missing Falcon24 case");
+      expect(program.nodes[0]?.result_contract.result_fields.map(({ field }) => field)).toEqual([
+        "schema_version",
+        "case_id",
+        ...falcon24AnalysisProgramInternals.result_contracts[testCase.case_id].required_fields,
+      ]);
+    }
+    expect(
       programs.every(
         (program) =>
           program.semantic_context_package_hash === context.semantic_context_binding.package_hash &&
@@ -121,6 +140,19 @@ describe("Falcon24 analysis program compiler", () => {
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("do not round");
     expect(
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-marketing-lag-effect"].join(" "),
+    ).toContain("exactly 16*3*5 spend rows");
+    expect(
+      falcon24AnalysisProgramInternals.presentation_contracts[
+        "falcon24-cohort-retention-m0-m6"
+      ].columns.find(({ key }) => key === "average_spend")?.nullable,
+    ).toBe(true);
+    expect(
+      falcon24AnalysisProgramInternals.method_contracts[
+        "falcon24-cohort-retention-m0-m6"
+      ].join(" "),
+    ).toContain("cohort_count=12");
+    expect(
       programs.map((program) =>
         program.nodes[0]?.operator_obligations.map(({ operator_id: operatorId }) => operatorId),
       ),
@@ -138,7 +170,7 @@ describe("Falcon24 analysis program compiler", () => {
         "multiple-testing.bh-fdr@1",
         "multiple-testing.bh-fdr@1",
       ],
-      ["cohort.registration-retention-m0-m6@1", "cohort.registration-retention-m0-m6@1"],
+      ["cohort.registration-retention-m0-m6@2", "cohort.registration-retention-m0-m6@2"],
     ]);
     expect(
       Object.values(falcon24AnalysisProgramInternals.method_contracts).flat().join(" "),

@@ -5,7 +5,6 @@ import {
   ANALYSIS_PYTHON_CELL_TOOL_NAME,
   ANALYSIS_RESULT_PUBLISH_TOOL_NAME,
   ANALYSIS_STATISTICAL_OPERATOR_TOOL_NAME,
-  type AnalysisAgentFinalResponse,
   type AnalysisCellObservation,
   type AnalysisOperatorFinalizationResult,
   type AnalysisStatisticalOperatorObservation,
@@ -18,6 +17,7 @@ import {
 } from "@data-agent/contracts/ports";
 import {
   type GeneratedAnalysisSourcePolicy,
+  STATISTICAL_OPERATOR_MANIFEST,
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   type StatisticalOperatorObligation,
   statisticalOperatorObligationSchema,
@@ -31,6 +31,7 @@ import {
 import type {
   AnalysisAgentModelPort,
   AnalysisAgentModelTurnResult,
+  AnalysisToolValidationIssue,
 } from "./deepseek-analysis-agent.js";
 import type { ProviderInvocationResourceRef } from "./executor.js";
 import type {
@@ -99,10 +100,7 @@ export interface AnalysisExecutedCell {
   readonly observation: AnalysisCellObservation;
 }
 
-/**
- * DeepSeek sends only two Python symbol names. This server-owned adapter
- * extracts and normalizes their mapping values outside model tokens.
- */
+/** Extracts server-declared operator argument symbols outside model tokens. */
 export interface AnalysisOperatorArgumentExtractorPort {
   extract(input: { readonly inputs_symbol: string; readonly parameters_symbol: string }): Promise<{
     readonly inputs: Readonly<Record<string, unknown>>;
@@ -150,6 +148,10 @@ export interface AnalysisToolLoopProgressEvent {
   readonly repair_category: AnalysisToolRepairCategory | null;
   readonly repair_attempts: Readonly<Record<AnalysisToolRepairCategory, 0 | 1>>;
   readonly failure_code: string | null;
+  readonly tool_validation_issues: readonly AnalysisToolValidationIssue[];
+  readonly cell_error_name: string | null;
+  readonly cell_error_identifier: string | null;
+  readonly policy_violation_codes: readonly string[];
 }
 
 function sha256(bytes: Uint8Array): `sha256:${string}` {
@@ -196,6 +198,58 @@ function safeCellFailureCode(observation: AnalysisCellObservation): string {
   return "ANALYSIS_CELL_RUNTIME_ERROR";
 }
 
+function safeCellErrorName(observation: AnalysisCellObservation): string | null {
+  const name = observation.error?.name ?? "";
+  return /^[A-Za-z][A-Za-z0-9_.]{0,127}$/u.test(name) ? name : null;
+}
+
+function safeCellErrorIdentifier(observation: AnalysisCellObservation): string | null {
+  const value = observation.error?.value.trim() ?? "";
+  const boundedCode = value.match(/^([A-Z][A-Z0-9_]{2,127})$/u)?.[1];
+  if (boundedCode) return boundedCode;
+  const direct = value.match(/^['"]([A-Za-z_][A-Za-z0-9_.-]{0,127})['"]$/u)?.[1];
+  if (direct) return direct;
+  const missingAttribute = value.match(
+    /^['"][A-Za-z_][A-Za-z0-9_.-]{0,127}['"] object has no attribute ['"]([A-Za-z_][A-Za-z0-9_.-]{0,127})['"]$/u,
+  )?.[1];
+  if (missingAttribute) return missingAttribute;
+  const undefinedName = value.match(
+    /^name ['"]([A-Za-z_][A-Za-z0-9_]{0,127})['"] is not defined$/u,
+  )?.[1];
+  return undefinedName ?? null;
+}
+
+const policyIdentifierCodes = new Set([
+  "IMPORT_DENIED",
+  "NAME_DENIED",
+  "CALL_DENIED",
+  "PRIVATE_ATTRIBUTE_DENIED",
+  "ATTRIBUTE_ROOT_DENIED",
+]);
+
+function safePolicyViolationIdentifier(input: {
+  readonly code: string;
+  readonly detail: string;
+}): string | null {
+  if (!policyIdentifierCodes.has(input.code) || input.detail.length > 256) return null;
+  return /^[A-Za-z_][A-Za-z0-9_.]*(?:,[A-Za-z_][A-Za-z0-9_.]*)*$/u.test(input.detail)
+    ? input.detail
+    : null;
+}
+
+function cellRepairInstruction(observation: AnalysisCellObservation): string {
+  if (observation.error?.name === "KeyError") {
+    return "Submit changed source. Use only exact field names from inputs[].fields in the initial governed context. Do not inspect runtime state with reflection, denied imports, or file reads. The server will assign a fresh Cell identity.";
+  }
+  if (observation.error?.name === "ZeroDivisionError") {
+    return "Submit changed source. Guard every denominator explicitly; preserve undefined ratios as null/NaN and never invent a numeric value. The server will assign a fresh Cell identity.";
+  }
+  if (observation.error?.name === "AssertionError") {
+    return "Submit changed source that corrects the invariant named by error_identifier without weakening or deleting the governed assertion. Use only the initial schemas and governed analysis contract. The server will assign a fresh Cell identity.";
+  }
+  return "Submit changed source that repairs this failure against the initial governed input schemas without reflection, denied imports, file reads, or authority expansion. The server will assign a fresh Cell identity.";
+}
+
 function serverToolMessage(input: {
   readonly call: AnalysisAgentModelTurnResult & { readonly phase: "TOOL" };
   readonly result: unknown;
@@ -235,6 +289,8 @@ function safeCellProjection(
     execution_count: observation.execution_count,
     elapsed_ms: observation.elapsed_ms,
     error_code: observation.error ? safeCellFailureCode(observation) : null,
+    error_name: safeCellErrorName(observation),
+    error_identifier: safeCellErrorIdentifier(observation),
   };
 }
 
@@ -254,7 +310,9 @@ function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function resultDocument(published: { readonly closure: PublishedAnalysisResult["closure"] }): Readonly<Record<string, unknown>> {
+function resultDocument(published: {
+  readonly closure: PublishedAnalysisResult["closure"];
+}): Readonly<Record<string, unknown>> {
   const artifact = published.closure.artifacts.find(
     ({ artifact_kind }) => artifact_kind === "RESULT",
   );
@@ -266,7 +324,21 @@ function resultDocument(published: { readonly closure: PublishedAnalysisResult["
   return document.data;
 }
 
-function governedResultModelProjection(observation: AnalysisStatisticalOperatorObservation) {
+function governedResultModelProjection(
+  observation: AnalysisStatisticalOperatorObservation,
+  obligation: StatisticalOperatorObligation,
+) {
+  if (
+    observation.call_id !== obligation.call_id ||
+    observation.operator_id !== obligation.operator_id
+  ) {
+    throw new TypeError("ANALYSIS_OPERATOR_PROJECTION_IDENTITY_MISMATCH");
+  }
+  const operator = STATISTICAL_OPERATOR_MANIFEST.operators.find(
+    ({ operator_id: operatorId }) => operatorId === obligation.operator_id,
+  );
+  if (!operator) throw new TypeError("ANALYSIS_OPERATOR_PROJECTION_MANIFEST_MISSING");
+  const collection = operator.outputs.collection;
   return Object.freeze({
     schema_version: observation.schema_version,
     status: "BOUND" as const,
@@ -277,6 +349,19 @@ function governedResultModelProjection(observation: AnalysisStatisticalOperatorO
     shape: observation.governed_result.shape,
     receipt_ref: observation.governed_result.receipt_ref,
     journal_seq: observation.binding.journal_seq,
+    consumption_contract: Object.freeze({
+      protected_symbol: observation.binding.result_symbol,
+      collection,
+      collection_expression: `${observation.binding.result_symbol}[${JSON.stringify(collection)}]`,
+      row_required_fields: Object.freeze([
+        ...operator.outputs.label_fields,
+        ...operator.outputs.value_fields,
+        ...operator.outputs.evidence_fields,
+      ]),
+      result_binding: obligation.result_binding,
+      instruction:
+        "Read this exact protected symbol and collection expression in the next Python Cell. Do not invent, copy, overwrite, print, or probe another result variable.",
+    }),
   });
 }
 
@@ -371,6 +456,12 @@ const repairablePublishCodes = new Set([
 function repairablePublishFailureCode(error: unknown): string | null {
   if (
     error instanceof AnalysisSandboxRuntimeError &&
+    error.code === "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED"
+  ) {
+    return error.reason_code;
+  }
+  if (
+    error instanceof AnalysisSandboxRuntimeError &&
     error.code === "ANALYSIS_SANDBOX_CELL_FAILED"
   ) {
     return "ANALYSIS_RESULT_SYMBOL_CONTRACT_INVALID";
@@ -397,6 +488,50 @@ function allowedTools(input: {
       : [ANALYSIS_PYTHON_CELL_TOOL_NAME];
   }
   return [];
+}
+
+function modelToolArgumentContracts(
+  allowedToolNames: readonly AnalysisToolName[],
+  nextObligation: StatisticalOperatorObligation | undefined,
+) {
+  return allowedToolNames.map((toolName) => {
+    if (toolName === ANALYSIS_PYTHON_CELL_TOOL_NAME) {
+      return {
+        tool_name: toolName,
+        allowed_fields_exact: ["source", "timeout_ms"],
+        forbidden_server_fields: ["schema_version", "cell_id"],
+      };
+    }
+    if (toolName === ANALYSIS_STATISTICAL_OPERATOR_TOOL_NAME) {
+      return {
+        tool_name: toolName,
+        allowed_fields_exact: ["call_id", "operator_id"],
+        arguments_exact: nextObligation
+          ? {
+              call_id: nextObligation.call_id,
+              operator_id: nextObligation.operator_id,
+            }
+          : null,
+        forbidden_server_fields: ["schema_version", "inputs_symbol", "parameters_symbol"],
+      };
+    }
+    return {
+      tool_name: toolName,
+      allowed_fields_exact: [
+        "publish_id",
+        "result_symbol",
+        "table_bindings",
+        "chart_bindings",
+        "operator_bindings",
+      ],
+      forbidden_server_fields: [
+        "schema_version",
+        "chart_bindings[].intent",
+        "chart_bindings[].template_id",
+        "chart_bindings[].data_symbol",
+      ],
+    };
+  });
 }
 
 export async function executeAnalysisToolLoop(input: {
@@ -462,7 +597,11 @@ export async function executeAnalysisToolLoop(input: {
       role: "user",
       content: JSON.stringify({
         kind: "SERVER_RECOVERED_GOVERNED_RESULTS",
-        results: operatorObservations.map(governedResultModelProjection),
+        results: operatorObservations.map((observation, index) => {
+          const obligation = input.operator_obligations[index];
+          if (!obligation) throw new TypeError("ANALYSIS_OPERATOR_RECOVERY_CARDINALITY_INVALID");
+          return governedResultModelProjection(observation, obligation);
+        }),
         instruction:
           "These governed results were verified and rebound by the server. Reuse the listed symbols; do not invoke their operators again.",
       }),
@@ -477,6 +616,10 @@ export async function executeAnalysisToolLoop(input: {
     options: {
       readonly repair_category?: AnalysisToolRepairCategory;
       readonly failure_code?: string;
+      readonly tool_validation_issues?: readonly AnalysisToolValidationIssue[];
+      readonly cell_error_name?: string | null;
+      readonly cell_error_identifier?: string | null;
+      readonly policy_violation_codes?: readonly string[];
     } = {},
   ) => {
     input.on_progress?.(
@@ -495,6 +638,10 @@ export async function executeAnalysisToolLoop(input: {
         repair_category: options.repair_category ?? null,
         repair_attempts: snapshotRepairs(),
         failure_code: options.failure_code ?? null,
+        tool_validation_issues: Object.freeze([...(options.tool_validation_issues ?? [])]),
+        cell_error_name: options.cell_error_name ?? null,
+        cell_error_identifier: options.cell_error_identifier ?? null,
+        policy_violation_codes: Object.freeze([...(options.policy_violation_codes ?? [])]),
       }),
     );
   };
@@ -515,14 +662,26 @@ export async function executeAnalysisToolLoop(input: {
     turnIndex: number,
     toolName: AnalysisToolLoopProgressEvent["tool_name"],
     outcome: AnalysisToolLoopProgressEvent["outcome"],
+    diagnostics: {
+      readonly tool_validation_issues?: readonly AnalysisToolValidationIssue[];
+      readonly cell_error_name?: string | null;
+      readonly cell_error_identifier?: string | null;
+      readonly policy_violation_codes?: readonly string[];
+    } = {},
   ) => {
     if (repairs[category] === 1) {
+      progress(turnIndex, toolName, outcome, {
+        repair_category: category,
+        failure_code: code,
+        ...diagnostics,
+      });
       throw new TypeError(`ANALYSIS_AGENT_REPAIR_BUDGET_EXHAUSTED_${category}`);
     }
     repairs[category] = 1;
     progress(turnIndex, toolName, outcome, {
       repair_category: category,
       failure_code: code,
+      ...diagnostics,
     });
   };
 
@@ -546,6 +705,7 @@ export async function executeAnalysisToolLoop(input: {
         state: currentState(),
         turn_index: turnIndex,
         allowed_tool_names: allowedToolNames,
+        tool_argument_contracts: modelToolArgumentContracts(allowedToolNames, nextObligation),
         next_operator_obligation: nextObligation
           ? { call_id: nextObligation.call_id, operator_id: nextObligation.operator_id }
           : null,
@@ -564,6 +724,7 @@ export async function executeAnalysisToolLoop(input: {
       node_id: input.node_id,
       turn_index: turnIndex,
       phase: "TOOL",
+      result_contract: input.result_contract,
       allowed_tool_names: allowedToolNames,
       messages,
       max_output_tokens: input.max_output_tokens,
@@ -579,7 +740,9 @@ export async function executeAnalysisToolLoop(input: {
             kind: "SERVER_TOOL_RESULT",
             is_error: true,
             code: turn.error_code,
-            instruction: "Repair exactly once using one currently allowed strict tool.",
+            validation_issues: turn.validation_issues,
+            instruction:
+              "Repair exactly once using one currently allowed strict tool. Remove every unrecognized identifier and supply only the declared tool arguments.",
           }),
         },
       );
@@ -589,6 +752,7 @@ export async function executeAnalysisToolLoop(input: {
         turnIndex,
         "model_tool_call",
         "MODEL_TOOL_CALL_REJECTED",
+        { tool_validation_issues: turn.validation_issues },
       );
       continue;
     }
@@ -596,10 +760,25 @@ export async function executeAnalysisToolLoop(input: {
     const candidate = turn.tool_call;
     const signature = candidateSignature(candidate);
     if (successfulSignatures.has(signature) || signatureProgress.get(signature) === progressEpoch) {
-      progress(turnIndex, candidate.tool_name, "REPEATED_TOOL_REJECTED", {
-        failure_code: "ANALYSIS_AGENT_REPEATED_TOOL_CALL",
-      });
-      throw new TypeError("ANALYSIS_AGENT_REPEATED_TOOL_CALL");
+      messages.push(
+        ...serverToolMessage({
+          call: turn,
+          result: {
+            code: "ANALYSIS_AGENT_REPEATED_TOOL_CALL",
+            instruction:
+              "Do not repeat the same source or tool arguments. Use the declared schemas and symbol contracts directly; submit materially changed source or the allowed completion tool.",
+          },
+          is_error: true,
+        }),
+      );
+      repair(
+        "MODEL_TOOL_CONTRACT",
+        "ANALYSIS_AGENT_REPEATED_TOOL_CALL",
+        turnIndex,
+        candidate.tool_name,
+        "REPEATED_TOOL_REJECTED",
+      );
+      continue;
     }
     signatureProgress.set(signature, progressEpoch);
 
@@ -670,6 +849,13 @@ export async function executeAnalysisToolLoop(input: {
             result: {
               ...safeCellProjection(observation),
               violation_codes: policy.violations.map(({ code }) => code),
+              violations: policy.violations.map(({ code, line, detail }) => ({
+                code,
+                line,
+                identifier: safePolicyViolationIdentifier({ code, detail }),
+              })),
+              instruction:
+                "Remove the identified construct. Use the initial governed input symbols and declared fields directly; do not use reflection, denied imports, dynamic file access, or protected-binding mutation.",
             },
             is_error: true,
           }),
@@ -680,6 +866,7 @@ export async function executeAnalysisToolLoop(input: {
           turnIndex,
           candidate.tool_name,
           "CELL_POLICY_REJECTED",
+          { policy_violation_codes: policy.violations.map(({ code }) => code) },
         );
         continue;
       }
@@ -714,7 +901,13 @@ export async function executeAnalysisToolLoop(input: {
       messages.push(
         ...serverToolMessage({
           call: turn,
-          result: safeCellProjection(observation),
+          result:
+            observation.status === "SUCCEEDED"
+              ? safeCellProjection(observation)
+              : {
+                  ...safeCellProjection(observation),
+                  instruction: cellRepairInstruction(observation),
+                },
           is_error: observation.status !== "SUCCEEDED",
         }),
       );
@@ -732,6 +925,10 @@ export async function executeAnalysisToolLoop(input: {
           turnIndex,
           candidate.tool_name,
           "CELL_FAILED",
+          {
+            cell_error_name: safeCellErrorName(observation),
+            cell_error_identifier: safeCellErrorIdentifier(observation),
+          },
         );
         continue;
       }
@@ -883,7 +1080,7 @@ export async function executeAnalysisToolLoop(input: {
       messages.push(
         ...serverToolMessage({
           call: turn,
-          result: governedResultModelProjection(observation),
+          result: governedResultModelProjection(observation, obligation),
           is_error: false,
         }),
       );
@@ -1018,4 +1215,6 @@ export const analysisToolLoopInternals = Object.freeze({
   governedResultModelProjection,
   recoverOperatorState,
   safeCellFailureCode,
+  safeCellErrorIdentifier,
+  safePolicyViolationIdentifier,
 });

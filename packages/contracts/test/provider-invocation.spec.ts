@@ -659,6 +659,7 @@ describe("U3 provider invocation contracts", () => {
       messages: [{ role: "user", content: "question" }],
       tool_allowlist: [],
       response_schema_version: "answer@1.0.0",
+      sampling: { temperature: 0 },
       budget: {
         timeout_ms: 30_000,
         max_input_tokens: 8_000,
@@ -667,6 +668,7 @@ describe("U3 provider invocation contracts", () => {
       },
     });
     expect(isAuthoritativeModelProviderInvocation(request)).toBe(true);
+    expect(request.sampling).toEqual({ temperature: 0 });
     expect(request).not.toHaveProperty("certification_receipt_ref");
   });
 

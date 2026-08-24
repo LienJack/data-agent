@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildFalcon24AgentAnalysisGate,
   falcon24AgentAnalysisRunResultSchema,
 } from "@data-agent/contracts/evals";
-import { sha256ContentHash } from "@data-agent/contracts/common";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { adaptPgPool } from "@data-agent/platform/persistence";
 import {
@@ -14,9 +14,21 @@ import {
 } from "@data-agent/platform/runtime-config";
 import pg from "pg";
 import { z } from "zod";
+import { verifyDeepSeekAnalysisStrictProbeReport } from "./deepseek-analysis-strict-probe.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
 
 const actualRunsSchema = z.array(falcon24AgentAnalysisRunResultSchema).length(30);
+
+async function readRequiredJson(path: string, missingCode: string): Promise<unknown> {
+  try {
+    return JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT") {
+      throw new TypeError(missingCode);
+    }
+    throw error;
+  }
+}
 
 function stableUuid(material: string): string {
   const digits = createHash("sha256").update(material).digest("hex").slice(0, 32).split("");
@@ -28,11 +40,17 @@ function stableUuid(material: string): string {
 
 export async function runFalcon24AnalysisGate(input: {
   readonly results_path: string;
+  readonly strict_probe_path: string;
   readonly output_path: string;
   readonly database_url: string;
   readonly completed_at?: string;
 }) {
-  const results = actualRunsSchema.parse(JSON.parse(await readFile(input.results_path, "utf8")));
+  const results = actualRunsSchema.parse(
+    await readRequiredJson(input.results_path, "FALCON24_ANALYSIS_RUNS_MISSING"),
+  );
+  const strictProbe = await verifyDeepSeekAnalysisStrictProbeReport(
+    await readRequiredJson(input.strict_probe_path, "DEEPSEEK_STRICT_PROBE_REPORT_MISSING"),
+  );
   const pool = new pg.Pool({
     connectionString: input.database_url,
     application_name: "data-agent-falcon24-analysis-gate",
@@ -51,8 +69,14 @@ export async function runFalcon24AnalysisGate(input: {
       completed_at: completedAt,
     });
     const material = {
-      schema_version: "falcon24-agent-analysis-release@1.0.0" as const,
+      schema_version: "falcon24-agent-analysis-release@2.0.0" as const,
       dataset_id: "falcon_db_24" as const,
+      deepseek_strict_probe: {
+        expected_attempts: strictProbe.expected_attempts,
+        passed_attempts: strictProbe.passed_attempts,
+        tool_manifest_hash: strictProbe.tool_manifest_hash,
+        report_hash: strictProbe.report_hash,
+      },
       data_oracle_receipt: dataOracleReceipt,
       gate,
     };
@@ -83,8 +107,14 @@ async function main() {
     environment.FALCON24_ANALYSIS_GATE_OUTPUT?.trim() ??
       "artifacts/falcon24-agent-analysis/release-gate.json",
   );
+  const strictProbePath = resolve(
+    root,
+    environment.DEEPSEEK_ANALYSIS_STRICT_PROBE_OUTPUT?.trim() ??
+      "artifacts/falcon24-agent-analysis/deepseek-analysis-strict-probe.json",
+  );
   const artifact = await runFalcon24AnalysisGate({
     results_path: resultsPath,
+    strict_probe_path: strictProbePath,
     output_path: outputPath,
     database_url: databaseUrl,
   });

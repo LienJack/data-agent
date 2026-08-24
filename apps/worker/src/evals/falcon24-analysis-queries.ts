@@ -1,8 +1,16 @@
 import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
-import { tableFromArrays, tableToIPC } from "apache-arrow";
+import {
+  DateDay,
+  Float64,
+  Table,
+  tableToIPC,
+  Utf8,
+  type Vector,
+  vectorFromArray,
+} from "apache-arrow";
 
 type Falcon24CaseId = Falcon24AgentAnalysisCase["case_id"];
-type ColumnKind = "FLOAT64" | "UTF8";
+type ColumnKind = "DATE" | "FLOAT64" | "UTF8";
 
 export interface Falcon24AnalysisQueryColumn {
   readonly name: string;
@@ -41,6 +49,11 @@ const float64 = (name: string, nullable = false): Falcon24AnalysisQueryColumn =>
   kind: "FLOAT64",
   nullable,
 });
+const date = (name: string, nullable = false): Falcon24AnalysisQueryColumn => ({
+  name,
+  kind: "DATE",
+  nullable,
+});
 
 const BUSINESS_REVIEW_SQL = `
 select
@@ -62,6 +75,15 @@ order by order_row.order_date::date,order_row.order_id,product.product_id
 `.trim();
 
 const DELIVERY_EXPERIENCE_SQL = `
+with delivery_scope as (
+  select delivery.*,
+    count(*) filter(where delivery.delivery_time_minutes<0) over()::float8
+      as invalid_delivery_orders
+  from falcon_db_24.blinkit_delivery_performance delivery
+  join falcon_db_24.blinkit_orders order_row using(order_id)
+  where order_row.order_date::date>=date '2023-11-01'
+    and order_row.order_date::date<date '2024-11-01'
+)
 select
   order_row.order_id::text as order_id,
   order_row.order_date::date::text as order_date,
@@ -73,8 +95,10 @@ select
   feedback.feedback_category,
   feedback.sentiment,
   delivery.distance_km::float8 as distance_km,
-  delivery.delivery_time_minutes::float8 as delivery_time_minutes
-from falcon_db_24.blinkit_delivery_performance delivery
+  delivery.invalid_delivery_orders,
+  case when delivery.delivery_time_minutes>=0
+    then delivery.delivery_time_minutes::float8 end as delivery_time_minutes
+from delivery_scope delivery
 join falcon_db_24.blinkit_orders order_row using(order_id)
 join falcon_db_24.blinkit_customers customer using(customer_id)
 left join falcon_db_24.blinkit_order_items item using(order_id)
@@ -132,7 +156,15 @@ order by primary_inventory.month_start,primary_inventory.product_id
 `.trim();
 
 const MARKETING_LAG_SQL = `
-with marketing as (
+with calendar as (
+  select week_start::date
+  from generate_series(date '2023-05-01',date '2024-10-28',interval '1 week') week_start
+), observed_groups as (
+  select distinct marketing.channel,marketing.target_audience
+  from falcon_db_24.blinkit_marketing_performance marketing
+  where marketing.date::date>=date '2023-05-01'
+    and marketing.date::date<date '2024-11-01'
+), marketing as (
   select date_trunc('week',marketing.date::date)::date as week_start,
     marketing.channel,
     marketing.target_audience,
@@ -163,119 +195,90 @@ with marketing as (
   group by 1
 )
 select
-  marketing.week_start::text as week_start,
-  marketing.channel,
-  marketing.target_audience,
-  marketing.impressions,
-  marketing.clicks,
-  marketing.conversions,
-  marketing.campaign_revenue,
+  calendar.week_start::text as week_start,
+  observed_groups.channel,
+  observed_groups.target_audience,
+  coalesce(marketing.impressions,0)::float8 as impressions,
+  coalesce(marketing.clicks,0)::float8 as clicks,
+  coalesce(marketing.conversions,0)::float8 as conversions,
+  coalesce(marketing.campaign_revenue,0)::float8 as campaign_revenue,
   coalesce(orders.order_count,0)::float8 as order_count,
   coalesce(orders.active_customers,0)::float8 as active_customers,
   coalesce(orders.order_revenue,0)::float8 as order_revenue,
   coalesce(registrations.new_customers,0)::float8 as new_customers,
-  marketing.spend
-from marketing
+  coalesce(marketing.spend,0)::float8 as spend
+from calendar cross join observed_groups
+left join marketing using(week_start,channel,target_audience)
 left join orders using(week_start)
 left join registrations using(week_start)
-order by marketing.week_start,marketing.channel,marketing.target_audience
+order by calendar.week_start,observed_groups.channel,observed_groups.target_audience
 `.trim();
 
 const COHORT_RETENTION_SQL = `
-with customer_base as (
+with cohort_customers as (
   select customer.customer_id,customer.customer_segment,
-    date_trunc('month',customer.registration_date::date)::date as cohort_month,
-    customer.registration_date::date as registration_date,
-    min(order_row.order_date::date) as first_order_date
+    customer.registration_date::date as registration_date
   from falcon_db_24.blinkit_customers customer
-  left join falcon_db_24.blinkit_orders order_row using(customer_id)
-  group by customer.customer_id,customer.customer_segment,customer.registration_date
-), cohort_customers as (
-  select customer_base.*,
-    (first_order_date is null or first_order_date>=registration_date) as valid_timeline
-  from customer_base
-  where cohort_month>=date '2023-05-01' and cohort_month<date '2024-05-01'
-), month_grid as (
-  select customer.customer_id,customer.customer_segment,customer.cohort_month,
-    customer.valid_timeline,month_index
-  from cohort_customers customer cross join generate_series(0,6) month_index
-), order_month as (
-  select order_row.customer_id,
-    date_trunc('month',order_row.order_date::date)::date as order_month,
-    count(*)::float8 as order_count,
-    sum(order_row.order_total)::float8 as revenue
+  where date_trunc('month',customer.registration_date::date)>=date '2023-05-01'
+    and date_trunc('month',customer.registration_date::date)<date '2024-05-01'
+), observed_orders as (
+  select order_row.order_id,order_row.customer_id,order_row.order_date,order_row.order_total
   from falcon_db_24.blinkit_orders order_row
-  group by 1,2
-), delivery_month as (
-  select order_row.customer_id,date_trunc('month',order_row.order_date::date)::date as order_month,
-    avg(delivery.delivery_time_minutes)::float8 as delivery_minutes
-  from falcon_db_24.blinkit_orders order_row
-  join falcon_db_24.blinkit_delivery_performance delivery using(order_id)
-  group by 1,2
-), feedback_month as (
-  select order_row.customer_id,date_trunc('month',order_row.order_date::date)::date as order_month,
-    avg(feedback.rating)::float8 as average_rating
-  from falcon_db_24.blinkit_orders order_row
-  join falcon_db_24.blinkit_customer_feedback feedback using(order_id,customer_id)
-  group by 1,2
-), customer_month as (
-  select month_grid.*,
-    coalesce(order_month.order_count,0)::float8 as order_count,
-    coalesce(order_month.revenue,0)::float8 as revenue,
-    delivery_month.delivery_minutes,
-    feedback_month.average_rating
-  from month_grid
-  left join order_month on order_month.customer_id=month_grid.customer_id
-    and order_month.order_month=month_grid.cohort_month+(month_grid.month_index*interval '1 month')
-  left join delivery_month on delivery_month.customer_id=month_grid.customer_id
-    and delivery_month.order_month=month_grid.cohort_month+(month_grid.month_index*interval '1 month')
-  left join feedback_month on feedback_month.customer_id=month_grid.customer_id
-    and feedback_month.order_month=month_grid.cohort_month+(month_grid.month_index*interval '1 month')
+  where order_row.order_date::date<date '2024-11-01'
+), customer_order_frontier as (
+  select cohort_customers.customer_id,cohort_customers.registration_date,
+    min(order_row.order_date::date) as first_order_date
+  from cohort_customers
+  left join observed_orders order_row using(customer_id)
+  group by cohort_customers.customer_id,cohort_customers.registration_date
+), delivery as (
+  select delivery.order_id,avg(delivery.delivery_time_minutes)::float8 as delivery_minutes
+  from falcon_db_24.blinkit_delivery_performance delivery
+  group by delivery.order_id
 ), anomaly as (
   select
-    count(*) filter(where order_row.order_date::date<customer.registration_date::date)::float8
+    count(*) filter(where order_row.order_date::date<customer.registration_date)::float8
       as orders_before_registration,
-    count(distinct customer.customer_id) filter(where first_order.first_order_date<customer.registration_date::date)::float8
+    count(distinct customer.customer_id)
+      filter(where customer.first_order_date<customer.registration_date)::float8
       as customers_first_order_before_registration,
-    count(distinct customer.customer_id) filter(where first_order.first_order_date>=customer.registration_date::date)::float8
+    count(distinct customer.customer_id)
+      filter(where customer.first_order_date>=customer.registration_date)::float8
       as valid_ordering_customers,
-    count(distinct customer.customer_id) filter(where first_order.first_order_date is null)::float8
-      as no_order_customers
-  from falcon_db_24.blinkit_customers customer
-  left join falcon_db_24.blinkit_orders order_row using(customer_id)
-  left join (select customer_id,min(order_date::date) as first_order_date
-    from falcon_db_24.blinkit_orders group by customer_id) first_order using(customer_id)
+    count(distinct customer.customer_id)
+      filter(where customer.first_order_date is null)::float8
+      as no_order_customers,
+    count(*) filter(where delivery.delivery_minutes<0)::float8
+      as invalid_delivery_orders
+  from customer_order_frontier customer
+  left join observed_orders order_row using(customer_id)
+  left join delivery using(order_id)
+), feedback as (
+  select feedback.order_id,feedback.customer_id,avg(feedback.rating)::float8 as average_rating
+  from falcon_db_24.blinkit_customer_feedback feedback
+  group by feedback.order_id,feedback.customer_id
 )
 select
-  to_char(customer_month.cohort_month,'YYYY-MM') as registration_cohort,
-  customer_month.customer_segment,
-  customer_month.month_index::float8 as month_index,
-  count(distinct customer_month.customer_id)::float8 as cohort_size,
-  count(distinct customer_month.customer_id) filter(where customer_month.order_count>1)::float8
-    as repeat_customers,
-  sum(customer_month.order_count)::float8 as order_count,
-  sum(customer_month.revenue)::float8 as revenue,
-  avg(customer_month.delivery_minutes)::float8 as delivery_minutes,
-  avg(customer_month.average_rating)::float8 as average_rating,
-  count(distinct customer_month.customer_id) filter(where customer_month.valid_timeline)::float8
-    as valid_timeline_customers,
-  count(distinct customer_month.customer_id) filter(where customer_month.valid_timeline and customer_month.order_count>0)::float8
-    as valid_active_customers,
-  sum(customer_month.order_count) filter(where customer_month.valid_timeline)::float8
-    as valid_order_count,
-  sum(customer_month.revenue) filter(where customer_month.valid_timeline)::float8
-    as valid_revenue,
+  cohort_customers.customer_id::text as customer_id,
+  cohort_customers.customer_segment as customer_type,
+  cohort_customers.registration_date::text as registration_date,
+  order_row.order_id::text as order_id,
+  order_row.order_date::date::text as event_date,
+  delivery.delivery_minutes,
+  feedback.average_rating,
+  '2024-10'::text as observation_end_month,
   anomaly.orders_before_registration,
   anomaly.customers_first_order_before_registration,
   anomaly.valid_ordering_customers,
   anomaly.no_order_customers,
-  count(distinct customer_month.customer_id) filter(where customer_month.order_count>0)::float8
-    as active_customers
-from customer_month cross join anomaly
-group by customer_month.cohort_month,customer_month.customer_segment,customer_month.month_index,
-  anomaly.orders_before_registration,anomaly.customers_first_order_before_registration,
-  anomaly.valid_ordering_customers,anomaly.no_order_customers
-order by customer_month.cohort_month,customer_month.customer_segment,customer_month.month_index
+  anomaly.invalid_delivery_orders,
+  order_row.order_total::float8 as revenue
+from cohort_customers
+left join observed_orders order_row using(customer_id)
+left join delivery using(order_id)
+left join feedback using(order_id,customer_id)
+cross join anomaly
+order by cohort_customers.registration_date,cohort_customers.customer_id,order_row.order_date,order_row.order_id
 `.trim();
 
 export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
@@ -285,7 +288,7 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     sql: BUSINESS_REVIEW_SQL,
     columns: [
       utf8("order_id"),
-      utf8("order_date"),
+      date("order_date"),
       utf8("payment_method"),
       utf8("customer_id"),
       utf8("customer_segment"),
@@ -314,7 +317,7 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     sql: DELIVERY_EXPERIENCE_SQL,
     columns: [
       utf8("order_id"),
-      utf8("order_date"),
+      date("order_date"),
       utf8("delivery_status"),
       float64("order_total"),
       utf8("customer_segment"),
@@ -323,7 +326,8 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       utf8("feedback_category", true),
       utf8("sentiment", true),
       float64("distance_km"),
-      float64("delivery_time_minutes"),
+      float64("invalid_delivery_orders"),
+      float64("delivery_time_minutes", true),
     ],
     expected_rows: 3_059,
     semantic_contract: {
@@ -345,7 +349,7 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     input_name: "falcon24_inventory_damage",
     sql: INVENTORY_DAMAGE_SQL,
     columns: [
-      utf8("month"),
+      date("month"),
       utf8("product_id"),
       utf8("product_name"),
       utf8("category"),
@@ -375,7 +379,7 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     input_name: "falcon24_marketing_lag",
     sql: MARKETING_LAG_SQL,
     columns: [
-      utf8("week_start"),
+      date("week_start"),
       utf8("channel"),
       utf8("target_audience"),
       float64("impressions"),
@@ -388,7 +392,7 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
       float64("new_customers"),
       float64("spend"),
     ],
-    expected_rows: 1_238,
+    expected_rows: 1_264,
     semantic_contract: {
       primary_metric_id: "metric.marketing_spend",
       metric_output: "spend",
@@ -408,31 +412,27 @@ export const FALCON24_ANALYSIS_QUERY_SPECS = Object.freeze({
     input_name: "falcon24_cohort_retention",
     sql: COHORT_RETENTION_SQL,
     columns: [
-      utf8("registration_cohort"),
-      utf8("customer_segment"),
-      float64("month_index"),
-      float64("cohort_size"),
-      float64("repeat_customers"),
-      float64("order_count"),
-      float64("revenue"),
+      utf8("customer_id"),
+      utf8("customer_type"),
+      date("registration_date"),
+      utf8("order_id", true),
+      date("event_date", true),
       float64("delivery_minutes", true),
       float64("average_rating", true),
-      float64("valid_timeline_customers"),
-      float64("valid_active_customers"),
-      float64("valid_order_count", true),
-      float64("valid_revenue", true),
+      utf8("observation_end_month"),
       float64("orders_before_registration"),
       float64("customers_first_order_before_registration"),
       float64("valid_ordering_customers"),
       float64("no_order_customers"),
-      float64("active_customers"),
+      float64("invalid_delivery_orders"),
+      float64("revenue", true),
     ],
-    expected_rows: 336,
+    expected_rows: 3_188,
     semantic_contract: {
       primary_metric_id: "metric.cohort_retention",
-      metric_output: "active_customers",
-      formula_inputs: ["active_customers", "cohort_size"],
-      grain: "registration-cohort-segment-month-index",
+      metric_output: "revenue",
+      formula_inputs: ["revenue"],
+      grain: "registered-customer-order-event",
       unit: "ratio",
       time_range: {
         start: "2023-05-01T00:00:00.000Z",
@@ -456,6 +456,18 @@ function normalizeValue(
     return null;
   }
   if (column.kind === "UTF8") return String(value);
+  if (column.kind === "DATE") {
+    const input = String(value);
+    const dateText = /^\d{4}-\d{2}$/u.test(input) ? `${input}-01` : input;
+    if (!/^\d{4}-\d{2}-\d{2}$/u.test(dateText)) {
+      throw new TypeError(`FALCON24_QUERY_DATE_INVALID:${column.name}:${rowIndex}`);
+    }
+    const normalized = new Date(`${dateText}T00:00:00.000Z`);
+    if (Number.isNaN(normalized.getTime()) || normalized.toISOString().slice(0, 10) !== dateText) {
+      throw new TypeError(`FALCON24_QUERY_DATE_INVALID:${column.name}:${rowIndex}`);
+    }
+    return dateText;
+  }
   const numeric = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(numeric)) {
     throw new TypeError(`FALCON24_QUERY_NUMBER_INVALID:${column.name}:${rowIndex}`);
@@ -484,7 +496,10 @@ export function normalizeFalcon24QueryResult(
   return Object.freeze({
     columns: spec.columns.map((column) => ({
       name: column.name,
-      type: column.kind === "UTF8" ? ("STRING" as const) : ("NUMBER" as const),
+      type:
+        column.kind === "UTF8" || column.kind === "DATE"
+          ? ("STRING" as const)
+          : ("NUMBER" as const),
     })),
     rows: normalizedRows,
   });
@@ -495,9 +510,20 @@ export function materializeFalcon24Arrow(
   rows: readonly Readonly<Record<string, unknown>>[],
 ): Uint8Array {
   const normalized = normalizeFalcon24QueryResult(spec, rows);
-  const vectors: Record<string, readonly (string | number | null)[]> = {};
+  const vectors: Record<string, Vector> = {};
   for (const [columnIndex, column] of spec.columns.entries()) {
-    vectors[column.name] = normalized.rows.map((row) => row[columnIndex] ?? null);
+    const values = normalized.rows.map((row) => row[columnIndex] ?? null);
+    vectors[column.name] =
+      column.kind === "UTF8"
+        ? vectorFromArray(values as readonly (string | null)[], new Utf8())
+        : column.kind === "DATE"
+          ? vectorFromArray(
+              (values as readonly (string | null)[]).map((value) =>
+                value === null ? null : new Date(`${value}T00:00:00.000Z`),
+              ),
+              new DateDay(),
+            )
+          : vectorFromArray(values as readonly (number | null)[], new Float64());
   }
-  return tableToIPC(tableFromArrays(vectors), "file");
+  return tableToIPC(new Table(vectors), "file");
 }

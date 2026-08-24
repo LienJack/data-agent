@@ -14,6 +14,13 @@ function session(observed: unknown[]): OpenSandboxAnalysisSession {
     operator_image: "operator@sha256:test",
     secure_access: true,
     async uploadAgentFile() {},
+    async bindGovernedInput(input) {
+      return {
+        binding_id: "input-binding-aaaaaaaaaaaaaaaaaaaaaaaa",
+        input_symbol: "__da_input_aaaaaaaaaaaaaaaaaaaaaaaa",
+        content_sha256: input.content_sha256,
+      };
+    },
     async admitAgentCell(input) {
       return {
         schema_version: "analysis-cell-policy-result@1.0.0",

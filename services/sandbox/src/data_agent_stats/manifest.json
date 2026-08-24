@@ -192,7 +192,7 @@
       "runtime_profile": "ML_DIAGNOSTIC",
       "batching": {
         "mode": "LABELED_BATCH",
-        "max_items": 1024
+        "max_items": 5000
       },
       "inputs": [
         {
@@ -425,7 +425,7 @@
       "limitations": ["PRODUCT_IDENTITY_REQUIRED", "APPROXIMATE_MODE_NOT_SUPPORTED"]
     },
     {
-      "operator_id": "cohort.registration-retention-m0-m6@1",
+      "operator_id": "cohort.registration-retention-m0-m6@2",
       "description_zh": "按注册月形成唯一新客 cohort，计算 M0 至 M6 下单、消费、配送和反馈留存证据。",
       "implementation": {
         "module": "data_agent_stats.cohort",
@@ -444,12 +444,12 @@
           "max_items": 100000,
           "record_shape": {
             "customer_id": "NON_EMPTY_STRING",
-            "registration_month": "MONTH_KEY",
+            "registration_date": "DATE_KEY",
             "customer_type": "NON_EMPTY_STRING"
           },
           "record_example": {
             "customer_id": "customer_a",
-            "registration_month": "2024-01",
+            "registration_date": "2024-01-15",
             "customer_type": "new"
           },
           "limits": {}
@@ -461,7 +461,7 @@
           "max_items": 500000,
           "record_shape": {
             "customer_id": "NON_EMPTY_STRING",
-            "event_month": "MONTH_KEY",
+            "event_date": "DATE_KEY",
             "order_id": "NON_EMPTY_STRING",
             "revenue": "NON_NEGATIVE_FINITE_NUMBER",
             "delivery_minutes": "NULLABLE_NON_NEGATIVE_FINITE_NUMBER",
@@ -469,7 +469,7 @@
           },
           "record_example": {
             "customer_id": "customer_a",
-            "event_month": "2024-01",
+            "event_date": "2024-01-20",
             "order_id": "order_a",
             "revenue": 100.0,
             "delivery_minutes": 30.0,
@@ -483,10 +483,12 @@
           "min_items": 1,
           "max_items": 1,
           "record_shape": {
-            "observation_end_month": "MONTH_KEY"
+            "observation_end_month": "MONTH_KEY",
+            "invalid_delivery_event_count": "NON_NEGATIVE_FINITE_NUMBER"
           },
           "record_example": {
-            "observation_end_month": "2024-12"
+            "observation_end_month": "2024-12",
+            "invalid_delivery_event_count": 0
           },
           "limits": {}
         }
@@ -517,20 +519,22 @@
         "collection": "cohort_periods",
         "label_fields": ["registration_month", "customer_type", "month_index"],
         "value_fields": ["eligible_customers", "active_customers", "retention_rate", "repeat_customers", "repeat_purchase_rate", "order_count", "revenue", "average_spend", "average_delivery_minutes", "average_rating"],
-        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "orphan_event_count", "data_quality_status"]
+        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "orphan_event_count", "invalid_delivery_event_count", "data_quality_status"]
       },
       "applicability_checks": [
         "UNIQUE_CUSTOMER_REGISTRATION",
-        "VALID_MONTH_KEYS",
+        "VALID_DATE_AND_MONTH_KEYS",
         "M0_TO_M6_COMPLETE_GRID",
         "NON_NEGATIVE_REVENUE",
+        "INVALID_DELIVERY_EVENTS_DISCLOSED_AND_EXCLUDED",
         "PRE_REGISTRATION_EVENTS_DISCLOSED",
         "MATURED_DENOMINATOR_ONLY"
       ],
       "limitations": [
         "PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS",
         "SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS",
-        "ORPHAN_EVENTS_EXCLUDED"
+        "ORPHAN_EVENTS_EXCLUDED",
+        "INVALID_DELIVERY_EVENTS_EXCLUDED"
       ]
     }
   ]

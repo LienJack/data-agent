@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   ANALYSIS_RESULT_PUBLISH_TOOL_MANIFEST,
+  analysisResultPublishModelArgumentsSchema,
   analysisResultPublishToolArgumentsSchema,
 } from "../src/ports/analysis-result-publish.js";
 
@@ -51,6 +52,24 @@ describe("publish_analysis_result manifest", () => {
     expect(serialized).not.toContain("declared_output_names");
     expect(serialized).not.toContain("/workspace/outputs");
     expect(serialized).not.toContain('"path"');
+  });
+
+  it("keeps contract-owned chart identity out of model arguments", () => {
+    const { schema_version: _schemaVersion, ...authorityManifest } = manifest();
+    const modelManifest = {
+      ...authorityManifest,
+      chart_bindings: authorityManifest.chart_bindings.map(
+        ({ intent: _intent, template_id: _templateId, data_symbol: _dataSymbol, ...binding }) =>
+          binding,
+      ),
+    };
+    expect(analysisResultPublishModelArgumentsSchema.parse(modelManifest)).toEqual(modelManifest);
+    expect(analysisResultPublishModelArgumentsSchema.safeParse(authorityManifest).success).toBe(
+      false,
+    );
+    const serialized = JSON.stringify(z.toJSONSchema(analysisResultPublishModelArgumentsSchema));
+    expect(serialized).not.toContain("template_id");
+    expect(serialized).not.toContain('"intent"');
   });
 
   it("fails closed on duplicate ids, arbitrary paths and unknown fields", () => {

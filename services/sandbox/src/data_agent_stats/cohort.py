@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from data_agent_stats.registry import (
@@ -26,6 +27,18 @@ def _month_index(value: Any) -> int:
     if matched is None:
         raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
     return int(matched.group("year")) * 12 + int(matched.group("month")) - 1
+
+
+def _date(value: Any) -> date:
+    if not isinstance(value, str):
+        raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as error:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID") from error
+    if parsed.isoformat() != value:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
+    return parsed
 
 
 def _finite_nonnegative(value: Any) -> float:
@@ -60,6 +73,12 @@ def registration_retention_m0_m6(
         raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
     observation_end_month = observation[0].get("observation_end_month")
     observation_end = _month_index(observation_end_month)
+    invalid_delivery_event_count_value = _finite_nonnegative(
+        observation[0].get("invalid_delivery_event_count")
+    )
+    if not invalid_delivery_event_count_value.is_integer():
+        raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
+    invalid_delivery_event_count = int(invalid_delivery_event_count_value)
     policy = parameters["pre_registration_policy"]
     if (
         parameters.get("horizon_months") != 6
@@ -68,11 +87,12 @@ def registration_retention_m0_m6(
     ):
         raise StatisticalOperatorError("PYTHON_OPERATOR_PARAMETER_INVALID")
 
-    customer_by_id: dict[str, tuple[str, int, str]] = {}
+    customer_by_id: dict[str, tuple[str, int, str, date]] = {}
     cohort_members: dict[tuple[str, str], set[str]] = defaultdict(set)
     for row in customers:
         customer_id = _identifier(row["customer_id"])
-        registration_month = row["registration_month"]
+        registration_date = _date(row["registration_date"])
+        registration_month = registration_date.strftime("%Y-%m")
         registration_index = _month_index(registration_month)
         customer_type = _identifier(row["customer_type"])
         if customer_id in customer_by_id:
@@ -83,6 +103,7 @@ def registration_retention_m0_m6(
             registration_month,
             registration_index,
             customer_type,
+            registration_date,
         )
         cohort_members[(registration_month, customer_type)].add(customer_id)
 
@@ -97,13 +118,15 @@ def registration_retention_m0_m6(
         if order_id in order_ids:
             raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
         order_ids.add(order_id)
-        event_month = row["event_month"]
+        event_date = _date(row["event_date"])
+        event_month = event_date.strftime("%Y-%m")
         event_index = _month_index(event_month)
         if event_index > observation_end:
             raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
         event = {
             "customer_id": customer_id,
             "event_index": event_index,
+            "event_date": event_date,
             "order_id": order_id,
             "revenue": _finite_nonnegative(row["revenue"]),
             "delivery_minutes": _optional_measure(row["delivery_minutes"], minimum=0),
@@ -113,7 +136,7 @@ def registration_retention_m0_m6(
         customer = customer_by_id.get(customer_id)
         if customer is None:
             orphan_order_ids.add(order_id)
-        elif event_index < customer[1]:
+        elif event_date < customer[3]:
             invalid_timeline_customers.add(customer_id)
             pre_registration_order_ids.add(order_id)
 
@@ -123,7 +146,7 @@ def registration_retention_m0_m6(
         customer = customer_by_id.get(event["customer_id"])
         if customer is None or event["customer_id"] in excluded_customers:
             continue
-        registration_month, registration_index, customer_type = customer
+        registration_month, registration_index, customer_type, _registration_date = customer
         month_offset = event["event_index"] - registration_index
         if 0 <= month_offset <= 6:
             events_by_group_period[(registration_month, customer_type, month_offset)].append(event)
@@ -131,18 +154,26 @@ def registration_retention_m0_m6(
     pre_registration_count = len(pre_registration_order_ids)
     orphan_count = len(orphan_order_ids)
     if policy == "hold_primary":
-        if pre_registration_count and orphan_count:
+        issue_count = sum(
+            bool(value)
+            for value in (pre_registration_count, orphan_count, invalid_delivery_event_count)
+        )
+        if pre_registration_count and orphan_count and not invalid_delivery_event_count:
             data_quality_status = "HOLD_TEMPORAL_AND_RELATIONSHIP_ANOMALIES"
+        elif issue_count > 1:
+            data_quality_status = "HOLD_MULTIPLE_DATA_QUALITY_ANOMALIES"
         elif pre_registration_count:
             data_quality_status = "HOLD_PRE_REGISTRATION_EVENTS"
         elif orphan_count:
             data_quality_status = "HOLD_ORPHAN_EVENTS"
+        elif invalid_delivery_event_count:
+            data_quality_status = "HOLD_INVALID_DELIVERY_EVENTS"
         else:
             data_quality_status = "PASS"
     else:
         data_quality_status = (
             "SENSITIVITY_WITH_DISCLOSED_ANOMALIES"
-            if (pre_registration_count or orphan_count)
+            if (pre_registration_count or orphan_count or invalid_delivery_event_count)
             else "SENSITIVITY"
         )
 
@@ -200,6 +231,7 @@ def registration_retention_m0_m6(
                     "matured": True,
                     "pre_registration_event_count": pre_registration_count,
                     "orphan_event_count": orphan_count,
+                    "invalid_delivery_event_count": invalid_delivery_event_count,
                     "data_quality_status": data_quality_status,
                 }
             )
@@ -211,6 +243,8 @@ def registration_retention_m0_m6(
         limitation_codes.append("SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS")
     if orphan_count:
         limitation_codes.append("ORPHAN_EVENTS_EXCLUDED")
+    if invalid_delivery_event_count:
+        limitation_codes.append("INVALID_DELIVERY_EVENTS_EXCLUDED")
     return OperatorExecutionResult(
         output={"cohort_periods": output_rows},
         sample_size=len(customers) + len(events),

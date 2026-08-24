@@ -18,5 +18,8 @@ describe("Falcon24 analysis gate CLI", () => {
     expect(classifyFalcon24AnalysisGateFailure(new Error("FALCON24_DATABASE_URL_MISSING"))).toBe(
       "FALCON24_DATABASE_URL_MISSING",
     );
+    expect(
+      classifyFalcon24AnalysisGateFailure(new TypeError("DEEPSEEK_STRICT_PROBE_REPORT_MISSING")),
+    ).toBe("DEEPSEEK_STRICT_PROBE_REPORT_MISSING");
   });
 });

@@ -41,6 +41,7 @@ async function makeInvocation(
     readonly max_tool_calls?: number;
     readonly max_input_tokens?: number;
     readonly response_schema_version?: string;
+    readonly temperature?: number;
   } = {},
 ): Promise<AuthoritativeModelProviderInvocation> {
   const profile = await makeAvailableProfile({
@@ -75,6 +76,9 @@ async function makeInvocation(
       ],
       tool_allowlist: options.tool_allowlist ?? [],
       response_schema_version: options.response_schema_version ?? "1.0.0",
+      ...(options.temperature === undefined
+        ? {}
+        : { sampling: { temperature: options.temperature } }),
       budget: {
         timeout_ms: 1_000,
         max_input_tokens: options.max_input_tokens ?? 100,
@@ -759,6 +763,7 @@ describe("Mastra execution bridge integration", () => {
     const binding = getModelProviderBinding("openai");
     let receivedResponseFormat: unknown = "not-called";
     let receivedToolChoice: unknown = "not-called";
+    let receivedTemperature: unknown = "not-called";
     const fakeModel = {
       specificationVersion: "v4",
       provider: "offline-test",
@@ -770,9 +775,11 @@ describe("Mastra execution bridge integration", () => {
       doStream: async (options: {
         readonly responseFormat?: unknown;
         readonly toolChoice?: unknown;
+        readonly temperature?: unknown;
       }) => {
         receivedResponseFormat = options.responseFormat;
         receivedToolChoice = options.toolChoice;
+        receivedTemperature = options.temperature;
         return {
           stream: new ReadableStream({
             start(controller) {
@@ -851,6 +858,7 @@ describe("Mastra execution bridge integration", () => {
       await makeInvocation(binding, {
         tool_allowlist: ["semantic-query@1"],
         max_tool_calls: 1,
+        temperature: 0,
       }),
     )) {
       events.push(event);
@@ -870,6 +878,7 @@ describe("Mastra execution bridge integration", () => {
     });
     expect(receivedResponseFormat).toBeUndefined();
     expect(receivedToolChoice).toEqual({ type: "required" });
+    expect(receivedTemperature).toBe(0);
     expect(events.at(-1)).toMatchObject({
       event_type: "COMPLETED",
       output_text: '{"summary":"需要工具候选","confidence":0.5}',

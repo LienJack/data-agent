@@ -4,6 +4,7 @@ import {
   type AnalysisSandboxRuntimeError,
   createOpenSandboxAnalysisRuntime,
   type OpenSandboxSdkFactory,
+  openSandboxAnalysisRuntimeInternals,
 } from "../../src/runs/opensandbox-analysis-runtime.js";
 
 function digest(bytes: Uint8Array): `sha256:${string}` {
@@ -15,6 +16,7 @@ function testConfig() {
     domain: "127.0.0.1:18080",
     protocol: "http" as const,
     api_key: "local-opensandbox-test-key",
+    use_server_proxy: true,
     request_timeout_seconds: 5,
     ready_timeout_seconds: 5,
     sandbox_timeout_seconds: 60,
@@ -42,9 +44,11 @@ function fakeFactory(
     readonly hang_agent?: boolean;
     readonly fail_handle_kill?: boolean;
     readonly fail_manager_list_after?: number;
+    readonly symbol_extraction_error?: string;
   } = {},
 ) {
   let managerListCalls = 0;
+  const connectionProxyModes: boolean[] = [];
   const created: Array<{
     readonly id: string;
     readonly image: string;
@@ -167,7 +171,23 @@ function fakeFactory(
                 });
               });
             }
-            if (_code.includes("server-owned-analysis-symbol-extractor@1.0.0")) {
+            if (_code.includes("server-owned-analysis-symbol-extractor@2.0.0")) {
+              if (options.symbol_extraction_error) {
+                return {
+                  id: `${state.id}-execution`,
+                  executionCount: 1,
+                  logs: { stdout: [], stderr: [] },
+                  result: [],
+                  error: {
+                    name: "TypeError",
+                    value: options.symbol_extraction_error,
+                    traceback: [],
+                    timestamp: 2,
+                  },
+                  complete: { timestamp: 3, executionTimeMs: 1 },
+                  exitCode: 1,
+                };
+              }
               const pathLiteral = _code.match(/_analysis_output_path = ("(?:\\.|[^"])*")/u)?.[1];
               const specsLiteral = _code.match(
                 /_analysis_specs = _analysis_json\.loads\(("(?:\\.|[^"])*")\)/u,
@@ -230,7 +250,8 @@ function fakeFactory(
         },
       };
     },
-    createLifecycleManager() {
+    createLifecycleManager(connectionConfig) {
+      connectionProxyModes.push(connectionConfig.useServerProxy);
       return {
         async list(input) {
           managerListCalls += 1;
@@ -277,10 +298,100 @@ function fakeFactory(
       executed_codes: [],
     });
   };
-  return { factory, created, seed };
+  return { factory, created, seed, connectionProxyModes };
 }
 
 describe("OpenSandbox analysis runtime", () => {
+  it("classifies only allowlisted fixed extractor identifiers as repairable", () => {
+    expect(
+      openSandboxAnalysisRuntimeInternals.safeAnalysisSymbolExtractionFailureCode(
+        "TypeError: ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED",
+      ),
+    ).toBe("ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED");
+    expect(
+      openSandboxAnalysisRuntimeInternals.safeAnalysisSymbolExtractionFailureCode(
+        "secret row value: ANALYSIS_RESULT_NOT_ALLOWLISTED",
+      ),
+    ).toBeNull();
+    expect(
+      openSandboxAnalysisRuntimeInternals.safeAnalysisOperatorFailureReasonCode(
+        "StatisticalOperatorError: PYTHON_OPERATOR_INPUT_INVALID",
+      ),
+    ).toBe("PYTHON_OPERATOR_INPUT_INVALID");
+    expect(
+      openSandboxAnalysisRuntimeInternals.safeAnalysisOperatorFailureReasonCode(
+        "PYTHON_OPERATOR_INPUT_INVALID PYTHON_OPERATOR_NUMERIC_FAILURE",
+      ),
+    ).toBeNull();
+    expect(
+      openSandboxAnalysisRuntimeInternals.safeAnalysisOperatorFailureReasonCode(
+        "PYTHON_OPERATOR_SECRET_VALUE",
+      ),
+    ).toBeNull();
+
+    const bindingSource = openSandboxAnalysisRuntimeInternals.buildGovernedResultBindingSource({
+      input_path: "/workspace/intermediate/result.json",
+      result_symbol: "__da_gov_aaaaaaaaaaaaaaaaaaaaaaaa",
+      result_sha256: `sha256:${"a".repeat(64)}`,
+      max_bytes: 1_024,
+    });
+    expect(bindingSource).toContain("module = type(value).__module__");
+    expect(bindingSource).toContain("name = type(value).__name__");
+
+    const extractionSource = openSandboxAnalysisRuntimeInternals.buildFixedSymbolExtractionSource({
+      specs: [{ symbol_name: "result", expected_kind: "MAPPING" }],
+      output_path: "/workspace/intermediate/result.json",
+      max_rows: 10,
+      max_columns: 10,
+      max_bytes: 1_024,
+    });
+    expect(extractionSource).toContain(
+      'type(value) is dict or (module == "builtins" and name == "mappingproxy")',
+    );
+    expect(extractionSource).toContain('return {"kind": "NULL"}');
+  });
+
+  it("returns a bounded reason for a fixed extractor contract rejection", async () => {
+    const fake = fakeFactory({
+      symbol_extraction_error: "secret prefix ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED secret suffix",
+    });
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+    const session = await runtime.createSession({
+      run_id: "run-extractor-repair",
+      node_id: "node-extractor-repair",
+      profile: "CORE_ANALYSIS",
+    });
+    await expect(
+      session.extractAgentSymbols({
+        extraction_id: "repairable",
+        symbols: [{ symbol_name: "operator_inputs", expected_kind: "MAPPING" }],
+        limits: { max_rows: 10, max_columns: 10, max_bytes: 10_000 },
+        timeout_ms: 1_000,
+      }),
+    ).rejects.toMatchObject({
+      code: "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
+      reason_code: "ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED",
+      message: "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
+    });
+    await session.close();
+  });
+
+  it("passes the explicit server-proxy topology to every lifecycle client", async () => {
+    const fake = fakeFactory();
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: { ...testConfig(), use_server_proxy: true },
+      sdk_factory: fake.factory,
+    });
+
+    await expect(
+      runtime.cleanupSession({ run_id: "run-proxy", node_id: "node-proxy" }),
+    ).resolves.toEqual({ killed: 0, residual: 0 });
+    expect(fake.connectionProxyModes).toEqual([true]);
+  });
+
   it("uses separate agent/operator sandboxes and transfers content-addressed files", async () => {
     const fake = fakeFactory();
     const runtime = createOpenSandboxAnalysisRuntime({
@@ -320,6 +431,21 @@ describe("OpenSandbox analysis runtime", () => {
       content_sha256: digest(input),
     });
     expect(fake.created[0]?.files.get("/workspace/inputs/orders.parquet")).toEqual(input);
+    const inputBinding = await session.bindGovernedInput({
+      input_name: "orders",
+      input_path: "/workspace/inputs/orders.parquet",
+      format: "ARROW",
+      content_sha256: digest(input),
+      timeout_ms: 1_000,
+    });
+    expect(inputBinding).toMatchObject({
+      binding_id: expect.stringMatching(/^input-binding-[a-f0-9]{24}$/u),
+      input_symbol: expect.stringMatching(/^__da_input_[a-f0-9]{24}$/u),
+      content_sha256: digest(input),
+    });
+    expect(fake.created[0]?.executed_codes.at(-1)).toContain(
+      "server-owned-governed-input-binding@1.0.0",
+    );
 
     await expect(
       session.admitAgentCell({
@@ -352,6 +478,11 @@ describe("OpenSandbox analysis runtime", () => {
     });
     expect(fake.created[0]?.deleted_contexts).toHaveLength(1);
     expect(fake.created[0]?.executed_codes).toContain("value = 1\nvalue");
+    expect(
+      fake.created[0]?.executed_codes.filter((source) =>
+        source.includes("server-owned-governed-input-binding@1.0.0"),
+      ),
+    ).toHaveLength(2);
 
     await expect(
       session.extractAgentSymbols({
@@ -371,7 +502,7 @@ describe("OpenSandbox analysis runtime", () => {
       ],
     });
     const extractionSource = fake.created[0]?.executed_codes.at(-1) ?? "";
-    expect(extractionSource).toContain("server-owned-analysis-symbol-extractor@1.0.0");
+    expect(extractionSource).toContain("server-owned-analysis-symbol-extractor@2.0.0");
     expect(extractionSource).toContain("/workspace/intermediate/publish-1.symbols.json");
     expect(extractionSource).not.toContain("/workspace/outputs");
 

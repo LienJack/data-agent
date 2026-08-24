@@ -621,6 +621,23 @@ export function createPostgresResearchAuthority(
   );
   const sleep = options.sleep ?? sleepWithTimer;
 
+  async function withAnalysisLockRetry<T>(
+    execute: () => Promise<BoundaryResult<T>>,
+  ): Promise<BoundaryResult<T>> {
+    for (let attempt = 0; ; attempt += 1) {
+      const transaction = await execute();
+      if (
+        !transaction.ok &&
+        transaction.error.code === "RESEARCH_AUTHORITY_LOCK_CONTENDED" &&
+        attempt < lockRetryDelays.length
+      ) {
+        await sleep(lockRetryDelays[attempt] ?? 0);
+        continue;
+      }
+      return transaction;
+    }
+  }
+
   async function executePrepared<TCommand extends ResearchCommand, TResult>(
     capabilityInput: unknown,
     commandInput: unknown,
@@ -943,39 +960,41 @@ export function createPostgresResearchAuthority(
         authority_capability_id: capabilityBundle.data.authority_capability_id,
         command: command.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.commit_analysis_system_artifact",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis System Artifact 与事务内 App Capability Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.commit_analysis_system_artifact",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis System Artifact 与事务内 App Capability Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.commit_analysis_system_artifact($1::jsonb, $2::bytea) as result",
+              [envelope, content],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.commit_analysis_system_artifact($1::jsonb, $2::bytea) as result",
-            [envelope, content],
-          );
-          const parsed = analysisSystemArtifactResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis System Artifact RPC 返回了不符合冻结协议的 Result。",
+            const parsed = analysisSystemArtifactResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis System Artifact RPC 返回了不符合冻结协议的 Result。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1000,39 +1019,41 @@ export function createPostgresResearchAuthority(
         authority_capability_id: capabilityBundle.data.authority_capability_id,
         command: command.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.append_analysis_context_journal",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Context Journal 与事务内 Capability 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.append_analysis_context_journal",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Context Journal 与事务内 Capability 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.append_analysis_context_journal($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.append_analysis_context_journal($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisContextJournalResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Context Journal RPC 返回无效。",
+            const parsed = analysisContextJournalResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Context Journal RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1071,48 +1092,50 @@ export function createPostgresResearchAuthority(
         command: command.data,
         journal_command: journal.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.commit_governed_operator_result",
-          correlation_id: command.data.result.run_id,
-        },
-        async ({ capability, client }) => {
-          if (
-            !scopeMatches(
-              {
-                scope: command.data.result.scope,
-                run_id: command.data.result.run_id,
-                principal_id: command.data.principal_id,
-              },
-              capability,
-            )
-          ) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Governed Operator Result 与事务内 Capability 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.commit_governed_operator_result",
+            correlation_id: command.data.result.run_id,
+          },
+          async ({ capability, client }) => {
+            if (
+              !scopeMatches(
+                {
+                  scope: command.data.result.scope,
+                  run_id: command.data.result.run_id,
+                  principal_id: command.data.principal_id,
+                },
+                capability,
+              )
+            ) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Governed Operator Result 与事务内 Capability 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.commit_governed_operator_result($1::jsonb, $2::bytea, $3::bytea) as result",
+              [envelope, requestContent, resultContent],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.commit_governed_operator_result($1::jsonb, $2::bytea, $3::bytea) as result",
-            [envelope, requestContent, resultContent],
-          );
-          const parsed = governedOperatorResultCommitResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Governed Operator Result RPC 返回无效。",
+            const parsed = governedOperatorResultCommitResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Governed Operator Result RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1126,63 +1149,72 @@ export function createPostgresResearchAuthority(
       if (!capabilityBundle.success || !result.success) {
         return { ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
       }
-      const envelope = {
-        protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
-        authority_capability_id: capabilityBundle.data.authority_capability_id,
-        command: { schema_version: "governed-operator-result-read@1.0.0", result: result.data },
-      } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "READ",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.read_governed_operator_result",
-          correlation_id: result.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (
-            result.data.scope.app_id !== capability.scope.app_id ||
-            result.data.scope.tenant_id !== capability.scope.tenant_id ||
-            result.data.scope.environment !== capability.scope.environment
-          ) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Governed Operator Result read 与事务内 Capability 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "READ",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.read_governed_operator_result",
+            correlation_id: result.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (
+              result.data.scope.app_id !== capability.scope.app_id ||
+              result.data.scope.tenant_id !== capability.scope.tenant_id ||
+              result.data.scope.environment !== capability.scope.environment
+            ) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Governed Operator Result read 与事务内 Capability 不一致。",
+              );
+            }
+            const envelope = {
+              protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
+              authority_capability_id: capabilityBundle.data.authority_capability_id,
+              command: {
+                schema_version: "governed-operator-result-read@1.0.0",
+                scope: result.data.scope,
+                principal_id: capability.principal,
+                result: result.data,
+              },
+            } as const;
+            const databaseResult = await client.query<GovernedResultReadRow>(
+              "select result, result_content, request_content, receipt_payload from app_data_agent.read_governed_operator_result($1::jsonb)",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<GovernedResultReadRow>(
-            "select result, result_content, request_content, receipt_payload from app_data_agent.read_governed_operator_result($1::jsonb)",
-            [envelope],
-          );
-          const parsed = governedOperatorResultReadRpcSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          const row = databaseResult.rows[0];
-          const receiptPayload = z.record(z.string(), z.unknown()).safeParse(row?.receipt_payload);
-          if (
-            !parsed.success ||
-            (parsed.data.ok &&
-              (!(row?.result_content instanceof Uint8Array) ||
-                !(row.request_content instanceof Uint8Array) ||
-                !receiptPayload.success))
-          ) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Governed Operator Result read RPC 返回无效。",
+            const parsed = governedOperatorResultReadRpcSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data.ok
-            ? ({
-                ok: true as const,
-                result_content: row?.result_content as Uint8Array,
-                request_content: row?.request_content as Uint8Array,
-                receipt_payload: receiptPayload.data ?? {},
-              } as const)
-            : parsed.data;
-        },
+            const row = databaseResult.rows[0];
+            const receiptPayload = z
+              .record(z.string(), z.unknown())
+              .safeParse(row?.receipt_payload);
+            if (
+              !parsed.success ||
+              (parsed.data.ok &&
+                (!(row?.result_content instanceof Uint8Array) ||
+                  !(row.request_content instanceof Uint8Array) ||
+                  !receiptPayload.success))
+            ) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Governed Operator Result read RPC 返回无效。",
+              );
+            }
+            return parsed.data.ok
+              ? ({
+                  ok: true as const,
+                  result_content: row?.result_content as Uint8Array,
+                  request_content: row?.request_content as Uint8Array,
+                  receipt_payload: receiptPayload.data ?? {},
+                } as const)
+              : parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1196,48 +1228,54 @@ export function createPostgresResearchAuthority(
       if (!capabilityBundle.success || !command.success) {
         return { ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
       }
-      const envelope = {
-        protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
-        authority_capability_id: capabilityBundle.data.authority_capability_id,
-        command: { schema_version: "analysis-context-journal-read@1.0.0", ...command.data },
-      } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "READ",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.read_analysis_context_journal",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (
-            command.data.scope.app_id !== capability.scope.app_id ||
-            command.data.scope.tenant_id !== capability.scope.tenant_id ||
-            command.data.scope.environment !== capability.scope.environment
-          ) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Context Journal read 与事务内 Capability 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "READ",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.read_analysis_context_journal",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (
+              command.data.scope.app_id !== capability.scope.app_id ||
+              command.data.scope.tenant_id !== capability.scope.tenant_id ||
+              command.data.scope.environment !== capability.scope.environment
+            ) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Context Journal read 与事务内 Capability 不一致。",
+              );
+            }
+            const envelope = {
+              protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
+              authority_capability_id: capabilityBundle.data.authority_capability_id,
+              command: {
+                schema_version: "analysis-context-journal-read@1.0.0",
+                ...command.data,
+                principal_id: capability.principal,
+              },
+            } as const;
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.read_analysis_context_journal($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.read_analysis_context_journal($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisContextJournalReadResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Context Journal read RPC 返回无效。",
+            const parsed = analysisContextJournalReadResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Context Journal read RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1267,39 +1305,41 @@ export function createPostgresResearchAuthority(
         journal_command: journal.data,
       } as const;
       const encodedContents = contents.map((content) => Buffer.from(content).toString("base64"));
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.stage_analysis_result",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Result Stage 与事务内 Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.stage_analysis_result",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Result Stage 与事务内 Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.stage_analysis_result($1::jsonb,$2::jsonb) as result",
+              [envelope, JSON.stringify(encodedContents)],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.stage_analysis_result($1::jsonb,$2::jsonb) as result",
-            [envelope, encodedContents],
-          );
-          const parsed = analysisResultStageRpcResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Result Stage RPC 返回无效。",
+            const parsed = analysisResultStageRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Result Stage RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1317,44 +1357,46 @@ export function createPostgresResearchAuthority(
         authority_capability_id: capabilityBundle.data.authority_capability_id,
         command: command.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.cleanup_expired_analysis_result_stages",
-          correlation_id: command.data.cleanup_id,
-        },
-        async ({ capability, client }) => {
-          if (
-            command.data.scope.app_id !== capability.scope.app_id ||
-            command.data.scope.tenant_id !== capability.scope.tenant_id ||
-            command.data.scope.environment !== capability.scope.environment ||
-            command.data.principal_id !== capability.principal
-          ) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Result Stage cleanup 与事务内 Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.cleanup_expired_analysis_result_stages",
+            correlation_id: command.data.cleanup_id,
+          },
+          async ({ capability, client }) => {
+            if (
+              command.data.scope.app_id !== capability.scope.app_id ||
+              command.data.scope.tenant_id !== capability.scope.tenant_id ||
+              command.data.scope.environment !== capability.scope.environment ||
+              command.data.principal_id !== capability.principal
+            ) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Result Stage cleanup 与事务内 Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.cleanup_expired_analysis_result_stages($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.cleanup_expired_analysis_result_stages($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisResultStageCleanupRpcResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Result Stage cleanup RPC 返回无效。",
+            const parsed = analysisResultStageCleanupRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Result Stage cleanup RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1387,66 +1429,68 @@ export function createPostgresResearchAuthority(
         authority_capability_id: capabilityBundle.data.authority_capability_id,
         command,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "READ",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.read_analysis_result_stage",
-          correlation_id: command.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Result Stage read 与事务内 Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "READ",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.read_analysis_result_stage",
+            correlation_id: command.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Result Stage read 与事务内 Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.read_analysis_result_stage($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.read_analysis_result_stage($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisResultStageReadRpcResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Result Stage read RPC 返回无效。",
+            const parsed = analysisResultStageReadRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          if (!parsed.data.ok) return parsed.data;
-          return {
-            ok: true as const,
-            stage_command: parsed.data.stage_command,
-            oracle_record: parsed.data.oracle_record
-              ? {
-                  receipt_payload: parsed.data.oracle_record.receipt_payload,
-                  receipt_hash: parsed.data.oracle_record.receipt_hash as `sha256:${string}`,
-                }
-              : null,
-            explanation_record: parsed.data.explanation_record
-              ? {
-                  explanation: parsed.data.explanation_record.explanation,
-                  explanation_hash: parsed.data.explanation_record
-                    .explanation_hash as `sha256:${string}`,
-                  provider_invocation_ref: {
-                    ...parsed.data.explanation_record.provider_invocation_ref,
-                    resource_hash: parsed.data.explanation_record.provider_invocation_ref
-                      .resource_hash as `sha256:${string}`,
-                  },
-                }
-              : null,
-            artifacts: parsed.data.artifacts.map(({ content_base64, ...artifact }) => ({
-              ...artifact,
-              content_sha256: artifact.content_sha256 as `sha256:${string}`,
-              content: Buffer.from(content_base64, "base64"),
-            })),
-          };
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Result Stage read RPC 返回无效。",
+              );
+            }
+            if (!parsed.data.ok) return parsed.data;
+            return {
+              ok: true as const,
+              stage_command: parsed.data.stage_command,
+              oracle_record: parsed.data.oracle_record
+                ? {
+                    receipt_payload: parsed.data.oracle_record.receipt_payload,
+                    receipt_hash: parsed.data.oracle_record.receipt_hash as `sha256:${string}`,
+                  }
+                : null,
+              explanation_record: parsed.data.explanation_record
+                ? {
+                    explanation: parsed.data.explanation_record.explanation,
+                    explanation_hash: parsed.data.explanation_record
+                      .explanation_hash as `sha256:${string}`,
+                    provider_invocation_ref: {
+                      ...parsed.data.explanation_record.provider_invocation_ref,
+                      resource_hash: parsed.data.explanation_record.provider_invocation_ref
+                        .resource_hash as `sha256:${string}`,
+                    },
+                  }
+                : null,
+              artifacts: parsed.data.artifacts.map(({ content_base64, ...artifact }) => ({
+                ...artifact,
+                content_sha256: artifact.content_sha256 as `sha256:${string}`,
+                content: Buffer.from(content_base64, "base64"),
+              })),
+            };
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1474,39 +1518,41 @@ export function createPostgresResearchAuthority(
         command: command.data,
         journal_command: journal.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.record_analysis_stage_oracle",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Stage Oracle 与事务内 Capability 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.record_analysis_stage_oracle",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Stage Oracle 与事务内 Capability 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.record_analysis_stage_oracle($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.record_analysis_stage_oracle($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisStageRecordRpcResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Stage Oracle RPC 返回无效。",
+            const parsed = analysisStageRecordRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Stage Oracle RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1534,39 +1580,41 @@ export function createPostgresResearchAuthority(
         command: command.data,
         journal_command: journal.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.record_analysis_stage_explanation",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Stage Explanation 与事务内 Capability 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.record_analysis_stage_explanation",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Stage Explanation 与事务内 Capability 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.record_analysis_stage_explanation($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.record_analysis_stage_explanation($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisStageRecordRpcResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Stage Explanation RPC 返回无效。",
+            const parsed = analysisStageRecordRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Stage Explanation RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1594,39 +1642,41 @@ export function createPostgresResearchAuthority(
         command: command.data,
         journal_command: journal.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.commit_analysis_authority",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Authority Commit 与事务内 Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.commit_analysis_authority",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Authority Commit 与事务内 Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.commit_analysis_authority($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.commit_analysis_authority($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisAuthorityCommitRpcResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Authority Commit RPC 返回无效。",
+            const parsed = analysisAuthorityCommitRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Authority Commit RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1645,39 +1695,41 @@ export function createPostgresResearchAuthority(
         authority_capability_id: capabilityBundle.data.authority_capability_id,
         command: command.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "WRITE",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.commit_analysis_python_source",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Python Source 与事务内 App Capability Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.commit_analysis_python_source",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Python Source 与事务内 App Capability Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.commit_analysis_python_source($1::jsonb, $2::bytea) as result",
+              [envelope, ciphertext],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.commit_analysis_python_source($1::jsonb, $2::bytea) as result",
-            [envelope, ciphertext],
-          );
-          const parsed = analysisPythonSourceCommitResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Python Source RPC 返回了不符合冻结协议的 Result。",
+            const parsed = analysisPythonSourceCommitResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Python Source RPC 返回了不符合冻结协议的 Result。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
@@ -1702,39 +1754,41 @@ export function createPostgresResearchAuthority(
         authority_capability_id: capabilityBundle.data.authority_capability_id,
         command: command.data,
       } as const;
-      const transaction = await withAppTransaction(
-        options.pool,
-        options.authorizer,
-        capabilityBundle.data.app_capability,
-        {
-          access: "READ",
-          allowed_roles: ["OWNER", "ANALYST"],
-          map_database_error: databaseFailure,
-          operation_name: "research_authority.read_analysis_context_model_cell_source",
-          correlation_id: command.data.run_id,
-        },
-        async ({ capability, client }) => {
-          if (!scopeMatches(command.data, capability)) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-              "Analysis Context Model Cell Source 与事务内 Scope/Principal 不一致。",
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "READ",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.read_analysis_context_model_cell_source",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "Analysis Context Model Cell Source 与事务内 Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.read_analysis_context_model_cell_source($1::jsonb) as result",
+              [envelope],
             );
-          }
-          const databaseResult = await client.query<JsonResultRow>(
-            "select app_data_agent.read_analysis_context_model_cell_source($1::jsonb) as result",
-            [envelope],
-          );
-          const parsed = analysisContextModelCellSourceReadResultSchema.safeParse(
-            databaseResult.rows[0]?.result,
-          );
-          if (!parsed.success) {
-            throw new PersistenceBoundaryError(
-              "RESEARCH_DATABASE_CONTRACT_INVALID",
-              "Analysis Context Model Cell Source RPC 返回无效。",
+            const parsed = analysisContextModelCellSourceReadResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
             );
-          }
-          return parsed.data;
-        },
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "Analysis Context Model Cell Source RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);

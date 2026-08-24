@@ -58,6 +58,11 @@ export const modelProviderRequestSchema = z
     messages: z.array(modelMessageSchema).min(1).max(256),
     tool_allowlist: z.array(versionIdentifierSchema).max(64),
     response_schema_version: versionIdentifierSchema,
+    sampling: z
+      .strictObject({
+        temperature: z.number().min(0).max(2),
+      })
+      .optional(),
     budget: z.strictObject({
       timeout_ms: z.number().int().positive().max(600_000),
       max_input_tokens: z.number().int().positive(),

@@ -176,6 +176,16 @@ describe("deterministic analysis contracts", () => {
       "3.0.0",
       "atomic-claim@3.0.0",
     ]);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).toContainEqual([
+      "DerivedAnalysisEvidence",
+      "2.0.0",
+      "derived-analysis-evidence@2.0.0",
+    ]);
+    expect(L2_RESEARCH_WIRE_VERSION_MATRIX).not.toContainEqual([
+      "DerivedAnalysisEvidence",
+      "1.0.0",
+      "derived-analysis-evidence@1.0.0",
+    ]);
     expect(
       l4ContractArtifactSchema.parse({
         level: "L4",

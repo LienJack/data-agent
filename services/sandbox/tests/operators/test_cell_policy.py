@@ -68,7 +68,7 @@ def test_governed_orchestration_denies_scipy_formula_surface() -> None:
         raise AssertionError("governed orchestration must use statistical_operator")
 
 
-def test_cell_policy_denies_protected_governed_result_mutation() -> None:
+def test_cell_policy_denies_protected_binding_mutation() -> None:
     for source in (
         "__da_gov_aaaaaaaaaaaaaaaaaaaaaaaa = {}",
         "del __da_gov_aaaaaaaaaaaaaaaaaaaaaaaa",
@@ -77,13 +77,15 @@ def test_cell_policy_denies_protected_governed_result_mutation() -> None:
         "import pandas as __da_gov_aaaaaaaaaaaaaaaaaaaaaaaa",
         "try:\n    raise ValueError()\nexcept ValueError as __da_gov_aaaaaaaaaaaaaaaaaaaaaaaa:\n    pass",
         "globals()['__da_gov_aaaaaaaaaaaaaaaaaaaaaaaa'] = {}",
+        "__da_input_aaaaaaaaaaaaaaaaaaaaaaaa = None",
+        "del __da_input_aaaaaaaaaaaaaaaaaaaaaaaa",
     ):
         try:
             validate_cell_source(source, "CORE_ANALYSIS", "GOVERNED_OPERATOR_ORCHESTRATION")
         except CellPolicyError as error:
             assert any(
-                item.code in {"PROTECTED_RESULT_MUTATION", "NAME_DENIED", "CALL_DENIED"}
+                item.code in {"PROTECTED_BINDING_MUTATION", "NAME_DENIED", "CALL_DENIED"}
                 for item in error.violations
             )
         else:
-            raise AssertionError(f"protected result mutation must be rejected: {source}")
+            raise AssertionError(f"protected binding mutation must be rejected: {source}")

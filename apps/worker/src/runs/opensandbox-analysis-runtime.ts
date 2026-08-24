@@ -43,11 +43,108 @@ export type AnalysisSandboxRuntimeFailureCode =
   | "ANALYSIS_SANDBOX_CELL_CANCELLED"
   | "ANALYSIS_SANDBOX_CELL_POLICY_REJECTED"
   | "ANALYSIS_SANDBOX_CELL_FAILED"
+  | "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED"
   | "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH"
   | "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT"
   | "ANALYSIS_SANDBOX_OPERATOR_FAILED"
   | "ANALYSIS_SANDBOX_ARTIFACT_INVALID"
   | "ANALYSIS_SANDBOX_CLEANUP_FAILED";
+
+export type AnalysisSymbolExtractionFailureCode =
+  | "ANALYSIS_RESULT_NESTING_EXCEEDED"
+  | "ANALYSIS_RESULT_INTEGER_UNSAFE"
+  | "ANALYSIS_RESULT_NUMBER_NON_FINITE"
+  | "ANALYSIS_RESULT_DECIMAL_NON_FINITE"
+  | "ANALYSIS_RESULT_TIMESTAMP_TIMEZONE_REQUIRED"
+  | "ANALYSIS_RESULT_ARRAY_LIMIT_EXCEEDED"
+  | "ANALYSIS_RESULT_OBJECT_INVALID"
+  | "ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED"
+  | "ANALYSIS_RESULT_TABLE_EMPTY_SCHEMA"
+  | "ANALYSIS_RESULT_TABLE_ROW_INVALID"
+  | "ANALYSIS_RESULT_TABLE_COLUMNS_UNSTABLE"
+  | "ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED"
+  | "ANALYSIS_RESULT_TABLE_BOUNDS_OR_SCHEMA_INVALID"
+  | "ANALYSIS_RESULT_SYMBOL_MISSING"
+  | "ANALYSIS_RESULT_MAPPING_TYPE_UNSUPPORTED"
+  | "ANALYSIS_RESULT_EXTRACTION_SIZE_EXCEEDED";
+
+export type AnalysisOperatorFailureReasonCode =
+  | "PYTHON_OPERATOR_APPLICABILITY_HOLD"
+  | "PYTHON_OPERATOR_DUPLICATE_CALL_ID"
+  | "PYTHON_OPERATOR_INPUT_INVALID"
+  | "PYTHON_OPERATOR_NOT_AUTHORIZED"
+  | "PYTHON_OPERATOR_NOT_REGISTERED"
+  | "PYTHON_OPERATOR_NUMERIC_FAILURE"
+  | "PYTHON_OPERATOR_PARAMETER_INVALID"
+  | "PYTHON_OPERATOR_PATH_INVALID"
+  | "PYTHON_OPERATOR_RECEIPT_CLOSURE_MISMATCH"
+  | "PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH"
+  | "PYTHON_OPERATOR_REQUIRED_CALL_MISSING"
+  | "PYTHON_OPERATOR_RESULT_BINDING_MISMATCH"
+  | "PYTHON_OPERATOR_UNDECLARED_CALL";
+
+export type AnalysisSandboxFailureReasonCode =
+  | AnalysisSymbolExtractionFailureCode
+  | AnalysisOperatorFailureReasonCode;
+
+const analysisSymbolExtractionFailureCodes = new Set<AnalysisSymbolExtractionFailureCode>([
+  "ANALYSIS_RESULT_NESTING_EXCEEDED",
+  "ANALYSIS_RESULT_INTEGER_UNSAFE",
+  "ANALYSIS_RESULT_NUMBER_NON_FINITE",
+  "ANALYSIS_RESULT_DECIMAL_NON_FINITE",
+  "ANALYSIS_RESULT_TIMESTAMP_TIMEZONE_REQUIRED",
+  "ANALYSIS_RESULT_ARRAY_LIMIT_EXCEEDED",
+  "ANALYSIS_RESULT_OBJECT_INVALID",
+  "ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED",
+  "ANALYSIS_RESULT_TABLE_EMPTY_SCHEMA",
+  "ANALYSIS_RESULT_TABLE_ROW_INVALID",
+  "ANALYSIS_RESULT_TABLE_COLUMNS_UNSTABLE",
+  "ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED",
+  "ANALYSIS_RESULT_TABLE_BOUNDS_OR_SCHEMA_INVALID",
+  "ANALYSIS_RESULT_SYMBOL_MISSING",
+  "ANALYSIS_RESULT_MAPPING_TYPE_UNSUPPORTED",
+  "ANALYSIS_RESULT_EXTRACTION_SIZE_EXCEEDED",
+]);
+
+const analysisOperatorFailureReasonCodes = new Set<AnalysisOperatorFailureReasonCode>([
+  "PYTHON_OPERATOR_APPLICABILITY_HOLD",
+  "PYTHON_OPERATOR_DUPLICATE_CALL_ID",
+  "PYTHON_OPERATOR_INPUT_INVALID",
+  "PYTHON_OPERATOR_NOT_AUTHORIZED",
+  "PYTHON_OPERATOR_NOT_REGISTERED",
+  "PYTHON_OPERATOR_NUMERIC_FAILURE",
+  "PYTHON_OPERATOR_PARAMETER_INVALID",
+  "PYTHON_OPERATOR_PATH_INVALID",
+  "PYTHON_OPERATOR_RECEIPT_CLOSURE_MISMATCH",
+  "PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH",
+  "PYTHON_OPERATOR_REQUIRED_CALL_MISSING",
+  "PYTHON_OPERATOR_RESULT_BINDING_MISMATCH",
+  "PYTHON_OPERATOR_UNDECLARED_CALL",
+]);
+
+function safeAnalysisSymbolExtractionFailureCode(
+  value: string | undefined,
+): AnalysisSymbolExtractionFailureCode | null {
+  const candidates = value?.match(/ANALYSIS_RESULT_[A-Z0-9_]+/gu) ?? [];
+  const distinct = [...new Set(candidates)];
+  if (distinct.length !== 1) return null;
+  const [candidate] = distinct;
+  return analysisSymbolExtractionFailureCodes.has(candidate as AnalysisSymbolExtractionFailureCode)
+    ? (candidate as AnalysisSymbolExtractionFailureCode)
+    : null;
+}
+
+function safeAnalysisOperatorFailureReasonCode(
+  value: string | undefined,
+): AnalysisOperatorFailureReasonCode | null {
+  const candidates = value?.match(/PYTHON_OPERATOR_[A-Z0-9_]+/gu) ?? [];
+  const distinct = [...new Set(candidates)];
+  if (distinct.length !== 1) return null;
+  const [candidate] = distinct;
+  return analysisOperatorFailureReasonCodes.has(candidate as AnalysisOperatorFailureReasonCode)
+    ? (candidate as AnalysisOperatorFailureReasonCode)
+    : null;
+}
 
 export class AnalysisSandboxRuntimeError extends Error {
   override readonly name = "AnalysisSandboxRuntimeError";
@@ -56,6 +153,7 @@ export class AnalysisSandboxRuntimeError extends Error {
     readonly code: AnalysisSandboxRuntimeFailureCode,
     readonly stage: AnalysisSandboxFailureStage,
     readonly retryable: boolean,
+    readonly reason_code: AnalysisSandboxFailureReasonCode | null = null,
   ) {
     super(code);
   }
@@ -111,6 +209,7 @@ export interface OpenSandboxAnalysisRuntimeConfig {
   readonly domain: string;
   readonly protocol: "http" | "https";
   readonly api_key: string;
+  readonly use_server_proxy: boolean;
   readonly request_timeout_seconds: number;
   readonly ready_timeout_seconds: number;
   readonly sandbox_timeout_seconds: number;
@@ -261,6 +360,18 @@ export interface OpenSandboxAnalysisSession {
     readonly content: Uint8Array;
     readonly content_sha256: `sha256:${string}`;
   }): Promise<void>;
+  bindGovernedInput(input: {
+    readonly input_name: string;
+    readonly input_path: string;
+    readonly format: "ARROW" | "CSV" | "JSON";
+    readonly content_sha256: `sha256:${string}`;
+    readonly timeout_ms: number;
+    readonly signal?: AbortSignal;
+  }): Promise<{
+    readonly binding_id: string;
+    readonly input_symbol: string;
+    readonly content_sha256: `sha256:${string}`;
+  }>;
   admitAgentCell(input: {
     readonly cell_id: string;
     readonly source: string;
@@ -344,6 +455,7 @@ const configSchema = z.strictObject({
   domain: z.string().trim().min(1).max(512),
   protocol: z.enum(["http", "https"]),
   api_key: z.string().min(16).max(1_024),
+  use_server_proxy: z.boolean(),
   request_timeout_seconds: z.number().int().min(1).max(600),
   ready_timeout_seconds: z.number().int().min(1).max(600),
   sandbox_timeout_seconds: z.number().int().min(30).max(3_600),
@@ -541,6 +653,60 @@ function digest(bytes: Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
+export function governedInputBindingIdentity(input: {
+  readonly input_name: string;
+  readonly content_sha256: `sha256:${string}`;
+}) {
+  const suffix = createHash("sha256")
+    .update([input.input_name, input.content_sha256].join("\0"))
+    .digest("hex")
+    .slice(0, 24);
+  return Object.freeze({
+    binding_id: `input-binding-${suffix}`,
+    input_symbol: `__da_input_${suffix}`,
+  });
+}
+
+function buildGovernedInputBindingSource(input: {
+  readonly input_path: string;
+  readonly input_symbol: string;
+  readonly content_sha256: `sha256:${string}`;
+  readonly format: "ARROW" | "CSV" | "JSON";
+  readonly max_bytes: number;
+}): string {
+  return `# server-owned-governed-input-binding@1.0.0
+import hashlib as _da_input_hashlib
+import io as _da_input_io
+import json as _da_input_json
+import pandas as _da_input_pd
+
+_da_input_path = ${JSON.stringify(input.input_path)}
+_da_input_expected_hash = ${JSON.stringify(input.content_sha256)}
+_da_input_format = ${JSON.stringify(input.format)}
+_da_input_max_bytes = ${input.max_bytes}
+with open(_da_input_path, "rb") as _da_input_stream:
+    _da_input_bytes = _da_input_stream.read(_da_input_max_bytes + 1)
+if len(_da_input_bytes) > _da_input_max_bytes:
+    raise RuntimeError("ANALYSIS_GOVERNED_INPUT_SIZE_EXCEEDED")
+_da_input_observed_hash = "sha256:" + _da_input_hashlib.sha256(_da_input_bytes).hexdigest()
+if _da_input_observed_hash != _da_input_expected_hash:
+    raise RuntimeError("ANALYSIS_GOVERNED_INPUT_BINDING_HASH_MISMATCH")
+if _da_input_format == "ARROW":
+    import pyarrow as _da_input_pa
+    import pyarrow.ipc as _da_input_ipc
+    with _da_input_ipc.open_file(_da_input_pa.BufferReader(_da_input_bytes)) as _da_input_reader:
+        _da_input_value = _da_input_reader.read_all().to_pandas()
+elif _da_input_format == "CSV":
+    _da_input_value = _da_input_pd.read_csv(_da_input_io.BytesIO(_da_input_bytes))
+elif _da_input_format == "JSON":
+    _da_input_document = _da_input_json.loads(_da_input_bytes.decode("utf-8"))
+    _da_input_value = _da_input_pd.DataFrame(_da_input_document)
+else:
+    raise RuntimeError("ANALYSIS_GOVERNED_INPUT_FORMAT_UNSUPPORTED")
+globals()[${JSON.stringify(input.input_symbol)}] = _da_input_value
+`;
+}
+
 function governedBindingIdentity(result: GovernedOperatorResultRef) {
   const suffix = createHash("sha256")
     .update(
@@ -589,6 +755,8 @@ _da_value = _da_json.loads(_da_bytes.decode("utf-8"))
 def _da_freeze(value, depth=0):
     if depth > 16:
         raise RuntimeError("ANALYSIS_GOVERNED_RESULT_NESTING_EXCEEDED")
+    module = type(value).__module__
+    name = type(value).__name__
     if value is None or type(value) in {bool, int, str}:
         return value
     if type(value) is float:
@@ -621,7 +789,7 @@ function buildFixedSymbolExtractionSource(input: {
 }): string {
   const specs = JSON.stringify(input.specs);
   const outputPath = JSON.stringify(input.output_path);
-  return `# server-owned-analysis-symbol-extractor@1.0.0
+  return `# server-owned-analysis-symbol-extractor@2.0.0
 import datetime as _analysis_datetime
 import decimal as _analysis_decimal
 import json as _analysis_json
@@ -652,6 +820,8 @@ def _analysis_wire(value, depth=0):
             raise TypeError("ANALYSIS_RESULT_INTEGER_UNSAFE")
         return {"kind": "INTEGER", "value": str(value)}
     if type(value) is float:
+        if _analysis_math.isnan(value):
+            return {"kind": "NULL"}
         if not _analysis_math.isfinite(value):
             raise TypeError("ANALYSIS_RESULT_NUMBER_NON_FINITE")
         return {"kind": "NUMBER", "value": value}
@@ -671,7 +841,7 @@ def _analysis_wire(value, depth=0):
         if len(value) > 100000:
             raise TypeError("ANALYSIS_RESULT_ARRAY_LIMIT_EXCEEDED")
         return {"kind": "ARRAY", "items": [_analysis_wire(item, depth + 1) for item in value]}
-    if type(value) is dict:
+    if type(value) is dict or (module == "builtins" and name == "mappingproxy"):
         if len(value) > 10000 or any(type(key) is not str or not key for key in value):
             raise TypeError("ANALYSIS_RESULT_OBJECT_INVALID")
         return {
@@ -951,7 +1121,16 @@ async function runOperatorCommandWithDeadline(input: {
       stderr_bytes: input.stderr_bytes,
     });
     if (observation.status === "FAILED" || execution.exitCode !== 0) {
-      throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_OPERATOR_FAILED", "OPERATOR", false);
+      throw new AnalysisSandboxRuntimeError(
+        "ANALYSIS_SANDBOX_OPERATOR_FAILED",
+        "OPERATOR",
+        false,
+        safeAnalysisOperatorFailureReasonCode(
+          [observation.stderr, observation.error?.value, observation.stdout]
+            .filter((value): value is string => typeof value === "string" && value.length > 0)
+            .join("\n"),
+        ),
+      );
     }
     return observation;
   } catch (error) {
@@ -1071,6 +1250,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
     domain: config.domain,
     protocol: config.protocol,
     apiKey: config.api_key,
+    useServerProxy: config.use_server_proxy,
     requestTimeoutSeconds: config.request_timeout_seconds,
   });
   let activeSessions = 0;
@@ -1227,6 +1407,15 @@ export function createOpenSandboxAnalysisRuntime(input: {
       const operator = operatorRuntime;
       let closed = false;
       let contextFrozen = false;
+      const governedInputBindings: {
+        readonly input_name: string;
+        readonly input_path: string;
+        readonly format: "ARROW" | "CSV" | "JSON";
+        readonly content_sha256: `sha256:${string}`;
+        readonly binding_id: string;
+        readonly input_symbol: string;
+        readonly source: string;
+      }[] = [];
       const assertOpen = () => {
         if (closed) {
           throw new AnalysisSandboxRuntimeError(
@@ -1312,6 +1501,60 @@ export function createOpenSandboxAnalysisRuntime(input: {
               true,
             );
           }
+        },
+        async bindGovernedInput(bindingInput) {
+          assertContextActive();
+          safeSegmentSchema.parse(bindingInput.input_name);
+          sandboxPathSchema.parse(bindingInput.input_path);
+          const identity = governedInputBindingIdentity(bindingInput);
+          const existing = governedInputBindings.find(
+            ({ input_name: inputName }) => inputName === bindingInput.input_name,
+          );
+          if (existing) {
+            if (
+              existing.content_sha256 !== bindingInput.content_sha256 ||
+              existing.input_path !== bindingInput.input_path ||
+              existing.format !== bindingInput.format ||
+              existing.binding_id !== identity.binding_id ||
+              existing.input_symbol !== identity.input_symbol
+            ) {
+              throw new AnalysisSandboxRuntimeError(
+                "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+                "CONTEXT",
+                false,
+              );
+            }
+            return Object.freeze({
+              binding_id: existing.binding_id,
+              input_symbol: existing.input_symbol,
+              content_sha256: existing.content_sha256,
+            });
+          }
+          const source = buildGovernedInputBindingSource({
+            input_path: bindingInput.input_path,
+            input_symbol: identity.input_symbol,
+            content_sha256: bindingInput.content_sha256,
+            format: bindingInput.format,
+            max_bytes: config.max_file_bytes,
+          });
+          await runCellWithDeadline({
+            codes: agentInterpreter.codes,
+            context: agentContext,
+            cell_id: identity.binding_id,
+            source,
+            timeout_ms: Math.min(bindingInput.timeout_ms, 30_000),
+            ...(bindingInput.signal ? { signal: bindingInput.signal } : {}),
+            timeout_code: "ANALYSIS_SANDBOX_CELL_TIMEOUT",
+            failure_code: "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+            stdout_bytes: 0,
+            stderr_bytes: config.stderr_bytes,
+            return_python_error: false,
+          });
+          governedInputBindings.push({ ...bindingInput, ...identity, source });
+          return Object.freeze({
+            ...identity,
+            content_sha256: bindingInput.content_sha256,
+          });
         },
         async admitAgentCell(cellInput) {
           assertContextActive();
@@ -1405,6 +1648,21 @@ export function createOpenSandboxAnalysisRuntime(input: {
               );
             }
             agentContext = replacement;
+            for (const binding of governedInputBindings) {
+              await runCellWithDeadline({
+                codes: agentInterpreter.codes,
+                context: agentContext,
+                cell_id: `replay-${binding.binding_id}`,
+                source: binding.source,
+                timeout_ms: 30_000,
+                ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
+                timeout_code: "ANALYSIS_SANDBOX_CELL_TIMEOUT",
+                failure_code: "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+                stdout_bytes: 0,
+                stderr_bytes: config.stderr_bytes,
+                return_python_error: false,
+              });
+            }
             for (const action of recoveryInput.replay) {
               if (action.action_type === "MODEL_CELL") {
                 safeSegmentSchema.parse(action.cell_id);
@@ -1552,7 +1810,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
             max_bytes: parsed.limits.max_bytes,
           });
           try {
-            await runCellWithDeadline({
+            const observation = await runCellWithDeadline({
               codes: agentInterpreter.codes,
               context: agentContext,
               cell_id: `extract-${parsed.extraction_id}`,
@@ -1563,8 +1821,20 @@ export function createOpenSandboxAnalysisRuntime(input: {
               failure_code: "ANALYSIS_SANDBOX_CELL_FAILED",
               stdout_bytes: 0,
               stderr_bytes: config.stderr_bytes,
-              return_python_error: false,
+              return_python_error: true,
             });
+            if (observation.status === "FAILED") {
+              const reasonCode = safeAnalysisSymbolExtractionFailureCode(observation.error?.value);
+              if (reasonCode) {
+                throw new AnalysisSandboxRuntimeError(
+                  "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
+                  "CELL",
+                  false,
+                  reasonCode,
+                );
+              }
+              throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_CELL_FAILED", "CELL", false);
+            }
             const bytes = await read(pair.agent, outputPath);
             if (bytes.byteLength > parsed.limits.max_bytes) {
               throw new AnalysisSandboxRuntimeError(
@@ -1733,6 +2003,11 @@ export function createEnvironmentOpenSandboxAnalysisRuntime(
           .enum(["http", "https"])
           .parse(requiredEnvironment(environment, "ANALYSIS_SANDBOX_SERVER_PROTOCOL")),
         api_key: requiredEnvironment(environment, "ANALYSIS_SANDBOX_API_KEY"),
+        use_server_proxy:
+          z
+            .enum(["true", "false"])
+            .parse(requiredEnvironment(environment, "ANALYSIS_SANDBOX_USE_SERVER_PROXY")) ===
+          "true",
         request_timeout_seconds: z.coerce
           .number()
           .int()
@@ -1785,8 +2060,13 @@ export function createEnvironmentOpenSandboxAnalysisRuntime(
 }
 
 export const openSandboxAnalysisRuntimeInternals = Object.freeze({
+  buildFixedSymbolExtractionSource,
+  buildGovernedInputBindingSource,
   buildGovernedResultBindingSource,
+  safeAnalysisOperatorFailureReasonCode,
+  safeAnalysisSymbolExtractionFailureCode,
   digest,
+  governedInputBindingIdentity,
   governedBindingIdentity,
   sandboxPathSchema,
   safeSegmentSchema,

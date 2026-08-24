@@ -3,7 +3,10 @@ import {
   createOpenSandboxOperatorArgumentExtractor,
   openSandboxOperatorArgumentExtractorInternals,
 } from "../../src/analysis/opensandbox-operator-argument-extractor.js";
-import type { OpenSandboxAnalysisSession } from "../../src/runs/opensandbox-analysis-runtime.js";
+import {
+  AnalysisSandboxRuntimeError,
+  type OpenSandboxAnalysisSession,
+} from "../../src/runs/opensandbox-analysis-runtime.js";
 
 function session(observed: unknown[]): OpenSandboxAnalysisSession {
   return {
@@ -14,6 +17,13 @@ function session(observed: unknown[]): OpenSandboxAnalysisSession {
     operator_image: "operator@sha256:test",
     secure_access: true,
     async uploadAgentFile() {},
+    async bindGovernedInput(input) {
+      return {
+        binding_id: "input-binding-aaaaaaaaaaaaaaaaaaaaaaaa",
+        input_symbol: "__da_input_aaaaaaaaaaaaaaaaaaaaaaaa",
+        content_sha256: input.content_sha256,
+      };
+    },
     async admitAgentCell(input) {
       return {
         schema_version: "analysis-cell-policy-result@1.0.0",
@@ -98,5 +108,36 @@ describe("OpenSandbox operator argument extraction adapter", () => {
     await expect(
       extractor.extract({ inputs_symbol: "same", parameters_symbol: "same" }),
     ).rejects.toThrow("ANALYSIS_OPERATOR_ARGUMENT_SYMBOLS_DUPLICATE");
+  });
+
+  it("turns only allowlisted fixed-cell contract failures into a model repair", async () => {
+    const broken: OpenSandboxAnalysisSession = {
+      ...session([]),
+      async extractAgentSymbols() {
+        throw new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
+          "CELL",
+          false,
+          "ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED",
+        );
+      },
+    };
+    await expect(
+      createOpenSandboxOperatorArgumentExtractor(broken).extract({
+        inputs_symbol: "operator_inputs",
+        parameters_symbol: "operator_parameters",
+      }),
+    ).rejects.toThrow("ANALYSIS_OPERATOR_ARGUMENT_VALUE_TYPE_UNSUPPORTED");
+
+    const infrastructureFailure = new AnalysisSandboxRuntimeError(
+      "ANALYSIS_SANDBOX_CELL_FAILED",
+      "CELL",
+      false,
+    );
+    expect(
+      openSandboxOperatorArgumentExtractorInternals.repairableOperatorArgumentFailure(
+        infrastructureFailure,
+      ),
+    ).toBeNull();
   });
 });

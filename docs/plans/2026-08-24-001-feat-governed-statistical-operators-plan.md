@@ -173,7 +173,7 @@ Operator ID 是唯一调用名称；首版不提供短名或 alias。所有参�
 | `regression.ols-hac@1` | OLS coefficient + Newey-West HAC；Bartlett、maxlags、correction、normal inference 全显式 | 非等间隔、n/k 不足、rank deficient、目标列缺失或数值失败为 HOLD | Q4 0–4 周 lag fits |
 | `regression.binomial-logit-wald@1` | binomial logit、固定优化/收敛门、目标系数 two-sided Wald inference | 非二元 y、rank deficient、完全分离、不收敛、样本不足为 HOLD | Q2 delayed 与低评分关联 |
 | `decomposition.product-shapley-exact@1` | named multiplicative factors、全排列 exact marginal average、stable order、closure | factor 非有限、数量超界、观察变化与重构不闭合失败；无 approximate 模式 | Q1 buyers × frequency × AOV |
-| `cohort.registration-retention-m0-m6@1` | 注册月 cohort、M0–M6、primary/sensitivity denominator、zero-order customers、全局异常常量 | 缺月、denominator 漂移、重复组、全局异常列不恒定失败；primary 不可靠可作为正确 HOLD 输出 | Q5 retention/repeat/spend/experience |
+| `cohort.registration-retention-m0-m6@2` | 注册日 cohort、M0–M6、primary/sensitivity denominator、zero-order customers、日粒度时序异常 | 非法日期、denominator 漂移、重复客户/订单失败；primary 不可靠可作为正确 HOLD 输出 | Q5 retention/repeat/spend/experience |
 
 ### Cohort Operator Is Deliberately Business-Semantic
 

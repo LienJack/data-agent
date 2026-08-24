@@ -212,11 +212,11 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     required_operator_calls: [
       {
         call_id: "q5_primary_cohorts",
-        operator_id: "cohort.registration-retention-m0-m6@1",
+        operator_id: "cohort.registration-retention-m0-m6@2",
       },
       {
         call_id: "q5_sensitivity_cohorts",
-        operator_id: "cohort.registration-retention-m0-m6@1",
+        operator_id: "cohort.registration-retention-m0-m6@2",
       },
     ],
     required_disclosures: [],

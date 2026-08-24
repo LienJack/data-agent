@@ -3,25 +3,25 @@ import {
   type AnalysisCompletionReceiptPayload,
   type AnalysisProgramPayload,
   type AnalysisReasonCode,
-  analysisReasonCodeSchema,
   type ArtifactReference,
   analysisCompletionReceiptPayloadSchema,
   analysisProgramRefSchema,
+  analysisReasonCodeSchema,
   analysisResultSchema,
   artifactReferenceIdentity,
   type DerivedAnalysisEvidencePayload,
   derivedAnalysisEvidencePayloadSchema,
   derivedAnalysisEvidenceRefSchema,
+  L2ResearchWireError,
   type ResearchBriefV3Payload,
   sandboxExecutionReceiptRefSchema,
   sandboxResultRefSchema,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import type { AnalysisContext } from "@data-agent/contracts/context";
-import { z } from "zod";
 import {
   type AnalysisSandboxExecutionReceipt,
-  analysisAgentFinalResponseSchema,
+  type analysisAgentFinalResponseSchema,
   buildAnalysisAuthorityCommit,
 } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
@@ -31,19 +31,23 @@ import {
   verifyAnalysisDerivation,
   verifyAnalysisResult,
 } from "@data-agent/research";
-import type { OpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
+import { z } from "zod";
+import {
+  AnalysisSandboxRuntimeError,
+  type OpenSandboxAnalysisRuntime,
+} from "../runs/opensandbox-analysis-runtime.js";
 import type { AnalysisAgentContextPort } from "./analysis-agent-prompt.js";
 import {
   type AnalysisFenceGuard,
   buildAnalysisSandboxExecutionReceipt,
   executeAnalysisAgentSandbox,
 } from "./analysis-agent-sandbox-executor.js";
+import type { AnalysisLifecycleAuthorityPort } from "./analysis-lifecycle-authority.js";
 import type { AnalysisToolLoopProgressEvent } from "./analysis-tool-loop.js";
 import type { AnalysisAgentModelPort } from "./deepseek-analysis-agent.js";
+import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
 import type { AnalysisGovernedResultAuthorityPort } from "./governed-result-bridge.js";
-import type { AnalysisLifecycleAuthorityPort } from "./analysis-lifecycle-authority.js";
-import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import { gateAnalysisProgram } from "./program-gate.js";
 import type { AnalysisResultClosureArtifact } from "./result-publisher.js";
 import { type AnalysisSkillCatalog, DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
@@ -59,6 +63,73 @@ const durableOracleReceiptSchema = z.strictObject({
   material_change: z.boolean(),
   oracle_receipt: z.unknown().nullable(),
 });
+
+const FINAL_NARRATIVE_PROJECTION_MAX_BYTES = 24 * 1024;
+const FINAL_NARRATIVE_FIELD_MAX_BYTES = 8 * 1024;
+const FINAL_NARRATIVE_PRIORITY_FIELDS = [
+  "schema_version",
+  "case_id",
+  "window",
+  "cohort_window",
+  "data_quality_precheck",
+  "anomaly_precheck",
+  "claim_strength",
+  "primary_reliable",
+  "worst_revenue_decline",
+  "shapley_decomposition",
+  "adjusted_binomial_glm",
+  "sensitivity",
+  "conclusion",
+] as const;
+
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function buildAnalysisNarrativeProjection(document: unknown) {
+  if (!isRecord(document) || !isRecord(document.data)) {
+    throw new TypeError("ANALYSIS_RESULT_PUBLISHED_DOCUMENT_INVALID");
+  }
+  const data = document.data;
+  const collectionCounts = Object.fromEntries(
+    Object.entries(data)
+      .filter(([, value]) => Array.isArray(value))
+      .map(([key, value]) => [key, (value as readonly unknown[]).length]),
+  );
+  const orderedKeys = [
+    ...FINAL_NARRATIVE_PRIORITY_FIELDS.filter((key) => Object.hasOwn(data, key)),
+    ...Object.keys(data)
+      .filter(
+        (key) =>
+          !FINAL_NARRATIVE_PRIORITY_FIELDS.includes(
+            key as (typeof FINAL_NARRATIVE_PRIORITY_FIELDS)[number],
+          ),
+      )
+      .sort(),
+  ];
+  const fields: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  let bytes = 0;
+  for (const key of orderedKeys) {
+    if (key === "method_evidence") continue;
+    const value = data[key];
+    if (Array.isArray(value)) continue;
+    const encoded = new TextEncoder().encode(canonicalizeJson({ [key]: value })).byteLength;
+    if (
+      encoded > FINAL_NARRATIVE_FIELD_MAX_BYTES ||
+      bytes + encoded > FINAL_NARRATIVE_PROJECTION_MAX_BYTES
+    ) {
+      continue;
+    }
+    fields[key] = value;
+    bytes += encoded;
+  }
+  return Object.freeze({
+    schema_version: "analysis-narrative-projection@1.0.0" as const,
+    fields: Object.freeze(fields),
+    collection_counts: Object.freeze(collectionCounts),
+    omitted_authority_fields: Object.freeze(["method_evidence"]),
+  });
+}
 
 export interface AnalysisArtifactCommitPort {
   commitL2(input: {
@@ -175,6 +246,8 @@ export interface AnalysisExecutorDependencies {
     readonly node_id: string;
     readonly attempt: 0 | null;
     readonly failure_code: string;
+    readonly error_name: string | null;
+    readonly validation_issues: readonly { readonly path: string; readonly code: string }[];
   }) => void;
   readonly progress?: (event: AnalysisToolLoopProgressEvent) => void;
   readonly catalog?: AnalysisSkillCatalog;
@@ -188,9 +261,31 @@ export function analysisOracleFailureCode(error: unknown): string {
 }
 
 export function analysisExecutionFailureCode(error: unknown): string {
+  if (error instanceof z.ZodError) return "ANALYSIS_CONTRACT_INVALID";
+  if (error instanceof L2ResearchWireError) return error.code;
+  if (error instanceof AnalysisSandboxRuntimeError && error.reason_code) {
+    return error.reason_code;
+  }
   const message = error instanceof Error ? error.message : "";
   const baseCode = message.split(":", 1)[0] ?? "";
   return /^[A-Z][A-Z0-9_]{2,127}$/u.test(baseCode) ? baseCode : "ANALYSIS_EXECUTION_FAILED";
+}
+
+function analysisFailureDiagnostic(error: unknown) {
+  const errorName = error instanceof Error ? error.name : "";
+  return Object.freeze({
+    error_name: /^[A-Za-z][A-Za-z0-9_.]{0,127}$/u.test(errorName) ? errorName : null,
+    validation_issues: Object.freeze(
+      error instanceof z.ZodError
+        ? error.issues.slice(0, 16).map((issue) =>
+            Object.freeze({
+              path: issue.path.length === 0 ? "$" : issue.path.map(String).join("."),
+              code: issue.code,
+            }),
+          )
+        : [],
+    ),
+  });
 }
 
 export interface AnalysisExecutionResult {
@@ -334,6 +429,44 @@ function sourceHash(source: string): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(source, "utf8").digest("hex")}`;
 }
 
+function assertAnalysisAuthorityStageClosure(input: {
+  readonly principal_id: string;
+  readonly lease_principal_id: string;
+  readonly stage_expires_at: string;
+  readonly observed_at: Date;
+  readonly staged_operator_receipt_closure_hash: string;
+  readonly command_operator_receipt_closure_hash: string;
+  readonly receipt_operator_receipt_closure_hash: string;
+  readonly staged_contract_hash: string;
+  readonly receipt_contract_hash: string;
+  readonly staged_manifest_hash: string;
+  readonly receipt_manifest_hash: string;
+  readonly staged_closure_hash: string;
+  readonly receipt_closure_hash: string;
+}): void {
+  if (input.principal_id !== input.lease_principal_id) {
+    throw new TypeError("ANALYSIS_AUTHORITY_STAGE_PRINCIPAL_MISMATCH");
+  }
+  if (Date.parse(input.stage_expires_at) <= input.observed_at.getTime()) {
+    throw new TypeError("ANALYSIS_AUTHORITY_STAGE_EXPIRED");
+  }
+  if (input.staged_operator_receipt_closure_hash !== input.command_operator_receipt_closure_hash) {
+    throw new TypeError("ANALYSIS_AUTHORITY_STAGE_OPERATOR_CLOSURE_MISMATCH");
+  }
+  if (input.receipt_operator_receipt_closure_hash !== input.command_operator_receipt_closure_hash) {
+    throw new TypeError("ANALYSIS_AUTHORITY_RECEIPT_OPERATOR_CLOSURE_MISMATCH");
+  }
+  if (input.receipt_contract_hash !== input.staged_contract_hash) {
+    throw new TypeError("ANALYSIS_AUTHORITY_RECEIPT_CONTRACT_HASH_MISMATCH");
+  }
+  if (input.receipt_manifest_hash !== input.staged_manifest_hash) {
+    throw new TypeError("ANALYSIS_AUTHORITY_RECEIPT_MANIFEST_HASH_MISMATCH");
+  }
+  if (input.receipt_closure_hash !== input.staged_closure_hash) {
+    throw new TypeError("ANALYSIS_AUTHORITY_RECEIPT_CLOSURE_HASH_MISMATCH");
+  }
+}
+
 export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDependencies) {
   const catalog = dependencies.catalog ?? DEFAULT_ANALYSIS_SKILL_CATALOG;
   const now = dependencies.now ?? (() => new Date());
@@ -447,7 +580,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             operator_image: execution.runtime.operator_image,
             secure_access: execution.runtime.secure_access,
           })) as `sha256:${string}`,
-          policy_version: "analysis-cell-policy@1.0.0",
+          policy_version: "analysis-cell-policy@1.1.0",
           operator_registry_digest: analysisProgram.operator_registry_digest as `sha256:${string}`,
         } as const;
         const stagedClosure = await dependencies.lifecycle.load({
@@ -459,11 +592,11 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             canonicalizeJson(execution.tool_loop.operator_finalization) ||
           (execution.recovery_phase === null &&
             canonicalizeJson(stagedClosure.governed_operator_results) !==
-            canonicalizeJson(
-              execution.tool_loop.operator_observations.map(
-                ({ governed_result: governedResult }) => governedResult,
-              ),
-            ))
+              canonicalizeJson(
+                execution.tool_loop.operator_observations.map(
+                  ({ governed_result: governedResult }) => governedResult,
+                ),
+              ))
         ) {
           throw new TypeError("ANALYSIS_RESULT_STAGE_EXECUTION_CLOSURE_MISMATCH");
         }
@@ -539,6 +672,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
               node_id: node.node_id,
               attempt: 0,
               failure_code: analysisOracleFailureCode(error),
+              ...analysisFailureDiagnostic(error),
             });
             return failedNode(node, "ANALYSIS_ORACLE_FAILED");
           }
@@ -568,7 +702,8 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         if (stagedClosure.explanation_record) {
           explanation = stagedClosure.explanation_record.explanation;
           explanationHash = stagedClosure.explanation_record.explanation_hash;
-          explanationProviderInvocationRef = stagedClosure.explanation_record.provider_invocation_ref;
+          explanationProviderInvocationRef =
+            stagedClosure.explanation_record.provider_invocation_ref;
           if ((await sha256ContentHash(explanation)) !== explanationHash) {
             throw new TypeError("ANALYSIS_STAGE_EXPLANATION_HASH_MISMATCH");
           }
@@ -579,6 +714,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             node_id: node.node_id,
             turn_index: execution.tool_loop.provider_invocation_refs.length,
             phase: "FINAL",
+            result_contract: node.result_contract,
             allowed_tool_names: [],
             messages: [
               {
@@ -587,12 +723,16 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
                   kind: "ANALYSIS_STAGE_ORACLE_VERIFIED",
                   stage_id: execution.stage.stage_id,
                   stage_hash: execution.stage.stage_hash,
-                  result: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content)),
+                  result_summary: buildAnalysisNarrativeProjection(
+                    JSON.parse(
+                      new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content),
+                    ),
+                  ),
                   artifacts: execution.tool_loop.published_result.observation.artifacts,
                   oracle_result: expectation.result,
                   limitation_codes: expectation.limitation_codes,
                   instruction:
-                    "Explain this immutable Oracle-verified result in Chinese. Preserve every value, include limitations, and do not claim causality beyond the accepted analysis.",
+                    "Explain this immutable Oracle-verified summary in Chinese. State that the complete data table and chart are attached authoritative artifacts, include every disclosed limitation, and do not recreate omitted rows or claim causality beyond the accepted analysis.",
                 }),
               },
             ],
@@ -623,6 +763,23 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             lease: input.lease,
           }),
         );
+        assertAnalysisAuthorityStageClosure({
+          principal_id: input.principal_id,
+          lease_principal_id: input.lease.principal_id,
+          stage_expires_at: stagedClosure.stage_expires_at,
+          observed_at: now(),
+          staged_operator_receipt_closure_hash:
+            stagedClosure.operator_finalization.operator_receipt_closure_hash,
+          command_operator_receipt_closure_hash:
+            execution.tool_loop.operator_finalization.operator_receipt_closure_hash,
+          receipt_operator_receipt_closure_hash: receipt.operator_receipt_closure_hash,
+          staged_contract_hash: stagedClosure.contract_hash,
+          receipt_contract_hash: receipt.result_contract_hash,
+          staged_manifest_hash: stagedClosure.manifest_hash,
+          receipt_manifest_hash: receipt.publish_manifest_hash,
+          staged_closure_hash: stagedClosure.closure_hash,
+          receipt_closure_hash: receipt.published_closure_hash,
+        });
         const authorityCommand = await buildAnalysisAuthorityCommit({
           schema_version: "analysis-authority-commit@1.0.0",
           scope: input.lease.scope,
@@ -787,6 +944,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
                 node_id: node.node_id,
                 attempt: null,
                 failure_code: analysisExecutionFailureCode(error),
+                ...analysisFailureDiagnostic(error),
               });
               return [node.node_id, failedNode(node, "SANDBOX_EXECUTION_FAILED")] as const;
             }
@@ -853,4 +1011,8 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
   });
 }
 
-export const analysisExecutorInternals = Object.freeze({ sourceBundle, sourceHash });
+export const analysisExecutorInternals = Object.freeze({
+  assertAnalysisAuthorityStageClosure,
+  sourceBundle,
+  sourceHash,
+});

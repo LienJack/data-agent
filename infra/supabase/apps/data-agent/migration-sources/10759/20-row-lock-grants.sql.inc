@@ -1,0 +1,3 @@
+grant update on table app_data_agent.analysis_result_stages,
+  app_data_agent.analysis_stage_oracle_records,
+  app_data_agent.analysis_stage_explanation_records to data_agent_u6_rpc_owner;

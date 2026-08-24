@@ -5,6 +5,7 @@ import json
 import math
 import re
 from collections.abc import Mapping
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -14,6 +15,9 @@ _OPERATOR_ID = re.compile(r"^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+@[1-9][0-9]*$"
 _INPUT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _FIELD_NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _MONTH_KEY = re.compile(r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])$")
+_DATE_KEY = re.compile(
+    r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
+)
 _FORBIDDEN_KEYS = frozenset(
     {"alias", "aliases", "overwrite", "overwrites", "legacy_id", "fallback"}
 )
@@ -49,6 +53,7 @@ _LIMIT_KEYS = frozenset(
 _RECORD_FIELD_SHAPES = frozenset(
     {
         "BINARY_NUMBER_ARRAY",
+        "DATE_KEY",
         "FINITE_NUMBER_ARRAY",
         "MONTH_KEY",
         "NAMED_FINITE_NUMBER_ARRAY_MAP",
@@ -96,6 +101,15 @@ def _finite_number_array(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(_finite_number(item) for item in value)
 
 
+def _date_key(value: Any) -> bool:
+    if not isinstance(value, str) or _DATE_KEY.fullmatch(value) is None:
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
 def record_value_matches_shape(value: Any, shape: str) -> bool:
     """Validate one nested input value against the sole manifest vocabulary."""
 
@@ -105,6 +119,8 @@ def record_value_matches_shape(value: Any, shape: str) -> bool:
             and bool(value)
             and all(_finite_number(item) and float(item) in {0.0, 1.0} for item in value)
         )
+    if shape == "DATE_KEY":
+        return _date_key(value)
     if shape == "FINITE_NUMBER_ARRAY":
         return _finite_number_array(value)
     if shape == "MONTH_KEY":

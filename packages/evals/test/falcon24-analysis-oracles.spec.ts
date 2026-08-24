@@ -70,6 +70,10 @@ function outputFor(caseId: string, methods: readonly string[]) {
         period_count: 12,
         grain: "MONTH",
       },
+      data_quality_precheck: {
+        invalid_delivery_orders: 932,
+        valid_delivery_orders: 2_127,
+      },
       six_vs_six: {
         first: { p50_minutes: 30, p90_minutes: 55, on_time_rate: 0.9, low_rating_rate: 0.1 },
         second: { p50_minutes: 35, p90_minutes: 65, on_time_rate: 0.82, low_rating_rate: 0.14 },
@@ -79,6 +83,7 @@ function outputFor(caseId: string, methods: readonly string[]) {
         delayed_p_value: 0.01,
         sample_size: 3_059,
         controls: ["month", "log_order_amount", "product_category", "customer_segment"],
+        finding: "POSITIVE_SIGNIFICANT",
       },
       low_rating_scenarios: [
         {
@@ -199,10 +204,11 @@ function outputFor(caseId: string, methods: readonly string[]) {
       observation_months: 7,
     },
     anomaly_precheck: {
-      orders_before_registration: 2_556,
-      customers_first_order_before_registration: 1_438,
-      valid_ordering_customers: 734,
-      no_order_customers: 328,
+      orders_before_registration: 1_186,
+      customers_first_order_before_registration: 767,
+      valid_ordering_customers: 531,
+      no_order_customers: 209,
+      invalid_delivery_orders: 931,
     },
     primary_reliable: false,
     cohorts: monthSequence(2023, 5, 12).map((registration_cohort) => ({
@@ -218,8 +224,8 @@ function outputFor(caseId: string, methods: readonly string[]) {
       })),
     })),
     sensitivity: {
-      excluded_pre_registration_customers: 1_438,
-      retained_no_order_customers: 328,
+      excluded_pre_registration_customers: 767,
+      retained_no_order_customers: 209,
       conclusion_changed: true,
     },
     method_evidence: evidence,
@@ -260,6 +266,12 @@ describe("Falcon24 independent analysis oracles", () => {
       expect(projection.kind).toBe("CHART");
       expect(projection.table.rows.length).toBeGreaterThan(0);
       expect(projection.table.total_rows).toBe(projection.table.rows.length);
+      if (testCase.case_id === "falcon24-cohort-retention-m0-m6") {
+        const cohortOutput = falcon24AnalysisOutputSchema.parse(output);
+        if (cohortOutput.case_id !== testCase.case_id) throw new TypeError("cohort fixture invalid");
+        expect(projection.table.rows).toHaveLength(cohortOutput.cohorts.length * 7);
+        expect(projection.y_keys).toEqual(["retention_rate_pct", "repeat_purchase_rate_pct"]);
+      }
       await expect(computeFalcon24AnalysisChartDatasetHash(output)).resolves.toMatch(/^sha256:/u);
     }
   });

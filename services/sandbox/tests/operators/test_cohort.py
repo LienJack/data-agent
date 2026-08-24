@@ -13,24 +13,24 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
         "customers": [
             {
                 "customer_id": "c1",
-                "registration_month": "2024-01",
+                "registration_date": "2024-01-15",
                 "customer_type": "retail",
             },
             {
                 "customer_id": "c2",
-                "registration_month": "2024-01",
+                "registration_date": "2024-01-20",
                 "customer_type": "retail",
             },
             {
                 "customer_id": "c3",
-                "registration_month": "2024-02",
+                "registration_date": "2024-02-01",
                 "customer_type": "vip",
             },
         ],
         "events": [
             {
                 "customer_id": "c1",
-                "event_month": "2023-12",
+                "event_date": "2023-12-31",
                 "order_id": "pre-c1",
                 "revenue": 5,
                 "delivery_minutes": 50,
@@ -38,7 +38,7 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
             },
             {
                 "customer_id": "c1",
-                "event_month": "2024-01",
+                "event_date": "2024-01-16",
                 "order_id": "c1-m0-a",
                 "revenue": 10,
                 "delivery_minutes": 30,
@@ -46,7 +46,7 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
             },
             {
                 "customer_id": "c1",
-                "event_month": "2024-01",
+                "event_date": "2024-01-17",
                 "order_id": "c1-m0-b",
                 "revenue": 20,
                 "delivery_minutes": 40,
@@ -54,7 +54,7 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
             },
             {
                 "customer_id": "c3",
-                "event_month": "2024-02",
+                "event_date": "2024-02-02",
                 "order_id": "c3-m0",
                 "revenue": 30,
                 "delivery_minutes": None,
@@ -62,14 +62,16 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
             },
             {
                 "customer_id": "orphan",
-                "event_month": "2024-01",
+                "event_date": "2024-01-01",
                 "order_id": "orphan-order",
                 "revenue": 99,
                 "delivery_minutes": 20,
                 "rating": 5,
             },
         ],
-        "observation": [{"observation_end_month": "2024-09"}],
+        "observation": [
+            {"observation_end_month": "2024-09", "invalid_delivery_event_count": 0}
+        ],
     }
 
 
@@ -144,6 +146,18 @@ def test_sensitivity_excludes_temporal_invalid_customer_but_retains_no_order_cus
     }
 
 
+def test_invalid_delivery_events_are_disclosed_as_excluded_quality_evidence() -> None:
+    inputs = _inputs()
+    inputs["observation"][0]["invalid_delivery_event_count"] = 2
+
+    result = registration_retention_m0_m6(inputs, _parameters("hold_primary"))
+    m0 = _row(result, "2024-01", "retail", 0)
+
+    assert m0["invalid_delivery_event_count"] == 2
+    assert m0["data_quality_status"] == "HOLD_MULTIPLE_DATA_QUALITY_ANOMALIES"
+    assert "INVALID_DELIVERY_EVENTS_EXCLUDED" in result.limitation_codes
+
+
 def test_empty_periods_are_present_with_zero_rates_and_null_experience() -> None:
     result = registration_retention_m0_m6(_inputs(), _parameters("hold_primary"))
     m6 = _row(result, "2024-02", "vip", 6)
@@ -169,7 +183,7 @@ def test_cohort_rejects_denominator_and_data_quality_mutations(mutation: str) ->
     elif mutation == "duplicate_order":
         inputs["events"].append(deepcopy(inputs["events"][0]))
     elif mutation == "invalid_month":
-        inputs["customers"][0]["registration_month"] = "2024-13"
+        inputs["customers"][0]["registration_date"] = "2024-02-30"
     elif mutation == "immature":
         inputs["observation"][0]["observation_end_month"] = "2024-06"
     else:
@@ -177,3 +191,13 @@ def test_cohort_rejects_denominator_and_data_quality_mutations(mutation: str) ->
 
     with pytest.raises(StatisticalOperatorError):
         registration_retention_m0_m6(inputs, _parameters("hold_primary"))
+
+
+def test_same_month_order_before_registration_is_detected_at_day_grain() -> None:
+    inputs = deepcopy(_inputs())
+    inputs["events"][0]["event_date"] = "2024-01-10"
+
+    result = registration_retention_m0_m6(inputs, _parameters("hold_primary"))
+
+    assert _row(result, "2024-01", "retail", 0)["pre_registration_event_count"] == 1
+    assert "PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS" in result.limitation_codes
