@@ -5,7 +5,7 @@ import json
 import sys
 import traceback
 from pathlib import Path
-from types import MappingProxyType
+from types import ModuleType
 from typing import Any
 
 from data_agent_sandbox.python_runtime.policy import allowed_import_roots
@@ -82,22 +82,20 @@ def run(control_path: Path) -> int:
     allowed_roots = allowed_import_roots(control["import_profile"])
     context = AnalysisContext(inputs, outputs)
     source = (job_root / "program.py").read_text(encoding="utf-8")
+    safe_builtins = ModuleType("data_agent_safe_builtins")
+    safe_builtins.__dict__.update(_SAFE_BUILTINS)
+    safe_builtins.__dict__["__import__"] = (
+        lambda name, globals=None, locals=None, fromlist=(), level=0: _controlled_import(
+            name,
+            globals,
+            locals,
+            fromlist,
+            level,
+            allowed_roots=allowed_roots,
+        )
+    )
     namespace: dict[str, Any] = {
-        "__builtins__": MappingProxyType(
-            {
-                **_SAFE_BUILTINS,
-                "__import__": lambda name, globals=None, locals=None, fromlist=(), level=0: (
-                    _controlled_import(
-                        name,
-                        globals,
-                        locals,
-                        fromlist,
-                        level,
-                        allowed_roots=allowed_roots,
-                    )
-                ),
-            }
-        ),
+        "__builtins__": safe_builtins,
         "__name__": "sandbox_program",
     }
     try:

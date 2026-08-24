@@ -152,6 +152,7 @@ def envelope_for(
         "import ctypes\ndef main(context):\n    pass\n",
         "def main(context):\n    open('/etc/passwd').read()\n",
         "def main(context):\n    eval('1 + 1')\n",
+        "def main(context):\n    __builtins__['open']('/etc/passwd')\n",
         "def main(context):\n    __import__('os')\n",
         "def main(context):\n    hasattr(context, '_inputs')\n",
         "def main(context):\n    context.__class__\n",
@@ -203,6 +204,24 @@ def test_supervisor_executes_in_fresh_process_and_replays_receipt(tmp_path: Path
     assert base64.b64decode(outcome.outputs[0].content_base64) == expected
     assert replay == outcome
     assert list(tmp_path.iterdir()) == []
+
+
+def test_sdk_normalizes_numpy_scalars_at_the_json_boundary(tmp_path: Path) -> None:
+    expected = b'{"count":3,"mean":2.0}\n'
+    request = envelope_for(
+        "import numpy as np\n"
+        "def main(context):\n"
+        "    values = np.array([1, 2, 3])\n"
+        "    result = {'count': np.int64(len(values)), 'mean': values.mean()}\n"
+        "    context.write_json('result', result)\n",
+        expected,
+        identifier="sandbox-numpy-json-scalars",
+    )
+
+    outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)
+
+    assert outcome.receipt.status == "SUCCEEDED"
+    assert base64.b64decode(outcome.outputs[0].content_base64) == expected
 
 
 def test_supervisor_rejects_unattested_runtime_without_starting(tmp_path: Path) -> None:

@@ -12,6 +12,14 @@ _TAG = re.compile(r"<[^>]*>")
 _SCRIPT_PROTOCOL = re.compile(r"(?i)javascript\s*:")
 
 
+def _json_scalar(value: Any) -> Any:
+    import numpy as np
+
+    if isinstance(value, np.generic):
+        return value.item()
+    raise TypeError("PYTHON_OUTPUT_VALUE_INVALID")
+
+
 def sanitize_markdown(value: str) -> str:
     return _SCRIPT_PROTOCOL.sub("", _TAG.sub("", value)).replace("\x00", "")
 
@@ -72,7 +80,12 @@ class AnalysisContext:
         _, path = self._output(name, "JSON")
         path.write_text(
             json.dumps(
-                value, ensure_ascii=False, allow_nan=False, sort_keys=True, separators=(",", ":")
+                value,
+                ensure_ascii=False,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=_json_scalar,
             )
             + "\n",
             encoding="utf-8",

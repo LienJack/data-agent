@@ -32,6 +32,7 @@ MAX_SOURCE_BYTES = 262_144
 MAX_AST_NODES = 25_000
 BANNED_NAMES = frozenset(
     {
+        "__builtins__",
         "__import__",
         "breakpoint",
         "compile",
