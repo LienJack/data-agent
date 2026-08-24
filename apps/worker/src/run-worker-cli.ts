@@ -65,6 +65,7 @@ import {
 import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
+import { ANALYSIS_RUNTIME_ATTESTATIONS } from "./analysis/skill-catalog.js";
 import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
 import { createEcommerceDirectQaRegistry } from "./evals/ecommerce-direct-qa-registry.js";
 import { createEnvironmentFalcon24AnalysisAcceptanceRecorder } from "./evals/falcon24-analysis-acceptance-recorder.js";
@@ -263,7 +264,19 @@ export async function runWorkerProcess(
   const fileStorage = createFileSystemStorageClient(
     environment.DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT ?? ".data/workspace-content",
   );
-  const pythonSandbox = createEnvironmentPythonSandboxClient(environment);
+  const pythonSandbox =
+    environment.PYTHON_SANDBOX_ENABLED === "true"
+      ? createEnvironmentPythonSandboxClient(environment, [
+          {
+            runtimeDigest: ANALYSIS_RUNTIME_ATTESTATIONS.CORE_ANALYSIS.runtime_digest,
+            socketPath: z.string().min(1).parse(environment.PYTHON_SANDBOX_CORE_SOCKET_PATH),
+          },
+          {
+            runtimeDigest: ANALYSIS_RUNTIME_ATTESTATIONS.ML_DIAGNOSTIC.runtime_digest,
+            socketPath: z.string().min(1).parse(environment.PYTHON_SANDBOX_ML_SOCKET_PATH),
+          },
+        ])
+      : null;
   const fileScanPolicyVersion = "workspace-file-policy@1.0.0";
   const fileScanner = createFileScanPort({
     clamav: createClamAvInstreamClient({

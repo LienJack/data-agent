@@ -38,6 +38,11 @@ export interface PythonSandboxClientOptions {
   maxResponseBytes?: number;
 }
 
+export interface PythonSandboxRuntimeRoute {
+  readonly runtimeDigest: `sha256:${string}`;
+  readonly socketPath: string;
+}
+
 export class PythonSandboxTransportError extends Error {
   constructor(readonly code: "PYTHON_SANDBOX_UNAVAILABLE" | "PYTHON_PROTOCOL_INVALID") {
     super(code);
@@ -143,12 +148,55 @@ export function createPythonSandboxClient(
   return client;
 }
 
+export function createRoutedPythonSandboxClient(
+  routes: readonly (PythonSandboxRuntimeRoute & { readonly client: PythonSandboxClient })[],
+): PythonSandboxClient {
+  const byDigest = new Map<string, PythonSandboxClient>(
+    routes.map((route) => [route.runtimeDigest, route.client]),
+  );
+  if (byDigest.size === 0 || byDigest.size !== routes.length) {
+    throw new TypeError("PYTHON_SANDBOX_RUNTIME_ROUTES_INVALID");
+  }
+  const routed: PythonSandboxClient = {
+    execute(envelope, signal) {
+      const client = byDigest.get(envelope.request.runtime_digest);
+      if (!client) {
+        return Promise.reject(new PythonSandboxTransportError("PYTHON_SANDBOX_UNAVAILABLE"));
+      }
+      return client.execute(envelope, signal);
+    },
+    async cancel(input) {
+      const results = await Promise.all(
+        [...byDigest.values()].map((client) => client.cancel(input)),
+      );
+      if (results.some(({ status }) => status === "CANCEL_REQUESTED")) {
+        return {
+          protocol_version: "data-agent-python-sandbox-control@1.0.0",
+          status: "CANCEL_REQUESTED",
+        };
+      }
+      if (results.some(({ status }) => status === "ALREADY_TERMINAL")) {
+        return {
+          protocol_version: "data-agent-python-sandbox-control@1.0.0",
+          status: "ALREADY_TERMINAL",
+        };
+      }
+      return { protocol_version: "data-agent-python-sandbox-control@1.0.0", status: "NOT_FOUND" };
+    },
+  };
+  return Object.freeze(routed);
+}
+
 export function createEnvironmentPythonSandboxClient(
   environment: NodeJS.ProcessEnv = process.env,
+  runtimeRoutes: readonly PythonSandboxRuntimeRoute[] = [],
 ): PythonSandboxClient | null {
   if (environment.PYTHON_SANDBOX_ENABLED !== "true") return null;
-  return createPythonSandboxClient({
-    socketPath: environment.PYTHON_SANDBOX_SOCKET_PATH ?? "/run/data-agent-python/sandbox.sock",
-    responseTimeoutMs: Number(environment.PYTHON_SANDBOX_RESPONSE_TIMEOUT_MS ?? "125000"),
-  });
+  const responseTimeoutMs = Number(environment.PYTHON_SANDBOX_RESPONSE_TIMEOUT_MS ?? "125000");
+  return createRoutedPythonSandboxClient(
+    runtimeRoutes.map((route) => ({
+      ...route,
+      client: createPythonSandboxClient({ socketPath: route.socketPath, responseTimeoutMs }),
+    })),
+  );
 }

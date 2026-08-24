@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createEnvironmentPythonSandboxClient,
   createPythonSandboxClient,
+  createRoutedPythonSandboxClient,
   PythonSandboxTransportError,
 } from "../../src/runs/python-sandbox-client.js";
 
@@ -193,8 +194,48 @@ describe("Python Sandbox UDS client", () => {
     ).rejects.toBeInstanceOf(PythonSandboxTransportError);
     expect(createEnvironmentPythonSandboxClient()).toBeNull();
     process.env.PYTHON_SANDBOX_ENABLED = "true";
-    expect(createEnvironmentPythonSandboxClient()).not.toBeNull();
+    expect(() => createEnvironmentPythonSandboxClient()).toThrow(
+      "PYTHON_SANDBOX_RUNTIME_ROUTES_INVALID",
+    );
     expect(createEnvironmentPythonSandboxClient({ PYTHON_SANDBOX_ENABLED: "false" })).toBeNull();
-    expect(createEnvironmentPythonSandboxClient({ PYTHON_SANDBOX_ENABLED: "true" })).not.toBeNull();
+    expect(
+      createEnvironmentPythonSandboxClient({ PYTHON_SANDBOX_ENABLED: "true" }, [
+        { runtimeDigest: digest, socketPath: missingPath },
+      ]),
+    ).not.toBeNull();
+  });
+
+  it("routes execution by the attested runtime digest and fans out cancellation", async () => {
+    const core = {
+      execute: async () => outcome,
+      cancel: async () => ({
+        protocol_version: "data-agent-python-sandbox-control@1.0.0" as const,
+        status: "NOT_FOUND" as const,
+      }),
+    };
+    const selected = {
+      execute: async () => outcome,
+      cancel: async () => ({
+        protocol_version: "data-agent-python-sandbox-control@1.0.0" as const,
+        status: "CANCEL_REQUESTED" as const,
+      }),
+    };
+    const routed = createRoutedPythonSandboxClient([
+      { runtimeDigest: `sha256:${"b".repeat(64)}`, socketPath: "core", client: core },
+      { runtimeDigest: digest, socketPath: "ml", client: selected },
+    ]);
+
+    await expect(routed.execute(envelope)).resolves.toBe(outcome);
+    await expect(
+      routed.cancel({
+        protocol_version: "data-agent-python-sandbox-control@1.0.0",
+        operation: "CANCEL",
+        authorization: "test-authorization-token-with-32-chars",
+        workspace_id: workspaceId,
+        run_id: runId,
+        idempotency_key: "python-client-test-1",
+        fence_token: "fence-1",
+      }),
+    ).resolves.toMatchObject({ status: "CANCEL_REQUESTED" });
   });
 });
