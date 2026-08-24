@@ -166,7 +166,9 @@ export async function executeAnalysisSandbox(input: {
     input.program.runtime_digest !==
       ANALYSIS_RUNTIME_ATTESTATIONS[input.program.import_profile].runtime_digest ||
     input.program.dependency_lock_digest !==
-      ANALYSIS_RUNTIME_ATTESTATIONS[input.program.import_profile].dependency_lock_digest
+      ANALYSIS_RUNTIME_ATTESTATIONS[input.program.import_profile].dependency_lock_digest ||
+    input.program.operator_registry_digest !==
+      ANALYSIS_RUNTIME_ATTESTATIONS[input.program.import_profile].operator_registry_digest
   ) {
     throw new TypeError("ANALYSIS_PROGRAM_RUNTIME_ATTESTATION_MISMATCH");
   }
@@ -244,6 +246,7 @@ export async function executeAnalysisSandbox(input: {
     outcome.receipt.request_hash !== (await computePythonExecutionAuthorizationHash(envelope)) ||
     outcome.receipt.sandbox_image_digest !== attestation.image_attestation_digest ||
     outcome.receipt.dependency_lock_digest !== input.program.dependency_lock_digest ||
+    outcome.receipt.operator_registry_digest !== attestation.operator_registry_digest ||
     outcome.receipt.policy_version !== input.program.policy_version ||
     Object.values(outcome.receipt.hard_controls).some((value) => !value) ||
     outcome.outputs.length !== outputSlots.length ||

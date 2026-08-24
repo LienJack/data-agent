@@ -18,7 +18,7 @@ from data_agent_sandbox.python_runtime.models import (
     PythonOutputSlot,
     PythonOutputSpec,
 )
-from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_MANIFEST_DIGEST
+from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.policy import (
     PythonPolicyError,
 )
@@ -73,7 +73,7 @@ def configuration(tmp_path: Path) -> SandboxConfiguration:
         image_digest=DIGEST_A,
         runtime_digest=DIGEST_B,
         dependency_lock_digest=DIGEST_C,
-        operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
+        operator_registry_digest=OPERATOR_REGISTRY_DIGEST,
         policy_version="python-policy@1.0.0",
         job_root=tmp_path,
         executor_uid=None,
@@ -124,7 +124,7 @@ def envelope_for(
             outputs=(PythonOutputSpec(name="result", type="JSON", required=True, max_bytes=4096),),
         ),
         generated_source_policy="OPEN_ANALYSIS",
-        operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
+        operator_registry_digest=OPERATOR_REGISTRY_DIGEST,
         operator_obligations=(),
         runtime_digest=DIGEST_B,
         dependency_lock_digest=DIGEST_C,
@@ -198,6 +198,17 @@ def test_attested_target_platform_mismatch_fails_before_runtime_start(monkeypatc
     monkeypatch.setenv("PYTHON_SANDBOX_AUTH_TOKEN", TOKEN)
     monkeypatch.setenv("PYTHON_SANDBOX_TARGET_PLATFORM", "linux/not-this-architecture")
     with pytest.raises(RuntimeError, match="does not match the executing platform"):
+        SandboxConfiguration.from_environment()
+
+
+def test_stale_operator_registry_attestation_fails_at_runtime_start(monkeypatch) -> None:
+    monkeypatch.setenv("PYTHON_SANDBOX_AUTH_TOKEN", TOKEN)
+    monkeypatch.setenv("PYTHON_SANDBOX_IMAGE_DIGEST", DIGEST_A)
+    monkeypatch.setenv("PYTHON_SANDBOX_RUNTIME_DIGEST", DIGEST_B)
+    monkeypatch.setenv("PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST", DIGEST_C)
+    monkeypatch.setenv("PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST", "sha256:" + "0" * 64)
+
+    with pytest.raises(RuntimeError, match="OPERATOR_REGISTRY_DIGEST is stale"):
         SandboxConfiguration.from_environment()
 
 

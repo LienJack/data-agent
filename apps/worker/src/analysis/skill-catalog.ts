@@ -9,6 +9,7 @@ import {
   isDeterministicAnalysisCapabilityExecutable,
   type PythonOutputContractV1,
   pythonOutputContractSchema,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   versionIdentifierSchema,
 } from "@data-agent/contracts";
 import { z } from "zod";
@@ -17,31 +18,35 @@ type AnalysisRuntimeProfile = AnalysisSandboxProgramPayload["import_profile"];
 
 export const ANALYSIS_RUNTIME_ATTESTATIONS = Object.freeze({
   CORE_ANALYSIS: Object.freeze({
-    runtime_digest: "sha256:ba715fb76f683bb538df7553616dcfb0e54c506ca90bf40c7b88ca6c99d5fe84",
+    runtime_digest: "sha256:64760a1d47d8957c4b73d9d1f62036224290b62bfaa4b76a032952023c4f2ba4",
     dependency_lock_digest:
       "sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8",
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     image_attestation_digest:
-      "sha256:8cb675f606863fc669aeaa074d47d10648ee1fe2177ca2270d611a226e4c45cd",
+      "sha256:51f584d8f62464bb3553d164449c8b4c9a8e69b6f314172f4e9d12a1fdea5228",
   }),
   ML_DIAGNOSTIC: Object.freeze({
-    runtime_digest: "sha256:62df15371985556658e195b231e774f7c3c0e866af3a8c2a1735952afc62ae4d",
+    runtime_digest: "sha256:624d49335e0b2022fb193fd76edb2c03a4e5486e211e6ae5b3ddd83f12bd4f60",
     dependency_lock_digest:
       "sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293",
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     image_attestation_digest:
-      "sha256:7d3a060834aca6a7e3101f38a3bdee4cc84a700295bcda155fd5e4227f883804",
+      "sha256:a7dc30b9e8185110fb8b536c7270e0d3a052c2f0f514695dfb4e29e9180bbf4a",
   }),
   CAUSAL_L5: Object.freeze({
-    runtime_digest: "sha256:41c1cd91523cd3af0c654521b05b308370ec278badd10df4c3ae4b41a5850e42",
+    runtime_digest: "sha256:6b8fd34c4ffc9e463c46c71fb18a790b40199204ea631fb307b3b791c17f8742",
     dependency_lock_digest:
       "sha256:73bbc0d20938684a2e25c111c3bb80ac6beee877f64d03986e53acae16e4b22d",
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     image_attestation_digest:
-      "sha256:14ca067ad4066270781a69f35083f4fc4f002ef38eaa5fc8671d4c066e67e895",
+      "sha256:aa515e76095b0c5357b72de8772e38579cef47f575156bdffb7f077bb7068c88",
   }),
 } as const satisfies Record<
   AnalysisRuntimeProfile,
   {
     readonly runtime_digest: `sha256:${string}`;
     readonly dependency_lock_digest: `sha256:${string}`;
+    readonly operator_registry_digest: `sha256:${string}`;
     readonly image_attestation_digest: `sha256:${string}`;
   }
 >);

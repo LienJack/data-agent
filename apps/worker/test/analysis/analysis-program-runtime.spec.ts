@@ -5,6 +5,7 @@ import {
   analysisProgramPayloadSchema,
   buildAnalysisContext,
   researchBriefV3PayloadSchema,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
@@ -147,7 +148,7 @@ async function fixture() {
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
     semantic_context_package_hash: context.semantic_context_binding.package_hash,
-    operator_registry_digest: hash("f"),
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     nodes: [
       {
         node_id: "trend",

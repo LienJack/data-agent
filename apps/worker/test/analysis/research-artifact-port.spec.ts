@@ -2,6 +2,7 @@ import {
   type AnalysisProgramPayload,
   type ArtifactReference,
   analysisProgramPayloadSchema,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createResearchAnalysisArtifactPort } from "../../src/analysis/research-artifact-port.js";
@@ -35,6 +36,7 @@ function program(): AnalysisProgramPayload {
     brief_ref: reference("ResearchBrief", 10),
     analysis_context_hash: hash("a"),
     semantic_context_package_hash: hash("b"),
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     nodes: [
       {
         node_id: "falcon24-business-review-18m",
@@ -52,6 +54,8 @@ function program(): AnalysisProgramPayload {
         comparison_window: null,
         parameters: {},
         execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "OPEN_ANALYSIS",
+        operator_obligations: [],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },

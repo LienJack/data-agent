@@ -120,6 +120,11 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.python-sandbox
+      args:
+        PYTHON_SANDBOX_RUNTIME_DIGEST: sha256:64760a1d47d8957c4b73d9d1f62036224290b62bfaa4b76a032952023c4f2ba4
+        PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST: sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8
+        PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST: sha256:2a933715899a37022349415a88ef42987d67914bbcfe2472c4f6ddc80d278f18
+        PYTHON_SANDBOX_IMAGE_DIGEST: sha256:51f584d8f62464bb3553d164449c8b4c9a8e69b6f314172f4e9d12a1fdea5228
     container_name: data-agent-python-sandbox-core
     restart: unless-stopped
     network_mode: none
@@ -151,6 +156,11 @@ services:
     build:
       context: .
       dockerfile: infra/docker/Dockerfile.python-sandbox-ml
+      args:
+        PYTHON_SANDBOX_RUNTIME_DIGEST: sha256:624d49335e0b2022fb193fd76edb2c03a4e5486e211e6ae5b3ddd83f12bd4f60
+        PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST: sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293
+        PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST: sha256:2a933715899a37022349415a88ef42987d67914bbcfe2472c4f6ddc80d278f18
+        PYTHON_SANDBOX_IMAGE_DIGEST: sha256:a7dc30b9e8185110fb8b536c7270e0d3a052c2f0f514695dfb4e29e9180bbf4a
     container_name: data-agent-python-sandbox-ml
     restart: unless-stopped
     network_mode: none

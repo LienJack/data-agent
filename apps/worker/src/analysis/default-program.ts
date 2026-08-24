@@ -9,7 +9,7 @@ import {
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
-import { STATISTICAL_OPERATOR_MANIFEST_DIGEST } from "@data-agent/contracts/statistical-operators";
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
 import {
   type AnalysisSkillCatalog,
@@ -167,7 +167,7 @@ export async function createDefaultAnalysisProgram(
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
     semantic_context_package_hash: context.semantic_context_binding.package_hash,
-    operator_registry_digest: STATISTICAL_OPERATOR_MANIFEST_DIGEST,
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     nodes: boundedNodes,
     budget: boundedBudget(input.brief, boundedNodes.length),
     compiler_kind: "DETERMINISTIC_DEFAULT",

@@ -31,7 +31,7 @@ from data_agent_sandbox.python_runtime.models import (
     PythonSandboxTransportOutcome,
     StatisticalOperatorCallReceipt,
 )
-from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_MANIFEST_DIGEST
+from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.policy import (
     PROFILE_IMPORT_ROOTS,
     AnalysisImportProfile,
@@ -150,12 +150,15 @@ class SandboxConfiguration:
         import_profile = os.environ.get("PYTHON_SANDBOX_IMPORT_PROFILE", "CORE_ANALYSIS")
         if import_profile not in PROFILE_IMPORT_ROOTS:
             raise RuntimeError("PYTHON_SANDBOX_IMPORT_PROFILE is not registered")
+        operator_registry_digest = _digest_environment("PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST")
+        if operator_registry_digest != OPERATOR_REGISTRY_DIGEST:
+            raise RuntimeError("PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST is stale")
         return cls(
             authorization=authorization,
             image_digest=_digest_environment("PYTHON_SANDBOX_IMAGE_DIGEST"),
             runtime_digest=_digest_environment("PYTHON_SANDBOX_RUNTIME_DIGEST"),
             dependency_lock_digest=_digest_environment("PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST"),
-            operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
+            operator_registry_digest=operator_registry_digest,
             policy_version=os.environ.get("PYTHON_SANDBOX_POLICY_VERSION", "python-policy@1.0.0"),
             job_root=Path(os.environ.get("PYTHON_SANDBOX_JOB_ROOT", "/tmp/data-agent-python-jobs")),
             executor_uid=int(executor_uid) if executor_uid else None,

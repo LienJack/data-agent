@@ -12,6 +12,7 @@ from data_agent_sandbox.python_runtime.models import (
     StatisticalOperatorResultBinding,
     StatisticalOperatorValueBinding,
 )
+from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.operators.manifest import (
     OPERATOR_IDS,
     OPERATOR_MANIFEST,
@@ -85,7 +86,7 @@ def loader(_: object) -> OperatorImplementationBinding:
 
 def registry(*obligations: StatisticalOperatorObligation) -> StatisticalOperatorRegistry:
     return StatisticalOperatorRegistry(
-        expected_registry_digest=OPERATOR_MANIFEST_DIGEST,
+        expected_registry_digest=OPERATOR_REGISTRY_DIGEST,
         obligations=obligations,
         runtime_profile="CORE_ANALYSIS",
         implementation_loader=loader,
@@ -106,7 +107,13 @@ def failure_code(error: pytest.ExceptionInfo[StatisticalOperatorError]) -> str:
 
 def test_runtime_manifest_is_closed_unique_and_matches_typescript_source_digest() -> None:
     assert len(OPERATOR_IDS) == len(set(OPERATOR_IDS)) == 7
-    assert OPERATOR_MANIFEST_DIGEST.startswith("sha256:")
+    assert OPERATOR_REGISTRY_DIGEST.startswith("sha256:")
+    assert OPERATOR_REGISTRY_DIGEST != OPERATOR_MANIFEST_DIGEST
+    generated_contract = (
+        Path(__file__).parents[3] / "packages/contracts/src/generated/statistical-operators.ts"
+    ).read_text()
+    assert f'"{OPERATOR_MANIFEST_DIGEST}" as const' in generated_contract
+    assert f'"{OPERATOR_REGISTRY_DIGEST}" as const' in generated_contract
     serialized = json.dumps(OPERATOR_MANIFEST, default=dict)
     assert all(
         forbidden not in serialized

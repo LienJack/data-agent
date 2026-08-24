@@ -20,7 +20,7 @@ from data_agent_sandbox.python_runtime.models import (
     PythonOutputSlot,
     PythonOutputSpec,
 )
-from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_MANIFEST_DIGEST
+from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.policy import (
     PythonPolicyError,
 )
@@ -83,7 +83,7 @@ def configuration(tmp_path: Path, profile: str = "CORE_ANALYSIS") -> SandboxConf
         image_digest=DIGEST_A,
         runtime_digest=DIGEST_B,
         dependency_lock_digest=DIGEST_C,
-        operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
+        operator_registry_digest=OPERATOR_REGISTRY_DIGEST,
         policy_version="python-policy@1.0.0",
         job_root=tmp_path,
         executor_uid=None,
@@ -144,7 +144,7 @@ def envelope(
             schema_version="python-output-contract@1.0.0", outputs=tuple(output_specs)
         ),
         generated_source_policy="NO_GENERATED_SOURCE",
-        operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
+        operator_registry_digest=OPERATOR_REGISTRY_DIGEST,
         operator_obligations=(),
         runtime_digest=DIGEST_B,
         dependency_lock_digest=DIGEST_C,

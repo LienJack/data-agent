@@ -36,6 +36,7 @@ export type ProgramAdmissionFailure =
   | "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
   | "PROGRAM_HOST_POLICY_REJECTED"
   | "PROGRAM_OUTPUT_CONTRACT_MISMATCH"
+  | "PROGRAM_OPERATOR_REGISTRY_ATTESTATION_MISMATCH"
   | "PROGRAM_VERIFICATION_FAILED"
   | "PROGRAM_REPAIR_LIMIT_EXCEEDED"
   | "PROGRAM_REPAIR_EXPANDED_AUTHORITY";
@@ -170,6 +171,9 @@ export async function admitAnalysisSandboxProgram(input: {
     return { ok: false, failure: "PROGRAM_OUTPUT_CONTRACT_MISMATCH" };
   }
   const attestation = ANALYSIS_RUNTIME_ATTESTATIONS[descriptor.python_import_profile];
+  if (analysisProgram.operator_registry_digest !== attestation.operator_registry_digest) {
+    return { ok: false, failure: "PROGRAM_OPERATOR_REGISTRY_ATTESTATION_MISMATCH" };
+  }
   const material: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
     artifact_type: "SandboxProgram",
     protocol_version: "analysis-sandbox-program@2.0.0",
@@ -186,7 +190,7 @@ export async function admitAnalysisSandboxProgram(input: {
     ),
     output_contract: node.output_contract,
     generated_source_policy: node.generated_source_policy,
-    operator_registry_digest: analysisProgram.operator_registry_digest,
+    operator_registry_digest: attestation.operator_registry_digest,
     operator_obligations: node.operator_obligations,
     import_profile: descriptor.python_import_profile,
     random_seed: derivedSeed(analysisProgramRef, input.node_id),

@@ -120,7 +120,10 @@ if (process.argv.includes("--deterministic-analysis")) {
       probe.supply_chain.unresolved_license_packages.length > 0,
     cancel_malicious_zero_output_covered:
       read("services/sandbox/tests/python_container_smoke.py").includes(
-        'choices=("success", "malicious", "resource", "cancel")',
+        'choices=("success", "operator", "malicious", "resource", "cancel")',
+      ) &&
+      read("services/sandbox/tests/python_container_smoke.py").includes(
+        '"multiple-testing.bh-fdr@1"',
       ) &&
       read("services/sandbox/tests/python_container_smoke.py").includes('outcome.get("outputs")'),
     oracle_and_replay_gates:

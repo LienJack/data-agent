@@ -16,9 +16,9 @@ from data_agent_sandbox.python_runtime.models import (
     StatisticalOperatorCallReceipt,
     StatisticalOperatorObligation,
 )
+from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.operators.manifest import (
     OPERATOR_BY_ID,
-    OPERATOR_MANIFEST_DIGEST,
 )
 
 MAX_CANONICAL_BYTES = 64 * 1024 * 1024
@@ -310,7 +310,7 @@ class StatisticalOperatorRegistry:
         runtime_profile: str,
         implementation_loader: ImplementationLoader = _default_implementation_loader,
     ) -> None:
-        if expected_registry_digest != OPERATOR_MANIFEST_DIGEST:
+        if expected_registry_digest != OPERATOR_REGISTRY_DIGEST:
             raise StatisticalOperatorError("PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH")
         if len({obligation.call_id for obligation in obligations}) != len(obligations):
             raise StatisticalOperatorError("PYTHON_OPERATOR_DUPLICATE_CALL_ID")

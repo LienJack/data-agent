@@ -11,8 +11,10 @@ from typing import Any
 
 WORKSPACE_ID = "10000000-0000-4000-8000-000000000001"
 RUN_ID = "10000000-0000-4000-8000-000000000002"
-RUNTIME_DIGEST = "sha256:ba715fb76f683bb538df7553616dcfb0e54c506ca90bf40c7b88ca6c99d5fe84"
+RUNTIME_DIGEST = "sha256:64760a1d47d8957c4b73d9d1f62036224290b62bfaa4b76a032952023c4f2ba4"
 LOCK_DIGEST = "sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8"
+OPERATOR_REGISTRY_DIGEST = "sha256:2a933715899a37022349415a88ef42987d67914bbcfe2472c4f6ddc80d278f18"
+IMAGE_DIGEST = "sha256:51f584d8f62464bb3553d164449c8b4c9a8e69b6f314172f4e9d12a1fdea5228"
 
 
 def digest(value: bytes) -> str:
@@ -46,13 +48,54 @@ def envelope(
             b"    values = context.read('source_rows')\n"
             b"    context.write_json('result', {'sum': sum(values['numbers'])})\n"
         ),
+        "operator": (
+            b"def main(context):\n"
+            b"    adjusted = context.operators.call(\n"
+            b"        'multiple-testing.bh-fdr@1',\n"
+            b"        call_id='smoke_bh',\n"
+            b"        inputs={'tests': [\n"
+            b"            {'label': 'a', 'p_value': 0.01},\n"
+            b"            {'label': 'b', 'p_value': 0.2},\n"
+            b"        ]},\n"
+            b"    )\n"
+            b"    context.write_json('result', {'tests': adjusted['tests']})\n"
+        ),
         "malicious": b"import os\ndef main(context):\n    context.write_json('result', {})\n",
         "resource": b"def main(context):\n    while True:\n        pass\n",
         "cancel": b"def main(context):\n    while True:\n        pass\n",
     }
     source = sources[case]
     input_value = b'{"numbers":[1,2,3]}'
-    output_value = b'{"sum":6}\n'
+    output_value = (
+        json.dumps(
+            {
+                "tests": [
+                    {
+                        "adjusted_p_value": 0.02,
+                        "alpha": 0.05,
+                        "family_size": 2,
+                        "label": "a",
+                        "method": "bh",
+                        "rejected": True,
+                    },
+                    {
+                        "adjusted_p_value": 0.2,
+                        "alpha": 0.05,
+                        "family_size": 2,
+                        "label": "b",
+                        "method": "bh",
+                        "rejected": False,
+                    },
+                ]
+            }
+            if case == "operator"
+            else {"sum": 6},
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        + b"\n"
+    )
     source_ref = reference("10000000-0000-4000-8000-000000000003", "SandboxProgram", digest(source))
     input_ref = reference(
         "10000000-0000-4000-8000-000000000004", "QueryEvidence", digest(input_value)
@@ -76,6 +119,43 @@ def envelope(
             "schema_version": "python-output-contract@1.0.0",
             "outputs": [{"name": "result", "type": "JSON", "required": True, "max_bytes": 4096}],
         },
+        "generated_source_policy": (
+            "GOVERNED_OPERATOR_ORCHESTRATION" if case == "operator" else "OPEN_ANALYSIS"
+        ),
+        "operator_registry_digest": OPERATOR_REGISTRY_DIGEST,
+        "operator_obligations": (
+            [
+                {
+                    "call_id": "smoke_bh",
+                    "operator_id": "multiple-testing.bh-fdr@1",
+                    "result_binding": {
+                        "result_output_name": "result",
+                        "result_collection_path": "/tests",
+                        "operator_collection_path": "/tests",
+                        "label_fields": ["label"],
+                        "value_bindings": [
+                            {
+                                "result_field": "adjusted_p_value",
+                                "operator_field": "adjusted_p_value",
+                                "comparison": "NUMERIC_TOLERANCE",
+                                "absolute_tolerance": 1e-12,
+                                "relative_tolerance": 1e-12,
+                            },
+                            {
+                                "result_field": "rejected",
+                                "operator_field": "rejected",
+                                "comparison": "EXACT",
+                                "absolute_tolerance": 0,
+                                "relative_tolerance": 0,
+                            },
+                        ],
+                        "require_exact_label_set": True,
+                    },
+                }
+            ]
+            if case == "operator"
+            else []
+        ),
         "runtime_digest": runtime_digest,
         "dependency_lock_digest": lock_digest,
         "policy_version": "python-policy@1.0.0",
@@ -128,11 +208,12 @@ def main() -> None:
     parser.add_argument("--token", required=True)
     parser.add_argument(
         "--case",
-        choices=("success", "malicious", "resource", "cancel"),
+        choices=("success", "operator", "malicious", "resource", "cancel"),
         default="success",
     )
     parser.add_argument("--runtime-digest", default=RUNTIME_DIGEST)
     parser.add_argument("--lock-digest", default=LOCK_DIGEST)
+    parser.add_argument("--image-digest", default=IMAGE_DIGEST)
     args = parser.parse_args()
     identifier = f"container-{args.case}-smoke"
     execution = envelope(
@@ -170,6 +251,7 @@ def main() -> None:
     print(json.dumps(outcome, ensure_ascii=False, indent=2))
     expected = {
         "success": ("SUCCEEDED", None),
+        "operator": ("SUCCEEDED", None),
         "malicious": ("FAILED", "PYTHON_POLICY_IMPORT_DENIED"),
         "resource": ("FAILED", "PYTHON_TIMEOUT"),
         "cancel": ("CANCELLED", "PYTHON_CANCELLED"),
@@ -177,8 +259,21 @@ def main() -> None:
     receipt = outcome.get("receipt", {})
     if (receipt.get("status"), receipt.get("failure_code")) != expected:
         raise SystemExit(1)
-    if args.case != "success" and (outcome.get("outputs") or receipt.get("output_refs")):
+    if args.case in {"malicious", "resource", "cancel"} and (
+        outcome.get("outputs") or receipt.get("output_refs")
+    ):
         raise SystemExit(1)
+    if receipt.get("operator_registry_digest") != OPERATOR_REGISTRY_DIGEST:
+        raise SystemExit(1)
+    if receipt.get("sandbox_image_digest") != args.image_digest:
+        raise SystemExit(1)
+    if args.case == "operator":
+        operator_receipts = receipt.get("operator_receipts", [])
+        if len(operator_receipts) != 1 or operator_receipts[0].get("call_id") != "smoke_bh":
+            raise SystemExit(1)
+        output = json.loads(base64.b64decode(outcome["outputs"][0]["content_base64"]))
+        if [row["adjusted_p_value"] for row in output["tests"]] != [0.02, 0.2]:
+            raise SystemExit(1)
 
 
 if __name__ == "__main__":
