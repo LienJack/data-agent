@@ -1,7 +1,10 @@
 import { type ArtifactReference, buildAnalysisContext } from "@data-agent/contracts";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { describe, expect, it } from "vitest";
-import { createFalcon24AnalysisProgram } from "../../src/evals/falcon24-analysis-program.js";
+import {
+  createFalcon24AnalysisProgram,
+  falcon24AnalysisProgramInternals,
+} from "../../src/evals/falcon24-analysis-program.js";
 
 const id = (suffix: number) => `50000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -112,5 +115,10 @@ describe("Falcon24 analysis program compiler", () => {
       "2023-05-01T00:00:00.000Z",
       "2023-05-01T00:00:00.000Z",
     ]);
+    expect(
+      falcon24AnalysisProgramInternals.method_contracts[
+        "falcon24-inventory-damage-12m"
+      ].join(" "),
+    ).toContain("do not round");
   });
 });

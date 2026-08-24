@@ -235,6 +235,8 @@ async function boundedPrompt(input: {
       dynamic_code: "DENIED",
       random_seed: "HOST_INJECTED",
       allowed_imports: allowedImports(input.importProfile),
+      import_contract:
+        "runtime_policy.allowed_imports is the complete import-root allowlist. Do not import typing, dataclasses, itertools, pathlib, collections, or any other root absent from that array; use plain Python 3.12 annotations or no annotations.",
       sdk: {
         entrypoint: "def main(context)",
         read_input: "context.read(input_name)",

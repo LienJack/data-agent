@@ -129,6 +129,7 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Use blinkit_inventory only for the primary damage calculation; blinkit_inventoryNew is sensitivity evidence and must not be combined with primary values.",
     "For every product, compute monthly damage_rate = damaged_stock / stock_received, using zero when stock_received is zero; compute Theil-Sen as the median of all pairwise monthly slopes.",
     "Compute a two-sided Mann-Kendall trend p-value for all products, then Benjamini-Hochberg q-values across the full product family with monotone reverse correction.",
+    "Return full finite floating-point values for damage rates, Theil-Sen slopes, raw p-values, and BH q-values; do not round or format any numeric output before context.write_json.",
     "High sales means total product sales is at least the within-category product-sales p75 using linear interpolation.",
     "Return every product satisfying high sales, positive Theil-Sen slope, and last-3 mean damage rate greater than previous-9 mean; classify PRIORITY iff BH q <= 0.05, otherwise WATCHLIST.",
   ],

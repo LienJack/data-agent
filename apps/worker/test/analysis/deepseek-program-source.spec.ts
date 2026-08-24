@@ -312,6 +312,8 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("pandas.Timestamp(..., tz='UTC')");
     expect(serialized).toContain("pandas.Categorical");
     expect(serialized).toContain("series.astype(str)");
+    expect(serialized).toContain("complete import-root allowlist");
+    expect(serialized).toContain("Do not import typing, dataclasses, itertools");
     expect(serialized).toContain("literal constant assignments");
     expect(serialized).toContain("Verify helper call arity");
     expect(serialized).toContain("buyers-frequency-aov-shapley");
