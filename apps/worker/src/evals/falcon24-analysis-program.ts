@@ -134,7 +134,7 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Return every product satisfying high sales, positive Theil-Sen slope, and last-3 mean damage rate greater than previous-9 mean; classify PRIORITY iff BH q <= 0.05, otherwise WATCHLIST.",
   ],
   "falcon24-marketing-lag-effect": [
-    "Build the complete 79-week calendar from 2023-05-01 through 2024-10-28. At channel and target_audience grain, zero-fill missing marketing weeks while retaining the shared weekly business outcomes, then compute funnel totals, CTR, conversion rate, and ROAS.",
+    "Build the complete 79-week calendar from Monday 2023-05-01 through Monday 2024-10-28. Set output.window to exactly {start:'2023-05-01', end_exclusive:'2024-11-01', week_count:79, grain:'WEEK'}; end_exclusive is the governed analysis boundary, not the day after the final Monday. At channel and target_audience grain, zero-fill missing marketing weeks while retaining the shared weekly business outcomes, then compute funnel totals, CTR, conversion rate, and ROAS.",
     "For each business outcome in the exact order order_revenue, new_customers, order_count and each lag 0 through 4, regress the weekly outcome on lagged spend with intercept, linear trend, sin(2*pi*week/52), and cos(2*pi*week/52); drop leading rows introduced by the lag.",
     "Compute the spend coefficient two-sided p-value using Newey-West HAC covariance with maxlags=4 and finite-sample factor n/(n-k).",
     "For each business outcome independently, select the lag with the smallest HAC p-value, breaking ties toward the smaller lag; apply Benjamini-Hochberg correction to selected p-values across all channel/audience groups for that same outcome.",

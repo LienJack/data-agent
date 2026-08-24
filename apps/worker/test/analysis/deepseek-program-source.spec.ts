@@ -588,6 +588,24 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context): pass",
+      failure_code: "FALCON24_Q4_WEEK_WINDOW_INVALID",
+      standard_program: null,
+    });
+    const marketingWindowRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(marketingWindowRepair.repair?.required_correction).toContain("2024-11-01");
+    expect(marketingWindowRepair.repair?.required_correction).toContain("79 Mondays");
+    expect(marketingWindowRepair.repair?.required_correction).toContain(
+      "day after the last Monday",
+    );
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
