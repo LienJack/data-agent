@@ -86,18 +86,21 @@ async function buildBrief(input: {
   readonly question: string;
   readonly context: AnalysisContext;
   readonly datasource_id: string;
+  readonly primary_metric_id: string;
 }): Promise<ResearchBriefV3Payload> {
   const window = falcon24AnalysisProgramInternals.windows[input.test_case.case_id];
-  const metric = input.context.metrics[0];
+  const metric = input.context.metrics.find(
+    ({ metric_ref: metricRef }) => metricRef.node_id === input.primary_metric_id,
+  );
   if (!metric) throw new TypeError("FALCON24_ANALYSIS_PRIMARY_METRIC_MISSING");
   const authorizedDimensions = new Set(
-    metric.allowed_dimensions
+    input.context.metrics
+      .flatMap(({ allowed_dimensions: allowedDimensions }) => allowedDimensions)
       .filter(({ groupable }) => groupable)
       .map(({ dimension_id }) => dimension_id),
   );
   const approvedDimensions = input.test_case.required_semantic_keys
     .filter((key) => key.startsWith("dimension."))
-    .map((key) => key.slice("dimension.".length))
     .filter((dimensionId) => authorizedDimensions.has(dimensionId))
     .sort()
     .slice(0, 5);
@@ -194,7 +197,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
   const compileContext = input.compile_context ?? compileFalcon24AnalysisContext;
   return Object.freeze({
     async analyze(command: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]) {
-      const { context } = await compileContext({
+      const { context, metric_ids: metricIds } = await compileContext({
         lease: command.lease,
         semantic_context: command.semantic_context,
         test_case: command.test_case,
@@ -205,6 +208,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
         question: command.question,
         context,
         datasource_id: command.semantic_context.package.semantic_release.datasource_id,
+        primary_metric_id: metricIds[0],
       });
       const briefRef = await input.artifacts.commitL2({
         lease: command.lease,
@@ -219,7 +223,7 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
         test_case: command.test_case,
         brief_ref: briefRef,
         context,
-        metric_ids: context.metrics.map(({ metric_ref }) => metric_ref.node_id),
+        metric_ids: metricIds,
       });
       const executor = input.create_executor({
         analysis_context: context,

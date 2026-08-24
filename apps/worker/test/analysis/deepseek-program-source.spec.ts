@@ -19,6 +19,44 @@ const runId = id(3);
 const analysisContract = {
   case_id: "falcon24-business-review-18m",
   statistical_method_contract: ["Compute monthly KPIs at order grain."],
+  semantic_contract: {
+    semantic_release_hash: hash("2"),
+    metrics: [
+      {
+        metric_id: "metric.order_revenue",
+        definition: "SUM(order_total)",
+        formula_id: "formula.order_revenue",
+        grain: { grain_id: "grain.order", granularity: "atomic" },
+        unit: {
+          unit_id: "unit.currency",
+          dimension: "currency",
+          base_unit: null,
+          conversion_factor: null,
+        },
+        time_dimension_id: "blinkit_orders.order_date",
+        additivity: "additive",
+        null_policy: "exclude",
+        allowed_dimension_ids: ["dimension.order_month"],
+      },
+    ],
+    formulas: [
+      {
+        formula_id: "formula.order_revenue",
+        expression: "SUM(order_total)",
+        expression_hash: hash("f"),
+      },
+    ],
+    dimensions: [
+      {
+        dimension_id: "dimension.order_month",
+        definition: "blinkit_orders.order_date",
+        grain: { grain_id: "grain.order_month", granularity: "month" },
+        data_type: "date",
+      },
+    ],
+    relationships: [],
+    quality_rules: [],
+  },
   output_json_schema: {
     type: "object",
     required: ["case_id"],
@@ -306,6 +344,9 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain(base.contextPackage.package_hash);
     expect(serialized).toContain("monthly_orders");
     expect(serialized).toContain("statistical_method_contract");
+    expect(serialized).toContain("semantic_contract");
+    expect(serialized).toContain("SUM(order_total)");
+    expect(serialized).toContain("dimension.order_month");
     expect(serialized).toContain("output_json_schema");
     expect(serialized).toContain("def main(context)");
     expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise', utc=True)");
@@ -578,5 +619,51 @@ describe("DeepSeek governed Python source", () => {
     const repair = JSON.parse(prompts[1] ?? "{}") as { repair?: { failure_code?: string } };
     expect(repair.repair?.failure_code).toBe("SANDBOX_EXECUTION_FAILED");
     expect(prompts[1]).not.toContain("secret-host");
+  });
+
+  it("rejects a semantic contract bound to a different published release", async () => {
+    const base = await fixture();
+    const source = createDeepSeekAnalysisProgramSource({
+      contexts: {
+        async load() {
+          return {
+            semantic_context_package: base.contextPackage,
+            analysis_contract: {
+              ...analysisContract,
+              semantic_contract: {
+                ...analysisContract.semantic_contract,
+                semantic_release_hash: hash("e"),
+              },
+            },
+            input_schemas: [],
+          };
+        },
+      },
+      model: {
+        async generate() {
+          throw new Error("model must not be called");
+        },
+      },
+      artifacts: {
+        async commit() {
+          throw new Error("artifact must not be committed");
+        },
+      },
+      standard_programs: {
+        async load() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    await expect(
+      source.load({
+        lease: base.lease,
+        analysis_program: base.program,
+        analysis_program_ref: base.programRef,
+        node: base.node,
+        standard_program: null,
+      }),
+    ).rejects.toThrow("ANALYSIS_PYTHON_SEMANTIC_CONTRACT_RELEASE_MISMATCH");
   });
 });

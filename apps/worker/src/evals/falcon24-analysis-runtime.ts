@@ -42,6 +42,7 @@ import {
   type Falcon24PublicArtifactPort,
 } from "./falcon24-governed-agent-analysis.js";
 import { createFalcon24GovernedAnalysisQueryPort } from "./falcon24-governed-query-port.js";
+import { buildFalcon24SemanticConsumptionProjection } from "./falcon24-semantic-catalog.js";
 
 interface AnalysisSystemArtifactAuthority {
   commitAnalysisSystem(
@@ -192,6 +193,11 @@ export function createFalcon24AnalysisRuntime(input: {
                 case_id: runtime.test_case.case_id,
                 statistical_method_contract:
                   falcon24AnalysisProgramInternals.method_contracts[runtime.test_case.case_id],
+                semantic_contract: await buildFalcon24SemanticConsumptionProjection({
+                  test_case: runtime.test_case,
+                  semantic_release_hash:
+                    runtime.semantic_context.package.semantic_release.resource_hash,
+                }),
                 output_json_schema: falcon24AnalysisOutputJsonSchema(runtime.test_case.case_id),
               },
               input_schemas: [

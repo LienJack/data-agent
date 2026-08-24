@@ -4,7 +4,6 @@ import {
   type SemanticAssertionCandidate,
   type SemanticAssertionTargetKind,
   type SemanticChangeSet,
-  type SemanticFormulaExpression,
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
@@ -15,148 +14,16 @@ import {
   compileSemanticChangeSet,
   freezeSemanticChangeSetForReview,
 } from "@data-agent/semantic/production";
+import {
+  FALCON24_DIMENSIONS,
+  FALCON24_FORMULA_ALIASES,
+  FALCON24_METRICS,
+  FALCON24_QUALITY_CONSTRAINTS,
+  FALCON24_RELATIONSHIPS,
+  falcon24FormulaExpression,
+} from "./falcon24-semantic-catalog.js";
 
 type Falcon24Scope = SemanticAssertionCandidate["scope"];
-
-const dimensionBindings = Object.freeze({
-  customer_segment: ["blinkit_customers", "customer_segment"],
-  delivery_status: ["blinkit_delivery_performance", "delivery_status"],
-  marketing_channel: ["blinkit_marketing_performance", "channel"],
-  order_month: ["blinkit_orders", "order_date"],
-  payment_method: ["blinkit_orders", "payment_method"],
-  product_category: ["blinkit_products", "category"],
-  registration_cohort: ["blinkit_customers", "registration_date"],
-  target_audience: ["blinkit_marketing_performance", "target_audience"],
-} as const);
-
-const dimensionAliases = Object.freeze({
-  customer_segment: ["客户类型"],
-  delivery_status: ["配送状态"],
-  marketing_channel: ["渠道", "营销渠道"],
-  order_month: ["订单月份"],
-  payment_method: ["支付方式"],
-  product_category: ["品类", "商品品类"],
-  registration_cohort: ["客户批次", "注册月份"],
-  target_audience: ["目标人群"],
-} as const);
-
-const metricBindings = Object.freeze({
-  active_buyers: ["blinkit_orders", "customer_id", "COUNT_DISTINCT"],
-  cohort_retention: ["blinkit_customers", "customer_id", "COUNT_DISTINCT"],
-  damaged_stock: ["blinkit_inventory", "damaged_stock", "SUM"],
-  delivery_minutes: ["blinkit_delivery_performance", "delivery_time_minutes", "AVG"],
-  low_rating_rate: ["blinkit_customer_feedback", "rating", "AVG"],
-  marketing_spend: ["blinkit_marketing_performance", "spend", "SUM"],
-  new_customers: ["blinkit_customers", "customer_id", "COUNT_DISTINCT"],
-  on_time_rate: ["blinkit_delivery_performance", "delivery_status", "COUNT"],
-  order_count: ["blinkit_orders", "order_id", "COUNT_DISTINCT"],
-  order_revenue: ["blinkit_orders", "order_total", "SUM"],
-  repeat_purchase_rate: ["blinkit_orders", "customer_id", "COUNT_DISTINCT"],
-  sales_quantity: ["blinkit_order_items", "quantity", "SUM"],
-  stock_received: ["blinkit_inventory", "stock_received", "SUM"],
-} as const);
-
-const metricAliases = Object.freeze({
-  active_buyers: ["活跃买家", "购买人数"],
-  cohort_retention: ["客户留存"],
-  damaged_stock: ["库存损坏", "损坏量"],
-  delivery_minutes: ["配送时效", "配送时长"],
-  low_rating_rate: ["低评分率", "差评率"],
-  marketing_spend: ["营销投入"],
-  new_customers: ["新增客户"],
-  on_time_rate: ["准时率", "按时率"],
-  order_count: ["订单量"],
-  order_revenue: ["收入", "订单收入"],
-  repeat_purchase_rate: ["复购率"],
-  sales_quantity: ["商品销量", "销量"],
-  stock_received: ["入库量"],
-} as const);
-
-const formulaAliases = Object.freeze({
-  average_order_value: ["客单价"],
-  buyer_frequency_aov: ["购买人数频次客单价分解"],
-  click_through_rate: ["点击率"],
-  cohort_month_index: ["注册后月份"],
-  conversion_rate: ["转化率"],
-  inventory_damage_rate: ["损坏率"],
-  marketing_roas: ["投入回报率"],
-} as const);
-
-const relationshipSpecs = Object.freeze({
-  feedback_customer: [
-    "blinkit_customer_feedback",
-    "customer_id",
-    "blinkit_customers",
-    "customer_id",
-    "many-to-one",
-  ],
-  feedback_order: [
-    "blinkit_customer_feedback",
-    "order_id",
-    "blinkit_orders",
-    "order_id",
-    "one-to-one",
-  ],
-  delivery_order: [
-    "blinkit_delivery_performance",
-    "order_id",
-    "blinkit_orders",
-    "order_id",
-    "one-to-one",
-  ],
-  inventory_new_product: [
-    "blinkit_inventoryNew",
-    "product_id",
-    "blinkit_products",
-    "product_id",
-    "many-to-one",
-  ],
-  inventory_product: [
-    "blinkit_inventory",
-    "product_id",
-    "blinkit_products",
-    "product_id",
-    "many-to-one",
-  ],
-  order_customer: [
-    "blinkit_orders",
-    "customer_id",
-    "blinkit_customers",
-    "customer_id",
-    "many-to-one",
-  ],
-  order_item_order: [
-    "blinkit_order_items",
-    "order_id",
-    "blinkit_orders",
-    "order_id",
-    "many-to-one",
-  ],
-  order_item_product: [
-    "blinkit_order_items",
-    "product_id",
-    "blinkit_products",
-    "product_id",
-    "many-to-one",
-  ],
-} as const);
-
-const qualityConstraints = Object.freeze({
-  "quality.first_order_before_registration": ["first_order_date >= registration_date", "WARN"],
-  "quality.inventory_new_sensitivity_only": [
-    "blinkit_inventoryNew must not be unioned into primary inventory analysis",
-    "ERROR",
-  ],
-  "quality.order_before_registration": ["order_date >= registration_date", "WARN"],
-  "quality.order_total_item_mismatch": [
-    "abs(order_total-sum(quantity*unit_price)) <= 0.01",
-    "WARN",
-  ],
-  "quality.stored_customer_kpi_untrusted": [
-    "customer total_orders and avg_order_value must be recomputed",
-    "ERROR",
-  ],
-} as const);
 
 const commonNode = {
   node_version: 1,
@@ -175,55 +42,11 @@ function stableUuid(material: string): string {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
-function formulaExpression(formulaId: string): SemanticFormulaExpression {
-  const slot = (slot_id: string) => ({ kind: "SLOT" as const, slot_id });
-  const aggregate = (fn: "COUNT_DISTINCT" | "SUM", slotId: string) => ({
-    kind: "AGGREGATE" as const,
-    function: fn,
-    input: slot(slotId),
-    distinct: fn === "COUNT_DISTINCT",
-    filter: null,
-  });
-  const divide = (left: SemanticFormulaExpression, right: SemanticFormulaExpression) => ({
-    kind: "BINARY" as const,
-    operator: "DIVIDE" as const,
-    left,
-    right,
-  });
-  if (formulaId === "average_order_value") {
-    return divide(aggregate("SUM", "order_total"), aggregate("COUNT_DISTINCT", "order_id"));
-  }
-  if (formulaId === "buyer_frequency_aov") {
-    return {
-      kind: "BINARY" as const,
-      operator: "MULTIPLY" as const,
-      left: {
-        kind: "BINARY" as const,
-        operator: "MULTIPLY" as const,
-        left: slot("active_buyers"),
-        right: slot("orders_per_buyer"),
-      },
-      right: slot("average_order_value"),
-    };
-  }
-  if (formulaId === "inventory_damage_rate") {
-    return divide(slot("damaged_stock"), {
-      kind: "BINARY" as const,
-      operator: "ADD" as const,
-      left: slot("damaged_stock"),
-      right: slot("stock_received"),
-    });
-  }
-  if (formulaId === "click_through_rate") return divide(slot("clicks"), slot("impressions"));
-  if (formulaId === "conversion_rate") return divide(slot("conversions"), slot("clicks"));
-  if (formulaId === "marketing_roas") return divide(slot("revenue_generated"), slot("spend"));
-  return { kind: "LITERAL" as const, value: "month_diff(order_date,registration_date)" };
-}
-
 function targetKindFor(key: string): SemanticAssertionTargetKind {
   if (key.startsWith("dimension.")) return "DIMENSION";
   if (key.startsWith("formula.")) return "FORMULA";
   if (key.startsWith("metric.")) return "METRIC";
+  if (key.startsWith("quality.")) return "QUALITY_CONSTRAINT";
   if (key.startsWith("relationship.")) return "RELATIONSHIP";
   throw new TypeError(`FALCON24_SEMANTIC_KEY_UNKNOWN:${key}`);
 }
@@ -320,20 +143,17 @@ export async function buildFalcon24SemanticChangeSet(input: {
     }
   }
 
-  for (const [dimensionId, [tableId, columnId]] of Object.entries(dimensionBindings)) {
+  for (const [dimensionId, spec] of Object.entries(FALCON24_DIMENSIONS)) {
+    const { table_id: tableId, column_id: columnId } = spec;
     await add("DIMENSION", `dimension.${dimensionId}`, {
       dimension: {
         dimension_id: `dimension.${dimensionId}`,
         name: dimensionId,
-        aliases: [
-          dimensionId.replaceAll("_", " "),
-          ...(dimensionAliases[dimensionId as keyof typeof dimensionAliases] ?? []),
-        ].sort(),
+        aliases: [dimensionId.replaceAll("_", " "), ...spec.aliases].sort(),
         table_id: tableId,
         column_id: `${tableId}.${columnId}`,
-        grain: { grain_id: `grain.${tableId}`, granularity: "atomic" },
-        data_type:
-          dimensionId.includes("month") || dimensionId.includes("cohort") ? "date" : "text",
+        grain: spec.grain,
+        data_type: spec.data_type,
         sensitivity: "INTERNAL",
         hierarchical: false,
         parent_dimension_id: null,
@@ -343,93 +163,64 @@ export async function buildFalcon24SemanticChangeSet(input: {
     });
   }
 
-  const allowedDimensionIds = Object.keys(dimensionBindings)
-    .map((dimensionId) => `dimension.${dimensionId}`)
-    .sort();
-  for (const [metricId, [tableId, columnId, aggregation]] of Object.entries(metricBindings)) {
+  for (const [metricId, spec] of Object.entries(FALCON24_METRICS)) {
+    const { aliases, formula_id: formulaId, ...metricDefinition } = spec;
     await add("METRIC", `metric.${metricId}`, {
       metric: {
         metric_id: `metric.${metricId}`,
         name: metricId,
-        aliases: [
-          metricId.replaceAll("_", " "),
-          ...(metricAliases[metricId as keyof typeof metricAliases] ?? []),
-        ].sort(),
-        table_id: tableId,
-        column_id: `${tableId}.${columnId}`,
-        aggregation: aggregation.toLowerCase(),
-        formula: null,
-        grain: { grain_id: `grain.${tableId}`, granularity: "atomic" },
-        unit: null,
-        time_domain: null,
-        time_column_id: tableId === "blinkit_orders" ? "blinkit_orders.order_date" : null,
-        additivity: aggregation === "SUM" ? "additive" : "non-additive",
-        null_policy: "exclude",
-        fanout_policy: "preaggregate",
-        dependency_column_ids: [`${tableId}.${columnId}`],
-        tags: ["falcon24"],
-        analysis: {
-          primary: ["order_revenue", "order_count"].includes(metricId),
-          priority: ["order_revenue", "order_count"].includes(metricId) ? 10_000 : 1_000,
-          missing_period_policy: "REJECT_GAP",
-          seasonality: null,
-          allowed_dimension_ids: allowedDimensionIds,
-          capabilities: ["ASSOCIATION", "CHART_DATASET", "CONTRIBUTION", "TREND_CHANGE"],
-          causal_role: "OUTCOME",
+        aliases: [metricId.replaceAll("_", " "), ...aliases].sort(),
+        ...metricDefinition,
+        formula: {
+          formula_id: `formula.${formulaId}`,
+          expression: FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas[formulaId],
+          dialect: "text2sql",
+          description: `Published Falcon24 formula formula.${formulaId}.`,
         },
       },
     });
   }
 
   for (const formulaId of Object.keys(FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas)) {
+    const ratioFormula = [
+      "average_order_value",
+      "buyer_frequency",
+      "click_through_rate",
+      "cohort_retention",
+      "conversion_rate",
+      "inventory_damage_rate",
+      "low_rating_rate",
+      "marketing_roas",
+      "on_time_rate",
+      "repeat_purchase_rate",
+    ].includes(formulaId);
     await add("FORMULA", `formula.${formulaId}`, {
       formula: {
         ...commonNode,
         node_id: `formula.${formulaId}`,
         node_type: "FORMULA",
         name: formulaId,
-        aliases: [...(formulaAliases[formulaId as keyof typeof formulaAliases] ?? [])].sort(),
-        formula_type:
-          formulaId.includes("rate") || formulaId.includes("value") || formulaId.includes("roas")
-            ? "ratio"
-            : "compound",
-        return_type: "numeric",
+        aliases: [
+          ...FALCON24_FORMULA_ALIASES[formulaId as keyof typeof FALCON24_FORMULA_ALIASES],
+        ].sort(),
+        formula_type: ratioFormula
+          ? "ratio"
+          : formulaId === "cohort_month_index"
+            ? "other"
+            : formulaId === "buyer_frequency_aov"
+              ? "compound"
+              : formulaId === "delivery_minutes"
+                ? "non_additive_aggregate"
+                : "additive_aggregate",
+        return_type: formulaId === "cohort_month_index" ? "integer" : "numeric",
         language: "semantic-ast",
         language_version: "semantic-formula-ast@1",
-        expression: formulaExpression(formulaId),
+        expression: falcon24FormulaExpression(formulaId),
       },
     });
   }
-  await add("FORMULA", "formula.buyer_frequency_aov", {
-    formula: {
-      ...commonNode,
-      node_id: "formula.buyer_frequency_aov",
-      node_type: "FORMULA",
-      name: "buyer frequency AOV identity",
-      aliases: [...formulaAliases.buyer_frequency_aov],
-      formula_type: "compound",
-      return_type: "numeric",
-      language: "semantic-ast",
-      language_version: "semantic-formula-ast@1",
-      expression: formulaExpression("buyer_frequency_aov"),
-    },
-  });
-  await add("FORMULA", "formula.cohort_month_index", {
-    formula: {
-      ...commonNode,
-      node_id: "formula.cohort_month_index",
-      node_type: "FORMULA",
-      name: "cohort month index",
-      aliases: [...formulaAliases.cohort_month_index],
-      formula_type: "other",
-      return_type: "integer",
-      language: "semantic-ast",
-      language_version: "semantic-formula-ast@1",
-      expression: formulaExpression("cohort_month_index"),
-    },
-  });
 
-  for (const [relationshipId, spec] of Object.entries(relationshipSpecs)) {
+  for (const [relationshipId, spec] of Object.entries(FALCON24_RELATIONSHIPS)) {
     const [leftTable, leftColumn, rightTable, rightColumn, cardinality] = spec;
     await add(
       "RELATIONSHIP",
@@ -470,7 +261,9 @@ export async function buildFalcon24SemanticChangeSet(input: {
       description: "Last complete month is 2024-10; all windows are half-open.",
     },
   });
-  for (const [constraintId, [expression, severity]] of Object.entries(qualityConstraints)) {
+  for (const [constraintId, [expression, severity]] of Object.entries(
+    FALCON24_QUALITY_CONSTRAINTS,
+  )) {
     await add(
       "QUALITY_CONSTRAINT",
       constraintId,

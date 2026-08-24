@@ -216,13 +216,28 @@ describe("Falcon24 analysis context compiler", () => {
       semantic_context.package.inference_receipt.receipt_hash,
     );
     expect(compiled.metric_ids).toEqual(["metric.order_revenue"]);
-    expect(
-      compiled.context.metrics[0]?.allowed_dimensions.map(({ dimension_id }) => dimension_id),
-    ).toEqual(["customer_segment", "order_month", "payment_method"]);
-    expect(compiled.context.relationships.map(({ relationship_id }) => relationship_id)).toEqual([
-      "order_customer",
-      "order_item_product",
+    expect(compiled.context.metrics.map(({ metric_ref }) => metric_ref.node_id)).toEqual([
+      "metric.active_buyers",
+      "metric.order_count",
+      "metric.order_revenue",
     ]);
+    expect(
+      compiled.context.metrics
+        .find(({ metric_ref }) => metric_ref.node_id === "metric.order_revenue")
+        ?.allowed_dimensions.map(({ dimension_id }) => dimension_id),
+    ).toEqual([
+      "dimension.customer_segment",
+      "dimension.order_month",
+      "dimension.payment_method",
+      "dimension.product_category",
+    ]);
+    expect(compiled.context.relationships.map(({ relationship_id }) => relationship_id)).toEqual([
+      "relationship.order_customer",
+      "relationship.order_item_product",
+    ]);
+    expect(
+      compiled.context.metrics.every(({ grain }) => grain.grain_id !== "falcon24-analysis"),
+    ).toBe(true);
     expect(compiled.context).not.toHaveProperty("semantic_source_bundle_ref");
     expect(compiled.context).not.toHaveProperty("ontology_analysis_binding_hash");
   });

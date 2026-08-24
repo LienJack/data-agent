@@ -1,4 +1,5 @@
 import type { ArtifactReference } from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildAnalysisContext,
   type SemanticContextCommitResult,
@@ -6,6 +7,13 @@ import {
 } from "@data-agent/contracts/context";
 import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
+import {
+  FALCON24_DIMENSIONS,
+  FALCON24_METRICS,
+  FALCON24_RELATIONSHIPS,
+  falcon24FormulaExpression,
+  falcon24RequiredMetricIds,
+} from "./falcon24-semantic-catalog.js";
 
 const PRIMARY_METRIC_BY_CASE = Object.freeze({
   "falcon24-business-review-18m": "metric.order_revenue",
@@ -13,15 +21,6 @@ const PRIMARY_METRIC_BY_CASE = Object.freeze({
   "falcon24-inventory-damage-12m": "metric.damaged_stock",
   "falcon24-marketing-lag-effect": "metric.marketing_spend",
   "falcon24-cohort-retention-m0-m6": "metric.cohort_retention",
-} as const);
-
-const RELATIONSHIPS = Object.freeze({
-  delivery_order: ["blinkit_delivery_performance", "blinkit_orders", "one-to-one"],
-  feedback_customer: ["blinkit_customer_feedback", "blinkit_customers", "many-to-one"],
-  feedback_order: ["blinkit_customer_feedback", "blinkit_orders", "one-to-one"],
-  inventory_product: ["blinkit_inventory", "blinkit_products", "many-to-one"],
-  order_customer: ["blinkit_orders", "blinkit_customers", "many-to-one"],
-  order_item_product: ["blinkit_order_items", "blinkit_products", "many-to-one"],
 } as const);
 
 function resourceReference(
@@ -77,12 +76,64 @@ export async function compileFalcon24AnalysisContext(input: {
     packageDocument.semantic_release,
     input.lease,
   );
-  const dimensionIds = input.test_case.required_semantic_keys
-    .filter((key) => key.startsWith("dimension."))
-    .map((key) => key.slice("dimension.".length));
+  const requiredDimensionIds = new Set(
+    input.test_case.required_semantic_keys.filter((key) => key.startsWith("dimension.")),
+  );
   const primaryMetricId = PRIMARY_METRIC_BY_CASE[input.test_case.case_id];
-  const grain = { grain_id: "falcon24-analysis", granularity: "atomic" } as const;
-  const metricRef = { container_ref: semanticReleaseRef, node_id: primaryMetricId } as const;
+  const requiredMetricIds = falcon24RequiredMetricIds(input.test_case);
+  if (!requiredMetricIds.some((metricId) => `metric.${metricId}` === primaryMetricId)) {
+    throw new TypeError(`FALCON24_ANALYSIS_PRIMARY_METRIC_NOT_REQUIRED:${primaryMetricId}`);
+  }
+  const metrics = await Promise.all(
+    requiredMetricIds.map(async (metricId) => {
+      const spec = FALCON24_METRICS[metricId];
+      const metricRef = {
+        container_ref: semanticReleaseRef,
+        node_id: `metric.${metricId}`,
+      } as const;
+      return {
+        metric_ref: metricRef,
+        formula_hash: await sha256ContentHash({
+          semantic_release_hash: packageDocument.semantic_release.resource_hash,
+          metric_id: metricRef.node_id,
+          formula_id: `formula.${spec.formula_id}`,
+          formula_expression: falcon24FormulaExpression(spec.formula_id),
+          grain: spec.grain,
+          unit: spec.unit,
+          allowed_dimension_ids: spec.analysis.allowed_dimension_ids,
+        }),
+        unit: spec.unit,
+        grain: spec.grain,
+        time_domain: spec.time_domain,
+        time_dimension_ref: spec.time_column_id,
+        additivity: spec.additivity,
+        null_policy: spec.null_policy,
+        missing_period_policy: spec.analysis.missing_period_policy,
+        seasonality: spec.analysis.seasonality,
+        priority: spec.analysis.priority,
+        causal_role: spec.analysis.causal_role,
+        allowed_dimensions: spec.analysis.allowed_dimension_ids
+          .filter((dimensionId) => requiredDimensionIds.has(dimensionId))
+          .map((dimensionId) => {
+            const catalogId = dimensionId.slice(
+              "dimension.".length,
+            ) as keyof typeof FALCON24_DIMENSIONS;
+            const dimension = FALCON24_DIMENSIONS[catalogId];
+            if (!dimension) throw new TypeError(`FALCON24_DIMENSION_UNKNOWN:${dimensionId}`);
+            return {
+              dimension_id: dimensionId,
+              grain: dimension.grain,
+              data_type: dimension.data_type,
+              sensitivity: "INTERNAL" as const,
+              groupable: true,
+              pivotable: true,
+              causal_role: "CANDIDATE_CONFOUNDER" as const,
+            };
+          }),
+        analysis_capabilities: spec.analysis.capabilities,
+      };
+    }),
+  );
   return {
     context: await buildAnalysisContext({
       schema_version: "analysis-context@2.0.0",
@@ -106,64 +157,30 @@ export async function compileFalcon24AnalysisContext(input: {
       ),
       semantic_retrieval_receipt_hash: packageDocument.retrieval_receipt.receipt_hash,
       semantic_inference_receipt_hash: packageDocument.inference_receipt.receipt_hash,
-      metrics: [
-        {
-          metric_ref: metricRef,
-          formula_hash:
-            packageDocument.evidence.find(
-              ({ evidence_id: evidenceId }) => evidenceId === primaryMetricId,
-            )?.evidence_hash ?? packageDocument.mandatory_closure.closure_hash,
-          unit: null,
-          grain,
-          time_domain: {
-            time_domain_id: "falcon24-complete-month-frontier",
-            calendar: "gregorian",
-            timezone: "Asia/Shanghai",
-            min_time: "2023-05-01T00:00:00.000Z",
-            max_time: "2024-11-01T00:00:00.000Z",
-          },
-          time_dimension_ref: "order_date",
-          additivity: primaryMetricId === "metric.order_revenue" ? "additive" : "non-additive",
-          null_policy: "exclude",
-          missing_period_policy: "REJECT_GAP",
-          seasonality: null,
-          priority: 10_000,
-          causal_role: "OUTCOME",
-          allowed_dimensions: dimensionIds.map((dimensionId) => ({
-            dimension_id: dimensionId,
-            grain,
-            data_type:
-              dimensionId.includes("month") || dimensionId.includes("cohort") ? "date" : "text",
-            sensitivity: "INTERNAL",
-            groupable: true,
-            pivotable: true,
-            causal_role: "CANDIDATE_CONFOUNDER",
-          })),
-          analysis_capabilities: ["ASSOCIATION", "CHART_DATASET", "CONTRIBUTION", "TREND_CHANGE"],
-        },
-      ],
+      metrics,
       relationships: input.test_case.required_semantic_keys
         .filter((key) => key.startsWith("relationship."))
         .map((key) => key.slice("relationship.".length))
         .map((relationshipId) => {
-          const relationship = RELATIONSHIPS[relationshipId as keyof typeof RELATIONSHIPS];
+          const relationship =
+            FALCON24_RELATIONSHIPS[relationshipId as keyof typeof FALCON24_RELATIONSHIPS];
           if (!relationship) throw new TypeError(`FALCON24_RELATIONSHIP_UNKNOWN:${relationshipId}`);
           return {
-            relationship_id: relationshipId,
+            relationship_id: `relationship.${relationshipId}`,
             left_table_id: relationship[0],
-            right_table_id: relationship[1],
-            cardinality: relationship[2],
+            right_table_id: relationship[2],
+            cardinality: relationship[4],
             fanout_closed: true,
-            ontology_path: [`entity.${relationship[0]}`, `entity.${relationship[1]}`].sort(),
+            ontology_path: [`entity.${relationship[0]}`, `entity.${relationship[2]}`].sort(),
           };
         }),
       causal_policy: null,
     }),
-    metric_ids: [metricRef.node_id] as const,
+    metric_ids: [primaryMetricId] as const,
   };
 }
 
 export const falcon24AnalysisContextInternals = Object.freeze({
   primary_metric_by_case: PRIMARY_METRIC_BY_CASE,
-  relationships: RELATIONSHIPS,
+  relationships: FALCON24_RELATIONSHIPS,
 });

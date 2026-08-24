@@ -165,9 +165,9 @@ export async function createFalcon24AnalysisProgram(input: {
     return metric;
   });
   if (metrics.length === 0) throw new TypeError("FALCON24_ANALYSIS_METRICS_EMPTY");
-  const requiredDimensions = input.test_case.required_semantic_keys
-    .filter((key) => key.startsWith("dimension."))
-    .map((key) => key.slice("dimension.".length));
+  const requiredDimensions = input.test_case.required_semantic_keys.filter((key) =>
+    key.startsWith("dimension."),
+  );
   const dimensionRefs = requiredDimensions.filter((dimensionId) =>
     metrics.every((metric) =>
       metric.allowed_dimensions.some(

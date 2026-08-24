@@ -47,8 +47,8 @@ describe("Falcon24 agent analysis acceptance", () => {
       ),
     ).toBe(70);
     expect(FALCON24_SEMANTIC_RELEASE_BLUEPRINT.relationships).toHaveLength(8);
-    expect(FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas.inventory_damage_rate).toContain(
-      "damaged_stock+stock_received",
+    expect(FALCON24_SEMANTIC_RELEASE_BLUEPRINT.formulas.inventory_damage_rate).toBe(
+      "SUM(damaged_stock)/NULLIF(SUM(stock_received),0)",
     );
     expect(suite.cases.at(-1)).toMatchObject({
       expected_terminal: "HOLD_WITH_SENSITIVITY",
