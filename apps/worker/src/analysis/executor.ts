@@ -21,6 +21,7 @@ import {
 } from "@data-agent/contracts";
 import {
   computeAnalysisDerivationHash,
+  type DerivationFailure,
   verifyAnalysisDerivation,
   verifyAnalysisResult,
 } from "@data-agent/research";
@@ -247,15 +248,21 @@ function uniqueReasons(values: readonly AnalysisReasonCode[]): AnalysisReasonCod
 
 function failedNode(
   node: AnalysisProgramNode,
-  reason: AnalysisReasonCode,
+  ...reasons: readonly AnalysisReasonCode[]
 ): AnalysisCompletionReceiptPayload["node_results"][number] {
   return {
     node_id: node.node_id,
     criticality: node.criticality,
     status: "FAILED",
     evidence_ref: null,
-    reason_codes: [reason],
+    reason_codes: uniqueReasons(reasons),
   };
+}
+
+function derivationFailureReasons(
+  failures: readonly DerivationFailure[],
+): readonly AnalysisReasonCode[] {
+  return failures.length > 0 ? failures : ["DERIVATION_REPLAY_MISMATCH"];
 }
 
 function activationSatisfied(
@@ -620,7 +627,9 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           materializedInputRefs: program.input_refs,
           allowedProfiles: [descriptor.python_import_profile],
         });
-        if (!verification.ok) return failedNode(node, "ANALYSIS_ORACLE_FAILED");
+        if (!verification.ok) {
+          return failedNode(node, ...derivationFailureReasons(verification.failures));
+        }
         const evidenceRef = derivedAnalysisEvidenceRefSchema.parse(
           await dependencies.artifacts.commitL2({
             lease: input.lease,

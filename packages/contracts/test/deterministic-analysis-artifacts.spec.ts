@@ -319,9 +319,7 @@ describe("deterministic analysis contracts", () => {
       source_text_ref: sourceRef,
       query_evidence_refs: [reference("QueryEvidence", 116)],
       input_refs: [reference("SandboxResult", 117)],
-      input_materialization_receipt_refs: [
-        reference("AnalysisInputMaterializationReceipt", 118),
-      ],
+      input_materialization_receipt_refs: [reference("AnalysisInputMaterializationReceipt", 118)],
       output_contract: {
         schema_version: "python-output-contract@1.0.0",
         outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_048_576 }],
@@ -442,6 +440,35 @@ describe("deterministic analysis contracts", () => {
         terminal: "HOLD",
       }).success,
     ).toBe(true);
+  });
+
+  it("retains exact derivation closure failures in completion receipts", () => {
+    const completion = {
+      artifact_type: "AnalysisCompletionReceipt",
+      protocol_version: "analysis-completion@1.0.0",
+      analysis_program_ref: reference("AnalysisProgram", 128),
+      node_results: [
+        {
+          node_id: "generated-analysis",
+          criticality: "CRITICAL",
+          status: "FAILED",
+          evidence_ref: null,
+          reason_codes: ["RECEIPT_RUNTIME_MISMATCH", "RESULT_REFERENCE_CLOSURE_FAILED"],
+        },
+      ],
+      budget_usage: {
+        steps: 1,
+        sql_executions: 1,
+        sandbox_executions: 1,
+        series_rows: 0,
+        group_rows: 0,
+        elapsed_ms: 100,
+      },
+      terminal: "HOLD",
+      limitation_codes: ["RECEIPT_RUNTIME_MISMATCH", "RESULT_REFERENCE_CLOSURE_FAILED"],
+      completion_hash: hashes.execution,
+    } as const;
+    expect(analysisCompletionReceiptPayloadSchema.parse(completion)).toEqual(completion);
   });
 
   it("keeps AtomicClaim@2 unchanged and fail-closes v3 causal language", () => {
