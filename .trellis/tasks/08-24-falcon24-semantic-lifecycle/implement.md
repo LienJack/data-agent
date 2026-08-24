@@ -23,7 +23,15 @@ owner、范围 RLS、EVIDENCE capability、有界批次、行锁、不可变 rec
 
 仓库级 `pnpm verify:release` 已在 2026-08-25 通过并返回 `GO / RELEASE_READY`；它证明构建、迁移清单和发布合同完整，不覆盖上述 RQ009、
 Provider 与生产隔离门禁。本轮三类 OpenSandbox profile 实机均为 sandbox/egress `0→2→0`，测试 server 已停止，未被当前架构引用的
-`data-agent-opensandbox-m0:2026-08-24` 镜像已删除；CORE/ML/CAUSAL/Operator 镜像是唯一运行时的有效依赖，继续保留。
+`data-agent-opensandbox-m0:2026-08-24` 与全部旧 `data-agent-python-sandbox:*` 镜像已删除；CAUSAL 镜像归一为 compose 唯一引用的
+`2026-08-24` tag。CORE/ML/CAUSAL/Operator 镜像与 OpenSandbox 的 code-interpreter/execd/egress 基础镜像是当前唯一运行时的有效依赖，
+继续保留；当前 sandbox/egress 容器数均为 0。
+
+Falcon24 数据 Oracle 已在当前 PostgreSQL 固定快照上通过：9 表、70 字段、121,445 行。新的 `rq009-opensandbox-v1` campaign 已生成
+30 个独立 run identity；历史 `actual-runs.json` 只有 5 条、跨多个旧 campaign 且早于当前 RQ009 提交，不能复用或拼接为新鲜验收。
+数据库内两份历史 DeepSeek PASS certification receipt 同样不能替代当前调用 Authority：当前进程和 `.env.local` 均没有
+`DEEPSEEK_API_KEY`，production dispatcher 只接受 `SYSTEM_DEPLOYMENT` 及本次进程注入的 credential，因此 Strict 100 次和 30 次真实运行
+继续保持 HOLD。
 
 后续实现以 `semantica-plan/0 大纲.md` 与 M1-M6 为唯一执行依据。旧 U1/U2 命名和任何 V2/V3、AnalysisPlan 兼容设计均不再有效。
 

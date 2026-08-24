@@ -45,10 +45,12 @@ PostgreSQL 17 故障注入结果：`deleted_count=1`、`replay_same_receipt=true
 - `pnpm exec tsx scripts/render-migration.ts 10743 --verify` 至 `10751 --verify`：迁移内容寻址。
 - PostgreSQL 17 实际 `pnpm dev:migrate`：10743–10751 已应用。
 - `pnpm verify:release`：`GO / RELEASE_READY`；仅代表仓库发布合同通过，不覆盖下列外部硬门禁。
-- 收尾资源检查：三个 profile 的 sandbox/egress 均归零，本轮 OpenSandbox server 已停止；无引用的 M0 探针镜像已删除。
+- 收尾资源检查：三个 profile 的 sandbox/egress 均归零，本轮 OpenSandbox server 已停止；无引用的 M0 探针镜像和全部旧
+  `data-agent-python-sandbox:*` 镜像已删除。只保留当前 CORE/ML/CAUSAL/Operator 与 OpenSandbox 必需基础镜像。
 
 ## 外部硬门禁
 
 - DeepSeek Strict 真实探测：`0/100`，原因是当前环境没有 `DEEPSEEK_API_KEY`；禁止 fallback，状态 **HOLD**。
-- Falcon24 五题 × cold/warm × 3：`0/30`，同一凭据阻断；不得用 fixture 记作真实 DeepSeek 运行，状态 **HOLD**。
+- Falcon24 五题 × cold/warm × 3：当前固定快照 Oracle `9 表 / 70 字段 / 121,445 行` 已通过，30-run campaign manifest 已生成；
+  新鲜运行仍为 `0/30`，同一凭据阻断。历史 5 条跨 campaign 运行不得拼接，fixture 也不得记作真实 DeepSeek 运行，状态 **HOLD**。
 - 生产隔离：本地 Docker runc、`secure_access=false` 只证明功能；Kata/gVisor + Cilium 未证明，状态 **HOLD**。
