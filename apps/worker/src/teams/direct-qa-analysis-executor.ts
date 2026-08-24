@@ -151,27 +151,58 @@ export function createDirectQaAnalysisExecutor(dependencies: {
           if (!hasRunProviderDispatchCapability(provider)) {
             throw new DirectQaAnalysisError("DIRECT_MODEL_PROVIDER_REQUIRED");
           }
-          const result = await governedAnalysis.analyze({
-            lease: execution.lease,
-            test_case: falcon24Case,
-            question: run.question,
-            semantic_context: resolved,
-            provider_dispatch: provider,
-            fence_guard: {
-              async isCurrent(fence) {
-                if (
-                  fence.run_id !== execution.lease.run_id ||
-                  fence.attempt_id !== execution.lease.attempt_id ||
-                  fence.worker_fence !== execution.lease.worker_fence ||
-                  fence.fence_token !==
-                    `${execution.lease.attempt_id}:${execution.lease.worker_fence}`
-                ) {
-                  return false;
-                }
-                return (await execution.context.heartbeat()).ok;
+          const analysisCallId = `direct-qa-analysis-${execution.lease.attempt_id}`;
+          value(
+            await emitDisplayEvent({
+              kind: "tool_started",
+              key: "direct.qa.analysis.started",
+              call_id: analysisCallId,
+              tool_name: "python.analysis@1.0.0",
+              title: "受治理 Python 分析",
+              summary: "正在生成 Python、执行分析并由独立 Oracle 验收。",
+              input: null,
+              artifact_refs: [],
+            }),
+          );
+          let result: Awaited<ReturnType<GovernedAgentAnalysisPort["analyze"]>>;
+          try {
+            result = await governedAnalysis.analyze({
+              lease: execution.lease,
+              test_case: falcon24Case,
+              question: run.question,
+              semantic_context: resolved,
+              provider_dispatch: provider,
+              fence_guard: {
+                async isCurrent(fence) {
+                  if (
+                    fence.run_id !== execution.lease.run_id ||
+                    fence.attempt_id !== execution.lease.attempt_id ||
+                    fence.worker_fence !== execution.lease.worker_fence ||
+                    fence.fence_token !==
+                      `${execution.lease.attempt_id}:${execution.lease.worker_fence}`
+                  ) {
+                    return false;
+                  }
+                  return (await execution.context.heartbeat()).ok;
+                },
               },
-            },
-          });
+            });
+          } catch (error) {
+            value(
+              await emitDisplayEvent({
+                kind: "tool_failed",
+                key: "direct.qa.analysis.failed",
+                call_id: analysisCallId,
+                tool_name: "python.analysis@1.0.0",
+                summary: "受治理 Python 分析未通过。",
+                error_code: "ANALYSIS_EXECUTION_FAILED",
+                output: null,
+                duration_ms: 0,
+                artifact_refs: [],
+              }),
+            );
+            throw error;
+          }
           if (result.accepted_artifact_refs.length === 0) {
             throw new DirectQaAnalysisError("ANALYSIS_ACCEPTED_ARTIFACT_REQUIRED");
           }
@@ -187,7 +218,7 @@ export function createDirectQaAnalysisExecutor(dependencies: {
             await emitDisplayEvent({
               kind: "tool_completed",
               key: "direct.qa.analysis.completed",
-              call_id: `direct-qa-analysis-${execution.lease.attempt_id}`,
+              call_id: analysisCallId,
               tool_name: "python.analysis@1.0.0",
               summary: "数据结论与对应图表已通过独立 Oracle 验收。",
               output: "已提交可复验的数据结论与图表。",
