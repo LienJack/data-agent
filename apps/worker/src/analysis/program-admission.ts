@@ -271,6 +271,10 @@ export async function admitAnalysisSandboxProgramRepair(input: {
   if (!repaired.ok) return repaired;
   if (
     repaired.program.import_profile !== input.previous_program.import_profile ||
+    repaired.program.generated_source_policy !== input.previous_program.generated_source_policy ||
+    repaired.program.operator_registry_digest !== input.previous_program.operator_registry_digest ||
+    canonicalizeJson(repaired.program.operator_obligations) !==
+      canonicalizeJson(input.previous_program.operator_obligations) ||
     repaired.program.runtime_digest !== input.previous_program.runtime_digest ||
     repaired.program.dependency_lock_digest !== input.previous_program.dependency_lock_digest ||
     repaired.program.policy_version !== input.previous_program.policy_version ||

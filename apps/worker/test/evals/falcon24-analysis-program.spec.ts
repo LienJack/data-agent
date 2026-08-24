@@ -105,6 +105,8 @@ describe("Falcon24 analysis program compiler", () => {
           program.semantic_context_package_hash === context.semantic_context_binding.package_hash &&
           program.nodes.length === 1 &&
           program.nodes[0]?.execution_mode === "MODEL_GENERATED" &&
+          program.nodes[0]?.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION" &&
+          (program.nodes[0]?.operator_obligations.length ?? 0) > 0 &&
           program.nodes[0]?.skill_id === "open-python-analysis@1",
       ),
     ).toBe(true);
@@ -116,9 +118,32 @@ describe("Falcon24 analysis program compiler", () => {
       "2023-05-01T00:00:00.000Z",
     ]);
     expect(
-      falcon24AnalysisProgramInternals.method_contracts[
-        "falcon24-inventory-damage-12m"
-      ].join(" "),
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("do not round");
+    expect(
+      programs.map((program) =>
+        program.nodes[0]?.operator_obligations.map(({ operator_id: operatorId }) => operatorId),
+      ),
+    ).toEqual([
+      ["decomposition.product-shapley-exact@1"],
+      ["regression.binomial-logit-wald@1"],
+      [
+        "robust-trend.theil-sen-slope@1",
+        "trend.mann-kendall-original@1",
+        "multiple-testing.bh-fdr@1",
+      ],
+      [
+        "regression.ols-hac@1",
+        "multiple-testing.bh-fdr@1",
+        "multiple-testing.bh-fdr@1",
+        "multiple-testing.bh-fdr@1",
+      ],
+      ["cohort.registration-retention-m0-m6@1", "cohort.registration-retention-m0-m6@1"],
+    ]);
+    expect(
+      Object.values(falcon24AnalysisProgramInternals.method_contracts).flat().join(" "),
+    ).not.toMatch(
+      /(?:all 66 slopes|math\.erf|statsmodels|1-based rank|Newey-West HAC covariance)/u,
+    );
   });
 });

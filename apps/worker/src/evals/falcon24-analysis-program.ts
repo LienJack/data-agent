@@ -6,7 +6,10 @@ import {
 } from "@data-agent/contracts/artifacts";
 import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
 import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
-import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
+import {
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+  type StatisticalOperatorObligation,
+} from "@data-agent/contracts/statistical-operators";
 import { computeAnalysisProgramHash } from "../analysis/default-program.js";
 import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../analysis/skill-catalog.js";
 
@@ -110,40 +113,165 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
   },
 } as const);
 
+const exactBinding = (field: string) => ({
+  result_field: field,
+  operator_field: field,
+  comparison: "EXACT" as const,
+  absolute_tolerance: 0,
+  relative_tolerance: 0,
+});
+
+const resultBinding = (input: {
+  readonly result_collection_path: string;
+  readonly operator_collection_path: string;
+  readonly label_fields: readonly string[];
+  readonly value_fields: readonly string[];
+}) => ({
+  result_output_name: "result",
+  result_collection_path: input.result_collection_path,
+  operator_collection_path: input.operator_collection_path,
+  label_fields: [...input.label_fields],
+  value_bindings: input.value_fields.map(exactBinding),
+  require_exact_label_set: true as const,
+});
+
+const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
+  "falcon24-business-review-18m": [
+    {
+      call_id: "q1_revenue_identity",
+      operator_id: "decomposition.product-shapley-exact@1",
+      result_binding: resultBinding({
+        result_collection_path: "/method_evidence/buyers-frequency-aov-shapley/contributions",
+        operator_collection_path: "/contributions",
+        label_fields: ["label", "factor"],
+        value_fields: ["contribution"],
+      }),
+    },
+  ],
+  "falcon24-delivery-experience-12m": [
+    {
+      call_id: "q2_delivery_low_rating",
+      operator_id: "regression.binomial-logit-wald@1",
+      result_binding: resultBinding({
+        result_collection_path: "/method_evidence/adjusted-binomial-glm/coefficients",
+        operator_collection_path: "/coefficients",
+        label_fields: ["label", "term"],
+        value_fields: ["coefficient", "standard_error", "wald_z", "p_value"],
+      }),
+    },
+  ],
+  "falcon24-inventory-damage-12m": [
+    {
+      call_id: "q3_theil_sen_all_products",
+      operator_id: "robust-trend.theil-sen-slope@1",
+      result_binding: resultBinding({
+        result_collection_path: "/method_evidence/theil-sen-deterioration/theil_sen/series",
+        operator_collection_path: "/series",
+        label_fields: ["label"],
+        value_fields: ["slope"],
+      }),
+    },
+    {
+      call_id: "q3_mann_kendall_all_products",
+      operator_id: "trend.mann-kendall-original@1",
+      result_binding: resultBinding({
+        result_collection_path: "/method_evidence/theil-sen-deterioration/mann_kendall/series",
+        operator_collection_path: "/series",
+        label_fields: ["label"],
+        value_fields: ["p_value", "trend", "rejected"],
+      }),
+    },
+    {
+      call_id: "q3_bh_all_products",
+      operator_id: "multiple-testing.bh-fdr@1",
+      result_binding: resultBinding({
+        result_collection_path: "/method_evidence/benjamini-hochberg-fdr/tests",
+        operator_collection_path: "/tests",
+        label_fields: ["label"],
+        value_fields: ["adjusted_p_value", "rejected"],
+      }),
+    },
+  ],
+  "falcon24-marketing-lag-effect": [
+    {
+      call_id: "q4_hac_all_models",
+      operator_id: "regression.ols-hac@1",
+      result_binding: resultBinding({
+        result_collection_path: "/method_evidence/hac-standard-errors/coefficients",
+        operator_collection_path: "/coefficients",
+        label_fields: ["label", "term"],
+        value_fields: ["coefficient", "standard_error", "statistic", "p_value"],
+      }),
+    },
+    ...(["order_revenue", "new_customers", "order_count"] as const).map((metric) => ({
+      call_id: `q4_bh_${metric}`,
+      operator_id: "multiple-testing.bh-fdr@1" as const,
+      result_binding: resultBinding({
+        result_collection_path: `/method_evidence/multiple-testing-fdr/${metric}/tests`,
+        operator_collection_path: "/tests",
+        label_fields: ["label"],
+        value_fields: ["adjusted_p_value", "rejected"],
+      }),
+    })),
+  ],
+  "falcon24-cohort-retention-m0-m6": [
+    ...(["primary", "sensitivity"] as const).map((mode) => ({
+      call_id: `q5_${mode}_cohorts`,
+      operator_id: "cohort.registration-retention-m0-m6@1" as const,
+      result_binding: resultBinding({
+        result_collection_path: `/method_evidence/cohort-m0-m6/${mode}/cohort_periods`,
+        operator_collection_path: "/cohort_periods",
+        label_fields: ["registration_month", "customer_type", "month_index"],
+        value_fields: [
+          "eligible_customers",
+          "active_customers",
+          "retention_rate",
+          "repeat_customers",
+          "repeat_purchase_rate",
+          "order_count",
+          "revenue",
+          "average_spend",
+          "average_delivery_minutes",
+          "average_rating",
+        ],
+      }),
+    })),
+  ],
+} satisfies Record<Falcon24AgentAnalysisCase["case_id"], readonly StatisticalOperatorObligation[]>);
+
 const FALCON24_METHOD_CONTRACTS = Object.freeze({
   "falcon24-business-review-18m": [
     "Treat order_id as the order grain for revenue, order count, buyers, frequency, and AOV; never sum order_total once per item row.",
     "Use exactly the 18 ordered calendar months 2023-05 through 2024-10 and identify the minimum absolute month-over-month revenue change. Report percent_change as the decimal ratio (current - previous) / previous, not percentage points.",
     "Close revenue = active_buyers * orders_per_buyer * average_order_value for every month.",
-    "For the worst month transition, use exactly six factor inputs B0, B1, F0, F1, A0, A1. For each of all six permutations, start with current = {'B':B0,'F':F0,'A':A0}, replace one factor at a time, and calculate each product inline as current['B'] * current['F'] * current['A']; do not pass the uppercase-key factor dict through **kwargs. Add new_product - previous_product to that factor and average each factor total over six. Set observed_revenue_change = B1*F1*A1 - B0*F0*A0 and require closure_error <= 0.01. Helper definitions and calls must use the same six-argument signature.",
+    "Prepare the worst-month buyer, frequency, and AOV baseline/current factors for the required exact product-Shapley operator. Use its returned contributions and closure evidence; do not implement Shapley permutations in generated Python.",
     "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, allocate each order_total across its item rows in proportion to nonnegative quantity, using equal shares when total quantity is zero. Return exactly the most negative revenue-change member for each of the three dimensions, breaking ties lexicographically.",
   ],
   "falcon24-delivery-experience-12m": [
     "Deduplicate to one row per order_id before delivery summaries or modeling; reject conflicting order-level values.",
     "Compare 2023-11 through 2024-04 with 2024-05 through 2024-10 and use linear interpolation quantiles for p50 and p90.",
-    "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'; fit a binomial-logit GLM on rated orders.",
-    "The GLM design is intercept + delayed + log1p(order_total) + categorical month + product_category + customer_segment, with lexicographically first level as reference; report the delayed coefficient and two-sided Wald p-value, and set adjusted_binomial_glm.controls to include exactly the semantic control identifiers month, log_order_amount, product_category, and customer_segment.",
+    "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'. Prepare the rated-order design for the required binomial-logit/Wald operator: delayed, log1p(order_total), month, product_category, and customer_segment, with lexicographically first categorical levels as references.",
+    "Use the operator's delayed coefficient, p-value, sample-size, rank, convergence, and iteration evidence. Set adjusted_binomial_glm.controls to exactly month, log_order_amount, product_category, and customer_segment; do not implement GLM fitting or Wald statistics in generated Python.",
     "For low-rating scenarios, use the lexicographically first product category per order, rank all category/segment/status groups by low-rating count descending, then rate descending, order count descending, and key ascending; return the first five or all groups when fewer exist.",
     "Write conclusion in Chinese association language, include the exact word 关联, and never use 导致, 证明...影响, 驱动了, or any causal description for the delayed coefficient.",
   ],
   "falcon24-inventory-damage-12m": [
     "Use blinkit_inventory only for the primary damage calculation; blinkit_inventoryNew is sensitivity evidence and must not be combined with primary values.",
-    "For every product, sort the 12 rows by month ascending and compute monthly damage_rate = damaged_stock / stock_received, using zero when stock_received is zero. Compute Theil-Sen on zero-based month positions x=0..11, not timestamp ordinals: collect every (rate[j]-rate[i])/(j-i) for i<j (66 slopes for a complete series), sort them, and take the linearly interpolated p50 (the arithmetic mean of the two middle values for 66 slopes).",
-    "Compute the two-sided Mann-Kendall trend p-value for all products with this exact contract: S is the sum of sign(rate[j]-rate[i]) over every i<j; Var(S) = (n*(n-1)*(2*n+5) - sum_t(t*(t-1)*(2*t+5)))/18 where t are exact-value tie-group sizes; return p=1 when Var(S)<=0 or S=0, otherwise z=(S-1)/sqrt(Var(S)) for S>0 and z=(S+1)/sqrt(Var(S)) for S<0, then p=2*(1-Phi(abs(z))) using Phi(x)=0.5*(1+erf(x/sqrt(2))). Do not use scipy.stats.kendalltau or an asymptotic formula without this continuity and tie correction. Then compute Benjamini-Hochberg q-values before candidate filtering across the full product family: sort (product_id,p) by p ascending then product_id ascending, calculate p*n/rank for 1-based rank, traverse ranks n..1 taking the running minimum capped at 1, and map the resulting q-value back to each product_id.",
+    "For every product, sort the 12 rows by month ascending and compute monthly damage_rate = damaged_stock / stock_received, using zero when stock_received is zero. Prepare zero-based x=0..11 series for the required Theil-Sen operator and ordered series for the required original Mann-Kendall operator.",
+    "Pass every product's Mann-Kendall raw p-value to the required BH-FDR operator before any candidate filtering. Use the three operator results as the only source of slopes, raw p-values, adjusted p-values, and rejection flags; do not reimplement these statistical formulas.",
     "Return full finite floating-point values for damage rates, Theil-Sen slopes, raw p-values, and BH q-values; do not round or format any numeric output before context.write_json.",
     "High sales means total product sales is at least the within-category product-sales p75 using linear interpolation.",
     "Return every product satisfying high sales, positive Theil-Sen slope, and last-3 mean damage rate greater than previous-9 mean; classify PRIORITY iff BH q <= 0.05, otherwise WATCHLIST.",
   ],
   "falcon24-marketing-lag-effect": [
     "Build the complete 79-week calendar from Monday 2023-05-01 through Monday 2024-10-28. Set output.window to exactly {start:'2023-05-01', end_exclusive:'2024-11-01', week_count:79, grain:'WEEK'}; end_exclusive is the governed analysis boundary, not the day after the final Monday. First build one shared business_by_week series for order_revenue, new_customers, and order_count, asserting that duplicate input rows for a week agree. Analyze only distinct (channel,target_audience) tuples observed in the input; do not manufacture a Cartesian product. At that observed group grain, zero-fill only missing marketing measures (impressions, clicks, conversions, campaign_revenue, spend); every group-week must retain the shared business_by_week outcomes rather than replacing them with zero. Then compute funnel totals, CTR, conversion rate, and ROAS.",
-    "For each business outcome in the exact order order_revenue, new_customers, order_count and each lag L from 0 through 4, regress response business_outcome[L:79] on predictor spend[0:79-L] with intercept, absolute week index L..78, sin(2*pi*absolute_week/52), and cos(2*pi*absolute_week/52). Initialize coefficient, raw-p, and BH-q result maps for all three outcomes before any loop. Set the top-level controls array to exactly ['trend','seasonality'] to bind the fitted linear-trend and sine/cosine seasonal controls to their semantic evidence identifiers.",
-    "Compute the spend coefficient two-sided p-value using Newey-West HAC covariance with Bartlett weights, maxlags=4, and finite-sample factor n/(n-k), where k=5 design columns. Use the normal z distribution after HAC correction, not a Student t distribution. A statsmodels implementation must use cov_type='HAC', cov_kwds={'maxlags':4,'use_correction':True}, and use_t=False; report the spend coefficient and its resulting two-sided normal p-value.",
-    "For each business outcome independently, select the lag with the smallest HAC p-value, breaking ties toward the smaller lag; apply Benjamini-Hochberg correction to selected p-values across all channel/audience groups for that same outcome.",
-    "Classify each business outcome as GROWTH_ASSOCIATION iff coefficient > 0 and q <= 0.05; classify it as SPEND_WITHOUT_IMPROVEMENT iff the OLS slope of spend over week is positive and that outcome is not GROWTH_ASSOCIATION; otherwise NO_CLEAR_ASSOCIATION. Classify the channel/audience group as GROWTH_ASSOCIATION iff any of its three outcomes has that finding, otherwise SPEND_WITHOUT_IMPROVEMENT iff spend slope is positive, otherwise NO_CLEAR_ASSOCIATION. Use association language only.",
+    "For each business outcome in the exact order order_revenue, new_customers, order_count and each lag L from 0 through 4, prepare one OLS-HAC model: response business_outcome[L:79], predictors spend[0:79-L], absolute week index L..78, and annual sine/cosine controls. Also include one spend-over-week model per observed channel/audience group. Set controls to exactly ['trend','seasonality'].",
+    "Call the required OLS-HAC operator once for the complete model batch with maxlags=4, Bartlett kernel, finite-sample correction enabled, and normal inference. Select the smallest spend-term p-value per group/outcome with smaller-lag tie break.",
+    "For each business outcome separately, pass the selected full channel/audience p-value family to its required BH-FDR call. Classify from operator coefficients and adjusted p-values; use the spend-over-week operator coefficient for spend-growth status. Do not implement OLS, HAC covariance, p-values, or BH adjustment in generated Python, and use association language only.",
   ],
   "falcon24-cohort-retention-m0-m6": [
-    "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order.",
-    "At each point compute retention = active_customers/cohort_size, repeat purchase = repeat_customers/cohort_size, average spend = revenue/active_customers or null when inactive, plus delivery and rating means.",
+    "Prepare unique customer registrations, deduplicated order events, and the observation end month for the required cohort operator. Execute q5_primary_cohorts with pre_registration_policy='hold_primary', then q5_sensitivity_cohorts with pre_registration_policy='exclude_sensitivity'; do not implement cohort rates in generated Python.",
+    "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order, copying retention, repeat purchase, spend, delivery, rating, and data-quality evidence from the operator outputs.",
     "Report the frozen anomaly audit exactly and set primary_reliable=false because pre-registration orders materially invalidate the primary cohort interpretation.",
     "Sensitivity excludes customers whose first order precedes registration, retains customers with no orders, and sets conclusion_changed=true iff any cohort/segment/month primary retention differs from valid_active_customers/valid_timeline_customers by at least 0.05.",
     "The terminal conclusion must disclose that the primary analysis is unreliable/HOLD and must not silently promote sensitivity results to primary truth.",
@@ -178,6 +306,7 @@ export async function createFalcon24AnalysisProgram(input: {
   );
   const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("open-python-analysis@1");
   const resultContract = FALCON24_RESULT_CONTRACTS[input.test_case.case_id];
+  const operatorObligations = FALCON24_OPERATOR_OBLIGATIONS[input.test_case.case_id];
   const material: Omit<AnalysisProgramPayload, "program_hash"> = {
     artifact_type: "AnalysisProgram",
     protocol_version: "analysis-program@1.0.0",
@@ -203,8 +332,8 @@ export async function createFalcon24AnalysisProgram(input: {
           claim_strength: resultContract.claim_strength,
         },
         execution_mode: "MODEL_GENERATED",
-        generated_source_policy: "OPEN_ANALYSIS",
-        operator_obligations: [],
+        generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+        operator_obligations: operatorObligations,
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -230,6 +359,7 @@ export async function createFalcon24AnalysisProgram(input: {
 
 export const falcon24AnalysisProgramInternals = Object.freeze({
   method_contracts: FALCON24_METHOD_CONTRACTS,
+  operator_obligations: FALCON24_OPERATOR_OBLIGATIONS,
   windows: FALCON24_WINDOWS,
   result_contracts: FALCON24_RESULT_CONTRACTS,
 });

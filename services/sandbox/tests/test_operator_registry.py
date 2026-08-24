@@ -207,11 +207,14 @@ def test_registry_fails_closed_on_authority_and_binding_mutations(
 def test_policy_requires_literal_exact_calls_and_dataframe_only_imports() -> None:
     required = (obligation(),)
     valid = (
+        "import pandas as pd\n"
         "def main(context):\n"
+        "    frame = pd.DataFrame([{'label': 'a', 'p_value': 0.01}])\n"
+        "    tests = frame.sort_values('label').to_dict(orient='records')\n"
         "    result = context.operators.call(\n"
         "        'multiple-testing.bh-fdr@1',\n"
         "        call_id='bh_family',\n"
-        "        inputs={'tests': [{'label': 'a', 'p_value': 0.01}]},\n"
+        "        inputs={'tests': tests},\n"
         "    )\n"
         "    context.write_json('result', {'method_evidence': {'bh': result['tests']}})\n"
     )
@@ -226,7 +229,7 @@ def test_policy_requires_literal_exact_calls_and_dataframe_only_imports() -> Non
         valid.replace("'multiple-testing.bh-fdr@1'", "operator_id"),
         valid.replace("call_id='bh_family'", "call_id=call_id"),
         valid.replace(
-            "inputs={'tests': [{'label': 'a', 'p_value': 0.01}]},",
+            "inputs={'tests': tests},",
             "unexpected=True,",
         ),
         valid.replace("context.operators.call", "ops.call").replace(
@@ -241,6 +244,16 @@ def test_policy_requires_literal_exact_calls_and_dataframe_only_imports() -> Non
         valid.replace(
             "context.write_json('result', {'method_evidence': {'bh': result['tests']}})",
             "return result",
+        ),
+        (
+            "import pandas as pd\n"
+            "def main(context):\n"
+            "    frame = pd.DataFrame([{'label': 'a', 'p_value': 0.01}])\n"
+            "    tests = frame.to_dict(orient='records')\n"
+            "    adjusted = "
+            "[{'label': row['label'], 'adjusted_p_value': row['p_value']} "
+            "for row in tests]\n"
+            "    context.write_json('result', {'method_evidence': {'bh': adjusted}})\n"
         ),
     ]
     for source in invalid_sources:

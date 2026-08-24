@@ -3,6 +3,8 @@ import {
   type AnalysisProgramPayload,
   type ArtifactReference,
   buildSemanticContextAuthoritySnapshot,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+  type StatisticalOperatorObligation,
 } from "@data-agent/contracts";
 import { compileSemanticContextPackage } from "@data-agent/semantic/runtime-context";
 import { describe, expect, it } from "vitest";
@@ -16,6 +18,26 @@ const id = (suffix: number) => `30000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
+const shapleyObligation = {
+  call_id: "q1_revenue_identity",
+  operator_id: "decomposition.product-shapley-exact@1",
+  result_binding: {
+    result_output_name: "result",
+    result_collection_path: "/method_evidence/buyers-frequency-aov-shapley/contributions",
+    operator_collection_path: "/contributions",
+    label_fields: ["label", "factor"],
+    value_bindings: [
+      {
+        result_field: "contribution",
+        operator_field: "contribution",
+        comparison: "EXACT",
+        absolute_tolerance: 0,
+        relative_tolerance: 0,
+      },
+    ],
+    require_exact_label_set: true,
+  },
+} satisfies StatisticalOperatorObligation;
 const analysisContract = {
   case_id: "falcon24-business-review-18m",
   statistical_method_contract: ["Compute monthly KPIs at order grain."],
@@ -145,7 +167,7 @@ async function fixture() {
     brief_ref: reference("ResearchBrief", 10, hash("9")) as never,
     analysis_context_hash: hash("a"),
     semantic_context_package_hash: contextPackage.package_hash,
-    operator_registry_digest: hash("c"),
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     nodes: [
       {
         node_id: "falcon24-question-1",
@@ -175,8 +197,8 @@ async function fixture() {
           ],
         },
         execution_mode: "MODEL_GENERATED",
-        generated_source_policy: "OPEN_ANALYSIS",
-        operator_obligations: [],
+        generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+        operator_obligations: [shapleyObligation],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -219,6 +241,24 @@ async function fixture() {
 }
 
 describe("DeepSeek governed Python source", () => {
+  it("accepts only the exact versioned JSON response envelope", () => {
+    expect(() => deepSeekAnalysisProgramSourceInternals.modelOutput("not json")).toThrow();
+    expect(() =>
+      deepSeekAnalysisProgramSourceInternals.modelOutput(
+        JSON.stringify({
+          schema_version: "analysis-python-source@1.0.0",
+          python_source: "def main(context):\n    pass\n",
+          explanation: "extra ungoverned field",
+        }),
+      ),
+    ).toThrow();
+    expect(
+      deepSeekAnalysisProgramSourceInternals.modelOutput(
+        '```json\n{"schema_version":"analysis-python-source@1.0.0","python_source":"def main(context):\\n    pass\\n"}\n```',
+      ).python_source,
+    ).toContain("def main(context)");
+  });
+
   it("replays committed source before loading context or calling DeepSeek", async () => {
     const base = await fixture();
     const existing =
@@ -361,8 +401,18 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("literal constant assignments");
     expect(serialized).toContain("Verify helper call arity");
     expect(serialized).toContain("buyers-frequency-aov-shapley");
+    expect(serialized).toContain(STATISTICAL_OPERATOR_REGISTRY_DIGEST);
+    expect(serialized).toContain("decomposition.product-shapley-exact@1");
+    expect(serialized).toContain("q1_revenue_identity");
+    expect(serialized).toContain("context.operators.call");
+    expect(serialized).toContain("/method_evidence/buyers-frequency-aov-shapley/contributions");
     const bounded = JSON.parse((requests[0] as { prompt: string }).prompt) as {
       method_evidence_contract?: { exact_key_set?: boolean; required_keys?: string[] };
+      operator_orchestration_contract?: {
+        source_policy?: string;
+        required_calls_order?: Array<{ call_id?: string; operator_id?: string }>;
+      };
+      runtime_policy?: { allowed_imports?: string[] };
     };
     expect(bounded.method_evidence_contract?.exact_key_set).toBe(true);
     expect(bounded.method_evidence_contract?.required_keys).toEqual([
@@ -372,6 +422,23 @@ describe("DeepSeek governed Python source", () => {
       "revenue-worst-mom",
       "segment-driver-decomposition",
     ]);
+    expect(bounded.operator_orchestration_contract?.source_policy).toBe(
+      "GOVERNED_OPERATOR_ORCHESTRATION",
+    );
+    expect(bounded.operator_orchestration_contract?.required_calls_order).toEqual([
+      expect.objectContaining({
+        call_id: "q1_revenue_identity",
+        operator_id: "decomposition.product-shapley-exact@1",
+      }),
+    ]);
+    expect(bounded.runtime_policy?.allowed_imports).toEqual([
+      "json",
+      "math",
+      "statistics",
+      "numpy",
+      "pandas",
+    ]);
+    expect(bounded.runtime_policy?.allowed_imports).not.toContain("statsmodels");
     expect(serialized).not.toContain("def main(sdk)");
     expect(serialized).not.toMatch(/postgres(?:ql)?:\/\//iu);
     expect(serialized).not.toMatch(/password|api[_-]?key|raw_rows|row_values/iu);
@@ -550,9 +617,9 @@ describe("DeepSeek governed Python source", () => {
     const mannKendallRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
     };
-    expect(mannKendallRepair.repair?.required_correction).toContain("continuity correction");
-    expect(mannKendallRepair.repair?.required_correction).toContain("math.erf");
-    expect(mannKendallRepair.repair?.required_correction).toContain("scipy.stats.kendalltau");
+    expect(mannKendallRepair.repair?.required_correction).toContain("q3_mann_kendall_all_products");
+    expect(mannKendallRepair.repair?.required_correction).toContain("Do not calculate");
+    expect(mannKendallRepair.repair?.required_correction).not.toContain("math.erf");
 
     await source.repair?.({
       lease: base.lease,
@@ -567,8 +634,8 @@ describe("DeepSeek governed Python source", () => {
       repair?: { required_correction?: string };
     };
     expect(theilSenRepair.repair?.required_correction).toContain("x=0..11");
-    expect(theilSenRepair.repair?.required_correction).toContain("all 66 slopes");
-    expect(theilSenRepair.repair?.required_correction).toContain("ordinal days");
+    expect(theilSenRepair.repair?.required_correction).toContain("q3_theil_sen_all_products");
+    expect(theilSenRepair.repair?.required_correction).not.toContain("66 slopes");
 
     await source.repair?.({
       lease: base.lease,
@@ -583,8 +650,8 @@ describe("DeepSeek governed Python source", () => {
       repair?: { required_correction?: string };
     };
     expect(bhRepair.repair?.required_correction).toContain("every product");
-    expect(bhRepair.repair?.required_correction).toContain("1-based rank");
-    expect(bhRepair.repair?.required_correction).toContain("reverse monotonicity");
+    expect(bhRepair.repair?.required_correction).toContain("q3_bh_all_products");
+    expect(bhRepair.repair?.required_correction).not.toContain("1-based rank");
 
     await source.repair?.({
       lease: base.lease,
@@ -634,17 +701,28 @@ describe("DeepSeek governed Python source", () => {
       repair?: { required_correction?: string };
     };
     expect(marketingStatisticsRepair.repair?.required_correction).toContain(
-      "shared business-by-week",
+      "shared 79-week business series",
     );
-    expect(marketingStatisticsRepair.repair?.required_correction).toContain(
-      "distinct (channel,target_audience) tuples",
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain("q4_hac_all_models");
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain("q4_bh_*");
+    expect(marketingStatisticsRepair.repair?.required_correction).not.toContain("statsmodels");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
+      previous_source_text: "def main(context):\n    pass\n",
+      failure_code: "PYTHON_OPERATOR_REQUIRED_CALL_MISSING",
+      attempt: 1,
+    });
+    const operatorRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(operatorRepair.repair?.required_correction).toContain(
+      "Restore every required literal context.operators.call",
     );
-    expect(marketingStatisticsRepair.repair?.required_correction).toContain("spend[0:79-L]");
-    expect(marketingStatisticsRepair.repair?.required_correction).toContain(
-      "maps for all three outcomes",
-    );
-    expect(marketingStatisticsRepair.repair?.required_correction).toContain("use_correction':True");
-    expect(marketingStatisticsRepair.repair?.required_correction).toContain("normal z p-value");
+    expect(operatorRepair.repair?.required_correction).toContain("return a value from main");
 
     await source.repair?.({
       lease: base.lease,

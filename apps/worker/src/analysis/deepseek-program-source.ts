@@ -8,6 +8,10 @@ import {
   type SemanticContextPackage,
   verifySemanticContextPackage,
 } from "@data-agent/contracts/context";
+import {
+  STATISTICAL_OPERATOR_MANIFEST,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+} from "@data-agent/contracts/statistical-operators";
 import { z } from "zod";
 import type { AnalysisProgramSourcePort } from "./executor.js";
 import { type AnalysisSkillCatalog, DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
@@ -208,13 +212,77 @@ function modelOutput(outputText: string): z.infer<typeof modelResponseSchema> {
   return modelResponseSchema.parse(JSON.parse(withoutFence));
 }
 
-function allowedImports(profile: "CORE_ANALYSIS" | "ML_DIAGNOSTIC" | "CAUSAL_L5") {
+function allowedImports(
+  profile: "CORE_ANALYSIS" | "ML_DIAGNOSTIC" | "CAUSAL_L5",
+  generatedSourcePolicy: AnalysisProgramNode["generated_source_policy"],
+) {
   const common = ["json", "math", "statistics", "numpy", "pandas"];
+  if (generatedSourcePolicy === "GOVERNED_OPERATOR_ORCHESTRATION") return common;
   if (profile === "CORE_ANALYSIS") return common;
   if (profile === "ML_DIAGNOSTIC") {
     return [...common, "scipy", "sklearn", "statsmodels"];
   }
   return [...common, "scipy", "sklearn", "statsmodels", "dowhy", "networkx"];
+}
+
+function operatorCards(node: AnalysisProgramNode, operatorRegistryDigest: string) {
+  const governed = node.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION";
+  if (governed !== node.operator_obligations.length > 0) {
+    throw new TypeError("ANALYSIS_PYTHON_OPERATOR_POLICY_MISMATCH");
+  }
+  if (!governed) return null;
+  if (operatorRegistryDigest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST) {
+    throw new TypeError("ANALYSIS_PYTHON_OPERATOR_REGISTRY_MISMATCH");
+  }
+  return {
+    registry_digest: operatorRegistryDigest,
+    source_policy: node.generated_source_policy,
+    required_calls_order: node.operator_obligations.map((obligation) => {
+      const descriptor = STATISTICAL_OPERATOR_MANIFEST.operators.find(
+        ({ operator_id: operatorId }) => operatorId === obligation.operator_id,
+      );
+      if (!descriptor) throw new TypeError("ANALYSIS_PYTHON_OPERATOR_NOT_REGISTERED");
+      const requiredParameters = descriptor.parameters
+        .filter((parameter) => parameter.required)
+        .map(({ name }) => name);
+      const inputShape = Object.fromEntries(
+        descriptor.inputs.map(({ name, required_fields: requiredFields }) => [
+          name,
+          `<prepare ${name} records with fields: ${requiredFields.join(", ")}>`,
+        ]),
+      );
+      const parameterShape = Object.fromEntries(
+        descriptor.parameters.map((parameter) => [
+          parameter.name,
+          "default" in parameter ? parameter.default : `<required ${parameter.kind}>`,
+        ]),
+      );
+      return {
+        call_id: obligation.call_id,
+        operator_id: obligation.operator_id,
+        purpose_zh: descriptor.description_zh,
+        literal_call_contract: `context.operators.call(${JSON.stringify(obligation.operator_id)}, call_id=${JSON.stringify(obligation.call_id)}, inputs=${JSON.stringify(inputShape)}, parameters=${JSON.stringify(parameterShape)})`,
+        inputs: descriptor.inputs.map((operatorInput) => ({
+          name: operatorInput.name,
+          kind: operatorInput.kind,
+          required_fields: operatorInput.required_fields,
+        })),
+        required_parameters: requiredParameters,
+        parameters: descriptor.parameters,
+        output: descriptor.outputs,
+        applicability_checks: descriptor.applicability_checks,
+        limitations: descriptor.limitations,
+        result_binding: obligation.result_binding,
+      };
+    }),
+    rules: [
+      "Call every required operator exactly once and in required_calls_order. The operator_id positional argument and call_id keyword must be the exact string literals shown; never alias, inspect, wrap, loop over, or dynamically choose context.operators.call.",
+      "Generated Python owns input preparation, pandas transformations, business classification, output assembly, and explanation. It must not reimplement any governed operator's statistical formula or import a second implementation.",
+      "Capture each returned JSON object. Copy the bound operator collection, labels, and values without rounding or mutation to the declared result_binding path; the sandbox compares the exact label set and bound values after execution.",
+      "Operator results may be indexed or joined to derive user-facing fields, but every governed statistic in the final answer must originate from the returned operator object.",
+      "Write every declared output exactly once and let main return None implicitly or explicitly. Returning an analysis value from main is forbidden.",
+    ],
+  } as const;
 }
 
 function scrubFailureCode(code: string): string {
@@ -229,6 +297,7 @@ async function boundedPrompt(input: {
   readonly inputSchemas: readonly AnalysisPythonInputSchemaProjection[];
   readonly analysisContract: AnalysisPythonContractProjection;
   readonly importProfile: "CORE_ANALYSIS" | "ML_DIAGNOSTIC" | "CAUSAL_L5";
+  readonly operatorRegistryDigest: string;
   readonly repair: null | { readonly source: string; readonly failure_code: string };
 }) {
   const semanticContext = await verifySemanticContextPackage(input.semanticContextPackage);
@@ -242,6 +311,9 @@ async function boundedPrompt(input: {
   const requiredMethodIds = z
     .object({ required_methods: z.array(z.string().trim().min(1).max(128)) })
     .parse(input.node.parameters).required_methods;
+  const governedOperators = operatorCards(input.node, input.operatorRegistryDigest);
+  const operatorCorrection =
+    "Preserve operator_orchestration_contract exactly. Restore every required literal context.operators.call in the declared order, prepare its declared inputs and parameters, retain its complete bound output collection at result_binding, and do not add calls, change IDs, handwrite the governed statistic, or return a value from main.";
   const repair = input.repair
     ? {
         ...input.repair,
@@ -255,35 +327,38 @@ async function boundedPrompt(input: {
                 : input.repair.failure_code === "FALCON24_ORACLE_CAUSAL_LANGUAGE_REJECTED"
                   ? "Rewrite conclusion in Chinese association language. It must contain the exact word 关联 and must not contain 导致, 证明...影响, or 驱动了. Preserve the computed statistics and keep claim_strength as ASSOCIATION_ONLY."
                   : input.repair.failure_code === "FALCON24_Q3_RAW_P_MISMATCH"
-                    ? "Replace the Mann-Kendall p-value implementation with the exact declared contract. Compute S from every i<j sign difference, subtract exact-value tie groups from Var(S), apply continuity correction (S-1 for positive S and S+1 for negative S), and calculate the two-sided normal p-value with math.erf. Return p=1 when S=0 or variance<=0. Do not use scipy.stats.kendalltau. Recompute BH q-values from these corrected raw p-values across every product before filtering candidates."
+                    ? "Use the returned p_value from call_id q3_mann_kendall_all_products for every product, then pass the complete unfiltered product family to q3_bh_all_products. Do not calculate Mann-Kendall or adjusted p-values in generated Python."
                     : input.repair.failure_code === "FALCON24_Q3_THEIL_SEN_MISMATCH"
-                      ? "Replace the Theil-Sen implementation with the exact declared month-position contract. Sort each product's 12 rows by month, assign x=0..11, calculate all 66 slopes (rate[j]-rate[i])/(j-i), sort them, and use the arithmetic mean of the two middle slopes. Do not use timestamps, ordinal days, elapsed seconds, scipy.stats.theilslopes, or a fitted linear-regression slope. Preserve full floating-point precision."
+                      ? "Prepare each product's ordered monthly damage-rate series with x=0..11 and use the returned slope from call_id q3_theil_sen_all_products. Do not calculate pairwise slopes or substitute another trend implementation."
                       : input.repair.failure_code === "FALCON24_Q3_BH_Q_MISMATCH"
-                        ? "Replace the BH implementation with the exact declared full-family algorithm. Include every product before candidate filtering, sort pairs by raw p-value then product_id, use 1-based rank to compute p*n/rank, traverse from rank n down to 1 with a running minimum capped at 1, and map q-values back by product_id. Do not adjust only returned candidates, do not use rank zero, and do not omit the reverse monotonicity pass."
+                        ? "Call q3_bh_all_products with every product label and the raw p_value returned by q3_mann_kendall_all_products before filtering. Use adjusted_p_value from the BH result; do not calculate q-values in generated Python."
                         : input.repair.failure_code === "FALCON24_Q4_WEEK_WINDOW_INVALID"
                           ? "Set output.window to exactly start='2023-05-01', end_exclusive='2024-11-01', week_count=79, and grain='WEEK'. Keep the modeled weekly observations as the 79 Mondays from 2023-05-01 through 2024-10-28; do not derive end_exclusive as the day after the last Monday. Preserve the remaining calculations."
                           : input.repair.failure_code === "FALCON24_Q4_CONTROL_MISSING"
                             ? "Keep the fitted regression designs unchanged and set the top-level output controls array to exactly ['trend','seasonality']. These are the required semantic evidence identifiers for the linear week trend and sine/cosine annual controls; do not replace them with formulas or expanded column names."
                             : input.repair.failure_code.startsWith("FALCON24_Q4_")
-                              ? "Rebuild the Q4 statistics exactly from the declared contract. Analyze only distinct (channel,target_audience) tuples observed in the input, never their Cartesian product. Create one shared business-by-week map for order_revenue, new_customers, and order_count and copy those values into every observed group-week; zero-fill only missing marketing measures. For lag L align response business[L:79] with predictor spend[0:79-L] and use absolute week indices L..78 in the trend and seasonal controls. Initialize coefficient, raw-p, and BH-q maps for all three outcomes before looping. Fit Newey-West HAC with Bartlett maxlags=4, finite-sample correction n/(n-5), and a two-sided normal z p-value (statsmodels: cov_type='HAC', cov_kwds={'maxlags':4,'use_correction':True}, use_t=False). Select minimum p with smaller-lag tie break, then apply BH separately per outcome across every observed group before classification. Preserve the exact output window, controls, metric order, and association-only language."
-                              : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
-                                ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
-                                : input.repair.failure_code === "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
-                                  ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
-                                  : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-                                    ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
-                                    : input.repair.failure_code ===
-                                        "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
-                                      ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-                                      : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                                        ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
-                                        : input.repair.failure_code ===
-                                            "PYTHON_POLICY_SOURCE_SYNTAX"
-                                          ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                              ? "Preserve the observed channel/audience groups, shared 79-week business series, lag alignment, absolute-week trend, seasonal predictors, metric order, window, controls, and association-only language. Put all lag and spend-trend models in q4_hac_all_models; use its returned spend coefficients and p-values. Select one lag per group/outcome, then call the three declared q4_bh_* families separately. Do not fit OLS/HAC or calculate p/q-values in generated Python."
+                              : input.repair.failure_code.startsWith("PYTHON_OPERATOR_")
+                                ? operatorCorrection
+                                : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
+                                  ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
+                                  : input.repair.failure_code ===
+                                      "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
+                                    ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
+                                    : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+                                      ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
+                                      : input.repair.failure_code ===
+                                          "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+                                        ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+                                        : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                                          ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
                                           : input.repair.failure_code ===
-                                              "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                                            ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                                            : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+                                              "PYTHON_POLICY_SOURCE_SYNTAX"
+                                            ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                                            : input.repair.failure_code ===
+                                                "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                                              ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                                              : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
@@ -322,6 +397,7 @@ async function boundedPrompt(input: {
       exact_key_set: true,
       value_contract: "Each required key maps to a non-empty JSON evidence object.",
     },
+    operator_orchestration_contract: governedOperators,
     input_schemas: input.inputSchemas.map((schema) => inputSchemaProjectionSchema.parse(schema)),
     runtime_policy: {
       network: "DENIED",
@@ -329,7 +405,7 @@ async function boundedPrompt(input: {
       subprocess: "DENIED",
       dynamic_code: "DENIED",
       random_seed: "HOST_INJECTED",
-      allowed_imports: allowedImports(input.importProfile),
+      allowed_imports: allowedImports(input.importProfile, input.node.generated_source_policy),
       import_contract:
         "runtime_policy.allowed_imports is the complete import-root allowlist. Do not import typing, dataclasses, itertools, pathlib, collections, or any other root absent from that array; use plain Python 3.12 annotations or no annotations.",
       sdk: {
@@ -355,7 +431,7 @@ async function boundedPrompt(input: {
       source_completeness:
         "Return complete executable Python 3.12. Never emit ???, ellipses, TODO markers, pseudocode, or an unfinished pass branch. Verify helper call arity against its definition before responding.",
       return_contract:
-        "Read only declared input names and write every declared output exactly once through the provided sdk.",
+        "Read only declared input names, write every declared output exactly once through the provided sdk, and return None from main.",
     },
     repair,
   } as const;
@@ -490,6 +566,7 @@ export function createDeepSeekAnalysisProgramSource(input: {
         inputSchemas: context.input_schemas,
         analysisContract: context.analysis_contract,
         importProfile: descriptor.python_import_profile,
+        operatorRegistryDigest: options.analysis_program.operator_registry_digest,
         repair: options.repair,
       }),
       max_output_tokens: 8_192,
@@ -539,6 +616,7 @@ export const deepSeekAnalysisProgramSourceInternals = Object.freeze({
   provider: DEEPSEEK_PROVIDER,
   model_id: DEEPSEEK_PYTHON_MODEL,
   response_schema_version: RESPONSE_SCHEMA_VERSION,
+  modelOutput,
   sha256SourceText,
   scrubFailureCode,
 });
