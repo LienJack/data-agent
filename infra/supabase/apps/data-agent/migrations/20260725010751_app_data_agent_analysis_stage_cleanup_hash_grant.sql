@@ -1,0 +1,33 @@
+-- analysis_stage_cleanup_hash_grant_migration_checksum: sha256:8695d4d7a9002f5d0ccf11a27352c0e9e80659f89df35723a0aec403c47967d6
+begin;
+
+do $bootstrap$
+begin
+  if pg_catalog.current_setting('server_version_num')::integer not between 170000 and 179999 then
+    raise exception using errcode='0A000',message='ANALYSIS_STAGE_CLEANUP_HASH_GRANT_POSTGRES_VERSION_UNSUPPORTED';
+  end if;
+  if session_user<>'postgres' or current_user<>'postgres' then
+    raise exception using errcode='42501',message='ANALYSIS_STAGE_CLEANUP_HASH_GRANT_EXECUTOR_UNSAFE';
+  end if;
+  if not exists(select 1 from platform.migration_ledger
+    where owner_kind='app' and app_id='00000000-0000-4000-8000-00000000da01'::uuid
+      and migration_version='20260725010750_app_data_agent_analysis_stage_cleanup_lock_grants')
+  then raise exception using errcode='P0001',message='ANALYSIS_STAGE_CLEANUP_HASH_GRANT_BASELINE_10750_MISSING'; end if;
+end
+$bootstrap$;
+
+set local lock_timeout='2000ms';
+set local statement_timeout='300000ms';
+set local idle_in_transaction_session_timeout='60000ms';
+select platform.acquire_migration_lock('app','00000000-0000-4000-8000-00000000da01'::uuid);
+grant usage on schema extensions to data_agent_u6_cleanup_owner;
+do $postconditions$
+begin
+  if not pg_catalog.has_schema_privilege('data_agent_u6_cleanup_owner','extensions','USAGE')
+  then raise exception using errcode='P0001',message='ANALYSIS_STAGE_CLEANUP_HASH_GRANT_MISSING'; end if;
+end
+$postconditions$;
+select platform.assert_migration_checksum('app','00000000-0000-4000-8000-00000000da01'::uuid,
+  '20260725010751_app_data_agent_analysis_stage_cleanup_hash_grant',
+  'sha256:8695d4d7a9002f5d0ccf11a27352c0e9e80659f89df35723a0aec403c47967d6');
+commit;

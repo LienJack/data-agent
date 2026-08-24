@@ -16,9 +16,10 @@ M5 当前已有固定模型调用、静态准入、OpenSandbox 双 Sandbox、治
 文件工程”仍会失败。此前加入的强制输出 Cell、`open/json.dump` 提示和统一连续失败预算是待删除实验，不是完成证据。剩余工作必须先
 建立 Result Publisher 边界，再进入真实 DeepSeek/Falcon 冷暖运行；缺少凭据或 Strict 能力认证时保持 HOLD。
 
-RQ009 Governed Result Loop 已完成 19/20 条可重复故障门禁；逐条证据见 `rq009-acceptance.md`。剩余第 16 条的 Sandbox/egress 清零已通过，
-但跨 run 过期 stage 的 U6 cleanup authority 尚未实现，因此 M5 仍保持 HOLD。DeepSeek Strict 0/100、Falcon24 0/30 和生产隔离也继续
-保持外部硬 HOLD，不允许 fixture 或 fallback 冒充通过。
+RQ009 Governed Result Loop 的 20/20 条可重复故障门禁已闭合；逐条证据见 `rq009-acceptance.md`。10748–10751 建立独立 U6 cleanup
+owner、范围 RLS、EVIDENCE capability、有界批次、行锁、不可变 receipt 与 Worker 启动/周期入口；PostgreSQL 17 故障注入证明孤儿 closure
+被删除、已提交 stage 保留、精确重放不漂移、冲突幂等键 fail-closed。DeepSeek Strict 0/100、Falcon24 0/30 和生产隔离仍继续保持
+外部硬 HOLD，不允许 fixture 或 fallback 冒充通过。
 
 仓库级 `pnpm verify:release` 已在 2026-08-25 通过并返回 `GO / RELEASE_READY`；它证明构建、迁移清单和发布合同完整，不覆盖上述 RQ009、
 Provider 与生产隔离门禁。本轮三类 OpenSandbox profile 实机均为 sandbox/egress `0→2→0`，测试 server 已停止，未被当前架构引用的

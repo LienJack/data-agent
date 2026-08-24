@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { pathToFileURL } from "node:url";
 import {
+  type AppScope,
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type RunQueuePort,
@@ -38,7 +39,10 @@ import {
   createPostgresProviderInvocationSmokeJob,
   providerInvocationSmokeClaimSchema,
 } from "@data-agent/platform/providers";
-import { createPostgresResearchAuthority } from "@data-agent/platform/research";
+import {
+  createPostgresResearchAuthority,
+  type PostgresResearchAuthority,
+} from "@data-agent/platform/research";
 import {
   createPostgresEffectiveConfigResolver,
   createPostgresRunEventStore,
@@ -152,6 +156,27 @@ function writeLog(record: WorkerCycleLogRecord): void {
       console.error(output);
       return;
   }
+}
+
+export async function runAnalysisStageCleanupCycle(
+  input: Readonly<{
+    authority: Pick<PostgresResearchAuthority, "sweepExpiredAnalysisResultStages">;
+    capability_input: unknown;
+    scope: AppScope;
+    principal_id: string;
+    create_id?: () => string;
+    requested_limit?: number;
+  }>,
+) {
+  const cleanupId = (input.create_id ?? randomUUID)();
+  return input.authority.sweepExpiredAnalysisResultStages(input.capability_input, {
+    schema_version: "analysis-result-stage-cleanup@1.0.0",
+    scope: input.scope,
+    principal_id: input.principal_id,
+    cleanup_id: cleanupId,
+    idempotency_key: `analysis-stage-cleanup:${cleanupId}`,
+    requested_limit: input.requested_limit ?? 100,
+  });
 }
 
 export function projectWorkerHealthResponse(
@@ -299,6 +324,7 @@ export async function runWorkerProcess(
     logger: (record) => console.error(JSON.stringify(record)),
   });
   let analysisSandboxSweepTimer: NodeJS.Timeout | null = null;
+  let analysisStageSweepTimer: NodeJS.Timeout | null = null;
 
   try {
     if (analysisSandboxMaintenance) {
@@ -367,6 +393,42 @@ export async function runWorkerProcess(
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
     });
+    const analysisStageCleanupCapability = config.research_authority_capability_ids
+      ? {
+          app_capability: appCapability,
+          authority_capability_id: config.research_authority_capability_ids.EVIDENCE,
+        }
+      : null;
+    if (analysisStageCleanupCapability) {
+      const runStageSweep = async (reasonCode: string) => {
+        const result = await runAnalysisStageCleanupCycle({
+          authority: researchAuthority,
+          capability_input: analysisStageCleanupCapability,
+          scope: appCapability.scope,
+          principal_id: config.principal_id,
+        });
+        if (!result.ok) throw new RunWorkerStartupError(result.error_code);
+        writeLog({
+          level: "info",
+          event_name: "analysis_stage_expiry_sweep",
+          reason_code: reasonCode,
+          deleted: result.receipt.deleted_count,
+          cleanup_id: result.receipt.cleanup_id,
+          receipt_hash: result.receipt.receipt_hash,
+        });
+      };
+      await runStageSweep("ANALYSIS_STAGE_STARTUP_SWEEP_COMPLETED");
+      analysisStageSweepTimer = setInterval(() => {
+        void runStageSweep("ANALYSIS_STAGE_PERIODIC_SWEEP_COMPLETED").catch(() => {
+          writeLog({
+            level: "error",
+            event_name: "analysis_stage_expiry_sweep_failed",
+            reason_code: "ANALYSIS_STAGE_CLEANUP_FAILED",
+          });
+        });
+      }, 60_000);
+      analysisStageSweepTimer.unref();
+    }
     const sensitiveArtifacts = createSensitiveExecutionArtifactAuthority({
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
@@ -789,6 +851,7 @@ export async function runWorkerProcess(
     ]);
   } finally {
     if (analysisSandboxSweepTimer) clearInterval(analysisSandboxSweepTimer);
+    if (analysisStageSweepTimer) clearInterval(analysisStageSweepTimer);
     releasePersistenceDiagnostics();
     health.initialized = false;
     controller.abort();

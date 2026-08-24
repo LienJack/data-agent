@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactReferenceSchema } from "../artifacts/envelope.js";
 import {
   appScopeSchema,
   contentHashSchema,
@@ -7,9 +8,8 @@ import {
   sha256ContentHash,
   timestampSchema,
 } from "../common/index.js";
-import { artifactReferenceSchema } from "../artifacts/envelope.js";
-import { governedOperatorResultRefSchema } from "./governed-operator-result.js";
 import { analysisOperatorFinalizationResultSchema } from "./analysis-tools.js";
+import { governedOperatorResultRefSchema } from "./governed-operator-result.js";
 
 const analysisStageProviderInvocationRefSchema = z.strictObject({
   resource_id: immutableIdSchema,
@@ -28,15 +28,19 @@ export const analysisResultStageExecutionSnapshotSchema = z.strictObject({
     operator_sandbox_id: z.string().min(1).max(256),
     secure_access: z.boolean(),
   }),
-  cells: z.array(z.strictObject({
-    cell_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u),
-    source_sha256: contentHashSchema,
-    source_ref: artifactReferenceSchema.nullable(),
-    execution_id: z.string().max(256).nullable(),
-    execution_count: z.number().int().nonnegative().nullable(),
-    elapsed_ms: z.number().int().nonnegative(),
-    status: z.enum(["SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT"]),
-  })).max(32),
+  cells: z
+    .array(
+      z.strictObject({
+        cell_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u),
+        source_sha256: contentHashSchema,
+        source_ref: artifactReferenceSchema.nullable(),
+        execution_id: z.string().max(256).nullable(),
+        execution_count: z.number().int().nonnegative().nullable(),
+        elapsed_ms: z.number().int().nonnegative(),
+        status: z.enum(["SUCCEEDED", "FAILED", "CANCELLED", "TIMED_OUT"]),
+      }),
+    )
+    .max(32),
   provider_invocation_refs: z.array(analysisStageProviderInvocationRefSchema).max(32),
   started_at: timestampSchema,
   finished_at: timestampSchema,
@@ -48,7 +52,11 @@ export const analysisResultStageArtifactSchema = z.strictObject({
   artifact_kind: z.enum(["RESULT", "TABLE", "CHART"]),
   media_type: z.literal("application/json"),
   content_sha256: contentHashSchema,
-  bytes: z.number().int().nonnegative().max(64 * 1024 * 1024),
+  bytes: z
+    .number()
+    .int()
+    .nonnegative()
+    .max(64 * 1024 * 1024),
 });
 
 const analysisResultStageMaterialSchema = z
@@ -67,10 +75,14 @@ const analysisResultStageMaterialSchema = z
     contract_hash: contentHashSchema,
     manifest_hash: contentHashSchema,
     closure_hash: contentHashSchema,
-    analytical_value_hashes: z.array(z.strictObject({
-      symbol_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u),
-      value_hash: contentHashSchema,
-    })).max(65),
+    analytical_value_hashes: z
+      .array(
+        z.strictObject({
+          symbol_name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u),
+          value_hash: contentHashSchema,
+        }),
+      )
+      .max(65),
     governed_operator_results: z.array(governedOperatorResultRefSchema).max(64),
     operator_finalization: analysisOperatorFinalizationResultSchema,
     execution_snapshot: analysisResultStageExecutionSnapshotSchema,
@@ -78,9 +90,15 @@ const analysisResultStageMaterialSchema = z
     expires_at: z.string().datetime({ offset: true }),
   })
   .superRefine((value, context) => {
-    const resultCount = value.artifacts.filter(({ artifact_kind }) => artifact_kind === "RESULT").length;
-    const tableCount = value.artifacts.filter(({ artifact_kind }) => artifact_kind === "TABLE").length;
-    const chartCount = value.artifacts.filter(({ artifact_kind }) => artifact_kind === "CHART").length;
+    const resultCount = value.artifacts.filter(
+      ({ artifact_kind }) => artifact_kind === "RESULT",
+    ).length;
+    const tableCount = value.artifacts.filter(
+      ({ artifact_kind }) => artifact_kind === "TABLE",
+    ).length;
+    const chartCount = value.artifacts.filter(
+      ({ artifact_kind }) => artifact_kind === "CHART",
+    ).length;
     if (resultCount !== 1 || tableCount < 1 || chartCount < 1) {
       context.addIssue({
         code: "custom",
@@ -88,7 +106,10 @@ const analysisResultStageMaterialSchema = z
         message: "A staged analysis requires one RESULT and at least one TABLE and CHART.",
       });
     }
-    if (new Set(value.artifacts.map(({ artifact_name }) => artifact_name)).size !== value.artifacts.length) {
+    if (
+      new Set(value.artifacts.map(({ artifact_name }) => artifact_name)).size !==
+      value.artifacts.length
+    ) {
       context.addIssue({
         code: "custom",
         path: ["artifacts"],
@@ -128,9 +149,57 @@ export const analysisResultStageSchema = z.strictObject({
   expires_at: z.string().datetime({ offset: true }),
 });
 
+export const analysisResultStageCleanupCommandSchema = z.strictObject({
+  schema_version: z.literal("analysis-result-stage-cleanup@1.0.0"),
+  scope: appScopeSchema,
+  principal_id: immutableIdSchema,
+  cleanup_id: immutableIdSchema,
+  idempotency_key: z.string().min(8).max(256),
+  requested_limit: z.number().int().min(1).max(100),
+});
+
+export const analysisResultStageCleanupReferenceSchema = z.strictObject({
+  run_id: immutableIdSchema,
+  node_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u),
+  attempt_id: immutableIdSchema,
+  context_generation: z.number().int().positive(),
+  stage_id: immutableIdSchema,
+  stage_hash: contentHashSchema,
+  expires_at: timestampSchema,
+});
+
+export const analysisResultStageCleanupReceiptSchema = z
+  .strictObject({
+    schema_version: z.literal("analysis-result-stage-cleanup-receipt@1.0.0"),
+    scope: appScopeSchema,
+    principal_id: immutableIdSchema,
+    cleanup_id: immutableIdSchema,
+    idempotency_key: z.string().min(8).max(256),
+    requested_limit: z.number().int().min(1).max(100),
+    cutoff_at: timestampSchema,
+    deleted_count: z.number().int().nonnegative().max(100),
+    deleted_stages: z.array(analysisResultStageCleanupReferenceSchema).max(100),
+    receipt_hash: contentHashSchema,
+  })
+  .superRefine((value, context) => {
+    if (value.deleted_count !== value.deleted_stages.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["deleted_count"],
+        message: "Stage cleanup count must equal the deleted-stage reference closure.",
+      });
+    }
+  });
+
 export type AnalysisResultStageArtifact = z.infer<typeof analysisResultStageArtifactSchema>;
 export type AnalysisResultStageCommand = z.infer<typeof analysisResultStageCommandSchema>;
 export type AnalysisResultStage = z.infer<typeof analysisResultStageSchema>;
+export type AnalysisResultStageCleanupCommand = z.infer<
+  typeof analysisResultStageCleanupCommandSchema
+>;
+export type AnalysisResultStageCleanupReceipt = z.infer<
+  typeof analysisResultStageCleanupReceiptSchema
+>;
 export type AnalysisResultStageExecutionSnapshot = z.infer<
   typeof analysisResultStageExecutionSnapshotSchema
 >;

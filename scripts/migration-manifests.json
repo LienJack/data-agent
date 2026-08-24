@@ -1906,6 +1906,70 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10748",
+      "migration_name": "20260725010748_app_data_agent_analysis_stage_cleanup_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10748",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-stage-cleanup-authority.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_STAGE_CLEANUP_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_stage_cleanup_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10749",
+      "migration_name": "20260725010749_app_data_agent_analysis_stage_cleanup_scope_grant.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10749",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-scope-grant.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_STAGE_CLEANUP_SCOPE_GRANT_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_stage_cleanup_scope_grant_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10750",
+      "migration_name": "20260725010750_app_data_agent_analysis_stage_cleanup_lock_grants.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10750",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-lock-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_STAGE_CLEANUP_LOCK_GRANTS_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_stage_cleanup_lock_grants_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10751",
+      "migration_name": "20260725010751_app_data_agent_analysis_stage_cleanup_hash_grant.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10751",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-hash-grant.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_STAGE_CLEANUP_HASH_GRANT_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_stage_cleanup_hash_grant_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

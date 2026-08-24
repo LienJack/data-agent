@@ -3,8 +3,8 @@ import {
   buildAnalysisPythonSourceReceipt,
   buildAnalysisResultStageCommand,
   buildGovernedOperatorResultCommit,
-  type U6DbResult,
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+  type U6DbResult,
 } from "@data-agent/contracts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import { describe, expect, it } from "vitest";
@@ -277,16 +277,21 @@ describe("PostgreSQL Research Authority Adapter", () => {
     const resultContent = new TextEncoder().encode("{}");
     const database = scriptedPool((text) => {
       if (text.includes("commit_governed_operator_result")) {
-        return resultRow({ ok: false, error_code: "GOVERNED_OPERATOR_REQUEST_CONTENT_HASH_MISMATCH" });
+        return resultRow({
+          ok: false,
+          error_code: "GOVERNED_OPERATOR_REQUEST_CONTENT_HASH_MISMATCH",
+        });
       }
       if (text.includes("read_governed_operator_result")) {
         return {
-          rows: [{
-            result: { ok: true },
-            result_content: resultContent,
-            request_content: requestContent,
-            receipt_payload: receiptPayload,
-          }],
+          rows: [
+            {
+              result: { ok: true },
+              result_content: resultContent,
+              request_content: requestContent,
+              receipt_payload: receiptPayload,
+            },
+          ],
           rowCount: 1,
         };
       }
@@ -915,9 +920,7 @@ describe("PostgreSQL Research Authority Adapter", () => {
     );
 
     expect(result).toEqual({ ok: true, created: true, receipt });
-    const rpc = database.calls.find((call) =>
-      call.text.includes("commit_analysis_python_source"),
-    );
+    const rpc = database.calls.find((call) => call.text.includes("commit_analysis_python_source"));
     expect(rpc?.values[0]).toMatchObject({
       protocol_version: "u6-db-command@1.0.0",
       authority_capability_id: ids.authority,
@@ -1034,8 +1037,64 @@ describe("PostgreSQL Research Authority Adapter", () => {
       command: { stage_id: command.stage_id },
       journal_command: { event: { event_type: "PUBLISH_STAGE_CREATED" } },
     });
-    expect(rpc?.values[1]).toEqual(contents.map((content) => Buffer.from(content).toString("base64")));
+    expect(rpc?.values[1]).toEqual(
+      contents.map((content) => Buffer.from(content).toString("base64")),
+    );
     expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
   });
 
+  it("通过独立 cleanup owner RPC 有界回收过期 stage 并返回不可变 receipt", async () => {
+    const auth = capabilities();
+    const command = {
+      schema_version: "analysis-result-stage-cleanup@1.0.0" as const,
+      scope,
+      principal_id: ids.analyst,
+      cleanup_id: ids.operation,
+      idempotency_key: "analysis-stage-cleanup:test",
+      requested_limit: 100,
+    };
+    const receipt = {
+      schema_version: "analysis-result-stage-cleanup-receipt@1.0.0" as const,
+      scope,
+      principal_id: ids.analyst,
+      cleanup_id: ids.operation,
+      idempotency_key: command.idempotency_key,
+      requested_limit: command.requested_limit,
+      cutoff_at: "2026-08-25T00:00:00.000Z",
+      deleted_count: 1,
+      deleted_stages: [
+        {
+          run_id: ids.run,
+          node_id: "question-1",
+          attempt_id: ids.terminal,
+          context_generation: 1,
+          stage_id: ids.grant,
+          stage_hash: hash("a"),
+          expires_at: "2026-08-24T00:00:00.000Z",
+        },
+      ],
+      receipt_hash: hash("b"),
+    };
+    const database = scriptedPool((text) => {
+      if (!text.includes("cleanup_expired_analysis_result_stages")) return undefined;
+      return resultRow({ ok: true, receipt });
+    });
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await expect(
+      authority.sweepExpiredAnalysisResultStages(auth.analyst, command),
+    ).resolves.toEqual({ ok: true, receipt });
+    const rpc = database.calls.find((call) =>
+      call.text.includes("cleanup_expired_analysis_result_stages"),
+    );
+    expect(rpc?.values[0]).toEqual({
+      protocol_version: "u6-db-command@1.0.0",
+      authority_capability_id: ids.authority,
+      command,
+    });
+    expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
+  });
 });

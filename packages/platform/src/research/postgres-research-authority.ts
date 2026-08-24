@@ -1,30 +1,30 @@
 import {
-  type AnalysisPythonSourceCommitCommand,
-  type AnalysisPythonSourceCommitResult,
-  type AnalysisContextModelCellSourceReadCommand,
-  type AnalysisContextModelCellSourceReadResult,
-  analysisContextModelCellSourceReadCommandSchema,
-  analysisContextModelCellSourceReadResultSchema,
-  type AnalysisResultStageCommand,
-  type AnalysisResultStage,
-  analysisResultStageCommandSchema,
-  analysisResultStageSchema,
-  analysisAgentFinalResponseSchema,
   type AnalysisAuthorityCommit,
   type AnalysisAuthorityCommitReceipt,
-  analysisAuthorityCommitSchema,
-  analysisAuthorityCommitReceiptSchema,
   type AnalysisContextJournalAppendCommand,
   type AnalysisContextJournalEntry,
+  type AnalysisContextModelCellSourceReadCommand,
+  type AnalysisContextModelCellSourceReadResult,
+  type AnalysisPythonSourceCommitCommand,
+  type AnalysisPythonSourceCommitResult,
+  type AnalysisResultStage,
+  type AnalysisResultStageCleanupCommand,
+  type AnalysisResultStageCleanupReceipt,
+  type AnalysisResultStageCommand,
+  type AppScope,
+  analysisAgentFinalResponseSchema,
+  analysisAuthorityCommitReceiptSchema,
+  analysisAuthorityCommitSchema,
   analysisContextJournalAppendCommandSchema,
   analysisContextJournalEntrySchema,
-  type GovernedOperatorResultCommit,
-  type GovernedOperatorResultRef,
-  governedOperatorResultCommitSchema,
-  governedOperatorResultRefSchema,
+  analysisContextModelCellSourceReadCommandSchema,
+  analysisContextModelCellSourceReadResultSchema,
   analysisPythonSourceCommitCommandSchema,
   analysisPythonSourceCommitResultSchema,
-  type AppScope,
+  analysisResultStageCleanupCommandSchema,
+  analysisResultStageCleanupReceiptSchema,
+  analysisResultStageCommandSchema,
+  analysisResultStageSchema,
   appScopeSchema,
   artifactReferenceSchema,
   type CurrentReadinessPort,
@@ -46,6 +46,10 @@ import {
   expireReportReadGrantInputSchema,
   frontierAdvanceInputSchema,
   frontierInitializeInputSchema,
+  type GovernedOperatorResultCommit,
+  type GovernedOperatorResultRef,
+  governedOperatorResultCommitSchema,
+  governedOperatorResultRefSchema,
   type HistoricalL2ResearchDocument,
   type HistoricalVersionedL2ResearchDocument,
   immutableIdSchema,
@@ -178,31 +182,48 @@ const analysisResultStageRpcResultSchema = z.union([
   }),
   z.strictObject({ ok: z.literal(false), error_code: analysisLifecycleErrorCodeSchema }),
 ]);
+const analysisResultStageCleanupRpcResultSchema = z.union([
+  z.strictObject({ ok: z.literal(true), receipt: analysisResultStageCleanupReceiptSchema }),
+  z.strictObject({ ok: z.literal(false), error_code: analysisLifecycleErrorCodeSchema }),
+]);
 const analysisResultStageReadRpcResultSchema = z.union([
   z.strictObject({
     ok: z.literal(true),
     stage_command: analysisResultStageCommandSchema,
-    oracle_record: z.nullable(z.strictObject({
-      receipt_payload: z.record(z.string(), z.unknown()),
-      receipt_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-    })),
-    explanation_record: z.nullable(z.strictObject({
-      explanation: analysisAgentFinalResponseSchema,
-      explanation_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-      provider_invocation_ref: z.strictObject({
-        resource_id: immutableIdSchema,
-        resource_revision: z.literal(1),
-        resource_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    oracle_record: z.nullable(
+      z.strictObject({
+        receipt_payload: z.record(z.string(), z.unknown()),
+        receipt_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
       }),
-    })),
-    artifacts: z.array(z.strictObject({
-      artifact_name: z.string().min(1).max(128),
-      artifact_kind: z.enum(["RESULT", "TABLE", "CHART"]),
-      media_type: z.literal("application/json"),
-      content_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
-      bytes: z.number().int().nonnegative().max(64 * 1024 * 1024),
-      content_base64: z.string(),
-    })).min(3).max(66),
+    ),
+    explanation_record: z.nullable(
+      z.strictObject({
+        explanation: analysisAgentFinalResponseSchema,
+        explanation_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+        provider_invocation_ref: z.strictObject({
+          resource_id: immutableIdSchema,
+          resource_revision: z.literal(1),
+          resource_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+        }),
+      }),
+    ),
+    artifacts: z
+      .array(
+        z.strictObject({
+          artifact_name: z.string().min(1).max(128),
+          artifact_kind: z.enum(["RESULT", "TABLE", "CHART"]),
+          media_type: z.literal("application/json"),
+          content_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+          bytes: z
+            .number()
+            .int()
+            .nonnegative()
+            .max(64 * 1024 * 1024),
+          content_base64: z.string(),
+        }),
+      )
+      .min(3)
+      .max(66),
   }),
   z.strictObject({ ok: z.literal(false), error_code: analysisLifecycleErrorCodeSchema }),
 ]);
@@ -335,10 +356,23 @@ type ResearchAuthorityPorts = ResearchArtifactAuthorityPort &
         }
       | { readonly ok: false; readonly error_code: string }
     >;
+    sweepExpiredAnalysisResultStages(
+      capabilityInput: unknown,
+      command: AnalysisResultStageCleanupCommand,
+    ): Promise<
+      | { readonly ok: true; readonly receipt: AnalysisResultStageCleanupReceipt }
+      | { readonly ok: false; readonly error_code: string }
+    >;
     readAnalysisResultStage(
       capabilityInput: unknown,
       input: {
-        readonly lease: { readonly scope: AppScope; readonly run_id: string; readonly principal_id: string; readonly attempt_id: string; readonly worker_fence: number };
+        readonly lease: {
+          readonly scope: AppScope;
+          readonly run_id: string;
+          readonly principal_id: string;
+          readonly attempt_id: string;
+          readonly worker_fence: number;
+        };
         readonly node_id: string;
         readonly context_generation: number;
         readonly stage: AnalysisResultStage;
@@ -988,7 +1022,9 @@ export function createPostgresResearchAuthority(
             "select app_data_agent.append_analysis_context_journal($1::jsonb) as result",
             [envelope],
           );
-          const parsed = analysisContextJournalResultSchema.safeParse(databaseResult.rows[0]?.result);
+          const parsed = analysisContextJournalResultSchema.safeParse(
+            databaseResult.rows[0]?.result,
+          );
           if (!parsed.success) {
             throw new PersistenceBoundaryError(
               "RESEARCH_DATABASE_CONTRACT_INVALID",
@@ -1000,7 +1036,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Journal failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Journal failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async commitGovernedOperatorResult(
@@ -1022,7 +1059,8 @@ export function createPostgresResearchAuthority(
         resultContent.byteLength === 0 ||
         resultContent.byteLength > 16 * 1024 * 1024 ||
         journal.data.event.event_type !== "OPERATOR_RESULT_COMMITTED" ||
-        JSON.stringify(journal.data.event.governed_result) !== JSON.stringify(command.data.result) ||
+        JSON.stringify(journal.data.event.governed_result) !==
+          JSON.stringify(command.data.result) ||
         command.data.principal_id !== journal.data.principal_id
       ) {
         return { ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
@@ -1078,7 +1116,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Result failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Result failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async readGovernedOperatorResult(capabilityInput, resultInput) {
@@ -1147,7 +1186,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Result read failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Result read failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async readAnalysisContextJournal(capabilityInput, readInput) {
@@ -1201,15 +1241,11 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Journal read failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Journal read failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
-    async stageAnalysisResult(
-      capabilityInput,
-      commandInput,
-      journalCommandInput,
-      contents,
-    ) {
+    async stageAnalysisResult(capabilityInput, commandInput, journalCommandInput, contents) {
       const capabilityBundle = capabilityInputSchema.safeParse(capabilityInput);
       const command = analysisResultStageCommandSchema.safeParse(commandInput);
       const journal = analysisContextJournalAppendCommandSchema.safeParse(journalCommandInput);
@@ -1268,6 +1304,63 @@ export function createPostgresResearchAuthority(
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
       if (failure.ok) throw new ResearchAuthorityTransportError("Stage failure mapped to success.");
+      return { ok: false as const, error_code: failure.error.code };
+    },
+    async sweepExpiredAnalysisResultStages(capabilityInput, commandInput) {
+      const capabilityBundle = capabilityInputSchema.safeParse(capabilityInput);
+      const command = analysisResultStageCleanupCommandSchema.safeParse(commandInput);
+      if (!capabilityBundle.success || !command.success) {
+        return { ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
+      }
+      const envelope = {
+        protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
+        authority_capability_id: capabilityBundle.data.authority_capability_id,
+        command: command.data,
+      } as const;
+      const transaction = await withAppTransaction(
+        options.pool,
+        options.authorizer,
+        capabilityBundle.data.app_capability,
+        {
+          access: "WRITE",
+          allowed_roles: ["OWNER", "ANALYST"],
+          map_database_error: databaseFailure,
+          operation_name: "research_authority.cleanup_expired_analysis_result_stages",
+          correlation_id: command.data.cleanup_id,
+        },
+        async ({ capability, client }) => {
+          if (
+            command.data.scope.app_id !== capability.scope.app_id ||
+            command.data.scope.tenant_id !== capability.scope.tenant_id ||
+            command.data.scope.environment !== capability.scope.environment ||
+            command.data.principal_id !== capability.principal
+          ) {
+            throw new PersistenceBoundaryError(
+              "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+              "Analysis Result Stage cleanup 与事务内 Scope/Principal 不一致。",
+            );
+          }
+          const databaseResult = await client.query<JsonResultRow>(
+            "select app_data_agent.cleanup_expired_analysis_result_stages($1::jsonb) as result",
+            [envelope],
+          );
+          const parsed = analysisResultStageCleanupRpcResultSchema.safeParse(
+            databaseResult.rows[0]?.result,
+          );
+          if (!parsed.success) {
+            throw new PersistenceBoundaryError(
+              "RESEARCH_DATABASE_CONTRACT_INVALID",
+              "Analysis Result Stage cleanup RPC 返回无效。",
+            );
+          }
+          return parsed.data;
+        },
+      );
+      if (transaction.ok) return transaction.value;
+      const failure = boundaryFailureToU6<never>(transaction.error);
+      if (failure.ok) {
+        throw new ResearchAuthorityTransportError("Stage cleanup failure mapped to success.");
+      }
       return { ok: false as const, error_code: failure.error.code };
     },
     async readAnalysisResultStage(capabilityInput, input) {
@@ -1338,10 +1431,12 @@ export function createPostgresResearchAuthority(
             explanation_record: parsed.data.explanation_record
               ? {
                   explanation: parsed.data.explanation_record.explanation,
-                  explanation_hash: parsed.data.explanation_record.explanation_hash as `sha256:${string}`,
+                  explanation_hash: parsed.data.explanation_record
+                    .explanation_hash as `sha256:${string}`,
                   provider_invocation_ref: {
                     ...parsed.data.explanation_record.provider_invocation_ref,
-                    resource_hash: parsed.data.explanation_record.provider_invocation_ref.resource_hash as `sha256:${string}`,
+                    resource_hash: parsed.data.explanation_record.provider_invocation_ref
+                      .resource_hash as `sha256:${string}`,
                   },
                 }
               : null,
@@ -1355,7 +1450,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Stage read failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Stage read failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async recordAnalysisStageOracle(capabilityInput, commandInput, journalCommandInput) {
@@ -1414,7 +1510,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Oracle record failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Oracle record failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async recordAnalysisStageExplanation(capabilityInput, commandInput, journalCommandInput) {
@@ -1473,7 +1570,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Explanation record failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Explanation record failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async commitAnalysisAuthority(capabilityInput, commandInput, journalCommandInput) {
@@ -1532,7 +1630,8 @@ export function createPostgresResearchAuthority(
       );
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
-      if (failure.ok) throw new ResearchAuthorityTransportError("Authority commit failure mapped to success.");
+      if (failure.ok)
+        throw new ResearchAuthorityTransportError("Authority commit failure mapped to success.");
       return { ok: false as const, error_code: failure.error.code };
     },
     async commitAnalysisPythonSource(capabilityInput, commandInput, ciphertext) {
@@ -1640,7 +1739,9 @@ export function createPostgresResearchAuthority(
       if (transaction.ok) return transaction.value;
       const failure = boundaryFailureToU6<never>(transaction.error);
       if (failure.ok) {
-        throw new ResearchAuthorityTransportError("Model Cell Source read failure mapped to success.");
+        throw new ResearchAuthorityTransportError(
+          "Model Cell Source read failure mapped to success.",
+        );
       }
       return { ok: false as const, error_code: failure.error.code };
     },

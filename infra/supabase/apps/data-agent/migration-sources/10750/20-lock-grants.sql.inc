@@ -1,0 +1,6 @@
+grant update on table app_data_agent.analysis_result_stages to data_agent_u6_cleanup_owner;
+grant select on table app_data_agent.analysis_authority_commits to data_agent_u6_cleanup_owner;
+
+create policy analysis_authority_commits_cleanup_read on app_data_agent.analysis_authority_commits
+for select to data_agent_u6_cleanup_owner
+using(platform.backend_context_matches(app_id,tenant_id,environment,true));

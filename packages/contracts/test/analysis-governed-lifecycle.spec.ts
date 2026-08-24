@@ -3,6 +3,8 @@ import { sha256ContentHash } from "../src/common/index.js";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "../src/generated/statistical-operators.js";
 import {
   analysisResultStageArtifactSchema,
+  analysisResultStageCleanupCommandSchema,
+  analysisResultStageCleanupReceiptSchema,
   assertAnalysisContextJournalTransition,
   buildAnalysisAuthorityCommit,
   buildAnalysisContextJournalAppend,
@@ -219,6 +221,69 @@ describe("governed analysis lifecycle contracts", () => {
     await expect(
       verifyAnalysisResultStageCommand({ ...command, closure_hash: hash("0") }),
     ).rejects.toThrow();
+  });
+
+  it("bounds an idempotent expired-stage cleanup batch and closes its deleted references", () => {
+    const command = analysisResultStageCleanupCommandSchema.parse({
+      schema_version: "analysis-result-stage-cleanup@1.0.0",
+      scope,
+      principal_id: id(9),
+      cleanup_id: id(40),
+      idempotency_key: "analysis-stage-cleanup:test",
+      requested_limit: 100,
+    });
+    expect(command.requested_limit).toBe(100);
+    expect(() =>
+      analysisResultStageCleanupCommandSchema.parse({ ...command, requested_limit: 101 }),
+    ).toThrow();
+    expect(
+      analysisResultStageCleanupReceiptSchema.parse({
+        schema_version: "analysis-result-stage-cleanup-receipt@1.0.0",
+        scope,
+        principal_id: id(9),
+        cleanup_id: id(40),
+        idempotency_key: command.idempotency_key,
+        requested_limit: command.requested_limit,
+        cutoff_at: "2026-08-25T00:00:00.000Z",
+        deleted_count: 1,
+        deleted_stages: [
+          {
+            run_id: runId,
+            node_id: "question-1",
+            attempt_id: attemptId,
+            context_generation: 1,
+            stage_id: id(41),
+            stage_hash: hash("a"),
+            expires_at: "2026-08-24T00:00:00.000Z",
+          },
+        ],
+        receipt_hash: hash("b"),
+      }).deleted_count,
+    ).toBe(1);
+    expect(() =>
+      analysisResultStageCleanupReceiptSchema.parse({
+        schema_version: "analysis-result-stage-cleanup-receipt@1.0.0",
+        scope,
+        principal_id: id(9),
+        cleanup_id: id(40),
+        idempotency_key: command.idempotency_key,
+        requested_limit: command.requested_limit,
+        cutoff_at: "2026-08-25T00:00:00.000Z",
+        deleted_count: 0,
+        deleted_stages: [
+          {
+            run_id: runId,
+            node_id: "question-1",
+            attempt_id: attemptId,
+            context_generation: 1,
+            stage_id: id(41),
+            stage_hash: hash("a"),
+            expires_at: "2026-08-24T00:00:00.000Z",
+          },
+        ],
+        receipt_hash: hash("b"),
+      }),
+    ).toThrow();
   });
 
   it("binds verified stage, Oracle, explanation, outputs, receipt and public event atomically", async () => {

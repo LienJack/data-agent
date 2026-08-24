@@ -2,7 +2,7 @@
 
 基线：RQ009 固定方案、OpenSandbox `180554b146dceec254a5b98318c4c6fad056ff6b`、PostgreSQL 17、
 `deepseek/deepseek-v4-flash`。本账本只把可重复执行的测试、实际迁移或实机探针记为通过；缺少 Provider 凭据、生产隔离或
-生命周期清理实现时保持 HOLD，不用 mock 代替。
+生产 Provider 或隔离证明缺失时保持 HOLD，不用 mock 代替。
 
 ## 20 条故障注入
 
@@ -23,14 +23,18 @@
 | 13 | stale worker fence 不可写 | `assert_analysis_lifecycle_fence` 锁定 active attempt/outbox fence；迁移实装 | PASS |
 | 14 | 最终事务只能 all-old/all-new | migration 10747 单事务写 artifact/current/receipt/outbox，并绑定 stage/operator/oracle/explanation | PASS |
 | 15 | Stage 后拒绝 Python/operator/finalize | runtime freeze test 覆盖 Cell、operator 和 finalizer | PASS |
-| 16 | Sandbox/egress 清零；过期 orphan stage 回收 | 三 profile 实机均 `0→2→0`；Sandbox startup/periodic sweeper 已有。数据库 stage TTL 回收器尚未实现 | **HOLD** |
+| 16 | Sandbox/egress 清零；过期 orphan stage 回收 | 三 profile 实机均 `0→2→0`；10748–10751 cleanup owner + Worker startup/periodic sweep；PostgreSQL 故障注入 PASS | PASS |
 | 17 | `pids=32` 失败，128 在三个 profile 通过 | `opensandbox-analysis-attestation.json` 固定失败与三个实机 profile 峰值 | PASS（功能）；生产隔离另行 HOLD |
 | 18 | operator `16 MiB+1`、closure artifact `64 MiB+1` 拒绝 | bridge 与 stage contract 边界测试 | PASS |
 | 19 | `/workspace/outputs` 写入/发布路径退役 | publish contract、runtime extraction 与 `sandbox:analysis:unique` | PASS |
 | 20 | result/table/chart/operator receipt 同一 closure | stage hash 含三类 artifact、governed refs、operator finalization；10747 再交叉校验 | PASS |
 
-RQ009 当前结论：`19 PASS / 1 HOLD`。唯一未闭合项是跨 run 的过期 stage TTL 清理权威；不能通过放宽 immutable/RLS 或由普通
-Worker 直接 `DELETE` 来伪造通过。应复用 U6 cleanup batch authority，为每个 app/environment 执行有界、可审计、可重放的 stage 清理。
+RQ009 当前结论：`20 PASS / 0 HOLD`。Stage cleanup 由 `data_agent_u6_cleanup_owner` 的窄 security-definer RPC 执行：EVIDENCE capability
+和 backend scope 双重校验、每批最多 100 条、`FOR UPDATE SKIP LOCKED`、已提交 stage 排除、子表先删、不可变 receipt、范围级串行与幂等冲突拒绝。
+普通 Worker 只有 RPC EXECUTE，没有 stage 表权限；cleanup owner 的 UPDATE 仅供行锁，RLS `WITH CHECK false` 与删除专用 trigger 禁止实际更新。
+
+PostgreSQL 17 故障注入结果：`deleted_count=1`、`replay_same_receipt=true`、冲突返回
+`ANALYSIS_RESULT_STAGE_CLEANUP_IDEMPOTENCY_CONFLICT`、`committed_stage_preserved=true`，测试事务最终 `ROLLBACK`。
 
 ## 运行门禁
 
@@ -38,8 +42,8 @@ Worker 直接 `DELETE` 来伪造通过。应复用 U6 cleanup batch authority，
 - `uv run pytest tests/operators/test_cell_policy.py -q`：protected symbol AST policy。
 - `pnpm sandbox:analysis:unique`：唯一 OpenSandbox Cell Python runtime，PostgreSQL SQL Sandbox 保留。
 - `pnpm exec tsx scripts/verify-opensandbox-analysis-attestation.ts`：镜像、lock、operator registry、三 profile 计数。
-- `pnpm exec tsx scripts/render-migration.ts 10743 --verify` 至 `10747 --verify`：迁移内容寻址。
-- PostgreSQL 17 实际 `pnpm dev:migrate`：10743–10747 已应用。
+- `pnpm exec tsx scripts/render-migration.ts 10743 --verify` 至 `10751 --verify`：迁移内容寻址。
+- PostgreSQL 17 实际 `pnpm dev:migrate`：10743–10751 已应用。
 - `pnpm verify:release`：`GO / RELEASE_READY`；仅代表仓库发布合同通过，不覆盖下列外部硬门禁。
 - 收尾资源检查：三个 profile 的 sandbox/egress 均归零，本轮 OpenSandbox server 已停止；无引用的 M0 探针镜像已删除。
 

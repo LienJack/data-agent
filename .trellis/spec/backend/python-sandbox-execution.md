@@ -96,6 +96,7 @@ ANALYZE
 - Context Journal append-only，按 `seq + prev_entry_hash + entry_hash` 串联并绑定 context generation、worker fence、source/result/stage refs 和 runtime/policy/template/registry 版本。
 - 恢复创建新的 `context_generation`，严格按原序重放已提交的 `MODEL_CELL_COMMITTED` 与 `SERVER_BINDING_COMMITTED`；Binding 从权威 result artifact 取字节，禁止重跑已提交算子。
 - `PUBLISH_STAGED` 使用 PostgreSQL durable immutable stage，保存 closure/artifact/component hashes、Publisher receipt、TTL 与 fence。Stage 之后拒绝 model cell/operator/bind/extractor，立即 interrupt/delete Python Context；Oracle 与 Explanation 只读取 stage。
+- 过期且未进入 authority commit 的 stage 只能由 `data_agent_u6_cleanup_owner` 的窄 RPC 有界清理；必须校验 EVIDENCE capability/backend scope，使用范围锁与 `FOR UPDATE SKIP LOCKED`，先删子记录并提交不可变、可重放 cleanup receipt。Worker 启动及每 60 秒调用一次，每批最多 100 条；已提交 stage 永不进入候选集。
 - Publisher 再提取受控符号，规范化后必须与宿主治理结果的 `result_sha256` 一致。AST protected-prefix 策略是纵深防御，双哈希是 fail-closed 权威门禁。
 - 资源起点：Agent 1 vCPU/2 GiB（ML/CAUSAL 2 vCPU/4 GiB），Operator 2 vCPU/2 GiB（ML/CAUSAL 4 GiB），`pids_limit` 128/256，全部 BLAS threads=1，Cell 30s，Operator 60–120s，result 16 MiB，closure 64 MiB，stdout/stderr 4/16 KiB。
 - 每次 Run 逻辑 Sandbox 必须 `before=0、peak<=2、after=0`；cleanup 失败不得伪装成功，TTL sweeper 只清孤儿，不替代当次清理证明。

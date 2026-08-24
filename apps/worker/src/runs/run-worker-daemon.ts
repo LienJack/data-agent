@@ -114,6 +114,9 @@ export type WorkerCycleLogRecord = Readonly<{
   examined?: number;
   killed?: number;
   residual?: number;
+  deleted?: number;
+  cleanup_id?: string;
+  receipt_hash?: string;
 }>;
 
 export type WorkerCycleLogger = (record: WorkerCycleLogRecord) => void;
