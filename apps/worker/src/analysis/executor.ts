@@ -144,8 +144,20 @@ export interface AnalysisExecutorDependencies {
   readonly sandbox_authorization: string;
   readonly fence_guard: AnalysisFenceGuard;
   readonly references: AnalysisReferenceFactory;
+  readonly diagnostics?: (event: {
+    readonly event_name: "analysis_oracle_rejected";
+    readonly run_id: string;
+    readonly node_id: string;
+    readonly attempt: 0 | 1;
+    readonly failure_code: string;
+  }) => void;
   readonly catalog?: AnalysisSkillCatalog;
   readonly now?: () => Date;
+}
+
+export function analysisOracleFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  return /^[A-Z][A-Z0-9_]{2,127}$/u.test(message) ? message : "ANALYSIS_ORACLE_FAILED";
 }
 
 export interface AnalysisExecutionResult {
@@ -442,7 +454,9 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           }
         };
         await commitFailedSandboxReceipt(sandbox);
-        const evaluateSandbox = async (): Promise<AnalysisOracleExpectation | null> => {
+        const evaluateSandbox = async (
+          attempt: 0 | 1,
+        ): Promise<AnalysisOracleExpectation | null> => {
           if (sandbox.status !== "SUCCEEDED") return null;
           try {
             const evaluated = await dependencies.oracle.evaluate({
@@ -453,11 +467,18 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             });
             analysisResultSchema.parse(evaluated.result);
             return verifyAnalysisResult(evaluated.result).verdict === "PASS" ? evaluated : null;
-          } catch {
+          } catch (error) {
+            dependencies.diagnostics?.({
+              event_name: "analysis_oracle_rejected",
+              run_id: input.lease.run_id,
+              node_id: node.node_id,
+              attempt,
+              failure_code: analysisOracleFailureCode(error),
+            });
             return null;
           }
         };
-        let expectation = await evaluateSandbox();
+        let expectation = await evaluateSandbox(0);
         const repairFailureCode = analysisRepairFailureCode(sandbox, expectation);
         if (
           repairFailureCode !== null &&
@@ -525,7 +546,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             ...(input.signal ? { signal: input.signal } : {}),
           });
           await commitFailedSandboxReceipt(sandbox);
-          expectation = await evaluateSandbox();
+          expectation = await evaluateSandbox(1);
         }
         if (sandbox.status !== "SUCCEEDED") {
           return failedNode(

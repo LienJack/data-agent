@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   admitAnalysisSandboxProgram,
   admitAnalysisSandboxProgramRepair,
+  analysisOracleFailureCode,
   analysisRepairFailureCode,
   computeAnalysisProgramHash,
   createAnalysisProgramExecutor,
@@ -179,6 +180,16 @@ async function fixture() {
 }
 
 describe("deterministic analysis worker runtime", () => {
+  it("projects only fixed oracle failure codes into diagnostics", () => {
+    expect(analysisOracleFailureCode(new TypeError("FALCON24_Q1_MONTHLY_KPI_MISMATCH"))).toBe(
+      "FALCON24_Q1_MONTHLY_KPI_MISMATCH",
+    );
+    expect(analysisOracleFailureCode(new Error("row value was 42"))).toBe("ANALYSIS_ORACLE_FAILED");
+    expect(analysisOracleFailureCode("FALCON24_Q1_MONTHLY_KPI_MISMATCH")).toBe(
+      "ANALYSIS_ORACLE_FAILED",
+    );
+  });
+
   it("permits bounded repair for sandbox or Oracle failure only", () => {
     expect(
       analysisRepairFailureCode(

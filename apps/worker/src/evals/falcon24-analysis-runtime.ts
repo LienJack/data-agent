@@ -220,6 +220,9 @@ export function createFalcon24AnalysisRuntime(input: {
         sandbox_authorization: sandboxAuthorization,
         fence_guard: runtime.fence_guard,
         references: referenceFactory(),
+        diagnostics(event) {
+          console.error(JSON.stringify(event));
+        },
         now,
       });
     },
