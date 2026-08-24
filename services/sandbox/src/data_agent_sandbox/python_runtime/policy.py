@@ -4,6 +4,11 @@ import ast
 from dataclasses import dataclass
 from typing import Literal
 
+from data_agent_sandbox.python_runtime.models import (
+    GeneratedSourcePolicy,
+    StatisticalOperatorObligation,
+)
+
 AnalysisImportProfile = Literal["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]
 
 CORE_IMPORT_ROOTS = frozenset(
@@ -28,6 +33,21 @@ PROFILE_IMPORT_ROOTS: dict[AnalysisImportProfile, frozenset[str]] = {
     "CAUSAL_L5": CORE_IMPORT_ROOTS
     | frozenset({"dowhy", "econml", "networkx", "sklearn", "statsmodels"}),
 }
+GOVERNED_ORCHESTRATION_IMPORT_ROOTS = frozenset(
+    {
+        "collections",
+        "datetime",
+        "decimal",
+        "itertools",
+        "json",
+        "math",
+        "matplotlib",
+        "numpy",
+        "pandas",
+        "pyarrow",
+        "statistics",
+    }
+)
 MAX_SOURCE_BYTES = 262_144
 MAX_AST_NODES = 25_000
 BANNED_NAMES = frozenset(
@@ -130,7 +150,11 @@ def allowed_import_roots(profile: AnalysisImportProfile) -> frozenset[str]:
 
 
 def validate_python_source(
-    source: str, profile: AnalysisImportProfile = "CORE_ANALYSIS"
+    source: str,
+    profile: AnalysisImportProfile,
+    *,
+    generated_source_policy: GeneratedSourcePolicy,
+    operator_obligations: tuple[StatisticalOperatorObligation, ...],
 ) -> ast.Module:
     if len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
         raise PythonPolicyError(
@@ -145,11 +169,14 @@ def validate_python_source(
             (PolicyViolation("SOURCE_SYNTAX", error.lineno or 1, "invalid Python syntax"),)
         ) from error
     nodes = tuple(ast.walk(tree))
+    parents = {child: parent for parent in nodes for child in ast.iter_child_nodes(parent)}
     if len(nodes) > MAX_AST_NODES:
         raise PythonPolicyError(
             (PolicyViolation("AST_TOO_LARGE", 1, "AST exceeds policy node limit"),)
         )
     import_roots = allowed_import_roots(profile)
+    if generated_source_policy == "GOVERNED_OPERATOR_ORCHESTRATION":
+        import_roots = import_roots & GOVERNED_ORCHESTRATION_IMPORT_ROOTS
     violations: list[PolicyViolation] = []
     main_functions = [
         node
@@ -172,6 +199,32 @@ def validate_python_source(
                     "ENTRYPOINT_SIGNATURE_INVALID", main_functions[0].lineno, "main(context)"
                 )
             )
+
+        class MainReturnVisitor(ast.NodeVisitor):
+            def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+                if node is main_functions[0]:
+                    for statement in node.body:
+                        self.visit(statement)
+
+            def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+                del node
+
+            def visit_Lambda(self, node: ast.Lambda) -> None:
+                del node
+
+            def visit_Return(self, node: ast.Return) -> None:
+                if node.value is not None and not (
+                    isinstance(node.value, ast.Constant) and node.value.value is None
+                ):
+                    violations.append(
+                        PolicyViolation(
+                            "ENTRYPOINT_RETURN_MUST_BE_NONE",
+                            node.lineno,
+                            "main must return None",
+                        )
+                    )
+
+        MainReturnVisitor().visit(main_functions[0])
 
     for node in tree.body:
         if isinstance(node, (ast.Import, ast.ImportFrom, ast.FunctionDef)):
@@ -218,6 +271,104 @@ def validate_python_source(
             and node.func.id in BANNED_NAMES
         ):
             violations.append(PolicyViolation("CALL_DENIED", line, node.func.id))
+    operator_calls: list[tuple[str, str, int]] = []
+    for node in nodes:
+        if (
+            isinstance(node, ast.Attribute)
+            and node.attr == "operators"
+            and isinstance(node.value, ast.Name)
+            and node.value.id == "context"
+        ):
+            parent = parents.get(node)
+            grandparent = parents.get(parent) if parent is not None else None
+            if not (
+                isinstance(parent, ast.Attribute)
+                and parent.attr == "call"
+                and isinstance(grandparent, ast.Call)
+                and grandparent.func is parent
+            ):
+                violations.append(
+                    PolicyViolation(
+                        "OPERATOR_NOT_AUTHORIZED",
+                        getattr(node, "lineno", 1),
+                        "operator capability cannot be aliased or inspected",
+                    )
+                )
+        if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+            continue
+        owner = node.func.value
+        exact_operator_call = (
+            node.func.attr == "call"
+            and isinstance(owner, ast.Attribute)
+            and owner.attr == "operators"
+            and isinstance(owner.value, ast.Name)
+            and owner.value.id == "context"
+        )
+        references_operator_capability = exact_operator_call or (
+            isinstance(owner, ast.Attribute) and owner.attr == "operators"
+        )
+        if not references_operator_capability:
+            continue
+        line = getattr(node, "lineno", 1)
+        keyword_names = tuple(keyword.arg for keyword in node.keywords)
+        keyword_name_set = set(keyword_names)
+        valid_keyword_shape = (
+            len(keyword_names) == len(keyword_name_set)
+            and "call_id" in keyword_name_set
+            and "inputs" in keyword_name_set
+            and keyword_name_set <= {"call_id", "inputs", "parameters"}
+        )
+        if not exact_operator_call or len(node.args) != 1 or not valid_keyword_shape:
+            violations.append(
+                PolicyViolation("OPERATOR_NOT_AUTHORIZED", line, "invalid operator call shape")
+            )
+            continue
+        operator_argument = node.args[0]
+        call_keyword = next(
+            (keyword.value for keyword in node.keywords if keyword.arg == "call_id"), None
+        )
+        if (
+            not isinstance(operator_argument, ast.Constant)
+            or not isinstance(operator_argument.value, str)
+            or not isinstance(call_keyword, ast.Constant)
+            or not isinstance(call_keyword.value, str)
+        ):
+            violations.append(
+                PolicyViolation(
+                    "OPERATOR_NOT_AUTHORIZED", line, "operator and call ids must be literals"
+                )
+            )
+            continue
+        operator_calls.append((call_keyword.value, operator_argument.value, line))
+    expected_calls = tuple(
+        (obligation.call_id, obligation.operator_id) for obligation in operator_obligations
+    )
+    observed_calls = tuple((call_id, operator_id) for call_id, operator_id, _ in operator_calls)
+    if generated_source_policy != "GOVERNED_OPERATOR_ORCHESTRATION":
+        if operator_calls:
+            violations.append(
+                PolicyViolation(
+                    "OPERATOR_NOT_AUTHORIZED",
+                    operator_calls[0][2],
+                    "source policy does not authorize operators",
+                )
+            )
+    elif len({call_id for call_id, _, _ in operator_calls}) != len(operator_calls):
+        violations.append(
+            PolicyViolation("OPERATOR_DUPLICATE_CALL_ID", 1, "operator call_id is duplicated")
+        )
+    elif len(observed_calls) < len(expected_calls):
+        violations.append(
+            PolicyViolation("OPERATOR_REQUIRED_CALL_MISSING", 1, "required operator call missing")
+        )
+    elif len(observed_calls) > len(expected_calls):
+        violations.append(
+            PolicyViolation("OPERATOR_UNDECLARED_CALL", 1, "undeclared operator call")
+        )
+    elif observed_calls != expected_calls:
+        violations.append(
+            PolicyViolation("OPERATOR_NOT_AUTHORIZED", 1, "operator call order or identity drift")
+        )
     if violations:
         unique = tuple(dict.fromkeys(violations))
         raise PythonPolicyError(unique)

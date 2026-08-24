@@ -8,6 +8,11 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from data_agent_sandbox.python_runtime.models import StatisticalOperatorObligation
+from data_agent_sandbox.python_runtime.operators.registry import (
+    StatisticalOperatorError,
+    StatisticalOperatorRegistry,
+)
 from data_agent_sandbox.python_runtime.policy import allowed_import_roots
 from data_agent_sandbox.python_runtime.sdk import AnalysisContext
 
@@ -83,7 +88,16 @@ def run(control_path: Path) -> int:
         for item in control["outputs"]
     }
     allowed_roots = allowed_import_roots(control["import_profile"])
-    context = AnalysisContext(inputs, outputs)
+    obligations = tuple(
+        StatisticalOperatorObligation.model_validate(item)
+        for item in control["operator_obligations"]
+    )
+    operator_registry = StatisticalOperatorRegistry(
+        expected_registry_digest=control["operator_registry_digest"],
+        obligations=obligations,
+        runtime_profile=control["import_profile"],
+    )
+    context = AnalysisContext(inputs, outputs, operator_registry)
     source = (job_root / "program.py").read_text(encoding="utf-8")
     safe_builtins = ModuleType("data_agent_safe_builtins")
     safe_builtins.__dict__.update(_SAFE_BUILTINS)
@@ -113,12 +127,30 @@ def run(control_path: Path) -> int:
         result = main(context)
         if result is not None:
             raise ValueError("PYTHON_ENTRYPOINT_RETURN_MUST_BE_NONE")
+        operator_receipts, operator_receipt_closure_hash = context.finalize_operator_receipts()
         (job_root / "output" / ".worker-result.json").write_text(
-            json.dumps({"status": "SUCCEEDED", "written": sorted(context.written_outputs())}),
+            json.dumps(
+                {
+                    "status": "SUCCEEDED",
+                    "written": sorted(context.written_outputs()),
+                    "operator_receipts": [
+                        receipt.model_dump(mode="json") for receipt in operator_receipts
+                    ],
+                    "operator_receipt_closure_hash": operator_receipt_closure_hash,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
             encoding="utf-8",
         )
         return 0
     except BaseException as error:
+        if isinstance(error, StatisticalOperatorError):
+            print(error.failure_code, file=sys.stderr)
+            (job_root / "output" / ".worker-result.json").write_text(
+                json.dumps({"status": "FAILED"}), encoding="utf-8"
+            )
+            return 1
         safe_failure_code = {
             TypeError: "PYTHON_TYPE_ERROR",
             NameError: "PYTHON_NAME_ERROR",

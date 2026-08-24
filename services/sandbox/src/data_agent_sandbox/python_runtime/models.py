@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_IDS
 
 PYTHON_IPC_PROTOCOL_VERSION = "data-agent-python-sandbox-ipc@2.0.0"
 Sha256 = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
@@ -50,6 +53,114 @@ class PythonOutputContract(StrictModel):
         return self
 
 
+StableIdentifier = Annotated[
+    str, Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
+]
+OperatorId = Annotated[
+    str,
+    Field(pattern=r"^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+@[1-9][0-9]*$"),
+]
+GeneratedSourcePolicy = Literal[
+    "NO_GENERATED_SOURCE", "OPEN_ANALYSIS", "GOVERNED_OPERATOR_ORCHESTRATION"
+]
+
+
+class StatisticalOperatorValueBinding(StrictModel):
+    result_field: StableIdentifier
+    operator_field: StableIdentifier
+    comparison: Literal["EXACT", "NUMERIC_TOLERANCE"]
+    absolute_tolerance: Annotated[float, Field(ge=0, le=1)]
+    relative_tolerance: Annotated[float, Field(ge=0, le=1)]
+
+    @model_validator(mode="after")
+    def exact_has_zero_tolerance(self) -> StatisticalOperatorValueBinding:
+        if not math.isfinite(self.absolute_tolerance) or not math.isfinite(self.relative_tolerance):
+            raise ValueError("operator value binding tolerance must be finite")
+        if self.comparison == "EXACT" and (
+            self.absolute_tolerance != 0 or self.relative_tolerance != 0
+        ):
+            raise ValueError("exact operator value binding requires zero tolerance")
+        return self
+
+
+class StatisticalOperatorResultBinding(StrictModel):
+    result_output_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    result_collection_path: Annotated[
+        str, Field(min_length=1, max_length=512, pattern=r"^(?:/(?:[^~/]|~0|~1)*)+$")
+    ]
+    operator_collection_path: Annotated[
+        str, Field(min_length=1, max_length=512, pattern=r"^(?:/(?:[^~/]|~0|~1)*)+$")
+    ]
+    label_fields: Annotated[tuple[StableIdentifier, ...], Field(min_length=1, max_length=8)]
+    value_bindings: Annotated[
+        tuple[StatisticalOperatorValueBinding, ...], Field(min_length=1, max_length=32)
+    ]
+    require_exact_label_set: Literal[True]
+
+    @model_validator(mode="after")
+    def unique_fields(self) -> StatisticalOperatorResultBinding:
+        for values in (
+            self.label_fields,
+            tuple(binding.result_field for binding in self.value_bindings),
+            tuple(binding.operator_field for binding in self.value_bindings),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError("operator result binding fields must be unique")
+        return self
+
+
+class StatisticalOperatorObligation(StrictModel):
+    call_id: StableIdentifier
+    operator_id: OperatorId
+    result_binding: StatisticalOperatorResultBinding
+
+    @model_validator(mode="after")
+    def registered_operator(self) -> StatisticalOperatorObligation:
+        if self.operator_id not in OPERATOR_IDS:
+            raise ValueError("operator_id is not registered")
+        return self
+
+
+ResolvedParameterValue = str | int | float | bool | None
+
+
+class StatisticalOperatorCallReceipt(StrictModel):
+    schema_version: Literal["statistical-operator-call-receipt@1.0.0"]
+    call_id: StableIdentifier
+    operator_id: OperatorId
+    operator_registry_digest: Sha256
+    implementation_digest: Sha256
+    resolved_parameters: dict[StableIdentifier, ResolvedParameterValue]
+    resolved_parameters_hash: Sha256
+    input_hash: Sha256
+    output_hash: Sha256
+    result_binding_hash: Sha256
+    sample_size: Annotated[int, Field(ge=0)] | None
+    group_count: Annotated[int, Field(ge=0)] | None
+    family_size: Annotated[int, Field(ge=0)] | None
+    rank: Annotated[int, Field(ge=0)] | None
+    applicability: Literal["PASS"]
+    limitation_codes: Annotated[
+        tuple[Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]*$")], ...],
+        Field(max_length=16),
+    ]
+
+    @model_validator(mode="after")
+    def validate_bounded_receipt(self) -> StatisticalOperatorCallReceipt:
+        if self.operator_id not in OPERATOR_IDS:
+            raise ValueError("operator_id is not registered")
+        if len(self.resolved_parameters) > 32:
+            raise ValueError("resolved_parameters exceed the receipt limit")
+        if len(set(self.limitation_codes)) != len(self.limitation_codes):
+            raise ValueError("limitation codes must be unique")
+        for value in self.resolved_parameters.values():
+            if isinstance(value, float) and not math.isfinite(value):
+                raise ValueError("resolved parameters must be finite")
+            if not isinstance(value, (str, int, float, bool, type(None))):
+                raise ValueError("resolved parameters must be canonical scalars")
+        return self
+
+
 class PythonExecutionBudgets(StrictModel):
     wall_time_ms: Annotated[int, Field(gt=0, le=600_000)]
     cpu_seconds: Annotated[int, Field(gt=0, le=600)]
@@ -74,6 +185,9 @@ class PythonExecutionRequest(StrictModel):
     entrypoint: Literal["main"]
     input_refs: Annotated[tuple[PythonArtifactReference, ...], Field(max_length=64)]
     output_contract: PythonOutputContract
+    generated_source_policy: GeneratedSourcePolicy
+    operator_registry_digest: Sha256
+    operator_obligations: Annotated[tuple[StatisticalOperatorObligation, ...], Field(max_length=32)]
     runtime_digest: Sha256
     dependency_lock_digest: Sha256
     policy_version: Annotated[str, Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$")]
@@ -86,6 +200,17 @@ class PythonExecutionRequest(StrictModel):
                 raise ValueError("source and input references must bind workspace and run")
         if self.source_ref.content_hash != self.source_sha256:
             raise ValueError("source_sha256 must bind source_ref")
+        call_ids = tuple(obligation.call_id for obligation in self.operator_obligations)
+        if len(set(call_ids)) != len(call_ids):
+            raise ValueError("operator call_ids must be unique")
+        governed = self.generated_source_policy == "GOVERNED_OPERATOR_ORCHESTRATION"
+        if governed != bool(self.operator_obligations):
+            raise ValueError("source policy and operator obligations must close")
+        output_by_name = {output.name: output for output in self.output_contract.outputs}
+        for obligation in self.operator_obligations:
+            output = output_by_name.get(obligation.result_binding.result_output_name)
+            if output is None or output.type != "JSON":
+                raise ValueError("operator result binding must target a declared JSON output")
         return self
 
 
@@ -177,6 +302,18 @@ PythonFailureCode = Literal[
     "PYTHON_POLICY_GLOBAL_STATE_DENIED",
     "PYTHON_POLICY_ASYNC_GENERATOR_DENIED",
     "PYTHON_POLICY_CALL_DENIED",
+    "PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH",
+    "PYTHON_OPERATOR_NOT_REGISTERED",
+    "PYTHON_OPERATOR_NOT_AUTHORIZED",
+    "PYTHON_OPERATOR_REQUIRED_CALL_MISSING",
+    "PYTHON_OPERATOR_UNDECLARED_CALL",
+    "PYTHON_OPERATOR_DUPLICATE_CALL_ID",
+    "PYTHON_OPERATOR_INPUT_INVALID",
+    "PYTHON_OPERATOR_PARAMETER_INVALID",
+    "PYTHON_OPERATOR_APPLICABILITY_HOLD",
+    "PYTHON_OPERATOR_NUMERIC_FAILURE",
+    "PYTHON_OPERATOR_RESULT_BINDING_MISMATCH",
+    "PYTHON_OPERATOR_RECEIPT_CLOSURE_MISMATCH",
     "PYTHON_TIMEOUT",
     "PYTHON_RESOURCE_LIMIT",
     "PYTHON_CANCELLED",
@@ -221,6 +358,11 @@ class PythonSandboxReceipt(StrictModel):
     sdk_version: str
     dependency_lock_digest: Sha256
     policy_version: str
+    generated_source_policy: GeneratedSourcePolicy
+    operator_registry_digest: Sha256
+    operator_obligations: Annotated[tuple[StatisticalOperatorObligation, ...], Field(max_length=32)]
+    operator_receipts: Annotated[tuple[StatisticalOperatorCallReceipt, ...], Field(max_length=32)]
+    operator_receipt_closure_hash: Sha256 | None
     started_at: str
     finished_at: str
     elapsed_ms: Annotated[int, Field(ge=0)]
@@ -238,6 +380,28 @@ class PythonSandboxReceipt(StrictModel):
             raise ValueError("only success has no failure code")
         if self.status != "SUCCEEDED" and self.output_refs:
             raise ValueError("failed execution cannot retain output refs")
+        governed = self.generated_source_policy == "GOVERNED_OPERATOR_ORCHESTRATION"
+        if governed != bool(self.operator_obligations):
+            raise ValueError("source policy and operator obligations must close")
+        if self.status == "SUCCEEDED":
+            expected = tuple(
+                (obligation.call_id, obligation.operator_id)
+                for obligation in self.operator_obligations
+            )
+            actual = tuple(
+                (receipt.call_id, receipt.operator_id) for receipt in self.operator_receipts
+            )
+            if actual != expected:
+                raise ValueError("operator receipts must exactly close ordered obligations")
+            if self.operator_receipt_closure_hash is None:
+                raise ValueError("successful execution requires operator receipt closure")
+        elif self.operator_receipts or self.operator_receipt_closure_hash is not None:
+            raise ValueError("failed execution cannot publish operator receipts")
+        if any(
+            receipt.operator_registry_digest != self.operator_registry_digest
+            for receipt in self.operator_receipts
+        ):
+            raise ValueError("operator receipts must bind the registry digest")
         return self
 
 

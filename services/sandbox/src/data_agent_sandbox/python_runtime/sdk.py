@@ -7,6 +7,9 @@ import re
 from pathlib import Path
 from typing import Any
 
+from data_agent_sandbox.python_runtime.models import StatisticalOperatorCallReceipt
+from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorRegistry
+
 SDK_VERSION = "data-agent-sandbox-sdk@1.0.0"
 _TAG = re.compile(r"<[^>]*>")
 _SCRIPT_PROTOCOL = re.compile(r"(?i)javascript\s*:")
@@ -24,19 +27,50 @@ def sanitize_markdown(value: str) -> str:
     return _SCRIPT_PROTOCOL.sub("", _TAG.sub("", value)).replace("\x00", "")
 
 
+class StatisticalOperatorCapability:
+    """Only public generated-source surface for governed statistical methods."""
+
+    __slots__ = ("_registry",)
+
+    def __init__(self, registry: StatisticalOperatorRegistry) -> None:
+        self._registry = registry
+
+    def call(
+        self,
+        operator_id: str,
+        *,
+        call_id: str,
+        inputs: dict[str, Any],
+        parameters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        return self._registry.call(
+            operator_id,
+            call_id=call_id,
+            inputs=inputs,
+            parameters=parameters,
+        )
+
+
 class AnalysisContext:
     """Capability-shaped analysis API. Paths never cross this boundary."""
 
-    __slots__ = ("_inputs", "_outputs", "_written")
+    __slots__ = ("_inputs", "_json_outputs", "_operators", "_outputs", "_written")
 
     def __init__(
         self,
         inputs: dict[str, tuple[str, Path]],
         outputs: dict[str, tuple[str, Path]],
+        operator_registry: StatisticalOperatorRegistry,
     ) -> None:
         self._inputs = inputs
         self._outputs = outputs
         self._written: set[str] = set()
+        self._json_outputs: dict[str, Any] = {}
+        self._operators = StatisticalOperatorCapability(operator_registry)
+
+    @property
+    def operators(self) -> StatisticalOperatorCapability:
+        return self._operators
 
     def read(self, name: str) -> Any:
         format_name, path = self._input(name)
@@ -78,7 +112,7 @@ class AnalysisContext:
 
     def write_json(self, name: str, value: Any) -> None:
         _, path = self._output(name, "JSON")
-        path.write_text(
+        serialized = (
             json.dumps(
                 value,
                 ensure_ascii=False,
@@ -87,9 +121,10 @@ class AnalysisContext:
                 separators=(",", ":"),
                 default=_json_scalar,
             )
-            + "\n",
-            encoding="utf-8",
+            + "\n"
         )
+        path.write_text(serialized, encoding="utf-8")
+        self._json_outputs[name] = json.loads(serialized)
         self._written.add(name)
 
     def write_markdown(self, name: str, value: str) -> None:
@@ -133,6 +168,11 @@ class AnalysisContext:
 
     def written_outputs(self) -> frozenset[str]:
         return frozenset(self._written)
+
+    def finalize_operator_receipts(
+        self,
+    ) -> tuple[tuple[StatisticalOperatorCallReceipt, ...], str]:
+        return self._operators._registry.finalize(self._json_outputs)
 
     def _input(self, name: str) -> tuple[str, Path]:
         try:

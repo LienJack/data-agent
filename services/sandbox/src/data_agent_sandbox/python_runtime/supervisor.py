@@ -29,7 +29,9 @@ from data_agent_sandbox.python_runtime.models import (
     PythonObservedResources,
     PythonSandboxReceipt,
     PythonSandboxTransportOutcome,
+    StatisticalOperatorCallReceipt,
 )
+from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_MANIFEST_DIGEST
 from data_agent_sandbox.python_runtime.policy import (
     PROFILE_IMPORT_ROOTS,
     AnalysisImportProfile,
@@ -48,6 +50,18 @@ _OUTPUT_SUFFIX = {
 }
 _INPUT_SUFFIX = {"ARROW": ".arrow", "CSV": ".csv", "JSON": ".json"}
 _SAFE_WORKER_FAILURE_CODES = (
+    "PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH",
+    "PYTHON_OPERATOR_NOT_REGISTERED",
+    "PYTHON_OPERATOR_NOT_AUTHORIZED",
+    "PYTHON_OPERATOR_REQUIRED_CALL_MISSING",
+    "PYTHON_OPERATOR_UNDECLARED_CALL",
+    "PYTHON_OPERATOR_DUPLICATE_CALL_ID",
+    "PYTHON_OPERATOR_INPUT_INVALID",
+    "PYTHON_OPERATOR_PARAMETER_INVALID",
+    "PYTHON_OPERATOR_APPLICABILITY_HOLD",
+    "PYTHON_OPERATOR_NUMERIC_FAILURE",
+    "PYTHON_OPERATOR_RESULT_BINDING_MISMATCH",
+    "PYTHON_OPERATOR_RECEIPT_CLOSURE_MISMATCH",
     "PYTHON_IMPORT_DENIED",
     "PYTHON_INPUT_FORMAT_INVALID",
     "PYTHON_INPUT_NOT_DECLARED",
@@ -81,12 +95,17 @@ def _classify_worker_failure(stderr: bytes) -> str:
     return "PYTHON_ERROR"
 
 
+class _OperatorReceiptClosureError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class SandboxConfiguration:
     authorization: str
     image_digest: str
     runtime_digest: str
     dependency_lock_digest: str
+    operator_registry_digest: str
     policy_version: str
     job_root: Path
     executor_uid: int | None
@@ -136,6 +155,7 @@ class SandboxConfiguration:
             image_digest=_digest_environment("PYTHON_SANDBOX_IMAGE_DIGEST"),
             runtime_digest=_digest_environment("PYTHON_SANDBOX_RUNTIME_DIGEST"),
             dependency_lock_digest=_digest_environment("PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST"),
+            operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
             policy_version=os.environ.get("PYTHON_SANDBOX_POLICY_VERSION", "python-policy@1.0.0"),
             job_root=Path(os.environ.get("PYTHON_SANDBOX_JOB_ROOT", "/tmp/data-agent-python-jobs")),
             executor_uid=int(executor_uid) if executor_uid else None,
@@ -362,6 +382,14 @@ class PythonSandboxSupervisor:
                 monotonic_started,
                 "PYTHON_POLICY_RUNTIME_ATTESTATION_MISMATCH",
             )
+        if request.operator_registry_digest != self.configuration.operator_registry_digest:
+            return self._failure(
+                envelope,
+                request_hash,
+                started_at,
+                monotonic_started,
+                "PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH",
+            )
         if not all(self.configuration.hard_controls.model_dump().values()):
             return self._failure(
                 envelope, request_hash, started_at, monotonic_started, "PYTHON_SANDBOX_UNAVAILABLE"
@@ -387,14 +415,26 @@ class PythonSandboxSupervisor:
                     "PYTHON_POLICY_SOURCE_ENCODING_INVALID",
                 )
             try:
-                validate_python_source(source_text, self.configuration.import_profile)
+                validate_python_source(
+                    source_text,
+                    self.configuration.import_profile,
+                    generated_source_policy=request.generated_source_policy,
+                    operator_obligations=request.operator_obligations,
+                )
             except PythonPolicyError as error:
+                violation_code = error.violations[0].code
+                if violation_code.startswith("OPERATOR_"):
+                    failure_code = f"PYTHON_{violation_code}"
+                elif violation_code == "ENTRYPOINT_RETURN_MUST_BE_NONE":
+                    failure_code = "PYTHON_ENTRYPOINT_RETURN_MUST_BE_NONE"
+                else:
+                    failure_code = f"PYTHON_POLICY_{violation_code}"
                 return self._failure(
                     envelope,
                     request_hash,
                     started_at,
                     monotonic_started,
-                    f"PYTHON_POLICY_{error.violations[0].code}",
+                    failure_code,
                 )
             decoded_inputs = [_decode(item.content_base64) for item in envelope.inputs]
             for item, content in zip(envelope.inputs, decoded_inputs, strict=True):
@@ -457,6 +497,11 @@ class PythonSandboxSupervisor:
                         "inputs": input_descriptors,
                         "outputs": output_descriptors,
                         "import_profile": self.configuration.import_profile,
+                        "operator_registry_digest": request.operator_registry_digest,
+                        "operator_obligations": [
+                            obligation.model_dump(mode="json")
+                            for obligation in request.operator_obligations
+                        ],
                     },
                     sort_keys=True,
                     separators=(",", ":"),
@@ -552,7 +597,42 @@ class PythonSandboxSupervisor:
             try:
                 worker_result_path = output_root / ".worker-result.json"
                 result = json.loads(worker_result_path.read_text(encoding="utf-8"))
+                if (
+                    set(result)
+                    != {
+                        "status",
+                        "written",
+                        "operator_receipts",
+                        "operator_receipt_closure_hash",
+                    }
+                    or result["status"] != "SUCCEEDED"
+                ):
+                    raise ValueError("worker result shape invalid")
                 written = set(result["written"])
+                operator_receipts = tuple(
+                    StatisticalOperatorCallReceipt.model_validate(receipt)
+                    for receipt in result["operator_receipts"]
+                )
+                operator_receipt_closure_hash = result["operator_receipt_closure_hash"]
+                if (
+                    not isinstance(operator_receipt_closure_hash, str)
+                    or _canonical_hash(
+                        [receipt.model_dump(mode="json") for receipt in operator_receipts]
+                    )
+                    != operator_receipt_closure_hash
+                    or tuple(
+                        (receipt.call_id, receipt.operator_id) for receipt in operator_receipts
+                    )
+                    != tuple(
+                        (obligation.call_id, obligation.operator_id)
+                        for obligation in request.operator_obligations
+                    )
+                    or any(
+                        receipt.operator_registry_digest != request.operator_registry_digest
+                        for receipt in operator_receipts
+                    )
+                ):
+                    raise _OperatorReceiptClosureError("operator receipt closure invalid")
                 declared = {item.name: item for item in request.output_contract.outputs}
                 if any(item.required and item.name not in written for item in declared.values()):
                     raise ValueError("required output missing")
@@ -617,6 +697,18 @@ class PythonSandboxSupervisor:
                 }
                 if unexpected_files:
                     raise ValueError("undeclared file created")
+            except _OperatorReceiptClosureError:
+                return self._failure(
+                    envelope,
+                    request_hash,
+                    started_at,
+                    monotonic_started,
+                    "PYTHON_OPERATOR_RECEIPT_CLOSURE_MISMATCH",
+                    process,
+                    before,
+                    stdout_raw,
+                    stderr_raw,
+                )
             except (OSError, ValueError, KeyError, json.JSONDecodeError):
                 return self._failure(
                     envelope,
@@ -643,6 +735,8 @@ class PythonSandboxSupervisor:
                 "SUCCEEDED",
                 None,
                 tuple(output_refs),
+                operator_receipts,
+                operator_receipt_closure_hash,
             )
             return PythonSandboxTransportOutcome(
                 protocol_version="data-agent-python-sandbox-ipc@2.0.0",
@@ -689,6 +783,8 @@ class PythonSandboxSupervisor:
         status: Literal["SUCCEEDED", "FAILED", "CANCELLED"],
         failure_code: str | None,
         output_refs: tuple[Any, ...],
+        operator_receipts: tuple[StatisticalOperatorCallReceipt, ...] = (),
+        operator_receipt_closure_hash: str | None = None,
     ) -> PythonSandboxReceipt:
         request = envelope.request
         return PythonSandboxReceipt(
@@ -704,6 +800,11 @@ class PythonSandboxSupervisor:
             sdk_version=SDK_VERSION,
             dependency_lock_digest=self.configuration.dependency_lock_digest,
             policy_version=self.configuration.policy_version,
+            generated_source_policy=request.generated_source_policy,
+            operator_registry_digest=request.operator_registry_digest,
+            operator_obligations=request.operator_obligations,
+            operator_receipts=operator_receipts,
+            operator_receipt_closure_hash=operator_receipt_closure_hash,
             started_at=started_at,
             finished_at=_utc_now(),
             elapsed_ms=max(0, int((time.monotonic() - monotonic_started) * 1000)),

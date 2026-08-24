@@ -20,7 +20,13 @@ from data_agent_sandbox.python_runtime.models import (
     PythonOutputSlot,
     PythonOutputSpec,
 )
-from data_agent_sandbox.python_runtime.policy import PythonPolicyError, validate_python_source
+from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_MANIFEST_DIGEST
+from data_agent_sandbox.python_runtime.policy import (
+    PythonPolicyError,
+)
+from data_agent_sandbox.python_runtime.policy import (
+    validate_python_source as validate_source_with_policy,
+)
 from data_agent_sandbox.python_runtime.supervisor import (
     PythonSandboxSupervisor,
     SandboxConfiguration,
@@ -34,6 +40,15 @@ DIGEST_A = "sha256:" + "a" * 64
 DIGEST_B = "sha256:" + "b" * 64
 DIGEST_C = "sha256:" + "c" * 64
 PROGRAM_ROOT = Path(__file__).parents[1] / "programs" / "standard"
+
+
+def validate_python_source(source: str, profile: str = "CORE_ANALYSIS") -> None:
+    validate_source_with_policy(
+        source,
+        profile,  # type: ignore[arg-type]
+        generated_source_policy="OPEN_ANALYSIS",
+        operator_obligations=(),
+    )
 
 
 def digest(value: bytes) -> str:
@@ -68,6 +83,7 @@ def configuration(tmp_path: Path, profile: str = "CORE_ANALYSIS") -> SandboxConf
         image_digest=DIGEST_A,
         runtime_digest=DIGEST_B,
         dependency_lock_digest=DIGEST_C,
+        operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
         policy_version="python-policy@1.0.0",
         job_root=tmp_path,
         executor_uid=None,
@@ -127,6 +143,9 @@ def envelope(
         output_contract=PythonOutputContract(
             schema_version="python-output-contract@1.0.0", outputs=tuple(output_specs)
         ),
+        generated_source_policy="NO_GENERATED_SOURCE",
+        operator_registry_digest=OPERATOR_MANIFEST_DIGEST,
+        operator_obligations=(),
         runtime_digest=DIGEST_B,
         dependency_lock_digest=DIGEST_C,
         policy_version="python-policy@1.0.0",
