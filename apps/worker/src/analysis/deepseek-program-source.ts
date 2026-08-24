@@ -158,6 +158,15 @@ async function boundedPrompt(input: {
   readonly repair: null | { readonly source: string; readonly failure_code: string };
 }) {
   const semanticContext = await verifySemanticContextPackage(input.semanticContextPackage);
+  const repair = input.repair
+    ? {
+        ...input.repair,
+        required_correction:
+          input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+            ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise'); never inspect runtime types."
+            : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+      }
+    : null;
   const prompt = {
     task: "Generate a deterministic Python 3.12 function main(context) for governed tabular analysis.",
     semantic_context: {
@@ -205,6 +214,8 @@ async function boundedPrompt(input: {
           CSV: "pandas.DataFrame; convert rows with frame.to_dict(orient='records')",
           JSON: "decoded JSON value",
         },
+        temporal_normalization:
+          "For DATE or TIMESTAMP DataFrame fields, use pandas.to_datetime(frame[column], errors='raise') and vectorized .dt accessors. The declared schema is authoritative; do not probe values with reflection.",
         write_json: "context.write_json(output_name, value)",
         write_csv: "context.write_csv(output_name, value)",
         write_arrow: "context.write_arrow(output_name, value)",
@@ -215,7 +226,7 @@ async function boundedPrompt(input: {
       return_contract:
         "Read only declared input names and write every declared output exactly once through the provided sdk.",
     },
-    repair: input.repair,
+    repair,
   } as const;
   return JSON.stringify(prompt);
 }

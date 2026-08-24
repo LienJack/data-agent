@@ -296,9 +296,73 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("statistical_method_contract");
     expect(serialized).toContain("output_json_schema");
     expect(serialized).toContain("def main(context)");
+    expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise')");
     expect(serialized).not.toContain("def main(sdk)");
     expect(serialized).not.toMatch(/postgres(?:ql)?:\/\//iu);
     expect(serialized).not.toMatch(/password|api[_-]?key|raw_rows|row_values/iu);
+  });
+
+  it("gives the bounded repair attempt a deterministic policy correction", async () => {
+    const base = await fixture();
+    const prompts: string[] = [];
+    const source = createDeepSeekAnalysisProgramSource({
+      contexts: {
+        async load() {
+          return {
+            semantic_context_package: base.contextPackage,
+            analysis_contract: analysisContract,
+            input_schemas: [],
+          };
+        },
+      },
+      model: {
+        async generate(request) {
+          prompts.push(request.prompt);
+          return {
+            provider: "deepseek",
+            model_id: "deepseek-v4-flash",
+            provider_invocation_ref: {
+              resource_id: id(92),
+              resource_revision: 1,
+              resource_hash: hash("7"),
+            },
+            output_text: JSON.stringify({
+              schema_version: "analysis-python-source@1.0.0",
+              python_source:
+                "import pandas as pd\ndef main(context):\n    context.write_json('result', {})\n",
+            }),
+          };
+        },
+      },
+      artifacts: {
+        async commit(input) {
+          return reference("SensitiveExecutionArtifact", 19, input.source_sha256);
+        },
+      },
+      standard_programs: {
+        async load() {
+          throw new Error("not used");
+        },
+      },
+    });
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
+      previous_source_text:
+        "def main(context):\n    value = context.read('input')\n    hasattr(value, 'shape')\n",
+      failure_code: "PYTHON_POLICY_CALL_DENIED",
+      attempt: 1,
+    });
+
+    const prompt = JSON.parse(prompts[0] ?? "{}") as {
+      repair?: { failure_code?: string; required_correction?: string };
+    };
+    expect(prompt.repair?.failure_code).toBe("PYTHON_POLICY_CALL_DENIED");
+    expect(prompt.repair?.required_correction).toContain("pandas.to_datetime");
+    expect(prompt.repair?.required_correction).toContain("hasattr/getattr/setattr");
   });
 
   it("rejects model substitution and scrubs repair failures to one bounded attempt", async () => {
