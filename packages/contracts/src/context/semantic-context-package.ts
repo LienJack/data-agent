@@ -158,7 +158,16 @@ export const publishedMetricContextSchema = z.strictObject({
 
 export const publishedOntologyContextSchema = z.strictObject({
   object_id: versionIdentifierSchema,
-  object_kind: z.enum(["ENTITY", "EVENT", "TERM", "DIMENSION"]),
+  object_kind: z.enum([
+    "ENTITY",
+    "EVENT",
+    "TERM",
+    "DIMENSION",
+    "FORMULA",
+    "RELATIONSHIP",
+    "QUALITY",
+    "TIME",
+  ]),
   name: z.string().trim().min(1).max(256),
   aliases: canonicalStringArray(128),
   queryable: z.boolean(),

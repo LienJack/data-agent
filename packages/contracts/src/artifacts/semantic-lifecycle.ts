@@ -180,7 +180,7 @@ const semanticChangeSetMaterialSchema = z.strictObject({
   scope: semanticScopeSchema,
   base_release: z.strictObject({
     release_id: immutableIdSchema,
-    generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     release_hash: contentHashSchema,
   }),
   revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
@@ -217,12 +217,12 @@ const semanticPublicationReceiptMaterialSchema = z.strictObject({
   review_hash: contentHashSchema,
   previous_release: z.strictObject({
     release_id: immutableIdSchema,
-    generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+    generation: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     release_hash: contentHashSchema,
   }),
   published_release: z.strictObject({
     release_id: immutableIdSchema,
-    generation: z.number().int().min(2).max(Number.MAX_SAFE_INTEGER),
+    generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
     release_hash: contentHashSchema,
     valid_from: timestampSchema,
   }),

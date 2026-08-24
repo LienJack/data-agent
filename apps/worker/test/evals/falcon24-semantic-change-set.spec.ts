@@ -13,7 +13,7 @@ describe("Falcon24 governed semantic change set", () => {
         environment: "test" as const,
         semantic_domain: "falcon24",
       },
-      base_release: { release_id: id(3), generation: 1, release_hash: hash("a") },
+      base_release: { release_id: id(3), generation: 0, release_hash: hash("a") },
     };
     const [first, replay] = await Promise.all([
       buildFalcon24SemanticChangeSet(input),
@@ -42,6 +42,24 @@ describe("Falcon24 governed semantic change set", () => {
     expect(
       first.change_set.assertions.filter(({ target_kind }) => target_kind === "QUALITY_CONSTRAINT"),
     ).toHaveLength(5);
+    const questionEntrypoints = first.change_set.assertions.filter(
+      ({ target_kind }) => target_kind === "BUSINESS_ENTITY_TYPE",
+    );
+    expect(questionEntrypoints).toHaveLength(5);
+    expect(
+      questionEntrypoints.every(({ assertion_payload: payload }) =>
+        Array.isArray(
+          payload.entity &&
+            (payload.entity as { business_relationship_types?: unknown })
+              .business_relationship_types,
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      first.change_set.assertions.find(
+        ({ canonical_key }) => canonical_key === "metric.order_revenue",
+      )?.assertion_payload,
+    ).toMatchObject({ metric: { aliases: expect.arrayContaining(["订单收入"]) } });
     expect(first.change_set.change_set_hash).toBe(replay.change_set.change_set_hash);
     expect(first.blueprint_hash).toBe(replay.blueprint_hash);
   });

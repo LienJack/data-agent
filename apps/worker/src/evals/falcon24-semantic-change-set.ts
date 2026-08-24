@@ -29,6 +29,17 @@ const dimensionBindings = Object.freeze({
   target_audience: ["blinkit_marketing_performance", "target_audience"],
 } as const);
 
+const dimensionAliases = Object.freeze({
+  customer_segment: ["客户类型"],
+  delivery_status: ["配送状态"],
+  marketing_channel: ["渠道", "营销渠道"],
+  order_month: ["订单月份"],
+  payment_method: ["支付方式"],
+  product_category: ["品类", "商品品类"],
+  registration_cohort: ["客户批次", "注册月份"],
+  target_audience: ["目标人群"],
+} as const);
+
 const metricBindings = Object.freeze({
   active_buyers: ["blinkit_orders", "customer_id", "COUNT_DISTINCT"],
   cohort_retention: ["blinkit_customers", "customer_id", "COUNT_DISTINCT"],
@@ -43,6 +54,32 @@ const metricBindings = Object.freeze({
   repeat_purchase_rate: ["blinkit_orders", "customer_id", "COUNT_DISTINCT"],
   sales_quantity: ["blinkit_order_items", "quantity", "SUM"],
   stock_received: ["blinkit_inventory", "stock_received", "SUM"],
+} as const);
+
+const metricAliases = Object.freeze({
+  active_buyers: ["活跃买家", "购买人数"],
+  cohort_retention: ["客户留存"],
+  damaged_stock: ["库存损坏", "损坏量"],
+  delivery_minutes: ["配送时效", "配送时长"],
+  low_rating_rate: ["低评分率", "差评率"],
+  marketing_spend: ["营销投入"],
+  new_customers: ["新增客户"],
+  on_time_rate: ["准时率", "按时率"],
+  order_count: ["订单量"],
+  order_revenue: ["收入", "订单收入"],
+  repeat_purchase_rate: ["复购率"],
+  sales_quantity: ["商品销量", "销量"],
+  stock_received: ["入库量"],
+} as const);
+
+const formulaAliases = Object.freeze({
+  average_order_value: ["客单价"],
+  buyer_frequency_aov: ["购买人数频次客单价分解"],
+  click_through_rate: ["点击率"],
+  cohort_month_index: ["注册后月份"],
+  conversion_rate: ["转化率"],
+  inventory_damage_rate: ["损坏率"],
+  marketing_roas: ["投入回报率"],
 } as const);
 
 const relationshipSpecs = Object.freeze({
@@ -200,6 +237,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
     throw new TypeError("FALCON24_SEMANTIC_DOMAIN_INVALID");
   }
   const blueprintHash = await sha256ContentHash(FALCON24_SEMANTIC_RELEASE_BLUEPRINT);
+  const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
   const datasourceId = stableUuid("falcon24:datasource");
   const assertions: SemanticAssertionCandidate[] = [];
   const add = async (
@@ -287,7 +325,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
       dimension: {
         dimension_id: `dimension.${dimensionId}`,
         name: dimensionId,
-        aliases: [dimensionId.replaceAll("_", " ")],
+        aliases: [dimensionId.replaceAll("_", " "), ...dimensionAliases[dimensionId]].sort(),
         table_id: tableId,
         column_id: `${tableId}.${columnId}`,
         grain: { grain_id: `grain.${tableId}`, granularity: "atomic" },
@@ -310,7 +348,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
       metric: {
         metric_id: `metric.${metricId}`,
         name: metricId,
-        aliases: [metricId.replaceAll("_", " ")],
+        aliases: [metricId.replaceAll("_", " "), ...metricAliases[metricId]].sort(),
         table_id: tableId,
         column_id: `${tableId}.${columnId}`,
         aggregation: aggregation.toLowerCase(),
@@ -344,6 +382,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
         node_id: `formula.${formulaId}`,
         node_type: "FORMULA",
         name: formulaId,
+        aliases: [...(formulaAliases[formulaId as keyof typeof formulaAliases] ?? [])].sort(),
         formula_type:
           formulaId.includes("rate") || formulaId.includes("value") || formulaId.includes("roas")
             ? "ratio"
@@ -361,6 +400,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
       node_id: "formula.buyer_frequency_aov",
       node_type: "FORMULA",
       name: "buyer frequency AOV identity",
+      aliases: [...formulaAliases.buyer_frequency_aov],
       formula_type: "compound",
       return_type: "numeric",
       language: "semantic-ast",
@@ -374,6 +414,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
       node_id: "formula.cohort_month_index",
       node_type: "FORMULA",
       name: "cohort month index",
+      aliases: [...formulaAliases.cohort_month_index],
       formula_type: "other",
       return_type: "integer",
       language: "semantic-ast",
@@ -432,7 +473,25 @@ export async function buildFalcon24SemanticChangeSet(input: {
     );
   }
 
-  const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
+  for (const testCase of suite.cases) {
+    await add("BUSINESS_ENTITY_TYPE", `case.${testCase.case_id}`, {
+      entity: {
+        entity_id: `case.${testCase.case_id}`,
+        name: testCase.question,
+        description: `Falcon 24 验收问题 ${testCase.case_id} 的强制语义闭包入口。`,
+        aliases: [],
+        domain: "falcon24",
+        owner: "falcon24-semantic-owner",
+        lifecycle: "active",
+        business_relationship_types: testCase.required_semantic_keys.map((targetKey) => ({
+          relationship_type: "LINEAGE_REQUIREMENT",
+          target_entity_id: targetKey,
+          description: `该分析问题必须消费 ${targetKey}。`,
+        })),
+      },
+    });
+  }
+
   const byKey = new Map(assertions.map((assertion) => [assertion.canonical_key, assertion]));
   const competencyCases = suite.cases.map((testCase) => ({
     schema_version: "semantic-competency-case@1.0.0" as const,
