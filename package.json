@@ -54,6 +54,7 @@
     "falcon:workspace:attach": "tsx scripts/falcon.ts workspace:attach",
     "falcon:workspace:verify": "tsx scripts/falcon.ts workspace:verify",
     "falcon:semantic:publish": "tsx scripts/falcon.ts semantic:publish",
+    "falcon:semantic:verify": "tsx scripts/falcon.ts semantic:verify",
     "falcon:demo:smoke": "tsx scripts/falcon.ts demo:smoke",
     "falcon:eval:batch": "tsx scripts/falcon.ts eval:batch",
     "falcon:submission": "tsx scripts/falcon.ts submission",

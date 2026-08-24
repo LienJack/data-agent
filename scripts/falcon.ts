@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import pg from "../apps/web/node_modules/pg/esm/index.mjs";
 import { activateFalconSemanticWorkspace } from "../apps/web/src/lib/falcon-semantic-activation";
+import { verifyFalconSemanticRetrieval } from "../apps/web/src/lib/falcon-semantic-retrieval-acceptance";
 import {
   attachFalconToWorkspace,
   FALCON_DATASOURCE_ID,
@@ -289,6 +290,9 @@ try {
       release,
     });
     report({ ...publication, activation });
+  } else if (command === "semantic:verify") {
+    const scope = await resolveScope(pool);
+    report(await verifyFalconSemanticRetrieval({ pool, scope }));
   } else if (command === "demo:smoke") {
     const dataset = await loadFalconDevDataset();
     const sealedCase = dataset.sealed_cases.find(

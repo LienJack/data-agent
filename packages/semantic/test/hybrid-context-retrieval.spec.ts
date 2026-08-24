@@ -3,7 +3,10 @@ import {
   verifySemanticContextPackage,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
-import { compileSemanticContextPackage } from "../src/context/semantic-context-compiler.js";
+import {
+  compileSemanticContextPackage,
+  createDeterministicSemanticVectorSearch,
+} from "../src/context/semantic-context-compiler.js";
 
 const id = (suffix: number) => `20000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -98,6 +101,19 @@ async function snapshot() {
 }
 
 describe("hybrid semantic retrieval", () => {
+  it("recalls a governed object from a fuzzy Chinese phrase without an embedding provider", async () => {
+    const authority = await snapshot();
+    const hits = await createDeterministicSemanticVectorSearch(authority).search({
+      question: "订单收人变差",
+      question_hash: authority.question_hash,
+      release_hash: authority.semantic_release.resource_hash,
+      allowed_object_ids: ["average_order_value", "order_revenue", "orders_count"],
+      limit: 3,
+    });
+    expect(hits[0]?.object_id).toBe("order_revenue");
+    expect(hits[0]?.score).toBeGreaterThan(0);
+  });
+
   it("fuses lexical, sparse and vector routes and closes typed formula lineage", async () => {
     const authority = await snapshot();
     const document = await compileSemanticContextPackage(authority, {

@@ -1,3 +1,4 @@
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   buildSemanticContextPackage,
   buildSemanticInferenceReceipt,
@@ -6,7 +7,6 @@ import {
   type SemanticContextPackage,
   type SemanticRetrievalHit,
 } from "@data-agent/contracts/context";
-import { sha256ContentHash } from "@data-agent/contracts/common";
 import { compileSemanticContextCore } from "./semantic-context-core.js";
 import {
   compileSemanticInference,
@@ -17,6 +17,7 @@ const RRF_K = 60 as const;
 const MAX_HOPS = 3;
 const MAX_NODES = 80;
 const MAX_EDGES = 160;
+const MAX_OPTIONAL_NODES = 12;
 
 type SearchDocument = Readonly<{
   object_id: string;
@@ -27,19 +28,22 @@ type SearchDocument = Readonly<{
 }>;
 
 export interface SemanticVectorSearchPort {
-  search(input: Readonly<{
-    question: string;
-    question_hash: string;
-    release_hash: string;
-    allowed_object_ids: readonly string[];
-    limit: number;
-  }>): Promise<readonly { readonly object_id: string; readonly score: number }[]>;
+  search(
+    input: Readonly<{
+      question: string;
+      question_hash: string;
+      release_hash: string;
+      allowed_object_ids: readonly string[];
+      limit: number;
+    }>,
+  ): Promise<readonly { readonly object_id: string; readonly score: number }[]>;
 }
 
 export interface HybridSemanticContextOptions {
   readonly vector?: SemanticVectorSearchPort;
   readonly max_nodes?: number;
   readonly max_edges?: number;
+  readonly max_optional_nodes?: number;
   readonly excluded_objects?: readonly Readonly<{
     object_id: string;
     reason_code:
@@ -72,6 +76,36 @@ function overlapScore(question: ReadonlySet<string>, document: ReadonlySet<strin
   return overlap / Math.sqrt(question.size * document.size);
 }
 
+function fuzzyVector(value: string): ReadonlyMap<string, number> {
+  const normalized = normalize(value);
+  const compact = normalized.replace(/\s+/g, "");
+  const features = new Map<string, number>();
+  const add = (feature: string) => features.set(feature, (features.get(feature) ?? 0) + 1);
+  for (const token of tokens(normalized)) add(`token:${token}`);
+  const characters = [...compact];
+  for (const width of [2, 3]) {
+    for (let index = 0; index + width <= characters.length; index += 1) {
+      add(`char${width}:${characters.slice(index, index + width).join("")}`);
+    }
+  }
+  return features;
+}
+
+function cosineScore(
+  left: ReadonlyMap<string, number>,
+  right: ReadonlyMap<string, number>,
+): number {
+  let dot = 0;
+  let leftNorm = 0;
+  let rightNorm = 0;
+  for (const value of left.values()) leftNorm += value * value;
+  for (const [feature, value] of right) {
+    rightNorm += value * value;
+    dot += (left.get(feature) ?? 0) * value;
+  }
+  return leftNorm > 0 && rightNorm > 0 ? dot / Math.sqrt(leftNorm * rightNorm) : 0;
+}
+
 function documents(snapshot: SemanticContextAuthoritySnapshot): readonly SearchDocument[] {
   const metricDocuments = snapshot.published_metrics.map((metric) => ({
     object_id: metric.metric_id,
@@ -101,8 +135,44 @@ function documents(snapshot: SemanticContextAuthoritySnapshot): readonly SearchD
     name: reference.resource_id,
     aliases: [] as readonly string[],
   }));
-  return [...metricDocuments, ...ontologyDocuments, ...relationshipDocuments, ...knowledgeDocuments]
-    .sort((left, right) => left.object_id.localeCompare(right.object_id));
+  return [
+    ...metricDocuments,
+    ...ontologyDocuments,
+    ...relationshipDocuments,
+    ...knowledgeDocuments,
+  ].sort((left, right) => left.object_id.localeCompare(right.object_id));
+}
+
+/**
+ * A release-bound fuzzy vector index for aliases and governed object labels. It is intentionally
+ * deterministic so retrieval stays available when an external embedding service is absent.
+ */
+export function createDeterministicSemanticVectorSearch(
+  snapshot: SemanticContextAuthoritySnapshot,
+): SemanticVectorSearchPort {
+  const releaseHash = snapshot.semantic_release.resource_hash;
+  const indexed = documents(snapshot).map((document) => ({
+    object_id: document.object_id,
+    vector: fuzzyVector([document.name, ...document.aliases].join(" ")),
+  }));
+  return Object.freeze({
+    async search(input: Parameters<SemanticVectorSearchPort["search"]>[0]) {
+      if (input.release_hash !== releaseHash) {
+        throw new TypeError("SEMANTIC_VECTOR_RELEASE_MISMATCH");
+      }
+      const allowed = new Set(input.allowed_object_ids);
+      const query = fuzzyVector(input.question);
+      return indexed
+        .filter(({ object_id }) => allowed.has(object_id))
+        .map(({ object_id, vector }) => ({ object_id, score: cosineScore(query, vector) }))
+        .filter(({ score }) => score > 0)
+        .sort(
+          (left, right) =>
+            right.score - left.score || left.object_id.localeCompare(right.object_id),
+        )
+        .slice(0, input.limit);
+    },
+  });
 }
 
 function rankedRoute(
@@ -111,7 +181,10 @@ function rankedRoute(
 ): readonly SemanticRetrievalHit[] {
   return [...ranked]
     .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score || left.document.object_id.localeCompare(right.document.object_id))
+    .sort(
+      (left, right) =>
+        right.score - left.score || left.document.object_id.localeCompare(right.document.object_id),
+    )
     .slice(0, 128)
     .map(({ document, score }, index) => ({
       object_id: document.object_id,
@@ -198,14 +271,13 @@ export async function compileSemanticContextPackage(
 
   const allHits = [...lexicalHits, ...sparseHits, ...vectorHits];
   const fused = new Map<string, number>();
-  for (const hit of allHits) fused.set(hit.object_id, (fused.get(hit.object_id) ?? 0) + hit.rrf_score);
+  for (const hit of allHits)
+    fused.set(hit.object_id, (fused.get(hit.object_id) ?? 0) + hit.rrf_score);
   const rankedObjectIds = [...fused.entries()]
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .map(([objectId]) => objectId);
   for (const objectId of [
-    ...(core.route_decision.selected_metric_id
-      ? [core.route_decision.selected_metric_id]
-      : []),
+    ...(core.route_decision.selected_metric_id ? [core.route_decision.selected_metric_id] : []),
     ...core.route_decision.selected_ontology_ids,
   ]) {
     if (!rankedObjectIds.includes(objectId)) rankedObjectIds.unshift(objectId);
@@ -217,7 +289,11 @@ export async function compileSemanticContextPackage(
       adjacency.set(endpoint, [...(adjacency.get(endpoint) ?? []), relationship]);
     }
   }
-  const seeds = rankedObjectIds.slice(0, 16);
+  const routedSeeds = [
+    ...(core.route_decision.selected_metric_id ? [core.route_decision.selected_metric_id] : []),
+    ...core.route_decision.selected_ontology_ids,
+  ].filter((objectId, index, values) => values.indexOf(objectId) === index);
+  const seeds = routedSeeds.length > 0 ? routedSeeds : rankedObjectIds.slice(0, 4);
   const visited = new Map(seeds.map((seed) => [seed, 0]));
   const expansions: Array<{
     relationship_id: string;
@@ -232,12 +308,15 @@ export async function compileSemanticContextPackage(
   const seenEdges = new Set<string>();
   const queue = [...seeds];
   while (queue.length > 0) {
-    const current = queue.shift()!;
+    const current = queue.shift();
+    if (!current) continue;
     const hop = visited.get(current) ?? 0;
     if (hop >= MAX_HOPS) continue;
     for (const relationship of [...(adjacency.get(current) ?? [])].sort((left, right) =>
       left.relationship_id.localeCompare(right.relationship_id),
     )) {
+      const mandatory = relationshipRequiresClosure(relationship.relationship_kind);
+      if (mandatory && relationship.source_object_id !== current) continue;
       if (!seenEdges.has(relationship.relationship_id)) {
         seenEdges.add(relationship.relationship_id);
         expansions.push({
@@ -248,7 +327,7 @@ export async function compileSemanticContextPackage(
           target_object_id: relationship.target_object_id,
           direction: relationship.source_object_id === current ? "OUTBOUND" : "INBOUND",
           hop: hop + 1,
-          mandatory: relationshipRequiresClosure(relationship.relationship_kind),
+          mandatory,
         });
       }
       const next =
@@ -262,7 +341,9 @@ export async function compileSemanticContextPackage(
     }
   }
 
-  const objectHashes = new Map(corpus.map(({ object_id, object_hash }) => [object_id, object_hash]));
+  const objectHashes = new Map(
+    corpus.map(({ object_id, object_hash }) => [object_id, object_hash]),
+  );
   const preliminaryInference = await compileSemanticInference({
     expansions,
     seed_object_ids: seeds,
@@ -280,9 +361,16 @@ export async function compileSemanticContextPackage(
     throw new TypeError("SEMANTIC_MANDATORY_CLOSURE_CAPACITY_EXCEEDED");
   }
   const selectedObjects = new Set([...mandatoryObjects]);
+  const optionalLimit = Math.min(
+    options.max_optional_nodes ?? MAX_OPTIONAL_NODES,
+    maxNodes - mandatoryObjects.size,
+  );
+  let optionalCount = 0;
   for (const objectId of [...rankedObjectIds, ...visited.keys()]) {
-    if (selectedObjects.size >= maxNodes) break;
+    if (selectedObjects.has(objectId)) continue;
+    if (optionalCount >= optionalLimit) break;
     selectedObjects.add(objectId);
+    optionalCount += 1;
   }
   const selectedExpansions = [
     ...mandatoryEdges,
@@ -295,7 +383,8 @@ export async function compileSemanticContextPackage(
     .slice(0, maxEdges)
     .sort((left, right) => left.relationship_id.localeCompare(right.relationship_id));
   const selectedObjectIds = [...selectedObjects].sort();
-  const prunedObjectIds = [...visited.keys()]
+  const prunedObjectIds = corpus
+    .map(({ object_id }) => object_id)
     .filter((objectId) => !selectedObjects.has(objectId))
     .sort();
 
@@ -322,7 +411,9 @@ export async function compileSemanticContextPackage(
     },
     hits: allHits.sort(
       (left, right) =>
-        left.route.localeCompare(right.route) || left.rank - right.rank || left.object_id.localeCompare(right.object_id),
+        left.route.localeCompare(right.route) ||
+        left.rank - right.rank ||
+        left.object_id.localeCompare(right.object_id),
     ),
     expansions: selectedExpansions,
     selected_object_ids: selectedObjectIds,
@@ -351,16 +442,17 @@ export async function compileSemanticContextPackage(
     object_ids: inferenceReceipt.mandatory_object_ids,
     relationship_ids: inferenceReceipt.mandatory_relationship_ids,
   });
-  const analysisCapabilities = snapshot.published_metrics.length > 0
-    ? [
-        "TREND_CHANGE",
-        "CONTRIBUTION",
-        "CONCENTRATION",
-        "ROBUST_ANOMALY",
-        "ASSOCIATION",
-        "FORECAST",
-      ] as const
-    : [];
+  const analysisCapabilities =
+    snapshot.published_metrics.length > 0
+      ? ([
+          "TREND_CHANGE",
+          "CONTRIBUTION",
+          "CONCENTRATION",
+          "ROBUST_ANOMALY",
+          "ASSOCIATION",
+          "FORECAST",
+        ] as const)
+      : [];
   return buildSemanticContextPackage({
     schema_version: "semantic-context-package@1.0.0",
     ...core,

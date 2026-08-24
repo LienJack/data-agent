@@ -10,7 +10,11 @@ import {
   verifySemanticContextRequest,
 } from "@data-agent/contracts/context";
 import type { PortResult } from "@data-agent/contracts/ports";
-import { compileSemanticContextPackage } from "./semantic-context-compiler.js";
+import {
+  compileSemanticContextPackage,
+  createDeterministicSemanticVectorSearch,
+  type SemanticVectorSearchPort,
+} from "./semantic-context-compiler.js";
 
 export interface SemanticContextAuthorityPort {
   loadAuthoritySnapshot(
@@ -27,8 +31,25 @@ export function createSemanticContextService(
   options: Readonly<{
     authority: SemanticContextAuthorityPort;
     now?: () => Date;
+    vector?: SemanticVectorSearchPort;
   }>,
 ) {
+  const deterministicVectorIndexes = new Map<string, SemanticVectorSearchPort>();
+
+  function vectorFor(snapshot: SemanticContextAuthoritySnapshot): SemanticVectorSearchPort {
+    if (options.vector) return options.vector;
+    const releaseHash = snapshot.semantic_release.resource_hash;
+    const cached = deterministicVectorIndexes.get(releaseHash);
+    if (cached) return cached;
+    const index = createDeterministicSemanticVectorSearch(snapshot);
+    deterministicVectorIndexes.set(releaseHash, index);
+    if (deterministicVectorIndexes.size > 8) {
+      const oldest = deterministicVectorIndexes.keys().next().value;
+      if (oldest) deterministicVectorIndexes.delete(oldest);
+    }
+    return index;
+  }
+
   async function prepare(
     capability: unknown,
     request: SemanticContextRequest,
@@ -71,7 +92,9 @@ export function createSemanticContextService(
       value: {
         request: verifiedRequest,
         snapshot,
-        packageDocument: await compileSemanticContextPackage(snapshot),
+        packageDocument: await compileSemanticContextPackage(snapshot, {
+          vector: vectorFor(snapshot),
+        }),
       },
     };
   }

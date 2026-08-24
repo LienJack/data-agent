@@ -44,21 +44,24 @@ pnpm falcon:workspace:verify --workspace-id "$FALCON_DEMO_WORKSPACE_ID"
 database 摘要，不输出密码或完整 DSN。运行时角色 `falcon_demo_reader` 默认只读，控制面 schema
 无权限；case executor 还会拒绝跨 case schema、DDL/DML、多语句和超预算查询。
 
-## db24 本体候选
+## db24 语义发布、激活与召回验收
 
-在发布前生成并验证 Agent 候选：
+生成 ChangeSet、冻结审核、原子发布投影，并激活 Falcon schema snapshot、DeepSeek 与
+Workspace Defaults：
 
 ```bash
 pnpm falcon:semantic:publish --workspace-id "$FALCON_DEMO_WORKSPACE_ID"
+pnpm falcon:semantic:verify --workspace-id "$FALCON_DEMO_WORKSPACE_ID"
 ```
 
-命令从真实 PostgreSQL 重新认证 Join，生成 9 个业务主体、17 个维度、21 个指标、21 个公式、
-9 张物理表、70 个物理列和 10 个中文术语。`blinkit_inventory` 与
-`blinkit_inventoryNew` 保持两个独立原始快照，不自动 UNION 或推断覆盖关系。
+发布命令只接受通过 competency cases 的 `REVIEW_FROZEN` ChangeSet 和明确 `APPROVE` 决策；
+ChangeSet、审核、Release、稀疏/向量/图投影与 Active Pointer 在一个数据库事务内提交。随后扫描
+`falcon_db_24` 物理结构，绑定已认证 `deepseek-v4-flash`，并以 CAS 更新 Workspace Defaults。
+重复执行必须返回同一 Release、Snapshot 和 Defaults Revision。
 
-输出位于 `artifacts/falcon-semantic/`，终态固定为 `REVIEW_REQUIRED`。Agent 只能生成/修改
-Candidate；人工必须核对 coverage receipt、公式口径和物理 Join 证据后，才可通过语义治理页面
-Review 与 Publish。脚本不会绕过审批直接激活语义版本。
+召回验收对五道完整中文分析题逐题验证 Lexicon、Sparse、确定性模糊向量和 Graph 四路 READY，
+沿 `LINEAGE_REQUIREMENT` 单向扩展强制闭包，并证明必需对象没有被截枝、非必需对象已经有界截枝。
+`blinkit_inventory` 与 `blinkit_inventoryNew` 保持两个独立原始快照，不自动 UNION 或推断覆盖关系。
 
 ## 运行与判分
 
