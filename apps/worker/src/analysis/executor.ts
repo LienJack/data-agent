@@ -648,6 +648,10 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           input_refs: program.input_refs,
           input_materialization_receipt_refs: program.input_materialization_receipt_refs,
         });
+        const operatorReceiptClosureHash = sandbox.outcome.receipt.operator_receipt_closure_hash;
+        if (operatorReceiptClosureHash === null) {
+          throw new TypeError("ANALYSIS_OPERATOR_RECEIPT_CLOSURE_MISSING");
+        }
         const evidenceMaterial: Omit<DerivedAnalysisEvidencePayload, "derivation_hash"> = {
           artifact_type: "DerivedAnalysisEvidence",
           protocol_version: "derived-analysis-evidence@1.0.0",
@@ -661,6 +665,10 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           sandbox_result_refs: committedOutputRefs,
           runtime_digest: program.runtime_digest,
           dependency_lock_digest: program.dependency_lock_digest,
+          generated_source_policy: program.generated_source_policy,
+          operator_registry_digest: program.operator_registry_digest,
+          operator_obligations: program.operator_obligations,
+          operator_receipt_closure_hash: operatorReceiptClosureHash,
           parameter_hash: parameterHash,
           input_closure_hash: inputClosureHash,
           result: expectation.result,

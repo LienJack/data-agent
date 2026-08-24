@@ -39,6 +39,7 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
     brief_ref: ref("ResearchBrief", 4),
     analysis_context_hash: hash("a"),
     semantic_context_package_hash: hash("0"),
+    operator_registry_digest: hash("2"),
     nodes: [
       {
         node_id: "trend",
@@ -54,6 +55,8 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
         comparison_window: null,
         parameters: {},
         execution_mode: "FROZEN_TEMPLATE",
+        generated_source_policy: "NO_GENERATED_SOURCE",
+        operator_obligations: [],
         output_contract: null,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -86,6 +89,10 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
     sandbox_result_refs: [ref("SandboxResult", 9)],
     runtime_digest: hash("c"),
     dependency_lock_digest: hash("d"),
+    generated_source_policy: "NO_GENERATED_SOURCE",
+    operator_registry_digest: plan.operator_registry_digest,
+    operator_obligations: [],
+    operator_receipt_closure_hash: hash("2"),
     parameter_hash: hash("e"),
     input_closure_hash: hash("f"),
     result:

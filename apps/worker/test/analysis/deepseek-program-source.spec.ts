@@ -145,6 +145,7 @@ async function fixture() {
     brief_ref: reference("ResearchBrief", 10, hash("9")) as never,
     analysis_context_hash: hash("a"),
     semantic_context_package_hash: contextPackage.package_hash,
+    operator_registry_digest: hash("c"),
     nodes: [
       {
         node_id: "falcon24-question-1",
@@ -174,6 +175,8 @@ async function fixture() {
           ],
         },
         execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "OPEN_ANALYSIS",
+        operator_obligations: [],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -542,7 +545,7 @@ describe("DeepSeek governed Python source", () => {
       node: base.node,
       previous_source_text: "def main(context): pass",
       failure_code: "FALCON24_Q3_RAW_P_MISMATCH",
-      standard_program: null,
+      attempt: 1,
     });
     const mannKendallRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
@@ -558,7 +561,7 @@ describe("DeepSeek governed Python source", () => {
       node: base.node,
       previous_source_text: "def main(context): pass",
       failure_code: "FALCON24_Q3_THEIL_SEN_MISMATCH",
-      standard_program: null,
+      attempt: 1,
     });
     const theilSenRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
@@ -574,7 +577,7 @@ describe("DeepSeek governed Python source", () => {
       node: base.node,
       previous_source_text: "def main(context): pass",
       failure_code: "FALCON24_Q3_BH_Q_MISMATCH",
-      standard_program: null,
+      attempt: 1,
     });
     const bhRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
@@ -590,7 +593,7 @@ describe("DeepSeek governed Python source", () => {
       node: base.node,
       previous_source_text: "def main(context): pass",
       failure_code: "FALCON24_Q4_WEEK_WINDOW_INVALID",
-      standard_program: null,
+      attempt: 1,
     });
     const marketingWindowRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
@@ -608,7 +611,7 @@ describe("DeepSeek governed Python source", () => {
       node: base.node,
       previous_source_text: "def main(context): pass",
       failure_code: "FALCON24_Q4_CONTROL_MISSING",
-      standard_program: null,
+      attempt: 1,
     });
     const marketingControlRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
@@ -625,7 +628,7 @@ describe("DeepSeek governed Python source", () => {
       node: base.node,
       previous_source_text: "def main(context): pass",
       failure_code: "FALCON24_Q4_HAC_P_MISMATCH",
-      standard_program: null,
+      attempt: 1,
     });
     const marketingStatisticsRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };

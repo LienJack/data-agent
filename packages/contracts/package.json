@@ -44,6 +44,10 @@
       "types": "./dist/public/semantic.d.ts",
       "import": "./dist/public/semantic.js"
     },
+    "./statistical-operators": {
+      "types": "./dist/generated/statistical-operators.d.ts",
+      "import": "./dist/generated/statistical-operators.js"
+    },
     "./workspaces": {
       "types": "./dist/workspaces/index.d.ts",
       "import": "./dist/workspaces/index.js"
@@ -61,8 +65,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "pnpm check:statistical-operators && tsc -p tsconfig.build.json",
+    "typecheck": "pnpm check:statistical-operators && tsc -p tsconfig.json --noEmit",
+    "check:statistical-operators": "tsx ../../scripts/generate-statistical-operator-contracts.ts --check",
     "test:unit": "vitest run test --testTimeout=15000",
     "test:contract": "vitest run test/port-conformance.spec.ts"
   },

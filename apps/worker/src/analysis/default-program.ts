@@ -8,10 +8,8 @@ import {
   researchBriefRefSchema,
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
-import {
-  type AnalysisContext,
-  verifyAnalysisContext,
-} from "@data-agent/contracts/context";
+import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
+import { STATISTICAL_OPERATOR_MANIFEST_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
 import {
   type AnalysisSkillCatalog,
@@ -135,6 +133,7 @@ export async function createDefaultAnalysisProgram(
       const parameterInput = nodeParameters(skillId);
       catalog.parseParameters(skillId, parameterInput);
       const nodeId = `${skillId.split("@")[0]}-${metricIds.join("-")}`;
+      const nodeExecutionMode = executionMode(descriptor);
       nodes.push({
         node_id: nodeId,
         skill_id: skillId,
@@ -147,7 +146,10 @@ export async function createDefaultAnalysisProgram(
         comparison_window:
           skillId === "contribution-concentration@1" ? (input.comparison_window ?? null) : null,
         parameters: parameterInput,
-        execution_mode: executionMode(descriptor),
+        execution_mode: nodeExecutionMode,
+        generated_source_policy:
+          nodeExecutionMode === "MODEL_GENERATED" ? "OPEN_ANALYSIS" : "NO_GENERATED_SOURCE",
+        operator_obligations: [],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -165,6 +167,7 @@ export async function createDefaultAnalysisProgram(
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
     semantic_context_package_hash: context.semantic_context_binding.package_hash,
+    operator_registry_digest: STATISTICAL_OPERATOR_MANIFEST_DIGEST,
     nodes: boundedNodes,
     budget: boundedBudget(input.brief, boundedNodes.length),
     compiler_kind: "DETERMINISTIC_DEFAULT",

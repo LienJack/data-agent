@@ -16,6 +16,9 @@ export type ProgramVerificationFailure =
   | "PROGRAM_PLAN_BINDING_MISMATCH"
   | "PROGRAM_SOURCE_HASH_MISMATCH"
   | "PROGRAM_OUTPUT_CONTRACT_MISMATCH"
+  | "PROGRAM_OPERATOR_REGISTRY_MISMATCH"
+  | "PROGRAM_SOURCE_POLICY_MISMATCH"
+  | "PROGRAM_OPERATOR_OBLIGATIONS_MISMATCH"
   | "PROGRAM_OUTPUT_SENSITIVE"
   | "PROGRAM_PROFILE_NOT_ALLOWED"
   | "PROGRAM_RANDOM_SEED_UNBOUND"
@@ -65,6 +68,18 @@ export async function verifyAnalysisSandboxProgram(input: {
     canonicalizeJson(node.output_contract) !== canonicalizeJson(program.output_contract)
   ) {
     failures.push("PROGRAM_OUTPUT_CONTRACT_MISMATCH");
+  }
+  if (plan.operator_registry_digest !== program.operator_registry_digest) {
+    failures.push("PROGRAM_OPERATOR_REGISTRY_MISMATCH");
+  }
+  if (node && node.generated_source_policy !== program.generated_source_policy) {
+    failures.push("PROGRAM_SOURCE_POLICY_MISMATCH");
+  }
+  if (
+    node &&
+    canonicalizeJson(node.operator_obligations) !== canonicalizeJson(program.operator_obligations)
+  ) {
+    failures.push("PROGRAM_OPERATOR_OBLIGATIONS_MISMATCH");
   }
   const sensitiveOutputNames = new Set(["raw_rows", "source_rows", "stdout", "stderr", "secrets"]);
   if (

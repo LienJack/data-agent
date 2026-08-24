@@ -9,6 +9,11 @@ import {
   sha256ContentHash,
   timestampSchema,
 } from "../common/index.js";
+import {
+  generatedAnalysisSourcePolicySchema,
+  statisticalOperatorCallReceiptSchema,
+  statisticalOperatorObligationsSchema,
+} from "../generated/statistical-operators.js";
 
 export const pythonExecutionFailureCodeSchema = z.enum([
   "PYTHON_POLICY_AUTHORIZATION_INVALID",
@@ -33,6 +38,18 @@ export const pythonExecutionFailureCodeSchema = z.enum([
   "PYTHON_POLICY_GLOBAL_STATE_DENIED",
   "PYTHON_POLICY_ASYNC_GENERATOR_DENIED",
   "PYTHON_POLICY_CALL_DENIED",
+  "PYTHON_OPERATOR_REGISTRY_DIGEST_MISMATCH",
+  "PYTHON_OPERATOR_NOT_REGISTERED",
+  "PYTHON_OPERATOR_NOT_AUTHORIZED",
+  "PYTHON_OPERATOR_REQUIRED_CALL_MISSING",
+  "PYTHON_OPERATOR_UNDECLARED_CALL",
+  "PYTHON_OPERATOR_DUPLICATE_CALL_ID",
+  "PYTHON_OPERATOR_INPUT_INVALID",
+  "PYTHON_OPERATOR_PARAMETER_INVALID",
+  "PYTHON_OPERATOR_APPLICABILITY_HOLD",
+  "PYTHON_OPERATOR_NUMERIC_FAILURE",
+  "PYTHON_OPERATOR_RESULT_BINDING_MISMATCH",
+  "PYTHON_OPERATOR_RECEIPT_CLOSURE_MISMATCH",
   "PYTHON_TIMEOUT",
   "PYTHON_RESOURCE_LIMIT",
   "PYTHON_CANCELLED",
@@ -90,6 +107,9 @@ export const pythonExecutionRequestSchema = z
     entrypoint: z.literal("main"),
     input_refs: z.array(artifactReferenceSchema).max(64),
     output_contract: pythonOutputContractSchema,
+    generated_source_policy: generatedAnalysisSourcePolicySchema,
+    operator_registry_digest: contentHashSchema,
+    operator_obligations: statisticalOperatorObligationsSchema,
     runtime_digest: contentHashSchema,
     dependency_lock_digest: contentHashSchema,
     policy_version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:@/+~-]{0,127}$/u),
@@ -112,6 +132,28 @@ export const pythonExecutionRequestSchema = z
         path: ["source_sha256"],
         message: "source hash must bind source_ref",
       });
+    }
+    if (
+      (request.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION") !==
+      request.operator_obligations.length > 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["operator_obligations"],
+        message: "execution request 的源码策略与算子义务不闭合",
+      });
+    }
+    const outputByName = new Map(
+      request.output_contract.outputs.map((output) => [output.name, output]),
+    );
+    for (const [index, obligation] of request.operator_obligations.entries()) {
+      if (outputByName.get(obligation.result_binding.result_output_name)?.type !== "JSON") {
+        context.addIssue({
+          code: "custom",
+          path: ["operator_obligations", index, "result_binding"],
+          message: "operator result binding 必须命中已声明的 JSON 输出",
+        });
+      }
     }
   });
 
@@ -147,6 +189,11 @@ export const pythonSandboxReceiptSchema = z
     sdk_version: z.string().min(1).max(128),
     dependency_lock_digest: contentHashSchema,
     policy_version: z.string().min(1).max(128),
+    generated_source_policy: generatedAnalysisSourcePolicySchema,
+    operator_registry_digest: contentHashSchema,
+    operator_obligations: statisticalOperatorObligationsSchema,
+    operator_receipts: z.array(statisticalOperatorCallReceiptSchema).max(32),
+    operator_receipt_closure_hash: contentHashSchema.nullable(),
     started_at: timestampSchema,
     finished_at: timestampSchema,
     elapsed_ms: z.number().int().nonnegative(),
@@ -179,6 +226,58 @@ export const pythonSandboxReceiptSchema = z
         path: ["output_refs"],
         message: "failed executions cannot commit outputs",
       });
+    }
+    if (
+      (receipt.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION") !==
+      receipt.operator_obligations.length > 0
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["operator_obligations"],
+        message: "sandbox receipt 的源码策略与算子义务不闭合",
+      });
+    }
+    if (receipt.status === "SUCCEEDED") {
+      const expected = receipt.operator_obligations.map(({ call_id, operator_id }) => ({
+        call_id,
+        operator_id,
+      }));
+      const actual = receipt.operator_receipts.map(({ call_id, operator_id }) => ({
+        call_id,
+        operator_id,
+      }));
+      if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+        context.addIssue({
+          code: "custom",
+          path: ["operator_receipts"],
+          message: "successful receipt 必须按声明顺序逐一闭合 operator obligations",
+        });
+      }
+      if (receipt.operator_receipt_closure_hash === null) {
+        context.addIssue({
+          code: "custom",
+          path: ["operator_receipt_closure_hash"],
+          message: "successful receipt 必须绑定 operator receipt closure hash",
+        });
+      }
+    } else if (
+      receipt.operator_receipts.length > 0 ||
+      receipt.operator_receipt_closure_hash !== null
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["operator_receipts"],
+        message: "failed or cancelled execution cannot publish operator receipts",
+      });
+    }
+    for (const [index, operatorReceipt] of receipt.operator_receipts.entries()) {
+      if (operatorReceipt.operator_registry_digest !== receipt.operator_registry_digest) {
+        context.addIssue({
+          code: "custom",
+          path: ["operator_receipts", index, "operator_registry_digest"],
+          message: "operator receipt 必须绑定 sandbox receipt registry digest",
+        });
+      }
     }
     for (const reference of [...receipt.output_refs, receipt.stdout_ref, receipt.stderr_ref].filter(
       Boolean,

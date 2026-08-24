@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { pythonOutputContractSchema } from "../../common/index.js";
 import {
+  generatedAnalysisSourcePolicySchema,
+  statisticalOperatorObligationsSchema,
+} from "../../generated/statistical-operators.js";
+import {
   artifactReferenceFor,
   artifactReferenceIdentity,
   artifactReferenceSchema,
@@ -107,6 +111,7 @@ export const ANALYSIS_REASON_CODES = [
   "RECEIPT_HARD_CONTROL_MISMATCH",
   "RECEIPT_RUNTIME_MISMATCH",
   "RECEIPT_SCOPE_MISMATCH",
+  "OPERATOR_AUTHORITY_CLOSURE_FAILED",
   "RESULT_REFERENCE_CLOSURE_FAILED",
   "QUERY_REFERENCE_CLOSURE_FAILED",
   "INPUT_REFERENCE_CLOSURE_FAILED",
@@ -279,6 +284,8 @@ const analysisProgramNodeSchema = z.strictObject({
   comparison_window: halfOpenTimeWindowSchema.nullable(),
   parameters: z.json(),
   execution_mode: z.enum(["FROZEN_TEMPLATE", "MODEL_GENERATED"]),
+  generated_source_policy: generatedAnalysisSourcePolicySchema,
+  operator_obligations: statisticalOperatorObligationsSchema,
   output_contract: pythonOutputContractSchema.nullable(),
   dependency_node_ids: uniqueIdentifierArraySchema(0, ANALYSIS_LIMITS.max_dependencies_per_node),
   activation_rule: z.discriminatedUnion("kind", [
@@ -349,6 +356,7 @@ export const analysisProgramPayloadSchema = z
     brief_ref: researchBriefRefSchema,
     analysis_context_hash: contentHashSchema,
     semantic_context_package_hash: contentHashSchema,
+    operator_registry_digest: contentHashSchema,
     nodes: z.array(analysisProgramNodeSchema).min(1).max(ANALYSIS_LIMITS.max_plan_nodes),
     budget: z.strictObject({
       max_steps: positiveIntSchema.max(64),
@@ -372,6 +380,50 @@ export const analysisProgramPayloadSchema = z
           message: "MODEL_GENERATED 节点必须声明 Output Contract。",
           path: ["nodes", index, "output_contract"],
         });
+      }
+      if (
+        node.execution_mode === "FROZEN_TEMPLATE" &&
+        (node.generated_source_policy !== "NO_GENERATED_SOURCE" ||
+          node.operator_obligations.length !== 0)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "FROZEN_TEMPLATE 节点必须明确禁止生成源码且不能声明算子义务。",
+          path: ["nodes", index, "generated_source_policy"],
+        });
+      }
+      if (
+        node.execution_mode === "MODEL_GENERATED" &&
+        node.generated_source_policy === "NO_GENERATED_SOURCE"
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "MODEL_GENERATED 节点必须声明生成源码策略。",
+          path: ["nodes", index, "generated_source_policy"],
+        });
+      }
+      if (
+        (node.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION") !==
+        node.operator_obligations.length > 0
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "只有受治理算子编排策略可以且必须声明算子义务。",
+          path: ["nodes", index, "operator_obligations"],
+        });
+      }
+      const outputByName = new Map(
+        node.output_contract?.outputs.map((output) => [output.name, output]) ?? [],
+      );
+      for (const [obligationIndex, obligation] of node.operator_obligations.entries()) {
+        const output = outputByName.get(obligation.result_binding.result_output_name);
+        if (output?.type !== "JSON") {
+          ctx.addIssue({
+            code: "custom",
+            message: "算子结果绑定必须命中已声明的 JSON 输出。",
+            path: ["nodes", index, "operator_obligations", obligationIndex, "result_binding"],
+          });
+        }
       }
     }
   });
@@ -398,6 +450,9 @@ export const analysisSandboxProgramPayloadSchema = z
       64,
     ),
     output_contract: pythonOutputContractSchema,
+    generated_source_policy: generatedAnalysisSourcePolicySchema,
+    operator_registry_digest: contentHashSchema,
+    operator_obligations: statisticalOperatorObligationsSchema,
     import_profile: analysisRuntimeProfileSchema,
     random_seed: nonNegativeIntSchema,
     runtime_digest: contentHashSchema,
@@ -422,6 +477,28 @@ export const analysisSandboxProgramPayloadSchema = z
         message: "每个 QueryEvidence 必须经一个物化回执绑定一个 Sandbox 输入。",
         path: ["input_refs"],
       });
+    }
+    if (
+      (program.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION") !==
+      program.operator_obligations.length > 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "SandboxProgram 的源码策略与算子义务不闭合。",
+        path: ["operator_obligations"],
+      });
+    }
+    const outputByName = new Map(
+      program.output_contract.outputs.map((output) => [output.name, output]),
+    );
+    for (const [index, obligation] of program.operator_obligations.entries()) {
+      if (outputByName.get(obligation.result_binding.result_output_name)?.type !== "JSON") {
+        ctx.addIssue({
+          code: "custom",
+          message: "SandboxProgram 算子结果绑定必须命中已声明的 JSON 输出。",
+          path: ["operator_obligations", index, "result_binding"],
+        });
+      }
     }
   });
 
@@ -548,6 +625,10 @@ export const derivedAnalysisEvidencePayloadSchema = z
     ),
     runtime_digest: contentHashSchema,
     dependency_lock_digest: contentHashSchema,
+    generated_source_policy: generatedAnalysisSourcePolicySchema,
+    operator_registry_digest: contentHashSchema,
+    operator_obligations: statisticalOperatorObligationsSchema,
+    operator_receipt_closure_hash: contentHashSchema,
     parameter_hash: contentHashSchema,
     input_closure_hash: contentHashSchema,
     result: analysisResultSchema,
@@ -562,6 +643,16 @@ export const derivedAnalysisEvidencePayloadSchema = z
     derivation_hash: contentHashSchema,
   })
   .superRefine((evidence, ctx) => {
+    if (
+      (evidence.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION") !==
+      evidence.operator_obligations.length > 0
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "DerivedAnalysisEvidence 的源码策略与算子义务不闭合。",
+        path: ["operator_obligations"],
+      });
+    }
     if (
       evidence.quality.oracle_verdict !== "PASS" ||
       evidence.quality.deterministic_replay === "FAIL"

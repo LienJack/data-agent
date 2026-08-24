@@ -41,6 +41,27 @@ const briefRef = reference("ResearchBrief", 101);
 const semanticReleaseRef = reference("SemanticRelease", 102);
 const metricRef = { container_ref: semanticReleaseRef, node_id: "gross_profit" } as const;
 
+const trendOperatorObligation = {
+  call_id: "trend_fit",
+  operator_id: "robust-trend.theil-sen-slope@1",
+  result_binding: {
+    result_output_name: "forecast",
+    result_collection_path: "/method_evidence/trends",
+    operator_collection_path: "/series",
+    label_fields: ["label"],
+    value_bindings: [
+      {
+        result_field: "slope",
+        operator_field: "slope",
+        comparison: "NUMERIC_TOLERANCE",
+        absolute_tolerance: 1e-9,
+        relative_tolerance: 1e-9,
+      },
+    ],
+    require_exact_label_set: true,
+  },
+} as const;
+
 function validPlan() {
   return {
     artifact_type: "AnalysisProgram",
@@ -48,6 +69,7 @@ function validPlan() {
     brief_ref: briefRef,
     analysis_context_hash: hashes.artifact,
     semantic_context_package_hash: hashes.input,
+    operator_registry_digest: hashes.execution,
     nodes: [
       {
         node_id: "trend",
@@ -63,6 +85,8 @@ function validPlan() {
         comparison_window: null,
         parameters: { grain: "day" },
         execution_mode: "FROZEN_TEMPLATE",
+        generated_source_policy: "NO_GENERATED_SOURCE",
+        operator_obligations: [],
         output_contract: null,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -82,6 +106,8 @@ function validPlan() {
         comparison_window: null,
         parameters: {},
         execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+        operator_obligations: [trendOperatorObligation],
         output_contract: {
           schema_version: "python-output-contract@1.0.0",
           outputs: [{ name: "forecast", type: "JSON", required: true, max_bytes: 1024 }],
@@ -301,6 +327,24 @@ describe("deterministic analysis contracts", () => {
       nodes: [plan.nodes[0], { ...plan.nodes[1], output_contract: null }],
     };
     expect(analysisProgramPayloadSchema.safeParse(missingContract).success).toBe(false);
+
+    expect(
+      analysisProgramPayloadSchema.safeParse({ ...plan, operator_registry_digest: undefined })
+        .success,
+    ).toBe(false);
+    expect(
+      analysisProgramPayloadSchema.safeParse({
+        ...plan,
+        nodes: [
+          plan.nodes[0],
+          {
+            ...plan.nodes[1],
+            generated_source_policy: "OPEN_ANALYSIS",
+            operator_obligations: [trendOperatorObligation],
+          },
+        ],
+      }).success,
+    ).toBe(false);
   });
 
   it("binds sandbox source identity and only accepts Oracle-passing derived evidence", () => {
@@ -324,6 +368,17 @@ describe("deterministic analysis contracts", () => {
         schema_version: "python-output-contract@1.0.0",
         outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_048_576 }],
       },
+      generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+      operator_registry_digest: hashes.execution,
+      operator_obligations: [
+        {
+          ...trendOperatorObligation,
+          result_binding: {
+            ...trendOperatorObligation.result_binding,
+            result_output_name: "result",
+          },
+        },
+      ],
       import_profile: "CORE_ANALYSIS",
       random_seed: 7,
       runtime_digest: hashes.execution,
@@ -352,6 +407,10 @@ describe("deterministic analysis contracts", () => {
       sandbox_result_refs: [reference("SandboxResult", 121)],
       runtime_digest: hashes.execution,
       dependency_lock_digest: hashes.artifact,
+      generated_source_policy: program.generated_source_policy,
+      operator_registry_digest: program.operator_registry_digest,
+      operator_obligations: program.operator_obligations,
+      operator_receipt_closure_hash: hashes.execution,
       parameter_hash: hashes.input,
       input_closure_hash: hashes.execution,
       result: {

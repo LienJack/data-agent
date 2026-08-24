@@ -49,6 +49,7 @@ async function runAcceptedEcommerceTrend() {
     brief_ref: ref("ResearchBrief", 4),
     analysis_context_hash: testCase.semantic_frontier.semantic_release_hash,
     semantic_context_package_hash: testCase.semantic_frontier.semantic_release_hash,
+    operator_registry_digest: hash("f"),
     nodes: [
       {
         node_id: "ecommerce-monthly-gmv",
@@ -64,6 +65,8 @@ async function runAcceptedEcommerceTrend() {
         comparison_window: null,
         parameters: {},
         execution_mode: "FROZEN_TEMPLATE",
+        generated_source_policy: "NO_GENERATED_SOURCE",
+        operator_obligations: [],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
@@ -112,6 +115,10 @@ async function runAcceptedEcommerceTrend() {
     sandbox_result_refs: [ref("SandboxResult", 9)],
     runtime_digest: hash("b"),
     dependency_lock_digest: hash("c"),
+    generated_source_policy: "NO_GENERATED_SOURCE",
+    operator_registry_digest: plan.operator_registry_digest,
+    operator_obligations: [],
+    operator_receipt_closure_hash: hash("f"),
     parameter_hash: hash("d"),
     input_closure_hash: hash("e"),
     result: computeDeterministicAnalysisGolden(fixture),

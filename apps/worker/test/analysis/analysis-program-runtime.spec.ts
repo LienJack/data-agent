@@ -147,6 +147,7 @@ async function fixture() {
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
     semantic_context_package_hash: context.semantic_context_binding.package_hash,
+    operator_registry_digest: hash("f"),
     nodes: [
       {
         node_id: "trend",
@@ -157,6 +158,8 @@ async function fixture() {
         comparison_window: null,
         parameters: {},
         execution_mode: "FROZEN_TEMPLATE",
+        generated_source_policy: "NO_GENERATED_SOURCE",
+        operator_obligations: [],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },

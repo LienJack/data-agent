@@ -1,0 +1,416 @@
+{
+  "schema_version": "statistical-operator-manifest@1.0.0",
+  "registry_id": "data-agent-governed-statistics@1",
+  "operators": [
+    {
+      "operator_id": "multiple-testing.bh-fdr@1",
+      "description_zh": "对一个明确检验族执行 Benjamini-Hochberg FDR 校正。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.multiple_testing",
+        "symbol": "bh_fdr"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 5000
+      },
+      "inputs": [
+        {
+          "name": "tests",
+          "kind": "LABELED_RECORDS",
+          "required_fields": ["label", "p_value"],
+          "max_items": 5000
+        }
+      ],
+      "parameters": [
+        {
+          "name": "alpha",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 0.05,
+          "minimum_exclusive": 0,
+          "maximum_inclusive": 1
+        },
+        {
+          "name": "method",
+          "kind": "ENUM",
+          "required": false,
+          "default": "bh",
+          "allowed_values": ["bh"]
+        }
+      ],
+      "outputs": {
+        "collection": "tests",
+        "label_fields": ["label"],
+        "value_fields": ["adjusted_p_value", "rejected"],
+        "evidence_fields": ["family_size", "alpha", "method"]
+      },
+      "applicability_checks": [
+        "NON_EMPTY_FAMILY",
+        "UNIQUE_LABELS",
+        "FINITE_P_VALUES_IN_UNIT_INTERVAL"
+      ],
+      "limitations": ["FAMILY_DEFINITION_MUST_BE_PREDECLARED"]
+    },
+    {
+      "operator_id": "robust-trend.theil-sen-slope@1",
+      "description_zh": "按显式时间序计算 Theil-Sen 稳健斜率及区间。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.robust_trend",
+        "symbol": "theil_sen_slope"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 5000
+      },
+      "inputs": [
+        {
+          "name": "series",
+          "kind": "LABELED_SERIES",
+          "required_fields": ["label", "x", "y"],
+          "max_items": 5000
+        }
+      ],
+      "parameters": [
+        {
+          "name": "confidence",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 0.95,
+          "minimum_exclusive": 0,
+          "maximum_exclusive": 1
+        },
+        {
+          "name": "method",
+          "kind": "ENUM",
+          "required": false,
+          "default": "separate",
+          "allowed_values": ["separate"]
+        }
+      ],
+      "outputs": {
+        "collection": "series",
+        "label_fields": ["label"],
+        "value_fields": ["slope", "intercept", "low_slope", "high_slope"],
+        "evidence_fields": ["sample_size", "pair_count", "confidence", "method"]
+      },
+      "applicability_checks": [
+        "MINIMUM_TWO_FINITE_OBSERVATIONS",
+        "STRICTLY_ORDERED_X",
+        "AT_LEAST_TWO_DISTINCT_X"
+      ],
+      "limitations": ["SLOPE_UNIT_DEPENDS_ON_DECLARED_X_SCALE"]
+    },
+    {
+      "operator_id": "trend.mann-kendall-original@1",
+      "description_zh": "执行带 ties 方差修正和连续性修正的 original Mann-Kendall 趋势检验。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.robust_trend",
+        "symbol": "mann_kendall_original"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 5000
+      },
+      "inputs": [
+        {
+          "name": "series",
+          "kind": "LABELED_SERIES",
+          "required_fields": ["label", "order", "value"],
+          "max_items": 5000
+        }
+      ],
+      "parameters": [
+        {
+          "name": "alpha",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 0.05,
+          "minimum_exclusive": 0,
+          "maximum_inclusive": 1
+        },
+        {
+          "name": "continuity_correction",
+          "kind": "BOOLEAN",
+          "required": false,
+          "default": true
+        },
+        {
+          "name": "variant",
+          "kind": "ENUM",
+          "required": false,
+          "default": "original",
+          "allowed_values": ["original"]
+        }
+      ],
+      "outputs": {
+        "collection": "series",
+        "label_fields": ["label"],
+        "value_fields": ["s", "variance_s", "z", "p_value", "tau", "trend", "rejected"],
+        "evidence_fields": ["sample_size", "tie_group_count", "alpha", "variant"]
+      },
+      "applicability_checks": [
+        "MINIMUM_THREE_FINITE_OBSERVATIONS",
+        "UNIQUE_ORDER_WITHIN_LABEL"
+      ],
+      "limitations": [
+        "SERIAL_CORRELATION_NOT_CORRECTED",
+        "SEASONALITY_NOT_CORRECTED"
+      ]
+    },
+    {
+      "operator_id": "regression.ols-hac@1",
+      "description_zh": "执行 OLS 并使用固定 Newey-West HAC 协方差配置返回系数和显著性证据。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.regression",
+        "symbol": "ols_hac"
+      },
+      "runtime_profile": "ML_DIAGNOSTIC",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 1024
+      },
+      "inputs": [
+        {
+          "name": "models",
+          "kind": "LABELED_TABLES",
+          "required_fields": ["label", "row_order", "outcome", "predictors"],
+          "max_items": 1024
+        }
+      ],
+      "parameters": [
+        {
+          "name": "maxlags",
+          "kind": "NON_NEGATIVE_INTEGER",
+          "required": true,
+          "maximum_inclusive": 120
+        },
+        {
+          "name": "kernel",
+          "kind": "ENUM",
+          "required": false,
+          "default": "bartlett",
+          "allowed_values": ["bartlett"]
+        },
+        {
+          "name": "use_correction",
+          "kind": "BOOLEAN",
+          "required": false,
+          "default": true
+        },
+        {
+          "name": "use_t",
+          "kind": "BOOLEAN",
+          "required": false,
+          "default": false
+        },
+        {
+          "name": "add_intercept",
+          "kind": "BOOLEAN",
+          "required": false,
+          "default": true
+        }
+      ],
+      "outputs": {
+        "collection": "coefficients",
+        "label_fields": ["label", "term"],
+        "value_fields": ["coefficient", "standard_error", "statistic", "p_value"],
+        "evidence_fields": ["sample_size", "rank", "maxlags", "kernel", "use_correction", "use_t"]
+      },
+      "applicability_checks": [
+        "FINITE_COMPLETE_CASES",
+        "STRICT_ROW_ORDER",
+        "FULL_COLUMN_RANK",
+        "SAMPLE_EXCEEDS_PARAMETER_COUNT",
+        "MAXLAGS_BELOW_SAMPLE_SIZE"
+      ],
+      "limitations": ["ASSOCIATION_NOT_CAUSATION", "ORDERING_DEFINES_HAC_DEPENDENCE"]
+    },
+    {
+      "operator_id": "regression.binomial-logit-wald@1",
+      "description_zh": "执行二项 Logit GLM，并返回 Wald 系数、标准误和收敛证据。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.regression",
+        "symbol": "binomial_logit_wald"
+      },
+      "runtime_profile": "ML_DIAGNOSTIC",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 1024
+      },
+      "inputs": [
+        {
+          "name": "models",
+          "kind": "LABELED_TABLES",
+          "required_fields": ["label", "outcome", "predictors"],
+          "max_items": 1024
+        }
+      ],
+      "parameters": [
+        {
+          "name": "add_intercept",
+          "kind": "BOOLEAN",
+          "required": false,
+          "default": true
+        },
+        {
+          "name": "max_iterations",
+          "kind": "POSITIVE_INTEGER",
+          "required": false,
+          "default": 100,
+          "maximum_inclusive": 1000
+        },
+        {
+          "name": "tolerance",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 1e-08,
+          "minimum_exclusive": 0,
+          "maximum_inclusive": 0.01
+        }
+      ],
+      "outputs": {
+        "collection": "coefficients",
+        "label_fields": ["label", "term"],
+        "value_fields": ["coefficient", "standard_error", "wald_z", "p_value"],
+        "evidence_fields": ["sample_size", "rank", "converged", "iterations"]
+      },
+      "applicability_checks": [
+        "BINARY_OUTCOME",
+        "FINITE_COMPLETE_CASES",
+        "BOTH_OUTCOME_CLASSES_PRESENT",
+        "FULL_COLUMN_RANK",
+        "NO_COMPLETE_SEPARATION",
+        "CONVERGED"
+      ],
+      "limitations": ["ASSOCIATION_NOT_CAUSATION"]
+    },
+    {
+      "operator_id": "decomposition.product-shapley-exact@1",
+      "description_zh": "对乘积恒等式执行全排列精确 Shapley 分解并验证加总闭合。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.decomposition",
+        "symbol": "product_shapley_exact"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 1024
+      },
+      "inputs": [
+        {
+          "name": "comparisons",
+          "kind": "LABELED_RECORDS",
+          "required_fields": ["label", "baseline_factors", "current_factors"],
+          "max_items": 1024
+        }
+      ],
+      "parameters": [
+        {
+          "name": "mode",
+          "kind": "ENUM",
+          "required": false,
+          "default": "exact",
+          "allowed_values": ["exact"]
+        },
+        {
+          "name": "max_factors",
+          "kind": "POSITIVE_INTEGER",
+          "required": false,
+          "default": 8,
+          "maximum_inclusive": 8
+        },
+        {
+          "name": "closure_tolerance",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 1e-09,
+          "minimum_inclusive": 0,
+          "maximum_inclusive": 0.000001
+        }
+      ],
+      "outputs": {
+        "collection": "contributions",
+        "label_fields": ["label", "factor"],
+        "value_fields": ["contribution"],
+        "evidence_fields": ["baseline_product", "current_product", "delta", "closure_error", "permutation_count"]
+      },
+      "applicability_checks": [
+        "SAME_UNIQUE_FACTOR_SET",
+        "FINITE_FACTOR_VALUES",
+        "FACTOR_COUNT_WITHIN_EXACT_LIMIT",
+        "EXACT_CLOSURE"
+      ],
+      "limitations": ["PRODUCT_IDENTITY_REQUIRED", "APPROXIMATE_MODE_NOT_SUPPORTED"]
+    },
+    {
+      "operator_id": "cohort.registration-retention-m0-m6@1",
+      "description_zh": "按注册月形成唯一新客 cohort，计算 M0 至 M6 下单、消费、配送和反馈留存证据。",
+      "implementation": {
+        "module": "data_agent_sandbox.python_runtime.operators.cohort",
+        "symbol": "registration_retention_m0_m6"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 5000
+      },
+      "inputs": [
+        {
+          "name": "customers",
+          "kind": "LABELED_TABLE",
+          "required_fields": ["customer_id", "registration_month", "customer_type"],
+          "max_items": 100000
+        },
+        {
+          "name": "events",
+          "kind": "LABELED_TABLE",
+          "required_fields": ["customer_id", "event_month", "order_id", "revenue", "delivery_minutes", "rating"],
+          "max_items": 500000
+        }
+      ],
+      "parameters": [
+        {
+          "name": "horizon_months",
+          "kind": "ENUM_INTEGER",
+          "required": false,
+          "default": 6,
+          "allowed_values": [6]
+        },
+        {
+          "name": "pre_registration_policy",
+          "kind": "ENUM",
+          "required": true,
+          "allowed_values": ["hold_primary", "exclude_sensitivity"]
+        },
+        {
+          "name": "duplicate_customer_policy",
+          "kind": "ENUM",
+          "required": false,
+          "default": "reject",
+          "allowed_values": ["reject"]
+        }
+      ],
+      "outputs": {
+        "collection": "cohort_periods",
+        "label_fields": ["registration_month", "customer_type", "month_index"],
+        "value_fields": ["eligible_customers", "active_customers", "retention_rate", "order_count", "revenue", "average_delivery_minutes", "average_rating"],
+        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "data_quality_status"]
+      },
+      "applicability_checks": [
+        "UNIQUE_CUSTOMER_REGISTRATION",
+        "VALID_MONTH_KEYS",
+        "M0_TO_M6_COMPLETE_GRID",
+        "NON_NEGATIVE_REVENUE",
+        "PRE_REGISTRATION_EVENTS_DISCLOSED",
+        "MATURED_DENOMINATOR_ONLY"
+      ],
+      "limitations": [
+        "PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS",
+        "SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS"
+      ]
+    }
+  ]
+}

@@ -37,6 +37,7 @@ const plan: AnalysisProgramPayload = {
   brief_ref: reference("ResearchBrief", "76"),
   analysis_context_hash: hashes.b,
   semantic_context_package_hash: hashes.c,
+  operator_registry_digest: hashes.c,
   nodes: [
     {
       node_id: "trend-node",
@@ -52,6 +53,8 @@ const plan: AnalysisProgramPayload = {
       comparison_window: null,
       parameters: {},
       execution_mode: "FROZEN_TEMPLATE",
+      generated_source_policy: "NO_GENERATED_SOURCE",
+      operator_obligations: [],
       output_contract: outputContract,
       dependency_node_ids: [],
       activation_rule: { kind: "ALWAYS" },
@@ -87,6 +90,9 @@ async function programFixture(): Promise<AnalysisSandboxProgramPayload> {
       reference("AnalysisInputMaterializationReceipt", "79"),
     ] as AnalysisSandboxProgramPayload["input_materialization_receipt_refs"],
     output_contract: outputContract,
+    generated_source_policy: "NO_GENERATED_SOURCE",
+    operator_registry_digest: plan.operator_registry_digest,
+    operator_obligations: [],
     import_profile: "CORE_ANALYSIS",
     random_seed: 0,
     runtime_digest: hashes.b,
@@ -132,6 +138,11 @@ const receipt: PythonSandboxReceiptV2 = {
   sdk_version: "data-agent-sandbox-sdk@1.0.0",
   dependency_lock_digest: hashes.c,
   policy_version: "python-policy@1.0.0",
+  generated_source_policy: "NO_GENERATED_SOURCE",
+  operator_registry_digest: plan.operator_registry_digest,
+  operator_obligations: [],
+  operator_receipts: [],
+  operator_receipt_closure_hash: hashes.a,
   started_at: "2026-08-22T00:00:00.000Z",
   finished_at: "2026-08-22T00:00:01.000Z",
   elapsed_ms: 1_000,
@@ -172,6 +183,10 @@ async function evidenceFixture(): Promise<DerivedAnalysisEvidencePayload> {
     sandbox_result_refs: [resultRef],
     runtime_digest: hashes.b,
     dependency_lock_digest: hashes.c,
+    generated_source_policy: "NO_GENERATED_SOURCE",
+    operator_registry_digest: plan.operator_registry_digest,
+    operator_obligations: [],
+    operator_receipt_closure_hash: receipt.operator_receipt_closure_hash ?? hashes.a,
     parameter_hash: hashes.a,
     input_closure_hash: hashes.b,
     result: trendResult,
@@ -225,6 +240,22 @@ describe("deterministic analysis program and derivation verification", () => {
     ).resolves.toMatchObject({
       ok: false,
       failures: expect.arrayContaining(["PROGRAM_NODE_NOT_FOUND"]),
+    });
+
+    await expect(
+      verifyAnalysisSandboxProgram({
+        analysisProgram: plan,
+        analysisProgramRef: planRef,
+        program: { ...program, operator_registry_digest: hashes.a },
+        sourceText,
+        allowedProfiles: ["CORE_ANALYSIS"],
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      failures: expect.arrayContaining([
+        "PROGRAM_OPERATOR_REGISTRY_MISMATCH",
+        "PROGRAM_HASH_MISMATCH",
+      ]),
     });
 
     const randomSource =
@@ -420,6 +451,15 @@ describe("deterministic analysis program and derivation verification", () => {
         "RESULT_ORACLE_FAILED",
         "DERIVATION_HASH_MISMATCH",
       ]),
+    });
+    await expect(
+      verifyAnalysisDerivation({
+        ...base,
+        receipt: { ...receipt, operator_registry_digest: hashes.a },
+      }),
+    ).resolves.toMatchObject({
+      ok: false,
+      failures: expect.arrayContaining(["OPERATOR_AUTHORITY_CLOSURE_FAILED"]),
     });
 
     await expect(

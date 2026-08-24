@@ -3,6 +3,7 @@ import {
   type AnalysisSandboxProgramPayload,
   type ArtifactReference,
   artifactReferenceIdentity,
+  canonicalizeJson,
   type DerivedAnalysisEvidencePayload,
   derivedAnalysisEvidencePayloadSchema,
   type PythonSandboxReceiptV2,
@@ -20,6 +21,7 @@ export type DerivationFailure =
   | "RECEIPT_HARD_CONTROL_MISMATCH"
   | "RECEIPT_RUNTIME_MISMATCH"
   | "RECEIPT_SCOPE_MISMATCH"
+  | "OPERATOR_AUTHORITY_CLOSURE_FAILED"
   | "RESULT_REFERENCE_CLOSURE_FAILED"
   | "QUERY_REFERENCE_CLOSURE_FAILED"
   | "INPUT_REFERENCE_CLOSURE_FAILED"
@@ -114,6 +116,21 @@ export async function verifyAnalysisDerivation(input: {
     input.receipt.policy_version !== input.program.policy_version
   ) {
     failures.push("RECEIPT_RUNTIME_MISMATCH");
+  }
+  if (
+    input.plan.operator_registry_digest !== input.program.operator_registry_digest ||
+    input.program.operator_registry_digest !== input.receipt.operator_registry_digest ||
+    input.receipt.operator_registry_digest !== evidence.operator_registry_digest ||
+    input.program.generated_source_policy !== input.receipt.generated_source_policy ||
+    input.receipt.generated_source_policy !== evidence.generated_source_policy ||
+    canonicalizeJson(input.program.operator_obligations) !==
+      canonicalizeJson(input.receipt.operator_obligations) ||
+    canonicalizeJson(input.receipt.operator_obligations) !==
+      canonicalizeJson(evidence.operator_obligations) ||
+    input.receipt.operator_receipt_closure_hash === null ||
+    input.receipt.operator_receipt_closure_hash !== evidence.operator_receipt_closure_hash
+  ) {
+    failures.push("OPERATOR_AUTHORITY_CLOSURE_FAILED");
   }
   if (
     !sameReferenceSet(evidence.sandbox_result_refs, input.materializedResultRefs) ||

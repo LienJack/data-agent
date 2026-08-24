@@ -11,6 +11,7 @@ export * from "./context/index.js";
 export * from "./datasources/index.js";
 export * from "./evals/index.js";
 export * from "./extensions/index.js";
+export * from "./generated/statistical-operators.js";
 export * from "./jobs/index.js";
 export * from "./knowledge/index.js";
 export * from "./models/index.js";

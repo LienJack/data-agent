@@ -69,7 +69,9 @@
     "test:deploy:hosted": "tsx scripts/pending-gate.ts test:deploy:hosted U9",
     "capability:probe": "tsx scripts/capability-probe.ts",
     "verify:release": "tsx scripts/verify-release.ts",
-    "cleanup:legacy-attribution": "tsx scripts/legacy-attribution-cleanup.ts"
+    "cleanup:legacy-attribution": "tsx scripts/legacy-attribution-cleanup.ts",
+    "generate:statistical-operators": "tsx scripts/generate-statistical-operator-contracts.ts",
+    "check:statistical-operators": "tsx scripts/generate-statistical-operator-contracts.ts --check"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.5",

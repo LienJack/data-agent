@@ -6,6 +6,7 @@ import {
 } from "@data-agent/contracts/artifacts";
 import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
 import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
+import { STATISTICAL_OPERATOR_MANIFEST_DIGEST } from "@data-agent/contracts/statistical-operators";
 import { computeAnalysisProgramHash } from "../analysis/default-program.js";
 import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../analysis/skill-catalog.js";
 
@@ -183,6 +184,7 @@ export async function createFalcon24AnalysisProgram(input: {
     brief_ref: briefRef,
     analysis_context_hash: context.context_hash,
     semantic_context_package_hash: context.semantic_context_binding.package_hash,
+    operator_registry_digest: STATISTICAL_OPERATOR_MANIFEST_DIGEST,
     nodes: [
       {
         node_id: input.test_case.case_id,
@@ -201,6 +203,8 @@ export async function createFalcon24AnalysisProgram(input: {
           claim_strength: resultContract.claim_strength,
         },
         execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "OPEN_ANALYSIS",
+        operator_obligations: [],
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },

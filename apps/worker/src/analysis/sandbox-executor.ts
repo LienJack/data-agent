@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import {
-  analysisInputMaterializationReceiptSchema,
   type AnalysisSandboxProgramPayload,
   type ArtifactReference,
   artifactReferenceFor,
@@ -206,6 +205,9 @@ export async function executeAnalysisSandbox(input: {
       entrypoint: "main",
       input_refs: input.program.input_refs,
       output_contract: input.program.output_contract,
+      generated_source_policy: input.program.generated_source_policy,
+      operator_registry_digest: input.program.operator_registry_digest,
+      operator_obligations: input.program.operator_obligations,
       runtime_digest: input.program.runtime_digest,
       dependency_lock_digest: input.program.dependency_lock_digest,
       policy_version: input.program.policy_version,
