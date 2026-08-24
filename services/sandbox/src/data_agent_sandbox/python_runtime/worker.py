@@ -118,6 +118,15 @@ def run(control_path: Path) -> int:
         )
         return 0
     except BaseException as error:
+        safe_failure_code = {
+            TypeError: "PYTHON_TYPE_ERROR",
+            KeyError: "PYTHON_KEY_ERROR",
+            IndexError: "PYTHON_INDEX_ERROR",
+            ValueError: "PYTHON_VALUE_ERROR",
+            ZeroDivisionError: "PYTHON_ZERO_DIVISION_ERROR",
+        }.get(type(error))
+        if safe_failure_code is not None:
+            print(safe_failure_code, file=sys.stderr)
         traceback.print_exception(
             type(error), error, error.__traceback__, limit=20, file=sys.stderr
         )

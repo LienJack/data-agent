@@ -258,6 +258,30 @@ def test_supervisor_projects_safe_sdk_failure_code_without_exposing_stderr(tmp_p
 
     assert outcome.receipt.failure_code == "PYTHON_INPUT_NOT_DECLARED"
     assert outcome.receipt.status == "FAILED"
+
+
+@pytest.mark.parametrize(
+    ("statement", "failure_code"),
+    [
+        ("1 + 'x'", "PYTHON_TYPE_ERROR"),
+        ("{}['missing']", "PYTHON_KEY_ERROR"),
+        ("[][0]", "PYTHON_INDEX_ERROR"),
+        ("int('x')", "PYTHON_VALUE_ERROR"),
+        ("1 / 0", "PYTHON_ZERO_DIVISION_ERROR"),
+    ],
+)
+def test_supervisor_projects_fixed_python_exception_types(
+    tmp_path: Path, statement: str, failure_code: str
+) -> None:
+    request = envelope_for(
+        f"def main(context):\n    {statement}\n",
+        b"{}\n",
+        identifier=f"sandbox-{failure_code.lower()}",
+    )
+    outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)
+
+    assert outcome.receipt.failure_code == failure_code
+    assert outcome.receipt.status == "FAILED"
     assert outcome.outputs == ()
 
 
