@@ -392,8 +392,10 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("dimension.order_month");
     expect(serialized).toContain("output_json_schema");
     expect(serialized).toContain("def main(context)");
-    expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise', utc=True)");
-    expect(serialized).toContain("pandas.Timestamp(..., tz='UTC')");
+    expect(serialized).toContain("pandas.to_datetime(value, errors='raise', utc=True)");
+    expect(serialized).toContain("ISO-8601 analysis boundaries");
+    expect(serialized).toContain("never pass tz=");
+    expect(serialized).not.toContain("pandas.Timestamp(..., tz='UTC')");
     expect(serialized).toContain("pandas.Categorical");
     expect(serialized).toContain("series.astype(str)");
     expect(serialized).toContain("complete import-root allowlist");
@@ -774,6 +776,37 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context):\n    pass\n",
+      failure_code: "PYTHON_VALUE_ERROR",
+      attempt: 1,
+    });
+    const valueRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(valueRepair.repair?.required_correction).toContain("already contain Z");
+    expect(valueRepair.repair?.required_correction).toContain("never pass tz=");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
+      previous_source_text: "def main(context):\n    pass\n",
+      failure_code: "FALCON24_Q1_SEGMENT_DRIVER_MEMBER_MISMATCH",
+      attempt: 1,
+    });
+    const segmentRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(segmentRepair.repair?.required_correction).toContain("Deduplicate orders by order_id");
+    expect(segmentRepair.repair?.required_correction).toContain("nonnegative quantity");
+    expect(segmentRepair.repair?.required_correction).toContain("minimum signed");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
@@ -782,7 +815,7 @@ describe("DeepSeek governed Python source", () => {
       repair?: { required_correction?: string };
     };
     expect(typeRepair.repair?.required_correction).toContain("argument counts identical");
-    expect(typeRepair.repair?.required_correction).toContain("timezone-aware UTC");
+    expect(typeRepair.repair?.required_correction).toContain("UTC-aware values");
     expect(typeRepair.repair?.required_correction).toContain("pandas.Categorical");
     expect(typeRepair.repair?.required_correction).toContain("series.astype(str)");
   });

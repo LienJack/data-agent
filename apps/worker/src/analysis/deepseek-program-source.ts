@@ -340,45 +340,49 @@ async function boundedPrompt(input: {
             ? "Treat runtime_policy.allowed_imports as the complete import-root allowlist. Remove every import whose root is not listed, including typing and dataclasses; use plain Python 3.12 annotations or no annotations instead. Do not replace a denied import with dynamic importing or reflection."
             : input.repair.failure_code === "FALCON24_Q1_WORST_MONTH_INVALID"
               ? "Recompute worst_revenue_decline only after monthly_kpis is finalized: for each adjacent ordered month calculate absolute_change=current.revenue-previous.revenue and percent_change=absolute_change/previous.revenue, select the row with the minimum absolute_change, and copy those unrounded values and current month into the output."
-              : input.repair.failure_code === "FALCON24_Q2_GLM_CONTROL_MISSING"
-                ? "Keep the fitted GLM design unchanged and set adjusted_binomial_glm.controls to the exact semantic identifiers month, log_order_amount, product_category, and customer_segment. Do not substitute formula syntax, encoded column names, or human-readable labels for these identifiers."
-                : input.repair.failure_code === "FALCON24_ORACLE_CAUSAL_LANGUAGE_REJECTED"
-                  ? "Rewrite conclusion in Chinese association language. It must contain the exact word 关联 and must not contain 导致, 证明...影响, or 驱动了. Preserve the computed statistics and keep claim_strength as ASSOCIATION_ONLY."
-                  : input.repair.failure_code === "FALCON24_Q3_RAW_P_MISMATCH"
-                    ? "Use the returned p_value from call_id q3_mann_kendall_all_products for every product, then pass the complete unfiltered product family to q3_bh_all_products. Do not calculate Mann-Kendall or adjusted p-values in generated Python."
-                    : input.repair.failure_code === "FALCON24_Q3_THEIL_SEN_MISMATCH"
-                      ? "Prepare each product's ordered monthly damage-rate series with x=0..11 and use the returned slope from call_id q3_theil_sen_all_products. Do not calculate pairwise slopes or substitute another trend implementation."
-                      : input.repair.failure_code === "FALCON24_Q3_BH_Q_MISMATCH"
-                        ? "Call q3_bh_all_products with every product label and the raw p_value returned by q3_mann_kendall_all_products before filtering. Use adjusted_p_value from the BH result; do not calculate q-values in generated Python."
-                        : input.repair.failure_code === "FALCON24_Q4_WEEK_WINDOW_INVALID"
-                          ? "Set output.window to exactly start='2023-05-01', end_exclusive='2024-11-01', week_count=79, and grain='WEEK'. Keep the modeled weekly observations as the 79 Mondays from 2023-05-01 through 2024-10-28; do not derive end_exclusive as the day after the last Monday. Preserve the remaining calculations."
-                          : input.repair.failure_code === "FALCON24_Q4_CONTROL_MISSING"
-                            ? "Keep the fitted regression designs unchanged and set the top-level output controls array to exactly ['trend','seasonality']. These are the required semantic evidence identifiers for the linear week trend and sine/cosine annual controls; do not replace them with formulas or expanded column names."
-                            : input.repair.failure_code.startsWith("FALCON24_Q4_")
-                              ? "Preserve the observed channel/audience groups, shared 79-week business series, lag alignment, absolute-week trend, seasonal predictors, metric order, window, controls, and association-only language. Put all lag and spend-trend models in q4_hac_all_models; use its returned spend coefficients and p-values. Select one lag per group/outcome, then call the three declared q4_bh_* families separately. Do not fit OLS/HAC or calculate p/q-values in generated Python."
-                              : input.repair.failure_code === "PYTHON_OPERATOR_INPUT_INVALID"
-                                ? operatorInputCorrection
-                                : input.repair.failure_code.startsWith("PYTHON_OPERATOR_")
-                                  ? operatorCorrection
-                                  : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
-                                    ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
-                                    : input.repair.failure_code ===
-                                        "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
-                                      ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
-                                      : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-                                        ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
-                                        : input.repair.failure_code ===
-                                            "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
-                                          ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-                                          : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                                            ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
-                                            : input.repair.failure_code ===
-                                                "PYTHON_POLICY_SOURCE_SYNTAX"
-                                              ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
-                                              : input.repair.failure_code ===
-                                                  "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                                                ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                                                : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+              : input.repair.failure_code === "FALCON24_Q1_SEGMENT_DRIVER_MEMBER_MISMATCH"
+                ? "Rebuild all three segment_drivers for the previous and current months of worst_revenue_decline. Deduplicate orders by order_id for customer_segment and payment_method. For product_category, allocate each deduplicated order_total across its item categories in proportion to summed nonnegative quantity, or equally when total quantity is zero. For each dimension choose the minimum signed current-minus-previous revenue_change, breaking exact ties by member ascending; return exactly customer_segment, product_category, and payment_method."
+                : input.repair.failure_code === "FALCON24_Q2_GLM_CONTROL_MISSING"
+                  ? "Keep the fitted GLM design unchanged and set adjusted_binomial_glm.controls to the exact semantic identifiers month, log_order_amount, product_category, and customer_segment. Do not substitute formula syntax, encoded column names, or human-readable labels for these identifiers."
+                  : input.repair.failure_code === "FALCON24_ORACLE_CAUSAL_LANGUAGE_REJECTED"
+                    ? "Rewrite conclusion in Chinese association language. It must contain the exact word 关联 and must not contain 导致, 证明...影响, or 驱动了. Preserve the computed statistics and keep claim_strength as ASSOCIATION_ONLY."
+                    : input.repair.failure_code === "FALCON24_Q3_RAW_P_MISMATCH"
+                      ? "Use the returned p_value from call_id q3_mann_kendall_all_products for every product, then pass the complete unfiltered product family to q3_bh_all_products. Do not calculate Mann-Kendall or adjusted p-values in generated Python."
+                      : input.repair.failure_code === "FALCON24_Q3_THEIL_SEN_MISMATCH"
+                        ? "Prepare each product's ordered monthly damage-rate series with x=0..11 and use the returned slope from call_id q3_theil_sen_all_products. Do not calculate pairwise slopes or substitute another trend implementation."
+                        : input.repair.failure_code === "FALCON24_Q3_BH_Q_MISMATCH"
+                          ? "Call q3_bh_all_products with every product label and the raw p_value returned by q3_mann_kendall_all_products before filtering. Use adjusted_p_value from the BH result; do not calculate q-values in generated Python."
+                          : input.repair.failure_code === "FALCON24_Q4_WEEK_WINDOW_INVALID"
+                            ? "Set output.window to exactly start='2023-05-01', end_exclusive='2024-11-01', week_count=79, and grain='WEEK'. Keep the modeled weekly observations as the 79 Mondays from 2023-05-01 through 2024-10-28; do not derive end_exclusive as the day after the last Monday. Preserve the remaining calculations."
+                            : input.repair.failure_code === "FALCON24_Q4_CONTROL_MISSING"
+                              ? "Keep the fitted regression designs unchanged and set the top-level output controls array to exactly ['trend','seasonality']. These are the required semantic evidence identifiers for the linear week trend and sine/cosine annual controls; do not replace them with formulas or expanded column names."
+                              : input.repair.failure_code.startsWith("FALCON24_Q4_")
+                                ? "Preserve the observed channel/audience groups, shared 79-week business series, lag alignment, absolute-week trend, seasonal predictors, metric order, window, controls, and association-only language. Put all lag and spend-trend models in q4_hac_all_models; use its returned spend coefficients and p-values. Select one lag per group/outcome, then call the three declared q4_bh_* families separately. Do not fit OLS/HAC or calculate p/q-values in generated Python."
+                                : input.repair.failure_code === "PYTHON_OPERATOR_INPUT_INVALID"
+                                  ? operatorInputCorrection
+                                  : input.repair.failure_code.startsWith("PYTHON_OPERATOR_")
+                                    ? operatorCorrection
+                                    : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
+                                      ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
+                                      : input.repair.failure_code ===
+                                          "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
+                                        ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
+                                        : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+                                          ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
+                                          : input.repair.failure_code ===
+                                              "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+                                            ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+                                            : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                                              ? "Check every helper definition against every call and make positional argument counts identical. Normalize Arrow TIMESTAMP columns and ISO-8601 analysis boundaries with pandas.to_datetime(value, errors='raise', utc=True). Never pass tz= when value already contains Z or an offset. Compare only UTC-aware values, then convert columns with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
+                                              : input.repair.failure_code === "PYTHON_VALUE_ERROR"
+                                                ? "Normalize every Arrow TIMESTAMP column and each ISO-8601 analysis boundary with pandas.to_datetime(value, errors='raise', utc=True). The declared boundaries already contain Z; never pass tz= to pandas.Timestamp or another constructor for those values. Do not truth-test pandas Series/DataFrames or assign a vector to a scalar cell. Preserve the governed operator calls and exact output contract while correcting the failing pandas transformation."
+                                                : input.repair.failure_code ===
+                                                    "PYTHON_POLICY_SOURCE_SYNTAX"
+                                                  ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                                                  : input.repair.failure_code ===
+                                                      "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                                                    ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                                                    : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
@@ -438,7 +442,7 @@ async function boundedPrompt(input: {
           JSON: "decoded JSON value",
         },
         temporal_normalization:
-          "For DATE or TIMESTAMP DataFrame fields, use pandas.to_datetime(frame[column], errors='raise', utc=True). Arrow TIMESTAMP values are timezone-aware UTC, so compare only with pandas.Timestamp(..., tz='UTC'). Before calendar bucketing, convert to analysis_node.time_window.timezone with .dt.tz_convert(...), then use vectorized .dt accessors. The declared schema is authoritative; do not probe values with reflection.",
+          "For DATE or TIMESTAMP DataFrame fields and ISO-8601 analysis boundaries, use pandas.to_datetime(value, errors='raise', utc=True). Boundaries already contain Z or an offset, so never pass tz= to pandas.Timestamp or another constructor for them. Compare only UTC-aware values. Before calendar bucketing, convert DataFrame columns to analysis_node.time_window.timezone with .dt.tz_convert(...), then use vectorized .dt accessors. The declared schema is authoritative; do not probe values with reflection.",
         write_json: "context.write_json(output_name, value)",
         write_csv: "context.write_csv(output_name, value)",
         write_arrow: "context.write_arrow(output_name, value)",
