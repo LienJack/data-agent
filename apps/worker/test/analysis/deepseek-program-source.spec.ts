@@ -556,6 +556,22 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context): pass",
+      failure_code: "FALCON24_Q3_THEIL_SEN_MISMATCH",
+      standard_program: null,
+    });
+    const theilSenRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(theilSenRepair.repair?.required_correction).toContain("x=0..11");
+    expect(theilSenRepair.repair?.required_correction).toContain("all 66 slopes");
+    expect(theilSenRepair.repair?.required_correction).toContain("ordinal days");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,

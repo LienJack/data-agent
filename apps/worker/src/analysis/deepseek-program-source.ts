@@ -256,22 +256,24 @@ async function boundedPrompt(input: {
                   ? "Rewrite conclusion in Chinese association language. It must contain the exact word 关联 and must not contain 导致, 证明...影响, or 驱动了. Preserve the computed statistics and keep claim_strength as ASSOCIATION_ONLY."
                   : input.repair.failure_code === "FALCON24_Q3_RAW_P_MISMATCH"
                     ? "Replace the Mann-Kendall p-value implementation with the exact declared contract. Compute S from every i<j sign difference, subtract exact-value tie groups from Var(S), apply continuity correction (S-1 for positive S and S+1 for negative S), and calculate the two-sided normal p-value with math.erf. Return p=1 when S=0 or variance<=0. Do not use scipy.stats.kendalltau. Recompute BH q-values from these corrected raw p-values across every product before filtering candidates."
-                    : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
-                      ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
-                      : input.repair.failure_code === "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
-                        ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
-                        : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-                          ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
-                          : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
-                            ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-                            : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                              ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
-                              : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
-                                ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
-                                : input.repair.failure_code ===
-                                    "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                                  ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                                  : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+                    : input.repair.failure_code === "FALCON24_Q3_THEIL_SEN_MISMATCH"
+                      ? "Replace the Theil-Sen implementation with the exact declared month-position contract. Sort each product's 12 rows by month, assign x=0..11, calculate all 66 slopes (rate[j]-rate[i])/(j-i), sort them, and use the arithmetic mean of the two middle slopes. Do not use timestamps, ordinal days, elapsed seconds, scipy.stats.theilslopes, or a fitted linear-regression slope. Preserve full floating-point precision."
+                      : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
+                        ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
+                        : input.repair.failure_code === "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
+                          ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
+                          : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+                            ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
+                            : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+                              ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+                              : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                                ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
+                                : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
+                                  ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                                  : input.repair.failure_code ===
+                                      "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                                    ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                                    : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
