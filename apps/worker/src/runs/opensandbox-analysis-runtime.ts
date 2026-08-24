@@ -4,13 +4,19 @@ import {
   type Execution,
   Sandbox,
   type SandboxCreateOptions,
+  type SandboxInfo,
+  SandboxManager,
 } from "@alibaba-group/opensandbox";
 import {
   type CodeContext,
   CodeInterpreter,
   SupportedLanguages,
 } from "@alibaba-group/opensandbox-code-interpreter";
+import type { GovernedOperatorResultRef } from "@data-agent/contracts/ports";
 import { z } from "zod";
+import type { AnalysisContextReplayAction } from "../analysis/governed-result-bridge.js";
+
+const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
 
 export const ANALYSIS_AGENT_TOOL_NAME = "python_cell" as const;
 export const ANALYSIS_OPERATOR_TOOL_NAME = "statistical_operator" as const;
@@ -29,6 +35,7 @@ export type AnalysisSandboxFailureStage =
 
 export type AnalysisSandboxRuntimeFailureCode =
   | "ANALYSIS_SANDBOX_CONFIGURATION_INVALID"
+  | "ANALYSIS_SANDBOX_CAPACITY_EXHAUSTED"
   | "ANALYSIS_SANDBOX_STARTUP_FAILED"
   | "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED"
   | "ANALYSIS_SANDBOX_CONTEXT_FAILED"
@@ -36,6 +43,7 @@ export type AnalysisSandboxRuntimeFailureCode =
   | "ANALYSIS_SANDBOX_CELL_CANCELLED"
   | "ANALYSIS_SANDBOX_CELL_POLICY_REJECTED"
   | "ANALYSIS_SANDBOX_CELL_FAILED"
+  | "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH"
   | "ANALYSIS_SANDBOX_OPERATOR_TIMEOUT"
   | "ANALYSIS_SANDBOX_OPERATOR_FAILED"
   | "ANALYSIS_SANDBOX_ARTIFACT_INVALID"
@@ -114,6 +122,7 @@ export interface OpenSandboxAnalysisRuntimeConfig {
   readonly max_file_bytes: number;
   readonly stdout_bytes: number;
   readonly stderr_bytes: number;
+  readonly max_concurrent_sessions?: number;
 }
 
 interface SandboxFilePort {
@@ -169,9 +178,34 @@ interface AnalysisInterpreterHandle {
   readonly codes: AnalysisCodePort;
 }
 
+export interface AnalysisManagedSandboxInfo {
+  readonly id: string;
+  readonly metadata: Readonly<Record<string, string>>;
+  readonly state: string;
+  readonly created_at: Date;
+}
+
+export interface AnalysisSandboxLifecyclePort {
+  list(input: {
+    readonly metadata: Readonly<Record<string, string>>;
+  }): Promise<readonly AnalysisManagedSandboxInfo[]>;
+  kill(sandboxId: string): Promise<void>;
+  close(): Promise<void>;
+}
+
 export interface OpenSandboxSdkFactory {
   createSandbox(options: SandboxCreateOptions): Promise<AnalysisSandboxHandle>;
   createInterpreter(sandbox: AnalysisSandboxHandle): Promise<AnalysisInterpreterHandle>;
+  createLifecycleManager(connectionConfig: ConnectionConfig): AnalysisSandboxLifecyclePort;
+}
+
+function managedSandboxInfo(info: SandboxInfo): AnalysisManagedSandboxInfo {
+  return Object.freeze({
+    id: info.id,
+    metadata: Object.freeze({ ...(info.metadata ?? {}) }),
+    state: info.status.state,
+    created_at: info.createdAt,
+  });
 }
 
 const defaultSdkFactory: OpenSandboxSdkFactory = Object.freeze({
@@ -181,11 +215,47 @@ const defaultSdkFactory: OpenSandboxSdkFactory = Object.freeze({
   async createInterpreter(sandbox: AnalysisSandboxHandle) {
     return CodeInterpreter.create(sandbox as Sandbox) as Promise<AnalysisInterpreterHandle>;
   },
+  createLifecycleManager(connectionConfig: ConnectionConfig): AnalysisSandboxLifecyclePort {
+    const manager = SandboxManager.create({ connectionConfig });
+    return Object.freeze({
+      async list(input: {
+        readonly metadata: Readonly<Record<string, string>>;
+      }): Promise<readonly AnalysisManagedSandboxInfo[]> {
+        const items: AnalysisManagedSandboxInfo[] = [];
+        let page = 1;
+        for (;;) {
+          const response = await manager.listSandboxInfos({
+            metadata: { ...input.metadata },
+            page,
+            pageSize: 100,
+          });
+          items.push(
+            ...response.items
+              .filter(({ status }) => status.state !== "Deleted")
+              .map(managedSandboxInfo),
+          );
+          if (!response.pagination?.hasNextPage) break;
+          page += 1;
+        }
+        return Object.freeze(items);
+      },
+      kill(sandboxId: string) {
+        return manager.killSandbox(sandboxId);
+      },
+      close() {
+        return manager.close();
+      },
+    });
+  },
 });
 
 export interface OpenSandboxAnalysisSession {
   readonly agent_sandbox_id: string;
   readonly operator_sandbox_id: string;
+  readonly runtime_profile: AnalysisSandboxProfile;
+  readonly agent_image: string;
+  readonly operator_image: string;
+  readonly secure_access: boolean;
   uploadAgentFile(input: {
     readonly path: string;
     readonly content: Uint8Array;
@@ -204,10 +274,35 @@ export interface OpenSandboxAnalysisSession {
     readonly timeout_ms: number;
     readonly signal?: AbortSignal;
   }): Promise<AnalysisSandboxCellObservation>;
-  readAgentFile(input: {
-    readonly path: string;
-    readonly expected_sha256?: `sha256:${string}`;
-  }): Promise<Uint8Array>;
+  recoverAgentContext(input: {
+    readonly replay: readonly AnalysisContextReplayAction[];
+    readonly signal?: AbortSignal;
+  }): Promise<void>;
+  freezeAgentContext(): Promise<void>;
+  bindGovernedResult(input: {
+    readonly governed_result: GovernedOperatorResultRef;
+    readonly authoritative_content: Uint8Array;
+    readonly timeout_ms: number;
+    readonly signal?: AbortSignal;
+  }): Promise<{
+    readonly binding_id: string;
+    readonly result_symbol: string;
+    readonly result_sha256: `sha256:${string}`;
+  }>;
+  extractAgentSymbols(input: {
+    readonly extraction_id: string;
+    readonly symbols: readonly {
+      readonly symbol_name: string;
+      readonly expected_kind: "MAPPING" | "TABLE";
+    }[];
+    readonly limits: {
+      readonly max_rows: number;
+      readonly max_columns: number;
+      readonly max_bytes: number;
+    };
+    readonly timeout_ms: number;
+    readonly signal?: AbortSignal;
+  }): Promise<unknown>;
   runOperator(input: {
     readonly call_id: string;
     readonly request: Uint8Array;
@@ -226,12 +321,21 @@ export interface OpenSandboxAnalysisSession {
 }
 
 export interface OpenSandboxAnalysisRuntime {
+  cleanupSession(input: { readonly run_id: string; readonly node_id: string }): Promise<{
+    readonly killed: number;
+    readonly residual: 0;
+  }>;
   createSession(input: {
     readonly run_id: string;
     readonly node_id: string;
     readonly profile: AnalysisSandboxProfile;
     readonly signal?: AbortSignal;
   }): Promise<OpenSandboxAnalysisSession>;
+  sweepOrphans(input?: { readonly now?: Date; readonly grace_seconds?: number }): Promise<{
+    readonly examined: number;
+    readonly killed: number;
+    readonly residual: number;
+  }>;
 }
 
 type CreateAnalysisSandboxSessionInput = Parameters<OpenSandboxAnalysisRuntime["createSession"]>[0];
@@ -271,6 +375,7 @@ const configSchema = z.strictObject({
     .int()
     .nonnegative()
     .max(1024 * 1024),
+  max_concurrent_sessions: z.number().int().min(1).max(32).default(1),
 });
 
 const safeSegmentSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u);
@@ -289,11 +394,360 @@ const cellPolicyObservationSchema = z.strictObject({
 const sandboxPathSchema = z
   .string()
   .regex(
-    /^\/workspace\/(?:inputs|sealed|operator-inputs|operator-outputs|intermediate|outputs)\/[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$/u,
+    /^\/workspace\/(?:inputs|operator-inputs|operator-outputs|intermediate)\/[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$/u,
   );
+const pythonSymbolSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u);
+const symbolExtractionInputSchema = z.strictObject({
+  extraction_id: safeSegmentSchema,
+  symbols: z
+    .array(
+      z.strictObject({
+        symbol_name: pythonSymbolSchema,
+        expected_kind: z.enum(["MAPPING", "TABLE"]),
+      }),
+    )
+    .min(1)
+    .max(65)
+    .superRefine((symbols, context) => {
+      if (new Set(symbols.map(({ symbol_name }) => symbol_name)).size !== symbols.length) {
+        context.addIssue({ code: "custom", message: "Extraction symbols must be unique." });
+      }
+    }),
+  limits: z.strictObject({
+    max_rows: z.number().int().positive().max(5_000),
+    max_columns: z.number().int().positive().max(128),
+    max_bytes: z
+      .number()
+      .int()
+      .positive()
+      .max(64 * 1024 * 1024),
+  }),
+  timeout_ms: z.number().int().min(100).max(120_000),
+});
+
+const ANALYSIS_SANDBOX_OWNER_METADATA = Object.freeze({
+  "managed-by": "data-agent-analysis",
+});
+const MANAGEMENT_CONFIRMATION_ATTEMPTS = 10;
+const MANAGEMENT_CONFIRMATION_INTERVAL_MS = 100;
+
+function analysisSandboxMetadata(input: {
+  readonly run_id: string;
+  readonly node_id: string;
+  readonly role?: "agent" | "operator";
+}): Readonly<Record<string, string>> {
+  return Object.freeze({
+    ...ANALYSIS_SANDBOX_OWNER_METADATA,
+    "run-id": input.run_id,
+    "node-id": input.node_id,
+    ...(input.role ? { role: input.role } : {}),
+  });
+}
+
+function activeManagedSandboxes(
+  sandboxes: readonly AnalysisManagedSandboxInfo[],
+): readonly AnalysisManagedSandboxInfo[] {
+  return sandboxes.filter(({ state }) => state !== "Deleted");
+}
+
+async function waitForManagementPlane<T>(
+  observe: () => Promise<T>,
+  accepted: (value: T) => boolean,
+): Promise<T> {
+  let last = await observe();
+  for (let attempt = 1; attempt < MANAGEMENT_CONFIRMATION_ATTEMPTS; attempt += 1) {
+    if (accepted(last)) return last;
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, MANAGEMENT_CONFIRMATION_INTERVAL_MS);
+      timer.unref();
+    });
+    last = await observe();
+  }
+  return last;
+}
+
+async function withLifecycleManager<T>(input: {
+  readonly factory: OpenSandboxSdkFactory;
+  readonly connection_config: ConnectionConfig;
+  readonly action: (manager: AnalysisSandboxLifecyclePort) => Promise<T>;
+}): Promise<T> {
+  const manager = input.factory.createLifecycleManager(input.connection_config);
+  try {
+    return await input.action(manager);
+  } finally {
+    await manager.close();
+  }
+}
+
+async function purgeManagedSandboxes(input: {
+  readonly factory: OpenSandboxSdkFactory;
+  readonly connection_config: ConnectionConfig;
+  readonly metadata: Readonly<Record<string, string>>;
+}): Promise<number> {
+  return withLifecycleManager({
+    factory: input.factory,
+    connection_config: input.connection_config,
+    async action(manager) {
+      const initial = activeManagedSandboxes(await manager.list({ metadata: input.metadata }));
+      await Promise.all(initial.map(({ id }) => manager.kill(id)));
+      const residual = await waitForManagementPlane(
+        async () => activeManagedSandboxes(await manager.list({ metadata: input.metadata })),
+        (items) => items.length === 0,
+      );
+      if (residual.length > 0) {
+        throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_CLEANUP_FAILED", "CLEANUP", true);
+      }
+      return initial.length;
+    },
+  });
+}
+
+async function confirmManagedSandboxPair(input: {
+  readonly factory: OpenSandboxSdkFactory;
+  readonly connection_config: ConnectionConfig;
+  readonly metadata: Readonly<Record<string, string>>;
+  readonly agent_id: string;
+  readonly operator_id: string;
+}): Promise<void> {
+  await withLifecycleManager({
+    factory: input.factory,
+    connection_config: input.connection_config,
+    async action(manager) {
+      const expected = new Map([
+        [input.agent_id, "agent"],
+        [input.operator_id, "operator"],
+      ]);
+      const observed = await waitForManagementPlane(
+        async () => activeManagedSandboxes(await manager.list({ metadata: input.metadata })),
+        (items) =>
+          items.length === expected.size &&
+          items.every(({ id, metadata }) => expected.get(id) === metadata.role),
+      );
+      if (
+        observed.length !== expected.size ||
+        !observed.every(({ id, metadata }) => expected.get(id) === metadata.role)
+      ) {
+        throw new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_STARTUP_FAILED",
+          "SANDBOX_STARTUP",
+          true,
+        );
+      }
+    },
+  });
+}
 
 function digest(bytes: Uint8Array): `sha256:${string}` {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function governedBindingIdentity(result: GovernedOperatorResultRef) {
+  const suffix = createHash("sha256")
+    .update(
+      [
+        result.run_id,
+        result.node_id,
+        result.attempt_id,
+        String(result.context_generation),
+        result.call_id,
+        result.operator_id,
+        result.result_sha256,
+      ].join("\0"),
+    )
+    .digest("hex")
+    .slice(0, 24);
+  return Object.freeze({
+    binding_id: `binding-${suffix}`,
+    result_symbol: `__da_gov_${suffix}`,
+  });
+}
+
+function buildGovernedResultBindingSource(input: {
+  readonly input_path: string;
+  readonly result_symbol: string;
+  readonly result_sha256: `sha256:${string}`;
+  readonly max_bytes: number;
+}): string {
+  return `# server-owned-governed-result-binding@1.0.0
+import hashlib as _da_hashlib
+import json as _da_json
+import math as _da_math
+import types as _da_types
+
+_da_binding_path = ${JSON.stringify(input.input_path)}
+_da_expected_hash = ${JSON.stringify(input.result_sha256)}
+_da_max_bytes = ${input.max_bytes}
+with open(_da_binding_path, "rb") as _da_stream:
+    _da_bytes = _da_stream.read(_da_max_bytes + 1)
+if len(_da_bytes) > _da_max_bytes:
+    raise RuntimeError("ANALYSIS_GOVERNED_RESULT_SIZE_EXCEEDED")
+_da_observed_hash = "sha256:" + _da_hashlib.sha256(_da_bytes).hexdigest()
+if _da_observed_hash != _da_expected_hash:
+    raise RuntimeError("ANALYSIS_GOVERNED_RESULT_BINDING_HASH_MISMATCH")
+_da_value = _da_json.loads(_da_bytes.decode("utf-8"))
+
+def _da_freeze(value, depth=0):
+    if depth > 16:
+        raise RuntimeError("ANALYSIS_GOVERNED_RESULT_NESTING_EXCEEDED")
+    if value is None or type(value) in {bool, int, str}:
+        return value
+    if type(value) is float:
+        if not _da_math.isfinite(value):
+            raise RuntimeError("ANALYSIS_GOVERNED_RESULT_NUMBER_NON_FINITE")
+        return value
+    if type(value) is list:
+        if len(value) > 100000:
+            raise RuntimeError("ANALYSIS_GOVERNED_RESULT_ARRAY_LIMIT_EXCEEDED")
+        return tuple(_da_freeze(item, depth + 1) for item in value)
+    if type(value) is dict or (module == "builtins" and name == "mappingproxy"):
+        if len(value) > 10000 or any(type(key) is not str or not key for key in value):
+            raise RuntimeError("ANALYSIS_GOVERNED_RESULT_OBJECT_INVALID")
+        return _da_types.MappingProxyType({key: _da_freeze(value[key], depth + 1) for key in sorted(value)})
+    raise RuntimeError("ANALYSIS_GOVERNED_RESULT_VALUE_UNSUPPORTED")
+
+globals()[${JSON.stringify(input.result_symbol)}] = _da_freeze(_da_value)
+`;
+}
+
+function buildFixedSymbolExtractionSource(input: {
+  readonly specs: readonly {
+    readonly symbol_name: string;
+    readonly expected_kind: "MAPPING" | "TABLE";
+  }[];
+  readonly output_path: string;
+  readonly max_rows: number;
+  readonly max_columns: number;
+  readonly max_bytes: number;
+}): string {
+  const specs = JSON.stringify(input.specs);
+  const outputPath = JSON.stringify(input.output_path);
+  return `# server-owned-analysis-symbol-extractor@1.0.0
+import datetime as _analysis_datetime
+import decimal as _analysis_decimal
+import json as _analysis_json
+import math as _analysis_math
+
+_analysis_specs = _analysis_json.loads(${JSON.stringify(specs)})
+_analysis_output_path = ${outputPath}
+_analysis_max_rows = ${input.max_rows}
+_analysis_max_columns = ${input.max_columns}
+_analysis_max_bytes = ${input.max_bytes}
+
+def _analysis_wire(value, depth=0):
+    if depth > 16:
+        raise TypeError("ANALYSIS_RESULT_NESTING_EXCEEDED")
+    module = type(value).__module__
+    name = type(value).__name__
+    if module == "numpy" and name in {"bool_", "int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64", "float16", "float32", "float64"}:
+        value = value.item()
+    elif module == "numpy" and name == "datetime64":
+        import pandas as _analysis_pd
+        value = _analysis_pd.Timestamp(value)
+    if value is None:
+        return {"kind": "NULL"}
+    if type(value) is bool:
+        return {"kind": "BOOLEAN", "value": value}
+    if type(value) is int:
+        if abs(value) > 9007199254740991:
+            raise TypeError("ANALYSIS_RESULT_INTEGER_UNSAFE")
+        return {"kind": "INTEGER", "value": str(value)}
+    if type(value) is float:
+        if not _analysis_math.isfinite(value):
+            raise TypeError("ANALYSIS_RESULT_NUMBER_NON_FINITE")
+        return {"kind": "NUMBER", "value": value}
+    if type(value) is _analysis_decimal.Decimal:
+        if not value.is_finite():
+            raise TypeError("ANALYSIS_RESULT_DECIMAL_NON_FINITE")
+        return {"kind": "DECIMAL", "value": format(value, "f")}
+    if isinstance(value, _analysis_datetime.datetime):
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise TypeError("ANALYSIS_RESULT_TIMESTAMP_TIMEZONE_REQUIRED")
+        return {"kind": "TIMESTAMP", "value": value.isoformat()}
+    if isinstance(value, _analysis_datetime.date):
+        return {"kind": "DATE", "value": value.isoformat()}
+    if type(value) is str:
+        return {"kind": "STRING", "value": value}
+    if type(value) is list or type(value) is tuple:
+        if len(value) > 100000:
+            raise TypeError("ANALYSIS_RESULT_ARRAY_LIMIT_EXCEEDED")
+        return {"kind": "ARRAY", "items": [_analysis_wire(item, depth + 1) for item in value]}
+    if type(value) is dict:
+        if len(value) > 10000 or any(type(key) is not str or not key for key in value):
+            raise TypeError("ANALYSIS_RESULT_OBJECT_INVALID")
+        return {
+            "kind": "OBJECT",
+            "entries": [
+                {"key": key, "value": _analysis_wire(value[key], depth + 1)}
+                for key in sorted(value)
+            ],
+        }
+    raise TypeError("ANALYSIS_RESULT_VALUE_TYPE_UNSUPPORTED")
+
+def _analysis_table(value):
+    if type(value).__module__.startswith("pandas.") and type(value).__name__ == "DataFrame":
+        columns = list(value.columns)
+        rows = list(value.itertuples(index=False, name=None))
+    elif type(value) is list:
+        if not value:
+            raise TypeError("ANALYSIS_RESULT_TABLE_EMPTY_SCHEMA")
+        if any(type(row) is not dict for row in value):
+            raise TypeError("ANALYSIS_RESULT_TABLE_ROW_INVALID")
+        columns = list(value[0].keys())
+        if any(list(row.keys()) != columns for row in value):
+            raise TypeError("ANALYSIS_RESULT_TABLE_COLUMNS_UNSTABLE")
+        rows = [tuple(row[column] for column in columns) for row in value]
+    else:
+        raise TypeError("ANALYSIS_RESULT_TABLE_TYPE_UNSUPPORTED")
+    if (
+        not columns
+        or len(columns) > _analysis_max_columns
+        or len(rows) > _analysis_max_rows
+        or any(type(column) is not str or not column for column in columns)
+        or len(set(columns)) != len(columns)
+    ):
+        raise TypeError("ANALYSIS_RESULT_TABLE_BOUNDS_OR_SCHEMA_INVALID")
+    return {
+        "columns": columns,
+        "rows": [[_analysis_wire(value) for value in row] for row in rows],
+    }
+
+_analysis_symbols = []
+for _analysis_spec in _analysis_specs:
+    _analysis_name = _analysis_spec["symbol_name"]
+    if _analysis_name not in globals():
+        raise NameError("ANALYSIS_RESULT_SYMBOL_MISSING")
+    _analysis_value = globals()[_analysis_name]
+    if _analysis_spec["expected_kind"] == "MAPPING":
+        if type(_analysis_value) is not dict and type(_analysis_value).__name__ != "mappingproxy":
+            raise TypeError("ANALYSIS_RESULT_MAPPING_TYPE_UNSUPPORTED")
+        _analysis_symbols.append({
+            "symbol_name": _analysis_name,
+            "symbol_kind": "MAPPING",
+            "value": _analysis_wire(_analysis_value),
+        })
+    else:
+        _analysis_symbols.append({
+            "symbol_name": _analysis_name,
+            "symbol_kind": "TABLE",
+            **_analysis_table(_analysis_value),
+        })
+
+_analysis_document = {
+    "schema_version": "analysis-extracted-symbols@1.0.0",
+    "symbols": _analysis_symbols,
+}
+_analysis_bytes = _analysis_json.dumps(
+    _analysis_document,
+    ensure_ascii=False,
+    allow_nan=False,
+    separators=(",", ":"),
+).encode("utf-8")
+if not _analysis_bytes or len(_analysis_bytes) > _analysis_max_bytes:
+    raise ValueError("ANALYSIS_RESULT_EXTRACTION_SIZE_EXCEEDED")
+with open(_analysis_output_path, "wb") as _analysis_file:
+    _analysis_file.write(_analysis_bytes)
+len(_analysis_bytes)
+`;
 }
 
 function boundedText(value: string, maximum: number): string {
@@ -340,7 +794,9 @@ async function runCellWithDeadline(input: {
   >;
   readonly failure_code: Extract<
     AnalysisSandboxRuntimeFailureCode,
-    "ANALYSIS_SANDBOX_CELL_FAILED" | "ANALYSIS_SANDBOX_OPERATOR_FAILED"
+    | "ANALYSIS_SANDBOX_CELL_FAILED"
+    | "ANALYSIS_SANDBOX_OPERATOR_FAILED"
+    | "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH"
   >;
   readonly stdout_bytes: number;
   readonly stderr_bytes: number;
@@ -389,7 +845,11 @@ async function runCellWithDeadline(input: {
     if (observation.status === "FAILED" && !input.return_python_error) {
       throw new AnalysisSandboxRuntimeError(
         input.failure_code,
-        input.failure_code === "ANALYSIS_SANDBOX_OPERATOR_FAILED" ? "OPERATOR" : "CELL",
+        input.failure_code === "ANALYSIS_SANDBOX_OPERATOR_FAILED"
+          ? "OPERATOR"
+          : input.failure_code === "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH"
+            ? "CONTEXT"
+            : "CELL",
         false,
       );
     }
@@ -522,18 +982,13 @@ async function runOperatorCommandWithDeadline(input: {
 async function createSandboxPair(input: {
   readonly config: OpenSandboxAnalysisRuntimeConfig;
   readonly factory: OpenSandboxSdkFactory;
+  readonly connection_config: ConnectionConfig;
   readonly run_id: string;
   readonly node_id: string;
   readonly profile: AnalysisSandboxProfile;
 }) {
-  const connectionConfig = new ConnectionConfig({
-    domain: input.config.domain,
-    protocol: input.config.protocol,
-    apiKey: input.config.api_key,
-    requestTimeoutSeconds: input.config.request_timeout_seconds,
-  });
   const base = {
-    connectionConfig,
+    connectionConfig: input.connection_config,
     env: {
       PYTHONHASHSEED: "0",
       MPLBACKEND: "Agg",
@@ -549,10 +1004,6 @@ async function createSandboxPair(input: {
     readyTimeoutSeconds: input.config.ready_timeout_seconds,
     secureAccess: input.config.secure_access,
   } satisfies Partial<SandboxCreateOptions>;
-  const metadata = {
-    "data-agent-run": input.run_id,
-    "data-agent-node": input.node_id,
-  };
   let agent: AnalysisSandboxHandle | null = null;
   try {
     agent = await input.factory.createSandbox({
@@ -560,14 +1011,14 @@ async function createSandboxPair(input: {
       entrypoint: ["/opt/code-interpreter/code-interpreter.sh"],
       image: input.config.agent_images[input.profile],
       resource: input.config.agent_resource,
-      metadata: { ...metadata, "data-agent-role": "agent" },
+      metadata: analysisSandboxMetadata({ ...input, role: "agent" }),
     });
     const operator = await input.factory.createSandbox({
       ...base,
       entrypoint: ["tail", "-f", "/dev/null"],
       image: input.config.operator_image,
       resource: input.config.operator_resource,
-      metadata: { ...metadata, "data-agent-role": "operator" },
+      metadata: analysisSandboxMetadata({ ...input, role: "operator" }),
     });
     return { agent, operator };
   } catch {
@@ -588,11 +1039,9 @@ async function initializeSandbox(sandbox: AnalysisSandboxHandle, factory: OpenSa
   await sandbox.files.createDirectories(
     [
       "/workspace/inputs",
-      "/workspace/sealed",
       "/workspace/operator-inputs",
       "/workspace/operator-outputs",
       "/workspace/intermediate",
-      "/workspace/outputs",
     ].map((path) => ({ path, mode: 700 })),
   );
   const context = await interpreter.codes.createContext(SupportedLanguages.PYTHON);
@@ -618,7 +1067,67 @@ export function createOpenSandboxAnalysisRuntime(input: {
 }): OpenSandboxAnalysisRuntime {
   const config = configSchema.parse(input.config);
   const factory = input.sdk_factory ?? defaultSdkFactory;
+  const connectionConfig = new ConnectionConfig({
+    domain: config.domain,
+    protocol: config.protocol,
+    apiKey: config.api_key,
+    requestTimeoutSeconds: config.request_timeout_seconds,
+  });
+  let activeSessions = 0;
   return Object.freeze({
+    async cleanupSession(
+      cleanupInput: Parameters<OpenSandboxAnalysisRuntime["cleanupSession"]>[0],
+    ) {
+      safeSegmentSchema.parse(cleanupInput.run_id);
+      safeSegmentSchema.parse(cleanupInput.node_id);
+      const killed = await purgeManagedSandboxes({
+        factory,
+        connection_config: connectionConfig,
+        metadata: analysisSandboxMetadata(cleanupInput),
+      });
+      return Object.freeze({ killed, residual: 0 as const });
+    },
+    async sweepOrphans(sweepInput: { readonly now?: Date; readonly grace_seconds?: number } = {}) {
+      const now = sweepInput.now ?? new Date();
+      const graceSeconds = z
+        .number()
+        .int()
+        .min(0)
+        .max(3_600)
+        .parse(sweepInput.grace_seconds ?? 60);
+      return withLifecycleManager({
+        factory,
+        connection_config: connectionConfig,
+        async action(manager) {
+          const managed = activeManagedSandboxes(
+            await manager.list({ metadata: ANALYSIS_SANDBOX_OWNER_METADATA }),
+          );
+          const cutoff = now.getTime() - (config.sandbox_timeout_seconds + graceSeconds) * 1_000;
+          const orphans = managed.filter(({ created_at }) => created_at.getTime() <= cutoff);
+          await Promise.all(orphans.map(({ id }) => manager.kill(id)));
+          const orphanIds = new Set(orphans.map(({ id }) => id));
+          const residual = await waitForManagementPlane(
+            async () =>
+              activeManagedSandboxes(
+                await manager.list({ metadata: ANALYSIS_SANDBOX_OWNER_METADATA }),
+              ).filter(({ id }) => orphanIds.has(id)),
+            (items) => items.length === 0,
+          );
+          if (residual.length > 0) {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_CLEANUP_FAILED",
+              "CLEANUP",
+              true,
+            );
+          }
+          return Object.freeze({
+            examined: managed.length,
+            killed: orphans.length,
+            residual: residual.length,
+          });
+        },
+      });
+    },
     async createSession(sessionInput: CreateAnalysisSandboxSessionInput) {
       safeSegmentSchema.parse(sessionInput.run_id);
       safeSegmentSchema.parse(sessionInput.node_id);
@@ -629,7 +1138,66 @@ export function createOpenSandboxAnalysisRuntime(input: {
           false,
         );
       }
-      const pair = await createSandboxPair({ ...sessionInput, config, factory });
+      if (activeSessions >= config.max_concurrent_sessions) {
+        throw new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_CAPACITY_EXHAUSTED",
+          "SANDBOX_STARTUP",
+          true,
+        );
+      }
+      activeSessions += 1;
+      let reservationReleased = false;
+      const releaseReservation = () => {
+        if (reservationReleased) return;
+        reservationReleased = true;
+        activeSessions -= 1;
+      };
+      let pair: Awaited<ReturnType<typeof createSandboxPair>> | null = null;
+      const sessionMetadata = analysisSandboxMetadata(sessionInput);
+      try {
+        await purgeManagedSandboxes({
+          factory,
+          connection_config: connectionConfig,
+          metadata: sessionMetadata,
+        });
+        pair = await createSandboxPair({
+          ...sessionInput,
+          config,
+          factory,
+          connection_config: connectionConfig,
+        });
+        await confirmManagedSandboxPair({
+          factory,
+          connection_config: connectionConfig,
+          metadata: sessionMetadata,
+          agent_id: pair.agent.id,
+          operator_id: pair.operator.id,
+        });
+      } catch (error) {
+        if (pair) {
+          await Promise.allSettled([pair.agent.close(), pair.operator.close()]);
+        }
+        await purgeManagedSandboxes({
+          factory,
+          connection_config: connectionConfig,
+          metadata: sessionMetadata,
+        }).catch(() => {});
+        releaseReservation();
+        if (error instanceof AnalysisSandboxRuntimeError) throw error;
+        throw new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_STARTUP_FAILED",
+          "SANDBOX_STARTUP",
+          true,
+        );
+      }
+      if (!pair) {
+        releaseReservation();
+        throw new AnalysisSandboxRuntimeError(
+          "ANALYSIS_SANDBOX_STARTUP_FAILED",
+          "SANDBOX_STARTUP",
+          true,
+        );
+      }
       let agentRuntime: Awaited<ReturnType<typeof initializeSandbox>> | null = null;
       let operatorRuntime: Awaited<ReturnType<typeof initializeOperatorSandbox>> | null = null;
       try {
@@ -640,17 +1208,40 @@ export function createOpenSandboxAnalysisRuntime(input: {
       } catch (error) {
         await Promise.allSettled([pair.agent.kill(), pair.operator.kill()]);
         await Promise.allSettled([pair.agent.close(), pair.operator.close()]);
+        try {
+          await purgeManagedSandboxes({
+            factory,
+            connection_config: connectionConfig,
+            metadata: sessionMetadata,
+          });
+        } catch {
+          releaseReservation();
+          throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_CLEANUP_FAILED", "CLEANUP", true);
+        }
+        releaseReservation();
         if (error instanceof AnalysisSandboxRuntimeError) throw error;
         throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_CONTEXT_FAILED", "CONTEXT", true);
       }
-      const agent = agentRuntime;
+      const agentInterpreter = agentRuntime.interpreter;
+      let agentContext = agentRuntime.context;
       const operator = operatorRuntime;
       let closed = false;
+      let contextFrozen = false;
       const assertOpen = () => {
         if (closed) {
           throw new AnalysisSandboxRuntimeError(
             "ANALYSIS_SANDBOX_CLEANUP_FAILED",
             "CLEANUP",
+            false,
+          );
+        }
+      };
+      const assertContextActive = () => {
+        assertOpen();
+        if (contextFrozen) {
+          throw new AnalysisSandboxRuntimeError(
+            "ANALYSIS_SANDBOX_CONTEXT_FAILED",
+            "CONTEXT",
             false,
           );
         }
@@ -695,8 +1286,12 @@ export function createOpenSandboxAnalysisRuntime(input: {
       return Object.freeze({
         agent_sandbox_id: pair.agent.id,
         operator_sandbox_id: pair.operator.id,
+        runtime_profile: sessionInput.profile,
+        agent_image: config.agent_images[sessionInput.profile],
+        operator_image: config.operator_image,
+        secure_access: config.secure_access,
         async uploadAgentFile(uploadInput) {
-          assertOpen();
+          assertContextActive();
           const path = sandboxPathSchema.parse(uploadInput.path);
           if (
             uploadInput.content.byteLength > config.max_file_bytes ||
@@ -719,7 +1314,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
         },
         async admitAgentCell(cellInput) {
-          assertOpen();
+          assertContextActive();
           const cellId = safeSegmentSchema.parse(cellInput.cell_id);
           const request = Buffer.from(
             JSON.stringify({
@@ -772,11 +1367,11 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
         },
         runAgentCell(cellInput) {
-          assertOpen();
+          assertContextActive();
           safeSegmentSchema.parse(cellInput.cell_id);
           return runCellWithDeadline({
-            codes: agent.interpreter.codes,
-            context: agent.context,
+            codes: agentInterpreter.codes,
+            context: agentContext,
             cell_id: cellInput.cell_id,
             source: cellInput.source,
             timeout_ms: cellInput.timeout_ms,
@@ -788,12 +1383,208 @@ export function createOpenSandboxAnalysisRuntime(input: {
             return_python_error: true,
           });
         },
-        readAgentFile(readInput) {
-          assertOpen();
-          return read(pair.agent, readInput.path, readInput.expected_sha256);
+        async recoverAgentContext(recoveryInput) {
+          assertContextActive();
+          if (recoveryInput.signal?.aborted) {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_CELL_CANCELLED",
+              "CONTEXT",
+              false,
+            );
+          }
+          try {
+            await agentInterpreter.codes.deleteContext(agentContext.id as string);
+            const replacement = await agentInterpreter.codes.createContext(
+              SupportedLanguages.PYTHON,
+            );
+            if (!replacement.id) {
+              throw new AnalysisSandboxRuntimeError(
+                "ANALYSIS_SANDBOX_CONTEXT_FAILED",
+                "CONTEXT",
+                true,
+              );
+            }
+            agentContext = replacement;
+            for (const action of recoveryInput.replay) {
+              if (action.action_type === "MODEL_CELL") {
+                safeSegmentSchema.parse(action.cell_id);
+                await runCellWithDeadline({
+                  codes: agentInterpreter.codes,
+                  context: agentContext,
+                  cell_id: `replay-${action.journal_seq}-${action.cell_id}`,
+                  source: action.source,
+                  timeout_ms: Math.min(action.timeout_ms, 30_000),
+                  ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
+                  timeout_code: "ANALYSIS_SANDBOX_CELL_TIMEOUT",
+                  failure_code: "ANALYSIS_SANDBOX_CELL_FAILED",
+                  stdout_bytes: 0,
+                  stderr_bytes: config.stderr_bytes,
+                  return_python_error: false,
+                });
+                continue;
+              }
+              const governed = action.governed_result;
+              const identity = governedBindingIdentity(governed);
+              if (
+                action.authoritative_content.byteLength !== governed.result_bytes ||
+                digest(action.authoritative_content) !== governed.result_sha256 ||
+                identity.result_symbol !== action.expected_symbol ||
+                identity.binding_id !== action.expected_binding_id
+              ) {
+                throw new AnalysisSandboxRuntimeError(
+                  "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+                  "CONTEXT",
+                  false,
+                );
+              }
+              const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
+              await pair.agent.files.writeFiles([
+                { path: inputPath, data: action.authoritative_content, mode: 400 },
+              ]);
+              await runCellWithDeadline({
+                codes: agentInterpreter.codes,
+                context: agentContext,
+                cell_id: `replay-${action.journal_seq}-${identity.binding_id}`,
+                source: buildGovernedResultBindingSource({
+                  input_path: inputPath,
+                  result_symbol: identity.result_symbol,
+                  result_sha256: governed.result_sha256,
+                  max_bytes: 16 * 1024 * 1024,
+                }),
+                timeout_ms: 30_000,
+                ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
+                timeout_code: "ANALYSIS_SANDBOX_CELL_TIMEOUT",
+                failure_code: "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+                stdout_bytes: 0,
+                stderr_bytes: config.stderr_bytes,
+                return_python_error: false,
+              });
+            }
+          } catch (error) {
+            if (error instanceof AnalysisSandboxRuntimeError) throw error;
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_CONTEXT_FAILED",
+              "CONTEXT",
+              true,
+            );
+          }
+        },
+        async freezeAgentContext() {
+          assertContextActive();
+          try {
+            await agentInterpreter.codes.deleteContext(agentContext.id as string);
+            contextFrozen = true;
+          } catch {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_CONTEXT_FAILED",
+              "CONTEXT",
+              false,
+            );
+          }
+        },
+        async bindGovernedResult(bindingInput) {
+          assertContextActive();
+          const governed = bindingInput.governed_result;
+          const identity = governedBindingIdentity(governed);
+          if (
+            bindingInput.authoritative_content.byteLength !== governed.result_bytes ||
+            bindingInput.authoritative_content.byteLength > 16 * 1024 * 1024 ||
+            digest(bindingInput.authoritative_content) !== governed.result_sha256
+          ) {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+              "ARTIFACT",
+              false,
+            );
+          }
+          const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
+          try {
+            await pair.agent.files.writeFiles([
+              { path: inputPath, data: bindingInput.authoritative_content, mode: 400 },
+            ]);
+            await runCellWithDeadline({
+              codes: agentInterpreter.codes,
+              context: agentContext,
+              cell_id: identity.binding_id,
+              source: buildGovernedResultBindingSource({
+                input_path: inputPath,
+                result_symbol: identity.result_symbol,
+                result_sha256: governed.result_sha256,
+                max_bytes: 16 * 1024 * 1024,
+              }),
+              timeout_ms: Math.min(bindingInput.timeout_ms, 30_000),
+              ...(bindingInput.signal ? { signal: bindingInput.signal } : {}),
+              timeout_code: "ANALYSIS_SANDBOX_CELL_TIMEOUT",
+              failure_code: "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+              stdout_bytes: 0,
+              stderr_bytes: config.stderr_bytes,
+              return_python_error: false,
+            });
+          } catch (error) {
+            if (error instanceof AnalysisSandboxRuntimeError) throw error;
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_BINDING_HASH_MISMATCH",
+              "CONTEXT",
+              false,
+            );
+          }
+          return Object.freeze({
+            ...identity,
+            result_sha256: governed.result_sha256,
+          });
+        },
+        async extractAgentSymbols(extractionInput) {
+          assertContextActive();
+          const parsed = symbolExtractionInputSchema.parse(extractionInput);
+          if (parsed.limits.max_bytes > config.max_file_bytes) {
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_ARTIFACT_INVALID",
+              "ARTIFACT",
+              false,
+            );
+          }
+          const outputPath = `/workspace/intermediate/${parsed.extraction_id}.symbols.json`;
+          const source = buildFixedSymbolExtractionSource({
+            specs: parsed.symbols,
+            output_path: outputPath,
+            max_rows: parsed.limits.max_rows,
+            max_columns: parsed.limits.max_columns,
+            max_bytes: parsed.limits.max_bytes,
+          });
+          try {
+            await runCellWithDeadline({
+              codes: agentInterpreter.codes,
+              context: agentContext,
+              cell_id: `extract-${parsed.extraction_id}`,
+              source,
+              timeout_ms: parsed.timeout_ms,
+              ...(extractionInput.signal ? { signal: extractionInput.signal } : {}),
+              timeout_code: "ANALYSIS_SANDBOX_CELL_TIMEOUT",
+              failure_code: "ANALYSIS_SANDBOX_CELL_FAILED",
+              stdout_bytes: 0,
+              stderr_bytes: config.stderr_bytes,
+              return_python_error: false,
+            });
+            const bytes = await read(pair.agent, outputPath);
+            if (bytes.byteLength > parsed.limits.max_bytes) {
+              throw new AnalysisSandboxRuntimeError(
+                "ANALYSIS_SANDBOX_ARTIFACT_INVALID",
+                "ARTIFACT",
+                false,
+              );
+            }
+            return JSON.parse(utf8Decoder.decode(bytes)) as unknown;
+          } catch (error) {
+            if (error instanceof AnalysisSandboxRuntimeError) throw error;
+            throw new AnalysisSandboxRuntimeError(
+              "ANALYSIS_SANDBOX_ARTIFACT_INVALID",
+              "ARTIFACT",
+              false,
+            );
+          }
         },
         async runOperator(operatorInput) {
-          assertOpen();
+          assertContextActive();
           const callId = safeSegmentSchema.parse(operatorInput.call_id);
           if (
             operatorInput.request.byteLength > config.max_file_bytes ||
@@ -840,7 +1631,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           });
         },
         async finalizeOperators(finalizationInput) {
-          assertOpen();
+          assertContextActive();
           const finalizationId = safeSegmentSchema.parse(finalizationInput.finalization_id);
           if (
             finalizationInput.request.byteLength > config.max_file_bytes ||
@@ -889,20 +1680,28 @@ export function createOpenSandboxAnalysisRuntime(input: {
         async close() {
           if (closed) return;
           closed = true;
-          const contextCleanup = await Promise.allSettled([
-            agent.interpreter.codes.deleteContext(agent.context.id as string),
-          ]);
-          const sandboxCleanup = await Promise.allSettled([
-            pair.agent.kill(),
-            pair.operator.kill(),
-          ]);
-          await Promise.allSettled([pair.agent.close(), pair.operator.close()]);
-          if ([...contextCleanup, ...sandboxCleanup].some(({ status }) => status === "rejected")) {
+          try {
+            if (!contextFrozen) {
+              await Promise.allSettled([
+                agentInterpreter.codes.deleteContext(agentContext.id as string),
+              ]);
+            }
+            await Promise.allSettled([pair.agent.kill(), pair.operator.kill()]);
+            await Promise.allSettled([pair.agent.close(), pair.operator.close()]);
+            await purgeManagedSandboxes({
+              factory,
+              connection_config: connectionConfig,
+              metadata: sessionMetadata,
+            });
+          } catch (error) {
+            if (error instanceof AnalysisSandboxRuntimeError) throw error;
             throw new AnalysisSandboxRuntimeError(
               "ANALYSIS_SANDBOX_CLEANUP_FAILED",
               "CLEANUP",
               true,
             );
+          } finally {
+            releaseReservation();
           }
         },
       } satisfies OpenSandboxAnalysisSession);
@@ -967,6 +1766,12 @@ export function createEnvironmentOpenSandboxAnalysisRuntime(
         max_file_bytes: 256 * 1024 * 1024,
         stdout_bytes: 4_096,
         stderr_bytes: 16_384,
+        max_concurrent_sessions: z.coerce
+          .number()
+          .int()
+          .min(1)
+          .max(32)
+          .parse(environment.ANALYSIS_SANDBOX_MAX_CONCURRENT_SESSIONS ?? 1),
       },
     });
   } catch (error) {
@@ -980,7 +1785,9 @@ export function createEnvironmentOpenSandboxAnalysisRuntime(
 }
 
 export const openSandboxAnalysisRuntimeInternals = Object.freeze({
+  buildGovernedResultBindingSource,
   digest,
+  governedBindingIdentity,
   sandboxPathSchema,
   safeSegmentSchema,
 });

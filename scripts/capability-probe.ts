@@ -13,31 +13,67 @@ import { loadEcommerceDeterministicAnalysisSuite } from "../packages/evals/src/t
 const digest = (value: string | Buffer): `sha256:${string}` =>
   `sha256:${createHash("sha256").update(value).digest("hex")}`;
 
-const supplyChainSchema = z.strictObject({
-  schema_version: z.literal("python-sandbox-supply-chain@1.0.0"),
-  generated_at: z.iso.datetime(),
-  base_image_digest: z.string(),
-  target_platform: z.literal("linux/arm64"),
-  scanner: z.strictObject({ name: z.literal("pip-audit"), version: z.string(), mode: z.string() }),
+const openSandboxAttestationSchema = z.strictObject({
+  schema_version: z.literal("opensandbox-analysis-attestation@1.0.0"),
+  opensandbox_source: z.strictObject({
+    repository: z.literal("https://github.com/opensandbox-group/OpenSandbox"),
+    commit: z.string().regex(/^[a-f0-9]{40}$/u),
+    server_version: z.string().min(1),
+  }),
+  sdk: z.strictObject({
+    opensandbox: z.string().min(1),
+    code_interpreter: z.string().min(1),
+  }),
+  base_image: z.string().regex(/^opensandbox\/code-interpreter@sha256:[a-f0-9]{64}$/u),
+  agent_dockerfile: z.strictObject({
+    path: z.string().min(1),
+    sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  }),
   profiles: z.record(
-    z.string(),
+    z.enum(["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]),
     z.strictObject({
-      lock_path: z.string(),
-      lock_digest: z.string(),
-      image_attestation_digest: z.string(),
-      package_count: z.number().int().positive(),
-      cve_scan: z.strictObject({
-        status: z.literal("PASS"),
-        known_vulnerability_count: z.literal(0),
-      }),
-      license_scan: z.strictObject({
-        status: z.literal("REVIEW_REQUIRED"),
-        unresolved_packages: z.array(z.string()),
-      }),
+      lock_path: z.string().min(1),
+      lock_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
     }),
   ),
-  sbom_hash: z.string(),
-  attestation_hash: z.string(),
+  operator: z.strictObject({
+    dockerfile_path: z.string().min(1),
+    dockerfile_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    manifest_path: z.string().min(1),
+    manifest_sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+    registry_digest: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  }),
+  local_probe: z.strictObject({
+    status: z.literal("PASS"),
+    pids_limit: z.number().int().min(128),
+    secure_access: z.literal(false),
+    production_isolation_proven: z.literal(false),
+    known_rejected_configuration: z.strictObject({
+      pids_limit: z.literal(32),
+      failure: z.literal("RuntimeError: can't start new thread"),
+    }),
+    profile_counts: z.record(
+      z.enum(["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]),
+      z.strictObject({
+        status: z.literal("PASS"),
+        sandbox: z.strictObject({
+          before: z.literal(0),
+          peak: z.literal(2),
+          after: z.literal(0),
+        }),
+        egress: z.strictObject({
+          before: z.literal(0),
+          peak: z.literal(2),
+          after: z.literal(0),
+        }),
+      }),
+    ),
+  }),
+  production_gate: z.strictObject({
+    decision: z.literal("HOLD"),
+    required_runtime: z.literal("KATA_OR_GVISOR_WITH_CILIUM"),
+    release_image_digests_required: z.literal(true),
+  }),
 });
 
 const skill = (
@@ -61,29 +97,24 @@ const skill = (
     engaged: registration_state === "NOT_REGISTERED",
     reason_code: registration_state === "NOT_REGISTERED" ? "CAPABILITY_NOT_REGISTERED" : null,
   },
-  promotion_blockers: [...(options.blockers ?? ["LICENSE_REVIEW_REQUIRED"])],
+  promotion_blockers: [
+    ...(options.blockers ?? [
+      "OPENSANDBOX_PRODUCTION_ISOLATION_REQUIRED",
+      "SBOM_CVE_LICENSE_ATTESTATION_REQUIRED",
+    ]),
+  ],
 });
 
 export async function buildDeterministicAnalysisCapabilityProbe() {
   const suite = await loadEcommerceDeterministicAnalysisSuite();
-  const supplyChain = supplyChainSchema.parse(
+  const runtimeAttestation = openSandboxAttestationSchema.parse(
     JSON.parse(
       readFileSync(
-        new URL("../infra/docker/python-sandbox-supply-chain-attestation.json", import.meta.url),
+        new URL("../infra/docker/opensandbox-analysis-attestation.json", import.meta.url),
         "utf8",
       ),
     ),
   );
-  const runtimeAttestation = JSON.parse(
-    readFileSync(
-      new URL("../infra/docker/python-sandbox-attestation.json", import.meta.url),
-      "utf8",
-    ),
-  ) as {
-    schema_version: string;
-    target_platform: string;
-    profiles: Record<string, unknown>;
-  };
   const text2sqlSource = readFileSync(
     new URL("../apps/worker/src/teams/tools/text2sql-tools.ts", import.meta.url),
   );
@@ -92,29 +123,33 @@ export async function buildDeterministicAnalysisCapabilityProbe() {
     skill("semantic-transform@1", 1, "SHADOW"),
     skill("trend-change@1", 1, "SHADOW"),
     skill("contribution-concentration@1", 1, "SHADOW", {
-      blockers: ["LICENSE_REVIEW_REQUIRED", "CONTRIBUTION_CLOSURE_RELEASE_REVIEW"],
+      blockers: ["PRODUCTION_RUNTIME_GATE_HOLD", "CONTRIBUTION_CLOSURE_RELEASE_REVIEW"],
     }),
     skill("robust-anomaly@1", 1, "SHADOW"),
     skill("association-outlier-completeness@1", 1, "SHADOW", {
-      blockers: ["LICENSE_REVIEW_REQUIRED", "ASSOCIATION_DISCLOSURE_RELEASE_REVIEW"],
+      blockers: ["PRODUCTION_RUNTIME_GATE_HOLD", "ASSOCIATION_DISCLOSURE_RELEASE_REVIEW"],
     }),
     skill("baseline-forecast-backtest@1", 1, "SHADOW", {
-      blockers: ["LICENSE_REVIEW_REQUIRED", "FORECAST_LEAKAGE_RELEASE_REVIEW", "FORECAST_GA_LATE"],
+      blockers: [
+        "PRODUCTION_RUNTIME_GATE_HOLD",
+        "FORECAST_LEAKAGE_RELEASE_REVIEW",
+        "FORECAST_GA_LATE",
+      ],
     }),
     skill("open-python-analysis@1", 2, "SHADOW", { generated: true }),
     skill("root-cause-investigation@1", 3, "INTERNAL", {
-      blockers: ["LICENSE_REVIEW_REQUIRED", "L5_REMAINS_HOLD"],
+      blockers: ["PRODUCTION_RUNTIME_GATE_HOLD", "L5_REMAINS_HOLD"],
     }),
     skill("visual-insight-story@1", 3, "INTERNAL"),
     skill("certified-causal-estimate@1", 4, "NOT_REGISTERED", {
       execution: false,
       visible: false,
-      blockers: ["F9_NOT_REGISTERED", "L5_GATE_HOLD", "LICENSE_REVIEW_REQUIRED"],
+      blockers: ["F9_NOT_REGISTERED", "L5_GATE_HOLD", "PRODUCTION_RUNTIME_GATE_HOLD"],
     }),
   ];
   return {
     probe_version: "deterministic-analysis-capability-probe@1.0.0",
-    release_decision: "SHADOW_READY_WITH_GA_HOLD",
+    release_decision: "HOLD",
     suite: {
       schema_version: suite.manifest.schema_version,
       suite_version: suite.manifest.suite_version,
@@ -124,20 +159,20 @@ export async function buildDeterministicAnalysisCapabilityProbe() {
       oracle_gate: "PASS",
     },
     supply_chain: {
-      schema_version: supplyChain.schema_version,
-      target_platform: supplyChain.target_platform,
-      attestation_hash: supplyChain.attestation_hash,
-      sbom_hash: supplyChain.sbom_hash,
-      cve_scan_status: "PASS",
-      license_scan_status: "REVIEW_REQUIRED",
-      unresolved_license_packages: Object.values(supplyChain.profiles).flatMap(
-        ({ license_scan }) => license_scan.unresolved_packages,
-      ),
+      status: "NOT_VERIFIED",
+      sbom_hash: null,
+      cve_scan_status: "NOT_RUN",
+      license_scan_status: "NOT_RUN",
+      blocker: "SBOM_CVE_LICENSE_ATTESTATION_REQUIRED",
     },
     runtime_attestation: {
       schema_version: runtimeAttestation.schema_version,
-      target_platform: runtimeAttestation.target_platform,
       registered_profiles: Object.keys(runtimeAttestation.profiles).sort(),
+      source_commit: runtimeAttestation.opensandbox_source.commit,
+      base_image: runtimeAttestation.base_image,
+      operator_registry_digest: runtimeAttestation.operator.registry_digest,
+      local_probe: runtimeAttestation.local_probe,
+      production_gate: runtimeAttestation.production_gate,
     },
     f9: { registration_status: "NOT_REGISTERED", blocks_standard_analysis: false },
     l5_gate: { decision: "HOLD", execution_enabled: false },

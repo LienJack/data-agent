@@ -3,8 +3,8 @@ import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import type { SqlPool } from "@data-agent/platform/persistence";
 import type { GovernedAnalysisQueryPort } from "../analysis/executor.js";
+import type { GovernedAnalysisInput } from "../analysis/governed-analysis-input.js";
 import type { AnalysisInputMaterializationCommand } from "../analysis/input-materializer.js";
-import type { GovernedPythonInput } from "../analysis/sandbox-executor.js";
 import type { Falcon24AnalysisDataOracleReceipt } from "./falcon24-analysis-data-oracle.js";
 import {
   FALCON24_ANALYSIS_QUERY_SPECS,
@@ -34,7 +34,7 @@ export interface Falcon24ExactQueryEvidenceAuthority {
 }
 
 export interface Falcon24AnalysisInputMaterializer {
-  materialize(input: AnalysisInputMaterializationCommand): Promise<GovernedPythonInput>;
+  materialize(input: AnalysisInputMaterializationCommand): Promise<GovernedAnalysisInput>;
 }
 
 export interface Falcon24AnalysisSnapshotAuthority {

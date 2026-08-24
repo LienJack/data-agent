@@ -14,7 +14,7 @@ import { canonicalizeJson, type PortResult, sha256ContentHash } from "@data-agen
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { AnalysisArtifactCommitPort } from "./executor.js";
-import type { GovernedPythonInput } from "./sandbox-executor.js";
+import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
 
 const INPUT_KEY_ENV = "DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64" as const;
 const INPUT_KEY_ID_ENV = "DATA_AGENT_ANALYSIS_INPUT_KEY_ID" as const;
@@ -143,7 +143,9 @@ export function createAnalysisInputMaterializer(input: {
     throw new TypeError("ANALYSIS_INPUT_ENCRYPTION_CONFIG_INVALID");
   }
   return Object.freeze({
-    async materialize(command: AnalysisInputMaterializationCommand): Promise<GovernedPythonInput> {
+    async materialize(
+      command: AnalysisInputMaterializationCommand,
+    ): Promise<GovernedAnalysisInput> {
       const queryEvidence = await verifyQueryEvidence(command);
       if (
         command.analysis_program_ref.run_id !== command.lease.run_id ||

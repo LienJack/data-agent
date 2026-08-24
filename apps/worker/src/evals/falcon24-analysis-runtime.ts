@@ -7,8 +7,7 @@ import {
 import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
 import type { SqlPool } from "@data-agent/platform/persistence";
 import { z } from "zod";
-import { createRunBoundDeepSeekPythonGenerationProvider } from "../analysis/deepseek-generation-provider.js";
-import { createDeepSeekAnalysisProgramSource } from "../analysis/deepseek-program-source.js";
+import { createRunBoundDeepSeekAnalysisAgentModel } from "../analysis/deepseek-analysis-agent.js";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
 import {
   type AnalysisArtifactCommitPort,
@@ -24,8 +23,16 @@ import {
   createAnalysisPythonSourceArtifactPort,
   resolveAnalysisPythonSourceEncryption,
 } from "../analysis/python-source-artifact.js";
-import { createResearchAnalysisArtifactPort } from "../analysis/research-artifact-port.js";
-import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
+import {
+  type AnalysisGovernedResultPersistenceAuthority,
+  createResearchAnalysisArtifactPort,
+  createResearchGovernedResultAuthorityPort,
+} from "../analysis/research-artifact-port.js";
+import {
+  type AnalysisLifecyclePersistenceAuthority,
+  createResearchAnalysisLifecycleAuthorityPort,
+} from "../analysis/analysis-lifecycle-authority.js";
+import { createEnvironmentOpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
@@ -57,6 +64,8 @@ interface AnalysisSystemArtifactAuthority {
 
 type Falcon24ResearchAuthority = ResearchArtifactAuthorityPort &
   AnalysisSystemArtifactAuthority &
+  AnalysisGovernedResultPersistenceAuthority &
+  AnalysisLifecyclePersistenceAuthority &
   AnalysisPythonSourceAuthorityPort;
 
 function schemaType(column: Falcon24AnalysisQueryColumn) {
@@ -66,7 +75,7 @@ function schemaType(column: Falcon24AnalysisQueryColumn) {
 
 function referenceFactory() {
   const systemReference = (input: {
-    readonly artifact_type: "SandboxProgram" | "SandboxExecutionReceipt";
+    readonly artifact_type: "SandboxExecutionReceipt";
     readonly label: string;
     readonly content_hash: `sha256:${string}`;
     readonly lease: RunWorkLease;
@@ -83,16 +92,18 @@ function referenceFactory() {
     });
   return Object.freeze({
     createSystem: systemReference,
-    create(input: {
-      readonly name: string;
-      readonly type: string;
-      readonly program: { readonly analysis_program_ref: ArtifactReference };
+    createOutput(input: {
+      readonly lease: RunWorkLease;
+      readonly analysis_program_ref: ArtifactReference;
+      readonly node_id: string;
+      readonly artifact_name: string;
+      readonly artifact_kind: "RESULT" | "TABLE" | "CHART";
+      readonly content_hash: `sha256:${string}`;
     }) {
-      const programRef = input.program.analysis_program_ref;
+      const programRef = input.analysis_program_ref;
       return {
-        name: input.name,
         artifact_id: deterministicAnalysisUuid(
-          `falcon24-analysis-output\0${programRef.run_id}\0${programRef.artifact_id}\0${input.name}`,
+          `falcon24-analysis-output\0${programRef.run_id}\0${programRef.artifact_id}\0${input.node_id}\0${input.artifact_kind}\0${input.artifact_name}`,
         ),
         artifact_type: "SandboxResult" as const,
         app_id: programRef.app_id,
@@ -100,15 +111,10 @@ function referenceFactory() {
         environment: programRef.environment,
         run_id: programRef.run_id,
         revision: 1,
+        content_hash: input.content_hash,
       };
     },
   });
-}
-
-function required(value: string | undefined, code: string): string {
-  const normalized = value?.trim();
-  if (!normalized) throw new TypeError(code);
-  return normalized;
 }
 
 export function createFalcon24AnalysisRuntime(input: {
@@ -118,7 +124,6 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly research_capabilities: ResearchAuthorityCapabilityResolver;
   readonly app_capability_input: unknown;
   readonly public_artifacts: Falcon24PublicArtifactPort;
-  readonly sandbox: PythonSandboxClient;
   readonly environment: NodeJS.ProcessEnv;
   readonly now?: () => Date;
   readonly acceptance_recorder?: Falcon24AnalysisAcceptanceRecorder | null;
@@ -127,13 +132,8 @@ export function createFalcon24AnalysisRuntime(input: {
   if (!inputEncryption) throw new TypeError("ANALYSIS_INPUT_ENCRYPTION_CONFIG_REQUIRED");
   const sourceEncryption = resolveAnalysisPythonSourceEncryption(input.environment);
   if (!sourceEncryption) throw new TypeError("ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_REQUIRED");
-  const sandboxAuthorization = required(
-    input.environment.PYTHON_SANDBOX_AUTH_TOKEN,
-    "ANALYSIS_PYTHON_SANDBOX_AUTHORIZATION_REQUIRED",
-  );
-  if (sandboxAuthorization.length < 32 || sandboxAuthorization.length > 512) {
-    throw new TypeError("ANALYSIS_PYTHON_SANDBOX_AUTHORIZATION_INVALID");
-  }
+  const sandboxRuntime = createEnvironmentOpenSandboxAnalysisRuntime(input.environment);
+  if (!sandboxRuntime) throw new TypeError("ANALYSIS_OPENSANDBOX_RUNTIME_REQUIRED");
   const now = input.now ?? (() => new Date());
   const artifacts: AnalysisArtifactCommitPort = createResearchAnalysisArtifactPort({
     authority: input.research_authority,
@@ -152,6 +152,16 @@ export function createFalcon24AnalysisRuntime(input: {
     capability_input: input.research_capabilities.forDomain("PLANNING"),
     encryption_key: sourceEncryption.key,
     encryption_key_id: sourceEncryption.key_id,
+    now,
+  });
+  const governedResults = createResearchGovernedResultAuthorityPort({
+    authority: input.research_authority,
+    capabilities: input.research_capabilities,
+    source_artifacts: sourceArtifacts,
+  });
+  const lifecycle = createResearchAnalysisLifecycleAuthorityPort({
+    authority: input.research_authority,
+    capabilities: input.research_capabilities,
     now,
   });
   const snapshotAuthority = createFalcon24AnalysisDataOracle(input.pool);
@@ -181,59 +191,55 @@ export function createFalcon24AnalysisRuntime(input: {
         materializer,
         now,
       });
-      const programs = createDeepSeekAnalysisProgramSource({
-        contexts: {
-          async load(command) {
-            if (command.node.node_id !== runtime.test_case.case_id) {
-              throw new TypeError("FALCON24_ANALYSIS_GENERATION_CONTEXT_INVALID");
-            }
-            return {
-              semantic_context_package: runtime.semantic_context.package,
-              analysis_contract: {
-                case_id: runtime.test_case.case_id,
-                statistical_method_contract:
-                  falcon24AnalysisProgramInternals.method_contracts[runtime.test_case.case_id],
-                semantic_contract: await buildFalcon24SemanticConsumptionProjection({
-                  test_case: runtime.test_case,
-                  semantic_release_hash:
-                    runtime.semantic_context.package.semantic_release.resource_hash,
-                }),
-                output_json_schema: falcon24AnalysisOutputJsonSchema(runtime.test_case.case_id),
+      const contexts = {
+        async load(command: { readonly node: { readonly node_id: string } }) {
+          if (command.node.node_id !== runtime.test_case.case_id) {
+            throw new TypeError("FALCON24_ANALYSIS_GENERATION_CONTEXT_INVALID");
+          }
+          return {
+            semantic_context_package: runtime.semantic_context.package,
+            analysis_contract: {
+              case_id: runtime.test_case.case_id,
+              statistical_method_contract:
+                falcon24AnalysisProgramInternals.method_contracts[runtime.test_case.case_id],
+              semantic_contract: await buildFalcon24SemanticConsumptionProjection({
+                test_case: runtime.test_case,
+                semantic_release_hash:
+                  runtime.semantic_context.package.semantic_release.resource_hash,
+              }),
+              output_json_schema: falcon24AnalysisOutputJsonSchema(runtime.test_case.case_id),
+            },
+            input_schemas: [
+              {
+                input_name: spec.input_name,
+                format: "ARROW" as const,
+                row_count_upper_bound: spec.expected_rows,
+                fields: spec.columns.map((column) => ({
+                  name: column.name,
+                  data_type: schemaType(column),
+                  nullable: column.nullable,
+                })),
               },
-              input_schemas: [
-                {
-                  input_name: spec.input_name,
-                  format: "ARROW" as const,
-                  row_count_upper_bound: spec.expected_rows,
-                  fields: spec.columns.map((column) => ({
-                    name: column.name,
-                    data_type: schemaType(column),
-                    nullable: column.nullable,
-                  })),
-                },
-              ],
-            };
-          },
+            ],
+          };
         },
-        model: createRunBoundDeepSeekPythonGenerationProvider(runtime.provider_dispatch),
-        artifacts: sourceArtifacts,
-        standard_programs: {
-          async load() {
-            throw new TypeError("FALCON24_STANDARD_PROGRAM_FORBIDDEN");
-          },
-        },
-      });
+      };
       return createAnalysisProgramExecutor({
         artifacts,
+        governed_results: governedResults,
+        lifecycle,
         queries,
-        programs,
+        contexts,
+        model: createRunBoundDeepSeekAnalysisAgentModel(runtime.provider_dispatch),
         oracle: createFalcon24ArrowBackedAnalysisOracle(),
-        sandbox: input.sandbox,
-        sandbox_authorization: sandboxAuthorization,
+        sandbox: sandboxRuntime,
         fence_guard: runtime.fence_guard,
         references: referenceFactory(),
         diagnostics(event) {
           console.error(JSON.stringify(event));
+        },
+        progress(event) {
+          console.info(JSON.stringify(event));
         },
         now,
       });

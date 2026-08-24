@@ -1,9 +1,8 @@
-import { createHash } from "node:crypto";
 import {
   type AnalysisContext,
-  type AnalysisSandboxProgramPayload,
+  type AnalysisSandboxExecutionReceipt,
   type ArtifactReference,
-  analysisSandboxProgramPayloadSchema,
+  analysisSandboxExecutionReceiptSchema,
   atomicClaimV3PayloadSchema,
   buildAnalysisContext,
   type CausalAttributionAuthorityClosure,
@@ -13,7 +12,6 @@ import {
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import {
-  computeAnalysisSandboxProgramHash,
   computeAttributionAuthorityClosureHash,
   createCausalEstimate,
   createCausalQuestion,
@@ -28,6 +26,8 @@ const hash = (value: string) => `sha256:${value.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
 const now = "2026-08-22T00:00:00.000Z";
+const causalAgentImage = "data-agent-opensandbox-agent-causal@sha256:test";
+const operatorImage = "data-agent-opensandbox-operator@sha256:test";
 const window = {
   start: "2026-07-01T00:00:00.000Z",
   end: "2026-08-01T00:00:00.000Z",
@@ -346,58 +346,121 @@ async function causalChain(
     receipt,
     receipt_ref: receiptRef,
     estimator: "ECONML_DML",
-    runtime_digest: hash("2"),
-    dependency_lock_digest: hash("3"),
+    runtime_profile: "CAUSAL_L5",
+    agent_image: causalAgentImage,
+    operator_image: operatorImage,
   });
   const identificationPlanRef = reference("IdentificationPlan", 45, await sha256ContentHash(plan));
-  const source = "def main(context):\n    return None\n";
-  const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
   const queryRef = reference("QueryEvidence", 46);
   const inputRef = reference("SandboxResult", 47);
-  const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
-    artifact_type: "SandboxProgram",
-    protocol_version: "analysis-sandbox-program@2.0.0",
-    analysis_program_ref: planRef as AnalysisSandboxProgramPayload["analysis_program_ref"],
-    node_id: "root-cause",
-    language: "PYTHON_3_12",
-    entrypoint: "main",
-    source_sha256: sourceHash,
-    source_text_ref: reference(
-      "SensitiveExecutionArtifact",
-      48,
-      sourceHash,
-    ) as AnalysisSandboxProgramPayload["source_text_ref"],
-    query_evidence_refs: [queryRef] as AnalysisSandboxProgramPayload["query_evidence_refs"],
-    input_refs: [inputRef],
-    input_materialization_receipt_refs: [
-      reference("AnalysisInputMaterializationReceipt", 49),
-    ] as AnalysisSandboxProgramPayload["input_materialization_receipt_refs"],
-    output_contract: {
-      schema_version: "python-output-contract@1.0.0",
-      outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_000_000 }],
-    },
-    generated_source_policy: "OPEN_ANALYSIS",
-    operator_registry_digest: hash("2"),
-    operator_obligations: [],
-    import_profile: "CAUSAL_L5",
-    random_seed: 7,
-    runtime_digest: plan.frontier.runtime_digest ?? hash("2"),
-    dependency_lock_digest: plan.frontier.dependency_lock_digest ?? hash("3"),
-    policy_version: "python-policy@1.0.0",
-  };
-  const program = analysisSandboxProgramPayloadSchema.parse({
-    ...programMaterial,
-    program_hash: await computeAnalysisSandboxProgramHash(programMaterial),
-  });
-  const programRef = reference("SandboxProgram", 49, await sha256ContentHash(program));
+  const resultRef = reference("SandboxResult", 51);
+  const tableRef = reference("SandboxResult", 91);
+  const chartRef = reference("SandboxResult", 92);
+  const sandboxReceipt: AnalysisSandboxExecutionReceipt =
+    analysisSandboxExecutionReceiptSchema.parse({
+      schema_version: "analysis-sandbox-execution-receipt@1.0.0",
+      workspace_id: scope.tenant_id,
+      run_id: runId,
+      attempt_id: id(70),
+      worker_fence: 1,
+      fence_token: "root-cause-fence",
+      idempotency_key: "root-cause-analysis-execution",
+      request_hash: hash("1"),
+      analysis_program_ref: planRef,
+      node_id: "root-cause",
+      runtime_profile: "CAUSAL_L5",
+      runtime: {
+        provider: "OpenSandbox",
+        opensandbox_sdk_version: "opensandbox-sdk@1.0.0",
+        code_interpreter_sdk_version: "code-interpreter-sdk@1.0.0",
+        agent_image: causalAgentImage,
+        operator_image: operatorImage,
+        agent_sandbox_id: id(71),
+        operator_sandbox_id: id(72),
+      },
+      generated_source_policy: "OPEN_ANALYSIS",
+      operator_registry_digest: hash("2"),
+      operator_obligations: [],
+      operator_receipts: [],
+      operator_receipt_closure_hash: hash("3"),
+      result_contract_hash: hash("6"),
+      publish_manifest_hash: hash("7"),
+      published_closure_hash: hash("8"),
+      publish_id: "root-cause-publish",
+      inputs: [
+        {
+          name: "causal_input",
+          format: "ARROW",
+          query_evidence_ref: queryRef,
+          input_ref: inputRef,
+          materialization_receipt_ref: reference("AnalysisInputMaterializationReceipt", 49),
+          content_sha256: inputRef.content_hash,
+          bytes: 128,
+        },
+      ],
+      cells: [
+        {
+          cell_id: "root-cause-cell",
+          source_sha256: hash("4"),
+          execution_id: "causal-execution",
+          execution_count: 1,
+          elapsed_ms: 20,
+          status: "SUCCEEDED",
+        },
+      ],
+      started_at: now,
+      finished_at: "2026-08-22T00:00:01.000Z",
+      elapsed_ms: 1_000,
+      hard_controls: {
+        network_isolated: true,
+        scoped_filesystem: true,
+        separate_operator_sandbox: true,
+        resource_limits_enforced: true,
+        secure_access: true,
+      },
+      status: "SUCCEEDED",
+      failure_code: null,
+      outputs: [
+        {
+          artifact_name: "result",
+          artifact_kind: "RESULT",
+          media_type: "application/json",
+          reference: resultRef,
+          content_sha256: resultRef.content_hash,
+          bytes: 256,
+        },
+        {
+          artifact_name: "table:root_cause",
+          artifact_kind: "TABLE",
+          media_type: "application/json",
+          reference: tableRef,
+          content_sha256: tableRef.content_hash,
+          bytes: 256,
+        },
+        {
+          artifact_name: "chart:root_cause",
+          artifact_kind: "CHART",
+          media_type: "application/json",
+          reference: chartRef,
+          content_sha256: chartRef.content_hash,
+          bytes: 256,
+        },
+      ],
+      execution_hash: hash("5"),
+    });
+  const sandboxReceiptRef = reference(
+    "SandboxExecutionReceipt",
+    50,
+    await sha256ContentHash(sandboxReceipt),
+  );
   const estimate = await createCausalEstimate({
     question,
     question_ref: questionRef,
     plan,
     plan_ref: identificationPlanRef,
-    sandbox_program_ref: programRef,
-    sandbox_execution_receipt_ref: reference("SandboxExecutionReceipt", 50),
-    sandbox_result_refs: [reference("SandboxResult", 51)],
+    analysis_program_ref: planRef,
+    sandbox_execution_receipt_ref: sandboxReceiptRef,
+    sandbox_result_refs: [resultRef, tableRef, chartRef],
     computation: {
       point_estimate: 2,
       interval_low: 1.5,
@@ -438,7 +501,8 @@ async function causalChain(
     questionRef,
     plan,
     identificationPlanRef,
-    program,
+    sandboxReceipt,
+    sandboxReceiptRef,
     estimate,
     estimateRef,
   };
@@ -529,8 +593,9 @@ describe("root cause discovery and causal identification", () => {
       plan_ref: chain.identificationPlanRef,
       estimate: chain.estimate,
       estimate_ref: chain.estimateRef,
-      receipt_ref: chain.receiptRef,
-      program: chain.program,
+      discovery_receipt_ref: chain.receiptRef,
+      sandbox_receipt: chain.sandboxReceipt,
+      sandbox_receipt_ref: chain.sandboxReceiptRef,
       authority,
     });
     expect(certificate.verdict).toBe("CERTIFIED");
@@ -561,8 +626,9 @@ describe("root cause discovery and causal identification", () => {
       plan_ref: chain.identificationPlanRef,
       estimate: chain.estimate,
       estimate_ref: chain.estimateRef,
-      receipt_ref: chain.receiptRef,
-      program: chain.program,
+      discovery_receipt_ref: chain.receiptRef,
+      sandbox_receipt: chain.sandboxReceipt,
+      sandbox_receipt_ref: chain.sandboxReceiptRef,
       authority: await authorityFixture(chain.question.question_hash),
     });
     expect(certificate.verdict).toBe("HOLD");
@@ -580,8 +646,9 @@ describe("root cause discovery and causal identification", () => {
       plan_ref: chain.identificationPlanRef,
       estimate: chain.estimate,
       estimate_ref: chain.estimateRef,
-      receipt_ref: chain.receiptRef,
-      program: chain.program,
+      discovery_receipt_ref: chain.receiptRef,
+      sandbox_receipt: chain.sandboxReceipt,
+      sandbox_receipt_ref: chain.sandboxReceiptRef,
       authority: await authorityFixture(chain.question.question_hash),
     });
     expect(expired).toMatchObject({ verdict: "HOLD", reason_codes: ["CAUSAL_REFUTATION_FAILED"] });
@@ -596,8 +663,9 @@ describe("root cause discovery and causal identification", () => {
       plan_ref: chain.identificationPlanRef,
       estimate: chain.estimate,
       estimate_ref: chain.estimateRef,
-      receipt_ref: chain.receiptRef,
-      program: chain.program,
+      discovery_receipt_ref: chain.receiptRef,
+      sandbox_receipt: chain.sandboxReceipt,
+      sandbox_receipt_ref: chain.sandboxReceiptRef,
       authority: await authorityFixture(chain.question.question_hash),
     });
     expect(drifted.verdict).toBe("HOLD");

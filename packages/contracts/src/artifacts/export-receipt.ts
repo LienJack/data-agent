@@ -445,8 +445,9 @@ const artifactWorkspaceChartProvenanceV3Schema = z.strictObject({
   algorithm_version: z.string().min(1).max(128),
   parameter_hash: contentHashSchema,
   input_closure_hash: contentHashSchema,
-  runtime_digest: contentHashSchema,
-  dependency_lock_digest: contentHashSchema,
+  runtime_profile: z.enum(["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]),
+  agent_image: z.string().trim().min(1).max(1_024),
+  operator_image: z.string().trim().min(1).max(1_024),
 });
 
 export const artifactWorkspaceChartDocumentV3Schema = z
@@ -709,10 +710,11 @@ export const deterministicAnalysisRunProjectionSchema = z
           algorithm_version: z.string().min(1).max(128),
           parameter_hash: contentHashSchema,
           input_closure_hash: contentHashSchema,
-          program_ref: artifactReferenceFor("SandboxProgram"),
+          analysis_program_ref: artifactReferenceFor("AnalysisProgram"),
           receipt_ref: artifactReferenceFor("SandboxExecutionReceipt"),
-          runtime_digest: contentHashSchema,
-          dependency_lock_digest: contentHashSchema,
+          runtime_profile: z.enum(["CORE_ANALYSIS", "ML_DIAGNOSTIC", "CAUSAL_L5"]),
+          agent_image: z.string().trim().min(1).max(1_024),
+          operator_image: z.string().trim().min(1).max(1_024),
           sample_size: z.number().int().nonnegative(),
           limitation_codes: z.array(z.string().min(1).max(128)).max(32),
         }),

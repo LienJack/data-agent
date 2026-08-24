@@ -13,9 +13,7 @@ Receipt、QueryEvidence 与分析 Artifact 仍是 Authority；Capability Probe�
 
 ## 当前基线
 
-当前目标是 `SHADOW_READY_WITH_GA_HOLD`：标准模板为 Stage 1 Shadow，Generated Program 为 Stage 2 Shadow，内部 Workspace
-可查看 Stage 3 的标准/生成分析与 L4 Root Cause Candidate；L5 保持 HOLD。许可证元数据仍有待人工确认的包，因此所有 GA
-promotion 均保持阻断；Python 锁依赖的已知 CVE 扫描为 PASS。
+当前目标是 `HOLD`。OpenSandbox 本地 Cell/文件/Operator 探针已通过，但本地 `secure_access=false`，没有 Kata/gVisor+Cilium 的生产隔离证明，也没有当前 release image、SBOM、CVE 与许可证证明。任何 Shadow/GA promotion 均保持阻断，不能沿用已删除运行时的旧扫描结论。
 
 ## 阶段与提升门
 
@@ -36,8 +34,9 @@ Certified Causal 不沿用这个顺序自动提升，必须另行注册 F9/L5。
 每次提升都必须保留命令输出、提交 SHA、suite/runtime/lock/image/SBOM hash 与操作者时间：
 
 ```bash
-pnpm sandbox:python:attest
-pnpm sandbox:python:supply-chain
+pnpm sandbox:analysis:attest
+# 启动固定版本 OpenSandbox 服务并设置 ANALYSIS_SANDBOX_PROBE_* 后：
+pnpm sandbox:analysis:probe
 pnpm --filter @data-agent/contracts test:unit
 pnpm --filter @data-agent/semantic test:unit
 pnpm --filter @data-agent/research test:unit
@@ -58,7 +57,8 @@ projection 的 disclosure/sensitivity/replay 测试。Contribution closure、Ass
 4. 观察该技能的新 Run 变为确定性 SKIPPED/HOLD；确认普通 Text2SQL、历史报告读取和其他分析技能继续工作。
 
 紧急 reason code 使用：`SECURITY_EVIDENCE_STALE`、`REPLAY_MISMATCH`、`ORACLE_REGRESSION`、
-`SEMANTIC_CLOSURE_REGRESSION`、`BUDGET_REGRESSION`、`PROJECTION_LEAK`、`LICENSE_REVIEW_REQUIRED`。
+`SEMANTIC_CLOSURE_REGRESSION`、`BUDGET_REGRESSION`、`PROJECTION_LEAK`、
+`OPENSANDBOX_PRODUCTION_ISOLATION_REQUIRED`、`SBOM_CVE_LICENSE_ATTESTATION_REQUIRED`。
 
 ## 回滚与恢复
 

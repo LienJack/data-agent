@@ -15,7 +15,7 @@ const id = (suffix: number) => `35000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const sourceText =
-  "import pandas as pd\ndef main(context):\n    context.write_json('result', {})\n";
+  "import pandas as pd\nframe = pd.DataFrame({'value': [1]})\nresult_document = {'value': int(frame['value'].sum())}\n";
 const sourceHash = analysisPythonSourceArtifactInternals.sourceHash(sourceText);
 
 function reference(
@@ -69,23 +69,22 @@ describe("Analysis Python source artifact port", () => {
       readonly command: AnalysisPythonSourceCommitCommand;
       readonly ciphertext: Uint8Array;
     }> = [];
+    const reads: unknown[] = [];
     const artifacts = createAnalysisPythonSourceArtifactPort({
       authority: {
-        async loadAnalysisPythonSource() {
-          const current = captured[0];
-          return {
-            ok: true,
-            source: current
-              ? {
-                  receipt: current.command.receipt,
-                  ciphertext_base64: Buffer.from(current.ciphertext).toString("base64"),
-                }
-              : null,
-          };
-        },
         async commitAnalysisPythonSource(...input) {
           captured.push({ command: input[1], ciphertext: input[2] });
           return { ok: true, created: true, receipt: input[1].receipt };
+        },
+        async readAnalysisContextModelCellSource(_capability, command) {
+          reads.push(command);
+          const committed = captured[0];
+          if (!committed) return { ok: false as const, error_code: "NOT_FOUND" };
+          return {
+            ok: true as const,
+            receipt: committed.command.receipt,
+            ciphertext_base64: Buffer.from(committed.ciphertext).toString("base64"),
+          };
         },
       },
       capability_input: { capability: "server-only" },
@@ -109,25 +108,19 @@ describe("Analysis Python source artifact port", () => {
     } as const;
     const result = await artifacts.commit(sourceCommand);
     await artifacts.commit(sourceCommand);
+    const replayed = await artifacts.load({
+      lease: base.lease,
+      node_id: "falcon24-question-1",
+      context_generation: 1,
+      journal_seq: 3,
+      source_ref: result,
+    });
 
     const committed = captured[0];
     if (!committed) throw new TypeError("source commit was not captured");
     const { command, ciphertext } = committed;
     expect(captured[1]?.command.receipt).toEqual(command.receipt);
     expect(captured[1]?.ciphertext).toEqual(ciphertext);
-    await expect(
-      artifacts.load?.({
-        lease: base.lease,
-        analysis_program: base.analysisProgram,
-        analysis_program_ref: base.analysisProgramRef,
-        node_id: "falcon24-question-1",
-        generation_attempt: 0,
-      }),
-    ).resolves.toEqual({
-      source_text: sourceText,
-      source_text_ref: result,
-      provider_invocation_ref: sourceCommand.provider_invocation_ref,
-    });
     expect(result).toMatchObject({
       artifact_type: "SensitiveExecutionArtifact",
       content_hash: sourceHash,
@@ -139,7 +132,15 @@ describe("Analysis Python source artifact port", () => {
       storage: "POSTGRES_ENCRYPTED_BYTEA",
     });
     expect(JSON.stringify(command)).not.toContain(sourceText);
-    expect(Buffer.from(ciphertext).toString("utf8")).not.toContain("def main");
+    expect(Buffer.from(ciphertext).toString("utf8")).not.toContain("DataFrame");
+    expect(replayed).toEqual({ source: sourceText, source_sha256: sourceHash });
+    expect(reads).toMatchObject([
+      {
+        schema_version: "analysis-context-model-cell-source-read@1.0.0",
+        journal_seq: 3,
+        source_ref: { artifact_id: result.artifact_id },
+      },
+    ]);
 
     const decipher = createDecipheriv(
       "aes-256-gcm",
@@ -170,10 +171,13 @@ describe("Analysis Python source artifact port", () => {
     expect(() =>
       createAnalysisPythonSourceArtifactPort({
         authority: {
-          loadAnalysisPythonSource: async () => ({ ok: true as const, source: null }),
           commitAnalysisPythonSource: async () => ({
             ok: false as const,
             error_code: "RESEARCH_DATABASE_CONTRACT_INVALID",
+          }),
+          readAnalysisContextModelCellSource: async () => ({
+            ok: false as const,
+            error_code: "NOT_USED",
           }),
         },
         capability_input: {},

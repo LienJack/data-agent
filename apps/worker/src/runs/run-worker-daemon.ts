@@ -111,6 +111,9 @@ export type WorkerCycleLogRecord = Readonly<{
   git_dirty?: boolean;
   migration_ready?: true;
   migration_frontier?: `sha256:${string}`;
+  examined?: number;
+  killed?: number;
+  residual?: number;
 }>;
 
 export type WorkerCycleLogger = (record: WorkerCycleLogRecord) => void;

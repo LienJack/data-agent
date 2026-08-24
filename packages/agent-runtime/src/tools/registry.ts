@@ -17,6 +17,11 @@ export interface ServerOwnedToolDescriptor {
   readonly description: string;
   readonly input_schema: z.ZodType;
   /**
+   * Provider-enforced strict argument generation. This is server-owned and
+   * does not replace parsing the same Zod schema after the tool call returns.
+   */
+  readonly strict?: boolean;
+  /**
    * 默认 DENY。只有服务端 Descriptor 明确声明 HTTPS 的 Tool 才能携带网络候选。
    */
   readonly network_access?: ServerOwnedToolNetworkAccess;
@@ -26,6 +31,7 @@ export interface RegisteredServerOwnedToolDescriptor {
   readonly tool_name: string;
   readonly description: string;
   readonly input_schema: z.ZodType;
+  readonly strict: boolean;
   readonly network_access: ServerOwnedToolNetworkAccess;
 }
 
@@ -70,6 +76,7 @@ function parseDescriptor(input: ServerOwnedToolDescriptor): RegisteredServerOwne
     tool_name: versionIdentifierSchema.parse(input.tool_name),
     description: z.string().min(1).max(2_000).parse(input.description),
     input_schema: input.input_schema,
+    strict: z.boolean().parse(input.strict ?? false),
     network_access: serverOwnedToolNetworkAccessSchema.parse(
       input.network_access ?? { mode: "DENY" },
     ),

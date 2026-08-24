@@ -65,7 +65,6 @@ import {
 import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
-import { ANALYSIS_RUNTIME_ATTESTATIONS } from "./analysis/skill-catalog.js";
 import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
 import { createEcommerceDirectQaRegistry } from "./evals/ecommerce-direct-qa-registry.js";
 import { createEnvironmentFalcon24AnalysisAcceptanceRecorder } from "./evals/falcon24-analysis-acceptance-recorder.js";
@@ -83,7 +82,7 @@ import {
   createMultiPrincipalRunWorkerRunner,
   isRunnableWorkspaceMember,
 } from "./runs/multi-principal-runner.js";
-import { createEnvironmentPythonSandboxClient } from "./runs/python-sandbox-client.js";
+import { createEnvironmentOpenSandboxAnalysisRuntime } from "./runs/opensandbox-analysis-runtime.js";
 import { createResearchAuthorityCapabilityResolver } from "./runs/research-authority-capabilities.js";
 import { createResearchWorkflowExecutor } from "./runs/research-workflow-executor.js";
 import { createRunBoundSemanticContextResolver } from "./runs/run-bound-semantic-context.js";
@@ -232,6 +231,7 @@ export async function runWorkerProcess(
   const config = parseRunWorkerEnvironment(environment);
   const falcon24AcceptanceRecorder =
     createEnvironmentFalcon24AnalysisAcceptanceRecorder(environment);
+  const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment);
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
       ? z.strictObject({ run_id: z.uuid(), command_id: z.uuid() }).parse({
@@ -264,19 +264,6 @@ export async function runWorkerProcess(
   const fileStorage = createFileSystemStorageClient(
     environment.DATA_AGENT_WORKSPACE_FILE_STORAGE_ROOT ?? ".data/workspace-content",
   );
-  const pythonSandbox =
-    environment.PYTHON_SANDBOX_ENABLED === "true"
-      ? createEnvironmentPythonSandboxClient(environment, [
-          {
-            runtimeDigest: ANALYSIS_RUNTIME_ATTESTATIONS.CORE_ANALYSIS.runtime_digest,
-            socketPath: z.string().min(1).parse(environment.PYTHON_SANDBOX_CORE_SOCKET_PATH),
-          },
-          {
-            runtimeDigest: ANALYSIS_RUNTIME_ATTESTATIONS.ML_DIAGNOSTIC.runtime_digest,
-            socketPath: z.string().min(1).parse(environment.PYTHON_SANDBOX_ML_SOCKET_PATH),
-          },
-        ])
-      : null;
   const fileScanPolicyVersion = "workspace-file-policy@1.0.0";
   const fileScanner = createFileScanPort({
     clamav: createClamAvInstreamClient({
@@ -311,8 +298,42 @@ export async function runWorkerProcess(
     identity: runtimeIdentity,
     logger: (record) => console.error(JSON.stringify(record)),
   });
+  let analysisSandboxSweepTimer: NodeJS.Timeout | null = null;
 
   try {
+    if (analysisSandboxMaintenance) {
+      const startupSweep = await analysisSandboxMaintenance.sweepOrphans();
+      writeLog({
+        level: "info",
+        event_name: "analysis_sandbox_orphan_sweep",
+        reason_code: "ANALYSIS_SANDBOX_STARTUP_SWEEP_COMPLETED",
+        examined: startupSweep.examined,
+        killed: startupSweep.killed,
+        residual: startupSweep.residual,
+      });
+      analysisSandboxSweepTimer = setInterval(() => {
+        void analysisSandboxMaintenance
+          .sweepOrphans()
+          .then((sweep) => {
+            writeLog({
+              level: "info",
+              event_name: "analysis_sandbox_orphan_sweep",
+              reason_code: "ANALYSIS_SANDBOX_PERIODIC_SWEEP_COMPLETED",
+              examined: sweep.examined,
+              killed: sweep.killed,
+              residual: sweep.residual,
+            });
+          })
+          .catch(() => {
+            writeLog({
+              level: "error",
+              event_name: "analysis_sandbox_orphan_sweep_failed",
+              reason_code: "ANALYSIS_SANDBOX_CLEANUP_FAILED",
+            });
+          });
+      }, 60_000);
+      analysisSandboxSweepTimer.unref();
+    }
     try {
       const configuredIndex = createNeo4jKnowledgeIndexFromEnvironment(environment);
       try {
@@ -438,10 +459,9 @@ export async function runWorkerProcess(
         );
         const falcon24Analysis =
           researchCapabilities &&
-          pythonSandbox &&
+          environment.ANALYSIS_SANDBOX_ENABLED === "true" &&
           environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
-          environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim() &&
-          environment.PYTHON_SANDBOX_AUTH_TOKEN?.trim()
+          environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim()
             ? createFalcon24AnalysisRuntime({
                 pool: sqlPool,
                 research_authority: researchAuthority,
@@ -449,7 +469,6 @@ export async function runWorkerProcess(
                 research_capabilities: researchCapabilities,
                 app_capability_input: capability,
                 public_artifacts: teamArtifacts,
-                sandbox: pythonSandbox,
                 environment,
                 now: () => new Date(),
                 acceptance_recorder: falcon24AcceptanceRecorder,
@@ -769,6 +788,7 @@ export async function runWorkerProcess(
       }),
     ]);
   } finally {
+    if (analysisSandboxSweepTimer) clearInterval(analysisSandboxSweepTimer);
     releasePersistenceDiagnostics();
     health.initialized = false;
     controller.abort();

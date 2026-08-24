@@ -173,7 +173,13 @@ describe("Falcon24 governed Agent analysis bridge", () => {
         skill_id: "open-python-analysis@1",
         execution_mode: "MODEL_GENERATED",
       });
-      const content = Buffer.from(JSON.stringify(businessOutput()), "utf8");
+      const content = Buffer.from(
+        JSON.stringify({
+          schema_version: "analysis-published-result@1.0.0",
+          data: businessOutput(),
+        }),
+        "utf8",
+      );
       const outputHash = await sha256ContentHash(businessOutput());
       return {
         analysis_program_ref: programRef,
@@ -191,12 +197,22 @@ describe("Falcon24 governed Agent analysis bridge", () => {
           {
             node_id: testCase.case_id,
             output: {
-              name: "result",
-              type: "JSON",
+              artifact_name: "result",
+              artifact_kind: "RESULT",
+              media_type: "application/json",
               reference: outputRef,
               content_sha256: hash("3"),
-              content_base64: content.toString("base64"),
+              content,
               bytes: content.byteLength,
+            },
+          },
+        ],
+        sandbox_receipts: [
+          {
+            runtime_profile: "ML_DIAGNOSTIC",
+            runtime: {
+              agent_image: "agent-ml@sha256:test",
+              operator_image: "operator@sha256:test",
             },
           },
         ],

@@ -1,0 +1,70 @@
+{
+  "schema_version": "opensandbox-analysis-attestation@1.0.0",
+  "opensandbox_source": {
+    "repository": "https://github.com/opensandbox-group/OpenSandbox",
+    "commit": "180554b146dceec254a5b98318c4c6fad056ff6b",
+    "server_version": "0.2.2"
+  },
+  "sdk": {
+    "opensandbox": "0.1.11",
+    "code_interpreter": "0.1.3"
+  },
+  "base_image": "opensandbox/code-interpreter@sha256:133a3c1720dd52291a019740c2987e7164ea6de79e23d8198798e58950ae2e6e",
+  "agent_dockerfile": {
+    "path": "infra/docker/Dockerfile.opensandbox-analysis-agent",
+    "sha256": "sha256:5d062d173880163030a0835729ad70d67d687e872fa13747b52a7122c963ed05"
+  },
+  "profiles": {
+    "CORE_ANALYSIS": {
+      "lock_path": "infra/docker/opensandbox-analysis-core-requirements.lock",
+      "lock_sha256": "sha256:3928afc1e57bc5110c70f830b2c3df7685c3c3a8f96aa464c22cb5942f9fb45a"
+    },
+    "ML_DIAGNOSTIC": {
+      "lock_path": "infra/docker/opensandbox-analysis-ml-requirements.lock",
+      "lock_sha256": "sha256:42809fb6d8fdf8bd8bf11d1532a9c65a929bd887f9c0bb47e4331b2bb1987b77"
+    },
+    "CAUSAL_L5": {
+      "lock_path": "infra/docker/opensandbox-analysis-causal-requirements.lock",
+      "lock_sha256": "sha256:819b9575d51f93f08d3e1bb842ab46092afad37fe09f565f674fa612242a6277"
+    }
+  },
+  "operator": {
+    "dockerfile_path": "infra/docker/Dockerfile.opensandbox-analysis-operator",
+    "dockerfile_sha256": "sha256:ff04520764fc6698ea888289b13a7426a7392c6d1d44481b029d7a6518e7bc10",
+    "manifest_path": "services/sandbox/src/data_agent_stats/manifest.json",
+    "manifest_sha256": "sha256:6d779d910fd901523a6c42e749b3ae8e2c1f9cf7bd6ef83d69aaf515bd4bb8a4",
+    "registry_digest": "sha256:9902973d92d20f9ce7d880f7914d71f7930542f88a5883726c6c4b9ca7fce55d"
+  },
+  "local_probe": {
+    "status": "PASS",
+    "pids_limit": 128,
+    "secure_access": false,
+    "production_isolation_proven": false,
+    "known_rejected_configuration": {
+      "pids_limit": 32,
+      "failure": "RuntimeError: can't start new thread"
+    },
+    "profile_counts": {
+      "CORE_ANALYSIS": {
+        "status": "PASS",
+        "sandbox": { "before": 0, "peak": 2, "after": 0 },
+        "egress": { "before": 0, "peak": 2, "after": 0 }
+      },
+      "ML_DIAGNOSTIC": {
+        "status": "PASS",
+        "sandbox": { "before": 0, "peak": 2, "after": 0 },
+        "egress": { "before": 0, "peak": 2, "after": 0 }
+      },
+      "CAUSAL_L5": {
+        "status": "PASS",
+        "sandbox": { "before": 0, "peak": 2, "after": 0 },
+        "egress": { "before": 0, "peak": 2, "after": 0 }
+      }
+    }
+  },
+  "production_gate": {
+    "decision": "HOLD",
+    "required_runtime": "KATA_OR_GVISOR_WITH_CILIUM",
+    "release_image_digests_required": true
+  }
+}

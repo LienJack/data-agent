@@ -2,6 +2,7 @@ export * from "./envelope.js";
 export * from "./export-receipt.js";
 export * from "./analysis-python-source.js";
 export * from "./analysis-input-materialization.js";
+export * from "./analysis-result-contract.js";
 export {
   assertGroundingAuthorityBundleConsistency,
   assertGroundingAuthorityOriginConsistency,

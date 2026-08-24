@@ -8,13 +8,21 @@
 - [x] M2 语义生产工厂。
 - [x] M3 多路召回与血缘扩展。
 - [x] M4 逻辑推理与闭包裁剪。
-- [ ] M5 DeepSeek Python Agent。
+- [ ] M5 DeepSeek Python Agent 与唯一 Result Publisher。
 - [ ] M6 Falcon24 五题验收、反馈迭代与旧路径删除。
 - [ ] Finish 全量检查、规范更新、提交、合并和 dirty-base 复验。
 
-M5 当前已完成固定模型 Source Port、Provider 调用回执、一次 scrubbed repair、静态准入、Sandbox
-执行器、PostgreSQL Analysis Artifact Port 与五题生产路由。剩余工作是严格 QueryEvidence 物化、Sensitive
-Python Source 权威适配、五题 V3 图表公开投影及真实 DeepSeek 冷暖运行；缺少凭据时必须保持 HOLD。
+M5 当前已有固定模型调用、静态准入、OpenSandbox 双 Sandbox、治理算子和生产路由的实现基础；真实运行证明“分析成功但模型负责最终
+文件工程”仍会失败。此前加入的强制输出 Cell、`open/json.dump` 提示和统一连续失败预算是待删除实验，不是完成证据。剩余工作必须先
+建立 Result Publisher 边界，再进入真实 DeepSeek/Falcon 冷暖运行；缺少凭据或 Strict 能力认证时保持 HOLD。
+
+RQ009 Governed Result Loop 已完成 19/20 条可重复故障门禁；逐条证据见 `rq009-acceptance.md`。剩余第 16 条的 Sandbox/egress 清零已通过，
+但跨 run 过期 stage 的 U6 cleanup authority 尚未实现，因此 M5 仍保持 HOLD。DeepSeek Strict 0/100、Falcon24 0/30 和生产隔离也继续
+保持外部硬 HOLD，不允许 fixture 或 fallback 冒充通过。
+
+仓库级 `pnpm verify:release` 已在 2026-08-25 通过并返回 `GO / RELEASE_READY`；它证明构建、迁移清单和发布合同完整，不覆盖上述 RQ009、
+Provider 与生产隔离门禁。本轮三类 OpenSandbox profile 实机均为 sandbox/egress `0→2→0`，测试 server 已停止，未被当前架构引用的
+`data-agent-opensandbox-m0:2026-08-24` 镜像已删除；CORE/ML/CAUSAL/Operator 镜像是唯一运行时的有效依赖，继续保留。
 
 后续实现以 `semantica-plan/0 大纲.md` 与 M1-M6 为唯一执行依据。旧 U1/U2 命名和任何 V2/V3、AnalysisPlan 兼容设计均不再有效。
 
@@ -46,12 +54,27 @@ Python Source 权威适配、五题 V3 图表公开投影及真实 DeepSeek 冷�
 - 构造 mandatory closure；只裁 optional semantic clusters，保持路径连通。
 - mandatory closure 超预算时 fail/clarify，不返回残缺上下文。
 
-## M5 DeepSeek Python Agent
+## M5 DeepSeek Python Agent 与 Governed Result Bridge
 
 - 固定 `deepseek-v4-flash` 的 `AnalysisProgramSourcePort`，只接收 bounded semantic/schema/evidence。
 - 每题至少一个真实 `MODEL_GENERATED` Python 节点；Arrow/Parquet 输入，无 DSN/凭据/全量原始行。
 - 完成 AST admission、固定 runtime/lock/seed、无网络 sandbox、资源预算、zero partial commit。
-- Attempt 0 保留；最多一次 scrubbed、非扩权 repair；独立 Oracle 决定接受。
+- 编译唯一 `AnalysisResultContract@1`，实现唯一 `publish_analysis_result@1` 与 server-owned Result Publisher；模型只引用白名单 Python
+  symbol 和 chart template binding，不序列化最终 JSON/表格/图片，不写输出路径。
+- Result Publisher 完成安全提取、类型归一、语义/Schema/Operator binding、确定性 table/chart、hash 和不可变暂存；独立 Oracle 接受后才
+  原子提交完整闭包，Publisher 不得改变业务数值。
+- 把开放 Tool Loop 改为穷尽状态机与分类修复预算；删除 `declared_output_names`、直接 `/workspace/outputs`、旧 output reader/publisher、
+  强制最终 Cell 和统一连续失败预算，不保留兼容或双写。
+- 从单一 Tool Manifest 生成服务端 Zod validator 与 DeepSeek Strict 投影；完成实际模型/endpoint 100 次探测，100/100 前保持 HOLD。
+- OpenSandbox metadata 固定 `managed-by/run-id/node-id/role`；finally 经 Lifecycle API 删除并验零，加入启动/定时孤儿扫描和清理故障码。
+- 定义唯一 `GovernedOperatorResultRef@1`、`ContextJournalEntry@1`、`AnalysisResultStage@1`、`AnalysisAuthorityCommit@1`，冻结 canonical bytes、
+  幂等 identity、worker fence、hash chain、状态迁移和分层错误码。
+- Operator 完成后先把 canonical result/receipt 持久化到 PostgreSQL result ledger，再由宿主固定 Binding Cell 绑定
+  `__da_gov_<digest>`；模型只接收 symbol/hash/shape/receipt ref，删除 full output 与 sealed/temp path 投影。
+- PostgreSQL Journal 按 seq 重放 `MODEL_CELL_COMMITTED` 与 `SERVER_BINDING_COMMITTED`；已提交结果从 ledger 重绑，禁止重跑算子。
+- 以 `PostgresAnalysisResultStageAuthority` 直接替换内存 `createSingleStagePort()`；stage 后 freeze/delete Context，Oracle/Explanation 只读 stage。
+- 最终窄 RPC 在单事务内验证 stage/publisher/operator/oracle/explanation/fence 并提交 artifact/current/receipt/outbox，故障只能 all-old/all-new。
+- 完成 RQ009 的 20 条 crash/篡改/幂等/容量/旧路径/原子提交故障注入；任何一条未通过保持 HOLD。
 
 ## M6 Falcon24 五题验收与唯一切换
 
@@ -69,6 +92,9 @@ Python Source 权威适配、五题 V3 图表公开投影及真实 DeepSeek 冷�
 - Semantic: production/retrieval/inference/pruning golden、metamorphic、permission、frontier、degradation。
 - Worker/Platform/Text2SQL: context/program binding、provider、repair、fence、idempotency、public projection。
 - Sandbox: policy、attestation、timeout/OOM/cancel/malicious/zero-output、replay identity。
+- Publisher: 不少于 1,000 个属性测试案例、symbol/type/size/NaN/date/Decimal/DataFrame 边界、每个错误码故障注入、原子提交失败零输出。
+- Provider: 单一 Manifest 投影、DeepSeek Strict 真实 100/100 认证、非法 Tool/Publish 一次修复、无非 Strict fallback。
+- Lifecycle: 每 Run OpenSandbox API `before=0、peak<=2、after=0`，egress sidecar 归零，Worker 重启孤儿扫描。
 - Evals: public/sealed boundary、五个 Oracle、adversarial、cold/warm replay。
 - Web: Test Center 和 Q&A 全 Agent browser acceptance。
 - Git: `git diff --check`、显式 staging、`git diff --cached --check`、merge-tree overlap preflight。

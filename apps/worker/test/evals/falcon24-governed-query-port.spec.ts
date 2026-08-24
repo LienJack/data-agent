@@ -6,7 +6,7 @@ import type {
 import type { SqlClient, SqlPool } from "@data-agent/platform";
 import { tableFromIPC } from "apache-arrow";
 import { describe, expect, it, vi } from "vitest";
-import type { GovernedPythonInput } from "../../src/analysis/sandbox-executor.js";
+import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
 import { falcon24AnalysisDataOracleReceiptSchema } from "../../src/evals/falcon24-analysis-data-oracle.js";
 import { FALCON24_ANALYSIS_QUERY_SPECS } from "../../src/evals/falcon24-analysis-queries.js";
 import { createFalcon24GovernedAnalysisQueryPort } from "../../src/evals/falcon24-governed-query-port.js";
@@ -150,7 +150,7 @@ describe("Falcon24 governed query port", () => {
         query_evidence_document: { strict: true },
       };
     });
-    const materialize = vi.fn(async (input): Promise<GovernedPythonInput> => {
+    const materialize = vi.fn(async (input): Promise<GovernedAnalysisInput> => {
       expect(input.spec_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
       expect(input.snapshot_receipt_hash).toBe(dataOracleReceipt.receipt_hash);
       expect(input.row_count).toBe(4_612);

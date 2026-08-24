@@ -29,7 +29,7 @@ const analysisPythonSourceReceiptDraftSchema = z
     artifact_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
     analysis_program_ref: artifactReferenceFor("AnalysisProgram"),
     node_id: versionIdentifierSchema,
-    generation_attempt: z.union([z.literal(0), z.literal(1)]),
+    generation_attempt: z.number().int().min(0).max(31),
     source_kind: z.enum(["STANDARD_PROGRAM", "DEEPSEEK_GENERATED"]),
     provider_invocation_ref: providerInvocationRefSchema.nullable(),
     plaintext_hash: contentHashSchema,
@@ -173,63 +173,34 @@ export type AnalysisPythonSourceCommitResult = z.infer<
   typeof analysisPythonSourceCommitResultSchema
 >;
 
-export const analysisPythonSourceLoadCommandSchema = z
-  .strictObject({
-    schema_version: z.literal("analysis-python-source-load@1.0.0"),
-    scope: appScopeSchema,
-    run_id: immutableIdSchema,
-    principal_id: immutableIdSchema,
-    attempt_id: immutableIdSchema,
-    worker_fence: z.number().int().positive(),
-    analysis_program_ref: artifactReferenceFor("AnalysisProgram"),
-    node_id: versionIdentifierSchema,
-    generation_attempt: z.union([z.literal(0), z.literal(1)]),
-  })
-  .superRefine((command, context) => {
-    const program = command.analysis_program_ref;
-    if (
-      command.scope.app_id !== program.app_id ||
-      command.scope.tenant_id !== program.tenant_id ||
-      command.scope.environment !== program.environment ||
-      command.run_id !== program.run_id
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Python source load must bind the AnalysisProgram scope and run.",
-        path: ["analysis_program_ref"],
-      });
-    }
-  });
+export const analysisContextModelCellSourceReadCommandSchema = z.strictObject({
+  schema_version: z.literal("analysis-context-model-cell-source-read@1.0.0"),
+  scope: appScopeSchema,
+  run_id: immutableIdSchema,
+  principal_id: immutableIdSchema,
+  attempt_id: immutableIdSchema,
+  worker_fence: z.number().int().positive(),
+  node_id: versionIdentifierSchema,
+  context_generation: z.number().int().positive(),
+  journal_seq: z.number().int().positive(),
+  source_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
+});
 
-export type AnalysisPythonSourceLoadCommand = z.infer<
-  typeof analysisPythonSourceLoadCommandSchema
->;
-
-export const analysisPythonSourceLoadResultSchema = z.union([
+export const analysisContextModelCellSourceReadResultSchema = z.union([
   z.strictObject({
     ok: z.literal(true),
-    source: z
-      .strictObject({
-        receipt: analysisPythonSourceReceiptSchema,
-        ciphertext_base64: z.string().regex(/^[A-Za-z0-9+/]+={0,2}$/u).max(180_000),
-      })
-      .nullable(),
+    receipt: analysisPythonSourceReceiptSchema,
+    ciphertext_base64: z.string().min(4).max(180_000),
   }),
   z.strictObject({
     ok: z.literal(false),
-    error_code: z.enum([
-      "ANALYSIS_PYTHON_SOURCE_CONTRACT_INVALID",
-      "ANALYSIS_PYTHON_SOURCE_SCOPE_MISMATCH",
-      "RESEARCH_AUTHORITY_FENCE_MISMATCH",
-      "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
-      "RESEARCH_DATABASE_AUTHORITY_REQUIRED",
-      "RESEARCH_DATABASE_CONTRACT_INVALID",
-      "RESEARCH_PERSISTENCE_UNAVAILABLE",
-      "RESEARCH_AUTHORITY_LOCK_CONTENDED",
-    ]),
+    error_code: z.string().min(1).max(128),
   }),
 ]);
 
-export type AnalysisPythonSourceLoadResult = z.infer<
-  typeof analysisPythonSourceLoadResultSchema
+export type AnalysisContextModelCellSourceReadCommand = z.infer<
+  typeof analysisContextModelCellSourceReadCommandSchema
+>;
+export type AnalysisContextModelCellSourceReadResult = z.infer<
+  typeof analysisContextModelCellSourceReadResultSchema
 >;

@@ -3,7 +3,7 @@ FROM opensandbox/code-interpreter@sha256:133a3c1720dd52291a019740c2987e7164ea6de
 
 SHELL ["/bin/bash", "-lc"]
 
-COPY infra/docker/python-sandbox-requirements.ml.lock /tmp/operator-requirements.lock
+COPY infra/docker/opensandbox-analysis-ml-requirements.lock /tmp/operator-requirements.lock
 RUN source /opt/code-interpreter/code-interpreter-env.sh python 3.12 >/dev/null \
     && uv pip install --break-system-packages --python "$(command -v python)" \
       --require-hashes -r /tmp/operator-requirements.lock \

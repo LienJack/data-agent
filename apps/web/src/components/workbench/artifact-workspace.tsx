@@ -282,7 +282,8 @@ export function ArtifactWorkspace({
                     <dt className="inline font-sans">Algorithm / Runtime：</dt>{" "}
                     <dd className="inline break-all">
                       {previewV3.provenance.algorithm_version} ·{" "}
-                      {previewV3.provenance.runtime_digest}
+                      {previewV3.provenance.runtime_profile} · {previewV3.provenance.agent_image} ·{" "}
+                      {previewV3.provenance.operator_image}
                     </dd>
                   </div>
                 </>

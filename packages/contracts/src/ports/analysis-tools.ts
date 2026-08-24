@@ -4,37 +4,30 @@ import {
   statisticalOperatorCallReceiptSchema,
   statisticalOperatorIdSchema,
 } from "../generated/statistical-operators.js";
+import {
+  ANALYSIS_RESULT_PUBLISH_TOOL_NAME,
+  analysisPythonSymbolSchema,
+  analysisResultPublishToolArgumentsSchema,
+} from "./analysis-result-publish.js";
+import { governedOperatorResultRefSchema } from "./governed-operator-result.js";
 
 export const ANALYSIS_PYTHON_CELL_TOOL_NAME = "python_cell" as const;
 export const ANALYSIS_STATISTICAL_OPERATOR_TOOL_NAME = "statistical_operator" as const;
 
 const stableCellIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u);
-const outputNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_.-]{0,62}$/u);
-const safeRelativeOutputPathSchema = z
-  .string()
-  .regex(/^\/workspace\/outputs\/[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$/u);
-
 export const analysisPythonCellToolArgumentsSchema = z.strictObject({
   schema_version: z.literal("analysis-python-cell-tool@1.0.0"),
   cell_id: stableCellIdSchema,
   source: z.string().min(1).max(100_000),
   timeout_ms: z.number().int().min(100).max(120_000),
-  declared_output_names: z
-    .array(outputNameSchema)
-    .max(32)
-    .superRefine((values, context) => {
-      if (new Set(values).size !== values.length) {
-        context.addIssue({ code: "custom", message: "Cell declared outputs must be unique." });
-      }
-    }),
 });
 
 export const analysisStatisticalOperatorToolArgumentsSchema = z.strictObject({
   schema_version: z.literal("analysis-statistical-operator-tool@1.0.0"),
   call_id: stableCellIdSchema,
   operator_id: statisticalOperatorIdSchema,
-  inputs: z.record(z.string().min(1).max(128), z.json()),
-  parameters: z.record(z.string().min(1).max(128), z.json()).nullable(),
+  inputs_symbol: analysisPythonSymbolSchema,
+  parameters_symbol: analysisPythonSymbolSchema,
 });
 
 export const analysisToolCallCandidateSchema = z.discriminatedUnion("tool_name", [
@@ -47,6 +40,11 @@ export const analysisToolCallCandidateSchema = z.discriminatedUnion("tool_name",
     tool_call_id: z.string().min(1).max(256),
     tool_name: z.literal(ANALYSIS_STATISTICAL_OPERATOR_TOOL_NAME),
     arguments: analysisStatisticalOperatorToolArgumentsSchema,
+  }),
+  z.strictObject({
+    tool_call_id: z.string().min(1).max(256),
+    tool_name: z.literal(ANALYSIS_RESULT_PUBLISH_TOOL_NAME),
+    arguments: analysisResultPublishToolArgumentsSchema,
   }),
 ]);
 
@@ -66,14 +64,6 @@ export const analysisCellObservationSchema = z.strictObject({
       value: z.string().max(4_096),
     })
     .nullable(),
-  declared_outputs: z.array(
-    z.strictObject({
-      name: outputNameSchema,
-      path: safeRelativeOutputPathSchema,
-      content_sha256: contentHashSchema,
-      bytes: z.number().int().nonnegative(),
-    }),
-  ),
 });
 
 export const statisticalOperatorExecutionEvidenceSchema = z.strictObject({
@@ -99,12 +89,14 @@ export const analysisStatisticalOperatorObservationSchema = z.strictObject({
   operator_id: statisticalOperatorIdSchema,
   operator_registry_digest: contentHashSchema,
   status: z.literal("SUCCEEDED"),
-  output: z.json(),
   execution_evidence: statisticalOperatorExecutionEvidenceSchema,
-  sealed_result_path: z
-    .string()
-    .regex(/^\/workspace\/sealed\/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.json$/u),
-  sealed_result_sha256: contentHashSchema,
+  governed_result: governedOperatorResultRefSchema,
+  binding: z.strictObject({
+    binding_id: stableCellIdSchema,
+    result_symbol: z.string().regex(/^__da_gov_[a-f0-9]{24}$/u),
+    result_sha256: contentHashSchema,
+    journal_seq: z.number().int().positive(),
+  }),
 });
 
 export const analysisOperatorFinalizationResultSchema = z.strictObject({
@@ -117,7 +109,6 @@ export const analysisOperatorFinalizationResultSchema = z.strictObject({
 export const analysisAgentFinalResponseSchema = z.strictObject({
   schema_version: z.literal("analysis-agent-final@1.0.0"),
   summary_zh: z.string().trim().min(1).max(20_000),
-  output_names: z.array(outputNameSchema).min(1).max(32),
 });
 
 export const analysisToolProtocolVersionSchema = versionIdentifierSchema;

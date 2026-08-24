@@ -44,13 +44,23 @@ OWL 风格规则只运行已注册、安全且可解释的有限子集；推断�
 
 ## Falcon24 analysis flow
 
-每题先由唯一语义解析入口得到 `SemanticContextPackage@1`，再编译唯一 `AnalysisProgram@1`：
+每题先由唯一语义解析入口得到 `SemanticContextPackage@1`，再编译唯一 `AnalysisProgram@1` 与其中的
+`AnalysisResultContract@1`：
 
 ```text
 governed SQL inputs -> bounded artifacts -> DeepSeek source generation
- -> static admission -> attested sandbox -> output contract
- -> independent Oracle -> accepted evidence -> deterministic chart projection
- -> public answer + chart artifact
+ -> static admission -> stateful attested sandbox Cells
+ -> operator intent -> Operator Sandbox
+ -> host canonicalizes/hashes and durably commits governed operator result
+ -> server-owned Binding Cell binds a protected symbol in the Agent Context
+ -> model receives only symbol/hash/shape/receipt metadata
+ -> publish_analysis_result(symbol refs + chart intent)
+ -> server Result Publisher re-extracts and verifies the governed result hash
+ -> PostgreSQL durable immutable stage -> context freeze and physical delete
+ -> independent Oracle reads only stage
+ -> DeepSeek explanation reads only verified bounded projection
+ -> one fenced PostgreSQL transaction commits authority/current/receipt/outbox
+ -> public answer -> Sandbox/egress cleanup verified at zero
 ```
 
 五题共享窗口/frontier 和安全边界，但不共享 sealed truth。每题采用独立方法模块和 Oracle adapter：
@@ -61,8 +71,10 @@ governed SQL inputs -> bounded artifacts -> DeepSeek source generation
 - Q4 周级 funnel、0-4 lag、trend/seasonality、HAC、FDR，结果仅为 temporal association。
 - Q5 cohort M0-M6、异常审计、总体 HOLD、排除 temporal-invalid 客户的敏感性结果。
 
-图表不是第二份分析答案。DeepSeek 只负责生成受控 Python 和结构化结果；独立 Oracle 先按 Arrow 输入重算并接受结果，再由服务端固定
-`falcon24-analysis-chart@1` 投影为 `ArtifactWorkspaceDocument` V3。Falcon suite/oracle/run/gate 直接切换到唯一当前版本 2/3/3/2，
+图表不是第二份分析答案。DeepSeek 只负责受控 Python 数据变换、治理算子编排、选择已注册图表模板/字段绑定和解释；它不写最终
+JSON、表格或图片。Result Publisher 从冻结 Python 符号提取候选数据，统一处理 pandas/numpy/date/Decimal/缺失值并执行结果语义契约，
+但禁止修正业务值。独立 Oracle 按 Arrow 输入重算并接受暂存结果后，服务端固定 `falcon24-analysis-chart@1` 从同一暂存 dataset 投影为
+`ArtifactWorkspaceDocument` V3，并将结果、表格、图表、解释和 Receipt 原子提交。Falcon suite/oracle/run/gate 直接切换到唯一当前版本 2/3/3/2，
 不保留旧 shape 的 reader 或 adapter。Q1 使用三项 KPI 归一化趋势，Q2 使用前后 6 个月配送分位数，
 Q3 使用销量与损坏恶化优先矩阵（无命中时仍返回零命中图），Q4 使用渠道/人群 ROAS，Q5 使用 cohort M0-M6 留存与复购曲线。
 Chart document 绑定 QueryEvidence、DerivedAnalysisEvidence、Semantic Context package/receipt、runtime lock 与 dataset hash；只有 commit 成功后
@@ -72,8 +84,44 @@ Chart document 绑定 QueryEvidence、DerivedAnalysisEvidence、Semantic Context
 
 `AnalysisProgramSourcePort` 的 DeepSeek adapter 只接收 node descriptor、bounded schemas、semantic formulas、statistical method contract、
 input artifact summaries 和 output JSON schema。它固定 provider profile/model=`deepseek-v4-flash`，要求纯源码响应并规范化 source hash。
-Host 负责 AST/import policy、runtime/lock/seed/budget/output closure。repair prompt 只包含 scrubbed diagnostics；最多一次，且不能改变 plan、
-profile、imports、inputs 或预算。
+Host 负责 AST/import policy、runtime/lock/seed/budget/result closure。模型唯一完成工具是 `publish_analysis_result`，其参数只能引用
+当前 Context 的白名单 symbol、声明表格和已注册图表模板；固定提取 Cell 在同一 Context 冻结后运行，禁止 pickle/eval/任意文件路径，
+并对行列数、字节数、嵌套深度、非有限值和类型做硬上限校验。模型无法写 `/workspace/outputs`，也不接收任意输出文件 API。
+
+Tool Manifest 是唯一来源：它同时生成服务端完整 Zod validator 与 DeepSeek Strict 兼容 JSON Schema 投影。Strict 只保证 Provider 参数
+形状，所有指标身份、血缘、grain、operator binding 和结果字段仍由服务端校验。实际 `deepseek-v4-flash`/endpoint 未认证时发布门禁保持
+HOLD，不得把非 Strict 模式作为运行时 fallback。
+
+工具编排与权威生命周期是同一个穷尽状态机：
+
+```text
+ANALYZE -> OPERATOR_INTENT -> OPERATOR_RESULT_COMMITTED -> RESULT_BOUND
+        -> OPERATORS_CLOSED -> PUBLISH_REQUIRED -> PUBLISH_STAGED
+        -> CONTEXT_FROZEN -> ORACLE_VERIFIED -> EXPLANATION_BOUND
+        -> AUTHORITY_COMMITTED -> CLEANUP_VERIFIED
+```
+
+每类修复预算独立且不会扩大总模型调用/总时间：Python Cell、Tool Schema、Publish Symbol/Schema 各最多一次模型修复；Publisher I/O、
+结果持久化、Binding hash、Journal replay、媒体渲染、原子提交、Operator Receipt、Oracle、KPI Identity 和 Cleanup 失败直接进入对应
+基础设施/HOLD 终态。`PUBLISH_STAGED` 后禁止继续执行模型 Python/operator/bind/extractor，随后立即删除 Context；
+`AUTHORITY_COMMITTED` 前不得公开结果。
+
+## Result Publisher boundary
+
+`AnalysisResultContract@1` 由 AnalysisProgram 编译并绑定 SemanticContextPackage 的指标、维度、关系、血缘、时间和数据质量闭包。
+`publish_analysis_result@1` 只是小型引用清单，不传输大结果，也不产生 Authority。治理算子完成后，Host 必须先把 canonical bytes、
+request/result hash、shape 与 receipt 提交到 PostgreSQL result ledger，再用固定 Binding Cell 在同一 Agent Context 绑定
+`__da_gov_<digest>`；模型消息只获得符号/hash/shape/ref。Publisher 依次执行：固定符号提取、类型归一、与 ledger 原始 result hash
+二次闭合、严格 schema/semantic binding、确定性 table/chart dataset 生成、规范 hash 和 PostgreSQL durable stage。它只能拒绝或忠实
+投影，不能补数字、重算自由公式、改变分组或自动选择另一业务口径。
+
+Context Journal 是 append-only PostgreSQL hash chain，按原执行顺序记录 Model Cell、operator intent/result、server binding、stage、freeze、
+Oracle、explanation、authority 与 cleanup。恢复时创建新 generation，只按序重放已提交 Model Cell 和 Server Binding；Binding 从 ledger
+读取原始 artifact，禁止盲目重跑算子。OpenSandbox RootFS snapshot 不保存 Python namespace，不构成恢复权威。
+
+Stage 成功后立即逻辑冻结并物理删除 Python Context；Oracle 与 Explanation 只能读取 stage。Oracle 接受后，Artifact Authority 在有效
+Fence 下以一个 PostgreSQL RPC/事务提交 machine result、tables、charts、operator closure、Oracle receipt、explanation、publisher receipt、
+current/visibility 和 outbox。任一 hash/scope/run/frontier 漂移都只能观察 all-old，不得逐 artifact 顺序提交。
 
 ## Independent Oracle boundary
 
@@ -87,6 +135,9 @@ downgrade、program/runtime/receipt hashes。LLM confidence 不参与 pass/fail�
 - semantic conflict、formula/join/ACL/frontier drift：fail closed 并产生新 Candidate/plan revision。
 - provider unavailable：节点 HOLD，不用模板冒充生成 Python。
 - policy/sandbox/output/oracle failure：zero partial commit；最多一次等能力 repair；再次失败 HOLD/PARTIAL。
+- publish symbol/type/schema failure：只允许一次不扩权修复；Publisher I/O/渲染/提交失败不调用模型，零部分提交。
+- sandbox cleanup：`finally` 通过 Lifecycle API delete 并轮询 metadata 过滤结果为零；Worker 启动及定时扫描 `managed-by=data-agent-analysis`
+  的过期孤儿。TTL 只作为最后保险，不作为清理成功证据。
 - 任一 suite hard gate 失败：新 release HOLD，原子切换不得合并或发布；不能用旧路径冒充可用。
 - Neo4j/vector/sparse 投影可独立关闭并由 PostgreSQL 重建；语义合同与执行入口没有双轨 kill switch。
 - 回滚通过 Git、发布版本和数据迁移整体恢复，不在运行时保留双读、旧 reader 或兼容 adapter。

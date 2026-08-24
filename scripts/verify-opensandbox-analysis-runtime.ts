@@ -100,7 +100,10 @@ try {
   const prepareSource = [
     "import json, pandas as pd",
     "frame = pd.read_json('/workspace/inputs/probe.json')",
-    "frame.to_parquet('/workspace/intermediate/probe.parquet', index=False)",
+    "result_document = {'row_count': int(len(frame)), 'revenue_total': float(frame['revenue'].sum())}",
+    "trend_table = frame[['month', 'revenue']].copy()",
+    "operator_inputs = {'tests': [{'label': 'a', 'p_value': 0.01}, {'label': 'b', 'p_value': 0.04}, {'label': 'c', 'p_value': 0.2}]}",
+    "operator_parameters = {'alpha': 0.05, 'method': 'bh'}",
     "json.dumps({'rows': len(frame)}, sort_keys=True)",
   ].join("\n");
   const preparePolicy = await session.admitAgentCell({
@@ -125,55 +128,28 @@ try {
     source: prepareSource,
   });
 
-  const chartSource = [
-    "import matplotlib.pyplot as plt, pandas as pd",
-    "reloaded = pd.read_parquet('/workspace/intermediate/probe.parquet')",
-    "fig, ax = plt.subplots(figsize=(5, 3))",
-    "ax.plot(reloaded['month'], reloaded['revenue'], marker='o')",
-    "ax.set_ylabel('Revenue')",
-    "fig.tight_layout()",
-    "fig.savefig('/workspace/outputs/probe.png', dpi=120, metadata={})",
-    "fig.savefig('/workspace/outputs/probe.svg', metadata={})",
-    "plt.close(fig)",
-    "'chart-written'",
-  ].join("\n");
-  const chartPolicy = await session.admitAgentCell({
-    cell_id: "chart",
-    source: chartSource,
-    generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+  const extracted = (await session.extractAgentSymbols({
+    extraction_id: "probe_symbols",
+    symbols: [
+      { symbol_name: "result_document", expected_kind: "MAPPING" },
+      { symbol_name: "trend_table", expected_kind: "TABLE" },
+      { symbol_name: "operator_inputs", expected_kind: "MAPPING" },
+      { symbol_name: "operator_parameters", expected_kind: "MAPPING" },
+    ],
+    limits: { max_rows: 100, max_columns: 16, max_bytes: 1_048_576 },
     timeout_ms: 30_000,
-  });
-  const chart = await session.runAgentCell({
-    cell_id: "chart",
-    timeout_ms: 30_000,
-    source: chartSource,
-  });
-  checks.stateful_cells =
-    prepare.status === "SUCCEEDED" &&
-    chartPolicy.status === "ADMITTED" &&
-    chart.result_text?.includes("chart-written") === true;
-
-  const parquet = await session.readAgentFile({ path: "/workspace/intermediate/probe.parquet" });
-  const png = await session.readAgentFile({ path: "/workspace/outputs/probe.png" });
-  const svg = await session.readAgentFile({ path: "/workspace/outputs/probe.svg" });
-  checks.parquet = {
-    bytes: parquet.byteLength,
-    sha256: sha256(parquet),
-    magic_ok:
-      decoder.decode(parquet.subarray(0, 4)) === "PAR1" &&
-      decoder.decode(parquet.subarray(parquet.byteLength - 4)) === "PAR1",
-  };
-  checks.png = {
-    bytes: png.byteLength,
-    sha256: sha256(png),
-    magic_ok: Buffer.from(png.subarray(0, 8)).equals(
-      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    ),
-  };
-  checks.svg = {
-    bytes: svg.byteLength,
-    sha256: sha256(svg),
-    root_ok: decoder.decode(svg.subarray(0, 1_024)).includes("<svg"),
+  })) as { readonly symbols?: readonly { readonly symbol_name?: string }[] };
+  const extractedNames = extracted.symbols?.map(({ symbol_name: symbolName }) => symbolName) ?? [];
+  checks.stateful_symbols = {
+    prepared: prepare.status === "SUCCEEDED",
+    exact_closure:
+      JSON.stringify(extractedNames) ===
+      JSON.stringify([
+        "result_document",
+        "trend_table",
+        "operator_inputs",
+        "operator_parameters",
+      ]),
   };
 
   const callDocument = {
@@ -263,10 +239,8 @@ try {
     (checks.cell_policy as { admitted: boolean; denied_system_import: boolean }).admitted &&
     (checks.cell_policy as { admitted: boolean; denied_system_import: boolean })
       .denied_system_import &&
-    checks.stateful_cells === true &&
-    (checks.parquet as { magic_ok: boolean }).magic_ok &&
-    (checks.png as { magic_ok: boolean }).magic_ok &&
-    (checks.svg as { root_ok: boolean }).root_ok &&
+    (checks.stateful_symbols as { prepared: boolean; exact_closure: boolean }).prepared &&
+    (checks.stateful_symbols as { prepared: boolean; exact_closure: boolean }).exact_closure &&
     (checks.governed_operator as { succeeded: boolean; registry_bound: boolean }).succeeded &&
     (checks.governed_operator as { succeeded: boolean; registry_bound: boolean }).registry_bound &&
     (checks.operator_receipt_closure as { bound: boolean }).bound;

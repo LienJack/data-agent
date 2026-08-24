@@ -212,8 +212,9 @@ export async function createRootCauseDiscoveryReceipt(input: {
       schema_snapshot_ref: context.schema_snapshot_ref,
       policy_receipt_ref: context.policy_receipt_ref,
       analysis_context_hash: context.context_hash,
-      runtime_digest: null,
-      dependency_lock_digest: null,
+      runtime_profile: null,
+      agent_image: null,
+      operator_image: null,
     },
     input_closure_hash: await sha256ContentHash({
       candidate_ref: candidateRef,

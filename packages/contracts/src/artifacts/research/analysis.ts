@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { pythonOutputContractSchema } from "../../common/index.js";
 import {
   generatedAnalysisSourcePolicySchema,
   statisticalOperatorObligationsSchema,
 } from "../../generated/statistical-operators.js";
+import { analysisResultContractSchema } from "../analysis-result-contract.js";
 import {
   artifactReferenceFor,
   artifactReferenceIdentity,
@@ -36,7 +36,6 @@ import {
   queryEvidenceRefSchema,
   researchBriefRefSchema,
   sandboxExecutionReceiptRefSchema,
-  sandboxProgramRefSchema,
   sandboxResultRefSchema,
   schemaSnapshotRefSchema,
   semanticReleaseRefSchema,
@@ -283,10 +282,10 @@ const analysisProgramNodeSchema = z.strictObject({
   time_window: halfOpenTimeWindowSchema,
   comparison_window: halfOpenTimeWindowSchema.nullable(),
   parameters: z.json(),
-  execution_mode: z.enum(["FROZEN_TEMPLATE", "MODEL_GENERATED"]),
+  execution_mode: z.literal("MODEL_GENERATED"),
   generated_source_policy: generatedAnalysisSourcePolicySchema,
   operator_obligations: statisticalOperatorObligationsSchema,
-  output_contract: pythonOutputContractSchema.nullable(),
+  result_contract: analysisResultContractSchema,
   dependency_node_ids: uniqueIdentifierArraySchema(0, ANALYSIS_LIMITS.max_dependencies_per_node),
   activation_rule: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("ALWAYS") }),
@@ -374,28 +373,7 @@ export const analysisProgramPayloadSchema = z
     addUniqueIssues(program.nodes, ({ node_id }) => node_id, ctx, ["nodes"], "node_id 必须唯一。");
     validateAnalysisProgramGraph(program.nodes, ctx);
     for (const [index, node] of program.nodes.entries()) {
-      if (node.execution_mode === "MODEL_GENERATED" && node.output_contract === null) {
-        ctx.addIssue({
-          code: "custom",
-          message: "MODEL_GENERATED 节点必须声明 Output Contract。",
-          path: ["nodes", index, "output_contract"],
-        });
-      }
-      if (
-        node.execution_mode === "FROZEN_TEMPLATE" &&
-        (node.generated_source_policy !== "NO_GENERATED_SOURCE" ||
-          node.operator_obligations.length !== 0)
-      ) {
-        ctx.addIssue({
-          code: "custom",
-          message: "FROZEN_TEMPLATE 节点必须明确禁止生成源码且不能声明算子义务。",
-          path: ["nodes", index, "generated_source_policy"],
-        });
-      }
-      if (
-        node.execution_mode === "MODEL_GENERATED" &&
-        node.generated_source_policy === "NO_GENERATED_SOURCE"
-      ) {
+      if (node.generated_source_policy === "NO_GENERATED_SOURCE") {
         ctx.addIssue({
           code: "custom",
           message: "MODEL_GENERATED 节点必须声明生成源码策略。",
@@ -412,91 +390,36 @@ export const analysisProgramPayloadSchema = z
           path: ["nodes", index, "operator_obligations"],
         });
       }
-      const outputByName = new Map(
-        node.output_contract?.outputs.map((output) => [output.name, output]) ?? [],
-      );
       for (const [obligationIndex, obligation] of node.operator_obligations.entries()) {
-        const output = outputByName.get(obligation.result_binding.result_output_name);
-        if (output?.type !== "JSON") {
+        if (obligation.result_binding.result_output_name !== "result") {
           ctx.addIssue({
             code: "custom",
-            message: "算子结果绑定必须命中已声明的 JSON 输出。",
+            message: "算子结果绑定必须命中唯一发布结果文档。",
             path: ["nodes", index, "operator_obligations", obligationIndex, "result_binding"],
           });
         }
       }
-    }
-  });
-
-export const analysisSandboxProgramPayloadSchema = z
-  .strictObject({
-    artifact_type: z.literal("SandboxProgram"),
-    protocol_version: z.literal("analysis-sandbox-program@2.0.0"),
-    analysis_program_ref: analysisProgramRefSchema,
-    node_id: identifierSchema,
-    language: z.literal("PYTHON_3_12"),
-    entrypoint: z.literal("main"),
-    source_sha256: contentHashSchema,
-    source_text_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
-    query_evidence_refs: uniqueReferences(
-      queryEvidenceRefSchema,
-      1,
-      ANALYSIS_LIMITS.max_query_evidence_refs,
-    ),
-    input_refs: uniqueReferences(artifactReferenceSchema, 1, 64),
-    input_materialization_receipt_refs: uniqueReferences(
-      artifactReferenceFor("AnalysisInputMaterializationReceipt"),
-      1,
-      64,
-    ),
-    output_contract: pythonOutputContractSchema,
-    generated_source_policy: generatedAnalysisSourcePolicySchema,
-    operator_registry_digest: contentHashSchema,
-    operator_obligations: statisticalOperatorObligationsSchema,
-    import_profile: analysisRuntimeProfileSchema,
-    random_seed: nonNegativeIntSchema,
-    runtime_digest: contentHashSchema,
-    dependency_lock_digest: contentHashSchema,
-    policy_version: versionIdentifierSchema,
-    program_hash: contentHashSchema,
-  })
-  .superRefine((program, ctx) => {
-    if (program.source_text_ref.content_hash !== program.source_sha256) {
-      ctx.addIssue({
-        code: "custom",
-        message: "source_sha256 必须绑定 SensitiveExecutionArtifact。",
-        path: ["source_sha256"],
-      });
-    }
-    if (
-      program.query_evidence_refs.length !== program.input_refs.length ||
-      program.input_materialization_receipt_refs.length !== program.input_refs.length
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "每个 QueryEvidence 必须经一个物化回执绑定一个 Sandbox 输入。",
-        path: ["input_refs"],
-      });
-    }
-    if (
-      (program.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION") !==
-      program.operator_obligations.length > 0
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "SandboxProgram 的源码策略与算子义务不闭合。",
-        path: ["operator_obligations"],
-      });
-    }
-    const outputByName = new Map(
-      program.output_contract.outputs.map((output) => [output.name, output]),
-    );
-    for (const [index, obligation] of program.operator_obligations.entries()) {
-      if (outputByName.get(obligation.result_binding.result_output_name)?.type !== "JSON") {
+      if (node.result_contract.semantic_context_hash !== program.semantic_context_package_hash) {
         ctx.addIssue({
           code: "custom",
-          message: "SandboxProgram 算子结果绑定必须命中已声明的 JSON 输出。",
-          path: ["operator_obligations", index, "result_binding"],
+          message: "Result Contract 必须绑定 AnalysisProgram 的 Semantic Context Package。",
+          path: ["nodes", index, "result_contract", "semantic_context_hash"],
+        });
+      }
+      const nodeMetricIds = new Set(node.metric_refs.map(({ node_id }) => node_id));
+      const nodeDimensionIds = new Set(node.dimension_refs);
+      if (
+        node.result_contract.metric_bindings.some(
+          ({ semantic_metric_id }) => !nodeMetricIds.has(semantic_metric_id),
+        ) ||
+        node.result_contract.dimension_bindings.some(
+          ({ semantic_dimension_id }) => !nodeDimensionIds.has(semantic_dimension_id),
+        )
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Result Contract 只能消费节点已授权的指标和维度。",
+          path: ["nodes", index, "result_contract"],
         });
       }
     }
@@ -606,7 +529,7 @@ export const analysisResultSchema = z.discriminatedUnion("result_kind", [
 export const derivedAnalysisEvidencePayloadSchema = z
   .strictObject({
     artifact_type: z.literal("DerivedAnalysisEvidence"),
-    protocol_version: z.literal("derived-analysis-evidence@1.0.0"),
+    protocol_version: z.literal("derived-analysis-evidence@2.0.0"),
     analysis_program_ref: analysisProgramRefSchema,
     node_id: identifierSchema,
     skill_id: analysisSkillIdSchema,
@@ -616,15 +539,15 @@ export const derivedAnalysisEvidencePayloadSchema = z
       1,
       ANALYSIS_LIMITS.max_query_evidence_refs,
     ),
-    sandbox_program_ref: sandboxProgramRefSchema,
     sandbox_execution_receipt_ref: sandboxExecutionReceiptRefSchema,
     sandbox_result_refs: uniqueReferences(
       sandboxResultRefSchema,
       1,
       ANALYSIS_LIMITS.max_result_refs,
     ),
-    runtime_digest: contentHashSchema,
-    dependency_lock_digest: contentHashSchema,
+    runtime_profile: analysisRuntimeProfileSchema,
+    agent_image: z.string().trim().min(1).max(1_024),
+    operator_image: z.string().trim().min(1).max(1_024),
     generated_source_policy: generatedAnalysisSourcePolicySchema,
     operator_registry_digest: contentHashSchema,
     operator_obligations: statisticalOperatorObligationsSchema,
@@ -694,6 +617,7 @@ export const analysisCompletionReceiptPayloadSchema = z
       .max(ANALYSIS_LIMITS.max_plan_nodes),
     budget_usage: z.strictObject({
       steps: nonNegativeIntSchema,
+      model_calls: nonNegativeIntSchema,
       sql_executions: nonNegativeIntSchema,
       sandbox_executions: nonNegativeIntSchema,
       series_rows: nonNegativeIntSchema,
@@ -780,8 +704,9 @@ const causalFrontierSchema = z.strictObject({
   schema_snapshot_ref: schemaSnapshotRefSchema,
   policy_receipt_ref: policyReceiptRefSchema,
   analysis_context_hash: contentHashSchema,
-  runtime_digest: contentHashSchema.nullable(),
-  dependency_lock_digest: contentHashSchema.nullable(),
+  runtime_profile: z.literal("CAUSAL_L5").nullable(),
+  agent_image: z.string().trim().min(1).max(1_024).nullable(),
+  operator_image: z.string().trim().min(1).max(1_024).nullable(),
 });
 
 export const rootCauseDiscoveryCandidatePayloadSchema = z
@@ -965,7 +890,7 @@ export const causalEstimatePayloadSchema = z
     protocol_version: z.literal("causal-estimate@1.0.0"),
     causal_question_ref: causalQuestionRefSchema,
     identification_plan_ref: identificationPlanRefSchema,
-    sandbox_program_ref: sandboxProgramRefSchema,
+    analysis_program_ref: analysisProgramRefSchema,
     sandbox_execution_receipt_ref: sandboxExecutionReceiptRefSchema,
     sandbox_result_refs: uniqueReferences(sandboxResultRefSchema, 1, 16),
     estimand: z.enum(["ATE", "ATT", "CATE"]),
@@ -1010,7 +935,7 @@ const identificationGateSchema = z.strictObject({
     "SCHEMA_FRONTIER",
     "SEMANTIC_FRONTIER",
     "POLICY_FRONTIER",
-    "PROGRAM_RUNTIME_LOCK",
+    "ANALYSIS_RUNTIME",
     "DAG_ADJUSTMENT",
     "DATA_SUFFICIENCY",
     "OVERLAP_BALANCE",
@@ -1039,9 +964,9 @@ export const identificationCertificatePayloadSchema = z
       semantic_release_hash: contentHashSchema,
       schema_snapshot_hash: contentHashSchema,
       policy_receipt_hash: contentHashSchema,
-      program_hash: contentHashSchema,
-      runtime_digest: contentHashSchema,
-      dependency_lock_digest: contentHashSchema,
+      analysis_program_hash: contentHashSchema,
+      agent_image_hash: contentHashSchema,
+      operator_image_hash: contentHashSchema,
     }),
     certificate_hash: contentHashSchema,
   })
@@ -1240,7 +1165,6 @@ export type AnalysisDisclosureCode = z.infer<typeof analysisDisclosureCodeSchema
 export type DataProfilePayload = z.infer<typeof dataProfilePayloadSchema>;
 export type ResearchBriefV3Payload = z.infer<typeof researchBriefV3PayloadSchema>;
 export type AnalysisProgramPayload = z.infer<typeof analysisProgramPayloadSchema>;
-export type AnalysisSandboxProgramPayload = z.infer<typeof analysisSandboxProgramPayloadSchema>;
 export type DerivedAnalysisEvidencePayload = z.infer<typeof derivedAnalysisEvidencePayloadSchema>;
 export type AnalysisCompletionReceiptPayload = z.infer<
   typeof analysisCompletionReceiptPayloadSchema

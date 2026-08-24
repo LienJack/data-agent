@@ -10,7 +10,7 @@ import {
 } from "@data-agent/contracts";
 import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
 import { z } from "zod";
-import type { AnalysisFenceGuard } from "../analysis/sandbox-executor.js";
+import type { AnalysisFenceGuard } from "../analysis/analysis-agent-sandbox-executor.js";
 import type { RunProviderDispatchCapability } from "../runs/run-execution-context.js";
 import {
   hasRunExecutionContextProvenance,

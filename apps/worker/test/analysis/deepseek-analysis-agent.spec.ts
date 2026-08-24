@@ -9,6 +9,7 @@ function request(phase: "TOOL" | "FINAL") {
     node_id: "node-1",
     turn_index: phase === "TOOL" ? 0 : 1,
     phase,
+    allowed_tool_names: phase === "TOOL" ? (["python_cell"] as const) : ([] as const),
     messages: [
       { role: "system" as const, content: "Use governed tools." },
       { role: "user" as const, content: "Analyze the input." },
@@ -32,7 +33,6 @@ describe("run-bound DeepSeek analysis Agent model", () => {
               cell_id: "prepare",
               source: "value = 1",
               timeout_ms: 1_000,
-              declared_output_names: [],
             },
           },
         ],
@@ -60,7 +60,7 @@ describe("run-bound DeepSeek analysis Agent model", () => {
       ok: true as const,
       value: {
         output_text:
-          '{"schema_version":"analysis-agent-final@1.0.0","summary_zh":"完成分析。","output_names":["result"]}',
+          '{"schema_version":"analysis-agent-final@1.0.0","summary_zh":"完成分析。"}',
         tool_calls: [],
         projection: {
           invocation_id: input.logical_call_id,
@@ -74,7 +74,35 @@ describe("run-bound DeepSeek analysis Agent model", () => {
 
     await expect(model.turn(request("FINAL"))).resolves.toMatchObject({
       phase: "FINAL",
-      response: { output_names: ["result"] },
+      response: { summary_zh: "完成分析。" },
+    });
+  });
+
+  it("returns a repairable observation for an invalid tool schema", async () => {
+    const invoke = vi.fn(async (input: Parameters<RunProviderDispatchCapability["invoke"]>[0]) => ({
+      ok: true as const,
+      value: {
+        output_text: "",
+        tool_calls: [
+          {
+            tool_call_id: "tool-invalid",
+            tool_name: "python_cell",
+            arguments: { cell_id: "missing-required-fields" },
+          },
+        ],
+        projection: {
+          invocation_id: input.logical_call_id,
+          status: "COMPLETED" as const,
+          provider: "deepseek",
+          model_id: "deepseek-v4-flash",
+        },
+      },
+    }));
+    const model = createRunBoundDeepSeekAnalysisAgentModel({ invoke });
+
+    await expect(model.turn(request("TOOL"))).resolves.toMatchObject({
+      phase: "INVALID_TOOL",
+      error_code: "ANALYSIS_AGENT_TOOL_CALL_INVALID",
     });
   });
 });

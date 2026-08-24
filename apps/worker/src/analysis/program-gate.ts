@@ -5,14 +5,12 @@ import {
   analysisProgramPayloadSchema,
   artifactReferenceIdentity,
   type ResearchBriefV3Payload,
+  verifyAnalysisResultContract,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson } from "@data-agent/contracts/common";
-import {
-  type AnalysisContext,
-  verifyAnalysisContext,
-} from "@data-agent/contracts/context";
+import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
 import { evaluateAnalysisApplicability } from "@data-agent/semantic/runtime-context";
-import { computeAnalysisProgramHash } from "./default-program.js";
+import { computeAnalysisProgramHash } from "./analysis-program-hash.js";
 import {
   type AnalysisSkillCatalog,
   type AnalysisSkillDescriptor,
@@ -31,7 +29,7 @@ export type AnalysisProgramGateFailure =
   | "ANALYSIS_PROGRAM_DIMENSION_NOT_APPROVED"
   | "ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED"
   | "ANALYSIS_PROGRAM_EXECUTION_MODE_INVALID"
-  | "ANALYSIS_PROGRAM_OUTPUT_CONTRACT_INVALID"
+  | "ANALYSIS_PROGRAM_RESULT_CONTRACT_INVALID"
   | "ANALYSIS_PROGRAM_SKILL_NOT_APPLICABLE";
 
 export type AnalysisProgramGateVerdict =
@@ -162,18 +160,15 @@ export async function gateAnalysisProgram(input: {
     ) {
       return reject("ANALYSIS_PROGRAM_TIME_WINDOW_NOT_APPROVED", ["TIMEZONE_MISMATCH"]);
     }
-    if (
-      (descriptor.program_mode === "FROZEN_TEMPLATE" &&
-        node.execution_mode !== "FROZEN_TEMPLATE") ||
-      (descriptor.program_mode === "MODEL_GENERATED" && node.execution_mode !== "MODEL_GENERATED")
-    ) {
+    if (node.execution_mode !== "MODEL_GENERATED") {
       return reject("ANALYSIS_PROGRAM_EXECUTION_MODE_INVALID", ["PROGRAM_POLICY_REJECTED"]);
     }
-    if (
-      node.output_contract === null ||
-      canonicalizeJson(node.output_contract) !== canonicalizeJson(descriptor.output_contract)
-    ) {
-      return reject("ANALYSIS_PROGRAM_OUTPUT_CONTRACT_INVALID", ["PROGRAM_OUTPUT_CONTRACT_FAILED"]);
+    try {
+      await verifyAnalysisResultContract(node.result_contract);
+    } catch {
+      return reject("ANALYSIS_PROGRAM_RESULT_CONTRACT_INVALID", [
+        "PROGRAM_OUTPUT_CONTRACT_FAILED",
+      ]);
     }
     const applicability = await evaluateAnalysisApplicability(context, {
       skill_id: node.skill_id,

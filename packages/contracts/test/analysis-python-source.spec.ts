@@ -1,5 +1,4 @@
 import {
-  analysisPythonSourceLoadCommandSchema,
   buildAnalysisPythonSourceReceipt,
   verifyAnalysisPythonSourceReceipt,
 } from "../src/index.js";
@@ -90,26 +89,5 @@ describe("Analysis Python source receipt", () => {
         analysis_program_ref: { ...base.analysis_program_ref, run_id: id(9) },
       }),
     ).rejects.toThrow();
-  });
-
-  it("requires replay loads to bind the exact program scope and run", () => {
-    const command = {
-      schema_version: "analysis-python-source-load@1.0.0",
-      scope,
-      run_id: id(3),
-      principal_id: id(8),
-      attempt_id: id(9),
-      worker_fence: 2,
-      analysis_program_ref: reference("AnalysisProgram", 5),
-      node_id: "falcon24-question-1",
-      generation_attempt: 0,
-    } as const;
-    expect(analysisPythonSourceLoadCommandSchema.parse(command)).toEqual(command);
-    expect(() =>
-      analysisPythonSourceLoadCommandSchema.parse({
-        ...command,
-        analysis_program_ref: { ...command.analysis_program_ref, run_id: id(10) },
-      }),
-    ).toThrow();
   });
 });

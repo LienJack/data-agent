@@ -1,3 +1,4 @@
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { describe, expect, it } from "vitest";
 import {
@@ -9,8 +10,16 @@ import {
   verifyFalcon24ArrowBackedOutput,
 } from "../../src/evals/falcon24-arrow-backed-analysis-oracle.js";
 
-const { fitDeliveryGlm, mannKendallP, normalCdf, olsHac, quantile, shapleyThreeFactor, verifiers } =
-  falcon24ArrowBackedAnalysisOracleInternals;
+const {
+  fitDeliveryGlm,
+  mannKendallP,
+  normalCdf,
+  olsHac,
+  quantile,
+  shapleyThreeFactor,
+  verifyOperatorAuthority,
+  verifiers,
+} = falcon24ArrowBackedAnalysisOracleInternals;
 
 describe("Falcon24 Arrow-backed analysis oracle", () => {
   it("matches the semantic normal-CDF contract at multiple tails", () => {
@@ -24,7 +33,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
     );
   });
 
-  it("issues only a v2 receipt bound to Arrow, materialization, evidence, and output hashes", async () => {
+  it("issues only a v4 receipt bound to Arrow, operator, evidence, and output hashes", async () => {
     const spec = FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"];
     const months = Array.from({ length: 18 }, (_, index) =>
       new Date(Date.UTC(2023, 4 + index, 1)).toISOString().slice(0, 10),
@@ -113,6 +122,48 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       revision: 1,
       content_hash: `sha256:${character.repeat(64)}`,
     });
+    const operatorObligation = {
+      call_id: "q1_revenue_identity",
+      operator_id: "decomposition.product-shapley-exact@1",
+      result_binding: {
+        result_output_name: "result",
+        result_collection_path: "/method_evidence/buyers-frequency-aov-shapley/contributions",
+        operator_collection_path: "/contributions",
+        label_fields: ["label", "factor"],
+        value_bindings: [
+          {
+            result_field: "contribution",
+            operator_field: "contribution",
+            comparison: "EXACT",
+            absolute_tolerance: 0,
+            relative_tolerance: 0,
+          },
+        ],
+        require_exact_label_set: true,
+      },
+    } as const;
+    const operatorReceipt = {
+      schema_version: "statistical-operator-call-receipt@1.0.0",
+      call_id: operatorObligation.call_id,
+      operator_id: operatorObligation.operator_id,
+      operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+      implementation_digest: `sha256:${"d".repeat(64)}`,
+      resolved_parameters: {
+        mode: "exact",
+        max_factors: 8,
+        closure_tolerance: 1e-9,
+      },
+      resolved_parameters_hash: `sha256:${"e".repeat(64)}`,
+      input_hash: `sha256:${"f".repeat(64)}`,
+      output_hash: `sha256:${"1".repeat(64)}`,
+      result_binding_hash: `sha256:${"3".repeat(64)}`,
+      sample_size: 1,
+      group_count: 1,
+      family_size: null,
+      rank: null,
+      applicability: "PASS",
+      limitation_codes: ["APPROXIMATE_MODE_NOT_SUPPORTED", "PRODUCT_IDENTITY_REQUIRED"],
+    } as const;
     const verified = await verifyFalcon24ArrowBackedOutput({
       test_case: testCase,
       governed_input: {
@@ -125,19 +176,62 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
         materialization_receipt_document: {},
         content: materializeFalcon24Arrow(spec, rows),
       },
+      sandbox_receipt: {
+        status: "SUCCEEDED",
+        failure_code: null,
+        generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+        operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+        operator_obligations: [operatorObligation],
+        operator_receipts: [operatorReceipt],
+        operator_receipt_closure_hash: `sha256:${"4".repeat(64)}`,
+      } as never,
       output,
     });
     expect(verified.receipt).toMatchObject({
-      schema_version: "falcon24-analysis-oracle@3.0.0",
+      schema_version: "falcon24-analysis-oracle@4.0.0",
       oracle_kind: "ARROW_INPUT_RECOMPUTE",
       input_materialization_receipt_hash: `sha256:${"c".repeat(64)}`,
       query_evidence_hash: `sha256:${"a".repeat(64)}`,
+      operator_receipt_closure_hash: `sha256:${"4".repeat(64)}`,
     });
     expect(
       verified.receipt.method_receipts.every(
         ({ evidence_hash: evidenceHash }) => evidenceHash === verified.receipt.verification_hash,
       ),
     ).toBe(true);
+    expect(() =>
+      verifyOperatorAuthority({
+        test_case: testCase,
+        sandbox_receipt: {
+          status: "SUCCEEDED",
+          failure_code: null,
+          generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+          operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+          operator_obligations: [operatorObligation],
+          operator_receipts: [
+            {
+              ...operatorReceipt,
+              resolved_parameters: { ...operatorReceipt.resolved_parameters, max_factors: 7 },
+            },
+          ],
+          operator_receipt_closure_hash: `sha256:${"4".repeat(64)}`,
+        } as never,
+      }),
+    ).toThrow("FALCON24_ORACLE_OPERATOR_RECEIPT_INVALID");
+    expect(() =>
+      verifyOperatorAuthority({
+        test_case: testCase,
+        sandbox_receipt: {
+          status: "SUCCEEDED",
+          failure_code: null,
+          generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
+          operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+          operator_obligations: [operatorObligation],
+          operator_receipts: [],
+          operator_receipt_closure_hash: `sha256:${"4".repeat(64)}`,
+        } as never,
+      }),
+    ).toThrow("FALCON24_ORACLE_OPERATOR_AUTHORITY_INVALID");
   });
 
   it("recomputes business KPIs and segment deltas from input rows", () => {

@@ -1,4 +1,12 @@
-import { buildAnalysisPythonSourceReceipt, type U6DbResult } from "@data-agent/contracts";
+import {
+  buildAnalysisContextJournalAppend,
+  buildAnalysisPythonSourceReceipt,
+  buildAnalysisResultStageCommand,
+  buildGovernedOperatorResultCommit,
+  type U6DbResult,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+} from "@data-agent/contracts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import { describe, expect, it } from "vitest";
 import type { SqlPool, SqlQueryResult } from "../../src/persistence/transaction.js";
 import { createPostgresResearchAuthority } from "../../src/research/postgres-research-authority.js";
@@ -204,6 +212,111 @@ function capabilities() {
 }
 
 describe("PostgreSQL Research Authority Adapter", () => {
+  it("uses the unique request-plus-result governed operator RPC and reads its full recovery tuple", async () => {
+    const auth = capabilities();
+    const receiptPayload = { status: "SUCCEEDED", call_id: "call-1" };
+    const receiptHash = await sha256ContentHash(receiptPayload);
+    const result = {
+      schema_version: "governed-operator-result-ref@1.0.0" as const,
+      scope,
+      run_id: ids.run,
+      node_id: "question-1",
+      attempt_id: ids.terminal,
+      context_generation: 1,
+      call_id: "call-1",
+      operator_id: "multiple-testing.bh-fdr@1" as const,
+      program_hash: hash("1"),
+      request_sha256: hash("2"),
+      result_artifact_ref: {
+        artifact_id: ids.operation,
+        artifact_type: "SandboxResult" as const,
+        ...scope,
+        run_id: ids.run,
+        revision: 1,
+        content_hash: hash("3"),
+      },
+      result_sha256: hash("3"),
+      result_bytes: 2,
+      shape: { kind: "MAPPING" as const, keys: 0, bounded_summary: "" },
+      receipt_ref: {
+        artifact_id: ids.certificate,
+        artifact_type: "SandboxExecutionReceipt" as const,
+        ...scope,
+        run_id: ids.run,
+        revision: 1,
+        content_hash: receiptHash,
+      },
+      worker_fence: 7,
+    };
+    const command = await buildGovernedOperatorResultCommit({
+      schema_version: "governed-operator-result-commit@1.0.0",
+      principal_id: ids.analyst,
+      result,
+      idempotency_key: "operator-result:call-1",
+      operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+      result_receipt_payload: receiptPayload,
+      result_receipt_hash: receiptHash,
+    });
+    const journal = await buildAnalysisContextJournalAppend({
+      schema_version: "analysis-context-journal-append@1.0.0",
+      scope,
+      run_id: ids.run,
+      principal_id: ids.analyst,
+      node_id: "question-1",
+      attempt_id: ids.terminal,
+      context_generation: 1,
+      worker_fence: 7,
+      expected_prev_seq: 1,
+      expected_prev_entry_hash: hash("4"),
+      runtime_digest: hash("5"),
+      policy_version: "analysis-cell-policy@1.0.0",
+      operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+      event: { event_type: "OPERATOR_RESULT_COMMITTED", governed_result: result },
+    });
+    const requestContent = new Uint8Array([1]);
+    const resultContent = new TextEncoder().encode("{}");
+    const database = scriptedPool((text) => {
+      if (text.includes("commit_governed_operator_result")) {
+        return resultRow({ ok: false, error_code: "GOVERNED_OPERATOR_REQUEST_CONTENT_HASH_MISMATCH" });
+      }
+      if (text.includes("read_governed_operator_result")) {
+        return {
+          rows: [{
+            result: { ok: true },
+            result_content: resultContent,
+            request_content: requestContent,
+            receipt_payload: receiptPayload,
+          }],
+          rowCount: 1,
+        };
+      }
+      return undefined;
+    });
+    const authority = createPostgresResearchAuthority({
+      pool: database.pool,
+      authorizer: auth.authorizer,
+    });
+
+    await authority.commitGovernedOperatorResult(
+      auth.analyst,
+      command,
+      journal,
+      requestContent,
+      resultContent,
+    );
+    await expect(authority.readGovernedOperatorResult(auth.analyst, result)).resolves.toEqual({
+      ok: true,
+      result_content: resultContent,
+      request_content: requestContent,
+      receipt_payload: receiptPayload,
+    });
+
+    const commitCall = database.calls.find((call) =>
+      call.text.includes("commit_governed_operator_result"),
+    );
+    expect(commitCall?.text).toContain("$3::bytea");
+    expect(commitCall?.values.slice(1)).toEqual([requestContent, resultContent]);
+  });
   it("封装 strict U6DbCommand，并解析 strict U6DbResult", async () => {
     const auth = capabilities();
     const database = scriptedPool((text) => {
@@ -699,7 +812,7 @@ describe("PostgreSQL Research Authority Adapter", () => {
     const reference = {
       ...certificateRef(),
       artifact_id: ids.operation,
-      artifact_type: "SandboxProgram" as const,
+      artifact_type: "SandboxExecutionReceipt" as const,
       content_hash: hash("d"),
     };
     const database = scriptedPool((text) => {
@@ -721,7 +834,7 @@ describe("PostgreSQL Research Authority Adapter", () => {
         attempt_id: ids.terminal,
         worker_fence: 7,
         reference,
-        payload: { artifact_type: "SandboxProgram" },
+        payload: { artifact_type: "SandboxExecutionReceipt" },
       },
       null,
     );
@@ -813,40 +926,116 @@ describe("PostgreSQL Research Authority Adapter", () => {
     expect(rpc?.values[1]).toBe(ciphertext);
   });
 
-  it("通过当前 lease 从专用 RPC 读取加密 source 用于重放", async () => {
+  it("通过一次窄 RPC 原子暂存 Publisher closure 与 Journal", async () => {
     const auth = capabilities();
-    const programRef = {
-      ...certificateRef(),
-      artifact_id: ids.operation,
-      artifact_type: "AnalysisProgram" as const,
-      content_hash: hash("d"),
+    const contents = [new Uint8Array([1]), new Uint8Array([2]), new Uint8Array([3])];
+    const artifacts = contents.map((content, index) => ({
+      artifact_name: ["result", "table:trend", "chart:trend"][index]!,
+      artifact_kind: (["RESULT", "TABLE", "CHART"] as const)[index]!,
+      media_type: "application/json" as const,
+      content_sha256: hash(String(index + 1)),
+      bytes: content.byteLength,
+    }));
+    const command = await buildAnalysisResultStageCommand({
+      schema_version: "analysis-result-stage-command@1.0.0",
+      scope,
+      run_id: ids.run,
+      principal_id: ids.analyst,
+      node_id: "question-1",
+      attempt_id: ids.terminal,
+      context_generation: 1,
+      worker_fence: 7,
+      idempotency_key: "analysis-stage:question-1",
+      stage_id: ids.grant,
+      publish_id: "publish-question-1",
+      contract_hash: hash("4"),
+      manifest_hash: hash("5"),
+      closure_hash: hash("6"),
+      analytical_value_hashes: [{ symbol_name: "result_document", value_hash: hash("7") }],
+      governed_operator_results: [],
+      operator_finalization: {
+        schema_version: "statistical-operator-finalization-result@1.0.0",
+        operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+        operator_receipts: [],
+        operator_receipt_closure_hash: hash("8"),
+      },
+      execution_snapshot: {
+        schema_version: "analysis-result-stage-execution-snapshot@1.0.0",
+        request_hash: hash("9"),
+        runtime_profile: "CORE_ANALYSIS",
+        runtime: {
+          agent_image: "agent@sha256:test",
+          operator_image: "operator@sha256:test",
+          agent_sandbox_id: "agent-1",
+          operator_sandbox_id: "operator-1",
+          secure_access: true,
+        },
+        cells: [],
+        provider_invocation_refs: [],
+        started_at: "2026-08-24T00:00:00.000Z",
+        finished_at: "2026-08-24T00:00:01.000Z",
+        elapsed_ms: 1_000,
+      },
+      artifacts,
+      expires_at: "2026-08-25T00:00:00.000Z",
+    });
+    const journal = await buildAnalysisContextJournalAppend({
+      schema_version: "analysis-context-journal-append@1.0.0",
+      scope,
+      run_id: ids.run,
+      principal_id: ids.analyst,
+      node_id: "question-1",
+      attempt_id: ids.terminal,
+      context_generation: 1,
+      worker_fence: 7,
+      expected_prev_seq: 1,
+      expected_prev_entry_hash: hash("8"),
+      runtime_digest: hash("9"),
+      policy_version: "analysis-cell-policy@1.0.0",
+      operator_registry_digest: hash("a"),
+      event: {
+        event_type: "PUBLISH_STAGE_CREATED",
+        stage_id: command.stage_id,
+        stage_hash: command.stage_hash,
+        closure_hash: command.closure_hash,
+      },
+    });
+    const stage = {
+      schema_version: "analysis-result-stage@1.0.0" as const,
+      stage_id: command.stage_id,
+      stage_hash: command.stage_hash,
+      closure_hash: command.closure_hash,
+      status: "STAGED" as const,
+      created: true,
+      expires_at: command.expires_at,
+    };
+    const journalEntry = {
+      ...journal,
+      schema_version: "analysis-context-journal-entry@1.0.0" as const,
+      seq: 2,
+      prev_entry_hash: hash("8"),
+      entry_hash: hash("b"),
+      created_at: "2026-08-24T00:00:00.000Z",
     };
     const database = scriptedPool((text) => {
-      if (!text.includes("load_analysis_python_source")) return undefined;
-      return resultRow({ ok: true, source: null });
+      if (!text.includes("stage_analysis_result")) return undefined;
+      return resultRow({ ok: true, stage, journal_entry: journalEntry });
     });
     const authority = createPostgresResearchAuthority({
       pool: database.pool,
       authorizer: auth.authorizer,
     });
-    const result = await authority.loadAnalysisPythonSource(auth.analyst, {
-      schema_version: "analysis-python-source-load@1.0.0",
-      scope,
-      run_id: ids.run,
-      principal_id: ids.analyst,
-      attempt_id: ids.terminal,
-      worker_fence: 7,
-      analysis_program_ref: programRef,
-      node_id: "falcon24-question-1",
-      generation_attempt: 0,
-    });
 
-    expect(result).toEqual({ ok: true, source: null });
-    const rpc = database.calls.find((call) => call.text.includes("load_analysis_python_source"));
+    await expect(
+      authority.stageAnalysisResult(auth.analyst, command, journal, contents),
+    ).resolves.toEqual({ ok: true, stage, journal_entry: journalEntry });
+    const rpc = database.calls.find((call) => call.text.includes("stage_analysis_result"));
     expect(rpc?.values[0]).toMatchObject({
-      protocol_version: "u6-db-command@1.0.0",
-      authority_capability_id: ids.authority,
-      command: { attempt_id: ids.terminal, worker_fence: 7 },
+      command: { stage_id: command.stage_id },
+      journal_command: { event: { event_type: "PUBLISH_STAGE_CREATED" } },
     });
+    expect(rpc?.values[1]).toEqual(contents.map((content) => Buffer.from(content).toString("base64")));
+    expect(database.calls.filter((call) => call.text === "COMMIT")).toHaveLength(1);
   });
+
 });

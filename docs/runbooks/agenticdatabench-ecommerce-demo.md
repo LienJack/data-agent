@@ -95,32 +95,32 @@ Workspace 绑定回执位于 `app_data_agent.demo_workspace_receipts`，它属�
 
 公开预览加载器会同时校验 manifest、自身摘要、公开题集合摘要和逐题摘要。任何手工篡改都会导致预览失败。
 
-## Python Sandbox
+## OpenSandbox Python 分析执行层
 
-Python 分析运行在独立 `python-sandbox` 容器，通过认证 Unix Domain Socket 与 Worker 通信。该服务没有网络、根文件系统只读、使用临时 `noexec` 文件系统，限制 CPU、内存、PID、打开文件和输出大小；它不挂载仓库、数据库、Worker 环境或 Datasource 凭证。
-
-```bash
-docker compose up -d --build python-sandbox
-docker compose ps python-sandbox
-pnpm sandbox:python:attest
-cd services/sandbox
-uv run pytest -q tests/test_python_runtime.py
-```
-
-运行时固定为 CPython 3.12.10，并锁定 pandas、NumPy、SciPy、Matplotlib 和 PyArrow。升级 Python 包时必须同步更新：
-
-1. `services/sandbox/pyproject.toml` 与 `services/sandbox/uv.lock`；
-2. `infra/docker/python-sandbox-requirements.lock` 的 hash lock；
-3. runtime、dependency lock、image attestation digest；
-4. 单元测试和真实 hardened-container smoke 证据。
-
-稳定失败码包括 policy rejected、timeout、resource limit、cancelled、execution error、invalid output 和 sandbox unavailable。失败、超时或取消不得提交任何输出 Artifact。
-
-紧急停用只需在 Worker 设置 `PYTHON_SANDBOX_ENABLED=false` 并停止执行服务；不要删除既有 Artifact 或回执：
+Python 分析只通过独立 OpenSandbox 服务运行。Worker 使用官方 SDK 创建两个不同 Sandbox：Agent Sandbox 执行有状态 Cell、读取受控 Parquet 并生成 JSON/PNG/SVG；Operator Sandbox 只执行唯一 `data_agent_stats` 注册表中的治理统计算子。OpenSandbox 不持有 PostgreSQL、Datasource、对象存储或 Provider 凭据，也不替代 SQL Sandbox、语义权威、`AnalysisProgram`、Oracle 或 Artifact/Receipt/Fence。
 
 ```bash
-docker compose stop python-sandbox
+docker build -f infra/docker/Dockerfile.opensandbox-analysis-agent \
+  --build-arg ANALYSIS_PROFILE=CORE_ANALYSIS \
+  --build-arg REQUIREMENTS_LOCK=infra/docker/opensandbox-analysis-core-requirements.lock \
+  -t data-agent-opensandbox-agent-core:2026-08-24 .
+docker build -f infra/docker/Dockerfile.opensandbox-analysis-operator \
+  -t data-agent-opensandbox-operator:2026-08-24 .
+pnpm sandbox:analysis:attest
+pnpm --filter @data-agent/worker exec vitest run test/runs/opensandbox-analysis-runtime.spec.ts
+uv run --project services/sandbox pytest -q services/sandbox/tests/operators
 ```
+
+ML 与 Causal profile 使用相同 Dockerfile，分别指定对应 lock 和镜像标签。升级依赖时必须同步更新：
+
+1. 三个 `opensandbox-analysis-*-requirements.lock` 的 hash lock；
+2. Agent/Operator 镜像摘要与 `opensandbox-analysis-attestation.json`；
+3. 算子 manifest、实现源码和唯一 registry digest；
+4. Cell policy、文件传输、Operator closure、超时/取消和清理探针。
+
+本地 Docker 探针目前只证明功能可用，`secure_access=false`，不能证明生产强隔离。生产必须另行证明 Kata 或 gVisor 与 Cilium egress policy、只读根文件系统、无凭据及 release image digest；缺任一项保持 HOLD。
+
+紧急停用设置 `ANALYSIS_SANDBOX_ENABLED=false` 并停止外部 OpenSandbox 服务。运行会明确失败，不回退旧执行器；既有 Artifact 与回执继续保留。
 
 ## 真实 Agent 作答与评分验收
 
@@ -148,7 +148,7 @@ pnpm exec vitest run tests/agenticdatabench-ecommerce-bundle.spec.ts \
   tests/ecommerce-production-suite.spec.ts tests/ecommerce-semantic-bundle.spec.ts
 pnpm --filter @data-agent/evals exec vitest run \
   test/ecommerce-production-dataset.spec.ts test/test-center.spec.ts
-pnpm --filter @data-agent/worker exec vitest run test/runs/python-sandbox-client.spec.ts
+pnpm --filter @data-agent/worker exec vitest run test/runs/opensandbox-analysis-runtime.spec.ts
 ```
 
 前两个生成命令是确定性维护命令；普通使用者不需要运行。语义 bundle 必须经过人工 review/publish，不能由启动脚本自动发布。
@@ -162,15 +162,15 @@ pnpm --filter @data-agent/worker exec vitest run test/runs/python-sandbox-client
 | Workspace bootstrap 返回 HOLD | 数据版本、Workspace slug、管理员成员关系 | 修复权威状态后重试；命令本身可幂等重放 |
 | Test Center 题目不显示 | suite manifest/公开题摘要 | 运行预览加载器测试；不得绕过 digest |
 | Test Center 显示 HOLD | Hard Python/Worker/Artifact Oracle certification | SQL 首门槛通过后仍是当前预期状态，不要手改为 READY |
-| Sandbox unavailable | 容器 health、UDS volume、Worker group 10010、token 是否一致 | 修复通信后重试；不要把源码改为 Worker 进程内执行 |
-| Python policy rejected | import/AST、输入输出声明 | 缩小脚本能力；不得放宽网络、进程或任意文件权限 |
+| Analysis Sandbox unavailable | OpenSandbox API、API key、镜像与 Worker 配置 | 修复服务后重试；不回退旧执行器，也不在 Worker 进程内执行 |
+| Cell policy rejected | import、路径、系统调用和输出声明 | 缩小 Cell 能力；不得放宽网络、进程或任意主机文件权限 |
 
 ## 回滚和清理
 
 优先采用功能回滚，保留审计证据：
 
 1. 将 E-commerce suite 从 UI/服务器 allowlist 下线；
-2. 设置 `PYTHON_SANDBOX_ENABLED=false` 并停止 Python Sandbox；
+2. 设置 `ANALYSIS_SANDBOX_ENABLED=false` 并停止外部 OpenSandbox 服务；
 3. 将目标 Workspace 的 Demo Datasource 标记为禁用，并轮换/revoke reader 登录；
 4. 保留 migration ledger、dataset/workspace receipts、Run、Artifact 和 ScoreCard。
 

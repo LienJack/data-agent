@@ -93,11 +93,9 @@ WRITE_CALLS = frozenset(
 )
 READ_PREFIXES = (
     "/workspace/inputs/",
-    "/workspace/sealed/",
-    "/workspace/intermediate/",
-    "/workspace/outputs/",
 )
-WRITE_PREFIXES = ("/workspace/intermediate/", "/workspace/outputs/")
+WRITE_PREFIXES: tuple[str, ...] = ()
+PROTECTED_RESULT_PREFIX = "__da_gov_"
 
 
 @dataclass(frozen=True)
@@ -156,8 +154,29 @@ def validate_cell_source(
             )
             if any(name.split(".", 1)[0] not in import_roots for name in names):
                 violations.append(CellPolicyViolation("IMPORT_DENIED", line, ",".join(names)))
+            if any(
+                (alias.asname or alias.name).startswith(PROTECTED_RESULT_PREFIX)
+                for alias in node.names
+            ):
+                violations.append(
+                    CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, "import alias")
+                )
         elif isinstance(node, ast.Name) and node.id in BANNED_NAMES | BANNED_ROOTS:
             violations.append(CellPolicyViolation("NAME_DENIED", line, node.id))
+        elif (
+            isinstance(node, ast.Name)
+            and node.id.startswith(PROTECTED_RESULT_PREFIX)
+            and isinstance(node.ctx, (ast.Store, ast.Del))
+        ):
+            violations.append(CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, node.id))
+        elif isinstance(node, (ast.FunctionDef, ast.ClassDef)) and node.name.startswith(
+            PROTECTED_RESULT_PREFIX
+        ):
+            violations.append(CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, node.name))
+        elif isinstance(node, ast.ExceptHandler) and isinstance(node.name, str) and node.name.startswith(
+            PROTECTED_RESULT_PREFIX
+        ):
+            violations.append(CellPolicyViolation("PROTECTED_RESULT_MUTATION", line, node.name))
         elif isinstance(node, ast.Attribute):
             root = node
             while isinstance(root, ast.Attribute):
@@ -192,6 +211,8 @@ def validate_cell_source(
         if isinstance(node.func, ast.Attribute) and node.func.attr in READ_CALLS | WRITE_CALLS:
             path = _literal_path(node)
             prefixes = WRITE_PREFIXES if node.func.attr in WRITE_CALLS else READ_PREFIXES
+            if node.func.attr in WRITE_CALLS:
+                violations.append(CellPolicyViolation("FILE_WRITE_DENIED", line, node.func.attr))
             if path is not None and not _allowed_path(path, prefixes):
                 violations.append(CellPolicyViolation("FILE_PATH_DENIED", line, path))
             if path is None and node.func.attr in READ_CALLS:

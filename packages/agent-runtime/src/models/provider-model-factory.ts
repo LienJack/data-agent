@@ -15,7 +15,7 @@ type OpenAIRuntimeModel = ReturnType<ReturnType<typeof createOpenAI>>;
 type XaiRuntimeModel = ReturnType<ReturnType<typeof createXai>>;
 
 const COMPATIBLE_PROVIDER_BASE_URLS = {
-  deepseek: "https://api.deepseek.com",
+  deepseek: "https://api.deepseek.com/beta",
   glm: "https://open.bigmodel.cn/api/paas/v4",
   kimi: "https://api.moonshot.cn/v1",
 } as const;

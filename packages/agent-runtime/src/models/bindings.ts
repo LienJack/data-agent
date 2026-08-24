@@ -136,7 +136,7 @@ const bindingInputs = [
     sdk_package: "@ai-sdk/deepseek",
     credential_env: "DEEPSEEK_API_KEY",
     default_model_id: "deepseek-v4-flash",
-    base_url: "https://api.deepseek.com",
+    base_url: "https://api.deepseek.com/beta",
     capabilities: {
       structured_output: true,
       tool_calling: true,

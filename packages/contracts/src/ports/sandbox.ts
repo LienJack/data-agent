@@ -3,7 +3,6 @@ import {
   type ArtifactReference,
   artifactReferenceFor,
   artifactReferenceIdentity,
-  artifactReferenceSchema,
 } from "../artifacts/envelope.js";
 import {
   AUTHORITY_ROLE_POLICY_VERSION,
@@ -367,42 +366,28 @@ const sandboxRequestBase = {
 } as const;
 
 export const sandboxExecutionRequestSchema = z
-  .discriminatedUnion("language", [
-    z.strictObject({
-      ...sandboxRequestBase,
-      language: z.literal("sql"),
-      payload: z.strictObject({
-        dialect: z.literal("postgresql"),
-        sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
-        execution_permit_ref: artifactReferenceFor("ExecutionPermit"),
-        resource_admission_ref: artifactReferenceFor("ResourceAdmissionReceipt"),
-        datasource_id: immutableIdSchema,
-        settings_hash: contentHashSchema,
-        execution_settings: postgresqlExecutionSettingsSchema,
-        snapshot_requirement: sandboxSnapshotRequirementSchema,
-        parameters: sandboxSqlParametersSchema,
-        semantic_context_binding: semanticContextText2SqlBindingSchema.optional(),
-      }),
+  .strictObject({
+    ...sandboxRequestBase,
+    language: z.literal("sql"),
+    payload: z.strictObject({
+      dialect: z.literal("postgresql"),
+      sql_artifact_ref: artifactReferenceFor("SqlArtifact"),
+      execution_permit_ref: artifactReferenceFor("ExecutionPermit"),
+      resource_admission_ref: artifactReferenceFor("ResourceAdmissionReceipt"),
+      datasource_id: immutableIdSchema,
+      settings_hash: contentHashSchema,
+      execution_settings: postgresqlExecutionSettingsSchema,
+      snapshot_requirement: sandboxSnapshotRequirementSchema,
+      parameters: sandboxSqlParametersSchema,
+      semantic_context_binding: semanticContextText2SqlBindingSchema.optional(),
     }),
-    z.strictObject({
-      ...sandboxRequestBase,
-      language: z.literal("python"),
-      payload: z.strictObject({
-        runtime_profile_version: versionIdentifierSchema,
-        program_ref: artifactReferenceFor("SandboxProgram"),
-        input_refs: z.array(artifactReferenceSchema).max(64),
-      }),
-    }),
-  ])
+  })
   .superRefine((request, ctx) => {
-    const references =
-      request.language === "sql"
-        ? [
-            request.payload.sql_artifact_ref,
-            request.payload.execution_permit_ref,
-            request.payload.resource_admission_ref,
-          ]
-        : [request.payload.program_ref, ...request.payload.input_refs];
+    const references = [
+      request.payload.sql_artifact_ref,
+      request.payload.execution_permit_ref,
+      request.payload.resource_admission_ref,
+    ];
     if (
       references.some((reference) => !sameScopeAndRun(reference, request.scope, request.run_id))
     ) {
@@ -413,9 +398,8 @@ export const sandboxExecutionRequestSchema = z
       });
     }
     if (
-      request.language === "sql" &&
-      (request.payload.execution_settings.statement_timeout_ms !== request.budget.timeout_ms ||
-        request.payload.execution_settings.lock_timeout_ms !== request.budget.lock_timeout_ms)
+      request.payload.execution_settings.statement_timeout_ms !== request.budget.timeout_ms ||
+      request.payload.execution_settings.lock_timeout_ms !== request.budget.lock_timeout_ms
     ) {
       ctx.addIssue({
         code: "custom",
@@ -424,7 +408,6 @@ export const sandboxExecutionRequestSchema = z
       });
     }
     if (
-      request.language === "sql" &&
       request.payload.semantic_context_binding &&
       (request.payload.semantic_context_binding.scope.app_id !== request.scope.app_id ||
         request.payload.semantic_context_binding.scope.tenant_id !== request.scope.tenant_id ||
@@ -443,10 +426,7 @@ export const sandboxExecutionRequestSchema = z
   });
 
 export type SandboxExecutionRequest = z.infer<typeof sandboxExecutionRequestSchema>;
-export type SqlSandboxExecutionRequest = Extract<
-  SandboxExecutionRequest,
-  { readonly language: "sql" }
->;
+export type SqlSandboxExecutionRequest = SandboxExecutionRequest;
 
 export async function computeSandboxExecutionRequestHash(input: unknown): Promise<ContentHash> {
   return sha256ContentHash(sandboxExecutionRequestSchema.parse(input));

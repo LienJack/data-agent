@@ -1,11 +1,16 @@
 import { createHash } from "node:crypto";
 import type { AnalysisReasonCode } from "@data-agent/contracts/artifacts";
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type Falcon24AgentAnalysisCase,
   falcon24AnalysisCaseIdSchema,
   falcon24AnalysisOracleReceiptSchema,
 } from "@data-agent/contracts/evals";
+import type { AnalysisSandboxExecutionReceipt } from "@data-agent/contracts/ports";
+import {
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+  type StatisticalOperatorCallReceipt,
+} from "@data-agent/contracts/statistical-operators";
 import {
   FALCON24_AGENT_ANALYSIS_CASES,
   falcon24AnalysisOutputSchema,
@@ -14,7 +19,7 @@ import {
 import { tableFromIPC } from "apache-arrow";
 import type { z } from "zod";
 import type { AnalysisOracleExpectation, AnalysisOraclePort } from "../analysis/executor.js";
-import type { GovernedPythonInput } from "../analysis/sandbox-executor.js";
+import type { GovernedAnalysisInput } from "../analysis/governed-analysis-input.js";
 import { FALCON24_ANALYSIS_QUERY_SPECS } from "./falcon24-analysis-queries.js";
 
 type Falcon24Output = z.infer<typeof falcon24AnalysisOutputSchema>;
@@ -23,6 +28,94 @@ type Row = Readonly<Record<string, string | number | null>>;
 const CASES = new Map(
   FALCON24_AGENT_ANALYSIS_CASES.map((testCase) => [testCase.case_id, testCase]),
 );
+
+const EXPECTED_OPERATOR_PARAMETERS: Readonly<
+  Record<string, Readonly<Record<string, string | number | boolean | null>>>
+> = Object.freeze({
+  q1_revenue_identity: {
+    mode: "exact",
+    max_factors: 8,
+    closure_tolerance: 1e-9,
+  },
+  q2_delivery_low_rating: {
+    add_intercept: true,
+    max_iterations: 100,
+    tolerance: 1e-8,
+  },
+  q3_theil_sen_all_products: {},
+  q3_mann_kendall_all_products: {
+    alpha: 0.05,
+    continuity_correction: true,
+    variant: "original",
+  },
+  q3_bh_all_products: { alpha: 0.05, method: "bh" },
+  q4_hac_all_models: {
+    maxlags: 4,
+    kernel: "bartlett",
+    use_correction: true,
+    use_t: false,
+    add_intercept: true,
+  },
+  q4_bh_order_revenue: { alpha: 0.05, method: "bh" },
+  q4_bh_new_customers: { alpha: 0.05, method: "bh" },
+  q4_bh_order_count: { alpha: 0.05, method: "bh" },
+  q5_primary_cohorts: {
+    horizon_months: 6,
+    pre_registration_policy: "hold_primary",
+    duplicate_customer_policy: "reject",
+  },
+  q5_sensitivity_cohorts: {
+    horizon_months: 6,
+    pre_registration_policy: "exclude_sensitivity",
+    duplicate_customer_policy: "reject",
+  },
+});
+
+const REQUIRED_OPERATOR_LIMITATIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  q1_revenue_identity: ["APPROXIMATE_MODE_NOT_SUPPORTED", "PRODUCT_IDENTITY_REQUIRED"],
+  q2_delivery_low_rating: ["ASSOCIATION_NOT_CAUSATION"],
+  q3_theil_sen_all_products: ["SLOPE_UNIT_DEPENDS_ON_DECLARED_X_SCALE"],
+  q3_mann_kendall_all_products: ["SEASONALITY_NOT_CORRECTED", "SERIAL_CORRELATION_NOT_CORRECTED"],
+  q3_bh_all_products: [
+    "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
+    "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
+  ],
+  q4_hac_all_models: ["ASSOCIATION_NOT_CAUSATION", "ORDERING_DEFINES_HAC_DEPENDENCE"],
+  q4_bh_order_revenue: [
+    "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
+    "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
+  ],
+  q4_bh_new_customers: [
+    "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
+    "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
+  ],
+  q4_bh_order_count: ["DEPENDENCE_STRUCTURE_NOT_VERIFIED", "FAMILY_DEFINITION_MUST_BE_PREDECLARED"],
+  q5_primary_cohorts: ["PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS"],
+  q5_sensitivity_cohorts: ["SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS"],
+});
+
+const METHOD_OPERATOR_CALLS: Readonly<
+  Record<Falcon24AgentAnalysisCase["case_id"], Readonly<Record<string, readonly string[]>>>
+> = Object.freeze({
+  "falcon24-business-review-18m": {
+    "buyers-frequency-aov-shapley": ["q1_revenue_identity"],
+  },
+  "falcon24-delivery-experience-12m": {
+    "adjusted-binomial-glm": ["q2_delivery_low_rating"],
+  },
+  "falcon24-inventory-damage-12m": {
+    "benjamini-hochberg-fdr": ["q3_bh_all_products"],
+    "theil-sen-deterioration": ["q3_theil_sen_all_products", "q3_mann_kendall_all_products"],
+  },
+  "falcon24-marketing-lag-effect": {
+    "hac-standard-errors": ["q4_hac_all_models"],
+    "multiple-testing-fdr": ["q4_bh_order_revenue", "q4_bh_new_customers", "q4_bh_order_count"],
+  },
+  "falcon24-cohort-retention-m0-m6": {
+    "cohort-m0-m6": ["q5_primary_cohorts", "q5_sensitivity_cohorts"],
+    "pre-registration-order-sensitivity": ["q5_primary_cohorts", "q5_sensitivity_cohorts"],
+  },
+});
 
 function fail(code: string): never {
   throw new TypeError(code);
@@ -285,7 +378,7 @@ function benjaminiHochberg(values: ReadonlyMap<string, number>): Map<string, num
   return result;
 }
 
-function decodeArrow(input: GovernedPythonInput, testCase: Falcon24AgentAnalysisCase): Row[] {
+function decodeArrow(input: GovernedAnalysisInput, testCase: Falcon24AgentAnalysisCase): Row[] {
   const spec = FALCON24_ANALYSIS_QUERY_SPECS[testCase.case_id];
   if (input.name !== spec.input_name || input.format !== "ARROW") {
     fail("FALCON24_ORACLE_INPUT_BINDING_INVALID");
@@ -311,11 +404,22 @@ function decodeArrow(input: GovernedPythonInput, testCase: Falcon24AgentAnalysis
 function parseResult(
   outputs: Parameters<AnalysisOraclePort["evaluate"]>[0]["sandbox_outputs"],
 ): unknown {
-  if (outputs.length !== 1 || outputs[0]?.name !== "result" || outputs[0].type !== "JSON") {
+  const results = outputs.filter(({ artifact_kind: artifactKind }) => artifactKind === "RESULT");
+  const result = results[0];
+  if (
+    results.length !== 1 ||
+    !result ||
+    result.artifact_name !== "result" ||
+    result.media_type !== "application/json"
+  ) {
     fail("FALCON24_ORACLE_OUTPUT_BINDING_INVALID");
   }
   try {
-    return JSON.parse(Buffer.from(outputs[0].content_base64, "base64").toString("utf8"));
+    const published = JSON.parse(Buffer.from(result.content).toString("utf8")) as unknown;
+    if (typeof published !== "object" || published === null || !("data" in published)) {
+      fail("FALCON24_ORACLE_OUTPUT_JSON_INVALID");
+    }
+    return published.data;
   } catch {
     return fail("FALCON24_ORACLE_OUTPUT_JSON_INVALID");
   }
@@ -1149,14 +1253,91 @@ const verifiers = {
   "falcon24-cohort-retention-m0-m6": verifyCohort,
 } as const;
 
+function methodOperatorCallIds(
+  testCase: Falcon24AgentAnalysisCase,
+  methodId: string,
+): readonly string[] {
+  return METHOD_OPERATOR_CALLS[testCase.case_id][methodId] ?? [];
+}
+
+function verifyOperatorAuthority(input: {
+  readonly test_case: Falcon24AgentAnalysisCase;
+  readonly sandbox_receipt: AnalysisSandboxExecutionReceipt;
+}): {
+  readonly registry_digest: `sha256:${string}`;
+  readonly closure_hash: `sha256:${string}`;
+  readonly receipts: readonly StatisticalOperatorCallReceipt[];
+} {
+  const receipt = input.sandbox_receipt;
+  const expectedCalls = input.test_case.required_operator_calls;
+  const observedObligations = receipt.operator_obligations.map(
+    ({ call_id: callId, operator_id: operatorId }) => ({
+      call_id: callId,
+      operator_id: operatorId,
+    }),
+  );
+  const observedCalls = receipt.operator_receipts.map(
+    ({ call_id: callId, operator_id: operatorId }) => ({
+      call_id: callId,
+      operator_id: operatorId,
+    }),
+  );
+  if (
+    receipt.status !== "SUCCEEDED" ||
+    receipt.failure_code !== null ||
+    receipt.generated_source_policy !== "GOVERNED_OPERATOR_ORCHESTRATION" ||
+    receipt.operator_registry_digest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST ||
+    receipt.operator_receipt_closure_hash === null ||
+    JSON.stringify(observedObligations) !== JSON.stringify(expectedCalls) ||
+    JSON.stringify(observedCalls) !== JSON.stringify(expectedCalls)
+  ) {
+    fail("FALCON24_ORACLE_OPERATOR_AUTHORITY_INVALID");
+  }
+  for (const operatorReceipt of receipt.operator_receipts) {
+    const expectedParameters = EXPECTED_OPERATOR_PARAMETERS[operatorReceipt.call_id];
+    const requiredLimitations = REQUIRED_OPERATOR_LIMITATIONS[operatorReceipt.call_id];
+    if (
+      expectedParameters === undefined ||
+      requiredLimitations === undefined ||
+      canonicalizeJson(operatorReceipt.resolved_parameters) !==
+        canonicalizeJson(expectedParameters) ||
+      operatorReceipt.operator_registry_digest !== receipt.operator_registry_digest ||
+      operatorReceipt.applicability === "HOLD" ||
+      requiredLimitations.some((code) => !operatorReceipt.limitation_codes.includes(code))
+    ) {
+      fail("FALCON24_ORACLE_OPERATOR_RECEIPT_INVALID");
+    }
+  }
+  const methodCallIds = [
+    ...new Set(
+      input.test_case.required_methods.flatMap((methodId) =>
+        methodOperatorCallIds(input.test_case, methodId),
+      ),
+    ),
+  ].sort();
+  if (
+    JSON.stringify(methodCallIds) !==
+    JSON.stringify(expectedCalls.map(({ call_id: callId }) => callId).sort())
+  ) {
+    fail("FALCON24_ORACLE_OPERATOR_METHOD_BINDING_INVALID");
+  }
+  return {
+    registry_digest: receipt.operator_registry_digest as `sha256:${string}`,
+    closure_hash: receipt.operator_receipt_closure_hash as `sha256:${string}`,
+    receipts: receipt.operator_receipts,
+  };
+}
+
 export async function verifyFalcon24ArrowBackedOutput(input: {
   readonly test_case: Falcon24AgentAnalysisCase;
-  readonly governed_input: GovernedPythonInput;
+  readonly governed_input: GovernedAnalysisInput;
+  readonly sandbox_receipt: AnalysisSandboxExecutionReceipt;
   readonly output: unknown;
 }) {
   const rows = decodeArrow(input.governed_input, input.test_case);
   const output = falcon24AnalysisOutputSchema.parse(input.output);
   if (output.case_id !== input.test_case.case_id) fail("FALCON24_ORACLE_CASE_BINDING_INVALID");
+  const operatorAuthority = verifyOperatorAuthority(input);
   const validated = await validateFalcon24AnalysisOutput({ test_case: input.test_case, output });
   (verifiers[output.case_id] as (rows: readonly Row[], output: never) => void)(
     rows,
@@ -1173,10 +1354,13 @@ export async function verifyFalcon24ArrowBackedOutput(input: {
     query_evidence_hash: input.governed_input.query_evidence_ref.content_hash,
     output_hash: validated.output_hash,
     chart_dataset_hash: validated.chart_dataset_hash,
+    operator_registry_digest: operatorAuthority.registry_digest,
+    operator_receipt_closure_hash: operatorAuthority.closure_hash,
+    operator_receipts: operatorAuthority.receipts,
     verifier: "falcon24-arrow-input-recompute@3.0.0",
   });
   const material = {
-    schema_version: "falcon24-analysis-oracle@3.0.0" as const,
+    schema_version: "falcon24-analysis-oracle@4.0.0" as const,
     oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
     case_id: input.test_case.case_id,
     verdict: "PASS" as const,
@@ -1187,10 +1371,14 @@ export async function verifyFalcon24ArrowBackedOutput(input: {
     output_hash: validated.output_hash,
     chart_dataset_hash: validated.chart_dataset_hash,
     verification_hash: verificationHash,
+    operator_registry_digest: operatorAuthority.registry_digest,
+    operator_receipt_closure_hash: operatorAuthority.closure_hash,
+    operator_receipts: operatorAuthority.receipts,
     method_receipts: input.test_case.required_methods.map((methodId) => ({
       method_id: methodId,
       status: "PASS" as const,
       evidence_hash: verificationHash,
+      operator_call_ids: methodOperatorCallIds(input.test_case, methodId),
     })),
     disclosures: input.test_case.required_disclosures,
     quality_findings: input.test_case.required_quality_findings,
@@ -1218,9 +1406,12 @@ export function createFalcon24ArrowBackedAnalysisOracle(): AnalysisOraclePort {
       const verified = await verifyFalcon24ArrowBackedOutput({
         test_case: testCase,
         governed_input: governedInput,
+        sandbox_receipt: input.sandbox_receipt,
         output,
       });
-      const resultOutput = sandbox_outputs[0] ?? fail("FALCON24_ORACLE_OUTPUT_MISSING");
+      const resultOutput =
+        sandbox_outputs.find(({ artifact_kind: artifactKind }) => artifactKind === "RESULT") ??
+        fail("FALCON24_ORACLE_OUTPUT_MISSING");
       return {
         result: {
           result_kind: "GENERATED_ANALYSIS",
@@ -1247,5 +1438,6 @@ export const falcon24ArrowBackedAnalysisOracleInternals = Object.freeze({
   quantile,
   shapleyThreeFactor,
   theilSen,
+  verifyOperatorAuthority,
   verifiers,
 });

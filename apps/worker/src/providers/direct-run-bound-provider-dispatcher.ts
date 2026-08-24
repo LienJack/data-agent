@@ -66,6 +66,20 @@ function providerFailureCode(error: unknown): string {
   return "MODEL_PROVIDER_DIRECT_CALL_FAILED";
 }
 
+const ANALYSIS_MODEL_TOOL_NAME_SET = new Set<string>(ANALYSIS_MODEL_TOOL_ALLOWLIST);
+
+function validAnalysisToolAllowlist(
+  phase: "TOOL" | "FINAL",
+  toolNames: readonly string[],
+): boolean {
+  if (phase === "FINAL") return toolNames.length === 0;
+  return (
+    toolNames.length > 0 &&
+    new Set(toolNames).size === toolNames.length &&
+    toolNames.every((toolName) => ANALYSIS_MODEL_TOOL_NAME_SET.has(toolName))
+  );
+}
+
 /**
  * Lightweight run-bound model gateway.
  *
@@ -155,12 +169,22 @@ export function createDirectRunBoundProviderDispatcher(input: {
           "分析 Python 只能使用冻结的 DeepSeek V4 Flash Profile。",
         );
       }
+      if (
+        analysisAgent &&
+        !validAnalysisToolAllowlist(analysisAgent.phase, analysisAgent.allowed_tool_names)
+      ) {
+        return failure(
+          "ANALYSIS_AGENT_TOOL_ALLOWLIST_INVALID",
+          "分析 Agent turn 的状态级工具白名单无效。",
+        );
+      }
       const taskHash = await sha256ContentHash(
         analysisAgent
           ? {
               node_id: analysisAgent.node_id,
               turn_index: analysisAgent.turn_index,
               phase: analysisAgent.phase,
+              allowed_tool_names: analysisAgent.allowed_tool_names,
               messages: analysisAgent.messages,
             }
           : analysisPython
@@ -190,7 +214,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
       const maxInputTokens = Math.max(1, config.context_policy.max_context_tokens);
       const maxOutputTokens =
         analysisAgent?.max_output_tokens ?? analysisPython?.max_output_tokens ?? 2_048;
-      const toolAllowlist = analysisAgent?.phase === "TOOL" ? ANALYSIS_MODEL_TOOL_ALLOWLIST : [];
+      const toolAllowlist = analysisAgent?.allowed_tool_names ?? [];
       let request: ReturnType<typeof createDirectModelProviderInvocation>;
       try {
         request = createDirectModelProviderInvocation({
@@ -321,4 +345,7 @@ export function createDirectRunBoundProviderDispatcher(input: {
   });
 }
 
-export const directRunBoundProviderDispatcherInternals = Object.freeze({ retryableReason });
+export const directRunBoundProviderDispatcherInternals = Object.freeze({
+  retryableReason,
+  validAnalysisToolAllowlist,
+});

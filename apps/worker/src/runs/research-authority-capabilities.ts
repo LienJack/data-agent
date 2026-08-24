@@ -60,7 +60,6 @@ const ARTIFACT_DOMAIN = Object.freeze({
   HypothesisSet: "PLANNING",
   EvidencePlan: "PLANNING",
   AnalysisProgram: "PLANNING",
-  SandboxProgram: "PLANNING",
   ObligationExecutionDecision: "OBLIGATION_EXECUTION",
   QueryEvidence: "EVIDENCE",
   DataProfile: "EVIDENCE",

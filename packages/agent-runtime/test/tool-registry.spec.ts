@@ -33,7 +33,14 @@ describe("ServerOwnedToolRegistry", () => {
       "semantic-query@1",
     ]);
     expect(resolved.every(({ network_access }) => network_access.mode === "DENY")).toBe(true);
+    expect(resolved.every(({ strict }) => strict === false)).toBe(true);
     expect(Object.isFrozen(resolved)).toBe(true);
+  });
+
+  it("keeps provider strictness server-owned", () => {
+    const registry = new ServerOwnedToolRegistry([{ ...semanticTool, strict: true }]);
+
+    expect(registry.resolve("semantic-query@1").strict).toBe(true);
   });
 
   it("keeps HTTPS capability server-owned and rejects a non-schema descriptor", () => {

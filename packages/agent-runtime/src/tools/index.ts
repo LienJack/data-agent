@@ -1,4 +1,8 @@
 export {
+  DeepSeekStrictSchemaError,
+  projectDeepSeekStrictToolInputSchema,
+} from "./deepseek-strict-schema.js";
+export {
   EMPTY_SERVER_TOOL_REGISTRY,
   type RegisteredServerOwnedToolDescriptor,
   type ServerOwnedToolDescriptor,

@@ -3,7 +3,6 @@ export {
   assertCausalClaimAuthorized,
   type CausalEstimateComputation,
   computeAnalysisDerivationHash,
-  computeAnalysisSandboxProgramHash,
   computeAttributionAuthorityClosureHash,
   computeCausalEstimateHash,
   computeCausalQuestionHash,
@@ -21,15 +20,12 @@ export {
   type InsightCandidate,
   type InsightTier,
   type OracleFailure,
-  type ProgramVerification,
-  type ProgramVerificationFailure,
   type ResultOracleVerdict,
   type RootCauseFactorObservation,
   type SelectedInsight,
   selectEvidenceGroundedInsights,
   verifyAnalysisDerivation,
   verifyAnalysisResult,
-  verifyAnalysisSandboxProgram,
   verifyScaleMetamorphism,
 } from "./analysis-evidence/index.js";
 export {

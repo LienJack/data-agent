@@ -27,6 +27,7 @@
     "@ai-sdk/google": "4.0.24",
     "@ai-sdk/openai": "4.0.20",
     "@ai-sdk/openai-compatible": "3.0.14",
+    "@ai-sdk/provider-utils": "5.0.12",
     "@ai-sdk/xai": "4.0.18",
     "@data-agent/contracts": "workspace:*",
     "@mastra/core": "1.52.1",

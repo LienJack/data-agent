@@ -45,6 +45,16 @@ function verifyWorkspaceReleaseBuild(): WorkspaceReleaseBuildReceipt {
 
 if (process.argv.includes("--deterministic-analysis")) {
   const probe = await buildDeterministicAnalysisCapabilityProbe();
+  const runtimeUniqueness = JSON.parse(
+    execFileSync("pnpm", ["--silent", "sandbox:analysis:unique"], {
+      cwd: rootDir,
+      encoding: "utf8",
+    }),
+  ) as {
+    status?: string;
+    python_analysis_runtime?: string;
+    sql_sandbox_preserved?: boolean;
+  };
   const read = (path: string) => readFileSync(resolve(rootDir, path), "utf8");
   const exists = (path: string) => existsSync(resolve(rootDir, path));
   const capabilityIds = probe.capabilities.map(({ capability_id }) => capability_id);
@@ -107,25 +117,33 @@ if (process.argv.includes("--deterministic-analysis")) {
           .update(readFileSync(resolve(rootDir, probe.text2sql_isolation.source_path)))
           .digest("hex")}`,
     runtime_lock_image_attested:
-      probe.runtime_attestation.schema_version === "python-sandbox-attestation@2.0.0" &&
-      probe.runtime_attestation.target_platform === "linux/arm64" &&
+      probe.runtime_attestation.schema_version === "opensandbox-analysis-attestation@1.0.0" &&
+      /^opensandbox\/code-interpreter@sha256:[a-f0-9]{64}$/u.test(
+        probe.runtime_attestation.base_image,
+      ) &&
       probe.runtime_attestation.registered_profiles.join(",") ===
-        "CAUSAL_L5,CORE_ANALYSIS,ML_DIAGNOSTIC",
-    sbom_and_cve_verified:
-      probe.supply_chain.cve_scan_status === "PASS" &&
-      /^sha256:[a-f0-9]{64}$/u.test(probe.supply_chain.sbom_hash) &&
-      /^sha256:[a-f0-9]{64}$/u.test(probe.supply_chain.attestation_hash),
-    license_gate_explicit:
-      probe.supply_chain.license_scan_status === "REVIEW_REQUIRED" &&
-      probe.supply_chain.unresolved_license_packages.length > 0,
-    cancel_malicious_zero_output_covered:
-      read("services/sandbox/tests/python_container_smoke.py").includes(
-        'choices=("success", "operator", "malicious", "resource", "cancel")',
+        "CAUSAL_L5,CORE_ANALYSIS,ML_DIAGNOSTIC" &&
+      /^sha256:[a-f0-9]{64}$/u.test(probe.runtime_attestation.operator_registry_digest),
+    production_isolation_gate_explicit:
+      probe.runtime_attestation.local_probe.status === "PASS" &&
+      probe.runtime_attestation.local_probe.production_isolation_proven === false &&
+      probe.runtime_attestation.production_gate.decision === "HOLD" &&
+      probe.runtime_attestation.production_gate.required_runtime === "KATA_OR_GVISOR_WITH_CILIUM",
+    supply_chain_gate_explicit:
+      probe.supply_chain.status === "NOT_VERIFIED" &&
+      probe.supply_chain.sbom_hash === null &&
+      probe.supply_chain.cve_scan_status === "NOT_RUN" &&
+      probe.supply_chain.license_scan_status === "NOT_RUN",
+    cells_operator_and_cleanup_covered:
+      read("apps/worker/test/runs/opensandbox-analysis-runtime.spec.ts").includes("runAgentCell") &&
+      read("services/sandbox/tests/operators/test_dispatcher.py").includes(
+        "operator_receipt_closure_hash",
       ) &&
-      read("services/sandbox/tests/python_container_smoke.py").includes(
-        '"multiple-testing.bh-fdr@1"',
-      ) &&
-      read("services/sandbox/tests/python_container_smoke.py").includes('outcome.get("outputs")'),
+      read("scripts/verify-opensandbox-analysis-runtime.ts").includes("session.close()"),
+    unique_runtime_and_sql_sandbox_preserved:
+      runtimeUniqueness.status === "PASS" &&
+      runtimeUniqueness.python_analysis_runtime === "OpenSandbox Cells" &&
+      runtimeUniqueness.sql_sandbox_preserved === true,
     oracle_and_replay_gates:
       exists("packages/evals/src/test-center/deterministic-analysis-oracle.ts") &&
       exists("packages/evals/src/test-center/model-analysis-agent.ts") &&
@@ -136,7 +154,7 @@ if (process.argv.includes("--deterministic-analysis")) {
     semantic_evidence_rbac_projection_budget_gates:
       exists("packages/semantic/src/analysis/applicability.ts") &&
       exists("packages/research/src/analysis-evidence/verifier.ts") &&
-      exists("apps/worker/test/analysis/analysis-program-runtime.spec.ts") &&
+      exists("apps/worker/test/analysis/analysis-tool-loop.spec.ts") &&
       exists("packages/platform/src/artifacts/derived-analysis-projection.ts") &&
       exists("apps/web/src/components/workbench/deterministic-analysis-sections.tsx"),
     contribution_association_forecast_hard_gates:
@@ -154,14 +172,20 @@ if (process.argv.includes("--deterministic-analysis")) {
   const failedChecks = Object.entries(checks)
     .filter(([, passed]) => !passed)
     .map(([name]) => name);
-  const shadowDecision = failedChecks.length === 0 ? "SHADOW_READY" : "HOLD";
+  const staticChecksPass = failedChecks.length === 0;
+  const shadowDecision = "HOLD";
   process.stdout.write(
     `${JSON.stringify(
       {
         verification_contract_version: "deterministic-analysis-release@1.0.0",
         decision: shadowDecision,
         ga_decision: "HOLD",
-        ga_reason_codes: ["LICENSE_REVIEW_REQUIRED", "PER_SKILL_PROMOTION_REVIEW_REQUIRED"],
+        ga_reason_codes: [
+          ...(staticChecksPass ? [] : ["STATIC_RELEASE_CHECK_FAILED"]),
+          "OPENSANDBOX_PRODUCTION_ISOLATION_REQUIRED",
+          "SBOM_CVE_LICENSE_ATTESTATION_REQUIRED",
+          "PER_SKILL_PROMOTION_REVIEW_REQUIRED",
+        ],
         suite: probe.suite,
         checks,
         failed_checks: failedChecks,
@@ -182,7 +206,7 @@ if (process.argv.includes("--deterministic-analysis")) {
       2,
     )}\n`,
   );
-  process.exit(shadowDecision === "SHADOW_READY" ? 0 : 2);
+  process.exit(2);
 }
 
 // ---------------------------------------------------------------------------

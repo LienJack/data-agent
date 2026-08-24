@@ -5,6 +5,7 @@ import {
   type DerivedAnalysisEvidencePayload,
   sha256ContentHash,
 } from "@data-agent/contracts";
+import { analysisResultContractFixture } from "@data-agent/contracts/testing";
 import { describe, expect, it } from "vitest";
 import { projectArtifactDocument } from "../../src/artifacts/artifact-workspace-service.js";
 import {
@@ -54,10 +55,13 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
         },
         comparison_window: null,
         parameters: {},
-        execution_mode: "FROZEN_TEMPLATE",
-        generated_source_policy: "NO_GENERATED_SOURCE",
+        execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "OPEN_ANALYSIS",
         operator_obligations: [],
-        output_contract: null,
+        result_contract: analysisResultContractFixture({
+          semantic_context_hash: hash("0"),
+          contract_id: "trend.result",
+        }),
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
         criticality: "CRITICAL",
@@ -78,18 +82,18 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
   const planRef = ref("AnalysisProgram", 5, await sha256ContentHash(plan));
   const evidence: DerivedAnalysisEvidencePayload = {
     artifact_type: "DerivedAnalysisEvidence",
-    protocol_version: "derived-analysis-evidence@1.0.0",
+    protocol_version: "derived-analysis-evidence@2.0.0",
     analysis_program_ref: planRef,
     node_id: "trend",
     skill_id: "trend-change@1",
     algorithm_version: "trend-v1",
     query_evidence_refs: [ref("QueryEvidence", 6)],
-    sandbox_program_ref: ref("SandboxProgram", 7),
     sandbox_execution_receipt_ref: ref("SandboxExecutionReceipt", 8),
     sandbox_result_refs: [ref("SandboxResult", 9)],
-    runtime_digest: hash("c"),
-    dependency_lock_digest: hash("d"),
-    generated_source_policy: "NO_GENERATED_SOURCE",
+    runtime_profile: "CORE_ANALYSIS",
+    agent_image: "data-agent-opensandbox-agent-core@sha256:test",
+    operator_image: "data-agent-opensandbox-operator@sha256:test",
+    generated_source_policy: "OPEN_ANALYSIS",
     operator_registry_digest: plan.operator_registry_digest,
     operator_obligations: [],
     operator_receipt_closure_hash: hash("2"),
@@ -142,6 +146,7 @@ async function fixture(result?: DerivedAnalysisEvidencePayload["result"]) {
     ],
     budget_usage: {
       steps: 1,
+      model_calls: 3,
       sql_executions: 1,
       sandbox_executions: 1,
       series_rows: 2,

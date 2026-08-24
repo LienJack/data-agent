@@ -9,10 +9,7 @@ import {
 } from "../scripts/generate-statistical-operator-contracts.js";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
-const manifestPath = resolve(
-  repositoryRoot,
-  "services/sandbox/src/data_agent_sandbox/python_runtime/operators/manifest.json",
-);
+const manifestPath = resolve(repositoryRoot, "services/sandbox/src/data_agent_stats/manifest.json");
 const generatedPath = resolve(
   repositoryRoot,
   "packages/contracts/src/generated/statistical-operators.ts",

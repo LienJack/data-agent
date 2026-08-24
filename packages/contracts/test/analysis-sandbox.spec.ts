@@ -1,0 +1,107 @@
+import { describe, expect, it } from "vitest";
+import { analysisSandboxExecutionReceiptSchema } from "../src/ports/analysis-sandbox.js";
+
+describe("analysis sandbox receipt", () => {
+  it("rejects a receipt that reuses one sandbox for Agent and governed operators", () => {
+    const parsed = analysisSandboxExecutionReceiptSchema.safeParse({
+      schema_version: "analysis-sandbox-execution-receipt@1.0.0",
+      workspace_id: "00000000-0000-4000-8000-000000000001",
+      run_id: "00000000-0000-4000-8000-000000000002",
+      attempt_id: "00000000-0000-4000-8000-000000000003",
+      worker_fence: 1,
+      fence_token: "attempt:1",
+      idempotency_key: "analysis:test",
+      request_hash: `sha256:${"1".repeat(64)}`,
+      analysis_program_ref: {
+        artifact_id: "00000000-0000-4000-8000-000000000004",
+        artifact_type: "AnalysisProgram",
+        app_id: "00000000-0000-4000-8000-000000000005",
+        tenant_id: "00000000-0000-4000-8000-000000000001",
+        environment: "test",
+        run_id: "00000000-0000-4000-8000-000000000002",
+        revision: 1,
+        content_hash: `sha256:${"2".repeat(64)}`,
+      },
+      node_id: "node",
+      runtime_profile: "CORE_ANALYSIS",
+      runtime: {
+        provider: "OpenSandbox",
+        opensandbox_sdk_version: "0.1.11",
+        code_interpreter_sdk_version: "0.1.3",
+        agent_image: "agent@sha256:one",
+        operator_image: "operator@sha256:two",
+        agent_sandbox_id: "00000000-0000-4000-8000-000000000006",
+        operator_sandbox_id: "00000000-0000-4000-8000-000000000006",
+      },
+      generated_source_policy: "OPEN_ANALYSIS",
+      operator_registry_digest: `sha256:${"3".repeat(64)}`,
+      operator_obligations: [],
+      operator_receipts: [],
+      operator_receipt_closure_hash: `sha256:${"4".repeat(64)}`,
+      inputs: [
+        {
+          name: "input",
+          format: "ARROW",
+          query_evidence_ref: {
+            artifact_id: "00000000-0000-4000-8000-000000000007",
+            artifact_type: "QueryEvidence",
+            app_id: "00000000-0000-4000-8000-000000000005",
+            tenant_id: "00000000-0000-4000-8000-000000000001",
+            environment: "test",
+            run_id: "00000000-0000-4000-8000-000000000002",
+            revision: 1,
+            content_hash: `sha256:${"7".repeat(64)}`,
+          },
+          input_ref: {
+            artifact_id: "00000000-0000-4000-8000-000000000008",
+            artifact_type: "SensitiveExecutionArtifact",
+            app_id: "00000000-0000-4000-8000-000000000005",
+            tenant_id: "00000000-0000-4000-8000-000000000001",
+            environment: "test",
+            run_id: "00000000-0000-4000-8000-000000000002",
+            revision: 1,
+            content_hash: `sha256:${"8".repeat(64)}`,
+          },
+          materialization_receipt_ref: {
+            artifact_id: "00000000-0000-4000-8000-000000000009",
+            artifact_type: "AnalysisInputMaterializationReceipt",
+            app_id: "00000000-0000-4000-8000-000000000005",
+            tenant_id: "00000000-0000-4000-8000-000000000001",
+            environment: "test",
+            run_id: "00000000-0000-4000-8000-000000000002",
+            revision: 1,
+            content_hash: `sha256:${"9".repeat(64)}`,
+          },
+          content_sha256: `sha256:${"8".repeat(64)}`,
+          bytes: 1,
+        },
+      ],
+      cells: [
+        {
+          cell_id: "cell",
+          source_sha256: `sha256:${"5".repeat(64)}`,
+          execution_id: null,
+          execution_count: 1,
+          elapsed_ms: 1,
+          status: "SUCCEEDED",
+          output_names: ["result"],
+        },
+      ],
+      started_at: "2026-08-24T00:00:00.000Z",
+      finished_at: "2026-08-24T00:00:01.000Z",
+      elapsed_ms: 1_000,
+      hard_controls: {
+        network_isolated: true,
+        scoped_filesystem: true,
+        separate_operator_sandbox: true,
+        resource_limits_enforced: true,
+        secure_access: false,
+      },
+      status: "SUCCEEDED",
+      failure_code: null,
+      outputs: [],
+      execution_hash: `sha256:${"6".repeat(64)}`,
+    });
+    expect(parsed.success).toBe(false);
+  });
+});

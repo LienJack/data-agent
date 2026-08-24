@@ -65,7 +65,6 @@ export const SYSTEM_ARTIFACT_TYPES = [
   "ProviderResponseArtifact",
   "ProviderStaleMarkerRecoveryReceipt",
   "ExternalAgentAuditReceipt",
-  "SandboxProgram",
   "ResourceAdmissionReceipt",
   "FixtureMutationRecord",
   "MetamorphicFixtureReceipt",

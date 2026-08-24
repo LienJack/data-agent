@@ -7,9 +7,14 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
+import {
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+  statisticalOperatorCallReceiptSchema,
+  statisticalOperatorIdSchema,
+} from "../generated/statistical-operators.js";
 
-export const FALCON24_AGENT_ANALYSIS_SUITE_VERSION = "falcon24-agent-analysis-suite@2.0.0" as const;
-export const FALCON24_AGENT_ANALYSIS_GATE_VERSION = "falcon24-agent-analysis-gate@2.0.0" as const;
+export const FALCON24_AGENT_ANALYSIS_SUITE_VERSION = "falcon24-agent-analysis-suite@3.0.0" as const;
+export const FALCON24_AGENT_ANALYSIS_GATE_VERSION = "falcon24-agent-analysis-gate@3.0.0" as const;
 export const FALCON24_DEEPSEEK_MODEL = "deepseek-v4-flash" as const;
 
 export const falcon24AnalysisCaseIdSchema = z.enum([
@@ -41,6 +46,21 @@ export const falcon24AgentAnalysisCaseSchema = z.strictObject({
   question: z.string().trim().min(1).max(8_000),
   required_semantic_keys: z.array(z.string().trim().min(1).max(512)).min(1).max(256),
   required_methods: canonicalMethodsSchema,
+  required_operator_calls: z
+    .array(
+      z.strictObject({
+        call_id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u),
+        operator_id: statisticalOperatorIdSchema,
+      }),
+    )
+    .min(1)
+    .max(32)
+    .superRefine((calls, context) => {
+      const callIds = calls.map(({ call_id: callId }) => callId);
+      if (new Set(callIds).size !== callIds.length) {
+        context.addIssue({ code: "custom", message: "Operator call IDs must be unique." });
+      }
+    }),
   required_disclosures: z.array(versionIdentifierSchema).max(32),
   required_quality_findings: z.array(versionIdentifierSchema).max(32),
   expected_terminal: z.enum(["PASS", "HOLD_WITH_SENSITIVITY"]),
@@ -76,25 +96,55 @@ const falcon24MethodReceiptSchema = z.strictObject({
   method_id: versionIdentifierSchema,
   status: z.literal("PASS"),
   evidence_hash: contentHashSchema,
+  operator_call_ids: z.array(z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/u)).max(32),
 });
 
-export const falcon24AnalysisOracleReceiptSchema = z.strictObject({
-  schema_version: z.literal("falcon24-analysis-oracle@3.0.0"),
-  oracle_kind: z.literal("ARROW_INPUT_RECOMPUTE"),
-  case_id: falcon24AnalysisCaseIdSchema,
-  verdict: z.literal("PASS"),
-  input_hash: contentHashSchema,
-  input_materialization_receipt_hash: contentHashSchema,
-  query_evidence_hash: contentHashSchema,
-  output_hash: contentHashSchema,
-  chart_dataset_hash: contentHashSchema,
-  verification_hash: contentHashSchema,
-  method_receipts: z.array(falcon24MethodReceiptSchema).min(1).max(32),
-  disclosures: z.array(versionIdentifierSchema).max(32),
-  quality_findings: z.array(versionIdentifierSchema).max(32),
-  terminal: z.enum(["PASS", "HOLD_WITH_SENSITIVITY"]),
-  receipt_hash: contentHashSchema,
-});
+export const falcon24AnalysisOracleReceiptSchema = z
+  .strictObject({
+    schema_version: z.literal("falcon24-analysis-oracle@4.0.0"),
+    oracle_kind: z.literal("ARROW_INPUT_RECOMPUTE"),
+    case_id: falcon24AnalysisCaseIdSchema,
+    verdict: z.literal("PASS"),
+    input_hash: contentHashSchema,
+    input_materialization_receipt_hash: contentHashSchema,
+    query_evidence_hash: contentHashSchema,
+    output_hash: contentHashSchema,
+    chart_dataset_hash: contentHashSchema,
+    verification_hash: contentHashSchema,
+    operator_registry_digest: contentHashSchema,
+    operator_receipt_closure_hash: contentHashSchema,
+    operator_receipts: z.array(statisticalOperatorCallReceiptSchema).min(1).max(32),
+    method_receipts: z.array(falcon24MethodReceiptSchema).min(1).max(32),
+    disclosures: z.array(versionIdentifierSchema).max(32),
+    quality_findings: z.array(versionIdentifierSchema).max(32),
+    terminal: z.enum(["PASS", "HOLD_WITH_SENSITIVITY"]),
+    receipt_hash: contentHashSchema,
+  })
+  .superRefine((receipt, context) => {
+    const operatorCallIds = receipt.operator_receipts.map(({ call_id: callId }) => callId);
+    const methodIds = receipt.method_receipts.map(({ method_id: methodId }) => methodId);
+    const methodCallIds = [
+      ...new Set(receipt.method_receipts.flatMap(({ operator_call_ids: callIds }) => callIds)),
+    ].sort();
+    if (
+      new Set(operatorCallIds).size !== operatorCallIds.length ||
+      new Set(methodIds).size !== methodIds.length ||
+      receipt.method_receipts.some(
+        ({ operator_call_ids: callIds }) => new Set(callIds).size !== callIds.length,
+      ) ||
+      JSON.stringify(methodCallIds) !== JSON.stringify([...operatorCallIds].sort()) ||
+      receipt.operator_receipts.some(
+        ({ operator_registry_digest: registryDigest, applicability }) =>
+          registryDigest !== receipt.operator_registry_digest || applicability === "HOLD",
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Oracle receipt operator authority must close exactly without HOLD calls.",
+        path: ["operator_receipts"],
+      });
+    }
+  });
 
 export async function verifyFalcon24AnalysisOracleReceipt(input: unknown) {
   const receipt = falcon24AnalysisOracleReceiptSchema.parse(input);
@@ -107,7 +157,7 @@ export async function verifyFalcon24AnalysisOracleReceipt(input: unknown) {
 
 export const falcon24AgentAnalysisRunResultSchema = z
   .strictObject({
-    schema_version: z.literal("falcon24-agent-analysis-run@3.0.0"),
+    schema_version: z.literal("falcon24-agent-analysis-run@4.0.0"),
     case_id: falcon24AnalysisCaseIdSchema,
     run_id: immutableIdSchema,
     run_variant: z.enum(["COLD", "WARM"]),
@@ -193,8 +243,10 @@ const falcon24AgentAnalysisGateMaterialSchema = z.strictObject({
   case_count: z.literal(5),
   accepted_case_count: z.literal(5),
   generated_python_case_count: z.literal(5),
+  operator_closed_case_count: z.literal(5),
   charted_case_count: z.literal(5),
   run_count: z.literal(30),
+  operator_closed_run_count: z.literal(30),
   charted_run_count: z.literal(30),
   cold_repetitions: z.literal(3),
   warm_repetitions: z.literal(3),
@@ -242,11 +294,40 @@ export async function buildFalcon24AgentAnalysisGate(input: {
     ) {
       throw new TypeError("FALCON24_ANALYSIS_CHART_FLAKE");
     }
+    if (
+      new Set(caseRuns.map(({ oracle_receipt: receipt }) => receipt.operator_receipt_closure_hash))
+        .size !== 1
+    ) {
+      throw new TypeError("FALCON24_ANALYSIS_OPERATOR_FLAKE");
+    }
     for (const result of caseRuns) {
+      const expectedOperatorCalls = testCase.required_operator_calls;
+      const observedOperatorCalls = result.oracle_receipt.operator_receipts.map(
+        ({ call_id: callId, operator_id: operatorId }) => ({
+          call_id: callId,
+          operator_id: operatorId,
+        }),
+      );
+      const methodOperatorCallIds = [
+        ...new Set(
+          result.oracle_receipt.method_receipts.flatMap(
+            ({ operator_call_ids: operatorCallIds }) => operatorCallIds,
+          ),
+        ),
+      ].sort();
       if (
         result.oracle_receipt.case_id !== result.case_id ||
         result.oracle_receipt.output_hash !== result.answer_hash ||
         result.oracle_receipt.chart_dataset_hash !== result.chart_dataset_hash ||
+        result.oracle_receipt.operator_registry_digest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST ||
+        JSON.stringify(observedOperatorCalls) !== JSON.stringify(expectedOperatorCalls) ||
+        JSON.stringify(methodOperatorCallIds) !==
+          JSON.stringify(expectedOperatorCalls.map(({ call_id: callId }) => callId).sort()) ||
+        result.oracle_receipt.operator_receipts.some(
+          ({ operator_registry_digest: registryDigest, applicability }) =>
+            registryDigest !== result.oracle_receipt.operator_registry_digest ||
+            applicability === "HOLD",
+        ) ||
         result.oracle_receipt.method_receipts.some(
           ({ evidence_hash: evidenceHash }) =>
             evidenceHash !== result.oracle_receipt.verification_hash,
@@ -254,11 +335,9 @@ export async function buildFalcon24AgentAnalysisGate(input: {
       ) {
         throw new TypeError("FALCON24_ANALYSIS_ORACLE_BINDING_INVALID");
       }
-      const methodIds = [
-        ...new Set(
-          result.oracle_receipt.method_receipts.map(({ method_id: methodId }) => methodId),
-        ),
-      ].sort();
+      const methodIds = result.oracle_receipt.method_receipts.map(
+        ({ method_id: methodId }) => methodId,
+      );
       if (
         result.provider !== suite.model_provider ||
         result.model_id !== suite.model_id ||
@@ -289,8 +368,10 @@ export async function buildFalcon24AgentAnalysisGate(input: {
     case_count: 5,
     accepted_case_count: 5,
     generated_python_case_count: 5,
+    operator_closed_case_count: 5,
     charted_case_count: 5,
     run_count: 30,
+    operator_closed_run_count: 30,
     charted_run_count: 30,
     cold_repetitions: 3,
     warm_repetitions: 3,

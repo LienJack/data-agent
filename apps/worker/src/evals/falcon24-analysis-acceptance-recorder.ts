@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { ArtifactReference } from "@data-agent/contracts/artifacts";
+import { canonicalizeJson } from "@data-agent/contracts/common";
 import {
   type Falcon24AgentAnalysisCase,
   type Falcon24AgentAnalysisRunResult,
@@ -87,7 +88,7 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       single(recordInput.execution.oracle_receipts, "FALCON24_ANALYSIS_ORACLE_RECEIPT_REQUIRED"),
     );
     const result = falcon24AgentAnalysisRunResultSchema.parse({
-      schema_version: "falcon24-agent-analysis-run@3.0.0",
+      schema_version: "falcon24-agent-analysis-run@4.0.0",
       case_id: recordInput.test_case.case_id,
       run_id: runId,
       run_variant: metadata.run_variant,
@@ -125,12 +126,9 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       });
     const existing = current.find(({ run_id: existingRunId }) => existingRunId === runId);
     if (existing) {
-      if (
-        existing.case_id !== result.case_id ||
-        existing.run_variant !== result.run_variant ||
-        existing.repetition !== result.repetition ||
-        existing.answer_hash !== result.answer_hash
-      ) {
+      const { completed_at: _existingCompletedAt, ...existingReplay } = existing;
+      const { completed_at: _resultCompletedAt, ...resultReplay } = result;
+      if (canonicalizeJson(existingReplay) !== canonicalizeJson(resultReplay)) {
         throw new TypeError("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
       }
       return;

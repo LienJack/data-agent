@@ -1,9 +1,9 @@
 import {
   type AnalysisContext,
-  type AnalysisSandboxProgramPayload,
+  type AnalysisSandboxExecutionReceipt,
   type ArtifactReference,
   type AtomicClaimV3Payload,
-  analysisSandboxProgramPayloadSchema,
+  analysisSandboxExecutionReceiptSchema,
   artifactReferenceIdentity,
   atomicClaimV3PayloadSchema,
   type CausalAttributionAuthorityClosure,
@@ -23,7 +23,6 @@ import {
   sha256ContentHash,
   verifyAnalysisContext,
 } from "@data-agent/contracts";
-import { computeAnalysisSandboxProgramHash } from "./program-verifier.js";
 import { computeRootCauseCandidateHash, computeRootCauseReceiptHash } from "./root-cause.js";
 
 function exact(left: ArtifactReference, right: ArtifactReference) {
@@ -157,8 +156,9 @@ export async function createIdentificationPlan(input: {
   readonly receipt: RootCauseDiscoveryReceiptPayload;
   readonly receipt_ref: ArtifactReference;
   readonly estimator: IdentificationPlanPayload["estimator"];
-  readonly runtime_digest: `sha256:${string}`;
-  readonly dependency_lock_digest: `sha256:${string}`;
+  readonly runtime_profile: "CAUSAL_L5";
+  readonly agent_image: string;
+  readonly operator_image: string;
   readonly minimum_effective_sample_size?: number;
   readonly minimum_overlap?: number;
 }): Promise<IdentificationPlanPayload> {
@@ -212,8 +212,9 @@ export async function createIdentificationPlan(input: {
       schema_snapshot_ref: context.schema_snapshot_ref,
       policy_receipt_ref: context.policy_receipt_ref,
       analysis_context_hash: context.context_hash,
-      runtime_digest: input.runtime_digest,
-      dependency_lock_digest: input.dependency_lock_digest,
+      runtime_profile: input.runtime_profile,
+      agent_image: input.agent_image,
+      operator_image: input.operator_image,
     },
     dag_edges: policy.directed_edges,
     adjustment_set_object_ids: [...policy.adjustment_set_object_ids],
@@ -268,7 +269,7 @@ export async function createCausalEstimate(input: {
   readonly question_ref: ArtifactReference;
   readonly plan: IdentificationPlanPayload;
   readonly plan_ref: ArtifactReference;
-  readonly sandbox_program_ref: ArtifactReference;
+  readonly analysis_program_ref: ArtifactReference;
   readonly sandbox_execution_receipt_ref: ArtifactReference;
   readonly sandbox_result_refs: readonly ArtifactReference[];
   readonly computation: CausalEstimateComputation;
@@ -279,7 +280,7 @@ export async function createCausalEstimate(input: {
   if (
     input.question_ref.artifact_type !== "CausalQuestion" ||
     input.plan_ref.artifact_type !== "IdentificationPlan" ||
-    input.sandbox_program_ref.artifact_type !== "SandboxProgram" ||
+    input.analysis_program_ref.artifact_type !== "AnalysisProgram" ||
     input.sandbox_execution_receipt_ref.artifact_type !== "SandboxExecutionReceipt" ||
     input.sandbox_result_refs.length === 0 ||
     input.sandbox_result_refs.some(({ artifact_type }) => artifact_type !== "SandboxResult") ||
@@ -288,7 +289,7 @@ export async function createCausalEstimate(input: {
     !(await exactPayload(input.plan_ref, plan)) ||
     plan.plan_hash !== (await computeIdentificationPlanHash(planMaterial)) ||
     ![
-      input.sandbox_program_ref,
+      input.analysis_program_ref,
       input.sandbox_execution_receipt_ref,
       ...input.sandbox_result_refs,
     ].every((reference) => sameRun(reference, input.plan_ref))
@@ -300,7 +301,8 @@ export async function createCausalEstimate(input: {
     protocol_version: "causal-estimate@1.0.0",
     causal_question_ref: input.question_ref as CausalEstimatePayload["causal_question_ref"],
     identification_plan_ref: input.plan_ref as CausalEstimatePayload["identification_plan_ref"],
-    sandbox_program_ref: input.sandbox_program_ref as CausalEstimatePayload["sandbox_program_ref"],
+    analysis_program_ref:
+      input.analysis_program_ref as CausalEstimatePayload["analysis_program_ref"],
     sandbox_execution_receipt_ref:
       input.sandbox_execution_receipt_ref as CausalEstimatePayload["sandbox_execution_receipt_ref"],
     sandbox_result_refs: input.sandbox_result_refs as CausalEstimatePayload["sandbox_result_refs"],
@@ -340,48 +342,52 @@ export async function createIdentificationCertificate(input: {
   readonly plan_ref: ArtifactReference;
   readonly estimate: CausalEstimatePayload;
   readonly estimate_ref: ArtifactReference;
-  readonly receipt_ref: ArtifactReference;
-  readonly program: AnalysisSandboxProgramPayload;
+  readonly discovery_receipt_ref: ArtifactReference;
+  readonly sandbox_receipt: AnalysisSandboxExecutionReceipt;
+  readonly sandbox_receipt_ref: ArtifactReference;
   readonly authority: CausalAttributionAuthorityClosure;
 }): Promise<IdentificationCertificatePayload> {
   const context = await verifyAnalysisContext(input.context);
   const question = causalQuestionPayloadSchema.parse(input.question);
   const plan = identificationPlanPayloadSchema.parse(input.plan);
   const estimate = causalEstimatePayloadSchema.parse(input.estimate);
-  const program = analysisSandboxProgramPayloadSchema.parse(input.program);
+  const sandboxReceipt = analysisSandboxExecutionReceiptSchema.parse(input.sandbox_receipt);
   const authority = causalAttributionAuthorityClosureSchema.parse(input.authority);
   const { question_hash: _questionHash, ...questionMaterial } = question;
   const { plan_hash: _planHash, ...planMaterial } = plan;
   const { estimate_hash: _estimateHash, ...estimateMaterial } = estimate;
-  const { program_hash: _programHash, ...programMaterial } = program;
   const { closure_hash: _closureHash, ...authorityMaterial } = authority;
   const authorityHash = await computeAttributionAuthorityClosureHash(authorityMaterial);
   const safetyExpiresAt =
     Date.parse(authority.safety.determined_at) + authority.safety.ttl_seconds * 1_000;
   const inputClosurePass =
+    input.sandbox_receipt_ref.artifact_type === "SandboxExecutionReceipt" &&
     (await exactPayload(input.question_ref, question)) &&
     (await exactPayload(input.plan_ref, plan)) &&
     (await exactPayload(input.estimate_ref, estimate)) &&
     question.question_hash === (await computeCausalQuestionHash(questionMaterial)) &&
     plan.plan_hash === (await computeIdentificationPlanHash(planMaterial)) &&
     estimate.estimate_hash === (await computeCausalEstimateHash(estimateMaterial)) &&
-    program.program_hash === (await computeAnalysisSandboxProgramHash(programMaterial)) &&
     exact(plan.causal_question_ref, input.question_ref) &&
     exact(estimate.causal_question_ref, input.question_ref) &&
     exact(estimate.identification_plan_ref, input.plan_ref) &&
-    exact(plan.discovery_receipt_ref, input.receipt_ref) &&
-    sameRun(program.analysis_program_ref, input.plan_ref);
+    exact(plan.discovery_receipt_ref, input.discovery_receipt_ref) &&
+    exact(estimate.analysis_program_ref, sandboxReceipt.analysis_program_ref) &&
+    exact(estimate.sandbox_execution_receipt_ref, input.sandbox_receipt_ref) &&
+    (await exactPayload(input.sandbox_receipt_ref, sandboxReceipt)) &&
+    sameRun(sandboxReceipt.analysis_program_ref, input.plan_ref);
   const frontierPass =
     inputClosurePass &&
     plan.frontier.analysis_context_hash === context.context_hash &&
     exact(plan.frontier.semantic_release_ref, context.semantic_release_ref) &&
     exact(plan.frontier.schema_snapshot_ref, context.schema_snapshot_ref) &&
     exact(plan.frontier.policy_receipt_ref, context.policy_receipt_ref);
-  const programPass =
-    (await exactPayload(estimate.sandbox_program_ref, program)) &&
-    program.import_profile === "CAUSAL_L5" &&
-    program.runtime_digest === plan.frontier.runtime_digest &&
-    program.dependency_lock_digest === plan.frontier.dependency_lock_digest;
+  const runtimePass =
+    sandboxReceipt.status === "SUCCEEDED" &&
+    sandboxReceipt.runtime_profile === "CAUSAL_L5" &&
+    sandboxReceipt.runtime_profile === plan.frontier.runtime_profile &&
+    sandboxReceipt.runtime.agent_image === plan.frontier.agent_image &&
+    sandboxReceipt.runtime.operator_image === plan.frontier.operator_image;
   const refutationPass = estimate.refutations.every(({ verdict }) => verdict === "PASS");
   const dagPass =
     reachable(plan.dag_edges, question.treatment_object_id, question.outcome_metric_ref.node_id) &&
@@ -405,7 +411,7 @@ export async function createIdentificationCertificate(input: {
     ["SCHEMA_FRONTIER", frontierPass, context.schema_snapshot_ref.content_hash],
     ["SEMANTIC_FRONTIER", frontierPass, context.semantic_release_ref.content_hash],
     ["POLICY_FRONTIER", frontierPass, context.policy_receipt_ref.content_hash],
-    ["PROGRAM_RUNTIME_LOCK", programPass, estimate.sandbox_program_ref.content_hash],
+    ["ANALYSIS_RUNTIME", runtimePass, input.sandbox_receipt_ref.content_hash],
     ["DAG_ADJUSTMENT", dagPass, plan.plan_hash],
     ["DATA_SUFFICIENCY", dataPass, estimate.estimate_hash],
     ["OVERLAP_BALANCE", overlapPass, estimate.estimate_hash],
@@ -428,7 +434,7 @@ export async function createIdentificationCertificate(input: {
     ...(!dagPass ? (["ROOT_CAUSE_NOT_IDENTIFIABLE"] as const) : []),
     ...(!dataPass ? (["ROOT_CAUSE_NOT_IDENTIFIABLE"] as const) : []),
     ...(!overlapPass ? (["CAUSAL_OVERLAP_INSUFFICIENT"] as const) : []),
-    ...(!programPass ||
+    ...(!runtimePass ||
     !refutationPass ||
     !authorityPass ||
     !estimate.sensitivity.negative_control_passed ||
@@ -446,7 +452,7 @@ export async function createIdentificationCertificate(input: {
     causal_estimate_ref:
       input.estimate_ref as IdentificationCertificatePayload["causal_estimate_ref"],
     discovery_receipt_ref:
-      input.receipt_ref as IdentificationCertificatePayload["discovery_receipt_ref"],
+      input.discovery_receipt_ref as IdentificationCertificatePayload["discovery_receipt_ref"],
     frontier: plan.frontier,
     attribution_authority_hash: authorityHash,
     gates,
@@ -456,9 +462,9 @@ export async function createIdentificationCertificate(input: {
       semantic_release_hash: context.semantic_release_ref.content_hash,
       schema_snapshot_hash: context.schema_snapshot_ref.content_hash,
       policy_receipt_hash: context.policy_receipt_ref.content_hash,
-      program_hash: program.program_hash,
-      runtime_digest: plan.frontier.runtime_digest ?? context.context_hash,
-      dependency_lock_digest: plan.frontier.dependency_lock_digest ?? context.context_hash,
+      analysis_program_hash: sandboxReceipt.analysis_program_ref.content_hash,
+      agent_image_hash: await sha256ContentHash(sandboxReceipt.runtime.agent_image),
+      operator_image_hash: await sha256ContentHash(sandboxReceipt.runtime.operator_image),
     },
   } as const;
   return identificationCertificatePayloadSchema.parse({

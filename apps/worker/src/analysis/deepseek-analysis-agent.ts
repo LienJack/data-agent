@@ -18,6 +18,13 @@ export type AnalysisAgentModelTurnResult =
       readonly provider_invocation_ref: ProviderInvocationResourceRef;
     }
   | {
+      readonly phase: "INVALID_TOOL";
+      readonly error_code:
+        | "ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID"
+        | "ANALYSIS_AGENT_TOOL_CALL_INVALID";
+      readonly provider_invocation_ref: ProviderInvocationResourceRef;
+    }
+  | {
       readonly phase: "FINAL";
       readonly response: AnalysisAgentFinalResponse;
       readonly provider_invocation_ref: ProviderInvocationResourceRef;
@@ -30,6 +37,7 @@ export interface AnalysisAgentModelPort {
     readonly node_id: string;
     readonly turn_index: number;
     readonly phase: "TOOL" | "FINAL";
+    readonly allowed_tool_names: readonly AnalysisToolCallCandidate["tool_name"][];
     readonly messages: ModelProviderRequest["messages"];
     readonly max_output_tokens: number;
   }): Promise<AnalysisAgentModelTurnResult>;
@@ -74,6 +82,7 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
           node_id: input.node_id,
           turn_index: input.turn_index,
           phase: input.phase,
+          allowed_tool_names: input.allowed_tool_names,
           messages: input.messages,
           response_schema_version: "analysis-agent-final@1.0.0",
           max_output_tokens: input.max_output_tokens,
@@ -100,14 +109,26 @@ export function createRunBoundDeepSeekAnalysisAgentModel(
       };
       if (input.phase === "TOOL") {
         if (result.value.tool_calls.length !== 1) {
-          throw new TypeError("ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID");
+          return {
+            phase: "INVALID_TOOL" as const,
+            error_code: "ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID" as const,
+            provider_invocation_ref: providerInvocationRef,
+          };
         }
-        return {
-          phase: "TOOL" as const,
-          tool_call: toolCandidate(result.value.tool_calls[0]),
-          assistant_text: result.value.output_text,
-          provider_invocation_ref: providerInvocationRef,
-        };
+        try {
+          return {
+            phase: "TOOL" as const,
+            tool_call: toolCandidate(result.value.tool_calls[0]),
+            assistant_text: result.value.output_text,
+            provider_invocation_ref: providerInvocationRef,
+          };
+        } catch {
+          return {
+            phase: "INVALID_TOOL" as const,
+            error_code: "ANALYSIS_AGENT_TOOL_CALL_INVALID" as const,
+            provider_invocation_ref: providerInvocationRef,
+          };
+        }
       }
       if (result.value.tool_calls.length !== 0) {
         throw new TypeError("ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID");

@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST, sha256ContentHash } from "@data-agent/contracts";
 import {
   falcon24AgentAnalysisRunResultSchema,
   falcon24AnalysisOracleReceiptSchema,
@@ -71,7 +71,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
     const metadata = manifestRuns[0];
     if (!testCase || !metadata) throw new TypeError("acceptance fixture missing");
     const oracleMaterial = {
-      schema_version: "falcon24-analysis-oracle@3.0.0" as const,
+      schema_version: "falcon24-analysis-oracle@4.0.0" as const,
       oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
       case_id: testCase.case_id,
       verdict: "PASS" as const,
@@ -81,10 +81,33 @@ describe("Falcon24 analysis acceptance recorder", () => {
       output_hash: hash("4"),
       chart_dataset_hash: hash("6"),
       verification_hash: hash("5"),
+      operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+      operator_receipt_closure_hash: hash("7"),
+      operator_receipts: testCase.required_operator_calls.map(
+        ({ call_id: callId, operator_id: operatorId }) => ({
+          schema_version: "statistical-operator-call-receipt@1.0.0" as const,
+          call_id: callId,
+          operator_id: operatorId,
+          operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+          implementation_digest: hash("8"),
+          resolved_parameters: {},
+          resolved_parameters_hash: hash("9"),
+          input_hash: hash("a"),
+          output_hash: hash("b"),
+          result_binding_hash: hash("c"),
+          sample_size: 1,
+          group_count: 1,
+          family_size: null,
+          rank: null,
+          applicability: "PASS" as const,
+          limitation_codes: [],
+        }),
+      ),
       method_receipts: testCase.required_methods.map((methodId) => ({
         method_id: methodId,
         status: "PASS" as const,
         evidence_hash: hash("5"),
+        operator_call_ids: testCase.required_operator_calls.map(({ call_id: callId }) => callId),
       })),
       disclosures: [...testCase.required_disclosures],
       quality_findings: [...testCase.required_quality_findings],
@@ -133,6 +156,24 @@ describe("Falcon24 analysis acceptance recorder", () => {
       chart_dataset_hash: oracleReceipt.chart_dataset_hash,
       model_generated_node_count: 1,
     });
+
+    const changedOracleMaterial = {
+      ...oracleMaterial,
+      operator_receipt_closure_hash: hash("d"),
+    };
+    const changedOracleReceipt = falcon24AnalysisOracleReceiptSchema.parse({
+      ...changedOracleMaterial,
+      receipt_hash: await sha256ContentHash(changedOracleMaterial),
+    });
+    await expect(
+      recorder.record({
+        ...input,
+        execution: {
+          ...execution,
+          oracle_receipts: [changedOracleReceipt],
+        } as unknown as AnalysisExecutionResult,
+      }),
+    ).rejects.toThrow("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
   });
 
   it("fails closed when only one recorder path is configured", () => {

@@ -6,7 +6,6 @@ import {
 } from "@data-agent/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createResearchAnalysisArtifactPort } from "../../src/analysis/research-artifact-port.js";
-import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../../src/analysis/skill-catalog.js";
 
 const id = (suffix: number) => `33000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -29,7 +28,6 @@ function reference(
 }
 
 function program(): AnalysisProgramPayload {
-  const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("open-python-analysis@1");
   return analysisProgramPayloadSchema.parse({
     artifact_type: "AnalysisProgram",
     protocol_version: "analysis-program@1.0.0",
@@ -56,7 +54,68 @@ function program(): AnalysisProgramPayload {
         execution_mode: "MODEL_GENERATED",
         generated_source_policy: "OPEN_ANALYSIS",
         operator_obligations: [],
-        output_contract: descriptor.output_contract,
+        result_contract: {
+          schema_version: "analysis-result-contract@1.0.0",
+          contract_id: "falcon24-business-review-18m.result",
+          semantic_context_hash: hash("b"),
+          result_fields: [
+            { field: "result", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
+          ],
+          metric_bindings: [
+            {
+              semantic_metric_id: "order_revenue",
+              field: "result",
+              unit: null,
+              aggregation: "NONE",
+              formula_hash: null,
+            },
+          ],
+          dimension_bindings: [],
+          grain: { dimension_ids: [], time_dimension_id: null, time_grain: "NONE" },
+          lineage: [
+            {
+              field: "result",
+              source_semantic_object_ids: ["order_revenue"],
+              source_physical_fields: ["orders.order_total"],
+              transformation: "FORMULA",
+            },
+          ],
+          tables: [
+            {
+              table_id: "result_table",
+              title_zh: "分析结果",
+              required: true,
+              columns: [
+                {
+                  key: "value",
+                  label_zh: "结果",
+                  data_type: "STRING",
+                  nullable: false,
+                  semantic_object_id: "order_revenue",
+                  semantic_role: "DERIVED",
+                },
+              ],
+              max_rows: 1,
+            },
+          ],
+          charts: [
+            {
+              chart_id: "result_chart",
+              title_zh: "分析结果",
+              required: true,
+              intent: "COMPARISON",
+              table_id: "result_table",
+              allowed_template_ids: ["bar.grouped@1"],
+            },
+          ],
+          limits: {
+            max_result_bytes: 1_048_576,
+            max_table_rows: 1,
+            max_table_columns: 1,
+            max_closure_bytes: 4_194_304,
+          },
+          contract_hash: hash("d"),
+        },
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
         criticality: "CRITICAL",
@@ -151,7 +210,7 @@ describe("research analysis artifact port", () => {
   });
 
   it("commits system artifacts through the fenced PostgreSQL authority", async () => {
-    const systemRef = reference("SandboxProgram", 20);
+    const systemRef = reference("SandboxExecutionReceipt", 20);
     const commitAnalysisSystem = vi.fn(async () => ({
       ok: true as const,
       created: true,
@@ -174,12 +233,12 @@ describe("research analysis artifact port", () => {
         principal_id: lease.principal_id,
         idempotency_key: "analysis-program:falcon24:node",
         reference: systemRef,
-        payload: { artifact_type: "SandboxProgram" },
+        payload: { artifact_type: "SandboxExecutionReceipt" },
         content: null,
       }),
     ).resolves.toEqual(systemRef);
     expect(commitAnalysisSystem).toHaveBeenCalledWith(
-      { authority: "SandboxProgram" },
+      { authority: "SandboxExecutionReceipt" },
       expect.objectContaining({
         attempt_id: lease.attempt_id,
         worker_fence: lease.worker_fence,

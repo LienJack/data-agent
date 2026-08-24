@@ -15,4 +15,17 @@ describe("direct run-bound provider retry policy", () => {
       directRunBoundProviderDispatcherInternals.retryableReason("MODEL_PROVIDER_AUTH_FAILED"),
     ).toBe(false);
   });
+
+  it("fails closed unless a tool turn exposes a non-empty unique registered subset", () => {
+    const validate = directRunBoundProviderDispatcherInternals.validAnalysisToolAllowlist;
+    expect(validate("TOOL", ["python_cell"])).toBe(true);
+    expect(validate("TOOL", ["statistical_operator"])).toBe(true);
+    expect(validate("TOOL", ["publish_analysis_result"])).toBe(true);
+    expect(validate("TOOL", [])).toBe(false);
+    expect(validate("TOOL", ["python_cell", "statistical_operator"])).toBe(true);
+    expect(validate("TOOL", ["python_cell", "python_cell"])).toBe(false);
+    expect(validate("TOOL", ["unknown"])).toBe(false);
+    expect(validate("FINAL", [])).toBe(true);
+    expect(validate("FINAL", ["publish_analysis_result"])).toBe(false);
+  });
 });

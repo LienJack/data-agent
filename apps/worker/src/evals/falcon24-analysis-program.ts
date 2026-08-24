@@ -1,7 +1,9 @@
 import {
+  type AnalysisResultContract,
   type AnalysisProgramPayload,
   type ArtifactReference,
   analysisProgramPayloadSchema,
+  buildAnalysisResultContract,
   researchBriefRefSchema,
 } from "@data-agent/contracts/artifacts";
 import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
@@ -10,8 +12,8 @@ import {
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   type StatisticalOperatorObligation,
 } from "@data-agent/contracts/statistical-operators";
-import { computeAnalysisProgramHash } from "../analysis/default-program.js";
-import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../analysis/skill-catalog.js";
+import { computeAnalysisProgramHash } from "../analysis/analysis-program-hash.js";
+import { FALCON24_ANALYSIS_QUERY_SPECS } from "./falcon24-analysis-queries.js";
 
 const FALCON24_WINDOWS = Object.freeze({
   "falcon24-business-review-18m": {
@@ -112,6 +114,241 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
     claim_strength: "HOLD_WITH_SENSITIVITY",
   },
 } as const);
+
+type Falcon24CaseId = Falcon24AgentAnalysisCase["case_id"];
+type Falcon24TableColumn = AnalysisResultContract["tables"][number]["columns"][number];
+
+const tableColumn = (
+  key: string,
+  label_zh: string,
+  data_type: Falcon24TableColumn["data_type"],
+  semantic_role: Falcon24TableColumn["semantic_role"],
+  nullable = false,
+) => ({ key, label_zh, data_type, semantic_role, nullable });
+
+const FALCON24_PRESENTATION_CONTRACTS = Object.freeze({
+  "falcon24-business-review-18m": {
+    table_id: "business_monthly_kpis",
+    title_zh: "近18个月经营指标趋势",
+    columns: [
+      tableColumn("month", "月份", "STRING", "DIMENSION"),
+      tableColumn("revenue", "订单收入", "NUMBER", "METRIC"),
+      tableColumn("order_count", "订单量", "NUMBER", "METRIC"),
+      tableColumn("active_buyers", "购买人数", "NUMBER", "METRIC"),
+      tableColumn("orders_per_buyer", "人均购买频次", "NUMBER", "METRIC"),
+      tableColumn("average_order_value", "客单价", "NUMBER", "METRIC"),
+    ],
+    chart: {
+      chart_id: "business_kpi_trend",
+      title_zh: "经营指标月度趋势",
+      intent: "TREND" as const,
+      template_id: "line.multi-series@1" as const,
+    },
+  },
+  "falcon24-delivery-experience-12m": {
+    table_id: "delivery_period_comparison",
+    title_zh: "配送与低评分前后期对比",
+    columns: [
+      tableColumn("period", "期间", "STRING", "DIMENSION"),
+      tableColumn("average_delivery_minutes", "平均配送分钟", "NUMBER", "METRIC"),
+      tableColumn("p90_delivery_minutes", "P90配送分钟", "NUMBER", "METRIC"),
+      tableColumn("low_rating_rate", "低评分率", "NUMBER", "METRIC"),
+      tableColumn("order_revenue", "订单收入", "NUMBER", "METRIC"),
+    ],
+    chart: {
+      chart_id: "delivery_experience_comparison",
+      title_zh: "配送时效与低评分对比",
+      intent: "COMPARISON" as const,
+      template_id: "bar.grouped@1" as const,
+    },
+  },
+  "falcon24-inventory-damage-12m": {
+    table_id: "inventory_damage_priority",
+    title_zh: "高销量持续恶化商品排查优先级",
+    columns: [
+      tableColumn("product_id", "商品ID", "STRING", "DIMENSION"),
+      tableColumn("product_name", "商品", "STRING", "DIMENSION"),
+      tableColumn("category", "品类", "STRING", "DIMENSION"),
+      tableColumn("total_sales", "销量", "NUMBER", "METRIC"),
+      tableColumn("previous9_damage_rate", "前9月损坏率", "NUMBER", "METRIC"),
+      tableColumn("last3_damage_rate", "近3月损坏率", "NUMBER", "METRIC"),
+      tableColumn("theil_sen_slope", "Theil-Sen斜率", "NUMBER", "METRIC"),
+      tableColumn("adjusted_p_value", "FDR校正P值", "NUMBER", "METRIC"),
+      tableColumn("classification", "优先级", "STRING", "DERIVED"),
+    ],
+    chart: {
+      chart_id: "inventory_damage_priority_matrix",
+      title_zh: "库存损坏排查优先级矩阵",
+      intent: "PRIORITY" as const,
+      template_id: "matrix.priority@1" as const,
+    },
+  },
+  "falcon24-marketing-lag-effect": {
+    table_id: "marketing_lag_results",
+    title_zh: "渠道与人群投入滞后关联",
+    columns: [
+      tableColumn("channel", "渠道", "STRING", "DIMENSION"),
+      tableColumn("target_audience", "目标人群", "STRING", "DIMENSION"),
+      tableColumn("outcome", "业务结果", "STRING", "DIMENSION"),
+      tableColumn("lag", "滞后周数", "INTEGER", "DIMENSION"),
+      tableColumn("coefficient", "关联系数", "NUMBER", "METRIC"),
+      tableColumn("adjusted_p_value", "FDR校正P值", "NUMBER", "METRIC"),
+      tableColumn("spend_growth", "投入趋势", "STRING", "DERIVED"),
+    ],
+    chart: {
+      chart_id: "marketing_spend_business_relationship",
+      title_zh: "营销投入与后续业务增长关联",
+      intent: "RELATIONSHIP" as const,
+      template_id: "scatter.relationship@1" as const,
+    },
+  },
+  "falcon24-cohort-retention-m0-m6": {
+    table_id: "cohort_retention_m0_m6",
+    title_zh: "新客户批次M0-M6留存与体验",
+    columns: [
+      tableColumn("registration_cohort", "注册批次", "STRING", "DIMENSION"),
+      tableColumn("customer_segment", "客户类型", "STRING", "DIMENSION"),
+      tableColumn("month_index", "生命周期月", "INTEGER", "DIMENSION"),
+      tableColumn("retention_rate", "留存率", "NUMBER", "METRIC"),
+      tableColumn("repeat_purchase_rate", "复购率", "NUMBER", "METRIC"),
+      tableColumn("average_spend", "人均消费", "NUMBER", "METRIC"),
+      tableColumn("average_delivery_minutes", "平均配送分钟", "NUMBER", "METRIC", true),
+      tableColumn("average_rating", "平均评分", "NUMBER", "METRIC", true),
+      tableColumn("analysis_mode", "分析口径", "STRING", "DERIVED"),
+    ],
+    chart: {
+      chart_id: "cohort_retention_curve",
+      title_zh: "不同注册批次M0-M6留存曲线",
+      intent: "RETENTION" as const,
+      template_id: "cohort.retention@1" as const,
+    },
+  },
+} satisfies Record<
+  Falcon24CaseId,
+  {
+    readonly table_id: string;
+    readonly title_zh: string;
+    readonly columns: readonly Omit<Falcon24TableColumn, "semantic_object_id">[];
+    readonly chart: {
+      readonly chart_id: string;
+      readonly title_zh: string;
+      readonly intent: AnalysisResultContract["charts"][number]["intent"];
+      readonly template_id: AnalysisResultContract["charts"][number]["allowed_template_ids"][number];
+    };
+  }
+>);
+
+function matchingDimensions(
+  testCase: Falcon24AgentAnalysisCase,
+  metrics: readonly Awaited<ReturnType<typeof verifyAnalysisContext>>["metrics"][number][],
+): readonly string[] {
+  const authorized = new Set(
+    metrics.flatMap(({ allowed_dimensions }) =>
+      allowed_dimensions.filter(({ groupable }) => groupable).map(({ dimension_id }) => dimension_id),
+    ),
+  );
+  return testCase.required_semantic_keys
+    .filter((key) => key.startsWith("dimension."))
+    .map((key) => [key, key.slice("dimension.".length)])
+    .flatMap((candidates) => candidates.find((candidate) => authorized.has(candidate)) ?? [])
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .sort();
+}
+
+async function compileFalcon24ResultContract(input: {
+  readonly test_case: Falcon24AgentAnalysisCase;
+  readonly semantic_context_hash: `sha256:${string}`;
+  readonly metrics: readonly Awaited<ReturnType<typeof verifyAnalysisContext>>["metrics"][number][];
+  readonly dimension_ids: readonly string[];
+}): Promise<AnalysisResultContract> {
+  const resultShape = FALCON24_RESULT_CONTRACTS[input.test_case.case_id];
+  const presentation = FALCON24_PRESENTATION_CONTRACTS[input.test_case.case_id];
+  const query = FALCON24_ANALYSIS_QUERY_SPECS[input.test_case.case_id];
+  const datasetField = resultShape.required_fields.find((field) =>
+    /(?:monthly_kpis|six_vs_six|products|channel_audience_results|cohorts)/u.test(field),
+  );
+  if (!datasetField) throw new TypeError("FALCON24_RESULT_DATASET_FIELD_MISSING");
+  const semanticSources = [
+    ...input.metrics.map(({ metric_ref }) => metric_ref.node_id),
+    ...input.dimension_ids,
+  ];
+  const physicalSources = query.columns.map(({ name }) => `${query.input_name}.${name}`);
+  const resultFields = resultShape.required_fields.map((field) => ({
+    field,
+    data_type: "JSON" as const,
+    nullable: false,
+    semantic_role: "DERIVED" as const,
+  }));
+  const timeDimension = input.dimension_ids.find((id) => /(?:month|week|cohort|date)/u.test(id)) ?? null;
+  const timeGrain = timeDimension
+    ? input.test_case.case_id === "falcon24-marketing-lag-effect"
+      ? ("WEEK" as const)
+      : ("MONTH" as const)
+    : ("NONE" as const);
+  const fallbackSemanticId = input.metrics[0]?.metric_ref.node_id;
+  if (!fallbackSemanticId) throw new TypeError("FALCON24_RESULT_METRIC_MISSING");
+  return buildAnalysisResultContract({
+    schema_version: "analysis-result-contract@1.0.0",
+    contract_id: `${input.test_case.case_id}.result`,
+    semantic_context_hash: input.semantic_context_hash,
+    result_fields: resultFields,
+    metric_bindings: input.metrics.map((metric) => ({
+      semantic_metric_id: metric.metric_ref.node_id,
+      field: datasetField,
+      unit: metric.unit?.unit_id ?? query.semantic_contract.unit,
+      aggregation: "NONE",
+      formula_hash: metric.formula_hash,
+    })),
+    dimension_bindings: input.dimension_ids.map((semantic_dimension_id) => ({
+      semantic_dimension_id,
+      field: datasetField,
+    })),
+    grain: {
+      dimension_ids: [...input.dimension_ids],
+      time_dimension_id: timeDimension,
+      time_grain: timeGrain,
+    },
+    lineage: resultFields.map(({ field }) => ({
+      field,
+      source_semantic_object_ids: semanticSources,
+      source_physical_fields: physicalSources,
+      transformation: "FORMULA" as const,
+    })),
+    tables: [
+      {
+        table_id: presentation.table_id,
+        title_zh: presentation.title_zh,
+        required: true,
+        columns: presentation.columns.map((column) => ({
+          ...column,
+          semantic_object_id:
+            column.semantic_role === "DIMENSION"
+              ? (input.dimension_ids.find((id) =>
+                  id.includes(column.key.replace(/^(?:customer_|target_)/u, "")),
+                ) ?? fallbackSemanticId)
+              : fallbackSemanticId,
+        })),
+        max_rows: 5_000,
+      },
+    ],
+    charts: [
+      {
+        chart_id: presentation.chart.chart_id,
+        title_zh: presentation.chart.title_zh,
+        required: true,
+        intent: presentation.chart.intent,
+        table_id: presentation.table_id,
+        allowed_template_ids: [presentation.chart.template_id],
+      },
+    ],
+    limits: {
+      max_result_bytes: 16 * 1024 * 1024,
+      max_table_rows: 5_000,
+      max_table_columns: 128,
+      max_closure_bytes: 64 * 1024 * 1024,
+    },
+  });
+}
 
 const exactBinding = (field: string) => ({
   result_field: field,
@@ -294,19 +531,25 @@ export async function createFalcon24AnalysisProgram(input: {
     return metric;
   });
   if (metrics.length === 0) throw new TypeError("FALCON24_ANALYSIS_METRICS_EMPTY");
-  const requiredDimensions = input.test_case.required_semantic_keys.filter((key) =>
-    key.startsWith("dimension."),
-  );
-  const dimensionRefs = requiredDimensions.filter((dimensionId) =>
-    metrics.every((metric) =>
-      metric.allowed_dimensions.some(
-        (dimension) => dimension.dimension_id === dimensionId && dimension.groupable,
-      ),
-    ),
-  );
-  const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("open-python-analysis@1");
-  const resultContract = FALCON24_RESULT_CONTRACTS[input.test_case.case_id];
+  const dimensionRefs = matchingDimensions(input.test_case, metrics);
+  const resultShape = FALCON24_RESULT_CONTRACTS[input.test_case.case_id];
+  const resultContract = await compileFalcon24ResultContract({
+    test_case: input.test_case,
+    semantic_context_hash: context.semantic_context_binding.package_hash as `sha256:${string}`,
+    metrics,
+    dimension_ids: dimensionRefs,
+  });
   const operatorObligations = FALCON24_OPERATOR_OBLIGATIONS[input.test_case.case_id];
+  if (
+    JSON.stringify(
+      operatorObligations.map(({ call_id: callId, operator_id: operatorId }) => ({
+        call_id: callId,
+        operator_id: operatorId,
+      })),
+    ) !== JSON.stringify(input.test_case.required_operator_calls)
+  ) {
+    throw new TypeError("FALCON24_ANALYSIS_OPERATOR_REQUIREMENT_MISMATCH");
+  }
   const material: Omit<AnalysisProgramPayload, "program_hash"> = {
     artifact_type: "AnalysisProgram",
     protocol_version: "analysis-program@1.0.0",
@@ -319,7 +562,7 @@ export async function createFalcon24AnalysisProgram(input: {
         node_id: input.test_case.case_id,
         skill_id: "open-python-analysis@1",
         metric_refs: metrics.map(({ metric_ref: metricRef }) => metricRef),
-        dimension_refs: dimensionRefs,
+        dimension_refs: [...dimensionRefs],
         time_window: FALCON24_WINDOWS[input.test_case.case_id],
         comparison_window: null,
         parameters: {
@@ -327,14 +570,14 @@ export async function createFalcon24AnalysisProgram(input: {
           acceptance_case_id: input.test_case.case_id,
           question: input.test_case.question,
           required_methods: [...input.test_case.required_methods],
-          result_schema_version: resultContract.schema_version,
-          required_output_fields: [...resultContract.required_fields],
-          claim_strength: resultContract.claim_strength,
+          result_schema_version: resultShape.schema_version,
+          required_output_fields: [...resultShape.required_fields],
+          claim_strength: resultShape.claim_strength,
         },
         execution_mode: "MODEL_GENERATED",
         generated_source_policy: "GOVERNED_OPERATOR_ORCHESTRATION",
         operator_obligations: operatorObligations,
-        output_contract: descriptor.output_contract,
+        result_contract: resultContract,
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
         criticality: "CRITICAL",
@@ -346,7 +589,7 @@ export async function createFalcon24AnalysisProgram(input: {
       max_sandbox_executions: 1,
       max_series_rows: 5_000,
       max_group_rows: 5_000,
-      max_elapsed_ms: 120_000,
+      max_elapsed_ms: 300_000,
     },
     compiler_kind: "MODEL_CANDIDATE_HOST_VERIFIED",
     compiler_version: "falcon24-agent-analysis-compiler@1.0.0",
@@ -362,4 +605,5 @@ export const falcon24AnalysisProgramInternals = Object.freeze({
   operator_obligations: FALCON24_OPERATOR_OBLIGATIONS,
   windows: FALCON24_WINDOWS,
   result_contracts: FALCON24_RESULT_CONTRACTS,
+  presentation_contracts: FALCON24_PRESENTATION_CONTRACTS,
 });

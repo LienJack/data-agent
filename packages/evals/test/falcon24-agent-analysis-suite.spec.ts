@@ -1,6 +1,7 @@
-import { sha256ContentHash } from "@data-agent/contracts";
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST, sha256ContentHash } from "@data-agent/contracts";
 import {
   buildFalcon24AgentAnalysisGate,
+  type Falcon24AgentAnalysisCase,
   falcon24AgentAnalysisRunResultSchema,
 } from "@data-agent/contracts/evals";
 import { describe, expect, it } from "vitest";
@@ -31,6 +32,27 @@ function artifact(
     revision: 1,
     content_hash: hash((suffix % 10).toString()),
   } as const;
+}
+
+function operatorReceipts(testCase: Pick<Falcon24AgentAnalysisCase, "required_operator_calls">) {
+  return testCase.required_operator_calls.map(({ call_id: callId, operator_id: operatorId }) => ({
+    schema_version: "statistical-operator-call-receipt@1.0.0" as const,
+    call_id: callId,
+    operator_id: operatorId,
+    operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+    implementation_digest: hash("d"),
+    resolved_parameters: {},
+    resolved_parameters_hash: hash("e"),
+    input_hash: hash("f"),
+    output_hash: hash("1"),
+    result_binding_hash: hash("2"),
+    sample_size: 1,
+    group_count: 1,
+    family_size: null,
+    rank: null,
+    applicability: "PASS" as const,
+    limitation_codes: [],
+  }));
 }
 
 describe("Falcon24 agent analysis acceptance", () => {
@@ -66,8 +88,11 @@ describe("Falcon24 agent analysis acceptance", () => {
             runSuffix += 1;
             const runId = id(runSuffix);
             const verificationHash = hash(((caseIndex + 6) % 10).toString());
+            const operatorCallIds = testCase.required_operator_calls.map(
+              ({ call_id: callId }) => callId,
+            );
             const oracleMaterial = {
-              schema_version: "falcon24-analysis-oracle@3.0.0" as const,
+              schema_version: "falcon24-analysis-oracle@4.0.0" as const,
               oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
               case_id: testCase.case_id,
               verdict: "PASS" as const,
@@ -77,17 +102,21 @@ describe("Falcon24 agent analysis acceptance", () => {
               output_hash: hash((caseIndex + 1).toString()),
               chart_dataset_hash: hash((caseIndex + 2).toString()),
               verification_hash: verificationHash,
+              operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+              operator_receipt_closure_hash: hash("4"),
+              operator_receipts: operatorReceipts(testCase),
               method_receipts: testCase.required_methods.map((methodId) => ({
                 method_id: methodId,
                 status: "PASS" as const,
                 evidence_hash: verificationHash,
+                operator_call_ids: operatorCallIds,
               })),
               disclosures: testCase.required_disclosures,
               quality_findings: testCase.required_quality_findings,
               terminal: testCase.expected_terminal,
             };
             return falcon24AgentAnalysisRunResultSchema.parse({
-              schema_version: "falcon24-agent-analysis-run@3.0.0",
+              schema_version: "falcon24-agent-analysis-run@4.0.0",
               case_id: testCase.case_id,
               run_id: runId,
               run_variant: runVariant,
@@ -136,8 +165,10 @@ describe("Falcon24 agent analysis acceptance", () => {
       result: "GO",
       case_count: 5,
       generated_python_case_count: 5,
+      operator_closed_case_count: 5,
       charted_case_count: 5,
       run_count: 30,
+      operator_closed_run_count: 30,
       charted_run_count: 30,
       flake_count: 0,
     });
@@ -177,11 +208,99 @@ describe("Falcon24 agent analysis acceptance", () => {
         completed_at: completedAt,
       }),
     ).rejects.toThrow("FALCON24_ANALYSIS_CHART_FLAKE");
+
+    const operatorFlaky = await Promise.all(
+      results.map(async (result, index) => {
+        if (index !== 0) return result;
+        const { receipt_hash: _receiptHash, ...receiptMaterial } = result.oracle_receipt;
+        const changedReceiptMaterial = {
+          ...receiptMaterial,
+          operator_receipt_closure_hash: hash("e"),
+        };
+        return {
+          ...result,
+          oracle_receipt: {
+            ...changedReceiptMaterial,
+            receipt_hash: await sha256ContentHash(changedReceiptMaterial),
+          },
+        };
+      }),
+    );
+    await expect(
+      buildFalcon24AgentAnalysisGate({
+        gate_id: id(995),
+        suite,
+        results: operatorFlaky,
+        completed_at: completedAt,
+      }),
+    ).rejects.toThrow("FALCON24_ANALYSIS_OPERATOR_FLAKE");
+
+    const operatorTampered = await Promise.all(
+      results.map(async (result, index) => {
+        if (index !== 0) return result;
+        const { receipt_hash: _receiptHash, ...receiptMaterial } = result.oracle_receipt;
+        const firstReceipt = receiptMaterial.operator_receipts[0];
+        if (!firstReceipt) throw new TypeError("operator receipt fixture missing");
+        const changedReceiptMaterial = {
+          ...receiptMaterial,
+          operator_receipts: [
+            { ...firstReceipt, operator_id: "multiple-testing.bh-fdr@1" as const },
+            ...receiptMaterial.operator_receipts.slice(1),
+          ],
+        };
+        return {
+          ...result,
+          oracle_receipt: {
+            ...changedReceiptMaterial,
+            receipt_hash: await sha256ContentHash(changedReceiptMaterial),
+          },
+        };
+      }),
+    );
+    await expect(
+      buildFalcon24AgentAnalysisGate({
+        gate_id: id(996),
+        suite,
+        results: operatorTampered,
+        completed_at: completedAt,
+      }),
+    ).rejects.toThrow("FALCON24_ANALYSIS_ORACLE_BINDING_INVALID");
+
+    const registryTampered = await Promise.all(
+      results.map(async (result, index) => {
+        if (index !== 0) return result;
+        const { receipt_hash: _receiptHash, ...receiptMaterial } = result.oracle_receipt;
+        const operatorRegistryDigest = hash("0");
+        const changedReceiptMaterial = {
+          ...receiptMaterial,
+          operator_registry_digest: operatorRegistryDigest,
+          operator_receipts: receiptMaterial.operator_receipts.map((operatorReceipt) => ({
+            ...operatorReceipt,
+            operator_registry_digest: operatorRegistryDigest,
+          })),
+        };
+        return {
+          ...result,
+          oracle_receipt: {
+            ...changedReceiptMaterial,
+            receipt_hash: await sha256ContentHash(changedReceiptMaterial),
+          },
+        };
+      }),
+    );
+    await expect(
+      buildFalcon24AgentAnalysisGate({
+        gate_id: id(994),
+        suite,
+        results: registryTampered,
+        completed_at: completedAt,
+      }),
+    ).rejects.toThrow("FALCON24_ANALYSIS_ORACLE_BINDING_INVALID");
   });
 
   it("rejects model override or missing generated Python before gate evaluation", () => {
     const base = {
-      schema_version: "falcon24-agent-analysis-run@3.0.0",
+      schema_version: "falcon24-agent-analysis-run@4.0.0",
       case_id: "falcon24-business-review-18m",
       run_id: id(500),
       run_variant: "COLD",
@@ -204,7 +323,7 @@ describe("Falcon24 agent analysis acceptance", () => {
       sandbox_receipt_refs: [artifact("SandboxExecutionReceipt", id(500), 505)],
       model_generated_node_count: 1,
       oracle_receipt: {
-        schema_version: "falcon24-analysis-oracle@3.0.0",
+        schema_version: "falcon24-analysis-oracle@4.0.0",
         oracle_kind: "ARROW_INPUT_RECOMPUTE",
         case_id: "falcon24-business-review-18m",
         verdict: "PASS",
@@ -214,8 +333,23 @@ describe("Falcon24 agent analysis acceptance", () => {
         output_hash: hash("3"),
         chart_dataset_hash: hash("6"),
         verification_hash: hash("2"),
+        operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+        operator_receipt_closure_hash: hash("4"),
+        operator_receipts: operatorReceipts({
+          required_operator_calls: [
+            {
+              call_id: "q1_revenue_identity",
+              operator_id: "decomposition.product-shapley-exact@1",
+            },
+          ],
+        }),
         method_receipts: [
-          { method_id: "full-month-window", status: "PASS", evidence_hash: hash("2") },
+          {
+            method_id: "full-month-window",
+            status: "PASS",
+            evidence_hash: hash("2"),
+            operator_call_ids: ["q1_revenue_identity"],
+          },
         ],
         disclosures: [],
         quality_findings: [],
@@ -239,6 +373,18 @@ describe("Falcon24 agent analysis acceptance", () => {
         ...base,
         generated_python_refs: [],
         model_generated_node_count: 0,
+      }).success,
+    ).toBe(false);
+    expect(
+      falcon24AgentAnalysisRunResultSchema.safeParse({
+        ...base,
+        oracle_receipt: {
+          ...base.oracle_receipt,
+          method_receipts: [
+            ...base.oracle_receipt.method_receipts,
+            ...base.oracle_receipt.method_receipts,
+          ],
+        },
       }).success,
     ).toBe(false);
   });

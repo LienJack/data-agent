@@ -1,189 +1,177 @@
-# Python Sandbox 执行规范
+# OpenSandbox 状态化 Python 与治理结果回路
 
-> 状态：`IMPLEMENTED / HOLD`。独立 CPython runtime、严格 IPC、锁定依赖、治理统计算子 Registry 与三种 profile 的真实 hardened-container smoke 已落地；DeepSeek 算子编排、Worker server-owned tool 与端到端 Artifact/Oracle 链完成前不得标记为 `READY`。
+> 状态：`IMPLEMENTING / HOLD`。OpenSandbox 是唯一 Python 执行层；发布前必须完成 Governed Result Bridge、PostgreSQL Context Journal、durable stage、带 fence 的原子权威提交与零残留证明。
 
-## 场景：执行模型生成的 Python 数据分析源码
+## Scenario: 状态化 Python 编排治理算子并原子发布结果
 
-### 1. 范围 / 触发条件
+### 1. Scope / Trigger
 
-- 当 Agent 需要在 SQL 结果 Artifact 上执行 Python 数据处理、统计、可视化或报告生成时适用。
-- Node.js 继续拥有 Web、Worker、Run 调度和 Effect Authority；任意 Python 源码只能进入独立 `python-sandbox` 服务，不能在 Web、Worker、迁移、SQL Executor 或宿主进程中执行。
-- `python-sandbox` 是执行基础设施，不是数据库服务；不得持有 PostgreSQL、平台、对象存储或云凭证，也不得直接查询数据源。
+- Agent 在状态化 Python Context 中变换治理输入、编排唯一统计算子、生成结果/表格/图表符号时适用。
+- PostgreSQL 是算子结果账本、Context Journal、publish stage 与最终 visibility 的唯一权威；OpenSandbox Context、临时文件和模型消息都是可丢弃投影。
+- 保留 Agent/Operator 两个 OpenSandbox 角色，不引入 E2B、Daytona、Jupyter 或宿主 Python 兼容层。
+- 模型可以写 Python 和引用受控符号，但不能接收治理算子完整 output、sealed/temp path、DSN、凭据或 provider payload。
 
-### 2. 签名
+### 2. Signatures
 
 ```ts
-type PythonExecutionFailureCode =
-  | "PYTHON_POLICY_REJECTED"
-  | "PYTHON_TIMEOUT"
-  | "PYTHON_RESOURCE_LIMIT"
-  | "PYTHON_CANCELLED"
-  | "PYTHON_ERROR"
-  | "PYTHON_OUTPUT_INVALID"
-  | "PYTHON_SANDBOX_UNAVAILABLE";
+type AnalysisJournalEvent =
+  | "MODEL_CELL_COMMITTED"
+  | "OPERATOR_INTENT_COMMITTED"
+  | "OPERATOR_RESULT_COMMITTED"
+  | "SERVER_BINDING_COMMITTED"
+  | "CONTEXT_FROZEN"
+  | "PUBLISH_STAGE_CREATED"
+  | "ORACLE_VERIFIED"
+  | "EXPLANATION_BOUND"
+  | "AUTHORITY_COMMITTED"
+  | "CLEANUP_VERIFIED";
 
-interface PythonExecutionRequestV1 {
-  schema_version: "1.0.0";
-  workspace_id: string;
+interface GovernedOperatorResultRef {
+  schema_version: "governed-operator-result-ref@1.0.0";
+  scope: AppScope;
   run_id: string;
-  attempt: 0 | 1;
-  fence_token: string;
-  idempotency_key: string;
-  source_ref: ArtifactReference;
-  source_sha256: string;
-  entrypoint: "main";
-  input_refs: readonly ArtifactReference[];
-  output_contract: PythonOutputContractV1;
-  generated_source_policy:
-    | "NO_GENERATED_SOURCE"
-    | "OPEN_ANALYSIS"
-    | "GOVERNED_OPERATOR_ORCHESTRATION";
-  operator_registry_digest: `sha256:${string}`;
-  operator_obligations: readonly StatisticalOperatorObligation[];
-  runtime_digest: string;
-  dependency_lock_digest: string;
-  policy_version: string;
-  generated_source_policy: PythonExecutionRequestV1["generated_source_policy"];
-  operator_registry_digest: `sha256:${string}`;
-  operator_obligations: readonly StatisticalOperatorObligation[];
-  operator_receipts: readonly StatisticalOperatorCallReceipt[];
-  operator_receipt_closure_hash: `sha256:${string}` | null;
-  budgets: PythonExecutionBudgetsV1;
+  node_id: string;
+  attempt_id: string;
+  context_generation: number;
+  call_id: string;
+  operator_id: string;
+  request_sha256: Sha256;
+  result_artifact_ref: ArtifactReference;
+  result_sha256: Sha256;
+  shape: GovernedResultShapeSummary;
+  receipt_ref: ArtifactReference;
+  worker_fence: number;
 }
 
-interface PythonSandboxReceiptV1 {
-  schema_version: "1.0.0";
-  request_hash: string;
-  sandbox_image_digest: string;
-  python_version: string;
-  sdk_version: string;
-  dependency_lock_digest: string;
-  policy_version: string;
-  started_at: string;
-  finished_at: string;
-  elapsed_ms: number;
-  observed_resources: PythonObservedResourcesV1;
-  hard_controls: {
-    network_isolated: boolean;
-    filesystem_isolated: boolean;
-    memory_limit_enforced: boolean;
-    cpu_limit_enforced: boolean;
-    pid_limit_enforced: boolean;
-  };
-  status: "SUCCEEDED" | "FAILED" | "CANCELLED";
-  failure_code: PythonExecutionFailureCode | null;
-  output_refs: readonly ArtifactReference[];
-  stdout_ref: ArtifactReference | null;
-  stderr_ref: ArtifactReference | null;
-}
+bindGovernedResult(input: {
+  governed_result: GovernedOperatorResultRef;
+  binding_template_version: "governed-result-binding@1.0.0";
+}): Promise<{
+  binding_id: string;
+  result_symbol: string;
+  result_sha256: Sha256;
+  journal_seq: number;
+}>;
 
-executePython(
-  request: PythonExecutionRequestV1,
-  authority: PythonSandboxAuthorityContext,
-): Promise<PythonSandboxReceiptV1>;
+appendAnalysisContextJournal(command: ContextJournalAppendCommand): Promise<ContextJournalEntry>;
+commitGovernedOperatorResult(command: GovernedOperatorResultCommit): Promise<GovernedOperatorResultRef>;
+stageAnalysisResult(command: AnalysisResultStageCommand): Promise<AnalysisResultStage>;
+commitAnalysisAuthority(command: AnalysisAuthorityCommit): Promise<AnalysisAuthorityCommitReceipt>;
 ```
 
-### 3. 契约
+数据库窄 RPC 为：
 
-- Runtime 固定 CPython 3.12；`CORE_ANALYSIS` 只包含锁版本的基础数值/表格/绘图库，开放生成分析必须使用允许 `statsmodels`、`scikit-learn` 的 `ML_DIAGNOSTIC`，因果识别只能使用 `CAUSAL_L5`。技能目录必须服务端绑定唯一画像，调用方不得选择或降级画像。新增库必须更新 lock digest、镜像 digest、Policy 与安全回归。
-- `services/sandbox/.../operators/manifest.json` 是唯一算子清单；Contracts 生成器必须把清单与其引用的精确 Python 实现源码共同计算为 `STATISTICAL_OPERATOR_REGISTRY_DIGEST`。Worker 只能导入该生成常量，禁止复制字面量、别名常量或接受旧 digest。
-- 每个 profile 的 runtime digest 必须绑定全部 Python runtime 源码、manifest 与 registry digest；image attestation 再绑定 base image、`uv.lock`、profile dependency lock 与 hardening profile。Sandbox 启动、Worker 准入、执行请求、回执和最终 evidence 任一 digest 不一致均失败关闭。
-- 治理统计源码只能通过 `context.operators.call(<literal operator id>, call_id=<literal>)` 调用；DeepSeek 可写数据准备、补充变换和解释，但 `GOVERNED_OPERATOR_ORCHESTRATION` 下必须完成声明的 obligations，并由 result binding 逐字段闭合。漏调、多调、动态 ID、忽略结果或篡改回执均不得提交输出。
-- 镜像固定 `PYTHONHASHSEED=0`，并把 OMP/OpenBLAS/MKL/NumExpr/VecLib/BLIS 线程数全部设为 1；这些值属于 attested hardening profile，不能由 Agent 请求覆盖。
-- Runtime 身份必须绑定规范化 `target_platform`（当前为 `linux/arm64`），并将平台写入 runtime/image attestation、runtime digest 和容器环境。Supervisor 必须在启动执行前校验实际 OS/CPU 架构；不匹配时失败关闭。跨架构构建必须产生不同 runtime digest，并使用独立数值容差验证，不能宣称字节级等价重放。
-- Worker 只提交已授权、内容寻址的 Python source 与 Arrow/CSV/JSON 输入 Artifact。Sandbox 不接受 SQL、DSN、SecretRef、宿主路径或任意 URL。
-- 入口固定为 `def main(context): ...`；`context` 只暴露只读输入与声明式输出方法，不暴露文件描述符、数据库连接、网络、进程、包安装或动态模块加载能力。
-- 每个请求启动新的 `python -I` 子进程和新的 job tmpfs；`/input` 只读，`/output` 仅允许声明的文件名和类型。结束后销毁进程、目录、import/global/module 状态。
-- 输入禁止 `pickle`、`marshal`、可执行 Notebook 和任意对象反序列化。输出只允许 canonical Arrow/CSV/JSON、净化 Markdown、Vega-Lite JSON 与 PNG；禁止可执行 HTML/SVG、Python object、archive 和未声明文件。
-- AST/import allowlist 是纵深防御，不是安全边界。主边界是独立 OS 身份、无网络 namespace、只读根文件系统、无宿主项目/数据/Secret 挂载、executor 无权访问的专用 IPC socket、capability drop、`no-new-privileges`、seccomp/AppArmor、cgroup 与 `rlimit`。
-- v1 每个 Sandbox replica 同时只执行一个请求；因此 replica cgroup 必须等于单次执行硬上限。超时、取消、超限或崩溃必须 kill 完整进程组并丢弃部分输出。
-- stdout/stderr 必须分别脱敏和截断，不得混入成功 Artifact。只有 `SUCCEEDED`、全部 hard controls 为 true、输出契约通过且 Fence 仍有效时，Artifact Authority 才能提交 `output_refs`。
-- 相同 request hash 的重放只能复用已授权的不可变 Effect Receipt；同 idempotency key 不同 request hash 必须失败关闭。
-- 环境键由服务端配置，Agent/浏览器不得覆盖：
-  - `PYTHON_SANDBOX_ENABLED`
-  - `PYTHON_SANDBOX_SOCKET_PATH`
-  - `PYTHON_SANDBOX_IMAGE_DIGEST`
-  - `PYTHON_SANDBOX_RUNTIME_DIGEST`
-  - `PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST`
-  - `PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST`
-  - `PYTHON_SANDBOX_IMPORT_PROFILE`
-  - `PYTHON_SANDBOX_TARGET_PLATFORM`
-  - `PYTHON_SANDBOX_POLICY_VERSION`
-  - `PYTHON_SANDBOX_MAX_WALL_MS`
-  - `PYTHON_SANDBOX_MAX_CPU_SECONDS`
-  - `PYTHON_SANDBOX_MAX_MEMORY_BYTES`
-  - `PYTHON_SANDBOX_MAX_INPUT_BYTES`
-  - `PYTHON_SANDBOX_MAX_OUTPUT_BYTES`
-  - `PYTHON_SANDBOX_MAX_PIDS`
-  - `PYTHON_SANDBOX_MAX_OPEN_FILES`
+```sql
+commit_governed_operator_result(jsonb, bytea) returns jsonb
+append_analysis_context_journal(jsonb) returns jsonb
+stage_analysis_result(jsonb, bytea[]) returns jsonb
+commit_analysis_authority(jsonb) returns jsonb
+```
 
-### 4. 校验与错误矩阵
+最终 RPC 必须在一个 PostgreSQL 事务中锁定 exact run/node/attempt/stage，复核 worker fence、publisher/operator/oracle/explanation hash，提交 artifact、current/visibility、receipt 与 outbox。
 
-| 条件 | 稳定结果 |
+### 3. Contracts
+
+- 唯一状态机：
+
+```text
+ANALYZE
+→ OPERATOR_INTENT
+→ OPERATOR_RESULT_COMMITTED
+→ RESULT_BOUND
+→ OPERATORS_CLOSED
+→ PUBLISH_REQUIRED
+→ PUBLISH_STAGED
+→ CONTEXT_FROZEN
+→ ORACLE_VERIFIED
+→ EXPLANATION_BOUND
+→ AUTHORITY_COMMITTED
+→ CLEANUP_VERIFIED
+```
+
+- 算子幂等 identity 固定为 `(scope, run, node, attempt, program_hash, call_id, operator_id)`，同时绑定 `request_sha256`。同键同请求返回同一 result/receipt；同键异请求冲突。
+- Operator Sandbox 完成后，宿主先规范化、哈希并持久化 `OPERATOR_RESULT`，再生成固定 Binding Cell。不得先把 output 放入模型消息或 Agent Sandbox 文件。
+- Binding Cell 的符号由宿主按 binding identity 确定性生成 `__da_gov_<digest>`；不接受模型变量名、路径或源码。Cell 读取一次性字节，校验 SHA-256，按唯一 wire schema 解码，执行深度/键数/行列/非有限值/容量校验，并递归转换为只读 projection。
+- 模型只看到 `status/call_id/result_symbol/result_sha256/shape/receipt_ref`。`output`、`sealed_result_path`、raw rows 和任何路径字段禁止进入 Provider request/message。
+- Context Journal append-only，按 `seq + prev_entry_hash + entry_hash` 串联并绑定 context generation、worker fence、source/result/stage refs 和 runtime/policy/template/registry 版本。
+- 恢复创建新的 `context_generation`，严格按原序重放已提交的 `MODEL_CELL_COMMITTED` 与 `SERVER_BINDING_COMMITTED`；Binding 从权威 result artifact 取字节，禁止重跑已提交算子。
+- `PUBLISH_STAGED` 使用 PostgreSQL durable immutable stage，保存 closure/artifact/component hashes、Publisher receipt、TTL 与 fence。Stage 之后拒绝 model cell/operator/bind/extractor，立即 interrupt/delete Python Context；Oracle 与 Explanation 只读取 stage。
+- Publisher 再提取受控符号，规范化后必须与宿主治理结果的 `result_sha256` 一致。AST protected-prefix 策略是纵深防御，双哈希是 fail-closed 权威门禁。
+- 资源起点：Agent 1 vCPU/2 GiB（ML/CAUSAL 2 vCPU/4 GiB），Operator 2 vCPU/2 GiB（ML/CAUSAL 4 GiB），`pids_limit` 128/256，全部 BLAS threads=1，Cell 30s，Operator 60–120s，result 16 MiB，closure 64 MiB，stdout/stderr 4/16 KiB。
+- 每次 Run 逻辑 Sandbox 必须 `before=0、peak<=2、after=0`；cleanup 失败不得伪装成功，TTL sweeper 只清孤儿，不替代当次清理证明。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 稳定错误/动作 |
 | --- | --- |
-| Source/Input 未提交、跨 Workspace/Run 或 Hash 不符 | `PYTHON_POLICY_REJECTED`，不启动进程 |
-| Runtime/依赖锁/Policy 与服务端配置不匹配 | `PYTHON_POLICY_REJECTED` |
-| Registry digest 与生成清单/精确实现源码不匹配 | Sandbox 启动拒绝；Worker 准入为 `PROGRAM_OPERATOR_REGISTRY_ATTESTATION_MISMATCH`；执行前为 `ANALYSIS_PROGRAM_RUNTIME_ATTESTATION_MISMATCH` |
-| 声明的 operator call 缺失、额外、ID 非字面量或结果未闭合 | `PYTHON_OPERATOR_*` 稳定失败码，零输出提交 |
-| import 越权、动态代码、`pickle`/`marshal`、路径逃逸 | `PYTHON_POLICY_REJECTED` |
-| wall/CPU 超时 | `PYTHON_TIMEOUT`，kill 进程组，零输出提交 |
-| 内存/PID/文件/输入输出预算超限 | `PYTHON_RESOURCE_LIMIT`，零输出提交 |
-| Fence 失效或用户取消 | `PYTHON_CANCELLED`，零输出提交 |
-| Python 非零退出或未捕获异常 | `PYTHON_ERROR`，stderr 受限回执 |
-| 输出类型、路径、schema 或摘要不符合声明 | `PYTHON_OUTPUT_INVALID` |
-| IPC/服务/硬隔离证据不可用 | `PYTHON_SANDBOX_UNAVAILABLE`，Readiness=`HOLD` |
-| 同幂等键携带不同 Request Hash | 冲突失败，不执行第二个 Effect |
+| OpenSandbox 启动、容量或 secure runtime 不满足 | `PROVISIONING` / HOLD |
+| Cell AST/import/protected prefix 越权 | `CELL_POLICY`，不执行 |
+| Cell timeout/OOM/PID 耗尽 | `CELL_TIMEOUT` / `OOM` / `PIDS_EXHAUSTED`，新 generation 恢复 |
+| 确定性算子失败 | `OPERATOR_DETERMINISTIC_FAILURE`，同能力修复或 HOLD |
+| 有副作用或结果状态未知 | `OPERATOR_OUTCOME_UNKNOWN`，禁止自动重试 |
+| result artifact 持久化/哈希失败 | `RESULT_DURABILITY`，禁止 Binding |
+| Binding 字节或 Publisher 二次哈希不一致 | `BINDING_HASH`，丢弃 stage |
+| Journal 缺项、乱序、hash chain 断裂 | `JOURNAL_REPLAY` / HOLD |
+| worker fence 过期 | `STALE_FENCE`，零权威可见提交 |
+| Publisher symbol/schema/size/closure 失败 | `PUBLISH_CONTRACT`，最多一次等能力修复 |
+| Oracle 拒绝 | `ORACLE_REJECTED`，保留非公开 stage，零公开结果 |
+| 同幂等键异 request 或最终事务冲突 | `COMMIT_CONFLICT`，all-old |
+| Context/Sandbox/egress 未归零 | `CLEANUP_FAILED`，运行不成功 |
 
 ### 5. Good / Base / Bad Cases
 
-- Good：Worker 先用只读 SQL 产生 Arrow Artifact，再提交只引用该 Artifact 的 pandas 变换和声明式 operator call；Sandbox 返回绑定 Source/Registry/Runtime/Lock/Image/Policy/资源证据及逐次 operator receipt 的成功 Receipt。
-- Base：题目只需 SQL 时不调用 Python；题目需要简单后处理时仍走同一 Python 协议，不增加内存旁路。
-- Bad：把 DSN 注入 Python、允许模型执行 `pip install`、复制 registry digest 字面量、保留旧 digest 接受分支、让模型重写 BH/HAC/Shapley 公式、在 Worker 里 `spawn("python")`，或只靠 AST/import 白名单宣称安全。
+- Good：Operator output 先成为 PostgreSQL 内容寻址 artifact；固定 Binding Cell 绑定只读符号；模型只收到 hash/shape/ref；Publisher 二次提取同 hash；durable stage 经 Oracle 后一次事务发布并清零两个 Sandbox。
+- Base：题目无治理算子时仍记录 Model Cell/Stage/Freeze/Oracle/Commit Journal；不创建虚假 operator result。
+- Bad：把完整 operator `output` 塞进 tool result、写 sealed path、只重放模型 Cell、用 RootFS snapshot 代替 Journal、用内存 stage、在同一解释器中把只读 global 当绝对安全边界、最终逐 artifact 顺序 commit。
 
-### 6. 必需测试
+### 6. Tests Required
 
-- Contract：unknown 字段、跨 Scope Reference、Hash/Runtime/Policy/依赖锁漂移、同键异载荷全部在启动进程前失败。
-- Unit：AST/import allowlist、输入输出 manifest、规范化摘要、错误码和 stdout/stderr 截断。
-- Container security：真实无网络、只读 root、无 Secret/env/host path、executor 无法访问 IPC、无 subprocess/socket/native load、PID/CPU/memory/file 限制。
-- Malicious fixtures：`os.environ`、`/etc/passwd`/宿主路径、socket、subprocess、multiprocessing、`ctypes`、动态 import、`eval/exec/compile`、path traversal、`pickle`/`marshal`、fork bomb 和 IPC 探测。
-- Lifecycle：timeout/cancel/crash 后无部分 Artifact；下一次运行没有文件、module/global/random 状态残留。
-- Authority：成功 Receipt 必须绑定 Workspace/Run/Attempt/Fence、source/input/output、Runtime、Policy 与真实资源证据；任一换绑不能提交 Artifact/ScoreCard。
-- Registry supply chain：改变 manifest、任一实现源码、profile lock、runtime source、target platform 或 hardening env 后，生成 Contracts、attestation verifier、Worker build 或容器启动至少一处必须失败；更新全链后才允许通过。
-- Container operator smoke：Core/ML/Causal 三种真实镜像都必须在无网络、只读 root、capability drop 条件下执行至少一个治理算子，并断言 registry、lock、image、operator receipt 和输出 binding；恶意、超时和取消继续断言零输出。
-- E2E：真实 PostgreSQL → Worker → Python Sandbox → Artifact → deterministic Oracle → ScoreCard，并单独报告 Python Sandbox health。
+1. model request/message 中不存在 operator raw output。
+2. 模型投影不存在 sealed/temp path。
+3. 宿主、Binding、Publisher 三个 hash 完全相等。
+4. 临时 Binding 字节篡改在 decode 前失败。
+5. protected prefix 的赋值、删除、alias、`globals()` 被拒绝。
+6. 运行时绕过造成值变形时 Publisher 拒绝。
+7. Binding 后 Cell timeout，恢复得到同符号/同 hash。
+8. result committed 后 Binding 前 crash，从 ledger 恢复且不重跑算子。
+9. 同幂等键同 request 返回同 result/receipt。
+10. 同幂等键异 request 进入 conflict/HOLD。
+11. Stage 后 Oracle 前 crash 可恢复但零公开 artifact。
+12. Oracle reject 为零权威可见提交。
+13. stale fence 提交被拒绝。
+14. 最终事务逐点故障只能观察 all-old/all-new。
+15. Stage 后任何 model cell/operator/bind/extractor 被拒绝。
+16. Agent/Operator Sandbox 与 egress sidecar 归零，TTL sweeper 清 orphan stage。
+17. `pids=32` 已知失败可复现，128/256 三 profile 记录峰值并通过。
+18. operator result `16 MiB + 1`、closure `64 MiB + 1` 稳定拒绝。
+19. `/workspace/outputs` 写入和生产引用均为零。
+20. result/table/chart/operator receipts 指向同一 closure hash。
+
+另需 Result Publisher 不少于 1,000 个属性案例、DeepSeek Strict 真实 100/100、Falcon24 五题冷/暖共 30 次图表 30/30，以及 PostgreSQL 17 migration/RLS/grant/rollback 测试。
 
 ### 7. Wrong vs Correct
 
 #### Wrong
 
 ```ts
-// Worker 直接执行模型源码，同时继承数据库和应用环境。
-await spawn("python", [sourcePath], { env: process.env });
+const output = JSON.parse(operatorBytes);
+messages.push(serverToolResult({ output, sealed_result_path }));
+await stageInMemory(publisherClosure);
+for (const artifact of artifacts) await commitOne(artifact);
 ```
 
 #### Correct
 
 ```ts
-const receipt = await pythonSandboxAuthority.execute({
-  ...request,
-  source_ref: committedSourceRef,
-  input_refs: committedSqlResultRefs,
-  runtime_digest: configuredRuntimeDigest,
-  dependency_lock_digest: configuredDependencyLockDigest,
-  policy_version: configuredPolicyVersion,
+const governed = await authority.commitGovernedOperatorResult(intent, operatorBytes);
+const binding = await session.bindGovernedResult({
+  governed_result: governed,
+  binding_template_version: "governed-result-binding@1.0.0",
 });
-
-await artifactAuthority.commitSandboxOutputs(receipt);
+messages.push(serverToolResult(projectBoundReference(binding, governed.shape)));
+const stage = await stageAuthority.create(extractAndVerify(binding.result_sha256));
+await session.freezeAndDeleteContext(stage.stage_hash);
+await authority.commitAnalysisAuthority(buildVerifiedCommit(stage, oracle, explanation));
 ```
 
-`commitSandboxOutputs` 必须重新授权 Receipt、Fence、全部输入输出 Reference 与 hard-control evidence，不能信任普通 JSON 或 Sandbox 自报成功字符串。
-
-治理统计场景还必须先验证唯一生成的 Registry：
-
-```ts
-// Wrong：手工复制摘要，源码变化后仍可能继续接受旧实现。
-const operatorRegistryDigest = "sha256:...";
-
-// Correct：由唯一 manifest + 精确实现源码生成，并贯穿 Program、Sandbox 和 Receipt。
-import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "@data-agent/contracts/statistical-operators";
-```
+唯一 manifest + 精确实现源码继续生成统计 Registry digest；DeepSeek 编排 BH-FDR、Theil-Sen、Mann-Kendall、HAC、Shapley、分群留存等冻结算子，不能重写底层统计公式。

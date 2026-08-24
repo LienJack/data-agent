@@ -1,17 +1,17 @@
 import { createCipheriv, createDecipheriv, createHash, createHmac } from "node:crypto";
 import {
+  type AnalysisContextModelCellSourceReadCommand,
+  type AnalysisContextModelCellSourceReadResult,
   type AnalysisPythonSourceCommitCommand,
   type AnalysisPythonSourceCommitResult,
-  type AnalysisPythonSourceLoadCommand,
-  type AnalysisPythonSourceLoadResult,
   artifactReferenceFor,
   buildAnalysisPythonSourceReceipt,
   verifyAnalysisPythonSourceReceipt,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson } from "@data-agent/contracts/common";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
-import type { AnalysisPythonSourceArtifactPort } from "./deepseek-program-source.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
+import type { AnalysisCellSourceArtifactPort } from "./executor.js";
 
 const SOURCE_KEY_ENV = "DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64" as const;
 const SOURCE_KEY_ID_ENV = "DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_ID" as const;
@@ -23,10 +23,10 @@ export interface AnalysisPythonSourceAuthorityPort {
     command: AnalysisPythonSourceCommitCommand,
     ciphertext: Uint8Array,
   ): Promise<AnalysisPythonSourceCommitResult>;
-  loadAnalysisPythonSource(
+  readAnalysisContextModelCellSource(
     capabilityInput: unknown,
-    command: AnalysisPythonSourceLoadCommand,
-  ): Promise<AnalysisPythonSourceLoadResult>;
+    command: AnalysisContextModelCellSourceReadCommand,
+  ): Promise<AnalysisContextModelCellSourceReadResult>;
 }
 
 function byteHash(bytes: Uint8Array): `sha256:${string}` {
@@ -40,10 +40,10 @@ function sourceHash(sourceText: string): `sha256:${string}` {
 function sourceAad(input: {
   readonly lease: RunWorkLease;
   readonly analysis_program_ref: Parameters<
-    AnalysisPythonSourceArtifactPort["commit"]
+    AnalysisCellSourceArtifactPort["commit"]
   >[0]["analysis_program_ref"];
   readonly node_id: string;
-  readonly generation_attempt: 0 | 1;
+  readonly generation_attempt: number;
   readonly source_sha256: `sha256:${string}`;
 }) {
   return Buffer.from(
@@ -127,78 +127,13 @@ export function createAnalysisPythonSourceArtifactPort(input: {
   readonly encryption_key: Uint8Array;
   readonly encryption_key_id: string;
   readonly now?: () => Date;
-}): AnalysisPythonSourceArtifactPort {
+}): AnalysisCellSourceArtifactPort {
   if (input.encryption_key.byteLength !== 32) {
     throw new TypeError("ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_INVALID");
   }
   const now = input.now ?? (() => new Date());
   return Object.freeze({
-    async load(command: Parameters<NonNullable<AnalysisPythonSourceArtifactPort["load"]>>[0]) {
-      const analysisProgramRef = artifactReferenceFor("AnalysisProgram").parse(
-        command.analysis_program_ref,
-      );
-      const result = await input.authority.loadAnalysisPythonSource(input.capability_input, {
-        schema_version: "analysis-python-source-load@1.0.0",
-        scope: command.lease.scope,
-        run_id: command.lease.run_id,
-        principal_id: command.lease.principal_id,
-        attempt_id: command.lease.attempt_id,
-        worker_fence: command.lease.worker_fence,
-        analysis_program_ref: analysisProgramRef,
-        node_id: command.node_id,
-        generation_attempt: command.generation_attempt,
-      });
-      if (!result.ok) throw new TypeError(result.error_code);
-      if (!result.source) return null;
-      const receipt = await verifyAnalysisPythonSourceReceipt(result.source.receipt);
-      const expectedKind =
-        command.analysis_program.nodes.find(({ node_id: nodeId }) => nodeId === command.node_id)
-          ?.execution_mode === "MODEL_GENERATED"
-          ? "DEEPSEEK_GENERATED"
-          : "STANDARD_PROGRAM";
-      if (
-        receipt.analysis_program_ref.artifact_id !== command.analysis_program_ref.artifact_id ||
-        receipt.analysis_program_ref.content_hash !== command.analysis_program_ref.content_hash ||
-        receipt.node_id !== command.node_id ||
-        receipt.generation_attempt !== command.generation_attempt ||
-        receipt.source_kind !== expectedKind ||
-        receipt.encryption.key_id !== input.encryption_key_id
-      ) {
-        throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_CORRELATION_INVALID");
-      }
-      const ciphertext = Buffer.from(result.source.ciphertext_base64, "base64");
-      if (byteHash(ciphertext) !== receipt.ciphertext_hash) {
-        throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_CIPHERTEXT_INVALID");
-      }
-      const sourceText = decryptSource({
-        ciphertext,
-        key: input.encryption_key,
-        iv: Buffer.from(receipt.encryption.iv_base64, "base64"),
-        auth_tag: Buffer.from(receipt.encryption.auth_tag_base64, "base64"),
-        aad: sourceAad({
-          lease: command.lease,
-          analysis_program_ref: analysisProgramRef,
-          node_id: command.node_id,
-          generation_attempt: command.generation_attempt,
-          source_sha256: receipt.plaintext_hash as `sha256:${string}`,
-        }),
-      });
-      if (sourceHash(sourceText) !== receipt.plaintext_hash) {
-        throw new TypeError("ANALYSIS_PYTHON_SOURCE_REPLAY_PLAINTEXT_INVALID");
-      }
-      return {
-        source_text: sourceText,
-        source_text_ref: receipt.artifact_ref,
-        provider_invocation_ref:
-          receipt.provider_invocation_ref === null
-            ? null
-            : {
-                ...receipt.provider_invocation_ref,
-                resource_hash: receipt.provider_invocation_ref.resource_hash as `sha256:${string}`,
-              },
-      };
-    },
-    async commit(command: Parameters<AnalysisPythonSourceArtifactPort["commit"]>[0]) {
+    async commit(command: Parameters<AnalysisCellSourceArtifactPort["commit"]>[0]) {
       if (
         command.analysis_program_ref.run_id !== command.lease.run_id ||
         command.analysis_program_ref.app_id !== command.lease.scope.app_id ||
@@ -234,8 +169,7 @@ export function createAnalysisPythonSourceArtifactPort(input: {
         analysis_program_ref: command.analysis_program_ref,
         node_id: command.node_id,
         generation_attempt: command.generation_attempt,
-        source_kind:
-          command.provider_invocation_ref === null ? "STANDARD_PROGRAM" : "DEEPSEEK_GENERATED",
+        source_kind: "DEEPSEEK_GENERATED",
         provider_invocation_ref: command.provider_invocation_ref,
         plaintext_hash: command.source_sha256,
         ciphertext_hash: byteHash(encrypted.ciphertext),
@@ -272,6 +206,57 @@ export function createAnalysisPythonSourceArtifactPort(input: {
         throw new TypeError("ANALYSIS_PYTHON_SOURCE_AUTHORITY_SUBSTITUTION");
       }
       return committed.artifact_ref;
+    },
+    async load(command: Parameters<AnalysisCellSourceArtifactPort["load"]>[0]) {
+      const result = await input.authority.readAnalysisContextModelCellSource(
+        input.capability_input,
+        {
+          schema_version: "analysis-context-model-cell-source-read@1.0.0",
+          scope: command.lease.scope,
+          run_id: command.lease.run_id,
+          principal_id: command.lease.principal_id,
+          attempt_id: command.lease.attempt_id,
+          worker_fence: command.lease.worker_fence,
+          node_id: command.node_id,
+          context_generation: command.context_generation,
+          journal_seq: command.journal_seq,
+          source_ref: artifactReferenceFor("SensitiveExecutionArtifact").parse(command.source_ref),
+        },
+      );
+      if (!result.ok) throw new TypeError(result.error_code);
+      const receipt = await verifyAnalysisPythonSourceReceipt(result.receipt);
+      if (
+        receipt.artifact_ref.artifact_id !== command.source_ref.artifact_id ||
+        receipt.artifact_ref.content_hash !== command.source_ref.content_hash ||
+        receipt.node_id !== command.node_id
+      ) {
+        throw new TypeError("ANALYSIS_CONTEXT_MODEL_CELL_SOURCE_SUBSTITUTION");
+      }
+      const ciphertext = Buffer.from(result.ciphertext_base64, "base64");
+      if (byteHash(ciphertext) !== receipt.ciphertext_hash) {
+        throw new TypeError("ANALYSIS_PYTHON_SOURCE_CIPHERTEXT_MISMATCH");
+      }
+      const aad = sourceAad({
+        lease: command.lease,
+        analysis_program_ref: receipt.analysis_program_ref,
+        node_id: receipt.node_id,
+        generation_attempt: receipt.generation_attempt,
+        source_sha256: receipt.plaintext_hash as `sha256:${string}`,
+      });
+      const source = decryptSource({
+        ciphertext,
+        key: input.encryption_key,
+        iv: Buffer.from(receipt.encryption.iv_base64, "base64"),
+        auth_tag: Buffer.from(receipt.encryption.auth_tag_base64, "base64"),
+        aad,
+      });
+      if (sourceHash(source) !== receipt.plaintext_hash) {
+        throw new TypeError("ANALYSIS_PYTHON_SOURCE_PLAINTEXT_MISMATCH");
+      }
+      return Object.freeze({
+        source,
+        source_sha256: receipt.plaintext_hash as `sha256:${string}`,
+      });
     },
   });
 }

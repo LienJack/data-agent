@@ -9,7 +9,15 @@ const encodedKey = Buffer.alloc(32, 7).toString("base64");
 const validEnvironment = {
   DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64: encodedKey,
   DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64: encodedKey,
-  PYTHON_SANDBOX_AUTH_TOKEN: "falcon24-test-sandbox-authorization-token",
+  ANALYSIS_SANDBOX_ENABLED: "true",
+  ANALYSIS_SANDBOX_SERVER_DOMAIN: "opensandbox.test:443",
+  ANALYSIS_SANDBOX_SERVER_PROTOCOL: "https",
+  ANALYSIS_SANDBOX_API_KEY: "falcon24-test-opensandbox-api-key",
+  ANALYSIS_SANDBOX_SECURE_ACCESS: "true",
+  ANALYSIS_SANDBOX_AGENT_CORE_IMAGE: "agent-core@sha256:test",
+  ANALYSIS_SANDBOX_AGENT_ML_IMAGE: "agent-ml@sha256:test",
+  ANALYSIS_SANDBOX_AGENT_CAUSAL_IMAGE: "agent-causal@sha256:test",
+  ANALYSIS_SANDBOX_OPERATOR_IMAGE: "operator@sha256:test",
 } satisfies NodeJS.ProcessEnv;
 
 function createRuntime(environment: NodeJS.ProcessEnv) {
@@ -23,7 +31,6 @@ function createRuntime(environment: NodeJS.ProcessEnv) {
     },
     app_capability_input: { authority: "application" },
     public_artifacts: {} as never,
-    sandbox: {} as never,
     environment,
   });
 }
@@ -43,8 +50,8 @@ describe("Falcon24 production analysis runtime", () => {
       "ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_REQUIRED",
     ],
     [
-      { ...validEnvironment, PYTHON_SANDBOX_AUTH_TOKEN: undefined },
-      "ANALYSIS_PYTHON_SANDBOX_AUTHORIZATION_REQUIRED",
+      { ...validEnvironment, ANALYSIS_SANDBOX_SERVER_DOMAIN: undefined },
+      "ANALYSIS_SANDBOX_CONFIGURATION_INVALID",
     ],
   ] as const)("fails closed for incomplete production controls", (environment, errorCode) => {
     expect(() => createRuntime(environment)).toThrow(errorCode);
@@ -57,13 +64,13 @@ describe("Falcon24 production analysis runtime", () => {
       run_id: id(4),
     } as never;
     const first = factory.createSystem({
-      artifact_type: "SandboxProgram",
+      artifact_type: "SandboxExecutionReceipt",
       label: "source",
       content_hash: `sha256:${"a".repeat(64)}`,
       lease,
     });
     const second = factory.createSystem({
-      artifact_type: "SandboxProgram",
+      artifact_type: "SandboxExecutionReceipt",
       label: "source",
       content_hash: `sha256:${"a".repeat(64)}`,
       lease,

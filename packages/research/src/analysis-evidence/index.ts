@@ -19,12 +19,6 @@ export {
   selectEvidenceGroundedInsights,
 } from "./insight-selector.js";
 export {
-  computeAnalysisSandboxProgramHash,
-  type ProgramVerification,
-  type ProgramVerificationFailure,
-  verifyAnalysisSandboxProgram,
-} from "./program-verifier.js";
-export {
   type AnalysisResult,
   type OracleFailure,
   type ResultOracleVerdict,

@@ -47,12 +47,11 @@ function deploymentComposeConfig(): {
 
 describe("local development runtime modes", () => {
   it("默认 Compose 启用本地基础设施，deploy profile 启用完整长期服务", () => {
-    expect(composeServices()).toEqual(["neo4j", "postgres", "python-sandbox"]);
+    expect(composeServices()).toEqual(["neo4j", "postgres"]);
     expect(composeServices("--profile", "deploy")).toEqual([
       "clamav",
       "neo4j",
       "postgres",
-      "python-sandbox",
       "relationship-indexer",
       "web",
       "worker",

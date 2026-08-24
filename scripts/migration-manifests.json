@@ -1826,6 +1826,86 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10743",
+      "migration_name": "20260725010743_app_data_agent_opensandbox_analysis_cutover.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10743",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-retire-legacy-analysis-rpcs.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__OPENSANDBOX_ANALYSIS_CUTOVER_MIGRATION_CHECKSUM__",
+      "checksum_header": "opensandbox_analysis_cutover_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10744",
+      "migration_name": "20260725010744_app_data_agent_analysis_governed_result_journal.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10744",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-governed-result-journal.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_GOVERNED_RESULT_JOURNAL_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_governed_result_journal_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10745",
+      "migration_name": "20260725010745_app_data_agent_analysis_operator_request_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10745",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-operator-request-authority.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_OPERATOR_REQUEST_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_operator_request_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10746",
+      "migration_name": "20260725010746_app_data_agent_analysis_stage_observation_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10746",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-stage-observation-journal.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_STAGE_OBSERVATION_AUTHORITY_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_stage_observation_authority_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
+    },
+    {
+      "id": "10747",
+      "migration_name": "20260725010747_app_data_agent_analysis_authority_commit_closure.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10747",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-authority-commit-closure.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__ANALYSIS_AUTHORITY_COMMIT_CLOSURE_MIGRATION_CHECKSUM__",
+      "checksum_header": "analysis_authority_commit_closure_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

@@ -1,15 +1,12 @@
-import { createHash } from "node:crypto";
 import {
-  type AnalysisSandboxProgramPayload,
   type ArtifactReference,
-  analysisSandboxProgramPayloadSchema,
+  analysisSandboxExecutionReceiptSchema,
   buildAnalysisContext,
   type CausalAttributionAuthorityClosure,
   causalAttributionAuthorityClosureSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import {
-  computeAnalysisSandboxProgramHash,
   computeAttributionAuthorityClosureHash,
 } from "@data-agent/research";
 import { describe, expect, it } from "vitest";
@@ -20,6 +17,11 @@ const hash = (value: string) => `sha256:${value.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
 const now = "2026-08-22T00:00:00.000Z";
+const causalRuntime = {
+  runtime_profile: "CAUSAL_L5",
+  agent_image: "data-agent-opensandbox-agent-causal@sha256:test",
+  operator_image: "data-agent-opensandbox-operator@sha256:test",
+} as const;
 const window = {
   start: "2026-07-01T00:00:00.000Z",
   end: "2026-08-01T00:00:00.000Z",
@@ -275,51 +277,113 @@ describe("root cause worker runtime", () => {
       sandbox: {
         async execute(input) {
           sandboxExecutions += 1;
-          const source = "def main(context):\n    return None\n";
-          const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
-          const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
-            artifact_type: "SandboxProgram",
-            protocol_version: "analysis-sandbox-program@2.0.0",
-            analysis_program_ref:
-              input.analysis_program_ref as AnalysisSandboxProgramPayload["analysis_program_ref"],
+          const queryRef = reference("QueryEvidence", 61);
+          const inputRef = reference("SandboxResult", 62);
+          const resultRef = reference("SandboxResult", 65);
+          const tableRef = reference("SandboxResult", 70);
+          const chartRef = reference("SandboxResult", 71);
+          const receipt = analysisSandboxExecutionReceiptSchema.parse({
+            schema_version: "analysis-sandbox-execution-receipt@1.0.0",
+            workspace_id: scope.tenant_id,
+            run_id: runId,
+            attempt_id: id(66),
+            worker_fence: 1,
+            fence_token: "root-cause-worker-fence",
+            idempotency_key: "root-cause-opensandbox-execution",
+            request_hash: hash("1"),
+            analysis_program_ref: input.analysis_program_ref,
             node_id: "root-cause",
-            language: "PYTHON_3_12",
-            entrypoint: "main",
-            source_sha256: sourceHash,
-            source_text_ref: reference(
-              "SensitiveExecutionArtifact",
-              60,
-              sourceHash,
-            ) as AnalysisSandboxProgramPayload["source_text_ref"],
-            query_evidence_refs: [
-              reference("QueryEvidence", 61),
-            ] as AnalysisSandboxProgramPayload["query_evidence_refs"],
-            input_refs: [reference("SandboxResult", 62)],
-            input_materialization_receipt_refs: [
-              reference("AnalysisInputMaterializationReceipt", 66),
-            ] as AnalysisSandboxProgramPayload["input_materialization_receipt_refs"],
-            output_contract: {
-              schema_version: "python-output-contract@1.0.0",
-              outputs: [{ name: "result", type: "JSON", required: true, max_bytes: 1_000_000 }],
+            runtime_profile: causalRuntime.runtime_profile,
+            runtime: {
+              provider: "OpenSandbox",
+              opensandbox_sdk_version: "opensandbox-sdk@1.0.0",
+              code_interpreter_sdk_version: "code-interpreter-sdk@1.0.0",
+              agent_image: causalRuntime.agent_image,
+              operator_image: causalRuntime.operator_image,
+              agent_sandbox_id: id(67),
+              operator_sandbox_id: id(68),
             },
             generated_source_policy: "OPEN_ANALYSIS",
             operator_registry_digest: hash("2"),
             operator_obligations: [],
-            import_profile: "CAUSAL_L5",
-            random_seed: 7,
-            runtime_digest: input.plan.frontier.runtime_digest ?? hash("2"),
-            dependency_lock_digest: input.plan.frontier.dependency_lock_digest ?? hash("3"),
-            policy_version: "python-policy@1.0.0",
-          };
-          const program = analysisSandboxProgramPayloadSchema.parse({
-            ...programMaterial,
-            program_hash: await computeAnalysisSandboxProgramHash(programMaterial),
+            operator_receipts: [],
+            operator_receipt_closure_hash: hash("3"),
+            result_contract_hash: hash("6"),
+            publish_manifest_hash: hash("7"),
+            published_closure_hash: hash("8"),
+            publish_id: "root-cause-publish",
+            inputs: [
+              {
+                name: "causal_input",
+                format: "ARROW",
+                query_evidence_ref: queryRef,
+                input_ref: inputRef,
+                materialization_receipt_ref: reference(
+                  "AnalysisInputMaterializationReceipt",
+                  69,
+                ),
+                content_sha256: inputRef.content_hash,
+                bytes: 128,
+              },
+            ],
+            cells: [
+              {
+                cell_id: "root-cause-cell",
+                source_sha256: hash("4"),
+                execution_id: "root-cause-execution",
+                execution_count: 1,
+                elapsed_ms: 100,
+                status: "SUCCEEDED",
+              },
+            ],
+            started_at: now,
+            finished_at: "2026-08-22T00:00:01.000Z",
+            elapsed_ms: 1_000,
+            hard_controls: {
+              network_isolated: true,
+              scoped_filesystem: true,
+              separate_operator_sandbox: true,
+              resource_limits_enforced: true,
+              secure_access: true,
+            },
+            status: "SUCCEEDED",
+            failure_code: null,
+            outputs: [
+              {
+                artifact_name: "result",
+                artifact_kind: "RESULT",
+                media_type: "application/json",
+                reference: resultRef,
+                content_sha256: resultRef.content_hash,
+                bytes: 256,
+              },
+              {
+                artifact_name: "table:root_cause",
+                artifact_kind: "TABLE",
+                media_type: "application/json",
+                reference: tableRef,
+                content_sha256: tableRef.content_hash,
+                bytes: 256,
+              },
+              {
+                artifact_name: "chart:root_cause",
+                artifact_kind: "CHART",
+                media_type: "application/json",
+                reference: chartRef,
+                content_sha256: chartRef.content_hash,
+                bytes: 256,
+              },
+            ],
+            execution_hash: hash("5"),
           });
           return {
-            program,
-            program_ref: reference("SandboxProgram", 63, await sha256ContentHash(program)),
-            execution_receipt_ref: reference("SandboxExecutionReceipt", 64),
-            result_refs: [reference("SandboxResult", 65)],
+            receipt,
+            execution_receipt_ref: reference(
+              "SandboxExecutionReceipt",
+              64,
+              await sha256ContentHash(receipt),
+            ),
+            result_refs: [resultRef, tableRef, chartRef],
             computation: {
               point_estimate: 2,
               interval_low: 1.5,
@@ -350,6 +414,7 @@ describe("root cause worker runtime", () => {
           };
         },
       },
+      causal_runtime: causalRuntime,
     });
     const result = await executor.execute({
       mode: "L5_CAUSAL",
@@ -403,6 +468,7 @@ describe("root cause worker runtime", () => {
           throw new Error("sandbox must not run");
         },
       },
+      causal_runtime: causalRuntime,
     });
     const result = await executor.execute({
       mode: "L5_CAUSAL",

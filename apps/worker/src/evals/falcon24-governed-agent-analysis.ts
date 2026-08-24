@@ -18,7 +18,6 @@ import {
 } from "@data-agent/evals";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
 import type { AnalysisArtifactCommitPort, AnalysisExecutionResult } from "../analysis/executor.js";
-import { ANALYSIS_RUNTIME_ATTESTATIONS } from "../analysis/skill-catalog.js";
 import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { compileFalcon24AnalysisContext } from "./falcon24-analysis-context.js";
@@ -136,7 +135,7 @@ async function buildBrief(input: {
     required_disclosures: [...input.test_case.required_disclosures],
     budget: {
       max_steps: 1,
-      max_model_calls: 2,
+      max_model_calls: 24,
       max_sql_executions: 1,
       max_sandbox_executions: 2,
       max_elapsed_ms: 300_000,
@@ -162,14 +161,17 @@ function decodeValidatedOutput(
   if (
     !accepted ||
     accepted.node_id !== testCase.case_id ||
-    accepted.output.name !== "result" ||
-    accepted.output.type !== "JSON"
+    accepted.output.artifact_name !== "result" ||
+    accepted.output.artifact_kind !== "RESULT" ||
+    accepted.output.media_type !== "application/json"
   ) {
     throw new TypeError("FALCON24_ANALYSIS_VALIDATED_OUTPUT_CORRELATION_INVALID");
   }
-  const output = falcon24AnalysisOutputSchema.parse(
-    JSON.parse(Buffer.from(accepted.output.content_base64, "base64").toString("utf8")),
-  );
+  const published = JSON.parse(Buffer.from(accepted.output.content).toString("utf8")) as unknown;
+  if (typeof published !== "object" || published === null || !("data" in published)) {
+    throw new TypeError("FALCON24_ANALYSIS_VALIDATED_OUTPUT_DOCUMENT_INVALID");
+  }
+  const output = falcon24AnalysisOutputSchema.parse(published.data);
   if (output.case_id !== testCase.case_id) {
     throw new TypeError("FALCON24_ANALYSIS_VALIDATED_OUTPUT_CASE_INVALID");
   }
@@ -259,6 +261,10 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
       if (oracleReceipt.output_hash !== outputHash || !oracleReceipt.chart_dataset_hash) {
         throw new TypeError("FALCON24_ANALYSIS_ORACLE_OUTPUT_BINDING_INVALID");
       }
+      const sandboxReceipt = exactlyOne(
+        execution.sandbox_receipts,
+        "FALCON24_ANALYSIS_SANDBOX_RECEIPT_REQUIRED",
+      );
       const chartDocument = await buildArtifactWorkspaceChartDocumentV3({
         schema_version: "artifact-workspace-chart-document@3.0.0",
         document_ref: {
@@ -295,9 +301,9 @@ export function createFalcon24GovernedAgentAnalysisPort(input: {
             query_evidence_refs: execution.query_evidence_refs,
             derived_evidence_ref: evidenceRef,
           }),
-          runtime_digest: ANALYSIS_RUNTIME_ATTESTATIONS.ML_DIAGNOSTIC.runtime_digest,
-          dependency_lock_digest:
-            ANALYSIS_RUNTIME_ATTESTATIONS.ML_DIAGNOSTIC.dependency_lock_digest,
+          runtime_profile: sandboxReceipt.runtime_profile,
+          agent_image: sandboxReceipt.runtime.agent_image,
+          operator_image: sandboxReceipt.runtime.operator_image,
         },
         projection: buildFalcon24AnalysisChartProjection(validated.output),
       });

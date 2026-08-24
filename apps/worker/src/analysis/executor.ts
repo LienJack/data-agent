@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import {
   type AnalysisCompletionReceiptPayload,
-  type AnalysisContext,
   type AnalysisProgramPayload,
   type AnalysisReasonCode,
+  analysisReasonCodeSchema,
   type ArtifactReference,
   analysisCompletionReceiptPayloadSchema,
   analysisProgramRefSchema,
@@ -11,37 +12,53 @@ import {
   type DerivedAnalysisEvidencePayload,
   derivedAnalysisEvidencePayloadSchema,
   derivedAnalysisEvidenceRefSchema,
-  type PythonSandboxTransportOutcomeV2,
   type ResearchBriefV3Payload,
-  type RunWorkLease,
   sandboxExecutionReceiptRefSchema,
-  sandboxProgramRefSchema,
   sandboxResultRefSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
+import type { AnalysisContext } from "@data-agent/contracts/context";
+import { z } from "zod";
+import {
+  type AnalysisSandboxExecutionReceipt,
+  analysisAgentFinalResponseSchema,
+  buildAnalysisAuthorityCommit,
+} from "@data-agent/contracts/ports";
+import type { RunWorkLease } from "@data-agent/contracts/runs";
 import {
   computeAnalysisDerivationHash,
   type DerivationFailure,
   verifyAnalysisDerivation,
   verifyAnalysisResult,
 } from "@data-agent/research";
-import type { PythonSandboxClient } from "../runs/python-sandbox-client.js";
-import {
-  admitAnalysisSandboxProgram,
-  admitAnalysisSandboxProgramRepair,
-  admitAnalysisSandboxProgramSourceRepair,
-} from "./program-admission.js";
-import { gateAnalysisProgram } from "./program-gate.js";
+import type { OpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
+import type { AnalysisAgentContextPort } from "./analysis-agent-prompt.js";
 import {
   type AnalysisFenceGuard,
-  type AnalysisOutputSlotFactory,
-  type AnalysisSandboxExecution,
-  executeAnalysisSandbox,
-  type GovernedPythonInput,
-} from "./sandbox-executor.js";
+  buildAnalysisSandboxExecutionReceipt,
+  executeAnalysisAgentSandbox,
+} from "./analysis-agent-sandbox-executor.js";
+import type { AnalysisToolLoopProgressEvent } from "./analysis-tool-loop.js";
+import type { AnalysisAgentModelPort } from "./deepseek-analysis-agent.js";
+import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
+import type { AnalysisGovernedResultAuthorityPort } from "./governed-result-bridge.js";
+import type { AnalysisLifecycleAuthorityPort } from "./analysis-lifecycle-authority.js";
+import { deterministicAnalysisUuid } from "./deterministic-id.js";
+import { gateAnalysisProgram } from "./program-gate.js";
+import type { AnalysisResultClosureArtifact } from "./result-publisher.js";
 import { type AnalysisSkillCatalog, DEFAULT_ANALYSIS_SKILL_CATALOG } from "./skill-catalog.js";
 
 type AnalysisProgramNode = AnalysisProgramPayload["nodes"][number];
+
+const durableOracleReceiptSchema = z.strictObject({
+  schema_version: z.literal("analysis-stage-oracle-receipt@1.0.0"),
+  result: analysisResultSchema,
+  sample_size: z.number().int().nonnegative(),
+  coverage_ratio: z.number().min(0).max(1),
+  limitation_codes: z.array(analysisReasonCodeSchema).max(32),
+  material_change: z.boolean(),
+  oracle_receipt: z.unknown().nullable(),
+});
 
 export interface AnalysisArtifactCommitPort {
   commitL2(input: {
@@ -73,40 +90,33 @@ export interface GovernedAnalysisQueryPort {
     readonly idempotency_key: string;
     readonly max_rows: number;
     readonly timeout_ms: number;
-  }): Promise<readonly GovernedPythonInput[]>;
-}
-
-export interface AnalysisProgramSourcePort {
-  load(input: {
-    readonly lease: RunWorkLease;
-    readonly analysis_program: AnalysisProgramPayload;
-    readonly analysis_program_ref: ArtifactReference;
-    readonly node: AnalysisProgramNode;
-    readonly standard_program: string | null;
-  }): Promise<{
-    readonly source_text: string;
-    readonly source_text_ref: ArtifactReference;
-    readonly provider_invocation_ref?: ProviderInvocationResourceRef | null;
-  }>;
-  repair?(input: {
-    readonly lease: RunWorkLease;
-    readonly analysis_program: AnalysisProgramPayload;
-    readonly analysis_program_ref: ArtifactReference;
-    readonly node: AnalysisProgramNode;
-    readonly previous_source_text: string;
-    readonly failure_code: string;
-    readonly attempt: 1;
-  }): Promise<{
-    readonly source_text: string;
-    readonly source_text_ref: ArtifactReference;
-    readonly provider_invocation_ref?: ProviderInvocationResourceRef | null;
-  }>;
+  }): Promise<readonly GovernedAnalysisInput[]>;
 }
 
 export interface ProviderInvocationResourceRef {
   readonly resource_id: string;
   readonly resource_revision: 1;
   readonly resource_hash: `sha256:${string}`;
+}
+
+export interface AnalysisCellSourceArtifactPort {
+  commit(input: {
+    readonly lease: RunWorkLease;
+    readonly analysis_program: AnalysisProgramPayload;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node_id: string;
+    readonly generation_attempt: number;
+    readonly provider_invocation_ref: ProviderInvocationResourceRef;
+    readonly source_sha256: `sha256:${string}`;
+    readonly source_text: string;
+  }): Promise<ArtifactReference>;
+  load(input: {
+    readonly lease: RunWorkLease;
+    readonly node_id: string;
+    readonly context_generation: number;
+    readonly journal_seq: number;
+    readonly source_ref: ArtifactReference;
+  }): Promise<{ readonly source: string; readonly source_sha256: `sha256:${string}` }>;
 }
 
 export interface AnalysisOracleExpectation {
@@ -118,40 +128,55 @@ export interface AnalysisOracleExpectation {
   readonly oracle_receipt?: unknown;
 }
 
+export interface AnalysisBoundOutput extends AnalysisResultClosureArtifact {
+  readonly reference: ArtifactReference;
+}
+
 export interface AnalysisOraclePort {
   evaluate(input: {
     readonly node: AnalysisProgramNode;
-    readonly governed_inputs: readonly GovernedPythonInput[];
-    readonly source_text: string;
-    readonly sandbox_outputs: PythonSandboxTransportOutcomeV2["outputs"];
+    readonly governed_inputs: readonly GovernedAnalysisInput[];
+    readonly sandbox_outputs: readonly AnalysisBoundOutput[];
+    readonly sandbox_receipt: AnalysisSandboxExecutionReceipt;
   }): Promise<AnalysisOracleExpectation>;
 }
 
-export interface AnalysisReferenceFactory extends AnalysisOutputSlotFactory {
+export interface AnalysisReferenceFactory {
   createSystem(input: {
-    readonly artifact_type: "SandboxProgram" | "SandboxExecutionReceipt";
+    readonly artifact_type: "SandboxExecutionReceipt";
     readonly label: string;
     readonly content_hash: `sha256:${string}`;
     readonly lease: RunWorkLease;
+  }): ArtifactReference;
+  createOutput(input: {
+    readonly lease: RunWorkLease;
+    readonly analysis_program_ref: ArtifactReference;
+    readonly node_id: string;
+    readonly artifact_name: string;
+    readonly artifact_kind: AnalysisResultClosureArtifact["artifact_kind"];
+    readonly content_hash: `sha256:${string}`;
   }): ArtifactReference;
 }
 
 export interface AnalysisExecutorDependencies {
   readonly artifacts: AnalysisArtifactCommitPort;
+  readonly governed_results: AnalysisGovernedResultAuthorityPort;
+  readonly lifecycle: AnalysisLifecycleAuthorityPort;
   readonly queries: GovernedAnalysisQueryPort;
-  readonly programs: AnalysisProgramSourcePort;
+  readonly contexts: AnalysisAgentContextPort;
+  readonly model: AnalysisAgentModelPort;
   readonly oracle: AnalysisOraclePort;
-  readonly sandbox: PythonSandboxClient;
-  readonly sandbox_authorization: string;
+  readonly sandbox: OpenSandboxAnalysisRuntime;
   readonly fence_guard: AnalysisFenceGuard;
   readonly references: AnalysisReferenceFactory;
   readonly diagnostics?: (event: {
-    readonly event_name: "analysis_oracle_rejected";
+    readonly event_name: "analysis_oracle_rejected" | "analysis_node_rejected";
     readonly run_id: string;
     readonly node_id: string;
-    readonly attempt: 0 | 1;
+    readonly attempt: 0 | null;
     readonly failure_code: string;
   }) => void;
+  readonly progress?: (event: AnalysisToolLoopProgressEvent) => void;
   readonly catalog?: AnalysisSkillCatalog;
   readonly now?: () => Date;
 }
@@ -162,6 +187,12 @@ export function analysisOracleFailureCode(error: unknown): string {
   return /^[A-Z][A-Z0-9_]{2,127}$/u.test(baseCode) ? baseCode : "ANALYSIS_ORACLE_FAILED";
 }
 
+export function analysisExecutionFailureCode(error: unknown): string {
+  const message = error instanceof Error ? error.message : "";
+  const baseCode = message.split(":", 1)[0] ?? "";
+  return /^[A-Z][A-Z0-9_]{2,127}$/u.test(baseCode) ? baseCode : "ANALYSIS_EXECUTION_FAILED";
+}
+
 export interface AnalysisExecutionResult {
   readonly analysis_program_ref: ArtifactReference;
   readonly completion_ref: ArtifactReference;
@@ -169,28 +200,19 @@ export interface AnalysisExecutionResult {
   readonly evidence_refs: readonly ArtifactReference[];
   readonly query_evidence_refs: readonly ArtifactReference[];
   readonly generated_python_refs: readonly ArtifactReference[];
+  readonly sandbox_receipts: readonly AnalysisSandboxExecutionReceipt[];
   readonly sandbox_receipt_refs: readonly ArtifactReference[];
   readonly provider_invocation_refs: readonly ProviderInvocationResourceRef[];
   readonly oracle_receipts: readonly unknown[];
   readonly validated_outputs: readonly {
     readonly node_id: string;
-    readonly output: PythonSandboxTransportOutcomeV2["outputs"][number];
+    readonly output: AnalysisBoundOutput;
   }[];
-}
-
-export function analysisRepairFailureCode(
-  sandbox: AnalysisSandboxExecution,
-  expectation: AnalysisOracleExpectation | null,
-  oracleFailureCode: string | null = null,
-): string | null {
-  if (sandbox.status === "FAILED") return sandbox.reason_code;
-  return sandbox.status === "SUCCEEDED" && expectation === null
-    ? (oracleFailureCode ?? "ANALYSIS_ORACLE_FAILED")
-    : null;
 }
 
 class BudgetLedger {
   #steps = 0;
+  #model = 0;
   #sql = 0;
   #sandbox = 0;
   #seriesRows = 0;
@@ -198,6 +220,7 @@ class BudgetLedger {
 
   constructor(
     readonly analysisProgram: AnalysisProgramPayload,
+    readonly maxModelCalls: number,
     readonly startedAtMs: number,
     readonly now: () => Date,
   ) {}
@@ -244,9 +267,22 @@ class BudgetLedger {
     return true;
   }
 
+  remainingModelCalls(): number {
+    return Math.max(0, this.maxModelCalls - this.#model);
+  }
+
+  observeModelCalls(count: number): boolean {
+    if (!Number.isInteger(count) || count < 1 || this.#model + count > this.maxModelCalls) {
+      return false;
+    }
+    this.#model += count;
+    return true;
+  }
+
   usage() {
     return {
       steps: this.#steps,
+      model_calls: this.#model,
       sql_executions: this.#sql,
       sandbox_executions: this.#sandbox,
       series_rows: this.#seriesRows,
@@ -254,10 +290,6 @@ class BudgetLedger {
       elapsed_ms: Math.max(0, this.now().getTime() - this.startedAtMs),
     };
   }
-}
-
-async function contentHash(value: unknown): Promise<`sha256:${string}`> {
-  return sha256ContentHash(value);
 }
 
 function uniqueReasons(values: readonly AnalysisReasonCode[]): AnalysisReasonCode[] {
@@ -292,6 +324,14 @@ function activationSatisfied(
   if (!source) return false;
   if (node.activation_rule.kind === "MATERIAL_CHANGE") return source.material_change;
   return source.sample_size >= node.activation_rule.minimum_points;
+}
+
+function sourceBundle(cells: readonly { readonly cell_id: string; readonly source: string }[]) {
+  return cells.map(({ cell_id, source }) => `# %% [${cell_id}]\n${source}`).join("\n\n");
+}
+
+function sourceHash(source: string): `sha256:${string}` {
+  return `sha256:${createHash("sha256").update(source, "utf8").digest("hex")}`;
 }
 
 export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDependencies) {
@@ -333,25 +373,29 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         throw new TypeError("ANALYSIS_PROGRAM_COMMIT_CORRELATION_INVALID");
       }
       const analysisProgramRef = analysisProgramRefSchema.parse(committedAnalysisProgramRef);
-
-      const ledger = new BudgetLedger(analysisProgram, now().getTime(), now);
+      const ledger = new BudgetLedger(
+        analysisProgram,
+        input.brief.budget.max_model_calls,
+        now().getTime(),
+        now,
+      );
       const pending = new Map(analysisProgram.nodes.map((node) => [node.node_id, node] as const));
       const results = new Map<string, AnalysisCompletionReceiptPayload["node_results"][number]>();
       const expectations = new Map<string, AnalysisOracleExpectation>();
       const evidenceRefs: ArtifactReference[] = [];
       const queryEvidenceRefs = new Map<string, ArtifactReference>();
       const generatedPythonRefs: ArtifactReference[] = [];
+      const sandboxReceipts: AnalysisSandboxExecutionReceipt[] = [];
       const sandboxReceiptRefs: ArtifactReference[] = [];
       const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
       const oracleReceipts: unknown[] = [];
-      const validatedOutputs = new Map<
-        string,
-        readonly PythonSandboxTransportOutcomeV2["outputs"][number][]
-      >();
+      const validatedOutputs = new Map<string, readonly AnalysisBoundOutput[]>();
 
       const executeNode = async (node: AnalysisProgramNode) => {
         if (input.signal?.aborted) return failedNode(node, "SANDBOX_EXECUTION_FAILED");
         if (!ledger.reserveNode()) return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
+        const remainingModelCalls = ledger.remainingModelCalls();
+        if (remainingModelCalls < 2) return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
         const descriptor = catalog.resolve(node.skill_id);
         const governedInputs = await dependencies.queries.execute({
           lease: input.lease,
@@ -369,306 +413,281 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             analysisProgram.budget.max_elapsed_ms,
           ),
         });
-        if (governedInputs.length === 0) {
-          return failedNode(node, "SANDBOX_EXECUTION_FAILED");
-        }
-        let source = await dependencies.programs.load({
+        const fenceToken = `${input.lease.attempt_id}:${input.lease.worker_fence}`;
+        const execution = await executeAnalysisAgentSandbox({
           lease: input.lease,
           analysis_program: analysisProgram,
           analysis_program_ref: analysisProgramRef,
           node,
-          standard_program: descriptor.standard_program,
-        });
-        const admissionInput = {
-          analysis_program: analysisProgram,
-          analysis_program_ref: analysisProgramRef,
-          node_id: node.node_id,
-          query_evidence_refs: governedInputs.map(({ query_evidence_ref: reference }) => reference),
-          input_refs: governedInputs.map(({ input_ref: reference }) => reference),
-          input_materialization_receipt_refs: governedInputs.map(
-            ({ materialization_receipt_ref: reference }) => reference,
-          ),
-          catalog,
-        } as const;
-        let admission = await admitAnalysisSandboxProgram({
-          ...admissionInput,
-          source_text: source.source_text,
-          source_text_ref: source.source_text_ref,
-        });
-        let repairUsed = false;
-        if (
-          !admission.ok &&
-          descriptor.program_mode !== "FROZEN_TEMPLATE" &&
-          dependencies.programs.repair
-        ) {
-          const previousSource = source;
-          const repairedSource = await dependencies.programs.repair({
-            lease: input.lease,
-            analysis_program: analysisProgram,
-            analysis_program_ref: analysisProgramRef,
-            node,
-            previous_source_text: previousSource.source_text,
-            failure_code: admission.failure,
-            attempt: 1,
-          });
-          admission = await admitAnalysisSandboxProgramSourceRepair({
-            ...admissionInput,
-            attempt: 1,
-            previous_source_text: previousSource.source_text,
-            repaired_source_text: repairedSource.source_text,
-            repaired_source_text_ref: repairedSource.source_text_ref,
-          });
-          source = repairedSource;
-          repairUsed = true;
-        }
-        if (!admission.ok) return failedNode(node, "PROGRAM_POLICY_REJECTED");
-        let program = admission.program;
-        let programHash = await contentHash(program);
-        let programRef = sandboxProgramRefSchema.parse(
-          dependencies.references.createSystem({
-            artifact_type: "SandboxProgram",
-            label: `${node.node_id}:${program.program_hash}`,
-            content_hash: programHash,
-            lease: input.lease,
-          }),
-        );
-        let committedProgramRef = await dependencies.artifacts.commitSystem({
-          lease: input.lease,
-          principal_id: input.principal_id,
-          idempotency_key: `analysis-program:${analysisProgram.program_hash}:${node.node_id}`,
-          reference: programRef,
-          payload: program,
-          content: null,
-        });
-        if (
-          artifactReferenceIdentity(committedProgramRef) !== artifactReferenceIdentity(programRef)
-        ) {
-          throw new TypeError("ANALYSIS_PROGRAM_COMMIT_CORRELATION_INVALID");
-        }
-        let sandbox = await executeAnalysisSandbox({
-          program,
-          descriptor,
-          source_text: source.source_text,
           governed_inputs: governedInputs,
-          client: dependencies.sandbox,
-          authorization: dependencies.sandbox_authorization,
-          attempt: 0,
-          attempt_id: input.lease.attempt_id,
-          worker_fence: input.lease.worker_fence,
-          fence_token: `${input.lease.attempt_id}:${input.lease.worker_fence}`,
-          idempotency_key: `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}:${program.program_hash}`,
+          governed_results: dependencies.governed_results,
+          lifecycle: dependencies.lifecycle,
+          contexts: dependencies.contexts,
+          model: dependencies.model,
+          runtime: dependencies.sandbox,
+          runtime_profile: descriptor.python_import_profile,
           fence_guard: dependencies.fence_guard,
-          output_slots: dependencies.references,
+          fence_token: fenceToken,
+          max_model_calls: remainingModelCalls,
+          ...(dependencies.progress ? { on_progress: dependencies.progress } : {}),
+          now,
           ...(input.signal ? { signal: input.signal } : {}),
         });
-        const commitFailedSandboxReceipt = async (
-          execution: AnalysisSandboxExecution,
-        ): Promise<void> => {
-          if (execution.status === "SUCCEEDED" || execution.outcome === null) return;
-          const receipt = execution.outcome.receipt;
-          const receiptHash = await contentHash(receipt);
-          const failedReceiptRef = sandboxExecutionReceiptRefSchema.parse(
-            dependencies.references.createSystem({
-              artifact_type: "SandboxExecutionReceipt",
-              label: `${node.node_id}:attempt-${receipt.attempt}:${receipt.request_hash}`,
-              content_hash: receiptHash,
+        if (!ledger.observeModelCalls(execution.tool_loop.provider_invocation_refs.length)) {
+          return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
+        }
+        const lifecycleIdentity = {
+          lease: input.lease,
+          node_id: node.node_id,
+          context_generation: 1,
+          runtime_digest: (await sha256ContentHash({
+            provider: "OpenSandbox",
+            runtime_profile: execution.runtime_profile,
+            agent_image: execution.runtime.agent_image,
+            operator_image: execution.runtime.operator_image,
+            secure_access: execution.runtime.secure_access,
+          })) as `sha256:${string}`,
+          policy_version: "analysis-cell-policy@1.0.0",
+          operator_registry_digest: analysisProgram.operator_registry_digest as `sha256:${string}`,
+        } as const;
+        const stagedClosure = await dependencies.lifecycle.load({
+          ...lifecycleIdentity,
+          stage: execution.stage,
+        });
+        if (
+          canonicalizeJson(stagedClosure.operator_finalization) !==
+            canonicalizeJson(execution.tool_loop.operator_finalization) ||
+          (execution.recovery_phase === null &&
+            canonicalizeJson(stagedClosure.governed_operator_results) !==
+            canonicalizeJson(
+              execution.tool_loop.operator_observations.map(
+                ({ governed_result: governedResult }) => governedResult,
+              ),
+            ))
+        ) {
+          throw new TypeError("ANALYSIS_RESULT_STAGE_EXECUTION_CLOSURE_MISMATCH");
+        }
+        const boundOutputs = stagedClosure.artifacts.map((output) => ({
+          ...output,
+          reference: sandboxResultRefSchema.parse(
+            dependencies.references.createOutput({
               lease: input.lease,
+              analysis_program_ref: analysisProgramRef,
+              node_id: node.node_id,
+              artifact_name: output.artifact_name,
+              artifact_kind: output.artifact_kind,
+              content_hash: output.content_sha256,
             }),
+          ),
+        }));
+        const idempotencyKey = `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}`;
+        const receipt = await buildAnalysisSandboxExecutionReceipt({
+          lease: input.lease,
+          idempotency_key: idempotencyKey,
+          fence_token: fenceToken,
+          analysis_program_ref: analysisProgramRef,
+          node_id: node.node_id,
+          generated_source_policy: node.generated_source_policy as
+            | "OPEN_ANALYSIS"
+            | "GOVERNED_OPERATOR_ORCHESTRATION",
+          operator_registry_digest: analysisProgram.operator_registry_digest as `sha256:${string}`,
+          operator_obligations: node.operator_obligations,
+          execution,
+          governed_inputs: governedInputs,
+          outputs: boundOutputs.map((output) => ({ output, reference: output.reference })),
+        });
+        let expectation: AnalysisOracleExpectation;
+        let oracleReceiptPayload: z.infer<typeof durableOracleReceiptSchema>;
+        let oracleReceiptHash: `sha256:${string}`;
+        if (stagedClosure.oracle_record) {
+          oracleReceiptPayload = durableOracleReceiptSchema.parse(
+            stagedClosure.oracle_record.receipt_payload,
           );
-          const committed = await dependencies.artifacts.commitSystem({
-            lease: input.lease,
-            principal_id: input.principal_id,
-            idempotency_key: `analysis-receipt-failure:${analysisProgram.program_hash}:${node.node_id}:${receipt.attempt}`,
-            reference: failedReceiptRef,
-            payload: receipt,
-            content: null,
-          });
           if (
-            artifactReferenceIdentity(committed) !== artifactReferenceIdentity(failedReceiptRef)
+            (await sha256ContentHash(oracleReceiptPayload)) !==
+            stagedClosure.oracle_record.receipt_hash
           ) {
-            throw new TypeError("ANALYSIS_RECEIPT_COMMIT_CORRELATION_INVALID");
+            throw new TypeError("ANALYSIS_STAGE_ORACLE_RECEIPT_HASH_MISMATCH");
           }
-        };
-        await commitFailedSandboxReceipt(sandbox);
-        let oracleFailureCode: string | null = null;
-        const evaluateSandbox = async (
-          attempt: 0 | 1,
-        ): Promise<AnalysisOracleExpectation | null> => {
-          if (sandbox.status !== "SUCCEEDED") return null;
+          expectation = {
+            result: oracleReceiptPayload.result,
+            sample_size: oracleReceiptPayload.sample_size,
+            coverage_ratio: oracleReceiptPayload.coverage_ratio,
+            limitation_codes: oracleReceiptPayload.limitation_codes,
+            material_change: oracleReceiptPayload.material_change,
+            ...(oracleReceiptPayload.oracle_receipt === null
+              ? {}
+              : { oracle_receipt: oracleReceiptPayload.oracle_receipt }),
+          };
+          oracleReceiptHash = stagedClosure.oracle_record.receipt_hash;
+        } else {
           try {
-            const evaluated = await dependencies.oracle.evaluate({
+            expectation = await dependencies.oracle.evaluate({
               node,
               governed_inputs: governedInputs,
-              source_text: source.source_text,
-              sandbox_outputs: sandbox.outcome.outputs,
+              sandbox_outputs: boundOutputs,
+              sandbox_receipt: receipt,
             });
-            analysisResultSchema.parse(evaluated.result);
-            return verifyAnalysisResult(evaluated.result).verdict === "PASS" ? evaluated : null;
+            analysisResultSchema.parse(expectation.result);
+            if (verifyAnalysisResult(expectation.result).verdict !== "PASS") {
+              throw new TypeError("ANALYSIS_ORACLE_RESULT_INVALID");
+            }
           } catch (error) {
-            oracleFailureCode = analysisOracleFailureCode(error);
             dependencies.diagnostics?.({
               event_name: "analysis_oracle_rejected",
               run_id: input.lease.run_id,
               node_id: node.node_id,
-              attempt,
-              failure_code: oracleFailureCode,
+              attempt: 0,
+              failure_code: analysisOracleFailureCode(error),
             });
-            return null;
+            return failedNode(node, "ANALYSIS_ORACLE_FAILED");
           }
-        };
-        let expectation = await evaluateSandbox(0);
-        const repairFailureCode = analysisRepairFailureCode(
-          sandbox,
-          expectation,
-          oracleFailureCode,
-        );
-        if (
-          repairFailureCode !== null &&
-          !repairUsed &&
-          descriptor.program_mode !== "FROZEN_TEMPLATE" &&
-          dependencies.programs.repair
-        ) {
-          const repairedSource = await dependencies.programs.repair({
-            lease: input.lease,
-            analysis_program: analysisProgram,
-            analysis_program_ref: analysisProgramRef,
-            node,
-            previous_source_text: source.source_text,
-            failure_code: repairFailureCode,
-            attempt: 1,
+          oracleReceiptPayload = durableOracleReceiptSchema.parse({
+            schema_version: "analysis-stage-oracle-receipt@1.0.0",
+            result: expectation.result,
+            sample_size: expectation.sample_size,
+            coverage_ratio: expectation.coverage_ratio,
+            limitation_codes: expectation.limitation_codes,
+            material_change: expectation.material_change,
+            oracle_receipt: expectation.oracle_receipt ?? null,
           });
-          const repairedAdmission = await admitAnalysisSandboxProgramRepair({
-            attempt: 1,
-            previous_program: program,
-            previous_source_text: source.source_text,
-            repaired_source_text: repairedSource.source_text,
-            repaired_source_text_ref: repairedSource.source_text_ref,
-            analysis_program: analysisProgram,
-            analysis_program_ref: analysisProgramRef,
-            catalog,
+          oracleReceiptHash = await dependencies.lifecycle.recordOracle({
+            ...lifecycleIdentity,
+            stage: execution.stage,
+            oracle_receipt: oracleReceiptPayload,
           });
-          if (!repairedAdmission.ok) return failedNode(node, "PROGRAM_POLICY_REJECTED");
-          source = repairedSource;
-          program = repairedAdmission.program;
-          programHash = await contentHash(program);
-          programRef = sandboxProgramRefSchema.parse(
-            dependencies.references.createSystem({
-              artifact_type: "SandboxProgram",
-              label: `${node.node_id}:repair-1:${program.program_hash}`,
-              content_hash: programHash,
-              lease: input.lease,
-            }),
-          );
-          committedProgramRef = await dependencies.artifacts.commitSystem({
-            lease: input.lease,
-            principal_id: input.principal_id,
-            idempotency_key: `analysis-program:${analysisProgram.program_hash}:${node.node_id}:repair-1`,
-            reference: programRef,
-            payload: program,
-            content: null,
-          });
-          if (
-            artifactReferenceIdentity(committedProgramRef) !== artifactReferenceIdentity(programRef)
-          ) {
-            throw new TypeError("ANALYSIS_PROGRAM_COMMIT_CORRELATION_INVALID");
-          }
-          sandbox = await executeAnalysisSandbox({
-            program,
-            descriptor,
-            source_text: source.source_text,
-            governed_inputs: governedInputs,
-            client: dependencies.sandbox,
-            authorization: dependencies.sandbox_authorization,
-            attempt: 1,
-            attempt_id: input.lease.attempt_id,
-            worker_fence: input.lease.worker_fence,
-            fence_token: `${input.lease.attempt_id}:${input.lease.worker_fence}`,
-            idempotency_key: `analysis-sandbox:${analysisProgram.program_hash}:${node.node_id}:${program.program_hash}`,
-            fence_guard: dependencies.fence_guard,
-            output_slots: dependencies.references,
-            ...(input.signal ? { signal: input.signal } : {}),
-          });
-          await commitFailedSandboxReceipt(sandbox);
-          expectation = await evaluateSandbox(1);
-        }
-        if (sandbox.status !== "SUCCEEDED") {
-          return failedNode(
-            node,
-            sandbox.status === "STALE_FENCE" ? "SANDBOX_FENCE_STALE" : "SANDBOX_EXECUTION_FAILED",
-          );
-        }
-        if (expectation === null) {
-          return failedNode(node, "ANALYSIS_ORACLE_FAILED");
         }
         if (!ledger.observe(expectation)) return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
-        const committedOutputRefs: DerivedAnalysisEvidencePayload["sandbox_result_refs"] = [];
-        for (const outputRef of sandbox.output_refs) {
-          const output = sandbox.outcome.outputs.find(
-            ({ content_sha256: outputHash }) => outputHash === outputRef.content_hash,
-          );
-          if (!output) throw new TypeError("ANALYSIS_SANDBOX_OUTPUT_MISSING");
-          const committed = await dependencies.artifacts.commitSystem({
-            lease: input.lease,
-            principal_id: input.principal_id,
-            idempotency_key: `analysis-result:${analysisProgram.program_hash}:${node.node_id}:${output.name}`,
-            reference: outputRef,
-            payload: { name: output.name, type: output.type, bytes: output.bytes },
-            content: Buffer.from(output.content_base64, "base64"),
-          });
-          if (artifactReferenceIdentity(committed) !== artifactReferenceIdentity(outputRef)) {
-            throw new TypeError("ANALYSIS_RESULT_COMMIT_CORRELATION_INVALID");
+        const resultArtifact = stagedClosure.artifacts.find(
+          ({ artifact_kind: artifactKind }) => artifactKind === "RESULT",
+        );
+        if (!resultArtifact) throw new TypeError("ANALYSIS_RESULT_PUBLISHED_DOCUMENT_MISSING");
+        let explanation: z.infer<typeof analysisAgentFinalResponseSchema>;
+        let explanationHash: `sha256:${string}`;
+        let explanationProviderInvocationRef: ProviderInvocationResourceRef;
+        if (stagedClosure.explanation_record) {
+          explanation = stagedClosure.explanation_record.explanation;
+          explanationHash = stagedClosure.explanation_record.explanation_hash;
+          explanationProviderInvocationRef = stagedClosure.explanation_record.provider_invocation_ref;
+          if ((await sha256ContentHash(explanation)) !== explanationHash) {
+            throw new TypeError("ANALYSIS_STAGE_EXPLANATION_HASH_MISMATCH");
           }
-          committedOutputRefs.push(sandboxResultRefSchema.parse(committed));
+        } else {
+          const finalTurn = await dependencies.model.turn({
+            run_id: input.lease.run_id,
+            analysis_program_id: analysisProgramRef.artifact_id,
+            node_id: node.node_id,
+            turn_index: execution.tool_loop.provider_invocation_refs.length,
+            phase: "FINAL",
+            allowed_tool_names: [],
+            messages: [
+              {
+                role: "user",
+                content: JSON.stringify({
+                  kind: "ANALYSIS_STAGE_ORACLE_VERIFIED",
+                  stage_id: execution.stage.stage_id,
+                  stage_hash: execution.stage.stage_hash,
+                  result: JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(resultArtifact.content)),
+                  artifacts: execution.tool_loop.published_result.observation.artifacts,
+                  oracle_result: expectation.result,
+                  limitation_codes: expectation.limitation_codes,
+                  instruction:
+                    "Explain this immutable Oracle-verified result in Chinese. Preserve every value, include limitations, and do not claim causality beyond the accepted analysis.",
+                }),
+              },
+            ],
+            max_output_tokens: 8_192,
+          });
+          if (finalTurn.phase !== "FINAL") {
+            throw new TypeError("ANALYSIS_AGENT_TOOL_PROTOCOL_INVALID");
+          }
+          explanation = finalTurn.response;
+          explanationProviderInvocationRef = finalTurn.provider_invocation_ref;
+          explanationHash = await dependencies.lifecycle.recordExplanation({
+            ...lifecycleIdentity,
+            stage: execution.stage,
+            explanation,
+            provider_invocation_ref: explanationProviderInvocationRef,
+          });
         }
-        const receiptHash = await contentHash(sandbox.outcome.receipt);
+        if (!ledger.observeModelCalls(1)) return failedNode(node, "ANALYSIS_BUDGET_EXCEEDED");
+        const committedOutputRefs = boundOutputs.map(({ reference }) =>
+          sandboxResultRefSchema.parse(reference),
+        );
+        const receiptHash = await sha256ContentHash(receipt);
         const receiptRef = sandboxExecutionReceiptRefSchema.parse(
           dependencies.references.createSystem({
             artifact_type: "SandboxExecutionReceipt",
-            label: `${node.node_id}:${sandbox.outcome.receipt.request_hash}`,
+            label: `${node.node_id}:${receipt.request_hash}`,
             content_hash: receiptHash,
             lease: input.lease,
           }),
         );
-        const committedReceiptRef = await dependencies.artifacts.commitSystem({
-          lease: input.lease,
+        const authorityCommand = await buildAnalysisAuthorityCommit({
+          schema_version: "analysis-authority-commit@1.0.0",
+          scope: input.lease.scope,
+          run_id: input.lease.run_id,
           principal_id: input.principal_id,
-          idempotency_key: `analysis-receipt:${analysisProgram.program_hash}:${node.node_id}`,
-          reference: receiptRef,
-          payload: sandbox.outcome.receipt,
-          content: null,
+          node_id: node.node_id,
+          attempt_id: input.lease.attempt_id,
+          worker_fence: input.lease.worker_fence,
+          idempotency_key: `analysis-authority:${analysisProgram.program_hash}:${node.node_id}`,
+          analysis_program_ref: analysisProgramRef,
+          stage_id: execution.stage.stage_id,
+          stage_hash: execution.stage.stage_hash,
+          closure_hash: execution.stage.closure_hash,
+          operator_receipt_closure_hash:
+            execution.tool_loop.operator_finalization.operator_receipt_closure_hash,
+          oracle_receipt_payload: oracleReceiptPayload,
+          oracle_receipt_hash: oracleReceiptHash,
+          explanation,
+          explanation_hash: explanationHash,
+          output_bindings: boundOutputs.map((output) => ({
+            stage_artifact: {
+              artifact_name: output.artifact_name,
+              artifact_kind: output.artifact_kind,
+              media_type: output.media_type,
+              content_sha256: output.content_sha256,
+              bytes: output.bytes,
+            },
+            reference: output.reference,
+          })),
+          sandbox_receipt_ref: receiptRef,
+          sandbox_receipt_payload: receipt,
+          sandbox_receipt_hash: receiptHash,
+          public_event_id: deterministicAnalysisUuid(
+            `analysis-authority-event\0${input.lease.run_id}\0${node.node_id}\0${execution.stage.stage_hash}`,
+          ),
         });
-        if (
-          artifactReferenceIdentity(committedReceiptRef) !== artifactReferenceIdentity(receiptRef)
-        ) {
-          throw new TypeError("ANALYSIS_RECEIPT_COMMIT_CORRELATION_INVALID");
-        }
+        await dependencies.lifecycle.commit({ ...lifecycleIdentity, command: authorityCommand });
+        await dependencies.lifecycle.cleanup({ ...lifecycleIdentity, stage: execution.stage });
+        const committedReceiptRef = receiptRef;
         const parameterHash = await sha256ContentHash(node.parameters);
         const inputClosureHash = await sha256ContentHash({
-          query_evidence_refs: program.query_evidence_refs,
-          input_refs: program.input_refs,
-          input_materialization_receipt_refs: program.input_materialization_receipt_refs,
+          query_evidence_refs: governedInputs.map(({ query_evidence_ref }) => query_evidence_ref),
+          input_refs: governedInputs.map(({ input_ref }) => input_ref),
+          input_materialization_receipt_refs: governedInputs.map(
+            ({ materialization_receipt_ref }) => materialization_receipt_ref,
+          ),
         });
-        const operatorReceiptClosureHash = sandbox.outcome.receipt.operator_receipt_closure_hash;
-        if (operatorReceiptClosureHash === null) {
-          throw new TypeError("ANALYSIS_OPERATOR_RECEIPT_CLOSURE_MISSING");
-        }
         const evidenceMaterial: Omit<DerivedAnalysisEvidencePayload, "derivation_hash"> = {
           artifact_type: "DerivedAnalysisEvidence",
-          protocol_version: "derived-analysis-evidence@1.0.0",
+          protocol_version: "derived-analysis-evidence@2.0.0",
           analysis_program_ref: analysisProgramRef,
           node_id: node.node_id,
           skill_id: node.skill_id,
           algorithm_version: descriptor.algorithm_version,
-          query_evidence_refs: program.query_evidence_refs,
-          sandbox_program_ref: programRef,
+          query_evidence_refs: governedInputs.map(({ query_evidence_ref }) => query_evidence_ref),
           sandbox_execution_receipt_ref: receiptRef,
           sandbox_result_refs: committedOutputRefs,
-          runtime_digest: program.runtime_digest,
-          dependency_lock_digest: program.dependency_lock_digest,
-          generated_source_policy: program.generated_source_policy,
-          operator_registry_digest: program.operator_registry_digest,
-          operator_obligations: program.operator_obligations,
-          operator_receipt_closure_hash: operatorReceiptClosureHash,
+          runtime_profile: execution.runtime_profile,
+          agent_image: execution.runtime.agent_image,
+          operator_image: execution.runtime.operator_image,
+          generated_source_policy: node.generated_source_policy,
+          operator_registry_digest: analysisProgram.operator_registry_digest,
+          operator_obligations: node.operator_obligations,
+          operator_receipt_closure_hash:
+            execution.tool_loop.operator_finalization.operator_receipt_closure_hash,
           parameter_hash: parameterHash,
           input_closure_hash: inputClosureHash,
           result: expectation.result,
@@ -688,16 +707,12 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         const verification = await verifyAnalysisDerivation({
           plan: analysisProgram,
           planRef: analysisProgramRef,
-          program,
-          programRef,
-          sourceText: source.source_text,
-          receipt: sandbox.outcome.receipt,
+          receipt,
           receiptRef,
           evidence,
           materializedResultRefs: committedOutputRefs,
-          materializedQueryRefs: program.query_evidence_refs,
-          materializedInputRefs: program.input_refs,
-          allowedProfiles: [descriptor.python_import_profile],
+          materializedQueryRefs: governedInputs.map(({ query_evidence_ref }) => query_evidence_ref),
+          materializedInputRefs: governedInputs.map(({ input_ref }) => input_ref),
         });
         if (!verification.ok) {
           return failedNode(node, ...derivationFailureReasons(verification.failures));
@@ -711,21 +726,29 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           }),
         );
         evidenceRefs.push(evidenceRef);
-        for (const queryEvidenceRef of program.query_evidence_refs) {
-          queryEvidenceRefs.set(artifactReferenceIdentity(queryEvidenceRef), queryEvidenceRef);
+        for (const governed of governedInputs) {
+          queryEvidenceRefs.set(
+            artifactReferenceIdentity(governed.query_evidence_ref),
+            governed.query_evidence_ref,
+          );
         }
-        if (node.execution_mode === "MODEL_GENERATED") {
-          generatedPythonRefs.push(source.source_text_ref);
-          if (!source.provider_invocation_ref) {
-            throw new TypeError("ANALYSIS_MODEL_PROVIDER_INVOCATION_REF_REQUIRED");
-          }
-          providerInvocationRefs.push(source.provider_invocation_ref);
-        }
+        generatedPythonRefs.push(
+          ...execution.tool_loop.cells.flatMap(({ source_ref: sourceRef }) =>
+            sourceRef ? [sourceRef] : [],
+          ),
+        );
         sandboxReceiptRefs.push(committedReceiptRef);
-        if (expectation.oracle_receipt !== undefined) {
+        sandboxReceipts.push(receipt);
+        providerInvocationRefs.push(
+          ...execution.tool_loop.provider_invocation_refs,
+          explanationProviderInvocationRef,
+        );
+        if (expectation.oracle_receipt !== undefined)
           oracleReceipts.push(expectation.oracle_receipt);
-        }
-        validatedOutputs.set(node.node_id, sandbox.outcome.outputs);
+        validatedOutputs.set(
+          node.node_id,
+          boundOutputs.filter(({ artifact_kind: artifactKind }) => artifactKind === "RESULT"),
+        );
         expectations.set(node.node_id, expectation);
         return {
           node_id: node.node_id,
@@ -758,12 +781,14 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             try {
               return [node.node_id, await executeNode(node)] as const;
             } catch (error) {
-              const reason: AnalysisReasonCode =
-                error instanceof Error &&
-                error.message === "ANALYSIS_QUERY_EVIDENCE_MATERIALIZATION_INVALID"
-                  ? "SANDBOX_EXECUTION_FAILED"
-                  : "SANDBOX_EXECUTION_FAILED";
-              return [node.node_id, failedNode(node, reason)] as const;
+              dependencies.diagnostics?.({
+                event_name: "analysis_node_rejected",
+                run_id: input.lease.run_id,
+                node_id: node.node_id,
+                attempt: null,
+                failure_code: analysisExecutionFailureCode(error),
+              });
+              return [node.node_id, failedNode(node, "SANDBOX_EXECUTION_FAILED")] as const;
             }
           }),
         );
@@ -775,9 +800,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         if (!result) throw new TypeError("ANALYSIS_NODE_RESULT_MISSING");
         return result;
       });
-      const limitations = uniqueReasons(
-        nodeResults.flatMap(({ reason_codes: reasons }) => reasons),
-      );
+      const limitations = uniqueReasons(nodeResults.flatMap(({ reason_codes }) => reason_codes));
       const criticalFailure = nodeResults.some(
         ({ criticality, status }) => criticality === "CRITICAL" && status !== "SUCCEEDED",
       );
@@ -813,6 +836,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         evidence_refs: Object.freeze(evidenceRefs),
         query_evidence_refs: Object.freeze([...queryEvidenceRefs.values()]),
         generated_python_refs: Object.freeze(generatedPythonRefs),
+        sandbox_receipts: Object.freeze(sandboxReceipts),
         sandbox_receipt_refs: Object.freeze(sandboxReceiptRefs),
         provider_invocation_refs: Object.freeze(providerInvocationRefs),
         oracle_receipts: Object.freeze(oracleReceipts),
@@ -828,3 +852,5 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
     },
   });
 }
+
+export const analysisExecutorInternals = Object.freeze({ sourceBundle, sourceHash });

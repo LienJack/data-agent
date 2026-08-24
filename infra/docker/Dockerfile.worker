@@ -26,7 +26,7 @@ ARG DATA_AGENT_GIT_COMMIT
 ARG DATA_AGENT_GIT_DIRTY
 COPY .gitignore biome.json tsconfig.base.json ./
 COPY scripts/generate-statistical-operator-contracts.ts scripts/generate-statistical-operator-contracts.ts
-COPY services/sandbox/src/data_agent_sandbox/python_runtime/operators services/sandbox/src/data_agent_sandbox/python_runtime/operators
+COPY services/sandbox/src/data_agent_stats services/sandbox/src/data_agent_stats
 COPY scripts/workspace-build-release.ts scripts/workspace-build-release.ts
 COPY scripts/lib/workspace-architecture.ts scripts/lib/workspace-architecture.ts
 COPY scripts/lib/workspace-build-integrity.ts scripts/lib/workspace-build-integrity.ts

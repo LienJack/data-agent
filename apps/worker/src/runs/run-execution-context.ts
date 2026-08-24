@@ -49,6 +49,7 @@ export interface RunAnalysisAgentTurnRequest {
   readonly node_id: string;
   readonly turn_index: number;
   readonly phase: "TOOL" | "FINAL";
+  readonly allowed_tool_names: readonly string[];
   readonly messages: ModelProviderRequest["messages"];
   readonly response_schema_version: "analysis-agent-final@1.0.0";
   readonly max_output_tokens: number;

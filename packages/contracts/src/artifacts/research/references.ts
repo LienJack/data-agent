@@ -26,7 +26,6 @@ export const U6_REFERENCE_TARGETS = [
   "AnalysisProgram",
   "DerivedAnalysisEvidence",
   "AnalysisCompletionReceipt",
-  "SandboxProgram",
   "DiscoveryCandidate",
   "DiscoveryReceipt",
   "CausalQuestion",
@@ -75,7 +74,6 @@ export const dataProfileRefSchema = artifactReferenceFor("DataProfile");
 export const analysisProgramRefSchema = artifactReferenceFor("AnalysisProgram");
 export const derivedAnalysisEvidenceRefSchema = artifactReferenceFor("DerivedAnalysisEvidence");
 export const analysisCompletionReceiptRefSchema = artifactReferenceFor("AnalysisCompletionReceipt");
-export const sandboxProgramRefSchema = artifactReferenceFor("SandboxProgram");
 export const discoveryCandidateRefSchema = artifactReferenceFor("DiscoveryCandidate");
 export const discoveryReceiptRefSchema = artifactReferenceFor("DiscoveryReceipt");
 export const causalQuestionRefSchema = artifactReferenceFor("CausalQuestion");
@@ -142,7 +140,6 @@ export type DataProfileRef = z.infer<typeof dataProfileRefSchema>;
 export type AnalysisProgramRef = z.infer<typeof analysisProgramRefSchema>;
 export type DerivedAnalysisEvidenceRef = z.infer<typeof derivedAnalysisEvidenceRefSchema>;
 export type AnalysisCompletionReceiptRef = z.infer<typeof analysisCompletionReceiptRefSchema>;
-export type SandboxProgramRef = z.infer<typeof sandboxProgramRefSchema>;
 export type DiscoveryCandidateRef = z.infer<typeof discoveryCandidateRefSchema>;
 export type DiscoveryReceiptRef = z.infer<typeof discoveryReceiptRefSchema>;
 export type CausalQuestionRef = z.infer<typeof causalQuestionRefSchema>;

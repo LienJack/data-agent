@@ -34,6 +34,12 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
       "revenue-worst-mom",
       "segment-driver-decomposition",
     ],
+    required_operator_calls: [
+      {
+        call_id: "q1_revenue_identity",
+        operator_id: "decomposition.product-shapley-exact@1",
+      },
+    ],
     required_disclosures: [],
     required_quality_findings: ["ORDER_TOTAL_ITEM_MISMATCH", "STORED_CUSTOMER_KPI_UNTRUSTED"],
     expected_terminal: "PASS",
@@ -67,6 +73,12 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
       "low-rating-scenario-concentration",
       "p50-p90-delivery-trend",
     ],
+    required_operator_calls: [
+      {
+        call_id: "q2_delivery_low_rating",
+        operator_id: "regression.binomial-logit-wald@1",
+      },
+    ],
     required_disclosures: ["STATISTICAL_ASSOCIATION_NOT_CAUSATION"],
     required_quality_findings: [],
     expected_terminal: "PASS",
@@ -98,6 +110,17 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
       "inventory-primary-with-sensitivity",
       "theil-sen-deterioration",
       "three-vs-previous-nine",
+    ],
+    required_operator_calls: [
+      {
+        call_id: "q3_theil_sen_all_products",
+        operator_id: "robust-trend.theil-sen-slope@1",
+      },
+      {
+        call_id: "q3_mann_kendall_all_products",
+        operator_id: "trend.mann-kendall-original@1",
+      },
+      { call_id: "q3_bh_all_products", operator_id: "multiple-testing.bh-fdr@1" },
     ],
     required_disclosures: [],
     required_quality_findings: ["INVENTORY_NEW_SENSITIVITY_ONLY"],
@@ -140,6 +163,12 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
       "marketing-business-weekly-linkage",
       "multiple-testing-fdr",
     ],
+    required_operator_calls: [
+      { call_id: "q4_hac_all_models", operator_id: "regression.ols-hac@1" },
+      { call_id: "q4_bh_order_revenue", operator_id: "multiple-testing.bh-fdr@1" },
+      { call_id: "q4_bh_new_customers", operator_id: "multiple-testing.bh-fdr@1" },
+      { call_id: "q4_bh_order_count", operator_id: "multiple-testing.bh-fdr@1" },
+    ],
     required_disclosures: ["STATISTICAL_ASSOCIATION_NOT_CAUSATION"],
     required_quality_findings: [],
     expected_terminal: "PASS",
@@ -180,6 +209,16 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
       "pre-registration-order-sensitivity",
       "registration-anomaly-precheck",
     ],
+    required_operator_calls: [
+      {
+        call_id: "q5_primary_cohorts",
+        operator_id: "cohort.registration-retention-m0-m6@1",
+      },
+      {
+        call_id: "q5_sensitivity_cohorts",
+        operator_id: "cohort.registration-retention-m0-m6@1",
+      },
+    ],
     required_disclosures: [],
     required_quality_findings: [
       "FIRST_ORDER_BEFORE_REGISTRATION",
@@ -195,7 +234,7 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
 
 export async function buildFalcon24AgentAnalysisAcceptanceSuite() {
   return buildFalcon24AgentAnalysisSuite({
-    schema_version: "falcon24-agent-analysis-suite@2.0.0",
+    schema_version: "falcon24-agent-analysis-suite@3.0.0",
     dataset_id: "falcon_db_24",
     model_provider: "deepseek",
     model_id: "deepseek-v4-flash",

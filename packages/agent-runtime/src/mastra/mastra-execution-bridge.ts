@@ -5,6 +5,7 @@ import {
   isAuthoritativePersistedModelProviderInvocation,
   type ModelProvider,
 } from "@data-agent/contracts";
+import { jsonSchema } from "@ai-sdk/provider-utils";
 import { Agent, type AgentExecutionOptionsBase } from "@mastra/core/agent";
 import { createTool } from "@mastra/core/tools";
 import { z } from "zod";
@@ -16,9 +17,11 @@ import {
 import { createProviderRuntimeModel } from "../models/provider-model-factory.js";
 import {
   EMPTY_SERVER_TOOL_REGISTRY,
+  type RegisteredServerOwnedToolDescriptor,
   type ServerOwnedToolDescriptor,
   type ServerOwnedToolRegistry,
   ToolRegistryError,
+  projectDeepSeekStrictToolInputSchema,
 } from "../tools/index.js";
 import { MastraExecutionError } from "./errors.js";
 import type { ModelExecutionBridge, ModelExecutionChunk } from "./execution-bridge.js";
@@ -108,12 +111,13 @@ const failClosedInputTokenCounter: TrustedModelInputTokenCounter = {
 function resolveTools(
   registry: ServerOwnedToolRegistry,
   allowlist: readonly string[],
+  provider: ModelProvider,
 ): {
-  readonly descriptors: readonly ServerOwnedToolDescriptor[];
+  readonly descriptors: readonly RegisteredServerOwnedToolDescriptor[];
   readonly mastraTools: Record<string, ReturnType<typeof createTool>>;
   readonly canonicalToolNameByProviderName: ReadonlyMap<string, string>;
 } {
-  let descriptors: readonly ServerOwnedToolDescriptor[];
+  let descriptors: readonly RegisteredServerOwnedToolDescriptor[];
   try {
     descriptors = registry.resolveAllowlist(allowlist);
   } catch (error) {
@@ -148,12 +152,24 @@ function resolveTools(
       );
     }
     canonicalToolNameByProviderName.set(providerToolName, descriptor.tool_name);
+    const inputSchema =
+      provider === "deepseek" && descriptor.strict
+        ? jsonSchema(projectDeepSeekStrictToolInputSchema(descriptor.input_schema), {
+            validate(value) {
+              const parsed = descriptor.input_schema.safeParse(value);
+              return parsed.success
+                ? { success: true as const, value: parsed.data }
+                : { success: false as const, error: new TypeError(parsed.error.message) };
+            },
+          })
+        : descriptor.input_schema;
     return [
       providerToolName,
       createTool({
         id: providerToolName,
         description: descriptor.description,
-        inputSchema: descriptor.input_schema,
+        inputSchema,
+        strict: descriptor.strict,
       }),
     ] as const;
   });
@@ -441,6 +457,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     const { descriptors, mastraTools, canonicalToolNameByProviderName } = resolveTools(
       this.#toolRegistry,
       input.request.tool_allowlist,
+      binding.provider,
     );
     const projected = projectMessages(input.request);
     await assertTrustedInputTokenBudget(this.#inputTokenCounter, {

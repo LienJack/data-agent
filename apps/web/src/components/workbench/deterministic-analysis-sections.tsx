@@ -188,12 +188,12 @@ export function DeterministicAnalysisSections({
               </dd>
               <dt className="text-[var(--color-text-muted)]">Program / Receipt</dt>
               <dd className="break-all font-mono">
-                {shortHash(method.program_ref.content_hash)} ·{" "}
+                {shortHash(method.analysis_program_ref.content_hash)} ·{" "}
                 {shortHash(method.receipt_ref.content_hash)}
               </dd>
-              <dt className="text-[var(--color-text-muted)]">Runtime / Lock</dt>
+              <dt className="text-[var(--color-text-muted)]">Runtime / Images</dt>
               <dd className="break-all font-mono">
-                {shortHash(method.runtime_digest)} · {shortHash(method.dependency_lock_digest)}
+                {method.runtime_profile} · {method.agent_image} · {method.operator_image}
               </dd>
               <dt className="text-[var(--color-text-muted)]">Parameter / Input</dt>
               <dd className="break-all font-mono">

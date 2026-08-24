@@ -37,14 +37,24 @@ function testConfig() {
   };
 }
 
-function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
+function fakeFactory(
+  options: {
+    readonly hang_agent?: boolean;
+    readonly fail_handle_kill?: boolean;
+    readonly fail_manager_list_after?: number;
+  } = {},
+) {
+  let managerListCalls = 0;
   const created: Array<{
     readonly id: string;
     readonly image: string;
+    readonly metadata: Readonly<Record<string, string>>;
+    readonly created_at: Date;
     readonly files: Map<string, Uint8Array>;
     killed: boolean;
     closed: boolean;
     deleted_contexts: string[];
+    executed_codes: string[];
   }> = [];
   const factory: OpenSandboxSdkFactory = {
     async createSandbox(input) {
@@ -52,10 +62,13 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
       const state = {
         id: `sandbox-${created.length + 1}`,
         image,
+        metadata: Object.freeze({ ...(input.metadata ?? {}) }),
+        created_at: new Date(),
         files: new Map<string, Uint8Array>(),
         killed: false,
         closed: false,
         deleted_contexts: [] as string[],
+        executed_codes: [] as string[],
       };
       created.push(state);
       return {
@@ -125,6 +138,7 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
           },
         },
         async kill() {
+          if (options.fail_handle_kill) throw new Error("handle kill failed");
           state.killed = true;
         },
         async close() {
@@ -145,12 +159,60 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
             state.deleted_contexts.push(id);
           },
           async run(_code, runOptions) {
+            state.executed_codes.push(_code);
             if (options.hang_agent && state.id === "sandbox-1") {
               await new Promise<void>((_resolve, reject) => {
                 runOptions.signal?.addEventListener("abort", () => reject(new Error("aborted")), {
                   once: true,
                 });
               });
+            }
+            if (_code.includes("server-owned-analysis-symbol-extractor@1.0.0")) {
+              const pathLiteral = _code.match(/_analysis_output_path = ("(?:\\.|[^"])*")/u)?.[1];
+              const specsLiteral = _code.match(
+                /_analysis_specs = _analysis_json\.loads\(("(?:\\.|[^"])*")\)/u,
+              )?.[1];
+              if (!pathLiteral || !specsLiteral) throw new Error("invalid extractor source");
+              const path = JSON.parse(pathLiteral) as string;
+              const specs = JSON.parse(JSON.parse(specsLiteral) as string) as Array<{
+                symbol_name: string;
+                expected_kind: "MAPPING" | "TABLE";
+              }>;
+              state.files.set(
+                path,
+                Buffer.from(
+                  JSON.stringify({
+                    schema_version: "analysis-extracted-symbols@1.0.0",
+                    symbols: specs.map(({ symbol_name, expected_kind }) =>
+                      expected_kind === "MAPPING"
+                        ? {
+                            symbol_name,
+                            symbol_kind: "MAPPING",
+                            value: {
+                              kind: "OBJECT",
+                              entries: [
+                                {
+                                  key: "value",
+                                  value: { kind: "INTEGER", value: "1" },
+                                },
+                              ],
+                            },
+                          }
+                        : {
+                            symbol_name,
+                            symbol_kind: "TABLE",
+                            columns: ["label", "value"],
+                            rows: [
+                              [
+                                { kind: "STRING", value: "A" },
+                                { kind: "INTEGER", value: "1" },
+                              ],
+                            ],
+                          },
+                    ),
+                  }),
+                ),
+              );
             }
             return {
               id: `${state.id}-execution`,
@@ -168,8 +230,54 @@ function fakeFactory(options: { readonly hang_agent?: boolean } = {}) {
         },
       };
     },
+    createLifecycleManager() {
+      return {
+        async list(input) {
+          managerListCalls += 1;
+          if (
+            options.fail_manager_list_after !== undefined &&
+            managerListCalls > options.fail_manager_list_after
+          ) {
+            throw new Error("manager list failed");
+          }
+          return created
+            .filter(
+              ({ killed, metadata }) =>
+                !killed &&
+                Object.entries(input.metadata).every(([key, value]) => metadata[key] === value),
+            )
+            .map(({ id, metadata, created_at }) => ({
+              id,
+              metadata,
+              state: "Running",
+              created_at,
+            }));
+        },
+        async kill(sandboxId) {
+          const state = created.find(({ id }) => id === sandboxId);
+          if (!state) throw new Error("unknown sandbox");
+          state.killed = true;
+        },
+        async close() {},
+      };
+    },
   };
-  return { factory, created };
+  const seed = (input: {
+    readonly id: string;
+    readonly metadata: Readonly<Record<string, string>>;
+    readonly created_at: Date;
+  }) => {
+    created.push({
+      ...input,
+      image: "seeded",
+      files: new Map(),
+      killed: false,
+      closed: false,
+      deleted_contexts: [],
+      executed_codes: [],
+    });
+  };
+  return { factory, created, seed };
 }
 
 describe("OpenSandbox analysis runtime", () => {
@@ -190,6 +298,20 @@ describe("OpenSandbox analysis runtime", () => {
       testConfig().agent_images.CORE_ANALYSIS,
       testConfig().operator_image,
     ]);
+    expect(fake.created.map(({ metadata }) => metadata)).toEqual([
+      {
+        "managed-by": "data-agent-analysis",
+        "run-id": "run-1",
+        "node-id": "node-1",
+        role: "agent",
+      },
+      {
+        "managed-by": "data-agent-analysis",
+        "run-id": "run-1",
+        "node-id": "node-1",
+        role: "operator",
+      },
+    ]);
 
     const input = Buffer.from("parquet-bytes");
     await session.uploadAgentFile({
@@ -197,12 +319,7 @@ describe("OpenSandbox analysis runtime", () => {
       content: input,
       content_sha256: digest(input),
     });
-    await expect(
-      session.readAgentFile({
-        path: "/workspace/inputs/orders.parquet",
-        expected_sha256: digest(input),
-      }),
-    ).resolves.toEqual(input);
+    expect(fake.created[0]?.files.get("/workspace/inputs/orders.parquet")).toEqual(input);
 
     await expect(
       session.admitAgentCell({
@@ -220,6 +337,43 @@ describe("OpenSandbox analysis runtime", () => {
     });
     expect(cell).toMatchObject({ status: "SUCCEEDED", result_text: "ok" });
     expect(Buffer.byteLength(cell.stdout)).toBeLessThanOrEqual(testConfig().stdout_bytes);
+
+    await session.recoverAgentContext({
+      replay: [
+        {
+          action_type: "MODEL_CELL",
+          journal_seq: 1,
+          cell_id: "cell-1",
+          source: "value = 1\nvalue",
+          source_sha256: digest(new TextEncoder().encode("value = 1\nvalue")),
+          timeout_ms: 100,
+        },
+      ],
+    });
+    expect(fake.created[0]?.deleted_contexts).toHaveLength(1);
+    expect(fake.created[0]?.executed_codes).toContain("value = 1\nvalue");
+
+    await expect(
+      session.extractAgentSymbols({
+        extraction_id: "publish-1",
+        symbols: [
+          { symbol_name: "result_document", expected_kind: "MAPPING" },
+          { symbol_name: "trend_table", expected_kind: "TABLE" },
+        ],
+        limits: { max_rows: 100, max_columns: 10, max_bytes: 100_000 },
+        timeout_ms: 1_000,
+      }),
+    ).resolves.toMatchObject({
+      schema_version: "analysis-extracted-symbols@1.0.0",
+      symbols: [
+        { symbol_name: "result_document", symbol_kind: "MAPPING" },
+        { symbol_name: "trend_table", symbol_kind: "TABLE" },
+      ],
+    });
+    const extractionSource = fake.created[0]?.executed_codes.at(-1) ?? "";
+    expect(extractionSource).toContain("server-owned-analysis-symbol-extractor@1.0.0");
+    expect(extractionSource).toContain("/workspace/intermediate/publish-1.symbols.json");
+    expect(extractionSource).not.toContain("/workspace/outputs");
 
     const request = Buffer.from(JSON.stringify({ operator_id: "multiple-testing.bh-fdr@1" }));
     const operator = await session.runOperator({
@@ -243,9 +397,30 @@ describe("OpenSandbox analysis runtime", () => {
     expect(finalization.status).toBe("SUCCEEDED");
     expect(finalization.output_sha256).toBe(digest(finalization.output));
 
+    await session.freezeAgentContext();
+    expect(() =>
+      session.runAgentCell({ cell_id: "after-stage", source: "value = 2", timeout_ms: 100 }),
+    ).toThrow("ANALYSIS_SANDBOX_CONTEXT_FAILED");
+    await expect(
+      session.runOperator({
+        call_id: "after-stage",
+        request,
+        request_sha256: digest(request),
+        timeout_ms: 100,
+      }),
+    ).rejects.toThrow("ANALYSIS_SANDBOX_CONTEXT_FAILED");
+    await expect(
+      session.finalizeOperators({
+        finalization_id: "after-stage",
+        request: finalizationRequest,
+        request_sha256: digest(finalizationRequest),
+        timeout_ms: 100,
+      }),
+    ).rejects.toThrow("ANALYSIS_SANDBOX_CONTEXT_FAILED");
+
     await session.close();
     expect(fake.created.every(({ killed, closed }) => killed && closed)).toBe(true);
-    expect(fake.created[0]?.deleted_contexts).toHaveLength(1);
+    expect(fake.created[0]?.deleted_contexts).toHaveLength(2);
     expect(fake.created[1]?.deleted_contexts).toHaveLength(0);
   });
 
@@ -296,5 +471,144 @@ describe("OpenSandbox analysis runtime", () => {
       }),
     );
     await session.close();
+  });
+
+  it("bounds active session pairs and releases capacity on close", async () => {
+    const fake = fakeFactory();
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: { ...testConfig(), max_concurrent_sessions: 1 },
+      sdk_factory: fake.factory,
+    });
+    const first = await runtime.createSession({
+      run_id: "run-capacity-1",
+      node_id: "node-capacity-1",
+      profile: "CORE_ANALYSIS",
+    });
+
+    await expect(
+      runtime.createSession({
+        run_id: "run-capacity-2",
+        node_id: "node-capacity-2",
+        profile: "CORE_ANALYSIS",
+      }),
+    ).rejects.toMatchObject({
+      code: "ANALYSIS_SANDBOX_CAPACITY_EXHAUSTED",
+      stage: "SANDBOX_STARTUP",
+      retryable: true,
+    });
+    expect(fake.created).toHaveLength(2);
+
+    await first.close();
+    const second = await runtime.createSession({
+      run_id: "run-capacity-2",
+      node_id: "node-capacity-2",
+      profile: "CORE_ANALYSIS",
+    });
+    expect(fake.created).toHaveLength(4);
+    await second.close();
+    expect(fake.created.every(({ killed, closed }) => killed && closed)).toBe(true);
+  });
+
+  it("recovers failed handle deletion through the lifecycle manager", async () => {
+    const fake = fakeFactory({ fail_handle_kill: true });
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+    const session = await runtime.createSession({
+      run_id: "run-manager-fallback",
+      node_id: "node-manager-fallback",
+      profile: "CORE_ANALYSIS",
+    });
+
+    await expect(session.close()).resolves.toBeUndefined();
+    expect(fake.created.every(({ killed, closed }) => killed && closed)).toBe(true);
+  });
+
+  it("fails with the cleanup code when the lifecycle plane cannot confirm zero", async () => {
+    const fake = fakeFactory({ fail_handle_kill: true, fail_manager_list_after: 3 });
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+    const session = await runtime.createSession({
+      run_id: "run-cleanup-failure",
+      node_id: "node-cleanup-failure",
+      profile: "CORE_ANALYSIS",
+    });
+
+    await expect(session.close()).rejects.toMatchObject({
+      code: "ANALYSIS_SANDBOX_CLEANUP_FAILED",
+      stage: "CLEANUP",
+      retryable: true,
+    });
+  });
+
+  it("sweeps expired managed sandboxes and preserves fresh or unmanaged instances", async () => {
+    const fake = fakeFactory();
+    const now = new Date("2026-08-24T12:00:00.000Z");
+    fake.seed({
+      id: "old-managed",
+      metadata: { "managed-by": "data-agent-analysis" },
+      created_at: new Date("2026-08-24T11:58:00.000Z"),
+    });
+    fake.seed({
+      id: "fresh-managed",
+      metadata: { "managed-by": "data-agent-analysis" },
+      created_at: new Date("2026-08-24T11:59:30.000Z"),
+    });
+    fake.seed({
+      id: "old-unmanaged",
+      metadata: { "managed-by": "another-worker" },
+      created_at: new Date("2026-08-24T11:00:00.000Z"),
+    });
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+
+    await expect(runtime.sweepOrphans({ now, grace_seconds: 30 })).resolves.toEqual({
+      examined: 2,
+      killed: 1,
+      residual: 0,
+    });
+    expect(fake.created.find(({ id }) => id === "old-managed")?.killed).toBe(true);
+    expect(fake.created.find(({ id }) => id === "fresh-managed")?.killed).toBe(false);
+    expect(fake.created.find(({ id }) => id === "old-unmanaged")?.killed).toBe(false);
+  });
+
+  it("purges both roles for one recovered run and confirms zero residual sandboxes", async () => {
+    const fake = fakeFactory();
+    for (const role of ["agent", "operator", "egress"] as const) {
+      fake.seed({
+        id: `stale-${role}`,
+        metadata: {
+          "managed-by": "data-agent-analysis",
+          "run-id": "run-recovery",
+          "node-id": "node-recovery",
+          role,
+        },
+        created_at: new Date("2026-08-24T11:00:00.000Z"),
+      });
+    }
+    fake.seed({
+      id: "other-run",
+      metadata: {
+        "managed-by": "data-agent-analysis",
+        "run-id": "run-other",
+        "node-id": "node-recovery",
+        role: "agent",
+      },
+      created_at: new Date("2026-08-24T11:00:00.000Z"),
+    });
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+
+    await expect(
+      runtime.cleanupSession({ run_id: "run-recovery", node_id: "node-recovery" }),
+    ).resolves.toEqual({ killed: 3, residual: 0 });
+    expect(fake.created.find(({ id }) => id === "other-run")?.killed).toBe(false);
   });
 });

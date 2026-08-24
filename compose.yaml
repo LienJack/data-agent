@@ -115,79 +115,6 @@ services:
     profiles:
       - migrate
 
-  # ---------- Isolated CPython analysis execution (UDS only, no network) ----------
-  python-sandbox-core:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.python-sandbox
-      args:
-        PYTHON_SANDBOX_RUNTIME_DIGEST: sha256:6a51d24215ee653193acb1d0fc193a7bf7eae379750e77ca03b6f299e486874c
-        PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST: sha256:0bbe3f0927d415634b6f520505b06594601cfb7a0ff707e1c9fae905124100d8
-        PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST: sha256:add69b2ac294eed06e83e64be4bed464d42ced165fa3cf4d5e3dab56d5ef5244
-        PYTHON_SANDBOX_IMAGE_DIGEST: sha256:d556839b04ba721ea07596cbd3e04bcac0ba750bf2117d59d89d28bfc5a09087
-    container_name: data-agent-python-sandbox-core
-    restart: unless-stopped
-    network_mode: none
-    read_only: true
-    init: true
-    cap_drop: ["ALL"]
-    cap_add: ["SETUID", "SETGID", "KILL"]
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 40
-    mem_limit: 1200m
-    cpus: 1.0
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=1100m,mode=1777
-    volumes:
-      - python_sandbox_core_ipc:/run/data-agent-python
-    environment:
-      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
-      PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
-      PYTHON_SANDBOX_MAX_WALL_MS: ${PYTHON_SANDBOX_MAX_WALL_MS:-120000}
-      PYTHON_SANDBOX_MAX_CPU_SECONDS: ${PYTHON_SANDBOX_MAX_CPU_SECONDS:-60}
-      PYTHON_SANDBOX_MAX_MEMORY_BYTES: ${PYTHON_SANDBOX_MAX_MEMORY_BYTES:-1073741824}
-      PYTHON_SANDBOX_MAX_INPUT_BYTES: ${PYTHON_SANDBOX_MAX_INPUT_BYTES:-268435456}
-      PYTHON_SANDBOX_MAX_OUTPUT_BYTES: ${PYTHON_SANDBOX_MAX_OUTPUT_BYTES:-67108864}
-      PYTHON_SANDBOX_MAX_PIDS: ${PYTHON_SANDBOX_MAX_PIDS:-32}
-      PYTHON_SANDBOX_MAX_OPEN_FILES: ${PYTHON_SANDBOX_MAX_OPEN_FILES:-128}
-
-  python-sandbox-ml:
-    build:
-      context: .
-      dockerfile: infra/docker/Dockerfile.python-sandbox-ml
-      args:
-        PYTHON_SANDBOX_RUNTIME_DIGEST: sha256:e229bc12e496937fc2429457b4d3d4aa2f617d082d5e8d3bae4dcf8681ba1994
-        PYTHON_SANDBOX_DEPENDENCY_LOCK_DIGEST: sha256:9f578fc061f77c8c083e1f03a4036c2aabf60419caf11ffdf57292f88410d293
-        PYTHON_SANDBOX_OPERATOR_REGISTRY_DIGEST: sha256:add69b2ac294eed06e83e64be4bed464d42ced165fa3cf4d5e3dab56d5ef5244
-        PYTHON_SANDBOX_IMAGE_DIGEST: sha256:aad598621207c2885cba31f34e09efeecdb7eea5ab2e93001312b0e8442121c8
-    container_name: data-agent-python-sandbox-ml
-    restart: unless-stopped
-    network_mode: none
-    read_only: true
-    init: true
-    cap_drop: ["ALL"]
-    cap_add: ["SETUID", "SETGID", "KILL"]
-    security_opt:
-      - no-new-privileges:true
-    pids_limit: 40
-    mem_limit: 1200m
-    cpus: 1.0
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=1100m,mode=1777
-    volumes:
-      - python_sandbox_ml_ipc:/run/data-agent-python
-    environment:
-      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
-      PYTHON_SANDBOX_SOCKET_PATH: /run/data-agent-python/sandbox.sock
-      PYTHON_SANDBOX_MAX_WALL_MS: ${PYTHON_SANDBOX_MAX_WALL_MS:-120000}
-      PYTHON_SANDBOX_MAX_CPU_SECONDS: ${PYTHON_SANDBOX_MAX_CPU_SECONDS:-60}
-      PYTHON_SANDBOX_MAX_MEMORY_BYTES: ${PYTHON_SANDBOX_MAX_MEMORY_BYTES:-1073741824}
-      PYTHON_SANDBOX_MAX_INPUT_BYTES: ${PYTHON_SANDBOX_MAX_INPUT_BYTES:-268435456}
-      PYTHON_SANDBOX_MAX_OUTPUT_BYTES: ${PYTHON_SANDBOX_MAX_OUTPUT_BYTES:-67108864}
-      PYTHON_SANDBOX_MAX_PIDS: ${PYTHON_SANDBOX_MAX_PIDS:-32}
-      PYTHON_SANDBOX_MAX_OPEN_FILES: ${PYTHON_SANDBOX_MAX_OPEN_FILES:-128}
-
   # ---------- Isolated malware scanner (no host port) ----------
   clamav:
     image: clamav/clamav:1.4.5-debian13-slim
@@ -273,17 +200,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      python-sandbox-core:
-        condition: service_healthy
-      python-sandbox-ml:
-        condition: service_healthy
       clamav:
         condition: service_healthy
-    group_add:
-      - "10010"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - python_sandbox_core_ipc:/run/data-agent-python/core
-      - python_sandbox_ml_ipc:/run/data-agent-python/ml
       - workspace_content:/app/.data/workspace-content
       - ./artifacts/falcon24-agent-analysis:/app/artifacts/falcon24-agent-analysis
     environment:
@@ -310,10 +231,15 @@ services:
       DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_ID: ${DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_ID:-analysis-python-source-v1}
       FALCON24_ANALYSIS_RUN_MANIFEST: ${FALCON24_ANALYSIS_RUN_MANIFEST:-}
       FALCON24_ANALYSIS_RESULTS: ${FALCON24_ANALYSIS_RESULTS:-}
-      PYTHON_SANDBOX_ENABLED: ${PYTHON_SANDBOX_ENABLED:-true}
-      PYTHON_SANDBOX_CORE_SOCKET_PATH: /run/data-agent-python/core/sandbox.sock
-      PYTHON_SANDBOX_ML_SOCKET_PATH: /run/data-agent-python/ml/sandbox.sock
-      PYTHON_SANDBOX_AUTH_TOKEN: ${PYTHON_SANDBOX_AUTH_TOKEN:-data-agent-local-python-sandbox-token-v1}
+      ANALYSIS_SANDBOX_ENABLED: ${ANALYSIS_SANDBOX_ENABLED:-true}
+      ANALYSIS_SANDBOX_SERVER_DOMAIN: ${ANALYSIS_SANDBOX_SERVER_DOMAIN:-host.docker.internal:18080}
+      ANALYSIS_SANDBOX_SERVER_PROTOCOL: ${ANALYSIS_SANDBOX_SERVER_PROTOCOL:-http}
+      ANALYSIS_SANDBOX_API_KEY: ${ANALYSIS_SANDBOX_API_KEY:-data-agent-opensandbox-local-key}
+      ANALYSIS_SANDBOX_SECURE_ACCESS: ${ANALYSIS_SANDBOX_SECURE_ACCESS:-false}
+      ANALYSIS_SANDBOX_AGENT_CORE_IMAGE: ${ANALYSIS_SANDBOX_AGENT_CORE_IMAGE:-data-agent-opensandbox-agent-core:2026-08-24}
+      ANALYSIS_SANDBOX_AGENT_ML_IMAGE: ${ANALYSIS_SANDBOX_AGENT_ML_IMAGE:-data-agent-opensandbox-agent-ml:2026-08-24}
+      ANALYSIS_SANDBOX_AGENT_CAUSAL_IMAGE: ${ANALYSIS_SANDBOX_AGENT_CAUSAL_IMAGE:-data-agent-opensandbox-agent-causal:2026-08-24}
+      ANALYSIS_SANDBOX_OPERATOR_IMAGE: ${ANALYSIS_SANDBOX_OPERATOR_IMAGE:-data-agent-opensandbox-operator:2026-08-24}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-${DeepSeekAPIKey:-}}
       MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-${KimiAPIKey:-}}
     healthcheck:
@@ -376,7 +302,5 @@ volumes:
   pgdata:
   neo4jdata:
   neo4jlogs:
-  python_sandbox_core_ipc:
-  python_sandbox_ml_ipc:
   workspace_content:
   clamav_signatures:

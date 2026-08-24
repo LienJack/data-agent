@@ -382,7 +382,7 @@ export async function createAuthoritativeReleaseFixture(
     tenancy_evidence_refs: [assignmentReference],
     deployment_evidence: {
       hosted_refs: [makeArtifactReference("ExternalAgentAuditReceipt")],
-      docker_refs: [makeArtifactReference("SandboxProgram")],
+      docker_refs: [makeArtifactReference("SandboxExecutionReceipt")],
     },
     signed_outcome_refs: [...decisionEvidenceReferences],
     verdict: "PASS" as const,

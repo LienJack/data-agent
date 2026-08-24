@@ -16,7 +16,6 @@ import {
   buildDeterministicAnalysisRunProjection,
 } from "@data-agent/platform";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../../src/analysis/index.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -42,7 +41,6 @@ async function runAcceptedEcommerceTrend() {
   const suite = await loadEcommerceDeterministicAnalysisSuite();
   const testCase = suite.public_cases.find(({ slug }) => slug === "monthly-gmv-trend");
   if (!testCase) throw new Error("e-commerce trend case missing");
-  const descriptor = DEFAULT_ANALYSIS_SKILL_CATALOG.resolve("trend-change@1");
   const plan: AnalysisProgramPayload = {
     artifact_type: "AnalysisProgram",
     protocol_version: "analysis-program@1.0.0",
@@ -64,10 +62,63 @@ async function runAcceptedEcommerceTrend() {
         },
         comparison_window: null,
         parameters: {},
-        execution_mode: "FROZEN_TEMPLATE",
-        generated_source_policy: "NO_GENERATED_SOURCE",
+        execution_mode: "MODEL_GENERATED",
+        generated_source_policy: "OPEN_ANALYSIS",
         operator_obligations: [],
-        output_contract: descriptor.output_contract,
+        result_contract: {
+          schema_version: "analysis-result-contract@1.0.0",
+          contract_id: "ecommerce-monthly-gmv.result",
+          semantic_context_hash: testCase.semantic_frontier.semantic_release_hash,
+          result_fields: [
+            { field: "result", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
+          ],
+          metric_bindings: [],
+          dimension_bindings: [],
+          grain: { dimension_ids: [], time_dimension_id: null, time_grain: "NONE" },
+          lineage: [
+            {
+              field: "result",
+              source_semantic_object_ids: ["metric.monthly_gmv"],
+              source_physical_fields: ["orders.total_amount"],
+              transformation: "AGGREGATION",
+            },
+          ],
+          tables: [
+            {
+              table_id: "monthly_gmv",
+              title_zh: "月度 GMV",
+              required: true,
+              columns: [
+                {
+                  key: "value",
+                  label_zh: "GMV",
+                  data_type: "NUMBER",
+                  nullable: true,
+                  semantic_object_id: "metric.monthly_gmv",
+                  semantic_role: "METRIC",
+                },
+              ],
+              max_rows: 4,
+            },
+          ],
+          charts: [
+            {
+              chart_id: "monthly_gmv_trend",
+              title_zh: "月度 GMV 趋势",
+              required: true,
+              intent: "TREND",
+              table_id: "monthly_gmv",
+              allowed_template_ids: ["line.multi-series@1"],
+            },
+          ],
+          limits: {
+            max_result_bytes: 1_048_576,
+            max_table_rows: 4,
+            max_table_columns: 1,
+            max_closure_bytes: 4_194_304,
+          },
+          contract_hash: hash("b"),
+        },
         dependency_node_ids: [],
         activation_rule: { kind: "ALWAYS" },
         criticality: "CRITICAL",
@@ -104,17 +155,17 @@ async function runAcceptedEcommerceTrend() {
   );
   const evidence: DerivedAnalysisEvidencePayload = {
     artifact_type: "DerivedAnalysisEvidence",
-    protocol_version: "derived-analysis-evidence@1.0.0",
+    protocol_version: "derived-analysis-evidence@2.0.0",
     analysis_program_ref: planRef,
     node_id: "ecommerce-monthly-gmv",
     skill_id: "trend-change@1",
     algorithm_version: fixture.algorithm_version,
     query_evidence_refs: [queryEvidenceRef],
-    sandbox_program_ref: ref("SandboxProgram", 7),
     sandbox_execution_receipt_ref: ref("SandboxExecutionReceipt", 8),
     sandbox_result_refs: [ref("SandboxResult", 9)],
-    runtime_digest: hash("b"),
-    dependency_lock_digest: hash("c"),
+    runtime_profile: "CORE_ANALYSIS",
+    agent_image: "agent-core@sha256:test",
+    operator_image: "operator@sha256:test",
     generated_source_policy: "NO_GENERATED_SOURCE",
     operator_registry_digest: plan.operator_registry_digest,
     operator_obligations: [],
@@ -163,6 +214,7 @@ async function runAcceptedEcommerceTrend() {
     ],
     budget_usage: {
       steps: 1,
+      model_calls: 3,
       sql_executions: 1,
       sandbox_executions: 1,
       series_rows: 4,

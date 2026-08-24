@@ -1,6 +1,6 @@
 import {
   type AnalysisContext,
-  type AnalysisSandboxProgramPayload,
+  type AnalysisSandboxExecutionReceipt,
   type ArtifactReference,
   artifactReferenceIdentity,
   type CausalAttributionAuthorityClosure,
@@ -22,7 +22,6 @@ import {
   createRootCauseDiscoveryReceipt,
   type RootCauseFactorObservation,
 } from "@data-agent/research";
-import { ANALYSIS_RUNTIME_ATTESTATIONS } from "./skill-catalog.js";
 
 type RootCauseArtifactPayload =
   | RootCauseDiscoveryCandidatePayload
@@ -48,8 +47,7 @@ export interface CausalIdentificationSandboxPort {
     readonly plan: IdentificationPlanPayload;
     readonly plan_ref: ArtifactReference;
   }): Promise<{
-    readonly program: AnalysisSandboxProgramPayload;
-    readonly program_ref: ArtifactReference;
+    readonly receipt: AnalysisSandboxExecutionReceipt;
     readonly execution_receipt_ref: ArtifactReference;
     readonly result_refs: readonly ArtifactReference[];
     readonly computation: CausalEstimateComputation;
@@ -116,6 +114,11 @@ export function createRootCauseExecutor(dependencies: {
   readonly artifacts: RootCauseArtifactAuthorityPort;
   readonly sandbox: CausalIdentificationSandboxPort;
   readonly attribution: CausalAttributionAuthorityPort;
+  readonly causal_runtime: {
+    readonly runtime_profile: "CAUSAL_L5";
+    readonly agent_image: string;
+    readonly operator_image: string;
+  };
 }) {
   const commit = async (
     payload: RootCauseArtifactPayload,
@@ -201,7 +204,6 @@ export function createRootCauseExecutor(dependencies: {
         input.plan_ref,
         `causal-question:${question.question_hash}`,
       );
-      const attestation = ANALYSIS_RUNTIME_ATTESTATIONS.CAUSAL_L5;
       const identificationPlan = await createIdentificationPlan({
         context: input.context,
         question,
@@ -210,8 +212,7 @@ export function createRootCauseExecutor(dependencies: {
         receipt,
         receipt_ref: receiptRef,
         estimator: input.estimator,
-        runtime_digest: attestation.runtime_digest,
-        dependency_lock_digest: attestation.dependency_lock_digest,
+        ...dependencies.causal_runtime,
       });
       const identificationPlanRef = await commit(
         identificationPlan,
@@ -234,15 +235,16 @@ export function createRootCauseExecutor(dependencies: {
         plan_ref: identificationPlanRef,
       });
       if (
-        execution.program.import_profile !== "CAUSAL_L5" ||
-        execution.program.runtime_digest !== attestation.runtime_digest ||
-        execution.program.dependency_lock_digest !== attestation.dependency_lock_digest ||
-        execution.program_ref.artifact_type !== "SandboxProgram" ||
-        execution.program.analysis_program_ref.artifact_type !== "AnalysisProgram" ||
-        artifactReferenceIdentity(execution.program.analysis_program_ref) !==
+        execution.receipt.runtime_profile !== dependencies.causal_runtime.runtime_profile ||
+        execution.receipt.runtime.agent_image !== dependencies.causal_runtime.agent_image ||
+        execution.receipt.runtime.operator_image !== dependencies.causal_runtime.operator_image ||
+        execution.execution_receipt_ref.artifact_type !== "SandboxExecutionReceipt" ||
+        execution.receipt.analysis_program_ref.artifact_type !== "AnalysisProgram" ||
+        artifactReferenceIdentity(execution.receipt.analysis_program_ref) !==
           artifactReferenceIdentity(input.plan_ref) ||
-        !exactScope(execution.program_ref, input.plan_ref) ||
-        execution.program_ref.content_hash !== (await sha256ContentHash(execution.program))
+        !exactScope(execution.execution_receipt_ref, input.plan_ref) ||
+        execution.execution_receipt_ref.content_hash !==
+          (await sha256ContentHash(execution.receipt))
       ) {
         throw new TypeError("CAUSAL_SANDBOX_ATTESTATION_INVALID");
       }
@@ -251,7 +253,7 @@ export function createRootCauseExecutor(dependencies: {
         question_ref: questionRef,
         plan: identificationPlan,
         plan_ref: identificationPlanRef,
-        sandbox_program_ref: execution.program_ref,
+        analysis_program_ref: input.plan_ref,
         sandbox_execution_receipt_ref: execution.execution_receipt_ref,
         sandbox_result_refs: execution.result_refs,
         computation: execution.computation,
@@ -270,8 +272,9 @@ export function createRootCauseExecutor(dependencies: {
         plan_ref: identificationPlanRef,
         estimate,
         estimate_ref: estimateRef,
-        receipt_ref: receiptRef,
-        program: execution.program,
+        discovery_receipt_ref: receiptRef,
+        sandbox_receipt: execution.receipt,
+        sandbox_receipt_ref: execution.execution_receipt_ref,
         authority,
       });
       const certificateRef = await commit(
