@@ -300,7 +300,7 @@ class PythonSandboxSupervisor:
                         request_hash,
                         started_at,
                         monotonic_started,
-                        "PYTHON_POLICY_REJECTED",
+                        "PYTHON_POLICY_IDEMPOTENCY_CONFLICT",
                     )
                 completion = self._inflight.get(key)
                 if completion is None:
@@ -332,7 +332,11 @@ class PythonSandboxSupervisor:
         request = envelope.request
         if not hmac.compare_digest(envelope.authorization, self.configuration.authorization):
             return self._failure(
-                envelope, request_hash, started_at, monotonic_started, "PYTHON_POLICY_REJECTED"
+                envelope,
+                request_hash,
+                started_at,
+                monotonic_started,
+                "PYTHON_POLICY_AUTHORIZATION_INVALID",
             )
         if (
             request.runtime_digest != self.configuration.runtime_digest
@@ -340,7 +344,11 @@ class PythonSandboxSupervisor:
             or request.policy_version != self.configuration.policy_version
         ):
             return self._failure(
-                envelope, request_hash, started_at, monotonic_started, "PYTHON_POLICY_REJECTED"
+                envelope,
+                request_hash,
+                started_at,
+                monotonic_started,
+                "PYTHON_POLICY_RUNTIME_ATTESTATION_MISMATCH",
             )
         if not all(self.configuration.hard_controls.model_dump().values()):
             return self._failure(
@@ -349,21 +357,55 @@ class PythonSandboxSupervisor:
         try:
             source = _decode(envelope.source_code_base64)
             if _sha256(source) != request.source_sha256:
-                raise ValueError("source digest mismatch")
-            source_text = source.decode("utf-8")
-            validate_python_source(source_text, self.configuration.import_profile)
+                return self._failure(
+                    envelope,
+                    request_hash,
+                    started_at,
+                    monotonic_started,
+                    "PYTHON_POLICY_SOURCE_DIGEST_MISMATCH",
+                )
+            try:
+                source_text = source.decode("utf-8")
+            except UnicodeDecodeError:
+                return self._failure(
+                    envelope,
+                    request_hash,
+                    started_at,
+                    monotonic_started,
+                    "PYTHON_POLICY_SOURCE_ENCODING_INVALID",
+                )
+            try:
+                validate_python_source(source_text, self.configuration.import_profile)
+            except PythonPolicyError as error:
+                return self._failure(
+                    envelope,
+                    request_hash,
+                    started_at,
+                    monotonic_started,
+                    f"PYTHON_POLICY_{error.violations[0].code}",
+                )
             decoded_inputs = [_decode(item.content_base64) for item in envelope.inputs]
             for item, content in zip(envelope.inputs, decoded_inputs, strict=True):
                 if _sha256(content) != item.reference.content_hash:
-                    raise ValueError("input digest mismatch")
+                    return self._failure(
+                        envelope,
+                        request_hash,
+                        started_at,
+                        monotonic_started,
+                        "PYTHON_POLICY_INPUT_DIGEST_MISMATCH",
+                    )
             input_bytes = len(source) + sum(map(len, decoded_inputs))
             if input_bytes > min(request.budgets.input_bytes, self.configuration.max_input_bytes):
                 return self._failure(
                     envelope, request_hash, started_at, monotonic_started, "PYTHON_RESOURCE_LIMIT"
                 )
-        except (UnicodeDecodeError, ValueError, PythonPolicyError):
+        except (binascii.Error, ValueError):
             return self._failure(
-                envelope, request_hash, started_at, monotonic_started, "PYTHON_POLICY_REJECTED"
+                envelope,
+                request_hash,
+                started_at,
+                monotonic_started,
+                "PYTHON_POLICY_SOURCE_ENCODING_INVALID",
             )
 
         self.configuration.job_root.mkdir(parents=True, exist_ok=True)

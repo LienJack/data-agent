@@ -170,7 +170,7 @@ def main() -> None:
     print(json.dumps(outcome, ensure_ascii=False, indent=2))
     expected = {
         "success": ("SUCCEEDED", None),
-        "malicious": ("FAILED", "PYTHON_POLICY_REJECTED"),
+        "malicious": ("FAILED", "PYTHON_POLICY_IMPORT_DENIED"),
         "resource": ("FAILED", "PYTHON_TIMEOUT"),
         "cancel": ("CANCELLED", "PYTHON_CANCELLED"),
     }[args.case]

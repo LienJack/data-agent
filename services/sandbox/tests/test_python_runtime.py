@@ -226,7 +226,7 @@ def test_supervisor_rejects_bad_auth_and_hashes_dynamic_output(tmp_path: Path) -
     source = "def main(context):\n    context.write_json('result', {'ok': True})\n"
     bad_auth = envelope_for(source, b'{"ok":true}\n', authorization="x" * 32)
     auth_outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(bad_auth)
-    assert auth_outcome.receipt.failure_code == "PYTHON_POLICY_REJECTED"
+    assert auth_outcome.receipt.failure_code == "PYTHON_POLICY_AUTHORIZATION_INVALID"
 
     dynamic_output = envelope_for(source, b'{"ok":false}\n', identifier="sandbox-dynamic-output")
     output_outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(dynamic_output)
@@ -288,7 +288,7 @@ def test_same_idempotency_key_with_different_hash_fails_closed(tmp_path: Path) -
         identifier="sandbox-conflict",
     )
     assert supervisor.execute(first).receipt.status == "SUCCEEDED"
-    assert supervisor.execute(second).receipt.failure_code == "PYTHON_POLICY_REJECTED"
+    assert supervisor.execute(second).receipt.failure_code == "PYTHON_POLICY_IDEMPOTENCY_CONFLICT"
 
 
 def test_same_idempotency_key_with_different_output_slot_fails_closed(tmp_path: Path) -> None:
@@ -303,7 +303,19 @@ def test_same_idempotency_key_with_different_output_slot_fails_closed(tmp_path: 
     )
     second = first.model_copy(update={"output_slots": (changed_slot,)})
     assert supervisor.execute(first).receipt.status == "SUCCEEDED"
-    assert supervisor.execute(second).receipt.failure_code == "PYTHON_POLICY_REJECTED"
+    assert supervisor.execute(second).receipt.failure_code == "PYTHON_POLICY_IDEMPOTENCY_CONFLICT"
+
+
+def test_supervisor_projects_exact_ast_policy_violation(tmp_path: Path) -> None:
+    request = envelope_for(
+        "def main(sdk):\n    pass\n",
+        b"{}\n",
+        identifier="sandbox-entrypoint-policy",
+    )
+
+    outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)
+
+    assert outcome.receipt.failure_code == "PYTHON_POLICY_ENTRYPOINT_SIGNATURE_INVALID"
 
 
 def test_envelope_forbids_unknown_fields_and_cross_run_refs() -> None:
