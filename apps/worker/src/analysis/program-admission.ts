@@ -33,6 +33,7 @@ export type ProgramAdmissionFailure =
   | "PROGRAM_INPUT_SCOPE_MISMATCH"
   | "PROGRAM_INPUT_NOT_QUERY_EVIDENCE"
   | "PROGRAM_SOURCE_TOO_LARGE"
+  | "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
   | "PROGRAM_HOST_POLICY_REJECTED"
   | "PROGRAM_OUTPUT_CONTRACT_MISMATCH"
   | "PROGRAM_VERIFICATION_FAILED"
@@ -66,6 +67,13 @@ function hostPolicyAllows(source: string): boolean {
     /(?:https?|file):\/\//iu,
   ];
   return !denied.some((pattern) => pattern.test(source));
+}
+
+function entrypointPolicyAllows(source: string): boolean {
+  const declarations = source.match(
+    /(?:^|\n)\s*(?:async\s+)?def\s+main\s*\([^\n]*\)\s*(?:->[^:\n]+)?\s*:/gu,
+  );
+  return declarations?.length === 1 && /(?:^|\n)def main\(context\):/u.test(source);
 }
 
 function derivedSeed(analysisProgramRef: ArtifactReference, nodeId: string): number {
@@ -144,14 +152,16 @@ export async function admitAnalysisSandboxProgram(input: {
       ({ artifact_type: artifactType }) => artifactType !== "QueryEvidence",
     ) ||
     input.input_materialization_receipt_refs.some(
-      ({ artifact_type: artifactType }) =>
-        artifactType !== "AnalysisInputMaterializationReceipt",
+      ({ artifact_type: artifactType }) => artifactType !== "AnalysisInputMaterializationReceipt",
     )
   ) {
     return { ok: false, failure: "PROGRAM_INPUT_NOT_QUERY_EVIDENCE" };
   }
   if (Buffer.byteLength(input.source_text, "utf8") > MAX_SOURCE_BYTES) {
     return { ok: false, failure: "PROGRAM_SOURCE_TOO_LARGE" };
+  }
+  if (!entrypointPolicyAllows(input.source_text)) {
+    return { ok: false, failure: "PROGRAM_ENTRYPOINT_POLICY_REJECTED" };
   }
   if (!hostPolicyAllows(input.source_text)) {
     return { ok: false, failure: "PROGRAM_HOST_POLICY_REJECTED" };
@@ -223,8 +233,7 @@ export async function admitAnalysisSandboxProgramRepair(input: {
     source_text_ref: input.repaired_source_text_ref,
     query_evidence_refs: input.previous_program.query_evidence_refs,
     input_refs: input.previous_program.input_refs,
-    input_materialization_receipt_refs:
-      input.previous_program.input_materialization_receipt_refs,
+    input_materialization_receipt_refs: input.previous_program.input_materialization_receipt_refs,
     ...(input.catalog ? { catalog: input.catalog } : {}),
   });
   if (!repaired.ok) return repaired;

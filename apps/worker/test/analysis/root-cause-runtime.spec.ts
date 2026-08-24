@@ -275,7 +275,7 @@ describe("root cause worker runtime", () => {
       sandbox: {
         async execute(input) {
           sandboxExecutions += 1;
-          const source = "def main(sdk):\n    return None\n";
+          const source = "def main(context):\n    return None\n";
           const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
           const programMaterial: Omit<AnalysisSandboxProgramPayload, "program_hash"> = {
             artifact_type: "SandboxProgram",

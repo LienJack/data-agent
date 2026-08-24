@@ -28,8 +28,6 @@ PROFILE_IMPORT_ROOTS: dict[AnalysisImportProfile, frozenset[str]] = {
     "CAUSAL_L5": CORE_IMPORT_ROOTS
     | frozenset({"dowhy", "econml", "networkx", "sklearn", "statsmodels"}),
 }
-# Backward-compatible name for callers that have not yet selected a profile.
-ALLOWED_IMPORT_ROOTS = CORE_IMPORT_ROOTS
 MAX_SOURCE_BYTES = 262_144
 MAX_AST_NODES = 25_000
 BANNED_NAMES = frozenset(

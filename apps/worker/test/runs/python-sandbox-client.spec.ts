@@ -67,7 +67,7 @@ const envelope: PythonExecutionEnvelopeV2 = pythonExecutionEnvelopeSchema.parse(
       stderr_bytes: 1_024,
     },
   },
-  source_code_base64: Buffer.from("def main(sdk): pass").toString("base64"),
+  source_code_base64: Buffer.from("def main(context): pass").toString("base64"),
   inputs: [],
   output_slots: [
     { name: "result", ...(({ content_hash: _hash, ...slot }) => slot)(outputReference) },

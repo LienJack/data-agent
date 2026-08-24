@@ -159,7 +159,7 @@ async function boundedPrompt(input: {
 }) {
   const semanticContext = await verifySemanticContextPackage(input.semanticContextPackage);
   const prompt = {
-    task: "Generate a deterministic Python 3.12 function main(sdk) for governed tabular analysis.",
+    task: "Generate a deterministic Python 3.12 function main(context) for governed tabular analysis.",
     semantic_context: {
       package_hash: semanticContext.package_hash,
       semantic_domain: semanticContext.semantic_domain,
@@ -198,12 +198,12 @@ async function boundedPrompt(input: {
       random_seed: "HOST_INJECTED",
       allowed_imports: allowedImports(input.importProfile),
       sdk: {
-        entrypoint: "def main(sdk)",
-        read_input: "sdk.read(input_name)",
-        write_json: "sdk.write_json(output_name, value)",
-        write_csv: "sdk.write_csv(output_name, value)",
-        write_arrow: "sdk.write_arrow(output_name, value)",
-        write_png: "sdk.write_png(output_name, figure)",
+        entrypoint: "def main(context)",
+        read_input: "context.read(input_name)",
+        write_json: "context.write_json(output_name, value)",
+        write_csv: "context.write_csv(output_name, value)",
+        write_arrow: "context.write_arrow(output_name, value)",
+        write_png: "context.write_png(output_name, figure)",
       },
       return_contract:
         "Read only declared input names and write every declared output exactly once through the provided sdk.",

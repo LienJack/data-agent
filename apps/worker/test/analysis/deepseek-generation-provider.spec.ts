@@ -83,7 +83,7 @@ function eventFor(
     ...base,
     event_type: "COMPLETED",
     output_text:
-      '{"schema_version":"analysis-python-source@1.0.0","python_source":"def main(sdk):\\n    pass\\n"}',
+      '{"schema_version":"analysis-python-source@1.0.0","python_source":"def main(context):\\n    pass\\n"}',
     response_hash: hash("a"),
     usage: {
       availability: "AVAILABLE",
@@ -144,7 +144,7 @@ describe("DeepSeek Python generation provider", () => {
       ok: true as const,
       value: {
         output_text:
-          '{"schema_version":"analysis-python-source@1.0.0","python_source":"def main(sdk):\\n    pass\\n"}',
+          '{"schema_version":"analysis-python-source@1.0.0","python_source":"def main(context):\\n    pass\\n"}',
         tool_calls: [],
         projection: {
           invocation_id: input.logical_call_id,

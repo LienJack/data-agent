@@ -168,7 +168,8 @@ async function fixture() {
 describe("DeepSeek governed Python source", () => {
   it("replays committed source before loading context or calling DeepSeek", async () => {
     const base = await fixture();
-    const existing = "import pandas as pd\ndef main(sdk):\n    sdk.write_json('result', {})\n";
+    const existing =
+      "import pandas as pd\ndef main(context):\n    context.write_json('result', {})\n";
     const existingHash =
       `sha256:${createHash("sha256").update(existing, "utf8").digest("hex")}` as const;
     const source = createDeepSeekAnalysisProgramSource({
@@ -251,7 +252,7 @@ describe("DeepSeek governed Python source", () => {
             output_text: JSON.stringify({
               schema_version: "analysis-python-source@1.0.0",
               python_source:
-                "import pandas as pd\ndef main(sdk):\n    sdk.write_json('result', {})\n",
+                "import pandas as pd\ndef main(context):\n    context.write_json('result', {})\n",
             }),
           };
         },
@@ -294,6 +295,8 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("monthly_orders");
     expect(serialized).toContain("statistical_method_contract");
     expect(serialized).toContain("output_json_schema");
+    expect(serialized).toContain("def main(context)");
+    expect(serialized).not.toContain("def main(sdk)");
     expect(serialized).not.toMatch(/postgres(?:ql)?:\/\//iu);
     expect(serialized).not.toMatch(/password|api[_-]?key|raw_rows|row_values/iu);
   });
@@ -326,7 +329,7 @@ describe("DeepSeek governed Python source", () => {
             output_text: JSON.stringify({
               schema_version: "analysis-python-source@1.0.0",
               python_source:
-                "import pandas as pd\ndef main(sdk):\n    sdk.write_json('result', {})\n",
+                "import pandas as pd\ndef main(context):\n    context.write_json('result', {})\n",
             }),
           };
         },
@@ -357,7 +360,7 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
-      previous_source_text: "import pandas as pd\ndef main(sdk):\n    pass\n",
+      previous_source_text: "import pandas as pd\ndef main(context):\n    pass\n",
       failure_code: "postgres://user:password@secret-host/falcon_db_24",
       attempt: 1,
     });

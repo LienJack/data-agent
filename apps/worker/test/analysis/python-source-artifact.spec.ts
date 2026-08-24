@@ -14,7 +14,8 @@ import {
 const id = (suffix: number) => `35000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
-const sourceText = "import pandas as pd\ndef main(sdk):\n    sdk.write_json('result', {})\n";
+const sourceText =
+  "import pandas as pd\ndef main(context):\n    context.write_json('result', {})\n";
 const sourceHash = analysisPythonSourceArtifactInternals.sourceHash(sourceText);
 
 function reference(

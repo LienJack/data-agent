@@ -328,12 +328,29 @@ describe("deterministic analysis worker runtime", () => {
   it("admits one repair only and rejects imports or reference authority expansion", async () => {
     const base = await fixture();
     const planRef = reference("AnalysisProgram", 20);
-    const source = "import math\ndef main(sdk):\n    return math.fsum([1.0])\n";
+    const source = "import math\ndef main(context):\n    return math.fsum([1.0])\n";
     const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
     const sourceRef = reference("SensitiveExecutionArtifact", 21, sourceHash);
     const queryRef = reference("QueryEvidence", 22);
     const inputRef = reference("SensitiveExecutionArtifact", 23);
     const materializationRef = reference("AnalysisInputMaterializationReceipt", 26);
+    const legacyEntrypoint = source.replace("main(context)", "main(sdk)");
+    await expect(
+      admitAnalysisSandboxProgram({
+        analysis_program: base.plan,
+        analysis_program_ref: planRef,
+        node_id: "trend",
+        source_text: legacyEntrypoint,
+        source_text_ref: reference(
+          "SensitiveExecutionArtifact",
+          27,
+          `sha256:${createHash("sha256").update(legacyEntrypoint).digest("hex")}`,
+        ),
+        query_evidence_refs: [queryRef],
+        input_refs: [inputRef],
+        input_materialization_receipt_refs: [materializationRef],
+      }),
+    ).resolves.toEqual({ ok: false, failure: "PROGRAM_ENTRYPOINT_POLICY_REJECTED" });
     const admitted = await admitAnalysisSandboxProgram({
       analysis_program: base.plan,
       analysis_program_ref: planRef,
@@ -346,7 +363,7 @@ describe("deterministic analysis worker runtime", () => {
     });
     expect(admitted.ok).toBe(true);
     if (!admitted.ok) return;
-    const repaired = "import math\ndef main(sdk):\n    return math.fsum([2.0])\n";
+    const repaired = "import math\ndef main(context):\n    return math.fsum([2.0])\n";
     const repairedRef = reference(
       "SensitiveExecutionArtifact",
       24,
@@ -506,7 +523,7 @@ describe("deterministic analysis worker runtime", () => {
       });
       const l2: string[] = [];
       const system: string[] = [];
-      const source = "def main(sdk):\n    return None\n";
+      const source = "def main(context):\n    return None\n";
       const sourceRef = reference(
         "SensitiveExecutionArtifact",
         50,

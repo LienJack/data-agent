@@ -350,7 +350,7 @@ async function causalChain(
     dependency_lock_digest: hash("3"),
   });
   const identificationPlanRef = reference("IdentificationPlan", 45, await sha256ContentHash(plan));
-  const source = "def main(sdk):\n    return None\n";
+  const source = "def main(context):\n    return None\n";
   const sourceHash = `sha256:${createHash("sha256").update(source).digest("hex")}` as const;
   const queryRef = reference("QueryEvidence", 46);
   const inputRef = reference("SandboxResult", 47);
