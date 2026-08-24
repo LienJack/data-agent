@@ -38,7 +38,10 @@ function failure<T>(code: string, message: string, retryable = false): PortResul
 }
 
 function retryableReason(code: string): boolean {
-  return /(?:THROTTL|TIMEOUT|UNAVAILABLE|NETWORK|RATE_LIMIT)/u.test(code);
+  return (
+    code === "MODEL_STREAM_PROTOCOL_VIOLATION" ||
+    /(?:THROTTL|TIMEOUT|UNAVAILABLE|NETWORK|RATE_LIMIT)/u.test(code)
+  );
 }
 
 function providerFailureCode(error: unknown): string {
@@ -274,3 +277,5 @@ export function createDirectRunBoundProviderDispatcher(input: {
     },
   });
 }
+
+export const directRunBoundProviderDispatcherInternals = Object.freeze({ retryableReason });
