@@ -139,7 +139,7 @@ class StatisticalOperatorCallReceipt(StrictModel):
     group_count: Annotated[int, Field(ge=0)] | None
     family_size: Annotated[int, Field(ge=0)] | None
     rank: Annotated[int, Field(ge=0)] | None
-    applicability: Literal["PASS"]
+    applicability: Literal["PASS", "ASSUMPTION_BOUND", "HOLD"]
     limitation_codes: Annotated[
         tuple[Annotated[str, Field(pattern=r"^[A-Z][A-Z0-9_]*$")], ...],
         Field(max_length=16),

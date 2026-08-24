@@ -63,7 +63,14 @@ def fake_bh(inputs: dict[str, object], parameters: dict[str, object]) -> Operato
     return OperatorExecutionResult(
         output={
             "tests": [
-                {"label": row["label"], "adjusted_p_value": float(row["p_value"]) * 2}
+                {
+                    "label": row["label"],
+                    "adjusted_p_value": float(row["p_value"]) * 2,
+                    "rejected": True,
+                    "family_size": len(tests),
+                    "alpha": 0.05,
+                    "method": "bh",
+                }
                 for row in tests
             ]
         },
@@ -257,9 +264,7 @@ def test_policy_denies_operator_capability_outside_governed_source_policy() -> N
             operator_obligations=(),
         )
 
-    assert "OPERATOR_NOT_AUTHORIZED" in {
-        violation.code for violation in captured.value.violations
-    }
+    assert "OPERATOR_NOT_AUTHORIZED" in {violation.code for violation in captured.value.violations}
 
 
 def test_policy_and_registry_reject_reordered_governed_calls() -> None:
@@ -299,7 +304,7 @@ def test_policy_and_registry_reject_reordered_governed_calls() -> None:
     assert failure_code(registry_error) == "PYTHON_OPERATOR_NOT_AUTHORIZED"
 
 
-def test_supervisor_operator_failure_commits_no_output_or_partial_receipt(tmp_path: Path) -> None:
+def test_supervisor_executes_registered_operator_and_closes_receipt(tmp_path: Path) -> None:
     source = (
         "def main(context):\n"
         "    result = context.operators.call(\n"
@@ -309,7 +314,7 @@ def test_supervisor_operator_failure_commits_no_output_or_partial_receipt(tmp_pa
         "    )\n"
         "    context.write_json('result', {'method_evidence': {'bh': result['tests']}})\n"
     )
-    request = envelope_for(source, b"{}\n", identifier="operator-not-yet-implemented")
+    request = envelope_for(source, b"{}\n", identifier="operator-implemented")
     request = request.model_copy(
         update={
             "request": request.request.model_copy(
@@ -321,9 +326,48 @@ def test_supervisor_operator_failure_commits_no_output_or_partial_receipt(tmp_pa
             "source_code_base64": base64.b64encode(source.encode()).decode(),
         }
     )
+    supervisor = PythonSandboxSupervisor(configuration(tmp_path))
+    outcome = supervisor.execute(request)
+    replay = supervisor.execute(request)
+
+    assert outcome.receipt.failure_code is None
+    assert outcome.receipt.status == "SUCCEEDED"
+    assert len(outcome.receipt.operator_receipts) == 1
+    assert outcome.receipt.operator_receipts[0].call_id == "bh_family"
+    assert outcome.receipt.operator_receipt_closure_hash is not None
+    assert len(outcome.outputs) == 1
+    assert replay == outcome
+    assert not any(tmp_path.iterdir())
+
+
+def test_supervisor_discards_operator_output_and_receipt_after_later_exception(
+    tmp_path: Path,
+) -> None:
+    source = (
+        "def main(context):\n"
+        "    context.operators.call(\n"
+        "        'multiple-testing.bh-fdr@1',\n"
+        "        call_id='bh_family',\n"
+        "        inputs={'tests': [{'label': 'a', 'p_value': 0.01}]},\n"
+        "    )\n"
+        "    raise ValueError('after governed call')\n"
+    )
+    request = envelope_for(source, b"{}\n", identifier="operator-then-failure")
+    request = request.model_copy(
+        update={
+            "request": request.request.model_copy(
+                update={
+                    "generated_source_policy": "GOVERNED_OPERATOR_ORCHESTRATION",
+                    "operator_obligations": (obligation(),),
+                }
+            ),
+            "source_code_base64": base64.b64encode(source.encode()).decode(),
+        }
+    )
+
     outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)
 
-    assert outcome.receipt.failure_code == "PYTHON_OPERATOR_NOT_REGISTERED"
+    assert outcome.receipt.failure_code == "PYTHON_VALUE_ERROR"
     assert outcome.receipt.operator_receipts == ()
     assert outcome.receipt.operator_receipt_closure_hash is None
     assert outcome.outputs == ()

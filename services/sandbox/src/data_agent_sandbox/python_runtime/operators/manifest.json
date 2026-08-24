@@ -50,11 +50,14 @@
         "UNIQUE_LABELS",
         "FINITE_P_VALUES_IN_UNIT_INTERVAL"
       ],
-      "limitations": ["FAMILY_DEFINITION_MUST_BE_PREDECLARED"]
+      "limitations": [
+        "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
+        "DEPENDENCE_STRUCTURE_NOT_VERIFIED"
+      ]
     },
     {
       "operator_id": "robust-trend.theil-sen-slope@1",
-      "description_zh": "按显式时间序计算 Theil-Sen 稳健斜率及区间。",
+      "description_zh": "按显式时间序计算 Theil-Sen 稳健斜率。",
       "implementation": {
         "module": "data_agent_sandbox.python_runtime.operators.robust_trend",
         "symbol": "theil_sen_slope"
@@ -62,38 +65,23 @@
       "runtime_profile": "CORE_ANALYSIS",
       "batching": {
         "mode": "LABELED_BATCH",
-        "max_items": 5000
+        "max_items": 512
       },
       "inputs": [
         {
           "name": "series",
           "kind": "LABELED_SERIES",
           "required_fields": ["label", "x", "y"],
-          "max_items": 5000
+          "max_items": 512,
+          "max_points_per_series": 512
         }
       ],
-      "parameters": [
-        {
-          "name": "confidence",
-          "kind": "FINITE_NUMBER",
-          "required": false,
-          "default": 0.95,
-          "minimum_exclusive": 0,
-          "maximum_exclusive": 1
-        },
-        {
-          "name": "method",
-          "kind": "ENUM",
-          "required": false,
-          "default": "separate",
-          "allowed_values": ["separate"]
-        }
-      ],
+      "parameters": [],
       "outputs": {
         "collection": "series",
         "label_fields": ["label"],
-        "value_fields": ["slope", "intercept", "low_slope", "high_slope"],
-        "evidence_fields": ["sample_size", "pair_count", "confidence", "method"]
+        "value_fields": ["slope"],
+        "evidence_fields": ["sample_size", "pair_count"]
       },
       "applicability_checks": [
         "MINIMUM_TWO_FINITE_OBSERVATIONS",
@@ -119,7 +107,8 @@
           "name": "series",
           "kind": "LABELED_SERIES",
           "required_fields": ["label", "order", "value"],
-          "max_items": 5000
+          "max_items": 5000,
+          "max_points_per_series": 5000
         }
       ],
       "parameters": [
@@ -177,7 +166,9 @@
           "name": "models",
           "kind": "LABELED_TABLES",
           "required_fields": ["label", "row_order", "outcome", "predictors"],
-          "max_items": 1024
+          "max_items": 1024,
+          "max_rows_per_model": 100000,
+          "max_predictors_per_model": 64
         }
       ],
       "parameters": [
@@ -245,7 +236,9 @@
           "name": "models",
           "kind": "LABELED_TABLES",
           "required_fields": ["label", "outcome", "predictors"],
-          "max_items": 1024
+          "max_items": 1024,
+          "max_rows_per_model": 100000,
+          "max_predictors_per_model": 64
         }
       ],
       "parameters": [
@@ -369,6 +362,12 @@
           "kind": "LABELED_TABLE",
           "required_fields": ["customer_id", "event_month", "order_id", "revenue", "delivery_minutes", "rating"],
           "max_items": 500000
+        },
+        {
+          "name": "observation",
+          "kind": "SINGLETON_RECORD",
+          "required_fields": ["observation_end_month"],
+          "max_items": 1
         }
       ],
       "parameters": [
@@ -396,8 +395,8 @@
       "outputs": {
         "collection": "cohort_periods",
         "label_fields": ["registration_month", "customer_type", "month_index"],
-        "value_fields": ["eligible_customers", "active_customers", "retention_rate", "order_count", "revenue", "average_delivery_minutes", "average_rating"],
-        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "data_quality_status"]
+        "value_fields": ["eligible_customers", "active_customers", "retention_rate", "repeat_customers", "repeat_purchase_rate", "order_count", "revenue", "average_spend", "average_delivery_minutes", "average_rating"],
+        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "orphan_event_count", "data_quality_status"]
       },
       "applicability_checks": [
         "UNIQUE_CUSTOMER_REGISTRATION",
@@ -409,7 +408,8 @@
       ],
       "limitations": [
         "PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS",
-        "SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS"
+        "SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS",
+        "ORPHAN_EVENTS_EXCLUDED"
       ]
     }
   ]

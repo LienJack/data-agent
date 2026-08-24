@@ -42,6 +42,7 @@ class OperatorExecutionResult:
     group_count: int | None = None
     family_size: int | None = None
     rank: int | None = None
+    applicability: str = "PASS"
     limitation_codes: tuple[str, ...] = ()
 
 
@@ -70,6 +71,7 @@ class _CallRecord:
     group_count: int | None
     family_size: int | None
     rank: int | None
+    applicability: str
     limitation_codes: tuple[str, ...]
 
 
@@ -216,9 +218,14 @@ def _validate_output(descriptor: Mapping[str, Any], output: dict[str, Any]) -> d
     if not isinstance(collection, list) or len(collection) > descriptor["batching"]["max_items"]:
         raise StatisticalOperatorError("PYTHON_OPERATOR_NUMERIC_FAILURE")
     label_fields = tuple(output_contract["label_fields"])
+    required_fields = (
+        set(label_fields)
+        | set(output_contract["value_fields"])
+        | set(output_contract["evidence_fields"])
+    )
     seen: set[bytes] = set()
     for row in collection:
-        if not isinstance(row, dict) or any(field not in row for field in label_fields):
+        if not isinstance(row, dict) or not required_fields <= row.keys():
             raise StatisticalOperatorError("PYTHON_OPERATOR_NUMERIC_FAILURE")
         key = _canonical_bytes([row[field] for field in label_fields])
         if key in seen:
@@ -364,6 +371,8 @@ class StatisticalOperatorRegistry:
             execution.limitation_codes
         ):
             raise StatisticalOperatorError("PYTHON_OPERATOR_NUMERIC_FAILURE")
+        if execution.applicability not in {"PASS", "ASSUMPTION_BOUND", "HOLD"}:
+            raise StatisticalOperatorError("PYTHON_OPERATOR_NUMERIC_FAILURE")
         output = _validate_output(descriptor, execution.output)
         record = _CallRecord(
             obligation=obligation,
@@ -377,6 +386,7 @@ class StatisticalOperatorRegistry:
             group_count=execution.group_count,
             family_size=execution.family_size,
             rank=execution.rank,
+            applicability=execution.applicability,
             limitation_codes=tuple(sorted(execution.limitation_codes)),
         )
         self._records.append(record)
@@ -448,7 +458,7 @@ class StatisticalOperatorRegistry:
                     group_count=record.group_count,
                     family_size=record.family_size,
                     rank=record.rank,
-                    applicability="PASS",
+                    applicability=record.applicability,
                     limitation_codes=record.limitation_codes,
                 )
             )

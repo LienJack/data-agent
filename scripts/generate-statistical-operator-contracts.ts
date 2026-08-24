@@ -233,9 +233,16 @@ function formatGeneratedContract(candidate: string): string {
 
 export function renderStatisticalOperatorContract(manifestSource: string): string {
   const manifest = parseStatisticalOperatorManifest(manifestSource);
-  return formatGeneratedContract(
-    renderGeneratedContract(manifest, computeStatisticalOperatorManifestDigest(manifestSource)),
+  const baseContract = renderGeneratedContract(
+    manifest,
+    computeStatisticalOperatorManifestDigest(manifestSource),
   );
+  const rendered = baseContract.replace(
+    'applicability: z.literal("PASS")',
+    'applicability: z.enum(["PASS", "ASSUMPTION_BOUND", "HOLD"])',
+  );
+  assertCondition(rendered !== baseContract, "operator applicability schema generation failed");
+  return formatGeneratedContract(rendered);
 }
 
 function main(): void {
