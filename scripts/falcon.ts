@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseEnv } from "node:util";
 import pg from "../apps/web/node_modules/pg/esm/index.mjs";
+import { activateFalconSemanticWorkspace } from "../apps/web/src/lib/falcon-semantic-activation";
 import {
   attachFalconToWorkspace,
   FALCON_DATASOURCE_ID,
@@ -63,13 +64,18 @@ async function resolveScope(pool: pg.Pool) {
     workspace_id: string;
     environment: string;
     principal_id: string;
+    deployment_id: string;
   }>(
-    `select workspace.workspace_id::text, workspace.environment, membership.principal_id::text
+    `select workspace.workspace_id::text, workspace.environment, membership.principal_id::text,
+            deployment.deployment_id::text
        from app_data_agent.workspaces as workspace
        join app_data_agent.memberships as membership
          on membership.app_id = workspace.app_id
         and membership.tenant_id = workspace.workspace_id
         and membership.environment = workspace.environment
+       join platform.deployment_mappings as deployment
+         on deployment.app_id=workspace.app_id and deployment.environment=workspace.environment
+        and deployment.is_active
       where workspace.app_id = $1::uuid and workspace.lifecycle = 'ACTIVE'
         and membership.workspace_role = 'WORKSPACE_ADMIN' and membership.revoked_at is null
         and ($2::uuid is null or workspace.workspace_id = $2::uuid)
@@ -84,6 +90,7 @@ async function resolveScope(pool: pg.Pool) {
     workspaceId: result.rows[0].workspace_id,
     environment: result.rows[0].environment,
     principalId: result.rows[0].principal_id,
+    deploymentId: result.rows[0].deployment_id,
   } as const;
 }
 
@@ -214,17 +221,26 @@ try {
           assetMaterial(current.source_payload as typeof prepared.change_set),
         ).catch(() => null)
       : null;
+    let publication: Record<string, unknown>;
+    let release: {
+      release_id: string;
+      release_generation: number;
+      release_hash: `sha256:${string}`;
+    };
     if (current?.current_release_id && desiredAssetHash === currentAssetHash) {
-      report({
+      release = {
+        release_id: current.current_release_id,
+        release_generation: Number(current.current_release_generation),
+        release_hash: current.current_release_digest as `sha256:${string}`,
+      };
+      publication = {
         schema_version: "falcon-semantic-publication@1.0.0",
         terminal: "ALREADY_PUBLISHED",
         workspace_id: scope.workspaceId,
         semantic_domain: "falcon24",
-        release_id: current.current_release_id,
-        release_generation: Number(current.current_release_generation),
-        release_hash: current.current_release_digest,
+        ...release,
         asset_hash: currentAssetHash,
-      });
+      };
     } else {
       const publishedAt = new Date().toISOString();
       const review = await buildSemanticReviewDecision({
@@ -249,7 +265,12 @@ try {
         }),
         published_at: publishedAt,
       });
-      report({
+      release = {
+        release_id: receipt.published_release.release_id,
+        release_generation: receipt.published_release.generation,
+        release_hash: receipt.published_release.release_hash,
+      };
+      publication = {
         schema_version: "falcon-semantic-publication@1.0.0",
         terminal: "PUBLISHED",
         workspace_id: scope.workspaceId,
@@ -259,8 +280,15 @@ try {
         competency_case_count: prepared.competency_case_count,
         asset_hash: desiredAssetHash,
         receipt,
-      });
+      };
     }
+    const activation = await activateFalconSemanticWorkspace({
+      pool,
+      environment: process.env,
+      scope,
+      release,
+    });
+    report({ ...publication, activation });
   } else if (command === "demo:smoke") {
     const dataset = await loadFalconDevDataset();
     const sealedCase = dataset.sealed_cases.find(
