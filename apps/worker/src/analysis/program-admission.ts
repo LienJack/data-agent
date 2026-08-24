@@ -58,15 +58,12 @@ function imports(source: string): ReadonlySet<string> {
 }
 
 function hostPolicyAllows(source: string): boolean {
-  const denied = [
-    /\b(?:eval|exec|compile|open|input|globals|locals|__import__)\s*\(/u,
-    /\b(?:os|sys|socket|subprocess|multiprocessing|ctypes|pickle|marshal|pathlib|shutil|requests|urllib)\b/u,
-    /\b(?:fork|spawn|system|popen)\b/u,
+  const deniedSensitiveContent = [
     /(?:api[_-]?key|access[_-]?token|secret|password)\s*[:=]\s*["'][^"']{4,}["']/iu,
     /-----BEGIN [A-Z ]+PRIVATE KEY-----/u,
     /(?:https?|file):\/\//iu,
   ];
-  return !denied.some((pattern) => pattern.test(source));
+  return !deniedSensitiveContent.some((pattern) => pattern.test(source));
 }
 
 function entrypointPolicyAllows(source: string): boolean {
@@ -284,3 +281,7 @@ export async function admitAnalysisSandboxProgramRepair(input: {
   }
   return repaired;
 }
+
+export const analysisProgramAdmissionInternals = Object.freeze({
+  hostPolicyAllows,
+});

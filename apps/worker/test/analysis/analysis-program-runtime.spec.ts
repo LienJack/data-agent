@@ -13,6 +13,7 @@ import {
   admitAnalysisSandboxProgramRepair,
   admitAnalysisSandboxProgramSourceRepair,
   analysisOracleFailureCode,
+  analysisProgramAdmissionInternals,
   analysisRepairFailureCode,
   computeAnalysisProgramHash,
   createAnalysisProgramExecutor,
@@ -181,6 +182,24 @@ async function fixture() {
 }
 
 describe("deterministic analysis worker runtime", () => {
+  it("leaves executable Python policy to the sandbox AST authority", () => {
+    expect(
+      analysisProgramAdmissionInternals.hostPolicyAllows(
+        "# Build shared business series from input (order_revenue)\ndef main(context):\n    pass\n",
+      ),
+    ).toBe(true);
+    expect(
+      analysisProgramAdmissionInternals.hostPolicyAllows(
+        "def main(context):\n    value = input ('unsafe')\n",
+      ),
+    ).toBe(true);
+    expect(
+      analysisProgramAdmissionInternals.hostPolicyAllows(
+        "def main(context):\n    api_key = 'secret-value'\n",
+      ),
+    ).toBe(false);
+  });
+
   it("projects only fixed oracle failure codes into diagnostics", () => {
     expect(analysisOracleFailureCode(new TypeError("FALCON24_Q1_MONTHLY_KPI_MISMATCH"))).toBe(
       "FALCON24_Q1_MONTHLY_KPI_MISMATCH",

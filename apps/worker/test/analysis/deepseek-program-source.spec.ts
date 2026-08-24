@@ -633,6 +633,13 @@ describe("DeepSeek governed Python source", () => {
     expect(marketingStatisticsRepair.repair?.required_correction).toContain(
       "shared business-by-week",
     );
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain(
+      "distinct (channel,target_audience) tuples",
+    );
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain("spend[0:79-L]");
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain(
+      "maps for all three outcomes",
+    );
     expect(marketingStatisticsRepair.repair?.required_correction).toContain("use_correction':True");
     expect(marketingStatisticsRepair.repair?.required_correction).toContain("normal z p-value");
 
