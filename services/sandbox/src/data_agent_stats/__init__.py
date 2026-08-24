@@ -1,7 +1,7 @@
-"""Server-owned governed statistical operator registry."""
+"""唯一的服务端治理统计算子包。"""
 
-from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
-from data_agent_sandbox.python_runtime.operators.manifest import (
+from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST
+from data_agent_stats.manifest import (
     OPERATOR_BY_ID,
     OPERATOR_IDS,
     OPERATOR_MANIFEST,

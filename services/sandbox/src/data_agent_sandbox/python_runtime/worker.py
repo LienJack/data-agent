@@ -9,12 +9,12 @@ from types import ModuleType
 from typing import Any
 
 from data_agent_sandbox.python_runtime.models import StatisticalOperatorObligation
-from data_agent_sandbox.python_runtime.operators.registry import (
+from data_agent_sandbox.python_runtime.policy import allowed_import_roots
+from data_agent_sandbox.python_runtime.sdk import AnalysisContext
+from data_agent_stats.registry import (
     StatisticalOperatorError,
     StatisticalOperatorRegistry,
 )
-from data_agent_sandbox.python_runtime.policy import allowed_import_roots
-from data_agent_sandbox.python_runtime.sdk import AnalysisContext
 
 _SAFE_BUILTINS = {
     name: getattr(builtins, name)

@@ -65,7 +65,7 @@ type OperatorManifest = {
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const manifestPath = resolve(
   repositoryRoot,
-  "services/sandbox/src/data_agent_sandbox/python_runtime/operators/manifest.json",
+  "services/sandbox/src/data_agent_stats/manifest.json",
 );
 const generatedPath = resolve(
   repositoryRoot,
@@ -252,9 +252,7 @@ export function parseStatisticalOperatorManifest(text: string): OperatorManifest
     );
     assertCondition(
       typeof rawOperator.implementation.module === "string" &&
-        /^data_agent_sandbox\.python_runtime\.operators\.[a-z][a-z0-9_]*$/u.test(
-          rawOperator.implementation.module,
-        ),
+        /^data_agent_stats\.[a-z][a-z0-9_]*$/u.test(rawOperator.implementation.module),
       `${context}.implementation.module 非法。`,
     );
     assertCondition(
@@ -378,7 +376,7 @@ export function computeStatisticalOperatorRegistryDigest(
   manifestSource: string,
 ): `sha256:${string}` {
   const manifest = parseStatisticalOperatorManifest(manifestSource);
-  const modulePrefix = "data_agent_sandbox.python_runtime.operators.";
+  const modulePrefix = "data_agent_stats.";
   const rows = [
     "statistical-operator-registry@1.0.0",
     `manifest=${sha256(manifestSource)}`,
@@ -386,7 +384,7 @@ export function computeStatisticalOperatorRegistryDigest(
       const moduleName = implementation.module.slice(modulePrefix.length);
       const implementationPath = resolve(
         repositoryRoot,
-        `services/sandbox/src/data_agent_sandbox/python_runtime/operators/${moduleName}.py`,
+        `services/sandbox/src/data_agent_stats/${moduleName}.py`,
       );
       assertCondition(
         existsSync(implementationPath),

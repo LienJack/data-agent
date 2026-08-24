@@ -62,7 +62,7 @@ const operatorRegistryRows = [
   `manifest=${hash(operatorManifestSource)}`,
   ...(await Promise.all(
     operatorManifest.operators.map(async ({ implementation }) => {
-      const prefix = "data_agent_sandbox.python_runtime.operators.";
+      const prefix = "data_agent_stats.";
       if (!implementation.module.startsWith(prefix)) {
         throw new Error("PYTHON_OPERATOR_IMPLEMENTATION_PATH_INVALID");
       }

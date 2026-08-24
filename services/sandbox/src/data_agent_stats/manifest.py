@@ -64,7 +64,7 @@ _RECORD_FIELD_SHAPES = frozenset(
 
 
 class OperatorManifestError(RuntimeError):
-    """The sole operator manifest is malformed or contains compatibility metadata."""
+    """The sole operator manifest is malformed or contains forbidden legacy metadata."""
 
 
 def _reject_forbidden_keys(value: Any, path: str = "manifest") -> None:

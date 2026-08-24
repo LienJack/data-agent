@@ -18,7 +18,6 @@ from data_agent_sandbox.python_runtime.models import (
     PythonOutputSlot,
     PythonOutputSpec,
 )
-from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.policy import (
     PythonPolicyError,
 )
@@ -29,6 +28,7 @@ from data_agent_sandbox.python_runtime.supervisor import (
     PythonSandboxSupervisor,
     SandboxConfiguration,
 )
+from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST
 
 WORKSPACE_ID = "10000000-0000-4000-8000-000000000001"
 RUN_ID = "10000000-0000-4000-8000-000000000002"

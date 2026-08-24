@@ -4,8 +4,8 @@ import math
 
 import pytest
 
-from data_agent_sandbox.python_runtime.operators.multiple_testing import bh_fdr
-from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorError
+from data_agent_stats.multiple_testing import bh_fdr
+from data_agent_stats.registry import StatisticalOperatorError
 
 
 def _manual_bh(values: dict[str, float]) -> dict[str, float]:

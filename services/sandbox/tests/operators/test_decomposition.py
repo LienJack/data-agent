@@ -5,8 +5,8 @@ import math
 
 import pytest
 
-from data_agent_sandbox.python_runtime.operators.decomposition import product_shapley_exact
-from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorError
+from data_agent_stats.decomposition import product_shapley_exact
+from data_agent_stats.registry import StatisticalOperatorError
 
 PARAMETERS = {"mode": "exact", "max_factors": 8, "closure_tolerance": 1e-9}
 

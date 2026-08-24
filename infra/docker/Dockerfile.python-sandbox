@@ -37,6 +37,7 @@ RUN python -m pip install --no-cache-dir --require-hashes -r /tmp/requirements.l
     install -d -m 2770 -o root -g sandbox-ipc /run/data-agent-python
 
 COPY services/sandbox/src/data_agent_sandbox /usr/local/lib/python3.12/site-packages/data_agent_sandbox
+COPY services/sandbox/src/data_agent_stats /usr/local/lib/python3.12/site-packages/data_agent_stats
 
 ARG PYTHON_SANDBOX_IMAGE_DIGEST=sha256:d556839b04ba721ea07596cbd3e04bcac0ba750bf2117d59d89d28bfc5a09087
 ENV PYTHON_SANDBOX_IMAGE_DIGEST=${PYTHON_SANDBOX_IMAGE_DIGEST}

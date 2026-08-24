@@ -4,7 +4,7 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from data_agent_sandbox.python_runtime.operators.manifest import (
+from data_agent_stats.manifest import (
     MANIFEST_PATH,
     OPERATOR_MANIFEST,
 )
@@ -19,7 +19,7 @@ def _sha256(value: bytes) -> str:
 
 def _implementation_path(module_name: str) -> Path:
     operators_root = Path(__file__).parent
-    prefix = "data_agent_sandbox.python_runtime.operators."
+    prefix = "data_agent_stats."
     if not module_name.startswith(prefix):
         raise RuntimeError("PYTHON_OPERATOR_IMPLEMENTATION_PATH_INVALID")
     relative = module_name.removeprefix(prefix)

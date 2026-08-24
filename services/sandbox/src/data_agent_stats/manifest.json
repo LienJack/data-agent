@@ -6,7 +6,7 @@
       "operator_id": "multiple-testing.bh-fdr@1",
       "description_zh": "对一个明确检验族执行 Benjamini-Hochberg FDR 校正。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.multiple_testing",
+        "module": "data_agent_stats.multiple_testing",
         "symbol": "bh_fdr"
       },
       "runtime_profile": "CORE_ANALYSIS",
@@ -68,7 +68,7 @@
       "operator_id": "robust-trend.theil-sen-slope@1",
       "description_zh": "按显式时间序计算 Theil-Sen 稳健斜率。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.robust_trend",
+        "module": "data_agent_stats.robust_trend",
         "symbol": "theil_sen_slope"
       },
       "runtime_profile": "CORE_ANALYSIS",
@@ -115,7 +115,7 @@
       "operator_id": "trend.mann-kendall-original@1",
       "description_zh": "执行带 ties 方差修正和连续性修正的 original Mann-Kendall 趋势检验。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.robust_trend",
+        "module": "data_agent_stats.robust_trend",
         "symbol": "mann_kendall_original"
       },
       "runtime_profile": "CORE_ANALYSIS",
@@ -186,7 +186,7 @@
       "operator_id": "regression.ols-hac@1",
       "description_zh": "执行 OLS 并使用固定 Newey-West HAC 协方差配置返回系数和显著性证据。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.regression",
+        "module": "data_agent_stats.regression",
         "symbol": "ols_hac"
       },
       "runtime_profile": "ML_DIAGNOSTIC",
@@ -273,7 +273,7 @@
       "operator_id": "regression.binomial-logit-wald@1",
       "description_zh": "执行二项 Logit GLM，并返回 Wald 系数、标准误和收敛证据。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.regression",
+        "module": "data_agent_stats.regression",
         "symbol": "binomial_logit_wald"
       },
       "runtime_profile": "ML_DIAGNOSTIC",
@@ -349,7 +349,7 @@
       "operator_id": "decomposition.product-shapley-exact@1",
       "description_zh": "对乘积恒等式执行全排列精确 Shapley 分解并验证加总闭合。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.decomposition",
+        "module": "data_agent_stats.decomposition",
         "symbol": "product_shapley_exact"
       },
       "runtime_profile": "CORE_ANALYSIS",
@@ -428,7 +428,7 @@
       "operator_id": "cohort.registration-retention-m0-m6@1",
       "description_zh": "按注册月形成唯一新客 cohort，计算 M0 至 M6 下单、消费、配送和反馈留存证据。",
       "implementation": {
-        "module": "data_agent_sandbox.python_runtime.operators.cohort",
+        "module": "data_agent_stats.cohort",
         "symbol": "registration_retention_m0_m6"
       },
       "runtime_profile": "CORE_ANALYSIS",

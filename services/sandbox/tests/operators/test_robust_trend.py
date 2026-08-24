@@ -6,8 +6,8 @@ import statistics
 
 import pytest
 
-from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorError
-from data_agent_sandbox.python_runtime.operators.robust_trend import (
+from data_agent_stats.registry import StatisticalOperatorError
+from data_agent_stats.robust_trend import (
     mann_kendall_original,
     theil_sen_slope,
 )

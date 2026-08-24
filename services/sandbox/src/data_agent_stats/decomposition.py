@@ -4,7 +4,7 @@ import itertools
 import math
 from typing import Any
 
-from data_agent_sandbox.python_runtime.operators.registry import (
+from data_agent_stats.registry import (
     OperatorExecutionResult,
     StatisticalOperatorError,
 )

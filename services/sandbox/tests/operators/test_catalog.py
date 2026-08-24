@@ -3,7 +3,7 @@ from __future__ import annotations
 import importlib
 import inspect
 
-from data_agent_sandbox.python_runtime.operators.manifest import OPERATOR_BY_ID, OPERATOR_IDS
+from data_agent_stats.manifest import OPERATOR_BY_ID, OPERATOR_IDS
 
 
 def test_manifest_resolves_exactly_one_public_implementation_per_operator() -> None:

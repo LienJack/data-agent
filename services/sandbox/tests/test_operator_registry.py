@@ -8,25 +8,25 @@ from pathlib import Path
 import pytest
 from test_python_runtime import configuration, envelope_for
 
-from data_agent_sandbox.python_runtime.models import (
-    StatisticalOperatorObligation,
-    StatisticalOperatorResultBinding,
-    StatisticalOperatorValueBinding,
-)
-from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
-from data_agent_sandbox.python_runtime.operators.manifest import (
+from data_agent_sandbox.python_runtime.policy import PythonPolicyError, validate_python_source
+from data_agent_sandbox.python_runtime.supervisor import PythonSandboxSupervisor
+from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST
+from data_agent_stats.manifest import (
     OPERATOR_IDS,
     OPERATOR_MANIFEST,
     OPERATOR_MANIFEST_DIGEST,
 )
-from data_agent_sandbox.python_runtime.operators.registry import (
+from data_agent_stats.models import (
+    StatisticalOperatorObligation,
+    StatisticalOperatorResultBinding,
+    StatisticalOperatorValueBinding,
+)
+from data_agent_stats.registry import (
     OperatorExecutionResult,
     OperatorImplementationBinding,
     StatisticalOperatorError,
     StatisticalOperatorRegistry,
 )
-from data_agent_sandbox.python_runtime.policy import PythonPolicyError, validate_python_source
-from data_agent_sandbox.python_runtime.supervisor import PythonSandboxSupervisor
 
 IMPLEMENTATION_DIGEST = "sha256:" + "d" * 64
 
@@ -258,7 +258,7 @@ def test_policy_requires_literal_exact_calls_and_dataframe_only_imports() -> Non
         valid.replace("def main(context):\n", "import scipy\ndef main(context):\n"),
         valid.replace(
             "def main(context):\n",
-            "from data_agent_sandbox.python_runtime.operators import registry\n"
+            "from data_agent_stats import registry\n"
             "def main(context):\n",
         ),
         valid.replace(

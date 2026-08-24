@@ -6,8 +6,8 @@ import numpy as np
 import pytest
 import statsmodels.api as sm
 
-from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorError
-from data_agent_sandbox.python_runtime.operators.regression import (
+from data_agent_stats.registry import StatisticalOperatorError
+from data_agent_stats.regression import (
     binomial_logit_wald,
     ols_hac,
 )

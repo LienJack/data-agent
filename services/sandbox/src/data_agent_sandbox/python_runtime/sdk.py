@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from data_agent_sandbox.python_runtime.models import StatisticalOperatorCallReceipt
-from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorRegistry
+from data_agent_stats.registry import StatisticalOperatorRegistry
 
 SDK_VERSION = "data-agent-sandbox-sdk@1.0.0"
 _TAG = re.compile(r"<[^>]*>")

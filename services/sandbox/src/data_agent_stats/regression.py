@@ -8,7 +8,7 @@ import numpy as np
 import statsmodels.api as sm
 from statsmodels.tools.sm_exceptions import PerfectSeparationError, PerfectSeparationWarning
 
-from data_agent_sandbox.python_runtime.operators.registry import (
+from data_agent_stats.registry import (
     OperatorExecutionResult,
     StatisticalOperatorError,
 )

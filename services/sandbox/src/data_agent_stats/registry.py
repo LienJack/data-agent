@@ -12,14 +12,14 @@ from typing import Any
 
 import rfc8785
 
-from data_agent_sandbox.python_runtime.models import (
-    StatisticalOperatorCallReceipt,
-    StatisticalOperatorObligation,
-)
-from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
-from data_agent_sandbox.python_runtime.operators.manifest import (
+from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST
+from data_agent_stats.manifest import (
     OPERATOR_BY_ID,
     input_records_match_manifest,
+)
+from data_agent_stats.models import (
+    StatisticalOperatorCallReceipt,
+    StatisticalOperatorObligation,
 )
 
 MAX_CANONICAL_BYTES = 64 * 1024 * 1024
@@ -317,6 +317,29 @@ class StatisticalOperatorRegistry:
         self._implementation_loader = implementation_loader
         self._records: list[_CallRecord] = []
         self._finalized: tuple[tuple[StatisticalOperatorCallReceipt, ...], str] | None = None
+
+    def execution_evidence(self) -> tuple[dict[str, Any], ...]:
+        """Return immutable pre-binding evidence for host-side tool orchestration."""
+
+        return tuple(
+            {
+                "call_id": record.obligation.call_id,
+                "operator_id": record.obligation.operator_id,
+                "operator_registry_digest": self._registry_digest,
+                "implementation_digest": record.implementation_digest,
+                "resolved_parameters": json.loads(_canonical_bytes(record.resolved_parameters)),
+                "resolved_parameters_hash": record.resolved_parameters_hash,
+                "input_hash": record.input_hash,
+                "output_hash": record.output_hash,
+                "sample_size": record.sample_size,
+                "group_count": record.group_count,
+                "family_size": record.family_size,
+                "rank": record.rank,
+                "applicability": record.applicability,
+                "limitation_codes": list(record.limitation_codes),
+            }
+            for record in self._records
+        )
 
     @property
     def registry_digest(self) -> str:

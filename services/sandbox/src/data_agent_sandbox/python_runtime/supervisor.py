@@ -31,7 +31,6 @@ from data_agent_sandbox.python_runtime.models import (
     PythonSandboxTransportOutcome,
     StatisticalOperatorCallReceipt,
 )
-from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.policy import (
     PROFILE_IMPORT_ROOTS,
     AnalysisImportProfile,
@@ -39,6 +38,7 @@ from data_agent_sandbox.python_runtime.policy import (
     validate_python_source,
 )
 from data_agent_sandbox.python_runtime.sdk import SDK_VERSION
+from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST
 
 _OUTPUT_SUFFIX = {
     "ARROW": ".arrow",

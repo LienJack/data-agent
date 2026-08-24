@@ -4,8 +4,8 @@ from copy import deepcopy
 
 import pytest
 
-from data_agent_sandbox.python_runtime.operators.cohort import registration_retention_m0_m6
-from data_agent_sandbox.python_runtime.operators.registry import StatisticalOperatorError
+from data_agent_stats.cohort import registration_retention_m0_m6
+from data_agent_stats.registry import StatisticalOperatorError
 
 
 def _inputs() -> dict[str, list[dict[str, object]]]:
