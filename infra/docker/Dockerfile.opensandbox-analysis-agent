@@ -1,0 +1,31 @@
+# syntax=docker/dockerfile:1.7
+FROM opensandbox/code-interpreter@sha256:133a3c1720dd52291a019740c2987e7164ea6de79e23d8198798e58950ae2e6e
+
+ARG ANALYSIS_PROFILE=CORE_ANALYSIS
+ARG REQUIREMENTS_LOCK=infra/docker/python-sandbox-requirements.lock
+
+SHELL ["/bin/bash", "-lc"]
+
+COPY ${REQUIREMENTS_LOCK} /tmp/analysis-requirements.lock
+RUN source /opt/code-interpreter/code-interpreter-env.sh python 3.12 >/dev/null \
+    && uv pip install --break-system-packages --python "$(command -v python)" \
+      --require-hashes -r /tmp/analysis-requirements.lock \
+    && rm /tmp/analysis-requirements.lock \
+    && MPLBACKEND=Agg OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 \
+      python -c "import matplotlib.pyplot, numpy, pandas, pyarrow, scipy"
+
+ENV PYTHON_VERSION=3.12 \
+    DATA_AGENT_ANALYSIS_PROFILE=${ANALYSIS_PROFILE} \
+    PYTHONHASHSEED=0 \
+    MPLBACKEND=Agg \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1 \
+    BLIS_NUM_THREADS=1
+
+LABEL org.opencontainers.image.title="Data Agent OpenSandbox analysis agent" \
+      org.opencontainers.image.source="https://github.com/opensandbox-group/OpenSandbox" \
+      data-agent.runtime="opensandbox-cell@1" \
+      data-agent.operator-package="absent"

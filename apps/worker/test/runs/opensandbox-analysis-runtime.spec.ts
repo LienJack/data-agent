@@ -18,6 +18,7 @@ function testConfig() {
     request_timeout_seconds: 5,
     ready_timeout_seconds: 5,
     sandbox_timeout_seconds: 60,
+    secure_access: true,
     agent_images: {
       CORE_ANALYSIS:
         "agent-core@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

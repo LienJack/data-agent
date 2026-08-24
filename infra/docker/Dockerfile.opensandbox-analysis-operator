@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1.7
+FROM opensandbox/code-interpreter@sha256:133a3c1720dd52291a019740c2987e7164ea6de79e23d8198798e58950ae2e6e
+
+SHELL ["/bin/bash", "-lc"]
+
+COPY infra/docker/python-sandbox-requirements.ml.lock /tmp/operator-requirements.lock
+RUN source /opt/code-interpreter/code-interpreter-env.sh python 3.12 >/dev/null \
+    && uv pip install --break-system-packages --python "$(command -v python)" \
+      --require-hashes -r /tmp/operator-requirements.lock \
+    && rm /tmp/operator-requirements.lock
+
+COPY services/sandbox/src/data_agent_stats /opt/data-agent/data_agent_stats
+RUN source /opt/code-interpreter/code-interpreter-env.sh python 3.12 >/dev/null \
+    && site_packages="$(python -c 'import site; print(site.getsitepackages()[0])')" \
+    && ln -s /opt/data-agent/data_agent_stats "${site_packages}/data_agent_stats" \
+    && python -c "from data_agent_stats.attestation import OPERATOR_REGISTRY_DIGEST; assert OPERATOR_REGISTRY_DIGEST.startswith('sha256:')"
+
+ENV PYTHON_VERSION=3.12 \
+    DATA_AGENT_ANALYSIS_PROFILE=GOVERNED_OPERATOR \
+    PYTHONHASHSEED=0 \
+    MPLBACKEND=Agg \
+    OMP_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    VECLIB_MAXIMUM_THREADS=1 \
+    BLIS_NUM_THREADS=1
+
+LABEL org.opencontainers.image.title="Data Agent governed statistical operators" \
+      org.opencontainers.image.source="https://github.com/opensandbox-group/OpenSandbox" \
+      data-agent.runtime="opensandbox-operator@1" \
+      data-agent.operator-package="data_agent_stats"

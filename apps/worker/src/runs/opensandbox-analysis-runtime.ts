@@ -84,6 +84,7 @@ export interface OpenSandboxAnalysisRuntimeConfig {
   readonly request_timeout_seconds: number;
   readonly ready_timeout_seconds: number;
   readonly sandbox_timeout_seconds: number;
+  readonly secure_access: boolean;
   readonly agent_images: Readonly<Record<AnalysisSandboxProfile, string>>;
   readonly operator_image: string;
   readonly agent_resource: Readonly<Record<string, string>>;
@@ -189,6 +190,7 @@ const configSchema = z.strictObject({
   request_timeout_seconds: z.number().int().min(1).max(600),
   ready_timeout_seconds: z.number().int().min(1).max(600),
   sandbox_timeout_seconds: z.number().int().min(30).max(3_600),
+  secure_access: z.boolean(),
   agent_images: z.strictObject({
     CORE_ANALYSIS: z.string().trim().min(1).max(1_024),
     ML_DIAGNOSTIC: z.string().trim().min(1).max(1_024),
@@ -372,7 +374,7 @@ async function createSandboxPair(input: {
     networkPolicy: { defaultAction: "deny" as const, egress: [] },
     timeoutSeconds: input.config.sandbox_timeout_seconds,
     readyTimeoutSeconds: input.config.ready_timeout_seconds,
-    secureAccess: true,
+    secureAccess: input.config.secure_access,
   } satisfies Partial<SandboxCreateOptions>;
   const metadata = {
     "data-agent-run": input.run_id,
@@ -609,14 +611,16 @@ export function createOpenSandboxAnalysisRuntime(input: {
         async close() {
           if (closed) return;
           closed = true;
-          const cleanup = await Promise.allSettled([
+          const contextCleanup = await Promise.allSettled([
             agent.interpreter.codes.deleteContext(agent.context.id as string),
             operator.interpreter.codes.deleteContext(operator.context.id as string),
+          ]);
+          const sandboxCleanup = await Promise.allSettled([
             pair.agent.kill(),
             pair.operator.kill(),
           ]);
           await Promise.allSettled([pair.agent.close(), pair.operator.close()]);
-          if (cleanup.some(({ status }) => status === "rejected")) {
+          if ([...contextCleanup, ...sandboxCleanup].some(({ status }) => status === "rejected")) {
             throw new AnalysisSandboxRuntimeError(
               "ANALYSIS_SANDBOX_CLEANUP_FAILED",
               "CLEANUP",
@@ -671,6 +675,10 @@ export function createEnvironmentOpenSandboxAnalysisRuntime(
           .min(30)
           .max(3_600)
           .parse(environment.ANALYSIS_SANDBOX_TTL_SECONDS ?? 900),
+        secure_access:
+          z
+            .enum(["true", "false"])
+            .parse(requiredEnvironment(environment, "ANALYSIS_SANDBOX_SECURE_ACCESS")) === "true",
         agent_images: {
           CORE_ANALYSIS: requiredEnvironment(environment, "ANALYSIS_SANDBOX_AGENT_CORE_IMAGE"),
           ML_DIAGNOSTIC: requiredEnvironment(environment, "ANALYSIS_SANDBOX_AGENT_ML_IMAGE"),
