@@ -58,6 +58,7 @@ export function toGovernedVChartSpec(projection: ChartProjection): ISpec {
     direction: horizontal ? ("horizontal" as const) : undefined,
     xField: horizontal ? [...projection.y_keys] : projection.x_key,
     yField: horizontal ? projection.x_key : [...projection.y_keys],
+    seriesField: "series_key" in projection ? (projection.series_key ?? undefined) : undefined,
     point: projection.chart_type === "LINE" ? { visible: true } : undefined,
     legends: { visible: projection.legend.visible, orient: "top" as const },
     axes: [

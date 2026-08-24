@@ -448,6 +448,7 @@ export async function runWorkerProcess(
                 sensitive_artifacts: sensitiveArtifacts,
                 research_capabilities: researchCapabilities,
                 app_capability_input: capability,
+                public_artifacts: teamArtifacts,
                 sandbox: pythonSandbox,
                 environment,
                 now: () => new Date(),

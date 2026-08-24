@@ -31,6 +31,8 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     required_quality_findings: ["ORDER_TOTAL_ITEM_MISMATCH", "STORED_CUSTOMER_KPI_UNTRUSTED"],
     expected_terminal: "PASS",
     minimum_model_generated_nodes: 1,
+    chart_required: true,
+    chart_contract_version: "falcon24-analysis-chart@1.0.0",
   },
   {
     case_id: "falcon24-delivery-experience-12m",
@@ -57,6 +59,8 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     required_quality_findings: [],
     expected_terminal: "PASS",
     minimum_model_generated_nodes: 1,
+    chart_required: true,
+    chart_contract_version: "falcon24-analysis-chart@1.0.0",
   },
   {
     case_id: "falcon24-inventory-damage-12m",
@@ -82,6 +86,8 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     required_quality_findings: ["INVENTORY_NEW_SENSITIVITY_ONLY"],
     expected_terminal: "PASS",
     minimum_model_generated_nodes: 1,
+    chart_required: true,
+    chart_contract_version: "falcon24-analysis-chart@1.0.0",
   },
   {
     case_id: "falcon24-marketing-lag-effect",
@@ -109,6 +115,8 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     required_quality_findings: [],
     expected_terminal: "PASS",
     minimum_model_generated_nodes: 1,
+    chart_required: true,
+    chart_contract_version: "falcon24-analysis-chart@1.0.0",
   },
   {
     case_id: "falcon24-cohort-retention-m0-m6",
@@ -139,12 +147,14 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     ],
     expected_terminal: "HOLD_WITH_SENSITIVITY",
     minimum_model_generated_nodes: 1,
+    chart_required: true,
+    chart_contract_version: "falcon24-analysis-chart@1.0.0",
   },
 ] as const satisfies readonly Falcon24AgentAnalysisCase[]);
 
 export async function buildFalcon24AgentAnalysisAcceptanceSuite() {
   return buildFalcon24AgentAnalysisSuite({
-    schema_version: "falcon24-agent-analysis-suite@1.0.0",
+    schema_version: "falcon24-agent-analysis-suite@2.0.0",
     dataset_id: "falcon_db_24",
     model_provider: "deepseek",
     model_id: "deepseek-v4-flash",

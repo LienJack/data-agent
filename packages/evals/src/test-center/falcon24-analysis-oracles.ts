@@ -1,3 +1,8 @@
+import {
+  type ArtifactWorkspaceChartProjectionV3,
+  artifactWorkspaceChartProjectionV3Schema,
+  computeArtifactWorkspaceChartDatasetV3Hash,
+} from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type Falcon24AgentAnalysisCase,
@@ -249,6 +254,254 @@ export function falcon24AnalysisOutputJsonSchema(caseId: Falcon24AgentAnalysisCa
 
 type AnalysisOutput = z.infer<typeof falcon24AnalysisOutputSchema>;
 
+export const FALCON24_ANALYSIS_CHART_VERSION = "falcon24-analysis-chart@1.0.0" as const;
+
+function chartColumn(key: string, label: string, dataType: "STRING" | "NUMBER") {
+  return { key, label, data_type: dataType } as const;
+}
+
+function normalizedIndex(value: number, baseline: number): number {
+  if (baseline <= 0) throw new TypeError("FALCON24_CHART_BASELINE_INVALID");
+  return (value / baseline) * 100;
+}
+
+export function buildFalcon24AnalysisChartProjection(
+  input: unknown,
+): ArtifactWorkspaceChartProjectionV3 {
+  const output = falcon24AnalysisOutputSchema.parse(input);
+  const projection: ArtifactWorkspaceChartProjectionV3 = (() => {
+    switch (output.case_id) {
+      case "falcon24-business-review-18m": {
+        const baseline = output.monthly_kpis[0];
+        if (!baseline) throw new TypeError("FALCON24_CHART_DATA_EMPTY");
+        const rows = output.monthly_kpis.map((point) => ({
+          month: point.month,
+          revenue_index: normalizedIndex(point.revenue, baseline.revenue),
+          order_count_index: normalizedIndex(point.order_count, baseline.order_count),
+          average_order_value_index: normalizedIndex(
+            point.average_order_value,
+            baseline.average_order_value,
+          ),
+          revenue: point.revenue,
+          order_count: point.order_count,
+          average_order_value: point.average_order_value,
+        }));
+        return {
+          kind: "CHART",
+          chart_type: "LINE",
+          title: "订单收入、订单量与客单价趋势（首月=100）",
+          description: `三项指标按 ${baseline.month} 归一化，便于比较相对变化；表格同时保留绝对值。`,
+          unit: "指数",
+          x_key: "month",
+          y_keys: ["revenue_index", "order_count_index", "average_order_value_index"],
+          lower_bound_key: null,
+          upper_bound_key: null,
+          series_key: null,
+          legend: { visible: true },
+          evidence_level: "L2_OBSERVATION",
+          table: {
+            kind: "TABLE",
+            columns: [
+              chartColumn("month", "月份", "STRING"),
+              chartColumn("revenue_index", "收入指数", "NUMBER"),
+              chartColumn("order_count_index", "订单量指数", "NUMBER"),
+              chartColumn("average_order_value_index", "客单价指数", "NUMBER"),
+              chartColumn("revenue", "订单收入", "NUMBER"),
+              chartColumn("order_count", "订单量", "NUMBER"),
+              chartColumn("average_order_value", "客单价", "NUMBER"),
+            ],
+            rows,
+            total_rows: rows.length,
+          },
+        };
+      }
+      case "falcon24-delivery-experience-12m": {
+        const rows = [
+          { period: "前6个月", ...output.six_vs_six.first },
+          { period: "后6个月", ...output.six_vs_six.second },
+        ];
+        return {
+          kind: "CHART",
+          chart_type: "BAR",
+          title: "配送时效前后 6 个月对比",
+          description: "对比配送时长中位数与 P90；准时率和低评分率保留在同一图表数据表中。",
+          unit: "分钟",
+          x_key: "period",
+          y_keys: ["p50_minutes", "p90_minutes"],
+          lower_bound_key: null,
+          upper_bound_key: null,
+          series_key: null,
+          legend: { visible: true },
+          evidence_level: "L2_OBSERVATION",
+          table: {
+            kind: "TABLE",
+            columns: [
+              chartColumn("period", "观察区间", "STRING"),
+              chartColumn("p50_minutes", "配送 P50", "NUMBER"),
+              chartColumn("p90_minutes", "配送 P90", "NUMBER"),
+              chartColumn("on_time_rate", "准时率", "NUMBER"),
+              chartColumn("low_rating_rate", "低评分率", "NUMBER"),
+            ],
+            rows,
+            total_rows: rows.length,
+          },
+        };
+      }
+      case "falcon24-inventory-damage-12m": {
+        if (output.products.length === 0) {
+          return {
+            kind: "CHART",
+            chart_type: "BAR",
+            title: "高销量且损坏持续恶化商品命中数",
+            description: "独立 Oracle 未验收出符合完整恶化条件的商品。",
+            unit: "个",
+            x_key: "status",
+            y_keys: ["product_count"],
+            lower_bound_key: null,
+            upper_bound_key: null,
+            series_key: null,
+            legend: { visible: false },
+            evidence_level: "L2_OBSERVATION",
+            table: {
+              kind: "TABLE",
+              columns: [
+                chartColumn("status", "状态", "STRING"),
+                chartColumn("product_count", "商品数", "NUMBER"),
+              ],
+              rows: [{ status: "无命中", product_count: 0 }],
+              total_rows: 1,
+            },
+          };
+        }
+        const rows = output.products.map((product) => ({
+          product_id: product.product_id,
+          category: product.category,
+          sales_quantity: product.sales_quantity,
+          damage_rate_change: product.last3_damage_rate - product.previous9_damage_rate,
+          last3_damage_rate: product.last3_damage_rate,
+          previous9_damage_rate: product.previous9_damage_rate,
+          status: product.status,
+        }));
+        return {
+          kind: "CHART",
+          chart_type: "PRIORITY_MATRIX",
+          title: "高销量商品库存损坏恶化优先矩阵",
+          description: "横轴为销量，纵轴为近 3 月相对前 9 月损坏率变化，颜色区分优先级。",
+          unit: null,
+          x_key: "sales_quantity",
+          y_keys: ["damage_rate_change"],
+          lower_bound_key: null,
+          upper_bound_key: null,
+          series_key: "status",
+          legend: { visible: true },
+          evidence_level: "L2_OBSERVATION",
+          table: {
+            kind: "TABLE",
+            columns: [
+              chartColumn("product_id", "商品", "STRING"),
+              chartColumn("category", "品类", "STRING"),
+              chartColumn("sales_quantity", "销量", "NUMBER"),
+              chartColumn("damage_rate_change", "损坏率变化", "NUMBER"),
+              chartColumn("last3_damage_rate", "近3月损坏率", "NUMBER"),
+              chartColumn("previous9_damage_rate", "前9月损坏率", "NUMBER"),
+              chartColumn("status", "优先级", "STRING"),
+            ],
+            rows,
+            total_rows: rows.length,
+          },
+        };
+      }
+      case "falcon24-marketing-lag-effect": {
+        const rows = output.channel_audience_results.map((result) => ({
+          channel_audience: `${result.channel} / ${result.target_audience}`,
+          channel: result.channel,
+          target_audience: result.target_audience,
+          roas: result.roas,
+          spend: result.spend,
+          revenue_generated: result.revenue_generated,
+          finding: result.group_finding,
+        }));
+        return {
+          kind: "CHART",
+          chart_type: "HORIZONTAL_BAR",
+          title: "渠道与目标人群 ROAS 对比",
+          description: "展示投放回报水平；关联判断与滞后期证据保留在图表数据表中。",
+          unit: "倍",
+          x_key: "channel_audience",
+          y_keys: ["roas"],
+          lower_bound_key: null,
+          upper_bound_key: null,
+          series_key: "finding",
+          legend: { visible: true },
+          evidence_level: "L2_OBSERVATION",
+          table: {
+            kind: "TABLE",
+            columns: [
+              chartColumn("channel_audience", "渠道 / 人群", "STRING"),
+              chartColumn("channel", "渠道", "STRING"),
+              chartColumn("target_audience", "目标人群", "STRING"),
+              chartColumn("roas", "ROAS", "NUMBER"),
+              chartColumn("spend", "投入", "NUMBER"),
+              chartColumn("revenue_generated", "营销收入", "NUMBER"),
+              chartColumn("finding", "关联判断", "STRING"),
+            ],
+            rows,
+            total_rows: rows.length,
+          },
+        };
+      }
+      case "falcon24-cohort-retention-m0-m6": {
+        const rows = output.cohorts.flatMap((cohort) =>
+          cohort.points.flatMap((point) =>
+            [
+              { metric: "留存率", rate_pct: point.retention_rate * 100 },
+              { metric: "复购率", rate_pct: point.repeat_purchase_rate * 100 },
+            ].map((metric) => ({
+              series: `${cohort.registration_cohort} / ${cohort.customer_segment} / ${metric.metric}`,
+              registration_cohort: cohort.registration_cohort,
+              customer_segment: cohort.customer_segment,
+              month_index: point.month_index,
+              ...metric,
+            })),
+          ),
+        );
+        return {
+          kind: "CHART",
+          chart_type: "LINE",
+          title: "新客户 cohort M0-M6 留存与复购",
+          description: "按注册月份和客户类型展示；主结论仍受注册与订单时序异常限制。",
+          unit: "%",
+          x_key: "month_index",
+          y_keys: ["rate_pct"],
+          lower_bound_key: null,
+          upper_bound_key: null,
+          series_key: "series",
+          legend: { visible: true },
+          evidence_level: "L2_OBSERVATION",
+          table: {
+            kind: "TABLE",
+            columns: [
+              chartColumn("series", "注册批次 / 客户类型 / 指标", "STRING"),
+              chartColumn("registration_cohort", "注册批次", "STRING"),
+              chartColumn("customer_segment", "客户类型", "STRING"),
+              chartColumn("month_index", "月龄", "NUMBER"),
+              chartColumn("metric", "指标", "STRING"),
+              chartColumn("rate_pct", "比率", "NUMBER"),
+            ],
+            rows,
+            total_rows: rows.length,
+          },
+        };
+      }
+    }
+  })();
+  return artifactWorkspaceChartProjectionV3Schema.parse(projection);
+}
+
+export async function computeFalcon24AnalysisChartDatasetHash(input: unknown) {
+  return computeArtifactWorkspaceChartDatasetV3Hash(buildFalcon24AnalysisChartProjection(input));
+}
+
 function assertWindow(
   window: { readonly start: string; readonly end_exclusive: string; readonly period_count: number },
   expectedPeriods: number,
@@ -436,7 +689,11 @@ export async function validateFalcon24AnalysisOutput(input: {
   assertMethodEvidence(output, input.test_case);
   (evaluators[caseId] as (value: never) => void)(output as never);
   const outputHash = await sha256ContentHash(output);
-  return Object.freeze({ output, output_hash: outputHash });
+  return Object.freeze({
+    output,
+    output_hash: outputHash,
+    chart_dataset_hash: await computeFalcon24AnalysisChartDatasetHash(output),
+  });
 }
 
 export const falcon24AnalysisOracleInternals = Object.freeze({ evaluators });

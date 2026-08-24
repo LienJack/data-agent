@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import type { ArtifactReference } from "@data-agent/contracts/artifacts";
 import {
   type Falcon24AgentAnalysisCase,
   type Falcon24AgentAnalysisRunResult,
@@ -46,6 +47,7 @@ export interface Falcon24AnalysisAcceptanceRecorder {
       readonly package_hash: `sha256:${string}`;
     };
     readonly execution: AnalysisExecutionResult;
+    readonly chart_ref: ArtifactReference;
     readonly completed_at: string;
   }): Promise<void>;
 }
@@ -85,7 +87,7 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       single(recordInput.execution.oracle_receipts, "FALCON24_ANALYSIS_ORACLE_RECEIPT_REQUIRED"),
     );
     const result = falcon24AgentAnalysisRunResultSchema.parse({
-      schema_version: "falcon24-agent-analysis-run@2.0.0",
+      schema_version: "falcon24-agent-analysis-run@3.0.0",
       case_id: recordInput.test_case.case_id,
       run_id: runId,
       run_variant: metadata.run_variant,
@@ -102,6 +104,8 @@ export function createFalcon24AnalysisAcceptanceRecorder(input: {
       oracle_receipt: oracleReceipt,
       sandbox_status: "SUCCEEDED",
       answer_hash: oracleReceipt.output_hash,
+      chart_ref: recordInput.chart_ref,
+      chart_dataset_hash: oracleReceipt.chart_dataset_hash,
       completed_at: recordInput.completed_at,
     });
     const current = await readFile(input.results_path, "utf8")

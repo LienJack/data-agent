@@ -8,8 +8,8 @@ import {
   versionIdentifierSchema,
 } from "../common/index.js";
 
-export const FALCON24_AGENT_ANALYSIS_SUITE_VERSION = "falcon24-agent-analysis-suite@1.0.0" as const;
-export const FALCON24_AGENT_ANALYSIS_GATE_VERSION = "falcon24-agent-analysis-gate@1.0.0" as const;
+export const FALCON24_AGENT_ANALYSIS_SUITE_VERSION = "falcon24-agent-analysis-suite@2.0.0" as const;
+export const FALCON24_AGENT_ANALYSIS_GATE_VERSION = "falcon24-agent-analysis-gate@2.0.0" as const;
 export const FALCON24_DEEPSEEK_MODEL = "deepseek-v4-flash" as const;
 
 export const falcon24AnalysisCaseIdSchema = z.enum([
@@ -45,6 +45,8 @@ export const falcon24AgentAnalysisCaseSchema = z.strictObject({
   required_quality_findings: z.array(versionIdentifierSchema).max(32),
   expected_terminal: z.enum(["PASS", "HOLD_WITH_SENSITIVITY"]),
   minimum_model_generated_nodes: z.number().int().min(1).max(16),
+  chart_required: z.literal(true),
+  chart_contract_version: z.literal("falcon24-analysis-chart@1.0.0"),
 });
 
 const falcon24AgentAnalysisSuiteMaterialSchema = z.strictObject({
@@ -77,7 +79,7 @@ const falcon24MethodReceiptSchema = z.strictObject({
 });
 
 export const falcon24AnalysisOracleReceiptSchema = z.strictObject({
-  schema_version: z.literal("falcon24-analysis-oracle@2.0.0"),
+  schema_version: z.literal("falcon24-analysis-oracle@3.0.0"),
   oracle_kind: z.literal("ARROW_INPUT_RECOMPUTE"),
   case_id: falcon24AnalysisCaseIdSchema,
   verdict: z.literal("PASS"),
@@ -85,6 +87,7 @@ export const falcon24AnalysisOracleReceiptSchema = z.strictObject({
   input_materialization_receipt_hash: contentHashSchema,
   query_evidence_hash: contentHashSchema,
   output_hash: contentHashSchema,
+  chart_dataset_hash: contentHashSchema,
   verification_hash: contentHashSchema,
   method_receipts: z.array(falcon24MethodReceiptSchema).min(1).max(32),
   disclosures: z.array(versionIdentifierSchema).max(32),
@@ -104,7 +107,7 @@ export async function verifyFalcon24AnalysisOracleReceipt(input: unknown) {
 
 export const falcon24AgentAnalysisRunResultSchema = z
   .strictObject({
-    schema_version: z.literal("falcon24-agent-analysis-run@2.0.0"),
+    schema_version: z.literal("falcon24-agent-analysis-run@3.0.0"),
     case_id: falcon24AnalysisCaseIdSchema,
     run_id: immutableIdSchema,
     run_variant: z.enum(["COLD", "WARM"]),
@@ -132,11 +135,17 @@ export const falcon24AgentAnalysisRunResultSchema = z
     oracle_receipt: falcon24AnalysisOracleReceiptSchema,
     sandbox_status: z.literal("SUCCEEDED"),
     answer_hash: contentHashSchema,
+    chart_ref: artifactReferenceFor("ArtifactWorkspaceDocument"),
+    chart_dataset_hash: contentHashSchema,
     completed_at: timestampSchema,
   })
   .superRefine((result, context) => {
     const authority = result.analysis_program_ref;
-    const executionRefs = [...result.generated_python_refs, ...result.sandbox_receipt_refs];
+    const executionRefs = [
+      ...result.generated_python_refs,
+      ...result.sandbox_receipt_refs,
+      result.chart_ref,
+    ];
     if (
       authority.run_id !== result.run_id ||
       executionRefs.some(
@@ -163,6 +172,16 @@ export const falcon24AgentAnalysisRunResultSchema = z
         path: ["model_generated_node_count"],
       });
     }
+    if (
+      result.chart_dataset_hash !== result.oracle_receipt.chart_dataset_hash ||
+      result.chart_ref.artifact_type !== "ArtifactWorkspaceDocument"
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Falcon24 chart must bind the Oracle-accepted dataset.",
+        path: ["chart_ref"],
+      });
+    }
   });
 
 const falcon24AgentAnalysisGateMaterialSchema = z.strictObject({
@@ -174,7 +193,9 @@ const falcon24AgentAnalysisGateMaterialSchema = z.strictObject({
   case_count: z.literal(5),
   accepted_case_count: z.literal(5),
   generated_python_case_count: z.literal(5),
+  charted_case_count: z.literal(5),
   run_count: z.literal(30),
+  charted_run_count: z.literal(30),
   cold_repetitions: z.literal(3),
   warm_repetitions: z.literal(3),
   flake_count: z.literal(0),
@@ -215,10 +236,17 @@ export async function buildFalcon24AgentAnalysisGate(input: {
     if (new Set(caseRuns.map(({ answer_hash: answerHash }) => answerHash)).size !== 1) {
       throw new TypeError("FALCON24_ANALYSIS_RESULT_FLAKE");
     }
+    if (
+      new Set(caseRuns.map(({ chart_dataset_hash: chartDatasetHash }) => chartDatasetHash)).size !==
+      1
+    ) {
+      throw new TypeError("FALCON24_ANALYSIS_CHART_FLAKE");
+    }
     for (const result of caseRuns) {
       if (
         result.oracle_receipt.case_id !== result.case_id ||
         result.oracle_receipt.output_hash !== result.answer_hash ||
+        result.oracle_receipt.chart_dataset_hash !== result.chart_dataset_hash ||
         result.oracle_receipt.method_receipts.some(
           ({ evidence_hash: evidenceHash }) =>
             evidenceHash !== result.oracle_receipt.verification_hash,
@@ -261,7 +289,9 @@ export async function buildFalcon24AgentAnalysisGate(input: {
     case_count: 5,
     accepted_case_count: 5,
     generated_python_case_count: 5,
+    charted_case_count: 5,
     run_count: 30,
+    charted_run_count: 30,
     cold_repetitions: 3,
     warm_repetitions: 3,
     flake_count: 0,

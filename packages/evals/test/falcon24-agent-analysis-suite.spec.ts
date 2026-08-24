@@ -15,7 +15,11 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const completedAt = "2026-08-24T00:00:00.000Z";
 
 function artifact(
-  artifact_type: "AnalysisProgram" | "SandboxExecutionReceipt" | "SensitiveExecutionArtifact",
+  artifact_type:
+    | "AnalysisProgram"
+    | "SandboxExecutionReceipt"
+    | "SensitiveExecutionArtifact"
+    | "ArtifactWorkspaceDocument",
   runId: string,
   suffix: number,
 ) {
@@ -63,7 +67,7 @@ describe("Falcon24 agent analysis acceptance", () => {
             const runId = id(runSuffix);
             const verificationHash = hash(((caseIndex + 6) % 10).toString());
             const oracleMaterial = {
-              schema_version: "falcon24-analysis-oracle@2.0.0" as const,
+              schema_version: "falcon24-analysis-oracle@3.0.0" as const,
               oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
               case_id: testCase.case_id,
               verdict: "PASS" as const,
@@ -71,6 +75,7 @@ describe("Falcon24 agent analysis acceptance", () => {
               input_materialization_receipt_hash: hash("b"),
               query_evidence_hash: hash("c"),
               output_hash: hash((caseIndex + 1).toString()),
+              chart_dataset_hash: hash((caseIndex + 2).toString()),
               verification_hash: verificationHash,
               method_receipts: testCase.required_methods.map((methodId) => ({
                 method_id: methodId,
@@ -82,7 +87,7 @@ describe("Falcon24 agent analysis acceptance", () => {
               terminal: testCase.expected_terminal,
             };
             return falcon24AgentAnalysisRunResultSchema.parse({
-              schema_version: "falcon24-agent-analysis-run@2.0.0",
+              schema_version: "falcon24-agent-analysis-run@3.0.0",
               case_id: testCase.case_id,
               run_id: runId,
               run_variant: runVariant,
@@ -112,6 +117,8 @@ describe("Falcon24 agent analysis acceptance", () => {
               },
               sandbox_status: "SUCCEEDED",
               answer_hash: hash((caseIndex + 1).toString()),
+              chart_ref: artifact("ArtifactWorkspaceDocument", runId, 60 + caseIndex),
+              chart_dataset_hash: hash((caseIndex + 2).toString()),
               completed_at: completedAt,
             });
           }),
@@ -129,7 +136,9 @@ describe("Falcon24 agent analysis acceptance", () => {
       result: "GO",
       case_count: 5,
       generated_python_case_count: 5,
+      charted_case_count: 5,
       run_count: 30,
+      charted_run_count: 30,
       flake_count: 0,
     });
 
@@ -144,11 +153,35 @@ describe("Falcon24 agent analysis acceptance", () => {
         completed_at: completedAt,
       }),
     ).rejects.toThrow("FALCON24_ANALYSIS_RESULT_FLAKE");
+
+    const chartFlaky = await Promise.all(
+      results.map(async (result, index) => {
+        if (index !== 0) return result;
+        const { receipt_hash: _receiptHash, ...receiptMaterial } = result.oracle_receipt;
+        const changedReceiptMaterial = { ...receiptMaterial, chart_dataset_hash: hash("f") };
+        return {
+          ...result,
+          chart_dataset_hash: hash("f"),
+          oracle_receipt: {
+            ...changedReceiptMaterial,
+            receipt_hash: await sha256ContentHash(changedReceiptMaterial),
+          },
+        };
+      }),
+    );
+    await expect(
+      buildFalcon24AgentAnalysisGate({
+        gate_id: id(997),
+        suite,
+        results: chartFlaky,
+        completed_at: completedAt,
+      }),
+    ).rejects.toThrow("FALCON24_ANALYSIS_CHART_FLAKE");
   });
 
   it("rejects model override or missing generated Python before gate evaluation", () => {
     const base = {
-      schema_version: "falcon24-agent-analysis-run@2.0.0",
+      schema_version: "falcon24-agent-analysis-run@3.0.0",
       case_id: "falcon24-business-review-18m",
       run_id: id(500),
       run_variant: "COLD",
@@ -171,7 +204,7 @@ describe("Falcon24 agent analysis acceptance", () => {
       sandbox_receipt_refs: [artifact("SandboxExecutionReceipt", id(500), 505)],
       model_generated_node_count: 1,
       oracle_receipt: {
-        schema_version: "falcon24-analysis-oracle@2.0.0",
+        schema_version: "falcon24-analysis-oracle@3.0.0",
         oracle_kind: "ARROW_INPUT_RECOMPUTE",
         case_id: "falcon24-business-review-18m",
         verdict: "PASS",
@@ -179,6 +212,7 @@ describe("Falcon24 agent analysis acceptance", () => {
         input_materialization_receipt_hash: hash("b"),
         query_evidence_hash: hash("c"),
         output_hash: hash("3"),
+        chart_dataset_hash: hash("6"),
         verification_hash: hash("2"),
         method_receipts: [
           { method_id: "full-month-window", status: "PASS", evidence_hash: hash("2") },
@@ -190,6 +224,8 @@ describe("Falcon24 agent analysis acceptance", () => {
       },
       sandbox_status: "SUCCEEDED",
       answer_hash: hash("3"),
+      chart_ref: artifact("ArtifactWorkspaceDocument", id(500), 506),
+      chart_dataset_hash: hash("6"),
       completed_at: completedAt,
     } as const;
     expect(

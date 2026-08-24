@@ -165,6 +165,7 @@ export interface AnalysisExecutionResult {
   readonly completion_ref: ArtifactReference;
   readonly completion: AnalysisCompletionReceiptPayload;
   readonly evidence_refs: readonly ArtifactReference[];
+  readonly query_evidence_refs: readonly ArtifactReference[];
   readonly generated_python_refs: readonly ArtifactReference[];
   readonly sandbox_receipt_refs: readonly ArtifactReference[];
   readonly provider_invocation_refs: readonly ProviderInvocationResourceRef[];
@@ -336,6 +337,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const results = new Map<string, AnalysisCompletionReceiptPayload["node_results"][number]>();
       const expectations = new Map<string, AnalysisOracleExpectation>();
       const evidenceRefs: ArtifactReference[] = [];
+      const queryEvidenceRefs = new Map<string, ArtifactReference>();
       const generatedPythonRefs: ArtifactReference[] = [];
       const sandboxReceiptRefs: ArtifactReference[] = [];
       const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
@@ -669,6 +671,9 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           }),
         );
         evidenceRefs.push(evidenceRef);
+        for (const queryEvidenceRef of program.query_evidence_refs) {
+          queryEvidenceRefs.set(artifactReferenceIdentity(queryEvidenceRef), queryEvidenceRef);
+        }
         if (node.execution_mode === "MODEL_GENERATED") {
           generatedPythonRefs.push(source.source_text_ref);
           if (!source.provider_invocation_ref) {
@@ -766,6 +771,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         completion_ref: completionRef,
         completion,
         evidence_refs: Object.freeze(evidenceRefs),
+        query_evidence_refs: Object.freeze([...queryEvidenceRefs.values()]),
         generated_python_refs: Object.freeze(generatedPythonRefs),
         sandbox_receipt_refs: Object.freeze(sandboxReceiptRefs),
         provider_invocation_refs: Object.freeze(providerInvocationRefs),

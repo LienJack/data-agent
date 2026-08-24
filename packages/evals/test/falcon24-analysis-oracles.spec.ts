@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "../src/test-center/falcon24-agent-analysis-suite.js";
 import {
+  buildFalcon24AnalysisChartProjection,
+  computeFalcon24AnalysisChartDatasetHash,
   falcon24AnalysisOutputJsonSchema,
   falcon24AnalysisOutputSchema,
   validateFalcon24AnalysisOutput,
@@ -247,6 +249,19 @@ describe("Falcon24 independent analysis oracles", () => {
     );
     expect(receipts).toHaveLength(5);
     expect(new Set(receipts.map(({ output_hash }) => output_hash)).size).toBe(5);
+    expect(new Set(receipts.map(({ chart_dataset_hash }) => chart_dataset_hash)).size).toBe(5);
+  });
+
+  it("projects one bounded chart dataset for every accepted case", async () => {
+    const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
+    for (const testCase of suite.cases) {
+      const output = outputFor(testCase.case_id, testCase.required_methods);
+      const projection = buildFalcon24AnalysisChartProjection(output);
+      expect(projection.kind).toBe("CHART");
+      expect(projection.table.rows.length).toBeGreaterThan(0);
+      expect(projection.table.total_rows).toBe(projection.table.rows.length);
+      await expect(computeFalcon24AnalysisChartDatasetHash(output)).resolves.toMatch(/^sha256:/u);
+    }
   });
 
   it("rejects the retired single-outcome marketing contract", async () => {

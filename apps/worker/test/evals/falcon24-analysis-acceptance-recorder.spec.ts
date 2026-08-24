@@ -20,7 +20,11 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const temporaryDirectories: string[] = [];
 
 function reference(
-  artifactType: "AnalysisProgram" | "SensitiveExecutionArtifact" | "SandboxExecutionReceipt",
+  artifactType:
+    | "AnalysisProgram"
+    | "SensitiveExecutionArtifact"
+    | "SandboxExecutionReceipt"
+    | "ArtifactWorkspaceDocument",
   runId: string,
   suffix: number,
 ) {
@@ -67,7 +71,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
     const metadata = manifestRuns[0];
     if (!testCase || !metadata) throw new TypeError("acceptance fixture missing");
     const oracleMaterial = {
-      schema_version: "falcon24-analysis-oracle@2.0.0" as const,
+      schema_version: "falcon24-analysis-oracle@3.0.0" as const,
       oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
       case_id: testCase.case_id,
       verdict: "PASS" as const,
@@ -75,6 +79,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
       input_materialization_receipt_hash: hash("2"),
       query_evidence_hash: hash("3"),
       output_hash: hash("4"),
+      chart_dataset_hash: hash("6"),
       verification_hash: hash("5"),
       method_receipts: testCase.required_methods.map((methodId) => ({
         method_id: methodId,
@@ -111,6 +116,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
         package_hash: hash("a"),
       },
       execution,
+      chart_ref: reference("ArtifactWorkspaceDocument", metadata.run_id, 11),
       completed_at: "2026-08-24T12:00:00.000Z",
     };
 
@@ -124,6 +130,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
       run_variant: "COLD",
       repetition: 1,
       answer_hash: oracleReceipt.output_hash,
+      chart_dataset_hash: oracleReceipt.chart_dataset_hash,
       model_generated_node_count: 1,
     });
   });

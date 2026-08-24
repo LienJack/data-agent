@@ -14,6 +14,8 @@
 - 逻辑推断：公式依赖、指标归属、维度兼容、Join、时间窗口和数据质量限制形成必须保留的闭包；模型不能绕过冲突或把关联写成因果。
 - Agent Python：五题每题都必须包含 DeepSeek flash 实际生成的 Python 节点，在无网络、无凭据、固定依赖的 Sandbox 内运行；失败最多一次
   非扩权修复。
+- 回答与图表：五题每次回答都必须同时返回已验收的数据结论和至少一个对应图表；图表由已验收结果确定性投影，不能由模型自报的任意 spec
+  直接获得公开权威。
 - 可验收：五题都有独立、密封、版本化的 Oracle；正确的数据质量降级是通过，不由 LLM 自评覆盖。
 
 ## Requirements
@@ -58,6 +60,8 @@
 
 ### R6. Five-question acceptance
 
+- 五题每次成功运行都必须产生一个 `ArtifactWorkspaceDocument` V3 图表，图表 dataset 必须与同次 Oracle 接受的结构化结果逐字段闭合；
+  缺图、图表 hash 漂移、跨 Run/Scope 引用或回答事件未公开图表引用均为硬失败。
 - Q1：18 个完整月经营趋势；找出最大收入下降月；按客户类型、商品品类、支付方式分解，并用
   `buyers × orders_per_buyer × revenue_per_order` 做对称 Shapley 闭合。
 - Q2：最近 12 完整月配送表现，6v6 比较；按时率与时长 p50/p90、低评分率；用带月份控制的 binomial GLM 检验延迟与低评分
@@ -71,8 +75,8 @@
 
 ### R7. Independent acceptance and release
 
-- 建立 `falcon24-agent-analysis-suite@1`，public/sealed 分离，生产实现不得导入 sealed truth 或共用核心计算函数。
-- 每题 Oracle 验证时间窗、数据质量披露、统计方法、数值不变量、措辞级别、生成 Python receipt 和输出 hash。
+- 建立唯一当前 `falcon24-agent-analysis-suite@2`，public/sealed 分离，生产实现不得导入 sealed truth 或共用核心计算函数。
+- 每题 Oracle 验证时间窗、数据质量披露、统计方法、数值不变量、措辞级别、生成 Python receipt、输出 hash 和确定性图表 dataset hash。
 - 硬门槛为 5/5；每题有生成 Python；Web 全 Agent E2E 通过；冷/暖各三次连续运行 flake=0；任何硬门失败不发布。
 
 ## Constraints
@@ -90,8 +94,9 @@
 - [ ] U3 Falcon24 Published 语义包和数据质量审计能确定性重建并覆盖五题所需实体、指标、关系与血缘。
 - [ ] U4 DeepSeek flash 生成 Python 的 Provider、准入、Sandbox、一次修复和 Oracle 链完成真实或明确环境阻断的运行证据。
 - [ ] U5 五题 suite 达到 5/5，且每题有独立 Oracle、生成 Python 证据、正确结论级别和完整限制披露。
+- [ ] 五题每次运行均提交同 Scope/Run 的 V3 图表 Artifact；30 次运行图表覆盖率为 30/30，且同题冷暖运行的图表 dataset hash 稳定。
 - [ ] 同一 frozen input 重放得到相同规范化 plan/evidence/result hash；权限、版本或 frontier 漂移 fail closed。
-- [ ] 公开 UI/事件只展示接受后的安全投影，刷新与 replay 状态一致。
+- [ ] 公开 UI/事件同时展示接受后的数据结论与对应图表，图表可从回答内联打开，刷新与 replay 状态一致。
 - [ ] 依赖边界扫描证明不存在 ResolvedContextPackage/V2/V3、AnalysisPlan、旧 resolver/planner 的生产引用，不存在双读、兼容 adapter 或同义 fallback。
 - [ ] 相关 package 单测、类型检查、跨层测试、`git diff --cached --check` 通过；所有任务改动以范围清晰的提交完成。
 

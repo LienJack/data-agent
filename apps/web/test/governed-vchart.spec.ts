@@ -79,4 +79,36 @@ describe("governed VChart spec mapper", () => {
     expect((spec as { direction?: string }).direction).toBe(direction);
     expect(JSON.stringify(spec)).not.toMatch(/function|javascript:|https?:/u);
   });
+
+  it("binds a governed V3 series key for multi-cohort charts", () => {
+    const value: ArtifactPreviewResultV3["projection"] = {
+      kind: "CHART",
+      chart_type: "LINE",
+      title: "cohort 留存与复购",
+      description: null,
+      unit: "%",
+      x_key: "month_index",
+      y_keys: ["rate_pct"],
+      lower_bound_key: null,
+      upper_bound_key: null,
+      series_key: "series",
+      legend: { visible: true },
+      evidence_level: "L2_OBSERVATION",
+      table: {
+        kind: "TABLE",
+        columns: [
+          { key: "month_index", label: "月龄", data_type: "NUMBER" },
+          { key: "rate_pct", label: "比率", data_type: "NUMBER" },
+          { key: "series", label: "批次 / 指标", data_type: "STRING" },
+        ],
+        rows: [{ month_index: 0, rate_pct: 100, series: "2025-01 / 留存率" }],
+        total_rows: 1,
+      },
+    };
+
+    expect(toGovernedVChartSpec(value)).toMatchObject({
+      type: "line",
+      seriesField: "series",
+    });
+  });
 });

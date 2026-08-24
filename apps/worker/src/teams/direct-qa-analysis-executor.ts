@@ -45,6 +45,7 @@ export interface GovernedAgentAnalysisPort {
     readonly fence_guard: AnalysisFenceGuard;
   }): Promise<{
     readonly answer: string;
+    readonly public_artifact_refs: readonly ArtifactReference[];
     readonly accepted_artifact_refs: readonly ArtifactReference[];
   }>;
 }
@@ -174,6 +175,26 @@ export function createDirectQaAnalysisExecutor(dependencies: {
           if (result.accepted_artifact_refs.length === 0) {
             throw new DirectQaAnalysisError("ANALYSIS_ACCEPTED_ARTIFACT_REQUIRED");
           }
+          if (
+            result.public_artifact_refs.length === 0 ||
+            result.public_artifact_refs.some(
+              (reference) => reference.artifact_type !== "ArtifactWorkspaceDocument",
+            )
+          ) {
+            throw new DirectQaAnalysisError("ANALYSIS_PUBLIC_CHART_REQUIRED");
+          }
+          value(
+            await emitDisplayEvent({
+              kind: "tool_completed",
+              key: "direct.qa.analysis.completed",
+              call_id: `direct-qa-analysis-${execution.lease.attempt_id}`,
+              tool_name: "python.analysis@1.0.0",
+              summary: "数据结论与对应图表已通过独立 Oracle 验收。",
+              output: "已提交可复验的数据结论与图表。",
+              duration_ms: 0,
+              artifact_refs: [...result.public_artifact_refs],
+            }),
+          );
           answer = result.answer;
         } else if (asksForRelationships(run.question)) {
           const contextCapability = execution.context.getSemanticContextCapability?.();

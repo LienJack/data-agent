@@ -14,7 +14,7 @@
 
 M5 当前已完成固定模型 Source Port、Provider 调用回执、一次 scrubbed repair、静态准入、Sandbox
 执行器、PostgreSQL Analysis Artifact Port 与五题生产路由。剩余工作是严格 QueryEvidence 物化、Sensitive
-Python Source 权威适配及真实 DeepSeek 冷暖运行；缺少凭据时必须保持 HOLD。
+Python Source 权威适配、五题 V3 图表公开投影及真实 DeepSeek 冷暖运行；缺少凭据时必须保持 HOLD。
 
 后续实现以 `semantica-plan/0 大纲.md` 与 M1-M6 为唯一执行依据。旧 U1/U2 命名和任何 V2/V3、AnalysisPlan 兼容设计均不再有效。
 
@@ -56,9 +56,10 @@ Python Source 权威适配及真实 DeepSeek 冷暖运行；缺少凭据时必�
 ## M6 Falcon24 五题验收与唯一切换
 
 - 发布覆盖 9 表/70 字段、公式、Join、血缘、时间和异常规则的 Falcon24 Semantic Release。
-- 建立 public/sealed 分离的 `falcon24-agent-analysis-suite@1` 与五个独立 Oracle。
-- 完成五题 Web Agent E2E、安全 report/receipt/limitation projection、refresh/replay。
-- 达到 5/5、generated Python=5/5、冷 3 次+暖 3 次、flake=0、无硬 HOLD。
+- 建立 public/sealed 分离的唯一当前 `falcon24-agent-analysis-suite@2` 与五个独立 Oracle；旧 suite/oracle/run/gate shape 直接删除。
+- 对五题 Oracle 已接受输出执行唯一 `falcon24-analysis-chart@1` 确定性投影，提交 V3 Chart Artifact，并把唯一 chart ref 注入完成事件与最终回答。
+- 完成五题 Web Agent E2E、安全 report/receipt/limitation/chart projection、refresh/replay。
+- 达到 5/5、generated Python=5/5、chart=30/30、冷 3 次+暖 3 次、result/chart dataset flake=0、无硬 HOLD。
 - 将 miss/drift/Oracle failure 转为 Candidate，经 shadow+人审进入下一 Release。
 - 运行旧符号/依赖扫描并删除所有旧路径；Neo4j/vector/sparse 删除后可从 PostgreSQL 重建。
 

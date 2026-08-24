@@ -1,11 +1,13 @@
 import {
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV2,
+  type ArtifactWorkspaceChartDocumentV3,
   canonicalizeJson,
   type PortResult,
   type ProductTeamArtifactDocument,
   runWorkLeaseSchema,
   verifyArtifactWorkspaceChartDocumentV2,
+  verifyArtifactWorkspaceChartDocumentV3,
   verifyProductTeamArtifactDocument,
 } from "@data-agent/contracts";
 import {
@@ -272,6 +274,59 @@ export function createPostgresProductTeamArtifactStore(
         operationName: "agent-team.commit-workspace-chart",
         scopeErrorCode: "ARTIFACT_WORKSPACE_CHART_SCOPE_MISMATCH",
         conflictCode: "ARTIFACT_WORKSPACE_CHART_IDEMPOTENCY_CONFLICT",
+      });
+    },
+
+    async commitDerivedAnalysisChart(
+      capabilityInput: unknown,
+      leaseInput: unknown,
+      documentInput: unknown,
+    ): Promise<PortResult<ArtifactReference>> {
+      const lease = runWorkLeaseSchema.safeParse(leaseInput);
+      let document: ArtifactWorkspaceChartDocumentV3;
+      try {
+        document = await verifyArtifactWorkspaceChartDocumentV3(documentInput);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "DERIVED_ANALYSIS_CHART_INVALID";
+        return invalid(
+          code === "CHART_DATA_LIMIT_EXCEEDED" ? code : "DERIVED_ANALYSIS_CHART_INVALID",
+          "Derived Analysis Chart 未通过 strict schema/hash 校验。",
+        );
+      }
+      if (!lease.success || containsPotentialPlaintextSecret(document)) {
+        return invalid(
+          "DERIVED_ANALYSIS_CHART_INVALID",
+          "Derived Analysis Chart lease 或公开内容不符合安全契约。",
+        );
+      }
+      const reference = document.document_ref;
+      if (
+        reference.app_id !== lease.data.scope.app_id ||
+        reference.tenant_id !== lease.data.scope.tenant_id ||
+        reference.environment !== lease.data.scope.environment ||
+        reference.run_id !== lease.data.run_id
+      ) {
+        return invalid(
+          "DERIVED_ANALYSIS_CHART_SCOPE_MISMATCH",
+          "Derived Analysis Chart 与 Worker lease 不属于同一 Scope/Run。",
+        );
+      }
+      return commitVerifiedDocument({
+        options,
+        capabilityInput,
+        lease: lease.data,
+        document,
+        reference,
+        sourceRefs: [
+          ...document.source_refs.query_evidence_refs,
+          document.source_refs.derived_evidence_ref,
+        ],
+        committedAt: new Date(
+          Date.parse(lease.data.expires_at) - lease.data.lease_duration_ms,
+        ).toISOString(),
+        operationName: "agent-team.commit-derived-analysis-chart",
+        scopeErrorCode: "DERIVED_ANALYSIS_CHART_SCOPE_MISMATCH",
+        conflictCode: "DERIVED_ANALYSIS_CHART_IDEMPOTENCY_CONFLICT",
       });
     },
 

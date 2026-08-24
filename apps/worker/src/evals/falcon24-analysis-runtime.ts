@@ -37,7 +37,10 @@ import {
 } from "./falcon24-analysis-queries.js";
 import { createFalcon24ArrowBackedAnalysisOracle } from "./falcon24-arrow-backed-analysis-oracle.js";
 import { createFalcon24ExactQueryEvidenceAuthority } from "./falcon24-exact-query-evidence-authority.js";
-import { createFalcon24GovernedAgentAnalysisPort } from "./falcon24-governed-agent-analysis.js";
+import {
+  createFalcon24GovernedAgentAnalysisPort,
+  type Falcon24PublicArtifactPort,
+} from "./falcon24-governed-agent-analysis.js";
 import { createFalcon24GovernedAnalysisQueryPort } from "./falcon24-governed-query-port.js";
 
 interface AnalysisSystemArtifactAuthority {
@@ -113,6 +116,7 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly sensitive_artifacts: AnalysisInputSensitiveArtifactAuthority;
   readonly research_capabilities: ResearchAuthorityCapabilityResolver;
   readonly app_capability_input: unknown;
+  readonly public_artifacts: Falcon24PublicArtifactPort;
   readonly sandbox: PythonSandboxClient;
   readonly environment: NodeJS.ProcessEnv;
   readonly now?: () => Date;
@@ -153,6 +157,8 @@ export function createFalcon24AnalysisRuntime(input: {
 
   return createFalcon24GovernedAgentAnalysisPort({
     artifacts,
+    public_artifacts: input.public_artifacts,
+    public_artifact_capability: input.app_capability_input,
     ...(input.acceptance_recorder !== undefined
       ? { acceptance_recorder: input.acceptance_recorder }
       : {}),

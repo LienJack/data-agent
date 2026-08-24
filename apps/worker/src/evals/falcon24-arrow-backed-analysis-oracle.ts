@@ -1108,10 +1108,11 @@ export async function verifyFalcon24ArrowBackedOutput(input: {
       input.governed_input.materialization_receipt_ref.content_hash,
     query_evidence_hash: input.governed_input.query_evidence_ref.content_hash,
     output_hash: validated.output_hash,
+    chart_dataset_hash: validated.chart_dataset_hash,
     verifier: "falcon24-arrow-input-recompute@3.0.0",
   });
   const material = {
-    schema_version: "falcon24-analysis-oracle@2.0.0" as const,
+    schema_version: "falcon24-analysis-oracle@3.0.0" as const,
     oracle_kind: "ARROW_INPUT_RECOMPUTE" as const,
     case_id: input.test_case.case_id,
     verdict: "PASS" as const,
@@ -1120,6 +1121,7 @@ export async function verifyFalcon24ArrowBackedOutput(input: {
       input.governed_input.materialization_receipt_ref.content_hash,
     query_evidence_hash: input.governed_input.query_evidence_ref.content_hash,
     output_hash: validated.output_hash,
+    chart_dataset_hash: validated.chart_dataset_hash,
     verification_hash: verificationHash,
     method_receipts: input.test_case.required_methods.map((methodId) => ({
       method_id: methodId,

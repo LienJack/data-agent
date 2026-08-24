@@ -3,8 +3,12 @@ import {
   type ArtifactReference,
   buildAnalysisContext,
   type RunWorkLease,
+  sha256ContentHash,
 } from "@data-agent/contracts";
-import { FALCON24_AGENT_ANALYSIS_CASES } from "@data-agent/evals";
+import {
+  computeFalcon24AnalysisChartDatasetHash,
+  FALCON24_AGENT_ANALYSIS_CASES,
+} from "@data-agent/evals";
 import { describe, expect, it, vi } from "vitest";
 import type { AnalysisArtifactCommitPort } from "../../src/analysis/executor.js";
 import { createFalcon24GovernedAgentAnalysisPort } from "../../src/evals/falcon24-governed-agent-analysis.js";
@@ -144,6 +148,7 @@ describe("Falcon24 governed Agent analysis bridge", () => {
     const briefRef = reference("ResearchBrief", 30);
     const programRef = reference("AnalysisProgram", 31);
     const evidenceRef = reference("DerivedAnalysisEvidence", 32);
+    const queryEvidenceRef = reference("QueryEvidence", 35);
     const outputRef = reference("SandboxResult", 33);
     const completionRef = reference("AnalysisCompletionReceipt", 34);
     const commitL2 = vi.fn<AnalysisArtifactCommitPort["commitL2"]>(async (input) => {
@@ -169,11 +174,19 @@ describe("Falcon24 governed Agent analysis bridge", () => {
         execution_mode: "MODEL_GENERATED",
       });
       const content = Buffer.from(JSON.stringify(businessOutput()), "utf8");
+      const outputHash = await sha256ContentHash(businessOutput());
       return {
         analysis_program_ref: programRef,
         completion_ref: completionRef,
         completion: { terminal: "READY" },
         evidence_refs: [evidenceRef],
+        query_evidence_refs: [queryEvidenceRef],
+        oracle_receipts: [
+          {
+            output_hash: outputHash,
+            chart_dataset_hash: await computeFalcon24AnalysisChartDatasetHash(businessOutput()),
+          },
+        ],
         validated_outputs: [
           {
             node_id: testCase.case_id,
@@ -190,8 +203,12 @@ describe("Falcon24 governed Agent analysis bridge", () => {
       } as never;
     });
     const semanticCommit = {
-      receipt: { receipt_id: id(40) },
-      package: { semantic_release: { datasource_id: id(50) } },
+      receipt: { receipt_id: id(40), receipt_hash: hash("b") },
+      package: {
+        package_id: id(21),
+        package_hash: hash("a"),
+        semantic_release: { datasource_id: id(50) },
+      },
     } as never;
     const compileContext = vi.fn(async (input) => {
       expect(input.semantic_context).toBe(semanticCommit);
@@ -199,22 +216,37 @@ describe("Falcon24 governed Agent analysis bridge", () => {
     });
     const port = createFalcon24GovernedAgentAnalysisPort({
       artifacts,
+      public_artifacts: {
+        async commitDerivedAnalysisChart(_capability, _lease, document) {
+          return { ok: true as const, value: document.document_ref };
+        },
+      },
+      public_artifact_capability: {},
       create_executor: () => ({ execute }),
       compile_context: compileContext as never,
     });
 
-    await expect(
-      port.analyze({
-        lease,
-        test_case: testCase,
-        question: testCase.question,
-        semantic_context: semanticCommit,
-        provider_dispatch: {} as never,
-        fence_guard: { isCurrent: async () => true },
-      }),
-    ).resolves.toEqual({
-      answer: "2024-10 收入下降，购买人数、频次和客单价均有影响。",
-      accepted_artifact_refs: [briefRef, programRef, evidenceRef, outputRef, completionRef],
+    const result = await port.analyze({
+      lease,
+      test_case: testCase,
+      question: testCase.question,
+      semantic_context: semanticCommit,
+      provider_dispatch: {} as never,
+      fence_guard: { isCurrent: async () => true },
+    });
+    const chartRef = result.public_artifact_refs[0];
+    expect(chartRef?.artifact_type).toBe("ArtifactWorkspaceDocument");
+    expect(result).toEqual({
+      answer: `2024-10 收入下降，购买人数、频次和客单价均有影响。\n\n[查看对应图表](${chartRef ? `artifact://${chartRef.artifact_id}?revision=1&hash=${encodeURIComponent(chartRef.content_hash)}` : ""})`,
+      public_artifact_refs: [chartRef],
+      accepted_artifact_refs: [
+        briefRef,
+        programRef,
+        evidenceRef,
+        outputRef,
+        chartRef,
+        completionRef,
+      ],
     });
     expect(commitL2).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledOnce();

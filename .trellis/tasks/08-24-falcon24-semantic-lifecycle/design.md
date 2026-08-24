@@ -49,7 +49,8 @@ OWL 风格规则只运行已注册、安全且可解释的有限子集；推断�
 ```text
 governed SQL inputs -> bounded artifacts -> DeepSeek source generation
  -> static admission -> attested sandbox -> output contract
- -> independent Oracle -> accepted evidence -> public report
+ -> independent Oracle -> accepted evidence -> deterministic chart projection
+ -> public answer + chart artifact
 ```
 
 五题共享窗口/frontier 和安全边界，但不共享 sealed truth。每题采用独立方法模块和 Oracle adapter：
@@ -59,6 +60,13 @@ governed SQL inputs -> bounded artifacts -> DeepSeek source generation
 - Q3 销量与双库存源分离；Theil-Sen、last3/previous9、BH FDR 和 no-hit watchlist。
 - Q4 周级 funnel、0-4 lag、trend/seasonality、HAC、FDR，结果仅为 temporal association。
 - Q5 cohort M0-M6、异常审计、总体 HOLD、排除 temporal-invalid 客户的敏感性结果。
+
+图表不是第二份分析答案。DeepSeek 只负责生成受控 Python 和结构化结果；独立 Oracle 先按 Arrow 输入重算并接受结果，再由服务端固定
+`falcon24-analysis-chart@1` 投影为 `ArtifactWorkspaceDocument` V3。Falcon suite/oracle/run/gate 直接切换到唯一当前版本 2/3/3/2，
+不保留旧 shape 的 reader 或 adapter。Q1 使用三项 KPI 归一化趋势，Q2 使用前后 6 个月配送分位数，
+Q3 使用销量与损坏恶化优先矩阵（无命中时仍返回零命中图），Q4 使用渠道/人群 ROAS，Q5 使用 cohort M0-M6 留存与复购曲线。
+Chart document 绑定 QueryEvidence、DerivedAnalysisEvidence、Semantic Context package/receipt、runtime lock 与 dataset hash；只有 commit 成功后
+才进入公开 tool event 和回答中的 `artifact://` 引用。
 
 ## Model-generated Python boundary
 
@@ -85,5 +93,6 @@ downgrade、program/runtime/receipt hashes。LLM confidence 不参与 pass/fail�
 
 ## Security and public projection
 
-公开事件只允许问题、方法名、语义对象引用、进度、接受后的图表/结论和限制。禁止原始行、Python source、provider request/response、stderr、
+公开事件只允许问题、方法名、语义对象引用、进度、接受后的图表/结论和限制。每个成功 Falcon 回答先发布携带唯一 V3 Chart ref 的
+完成 tool event，再发布包含同一授权 `artifact://` 链接的 answer；Web 使用现有 Artifact Workspace/VChart renderer 内联展示。禁止原始行、Python source、provider request/response、stderr、
 密封答案、提示词、凭据、DSN 和内部路径。授权后的 evidence drawer 仍只返回有界 artifact projection。

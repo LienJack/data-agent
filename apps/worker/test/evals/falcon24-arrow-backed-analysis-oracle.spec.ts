@@ -117,7 +117,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       output,
     });
     expect(verified.receipt).toMatchObject({
-      schema_version: "falcon24-analysis-oracle@2.0.0",
+      schema_version: "falcon24-analysis-oracle@3.0.0",
       oracle_kind: "ARROW_INPUT_RECOMPUTE",
       input_materialization_receipt_hash: `sha256:${"c".repeat(64)}`,
       query_evidence_hash: `sha256:${"a".repeat(64)}`,

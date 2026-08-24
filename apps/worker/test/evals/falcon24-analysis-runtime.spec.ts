@@ -22,6 +22,7 @@ function createRuntime(environment: NodeJS.ProcessEnv) {
       forDomain: () => ({ authority: "research" }) as never,
     },
     app_capability_input: { authority: "application" },
+    public_artifacts: {} as never,
     sandbox: {} as never,
     environment,
   });
