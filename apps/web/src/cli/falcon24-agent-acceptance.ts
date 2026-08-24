@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
+import { createPostgresRunControl } from "@data-agent/platform";
 import {
   loadRuntimeEnvironment,
   resolveRuntimeRepositoryRoot,
@@ -13,6 +14,7 @@ import {
   getEffectiveConfigResolver,
   getWorkspaceAuthority,
   getWorkspaceDataRepository,
+  getWorkspaceSqlPool,
 } from "@/lib/workspace-identity";
 import { startQuestionRun } from "@/server/qa/start-question-run";
 
@@ -192,6 +194,36 @@ async function main(): Promise<void> {
       repetition,
       run_id: identities.run_id,
       binding: requireValue(result),
+    });
+    return;
+  }
+  if (command === "cancel") {
+    const commandId = randomUUID();
+    const result = await createPostgresRunControl(
+      getWorkspaceSqlPool(),
+      getWorkspaceAuthority().authorizer,
+      capability,
+    ).submit({
+      schema_version: "1.0.0",
+      scope: capability.scope,
+      operation: "CANCEL",
+      run_id: identities.run_id,
+      command_id: commandId,
+      event_id: randomUUID(),
+      outbox_id: randomUUID(),
+      audit_id: randomUUID(),
+      idempotency_key: `falcon24-analysis-cancel:${commandId}`,
+      occurred_at: new Date().toISOString(),
+    });
+    if (!result.ok) throw new Error(result.error.code);
+    report({
+      terminal: "CANCELLED",
+      campaign_id: campaignId,
+      case_id: testCase.case_id,
+      run_variant: variant,
+      repetition,
+      run_id: identities.run_id,
+      status: result.value.projection.status,
     });
     return;
   }
