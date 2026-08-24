@@ -91,6 +91,15 @@ function state(): WorkspaceIdentityRuntimeState {
   return globals[WORKSPACE_IDENTITY_RUNTIME];
 }
 
+export async function closeWorkspaceIdentityRuntime(): Promise<void> {
+  const globals = globalThis as typeof globalThis & {
+    [WORKSPACE_IDENTITY_RUNTIME]?: WorkspaceIdentityRuntimeState;
+  };
+  const runtime = globals[WORKSPACE_IDENTITY_RUNTIME];
+  globals[WORKSPACE_IDENTITY_RUNTIME] = {};
+  await runtime?.pool?.end();
+}
+
 export class WorkspaceIdentityConfigurationError extends Error {
   override readonly name = "WorkspaceIdentityConfigurationError";
   readonly code = "WORKSPACE_IDENTITY_NOT_CONFIGURED";

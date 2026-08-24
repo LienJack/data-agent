@@ -61,6 +61,7 @@
     "falcon:agent-gate": "pnpm --filter @data-agent/worker falcon:team",
     "falcon:agent-final": "pnpm --filter @data-agent/worker falcon:final",
     "falcon24:analysis:gate": "pnpm --filter @data-agent/worker falcon24:analysis:gate",
+    "falcon24:analysis:control": "pnpm --filter @data-agent/web falcon24:analysis:control",
     "dev:admin-sync": "tsx apps/web/src/cli/local-superadmin-sync.ts",
     "dev:research-authority": "tsx scripts/provision-research-analysis-authority.ts",
     "test:security": "pnpm --filter @data-agent/agent-runtime test:security && pnpm --filter @data-agent/platform test:security && ./infra/supabase/test-support/run-postgres-smoke.sh && ./scripts/test-platform-integration.sh",
