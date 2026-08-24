@@ -119,10 +119,16 @@ def run(control_path: Path) -> int:
         safe_failure_code = {
             TypeError: "PYTHON_TYPE_ERROR",
             NameError: "PYTHON_NAME_ERROR",
+            AttributeError: "PYTHON_ATTRIBUTE_ERROR",
             KeyError: "PYTHON_KEY_ERROR",
             IndexError: "PYTHON_INDEX_ERROR",
             ValueError: "PYTHON_VALUE_ERROR",
             ZeroDivisionError: "PYTHON_ZERO_DIVISION_ERROR",
+            ImportError: "PYTHON_IMPORT_ERROR",
+            ModuleNotFoundError: "PYTHON_MODULE_NOT_FOUND_ERROR",
+            RuntimeError: "PYTHON_RUNTIME_ERROR",
+            AssertionError: "PYTHON_ASSERTION_ERROR",
+            OverflowError: "PYTHON_OVERFLOW_ERROR",
         }.get(type(error))
         if safe_failure_code is not None:
             print(safe_failure_code, file=sys.stderr)

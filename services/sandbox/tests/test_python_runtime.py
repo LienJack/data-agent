@@ -285,6 +285,7 @@ def test_supervisor_projects_safe_sdk_failure_code_without_exposing_stderr(tmp_p
     [
         ("1 + 'x'", "PYTHON_TYPE_ERROR"),
         ("missing_name", "PYTHON_NAME_ERROR"),
+        ("None.missing", "PYTHON_ATTRIBUTE_ERROR"),
         ("{}['missing']", "PYTHON_KEY_ERROR"),
         ("[][0]", "PYTHON_INDEX_ERROR"),
         ("int('x')", "PYTHON_VALUE_ERROR"),
