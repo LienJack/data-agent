@@ -169,9 +169,13 @@ async function boundedPrompt(input: {
             ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise'); never inspect runtime types."
             : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
               ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-              : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+              : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                ? "Check every helper definition against every call and make positional argument counts identical. Follow the statistical method contract literally, use declared DataFrame field types, and return complete executable source without placeholders."
+                : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
+                  ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                  : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                    ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                    : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
@@ -237,6 +241,8 @@ async function boundedPrompt(input: {
         "DENIED; never call hasattr/getattr/setattr. Input runtime types are fixed by format.",
       module_top_level:
         "Only imports, function definitions, and literal constant assignments are allowed. Put comprehensions, formatting, constructors, and all function calls inside main(context) or helper functions.",
+      source_completeness:
+        "Return complete executable Python 3.12. Never emit ???, ellipses, TODO markers, pseudocode, or an unfinished pass branch. Verify helper call arity against its definition before responding.",
       return_contract:
         "Read only declared input names and write every declared output exactly once through the provided sdk.",
     },

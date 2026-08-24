@@ -112,9 +112,9 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
 const FALCON24_METHOD_CONTRACTS = Object.freeze({
   "falcon24-business-review-18m": [
     "Treat order_id as the order grain for revenue, order count, buyers, frequency, and AOV; never sum order_total once per item row.",
-    "Use exactly the 18 ordered calendar months 2023-05 through 2024-10 and identify the minimum absolute month-over-month revenue change.",
+    "Use exactly the 18 ordered calendar months 2023-05 through 2024-10 and identify the minimum absolute month-over-month revenue change. Report percent_change as the decimal ratio (current - previous) / previous, not percentage points.",
     "Close revenue = active_buyers * orders_per_buyer * average_order_value for every month.",
-    "For the worst month transition, compute the three-factor buyer/frequency/AOV decomposition as the mean marginal contribution over all six factor permutations; require closure_error <= 0.01.",
+    "For the worst month transition, use exactly six factor inputs B0, B1, F0, F1, A0, A1. For each of all six permutations, start with {B:B0,F:F0,A:A0}, replace one factor at a time, and add new_product - previous_product to that factor; average each factor total over six. Set observed_revenue_change = B1*F1*A1 - B0*F0*A0 and require closure_error <= 0.01. Helper definitions and calls must use the same six-argument signature.",
     "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, allocate each order_total across its item rows in proportion to nonnegative quantity, using equal shares when total quantity is zero. Return exactly the most negative revenue-change member for each of the three dimensions, breaking ties lexicographically.",
   ],
   "falcon24-delivery-experience-12m": [
