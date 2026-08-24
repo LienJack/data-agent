@@ -158,7 +158,8 @@ export interface AnalysisExecutorDependencies {
 
 export function analysisOracleFailureCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
-  return /^[A-Z][A-Z0-9_]{2,127}$/u.test(message) ? message : "ANALYSIS_ORACLE_FAILED";
+  const baseCode = message.split(":", 1)[0] ?? "";
+  return /^[A-Z][A-Z0-9_]{2,127}$/u.test(baseCode) ? baseCode : "ANALYSIS_ORACLE_FAILED";
 }
 
 export interface AnalysisExecutionResult {

@@ -185,6 +185,9 @@ describe("deterministic analysis worker runtime", () => {
     expect(analysisOracleFailureCode(new TypeError("FALCON24_Q1_MONTHLY_KPI_MISMATCH"))).toBe(
       "FALCON24_Q1_MONTHLY_KPI_MISMATCH",
     );
+    expect(
+      analysisOracleFailureCode(new TypeError("FALCON24_Q4_HAC_P_MISMATCH:order_revenue")),
+    ).toBe("FALCON24_Q4_HAC_P_MISMATCH");
     expect(analysisOracleFailureCode(new Error("row value was 42"))).toBe("ANALYSIS_ORACLE_FAILED");
     expect(analysisOracleFailureCode("FALCON24_Q1_MONTHLY_KPI_MISMATCH")).toBe(
       "ANALYSIS_ORACLE_FAILED",

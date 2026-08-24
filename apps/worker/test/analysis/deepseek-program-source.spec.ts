@@ -623,6 +623,24 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context): pass",
+      failure_code: "FALCON24_Q4_HAC_P_MISMATCH",
+      standard_program: null,
+    });
+    const marketingStatisticsRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain(
+      "shared business-by-week",
+    );
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain("use_correction':True");
+    expect(marketingStatisticsRepair.repair?.required_correction).toContain("normal z p-value");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,

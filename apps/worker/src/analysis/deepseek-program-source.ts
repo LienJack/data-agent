@@ -264,23 +264,26 @@ async function boundedPrompt(input: {
                           ? "Set output.window to exactly start='2023-05-01', end_exclusive='2024-11-01', week_count=79, and grain='WEEK'. Keep the modeled weekly observations as the 79 Mondays from 2023-05-01 through 2024-10-28; do not derive end_exclusive as the day after the last Monday. Preserve the remaining calculations."
                           : input.repair.failure_code === "FALCON24_Q4_CONTROL_MISSING"
                             ? "Keep the fitted regression designs unchanged and set the top-level output controls array to exactly ['trend','seasonality']. These are the required semantic evidence identifiers for the linear week trend and sine/cosine annual controls; do not replace them with formulas or expanded column names."
-                            : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
-                              ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
-                              : input.repair.failure_code === "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
-                                ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
-                                : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-                                  ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
-                                  : input.repair.failure_code ===
-                                      "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
-                                    ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-                                    : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                                      ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
-                                      : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
-                                        ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                            : input.repair.failure_code.startsWith("FALCON24_Q4_")
+                              ? "Rebuild the Q4 statistics exactly from the declared contract. Create one shared business-by-week map for order_revenue, new_customers, and order_count and copy those values into every channel/audience week; zero-fill only missing marketing measures. For every lag use design columns intercept, lagged spend, absolute week index, sin(2*pi*week/52), cos(2*pi*week/52). Fit Newey-West HAC with Bartlett maxlags=4, finite-sample correction n/(n-5), and a two-sided normal z p-value (statsmodels: cov_type='HAC', cov_kwds={'maxlags':4,'use_correction':True}, use_t=False). Select minimum p with smaller-lag tie break, then apply BH separately per outcome across every group before classification. Preserve the exact output window, controls, metric order, and association-only language."
+                              : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
+                                ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
+                                : input.repair.failure_code === "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
+                                  ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
+                                  : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+                                    ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
+                                    : input.repair.failure_code ===
+                                        "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+                                      ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+                                      : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                                        ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
                                         : input.repair.failure_code ===
-                                            "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                                          ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                                          : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+                                            "PYTHON_POLICY_SOURCE_SYNTAX"
+                                          ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                                          : input.repair.failure_code ===
+                                              "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                                            ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                                            : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
