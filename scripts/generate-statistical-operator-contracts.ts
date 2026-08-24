@@ -7,6 +7,36 @@ import { fileURLToPath } from "node:url";
 type JsonScalar = string | number | boolean | null;
 type JsonValue = JsonScalar | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
+type RecordFieldShape =
+  | "BINARY_NUMBER_ARRAY"
+  | "FINITE_NUMBER_ARRAY"
+  | "MONTH_KEY"
+  | "NAMED_FINITE_NUMBER_ARRAY_MAP"
+  | "NAMED_FINITE_NUMBER_MAP"
+  | "NON_EMPTY_STRING"
+  | "NON_NEGATIVE_FINITE_NUMBER"
+  | "NULLABLE_NON_NEGATIVE_FINITE_NUMBER"
+  | "NULLABLE_RATING_1_TO_5"
+  | "STRICT_ORDER_ARRAY"
+  | "UNIT_INTERVAL_NUMBER";
+
+type OperatorInputManifest = {
+  readonly name: string;
+  readonly container: "RECORD_ARRAY";
+  readonly min_items: number;
+  readonly max_items: number;
+  readonly record_shape: Readonly<Record<string, RecordFieldShape>>;
+  readonly record_example: Readonly<Record<string, JsonValue>>;
+  readonly limits: Readonly<
+    Partial<
+      Record<
+        "max_named_fields_per_record" | "max_points_per_record" | "max_rows_per_record",
+        number
+      >
+    >
+  >;
+};
+
 type OperatorManifestEntry = {
   readonly operator_id: string;
   readonly description_zh: string;
@@ -19,7 +49,7 @@ type OperatorManifestEntry = {
     readonly mode: "LABELED_BATCH";
     readonly max_items: number;
   };
-  readonly inputs: readonly JsonValue[];
+  readonly inputs: readonly OperatorInputManifest[];
   readonly parameters: readonly JsonValue[];
   readonly outputs: JsonValue;
   readonly applicability_checks: readonly string[];
@@ -27,7 +57,7 @@ type OperatorManifestEntry = {
 };
 
 type OperatorManifest = {
-  readonly schema_version: "statistical-operator-manifest@1.0.0";
+  readonly schema_version: "statistical-operator-manifest@2.0.0";
   readonly registry_id: string;
   readonly operators: readonly OperatorManifestEntry[];
 };
@@ -60,6 +90,13 @@ function assertClosedObject(
   assertCondition(unknown.length === 0, `${context} 含未知字段：${unknown.join(", ")}`);
 }
 
+function assertObject(value: unknown, context: string): asserts value is Record<string, unknown> {
+  assertCondition(
+    typeof value === "object" && value !== null && !Array.isArray(value),
+    `${context} 必须是对象。`,
+  );
+}
+
 function assertStringArray(value: unknown, context: string): asserts value is readonly string[] {
   assertCondition(Array.isArray(value), `${context} 必须是数组。`);
   assertCondition(
@@ -67,6 +104,77 @@ function assertStringArray(value: unknown, context: string): asserts value is re
     `${context} 只能包含非空字符串。`,
   );
   assertCondition(new Set(value).size === value.length, `${context} 不允许重复值。`);
+}
+
+const RECORD_FIELD_SHAPES = new Set<RecordFieldShape>([
+  "BINARY_NUMBER_ARRAY",
+  "FINITE_NUMBER_ARRAY",
+  "MONTH_KEY",
+  "NAMED_FINITE_NUMBER_ARRAY_MAP",
+  "NAMED_FINITE_NUMBER_MAP",
+  "NON_EMPTY_STRING",
+  "NON_NEGATIVE_FINITE_NUMBER",
+  "NULLABLE_NON_NEGATIVE_FINITE_NUMBER",
+  "NULLABLE_RATING_1_TO_5",
+  "STRICT_ORDER_ARRAY",
+  "UNIT_INTERVAL_NUMBER",
+]);
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 128;
+}
+
+function isFiniteNumberArray(value: unknown): value is readonly number[] {
+  return Array.isArray(value) && value.length > 0 && value.every(isFiniteNumber);
+}
+
+function assertRecordExampleValue(value: unknown, shape: RecordFieldShape, context: string): void {
+  const namedFiniteNumberMap =
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.entries(value).every(([key, child]) => isNonEmptyString(key) && isFiniteNumber(child));
+  const namedFiniteNumberArrayMap =
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    Object.keys(value).length > 0 &&
+    Object.entries(value).every(
+      ([key, child]) => isNonEmptyString(key) && isFiniteNumberArray(child),
+    ) &&
+    new Set(Object.values(value).map((child) => (child as readonly unknown[]).length)).size === 1;
+  const strictOrder =
+    Array.isArray(value) &&
+    value.length > 0 &&
+    ((value.every(isFiniteNumber) &&
+      value.every((item, index) => index === 0 || item > Number(value[index - 1]))) ||
+      (value.every(isNonEmptyString) &&
+        value.every((item, index) => index === 0 || item > String(value[index - 1]))));
+  const valid =
+    (shape === "BINARY_NUMBER_ARRAY" &&
+      Array.isArray(value) &&
+      value.length > 0 &&
+      value.every((item) => item === 0 || item === 1)) ||
+    (shape === "FINITE_NUMBER_ARRAY" && isFiniteNumberArray(value)) ||
+    (shape === "MONTH_KEY" &&
+      typeof value === "string" &&
+      /^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])$/u.test(value)) ||
+    (shape === "NAMED_FINITE_NUMBER_ARRAY_MAP" && namedFiniteNumberArrayMap) ||
+    (shape === "NAMED_FINITE_NUMBER_MAP" && namedFiniteNumberMap) ||
+    (shape === "NON_EMPTY_STRING" && isNonEmptyString(value)) ||
+    (shape === "NON_NEGATIVE_FINITE_NUMBER" && isFiniteNumber(value) && value >= 0) ||
+    (shape === "NULLABLE_NON_NEGATIVE_FINITE_NUMBER" &&
+      (value === null || (isFiniteNumber(value) && value >= 0))) ||
+    (shape === "NULLABLE_RATING_1_TO_5" &&
+      (value === null || (isFiniteNumber(value) && value >= 1 && value <= 5))) ||
+    (shape === "STRICT_ORDER_ARRAY" && strictOrder) ||
+    (shape === "UNIT_INTERVAL_NUMBER" && isFiniteNumber(value) && value >= 0 && value <= 1);
+  assertCondition(valid, `${context} 不符合 ${shape}。`);
 }
 
 function assertNoCompatibilityKeys(value: unknown, path = "manifest"): void {
@@ -95,7 +203,7 @@ export function parseStatisticalOperatorManifest(text: string): OperatorManifest
   const candidate: unknown = JSON.parse(text);
   assertClosedObject(candidate, ["schema_version", "registry_id", "operators"], "manifest");
   assertCondition(
-    candidate.schema_version === "statistical-operator-manifest@1.0.0",
+    candidate.schema_version === "statistical-operator-manifest@2.0.0",
     "manifest schema_version 不受支持。",
   );
   assertCondition(
@@ -177,6 +285,68 @@ export function parseStatisticalOperatorManifest(text: string): OperatorManifest
       Array.isArray(rawOperator.inputs) && rawOperator.inputs.length > 0,
       `${context}.inputs 不能为空。`,
     );
+    const inputNames = new Set<string>();
+    for (const [inputIndex, rawInput] of rawOperator.inputs.entries()) {
+      const inputContext = `${context}.inputs[${inputIndex}]`;
+      assertClosedObject(
+        rawInput,
+        ["name", "container", "min_items", "max_items", "record_shape", "record_example", "limits"],
+        inputContext,
+      );
+      assertCondition(
+        typeof rawInput.name === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(rawInput.name),
+        `${inputContext}.name 非法。`,
+      );
+      assertCondition(!inputNames.has(rawInput.name), `${inputContext}.name 重复。`);
+      inputNames.add(rawInput.name);
+      assertCondition(rawInput.container === "RECORD_ARRAY", `${inputContext}.container 非法。`);
+      assertCondition(
+        Number.isSafeInteger(rawInput.min_items) && Number(rawInput.min_items) >= 0,
+        `${inputContext}.min_items 非法。`,
+      );
+      assertCondition(
+        Number.isSafeInteger(rawInput.max_items) &&
+          Number(rawInput.max_items) >= Number(rawInput.min_items) &&
+          Number(rawInput.max_items) <= 500_000,
+        `${inputContext}.max_items 非法。`,
+      );
+      assertObject(rawInput.record_shape, `${inputContext}.record_shape`);
+      const recordFields = Object.keys(rawInput.record_shape);
+      assertCondition(recordFields.length > 0, `${inputContext}.record_shape 不能为空。`);
+      for (const [field, shape] of Object.entries(rawInput.record_shape)) {
+        assertCondition(
+          /^[a-z][a-z0-9_]{0,63}$/u.test(field),
+          `${inputContext}.record_shape 字段非法。`,
+        );
+        assertCondition(
+          typeof shape === "string" && RECORD_FIELD_SHAPES.has(shape as RecordFieldShape),
+          `${inputContext}.record_shape.${field} 非法。`,
+        );
+      }
+      assertClosedObject(rawInput.record_example, recordFields, `${inputContext}.record_example`);
+      assertCondition(
+        Object.keys(rawInput.record_example).length === recordFields.length,
+        `${inputContext}.record_example 必须覆盖且只能覆盖 record_shape。`,
+      );
+      for (const [field, shape] of Object.entries(rawInput.record_shape)) {
+        assertRecordExampleValue(
+          rawInput.record_example[field],
+          shape as RecordFieldShape,
+          `${inputContext}.record_example.${field}`,
+        );
+      }
+      assertClosedObject(
+        rawInput.limits,
+        ["max_named_fields_per_record", "max_points_per_record", "max_rows_per_record"],
+        `${inputContext}.limits`,
+      );
+      for (const [limitName, limitValue] of Object.entries(rawInput.limits)) {
+        assertCondition(
+          Number.isSafeInteger(limitValue) && Number(limitValue) > 0,
+          `${inputContext}.limits.${limitName} 非法。`,
+        );
+      }
+    }
     assertCondition(Array.isArray(rawOperator.parameters), `${context}.parameters 必须是数组。`);
     assertClosedObject(
       rawOperator.outputs,

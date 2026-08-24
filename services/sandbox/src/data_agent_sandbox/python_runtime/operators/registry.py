@@ -19,6 +19,7 @@ from data_agent_sandbox.python_runtime.models import (
 from data_agent_sandbox.python_runtime.operators.attestation import OPERATOR_REGISTRY_DIGEST
 from data_agent_sandbox.python_runtime.operators.manifest import (
     OPERATOR_BY_ID,
+    input_records_match_manifest,
 )
 
 MAX_CANONICAL_BYTES = 64 * 1024 * 1024
@@ -200,12 +201,8 @@ def _validate_inputs(descriptor: Mapping[str, Any], inputs: dict[str, Any]) -> d
         raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
     for name, specification in by_name.items():
         records = normalized[name]
-        if not isinstance(records, list) or len(records) > specification["max_items"]:
+        if not input_records_match_manifest(specification, records):
             raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
-        required = set(specification["required_fields"])
-        for record in records:
-            if not isinstance(record, dict) or not required <= record.keys():
-                raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
     return normalized
 
 

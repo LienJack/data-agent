@@ -410,7 +410,16 @@ describe("DeepSeek governed Python source", () => {
       method_evidence_contract?: { exact_key_set?: boolean; required_keys?: string[] };
       operator_orchestration_contract?: {
         source_policy?: string;
-        required_calls_order?: Array<{ call_id?: string; operator_id?: string }>;
+        required_calls_order?: Array<{
+          call_id?: string;
+          operator_id?: string;
+          literal_call_contract?: string;
+          inputs?: Array<{
+            container?: string;
+            record_shape?: Record<string, string>;
+            record_example?: Record<string, unknown>;
+          }>;
+        }>;
       };
       runtime_policy?: { allowed_imports?: string[] };
     };
@@ -431,6 +440,25 @@ describe("DeepSeek governed Python source", () => {
         operator_id: "decomposition.product-shapley-exact@1",
       }),
     ]);
+    const shapleyCard = bounded.operator_orchestration_contract?.required_calls_order?.[0];
+    expect(shapleyCard?.inputs).toEqual([
+      expect.objectContaining({
+        container: "RECORD_ARRAY",
+        record_shape: {
+          label: "NON_EMPTY_STRING",
+          baseline_factors: "NAMED_FINITE_NUMBER_MAP",
+          current_factors: "NAMED_FINITE_NUMBER_MAP",
+        },
+        record_example: {
+          label: "comparison_a",
+          baseline_factors: { buyers: 100, frequency: 1.2, aov: 80 },
+          current_factors: { buyers: 90, frequency: 1.1, aov: 75 },
+        },
+      }),
+    ]);
+    expect(shapleyCard?.literal_call_contract).toContain(
+      '"baseline_factors":{"buyers":100,"frequency":1.2,"aov":80}',
+    );
     expect(bounded.runtime_policy?.allowed_imports).toEqual([
       "json",
       "math",
@@ -723,6 +751,23 @@ describe("DeepSeek governed Python source", () => {
       "Restore every required literal context.operators.call",
     );
     expect(operatorRepair.repair?.required_correction).toContain("return a value from main");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
+      previous_source_text:
+        "def main(context):\n    context.operators.call('decomposition.product-shapley-exact@1', call_id='q1_revenue_identity', inputs={'comparisons': [{'label': 'x', 'baseline_factors': [1], 'current_factors': [2]}]}, parameters={})\n",
+      failure_code: "PYTHON_OPERATOR_INPUT_INVALID",
+      attempt: 1,
+    });
+    const operatorInputRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(operatorInputRepair.repair?.required_correction).toContain("exact field names");
+    expect(operatorInputRepair.repair?.required_correction).toContain("NAMED_FINITE_NUMBER_MAP");
+    expect(operatorInputRepair.repair?.required_correction).toContain("dict[str, finite number]");
 
     await source.repair?.({
       lease: base.lease,

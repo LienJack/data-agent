@@ -1,5 +1,5 @@
 {
-  "schema_version": "statistical-operator-manifest@1.0.0",
+  "schema_version": "statistical-operator-manifest@2.0.0",
   "registry_id": "data-agent-governed-statistics@1",
   "operators": [
     {
@@ -17,9 +17,18 @@
       "inputs": [
         {
           "name": "tests",
-          "kind": "LABELED_RECORDS",
-          "required_fields": ["label", "p_value"],
-          "max_items": 5000
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 5000,
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "p_value": "UNIT_INTERVAL_NUMBER"
+          },
+          "record_example": {
+            "label": "hypothesis_a",
+            "p_value": 0.03
+          },
+          "limits": {}
         }
       ],
       "parameters": [
@@ -70,10 +79,22 @@
       "inputs": [
         {
           "name": "series",
-          "kind": "LABELED_SERIES",
-          "required_fields": ["label", "x", "y"],
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
           "max_items": 512,
-          "max_points_per_series": 512
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "x": "STRICT_ORDER_ARRAY",
+            "y": "FINITE_NUMBER_ARRAY"
+          },
+          "record_example": {
+            "label": "series_a",
+            "x": [0, 1, 2],
+            "y": [1.0, 2.0, 3.5]
+          },
+          "limits": {
+            "max_points_per_record": 512
+          }
         }
       ],
       "parameters": [],
@@ -105,10 +126,22 @@
       "inputs": [
         {
           "name": "series",
-          "kind": "LABELED_SERIES",
-          "required_fields": ["label", "order", "value"],
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
           "max_items": 5000,
-          "max_points_per_series": 5000
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "order": "STRICT_ORDER_ARRAY",
+            "value": "FINITE_NUMBER_ARRAY"
+          },
+          "record_example": {
+            "label": "series_a",
+            "order": ["2024-01", "2024-02", "2024-03"],
+            "value": [1.0, 2.0, 3.0]
+          },
+          "limits": {
+            "max_points_per_record": 5000
+          }
         }
       ],
       "parameters": [
@@ -164,11 +197,28 @@
       "inputs": [
         {
           "name": "models",
-          "kind": "LABELED_TABLES",
-          "required_fields": ["label", "row_order", "outcome", "predictors"],
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
           "max_items": 1024,
-          "max_rows_per_model": 100000,
-          "max_predictors_per_model": 64
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "row_order": "STRICT_ORDER_ARRAY",
+            "outcome": "FINITE_NUMBER_ARRAY",
+            "predictors": "NAMED_FINITE_NUMBER_ARRAY_MAP"
+          },
+          "record_example": {
+            "label": "model_a",
+            "row_order": [0, 1, 2, 3, 4, 5],
+            "outcome": [1.0, 2.2, 2.8, 4.1, 5.2, 5.9],
+            "predictors": {
+              "exposure": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0],
+              "control": [1.0, 1.5, 2.0, 2.2, 3.0, 3.4]
+            }
+          },
+          "limits": {
+            "max_rows_per_record": 100000,
+            "max_named_fields_per_record": 64
+          }
         }
       ],
       "parameters": [
@@ -234,11 +284,26 @@
       "inputs": [
         {
           "name": "models",
-          "kind": "LABELED_TABLES",
-          "required_fields": ["label", "outcome", "predictors"],
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
           "max_items": 1024,
-          "max_rows_per_model": 100000,
-          "max_predictors_per_model": 64
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "outcome": "BINARY_NUMBER_ARRAY",
+            "predictors": "NAMED_FINITE_NUMBER_ARRAY_MAP"
+          },
+          "record_example": {
+            "label": "model_a",
+            "outcome": [0, 1, 0, 1, 0, 1],
+            "predictors": {
+              "delay_minutes": [5.0, 15.0, 8.0, 25.0, 12.0, 30.0],
+              "order_amount": [80.0, 120.0, 95.0, 150.0, 110.0, 170.0]
+            }
+          },
+          "limits": {
+            "max_rows_per_record": 100000,
+            "max_named_fields_per_record": 64
+          }
         }
       ],
       "parameters": [
@@ -295,9 +360,30 @@
       "inputs": [
         {
           "name": "comparisons",
-          "kind": "LABELED_RECORDS",
-          "required_fields": ["label", "baseline_factors", "current_factors"],
-          "max_items": 1024
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 1024,
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "baseline_factors": "NAMED_FINITE_NUMBER_MAP",
+            "current_factors": "NAMED_FINITE_NUMBER_MAP"
+          },
+          "record_example": {
+            "label": "comparison_a",
+            "baseline_factors": {
+              "buyers": 100.0,
+              "frequency": 1.2,
+              "aov": 80.0
+            },
+            "current_factors": {
+              "buyers": 90.0,
+              "frequency": 1.1,
+              "aov": 75.0
+            }
+          },
+          "limits": {
+            "max_named_fields_per_record": 8
+          }
         }
       ],
       "parameters": [
@@ -353,21 +439,56 @@
       "inputs": [
         {
           "name": "customers",
-          "kind": "LABELED_TABLE",
-          "required_fields": ["customer_id", "registration_month", "customer_type"],
-          "max_items": 100000
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 100000,
+          "record_shape": {
+            "customer_id": "NON_EMPTY_STRING",
+            "registration_month": "MONTH_KEY",
+            "customer_type": "NON_EMPTY_STRING"
+          },
+          "record_example": {
+            "customer_id": "customer_a",
+            "registration_month": "2024-01",
+            "customer_type": "new"
+          },
+          "limits": {}
         },
         {
           "name": "events",
-          "kind": "LABELED_TABLE",
-          "required_fields": ["customer_id", "event_month", "order_id", "revenue", "delivery_minutes", "rating"],
-          "max_items": 500000
+          "container": "RECORD_ARRAY",
+          "min_items": 0,
+          "max_items": 500000,
+          "record_shape": {
+            "customer_id": "NON_EMPTY_STRING",
+            "event_month": "MONTH_KEY",
+            "order_id": "NON_EMPTY_STRING",
+            "revenue": "NON_NEGATIVE_FINITE_NUMBER",
+            "delivery_minutes": "NULLABLE_NON_NEGATIVE_FINITE_NUMBER",
+            "rating": "NULLABLE_RATING_1_TO_5"
+          },
+          "record_example": {
+            "customer_id": "customer_a",
+            "event_month": "2024-01",
+            "order_id": "order_a",
+            "revenue": 100.0,
+            "delivery_minutes": 30.0,
+            "rating": 5.0
+          },
+          "limits": {}
         },
         {
           "name": "observation",
-          "kind": "SINGLETON_RECORD",
-          "required_fields": ["observation_end_month"],
-          "max_items": 1
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 1,
+          "record_shape": {
+            "observation_end_month": "MONTH_KEY"
+          },
+          "record_example": {
+            "observation_end_month": "2024-12"
+          },
+          "limits": {}
         }
       ],
       "parameters": [

@@ -225,6 +225,24 @@ function allowedImports(
   return [...common, "scipy", "sklearn", "statsmodels", "dowhy", "networkx"];
 }
 
+function operatorParameterExample(parameter: {
+  readonly name: string;
+  readonly kind: string;
+  readonly default?: string | number | boolean;
+  readonly allowed_values?: readonly (string | number)[];
+}) {
+  if (parameter.default !== undefined) return [parameter.name, parameter.default] as const;
+  if (parameter.allowed_values !== undefined) {
+    return [parameter.name, parameter.allowed_values[0]] as const;
+  }
+  if (parameter.kind === "NON_NEGATIVE_INTEGER" || parameter.kind === "POSITIVE_INTEGER") {
+    return [parameter.name, 1] as const;
+  }
+  if (parameter.kind === "FINITE_NUMBER") return [parameter.name, 0.05] as const;
+  if (parameter.kind === "BOOLEAN") return [parameter.name, false] as const;
+  throw new TypeError("ANALYSIS_PYTHON_OPERATOR_PARAMETER_EXAMPLE_UNAVAILABLE");
+}
+
 function operatorCards(node: AnalysisProgramNode, operatorRegistryDigest: string) {
   const governed = node.generated_source_policy === "GOVERNED_OPERATOR_ORCHESTRATION";
   if (governed !== node.operator_obligations.length > 0) {
@@ -246,16 +264,10 @@ function operatorCards(node: AnalysisProgramNode, operatorRegistryDigest: string
         .filter((parameter) => parameter.required)
         .map(({ name }) => name);
       const inputShape = Object.fromEntries(
-        descriptor.inputs.map(({ name, required_fields: requiredFields }) => [
-          name,
-          `<prepare ${name} records with fields: ${requiredFields.join(", ")}>`,
-        ]),
+        descriptor.inputs.map(({ name, record_example: recordExample }) => [name, [recordExample]]),
       );
       const parameterShape = Object.fromEntries(
-        descriptor.parameters.map((parameter) => [
-          parameter.name,
-          "default" in parameter ? parameter.default : `<required ${parameter.kind}>`,
-        ]),
+        descriptor.parameters.map(operatorParameterExample),
       );
       return {
         call_id: obligation.call_id,
@@ -264,8 +276,12 @@ function operatorCards(node: AnalysisProgramNode, operatorRegistryDigest: string
         literal_call_contract: `context.operators.call(${JSON.stringify(obligation.operator_id)}, call_id=${JSON.stringify(obligation.call_id)}, inputs=${JSON.stringify(inputShape)}, parameters=${JSON.stringify(parameterShape)})`,
         inputs: descriptor.inputs.map((operatorInput) => ({
           name: operatorInput.name,
-          kind: operatorInput.kind,
-          required_fields: operatorInput.required_fields,
+          container: operatorInput.container,
+          min_items: operatorInput.min_items,
+          max_items: operatorInput.max_items,
+          record_shape: operatorInput.record_shape,
+          record_example: operatorInput.record_example,
+          limits: operatorInput.limits,
         })),
         required_parameters: requiredParameters,
         parameters: descriptor.parameters,
@@ -278,6 +294,7 @@ function operatorCards(node: AnalysisProgramNode, operatorRegistryDigest: string
     rules: [
       "Call every required operator exactly once and in required_calls_order. The operator_id positional argument and call_id keyword must be the exact string literals shown; never alias, inspect, wrap, loop over, or dynamically choose context.operators.call.",
       "Generated Python owns input preparation, pandas transformations, business classification, output assembly, and explanation. It must not reimplement any governed operator's statistical formula or import a second implementation.",
+      "Every inputs value is a RECORD_ARRAY. Each record must contain exactly the record_shape field names. record_example is executable JSON showing the exact nested containers and value types: replace example values with analysis values, but preserve field names, list/map structure, and scalar types.",
       "Capture each returned JSON object. Copy the bound operator collection, labels, and values without rounding or mutation to the declared result_binding path; the sandbox compares the exact label set and bound values after execution.",
       "Operator results may be indexed or joined to derive user-facing fields, but every governed statistic in the final answer must originate from the returned operator object.",
       "Write every declared output exactly once and let main return None implicitly or explicitly. Returning an analysis value from main is forbidden.",
@@ -314,6 +331,7 @@ async function boundedPrompt(input: {
   const governedOperators = operatorCards(input.node, input.operatorRegistryDigest);
   const operatorCorrection =
     "Preserve operator_orchestration_contract exactly. Restore every required literal context.operators.call in the declared order, prepare its declared inputs and parameters, retain its complete bound output collection at result_binding, and do not add calls, change IDs, handwrite the governed statistic, or return a value from main.";
+  const operatorInputCorrection = `${operatorCorrection} Restore every inputs value as a RECORD_ARRAY and every record to the exact field names and nested list/map/scalar types shown by record_shape and record_example. In particular, NAMED_FINITE_NUMBER_MAP values are Python dict[str, finite number], and NAMED_FINITE_NUMBER_ARRAY_MAP values are Python dict[str, list[finite number]]; do not replace either map with a list.`;
   const repair = input.repair
     ? {
         ...input.repair,
@@ -338,27 +356,29 @@ async function boundedPrompt(input: {
                             ? "Keep the fitted regression designs unchanged and set the top-level output controls array to exactly ['trend','seasonality']. These are the required semantic evidence identifiers for the linear week trend and sine/cosine annual controls; do not replace them with formulas or expanded column names."
                             : input.repair.failure_code.startsWith("FALCON24_Q4_")
                               ? "Preserve the observed channel/audience groups, shared 79-week business series, lag alignment, absolute-week trend, seasonal predictors, metric order, window, controls, and association-only language. Put all lag and spend-trend models in q4_hac_all_models; use its returned spend coefficients and p-values. Select one lag per group/outcome, then call the three declared q4_bh_* families separately. Do not fit OLS/HAC or calculate p/q-values in generated Python."
-                              : input.repair.failure_code.startsWith("PYTHON_OPERATOR_")
-                                ? operatorCorrection
-                                : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
-                                  ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
-                                  : input.repair.failure_code ===
-                                      "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
-                                    ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
-                                    : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-                                      ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
-                                      : input.repair.failure_code ===
-                                          "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
-                                        ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-                                        : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                                          ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
-                                          : input.repair.failure_code ===
-                                              "PYTHON_POLICY_SOURCE_SYNTAX"
-                                            ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                              : input.repair.failure_code === "PYTHON_OPERATOR_INPUT_INVALID"
+                                ? operatorInputCorrection
+                                : input.repair.failure_code.startsWith("PYTHON_OPERATOR_")
+                                  ? operatorCorrection
+                                  : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
+                                    ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
+                                    : input.repair.failure_code ===
+                                        "PROGRAM_ENTRYPOINT_POLICY_REJECTED"
+                                      ? "Define exactly one synchronous entrypoint with the exact signature def main(context): and write every declared output once through context. Do not rename, decorate, overload, or make the entrypoint async."
+                                      : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+                                        ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
+                                        : input.repair.failure_code ===
+                                            "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+                                          ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+                                          : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                                            ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
                                             : input.repair.failure_code ===
-                                                "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                                              ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                                              : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+                                                "PYTHON_POLICY_SOURCE_SYNTAX"
+                                              ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                                              : input.repair.failure_code ===
+                                                  "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                                                ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                                                : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {

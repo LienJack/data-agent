@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
@@ -119,6 +120,25 @@ def test_runtime_manifest_is_closed_unique_and_matches_typescript_source_digest(
         forbidden not in serialized
         for forbidden in ('"aliases"', '"overwrite"', '"fallback"', '"legacy_id"')
     )
+    assert OPERATOR_MANIFEST["schema_version"] == "statistical-operator-manifest@2.0.0"
+    for operator in OPERATOR_MANIFEST["operators"]:
+        for operator_input in operator["inputs"]:
+            assert operator_input["container"] == "RECORD_ARRAY"
+            assert set(operator_input["record_example"]) == set(operator_input["record_shape"])
+            assert "required_fields" not in operator_input
+
+    shapley = next(
+        operator
+        for operator in OPERATOR_MANIFEST["operators"]
+        if operator["operator_id"] == "decomposition.product-shapley-exact@1"
+    )
+    example = shapley["inputs"][0]["record_example"]
+    assert example["baseline_factors"] == {
+        "buyers": 100.0,
+        "frequency": 1.2,
+        "aov": 80.0,
+    }
+    assert isinstance(example["baseline_factors"], Mapping)
 
 
 def test_registry_emits_bounded_receipt_only_after_exact_result_binding() -> None:
