@@ -148,7 +148,7 @@ describe("analysis input materializer", () => {
     const sensitiveCommit = vi.fn(async (_capability, request) => ({
       ok: true as const,
       value: {
-        schema_version: "sensitive-execution-artifact-commit-result@1.0.0" as const,
+        schema_version: "sensitive-execution-artifact-commit-result@2.0.0" as const,
         disposition: "CREATED" as const,
         receipt: request.command.receipt,
       },

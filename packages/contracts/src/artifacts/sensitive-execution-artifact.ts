@@ -2,24 +2,12 @@ import { z } from "zod";
 import {
   contentHashSchema,
   deepFreeze,
-  immutableIdSchema,
   sha256ContentHash,
   versionIdentifierSchema,
 } from "../common/index.js";
 import { artifactReferenceFor } from "./envelope.js";
 
-export const SENSITIVE_EXECUTION_ARTIFACT_CONTENT_KINDS = [
-  "TOOL_RESULT",
-  "CONTEXT_SLICE",
-  "MODEL_VIEW",
-  "COMPACTION_SUMMARY",
-  "OMISSION_LEDGER",
-  "OBLIGATION_LEDGER",
-  "HANDOFF",
-  "RECOVERY",
-  "PYTHON_SOURCE",
-  "ANALYSIS_INPUT",
-] as const;
+export const SENSITIVE_EXECUTION_ARTIFACT_CONTENT_KINDS = ["ANALYSIS_INPUT"] as const;
 
 const canonicalUtcTimestampSchema = z.iso
   .datetime({ offset: true })
@@ -75,11 +63,9 @@ const lifecycleSchema = z
   });
 
 const sensitiveExecutionArtifactReceiptDraftSchema = z.strictObject({
-  schema_version: z.literal("sensitive-execution-artifact@1.0.0"),
+  schema_version: z.literal("sensitive-execution-artifact@2.0.0"),
   artifact_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
-  task_id: immutableIdSchema,
-  context_epoch_id: immutableIdSchema.nullable(),
-  content_kind: z.enum(SENSITIVE_EXECUTION_ARTIFACT_CONTENT_KINDS),
+  content_kind: z.literal("ANALYSIS_INPUT"),
   plaintext_hash: contentHashSchema,
   ciphertext_hash: contentHashSchema,
   storage_key_hash: contentHashSchema,
@@ -132,7 +118,7 @@ export async function verifySensitiveExecutionArtifactReceipt(
 }
 
 export const commitSensitiveExecutionArtifactCommandSchema = z.strictObject({
-  schema_version: z.literal("sensitive-execution-artifact-commit@1.0.0"),
+  schema_version: z.literal("sensitive-execution-artifact-commit@2.0.0"),
   receipt: sensitiveExecutionArtifactReceiptSchema,
   idempotency_key: z
     .string()
@@ -145,7 +131,7 @@ export type CommitSensitiveExecutionArtifactCommand = z.infer<
 >;
 
 export const commitSensitiveExecutionArtifactResultSchema = z.strictObject({
-  schema_version: z.literal("sensitive-execution-artifact-commit-result@1.0.0"),
+  schema_version: z.literal("sensitive-execution-artifact-commit-result@2.0.0"),
   disposition: z.enum(["CREATED", "REPLAYED"]),
   receipt: sensitiveExecutionArtifactReceiptSchema,
 });
@@ -154,19 +140,15 @@ export type CommitSensitiveExecutionArtifactResult = z.infer<
 >;
 
 export const loadSensitiveExecutionArtifactCommandSchema = z.strictObject({
-  schema_version: z.literal("sensitive-execution-artifact-load@1.0.0"),
+  schema_version: z.literal("sensitive-execution-artifact-load@2.0.0"),
   artifact_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
-  task_id: immutableIdSchema,
-  context_epoch_id: immutableIdSchema.nullable(),
   ciphertext_hash: contentHashSchema,
-  capability_id: immutableIdSchema,
-  capability_hash: contentHashSchema,
 });
 export type LoadSensitiveExecutionArtifactCommand = z.infer<
   typeof loadSensitiveExecutionArtifactCommandSchema
 >;
 
 export const loadSensitiveExecutionArtifactResultSchema = z.strictObject({
-  schema_version: z.literal("sensitive-execution-artifact-load-result@1.0.0"),
+  schema_version: z.literal("sensitive-execution-artifact-load-result@2.0.0"),
   receipt: sensitiveExecutionArtifactReceiptSchema.nullable(),
 });

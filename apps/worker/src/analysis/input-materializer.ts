@@ -177,12 +177,8 @@ export function createAnalysisInputMaterializer(input: {
       const ciphertextHash = byteHash(ciphertext);
       const committedAt = leaseStartedAt(command.lease);
       const sensitiveReceipt = await buildSensitiveExecutionArtifactReceipt({
-        schema_version: "sensitive-execution-artifact@1.0.0",
+        schema_version: "sensitive-execution-artifact@2.0.0",
         artifact_ref: inputRef,
-        task_id: deterministicAnalysisUuid(
-          `analysis-input-task\0${command.analysis_program_ref.artifact_id}\0${command.node_id}`,
-        ),
-        context_epoch_id: command.analysis_program_ref.artifact_id,
         content_kind: "ANALYSIS_INPUT",
         plaintext_hash: plaintextHash,
         ciphertext_hash: ciphertextHash,
@@ -204,7 +200,7 @@ export function createAnalysisInputMaterializer(input: {
       });
       const committedInput = await input.sensitive_artifacts.commit(input.capability_input, {
         command: {
-          schema_version: "sensitive-execution-artifact-commit@1.0.0",
+          schema_version: "sensitive-execution-artifact-commit@2.0.0",
           receipt: sensitiveReceipt,
           idempotency_key: `analysis-input:${artifactId}`,
         },

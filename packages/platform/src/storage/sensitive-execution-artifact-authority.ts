@@ -163,9 +163,7 @@ export function createSensitiveExecutionArtifactAuthority(
           const receipt = await verifySensitiveExecutionArtifactReceipt(parsed.data.receipt);
           if (
             receipt.receipt_hash !== parsed.data.receipt.receipt_hash ||
-            receipt.ciphertext_hash !== command.data.ciphertext_hash ||
-            receipt.task_id !== command.data.task_id ||
-            receipt.context_epoch_id !== command.data.context_epoch_id
+            receipt.ciphertext_hash !== command.data.ciphertext_hash
           ) {
             throw new PersistenceBoundaryError(
               "SENSITIVE_EXECUTION_ARTIFACT_DATABASE_CONTRACT_INVALID",

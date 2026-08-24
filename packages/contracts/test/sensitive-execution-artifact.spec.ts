@@ -13,7 +13,7 @@ const scope = {
 } as const;
 
 const draft = {
-  schema_version: "sensitive-execution-artifact@1.0.0",
+  schema_version: "sensitive-execution-artifact@2.0.0",
   artifact_ref: {
     artifact_id: "00000000-0000-4000-8000-000000000003",
     artifact_type: "SensitiveExecutionArtifact",
@@ -22,9 +22,7 @@ const draft = {
     revision: 1,
     content_hash: `sha256:${"2".repeat(64)}`,
   },
-  task_id: "00000000-0000-4000-8000-000000000005",
-  context_epoch_id: "00000000-0000-4000-8000-000000000006",
-  content_kind: "MODEL_VIEW",
+  content_kind: "ANALYSIS_INPUT",
   plaintext_hash: `sha256:${"2".repeat(64)}`,
   ciphertext_hash: `sha256:${"3".repeat(64)}`,
   storage_key_hash: `sha256:${"4".repeat(64)}`,
@@ -91,20 +89,16 @@ describe("SensitiveExecutionArtifact", () => {
     ).toBe(false);
   });
 
-  it("requires exact task capability identity for private loads", () => {
+  it("requires exact run-scoped ciphertext identity for private loads", () => {
     const command = {
-      schema_version: "sensitive-execution-artifact-load@1.0.0",
+      schema_version: "sensitive-execution-artifact-load@2.0.0",
       artifact_ref: draft.artifact_ref,
-      task_id: draft.task_id,
-      context_epoch_id: draft.context_epoch_id,
       ciphertext_hash: draft.ciphertext_hash,
-      capability_id: "00000000-0000-4000-8000-000000000007",
-      capability_hash: `sha256:${"5".repeat(64)}`,
     } as const;
     expect(loadSensitiveExecutionArtifactCommandSchema.safeParse(command).success).toBe(true);
-    const { capability_hash: _missing, ...withoutCapabilityHash } = command;
+    const { ciphertext_hash: _missing, ...withoutCiphertextHash } = command;
     expect(
-      loadSensitiveExecutionArtifactCommandSchema.safeParse(withoutCapabilityHash).success,
+      loadSensitiveExecutionArtifactCommandSchema.safeParse(withoutCiphertextHash).success,
     ).toBe(false);
   });
 });

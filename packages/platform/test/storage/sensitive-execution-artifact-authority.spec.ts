@@ -13,8 +13,6 @@ const ids = {
   principal: "00000000-0000-4000-8000-000000000004",
   run: "00000000-0000-4000-8000-000000000005",
   artifact: "00000000-0000-4000-8000-000000000006",
-  task: "00000000-0000-4000-8000-000000000007",
-  epoch: "00000000-0000-4000-8000-000000000008",
 } as const;
 const ciphertext = new TextEncoder().encode("encrypted-u19-context");
 const cipherHash = `sha256:${createHash("sha256").update(ciphertext).digest("hex")}` as const;
@@ -45,7 +43,7 @@ const lease = {
 
 async function receipt() {
   return buildSensitiveExecutionArtifactReceipt({
-    schema_version: "sensitive-execution-artifact@1.0.0",
+    schema_version: "sensitive-execution-artifact@2.0.0",
     artifact_ref: {
       artifact_id: ids.artifact,
       artifact_type: "SensitiveExecutionArtifact",
@@ -56,9 +54,7 @@ async function receipt() {
       revision: 1,
       content_hash: `sha256:${"1".repeat(64)}`,
     },
-    task_id: ids.task,
-    context_epoch_id: ids.epoch,
-    content_kind: "MODEL_VIEW",
+    content_kind: "ANALYSIS_INPUT",
     plaintext_hash: `sha256:${"1".repeat(64)}`,
     ciphertext_hash: cipherHash,
     storage_key_hash: `sha256:${"2".repeat(64)}`,
@@ -119,7 +115,7 @@ describe("SensitiveExecutionArtifactAuthority", () => {
   it("stores ciphertext by content hash before committing exact metadata", async () => {
     const document = await receipt();
     const scripted = poolWith({
-      schema_version: "sensitive-execution-artifact-commit-result@1.0.0",
+      schema_version: "sensitive-execution-artifact-commit-result@2.0.0",
       disposition: "CREATED",
       receipt: document,
     });
@@ -135,7 +131,7 @@ describe("SensitiveExecutionArtifactAuthority", () => {
     });
     const result = await store.commit(auth.capability, {
       command: {
-        schema_version: "sensitive-execution-artifact-commit@1.0.0",
+        schema_version: "sensitive-execution-artifact-commit@2.0.0",
         receipt: document,
         idempotency_key: "u19-sensitive-artifact",
       },
@@ -160,7 +156,7 @@ describe("SensitiveExecutionArtifactAuthority", () => {
     });
     const result = await store.commit(auth.capability, {
       command: {
-        schema_version: "sensitive-execution-artifact-commit@1.0.0",
+        schema_version: "sensitive-execution-artifact-commit@2.0.0",
         receipt: document,
         idempotency_key: "u19-sensitive-artifact",
       },
