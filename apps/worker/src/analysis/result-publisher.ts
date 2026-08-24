@@ -372,8 +372,10 @@ function validateTable(
   contract: AnalysisResultContract,
 ): readonly Readonly<Record<string, unknown>>[] {
   const expectedColumns = table.columns.map(({ key }) => key);
+  if (!exactSet(symbol.columns, expectedColumns)) {
+    throw new TypeError("ANALYSIS_RESULT_TABLE_COLUMNS_MISMATCH");
+  }
   if (
-    !exactSet(symbol.columns, expectedColumns) ||
     symbol.columns.length > contract.limits.max_table_columns ||
     symbol.rows.length > Math.min(table.max_rows, contract.limits.max_table_rows)
   ) {

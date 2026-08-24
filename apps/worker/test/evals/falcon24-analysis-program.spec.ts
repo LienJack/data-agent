@@ -152,6 +152,9 @@ describe("Falcon24 analysis program compiler", () => {
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("do not round");
     expect(
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
+    ).toContain("result bh_q_value to table adjusted_p_value");
+    expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-marketing-lag-effect"].join(" "),
     ).toContain("exactly 16*3*5 spend rows");
     expect(

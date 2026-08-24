@@ -371,6 +371,23 @@ describe("server-owned Result Publisher", () => {
         resultContract,
       ),
     ).toThrow("ANALYSIS_RESULT_NULLABILITY_MISMATCH");
+    expect(() =>
+      resultPublisherInternals.validateTable(
+        {
+          symbol_name: "monthly_table",
+          symbol_kind: "TABLE",
+          columns: ["month", "amount"],
+          rows: [
+            [
+              { kind: "DATE", value: "2024-01-01" },
+              { kind: "NUMBER", value: 1 },
+            ],
+          ],
+        },
+        tableContract,
+        resultContract,
+      ),
+    ).toThrow("ANALYSIS_RESULT_TABLE_COLUMNS_MISMATCH");
   });
 
   it("extracts allowlisted symbols and atomically stages deterministic result/table/chart closure", async () => {

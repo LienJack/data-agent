@@ -190,6 +190,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "Set result.method_evidence to an object containing exactly governed_analysis_contract.required_method_evidence_keys. Preserve each governed operator collection at its declared result_binding path; for every other method key, record the concrete window, grain, selection, tie-break, or quality rule actually applied. Do not omit non-operator methods and do not add undeclared method keys.",
       "Do not write result JSON, tables, PNG, SVG, or chart files. The only completion action is publish_analysis_result. Supply result/table symbol names plus chart id and field selections only; the server injects chart intent, template, and data-symbol binding from the result contract.",
       "Preserve governed numeric values without rounding. Build every required table symbol with exactly the declared columns, then publish once. Explain only after the server verifies and stages the entire result closure.",
+      "For every table, use contract.tables[].columns[].key as the sole column authority. A similarly named result-object field does not authorize a table column; when a method contract declares a projection mapping, copy the value into the exact table key before publishing.",
     ],
     semantic_context: {
       package_hash: semantic.package_hash,

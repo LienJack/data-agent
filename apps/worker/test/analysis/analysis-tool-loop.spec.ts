@@ -64,6 +64,11 @@ describe("safe cell diagnostics", () => {
     ).toBe("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH");
     expect(
       analysisToolLoopInternals.repairablePublishFailureCode(
+        new TypeError("ANALYSIS_RESULT_TABLE_COLUMNS_MISMATCH"),
+      ),
+    ).toBe("ANALYSIS_RESULT_TABLE_COLUMNS_MISMATCH");
+    expect(
+      analysisToolLoopInternals.repairablePublishFailureCode(
         new AnalysisSandboxRuntimeError(
           "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
           "CELL",
