@@ -418,11 +418,27 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text:
+        "from typing import Any\nimport pandas as pd\ndef main(context):\n    pass\n",
+      failure_code: "PYTHON_POLICY_IMPORT_DENIED",
+      attempt: 1,
+    });
+    const importRepair = JSON.parse(prompts[2] ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(importRepair.repair?.required_correction).toContain("complete import-root allowlist");
+    expect(importRepair.repair?.required_correction).toContain("typing and dataclasses");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
     });
-    const typeRepair = JSON.parse(prompts[2] ?? "{}") as {
+    const typeRepair = JSON.parse(prompts[3] ?? "{}") as {
       repair?: { required_correction?: string };
     };
     expect(typeRepair.repair?.required_correction).toContain("argument counts identical");
