@@ -200,11 +200,18 @@ async function boundedPrompt(input: {
       sdk: {
         entrypoint: "def main(context)",
         read_input: "context.read(input_name)",
+        input_runtime_types: {
+          ARROW: "pandas.DataFrame; convert rows with frame.to_dict(orient='records')",
+          CSV: "pandas.DataFrame; convert rows with frame.to_dict(orient='records')",
+          JSON: "decoded JSON value",
+        },
         write_json: "context.write_json(output_name, value)",
         write_csv: "context.write_csv(output_name, value)",
         write_arrow: "context.write_arrow(output_name, value)",
         write_png: "context.write_png(output_name, figure)",
       },
+      attribute_reflection:
+        "DENIED; never call hasattr/getattr/setattr. Input runtime types are fixed by format.",
       return_contract:
         "Read only declared input names and write every declared output exactly once through the provided sdk.",
     },

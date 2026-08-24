@@ -41,6 +41,7 @@ BANNED_NAMES = frozenset(
         "exec",
         "getattr",
         "globals",
+        "hasattr",
         "help",
         "input",
         "locals",

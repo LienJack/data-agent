@@ -120,6 +120,7 @@ def run(control_path: Path) -> int:
     except BaseException as error:
         safe_failure_code = {
             TypeError: "PYTHON_TYPE_ERROR",
+            NameError: "PYTHON_NAME_ERROR",
             KeyError: "PYTHON_KEY_ERROR",
             IndexError: "PYTHON_INDEX_ERROR",
             ValueError: "PYTHON_VALUE_ERROR",

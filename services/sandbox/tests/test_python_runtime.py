@@ -153,6 +153,7 @@ def envelope_for(
         "def main(context):\n    open('/etc/passwd').read()\n",
         "def main(context):\n    eval('1 + 1')\n",
         "def main(context):\n    __import__('os')\n",
+        "def main(context):\n    hasattr(context, '_inputs')\n",
         "def main(context):\n    context.__class__\n",
         "import pandas as pd\ndef main(context):\n    pd.read_csv('/etc/passwd')\n",
         "x = print('effect')\ndef main(context):\n    pass\n",
@@ -264,6 +265,7 @@ def test_supervisor_projects_safe_sdk_failure_code_without_exposing_stderr(tmp_p
     ("statement", "failure_code"),
     [
         ("1 + 'x'", "PYTHON_TYPE_ERROR"),
+        ("missing_name", "PYTHON_NAME_ERROR"),
         ("{}['missing']", "PYTHON_KEY_ERROR"),
         ("[][0]", "PYTHON_INDEX_ERROR"),
         ("int('x')", "PYTHON_VALUE_ERROR"),
