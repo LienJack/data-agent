@@ -9,10 +9,21 @@ import {
   verifyFalcon24ArrowBackedOutput,
 } from "../../src/evals/falcon24-arrow-backed-analysis-oracle.js";
 
-const { fitDeliveryGlm, mannKendallP, olsHac, quantile, shapleyThreeFactor, verifiers } =
+const { fitDeliveryGlm, mannKendallP, normalCdf, olsHac, quantile, shapleyThreeFactor, verifiers } =
   falcon24ArrowBackedAnalysisOracleInternals;
 
 describe("Falcon24 Arrow-backed analysis oracle", () => {
+  it("matches the semantic normal-CDF contract at multiple tails", () => {
+    expect(normalCdf(0)).toBe(0.5);
+    expect(normalCdf(1)).toBeCloseTo(0.8413447460685429, 14);
+    expect(normalCdf(1.96)).toBeCloseTo(0.9750021048517796, 14);
+    expect(normalCdf(3)).toBeCloseTo(0.9986501019683699, 14);
+    expect(mannKendallP(Array.from({ length: 12 }, (_, index) => index))).toBeCloseTo(
+      0.000008303107353668793,
+      14,
+    );
+  });
+
   it("issues only a v2 receipt bound to Arrow, materialization, evidence, and output hashes", async () => {
     const spec = FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"];
     const months = Array.from({ length: 18 }, (_, index) =>

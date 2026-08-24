@@ -592,7 +592,7 @@ describe("DeepSeek governed Python source", () => {
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
     });
-    const typeRepair = JSON.parse(prompts[7] ?? "{}") as {
+    const typeRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
       repair?: { required_correction?: string };
     };
     expect(typeRepair.repair?.required_correction).toContain("argument counts identical");

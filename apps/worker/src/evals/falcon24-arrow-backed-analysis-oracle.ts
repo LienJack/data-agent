@@ -73,14 +73,78 @@ function quantile(values: readonly number[], probability: number): number {
   return lowerValue + (upperValue - lowerValue) * (position - lower);
 }
 
-function normalCdf(value: number): number {
+function polynomial(value: number, coefficients: readonly number[]): number {
+  const first = coefficients[0] ?? fail("FALCON24_ORACLE_POLYNOMIAL_EMPTY");
+  return coefficients.slice(1).reduce((result, coefficient) => result * value + coefficient, first);
+}
+
+function unitLeadingPolynomial(value: number, coefficients: readonly number[]): number {
+  const first = coefficients[0] ?? fail("FALCON24_ORACLE_POLYNOMIAL_EMPTY");
+  return coefficients
+    .slice(1)
+    .reduce((result, coefficient) => result * value + coefficient, value + first);
+}
+
+function errorFunction(value: number): number {
   const sign = value < 0 ? -1 : 1;
-  const x = Math.abs(value) / Math.sqrt(2);
-  const t = 1 / (1 + 0.3275911 * x);
-  const polynomial =
-    ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t;
-  const erf = sign * (1 - polynomial * Math.exp(-x * x));
-  return (1 + erf) / 2;
+  const x = Math.abs(value);
+  if (x < 1) {
+    const squared = x * x;
+    const numerator = polynomial(
+      squared,
+      [
+        9.604973739870516, 90.02601972038427, 2232.005345946843, 7003.325141128051,
+        55592.3013010395,
+      ],
+    );
+    const denominator = unitLeadingPolynomial(
+      squared,
+      [
+        33.56171416475031, 521.3579497801527, 4594.323829709801, 22629.000061389095,
+        49267.39426086359,
+      ],
+    );
+    return sign * x * (numerator / denominator);
+  }
+  const numerator =
+    x < 8
+      ? polynomial(
+          x,
+          [
+            2.461969814735305e-10, 0.5641895648310689, 7.463210564422699, 48.63719709856814,
+            196.5208329560771, 526.4451949954773, 934.5285271719576, 1027.5518868951572,
+            557.5353353693994,
+          ],
+        )
+      : polynomial(
+          x,
+          [
+            0.5641895835477551, 1.275366707599781, 5.019050422511805, 6.160210979930536,
+            7.40974269950449, 2.9788666537210022,
+          ],
+        );
+  const denominator =
+    x < 8
+      ? unitLeadingPolynomial(
+          x,
+          [
+            13.228195115474499, 86.70721408859897, 354.9377788878199, 975.7085017432055,
+            1823.9091668790973, 2246.33760818711, 1656.6630919416134, 557.5353408177277,
+          ],
+        )
+      : unitLeadingPolynomial(
+          x,
+          [
+            2.2605286322011726, 9.396035249380015, 12.048953980809666, 17.08144507475659,
+            9.60896809063286, 3.369076451000815,
+          ],
+        );
+  const complementary = Math.exp(-(x * x)) * (numerator / denominator);
+  return sign * (1 - complementary);
+}
+
+function normalCdf(value: number): number {
+  return (1 + errorFunction(value / Math.sqrt(2))) / 2;
 }
 
 function twoSidedNormalP(zScore: number): number {
@@ -1178,6 +1242,7 @@ export const falcon24ArrowBackedAnalysisOracleInternals = Object.freeze({
   benjaminiHochberg,
   fitDeliveryGlm,
   mannKendallP,
+  normalCdf,
   olsHac,
   quantile,
   shapleyThreeFactor,
