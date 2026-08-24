@@ -150,6 +150,7 @@ def envelope_for(
         "import pickle\ndef main(context):\n    pass\n",
         "import marshal\ndef main(context):\n    pass\n",
         "import ctypes\ndef main(context):\n    pass\n",
+        "import time\ndef main(context):\n    pass\n",
         "def main(context):\n    open('/etc/passwd').read()\n",
         "def main(context):\n    eval('1 + 1')\n",
         "def main(context):\n    __builtins__['open']('/etc/passwd')\n",
@@ -216,6 +217,25 @@ def test_sdk_normalizes_numpy_scalars_at_the_json_boundary(tmp_path: Path) -> No
         "    context.write_json('result', result)\n",
         expected,
         identifier="sandbox-numpy-json-scalars",
+    )
+
+    outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)
+
+    assert outcome.receipt.status == "SUCCEEDED"
+    assert base64.b64decode(outcome.outputs[0].content_base64) == expected
+
+
+def test_trusted_pandas_timestamp_formatting_can_load_its_internal_time_module(
+    tmp_path: Path,
+) -> None:
+    expected = b'{"month":"2023-05"}\n'
+    request = envelope_for(
+        "import pandas as pd\n"
+        "def main(context):\n"
+        "    value = pd.Timestamp('2023-05-01', tz='UTC')\n"
+        "    context.write_json('result', {'month': value.strftime('%Y-%m')})\n",
+        expected,
+        identifier="sandbox-pandas-internal-time-import",
     )
 
     outcome = PythonSandboxSupervisor(configuration(tmp_path)).execute(request)

@@ -51,6 +51,7 @@ _SAFE_BUILTINS = {
         "KeyError",
     )
 }
+_TRUSTED_LIBRARY_RUNTIME_IMPORT_ROOTS = frozenset({"time"})
 
 
 def _controlled_import(
@@ -63,7 +64,9 @@ def _controlled_import(
     allowed_roots: frozenset[str],
 ) -> Any:
     del globals, locals
-    if level != 0 or name.split(".", 1)[0] not in allowed_roots:
+    if level != 0 or name.split(".", 1)[0] not in (
+        allowed_roots | _TRUSTED_LIBRARY_RUNTIME_IMPORT_ROOTS
+    ):
         raise ImportError("PYTHON_IMPORT_DENIED")
     return builtins.__import__(name, {}, {}, fromlist, 0)
 
