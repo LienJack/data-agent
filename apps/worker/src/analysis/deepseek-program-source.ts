@@ -180,7 +180,7 @@ async function boundedPrompt(input: {
                       : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
                         ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
                         : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                          ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Return complete executable source without placeholders."
+                          ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Arrow STRING columns can materialize as pandas.Categorical: cast every STRING column used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; never add a string literal directly to a Categorical series. Return complete executable source without placeholders."
                           : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
                             ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
                             : input.repair.failure_code ===
@@ -237,7 +237,8 @@ async function boundedPrompt(input: {
         entrypoint: "def main(context)",
         read_input: "context.read(input_name)",
         input_runtime_types: {
-          ARROW: "pandas.DataFrame; convert rows with frame.to_dict(orient='records')",
+          ARROW:
+            "pandas.DataFrame; declared STRING columns can materialize as pandas.Categorical, so cast columns used in concatenation, formula encoding, sorting, or compound-key construction with series.astype(str) first; convert rows with frame.to_dict(orient='records')",
           CSV: "pandas.DataFrame; convert rows with frame.to_dict(orient='records')",
           JSON: "decoded JSON value",
         },
