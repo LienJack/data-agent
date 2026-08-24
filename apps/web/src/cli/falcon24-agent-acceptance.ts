@@ -22,6 +22,11 @@ const scopeSchema = z.strictObject({
   principalId: z.uuid(),
 });
 const variantSchema = z.enum(["COLD", "WARM"]);
+const campaignIdSchema = z
+  .string()
+  .min(8)
+  .max(80)
+  .regex(/^[a-z0-9][a-z0-9._-]+$/u);
 
 function stableUuid(material: string): string {
   const digits = createHash("sha256").update(material).digest("hex").slice(0, 32).split("");
@@ -54,11 +59,12 @@ function report(value: unknown): void {
 function runIdentity(input: {
   readonly workspaceId: string;
   readonly principalId: string;
+  readonly campaignId: string;
   readonly caseId: string;
   readonly variant: "COLD" | "WARM";
   readonly repetition: number;
 }) {
-  const material = `${input.caseId}:${input.variant}:${input.repetition}`;
+  const material = `${input.campaignId}:${input.caseId}:${input.variant}:${input.repetition}`;
   const idempotencyKey = stableUuid(`falcon24:agent-acceptance:${material}`);
   return {
     ...deriveRunCommandIdentities({
@@ -98,6 +104,7 @@ async function main(): Promise<void> {
   );
   const suite = await buildFalcon24AgentAnalysisAcceptanceSuite();
   const command = process.argv[2];
+  const campaignId = campaignIdSchema.parse(argument("campaign-id"));
 
   if (command === "manifest") {
     const runs = suite.cases.flatMap((testCase) =>
@@ -106,6 +113,7 @@ async function main(): Promise<void> {
           run_id: runIdentity({
             workspaceId: scope.workspaceId,
             principalId: scope.principalId,
+            campaignId,
             caseId: testCase.case_id,
             variant,
             repetition,
@@ -130,7 +138,12 @@ async function main(): Promise<void> {
       )}\n`,
       "utf8",
     );
-    report({ terminal: "READY", run_count: runs.length, output_path: outputPath });
+    report({
+      terminal: "READY",
+      campaign_id: campaignId,
+      run_count: runs.length,
+      output_path: outputPath,
+    });
     return;
   }
 
@@ -142,6 +155,7 @@ async function main(): Promise<void> {
   const identities = runIdentity({
     workspaceId: scope.workspaceId,
     principalId: scope.principalId,
+    campaignId,
     caseId: testCase.case_id,
     variant,
     repetition,
@@ -161,7 +175,7 @@ async function main(): Promise<void> {
       await conversations.createConversation(capability, {
         schema_version: "workspace-conversation-create@1.0.0",
         conversation_id: identities.conversationId,
-        title: `Falcon24 ${testCase.case_id} ${variant}-${repetition}`,
+        title: `Falcon24 ${campaignId} ${testCase.case_id} ${variant}-${repetition}`,
         datasource_id: defaults.revision.defaults.datasource.resource_id,
         model_id: null,
         model_profile_id: defaults.revision.defaults.model.resource_id,
@@ -172,6 +186,7 @@ async function main(): Promise<void> {
     const result = await getWorkspaceDataRepository().getRunBinding(capability, identities.run_id);
     report({
       terminal: "READY",
+      campaign_id: campaignId,
       case_id: testCase.case_id,
       run_variant: variant,
       repetition,
@@ -199,6 +214,7 @@ async function main(): Promise<void> {
   }
   report({
     terminal: "SUBMITTED",
+    campaign_id: campaignId,
     case_id: testCase.case_id,
     run_variant: variant,
     repetition,
