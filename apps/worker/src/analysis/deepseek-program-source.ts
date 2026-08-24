@@ -144,7 +144,7 @@ function allowedImports(profile: "CORE_ANALYSIS" | "ML_DIAGNOSTIC" | "CAUSAL_L5"
 }
 
 function scrubFailureCode(code: string): string {
-  return /^(?:PYTHON_|SANDBOX_|PROGRAM_|FALCON24_ORACLE_)[A-Z0-9_]{1,96}$/u.test(code)
+  return /^(?:PYTHON_|SANDBOX_|PROGRAM_|FALCON24_(?:ORACLE_|Q[1-5]_))[A-Z0-9_]{1,96}$/u.test(code)
     ? code
     : "SANDBOX_EXECUTION_FAILED";
 }
@@ -167,17 +167,19 @@ async function boundedPrompt(input: {
         required_correction:
           input.repair.failure_code === "PYTHON_POLICY_IMPORT_DENIED"
             ? "Treat runtime_policy.allowed_imports as the complete import-root allowlist. Remove every import whose root is not listed, including typing and dataclasses; use plain Python 3.12 annotations or no annotations instead. Do not replace a denied import with dynamic importing or reflection."
-            : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-              ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
-              : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
-                ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
-                : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                  ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Return complete executable source without placeholders."
-                  : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
-                    ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
-                    : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-                      ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-                      : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+            : input.repair.failure_code === "FALCON24_Q1_WORST_MONTH_INVALID"
+              ? "Recompute worst_revenue_decline only after monthly_kpis is finalized: for each adjacent ordered month calculate absolute_change=current.revenue-previous.revenue and percent_change=absolute_change/previous.revenue, select the row with the minimum absolute_change, and copy those unrounded values and current month into the output."
+              : input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
+                ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
+                : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+                  ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+                  : input.repair.failure_code === "PYTHON_TYPE_ERROR"
+                    ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Return complete executable source without placeholders."
+                    : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
+                      ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
+                      : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                        ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                        : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
