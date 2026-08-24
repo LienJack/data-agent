@@ -166,11 +166,11 @@ async function boundedPrompt(input: {
         ...input.repair,
         required_correction:
           input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
-            ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise'); never inspect runtime types."
+            ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise', utc=True); never inspect runtime types."
             : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
               ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
               : input.repair.failure_code === "PYTHON_TYPE_ERROR"
-                ? "Check every helper definition against every call and make positional argument counts identical. Follow the statistical method contract literally, use declared DataFrame field types, and return complete executable source without placeholders."
+                ? "Check every helper definition against every call and make positional argument counts identical. Arrow TIMESTAMP values are timezone-aware UTC: normalize with pandas.to_datetime(frame[column], errors='raise', utc=True), compare only with UTC-aware pandas.Timestamp(..., tz='UTC'), and convert with .dt.tz_convert(analysis_node.time_window.timezone) before calendar bucketing. Return complete executable source without placeholders."
                 : input.repair.failure_code === "PYTHON_POLICY_SOURCE_SYNTAX"
                   ? "Rewrite the incomplete region as valid Python 3.12. Remove ???, ellipses, TODO markers, pseudocode, and unfinished branches; return a complete executable module."
                   : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
@@ -231,7 +231,7 @@ async function boundedPrompt(input: {
           JSON: "decoded JSON value",
         },
         temporal_normalization:
-          "For DATE or TIMESTAMP DataFrame fields, use pandas.to_datetime(frame[column], errors='raise') and vectorized .dt accessors. The declared schema is authoritative; do not probe values with reflection.",
+          "For DATE or TIMESTAMP DataFrame fields, use pandas.to_datetime(frame[column], errors='raise', utc=True). Arrow TIMESTAMP values are timezone-aware UTC, so compare only with pandas.Timestamp(..., tz='UTC'). Before calendar bucketing, convert to analysis_node.time_window.timezone with .dt.tz_convert(...), then use vectorized .dt accessors. The declared schema is authoritative; do not probe values with reflection.",
         write_json: "context.write_json(output_name, value)",
         write_csv: "context.write_csv(output_name, value)",
         write_arrow: "context.write_arrow(output_name, value)",

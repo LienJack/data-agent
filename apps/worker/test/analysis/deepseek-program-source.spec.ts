@@ -308,7 +308,8 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("statistical_method_contract");
     expect(serialized).toContain("output_json_schema");
     expect(serialized).toContain("def main(context)");
-    expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise')");
+    expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise', utc=True)");
+    expect(serialized).toContain("pandas.Timestamp(..., tz='UTC')");
     expect(serialized).toContain("literal constant assignments");
     expect(serialized).toContain("Verify helper call arity");
     expect(serialized).toContain("buyers-frequency-aov-shapley");
@@ -425,6 +426,7 @@ describe("DeepSeek governed Python source", () => {
       repair?: { required_correction?: string };
     };
     expect(typeRepair.repair?.required_correction).toContain("argument counts identical");
+    expect(typeRepair.repair?.required_correction).toContain("timezone-aware UTC");
   });
 
   it("rejects model substitution and scrubs repair failures to one bounded attempt", async () => {
