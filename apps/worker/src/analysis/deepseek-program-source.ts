@@ -171,6 +171,8 @@ async function boundedPrompt(input: {
               ? "Recompute worst_revenue_decline only after monthly_kpis is finalized: for each adjacent ordered month calculate absolute_change=current.revenue-previous.revenue and percent_change=absolute_change/previous.revenue, select the row with the minimum absolute_change, and copy those unrounded values and current month into the output."
               : input.repair.failure_code === "FALCON24_Q2_GLM_CONTROL_MISSING"
                 ? "Keep the fitted GLM design unchanged and set adjusted_binomial_glm.controls to the exact semantic identifiers month, log_order_amount, product_category, and customer_segment. Do not substitute formula syntax, encoded column names, or human-readable labels for these identifiers."
+                : input.repair.failure_code === "FALCON24_ORACLE_CAUSAL_LANGUAGE_REJECTED"
+                  ? "Rewrite conclusion in Chinese association language. It must contain the exact word 关联 and must not contain 导致, 证明...影响, or 驱动了. Preserve the computed statistics and keep claim_strength as ASSOCIATION_ONLY."
                 : input.repair.failure_code === "PROGRAM_HOST_POLICY_REJECTED"
                   ? "Remove denied reflection calls (hasattr/getattr/setattr/dir/vars), denied modules, filesystem/network/database I/O, dynamic code, private attributes, and embedded credentials or URLs. Use only context.read and context.write_json for I/O and preserve or reduce the original import roots."
                   : input.repair.failure_code === "PROGRAM_ENTRYPOINT_POLICY_REJECTED"

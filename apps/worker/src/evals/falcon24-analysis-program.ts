@@ -123,7 +123,7 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'; fit a binomial-logit GLM on rated orders.",
     "The GLM design is intercept + delayed + log1p(order_total) + categorical month + product_category + customer_segment, with lexicographically first level as reference; report the delayed coefficient and two-sided Wald p-value, and set adjusted_binomial_glm.controls to include exactly the semantic control identifiers month, log_order_amount, product_category, and customer_segment.",
     "For low-rating scenarios, use the lexicographically first product category per order, rank all category/segment/status groups by low-rating count descending, then rate descending, order count descending, and key ascending; return the first five or all groups when fewer exist.",
-    "Only make association claims; never describe the delayed coefficient as causal.",
+    "Write conclusion in Chinese association language, include the exact word 关联, and never use 导致, 证明...影响, 驱动了, or any causal description for the delayed coefficient.",
   ],
   "falcon24-inventory-damage-12m": [
     "Use blinkit_inventory only for the primary damage calculation; blinkit_inventoryNew is sensitivity evidence and must not be combined with primary values.",

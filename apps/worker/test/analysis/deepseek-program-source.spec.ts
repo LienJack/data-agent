@@ -482,11 +482,26 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context):\n    pass\n",
+      failure_code: "FALCON24_ORACLE_CAUSAL_LANGUAGE_REJECTED",
+      attempt: 1,
+    });
+    const associationRepair = JSON.parse(prompts[6] ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(associationRepair.repair?.required_correction).toContain("exact word 关联");
+    expect(associationRepair.repair?.required_correction).toContain("ASSOCIATION_ONLY");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
     });
-    const typeRepair = JSON.parse(prompts[6] ?? "{}") as {
+    const typeRepair = JSON.parse(prompts[7] ?? "{}") as {
       repair?: { required_correction?: string };
     };
     expect(typeRepair.repair?.required_correction).toContain("argument counts identical");
