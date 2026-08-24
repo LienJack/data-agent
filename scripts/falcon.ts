@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -6,22 +6,23 @@ import { parseEnv } from "node:util";
 import pg from "../apps/web/node_modules/pg/esm/index.mjs";
 import {
   attachFalconToWorkspace,
+  FALCON_DATASOURCE_ID,
   resolveFalconConnectionConfiguration,
   verifyFalconWorkspace,
 } from "../apps/web/src/lib/falcon-workspace-bootstrap";
+import { createPostgresSemanticPublicationAuthority } from "../apps/web/src/lib/postgres-semantic-publication";
+import { buildFalcon24SemanticChangeSet } from "../apps/worker/src/evals/falcon24-semantic-change-set";
 import {
+  buildSemanticReviewDecision,
   FALCON_DATASET_VERSION,
   FALCON_SOURCE_COMMIT,
   falconSubmissionReceiptSchema,
   sha256ContentHash,
 } from "../packages/contracts/src/index";
 import {
-  buildFalconDb24OntologyGraph,
   executeSqlBenchmarkBatch,
-  FALCON_DB24_JOIN_SPECS,
   FalconResultOracle,
   loadFalconDevDataset,
-  loadFalconPreview,
   loadFalconTestCases,
   SubmittedAnswerAgent,
   toFalconSqlBenchmarkDataset,
@@ -29,8 +30,7 @@ import {
 } from "../packages/evals/src/index";
 import { createPostgresFalconBenchmarkExecutor } from "../packages/platform/src/index";
 import { resolveRuntimeRepositoryRoot } from "../packages/platform/src/runtime-config/index";
-import { createSemanticOntologyCoverageReceipt } from "../packages/semantic/src/public/authoring";
-import { compileSemanticGraphV2 } from "../packages/semantic/src/public/governance";
+import { publishReviewedSemanticChangeSet } from "../packages/semantic/src/production/index";
 
 const APP_ID = "00000000-0000-4000-8000-00000000da01";
 
@@ -47,6 +47,14 @@ function argument(name: string): string | undefined {
 
 function report(value: unknown): void {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function stableUuid(material: string): string {
+  const digits = createHash("sha256").update(material).digest("hex").slice(0, 32).split("");
+  digits[12] = "5";
+  digits[16] = ((Number.parseInt(digits[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const value = digits.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 }
 
 async function resolveScope(pool: pg.Pool) {
@@ -81,77 +89,6 @@ async function resolveScope(pool: pg.Pool) {
 
 function csvCell(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
-}
-
-function postgresIdentifier(value: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]{0,62}$/u.test(value)) {
-    throw new Error("FALCON_POSTGRES_IDENTIFIER_INVALID");
-  }
-  return `"${value}"`;
-}
-
-interface FalconJoinObservationRow {
-  readonly left_non_null_rows: string;
-  readonly left_distinct_keys: string;
-  readonly orphan_rows: string;
-  readonly right_non_null_rows: string;
-  readonly right_distinct_keys: string;
-}
-
-async function certifyFalconDb24Joins() {
-  const entries = await Promise.all(
-    FALCON_DB24_JOIN_SPECS.map(async (join) => {
-      const schema = postgresIdentifier("falcon_db_24");
-      const leftTable = `${schema}.${postgresIdentifier(join.left_table)}`;
-      const rightTable = `${schema}.${postgresIdentifier(join.right_table)}`;
-      const leftColumn = postgresIdentifier(join.left_column);
-      const rightColumn = postgresIdentifier(join.right_column);
-      const result = await pool.query<FalconJoinObservationRow>(
-        `with right_keys as (
-           select ${rightColumn} as join_key
-             from ${rightTable}
-            where ${rightColumn} is not null
-         ), observation as (
-           select count(left_row.${leftColumn})::text as left_non_null_rows,
-                  count(distinct left_row.${leftColumn})::text as left_distinct_keys,
-                  count(*) filter (
-                    where left_row.${leftColumn} is not null and right_row.join_key is null
-                  )::text as orphan_rows
-             from ${leftTable} as left_row
-             left join (select distinct join_key from right_keys) as right_row
-               on right_row.join_key = left_row.${leftColumn}
-         )
-         select observation.left_non_null_rows,
-                observation.left_distinct_keys,
-                observation.orphan_rows,
-                (select count(*) from right_keys)::text as right_non_null_rows,
-                (select count(distinct join_key) from right_keys)::text as right_distinct_keys
-           from observation`,
-      );
-      const observation = result.rows[0];
-      if (!observation) throw new Error(`FALCON_DB24_JOIN_OBSERVATION_MISSING:${join.join_id}`);
-      const leftUnique = observation.left_non_null_rows === observation.left_distinct_keys;
-      const rightUnique = observation.right_non_null_rows === observation.right_distinct_keys;
-      const cardinality =
-        leftUnique && rightUnique
-          ? "one-to-one"
-          : rightUnique
-            ? "many-to-one"
-            : leftUnique
-              ? "one-to-many"
-              : "many-to-many";
-      const material = { join_id: join.join_id, ...observation, cardinality } as const;
-      return [
-        join.join_id,
-        {
-          content_hash: await sha256ContentHash(material),
-          description: `${join.left_table}.${join.left_column} -> ${join.right_table}.${join.right_column}; left_non_null=${observation.left_non_null_rows}, left_distinct=${observation.left_distinct_keys}, orphan=${observation.orphan_rows}, right_non_null=${observation.right_non_null_rows}, right_distinct=${observation.right_distinct_keys}`,
-          cardinality,
-        },
-      ] as const;
-    }),
-  );
-  return Object.fromEntries(entries);
 }
 
 for (const filename of [".env", ".env.local"]) {
@@ -212,52 +149,118 @@ try {
   } else if (command === "workspace:verify") {
     const scope = await resolveScope(pool);
     report(await verifyFalconWorkspace(pool, scope));
-  } else if (command === "semantic:import") {
+  } else if (command === "semantic:publish") {
     const scope = await resolveScope(pool);
-    const preview = await loadFalconPreview();
-    const mainDemoCase = preview.main_demo_cases[0];
-    if (!mainDemoCase) throw new Error("FALCON_DB24_DEMO_CASE_MISSING");
-    const checkedAt = new Date().toISOString();
-    const graph = buildFalconDb24OntologyGraph({
-      schema: mainDemoCase.schema,
-      source_digest: preview.manifest.source_digest,
+    const currentResult = await pool.query<{
+      current_release_id: string | null;
+      current_release_generation: string;
+      current_release_digest: string | null;
+      source_payload: unknown | null;
+    }>(
+      `select pointer.current_release_id::text,pointer.current_release_generation::text,
+              pointer.current_release_digest,source.source_payload
+         from semantic.semantic_active_pointer as pointer
+         left join semantic.semantic_source_release as release
+           on release.app_id=pointer.app_id and release.tenant_id=pointer.tenant_id
+          and release.environment=pointer.environment and release.semantic_domain=pointer.semantic_domain
+          and release.release_id=pointer.current_release_id
+         left join semantic.semantic_candidate as candidate
+           on candidate.app_id=release.app_id and candidate.tenant_id=release.tenant_id
+          and candidate.environment=release.environment and candidate.semantic_domain=release.semantic_domain
+          and candidate.candidate_id=release.candidate_id
+         left join semantic.semantic_candidate_revision as revision
+           on revision.app_id=candidate.app_id and revision.tenant_id=candidate.tenant_id
+          and revision.environment=candidate.environment and revision.semantic_domain=candidate.semantic_domain
+          and revision.candidate_id=candidate.candidate_id
+          and revision.revision_id=candidate.current_revision_id
+         left join semantic.semantic_source_revision as source
+           on source.app_id=revision.app_id and source.tenant_id=revision.tenant_id
+          and source.environment=revision.environment and source.semantic_domain=revision.semantic_domain
+          and source.revision_id=revision.source_revision_id
+        where pointer.app_id=$1::uuid and pointer.tenant_id=$2::uuid
+          and pointer.environment=$3::text and pointer.semantic_domain='falcon24'`,
+      [scope.appId, scope.workspaceId, scope.environment],
+    );
+    const current = currentResult.rows[0];
+    const baseRelease = current?.current_release_id
+      ? {
+          release_id: current.current_release_id,
+          generation: Number(current.current_release_generation),
+          release_hash: current.current_release_digest as `sha256:${string}`,
+        }
+      : {
+          release_id: stableUuid("falcon24:genesis-release"),
+          generation: 0,
+          release_hash: await sha256ContentHash({ semantic_domain: "falcon24", generation: 0 }),
+        };
+    const prepared = await buildFalcon24SemanticChangeSet({
       scope: {
         app_id: scope.appId,
         tenant_id: scope.workspaceId,
         environment: scope.environment,
+        semantic_domain: "falcon24",
       },
-      created_at: checkedAt,
-      join_evidence: await certifyFalconDb24Joins(),
+      base_release: baseRelease,
+      revision: baseRelease.generation + 1,
     });
-    const [compilation, coverageReceipt] = await Promise.all([
-      compileSemanticGraphV2(graph),
-      createSemanticOntologyCoverageReceipt(graph, checkedAt),
-    ]);
-    if (!coverageReceipt.valid) throw new Error("FALCON_DB24_ONTOLOGY_COVERAGE_INVALID");
-    const outputDirectory = resolve(repositoryRoot(), "artifacts/falcon-semantic");
-    await mkdir(outputDirectory, { recursive: true });
-    const candidatePath = resolve(outputDirectory, "falcon-db24-ontology-candidate.json");
-    const coveragePath = resolve(outputDirectory, "falcon-db24-ontology-coverage.json");
-    await Promise.all([
-      writeFile(candidatePath, `${JSON.stringify(graph, null, 2)}\n`, "utf8"),
-      writeFile(coveragePath, `${JSON.stringify(coverageReceipt, null, 2)}\n`, "utf8"),
-    ]);
-    report({
-      schema_version: "falcon-semantic-import@1.0.0",
-      terminal: "REVIEW_REQUIRED",
-      workspace_id: scope.workspaceId,
-      database_schema: "falcon_db_24",
-      source_digest: compilation.source_digest,
-      node_counts: coverageReceipt.active_node_counts,
-      edge_family_counts: coverageReceipt.active_edge_family_counts,
-      coverage_valid: coverageReceipt.valid,
-      runtime_metric_count: compilation.runtime_bundle.metrics.length,
-      runtime_dimension_count: compilation.runtime_bundle.dimensions.length,
-      runtime_relationship_count: compilation.runtime_bundle.relationships.length,
-      candidate_path: candidatePath,
-      coverage_path: coveragePath,
-      note: "Agent 候选已完成编译与物理 Join 认证；必须经人工 Review 后才能 Publish。",
+    const assetMaterial = (changeSet: typeof prepared.change_set) => ({
+      assertions: changeSet.assertions,
+      competency_results: changeSet.competency_results,
+      validation: changeSet.validation,
     });
+    const desiredAssetHash = await sha256ContentHash(assetMaterial(prepared.change_set));
+    const currentAssetHash = current?.source_payload
+      ? await sha256ContentHash(
+          assetMaterial(current.source_payload as typeof prepared.change_set),
+        ).catch(() => null)
+      : null;
+    if (current?.current_release_id && desiredAssetHash === currentAssetHash) {
+      report({
+        schema_version: "falcon-semantic-publication@1.0.0",
+        terminal: "ALREADY_PUBLISHED",
+        workspace_id: scope.workspaceId,
+        semantic_domain: "falcon24",
+        release_id: current.current_release_id,
+        release_generation: Number(current.current_release_generation),
+        release_hash: current.current_release_digest,
+        asset_hash: currentAssetHash,
+      });
+    } else {
+      const publishedAt = new Date().toISOString();
+      const review = await buildSemanticReviewDecision({
+        schema_version: "semantic-review-decision@1.0.0",
+        review_id: stableUuid(`${prepared.change_set.change_set_hash}:review`),
+        scope: prepared.change_set.scope,
+        change_set_id: prepared.change_set.change_set_id,
+        change_set_hash: prepared.change_set.change_set_hash,
+        reviewer_principal_id: scope.principalId,
+        decision: "APPROVE",
+        reason_codes: [],
+        reviewed_at: publishedAt,
+      });
+      const receipt = await publishReviewedSemanticChangeSet({
+        publication_id: stableUuid(`${prepared.change_set.change_set_hash}:publication`),
+        change_set: prepared.change_set,
+        review,
+        authority: createPostgresSemanticPublicationAuthority(pool, {
+          ...scope,
+          datasourceId: FALCON_DATASOURCE_ID,
+          semanticDomain: "falcon24",
+        }),
+        published_at: publishedAt,
+      });
+      report({
+        schema_version: "falcon-semantic-publication@1.0.0",
+        terminal: "PUBLISHED",
+        workspace_id: scope.workspaceId,
+        semantic_domain: "falcon24",
+        datasource_id: FALCON_DATASOURCE_ID,
+        assertion_count: prepared.assertion_count,
+        competency_case_count: prepared.competency_case_count,
+        asset_hash: desiredAssetHash,
+        receipt,
+      });
+    }
   } else if (command === "demo:smoke") {
     const dataset = await loadFalconDevDataset();
     const sealedCase = dataset.sealed_cases.find(

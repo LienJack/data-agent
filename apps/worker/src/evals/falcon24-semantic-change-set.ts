@@ -325,7 +325,10 @@ export async function buildFalcon24SemanticChangeSet(input: {
       dimension: {
         dimension_id: `dimension.${dimensionId}`,
         name: dimensionId,
-        aliases: [dimensionId.replaceAll("_", " "), ...dimensionAliases[dimensionId]].sort(),
+        aliases: [
+          dimensionId.replaceAll("_", " "),
+          ...(dimensionAliases[dimensionId as keyof typeof dimensionAliases] ?? []),
+        ].sort(),
         table_id: tableId,
         column_id: `${tableId}.${columnId}`,
         grain: { grain_id: `grain.${tableId}`, granularity: "atomic" },
@@ -348,7 +351,10 @@ export async function buildFalcon24SemanticChangeSet(input: {
       metric: {
         metric_id: `metric.${metricId}`,
         name: metricId,
-        aliases: [metricId.replaceAll("_", " "), ...metricAliases[metricId]].sort(),
+        aliases: [
+          metricId.replaceAll("_", " "),
+          ...(metricAliases[metricId as keyof typeof metricAliases] ?? []),
+        ].sort(),
         table_id: tableId,
         column_id: `${tableId}.${columnId}`,
         aggregation: aggregation.toLowerCase(),
@@ -510,7 +516,7 @@ export async function buildFalcon24SemanticChangeSet(input: {
     }
   }
   const compiled = await compileSemanticChangeSet({
-    change_set_id: stableUuid("falcon24:semantic-change-set"),
+    change_set_id: stableUuid(`falcon24:semantic-change-set:${input.base_release.release_hash}`),
     scope: input.scope,
     base_release: input.base_release,
     revision: input.revision ?? 1,

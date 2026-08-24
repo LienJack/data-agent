@@ -11,7 +11,12 @@ import {
 
 const id = (suffix: number) => `30000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
-const scope = { app_id: id(1), tenant_id: id(2), environment: "test" as const, semantic_domain: "falcon24" };
+const scope = {
+  app_id: id(1),
+  tenant_id: id(2),
+  environment: "test" as const,
+  semantic_domain: "falcon24",
+};
 
 async function frozenChangeSet() {
   const assertion = await buildSemanticAssertionCandidate({
@@ -28,24 +33,32 @@ async function frozenChangeSet() {
       sensitivity: "INTERNAL",
     },
     source_kind: "SCHEMA_FACT",
-    evidence: [{
-      evidence_id: "falcon24-profile:orders-before-registration",
-      source_kind: "SCHEMA_FACT",
-      source_ref: { resource_id: "falcon24-profile", resource_revision: 1, resource_hash: hash("1") },
-      locator: { locator_kind: "SCHEMA_OBJECT", locator_value: "orders.order_date" },
-      observation: "Order timestamps may precede registration timestamps.",
-    }],
+    evidence: [
+      {
+        evidence_id: "falcon24-profile:orders-before-registration",
+        source_kind: "SCHEMA_FACT",
+        source_ref: {
+          resource_id: "falcon24-profile",
+          resource_revision: 1,
+          resource_hash: hash("1"),
+        },
+        locator: { locator_kind: "SCHEMA_OBJECT", locator_value: "orders.order_date" },
+        observation: "Order timestamps may precede registration timestamps.",
+      },
+    ],
     premise_assertion_ids: [],
     inference_rule_id: null,
     confidence: 1,
   });
-  return freezeSemanticChangeSetForReview(await compileSemanticChangeSet({
-    change_set_id: id(11),
-    scope,
-    base_release: { release_id: id(12), generation: 4, release_hash: hash("2") },
-    revision: 1,
-    assertions: [assertion],
-  }));
+  return freezeSemanticChangeSetForReview(
+    await compileSemanticChangeSet({
+      change_set_id: id(11),
+      scope,
+      base_release: { release_id: id(12), generation: 4, release_hash: hash("2") },
+      revision: 1,
+      assertions: [assertion],
+    }),
+  );
 }
 
 describe("semantic publication lifecycle", () => {
@@ -67,19 +80,26 @@ describe("semantic publication lifecycle", () => {
       generation: 5,
       release_hash: hash("3"),
       binding_impact_hashes: [hash("4")],
+      projection_rebuild: {
+        sparse: "READY" as const,
+        vector: "READY" as const,
+        graph: "READY" as const,
+      },
     }));
-    const enqueuePublishedRelease = vi.fn(async () => undefined);
     const receipt = await publishReviewedSemanticChangeSet({
       publication_id: id(16),
       change_set: changeSet,
       review,
       authority: { publishAtomically },
-      projections: { enqueuePublishedRelease },
       published_at: "2026-08-24T00:01:00.000Z",
     });
     expect(receipt.published_release.generation).toBe(5);
+    expect(receipt.projection_rebuild).toEqual({
+      sparse: "READY",
+      vector: "READY",
+      graph: "READY",
+    });
     expect(publishAtomically).toHaveBeenCalledOnce();
-    expect(enqueuePublishedRelease).toHaveBeenCalledAfter(publishAtomically);
   });
 
   it("rejects a review for a different change-set hash before authority I/O", async () => {
@@ -96,14 +116,15 @@ describe("semantic publication lifecycle", () => {
       reviewed_at: "2026-08-24T00:00:00.000Z",
     });
     const publishAtomically = vi.fn();
-    await expect(publishReviewedSemanticChangeSet({
-      publication_id: id(19),
-      change_set: changeSet,
-      review,
-      authority: { publishAtomically },
-      projections: { enqueuePublishedRelease: vi.fn() },
-      published_at: "2026-08-24T00:01:00.000Z",
-    })).rejects.toThrow("SEMANTIC_PUBLICATION_REVIEW_CLOSURE_INVALID");
+    await expect(
+      publishReviewedSemanticChangeSet({
+        publication_id: id(19),
+        change_set: changeSet,
+        review,
+        authority: { publishAtomically },
+        published_at: "2026-08-24T00:01:00.000Z",
+      }),
+    ).rejects.toThrow("SEMANTIC_PUBLICATION_REVIEW_CLOSURE_INVALID");
     expect(publishAtomically).not.toHaveBeenCalled();
   });
 });

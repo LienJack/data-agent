@@ -9,35 +9,36 @@ import {
 import { canonicalizeJson } from "@data-agent/contracts/common";
 
 export interface SemanticPublicationAuthorityPort {
-  publishAtomically(input: Readonly<{
+  publishAtomically(
+    input: Readonly<{
+      change_set: SemanticChangeSet;
+      review: SemanticReviewDecision;
+      published_at: string;
+    }>,
+  ): Promise<
+    Readonly<{
+      release_id: string;
+      generation: number;
+      release_hash: `sha256:${string}`;
+      binding_impact_hashes: readonly `sha256:${string}`[];
+      projection_rebuild: Readonly<{
+        sparse: "READY";
+        vector: "READY";
+        graph: "READY";
+      }>;
+    }>
+  >;
+}
+
+export async function publishReviewedSemanticChangeSet(
+  input: Readonly<{
+    publication_id: string;
     change_set: SemanticChangeSet;
     review: SemanticReviewDecision;
+    authority: SemanticPublicationAuthorityPort;
     published_at: string;
-  }>): Promise<Readonly<{
-    release_id: string;
-    generation: number;
-    release_hash: `sha256:${string}`;
-    binding_impact_hashes: readonly `sha256:${string}`[];
-  }>>;
-}
-
-export interface SemanticProjectionRebuildPort {
-  enqueuePublishedRelease(input: Readonly<{
-    release_id: string;
-    generation: number;
-    release_hash: string;
-    publication_hash: string;
-  }>): Promise<void>;
-}
-
-export async function publishReviewedSemanticChangeSet(input: Readonly<{
-  publication_id: string;
-  change_set: SemanticChangeSet;
-  review: SemanticReviewDecision;
-  authority: SemanticPublicationAuthorityPort;
-  projections: SemanticProjectionRebuildPort;
-  published_at: string;
-}>): Promise<SemanticPublicationReceipt> {
+  }>,
+): Promise<SemanticPublicationReceipt> {
   const [changeSet, review] = await Promise.all([
     verifySemanticChangeSet(input.change_set),
     verifySemanticReviewDecision(input.review),
@@ -78,12 +79,8 @@ export async function publishReviewedSemanticChangeSet(input: Readonly<{
       valid_from: input.published_at,
     },
     binding_impact_hashes: [...committed.binding_impact_hashes].sort(),
-    projection_rebuild: { sparse: "QUEUED", vector: "QUEUED", graph: "QUEUED" },
+    projection_rebuild: committed.projection_rebuild,
     published_at: input.published_at,
-  });
-  await input.projections.enqueuePublishedRelease({
-    ...receipt.published_release,
-    publication_hash: receipt.publication_hash,
   });
   return receipt;
 }

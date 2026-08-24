@@ -49,7 +49,7 @@ database 摘要，不输出密码或完整 DSN。运行时角色 `falcon_demo_re
 在发布前生成并验证 Agent 候选：
 
 ```bash
-pnpm falcon:semantic:import --workspace-id "$FALCON_DEMO_WORKSPACE_ID"
+pnpm falcon:semantic:publish --workspace-id "$FALCON_DEMO_WORKSPACE_ID"
 ```
 
 命令从真实 PostgreSQL 重新认证 Join，生成 9 个业务主体、17 个维度、21 个指标、21 个公式、
