@@ -1,3 +1,4 @@
+import { compileSemanticPublicationProjection } from "@data-agent/semantic/production";
 import { describe, expect, it } from "vitest";
 import { buildFalcon24SemanticChangeSet } from "../../src/evals/falcon24-semantic-change-set.js";
 
@@ -60,6 +61,22 @@ describe("Falcon24 governed semantic change set", () => {
         ({ canonical_key }) => canonical_key === "metric.order_revenue",
       )?.assertion_payload,
     ).toMatchObject({ metric: { aliases: expect.arrayContaining(["订单收入"]) } });
+    const projection = await compileSemanticPublicationProjection(first.change_set);
+    expect(projection.graph_projection.nodes).toHaveLength(
+      first.change_set.assertions.filter(({ target_kind }) => target_kind !== "PHYSICAL_BINDING")
+        .length,
+    );
+    expect(projection.graph_projection.edges).toHaveLength(
+      first.change_set.competency_results.reduce(
+        (count, result) => count + result.resolved_assertion_ids.length,
+        0,
+      ),
+    );
+    expect(
+      projection.graph_projection.edges.every(
+        ({ edge_type }) => edge_type === "LINEAGE_REQUIREMENT",
+      ),
+    ).toBe(true);
     expect(first.change_set.change_set_hash).toBe(replay.change_set.change_set_hash);
     expect(first.blueprint_hash).toBe(replay.blueprint_hash);
   });
