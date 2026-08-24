@@ -121,7 +121,7 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Deduplicate to one row per order_id before delivery summaries or modeling; reject conflicting order-level values.",
     "Compare 2023-11 through 2024-04 with 2024-05 through 2024-10 and use linear interpolation quantiles for p50 and p90.",
     "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'; fit a binomial-logit GLM on rated orders.",
-    "The GLM design is intercept + delayed + log1p(order_total) + categorical month + product_category + customer_segment, with lexicographically first level as reference; report the delayed coefficient and two-sided Wald p-value.",
+    "The GLM design is intercept + delayed + log1p(order_total) + categorical month + product_category + customer_segment, with lexicographically first level as reference; report the delayed coefficient and two-sided Wald p-value, and set adjusted_binomial_glm.controls to include exactly the semantic control identifiers month, log_order_amount, product_category, and customer_segment.",
     "For low-rating scenarios, use the lexicographically first product category per order, rank all category/segment/status groups by low-rating count descending, then rate descending, order count descending, and key ascending; return the first five or all groups when fewer exist.",
     "Only make association claims; never describe the delayed coefficient as causal.",
   ],
