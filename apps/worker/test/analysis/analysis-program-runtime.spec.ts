@@ -201,6 +201,13 @@ describe("deterministic analysis worker runtime", () => {
       analysisRepairFailureCode(
         { status: "SUCCEEDED", outcome: {} as never, output_refs: [] },
         null,
+        "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID",
+      ),
+    ).toBe("FALCON24_ORACLE_METHOD_EVIDENCE_INVALID");
+    expect(
+      analysisRepairFailureCode(
+        { status: "SUCCEEDED", outcome: {} as never, output_refs: [] },
+        null,
       ),
     ).toBe("ANALYSIS_ORACLE_FAILED");
     expect(

@@ -178,9 +178,12 @@ export interface AnalysisExecutionResult {
 export function analysisRepairFailureCode(
   sandbox: AnalysisSandboxExecution,
   expectation: AnalysisOracleExpectation | null,
+  oracleFailureCode: string | null = null,
 ): string | null {
   if (sandbox.status === "FAILED") return sandbox.reason_code;
-  return sandbox.status === "SUCCEEDED" && expectation === null ? "ANALYSIS_ORACLE_FAILED" : null;
+  return sandbox.status === "SUCCEEDED" && expectation === null
+    ? (oracleFailureCode ?? "ANALYSIS_ORACLE_FAILED")
+    : null;
 }
 
 class BudgetLedger {
@@ -454,6 +457,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           }
         };
         await commitFailedSandboxReceipt(sandbox);
+        let oracleFailureCode: string | null = null;
         const evaluateSandbox = async (
           attempt: 0 | 1,
         ): Promise<AnalysisOracleExpectation | null> => {
@@ -468,18 +472,23 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             analysisResultSchema.parse(evaluated.result);
             return verifyAnalysisResult(evaluated.result).verdict === "PASS" ? evaluated : null;
           } catch (error) {
+            oracleFailureCode = analysisOracleFailureCode(error);
             dependencies.diagnostics?.({
               event_name: "analysis_oracle_rejected",
               run_id: input.lease.run_id,
               node_id: node.node_id,
               attempt,
-              failure_code: analysisOracleFailureCode(error),
+              failure_code: oracleFailureCode,
             });
             return null;
           }
         };
         let expectation = await evaluateSandbox(0);
-        const repairFailureCode = analysisRepairFailureCode(sandbox, expectation);
+        const repairFailureCode = analysisRepairFailureCode(
+          sandbox,
+          expectation,
+          oracleFailureCode,
+        );
         if (
           repairFailureCode !== null &&
           descriptor.program_mode !== "FROZEN_TEMPLATE" &&

@@ -144,7 +144,7 @@ function allowedImports(profile: "CORE_ANALYSIS" | "ML_DIAGNOSTIC" | "CAUSAL_L5"
 }
 
 function scrubFailureCode(code: string): string {
-  return /^(?:PYTHON_|SANDBOX_|PROGRAM_)[A-Z0-9_]{1,96}$/u.test(code)
+  return /^(?:PYTHON_|SANDBOX_|PROGRAM_|FALCON24_ORACLE_)[A-Z0-9_]{1,96}$/u.test(code)
     ? code
     : "SANDBOX_EXECUTION_FAILED";
 }
@@ -158,13 +158,18 @@ async function boundedPrompt(input: {
   readonly repair: null | { readonly source: string; readonly failure_code: string };
 }) {
   const semanticContext = await verifySemanticContextPackage(input.semanticContextPackage);
+  const requiredMethodIds = z
+    .object({ required_methods: z.array(z.string().trim().min(1).max(128)) })
+    .parse(input.node.parameters).required_methods;
   const repair = input.repair
     ? {
         ...input.repair,
         required_correction:
           input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
             ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise'); never inspect runtime types."
-            : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+            : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+              ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+              : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
@@ -198,6 +203,11 @@ async function boundedPrompt(input: {
       output_contract: input.node.output_contract,
     },
     analysis_contract: analysisContractProjectionSchema.parse(input.analysisContract),
+    method_evidence_contract: {
+      required_keys: requiredMethodIds,
+      exact_key_set: true,
+      value_contract: "Each required key maps to a non-empty JSON evidence object.",
+    },
     input_schemas: input.inputSchemas.map((schema) => inputSchemaProjectionSchema.parse(schema)),
     runtime_policy: {
       network: "DENIED",

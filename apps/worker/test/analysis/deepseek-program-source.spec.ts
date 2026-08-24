@@ -6,7 +6,10 @@ import {
 } from "@data-agent/contracts";
 import { compileSemanticContextPackage } from "@data-agent/semantic/runtime-context";
 import { describe, expect, it } from "vitest";
-import { createDeepSeekAnalysisProgramSource } from "../../src/analysis/deepseek-program-source.js";
+import {
+  createDeepSeekAnalysisProgramSource,
+  deepSeekAnalysisProgramSourceInternals,
+} from "../../src/analysis/deepseek-program-source.js";
 import { DEFAULT_ANALYSIS_SKILL_CATALOG } from "../../src/analysis/skill-catalog.js";
 
 const id = (suffix: number) => `30000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
@@ -122,7 +125,16 @@ async function fixture() {
           semantics: "HALF_OPEN",
         },
         comparison_window: null,
-        parameters: { declared_method: "buyers-frequency-aov-shapley" },
+        parameters: {
+          declared_method: "buyers-frequency-aov-shapley",
+          required_methods: [
+            "buyers-frequency-aov-shapley",
+            "full-month-window",
+            "monthly-kpi-trend",
+            "revenue-worst-mom",
+            "segment-driver-decomposition",
+          ],
+        },
         execution_mode: "MODEL_GENERATED",
         output_contract: descriptor.output_contract,
         dependency_node_ids: [],
@@ -297,6 +309,18 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("output_json_schema");
     expect(serialized).toContain("def main(context)");
     expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise')");
+    expect(serialized).toContain("buyers-frequency-aov-shapley");
+    const bounded = JSON.parse((requests[0] as { prompt: string }).prompt) as {
+      method_evidence_contract?: { exact_key_set?: boolean; required_keys?: string[] };
+    };
+    expect(bounded.method_evidence_contract?.exact_key_set).toBe(true);
+    expect(bounded.method_evidence_contract?.required_keys).toEqual([
+      "buyers-frequency-aov-shapley",
+      "full-month-window",
+      "monthly-kpi-trend",
+      "revenue-worst-mom",
+      "segment-driver-decomposition",
+    ]);
     expect(serialized).not.toContain("def main(sdk)");
     expect(serialized).not.toMatch(/postgres(?:ql)?:\/\//iu);
     expect(serialized).not.toMatch(/password|api[_-]?key|raw_rows|row_values/iu);
@@ -363,6 +387,11 @@ describe("DeepSeek governed Python source", () => {
     expect(prompt.repair?.failure_code).toBe("PYTHON_POLICY_CALL_DENIED");
     expect(prompt.repair?.required_correction).toContain("pandas.to_datetime");
     expect(prompt.repair?.required_correction).toContain("hasattr/getattr/setattr");
+    expect(
+      deepSeekAnalysisProgramSourceInternals.scrubFailureCode(
+        "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID",
+      ),
+    ).toBe("FALCON24_ORACLE_METHOD_EVIDENCE_INVALID");
   });
 
   it("rejects model substitution and scrubs repair failures to one bounded attempt", async () => {
