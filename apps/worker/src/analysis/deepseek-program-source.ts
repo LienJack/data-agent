@@ -167,9 +167,11 @@ async function boundedPrompt(input: {
         required_correction:
           input.repair.failure_code === "PYTHON_POLICY_CALL_DENIED"
             ? "Remove every call to denied built-ins, including hasattr/getattr/setattr/dir/vars. Trust the declared input schema. Normalize DATE or TIMESTAMP DataFrame columns with pandas.to_datetime(frame[column], errors='raise'); never inspect runtime types."
-            : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
-              ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
-              : "Replace the failed implementation while preserving the declared analysis and output contracts.",
+            : input.repair.failure_code === "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED"
+              ? "Move every computed value into main(context) or a helper function. Module scope may contain only imports, function definitions, and constants whose right-hand side is a literal list, tuple, set, dict, string, number, boolean, or null; comprehensions and function calls are forbidden at module scope."
+              : input.repair.failure_code === "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID"
+                ? "Set method_evidence to exactly the required method IDs as keys, with one non-empty evidence object per key and no additional keys."
+                : "Replace the failed implementation while preserving the declared analysis and output contracts.",
       }
     : null;
   const prompt = {
@@ -233,6 +235,8 @@ async function boundedPrompt(input: {
       },
       attribute_reflection:
         "DENIED; never call hasattr/getattr/setattr. Input runtime types are fixed by format.",
+      module_top_level:
+        "Only imports, function definitions, and literal constant assignments are allowed. Put comprehensions, formatting, constructors, and all function calls inside main(context) or helper functions.",
       return_contract:
         "Read only declared input names and write every declared output exactly once through the provided sdk.",
     },

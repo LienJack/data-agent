@@ -309,6 +309,7 @@ describe("DeepSeek governed Python source", () => {
     expect(serialized).toContain("output_json_schema");
     expect(serialized).toContain("def main(context)");
     expect(serialized).toContain("pandas.to_datetime(frame[column], errors='raise')");
+    expect(serialized).toContain("literal constant assignments");
     expect(serialized).toContain("buyers-frequency-aov-shapley");
     const bounded = JSON.parse((requests[0] as { prompt: string }).prompt) as {
       method_evidence_contract?: { exact_key_set?: boolean; required_keys?: string[] };
@@ -392,6 +393,23 @@ describe("DeepSeek governed Python source", () => {
         "FALCON24_ORACLE_METHOD_EVIDENCE_INVALID",
       ),
     ).toBe("FALCON24_ORACLE_METHOD_EVIDENCE_INVALID");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
+      previous_source_text:
+        "VALUES = [str(value) for value in range(3)]\ndef main(context):\n    pass\n",
+      failure_code: "PYTHON_POLICY_TOP_LEVEL_EFFECT_DENIED",
+      attempt: 1,
+    });
+    const topLevelRepair = JSON.parse(prompts[1] ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(topLevelRepair.repair?.required_correction).toContain(
+      "comprehensions and function calls are forbidden at module scope",
+    );
   });
 
   it("rejects model substitution and scrubs repair failures to one bounded attempt", async () => {
