@@ -572,6 +572,22 @@ describe("DeepSeek governed Python source", () => {
       analysis_program: base.program,
       analysis_program_ref: base.programRef,
       node: base.node,
+      previous_source_text: "def main(context): pass",
+      failure_code: "FALCON24_Q3_BH_Q_MISMATCH",
+      standard_program: null,
+    });
+    const bhRepair = JSON.parse(prompts.at(-1) ?? "{}") as {
+      repair?: { required_correction?: string };
+    };
+    expect(bhRepair.repair?.required_correction).toContain("every product");
+    expect(bhRepair.repair?.required_correction).toContain("1-based rank");
+    expect(bhRepair.repair?.required_correction).toContain("reverse monotonicity");
+
+    await source.repair?.({
+      lease: base.lease,
+      analysis_program: base.program,
+      analysis_program_ref: base.programRef,
+      node: base.node,
       previous_source_text: "def helper(a):\n    return a\ndef main(context):\n    helper(1, 2)\n",
       failure_code: "PYTHON_TYPE_ERROR",
       attempt: 1,
