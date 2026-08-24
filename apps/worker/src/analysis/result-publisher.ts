@@ -345,7 +345,23 @@ function validateResultDocument(
     throw new TypeError("ANALYSIS_RESULT_FIELD_SET_MISMATCH");
   }
   for (const field of contract.result_fields) {
-    assertValueType(value[field.field], field.data_type, field.nullable);
+    const fieldValue = value[field.field];
+    assertValueType(fieldValue, field.data_type, field.nullable);
+    if (
+      fieldValue !== null &&
+      field.text_constraints !== undefined &&
+      (typeof fieldValue !== "string" ||
+        field.text_constraints.required_substrings.some(
+          (required) => !fieldValue.includes(required),
+        ) ||
+        field.text_constraints.forbidden_substrings.some((forbidden) =>
+          fieldValue.includes(forbidden),
+        ) ||
+        (field.text_constraints.required_suffix !== null &&
+          !fieldValue.endsWith(field.text_constraints.required_suffix)))
+    ) {
+      throw new TypeError("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH");
+    }
   }
   return { ...value };
 }

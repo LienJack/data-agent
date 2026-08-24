@@ -100,6 +100,18 @@ describe("Falcon24 analysis program compiler", () => {
     );
     expect(programs).toHaveLength(5);
     expect(
+      programs[1]?.nodes[0]?.result_contract.result_fields.find(
+        ({ field }) => field === "conclusion",
+      ),
+    ).toMatchObject({
+      data_type: "STRING",
+      text_constraints: {
+        required_substrings: ["关联"],
+        forbidden_substrings: ["导致", "证明", "驱动"],
+        required_suffix: "该证据仅支持统计关联，不支持因果判断。",
+      },
+    });
+    expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-business-review-18m"],
     ).toEqual(
       expect.arrayContaining([

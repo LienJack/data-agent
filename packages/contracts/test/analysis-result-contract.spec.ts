@@ -153,4 +153,42 @@ describe("AnalysisResultContract@1", () => {
       }),
     ).rejects.toThrow();
   });
+
+  it("allows literal text constraints only on STRING fields", async () => {
+    const constrained = await buildAnalysisResultContract({
+      ...material(),
+      result_fields: material().result_fields.map((field) =>
+        field.field === "limitation"
+          ? {
+              ...field,
+              text_constraints: {
+                required_substrings: ["关联"],
+                forbidden_substrings: ["导致"],
+                required_suffix: null,
+              },
+            }
+          : field,
+      ),
+    });
+    expect(constrained.result_fields.at(-1)?.text_constraints).toMatchObject({
+      required_substrings: ["关联"],
+    });
+    await expect(
+      buildAnalysisResultContract({
+        ...material(),
+        result_fields: material().result_fields.map((field) =>
+          field.field === "revenue"
+            ? {
+                ...field,
+                text_constraints: {
+                  required_substrings: ["关联"],
+                  forbidden_substrings: [],
+                  required_suffix: null,
+                },
+              }
+            : field,
+        ),
+      }),
+    ).rejects.toThrow();
+  });
 });

@@ -42,12 +42,39 @@ export const analysisResultChartTemplateIdSchema = z.enum([
   "cohort.retention@1",
 ]);
 
-const resultFieldSchema = z.strictObject({
-  field: fieldNameSchema,
-  data_type: analysisResultValueTypeSchema,
-  nullable: z.boolean(),
-  semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY", "LIMITATION"]),
-});
+const resultFieldTextConstraintsSchema = z
+  .strictObject({
+    required_substrings: z.array(z.string().min(1).max(128)).max(16),
+    forbidden_substrings: z.array(z.string().min(1).max(128)).max(16),
+    required_suffix: z.string().min(1).max(512).nullable(),
+  })
+  .superRefine((policy, context) => {
+    if (
+      new Set(policy.required_substrings).size !== policy.required_substrings.length ||
+      new Set(policy.forbidden_substrings).size !== policy.forbidden_substrings.length ||
+      policy.required_substrings.some((value) => policy.forbidden_substrings.includes(value))
+    ) {
+      context.addIssue({ code: "custom", message: "Text constraints must be unique and disjoint." });
+    }
+  });
+
+const resultFieldSchema = z
+  .strictObject({
+    field: fieldNameSchema,
+    data_type: analysisResultValueTypeSchema,
+    nullable: z.boolean(),
+    semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY", "LIMITATION"]),
+    text_constraints: resultFieldTextConstraintsSchema.optional(),
+  })
+  .superRefine((field, context) => {
+    if (field.text_constraints !== undefined && field.data_type !== "STRING") {
+      context.addIssue({
+        code: "custom",
+        path: ["text_constraints"],
+        message: "Text constraints require a STRING result field.",
+      });
+    }
+  });
 
 const metricBindingSchema = z.strictObject({
   semantic_metric_id: identifierSchema,

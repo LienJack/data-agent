@@ -278,12 +278,30 @@ async function compileFalcon24ResultContract(input: {
   const physicalSources = query.columns.map(({ name }) => `${query.input_name}.${name}`);
   const resultFields = ["schema_version", "case_id", ...resultShape.required_fields].map(
     (field) => {
-      const identityField = field === "schema_version" || field === "case_id";
+      const stringField =
+        field === "schema_version" ||
+        field === "case_id" ||
+        field === "claim_strength" ||
+        field === "conclusion";
+      const associationConclusion =
+        field === "conclusion" && resultShape.claim_strength === "ASSOCIATION_ONLY";
       return {
         field,
-        data_type: identityField ? ("STRING" as const) : ("JSON" as const),
+        data_type: stringField ? ("STRING" as const) : ("JSON" as const),
         nullable: false,
         semantic_role: "DERIVED" as const,
+        ...(associationConclusion
+          ? {
+              text_constraints: {
+                required_substrings: ["关联"],
+                forbidden_substrings: ["导致", "证明", "驱动"],
+                required_suffix:
+                  input.test_case.case_id === "falcon24-delivery-experience-12m"
+                    ? "该证据仅支持统计关联，不支持因果判断。"
+                    : null,
+              },
+            }
+          : {}),
       };
     },
   );

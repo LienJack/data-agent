@@ -12,7 +12,7 @@ import {
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const decoder = new TextDecoder();
 
-async function contract(maxRows = 18) {
+async function contract(maxRows = 18, withTextPolicy = false) {
   return buildAnalysisResultContract({
     schema_version: "analysis-result-contract@1.0.0",
     contract_id: "falcon24.q1.result",
@@ -25,6 +25,15 @@ async function contract(maxRows = 18) {
         data_type: "STRING",
         nullable: true,
         semantic_role: "LIMITATION",
+        ...(withTextPolicy
+          ? {
+              text_constraints: {
+                required_substrings: ["关联"],
+                forbidden_substrings: ["导致"],
+                required_suffix: "仅支持关联。",
+              },
+            }
+          : {}),
       },
     ],
     metric_bindings: [
@@ -410,6 +419,32 @@ describe("server-owned Result Publisher", () => {
       template_id: "line.multi-series@1",
       dataset: { total_rows: 2 },
     });
+  });
+
+  it("enforces bounded literal text policy before any result is staged", async () => {
+    const resultContract = await contract(18, true);
+    expect(
+      resultPublisherInternals.validateResultDocument(
+        {
+          revenue: "1.0",
+          month: "2024-01-01",
+          limitation: "调整后仍有统计关联，仅支持关联。",
+        },
+        resultContract,
+      ),
+    ).toMatchObject({ limitation: "调整后仍有统计关联，仅支持关联。" });
+    for (const limitation of [
+      "调整后不显著，仅支持判断。",
+      "延迟不能被识别为导致体验下降，仅支持关联。",
+      "调整后仍有统计关联。",
+    ]) {
+      expect(() =>
+        resultPublisherInternals.validateResultDocument(
+          { revenue: "1.0", month: "2024-01-01", limitation },
+          resultContract,
+        ),
+      ).toThrow("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH");
+    }
   });
 
   it("rejects changed operator values and malformed result fields before staging", async () => {
