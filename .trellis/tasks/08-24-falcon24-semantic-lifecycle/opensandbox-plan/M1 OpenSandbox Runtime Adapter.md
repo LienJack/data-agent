@@ -8,7 +8,7 @@
 
 1. 新增 `AnalysisSandboxRuntime` port 和 OpenSandbox adapter；依赖固定官方 JS SDK 版本。
 2. 用显式配置提供 server URL、API key secret reference、镜像 digest、startup/cell/operator timeout、容器资源上限。
-3. 创建 sandbox 后生成 agent/operator context，上传输入 Parquet 与只读 manifests。
+3. 分别创建 agent/operator sandbox 和各自 context，上传输入 Parquet 与只读 manifests；宿主按内容哈希桥接两个 sandbox。
 4. 所有 API 调用传播 run cancellation；终态总是删除 context 和 sandbox。
 5. 以 Artifact/Receipt 记录 sandbox image digest、SDK/server version、resource profile 和 file hashes，隐藏 endpoint/token。
 
@@ -43,4 +43,3 @@ Adapter 必须拥有 `createRunSandbox`、`uploadInput`、`createContext`、`run
 ## 备注
 
 本阶段不改变 SQL Sandbox，也不允许 adapter 直接查询 PostgreSQL。数据必须先由受治理 SQL 节点生成证据文件。
-

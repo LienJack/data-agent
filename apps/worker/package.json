@@ -31,6 +31,8 @@
     "falcon24:analysis:gate": "tsx src/evals/falcon24-analysis-gate-cli.ts"
   },
   "dependencies": {
+    "@alibaba-group/opensandbox": "0.1.11",
+    "@alibaba-group/opensandbox-code-interpreter": "0.1.3",
     "@data-agent/agent-runtime": "workspace:*",
     "@data-agent/contracts": "workspace:*",
     "@data-agent/evals": "workspace:*",

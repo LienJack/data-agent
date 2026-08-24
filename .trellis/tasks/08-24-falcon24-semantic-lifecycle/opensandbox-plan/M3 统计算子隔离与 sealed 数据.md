@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 BH-FDR、Theil-Sen、Mann-Kendall、HAC、Shapley 和分群留存固化为唯一、版本化、可证明的 `data_agent_stats` 算子包，并通过独立 operator context 消费 sealed 数据。
+把 BH-FDR、Theil-Sen、Mann-Kendall、HAC、Shapley 和分群留存固化为唯一、版本化、可证明的 `data_agent_stats` 算子包，并通过独立 operator sandbox/context 消费 sealed 数据。
 
 ## 实现步骤
 
@@ -18,20 +18,20 @@
 
 - `data_agent_stats` 是统计语义唯一来源；DeepSeek 只编排。
 - operator dispatcher 是固定代码，不接受任意源码、模块名、shell 或文件路径。
-- host 负责 schema/hash/权限校验；operator context 不读取 Agent 工作目录中的源码。
+- host 负责 schema/hash/权限校验；operator sandbox 使用独立镜像和文件系统，不能读取 Agent 工作目录或源码。
 
 ### 关键实现
 
 BH-FDR 固定排序、单调校正和 NaN 规则；Theil-Sen 固定配对斜率、置信区间和重复 x 处理；Mann-Kendall 固定 ties/variance/continuity correction；HAC 固定 lag/kernel/small-sample 口径；Shapley 固定价值函数、精确/近似阈值、seed 和误差；分群留存固定 cohort/age/eligible denominator、零订单、完整观察窗与异常关系处理。
 
-算子只能读 `/inputs/<hash>.*` 和自身只读包，写 `/outputs/operator/<call-id>/`。任何 hash/schema 不符立即拒绝，不做宽松列名猜测。
+算子只能读自身 sandbox 的 `/workspace/operator-inputs/<call-id>.*` 和只读包，写 `/workspace/operator-outputs/<call-id>.*`。宿主先从 Agent sandbox 下载 sealed 文件、验 hash，再上传 operator sandbox；结果按相反方向桥接。任何 hash/schema 不符立即拒绝，不做宽松列名猜测。
 
 ### 风险与坑点
 
 - SciPy/statsmodels 版本升级会改变边界输出；版本和 golden fixture 必须一起升级。
 - Shapley 近似若无固定 seed/误差界不是可重复算子。
 - 留存最易因未来观察窗不足、注册后关系异常和分母漂移产生“正确计算、错误口径”。
-- 仅靠 Python import 约束无法隔离 Agent；必须使用独立 context/文件权限和固定 dispatcher。
+- 仅靠 Python import 或同容器不同 context 无法隔离 Agent；必须使用独立 sandbox 镜像/文件系统和固定 dispatcher。
 
 ## 验收标准
 
@@ -43,4 +43,3 @@ BH-FDR 固定排序、单调校正和 NaN 规则；Theil-Sen 固定配对斜率�
 ## 备注
 
 如某题需要尚未治理的新统计方法，应先新增候选算子、验证并发布版本；不能让 DeepSeek 临时把它伪装成已有算子。
-
