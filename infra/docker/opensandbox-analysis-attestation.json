@@ -33,7 +33,7 @@
     "dockerfile_sha256": "sha256:ff04520764fc6698ea888289b13a7426a7392c6d1d44481b029d7a6518e7bc10",
     "manifest_path": "services/sandbox/src/data_agent_stats/manifest.json",
     "manifest_sha256": "sha256:f76095309046111b1f654740642034943e4d65c8a723ac64a3f1992f8a1b88ae",
-    "registry_digest": "sha256:6ac710a825373aa367dfe90f5933eb2185f50cd9a2d175e80e1d911fadc81db8"
+    "registry_digest": "sha256:32adf67e8ea3473e55bb588f7c4da6eeef703fefb956a040fd3fb785ddd5f1ab"
   },
   "local_probe": {
     "status": "PASS",

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   type AnalysisSandboxProfile,
+  AnalysisSandboxRuntimeError,
   createOpenSandboxAnalysisRuntime,
 } from "../apps/worker/src/runs/opensandbox-analysis-runtime.js";
 import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "../packages/contracts/src/generated/statistical-operators.js";
@@ -165,6 +166,14 @@ try {
     obligation: {
       call_id: "probe_bh",
       operator_id: "multiple-testing.bh-fdr@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "tests",
+          governed_input_name: "opensandbox_probe",
+          transform_id: "opensandbox.probe.bh_fdr.v1",
+        },
+      ],
       result_binding: {
         result_output_name: "analysis_json",
         result_collection_path: "/tests",
@@ -253,6 +262,11 @@ try {
 } catch (error) {
   report.status = "FAILED";
   report.failure = error instanceof Error ? `${error.name}:${error.message}` : "UNKNOWN";
+  if (error instanceof AnalysisSandboxRuntimeError) {
+    report.failure_stage = error.stage;
+    report.failure_reason_code = error.reason_code;
+    report.failure_retryable = error.retryable;
+  }
   process.exitCode = 1;
 } finally {
   try {
