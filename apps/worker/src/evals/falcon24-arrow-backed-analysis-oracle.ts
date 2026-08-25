@@ -57,9 +57,7 @@ const EXPECTED_OPERATOR_PARAMETERS: Readonly<
     use_t: false,
     add_intercept: true,
   },
-  q4_bh_order_revenue: { alpha: 0.05, method: "bh" },
-  q4_bh_new_customers: { alpha: 0.05, method: "bh" },
-  q4_bh_order_count: { alpha: 0.05, method: "bh" },
+  q4_marketing_priority: { alpha: 0.05 },
   q5_primary_cohorts: {
     horizon_months: 6,
     pre_registration_policy: "hold_primary",
@@ -86,15 +84,11 @@ const REQUIRED_OPERATOR_LIMITATIONS: Readonly<Record<string, readonly string[]>>
     "INPUT_SERIES_MUST_COVER_ALL_PRODUCTS",
   ],
   q4_hac_all_models: ["ASSOCIATION_NOT_CAUSATION", "ORDERING_DEFINES_HAC_DEPENDENCE"],
-  q4_bh_order_revenue: [
-    "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
-    "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
+  q4_marketing_priority: [
+    "ASSOCIATION_NOT_CAUSATION",
+    "BH_FDR_COMPOSED_FROM_UNIQUE_OPERATOR",
+    "ORDERING_DEFINES_HAC_DEPENDENCE",
   ],
-  q4_bh_new_customers: [
-    "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
-    "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
-  ],
-  q4_bh_order_count: ["DEPENDENCE_STRUCTURE_NOT_VERIFIED", "FAMILY_DEFINITION_MUST_BE_PREDECLARED"],
   q5_primary_cohorts: ["PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS"],
   q5_sensitivity_cohorts: ["SENSITIVITY_MUST_RETAIN_QUALITY_COUNTS"],
 });
@@ -116,7 +110,7 @@ const METHOD_OPERATOR_CALLS: Readonly<
   },
   "falcon24-marketing-lag-effect": {
     "hac-standard-errors": ["q4_hac_all_models"],
-    "multiple-testing-fdr": ["q4_bh_order_revenue", "q4_bh_new_customers", "q4_bh_order_count"],
+    "multiple-testing-fdr": ["q4_marketing_priority"],
   },
   "falcon24-cohort-retention-m0-m6": {
     "cohort-m0-m6": ["q5_primary_cohorts", "q5_sensitivity_cohorts"],

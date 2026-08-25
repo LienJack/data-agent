@@ -20,4 +20,4 @@ def test_manifest_resolves_exactly_one_public_implementation_per_operator() -> N
         assert symbol in module.__all__
         resolved.add((module_name, symbol))
 
-    assert len(resolved) == len(OPERATOR_IDS) == 8
+    assert len(resolved) == len(OPERATOR_IDS) == 9

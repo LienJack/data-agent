@@ -269,8 +269,8 @@ def _validate_manifest(value: Any) -> dict[str, Any]:
     if value["schema_version"] != "statistical-operator-manifest@2.0.0":
         raise OperatorManifestError("manifest schema version is unsupported")
     operators = value["operators"]
-    if not isinstance(operators, list) or len(operators) != 8:
-        raise OperatorManifestError("manifest must contain exactly eight operators")
+    if not isinstance(operators, list) or len(operators) != 9:
+        raise OperatorManifestError("manifest must contain exactly nine operators")
     identifiers: set[str] = set()
     implementations: set[tuple[str, str]] = set()
     for index, operator in enumerate(operators):

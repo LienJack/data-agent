@@ -75,7 +75,7 @@ Falcon24 的真实运行已经证明 Sandbox 可以在既有预算内成功完�
 
 ### In Scope
 
-- 首批八个受治理统计算子、唯一 Manifest/Registry、SDK 调用面、授权与回执闭包；
+- 首批九个受治理统计算子、唯一 Manifest/Registry、SDK 调用面、授权与回执闭包；
 - AnalysisProgram、SandboxProgram、Python IPC、Derived Evidence 和 Falcon24 Oracle 的跨层绑定；
 - DeepSeek generation/repair Prompt 与 AST preflight；
 - Falcon24 五题的算子映射、独立数值 Oracle、图表闭包和 30 次真实运行门禁；
@@ -93,11 +93,11 @@ Falcon24 的真实运行已经证明 Sandbox 可以在既有预算内成功完�
 
 | 工作 | DeepSeek Python | Governed Operator | Host / Oracle |
 |---|---|---|---|
-| 去重、筛选、排序、分组、reshape | 负责 | 不负责 | 校验输入证据边界 |
+| 去重、筛选、排序、分组、reshape | 负责通用补充变换 | 负责已冻结的高风险业务选择规则 | 校验输入证据边界 |
 | lag 对齐、控制变量构造、dummy encoding | 负责 | 校验矩阵与标签 | 校验题目合同 |
 | BH、Theil-Sen、MK、HAC、GLM、Shapley、留存口径 | 只编排 | 唯一计算权威 | 独立验算与接受 |
 | 缺失值、family、窗口和适用性选择 | 按语义合同准备 | 强制校验 | 决定 PASS/HOLD |
-| 结论、限制、图表数据组装 | 负责 | 提供方法证据 | 禁词、闭包和 chart hash 门禁 |
+| 结论、限制、图表数据投影 | 负责 | 提供权威结果与方法证据 | 禁词、闭包和 chart hash 门禁 |
 | 网络、数据库、文件路径、包安装、权限 | 无权 | 无权 | Server-owned authority |
 
 ## Context and Research
@@ -171,6 +171,7 @@ Operator ID 是唯一调用名称；首版不提供短名或 alias。所有参�
 | `robust-trend.theil-sen-slope@1` | 显式 x/y、所有 pairwise slopes 的线性 p50；只返回 slope | x 不唯一/不递增、样本不足、非有限值失败；不隐式生成 timestamp ordinal | Q3 每商品 12 月 damage rate |
 | `trend.mann-kendall-original@1` | original MK、exact-value ties variance、continuity correction、two-sided normal p | 样本不足/全 ties 有稳定退化；serial correlation 或 seasonality 未证明时标记限制 | Q3 每商品趋势 p |
 | `regression.ols-hac@1` | OLS coefficient + Newey-West HAC；Bartlett、maxlags、correction、normal inference 全显式 | 非等间隔、n/k 不足、rank deficient、目标列缺失或数值失败为 HOLD | Q4 0–4 周 lag fits |
+| `descriptive.marketing-lag-priority@1` | 消费原始周粒度营销行和受保护 HAC 系数；复用唯一 BH-FDR 实现完成 lag 选择、三组 family、漏斗与关联分类 | 79 周覆盖、HAC label/term 闭包或有限值不满足即 HOLD；只支持关联陈述 | Q4 权威结果集 |
 | `regression.binomial-logit-wald@1` | binomial logit、固定优化/收敛门、目标系数 two-sided Wald inference | 非二元 y、rank deficient、完全分离、不收敛、样本不足为 HOLD | Q2 delayed 与低评分关联 |
 | `decomposition.product-shapley-exact@1` | named multiplicative factors、全排列 exact marginal average、stable order、closure | factor 非有限、数量超界、观察变化与重构不闭合失败；无 approximate 模式 | Q1 buyers × frequency × AOV |
 | `descriptive.inventory-damage-priority@1` | 完整商品 12 月序列、品类销量 linear P75、受治理趋势结果与固定候选规则 | 商品标签不闭合、月份不满 12、元数据冲突失败；仅作描述性排查优先级，不能宣称因果 | Q3 完整高销量且损坏恶化候选集 |
@@ -299,7 +300,7 @@ flowchart TB
   - `packages/research/src/analysis-evidence/program-verifier.ts`
   - `packages/contracts/test/deterministic-analysis-artifacts.spec.ts`
   - `packages/contracts/test/python-sandbox-v2.spec.ts`
-- **Approach:** canonical manifest 声明八个 operator 的 schema、参数、适用性和 digest material；生成的 TS projection 带
+- **Approach:** canonical manifest 声明九个 operator 的 schema、参数、适用性和 digest material；生成的 TS projection 带
   `DO NOT EDIT` 与 source hash，check 模式发现漂移即失败。把 obligations/registry digest/source policy/receipt closure 设为
   现有未发布协议的 required fields，不增加 optional defaults 或旧 shape parser。
 - **Test scenarios:** duplicate ID、alias、overwrite、manual TS edit、manifest hash drift、Program/Sandbox/IPC 任一漏字段、
@@ -465,13 +466,13 @@ flowchart TB
 
 ### Acceptance Criteria for This Plan
 
-- [ ] Registry 当前只包含上表八个 exact active operator IDs，同一逻辑方法没有第二版本、alias 或 overwrite。
+- [ ] Registry 当前只包含上表九个 exact active operator IDs，同一逻辑方法没有第二版本、alias 或 overwrite。
 - [ ] Manifest 是唯一手工维护元数据；Python Registry 与 generated TS projection 的 digest 完全一致。
 - [ ] AnalysisProgram、SandboxProgram、IPC、Receipt、Derived Evidence 全部绑定同一 registry digest 和 exact obligations。
 - [ ] 缺 operator call、额外 call、调用后未与最终字段闭合、tampered receipt 均无法提交 accepted output。
-- [ ] DeepSeek 每题仍生成真实 Python；Prompt 和生产 Worker 不再含八个算子的底层公式实现。
+- [ ] DeepSeek 每题仍生成真实 Python；Prompt 和生产 Worker 不再含九个算子的底层公式实现。
 - [ ] Q1–Q5 分别出现预期 operator receipts，适用性/限制不可由模型删除。
-- [ ] 八个算子的 golden、metamorphic、mutation 和 adversarial suites 全绿，生产与 sealed Oracle 无共享计算代码。
+- [ ] 九个算子的 golden、metamorphic、mutation 和 adversarial suites 全绿，生产与 sealed Oracle 无共享计算代码。
 - [ ] 新 Runtime/Lock/Image/Policy/Implementation digests 经 hardened-container smoke 证明，不复用旧 attestation。
 - [ ] Falcon24 5/5、30 次真实运行、generated Python 30/30、operator closure 30/30、Oracle 30/30、chart 30/30、flake=0。
 - [ ] 旧公式生产路径、旧 fixture、模板 fallback、compat adapter、双 registry 和未版本化调用扫描为零。

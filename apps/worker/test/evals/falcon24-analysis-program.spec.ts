@@ -166,7 +166,7 @@ describe("Falcon24 analysis program compiler", () => {
     });
     expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-marketing-lag-effect"].join(" "),
-    ).toContain("exactly 16*3*5 spend rows");
+    ).toContain("q4_marketing_priority's fdr_tests evidence");
     expect(
       falcon24AnalysisProgramInternals.presentation_contracts[
         "falcon24-cohort-retention-m0-m6"
@@ -192,9 +192,7 @@ describe("Falcon24 analysis program compiler", () => {
       ],
       [
         "regression.ols-hac@1",
-        "multiple-testing.bh-fdr@1",
-        "multiple-testing.bh-fdr@1",
-        "multiple-testing.bh-fdr@1",
+        "descriptive.marketing-lag-priority@1",
       ],
       ["cohort.registration-retention-m0-m6@2", "cohort.registration-retention-m0-m6@2"],
     ]);

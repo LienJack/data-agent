@@ -234,7 +234,7 @@ export function parseStatisticalOperatorManifest(text: string): OperatorManifest
     "manifest registry_id 非法。",
   );
   assertCondition(Array.isArray(candidate.operators), "manifest operators 必须是数组。");
-  assertCondition(candidate.operators.length === 8, "当前 manifest 必须且只能包含八个算子。");
+  assertCondition(candidate.operators.length === 9, "当前 manifest 必须且只能包含九个算子。");
 
   const ids = new Set<string>();
   const implementations = new Set<string>();

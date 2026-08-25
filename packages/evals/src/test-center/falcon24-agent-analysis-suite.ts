@@ -169,9 +169,10 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     ],
     required_operator_calls: [
       { call_id: "q4_hac_all_models", operator_id: "regression.ols-hac@1" },
-      { call_id: "q4_bh_order_revenue", operator_id: "multiple-testing.bh-fdr@1" },
-      { call_id: "q4_bh_new_customers", operator_id: "multiple-testing.bh-fdr@1" },
-      { call_id: "q4_bh_order_count", operator_id: "multiple-testing.bh-fdr@1" },
+      {
+        call_id: "q4_marketing_priority",
+        operator_id: "descriptive.marketing-lag-priority@1",
+      },
     ],
     required_disclosures: ["STATISTICAL_ASSOCIATION_NOT_CAUSATION"],
     required_quality_findings: [],

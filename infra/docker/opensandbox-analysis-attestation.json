@@ -32,8 +32,8 @@
     "dockerfile_path": "infra/docker/Dockerfile.opensandbox-analysis-operator",
     "dockerfile_sha256": "sha256:ff04520764fc6698ea888289b13a7426a7392c6d1d44481b029d7a6518e7bc10",
     "manifest_path": "services/sandbox/src/data_agent_stats/manifest.json",
-    "manifest_sha256": "sha256:3e997d70f8a58f253795d0f0185de4421f3b846ee457dbd1c253bddcf2067179",
-    "registry_digest": "sha256:b7bfb91ec45b973456ce80ac4d993d48837628d0a5a1128e95cfe2c0b986b479"
+    "manifest_sha256": "sha256:a9c5fbe795d541cc0a9f166c1d2431c11dcc71249d30571490f2915ad39a062b",
+    "registry_digest": "sha256:cd59bb360c54911708a8338d72c29e5e2698df173ea897b33264fcbcab503d95"
   },
   "local_probe": {
     "status": "PASS",

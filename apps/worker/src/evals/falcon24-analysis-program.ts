@@ -540,16 +540,27 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
         value_fields: ["coefficient", "standard_error", "statistic", "p_value"],
       }),
     },
-    ...(["order_revenue", "new_customers", "order_count"] as const).map((metric) => ({
-      call_id: `q4_bh_${metric}`,
-      operator_id: "multiple-testing.bh-fdr@1" as const,
+    {
+      call_id: "q4_marketing_priority",
+      operator_id: "descriptive.marketing-lag-priority@1",
       result_binding: resultBinding({
-        result_collection_path: `/method_evidence/multiple-testing-fdr/${metric}/tests`,
-        operator_collection_path: "/tests",
-        label_fields: ["label"],
-        value_fields: ["adjusted_p_value", "rejected"],
+        result_collection_path: "/channel_audience_results",
+        operator_collection_path: "/channel_audience_results",
+        label_fields: ["channel", "target_audience"],
+        value_fields: [
+          "impressions",
+          "clicks",
+          "conversions",
+          "spend",
+          "revenue_generated",
+          "click_through_rate",
+          "conversion_rate",
+          "roas",
+          "business_outcomes",
+          "group_finding",
+        ],
       }),
-    })),
+    },
   ],
   "falcon24-cohort-retention-m0-m6": [
     ...(["primary", "sensitivity"] as const).map((mode) => ({
@@ -605,11 +616,11 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Project the inventory_damage_priority table with exactly the declared column keys. Map result product sales_quantity to table total_sales, result bh_q_value to table adjusted_p_value, and result status to table classification. Never use sales_quantity, bh_q_value, or status as table column keys.",
   ],
   "falcon24-marketing-lag-effect": [
-    "The governed input is already the complete 79-week grid for exactly the 16 observed (channel,target_audience) groups, from Monday 2023-05-01 through Monday 2024-10-28. The authoritative week field is week_start; there is no business_week field. Set output.window to exactly {start:'2023-05-01', end_exclusive:'2024-11-01', week_count:79, grain:'WEEK'} and assert each group has the same 79 ordered week_start values. Use the repeated order_revenue, new_customers, and order_count values as one shared business_by_week series after asserting duplicates agree. Marketing measures are already zero-filled by the governed query. Then compute funnel totals, CTR, conversion rate, and ROAS.",
+    "The governed input is already the complete 79-week grid for exactly the 16 observed (channel,target_audience) groups, from Monday 2023-05-01 through Monday 2024-10-28. The authoritative week field is week_start; there is no business_week field. Set output.window to exactly {start:'2023-05-01', end_exclusive:'2024-11-01', week_count:79, grain:'WEEK'} and assert each group has the same 79 ordered week_start values. Use the repeated order_revenue, new_customers, and order_count values as one shared business_by_week series after asserting duplicates agree. Marketing measures are already zero-filled by the governed query. In the first preparation Cell, also retain marketing_rows as JSON-native records with exactly week_start, channel, target_audience, impressions, clicks, conversions, campaign_revenue, and spend. Convert week_start only with str(value) to its ISO YYYY-MM-DD Monday date. Do not compute funnel totals, CTR, conversion rate, ROAS, selected lags, FDR families, or classifications in model-generated Python.",
     "For each business outcome in the exact order order_revenue, new_customers, order_count and each lag L from 0 through 4, prepare one OLS-HAC model: response business_outcome[L:79], predictors spend[0:79-L], absolute week index L..78, and annual sine/cosine controls. Also include one spend-over-week model per observed channel/audience group. Set controls to exactly ['trend','seasonality'].",
-    "Call the required OLS-HAC operator once for the complete model batch with maxlags=4, Bartlett kernel, finite-sample correction enabled, and normal inference. Use lag model labels exactly channel|target_audience|outcome|lagN (four pipe-separated parts) and spend trend labels exactly channel|target_audience|spend_over_week (three parts); parse those exact cardinalities after the operator returns. For four-part lag labels, retain only coefficient rows whose term is exactly 'spend' and ignore every intercept/control-term row. For three-part spend-trend labels, retain only the row whose term is exactly 'week_index'. Assert that this yields exactly 16*3*5 spend rows and exactly 16 week_index trend rows. Select the smallest retained spend-term p-value per group/outcome with smaller-lag tie break and assert all 16 labels exist in each BH family before its call.",
-    "For each business outcome separately, pass the selected full channel/audience p-value family to its required BH-FDR call. Classify each outcome as GROWTH_ASSOCIATION exactly when its selected coefficient is positive and adjusted p-value is <=0.05; otherwise classify SPEND_WITHOUT_IMPROVEMENT exactly when that channel/audience spend-over-week coefficient is positive, else NO_CLEAR_ASSOCIATION. Group finding is GROWTH_ASSOCIATION when any outcome has it, otherwise SPEND_WITHOUT_IMPROVEMENT when spend-over-week is positive, else NO_CLEAR_ASSOCIATION. Do not implement OLS, HAC covariance, p-values, or BH adjustment in generated Python, and use association language only.",
-    "At method_evidence['hac-standard-errors'].coefficients and each multiple-testing-fdr result_binding path, retain the exact protected operator collection without DataFrame conversion; null operator evidence must remain Python None rather than pandas NaN. Build marketing_lag_results only from selected finite spend-term coefficients and adjusted p-values, with no null, NaN, or infinity in its non-nullable columns.",
+    "Call the required OLS-HAC operator once for the complete model batch with maxlags=4, Bartlett kernel, finite-sample correction enabled, and normal inference. Use lag model labels exactly channel|target_audience|outcome|lagN and spend trend labels exactly channel|target_audience|spend_over_week. Do not parse or select the returned coefficients in model-generated Python.",
+    "After OLS-HAC returns, invoke q4_marketing_priority exactly once with inputs marketing_rows and the exact protected HAC coefficients collection, plus alpha=0.05. This operator is the sole authority for 79-week coverage validation, funnel totals, CTR, conversion rate, ROAS, lag selection, the three predeclared BH-FDR families through the unique bh_fdr implementation, and all finding classifications. Do not copy, rebuild, append, filter, parse labels, or handwrite any of those formulas in generated Python.",
+    "At method_evidence['hac-standard-errors'].coefficients retain the exact protected HAC collection. At method_evidence['multiple-testing-fdr'].tests retain q4_marketing_priority's fdr_tests evidence. Use the protected q4_marketing_priority channel_audience_results collection itself as result.channel_audience_results. A flat marketing_lag_results table may only project each protected group's three business_outcomes; it must not recompute statistics or classifications. Use association language only.",
   ],
   "falcon24-cohort-retention-m0-m6": [
     "The governed input is at registered-customer/order-event grain. Deduplicate customers by customer_id using the exact fields customer_id, registration_date, and customer_type. Build events only from rows with non-null order_id using the exact fields customer_id, event_date, order_id, revenue, delivery_minutes, and rating (source average_rating). Convert registration_date and non-null event_date values to exact ISO YYYY-MM-DD strings before the operator call; do not reduce them to months. Construct nullable numeric event fields explicitly as Python float or None; do not pass DataFrame.to_dict records containing pandas/numpy NaN. Convert negative delivery_minutes to None before the operator call and never use them in delivery averages. Assert observation_end_month and invalid_delivery_orders are each one repeated constant; pass integer invalid_delivery_orders as observation.invalid_delivery_event_count. Execute q5_primary_cohorts with pre_registration_policy='hold_primary', then q5_sensitivity_cohorts with pre_registration_policy='exclude_sensitivity'; both use horizon_months=6 and duplicate_customer_policy='reject'. Do not implement cohort rates in generated Python.",
