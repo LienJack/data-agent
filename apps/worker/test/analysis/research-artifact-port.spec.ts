@@ -55,7 +55,7 @@ function program(): AnalysisProgramPayload {
         generated_source_policy: "OPEN_ANALYSIS",
         operator_obligations: [],
         result_contract: {
-          schema_version: "analysis-result-contract@1.0.0",
+          schema_version: "analysis-result-contract@2.0.0",
           contract_id: "falcon24-business-review-18m.result",
           semantic_context_hash: hash("b"),
           result_fields: [
@@ -80,6 +80,7 @@ function program(): AnalysisProgramPayload {
               transformation: "FORMULA",
             },
           ],
+          collection_constraints: [],
           tables: [
             {
               table_id: "result_table",
@@ -95,6 +96,7 @@ function program(): AnalysisProgramPayload {
                   semantic_role: "DERIVED",
                 },
               ],
+              projection: { mode: "MODEL_DERIVED" },
               max_rows: 1,
             },
           ],

@@ -116,6 +116,7 @@ const inventorySchema = z.strictObject({
   products: z.array(
     z.strictObject({
       product_id: z.string().min(1),
+      product_name: z.string().min(1),
       category: z.string().min(1),
       sales_quantity: nonnegative,
       category_sales_p75: nonnegative,

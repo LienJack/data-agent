@@ -879,6 +879,7 @@ function verifyInventory(
   const statistics = new Map<
     string,
     {
+      readonly productName: string;
       readonly category: string;
       readonly sales: number;
       readonly categoryP75: number;
@@ -902,6 +903,7 @@ function verifyInventory(
       return received === 0 ? 0 : number(row, "damaged_stock") / received;
     });
     statistics.set(productId, {
+      productName: text(productRows[0] ?? fail("FALCON24_Q3_PRODUCT_EMPTY"), "product_name"),
       category,
       sales: salesTotals.get(productId) ?? 0,
       categoryP75: percentile75(categorySales.get(category) ?? []),
@@ -933,6 +935,7 @@ function verifyInventory(
   for (const product of output.products) {
     if (!candidates.has(product.product_id)) fail("FALCON24_Q3_PRODUCT_NOT_CANDIDATE");
     const statistic = statistics.get(product.product_id) ?? fail("FALCON24_Q3_PRODUCT_MISSING");
+    if (statistic.productName !== product.product_name) fail("FALCON24_Q3_PRODUCT_NAME_MISMATCH");
     if (statistic.category !== product.category) fail("FALCON24_Q3_CATEGORY_MISMATCH");
     close(product.sales_quantity, statistic.sales, "FALCON24_Q3_SALES_MISMATCH");
     close(product.category_sales_p75, statistic.categoryP75, "FALCON24_Q3_CATEGORY_P75_MISMATCH");

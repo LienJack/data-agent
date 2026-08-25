@@ -14,7 +14,7 @@ const decoder = new TextDecoder();
 
 async function contract(maxRows = 18, withTextPolicy = false) {
   return buildAnalysisResultContract({
-    schema_version: "analysis-result-contract@1.0.0",
+    schema_version: "analysis-result-contract@2.0.0",
     contract_id: "falcon24.q1.result",
     semantic_context_hash: hash("a"),
     result_fields: [
@@ -71,6 +71,7 @@ async function contract(maxRows = 18, withTextPolicy = false) {
         transformation: "DIRECT",
       },
     ],
+    collection_constraints: [],
     tables: [
       {
         table_id: "monthly_trend",
@@ -94,6 +95,7 @@ async function contract(maxRows = 18, withTextPolicy = false) {
             semantic_role: "METRIC",
           },
         ],
+        projection: { mode: "MODEL_DERIVED" },
         max_rows: maxRows,
       },
     ],
@@ -111,6 +113,97 @@ async function contract(maxRows = 18, withTextPolicy = false) {
       max_result_bytes: 1_048_576,
       max_table_rows: Math.max(1, maxRows),
       max_table_columns: 16,
+      max_closure_bytes: 4_194_304,
+    },
+  });
+}
+
+async function inventoryProjectionContract() {
+  return buildAnalysisResultContract({
+    schema_version: "analysis-result-contract@2.0.0",
+    contract_id: "falcon24.q3.result",
+    semantic_context_hash: hash("a"),
+    result_fields: [
+      { field: "products", data_type: "JSON", nullable: false, semantic_role: "DERIVED" },
+    ],
+    metric_bindings: [],
+    dimension_bindings: [],
+    grain: { dimension_ids: [], time_dimension_id: null, time_grain: "NONE" },
+    lineage: [
+      {
+        field: "products",
+        source_semantic_object_ids: ["metric.sales_quantity", "formula.inventory_damage_rate"],
+        source_physical_fields: ["inventory.product_id", "inventory.damaged_stock"],
+        transformation: "FORMULA",
+      },
+    ],
+    collection_constraints: [
+      {
+        collection_field: "products",
+        min_items: 1,
+        max_items: 100,
+        all_items: [
+          {
+            left_field: "sales_quantity",
+            operator: "GTE",
+            right: { kind: "FIELD", field: "category_sales_p75" },
+          },
+          {
+            left_field: "theil_sen_slope",
+            operator: "GT",
+            right: { kind: "NUMBER", value: 0 },
+          },
+        ],
+      },
+    ],
+    tables: [
+      {
+        table_id: "inventory_priority",
+        title_zh: "库存优先级",
+        required: true,
+        columns: [
+          {
+            key: "product_id",
+            label_zh: "商品",
+            data_type: "STRING",
+            nullable: false,
+            semantic_object_id: "dimension.product",
+            semantic_role: "DIMENSION",
+          },
+          {
+            key: "total_sales",
+            label_zh: "销量",
+            data_type: "NUMBER",
+            nullable: false,
+            semantic_object_id: "metric.sales_quantity",
+            semantic_role: "METRIC",
+          },
+        ],
+        projection: {
+          mode: "RESULT_COLLECTION",
+          collection_field: "products",
+          column_mappings: [
+            { result_field: "product_id", table_column: "product_id" },
+            { result_field: "sales_quantity", table_column: "total_sales" },
+          ],
+        },
+        max_rows: 100,
+      },
+    ],
+    charts: [
+      {
+        chart_id: "inventory_priority_chart",
+        title_zh: "库存优先级",
+        required: true,
+        intent: "PRIORITY",
+        table_id: "inventory_priority",
+        allowed_template_ids: ["matrix.priority@1"],
+      },
+    ],
+    limits: {
+      max_result_bytes: 1_048_576,
+      max_table_rows: 100,
+      max_table_columns: 2,
       max_closure_bytes: 4_194_304,
     },
   });
@@ -462,6 +555,62 @@ describe("server-owned Result Publisher", () => {
         ),
       ).toThrow("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH");
     }
+  });
+
+  it("enforces semantic collection predicates and exact result-to-table projections", async () => {
+    const resultContract = await inventoryProjectionContract();
+    const tableContract = resultContract.tables[0];
+    if (!tableContract) throw new Error("inventory table contract missing");
+    const validProducts = [
+      {
+        product_id: "P-1",
+        sales_quantity: 120,
+        category_sales_p75: 100,
+        theil_sen_slope: 0.01,
+      },
+      {
+        product_id: "P-2",
+        sales_quantity: 150,
+        category_sales_p75: 110,
+        theil_sen_slope: 0.02,
+      },
+    ];
+    expect(
+      resultPublisherInternals.validateResultDocument({ products: validProducts }, resultContract),
+    ).toEqual({ products: validProducts });
+    expect(() =>
+      resultPublisherInternals.validateResultDocument(
+        {
+          products: [
+            {
+              product_id: "P-3",
+              sales_quantity: 80,
+              category_sales_p75: 100,
+              theil_sen_slope: 0.01,
+            },
+          ],
+        },
+        resultContract,
+      ),
+    ).toThrow("ANALYSIS_RESULT_COLLECTION_PREDICATE_MISMATCH");
+
+    expect(() =>
+      resultPublisherInternals.validateTableProjection(
+        [{ product_id: "P-1", total_sales: 120 }],
+        tableContract,
+        { products: validProducts },
+      ),
+    ).toThrow("ANALYSIS_RESULT_TABLE_PROJECTION_MISMATCH");
+    expect(() =>
+      resultPublisherInternals.validateTableProjection(
+        [
+          { product_id: "P-2", total_sales: 150 },
+          { product_id: "P-1", total_sales: 120 },
+        ],
+        tableContract,
+        { products: validProducts },
+      ),
+    ).not.toThrow();
   });
 
   it("rejects changed operator values and malformed result fields before staging", async () => {

@@ -154,6 +154,13 @@ describe("Falcon24 analysis program compiler", () => {
     expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("result bh_q_value to table adjusted_p_value");
+    expect(programs[2]?.nodes[0]?.result_contract.collection_constraints).toEqual([
+      expect.objectContaining({ collection_field: "products", min_items: 1 }),
+    ]);
+    expect(programs[2]?.nodes[0]?.result_contract.tables[0]?.projection).toMatchObject({
+      mode: "RESULT_COLLECTION",
+      collection_field: "products",
+    });
     expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-marketing-lag-effect"].join(" "),
     ).toContain("exactly 16*3*5 spend rows");
@@ -163,9 +170,9 @@ describe("Falcon24 analysis program compiler", () => {
       ].columns.find(({ key }) => key === "average_spend")?.nullable,
     ).toBe(true);
     expect(
-      falcon24AnalysisProgramInternals.method_contracts[
-        "falcon24-cohort-retention-m0-m6"
-      ].join(" "),
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-cohort-retention-m0-m6"].join(
+        " ",
+      ),
     ).toContain("cohort_count=12");
     expect(
       programs.map((program) =>

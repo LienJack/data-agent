@@ -1,9 +1,5 @@
 import { z } from "zod";
-import {
-  contentHashSchema,
-  deepFreeze,
-  sha256ContentHash,
-} from "../common/index.js";
+import { contentHashSchema, deepFreeze, sha256ContentHash } from "../common/index.js";
 
 const identifierSchema = z.string().regex(/^[A-Za-z][A-Za-z0-9._:-]{0,255}$/u);
 const fieldNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/u);
@@ -54,7 +50,10 @@ const resultFieldTextConstraintsSchema = z
       new Set(policy.forbidden_substrings).size !== policy.forbidden_substrings.length ||
       policy.required_substrings.some((value) => policy.forbidden_substrings.includes(value))
     ) {
-      context.addIssue({ code: "custom", message: "Text constraints must be unique and disjoint." });
+      context.addIssue({
+        code: "custom",
+        message: "Text constraints must be unique and disjoint.",
+      });
     }
   });
 
@@ -105,11 +104,45 @@ const tableColumnSchema = z.strictObject({
   semantic_role: z.enum(["METRIC", "DIMENSION", "DERIVED", "QUALITY"]),
 });
 
+const collectionPredicateSchema = z.strictObject({
+  left_field: fieldNameSchema,
+  operator: z.enum(["GT", "GTE", "LT", "LTE"]),
+  right: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("FIELD"), field: fieldNameSchema }),
+    z.strictObject({ kind: z.literal("NUMBER"), value: z.number().finite() }),
+  ]),
+});
+
+const collectionConstraintSchema = z.strictObject({
+  collection_field: fieldNameSchema,
+  min_items: z.number().int().nonnegative().max(5_000),
+  max_items: z.number().int().positive().max(5_000),
+  all_items: z.array(collectionPredicateSchema).min(1).max(32),
+});
+
+const tableProjectionSchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("MODEL_DERIVED") }),
+  z.strictObject({
+    mode: z.literal("RESULT_COLLECTION"),
+    collection_field: fieldNameSchema,
+    column_mappings: z
+      .array(
+        z.strictObject({
+          result_field: fieldNameSchema,
+          table_column: fieldNameSchema,
+        }),
+      )
+      .min(1)
+      .max(128),
+  }),
+]);
+
 const tableContractSchema = z.strictObject({
   table_id: identifierSchema,
   title_zh: z.string().trim().min(1).max(160),
   required: z.boolean(),
   columns: z.array(tableColumnSchema).min(1).max(128),
+  projection: tableProjectionSchema,
   max_rows: z.number().int().positive().max(5_000),
 });
 
@@ -124,7 +157,7 @@ const chartContractSchema = z.strictObject({
 
 const analysisResultContractMaterialSchema = z
   .strictObject({
-    schema_version: z.literal("analysis-result-contract@1.0.0"),
+    schema_version: z.literal("analysis-result-contract@2.0.0"),
     contract_id: identifierSchema,
     semantic_context_hash: contentHashSchema,
     result_fields: z.array(resultFieldSchema).min(1).max(256),
@@ -136,13 +169,22 @@ const analysisResultContractMaterialSchema = z
       time_grain: z.enum(["DAY", "WEEK", "MONTH", "QUARTER", "YEAR", "NONE"]),
     }),
     lineage: z.array(lineageBindingSchema).min(1).max(256),
+    collection_constraints: z.array(collectionConstraintSchema).max(64),
     tables: z.array(tableContractSchema).min(1).max(32),
     charts: z.array(chartContractSchema).min(1).max(32),
     limits: z.strictObject({
-      max_result_bytes: z.number().int().positive().max(16 * 1024 * 1024),
+      max_result_bytes: z
+        .number()
+        .int()
+        .positive()
+        .max(16 * 1024 * 1024),
       max_table_rows: z.number().int().positive().max(5_000),
       max_table_columns: z.number().int().positive().max(128),
-      max_closure_bytes: z.number().int().positive().max(64 * 1024 * 1024),
+      max_closure_bytes: z
+        .number()
+        .int()
+        .positive()
+        .max(64 * 1024 * 1024),
     }),
   })
   .superRefine((contract, context) => {
@@ -174,6 +216,11 @@ const analysisResultContractMaterialSchema = z
       contract.lineage.map(({ field }) => field),
       ["lineage"],
       "Lineage fields must be unique.",
+    );
+    unique(
+      contract.collection_constraints.map(({ collection_field }) => collection_field),
+      ["collection_constraints"],
+      "Collection constraints must target unique result fields.",
     );
     unique(
       contract.tables.map(({ table_id }) => table_id),
@@ -227,9 +274,7 @@ const analysisResultContractMaterialSchema = z
         message: "Time dimension must resolve to a declared semantic dimension.",
       });
     }
-    if (
-      (contract.grain.time_dimension_id === null) !== (contract.grain.time_grain === "NONE")
-    ) {
+    if ((contract.grain.time_dimension_id === null) !== (contract.grain.time_grain === "NONE")) {
       context.addIssue({
         code: "custom",
         path: ["grain"],
@@ -267,6 +312,19 @@ const analysisResultContractMaterialSchema = z
       );
     }
 
+    for (const [index, constraint] of contract.collection_constraints.entries()) {
+      if (
+        fields.get(constraint.collection_field)?.data_type !== "JSON" ||
+        constraint.min_items > constraint.max_items
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["collection_constraints", index],
+          message: "Collection constraints require a JSON field and valid item bounds.",
+        });
+      }
+    }
+
     const tables = new Map(contract.tables.map((table) => [table.table_id, table]));
     for (const [index, table] of contract.tables.entries()) {
       unique(
@@ -274,6 +332,33 @@ const analysisResultContractMaterialSchema = z
         ["tables", index, "columns"],
         "Table column keys must be unique.",
       );
+      if (table.projection.mode === "RESULT_COLLECTION") {
+        const tableColumnKeys = table.columns.map(({ key }) => key);
+        const mappedTableColumns = table.projection.column_mappings.map(
+          ({ table_column }) => table_column,
+        );
+        unique(
+          mappedTableColumns,
+          ["tables", index, "projection", "column_mappings"],
+          "Projected table columns must be unique.",
+        );
+        unique(
+          table.projection.column_mappings.map(({ result_field }) => result_field),
+          ["tables", index, "projection", "column_mappings"],
+          "Projected result fields must be unique.",
+        );
+        if (
+          fields.get(table.projection.collection_field)?.data_type !== "JSON" ||
+          tableColumnKeys.length !== mappedTableColumns.length ||
+          !tableColumnKeys.every((key) => mappedTableColumns.includes(key))
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["tables", index, "projection"],
+            message: "Result collection projections must cover every table column exactly.",
+          });
+        }
+      }
       if (
         table.columns.length > contract.limits.max_table_columns ||
         table.max_rows > contract.limits.max_table_rows
@@ -308,7 +393,7 @@ export async function computeAnalysisResultContractHash(
   input: AnalysisResultContractMaterial,
 ): Promise<`sha256:${string}`> {
   return sha256ContentHash({
-    hash_domain: "analysis-result-contract@1.0.0",
+    hash_domain: "analysis-result-contract@2.0.0",
     value: analysisResultContractMaterialSchema.parse(input),
   });
 }
@@ -325,7 +410,9 @@ export async function buildAnalysisResultContract(
   );
 }
 
-export async function verifyAnalysisResultContract(input: unknown): Promise<AnalysisResultContract> {
+export async function verifyAnalysisResultContract(
+  input: unknown,
+): Promise<AnalysisResultContract> {
   const contract = analysisResultContractSchema.parse(input);
   const { contract_hash: observedHash, ...material } = contract;
   if ((await computeAnalysisResultContractHash(material)) !== observedHash) {

@@ -6,9 +6,14 @@ import {
 
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 
+function required<T>(value: T | undefined): T {
+  if (value === undefined) throw new TypeError("TEST_FIXTURE_VALUE_MISSING");
+  return value;
+}
+
 function material() {
   return {
-    schema_version: "analysis-result-contract@1.0.0" as const,
+    schema_version: "analysis-result-contract@2.0.0" as const,
     contract_id: "falcon24.q1.result",
     semantic_context_hash: hash("a"),
     result_fields: [
@@ -40,9 +45,7 @@ function material() {
         formula_hash: hash("b"),
       },
     ],
-    dimension_bindings: [
-      { semantic_dimension_id: "dimension.order_month", field: "month" },
-    ],
+    dimension_bindings: [{ semantic_dimension_id: "dimension.order_month", field: "month" }],
     grain: {
       dimension_ids: ["dimension.order_month"],
       time_dimension_id: "dimension.order_month",
@@ -68,6 +71,7 @@ function material() {
         transformation: "DIRECT" as const,
       },
     ],
+    collection_constraints: [],
     tables: [
       {
         table_id: "monthly_trend",
@@ -91,6 +95,7 @@ function material() {
             semantic_role: "METRIC" as const,
           },
         ],
+        projection: { mode: "MODEL_DERIVED" as const },
         max_rows: 18,
       },
     ],
@@ -113,7 +118,7 @@ function material() {
   };
 }
 
-describe("AnalysisResultContract@1", () => {
+describe("AnalysisResultContract@2", () => {
   it("builds and verifies a content-addressed semantic result contract", async () => {
     const contract = await buildAnalysisResultContract(material());
 
@@ -136,20 +141,69 @@ describe("AnalysisResultContract@1", () => {
     ).rejects.toThrow();
   });
 
+  it("rejects the retired v1 shape instead of maintaining a compatibility path", async () => {
+    await expect(
+      buildAnalysisResultContract({
+        ...material(),
+        schema_version: "analysis-result-contract@1.0.0" as never,
+      }),
+    ).rejects.toThrow();
+    const { projection: _projection, ...tableWithoutProjection } = required(material().tables[0]);
+    await expect(
+      buildAnalysisResultContract({
+        ...material(),
+        tables: [tableWithoutProjection] as never,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects collection predicates on non-JSON fields and incomplete projections", async () => {
+    await expect(
+      buildAnalysisResultContract({
+        ...material(),
+        collection_constraints: [
+          {
+            collection_field: "revenue",
+            min_items: 1,
+            max_items: 10,
+            all_items: [
+              {
+                left_field: "value",
+                operator: "GT",
+                right: { kind: "NUMBER", value: 0 },
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      buildAnalysisResultContract({
+        ...material(),
+        tables: [
+          {
+            ...required(material().tables[0]),
+            projection: {
+              mode: "RESULT_COLLECTION",
+              collection_field: "limitation",
+              column_mappings: [{ result_field: "month", table_column: "month" }],
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow();
+  });
+
   it("rejects grain, metric and chart references outside the declared semantic closure", async () => {
     await expect(
       buildAnalysisResultContract({
         ...material(),
-        metric_bindings: [
-          { ...material().metric_bindings[0]!, field: "month" },
-        ],
+        metric_bindings: [{ ...required(material().metric_bindings[0]), field: "month" }],
         grain: {
           ...material().grain,
           dimension_ids: ["dimension.unknown"],
         },
-        charts: [
-          { ...material().charts[0]!, table_id: "unknown_table" },
-        ],
+        charts: [{ ...required(material().charts[0]), table_id: "unknown_table" }],
       }),
     ).rejects.toThrow();
   });

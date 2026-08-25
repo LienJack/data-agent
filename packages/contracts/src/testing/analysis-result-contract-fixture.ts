@@ -17,7 +17,7 @@ export function analysisResultContractFixture(input: {
     (value): value is string => value !== undefined,
   );
   return analysisResultContractSchema.parse({
-    schema_version: "analysis-result-contract@1.0.0",
+    schema_version: "analysis-result-contract@2.0.0",
     contract_id: input.contract_id ?? "test.analysis.result",
     semantic_context_hash: input.semantic_context_hash,
     result_fields: [
@@ -45,12 +45,12 @@ export function analysisResultContractFixture(input: {
     lineage: [
       {
         field: "result",
-        source_semantic_object_ids:
-          semanticIds.length > 0 ? semanticIds : ["quality.test_fixture"],
+        source_semantic_object_ids: semanticIds.length > 0 ? semanticIds : ["quality.test_fixture"],
         source_physical_fields: ["fixture.value"],
         transformation: "FORMULA",
       },
     ],
+    collection_constraints: [],
     tables: [
       {
         table_id: "result_table",
@@ -66,6 +66,7 @@ export function analysisResultContractFixture(input: {
             semantic_role: input.metric_id ? "METRIC" : "DERIVED",
           },
         ],
+        projection: { mode: "MODEL_DERIVED" },
         max_rows: 16,
       },
     ],

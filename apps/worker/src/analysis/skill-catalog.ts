@@ -16,7 +16,7 @@ type AnalysisRuntimeProfile = AnalysisSandboxRuntimeProfile;
 export interface AnalysisSkillDescriptor {
   readonly skill_id: AnalysisSkillId;
   readonly input_contract_version: string;
-  readonly result_contract_version: "analysis-result-contract@1.0.0";
+  readonly result_contract_version: "analysis-result-contract@2.0.0";
   readonly required_capabilities: readonly string[];
   readonly parameter_schema: z.ZodType;
   readonly hard_limits: Readonly<{
@@ -111,7 +111,7 @@ function descriptor(
   return Object.freeze({
     ...input,
     input_contract_version: "query-evidence@2.0.0",
-    result_contract_version: "analysis-result-contract@1.0.0",
+    result_contract_version: "analysis-result-contract@2.0.0",
     hard_limits: Object.freeze({ ...commonLimits, ...input.hard_limits }),
   });
 }

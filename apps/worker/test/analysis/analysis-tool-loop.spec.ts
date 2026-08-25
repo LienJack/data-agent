@@ -69,6 +69,16 @@ describe("safe cell diagnostics", () => {
     ).toBe("ANALYSIS_RESULT_TABLE_COLUMNS_MISMATCH");
     expect(
       analysisToolLoopInternals.repairablePublishFailureCode(
+        new TypeError("ANALYSIS_RESULT_COLLECTION_PREDICATE_MISMATCH"),
+      ),
+    ).toBe("ANALYSIS_RESULT_COLLECTION_PREDICATE_MISMATCH");
+    expect(
+      analysisToolLoopInternals.repairablePublishFailureCode(
+        new TypeError("ANALYSIS_RESULT_TABLE_PROJECTION_MISMATCH"),
+      ),
+    ).toBe("ANALYSIS_RESULT_TABLE_PROJECTION_MISMATCH");
+    expect(
+      analysisToolLoopInternals.repairablePublishFailureCode(
         new AnalysisSandboxRuntimeError(
           "ANALYSIS_SANDBOX_SYMBOL_EXTRACTION_REJECTED",
           "CELL",
@@ -142,7 +152,7 @@ function providerRef(index: number) {
 
 async function resultContract() {
   return buildAnalysisResultContract({
-    schema_version: "analysis-result-contract@1.0.0",
+    schema_version: "analysis-result-contract@2.0.0",
     contract_id: "falcon24.q1.result",
     semantic_context_hash: fakeDigest,
     result_fields: [
@@ -178,6 +188,7 @@ async function resultContract() {
         transformation: "DIRECT",
       },
     ],
+    collection_constraints: [],
     tables: [
       {
         table_id: "monthly_trend",
@@ -201,6 +212,7 @@ async function resultContract() {
             semantic_role: "METRIC",
           },
         ],
+        projection: { mode: "MODEL_DERIVED" },
         max_rows: 18,
       },
     ],

@@ -66,7 +66,7 @@ async function runAcceptedEcommerceTrend() {
         generated_source_policy: "OPEN_ANALYSIS",
         operator_obligations: [],
         result_contract: {
-          schema_version: "analysis-result-contract@1.0.0",
+          schema_version: "analysis-result-contract@2.0.0",
           contract_id: "ecommerce-monthly-gmv.result",
           semantic_context_hash: testCase.semantic_frontier.semantic_release_hash,
           result_fields: [
@@ -83,6 +83,7 @@ async function runAcceptedEcommerceTrend() {
               transformation: "AGGREGATION",
             },
           ],
+          collection_constraints: [],
           tables: [
             {
               table_id: "monthly_gmv",
@@ -98,6 +99,7 @@ async function runAcceptedEcommerceTrend() {
                   semantic_role: "METRIC",
                 },
               ],
+              projection: { mode: "MODEL_DERIVED" },
               max_rows: 4,
             },
           ],

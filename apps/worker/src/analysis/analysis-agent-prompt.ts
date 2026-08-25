@@ -191,6 +191,8 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "Do not write result JSON, tables, PNG, SVG, or chart files. The only completion action is publish_analysis_result. Supply result/table symbol names plus chart id and field selections only; the server injects chart intent, template, and data-symbol binding from the result contract.",
       "Preserve governed numeric values without rounding. Build every required table symbol with exactly the declared columns, then publish once. Explain only after the server verifies and stages the entire result closure.",
       "For every table, use contract.tables[].columns[].key as the sole column authority. A similarly named result-object field does not authorize a table column; when a method contract declares a projection mapping, copy the value into the exact table key before publishing.",
+      "Treat result_contract.collection_constraints as executable result invariants: append an item to the declared collection only when every all_items predicate is true. Do not append a failed item under a fallback status.",
+      "When a table projection mode is RESULT_COLLECTION, build the table from exactly that result collection using every declared column mapping. The table and collection must have the same row multiset; do not add, omit, or independently filter rows.",
     ],
     semantic_context: {
       package_hash: semantic.package_hash,

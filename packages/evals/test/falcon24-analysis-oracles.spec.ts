@@ -115,6 +115,7 @@ function outputFor(caseId: string, methods: readonly string[]) {
       products: [
         {
           product_id: "P001",
+          product_name: "Product 1",
           category: "Grocery",
           sales_quantity: 120,
           category_sales_p75: 100,
@@ -127,6 +128,7 @@ function outputFor(caseId: string, methods: readonly string[]) {
         },
         {
           product_id: "P002",
+          product_name: "Product 2",
           category: "Grocery",
           sales_quantity: 90,
           category_sales_p75: 100,
@@ -268,7 +270,8 @@ describe("Falcon24 independent analysis oracles", () => {
       expect(projection.table.total_rows).toBe(projection.table.rows.length);
       if (testCase.case_id === "falcon24-cohort-retention-m0-m6") {
         const cohortOutput = falcon24AnalysisOutputSchema.parse(output);
-        if (cohortOutput.case_id !== testCase.case_id) throw new TypeError("cohort fixture invalid");
+        if (cohortOutput.case_id !== testCase.case_id)
+          throw new TypeError("cohort fixture invalid");
         expect(projection.table.rows).toHaveLength(cohortOutput.cohorts.length * 7);
         expect(projection.y_keys).toEqual(["retention_rate_pct", "repeat_purchase_rate_pct"]);
       }

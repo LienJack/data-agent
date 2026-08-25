@@ -363,7 +363,72 @@ function validateResultDocument(
       throw new TypeError("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH");
     }
   }
+  for (const constraint of contract.collection_constraints) {
+    const collection = value[constraint.collection_field];
+    if (
+      !Array.isArray(collection) ||
+      collection.length < constraint.min_items ||
+      collection.length > constraint.max_items ||
+      collection.some((item) => !isRecord(item))
+    ) {
+      throw new TypeError("ANALYSIS_RESULT_COLLECTION_SHAPE_MISMATCH");
+    }
+    for (const item of collection as readonly Readonly<Record<string, unknown>>[]) {
+      for (const predicate of constraint.all_items) {
+        const left = item[predicate.left_field];
+        const right =
+          predicate.right.kind === "FIELD" ? item[predicate.right.field] : predicate.right.value;
+        if (typeof left !== "number" || !Number.isFinite(left)) {
+          throw new TypeError("ANALYSIS_RESULT_COLLECTION_PREDICATE_VALUE_INVALID");
+        }
+        if (typeof right !== "number" || !Number.isFinite(right)) {
+          throw new TypeError("ANALYSIS_RESULT_COLLECTION_PREDICATE_VALUE_INVALID");
+        }
+        const matches =
+          (predicate.operator === "GT" && left > right) ||
+          (predicate.operator === "GTE" && left >= right) ||
+          (predicate.operator === "LT" && left < right) ||
+          (predicate.operator === "LTE" && left <= right);
+        if (!matches) {
+          throw new TypeError("ANALYSIS_RESULT_COLLECTION_PREDICATE_MISMATCH");
+        }
+      }
+    }
+  }
   return { ...value };
+}
+
+function validateTableProjection(
+  rows: readonly Readonly<Record<string, unknown>>[],
+  table: AnalysisResultContract["tables"][number],
+  result: Readonly<Record<string, unknown>>,
+): void {
+  if (table.projection.mode === "MODEL_DERIVED") return;
+  const projection = table.projection;
+  const collection = result[projection.collection_field];
+  if (!Array.isArray(collection) || collection.some((item) => !isRecord(item))) {
+    throw new TypeError("ANALYSIS_RESULT_TABLE_PROJECTION_SOURCE_INVALID");
+  }
+  const projectedRows = (collection as readonly Readonly<Record<string, unknown>>[]).map((item) => {
+    const projected: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const mapping of projection.column_mappings) {
+      if (!Object.hasOwn(item, mapping.result_field)) {
+        throw new TypeError("ANALYSIS_RESULT_TABLE_PROJECTION_SOURCE_INVALID");
+      }
+      projected[mapping.table_column] = item[mapping.result_field];
+    }
+    return projected;
+  });
+  const canonicalRows = (values: readonly Readonly<Record<string, unknown>>[]) =>
+    values.map((value) => canonicalizeJson(value)).sort();
+  const actual = canonicalRows(rows);
+  const expected = canonicalRows(projectedRows);
+  if (
+    actual.length !== expected.length ||
+    actual.some((value, index) => value !== expected[index])
+  ) {
+    throw new TypeError("ANALYSIS_RESULT_TABLE_PROJECTION_MISMATCH");
+  }
 }
 
 function validateTable(
@@ -500,6 +565,7 @@ export async function prepareAnalysisResult(input: {
       throw new TypeError("ANALYSIS_RESULT_TABLE_BINDING_INVALID");
     }
     const rows = validateTable(symbol, table, contract);
+    validateTableProjection(rows, table, resultValue);
     tableRows.set(table.table_id, rows);
     artifacts.push(
       await sealArtifact({
@@ -678,4 +744,5 @@ export const resultPublisherInternals = Object.freeze({
   validateManifestAgainstContract,
   validateResultDocument,
   validateTable,
+  validateTableProjection,
 });

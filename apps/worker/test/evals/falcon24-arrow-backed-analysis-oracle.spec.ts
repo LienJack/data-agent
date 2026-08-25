@@ -395,6 +395,7 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
       products: [
         {
           product_id: "p1",
+          product_name: "Product",
           category: "grocery",
           sales_quantity: 120,
           category_sales_p75: 120,
