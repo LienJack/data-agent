@@ -90,18 +90,33 @@ def marketing_lag_priority(
         }
 
     coefficients = _coefficient_index(inputs["hac_coefficients"])
-    expected_coefficient_keys: set[tuple[str, str]] = set()
+    expected_labels: set[str] = set()
     for channel, audience in summaries:
         spend_label = f"{channel}|{audience}|spend_over_week"
-        for term in ("intercept", "week_index", "sine", "cosine"):
-            expected_coefficient_keys.add((spend_label, term))
+        expected_labels.add(spend_label)
         for outcome in _BUSINESS_OUTCOMES:
             for lag in range(5):
                 lag_label = f"{channel}|{audience}|{outcome}|lag{lag}"
-                for term in ("intercept", "spend", "week_index", "sine", "cosine"):
-                    expected_coefficient_keys.add((lag_label, term))
-    if set(coefficients) != expected_coefficient_keys:
+                expected_labels.add(lag_label)
+    terms_by_label: dict[str, set[str]] = defaultdict(set)
+    for label, term in coefficients:
+        terms_by_label[label].add(term)
+    if set(terms_by_label) != expected_labels:
         raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+    control_terms: set[str] | None = None
+    for label, terms in terms_by_label.items():
+        required = {"intercept", "week_index"}
+        expected_count = 4
+        if label.count("|") == 3:
+            required.add("spend")
+            expected_count = 5
+        if not required <= terms or len(terms) != expected_count:
+            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+        controls = terms - required
+        if control_terms is None:
+            control_terms = controls
+        elif controls != control_terms:
+            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
 
     selected: dict[tuple[str, str, str], dict[str, Any]] = {}
     spend_slopes: dict[tuple[str, str], float] = {}

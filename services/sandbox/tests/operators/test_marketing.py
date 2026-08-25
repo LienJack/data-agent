@@ -53,7 +53,7 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
                 }
             )
         spend_label = f"{channel}|{audience}|spend_over_week"
-        for term in ("intercept", "week_index", "sine", "cosine"):
+        for term in ("intercept", "week_index", "sin_annual", "cos_annual"):
             coefficients.append(
                 _coefficient(
                     spend_label,
@@ -69,7 +69,7 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
         for outcome in _OUTCOMES:
             for lag in range(5):
                 label = f"{channel}|{audience}|{outcome}|lag{lag}"
-                for term in ("intercept", "spend", "week_index", "sine", "cosine"):
+                for term in ("intercept", "spend", "week_index", "sin_annual", "cos_annual"):
                     coefficients.append(
                         _coefficient(
                             label,
