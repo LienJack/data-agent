@@ -5,6 +5,7 @@ from copy import deepcopy
 import pytest
 
 from data_agent_stats.inventory import inventory_damage_priority
+from data_agent_stats.manifest import OPERATOR_BY_ID, input_records_match_manifest
 from data_agent_stats.registry import StatisticalOperatorError
 
 
@@ -34,13 +35,41 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
     return {
         "inventory_rows": inventory_rows,
         "theil_sen": [
-            {"label": label, "slope": 0.01 if label == "p4" else -0.01} for label in labels
+            {
+                "label": label,
+                "slope": 0.01 if label == "p4" else -0.01,
+                "sample_size": 12,
+                "pair_count": 66,
+            }
+            for label in labels
         ],
         "mann_kendall": [
-            {"label": label, "p_value": 0.01 if label == "p4" else 0.5} for label in labels
+            {
+                "label": label,
+                "s": 50 if label == "p4" else -50,
+                "variance_s": 212.67,
+                "z": 3.36 if label == "p4" else -3.36,
+                "p_value": 0.01 if label == "p4" else 0.5,
+                "tau": 0.76 if label == "p4" else -0.76,
+                "trend": "INCREASING" if label == "p4" else "NO_TREND",
+                "rejected": label == "p4",
+                "sample_size": 12,
+                "tie_group_count": 0,
+                "alpha": 0.05,
+                "variant": "original",
+            }
+            for label in labels
         ],
         "bh_fdr": [
-            {"label": label, "adjusted_p_value": 0.04 if label == "p4" else 0.5} for label in labels
+            {
+                "label": label,
+                "adjusted_p_value": 0.04 if label == "p4" else 0.5,
+                "rejected": label == "p4",
+                "family_size": len(labels),
+                "alpha": 0.05,
+                "method": "bh",
+            }
+            for label in labels
         ],
     }
 
@@ -89,6 +118,19 @@ def test_inventory_priority_is_input_order_invariant() -> None:
         inventory_damage_priority(forward, _parameters()).output
         == inventory_damage_priority(reverse, _parameters()).output
     )
+
+
+def test_inventory_priority_manifest_accepts_exact_upstream_governed_collections() -> None:
+    inputs = _inputs()
+    descriptor = OPERATOR_BY_ID["descriptive.inventory-damage-priority@1"]
+
+    for specification in descriptor["inputs"]:
+        assert input_records_match_manifest(specification, inputs[specification["name"]])
+
+    projected = deepcopy(inputs["mann_kendall"])
+    projected[0] = {"label": "p1", "p_value": 0.5}
+    mann_kendall = next(item for item in descriptor["inputs"] if item["name"] == "mann_kendall")
+    assert not input_records_match_manifest(mann_kendall, projected)
 
 
 @pytest.mark.parametrize("mutation", ["missing_month", "metadata_conflict", "missing_label"])

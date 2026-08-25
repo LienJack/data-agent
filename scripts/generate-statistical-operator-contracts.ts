@@ -9,6 +9,7 @@ type JsonValue = JsonScalar | readonly JsonValue[] | { readonly [key: string]: J
 
 type RecordFieldShape =
   | "BINARY_NUMBER_ARRAY"
+  | "BOOLEAN"
   | "DATE_KEY"
   | "FINITE_NUMBER"
   | "FINITE_NUMBER_ARRAY"
@@ -107,6 +108,7 @@ function assertStringArray(value: unknown, context: string): asserts value is re
 
 const RECORD_FIELD_SHAPES = new Set<RecordFieldShape>([
   "BINARY_NUMBER_ARRAY",
+  "BOOLEAN",
   "DATE_KEY",
   "FINITE_NUMBER",
   "FINITE_NUMBER_ARRAY",
@@ -177,6 +179,7 @@ function assertRecordExampleValue(value: unknown, shape: RecordFieldShape, conte
       Array.isArray(value) &&
       value.length > 0 &&
       value.every((item) => item === 0 || item === 1)) ||
+    (shape === "BOOLEAN" && typeof value === "boolean") ||
     (shape === "DATE_KEY" && isDateKey(value)) ||
     (shape === "FINITE_NUMBER" && isFiniteNumber(value)) ||
     (shape === "FINITE_NUMBER_ARRAY" && isFiniteNumberArray(value)) ||

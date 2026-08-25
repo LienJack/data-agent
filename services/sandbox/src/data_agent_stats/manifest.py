@@ -51,6 +51,7 @@ _LIMIT_KEYS = frozenset(
 _RECORD_FIELD_SHAPES = frozenset(
     {
         "BINARY_NUMBER_ARRAY",
+        "BOOLEAN",
         "DATE_KEY",
         "FINITE_NUMBER",
         "FINITE_NUMBER_ARRAY",
@@ -118,6 +119,8 @@ def record_value_matches_shape(value: Any, shape: str) -> bool:
             and bool(value)
             and all(_finite_number(item) and float(item) in {0.0, 1.0} for item in value)
         )
+    if shape == "BOOLEAN":
+        return isinstance(value, bool)
     if shape == "DATE_KEY":
         return _date_key(value)
     if shape == "FINITE_NUMBER":

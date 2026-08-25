@@ -469,11 +469,15 @@
           "max_items": 512,
           "record_shape": {
             "label": "NON_EMPTY_STRING",
-            "slope": "FINITE_NUMBER"
+            "slope": "FINITE_NUMBER",
+            "sample_size": "NON_NEGATIVE_FINITE_NUMBER",
+            "pair_count": "NON_NEGATIVE_FINITE_NUMBER"
           },
           "record_example": {
             "label": "product_a",
-            "slope": 0.01
+            "slope": 0.01,
+            "sample_size": 12,
+            "pair_count": 66
           },
           "limits": {}
         },
@@ -484,11 +488,31 @@
           "max_items": 512,
           "record_shape": {
             "label": "NON_EMPTY_STRING",
-            "p_value": "UNIT_INTERVAL_NUMBER"
+            "s": "FINITE_NUMBER",
+            "variance_s": "NON_NEGATIVE_FINITE_NUMBER",
+            "z": "FINITE_NUMBER",
+            "p_value": "UNIT_INTERVAL_NUMBER",
+            "tau": "FINITE_NUMBER",
+            "trend": "NON_EMPTY_STRING",
+            "rejected": "BOOLEAN",
+            "sample_size": "NON_NEGATIVE_FINITE_NUMBER",
+            "tie_group_count": "NON_NEGATIVE_FINITE_NUMBER",
+            "alpha": "UNIT_INTERVAL_NUMBER",
+            "variant": "NON_EMPTY_STRING"
           },
           "record_example": {
             "label": "product_a",
-            "p_value": 0.01
+            "s": 50,
+            "variance_s": 212.67,
+            "z": 3.36,
+            "p_value": 0.01,
+            "tau": 0.76,
+            "trend": "INCREASING",
+            "rejected": true,
+            "sample_size": 12,
+            "tie_group_count": 0,
+            "alpha": 0.05,
+            "variant": "original"
           },
           "limits": {}
         },
@@ -499,11 +523,19 @@
           "max_items": 512,
           "record_shape": {
             "label": "NON_EMPTY_STRING",
-            "adjusted_p_value": "UNIT_INTERVAL_NUMBER"
+            "adjusted_p_value": "UNIT_INTERVAL_NUMBER",
+            "rejected": "BOOLEAN",
+            "family_size": "NON_NEGATIVE_FINITE_NUMBER",
+            "alpha": "UNIT_INTERVAL_NUMBER",
+            "method": "NON_EMPTY_STRING"
           },
           "record_example": {
             "label": "product_a",
-            "adjusted_p_value": 0.02
+            "adjusted_p_value": 0.02,
+            "rejected": true,
+            "family_size": 268,
+            "alpha": 0.05,
+            "method": "bh"
           },
           "limits": {}
         }
