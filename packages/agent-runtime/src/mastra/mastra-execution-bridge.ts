@@ -86,7 +86,10 @@ export interface MastraModelExecutionBridgeOptions {
   readonly tool_registry?: ServerOwnedToolRegistry;
   readonly response_schema_registry?: ServerModelResponseSchemaRegistry;
   readonly input_token_counter?: TrustedModelInputTokenCounter;
+  readonly tool_choice_policy?: ModelToolChoicePolicy;
 }
+
+export type ModelToolChoicePolicy = "REQUIRED" | "AUTO";
 
 type RuntimeModelFactory = typeof createProviderRuntimeModel;
 
@@ -413,6 +416,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
   readonly #responseSchemaRegistry: ServerModelResponseSchemaRegistry;
   readonly #inputTokenCounter: TrustedModelInputTokenCounter;
   readonly #runtimeModelFactory: RuntimeModelFactory;
+  readonly #toolChoicePolicy: ModelToolChoicePolicy;
 
   constructor(options: ResolvedMastraExecutionBridgeOptions) {
     this.#credentialResolver = options.credential_resolver;
@@ -422,6 +426,7 @@ class MastraExecutionBridge implements ModelExecutionBridge {
       options.response_schema_registry ?? EMPTY_SERVER_MODEL_RESPONSE_SCHEMA_REGISTRY;
     this.#inputTokenCounter = options.input_token_counter ?? failClosedInputTokenCounter;
     this.#runtimeModelFactory = options.runtime_model_factory;
+    this.#toolChoicePolicy = options.tool_choice_policy ?? "REQUIRED";
   }
 
   async *stream(input: {
@@ -519,7 +524,10 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     const output = usesToolCalling
       ? await agent.stream(projected.messages, {
           ...commonExecutionOptions,
-          toolChoice: "required",
+          structuredOutput: {
+            schema: responseSchema.schema,
+          },
+          toolChoice: this.#toolChoicePolicy === "AUTO" ? "auto" : "required",
         })
       : await agent.stream(projected.messages, {
           ...commonExecutionOptions,
@@ -626,9 +634,10 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     }
 
     const usage = normalizeUsage(fullOutput.totalUsage);
-    const outputText = usesToolCalling
-      ? (fullOutput.text ?? "")
-      : canonicalizeStructuredOutput(responseSchema, fullOutput.object);
+    const outputText =
+      usesToolCalling && observedToolCalls > 0
+        ? (fullOutput.text ?? "")
+        : canonicalizeStructuredOutput(responseSchema, fullOutput.object);
     yield {
       chunk_type: "COMPLETED",
       output_text: outputText,
@@ -660,6 +669,7 @@ export function createMastraModelExecutionBridgeForTesting(options: {
   readonly tool_registry?: ServerOwnedToolRegistry;
   readonly response_schema_registry?: ServerModelResponseSchemaRegistry;
   readonly input_token_counter?: TrustedModelInputTokenCounter;
+  readonly tool_choice_policy?: ModelToolChoicePolicy;
   readonly runtime_model_factory: RuntimeModelFactory;
 }): ModelExecutionBridge {
   return new MastraExecutionBridge({

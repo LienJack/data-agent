@@ -7,23 +7,44 @@ import { resolvePublishedLexicon } from "./lexical-matcher.js";
 const capabilityChain = ["METRIC", "ONTOLOGY_TEXT2SQL", "KNOWLEDGE", "GRAPH"] as const;
 
 function ambiguousSamePhrase(
+  snapshot: SemanticContextAuthoritySnapshot,
   matches: readonly Awaited<ReturnType<typeof resolvePublishedLexicon>>["matches"][number][],
 ): boolean {
-  const targetsByPhrase = new Map<string, Set<string>>();
+  const targetsByPhrase = new Map<string, Array<(typeof matches)[number]>>();
   for (const match of matches) {
     const phrase = match.phrase.normalize("NFKC").toLocaleLowerCase("und").trim();
-    const targets = targetsByPhrase.get(phrase) ?? new Set<string>();
-    targets.add(`${match.target_kind}\0${match.target_id}`);
+    const targets = targetsByPhrase.get(phrase) ?? [];
+    if (
+      !targets.some(
+        (target) =>
+          target.target_kind === match.target_kind && target.target_id === match.target_id,
+      )
+    ) {
+      targets.push(match);
+    }
     targetsByPhrase.set(phrase, targets);
   }
-  return [...targetsByPhrase.values()].some((targets) => targets.size > 1);
+  return [...targetsByPhrase.values()].some((targets) => {
+    if (targets.length <= 1) return false;
+    const metricTargets = targets.filter(({ target_kind: kind }) => kind === "METRIC");
+    const ontologyTargets = targets.filter(({ target_kind: kind }) => kind === "ONTOLOGY");
+    if (metricTargets.length !== 1 || ontologyTargets.length !== targets.length - 1) return true;
+    const metricConcept = metricTargets[0]?.target_id.split(".").slice(1).join(".");
+    return ontologyTargets.some(({ target_id: targetId }) => {
+      const object = snapshot.published_ontology.find(
+        ({ object_id: objectId }) => objectId === targetId,
+      );
+      const ontologyConcept = targetId.split(".").slice(1).join(".");
+      return object?.object_kind !== "FORMULA" || ontologyConcept !== metricConcept;
+    });
+  });
 }
 
 export async function routeSemanticContext(
   snapshot: SemanticContextAuthoritySnapshot,
 ): Promise<SemanticContextRouteDecision> {
   const lexical = await resolvePublishedLexicon(snapshot);
-  if (ambiguousSamePhrase(lexical.matches)) {
+  if (ambiguousSamePhrase(snapshot, lexical.matches)) {
     return {
       schema_version: "semantic-context-route-decision@1.0.0",
       state: "NEEDS_CLARIFICATION",

@@ -1,12 +1,11 @@
 import type { AdmittedSubagentDelegation } from "@data-agent/agent-runtime";
 import {
-  type AgentDispatchPlan,
-  type AgentProductProfileReference,
-  type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   effectiveConfigRunLeasePayloadSchema,
-  type PortResult,
   type RootAgentDecisionCandidate,
+  type SemanticContextCommitResult,
 } from "@data-agent/contracts";
+import { z } from "zod";
 import { hasRunExecutionContextProvenance } from "../runs/run-execution-context.js";
 import {
   type RunExecutionContext,
@@ -16,16 +15,20 @@ import {
 } from "../runs/run-worker-runner.js";
 import type { RootAgentTurnPort } from "./root-agent-turn-executor.js";
 
-/** @deprecated Kept as a source-compatible type for the retired team runtime. */
+const rootRuntimeResultSchema = z.strictObject({
+  status: z.enum(["ACCEPTED", "FAILED", "NEEDS_CLARIFICATION"]),
+  reason_code: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Z][A-Z0-9_]*$/u),
+});
+
 export interface DataAgentProductTeamRuntimePort {
   execute(input: {
     readonly lease: Parameters<RunWorkflowExecutorPort["execute"]>[0]["lease"];
-    readonly profiles: ReadonlyMap<
-      AgentProductProfileReference["profile_id"],
-      AgentProductProfileRegistryItem
-    >;
-    readonly dispatch_plan?: AgentDispatchPlan | null;
-    readonly admitted_delegations?: readonly AdmittedSubagentDelegation[];
+    readonly profiles: ReadonlyMap<string, AgentProductProfileRegistryItemV2>;
+    readonly admitted_delegations: readonly AdmittedSubagentDelegation[];
     readonly semantic_context_ref: Readonly<{
       package_id: string;
       package_hash: string;
@@ -35,6 +38,7 @@ export interface DataAgentProductTeamRuntimePort {
       semantic_release_id: string;
       semantic_release_hash: string;
     }>;
+    readonly semantic_context_package: SemanticContextCommitResult["package"];
     readonly restored_snapshot: Parameters<
       RunWorkflowExecutorPort["execute"]
     >[0]["restored_snapshot"];
@@ -44,18 +48,7 @@ export interface DataAgentProductTeamRuntimePort {
   }): Promise<unknown>;
 }
 
-/** All QUESTION_RUN leases now use one direct executor; no Root/Specialist hop. */
 export interface DataAgentTeamRunnerDependencies {
-  readonly direct_analysis?: RunWorkflowExecutorPort;
-  /** @deprecated Retired Root/Specialist composition fields. */
-  readonly profiles?: {
-    listEnabled(
-      capabilityInput: unknown,
-    ): Promise<PortResult<readonly AgentProductProfileRegistryItem[]>>;
-  };
-  readonly profile_capability_input?: unknown;
-  readonly runtime?: DataAgentProductTeamRuntimePort;
-  readonly direct?: RunWorkflowExecutorPort;
   readonly root?: RootAgentTurnPort;
   readonly root_runtime?: {
     execute(input: {
@@ -87,8 +80,23 @@ export function createDataAgentTeamRunner(
       ) {
         return failed("DATA_AGENT_TEAM_LEASE_INVALID");
       }
-      if (!dependencies.direct_analysis) return failed("DIRECT_QA_EXECUTOR_NOT_CONFIGURED");
-      return dependencies.direct_analysis.execute(input);
+      if (
+        payload.data.schema_version !== "effective-config-team-lease@3.0.0" ||
+        payload.data.executor_version !== "ROOT_HARNESS@1"
+      ) {
+        return failed("ROOT_AGENT_LEASE_VERSION_UNSUPPORTED");
+      }
+      if (!dependencies.root) return failed("ROOT_AGENT_TURN_NOT_CONFIGURED");
+      if (!dependencies.root_runtime) return failed("ROOT_AGENT_RUNTIME_NOT_CONFIGURED");
+
+      const decision = await dependencies.root.decide(input);
+      if (!decision.ok) return failed(decision.error.code);
+      const runtime = rootRuntimeResultSchema.safeParse(
+        await dependencies.root_runtime.execute({ decision: decision.value, execution: input }),
+      );
+      if (!runtime.success) return failed("ROOT_AGENT_RUNTIME_RESULT_INVALID");
+      if (runtime.data.status !== "ACCEPTED") return failed(runtime.data.reason_code);
+      return runExecutorResultSchema.parse({ kind: "COMPLETED" });
     },
   });
 }

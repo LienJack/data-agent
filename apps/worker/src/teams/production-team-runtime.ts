@@ -15,8 +15,7 @@ import {
   type TeamTaskV2,
 } from "@data-agent/agent-runtime";
 import {
-  type AgentDispatchPlan,
-  type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   type AgentSpecialistProfileId,
   type ArtifactReference,
   agentSpecialistProfileIdSchema,
@@ -70,8 +69,10 @@ export interface ProductionTeamToolFactoryInput {
   readonly semantic_context_ref: Parameters<
     DataAgentProductTeamRuntimePort["execute"]
   >[0]["semantic_context_ref"];
+  readonly semantic_context_package: Parameters<
+    DataAgentProductTeamRuntimePort["execute"]
+  >[0]["semantic_context_package"];
   readonly accepted_evidence_ref: ArtifactReference | null;
-  readonly dispatch_plan: AgentDispatchPlan | null;
   readonly delegation: AdmittedSubagentDelegation | null;
 }
 
@@ -239,42 +240,31 @@ async function createChild(input: {
   readonly root: TeamTaskV2;
   readonly root_capability: Awaited<ReturnType<typeof createCapability>>;
   readonly profile_id: AgentSpecialistProfileId;
-  readonly profile: AgentProductProfileRegistryItem;
-  readonly delegation?: AdmittedSubagentDelegation;
+  readonly profile: AgentProductProfileRegistryItemV2;
+  readonly delegation: AdmittedSubagentDelegation;
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
   readonly bounds: ReturnType<typeof bounds>;
 }) {
-  const taskId =
-    input.delegation?.receipt.task_id ?? identity(input.lease.run_id, `task:${input.profile_id}`);
+  const taskId = input.delegation.receipt.task_id;
   const delegation = createSubagentDelegationCommand(input.root, input.root_capability, {
     schema_version: "subagent-delegation-request@2.0.0",
-    handoff_id:
-      input.delegation?.receipt.delegation_id ??
-      identity(input.lease.run_id, `handoff:${input.profile_id}`),
+    handoff_id: input.delegation.receipt.delegation_id,
     child_task_id: taskId,
-    child_attempt_id:
-      input.delegation?.receipt.attempt_id ??
-      identity(input.lease.run_id, `attempt:${input.profile_id}`),
+    child_attempt_id: input.delegation.receipt.attempt_id,
     child_profile_id: input.profile_id,
     child_profile_revision: input.profile.revision.runtime_profile_ref.revision,
     child_profile_hash: input.profile.revision.runtime_profile_ref.profile_hash,
     parent_expected_revision: input.root.task_revision,
-    objective_hash:
-      input.delegation?.receipt.objective_hash ??
-      (await sha256ContentHash({
-        run_id: input.lease.run_id,
-        profile_id: input.profile_id,
-      })),
-    artifact_refs: input.delegation?.receipt.input_artifact_refs ?? [],
-    bounds: input.delegation ? delegationBounds(input.delegation) : input.bounds,
-    idempotency_key:
-      input.delegation?.receipt.idempotency_key ?? `team:${input.lease.run_id}:${input.profile_id}`,
+    objective_hash: input.delegation.receipt.objective_hash,
+    artifact_refs: input.delegation.receipt.input_artifact_refs,
+    bounds: delegationBounds(input.delegation),
+    idempotency_key: input.delegation.receipt.idempotency_key,
   });
   await persist(input.store.prepareHandoff, input.capability, {
     operation: "PREPARE_HANDOFF",
-    label: `prepare-handoff:${input.delegation?.receipt.delegation_id ?? input.profile_id}`,
+    label: `prepare-handoff:${input.delegation.receipt.delegation_id}`,
     task_id: input.root.task_id,
     expected_revision: input.root.task_revision,
     document: delegation,
@@ -467,6 +457,13 @@ function acceptedOutput(snapshot: unknown): ArtifactReference | null {
 
 function renderAcceptedArtifact(document: ProductTeamArtifactDocument): string {
   if (document.projection.kind === "REPORT") {
+    if (document.profile_id === "semantic-management-agent") {
+      const conclusion = document.projection.sections.find(({ heading }) => heading === "结论");
+      if (!conclusion) {
+        throw new ProductionTeamRuntimeError("TEAM_SEMANTIC_CONCLUSION_MISSING");
+      }
+      return conclusion.body_text;
+    }
     return document.projection.sections.map(({ body_text: bodyText }) => bodyText).join("\n\n");
   }
   if (document.projection.kind === "TABLE") {
@@ -489,30 +486,12 @@ function renderAcceptedArtifact(document: ProductTeamArtifactDocument): string {
 function selectedExecutionOrder(
   input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0],
 ): readonly AgentSpecialistProfileId[] {
-  if (input.admitted_delegations) {
-    return input.admitted_delegations.map(({ profile }) =>
-      agentSpecialistProfileIdSchema.parse(profile.revision.profile_id),
-    );
+  if (input.admitted_delegations.length === 0) {
+    throw new ProductionTeamRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
   }
-  if (!input.dispatch_plan) {
-    return ["semantic-management-agent", "governed-text2sql-agent", "report-writing-agent"];
-  }
-  const selected = input.dispatch_plan.selected_profile_refs.map(({ profile_id: id }) => id);
-  const remaining = new Set(selected);
-  const ordered: AgentSpecialistProfileId[] = [];
-  while (remaining.size > 0) {
-    const ready = selected.find(
-      (profileId) =>
-        remaining.has(profileId) &&
-        input.dispatch_plan?.dependency_edges.every(
-          (edge) => edge.to_profile_id !== profileId || ordered.includes(edge.from_profile_id),
-        ),
-    );
-    if (!ready) throw new ProductionTeamRuntimeError("AGENT_DEPENDENCY_UNSATISFIED");
-    ordered.push(ready);
-    remaining.delete(ready);
-  }
-  return ordered;
+  return input.admitted_delegations.map(({ profile }) =>
+    agentSpecialistProfileIdSchema.parse(profile.revision.profile_id),
+  );
 }
 
 export function createProductionTeamRuntime(
@@ -527,9 +506,8 @@ export function createProductionTeamRuntime(
         const executionOrder = selectedExecutionOrder(input);
         const replayProfileId = executionOrder.at(-1);
         if (!replayProfileId) throw new ProductionTeamRuntimeError("AGENT_DISPATCH_PLAN_INVALID");
-        const replayTaskId =
-          input.admitted_delegations?.at(-1)?.receipt.task_id ??
-          identity(input.lease.run_id, `task:${replayProfileId}`);
+        const replayTaskId = input.admitted_delegations.at(-1)?.receipt.task_id;
+        if (!replayTaskId) throw new ProductionTeamRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
         const loadedReplay = portValue(
           await dependencies.store.loadRun(
             dependencies.capability,
@@ -586,17 +564,15 @@ export function createProductionTeamRuntime(
           goal_revision: 1,
           attempt_id: input.lease.attempt_id,
           worker_fence: input.lease.worker_fence,
-          artifact_refs: input.admitted_delegations
-            ? [
-                ...new Map(
-                  input.admitted_delegations
-                    .flatMap(({ receipt }) => receipt.input_artifact_refs)
-                    .map((reference) => [artifactReferenceIdentity(reference), reference] as const),
-                ).values(),
-              ].sort((left, right) =>
-                artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
-              )
-            : [],
+          artifact_refs: [
+            ...new Map(
+              input.admitted_delegations
+                .flatMap(({ receipt }) => receipt.input_artifact_refs)
+                .map((reference) => [artifactReferenceIdentity(reference), reference] as const),
+            ).values(),
+          ].sort((left, right) =>
+            artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+          ),
           context_epoch_ref: null,
           bounds: taskBounds,
           acceptance: {
@@ -626,32 +602,31 @@ export function createProductionTeamRuntime(
           if (!selectedProfile) {
             throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
           }
+          const admittedDelegation = input.admitted_delegations[executionIndex];
+          if (!admittedDelegation) {
+            throw new ProductionTeamRuntimeError("ROOT_AGENT_DELEGATION_MISSING");
+          }
           const task = await createChild({
             root,
             root_capability: rootCapability,
             profile_id: profileId,
             profile: selectedProfile,
-            ...(input.admitted_delegations?.[executionIndex]
-              ? { delegation: input.admitted_delegations[executionIndex] }
-              : {}),
+            delegation: admittedDelegation,
             lease: input.lease,
             store: dependencies.store,
             capability: dependencies.capability,
             bounds: taskBounds,
           });
           tasks.set(profileId, task);
-          const admittedDelegation = input.admitted_delegations?.[executionIndex] ?? null;
           await emit(input.execution_context, {
             kind: "agent_status",
             key: `team.agent.${task.task_id}.pending`,
             profile_id: profileId,
             task_id: task.task_id,
             status: "PENDING",
-            phase: admittedDelegation ? "root.subagent.selected" : "handoff.committed",
-            title: admittedDelegation?.profile.revision.discovery.display_name ?? profileId,
-            summary: admittedDelegation
-              ? `主 Agent 已选择 Product Profile ${profileId} r${admittedDelegation.profile.revision.revision}；Handoff 已持久化。`
-              : "专职任务与 Handoff 已持久化",
+            phase: "root.subagent.selected",
+            title: admittedDelegation.profile.revision.discovery.display_name,
+            summary: `主 Agent 已选择 Product Profile ${profileId} r${admittedDelegation.profile.revision.revision}；Handoff 已持久化。`,
             duration_ms: null,
             error_code: null,
           });
@@ -665,25 +640,9 @@ export function createProductionTeamRuntime(
         for (const [executionIndex, profileId] of executionOrder.entries()) {
           const task = tasks.get(profileId);
           if (!task) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_TASK_MISSING");
-          const admittedDelegation = input.admitted_delegations?.[executionIndex] ?? null;
-          if (
-            !input.admitted_delegations &&
-            !input.dispatch_plan &&
-            profileId === "semantic-management-agent"
-          ) {
-            await emit(input.execution_context, {
-              kind: "agent_status",
-              key: `team.agent.${task.task_id}.skipped`,
-              profile_id: profileId,
-              task_id: task.task_id,
-              status: "SKIPPED",
-              phase: "semantic.release.ready",
-              title: "Semantic",
-              summary: "Legacy Run 已冻结 Published Semantic Release，无需写 Candidate",
-              duration_ms: 0,
-              error_code: null,
-            });
-            continue;
+          const admittedDelegation = input.admitted_delegations[executionIndex];
+          if (!admittedDelegation) {
+            throw new ProductionTeamRuntimeError("ROOT_AGENT_DELEGATION_MISSING");
           }
           const epoch = await commitContextEpoch({
             task,
@@ -714,13 +673,13 @@ export function createProductionTeamRuntime(
               lease: input.lease,
               execution_context: input.execution_context,
               semantic_context_ref: input.semantic_context_ref,
+              semantic_context_package: input.semantic_context_package,
               accepted_evidence_ref: evidenceRef,
-              dispatch_plan: input.dispatch_plan ?? null,
-              delegation: input.admitted_delegations?.[executionIndex] ?? null,
+              delegation: admittedDelegation,
             }) ?? dependencies.tools;
           if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
           const registry = await createMastraProfileComposition({
-            profiles: [...input.profiles.values()] as AgentProductProfileRegistryItem[],
+            profiles: [...input.profiles.values()],
             tools,
             visibility: {
               emit: (event) => {
@@ -738,19 +697,9 @@ export function createProductionTeamRuntime(
               },
             },
             now: () => now().getTime(),
-            ...(admittedDelegation
-              ? {
-                  execution_tool_allowlists: {
-                    [profileId]: delegationExecutionTools(profileId, admittedDelegation),
-                  },
-                }
-              : input.dispatch_plan?.question_class === "SEMANTIC_READ"
-                ? {
-                    execution_tool_allowlists: {
-                      "semantic-management-agent": ["semantic.catalog.read"],
-                    },
-                  }
-                : {}),
+            execution_tool_allowlists: {
+              [profileId]: delegationExecutionTools(profileId, admittedDelegation),
+            },
           });
           const effect: SideEffectReceipt = portValue(
             await input.execution_context.executeSideEffectOnce({

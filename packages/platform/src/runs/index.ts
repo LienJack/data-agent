@@ -5,7 +5,6 @@ export {
   type SideEffectReceipt,
 } from "../events/postgres-run-event-store.js";
 export * from "../queue/postgres-run-queue.js";
-export { freezeSubagentCapabilityCatalog } from "./agent-dispatch-planner.js";
 export {
   createPostgresEffectiveConfigResolver,
   type EffectiveConfigLookup,
@@ -15,6 +14,7 @@ export {
   type PostgresEffectiveConfigResolver,
   type PostgresEffectiveConfigResolverOptions,
 } from "./effective-config-resolver.js";
+export { freezeSubagentCapabilityCatalog } from "./frozen-subagent-capability-catalog.js";
 export * from "./postgres-agent-dispatch-authority.js";
 export * from "./postgres-resolution-trace.js";
 export * from "./postgres-session-recovery.js";

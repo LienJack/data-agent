@@ -73,7 +73,7 @@ describe("Provider smoke executor", () => {
       guard_running_lease: vi.fn(),
       append_checkpoint_event: vi.fn(),
       append_side_effect_event: vi.fn(),
-      append_display_event: vi.fn(),
+      append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
     });
     const executor = createProviderSmokeExecutor();
 

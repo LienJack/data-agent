@@ -759,129 +759,136 @@ describe("Mastra execution bridge integration", () => {
     },
   );
 
-  it("projects an offline Mastra tool call as a candidate without executing it", async () => {
-    const binding = getModelProviderBinding("openai");
-    let receivedResponseFormat: unknown = "not-called";
-    let receivedToolChoice: unknown = "not-called";
-    let receivedTemperature: unknown = "not-called";
-    const fakeModel = {
-      specificationVersion: "v4",
-      provider: "offline-test",
-      modelId: binding.default_model_id,
-      supportedUrls: {},
-      doGenerate: async () => {
-        throw new Error("The integration uses streaming only.");
-      },
-      doStream: async (options: {
-        readonly responseFormat?: unknown;
-        readonly toolChoice?: unknown;
-        readonly temperature?: unknown;
-      }) => {
-        receivedResponseFormat = options.responseFormat;
-        receivedToolChoice = options.toolChoice;
-        receivedTemperature = options.temperature;
-        return {
-          stream: new ReadableStream({
-            start(controller) {
-              controller.enqueue({
-                type: "stream-start",
-                warnings: [],
-              });
-              controller.enqueue({
-                type: "tool-call",
-                toolCallId: "tool-call-1",
-                toolName: "semantic-query_v1",
-                input: JSON.stringify({ metric: "revenue" }),
-              });
-              controller.enqueue({
-                type: "text-start",
-                id: "text-1",
-              });
-              controller.enqueue({
-                type: "text-delta",
-                id: "text-1",
-                delta: '{"summary":"需要工具候选","confidence":0.5}',
-              });
-              controller.enqueue({
-                type: "text-end",
-                id: "text-1",
-              });
-              controller.enqueue({
-                type: "finish",
-                usage: {
-                  inputTokens: {
-                    total: 8,
-                    noCache: 8,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                  },
-                  outputTokens: {
-                    total: 4,
-                    text: 0,
-                    reasoning: 0,
-                  },
-                },
-                finishReason: {
-                  unified: "tool-calls",
-                  raw: "tool-calls",
-                },
-              });
-              controller.close();
-            },
-          }),
-        };
-      },
-    } as unknown as ReturnType<typeof createProviderRuntimeModel>;
-    const bridge = createMastraModelExecutionBridgeForTesting({
-      credential_resolver: {
-        resolve: async () => "offline-placeholder-credential",
-      },
-      tool_registry: new ServerOwnedToolRegistry([
-        {
-          tool_name: "semantic-query@1",
-          description: "生成受治理语义查询候选。",
-          input_schema: z.strictObject({ metric: z.string() }),
+  it.each([
+    { policy: undefined, expected: { type: "required" } },
+    { policy: "AUTO" as const, expected: { type: "auto" } },
+  ])(
+    "projects an offline Mastra tool call without executing it ($policy)",
+    async ({ policy, expected }) => {
+      const binding = getModelProviderBinding("openai");
+      let receivedResponseFormat: unknown = "not-called";
+      let receivedToolChoice: unknown = "not-called";
+      let receivedTemperature: unknown = "not-called";
+      const fakeModel = {
+        specificationVersion: "v4",
+        provider: "offline-test",
+        modelId: binding.default_model_id,
+        supportedUrls: {},
+        doGenerate: async () => {
+          throw new Error("The integration uses streaming only.");
         },
-      ]),
-      response_schema_registry: responseSchemaRegistry,
-      input_token_counter: trustedInputTokenCounter,
-      runtime_model_factory: (() => fakeModel) as typeof createProviderRuntimeModel,
-    });
-    const adapter = new MastraModelProviderAdapter({
-      bridge,
-      dispatch_marker: { mark_dispatched: async () => undefined },
-      authorization: "LEGACY_TEST_ONLY",
-    });
-    const events = [];
+        doStream: async (options: {
+          readonly responseFormat?: unknown;
+          readonly toolChoice?: unknown;
+          readonly temperature?: unknown;
+        }) => {
+          receivedResponseFormat = options.responseFormat;
+          receivedToolChoice = options.toolChoice;
+          receivedTemperature = options.temperature;
+          return {
+            stream: new ReadableStream({
+              start(controller) {
+                controller.enqueue({
+                  type: "stream-start",
+                  warnings: [],
+                });
+                controller.enqueue({
+                  type: "tool-call",
+                  toolCallId: "tool-call-1",
+                  toolName: "semantic-query_v1",
+                  input: JSON.stringify({ metric: "revenue" }),
+                });
+                controller.enqueue({
+                  type: "text-start",
+                  id: "text-1",
+                });
+                controller.enqueue({
+                  type: "text-delta",
+                  id: "text-1",
+                  delta: '{"summary":"需要工具候选","confidence":0.5}',
+                });
+                controller.enqueue({
+                  type: "text-end",
+                  id: "text-1",
+                });
+                controller.enqueue({
+                  type: "finish",
+                  usage: {
+                    inputTokens: {
+                      total: 8,
+                      noCache: 8,
+                      cacheRead: 0,
+                      cacheWrite: 0,
+                    },
+                    outputTokens: {
+                      total: 4,
+                      text: 0,
+                      reasoning: 0,
+                    },
+                  },
+                  finishReason: {
+                    unified: "tool-calls",
+                    raw: "tool-calls",
+                  },
+                });
+                controller.close();
+              },
+            }),
+          };
+        },
+      } as unknown as ReturnType<typeof createProviderRuntimeModel>;
+      const bridge = createMastraModelExecutionBridgeForTesting({
+        credential_resolver: {
+          resolve: async () => "offline-placeholder-credential",
+        },
+        tool_registry: new ServerOwnedToolRegistry([
+          {
+            tool_name: "semantic-query@1",
+            description: "生成受治理语义查询候选。",
+            input_schema: z.strictObject({ metric: z.string() }),
+          },
+        ]),
+        response_schema_registry: responseSchemaRegistry,
+        input_token_counter: trustedInputTokenCounter,
+        ...(policy ? { tool_choice_policy: policy } : {}),
+        runtime_model_factory: (() => fakeModel) as typeof createProviderRuntimeModel,
+      });
+      const adapter = new MastraModelProviderAdapter({
+        bridge,
+        dispatch_marker: { mark_dispatched: async () => undefined },
+        authorization: "LEGACY_TEST_ONLY",
+      });
+      const events = [];
 
-    for await (const event of adapter.stream(
-      await makeInvocation(binding, {
-        tool_allowlist: ["semantic-query@1"],
-        max_tool_calls: 1,
-        temperature: 0,
-      }),
-    )) {
-      events.push(event);
-    }
+      for await (const event of adapter.stream(
+        await makeInvocation(binding, {
+          tool_allowlist: ["semantic-query@1"],
+          max_tool_calls: 1,
+          temperature: 0,
+        }),
+      )) {
+        events.push(event);
+      }
 
-    expect(events.map((event) => event.event_type)).toEqual([
-      "STARTED",
-      "TOOL_CALL_CANDIDATE",
-      "TEXT_DELTA",
-      "COMPLETED",
-    ]);
-    expect(events[1]).toMatchObject({
-      event_type: "TOOL_CALL_CANDIDATE",
-      tool_call_id: "tool-call-1",
-      tool_name: "semantic-query@1",
-      arguments: { metric: "revenue" },
-    });
-    expect(receivedResponseFormat).toBeUndefined();
-    expect(receivedToolChoice).toEqual({ type: "required" });
-    expect(receivedTemperature).toBe(0);
-    expect(events.at(-1)).toMatchObject({
-      event_type: "COMPLETED",
-      output_text: '{"summary":"需要工具候选","confidence":0.5}',
-    });
-  });
+      expect(events.map((event) => event.event_type)).toEqual([
+        "STARTED",
+        "TOOL_CALL_CANDIDATE",
+        "TEXT_DELTA",
+        "COMPLETED",
+      ]);
+      expect(events[1]).toMatchObject({
+        event_type: "TOOL_CALL_CANDIDATE",
+        tool_call_id: "tool-call-1",
+        tool_name: "semantic-query@1",
+        arguments: { metric: "revenue" },
+      });
+      expect(receivedResponseFormat).toMatchObject({ type: "json" });
+      expect(receivedToolChoice).toEqual(expected);
+      expect(receivedTemperature).toBe(0);
+      expect(events.at(-1)).toMatchObject({
+        event_type: "COMPLETED",
+        output_text: '{"summary":"需要工具候选","confidence":0.5}',
+      });
+    },
+  );
 });

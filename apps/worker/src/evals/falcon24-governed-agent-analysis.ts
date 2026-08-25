@@ -1,16 +1,16 @@
 import {
-  type AnalysisContext,
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV3,
   artifactReferenceFor,
   artifactReferenceIdentity,
   buildArtifactWorkspaceChartDocumentV3,
-  type Falcon24AgentAnalysisCase,
-  type PortResult,
   type ResearchBriefV3Payload,
   researchBriefV3PayloadSchema,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import type { AnalysisContext } from "@data-agent/contracts/context";
+import type { Falcon24AgentAnalysisCase } from "@data-agent/contracts/evals";
+import type { PortResult } from "@data-agent/contracts/ports";
 import {
   buildFalcon24AnalysisChartProjection,
   FALCON24_ANALYSIS_CHART_VERSION,
@@ -19,7 +19,7 @@ import {
 import { z } from "zod";
 import { deterministicAnalysisUuid } from "../analysis/deterministic-id.js";
 import type { AnalysisArtifactCommitPort, AnalysisExecutionResult } from "../analysis/executor.js";
-import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
+import type { GovernedAgentAnalysisPort } from "../analysis/governed-agent-analysis-port.js";
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { compileFalcon24AnalysisContext } from "./falcon24-analysis-context.js";
 import {

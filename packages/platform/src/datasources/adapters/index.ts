@@ -1,3 +1,4 @@
+export { buildBuiltinDatasourceAdapterDescriptors } from "../adapter-registry.js";
 export * from "./clickhouse.js";
 export * from "./clickhouse-transport.js";
 export * from "./common.js";
@@ -6,6 +7,7 @@ export * from "./duckdb-transport.js";
 export * from "./mysql.js";
 export * from "./mysql-transport.js";
 export * from "./postgresql.js";
+export * from "./postgresql-text2sql-policy.js";
 export * from "./postgresql-transport.js";
 export * from "./sqlite.js";
 export * from "./sqlite-transport.js";

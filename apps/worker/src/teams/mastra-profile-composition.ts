@@ -4,12 +4,13 @@ import {
   TeamWorkflowRegistry,
 } from "@data-agent/agent-runtime";
 import {
-  type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   type AgentSpecialistProfileId,
   type ArtifactReference,
+  agentSpecialistProfileIdSchema,
   artifactReferenceIdentity,
   type PortResult,
-  verifyAgentProductProfileRevision,
+  verifyAgentProductProfileRevisionV2,
 } from "@data-agent/contracts";
 import type { RunDisplayEventInput } from "../runs/run-worker-runner.js";
 
@@ -21,7 +22,7 @@ export interface ProductProfileToolResult {
 export interface ProductProfileToolPort {
   invoke(input: {
     readonly task: TeamTaskV2;
-    readonly profile: AgentProductProfileRegistryItem;
+    readonly profile: AgentProductProfileRegistryItemV2;
     readonly tool_id: string;
     readonly context_epoch: Readonly<{ epoch_id: string; build_signature: string }>;
     readonly signal?: AbortSignal;
@@ -76,6 +77,9 @@ function visibleToolPort(input: {
 }): ProductProfileToolPort {
   return {
     async invoke(invocation) {
+      const profileId = agentSpecialistProfileIdSchema.parse(
+        invocation.profile.revision.profile_id,
+      );
       const callId = `${invocation.task.task_id}:${invocation.tool_id}`;
       const key = `team.tool.${invocation.task.task_id}.${invocation.tool_id}`;
       const startedAt = input.now();
@@ -85,12 +89,12 @@ function visibleToolPort(input: {
         call_id: callId,
         tool_name: invocation.tool_id,
         title: invocation.tool_id,
-        summary: `${invocation.profile.revision.profile_id} 正在调用受治理工具`,
-        profile_id: invocation.profile.revision.profile_id,
+        summary: `${profileId} 正在调用受治理工具`,
+        profile_id: profileId,
         task_id: invocation.task.task_id,
         artifact_refs: [],
         input: JSON.stringify({
-          profile_id: invocation.profile.revision.profile_id,
+          profile_id: profileId,
           task_id: invocation.task.task_id,
           tool_id: invocation.tool_id,
         }),
@@ -104,7 +108,7 @@ function visibleToolPort(input: {
           call_id: callId,
           tool_name: invocation.tool_id,
           summary: "受治理工具调用已完成",
-          profile_id: invocation.profile.revision.profile_id,
+          profile_id: profileId,
           task_id: invocation.task.task_id,
           artifact_refs: [...result.public_artifact_refs],
           output: result.output_ref
@@ -128,7 +132,7 @@ function visibleToolPort(input: {
           tool_name: invocation.tool_id,
           summary: "受治理工具调用失败",
           error_code: "TEAM_TOOL_EXECUTION_FAILED",
-          profile_id: invocation.profile.revision.profile_id,
+          profile_id: profileId,
           task_id: invocation.task.task_id,
           artifact_refs: [],
           output: null,
@@ -141,34 +145,20 @@ function visibleToolPort(input: {
   };
 }
 
-const profileIds = [
-  "governed-text2sql-agent",
-  "report-writing-agent",
-  "semantic-management-agent",
-] as const;
-
-export async function verifyProductProfileSet(
-  items: readonly AgentProductProfileRegistryItem[],
-): Promise<ReadonlyMap<AgentSpecialistProfileId, AgentProductProfileRegistryItem>> {
-  if (
-    items.length !== profileIds.length ||
-    items.some(({ revision }, index) => revision.profile_id !== profileIds[index])
-  ) {
-    throw new TypeError("TEAM_PRODUCT_PROFILE_SET_INCOMPLETE");
-  }
-  return verifySelectedProductProfiles(items);
-}
-
 export async function verifySelectedProductProfiles(
-  items: readonly AgentProductProfileRegistryItem[],
-): Promise<ReadonlyMap<AgentSpecialistProfileId, AgentProductProfileRegistryItem>> {
-  const profiles = new Map<AgentSpecialistProfileId, AgentProductProfileRegistryItem>();
+  items: readonly AgentProductProfileRegistryItemV2[],
+): Promise<ReadonlyMap<AgentSpecialistProfileId, AgentProductProfileRegistryItemV2>> {
+  const profiles = new Map<AgentSpecialistProfileId, AgentProductProfileRegistryItemV2>();
   for (const item of items) {
-    const revision = await verifyAgentProductProfileRevision(item.revision);
+    const revision = await verifyAgentProductProfileRevisionV2(item.revision);
+    const profileId = agentSpecialistProfileIdSchema.safeParse(revision.profile_id);
+    if (!profileId.success) {
+      throw new TypeError("SUBAGENT_RUNTIME_PROFILE_UNSUPPORTED");
+    }
     let runtime: ReturnType<typeof getAgentProfileRevisionExact>;
     try {
       runtime = getAgentProfileRevisionExact(
-        revision.profile_id,
+        profileId.data,
         revision.runtime_profile_ref.revision,
         revision.runtime_profile_ref.profile_hash,
       );
@@ -187,16 +177,16 @@ export async function verifySelectedProductProfiles(
     ) {
       throw new TypeError("TEAM_PRODUCT_PROFILE_NOT_CURRENT");
     }
-    if (profiles.has(revision.profile_id)) {
+    if (profiles.has(profileId.data)) {
       throw new TypeError("TEAM_PRODUCT_PROFILE_DUPLICATE");
     }
-    profiles.set(revision.profile_id, item);
+    profiles.set(profileId.data, item);
   }
   return profiles;
 }
 
 export async function createMastraProfileComposition(input: {
-  readonly profiles: readonly AgentProductProfileRegistryItem[];
+  readonly profiles: readonly AgentProductProfileRegistryItemV2[];
   readonly tools: ProductProfileToolPort;
   readonly visibility: ProductProfileToolVisibilityPort;
   readonly now?: () => number;

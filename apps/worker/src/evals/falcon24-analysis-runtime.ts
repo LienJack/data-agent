@@ -1,9 +1,6 @@
-import {
-  type ArtifactReference,
-  artifactReferenceSchema,
-  type ResearchArtifactAuthorityPort,
-  type RunWorkLease,
-} from "@data-agent/contracts";
+import { type ArtifactReference, artifactReferenceSchema } from "@data-agent/contracts/artifacts";
+import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports";
+import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
 import type { SqlPool } from "@data-agent/platform/persistence";
 import { z } from "zod";
@@ -17,6 +14,7 @@ import {
   type AnalysisArtifactCommitPort,
   createAnalysisProgramExecutor,
 } from "../analysis/executor.js";
+import type { GovernedAgentAnalysisPort } from "../analysis/governed-agent-analysis-port.js";
 import {
   type AnalysisInputSensitiveArtifactAuthority,
   createAnalysisInputMaterializer,
@@ -34,7 +32,6 @@ import {
 } from "../analysis/research-artifact-port.js";
 import { createEnvironmentOpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
-import type { GovernedAgentAnalysisPort } from "../teams/direct-qa-analysis-executor.js";
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
 import { falcon24AnalysisProgramInternals } from "./falcon24-analysis-program.js";

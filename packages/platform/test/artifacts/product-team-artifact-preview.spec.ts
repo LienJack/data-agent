@@ -7,7 +7,7 @@ const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStar
 describe("Product Team Artifact preview", () => {
   it("projects an exact AnalysisReport reference without raw Tool output fallback", async () => {
     const document = await buildProductTeamArtifactDocument({
-      schema_version: "product-team-artifact@1.0.0",
+      schema_version: "product-team-artifact@2.0.0",
       artifact_ref: {
         artifact_id: id(1),
         artifact_type: "AnalysisReport",
@@ -21,6 +21,7 @@ describe("Product Team Artifact preview", () => {
       profile_id: "report-writing-agent",
       task_id: id(5),
       source_refs: [],
+      provenance: null,
       projection: {
         kind: "REPORT",
         title: "E-commerce 数据库表数量",

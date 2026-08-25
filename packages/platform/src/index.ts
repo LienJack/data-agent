@@ -76,7 +76,6 @@ export {
   type PostgresResearchResourceInvocation,
   type PostgresResearchResourceInvocationOptions,
 } from "./research/postgres-research-resource-invocation.js";
-export { freezeSubagentCapabilityCatalog } from "./runs/agent-dispatch-planner.js";
 export {
   createPostgresEffectiveConfigResolver,
   type EffectiveConfigLookup,
@@ -86,6 +85,7 @@ export {
   type PostgresEffectiveConfigResolver,
   type PostgresEffectiveConfigResolverOptions,
 } from "./runs/effective-config-resolver.js";
+export { freezeSubagentCapabilityCatalog } from "./runs/frozen-subagent-capability-catalog.js";
 export * from "./runs/postgres-agent-dispatch-authority.js";
 export * from "./runs/postgres-resolution-trace.js";
 export * from "./runs/postgres-session-recovery.js";

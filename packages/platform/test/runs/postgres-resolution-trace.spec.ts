@@ -188,7 +188,7 @@ async function sqlArtifactRow() {
 
 async function productTeamSqlArtifactRow() {
   const document = await buildProductTeamArtifactDocument({
-    schema_version: "product-team-artifact@1.0.0",
+    schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
       artifact_id: ids.sql,
       artifact_type: "SqlArtifact",
@@ -200,6 +200,20 @@ async function productTeamSqlArtifactRow() {
     profile_id: "governed-text2sql-agent",
     task_id: ids.attempt,
     source_refs: [],
+    provenance: {
+      kind: "TEXT2SQL_CANDIDATE",
+      candidate_hash: hash("1"),
+      parameters_hash: hash("2"),
+      parameter_count: 0,
+      datasource_ref: {
+        resource_id: id(20),
+        resource_revision: 1,
+        resource_hash: hash("3"),
+      },
+      schema_snapshot_ref: { resource_id: id(21), resource_hash: hash("4") },
+      semantic_context_ref: { package_id: id(22), package_hash: hash("5") },
+      target_binding_hash: hash("6"),
+    },
     projection: {
       kind: "SQL",
       dialect: "postgresql",

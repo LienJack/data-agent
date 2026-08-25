@@ -95,6 +95,15 @@ async function resolveScope(pool: pg.Pool) {
   } as const;
 }
 
+function falconWorkspaceScope(scope: Awaited<ReturnType<typeof resolveScope>>) {
+  return {
+    appId: scope.appId,
+    workspaceId: scope.workspaceId,
+    environment: scope.environment,
+    principalId: scope.principalId,
+  } as const;
+}
+
 function csvCell(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
 }
@@ -143,7 +152,7 @@ try {
       await client.query("begin");
       const result = await attachFalconToWorkspace(
         client,
-        scope,
+        falconWorkspaceScope(scope),
         resolveFalconConnectionConfiguration(process.env, scope.environment),
       );
       await client.query("commit");
@@ -156,7 +165,7 @@ try {
     }
   } else if (command === "workspace:verify") {
     const scope = await resolveScope(pool);
-    report(await verifyFalconWorkspace(pool, scope));
+    report(await verifyFalconWorkspace(pool, falconWorkspaceScope(scope)));
   } else if (command === "semantic:publish") {
     const scope = await resolveScope(pool);
     const currentResult = await pool.query<{

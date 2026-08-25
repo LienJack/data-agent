@@ -4,10 +4,8 @@ import {
   admitRootAgentDelegations,
 } from "@data-agent/agent-runtime";
 import {
-  type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   type ArtifactReference,
-  buildAgentDispatchPlan,
-  buildAgentProductProfileRevisionV2,
   buildProductTeamArtifactDocument,
   buildSubagentCapabilityCatalogSnapshot,
   type ProductTeamArtifactDocument,
@@ -20,10 +18,7 @@ import type {
   RunSideEffectExecutionIdentity,
 } from "../../src/runs/run-worker-runner.js";
 import { buildBuiltinTeamMaterialization } from "../../src/teams/builtin-profile-assets.js";
-import {
-  createProductionTeamRuntime,
-  productionTeamRuntimeInternals,
-} from "../../src/teams/production-team-runtime.js";
+import { createProductionTeamRuntime } from "../../src/teams/production-team-runtime.js";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
@@ -50,9 +45,7 @@ function resources(offset: number) {
   >;
 }
 
-async function profiles(): Promise<
-  ReadonlyMap<(typeof profileIds)[number], AgentProductProfileRegistryItem>
-> {
+async function profiles(): Promise<ReadonlyMap<string, AgentProductProfileRegistryItemV2>> {
   const materialized = await buildBuiltinTeamMaterialization({
     scope,
     model_profile_refs: resources(10),
@@ -63,10 +56,10 @@ async function profiles(): Promise<
     materialized.profile_revisions.map((revision) => [
       revision.profile_id,
       {
-        schema_version: "agent-product-profile-registry-item@1.0.0" as const,
+        schema_version: "agent-product-profile-registry-item@2.0.0" as const,
         revision,
         head: {
-          schema_version: "agent-product-profile-head@1.0.0" as const,
+          schema_version: "agent-product-profile-head@2.0.0" as const,
           scope,
           profile_id: revision.profile_id,
           active_revision: revision.revision,
@@ -80,51 +73,9 @@ async function profiles(): Promise<
   );
 }
 
-async function admittedSemanticDelegation(
-  legacy: AgentProductProfileRegistryItem,
-): Promise<AdmittedSubagentDelegation> {
-  const revision = await buildAgentProductProfileRevisionV2({
-    schema_version: "agent-product-profile-revision@2.0.0",
-    scope,
-    profile_id: legacy.revision.profile_id,
-    revision: legacy.revision.revision,
-    discovery: {
-      schema_version: "subagent-discovery-descriptor@1.0.0",
-      display_name: "Semantic Graph Reader",
-      description: "Reads the governed semantic graph and explains first-class relationships.",
-      when_to_use: ["Use for governed semantic relationship and dependency questions."],
-      when_not_to_use: ["Do not use for row-level aggregation queries."],
-      examples: [],
-      accepted_input_artifact_types: [],
-      produced_artifact_types: ["AnalysisReport"],
-      access_mode: "READ_ONLY",
-    },
-    runtime_profile_ref: legacy.revision.runtime_profile_ref,
-    model_profile_ref: legacy.revision.model_profile_ref,
-    prompt_ref: legacy.revision.prompt_ref,
-    workflow_ref: legacy.revision.workflow_ref,
-    direct_tool_allowlist: ["semantic.candidate.write", "semantic.catalog.read"],
-    skill_refs: legacy.revision.skill_refs,
-    context_policy_ref: legacy.revision.context_policy_ref,
-    execution_safety_policy_ref: legacy.revision.execution_safety_policy_ref,
-    expected_output_artifact_types: ["AnalysisReport"],
-    verifier_contract_hash: legacy.revision.verifier_contract_hash,
-    approval_status: "APPROVED",
-  });
-  const profile = {
-    schema_version: "agent-product-profile-registry-item@2.0.0" as const,
-    revision,
-    head: {
-      schema_version: "agent-product-profile-head@2.0.0" as const,
-      scope,
-      profile_id: revision.profile_id,
-      active_revision: revision.revision,
-      active_revision_hash: revision.revision_hash,
-      lifecycle: "ENABLED" as const,
-      version: 1,
-      updated_at: "2026-08-18T12:00:00.000Z",
-    },
-  };
+async function admittedDelegations(
+  selected: readonly AgentProductProfileRegistryItemV2[],
+): Promise<readonly AdmittedSubagentDelegation[]> {
   const catalog = await buildSubagentCapabilityCatalogSnapshot({
     schema_version: "subagent-capability-catalog-snapshot@1.0.0",
     catalog_id: id(97),
@@ -132,7 +83,11 @@ async function admittedSemanticDelegation(
     run_id: id(50),
     principal_id: id(3),
     policy_version: "subagent-catalog@1",
-    items: [await projectSubagentCapabilityCatalogItem(profile)],
+    items: await Promise.all(
+      [...selected]
+        .sort((left, right) => left.revision.profile_id.localeCompare(right.revision.profile_id))
+        .map(projectSubagentCapabilityCatalogItem),
+    ),
   });
   const admitted = await admitRootAgentDelegations({
     decision: {
@@ -141,47 +96,51 @@ async function admittedSemanticDelegation(
       scope,
       run_id: id(50),
       catalog_snapshot_hash: catalog.snapshot_hash,
-      public_summary: "选择只读语义图专员回答关系问题。",
-      tool_calls: [
-        {
-          tool_name: "delegate_to_subagent@1",
-          tool_call_id: "semantic-read-1",
-          profile_id: revision.profile_id,
-          objective: "读取冻结语义图并说明表之间的依赖关系。",
-          requested_artifact_types: ["AnalysisReport"],
-          input_artifact_refs: [],
-          requested_budget: {
-            timeout_ms: 60_000,
-            max_steps: 2,
-            max_input_tokens: 4_096,
-            max_output_tokens: 2_048,
-            max_tool_calls: 1,
-            max_context_bytes: 16_384,
-          },
+      public_summary: "选择冻结目录中的专职 Agent 完成受治理任务。",
+      tool_calls: selected.map(({ revision }, index) => ({
+        tool_name: "delegate_to_subagent@1",
+        tool_call_id: `specialist-${index + 1}`,
+        profile_id: revision.profile_id,
+        objective: `执行 ${revision.discovery.display_name} 的冻结职责。`,
+        requested_artifact_types: revision.expected_output_artifact_types,
+        input_artifact_refs: [],
+        requested_budget: {
+          timeout_ms: 60_000,
+          max_steps: revision.direct_tool_allowlist.length + 1,
+          max_input_tokens: 4_096,
+          max_output_tokens: 2_048,
+          max_tool_calls: revision.direct_tool_allowlist.length,
+          max_context_bytes: 16_384,
         },
-      ],
+      })),
     },
     catalog,
-    profiles: [profile],
+    profiles: selected,
     run_ceiling: {
       timeout_ms: 60_000,
       max_steps: 4,
       max_input_tokens: 8_192,
       max_output_tokens: 4_096,
-      max_tool_calls: 4,
+      max_tool_calls: 8,
       max_context_bytes: 32_768,
     },
-    profile_ceiling: () => ({
+    profile_ceiling: (profile) => ({
       timeout_ms: 60_000,
-      max_steps: 2,
+      max_steps: profile.revision.direct_tool_allowlist.length + 1,
       max_input_tokens: 4_096,
       max_output_tokens: 2_048,
-      max_tool_calls: 1,
+      max_tool_calls: profile.revision.direct_tool_allowlist.length,
       max_context_bytes: 16_384,
     }),
     artifact_is_accepted: async () => true,
   });
-  const delegation = admitted[0];
+  return admitted;
+}
+
+async function admittedSemanticDelegation(
+  profile: AgentProductProfileRegistryItemV2,
+): Promise<AdmittedSubagentDelegation> {
+  const delegation = (await admittedDelegations([profile]))[0];
   if (!delegation) throw new TypeError("missing admitted semantic delegation fixture");
   return delegation;
 }
@@ -197,6 +156,19 @@ function reference(
     run_id: id(50),
     revision: 1,
     content_hash: hash(artifactType === "AnalysisReport" ? "a" : "e"),
+  };
+}
+
+function queryProvenance() {
+  return {
+    kind: "GOVERNED_QUERY_RESULT" as const,
+    query_id: id(70),
+    request_hash: hash("1"),
+    result_hash: hash("2"),
+    row_count: 1,
+    byte_count: 32,
+    elapsed_ms: 4,
+    truncated: false as const,
   };
 }
 
@@ -324,6 +296,11 @@ describe("Production Team runtime", () => {
   });
 
   it("persists team transitions before public status and accepts committed specialist outputs", async () => {
+    const profileMap = await profiles();
+    const text2sql = profileMap.get("governed-text2sql-agent");
+    const report = profileMap.get("report-writing-agent");
+    if (!text2sql || !report) throw new TypeError("missing Root delegation fixtures");
+    const delegations = await admittedDelegations([text2sql, report]);
     const calls: Array<{ operation: string; document: unknown }> = [];
     const events: unknown[] = [];
     const invoked: string[] = [];
@@ -338,11 +315,12 @@ describe("Production Team runtime", () => {
           if (tool_id === "sql.sandbox.execute") {
             const output = reference("QueryEvidence", id(82));
             const document = await buildProductTeamArtifactDocument({
-              schema_version: "product-team-artifact@1.0.0",
+              schema_version: "product-team-artifact@2.0.0",
               artifact_ref: output,
               profile_id: "governed-text2sql-agent",
               task_id: task.task_id,
-              source_refs: [],
+              source_refs: [reference("SqlArtifact", id(81))],
+              provenance: queryProvenance(),
               projection: {
                 kind: "TABLE",
                 columns: [{ key: "table_count", label: "table_count", data_type: "NUMBER" }],
@@ -358,11 +336,12 @@ describe("Production Team runtime", () => {
           if (tool_id === "report.project") {
             const output = reference("AnalysisReport", id(83));
             const document = await buildProductTeamArtifactDocument({
-              schema_version: "product-team-artifact@1.0.0",
+              schema_version: "product-team-artifact@2.0.0",
               artifact_ref: output,
               profile_id: "report-writing-agent",
               task_id: task.task_id,
               source_refs: [reference("QueryEvidence", id(82))],
+              provenance: null,
               projection: {
                 kind: "REPORT",
                 title: "E-commerce 数据库表数量",
@@ -389,7 +368,12 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: lease(),
-        profiles: await profiles(),
+        profiles: new Map([
+          ["governed-text2sql-agent", text2sql],
+          ["report-writing-agent", report],
+        ]),
+        admitted_delegations: delegations,
+        semantic_context_package: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
@@ -416,7 +400,7 @@ describe("Production Team runtime", () => {
         "COMMIT_ACCEPTANCE",
       ]),
     );
-    expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(3);
+    expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(2);
     expect(calls.filter(({ operation }) => operation === "COMMIT_ACCEPTANCE")).toHaveLength(2);
     expect(invoked).toEqual([
       "governed-text2sql-agent:semantic.release.read",
@@ -431,8 +415,6 @@ describe("Production Team runtime", () => {
     expect(statuses).toEqual([
       "PENDING",
       "PENDING",
-      "PENDING",
-      "SKIPPED",
       "RUNNING",
       "COMPLETED",
       "RUNNING",
@@ -444,13 +426,19 @@ describe("Production Team runtime", () => {
     const calls: Array<{ operation: string; document: unknown }> = [];
     const events: unknown[] = [];
     const tool = vi.fn();
-    const taskId = productionTeamRuntimeInternals.identity(id(50), "task:report-writing-agent");
+    const profileMap = await profiles();
+    const report = profileMap.get("report-writing-agent");
+    if (!report) throw new TypeError("missing replay Profile fixture");
+    const delegations = await admittedDelegations([report]);
+    const taskId = delegations[0]?.receipt.task_id;
+    if (!taskId) throw new TypeError("missing replay delegation fixture");
     const document = await buildProductTeamArtifactDocument({
-      schema_version: "product-team-artifact@1.0.0",
+      schema_version: "product-team-artifact@2.0.0",
       artifact_ref: reference("AnalysisReport", id(90)),
       profile_id: "report-writing-agent",
       task_id: taskId,
       source_refs: [reference("QueryEvidence", id(89))],
+      provenance: null,
       projection: {
         kind: "REPORT",
         title: "已验收重放",
@@ -474,7 +462,9 @@ describe("Production Team runtime", () => {
     await expect(
       runtime.execute({
         lease: lease(),
-        profiles: await profiles(),
+        profiles: new Map([["report-writing-agent", report]]),
+        admitted_delegations: delegations,
+        semantic_context_package: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
@@ -502,34 +492,7 @@ describe("Production Team runtime", () => {
     const text2sql = profileMap.get("governed-text2sql-agent");
     const report = profileMap.get("report-writing-agent");
     if (!text2sql || !report) throw new TypeError("missing adaptive Report fixtures");
-    const plan = await buildAgentDispatchPlan({
-      schema_version: "agent-dispatch-plan@1.0.0",
-      plan_id: id(92),
-      run_id: id(50),
-      question_class: "REPORT",
-      mode: "TEAM",
-      selected_profile_refs: [text2sql, report].map(({ revision }) => ({
-        profile_id: revision.profile_id,
-        revision: revision.revision,
-        revision_hash: revision.revision_hash,
-      })),
-      dependency_edges: [
-        {
-          from_profile_id: "governed-text2sql-agent",
-          to_profile_id: "report-writing-agent",
-          evidence_requirement: "ACCEPTED_QUERY_EVIDENCE",
-        },
-      ],
-      required_evidence: [
-        "ACCEPTED_QUERY_EVIDENCE",
-        "ACCEPTED_REPORT_ARTIFACT",
-        "FROZEN_SEMANTIC_RELEASE",
-      ],
-      reason_codes: ["REPORT_SPECIALIST_REQUIRED"],
-      capability_snapshot_hash: hash("4"),
-      policy_version: "adaptive-routing@1.0.0+rollout.2",
-      direct_admissibility_receipt: null,
-    });
+    const delegations = await admittedDelegations([text2sql, report]);
     const calls: Array<{ operation: string; document: unknown }> = [];
     const events: unknown[] = [];
     const documents = new Map<string, ProductTeamArtifactDocument>();
@@ -542,11 +505,12 @@ describe("Production Team runtime", () => {
           if (tool_id === "sql.sandbox.execute") {
             const output = reference("QueryEvidence", id(93));
             const document = await buildProductTeamArtifactDocument({
-              schema_version: "product-team-artifact@1.0.0",
+              schema_version: "product-team-artifact@2.0.0",
               artifact_ref: output,
               profile_id: "governed-text2sql-agent",
               task_id: task.task_id,
-              source_refs: [],
+              source_refs: [reference("SqlArtifact", id(91))],
+              provenance: queryProvenance(),
               projection: {
                 kind: "TABLE",
                 columns: [{ key: "value", label: "value", data_type: "NUMBER" }],
@@ -562,11 +526,12 @@ describe("Production Team runtime", () => {
           if (tool_id === "report.project") {
             const output = reference("AnalysisReport", id(94));
             const document = await buildProductTeamArtifactDocument({
-              schema_version: "product-team-artifact@1.0.0",
+              schema_version: "product-team-artifact@2.0.0",
               artifact_ref: output,
               profile_id: "report-writing-agent",
               task_id: task.task_id,
               source_refs: [reference("QueryEvidence", id(93))],
+              provenance: null,
               projection: {
                 kind: "REPORT",
                 title: "Adaptive Report",
@@ -597,7 +562,8 @@ describe("Production Team runtime", () => {
           ["governed-text2sql-agent", text2sql],
           ["report-writing-agent", report],
         ]),
-        dispatch_plan: plan,
+        admitted_delegations: delegations,
+        semantic_context_package: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
@@ -643,15 +609,16 @@ describe("Production Team runtime", () => {
           invoked.push(tool_id);
           const output = reference("AnalysisReport", id(96));
           const document = await buildProductTeamArtifactDocument({
-            schema_version: "product-team-artifact@1.0.0",
+            schema_version: "product-team-artifact@2.0.0",
             artifact_ref: output,
             profile_id: "semantic-management-agent",
             task_id: task.task_id,
             source_refs: [],
+            provenance: null,
             projection: {
               kind: "REPORT",
               title: "冻结语义层说明",
-              sections: [{ heading: "语义层", body_text: "只读语义层。", source_refs: [] }],
+              sections: [{ heading: "结论", body_text: "只读语义层。", source_refs: [] }],
             },
             committed_at: "2026-08-18T12:00:00.000Z",
           });
@@ -669,8 +636,8 @@ describe("Production Team runtime", () => {
       runtime.execute({
         lease: lease(),
         profiles: new Map([["semantic-management-agent", semantic]]),
-        dispatch_plan: null,
         admitted_delegations: [delegation],
+        semantic_context_package: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),

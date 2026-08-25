@@ -1,0 +1,336 @@
+import type { Text2SqlQueryCandidate, WorkspaceDatasource } from "@data-agent/contracts";
+import { createPhysicalSchemaSnapshot } from "@data-agent/platform/catalog";
+import { describe, expect, it, vi } from "vitest";
+import {
+  createPostgresqlText2SqlQueryRuntime,
+  postgresqlText2SqlQueryRuntimeInternals,
+} from "../../src/teams/postgresql-text2sql-query-runtime.js";
+import { buildWorkerEffectiveConfigFixture } from "../runs/support/effective-config-fixture.js";
+
+const id = (suffix: number) => `94000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
+const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
+const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+
+function column(name: string, ordinal: number, type = "text") {
+  return {
+    column_name: name,
+    ordinal_position: ordinal,
+    formatted_type: type,
+    type_identity: {
+      type_schema: "pg_catalog",
+      type_name: type === "integer" ? "int4" : "text",
+      type_kind: "BASE" as const,
+      array_dimensions: 0,
+    },
+    nullable: false,
+    default_expression: null,
+    identity_generation: null,
+    generated_expression: null,
+    comment: null,
+  };
+}
+
+async function fixture() {
+  const baseConfig = await buildWorkerEffectiveConfigFixture({
+    scope,
+    workspace_id: scope.tenant_id,
+    principal_id: id(3),
+    run_id: id(4),
+  });
+  const snapshot = await createPhysicalSchemaSnapshot({
+    schema_version: "physical-schema-snapshot-draft@1.0.0",
+    snapshot_id: baseConfig.schema_snapshot.resource_id,
+    scan_run_id: id(5),
+    captured_at: "2026-08-25T00:00:00.000Z",
+    content: {
+      schema_version: "physical-schema-content@1.0.0",
+      datasource_id: baseConfig.datasource.resource_id,
+      datasource_fingerprint: hash("a"),
+      engine: "postgresql",
+      engine_version: { major: 17, minor: 0 },
+      database_identity: { database_name: "falcon", database_oid: 24 },
+      included_schemas: ["falcon_db_24"],
+      relations: [
+        {
+          identity: { schema_name: "falcon_db_24", relation_name: "orders" },
+          relation_kind: "TABLE",
+          comment: "Orders",
+          columns: [column("customer_id", 1), column("amount", 2, "integer")],
+          primary_key: null,
+          foreign_keys: [],
+          unique_constraints: [],
+          check_constraints: [],
+          indexes: [],
+        },
+      ],
+    },
+  });
+  const datasource: WorkspaceDatasource = {
+    schema_version: "workspace-datasource@1.0.0",
+    workspace_id: scope.tenant_id,
+    datasource_id: baseConfig.datasource.resource_id,
+    resource_version: baseConfig.datasource.resource_revision,
+    name: "Falcon 24",
+    type: "postgresql",
+    host: "managed-postgres",
+    port: 5432,
+    database: "falcon",
+    username: "falcon_demo_reader",
+    credential_ref: {
+      schema_version: "datasource-credential-ref@1.0.0",
+      ...scope,
+      credential_ref_id: id(6),
+      secret_ref_id: id(7),
+      secret_version: 1,
+      rotation_state: "ACTIVE",
+    },
+    ssl: "disable",
+    path: null,
+    catalog: null,
+    schema: "falcon_db_24",
+    status: "ACTIVE",
+    last_tested_at: "2026-08-25T00:00:00.000Z",
+    created_by_principal_id: id(3),
+    created_at: "2026-08-25T00:00:00.000Z",
+    updated_at: "2026-08-25T00:00:00.000Z",
+  };
+  const config = {
+    ...baseConfig,
+    datasource: {
+      ...baseConfig.datasource,
+      resource_hash: await postgresqlText2SqlQueryRuntimeInternals.datasourceHash(datasource),
+    },
+    schema_snapshot: {
+      ...baseConfig.schema_snapshot,
+      resource_hash: snapshot.snapshot_content_hash,
+    },
+  };
+  const semanticContextPackage = {
+    package_id: id(8),
+    package_hash: hash("b"),
+    schema_snapshot: config.schema_snapshot,
+    semantic_release: config.semantic_release,
+    route_decision: { state: "RESOLVED", route: "SEMANTIC" },
+    mandatory_closure: [],
+    evidence: [],
+  } as never;
+  return { config, datasource, semanticContextPackage, snapshot };
+}
+
+const candidate = (sql: string): Text2SqlQueryCandidate => ({
+  schema_version: "text2sql-query-candidate@1.0.0",
+  sql,
+  parameters: [],
+  result_columns: [
+    { name: "customer_id", semantic_type: "STRING", label: "客户" },
+    { name: "order_count", semantic_type: "NUMBER", label: "订单数" },
+  ],
+  presentation: {
+    title: "客户订单数",
+    summary: "按客户聚合订单。",
+    visualization: "TABLE",
+    x_key: null,
+    y_keys: [],
+  },
+});
+
+describe("PostgreSQL Text2SQL query runtime", () => {
+  it("projects PostgreSQL SQLSTATE into bounded repair diagnostics", () => {
+    expect(
+      postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({
+        code: "42883",
+        message: "private provider detail",
+      }),
+    ).toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_TYPE_ERROR" });
+    expect(
+      postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({ code: "42703" }),
+    ).toMatchObject({ code: "DATASOURCE_ADAPTER_SQL_COLUMN_NOT_FOUND" });
+    expect(
+      postgresqlText2SqlQueryRuntimeInternals.classifiedPostgresqlExecutionError({ code: "42501" }),
+    ).toBeNull();
+  });
+
+  it("compiles model literals into parameters before committing a candidate", async () => {
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: {} as never,
+      capability: {},
+      schema_snapshots: {} as never,
+      datasources: {} as never,
+      secrets: {} as never,
+    });
+    const prepared = {
+      context_text: "{}",
+      datasource_id: id(30),
+      schema_snapshot_id: id(31),
+      schema_snapshot_hash: hash("d"),
+      allowed_relations: ["falcon_db_24.orders"],
+      target_capability_hash: hash("e"),
+      reader_role: "falcon_demo_reader",
+    };
+    const compiled = await runtime.compileCandidate({
+      prepared,
+      candidate: {
+        ...candidate(
+          "select o.customer_id as customer_id, round(sum(o.amount), 2) as order_count from falcon_db_24.orders as o group by o.customer_id",
+        ),
+      },
+    });
+
+    expect(compiled.parameters).toEqual([2]);
+    expect(compiled.sql).toContain("$1");
+  });
+
+  it("freezes exact datasource, SecretRef, schema and semantic bindings before I/O", async () => {
+    const { config, datasource, semanticContextPackage, snapshot } = await fixture();
+    const connect = vi.fn();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: {
+        getSnapshot: vi.fn(async () => ({ ok: true as const, value: snapshot })),
+      },
+      datasources: {
+        getDatasource: vi.fn(async () => ({ ok: true as const, value: datasource })),
+      },
+      secrets: {
+        get: vi.fn(async () => ({
+          ok: true as const,
+          value: { ref: `secretref:${id(7)}` as const, name: "falcon-reader", version: 1, status: "ACTIVE" as const },
+        })),
+      },
+    });
+
+    const prepared = await runtime.prepare({
+      effective_config: config as never,
+      semantic_context_package: semanticContextPackage,
+      max_context_bytes: 32_000,
+    });
+
+    expect(prepared.allowed_relations).toEqual(["falcon_db_24.orders"]);
+    expect(JSON.parse(prepared.context_text)).toMatchObject({
+      schema_snapshot: { snapshot_id: snapshot.snapshot_id },
+      semantic_context: { package_id: id(8) },
+    });
+    expect(prepared.context_text).not.toContain("managed-postgres");
+    expect(prepared.context_text).not.toContain("secretref:");
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("rejects a stale SecretRef before opening a database connection", async () => {
+    const { config, datasource, semanticContextPackage, snapshot } = await fixture();
+    const connect = vi.fn();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: { getSnapshot: async () => ({ ok: true as const, value: snapshot }) },
+      datasources: { getDatasource: async () => ({ ok: true as const, value: datasource }) },
+      secrets: {
+        get: async () => ({
+          ok: true as const,
+          value: { ref: `secretref:${id(7)}` as const, name: "falcon-reader", version: 2, status: "ACTIVE" as const },
+        }),
+      },
+    });
+
+    await expect(
+      runtime.prepare({
+        effective_config: config as never,
+        semantic_context_package: semanticContextPackage,
+        max_context_bytes: 32_000,
+      }),
+    ).rejects.toMatchObject({ code: "TEXT2SQL_SECRET_REF_STALE" });
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    "delete from falcon_db_24.orders",
+    "select pg_sleep(30) as customer_id, 1 as order_count from falcon_db_24.orders",
+    "select customer_id, count(*) as order_count from private.orders group by customer_id",
+  ])("rejects unsafe SQL before database I/O: %s", async (sql) => {
+    const { config } = await fixture();
+    const connect = vi.fn();
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: {} as never,
+      datasources: {} as never,
+      secrets: {} as never,
+    });
+
+    await expect(
+      runtime.execute({
+        effective_config: config as never,
+        prepared: {
+          context_text: "{}",
+          datasource_id: config.datasource.resource_id,
+          schema_snapshot_id: config.schema_snapshot.resource_id,
+          schema_snapshot_hash: config.schema_snapshot.resource_hash,
+          allowed_relations: ["falcon_db_24.orders"],
+          target_capability_hash: hash("c"),
+          reader_role: "falcon_demo_reader",
+        },
+        candidate: candidate(sql),
+        timeout_ms: 5_000,
+        max_rows: 100,
+        max_bytes: 64_000,
+      }),
+    ).rejects.toBeDefined();
+    expect(connect).not.toHaveBeenCalled();
+  });
+
+  it("executes a generic aggregation through EXPLAIN and read-only transactions", async () => {
+    const { config } = await fixture();
+    const queries: string[] = [];
+    const client = {
+      async query(input: string | { text: string }) {
+        const text = typeof input === "string" ? input : input.text;
+        queries.push(text);
+        if (text.startsWith("select * from (")) {
+          return {
+            fields: [
+              { name: "customer_id", dataTypeID: 25 },
+              { name: "order_count", dataTypeID: 20 },
+            ],
+            rows: [{ customer_id: "customer-1", order_count: 2n }],
+            rowCount: 1,
+          };
+        }
+        return { fields: [], rows: [], rowCount: 0 };
+      },
+      release: vi.fn(),
+    };
+    const connect = vi.fn(async () => client);
+    const runtime = createPostgresqlText2SqlQueryRuntime({
+      pool: { connect } as never,
+      capability: {},
+      schema_snapshots: {} as never,
+      datasources: {} as never,
+      secrets: {} as never,
+      now: () => 0,
+    });
+    const result = await runtime.execute({
+      effective_config: config as never,
+      prepared: {
+        context_text: "{}",
+        datasource_id: config.datasource.resource_id,
+        schema_snapshot_id: config.schema_snapshot.resource_id,
+        schema_snapshot_hash: config.schema_snapshot.resource_hash,
+        allowed_relations: ["falcon_db_24.orders"],
+        target_capability_hash: hash("c"),
+        reader_role: "falcon_demo_reader",
+      },
+      candidate: candidate(
+        "select o.customer_id as customer_id, count(*) as order_count from falcon_db_24.orders as o group by o.customer_id order by o.customer_id",
+      ),
+      timeout_ms: 5_000,
+      max_rows: 100,
+      max_bytes: 64_000,
+    });
+
+    expect(result.rows).toEqual([{ customer_id: "customer-1", order_count: "2" }]);
+    expect(queries.filter((query) => query === "begin read only")).toHaveLength(2);
+    expect(queries.some((query) => query.startsWith("explain (format json)"))).toBe(true);
+    expect(queries.some((query) => query.startsWith("select * from ("))).toBe(true);
+    expect(connect).toHaveBeenCalledTimes(2);
+  });
+});

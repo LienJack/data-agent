@@ -20,9 +20,17 @@
       "types": "./dist/common/index.d.ts",
       "import": "./dist/common/index.js"
     },
+    "./catalog": {
+      "types": "./dist/catalog/index.d.ts",
+      "import": "./dist/catalog/index.js"
+    },
     "./context": {
       "types": "./dist/context/index.d.ts",
       "import": "./dist/context/index.js"
+    },
+    "./datasources": {
+      "types": "./dist/datasources/index.d.ts",
+      "import": "./dist/datasources/index.js"
     },
     "./evals": {
       "types": "./dist/evals/index.d.ts",

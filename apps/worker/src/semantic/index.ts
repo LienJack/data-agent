@@ -21,6 +21,7 @@ export {
 } from "./relationship-indexer.js";
 export { createWorkerSemanticExplorerToolExecutor } from "./semantic-explorer-tool-executor.js";
 export {
-  createFrozenSemanticRelationshipReadPort,
-  type FrozenSemanticRelationshipReadPort,
-} from "./semantic-relationship-read-port.js";
+  createFrozenSemanticReleaseReadPort,
+  type FrozenSemanticReleaseCatalog,
+  type FrozenSemanticReleaseReadPort,
+} from "./semantic-release-read-port.js";

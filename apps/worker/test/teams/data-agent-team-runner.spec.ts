@@ -78,14 +78,37 @@ async function harness() {
     append_side_effect_event: vi.fn(),
     append_display_event: vi.fn(),
   });
-  return { context, lease };
+  return { catalog, context, lease };
 }
 
-describe("Data Agent direct runner", () => {
-  it("routes every valid QUESTION_RUN lease directly without Root or Specialist", async () => {
-    const { context, lease } = await harness();
-    const execute = vi.fn(async () => ({ kind: "COMPLETED" as const }));
-    const runner = createDataAgentTeamRunner({ direct_analysis: { execute } });
+describe("Data Agent Root runner", () => {
+  it("routes every V3 QUESTION_RUN through Root and its admitted runtime", async () => {
+    const { catalog, context, lease } = await harness();
+    const decision = {
+      schema_version: "root-agent-turn-candidate@1.0.0" as const,
+      kind: "FINAL_ANSWER" as const,
+      scope: lease.scope,
+      run_id: lease.run_id,
+      catalog_snapshot_hash: catalog.snapshot_hash,
+      sections: [
+        {
+          kind: "GENERAL_TEXT" as const,
+          text: "同比增长是相邻可比周期的相对变化。",
+          basis: "GENERAL_KNOWLEDGE" as const,
+          source_message_refs: [],
+        },
+      ],
+      public_summary: "解释同比增长。",
+    };
+    const decide = vi.fn(async () => ({ ok: true as const, value: decision }));
+    const execute = vi.fn(async () => ({
+      status: "ACCEPTED" as const,
+      reason_code: "ROOT_DIRECT_ANSWER_ACCEPTED",
+    }));
+    const runner = createDataAgentTeamRunner({
+      root: { decide },
+      root_runtime: { execute },
+    });
 
     await expect(
       runner.execute({
@@ -96,10 +119,12 @@ describe("Data Agent direct runner", () => {
         deadline_at: lease.expires_at,
       }),
     ).resolves.toEqual({ kind: "COMPLETED" });
+    expect(decide).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ decision }));
   });
 
-  it("fails closed when the direct executor is not configured", async () => {
+  it("fails closed when Root is not configured", async () => {
     const { context, lease } = await harness();
     const runner = createDataAgentTeamRunner({});
     await expect(
@@ -110,13 +135,13 @@ describe("Data Agent direct runner", () => {
         signal: new AbortController().signal,
         deadline_at: lease.expires_at,
       }),
-    ).resolves.toEqual({ kind: "FAILED", error_code: "DIRECT_QA_EXECUTOR_NOT_CONFIGURED" });
+    ).resolves.toEqual({ kind: "FAILED", error_code: "ROOT_AGENT_TURN_NOT_CONFIGURED" });
   });
 
-  it("rejects a non-Q&A command before invoking direct analysis", async () => {
+  it("rejects a non-Q&A command before invoking Root", async () => {
     const { context, lease } = await harness();
     const execute = vi.fn();
-    const runner = createDataAgentTeamRunner({ direct_analysis: { execute } });
+    const runner = createDataAgentTeamRunner({ root: { decide: execute } });
     await expect(
       runner.execute({
         lease: { ...lease, command_kind: "RESUME_RUN" },
@@ -127,5 +152,41 @@ describe("Data Agent direct runner", () => {
       }),
     ).resolves.toEqual({ kind: "FAILED", error_code: "DATA_AGENT_TEAM_LEASE_INVALID" });
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("rejects old Team leases instead of entering a compatibility executor", async () => {
+    const { context, lease } = await harness();
+    const decide = vi.fn();
+    const legacyLease = {
+      ...lease,
+      payload: {
+        kind: "START_DATA_AGENT_TEAM" as const,
+        effective_config_ref: lease.payload.effective_config_ref,
+        profile_refs: [
+          "governed-text2sql-agent",
+          "report-writing-agent",
+          "semantic-management-agent",
+        ].map((profileId, index) => ({
+          profile_id: profileId,
+          revision: 1,
+          revision_hash: `sha256:${String(index + 1).repeat(64)}`,
+        })),
+      },
+    } as RunWorkLease;
+    const runner = createDataAgentTeamRunner({ root: { decide } });
+
+    await expect(
+      runner.execute({
+        lease: legacyLease,
+        restored_snapshot: null,
+        context,
+        signal: new AbortController().signal,
+        deadline_at: legacyLease.expires_at,
+      }),
+    ).resolves.toEqual({
+      kind: "FAILED",
+      error_code: "ROOT_AGENT_LEASE_VERSION_UNSUPPORTED",
+    });
+    expect(decide).not.toHaveBeenCalled();
   });
 });

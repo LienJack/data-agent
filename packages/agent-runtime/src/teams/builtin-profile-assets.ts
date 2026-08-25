@@ -1,8 +1,8 @@
 import {
-  type AgentProductProfileRevision,
+  type AgentProductProfileRevisionV2,
   type AgentSpecialistProfileId,
   type AppScope,
-  buildAgentProductProfileRevision,
+  buildAgentProductProfileRevisionV2,
   buildSkillRevision,
   canonicalizeJson,
   sha256ContentHash,
@@ -20,6 +20,73 @@ const prompts = {
   "report-writing-agent":
     "You write reports only from accepted evidence references. Never access a datasource, execute SQL, or mutate semantic definitions.",
 } as const satisfies Readonly<Record<AgentSpecialistProfileId, string>>;
+
+const discovery = {
+  "semantic-management-agent": {
+    display_name: "Semantic Management Agent",
+    description: "Reads frozen semantic objects, relationships, lineage, and governed definitions.",
+    when_to_use: [
+      "Use for semantic relationships, dependencies, lineage, metric definitions, and semantic context.",
+    ],
+    when_not_to_use: ["Do not use to execute arbitrary SQL or publish semantic mutations."],
+    examples: [
+      {
+        request: "Explain dependencies between tables from the frozen relationship graph.",
+        expected_use: "Read semantic relationships and return governed analysis evidence.",
+      },
+    ],
+    accepted_input_artifact_types: [],
+    access_mode: "READ_ONLY",
+  },
+  "governed-text2sql-agent": {
+    display_name: "Governed Text2SQL Agent",
+    description:
+      "Compiles and executes governed analytical queries against the frozen data context.",
+    when_to_use: [
+      "Use when the request requires database values, aggregates, rankings, trends, or rows.",
+    ],
+    when_not_to_use: ["Do not use for semantic graph relationships that require no SQL execution."],
+    examples: [
+      {
+        request: "Show monthly sales trend for the current workspace.",
+        expected_use: "Produce accepted QueryEvidence from governed SQL execution.",
+      },
+    ],
+    accepted_input_artifact_types: [],
+    access_mode: "READ_ONLY",
+  },
+  "report-writing-agent": {
+    display_name: "Report Writing Agent",
+    description: "Builds formal reports only from already accepted governed evidence.",
+    when_to_use: [
+      "Use after accepted QueryEvidence or analysis Artifacts exist and a formal report is requested.",
+    ],
+    when_not_to_use: [
+      "Do not use without accepted input evidence and do not query databases directly.",
+    ],
+    examples: [
+      {
+        request: "Turn accepted sales evidence into a formal report.",
+        expected_use: "Consume accepted evidence and produce an AnalysisReport.",
+      },
+    ],
+    accepted_input_artifact_types: ["QueryEvidence"],
+    access_mode: "READ_ONLY",
+  },
+} as const satisfies Readonly<
+  Record<
+    AgentSpecialistProfileId,
+    {
+      readonly display_name: string;
+      readonly description: string;
+      readonly when_to_use: readonly string[];
+      readonly when_not_to_use: readonly string[];
+      readonly examples: readonly { readonly request: string; readonly expected_use: string }[];
+      readonly accepted_input_artifact_types: readonly ("QueryEvidence" | "AnalysisReport")[];
+      readonly access_mode: "READ_ONLY";
+    }
+  >
+>;
 
 export const BUILTIN_TEAM_WORKFLOWS = {
   "semantic-management-agent": ["resolve", "propose", "compile", "validate", "impact", "complete"],
@@ -181,7 +248,7 @@ export async function buildBuiltinTeamMaterialization(input: BuiltinTeamMaterial
     "report-writing-agent",
     "semantic-management-agent",
   ] as const;
-  const profileRevisions: AgentProductProfileRevision[] = [];
+  const profileRevisions: AgentProductProfileRevisionV2[] = [];
   for (const profileId of profileIds) {
     const runtime = getAgentProfileRevision(profileId);
     const profileSkills = skillRevisions
@@ -208,11 +275,16 @@ export async function buildBuiltinTeamMaterialization(input: BuiltinTeamMaterial
     }
     const workflow = BUILTIN_TEAM_WORKFLOWS[profileId];
     profileRevisions.push(
-      await buildAgentProductProfileRevision({
-        schema_version: "agent-product-profile-revision@1.0.0",
+      await buildAgentProductProfileRevisionV2({
+        schema_version: "agent-product-profile-revision@2.0.0",
         scope: input.scope,
         profile_id: profileId,
         revision: runtime.revision,
+        discovery: {
+          schema_version: "subagent-discovery-descriptor@1.0.0",
+          ...discovery[profileId],
+          produced_artifact_types: [...runtime.expected_output_artifact_types].sort(),
+        },
         runtime_profile_ref: {
           profile_id: profileId,
           revision: runtime.revision,
@@ -241,7 +313,7 @@ export async function buildBuiltinTeamMaterialization(input: BuiltinTeamMaterial
   }
 
   return Object.freeze({
-    schema_version: "builtin-team-materialization@1.0.0" as const,
+    schema_version: "builtin-team-materialization@2.0.0" as const,
     manifest_hash: await sha256ContentHash({
       skill_revision_hashes: skillRevisions.map(({ revision_hash }) => revision_hash),
       profile_revision_hashes: profileRevisions.map(({ revision_hash }) => revision_hash),

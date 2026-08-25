@@ -12,8 +12,18 @@ async function evidence(
     { month: "2026-01", order_count: 137 },
   ],
 ) {
+  const sqlRef = {
+    artifact_id: id(9),
+    artifact_type: "SqlArtifact" as const,
+    app_id: id(2),
+    tenant_id: id(3),
+    environment: "test" as const,
+    run_id: id(4),
+    revision: 1,
+    content_hash: hash("9"),
+  };
   return buildProductTeamArtifactDocument({
-    schema_version: "product-team-artifact@1.0.0",
+    schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
       artifact_id: id(1),
       artifact_type: "QueryEvidence",
@@ -26,7 +36,17 @@ async function evidence(
     },
     profile_id: "governed-text2sql-agent",
     task_id: id(5),
-    source_refs: [],
+    source_refs: [sqlRef],
+    provenance: {
+      kind: "GOVERNED_QUERY_RESULT",
+      query_id: id(10),
+      request_hash: hash("1"),
+      result_hash: hash("2"),
+      row_count: rows.length,
+      byte_count: 128,
+      elapsed_ms: 4,
+      truncated: false,
+    },
     projection: {
       kind: "TABLE",
       columns: [

@@ -1,7 +1,7 @@
 import { buildTeamTaskV2, getAgentProfileRevision } from "@data-agent/agent-runtime";
 import {
-  type AgentProductProfileRegistryItem,
-  buildAgentProductProfileRevision,
+  type AgentProductProfileRegistryItemV2,
+  buildAgentProductProfileRevisionV2,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
 import { buildBuiltinTeamMaterialization } from "../../src/teams/builtin-profile-assets.js";
@@ -32,7 +32,7 @@ function resources(offset: number) {
   >;
 }
 
-async function items(): Promise<AgentProductProfileRegistryItem[]> {
+async function items(): Promise<AgentProductProfileRegistryItemV2[]> {
   const materialized = await buildBuiltinTeamMaterialization({
     scope,
     model_profile_refs: resources(10),
@@ -40,10 +40,10 @@ async function items(): Promise<AgentProductProfileRegistryItem[]> {
     execution_safety_policy_refs: resources(30),
   });
   return materialized.profile_revisions.map((revision) => ({
-    schema_version: "agent-product-profile-registry-item@1.0.0",
+    schema_version: "agent-product-profile-registry-item@2.0.0",
     revision,
     head: {
-      schema_version: "agent-product-profile-head@1.0.0",
+      schema_version: "agent-product-profile-head@2.0.0",
       scope,
       profile_id: revision.profile_id,
       active_revision: revision.revision,
@@ -164,7 +164,7 @@ describe("Mastra specialist profile composition", () => {
     const original = profiles.at(0);
     if (!original) throw new Error("missing product profile fixture");
     const { revision_hash: _revisionHash, ...revisionDraft } = original.revision;
-    const expanded = await buildAgentProductProfileRevision({
+    const expanded = await buildAgentProductProfileRevisionV2({
       ...revisionDraft,
       direct_tool_allowlist: [
         ...original.revision.direct_tool_allowlist,

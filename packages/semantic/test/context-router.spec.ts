@@ -213,6 +213,49 @@ describe("resolved context routing", () => {
     });
   });
 
+  it("treats a published metric and its same-concept formula as one governed concept", async () => {
+    const authority = await snapshot({
+      question: "按渠道查看营销投入",
+      metrics: [
+        {
+          metric_id: "metric.marketing_spend",
+          name: "marketing_spend",
+          aliases: ["营销投入"],
+          mapping_refs: ["marketing.spend"],
+          mapping_hash: hash("a"),
+          formula_hash: hash("b"),
+        },
+      ],
+      ontology: [
+        {
+          object_id: "dimension.marketing_channel",
+          object_kind: "DIMENSION",
+          name: "marketing_channel",
+          aliases: ["渠道"],
+          queryable: true,
+          mapping_refs: ["marketing.channel"],
+          object_hash: hash("d"),
+        },
+        {
+          object_id: "formula.marketing_spend",
+          object_kind: "FORMULA",
+          name: "marketing_spend",
+          aliases: ["营销投入"],
+          queryable: true,
+          mapping_refs: ["marketing.spend"],
+          object_hash: hash("c"),
+        },
+      ],
+    });
+    await expect(routeSemanticContext(authority)).resolves.toMatchObject({
+      state: "READY",
+      route: "METRIC",
+      selected_metric_id: "metric.marketing_spend",
+      selected_ontology_ids: ["dimension.marketing_channel", "formula.marketing_spend"],
+      clarification_candidates: [],
+    });
+  });
+
   it("uses an exact published concept as a ready typed-graph seed", async () => {
     const authority = await snapshot({
       question: "经营复盘",

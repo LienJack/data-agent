@@ -32,7 +32,7 @@ function input() {
       nextId += 1;
       return id(nextId);
     },
-    idempotency_prefix: "builtin-team-v1",
+    idempotency_prefix: "builtin-team-v2",
   };
 }
 
@@ -48,17 +48,17 @@ describe("built-in Team materialization", () => {
         }),
       },
       profiles: {
-        list: vi.fn(async () => ({ ok: true as const, value: [] })),
-        commit: vi.fn(async (_capability, command) => {
+        listDiscoverable: vi.fn(async () => ({ ok: true as const, value: [] })),
+        commitV2: vi.fn(async (_capability, command) => {
           order.push(`profile:${command.revision.profile_id}`);
           profileCommands.push(command);
           return {
             ok: true as const,
             value: {
-              schema_version: "agent-product-profile-registry-item@1.0.0" as const,
+              schema_version: "agent-product-profile-registry-item@2.0.0" as const,
               revision: command.revision,
               head: {
-                schema_version: "agent-product-profile-head@1.0.0" as const,
+                schema_version: "agent-product-profile-head@2.0.0" as const,
                 scope: command.revision.scope,
                 profile_id: command.revision.profile_id,
                 active_revision: command.revision.revision,
@@ -104,8 +104,8 @@ describe("built-in Team materialization", () => {
         }),
       },
       profiles: {
-        list: vi.fn(async () => ({ ok: true as const, value: [] })),
-        commit: profileCommit,
+        listDiscoverable: vi.fn(async () => ({ ok: true as const, value: [] })),
+        commitV2: profileCommit,
       },
     });
     expect(result).toMatchObject({ ok: false, error: { code: "SKILL_REJECTED" } });
@@ -127,10 +127,10 @@ describe("built-in Team materialization", () => {
     const profileCommit = vi.fn(async (_capability, command) => ({
       ok: true as const,
       value: {
-        schema_version: "agent-product-profile-registry-item@1.0.0" as const,
+        schema_version: "agent-product-profile-registry-item@2.0.0" as const,
         revision: command.revision,
         head: {
-          schema_version: "agent-product-profile-head@1.0.0" as const,
+          schema_version: "agent-product-profile-head@2.0.0" as const,
           scope: command.revision.scope,
           profile_id: command.revision.profile_id,
           active_revision: command.revision.revision,
@@ -144,17 +144,17 @@ describe("built-in Team materialization", () => {
     const existing = await materializeBuiltinTeamProfiles(request, {
       skills: { commit: vi.fn(async () => ({ ok: true as const, value: {} as never })) },
       profiles: {
-        list: vi.fn(async () => ({
+        listDiscoverable: vi.fn(async () => ({
           ok: true as const,
           value: [
             {
-              schema_version: "agent-product-profile-registry-item@1.0.0" as const,
+              schema_version: "agent-product-profile-registry-item@2.0.0" as const,
               revision: {
                 ...semanticRevision,
                 revision: 1,
               },
               head: {
-                schema_version: "agent-product-profile-head@1.0.0" as const,
+                schema_version: "agent-product-profile-head@2.0.0" as const,
                 scope: request.scope,
                 profile_id: "semantic-management-agent" as const,
                 active_revision: 1,
@@ -166,7 +166,7 @@ describe("built-in Team materialization", () => {
             },
           ],
         })),
-        commit: profileCommit,
+        commitV2: profileCommit,
       },
     });
     expect(existing.ok).toBe(true);

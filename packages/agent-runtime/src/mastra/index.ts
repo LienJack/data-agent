@@ -15,6 +15,7 @@ export {
   createMastraModelExecutionBridge,
   type MastraModelExecutionBridgeOptions,
   type ModelCredentialResolver,
+  type ModelToolChoicePolicy,
   type ProjectedModelMessage,
   type ServerModelProviderBindingResolver,
   type TrustedModelInputTokenCounter,

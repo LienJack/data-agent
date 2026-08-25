@@ -83,7 +83,7 @@ Root Harness、`delegate_to_subagent@1`、V3 Team Lease、冻结的 Subagent Cat
 
 ## Non-functional Requirements
 
-- 生产 Router 不增加第二次正则/分类器判断；Root 只进行一次 LLM routing turn。
+- 生产 Router 不增加第二次正则/分类器判断。Root 先进行一次初始 turn；仅当初始结果是 direct answer 时，由同一个 Root 追加一次有界自审 turn，决定保留一般知识回答或改为原生 Subagent 调用。
 - 默认查询预算不超过 Effective Config 的 `max_elapsed_ms`、`max_tool_calls` 和 datasource adapter 上限。
 - SQL candidate 永不直接拼接进管理库连接；只能发送给选中 datasource 的受治理查询适配器。
 - 复用 `@data-agent/contracts`、`@data-agent/agent-runtime`、`@data-agent/platform/*` 的稳定 Port，不从 Worker 反向依赖 `@data-agent/evals/*`。
@@ -98,24 +98,24 @@ Root Harness、`delegate_to_subagent@1`、V3 Team Lease、冻结的 Subagent Cat
 
 ## Acceptance Criteria
 
-- [ ] 生产 `QUESTION_RUN` V3 lease 执行路径为 Root turn -> admission -> selected Subagent runtime，而不是统一 `direct_analysis`。
-- [ ] Root provider 收到冻结 Agent Cards 和唯一原生工具 `delegate_to_subagent@1`，并能在 direct answer 与 tool call 之间自主选择。
-- [ ] 生产路由路径不调用 `asksForRelationships`、`classifyAgentQuestion` 或任何正则/关键词意图分类器。
-- [ ] “按渠道列出营销投入、收入和 ROI，并做对比表”在 Falcon db24 上走 Root -> Text2SQL -> governed PostgreSQL adapter，产出真实 `SqlArtifact`、`QueryEvidence` 和表格回答。
-- [ ] 上述问题不会返回“当前环境未提供营销数据”“请提供数据源”或无执行证据的模板拒答。
-- [ ] “订单与客户实体如何关联”只选择 Semantic Agent，不执行 SQL。
-- [ ] “解释什么是同比增长”由 Root 直接回答，不启动任何 Subagent。
-- [ ] “查询各渠道 ROI 并生成正式报告”先产出 QueryEvidence，再调用 Report Agent；Report 的 source refs 精确指向已接受证据。
-- [ ] Text2SQL 不包含 `TABLE_COUNT` / `MONTHLY_ORDER_TREND` / `UNSUPPORTED` 的生产意图枚举，也不再编译电商固定 SQL。
-- [ ] 模型产生写操作、多语句、越权 relation、危险函数或超预算 SQL 时，Host 在执行前拒绝。
-- [ ] datasource/SecretRef 真正缺失时返回稳定 Host reason code，公共答案不伪装成模型的“没有权限”判断。
-- [ ] 重试或 Worker 恢复不会改变 catalog snapshot、schema snapshot、selected Profile 或重复提交公开 Artifact。
-- [ ] 新增路由单测、provider bridge tool-choice 测试、Text2SQL policy 测试、team integration 测试和 Falcon db24 真实问答验收。
-- [ ] `.trellis/spec/backend/agent-team-runtime.md` 与实际生产路径同步，不再把 Direct QA 记为唯一正式链路。
-- [ ] 相关 package build/typecheck/test 通过；真实浏览器 Q&A 页面显示实际 Subagent/SQL/QueryEvidence 链路。
+- [x] 生产 `QUESTION_RUN` V3 lease 执行路径为 Root turn -> admission -> selected Subagent runtime，而不是统一 `direct_analysis`。
+- [x] Root provider 收到冻结 Agent Cards 和唯一原生工具 `delegate_to_subagent@1`，并能在 direct answer 与 tool call 之间自主选择。
+- [x] 生产路由路径不调用 `asksForRelationships`、`classifyAgentQuestion` 或任何正则/关键词意图分类器。
+- [x] “按渠道列出营销投入、收入和 ROI，并做对比表”在 Falcon db24 上走 Root -> Text2SQL -> governed PostgreSQL adapter，产出真实 `SqlArtifact`、`QueryEvidence` 和表格回答。
+- [x] 上述问题不会返回“当前环境未提供营销数据”“请提供数据源”或无执行证据的模板拒答。
+- [x] “订单与客户实体如何关联”只选择 Semantic Agent，不执行 SQL。
+- [x] “解释什么是同比增长”由 Root 直接回答，不启动任何 Subagent。
+- [x] “查询各渠道 ROI 并生成正式报告”先产出 QueryEvidence，再调用 Report Agent；Report 的 source refs 精确指向已接受证据。
+- [x] Text2SQL 不包含 `TABLE_COUNT` / `MONTHLY_ORDER_TREND` / `UNSUPPORTED` 的生产意图枚举，也不再编译电商固定 SQL。
+- [x] 模型产生写操作、多语句、越权 relation、危险函数或超预算 SQL 时，Host 在执行前拒绝。
+- [x] datasource/SecretRef 真正缺失时返回稳定 Host reason code，公共答案不伪装成模型的“没有权限”判断。
+- [x] 重试或 Worker 恢复不会改变 catalog snapshot、schema snapshot、selected Profile 或重复提交公开 Artifact。
+- [x] 新增路由单测、provider bridge tool-choice 测试、Text2SQL policy 测试、team integration 测试和 Falcon db24 真实问答验收。
+- [x] `.trellis/spec/backend/agent-team-runtime.md` 与实际生产路径同步，不再把 Direct QA 记为唯一正式链路。
+- [x] 相关 package build/typecheck/test 通过；真实浏览器 Q&A 页面显示实际 Subagent/SQL/QueryEvidence 链路。
 
 ## Rollout and Rollback
 
-- 采用一次受控切换：V3 lease 恢复 Root 路径；旧 V1/V2 lease 继续按明确的兼容策略处理，不用运行时 feature flag 双写两套新链路。
+- 采用一次受控切换：V3 lease 恢复 Root 路径；旧 V1/V2/legacy lease 一律以 `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED` 拒绝，不保留兼容执行器、运行时 feature flag 或双写链路。
 - 发布前完成固定路由语料与 Falcon db24 smoke gate；未通过则不切换 Worker。
 - 回滚单位是本任务的单一提交；不保留隐藏正则 Router 或双路由作为长期旁路。

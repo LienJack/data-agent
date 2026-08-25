@@ -16,11 +16,15 @@ import {
   RuntimeBuildIdentityConfigurationError,
   type RuntimeMigrationFact,
 } from "@data-agent/contracts/server";
-import { ECOMMERCE_DIRECT_QA_CAPABILITY } from "@data-agent/evals/ecommerce-direct-qa";
+import {
+  createPostgresAgentProfileRegistry,
+  createPostgresTeamRunStore,
+} from "@data-agent/platform/agents";
 import {
   createPostgresArtifactWorkspaceStore,
   createPostgresProductTeamArtifactStore,
 } from "@data-agent/platform/artifacts";
+import { createPostgresSchemaSnapshotStore } from "@data-agent/platform/catalog";
 import { createPostgresJobQueue } from "@data-agent/platform/jobs";
 import {
   createNeo4jKnowledgeIndexFromEnvironment,
@@ -48,7 +52,7 @@ import {
   createPostgresRunEventStore,
   createPostgresRunQueue,
 } from "@data-agent/platform/runs";
-import { createPostgresReadOnlyBenchmarkExecutor } from "@data-agent/platform/sandbox";
+import { createPostgresSecretRefRepository } from "@data-agent/platform/secrets";
 import {
   createPostgresSemanticContextRegistry,
   createPostgresSemanticExplorerReader,
@@ -59,7 +63,6 @@ import {
   createFileScanPort,
   createFileSystemStorageClient,
   createPostgresWorkspaceFiles,
-  createSensitiveExecutionArtifactAuthority,
   createWorkspaceContentNamespace,
 } from "@data-agent/platform/storage";
 import {
@@ -69,10 +72,6 @@ import {
 import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
-import { createEcommerceDirectQaAdapter } from "./evals/ecommerce-direct-qa-adapter.js";
-import { createEcommerceDirectQaRegistry } from "./evals/ecommerce-direct-qa-registry.js";
-import { createEnvironmentFalcon24AnalysisAcceptanceRecorder } from "./evals/falcon24-analysis-acceptance-recorder.js";
-import { createFalcon24AnalysisRuntime } from "./evals/falcon24-analysis-runtime.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
@@ -81,10 +80,7 @@ import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
-import {
-  loadRunWorkerEnvironment,
-  resolveRunWorkerRepositoryRoot,
-} from "./run-worker-environment.js";
+import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
 import {
   createMultiPrincipalRunWorkerRunner,
   isRunnableWorkspaceMember,
@@ -102,9 +98,13 @@ import {
 } from "./runs/run-worker-daemon.js";
 import { createRunWorkerRunner } from "./runs/run-worker-runner.js";
 import { createWorkerSemanticJobComposition } from "./semantic/job-composition.js";
-import { createFrozenSemanticRelationshipReadPort } from "./semantic/semantic-relationship-read-port.js";
+import { createFrozenSemanticReleaseReadPort } from "./semantic/semantic-release-read-port.js";
 import { createDataAgentTeamRunner } from "./teams/data-agent-team-runner.js";
-import { createDirectQaAnalysisExecutor } from "./teams/direct-qa-analysis-executor.js";
+import { createPostgresqlText2SqlQueryRuntime } from "./teams/postgresql-text2sql-query-runtime.js";
+import { createProductionTeamRuntime } from "./teams/production-team-runtime.js";
+import { createProductionTeamTools } from "./teams/production-team-tools.js";
+import { createRootAgentDelegationRuntime } from "./teams/root-agent-delegation-runtime.js";
+import { createRootAgentTurnExecutor } from "./teams/root-agent-turn-executor.js";
 import { createRunWorkflowExecutorRouter } from "./teams/run-workflow-executor-router.js";
 
 class RunWorkerStartupError extends Error {
@@ -244,7 +244,6 @@ async function closeServer(server: Server): Promise<void> {
 export async function runWorkerProcess(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
-  const repositoryRoot = resolveRunWorkerRepositoryRoot(process.cwd());
   if (
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES" &&
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_CONFIRM !== "YES"
@@ -258,10 +257,6 @@ export async function runWorkerProcess(
   const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
-  const falcon24AcceptanceRecorder = createEnvironmentFalcon24AnalysisAcceptanceRecorder(
-    environment,
-    repositoryRoot,
-  );
   const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment);
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
@@ -435,23 +430,6 @@ export async function runWorkerProcess(
       }, 60_000);
       analysisStageSweepTimer.unref();
     }
-    const sensitiveArtifacts = createSensitiveExecutionArtifactAuthority({
-      pool: sqlPool,
-      authorizer: capabilityAuthority.authorizer,
-      blobs: {
-        async putIfAbsent(contentHash, bytes) {
-          await fileStorage.put(
-            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
-            bytes,
-          );
-        },
-        get(contentHash) {
-          return fileStorage.get(
-            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
-          );
-        },
-      },
-    });
     const effectiveConfigResolver = createPostgresEffectiveConfigResolver({
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
@@ -515,58 +493,61 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
-        const ecommerceSandbox = createPostgresReadOnlyBenchmarkExecutor({
-          pool,
-          policy: ECOMMERCE_DIRECT_QA_CAPABILITY,
+        const profileRegistry = createPostgresAgentProfileRegistry({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
         });
-        const semanticRelationships = createFrozenSemanticRelationshipReadPort(
+        const teamStore = createPostgresTeamRunStore({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
+        const text2sqlRuntime = createPostgresqlText2SqlQueryRuntime({
+          pool,
+          capability,
+          schema_snapshots: createPostgresSchemaSnapshotStore({
+            pool: sqlPool,
+            authorizer: capabilityAuthority.authorizer,
+          }),
+          datasources: createPostgresWorkspaceDataRepository(
+            sqlPool,
+            capabilityAuthority.authorizer,
+          ),
+          secrets: createPostgresSecretRefRepository(sqlPool, capabilityAuthority.authorizer),
+        });
+        const semanticRelease = createFrozenSemanticReleaseReadPort(
           createPostgresSemanticExplorerReader({
             pool: sqlPool,
             authorizer: capabilityAuthority.authorizer,
           }),
         );
-        const falcon24Analysis =
-          researchCapabilities &&
-          environment.ANALYSIS_SANDBOX_ENABLED === "true" &&
-          environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
-          environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim()
-            ? createFalcon24AnalysisRuntime({
-                pool: sqlPool,
-                research_authority: researchAuthority,
-                sensitive_artifacts: sensitiveArtifacts,
-                research_capabilities: researchCapabilities,
-                app_capability_input: capability,
-                public_artifacts: teamArtifacts,
-                environment,
-                now: () => new Date(),
-                acceptance_recorder: falcon24AcceptanceRecorder,
-              })
-            : null;
-        const genericDirectQa = createDirectQaAnalysisExecutor({
+        const teamArtifactAuthority = {
+          verifyCommitted: (reference: Parameters<typeof teamArtifacts.verifyCommitted>[1]) =>
+            teamArtifacts.verifyCommitted(capability, reference),
+          resolveCommitted: (reference: Parameters<typeof teamArtifacts.resolveCommitted>[1]) =>
+            teamArtifacts.resolveCommitted(capability, reference),
+        };
+        const productionTeamRuntime = createProductionTeamRuntime({
+          store: teamStore,
           capability,
-          runs: runRepository,
-          artifacts: teamArtifacts,
-          semantic_relationships: semanticRelationships,
-          governed_analysis: falcon24Analysis,
+          artifacts: teamArtifactAuthority,
+          create_tools: (input) =>
+            createProductionTeamTools(
+              {
+                capability,
+                artifacts: teamArtifacts,
+                text2sql: text2sqlRuntime,
+                semantic_release: semanticRelease,
+              },
+              input,
+            ),
         });
         const teamExecutor = createDataAgentTeamRunner({
-          direct_analysis: createEcommerceDirectQaRegistry({
-            fallback: genericDirectQa,
-            registrations: [
-              {
-                registration: {
-                  workspace_id: config.tenant_id,
-                  benchmark_profile_id: ECOMMERCE_DIRECT_QA_CAPABILITY.benchmark_profile_id,
-                },
-                executor: createEcommerceDirectQaAdapter({
-                  capability,
-                  fallback: genericDirectQa,
-                  runs: runRepository,
-                  artifacts: teamArtifacts,
-                  sandbox: ecommerceSandbox,
-                }),
-              },
-            ],
+          root: createRootAgentTurnExecutor(),
+          root_runtime: createRootAgentDelegationRuntime({
+            profiles: profileRegistry,
+            profile_capability_input: capability,
+            runtime: productionTeamRuntime,
+            artifacts: teamArtifactAuthority,
           }),
         });
         const executor = smokeTarget

@@ -37,7 +37,9 @@ Worker
   -> RootAgentTurnExecutor
      -> lightweight provider(ROOT, Agent Cards, toolChoice=AUTO)
         -> FINAL_ANSWER
-           -> RootAnswerVerifier -> public answer
+           -> same Root DIRECT_ANSWER_REVIEW (one bounded self-review)
+              -> retain FINAL_ANSWER -> RootAnswerVerifier -> public answer
+              -> or native delegate_to_subagent call
         -> delegate_to_subagent(profile_id, objective, inputs, outputs)
            -> RootAgentDelegationRuntime admission
               -> ProductionTeamRuntime
@@ -91,14 +93,16 @@ type ModelToolChoicePolicy = "REQUIRED" | "AUTO";
 
 Host 不追加“如果包含 ROI 就选 Text2SQL”之类规则。路由质量由 Agent Card 描述、模型能力与固定语料 gate 保证。
 
+当 Root 初始返回 direct answer 时，Host 不用正则判断问题类型，而是把原问题和初始回答交还同一个 Root 做一次 `DIRECT_ANSWER_REVIEW`。自审只能保留严格 direct answer 或改为原生 delegation；不允许第三次路由、Host 自行改派或文字形式的伪调用。
+
 ## 5. Root 与 Team Runtime 恢复
 
 ### 5.1 `data-agent-team-runner`
 
 - 对 V3/`ROOT_HARNESS@1` lease：调用 Root turn，规范化 decision，再调用 Root delegation runtime。
 - Root direct answer 和 delegation 都通过同一 verifier/admission 边界。
-- V1/V2 的处理保持显式，不能让 V3 静默 fallback 到 Direct QA。
-- 删除/停用 `direct_analysis` 作为 V3 主路径；如果旧 lease 仍需兼容，单独命名 legacy executor 并在测试中证明版本边界。
+- V1/V2/legacy lease 显式返回 `ROOT_AGENT_LEASE_VERSION_UNSUPPORTED`，不进入生产执行。
+- 删除 `direct_analysis`、Direct QA executor 与关系正则 Router；不存在 legacy executor、兼容 facade 或 feature flag 旁路。
 
 ### 5.2 Worker composition
 
@@ -147,27 +151,33 @@ Root 使用 lease 内冻结 catalog；admission 再读取 live discoverable/lega
 
 ### 6.3 SQL candidate contract
 
-新增 contracts schema（名称可在实现时按现有命名规范调整）：
+唯一 contracts schema 为：
 
 ```ts
 {
   schema_version: "text2sql-query-candidate@1.0.0";
-  dialect: "POSTGRESQL";
-  statement: string;
+  sql: string;
   parameters: Array<string | number | boolean | null>;
   result_columns: Array<{
-    key: string;
+    name: string;
+    semantic_type: "NUMBER" | "STRING" | "DATE" | "DATETIME" | "BOOLEAN";
     label: string;
-    data_type: "STRING" | "NUMBER" | "BOOLEAN" | "DATETIME" | "JSON";
   }>;
-  answer_summary: string;
-  visualization_hint: "NONE" | "TREND" | "COMPARISON" | "COMPOSITION";
+  presentation: {
+    title: string;
+    summary: string;
+    visualization: "NONE" | "LINE" | "BAR" | "PIE" | "TABLE";
+    x_key: string | null;
+    y_keys: string[];
+  };
 }
 ```
 
-`answer_summary` 只能在查询成功后作为表达提示，不能当作证据。最终数字和表格必须从 adapter result 投影。
+`presentation.summary` 只能作为表达提示，不能当作证据。最终数字、表格和图表数据必须从 adapter result 投影。
 
 不再存在 `TABLE_COUNT`、`MONTHLY_ORDER_TREND`、`UNSUPPORTED` 生产枚举。
+
+模型 SQL 仍是不可信候选。Host 用 PostgreSQL AST 将所有非零常量改写为追加参数，再重新解析并执行严格 policy；这个编译步骤只保存模型表达的结构和值，不发明 relation、表达式或业务值。schema、policy、类型、列名或结果形状错误仅允许一次模型修复，且只返回安全错误码与同一冻结上下文。
 
 ### 6.4 确定性 SQL policy
 
@@ -199,10 +209,12 @@ Host 从 exact physical snapshot 生成 canonical `allowed_relations`，然后�
 
 ### 6.6 Artifact 顺序
 
-1. SQL candidate 通过 Host policy 后提交 `SqlArtifact`，记录 dialect、statement、parameters 的安全投影、schema/context refs。
-2. adapter 成功后提交 `QueryEvidence`，source ref 指向 `SqlArtifact`。
+1. SQL candidate 先完成 Host 编译、policy、目标绑定、EXPLAIN 与真实只读执行；失败候选不提交 Artifact。
+2. 执行成功后提交 `SqlArtifact`，记录最终 statement、parameters 的安全投影与 schema/context refs；随后提交 source ref 指向它的 `QueryEvidence`。
 3. 可视化只消费 `QueryEvidence`；Report 只消费 accepted evidence。
 4. 最终回答从 committed Artifact 渲染，模型 summary 不覆盖真实列、行或计数。
+
+显式 LINE/BAR/PIE 意图按候选执行；候选声明 TABLE/NONE 但结果类型形成“一个分类/时间列 + 数值列”时，Host 只依据结果形状确定性地产生 BAR/LINE，不读取问题关键词。图表作为独立 `ArtifactWorkspaceDocument` 提交，并与表格绑定同一个 QueryEvidence/source receipt。
 
 ## 7. Semantic 与 Report
 

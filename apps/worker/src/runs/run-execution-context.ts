@@ -36,12 +36,22 @@ export interface RunProviderDispatchCapability {
     readonly logical_call_id: string;
     readonly analysis_python?: RunAnalysisPythonGenerationRequest;
     readonly analysis_agent?: RunAnalysisAgentTurnRequest;
-    readonly turn?: Readonly<{
-      kind: "SPECIALIST";
-      stage: "TEXT2SQL" | "REPORT";
-      profile_id: string;
-      objective: string;
-    }>;
+    readonly turn?:
+      | Readonly<
+          | { kind: "ROOT"; phase: "INITIAL" }
+          | {
+              kind: "ROOT";
+              phase: "DIRECT_ANSWER_REVIEW";
+              prior_output_text: string;
+            }
+        >
+      | Readonly<{
+          kind: "SPECIALIST";
+          stage: "SEMANTIC" | "TEXT2SQL" | "REPORT";
+          profile_id: string;
+          objective: string;
+          context_text: string;
+        }>;
   }): Promise<PortResult<RunModelProviderResult>>;
 }
 

@@ -11,9 +11,9 @@ import {
 } from "../runs/run-execution-context.js";
 import type { RunWorkflowExecutorPort } from "../runs/run-worker-runner.js";
 
-function identity(runId: string): string {
+function identity(runId: string, phase: "INITIAL" | "DIRECT_ANSWER_REVIEW"): string {
   const bytes = createHash("sha256")
-    .update(`data-agent/root-agent-turn@1\0${runId}`)
+    .update(`data-agent/root-agent-turn@1\0${runId}\0${phase}`)
     .digest()
     .subarray(0, 16);
   bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
@@ -53,24 +53,52 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
           "Root Agent requires an exact v3 catalog lease.",
         );
       }
+      const catalog = payload.data.catalog_snapshot;
       const provider = input.context.getProviderDispatchCapability();
       if (!hasRunProviderDispatchCapability(provider)) {
         return failure("ROOT_AGENT_PROVIDER_REQUIRED", "Root Agent Provider capability is absent.");
       }
-      const invoked = await provider.invoke({ logical_call_id: identity(input.lease.run_id) });
-      if (!invoked.ok) return { ok: false as const, error: invoked.error };
       try {
+        const invoke = async (
+          phase: "INITIAL" | "DIRECT_ANSWER_REVIEW",
+          priorOutputText?: string,
+        ) => {
+          const invoked = await provider.invoke({
+            logical_call_id: identity(input.lease.run_id, phase),
+            turn:
+              phase === "INITIAL"
+                ? { kind: "ROOT", phase }
+                : {
+                    kind: "ROOT",
+                    phase,
+                    prior_output_text: priorOutputText ?? "",
+                  },
+          });
+          if (!invoked.ok) throw new RootAgentTurnProviderError(invoked.error);
+          return {
+            decision: await normalizeRootAgentProviderTurn({
+              scope: input.lease.scope,
+              run_id: input.lease.run_id,
+              catalog,
+              output_text: invoked.value.output_text,
+              tool_calls: invoked.value.tool_calls,
+            }),
+            output_text: invoked.value.output_text,
+          };
+        };
+        const initial = await invoke("INITIAL");
+        const reviewed =
+          initial.decision.kind === "FINAL_ANSWER"
+            ? await invoke("DIRECT_ANSWER_REVIEW", initial.output_text)
+            : initial;
         return {
           ok: true,
-          value: await normalizeRootAgentProviderTurn({
-            scope: input.lease.scope,
-            run_id: input.lease.run_id,
-            catalog: payload.data.catalog_snapshot,
-            output_text: invoked.value.output_text,
-            tool_calls: invoked.value.tool_calls,
-          }),
+          value: reviewed.decision.kind === "FINAL_ANSWER" ? initial.decision : reviewed.decision,
         };
       } catch (error) {
+        if (error instanceof RootAgentTurnProviderError) {
+          return { ok: false as const, error: error.failure };
+        }
         return failure(
           error instanceof Error && "code" in error && typeof error.code === "string"
             ? error.code
@@ -80,4 +108,12 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
       }
     },
   });
+}
+
+class RootAgentTurnProviderError extends Error {
+  override readonly name = "RootAgentTurnProviderError";
+
+  constructor(readonly failure: Readonly<{ code: string; message: string; retryable: boolean }>) {
+    super(failure.code);
+  }
 }

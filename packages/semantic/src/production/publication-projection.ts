@@ -1,12 +1,55 @@
 import { createHash } from "node:crypto";
 import {
+  formulaNodeSchema,
+  physicalBindingEntrySchema,
   type SemanticAssertionCandidate,
   type SemanticChangeSet,
   type SemanticGraphEdge,
   type SemanticGraphNode,
+  semanticDimensionSchema,
   semanticGraphProjectionSchema,
+  semanticMetricSchema,
+  semanticRelationshipSchema,
+  timeDomainSchema,
 } from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
+import { z } from "zod";
+
+export const semanticExecutablePublicationProjectionSchema = z.strictObject({
+  schema_version: z.literal("semantic-executable-projection@1.0.0"),
+  metrics: z.array(semanticMetricSchema),
+  dimensions: z.array(semanticDimensionSchema),
+  formulas: z.array(formulaNodeSchema),
+  physical_bindings: z.array(physicalBindingEntrySchema),
+});
+
+export const semanticRelationshipPublicationProjectionSchema = z.strictObject({
+  schema_version: z.literal("semantic-relationship-projection@1.0.0"),
+  relationships: z.array(semanticRelationshipSchema),
+});
+
+export const semanticQualityConstraintPublicationSchema = z.strictObject({
+  constraint_id: z.string().min(1).max(256),
+  expression: z.string().min(1).max(4096),
+  severity: z.enum(["WARN", "ERROR"]),
+  sensitivity: z.enum(["PUBLIC", "INTERNAL", "RESTRICTED", "SECRET"]),
+});
+
+export const semanticRuntimeRestrictionPublicationProjectionSchema = z.strictObject({
+  schema_version: z.literal("semantic-runtime-restriction-projection@1.0.0"),
+  quality_constraints: z.array(semanticQualityConstraintPublicationSchema),
+  time_semantics: z.array(timeDomainSchema),
+});
+
+export type SemanticExecutablePublicationProjection = z.infer<
+  typeof semanticExecutablePublicationProjectionSchema
+>;
+export type SemanticRelationshipPublicationProjection = z.infer<
+  typeof semanticRelationshipPublicationProjectionSchema
+>;
+export type SemanticRuntimeRestrictionPublicationProjection = z.infer<
+  typeof semanticRuntimeRestrictionPublicationProjectionSchema
+>;
 
 export interface SemanticPublicationProjection {
   readonly release_id: string;
@@ -26,22 +69,9 @@ export interface SemanticPublicationProjection {
   readonly restriction_projection_digest: `sha256:${string}`;
   readonly graph_projection_digest: `sha256:${string}`;
   readonly release_digest: `sha256:${string}`;
-  readonly executable_projection: Readonly<{
-    schema_version: "semantic-executable-projection@1.0.0";
-    metrics: readonly unknown[];
-    dimensions: readonly unknown[];
-    formulas: readonly unknown[];
-    physical_bindings: readonly unknown[];
-  }>;
-  readonly relationship_projection: Readonly<{
-    schema_version: "semantic-relationship-projection@1.0.0";
-    relationships: readonly unknown[];
-  }>;
-  readonly restriction_projection: Readonly<{
-    schema_version: "semantic-runtime-restriction-projection@1.0.0";
-    quality_constraints: readonly unknown[];
-    time_semantics: readonly unknown[];
-  }>;
+  readonly executable_projection: SemanticExecutablePublicationProjection;
+  readonly relationship_projection: SemanticRelationshipPublicationProjection;
+  readonly restriction_projection: SemanticRuntimeRestrictionPublicationProjection;
   readonly graph_projection: ReturnType<typeof semanticGraphProjectionSchema.parse>;
   readonly binding_impact_hashes: readonly string[];
 }
@@ -183,7 +213,7 @@ export async function compileSemanticPublicationProjection(
   changeSet: SemanticChangeSet,
 ): Promise<SemanticPublicationProjection> {
   const identifier = (kind: string) => stableUuid(`${changeSet.change_set_hash}:${kind}`);
-  const executableProjection = {
+  const executableProjection = semanticExecutablePublicationProjectionSchema.parse({
     schema_version: "semantic-executable-projection@1.0.0" as const,
     metrics: assertionsOfKind(changeSet, "METRIC").map(
       ({ assertion_payload }) => assertion_payload.metric,
@@ -197,16 +227,16 @@ export async function compileSemanticPublicationProjection(
     physical_bindings: assertionsOfKind(changeSet, "PHYSICAL_BINDING").map(
       ({ assertion_payload }) => assertion_payload.binding,
     ),
-  };
-  const relationshipProjection = {
+  });
+  const relationshipProjection = semanticRelationshipPublicationProjectionSchema.parse({
     schema_version: "semantic-relationship-projection@1.0.0" as const,
     relationships: ["RELATIONSHIP", "ANALYSIS_JOIN"].flatMap((kind) =>
       assertionsOfKind(changeSet, kind).map(
         ({ assertion_payload }) => assertion_payload.relationship,
       ),
     ),
-  };
-  const restrictionProjection = {
+  });
+  const restrictionProjection = semanticRuntimeRestrictionPublicationProjectionSchema.parse({
     schema_version: "semantic-runtime-restriction-projection@1.0.0" as const,
     quality_constraints: assertionsOfKind(changeSet, "QUALITY_CONSTRAINT").map(
       ({ assertion_payload }) => assertion_payload,
@@ -214,7 +244,7 @@ export async function compileSemanticPublicationProjection(
     time_semantics: assertionsOfKind(changeSet, "TIME_SEMANTICS").map(
       ({ assertion_payload }) => assertion_payload.time_domain,
     ),
-  };
+  });
   const nodes = changeSet.assertions
     .map(projectionNode)
     .filter((node): node is SemanticGraphNode => node !== null)

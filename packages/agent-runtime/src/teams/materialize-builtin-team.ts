@@ -1,7 +1,7 @@
 import {
-  type AgentProductProfileRegistryItem,
+  type AgentProductProfileRegistryItemV2,
   type AppScope,
-  buildAgentProductProfileCommitCommand,
+  buildAgentProductProfileCommitCommandV2,
   type PortResult,
   type VersionedResourceReference,
 } from "@data-agent/contracts";
@@ -22,14 +22,13 @@ interface SkillCommitPort {
 }
 
 interface ProfileCommitPort {
-  list(
+  listDiscoverable(
     capabilityInput: unknown,
-    enabledOnly?: boolean,
-  ): Promise<PortResult<readonly AgentProductProfileRegistryItem[]>>;
-  commit(
+  ): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>>;
+  commitV2(
     capabilityInput: unknown,
     command: unknown,
-  ): Promise<PortResult<AgentProductProfileRegistryItem>>;
+  ): Promise<PortResult<AgentProductProfileRegistryItemV2>>;
 }
 
 export async function materializeBuiltinTeamProfiles(
@@ -38,7 +37,7 @@ export async function materializeBuiltinTeamProfiles(
     readonly skills: SkillCommitPort;
     readonly profiles: ProfileCommitPort;
   },
-): Promise<PortResult<readonly AgentProductProfileRegistryItem[]>> {
+): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>> {
   const materialized = await buildBuiltinTeamMaterialization(input);
   for (const revision of materialized.skill_revisions) {
     const result = await dependencies.skills.commit(input.capability_input, {
@@ -51,15 +50,15 @@ export async function materializeBuiltinTeamProfiles(
     if (!result.ok) return result;
   }
 
-  const listed = await dependencies.profiles.list(input.capability_input, false);
+  const listed = await dependencies.profiles.listDiscoverable(input.capability_input);
   if (!listed.ok) return listed;
   const headsByProfileId = new Map(
     listed.value.map((item) => [item.head.profile_id, item.head] as const),
   );
-  const committed: AgentProductProfileRegistryItem[] = [];
+  const committed: AgentProductProfileRegistryItemV2[] = [];
   for (const revision of materialized.profile_revisions) {
-    const command = await buildAgentProductProfileCommitCommand({
-      schema_version: "agent-product-profile-commit-command@1.0.0",
+    const command = await buildAgentProductProfileCommitCommandV2({
+      schema_version: "agent-product-profile-commit-command@2.0.0",
       operation_id: input.create_id(),
       idempotency_key: `${input.idempotency_prefix}:profile:${revision.profile_id}:${revision.revision}`,
       actor_principal_id: input.actor_principal_id,
@@ -67,7 +66,7 @@ export async function materializeBuiltinTeamProfiles(
       expected_head_version: headsByProfileId.get(revision.profile_id)?.version ?? 0,
       target_lifecycle: "ENABLED",
     });
-    const result = await dependencies.profiles.commit(input.capability_input, command);
+    const result = await dependencies.profiles.commitV2(input.capability_input, command);
     if (!result.ok) return result;
     committed.push(result.value);
   }

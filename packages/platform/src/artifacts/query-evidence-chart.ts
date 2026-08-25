@@ -49,6 +49,8 @@ export async function buildQueryEvidenceChartDocument(input: {
   readonly document_ref: ArtifactReference;
   readonly evidence: ProductTeamArtifactDocument;
   readonly semantic_context: SemanticContextChartIdentity;
+  readonly title?: string;
+  readonly description?: string;
   readonly unit?: string | null;
 }): Promise<ArtifactWorkspaceChartDocumentV2 | null> {
   const evidence = await verifyProductTeamArtifactDocument(input.evidence);
@@ -101,8 +103,8 @@ export async function buildQueryEvidenceChartDocument(input: {
   const projection: ArtifactWorkspaceChartProjectionV2 = {
     kind: "CHART",
     chart_type: chartType(input.intent),
-    title: title(input.intent),
-    description: "由已提交 QueryEvidence 确定性派生",
+    title: input.title?.trim() || title(input.intent),
+    description: input.description?.trim() || "由已提交 QueryEvidence 确定性派生",
     unit: input.unit ?? null,
     x_key: xColumn.key,
     y_keys: yColumns.map(({ key }) => key),

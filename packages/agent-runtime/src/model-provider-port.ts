@@ -4,6 +4,7 @@ import {
   MastraModelProviderAdapter,
   type ModelCredentialResolver,
   type ModelProviderAdapterClock,
+  type ModelToolChoicePolicy,
   type ProviderDispatchMarker,
   type ProviderTerminalRecorder,
   type ServerModelProviderBindingResolver,
@@ -38,6 +39,8 @@ export interface ModelProviderPortCompositionInput {
   readonly terminal_recorder?: ProviderTerminalRecorder;
   readonly abort_signal?: AbortSignal;
   readonly tools?: readonly ServerOwnedToolDescriptor[];
+  /** Server-owned execution policy. Requests and callers cannot override it. */
+  readonly tool_choice_policy?: ModelToolChoicePolicy;
   readonly clock?: ModelProviderAdapterClock;
 }
 
@@ -53,6 +56,7 @@ export function createSemanticAuthoringModelProviderPort(
     tool_registry: new ServerOwnedToolRegistry(input.tools ?? []),
     response_schema_registry: input.response_schema_registry,
     input_token_counter: input.input_token_counter,
+    ...(input.tool_choice_policy ? { tool_choice_policy: input.tool_choice_policy } : {}),
   });
   return new MastraModelProviderAdapter({
     bridge,
@@ -80,6 +84,7 @@ export function createModelProviderPort(
     tool_registry: toolRegistry,
     response_schema_registry: input.response_schema_registry,
     input_token_counter: input.input_token_counter,
+    ...(input.tool_choice_policy ? { tool_choice_policy: input.tool_choice_policy } : {}),
   });
 
   return new MastraModelProviderAdapter({
@@ -110,6 +115,7 @@ export function createCertifiedEvaluationModelProviderPort(
     tool_registry: new ServerOwnedToolRegistry(input.tools ?? []),
     response_schema_registry: input.response_schema_registry,
     input_token_counter: input.input_token_counter,
+    ...(input.tool_choice_policy ? { tool_choice_policy: input.tool_choice_policy } : {}),
   });
   return new MastraModelProviderAdapter({
     bridge,
@@ -124,6 +130,7 @@ export type {
   ModelCredentialResolver,
   ModelProviderAdapterClock,
   ModelProviderBinding,
+  ModelToolChoicePolicy,
   ProviderTerminalRecorder,
   ServerModelResponseSchemaDescriptor,
   ServerOwnedToolDescriptor,

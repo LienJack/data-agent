@@ -11,7 +11,7 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 async function report() {
   return buildProductTeamArtifactDocument({
-    schema_version: "product-team-artifact@1.0.0",
+    schema_version: "product-team-artifact@2.0.0",
     artifact_ref: {
       artifact_id: id(10),
       artifact_type: "AnalysisReport",
@@ -23,6 +23,7 @@ async function report() {
     profile_id: "semantic-management-agent",
     task_id: id(11),
     source_refs: [],
+    provenance: null,
     projection: {
       kind: "REPORT",
       title: "冻结语义图关系证据",

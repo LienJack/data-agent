@@ -2,11 +2,25 @@ import { describe, expect, it } from "vitest";
 import { directRunBoundProviderDispatcherInternals } from "../../src/providers/direct-run-bound-provider-dispatcher.js";
 
 describe("direct run-bound provider retry policy", () => {
+  it("projects native tool-call events into the strict Root Harness shape", () => {
+    const providerEvent = {
+      tool_call_id: "call-1",
+      tool_name: "delegate_to_subagent@1",
+      arguments: { profile_id: "semantic-management-agent" },
+      event_type: "TOOL_CALL_CANDIDATE",
+    };
+    expect(
+      directRunBoundProviderDispatcherInternals.projectToolCallCandidate(providerEvent),
+    ).toEqual({
+      tool_call_id: "call-1",
+      tool_name: "delegate_to_subagent@1",
+      arguments: { profile_id: "semantic-management-agent" },
+    });
+  });
+
   it("retries a transient structured-output protocol failure once", () => {
     expect(
-      directRunBoundProviderDispatcherInternals.retryableReason(
-        "MODEL_STREAM_PROTOCOL_VIOLATION",
-      ),
+      directRunBoundProviderDispatcherInternals.retryableReason("MODEL_STREAM_PROTOCOL_VIOLATION"),
     ).toBe(true);
     expect(
       directRunBoundProviderDispatcherInternals.retryableReason("MODEL_PROVIDER_TIMEOUT"),

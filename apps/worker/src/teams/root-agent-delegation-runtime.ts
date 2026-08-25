@@ -4,10 +4,8 @@ import {
   SubagentDelegationAdmissionError,
 } from "@data-agent/agent-runtime";
 import {
-  type AgentProductProfileRegistryItem,
   type AgentProductProfileRegistryItemV2,
   type ArtifactReference,
-  agentSpecialistProfileIdSchema,
   effectiveConfigRunLeasePayloadSchema,
   type PortResult,
   type ProductTeamArtifactDocument,
@@ -29,9 +27,6 @@ type RootExecution = Parameters<RunWorkflowExecutorPort["execute"]>[0];
 
 export interface RootAgentDelegationRuntimeDependencies {
   readonly profiles: {
-    listEnabled(
-      capabilityInput: unknown,
-    ): Promise<PortResult<readonly AgentProductProfileRegistryItem[]>>;
     listDiscoverable(
       capabilityInput: unknown,
     ): Promise<PortResult<readonly AgentProductProfileRegistryItemV2[]>>;
@@ -112,38 +107,6 @@ async function resolveContext(execution: RootExecution): Promise<SemanticContext
   }
 }
 
-function selectLegacyRuntimeProfiles(input: {
-  readonly admitted: Awaited<ReturnType<typeof admitRootAgentDelegations>>;
-  readonly legacy: ReadonlyMap<string, AgentProductProfileRegistryItem>;
-}) {
-  const selected = new Map<
-    ReturnType<typeof agentSpecialistProfileIdSchema.parse>,
-    AgentProductProfileRegistryItem
-  >();
-  for (const delegation of input.admitted) {
-    let profileId: ReturnType<typeof agentSpecialistProfileIdSchema.parse>;
-    try {
-      profileId = agentSpecialistProfileIdSchema.parse(delegation.profile.revision.profile_id);
-    } catch {
-      throw new RootAgentDelegationRuntimeError("SUBAGENT_RUNTIME_PROFILE_UNSUPPORTED");
-    }
-    const legacy = input.legacy.get(profileId);
-    const v2Runtime = delegation.profile.revision.runtime_profile_ref;
-    if (
-      !legacy ||
-      legacy.revision.runtime_profile_ref.profile_id !== v2Runtime.profile_id ||
-      legacy.revision.runtime_profile_ref.revision !== v2Runtime.revision ||
-      legacy.revision.runtime_profile_ref.profile_hash !== v2Runtime.profile_hash ||
-      JSON.stringify(legacy.revision.direct_tool_allowlist) !==
-        JSON.stringify(delegation.receipt.tool_allowlist)
-    ) {
-      throw new RootAgentDelegationRuntimeError("SUBAGENT_RUNTIME_PROFILE_BINDING_STALE");
-    }
-    selected.set(profileId, legacy);
-  }
-  return selected;
-}
-
 export function createRootAgentDelegationRuntime(
   dependencies: RootAgentDelegationRuntimeDependencies,
 ): NonNullable<DataAgentTeamRunnerDependencies["root_runtime"]> {
@@ -198,16 +161,13 @@ export function createRootAgentDelegationRuntime(
           throw new RootAgentDelegationRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
         }
 
-        const legacyItems = value(
-          await dependencies.profiles.listEnabled(dependencies.profile_capability_input),
+        const profiles = await verifySelectedProductProfiles(
+          admitted.map(({ profile }) => profile),
         );
-        const legacy = await verifySelectedProductProfiles(legacyItems);
-        const profiles = selectLegacyRuntimeProfiles({ admitted, legacy });
         const context = await resolveContext(input.execution);
         const result = await dependencies.runtime.execute({
           lease: input.execution.lease,
           profiles,
-          dispatch_plan: null,
           admitted_delegations: admitted,
           semantic_context_ref: {
             package_id: context.package.package_id,
@@ -218,6 +178,7 @@ export function createRootAgentDelegationRuntime(
             semantic_release_id: context.package.semantic_release.resource_id,
             semantic_release_hash: context.package.semantic_release.resource_hash,
           },
+          semantic_context_package: context.package,
           restored_snapshot: input.execution.restored_snapshot,
           execution_context: input.execution.context,
           signal: input.execution.signal,
