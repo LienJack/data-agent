@@ -168,6 +168,9 @@ describe("Falcon24 analysis program compiler", () => {
       falcon24AnalysisProgramInternals.method_contracts["falcon24-marketing-lag-effect"].join(" "),
     ).toContain("only marketing_rows and alpha=0.05");
     expect(
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-marketing-lag-effect"].join(" "),
+    ).toContain("including negations");
+    expect(
       falcon24AnalysisProgramInternals.presentation_contracts[
         "falcon24-cohort-retention-m0-m6"
       ].columns.find(({ key }) => key === "average_spend")?.nullable,
