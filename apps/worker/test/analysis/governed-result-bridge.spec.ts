@@ -4,7 +4,10 @@ import {
   type AnalysisGovernedResultAuthorityPort,
   createGovernedResultBridge,
 } from "../../src/analysis/governed-result-bridge.js";
-import type { OpenSandboxAnalysisSession } from "../../src/runs/opensandbox-analysis-runtime.js";
+import {
+  AnalysisSandboxRuntimeError,
+  type OpenSandboxAnalysisSession,
+} from "../../src/runs/opensandbox-analysis-runtime.js";
 
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
 const result: GovernedOperatorResultRef = {
@@ -178,6 +181,81 @@ describe("Governed Result Bridge recovery", () => {
         binding: expect.objectContaining({ journal_seq: 3 }),
       }),
     ]);
+  });
+
+  it("rebuilds the Context and binds the persisted pending result after a Binding Cell timeout", async () => {
+    const requestContent = new TextEncoder().encode('{"request":true}');
+    const resultContent = new TextEncoder().encode("{}");
+    const recoveredBinding = {
+      binding_id: "binding-aaaaaaaaaaaaaaaaaaaaaaaa",
+      result_symbol: "__da_gov_aaaaaaaaaaaaaaaaaaaaaaaa",
+      result_sha256: result.result_sha256 as `sha256:${string}`,
+    };
+    const authority: AnalysisGovernedResultAuthorityPort = {
+      commitModelCell: vi.fn(),
+      commitOperatorIntent: vi.fn(),
+      commit: vi.fn(),
+      load: vi.fn(async () => ({
+        result_content: resultContent,
+        request_content: requestContent,
+        receipt_payload: { receipt: true },
+      })),
+      commitBinding: vi.fn(async () => ({ journal_seq: 8 })),
+      replay: vi.fn(async () => ({
+        actions: [
+          {
+            action_type: "MODEL_CELL" as const,
+            journal_seq: 1,
+            cell_id: "prepare",
+            source: "operator_inputs = {}",
+            source_sha256: hash("1"),
+            timeout_ms: 1_000,
+          },
+        ],
+        pending_results: [result],
+        recovered_results: [],
+      })),
+    };
+    const bindGovernedResult = vi
+      .fn()
+      .mockRejectedValueOnce(
+        new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_CELL_TIMEOUT", "CONTEXT", true),
+      )
+      .mockResolvedValueOnce(recoveredBinding);
+    const recoverAgentContext = vi.fn();
+    const runOperator = vi.fn();
+    const session = {
+      bindGovernedResult,
+      recoverAgentContext,
+      runOperator,
+    } as unknown as OpenSandboxAnalysisSession;
+    const bridge = createGovernedResultBridge({
+      authority,
+      lease: {
+        scope: result.scope,
+        run_id: result.run_id,
+        attempt_id: result.attempt_id,
+        principal_id: "019d2d97-110c-7735-8fbb-000000000007",
+        worker_fence: 1,
+      } as never,
+      analysis_program_ref: {} as never,
+      analysis_program: {} as never,
+      program_hash: result.program_hash as `sha256:${string}`,
+      node_id: result.node_id,
+      context_generation: result.context_generation,
+      runtime_digest: hash("e"),
+      policy_version: "analysis-cell-policy@1.0.0",
+      operator_registry_digest: hash("f"),
+    });
+
+    await expect(bridge.bind({ session, result })).resolves.toEqual({
+      ...recoveredBinding,
+      journal_seq: 8,
+    });
+    expect(recoverAgentContext).toHaveBeenCalledOnce();
+    expect(bindGovernedResult).toHaveBeenCalledTimes(2);
+    expect(authority.commitBinding).toHaveBeenCalledOnce();
+    expect(runOperator).not.toHaveBeenCalled();
   });
 
   it("rejects a pending-result Binding hash substitution before committing the Journal entry", async () => {

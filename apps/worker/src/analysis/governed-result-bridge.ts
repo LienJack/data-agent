@@ -5,7 +5,10 @@ import type {
   GovernedResultShapeSummary,
 } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
-import type { OpenSandboxAnalysisSession } from "../runs/opensandbox-analysis-runtime.js";
+import {
+  AnalysisSandboxRuntimeError,
+  type OpenSandboxAnalysisSession,
+} from "../runs/opensandbox-analysis-runtime.js";
 import type { ProviderInvocationResourceRef } from "./executor.js";
 
 const encoder = new TextEncoder();
@@ -177,6 +180,48 @@ export function createGovernedResultBridge(input: {
   readonly policy_version: string;
   readonly operator_registry_digest: `sha256:${string}`;
 }): GovernedResultBridge {
+  const recoverSession = async (
+    recoveryInput: Parameters<GovernedResultBridge["recover"]>[0],
+  ): Promise<readonly RecoveredGovernedOperatorResult[]> => {
+    const replay = await input.authority.replay({
+      lease: input.lease,
+      node_id: input.node_id,
+      context_generation: input.context_generation,
+    });
+    if (replay.actions.length > 0) {
+      await recoveryInput.session.recoverAgentContext({
+        replay: replay.actions,
+        ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
+      });
+    }
+    const recovered = [...replay.recovered_results];
+    for (const result of replay.pending_results) {
+      const loaded = await input.authority.load({ lease: input.lease, result });
+      const binding = await recoveryInput.session.bindGovernedResult({
+        governed_result: result,
+        authoritative_content: loaded.result_content,
+        timeout_ms: 30_000,
+        ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
+      });
+      if (binding.result_sha256 !== result.result_sha256) {
+        throw new TypeError("ANALYSIS_GOVERNED_RESULT_BINDING_HASH_MISMATCH");
+      }
+      const committed = await input.authority.commitBinding({
+        lease: input.lease,
+        result,
+        ...binding,
+        binding_template_version: "governed-result-binding@1.0.0",
+      });
+      recovered.push({
+        result,
+        request_content: loaded.request_content,
+        receipt_payload: loaded.receipt_payload,
+        binding: { ...binding, journal_seq: committed.journal_seq },
+      });
+    }
+    return Object.freeze(recovered);
+  };
+
   return Object.freeze({
     recordModelCell(recordInput: Parameters<GovernedResultBridge["recordModelCell"]>[0]) {
       return input.authority.commitModelCell({
@@ -236,12 +281,35 @@ export function createGovernedResultBridge(input: {
     },
     async bind(bindInput: Parameters<GovernedResultBridge["bind"]>[0]) {
       const loaded = await input.authority.load({ lease: input.lease, result: bindInput.result });
-      const binding = await bindInput.session.bindGovernedResult({
-        governed_result: bindInput.result,
-        authoritative_content: loaded.result_content,
-        timeout_ms: 30_000,
-        ...(bindInput.signal ? { signal: bindInput.signal } : {}),
-      });
+      let binding: Awaited<ReturnType<OpenSandboxAnalysisSession["bindGovernedResult"]>>;
+      try {
+        binding = await bindInput.session.bindGovernedResult({
+          governed_result: bindInput.result,
+          authoritative_content: loaded.result_content,
+          timeout_ms: 30_000,
+          ...(bindInput.signal ? { signal: bindInput.signal } : {}),
+        });
+      } catch (error) {
+        if (
+          !(error instanceof AnalysisSandboxRuntimeError) ||
+          error.code !== "ANALYSIS_SANDBOX_CELL_TIMEOUT"
+        ) {
+          throw error;
+        }
+        const recovered = await recoverSession({
+          session: bindInput.session,
+          ...(bindInput.signal ? { signal: bindInput.signal } : {}),
+        });
+        const current = recovered.find(
+          ({ result }) =>
+            result.result_artifact_ref.artifact_id ===
+            bindInput.result.result_artifact_ref.artifact_id,
+        );
+        if (!current) {
+          throw new TypeError("ANALYSIS_GOVERNED_RESULT_PENDING_RECOVERY_MISSING");
+        }
+        return current.binding;
+      }
       if (binding.result_sha256 !== bindInput.result.result_sha256) {
         throw new TypeError("ANALYSIS_GOVERNED_RESULT_BINDING_HASH_MISMATCH");
       }
@@ -253,45 +321,7 @@ export function createGovernedResultBridge(input: {
       });
       return Object.freeze({ ...binding, journal_seq: journal.journal_seq });
     },
-    async recover(recoveryInput: Parameters<GovernedResultBridge["recover"]>[0]) {
-      const replay = await input.authority.replay({
-        lease: input.lease,
-        node_id: input.node_id,
-        context_generation: input.context_generation,
-      });
-      if (replay.actions.length > 0) {
-        await recoveryInput.session.recoverAgentContext({
-          replay: replay.actions,
-          ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
-        });
-      }
-      const recovered = [...replay.recovered_results];
-      for (const result of replay.pending_results) {
-        const loaded = await input.authority.load({ lease: input.lease, result });
-        const binding = await recoveryInput.session.bindGovernedResult({
-          governed_result: result,
-          authoritative_content: loaded.result_content,
-          timeout_ms: 30_000,
-          ...(recoveryInput.signal ? { signal: recoveryInput.signal } : {}),
-        });
-        if (binding.result_sha256 !== result.result_sha256) {
-          throw new TypeError("ANALYSIS_GOVERNED_RESULT_BINDING_HASH_MISMATCH");
-        }
-        const committed = await input.authority.commitBinding({
-          lease: input.lease,
-          result,
-          ...binding,
-          binding_template_version: "governed-result-binding@1.0.0",
-        });
-        recovered.push({
-          result,
-          request_content: loaded.request_content,
-          receipt_payload: loaded.receipt_payload,
-          binding: { ...binding, journal_seq: committed.journal_seq },
-        });
-      }
-      return Object.freeze(recovered);
-    },
+    recover: recoverSession,
   });
 }
 
