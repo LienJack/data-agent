@@ -150,7 +150,8 @@ export function createFalcon24AnalysisRuntime(input: {
   });
   const sourceArtifacts = createAnalysisPythonSourceArtifactPort({
     authority: input.research_authority,
-    capability_input: input.research_capabilities.forDomain("PLANNING"),
+    commit_capability_input: input.research_capabilities.forDomain("PLANNING"),
+    replay_capability_input: input.research_capabilities.forDomain("EVIDENCE"),
     encryption_key: sourceEncryption.key,
     encryption_key_id: sourceEncryption.key_id,
     now,

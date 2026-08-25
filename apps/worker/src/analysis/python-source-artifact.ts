@@ -123,7 +123,8 @@ export function resolveAnalysisPythonSourceEncryption(
 
 export function createAnalysisPythonSourceArtifactPort(input: {
   readonly authority: AnalysisPythonSourceAuthorityPort;
-  readonly capability_input: unknown;
+  readonly commit_capability_input: unknown;
+  readonly replay_capability_input: unknown;
   readonly encryption_key: Uint8Array;
   readonly encryption_key_id: string;
   readonly now?: () => Date;
@@ -183,7 +184,7 @@ export function createAnalysisPythonSourceArtifactPort(input: {
         committed_at: now().toISOString(),
       });
       const result = await input.authority.commitAnalysisPythonSource(
-        input.capability_input,
+        input.commit_capability_input,
         {
           schema_version: "analysis-python-source-commit@1.0.0",
           scope: command.lease.scope,
@@ -209,7 +210,7 @@ export function createAnalysisPythonSourceArtifactPort(input: {
     },
     async load(command: Parameters<AnalysisCellSourceArtifactPort["load"]>[0]) {
       const result = await input.authority.readAnalysisContextModelCellSource(
-        input.capability_input,
+        input.replay_capability_input,
         {
           schema_version: "analysis-context-model-cell-source-read@1.0.0",
           scope: command.lease.scope,

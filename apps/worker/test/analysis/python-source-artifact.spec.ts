@@ -70,13 +70,18 @@ describe("Analysis Python source artifact port", () => {
       readonly ciphertext: Uint8Array;
     }> = [];
     const reads: unknown[] = [];
+    const commitCapability = { capability: "planning-commit" };
+    const replayCapability = { capability: "evidence-replay" };
+    const observedCapabilities: unknown[] = [];
     const artifacts = createAnalysisPythonSourceArtifactPort({
       authority: {
         async commitAnalysisPythonSource(...input) {
+          observedCapabilities.push(input[0]);
           captured.push({ command: input[1], ciphertext: input[2] });
           return { ok: true, created: true, receipt: input[1].receipt };
         },
-        async readAnalysisContextModelCellSource(_capability, command) {
+        async readAnalysisContextModelCellSource(capability, command) {
+          observedCapabilities.push(capability);
           reads.push(command);
           const committed = captured[0];
           if (!committed) return { ok: false as const, error_code: "NOT_FOUND" };
@@ -87,7 +92,8 @@ describe("Analysis Python source artifact port", () => {
           };
         },
       },
-      capability_input: { capability: "server-only" },
+      commit_capability_input: commitCapability,
+      replay_capability_input: replayCapability,
       encryption_key: key,
       encryption_key_id: "analysis-python-source-v1",
       now: () => new Date("2026-08-24T00:00:00.000Z"),
@@ -141,6 +147,11 @@ describe("Analysis Python source artifact port", () => {
         source_ref: { artifact_id: result.artifact_id },
       },
     ]);
+    expect(observedCapabilities).toEqual([
+      commitCapability,
+      commitCapability,
+      replayCapability,
+    ]);
 
     const decipher = createDecipheriv(
       "aes-256-gcm",
@@ -180,7 +191,8 @@ describe("Analysis Python source artifact port", () => {
             error_code: "NOT_USED",
           }),
         },
-        capability_input: {},
+        commit_capability_input: {},
+        replay_capability_input: {},
         encryption_key: new Uint8Array(16),
         encryption_key_id: "analysis-python-source-v1",
       }),
