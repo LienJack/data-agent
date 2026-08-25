@@ -162,6 +162,11 @@ describe("Falcon24 analysis program compiler", () => {
       ].join(" "),
     ).toContain("unrated orders retained in the denominator");
     expect(
+      falcon24AnalysisProgramInternals.method_contracts[
+        "falcon24-delivery-experience-12m"
+      ].join(" "),
+    ).toContain("exactly 2127, never to the total order count");
+    expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("result bh_q_value to table adjusted_p_value");
     expect(
