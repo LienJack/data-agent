@@ -45,10 +45,12 @@ function fakeFactory(
     readonly fail_handle_kill?: boolean;
     readonly fail_manager_list_after?: number;
     readonly symbol_extraction_error?: string;
+    readonly read_failures?: number;
     readonly write_failures?: number;
   } = {},
 ) {
   let managerListCalls = 0;
+  let readFailuresRemaining = options.read_failures ?? 0;
   let writeFailuresRemaining = options.write_failures ?? 0;
   const connectionProxyModes: boolean[] = [];
   const created: Array<{
@@ -61,6 +63,7 @@ function fakeFactory(
     closed: boolean;
     deleted_contexts: string[];
     executed_codes: string[];
+    read_attempts: number;
     write_attempts: number;
   }> = [];
   const factory: OpenSandboxSdkFactory = {
@@ -76,6 +79,7 @@ function fakeFactory(
         closed: false,
         deleted_contexts: [] as string[],
         executed_codes: [] as string[],
+        read_attempts: 0,
         write_attempts: 0,
       };
       created.push(state);
@@ -140,6 +144,11 @@ function fakeFactory(
             for (const entry of entries) state.files.set(entry.path, entry.data);
           },
           async readBytes(path) {
+            state.read_attempts += 1;
+            if (readFailuresRemaining > 0) {
+              readFailuresRemaining -= 1;
+              throw new Error("transient file transfer failure");
+            }
             const value = state.files.get(path);
             if (!value) throw new Error("missing");
             return value;
@@ -305,6 +314,7 @@ function fakeFactory(
       closed: false,
       deleted_contexts: [],
       executed_codes: [],
+      read_attempts: 0,
       write_attempts: 0,
     });
   };
@@ -593,52 +603,78 @@ describe("OpenSandbox analysis runtime", () => {
     await session.close();
   });
 
-  it("retries bounded transient file writes and still fails closed when exhausted", async () => {
-    const content = Buffer.from("bytes");
-    const recoveredFactory = fakeFactory({ write_failures: 2 });
-    const recoveredRuntime = createOpenSandboxAnalysisRuntime({
-      config: testConfig(),
-      sdk_factory: recoveredFactory.factory,
-    });
-    const recovered = await recoveredRuntime.createSession({
-      run_id: "run-file-retry",
-      node_id: "node-file-retry",
-      profile: "CORE_ANALYSIS",
-    });
-    await expect(
-      recovered.uploadAgentFile({
-        path: "/workspace/inputs/orders.parquet",
-        content,
-        content_sha256: digest(content),
-      }),
-    ).resolves.toBeUndefined();
-    expect(recoveredFactory.created[0]?.write_attempts).toBe(3);
-    await recovered.close();
+  it(
+    "retries bounded transient file transfers and still fails closed when exhausted",
+    async () => {
+      const content = Buffer.from("bytes");
+      const recoveredFactory = fakeFactory({ write_failures: 4 });
+      const recoveredRuntime = createOpenSandboxAnalysisRuntime({
+        config: testConfig(),
+        sdk_factory: recoveredFactory.factory,
+      });
+      const recovered = await recoveredRuntime.createSession({
+        run_id: "run-file-retry",
+        node_id: "node-file-retry",
+        profile: "CORE_ANALYSIS",
+      });
+      await expect(
+        recovered.uploadAgentFile({
+          path: "/workspace/inputs/orders.parquet",
+          content,
+          content_sha256: digest(content),
+        }),
+      ).resolves.toBeUndefined();
+      expect(recoveredFactory.created[0]?.write_attempts).toBe(5);
+      await recovered.close();
 
-    const exhaustedFactory = fakeFactory({ write_failures: 3 });
-    const exhaustedRuntime = createOpenSandboxAnalysisRuntime({
-      config: testConfig(),
-      sdk_factory: exhaustedFactory.factory,
-    });
-    const exhausted = await exhaustedRuntime.createSession({
-      run_id: "run-file-exhausted",
-      node_id: "node-file-exhausted",
-      profile: "CORE_ANALYSIS",
-    });
-    await expect(
-      exhausted.uploadAgentFile({
-        path: "/workspace/inputs/orders.parquet",
-        content,
-        content_sha256: digest(content),
-      }),
-    ).rejects.toMatchObject({
-      code: "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-      stage: "FILE_TRANSFER",
-      retryable: true,
-    });
-    expect(exhaustedFactory.created[0]?.write_attempts).toBe(3);
-    await exhausted.close();
-  });
+      const exhaustedFactory = fakeFactory({ write_failures: 5 });
+      const exhaustedRuntime = createOpenSandboxAnalysisRuntime({
+        config: testConfig(),
+        sdk_factory: exhaustedFactory.factory,
+      });
+      const exhausted = await exhaustedRuntime.createSession({
+        run_id: "run-file-exhausted",
+        node_id: "node-file-exhausted",
+        profile: "CORE_ANALYSIS",
+      });
+      await expect(
+        exhausted.uploadAgentFile({
+          path: "/workspace/inputs/orders.parquet",
+          content,
+          content_sha256: digest(content),
+        }),
+      ).rejects.toMatchObject({
+        code: "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+        stage: "FILE_TRANSFER",
+        retryable: true,
+      });
+      expect(exhaustedFactory.created[0]?.write_attempts).toBe(5);
+      await exhausted.close();
+
+      const readFactory = fakeFactory({ read_failures: 4 });
+      const readRuntime = createOpenSandboxAnalysisRuntime({
+        config: testConfig(),
+        sdk_factory: readFactory.factory,
+      });
+      const readSession = await readRuntime.createSession({
+        run_id: "run-file-read-retry",
+        node_id: "node-file-read-retry",
+        profile: "CORE_ANALYSIS",
+      });
+      const request = Buffer.from(JSON.stringify({ operator_id: "multiple-testing.bh-fdr@1" }));
+      await expect(
+        readSession.runOperator({
+          call_id: "read-retry",
+          request,
+          request_sha256: digest(request),
+          timeout_ms: 100,
+        }),
+      ).resolves.toMatchObject({ status: "SUCCEEDED" });
+      expect(readFactory.created[1]?.read_attempts).toBe(5);
+      await readSession.close();
+    },
+    10_000,
+  );
 
   it("interrupts a timed-out cell with a structured error", async () => {
     const fake = fakeFactory({ hang_agent: true });

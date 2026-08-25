@@ -17,7 +17,7 @@ import { z } from "zod";
 import type { AnalysisContextReplayAction } from "../analysis/governed-result-bridge.js";
 
 const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
-const FILE_TRANSFER_RETRY_DELAYS_MS = [50, 150] as const;
+const FILE_TRANSFER_RETRY_DELAYS_MS = [50, 150, 500, 1_500] as const;
 
 export const ANALYSIS_AGENT_TOOL_NAME = "python_cell" as const;
 export const ANALYSIS_OPERATOR_TOOL_NAME = "statistical_operator" as const;
@@ -160,12 +160,12 @@ export class AnalysisSandboxRuntimeError extends Error {
   }
 }
 
-async function writeSandboxFiles(write: () => Promise<void>): Promise<void> {
+async function transferSandboxFile<T>(transfer: () => Promise<T>): Promise<T> {
   for (let attempt = 0; attempt <= FILE_TRANSFER_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      await write();
-      return;
-    } catch {
+      return await transfer();
+    } catch (error) {
+      if (error instanceof AnalysisSandboxRuntimeError) throw error;
       const delay = FILE_TRANSFER_RETRY_DELAYS_MS[attempt];
       if (delay === undefined) {
         throw new AnalysisSandboxRuntimeError(
@@ -179,6 +179,11 @@ async function writeSandboxFiles(write: () => Promise<void>): Promise<void> {
       });
     }
   }
+  throw new AnalysisSandboxRuntimeError(
+    "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+    "FILE_TRANSFER",
+    true,
+  );
 }
 
 export interface AnalysisSandboxCellObservation {
@@ -1475,7 +1480,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
         expected?: `sha256:${string}`,
       ) => {
         const path = sandboxPathSchema.parse(pathInput);
-        try {
+        return transferSandboxFile(async () => {
           const info = await sandbox.files.getFileInfo([path]);
           const size = info[path]?.size;
           if (typeof size === "number" && size > config.max_file_bytes) {
@@ -1497,14 +1502,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
             );
           }
           return bytes;
-        } catch (error) {
-          if (error instanceof AnalysisSandboxRuntimeError) throw error;
-          throw new AnalysisSandboxRuntimeError(
-            "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-            "FILE_TRANSFER",
-            true,
-          );
-        }
+        });
       };
       return Object.freeze({
         agent_sandbox_id: pair.agent.id,
@@ -1526,7 +1524,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
               false,
             );
           }
-          await writeSandboxFiles(() =>
+          await transferSandboxFile(() =>
             pair.agent.files.writeFiles([{ path, data: uploadInput.content, mode: 400 }]),
           );
         },
@@ -1606,7 +1604,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${cellId}.policy.json`;
           const outputPath = `/workspace/operator-outputs/${cellId}.policy.json`;
-          await writeSandboxFiles(() =>
+          await transferSandboxFile(() =>
             pair.operator.files.writeFiles([{ path: requestPath, data: request, mode: 400 }]),
           );
           await runOperatorCommandWithDeadline({
@@ -1718,7 +1716,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
                 );
               }
               const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
-              await writeSandboxFiles(() =>
+              await transferSandboxFile(() =>
                 pair.agent.files.writeFiles([
                   { path: inputPath, data: action.authoritative_content, mode: 400 },
                 ]),
@@ -1781,7 +1779,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
           try {
-            await writeSandboxFiles(() =>
+            await transferSandboxFile(() =>
               pair.agent.files.writeFiles([
                 { path: inputPath, data: bindingInput.authoritative_content, mode: 400 },
               ]),
@@ -1894,7 +1892,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${callId}.json`;
           const outputPath = `/workspace/operator-outputs/${callId}.json`;
-          await writeSandboxFiles(() =>
+          await transferSandboxFile(() =>
             pair.operator.files.writeFiles([
               { path: requestPath, data: operatorInput.request, mode: 400 },
             ]),
@@ -1935,7 +1933,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${finalizationId}.finalize.json`;
           const outputPath = `/workspace/operator-outputs/${finalizationId}.receipt.json`;
-          await writeSandboxFiles(() =>
+          await transferSandboxFile(() =>
             pair.operator.files.writeFiles([
               { path: requestPath, data: finalizationInput.request, mode: 400 },
             ]),
