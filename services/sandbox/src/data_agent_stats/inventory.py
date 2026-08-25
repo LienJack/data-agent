@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from data_agent_stats.registry import OperatorExecutionResult, StatisticalOperatorError
@@ -26,6 +27,16 @@ def _labeled_values(rows: list[dict[str, Any]], value_field: str) -> dict[str, f
             raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
         values[label] = float(value)
     return values
+
+
+def _month_key(value: str) -> str:
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as error:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD") from error
+    if parsed.day != 1:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+    return value[:7]
 
 
 def inventory_damage_priority(
@@ -56,8 +67,8 @@ def inventory_damage_priority(
     summaries: dict[str, dict[str, Any]] = {}
     category_sales: dict[str, list[float]] = defaultdict(list)
     for product_id, rows in by_product.items():
-        ordered = sorted(rows, key=lambda row: row["month"])
-        months = [row["month"] for row in ordered]
+        ordered = sorted(rows, key=lambda row: _month_key(row["month"]))
+        months = [_month_key(row["month"]) for row in ordered]
         names = {row["product_name"] for row in ordered}
         categories = {row["category"] for row in ordered}
         if len(ordered) != 12 or len(set(months)) != 12 or len(names) != 1 or len(categories) != 1:

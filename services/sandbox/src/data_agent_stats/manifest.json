@@ -446,7 +446,7 @@
             "product_id": "NON_EMPTY_STRING",
             "product_name": "NON_EMPTY_STRING",
             "category": "NON_EMPTY_STRING",
-            "month": "MONTH_KEY",
+            "month": "DATE_KEY",
             "sales_quantity": "NON_NEGATIVE_FINITE_NUMBER",
             "stock_received": "NON_NEGATIVE_FINITE_NUMBER",
             "damaged_stock": "NON_NEGATIVE_FINITE_NUMBER"
@@ -455,7 +455,7 @@
             "product_id": "product_a",
             "product_name": "Product A",
             "category": "grocery",
-            "month": "2024-01",
+            "month": "2024-01-01",
             "sales_quantity": 100.0,
             "stock_received": 80.0,
             "damaged_stock": 2.0
@@ -566,6 +566,7 @@
       },
       "applicability_checks": [
         "EXACT_PRODUCT_LABEL_CLOSURE",
+        "MONTH_START_DATE_INPUT",
         "TWELVE_UNIQUE_MONTHS_PER_PRODUCT",
         "CONSISTENT_PRODUCT_METADATA",
         "LINEAR_CATEGORY_PERCENTILE",

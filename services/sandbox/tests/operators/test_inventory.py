@@ -25,7 +25,7 @@ def _inputs() -> dict[str, list[dict[str, object]]]:
                     "product_id": product_id,
                     "product_name": product_name,
                     "category": category,
-                    "month": f"2024-{index + 1:02d}",
+                    "month": f"2024-{index + 1:02d}-01",
                     "sales_quantity": monthly_sales,
                     "stock_received": 100.0,
                     "damaged_stock": float(index if product_id == "p4" else 11 - index),
@@ -133,11 +133,15 @@ def test_inventory_priority_manifest_accepts_exact_upstream_governed_collections
     assert not input_records_match_manifest(mann_kendall, projected)
 
 
-@pytest.mark.parametrize("mutation", ["missing_month", "metadata_conflict", "missing_label"])
+@pytest.mark.parametrize(
+    "mutation", ["missing_month", "non_month_start", "metadata_conflict", "missing_label"]
+)
 def test_inventory_priority_rejects_incomplete_or_ambiguous_product_closure(mutation: str) -> None:
     inputs = deepcopy(_inputs())
     if mutation == "missing_month":
         inputs["inventory_rows"].pop()
+    elif mutation == "non_month_start":
+        inputs["inventory_rows"][0]["month"] = "2024-01-02"
     elif mutation == "metadata_conflict":
         inputs["inventory_rows"][0]["category"] = "other"
     else:
