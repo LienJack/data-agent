@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   type AppScope,
+  type ArtifactReference,
   appScopeSchema,
   artifactReferenceIdentity,
   artifactReferenceSchema,
@@ -145,11 +146,161 @@ export function buildTeamTaskV2(input: unknown): TeamTaskV2 {
   return deepFreeze(teamTaskV2Schema.parse({ ...draft, task_hash: syncHash(draft) }));
 }
 
-const operationAudienceSchema = z.enum(["HANDOFF_PREPARE", "TASK_COMPLETE", "TOOL_INVOKE"]);
-
 const canonicalTimestampSchema = z.iso
   .datetime({ offset: true })
   .transform((value) => new Date(value).toISOString());
+
+const acceptedSiblingOutputAttachmentDraftSchema = z.strictObject({
+  schema_version: z.literal("agent-team-accepted-sibling-output-attachment@1.0.0"),
+  attachment_id: immutableIdSchema,
+  scope: appScopeSchema,
+  run_id: immutableIdSchema,
+  root_task_id: immutableIdSchema,
+  root_task_hash: contentHashSchema,
+  producer_task_id: immutableIdSchema,
+  producer_task_hash: contentHashSchema,
+  producer_profile_id: dataAgentProfileIdSchema,
+  producer_tool_call_id: z.string().min(1).max(256),
+  consumer_task_id: immutableIdSchema,
+  consumer_tool_call_id: z.string().min(1).max(256),
+  consumer_profile_id: dataAgentProfileIdSchema,
+  consumer_profile_revision: z.number().int().positive(),
+  consumer_profile_hash: contentHashSchema,
+  artifact_ref: artifactReferenceSchema,
+  completion_id: immutableIdSchema,
+  completion_hash: contentHashSchema,
+  verifier_decision_id: immutableIdSchema,
+  verifier_decision_hash: contentHashSchema,
+  acceptance_hash: contentHashSchema,
+  worker_fence: z.number().int().positive(),
+  attached_at: canonicalTimestampSchema,
+});
+
+export const acceptedSiblingOutputAttachmentSchema = acceptedSiblingOutputAttachmentDraftSchema
+  .extend({ attachment_hash: contentHashSchema })
+  .superRefine((attachment, ctx) => {
+    if (!sameScope(attachment.scope, attachment.run_id, attachment.artifact_ref)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Accepted sibling output escaped the attachment scope.",
+        path: ["artifact_ref"],
+      });
+    }
+  });
+
+export type AcceptedSiblingOutputAttachment = z.infer<typeof acceptedSiblingOutputAttachmentSchema>;
+
+export async function buildAcceptedSiblingOutputAttachment(
+  input: unknown,
+): Promise<AcceptedSiblingOutputAttachment> {
+  const draft = acceptedSiblingOutputAttachmentDraftSchema.parse(input);
+  return deepFreeze(
+    acceptedSiblingOutputAttachmentSchema.parse({
+      ...draft,
+      attachment_hash: await sha256ContentHash(draft),
+    }),
+  );
+}
+
+export async function verifyAcceptedSiblingOutputAttachment(
+  input: unknown,
+): Promise<AcceptedSiblingOutputAttachment> {
+  const attachment = acceptedSiblingOutputAttachmentSchema.parse(input);
+  const { attachment_hash: actual, ...draft } = attachment;
+  if (
+    (await sha256ContentHash(acceptedSiblingOutputAttachmentDraftSchema.parse(draft))) !== actual
+  ) {
+    throw new Error("ACCEPTED_SIBLING_OUTPUT_ATTACHMENT_HASH_MISMATCH");
+  }
+  return deepFreeze(attachment);
+}
+
+export interface CommittedAcceptedSiblingOutputAttachmentResolver {
+  resolve_committed(attachmentId: string): Promise<unknown | null>;
+}
+
+const authoritativeAcceptedSiblingAttachments = new WeakSet<object>();
+export type AuthoritativeAcceptedSiblingOutputAttachment = AcceptedSiblingOutputAttachment & {
+  readonly __acceptedSiblingOutputAttachmentAuthority: never;
+};
+
+export async function authorizePersistedAcceptedSiblingOutputAttachment(input: {
+  readonly attachment_id: string;
+  readonly root_task: unknown;
+  readonly producer_task: unknown;
+  readonly consumer_task_id: string;
+  readonly consumer_tool_call_id: string;
+  readonly consumer_profile_id: string;
+  readonly consumer_profile_revision: number;
+  readonly consumer_profile_hash: string;
+  readonly producer_tool_call_id: string;
+  readonly artifact_ref: ArtifactReference;
+  readonly completion_id: string;
+  readonly completion_hash: string;
+  readonly verifier_decision_id: string;
+  readonly verifier_decision_hash: string;
+  readonly acceptance_hash: string;
+  readonly resolver: CommittedAcceptedSiblingOutputAttachmentResolver;
+}): Promise<AuthoritativeAcceptedSiblingOutputAttachment> {
+  const root = teamTaskV2Schema.parse(input.root_task);
+  const producer = teamTaskV2Schema.parse(input.producer_task);
+  const attachmentId = immutableIdSchema.parse(input.attachment_id);
+  const consumerTaskId = immutableIdSchema.parse(input.consumer_task_id);
+  getAgentProfileRevisionExact(
+    dataAgentProfileIdSchema.parse(input.consumer_profile_id),
+    input.consumer_profile_revision,
+    contentHashSchema.parse(input.consumer_profile_hash),
+  );
+  const resolved = await input.resolver.resolve_committed(attachmentId);
+  if (resolved === null) throw new Error("ACCEPTED_SIBLING_OUTPUT_ATTACHMENT_NOT_FOUND");
+  const attachment = await verifyAcceptedSiblingOutputAttachment(resolved);
+  if (
+    root.depth !== 0 ||
+    producer.depth !== 1 ||
+    producer.parent_task_id !== root.task_id ||
+    attachment.attachment_id !== attachmentId ||
+    attachment.scope.app_id !== root.scope.app_id ||
+    attachment.scope.tenant_id !== root.scope.tenant_id ||
+    attachment.scope.environment !== root.scope.environment ||
+    attachment.run_id !== root.run_id ||
+    attachment.root_task_id !== root.task_id ||
+    attachment.root_task_hash !== root.task_hash ||
+    attachment.producer_task_id !== producer.task_id ||
+    attachment.producer_task_hash !== producer.task_hash ||
+    attachment.producer_profile_id !== producer.profile_id ||
+    attachment.producer_tool_call_id !== input.producer_tool_call_id ||
+    attachment.consumer_task_id !== consumerTaskId ||
+    attachment.consumer_tool_call_id !== input.consumer_tool_call_id ||
+    attachment.consumer_profile_id !== input.consumer_profile_id ||
+    attachment.consumer_profile_revision !== input.consumer_profile_revision ||
+    attachment.consumer_profile_hash !== input.consumer_profile_hash ||
+    artifactReferenceIdentity(attachment.artifact_ref) !==
+      artifactReferenceIdentity(input.artifact_ref) ||
+    attachment.completion_id !== input.completion_id ||
+    attachment.completion_hash !== input.completion_hash ||
+    attachment.verifier_decision_id !== input.verifier_decision_id ||
+    attachment.verifier_decision_hash !== input.verifier_decision_hash ||
+    attachment.acceptance_hash !== input.acceptance_hash ||
+    attachment.worker_fence !== root.worker_fence ||
+    producer.worker_fence !== root.worker_fence
+  ) {
+    throw new Error("ACCEPTED_SIBLING_OUTPUT_ATTACHMENT_CORRELATION_MISMATCH");
+  }
+  authoritativeAcceptedSiblingAttachments.add(attachment);
+  return attachment as AuthoritativeAcceptedSiblingOutputAttachment;
+}
+
+export function isAuthoritativeAcceptedSiblingOutputAttachment(
+  input: unknown,
+): input is AuthoritativeAcceptedSiblingOutputAttachment {
+  return (
+    typeof input === "object" &&
+    input !== null &&
+    authoritativeAcceptedSiblingAttachments.has(input)
+  );
+}
+
+const operationAudienceSchema = z.enum(["HANDOFF_PREPARE", "TASK_COMPLETE", "TOOL_INVOKE"]);
 
 const taskCapabilityDraftSchema = z.strictObject({
   schema_version: z.literal("task-capability-receipt@2.0.0"),
@@ -317,6 +468,7 @@ export function createSubagentDelegationCommand(
   parentInput: unknown,
   capability: AuthoritativeTaskCapability,
   requestInput: unknown,
+  acceptedSiblingAttachments: readonly AuthoritativeAcceptedSiblingOutputAttachment[] = [],
 ) {
   const parent = teamTaskV2Schema.parse(parentInput);
   if (!isAuthoritativeTaskCapability(capability))
@@ -330,6 +482,19 @@ export function createSubagentDelegationCommand(
   }
   if (!boundsAreNarrower(parent.bounds, request.bounds)) throw new Error("TEAM_BOUNDS_ESCALATION");
   const allowed = new Set(parent.artifact_refs.map(artifactReferenceIdentity));
+  for (const attachment of acceptedSiblingAttachments) {
+    if (
+      !isAuthoritativeAcceptedSiblingOutputAttachment(attachment) ||
+      attachment.root_task_id !== parent.task_id ||
+      attachment.root_task_hash !== parent.task_hash ||
+      attachment.consumer_task_id !== request.child_task_id ||
+      attachment.consumer_profile_id !== request.child_profile_id ||
+      attachment.worker_fence !== parent.worker_fence
+    ) {
+      throw new Error("ACCEPTED_SIBLING_OUTPUT_ATTACHMENT_CORRELATION_MISMATCH");
+    }
+    allowed.add(artifactReferenceIdentity(attachment.artifact_ref));
+  }
   if (
     request.artifact_refs.some((reference) => !allowed.has(artifactReferenceIdentity(reference)))
   ) {
@@ -349,6 +514,15 @@ export function createSubagentDelegationCommand(
           request.child_profile_hash,
         )
       : getAgentProfileRevision(request.child_profile_id);
+  if (
+    acceptedSiblingAttachments.some(
+      (attachment) =>
+        attachment.consumer_profile_revision !== profile.revision ||
+        attachment.consumer_profile_hash !== profile.profile_hash,
+    )
+  ) {
+    throw new Error("ACCEPTED_SIBLING_OUTPUT_ATTACHMENT_CORRELATION_MISMATCH");
+  }
   const childTask = buildTeamTaskV2({
     schema_version: "agent-team-task@2.0.0",
     task_id: request.child_task_id,

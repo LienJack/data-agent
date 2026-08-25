@@ -21,6 +21,7 @@ const operationSchema = z.enum([
   "COMMIT_CONTEXT_EPOCH",
   "COMMIT_COMPLETION",
   "COMMIT_ACCEPTANCE",
+  "ATTACH_ACCEPTED_SIBLING_OUTPUT",
   "RECORD_LATE_RESULT",
   "ISSUE_TASK_CAPABILITY",
   "LOAD_TASK_CAPABILITY",
@@ -149,6 +150,8 @@ function mapDatabaseError(error: unknown) {
     "AGENT_TEAM_CAPABILITY_REQUIRED",
     "AGENT_TEAM_OBLIGATION_SET_MISMATCH",
     "AGENT_TEAM_PENDING_EFFECT_RECONCILIATION_REQUIRED",
+    "AGENT_TEAM_ACCEPTED_SIBLING_OUTPUT_INVALID",
+    "AGENT_TEAM_ACCEPTED_SIBLING_OUTPUT_REQUIRED",
   ]) {
     if (message.includes(marker)) {
       return invalid(
@@ -170,6 +173,7 @@ const rpcByOperation = {
   COMMIT_CONTEXT_EPOCH: "commit_agent_team_context_epoch",
   COMMIT_COMPLETION: "commit_agent_team_completion",
   COMMIT_ACCEPTANCE: "commit_agent_team_acceptance",
+  ATTACH_ACCEPTED_SIBLING_OUTPUT: "attach_agent_team_accepted_sibling_output",
   RECORD_LATE_RESULT: "record_agent_team_late_result",
   ISSUE_TASK_CAPABILITY: "issue_agent_team_task_capability",
   LOAD_TASK_CAPABILITY: "load_agent_team_task_capability",
@@ -271,6 +275,8 @@ export function createPostgresTeamRunStore(options: PostgresTeamRunStoreOptions)
       execute(capability, command, "COMMIT_COMPLETION"),
     commitAcceptance: (capability: unknown, command: unknown) =>
       execute(capability, command, "COMMIT_ACCEPTANCE"),
+    attachAcceptedSiblingOutput: (capability: unknown, command: unknown) =>
+      execute(capability, command, "ATTACH_ACCEPTED_SIBLING_OUTPUT"),
     recordLateResult: (capability: unknown, command: unknown) =>
       execute(capability, command, "RECORD_LATE_RESULT"),
     issueTaskCapability: (capability: unknown, command: unknown) =>

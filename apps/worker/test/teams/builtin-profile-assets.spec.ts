@@ -9,6 +9,7 @@ const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const profiles = [
+  "governed-analysis-agent",
   "governed-text2sql-agent",
   "report-writing-agent",
   "semantic-management-agent",
@@ -27,7 +28,7 @@ function references(offset: number) {
 }
 
 describe("built-in Team product assets", () => {
-  it("materializes nine immutable Skills and three isolated product Profiles", async () => {
+  it("materializes ten immutable Skills and four isolated product Profiles", async () => {
     const materialized = await buildBuiltinTeamMaterialization({
       scope,
       model_profile_refs: references(10),
@@ -35,44 +36,50 @@ describe("built-in Team product assets", () => {
       execution_safety_policy_refs: references(30),
     });
 
-    expect(materialized.skill_revisions).toHaveLength(9);
+    expect(materialized.skill_revisions).toHaveLength(10);
     expect(materialized.profile_revisions.map(({ profile_id }) => profile_id)).toEqual(profiles);
+    expect(materialized.profile_revisions.map(({ revision }) => revision)).toEqual([2, 3, 3, 4]);
+    expect(
+      materialized.profile_revisions.find(
+        ({ profile_id: profileId }) => profileId === "governed-analysis-agent",
+      )?.discovery.accepted_input_artifact_types,
+    ).toEqual(["QueryEvidence"]);
     expect(
       new Set(materialized.skill_revisions.map(({ revision_hash }) => revision_hash)),
-    ).toHaveLength(9);
+    ).toHaveLength(10);
     expect(
       new Set(materialized.profile_revisions.map(({ prompt_ref }) => prompt_ref.prompt_hash)).size,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       new Set(materialized.profile_revisions.map(({ workflow_ref }) => workflow_ref.workflow_hash))
         .size,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       new Set(
         materialized.profile_revisions.map(({ model_profile_ref }) =>
           JSON.stringify(model_profile_ref),
         ),
       ).size,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       new Set(
         materialized.profile_revisions.map(({ context_policy_ref }) =>
           JSON.stringify(context_policy_ref),
         ),
       ).size,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       new Set(
         materialized.profile_revisions.map(({ execution_safety_policy_ref }) =>
           JSON.stringify(execution_safety_policy_ref),
         ),
       ).size,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       new Set(
         materialized.profile_revisions.map(({ verifier_contract_hash }) => verifier_contract_hash),
       ).size,
-    ).toBe(3);
+    ).toBe(4);
     expect(
       materialized.skill_revisions.every(({ install_scripts }) => install_scripts.length === 0),
     ).toBe(true);
@@ -103,6 +110,9 @@ describe("built-in Team product assets", () => {
       "impact",
       "complete",
     ]);
+    expect(BUILTIN_TEAM_WORKFLOWS["governed-analysis-agent"]).toContain(
+      "bind_accepted_query_evidence",
+    );
     expect(BUILTIN_TEAM_WORKFLOWS["governed-text2sql-agent"]).toHaveLength(7);
     expect(BUILTIN_TEAM_WORKFLOWS["report-writing-agent"]).toHaveLength(6);
   });

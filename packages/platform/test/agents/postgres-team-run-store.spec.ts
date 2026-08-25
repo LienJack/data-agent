@@ -112,6 +112,46 @@ describe("PostgresTeamRunStore", () => {
     expect(scripted.calls.some((call) => call.text.includes("create_agent_team_task"))).toBe(true);
   });
 
+  it("routes accepted sibling attachments through their only authority RPC", async () => {
+    const command = await buildAgentTeamStoreCommand({
+      schema_version: "agent-team-store-command@1.0.0",
+      operation: "ATTACH_ACCEPTED_SIBLING_OUTPUT",
+      command_id: ids.command,
+      scope: { app_id: ids.app, tenant_id: ids.tenant, environment: "test" },
+      run_id: ids.run,
+      task_id: ids.task,
+      expected_revision: 1,
+      lease,
+      selector: null,
+      document: {
+        schema_version: "agent-team-accepted-sibling-output-attachment@1.0.0",
+        attachment_id: "00000000-0000-4000-8000-000000000012",
+      },
+    });
+    const scripted = scriptedPool({
+      schema_version: "agent-team-store-result@1.0.0",
+      operation: command.operation,
+      disposition: "CREATED",
+      request_hash: command.request_hash,
+      document_hash: command.document_hash,
+      document: command.document,
+    });
+    const auth = authority();
+    const store = createPostgresTeamRunStore({ pool: scripted.pool, authorizer: auth.authorizer });
+
+    await expect(
+      store.attachAcceptedSiblingOutput(auth.capability, command),
+    ).resolves.toMatchObject({
+      ok: true,
+      value: { disposition: "CREATED" },
+    });
+    expect(
+      scripted.calls.some((call) =>
+        call.text.includes("attach_agent_team_accepted_sibling_output"),
+      ),
+    ).toBe(true);
+  });
+
   it("rejects a DB document substitution even when the outer shape is valid", async () => {
     const command = await buildAgentTeamStoreCommand({
       schema_version: "agent-team-store-command@1.0.0",

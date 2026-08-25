@@ -24,6 +24,7 @@ const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const profileIds = [
+  "governed-analysis-agent",
   "governed-text2sql-agent",
   "report-writing-agent",
   "semantic-management-agent",
@@ -97,22 +98,35 @@ async function admittedDelegations(
       run_id: id(50),
       catalog_snapshot_hash: catalog.snapshot_hash,
       public_summary: "选择冻结目录中的专职 Agent 完成受治理任务。",
-      tool_calls: selected.map(({ revision }, index) => ({
-        tool_name: "delegate_to_subagent@1",
-        tool_call_id: `specialist-${index + 1}`,
-        profile_id: revision.profile_id,
-        objective: `执行 ${revision.discovery.display_name} 的冻结职责。`,
-        requested_artifact_types: revision.expected_output_artifact_types,
-        input_artifact_refs: [],
-        requested_budget: {
-          timeout_ms: 60_000,
-          max_steps: revision.direct_tool_allowlist.length + 1,
-          max_input_tokens: 4_096,
-          max_output_tokens: 2_048,
-          max_tool_calls: revision.direct_tool_allowlist.length,
-          max_context_bytes: 16_384,
-        },
-      })),
+      tool_calls: selected.map(({ revision }, index) => {
+        const producer = selected[index - 1]?.revision;
+        const upstreamType = producer?.expected_output_artifact_types[0];
+        const consumesUpstream =
+          upstreamType !== undefined &&
+          revision.discovery.accepted_input_artifact_types.includes(upstreamType);
+        return {
+          tool_name: "delegate_to_subagent@2",
+          tool_call_id: `specialist-${index + 1}`,
+          profile_id: revision.profile_id,
+          objective: `执行 ${revision.discovery.display_name} 的冻结职责。`,
+          requested_artifact_types: revision.expected_output_artifact_types,
+          input_artifact_refs: [],
+          upstream_accepted_output: consumesUpstream
+            ? {
+                producer_tool_call_id: `specialist-${index}`,
+                artifact_type: upstreamType,
+              }
+            : null,
+          requested_budget: {
+            timeout_ms: 60_000,
+            max_steps: revision.direct_tool_allowlist.length + 1,
+            max_input_tokens: 4_096,
+            max_output_tokens: 2_048,
+            max_tool_calls: revision.direct_tool_allowlist.length,
+            max_context_bytes: 16_384,
+          },
+        };
+      }),
     },
     catalog,
     profiles: selected,
@@ -172,7 +186,16 @@ function queryProvenance() {
   };
 }
 
-function lease() {
+async function lease() {
+  const catalog = await buildSubagentCapabilityCatalogSnapshot({
+    schema_version: "subagent-capability-catalog-snapshot@1.0.0",
+    catalog_id: id(98),
+    scope,
+    run_id: id(50),
+    principal_id: id(3),
+    policy_version: "root-harness@1.0.0",
+    items: [],
+  });
   return {
     scope,
     principal_id: id(3),
@@ -189,13 +212,12 @@ function lease() {
     worker_fence: 1,
     expires_at: "2026-08-18T12:00:30.000Z",
     payload: {
+      schema_version: "effective-config-team-lease@3.0.0" as const,
       kind: "START_DATA_AGENT_TEAM" as const,
+      executor_version: "ROOT_HARNESS@1" as const,
       effective_config_ref: { config_id: id(54), config_revision: 1, config_hash: hash("c") },
-      profile_refs: profileIds.map((profileId, index) => ({
-        profile_id: profileId,
-        revision: 1,
-        revision_hash: hash(String(index + 1)),
-      })),
+      catalog_snapshot: catalog,
+      visible_message_refs: [id(99)],
     },
   };
 }
@@ -270,6 +292,7 @@ function store(calls: Array<{ operation: string; document: unknown }>, loaded: u
     commitContextEpoch: invoke,
     commitCompletion: invoke,
     commitAcceptance: invoke,
+    attachAcceptedSiblingOutput: invoke,
     issueTaskCapability: invoke,
     loadRun: invoke,
   };
@@ -367,13 +390,14 @@ describe("Production Team runtime", () => {
 
     await expect(
       runtime.execute({
-        lease: lease(),
+        lease: await lease(),
         profiles: new Map([
           ["governed-text2sql-agent", text2sql],
           ["report-writing-agent", report],
         ]),
         admitted_delegations: delegations,
         semantic_context_package: {} as never,
+        semantic_context: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
@@ -401,6 +425,9 @@ describe("Production Team runtime", () => {
       ]),
     );
     expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(2);
+    expect(
+      calls.filter(({ operation }) => operation === "ATTACH_ACCEPTED_SIBLING_OUTPUT"),
+    ).toHaveLength(1);
     expect(calls.filter(({ operation }) => operation === "COMMIT_ACCEPTANCE")).toHaveLength(2);
     expect(invoked).toEqual([
       "governed-text2sql-agent:semantic.release.read",
@@ -414,12 +441,29 @@ describe("Production Team runtime", () => {
       .map((event) => (event as { status: string }).status);
     expect(statuses).toEqual([
       "PENDING",
+      "RUNNING",
+      "COMPLETED",
       "PENDING",
       "RUNNING",
       "COMPLETED",
-      "RUNNING",
-      "COMPLETED",
     ]);
+    const firstAcceptance = calls.findIndex(({ operation }) => operation === "COMMIT_ACCEPTANCE");
+    const attachment = calls.findIndex(
+      ({ operation }) => operation === "ATTACH_ACCEPTED_SIBLING_OUTPUT",
+    );
+    const secondHandoff = calls.findLastIndex(({ operation }) => operation === "PREPARE_HANDOFF");
+    expect(firstAcceptance).toBeLessThan(attachment);
+    expect(attachment).toBeLessThan(secondHandoff);
+    const acceptedQueryEvidence = documents.get(id(82))?.artifact_ref;
+    expect(acceptedQueryEvidence).toBeDefined();
+    const secondHandoffDocument = calls[secondHandoff]?.document as
+      | { child_task?: { artifact_refs?: readonly ArtifactReference[] } }
+      | undefined;
+    expect(secondHandoffDocument?.child_task?.artifact_refs).toEqual([acceptedQueryEvidence]);
+    const attachmentDocument = calls[attachment]?.document as
+      | { artifact_ref?: ArtifactReference; consumer_task_id?: string }
+      | undefined;
+    expect(attachmentDocument?.artifact_ref).toEqual(acceptedQueryEvidence);
   });
 
   it("returns an accepted replay without dispatching tools", async () => {
@@ -461,10 +505,11 @@ describe("Production Team runtime", () => {
     });
     await expect(
       runtime.execute({
-        lease: lease(),
+        lease: await lease(),
         profiles: new Map([["report-writing-agent", report]]),
         admitted_delegations: delegations,
         semantic_context_package: {} as never,
+        semantic_context: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
@@ -484,6 +529,57 @@ describe("Production Team runtime", () => {
     expect(calls.map(({ operation }) => operation)).toEqual(["LOAD_RUN"]);
     expect(events).toContainEqual(
       expect.objectContaining({ kind: "answer_delta", delta: "这是已验收的重放答案。" }),
+    );
+  });
+
+  it("does not create or attach a downstream task when its producer is not accepted", async () => {
+    const profileMap = await profiles();
+    const text2sql = profileMap.get("governed-text2sql-agent");
+    const report = profileMap.get("report-writing-agent");
+    if (!text2sql || !report) throw new TypeError("missing fail-closed fixtures");
+    const calls: Array<{ operation: string; document: unknown }> = [];
+    const runtime = createProductionTeamRuntime({
+      store: store(calls),
+      capability: {},
+      tools: {
+        async invoke() {
+          throw new Error("UPSTREAM_EXECUTION_FAILED");
+        },
+      },
+      artifacts: {
+        verifyCommitted: async () => ({ ok: true, value: true }),
+        resolveCommitted: async () => ({ ok: true, value: null }),
+      },
+    });
+
+    await expect(
+      runtime.execute({
+        lease: await lease(),
+        profiles: new Map([
+          ["governed-text2sql-agent", text2sql],
+          ["report-writing-agent", report],
+        ]),
+        admitted_delegations: await admittedDelegations([text2sql, report]),
+        semantic_context_package: {} as never,
+        semantic_context: {} as never,
+        semantic_context_ref: {
+          package_id: id(60),
+          package_hash: hash("p"),
+          receipt_id: id(61),
+          receipt_hash: hash("r"),
+          semantic_domain: "commerce",
+          semantic_release_id: id(41),
+          semantic_release_hash: hash("s"),
+        },
+        restored_snapshot: null,
+        execution_context: executionContext([]),
+        signal: new AbortController().signal,
+        deadline_at: "2026-08-18T12:01:00.000Z",
+      }),
+    ).resolves.toMatchObject({ status: "FAILED" });
+    expect(calls.filter(({ operation }) => operation === "PREPARE_HANDOFF")).toHaveLength(1);
+    expect(calls.some(({ operation }) => operation === "ATTACH_ACCEPTED_SIBLING_OUTPUT")).toBe(
+      false,
     );
   });
 
@@ -557,13 +653,14 @@ describe("Production Team runtime", () => {
 
     await expect(
       runtime.execute({
-        lease: lease(),
+        lease: await lease(),
         profiles: new Map([
           ["governed-text2sql-agent", text2sql],
           ["report-writing-agent", report],
         ]),
         admitted_delegations: delegations,
         semantic_context_package: {} as never,
+        semantic_context: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),
@@ -634,10 +731,11 @@ describe("Production Team runtime", () => {
     });
     await expect(
       runtime.execute({
-        lease: lease(),
+        lease: await lease(),
         profiles: new Map([["semantic-management-agent", semantic]]),
         admitted_delegations: [delegation],
         semantic_context_package: {} as never,
+        semantic_context: {} as never,
         semantic_context_ref: {
           package_id: id(60),
           package_hash: hash("p"),

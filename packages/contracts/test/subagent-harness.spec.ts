@@ -18,6 +18,7 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
 
 async function profileRevision(profileId: string, revision = 1) {
+  const isText2Sql = profileId === "governed-text2sql-agent";
   return buildAgentProductProfileRevisionV2({
     schema_version: "agent-product-profile-revision@2.0.0",
     scope,
@@ -35,8 +36,8 @@ async function profileRevision(profileId: string, revision = 1) {
           expected_use: "Return an accepted AnalysisReport Artifact.",
         },
       ],
-      accepted_input_artifact_types: ["QueryEvidence"],
-      produced_artifact_types: ["AnalysisReport"],
+      accepted_input_artifact_types: isText2Sql ? [] : ["QueryEvidence"],
+      produced_artifact_types: [isText2Sql ? "QueryEvidence" : "AnalysisReport"],
       access_mode: "READ_ONLY",
     },
     runtime_profile_ref: {
@@ -59,7 +60,7 @@ async function profileRevision(profileId: string, revision = 1) {
       resource_revision: 1,
       resource_hash: hash("7"),
     },
-    expected_output_artifact_types: ["AnalysisReport"],
+    expected_output_artifact_types: [isText2Sql ? "QueryEvidence" : "AnalysisReport"],
     verifier_contract_hash: hash("8"),
     approval_status: "APPROVED",
   });
@@ -228,12 +229,13 @@ describe("Model-driven Subagent Harness contracts", () => {
       catalog_snapshot_hash: catalog.snapshot_hash,
       tool_calls: [
         {
-          tool_name: "delegate_to_subagent@1",
+          tool_name: "delegate_to_subagent@2",
           tool_call_id: "call-semantic-dependencies",
           profile_id: "semantic-management-agent",
           objective: "Read the frozen relationship graph and explain table dependencies.",
           requested_artifact_types: ["AnalysisReport"],
           input_artifact_refs: [],
+          upstream_accepted_output: null,
           requested_budget: {
             timeout_ms: 30_000,
             max_steps: 8,
@@ -259,6 +261,114 @@ describe("Model-driven Subagent Harness contracts", () => {
         },
       }),
     ).rejects.toThrow("ROOT_AGENT_SELECTED_PROFILE_NOT_IN_FROZEN_CATALOG");
+  });
+
+  it("binds an in-batch consumer to one earlier accepted producer output", async () => {
+    const catalog = await catalogFor(["governed-text2sql-agent", "semantic-management-agent"]);
+    const candidate = {
+      schema_version: "root-agent-turn-candidate@1.0.0",
+      kind: "TOOL_CALLS",
+      scope,
+      run_id: runId,
+      catalog_snapshot_hash: catalog.snapshot_hash,
+      tool_calls: [
+        {
+          tool_name: "delegate_to_subagent@2",
+          tool_call_id: "query",
+          profile_id: "governed-text2sql-agent",
+          objective: "Produce governed query evidence.",
+          requested_artifact_types: ["QueryEvidence"],
+          input_artifact_refs: [],
+          upstream_accepted_output: null,
+          requested_budget: {
+            timeout_ms: 30_000,
+            max_steps: 8,
+            max_input_tokens: 20_000,
+            max_output_tokens: 4_000,
+            max_tool_calls: 4,
+            max_context_bytes: 32_768,
+          },
+        },
+        {
+          tool_name: "delegate_to_subagent@2",
+          tool_call_id: "analysis",
+          profile_id: "semantic-management-agent",
+          objective: "Consume the accepted query evidence.",
+          requested_artifact_types: ["AnalysisReport"],
+          input_artifact_refs: [],
+          upstream_accepted_output: {
+            producer_tool_call_id: "query",
+            artifact_type: "QueryEvidence",
+          },
+          requested_budget: {
+            timeout_ms: 30_000,
+            max_steps: 8,
+            max_input_tokens: 20_000,
+            max_output_tokens: 4_000,
+            max_tool_calls: 4,
+            max_context_bytes: 32_768,
+          },
+        },
+      ],
+      public_summary: "Produce and consume governed evidence.",
+    };
+
+    await expect(
+      validateRootAgentDecisionAgainstCatalog({ candidate, catalog }),
+    ).resolves.toMatchObject({
+      kind: "TOOL_CALLS",
+      tool_calls: [
+        { upstream_accepted_output: null },
+        {
+          upstream_accepted_output: {
+            producer_tool_call_id: "query",
+            artifact_type: "QueryEvidence",
+          },
+        },
+      ],
+    });
+    await expect(
+      validateRootAgentDecisionAgainstCatalog({
+        candidate: {
+          ...candidate,
+          tool_calls: [candidate.tool_calls[1], candidate.tool_calls[0]],
+        },
+        catalog,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects the retired delegation tool contract", async () => {
+    const catalog = await catalogFor(["semantic-management-agent"]);
+    expect(() =>
+      rootAgentDecisionCandidateSchema.parse({
+        schema_version: "root-agent-turn-candidate@1.0.0",
+        kind: "TOOL_CALLS",
+        scope,
+        run_id: runId,
+        catalog_snapshot_hash: catalog.snapshot_hash,
+        tool_calls: [
+          {
+            tool_name: "delegate_to_subagent@1",
+            tool_call_id: "legacy",
+            profile_id: "semantic-management-agent",
+            objective: "Attempt the retired contract.",
+            requested_artifact_types: ["AnalysisReport"],
+            input_artifact_refs: [],
+            upstream_accepted_output: null,
+            requested_budget: {
+              timeout_ms: 30_000,
+              max_steps: 8,
+              max_input_tokens: 20_000,
+              max_output_tokens: 4_000,
+              max_tool_calls: 4,
+              max_context_bytes: 32_768,
+            },
+          },
+        ],
+        public_summary: "Retired tool.",
+      }),
+    ).toThrow();
   });
 
   it("rejects cross-Run governed facts instead of accepting uncited text", () => {

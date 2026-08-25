@@ -2114,6 +2114,24 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10767",
+      "migration_name": "20260725010767_app_data_agent_accepted_sibling_output_attachment.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10767",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-accepted-sibling-output.sql.inc",
+        "30-handoff-authority.sql.inc",
+        "80-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__AGENT_TEAM_ACCEPTED_SIBLING_OUTPUT_ATTACHMENT_MIGRATION_CHECKSUM__",
+      "checksum_header": "agent_team_accepted_sibling_output_attachment_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

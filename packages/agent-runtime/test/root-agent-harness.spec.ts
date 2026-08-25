@@ -49,7 +49,7 @@ describe("Root Agent Harness", () => {
       z.toJSONSchema(SUBAGENT_DELEGATION_TOOL_DESCRIPTOR.input_schema),
     );
 
-    expect(ROOT_AGENT_TOOL_ALLOWLIST).toEqual(["delegate_to_subagent@1"]);
+    expect(ROOT_AGENT_TOOL_ALLOWLIST).toEqual(["delegate_to_subagent@2"]);
     expect(after).toBe(before);
   });
 
@@ -64,12 +64,13 @@ describe("Root Agent Harness", () => {
         tool_calls: [
           {
             tool_call_id: "call-semantic-dependency",
-            tool_name: "delegate_to_subagent@1",
+            tool_name: "delegate_to_subagent@2",
             arguments: {
               profile_id: "semantic-management-agent",
               objective: "Read the frozen graph and explain table dependencies.",
               requested_artifact_types: ["AnalysisReport"],
               input_artifact_refs: [],
+              upstream_accepted_output: null,
               requested_budget: {
                 timeout_ms: 30_000,
                 max_steps: 8,
@@ -89,8 +90,8 @@ describe("Root Agent Harness", () => {
     });
   });
 
-  it("accepts a no-tool direct answer and rejects mixed output", async () => {
-    const frozenCatalog = await catalog([]);
+  it("accepts a no-tool direct answer and treats a native tool call as authoritative", async () => {
+    const frozenCatalog = await catalog(["semantic-management-agent"]);
     const direct = {
       kind: "FINAL_ANSWER",
       sections: [
@@ -117,12 +118,33 @@ describe("Root Agent Harness", () => {
         scope,
         run_id: runId,
         catalog: frozenCatalog,
-        output_text: JSON.stringify(direct),
+        output_text: "This provider-side preamble is non-authoritative.",
         tool_calls: [
-          { tool_call_id: "call-1", tool_name: "delegate_to_subagent@1", arguments: {} },
+          {
+            tool_call_id: "call-1",
+            tool_name: "delegate_to_subagent@2",
+            arguments: {
+              profile_id: "semantic-management-agent",
+              objective: "Explain the frozen semantic definition.",
+              requested_artifact_types: ["AnalysisReport"],
+              input_artifact_refs: [],
+              upstream_accepted_output: null,
+              requested_budget: {
+                timeout_ms: 30_000,
+                max_steps: 8,
+                max_input_tokens: 20_000,
+                max_output_tokens: 4_000,
+                max_tool_calls: 4,
+                max_context_bytes: 32_768,
+              },
+            },
+          },
         ],
       }),
-    ).rejects.toMatchObject({ code: "ROOT_AGENT_MIXED_FINAL_AND_TOOL_CALLS" });
+    ).resolves.toMatchObject({
+      kind: "TOOL_CALLS",
+      tool_calls: [{ profile_id: "semantic-management-agent" }],
+    });
   });
 
   it("projects only public Catalog metadata into the Root system message", async () => {
@@ -136,7 +158,8 @@ describe("Root Agent Harness", () => {
     expect(message).toContain("Never invent an Artifact reference");
     expect(message).toContain("native tool call");
     expect(message).toContain("emit both native calls in the same response");
-    expect(message).toContain("immediately preceding data-query call");
+    expect(message).toContain("upstream_accepted_output");
+    expect(message).toContain("Never rely on call adjacency");
     expect(message).toContain('{"kind":"FINAL_ANSWER","sections"');
     expect(message).toContain('Never output a "final_answer" wrapper');
     expect(message).not.toMatch(/prompt_ref|prompt_hash|secret_ref/);

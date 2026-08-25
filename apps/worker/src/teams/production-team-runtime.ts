@@ -1,8 +1,11 @@
 import { createHash } from "node:crypto";
 import {
   type AdmittedSubagentDelegation,
+  type AuthoritativeAcceptedSiblingOutputAttachment,
   advanceContextEpochTransition,
+  authorizePersistedAcceptedSiblingOutputAttachment,
   authorizePersistedTaskCapability,
+  buildAcceptedSiblingOutputAttachment,
   buildOpenObligationLedger,
   buildTaskCapabilityReceipt,
   buildTaskCompletionReceipt,
@@ -10,15 +13,16 @@ import {
   buildVerifierDecision,
   createContextEpochTransition,
   createSubagentDelegationCommand,
+  type DataAgentSpecialistProfileId,
+  dataAgentSpecialistProfileIdSchema,
   decideTaskAcceptance,
   getAgentProfileRevision,
+  type TaskAcceptanceReceipt,
   type TeamTaskV2,
 } from "@data-agent/agent-runtime";
 import {
   type AgentProductProfileRegistryItemV2,
-  type AgentSpecialistProfileId,
   type ArtifactReference,
-  agentSpecialistProfileIdSchema,
   artifactReferenceIdentity,
   canonicalizeJson,
   type PortResult,
@@ -47,6 +51,7 @@ export interface ProductionTeamRunStore {
   readonly commitContextEpoch: TeamStoreMethod;
   readonly commitCompletion: TeamStoreMethod;
   readonly commitAcceptance: TeamStoreMethod;
+  readonly attachAcceptedSiblingOutput: TeamStoreMethod;
   readonly issueTaskCapability: TeamStoreMethod;
   readonly loadRun: TeamStoreMethod;
 }
@@ -72,6 +77,9 @@ export interface ProductionTeamToolFactoryInput {
   readonly semantic_context_package: Parameters<
     DataAgentProductTeamRuntimePort["execute"]
   >[0]["semantic_context_package"];
+  readonly semantic_context: Parameters<
+    DataAgentProductTeamRuntimePort["execute"]
+  >[0]["semantic_context"];
   readonly accepted_evidence_ref: ArtifactReference | null;
   readonly delegation: AdmittedSubagentDelegation | null;
 }
@@ -122,6 +130,7 @@ async function command(input: {
     | "COMMIT_CONTEXT_EPOCH"
     | "COMMIT_COMPLETION"
     | "COMMIT_ACCEPTANCE"
+    | "ATTACH_ACCEPTED_SIBLING_OUTPUT"
     | "ISSUE_TASK_CAPABILITY"
     | "LOAD_RUN";
   readonly label: string;
@@ -171,7 +180,7 @@ function delegationBounds(delegation: AdmittedSubagentDelegation) {
 }
 
 function delegationExecutionTools(
-  profileId: AgentSpecialistProfileId,
+  profileId: DataAgentSpecialistProfileId,
   delegation: AdmittedSubagentDelegation,
 ): readonly string[] {
   if (
@@ -239,29 +248,36 @@ async function createCapability(input: {
 async function createChild(input: {
   readonly root: TeamTaskV2;
   readonly root_capability: Awaited<ReturnType<typeof createCapability>>;
-  readonly profile_id: AgentSpecialistProfileId;
+  readonly profile_id: DataAgentSpecialistProfileId;
   readonly profile: AgentProductProfileRegistryItemV2;
   readonly delegation: AdmittedSubagentDelegation;
+  readonly artifact_refs: readonly ArtifactReference[];
+  readonly accepted_sibling_attachments: readonly AuthoritativeAcceptedSiblingOutputAttachment[];
   readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
   readonly store: ProductionTeamRuntimeDependencies["store"];
   readonly capability: unknown;
   readonly bounds: ReturnType<typeof bounds>;
 }) {
   const taskId = input.delegation.receipt.task_id;
-  const delegation = createSubagentDelegationCommand(input.root, input.root_capability, {
-    schema_version: "subagent-delegation-request@2.0.0",
-    handoff_id: input.delegation.receipt.delegation_id,
-    child_task_id: taskId,
-    child_attempt_id: input.delegation.receipt.attempt_id,
-    child_profile_id: input.profile_id,
-    child_profile_revision: input.profile.revision.runtime_profile_ref.revision,
-    child_profile_hash: input.profile.revision.runtime_profile_ref.profile_hash,
-    parent_expected_revision: input.root.task_revision,
-    objective_hash: input.delegation.receipt.objective_hash,
-    artifact_refs: input.delegation.receipt.input_artifact_refs,
-    bounds: delegationBounds(input.delegation),
-    idempotency_key: input.delegation.receipt.idempotency_key,
-  });
+  const delegation = createSubagentDelegationCommand(
+    input.root,
+    input.root_capability,
+    {
+      schema_version: "subagent-delegation-request@2.0.0",
+      handoff_id: input.delegation.receipt.delegation_id,
+      child_task_id: taskId,
+      child_attempt_id: input.delegation.receipt.attempt_id,
+      child_profile_id: input.profile_id,
+      child_profile_revision: input.profile.revision.runtime_profile_ref.revision,
+      child_profile_hash: input.profile.revision.runtime_profile_ref.profile_hash,
+      parent_expected_revision: input.root.task_revision,
+      objective_hash: input.delegation.receipt.objective_hash,
+      artifact_refs: input.artifact_refs,
+      bounds: delegationBounds(input.delegation),
+      idempotency_key: input.delegation.receipt.idempotency_key,
+    },
+    input.accepted_sibling_attachments,
+  );
   await persist(input.store.prepareHandoff, input.capability, {
     operation: "PREPARE_HANDOFF",
     label: `prepare-handoff:${input.delegation.receipt.delegation_id}`,
@@ -271,6 +287,78 @@ async function createChild(input: {
     lease: input.lease,
   });
   return delegation.child_task;
+}
+
+type AcceptedDelegationOutput = Readonly<{
+  task: TeamTaskV2;
+  tool_call_id: string;
+  output_ref: ArtifactReference;
+  acceptance: TaskAcceptanceReceipt;
+}>;
+
+async function attachAcceptedSiblingOutput(input: {
+  readonly root: TeamTaskV2;
+  readonly producer: AcceptedDelegationOutput;
+  readonly consumer: AdmittedSubagentDelegation;
+  readonly lease: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0]["lease"];
+  readonly store: ProductionTeamRuntimeDependencies["store"];
+  readonly capability: unknown;
+  readonly attached_at: string;
+}): Promise<AuthoritativeAcceptedSiblingOutputAttachment> {
+  const attachment = await buildAcceptedSiblingOutputAttachment({
+    schema_version: "agent-team-accepted-sibling-output-attachment@1.0.0",
+    attachment_id: identity(
+      input.lease.run_id,
+      `accepted-sibling:${input.consumer.receipt.task_id}`,
+    ),
+    scope: input.lease.scope,
+    run_id: input.lease.run_id,
+    root_task_id: input.root.task_id,
+    root_task_hash: input.root.task_hash,
+    producer_task_id: input.producer.task.task_id,
+    producer_task_hash: input.producer.task.task_hash,
+    producer_profile_id: input.producer.task.profile_id,
+    producer_tool_call_id: input.producer.tool_call_id,
+    consumer_task_id: input.consumer.receipt.task_id,
+    consumer_tool_call_id: input.consumer.call.tool_call_id,
+    consumer_profile_id: input.consumer.profile.revision.runtime_profile_ref.profile_id,
+    consumer_profile_revision: input.consumer.profile.revision.runtime_profile_ref.revision,
+    consumer_profile_hash: input.consumer.profile.revision.runtime_profile_ref.profile_hash,
+    artifact_ref: input.producer.output_ref,
+    completion_id: input.producer.acceptance.completion_id,
+    completion_hash: input.producer.acceptance.completion_hash,
+    verifier_decision_id: input.producer.acceptance.verifier_decision_id,
+    verifier_decision_hash: input.producer.acceptance.verifier_decision_hash,
+    acceptance_hash: input.producer.acceptance.acceptance_hash,
+    worker_fence: input.lease.worker_fence,
+    attached_at: input.attached_at,
+  });
+  const persisted = await persist(input.store.attachAcceptedSiblingOutput, input.capability, {
+    operation: "ATTACH_ACCEPTED_SIBLING_OUTPUT",
+    label: `attach-accepted-sibling:${input.consumer.receipt.task_id}`,
+    task_id: input.root.task_id,
+    expected_revision: input.root.task_revision,
+    document: attachment,
+    lease: input.lease,
+  });
+  return authorizePersistedAcceptedSiblingOutputAttachment({
+    attachment_id: attachment.attachment_id,
+    root_task: input.root,
+    producer_task: input.producer.task,
+    consumer_task_id: input.consumer.receipt.task_id,
+    consumer_tool_call_id: input.consumer.call.tool_call_id,
+    consumer_profile_id: input.consumer.profile.revision.runtime_profile_ref.profile_id,
+    consumer_profile_revision: input.consumer.profile.revision.runtime_profile_ref.revision,
+    consumer_profile_hash: input.consumer.profile.revision.runtime_profile_ref.profile_hash,
+    producer_tool_call_id: input.producer.tool_call_id,
+    artifact_ref: input.producer.output_ref,
+    completion_id: input.producer.acceptance.completion_id,
+    completion_hash: input.producer.acceptance.completion_hash,
+    verifier_decision_id: input.producer.acceptance.verifier_decision_id,
+    verifier_decision_hash: input.producer.acceptance.verifier_decision_hash,
+    acceptance_hash: input.producer.acceptance.acceptance_hash,
+    resolver: { resolve_committed: async () => persisted },
+  });
 }
 
 async function commitContextEpoch(input: {
@@ -362,6 +450,15 @@ async function commitAcceptedCompletion(input: {
     (input.task.profile_id === "semantic-management-agent" &&
       (document.artifact_ref.artifact_type !== "AnalysisReport" ||
         document.projection.kind !== "REPORT")) ||
+    (input.task.profile_id === "governed-analysis-agent" &&
+      (document.artifact_ref.artifact_type !== "AnalysisReport" ||
+        document.projection.kind !== "REPORT" ||
+        !document.source_refs.some(
+          ({ artifact_type: artifactType }) => artifactType === "DerivedAnalysisEvidence",
+        ) ||
+        !document.source_refs.some(
+          ({ artifact_type: artifactType }) => artifactType === "ArtifactWorkspaceDocument",
+        ))) ||
     (input.task.profile_id === "governed-text2sql-agent" &&
       (document.artifact_ref.artifact_type !== "QueryEvidence" ||
         document.projection.kind !== "TABLE")) ||
@@ -485,12 +582,12 @@ function renderAcceptedArtifact(document: ProductTeamArtifactDocument): string {
 
 function selectedExecutionOrder(
   input: Parameters<DataAgentProductTeamRuntimePort["execute"]>[0],
-): readonly AgentSpecialistProfileId[] {
+): readonly DataAgentSpecialistProfileId[] {
   if (input.admitted_delegations.length === 0) {
     throw new ProductionTeamRuntimeError("ROOT_AGENT_EMPTY_DELEGATION");
   }
   return input.admitted_delegations.map(({ profile }) =>
-    agentSpecialistProfileIdSchema.parse(profile.revision.profile_id),
+    dataAgentSpecialistProfileIdSchema.parse(profile.revision.profile_id),
   );
 }
 
@@ -596,28 +693,69 @@ export function createProductionTeamRuntime(
           issued_at: timestamp,
         });
 
-        const tasks = new Map<AgentSpecialistProfileId, TeamTaskV2>();
+        const coverageHash = await sha256ContentHash({
+          semantic_context_ref: input.semantic_context_ref,
+          profiles: [...input.profiles.values()].map(({ revision }) => revision.revision_hash),
+        });
+        const acceptedOutputsByToolCallId = new Map<string, AcceptedDelegationOutput>();
         for (const [executionIndex, profileId] of executionOrder.entries()) {
-          const selectedProfile = input.profiles.get(profileId);
-          if (!selectedProfile) {
-            throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
-          }
           const admittedDelegation = input.admitted_delegations[executionIndex];
           if (!admittedDelegation) {
             throw new ProductionTeamRuntimeError("ROOT_AGENT_DELEGATION_MISSING");
           }
+          const selectedProfile = input.profiles.get(profileId);
+          if (!selectedProfile) {
+            throw new ProductionTeamRuntimeError("AGENT_PROFILE_NOT_ALLOWED");
+          }
+          const upstreamSelector = admittedDelegation.receipt.upstream_accepted_output;
+          let acceptedUpstreamRef: ArtifactReference | null = null;
+          const acceptedSiblingAttachments: AuthoritativeAcceptedSiblingOutputAttachment[] = [];
+          if (upstreamSelector) {
+            const producer = acceptedOutputsByToolCallId.get(
+              upstreamSelector.producer_tool_call_id,
+            );
+            if (!producer) {
+              throw new ProductionTeamRuntimeError("TEAM_UPSTREAM_ACCEPTED_OUTPUT_MISSING");
+            }
+            if (producer.output_ref.artifact_type !== upstreamSelector.artifact_type) {
+              throw new ProductionTeamRuntimeError("TEAM_UPSTREAM_ACCEPTED_OUTPUT_TYPE_MISMATCH");
+            }
+            acceptedUpstreamRef = producer.output_ref;
+            acceptedSiblingAttachments.push(
+              await attachAcceptedSiblingOutput({
+                root,
+                producer,
+                consumer: admittedDelegation,
+                lease: input.lease,
+                store: dependencies.store,
+                capability: dependencies.capability,
+                attached_at: timestamp,
+              }),
+            );
+          }
+          const artifactRefs = [
+            ...new Map(
+              [
+                ...admittedDelegation.receipt.input_artifact_refs,
+                ...(acceptedUpstreamRef ? [acceptedUpstreamRef] : []),
+              ].map((reference) => [artifactReferenceIdentity(reference), reference] as const),
+            ).values(),
+          ].sort((left, right) =>
+            artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
+          );
           const task = await createChild({
             root,
             root_capability: rootCapability,
             profile_id: profileId,
             profile: selectedProfile,
             delegation: admittedDelegation,
+            artifact_refs: artifactRefs,
+            accepted_sibling_attachments: acceptedSiblingAttachments,
             lease: input.lease,
             store: dependencies.store,
             capability: dependencies.capability,
             bounds: taskBounds,
           });
-          tasks.set(profileId, task);
           await emit(input.execution_context, {
             kind: "agent_status",
             key: `team.agent.${task.task_id}.pending`,
@@ -630,20 +768,6 @@ export function createProductionTeamRuntime(
             duration_ms: null,
             error_code: null,
           });
-        }
-
-        const coverageHash = await sha256ContentHash({
-          semantic_context_ref: input.semantic_context_ref,
-          profiles: [...input.profiles.values()].map(({ revision }) => revision.revision_hash),
-        });
-        let evidenceRef: ArtifactReference | null = null;
-        for (const [executionIndex, profileId] of executionOrder.entries()) {
-          const task = tasks.get(profileId);
-          if (!task) throw new ProductionTeamRuntimeError("TEAM_SPECIALIST_TASK_MISSING");
-          const admittedDelegation = input.admitted_delegations[executionIndex];
-          if (!admittedDelegation) {
-            throw new ProductionTeamRuntimeError("ROOT_AGENT_DELEGATION_MISSING");
-          }
           const epoch = await commitContextEpoch({
             task,
             context_ref: input.semantic_context_ref,
@@ -659,11 +783,13 @@ export function createProductionTeamRuntime(
             status: "RUNNING",
             phase: "context.activated",
             title:
-              profileId === "governed-text2sql-agent"
-                ? "Text2SQL"
-                : profileId === "report-writing-agent"
-                  ? "Report"
-                  : "Semantic",
+              profileId === "governed-analysis-agent"
+                ? "Governed Analysis"
+                : profileId === "governed-text2sql-agent"
+                  ? "Text2SQL"
+                  : profileId === "report-writing-agent"
+                    ? "Report"
+                    : "Semantic",
             summary: "受治理 Context Epoch 已激活，Subagent 开始执行专职 Tool 链",
             duration_ms: null,
             error_code: null,
@@ -674,7 +800,8 @@ export function createProductionTeamRuntime(
               execution_context: input.execution_context,
               semantic_context_ref: input.semantic_context_ref,
               semantic_context_package: input.semantic_context_package,
-              accepted_evidence_ref: evidenceRef,
+              semantic_context: input.semantic_context,
+              accepted_evidence_ref: acceptedUpstreamRef,
               delegation: admittedDelegation,
             }) ?? dependencies.tools;
           if (!tools) throw new ProductionTeamRuntimeError("TEAM_TOOL_COMPOSITION_REQUIRED");
@@ -709,7 +836,7 @@ export function createProductionTeamRuntime(
                 task_id: task.task_id,
                 task_hash: task.task_hash,
                 context_epoch: epoch,
-                input_ref: evidenceRef,
+                input_ref: acceptedUpstreamRef,
               },
               execute: async ({ signal }: RunSideEffectExecutionIdentity) => {
                 const result = await registry.execute(task, epoch, signal);
@@ -729,7 +856,7 @@ export function createProductionTeamRuntime(
             capability: dependencies.capability,
             issued_at: timestamp,
           });
-          await commitAcceptedCompletion({
+          const acceptance = await commitAcceptedCompletion({
             task,
             output_ref: outputRef,
             task_capability: taskCapability,
@@ -740,6 +867,12 @@ export function createProductionTeamRuntime(
             timestamp,
             coverage_hash: coverageHash,
           });
+          acceptedOutputsByToolCallId.set(admittedDelegation.call.tool_call_id, {
+            task,
+            tool_call_id: admittedDelegation.call.tool_call_id,
+            output_ref: outputRef,
+            acceptance,
+          });
           await emit(input.execution_context, {
             kind: "agent_status",
             key: `team.agent.${task.task_id}.completed`,
@@ -748,11 +881,13 @@ export function createProductionTeamRuntime(
             status: "COMPLETED",
             phase: "acceptance.committed",
             title:
-              profileId === "governed-text2sql-agent"
-                ? "Text2SQL"
-                : profileId === "report-writing-agent"
-                  ? "Report"
-                  : "Semantic",
+              profileId === "governed-analysis-agent"
+                ? "Governed Analysis"
+                : profileId === "governed-text2sql-agent"
+                  ? "Text2SQL"
+                  : profileId === "report-writing-agent"
+                    ? "Report"
+                    : "Semantic",
             summary: "Subagent Completion、Verifier 与 Artifact Acceptance 已持久化并验收",
             duration_ms: Math.max(0, now().getTime() - Date.parse(timestamp)),
             error_code: null,
@@ -792,7 +927,6 @@ export function createProductionTeamRuntime(
               delta: renderAcceptedArtifact(artifact),
             });
           }
-          evidenceRef = outputRef;
         }
         return { status: "ACCEPTED", reason_code: "TEAM_ACCEPTED" };
       } catch (error) {

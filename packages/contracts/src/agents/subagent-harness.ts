@@ -26,7 +26,7 @@ import {
   subagentPublicDiscoveryTextSchema,
 } from "./subagent-discovery.js";
 
-export const DELEGATE_TO_SUBAGENT_TOOL_NAME = "delegate_to_subagent@1" as const;
+export const DELEGATE_TO_SUBAGENT_TOOL_NAME = "delegate_to_subagent@2" as const;
 export const MAX_SUBAGENT_CATALOG_ITEMS = 64;
 
 function isSameScope(left: AppScope, right: AppScope): boolean {
@@ -134,12 +134,18 @@ export const subagentRequestedBudgetSchema = z.strictObject({
   max_context_bytes: z.number().int().positive().max(65_536),
 });
 
+export const upstreamAcceptedArtifactSelectorSchema = z.strictObject({
+  producer_tool_call_id: z.string().min(1).max(256),
+  artifact_type: knownArtifactTypeSchema,
+});
+
 export const delegateToSubagentArgumentsSchema = z
   .strictObject({
     profile_id: agentProfileIdSchema,
     objective: z.string().trim().min(1).max(4_000),
     requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
     input_artifact_refs: z.array(artifactReferenceSchema).max(64),
+    upstream_accepted_output: upstreamAcceptedArtifactSelectorSchema.nullable(),
     requested_budget: subagentRequestedBudgetSchema,
   })
   .superRefine((call, ctx) => {
@@ -291,6 +297,27 @@ export const rootAgentDecisionCandidateSchema = z
           });
         }
       });
+      const upstream = call.upstream_accepted_output;
+      if (!upstream) return;
+      const producerIndex = candidate.tool_calls.findIndex(
+        ({ tool_call_id: toolCallId }) => toolCallId === upstream.producer_tool_call_id,
+      );
+      if (producerIndex < 0 || producerIndex >= callIndex) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Upstream accepted output must select an earlier tool call in the same batch.",
+          path: ["tool_calls", callIndex, "upstream_accepted_output"],
+        });
+        return;
+      }
+      const producer = candidate.tool_calls[producerIndex];
+      if (!producer?.requested_artifact_types.includes(upstream.artifact_type)) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Upstream accepted output type must be requested from the selected producer.",
+          path: ["tool_calls", callIndex, "upstream_accepted_output", "artifact_type"],
+        });
+      }
     });
   });
 
@@ -302,7 +329,7 @@ export type SubagentCapabilityCatalogSnapshot = z.infer<
 
 const subagentDelegationReceiptDraftSchema = z
   .strictObject({
-    schema_version: z.literal("subagent-delegation-receipt@1.0.0"),
+    schema_version: z.literal("subagent-delegation-receipt@2.0.0"),
     delegation_id: immutableIdSchema,
     scope: appScopeSchema,
     run_id: immutableIdSchema,
@@ -313,6 +340,7 @@ const subagentDelegationReceiptDraftSchema = z
     attempt_id: immutableIdSchema,
     objective_hash: contentHashSchema,
     input_artifact_refs: z.array(artifactReferenceSchema).max(64),
+    upstream_accepted_output: upstreamAcceptedArtifactSelectorSchema.nullable(),
     requested_artifact_types: z.array(knownArtifactTypeSchema).min(1).max(16),
     effective_budget: subagentRequestedBudgetSchema,
     tool_allowlist: z.array(versionIdentifierSchema).min(1).max(64),
@@ -436,6 +464,14 @@ export async function validateRootAgentDecisionAgainstCatalog(input: {
       )
     ) {
       throw new TypeError("ROOT_AGENT_PROVIDED_UNSUPPORTED_INPUT_ARTIFACT");
+    }
+    if (
+      call.upstream_accepted_output &&
+      !item.discovery.accepted_input_artifact_types.includes(
+        call.upstream_accepted_output.artifact_type,
+      )
+    ) {
+      throw new TypeError("ROOT_AGENT_SELECTED_UNSUPPORTED_UPSTREAM_ARTIFACT");
     }
   }
   return deepFreeze(candidate);

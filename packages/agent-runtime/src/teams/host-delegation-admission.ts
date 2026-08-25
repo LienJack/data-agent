@@ -145,7 +145,7 @@ export async function admitRootAgentDelegations(input: {
       tool_call_id: call.tool_call_id,
     };
     const receipt = await buildSubagentDelegationReceipt({
-      schema_version: "subagent-delegation-receipt@1.0.0",
+      schema_version: "subagent-delegation-receipt@2.0.0",
       delegation_id: deterministicUuid({ ...identityMaterial, kind: "delegation" }),
       scope: decision.scope,
       run_id: decision.run_id,
@@ -159,6 +159,7 @@ export async function admitRootAgentDelegations(input: {
       input_artifact_refs: [...call.input_artifact_refs].sort((left, right) =>
         artifactReferenceIdentity(left).localeCompare(artifactReferenceIdentity(right)),
       ),
+      upstream_accepted_output: call.upstream_accepted_output,
       requested_artifact_types: call.requested_artifact_types,
       effective_budget: effectiveBudget,
       tool_allowlist: [...profile.revision.direct_tool_allowlist].sort(),
