@@ -35,6 +35,25 @@ const operatorOutput = {
 };
 
 describe("safe cell diagnostics", () => {
+  it("returns exact server-authored text constraints for a publish repair", () => {
+    expect(
+      analysisToolLoopInternals.publishRepairInstruction("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH", {
+        result_fields: [
+          {
+            field: "conclusion",
+            text_constraints: {
+              required_substrings: ["关联"],
+              forbidden_substrings: ["导致", "证明", "驱动"],
+              required_suffix: null,
+            },
+          },
+        ],
+      }),
+    ).toBe(
+      'Rewrite only the constrained result text; preserve all analytical values. Exact text constraints: [{"field":"conclusion","required_substrings":["关联"],"forbidden_substrings":["导致","证明","驱动"],"required_suffix":null}]. Forbidden substrings are forbidden even inside negations.',
+    );
+  });
+
   it("projects only allowlisted AST policy identifiers", () => {
     expect(
       analysisToolLoopInternals.safePolicyViolationIdentifier({

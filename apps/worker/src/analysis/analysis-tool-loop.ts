@@ -460,6 +460,36 @@ const repairablePublishCodes = new Set([
   "ANALYSIS_RESULT_CLOSURE_SIZE_EXCEEDED",
 ]);
 
+type PublishRepairContract = Readonly<{
+  result_fields: readonly Readonly<{
+    field: string;
+    text_constraints?:
+      | Readonly<{
+          required_substrings: readonly string[];
+          forbidden_substrings: readonly string[];
+          required_suffix: string | null;
+        }>
+      | undefined;
+  }>[];
+}>;
+
+function publishRepairInstruction(code: string, contract: PublishRepairContract): string {
+  if (code !== "ANALYSIS_RESULT_TEXT_POLICY_MISMATCH") {
+    return "Repair only the referenced Python symbols or publish bindings.";
+  }
+  const constrained = contract.result_fields.flatMap((field) =>
+    field.text_constraints ? [{ field: field.field, ...field.text_constraints }] : [],
+  );
+  if (constrained.length === 0) {
+    return "Rewrite only the constrained result text and preserve all analytical values.";
+  }
+  return [
+    "Rewrite only the constrained result text; preserve all analytical values.",
+    `Exact text constraints: ${JSON.stringify(constrained)}.`,
+    "Forbidden substrings are forbidden even inside negations.",
+  ].join(" ");
+}
+
 function repairablePublishFailureCode(error: unknown): string | null {
   if (
     error instanceof AnalysisSandboxRuntimeError &&
@@ -1184,7 +1214,7 @@ export async function executeAnalysisToolLoop(input: {
           result: {
             schema_version: "analysis-result-publish-error@1.0.0",
             code,
-            instruction: "Repair only the referenced Python symbols or publish bindings.",
+            instruction: publishRepairInstruction(code, input.result_contract),
           },
           is_error: true,
         }),
@@ -1217,6 +1247,7 @@ export async function executeAnalysisToolLoop(input: {
 export const analysisToolLoopInternals = Object.freeze({
   allowedTools,
   candidateSignature,
+  publishRepairInstruction,
   repairablePublishFailureCode,
   resultDocument,
   governedResultModelProjection,
