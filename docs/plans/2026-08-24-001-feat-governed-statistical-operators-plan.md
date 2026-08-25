@@ -94,7 +94,7 @@ Falcon24 的真实运行已经证明 Sandbox 可以在既有预算内成功完�
 | 工作 | DeepSeek Python | Governed Operator | Host / Oracle |
 |---|---|---|---|
 | 去重、筛选、排序、分组、reshape | 负责通用补充变换 | 负责已冻结的高风险业务选择规则 | 校验输入证据边界 |
-| lag 对齐、控制变量构造、dummy encoding | 负责 | 校验矩阵与标签 | 校验题目合同 |
+| lag 对齐、控制变量构造、dummy encoding | 负责未冻结的补充分析 | 对已冻结 Q4 lag 设计和高风险口径负责 | 校验题目合同 |
 | BH、Theil-Sen、MK、HAC、GLM、Shapley、留存口径 | 只编排 | 唯一计算权威 | 独立验算与接受 |
 | 缺失值、family、窗口和适用性选择 | 按语义合同准备 | 强制校验 | 决定 PASS/HOLD |
 | 结论、限制、图表数据投影 | 负责 | 提供权威结果与方法证据 | 禁词、闭包和 chart hash 门禁 |
@@ -167,11 +167,11 @@ Operator ID 是唯一调用名称；首版不提供短名或 alias。所有参�
 
 | Operator ID | Frozen semantics | Applicability / failure boundary | Falcon usage |
 |---|---|---|---|
-| `multiple-testing.bh-fdr@1` | labeled family、p/ID 稳定排序、反向 running-min、q 映射回 ID | 空 family、重复 ID、非有限或越界 p 失败；dependence 未证明为 `ASSUMPTION_BOUND` | Q3 全商品 family；Q4 每个 outcome family |
+| `multiple-testing.bh-fdr@1` | labeled family、p/ID 稳定排序、反向 running-min、q 映射回 ID | 空 family、重复 ID、非有限或越界 p 失败；dependence 未证明为 `ASSUMPTION_BOUND` | Q3 全商品 family；Q4 由业务治理算子组合调用 |
 | `robust-trend.theil-sen-slope@1` | 显式 x/y、所有 pairwise slopes 的线性 p50；只返回 slope | x 不唯一/不递增、样本不足、非有限值失败；不隐式生成 timestamp ordinal | Q3 每商品 12 月 damage rate |
 | `trend.mann-kendall-original@1` | original MK、exact-value ties variance、continuity correction、two-sided normal p | 样本不足/全 ties 有稳定退化；serial correlation 或 seasonality 未证明时标记限制 | Q3 每商品趋势 p |
-| `regression.ols-hac@1` | OLS coefficient + Newey-West HAC；Bartlett、maxlags、correction、normal inference 全显式 | 非等间隔、n/k 不足、rank deficient、目标列缺失或数值失败为 HOLD | Q4 0–4 周 lag fits |
-| `descriptive.marketing-lag-priority@1` | 消费原始周粒度营销行和受保护 HAC 系数；复用唯一 BH-FDR 实现完成 lag 选择、三组 family、漏斗与关联分类 | 79 周覆盖、HAC label/term 闭包或有限值不满足即 HOLD；只支持关联陈述 | Q4 权威结果集 |
+| `regression.ols-hac@1` | OLS coefficient + Newey-West HAC；Bartlett、maxlags、correction、normal inference 全显式 | 非等间隔、n/k 不足、rank deficient、目标列缺失或数值失败为 HOLD | 通用 HAC 权威；Q4 由业务治理算子组合调用 |
+| `descriptive.marketing-lag-priority@1` | 原始周粒度营销行单次进入；组合唯一 HAC 与 BH-FDR 实现完成 lag 设计、选择、三组 family、漏斗与关联分类 | 79 周覆盖、共享业务序列、full-rank 或有限值不满足即 HOLD；只支持关联陈述 | Q4 权威结果集，避免大系数集跨 Sandbox 往返 |
 | `regression.binomial-logit-wald@1` | binomial logit、固定优化/收敛门、目标系数 two-sided Wald inference | 非二元 y、rank deficient、完全分离、不收敛、样本不足为 HOLD | Q2 delayed 与低评分关联 |
 | `decomposition.product-shapley-exact@1` | named multiplicative factors、全排列 exact marginal average、stable order、closure | factor 非有限、数量超界、观察变化与重构不闭合失败；无 approximate 模式 | Q1 buyers × frequency × AOV |
 | `descriptive.inventory-damage-priority@1` | 完整商品 12 月序列、品类销量 linear P75、受治理趋势结果与固定候选规则 | 商品标签不闭合、月份不满 12、元数据冲突失败；仅作描述性排查优先级，不能宣称因果 | Q3 完整高销量且损坏恶化候选集 |

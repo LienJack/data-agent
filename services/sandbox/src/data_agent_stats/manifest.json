@@ -271,7 +271,7 @@
     },
     {
       "operator_id": "descriptive.marketing-lag-priority@1",
-      "description_zh": "消费原始营销周粒度行与受保护 HAC 系数，复用唯一 BH-FDR 实现完成滞后选择、漏斗汇总和关联分类。",
+      "description_zh": "消费完整营销周粒度行，在单次治理调用内组合唯一 HAC 与 BH-FDR 实现并生成关联分类。",
       "implementation": {
         "module": "data_agent_stats.marketing",
         "symbol": "marketing_lag_priority"
@@ -295,7 +295,10 @@
             "clicks": "NON_NEGATIVE_FINITE_NUMBER",
             "conversions": "NON_NEGATIVE_FINITE_NUMBER",
             "campaign_revenue": "NON_NEGATIVE_FINITE_NUMBER",
-            "spend": "NON_NEGATIVE_FINITE_NUMBER"
+            "spend": "NON_NEGATIVE_FINITE_NUMBER",
+            "order_revenue": "NON_NEGATIVE_FINITE_NUMBER",
+            "new_customers": "NON_NEGATIVE_FINITE_NUMBER",
+            "order_count": "NON_NEGATIVE_FINITE_NUMBER"
           },
           "record_example": {
             "week_start": "2023-05-01",
@@ -305,42 +308,10 @@
             "clicks": 50.0,
             "conversions": 5.0,
             "campaign_revenue": 500.0,
-            "spend": 100.0
-          },
-          "limits": {}
-        },
-        {
-          "name": "hac_coefficients",
-          "container": "RECORD_ARRAY",
-          "min_items": 1,
-          "max_items": 5000,
-          "record_shape": {
-            "label": "NON_EMPTY_STRING",
-            "term": "NON_EMPTY_STRING",
-            "coefficient": "FINITE_NUMBER",
-            "standard_error": "NON_NEGATIVE_FINITE_NUMBER",
-            "statistic": "FINITE_NUMBER",
-            "p_value": "UNIT_INTERVAL_NUMBER",
-            "sample_size": "NON_NEGATIVE_FINITE_NUMBER",
-            "rank": "NON_NEGATIVE_FINITE_NUMBER",
-            "maxlags": "NON_NEGATIVE_FINITE_NUMBER",
-            "kernel": "NON_EMPTY_STRING",
-            "use_correction": "BOOLEAN",
-            "use_t": "BOOLEAN"
-          },
-          "record_example": {
-            "label": "paid_search|new_customer|order_revenue|lag0",
-            "term": "spend",
-            "coefficient": 1.2,
-            "standard_error": 0.3,
-            "statistic": 4.0,
-            "p_value": 0.01,
-            "sample_size": 79,
-            "rank": 5,
-            "maxlags": 4,
-            "kernel": "bartlett",
-            "use_correction": true,
-            "use_t": false
+            "spend": 100.0,
+            "order_revenue": 5000.0,
+            "new_customers": 10.0,
+            "order_count": 50.0
           },
           "limits": {}
         }
@@ -363,14 +334,16 @@
       },
       "applicability_checks": [
         "COMPLETE_79_WEEK_GROUP_GRID",
-        "EXACT_HAC_LABEL_AND_TERM_COVERAGE",
+        "SHARED_BUSINESS_WEEK_SERIES",
+        "FULL_RANK_HAC_MODEL_BATCH",
         "FINITE_FUNNEL_TOTALS",
         "PREDECLARED_THREE_FDR_FAMILIES"
       ],
       "limitations": [
         "ASSOCIATION_NOT_CAUSATION",
         "ORDERING_DEFINES_HAC_DEPENDENCE",
-        "BH_FDR_COMPOSED_FROM_UNIQUE_OPERATOR"
+        "BH_FDR_COMPOSED_FROM_UNIQUE_OPERATOR",
+        "HAC_COMPOSED_FROM_UNIQUE_OPERATOR"
       ]
     },
     {

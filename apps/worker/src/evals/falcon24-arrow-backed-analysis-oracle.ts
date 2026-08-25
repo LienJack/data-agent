@@ -50,13 +50,6 @@ const EXPECTED_OPERATOR_PARAMETERS: Readonly<
   },
   q3_bh_all_products: { alpha: 0.05, method: "bh" },
   q3_inventory_priority: { alpha: 0.05, category_sales_percentile: 0.75 },
-  q4_hac_all_models: {
-    maxlags: 4,
-    kernel: "bartlett",
-    use_correction: true,
-    use_t: false,
-    add_intercept: true,
-  },
   q4_marketing_priority: { alpha: 0.05 },
   q5_primary_cohorts: {
     horizon_months: 6,
@@ -83,10 +76,10 @@ const REQUIRED_OPERATOR_LIMITATIONS: Readonly<Record<string, readonly string[]>>
     "DESCRIPTIVE_SCREENING_NOT_CAUSAL",
     "INPUT_SERIES_MUST_COVER_ALL_PRODUCTS",
   ],
-  q4_hac_all_models: ["ASSOCIATION_NOT_CAUSATION", "ORDERING_DEFINES_HAC_DEPENDENCE"],
   q4_marketing_priority: [
     "ASSOCIATION_NOT_CAUSATION",
     "BH_FDR_COMPOSED_FROM_UNIQUE_OPERATOR",
+    "HAC_COMPOSED_FROM_UNIQUE_OPERATOR",
     "ORDERING_DEFINES_HAC_DEPENDENCE",
   ],
   q5_primary_cohorts: ["PRIMARY_HOLD_ON_PRE_REGISTRATION_EVENTS"],
@@ -109,7 +102,7 @@ const METHOD_OPERATOR_CALLS: Readonly<
     "three-vs-previous-nine": ["q3_inventory_priority"],
   },
   "falcon24-marketing-lag-effect": {
-    "hac-standard-errors": ["q4_hac_all_models"],
+    "hac-standard-errors": ["q4_marketing_priority"],
     "multiple-testing-fdr": ["q4_marketing_priority"],
   },
   "falcon24-cohort-retention-m0-m6": {

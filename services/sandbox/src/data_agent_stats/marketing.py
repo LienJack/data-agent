@@ -7,6 +7,7 @@ from typing import Any
 
 from data_agent_stats.multiple_testing import bh_fdr
 from data_agent_stats.registry import OperatorExecutionResult, StatisticalOperatorError
+from data_agent_stats.regression import ols_hac
 
 _BUSINESS_OUTCOMES = ("order_revenue", "new_customers", "order_count")
 _WEEK_COUNT = 79
@@ -49,7 +50,7 @@ def _coefficient_index(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict
 def marketing_lag_priority(
     inputs: dict[str, Any], parameters: dict[str, Any]
 ) -> OperatorExecutionResult:
-    """Select governed lag evidence, reuse the sole BH implementation and classify groups."""
+    """Compose the sole HAC and BH implementations into one bounded marketing result."""
 
     alpha = float(parameters["alpha"])
     by_group: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
@@ -65,12 +66,23 @@ def marketing_lag_priority(
     expected_weeks = tuple(
         date(2023, 5, 1) + timedelta(weeks=index) for index in range(_WEEK_COUNT)
     )
+    ordered_by_group: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    business_by_outcome: dict[str, tuple[float, ...]] | None = None
     summaries: dict[tuple[str, str], dict[str, Any]] = {}
-    for key, rows in by_group.items():
+    for key, rows in sorted(by_group.items()):
         ordered = sorted(rows, key=lambda row: _week_key(row["week_start"]))
         weeks = tuple(_week_key(row["week_start"]) for row in ordered)
         if weeks != expected_weeks:
             raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+        group_business = {
+            outcome: tuple(_finite(row[outcome]) for row in ordered)
+            for outcome in _BUSINESS_OUTCOMES
+        }
+        if business_by_outcome is None:
+            business_by_outcome = group_business
+        elif group_business != business_by_outcome:
+            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+        ordered_by_group[key] = ordered
         impressions = math.fsum(_finite(row["impressions"]) for row in ordered)
         clicks = math.fsum(_finite(row["clicks"]) for row in ordered)
         conversions = math.fsum(_finite(row["conversions"]) for row in ordered)
@@ -88,35 +100,55 @@ def marketing_lag_priority(
             "conversion_rate": 0.0 if clicks == 0 else conversions / clicks,
             "roas": 0.0 if spend == 0 else revenue / spend,
         }
+    if business_by_outcome is None:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
 
-    coefficients = _coefficient_index(inputs["hac_coefficients"])
-    expected_labels: set[str] = set()
-    for channel, audience in summaries:
+    week_index = list(range(_WEEK_COUNT))
+    sine = [math.sin(2 * math.pi * index / 52) for index in week_index]
+    cosine = [math.cos(2 * math.pi * index / 52) for index in week_index]
+    models: list[dict[str, Any]] = []
+    for (channel, audience), rows in ordered_by_group.items():
+        spend_series = [_finite(row["spend"]) for row in rows]
         spend_label = f"{channel}|{audience}|spend_over_week"
-        expected_labels.add(spend_label)
+        models.append(
+            {
+                "label": spend_label,
+                "row_order": week_index,
+                "outcome": spend_series,
+                "predictors": {
+                    "week_index": week_index,
+                    "sine": sine,
+                    "cosine": cosine,
+                },
+            }
+        )
         for outcome in _BUSINESS_OUTCOMES:
             for lag in range(5):
                 lag_label = f"{channel}|{audience}|{outcome}|lag{lag}"
-                expected_labels.add(lag_label)
-    terms_by_label: dict[str, set[str]] = defaultdict(set)
-    for label, term in coefficients:
-        terms_by_label[label].add(term)
-    if set(terms_by_label) != expected_labels:
-        raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
-    control_terms: set[str] | None = None
-    for label, terms in terms_by_label.items():
-        required = {"intercept", "week_index"}
-        expected_count = 4
-        if label.count("|") == 3:
-            required.add("spend")
-            expected_count = 5
-        if not required <= terms or len(terms) != expected_count:
-            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
-        controls = terms - required
-        if control_terms is None:
-            control_terms = controls
-        elif controls != control_terms:
-            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+                models.append(
+                    {
+                        "label": lag_label,
+                        "row_order": week_index[lag:],
+                        "outcome": list(business_by_outcome[outcome][lag:]),
+                        "predictors": {
+                            "spend": spend_series[: _WEEK_COUNT - lag],
+                            "week_index": week_index[lag:],
+                            "sine": sine[lag:],
+                            "cosine": cosine[lag:],
+                        },
+                    }
+                )
+    hac = ols_hac(
+        {"models": models},
+        {
+            "maxlags": 4,
+            "kernel": "bartlett",
+            "use_correction": True,
+            "use_t": False,
+            "add_intercept": True,
+        },
+    )
+    coefficients = _coefficient_index(hac.output["coefficients"])
 
     selected: dict[tuple[str, str, str], dict[str, Any]] = {}
     spend_slopes: dict[tuple[str, str], float] = {}
@@ -207,7 +239,19 @@ def marketing_lag_priority(
         )
 
     return OperatorExecutionResult(
-        output={"channel_audience_results": results, "fdr_tests": fdr_tests},
+        output={
+            "channel_audience_results": results,
+            "fdr_tests": fdr_tests,
+            "hac_summary": {
+                "operator_id": "regression.ols-hac@1",
+                "model_count": len(models),
+                "coefficient_count": len(coefficients),
+                "maxlags": 4,
+                "kernel": "bartlett",
+                "use_correction": True,
+                "use_t": False,
+            },
+        },
         sample_size=len(inputs["marketing_rows"]),
         group_count=len(results),
         family_size=len(results) * len(_BUSINESS_OUTCOMES),
@@ -215,6 +259,7 @@ def marketing_lag_priority(
         limitation_codes=(
             "ASSOCIATION_NOT_CAUSATION",
             "BH_FDR_COMPOSED_FROM_UNIQUE_OPERATOR",
+            "HAC_COMPOSED_FROM_UNIQUE_OPERATOR",
             "ORDERING_DEFINES_HAC_DEPENDENCE",
         ),
     )
