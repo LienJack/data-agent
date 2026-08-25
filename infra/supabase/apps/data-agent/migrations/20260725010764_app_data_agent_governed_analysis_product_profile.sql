@@ -1,4 +1,4 @@
--- governed_analysis_product_profile_migration_checksum: sha256:2b3fd5e69142fcd49f93e54f26b6b088a9e1e7c9b83d4f3e6b0f4a3c2106d79f
+-- governed_analysis_product_profile_migration_checksum: sha256:6583db7644b153d0b83052521035413e6480bcbf56814ec52954de14b0f2bad5
 begin;
 
 do $bootstrap$
@@ -20,34 +20,26 @@ set local lock_timeout='2000ms';
 set local statement_timeout='300000ms';
 set local idle_in_transaction_session_timeout='60000ms';
 select platform.acquire_migration_lock('app','00000000-0000-4000-8000-00000000da01'::uuid);
-do $profile_constraint$
-declare profile_constraint text;
-begin
-  select pg_catalog.pg_get_constraintdef(oid) into profile_constraint
-  from pg_catalog.pg_constraint
-  where conrelid='app_data_agent.agent_product_profile_revisions'::pg_catalog.regclass
-    and conname='agent_product_profile_revisions_generic_profile_id_check';
-  if profile_constraint is null
-    or pg_catalog.strpos(profile_constraint,'profile_id')=0
-    or pg_catalog.strpos(profile_constraint,'a-z0-9')=0
-  then raise exception using errcode='P0001',
-    message='GENERIC_PRODUCT_PROFILE_CONSTRAINT_REQUIRED'; end if;
-end
-$profile_constraint$;
+alter table app_data_agent.agent_product_profile_revisions
+  drop constraint agent_product_profile_revisions_profile_id_check;
+alter table app_data_agent.agent_product_profile_revisions
+  add constraint agent_product_profile_revisions_profile_id_check check(profile_id in (
+    'governed-analysis-agent','governed-text2sql-agent',
+    'report-writing-agent','semantic-management-agent'
+  ));
 do $postconditions$
 declare profile_constraint text;
 begin
   select pg_catalog.pg_get_constraintdef(oid) into profile_constraint
   from pg_catalog.pg_constraint
   where conrelid='app_data_agent.agent_product_profile_revisions'::pg_catalog.regclass
-    and conname='agent_product_profile_revisions_generic_profile_id_check';
+    and conname='agent_product_profile_revisions_profile_id_check';
   if profile_constraint is null
-    or pg_catalog.strpos(profile_constraint,'profile_id')=0
-    or pg_catalog.strpos(profile_constraint,'a-z0-9')=0
-  then raise exception using errcode='P0001',message='GENERIC_PRODUCT_PROFILE_CONSTRAINT_DRIFT'; end if;
+    or pg_catalog.strpos(profile_constraint,'governed-analysis-agent')=0
+  then raise exception using errcode='P0001',message='GOVERNED_ANALYSIS_PRODUCT_PROFILE_CONSTRAINT_DRIFT'; end if;
 end
 $postconditions$;
 select platform.assert_migration_checksum('app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010764_app_data_agent_governed_analysis_product_profile',
-  'sha256:2b3fd5e69142fcd49f93e54f26b6b088a9e1e7c9b83d4f3e6b0f4a3c2106d79f');
+  'sha256:6583db7644b153d0b83052521035413e6480bcbf56814ec52954de14b0f2bad5');
 commit;

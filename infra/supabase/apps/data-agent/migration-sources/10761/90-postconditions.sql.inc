@@ -21,9 +21,8 @@ begin
   then raise exception using errcode='P0001',message='GOVERNED_ANALYSIS_ROOT_V2_DRIFT'; end if;
 
   if not exists(select 1 from app_data_agent.agent_profile_revisions
-    where profile_id='governed-analysis-agent' and profile_revision=2
-      and profile_hash='sha256:e5f85f6b0a7e4b582f13cb9bb24a08e03c1c01e6721760afb94003d4c883b019'
-      and profile_json->'mandatory_context' ? 'QUERY_EVIDENCE'
+    where profile_id='governed-analysis-agent' and profile_revision=1
+      and profile_hash='sha256:265abb762fd9466d5ce8bee79bb43b823ff18621b1b728a645b84bb4356be7f6'
       and profile_hash=app_data_agent.u2_canonical_sha256(profile_json-'profile_hash'))
   then raise exception using errcode='P0001',message='GOVERNED_ANALYSIS_SPECIALIST_DRIFT'; end if;
 end

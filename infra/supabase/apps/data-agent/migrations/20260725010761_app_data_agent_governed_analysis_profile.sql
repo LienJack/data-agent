@@ -1,4 +1,4 @@
--- governed_analysis_profile_migration_checksum: sha256:8fea6fbc0befe3252a3ce92f825c33a8e8df6b719da89268cfcfb8b05ee0b253
+-- governed_analysis_profile_migration_checksum: sha256:ce9a9eaff45cf0d21d0619306cae3e6365fd8159979408316f13c83177ebb924
 begin;
 
 do $bootstrap$
@@ -37,9 +37,9 @@ values
   '{"schema_version":"agent-profile-revision@2.0.0","profile_id":"data-agent-orchestrator","revision":2,"direct_tool_allowlist":[],"delegation_ceiling":["governed-analysis-agent","governed-text2sql-agent","report-writing-agent","semantic-management-agent"],"mandatory_context":["GOAL","OPEN_OBLIGATIONS","POLICY","QUESTION"],"workflow":{"workflow_id":"team.orchestrator.v3","workflow_revision":1},"expected_output_artifact_types":["ReportManifest"],"verifier":{"verifier_id":"team.orchestrator-verifier.v3","required_dimensions":["execution_valid","intent_grounded","oracle_verified","policy_valid","provenance_valid","schema_valid","scope_valid"],"semantic_fallback":"NEEDS_CLARIFICATION"},"profile_hash":"sha256:bfe92aae492252be7667e3fe8631bf6cd4107db49a2f19edd29295dacd49d65d"}'::jsonb
 ),
 (
-  'governed-analysis-agent',2,
-  'sha256:e5f85f6b0a7e4b582f13cb9bb24a08e03c1c01e6721760afb94003d4c883b019',
-  '{"schema_version":"agent-profile-revision@2.0.0","profile_id":"governed-analysis-agent","revision":2,"direct_tool_allowlist":["analysis.program.execute"],"delegation_ceiling":[],"mandatory_context":["GOAL","POLICY","QUERY_EVIDENCE","QUESTION","SCHEMA_MAPPING","SEMANTIC_RELEASE"],"workflow":{"workflow_id":"team.governed-analysis.v2","workflow_revision":1},"expected_output_artifact_types":["AnalysisReport"],"verifier":{"verifier_id":"team.governed-analysis-verifier.v2","required_dimensions":["execution_valid","intent_grounded","oracle_verified","policy_valid","provenance_valid","schema_valid","scope_valid"],"semantic_fallback":"NEEDS_CLARIFICATION"},"profile_hash":"sha256:e5f85f6b0a7e4b582f13cb9bb24a08e03c1c01e6721760afb94003d4c883b019"}'::jsonb
+  'governed-analysis-agent',1,
+  'sha256:265abb762fd9466d5ce8bee79bb43b823ff18621b1b728a645b84bb4356be7f6',
+  '{"schema_version":"agent-profile-revision@2.0.0","profile_id":"governed-analysis-agent","revision":1,"direct_tool_allowlist":["analysis.python.execute"],"delegation_ceiling":[],"mandatory_context":["GOAL","POLICY","QUESTION","SCHEMA_MAPPING","SEMANTIC_RELEASE"],"workflow":{"workflow_id":"team.governed-analysis.v2","workflow_revision":1},"expected_output_artifact_types":["AnalysisReport"],"verifier":{"verifier_id":"team.governed-analysis-verifier.v2","required_dimensions":["execution_valid","intent_grounded","oracle_verified","policy_valid","provenance_valid","schema_valid","scope_valid"],"semantic_fallback":"NEEDS_CLARIFICATION"},"profile_hash":"sha256:265abb762fd9466d5ce8bee79bb43b823ff18621b1b728a645b84bb4356be7f6"}'::jsonb
 )
 on conflict(profile_id,profile_revision) do nothing;
 do $postconditions$
@@ -65,14 +65,13 @@ begin
   then raise exception using errcode='P0001',message='GOVERNED_ANALYSIS_ROOT_V2_DRIFT'; end if;
 
   if not exists(select 1 from app_data_agent.agent_profile_revisions
-    where profile_id='governed-analysis-agent' and profile_revision=2
-      and profile_hash='sha256:e5f85f6b0a7e4b582f13cb9bb24a08e03c1c01e6721760afb94003d4c883b019'
-      and profile_json->'mandatory_context' ? 'QUERY_EVIDENCE'
+    where profile_id='governed-analysis-agent' and profile_revision=1
+      and profile_hash='sha256:265abb762fd9466d5ce8bee79bb43b823ff18621b1b728a645b84bb4356be7f6'
       and profile_hash=app_data_agent.u2_canonical_sha256(profile_json-'profile_hash'))
   then raise exception using errcode='P0001',message='GOVERNED_ANALYSIS_SPECIALIST_DRIFT'; end if;
 end
 $postconditions$;
 select platform.assert_migration_checksum('app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010761_app_data_agent_governed_analysis_profile',
-  'sha256:8fea6fbc0befe3252a3ce92f825c33a8e8df6b719da89268cfcfb8b05ee0b253');
+  'sha256:ce9a9eaff45cf0d21d0619306cae3e6365fd8159979408316f13c83177ebb924');
 commit;

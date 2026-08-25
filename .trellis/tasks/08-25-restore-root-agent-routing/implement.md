@@ -75,7 +75,7 @@ Gate：Semantic、Text2SQL、Text2SQL -> Report 和 Root direct 四条路径都�
 - [x] 轨迹 UI 对 corrupt/missing-reference 错误清空旧 ready 快照并显示阻断态；不得在 Authority 已失败关闭后继续展示陈旧轨迹。
 - [x] Sandbox 回收 receipt 只接受 runtime 实际执行的 `list -> kill -> confirmed list` 管理面观察；operation UUID、target hash、前后数量/哈希与 observation hash 均由服务端生成并由 PostgreSQL 二次复验。
 - [x] Finalize 只有在 Oracle 通过、轨迹闭合、底层 Run 已 `SUCCEEDED`，且 OpenSandbox management API 的 attestation-bound `residual=0` receipt 已进入 PostgreSQL Authority 后才推进 Campaign；不读取本地 receipt JSON，任一失败立即 HOLD。
-- [x] 完成迁移 10761–10767 的确定性渲染、静态检查和 clean PostgreSQL 定向 smoke。
+- [x] 恢复已应用 10761/10764 的不可变原文，并以 10768 前向切换 Analysis Profile v2、退役旧固定 Product Profile 约束；完成 10761–10768 的确定性渲染、静态检查和 clean PostgreSQL 定向 smoke。
 - [x] 完成 contracts、agent-runtime、platform、worker、web 与 sandbox 的任务相关 test/typecheck/build。
 - [ ] 在实际代码与冻结契约提交且工作树 clean 后创建 v13；逐条执行 30 个真实 DeepSeek/Falcon db24 Run。
 - [ ] v13 任一 Run 失败后立即停止，不重试、不继续下一 slot、不创建 v14；先固定六层定位证据。

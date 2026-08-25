@@ -2228,6 +2228,22 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10768",
+      "migration_name": "20260725010768_app_data_agent_governed_analysis_profile_v2.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10768",
+      "segments": [
+        "00-preamble.sql.inc",
+        "20-analysis-profile-v2.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__GOVERNED_ANALYSIS_PROFILE_V2_MIGRATION_CHECKSUM__",
+      "checksum_header": "governed_analysis_profile_v2_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [
