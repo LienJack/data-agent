@@ -75,7 +75,7 @@ Falcon24 的真实运行已经证明 Sandbox 可以在既有预算内成功完�
 
 ### In Scope
 
-- 首批七个受治理统计算子、唯一 Manifest/Registry、SDK 调用面、授权与回执闭包；
+- 首批八个受治理统计算子、唯一 Manifest/Registry、SDK 调用面、授权与回执闭包；
 - AnalysisProgram、SandboxProgram、Python IPC、Derived Evidence 和 Falcon24 Oracle 的跨层绑定；
 - DeepSeek generation/repair Prompt 与 AST preflight；
 - Falcon24 五题的算子映射、独立数值 Oracle、图表闭包和 30 次真实运行门禁；
@@ -173,6 +173,7 @@ Operator ID 是唯一调用名称；首版不提供短名或 alias。所有参�
 | `regression.ols-hac@1` | OLS coefficient + Newey-West HAC；Bartlett、maxlags、correction、normal inference 全显式 | 非等间隔、n/k 不足、rank deficient、目标列缺失或数值失败为 HOLD | Q4 0–4 周 lag fits |
 | `regression.binomial-logit-wald@1` | binomial logit、固定优化/收敛门、目标系数 two-sided Wald inference | 非二元 y、rank deficient、完全分离、不收敛、样本不足为 HOLD | Q2 delayed 与低评分关联 |
 | `decomposition.product-shapley-exact@1` | named multiplicative factors、全排列 exact marginal average、stable order、closure | factor 非有限、数量超界、观察变化与重构不闭合失败；无 approximate 模式 | Q1 buyers × frequency × AOV |
+| `descriptive.inventory-damage-priority@1` | 完整商品 12 月序列、品类销量 linear P75、受治理趋势结果与固定候选规则 | 商品标签不闭合、月份不满 12、元数据冲突失败；仅作描述性排查优先级，不能宣称因果 | Q3 完整高销量且损坏恶化候选集 |
 | `cohort.registration-retention-m0-m6@2` | 注册日 cohort、M0–M6、primary/sensitivity denominator、zero-order customers、日粒度时序异常 | 非法日期、denominator 漂移、重复客户/订单失败；primary 不可靠可作为正确 HOLD 输出 | Q5 retention/repeat/spend/experience |
 
 ### Cohort Operator Is Deliberately Business-Semantic
@@ -298,7 +299,7 @@ flowchart TB
   - `packages/research/src/analysis-evidence/program-verifier.ts`
   - `packages/contracts/test/deterministic-analysis-artifacts.spec.ts`
   - `packages/contracts/test/python-sandbox-v2.spec.ts`
-- **Approach:** canonical manifest 声明七个 operator 的 schema、参数、适用性和 digest material；生成的 TS projection 带
+- **Approach:** canonical manifest 声明八个 operator 的 schema、参数、适用性和 digest material；生成的 TS projection 带
   `DO NOT EDIT` 与 source hash，check 模式发现漂移即失败。把 obligations/registry digest/source policy/receipt closure 设为
   现有未发布协议的 required fields，不增加 optional defaults 或旧 shape parser。
 - **Test scenarios:** duplicate ID、alias、overwrite、manual TS edit、manifest hash drift、Program/Sandbox/IPC 任一漏字段、
@@ -464,13 +465,13 @@ flowchart TB
 
 ### Acceptance Criteria for This Plan
 
-- [ ] Registry 当前只包含上表七个 exact active operator IDs，同一逻辑方法没有第二版本、alias 或 overwrite。
+- [ ] Registry 当前只包含上表八个 exact active operator IDs，同一逻辑方法没有第二版本、alias 或 overwrite。
 - [ ] Manifest 是唯一手工维护元数据；Python Registry 与 generated TS projection 的 digest 完全一致。
 - [ ] AnalysisProgram、SandboxProgram、IPC、Receipt、Derived Evidence 全部绑定同一 registry digest 和 exact obligations。
 - [ ] 缺 operator call、额外 call、调用后未与最终字段闭合、tampered receipt 均无法提交 accepted output。
-- [ ] DeepSeek 每题仍生成真实 Python；Prompt 和生产 Worker 不再含七个方法的底层公式实现。
+- [ ] DeepSeek 每题仍生成真实 Python；Prompt 和生产 Worker 不再含八个算子的底层公式实现。
 - [ ] Q1–Q5 分别出现预期 operator receipts，适用性/限制不可由模型删除。
-- [ ] 七个算子的 golden、metamorphic、mutation 和 adversarial suites 全绿，生产与 sealed Oracle 无共享计算代码。
+- [ ] 八个算子的 golden、metamorphic、mutation 和 adversarial suites 全绿，生产与 sealed Oracle 无共享计算代码。
 - [ ] 新 Runtime/Lock/Image/Policy/Implementation digests 经 hardened-container smoke 证明，不复用旧 attestation。
 - [ ] Falcon24 5/5、30 次真实运行、generated Python 30/30、operator closure 30/30、Oracle 30/30、chart 30/30、flake=0。
 - [ ] 旧公式生产路径、旧 fixture、模板 fallback、compat adapter、双 registry 和未版本化调用扫描为零。

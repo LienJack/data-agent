@@ -15,9 +15,7 @@ _OPERATOR_ID = re.compile(r"^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+@[1-9][0-9]*$"
 _INPUT_NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _FIELD_NAME = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _MONTH_KEY = re.compile(r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])$")
-_DATE_KEY = re.compile(
-    r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$"
-)
+_DATE_KEY = re.compile(r"^[1-9][0-9]{3}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12][0-9]|3[01])$")
 _FORBIDDEN_KEYS = frozenset(
     {"alias", "aliases", "overwrite", "overwrites", "legacy_id", "fallback"}
 )
@@ -54,6 +52,7 @@ _RECORD_FIELD_SHAPES = frozenset(
     {
         "BINARY_NUMBER_ARRAY",
         "DATE_KEY",
+        "FINITE_NUMBER",
         "FINITE_NUMBER_ARRAY",
         "MONTH_KEY",
         "NAMED_FINITE_NUMBER_ARRAY_MAP",
@@ -121,6 +120,8 @@ def record_value_matches_shape(value: Any, shape: str) -> bool:
         )
     if shape == "DATE_KEY":
         return _date_key(value)
+    if shape == "FINITE_NUMBER":
+        return _finite_number(value)
     if shape == "FINITE_NUMBER_ARRAY":
         return _finite_number_array(value)
     if shape == "MONTH_KEY":
@@ -141,8 +142,7 @@ def record_value_matches_shape(value: Any, shape: str) -> bool:
             isinstance(value, dict)
             and bool(value)
             and all(
-                _non_empty_string(key) and _finite_number(child)
-                for key, child in value.items()
+                _non_empty_string(key) and _finite_number(child) for key, child in value.items()
             )
         )
     if shape == "NON_EMPTY_STRING":
@@ -266,8 +266,8 @@ def _validate_manifest(value: Any) -> dict[str, Any]:
     if value["schema_version"] != "statistical-operator-manifest@2.0.0":
         raise OperatorManifestError("manifest schema version is unsupported")
     operators = value["operators"]
-    if not isinstance(operators, list) or len(operators) != 7:
-        raise OperatorManifestError("manifest must contain exactly seven operators")
+    if not isinstance(operators, list) or len(operators) != 8:
+        raise OperatorManifestError("manifest must contain exactly eight operators")
     identifiers: set[str] = set()
     implementations: set[tuple[str, str]] = set()
     for index, operator in enumerate(operators):

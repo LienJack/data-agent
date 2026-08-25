@@ -124,11 +124,13 @@ describe("Falcon24 agent analysis acceptance", () => {
               provider: "deepseek",
               model_id: "deepseek-v4-flash",
               model_override_attempted: false,
-              provider_invocation_ref: {
-                resource_id: id(40 + caseIndex),
-                resource_revision: 1,
-                resource_hash: hash("9"),
-              },
+              provider_invocation_refs: [
+                {
+                  resource_id: id(40 + caseIndex),
+                  resource_revision: 1,
+                  resource_hash: hash("9"),
+                },
+              ],
               semantic_context_ref: {
                 package_id: id(10 + caseIndex),
                 package_revision: 1,

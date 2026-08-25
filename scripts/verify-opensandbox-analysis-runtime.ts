@@ -3,9 +3,9 @@ import {
   type AnalysisSandboxProfile,
   createOpenSandboxAnalysisRuntime,
 } from "../apps/worker/src/runs/opensandbox-analysis-runtime.js";
+import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "../packages/contracts/src/generated/statistical-operators.js";
 
-const REGISTRY_DIGEST =
-  "sha256:9902973d92d20f9ce7d880f7914d71f7930542f88a5883726c6c4b9ca7fce55d" as const;
+const REGISTRY_DIGEST = STATISTICAL_OPERATOR_REGISTRY_DIGEST;
 
 function required(name: string): string {
   const value = process.env[name]?.trim();

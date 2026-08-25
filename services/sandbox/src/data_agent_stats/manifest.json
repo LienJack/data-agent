@@ -425,6 +425,126 @@
       "limitations": ["PRODUCT_IDENTITY_REQUIRED", "APPROXIMATE_MODE_NOT_SUPPORTED"]
     },
     {
+      "operator_id": "descriptive.inventory-damage-priority@1",
+      "description_zh": "按商品汇总库存损坏序列，以品类销量 P75 和受治理趋势检验结果生成完整排查候选集。",
+      "implementation": {
+        "module": "data_agent_stats.inventory",
+        "symbol": "inventory_damage_priority"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 5000
+      },
+      "inputs": [
+        {
+          "name": "inventory_rows",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 5000,
+          "record_shape": {
+            "product_id": "NON_EMPTY_STRING",
+            "product_name": "NON_EMPTY_STRING",
+            "category": "NON_EMPTY_STRING",
+            "month": "MONTH_KEY",
+            "sales_quantity": "NON_NEGATIVE_FINITE_NUMBER",
+            "stock_received": "NON_NEGATIVE_FINITE_NUMBER",
+            "damaged_stock": "NON_NEGATIVE_FINITE_NUMBER"
+          },
+          "record_example": {
+            "product_id": "product_a",
+            "product_name": "Product A",
+            "category": "grocery",
+            "month": "2024-01",
+            "sales_quantity": 100.0,
+            "stock_received": 80.0,
+            "damaged_stock": 2.0
+          },
+          "limits": {}
+        },
+        {
+          "name": "theil_sen",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 512,
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "slope": "FINITE_NUMBER"
+          },
+          "record_example": {
+            "label": "product_a",
+            "slope": 0.01
+          },
+          "limits": {}
+        },
+        {
+          "name": "mann_kendall",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 512,
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "p_value": "UNIT_INTERVAL_NUMBER"
+          },
+          "record_example": {
+            "label": "product_a",
+            "p_value": 0.01
+          },
+          "limits": {}
+        },
+        {
+          "name": "bh_fdr",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 512,
+          "record_shape": {
+            "label": "NON_EMPTY_STRING",
+            "adjusted_p_value": "UNIT_INTERVAL_NUMBER"
+          },
+          "record_example": {
+            "label": "product_a",
+            "adjusted_p_value": 0.02
+          },
+          "limits": {}
+        }
+      ],
+      "parameters": [
+        {
+          "name": "alpha",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 0.05,
+          "minimum_exclusive": 0,
+          "maximum_inclusive": 1
+        },
+        {
+          "name": "category_sales_percentile",
+          "kind": "FINITE_NUMBER",
+          "required": false,
+          "default": 0.75,
+          "minimum_inclusive": 0.75,
+          "maximum_inclusive": 0.75
+        }
+      ],
+      "outputs": {
+        "collection": "products",
+        "label_fields": ["product_id"],
+        "value_fields": ["product_name", "category", "sales_quantity", "category_sales_p75", "theil_sen_slope", "last3_damage_rate", "previous9_damage_rate", "raw_p_value", "bh_q_value", "status"],
+        "evidence_fields": ["product_count", "candidate_count", "category_sales_percentile", "selection_rule"]
+      },
+      "applicability_checks": [
+        "EXACT_PRODUCT_LABEL_CLOSURE",
+        "TWELVE_UNIQUE_MONTHS_PER_PRODUCT",
+        "CONSISTENT_PRODUCT_METADATA",
+        "LINEAR_CATEGORY_PERCENTILE",
+        "COMPLETE_CANDIDATE_SET"
+      ],
+      "limitations": [
+        "DESCRIPTIVE_SCREENING_NOT_CAUSAL",
+        "INPUT_SERIES_MUST_COVER_ALL_PRODUCTS"
+      ]
+    },
+    {
       "operator_id": "cohort.registration-retention-m0-m6@2",
       "description_zh": "按注册月形成唯一新客 cohort，计算 M0 至 M6 下单、消费、配送和反馈留存证据。",
       "implementation": {

@@ -10,6 +10,7 @@ type JsonValue = JsonScalar | readonly JsonValue[] | { readonly [key: string]: J
 type RecordFieldShape =
   | "BINARY_NUMBER_ARRAY"
   | "DATE_KEY"
+  | "FINITE_NUMBER"
   | "FINITE_NUMBER_ARRAY"
   | "MONTH_KEY"
   | "NAMED_FINITE_NUMBER_ARRAY_MAP"
@@ -107,6 +108,7 @@ function assertStringArray(value: unknown, context: string): asserts value is re
 const RECORD_FIELD_SHAPES = new Set<RecordFieldShape>([
   "BINARY_NUMBER_ARRAY",
   "DATE_KEY",
+  "FINITE_NUMBER",
   "FINITE_NUMBER_ARRAY",
   "MONTH_KEY",
   "NAMED_FINITE_NUMBER_ARRAY_MAP",
@@ -176,6 +178,7 @@ function assertRecordExampleValue(value: unknown, shape: RecordFieldShape, conte
       value.length > 0 &&
       value.every((item) => item === 0 || item === 1)) ||
     (shape === "DATE_KEY" && isDateKey(value)) ||
+    (shape === "FINITE_NUMBER" && isFiniteNumber(value)) ||
     (shape === "FINITE_NUMBER_ARRAY" && isFiniteNumberArray(value)) ||
     (shape === "MONTH_KEY" &&
       typeof value === "string" &&
@@ -228,7 +231,7 @@ export function parseStatisticalOperatorManifest(text: string): OperatorManifest
     "manifest registry_id 非法。",
   );
   assertCondition(Array.isArray(candidate.operators), "manifest operators 必须是数组。");
-  assertCondition(candidate.operators.length === 7, "首版 manifest 必须且只能包含七个算子。");
+  assertCondition(candidate.operators.length === 8, "当前 manifest 必须且只能包含八个算子。");
 
   const ids = new Set<string>();
   const implementations = new Set<string>();

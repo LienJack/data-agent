@@ -405,6 +405,10 @@ describe("Falcon24 Arrow-backed analysis oracle", () => {
           raw_p_value: rawPValue,
           bh_q_value: rawPValue,
           status: "PRIORITY",
+          product_count: 1,
+          candidate_count: 1,
+          category_sales_percentile: 0.75,
+          selection_rule: "SALES_GTE_P75_AND_SLOPE_GT_0_AND_LAST3_GT_PREVIOUS9",
         },
       ],
     };

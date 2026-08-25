@@ -121,6 +121,10 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
         operator_id: "trend.mann-kendall-original@1",
       },
       { call_id: "q3_bh_all_products", operator_id: "multiple-testing.bh-fdr@1" },
+      {
+        call_id: "q3_inventory_priority",
+        operator_id: "descriptive.inventory-damage-priority@1",
+      },
     ],
     required_disclosures: [],
     required_quality_findings: ["INVENTORY_NEW_SENSITIVITY_ONLY"],

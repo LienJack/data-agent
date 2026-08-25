@@ -156,7 +156,7 @@ describe("Falcon24 analysis program compiler", () => {
     ).toContain("result bh_q_value to table adjusted_p_value");
     expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
-    ).toContain("product_summary_by_id");
+    ).toContain("inventory_rows");
     expect(programs[2]?.nodes[0]?.result_contract.collection_constraints).toEqual([
       expect.objectContaining({ collection_field: "products", min_items: 1 }),
     ]);
@@ -188,6 +188,7 @@ describe("Falcon24 analysis program compiler", () => {
         "robust-trend.theil-sen-slope@1",
         "trend.mann-kendall-original@1",
         "multiple-testing.bh-fdr@1",
+        "descriptive.inventory-damage-priority@1",
       ],
       [
         "regression.ols-hac@1",

@@ -14,12 +14,13 @@ const generatedPath = resolve(
   repositoryRoot,
   "packages/contracts/src/generated/statistical-operators.ts",
 );
+const runtimeProbePath = resolve(repositoryRoot, "scripts/verify-opensandbox-analysis-runtime.ts");
 const manifestText = readFileSync(manifestPath, "utf8");
 
 describe("statistical operator contract generator", () => {
   it("keeps the generated projection byte-identical to the sole manifest", () => {
     const manifest = parseStatisticalOperatorManifest(manifestText);
-    expect(manifest.operators).toHaveLength(7);
+    expect(manifest.operators).toHaveLength(8);
     expect(readFileSync(generatedPath, "utf8")).toBe(
       renderStatisticalOperatorContract(manifestText),
     );
@@ -73,5 +74,14 @@ describe("statistical operator contract generator", () => {
     expect(computeStatisticalOperatorManifestDigest(changedSource)).not.toBe(
       computeStatisticalOperatorManifestDigest(manifestText),
     );
+  });
+
+  it("binds the runtime probe to the generated registry digest", () => {
+    const runtimeProbe = readFileSync(runtimeProbePath, "utf8");
+    expect(runtimeProbe).toContain(
+      'import { STATISTICAL_OPERATOR_REGISTRY_DIGEST } from "../packages/contracts/src/generated/statistical-operators.js";',
+    );
+    expect(runtimeProbe).toContain("const REGISTRY_DIGEST = STATISTICAL_OPERATOR_REGISTRY_DIGEST;");
+    expect(runtimeProbe).not.toMatch(/const REGISTRY_DIGEST\s*=\s*"sha256:/u);
   });
 });

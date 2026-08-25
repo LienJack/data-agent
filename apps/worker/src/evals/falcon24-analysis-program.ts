@@ -503,6 +503,31 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
         value_fields: ["adjusted_p_value", "rejected"],
       }),
     },
+    {
+      call_id: "q3_inventory_priority",
+      operator_id: "descriptive.inventory-damage-priority@1",
+      result_binding: resultBinding({
+        result_collection_path: "/products",
+        operator_collection_path: "/products",
+        label_fields: ["product_id"],
+        value_fields: [
+          "product_name",
+          "category",
+          "sales_quantity",
+          "category_sales_p75",
+          "theil_sen_slope",
+          "last3_damage_rate",
+          "previous9_damage_rate",
+          "raw_p_value",
+          "bh_q_value",
+          "status",
+          "product_count",
+          "candidate_count",
+          "category_sales_percentile",
+          "selection_rule",
+        ],
+      }),
+    },
   ],
   "falcon24-marketing-lag-effect": [
     {
@@ -572,11 +597,11 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
   "falcon24-inventory-damage-12m": [
     "Use blinkit_inventory only for the primary damage calculation; blinkit_inventoryNew is sensitivity evidence and must not be combined with primary values.",
     "For every product, sort the 12 rows by month ascending and compute monthly damage_rate = damaged_stock / stock_received, using zero when stock_received is zero. Prepare zero-based x=0..11 series for the required Theil-Sen operator and ordered series for the required original Mann-Kendall operator.",
-    "In the first preparation Cell, also retain one product_summary_by_id mapping keyed by the string product_id. Each value must contain product_id, product_name, category, sales_quantity, category_sales_p75, previous9_damage_rate, and last3_damage_rate. Compute the within-category p75 after forming one total-sales row per product. Reuse this exact mapping after the operators return; do not reconstruct category or product_name from an operator row or from a reduced statistics mapping that omitted those keys.",
+    "In the first preparation Cell, retain inventory_rows as JSON-native records with exactly product_id, product_name, category, month, sales_quantity, stock_received, and damaged_stock from every governed input row. The month values are already ISO YYYY-MM strings; do not parse or reformat them. Do not compute product summaries, category p75, previous-9/last-3 means, candidate filters, or statuses in model-generated Python.",
     "Pass every product's Mann-Kendall raw p-value to the required BH-FDR operator before any candidate filtering. Use the three operator results as the only source of slopes, raw p-values, adjusted p-values, and rejection flags; do not reimplement these statistical formulas.",
     "Return full finite floating-point values for damage rates, Theil-Sen slopes, raw p-values, and BH q-values; do not round or format any numeric output before context.write_json.",
-    "High sales means total product sales is at least the within-category product-sales p75 using linear interpolation.",
-    "Return every and only product satisfying high sales, positive Theil-Sen slope, and last-3 mean damage rate greater than previous-9 mean; include product_id, product_name, and category from that product's governed rows, and classify PRIORITY iff BH q <= 0.05, otherwise WATCHLIST. Append a product to products only inside the branch where all three candidate predicates are true; never append non-candidates as WATCHLIST.",
+    "After BH-FDR returns, invoke the required inventory priority operator once. Pass inventory_rows plus the exact protected Theil-Sen series, Mann-Kendall series, and BH tests collections without DataFrame conversion or edits, using parameters alpha=0.05 and category_sales_percentile=0.75.",
+    "Use the protected inventory priority operator products collection itself as result products. It is the only authority for product aggregation, linear within-category product-sales p75, previous-9/last-3 means, complete three-predicate candidate selection, and PRIORITY/WATCHLIST classification. Do not copy, rebuild, append, filter, or handwrite those formulas in generated Python.",
     "Project the inventory_damage_priority table with exactly the declared column keys. Map result product sales_quantity to table total_sales, result bh_q_value to table adjusted_p_value, and result status to table classification. Never use sales_quantity, bh_q_value, or status as table column keys.",
   ],
   "falcon24-marketing-lag-effect": [

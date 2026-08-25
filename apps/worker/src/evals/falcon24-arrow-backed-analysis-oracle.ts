@@ -49,6 +49,7 @@ const EXPECTED_OPERATOR_PARAMETERS: Readonly<
     variant: "original",
   },
   q3_bh_all_products: { alpha: 0.05, method: "bh" },
+  q3_inventory_priority: { alpha: 0.05, category_sales_percentile: 0.75 },
   q4_hac_all_models: {
     maxlags: 4,
     kernel: "bartlett",
@@ -80,6 +81,10 @@ const REQUIRED_OPERATOR_LIMITATIONS: Readonly<Record<string, readonly string[]>>
     "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
     "FAMILY_DEFINITION_MUST_BE_PREDECLARED",
   ],
+  q3_inventory_priority: [
+    "DESCRIPTIVE_SCREENING_NOT_CAUSAL",
+    "INPUT_SERIES_MUST_COVER_ALL_PRODUCTS",
+  ],
   q4_hac_all_models: ["ASSOCIATION_NOT_CAUSATION", "ORDERING_DEFINES_HAC_DEPENDENCE"],
   q4_bh_order_revenue: [
     "DEPENDENCE_STRUCTURE_NOT_VERIFIED",
@@ -105,7 +110,9 @@ const METHOD_OPERATOR_CALLS: Readonly<
   },
   "falcon24-inventory-damage-12m": {
     "benjamini-hochberg-fdr": ["q3_bh_all_products"],
+    "category-sales-p75": ["q3_inventory_priority"],
     "theil-sen-deterioration": ["q3_theil_sen_all_products", "q3_mann_kendall_all_products"],
+    "three-vs-previous-nine": ["q3_inventory_priority"],
   },
   "falcon24-marketing-lag-effect": {
     "hac-standard-errors": ["q4_hac_all_models"],
@@ -947,6 +954,14 @@ function verifyInventory(
     close(product.bh_q_value, qValue, "FALCON24_Q3_BH_Q_MISMATCH", 1e-6);
     if (product.status !== (qValue <= 0.05 ? "PRIORITY" : "WATCHLIST")) {
       fail("FALCON24_Q3_STATUS_MISMATCH");
+    }
+    if (
+      product.product_count !== statistics.size ||
+      product.candidate_count !== candidates.size ||
+      product.category_sales_percentile !== 0.75 ||
+      product.selection_rule !== "SALES_GTE_P75_AND_SLOPE_GT_0_AND_LAST3_GT_PREVIOUS9"
+    ) {
+      fail("FALCON24_Q3_SCREENING_EVIDENCE_MISMATCH");
     }
   }
 }
