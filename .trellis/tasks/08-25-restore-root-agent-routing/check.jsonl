@@ -1,0 +1,7 @@
+{"file":".trellis/spec/backend/agent-team-runtime.md","reason":"Verify production Root and Subagent execution semantics"}
+{"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Verify no certification or persisted permit regression"}
+{"file":".trellis/spec/backend/text2sql-resolved-context.md","reason":"Verify exact binding and stale-context rejection"}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"Verify evidence-backed answer and report lineage"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Verify errors remain typed and safe"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Verify focused and integration coverage"}
+{"file":".trellis/spec/guides/cross-layer-change-checklist.md","reason":"Verify all affected layers and generated surfaces"}

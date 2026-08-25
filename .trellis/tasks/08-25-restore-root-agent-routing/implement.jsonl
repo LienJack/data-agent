@@ -1,0 +1,8 @@
+{"file":".trellis/spec/backend/agent-team-runtime.md","reason":"Root harness, catalog freeze, admission, team task and public trace authority"}
+{"file":".trellis/spec/backend/provider-invocation-authority.md","reason":"Preserve the lightweight direct provider path while adding Root tool choice"}
+{"file":".trellis/spec/backend/text2sql-resolved-context.md","reason":"Exact datasource, schema snapshot and semantic context binding for Text2SQL"}
+{"file":".trellis/spec/backend/artifact-authority.md","reason":"SqlArtifact, QueryEvidence and Report evidence ordering"}
+{"file":".trellis/spec/backend/port-conformance.md","reason":"Stable contracts and platform subpath boundaries"}
+{"file":".trellis/spec/backend/error-handling.md","reason":"Fail-closed reason codes and safe public errors"}
+{"file":".trellis/spec/backend/quality-guidelines.md","reason":"Tests, code quality and validation expectations"}
+{"file":".trellis/spec/guides/cross-layer-change-checklist.md","reason":"Coordinate contracts, runtime, platform, worker and specs"}
