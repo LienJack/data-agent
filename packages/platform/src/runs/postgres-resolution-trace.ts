@@ -1,6 +1,8 @@
 import {
   type AppScope,
   type ArtifactReference,
+  type ArtifactWorkspaceChartDocumentV2,
+  type ArtifactWorkspaceChartDocumentV3,
   appScopeSchema,
   artifactReferenceIdentity,
   buildResolutionTrace,
@@ -12,6 +14,8 @@ import {
   l2ArtifactDocumentSchema,
   type PortResult,
   type PublicRunEventV2,
+  parseAndHashL2ResearchDocumentCandidate,
+  type parseL2ResearchDocumentCandidate,
   productTeamArtifactDocumentSchema,
   type ResolutionTrace,
   type ResolutionTraceDetail,
@@ -25,6 +29,8 @@ import {
   sha256ContentHash,
   timestampSchema,
   toPublicRunEvent,
+  verifyArtifactWorkspaceChartDocumentV2,
+  verifyArtifactWorkspaceChartDocumentV3,
   verifyEffectiveRunConfigReceiptCandidate,
 } from "@data-agent/contracts";
 import { z } from "zod";
@@ -104,7 +110,10 @@ interface VerifiedArtifact {
   readonly reference: ArtifactReference;
   readonly document:
     | z.infer<typeof l2ArtifactDocumentSchema>
+    | ReturnType<typeof parseL2ResearchDocumentCandidate>
     | z.infer<typeof productTeamArtifactDocumentSchema>
+    | ArtifactWorkspaceChartDocumentV2
+    | ArtifactWorkspaceChartDocumentV3
     | null;
   readonly created_at: string;
 }
@@ -158,6 +167,29 @@ function assertScope(requested: AppScope, authorized: AppScope): void {
     throw new PersistenceBoundaryError(
       "RESOLUTION_TRACE_NOT_FOUND_OR_DENIED",
       "Run 不存在或当前 Principal 无权访问。",
+    );
+  }
+}
+
+function effectiveConfigCandidate(document: unknown, configHash: string | null): unknown | null {
+  if (document === null) return null;
+  if (configHash === null || typeof document !== "object" || Array.isArray(document)) {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_CONFIG_CORRUPT",
+      "Effective Config relational/document identity 不完整。",
+    );
+  }
+  return { ...document, config_hash: contentHashSchema.parse(configHash) };
+}
+
+async function verifiedEffectiveConfig(authority: VerifiedRunAuthority) {
+  if (!authority.effective_config_json) return null;
+  try {
+    return await verifyEffectiveRunConfigReceiptCandidate(authority.effective_config_json);
+  } catch {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_CONFIG_CORRUPT",
+      "Effective Config 未通过当前契约与 content hash 校验。",
     );
   }
 }
@@ -305,7 +337,9 @@ async function loadRunAuthority(
         ? contentHashSchema.parse(row.schema_snapshot_hash)
         : null,
       config_committed_at: hasCompleteConfig ? iso(row.config_committed_at as Date | string) : null,
-      effective_config_json: hasCompleteConfig ? row.effective_config_json : null,
+      effective_config_json: hasCompleteConfig
+        ? effectiveConfigCandidate(row.effective_config_json, row.config_hash)
+        : null,
       question: z.string().min(1).max(4_000).parse(row.question),
       run_status: z.string().min(1).max(64).parse(row.run_status),
       active_fence: z.coerce.number().int().nonnegative().safe().parse(row.active_fence),
@@ -326,7 +360,9 @@ function referenceFromRow(scope: AppScope, runId: string, row: ArtifactRow): Art
         "SqlArtifact",
         "ExecutionReceipt",
         "QueryEvidence",
+        "DerivedAnalysisEvidence",
         "AnalysisReport",
+        "ArtifactWorkspaceDocument",
         "SchemaSnapshot",
         "SandboxResult",
       ])
@@ -336,6 +372,56 @@ function referenceFromRow(scope: AppScope, runId: string, row: ArtifactRow): Art
     revision: z.coerce.number().int().positive().parse(row.revision),
     content_hash: contentHashSchema.parse(row.content_hash),
   };
+}
+
+async function requireStoredArtifactReference(
+  client: SqlClient,
+  reference: ArtifactReference,
+): Promise<void> {
+  const exists = await client.query(
+    `select 1
+     from artifacts
+     where app_id = $1
+       and tenant_id = $2
+       and environment = $3
+       and run_id = $4
+       and artifact_id = $5
+       and artifact_type = $6
+       and revision = $7
+       and content_hash = $8
+     limit 1`,
+    [
+      reference.app_id,
+      reference.tenant_id,
+      reference.environment,
+      reference.run_id,
+      reference.artifact_id,
+      reference.artifact_type,
+      reference.revision,
+      reference.content_hash,
+    ],
+  );
+  if (exists.rowCount !== 1) {
+    throw new PersistenceBoundaryError(
+      "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
+      "Artifact reference 不存在或 exact identity 漂移。",
+    );
+  }
+}
+
+async function verifyEventArtifactReferences(
+  client: SqlClient,
+  events: readonly RunRuntimeEvent[],
+): Promise<void> {
+  const verified = new Set<string>();
+  for (const event of events) {
+    for (const reference of eventNode(event).artifact_refs) {
+      const identity = artifactReferenceIdentity(reference);
+      if (verified.has(identity)) continue;
+      await requireStoredArtifactReference(client, reference);
+      verified.add(identity);
+    }
+  }
 }
 
 async function loadVerifiedArtifacts(
@@ -361,7 +447,9 @@ async function loadVerifiedArtifacts(
         "SqlArtifact",
         "ExecutionReceipt",
         "QueryEvidence",
+        "DerivedAnalysisEvidence",
         "AnalysisReport",
+        "ArtifactWorkspaceDocument",
         "SchemaSnapshot",
         "SandboxResult",
       ],
@@ -374,27 +462,59 @@ async function loadVerifiedArtifacts(
       reference.artifact_type === "SchemaSnapshot" ||
       reference.artifact_type === "SandboxResult"
     ) {
-      artifacts.push({ reference, document: null, created_at: iso(row.created_at) });
+      artifacts.push({
+        reference,
+        document: null,
+        created_at: iso(row.created_at),
+      });
       continue;
     }
     const l2Result = l2ArtifactDocumentSchema.safeParse(row.document_json);
     const productResult = productTeamArtifactDocumentSchema.safeParse(row.document_json);
     let document: Exclude<VerifiedArtifact["document"], null>;
+    let computedHash: string;
     if (l2Result.success && l2Result.data.envelope.status === "COMMITTED") {
       document = l2Result.data;
+      computedHash = await computeL2ArtifactContentHash(document);
     } else if (productResult.success) {
       document = productResult.data;
+      computedHash = await computeProductTeamArtifactHash(document);
+    } else if (reference.artifact_type === "ArtifactWorkspaceDocument") {
+      try {
+        document = await verifyArtifactWorkspaceChartDocumentV2(row.document_json);
+        computedHash = contentHashSchema.parse(document.document_ref.content_hash);
+      } catch {
+        try {
+          document = await verifyArtifactWorkspaceChartDocumentV3(row.document_json);
+          computedHash = contentHashSchema.parse(document.document_ref.content_hash);
+        } catch {
+          throw new PersistenceBoundaryError(
+            "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+            "Stored Chart document 未通过 strict schema、dataset hash 与 document hash 校验。",
+          );
+        }
+      }
     } else {
-      throw new PersistenceBoundaryError(
-        "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
-        "Stored Artifact document 不符合 committed L2 或 Product Team 契约。",
-      );
+      try {
+        const research = await parseAndHashL2ResearchDocumentCandidate(row.document_json);
+        if (research.document.envelope.status !== "COMMITTED") {
+          throw new TypeError("RESOLUTION_TRACE_RESEARCH_ARTIFACT_NOT_COMMITTED");
+        }
+        document = research.document;
+        computedHash = research.content_hash;
+      } catch {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+          "Stored Artifact document 不符合 current committed L2、Research L2 或 Product Team 契约。",
+        );
+      }
     }
-    const documentReference = "envelope" in document ? document.envelope : document.artifact_ref;
-    const computedHash =
+    const documentReference =
       "envelope" in document
-        ? await computeL2ArtifactContentHash(document)
-        : await computeProductTeamArtifactHash(document);
+        ? document.envelope
+        : "artifact_ref" in document
+          ? document.artifact_ref
+          : document.document_ref;
     if (
       documentReference.artifact_id !== reference.artifact_id ||
       documentReference.artifact_type !== reference.artifact_type ||
@@ -412,39 +532,22 @@ async function loadVerifiedArtifacts(
       );
     }
     const inputReferences =
-      "envelope" in document ? document.envelope.input_refs : document.source_refs;
+      "envelope" in document
+        ? document.envelope.input_refs
+        : Array.isArray(document.source_refs)
+          ? document.source_refs
+          : [
+              ...document.source_refs.query_evidence_refs,
+              document.source_refs.derived_evidence_ref,
+            ];
     for (const input of inputReferences) {
-      const exists = await client.query(
-        `select 1
-         from artifacts
-         where app_id = $1
-           and tenant_id = $2
-           and environment = $3
-           and run_id = $4
-           and artifact_id = $5
-           and artifact_type = $6
-           and revision = $7
-           and content_hash = $8
-         limit 1`,
-        [
-          input.app_id,
-          input.tenant_id,
-          input.environment,
-          input.run_id,
-          input.artifact_id,
-          input.artifact_type,
-          input.revision,
-          input.content_hash,
-        ],
-      );
-      if (exists.rowCount !== 1) {
-        throw new PersistenceBoundaryError(
-          "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
-          "Artifact lineage 引用不存在或 identity 不匹配。",
-        );
-      }
+      await requireStoredArtifactReference(client, input);
     }
-    artifacts.push({ reference, document, created_at: iso(row.created_at) });
+    artifacts.push({
+      reference,
+      document,
+      created_at: iso(row.created_at),
+    });
   }
   return artifacts;
 }
@@ -584,8 +687,17 @@ function artifactPublicSummary(artifact: VerifiedArtifact): string {
       case "REPORT":
         return `${document.projection.title} · ${document.projection.sections.length} 个章节`;
       case "CHART":
-        return `${document.projection.title} · ${document.projection.mark} · ${document.projection.table.total_rows} 行`;
+        return `${document.projection.title} · ${"mark" in document.projection ? document.projection.mark : document.projection.chart_type} · ${document.projection.table.total_rows} 行`;
     }
+  }
+  if ("protocol_version" in document.payload) {
+    if (
+      document.payload.artifact_type === "QueryEvidence" &&
+      document.payload.protocol_version === "query-evidence@2.0.0"
+    ) {
+      return `${document.payload.observation.row_count} 行 · ${document.payload.protocol_version} · 结果已绑定`;
+    }
+    return `${document.payload.artifact_type} · ${document.payload.protocol_version} · current Research L2`;
   }
   switch (document.payload.artifact_type) {
     case "SqlArtifact":
@@ -667,7 +779,12 @@ async function projectTrace(
     const inputReferences =
       "envelope" in artifact.document
         ? artifact.document.envelope.input_refs
-        : artifact.document.source_refs;
+        : Array.isArray(artifact.document.source_refs)
+          ? artifact.document.source_refs
+          : [
+              ...artifact.document.source_refs.query_evidence_refs,
+              artifact.document.source_refs.derived_evidence_ref,
+            ];
     for (const input of inputReferences) {
       const source = nodeByReference.get(artifactReferenceIdentity(input));
       if (source && target)
@@ -771,9 +888,7 @@ async function projectDetail(
 ): Promise<ResolutionTraceDetail | null> {
   const node = trace.nodes.find((candidate) => candidate.node_id === nodeId);
   if (!node) return null;
-  const effectiveConfig = authority.effective_config_json
-    ? await verifyEffectiveRunConfigReceiptCandidate(authority.effective_config_json)
-    : null;
+  const effectiveConfig = await verifiedEffectiveConfig(authority);
   const answerSummary = events
     .map(toPublicRunEvent)
     .flatMap((event) => (event.type === "answer" ? [event.payload.delta] : []))
@@ -1118,17 +1233,17 @@ async function projectDetail(
       ...(first ? detailIdentity("Revision", first.revision, "VERSION") : []),
       ...(first ? detailIdentity("Content hash", first.content_hash, "HASH") : []),
     ];
-    const publicSummaries = verifiedReferences.map((reference) => {
+    const matchingArtifacts = verifiedReferences.flatMap((reference) => {
       const artifact = artifacts.find(
         (candidate) =>
           artifactReferenceIdentity(candidate.reference) === artifactReferenceIdentity(reference),
       );
-      return artifact ? artifactPublicSummary(artifact) : "公开内容不可用";
+      return artifact ? [artifact] : [];
     });
     payload = {
       state: "AVAILABLE",
       format: "TEXT",
-      text: publicSummaries.join("\n\n"),
+      text: matchingArtifacts.map(artifactPublicSummary).join("\n\n"),
       fields: verifiedReferences.map((reference) => ({
         label: reference.artifact_type,
         value: `revision ${reference.revision} · exact preview`,
@@ -1140,14 +1255,31 @@ async function projectDetail(
       text: `${verifiedReferences.length} 个 exact Artifact 可安全预览`,
       fields: [],
     };
-    schema = detailSchema("artifact-reference", "artifact-reference@1.0.0", [
-      "artifact_id",
-      "artifact_type",
-      "revision",
-      "content_hash",
-      "scope",
-      "run_id",
-    ]);
+    const firstDocument = matchingArtifacts[0]?.document;
+    if (firstDocument && "schema_version" in firstDocument) {
+      const schemaName =
+        "artifact_ref" in firstDocument
+          ? "product-team-artifact"
+          : firstDocument.schema_version.startsWith("artifact-workspace-chart-document@")
+            ? "artifact-workspace-chart-document"
+            : "artifact-reference";
+      schema = detailSchema(schemaName, firstDocument.schema_version, [
+        "artifact_id",
+        "artifact_type",
+        "revision",
+        "content_hash",
+        "source_refs",
+      ]);
+    } else {
+      schema = detailSchema("artifact-reference", "artifact-reference@1.0.0", [
+        "artifact_id",
+        "artifact_type",
+        "revision",
+        "content_hash",
+        "scope",
+        "run_id",
+      ]);
+    }
   }
 
   return resolutionTraceDetailSchema.parse({
@@ -1331,6 +1463,7 @@ export function createPostgresResolutionTraceProjector(
           );
           if (!authority) return null;
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
+          await verifyEventArtifactReferences(client, events);
           const artifacts = await loadVerifiedArtifacts(client, authority);
           return projectTrace(authority, events, artifacts);
         },
@@ -1362,6 +1495,7 @@ export function createPostgresResolutionTraceProjector(
           );
           if (!authority) return null;
           const events = await loadVerifiedRunEvents(client, capability.scope, authority.run_id);
+          await verifyEventArtifactReferences(client, events);
           const artifacts = await loadVerifiedArtifacts(client, authority);
           const trace = await projectTrace(authority, events, artifacts);
           return projectDetail(authority, trace, events, artifacts, lookup.data.node_id);

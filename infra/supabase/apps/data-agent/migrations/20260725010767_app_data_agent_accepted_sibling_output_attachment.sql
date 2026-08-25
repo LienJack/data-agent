@@ -1,4 +1,4 @@
--- agent_team_accepted_sibling_output_attachment_migration_checksum: sha256:2e00283ef9e76fc977642ef80caef3f02e58f6d6b1fd352b95778acb62960617
+-- agent_team_accepted_sibling_output_attachment_migration_checksum: sha256:16fcbd9ab17e6246d76d5304e95a04185bb6b3067295ff3de082b3e5b433d823
 begin;
 
 do $bootstrap$
@@ -377,14 +377,14 @@ begin
       'app_data_agent.prepare_agent_team_handoff(jsonb)','EXECUTE')
     or pg_catalog.has_function_privilege('anon',
       'app_data_agent.attach_agent_team_accepted_sibling_output(jsonb)','EXECUTE')
-    or pg_catalog.position(
-      'agent_team_accepted_sibling_output_attachments' in
-      pg_catalog.pg_get_functiondef('app_data_agent.prepare_agent_team_handoff(jsonb)'::regprocedure)
+    or pg_catalog.strpos(
+      pg_catalog.pg_get_functiondef('app_data_agent.prepare_agent_team_handoff(jsonb)'::regprocedure),
+      'agent_team_accepted_sibling_output_attachments'
     )=0
   then raise exception using errcode='P0001',message='AGENT_TEAM_SIBLING_ATTACHMENT_AUTHORITY_NOT_INSTALLED'; end if;
 end
 $postconditions$;
 select platform.assert_migration_checksum('app','00000000-0000-4000-8000-00000000da01'::uuid,
   '20260725010767_app_data_agent_accepted_sibling_output_attachment',
-  'sha256:2e00283ef9e76fc977642ef80caef3f02e58f6d6b1fd352b95778acb62960617');
+  'sha256:16fcbd9ab17e6246d76d5304e95a04185bb6b3067295ff3de082b3e5b433d823');
 commit;

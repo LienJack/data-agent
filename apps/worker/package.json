@@ -29,6 +29,7 @@
     "falcon:team": "tsx src/evals/falcon-team-gate-cli.ts",
     "falcon:final": "tsx src/evals/falcon-final-gate-cli.ts",
     "deepseek:analysis:strict-probe": "tsx src/evals/deepseek-analysis-strict-probe-cli.ts",
+    "falcon24:sandbox:reclaim": "tsx src/evals/falcon24-sandbox-reclamation-cli.ts",
     "falcon24:analysis:gate": "tsx src/evals/falcon24-analysis-gate-cli.ts"
   },
   "dependencies": {

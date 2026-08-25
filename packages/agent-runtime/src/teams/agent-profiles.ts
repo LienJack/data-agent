@@ -10,13 +10,23 @@ import { z } from "zod";
 
 export const DATA_AGENT_PROFILE_IDS = [
   "data-agent-orchestrator",
+  "governed-analysis-agent",
   "semantic-management-agent",
   "governed-text2sql-agent",
   "report-writing-agent",
 ] as const;
 
+export const DATA_AGENT_SPECIALIST_PROFILE_IDS = [
+  "governed-analysis-agent",
+  "governed-text2sql-agent",
+  "report-writing-agent",
+  "semantic-management-agent",
+] as const;
+
 export const dataAgentProfileIdSchema = z.enum(DATA_AGENT_PROFILE_IDS);
 export type DataAgentProfileId = z.infer<typeof dataAgentProfileIdSchema>;
+export const dataAgentSpecialistProfileIdSchema = z.enum(DATA_AGENT_SPECIALIST_PROFILE_IDS);
+export type DataAgentSpecialistProfileId = z.infer<typeof dataAgentSpecialistProfileIdSchema>;
 
 const contextKindSchema = z.enum([
   "GOAL",
@@ -52,7 +62,7 @@ const agentProfileRevisionDraftSchema = z.strictObject({
   profile_id: dataAgentProfileIdSchema,
   revision: z.number().int().positive(),
   direct_tool_allowlist: z.array(versionIdentifierSchema).max(32),
-  delegation_ceiling: z.array(dataAgentProfileIdSchema).max(3),
+  delegation_ceiling: z.array(dataAgentProfileIdSchema).max(4),
   mandatory_context: z.array(contextKindSchema).min(1).max(8),
   workflow: z.strictObject({
     workflow_id: versionIdentifierSchema,
@@ -93,11 +103,14 @@ export const agentProfileRevisionSchema = agentProfileRevisionDraftSchema
       ctx.addIssue({ code: "custom", message: "Profile hash mismatch.", path: ["profile_hash"] });
     }
     if (profile.profile_id === "data-agent-orchestrator") {
-      if (profile.direct_tool_allowlist.length !== 0 || profile.delegation_ceiling.length !== 3) {
+      const expectedDelegationCount = profile.revision === 1 ? 3 : 4;
+      if (
+        profile.direct_tool_allowlist.length !== 0 ||
+        profile.delegation_ceiling.length !== expectedDelegationCount
+      ) {
         ctx.addIssue({
           code: "custom",
-          message:
-            "Orchestrator has no direct domain tools and delegates to exactly three profiles.",
+          message: `Orchestrator revision ${profile.revision} has no direct domain tools and delegates to exactly ${expectedDelegationCount} profiles.`,
           path: ["profile_id"],
         });
       }
@@ -144,6 +157,48 @@ export const AGENT_PROFILE_REVISIONS = deepFreeze([
     expected_output_artifact_types: ["ReportManifest"],
     verifier: {
       verifier_id: "team.orchestrator-verifier.v2",
+      required_dimensions: [...dimensions],
+      semantic_fallback: "NEEDS_CLARIFICATION",
+    },
+  }),
+  profile({
+    schema_version: "agent-profile-revision@2.0.0",
+    profile_id: "data-agent-orchestrator",
+    revision: 2,
+    direct_tool_allowlist: [],
+    delegation_ceiling: [
+      "governed-analysis-agent",
+      "governed-text2sql-agent",
+      "report-writing-agent",
+      "semantic-management-agent",
+    ],
+    mandatory_context: ["GOAL", "OPEN_OBLIGATIONS", "POLICY", "QUESTION"],
+    workflow: { workflow_id: "team.orchestrator.v3", workflow_revision: 1 },
+    expected_output_artifact_types: ["ReportManifest"],
+    verifier: {
+      verifier_id: "team.orchestrator-verifier.v3",
+      required_dimensions: [...dimensions],
+      semantic_fallback: "NEEDS_CLARIFICATION",
+    },
+  }),
+  profile({
+    schema_version: "agent-profile-revision@2.0.0",
+    profile_id: "governed-analysis-agent",
+    revision: 2,
+    direct_tool_allowlist: ["analysis.program.execute"],
+    delegation_ceiling: [],
+    mandatory_context: [
+      "GOAL",
+      "POLICY",
+      "QUERY_EVIDENCE",
+      "QUESTION",
+      "SCHEMA_MAPPING",
+      "SEMANTIC_RELEASE",
+    ],
+    workflow: { workflow_id: "team.governed-analysis.v2", workflow_revision: 1 },
+    expected_output_artifact_types: ["AnalysisReport"],
+    verifier: {
+      verifier_id: "team.governed-analysis-verifier.v2",
       required_dimensions: [...dimensions],
       semantic_fallback: "NEEDS_CLARIFICATION",
     },

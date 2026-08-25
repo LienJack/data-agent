@@ -24,6 +24,21 @@ def request() -> StatisticalOperatorToolCall:
             "obligation": {
                 "call_id": "q3_bh_all_products",
                 "operator_id": "multiple-testing.bh-fdr@1",
+                "input_lineage_bindings": [
+                    {
+                        "lineage_kind": "GOVERNED_INPUT_EXACT",
+                        "operator_input_name": "tests",
+                        "governed_input_name": "test_p_values",
+                        "row_mode": "ALL_ROWS_EXACT",
+                        "field_sources": [
+                            {"operator_field": "label", "governed_column": "label"},
+                            {
+                                "operator_field": "p_value",
+                                "governed_column": "p_value",
+                            },
+                        ],
+                    }
+                ],
                 "result_binding": {
                     "result_output_name": "result",
                     "result_collection_path": "/tests",
@@ -51,6 +66,14 @@ def request() -> StatisticalOperatorToolCall:
             "parameters": {"alpha": 0.05, "method": "bh"},
         }
     )
+
+
+def test_request_rejects_empty_operator_input_lineage() -> None:
+    payload = request().model_dump(mode="json")
+    payload["obligation"]["input_lineage_bindings"] = []
+
+    with pytest.raises(ValidationError):
+        StatisticalOperatorToolCall.model_validate(payload)
 
 
 def test_execute_call_returns_governed_output_and_pre_binding_evidence() -> None:

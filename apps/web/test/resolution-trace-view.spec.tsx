@@ -6,13 +6,79 @@ import {
 } from "@data-agent/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ResolutionTracePanel } from "@/components/qa/resolution-trace-view";
+import {
+  ResolutionTracePanel,
+  resolveResolutionTraceLoadFailure,
+} from "@/components/qa/resolution-trace-view";
+import { ApiRequestError } from "@/lib/api-client";
 
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 
 describe("Resolution Trace panel", () => {
+  it("drops the first successful trace when an authoritative refresh reports corrupt evidence", async () => {
+    const trace = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [],
+      edges: [],
+    });
+    const firstSuccessfulLoad = {
+      status: "ready" as const,
+      trace,
+      traces: [trace],
+      sql: [],
+      profiles: [],
+      teamTrace: null,
+      teamError: null,
+    };
+
+    const refreshed = resolveResolutionTraceLoadFailure(
+      firstSuccessfulLoad,
+      new ApiRequestError(
+        409,
+        "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+        false,
+        "Stored Artifact document 不符合 committed L2 或 Product Team 契约。 (RESOLUTION_TRACE_ARTIFACT_CORRUPT)",
+      ),
+    );
+
+    expect(refreshed).toEqual({
+      status: "error",
+      message:
+        "权威轨迹已阻断：Stored Artifact document 不符合 committed L2 或 Product Team 契约。 (RESOLUTION_TRACE_ARTIFACT_CORRUPT)",
+    });
+    expect(refreshed).not.toHaveProperty("trace");
+    expect(refreshed).not.toHaveProperty("traces");
+  });
+
+  it("keeps the last ready trace while a transient refresh request is recovering", async () => {
+    const trace = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [],
+      edges: [],
+    });
+    const ready = {
+      status: "ready" as const,
+      trace,
+      traces: [trace],
+      sql: [],
+      profiles: [],
+      teamTrace: null,
+      teamError: null,
+    };
+
+    expect(resolveResolutionTraceLoadFailure(ready, new TypeError("Failed to fetch"))).toBe(ready);
+  });
+
   it("groups the whole conversation into collapsible Turns and exposes Request performance", async () => {
     const buildTurn = (runSuffix: number, eventSuffix: number, second: number) =>
       buildResolutionTrace({

@@ -110,7 +110,7 @@ function descriptor(
 ): AnalysisSkillDescriptor {
   return Object.freeze({
     ...input,
-    input_contract_version: "query-evidence@2.0.0",
+    input_contract_version: "product-team-query-evidence@2.0.0",
     result_contract_version: "analysis-result-contract@2.0.0",
     hard_limits: Object.freeze({ ...commonLimits, ...input.hard_limits }),
   });

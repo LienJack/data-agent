@@ -10,9 +10,8 @@ import {
 
 const materializationReceiptFields = {
   artifact_type: z.literal("AnalysisInputMaterializationReceipt"),
-  protocol_version: z.literal("analysis-input-materialization@1.0.0"),
+  protocol_version: z.literal("analysis-input-materialization@2.0.0"),
   query_evidence_ref: artifactReferenceFor("QueryEvidence"),
-  query_result_ref: artifactReferenceFor("SandboxResult"),
   input_ref: artifactReferenceFor("SensitiveExecutionArtifact"),
   source_result_hash: contentHashSchema,
   input_hash: contentHashSchema,
@@ -28,24 +27,18 @@ function validateMaterializationBindings(
   receipt: z.infer<z.ZodObject<typeof materializationReceiptFields>>,
   context: z.RefinementCtx,
 ) {
-  if (
-    receipt.query_result_ref.content_hash !== receipt.source_result_hash ||
-    receipt.input_ref.content_hash !== receipt.input_hash
-  ) {
+  if (receipt.input_ref.content_hash !== receipt.input_hash) {
     context.addIssue({
       code: "custom",
-      message: "Analysis input materialization hashes must bind exact source and output refs.",
+      message: "Analysis input materialization hash must bind the exact input ref.",
     });
   }
   const anchor = receipt.query_evidence_ref;
   if (
-    [receipt.query_result_ref, receipt.input_ref].some(
-      (reference) =>
-        reference.app_id !== anchor.app_id ||
-        reference.tenant_id !== anchor.tenant_id ||
-        reference.environment !== anchor.environment ||
-        reference.run_id !== anchor.run_id,
-    )
+    receipt.input_ref.app_id !== anchor.app_id ||
+    receipt.input_ref.tenant_id !== anchor.tenant_id ||
+    receipt.input_ref.environment !== anchor.environment ||
+    receipt.input_ref.run_id !== anchor.run_id
   ) {
     context.addIssue({
       code: "custom",
@@ -73,7 +66,7 @@ export async function computeAnalysisInputMaterializationReceiptHash(
   input: Omit<AnalysisInputMaterializationReceipt, "receipt_hash">,
 ): Promise<`sha256:${string}`> {
   return sha256ContentHash({
-    hash_domain: "analysis-input-materialization@1.0.0",
+    hash_domain: "analysis-input-materialization@2.0.0",
     value: input,
   });
 }

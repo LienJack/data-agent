@@ -70,15 +70,12 @@ const FINAL_NARRATIVE_PRIORITY_FIELDS = [
   "schema_version",
   "case_id",
   "window",
-  "cohort_window",
   "data_quality_precheck",
-  "anomaly_precheck",
   "claim_strength",
   "primary_reliable",
   "worst_revenue_decline",
   "shapley_decomposition",
   "adjusted_binomial_glm",
-  "sensitivity",
   "conclusion",
 ] as const;
 
@@ -250,6 +247,8 @@ export interface AnalysisExecutorDependencies {
     readonly validation_issues: readonly { readonly path: string; readonly code: string }[];
   }) => void;
   readonly progress?: (event: AnalysisToolLoopProgressEvent) => void;
+  readonly repair_budget_per_category?: 0 | 1;
+  readonly allow_stage_recovery?: boolean;
   readonly catalog?: AnalysisSkillCatalog;
   readonly now?: () => Date;
 }
@@ -562,6 +561,12 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           fence_guard: dependencies.fence_guard,
           fence_token: fenceToken,
           max_model_calls: remainingModelCalls,
+          ...(dependencies.repair_budget_per_category !== undefined
+            ? { repair_budget_per_category: dependencies.repair_budget_per_category }
+            : {}),
+          ...(dependencies.allow_stage_recovery !== undefined
+            ? { allow_stage_recovery: dependencies.allow_stage_recovery }
+            : {}),
           ...(dependencies.progress ? { on_progress: dependencies.progress } : {}),
           now,
           ...(input.signal ? { signal: input.signal } : {}),
@@ -666,15 +671,16 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
               throw new TypeError("ANALYSIS_ORACLE_RESULT_INVALID");
             }
           } catch (error) {
+            const failureCode = analysisOracleFailureCode(error);
             dependencies.diagnostics?.({
               event_name: "analysis_oracle_rejected",
               run_id: input.lease.run_id,
               node_id: node.node_id,
               attempt: 0,
-              failure_code: analysisOracleFailureCode(error),
+              failure_code: failureCode,
               ...analysisFailureDiagnostic(error),
             });
-            return failedNode(node, "ANALYSIS_ORACLE_FAILED");
+            throw new TypeError(failureCode);
           }
           oracleReceiptPayload = durableOracleReceiptSchema.parse({
             schema_version: "analysis-stage-oracle-receipt@1.0.0",

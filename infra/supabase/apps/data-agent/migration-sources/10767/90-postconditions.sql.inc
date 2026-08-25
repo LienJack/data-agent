@@ -14,9 +14,9 @@ begin
       'app_data_agent.prepare_agent_team_handoff(jsonb)','EXECUTE')
     or pg_catalog.has_function_privilege('anon',
       'app_data_agent.attach_agent_team_accepted_sibling_output(jsonb)','EXECUTE')
-    or pg_catalog.position(
-      'agent_team_accepted_sibling_output_attachments' in
-      pg_catalog.pg_get_functiondef('app_data_agent.prepare_agent_team_handoff(jsonb)'::regprocedure)
+    or pg_catalog.strpos(
+      pg_catalog.pg_get_functiondef('app_data_agent.prepare_agent_team_handoff(jsonb)'::regprocedure),
+      'agent_team_accepted_sibling_output_attachments'
     )=0
   then raise exception using errcode='P0001',message='AGENT_TEAM_SIBLING_ATTACHMENT_AUTHORITY_NOT_INSTALLED'; end if;
 end

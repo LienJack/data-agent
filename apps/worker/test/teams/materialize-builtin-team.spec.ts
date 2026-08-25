@@ -5,6 +5,7 @@ import { materializeBuiltinTeamProfiles } from "../../src/teams/materialize-buil
 const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const profiles = [
+  "governed-analysis-agent",
   "governed-text2sql-agent",
   "report-writing-agent",
   "semantic-management-agent",
@@ -37,7 +38,7 @@ function input() {
 }
 
 describe("built-in Team materialization", () => {
-  it("commits all nine Skills before the three product Profiles", async () => {
+  it("commits all ten Skills before the four product Profiles", async () => {
     const order: string[] = [];
     const profileCommands: unknown[] = [];
     const result = await materializeBuiltinTeamProfiles(input(), {
@@ -72,16 +73,16 @@ describe("built-in Team materialization", () => {
         }),
       },
     });
-    expect(result.ok && result.value).toHaveLength(3);
-    expect(order.slice(0, 9).every((entry) => entry.startsWith("skill:"))).toBe(true);
-    expect(order.slice(9).every((entry) => entry.startsWith("profile:"))).toBe(true);
+    expect(result.ok && result.value).toHaveLength(4);
+    expect(order.slice(0, 10).every((entry) => entry.startsWith("skill:"))).toBe(true);
+    expect(order.slice(10).every((entry) => entry.startsWith("profile:"))).toBe(true);
     expect(order.filter((entry) => entry === "profile:semantic-management-agent")).toHaveLength(1);
     expect(profileCommands).toContainEqual(
       expect.objectContaining({
         expected_head_version: 0,
         revision: expect.objectContaining({
           profile_id: "semantic-management-agent",
-          revision: 2,
+          revision: 4,
           runtime_profile_ref: expect.objectContaining({ revision: 2 }),
         }),
       }),
@@ -110,6 +111,61 @@ describe("built-in Team materialization", () => {
     });
     expect(result).toMatchObject({ ok: false, error: { code: "SKILL_REJECTED" } });
     expect(profileCommit).not.toHaveBeenCalled();
+  });
+
+  it("reuses an exact enabled immutable Product Profile without advancing its head", async () => {
+    const request = input();
+    const analysisRevision = (
+      await buildBuiltinTeamMaterialization({
+        scope: request.scope,
+        model_profile_refs: refs(10),
+        context_policy_refs: refs(20),
+        execution_safety_policy_refs: refs(30),
+      })
+    ).profile_revisions.find(({ profile_id }) => profile_id === "governed-analysis-agent");
+    expect(analysisRevision).toBeDefined();
+    if (!analysisRevision) throw new TypeError("missing analysis fixture");
+    const exactItem = {
+      schema_version: "agent-product-profile-registry-item@2.0.0" as const,
+      revision: analysisRevision,
+      head: {
+        schema_version: "agent-product-profile-head@2.0.0" as const,
+        scope: request.scope,
+        profile_id: analysisRevision.profile_id,
+        active_revision: analysisRevision.revision,
+        active_revision_hash: analysisRevision.revision_hash,
+        lifecycle: "ENABLED" as const,
+        version: 4,
+        updated_at: "2026-08-18T12:00:00.000Z",
+      },
+    };
+    const profileCommit = vi.fn(async (_capability, command) => ({
+      ok: true as const,
+      value: {
+        ...exactItem,
+        revision: command.revision,
+        head: {
+          ...exactItem.head,
+          profile_id: command.revision.profile_id,
+          active_revision: command.revision.revision,
+          active_revision_hash: command.revision.revision_hash,
+        },
+      },
+    }));
+    const result = await materializeBuiltinTeamProfiles(request, {
+      skills: { commit: vi.fn(async () => ({ ok: true as const, value: {} as never })) },
+      profiles: {
+        listDiscoverable: vi.fn(async () => ({ ok: true as const, value: [exactItem] })),
+        commitV2: profileCommit,
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value[0]).toEqual(exactItem);
+    expect(
+      profileCommit.mock.calls.some(
+        ([, command]) => command.revision.profile_id === "governed-analysis-agent",
+      ),
+    ).toBe(false);
   });
 
   it("uses the current Product Profile head version when activating semantic revision 2", async () => {
@@ -151,13 +207,13 @@ describe("built-in Team materialization", () => {
               schema_version: "agent-product-profile-registry-item@2.0.0" as const,
               revision: {
                 ...semanticRevision,
-                revision: 1,
+                revision: 3,
               },
               head: {
                 schema_version: "agent-product-profile-head@2.0.0" as const,
                 scope: request.scope,
                 profile_id: "semantic-management-agent" as const,
-                active_revision: 1,
+                active_revision: 3,
                 active_revision_hash: hash("a"),
                 lifecycle: "ENABLED" as const,
                 version: 7,
@@ -175,7 +231,7 @@ describe("built-in Team materialization", () => {
       .find(({ revision }) => revision.profile_id === "semantic-management-agent");
     expect(semanticCommand).toMatchObject({
       expected_head_version: 7,
-      revision: { revision: 2, runtime_profile_ref: { revision: 2 } },
+      revision: { revision: 4, runtime_profile_ref: { revision: 2 } },
     });
   });
 });

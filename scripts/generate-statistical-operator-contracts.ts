@@ -234,7 +234,7 @@ export function parseStatisticalOperatorManifest(text: string): OperatorManifest
     "manifest registry_id 非法。",
   );
   assertCondition(Array.isArray(candidate.operators), "manifest operators 必须是数组。");
-  assertCondition(candidate.operators.length === 9, "当前 manifest 必须且只能包含九个算子。");
+  assertCondition(candidate.operators.length === 12, "当前 manifest 必须且只能包含十二个算子。");
 
   const ids = new Set<string>();
   const implementations = new Set<string>();
@@ -455,11 +455,118 @@ export function renderStatisticalOperatorContract(manifestSource: string): strin
     computeStatisticalOperatorManifestDigest(manifestSource),
     computeStatisticalOperatorRegistryDigest(manifestSource),
   );
-  const rendered = baseContract.replace(
+  const withApplicability = baseContract.replace(
     'applicability: z.literal("PASS")',
     'applicability: z.enum(["PASS", "ASSUMPTION_BOUND", "HOLD"])',
   );
-  assertCondition(rendered !== baseContract, "operator applicability schema generation failed");
+  assertCondition(
+    withApplicability !== baseContract,
+    "operator applicability schema generation failed",
+  );
+  const obligationSchema = `export const statisticalOperatorObligationSchema = z.strictObject({
+  call_id: stableIdentifierSchema,
+  operator_id: statisticalOperatorIdSchema,
+  result_binding: statisticalOperatorResultBindingSchema,
+});`;
+  const lineageBoundObligationSchema = `export const statisticalOperatorFieldSourceSchema = z.strictObject({
+  operator_field: outputNameSchema,
+  governed_column: outputNameSchema,
+});
+
+export const statisticalOperatorResultFieldSourceSchema = z.strictObject({
+  operator_field: outputNameSchema,
+  source_field: outputNameSchema,
+});
+
+export const governedInputExactLineageBindingSchema = z
+  .strictObject({
+    lineage_kind: z.literal("GOVERNED_INPUT_EXACT"),
+    operator_input_name: outputNameSchema,
+    governed_input_name: outputNameSchema,
+    row_mode: z.literal("ALL_ROWS_EXACT"),
+    field_sources: z.array(statisticalOperatorFieldSourceSchema).min(1).max(128),
+  })
+  .superRefine((binding, context) => {
+    uniqueStrings(
+      binding.field_sources.map(({ operator_field }) => operator_field),
+      context,
+      ["field_sources"],
+    );
+    uniqueStrings(
+      binding.field_sources.map(({ governed_column }) => governed_column),
+      context,
+      ["field_sources"],
+    );
+  });
+
+export const serverTransformExactLineageBindingSchema = z.strictObject({
+  lineage_kind: z.literal("SERVER_TRANSFORM_EXACT"),
+  operator_input_name: outputNameSchema,
+  governed_input_name: outputNameSchema,
+  transform_id: stableIdentifierSchema,
+});
+
+export const operatorResultExactLineageBindingSchema = z
+  .strictObject({
+    lineage_kind: z.literal("OPERATOR_RESULT_EXACT"),
+    operator_input_name: outputNameSchema,
+    source_call_id: stableIdentifierSchema,
+    source_collection_path: jsonPointerSchema,
+    row_mode: z.literal("ALL_ROWS_EXACT"),
+    field_sources: z.array(statisticalOperatorResultFieldSourceSchema).min(1).max(128),
+  })
+  .superRefine((binding, context) => {
+    uniqueStrings(
+      binding.field_sources.map(({ operator_field }) => operator_field),
+      context,
+      ["field_sources"],
+    );
+    uniqueStrings(
+      binding.field_sources.map(({ source_field }) => source_field),
+      context,
+      ["field_sources"],
+    );
+  });
+
+export const statisticalOperatorInputLineageBindingSchema = z.discriminatedUnion("lineage_kind", [
+  governedInputExactLineageBindingSchema,
+  serverTransformExactLineageBindingSchema,
+  operatorResultExactLineageBindingSchema,
+]);
+
+export const statisticalOperatorObligationSchema = z
+  .strictObject({
+    call_id: stableIdentifierSchema,
+    operator_id: statisticalOperatorIdSchema,
+    input_lineage_bindings: z.array(statisticalOperatorInputLineageBindingSchema).min(1).max(8),
+    result_binding: statisticalOperatorResultBindingSchema,
+  })
+  .superRefine((obligation, context) => {
+    uniqueStrings(
+      obligation.input_lineage_bindings.map(({ operator_input_name }) => operator_input_name),
+      context,
+      ["input_lineage_bindings"],
+    );
+    const operator = STATISTICAL_OPERATOR_MANIFEST.operators.find(
+      ({ operator_id }) => operator_id === obligation.operator_id,
+    );
+    const expectedInputs = operator?.inputs.map(({ name }) => name).sort() ?? [];
+    const boundInputs = obligation.input_lineage_bindings
+      .map(({ operator_input_name }) => operator_input_name)
+      .sort();
+    if (JSON.stringify(expectedInputs) !== JSON.stringify(boundInputs)) {
+      context.addIssue({
+        code: "custom",
+        message: "operator input lineage 必须完整且只绑定 manifest 声明的输入。",
+        path: ["input_lineage_bindings"],
+      });
+    }
+  });`;
+  const rendered = withApplicability.replace(obligationSchema, lineageBoundObligationSchema);
+  assertCondition(
+    rendered !== withApplicability,
+    "operator input lineage schema generation failed",
+  );
   return formatGeneratedContract(rendered);
 }
 

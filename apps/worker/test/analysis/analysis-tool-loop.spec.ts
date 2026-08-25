@@ -7,6 +7,7 @@ import {
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
   type StatisticalOperatorObligation,
 } from "@data-agent/contracts/statistical-operators";
+import { Float64, Table, tableToIPC, Utf8, vectorFromArray } from "apache-arrow";
 import { describe, expect, it } from "vitest";
 import {
   type AnalysisOperatorArgumentExtractorPort,
@@ -18,6 +19,7 @@ import type {
   AnalysisAgentModelPort,
   AnalysisAgentModelTurnResult,
 } from "../../src/analysis/deepseek-analysis-agent.js";
+import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
 import type {
   GovernedResultBridge,
   RecoveredGovernedOperatorResult,
@@ -35,6 +37,17 @@ const operatorOutput = {
 };
 
 describe("safe cell diagnostics", () => {
+  it("returns an exact built-in dict repair for a mapping-type rejection", () => {
+    expect(
+      analysisToolLoopInternals.publishRepairInstruction(
+        "ANALYSIS_RESULT_MAPPING_TYPE_UNSUPPORTED",
+        { result_fields: [] },
+      ),
+    ).toBe(
+      "Repair only the result symbol named by publish_analysis_result.result_symbol. Rebuild it as an exact built-in Python dict; pandas Series/DataFrame, numpy records, defaultdict, dataclass, and other mapping-like values are not accepted. Convert every nested value to dict, list, str, bool, built-in int, finite built-in float, or None, then publish the same bindings again.",
+    );
+  });
+
   it("returns exact server-authored text constraints for a publish repair", () => {
     expect(
       analysisToolLoopInternals.publishRepairInstruction("ANALYSIS_RESULT_TEXT_POLICY_MISMATCH", {
@@ -257,6 +270,18 @@ async function resultContract() {
 const obligation = {
   call_id: "bh",
   operator_id: "multiple-testing.bh-fdr@1",
+  input_lineage_bindings: [
+    {
+      lineage_kind: "GOVERNED_INPUT_EXACT",
+      operator_input_name: "tests",
+      governed_input_name: "test_p_values",
+      row_mode: "ALL_ROWS_EXACT",
+      field_sources: [
+        { operator_field: "label", governed_column: "label" },
+        { operator_field: "p_value", governed_column: "p_value" },
+      ],
+    },
+  ],
   result_binding: {
     result_output_name: "result",
     result_collection_path: "/tests",
@@ -274,6 +299,18 @@ const obligation = {
     require_exact_label_set: true,
   },
 } as const satisfies StatisticalOperatorObligation;
+
+function governedPValues() {
+  const table = new Table({
+    label: vectorFromArray(["hypothesis-a"], new Utf8()),
+    p_value: vectorFromArray([0.01], new Float64()),
+  });
+  return {
+    name: "test_p_values",
+    format: "ARROW",
+    content: tableToIPC(table, "file"),
+  } as GovernedAnalysisInput;
+}
 
 function cell(cellId: string, source = `value_${cellId.replaceAll("-", "_")} = 1`) {
   return {
@@ -732,7 +769,7 @@ function operatorArgumentExtractor(
     async extract(input) {
       calls.push(input);
       return {
-        inputs: { p_values: [0.01] },
+        inputs: { tests: [{ label: "hypothesis-a", p_value: 0.01 }] },
         parameters: { alpha: 0.05 },
       };
     },
@@ -748,7 +785,7 @@ async function recoveredOperatorResult(): Promise<RecoveredGovernedOperatorResul
       operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
       runtime_profile: "CORE_ANALYSIS",
       obligation,
-      inputs: { p_values: [0.01] },
+      inputs: { tests: [{ label: "hypothesis-a", p_value: 0.01 }] },
       parameters: { alpha: 0.05 },
     }),
   );
@@ -836,6 +873,8 @@ async function run(input: {
   readonly calls?: Parameters<AnalysisAgentModelPort["turn"]>[0][];
   readonly max_tool_turns?: number;
   readonly recovered_operator_results?: readonly RecoveredGovernedOperatorResult[];
+  readonly governed_inputs?: readonly import("../../src/analysis/governed-analysis-input.js").GovernedAnalysisInput[];
+  readonly repair_budget_per_category?: 0 | 1;
 }) {
   const calls = input.calls ?? [];
   const obligations = input.obligations ?? [obligation];
@@ -848,9 +887,13 @@ async function run(input: {
     runtime_profile: "CORE_ANALYSIS",
     result_contract: await resultContract(),
     operator_obligations: obligations,
+    governed_inputs: input.governed_inputs ?? [governedPValues()],
     operator_argument_extractor: input.extractor ?? operatorArgumentExtractor(),
     governed_result_bridge: governedResultBridge(),
     recovered_operator_results: input.recovered_operator_results ?? [],
+    ...(input.repair_budget_per_category !== undefined
+      ? { repair_budget_per_category: input.repair_budget_per_category }
+      : {}),
     stage: {
       async stage({ closure }) {
         return {
@@ -871,6 +914,59 @@ async function run(input: {
 }
 
 describe("unique analysis Result Publisher state machine", () => {
+  it("fails on the first invalid turn when strict acceptance disables repair", async () => {
+    const log: string[] = [];
+    await expect(
+      run({
+        script: ["INVALID_TOOL"],
+        obligations: [],
+        repair_budget_per_category: 0,
+        session: session({ log }),
+      }),
+    ).rejects.toThrow("ANALYSIS_AGENT_REPAIR_DISABLED_MODEL_TOOL_CONTRACT");
+    expect(log).not.toContain("operator:run");
+  });
+
+  it("repairs manifest-invalid operator records before persisting the operator intent", async () => {
+    let extraction = 0;
+    const progress: AnalysisToolLoopProgressEvent[] = [];
+    const log: string[] = [];
+    const operatorRequests: unknown[] = [];
+    await run({
+      script: [
+        cell("prepare-invalid"),
+        operatorCall(),
+        cell("prepare-fixed", "operator_inputs = {}; operator_parameters = {}"),
+        operatorCall(),
+        cell("assemble", "result_document = {}; monthly_table = []; bh_result = {}"),
+        publishCall(),
+      ],
+      extractor: {
+        async extract() {
+          extraction += 1;
+          return {
+            inputs:
+              extraction === 1
+                ? { tests: [{ label: "hypothesis-a", p_value: 0.01, extra: true }] }
+                : { tests: [{ label: "hypothesis-a", p_value: 0.01 }] },
+            parameters: { alpha: 0.05 },
+          };
+        },
+      },
+      session: session({ log, operator_requests: operatorRequests }),
+      progress,
+    });
+
+    expect(progress).toContainEqual(
+      expect.objectContaining({
+        repair_category: "CELL_EXECUTION",
+        failure_code: "ANALYSIS_OPERATOR_ARGUMENT_RECORD_FIELDS_INVALID",
+      }),
+    );
+    expect(log.filter((item) => item === "operator:run")).toHaveLength(1);
+    expect(operatorRequests).toHaveLength(1);
+  });
+
   it("reuses Journal-recovered governed results without rerunning the operator", async () => {
     const log: string[] = [];
     const calls: Parameters<AnalysisAgentModelPort["turn"]>[0][] = [];
@@ -924,7 +1020,10 @@ describe("unique analysis Result Publisher state machine", () => {
       { inputs_symbol: "operator_inputs", parameters_symbol: "operator_parameters" },
     ]);
     expect(operatorRequests).toMatchObject([
-      { inputs: { p_values: [0.01] }, parameters: { alpha: 0.05 } },
+      {
+        inputs: { tests: [{ label: "hypothesis-a", p_value: 0.01 }] },
+        parameters: { alpha: 0.05 },
+      },
     ]);
     const boundedOperatorResult = calls
       .flatMap(({ messages }) => messages)

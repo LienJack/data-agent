@@ -57,7 +57,9 @@ describe("Root Agent direct-answer review", () => {
     const loaded = await createEffectiveConfigFixtureLoader(effectiveConfig)(lease);
     if (!loaded.ok) throw new Error("effective config fixture failed");
     const consumed = loaded.value as {
-      readonly effective_config: Parameters<typeof createRunExecutionContext>[0]["effective_config"];
+      readonly effective_config: Parameters<
+        typeof createRunExecutionContext
+      >[0]["effective_config"];
       readonly context_receipt: Parameters<typeof createRunExecutionContext>[0]["context_receipt"];
     };
     const direct = JSON.stringify({
@@ -131,5 +133,37 @@ describe("Root Agent direct-answer review", () => {
     expect(invoke.mock.calls[1]?.[0]).toMatchObject({
       turn: { phase: "DIRECT_ANSWER_REVIEW", prior_output_text: direct },
     });
+
+    invoke.mockReset();
+    invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { output_text: direct, tool_calls: [], projection: {} },
+    });
+    const strictContext = createRunExecutionContext({
+      lease,
+      effective_config: consumed.effective_config,
+      context_receipt: consumed.context_receipt,
+      run_signal: new AbortController().signal,
+      event_store: {} as never,
+      now: () => new Date("2026-08-25T10:00:00.000Z"),
+      create_id: () => id(11),
+      side_effect_timeout_ms: 1_000,
+      provider_dispatch: { invoke: invoke as never },
+      heartbeat: vi.fn(),
+      guard_running_lease: vi.fn(),
+      append_checkpoint_event: vi.fn(),
+      append_side_effect_event: vi.fn(),
+      append_display_event: vi.fn(async () => ({ ok: true as const, value: { sequence: 1 } })),
+    });
+    const strictResult = await createRootAgentTurnExecutor({ max_turns: 1 }).decide({
+      lease,
+      restored_snapshot: null,
+      context: strictContext,
+      signal: new AbortController().signal,
+      deadline_at: lease.expires_at,
+    });
+    expect(strictResult.ok).toBe(true);
+    expect(invoke).toHaveBeenCalledOnce();
+    expect(invoke.mock.calls[0]?.[0]).toMatchObject({ turn: { phase: "INITIAL" } });
   });
 });

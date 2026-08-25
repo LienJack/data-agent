@@ -1,13 +1,13 @@
 import {
+  type DataAgentSpecialistProfileId,
+  dataAgentSpecialistProfileIdSchema,
   getAgentProfileRevisionExact,
   type TeamTaskV2,
   TeamWorkflowRegistry,
 } from "@data-agent/agent-runtime";
 import {
   type AgentProductProfileRegistryItemV2,
-  type AgentSpecialistProfileId,
   type ArtifactReference,
-  agentSpecialistProfileIdSchema,
   artifactReferenceIdentity,
   type PortResult,
   verifyAgentProductProfileRevisionV2,
@@ -77,7 +77,7 @@ function visibleToolPort(input: {
 }): ProductProfileToolPort {
   return {
     async invoke(invocation) {
-      const profileId = agentSpecialistProfileIdSchema.parse(
+      const profileId = dataAgentSpecialistProfileIdSchema.parse(
         invocation.profile.revision.profile_id,
       );
       const callId = `${invocation.task.task_id}:${invocation.tool_id}`;
@@ -147,11 +147,11 @@ function visibleToolPort(input: {
 
 export async function verifySelectedProductProfiles(
   items: readonly AgentProductProfileRegistryItemV2[],
-): Promise<ReadonlyMap<AgentSpecialistProfileId, AgentProductProfileRegistryItemV2>> {
-  const profiles = new Map<AgentSpecialistProfileId, AgentProductProfileRegistryItemV2>();
+): Promise<ReadonlyMap<DataAgentSpecialistProfileId, AgentProductProfileRegistryItemV2>> {
+  const profiles = new Map<DataAgentSpecialistProfileId, AgentProductProfileRegistryItemV2>();
   for (const item of items) {
     const revision = await verifyAgentProductProfileRevisionV2(item.revision);
-    const profileId = agentSpecialistProfileIdSchema.safeParse(revision.profile_id);
+    const profileId = dataAgentSpecialistProfileIdSchema.safeParse(revision.profile_id);
     if (!profileId.success) {
       throw new TypeError("SUBAGENT_RUNTIME_PROFILE_UNSUPPORTED");
     }
@@ -190,7 +190,9 @@ export async function createMastraProfileComposition(input: {
   readonly tools: ProductProfileToolPort;
   readonly visibility: ProductProfileToolVisibilityPort;
   readonly now?: () => number;
-  readonly execution_tool_allowlists?: Partial<Record<AgentSpecialistProfileId, readonly string[]>>;
+  readonly execution_tool_allowlists?: Partial<
+    Record<DataAgentSpecialistProfileId, readonly string[]>
+  >;
 }): Promise<TeamWorkflowRegistry> {
   const profiles = await verifySelectedProductProfiles(input.profiles);
   const tools = visibleToolPort({

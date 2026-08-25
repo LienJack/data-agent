@@ -636,7 +636,7 @@ export const FALCON24_FORMULA_ALIASES = Object.freeze({
   inventory_damage_rate: ["损坏率"],
   low_rating_rate: ["低评分率", "差评率"],
   marketing_revenue: ["营销归因收入"],
-  marketing_roas: ["投入回报率"],
+  marketing_roas: ["营销ROAS", "营销投入产出比", "投入回报率（营销归因收入/营销投入）"],
   marketing_spend: ["营销投入"],
   new_customers: ["新增客户"],
   on_time_rate: ["准时率"],

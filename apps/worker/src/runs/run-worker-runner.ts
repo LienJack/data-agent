@@ -1,6 +1,6 @@
 import {
   type AppScope,
-  agentSpecialistProfileIdSchema,
+  agentProfileIdSchema,
   artifactReferenceSchema,
   type ContextReceiptBinding,
   type ContractError,
@@ -88,7 +88,7 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     title: z.string().min(1).max(128),
     summary: z.string().min(1).max(100_000),
     input: z.string().max(100_000).nullable(),
-    profile_id: agentSpecialistProfileIdSchema.nullable().optional(),
+    profile_id: agentProfileIdSchema.nullable().optional(),
     task_id: z.uuid().nullable().optional(),
     artifact_refs: z.array(artifactReferenceSchema).max(32).optional(),
   }),
@@ -100,7 +100,7 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     summary: z.string().min(1).max(100_000),
     output: z.string().max(200_000).nullable(),
     duration_ms: z.number().int().nonnegative().safe(),
-    profile_id: agentSpecialistProfileIdSchema.nullable().optional(),
+    profile_id: agentProfileIdSchema.nullable().optional(),
     task_id: z.uuid().nullable().optional(),
     artifact_refs: z.array(artifactReferenceSchema).max(32).optional(),
   }),
@@ -113,14 +113,14 @@ const runDisplayEventInputSchema = z.discriminatedUnion("kind", [
     error_code: stableReasonCodeSchema,
     output: z.string().max(200_000).nullable(),
     duration_ms: z.number().int().nonnegative().safe(),
-    profile_id: agentSpecialistProfileIdSchema.nullable().optional(),
+    profile_id: agentProfileIdSchema.nullable().optional(),
     task_id: z.uuid().nullable().optional(),
     artifact_refs: z.array(artifactReferenceSchema).max(32).optional(),
   }),
   z.strictObject({
     kind: z.literal("agent_status"),
     key: z.string().min(1).max(128),
-    profile_id: agentSpecialistProfileIdSchema,
+    profile_id: agentProfileIdSchema,
     task_id: z.uuid().nullable(),
     status: z.enum([
       "PENDING",
@@ -241,6 +241,12 @@ export interface RunWorkerRunnerDependencies {
   readonly execution_timeout_ms?: number;
   readonly heartbeat_interval_ms?: number;
   readonly side_effect_timeout_ms?: number;
+  readonly max_run_attempts?: number;
+  readonly on_run_failure?: (input: {
+    readonly lease: RunWorkLease;
+    readonly error_code: string;
+  }) => Promise<PortResult<void>>;
+  readonly reconcile_run_failures?: () => Promise<PortResult<void>>;
 }
 
 const effectiveConfigWorkerConsumptionSchema = z.strictObject({
@@ -356,6 +362,12 @@ function processCrashFailure(): PortResult<RunWorkerCycleOutcome> {
 export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies): RunWorkerRunner {
   const now = dependencies.now ?? (() => new Date());
   const createId = dependencies.create_id ?? defaultIdFactory;
+  const maxRunAttempts = z
+    .number()
+    .int()
+    .min(1)
+    .max(RUN_RETRY_MAX_ATTEMPTS)
+    .parse(dependencies.max_run_attempts ?? RUN_RETRY_MAX_ATTEMPTS);
   const timing = workerRuntimeTimingSchema.parse({
     execution_timeout_ms: dependencies.execution_timeout_ms ?? 300_000,
     heartbeat_interval_ms: dependencies.heartbeat_interval_ms ?? 15_000,
@@ -819,7 +831,27 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       if (stale) return stale;
       return appended;
     }
-    return completeQueue(lease, appended.value.projection, "FAILED");
+    const failureHook = await invokeRunFailureHook(lease, errorCode);
+    const completed = await completeQueue(lease, appended.value.projection, "FAILED");
+    if (!completed.ok) return completed;
+    if (!failureHook.ok) return failureHook;
+    return completed;
+  }
+
+  async function invokeRunFailureHook(
+    lease: RunWorkLease,
+    errorCode: string,
+  ): Promise<PortResult<void>> {
+    if (!dependencies.on_run_failure) return success(undefined);
+    try {
+      return await dependencies.on_run_failure({ lease, error_code: errorCode });
+    } catch {
+      return failure(
+        "RUN_FAILURE_HOOK_FAILED",
+        "Run failure hook 未能持久化严格验收 HOLD。",
+        false,
+      );
+    }
   }
 
   async function applyExecutorResult(
@@ -888,7 +920,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       }
 
       case "RETRY": {
-        if (lease.delivery_attempt_no >= RUN_RETRY_MAX_ATTEMPTS) {
+        if (lease.delivery_attempt_no >= maxRunAttempts) {
           return failRun(lease, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
         }
         const appended = await appendWhileRunning(lease, (record) => ({
@@ -948,6 +980,19 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
 
   return {
     async runOnce(input) {
+      if (dependencies.reconcile_run_failures) {
+        let reconciled: PortResult<void>;
+        try {
+          reconciled = await dependencies.reconcile_run_failures();
+        } catch {
+          reconciled = failure(
+            "RUN_FAILURE_RECONCILIATION_FAILED",
+            "Run failure reconciliation 未能恢复严格验收 HOLD。",
+            false,
+          );
+        }
+        if (!reconciled.ok) return reconciled;
+      }
       const leased = await dependencies.queue.lease(input);
       if (!leased.ok) {
         return leased;
@@ -1044,7 +1089,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
       const settleDeadline = () =>
         applyExecutorResult(
           lease,
-          lease.delivery_attempt_no >= RUN_RETRY_MAX_ATTEMPTS
+          lease.delivery_attempt_no >= maxRunAttempts
             ? {
                 kind: "FAILED",
                 error_code: "RUN_ATTEMPT_BUDGET_EXHAUSTED",
@@ -1076,6 +1121,9 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           return settleDeadline();
         }
         if (restorationOutcome.kind === "ERROR") {
+          if (lease.delivery_attempt_no >= maxRunAttempts) {
+            return failRun(lease, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
+          }
           return processCrashFailure();
         }
         const restored = restorationOutcome.value;
@@ -1124,7 +1172,7 @@ export function createRunWorkerRunner(dependencies: RunWorkerRunnerDependencies)
           ) {
             return staleOutcome(lease, observed.value);
           }
-          if (lease.delivery_attempt_no >= RUN_RETRY_MAX_ATTEMPTS) {
+          if (lease.delivery_attempt_no >= maxRunAttempts) {
             const exhausted = await failRun(lease, "RUN_ATTEMPT_BUDGET_EXHAUSTED");
             return exhausted;
           }

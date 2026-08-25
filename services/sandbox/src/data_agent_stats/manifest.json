@@ -347,6 +347,115 @@
       ]
     },
     {
+      "operator_id": "descriptive.delivery-low-rating-scenarios@1",
+      "description_zh": "在唯一订单粒度上按品类、客户类型和配送状态生成低评分场景 Top 5。",
+      "implementation": {
+        "module": "data_agent_stats.delivery",
+        "symbol": "delivery_low_rating_scenarios"
+      },
+      "runtime_profile": "ML_DIAGNOSTIC",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 5000
+      },
+      "inputs": [
+        {
+          "name": "orders",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 100000,
+          "record_shape": {
+            "order_id": "NON_EMPTY_STRING",
+            "product_category": "NON_EMPTY_STRING",
+            "customer_segment": "NON_EMPTY_STRING",
+            "delivery_status": "NON_EMPTY_STRING",
+            "rating": "NULLABLE_RATING_1_TO_5"
+          },
+          "record_example": {
+            "order_id": "order_a",
+            "product_category": "grocery",
+            "customer_segment": "premium",
+            "delivery_status": "Delayed",
+            "rating": 2.0
+          },
+          "limits": {}
+        }
+      ],
+      "parameters": [],
+      "outputs": {
+        "collection": "scenarios",
+        "label_fields": ["product_category", "customer_segment", "delivery_status"],
+        "value_fields": ["order_count", "low_rating_rate"],
+        "evidence_fields": []
+      },
+      "applicability_checks": [
+        "UNIQUE_ORDER_GRAIN",
+        "LOW_RATING_DEFINED_AS_RATING_LTE_2",
+        "UNRATED_ORDERS_RETAINED_IN_DENOMINATOR",
+        "DETERMINISTIC_TOP_FIVE"
+      ],
+      "limitations": ["DESCRIPTIVE_CONCENTRATION_NOT_CAUSAL"]
+    },
+    {
+      "operator_id": "regression.delivery-low-rating-adjusted@1",
+      "description_zh": "从唯一订单粒度构造冻结月份、金额、品类和客户类型控制项，并调用唯一二项 Logit 实现评估配送延迟关联。",
+      "implementation": {
+        "module": "data_agent_stats.delivery",
+        "symbol": "delivery_low_rating_adjusted"
+      },
+      "runtime_profile": "ML_DIAGNOSTIC",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 1024
+      },
+      "inputs": [
+        {
+          "name": "orders",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 100000,
+          "record_shape": {
+            "order_id": "NON_EMPTY_STRING",
+            "order_date": "DATE_KEY",
+            "delivery_status": "NON_EMPTY_STRING",
+            "order_total": "NON_NEGATIVE_FINITE_NUMBER",
+            "product_category": "NON_EMPTY_STRING",
+            "customer_segment": "NON_EMPTY_STRING",
+            "rating": "NULLABLE_RATING_1_TO_5"
+          },
+          "record_example": {
+            "order_id": "order_a",
+            "order_date": "2024-01-15",
+            "delivery_status": "Delayed",
+            "order_total": 100.0,
+            "product_category": "grocery",
+            "customer_segment": "premium",
+            "rating": 2.0
+          },
+          "limits": {}
+        }
+      ],
+      "parameters": [],
+      "outputs": {
+        "collection": "models",
+        "label_fields": ["label"],
+        "value_fields": ["delayed_coefficient", "delayed_p_value", "sample_size", "controls", "finding", "rank", "converged", "iterations"],
+        "evidence_fields": []
+      },
+      "applicability_checks": [
+        "UNIQUE_ORDER_GRAIN",
+        "POSITIVE_RATED_ORDER_AMOUNT",
+        "LEXICOGRAPHIC_REFERENCE_LEVELS",
+        "BOTH_OUTCOME_CLASSES_PRESENT",
+        "FULL_COLUMN_RANK",
+        "CONVERGED"
+      ],
+      "limitations": [
+        "ASSOCIATION_NOT_CAUSATION",
+        "BINOMIAL_LOGIT_COMPOSED_FROM_UNIQUE_OPERATOR"
+      ]
+    },
+    {
       "operator_id": "regression.binomial-logit-wald@1",
       "description_zh": "执行二项 Logit GLM，并返回 Wald 系数、标准误和收敛证据。",
       "implementation": {
@@ -500,6 +609,64 @@
         "EXACT_CLOSURE"
       ],
       "limitations": ["PRODUCT_IDENTITY_REQUIRED", "APPROXIMATE_MODE_NOT_SUPPORTED"]
+    },
+    {
+      "operator_id": "decomposition.revenue-segment-drivers@1",
+      "description_zh": "在订单明细上确定收入环比下降最明显月份，并保持客户类型、支付方式和商品品类成员身份生成收入变动驱动项。",
+      "implementation": {
+        "module": "data_agent_stats.decomposition",
+        "symbol": "revenue_segment_drivers"
+      },
+      "runtime_profile": "CORE_ANALYSIS",
+      "batching": {
+        "mode": "LABELED_BATCH",
+        "max_items": 16
+      },
+      "inputs": [
+        {
+          "name": "order_items",
+          "container": "RECORD_ARRAY",
+          "min_items": 1,
+          "max_items": 100000,
+          "record_shape": {
+            "order_id": "NON_EMPTY_STRING",
+            "order_date": "DATE_KEY",
+            "payment_method": "NON_EMPTY_STRING",
+            "customer_segment": "NON_EMPTY_STRING",
+            "product_category": "NON_EMPTY_STRING",
+            "quantity": "NON_NEGATIVE_FINITE_NUMBER",
+            "order_total": "NON_NEGATIVE_FINITE_NUMBER"
+          },
+          "record_example": {
+            "order_id": "order_a",
+            "order_date": "2024-05-10",
+            "payment_method": "Card",
+            "customer_segment": "Premium",
+            "product_category": "Snacks",
+            "quantity": 2,
+            "order_total": 100
+          },
+          "limits": {}
+        }
+      ],
+      "parameters": [],
+      "outputs": {
+        "collection": "drivers",
+        "label_fields": ["dimension", "member"],
+        "value_fields": ["revenue_change"],
+        "evidence_fields": ["start_month", "end_month"]
+      },
+      "applicability_checks": [
+        "ORDER_HEADER_FIELDS_CONSTANT_WITHIN_ORDER",
+        "MINIMUM_SIGNED_MONTH_OVER_MONTH_REVENUE_CHANGE",
+        "ORDER_TOTAL_ALLOCATED_BY_ITEM_QUANTITY",
+        "DIMENSION_MEMBER_IDENTITY_PRESERVED",
+        "LEXICOGRAPHIC_TIE_BREAK"
+      ],
+      "limitations": [
+        "DESCRIPTIVE_DECOMPOSITION_NOT_CAUSAL",
+        "ORDER_TOTAL_ALLOCATED_BY_ITEM_QUANTITY"
+      ]
     },
     {
       "operator_id": "descriptive.inventory-damage-priority@1",
@@ -749,7 +916,7 @@
         "collection": "cohort_periods",
         "label_fields": ["registration_month", "customer_type", "month_index"],
         "value_fields": ["eligible_customers", "active_customers", "retention_rate", "repeat_customers", "repeat_purchase_rate", "order_count", "revenue", "average_spend", "average_delivery_minutes", "average_rating"],
-        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "orphan_event_count", "invalid_delivery_event_count", "data_quality_status"]
+        "evidence_fields": ["cohort_size", "matured", "pre_registration_event_count", "pre_registration_customer_count", "valid_ordering_customer_count", "no_order_customer_count", "orphan_event_count", "invalid_delivery_event_count", "data_quality_status"]
       },
       "applicability_checks": [
         "UNIQUE_CUSTOMER_REGISTRATION",

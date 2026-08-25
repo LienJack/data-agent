@@ -30,6 +30,7 @@ import { AgentTeamTrace } from "@/components/qa/agent-team-trace";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ArtifactPreviewPanel } from "@/components/workbench/artifact-preview-panel";
 import {
+  ApiRequestError,
   fetchAgentProfiles,
   fetchAgentTeamTrace,
   fetchResolutionTrace,
@@ -69,6 +70,51 @@ type LoadState =
       readonly teamTrace: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
       readonly teamError: string | null;
     };
+
+const authoritativeTraceFailureCodes = new Set([
+  "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+  "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
+  "RESOLUTION_TRACE_AUTHORITY_CORRUPT",
+  "RESOLUTION_TRACE_CONFIG_CORRUPT",
+  "RESOLUTION_TRACE_CONFIG_MISSING",
+  "RESOLUTION_TRACE_CONVERSATION_MISSING",
+  "RESOLUTION_TRACE_EVENT_CORRUPT",
+  "RESOLUTION_TRACE_EVENT_GAP",
+  "RESOLUTION_TRACE_HASH_MISMATCH",
+  "RESOLUTION_TRACE_NOT_FOUND_OR_DENIED",
+  "RESOLUTION_TRACE_RESEARCH_ARTIFACT_NOT_COMMITTED",
+  "RESOLUTION_TRACE_TOOL_IDENTITY_MISMATCH",
+]);
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "轨迹加载失败";
+}
+
+function authoritativeTraceFailureCode(error: unknown): string | null {
+  if (error instanceof ApiRequestError && error.code) {
+    return authoritativeTraceFailureCodes.has(error.code) ? error.code : null;
+  }
+  if (error instanceof Error && authoritativeTraceFailureCodes.has(error.message)) {
+    return error.message;
+  }
+  return null;
+}
+
+export function resolveResolutionTraceLoadFailure(current: LoadState, error: unknown): LoadState {
+  const authorityCode = authoritativeTraceFailureCode(error);
+  if (authorityCode) {
+    return {
+      status: "error",
+      message: `权威轨迹已阻断：${errorMessage(error)}`,
+    };
+  }
+  return current.status === "ready"
+    ? current
+    : {
+        status: "error",
+        message: errorMessage(error),
+      };
+}
 
 async function fetchConversationResolutionTraces(
   runIds: readonly string[],
@@ -1359,15 +1405,7 @@ export function ResolutionTraceView() {
           setState({ status: "ready", trace, traces, sql: sql.items, ...teamState });
       })
       .catch((error: unknown) => {
-        if (active)
-          setState((current) =>
-            current.status === "ready"
-              ? current
-              : {
-                  status: "error",
-                  message: error instanceof Error ? error.message : "轨迹加载失败",
-                },
-          );
+        if (active) setState((current) => resolveResolutionTraceLoadFailure(current, error));
       });
     return () => {
       active = false;

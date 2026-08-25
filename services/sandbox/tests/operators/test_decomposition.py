@@ -5,7 +5,7 @@ import math
 
 import pytest
 
-from data_agent_stats.decomposition import product_shapley_exact
+from data_agent_stats.decomposition import product_shapley_exact, revenue_segment_drivers
 from data_agent_stats.registry import StatisticalOperatorError
 
 PARAMETERS = {"mode": "exact", "max_factors": 8, "closure_tolerance": 1e-9}
@@ -108,4 +108,95 @@ def test_product_shapley_rejects_unsupported_or_unbounded_inputs(
                 ]
             },
             parameters,
+        )
+
+
+def test_revenue_segment_drivers_preserves_dimension_member_identity() -> None:
+    rows = [
+        {
+            "order_id": "may-card-snacks",
+            "order_date": "2024-05-10",
+            "payment_method": "Card",
+            "customer_segment": "Premium",
+            "product_category": "Snacks",
+            "quantity": 2,
+            "order_total": 100,
+        },
+        {
+            "order_id": "may-cash-drinks",
+            "order_date": "2024-05-11",
+            "payment_method": "Cash",
+            "customer_segment": "Regular",
+            "product_category": "Drinks",
+            "quantity": 1,
+            "order_total": 80,
+        },
+        {
+            "order_id": "jun-card-snacks",
+            "order_date": "2024-06-10",
+            "payment_method": "Card",
+            "customer_segment": "Premium",
+            "product_category": "Snacks",
+            "quantity": 1,
+            "order_total": 20,
+        },
+        {
+            "order_id": "jun-cash-drinks",
+            "order_date": "2024-06-11",
+            "payment_method": "Cash",
+            "customer_segment": "Regular",
+            "product_category": "Drinks",
+            "quantity": 1,
+            "order_total": 70,
+        },
+    ]
+
+    result = revenue_segment_drivers({"order_items": rows}, {})
+
+    assert result.output["drivers"] == [
+        {
+            "dimension": "customer_segment",
+            "member": "Premium",
+            "revenue_change": -80.0,
+            "start_month": "2024-05",
+            "end_month": "2024-06",
+        },
+        {
+            "dimension": "payment_method",
+            "member": "Card",
+            "revenue_change": -80.0,
+            "start_month": "2024-05",
+            "end_month": "2024-06",
+        },
+        {
+            "dimension": "product_category",
+            "member": "Snacks",
+            "revenue_change": -80.0,
+            "start_month": "2024-05",
+            "end_month": "2024-06",
+        },
+    ]
+    assert result.sample_size == 4
+    assert result.group_count == 3
+
+
+def test_revenue_segment_drivers_rejects_conflicting_order_headers() -> None:
+    row = {
+        "order_id": "order-a",
+        "order_date": "2024-05-10",
+        "payment_method": "Card",
+        "customer_segment": "Premium",
+        "product_category": "Snacks",
+        "quantity": 1,
+        "order_total": 100,
+    }
+    with pytest.raises(StatisticalOperatorError, match="PYTHON_OPERATOR_APPLICABILITY_HOLD"):
+        revenue_segment_drivers(
+            {
+                "order_items": [
+                    row,
+                    {**row, "product_category": "Drinks", "order_total": 90},
+                ]
+            },
+            {},
         )

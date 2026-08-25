@@ -120,22 +120,51 @@ deployment、非 `postgres` executor、目标邮箱冲突或多 active 超级管
 export WORKER_RESEARCH_AUTHORITY_CAPABILITY_SET="$(pnpm --silent dev:research-authority)"
 ```
 
-Falcon24 真实 Agent 验收还需要显式开启证据记录器；两个路径必须同时提供，缺一时 Worker
-失败关闭。Manifest 使用 `falcon24-analysis-run-manifest@1.0.0`，逐个绑定真实 `run_id`、
-Case、`COLD|WARM` 与 repetition；记录器只写 Provider/语义上下文/AnalysisProgram/
+Falcon24 真实 Agent 验收还需要显式提供冻结 Manifest，缺失时 Worker 失败关闭。Manifest
+使用 `falcon24-analysis-run-manifest@2.0.0`，绑定 Campaign 指纹以及每个真实 `run_id`、
+Case、`COLD|WARM` 与 repetition；记录器只提交 Provider/语义上下文/AnalysisProgram/
 加密 Python Source/Sandbox Receipt/独立 Oracle 的安全引用和 Hash，不写源码、输入行或
 Provider 原文：
 
 ```bash
 export FALCON24_ANALYSIS_RUN_MANIFEST=artifacts/falcon24-agent-analysis/run-manifest.json
-export FALCON24_ANALYSIS_RESULTS=artifacts/falcon24-agent-analysis/actual-runs.json
+export DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY=falcon24-strict-zero-retry@1.0.0
 export DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64='<32-byte-base64>'
 export DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64='<32-byte-base64>'
 ```
 
-Compose Worker 将该 Artifact 目录绑定到 `/app/artifacts/falcon24-agent-analysis`；冷启动
-轮次须在每个 Run 前重启 Worker，暖启动轮次在同一 Worker 进程连续执行。只有 5 题各
-3 冷 + 3 暖共 30 条真实结果才能进入最终 Gate。
+Compose Worker 将该 Manifest 目录绑定到 `/app/artifacts/falcon24-agent-analysis`；每条
+结果先进入 PostgreSQL Campaign durable stage，轨迹闭环与按 Run 回收 OpenSandbox 均
+通过后才推进该 Run，不存在 pending/actual JSON 兼容路径。冷启动轮次须在每个 Run 前
+重启 Worker，暖启动轮次在同一 Worker 进程连续执行。只有 5 题各 3 冷 + 3 暖共 30 条
+真实结果才能进入最终 Gate。
+
+验收必须使用 PostgreSQL Campaign Authority 串行推进，禁止用循环脚本在失败后继续：
+
+```bash
+# 仅在实际代码/冻结契约已提交且工作树 clean 后创建新 campaign
+pnpm --dir apps/web falcon24:analysis:control manifest --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID"
+
+# 每个 ordinal 先 claim/submit；Run 完成后先检查完整轨迹
+pnpm --dir apps/web falcon24:analysis:control trace --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" --run-ordinal 1
+
+# 按 exact campaign/run 通过 OpenSandbox management API 回收；服务端把 attestation-bound
+# receipt 直接写入 PostgreSQL Authority，不生成供 Finalize 信任的本地 JSON
+pnpm --dir apps/worker falcon24:sandbox:reclaim -- --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" --run-id "$RUN_ID"
+
+# finalize 只从 PostgreSQL 读取 management-plane receipt，并要求底层 Run 已 SUCCEEDED；
+# 任意本地 receipt 路径参数都不再存在
+pnpm --dir apps/web falcon24:analysis:control finalize --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" --run-ordinal 1
+```
+
+任一命令返回 HOLD 后立即停止，不自动重试、不继续后续 ordinal、不创建下一版本。按
+`Root 路由 -> SQL/数据准备 -> 治理算子 -> Oracle -> Publisher -> Sandbox 回收` 固定顺序
+定位。这里的 Publisher 唯一指 Oracle 通过后提交权威分析证据、图表和报告；Sandbox receipt
+写入与 Campaign current 指针推进都属于最后的 Sandbox 回收关闭阶段，不得再次归类成
+Publisher。`RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING`、
+`RESOLUTION_TRACE_ARTIFACT_CORRUPT`、轨迹 detail 不可读、图表或报告没有精确引用同一
+`QueryEvidence`，都归为 Publisher/轨迹硬失败。只有新的代码或冻结契约 commit 才能创建
+新版本重新验收。
 
 命令从当前 `WORKER_DEPLOYMENT_ID / WORKER_TENANT_ID / WORKER_PRINCIPAL_ID` 解析有效
 Membership，数据库锁内签发 12 个 Artifact Domain 与一个 `REPORT_READ` Capability；

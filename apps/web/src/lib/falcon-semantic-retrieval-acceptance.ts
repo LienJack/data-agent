@@ -1,15 +1,11 @@
 import { createHash } from "node:crypto";
-import {
-  buildSemanticContextRequest,
-  workspaceDefaultsReferenceSchema,
-} from "@data-agent/contracts";
+import { buildSemanticContextRequest } from "@data-agent/contracts/context";
+import { workspaceDefaultsReferenceSchema } from "@data-agent/contracts/workspaces";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
-import {
-  adaptPgPool,
-  createPostgresCapabilityAuthority,
-  createPostgresEffectiveConfigResolver,
-  createPostgresSemanticContextRegistry,
-} from "@data-agent/platform";
+import { adaptPgPool } from "@data-agent/platform/persistence";
+import { createPostgresEffectiveConfigResolver } from "@data-agent/platform/runs";
+import { createPostgresSemanticContextRegistry } from "@data-agent/platform/semantic-postgres";
+import { createPostgresCapabilityAuthority } from "@data-agent/platform/tenancy";
 import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import type { Pool } from "pg";
 import type { FalconSemanticActivationScope } from "./falcon-semantic-activation";

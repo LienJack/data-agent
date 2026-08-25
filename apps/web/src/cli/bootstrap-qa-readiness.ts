@@ -1,7 +1,9 @@
-import { materializeBuiltinTeamProfiles } from "@data-agent/agent-runtime";
 import {
-  type AgentSpecialistProfileId,
-  agentSpecialistProfileIdSchema,
+  DATA_AGENT_SPECIALIST_PROFILE_IDS,
+  type DataAgentSpecialistProfileId,
+  materializeBuiltinTeamProfiles,
+} from "@data-agent/agent-runtime";
+import {
   buildWorkspaceDefaultsCasUpdateCommandCandidate,
   type ModelCatalogEntry,
   sha256ContentHash,
@@ -43,17 +45,19 @@ import { createSchemaDiscoveryRuntime } from "../lib/schema-discovery-runtime";
 
 const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_QA_READINESS_BOOTSTRAP";
 const LOCAL_DEPLOYMENT_ID = "00000000-0000-4000-8000-000000000001";
-const PROFILE_IDS = agentSpecialistProfileIdSchema.options;
+const PROFILE_IDS = DATA_AGENT_SPECIALIST_PROFILE_IDS;
 const ROLE_MODEL_IDS = {
+  "governed-analysis-agent": "00000000-0000-4000-8000-000000005a04",
   "governed-text2sql-agent": "00000000-0000-4000-8000-000000005a01",
   "report-writing-agent": "00000000-0000-4000-8000-000000005a02",
   "semantic-management-agent": "00000000-0000-4000-8000-000000005a03",
-} as const satisfies Readonly<Record<AgentSpecialistProfileId, string>>;
+} as const satisfies Readonly<Record<DataAgentSpecialistProfileId, string>>;
 const ROLE_LABELS = {
+  "governed-analysis-agent": "Governed analysis specialist",
   "governed-text2sql-agent": "Text2SQL specialist",
   "report-writing-agent": "Report specialist",
   "semantic-management-agent": "Semantic specialist",
-} as const satisfies Readonly<Record<AgentSpecialistProfileId, string>>;
+} as const satisfies Readonly<Record<DataAgentSpecialistProfileId, string>>;
 const ROLE_MODEL_ID_SET = new Set<string>(Object.values(ROLE_MODEL_IDS));
 
 const configurationSchema = z.strictObject({
@@ -290,7 +294,7 @@ async function createDependencies(input: {
   }
 
   async function teamProfilesReady(): Promise<boolean> {
-    const listed = requireValue(await profiles.list(input.capability, true));
+    const listed = requireValue(await profiles.listDiscoverable(input.capability));
     return listed.map((item) => item.revision.profile_id).join(",") === PROFILE_IDS.join(",");
   }
 
@@ -413,7 +417,7 @@ async function createDependencies(input: {
   }
 
   async function modelReferences(): Promise<
-    Readonly<Record<AgentSpecialistProfileId, VersionedResourceReference>>
+    Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>
   > {
     const result = await input.pool.query<{
       model_profile_id: string;
@@ -443,13 +447,13 @@ async function createDependencies(input: {
           },
         ];
       }),
-    ) as Readonly<Record<AgentSpecialistProfileId, VersionedResourceReference>>;
+    ) as Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>;
   }
 
   async function specialistPolicyReferences(
     kind: "context" | "safety",
     source: VersionedResourceReference,
-  ): Promise<Readonly<Record<AgentSpecialistProfileId, VersionedResourceReference>>> {
+  ): Promise<Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>> {
     const entries = await Promise.all(
       PROFILE_IDS.map(
         async (profileId) =>
@@ -473,7 +477,7 @@ async function createDependencies(input: {
       ),
     );
     return Object.fromEntries(entries) as Readonly<
-      Record<AgentSpecialistProfileId, VersionedResourceReference>
+      Record<DataAgentSpecialistProfileId, VersionedResourceReference>
     >;
   }
 
@@ -499,10 +503,10 @@ async function createDependencies(input: {
           return operationId(
             input.capability,
             "qa-readiness-team-materialization",
-            `builtin-team:v1:${sequence}`,
+            `builtin-team:v3:${sequence}`,
           );
         },
-        idempotency_prefix: "qa-readiness:builtin-team:v1",
+        idempotency_prefix: "qa-readiness:builtin-team:v3",
       },
       { skills, profiles },
     );

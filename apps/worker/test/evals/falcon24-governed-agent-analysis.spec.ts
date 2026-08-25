@@ -11,7 +11,10 @@ import {
 } from "@data-agent/evals";
 import { describe, expect, it, vi } from "vitest";
 import type { AnalysisArtifactCommitPort } from "../../src/analysis/executor.js";
-import { createFalcon24GovernedAgentAnalysisPort } from "../../src/evals/falcon24-governed-agent-analysis.js";
+import {
+  createFalcon24GovernedAgentAnalysisPort,
+  falcon24GovernedAgentAnalysisInternals,
+} from "../../src/evals/falcon24-governed-agent-analysis.js";
 
 const id = (suffix: number) => `62000000-0000-4000-8000-${String(suffix).padStart(12, "0")}`;
 const hash = (character: string) => `sha256:${character.repeat(64)}` as const;
@@ -233,8 +236,14 @@ describe("Falcon24 governed Agent analysis bridge", () => {
     const port = createFalcon24GovernedAgentAnalysisPort({
       artifacts,
       public_artifacts: {
+        async commit(_capability, _lease, document) {
+          return { ok: true as const, value: document.artifact_ref };
+        },
         async commitDerivedAnalysisChart(_capability, _lease, document) {
           return { ok: true as const, value: document.document_ref };
+        },
+        async resolveCommitted() {
+          return { ok: true as const, value: null };
         },
       },
       public_artifact_capability: {},
@@ -244,16 +253,20 @@ describe("Falcon24 governed Agent analysis bridge", () => {
 
     const result = await port.analyze({
       lease,
+      task_id: id(41),
+      max_context_bytes: 65_536,
+      accepted_query_evidence_ref: queryEvidenceRef,
       test_case: testCase,
       question: testCase.question,
       semantic_context: semanticCommit,
+      effective_config: {} as never,
       provider_dispatch: {} as never,
       fence_guard: { isCurrent: async () => true },
     });
     const chartRef = result.public_artifact_refs[0];
     expect(chartRef?.artifact_type).toBe("ArtifactWorkspaceDocument");
     expect(result).toEqual({
-      answer: `2024-10 收入下降，购买人数、频次和客单价均有影响。\n\n[查看对应图表](${chartRef ? `artifact://${chartRef.artifact_id}?revision=1&hash=${encodeURIComponent(chartRef.content_hash)}` : ""})`,
+      answer: `最近18个完整月（2023-05至2024-10）中，收入下降最明显的是 2024-10：环比减少 10（-10%）。 Shapley 恒等式分解为购买人数 -4、购买频次 -3、客单价 -3；绝对影响最大的是购买人数。 主要下拉场景为客户类型 new（-4）、商品品类 grocery（-3）和支付方式 cash（-3）。\n\n[查看对应图表](${chartRef ? `artifact://${chartRef.artifact_id}?revision=1&hash=${encodeURIComponent(chartRef.content_hash)}` : ""})`,
       public_artifact_refs: [chartRef],
       accepted_artifact_refs: [
         briefRef,
@@ -266,5 +279,120 @@ describe("Falcon24 governed Agent analysis bridge", () => {
     });
     expect(commitL2).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledOnce();
+  });
+
+  it("renders the decision-bearing fields for delivery, inventory, marketing, and cohort answers", () => {
+    const buildAnswer = falcon24GovernedAgentAnalysisInternals.buildFalcon24AnalysisAnswer;
+    const delivery = buildAnswer({
+      case_id: "falcon24-delivery-experience-12m",
+      six_vs_six: {
+        first: { p50_minutes: 5, p90_minutes: 21.5, on_time_rate: 0.68, low_rating_rate: 0.2 },
+        second: { p50_minutes: 5, p90_minutes: 21, on_time_rate: 0.67, low_rating_rate: 0.22 },
+      },
+      low_rating_scenarios: [
+        {
+          product_category: "Dairy",
+          customer_segment: "Regular",
+          delivery_status: "On Time",
+          order_count: 59,
+          low_rating_rate: 0.34,
+        },
+      ],
+      adjusted_binomial_glm: [{ delayed_coefficient: -0.06, delayed_p_value: 0.51 }],
+      data_quality_precheck: { invalid_delivery_orders: 932, valid_delivery_orders: 2_127 },
+    } as never);
+    expect(delivery).toContain("Dairy/Regular/On Time");
+    expect(delivery).toContain("p=0.51");
+    expect(delivery).toContain("932 单配送时长无效");
+
+    const inventory = buildAnswer({
+      case_id: "falcon24-inventory-damage-12m",
+      products: [
+        {
+          product_id: "647462",
+          product_name: "Lotion",
+          category: "Personal Care",
+          sales_quantity: 33,
+          last3_damage_rate: 1.2,
+          previous9_damage_rate: 0.5,
+          theil_sen_slope: 0.01,
+          bh_q_value: 0.96,
+          status: "WATCHLIST",
+        },
+      ],
+    } as never);
+    expect(inventory).toContain("PRIORITY 为 0 个");
+    expect(inventory).toContain("Lotion[647462]");
+    expect(inventory).toContain("Personal Care（1个）");
+
+    const marketing = buildAnswer({
+      case_id: "falcon24-marketing-lag-effect",
+      channel_audience_results: [
+        {
+          channel: "App",
+          target_audience: "Premium",
+          roas: 1.9,
+          group_finding: "GROWTH_ASSOCIATION",
+          business_outcomes: [
+            {
+              metric: "new_customers",
+              selected_lag_weeks: 1,
+              bh_q_value: 0.04,
+              finding: "GROWTH_ASSOCIATION",
+            },
+          ],
+        },
+        {
+          channel: "App",
+          target_audience: "All",
+          roas: 1.8,
+          group_finding: "SPEND_WITHOUT_IMPROVEMENT",
+          business_outcomes: [],
+        },
+      ],
+    } as never);
+    expect(marketing).toContain("App/Premium");
+    expect(marketing).toContain("new_customers 滞后1周");
+    expect(marketing).toContain("App/All");
+
+    const cohort = buildAnswer({
+      case_id: "falcon24-cohort-retention-m0-m6",
+      cohorts: [
+        {
+          registration_month: "2023-05",
+          customer_type: "Premium",
+          month_index: 0,
+          retention_rate: 0.8,
+          pre_registration_event_count: 1_186,
+          pre_registration_customer_count: 767,
+          invalid_delivery_event_count: 931,
+          valid_ordering_customer_count: 531,
+          no_order_customer_count: 209,
+        },
+        {
+          registration_month: "2024-04",
+          customer_type: "Premium",
+          month_index: 6,
+          retention_rate: 0.2,
+        },
+      ],
+      sensitivity_cohorts: [
+        {
+          registration_month: "2023-05",
+          customer_type: "Premium",
+          month_index: 0,
+          retention_rate: 0.7,
+        },
+        {
+          registration_month: "2024-04",
+          customer_type: "Premium",
+          month_index: 6,
+          retention_rate: 0.2,
+        },
+      ],
+    } as never);
+    expect(cohort).toContain("主分析必须 HOLD");
+    expect(cohort).toContain("1186 个订单早于注册");
+    expect(cohort).toContain("当前不能可靠断言");
   });
 });

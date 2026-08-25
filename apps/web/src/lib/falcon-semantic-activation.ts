@@ -1,19 +1,21 @@
 import { createHash } from "node:crypto";
 import {
-  buildWorkspaceDefaultsCasUpdateCommandCandidate,
   type ContentHash,
   contentHashSchema,
   sha256ContentHash,
+} from "@data-agent/contracts/common";
+import {
+  buildWorkspaceDefaultsCasUpdateCommandCandidate,
   type VersionedResourceReference,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/workspaces";
 import {
   adaptPgCatalogPool,
-  adaptPgPool,
-  createPostgresCapabilityAuthority,
   createPostgresCatalogScanner,
-  createPostgresEffectiveConfigResolver,
   createPostgresSchemaSnapshotStore,
-} from "@data-agent/platform";
+} from "@data-agent/platform/catalog";
+import { adaptPgPool } from "@data-agent/platform/persistence";
+import { createPostgresEffectiveConfigResolver } from "@data-agent/platform/runs";
+import { createPostgresCapabilityAuthority } from "@data-agent/platform/tenancy";
 import pg, { type Pool } from "pg";
 import {
   FALCON_DATASOURCE_ID,

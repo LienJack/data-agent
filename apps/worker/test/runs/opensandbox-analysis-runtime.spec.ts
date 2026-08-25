@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { verifyFalcon24SandboxManagementObservation } from "@data-agent/contracts/evals";
 import { describe, expect, it } from "vitest";
 import {
   type AnalysisSandboxRuntimeError,
@@ -322,6 +323,17 @@ function fakeFactory(
 }
 
 describe("OpenSandbox analysis runtime", () => {
+  it("strict acceptance performs exactly one file-transfer attempt", async () => {
+    let attempts = 0;
+    await expect(
+      openSandboxAnalysisRuntimeInternals.transferSandboxFile(async () => {
+        attempts += 1;
+        throw new Error("transient");
+      }, 1),
+    ).rejects.toMatchObject({ code: "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED" });
+    expect(attempts).toBe(1);
+  });
+
   it("classifies only allowlisted fixed extractor identifiers as repairable", () => {
     expect(
       openSandboxAnalysisRuntimeInternals.safeAnalysisSymbolExtractionFailureCode(
@@ -410,6 +422,58 @@ describe("OpenSandbox analysis runtime", () => {
       runtime.cleanupSession({ run_id: "run-proxy", node_id: "node-proxy" }),
     ).resolves.toEqual({ killed: 0, residual: 0 });
     expect(fake.connectionProxyModes).toEqual([true]);
+  });
+
+  it("reclaims every managed sandbox for one run without touching another run", async () => {
+    const fake = fakeFactory();
+    const createdAt = new Date("2026-08-25T00:00:00.000Z");
+    for (const [id, runId, nodeId, role] of [
+      ["agent-a", "run-target", "node-a", "agent"],
+      ["operator-a", "run-target", "node-a", "operator"],
+      ["agent-b", "run-target", "node-b", "agent"],
+      ["other-agent", "run-other", "node-a", "agent"],
+    ] as const) {
+      fake.seed({
+        id,
+        created_at: createdAt,
+        metadata: {
+          "managed-by": "data-agent-analysis",
+          "run-id": runId,
+          "node-id": nodeId,
+          role,
+        },
+      });
+    }
+    const runtime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: fake.factory,
+    });
+
+    const cleanup = await runtime.cleanupRun({ run_id: "run-target" });
+    expect(cleanup).toMatchObject({
+      management_observation_schema_version: "opensandbox-management-reclamation-observation@1.0.0",
+      management_operation_id: expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      ),
+      observation_source: "OPENSANDBOX_MANAGEMENT_API",
+      target_metadata_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      before_observation: {
+        active_count: 3,
+        observation_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      },
+      killed: 3,
+      after_observation: {
+        active_count: 0,
+        observation_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+      },
+      residual: 0,
+      completed_at: expect.stringMatching(/^202[0-9]-/u),
+      management_observation_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
+    });
+    await expect(verifyFalcon24SandboxManagementObservation(cleanup)).resolves.toEqual(cleanup);
+    expect(fake.created.filter(({ killed }) => !killed).map(({ id }) => id)).toEqual([
+      "other-agent",
+    ]);
   });
 
   it("uses separate agent/operator sandboxes and transfers content-addressed files", async () => {
@@ -603,78 +667,74 @@ describe("OpenSandbox analysis runtime", () => {
     await session.close();
   });
 
-  it(
-    "retries bounded transient file transfers and still fails closed when exhausted",
-    async () => {
-      const content = Buffer.from("bytes");
-      const recoveredFactory = fakeFactory({ write_failures: 4 });
-      const recoveredRuntime = createOpenSandboxAnalysisRuntime({
-        config: testConfig(),
-        sdk_factory: recoveredFactory.factory,
-      });
-      const recovered = await recoveredRuntime.createSession({
-        run_id: "run-file-retry",
-        node_id: "node-file-retry",
-        profile: "CORE_ANALYSIS",
-      });
-      await expect(
-        recovered.uploadAgentFile({
-          path: "/workspace/inputs/orders.parquet",
-          content,
-          content_sha256: digest(content),
-        }),
-      ).resolves.toBeUndefined();
-      expect(recoveredFactory.created[0]?.write_attempts).toBe(5);
-      await recovered.close();
+  it("retries bounded transient file transfers and still fails closed when exhausted", async () => {
+    const content = Buffer.from("bytes");
+    const recoveredFactory = fakeFactory({ write_failures: 4 });
+    const recoveredRuntime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: recoveredFactory.factory,
+    });
+    const recovered = await recoveredRuntime.createSession({
+      run_id: "run-file-retry",
+      node_id: "node-file-retry",
+      profile: "CORE_ANALYSIS",
+    });
+    await expect(
+      recovered.uploadAgentFile({
+        path: "/workspace/inputs/orders.parquet",
+        content,
+        content_sha256: digest(content),
+      }),
+    ).resolves.toBeUndefined();
+    expect(recoveredFactory.created[0]?.write_attempts).toBe(5);
+    await recovered.close();
 
-      const exhaustedFactory = fakeFactory({ write_failures: 5 });
-      const exhaustedRuntime = createOpenSandboxAnalysisRuntime({
-        config: testConfig(),
-        sdk_factory: exhaustedFactory.factory,
-      });
-      const exhausted = await exhaustedRuntime.createSession({
-        run_id: "run-file-exhausted",
-        node_id: "node-file-exhausted",
-        profile: "CORE_ANALYSIS",
-      });
-      await expect(
-        exhausted.uploadAgentFile({
-          path: "/workspace/inputs/orders.parquet",
-          content,
-          content_sha256: digest(content),
-        }),
-      ).rejects.toMatchObject({
-        code: "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
-        stage: "FILE_TRANSFER",
-        retryable: true,
-      });
-      expect(exhaustedFactory.created[0]?.write_attempts).toBe(5);
-      await exhausted.close();
+    const exhaustedFactory = fakeFactory({ write_failures: 5 });
+    const exhaustedRuntime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: exhaustedFactory.factory,
+    });
+    const exhausted = await exhaustedRuntime.createSession({
+      run_id: "run-file-exhausted",
+      node_id: "node-file-exhausted",
+      profile: "CORE_ANALYSIS",
+    });
+    await expect(
+      exhausted.uploadAgentFile({
+        path: "/workspace/inputs/orders.parquet",
+        content,
+        content_sha256: digest(content),
+      }),
+    ).rejects.toMatchObject({
+      code: "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
+      stage: "FILE_TRANSFER",
+      retryable: true,
+    });
+    expect(exhaustedFactory.created[0]?.write_attempts).toBe(5);
+    await exhausted.close();
 
-      const readFactory = fakeFactory({ read_failures: 4 });
-      const readRuntime = createOpenSandboxAnalysisRuntime({
-        config: testConfig(),
-        sdk_factory: readFactory.factory,
-      });
-      const readSession = await readRuntime.createSession({
-        run_id: "run-file-read-retry",
-        node_id: "node-file-read-retry",
-        profile: "CORE_ANALYSIS",
-      });
-      const request = Buffer.from(JSON.stringify({ operator_id: "multiple-testing.bh-fdr@1" }));
-      await expect(
-        readSession.runOperator({
-          call_id: "read-retry",
-          request,
-          request_sha256: digest(request),
-          timeout_ms: 100,
-        }),
-      ).resolves.toMatchObject({ status: "SUCCEEDED" });
-      expect(readFactory.created[1]?.read_attempts).toBe(5);
-      await readSession.close();
-    },
-    10_000,
-  );
+    const readFactory = fakeFactory({ read_failures: 4 });
+    const readRuntime = createOpenSandboxAnalysisRuntime({
+      config: testConfig(),
+      sdk_factory: readFactory.factory,
+    });
+    const readSession = await readRuntime.createSession({
+      run_id: "run-file-read-retry",
+      node_id: "node-file-read-retry",
+      profile: "CORE_ANALYSIS",
+    });
+    const request = Buffer.from(JSON.stringify({ operator_id: "multiple-testing.bh-fdr@1" }));
+    await expect(
+      readSession.runOperator({
+        call_id: "read-retry",
+        request,
+        request_sha256: digest(request),
+        timeout_ms: 100,
+      }),
+    ).resolves.toMatchObject({ status: "SUCCEEDED" });
+    expect(readFactory.created[1]?.read_attempts).toBe(5);
+    await readSession.close();
+  }, 10_000);
 
   it("interrupts a timed-out cell with a structured error", async () => {
     const fake = fakeFactory({ hang_agent: true });

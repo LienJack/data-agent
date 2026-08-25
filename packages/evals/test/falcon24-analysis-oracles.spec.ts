@@ -21,6 +21,40 @@ function monthSequence(startYear: number, startMonth: number, count: number) {
   });
 }
 
+function cohortPeriods(mode: "PRIMARY" | "SENSITIVITY") {
+  return monthSequence(2023, 5, 12).flatMap((registration_month) =>
+    ["New", "Premium", "Regular", "VIP"].flatMap((customer_type) =>
+      Array.from({ length: 7 }, (_, month_index) => ({
+        registration_month,
+        customer_type,
+        month_index,
+        eligible_customers: mode === "PRIMARY" ? 10 : 5,
+        active_customers: Math.max(0, (mode === "PRIMARY" ? 8 : 4) - month_index),
+        retention_rate: Math.max(0, 0.8 - month_index * (mode === "PRIMARY" ? 0.1 : 0.12)),
+        repeat_customers: Math.max(0, (mode === "PRIMARY" ? 6 : 3) - month_index),
+        repeat_purchase_rate: Math.max(0, 0.6 - month_index * (mode === "PRIMARY" ? 0.08 : 0.1)),
+        order_count: mode === "PRIMARY" ? 10 : 5,
+        revenue: mode === "PRIMARY" ? 100 : 50,
+        average_spend: 100,
+        average_delivery_minutes: 35,
+        average_rating: 4,
+        cohort_size: 10,
+        matured: true as const,
+        pre_registration_event_count: 1_186,
+        pre_registration_customer_count: 767,
+        valid_ordering_customer_count: 531,
+        no_order_customer_count: 209,
+        orphan_event_count: 0,
+        invalid_delivery_event_count: 931,
+        data_quality_status:
+          mode === "PRIMARY"
+            ? "HOLD_MULTIPLE_DATA_QUALITY_ANOMALIES"
+            : "SENSITIVITY_WITH_DISCLOSED_ANOMALIES",
+      })),
+    ),
+  );
+}
+
 function outputFor(caseId: string, methods: readonly string[]) {
   const evidence = methodEvidence(methods);
   if (caseId === "falcon24-business-review-18m") {
@@ -62,7 +96,7 @@ function outputFor(caseId: string, methods: readonly string[]) {
   }
   if (caseId === "falcon24-delivery-experience-12m") {
     return {
-      schema_version: "falcon24-delivery-output@1.0.0",
+      schema_version: "falcon24-delivery-output@2.0.0",
       case_id: caseId,
       window: {
         start: "2023-11-01",
@@ -78,13 +112,19 @@ function outputFor(caseId: string, methods: readonly string[]) {
         first: { p50_minutes: 30, p90_minutes: 55, on_time_rate: 0.9, low_rating_rate: 0.1 },
         second: { p50_minutes: 35, p90_minutes: 65, on_time_rate: 0.82, low_rating_rate: 0.14 },
       },
-      adjusted_binomial_glm: {
-        delayed_coefficient: 0.45,
-        delayed_p_value: 0.01,
-        sample_size: 3_059,
-        controls: ["month", "log_order_amount", "product_category", "customer_segment"],
-        finding: "POSITIVE_SIGNIFICANT",
-      },
+      adjusted_binomial_glm: [
+        {
+          label: "delivery_low_rating_adjusted",
+          delayed_coefficient: 0.45,
+          delayed_p_value: 0.01,
+          sample_size: 3_059,
+          controls: ["month", "log_order_amount", "product_category", "customer_segment"],
+          finding: "POSITIVE_SIGNIFICANT",
+          rank: 20,
+          converged: true,
+          iterations: 5,
+        },
+      ],
       low_rating_scenarios: [
         {
           product_category: "Grocery",
@@ -205,39 +245,11 @@ function outputFor(caseId: string, methods: readonly string[]) {
     };
   }
   return {
-    schema_version: "falcon24-cohort-output@1.0.0",
+    schema_version: "falcon24-cohort-output@2.0.0",
     case_id: "falcon24-cohort-retention-m0-m6",
-    cohort_window: {
-      first_cohort: "2023-05",
-      last_cohort: "2024-04",
-      cohort_count: 12,
-      observation_months: 7,
-    },
-    anomaly_precheck: {
-      orders_before_registration: 1_186,
-      customers_first_order_before_registration: 767,
-      valid_ordering_customers: 531,
-      no_order_customers: 209,
-      invalid_delivery_orders: 931,
-    },
     primary_reliable: false,
-    cohorts: monthSequence(2023, 5, 12).map((registration_cohort) => ({
-      registration_cohort,
-      customer_segment: "All",
-      points: Array.from({ length: 7 }, (_, month_index) => ({
-        month_index,
-        retention_rate: Math.max(0, 0.8 - month_index * 0.1),
-        repeat_purchase_rate: Math.max(0, 0.6 - month_index * 0.08),
-        average_spend: 100,
-        delivery_minutes: 35,
-        average_rating: 4,
-      })),
-    })),
-    sensitivity: {
-      excluded_pre_registration_customers: 767,
-      retained_no_order_customers: 209,
-      conclusion_changed: true,
-    },
+    cohorts: cohortPeriods("PRIMARY"),
+    sensitivity_cohorts: cohortPeriods("SENSITIVITY"),
     method_evidence: evidence,
     conclusion: "注册与订单时间异常使总体留存结论不可靠，应 HOLD 并以敏感性结果为限。",
   };
@@ -280,7 +292,7 @@ describe("Falcon24 independent analysis oracles", () => {
         const cohortOutput = falcon24AnalysisOutputSchema.parse(output);
         if (cohortOutput.case_id !== testCase.case_id)
           throw new TypeError("cohort fixture invalid");
-        expect(projection.table.rows).toHaveLength(cohortOutput.cohorts.length * 7);
+        expect(projection.table.rows).toHaveLength(cohortOutput.cohorts.length);
         expect(projection.y_keys).toEqual(["retention_rate_pct", "repeat_purchase_rate_pct"]);
       }
       await expect(computeFalcon24AnalysisChartDatasetHash(output)).resolves.toMatch(/^sha256:/u);
@@ -371,7 +383,9 @@ describe("Falcon24 independent analysis oracles", () => {
         test_case: q5,
         output: {
           ...q5Output,
-          anomaly_precheck: { ...q5Output.anomaly_precheck, orders_before_registration: 0 },
+          cohorts: q5Output.cohorts.map((row, index) =>
+            index === 0 ? { ...row, pre_registration_event_count: 0 } : row,
+          ),
         },
       }),
     ).rejects.toThrow("FALCON24_Q5_QUALITY_AUDIT_INVALID");

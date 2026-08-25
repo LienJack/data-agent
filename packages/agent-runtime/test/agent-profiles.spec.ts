@@ -9,9 +9,10 @@ import {
 } from "../src/teams/index.js";
 
 describe("Agent Team v2 profiles", () => {
-  it("freezes the orchestrator and three distinct specialist revisions", () => {
+  it("freezes the orchestrator and four distinct specialist revisions", () => {
     expect(DATA_AGENT_PROFILE_IDS).toEqual([
       "data-agent-orchestrator",
+      "governed-analysis-agent",
       "semantic-management-agent",
       "governed-text2sql-agent",
       "report-writing-agent",
@@ -25,7 +26,11 @@ describe("Agent Team v2 profiles", () => {
     }
     expect(
       new Set(AGENT_PROFILE_REVISIONS.map((profile) => profile.workflow.workflow_id)).size,
-    ).toBe(5);
+    ).toBe(7);
+    const rootRevisions = AGENT_PROFILE_REVISIONS.filter(
+      ({ profile_id }) => profile_id === "data-agent-orchestrator",
+    );
+    expect(rootRevisions.map(({ revision }) => revision)).toEqual([1, 2]);
     const semanticRevisions = AGENT_PROFILE_REVISIONS.filter(
       ({ profile_id }) => profile_id === "semantic-management-agent",
     );

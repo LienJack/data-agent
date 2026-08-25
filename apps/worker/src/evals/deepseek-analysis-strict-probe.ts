@@ -3,15 +3,12 @@ import {
   projectDeepSeekStrictToolInputSchema,
   type ServerOwnedToolDescriptor,
 } from "@data-agent/agent-runtime";
-import {
-  canonicalizeJson,
-  type ModelProviderEvent,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import {
   ANALYSIS_PYTHON_CELL_TOOL_NAME,
   ANALYSIS_RESULT_PUBLISH_TOOL_NAME,
   ANALYSIS_STATISTICAL_OPERATOR_TOOL_NAME,
+  type ModelProviderEvent,
 } from "@data-agent/contracts/ports";
 import { z } from "zod";
 import {

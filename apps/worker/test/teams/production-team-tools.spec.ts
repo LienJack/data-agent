@@ -100,7 +100,7 @@ describe("Production Team governed chart publication", () => {
       side_effect_timeout_ms: 1_000,
       provider_dispatch: { invoke: semanticProvider as never },
       heartbeat: vi.fn(),
-      guard_running_lease: vi.fn(),
+      guard_running_lease: vi.fn(async () => ({ ok: true as const, value: lease })) as never,
       append_checkpoint_event: vi.fn(),
       append_side_effect_event: vi.fn(),
       append_display_event: vi.fn(async () => ({
@@ -187,6 +187,11 @@ describe("Production Team governed chart publication", () => {
             steps: [],
           },
         } as never,
+        semantic_context: {
+          package: {
+            semantic_domain: "commerce",
+          },
+        } as never,
         accepted_evidence_ref: null,
         delegation: {
           profile: { revision: { profile_id: "semantic-management-agent" } },
@@ -226,6 +231,194 @@ describe("Production Team governed chart publication", () => {
             body_text: expect.stringContaining(
               "[PHYSICAL] relationship.order_customer order_customer: orders(orders.customer_id) -> customers(customers.id)",
             ),
+          }),
+        ]),
+      },
+    });
+  });
+
+  it("executes the semantic-selected governed AnalysisProgram and binds its chart evidence", async () => {
+    const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
+    const lease = {
+      scope,
+      principal_id: id(3),
+      outbox_id: id(4),
+      run_id: id(5),
+      command_id: id(6),
+      command_kind: "START_DATA_AGENT_TEAM",
+      attempt_id: id(7),
+      attempt_no: 1,
+      delivery_attempt_no: 1,
+      lease_duration_ms: 30_000,
+      worker_id: "worker-analysis",
+      lease_token: 1,
+      worker_fence: 11,
+      expires_at: "2026-08-22T01:00:30.000Z",
+      payload: { kind: "START_DATA_AGENT_TEAM" },
+    } as unknown as RunWorkLease;
+    const config = await buildWorkerEffectiveConfigFixture({
+      scope,
+      workspace_id: scope.tenant_id,
+      principal_id: lease.principal_id,
+      run_id: lease.run_id,
+    });
+    const executionContext = createRunExecutionContext({
+      lease,
+      effective_config: config,
+      context_receipt: {
+        package_id: id(20),
+        package_hash: hash("a"),
+        receipt_id: id(21),
+        receipt_hash: hash("b"),
+      } as never,
+      run_signal: new AbortController().signal,
+      event_store: {} as never,
+      now: () => new Date("2026-08-22T01:00:00.000Z"),
+      create_id: () => id(22),
+      side_effect_timeout_ms: 1_000,
+      provider_dispatch: {
+        invoke: vi.fn(async () => ({
+          ok: true as const,
+          value: { output_text: "{}", tool_calls: [], projection: {} },
+        })) as never,
+      },
+      heartbeat: vi.fn(async () => ({
+        ok: true as const,
+        value: { expires_at: lease.expires_at },
+      })),
+      guard_running_lease: vi.fn(async () => ({ ok: true as const, value: lease })) as never,
+      append_checkpoint_event: vi.fn(),
+      append_side_effect_event: vi.fn(),
+      append_display_event: vi.fn(async () => ({
+        ok: true as const,
+        value: { sequence: 1 },
+      })),
+    });
+    const semanticPackage = {
+      semantic_domain: "falcon24",
+      mandatory_closure: {
+        object_ids: ["metric.active_buyers", "metric.average_order_value", "metric.order_revenue"],
+        relationship_ids: [],
+      },
+      evidence: [],
+      retrieval_receipt: {
+        hits: [
+          { object_id: "metric.active_buyers", rank: 1 },
+          { object_id: "metric.average_order_value", rank: 2 },
+          { object_id: "metric.order_revenue", rank: 3 },
+        ],
+      },
+    } as const;
+    const derivedEvidence = {
+      artifact_id: id(30),
+      artifact_type: "DerivedAnalysisEvidence" as const,
+      ...scope,
+      run_id: lease.run_id,
+      revision: 1,
+      content_hash: hash("d"),
+    };
+    const chart = {
+      artifact_id: id(31),
+      artifact_type: "ArtifactWorkspaceDocument" as const,
+      ...scope,
+      run_id: lease.run_id,
+      revision: 1,
+      content_hash: hash("e"),
+    };
+    let committed: ProductTeamArtifactDocument | null = null;
+    const analyze = vi.fn(async (analysisInput) => {
+      expect(
+        await analysisInput.fence_guard.isCurrent({
+          run_id: lease.run_id,
+          attempt_id: lease.attempt_id,
+          worker_fence: lease.worker_fence,
+          fence_token: `${lease.attempt_id}:${lease.worker_fence}`,
+        }),
+      ).toBe(true);
+      return {
+        answer: "最近 18 个完整月的经营复盘已通过受治理统计 Oracle。",
+        accepted_artifact_refs: [derivedEvidence],
+        public_artifact_refs: [chart],
+      };
+    });
+    const tools = createProductionTeamTools(
+      {
+        capability: {},
+        artifacts: {
+          async commit(_capability, _lease, document) {
+            committed = document;
+            return { ok: true as const, value: document.artifact_ref };
+          },
+          commitWorkspaceChart: vi.fn(),
+          resolveCommitted: vi.fn(),
+        },
+        text2sql: {} as never,
+        semantic_release: {} as never,
+        governed_analysis: { analyze } as never,
+      },
+      {
+        lease: lease as ProductionTeamToolFactoryInput["lease"],
+        execution_context: executionContext,
+        semantic_context_ref: {
+          package_id: id(20),
+          package_hash: hash("a"),
+          receipt_id: id(21),
+          receipt_hash: hash("b"),
+          semantic_domain: "falcon24",
+          semantic_release_id: id(22),
+          semantic_release_hash: hash("c"),
+        },
+        semantic_context_package: semanticPackage as never,
+        semantic_context: { package: semanticPackage } as never,
+        accepted_evidence_ref: {
+          artifact_id: id(29),
+          artifact_type: "QueryEvidence",
+          ...scope,
+          run_id: lease.run_id,
+          revision: 1,
+          content_hash: hash("9"),
+        },
+        delegation: {
+          profile: { revision: { profile_id: "governed-analysis-agent" } },
+          call: { objective: "复盘经营表现并解释收入变化驱动" },
+        } as ProductionTeamToolFactoryInput["delegation"],
+      },
+    );
+
+    const result = await tools.invoke({
+      task: {
+        task_id: id(24),
+        run_id: lease.run_id,
+        profile_id: "governed-analysis-agent",
+        scope,
+        bounds: { timeout_ms: 30_000, max_context_bytes: 16_384 },
+      } as Parameters<ProductProfileToolPort["invoke"]>[0]["task"],
+      profile: {
+        revision: { profile_id: "governed-analysis-agent" },
+      } as unknown as AgentProductProfileRegistryItemV2,
+      tool_id: "analysis.program.execute",
+      context_epoch: { epoch_id: id(25), build_signature: hash("f") },
+    });
+
+    expect(analyze).toHaveBeenCalledWith(
+      expect.objectContaining({
+        accepted_query_evidence_ref: expect.objectContaining({ artifact_type: "QueryEvidence" }),
+        question: "复盘经营表现并解释收入变化驱动",
+      }),
+    );
+    expect(result).toMatchObject({
+      output_ref: { artifact_type: "AnalysisReport" },
+      public_artifact_refs: [{ artifact_type: "ArtifactWorkspaceDocument" }],
+    });
+    expect(committed).toMatchObject({
+      profile_id: "governed-analysis-agent",
+      source_refs: [derivedEvidence, chart],
+      projection: {
+        kind: "REPORT",
+        sections: expect.arrayContaining([
+          expect.objectContaining({
+            heading: "结论",
+            body_text: expect.stringContaining("受治理统计 Oracle"),
           }),
         ]),
       },
@@ -382,6 +575,7 @@ describe("Production Team governed chart publication", () => {
           semantic_release_hash: hash("c"),
         },
         semantic_context_package: {} as never,
+        semantic_context: {} as never,
         accepted_evidence_ref: null,
         delegation: {
           profile: { revision: { profile_id: "governed-text2sql-agent" } },

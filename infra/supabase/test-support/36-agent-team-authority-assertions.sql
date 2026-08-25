@@ -15,11 +15,21 @@ begin
       and ledger.migration_version='20260725010658_app_data_agent_agent_team_authority'
   ) then raise exception 'AGENT_TEAM_LEDGER_ASSERTION_FAILED'; end if;
 
-  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>5
+  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>7
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='data-agent-orchestrator' and profile_revision=1
         and profile_hash='sha256:c46b9eb899fe2dd1592b914b509268b8281736ad223181be5a4e998ecd9eddad'
+    )
+    or not exists (
+      select 1 from app_data_agent.agent_profile_revisions
+      where profile_id='data-agent-orchestrator' and profile_revision=2
+        and profile_hash='sha256:bfe92aae492252be7667e3fe8631bf6cd4107db49a2f19edd29295dacd49d65d'
+    )
+    or not exists (
+      select 1 from app_data_agent.agent_profile_revisions
+      where profile_id='governed-analysis-agent' and profile_revision=2
+        and profile_hash='sha256:e5f85f6b0a7e4b582f13cb9bb24a08e03c1c01e6721760afb94003d4c883b019'
     )
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
@@ -346,14 +356,14 @@ begin
   then raise exception 'AGENT_TEAM_CAPABILITY_BEHAVIOR_FAILED'; end if;
 
   artifact := pg_catalog.jsonb_build_object(
-    'schema_version','sensitive-execution-artifact@1.0.0',
+    'schema_version','sensitive-execution-artifact@2.0.0',
     'artifact_ref',pg_catalog.jsonb_build_object(
       'artifact_id','00000000-0000-4000-8000-000000005815',
       'artifact_type','SensitiveExecutionArtifact','app_id','00000000-0000-4000-8000-00000000da01',
       'tenant_id','00000000-0000-4000-8000-000000005801','environment','local',
       'run_id',lease ->> 'run_id','revision',1,
       'content_hash','sha256:1111111111111111111111111111111111111111111111111111111111111111'),
-    'task_id',task ->> 'task_id','context_epoch_id',null,'content_kind','MODEL_VIEW',
+    'content_kind','ANALYSIS_INPUT',
     'plaintext_hash','sha256:1111111111111111111111111111111111111111111111111111111111111111',
     'ciphertext_hash','sha256:2222222222222222222222222222222222222222222222222222222222222222',
     'storage_key_hash','sha256:3333333333333333333333333333333333333333333333333333333333333333',
@@ -370,7 +380,7 @@ begin
   );
   result := app_data_agent.commit_sensitive_execution_artifact(
     lease,pg_catalog.jsonb_build_object(
-      'schema_version','sensitive-execution-artifact-commit@1.0.0',
+      'schema_version','sensitive-execution-artifact-commit@2.0.0',
       'receipt',artifact,'idempotency_key','u19-sensitive-fixture')
   );
   if result ->> 'disposition'<>'CREATED' then
@@ -378,11 +388,9 @@ begin
   end if;
   result := app_data_agent.load_sensitive_execution_artifact(
     pg_catalog.jsonb_build_object(
-      'schema_version','sensitive-execution-artifact-load@1.0.0',
-      'artifact_ref',artifact -> 'artifact_ref','task_id',task ->> 'task_id',
-      'context_epoch_id',null,'ciphertext_hash',artifact ->> 'ciphertext_hash',
-      'capability_id',capability ->> 'capability_id',
-      'capability_hash',capability ->> 'capability_hash')
+      'schema_version','sensitive-execution-artifact-load@2.0.0',
+      'artifact_ref',artifact -> 'artifact_ref',
+      'ciphertext_hash',artifact ->> 'ciphertext_hash')
   );
   if result #>> '{receipt,receipt_hash}'<>artifact ->> 'receipt_hash'
     or (select pg_catalog.count(*) from app_data_agent.sensitive_execution_artifact_access_audit)<>2

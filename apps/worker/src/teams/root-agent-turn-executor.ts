@@ -32,7 +32,10 @@ export interface RootAgentTurnPort {
   ): Promise<PortResult<RootAgentDecisionCandidate>>;
 }
 
-export function createRootAgentTurnExecutor(): RootAgentTurnPort {
+export function createRootAgentTurnExecutor(
+  input: { readonly max_turns?: 1 | 2 } = {},
+): RootAgentTurnPort {
+  const maxTurns = input.max_turns ?? 2;
   return Object.freeze({
     async decide(
       input: Parameters<RunWorkflowExecutorPort["execute"]>[0],
@@ -88,7 +91,7 @@ export function createRootAgentTurnExecutor(): RootAgentTurnPort {
         };
         const initial = await invoke("INITIAL");
         const reviewed =
-          initial.decision.kind === "FINAL_ANSWER"
+          initial.decision.kind === "FINAL_ANSWER" && maxTurns === 2
             ? await invoke("DIRECT_ANSWER_REVIEW", initial.output_text)
             : initial;
         return {

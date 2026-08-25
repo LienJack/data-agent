@@ -39,6 +39,7 @@ export interface DataAgentProductTeamRuntimePort {
       semantic_release_hash: string;
     }>;
     readonly semantic_context_package: SemanticContextCommitResult["package"];
+    readonly semantic_context: SemanticContextCommitResult;
     readonly restored_snapshot: Parameters<
       RunWorkflowExecutorPort["execute"]
     >[0]["restored_snapshot"];

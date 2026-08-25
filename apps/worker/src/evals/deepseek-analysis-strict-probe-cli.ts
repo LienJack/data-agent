@@ -5,8 +5,11 @@ import {
   getModelProviderBinding,
   ServerModelResponseSchemaRegistry,
 } from "@data-agent/agent-runtime";
-import { createDirectModelProviderInvocation, sha256ContentHash } from "@data-agent/contracts";
-import { analysisAgentFinalResponseSchema } from "@data-agent/contracts/ports";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import {
+  analysisAgentFinalResponseSchema,
+  createDirectModelProviderInvocation,
+} from "@data-agent/contracts/ports";
 import {
   loadRuntimeEnvironment,
   resolveRuntimeRepositoryRoot,

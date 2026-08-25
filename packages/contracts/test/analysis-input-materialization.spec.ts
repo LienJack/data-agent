@@ -14,7 +14,6 @@ const reference = <
   const T extends
     | AnalysisInputMaterializationReceipt["artifact_type"]
     | "QueryEvidence"
-    | "SandboxResult"
     | "SensitiveExecutionArtifact",
 >(
   artifact_type: T,
@@ -25,9 +24,8 @@ const reference = <
 async function receipt() {
   const material: Omit<AnalysisInputMaterializationReceipt, "receipt_hash"> = {
     artifact_type: "AnalysisInputMaterializationReceipt",
-    protocol_version: "analysis-input-materialization@1.0.0",
+    protocol_version: "analysis-input-materialization@2.0.0",
     query_evidence_ref: reference("QueryEvidence", 4, hash("a")),
-    query_result_ref: reference("SandboxResult", 5, hash("b")),
     input_ref: reference("SensitiveExecutionArtifact", 6, hash("c")),
     source_result_hash: hash("b"),
     input_hash: hash("c"),
@@ -55,7 +53,7 @@ describe("analysis input materialization receipt", () => {
 
   it("binds a governed SQL result to distinct deterministic Arrow bytes", async () => {
     const value = await receipt();
-    expect(value.query_result_ref.content_hash).toBe(hash("b"));
+    expect(value.source_result_hash).toBe(hash("b"));
     expect(value.input_ref.content_hash).toBe(hash("c"));
     expect(value.source_result_hash).not.toBe(value.input_hash);
     await expect(verifyAnalysisInputMaterializationReceipt(value)).resolves.toEqual(value);
@@ -72,5 +70,16 @@ describe("analysis input materialization receipt", () => {
     await expect(
       verifyAnalysisInputMaterializationReceipt({ ...value, row_count: value.row_count - 1 }),
     ).rejects.toThrow("ANALYSIS_INPUT_MATERIALIZATION_RECEIPT_HASH_INVALID");
+  });
+
+  it("rejects the retired v1 receipt and SandboxResult compatibility field", async () => {
+    const value = await receipt();
+    expect(
+      analysisInputMaterializationReceiptSchema.safeParse({
+        ...value,
+        protocol_version: "analysis-input-materialization@1.0.0",
+        query_result_ref: reference("SensitiveExecutionArtifact", 9, hash("b")),
+      }).success,
+    ).toBe(false);
   });
 });

@@ -6,20 +6,21 @@ import {
   buildAnalysisInputMaterializationReceipt,
   buildSensitiveExecutionArtifactReceipt,
   type CommitSensitiveExecutionArtifactResult,
-  computeL2ResearchEnvelopeContentHash,
-  parseL2ResearchDocumentCandidate,
-  queryEvidenceV2PayloadSchema,
+  type ProductTeamArtifactDocument,
 } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson, type PortResult, sha256ContentHash } from "@data-agent/contracts/common";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { AnalysisArtifactCommitPort } from "./executor.js";
-import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
+import {
+  type GovernedAnalysisInput,
+  verifyProductTeamQueryEvidenceInput,
+} from "./governed-analysis-input.js";
 
 const INPUT_KEY_ENV = "DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64" as const;
 const INPUT_KEY_ID_ENV = "DATA_AGENT_ANALYSIS_INPUT_KEY_ID" as const;
 const DEFAULT_INPUT_KEY_ID = "analysis-input-v1" as const;
-const MATERIALIZER_VERSION = "analysis-arrow-materializer@1.0.0" as const;
+const MATERIALIZER_VERSION = "analysis-arrow-materializer@2.0.0" as const;
 const CIPHERTEXT_MAGIC = Buffer.from("DAAI1", "ascii");
 const PRIMARY_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000;
 const BACKUP_RETENTION_MS = 37 * 24 * 60 * 60 * 1_000;
@@ -35,6 +36,13 @@ export interface AnalysisInputSensitiveArtifactAuthority {
   ): Promise<PortResult<CommitSensitiveExecutionArtifactResult>>;
 }
 
+export interface AnalysisInputProductArtifactAuthority {
+  resolveCommitted(
+    capabilityInput: unknown,
+    reference: ArtifactReference,
+  ): Promise<PortResult<ProductTeamArtifactDocument | null>>;
+}
+
 export interface AnalysisInputMaterializationCommand {
   readonly lease: RunWorkLease;
   readonly analysis_program_ref: ArtifactReference;
@@ -48,7 +56,6 @@ export interface AnalysisInputMaterializationCommand {
   readonly spec_hash: `sha256:${string}`;
   readonly snapshot_receipt_hash: `sha256:${string}`;
   readonly query_evidence_ref: ArtifactReference & { readonly artifact_type: "QueryEvidence" };
-  readonly query_evidence_document: unknown;
 }
 
 function byteHash(bytes: Uint8Array): `sha256:${string}` {
@@ -65,16 +72,22 @@ function leaseStartedAt(lease: RunWorkLease): Date {
   return new Date(value);
 }
 
-function inputAad(input: AnalysisInputMaterializationCommand, plaintextHash: string): Uint8Array {
+function inputAad(
+  input: AnalysisInputMaterializationCommand,
+  plaintextHash: string,
+  source: { readonly result_hash: string; readonly row_count: number },
+): Uint8Array {
   return Buffer.from(
     canonicalizeJson({
-      protocol_version: "analysis-input-aad@1.0.0",
+      protocol_version: "analysis-input-aad@2.0.0",
       scope: input.lease.scope,
       run_id: input.lease.run_id,
       analysis_program_ref: input.analysis_program_ref,
       node_id: input.node_id,
       query_evidence_ref: input.query_evidence_ref,
       input_name: input.input_name,
+      source_result_hash: source.result_hash,
+      source_row_count: source.row_count,
       plaintext_hash: plaintextHash,
       spec_hash: input.spec_hash,
       snapshot_receipt_hash: input.snapshot_receipt_hash,
@@ -102,21 +115,6 @@ function encryptInput(input: {
   return Buffer.concat([CIPHERTEXT_MAGIC, iv, cipher.getAuthTag(), encrypted]);
 }
 
-async function verifyQueryEvidence(input: AnalysisInputMaterializationCommand) {
-  const document = parseL2ResearchDocumentCandidate(input.query_evidence_document);
-  const payload = queryEvidenceV2PayloadSchema.parse(document.payload);
-  if (
-    !exactReference(document.envelope, input.query_evidence_ref) ||
-    (await computeL2ResearchEnvelopeContentHash(document)) !==
-      input.query_evidence_ref.content_hash ||
-    payload.observation.result_hash !== payload.sandbox_result_ref.content_hash ||
-    payload.observation.row_count !== input.row_count
-  ) {
-    throw new TypeError("ANALYSIS_INPUT_QUERY_EVIDENCE_INVALID");
-  }
-  return payload;
-}
-
 export function resolveAnalysisInputEncryption(
   environment: NodeJS.ProcessEnv,
 ): { readonly key: Uint8Array; readonly key_id: string } | null {
@@ -134,6 +132,7 @@ export function resolveAnalysisInputEncryption(
 
 export function createAnalysisInputMaterializer(input: {
   readonly sensitive_artifacts: AnalysisInputSensitiveArtifactAuthority;
+  readonly product_artifacts: AnalysisInputProductArtifactAuthority;
   readonly analysis_artifacts: AnalysisArtifactCommitPort;
   readonly capability_input: unknown;
   readonly encryption_key: Uint8Array;
@@ -146,7 +145,22 @@ export function createAnalysisInputMaterializer(input: {
     async materialize(
       command: AnalysisInputMaterializationCommand,
     ): Promise<GovernedAnalysisInput> {
-      const queryEvidence = await verifyQueryEvidence(command);
+      const resolved = await input.product_artifacts.resolveCommitted(
+        input.capability_input,
+        command.query_evidence_ref,
+      );
+      if (!resolved.ok || !resolved.value) {
+        throw new TypeError(
+          resolved.ok ? "ANALYSIS_INPUT_QUERY_EVIDENCE_NOT_COMMITTED" : resolved.error.code,
+        );
+      }
+      const queryEvidence = await verifyProductTeamQueryEvidenceInput({
+        query_evidence_ref: command.query_evidence_ref,
+        query_evidence_document: resolved.value,
+        arrow_content: command.content,
+        expected_row_count: command.row_count,
+        expected_ordered_columns: command.ordered_columns,
+      });
       if (
         command.analysis_program_ref.run_id !== command.lease.run_id ||
         command.analysis_program_ref.app_id !== command.lease.scope.app_id ||
@@ -170,7 +184,7 @@ export function createAnalysisInputMaterializer(input: {
         revision: 1,
         content_hash: plaintextHash,
       });
-      const aad = inputAad(command, plaintextHash);
+      const aad = inputAad(command, plaintextHash, queryEvidence);
       const ciphertext = encryptInput({
         plaintext: command.content,
         key: input.encryption_key,
@@ -222,11 +236,10 @@ export function createAnalysisInputMaterializer(input: {
 
       const materializationReceipt = await buildAnalysisInputMaterializationReceipt({
         artifact_type: "AnalysisInputMaterializationReceipt",
-        protocol_version: "analysis-input-materialization@1.0.0",
+        protocol_version: "analysis-input-materialization@2.0.0",
         query_evidence_ref: command.query_evidence_ref,
-        query_result_ref: queryEvidence.sandbox_result_ref,
         input_ref: inputRef,
-        source_result_hash: queryEvidence.observation.result_hash,
+        source_result_hash: queryEvidence.result_hash,
         input_hash: plaintextHash,
         input_format: "ARROW",
         row_count: command.row_count,
@@ -261,7 +274,7 @@ export function createAnalysisInputMaterializer(input: {
         name: command.input_name,
         format: command.format,
         query_evidence_ref: command.query_evidence_ref,
-        query_evidence_document: command.query_evidence_document,
+        query_evidence_document: resolved.value,
         input_ref: inputRef,
         materialization_receipt_ref: materializationRef,
         materialization_receipt_document: materializationReceipt,

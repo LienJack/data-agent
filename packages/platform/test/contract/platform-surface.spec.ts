@@ -60,6 +60,7 @@ describe("platform package public surface", () => {
       "createPostgresControlledFixture",
       "createPostgresDatasourceEgress",
       "createPostgresEffectiveConfigResolver",
+      "createPostgresFalcon24AcceptanceCampaignAuthority",
       "createPostgresFalconBenchmarkExecutor",
       "createPostgresGreenfieldBootstrapReleaseAuthority",
       "createPostgresJobQueue",

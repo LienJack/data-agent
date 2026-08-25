@@ -28,6 +28,22 @@ describe("direct run-bound provider retry policy", () => {
     expect(
       directRunBoundProviderDispatcherInternals.retryableReason("MODEL_PROVIDER_AUTH_FAILED"),
     ).toBe(false);
+    expect(
+      directRunBoundProviderDispatcherInternals.shouldRetryProviderCall({
+        first_ok: false,
+        retryable: true,
+        signal_aborted: false,
+        max_attempts_per_call: 1,
+      }),
+    ).toBe(false);
+    expect(
+      directRunBoundProviderDispatcherInternals.shouldRetryProviderCall({
+        first_ok: false,
+        retryable: true,
+        signal_aborted: false,
+        max_attempts_per_call: 2,
+      }),
+    ).toBe(true);
   });
 
   it("fails closed unless a tool turn exposes a non-empty unique registered subset", () => {

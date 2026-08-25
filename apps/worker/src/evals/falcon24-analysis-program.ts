@@ -13,6 +13,7 @@ import {
   type StatisticalOperatorObligation,
 } from "@data-agent/contracts/statistical-operators";
 import { computeAnalysisProgramHash } from "../analysis/analysis-program-hash.js";
+import { STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS } from "../analysis/statistical-operator-server-transforms.js";
 import { FALCON24_ANALYSIS_QUERY_SPECS } from "./falcon24-analysis-queries.js";
 
 const FALCON24_WINDOWS = Object.freeze({
@@ -63,7 +64,7 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
     claim_strength: "DESCRIPTIVE",
   },
   "falcon24-delivery-experience-12m": {
-    schema_version: "falcon24-delivery-output@1.0.0",
+    schema_version: "falcon24-delivery-output@2.0.0",
     required_fields: [
       "window",
       "data_quality_precheck",
@@ -102,13 +103,11 @@ const FALCON24_RESULT_CONTRACTS = Object.freeze({
     claim_strength: "ASSOCIATION_ONLY",
   },
   "falcon24-cohort-retention-m0-m6": {
-    schema_version: "falcon24-cohort-output@1.0.0",
+    schema_version: "falcon24-cohort-output@2.0.0",
     required_fields: [
-      "cohort_window",
-      "anomaly_precheck",
       "primary_reliable",
       "cohorts",
-      "sensitivity",
+      "sensitivity_cohorts",
       "method_evidence",
       "conclusion",
     ],
@@ -207,15 +206,14 @@ const FALCON24_PRESENTATION_CONTRACTS = Object.freeze({
     table_id: "cohort_retention_m0_m6",
     title_zh: "新客户批次M0-M6留存与体验",
     columns: [
-      tableColumn("registration_cohort", "注册批次", "STRING", "DIMENSION"),
-      tableColumn("customer_segment", "客户类型", "STRING", "DIMENSION"),
+      tableColumn("registration_month", "注册批次", "STRING", "DIMENSION"),
+      tableColumn("customer_type", "客户类型", "STRING", "DIMENSION"),
       tableColumn("month_index", "生命周期月", "INTEGER", "DIMENSION"),
       tableColumn("retention_rate", "留存率", "NUMBER", "METRIC"),
       tableColumn("repeat_purchase_rate", "复购率", "NUMBER", "METRIC"),
       tableColumn("average_spend", "人均消费", "NUMBER", "METRIC", true),
       tableColumn("average_delivery_minutes", "平均配送分钟", "NUMBER", "METRIC", true),
       tableColumn("average_rating", "平均评分", "NUMBER", "METRIC", true),
-      tableColumn("analysis_mode", "分析口径", "STRING", "DERIVED"),
     ],
     chart: {
       chart_id: "cohort_retention_curve",
@@ -402,7 +400,16 @@ async function compileFalcon24ResultContract(input: {
                   { result_field: "status", table_column: "classification" },
                 ],
               }
-            : { mode: "MODEL_DERIVED" as const },
+            : input.test_case.case_id === "falcon24-cohort-retention-m0-m6"
+              ? {
+                  mode: "RESULT_COLLECTION" as const,
+                  collection_field: "cohorts",
+                  column_mappings: presentation.columns.map(({ key }) => ({
+                    result_field: key,
+                    table_column: key,
+                  })),
+                }
+              : { mode: "MODEL_DERIVED" as const },
         max_rows: 5_000,
       },
     ],
@@ -452,6 +459,14 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     {
       call_id: "q1_revenue_identity",
       operator_id: "decomposition.product-shapley-exact@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "comparisons",
+          governed_input_name: "falcon24_business_review",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q1ProductShapleyComparison,
+        },
+      ],
       result_binding: resultBinding({
         result_collection_path: "/method_evidence/buyers-frequency-aov-shapley/contributions",
         operator_collection_path: "/contributions",
@@ -459,16 +474,78 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
         value_fields: ["contribution"],
       }),
     },
+    {
+      call_id: "q1_segment_drivers",
+      operator_id: "decomposition.revenue-segment-drivers@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "GOVERNED_INPUT_EXACT",
+          operator_input_name: "order_items",
+          governed_input_name: "falcon24_business_review",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "order_id", governed_column: "order_id" },
+            { operator_field: "order_date", governed_column: "order_date" },
+            { operator_field: "payment_method", governed_column: "payment_method" },
+            { operator_field: "customer_segment", governed_column: "customer_segment" },
+            { operator_field: "product_category", governed_column: "product_category" },
+            { operator_field: "quantity", governed_column: "quantity" },
+            { operator_field: "order_total", governed_column: "order_total" },
+          ],
+        },
+      ],
+      result_binding: resultBinding({
+        result_collection_path: "/segment_drivers",
+        operator_collection_path: "/drivers",
+        label_fields: ["dimension", "member"],
+        value_fields: ["revenue_change"],
+      }),
+    },
   ],
   "falcon24-delivery-experience-12m": [
     {
-      call_id: "q2_delivery_low_rating",
-      operator_id: "regression.binomial-logit-wald@1",
+      call_id: "q2_low_rating_scenarios",
+      operator_id: "descriptive.delivery-low-rating-scenarios@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "orders",
+          governed_input_name: "falcon24_delivery_experience",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q2DeliveryScenarioOrders,
+        },
+      ],
       result_binding: resultBinding({
-        result_collection_path: "/method_evidence/adjusted-binomial-glm/coefficients",
-        operator_collection_path: "/coefficients",
-        label_fields: ["label", "term"],
-        value_fields: ["coefficient", "standard_error", "wald_z", "p_value"],
+        result_collection_path: "/low_rating_scenarios",
+        operator_collection_path: "/scenarios",
+        label_fields: ["product_category", "customer_segment", "delivery_status"],
+        value_fields: ["order_count", "low_rating_rate"],
+      }),
+    },
+    {
+      call_id: "q2_delivery_low_rating",
+      operator_id: "regression.delivery-low-rating-adjusted@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "orders",
+          governed_input_name: "falcon24_delivery_experience",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q2DeliveryModelOrders,
+        },
+      ],
+      result_binding: resultBinding({
+        result_collection_path: "/adjusted_binomial_glm",
+        operator_collection_path: "/models",
+        label_fields: ["label"],
+        value_fields: [
+          "delayed_coefficient",
+          "delayed_p_value",
+          "sample_size",
+          "controls",
+          "finding",
+          "rank",
+          "converged",
+          "iterations",
+        ],
       }),
     },
   ],
@@ -476,6 +553,14 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     {
       call_id: "q3_theil_sen_all_products",
       operator_id: "robust-trend.theil-sen-slope@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "series",
+          governed_input_name: "falcon24_inventory_damage",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q3TheilSenSeries,
+        },
+      ],
       result_binding: resultBinding({
         result_collection_path: "/method_evidence/theil-sen-deterioration/theil_sen/series",
         operator_collection_path: "/series",
@@ -486,6 +571,14 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     {
       call_id: "q3_mann_kendall_all_products",
       operator_id: "trend.mann-kendall-original@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT",
+          operator_input_name: "series",
+          governed_input_name: "falcon24_inventory_damage",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q3MannKendallSeries,
+        },
+      ],
       result_binding: resultBinding({
         result_collection_path: "/method_evidence/theil-sen-deterioration/mann_kendall/series",
         operator_collection_path: "/series",
@@ -496,6 +589,19 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     {
       call_id: "q3_bh_all_products",
       operator_id: "multiple-testing.bh-fdr@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "OPERATOR_RESULT_EXACT",
+          operator_input_name: "tests",
+          source_call_id: "q3_mann_kendall_all_products",
+          source_collection_path: "/series",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "label", source_field: "label" },
+            { operator_field: "p_value", source_field: "p_value" },
+          ],
+        },
+      ],
       result_binding: resultBinding({
         result_collection_path: "/method_evidence/benjamini-hochberg-fdr/tests",
         operator_collection_path: "/tests",
@@ -506,6 +612,75 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     {
       call_id: "q3_inventory_priority",
       operator_id: "descriptive.inventory-damage-priority@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "GOVERNED_INPUT_EXACT",
+          operator_input_name: "inventory_rows",
+          governed_input_name: "falcon24_inventory_damage",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "product_id", governed_column: "product_id" },
+            { operator_field: "product_name", governed_column: "product_name" },
+            { operator_field: "category", governed_column: "category" },
+            { operator_field: "month", governed_column: "month" },
+            { operator_field: "sales_quantity", governed_column: "sales_quantity" },
+            { operator_field: "stock_received", governed_column: "stock_received" },
+            { operator_field: "damaged_stock", governed_column: "damaged_stock" },
+          ],
+        },
+        {
+          lineage_kind: "OPERATOR_RESULT_EXACT",
+          operator_input_name: "theil_sen",
+          source_call_id: "q3_theil_sen_all_products",
+          source_collection_path: "/series",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "label", source_field: "label" },
+            { operator_field: "slope", source_field: "slope" },
+            { operator_field: "sample_size", source_field: "sample_size" },
+            { operator_field: "pair_count", source_field: "pair_count" },
+          ],
+        },
+        {
+          lineage_kind: "OPERATOR_RESULT_EXACT",
+          operator_input_name: "mann_kendall",
+          source_call_id: "q3_mann_kendall_all_products",
+          source_collection_path: "/series",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "label", source_field: "label" },
+            { operator_field: "s", source_field: "s" },
+            { operator_field: "variance_s", source_field: "variance_s" },
+            { operator_field: "z", source_field: "z" },
+            { operator_field: "p_value", source_field: "p_value" },
+            { operator_field: "tau", source_field: "tau" },
+            { operator_field: "trend", source_field: "trend" },
+            { operator_field: "rejected", source_field: "rejected" },
+            { operator_field: "sample_size", source_field: "sample_size" },
+            { operator_field: "tie_group_count", source_field: "tie_group_count" },
+            { operator_field: "alpha", source_field: "alpha" },
+            { operator_field: "variant", source_field: "variant" },
+          ],
+        },
+        {
+          lineage_kind: "OPERATOR_RESULT_EXACT",
+          operator_input_name: "bh_fdr",
+          source_call_id: "q3_bh_all_products",
+          source_collection_path: "/tests",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "label", source_field: "label" },
+            {
+              operator_field: "adjusted_p_value",
+              source_field: "adjusted_p_value",
+            },
+            { operator_field: "rejected", source_field: "rejected" },
+            { operator_field: "family_size", source_field: "family_size" },
+            { operator_field: "alpha", source_field: "alpha" },
+            { operator_field: "method", source_field: "method" },
+          ],
+        },
+      ],
       result_binding: resultBinding({
         result_collection_path: "/products",
         operator_collection_path: "/products",
@@ -533,6 +708,27 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     {
       call_id: "q4_marketing_priority",
       operator_id: "descriptive.marketing-lag-priority@1",
+      input_lineage_bindings: [
+        {
+          lineage_kind: "GOVERNED_INPUT_EXACT",
+          operator_input_name: "marketing_rows",
+          governed_input_name: "falcon24_marketing_lag",
+          row_mode: "ALL_ROWS_EXACT",
+          field_sources: [
+            { operator_field: "week_start", governed_column: "week_start" },
+            { operator_field: "channel", governed_column: "channel" },
+            { operator_field: "target_audience", governed_column: "target_audience" },
+            { operator_field: "impressions", governed_column: "impressions" },
+            { operator_field: "clicks", governed_column: "clicks" },
+            { operator_field: "conversions", governed_column: "conversions" },
+            { operator_field: "campaign_revenue", governed_column: "campaign_revenue" },
+            { operator_field: "spend", governed_column: "spend" },
+            { operator_field: "order_revenue", governed_column: "order_revenue" },
+            { operator_field: "new_customers", governed_column: "new_customers" },
+            { operator_field: "order_count", governed_column: "order_count" },
+          ],
+        },
+      ],
       result_binding: resultBinding({
         result_collection_path: "/channel_audience_results",
         operator_collection_path: "/channel_audience_results",
@@ -556,8 +752,28 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
     ...(["primary", "sensitivity"] as const).map((mode) => ({
       call_id: `q5_${mode}_cohorts`,
       operator_id: "cohort.registration-retention-m0-m6@2" as const,
+      input_lineage_bindings: [
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT" as const,
+          operator_input_name: "customers",
+          governed_input_name: "falcon24_cohort_retention",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q5Customers,
+        },
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT" as const,
+          operator_input_name: "events",
+          governed_input_name: "falcon24_cohort_retention",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q5Events,
+        },
+        {
+          lineage_kind: "SERVER_TRANSFORM_EXACT" as const,
+          operator_input_name: "observation",
+          governed_input_name: "falcon24_cohort_retention",
+          transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q5Observation,
+        },
+      ],
       result_binding: resultBinding({
-        result_collection_path: `/method_evidence/cohort-m0-m6/${mode}/cohort_periods`,
+        result_collection_path: mode === "primary" ? "/cohorts" : "/sensitivity_cohorts",
         operator_collection_path: "/cohort_periods",
         label_fields: ["registration_month", "customer_type", "month_index"],
         value_fields: [
@@ -571,6 +787,15 @@ const FALCON24_OPERATOR_OBLIGATIONS = Object.freeze({
           "average_spend",
           "average_delivery_minutes",
           "average_rating",
+          "cohort_size",
+          "matured",
+          "pre_registration_event_count",
+          "pre_registration_customer_count",
+          "valid_ordering_customer_count",
+          "no_order_customer_count",
+          "orphan_event_count",
+          "invalid_delivery_event_count",
+          "data_quality_status",
         ],
       }),
     })),
@@ -585,14 +810,15 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
     "Close revenue = active_buyers * orders_per_buyer * average_order_value for every month.",
     "Prepare exactly one product-Shapley comparison labeled worst_month_revenue_change. Its baseline_factors and current_factors must use exactly the keys active_buyers, orders_per_buyer, and average_order_value. After the operator succeeds, index its protected contributions collection by factor. Set buyer_contribution from active_buyers, frequency_contribution from orders_per_buyer, and aov_contribution from average_order_value; set observed_revenue_change and closure_error from the operator rows' delta and closure_error evidence. Preserve all returned contribution rows at method_evidence['buyers-frequency-aov-shapley'].contributions. Never invent parallel scalar variables or implement Shapley permutations in generated Python.",
     "Prepare and retain one monthly_kpis_table plus the selected current/previous month and signed/percent change before the operator call. After binding the operator result, reuse those named values directly for result and table publication; do not rebuild or replace monthly_kpis_table or access an unprepared abs_change column in a new object.",
-    "For customer segment and payment method, compute member revenue on deduplicated orders; for product category, first clip every item-row quantity to max(quantity, 0), then allocate each order_total in proportion to those clipped quantities, using equal shares when their per-order total is zero. For all three dimensions, revenue_change is exclusively selected current worst-month revenue minus its immediately previous-month revenue, never the last calendar month's generic diff. Return exactly the most negative member for each dimension, breaking ties lexicographically.",
+    "Prepare q1_segment_order_items from every governed input row with exactly order_id, order_date, payment_method, customer_segment, product_category, quantity, and order_total. Convert order_date to exact ISO YYYY-MM-DD and all numeric fields to built-in finite float values. Invoke q1_segment_drivers exactly once with only those rows and no parameters. Set result.segment_drivers to the exact protected drivers collection; do not copy, rebuild, append, filter, relabel, reorder dimensions, or handwrite any member revenue change. The operator is the sole authority for order deduplication, worst-month selection, quantity-proportional category allocation, dimension/member identity, and lexicographic tie-breaking.",
   ],
   "falcon24-delivery-experience-12m": [
     "Deduplicate to one row per order_id before delivery summaries or modeling; reject conflicting order-level values. Assert invalid_delivery_orders is one repeated constant and report it exactly as 932 in data_quality_precheck. Set valid_delivery_orders to count(non-null normalized delivery_time_minutes), exactly 2127, never to the total order count. Exclude null delivery_time_minutes (server-normalized from negative source durations) only from delivery-duration p50, p90, and mean calculations. Retain every deduplicated order in each period's on_time_rate denominator, low_rating_rate denominator, revenue, rating, and GLM analysis. Define on_time_rate exactly as count(delivery_status == 'On Time') / count(all deduplicated period orders), never as a fraction of valid delivery durations. Define low_rating_rate exactly as count(rating <= 2) / count(all deduplicated period orders), with unrated orders retained in the denominator.",
     "Compare 2023-11 through 2024-04 with 2024-05 through 2024-10 and use linear interpolation quantiles for p50 and p90 over valid non-negative delivery durations only. Build delivery_period_comparison with exactly two rows and the exact contract columns: average_delivery_minutes is the arithmetic mean of valid delivery_time_minutes, p90_delivery_minutes is that period's p90, low_rating_rate uses all deduplicated period orders as its denominator, and order_revenue is the sum of order_total across all period orders. Every required table value is finite and non-null; never use NaN or a placeholder.",
-    "Define low_rating as rating <= 2 and delayed as delivery_status != 'On Time'. Prepare exactly one rated-order model with label='delivery_low_rating_adjusted'. Its predictors mapping must use the exact keys delayed and log_order_amount, where log_order_amount is the natural logarithm np.log(order_total) after asserting strictly positive order_total, plus deterministic month=<YYYY-MM>, product_category=<level>, and customer_segment=<level> dummy keys with lexicographically first levels omitted as references. Convert the outcome and every predictor vector to a plain Python list with .tolist() before assigning the server-declared inputs symbol; no pandas Series or numpy ndarray may remain nested in the operator mapping.",
-    "From the protected coefficients collection select exactly one row with label='delivery_low_rating_adjusted' and term='delayed'; copy its coefficient, p_value, sample_size, rank, converged, and iterations evidence. Set adjusted_binomial_glm.controls to exactly month, log_order_amount, product_category, and customer_segment. Set finding to NOT_SIGNIFICANT when p_value>0.05, otherwise POSITIVE_SIGNIFICANT for a positive coefficient or NEGATIVE_SIGNIFICANT for a negative coefficient. Do not implement GLM fitting or Wald statistics in generated Python.",
-    "For low-rating scenarios, use the lexicographically first product category per order, rank all category/segment/status groups by low-rating count descending, then rate descending, order count descending, and key ascending; return the first five or all groups when fewer exist.",
+    "From the deduplicated orders prepare delivery_scenario_orders as JSON-native records with exactly order_id, product_category, customer_segment, delivery_status, and rating. Use the lexicographically first product category per order and convert rating to a built-in float or None. Invoke q2_low_rating_scenarios exactly once with only these orders and no parameters. Set result.low_rating_scenarios to the exact protected scenarios collection; do not copy, rebuild, append, filter, rank, round, or handwrite any scenario count or rate.",
+    "From the same deduplicated orders prepare delivery_model_orders as JSON-native records with exactly order_id, order_date, delivery_status, order_total, product_category, customer_segment, and rating. Use the lexicographically first product category per order, convert order_date to exact ISO YYYY-MM-DD, convert order_total to a built-in float, and convert rating to a built-in float or None. Invoke q2_delivery_low_rating exactly once with only these orders and no parameters.",
+    "Set result.adjusted_binomial_glm to the exact protected models collection. Do not copy, rebuild, append, filter, round, construct dummy variables, fit GLM, compute Wald statistics, or classify the delayed association in model-generated Python. The protected adjusted-delivery operator is the sole authority for the month, log_order_amount, product_category, and customer_segment controls, lexicographic reference levels, delayed coefficient, p-value, sample size, convergence evidence, and finding.",
+    "The protected low-rating scenario operator is the sole authority for ranking all category/segment/status groups by low-rating count, rate, order count, and key, and for retaining unrated orders in the denominator. Do not implement these group calculations in model-generated Python.",
     "Write conclusion in Chinese association language and include the exact word 关联. Its final sentence must be exactly '该证据仅支持统计关联，不支持因果判断。'. Do not include the words 导致, 证明, 驱动 anywhere, including negations. Disclose exactly 932 invalid delivery durations. When finding is NOT_SIGNIFICANT, state that the adjusted association is not significant and that delivery delay cannot be identified as the main association factor; only POSITIVE_SIGNIFICANT may identify it as the main association factor, while NEGATIVE_SIGNIFICANT must state the opposite direction.",
   ],
   "falcon24-inventory-damage-12m": [
@@ -612,9 +838,8 @@ const FALCON24_METHOD_CONTRACTS = Object.freeze({
   ],
   "falcon24-cohort-retention-m0-m6": [
     "The governed input is at registered-customer/order-event grain. Deduplicate customers by customer_id using the exact fields customer_id, registration_date, and customer_type. Build events only from rows with non-null order_id using the exact fields customer_id, event_date, order_id, revenue, delivery_minutes, and rating (source average_rating). Convert registration_date and non-null event_date values to exact ISO YYYY-MM-DD strings before the operator call; do not reduce them to months. Construct nullable numeric event fields explicitly as Python float or None; do not pass DataFrame.to_dict records containing pandas/numpy NaN. Convert negative delivery_minutes to None before the operator call and never use them in delivery averages. Assert observation_end_month and invalid_delivery_orders are each one repeated constant; pass integer invalid_delivery_orders as observation.invalid_delivery_event_count. Execute q5_primary_cohorts with pre_registration_policy='hold_primary', then q5_sensitivity_cohorts with pre_registration_policy='exclude_sensitivity'; both use horizon_months=6 and duplicate_customer_policy='reject'. Do not implement cohort rates in generated Python.",
-    "Return every registration_cohort and customer_segment group with exactly M0 through M6 in order, copying retention, repeat purchase, spend, delivery, rating, and data-quality evidence from the operator outputs. Derive cohort_window only from the distinct protected primary cohort_periods.registration_month values, never from distinct registration_date days: first_cohort='2023-05', last_cohort='2024-04', cohort_count=12, observation_months=7.",
-    "Report the five constant cohort-scoped anomaly columns, including invalid_delivery_orders, from the governed input exactly and set primary_reliable=false because temporal anomalies materially invalidate the primary cohort interpretation and negative delivery durations invalidate unfiltered experience averages.",
-    "Sensitivity excludes the customers identified by the @2 operator from exact-day event_date < registration_date comparisons, retains customers with no orders, and sets conclusion_changed=true iff any cohort/segment/month primary and sensitivity retention_rate differ by at least 0.05.",
+    "Set result.cohorts to the exact protected primary cohort_periods collection and result.sensitivity_cohorts to the exact protected sensitivity cohort_periods collection. Do not copy, rebuild, group, rename, append, filter, or round either collection. Set primary_reliable=false because the protected primary rows disclose temporal anomalies and invalid delivery events.",
+    "The unique cohort operator is the authority for M0-M6 retention, repeat purchase, spend, delivery, rating, pre-registration order/customer counts, valid ordering customer counts, no-order customer counts, orphan events, invalid delivery events, and sensitivity exclusions. Do not reproduce any of those calculations in generated Python. Build the required table as an exact projection of result.cohorts using the declared table columns.",
     "The terminal conclusion must disclose that the primary analysis is unreliable/HOLD and must not silently promote sensitivity results to primary truth.",
   ],
 } as const);

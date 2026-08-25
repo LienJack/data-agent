@@ -1,13 +1,16 @@
 import {
   type ArtifactReference,
   artifactReferenceFor,
-  collectL2ResearchPayloadArtifactReferences,
-  computeL2ResearchEnvelopeContentHash,
-  parseL2ResearchDocumentCandidate,
-  queryEvidenceV2PayloadSchema,
+  buildAnalysisInputMaterializationReceipt,
+  buildProductTeamArtifactDocument,
+  type ProductTeamArtifactDocument,
+  verifyAnalysisInputMaterializationReceipt,
 } from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
+import { Float64, Table, tableToIPC, Utf8, vectorFromArray } from "apache-arrow";
 import { describe, expect, it, vi } from "vitest";
+import { verifyGovernedAnalysisInputs } from "../../src/analysis/governed-analysis-input.js";
 import {
   analysisInputMaterializerInternals,
   createAnalysisInputMaterializer,
@@ -53,92 +56,63 @@ const lease: RunWorkLease = {
 };
 
 async function queryEvidenceDocument(rowCount = 2) {
-  const semanticReleaseRef = reference("SemanticRelease", 20);
-  const schemaSnapshotRef = reference("SchemaSnapshot", 21);
-  const policyReceiptRef = reference("PolicyReceipt", 22);
-  const sandboxResultRef = reference("SandboxResult", 23, hash("a"));
-  const payload = queryEvidenceV2PayloadSchema.parse({
-    artifact_type: "QueryEvidence",
-    protocol_version: "query-evidence@2.0.0",
-    obligation_ref: { container_ref: reference("EvidencePlan", 24), node_id: "analysis-input" },
-    obligation_execution_decision_ref: reference("ObligationExecutionDecision", 25),
-    query_contract_ref: reference("QueryContract", 26),
-    sql_artifact_ref: reference("SqlArtifact", 27),
-    validation_receipt_ref: reference("ValidationReceipt", 28),
-    execution_receipt_ref: reference("ExecutionReceipt", 29),
-    sandbox_execution_receipt_ref: reference("SandboxExecutionReceipt", 30),
-    sandbox_result_ref: sandboxResultRef,
-    dependency_evidence_refs: [],
-    provenance_group: "sandbox:test",
-    observed_version: {
-      semantic_release_ref: semanticReleaseRef,
-      schema_snapshot_ref: schemaSnapshotRef,
-      data_snapshot: {
-        protocol_version: "data-snapshot-binding@1.0.0",
-        datasource_id: id(31),
-        strategy: "CONTROLLED_REVISION",
-        snapshot_token: "falcon24-fixed-snapshot",
-        schema_manifest_hash: hash("b"),
-        data_manifest_hash: hash("c"),
-        fixture_manifest_hash: hash("d"),
-        replay_state: "REPLAYABLE",
-        binding_hash: hash("e"),
-      },
-      policy_receipt_ref: policyReceiptRef,
-      identity_binding: {
-        principal_id: lease.principal_id,
-        delegation_chain_hash: hash("f"),
-        authority_epoch: 1,
-      },
-    },
-    observation: {
-      result_hash: sandboxResultRef.content_hash,
+  const sqlRef = reference("SqlArtifact", 20, hash("f"));
+  const rows = Array.from({ length: rowCount }, (_, index) => ({
+    order_id: `order-${index + 1}`,
+    order_total: 100 + index,
+  }));
+  const document = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: reference("QueryEvidence", 21, hash("0")),
+    profile_id: "governed-text2sql-agent",
+    task_id: id(22),
+    source_refs: [sqlRef],
+    provenance: {
+      kind: "GOVERNED_QUERY_RESULT",
+      query_id: id(23),
+      request_hash: hash("1"),
+      result_hash: hash("a"),
       row_count: rowCount,
-      schema_hash: hash("9"),
+      byte_count: 256,
+      elapsed_ms: 4,
+      truncated: false,
     },
-  });
-  const inputRefs = collectL2ResearchPayloadArtifactReferences(payload);
-  const draft = parseL2ResearchDocumentCandidate({
-    envelope: {
-      artifact_id: id(32),
-      artifact_type: "QueryEvidence",
-      ...scope,
-      run_id: runId,
-      revision: 1,
-      parent_ref: null,
-      attempt_id: lease.attempt_id,
-      producer: { kind: "deterministic", id: "analysis-input-test" },
-      input_refs: inputRefs,
-      schema_version: "2.0.0",
-      semantic_version: "1.0.0",
-      policy_version: "analysis-input-test@1.0.0",
-      model_profile_version: "none@1.0.0",
-      content_hash: hash("0"),
-      status: "CANDIDATE",
-      created_at: "2026-08-24T00:00:00.000Z",
+    projection: {
+      kind: "TABLE",
+      columns: [
+        { key: "order_id", label: "order_id", data_type: "STRING" },
+        { key: "order_total", label: "order_total", data_type: "NUMBER" },
+      ],
+      rows,
+      total_rows: rowCount,
     },
-    payload,
-  });
-  const document = parseL2ResearchDocumentCandidate({
-    ...draft,
-    envelope: {
-      ...draft.envelope,
-      content_hash: await computeL2ResearchEnvelopeContentHash(draft),
-    },
+    committed_at: "2026-08-24T00:00:00.000Z",
   });
   return {
     document,
-    payload,
-    reference: artifactReferenceFor("QueryEvidence").parse({
-      artifact_id: document.envelope.artifact_id,
-      artifact_type: document.envelope.artifact_type,
-      app_id: document.envelope.app_id,
-      tenant_id: document.envelope.tenant_id,
-      environment: document.envelope.environment,
-      run_id: document.envelope.run_id,
-      revision: document.envelope.revision,
-      content_hash: document.envelope.content_hash,
+    reference: artifactReferenceFor("QueryEvidence").parse(document.artifact_ref),
+  };
+}
+
+function arrowContent(rowCount = 2, orderTotalOffset = 0) {
+  return tableToIPC(
+    new Table({
+      order_id: vectorFromArray(
+        Array.from({ length: rowCount }, (_, index) => `order-${index + 1}`),
+        new Utf8(),
+      ),
+      order_total: vectorFromArray(
+        Array.from({ length: rowCount }, (_, index) => 100 + index + orderTotalOffset),
+        new Float64(),
+      ),
     }),
+    "file",
+  );
+}
+
+function productArtifactAuthority(document: ProductTeamArtifactDocument | null) {
+  return {
+    resolveCommitted: vi.fn(async () => ({ ok: true as const, value: document })),
   };
 }
 
@@ -156,6 +130,7 @@ describe("analysis input materializer", () => {
     const systemCommit = vi.fn(async ({ reference: committed }) => committed);
     const materializer = createAnalysisInputMaterializer({
       sensitive_artifacts: { commit: sensitiveCommit },
+      product_artifacts: productArtifactAuthority(evidence.document),
       analysis_artifacts: {
         commitL2: vi.fn(),
         commitSystem: systemCommit,
@@ -165,7 +140,7 @@ describe("analysis input materializer", () => {
       encryption_key: Buffer.alloc(32, 7),
       encryption_key_id: "analysis-input-test@1",
     });
-    const content = Buffer.from("ARROW-IPC-BYTES", "utf8");
+    const content = arrowContent();
     const result = await materializer.materialize({
       lease,
       analysis_program_ref: reference("AnalysisProgram", 33),
@@ -179,7 +154,6 @@ describe("analysis input materializer", () => {
       spec_hash: hash("1"),
       snapshot_receipt_hash: hash("2"),
       query_evidence_ref: evidence.reference,
-      query_evidence_document: evidence.document,
     });
 
     expect(result.input_ref.artifact_type).toBe("SensitiveExecutionArtifact");
@@ -195,20 +169,55 @@ describe("analysis input materializer", () => {
     ).toBe("DAAI1");
     expect(systemCommit).toHaveBeenCalledOnce();
     expect(result.materialization_receipt_document).toMatchObject({
+      protocol_version: "analysis-input-materialization@2.0.0",
       query_evidence_ref: evidence.reference,
-      query_result_ref: evidence.payload.sandbox_result_ref,
+      source_result_hash: hash("a"),
       input_ref: result.input_ref,
       row_count: 2,
       ordered_columns: ["order_id", "order_total"],
     });
+    expect(result.materialization_receipt_document).not.toHaveProperty("query_result_ref");
+    await expect(
+      verifyGovernedAnalysisInputs({
+        analysis_program_ref: reference("AnalysisProgram", 33),
+        governed_inputs: [result],
+      }),
+    ).resolves.toBeUndefined();
+
+    const committedReceipt = await verifyAnalysisInputMaterializationReceipt(
+      result.materialization_receipt_document,
+    );
+    const { receipt_hash: _receiptHash, ...receiptMaterial } = committedReceipt;
+    const substitutedReceipt = await buildAnalysisInputMaterializationReceipt({
+      ...receiptMaterial,
+      source_result_hash: hash("b"),
+    });
+    await expect(
+      verifyGovernedAnalysisInputs({
+        analysis_program_ref: reference("AnalysisProgram", 33),
+        governed_inputs: [
+          {
+            ...result,
+            materialization_receipt_document: substitutedReceipt,
+            materialization_receipt_ref: {
+              ...result.materialization_receipt_ref,
+              content_hash: await sha256ContentHash(substitutedReceipt),
+            },
+          },
+        ],
+      }),
+    ).rejects.toThrow("ANALYSIS_QUERY_EVIDENCE_MATERIALIZATION_INVALID");
   });
 
-  it("rejects row-count drift before either authority observes a write", async () => {
-    const evidence = await queryEvidenceDocument(3);
+  it("rejects a QueryEvidence ref that Product Team authority cannot resolve", async () => {
+    const evidence = await queryEvidenceDocument();
     const sensitiveCommit = vi.fn();
     const systemCommit = vi.fn();
     const materializer = createAnalysisInputMaterializer({
       sensitive_artifacts: { commit: sensitiveCommit },
+      product_artifacts: {
+        resolveCommitted: vi.fn(async () => ({ ok: true as const, value: null })),
+      },
       analysis_artifacts: {
         commitL2: vi.fn(),
         commitSystem: systemCommit,
@@ -226,15 +235,122 @@ describe("analysis input materializer", () => {
         idempotency_key: "analysis-input-test",
         input_name: "falcon24_business_review",
         format: "ARROW",
-        content: Buffer.from("ARROW", "utf8"),
+        content: arrowContent(),
+        row_count: 2,
+        ordered_columns: ["order_id", "order_total"],
+        spec_hash: hash("1"),
+        snapshot_receipt_hash: hash("2"),
+        query_evidence_ref: evidence.reference,
+      }),
+    ).rejects.toThrow("ANALYSIS_INPUT_QUERY_EVIDENCE_NOT_COMMITTED");
+    expect(sensitiveCommit).not.toHaveBeenCalled();
+    expect(systemCommit).not.toHaveBeenCalled();
+  });
+
+  it("rejects an Arrow column binding that differs from the Product Team projection", async () => {
+    const evidence = await queryEvidenceDocument();
+    const sensitiveCommit = vi.fn();
+    const systemCommit = vi.fn();
+    const materializer = createAnalysisInputMaterializer({
+      sensitive_artifacts: { commit: sensitiveCommit },
+      product_artifacts: productArtifactAuthority(evidence.document),
+      analysis_artifacts: {
+        commitL2: vi.fn(),
+        commitSystem: systemCommit,
+        resolveCommitted: vi.fn(),
+      },
+      capability_input: null,
+      encryption_key: Buffer.alloc(32, 8),
+      encryption_key_id: "analysis-input-test@1",
+    });
+    await expect(
+      materializer.materialize({
+        lease,
+        analysis_program_ref: reference("AnalysisProgram", 33),
+        node_id: "falcon24-business-review-18m",
+        idempotency_key: "analysis-input-test",
+        input_name: "falcon24_business_review",
+        format: "ARROW",
+        content: arrowContent(),
+        row_count: 2,
+        ordered_columns: ["order_total", "order_id"],
+        spec_hash: hash("1"),
+        snapshot_receipt_hash: hash("2"),
+        query_evidence_ref: evidence.reference,
+      }),
+    ).rejects.toThrow("ANALYSIS_INPUT_QUERY_EVIDENCE_INVALID");
+    expect(sensitiveCommit).not.toHaveBeenCalled();
+    expect(systemCommit).not.toHaveBeenCalled();
+  });
+
+  it("rejects row-count drift before either authority observes a write", async () => {
+    const evidence = await queryEvidenceDocument(3);
+    const sensitiveCommit = vi.fn();
+    const systemCommit = vi.fn();
+    const materializer = createAnalysisInputMaterializer({
+      sensitive_artifacts: { commit: sensitiveCommit },
+      product_artifacts: productArtifactAuthority(evidence.document),
+      analysis_artifacts: {
+        commitL2: vi.fn(),
+        commitSystem: systemCommit,
+        resolveCommitted: vi.fn(),
+      },
+      capability_input: null,
+      encryption_key: Buffer.alloc(32, 8),
+      encryption_key_id: "analysis-input-test@1",
+    });
+    await expect(
+      materializer.materialize({
+        lease,
+        analysis_program_ref: reference("AnalysisProgram", 33),
+        node_id: "falcon24-business-review-18m",
+        idempotency_key: "analysis-input-test",
+        input_name: "falcon24_business_review",
+        format: "ARROW",
+        content: arrowContent(2),
         row_count: 2,
         ordered_columns: ["order_id"],
         spec_hash: hash("1"),
         snapshot_receipt_hash: hash("2"),
         query_evidence_ref: evidence.reference,
-        query_evidence_document: evidence.document,
       }),
-    ).rejects.toThrow("ANALYSIS_INPUT_QUERY_EVIDENCE_INVALID");
+    ).rejects.toThrow("ANALYSIS_INPUT_ARROW_CONTENT_INVALID");
+    expect(sensitiveCommit).not.toHaveBeenCalled();
+    expect(systemCommit).not.toHaveBeenCalled();
+  });
+
+  it("rejects same-shape Arrow bytes whose cell values differ from QueryEvidence", async () => {
+    const evidence = await queryEvidenceDocument();
+    const sensitiveCommit = vi.fn();
+    const systemCommit = vi.fn();
+    const materializer = createAnalysisInputMaterializer({
+      sensitive_artifacts: { commit: sensitiveCommit },
+      product_artifacts: productArtifactAuthority(evidence.document),
+      analysis_artifacts: {
+        commitL2: vi.fn(),
+        commitSystem: systemCommit,
+        resolveCommitted: vi.fn(),
+      },
+      capability_input: null,
+      encryption_key: Buffer.alloc(32, 8),
+      encryption_key_id: "analysis-input-test@1",
+    });
+    await expect(
+      materializer.materialize({
+        lease,
+        analysis_program_ref: reference("AnalysisProgram", 33),
+        node_id: "falcon24-business-review-18m",
+        idempotency_key: "analysis-input-test",
+        input_name: "falcon24_business_review",
+        format: "ARROW",
+        content: arrowContent(2, 1_000),
+        row_count: 2,
+        ordered_columns: ["order_id", "order_total"],
+        spec_hash: hash("1"),
+        snapshot_receipt_hash: hash("2"),
+        query_evidence_ref: evidence.reference,
+      }),
+    ).rejects.toThrow("ANALYSIS_INPUT_ARROW_CONTENT_MISMATCH");
     expect(sensitiveCommit).not.toHaveBeenCalled();
     expect(systemCommit).not.toHaveBeenCalled();
   });

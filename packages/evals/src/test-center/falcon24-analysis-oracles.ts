@@ -62,7 +62,7 @@ const businessReviewSchema = z.strictObject({
 });
 
 const deliverySchema = z.strictObject({
-  schema_version: z.literal("falcon24-delivery-output@1.0.0"),
+  schema_version: z.literal("falcon24-delivery-output@2.0.0"),
   case_id: z.literal("falcon24-delivery-experience-12m"),
   window: fullMonthWindowSchema,
   data_quality_precheck: z.strictObject({
@@ -83,13 +83,21 @@ const deliverySchema = z.strictObject({
       low_rating_rate: probability,
     }),
   }),
-  adjusted_binomial_glm: z.strictObject({
-    delayed_coefficient: finite,
-    delayed_p_value: probability,
-    sample_size: z.number().int().positive(),
-    controls: z.array(z.string()).min(4),
-    finding: z.enum(["POSITIVE_SIGNIFICANT", "NEGATIVE_SIGNIFICANT", "NOT_SIGNIFICANT"]),
-  }),
+  adjusted_binomial_glm: z
+    .array(
+      z.strictObject({
+        label: z.literal("delivery_low_rating_adjusted"),
+        delayed_coefficient: finite,
+        delayed_p_value: probability,
+        sample_size: z.number().int().positive(),
+        controls: z.array(z.string()).length(4),
+        finding: z.enum(["POSITIVE_SIGNIFICANT", "NEGATIVE_SIGNIFICANT", "NOT_SIGNIFICANT"]),
+        rank: z.number().int().positive(),
+        converged: z.literal(true),
+        iterations: z.number().int().nonnegative(),
+      }),
+    )
+    .length(1),
   low_rating_scenarios: z
     .array(
       z.strictObject({
@@ -199,46 +207,37 @@ const marketingSchema = z.strictObject({
   conclusion: z.string().min(1),
 });
 
-const cohortPointSchema = z.strictObject({
+const cohortPeriodSchema = z.strictObject({
+  registration_month: month,
+  customer_type: z.string().min(1),
   month_index: z.number().int().min(0).max(6),
+  eligible_customers: z.number().int().nonnegative(),
+  active_customers: z.number().int().nonnegative(),
   retention_rate: probability,
+  repeat_customers: z.number().int().nonnegative(),
   repeat_purchase_rate: probability,
+  order_count: z.number().int().nonnegative(),
+  revenue: nonnegative,
   average_spend: nonnegative.nullable(),
-  delivery_minutes: nonnegative.nullable(),
+  average_delivery_minutes: nonnegative.nullable(),
   average_rating: finite.min(1).max(5).nullable(),
+  cohort_size: z.number().int().positive(),
+  matured: z.literal(true),
+  pre_registration_event_count: z.number().int().nonnegative(),
+  pre_registration_customer_count: z.number().int().nonnegative(),
+  valid_ordering_customer_count: z.number().int().nonnegative(),
+  no_order_customer_count: z.number().int().nonnegative(),
+  orphan_event_count: z.number().int().nonnegative(),
+  invalid_delivery_event_count: z.number().int().nonnegative(),
+  data_quality_status: z.string().min(1),
 });
 
 const cohortSchema = z.strictObject({
-  schema_version: z.literal("falcon24-cohort-output@1.0.0"),
+  schema_version: z.literal("falcon24-cohort-output@2.0.0"),
   case_id: z.literal("falcon24-cohort-retention-m0-m6"),
-  cohort_window: z.strictObject({
-    first_cohort: month,
-    last_cohort: month,
-    cohort_count: z.number().int().positive(),
-    observation_months: z.literal(7),
-  }),
-  anomaly_precheck: z.strictObject({
-    orders_before_registration: z.number().int().nonnegative(),
-    customers_first_order_before_registration: z.number().int().nonnegative(),
-    valid_ordering_customers: z.number().int().nonnegative(),
-    no_order_customers: z.number().int().nonnegative(),
-    invalid_delivery_orders: z.number().int().nonnegative(),
-  }),
   primary_reliable: z.literal(false),
-  cohorts: z
-    .array(
-      z.strictObject({
-        registration_cohort: month,
-        customer_segment: z.string().min(1),
-        points: z.array(cohortPointSchema).length(7),
-      }),
-    )
-    .min(12),
-  sensitivity: z.strictObject({
-    excluded_pre_registration_customers: z.number().int().nonnegative(),
-    retained_no_order_customers: z.number().int().nonnegative(),
-    conclusion_changed: z.boolean(),
-  }),
+  cohorts: z.array(cohortPeriodSchema).length(336),
+  sensitivity_cohorts: z.array(cohortPeriodSchema).length(336),
   method_evidence: methodEvidence,
   conclusion: z.string().min(1),
 });
@@ -462,16 +461,14 @@ export function buildFalcon24AnalysisChartProjection(
         };
       }
       case "falcon24-cohort-retention-m0-m6": {
-        const rows = output.cohorts.flatMap((cohort) =>
-          cohort.points.map((point) => ({
-            series: `${cohort.registration_cohort} / ${cohort.customer_segment}`,
-            registration_cohort: cohort.registration_cohort,
-            customer_segment: cohort.customer_segment,
-            month_index: point.month_index,
-            retention_rate_pct: point.retention_rate * 100,
-            repeat_purchase_rate_pct: point.repeat_purchase_rate * 100,
-          })),
-        );
+        const rows = output.cohorts.map((period) => ({
+          series: `${period.registration_month} / ${period.customer_type}`,
+          registration_cohort: period.registration_month,
+          customer_segment: period.customer_type,
+          month_index: period.month_index,
+          retention_rate_pct: period.retention_rate * 100,
+          repeat_purchase_rate_pct: period.repeat_purchase_rate * 100,
+        }));
         return {
           kind: "CHART",
           chart_type: "LINE",
@@ -594,13 +591,15 @@ function evaluateDelivery(
   output: Extract<AnalysisOutput, { case_id: "falcon24-delivery-experience-12m" }>,
 ) {
   assertWindow(output.window, 12);
+  const adjusted = output.adjusted_binomial_glm[0];
+  if (!adjusted) throw new TypeError("FALCON24_Q2_GLM_MISSING");
   if (
     output.six_vs_six.first.p90_minutes < output.six_vs_six.first.p50_minutes ||
     output.six_vs_six.second.p90_minutes < output.six_vs_six.second.p50_minutes
   ) {
     throw new TypeError("FALCON24_Q2_QUANTILES_INVALID");
   }
-  const controls = new Set(output.adjusted_binomial_glm.controls);
+  const controls = new Set(adjusted.controls);
   for (const control of ["month", "log_order_amount", "product_category", "customer_segment"]) {
     if (!controls.has(control)) throw new TypeError("FALCON24_Q2_GLM_CONTROL_MISSING");
   }
@@ -611,12 +610,12 @@ function evaluateDelivery(
     throw new TypeError("FALCON24_Q2_DELIVERY_QUALITY_AUDIT_INVALID");
   }
   const expectedFinding =
-    output.adjusted_binomial_glm.delayed_p_value > 0.05
+    adjusted.delayed_p_value > 0.05
       ? "NOT_SIGNIFICANT"
-      : output.adjusted_binomial_glm.delayed_coefficient > 0
+      : adjusted.delayed_coefficient > 0
         ? "POSITIVE_SIGNIFICANT"
         : "NEGATIVE_SIGNIFICANT";
-  if (output.adjusted_binomial_glm.finding !== expectedFinding) {
+  if (adjusted.finding !== expectedFinding) {
     throw new TypeError("FALCON24_Q2_GLM_FINDING_INVALID");
   }
   assertAssociationLanguage(output.conclusion);
@@ -665,27 +664,35 @@ function evaluateMarketing(
 function evaluateCohort(
   output: Extract<AnalysisOutput, { case_id: "falcon24-cohort-retention-m0-m6" }>,
 ) {
-  if (
-    output.cohort_window.first_cohort !== "2023-05" ||
-    output.cohort_window.last_cohort !== "2024-04" ||
-    output.cohort_window.cohort_count !== 12
-  ) {
+  const months = [...new Set(output.cohorts.map(({ registration_month }) => registration_month))];
+  if (months.length !== 12 || months[0] !== "2023-05" || months.at(-1) !== "2024-04") {
     throw new TypeError("FALCON24_Q5_COHORT_WINDOW_INVALID");
   }
-  const quality = output.anomaly_precheck;
   if (
-    quality.orders_before_registration !== 1_186 ||
-    quality.customers_first_order_before_registration !== 767 ||
-    quality.valid_ordering_customers !== 531 ||
-    quality.no_order_customers !== 209 ||
-    quality.invalid_delivery_orders !== 931 ||
-    output.sensitivity.excluded_pre_registration_customers !== 767 ||
-    output.sensitivity.retained_no_order_customers !== 209
+    [...output.cohorts, ...output.sensitivity_cohorts].some(
+      (row) =>
+        row.pre_registration_event_count !== 1_186 ||
+        row.pre_registration_customer_count !== 767 ||
+        row.valid_ordering_customer_count !== 531 ||
+        row.no_order_customer_count !== 209 ||
+        row.invalid_delivery_event_count !== 931,
+    )
   ) {
     throw new TypeError("FALCON24_Q5_QUALITY_AUDIT_INVALID");
   }
-  for (const cohort of output.cohorts) {
-    if (cohort.points.some((point, index) => point.month_index !== index)) {
+  for (const rows of [output.cohorts, output.sensitivity_cohorts]) {
+    const groups = new Map<string, (typeof rows)[number][]>();
+    for (const row of rows) {
+      const key = `${row.registration_month}\0${row.customer_type}`;
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    if (
+      groups.size !== 48 ||
+      [...groups.values()].some(
+        (periods) =>
+          periods.length !== 7 || periods.some((period, index) => period.month_index !== index),
+      )
+    ) {
       throw new TypeError("FALCON24_Q5_MONTH_INDEX_INVALID");
     }
   }

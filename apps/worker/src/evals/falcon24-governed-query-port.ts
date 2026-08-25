@@ -1,9 +1,17 @@
-import type { ArtifactReference } from "@data-agent/contracts/artifacts";
+import {
+  type ArtifactReference,
+  artifactReferenceFor,
+  artifactReferenceIdentity,
+  type ProductTeamArtifactDocument,
+  verifyProductTeamArtifactDocument,
+} from "@data-agent/contracts/artifacts";
 import { sha256ContentHash } from "@data-agent/contracts/common";
-import type { RunWorkLease } from "@data-agent/contracts/runs";
-import type { SqlPool } from "@data-agent/platform/persistence";
+import type { PortResult } from "@data-agent/contracts/ports";
 import type { GovernedAnalysisQueryPort } from "../analysis/executor.js";
-import type { GovernedAnalysisInput } from "../analysis/governed-analysis-input.js";
+import {
+  type GovernedAnalysisInput,
+  verifyProductTeamQueryEvidenceInput,
+} from "../analysis/governed-analysis-input.js";
 import type { AnalysisInputMaterializationCommand } from "../analysis/input-materializer.js";
 import type { Falcon24AnalysisDataOracleReceipt } from "./falcon24-analysis-data-oracle.js";
 import {
@@ -11,27 +19,6 @@ import {
   type Falcon24AnalysisQuerySpec,
   materializeFalcon24Arrow,
 } from "./falcon24-analysis-queries.js";
-
-export interface Falcon24ExactQueryEvidenceAuthority {
-  issue(input: {
-    readonly lease: RunWorkLease;
-    readonly analysis_program_ref: ArtifactReference;
-    readonly node_id: string;
-    readonly idempotency_key: string;
-    readonly spec: Falcon24AnalysisQuerySpec;
-    readonly spec_hash: `sha256:${string}`;
-    readonly data_oracle_receipt: Falcon24AnalysisDataOracleReceipt;
-    readonly rows: readonly Readonly<Record<string, unknown>>[];
-    readonly execution_started_at: string;
-    readonly execution_completed_at: string;
-    readonly statement_timeout_ms: number;
-  }): Promise<{
-    readonly query_evidence_ref: ArtifactReference & {
-      readonly artifact_type: "QueryEvidence";
-    };
-    readonly query_evidence_document: unknown;
-  }>;
-}
 
 export interface Falcon24AnalysisInputMaterializer {
   materialize(input: AnalysisInputMaterializationCommand): Promise<GovernedAnalysisInput>;
@@ -41,33 +28,55 @@ export interface Falcon24AnalysisSnapshotAuthority {
   inspect(): Promise<Falcon24AnalysisDataOracleReceipt>;
 }
 
-function statementTimeout(value: number): number {
-  if (!Number.isSafeInteger(value) || value < 1 || value > 300_000) {
-    throw new TypeError("FALCON24_QUERY_TIMEOUT_INVALID");
-  }
-  return value;
+export interface Falcon24ProductArtifactAuthority {
+  resolveCommitted(
+    capability: unknown,
+    reference: ArtifactReference,
+  ): Promise<PortResult<ProductTeamArtifactDocument | null>>;
+}
+
+function portValue<T>(result: PortResult<T>): T {
+  if (!result.ok) throw new TypeError(result.error.code);
+  return result.value;
 }
 
 async function specHash(spec: Falcon24AnalysisQuerySpec): Promise<`sha256:${string}`> {
   return sha256ContentHash({
-    protocol_version: "falcon24-analysis-query@1.0.0",
+    protocol_version: "falcon24-analysis-input-contract@1.0.0",
     case_id: spec.case_id,
     input_name: spec.input_name,
-    sql: spec.sql,
     columns: spec.columns,
     expected_rows: spec.expected_rows,
     semantic_contract: spec.semantic_contract,
   });
 }
 
+async function resolveExactDocument(input: {
+  readonly authority: Falcon24ProductArtifactAuthority;
+  readonly capability: unknown;
+  readonly reference: ArtifactReference;
+  readonly missing_code: string;
+}) {
+  const document = portValue(
+    await input.authority.resolveCommitted(input.capability, input.reference),
+  );
+  if (!document) throw new TypeError(input.missing_code);
+  const verified = await verifyProductTeamArtifactDocument(document);
+  if (
+    artifactReferenceIdentity(verified.artifact_ref) !== artifactReferenceIdentity(input.reference)
+  ) {
+    throw new TypeError(input.missing_code);
+  }
+  return verified;
+}
+
 export function createFalcon24GovernedAnalysisQueryPort(input: {
-  readonly pool: SqlPool;
+  readonly query_evidence_ref: ArtifactReference & { readonly artifact_type: "QueryEvidence" };
+  readonly artifact_authority: Falcon24ProductArtifactAuthority;
+  readonly artifact_capability: unknown;
   readonly snapshot_authority: Falcon24AnalysisSnapshotAuthority;
-  readonly evidence_authority: Falcon24ExactQueryEvidenceAuthority;
   readonly materializer: Falcon24AnalysisInputMaterializer;
-  readonly now?: () => Date;
 }): GovernedAnalysisQueryPort {
-  const now = input.now ?? (() => new Date());
   return Object.freeze({
     async execute(request: Parameters<GovernedAnalysisQueryPort["execute"]>[0]) {
       const spec =
@@ -80,62 +89,74 @@ export function createFalcon24GovernedAnalysisQueryPort(input: {
       if (request.max_rows < spec.expected_rows) {
         throw new TypeError("FALCON24_QUERY_ROW_BUDGET_EXCEEDED");
       }
-      const timeoutMs = statementTimeout(request.timeout_ms);
-      const dataOracleReceipt = await input.snapshot_authority.inspect();
-      const querySpecHash = await specHash(spec);
-      const client = await input.pool.connect();
-      try {
-        const executionStartedAt = now().toISOString();
-        await client.query("begin transaction isolation level repeatable read read only");
-        await client.query(`set local statement_timeout = ${timeoutMs}`);
-        const result = await client.query<Readonly<Record<string, unknown>>>(spec.sql);
-        const arrow = materializeFalcon24Arrow(spec, result.rows);
-        await client.query("commit");
-        const executionCompletedAt = now().toISOString();
-        const evidence = await input.evidence_authority.issue({
-          lease: request.lease,
-          analysis_program_ref: request.analysis_program_ref,
-          node_id: request.node.node_id,
-          idempotency_key: request.idempotency_key,
-          spec,
-          spec_hash: querySpecHash,
-          data_oracle_receipt: dataOracleReceipt,
-          rows: result.rows,
-          execution_started_at: executionStartedAt,
-          execution_completed_at: executionCompletedAt,
-          statement_timeout_ms: timeoutMs,
-        });
-        const governed = await input.materializer.materialize({
-          lease: request.lease,
-          analysis_program_ref: request.analysis_program_ref,
-          node_id: request.node.node_id,
-          idempotency_key: request.idempotency_key,
-          input_name: spec.input_name,
-          format: "ARROW",
-          content: arrow,
-          row_count: spec.expected_rows,
-          ordered_columns: spec.columns.map(({ name }) => name),
-          spec_hash: querySpecHash,
-          snapshot_receipt_hash: dataOracleReceipt.receipt_hash as `sha256:${string}`,
-          query_evidence_ref: evidence.query_evidence_ref,
-          query_evidence_document: evidence.query_evidence_document,
-        });
-        if (governed.name !== spec.input_name || governed.format !== "ARROW") {
-          throw new TypeError("FALCON24_QUERY_MATERIALIZATION_CORRELATION_INVALID");
-        }
-        return [governed];
-      } catch (error) {
-        try {
-          await client.query("rollback");
-        } catch {
-          // Preserve the authority failure that caused the transaction to abort.
-        }
-        throw error;
-      } finally {
-        client.release();
+      if (
+        input.query_evidence_ref.run_id !== request.lease.run_id ||
+        input.query_evidence_ref.app_id !== request.lease.scope.app_id ||
+        input.query_evidence_ref.tenant_id !== request.lease.scope.tenant_id ||
+        input.query_evidence_ref.environment !== request.lease.scope.environment
+      ) {
+        throw new TypeError("FALCON24_QUERY_EVIDENCE_SCOPE_INVALID");
       }
+      const evidence = await resolveExactDocument({
+        authority: input.artifact_authority,
+        capability: input.artifact_capability,
+        reference: input.query_evidence_ref,
+        missing_code: "FALCON24_QUERY_EVIDENCE_AUTHORITY_RESOLUTION_INVALID",
+      });
+      const evidenceRef = artifactReferenceFor("QueryEvidence").parse(evidence.artifact_ref);
+      const evidenceShape = await verifyProductTeamQueryEvidenceInput({
+        query_evidence_ref: evidenceRef,
+        query_evidence_document: evidence,
+        expected_row_count: spec.expected_rows,
+        expected_ordered_columns: spec.columns.map(({ name }) => name),
+      });
+      const sqlRef = artifactReferenceFor("SqlArtifact").parse(evidence.source_refs[0]);
+      const sql = await resolveExactDocument({
+        authority: input.artifact_authority,
+        capability: input.artifact_capability,
+        reference: sqlRef,
+        missing_code: "FALCON24_SQL_ARTIFACT_AUTHORITY_RESOLUTION_INVALID",
+      });
+      if (
+        sql.artifact_ref.artifact_type !== "SqlArtifact" ||
+        sql.profile_id !== "governed-text2sql-agent" ||
+        sql.projection.kind !== "SQL"
+      ) {
+        throw new TypeError("FALCON24_SQL_ARTIFACT_AUTHORITY_RESOLUTION_INVALID");
+      }
+      if (evidence.projection.kind !== "TABLE") {
+        throw new TypeError("FALCON24_QUERY_EVIDENCE_SHAPE_INVALID");
+      }
+      const dataOracleReceipt = await input.snapshot_authority.inspect();
+      const arrow = materializeFalcon24Arrow(spec, evidence.projection.rows);
+      const governed = await input.materializer.materialize({
+        lease: request.lease,
+        analysis_program_ref: request.analysis_program_ref,
+        node_id: request.node.node_id,
+        idempotency_key: request.idempotency_key,
+        input_name: spec.input_name,
+        format: "ARROW",
+        content: arrow,
+        row_count: evidenceShape.row_count,
+        ordered_columns: evidenceShape.ordered_columns,
+        spec_hash: await specHash(spec),
+        snapshot_receipt_hash: dataOracleReceipt.receipt_hash as `sha256:${string}`,
+        query_evidence_ref: evidenceRef,
+      });
+      if (
+        governed.name !== spec.input_name ||
+        governed.format !== "ARROW" ||
+        artifactReferenceIdentity(governed.query_evidence_ref) !==
+          artifactReferenceIdentity(input.query_evidence_ref)
+      ) {
+        throw new TypeError("FALCON24_QUERY_MATERIALIZATION_CORRELATION_INVALID");
+      }
+      return [governed];
     },
   });
 }
 
-export const falcon24GovernedQueryInternals = Object.freeze({ specHash });
+export const falcon24GovernedQueryInternals = Object.freeze({
+  resolveExactDocument,
+  specHash,
+});

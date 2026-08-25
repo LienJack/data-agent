@@ -1,9 +1,10 @@
-import type {
-  ArtifactReference,
-  Falcon24AgentAnalysisCase,
-  RunWorkLease,
+import {
+  type ArtifactReference,
+  artifactReferenceIdentity,
+  buildProductTeamArtifactDocument,
+  type ProductTeamArtifactDocument,
+  type RunWorkLease,
 } from "@data-agent/contracts";
-import type { SqlClient, SqlPool } from "@data-agent/platform";
 import { tableFromIPC } from "apache-arrow";
 import { describe, expect, it, vi } from "vitest";
 import type { GovernedAnalysisInput } from "../../src/analysis/governed-analysis-input.js";
@@ -41,22 +42,11 @@ const analysisProgramRef: ArtifactReference = {
 };
 const inputRef: ArtifactReference = {
   artifact_id: id(6),
-  artifact_type: "SandboxResult",
+  artifact_type: "SensitiveExecutionArtifact",
   ...scope,
   run_id: lease.run_id,
   revision: 1,
   content_hash: hash("b"),
-};
-const queryEvidenceRef: ArtifactReference = {
-  artifact_id: id(7),
-  artifact_type: "QueryEvidence",
-  ...scope,
-  run_id: lease.run_id,
-  revision: 1,
-  content_hash: hash("c"),
-};
-const typedQueryEvidenceRef = queryEvidenceRef as ArtifactReference & {
-  readonly artifact_type: "QueryEvidence";
 };
 const materializationReceiptRef: ArtifactReference = {
   artifact_id: id(11),
@@ -66,7 +56,6 @@ const materializationReceiptRef: ArtifactReference = {
   revision: 1,
   content_hash: hash("e"),
 };
-
 const dataOracleReceipt = falcon24AnalysisDataOracleReceiptSchema.parse({
   schema_version: "falcon24-analysis-data-oracle@1.0.0",
   dataset_id: "falcon_db_24",
@@ -115,153 +104,175 @@ function fixtureRows() {
   }));
 }
 
-function node(nodeId: Falcon24AgentAnalysisCase["case_id"]) {
-  return {
-    node_id: nodeId,
-    skill_id: "open-python-analysis@1",
-  } as never;
+function node(nodeId: string) {
+  return { node_id: nodeId, skill_id: "open-python-analysis@1" } as never;
 }
 
-describe("Falcon24 governed query port", () => {
-  it("executes only the registered query in a read-only transaction and delegates strict evidence", async () => {
-    const statements: string[] = [];
-    let released = false;
-    const client: SqlClient = {
-      async query<Row extends object = Record<string, unknown>>(text: string) {
-        statements.push(text);
-        return {
-          rows: (text.startsWith("select") ? fixtureRows() : []) as Row[],
-          rowCount: text.startsWith("select") ? fixtureRows().length : 0,
-        };
+async function documents(rows = fixtureRows()) {
+  const spec = FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"];
+  const sql = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: {
+      artifact_id: id(20),
+      artifact_type: "SqlArtifact",
+      ...scope,
+      run_id: lease.run_id,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "governed-text2sql-agent",
+    task_id: id(21),
+    source_refs: [],
+    provenance: {
+      kind: "TEXT2SQL_CANDIDATE",
+      candidate_hash: hash("3"),
+      parameters_hash: hash("4"),
+      parameter_count: 0,
+      datasource_ref: {
+        resource_id: id(30),
+        resource_revision: 1,
+        resource_hash: hash("5"),
       },
-      release() {
-        released = true;
+      schema_snapshot_ref: { resource_id: id(31), resource_hash: hash("6") },
+      semantic_context_ref: { package_id: id(32), package_hash: hash("7") },
+      target_binding_hash: hash("8"),
+    },
+    projection: { kind: "SQL", dialect: "postgresql", sql: "select governed columns" },
+    committed_at: "2026-08-24T00:00:00.000Z",
+  });
+  const evidence = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: {
+      artifact_id: id(22),
+      artifact_type: "QueryEvidence",
+      ...scope,
+      run_id: lease.run_id,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "governed-text2sql-agent",
+    task_id: id(21),
+    source_refs: [sql.artifact_ref],
+    provenance: {
+      kind: "GOVERNED_QUERY_RESULT",
+      query_id: id(23),
+      request_hash: hash("1"),
+      result_hash: hash("2"),
+      row_count: rows.length,
+      byte_count: 1,
+      elapsed_ms: 42,
+      truncated: false,
+    },
+    projection: {
+      kind: "TABLE",
+      columns: spec.columns.map((column) => ({
+        key: column.name,
+        label: column.name,
+        data_type: column.kind === "FLOAT64" ? ("NUMBER" as const) : ("STRING" as const),
+      })),
+      rows,
+      total_rows: rows.length,
+    },
+    committed_at: "2026-08-24T00:00:01.000Z",
+  });
+  return { sql, evidence };
+}
+
+async function createPort(
+  input: {
+    readonly rows?: ReturnType<typeof fixtureRows>;
+    readonly omit_sql?: boolean;
+    readonly omit_evidence?: boolean;
+  } = {},
+) {
+  const { sql, evidence } = await documents(input.rows);
+  const stored: ProductTeamArtifactDocument[] = [
+    ...(input.omit_sql ? [] : [sql]),
+    ...(input.omit_evidence ? [] : [evidence]),
+  ];
+  const materialize = vi.fn(
+    async (command): Promise<GovernedAnalysisInput> => ({
+      name: command.input_name,
+      format: "ARROW",
+      query_evidence_ref: command.query_evidence_ref,
+      query_evidence_document: evidence,
+      input_ref: inputRef,
+      materialization_receipt_ref: materializationReceiptRef,
+      materialization_receipt_document: {},
+      content: command.content,
+    }),
+  );
+  const resolveCommitted = vi.fn(async (_capability, reference: ArtifactReference) => ({
+    ok: true as const,
+    value:
+      stored.find(
+        ({ artifact_ref: artifactRef }) =>
+          artifactReferenceIdentity(artifactRef) === artifactReferenceIdentity(reference),
+      ) ?? null,
+  }));
+  return {
+    evidence,
+    materialize,
+    resolveCommitted,
+    port: createFalcon24GovernedAnalysisQueryPort({
+      query_evidence_ref: evidence.artifact_ref as ArtifactReference & {
+        artifact_type: "QueryEvidence";
       },
-    };
-    const issue = vi.fn(async (input) => {
-      expect(input.spec_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
-      expect(input.data_oracle_receipt).toBe(dataOracleReceipt);
-      expect(input.rows).toHaveLength(4_612);
-      expect(input.execution_started_at).toBe("2026-08-24T00:00:00.000Z");
-      expect(input.execution_completed_at).toBe("2026-08-24T00:00:00.010Z");
-      expect(input.statement_timeout_ms).toBe(120_000);
-      return {
-        query_evidence_ref: typedQueryEvidenceRef,
-        query_evidence_document: { strict: true },
-      };
-    });
-    const materialize = vi.fn(async (input): Promise<GovernedAnalysisInput> => {
-      expect(input.spec_hash).toMatch(/^sha256:[0-9a-f]{64}$/u);
-      expect(input.snapshot_receipt_hash).toBe(dataOracleReceipt.receipt_hash);
-      expect(input.row_count).toBe(4_612);
-      expect(input.ordered_columns).toEqual(
-        FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"].columns.map(
-          ({ name }) => name,
-        ),
-      );
-      expect(tableFromIPC(input.content).numRows).toBe(4_612);
-      return {
-        name: input.input_name,
-        format: "ARROW",
-        query_evidence_ref: input.query_evidence_ref,
-        query_evidence_document: input.query_evidence_document,
-        input_ref: inputRef,
-        materialization_receipt_ref: materializationReceiptRef,
-        materialization_receipt_document: {},
-        content: input.content,
-      };
-    });
-    const port = createFalcon24GovernedAnalysisQueryPort({
-      pool: { connect: async () => client } satisfies SqlPool,
+      artifact_authority: { resolveCommitted },
+      artifact_capability: { authority: "application" },
       snapshot_authority: { inspect: async () => dataOracleReceipt },
-      evidence_authority: { issue },
       materializer: { materialize },
-      now: (() => {
-        const values = [new Date("2026-08-24T00:00:00.000Z"), new Date("2026-08-24T00:00:00.010Z")];
-        return () => values.shift() ?? new Date("2026-08-24T00:00:00.010Z");
-      })(),
-    });
-    await expect(
-      port.execute({
-        lease,
-        analysis_program_ref: analysisProgramRef,
-        node: node("falcon24-business-review-18m"),
-        idempotency_key: "query-1",
-        max_rows: 5_000,
-        timeout_ms: 120_000,
-      }),
-    ).resolves.toEqual([
+    }),
+  };
+}
+
+const request = {
+  lease,
+  analysis_program_ref: analysisProgramRef,
+  node: node("falcon24-business-review-18m"),
+  idempotency_key: "query-1",
+  max_rows: 5_000,
+  timeout_ms: 120_000,
+};
+
+describe("Falcon24 governed query port", () => {
+  it("materializes the authoritative accepted QueryEvidence without querying or replacing it", async () => {
+    const harness = await createPort();
+    await expect(harness.port.execute(request)).resolves.toEqual([
       expect.objectContaining({ name: "falcon24_business_review", format: "ARROW" }),
     ]);
-    expect(statements[0]).toBe("begin transaction isolation level repeatable read read only");
-    expect(statements[1]).toBe("set local statement_timeout = 120000");
-    expect(statements[2]).toBe(FALCON24_ANALYSIS_QUERY_SPECS["falcon24-business-review-18m"].sql);
-    expect(statements[3]).toBe("commit");
-    expect(materialize).toHaveBeenCalledOnce();
-    expect(issue).toHaveBeenCalledOnce();
-    expect(released).toBe(true);
+    expect(harness.resolveCommitted).toHaveBeenCalledTimes(2);
+    expect(harness.materialize).toHaveBeenCalledWith(
+      expect.objectContaining({ query_evidence_ref: harness.evidence.artifact_ref }),
+    );
+    const materialization = harness.materialize.mock.calls[0]?.[0];
+    expect(tableFromIPC(materialization?.content).numRows).toBe(4_612);
   });
 
-  it("rejects unknown cases and budgets before opening a transaction", async () => {
-    const connect = vi.fn();
-    const port = createFalcon24GovernedAnalysisQueryPort({
-      pool: { connect } as SqlPool,
-      snapshot_authority: { inspect: async () => dataOracleReceipt },
-      evidence_authority: { issue: vi.fn() },
-      materializer: { materialize: vi.fn() },
-    });
-    await expect(
-      port.execute({
-        lease,
-        analysis_program_ref: analysisProgramRef,
-        node: node("falcon24-business-review-18m"),
-        idempotency_key: "query-2",
-        max_rows: 4_611,
-        timeout_ms: 120_000,
-      }),
-    ).rejects.toThrow("FALCON24_QUERY_ROW_BUDGET_EXCEEDED");
-    await expect(
-      port.execute({
-        lease,
-        analysis_program_ref: analysisProgramRef,
-        node: { node_id: "unregistered" } as never,
-        idempotency_key: "query-3",
-        max_rows: 5_000,
-        timeout_ms: 120_000,
-      }),
-    ).rejects.toThrow("FALCON24_QUERY_CASE_NOT_REGISTERED");
-    expect(connect).not.toHaveBeenCalled();
+  it("fails closed when accepted QueryEvidence is not persisted", async () => {
+    const harness = await createPort({ omit_evidence: true });
+    await expect(harness.port.execute(request)).rejects.toThrow(
+      "FALCON24_QUERY_EVIDENCE_AUTHORITY_RESOLUTION_INVALID",
+    );
+    expect(harness.materialize).not.toHaveBeenCalled();
   });
 
-  it("rolls back and commits no evidence when the row contract drifts", async () => {
-    const statements: string[] = [];
-    const client: SqlClient = {
-      async query<Row extends object = Record<string, unknown>>(text: string) {
-        statements.push(text);
-        return { rows: [] as Row[], rowCount: 0 };
-      },
-      release() {},
-    };
-    const materialize = vi.fn();
-    const issue = vi.fn();
-    const port = createFalcon24GovernedAnalysisQueryPort({
-      pool: { connect: async () => client },
-      snapshot_authority: { inspect: async () => dataOracleReceipt },
-      evidence_authority: { issue },
-      materializer: { materialize },
-    });
-    await expect(
-      port.execute({
-        lease,
-        analysis_program_ref: analysisProgramRef,
-        node: node("falcon24-business-review-18m"),
-        idempotency_key: "query-4",
-        max_rows: 5_000,
-        timeout_ms: 120_000,
-      }),
-    ).rejects.toThrow("FALCON24_QUERY_ROW_BUDGET_INVALID");
-    expect(statements.at(-1)).toBe("rollback");
-    expect(materialize).not.toHaveBeenCalled();
-    expect(issue).not.toHaveBeenCalled();
+  it("fails closed when the exact SqlArtifact lineage source is missing", async () => {
+    const harness = await createPort({ omit_sql: true });
+    await expect(harness.port.execute(request)).rejects.toThrow(
+      "FALCON24_SQL_ARTIFACT_AUTHORITY_RESOLUTION_INVALID",
+    );
+    expect(harness.materialize).not.toHaveBeenCalled();
+  });
+
+  it("rejects row-shape drift and insufficient row budgets before materialization", async () => {
+    const drifted = await createPort({ rows: [] });
+    await expect(drifted.port.execute(request)).rejects.toThrow(
+      "ANALYSIS_INPUT_QUERY_EVIDENCE_INVALID",
+    );
+    const valid = await createPort();
+    await expect(valid.port.execute({ ...request, max_rows: 4_611 })).rejects.toThrow(
+      "FALCON24_QUERY_ROW_BUDGET_EXCEEDED",
+    );
   });
 });

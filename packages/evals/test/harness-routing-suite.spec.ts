@@ -24,12 +24,13 @@ function delegation(profileId: string): RootAgentDecisionCandidate {
     catalog_snapshot_hash: catalogHash,
     tool_calls: [
       {
-        tool_name: "delegate_to_subagent@1",
+        tool_name: "delegate_to_subagent@2",
         tool_call_id: `call-${profileId}`,
         profile_id: profileId,
         objective: "Use governed evidence to answer the visible user request.",
         requested_artifact_types: ["AnalysisReport"],
         input_artifact_refs: [],
+        upstream_accepted_output: null,
         requested_budget: {
           timeout_ms: 30_000,
           max_steps: 8,

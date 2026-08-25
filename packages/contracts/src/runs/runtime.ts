@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentSpecialistProfileIdSchema } from "../agents/profile-registry.js";
+import { agentProfileIdSchema } from "../agents/subagent-discovery.js";
 import { type ArtifactReference, artifactReferenceSchema } from "../artifacts/envelope.js";
 import {
   type AppScope,
@@ -144,7 +144,7 @@ const runToolFailedEventSchema = z.strictObject({
 });
 
 const toolAgentIdentityFields = {
-  profile_id: agentSpecialistProfileIdSchema.nullable(),
+  profile_id: agentProfileIdSchema.nullable(),
   task_id: immutableIdSchema.nullable(),
 } as const;
 
@@ -209,7 +209,7 @@ const runAgentStatusEventSchema = z.strictObject({
   ...runtimeEventV2Fields,
   event_type: z.literal("run.agent_status"),
   payload: z.strictObject({
-    profile_id: agentSpecialistProfileIdSchema,
+    profile_id: agentProfileIdSchema,
     task_id: immutableIdSchema.nullable(),
     status: runAgentStatusSchema,
     phase: runtimeIdentifierSchema,

@@ -44,6 +44,19 @@ const metricRef = { container_ref: semanticReleaseRef, node_id: "gross_profit" }
 const trendOperatorObligation = {
   call_id: "trend_fit",
   operator_id: "robust-trend.theil-sen-slope@1",
+  input_lineage_bindings: [
+    {
+      lineage_kind: "GOVERNED_INPUT_EXACT",
+      operator_input_name: "series",
+      governed_input_name: "trend_series",
+      row_mode: "ALL_ROWS_EXACT",
+      field_sources: [
+        { operator_field: "label", governed_column: "label" },
+        { operator_field: "x", governed_column: "x" },
+        { operator_field: "y", governed_column: "y" },
+      ],
+    },
+  ],
   result_binding: {
     result_output_name: "result",
     result_collection_path: "/method_evidence/trends",

@@ -1,8 +1,12 @@
 import {
+  buildArtifactWorkspaceChartDocumentV2,
+  buildArtifactWorkspaceChartDocumentV3,
   buildProductTeamArtifactDocument,
   computeL2ArtifactContentHash,
+  computeL2ResearchEnvelopeContentHash,
   computeSqlArtifactQueryHash,
   l2ArtifactDocumentSchema,
+  parseL2ResearchDocumentCandidate,
   runRuntimeEventSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
@@ -231,6 +235,339 @@ async function productTeamSqlArtifactRow() {
   };
 }
 
+async function productTeamQueryEvidenceRow(
+  sql: Awaited<ReturnType<typeof productTeamSqlArtifactRow>>,
+) {
+  const sqlReference = sql.document_json.artifact_ref;
+  const document = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: {
+      artifact_id: id(33),
+      artifact_type: "QueryEvidence",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "governed-text2sql-agent",
+    task_id: ids.attempt,
+    source_refs: [sqlReference],
+    provenance: {
+      kind: "GOVERNED_QUERY_RESULT",
+      query_id: id(34),
+      request_hash: hash("7"),
+      result_hash: hash("8"),
+      row_count: 1,
+      byte_count: 64,
+      elapsed_ms: 12,
+      truncated: false,
+    },
+    projection: {
+      kind: "TABLE",
+      columns: [{ key: "order_count", label: "订单量", data_type: "NUMBER" }],
+      rows: [{ order_count: 42 }],
+      total_rows: 1,
+    },
+    committed_at: occurredAt,
+  });
+  return {
+    artifact_id: document.artifact_ref.artifact_id,
+    artifact_type: document.artifact_ref.artifact_type,
+    revision: document.artifact_ref.revision,
+    content_hash: document.artifact_ref.content_hash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
+async function productTeamChartRow(
+  evidence: Awaited<ReturnType<typeof productTeamQueryEvidenceRow>>,
+) {
+  const document = await buildArtifactWorkspaceChartDocumentV2({
+    schema_version: "artifact-workspace-chart-document@2.0.0",
+    document_ref: {
+      artifact_id: id(35),
+      artifact_type: "ArtifactWorkspaceDocument",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    source_refs: [evidence.document_json.artifact_ref],
+    provenance: {
+      transform_version: "query-evidence-chart@1.0.0",
+      dataset_hash: hash("0"),
+      semantic_context: {
+        package_id: id(36),
+        package_hash: hash("1"),
+        receipt_id: id(37),
+        receipt_hash: hash("2"),
+      },
+    },
+    projection: {
+      kind: "CHART",
+      chart_type: "BAR",
+      title: "订单量",
+      description: "由 QueryEvidence 确定性派生",
+      unit: null,
+      x_key: "month",
+      y_keys: ["order_count"],
+      legend: { visible: false },
+      table: {
+        kind: "TABLE",
+        columns: [
+          { key: "month", label: "月份", data_type: "STRING" },
+          { key: "order_count", label: "订单量", data_type: "NUMBER" },
+        ],
+        rows: [
+          { month: "2026-07", order_count: 40 },
+          { month: "2026-08", order_count: 42 },
+        ],
+        total_rows: 2,
+      },
+    },
+  });
+  return {
+    artifact_id: document.document_ref.artifact_id,
+    artifact_type: document.document_ref.artifact_type,
+    revision: document.document_ref.revision,
+    content_hash: document.document_ref.content_hash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
+const derivedEvidenceRef = {
+  artifact_id: id(38),
+  artifact_type: "DerivedAnalysisEvidence" as const,
+  ...scope,
+  run_id: ids.run,
+  revision: 1,
+  content_hash: hash("3"),
+};
+
+async function falcon24AnalysisChartRow(
+  evidence: Awaited<ReturnType<typeof productTeamQueryEvidenceRow>>,
+) {
+  const document = await buildArtifactWorkspaceChartDocumentV3({
+    schema_version: "artifact-workspace-chart-document@3.0.0",
+    document_ref: {
+      artifact_id: id(39),
+      artifact_type: "ArtifactWorkspaceDocument",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    source_refs: {
+      query_evidence_refs: [evidence.document_json.artifact_ref],
+      derived_evidence_ref: derivedEvidenceRef,
+    },
+    provenance: {
+      transform_version: "derived-analysis-chart@1.0.0",
+      dataset_hash: hash("0"),
+      semantic_context: {
+        package_id: id(40),
+        package_hash: hash("4"),
+        receipt_id: id(41),
+        receipt_hash: hash("5"),
+      },
+      algorithm_version: "falcon24-analysis-chart@1.0.0",
+      parameter_hash: hash("6"),
+      input_closure_hash: hash("7"),
+      runtime_profile: "CORE_ANALYSIS",
+      agent_image: "data-agent-analysis:fixture",
+      operator_image: "data-agent-statistical-operators:fixture",
+    },
+    projection: {
+      kind: "CHART",
+      chart_type: "BAR",
+      title: "经营表现",
+      description: "治理分析结果",
+      unit: null,
+      x_key: "month",
+      y_keys: ["revenue"],
+      lower_bound_key: null,
+      upper_bound_key: null,
+      series_key: null,
+      legend: { visible: false },
+      evidence_level: "L4_DISCOVERY",
+      table: {
+        kind: "TABLE",
+        columns: [
+          { key: "month", label: "月份", data_type: "STRING" },
+          { key: "revenue", label: "收入", data_type: "NUMBER" },
+        ],
+        rows: [
+          { month: "2026-07", revenue: 120 },
+          { month: "2026-08", revenue: 110 },
+        ],
+        total_rows: 2,
+      },
+    },
+  });
+  return {
+    artifact_id: document.document_ref.artifact_id,
+    artifact_type: document.document_ref.artifact_type,
+    revision: document.document_ref.revision,
+    content_hash: document.document_ref.content_hash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
+async function falcon24AnalysisReportRow(
+  chart: Awaited<ReturnType<typeof falcon24AnalysisChartRow>>,
+) {
+  const document = await buildProductTeamArtifactDocument({
+    schema_version: "product-team-artifact@2.0.0",
+    artifact_ref: {
+      artifact_id: id(42),
+      artifact_type: "AnalysisReport",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("0"),
+    },
+    profile_id: "governed-analysis-agent",
+    task_id: ids.attempt,
+    source_refs: [derivedEvidenceRef, chart.document_json.document_ref],
+    provenance: null,
+    projection: {
+      kind: "REPORT",
+      title: "经营表现复盘",
+      sections: [
+        {
+          heading: "结论",
+          body_text: "收入下降月份已定位，并附同源数据图表。",
+          source_refs: [derivedEvidenceRef, chart.document_json.document_ref],
+        },
+      ],
+    },
+    committed_at: occurredAt,
+  });
+  return {
+    artifact_id: document.artifact_ref.artifact_id,
+    artifact_type: document.artifact_ref.artifact_type,
+    revision: document.artifact_ref.revision,
+    content_hash: document.artifact_ref.content_hash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
+async function researchQueryEvidenceRow() {
+  const reference = <T extends string>(artifactType: T, suffix: number) => ({
+    artifact_id: id(suffix),
+    artifact_type: artifactType,
+    ...scope,
+    run_id: ids.run,
+    revision: 1,
+    content_hash: hash(String(suffix % 10)),
+  });
+  const evidencePlanRef = reference("EvidencePlan", 20);
+  const obligationExecutionDecisionRef = reference("ObligationExecutionDecision", 21);
+  const queryContractRef = reference("QueryContract", 22);
+  const sqlArtifactRef = reference("SqlArtifact", 23);
+  const validationReceiptRef = reference("ValidationReceipt", 24);
+  const executionReceiptRef = reference("ExecutionReceipt", 25);
+  const sandboxExecutionReceiptRef = reference("SandboxExecutionReceipt", 26);
+  const sandboxResultRef = reference("SandboxResult", 27);
+  const semanticReleaseRef = reference("SemanticRelease", 28);
+  const schemaSnapshotRef = reference("SchemaSnapshot", 29);
+  const policyReceiptRef = reference("PolicyReceipt", 30);
+  const payload = {
+    artifact_type: "QueryEvidence" as const,
+    protocol_version: "query-evidence@2.0.0" as const,
+    obligation_ref: {
+      container_ref: evidencePlanRef,
+      node_id: "monthly-revenue-query",
+    },
+    obligation_execution_decision_ref: obligationExecutionDecisionRef,
+    query_contract_ref: queryContractRef,
+    sql_artifact_ref: sqlArtifactRef,
+    validation_receipt_ref: validationReceiptRef,
+    execution_receipt_ref: executionReceiptRef,
+    sandbox_execution_receipt_ref: sandboxExecutionReceiptRef,
+    sandbox_result_ref: sandboxResultRef,
+    dependency_evidence_refs: [],
+    provenance_group: `sandbox:${"1".repeat(64)}`,
+    observed_version: {
+      semantic_release_ref: semanticReleaseRef,
+      schema_snapshot_ref: schemaSnapshotRef,
+      data_snapshot: {
+        protocol_version: "data-snapshot-binding@1.0.0" as const,
+        datasource_id: id(31),
+        strategy: "CONTROLLED_REVISION" as const,
+        replay_state: "REPLAYABLE" as const,
+        snapshot_token: "falcon24-fixed-snapshot",
+        data_manifest_hash: hash("1"),
+        schema_manifest_hash: hash("2"),
+        fixture_manifest_hash: hash("3"),
+        binding_hash: hash("4"),
+      },
+      policy_receipt_ref: policyReceiptRef,
+      identity_binding: {
+        principal_id: ids.principal,
+        authority_epoch: 1,
+        delegation_chain_hash: hash("5"),
+      },
+    },
+    observation: {
+      result_hash: sandboxResultRef.content_hash,
+      row_count: 18,
+      schema_hash: hash("6"),
+    },
+  };
+  const inputRefs = [
+    evidencePlanRef,
+    obligationExecutionDecisionRef,
+    queryContractRef,
+    sqlArtifactRef,
+    validationReceiptRef,
+    executionReceiptRef,
+    sandboxExecutionReceiptRef,
+    sandboxResultRef,
+    semanticReleaseRef,
+    schemaSnapshotRef,
+    policyReceiptRef,
+  ];
+  const draft = parseL2ResearchDocumentCandidate({
+    envelope: {
+      artifact_id: id(32),
+      artifact_type: "QueryEvidence",
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      parent_ref: null,
+      attempt_id: ids.attempt,
+      producer: { kind: "deterministic", id: "falcon24-query-evidence-authority@1" },
+      input_refs: inputRefs,
+      schema_version: "2.0.0",
+      semantic_version: "1.0.0",
+      policy_version: "falcon24-analysis-policy@1.0.0",
+      model_profile_version: "deepseek-v4-flash@1.0.0",
+      content_hash: hash("0"),
+      status: "COMMITTED",
+      created_at: occurredAt,
+    },
+    payload,
+  });
+  const contentHash = await computeL2ResearchEnvelopeContentHash(draft);
+  const document = parseL2ResearchDocumentCandidate({
+    ...draft,
+    envelope: { ...draft.envelope, content_hash: contentHash },
+  });
+  return {
+    artifact_id: document.envelope.artifact_id,
+    artifact_type: document.envelope.artifact_type,
+    revision: document.envelope.revision,
+    content_hash: contentHash,
+    document_json: document,
+    created_at: occurredAt,
+  };
+}
+
 describe("PostgreSQL Resolution Trace projector", () => {
   it("resolves the current attempt from ACTIVE run_attempts authority", async () => {
     const row = await eventRow();
@@ -371,6 +708,70 @@ describe("PostgreSQL Resolution Trace projector", () => {
     expect(result).toMatchObject({ ok: true, value: null });
   });
 
+  it("fails closed when a public Tool event references a missing Artifact revision", async () => {
+    const missingReference = {
+      artifact_id: id(998),
+      artifact_type: "QueryEvidence" as const,
+      ...scope,
+      run_id: ids.run,
+      revision: 1,
+      content_hash: hash("9"),
+    };
+    const event = runRuntimeEventSchema.parse({
+      schema_version: "run-runtime-event@2.0.0",
+      event_id: ids.event,
+      scope,
+      run_id: ids.run,
+      sequence: 1,
+      worker_fence: 1,
+      idempotency_key: `event:${ids.event}`,
+      occurred_at: occurredAt,
+      event_type: "run.tool_completed",
+      payload: {
+        call_id: "call-missing-artifact",
+        tool_name: "sql.sandbox.execute",
+        profile_id: "governed-text2sql-agent",
+        task_id: ids.attempt,
+        summary: "查询完成",
+        output: null,
+        duration_ms: 20,
+        artifact_refs: [missingReference],
+      },
+    });
+    const row = {
+      app_id: scope.app_id,
+      tenant_id: scope.tenant_id,
+      environment: scope.environment,
+      event_id: event.event_id,
+      run_id: event.run_id,
+      sequence: event.sequence,
+      event_type: event.event_type,
+      payload_json: event.payload,
+      worker_fence: event.worker_fence,
+      dedupe_key: event.idempotency_key,
+      event_hash: await sha256ContentHash(event),
+      event_document: event,
+      created_at: event.occurred_at,
+    };
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts")) {
+        return { rows: [], rowCount: 0 };
+      }
+      return undefined;
+    });
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING" },
+    });
+  });
+
   it("projects verified Product Team artifacts without requiring a legacy L2 envelope", async () => {
     const row = await eventRow();
     const sql = await productTeamSqlArtifactRow();
@@ -408,6 +809,212 @@ describe("PostgreSQL Resolution Trace projector", () => {
     expect(detail.ok && detail.value?.payload).toMatchObject({
       state: "AVAILABLE",
       text: "select count(*) from orders",
+    });
+  });
+
+  it("projects the committed Product Team SqlArtifact to QueryEvidence evidence edge", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts")) {
+        return { rows: [{}], rowCount: 1 };
+      }
+      if (text.includes("from artifacts")) return { rows: [sql, evidence], rowCount: 2 };
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    const sqlNodeId = `artifact:${sql.artifact_id}:${sql.revision}`;
+    const evidenceNodeId = `artifact:${evidence.artifact_id}:${evidence.revision}`;
+    expect(result.ok && result.value?.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ node_id: sqlNodeId, status: "AVAILABLE" }),
+        expect.objectContaining({ node_id: evidenceNodeId, status: "AVAILABLE" }),
+      ]),
+    );
+    expect(result.ok && result.value?.edges).toEqual(
+      expect.arrayContaining([
+        { from_node_id: sqlNodeId, to_node_id: evidenceNodeId, kind: "EVIDENCE" },
+      ]),
+    );
+  });
+
+  it("verifies and projects QueryEvidence to Chart lineage with content-first detail", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const chart = await productTeamChartRow(evidence);
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts")) {
+        return { rows: [{}], rowCount: 1 };
+      }
+      if (text.includes("from artifacts")) return { rows: [sql, evidence, chart], rowCount: 3 };
+      return undefined;
+    });
+    const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+    const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    const evidenceNodeId = `artifact:${evidence.artifact_id}:${evidence.revision}`;
+    const chartNodeId = `artifact:${chart.artifact_id}:${chart.revision}`;
+    expect(trace.ok && trace.value?.edges).toEqual(
+      expect.arrayContaining([
+        { from_node_id: evidenceNodeId, to_node_id: chartNodeId, kind: "EVIDENCE" },
+      ]),
+    );
+    expect(trace.ok && trace.value?.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          node_id: chartNodeId,
+          kind: "ARTIFACT",
+          title: "ArtifactWorkspaceDocument",
+          status: "AVAILABLE",
+        }),
+      ]),
+    );
+    const detail = await projector.loadDetail(capability, {
+      scope,
+      run_id: ids.run,
+      node_id: chartNodeId,
+    });
+    expect(detail.ok && detail.value).toMatchObject({
+      payload: { state: "AVAILABLE" },
+      result: { state: "AVAILABLE" },
+      schema: {
+        state: "AVAILABLE",
+        schema_name: "artifact-workspace-chart-document",
+        schema_version: "artifact-workspace-chart-document@2.0.0",
+      },
+    });
+  });
+
+  it("projects the Falcon24 V3 QueryEvidence to Chart to AnalysisReport authority chain", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const chart = await falcon24AnalysisChartRow(evidence);
+    const report = await falcon24AnalysisReportRow(chart);
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts")) {
+        return { rows: [{}], rowCount: 1 };
+      }
+      if (text.includes("from artifacts")) {
+        return { rows: [sql, evidence, chart, report], rowCount: 4 };
+      }
+      return undefined;
+    });
+    const projector = createPostgresResolutionTraceProjector({ pool, authorizer });
+    const trace = await projector.loadTrace(capability, { scope, run_id: ids.run });
+    const sqlNodeId = `artifact:${sql.artifact_id}:${sql.revision}`;
+    const evidenceNodeId = `artifact:${evidence.artifact_id}:${evidence.revision}`;
+    const chartNodeId = `artifact:${chart.artifact_id}:${chart.revision}`;
+    const reportNodeId = `artifact:${report.artifact_id}:${report.revision}`;
+    expect(trace.ok && trace.value?.edges).toEqual(
+      expect.arrayContaining([
+        { from_node_id: sqlNodeId, to_node_id: evidenceNodeId, kind: "EVIDENCE" },
+        { from_node_id: evidenceNodeId, to_node_id: chartNodeId, kind: "EVIDENCE" },
+        { from_node_id: chartNodeId, to_node_id: reportNodeId, kind: "EVIDENCE" },
+      ]),
+    );
+    const chartDetail = await projector.loadDetail(capability, {
+      scope,
+      run_id: ids.run,
+      node_id: chartNodeId,
+    });
+    const reportDetail = await projector.loadDetail(capability, {
+      scope,
+      run_id: ids.run,
+      node_id: reportNodeId,
+    });
+    expect(chartDetail.ok && chartDetail.value?.schema).toMatchObject({
+      state: "AVAILABLE",
+      schema_name: "artifact-workspace-chart-document",
+      schema_version: "artifact-workspace-chart-document@3.0.0",
+    });
+    expect(reportDetail.ok && reportDetail.value?.schema).toMatchObject({
+      state: "AVAILABLE",
+      schema_name: "product-team-artifact",
+      schema_version: "product-team-artifact@2.0.0",
+    });
+  });
+
+  it("fails closed when persisted DerivedAnalysisEvidence document/hash is corrupt", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const chart = await falcon24AnalysisChartRow(evidence);
+    const report = await falcon24AnalysisReportRow(chart);
+    const corruptDerivedEvidence = {
+      artifact_id: derivedEvidenceRef.artifact_id,
+      artifact_type: derivedEvidenceRef.artifact_type,
+      revision: derivedEvidenceRef.revision,
+      content_hash: derivedEvidenceRef.content_hash,
+      document_json: {},
+      created_at: occurredAt,
+    };
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts")) {
+        return { rows: [{}], rowCount: 1 };
+      }
+      if (text.includes("from artifacts")) {
+        return {
+          rows: [sql, evidence, corruptDerivedEvidence, chart, report],
+          rowCount: 5,
+        };
+      }
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
+    });
+  });
+
+  it("fails closed when a Research L2 QueryEvidence source ref is missing", async () => {
+    const row = await eventRow();
+    const evidence = await researchQueryEvidenceRow();
+    const { capability, authorizer } = issueCapability();
+    const { pool, calls } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("select 1") && text.includes("from artifacts")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (text.includes("from artifacts")) return { rows: [evidence], rowCount: 1 };
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+
+    expect(
+      calls.some(({ text }) => text.includes("select 1") && text.includes("from artifacts")),
+    ).toBe(true);
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING" },
     });
   });
 

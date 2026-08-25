@@ -58,6 +58,17 @@ function retryableReason(code: string): boolean {
   );
 }
 
+function shouldRetryProviderCall(input: {
+  readonly first_ok: boolean;
+  readonly retryable: boolean;
+  readonly signal_aborted: boolean;
+  readonly max_attempts_per_call: 1 | 2;
+}): boolean {
+  return (
+    !input.first_ok && input.retryable && !input.signal_aborted && input.max_attempts_per_call > 1
+  );
+}
+
 function providerFailureCode(error: unknown): string {
   if (
     error !== null &&
@@ -117,7 +128,9 @@ export function createDirectRunBoundProviderDispatcher(input: {
   readonly runs: DirectRunReader;
   readonly capability: unknown;
   readonly environment: NodeJS.ProcessEnv;
+  readonly max_attempts_per_call?: 1 | 2;
 }): RunBoundProviderDispatcher {
+  const maxAttemptsPerCall = input.max_attempts_per_call ?? 2;
   const schemas = new ServerModelResponseSchemaRegistry([
     { response_schema_version: DIRECT_QA_RESPONSE_SCHEMA_VERSION, schema: directAnswerSchema },
     {
@@ -534,7 +547,15 @@ export function createDirectRunBoundProviderDispatcher(input: {
       };
 
       const first = await invokeOnce();
-      if (first.ok || !first.error.retryable || signal.aborted) return first;
+      if (
+        !shouldRetryProviderCall({
+          first_ok: first.ok,
+          retryable: first.ok ? false : first.error.retryable,
+          signal_aborted: signal.aborted,
+          max_attempts_per_call: maxAttemptsPerCall,
+        })
+      )
+        return first;
       return invokeOnce();
     },
   });
@@ -543,5 +564,6 @@ export function createDirectRunBoundProviderDispatcher(input: {
 export const directRunBoundProviderDispatcherInternals = Object.freeze({
   projectToolCallCandidate,
   retryableReason,
+  shouldRetryProviderCall,
   validAnalysisToolAllowlist,
 });

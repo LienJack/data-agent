@@ -34,6 +34,7 @@ import type {
   AnalysisToolValidationIssue,
 } from "./deepseek-analysis-agent.js";
 import type { ProviderInvocationResourceRef } from "./executor.js";
+import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
 import type {
   GovernedResultBridge,
   RecoveredGovernedOperatorResult,
@@ -45,6 +46,8 @@ import {
   prepareAnalysisResult,
   stagePreparedAnalysisResult,
 } from "./result-publisher.js";
+import { verifyStatisticalOperatorInputLineage } from "./statistical-operator-input-lineage.js";
+import { preflightStatisticalOperatorArguments } from "./statistical-operator-input-preflight.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -474,6 +477,13 @@ type PublishRepairContract = Readonly<{
 }>;
 
 function publishRepairInstruction(code: string, contract: PublishRepairContract): string {
+  if (code === "ANALYSIS_RESULT_MAPPING_TYPE_UNSUPPORTED") {
+    return [
+      "Repair only the result symbol named by publish_analysis_result.result_symbol.",
+      "Rebuild it as an exact built-in Python dict; pandas Series/DataFrame, numpy records, defaultdict, dataclass, and other mapping-like values are not accepted.",
+      "Convert every nested value to dict, list, str, bool, built-in int, finite built-in float, or None, then publish the same bindings again.",
+    ].join(" ");
+  }
   if (code !== "ANALYSIS_RESULT_TEXT_POLICY_MISMATCH") {
     return "Repair only the referenced Python symbols or publish bindings.";
   }
@@ -579,9 +589,11 @@ export async function executeAnalysisToolLoop(input: {
   readonly runtime_profile: AnalysisSandboxProfile;
   readonly result_contract: AnalysisResultContract;
   readonly operator_obligations: readonly StatisticalOperatorObligation[];
+  readonly governed_inputs: readonly GovernedAnalysisInput[];
   readonly operator_argument_extractor: AnalysisOperatorArgumentExtractorPort;
   readonly governed_result_bridge: GovernedResultBridge;
   readonly recovered_operator_results?: readonly RecoveredGovernedOperatorResult[];
+  readonly repair_budget_per_category?: 0 | 1;
   readonly stage: AnalysisResultAtomicStagePort;
   readonly initial_messages: ModelProviderRequest["messages"];
   readonly model: AnalysisAgentModelPort;
@@ -610,6 +622,9 @@ export async function executeAnalysisToolLoop(input: {
     ...recoveredState.observations,
   ];
   const operatorRequests: unknown[] = [...recoveredState.requests];
+  // Deliberately live-only. Recovered receipts do not contain protected raw
+  // output, so downstream OPERATOR_RESULT_EXACT obligations fail closed.
+  const protectedOperatorOutputs = new Map<string, unknown>();
   const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
   const seenCellIds = new Set<string>();
   const signatureProgress = new Map<string, number>();
@@ -621,6 +636,7 @@ export async function executeAnalysisToolLoop(input: {
     CELL_POLICY: 0,
     PUBLISH_SYMBOL_CONTRACT: 0,
   };
+  const repairBudgetPerCategory = input.repair_budget_per_category ?? 1;
   const stateSequence: AnalysisToolLoopState[] = ["ANALYZE"];
   let state: AnalysisToolLoopState = "ANALYZE";
   let successfulPythonCells = 0;
@@ -706,6 +722,14 @@ export async function executeAnalysisToolLoop(input: {
       readonly policy_violation_codes?: readonly string[];
     } = {},
   ) => {
+    if (repairBudgetPerCategory === 0) {
+      progress(turnIndex, toolName, outcome, {
+        repair_category: category,
+        failure_code: code,
+        ...diagnostics,
+      });
+      throw new TypeError(`ANALYSIS_AGENT_REPAIR_DISABLED_${category}`);
+    }
     if (repairs[category] === 1) {
       progress(turnIndex, toolName, outcome, {
         repair_category: category,
@@ -1054,6 +1078,40 @@ export async function executeAnalysisToolLoop(input: {
         inputs: extractedArguments.inputs,
         parameters: extractedArguments.parameters,
       } as const;
+      const preflightIssue =
+        preflightStatisticalOperatorArguments({
+          operator_id: obligation.operator_id,
+          inputs: extractedArguments.inputs,
+          parameters: extractedArguments.parameters,
+        }) ??
+        verifyStatisticalOperatorInputLineage({
+          obligation,
+          inputs: extractedArguments.inputs,
+          governed_inputs: input.governed_inputs,
+          protected_operator_outputs: protectedOperatorOutputs,
+        });
+      if (preflightIssue) {
+        messages.push(
+          ...serverToolMessage({
+            call: turn,
+            result: {
+              schema_version: "analysis-statistical-operator-error@1.0.0",
+              ...preflightIssue,
+              instruction:
+                "Submit a changed Python Cell that rebuilds fresh operator input and parameter symbols. Use only the exact expected_fields for the named record collection and the expected_kind for the named field; preserve recursively JSON-native values, do not reuse the rejected Cell unchanged, and do not probe governed data.",
+            },
+            is_error: true,
+          }),
+        );
+        repair(
+          "CELL_EXECUTION",
+          preflightIssue.code,
+          turnIndex,
+          candidate.tool_name,
+          "CELL_FAILED",
+        );
+        continue;
+      }
       const request = encoder.encode(JSON.stringify(requestDocument));
       await input.governed_result_bridge.recordOperatorIntent({
         call_id: args.call_id,
@@ -1110,6 +1168,7 @@ export async function executeAnalysisToolLoop(input: {
         governed_result: governedResult,
         binding,
       });
+      protectedOperatorOutputs.set(args.call_id, parsed.output);
       operatorRequests.push(requestDocument);
       operatorObservations.push(observation);
       progressEpoch += 1;

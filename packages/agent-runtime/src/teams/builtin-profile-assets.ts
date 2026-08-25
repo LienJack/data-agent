@@ -20,7 +20,7 @@ export const BUILTIN_TEAM_SIGNER_ID = "00000000-0000-4000-8000-000000002001";
 // discovery card, prompt, model binding, workflow, or policy must advance the
 // product revision even when the referenced runtime Profile is unchanged.
 export const BUILTIN_PRODUCT_PROFILE_REVISIONS = Object.freeze({
-  "governed-analysis-agent": 2,
+  "governed-analysis-agent": 3,
   "governed-text2sql-agent": 3,
   "report-writing-agent": 3,
   "semantic-management-agent": 4,
@@ -167,7 +167,7 @@ export const BUILTIN_TEAM_SKILLS: readonly BuiltinSkillDefinition[] = [
     name: "Governed Statistical Analysis",
     profile_id: "governed-analysis-agent",
     capabilities: ["analysis.program.execute"],
-    body: "Execute an approved analysis program from the frozen semantic closure: materialize governed SQL evidence, orchestrate governed statistical operators with sandboxed Python, verify with an independent Oracle, and publish only accepted evidence and charts.",
+    body: "Execute an approved analysis program from the frozen semantic closure and an authoritative accepted QueryEvidence attachment: materialize that exact evidence for Python, orchestrate governed statistical operators, verify with an independent Oracle, and publish only accepted evidence and charts. Never query the datasource or generate replacement QueryEvidence.",
   },
   {
     skill_id: "00000000-0000-4000-8000-000000002101",

@@ -1,4 +1,4 @@
-import { deepFreeze } from "@data-agent/contracts";
+import { deepFreeze } from "@data-agent/contracts/common";
 import { z } from "zod";
 
 const strippedKeywords = new Set(["$schema", "minLength", "maxLength", "minItems", "maxItems"]);

@@ -39,6 +39,10 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
         call_id: "q1_revenue_identity",
         operator_id: "decomposition.product-shapley-exact@1",
       },
+      {
+        call_id: "q1_segment_drivers",
+        operator_id: "decomposition.revenue-segment-drivers@1",
+      },
     ],
     required_disclosures: [],
     required_quality_findings: ["ORDER_TOTAL_ITEM_MISMATCH", "STORED_CUSTOMER_KPI_UNTRUSTED"],
@@ -75,8 +79,12 @@ export const FALCON24_AGENT_ANALYSIS_CASES = Object.freeze([
     ],
     required_operator_calls: [
       {
+        call_id: "q2_low_rating_scenarios",
+        operator_id: "descriptive.delivery-low-rating-scenarios@1",
+      },
+      {
         call_id: "q2_delivery_low_rating",
-        operator_id: "regression.binomial-logit-wald@1",
+        operator_id: "regression.delivery-low-rating-adjusted@1",
       },
     ],
     required_disclosures: ["STATISTICAL_ASSOCIATION_NOT_CAUSATION"],
@@ -390,7 +398,8 @@ export const FALCON24_SEMANTIC_RELEASE_BLUEPRINT = Object.freeze({
     low_rating_rate:
       "COUNT(DISTINCT order_id) FILTER (WHERE rating<=2)/NULLIF(COUNT(DISTINCT order_id),0)",
     marketing_revenue: "SUM(revenue_generated)",
-    marketing_roas: "SUM(revenue_generated)/NULLIF(SUM(spend),0)",
+    marketing_roas:
+      "ROAS=SUM(revenue_generated)/NULLIF(SUM(spend),0); break-even threshold is 1; this is not net ROI=(revenue-spend)/spend",
     marketing_spend: "SUM(spend)",
     new_customers: "COUNT(DISTINCT customer_id)",
     on_time_rate:

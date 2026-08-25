@@ -115,6 +115,9 @@ def test_primary_cohort_grid_retains_zero_order_customers_and_discloses_anomalie
     assert m0["average_delivery_minutes"] == 35
     assert m0["average_rating"] == 3
     assert m0["pre_registration_event_count"] == 1
+    assert m0["pre_registration_customer_count"] == 1
+    assert m0["valid_ordering_customer_count"] == 1
+    assert m0["no_order_customer_count"] == 1
     assert m0["orphan_event_count"] == 1
     assert m0["data_quality_status"] == "HOLD_TEMPORAL_AND_RELATIONSHIP_ANOMALIES"
     assert all(

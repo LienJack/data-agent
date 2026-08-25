@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentSpecialistProfileIdSchema } from "../agents/profile-registry.js";
+import { agentProfileIdSchema } from "../agents/subagent-discovery.js";
 import { artifactReferenceSchema } from "../artifacts/envelope.js";
 import { immutableIdSchema, timestampSchema, versionIdentifierSchema } from "../common/index.js";
 import { modelProviderSchema } from "../providers/index.js";
@@ -200,12 +200,12 @@ const toolV1Payload = z.strictObject({
   error_code: versionIdentifierSchema.nullable(),
 });
 const toolV2Payload = toolV1Payload.extend({
-  profile_id: agentSpecialistProfileIdSchema.nullable(),
+  profile_id: agentProfileIdSchema.nullable(),
   task_id: immutableIdSchema.nullable(),
   artifact_refs: z.array(artifactReferenceSchema).max(32),
 });
 const agentPayload = z.strictObject({
-  profile_id: agentSpecialistProfileIdSchema,
+  profile_id: agentProfileIdSchema,
   task_id: immutableIdSchema.nullable(),
   status: runAgentStatusSchema,
   phase: versionIdentifierSchema,
@@ -259,7 +259,7 @@ export const qaInspectorTargetSchema = z
     z.strictObject({
       kind: z.literal("subagent"),
       run_id: immutableIdSchema,
-      profile_id: agentSpecialistProfileIdSchema,
+      profile_id: agentProfileIdSchema,
       task_id: immutableIdSchema,
       anchor_sequence: z.number().int().positive().safe(),
     }),

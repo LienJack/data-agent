@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   ConnectionConfig,
   type Execution,
@@ -12,6 +12,7 @@ import {
   CodeInterpreter,
   SupportedLanguages,
 } from "@alibaba-group/opensandbox-code-interpreter";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import type { GovernedOperatorResultRef } from "@data-agent/contracts/ports";
 import { z } from "zod";
 import type { AnalysisContextReplayAction } from "../analysis/governed-result-bridge.js";
@@ -160,20 +161,23 @@ export class AnalysisSandboxRuntimeError extends Error {
   }
 }
 
-async function transferSandboxFile<T>(transfer: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt <= FILE_TRANSFER_RETRY_DELAYS_MS.length; attempt += 1) {
+async function transferSandboxFile<T>(
+  transfer: () => Promise<T>,
+  maxAttempts = FILE_TRANSFER_RETRY_DELAYS_MS.length + 1,
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       return await transfer();
     } catch (error) {
       if (error instanceof AnalysisSandboxRuntimeError) throw error;
-      const delay = FILE_TRANSFER_RETRY_DELAYS_MS[attempt];
-      if (delay === undefined) {
+      if (attempt >= maxAttempts) {
         throw new AnalysisSandboxRuntimeError(
           "ANALYSIS_SANDBOX_FILE_TRANSFER_FAILED",
           "FILE_TRANSFER",
           true,
         );
       }
+      const delay = FILE_TRANSFER_RETRY_DELAYS_MS[attempt - 1] ?? 0;
       await new Promise<void>((resolve) => {
         setTimeout(resolve, delay);
       });
@@ -458,7 +462,29 @@ export interface OpenSandboxAnalysisSession {
   close(): Promise<void>;
 }
 
+export interface OpenSandboxManagementReclamationObservation {
+  readonly management_observation_schema_version: "opensandbox-management-reclamation-observation@1.0.0";
+  readonly management_operation_id: string;
+  readonly observation_source: "OPENSANDBOX_MANAGEMENT_API";
+  readonly target_metadata_hash: `sha256:${string}`;
+  readonly before_observation: {
+    readonly active_count: number;
+    readonly observation_hash: `sha256:${string}`;
+  };
+  readonly killed: number;
+  readonly after_observation: {
+    readonly active_count: 0;
+    readonly observation_hash: `sha256:${string}`;
+  };
+  readonly residual: 0;
+  readonly completed_at: string;
+  readonly management_observation_hash: `sha256:${string}`;
+}
+
 export interface OpenSandboxAnalysisRuntime {
+  cleanupRun(input: {
+    readonly run_id: string;
+  }): Promise<OpenSandboxManagementReclamationObservation>;
   cleanupSession(input: { readonly run_id: string; readonly node_id: string }): Promise<{
     readonly killed: number;
     readonly residual: 0;
@@ -572,13 +598,13 @@ const MANAGEMENT_CONFIRMATION_INTERVAL_MS = 100;
 
 function analysisSandboxMetadata(input: {
   readonly run_id: string;
-  readonly node_id: string;
+  readonly node_id?: string;
   readonly role?: "agent" | "operator";
 }): Readonly<Record<string, string>> {
   return Object.freeze({
     ...ANALYSIS_SANDBOX_OWNER_METADATA,
     "run-id": input.run_id,
-    "node-id": input.node_id,
+    ...(input.node_id ? { "node-id": input.node_id } : {}),
     ...(input.role ? { role: input.role } : {}),
   });
 }
@@ -622,12 +648,27 @@ async function purgeManagedSandboxes(input: {
   readonly factory: OpenSandboxSdkFactory;
   readonly connection_config: ConnectionConfig;
   readonly metadata: Readonly<Record<string, string>>;
-}): Promise<number> {
+}): Promise<OpenSandboxManagementReclamationObservation> {
   return withLifecycleManager({
     factory: input.factory,
     connection_config: input.connection_config,
     async action(manager) {
       const initial = activeManagedSandboxes(await manager.list({ metadata: input.metadata }));
+      const managementOperationId = randomUUID();
+      const targetMetadataHash = await sha256ContentHash(input.metadata);
+      const beforeObservation = Object.freeze({
+        active_count: initial.length,
+        observation_hash: await sha256ContentHash(
+          initial
+            .map(({ id, metadata, state, created_at: createdAt }) => ({
+              id,
+              metadata,
+              state,
+              created_at: createdAt.toISOString(),
+            }))
+            .sort((left, right) => left.id.localeCompare(right.id)),
+        ),
+      });
       await Promise.all(initial.map(({ id }) => manager.kill(id)));
       const residual = await waitForManagementPlane(
         async () => activeManagedSandboxes(await manager.list({ metadata: input.metadata })),
@@ -636,7 +677,36 @@ async function purgeManagedSandboxes(input: {
       if (residual.length > 0) {
         throw new AnalysisSandboxRuntimeError("ANALYSIS_SANDBOX_CLEANUP_FAILED", "CLEANUP", true);
       }
-      return initial.length;
+      const completedAt = new Date().toISOString();
+      const afterObservation = Object.freeze({
+        active_count: 0 as const,
+        observation_hash: await sha256ContentHash(
+          residual
+            .map(({ id, metadata, state, created_at: createdAt }) => ({
+              id,
+              metadata,
+              state,
+              created_at: createdAt.toISOString(),
+            }))
+            .sort((left, right) => left.id.localeCompare(right.id)),
+        ),
+      });
+      const observationMaterial = Object.freeze({
+        management_observation_schema_version:
+          "opensandbox-management-reclamation-observation@1.0.0" as const,
+        management_operation_id: managementOperationId,
+        observation_source: "OPENSANDBOX_MANAGEMENT_API" as const,
+        target_metadata_hash: targetMetadataHash,
+        before_observation: beforeObservation,
+        killed: initial.length,
+        after_observation: afterObservation,
+        residual: 0 as const,
+        completed_at: completedAt,
+      });
+      return Object.freeze({
+        ...observationMaterial,
+        management_observation_hash: await sha256ContentHash(observationMaterial),
+      });
     },
   });
 }
@@ -1282,9 +1352,18 @@ async function initializeOperatorSandbox(sandbox: AnalysisSandboxHandle) {
 export function createOpenSandboxAnalysisRuntime(input: {
   readonly config: OpenSandboxAnalysisRuntimeConfig;
   readonly sdk_factory?: OpenSandboxSdkFactory;
+  readonly max_file_transfer_attempts?: number;
 }): OpenSandboxAnalysisRuntime {
   const config = configSchema.parse(input.config);
   const factory = input.sdk_factory ?? defaultSdkFactory;
+  const maxFileTransferAttempts = z
+    .number()
+    .int()
+    .min(1)
+    .max(FILE_TRANSFER_RETRY_DELAYS_MS.length + 1)
+    .parse(input.max_file_transfer_attempts ?? FILE_TRANSFER_RETRY_DELAYS_MS.length + 1);
+  const transferFile = <T>(transfer: () => Promise<T>) =>
+    transferSandboxFile(transfer, maxFileTransferAttempts);
   const connectionConfig = new ConnectionConfig({
     domain: config.domain,
     protocol: config.protocol,
@@ -1294,17 +1373,25 @@ export function createOpenSandboxAnalysisRuntime(input: {
   });
   let activeSessions = 0;
   return Object.freeze({
+    async cleanupRun(cleanupInput: Parameters<OpenSandboxAnalysisRuntime["cleanupRun"]>[0]) {
+      safeSegmentSchema.parse(cleanupInput.run_id);
+      return purgeManagedSandboxes({
+        factory,
+        connection_config: connectionConfig,
+        metadata: analysisSandboxMetadata(cleanupInput),
+      });
+    },
     async cleanupSession(
       cleanupInput: Parameters<OpenSandboxAnalysisRuntime["cleanupSession"]>[0],
     ) {
       safeSegmentSchema.parse(cleanupInput.run_id);
       safeSegmentSchema.parse(cleanupInput.node_id);
-      const killed = await purgeManagedSandboxes({
+      const observation = await purgeManagedSandboxes({
         factory,
         connection_config: connectionConfig,
         metadata: analysisSandboxMetadata(cleanupInput),
       });
-      return Object.freeze({ killed, residual: 0 as const });
+      return Object.freeze({ killed: observation.killed, residual: 0 as const });
     },
     async sweepOrphans(sweepInput: { readonly now?: Date; readonly grace_seconds?: number } = {}) {
       const now = sweepInput.now ?? new Date();
@@ -1480,7 +1567,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
         expected?: `sha256:${string}`,
       ) => {
         const path = sandboxPathSchema.parse(pathInput);
-        return transferSandboxFile(async () => {
+        return transferFile(async () => {
           const info = await sandbox.files.getFileInfo([path]);
           const size = info[path]?.size;
           if (typeof size === "number" && size > config.max_file_bytes) {
@@ -1524,7 +1611,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
               false,
             );
           }
-          await transferSandboxFile(() =>
+          await transferFile(() =>
             pair.agent.files.writeFiles([{ path, data: uploadInput.content, mode: 400 }]),
           );
         },
@@ -1604,7 +1691,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${cellId}.policy.json`;
           const outputPath = `/workspace/operator-outputs/${cellId}.policy.json`;
-          await transferSandboxFile(() =>
+          await transferFile(() =>
             pair.operator.files.writeFiles([{ path: requestPath, data: request, mode: 400 }]),
           );
           await runOperatorCommandWithDeadline({
@@ -1716,7 +1803,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
                 );
               }
               const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
-              await transferSandboxFile(() =>
+              await transferFile(() =>
                 pair.agent.files.writeFiles([
                   { path: inputPath, data: action.authoritative_content, mode: 400 },
                 ]),
@@ -1779,7 +1866,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const inputPath = `/workspace/intermediate/${identity.binding_id}.json`;
           try {
-            await transferSandboxFile(() =>
+            await transferFile(() =>
               pair.agent.files.writeFiles([
                 { path: inputPath, data: bindingInput.authoritative_content, mode: 400 },
               ]),
@@ -1892,7 +1979,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${callId}.json`;
           const outputPath = `/workspace/operator-outputs/${callId}.json`;
-          await transferSandboxFile(() =>
+          await transferFile(() =>
             pair.operator.files.writeFiles([
               { path: requestPath, data: operatorInput.request, mode: 400 },
             ]),
@@ -1933,7 +2020,7 @@ export function createOpenSandboxAnalysisRuntime(input: {
           }
           const requestPath = `/workspace/operator-inputs/${finalizationId}.finalize.json`;
           const outputPath = `/workspace/operator-outputs/${finalizationId}.receipt.json`;
-          await transferSandboxFile(() =>
+          await transferFile(() =>
             pair.operator.files.writeFiles([
               { path: requestPath, data: finalizationInput.request, mode: 400 },
             ]),
@@ -2005,10 +2092,12 @@ function requiredEnvironment(environment: NodeJS.ProcessEnv, name: string): stri
 
 export function createEnvironmentOpenSandboxAnalysisRuntime(
   environment: NodeJS.ProcessEnv = process.env,
+  options: { readonly max_file_transfer_attempts?: number } = {},
 ): OpenSandboxAnalysisRuntime | null {
   if (environment.ANALYSIS_SANDBOX_ENABLED !== "true") return null;
   try {
     return createOpenSandboxAnalysisRuntime({
+      ...options,
       config: {
         domain: requiredEnvironment(environment, "ANALYSIS_SANDBOX_SERVER_DOMAIN"),
         protocol: z
@@ -2077,6 +2166,7 @@ export const openSandboxAnalysisRuntimeInternals = Object.freeze({
   buildGovernedResultBindingSource,
   safeAnalysisOperatorFailureReasonCode,
   safeAnalysisSymbolExtractionFailureCode,
+  transferSandboxFile,
   digest,
   governedInputBindingIdentity,
   governedBindingIdentity,

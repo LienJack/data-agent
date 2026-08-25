@@ -16,5 +16,6 @@ export {
 } from "./effective-config-resolver.js";
 export { freezeSubagentCapabilityCatalog } from "./frozen-subagent-capability-catalog.js";
 export * from "./postgres-agent-dispatch-authority.js";
+export * from "./postgres-falcon24-acceptance-campaign.js";
 export * from "./postgres-resolution-trace.js";
 export * from "./postgres-session-recovery.js";

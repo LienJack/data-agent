@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentSpecialistProfileIdSchema } from "../agents/profile-registry.js";
+import { agentProfileIdSchema } from "../agents/subagent-discovery.js";
 import {
   canonicalizeJson,
   contentHashSchema,
@@ -53,7 +53,7 @@ const productTeamArtifactDraftSchema = z
   .strictObject({
     schema_version: z.literal("product-team-artifact@2.0.0"),
     artifact_ref: productArtifactReferenceSchema,
-    profile_id: agentSpecialistProfileIdSchema,
+    profile_id: agentProfileIdSchema,
     task_id: immutableIdSchema,
     source_refs: z.array(artifactReferenceSchema).max(16),
     provenance: productTeamArtifactProvenanceSchema.nullable(),

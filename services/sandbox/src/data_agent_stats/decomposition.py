@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import itertools
 import math
+from collections import defaultdict
+from datetime import date
 from typing import Any
 
 from data_agent_stats.registry import (
@@ -113,4 +115,117 @@ def product_shapley_exact(
     )
 
 
-__all__ = ["product_shapley_exact"]
+def revenue_segment_drivers(
+    inputs: dict[str, Any], parameters: dict[str, Any]
+) -> OperatorExecutionResult:
+    """Select the worst revenue month and preserve each driver dimension's identity."""
+
+    if parameters:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_PARAMETER_INVALID")
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in inputs["order_items"]:
+        try:
+            date.fromisoformat(row["order_date"])
+        except ValueError as error:
+            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD") from error
+        grouped[row["order_id"]].append(row)
+    if not grouped:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+
+    orders: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+    monthly_revenue: dict[str, list[float]] = defaultdict(list)
+    header_fields = (
+        "order_date",
+        "payment_method",
+        "customer_segment",
+        "order_total",
+    )
+    for _order_id, item_rows in grouped.items():
+        first = item_rows[0]
+        if first is None or any(
+            row[field] != first[field] for row in item_rows[1:] for field in header_fields
+        ):
+            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+        revenue = float(first["order_total"])
+        if not math.isfinite(revenue):
+            raise StatisticalOperatorError("PYTHON_OPERATOR_INPUT_INVALID")
+        month = first["order_date"][:7]
+        monthly_revenue[month].append(revenue)
+        orders.append((first, item_rows))
+
+    months = sorted(monthly_revenue)
+    if len(months) < 2:
+        raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+    month_totals = {month: math.fsum(monthly_revenue[month]) for month in months}
+    comparisons = [
+        (month_totals[current] - month_totals[previous], previous, current)
+        for previous, current in zip(months, months[1:], strict=False)
+    ]
+    _, start_month, end_month = min(comparisons, key=lambda row: (row[0], row[2]))
+
+    changes: dict[str, dict[str, list[float]]] = {
+        "customer_segment": defaultdict(list),
+        "payment_method": defaultdict(list),
+        "product_category": defaultdict(list),
+    }
+
+    def add(dimension: str, member: str, month: str, value: float) -> None:
+        if month not in {start_month, end_month}:
+            return
+        changes[dimension][member].append(-value if month == start_month else value)
+
+    for first, item_rows in orders:
+        month = first["order_date"][:7]
+        revenue = float(first["order_total"])
+        add("customer_segment", first["customer_segment"], month, revenue)
+        add("payment_method", first["payment_method"], month, revenue)
+        category_quantities: dict[str, list[float]] = defaultdict(list)
+        for row in item_rows:
+            category_quantities[row["product_category"]].append(float(row["quantity"]))
+        quantities = {
+            category: math.fsum(values) for category, values in category_quantities.items()
+        }
+        total_quantity = math.fsum(quantities.values())
+        for category, quantity in quantities.items():
+            share = (
+                quantity / total_quantity
+                if total_quantity > 0
+                else 1.0 / len(category_quantities)
+            )
+            add("product_category", category, month, revenue * share)
+
+    drivers: list[dict[str, Any]] = []
+    for dimension in sorted(changes):
+        ranked = sorted(
+            (
+                (math.fsum(values), member)
+                for member, values in changes[dimension].items()
+            ),
+            key=lambda row: (row[0], row[1]),
+        )
+        if not ranked:
+            raise StatisticalOperatorError("PYTHON_OPERATOR_APPLICABILITY_HOLD")
+        revenue_change, member = ranked[0]
+        drivers.append(
+            {
+                "dimension": dimension,
+                "member": member,
+                "revenue_change": revenue_change,
+                "start_month": start_month,
+                "end_month": end_month,
+            }
+        )
+    return OperatorExecutionResult(
+        output={"drivers": drivers},
+        sample_size=len(orders),
+        group_count=len(drivers),
+        family_size=sum(len(members) for members in changes.values()),
+        applicability="PASS",
+        limitation_codes=(
+            "DESCRIPTIVE_DECOMPOSITION_NOT_CAUSAL",
+            "ORDER_TOTAL_ALLOCATED_BY_ITEM_QUANTITY",
+        ),
+    )
+
+
+__all__ = ["product_shapley_exact", "revenue_segment_drivers"]

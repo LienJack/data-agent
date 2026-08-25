@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createPersistedSubagentController } from "../src/mastra/subagent-controller.js";
-import { buildTaskCapabilityReceipt, buildTeamTaskV2 } from "../src/teams/index.js";
+import {
+  buildTaskCapabilityReceipt,
+  buildTeamTaskV2,
+  getAgentProfileRevision,
+} from "../src/teams/index.js";
 
 const ids = {
   run: "10000000-0000-4000-8000-000000000001",
@@ -21,6 +25,7 @@ const scope = {
 } as const;
 
 function parentTask() {
+  const root = getAgentProfileRevision("data-agent-orchestrator");
   return buildTeamTaskV2({
     schema_version: "agent-team-task@2.0.0",
     task_id: ids.parent,
@@ -30,8 +35,8 @@ function parentTask() {
     scope,
     run_id: ids.run,
     profile_id: "data-agent-orchestrator",
-    profile_revision: 1,
-    profile_hash: "sha256:c46b9eb899fe2dd1592b914b509268b8281736ad223181be5a4e998ecd9eddad",
+    profile_revision: root.revision,
+    profile_hash: root.profile_hash,
     task_revision: 1,
     goal_revision: 1,
     attempt_id: ids.parentAttempt,
@@ -64,7 +69,7 @@ describe("persisted subagent controller", () => {
       attempt_id: ids.parentAttempt,
       worker_fence: 1,
       profile_id: parent.profile_id,
-      profile_revision: 1,
+      profile_revision: parent.profile_revision,
       profile_hash: parent.profile_hash,
       artifact_ref_identities: [],
       operation_audiences: ["HANDOFF_PREPARE"],

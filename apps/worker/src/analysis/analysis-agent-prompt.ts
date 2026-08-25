@@ -99,6 +99,7 @@ function operatorCards(node: AnalysisProgramNode) {
       outputs: operator.outputs,
       applicability_checks: operator.applicability_checks,
       limitations: operator.limitations,
+      input_lineage_bindings: obligation.input_lineage_bindings,
       result_binding: obligation.result_binding,
       python_preparation_contract: {
         inputs_symbol: symbols.inputs_symbol,
@@ -176,6 +177,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "Before each statistical_operator call, create the exact server-declared inputs_symbol and parameters_symbol in its python_preparation_contract. Their mapping keys must exactly follow the operator manifest. The statistical_operator arguments must equal its tool_call_contract.arguments_exact object: only call_id and operator_id. Never echo schema_version, inputs_symbol, or parameters_symbol into tool arguments.",
       "Each declared inputs_symbol and parameters_symbol must contain a Python dict, never a raw list, DataFrame, Series, ndarray, scalar, or one individual input value. Follow each obligation's python_preparation_contract names and mapping examples literally.",
       "Every nested operator input and parameter value must be recursively JSON-native: dict, list, str, bool, built-in int, finite built-in float, or None. Convert pandas Series and numpy ndarray with .tolist(), and numpy scalar values with int(), float(), or bool(); never leave pandas or numpy containers nested inside the dict.",
+      "Operator field shapes remain stricter than the outer JSON mapping: BINARY_NUMBER_ARRAY and every finite numeric array/map accept built-in int or finite float values only, never bool or None. Cast dummy/indicator columns to int or float before .tolist(), and assert equal vector lengths before the operator call.",
       "After each statistical_operator call, the server returns a protected result symbol plus hash, shape, and receipt reference. Use that exact symbol in later Python and publish_analysis_result; never copy or overwrite it.",
       "At every required result_binding path, retain the protected operator collection itself. Never round-trip governed rows through pandas before publishing: pandas converts exact null values to NaN and breaks hash/equality closure. A separate DataFrame may be used only for derived selection while the bound collection remains untouched.",
       "A protected operator result symbol exactly follows its obligation's result_symbol contract. Read the declared collection path directly; never spend a Cell printing or probing its type, keys, contents, shape, or attributes.",
@@ -188,6 +190,7 @@ export async function buildAnalysisAgentInitialMessages(input: {
       "If a Cell reports KeyError, correct the code using only the exact names in inputs[].fields from this context. Do not probe the interpreter or reread the governed input file.",
       "For rates, deltas, ratios, shares, and percentage changes, handle zero or missing denominators explicitly and preserve an undefined result as null/NaN rather than raising or inventing a numeric value.",
       "Set result.method_evidence to an object containing exactly governed_analysis_contract.required_method_evidence_keys. Preserve each governed operator collection at its declared result_binding path; for every other method key, record the concrete window, grain, selection, tie-break, or quality rule actually applied. Do not omit non-operator methods and do not add undeclared method keys.",
+      "The value named by publish_analysis_result.result_symbol must be an exact built-in Python dict, normally result = {...}. Never use a pandas Series, DataFrame, numpy record, defaultdict, dataclass, or other mapping-like object as the result document; convert every nested value to recursively JSON-native values before publishing.",
       "Do not write result JSON, tables, PNG, SVG, or chart files. The only completion action is publish_analysis_result. Supply result/table symbol names plus chart id and field selections only; the server injects chart intent, template, and data-symbol binding from the result contract.",
       "Preserve governed numeric values without rounding. Build every required table symbol with exactly the declared columns, then publish once. Explain only after the server verifies and stages the entire result closure.",
       "For every table, use contract.tables[].columns[].key as the sole column authority. A similarly named result-object field does not authorize a table column; when a method contract declares a projection mapping, copy the value into the exact table key before publishing.",

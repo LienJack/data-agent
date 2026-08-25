@@ -3,7 +3,6 @@ import type { ResearchArtifactAuthorityPort } from "@data-agent/contracts/ports"
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { falcon24AnalysisOutputJsonSchema } from "@data-agent/evals";
 import type { SqlPool } from "@data-agent/platform/persistence";
-import { z } from "zod";
 import {
   type AnalysisLifecyclePersistenceAuthority,
   createResearchAnalysisLifecycleAuthorityPort,
@@ -32,7 +31,9 @@ import {
 } from "../analysis/research-artifact-port.js";
 import { createEnvironmentOpenSandboxAnalysisRuntime } from "../runs/opensandbox-analysis-runtime.js";
 import type { ResearchAuthorityCapabilityResolver } from "../runs/research-authority-capabilities.js";
+import type { Falcon24StrictAcceptanceExecutionPolicy } from "./falcon24-acceptance-execution-policy.js";
 import type { Falcon24AnalysisAcceptanceRecorder } from "./falcon24-analysis-acceptance-recorder.js";
+import { resolveFalcon24AnalysisCase } from "./falcon24-analysis-case-resolver.js";
 import { createFalcon24AnalysisDataOracle } from "./falcon24-analysis-data-oracle.js";
 import { falcon24AnalysisProgramInternals } from "./falcon24-analysis-program.js";
 import {
@@ -40,7 +41,6 @@ import {
   type Falcon24AnalysisQueryColumn,
 } from "./falcon24-analysis-queries.js";
 import { createFalcon24ArrowBackedAnalysisOracle } from "./falcon24-arrow-backed-analysis-oracle.js";
-import { createFalcon24ExactQueryEvidenceAuthority } from "./falcon24-exact-query-evidence-authority.js";
 import {
   createFalcon24GovernedAgentAnalysisPort,
   type Falcon24PublicArtifactPort,
@@ -125,12 +125,17 @@ export function createFalcon24AnalysisRuntime(input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly now?: () => Date;
   readonly acceptance_recorder?: Falcon24AnalysisAcceptanceRecorder | null;
+  readonly execution_policy?: Falcon24StrictAcceptanceExecutionPolicy | null;
 }): GovernedAgentAnalysisPort {
   const inputEncryption = resolveAnalysisInputEncryption(input.environment);
   if (!inputEncryption) throw new TypeError("ANALYSIS_INPUT_ENCRYPTION_CONFIG_REQUIRED");
   const sourceEncryption = resolveAnalysisPythonSourceEncryption(input.environment);
   if (!sourceEncryption) throw new TypeError("ANALYSIS_PYTHON_SOURCE_ENCRYPTION_CONFIG_REQUIRED");
-  const sandboxRuntime = createEnvironmentOpenSandboxAnalysisRuntime(input.environment);
+  const sandboxRuntime = createEnvironmentOpenSandboxAnalysisRuntime(input.environment, {
+    ...(input.execution_policy
+      ? { max_file_transfer_attempts: input.execution_policy.max_file_transfer_attempts }
+      : {}),
+  });
   if (!sandboxRuntime) throw new TypeError("ANALYSIS_OPENSANDBOX_RUNTIME_REQUIRED");
   const now = input.now ?? (() => new Date());
   const artifacts: AnalysisArtifactCommitPort = createResearchAnalysisArtifactPort({
@@ -140,6 +145,7 @@ export function createFalcon24AnalysisRuntime(input: {
   });
   const materializer = createAnalysisInputMaterializer({
     sensitive_artifacts: input.sensitive_artifacts,
+    product_artifacts: input.public_artifacts,
     analysis_artifacts: artifacts,
     capability_input: input.app_capability_input,
     encryption_key: inputEncryption.key,
@@ -165,7 +171,7 @@ export function createFalcon24AnalysisRuntime(input: {
   });
   const snapshotAuthority = createFalcon24AnalysisDataOracle(input.pool);
 
-  return createFalcon24GovernedAgentAnalysisPort({
+  const falcon24 = createFalcon24GovernedAgentAnalysisPort({
     artifacts,
     public_artifacts: input.public_artifacts,
     public_artifact_capability: input.app_capability_input,
@@ -176,22 +182,13 @@ export function createFalcon24AnalysisRuntime(input: {
       console.error(JSON.stringify(event));
     },
     create_executor(runtime) {
-      const datasourceId = z
-        .uuid()
-        .parse(runtime.semantic_context.package.semantic_release.datasource_id);
       const spec = FALCON24_ANALYSIS_QUERY_SPECS[runtime.test_case.case_id];
-      const evidenceAuthority = createFalcon24ExactQueryEvidenceAuthority({
-        analysis_context: runtime.analysis_context,
-        datasource_id: datasourceId,
-        research_artifacts: input.research_authority,
-        capabilities: input.research_capabilities,
-      });
       const queries = createFalcon24GovernedAnalysisQueryPort({
-        pool: input.pool,
+        query_evidence_ref: runtime.accepted_query_evidence_ref,
+        artifact_authority: input.public_artifacts,
+        artifact_capability: input.app_capability_input,
         snapshot_authority: snapshotAuthority,
-        evidence_authority: evidenceAuthority,
         materializer,
-        now,
       });
       const contexts = {
         async load(command: { readonly node: { readonly node_id: string } }) {
@@ -245,7 +242,22 @@ export function createFalcon24AnalysisRuntime(input: {
         progress(event) {
           console.info(JSON.stringify(event));
         },
+        ...(input.execution_policy
+          ? {
+              repair_budget_per_category:
+                input.execution_policy.analysis_repair_budget_per_category,
+              allow_stage_recovery: input.execution_policy.allow_stage_recovery,
+            }
+          : {}),
         now,
+      });
+    },
+  });
+  return Object.freeze({
+    analyze(command: Parameters<GovernedAgentAnalysisPort["analyze"]>[0]) {
+      return falcon24.analyze({
+        ...command,
+        test_case: resolveFalcon24AnalysisCase(command.semantic_context.package),
       });
     },
   });

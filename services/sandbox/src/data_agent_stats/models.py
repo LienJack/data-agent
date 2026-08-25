@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from data_agent_stats.manifest import OPERATOR_IDS
+from data_agent_stats.manifest import OPERATOR_BY_ID, OPERATOR_IDS
 
 Sha256 = Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
 StableIdentifier = Annotated[
@@ -30,9 +30,7 @@ class StatisticalOperatorValueBinding(StrictModel):
 
     @model_validator(mode="after")
     def exact_has_zero_tolerance(self) -> StatisticalOperatorValueBinding:
-        if not math.isfinite(self.absolute_tolerance) or not math.isfinite(
-            self.relative_tolerance
-        ):
+        if not math.isfinite(self.absolute_tolerance) or not math.isfinite(self.relative_tolerance):
             raise ValueError("operator value binding tolerance must be finite")
         if self.comparison == "EXACT" and (
             self.absolute_tolerance != 0 or self.relative_tolerance != 0
@@ -42,9 +40,7 @@ class StatisticalOperatorValueBinding(StrictModel):
 
 
 class StatisticalOperatorResultBinding(StrictModel):
-    result_output_name: Annotated[
-        str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")
-    ]
+    result_output_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
     result_collection_path: Annotated[
         str, Field(min_length=1, max_length=512, pattern=r"^(?:/(?:[^~/]|~0|~1)*)+$")
     ]
@@ -69,15 +65,95 @@ class StatisticalOperatorResultBinding(StrictModel):
         return self
 
 
+class StatisticalOperatorFieldSource(StrictModel):
+    operator_field: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    governed_column: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+
+
+class GovernedInputExactLineageBinding(StrictModel):
+    lineage_kind: Literal["GOVERNED_INPUT_EXACT"]
+    operator_input_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    governed_input_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    row_mode: Literal["ALL_ROWS_EXACT"]
+    field_sources: Annotated[
+        tuple[StatisticalOperatorFieldSource, ...], Field(min_length=1, max_length=128)
+    ]
+
+    @model_validator(mode="after")
+    def unique_fields(self) -> GovernedInputExactLineageBinding:
+        for values in (
+            tuple(binding.operator_field for binding in self.field_sources),
+            tuple(binding.governed_column for binding in self.field_sources),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError("operator input lineage fields must be unique")
+        return self
+
+
+class ServerTransformExactLineageBinding(StrictModel):
+    lineage_kind: Literal["SERVER_TRANSFORM_EXACT"]
+    operator_input_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    governed_input_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    transform_id: StableIdentifier
+
+
+class StatisticalOperatorResultFieldSource(StrictModel):
+    operator_field: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    source_field: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+
+
+class OperatorResultExactLineageBinding(StrictModel):
+    lineage_kind: Literal["OPERATOR_RESULT_EXACT"]
+    operator_input_name: Annotated[str, Field(pattern=r"^[A-Za-z_][A-Za-z0-9_.-]{0,62}$")]
+    source_call_id: StableIdentifier
+    source_collection_path: Annotated[
+        str, Field(min_length=1, max_length=512, pattern=r"^(?:/(?:[^~/]|~0|~1)*)+$")
+    ]
+    row_mode: Literal["ALL_ROWS_EXACT"]
+    field_sources: Annotated[
+        tuple[StatisticalOperatorResultFieldSource, ...],
+        Field(min_length=1, max_length=128),
+    ]
+
+    @model_validator(mode="after")
+    def unique_fields(self) -> OperatorResultExactLineageBinding:
+        for values in (
+            tuple(binding.operator_field for binding in self.field_sources),
+            tuple(binding.source_field for binding in self.field_sources),
+        ):
+            if len(set(values)) != len(values):
+                raise ValueError("operator result lineage fields must be unique")
+        return self
+
+
+StatisticalOperatorInputLineageBinding = Annotated[
+    GovernedInputExactLineageBinding
+    | ServerTransformExactLineageBinding
+    | OperatorResultExactLineageBinding,
+    Field(discriminator="lineage_kind"),
+]
+
+
 class StatisticalOperatorObligation(StrictModel):
     call_id: StableIdentifier
     operator_id: OperatorId
+    input_lineage_bindings: Annotated[
+        tuple[StatisticalOperatorInputLineageBinding, ...], Field(min_length=1, max_length=8)
+    ]
     result_binding: StatisticalOperatorResultBinding
 
     @model_validator(mode="after")
     def registered_operator(self) -> StatisticalOperatorObligation:
         if self.operator_id not in OPERATOR_IDS:
             raise ValueError("operator_id is not registered")
+        names = tuple(binding.operator_input_name for binding in self.input_lineage_bindings)
+        if len(set(names)) != len(names):
+            raise ValueError("operator input lineage bindings must be unique")
+        expected_names = tuple(
+            specification["name"] for specification in OPERATOR_BY_ID[self.operator_id]["inputs"]
+        )
+        if set(names) != set(expected_names) or len(names) != len(expected_names):
+            raise ValueError("operator input lineage must cover every manifest input exactly")
         return self
 
 

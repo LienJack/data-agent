@@ -1,6 +1,7 @@
 import {
   type ArtifactReference,
   type ArtifactWorkspaceChartDocumentV2,
+  artifactReferenceFor,
   buildProductTeamArtifactDocument,
   canonicalizeJson,
   type PortResult,
@@ -11,6 +12,7 @@ import {
 } from "@data-agent/contracts";
 import { buildQueryEvidenceChartDocument } from "@data-agent/platform/artifacts";
 import { z } from "zod";
+import type { GovernedAgentAnalysisPort } from "../analysis/governed-agent-analysis-port.js";
 import { hasRunProviderDispatchCapability } from "../runs/run-execution-context.js";
 import type { FrozenSemanticReleaseReadPort } from "../semantic/semantic-release-read-port.js";
 import type {
@@ -50,6 +52,8 @@ export interface ProductionTeamToolsDependencies {
   readonly artifacts: ProductionTeamArtifactPort;
   readonly text2sql: Text2SqlQueryRuntimePort;
   readonly semantic_release: FrozenSemanticReleaseReadPort;
+  readonly governed_analysis?: GovernedAgentAnalysisPort | null;
+  readonly max_text2sql_candidate_attempts?: 1 | 2;
 }
 
 class ProductionTeamToolError extends Error {
@@ -172,6 +176,7 @@ async function commitArtifact(
   input: {
     readonly artifact_type: "SqlArtifact" | "QueryEvidence" | "AnalysisReport";
     readonly profile_id:
+      | "governed-analysis-agent"
       | "governed-text2sql-agent"
       | "report-writing-agent"
       | "semantic-management-agent";
@@ -210,6 +215,7 @@ export function createProductionTeamTools(
   dependencies: ProductionTeamToolsDependencies,
   factoryInput: ProductionTeamToolFactoryInput,
 ): ProductProfileToolPort {
+  const maxText2SqlCandidateAttempts = dependencies.max_text2sql_candidate_attempts ?? 2;
   const state: {
     prepared: PreparedText2SqlContext | null;
     candidate: Text2SqlQueryCandidate | null;
@@ -230,7 +236,7 @@ export function createProductionTeamTools(
 
   const generateValidatedText2SqlCandidate = async (): Promise<Text2SqlQueryCandidate> => {
     if (!state.prepared) throw new ProductionTeamToolError("TEAM_TEXT2SQL_CONTEXT_REQUIRED");
-    while (state.provider_attempt_count < 2) {
+    while (state.provider_attempt_count < maxText2SqlCandidateAttempts) {
       const callIndex = state.provider_attempt_count;
       const contextText =
         callIndex === 0
@@ -270,7 +276,7 @@ export function createProductionTeamTools(
       } catch (error) {
         state.rejected_candidate = parsed.data;
         state.rejection_code = safeErrorCode(error, "TEXT2SQL_CANDIDATE_POLICY_REJECTED");
-        if (state.provider_attempt_count >= 2) {
+        if (state.provider_attempt_count >= maxText2SqlCandidateAttempts) {
           throw new ProductionTeamToolError("TEAM_TEXT2SQL_CANDIDATE_POLICY_REJECTED");
         }
       }
@@ -458,6 +464,86 @@ export function createProductionTeamTools(
         return toolResult(state.semantic_ref);
       }
 
+      if (input.task.profile_id === "governed-analysis-agent") {
+        if (input.tool_id !== "analysis.program.execute") {
+          throw new ProductionTeamToolError("GOVERNED_ANALYSIS_AGENT_TOOL_DENIED");
+        }
+        const analysis = dependencies.governed_analysis;
+        if (!analysis) {
+          throw new ProductionTeamToolError("GOVERNED_ANALYSIS_RUNTIME_REQUIRED");
+        }
+        const evidenceRef = artifactReferenceFor("QueryEvidence").safeParse(
+          factoryInput.accepted_evidence_ref,
+        );
+        if (!evidenceRef.success) {
+          throw new ProductionTeamToolError("TEAM_ACCEPTED_QUERY_EVIDENCE_REQUIRED");
+        }
+        const provider = factoryInput.execution_context.getProviderDispatchCapability();
+        if (!hasRunProviderDispatchCapability(provider)) {
+          throw new ProductionTeamToolError("PROVIDER_DISPATCH_AUTHORITY_NOT_CONFIGURED");
+        }
+        const result = await analysis.analyze({
+          lease: factoryInput.lease,
+          task_id: input.task.task_id,
+          max_context_bytes: input.task.bounds.max_context_bytes,
+          accepted_query_evidence_ref: evidenceRef.data,
+          question:
+            factoryInput.delegation?.call.objective ?? "Analyze the accepted QueryEvidence.",
+          semantic_context: factoryInput.semantic_context,
+          effective_config: factoryInput.execution_context.getEffectiveConfig(),
+          provider_dispatch: provider,
+          fence_guard: {
+            async isCurrent(fence) {
+              if (
+                fence.run_id !== factoryInput.lease.run_id ||
+                fence.attempt_id !== factoryInput.lease.attempt_id ||
+                fence.worker_fence !== factoryInput.lease.worker_fence ||
+                fence.fence_token !==
+                  `${factoryInput.lease.attempt_id}:${factoryInput.lease.worker_fence}`
+              ) {
+                return false;
+              }
+              return (await factoryInput.execution_context.heartbeat()).ok;
+            },
+          },
+        });
+        const derivedEvidence = result.accepted_artifact_refs.find(
+          ({ artifact_type: artifactType }) => artifactType === "DerivedAnalysisEvidence",
+        );
+        const chart = result.public_artifact_refs.find(
+          ({ artifact_type: artifactType }) => artifactType === "ArtifactWorkspaceDocument",
+        );
+        if (!derivedEvidence || !chart) {
+          throw new ProductionTeamToolError("GOVERNED_ANALYSIS_EVIDENCE_CLOSURE_REQUIRED");
+        }
+        const reportRef = await commitArtifact(dependencies, factoryInput, {
+          artifact_type: "AnalysisReport",
+          profile_id: "governed-analysis-agent",
+          task_id: input.task.task_id,
+          source_refs: [derivedEvidence, chart],
+          provenance: null,
+          projection: {
+            kind: "REPORT",
+            title: "受治理 Python 数据分析",
+            sections: [
+              {
+                heading: "结论",
+                body_text: result.answer,
+                source_refs: [derivedEvidence, chart],
+              },
+              {
+                heading: "证据链",
+                body_text:
+                  "语义闭包选中的分析程序已通过独立 Oracle；" +
+                  `结论与图表共同绑定 DerivedAnalysisEvidence ${derivedEvidence.content_hash}。`,
+                source_refs: [derivedEvidence, chart],
+              },
+            ],
+          },
+        });
+        return toolResult(reportRef, [chart]);
+      }
+
       if (input.task.profile_id === "governed-text2sql-agent") {
         if (input.tool_id === "semantic.release.read") {
           state.prepared = await dependencies.text2sql.prepare({
@@ -490,7 +576,10 @@ export function createProductionTeamTools(
             result = await executeCandidate(state.candidate);
           } catch (error) {
             const code = safeErrorCode(error, "TEXT2SQL_QUERY_EXECUTION_FAILED");
-            if (state.provider_attempt_count >= 2 || !repairableQueryExecutionFailure(code)) {
+            if (
+              state.provider_attempt_count >= maxText2SqlCandidateAttempts ||
+              !repairableQueryExecutionFailure(code)
+            ) {
               throw error;
             }
             state.rejected_candidate = state.candidate;

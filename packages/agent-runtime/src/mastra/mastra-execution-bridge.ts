@@ -522,13 +522,18 @@ class MastraExecutionBridge implements ModelExecutionBridge {
     // (the first operation allowed to open a provider connection) has not run.
     yield { chunk_type: "DISPATCH_READY" };
     const output = usesToolCalling
-      ? await agent.stream(projected.messages, {
-          ...commonExecutionOptions,
-          structuredOutput: {
-            schema: responseSchema.schema,
-          },
-          toolChoice: this.#toolChoicePolicy === "AUTO" ? "auto" : "required",
-        })
+      ? this.#toolChoicePolicy === "REQUIRED"
+        ? await agent.stream(projected.messages, {
+            ...commonExecutionOptions,
+            structuredOutput: {
+              schema: responseSchema.schema,
+            },
+            toolChoice: "required",
+          })
+        : await agent.stream(projected.messages, {
+            ...commonExecutionOptions,
+            toolChoice: "auto",
+          })
       : await agent.stream(projected.messages, {
           ...commonExecutionOptions,
           structuredOutput: {

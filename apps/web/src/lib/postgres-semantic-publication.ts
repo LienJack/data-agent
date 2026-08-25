@@ -1,10 +1,9 @@
 import {
   type ContentHash,
   contentHashSchema,
-  type SemanticChangeSet,
-  type SemanticReviewDecision,
   sha256ContentHash,
-} from "@data-agent/contracts";
+} from "@data-agent/contracts/common";
+import type { SemanticChangeSet, SemanticReviewDecision } from "@data-agent/contracts/semantic";
 import {
   compileSemanticPublicationProjection,
   type SemanticPublicationAuthorityPort,

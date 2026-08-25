@@ -1,8 +1,14 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { STATISTICAL_OPERATOR_REGISTRY_DIGEST, sha256ContentHash } from "@data-agent/contracts";
 import {
+  buildFalcon24AcceptanceRunManifest,
+  canonicalizeJson,
+  STATISTICAL_OPERATOR_REGISTRY_DIGEST,
+  sha256ContentHash,
+} from "@data-agent/contracts";
+import {
+  type Falcon24AgentAnalysisRunResult,
   falcon24AgentAnalysisRunResultSchema,
   falcon24AnalysisOracleReceiptSchema,
 } from "@data-agent/contracts/evals";
@@ -49,7 +55,6 @@ describe("Falcon24 analysis acceptance recorder", () => {
     const directory = await mkdtemp(join(tmpdir(), "falcon24-recorder-"));
     temporaryDirectories.push(directory);
     const manifestPath = join(directory, "manifest.json");
-    const resultsPath = join(directory, "actual-runs.json");
     const manifestRuns = FALCON24_AGENT_ANALYSIS_CASES.flatMap((testCase, caseIndex) =>
       (["COLD", "WARM"] as const).flatMap((runVariant, variantIndex) =>
         [1, 2, 3].map((repetition) => ({
@@ -60,13 +65,16 @@ describe("Falcon24 analysis acceptance recorder", () => {
         })),
       ),
     );
-    await writeFile(
-      manifestPath,
-      JSON.stringify({
-        schema_version: "falcon24-analysis-run-manifest@1.0.0",
-        runs: manifestRuns,
-      }),
-    );
+    const manifest = await buildFalcon24AcceptanceRunManifest({
+      schema_version: "falcon24-analysis-run-manifest@2.0.0" as const,
+      campaign_id: "falcon24-root-v13-final",
+      campaign_version: 13,
+      source_fingerprint: hash("e"),
+      frozen_contract_hash: hash("f"),
+      runtime_attestation_hash: hash("d"),
+      runs: manifestRuns,
+    });
+    await writeFile(manifestPath, JSON.stringify(manifest));
     const testCase = FALCON24_AGENT_ANALYSIS_CASES[0];
     const metadata = manifestRuns[0];
     if (!testCase || !metadata) throw new TypeError("acceptance fixture missing");
@@ -132,9 +140,16 @@ describe("Falcon24 analysis acceptance recorder", () => {
       ],
       oracle_receipts: [oracleReceipt],
     } as unknown as AnalysisExecutionResult;
+    let stagedResult: Falcon24AgentAnalysisRunResult | null = null;
     const recorder = createFalcon24AnalysisAcceptanceRecorder({
       manifest_path: manifestPath,
-      results_path: resultsPath,
+      async stage_result({ campaign_id: campaignId, result }) {
+        expect(campaignId).toBe("falcon24-root-v13-final");
+        if (stagedResult && canonicalizeJson(stagedResult) !== canonicalizeJson(result)) {
+          throw new TypeError("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
+        }
+        stagedResult = result;
+      },
     });
     const input = {
       test_case: testCase,
@@ -151,9 +166,7 @@ describe("Falcon24 analysis acceptance recorder", () => {
     await recorder.record(input);
     await recorder.record(input);
 
-    const results = JSON.parse(await readFile(resultsPath, "utf8"));
-    expect(results).toHaveLength(1);
-    const parsedResult = falcon24AgentAnalysisRunResultSchema.parse(results[0]);
+    const parsedResult = falcon24AgentAnalysisRunResultSchema.parse(stagedResult);
     expect(parsedResult).toMatchObject({
       case_id: testCase.case_id,
       run_variant: "COLD",
@@ -184,11 +197,14 @@ describe("Falcon24 analysis acceptance recorder", () => {
     ).rejects.toThrow("FALCON24_ANALYSIS_RUN_RESULT_REPLAY_MISMATCH");
   });
 
-  it("fails closed when only one recorder path is configured", () => {
-    expect(() =>
-      createEnvironmentFalcon24AnalysisAcceptanceRecorder({
-        FALCON24_ANALYSIS_RESULTS: "actual-runs.json",
-      }),
-    ).toThrow("FALCON24_ANALYSIS_ACCEPTANCE_RECORDER_CONFIG_INCOMPLETE");
+  it("has no filesystem result fallback and requires only the frozen manifest", () => {
+    const stage = async () => {};
+    expect(createEnvironmentFalcon24AnalysisAcceptanceRecorder({}, stage)).toBeNull();
+    expect(
+      createEnvironmentFalcon24AnalysisAcceptanceRecorder(
+        { FALCON24_ANALYSIS_RUN_MANIFEST: "manifest.json" },
+        stage,
+      ),
+    ).not.toBeNull();
   });
 });

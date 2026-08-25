@@ -11,6 +11,7 @@ const id = (suffix: number) => `00000000-0000-4000-8000-${String(suffix).padStar
 const hash = (character: string) => `sha256:${character.repeat(64)}`;
 const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const profileIds = [
+  "governed-analysis-agent",
   "governed-text2sql-agent",
   "report-writing-agent",
   "semantic-management-agent",
@@ -142,10 +143,10 @@ describe("Mastra specialist profile composition", () => {
     }
     expect(
       displayEvents.filter((event) => (event as { kind: string }).kind === "tool_started"),
-    ).toHaveLength(7);
+    ).toHaveLength(8);
     expect(
       displayEvents.filter((event) => (event as { kind: string }).kind === "tool_completed"),
-    ).toHaveLength(7);
+    ).toHaveLength(8);
     expect(displayEvents).toContainEqual(
       expect.objectContaining({
         kind: "tool_completed",

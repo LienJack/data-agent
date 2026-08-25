@@ -760,11 +760,19 @@ describe("Mastra execution bridge integration", () => {
   );
 
   it.each([
-    { policy: undefined, expected: { type: "required" } },
-    { policy: "AUTO" as const, expected: { type: "auto" } },
+    {
+      policy: undefined,
+      expectedToolChoice: { type: "required" },
+      expectedResponseFormat: "JSON" as const,
+    },
+    {
+      policy: "AUTO" as const,
+      expectedToolChoice: { type: "auto" },
+      expectedResponseFormat: "NONE" as const,
+    },
   ])(
     "projects an offline Mastra tool call without executing it ($policy)",
-    async ({ policy, expected }) => {
+    async ({ policy, expectedToolChoice, expectedResponseFormat }) => {
       const binding = getModelProviderBinding("openai");
       let receivedResponseFormat: unknown = "not-called";
       let receivedToolChoice: unknown = "not-called";
@@ -882,8 +890,12 @@ describe("Mastra execution bridge integration", () => {
         tool_name: "semantic-query@1",
         arguments: { metric: "revenue" },
       });
-      expect(receivedResponseFormat).toMatchObject({ type: "json" });
-      expect(receivedToolChoice).toEqual(expected);
+      if (expectedResponseFormat === "JSON") {
+        expect(receivedResponseFormat).toMatchObject({ type: "json" });
+      } else {
+        expect(receivedResponseFormat).toBeUndefined();
+      }
+      expect(receivedToolChoice).toEqual(expectedToolChoice);
       expect(receivedTemperature).toBe(0);
       expect(events.at(-1)).toMatchObject({
         event_type: "COMPLETED",

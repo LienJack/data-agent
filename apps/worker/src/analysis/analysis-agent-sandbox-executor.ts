@@ -2,9 +2,9 @@ import type { AnalysisProgramPayload, ArtifactReference } from "@data-agent/cont
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
   type AnalysisResultStage,
-  analysisResultPublishObservationSchema,
   type AnalysisSandboxExecutionReceipt,
   type AnalysisSandboxRuntimeProfile,
+  analysisResultPublishObservationSchema,
   analysisSandboxExecutionReceiptSchema,
 } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
@@ -20,6 +20,7 @@ import {
   type AnalysisAgentContextPort,
   buildAnalysisAgentInitialMessages,
 } from "./analysis-agent-prompt.js";
+import type { AnalysisLifecycleAuthorityPort } from "./analysis-lifecycle-authority.js";
 import {
   type AnalysisToolLoopProgressEvent,
   type AnalysisToolLoopResult,
@@ -34,7 +35,6 @@ import {
   type AnalysisGovernedResultAuthorityPort,
   createGovernedResultBridge,
 } from "./governed-result-bridge.js";
-import type { AnalysisLifecycleAuthorityPort } from "./analysis-lifecycle-authority.js";
 import { createOpenSandboxOperatorArgumentExtractor } from "./opensandbox-operator-argument-extractor.js";
 import type { AnalysisResultClosureArtifact } from "./result-publisher.js";
 
@@ -50,7 +50,9 @@ export interface AnalysisFenceGuard {
 }
 
 export interface AnalysisAgentSandboxResult {
-  readonly recovery_phase: import("@data-agent/contracts/ports").AnalysisContextJournalEntry["event"]["event_type"] | null;
+  readonly recovery_phase:
+    | import("@data-agent/contracts/ports").AnalysisContextJournalEntry["event"]["event_type"]
+    | null;
   readonly request_hash: `sha256:${string}`;
   readonly started_at: string;
   readonly finished_at: string;
@@ -86,6 +88,8 @@ export async function executeAnalysisAgentSandbox(input: {
   readonly fence_guard: AnalysisFenceGuard;
   readonly fence_token: string;
   readonly max_model_calls: number;
+  readonly repair_budget_per_category?: 0 | 1;
+  readonly allow_stage_recovery?: boolean;
   readonly on_progress?: (event: AnalysisToolLoopProgressEvent) => void;
   readonly now?: () => Date;
   readonly signal?: AbortSignal;
@@ -156,6 +160,9 @@ export async function executeAnalysisAgentSandbox(input: {
     context_generation: contextGeneration,
   });
   if (recoveredStage) {
+    if (input.allow_stage_recovery === false) {
+      throw new TypeError("ANALYSIS_RESULT_STAGE_RECOVERY_DISABLED");
+    }
     const cleanup = await input.runtime.cleanupSession({
       run_id: input.lease.run_id,
       node_id: input.node.node_id,
@@ -198,7 +205,9 @@ export async function executeAnalysisAgentSandbox(input: {
         manifest_hash: recoveredStage.loaded.manifest_hash,
         closure_hash: recoveredStage.loaded.closure_hash,
         stage_id: recoveredStage.stage.stage_id,
-        artifacts: recoveredStage.loaded.artifacts.map(({ content: _content, ...artifact }) => artifact),
+        artifacts: recoveredStage.loaded.artifacts.map(
+          ({ content: _content, ...artifact }) => artifact,
+        ),
       }),
     };
     return Object.freeze({
@@ -312,10 +321,13 @@ export async function executeAnalysisAgentSandbox(input: {
       policy_version: "analysis-cell-policy@1.1.0",
       operator_registry_digest: STATISTICAL_OPERATOR_REGISTRY_DIGEST,
     });
-    const recoveredOperatorResults = await governedResultBridge.recover({
-      session,
-      ...(input.signal ? { signal: input.signal } : {}),
-    });
+    const recoveredOperatorResults =
+      input.allow_stage_recovery === false
+        ? []
+        : await governedResultBridge.recover({
+            session,
+            ...(input.signal ? { signal: input.signal } : {}),
+          });
     const toolLoop = await executeAnalysisToolLoop({
       run_id: input.lease.run_id,
       analysis_program_id: input.analysis_program_ref.artifact_id,
@@ -324,12 +336,16 @@ export async function executeAnalysisAgentSandbox(input: {
       runtime_profile: input.runtime_profile,
       result_contract: input.node.result_contract,
       operator_obligations: input.node.operator_obligations,
+      governed_inputs: input.governed_inputs,
       operator_argument_extractor: createOpenSandboxOperatorArgumentExtractor(
         session,
         input.signal,
       ),
       governed_result_bridge: governedResultBridge,
       recovered_operator_results: recoveredOperatorResults,
+      ...(input.repair_budget_per_category !== undefined
+        ? { repair_budget_per_category: input.repair_budget_per_category }
+        : {}),
       stage: {
         async stage(stageInput) {
           if (durableStage) throw new TypeError("ANALYSIS_RESULT_PUBLISH_DUPLICATE");
@@ -350,15 +366,17 @@ export async function executeAnalysisAgentSandbox(input: {
                 operator_sandbox_id: session.operator_sandbox_id,
                 secure_access: session.secure_access,
               },
-              cells: stageInput.cells.map(({ cell_id, source_sha256, source_ref, observation }) => ({
-                cell_id,
-                source_sha256,
-                source_ref,
-                execution_id: observation.execution_id,
-                execution_count: observation.execution_count,
-                elapsed_ms: observation.elapsed_ms,
-                status: observation.status,
-              })),
+              cells: stageInput.cells.map(
+                ({ cell_id, source_sha256, source_ref, observation }) => ({
+                  cell_id,
+                  source_sha256,
+                  source_ref,
+                  execution_id: observation.execution_id,
+                  execution_count: observation.execution_count,
+                  elapsed_ms: observation.elapsed_ms,
+                  status: observation.status,
+                }),
+              ),
               provider_invocation_refs: [...stageInput.provider_invocation_refs],
               started_at: started.toISOString(),
               finished_at: stagedAt.toISOString(),

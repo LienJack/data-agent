@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   type AppScope,
@@ -8,6 +10,7 @@ import {
   type RunQueuePort,
   type RunWorkLease,
 } from "@data-agent/contracts";
+import { verifyFalcon24AcceptanceRunManifest } from "@data-agent/contracts/evals";
 import {
   loadRuntimeBuildIdentity,
   loadRuntimeMigrationFact,
@@ -49,6 +52,7 @@ import {
 } from "@data-agent/platform/research";
 import {
   createPostgresEffectiveConfigResolver,
+  createPostgresFalcon24AcceptanceCampaignAuthority,
   createPostgresRunEventStore,
   createPostgresRunQueue,
 } from "@data-agent/platform/runs";
@@ -63,6 +67,7 @@ import {
   createFileScanPort,
   createFileSystemStorageClient,
   createPostgresWorkspaceFiles,
+  createSensitiveExecutionArtifactAuthority,
   createWorkspaceContentNamespace,
 } from "@data-agent/platform/storage";
 import {
@@ -72,6 +77,12 @@ import {
 import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
+import {
+  assertFalcon24AcceptanceExecutionBinding,
+  classifyFalcon24RunFailureCode,
+} from "./evals/falcon24-acceptance-execution-policy.js";
+import { createEnvironmentFalcon24AnalysisAcceptanceRecorder } from "./evals/falcon24-analysis-acceptance-recorder.js";
+import { createFalcon24AnalysisRuntime } from "./evals/falcon24-analysis-runtime.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
 import { createFileScanJobHandler } from "./jobs/file-scan-job-handler.js";
@@ -80,7 +91,10 @@ import { createJobWorkerRunner } from "./jobs/job-worker-runner.js";
 import { createKnowledgeIndexJobHandler } from "./knowledge/knowledge-index-job.js";
 import { createDirectRunBoundProviderDispatcher } from "./providers/direct-run-bound-provider-dispatcher.js";
 import { createProviderSmokeExecutor } from "./providers/provider-smoke-executor.js";
-import { loadRunWorkerEnvironment } from "./run-worker-environment.js";
+import {
+  loadRunWorkerEnvironment,
+  resolveRunWorkerRepositoryRoot,
+} from "./run-worker-environment.js";
 import {
   createMultiPrincipalRunWorkerRunner,
   isRunnableWorkspaceMember,
@@ -244,6 +258,7 @@ async function closeServer(server: Server): Promise<void> {
 export async function runWorkerProcess(
   environment: NodeJS.ProcessEnv = process.env,
 ): Promise<void> {
+  const repositoryRoot = resolveRunWorkerRepositoryRoot(process.cwd());
   if (
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES" &&
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_CONFIRM !== "YES"
@@ -257,7 +272,25 @@ export async function runWorkerProcess(
   const migrationFact = loadRuntimeMigrationFact(environment);
   environment = loadRunWorkerEnvironment(environment);
   const config = parseRunWorkerEnvironment(environment);
-  const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment);
+  const acceptanceExecutionPolicy = assertFalcon24AcceptanceExecutionBinding(environment);
+  const acceptanceManifest = acceptanceExecutionPolicy
+    ? await verifyFalcon24AcceptanceRunManifest(
+        JSON.parse(
+          await readFile(
+            resolve(
+              repositoryRoot,
+              z.string().min(1).parse(environment.FALCON24_ANALYSIS_RUN_MANIFEST),
+            ),
+            "utf8",
+          ),
+        ),
+      )
+    : null;
+  const analysisSandboxMaintenance = createEnvironmentOpenSandboxAnalysisRuntime(environment, {
+    ...(acceptanceExecutionPolicy
+      ? { max_file_transfer_attempts: acceptanceExecutionPolicy.max_file_transfer_attempts }
+      : {}),
+  });
   const smokeTarget =
     environment.DATA_AGENT_U3_PROVIDER_SMOKE_ONE_SHOT === "YES"
       ? z.strictObject({ run_id: z.uuid(), command_id: z.uuid() }).parse({
@@ -430,6 +463,23 @@ export async function runWorkerProcess(
       }, 60_000);
       analysisStageSweepTimer.unref();
     }
+    const sensitiveArtifacts = createSensitiveExecutionArtifactAuthority({
+      pool: sqlPool,
+      authorizer: capabilityAuthority.authorizer,
+      blobs: {
+        async putIfAbsent(contentHash, bytes) {
+          await fileStorage.put(
+            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
+            bytes,
+          );
+        },
+        get(contentHash) {
+          return fileStorage.get(
+            `analysis-sensitive/v1/${contentHash.replace(/^sha256:/u, "sha256-")}`,
+          );
+        },
+      },
+    });
     const effectiveConfigResolver = createPostgresEffectiveConfigResolver({
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
@@ -466,6 +516,11 @@ export async function runWorkerProcess(
           runs: runRepository,
           capability,
           environment,
+          ...(acceptanceExecutionPolicy
+            ? {
+                max_attempts_per_call: acceptanceExecutionPolicy.max_provider_attempts_per_call,
+              }
+            : {}),
         });
         const semanticContext = createRunBoundSemanticContextResolver({
           capability,
@@ -501,6 +556,22 @@ export async function runWorkerProcess(
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
         });
+        const falcon24CampaignAuthority = createPostgresFalcon24AcceptanceCampaignAuthority({
+          pool: sqlPool,
+          authorizer: capabilityAuthority.authorizer,
+        });
+        const falcon24AcceptanceRecorder = createEnvironmentFalcon24AnalysisAcceptanceRecorder(
+          environment,
+          async ({ campaign_id: campaignId, result }) => {
+            const staged = await falcon24CampaignAuthority.stage(capability, {
+              campaign_id: campaignId,
+              run_id: result.run_id,
+              result_document: result,
+            });
+            if (!staged.ok) throw new TypeError(staged.error.code);
+          },
+          repositoryRoot,
+        );
         const text2sqlRuntime = createPostgresqlText2SqlQueryRuntime({
           pool,
           capability,
@@ -526,6 +597,25 @@ export async function runWorkerProcess(
           resolveCommitted: (reference: Parameters<typeof teamArtifacts.resolveCommitted>[1]) =>
             teamArtifacts.resolveCommitted(capability, reference),
         };
+        const falcon24Analysis =
+          acceptanceExecutionPolicy &&
+          researchCapabilities &&
+          environment.ANALYSIS_SANDBOX_ENABLED === "true" &&
+          environment.DATA_AGENT_ANALYSIS_INPUT_KEY_BASE64?.trim() &&
+          environment.DATA_AGENT_ANALYSIS_PYTHON_SOURCE_KEY_BASE64?.trim()
+            ? createFalcon24AnalysisRuntime({
+                pool: sqlPool,
+                research_authority: researchAuthority,
+                sensitive_artifacts: sensitiveArtifacts,
+                research_capabilities: researchCapabilities,
+                app_capability_input: capability,
+                public_artifacts: teamArtifacts,
+                environment,
+                now: () => new Date(),
+                acceptance_recorder: falcon24AcceptanceRecorder,
+                execution_policy: acceptanceExecutionPolicy,
+              })
+            : null;
         const productionTeamRuntime = createProductionTeamRuntime({
           store: teamStore,
           capability,
@@ -537,12 +627,23 @@ export async function runWorkerProcess(
                 artifacts: teamArtifacts,
                 text2sql: text2sqlRuntime,
                 semantic_release: semanticRelease,
+                governed_analysis: falcon24Analysis,
+                ...(acceptanceExecutionPolicy
+                  ? {
+                      max_text2sql_candidate_attempts:
+                        acceptanceExecutionPolicy.max_text2sql_candidate_attempts,
+                    }
+                  : {}),
               },
               input,
             ),
         });
         const teamExecutor = createDataAgentTeamRunner({
-          root: createRootAgentTurnExecutor(),
+          root: createRootAgentTurnExecutor(
+            acceptanceExecutionPolicy
+              ? { max_turns: acceptanceExecutionPolicy.max_root_turns }
+              : {},
+          ),
           root_runtime: createRootAgentDelegationRuntime({
             profiles: profileRegistry,
             profile_capability_input: capability,
@@ -561,6 +662,56 @@ export async function runWorkerProcess(
           capabilityAuthority.authorizer,
           capability,
         );
+        let acceptanceFailureReconciliationPending = acceptanceManifest !== null;
+        const reconcileAcceptanceFailures = async () => {
+          if (!acceptanceManifest || !acceptanceFailureReconciliationPending) {
+            return { ok: true as const, value: undefined };
+          }
+          for (const scheduled of acceptanceManifest.runs) {
+            const projection = await eventStore.readProjection({
+              scope: capability.scope,
+              run_id: scheduled.run_id,
+            });
+            if (!projection.ok) return projection;
+            if (projection.value?.projection.status !== "FAILED") continue;
+            const terminalEventId = projection.value.projection.terminal_event_id;
+            const events = await eventStore.listEvents({
+              scope: capability.scope,
+              run_id: scheduled.run_id,
+              after_sequence: projection.value.projection.version - 1,
+              limit: 1,
+            });
+            if (!events.ok) return events;
+            const terminal = events.value[0];
+            if (
+              !terminalEventId ||
+              events.value.length !== 1 ||
+              !terminal ||
+              terminal.event_id !== terminalEventId ||
+              terminal.sequence !== projection.value.projection.version ||
+              terminal.event_type !== "run.failed"
+            ) {
+              return {
+                ok: false as const,
+                error: {
+                  code: "RUN_FAILURE_TERMINAL_EVENT_INVALID",
+                  message: "FAILED Run 终态事件无法通过权威事件流验证。",
+                  retryable: false,
+                },
+              };
+            }
+            const held = await falcon24CampaignAuthority.hold(capability, {
+              campaign_id: acceptanceManifest.campaign_id,
+              run_id: scheduled.run_id,
+              failure_layer: classifyFalcon24RunFailureCode(terminal.payload.error_code),
+              failure_code: terminal.payload.error_code,
+            });
+            if (held.ok) acceptanceFailureReconciliationPending = false;
+            return held.ok ? { ok: true as const, value: undefined } : held;
+          }
+          acceptanceFailureReconciliationPending = false;
+          return { ok: true as const, value: undefined };
+        };
         return {
           ok: true,
           value: createRunWorkerRunner({
@@ -608,6 +759,29 @@ export async function runWorkerProcess(
             execution_timeout_ms: config.execution_timeout_ms,
             heartbeat_interval_ms: config.heartbeat_interval_ms,
             side_effect_timeout_ms: config.side_effect_timeout_ms,
+            ...(acceptanceExecutionPolicy
+              ? {
+                  max_run_attempts: acceptanceExecutionPolicy.max_run_attempts,
+                  reconcile_run_failures: reconcileAcceptanceFailures,
+                  on_run_failure: async ({ lease, error_code: errorCode }) => {
+                    const scheduled = acceptanceManifest?.runs.find(
+                      ({ run_id: runId }) => runId === lease.run_id,
+                    );
+                    if (!scheduled || !acceptanceManifest) {
+                      return { ok: true as const, value: undefined };
+                    }
+                    acceptanceFailureReconciliationPending = true;
+                    const held = await falcon24CampaignAuthority.hold(capability, {
+                      campaign_id: acceptanceManifest.campaign_id,
+                      run_id: scheduled.run_id,
+                      failure_layer: classifyFalcon24RunFailureCode(errorCode),
+                      failure_code: errorCode,
+                    });
+                    if (held.ok) acceptanceFailureReconciliationPending = false;
+                    return held.ok ? { ok: true as const, value: undefined } : held;
+                  },
+                }
+              : {}),
           }),
         };
       },

@@ -116,7 +116,7 @@ describe("Falcon24 analysis program compiler", () => {
     ).toEqual(
       expect.arrayContaining([
         expect.stringContaining("minimum signed month-over-month revenue change"),
-        expect.stringContaining("clip every item-row quantity"),
+        expect.stringContaining("q1_segment_order_items"),
         expect.stringContaining("exactly the keys active_buyers, orders_per_buyer"),
         expect.stringContaining("Never invent parallel scalar variables"),
       ]),
@@ -152,20 +152,25 @@ describe("Falcon24 analysis program compiler", () => {
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("do not round");
     expect(
-      falcon24AnalysisProgramInternals.method_contracts[
-        "falcon24-delivery-experience-12m"
-      ].join(" "),
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-delivery-experience-12m"].join(
+        " ",
+      ),
     ).toContain("never as a fraction of valid delivery durations");
     expect(
-      falcon24AnalysisProgramInternals.method_contracts[
-        "falcon24-delivery-experience-12m"
-      ].join(" "),
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-delivery-experience-12m"].join(
+        " ",
+      ),
     ).toContain("unrated orders retained in the denominator");
     expect(
-      falcon24AnalysisProgramInternals.method_contracts[
-        "falcon24-delivery-experience-12m"
-      ].join(" "),
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-delivery-experience-12m"].join(
+        " ",
+      ),
     ).toContain("exactly 2127, never to the total order count");
+    expect(
+      falcon24AnalysisProgramInternals.method_contracts["falcon24-delivery-experience-12m"].join(
+        " ",
+      ),
+    ).toContain("exact protected scenarios collection");
     expect(
       falcon24AnalysisProgramInternals.method_contracts["falcon24-inventory-damage-12m"].join(" "),
     ).toContain("result bh_q_value to table adjusted_p_value");
@@ -194,14 +199,18 @@ describe("Falcon24 analysis program compiler", () => {
       falcon24AnalysisProgramInternals.method_contracts["falcon24-cohort-retention-m0-m6"].join(
         " ",
       ),
-    ).toContain("cohort_count=12");
+    ).toContain("exact protected primary cohort_periods collection");
+    expect(programs[4]?.nodes[0]?.result_contract.tables[0]?.projection).toMatchObject({
+      mode: "RESULT_COLLECTION",
+      collection_field: "cohorts",
+    });
     expect(
       programs.map((program) =>
         program.nodes[0]?.operator_obligations.map(({ operator_id: operatorId }) => operatorId),
       ),
     ).toEqual([
-      ["decomposition.product-shapley-exact@1"],
-      ["regression.binomial-logit-wald@1"],
+      ["decomposition.product-shapley-exact@1", "decomposition.revenue-segment-drivers@1"],
+      ["descriptive.delivery-low-rating-scenarios@1", "regression.delivery-low-rating-adjusted@1"],
       [
         "robust-trend.theil-sen-slope@1",
         "trend.mann-kendall-original@1",
@@ -211,6 +220,18 @@ describe("Falcon24 analysis program compiler", () => {
       ["descriptive.marketing-lag-priority@1"],
       ["cohort.registration-retention-m0-m6@2", "cohort.registration-retention-m0-m6@2"],
     ]);
+    const obligations = Object.values(falcon24AnalysisProgramInternals.operator_obligations).flat();
+    expect(obligations).toHaveLength(11);
+    expect(obligations.every(({ input_lineage_bindings: bindings }) => bindings.length > 0)).toBe(
+      true,
+    );
+    expect(
+      new Set(
+        obligations.flatMap(({ input_lineage_bindings: bindings }) =>
+          bindings.map(({ lineage_kind: lineageKind }) => lineageKind),
+        ),
+      ),
+    ).toEqual(new Set(["GOVERNED_INPUT_EXACT", "SERVER_TRANSFORM_EXACT", "OPERATOR_RESULT_EXACT"]));
     expect(
       Object.values(falcon24AnalysisProgramInternals.method_contracts).flat().join(" "),
     ).not.toMatch(

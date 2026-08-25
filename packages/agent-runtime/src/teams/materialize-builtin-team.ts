@@ -52,18 +52,30 @@ export async function materializeBuiltinTeamProfiles(
 
   const listed = await dependencies.profiles.listDiscoverable(input.capability_input);
   if (!listed.ok) return listed;
-  const headsByProfileId = new Map(
-    listed.value.map((item) => [item.head.profile_id, item.head] as const),
+  const itemsByProfileId = new Map(
+    listed.value.map((item) => [item.head.profile_id, item] as const),
   );
   const committed: AgentProductProfileRegistryItemV2[] = [];
   for (const revision of materialized.profile_revisions) {
+    // Consume the deterministic operation identity even when the immutable
+    // revision is already current, so later Profile identities never shift.
+    const operationId = input.create_id();
+    const current = itemsByProfileId.get(revision.profile_id);
+    if (
+      current?.head.lifecycle === "ENABLED" &&
+      current.revision.revision === revision.revision &&
+      current.revision.revision_hash === revision.revision_hash
+    ) {
+      committed.push(current);
+      continue;
+    }
     const command = await buildAgentProductProfileCommitCommandV2({
       schema_version: "agent-product-profile-commit-command@2.0.0",
-      operation_id: input.create_id(),
+      operation_id: operationId,
       idempotency_key: `${input.idempotency_prefix}:profile:${revision.profile_id}:${revision.revision}`,
       actor_principal_id: input.actor_principal_id,
       revision,
-      expected_head_version: headsByProfileId.get(revision.profile_id)?.version ?? 0,
+      expected_head_version: current?.head.version ?? 0,
       target_lifecycle: "ENABLED",
     });
     const result = await dependencies.profiles.commitV2(input.capability_input, command);

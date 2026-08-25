@@ -37,11 +37,9 @@ const EXPECTED_OPERATOR_PARAMETERS: Readonly<
     max_factors: 8,
     closure_tolerance: 1e-9,
   },
-  q2_delivery_low_rating: {
-    add_intercept: true,
-    max_iterations: 100,
-    tolerance: 1e-8,
-  },
+  q1_segment_drivers: {},
+  q2_low_rating_scenarios: {},
+  q2_delivery_low_rating: {},
   q3_theil_sen_all_products: {},
   q3_mann_kendall_all_products: {
     alpha: 0.05,
@@ -65,7 +63,15 @@ const EXPECTED_OPERATOR_PARAMETERS: Readonly<
 
 const REQUIRED_OPERATOR_LIMITATIONS: Readonly<Record<string, readonly string[]>> = Object.freeze({
   q1_revenue_identity: ["APPROXIMATE_MODE_NOT_SUPPORTED", "PRODUCT_IDENTITY_REQUIRED"],
-  q2_delivery_low_rating: ["ASSOCIATION_NOT_CAUSATION"],
+  q1_segment_drivers: [
+    "DESCRIPTIVE_DECOMPOSITION_NOT_CAUSAL",
+    "ORDER_TOTAL_ALLOCATED_BY_ITEM_QUANTITY",
+  ],
+  q2_low_rating_scenarios: ["DESCRIPTIVE_CONCENTRATION_NOT_CAUSAL"],
+  q2_delivery_low_rating: [
+    "ASSOCIATION_NOT_CAUSATION",
+    "BINOMIAL_LOGIT_COMPOSED_FROM_UNIQUE_OPERATOR",
+  ],
   q3_theil_sen_all_products: ["SLOPE_UNIT_DEPENDS_ON_DECLARED_X_SCALE"],
   q3_mann_kendall_all_products: ["SEASONALITY_NOT_CORRECTED", "SERIAL_CORRELATION_NOT_CORRECTED"],
   q3_bh_all_products: [
@@ -91,9 +97,11 @@ const METHOD_OPERATOR_CALLS: Readonly<
 > = Object.freeze({
   "falcon24-business-review-18m": {
     "buyers-frequency-aov-shapley": ["q1_revenue_identity"],
+    "segment-driver-decomposition": ["q1_segment_drivers"],
   },
   "falcon24-delivery-experience-12m": {
     "adjusted-binomial-glm": ["q2_delivery_low_rating"],
+    "low-rating-scenario-concentration": ["q2_low_rating_scenarios"],
   },
   "falcon24-inventory-damage-12m": {
     "benjamini-hochberg-fdr": ["q3_bh_all_products"],
@@ -751,21 +759,16 @@ function verifyDelivery(
     );
   }
   const rated = orders.filter((row) => nullableNumber(row, "rating") !== null);
-  if (output.adjusted_binomial_glm.sample_size !== rated.length)
-    fail("FALCON24_Q2_GLM_SAMPLE_MISMATCH");
+  const adjusted = output.adjusted_binomial_glm[0] ?? fail("FALCON24_Q2_GLM_MISSING");
+  if (adjusted.sample_size !== rated.length) fail("FALCON24_Q2_GLM_SAMPLE_MISMATCH");
   const { coefficient: delayedCoefficient, pValue: delayedPValue } = fitDeliveryGlm(rated);
   close(
-    output.adjusted_binomial_glm.delayed_coefficient,
+    adjusted.delayed_coefficient,
     delayedCoefficient,
     "FALCON24_Q2_GLM_COEFFICIENT_MISMATCH",
     1e-6,
   );
-  close(
-    output.adjusted_binomial_glm.delayed_p_value,
-    delayedPValue,
-    "FALCON24_Q2_GLM_P_VALUE_MISMATCH",
-    1e-6,
-  );
+  close(adjusted.delayed_p_value, delayedPValue, "FALCON24_Q2_GLM_P_VALUE_MISMATCH", 1e-6);
   const scenarioGroups = new Map<string, Row[]>();
   for (const row of orders) {
     const key = `${text(row, "product_category")}\u0000${text(row, "customer_segment")}\u0000${text(row, "delivery_status")}`;
@@ -1304,20 +1307,12 @@ function verifyCohort(
     no_order_customers: noOrderCustomers,
     invalid_delivery_orders: invalidDeliveryOrders,
   } as const;
-  const anomaly = output.anomaly_precheck;
   for (const key of anomalyKeys) {
     close(
       number(first, key),
       recomputedAnomaly[key],
       `FALCON24_Q5_INPUT_${key.toUpperCase()}_MISMATCH`,
     );
-    close(anomaly[key], recomputedAnomaly[key], `FALCON24_Q5_${key.toUpperCase()}_MISMATCH`);
-  }
-  if (
-    output.sensitivity.excluded_pre_registration_customers !== invalidTimelineCustomers.size ||
-    output.sensitivity.retained_no_order_customers !== noOrderCustomers
-  ) {
-    fail("FALCON24_Q5_SENSITIVITY_AUDIT_MISMATCH");
   }
 
   const groups = new Map<string, Set<string>>();
@@ -1327,82 +1322,125 @@ function verifyCohort(
     members.add(customer.customerId);
     groups.set(key, members);
   }
-  if (output.cohorts.length !== groups.size) fail("FALCON24_Q5_COHORT_COVERAGE_MISMATCH");
-  const outputGroups = new Set<string>();
-  let sensitivityChanged = false;
-  for (const cohort of output.cohorts) {
-    const key = `${cohort.registration_cohort}\u0000${cohort.customer_segment}`;
-    if (outputGroups.has(key)) fail("FALCON24_Q5_COHORT_DUPLICATE");
-    outputGroups.add(key);
-    const members = groups.get(key) ?? fail("FALCON24_Q5_COHORT_GROUP_UNKNOWN");
-    const validMembers = new Set(
-      [...members].filter((customerId) => !invalidTimelineCustomers.has(customerId)),
-    );
-    for (const point of cohort.points) {
-      const periodEvents = [...members].flatMap((customerId) => {
-        const customer = customers.get(customerId) ?? fail("FALCON24_Q5_CUSTOMER_MISSING");
-        return (eventsByCustomer.get(customerId) ?? []).filter(
-          (event) =>
-            monthOrdinal(event.eventMonth) - monthOrdinal(customer.registrationMonth) ===
-            point.month_index,
+  const verifyPeriods = (periods: typeof output.cohorts, mode: "PRIMARY" | "SENSITIVITY") => {
+    if (periods.length !== groups.size * 7) {
+      fail("FALCON24_Q5_COHORT_COVERAGE_MISMATCH");
+    }
+    const expectedStatus =
+      mode === "SENSITIVITY"
+        ? ordersBeforeRegistration || invalidDeliveryOrders
+          ? "SENSITIVITY_WITH_DISCLOSED_ANOMALIES"
+          : "SENSITIVITY"
+        : ordersBeforeRegistration && invalidDeliveryOrders
+          ? "HOLD_MULTIPLE_DATA_QUALITY_ANOMALIES"
+          : ordersBeforeRegistration
+            ? "HOLD_PRE_REGISTRATION_EVENTS"
+            : invalidDeliveryOrders
+              ? "HOLD_INVALID_DELIVERY_EVENTS"
+              : "PASS";
+    const expectedRows = [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .flatMap(([key, originalMembers]) => {
+        const [registrationMonth, customerType] = key.split("\u0000");
+        if (!registrationMonth || !customerType) fail("FALCON24_Q5_COHORT_GROUP_INVALID");
+        const eligibleMembers = new Set(
+          [...originalMembers].filter(
+            (customerId) => mode === "PRIMARY" || !invalidTimelineCustomers.has(customerId),
+          ),
         );
+        return Array.from({ length: 7 }, (_, monthIndex) => {
+          const periodEvents = [...eligibleMembers].flatMap((customerId) => {
+            const customer = customers.get(customerId) ?? fail("FALCON24_Q5_CUSTOMER_MISSING");
+            return (eventsByCustomer.get(customerId) ?? []).filter(
+              (event) =>
+                monthOrdinal(event.eventMonth) - monthOrdinal(customer.registrationMonth) ===
+                monthIndex,
+            );
+          });
+          const activeCustomers = new Set(periodEvents.map(({ customerId }) => customerId));
+          const ordersByCustomer = new Map<string, number>();
+          for (const event of periodEvents) {
+            ordersByCustomer.set(
+              event.customerId,
+              (ordersByCustomer.get(event.customerId) ?? 0) + 1,
+            );
+          }
+          const repeatCustomers = [...ordersByCustomer.values()].filter(
+            (count) => count >= 2,
+          ).length;
+          const revenue = periodEvents.reduce((sum, event) => sum + event.revenue, 0);
+          const deliveryValues = periodEvents.flatMap(({ deliveryMinutes }) =>
+            deliveryMinutes === null ? [] : [deliveryMinutes],
+          );
+          const ratingValues = periodEvents.flatMap(({ rating }) =>
+            rating === null ? [] : [rating],
+          );
+          return {
+            registrationMonth,
+            customerType,
+            monthIndex,
+            eligibleCustomers: eligibleMembers.size,
+            activeCustomers: activeCustomers.size,
+            retentionRate:
+              eligibleMembers.size === 0 ? 0 : activeCustomers.size / eligibleMembers.size,
+            repeatCustomers,
+            repeatPurchaseRate:
+              eligibleMembers.size === 0 ? 0 : repeatCustomers / eligibleMembers.size,
+            orderCount: periodEvents.length,
+            revenue,
+            averageSpend: activeCustomers.size === 0 ? null : revenue / activeCustomers.size,
+            averageDeliveryMinutes:
+              deliveryValues.length === 0
+                ? null
+                : deliveryValues.reduce((sum, value) => sum + value, 0) / deliveryValues.length,
+            averageRating:
+              ratingValues.length === 0
+                ? null
+                : ratingValues.reduce((sum, value) => sum + value, 0) / ratingValues.length,
+            cohortSize: originalMembers.size,
+          };
+        });
       });
-      const activeCustomers = new Set(periodEvents.map(({ customerId }) => customerId));
-      const ordersByCustomer = new Map<string, number>();
-      for (const event of periodEvents) {
-        ordersByCustomer.set(event.customerId, (ordersByCustomer.get(event.customerId) ?? 0) + 1);
+    for (const [index, period] of periods.entries()) {
+      const expected = expectedRows[index] ?? fail("FALCON24_Q5_COHORT_ROW_MISSING");
+      if (
+        period.registration_month !== expected.registrationMonth ||
+        period.customer_type !== expected.customerType ||
+        period.month_index !== expected.monthIndex ||
+        period.eligible_customers !== expected.eligibleCustomers ||
+        period.active_customers !== expected.activeCustomers ||
+        period.repeat_customers !== expected.repeatCustomers ||
+        period.order_count !== expected.orderCount ||
+        period.cohort_size !== expected.cohortSize ||
+        period.matured !== true ||
+        period.pre_registration_event_count !== ordersBeforeRegistration ||
+        period.pre_registration_customer_count !== invalidTimelineCustomers.size ||
+        period.valid_ordering_customer_count !== validOrderingCustomers ||
+        period.no_order_customer_count !== noOrderCustomers ||
+        period.orphan_event_count !== 0 ||
+        period.invalid_delivery_event_count !== invalidDeliveryOrders ||
+        period.data_quality_status !== expectedStatus
+      ) {
+        fail("FALCON24_Q5_COHORT_ROW_MISMATCH");
       }
-      const repeatCustomers = [...ordersByCustomer.values()].filter((count) => count >= 2).length;
-      const revenue = periodEvents.reduce((sum, event) => sum + event.revenue, 0);
+      close(period.retention_rate, expected.retentionRate, "FALCON24_Q5_RETENTION_MISMATCH");
       close(
-        point.retention_rate,
-        activeCustomers.size / members.size,
-        "FALCON24_Q5_RETENTION_MISMATCH",
-      );
-      close(
-        point.repeat_purchase_rate,
-        repeatCustomers / members.size,
+        period.repeat_purchase_rate,
+        expected.repeatPurchaseRate,
         "FALCON24_Q5_REPEAT_MISMATCH",
       );
+      close(period.revenue, expected.revenue, "FALCON24_Q5_REVENUE_MISMATCH");
+      nullableClose(period.average_spend, expected.averageSpend, "FALCON24_Q5_SPEND_MISMATCH");
       nullableClose(
-        point.average_spend,
-        activeCustomers.size === 0 ? null : revenue / activeCustomers.size,
-        "FALCON24_Q5_SPEND_MISMATCH",
-      );
-      const deliveryValues = periodEvents.flatMap(({ deliveryMinutes }) =>
-        deliveryMinutes === null ? [] : [deliveryMinutes],
-      );
-      nullableClose(
-        point.delivery_minutes,
-        deliveryValues.length === 0
-          ? null
-          : deliveryValues.reduce((sum, value) => sum + value, 0) / deliveryValues.length,
+        period.average_delivery_minutes,
+        expected.averageDeliveryMinutes,
         "FALCON24_Q5_DELIVERY_MISMATCH",
       );
-      const ratingValues = periodEvents.flatMap(({ rating }) => (rating === null ? [] : [rating]));
-      nullableClose(
-        point.average_rating,
-        ratingValues.length === 0
-          ? null
-          : ratingValues.reduce((sum, value) => sum + value, 0) / ratingValues.length,
-        "FALCON24_Q5_RATING_MISMATCH",
-      );
-      const sensitivityActive = new Set(
-        periodEvents
-          .filter(({ customerId }) => validMembers.has(customerId))
-          .map(({ customerId }) => customerId),
-      ).size;
-      const sensitivityRetention =
-        validMembers.size === 0 ? 0 : sensitivityActive / validMembers.size;
-      if (Math.abs(point.retention_rate - sensitivityRetention) >= 0.05) {
-        sensitivityChanged = true;
-      }
+      nullableClose(period.average_rating, expected.averageRating, "FALCON24_Q5_RATING_MISMATCH");
     }
-  }
-  if (outputGroups.size !== groups.size) fail("FALCON24_Q5_COHORT_COVERAGE_MISMATCH");
-  if (output.sensitivity.conclusion_changed !== sensitivityChanged) {
-    fail("FALCON24_Q5_SENSITIVITY_CONCLUSION_MISMATCH");
-  }
+  };
+  verifyPeriods(output.cohorts, "PRIMARY");
+  verifyPeriods(output.sensitivity_cohorts, "SENSITIVITY");
 }
 
 const verifiers = {

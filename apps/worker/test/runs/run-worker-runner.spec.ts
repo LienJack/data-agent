@@ -13,6 +13,7 @@ import * as workerPublic from "../../src/index.js";
 import {
   createRunWorkerRunner,
   type RunCheckpointInput,
+  type RunWorkerRunnerDependencies,
   type RunWorkflowExecutorPort,
 } from "../../src/runs/index.js";
 import { createRunWorkflowExecutorRouter } from "../../src/teams/run-workflow-executor-router.js";
@@ -147,6 +148,9 @@ async function harness(
     execution_timeout_ms?: number;
     heartbeat_interval_ms?: number;
     side_effect_timeout_ms?: number;
+    max_run_attempts?: number;
+    on_run_failure?: RunWorkerRunnerDependencies["on_run_failure"];
+    reconcile_run_failures?: RunWorkerRunnerDependencies["reconcile_run_failures"];
   }> = {},
 ) {
   const runtime = new InMemoryRunRuntime();
@@ -157,6 +161,11 @@ async function harness(
     principal_id: principalId,
     run_id: runId,
   });
+  const {
+    on_run_failure: onRunFailure,
+    reconcile_run_failures: reconcileRunFailures,
+    ...runtimeTiming
+  } = timing;
   const runner = createRunWorkerRunner({
     queue: runtime,
     event_store: runtime,
@@ -164,7 +173,9 @@ async function harness(
     effective_config_loader: createEffectiveConfigFixtureLoader(effectiveConfigFixture),
     now: () => new Date("2026-07-26T00:01:00.000Z"),
     create_id: createIdFactory(),
-    ...timing,
+    ...runtimeTiming,
+    ...(onRunFailure ? { on_run_failure: onRunFailure } : {}),
+    ...(reconcileRunFailures ? { reconcile_run_failures: reconcileRunFailures } : {}),
   });
   return { runtime, runner };
 }
@@ -712,6 +723,172 @@ describe("Run Worker Runner", () => {
         error_code: "RUN_ATTEMPT_BUDGET_EXHAUSTED",
       },
     });
+  });
+
+  it("strict acceptance 在第一次交付请求 RETRY 时立即失败且不调度重试", async () => {
+    const { runtime, runner } = await harness(
+      {
+        async execute() {
+          return {
+            kind: "RETRY",
+            error_code: "MODEL_PROVIDER_TEMPORARY_FAILURE",
+            retry_delay_ms: RUN_RETRY_MIN_DELAY_MS,
+          };
+        },
+      },
+      { max_run_attempts: 1 },
+    );
+    runtime.enqueueLease(lease(1, 1));
+
+    const result = await runner.runOnce({ scope, worker_id: "worker-1" });
+
+    expect(result).toMatchObject({ ok: true, value: { kind: "FAILED" } });
+    expect(runtime.retried).toHaveLength(0);
+    expect(
+      runtime.eventsFor(runId).find(({ event_type }) => event_type === "run.failed"),
+    ).toMatchObject({ payload: { error_code: "RUN_ATTEMPT_BUDGET_EXHAUSTED" } });
+  });
+
+  it("strict acceptance 以 durable run.failed 驱动 campaign HOLD 后才确认 Queue", async () => {
+    let runtime: InMemoryRunRuntime | undefined;
+    const onRunFailure = vi.fn(async () => {
+      expect(
+        runtime?.eventsFor(runId).some(({ event_type: eventType }) => eventType === "run.failed"),
+      ).toBe(true);
+      expect(runtime?.completed).toHaveLength(0);
+      return { ok: true as const, value: undefined };
+    });
+    const harnessResult = await harness(
+      {
+        async execute() {
+          return { kind: "FAILED" as const, error_code: "FALCON24_Q1_FAILED" };
+        },
+      },
+      { on_run_failure: onRunFailure },
+    );
+    runtime = harnessResult.runtime;
+    const { runner } = harnessResult;
+    runtime.enqueueLease(lease(1, 1));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "FAILED" },
+    });
+    expect(onRunFailure).toHaveBeenCalledWith({
+      lease: expect.objectContaining({ run_id: runId }),
+      error_code: "FALCON24_Q1_FAILED",
+    });
+    expect(
+      runtime.eventsFor(runId).some(({ event_type: eventType }) => eventType === "run.failed"),
+    ).toBe(true);
+  });
+
+  it("campaign HOLD 首次失败后从 durable run.failed 恢复且不重投 Run", async () => {
+    let runtime: InMemoryRunRuntime | undefined;
+    const onRunFailure = vi
+      .fn<NonNullable<RunWorkerRunnerDependencies["on_run_failure"]>>()
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "FALCON24_CAMPAIGN_HOLD_TEMPORARY_FAILURE",
+          message: "temporary failure",
+          retryable: true,
+        },
+      })
+      .mockResolvedValueOnce({ ok: true, value: undefined });
+    const reconcileRunFailures = vi.fn(async () => {
+      const failed = runtime
+        ?.eventsFor(runId)
+        .find(({ event_type: eventType }) => eventType === "run.failed");
+      if (failed?.event_type !== "run.failed") {
+        return { ok: true as const, value: undefined };
+      }
+      return onRunFailure({
+        lease: lease(2, 2, "worker-2", 2),
+        error_code: failed.payload.error_code,
+      });
+    });
+    const harnessResult = await harness(
+      {
+        async execute() {
+          return { kind: "FAILED" as const, error_code: "FALCON24_Q1_FAILED" };
+        },
+      },
+      { on_run_failure: onRunFailure, reconcile_run_failures: reconcileRunFailures },
+    );
+    runtime = harnessResult.runtime;
+    const { runner } = harnessResult;
+    runtime.enqueueLease(lease(1, 1));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "FALCON24_CAMPAIGN_HOLD_TEMPORARY_FAILURE" },
+    });
+    expect(runtime.completed).toHaveLength(1);
+    expect(
+      runtime.eventsFor(runId).filter(({ event_type }) => event_type === "run.failed"),
+    ).toHaveLength(1);
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "IDLE" },
+    });
+    expect(onRunFailure).toHaveBeenNthCalledWith(2, {
+      lease: expect.objectContaining({ run_id: runId, worker_fence: 2 }),
+      error_code: "FALCON24_Q1_FAILED",
+    });
+    expect(runtime.completed).toHaveLength(1);
+    expect(reconcileRunFailures).toHaveBeenCalledTimes(2);
+  });
+
+  it("run.failed 落盘后 HOLD hook 抛错的 crash window 可幂等恢复", async () => {
+    let runtime: InMemoryRunRuntime | undefined;
+    const onRunFailure = vi
+      .fn<NonNullable<RunWorkerRunnerDependencies["on_run_failure"]>>()
+      .mockRejectedValueOnce(new Error("process interrupted after terminal append"))
+      .mockResolvedValueOnce({ ok: true, value: undefined });
+    const reconcileRunFailures = vi.fn(async () => {
+      const failed = runtime
+        ?.eventsFor(runId)
+        .find(({ event_type: eventType }) => eventType === "run.failed");
+      if (failed?.event_type !== "run.failed") {
+        return { ok: true as const, value: undefined };
+      }
+      return onRunFailure({
+        lease: lease(2, 2, "worker-2", 2),
+        error_code: failed.payload.error_code,
+      });
+    });
+    const harnessResult = await harness(
+      {
+        async execute() {
+          return { kind: "FAILED" as const, error_code: "FALCON24_Q2_ORACLE_FAILED" };
+        },
+      },
+      { on_run_failure: onRunFailure, reconcile_run_failures: reconcileRunFailures },
+    );
+    runtime = harnessResult.runtime;
+    const { runner } = harnessResult;
+    runtime.enqueueLease(lease(1, 1));
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: false,
+      error: { code: "RUN_FAILURE_HOOK_FAILED" },
+    });
+    expect(runtime.completed).toHaveLength(1);
+
+    await expect(runner.runOnce({ scope, worker_id: "worker-1" })).resolves.toMatchObject({
+      ok: true,
+      value: { kind: "IDLE" },
+    });
+    expect(onRunFailure).toHaveBeenLastCalledWith({
+      lease: expect.objectContaining({ run_id: runId, worker_fence: 2 }),
+      error_code: "FALCON24_Q2_ORACLE_FAILED",
+    });
+    expect(runtime.completed).toHaveLength(1);
+    expect(
+      runtime.eventsFor(runId).filter(({ event_type }) => event_type === "run.failed"),
+    ).toHaveLength(1);
   });
 
   it("显式 Resume 的新 Outbox 重置交付预算，但保持 Run Attempt 序号单调", async () => {

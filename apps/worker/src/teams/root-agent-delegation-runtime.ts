@@ -179,6 +179,7 @@ export function createRootAgentDelegationRuntime(
             semantic_release_hash: context.package.semantic_release.resource_hash,
           },
           semantic_context_package: context.package,
+          semantic_context: context,
           restored_snapshot: input.execution.restored_snapshot,
           execution_context: input.execution.context,
           signal: input.execution.signal,

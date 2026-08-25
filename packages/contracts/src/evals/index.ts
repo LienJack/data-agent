@@ -1192,6 +1192,7 @@ export const LANE_BY_SUITE = {
 export type EvalLane = z.infer<typeof evalLaneSchema>;
 
 export * from "./falcon-semantic-release-set.js";
+export * from "./falcon24-acceptance-campaign.js";
 export * from "./falcon24-agent-analysis.js";
 export * from "./test-center.js";
 export * from "./truth-types.js";

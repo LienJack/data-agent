@@ -141,6 +141,14 @@ def registration_retention_m0_m6(
             pre_registration_order_ids.add(order_id)
 
     excluded_customers = invalid_timeline_customers if policy == "exclude_sensitivity" else set()
+    ordering_customers = {
+        event["customer_id"]
+        for event in normalized_events
+        if event["customer_id"] in customer_by_id
+    }
+    no_order_customer_count = len(set(customer_by_id) - ordering_customers)
+    valid_ordering_customer_count = len(ordering_customers - invalid_timeline_customers)
+    pre_registration_customer_count = len(invalid_timeline_customers)
     events_by_group_period: dict[tuple[str, str, int], list[dict[str, Any]]] = defaultdict(list)
     for event in normalized_events:
         customer = customer_by_id.get(event["customer_id"])
@@ -230,6 +238,9 @@ def registration_retention_m0_m6(
                     "cohort_size": len(original_members),
                     "matured": True,
                     "pre_registration_event_count": pre_registration_count,
+                    "pre_registration_customer_count": pre_registration_customer_count,
+                    "valid_ordering_customer_count": valid_ordering_customer_count,
+                    "no_order_customer_count": no_order_customer_count,
                     "orphan_event_count": orphan_count,
                     "invalid_delivery_event_count": invalid_delivery_event_count,
                     "data_quality_status": data_quality_status,
