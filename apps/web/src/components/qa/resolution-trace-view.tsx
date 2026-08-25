@@ -58,11 +58,22 @@ import {
 import type { RunConnectionState } from "@/lib/run-projection";
 
 type TraceTab = "overview" | "team" | "trace" | "sql" | "artifacts";
+export type ResolutionTraceRequestIdentity = {
+  readonly workspaceId: string;
+  readonly runId: string;
+};
+
 type LoadState =
-  | { readonly status: "idle" | "loading" }
-  | { readonly status: "error"; readonly message: string }
+  | { readonly status: "idle" }
+  | { readonly status: "loading"; readonly request: ResolutionTraceRequestIdentity }
+  | {
+      readonly status: "empty" | "error";
+      readonly request: ResolutionTraceRequestIdentity;
+      readonly message: string;
+    }
   | {
       readonly status: "ready";
+      readonly request: ResolutionTraceRequestIdentity;
       readonly trace: ResolutionTrace;
       readonly traces: readonly ResolutionTrace[];
       readonly sql: readonly SqlHistoryEntry[];
@@ -72,6 +83,11 @@ type LoadState =
     };
 
 const authoritativeTraceFailureCodes = new Set([
+  "AGENT_TEAM_TRACE_CORRUPT",
+  "RUN_EVENT_STORE_EVENT_CORRUPT",
+  "RUN_EVENT_STORE_PROJECTION_CORRUPT",
+  "RUN_EVENT_STORE_RECEIPT_CORRUPT",
+  "RUN_EVENT_STORE_SNAPSHOT_CORRUPT",
   "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
   "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
   "RESOLUTION_TRACE_AUTHORITY_CORRUPT",
@@ -100,11 +116,40 @@ function authoritativeTraceFailureCode(error: unknown): string | null {
   return null;
 }
 
-export function resolveResolutionTraceLoadFailure(current: LoadState, error: unknown): LoadState {
+function sameResolutionTraceRequest(
+  left: ResolutionTraceRequestIdentity,
+  right: ResolutionTraceRequestIdentity,
+): boolean {
+  return left.workspaceId === right.workspaceId && left.runId === right.runId;
+}
+
+function stateMatchesResolutionTraceRequest(
+  state: LoadState,
+  request: ResolutionTraceRequestIdentity,
+): boolean {
+  return state.status !== "idle" && sameResolutionTraceRequest(state.request, request);
+}
+
+export function bindResolutionTraceLoadState(
+  current: LoadState,
+  request: ResolutionTraceRequestIdentity,
+): LoadState {
+  return stateMatchesResolutionTraceRequest(current, request)
+    ? current
+    : { status: "loading", request };
+}
+
+export function resolveResolutionTraceLoadFailure(
+  current: LoadState,
+  request: ResolutionTraceRequestIdentity,
+  error: unknown,
+): LoadState {
+  if (!stateMatchesResolutionTraceRequest(current, request)) return current;
   const authorityCode = authoritativeTraceFailureCode(error);
   if (authorityCode) {
     return {
       status: "error",
+      request,
       message: `权威轨迹已阻断：${errorMessage(error)}`,
     };
   }
@@ -112,8 +157,43 @@ export function resolveResolutionTraceLoadFailure(current: LoadState, error: unk
     ? current
     : {
         status: "error",
+        request,
         message: errorMessage(error),
       };
+}
+
+type ResolutionTraceLoadResult = {
+  readonly traces: readonly ResolutionTrace[];
+  readonly sql: readonly SqlHistoryEntry[];
+  readonly profiles: Awaited<ReturnType<typeof fetchAgentProfiles>>;
+  readonly teamTrace: Awaited<ReturnType<typeof fetchAgentTeamTrace>>;
+  readonly teamError: string | null;
+};
+
+export function resolveResolutionTraceLoadSuccess(
+  current: LoadState,
+  request: ResolutionTraceRequestIdentity,
+  result: ResolutionTraceLoadResult,
+): LoadState {
+  if (!stateMatchesResolutionTraceRequest(current, request)) return current;
+  const trace = result.traces.find((candidate) => candidate.run_id === request.runId);
+  if (!trace) {
+    return {
+      status: "empty",
+      request,
+      message: "当前 Run 暂无权威轨迹",
+    };
+  }
+  return {
+    status: "ready",
+    request,
+    trace,
+    traces: result.traces,
+    sql: result.sql,
+    profiles: result.profiles,
+    teamTrace: result.teamTrace,
+    teamError: result.teamError,
+  };
 }
 
 async function fetchConversationResolutionTraces(
@@ -1376,36 +1456,53 @@ export function ResolutionTraceView() {
     focus?.runId && runIds.includes(focus.runId) ? focus.runId : (runIds.at(-1) ?? null);
   const requestPerformances = useMemo(() => readModelRequestPerformances(events), [events]);
   const [state, setState] = useState<LoadState>({ status: "idle" });
+  const request =
+    workspaceId && runId ? ({ workspaceId, runId } satisfies ResolutionTraceRequestIdentity) : null;
+  const visibleState = request ? bindResolutionTraceLoadState(state, request) : state;
 
   useEffect(() => {
     if (!workspaceId || !runId || runIds.length === 0) {
       setState({ status: "idle" });
       return;
     }
+    const requestedIdentity = { workspaceId, runId } satisfies ResolutionTraceRequestIdentity;
     let active = true;
-    setState((current) => (current.status === "ready" ? current : { status: "loading" }));
+    setState((current) => bindResolutionTraceLoadState(current, requestedIdentity));
     const team = Promise.all([
       fetchAgentProfiles(workspaceId),
       fetchAgentTeamTrace(runId, workspaceId),
     ])
       .then(([profiles, teamTrace]) => ({ profiles, teamTrace, teamError: null }))
-      .catch((error: unknown) => ({
-        profiles: [],
-        teamTrace: null,
-        teamError: error instanceof Error ? error.message : "Agent Team 轨迹加载失败",
-      }));
+      .catch((error: unknown) => {
+        if (authoritativeTraceFailureCode(error)) throw error;
+        return {
+          profiles: [],
+          teamTrace: null,
+          teamError: error instanceof Error ? error.message : "Agent Team 轨迹加载失败",
+        };
+      });
     void Promise.all([
       fetchConversationResolutionTraces(runIds, workspaceId),
       fetchSqlHistory({ runId, ...(conversationId ? { conversationId } : {}) }, workspaceId),
       team,
     ])
       .then(([traces, sql, teamState]) => {
-        const trace = traces.find((candidate) => candidate.run_id === runId) ?? traces.at(-1);
-        if (active && trace)
-          setState({ status: "ready", trace, traces, sql: sql.items, ...teamState });
+        if (active) {
+          setState((current) =>
+            resolveResolutionTraceLoadSuccess(current, requestedIdentity, {
+              traces,
+              sql: sql.items,
+              ...teamState,
+            }),
+          );
+        }
       })
       .catch((error: unknown) => {
-        if (active) setState((current) => resolveResolutionTraceLoadFailure(current, error));
+        if (active) {
+          setState((current) =>
+            resolveResolutionTraceLoadFailure(current, requestedIdentity, error),
+          );
+        }
       });
     return () => {
       active = false;
@@ -1415,29 +1512,32 @@ export function ResolutionTraceView() {
   if (!conversationId)
     return <EmptyState title="选择一个对话" description="轨迹覆盖当前选中对话中的全部 Run" />;
   if (!runId) return <EmptyState title="暂无轨迹" description="当前对话还没有持久化 Run" />;
-  if (state.status === "loading" || state.status === "idle")
+  if (visibleState.status === "loading" || visibleState.status === "idle")
     return (
       <div className="p-5 text-xs text-[var(--color-text-muted)]" role="status">
         正在加载权威轨迹...
       </div>
     );
-  if (state.status === "error")
+  if (visibleState.status === "empty") {
+    return <EmptyState title="暂无轨迹" description={visibleState.message} />;
+  }
+  if (visibleState.status === "error")
     return (
       <div className="p-5 text-xs text-red-700" role="alert">
-        {state.message}
+        {visibleState.message}
       </div>
     );
-  if (state.status !== "ready") return null;
+  if (visibleState.status !== "ready") return null;
 
   return (
     <ResolutionTracePanel
-      trace={state.trace}
-      traces={state.traces}
-      sql={state.sql}
+      trace={visibleState.trace}
+      traces={visibleState.traces}
+      sql={visibleState.sql}
       focusSequence={focus?.sequence ?? null}
-      profiles={state.profiles}
-      teamTrace={state.teamTrace}
-      teamError={state.teamError}
+      profiles={visibleState.profiles}
+      teamTrace={visibleState.teamTrace}
+      teamError={visibleState.teamError}
       workspaceId={workspaceId}
       connectionState={connection}
       requestPerformances={requestPerformances}

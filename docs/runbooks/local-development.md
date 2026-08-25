@@ -143,10 +143,16 @@ Compose Worker 将该 Manifest 目录绑定到 `/app/artifacts/falcon24-agent-an
 
 ```bash
 # 仅在实际代码/冻结契约已提交且工作树 clean 后创建新 campaign
-pnpm --dir apps/web falcon24:analysis:control manifest --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID"
+pnpm --dir apps/web falcon24:analysis:control manifest \
+  --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" --campaign-version 13
 
 # 每个 ordinal 先 claim/submit；Run 完成后先检查完整轨迹
-pnpm --dir apps/web falcon24:analysis:control trace --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" --run-ordinal 1
+pnpm --dir apps/web falcon24:analysis:control submit \
+  --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" \
+  --case-id falcon24-business-review-18m --variant COLD --repetition 1 --ordinal 0
+pnpm --dir apps/web falcon24:analysis:control trace \
+  --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" \
+  --case-id falcon24-business-review-18m --variant COLD --repetition 1 --ordinal 0
 
 # 按 exact campaign/run 通过 OpenSandbox management API 回收；服务端把 attestation-bound
 # receipt 直接写入 PostgreSQL Authority，不生成供 Finalize 信任的本地 JSON
@@ -154,7 +160,9 @@ pnpm --dir apps/worker falcon24:sandbox:reclaim -- --campaign-id "$FALCON24_ACCE
 
 # finalize 只从 PostgreSQL 读取 management-plane receipt，并要求底层 Run 已 SUCCEEDED；
 # 任意本地 receipt 路径参数都不再存在
-pnpm --dir apps/web falcon24:analysis:control finalize --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" --run-ordinal 1
+pnpm --dir apps/web falcon24:analysis:control finalize \
+  --campaign-id "$FALCON24_ACCEPTANCE_CAMPAIGN_ID" \
+  --case-id falcon24-business-review-18m --variant COLD --repetition 1 --ordinal 0
 ```
 
 任一命令返回 HOLD 后立即停止，不自动重试、不继续后续 ordinal、不创建下一版本。按

@@ -7,8 +7,10 @@ import {
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
+  bindResolutionTraceLoadState,
   ResolutionTracePanel,
   resolveResolutionTraceLoadFailure,
+  resolveResolutionTraceLoadSuccess,
 } from "@/components/qa/resolution-trace-view";
 import { ApiRequestError } from "@/lib/api-client";
 
@@ -29,6 +31,7 @@ describe("Resolution Trace panel", () => {
     });
     const firstSuccessfulLoad = {
       status: "ready" as const,
+      request: { workspaceId: id(20), runId: trace.run_id },
       trace,
       traces: [trace],
       sql: [],
@@ -39,6 +42,7 @@ describe("Resolution Trace panel", () => {
 
     const refreshed = resolveResolutionTraceLoadFailure(
       firstSuccessfulLoad,
+      firstSuccessfulLoad.request,
       new ApiRequestError(
         409,
         "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
@@ -49,11 +53,29 @@ describe("Resolution Trace panel", () => {
 
     expect(refreshed).toEqual({
       status: "error",
+      request: firstSuccessfulLoad.request,
       message:
         "权威轨迹已阻断：Stored Artifact document 不符合 committed L2 或 Product Team 契约。 (RESOLUTION_TRACE_ARTIFACT_CORRUPT)",
     });
     expect(refreshed).not.toHaveProperty("trace");
     expect(refreshed).not.toHaveProperty("traces");
+
+    const eventStoreCorrupt = resolveResolutionTraceLoadFailure(
+      firstSuccessfulLoad,
+      firstSuccessfulLoad.request,
+      new ApiRequestError(
+        409,
+        "RUN_EVENT_STORE_EVENT_CORRUPT",
+        false,
+        "Run Event 权威记录损坏 (RUN_EVENT_STORE_EVENT_CORRUPT)",
+      ),
+    );
+    expect(eventStoreCorrupt).toMatchObject({
+      status: "error",
+      request: firstSuccessfulLoad.request,
+      message: "权威轨迹已阻断：Run Event 权威记录损坏 (RUN_EVENT_STORE_EVENT_CORRUPT)",
+    });
+    expect(eventStoreCorrupt).not.toHaveProperty("trace");
   });
 
   it("keeps the last ready trace while a transient refresh request is recovering", async () => {
@@ -68,6 +90,7 @@ describe("Resolution Trace panel", () => {
     });
     const ready = {
       status: "ready" as const,
+      request: { workspaceId: id(20), runId: trace.run_id },
       trace,
       traces: [trace],
       sql: [],
@@ -76,7 +99,129 @@ describe("Resolution Trace panel", () => {
       teamError: null,
     };
 
-    expect(resolveResolutionTraceLoadFailure(ready, new TypeError("Failed to fetch"))).toBe(ready);
+    expect(
+      resolveResolutionTraceLoadFailure(ready, ready.request, new TypeError("Failed to fetch")),
+    ).toBe(ready);
+  });
+
+  it("clears Run A immediately when the requested Run or Workspace changes", async () => {
+    const traceA = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [],
+      edges: [],
+    });
+    const requestA = { workspaceId: id(20), runId: traceA.run_id };
+    const readyA = {
+      status: "ready" as const,
+      request: requestA,
+      trace: traceA,
+      traces: [traceA],
+      sql: [],
+      profiles: [],
+      teamTrace: null,
+      teamError: null,
+    };
+    const requestB = { workspaceId: requestA.workspaceId, runId: id(5) };
+    const differentWorkspace = { workspaceId: id(21), runId: requestA.runId };
+
+    expect(bindResolutionTraceLoadState(readyA, requestB)).toEqual({
+      status: "loading",
+      request: requestB,
+    });
+    expect(bindResolutionTraceLoadState(readyA, differentWorkspace)).toEqual({
+      status: "loading",
+      request: differentWorkspace,
+    });
+
+    const loadingB = bindResolutionTraceLoadState(readyA, requestB);
+    expect(
+      resolveResolutionTraceLoadFailure(loadingB, requestA, new TypeError("stale request")),
+    ).toBe(loadingB);
+  });
+
+  it("selects an exact empty Run B trace and never falls back to Run A", async () => {
+    const traceA = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(3),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [],
+      edges: [],
+    });
+    const traceB = await buildResolutionTrace({
+      schema_version: "resolution-trace@1.0.0",
+      scope,
+      run_id: id(5),
+      conversation_id: id(4),
+      config_ref: null,
+      nodes: [],
+      edges: [],
+    });
+    const requestB = { workspaceId: id(20), runId: traceB.run_id };
+    const loadingB = { status: "loading" as const, request: requestB };
+    const result = {
+      traces: [traceA, traceB],
+      sql: [],
+      profiles: [],
+      teamTrace: null,
+      teamError: null,
+    };
+
+    expect(resolveResolutionTraceLoadSuccess(loadingB, requestB, result)).toMatchObject({
+      status: "ready",
+      request: requestB,
+      trace: traceB,
+    });
+
+    const missing = resolveResolutionTraceLoadSuccess(loadingB, requestB, {
+      ...result,
+      traces: [traceA],
+    });
+    expect(missing).toEqual({
+      status: "empty",
+      request: requestB,
+      message: "当前 Run 暂无权威轨迹",
+    });
+    expect(missing).not.toHaveProperty("trace");
+  });
+
+  it("never restores Run A for Run B network, API, or authority failures", async () => {
+    const requestB = { workspaceId: id(20), runId: id(5) };
+    const loadingB = { status: "loading" as const, request: requestB };
+    const failures = [
+      {
+        error: new TypeError("Failed to fetch"),
+        message: "Failed to fetch",
+      },
+      {
+        error: new ApiRequestError(503, "TRACE_BACKEND_UNAVAILABLE", true, "轨迹服务暂不可用"),
+        message: "轨迹服务暂不可用",
+      },
+      {
+        error: new ApiRequestError(
+          409,
+          "RUN_EVENT_STORE_EVENT_CORRUPT",
+          false,
+          "Run Event 权威记录损坏 (RUN_EVENT_STORE_EVENT_CORRUPT)",
+        ),
+        message: "权威轨迹已阻断：Run Event 权威记录损坏 (RUN_EVENT_STORE_EVENT_CORRUPT)",
+      },
+    ];
+
+    for (const failure of failures) {
+      const failed = resolveResolutionTraceLoadFailure(loadingB, requestB, failure.error);
+      expect(failed).toEqual({
+        status: "error",
+        request: requestB,
+        message: failure.message,
+      });
+      expect(failed).not.toHaveProperty("trace");
+    }
   });
 
   it("groups the whole conversation into collapsible Turns and exposes Request performance", async () => {

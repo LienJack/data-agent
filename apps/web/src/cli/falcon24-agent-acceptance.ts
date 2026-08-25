@@ -321,19 +321,32 @@ async function main(): Promise<void> {
   };
 
   if (command === "trace") {
-    const { trace, verified } = await loadAndVerifyTrace();
-    report({
-      terminal: "TRACE_VERIFIED",
-      campaign_id: campaignId,
-      run_ordinal: runOrdinal,
-      case_id: testCase.case_id,
-      run_variant: variant,
-      repetition,
-      run_id: identities.run_id,
-      trace_hash: trace.trace_hash,
-      ...verified,
-    });
-    return;
+    requireStrictPolicy(environment);
+    try {
+      const { trace, verified } = await loadAndVerifyTrace();
+      report({
+        terminal: "TRACE_VERIFIED",
+        campaign_id: campaignId,
+        run_ordinal: runOrdinal,
+        case_id: testCase.case_id,
+        run_variant: variant,
+        repetition,
+        run_id: identities.run_id,
+        trace_hash: trace.trace_hash,
+        ...verified,
+      });
+      return;
+    } catch (error) {
+      const failure = failureAt("PUBLISHER", error);
+      requireValue(
+        await campaignAuthority.hold(capability, {
+          campaign_id: campaignId,
+          run_id: identities.run_id,
+          ...failure,
+        }),
+      );
+      throw error;
+    }
   }
 
   if (command === "cancel") {
