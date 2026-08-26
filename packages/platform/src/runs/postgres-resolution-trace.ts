@@ -776,6 +776,44 @@ function artifactInputReferences(
   return [];
 }
 
+function analysisSystemReferences(
+  document: VerifiedArtifact["document"],
+): readonly ArtifactReference[] {
+  if ("envelope" in document && document.payload.artifact_type === "DerivedAnalysisEvidence") {
+    return [
+      document.payload.sandbox_execution_receipt_ref,
+      ...document.payload.sandbox_result_refs,
+    ];
+  }
+  if ("analysis_program_ref" in document && "outputs" in document) {
+    return document.outputs.map(({ reference }) => reference);
+  }
+  return [];
+}
+
+function assertAnalysisSystemReferenceClosure(artifacts: readonly VerifiedArtifact[]): void {
+  const verifiedByIdentity = new Map(
+    artifacts.map((artifact) => [artifactReferenceIdentity(artifact.reference), artifact]),
+  );
+  for (const source of artifacts) {
+    for (const reference of analysisSystemReferences(source.document)) {
+      const target = verifiedByIdentity.get(artifactReferenceIdentity(reference));
+      if (!target) {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
+          "Analysis Artifact reference 无法在同一权威快照中验证。",
+        );
+      }
+      if (target.source_store !== "ANALYSIS_SYSTEM") {
+        throw new PersistenceBoundaryError(
+          "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+          "Analysis receipt/result 只能由 analysis_system_artifacts 提供权威内容。",
+        );
+      }
+    }
+  }
+}
+
 async function loadVerifiedArtifacts(
   client: SqlClient,
   authority: VerifiedRunAuthority,
@@ -858,6 +896,10 @@ async function loadVerifiedArtifacts(
       created_at: stored.created_at,
     });
   }
+  assertAnalysisSystemReferenceClosure(artifacts);
+  const verifiedReferences = new Set(
+    artifacts.map(({ reference }) => artifactReferenceIdentity(reference)),
+  );
   const requiredReferences = [
     ...events.flatMap((event) => {
       const eventReferences = eventNode(event).artifact_refs;
@@ -872,10 +914,17 @@ async function loadVerifiedArtifacts(
     ...artifacts.flatMap(({ document }) => artifactInputReferences(document)),
   ];
   for (const reference of requiredReferences) {
-    if (!references.has(artifactReferenceIdentity(reference))) {
+    const identity = artifactReferenceIdentity(reference);
+    if (!references.has(identity)) {
       throw new PersistenceBoundaryError(
         "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING",
         "Artifact reference 不存在或 active exact identity 漂移。",
+      );
+    }
+    if (traceArtifactTypes.has(reference.artifact_type) && !verifiedReferences.has(identity)) {
+      throw new PersistenceBoundaryError(
+        "RESOLUTION_TRACE_ARTIFACT_CORRUPT",
+        "Artifact reference 存在但正文未通过对应权威 Store 的 strict 校验。",
       );
     }
   }

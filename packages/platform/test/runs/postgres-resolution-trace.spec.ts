@@ -8,10 +8,13 @@ import {
   collectL2ResearchPayloadArtifactReferences,
   computeL2ArtifactContentHash,
   computeL2ResearchEnvelopeContentHash,
+  computeSandboxResultBytes,
+  computeSandboxResultHash,
   computeSqlArtifactQueryHash,
   l2ArtifactDocumentSchema,
   parseL2ResearchDocumentCandidate,
   runRuntimeEventSchema,
+  sandboxResultSchema,
   sha256ContentHash,
 } from "@data-agent/contracts";
 import { describe, expect, it } from "vitest";
@@ -571,6 +574,46 @@ async function analysisSystemPublishedRow(input: {
       },
     },
     content_bytes: contentBytes,
+    created_at: occurredAt,
+  };
+}
+
+async function ordinarySandboxResultRow() {
+  const columns = [{ name: "revenue", type: "NUMBER" as const }];
+  const rows = [[110]];
+  const reference = {
+    artifact_id: id(60),
+    artifact_type: "SandboxResult" as const,
+    ...scope,
+    run_id: ids.run,
+    revision: 1,
+    content_hash: hash("0"),
+  };
+  const draft = sandboxResultSchema.parse({
+    schema_version: "sandbox-result@1.0.0",
+    result_ref: reference,
+    scope,
+    run_id: ids.run,
+    execution_id: id(61),
+    columns,
+    rows,
+    row_count: rows.length,
+    bytes: computeSandboxResultBytes({ columns, rows }),
+    result_hash: reference.content_hash,
+  });
+  const contentHash = await computeSandboxResultHash(draft);
+  const document = sandboxResultSchema.parse({
+    ...draft,
+    result_ref: { ...draft.result_ref, content_hash: contentHash },
+    result_hash: contentHash,
+  });
+  return {
+    source_store: "ARTIFACTS" as const,
+    artifact_id: document.result_ref.artifact_id,
+    artifact_type: document.result_ref.artifact_type,
+    revision: document.result_ref.revision,
+    content_hash: document.result_ref.content_hash,
+    document_json: document,
     created_at: occurredAt,
   };
 }
@@ -1518,33 +1561,35 @@ describe("PostgreSQL Resolution Trace projector", () => {
     }
   });
 
-  it("rejects unverified ordinary SchemaSnapshot and SandboxResult documents", async () => {
+  it("rejects null or unverified ordinary SchemaSnapshot and SandboxResult documents", async () => {
     const row = await eventRow();
     for (const artifactType of ["SchemaSnapshot", "SandboxResult"] as const) {
-      const malformed = {
-        artifact_id: id(995),
-        artifact_type: artifactType,
-        revision: 1,
-        content_hash: hash("a"),
-        document_json: {},
-        created_at: occurredAt,
-      };
-      const { capability, authorizer } = issueCapability();
-      const { pool } = scriptedPool((text) => {
-        if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
-        if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
-        if (text.includes("from artifacts")) return { rows: [malformed], rowCount: 1 };
-        return undefined;
-      });
+      for (const documentJson of [null, {}]) {
+        const malformed = {
+          artifact_id: id(995),
+          artifact_type: artifactType,
+          revision: 1,
+          content_hash: hash("a"),
+          document_json: documentJson,
+          created_at: occurredAt,
+        };
+        const { capability, authorizer } = issueCapability();
+        const { pool } = scriptedPool((text) => {
+          if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+          if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+          if (text.includes("from artifacts")) return { rows: [malformed], rowCount: 1 };
+          return undefined;
+        });
 
-      const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
-        capability,
-        { scope, run_id: ids.run },
-      );
-      expect(result).toMatchObject({
-        ok: false,
-        error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
-      });
+        const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+          capability,
+          { scope, run_id: ids.run },
+        );
+        expect(result).toMatchObject({
+          ok: false,
+          error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
+        });
+      }
     }
   });
 
@@ -1678,6 +1723,18 @@ describe("PostgreSQL Resolution Trace projector", () => {
         { from_node_id: chartNodeId, to_node_id: reportNodeId, kind: "EVIDENCE" },
       ]),
     );
+    expect(trace.ok && trace.value?.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: "SandboxExecutionReceipt",
+          status: "AVAILABLE",
+        }),
+        expect.objectContaining({
+          title: expect.stringContaining("SandboxResult"),
+          status: "AVAILABLE",
+        }),
+      ]),
+    );
     if (!trace.ok || !trace.value) throw new Error("trace fixture missing");
     const chartDetail = await projector.loadDetail(capability, {
       scope,
@@ -1711,7 +1768,15 @@ describe("PostgreSQL Resolution Trace projector", () => {
     const mutations = [
       {
         ...analysis.receiptRow,
+        payload_json: null,
+      },
+      {
+        ...analysis.receiptRow,
         payload_json: { ...analysis.receiptRow.payload_json, execution_hash: hash("9") },
+      },
+      {
+        ...analysis.resultRows[0],
+        payload_json: null,
       },
       {
         ...analysis.resultRows[0],
@@ -1749,6 +1814,113 @@ describe("PostgreSQL Resolution Trace projector", () => {
         error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
       });
     }
+  });
+
+  it("fails closed when DerivedAnalysisEvidence system receipt or result is absent", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const analysis = await falcon24DerivedAuthorityRows(evidence);
+    const missingVariants = [
+      [...analysis.resultRows, ...analysis.supportRows],
+      [analysis.receiptRow, ...analysis.resultRows.slice(1), ...analysis.supportRows],
+    ];
+
+    for (const remainingAnalysisRows of missingVariants) {
+      const { capability, authorizer } = issueCapability();
+      const { pool } = scriptedPool((text) => {
+        if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+        if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+        if (text.includes("from artifacts")) {
+          const rows = [sql, evidence, analysis.derivedRow, ...remainingAnalysisRows];
+          return { rows, rowCount: rows.length };
+        }
+        return undefined;
+      });
+
+      const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+        capability,
+        { scope, run_id: ids.run },
+      );
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "RESOLUTION_TRACE_ARTIFACT_REFERENCE_MISSING" },
+      });
+    }
+  });
+
+  it("rejects an ordinary SandboxResult substituted into DerivedAnalysisEvidence", async () => {
+    const row = await eventRow();
+    const sql = await productTeamSqlArtifactRow();
+    const evidence = await productTeamQueryEvidenceRow(sql);
+    const analysis = await falcon24DerivedAuthorityRows(evidence);
+    const ordinaryResult = await ordinarySandboxResultRow();
+    const ordinaryResultRef = referenceFromFixtureRow(ordinaryResult);
+    const originalDocument = analysis.derivedRow.document_json;
+    const originalPayload = originalDocument.payload;
+    if (
+      originalPayload.artifact_type !== "DerivedAnalysisEvidence" ||
+      originalPayload.result.result_kind !== "GENERATED_ANALYSIS"
+    ) {
+      throw new Error("generated analysis fixture missing");
+    }
+    const substitutedPayload = {
+      ...originalPayload,
+      sandbox_result_refs: [ordinaryResultRef, ...originalPayload.sandbox_result_refs],
+      result: {
+        ...originalPayload.result,
+        structured_output_refs: [
+          ordinaryResultRef,
+          ...originalPayload.result.structured_output_refs,
+        ],
+      },
+    };
+    const substitutedDraft = parseL2ResearchDocumentCandidate({
+      ...originalDocument,
+      envelope: {
+        ...originalDocument.envelope,
+        input_refs: collectL2ResearchPayloadArtifactReferences(substitutedPayload),
+        content_hash: hash("0"),
+      },
+      payload: substitutedPayload,
+    });
+    const substitutedHash = await computeL2ResearchEnvelopeContentHash(substitutedDraft);
+    const substitutedDocument = parseL2ResearchDocumentCandidate({
+      ...substitutedDraft,
+      envelope: { ...substitutedDraft.envelope, content_hash: substitutedHash },
+    });
+    const substitutedDerivedRow = {
+      ...analysis.derivedRow,
+      content_hash: substitutedHash,
+      document_json: substitutedDocument,
+    };
+    const { capability, authorizer } = issueCapability();
+    const { pool } = scriptedPool((text) => {
+      if (text.includes("from runs as run")) return { rows: [authorityRow()], rowCount: 1 };
+      if (text.includes("from run_events")) return { rows: [row], rowCount: 1 };
+      if (text.includes("from artifacts")) {
+        const rows = [
+          sql,
+          evidence,
+          substitutedDerivedRow,
+          ordinaryResult,
+          analysis.receiptRow,
+          ...analysis.resultRows,
+          ...analysis.supportRows,
+        ];
+        return { rows, rowCount: rows.length };
+      }
+      return undefined;
+    });
+
+    const result = await createPostgresResolutionTraceProjector({ pool, authorizer }).loadTrace(
+      capability,
+      { scope, run_id: ids.run },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: "RESOLUTION_TRACE_ARTIFACT_CORRUPT" },
+    });
   });
 
   it("rejects the same Analysis SandboxResult revision mirrored by an inactive ordinary row", async () => {
