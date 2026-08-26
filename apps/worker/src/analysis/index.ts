@@ -12,6 +12,7 @@ export * from "./executor.js";
 export * from "./governed-analysis-input.js";
 export * from "./opensandbox-operator-argument-extractor.js";
 export * from "./opensandbox-result-symbol-extractor.js";
+export * from "./product-team-query-port.js";
 export * from "./program-gate.js";
 export * from "./python-source-artifact.js";
 export * from "./research-artifact-port.js";
