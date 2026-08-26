@@ -100,6 +100,43 @@ function requestedMetricIds(
   return requested;
 }
 
+function unqualifiedColumnId(tableId: string, columnId: string): string {
+  const qualifiedPrefix = `${tableId}.`;
+  return columnId.startsWith(qualifiedPrefix) ? columnId.slice(qualifiedPrefix.length) : columnId;
+}
+
+function resolveTimeDimensionRef(
+  metric: SemanticExecutablePublicationProjection["metrics"][number],
+  dimensionById: ReadonlyMap<string, SemanticExecutablePublicationProjection["dimensions"][number]>,
+): string | null {
+  if (metric.time_domain === null && metric.time_column_id === null) {
+    return null;
+  }
+  if (metric.time_domain === null || metric.time_column_id === null) {
+    throw new PublishedAnalysisContextCompilationError(
+      "PUBLISHED_ANALYSIS_CONTEXT_METRIC_NOT_RESOLVED",
+    );
+  }
+
+  const metricColumnId = unqualifiedColumnId(metric.table_id, metric.time_column_id);
+  const candidates = metric.analysis.allowed_dimension_ids
+    .map((dimensionId) => dimensionById.get(dimensionId))
+    .filter((dimension) => dimension !== undefined)
+    .filter(
+      (dimension) =>
+        dimension.table_id === metric.table_id &&
+        unqualifiedColumnId(dimension.table_id, dimension.column_id) === metricColumnId &&
+        (dimension.data_type === "date" || dimension.data_type === "timestamp") &&
+        (dimension.sensitivity === "PUBLIC" || dimension.sensitivity === "INTERNAL"),
+    );
+  if (candidates.length !== 1) {
+    throw new PublishedAnalysisContextCompilationError(
+      "PUBLISHED_ANALYSIS_CONTEXT_METRIC_NOT_RESOLVED",
+    );
+  }
+  return candidates[0]?.dimension_id ?? null;
+}
+
 /**
  * Compiles the run-bound analysis authority from the exact historical
  * publication projections already verified by the release read port.
@@ -157,6 +194,7 @@ export async function compilePublishedAnalysisContext(
         );
       }
       const formula = metric.formula ? (formulaById.get(metric.formula.formula_id) ?? null) : null;
+      const timeDimensionRef = resolveTimeDimensionRef(metric, dimensionById);
       return {
         metric_ref: { container_ref: semanticReleaseRef, node_id: metric.metric_id },
         formula_hash: await sha256ContentHash({
@@ -172,7 +210,7 @@ export async function compilePublishedAnalysisContext(
         unit: metric.unit,
         grain: metric.grain,
         time_domain: metric.time_domain,
-        time_dimension_ref: metric.time_column_id,
+        time_dimension_ref: timeDimensionRef,
         additivity: metric.additivity,
         null_policy: metric.null_policy,
         missing_period_policy: metric.analysis.missing_period_policy,
@@ -251,5 +289,6 @@ export async function compilePublishedAnalysisContext(
 
 export const publishedAnalysisContextCompilerInternals = Object.freeze({
   requestedMetricIds,
+  resolveTimeDimensionRef,
   selectedSemanticObjects,
 });

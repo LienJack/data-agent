@@ -332,6 +332,7 @@ describe("published analysis context compiler", () => {
     expect(context.metrics.map(({ metric_ref }) => metric_ref.node_id)).toEqual([
       "metric.order_revenue",
     ]);
+    expect(context.metrics[0]?.time_dimension_ref).toBe("dimension.order_month");
     expect(context.metrics[0]?.allowed_dimensions.map(({ dimension_id }) => dimension_id)).toEqual([
       "dimension.order_month",
     ]);
@@ -370,6 +371,65 @@ describe("published analysis context compiler", () => {
         semantic_context: await semanticContext(),
         catalog: catalog(),
         requested_metric_ids: ["metric.not_selected"],
+      }),
+    ).rejects.toMatchObject({
+      name: PublishedAnalysisContextCompilationError.name,
+      code: "PUBLISHED_ANALYSIS_CONTEXT_METRIC_NOT_RESOLVED",
+    });
+  });
+
+  it("fails closed when a published time column has no safe semantic dimension", async () => {
+    const source = catalog();
+    await expect(
+      compilePublishedAnalysisContext({
+        run_id: runId,
+        semantic_context: await semanticContext(),
+        catalog: {
+          ...source,
+          executable: {
+            ...source.executable,
+            dimensions: source.executable.dimensions.map((dimension) =>
+              dimension.dimension_id === "dimension.order_month"
+                ? { ...dimension, column_id: "unrelated_date" }
+                : dimension,
+            ),
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: PublishedAnalysisContextCompilationError.name,
+      code: "PUBLISHED_ANALYSIS_CONTEXT_METRIC_NOT_RESOLVED",
+    });
+  });
+
+  it("fails closed when a published time column maps to multiple semantic dimensions", async () => {
+    const source = catalog();
+    const orderMonth = source.executable.dimensions[0];
+    if (!orderMonth) throw new TypeError("TEST_TIME_DIMENSION_REQUIRED");
+    await expect(
+      compilePublishedAnalysisContext({
+        run_id: runId,
+        semantic_context: await semanticContext(),
+        catalog: {
+          ...source,
+          executable: {
+            ...source.executable,
+            dimensions: [
+              ...source.executable.dimensions,
+              { ...orderMonth, dimension_id: "dimension.alternate_order_month" },
+            ],
+            metrics: source.executable.metrics.map((metric) => ({
+              ...metric,
+              analysis: {
+                ...metric.analysis,
+                allowed_dimension_ids: [
+                  ...metric.analysis.allowed_dimension_ids,
+                  "dimension.alternate_order_month",
+                ],
+              },
+            })),
+          },
+        },
       }),
     ).rejects.toMatchObject({
       name: PublishedAnalysisContextCompilationError.name,
