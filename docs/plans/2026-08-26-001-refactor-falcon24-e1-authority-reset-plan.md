@@ -141,7 +141,8 @@ Analysis、Trace/UI 六层定位并排除，再创建一次干净的门禁执行
 - **R10 — 原子发布。** Oracle PASS 后，Derived Evidence、Completion、Chart、Report、Artifact current 和 outbox 在同一
   PostgreSQL fence/transaction 下提交；任何 crash 只能观察 all-old 或 all-new。
 - **R11 — 无历史兼容的真实 UI。** Web 只显示 E1 Run 的 durable public events 和 exact ArtifactReference；无旧 run lookup、
-  latest-by-id、raw payload/path fallback。每个成功验收 Run 必须在真实轨迹页面核对内容和 identity。
+  latest-by-id、raw payload/path fallback。每个 G1–G5 slot 必须通过真实浏览器在问答页面提交问题并看到终态答案，再从该结果
+  进入对应 Run 的轨迹页面完成可用性核验；API-only、直接构造轨迹 URL、页面只渲染 `BLOCKED` 节点或缺任一 UI receipt 都不能 PASS。
 - **R12 — 五级综合门禁。** `E1-Q1` 包含 G1 单链路探针 1 次、G2 五题最小版 5 次、G3 五题完整版 5 次和 G4 冷启动资格
   5 次，共 16 次；16/16 后才能创建 G5 `E1-C1`，执行五题 × COLD/WARM × 3 共 30 次。任一正式 attempt 的
   slot 首次失败即 HOLD，不在原 attempt 内修复、重试、跳过或续跑。
@@ -284,7 +285,7 @@ acceptance
   Oracle contract hash
   qualification policy hash
   final campaign policy hash
-  trace/UI/reclamation contract hashes
+  QA E2E/trace UI/reclamation contract hashes
 ```
 
 U1 的 retained asset builder 只产生不含代码 commit 的 source manifest；U1–U6、U8、U9 与 U7-A 完成并形成冻结 commit/Web
@@ -661,9 +662,13 @@ Oracle 或 Publisher。
 - Modify: `packages/platform/src/artifacts/artifact-workspace-service.ts`
 - Modify: `apps/web/src/cli/falcon24-resolution-trace-gate.ts`
 - Modify: `apps/web/src/cli/falcon24-browser-trace-gate.ts`
+- Modify: `apps/web/src/components/qa/chat-area.tsx`
+- Modify: `apps/web/src/components/qa/conversation-activity-stream.tsx`
 - Modify: `apps/web/src/components/qa/resolution-trace-view.tsx`
 - Modify: `apps/web/src/components/workbench/artifact-workspace.tsx`
+- Modify: `apps/web/test/chat-message-activity.spec.tsx`
 - Modify: `apps/web/test/falcon24-resolution-trace-gate.spec.ts`
+- Modify: `apps/web/test/resolution-trace-view.spec.tsx`
 - Create: `apps/web/test/falcon24-e1-browser-trace-gate.spec.ts`
 - Create: `infra/supabase/apps/data-agent/migration-sources/10777/`
 - Create: `infra/supabase/apps/data-agent/migrations/20260725010777_app_data_agent_falcon24_e1_trace.sql`
@@ -676,20 +681,28 @@ Oracle 或 Publisher。
 - Detail/Preview 只接受完整 App/Tenant/Environment/Run/Artifact/Revision/Hash identity；无 latest-by-id、镜像表、raw document 或
   path fallback。
 - Web 切换 Conversation/Run 时清除 stale ready/detail/preview/selection；旧 promise 不得回填新 Run DOM。
-- browser gate 对 exact Conversation/Run 逐项打开七类工件，验证 Detail hash、图表与同源表格、Web build、无错误横幅和 E1
-  baseline identity；截图/DOM hash 写入新 UI receipt。
-- Trace/UI receipt 与 residual=0 reclamation receipt 是 slot PASS 的必要输入，但都不能单独宣称业务成功。
+- browser gate 必须从真实问答页面开始：输入该 slot 的问题、触发 Agent Run、观察运行状态到终态、核对答案及表格/报告/图表；
+  随后点击该结果提供的轨迹入口进入 exact Conversation/Run，不允许用内部 API 或预先拼接 URL 代替用户路径。
+- 轨迹页面必须能正常使用：Root/Subagent、SQL、QueryEvidence、Analysis、Oracle、Publisher 与 Artifact 节点顺序正确；节点可展开/
+  收起，详情与工件链接可打开，图表与同源表格一致，刷新或返回后仍绑定 exact Run，切换 Run 不出现旧数据，页面无错误横幅或
+  新增控制台错误。
+- 问答页面和轨迹页面分别写入绑定 exact Run、baseline、Web build、DOM/screenshot hash 的 `qa_e2e_receipt` 与
+  `trace_ui_receipt`。两者连同 residual=0 reclamation receipt 都是每个 G1–G5 slot PASS 的必要输入，但不能单独宣称业务成功。
 
 **Test scenarios:**
 
 1. 完整 E1 chain 产生唯一 Root/SQL/Analysis/Oracle/Publisher/Artifact edge 集和 exact trace/detail hash。
 2. 对每条关键 evidence edge、inner hash、system artifact、Schema Snapshot 或 Sandbox Result 逐项删除/篡改，Trace fail-closed。
 3. E0/缺 Epoch/不同 baseline 的 Run 或 Artifact 即使 shape/hash 自洽也不可显示为 READY。
-4. 快速切换两个 Run 后，旧 Detail/Preview promise 不能回填；DOM 只含当前 exact Run identity。
-5. 不支持/缺失/损坏 Artifact 显示明确错误，零 raw payload/path fallback；图表坏 hash 不降级成“成功空图”。
-6. 1440px 与 390px 真浏览器均可打开 exact artifact、返回触发项、查看同源表格，控制台无新增错误。
+4. 从问答页面提交问题并得到终态答案后，可通过结果入口进入 exact Run 轨迹；直接 API 调用、拼接轨迹 URL或只显示
+   `BLOCKED` 节点不能生成有效 UI receipts。
+5. 轨迹节点可展开/收起，详情、Artifact、图表和同源表格可用；刷新、返回、快速切换两个 Run 后旧 Detail/Preview promise
+   不能回填，DOM 只含当前 exact Run identity。
+6. 不支持/缺失/损坏 Artifact 显示明确错误，零 raw payload/path fallback；图表坏 hash 不降级成“成功空图”。
+7. 1440px 与 390px 真浏览器均可完成问答、进入轨迹、打开 exact artifact、返回触发项并查看同源表格，控制台无新增错误。
 
-**Verification outcome:** backend、UI 和 browser receipt 对同一 E1 Run/Trace/Artifact identity 达成一致，旧历史完全不可见。
+**Verification outcome:** 每个验收 Run 都有同源 `qa_e2e_receipt` 与 `trace_ui_receipt`，真实用户可从问答结果进入并正常使用
+轨迹页面；backend、UI 和 browser receipt 对同一 E1 Run/Trace/Artifact identity 达成一致，旧历史完全不可见。
 
 **Dependencies:** U9。
 
@@ -734,7 +747,8 @@ Oracle 或 Publisher。
 - 根因排除并完成受影响层验证后，创建新的门禁 attempt。Qualification 从 G1 重新开始，Campaign 从 30 个 slot 的第一个重新
   开始，禁止跨 attempt 拼接 PASS。若修复改变 code、contract、Web build、frozen asset 或 baseline component，则创建 E2 并从
   G1 开始；只有已证明 baseline bytes 不变的外部瞬态故障，才允许在同一 Epoch 下创建新 attempt。
-- 每个成功 slot 必须有表格/报告/图表、backend trace、真实 UI、Sandbox residual=0 和 PostgreSQL atomic PASS。
+- 每个成功 slot 必须由真实浏览器完成问答页面 E2E，再从答案进入并操作 exact Run 轨迹页面；必须同时具备表格/报告/图表、
+  backend trace、`qa_e2e_receipt`、`trace_ui_receipt`、Sandbox residual=0 和 PostgreSQL atomic PASS。
 
 **Test scenarios:**
 
@@ -751,7 +765,8 @@ Oracle 或 Publisher。
 10. frozen component 改变强制进入 E2；已证明的外部瞬态故障不改变 baseline hash，但新 attempt 仍使用新 identity 且完整
     重跑所属阶段。
 11. business terminal `HOLD_WITH_SENSITIVITY` 的 Q5 在 Oracle contract 满足时算题目 PASS，不与 gate attempt 的失败 HOLD 混淆。
-12. Campaign 结束后数据库、management API 和 Docker observation 都证明 Sandbox/egress residual=0。
+12. 任一 slot 缺问答页面 E2E、不能从答案进入轨迹、轨迹交互不可用、两份 UI receipt 不同源或页面显示错误时，slot HOLD。
+13. Campaign 结束后数据库、management API 和 Docker observation 都证明 Sandbox/egress residual=0。
 
 **Verification outcome:** 同一 frozen E1 baseline 的 winning qualification attempt 达到 G1–G4 16/16，随后 winning G5 attempt
 达到 30/30。失败 attempt 保持可审计但不参与成绩，所有成功结果可在真实 UI 核对。
@@ -841,7 +856,8 @@ flowchart TB
 - Root/Text2SQL/Analysis 失败：Run/slot 失败，Publisher 零部分提交；若正式 slot 已 claim，整个 attempt HOLD。
 - Oracle reject：保留内部诊断引用但不公开 Derived/Chart/Report。
 - Publisher transaction 失败：恢复同 fence/idempotency，不能逐 Artifact 补写。
-- UI gate 或 reclamation 失败：业务结果不可被 Campaign 记为 PASS；首个业务失败和回收事故分开保存。
+- 问答页面 E2E、从答案进入轨迹、轨迹交互、任一 UI receipt 或 reclamation 失败：业务结果不可被门禁记为 PASS；首个业务
+  失败、UI 失败和回收事故分开保存。
 - attempt HOLD 后 gate runner 退出；故障定位和修复只通过门禁外诊断进行。原 attempt 永不 resume，修复完成后创建新 attempt。
 
 ### State Lifecycle and Recovery
@@ -872,7 +888,7 @@ flowchart TB
 | L3 Semantic / Text2SQL | 语义口径、Join、粒度、时间、physical binding、SQL policy 和真实只读执行是否闭合 |
 | L4 QueryEvidence / Arrow | Artifact revision/hash、列语义、类型、null、row/byte bound 和 materialization 是否闭合 |
 | L5 Analysis / Oracle / Publisher | Sandbox、治理算子、Binding/Journal、独立 Oracle 和原子发布是否闭合 |
-| L6 Trace / UI / Reclamation | durable event、exact Artifact detail、图表/表格、真实页面和 Sandbox/egress residual=0 是否闭合 |
+| L6 QA E2E / Trace UI / Reclamation | 真实问答提交与终态、从答案进入 exact Run 轨迹、节点/详情/工件交互、刷新/切换和 Sandbox/egress residual=0 是否闭合 |
 
 正式门禁固定为：
 
@@ -883,6 +899,11 @@ flowchart TB
 | G3 五题完整版 | 5 | 依次执行原始五题，每次只运行一题 | 5/5 Oracle 通过，治理算子与归因完整 |
 | G4 冷启动资格 | 5 | 新会话、新 Run、新 Sandbox，五题各一次 | 5/5 无修复、无重试、无残留 |
 | G5 最终验收 | 30 | 5 题 × COLD/WARM × 3 | 30/30；任意一条失败立即 HOLD |
+
+统一 UI 条件适用于全部 46 个正式 slot：必须在真实浏览器问答页面提交问题并看到终态答案，再通过页面入口进入对应 Run 的
+轨迹页面；轨迹节点须可展开/收起，详情与工件链接可打开，刷新、返回和 Run 切换不串数据。`qa_e2e_receipt` 与
+`trace_ui_receipt` 必须绑定同一 Run/baseline/Web build。任何 API-only 验证、直接拼接轨迹 URL、只渲染 `BLOCKED` 节点、
+页面报错或交互失效，都视为该 slot 失败。
 
 G1–G4 属于 `E1-Q1`，合计 16 次；只有 16/16 才能创建 G5 `E1-C1`。G5 的 30 次不复用前四级 Run，也不把资格证据计入
 最终成绩。
@@ -907,8 +928,9 @@ G1–G4 属于 `E1-Q1`，合计 16 次；只有 16/16 才能创建 G5 `E1-C1`。
 5. **Final clean bootstrap and activation**：在新 clean volume 重放 retained bootstrap 和最终 Agent Product Profiles；运行时
    baseline 绑定全部最终 staging receipts、commit、contract 和 Web build，并原子激活 E1。
 6. **Pre-gate isolation**：按 L1–L6 排除已知问题；诊断结果只决定能否开始门禁，不计分。
-7. **E1-Q1**：依次执行 G1 1/1、G2 5/5、G3 5/5、G4 5/5，共 16/16。
-8. **E1-C1 / G5**：30/30 串行通过，真实 UI 全覆盖，Sandbox/egress residual=0；local/dev 结果不宣称生产隔离 GO。
+7. **E1-Q1**：依次执行 G1 1/1、G2 5/5、G3 5/5、G4 5/5，共 16/16；每个 slot 都完成问答页面 E2E 和轨迹页可用性核验。
+8. **E1-C1 / G5**：30/30 串行通过，每个 slot 都有同源 QA/Trace UI receipts，Sandbox/egress residual=0；local/dev 结果
+   不宣称生产隔离 GO。
 9. **Completion**：E1 identity、16/16、30/30、环境级 Sandbox 声明和完整证据清单写入最终验收报告；不再修改 E1 代码。
 
 任一正式门禁失败都按“门禁失败后的处理”退出并排障。不得为了继续而提高 retry、添加 fallback、修改 frozen hash、放宽
@@ -928,7 +950,7 @@ Oracle 或绕过 UI/reclamation。
 | Oracle 与生产算子共用实现 | 错误自证正确 | 包级 import boundary 与 independent implementation tests |
 | E1 编号仍沿用 v15 | 误导为历史连续升级 | 全部新 identity 使用 Epoch scoped `E1-Q1/E1-C1` |
 | E1 激活后再清理代码 | baseline 绑定的 commit 立刻过期 | 所有 legacy retirement 在 U8 完成；U7 激活后代码变化必须进入 E2 |
-| browser gate 只看页面存在 | 断链或陈旧数据被误判 | exact Run/Artifact/revision/hash/detail/DOM/build/screenshot 全绑定 |
+| browser gate 只看页面存在或直接打开轨迹 URL | 真实问答链或用户导航已坏仍被误判 | 每个 slot 从问答提交开始，经答案入口进入轨迹并操作节点/详情/工件；QA/Trace receipts 与 exact Run/build 全绑定 |
 | 把综合门禁当作排障工具 | 反复在首个 slot HOLD，成绩被调试行为污染 | 先按 L1–L6 排障；门禁失败后退出 runner，修复并验证后用新 attempt 从阶段起点重跑 |
 
 ## Resolved During Planning
@@ -961,6 +983,8 @@ Oracle 或绕过 UI/reclamation。
 - 生产代码没有 Direct QA、正则 Router、fixed `query_kind`、模板 SQL、Falcon case runtime 或第二 evaluator executor；
 - 五题均走 Root -> Text2SQL -> QueryEvidence -> Governed Analysis -> Oracle -> Publisher -> UI -> reclamation；
 - G1–G4 依次达到 1/1、5/5、5/5、5/5；G5 达到 30/30，每次成功有数据、表格/报告、图表、exact trace/UI receipt，flake=0；
+- 全部 46 个正式 slot 均通过真实浏览器完成 Agent 问答，并从答案进入可正常展开、查看详情/工件、刷新和切换的轨迹页面；
+  `qa_e2e_receipt` 与 `trace_ui_receipt` 同源且绑定 exact Run/baseline/Web build；
 - 门禁失败时先按 L1–L6 排除链路问题，再用新 attempt 从阶段起点重跑；诊断 PASS 不计入正式成绩；
 - local/dev E1-C1 与 production isolation readiness 分开报告，不把 `production_isolation_proven=false` 包装为生产 GO；
 - 最终 Sandbox/egress residual=0，PostgreSQL 是唯一 Campaign/Artifact/current/outbox Authority；
