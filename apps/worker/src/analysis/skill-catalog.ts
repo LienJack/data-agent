@@ -178,6 +178,7 @@ export const DEFAULT_ANALYSIS_SKILL_DESCRIPTORS: readonly AnalysisSkillDescripto
       skill_id: "open-python-analysis@1",
       required_capabilities: ["CHART_DATASET"],
       parameter_schema: generatedParameters,
+      hard_limits: { max_metrics: 3 },
       algorithm_version: "open-python-analysis@1.0.0",
       python_import_profile: "ML_DIAGNOSTIC",
       mandatory_disclosures: [],

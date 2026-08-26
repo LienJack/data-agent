@@ -155,7 +155,7 @@ const chartContractSchema = z.strictObject({
   allowed_template_ids: z.array(analysisResultChartTemplateIdSchema).min(1).max(7),
 });
 
-const analysisResultContractMaterialSchema = z
+export const analysisResultContractMaterialSchema = z
   .strictObject({
     schema_version: z.literal("analysis-result-contract@2.0.0"),
     contract_id: identifierSchema,
