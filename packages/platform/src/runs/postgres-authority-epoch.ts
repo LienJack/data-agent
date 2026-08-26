@@ -96,7 +96,7 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
     readonly correlation_id?: string;
     readonly sql: string;
     readonly command?: unknown;
-    readonly parse: (value: unknown) => T;
+    readonly parse: (value: unknown) => T | Promise<T>;
   }) =>
     withAppTransaction(
       input.pool,
@@ -114,7 +114,7 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
           options.sql,
           options.command === undefined ? [] : [options.command],
         );
-        return options.parse(exact(result.rows));
+        return await options.parse(exact(result.rows));
       },
     );
 
