@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { buildAnalysisResultContract } from "@data-agent/contracts/artifacts";
-import { sha256ContentHash } from "@data-agent/contracts/common";
+import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import type { AnalysisToolCallCandidate } from "@data-agent/contracts/ports";
 import {
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
@@ -831,6 +831,7 @@ async function recoveredOperatorResult(): Promise<RecoveredGovernedOperatorResul
       },
       worker_fence: 1,
     },
+    result_content: encoder.encode(canonicalizeJson(operatorOutput)),
     request_content: request,
     receipt_payload: {
       schema_version: "governed-operator-result-receipt@1.0.0",

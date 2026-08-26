@@ -16,6 +16,8 @@ import {
   assertAnalysisContextJournalTransition,
   buildAnalysisContextJournalAppend,
   buildAnalysisResultStageCommand,
+  type E1AnalysisPublicationCommand,
+  type E1AnalysisPublicationReceipt,
   verifyAnalysisContextJournalEntry,
   verifyAnalysisResultStageCommand,
 } from "@data-agent/contracts/ports";
@@ -88,6 +90,13 @@ export interface AnalysisLifecyclePersistenceAuthority {
         readonly receipt: AnalysisAuthorityCommitReceipt;
         readonly journal_entry: AnalysisContextJournalEntry;
       }
+    | { readonly ok: false; readonly error_code: string }
+  >;
+  commitE1AnalysisPublication(
+    capabilityInput: unknown,
+    command: E1AnalysisPublicationCommand,
+  ): Promise<
+    | { readonly ok: true; readonly receipt: E1AnalysisPublicationReceipt }
     | { readonly ok: false; readonly error_code: string }
   >;
   readAnalysisResultStage(
@@ -193,6 +202,10 @@ export interface AnalysisLifecycleAuthorityPort {
       readonly command: AnalysisAuthorityCommit;
     },
   ): Promise<AnalysisAuthorityCommitReceipt>;
+  prepareAuthorityJournal(
+    input: Identity & { readonly command: AnalysisAuthorityCommit },
+  ): Promise<ReturnType<typeof analysisContextJournalAppendCommandSchema.parse>>;
+  commitPublication(command: E1AnalysisPublicationCommand): Promise<E1AnalysisPublicationReceipt>;
   cleanup(input: Identity & { readonly stage: AnalysisResultStage }): Promise<void>;
 }
 
@@ -538,6 +551,21 @@ export function createResearchAnalysisLifecycleAuthorityPort(input: {
       await verifyAnalysisContextJournalEntry(result.journal_entry);
       if (result.receipt.authority_commit_hash !== commitInput.command.authority_commit_hash) {
         throw new TypeError("ANALYSIS_AUTHORITY_COMMIT_SUBSTITUTION");
+      }
+      return result.receipt;
+    },
+    async prepareAuthorityJournal(commitInput) {
+      return journal(commitInput, {
+        event_type: "AUTHORITY_COMMITTED",
+        stage_id: commitInput.command.stage_id,
+        authority_commit_hash: commitInput.command.authority_commit_hash,
+      });
+    },
+    async commitPublication(command) {
+      const result = await input.authority.commitE1AnalysisPublication(capability(), command);
+      if (!result.ok) throw new TypeError(result.error_code);
+      if (result.receipt.publication_hash !== command.publication_hash) {
+        throw new TypeError("E1_ANALYSIS_PUBLICATION_SUBSTITUTION");
       }
       return result.receipt;
     },

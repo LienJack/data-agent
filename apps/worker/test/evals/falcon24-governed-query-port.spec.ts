@@ -60,8 +60,10 @@ const materializationReceiptRef: ArtifactReference = {
   content_hash: hash("e"),
 };
 const dataOracleReceipt = falcon24AnalysisDataOracleReceiptSchema.parse({
-  schema_version: "falcon24-analysis-data-oracle@1.0.0",
+  schema_version: "falcon24-analysis-data-oracle@2.0.0",
   dataset_id: "falcon_db_24",
+  implementation_id: "falcon24-independent-data-oracle@2",
+  implementation_hash: hash("d"),
   verdict: "PASS_WITH_QUALITY_HOLDS",
   table_count: 9,
   column_count: 70,

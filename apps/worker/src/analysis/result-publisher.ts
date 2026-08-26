@@ -728,7 +728,7 @@ export async function stagePreparedAnalysisResult(input: {
   const observation = analysisResultPublishObservationSchema.parse({
     schema_version: "analysis-result-publish-observation@1.0.0",
     publish_id: closure.publish_id,
-    status: "PUBLISHED",
+    status: "STAGED",
     contract_hash: closure.contract_hash,
     manifest_hash: closure.manifest_hash,
     closure_hash: closure.closure_hash,

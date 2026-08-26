@@ -2383,6 +2383,24 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10776",
+      "migration_name": "20260725010776_app_data_agent_e1_analysis_publication.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10776",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-publication-authority.sql.inc",
+        "20-publication-transaction.sql.inc",
+        "80-grants.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__E1_ANALYSIS_PUBLICATION_MIGRATION_CHECKSUM__",
+      "checksum_header": "e1_analysis_publication_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

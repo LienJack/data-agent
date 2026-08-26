@@ -502,7 +502,7 @@ describe("server-owned Result Publisher", () => {
     const second = await publish();
 
     expect(calls).toHaveLength(2);
-    expect(first.observation.status).toBe("PUBLISHED");
+    expect(first.observation.status).toBe("STAGED");
     expect(first.observation.closure_hash).toBe(second.observation.closure_hash);
     expect(first.closure.artifacts.map(({ artifact_kind }) => artifact_kind)).toEqual([
       "RESULT",

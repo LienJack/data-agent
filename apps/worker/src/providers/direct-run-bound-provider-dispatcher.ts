@@ -37,7 +37,7 @@ const SPECIALIST_ANSWER_RESPONSE_SCHEMA_VERSION = "specialist-answer@1.0.0";
 const PROVIDER_SMOKE_RESPONSE_SCHEMA_VERSION = "provider-smoke-answer@1.0.0";
 const ANALYSIS_PYTHON_RESPONSE_SCHEMA_VERSION = "analysis-python-source@1.0.0";
 const ANALYSIS_AGENT_FINAL_RESPONSE_SCHEMA_VERSION = "analysis-agent-final@1.0.0";
-const ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION = "analysis-program-candidate@1.0.0";
+const ANALYSIS_PROGRAM_CANDIDATE_SCHEMA_VERSION = "analysis-program-candidate@2.0.0";
 const TEXT2SQL_QUERY_CANDIDATE_SCHEMA_VERSION = "text2sql-query-candidate@1.0.0";
 const specialistAnswerSchema = z.strictObject({ answer: z.string().trim().min(1).max(32_000) });
 const analysisPythonSourceSchema = z.strictObject({
@@ -424,13 +424,14 @@ export function createDirectRunBoundProviderDispatcher(input: {
                           : specialistTurn.stage === "ANALYSIS_PROGRAM"
                             ? [
                                 "You are the governed analysis-program planner.",
-                                "Return exactly one analysis-program-candidate@1.0.0 JSON object and no prose.",
+                                "Return exactly one analysis-program-candidate@2.0.0 JSON object and no prose.",
+                                "Bind objective_hash to the exact Host-provided objective hash and return a nodes DAG.",
                                 "Select only metric_ids and dimension_ids present in the frozen Published AnalysisContext.",
                                 "Use the exact approved half-open time window. Never invent or widen a time range.",
                                 "Do not return ResultContract, semantic hashes, physical lineage, limits, generated-source policy, benchmark-case identity, acceptance metadata, Python source, SQL, or chart data; those are Host-owned.",
                                 "Choose only statistical operator obligations from the frozen registry and exact host-required operator ids. Every operator input must bind exact governed input, an approved server transform, or a preceding governed operator result.",
                                 "Do not implement BH-FDR, Theil-Sen, Mann-Kendall, HAC, Shapley, cohort retention, or any other registered operator in generated Python.",
-                                "The accepted shape is strict: schema_version, node_id, metric_ids, dimension_ids, time_window, comparison_window, parameters, operator_obligations.",
+                                "The top-level shape is strict: schema_version, objective_hash, nodes. Each node is strict: node_id, method_registry_entry_ids, metric_ids, dimension_ids, time_window, comparison_window, parameters, operator_obligations, dependency_node_ids, activation_rule, criticality.",
                                 `Frozen analysis authority: ${specialistTurn.context_text}`,
                               ].join("\n")
                             : [

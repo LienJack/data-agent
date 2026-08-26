@@ -427,7 +427,24 @@ describe("Production Team governed chart publication", () => {
       revision: 1,
       content_hash: hash("e"),
     };
-    let committed: ProductTeamArtifactDocument | null = null;
+    const report = {
+      artifact_id: id(32),
+      artifact_type: "AnalysisReport" as const,
+      ...scope,
+      run_id: lease.run_id,
+      revision: 1,
+      content_hash: hash("f"),
+    };
+    const commit = vi.fn(
+      async (
+        _capability: unknown,
+        _lease: RunWorkLease,
+        document: ProductTeamArtifactDocument,
+      ) => ({
+        ok: true as const,
+        value: document.artifact_ref,
+      }),
+    );
     const analyze = vi.fn(async (analysisInput) => {
       expect(
         await analysisInput.fence_guard.isCurrent({
@@ -439,7 +456,7 @@ describe("Production Team governed chart publication", () => {
       ).toBe(true);
       return {
         answer: "最近 18 个完整月的经营复盘已通过受治理统计 Oracle。",
-        accepted_artifact_refs: [derivedEvidence],
+        accepted_artifact_refs: [derivedEvidence, report],
         public_artifact_refs: [chart],
       };
     });
@@ -447,10 +464,7 @@ describe("Production Team governed chart publication", () => {
       {
         capability: {},
         artifacts: {
-          async commit(_capability, _lease, document) {
-            committed = document;
-            return { ok: true as const, value: document.artifact_ref };
-          },
+          commit,
           commitWorkspaceChart: vi.fn(),
           resolveCommitted: vi.fn(),
         },
@@ -509,22 +523,10 @@ describe("Production Team governed chart publication", () => {
       }),
     );
     expect(result).toMatchObject({
-      output_ref: { artifact_type: "AnalysisReport" },
-      public_artifact_refs: [{ artifact_type: "ArtifactWorkspaceDocument" }],
+      output_ref: report,
+      public_artifact_refs: [chart, report],
     });
-    expect(committed).toMatchObject({
-      profile_id: "governed-analysis-agent",
-      source_refs: [derivedEvidence, chart],
-      projection: {
-        kind: "REPORT",
-        sections: expect.arrayContaining([
-          expect.objectContaining({
-            heading: "结论",
-            body_text: expect.stringContaining("受治理统计 Oracle"),
-          }),
-        ]),
-      },
-    });
+    expect(commit).not.toHaveBeenCalled();
   });
 
   it("keeps QueryEvidence as output and publishes a sealed chart companion for trend intent", async () => {

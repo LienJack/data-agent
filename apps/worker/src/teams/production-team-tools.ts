@@ -594,35 +594,13 @@ export function createProductionTeamTools(
         const chart = result.public_artifact_refs.find(
           ({ artifact_type: artifactType }) => artifactType === "ArtifactWorkspaceDocument",
         );
-        if (!derivedEvidence || !chart) {
+        const reportRef = result.accepted_artifact_refs.find(
+          ({ artifact_type: artifactType }) => artifactType === "AnalysisReport",
+        );
+        if (!derivedEvidence || !chart || !reportRef) {
           throw new ProductionTeamToolError("GOVERNED_ANALYSIS_EVIDENCE_CLOSURE_REQUIRED");
         }
-        const reportRef = await commitArtifact(dependencies, factoryInput, {
-          artifact_type: "AnalysisReport",
-          profile_id: "governed-analysis-agent",
-          task_id: input.task.task_id,
-          source_refs: [derivedEvidence, chart],
-          provenance: null,
-          projection: {
-            kind: "REPORT",
-            title: "受治理 Python 数据分析",
-            sections: [
-              {
-                heading: "结论",
-                body_text: result.answer,
-                source_refs: [derivedEvidence, chart],
-              },
-              {
-                heading: "证据链",
-                body_text:
-                  "语义闭包选中的分析程序已通过独立 Oracle；" +
-                  `结论与图表共同绑定 DerivedAnalysisEvidence ${derivedEvidence.content_hash}。`,
-                source_refs: [derivedEvidence, chart],
-              },
-            ],
-          },
-        });
-        return toolResult(reportRef, [chart]);
+        return toolResult(reportRef, [chart, reportRef]);
       }
 
       if (input.task.profile_id === "governed-text2sql-agent") {

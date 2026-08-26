@@ -87,6 +87,7 @@ export interface AnalysisGovernedResultAuthorityPort {
 
 export interface RecoveredGovernedOperatorResult {
   readonly result: GovernedOperatorResultRef;
+  readonly result_content: Uint8Array;
   readonly request_content: Uint8Array;
   readonly receipt_payload: Readonly<Record<string, unknown>>;
   readonly binding: {
@@ -154,7 +155,38 @@ export interface GovernedResultBridge {
 }
 
 function shapeSummary(output: unknown): GovernedResultShapeSummary {
-  if (typeof output !== "object" || output === null || Array.isArray(output)) {
+  if (Array.isArray(output)) {
+    if (
+      output.length > 100_000 ||
+      output.some((row) => typeof row !== "object" || row === null || Array.isArray(row))
+    ) {
+      throw new TypeError("ANALYSIS_GOVERNED_OPERATOR_RESULT_TABLE_INVALID");
+    }
+    const columnNames = [
+      ...new Set(output.flatMap((row) => Object.keys(row as Readonly<Record<string, unknown>>))),
+    ].sort();
+    if (columnNames.length === 0 || columnNames.length > 256) {
+      throw new TypeError("ANALYSIS_GOVERNED_OPERATOR_RESULT_SHAPE_EXCEEDED");
+    }
+    const expected = columnNames.join("\0");
+    if (
+      output.some(
+        (row) =>
+          Object.keys(row as Readonly<Record<string, unknown>>)
+            .sort()
+            .join("\0") !== expected,
+      )
+    ) {
+      throw new TypeError("ANALYSIS_GOVERNED_OPERATOR_RESULT_TABLE_COLUMNS_MISMATCH");
+    }
+    return Object.freeze({
+      kind: "TABLE" as const,
+      rows: output.length,
+      columns: columnNames.length,
+      bounded_summary: columnNames.slice(0, 32).join(",").slice(0, 1_024),
+    });
+  }
+  if (typeof output !== "object" || output === null) {
     throw new TypeError("ANALYSIS_GOVERNED_OPERATOR_RESULT_MAPPING_REQUIRED");
   }
   const keys = Object.keys(output);
@@ -214,6 +246,7 @@ export function createGovernedResultBridge(input: {
       });
       recovered.push({
         result,
+        result_content: loaded.result_content.slice(),
         request_content: loaded.request_content,
         receipt_payload: loaded.receipt_payload,
         binding: { ...binding, journal_seq: committed.journal_seq },

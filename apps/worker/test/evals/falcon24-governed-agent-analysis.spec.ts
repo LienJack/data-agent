@@ -156,6 +156,8 @@ describe("Falcon24 governed Agent analysis bridge", () => {
     const queryEvidenceRef = reference("QueryEvidence", 35);
     const outputRef = reference("SandboxResult", 33);
     const completionRef = reference("AnalysisCompletionReceipt", 34);
+    const chartRef = reference("ArtifactWorkspaceDocument", 36);
+    const reportRef = reference("AnalysisReport", 37);
     const commitL2 = vi.fn<AnalysisArtifactCommitPort["commitL2"]>(async (input) => {
       expect(input.payload.artifact_type).toBe("ResearchBrief");
       return briefRef;
@@ -189,6 +191,8 @@ describe("Falcon24 governed Agent analysis bridge", () => {
       return {
         analysis_program_ref: programRef,
         completion_ref: completionRef,
+        chart_refs: [chartRef],
+        report_ref: reportRef,
         completion: { terminal: "READY" },
         evidence_refs: [evidenceRef],
         query_evidence_refs: [queryEvidenceRef],
@@ -266,8 +270,7 @@ describe("Falcon24 governed Agent analysis bridge", () => {
       provider_dispatch: {} as never,
       fence_guard: { isCurrent: async () => true },
     });
-    const chartRef = result.public_artifact_refs[0];
-    expect(chartRef?.artifact_type).toBe("ArtifactWorkspaceDocument");
+    expect(result.public_artifact_refs[0]?.artifact_type).toBe("ArtifactWorkspaceDocument");
     expect(result).toEqual({
       answer: `最近18个完整月（2023-05至2024-10）中，收入下降最明显的是 2024-10：环比减少 10（-10%）。 Shapley 恒等式分解为购买人数 -4、购买频次 -3、客单价 -3；绝对影响最大的是购买人数。 主要下拉场景为客户类型 new（-4）、商品品类 grocery（-3）和支付方式 cash（-3）。\n\n[查看对应图表](${chartRef ? `artifact://${chartRef.artifact_id}?revision=1&hash=${encodeURIComponent(chartRef.content_hash)}` : ""})`,
       public_artifact_refs: [chartRef],
@@ -278,6 +281,7 @@ describe("Falcon24 governed Agent analysis bridge", () => {
         outputRef,
         chartRef,
         completionRef,
+        reportRef,
       ],
     });
     expect(commitL2).toHaveBeenCalledOnce();

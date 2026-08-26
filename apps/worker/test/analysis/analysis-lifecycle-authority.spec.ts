@@ -1,12 +1,21 @@
 import { createHash } from "node:crypto";
 import { sha256ContentHash } from "@data-agent/contracts/common";
 import {
+  type AnalysisContextJournalAppendCommand,
+  type AnalysisContextJournalEntry,
+  type AnalysisResultStageCommand,
+  analysisAgentFinalResponseSchema,
+  analysisAuthorityCommitSchema,
+  analysisContextJournalAppendCommandSchema,
+  analysisContextJournalEntrySchema,
+  analysisResultStageCommandSchema,
   buildAnalysisAuthorityCommit,
   buildAnalysisContextJournalAppend,
   buildAnalysisContextJournalEntryHash,
 } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   type AnalysisLifecyclePersistenceAuthority,
   analysisLifecycleAuthorityInternals,
@@ -38,9 +47,27 @@ function rawHash(content: Uint8Array) {
   return `sha256:${createHash("sha256").update(content).digest("hex")}` as const;
 }
 
+function isContentHash(value: string): value is `sha256:${string}` {
+  return /^sha256:[0-9a-f]{64}$/u.test(value);
+}
+
+const stageOracleRecordSchema = z.object({
+  receipt_payload: z.record(z.string(), z.unknown()),
+  receipt_hash: z.templateLiteral(["sha256:", z.string()]),
+});
+const stageExplanationRecordSchema = z.object({
+  explanation: analysisAgentFinalResponseSchema,
+  explanation_hash: z.templateLiteral(["sha256:", z.string()]),
+  provider_invocation_ref: z.strictObject({
+    resource_id: z.string(),
+    resource_revision: z.literal(1),
+    resource_hash: z.templateLiteral(["sha256:", z.string()]),
+  }),
+});
+
 describe("durable analysis lifecycle authority", () => {
   it("stages bytes before freeze and reloads only the PostgreSQL-authoritative closure", async () => {
-    const entries: any[] = [];
+    const entries: AnalysisContextJournalEntry[] = [];
     const modelCell = await buildAnalysisContextJournalAppend({
       schema_version: "analysis-context-journal-append@1.0.0",
       scope,
@@ -70,98 +97,104 @@ describe("durable analysis lifecycle authority", () => {
         timeout_ms: 1_000,
       },
     });
-    const toEntry = async (command: any) => {
+    const toEntry = async (
+      command: AnalysisContextJournalAppendCommand,
+    ): Promise<AnalysisContextJournalEntry> => {
       const seq = entries.length + 1;
       const prevEntryHash = entries.at(-1)?.entry_hash ?? null;
-      return {
+      return analysisContextJournalEntrySchema.parse({
         ...command,
         schema_version: "analysis-context-journal-entry@1.0.0",
         seq,
         prev_entry_hash: prevEntryHash,
         entry_hash: await buildAnalysisContextJournalEntryHash(command, seq, prevEntryHash),
         created_at: "2026-08-24T00:00:00.000Z",
-      };
+      });
     };
     entries.push(await toEntry(modelCell));
-    let stagedCommand: any;
+    let stagedCommand: AnalysisResultStageCommand | null = null;
     let stagedContents: readonly Uint8Array[] = [];
-    let oracleRecord: any = null;
-    let explanationRecord: any = null;
+    let oracleRecord: z.infer<typeof stageOracleRecordSchema> | null = null;
+    let explanationRecord: z.infer<typeof stageExplanationRecordSchema> | null = null;
     const authority: AnalysisLifecyclePersistenceAuthority = {
       async readAnalysisContextJournal() {
         return { ok: true, entries };
       },
       async appendAnalysisContextJournal(_capability, command) {
-        const replay = entries.find((entry) => entry.append_hash === (command as any).append_hash);
+        const typed = analysisContextJournalAppendCommandSchema.parse(command);
+        const replay = entries.find((entry) => entry.append_hash === typed.append_hash);
         if (replay) return { ok: true, entry: replay };
-        const entry = await toEntry(command);
+        const entry = await toEntry(typed);
         entries.push(entry);
         return { ok: true, entry };
       },
       async stageAnalysisResult(_capability, command, journalCommand, contents) {
-        stagedCommand = command;
+        const typed = analysisResultStageCommandSchema.parse(command);
+        const typedJournal = analysisContextJournalAppendCommandSchema.parse(journalCommand);
+        stagedCommand = typed;
         stagedContents = contents.map((content) => content.slice());
-        const entry = await toEntry(journalCommand);
+        const entry = await toEntry(typedJournal);
         entries.push(entry);
         return {
           ok: true,
           stage: {
             schema_version: "analysis-result-stage@1.0.0",
-            stage_id: (command as any).stage_id,
-            stage_hash: (command as any).stage_hash,
-            closure_hash: (command as any).closure_hash,
+            stage_id: typed.stage_id,
+            stage_hash: typed.stage_hash,
+            closure_hash: typed.closure_hash,
             status: "STAGED",
             created: true,
-            expires_at: (command as any).expires_at,
+            expires_at: typed.expires_at,
           },
           journal_entry: entry,
         } as const;
       },
       async readAnalysisResultStage() {
+        if (!stagedCommand) throw new TypeError("TEST_STAGE_NOT_CREATED");
         return {
           ok: true,
           stage_command: stagedCommand,
           oracle_record: oracleRecord,
           explanation_record: explanationRecord,
-          artifacts: stagedCommand.artifacts.map((artifact: any, index: number) => ({
-            ...artifact,
-            content: stagedContents[index]!.slice(),
-          })),
+          artifacts: stagedCommand.artifacts.map((artifact, index) => {
+            const content = stagedContents[index];
+            if (!content) throw new TypeError("TEST_STAGE_CONTENT_MISSING");
+            const contentHash = artifact.content_sha256;
+            if (!isContentHash(contentHash)) throw new TypeError("TEST_STAGE_HASH_INVALID");
+            return { ...artifact, content_sha256: contentHash, content: content.slice() };
+          }),
         } as const;
       },
       async recordAnalysisStageOracle(_capability, command, journalCommand) {
-        const typed = command as any;
+        const typed = stageOracleRecordSchema.parse(command);
+        const typedJournal = analysisContextJournalAppendCommandSchema.parse(journalCommand);
         oracleRecord = {
           receipt_payload: typed.receipt_payload,
           receipt_hash: typed.receipt_hash,
         };
-        const replay = entries.find(
-          (entry) => entry.append_hash === (journalCommand as any).append_hash,
-        );
-        const entry = replay ?? (await toEntry(journalCommand));
+        const replay = entries.find((entry) => entry.append_hash === typedJournal.append_hash);
+        const entry = replay ?? (await toEntry(typedJournal));
         if (!replay) entries.push(entry);
         return { ok: true, journal_entry: entry } as const;
       },
       async recordAnalysisStageExplanation(_capability, command, journalCommand) {
-        const typed = command as any;
+        const typed = stageExplanationRecordSchema.parse(command);
+        const typedJournal = analysisContextJournalAppendCommandSchema.parse(journalCommand);
         explanationRecord = {
           explanation: typed.explanation,
           explanation_hash: typed.explanation_hash,
           provider_invocation_ref: typed.provider_invocation_ref,
         };
-        const replay = entries.find(
-          (entry) => entry.append_hash === (journalCommand as any).append_hash,
-        );
-        const entry = replay ?? (await toEntry(journalCommand));
+        const replay = entries.find((entry) => entry.append_hash === typedJournal.append_hash);
+        const entry = replay ?? (await toEntry(typedJournal));
         if (!replay) entries.push(entry);
         return { ok: true, journal_entry: entry } as const;
       },
       async commitAnalysisAuthority(_capability, command, journalCommand) {
-        const typed = command as any;
-        const replay = entries.find(
-          (entry) => entry.append_hash === (journalCommand as any).append_hash,
-        );
-        const entry = replay ?? (await toEntry(journalCommand));
+        const typed = analysisAuthorityCommitSchema.parse(command);
+        const typedJournal = analysisContextJournalAppendCommandSchema.parse(journalCommand);
+        const replay = entries.find((entry) => entry.append_hash === typedJournal.append_hash);
+        const entry = replay ?? (await toEntry(typedJournal));
         if (!replay) entries.push(entry);
         return {
           ok: true,
@@ -172,12 +205,27 @@ describe("durable analysis lifecycle authority", () => {
             stage_id: typed.stage_id,
             stage_hash: typed.stage_hash,
             references: [
-              ...typed.output_bindings.map((binding: any) => binding.reference),
+              ...typed.output_bindings.map((binding) => binding.reference),
               typed.sandbox_receipt_ref,
             ],
             public_event_id: typed.public_event_id,
           },
           journal_entry: entry,
+        } as const;
+      },
+      async commitE1AnalysisPublication(_capability, command) {
+        return {
+          ok: true,
+          receipt: {
+            schema_version: "e1-analysis-publication-receipt@1.0.0",
+            created: true,
+            publication_hash: command.publication_hash,
+            public_event_id: command.public_event_id,
+            references: command.nodes.flatMap((node) => [
+              ...node.authority_commit.output_bindings.map((binding) => binding.reference),
+              node.authority_commit.sandbox_receipt_ref,
+            ]),
+          },
         } as const;
       },
     };
@@ -190,11 +238,24 @@ describe("durable analysis lifecycle authority", () => {
       } as unknown as ResearchAuthorityCapabilityResolver,
       now: () => new Date("2026-08-24T00:59:00.000Z"),
     });
-    const documents = [
-      new TextEncoder().encode('{"result":1}'),
-      new TextEncoder().encode('{"rows":[]}'),
-      new TextEncoder().encode('{"chart":{}}'),
+    const artifactInputs = [
+      {
+        artifact_name: "result",
+        artifact_kind: "RESULT" as const,
+        content: new TextEncoder().encode('{"result":1}'),
+      },
+      {
+        artifact_name: "table:trend",
+        artifact_kind: "TABLE" as const,
+        content: new TextEncoder().encode('{"rows":[]}'),
+      },
+      {
+        artifact_name: "chart:trend",
+        artifact_kind: "CHART" as const,
+        content: new TextEncoder().encode('{"chart":{}}'),
+      },
     ];
+    const documents = artifactInputs.map(({ content }) => content);
     const closure = {
       schema_version: "analysis-result-staged-closure@1.0.0" as const,
       publish_id: "publish-1",
@@ -202,9 +263,9 @@ describe("durable analysis lifecycle authority", () => {
       manifest_hash: hash("e"),
       closure_hash: hash("f"),
       analytical_value_hashes: [{ symbol_name: "result_document", value_hash: hash("1") }],
-      artifacts: documents.map((content, index) => ({
-        artifact_name: ["result", "table:trend", "chart:trend"][index]!,
-        artifact_kind: (["RESULT", "TABLE", "CHART"] as const)[index]!,
+      artifacts: artifactInputs.map(({ artifact_name, artifact_kind, content }) => ({
+        artifact_name,
+        artifact_kind,
         media_type: "application/json" as const,
         content,
         content_sha256: rawHash(content),
@@ -368,7 +429,7 @@ describe("durable analysis lifecycle authority", () => {
     expect(loaded.artifacts.map(({ content }) => [...content])).toEqual(
       documents.map((content) => [...content]),
     );
-    expect(entries.map(({ event }: any) => event.event_type)).toEqual([
+    expect(entries.map(({ event }) => event.event_type)).toEqual([
       "MODEL_CELL_COMMITTED",
       "PUBLISH_STAGE_CREATED",
       "CONTEXT_FROZEN",

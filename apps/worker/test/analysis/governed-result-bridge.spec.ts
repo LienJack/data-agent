@@ -73,6 +73,7 @@ describe("Governed Result Bridge recovery", () => {
     ];
     const recoveredResult = {
       result,
+      result_content: new TextEncoder().encode("{}"),
       request_content: new TextEncoder().encode('{"request":true}'),
       receipt_payload: { receipt: true },
       binding: {
@@ -176,6 +177,7 @@ describe("Governed Result Bridge recovery", () => {
     expect(recovered).toEqual([
       expect.objectContaining({
         result,
+        result_content: resultContent,
         request_content: requestContent,
         receipt_payload: { receipt: true },
         binding: expect.objectContaining({ journal_seq: 3 }),

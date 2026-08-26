@@ -42,6 +42,10 @@ import {
   consumeReportReadGrantInputSchema,
   createU6DbResultSchema,
   currentReadinessConsumeResultSchema,
+  type E1AnalysisPublicationCommand,
+  type E1AnalysisPublicationReceipt,
+  e1AnalysisPublicationCommandSchema,
+  e1AnalysisPublicationReceiptSchema,
   expiredReportReadGrantSchema,
   expireReportReadGrantInputSchema,
   frontierAdvanceInputSchema,
@@ -265,6 +269,13 @@ const analysisAuthorityCommitRpcResultSchema = z.union([
   }),
   z.strictObject({ ok: z.literal(false), error_code: analysisLifecycleErrorCodeSchema }),
 ]);
+const e1AnalysisPublicationRpcResultSchema = z.union([
+  z.strictObject({ ok: z.literal(true), receipt: e1AnalysisPublicationReceiptSchema }),
+  z.strictObject({
+    ok: z.literal(false),
+    error_code: z.string().regex(/^[A-Z][A-Z0-9_]{2,127}$/u),
+  }),
+]);
 const analysisContextJournalReadInputSchema = z.strictObject({
   scope: appScopeSchema,
   run_id: immutableIdSchema,
@@ -431,6 +442,13 @@ type ResearchAuthorityPorts = ResearchArtifactAuthorityPort &
           readonly receipt: AnalysisAuthorityCommitReceipt;
           readonly journal_entry: AnalysisContextJournalEntry;
         }
+      | { readonly ok: false; readonly error_code: string }
+    >;
+    commitE1AnalysisPublication(
+      capabilityInput: unknown,
+      command: E1AnalysisPublicationCommand,
+    ): Promise<
+      | { readonly ok: true; readonly receipt: E1AnalysisPublicationReceipt }
       | { readonly ok: false; readonly error_code: string }
     >;
   };
@@ -1682,6 +1700,60 @@ export function createPostgresResearchAuthority(
       const failure = boundaryFailureToU6<never>(transaction.error);
       if (failure.ok)
         throw new ResearchAuthorityTransportError("Authority commit failure mapped to success.");
+      return { ok: false as const, error_code: failure.error.code };
+    },
+    async commitE1AnalysisPublication(capabilityInput, commandInput) {
+      const capabilityBundle = capabilityInputSchema.safeParse(capabilityInput);
+      const command = e1AnalysisPublicationCommandSchema.safeParse(commandInput);
+      if (!capabilityBundle.success || !command.success) {
+        return { ok: false as const, error_code: "RESEARCH_DATABASE_CONTRACT_INVALID" };
+      }
+      const envelope = {
+        protocol_version: U6_DB_COMMAND_PROTOCOL_VERSION,
+        authority_capability_id: capabilityBundle.data.authority_capability_id,
+        command: command.data,
+      } as const;
+      const transaction = await withAnalysisLockRetry(() =>
+        withAppTransaction(
+          options.pool,
+          options.authorizer,
+          capabilityBundle.data.app_capability,
+          {
+            access: "WRITE",
+            allowed_roles: ["OWNER", "ANALYST"],
+            map_database_error: databaseFailure,
+            operation_name: "research_authority.commit_e1_analysis_publication",
+            correlation_id: command.data.run_id,
+          },
+          async ({ capability, client }) => {
+            if (!scopeMatches(command.data, capability)) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_CAPABILITY_SCOPE_MISMATCH",
+                "E1 Analysis Publication 与事务内 Scope/Principal 不一致。",
+              );
+            }
+            const databaseResult = await client.query<JsonResultRow>(
+              "select app_data_agent.commit_e1_analysis_publication($1::jsonb) as result",
+              [envelope],
+            );
+            const parsed = e1AnalysisPublicationRpcResultSchema.safeParse(
+              databaseResult.rows[0]?.result,
+            );
+            if (!parsed.success) {
+              throw new PersistenceBoundaryError(
+                "RESEARCH_DATABASE_CONTRACT_INVALID",
+                "E1 Analysis Publication RPC 返回无效。",
+              );
+            }
+            return parsed.data;
+          },
+        ),
+      );
+      if (transaction.ok) return transaction.value;
+      const failure = boundaryFailureToU6<never>(transaction.error);
+      if (failure.ok) {
+        throw new ResearchAuthorityTransportError("E1 publication failure mapped to success.");
+      }
       return { ok: false as const, error_code: failure.error.code };
     },
     async commitAnalysisPythonSource(capabilityInput, commandInput, ciphertext) {

@@ -375,18 +375,22 @@ function recoverOperatorState(input: {
 }): {
   readonly requests: readonly z.infer<typeof statisticalOperatorRequestDocumentSchema>[];
   readonly observations: readonly AnalysisStatisticalOperatorObservation[];
+  readonly outputs: ReadonlyMap<string, unknown>;
 } {
   if (input.recovered.length > input.obligations.length) {
     throw new TypeError("ANALYSIS_OPERATOR_RECOVERY_CARDINALITY_INVALID");
   }
   const requests = [];
   const observations = [];
+  const outputs = new Map<string, unknown>();
   for (const [index, recovered] of input.recovered.entries()) {
     let request: z.infer<typeof statisticalOperatorRequestDocumentSchema>;
+    let output: unknown;
     try {
       request = statisticalOperatorRequestDocumentSchema.parse(
         JSON.parse(decoder.decode(recovered.request_content)),
       );
+      output = JSON.parse(decoder.decode(recovered.result_content)) as unknown;
     } catch {
       throw new TypeError("ANALYSIS_OPERATOR_RECOVERY_REQUEST_INVALID");
     }
@@ -400,6 +404,8 @@ function recoverOperatorState(input: {
       request.runtime_profile !== input.runtime_profile ||
       request.operator_registry_digest !== STATISTICAL_OPERATOR_REGISTRY_DIGEST ||
       sha256(recovered.request_content) !== recovered.result.request_sha256 ||
+      sha256(recovered.result_content) !== recovered.result.result_sha256 ||
+      canonicalizeJson(output) !== decoder.decode(recovered.result_content) ||
       recovered.result.call_id !== request.call_id ||
       recovered.result.operator_id !== request.operator_id ||
       recovered.binding.result_sha256 !== recovered.result.result_sha256 ||
@@ -414,6 +420,7 @@ function recoverOperatorState(input: {
       throw new TypeError("ANALYSIS_OPERATOR_RECOVERY_IDENTITY_MISMATCH");
     }
     requests.push(request);
+    outputs.set(request.call_id, output);
     observations.push(
       analysisStatisticalOperatorObservationSchema.parse({
         schema_version: "analysis-statistical-operator-observation@1.0.0",
@@ -430,6 +437,7 @@ function recoverOperatorState(input: {
   return Object.freeze({
     requests: Object.freeze(requests),
     observations: Object.freeze(observations),
+    outputs,
   });
 }
 
@@ -622,9 +630,9 @@ export async function executeAnalysisToolLoop(input: {
     ...recoveredState.observations,
   ];
   const operatorRequests: unknown[] = [...recoveredState.requests];
-  // Deliberately live-only. Recovered receipts do not contain protected raw
-  // output, so downstream OPERATOR_RESULT_EXACT obligations fail closed.
-  const protectedOperatorOutputs = new Map<string, unknown>();
+  // Authoritative recovered values remain server-only. They verify downstream
+  // OPERATOR_RESULT_EXACT lineage while the model sees only Binding metadata.
+  const protectedOperatorOutputs = new Map(recoveredState.outputs);
   const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
   const seenCellIds = new Set<string>();
   const signatureProgress = new Map<string, number>();

@@ -40,10 +40,10 @@
 
 ## U9 - Governed Analysis and Atomic Publisher
 
-- [ ] 实现通用 AnalysisProgram、Operator obligations、Binding/Journal recovery。
-- [ ] 接入独立 Oracle 与单事务 publication bundle（10776）。
-- [ ] 覆盖 crash/fence/hash/privacy/reclamation/property tests。
-- [ ] 创建 U9 scoped commit。
+- [x] 实现通用 AnalysisProgram、Operator obligations、Binding/Journal recovery。
+- [x] 接入独立 Oracle 与单事务 publication bundle（10776）。
+- [x] 覆盖 crash/fence/hash/privacy/reclamation/property tests。
+- [x] 创建 U9 scoped commit。
 
 ## U6 - E1 Trace and UI Gate
 

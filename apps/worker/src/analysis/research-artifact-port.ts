@@ -187,6 +187,15 @@ export function createResearchAnalysisArtifactPort(input: {
   const now = input.now ?? (() => new Date());
 
   return Object.freeze({
+    async prepareL2(command: Parameters<NonNullable<AnalysisArtifactCommitPort["prepareL2"]>>[0]) {
+      return buildAnalysisResearchArtifactCommit({
+        payload: command.payload,
+        lease: command.lease,
+        principal_id: command.principal_id,
+        idempotency_key: command.idempotency_key,
+        created_at: now().toISOString(),
+      });
+    },
     async commitL2(command: Parameters<AnalysisArtifactCommitPort["commitL2"]>[0]) {
       const prepared = await buildAnalysisResearchArtifactCommit({
         payload: command.payload,
@@ -689,6 +698,7 @@ export function createResearchGovernedResultAuthorityPort(input: {
         recoveredResults.push(
           Object.freeze({
             result: governed,
+            result_content: persisted.result_content.slice(),
             request_content: persisted.request_content.slice(),
             receipt_payload: persisted.receipt_payload,
             binding: {

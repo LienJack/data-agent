@@ -1,6 +1,10 @@
 import type { SqlClient, SqlPool, SqlQueryResult } from "@data-agent/platform";
 import { describe, expect, it } from "vitest";
-import { createFalcon24AnalysisDataOracle } from "../../src/evals/falcon24-analysis-data-oracle.js";
+import {
+  createFalcon24AnalysisDataOracle,
+  falcon24AnalysisDataOracleInternals,
+  verifyFalcon24AnalysisDataOracleReceipt,
+} from "../../src/evals/falcon24-analysis-data-oracle.js";
 
 const fixedRow = {
   table_count: "9",
@@ -41,8 +45,12 @@ function pool(row: Record<string, unknown>) {
 describe("Falcon24 analysis data oracle", () => {
   it("accepts the fixed snapshot and exposes all required quality holds", async () => {
     const scripted = pool(fixedRow);
-    await expect(createFalcon24AnalysisDataOracle(scripted.pool).inspect()).resolves.toMatchObject({
+    const receipt = await createFalcon24AnalysisDataOracle(scripted.pool).inspect();
+    expect(receipt).toMatchObject({
+      schema_version: "falcon24-analysis-data-oracle@2.0.0",
       dataset_id: "falcon_db_24",
+      implementation_id: "falcon24-independent-data-oracle@2",
+      implementation_hash: await falcon24AnalysisDataOracleInternals.implementationHash(),
       verdict: "PASS_WITH_QUALITY_HOLDS",
       table_count: 9,
       column_count: 70,
@@ -56,6 +64,8 @@ describe("Falcon24 analysis data oracle", () => {
         "STORED_CUSTOMER_KPI_UNTRUSTED",
       ],
     });
+    await expect(verifyFalcon24AnalysisDataOracleReceipt(receipt)).resolves.toEqual(receipt);
+    expect(JSON.stringify(receipt)).not.toMatch(/select |falcon_db_24\.|stdout|credential|target/u);
     expect(scripted.released()).toBe(true);
   });
 

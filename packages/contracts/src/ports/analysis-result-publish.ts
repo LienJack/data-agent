@@ -160,7 +160,7 @@ export const analysisResultPublishedArtifactSchema = z.strictObject({
 export const analysisResultPublishObservationSchema = z.strictObject({
   schema_version: z.literal("analysis-result-publish-observation@1.0.0"),
   publish_id: stableIdSchema,
-  status: z.literal("PUBLISHED"),
+  status: z.literal("STAGED"),
   contract_hash: contentHashSchema,
   manifest_hash: contentHashSchema,
   closure_hash: contentHashSchema,

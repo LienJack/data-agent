@@ -9,6 +9,7 @@ import {
   analysisReasonCodeSchema,
   analysisResultSchema,
   artifactReferenceIdentity,
+  computeArtifactWorkspaceChartDatasetV3Hash,
   type DerivedAnalysisEvidencePayload,
   derivedAnalysisEvidencePayloadSchema,
   derivedAnalysisEvidenceRefSchema,
@@ -20,9 +21,12 @@ import {
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import type { AnalysisContext } from "@data-agent/contracts/context";
 import {
+  type AnalysisOracleReceipt,
   type AnalysisSandboxExecutionReceipt,
   type analysisAgentFinalResponseSchema,
+  analysisOracleReceiptSchema,
   buildAnalysisAuthorityCommit,
+  buildAnalysisOracleReceipt,
 } from "@data-agent/contracts/ports";
 import type { RunWorkLease } from "@data-agent/contracts/runs";
 import {
@@ -47,6 +51,11 @@ import type { AnalysisToolLoopProgressEvent } from "./analysis-tool-loop.js";
 import type { AnalysisAgentModelPort } from "./deepseek-analysis-agent.js";
 import { deterministicAnalysisUuid } from "./deterministic-id.js";
 import type { GovernedAnalysisInput } from "./governed-analysis-input.js";
+import {
+  assembleE1AnalysisPublication,
+  type PreparedE1PublicationNode,
+  projectStagedAnalysisChart,
+} from "./governed-analysis-runtime.js";
 import type { AnalysisGovernedResultAuthorityPort } from "./governed-result-bridge.js";
 import { gateAnalysisProgram } from "./program-gate.js";
 import type { AnalysisResultClosureArtifact } from "./result-publisher.js";
@@ -61,7 +70,7 @@ const durableOracleReceiptSchema = z.strictObject({
   coverage_ratio: z.number().min(0).max(1),
   limitation_codes: z.array(analysisReasonCodeSchema).max(32),
   material_change: z.boolean(),
-  oracle_receipt: z.unknown().nullable(),
+  oracle_receipt: analysisOracleReceiptSchema,
 });
 
 const FINAL_NARRATIVE_PROJECTION_MAX_BYTES = 24 * 1024;
@@ -129,6 +138,20 @@ export function buildAnalysisNarrativeProjection(document: unknown) {
 }
 
 export interface AnalysisArtifactCommitPort {
+  prepareL2?(input: {
+    readonly lease: RunWorkLease;
+    readonly principal_id: string;
+    readonly idempotency_key: string;
+    readonly payload:
+      | ResearchBriefV3Payload
+      | AnalysisProgramPayload
+      | DerivedAnalysisEvidencePayload
+      | AnalysisCompletionReceiptPayload;
+  }): Promise<
+    Awaited<
+      ReturnType<typeof import("./research-artifact-port.js").buildAnalysisResearchArtifactCommit>
+    >
+  >;
   commitL2(input: {
     readonly lease: RunWorkLease;
     readonly principal_id: string;
@@ -194,6 +217,8 @@ export interface AnalysisOracleExpectation {
   readonly limitation_codes: readonly AnalysisReasonCode[];
   readonly material_change: boolean;
   readonly oracle_receipt?: unknown;
+  readonly implementation_id?: string;
+  readonly implementation_hash?: `sha256:${string}`;
 }
 
 export interface AnalysisBoundOutput extends AnalysisResultClosureArtifact {
@@ -238,7 +263,10 @@ export interface AnalysisExecutorDependencies {
   readonly fence_guard: AnalysisFenceGuard;
   readonly references: AnalysisReferenceFactory;
   readonly diagnostics?: (event: {
-    readonly event_name: "analysis_oracle_rejected" | "analysis_node_rejected";
+    readonly event_name:
+      | "analysis_oracle_rejected"
+      | "analysis_node_rejected"
+      | "analysis_reclamation_failed";
     readonly run_id: string;
     readonly node_id: string;
     readonly attempt: 0 | null;
@@ -306,6 +334,9 @@ export interface AnalysisExecutionResult {
     readonly node_id: string;
     readonly explanation: z.infer<typeof analysisAgentFinalResponseSchema>;
   }[];
+  readonly chart_refs: readonly ArtifactReference[];
+  readonly report_ref: ArtifactReference;
+  readonly publication_receipt: import("@data-agent/contracts/ports").E1AnalysisPublicationReceipt;
 }
 
 class BudgetLedger {
@@ -484,6 +515,8 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       readonly program: AnalysisProgramPayload;
       readonly signal?: AbortSignal;
     }): Promise<AnalysisExecutionResult> {
+      const prepareL2 = dependencies.artifacts.prepareL2;
+      if (!prepareL2) throw new TypeError("E1_ANALYSIS_PUBLICATION_PORT_REQUIRED");
       const gate = await gateAnalysisProgram({
         program: input.program,
         brief: input.brief,
@@ -527,6 +560,11 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const oracleReceipts: unknown[] = [];
       const publishedOutputs = new Map<string, readonly AnalysisBoundOutput[]>();
       const explanations = new Map<string, z.infer<typeof analysisAgentFinalResponseSchema>>();
+      const preparedPublicationNodes = new Map<string, PreparedE1PublicationNode>();
+      const cleanupInputs = new Map<
+        string,
+        Parameters<AnalysisLifecycleAuthorityPort["cleanup"]>[0]
+      >();
 
       const executeNode = async (node: AnalysisProgramNode) => {
         if (input.signal?.aborted) return failedNode(node, "SANDBOX_EXECUTION_FAILED");
@@ -639,9 +677,30 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           governed_inputs: governedInputs,
           outputs: boundOutputs.map((output) => ({ output, reference: output.reference })),
         });
+        const parameterHash = await sha256ContentHash(node.parameters);
+        const inputClosureHash = await sha256ContentHash({
+          query_evidence_refs: governedInputs.map(({ query_evidence_ref }) => query_evidence_ref),
+          input_refs: governedInputs.map(({ input_ref }) => input_ref),
+          input_materialization_receipt_refs: governedInputs.map(
+            ({ materialization_receipt_ref }) => materialization_receipt_ref,
+          ),
+        });
+        const stagedCharts = stagedClosure.artifacts
+          .filter(({ artifact_kind: artifactKind }) => artifactKind === "CHART")
+          .map(projectStagedAnalysisChart);
+        if (stagedCharts.length === 0) {
+          throw new TypeError("E1_ANALYSIS_PUBLICATION_CHART_REQUIRED");
+        }
+        const chartDatasetHashes = await Promise.all(
+          stagedCharts.map(({ projection }) =>
+            computeArtifactWorkspaceChartDatasetV3Hash(projection),
+          ),
+        );
+        const sandboxReceiptHash = await sha256ContentHash(receipt);
         let expectation: AnalysisOracleExpectation;
         let oracleReceiptPayload: z.infer<typeof durableOracleReceiptSchema>;
         let oracleReceiptHash: `sha256:${string}`;
+        let independentOracleReceipt: AnalysisOracleReceipt;
         if (stagedClosure.oracle_record) {
           oracleReceiptPayload = durableOracleReceiptSchema.parse(
             stagedClosure.oracle_record.receipt_payload,
@@ -658,10 +717,17 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             coverage_ratio: oracleReceiptPayload.coverage_ratio,
             limitation_codes: oracleReceiptPayload.limitation_codes,
             material_change: oracleReceiptPayload.material_change,
-            ...(oracleReceiptPayload.oracle_receipt === null
-              ? {}
-              : { oracle_receipt: oracleReceiptPayload.oracle_receipt }),
+            oracle_receipt: oracleReceiptPayload.oracle_receipt,
           };
+          independentOracleReceipt = oracleReceiptPayload.oracle_receipt;
+          if (
+            independentOracleReceipt.input_binding.stage_hash !== execution.stage.stage_hash ||
+            independentOracleReceipt.input_binding.sandbox_receipt_hash !== sandboxReceiptHash ||
+            canonicalizeJson(independentOracleReceipt.input_binding.chart_dataset_hashes) !==
+              canonicalizeJson(chartDatasetHashes)
+          ) {
+            throw new TypeError("ANALYSIS_STAGE_ORACLE_RECEIPT_CORRELATION_MISMATCH");
+          }
           oracleReceiptHash = stagedClosure.oracle_record.receipt_hash;
         } else {
           try {
@@ -687,6 +753,45 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             });
             throw new TypeError(failureCode);
           }
+          independentOracleReceipt = await buildAnalysisOracleReceipt({
+            schema_version: "analysis-oracle-receipt@1.0.0",
+            oracle_id: deterministicAnalysisUuid(
+              `analysis-oracle\0${input.lease.run_id}\0${node.node_id}\0${execution.stage.stage_hash}`,
+            ),
+            scope: input.lease.scope,
+            run_id: input.lease.run_id,
+            node_id: node.node_id,
+            analysis_program_ref: analysisProgramRef,
+            implementation_id: expectation.implementation_id ?? "independent-analysis-oracle@1.0.0",
+            implementation_hash:
+              expectation.implementation_hash ??
+              (await sha256ContentHash({
+                hash_domain: "independent-analysis-oracle-implementation@1.0.0",
+                sealed_verification_hash: await sha256ContentHash(
+                  expectation.oracle_receipt ?? { verdict: "PASS" },
+                ),
+              })),
+            input_binding: {
+              query_evidence_refs: governedInputs.map(
+                ({ query_evidence_ref: reference }) => reference,
+              ),
+              input_materialization_closure_hash: inputClosureHash,
+              stage_id: execution.stage.stage_id,
+              stage_hash: execution.stage.stage_hash,
+              published_closure_hash: execution.stage.closure_hash,
+              operator_receipt_closure_hash:
+                execution.tool_loop.operator_finalization.operator_receipt_closure_hash,
+              sandbox_receipt_hash: sandboxReceiptHash,
+              chart_dataset_hashes: chartDatasetHashes,
+            },
+            verdict: "PASS",
+            expected_terminal: "READY",
+            sample_size: expectation.sample_size,
+            coverage_ratio: expectation.coverage_ratio,
+            limitation_codes: [...expectation.limitation_codes],
+            disclosure_codes: [...descriptor.mandatory_disclosures],
+            verified_at: now().toISOString(),
+          });
           oracleReceiptPayload = durableOracleReceiptSchema.parse({
             schema_version: "analysis-stage-oracle-receipt@1.0.0",
             result: expectation.result,
@@ -694,7 +799,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             coverage_ratio: expectation.coverage_ratio,
             limitation_codes: expectation.limitation_codes,
             material_change: expectation.material_change,
-            oracle_receipt: expectation.oracle_receipt ?? null,
+            oracle_receipt: independentOracleReceipt,
           });
           oracleReceiptHash = await dependencies.lifecycle.recordOracle({
             ...lifecycleIdentity,
@@ -765,7 +870,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         const committedOutputRefs = boundOutputs.map(({ reference }) =>
           sandboxResultRefSchema.parse(reference),
         );
-        const receiptHash = await sha256ContentHash(receipt);
+        const receiptHash = sandboxReceiptHash;
         const receiptRef = sandboxExecutionReceiptRefSchema.parse(
           dependencies.references.createSystem({
             artifact_type: "SandboxExecutionReceipt",
@@ -827,17 +932,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             `analysis-authority-event\0${input.lease.run_id}\0${node.node_id}\0${execution.stage.stage_hash}`,
           ),
         });
-        await dependencies.lifecycle.commit({ ...lifecycleIdentity, command: authorityCommand });
-        await dependencies.lifecycle.cleanup({ ...lifecycleIdentity, stage: execution.stage });
         const committedReceiptRef = receiptRef;
-        const parameterHash = await sha256ContentHash(node.parameters);
-        const inputClosureHash = await sha256ContentHash({
-          query_evidence_refs: governedInputs.map(({ query_evidence_ref }) => query_evidence_ref),
-          input_refs: governedInputs.map(({ input_ref }) => input_ref),
-          input_materialization_receipt_refs: governedInputs.map(
-            ({ materialization_receipt_ref }) => materialization_receipt_ref,
-          ),
-        });
         const evidenceMaterial: Omit<DerivedAnalysisEvidencePayload, "derivation_hash"> = {
           artifact_type: "DerivedAnalysisEvidence",
           protocol_version: "derived-analysis-evidence@2.0.0",
@@ -885,14 +980,13 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         if (!verification.ok) {
           return failedNode(node, ...derivationFailureReasons(verification.failures));
         }
-        const evidenceRef = derivedAnalysisEvidenceRefSchema.parse(
-          await dependencies.artifacts.commitL2({
-            lease: input.lease,
-            principal_id: input.principal_id,
-            idempotency_key: `analysis-evidence:${analysisProgram.program_hash}:${node.node_id}`,
-            payload: evidence,
-          }),
-        );
+        const preparedEvidence = await prepareL2({
+          lease: input.lease,
+          principal_id: input.principal_id,
+          idempotency_key: `analysis-evidence:${analysisProgram.program_hash}:${node.node_id}`,
+          payload: evidence,
+        });
+        const evidenceRef = derivedAnalysisEvidenceRefSchema.parse(preparedEvidence.reference);
         evidenceRefs.push(evidenceRef);
         for (const governed of governedInputs) {
           queryEvidenceRefs.set(
@@ -912,10 +1006,33 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           explanationProviderInvocationRef,
         );
         explanations.set(node.node_id, explanation);
-        if (expectation.oracle_receipt !== undefined)
-          oracleReceipts.push(expectation.oracle_receipt);
+        oracleReceipts.push(independentOracleReceipt);
         publishedOutputs.set(node.node_id, boundOutputs);
         expectations.set(node.node_id, expectation);
+        const journalCommand = await dependencies.lifecycle.prepareAuthorityJournal({
+          ...lifecycleIdentity,
+          command: authorityCommand,
+        });
+        preparedPublicationNodes.set(node.node_id, {
+          node_id: node.node_id,
+          authority_commit: authorityCommand,
+          journal_command: journalCommand,
+          oracle_receipt: independentOracleReceipt,
+          evidence: preparedEvidence,
+          query_evidence_refs: governedInputs.map(({ query_evidence_ref: reference }) => reference),
+          charts: stagedCharts,
+          runtime: {
+            runtime_profile: execution.runtime_profile,
+            agent_image: execution.runtime.agent_image,
+            operator_image: execution.runtime.operator_image,
+            algorithm_version: descriptor.algorithm_version,
+            parameter_hash: parameterHash,
+            input_closure_hash: inputClosureHash,
+          },
+          explanation: explanation.summary_zh,
+          provider_invocation_ref: explanationProviderInvocationRef,
+        });
+        cleanupInputs.set(node.node_id, { ...lifecycleIdentity, stage: execution.stage });
         return {
           node_id: node.node_id,
           criticality: node.criticality,
@@ -990,12 +1107,51 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           value: completionMaterial,
         }),
       });
-      const completionRef = await dependencies.artifacts.commitL2({
+      if (completion.terminal !== "READY") {
+        throw new TypeError(`E1_ANALYSIS_PUBLICATION_TERMINAL_${completion.terminal}`);
+      }
+      const preparedCompletion = await prepareL2({
         lease: input.lease,
         principal_id: input.principal_id,
         idempotency_key: `analysis-completion:${analysisProgram.program_hash}`,
         payload: completion,
       });
+      const completionRef = preparedCompletion.reference;
+      const preparedNodes = analysisProgram.nodes.map((node) => {
+        const prepared = preparedPublicationNodes.get(node.node_id);
+        if (!prepared) throw new TypeError("E1_ANALYSIS_PUBLICATION_NODE_MISSING");
+        return prepared;
+      });
+      const publication = await assembleE1AnalysisPublication({
+        lease: input.lease,
+        principal_id: input.principal_id,
+        program: analysisProgram,
+        analysis_program_ref: analysisProgramRef,
+        context: input.context,
+        completion: preparedCompletion,
+        nodes: preparedNodes,
+        question: input.brief.question,
+        committed_at: now().toISOString(),
+      });
+      const publicationReceipt = await dependencies.lifecycle.commitPublication(
+        publication.command,
+      );
+      for (const node of analysisProgram.nodes) {
+        const cleanupInput = cleanupInputs.get(node.node_id);
+        if (!cleanupInput) continue;
+        try {
+          await dependencies.lifecycle.cleanup(cleanupInput);
+        } catch (error) {
+          dependencies.diagnostics?.({
+            event_name: "analysis_reclamation_failed",
+            run_id: input.lease.run_id,
+            node_id: node.node_id,
+            attempt: null,
+            failure_code: analysisExecutionFailureCode(error),
+            ...analysisFailureDiagnostic(error),
+          });
+        }
+      }
       return Object.freeze({
         analysis_program_ref: analysisProgramRef,
         completion_ref: completionRef,
@@ -1021,6 +1177,11 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
             return explanation ? [{ node_id: node.node_id, explanation }] : [];
           }),
         ),
+        chart_refs: Object.freeze(
+          publication.chart_documents.map(({ document_ref: reference }) => reference),
+        ),
+        report_ref: publication.report_ref,
+        publication_receipt: publicationReceipt,
       });
     },
   });

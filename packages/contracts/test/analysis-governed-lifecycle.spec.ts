@@ -9,11 +9,13 @@ import {
   buildAnalysisAuthorityCommit,
   buildAnalysisContextJournalAppend,
   buildAnalysisContextJournalEntryHash,
+  buildAnalysisOracleReceipt,
   buildAnalysisResultStageCommand,
   buildGovernedOperatorResultCommit,
   verifyAnalysisAuthorityCommit,
   verifyAnalysisContextJournalAppend,
   verifyAnalysisContextJournalEntry,
+  verifyAnalysisOracleReceipt,
   verifyAnalysisResultStageCommand,
   verifyGovernedOperatorResultCommit,
 } from "../src/ports/index.js";
@@ -24,11 +26,9 @@ const scope = { app_id: id(1), tenant_id: id(2), environment: "test" } as const;
 const runId = id(3);
 const attemptId = id(4);
 
-function reference<const T extends "AnalysisProgram" | "SandboxResult" | "SandboxExecutionReceipt">(
-  artifact_type: T,
-  suffix: number,
-  content_hash: `sha256:${string}`,
-) {
+function reference<
+  const T extends "AnalysisProgram" | "QueryEvidence" | "SandboxResult" | "SandboxExecutionReceipt",
+>(artifact_type: T, suffix: number, content_hash: `sha256:${string}`) {
   return {
     artifact_id: id(suffix),
     artifact_type,
@@ -148,6 +148,50 @@ async function stage() {
 }
 
 describe("governed analysis lifecycle contracts", () => {
+  it("hashes an independent Oracle receipt without admitting sealed material", async () => {
+    const receipt = await buildAnalysisOracleReceipt({
+      schema_version: "analysis-oracle-receipt@1.0.0",
+      oracle_id: id(50),
+      scope,
+      run_id: runId,
+      node_id: "question-1",
+      analysis_program_ref: reference("AnalysisProgram", 10, hash("a")),
+      implementation_id: "independent-analysis-oracle@1",
+      implementation_hash: hash("b"),
+      input_binding: {
+        query_evidence_refs: [reference("QueryEvidence", 51, hash("c"))],
+        input_materialization_closure_hash: hash("d"),
+        stage_id: id(7),
+        stage_hash: hash("e"),
+        published_closure_hash: hash("f"),
+        operator_receipt_closure_hash: hash("1"),
+        sandbox_receipt_hash: hash("2"),
+        chart_dataset_hashes: [hash("3")],
+      },
+      verdict: "PASS",
+      expected_terminal: "READY",
+      sample_size: 12,
+      coverage_ratio: 1,
+      limitation_codes: [],
+      disclosure_codes: ["QUALITY_HOLDS_DISCLOSED"],
+      verified_at: "2026-08-24T00:00:00.000Z",
+    });
+
+    await expect(verifyAnalysisOracleReceipt(receipt)).resolves.toEqual(receipt);
+    await expect(
+      verifyAnalysisOracleReceipt({ ...receipt, sample_size: receipt.sample_size + 1 }),
+    ).rejects.toThrow("ANALYSIS_ORACLE_RECEIPT_HASH_MISMATCH");
+    await expect(
+      buildAnalysisOracleReceipt({
+        ...receipt,
+        sealed_material: { raw_rows: [{ target: 42 }], stdout: "/sandbox/private" },
+      } as never),
+    ).rejects.toThrow();
+    expect(JSON.stringify(receipt)).not.toMatch(
+      /raw_rows|sealed_material|stdout|credential|target/u,
+    );
+  });
+
   it("rejects a staged closure artifact at the 64 MiB plus one boundary", () => {
     expect(
       analysisResultStageArtifactSchema.safeParse({

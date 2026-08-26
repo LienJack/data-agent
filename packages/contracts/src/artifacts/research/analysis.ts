@@ -277,6 +277,7 @@ export const researchBriefV3PayloadSchema = z
 const analysisProgramNodeSchema = z.strictObject({
   node_id: identifierSchema,
   skill_id: analysisSkillIdSchema,
+  method_registry_entry_ids: z.array(versionIdentifierSchema).min(1).max(32).optional(),
   metric_refs: z.array(metricRefSchema).max(ANALYSIS_LIMITS.max_metrics_per_node),
   dimension_refs: uniqueIdentifierArraySchema(0, ANALYSIS_LIMITS.max_dimensions_per_node),
   time_window: halfOpenTimeWindowSchema,
@@ -355,6 +356,7 @@ export const analysisProgramPayloadSchema = z
     brief_ref: researchBriefRefSchema,
     analysis_context_hash: contentHashSchema,
     semantic_context_package_hash: contentHashSchema,
+    objective_hash: contentHashSchema.optional(),
     operator_registry_digest: contentHashSchema,
     nodes: z.array(analysisProgramNodeSchema).min(1).max(ANALYSIS_LIMITS.max_plan_nodes),
     budget: z.strictObject({
@@ -372,6 +374,24 @@ export const analysisProgramPayloadSchema = z
   .superRefine((program, ctx) => {
     addUniqueIssues(program.nodes, ({ node_id }) => node_id, ctx, ["nodes"], "node_id 必须唯一。");
     validateAnalysisProgramGraph(program.nodes, ctx);
+    if (program.compiler_version === "analysis-program-host-compiler@2.0.0") {
+      if (!program.objective_hash) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Generic AnalysisProgram must bind the exact objective hash.",
+          path: ["objective_hash"],
+        });
+      }
+      for (const [index, node] of program.nodes.entries()) {
+        if (!node.method_registry_entry_ids?.length) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Generic AnalysisProgram nodes must bind semantic method registry entries.",
+            path: ["nodes", index, "method_registry_entry_ids"],
+          });
+        }
+      }
+    }
     for (const [index, node] of program.nodes.entries()) {
       if (node.generated_source_policy === "NO_GENERATED_SOURCE") {
         ctx.addIssue({

@@ -4,6 +4,7 @@ import {
   buildAnalysisResultContract,
   researchBriefV3PayloadSchema,
 } from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
 import { buildAnalysisContext } from "@data-agent/contracts/context";
 import { describe, expect, it } from "vitest";
 import {
@@ -280,6 +281,52 @@ function trendObligation() {
   } as const;
 }
 
+async function candidateV2(
+  input: Awaited<ReturnType<typeof fixture>>,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    schema_version: "analysis-program-candidate@2.0.0" as const,
+    objective_hash: await sha256ContentHash({
+      hash_domain: "analysis-program-objective@1.0.0",
+      question: input.brief.question,
+    }),
+    nodes: [
+      {
+        node_id: "monthly-revenue-trend",
+        method_registry_entry_ids: ["published-monthly-trend@1"],
+        metric_ids: ["metric.order_revenue"],
+        dimension_ids: ["dimension.order_month"],
+        time_window: window,
+        comparison_window: null,
+        parameters: {
+          result_schema_version: "monthly-revenue-result@1",
+          claim_strength: "DESCRIPTIVE",
+        },
+        operator_obligations: [],
+        dependency_node_ids: [],
+        activation_rule: { kind: "ALWAYS" as const },
+        criticality: "CRITICAL" as const,
+        ...overrides,
+      },
+    ],
+  };
+}
+
+function methodRegistry(
+  input: Awaited<ReturnType<typeof fixture>>,
+  requiredOperatorObligations: unknown = [],
+) {
+  return [
+    {
+      method_id: "published-monthly-trend@1",
+      skill_id: "open-python-analysis@1" as const,
+      result_contract: input.result_contract,
+      required_operator_obligations: requiredOperatorObligations,
+    },
+  ];
+}
+
 describe("generic analysis program host compiler", () => {
   it("binds the actual user question and published semantic authority", async () => {
     const input = await fixture();
@@ -369,5 +416,86 @@ describe("generic analysis program host compiler", () => {
         candidate: candidate(),
       }),
     ).rejects.toThrowError("ANALYSIS_PROGRAM_RESULT_CONTRACT_AUTHORITY_MISMATCH");
+  });
+
+  it("compiles a model-authored multi-node DAG only from the published method registry", async () => {
+    const input = await fixture();
+    const base = await candidateV2(input);
+    const first = base.nodes[0];
+    if (!first) throw new TypeError("TEST_ANALYSIS_NODE_MISSING");
+    const candidate = {
+      ...base,
+      nodes: [
+        first,
+        {
+          ...first,
+          node_id: "monthly-revenue-explanation",
+          dependency_node_ids: [first.node_id],
+          activation_rule: {
+            kind: "MATERIAL_CHANGE" as const,
+            source_node_id: first.node_id,
+            policy_threshold_id: "material-change.default",
+          },
+        },
+      ],
+    };
+    const program = await compileAnalysisProgramCandidate({
+      ...input,
+      brief: {
+        ...input.brief,
+        budget: {
+          ...input.brief.budget,
+          max_steps: 2,
+          max_sql_executions: 2,
+          max_sandbox_executions: 2,
+        },
+      },
+      candidate,
+      method_registry: methodRegistry(input),
+    });
+
+    expect(program.nodes.map(({ node_id: nodeId }) => nodeId)).toEqual([
+      "monthly-revenue-trend",
+      "monthly-revenue-explanation",
+    ]);
+    expect(program.nodes[1]?.dependency_node_ids).toEqual(["monthly-revenue-trend"]);
+    expect(program.nodes[0]?.method_registry_entry_ids).toEqual(["published-monthly-trend@1"]);
+  });
+
+  it("rejects missing dependencies, duplicate nodes, unpublished methods, and operator rewrites", async () => {
+    const input = await fixture();
+    const base = await candidateV2(input);
+    const first = base.nodes[0];
+    if (!first) throw new TypeError("TEST_ANALYSIS_NODE_MISSING");
+    await expect(
+      compileAnalysisProgramCandidate({
+        ...input,
+        candidate: await candidateV2(input, { dependency_node_ids: ["missing-node"] }),
+        method_registry: methodRegistry(input),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      compileAnalysisProgramCandidate({
+        ...input,
+        candidate: { ...base, nodes: [first, first] },
+        method_registry: methodRegistry(input),
+      }),
+    ).rejects.toThrow();
+    await expect(
+      compileAnalysisProgramCandidate({
+        ...input,
+        candidate: await candidateV2(input, {
+          method_registry_entry_ids: ["unpublished-method@1"],
+        }),
+        method_registry: methodRegistry(input),
+      }),
+    ).rejects.toThrow("ANALYSIS_PROGRAM_METHOD_NOT_PUBLISHED");
+    await expect(
+      compileAnalysisProgramCandidate({
+        ...input,
+        candidate: await candidateV2(input),
+        method_registry: methodRegistry(input, [trendObligation()]),
+      }),
+    ).rejects.toThrow("ANALYSIS_PROGRAM_OPERATOR_REQUIREMENT_MISMATCH");
   });
 });

@@ -28,8 +28,10 @@ const snapshotRowSchema = z.strictObject({
 });
 
 export const falcon24AnalysisDataOracleReceiptSchema = snapshotRowSchema.extend({
-  schema_version: z.literal("falcon24-analysis-data-oracle@1.0.0"),
+  schema_version: z.literal("falcon24-analysis-data-oracle@2.0.0"),
   dataset_id: z.literal("falcon_db_24"),
+  implementation_id: z.literal("falcon24-independent-data-oracle@2"),
+  implementation_hash: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
   verdict: z.literal("PASS_WITH_QUALITY_HOLDS"),
   quality_findings: z.tuple([
     z.literal("FIRST_ORDER_BEFORE_REGISTRATION"),
@@ -152,6 +154,14 @@ select
 from bounds,row_counts,registration_quality
 `;
 
+async function implementationHash() {
+  return sha256ContentHash({
+    hash_domain: "falcon24-independent-data-oracle@2",
+    authoritative_query: SNAPSHOT_SQL,
+    fixed_snapshot_policy: "falcon24-fixed-snapshot@2024-11-04",
+  });
+}
+
 function assertFixedFalcon24Snapshot(snapshot: z.infer<typeof snapshotRowSchema>) {
   const exact = {
     table_count: 9,
@@ -196,8 +206,10 @@ export function createFalcon24AnalysisDataOracle(pool: SqlPool) {
         assertFixedFalcon24Snapshot(snapshot);
         const material = {
           ...snapshot,
-          schema_version: "falcon24-analysis-data-oracle@1.0.0" as const,
+          schema_version: "falcon24-analysis-data-oracle@2.0.0" as const,
           dataset_id: "falcon_db_24" as const,
+          implementation_id: "falcon24-independent-data-oracle@2" as const,
+          implementation_hash: await implementationHash(),
           verdict: "PASS_WITH_QUALITY_HOLDS" as const,
           quality_findings: [
             "FIRST_ORDER_BEFORE_REGISTRATION",
@@ -218,4 +230,7 @@ export function createFalcon24AnalysisDataOracle(pool: SqlPool) {
   });
 }
 
-export const falcon24AnalysisDataOracleInternals = Object.freeze({ SNAPSHOT_SQL });
+export const falcon24AnalysisDataOracleInternals = Object.freeze({
+  SNAPSHOT_SQL,
+  implementationHash,
+});
