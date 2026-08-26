@@ -9,7 +9,6 @@ import {
 import { type AnalysisContext, verifyAnalysisContext } from "@data-agent/contracts/context";
 import {
   STATISTICAL_OPERATOR_REGISTRY_DIGEST,
-  statisticalOperatorIdSchema,
   statisticalOperatorObligationsSchema,
 } from "@data-agent/contracts/statistical-operators";
 import { z } from "zod";
@@ -71,31 +70,30 @@ export const analysisProgramCandidateSchema = z
 export type AnalysisProgramCandidate = z.infer<typeof analysisProgramCandidateSchema>;
 
 const PROGRAM_COMPILER_VERSION = "analysis-program-host-compiler@1.0.0" as const;
-const requiredOperatorIdsSchema = z
-  .array(statisticalOperatorIdSchema)
-  .max(32)
-  .superRefine((operatorIds, context) => {
-    if (new Set(operatorIds).size !== operatorIds.length) {
-      context.addIssue({ code: "custom", message: "Required operator ids must be unique." });
-    }
-  });
-
 export async function compileAnalysisProgramCandidate(input: {
   readonly candidate: unknown;
   readonly brief: ResearchBriefV3Payload;
   readonly brief_ref: import("@data-agent/contracts/artifacts").ArtifactReference;
   readonly context: AnalysisContext;
   readonly result_contract: AnalysisResultContract;
-  readonly required_operator_ids: readonly string[];
+  readonly required_operator_obligations: unknown;
 }): Promise<AnalysisProgramPayload> {
   const candidate = analysisProgramCandidateSchema.parse(input.candidate);
   const context = await verifyAnalysisContext(input.context);
   const briefRef = researchBriefRefSchema.parse(input.brief_ref);
-  const requiredOperatorIds = requiredOperatorIdsSchema.parse(input.required_operator_ids).sort();
+  const requiredOperatorObligations = statisticalOperatorObligationsSchema.parse(
+    input.required_operator_obligations,
+  );
+  const requiredOperatorIds = [
+    ...new Set(requiredOperatorObligations.map(({ operator_id: operatorId }) => operatorId)),
+  ].sort();
   const candidateOperatorIds = [
     ...new Set(candidate.operator_obligations.map(({ operator_id: operatorId }) => operatorId)),
   ].sort();
-  if (JSON.stringify(requiredOperatorIds) !== JSON.stringify(candidateOperatorIds)) {
+  if (
+    JSON.stringify(requiredOperatorIds) !== JSON.stringify(candidateOperatorIds) ||
+    JSON.stringify(requiredOperatorObligations) !== JSON.stringify(candidate.operator_obligations)
+  ) {
     throw new TypeError("ANALYSIS_PROGRAM_OPERATOR_REQUIREMENT_MISMATCH");
   }
   const metrics = candidate.metric_ids.map((metricId) => {

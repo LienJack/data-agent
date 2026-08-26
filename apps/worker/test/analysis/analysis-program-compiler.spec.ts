@@ -144,7 +144,7 @@ async function fixture() {
     brief_ref: briefRef,
     context,
     result_contract: resultContract,
-    required_operator_ids: [],
+    required_operator_obligations: [],
   };
 }
 
@@ -249,6 +249,37 @@ function candidate() {
   } as const;
 }
 
+function trendObligation() {
+  return {
+    call_id: "trend_theil_sen",
+    operator_id: "robust-trend.theil-sen-slope@1",
+    input_lineage_bindings: [
+      {
+        lineage_kind: "SERVER_TRANSFORM_EXACT",
+        operator_input_name: "series",
+        governed_input_name: "query_evidence",
+        transform_id: "analysis.single-series.theil-sen.v1",
+      },
+    ],
+    result_binding: {
+      result_output_name: "result",
+      result_collection_path: "/theil_sen",
+      operator_collection_path: "/series",
+      label_fields: ["label"],
+      value_bindings: [
+        {
+          result_field: "slope",
+          operator_field: "slope",
+          comparison: "EXACT",
+          absolute_tolerance: 0,
+          relative_tolerance: 0,
+        },
+      ],
+      require_exact_label_set: true,
+    },
+  } as const;
+}
+
 describe("generic analysis program host compiler", () => {
   it("binds the actual user question and published semantic authority", async () => {
     const input = await fixture();
@@ -316,7 +347,7 @@ describe("generic analysis program host compiler", () => {
     await expect(
       compileAnalysisProgramCandidate({
         ...input,
-        required_operator_ids: ["robust-trend.theil-sen-slope@1"],
+        required_operator_obligations: [trendObligation()],
         candidate: candidate(),
       }),
     ).rejects.toThrowError("ANALYSIS_PROGRAM_OPERATOR_REQUIREMENT_MISMATCH");
