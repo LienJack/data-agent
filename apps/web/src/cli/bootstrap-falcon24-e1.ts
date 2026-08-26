@@ -1,11 +1,14 @@
+import { execFile } from "node:child_process";
 import { createHash, createPrivateKey, sign } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import {
   buildBuiltinTeamMaterialization,
   type DataAgentSpecialistProfileId,
 } from "@data-agent/agent-runtime";
+import { type SemanticChangeSet, verifySemanticChangeSet } from "@data-agent/contracts/artifacts";
 import { canonicalizeJson, sha256ContentHash } from "@data-agent/contracts/common";
 import { verifyFalcon24RetainedAssetsManifest } from "@data-agent/contracts/evals";
 import {
@@ -33,7 +36,6 @@ import { compileSemanticPublicationProjection } from "@data-agent/semantic/produ
 import pg from "pg";
 import { z } from "zod";
 import { verifyOpenSandboxAnalysisAttestation } from "../../../../scripts/verify-opensandbox-analysis-attestation.js";
-import { buildFalcon24SemanticChangeSet } from "../../../worker/src/evals/falcon24-semantic-change-set.js";
 import { fetchProviderModelCatalog } from "../lib/model-discovery";
 
 const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_FALCON24_E1_BOOTSTRAP";
@@ -43,6 +45,7 @@ const DEFAULT_WORKSPACE_ID = "00000000-0000-4000-8000-00000000e124";
 const DEFAULT_PRINCIPAL_ID = "00000000-0000-4000-8000-00000000e125";
 const DEFAULT_STAGING_ID = "00000000-0000-4000-8000-00000000e130";
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
+const execFileAsync = promisify(execFile);
 
 const configurationSchema = z.strictObject({
   database_url: z.string().min(1),
@@ -55,6 +58,54 @@ const configurationSchema = z.strictObject({
 });
 
 type RetainedManifest = Awaited<ReturnType<typeof verifyFalcon24RetainedAssetsManifest>>;
+
+const semanticChangeSetBridgeResultSchema = z.strictObject({
+  blueprint_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  datasource_id: z.uuid(),
+  assertion_count: z.number().int().positive().safe(),
+  competency_case_count: z.number().int().positive().safe(),
+  change_set: z.unknown(),
+});
+
+export async function buildFalcon24E1SemanticChangeSet(input: {
+  readonly scope: {
+    readonly app_id: string;
+    readonly tenant_id: string;
+    readonly environment: string;
+    readonly semantic_domain: "falcon24";
+  };
+  readonly base_release: {
+    readonly release_id: string;
+    readonly generation: number;
+    readonly release_hash: `sha256:${string}`;
+  };
+  readonly revision: number;
+}): Promise<{
+  readonly blueprint_hash: string;
+  readonly datasource_id: string;
+  readonly assertion_count: number;
+  readonly competency_case_count: number;
+  readonly change_set: SemanticChangeSet;
+}> {
+  const encodedInput = Buffer.from(JSON.stringify(input), "utf8").toString("base64url");
+  const { stdout, stderr } = await execFileAsync(
+    process.execPath,
+    [
+      resolve(REPOSITORY_ROOT, "node_modules/tsx/dist/cli.mjs"),
+      resolve(REPOSITORY_ROOT, "scripts/build-falcon24-e1-semantic-change-set.ts"),
+      `--input=${encodedInput}`,
+    ],
+    { cwd: REPOSITORY_ROOT, maxBuffer: 16 * 1024 * 1024 },
+  );
+  if (stderr.trim().length > 0) {
+    throw new TypeError("FALCON24_E1_SEMANTIC_CHANGE_SET_BRIDGE_FAILED");
+  }
+  const parsed = semanticChangeSetBridgeResultSchema.parse(JSON.parse(stdout));
+  return Object.freeze({
+    ...parsed,
+    change_set: await verifySemanticChangeSet(parsed.change_set),
+  });
+}
 
 function json(path: string): unknown {
   return JSON.parse(readFileSync(path, "utf8"));
@@ -197,7 +248,7 @@ async function insertSemanticPrerequisites(input: {
   principal_id: string;
   deployment_id: string;
   datasource_id: string;
-  change_set: Awaited<ReturnType<typeof buildFalcon24SemanticChangeSet>>["change_set"];
+  change_set: SemanticChangeSet;
   graph_projection: Awaited<ReturnType<typeof compileSemanticPublicationProjection>>;
 }) {
   const retainedHash = input.retained.manifest_hash;
@@ -648,7 +699,7 @@ async function prepareSemanticBootstrap(input: {
     generation: 0,
     release_hash: await sha256ContentHash({ semantic_domain: "falcon24", generation: 0 }),
   };
-  const prepared = await buildFalcon24SemanticChangeSet({
+  const prepared = await buildFalcon24E1SemanticChangeSet({
     scope: {
       app_id: input.scope.app_id,
       tenant_id: input.scope.tenant_id,

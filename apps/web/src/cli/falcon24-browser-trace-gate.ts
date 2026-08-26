@@ -2,16 +2,10 @@ import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { promisify } from "node:util";
-import type {
-  ArtifactReference,
-  ResolutionTrace,
-  ResolutionTraceDetail,
-} from "@data-agent/contracts";
-import {
-  artifactReferenceIdentity,
-  FALCON24_REQUIRED_UI_ARTIFACT_TYPES,
-  sha256ContentHash,
-} from "@data-agent/contracts";
+import { type ArtifactReference, artifactReferenceIdentity } from "@data-agent/contracts/artifacts";
+import { sha256ContentHash } from "@data-agent/contracts/common";
+import { FALCON24_REQUIRED_UI_ARTIFACT_TYPES } from "@data-agent/contracts/evals";
+import type { ResolutionTrace, ResolutionTraceDetail } from "@data-agent/contracts/runs";
 import { z } from "zod";
 
 const execFileAsync = promisify(execFile);
