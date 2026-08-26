@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import {
+  type BuiltinTeamMaterializationInput,
   buildBuiltinTeamMaterialization,
   type DataAgentSpecialistProfileId,
 } from "@data-agent/agent-runtime";
@@ -36,6 +37,10 @@ import { compileSemanticPublicationProjection } from "@data-agent/semantic/produ
 import pg from "pg";
 import { z } from "zod";
 import { verifyOpenSandboxAnalysisAttestation } from "../../../../scripts/verify-opensandbox-analysis-attestation.js";
+import {
+  BUILTIN_TEAM_ROLE_MODEL_IDS,
+  resolveBuiltinTeamMaterializationInput,
+} from "../lib/builtin-team-authority";
 import { fetchProviderModelCatalog } from "../lib/model-discovery";
 
 const CONFIRMATION_VARIABLE = "DATA_AGENT_ALLOW_FALCON24_E1_BOOTSTRAP";
@@ -46,6 +51,12 @@ const DEFAULT_PRINCIPAL_ID = "00000000-0000-4000-8000-00000000e125";
 const DEFAULT_STAGING_ID = "00000000-0000-4000-8000-00000000e130";
 const REPOSITORY_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 const execFileAsync = promisify(execFile);
+const ROLE_LABELS = Object.freeze({
+  "governed-analysis-agent": "Governed analysis specialist",
+  "governed-text2sql-agent": "Text2SQL specialist",
+  "report-writing-agent": "Report specialist",
+  "semantic-management-agent": "Semantic specialist",
+} as const satisfies Readonly<Record<DataAgentSpecialistProfileId, string>>);
 
 const configurationSchema = z.strictObject({
   database_url: z.string().min(1),
@@ -969,43 +980,12 @@ async function ensureModelSecretRef(input: {
 }
 
 async function agentProfileProof(input: {
-  retained_hash: string;
-  scope: { app_id: string; tenant_id: string; environment: string };
+  materialization: BuiltinTeamMaterializationInput;
   model_profile_id: string;
   model_config_version: number;
   model_projection_hash: `sha256:${string}`;
 }) {
-  const resource = async (kind: string, profileId: string, sourceHash: string) => ({
-    resource_id: id(input.retained_hash, kind, profileId),
-    resource_revision: 1,
-    resource_hash: await sha256ContentHash({
-      kind,
-      profile_id: profileId,
-      source_hash: sourceHash,
-    }),
-  });
-  const resourceMap = async (
-    kind: string,
-    sourceHash: string,
-  ): Promise<Readonly<Record<DataAgentSpecialistProfileId, VersionedResourceReference>>> => ({
-    "governed-analysis-agent": await resource(kind, "governed-analysis-agent", sourceHash),
-    "governed-text2sql-agent": await resource(kind, "governed-text2sql-agent", sourceHash),
-    "report-writing-agent": await resource(kind, "report-writing-agent", sourceHash),
-    "semantic-management-agent": await resource(kind, "semantic-management-agent", sourceHash),
-  });
-  const built = await buildBuiltinTeamMaterialization({
-    scope: {
-      app_id: input.scope.app_id,
-      tenant_id: input.scope.tenant_id,
-      environment: input.scope.environment,
-    },
-    model_profile_refs: await resourceMap("disposable-role-model", input.model_projection_hash),
-    context_policy_refs: await resourceMap("disposable-context-policy", input.retained_hash),
-    execution_safety_policy_refs: await resourceMap(
-      "disposable-safety-policy",
-      input.retained_hash,
-    ),
-  });
+  const built = await buildBuiltinTeamMaterialization(input.materialization);
   return {
     schema_version: "falcon24-e1-agent-profile-build-proof@1.0.0" as const,
     source_model_profile_id: input.model_profile_id,
@@ -1018,6 +998,92 @@ async function agentProfileProof(input: {
     }),
     materialized: false as const,
   };
+}
+
+async function prepareAgentProfileBuildProof(input: {
+  pool: pg.Pool;
+  sql_pool: ReturnType<typeof adaptPgPool>;
+  capability: Parameters<typeof resolveBuiltinTeamMaterializationInput>[0]["capability"];
+  deployment_id: string;
+  principal_id: string;
+  retained_hash: string;
+  model_profile_id: string;
+  model_config_version: number;
+  model_projection_hash: `sha256:${string}`;
+}) {
+  const modelControl = createPostgresModelControlRepository(input.sql_pool);
+  const adminContext = {
+    deployment_id: input.deployment_id,
+    principal_id: input.principal_id,
+  };
+  const models = required(await modelControl.listModels(adminContext));
+  const source = models.find(
+    (model) =>
+      model.model_profile_id === input.model_profile_id &&
+      model.config_version === input.model_config_version &&
+      model.status === "ACTIVE",
+  );
+  if (!source) throw new TypeError("FALCON24_E1_AGENT_PROFILE_SOURCE_MODEL_REQUIRED");
+  for (const profileId of Object.keys(
+    BUILTIN_TEAM_ROLE_MODEL_IDS,
+  ) as DataAgentSpecialistProfileId[]) {
+    const modelProfileId = BUILTIN_TEAM_ROLE_MODEL_IDS[profileId];
+    const current = models.find((model) => model.model_profile_id === modelProfileId);
+    const exact =
+      current?.provider === source.provider &&
+      current.model_id === source.model_id &&
+      current.base_url === source.base_url &&
+      current.status === "ACTIVE" &&
+      current.display_name === `${source.display_name} - ${ROLE_LABELS[profileId]}` &&
+      current.is_system_default === false &&
+      canonicalizeJson(current.capabilities) === canonicalizeJson(source.capabilities) &&
+      canonicalizeJson(current.credential_ref) === canonicalizeJson(source.credential_ref);
+    if (current && !exact) {
+      throw new TypeError("FALCON24_E1_ROLE_MODEL_PROFILE_CONFLICT");
+    }
+    if (!current) {
+      required(
+        await modelControl.applyModelCommand(adminContext, {
+          schema_version: "model-catalog-upsert@1.0.0",
+          operation_id: id(input.retained_hash, "role-model-operation", profileId),
+          idempotency_key: `falcon24-e1:role-model:${profileId}:v1`,
+          model_profile_id: modelProfileId,
+          provider: source.provider,
+          model_id: source.model_id,
+          display_name: `${source.display_name} - ${ROLE_LABELS[profileId]}`,
+          base_url: source.base_url,
+          capabilities: source.capabilities,
+          credential_ref: source.credential_ref,
+          status: "ACTIVE",
+          is_system_default: false,
+          expected_config_version: 0,
+        }),
+      );
+    }
+  }
+  const policies = await input.pool.query<{
+    context_policy: VersionedResourceReference;
+    safety_policy: VersionedResourceReference;
+  }>(
+    `select app_data_agent.builtin_effective_config_policy('CONTEXT_POLICY')
+              - array['max_context_tokens','max_resource_bindings'] as context_policy,
+            app_data_agent.builtin_effective_config_policy('EXECUTION_SAFETY_POLICY')
+              - array['max_tool_calls','max_provider_calls','max_elapsed_ms'] as safety_policy`,
+  );
+  const policy = policies.rows[0];
+  if (!policy) throw new TypeError("FALCON24_E1_BUILTIN_POLICY_REQUIRED");
+  return agentProfileProof({
+    materialization: await resolveBuiltinTeamMaterializationInput({
+      pool: input.sql_pool,
+      capability: input.capability,
+      deployment_id: input.deployment_id,
+      context_policy_ref: policy.context_policy,
+      execution_safety_policy_ref: policy.safety_policy,
+    }),
+    model_profile_id: input.model_profile_id,
+    model_config_version: input.model_config_version,
+    model_projection_hash: input.model_projection_hash,
+  });
 }
 
 export async function runFalcon24E1Bootstrap(
@@ -1100,6 +1166,7 @@ export async function runFalcon24E1Bootstrap(
           deployment_id: configuration.deployment_id,
         })
       : null;
+    const modelControl = createPostgresModelControlRepository(sqlPool);
     const result = await bootstrapFalcon24E1(
       {
         capability,
@@ -1126,7 +1193,7 @@ export async function runFalcon24E1Bootstrap(
       },
       {
         semantic_authority: semantic.authority,
-        model_control: createPostgresModelControlRepository(sqlPool),
+        model_control: modelControl,
         epoch_authority: createPostgresFalcon24AuthorityEpoch({
           pool: sqlPool,
           authorizer: capabilityAuthority.authorizer,
@@ -1145,7 +1212,15 @@ export async function runFalcon24E1Bootstrap(
           return { response_item_count: discovered.length };
         },
         build_agent_profiles: (model) =>
-          agentProfileProof({ retained_hash: retained.manifest_hash, scope, ...model }),
+          prepareAgentProfileBuildProof({
+            pool,
+            sql_pool: sqlPool,
+            capability,
+            deployment_id: configuration.deployment_id,
+            principal_id: configuration.principal_id,
+            retained_hash: retained.manifest_hash,
+            ...model,
+          }),
       },
     );
     return {
