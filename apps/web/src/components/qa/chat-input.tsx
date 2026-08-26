@@ -155,7 +155,7 @@ export function ChatInput() {
               {sending ? (
                 <button
                   type="button"
-                  data-testid="qa-submit-question"
+                  data-testid="qa-stop-question"
                   onClick={() => void stopMessage()}
                   aria-label="停止当前分析"
                   title="停止当前分析"
@@ -166,6 +166,7 @@ export function ChatInput() {
               ) : (
                 <button
                   type="button"
+                  data-testid="qa-submit-question"
                   onClick={() => void handleSend()}
                   disabled={sendDisabled}
                   aria-label="发送消息"

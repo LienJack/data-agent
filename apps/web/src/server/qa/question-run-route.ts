@@ -15,6 +15,24 @@ type RouteContext = {
 const effectiveConfigQaRunStartInputSchema = qaRunStartInputSchema.extend({
   idempotency_key: workspaceIdempotencyKeySchema,
   files: z.array(workspaceFileReferenceSchema).max(16).default([]),
+  acceptance_fence: z
+    .discriminatedUnion("authority_kind", [
+      z.strictObject({
+        authority_kind: z.literal("QUALIFICATION"),
+        qualification_id: z.literal("E1-Q1"),
+        attempt_id: z.uuid(),
+        run_id: z.uuid(),
+        claim_fence_token: z.uuid(),
+      }),
+      z.strictObject({
+        authority_kind: z.literal("FINAL_CAMPAIGN"),
+        campaign_id: z.literal("E1-C1"),
+        attempt_id: z.uuid(),
+        run_id: z.uuid(),
+        claim_fence_token: z.uuid(),
+      }),
+    ])
+    .optional(),
 });
 
 export interface QuestionRunRouteDependencies {
@@ -63,6 +81,7 @@ export function createQuestionRunRoute(
       question: input.data.question,
       scope: authorized.value.capability.scope,
       workspace_id: workspaceId,
+      ...(input.data.acceptance_fence ? { acceptance_fence: input.data.acceptance_fence } : {}),
     });
     if (result.kind === "ERROR") return dependencies.projectError(result.error);
     if (result.kind === "RESOLUTION_REQUIRED") {

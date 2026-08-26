@@ -38,7 +38,7 @@ const commandId = "80000000-0000-4000-8000-000000000004";
 const payloadHash = `sha256:${"1".repeat(64)}`;
 const workflowRevision = `sha256:${"2".repeat(64)}`;
 const strictExecutionPolicy = buildFalcon24RunExecutionPolicy({
-  campaign_id: "falcon24-root-v12-final",
+  campaign_id: "E1-C1",
   case_id: "falcon24-business-review-18m",
   run_variant: "COLD",
   repetition: 1,

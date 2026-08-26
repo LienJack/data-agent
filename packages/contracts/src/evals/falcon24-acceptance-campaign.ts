@@ -9,6 +9,8 @@ import {
 import { falcon24AnalysisCaseIdSchema } from "./falcon24-agent-analysis.js";
 
 export const FALCON24_STRICT_ACCEPTANCE_POLICY_ID = "falcon24-strict-zero-retry@1.0.0" as const;
+export const FALCON24_E1_QUALIFICATION_ID = "E1-Q1" as const;
+export const FALCON24_E1_CAMPAIGN_ID = "E1-C1" as const;
 
 export const FALCON24_REQUIRED_UI_ARTIFACT_TYPES = Object.freeze([
   "AnalysisReport",
@@ -18,11 +20,11 @@ export const FALCON24_REQUIRED_UI_ARTIFACT_TYPES = Object.freeze([
   "SqlArtifact",
 ] as const);
 
-export const falcon24AcceptanceCampaignIdSchema = z
-  .string()
-  .min(8)
-  .max(80)
-  .regex(/^falcon24-[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/u);
+export const falcon24AcceptanceCampaignIdSchema = z.literal(FALCON24_E1_CAMPAIGN_ID);
+export const falcon24GateIdSchema = z.union([
+  z.literal(FALCON24_E1_QUALIFICATION_ID),
+  falcon24AcceptanceCampaignIdSchema,
+]);
 
 export const FALCON24_ACCEPTANCE_FAILURE_LAYER_ORDER = Object.freeze([
   "ROOT_ROUTING",
@@ -46,26 +48,15 @@ const falcon24AcceptanceRunManifestMaterialSchema = z
   .strictObject({
     schema_version: z.literal("falcon24-analysis-run-manifest@2.0.0"),
     campaign_id: falcon24AcceptanceCampaignIdSchema,
-    campaign_version: z.number().int().positive().max(1_000_000),
+    attempt_id: immutableIdSchema,
+    winning_qualification_attempt_id: immutableIdSchema,
+    authority_baseline_hash: contentHashSchema,
     source_fingerprint: contentHashSchema,
     frozen_contract_hash: contentHashSchema,
     runtime_attestation_hash: contentHashSchema,
     runs: z.array(falcon24AcceptanceManifestRunSchema).length(30),
   })
   .superRefine((manifest, context) => {
-    const versionLabels = [
-      ...manifest.campaign_id.matchAll(/(?:^|[._-])v([1-9][0-9]*)(?=[._-]|$)/gu),
-    ];
-    if (
-      versionLabels.length !== 1 ||
-      Number.parseInt(versionLabels[0]?.[1] ?? "0", 10) !== manifest.campaign_version
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Falcon24 campaign_id 必须含唯一且与 campaign_version 相同的 vN 标签。",
-        path: ["campaign_id"],
-      });
-    }
     const runIds = new Set(manifest.runs.map(({ run_id: runId }) => runId));
     const observedSlots = new Set(
       manifest.runs.map(
@@ -118,7 +109,7 @@ export async function verifyFalcon24AcceptanceRunManifest(input: unknown) {
 const falcon24ResolutionTraceGateReceiptMaterialSchema = z
   .strictObject({
     schema_version: z.literal("falcon24-resolution-trace-gate-receipt@2.0.0"),
-    campaign_id: falcon24AcceptanceCampaignIdSchema,
+    campaign_id: falcon24GateIdSchema,
     run_id: immutableIdSchema,
     trace_hash: contentHashSchema,
     node_count: z.number().int().positive().safe(),
@@ -189,7 +180,7 @@ export async function verifyFalcon24ResolutionTraceGateReceipt(input: unknown) {
 const falcon24ResolutionTraceUiGateReceiptMaterialSchema = z
   .strictObject({
     schema_version: z.literal("falcon24-resolution-trace-ui-gate-receipt@1.0.0"),
-    campaign_id: falcon24AcceptanceCampaignIdSchema,
+    campaign_id: falcon24GateIdSchema,
     run_id: immutableIdSchema,
     workspace_id: immutableIdSchema,
     conversation_id: immutableIdSchema,
@@ -346,7 +337,7 @@ export async function verifyFalcon24SandboxManagementObservation(input: unknown)
 
 const falcon24SandboxReclamationReceiptMaterialSchema = z.strictObject({
   schema_version: z.literal("falcon24-sandbox-reclamation-receipt@2.0.0"),
-  campaign_id: falcon24AcceptanceCampaignIdSchema,
+  campaign_id: falcon24GateIdSchema,
   run_id: immutableIdSchema,
   runtime_attestation_hash: contentHashSchema,
   ...falcon24SandboxManagementObservationSchema.shape,

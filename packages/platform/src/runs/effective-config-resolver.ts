@@ -88,34 +88,31 @@ const questionAcceptanceResultSchema = z.strictObject({
   resolution: z.unknown(),
   effective_config: z.unknown().nullable(),
 });
-const falcon24AuthorityIdSchema = z
-  .string()
-  .min(8)
-  .max(80)
-  .regex(/^falcon24-[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/);
 const falcon24AcceptanceSubmitFenceSchema = z.discriminatedUnion("authority_kind", [
   z.strictObject({
     authority_kind: z.literal("FINAL_CAMPAIGN"),
-    campaign_id: falcon24AuthorityIdSchema,
+    campaign_id: z.literal("E1-C1"),
+    attempt_id: canonicalImmutableIdSchema,
     run_id: canonicalImmutableIdSchema,
     claim_fence_token: canonicalImmutableIdSchema,
   }),
   z.strictObject({
     authority_kind: z.literal("QUALIFICATION"),
-    qualification_id: falcon24AuthorityIdSchema,
+    qualification_id: z.literal("E1-Q1"),
+    attempt_id: canonicalImmutableIdSchema,
     run_id: canonicalImmutableIdSchema,
     claim_fence_token: canonicalImmutableIdSchema,
   }),
 ]);
 const falcon24AcceptanceSubmitFenceReceiptSchema = z.union([
   z.strictObject({
-    campaign_id: falcon24AuthorityIdSchema,
+    campaign_id: z.literal("E1-C1"),
     run_id: canonicalImmutableIdSchema,
     claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     claim_fence_consumed_at: z.iso.datetime({ offset: true }),
   }),
   z.strictObject({
-    qualification_id: falcon24AuthorityIdSchema,
+    qualification_id: z.literal("E1-Q1"),
     run_id: canonicalImmutableIdSchema,
     claim_fence_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
     claim_fence_consumed_at: z.iso.datetime({ offset: true }),
@@ -216,6 +213,14 @@ const databaseMarkers = new Map<string, { readonly retryable: boolean; readonly 
   [
     "FALCON24_SUBMIT_ACCEPTANCE_NOT_ATOMIC",
     { retryable: false, message: "Falcon24 Run acceptance 与 submit fence 未原子提交。" },
+  ],
+  [
+    "FALCON24_E1_GATE_ATTEMPT_FENCE_INVALID",
+    { retryable: false, message: "Falcon24 E1 gate attempt fence 无效。" },
+  ],
+  [
+    "FALCON24_E1_GATE_ATTEMPT_MISMATCH",
+    { retryable: false, message: "Falcon24 E1 gate attempt 与当前权威 attempt 不一致。" },
   ],
   ["FALCON24_RUN_NOT_CLAIMED", { retryable: false, message: "Falcon24 Run 尚未取得有效 claim。" }],
   [
@@ -896,7 +901,11 @@ export function createPostgresEffectiveConfigResolver(
       }
       const fenceCommand = acceptanceFence?.success
         ? await (async () => {
-            const { authority_kind: authorityKind, ...identity } = acceptanceFence.data;
+            const {
+              authority_kind: authorityKind,
+              attempt_id: _attemptId,
+              ...identity
+            } = acceptanceFence.data;
             const unsigned = {
               schema_version:
                 authorityKind === "FINAL_CAMPAIGN"
@@ -944,16 +953,22 @@ export function createPostgresEffectiveConfigResolver(
           const result =
             request.operation === "QUESTION_RUN" && command?.success
               ? fenceCommand && acceptanceFence?.success
-                ? await client.query<JsonValueRow>(
-                    acceptanceFence.data.authority_kind === "FINAL_CAMPAIGN"
-                      ? `select app_data_agent.accept_falcon24_question_run_with_effective_config(
-                           $1::jsonb, $2::jsonb, $3::jsonb
-                         ) as value`
-                      : `select app_data_agent.accept_falcon24_qualification_run_with_config(
-                           $1::jsonb, $2::jsonb, $3::jsonb
-                         ) as value`,
-                    [command.data, request, fenceCommand],
-                  )
+                ? await (async () => {
+                    await client.query(
+                      "select pg_catalog.set_config('data_agent.falcon24_gate_attempt_id',$1,true)",
+                      [acceptanceFence.data.attempt_id],
+                    );
+                    return client.query<JsonValueRow>(
+                      acceptanceFence.data.authority_kind === "FINAL_CAMPAIGN"
+                        ? `select app_data_agent.accept_falcon24_question_run_with_effective_config(
+                             $1::jsonb, $2::jsonb, $3::jsonb
+                           ) as value`
+                        : `select app_data_agent.accept_falcon24_qualification_run_with_config(
+                             $1::jsonb, $2::jsonb, $3::jsonb
+                           ) as value`,
+                      [command.data, request, fenceCommand],
+                    );
+                  })()
                 : await client.query<JsonValueRow>(
                     `select app_data_agent.accept_question_run_with_effective_config(
                        $1::jsonb, $2::jsonb

@@ -8,7 +8,18 @@ const FAILURE_CODE_PREFIXES: ReadonlyArray<
   readonly [layer: FailureLayer, prefixes: readonly string[]]
 > = Object.freeze([
   ["SANDBOX_RECLAMATION", ["FALCON24_SANDBOX_RECLAMATION_"]],
-  ["PUBLISHER", ["FALCON24_RESOLUTION_TRACE_", "RESOLUTION_TRACE_", "ARTIFACT_PUBLISH_"]],
+  [
+    "PUBLISHER",
+    [
+      "FALCON24_RESOLUTION_TRACE_",
+      "FALCON24_BROWSER_",
+      "FALCON24_QA_E2E_",
+      "FALCON24_TRACE_UI_",
+      "FALCON24_E1_UI_RECEIPT_",
+      "RESOLUTION_TRACE_",
+      "ARTIFACT_PUBLISH_",
+    ],
+  ],
   [
     "ORACLE",
     [

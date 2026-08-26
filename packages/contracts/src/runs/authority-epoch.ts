@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { artifactReferenceSchema } from "../artifacts/envelope.js";
 import { contentHashSchema, immutableIdSchema, sha256ContentHash } from "../common/index.js";
 import { falcon24AuthorityBaselineSchema } from "../evals/falcon24-authority-baseline.js";
 
@@ -122,9 +123,86 @@ export const falcon24RunAuthorityLookupSchema = z.strictObject({
   run_id: immutableIdSchema,
 });
 
+const falcon24E1UiReceiptCommonSchema = z.strictObject({
+  run_id: immutableIdSchema,
+  conversation_id: immutableIdSchema,
+  authority: falcon24AuthorityBindingSchema,
+  web_build: z.strictObject({ build_id: contentHashSchema, generation_id: contentHashSchema }),
+  browser_harness_version: z.literal("falcon24-agent-browser-trace-gate@2.0.0"),
+  viewport: z.strictObject({
+    width: z.union([z.literal(390), z.literal(1440)]),
+    height: z.number().int().min(640).max(2400),
+  }),
+  error_banner: z.null(),
+  dom_snapshot_hash: contentHashSchema,
+  screenshot_hash: contentHashSchema,
+  observed_at: z.iso.datetime({ offset: true }),
+});
+
+const falcon24QaE2eReceiptMaterialSchema = falcon24E1UiReceiptCommonSchema.extend({
+  schema_version: z.literal("falcon24-qa-e2e-receipt@1.0.0"),
+  entry_path: z.literal("QUESTION_COMPOSER_SUBMIT_TO_RESULT"),
+  question_hash: contentHashSchema,
+  terminal_status: z.literal("COMPLETED"),
+  answer_visible: z.literal(true),
+  table_visible: z.literal(true),
+  chart_rendered: z.literal(true),
+  report_visible: z.literal(true),
+});
+export const falcon24QaE2eReceiptSchema = falcon24QaE2eReceiptMaterialSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+
+const falcon24TraceUiReceiptMaterialSchema = falcon24E1UiReceiptCommonSchema.extend({
+  schema_version: z.literal("falcon24-trace-ui-receipt@1.0.0"),
+  trace_hash: contentHashSchema,
+  entry_path: z.literal("RESULT_TRACE_ENTRY_TO_EXACT_RUN"),
+  opened_nodes: z
+    .array(z.strictObject({ node_id: z.string().min(1).max(320), detail_hash: contentHashSchema }))
+    .min(1),
+  opened_artifact_refs: z.array(artifactReferenceSchema).length(5),
+  chart_ref: artifactReferenceSchema,
+  chart_rendered: z.literal(true),
+  source_table_visible: z.literal(true),
+  returned_to_result: z.literal(true),
+});
+export const falcon24TraceUiReceiptSchema = falcon24TraceUiReceiptMaterialSchema.extend({
+  receipt_hash: contentHashSchema,
+});
+export const falcon24E1UiReceiptSchema = z.union([
+  falcon24QaE2eReceiptSchema,
+  falcon24TraceUiReceiptSchema,
+]);
+
+export async function buildFalcon24QaE2eReceipt(input: unknown) {
+  const material = falcon24QaE2eReceiptMaterialSchema.parse(input);
+  return falcon24QaE2eReceiptSchema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function buildFalcon24TraceUiReceipt(input: unknown) {
+  const material = falcon24TraceUiReceiptMaterialSchema.parse(input);
+  return falcon24TraceUiReceiptSchema.parse({
+    ...material,
+    receipt_hash: await sha256ContentHash(material),
+  });
+}
+
+export async function verifyFalcon24E1UiReceipt(input: unknown) {
+  const receipt = falcon24E1UiReceiptSchema.parse(input);
+  const { receipt_hash: observedHash, ...material } = receipt;
+  if ((await sha256ContentHash(material)) !== observedHash) {
+    throw new TypeError("FALCON24_E1_UI_RECEIPT_HASH_INVALID");
+  }
+  return receipt;
+}
+
 export type Falcon24AuthorityBinding = z.infer<typeof falcon24AuthorityBindingSchema>;
 export type Falcon24AuthorityPersistenceBinding = z.infer<
   typeof falcon24AuthorityPersistenceBindingSchema
 >;
 export type Falcon24E1StagingReceipt = z.infer<typeof falcon24E1StagingReceiptSchema>;
 export type Falcon24E1ActivationAttempt = z.infer<typeof falcon24E1ActivationAttemptSchema>;
+export type Falcon24E1UiReceipt = z.infer<typeof falcon24E1UiReceiptSchema>;

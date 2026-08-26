@@ -183,7 +183,7 @@ describe("Root Agent direct-answer review", () => {
     const strictLease: RunWorkLease = {
       ...lease,
       execution_policy: buildFalcon24RunExecutionPolicy({
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         case_id: "falcon24-business-review-18m",
         run_variant: "COLD",
         repetition: 1,

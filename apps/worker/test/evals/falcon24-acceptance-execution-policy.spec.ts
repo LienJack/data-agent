@@ -7,6 +7,10 @@ describe("Falcon24 strict acceptance execution policy", () => {
     expect(classifyFalcon24RunFailureCode("STATISTICAL_OPERATOR_FAILED")).toBe("GOVERNED_OPERATOR");
     expect(classifyFalcon24RunFailureCode("FALCON24_ORACLE_FAILED")).toBe("ORACLE");
     expect(classifyFalcon24RunFailureCode("RESOLUTION_TRACE_ARTIFACT_CORRUPT")).toBe("PUBLISHER");
+    expect(classifyFalcon24RunFailureCode("FALCON24_BROWSER_PREFLIGHT_FAILED")).toBe("PUBLISHER");
+    expect(classifyFalcon24RunFailureCode("FALCON24_E1_UI_RECEIPT_PAIR_REQUIRED")).toBe(
+      "PUBLISHER",
+    );
     expect(classifyFalcon24RunFailureCode("FALCON24_SANDBOX_RECLAMATION_FAILED")).toBe(
       "SANDBOX_RECLAMATION",
     );

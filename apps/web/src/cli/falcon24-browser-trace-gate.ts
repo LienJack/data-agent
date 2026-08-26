@@ -16,6 +16,8 @@ const QA_REQUIRED_VISIBLE_ARTIFACT_TYPES = Object.freeze([
   "ArtifactWorkspaceDocument",
   "AnalysisReport",
 ] as const);
+const GATE_CLAIM_KEY = "falcon24-e1-browser-submit-claim";
+const GATE_CONSUMED_KEY = "falcon24-e1-browser-submit-consumed";
 
 const agentBrowserOutputSchema = z.strictObject({
   success: z.literal(true),
@@ -47,6 +49,9 @@ const qaBrowserObservationSchema = z.strictObject({
   terminal_status: z.literal("COMPLETED"),
   location: z.string().url(),
   answer_visible: z.literal(true),
+  table_visible: z.literal(true),
+  chart_rendered: z.literal(true),
+  report_visible: z.literal(true),
   visible_artifact_types: z.array(z.string().min(1).max(128)).max(128),
   error_banners: z.array(z.string().max(2_000)).max(32),
   web_build: webBuildSchema,
@@ -60,6 +65,16 @@ const finalBrowserObservationSchema = z.strictObject({
   chart_render_state: z.literal("READY"),
   source_table_visible: z.literal(true),
   horizontal_overflow: z.literal(false),
+  web_build: webBuildSchema,
+});
+
+const browserPreflightObservationSchema = z.strictObject({
+  location: z.string().url(),
+  ready: z.literal(true),
+  question_input_visible: z.literal(true),
+  submit_visible: z.literal(true),
+  expected_run_absent: z.literal(true),
+  error_banners: z.array(z.string().max(2_000)).max(32),
   web_build: webBuildSchema,
 });
 
@@ -141,9 +156,146 @@ export interface Falcon24BrowserTraceGateInput {
   readonly workspace_id: string;
   readonly conversation_id: string;
   readonly question: string;
+  readonly attempt_id: string;
   readonly viewport: Readonly<{ width: 1440 | 390; height: number }>;
   readonly trace: ResolutionTrace;
   readonly details: readonly ResolutionTraceDetail[];
+}
+
+export type Falcon24BrowserGateClaim = Readonly<{
+  schema_version: "falcon24-e1-browser-submit-claim@1.0.0";
+  question: string;
+  conversation_id: string;
+  idempotency_key: string;
+  acceptance_fence:
+    | Readonly<{
+        authority_kind: "QUALIFICATION";
+        qualification_id: "E1-Q1";
+        attempt_id: string;
+        run_id: string;
+        claim_fence_token: string;
+      }>
+    | Readonly<{
+        authority_kind: "FINAL_CAMPAIGN";
+        campaign_id: "E1-C1";
+        attempt_id: string;
+        run_id: string;
+        claim_fence_token: string;
+      }>;
+}>;
+
+export async function preflightFalcon24BrowserSubmission(input: {
+  readonly session: string;
+  readonly web_base_url: string;
+  readonly workspace_id: string;
+  readonly conversation_id: string;
+  readonly expected_run_id: string;
+  readonly expected_web_build: Readonly<{ build_id: string; generation_id: string }>;
+  readonly viewport: Readonly<{ width: 1440 | 390; height: number }>;
+}) {
+  const session = z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{3,128}$/u)
+    .parse(input.session);
+  const expectedRunId = z.uuid().parse(input.expected_run_id);
+  const expectedWebBuild = webBuildSchema.parse(input.expected_web_build);
+  const startUrl = falcon24QaStartUrl(input);
+  await agentBrowser(session, [
+    "set",
+    "viewport",
+    String(input.viewport.width),
+    String(input.viewport.height),
+  ]);
+  await agentBrowser(session, ["errors", "--clear"]);
+  await agentBrowser(session, ["console", "--clear"]);
+  await agentBrowser(session, ["open", startUrl.toString()]);
+  await agentBrowser(session, ["wait", '[data-testid="qa-question-input"]']);
+  await agentBrowser(session, ["wait", '[data-testid="qa-submit-question"]']);
+  const expectedRunSelector = `[data-testid="qa-result-trace-entry"][data-run-id="${selectorValue(expectedRunId)}"]`;
+  const observation = await browserEval(
+    session,
+    `(async () => { const visible=(element)=>Boolean(element && element.getBoundingClientRect().width>0 && element.getBoundingClientRect().height>0); const response=await fetch('/api/ready?workspace_id=${encodeURIComponent(input.workspace_id)}',{cache:'no-store'}); const build=await response.json(); return {location:window.location.href,ready:response.ok&&build.ready===true,question_input_visible:visible(document.querySelector('[data-testid="qa-question-input"]')),submit_visible:visible(document.querySelector('[data-testid="qa-submit-question"]')),expected_run_absent:!document.querySelector(${JSON.stringify(expectedRunSelector)}),error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
+    browserPreflightObservationSchema,
+  );
+  if (
+    observation.error_banners.length > 0 ||
+    observation.web_build.build_id !== expectedWebBuild.build_id ||
+    observation.web_build.generation_id !== expectedWebBuild.generation_id
+  ) {
+    throw new Error("FALCON24_BROWSER_PREFLIGHT_FAILED");
+  }
+  return Object.freeze(observation);
+}
+
+export async function submitFalcon24QuestionFromBrowser(input: {
+  readonly session: string;
+  readonly web_base_url: string;
+  readonly workspace_id: string;
+  readonly conversation_id: string;
+  readonly expected_run_id: string;
+  readonly question: string;
+  readonly viewport: Readonly<{ width: 1440 | 390; height: number }>;
+  readonly claim: Falcon24BrowserGateClaim;
+}) {
+  const session = z
+    .string()
+    .regex(/^[A-Za-z0-9._-]{3,128}$/u)
+    .parse(input.session);
+  const expectedRunId = z.uuid().parse(input.expected_run_id);
+  const startUrl = falcon24QaStartUrl(input);
+  if (
+    input.claim.question !== input.question ||
+    input.claim.conversation_id !== input.conversation_id ||
+    input.claim.acceptance_fence.run_id !== expectedRunId
+  ) {
+    throw new Error("FALCON24_BROWSER_GATE_CLAIM_IDENTITY_INVALID");
+  }
+  await agentBrowser(session, [
+    "set",
+    "viewport",
+    String(input.viewport.width),
+    String(input.viewport.height),
+  ]);
+  await agentBrowser(session, ["errors", "--clear"]);
+  await agentBrowser(session, ["console", "--clear"]);
+  await agentBrowser(session, ["open", startUrl.toString()]);
+  await agentBrowser(session, ["wait", '[data-testid="qa-question-input"]']);
+  const resultTraceSelector = `[data-testid="qa-result-trace-entry"][data-run-id="${selectorValue(expectedRunId)}"]`;
+  if (
+    await browserEval(
+      session,
+      `Boolean(document.querySelector(${JSON.stringify(resultTraceSelector)}))`,
+      z.boolean(),
+    )
+  ) {
+    throw new Error("FALCON24_BROWSER_PREEXISTING_TARGET_RUN_FORBIDDEN");
+  }
+  await browserEval(
+    session,
+    `(() => { sessionStorage.removeItem(${JSON.stringify(GATE_CONSUMED_KEY)}); sessionStorage.setItem(${JSON.stringify(GATE_CLAIM_KEY)},${JSON.stringify(JSON.stringify(input.claim))}); return true; })()`,
+    z.literal(true),
+  );
+  await agentBrowser(session, ["fill", '[data-testid="qa-question-input"]', input.question]);
+  await agentBrowser(session, ["click", '[data-testid="qa-submit-question"]']);
+  await agentBrowser(session, ["wait", `#chat-run-${selectorValue(expectedRunId)}`]);
+  const consumed = await browserEval(
+    session,
+    `(() => { const raw=sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)}); return raw ? JSON.parse(raw) : null; })()`,
+    z.strictObject({
+      schema_version: z.literal("falcon24-e1-browser-submit-consumed@1.0.0"),
+      run_id: z.uuid(),
+      attempt_id: z.uuid(),
+      conversation_id: z.uuid(),
+    }),
+  );
+  if (
+    consumed.run_id !== expectedRunId ||
+    consumed.attempt_id !== input.claim.acceptance_fence.attempt_id ||
+    consumed.conversation_id !== input.conversation_id
+  ) {
+    throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
+  }
+  return Object.freeze({ run_id: consumed.run_id, attempt_id: consumed.attempt_id });
 }
 
 export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGateInput) {
@@ -152,6 +304,7 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
     .regex(/^[A-Za-z0-9._-]{3,128}$/u)
     .parse(input.session);
   const question = z.string().trim().min(1).max(4_000).parse(input.question);
+  const attemptId = z.uuid().parse(input.attempt_id);
   const viewport = z
     .strictObject({
       width: z.union([z.literal(1440), z.literal(390)]),
@@ -187,16 +340,30 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
     `Boolean(document.querySelector(${JSON.stringify(resultTraceSelector)}))`,
     z.boolean(),
   );
-  if (preexistingTarget) {
-    throw new Error("FALCON24_BROWSER_PREEXISTING_TARGET_RUN_FORBIDDEN");
+  if (!preexistingTarget) {
+    throw new Error("FALCON24_BROWSER_SUBMITTED_TARGET_RUN_REQUIRED");
   }
-  await agentBrowser(session, ["fill", '[data-testid="qa-question-input"]', question]);
-  await agentBrowser(session, ["click", '[data-testid="qa-submit-question"]']);
-  await agentBrowser(session, ["wait", resultTraceSelector]);
+  const consumed = await browserEval(
+    session,
+    `(() => { const raw=sessionStorage.getItem(${JSON.stringify(GATE_CONSUMED_KEY)}); return raw ? JSON.parse(raw) : null; })()`,
+    z.strictObject({
+      schema_version: z.literal("falcon24-e1-browser-submit-consumed@1.0.0"),
+      run_id: z.uuid(),
+      attempt_id: z.uuid(),
+      conversation_id: z.uuid(),
+    }),
+  );
+  if (
+    consumed.run_id !== input.trace.run_id ||
+    consumed.attempt_id !== attemptId ||
+    consumed.conversation_id !== input.conversation_id
+  ) {
+    throw new Error("FALCON24_BROWSER_GATE_CONSUMPTION_INVALID");
+  }
   const requiredArtifacts = exactRequiredFalcon24ArtifactReferences(input.trace);
   const qaObservation = await browserEval(
     session,
-    `(async () => { const entry=document.querySelector(${JSON.stringify(resultTraceSelector)}); const run=document.getElementById(${JSON.stringify(`chat-run-${input.trace.run_id}`)}); const response=await fetch('/api/ready',{cache:'no-store'}); const build=await response.json(); const artifactTypes=[...(run?.querySelectorAll('[data-testid="artifact-preview-ready"]')??[])].map((element)=>element.getAttribute('data-artifact-type')).filter(Boolean); return {run_id:entry?.getAttribute('data-run-id'),terminal_status:entry?.getAttribute('data-terminal-status'),location:window.location.href,answer_visible:Boolean(run && (run.textContent?.trim().length??0)>0),visible_artifact_types:artifactTypes,error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
+    `(async () => { const entry=document.querySelector(${JSON.stringify(resultTraceSelector)}); const run=document.getElementById(${JSON.stringify(`chat-run-${input.trace.run_id}`)}); const response=await fetch('/api/ready',{cache:'no-store'}); const build=await response.json(); const artifactPreviews=[...(run?.querySelectorAll('[data-testid="artifact-preview-ready"]')??[])]; const artifactTypes=artifactPreviews.map((element)=>element.getAttribute('data-artifact-type')).filter(Boolean); const visible=(element)=>Boolean(element && element.getBoundingClientRect().width>0 && element.getBoundingClientRect().height>0); const chart=run?.querySelector('[data-testid="governed-chart"]'); const table=run?.querySelector('[data-testid="chart-source-table"]'); const report=artifactPreviews.find((element)=>element.getAttribute('data-artifact-type')==='AnalysisReport'); return {run_id:entry?.getAttribute('data-run-id'),terminal_status:entry?.getAttribute('data-terminal-status'),location:window.location.href,answer_visible:Boolean(run && (run.textContent?.trim().length??0)>0),table_visible:visible(table),chart_rendered:visible(chart)&&chart?.getAttribute('data-chart-render-state')==='READY',report_visible:visible(report),visible_artifact_types:artifactTypes,error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
     qaBrowserObservationSchema,
   );
   if (
@@ -315,6 +482,9 @@ export async function runFalcon24BrowserTraceGate(input: Falcon24BrowserTraceGat
       web_build: qaObservation.web_build,
       terminal_status: qaObservation.terminal_status,
       answer_visible: qaObservation.answer_visible,
+      table_visible: qaObservation.table_visible,
+      chart_rendered: qaObservation.chart_rendered,
+      report_visible: qaObservation.report_visible,
       opened_artifact_refs: requiredArtifacts,
       error_banner: null,
       dom_snapshot_hash: await sha256ContentHash(qaObservation),

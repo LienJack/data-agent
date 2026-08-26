@@ -40,8 +40,9 @@ async function qualificationSlots() {
 async function manifestMaterial() {
   return {
     schema_version: "falcon24-qualification-manifest@1.0.0" as const,
-    qualification_id: "falcon24-root-qualification-v1-final",
-    qualification_version: 1,
+    qualification_id: "E1-Q1",
+    attempt_id: id(1),
+    authority_baseline_hash: hash("0"),
     source_commit: "a".repeat(40),
     source_fingerprint: hash("1"),
     frozen_contract_hash: hash("2"),
@@ -58,7 +59,7 @@ async function manifestMaterial() {
 }
 
 describe("Falcon24 qualification contracts", () => {
-  it("builds and verifies the unique ordered 16-slot v1 manifest", async () => {
+  it("builds and verifies the unique ordered 16-slot E1 attempt manifest", async () => {
     const manifest = await buildFalcon24QualificationManifest(await manifestMaterial());
 
     expect(manifest.slots.map(({ stage }) => stage)).toEqual([
@@ -77,8 +78,8 @@ describe("Falcon24 qualification contracts", () => {
   it("rejects qualification identity, stage order, case coverage, and six-layer path drift", async () => {
     const material = await manifestMaterial();
     await expect(
-      buildFalcon24QualificationManifest({ ...material, qualification_version: 2 }),
-    ).rejects.toThrow("qualification_id");
+      buildFalcon24QualificationManifest({ ...material, qualification_id: "E1-Q2" }),
+    ).rejects.toThrow();
     await expect(
       buildFalcon24QualificationManifest({
         ...material,

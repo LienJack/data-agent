@@ -1,6 +1,8 @@
 import {
   buildSemanticContextAuthoritySnapshot,
   buildSemanticContextPackage,
+  buildSemanticInferenceReceipt,
+  buildSemanticRetrievalReceipt,
 } from "@data-agent/contracts";
 import { buildSemanticContextText2SqlBinding } from "@data-agent/contracts/server";
 
@@ -62,6 +64,42 @@ export async function authoritativeSemanticContextBindingFixture() {
     knowledge_refs: [],
     projection_hashes: [hash("6"), hash("8")],
   });
+  const retrievalReceipt = await buildSemanticRetrievalReceipt({
+    schema_version: "semantic-retrieval-receipt@1.0.0",
+    authority_snapshot_hash: snapshot.snapshot_hash,
+    release_hash: snapshot.semantic_release.resource_hash,
+    query_hash: snapshot.question_hash,
+    rrf_k: 60,
+    hard_filter: {
+      scope_hash: hash("9"),
+      publication_status: "PUBLISHED",
+      authority_mode: "POSTGRES_FILTERED_SNAPSHOT",
+      included_object_ids: ["net_revenue"],
+      excluded_objects: [],
+    },
+    route_states: {
+      LEXICON: "READY",
+      SPARSE: "READY",
+      VECTOR: "UNAVAILABLE",
+      GRAPH: "UNAVAILABLE",
+    },
+    hits: [],
+    expansions: [],
+    selected_object_ids: ["net_revenue"],
+    pruned_object_ids: [],
+    fallback_reason_codes: ["VECTOR_ROUTE_NOT_CONFIGURED"],
+  });
+  const inferenceReceipt = await buildSemanticInferenceReceipt({
+    schema_version: "semantic-inference-receipt@1.0.0",
+    retrieval_receipt_hash: retrievalReceipt.receipt_hash,
+    ruleset_id: "semantic-mandatory-closure@1",
+    ruleset_hash: hash("a"),
+    steps: [],
+    mandatory_object_ids: ["net_revenue"],
+    mandatory_relationship_ids: [],
+    closure_complete: true,
+    reason_codes: [],
+  });
   const packageDocument = await buildSemanticContextPackage({
     schema_version: "semantic-context-package@1.0.0",
     scope,
@@ -108,6 +146,14 @@ export async function authoritativeSemanticContextBindingFixture() {
     },
     evidence: [],
     knowledge_refs: [],
+    retrieval_receipt: retrievalReceipt,
+    inference_receipt: inferenceReceipt,
+    mandatory_closure: {
+      object_ids: ["net_revenue"],
+      relationship_ids: [],
+      closure_hash: hash("b"),
+    },
+    analysis_capabilities: [],
   });
   return buildSemanticContextText2SqlBinding({ package: packageDocument, snapshot });
 }

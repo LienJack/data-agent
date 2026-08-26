@@ -8,8 +8,10 @@ import {
   falcon24E1ActivationRequestSchema,
   falcon24E1StageBaselineRequestSchema,
   falcon24E1StagingSessionRequestSchema,
+  falcon24E1UiReceiptSchema,
   falcon24RunAuthorityLookupSchema,
   verifyFalcon24E1StagingReceipt,
+  verifyFalcon24E1UiReceipt,
 } from "@data-agent/contracts/runs";
 import { z } from "zod";
 import {
@@ -51,6 +53,14 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_E1_NOT_ACTIVE",
   "FALCON24_E1_RUN_AUTHORITY_LOAD_INVALID",
   "FALCON24_E1_RUN_NOT_FOUND",
+  "FALCON24_E1_UI_RECEIPT_COMMAND_INVALID",
+  "FALCON24_E1_UI_RECEIPT_INVALID",
+  "FALCON24_E1_QA_E2E_RECEIPT_INVALID",
+  "FALCON24_E1_TRACE_UI_RECEIPT_INVALID",
+  "FALCON24_E1_UI_RECEIPT_RUN_NOT_READY",
+  "FALCON24_E1_UI_RECEIPT_AUTHORITY_MISMATCH",
+  "FALCON24_E1_UI_RECEIPT_ARTIFACT_MISMATCH",
+  "FALCON24_E1_UI_RECEIPT_REPLAY_MISMATCH",
 ]);
 
 type JsonRow = { readonly value: unknown };
@@ -143,6 +153,33 @@ export function createPostgresFalcon24AuthorityEpoch(input: {
         sql: "select app_data_agent.load_falcon24_run_authority_binding($1::jsonb) as value",
         command,
         parse: (raw) => falcon24AuthorityBindingSchema.parse(raw),
+      });
+    },
+
+    async commitUiReceipt(capability: unknown, candidate: unknown) {
+      const receipt = await verifyFalcon24E1UiReceipt(candidate);
+      const receiptKind =
+        receipt.schema_version === "falcon24-qa-e2e-receipt@1.0.0" ? "QA_E2E" : "TRACE_UI";
+      const command = await commandWithHash({
+        schema_version: "falcon24-e1-ui-receipt-commit@1.0.0" as const,
+        run_id: receipt.run_id,
+        receipt_kind: receiptKind,
+        receipt,
+      });
+      return invoke({
+        capability,
+        access: "WRITE",
+        operation: "falcon24-e1-authority.commit-ui-receipt",
+        correlation_id: receipt.run_id,
+        sql: "select app_data_agent.commit_falcon24_e1_ui_receipt($1::jsonb) as value",
+        command,
+        parse: (raw) =>
+          z
+            .strictObject({
+              disposition: z.enum(["CREATED", "REPLAYED"]),
+              receipt: falcon24E1UiReceiptSchema,
+            })
+            .parse(raw),
       });
     },
 

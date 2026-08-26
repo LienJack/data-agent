@@ -15,10 +15,12 @@ import {
   type Falcon24AcceptanceFailureLayer,
   falcon24AcceptanceCampaignIdSchema,
 } from "@data-agent/contracts/evals";
+import { buildFalcon24QaE2eReceipt, buildFalcon24TraceUiReceipt } from "@data-agent/contracts/runs";
 import { buildFalcon24AgentAnalysisAcceptanceSuite } from "@data-agent/evals";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
 import {
   createPostgresFalcon24AcceptanceCampaignAuthority,
+  createPostgresFalcon24AuthorityEpoch,
   createPostgresRunControl,
 } from "@data-agent/platform/runs";
 import {
@@ -42,10 +44,11 @@ import {
   getWorkspaceDataRepository,
   getWorkspaceSqlPool,
 } from "@/lib/workspace-identity";
-import { startQuestionRun } from "@/server/qa/start-question-run";
 import {
   exactRequiredFalcon24ArtifactReferences,
+  preflightFalcon24BrowserSubmission,
   runFalcon24BrowserTraceGate,
+  submitFalcon24QuestionFromBrowser,
 } from "./falcon24-browser-trace-gate";
 import { verifyFalcon24ResolutionTraceGate } from "./falcon24-resolution-trace-gate";
 
@@ -98,11 +101,12 @@ function runIdentity(input: {
   readonly workspaceId: string;
   readonly principalId: string;
   readonly campaignId: string;
+  readonly attemptId: string;
   readonly caseId: string;
   readonly variant: "COLD" | "WARM";
   readonly repetition: number;
 }) {
-  const material = `${input.campaignId}:${input.caseId}:${input.variant}:${input.repetition}`;
+  const material = `${input.campaignId}:${input.attemptId}:${input.caseId}:${input.variant}:${input.repetition}`;
   const idempotencyKey = stableUuid(`falcon24:agent-acceptance:${material}`);
   return {
     ...deriveRunCommandIdentities({
@@ -310,6 +314,8 @@ async function main(): Promise<void> {
       environment.SEMANTIC_PRINCIPAL_ID,
   });
   const campaignId = falcon24AcceptanceCampaignIdSchema.parse(argument("campaign-id"));
+  const attemptId = z.uuid().parse(argument("attempt-id"));
+  const winningQualificationAttemptId = z.uuid().parse(argument("qualification-attempt-id"));
   const workspaceAuthority = getWorkspaceAuthority();
   const capability = requireValue(
     await workspaceAuthority.resolveForServerContext({
@@ -320,6 +326,10 @@ async function main(): Promise<void> {
     }),
   );
   const campaignAuthority = createPostgresFalcon24AcceptanceCampaignAuthority({
+    pool: getWorkspaceSqlPool(),
+    authorizer: workspaceAuthority.authorizer,
+  });
+  const epochAuthority = createPostgresFalcon24AuthorityEpoch({
     pool: getWorkspaceSqlPool(),
     authorizer: workspaceAuthority.authorizer,
   });
@@ -368,14 +378,21 @@ async function main(): Promise<void> {
 
   if (command === "manifest") {
     requireStrictPolicy(environment);
-    const campaignVersion = z.coerce.number().int().positive().parse(argument("campaign-version"));
-    const sourceFingerprint = await committedSourceFingerprint(root);
-    const runtimeAttestationHash = await sha256ContentHash(
-      JSON.parse(
-        await readFile(resolve(root, "infra/docker/opensandbox-analysis-attestation.json"), "utf8"),
-      ),
-    );
-    const builtinAuthority = await loadBuiltinTeamAuthority();
+    const [sourceFingerprint, runtimeAttestationHash, builtinAuthority, currentAuthority] =
+      await Promise.all([
+        committedSourceFingerprint(root),
+        sha256ContentHash(
+          JSON.parse(
+            await readFile(
+              resolve(root, "infra/docker/opensandbox-analysis-attestation.json"),
+              "utf8",
+            ),
+          ),
+        ),
+        loadBuiltinTeamAuthority(),
+        epochAuthority.loadCurrent(capability).then(requireValue),
+      ]);
+    if (!currentAuthority) throw new Error("FALCON24_E1_NOT_ACTIVE");
     const runs = suite.cases.flatMap((testCase) =>
       (["COLD", "WARM"] as const).flatMap((variant) =>
         [1, 2, 3].map((repetition) => ({
@@ -383,6 +400,7 @@ async function main(): Promise<void> {
             workspaceId: scope.workspaceId,
             principalId: scope.principalId,
             campaignId,
+            attemptId,
             caseId: testCase.case_id,
             variant,
             repetition,
@@ -396,7 +414,9 @@ async function main(): Promise<void> {
     const manifest = await buildFalcon24AcceptanceRunManifest({
       schema_version: "falcon24-analysis-run-manifest@2.0.0",
       campaign_id: campaignId,
-      campaign_version: campaignVersion,
+      attempt_id: attemptId,
+      winning_qualification_attempt_id: winningQualificationAttemptId,
+      authority_baseline_hash: currentAuthority.baseline_hash,
       source_fingerprint: sourceFingerprint,
       frozen_contract_hash: builtinAuthority.frozen_contract_hash,
       runtime_attestation_hash: runtimeAttestationHash,
@@ -412,7 +432,9 @@ async function main(): Promise<void> {
     report({
       terminal: "READY",
       campaign_id: campaignId,
-      campaign_version: campaign.campaign_version,
+      attempt_id: campaign.attempt_id,
+      attempt_number: campaign.campaign_version,
+      winning_qualification_attempt_id: campaign.winning_qualification_attempt_id,
       source_fingerprint: sourceFingerprint,
       frozen_contract_hash: builtinAuthority.frozen_contract_hash,
       builtin_team_profile_set_hash: builtinAuthority.snapshot.profile_set_hash,
@@ -433,6 +455,7 @@ async function main(): Promise<void> {
     workspaceId: scope.workspaceId,
     principalId: scope.principalId,
     campaignId,
+    attemptId,
     caseId: testCase.case_id,
     variant,
     repetition,
@@ -448,17 +471,27 @@ async function main(): Promise<void> {
     claim_fence_token: claimFenceToken,
   } as const;
 
+  const assertCurrentAttempt = <T extends { readonly attempt_id: string }>(value: T | null): T => {
+    if (!value || value.attempt_id !== attemptId) {
+      throw new Error("FALCON24_E1_GATE_ATTEMPT_MISMATCH");
+    }
+    return value;
+  };
+
   if (command === "status") {
-    const [binding, campaignRun, persistedRun] = await Promise.all([
+    const [campaign, binding, campaignRun, persistedRun] = await Promise.all([
+      campaignAuthority.load(capability, { campaign_id: campaignId }).then(requireValue),
       getWorkspaceDataRepository().getRunBinding(capability, identities.run_id).then(requireValue),
       campaignAuthority
         .loadRun(capability, { campaign_id: campaignId, run_id: identities.run_id })
         .then(requireValue),
       runRepository.getRun(capability, { run_id: identities.run_id }).then(requireValue),
     ]);
+    assertCurrentAttempt(campaign);
     report({
       ...projectFalcon24AcceptanceStatus(campaignRun, persistedRun),
       campaign_id: campaignId,
+      attempt_id: attemptId,
       run_ordinal: runOrdinal,
       case_id: testCase.case_id,
       run_variant: variant,
@@ -535,6 +568,7 @@ async function main(): Promise<void> {
         workspace_id: scope.workspaceId,
         conversation_id: identities.conversationId,
         question: testCase.question,
+        attempt_id: attemptId,
         viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
         trace,
         details,
@@ -563,6 +597,52 @@ async function main(): Promise<void> {
           receipt: uiTraceGateReceipt,
         }),
       );
+      const runAuthority = requireValue(
+        await epochAuthority.loadRunBinding(capability, { run_id: identities.run_id }),
+      );
+      const qaE2eReceipt = await buildFalcon24QaE2eReceipt({
+        schema_version: "falcon24-qa-e2e-receipt@1.0.0",
+        run_id: identities.run_id,
+        conversation_id: identities.conversationId,
+        authority: runAuthority,
+        web_build: browserGate.qa_e2e.web_build,
+        browser_harness_version: browserGate.qa_e2e.browser_harness_version,
+        viewport: browserGate.qa_e2e.viewport,
+        entry_path: "QUESTION_COMPOSER_SUBMIT_TO_RESULT",
+        question_hash: browserGate.qa_e2e.question_hash,
+        terminal_status: browserGate.qa_e2e.terminal_status,
+        answer_visible: browserGate.qa_e2e.answer_visible,
+        table_visible: browserGate.qa_e2e.table_visible,
+        chart_rendered: browserGate.qa_e2e.chart_rendered,
+        report_visible: browserGate.qa_e2e.report_visible,
+        error_banner: null,
+        dom_snapshot_hash: browserGate.qa_e2e.dom_snapshot_hash,
+        screenshot_hash: browserGate.qa_e2e.screenshot_hash,
+        observed_at: browserGate.qa_e2e.observed_at,
+      });
+      const traceUiReceipt = await buildFalcon24TraceUiReceipt({
+        schema_version: "falcon24-trace-ui-receipt@1.0.0",
+        run_id: identities.run_id,
+        conversation_id: identities.conversationId,
+        trace_hash: trace.trace_hash,
+        authority: runAuthority,
+        web_build: browserObservation.web_build,
+        browser_harness_version: "falcon24-agent-browser-trace-gate@2.0.0",
+        viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
+        entry_path: "RESULT_TRACE_ENTRY_TO_EXACT_RUN",
+        opened_nodes: browserObservation.opened_nodes,
+        opened_artifact_refs: browserObservation.opened_artifact_refs,
+        chart_ref: browserObservation.chart_ref,
+        chart_rendered: true,
+        source_table_visible: true,
+        returned_to_result: true,
+        error_banner: null,
+        dom_snapshot_hash: browserObservation.dom_snapshot_hash,
+        screenshot_hash: browserObservation.screenshot_hash,
+        observed_at: browserObservation.observed_at,
+      });
+      requireValue(await epochAuthority.commitUiReceipt(capability, qaE2eReceipt));
+      requireValue(await epochAuthority.commitUiReceipt(capability, traceUiReceipt));
       report({
         terminal: "TRACE_UI_VERIFIED",
         campaign_id: campaignId,
@@ -574,6 +654,8 @@ async function main(): Promise<void> {
         trace_hash: trace.trace_hash,
         trace_gate_receipt_hash: traceGateReceipt.receipt_hash,
         ui_trace_gate_receipt_hash: uiTraceGateReceipt.receipt_hash,
+        qa_e2e_receipt_hash: qaE2eReceipt.receipt_hash,
+        trace_ui_receipt_hash: traceUiReceipt.receipt_hash,
         screenshot_hash: uiTraceGateReceipt.screenshot_hash,
         ...verified,
       });
@@ -772,35 +854,38 @@ async function main(): Promise<void> {
     return;
   }
 
-  try {
-    requireValue(await campaignAuthority.claim(capability, claim));
-  } catch (error) {
-    reportRecovered(await resolveSubmitFailure(error));
-    return;
-  }
-
   const loadSubmitPreflight = async () => {
     requireStrictPolicy(environment);
-    const [campaign, builtinAuthority, sourceFingerprint, runtimeAttestationHash] =
-      await Promise.all([
-        campaignAuthority.load(capability, { campaign_id: campaignId }).then(requireValue),
-        loadBuiltinTeamAuthority(),
-        committedSourceFingerprint(root),
-        sha256ContentHash(
-          JSON.parse(
-            await readFile(
-              resolve(root, "infra/docker/opensandbox-analysis-attestation.json"),
-              "utf8",
-            ),
+    const [
+      campaign,
+      builtinAuthority,
+      sourceFingerprint,
+      runtimeAttestationHash,
+      currentAuthority,
+    ] = await Promise.all([
+      campaignAuthority.load(capability, { campaign_id: campaignId }).then(requireValue),
+      loadBuiltinTeamAuthority(),
+      committedSourceFingerprint(root),
+      sha256ContentHash(
+        JSON.parse(
+          await readFile(
+            resolve(root, "infra/docker/opensandbox-analysis-attestation.json"),
+            "utf8",
           ),
         ),
-      ]);
+      ),
+      epochAuthority.loadCurrent(capability).then(requireValue),
+    ]);
+    const currentCampaign = assertCurrentAttempt(campaign);
     if (
-      campaign?.status !== "RUNNING" ||
-      campaign.next_run_ordinal !== runOrdinal ||
-      campaign.frozen_contract_hash !== builtinAuthority.frozen_contract_hash ||
-      campaign.source_fingerprint !== sourceFingerprint ||
-      campaign.runtime_attestation_hash !== runtimeAttestationHash
+      !currentAuthority ||
+      !["READY", "RUNNING"].includes(currentCampaign.status) ||
+      currentCampaign.next_run_ordinal !== runOrdinal ||
+      currentCampaign.winning_qualification_attempt_id !== winningQualificationAttemptId ||
+      currentCampaign.authority_baseline_hash !== currentAuthority.baseline_hash ||
+      currentCampaign.frozen_contract_hash !== builtinAuthority.frozen_contract_hash ||
+      currentCampaign.source_fingerprint !== sourceFingerprint ||
+      currentCampaign.runtime_attestation_hash !== runtimeAttestationHash
     ) {
       throw new Error("FALCON24_CAMPAIGN_FROZEN_AUTHORITY_MISMATCH");
     }
@@ -810,17 +895,6 @@ async function main(): Promise<void> {
     const model = defaults?.revision.defaults.model;
     const datasource = defaults?.revision.defaults.datasource;
     if (!model || !datasource) throw new Error("FALCON24_ANALYSIS_DEFAULTS_REQUIRED");
-    return { builtinAuthority, datasource, model };
-  };
-  let preflight: Awaited<ReturnType<typeof loadSubmitPreflight>>;
-  try {
-    preflight = await loadSubmitPreflight();
-  } catch (error) {
-    reportRecovered(await resolveSubmitFailure(error));
-    return;
-  }
-
-  try {
     const conversations = getWorkspaceDataRepository();
     const existing = requireValue(
       await conversations.getConversation(capability, identities.conversationId),
@@ -831,34 +905,67 @@ async function main(): Promise<void> {
           schema_version: "workspace-conversation-create@1.0.0",
           conversation_id: identities.conversationId,
           title: `Falcon24 ${campaignId} ${testCase.case_id} ${variant}-${repetition}`,
-          datasource_id: preflight.datasource.resource_id,
+          datasource_id: datasource.resource_id,
           model_id: null,
-          model_profile_id: preflight.model.resource_id,
+          model_profile_id: model.resource_id,
         }),
       );
     }
-    const submitted = await startQuestionRun({
-      acceptance_fence: {
-        authority_kind: "FINAL_CAMPAIGN",
-        campaign_id: campaignId,
-        run_id: identities.run_id,
-        claim_fence_token: claimFenceToken,
-      },
-      capability,
-      conversation_id: identities.conversationId,
-      files: [],
-      idempotency_key: identities.idempotencyKey,
-      principal_id: scope.principalId,
-      question: testCase.question,
-      scope: capability.scope,
+    const browserWidth = argument("browser-width") === "390" ? 390 : 1440;
+    await preflightFalcon24BrowserSubmission({
+      session: z.string().min(1).parse(argument("browser-session")),
+      web_base_url: z.string().url().parse(argument("web-base-url")),
       workspace_id: scope.workspaceId,
-      expected_subagent_profile_refs: preflight.builtinAuthority.snapshot.profile_refs,
+      conversation_id: identities.conversationId,
+      expected_run_id: identities.run_id,
+      expected_web_build: getWebRuntimeBuildIdentity(),
+      viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
     });
-    if (submitted.kind !== "CREATED") {
-      throw new Error(
-        submitted.kind === "ERROR" ? submitted.error.code : "FALCON24_ANALYSIS_RESOLUTION_REQUIRED",
-      );
-    }
+  };
+  try {
+    await loadSubmitPreflight();
+  } catch (error) {
+    report({
+      terminal: "PREFLIGHT_REJECTED",
+      campaign_id: campaignId,
+      attempt_id: attemptId,
+      run_ordinal: runOrdinal,
+      reason_code: stableErrorCode(error),
+    });
+    return;
+  }
+
+  try {
+    requireValue(await campaignAuthority.claim(capability, claim));
+  } catch (error) {
+    reportRecovered(await resolveSubmitFailure(error));
+    return;
+  }
+
+  try {
+    const browserWidth = argument("browser-width") === "390" ? 390 : 1440;
+    const submitted = await submitFalcon24QuestionFromBrowser({
+      session: z.string().min(1).parse(argument("browser-session")),
+      web_base_url: z.string().url().parse(argument("web-base-url")),
+      workspace_id: scope.workspaceId,
+      conversation_id: identities.conversationId,
+      expected_run_id: identities.run_id,
+      question: testCase.question,
+      viewport: { width: browserWidth, height: browserWidth === 390 ? 844 : 900 },
+      claim: {
+        schema_version: "falcon24-e1-browser-submit-claim@1.0.0",
+        question: testCase.question,
+        conversation_id: identities.conversationId,
+        idempotency_key: identities.idempotencyKey,
+        acceptance_fence: {
+          authority_kind: "FINAL_CAMPAIGN",
+          campaign_id: "E1-C1",
+          attempt_id: attemptId,
+          run_id: identities.run_id,
+          claim_fence_token: claimFenceToken,
+        },
+      },
+    });
     report({
       terminal: "SUBMITTED",
       campaign_id: campaignId,
@@ -867,7 +974,7 @@ async function main(): Promise<void> {
       run_variant: variant,
       repetition,
       run_id: identities.run_id,
-      projection: submitted.projection,
+      browser_submission: submitted,
     });
   } catch (error) {
     reportRecovered(await resolveSubmitFailure(error));

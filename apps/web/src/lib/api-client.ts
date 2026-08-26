@@ -150,6 +150,24 @@ export async function createQaRun(
   conversationId: string,
   workspaceId?: string,
   files: readonly Readonly<{ file_id: string; revision: number; revision_hash: string }>[] = [],
+  gateClaim?: Readonly<{
+    idempotency_key: string;
+    acceptance_fence:
+      | Readonly<{
+          authority_kind: "QUALIFICATION";
+          qualification_id: "E1-Q1";
+          attempt_id: string;
+          run_id: string;
+          claim_fence_token: string;
+        }>
+      | Readonly<{
+          authority_kind: "FINAL_CAMPAIGN";
+          campaign_id: "E1-C1";
+          attempt_id: string;
+          run_id: string;
+          claim_fence_token: string;
+        }>;
+  }>,
 ): Promise<RunProjection> {
   const resolvedWorkspace = workspaceId?.trim() || resolveWorkspaceId();
   if (!resolvedWorkspace || !conversationId) {
@@ -162,8 +180,9 @@ export async function createQaRun(
       body: JSON.stringify({
         schema_version: "qa-run-start@1.0.0",
         question,
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: gateClaim?.idempotency_key ?? crypto.randomUUID(),
         files,
+        ...(gateClaim ? { acceptance_fence: gateClaim.acceptance_fence } : {}),
       }),
     },
     resolvedWorkspace,

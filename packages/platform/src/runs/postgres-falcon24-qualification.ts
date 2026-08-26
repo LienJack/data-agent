@@ -38,6 +38,7 @@ const qualificationRowSchema = z.strictObject({
   principal_id: canonicalImmutableIdSchema,
   ...falcon24AuthorityPersistenceBindingSchema.shape,
   qualification_id: falcon24QualificationIdSchema,
+  attempt_id: canonicalImmutableIdSchema,
   qualification_version: z.number().int().positive().safe(),
   source_commit: z.string().regex(/^[0-9a-f]{40}$/u),
   source_fingerprint: contentHashSchema,
@@ -171,6 +172,11 @@ type JsonRow = { readonly value: unknown };
 const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_QUALIFICATION_COMMAND_INVALID",
   "FALCON24_QUALIFICATION_MANIFEST_INVALID",
+  "FALCON24_E1_GATE_BASELINE_MISMATCH",
+  "FALCON24_E1_GATE_ATTEMPT_IMMUTABLE",
+  "FALCON24_E1_GATE_ATTEMPT_FENCE_INVALID",
+  "FALCON24_E1_GATE_ATTEMPT_MISMATCH",
+  "FALCON24_E1_UI_RECEIPT_PAIR_REQUIRED",
   "FALCON24_QUALIFICATION_NOT_FOUND",
   "FALCON24_QUALIFICATION_SLOT_NOT_FOUND",
   "FALCON24_QUALIFICATION_VERSION_NOT_NEXT",
@@ -194,7 +200,8 @@ const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_QUALIFICATION_FORCED_CLEANUP_REPLAY_MISMATCH",
   "FALCON24_QUALIFICATION_PENDING_FAILED_RUN_AMBIGUOUS",
   "FALCON24_QUALIFICATION_COMPLETION_INVALID",
-  "FALCON24_QUALIFICATION_V15_GATE_REQUIRED",
+  "FALCON24_PREVIOUS_QUALIFICATION_ACTIVE",
+  "FALCON24_QUALIFICATION_ALREADY_PASSED",
 ]);
 
 function mapDatabaseError(error: unknown) {
@@ -335,7 +342,8 @@ export function createPostgresFalcon24QualificationAuthority(input: {
         parse: (raw) => {
           const row = assertIdentity(qualificationRowSchema.parse(raw), manifest);
           if (
-            row.qualification_version !== manifest.qualification_version ||
+            row.attempt_id !== manifest.attempt_id ||
+            row.authority_baseline_hash !== manifest.authority_baseline_hash ||
             row.manifest_hash !== manifest.manifest_hash ||
             row.source_commit !== manifest.source_commit ||
             row.source_fingerprint !== manifest.source_fingerprint ||

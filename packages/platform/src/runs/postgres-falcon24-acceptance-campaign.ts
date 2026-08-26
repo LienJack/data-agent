@@ -45,6 +45,8 @@ const campaignRowSchema = z.strictObject({
   principal_id: canonicalImmutableIdSchema,
   ...falcon24AuthorityPersistenceBindingSchema.shape,
   campaign_id: campaignIdSchema,
+  attempt_id: canonicalImmutableIdSchema,
+  winning_qualification_attempt_id: canonicalImmutableIdSchema,
   campaign_version: z.number().int().positive().safe(),
   source_fingerprint: contentHashSchema,
   frozen_contract_hash: contentHashSchema,
@@ -178,6 +180,12 @@ type JsonRow = { readonly value: unknown };
 const STABLE_DATABASE_ERRORS = new Set([
   "FALCON24_CAMPAIGN_COMMAND_INVALID",
   "FALCON24_CAMPAIGN_MANIFEST_INVALID",
+  "FALCON24_E1_GATE_BASELINE_MISMATCH",
+  "FALCON24_E1_WINNING_QUALIFICATION_REQUIRED",
+  "FALCON24_E1_GATE_ATTEMPT_IMMUTABLE",
+  "FALCON24_E1_GATE_ATTEMPT_FENCE_INVALID",
+  "FALCON24_E1_GATE_ATTEMPT_MISMATCH",
+  "FALCON24_E1_UI_RECEIPT_PAIR_REQUIRED",
   "FALCON24_CAMPAIGN_BOOTSTRAP_VERSION_INVALID",
   "FALCON24_CAMPAIGN_IDENTITY_CONFLICT",
   "FALCON24_CAMPAIGN_VERSION_NOT_NEXT",
@@ -392,7 +400,10 @@ export function createPostgresFalcon24AcceptanceCampaignAuthority(input: {
           );
           const campaign = campaignRowSchema.parse(exact(result.rows));
           if (
-            campaign.campaign_version !== manifest.campaign_version ||
+            campaign.attempt_id !== manifest.attempt_id ||
+            campaign.winning_qualification_attempt_id !==
+              manifest.winning_qualification_attempt_id ||
+            campaign.authority_baseline_hash !== manifest.authority_baseline_hash ||
             campaign.source_fingerprint !== manifest.source_fingerprint ||
             campaign.frozen_contract_hash !== manifest.frozen_contract_hash ||
             campaign.runtime_attestation_hash !== manifest.runtime_attestation_hash ||

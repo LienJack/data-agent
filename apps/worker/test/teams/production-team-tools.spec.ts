@@ -351,7 +351,7 @@ describe("Production Team governed chart publication", () => {
       worker_fence: 11,
       expires_at: "2026-08-22T01:00:30.000Z",
       execution_policy: buildFalcon24RunExecutionPolicy({
-        campaign_id: "falcon24-root-v13-final-20260826",
+        campaign_id: "E1-C1",
         case_id: "falcon24-business-review-18m",
         run_variant: "COLD",
         repetition: 1,

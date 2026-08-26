@@ -4,6 +4,19 @@
 > Falcon24 E1 激活条件。当前 E1 只接受 `E1-Q1` 的 G1–G4 16/16，随后接受 `E1-C1` 的 G5 30/30；每个 slot 必须从真实
 > Q&A 提交进入 exact Run 轨迹并持久化同源 QA/Trace UI receipts。v12–v15 不能重跑、续接或计入 E1。
 
+## E1 Gate Authority
+
+- `E1-Q1` 和 `E1-C1` 是唯一正式 gate identity；每次执行另有不可复用的 UUID `attempt_id` 和内容寻址 manifest。
+- PostgreSQL 只保留一个 current attempt。只有 `HOLD` current attempt 可被新 attempt 替换；替换前必须原样归档 parent snapshot
+  与 16/30 个 slot snapshot。归档行禁止 UPDATE/DELETE，旧 attempt 不能 resume、overwrite 或贡献成绩。
+- `E1-C1` 只能绑定同一 active baseline 下已达 16/16 的 winning qualification attempt；不得跨 qualification attempt 拼接。
+- submit fence 必须同时闭合 exact gate、attempt、Run 和 one-shot claim token。Web 只消费一次 session-scoped browser claim，正常用户请求
+  不接受隐藏兼容 identity。
+- slot claim 前必须完成 authority、commit、Web build、runtime attestation、Effective Config 和真实 Q&A composer preflight。preflight
+  失败不 claim slot、不创建正式 Run；claim 后任一层首败使整个 attempt `HOLD`。
+- 成功 slot 必须同时提交同一 Run、baseline、activation、Web build 和 viewport 的 `QA_E2E` 与 `TRACE_UI` receipts；缺答案、表格、
+  图表、报告、exact trace 交互或任一错误横幅都不能进入 `VERIFIED`。
+
 ## Authority Boundary
 
 `FalconTeamRunner` 是 Falcon Agent 计分的唯一执行组合层。Web/CLI 只能创建或读取 batch；不能以
@@ -37,6 +50,10 @@ Oracle 数值比较尊重 expected 数字字符串声明的十进制精度；整
 ordered/unordered 语义仍严格比较。
 
 ## Recovery
+
+以下 batch checkpoint 规则仅描述历史 evaluator，不适用于 E1。E1 的正式 attempt 没有续跑语义：`HOLD` 后先退出 gate runner，
+门禁外排障；若 baseline bytes 未变，以新 attempt 从 G1 或 G5 slot 1 全量重跑；若代码、合同、Web build 或 frozen component 改变，
+必须进入 E2。
 
 - batch checkpoint 只把 `PASS` 和 `SUBMITTED` 当作完成；`FAIL`、`AGENT_FAILED` 和中断会续跑。
 - `--run-label` 隔离稳定性批次；`--fresh=true` 显式忽略旧 checkpoint。

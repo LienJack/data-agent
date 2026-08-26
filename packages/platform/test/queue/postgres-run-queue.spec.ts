@@ -154,7 +154,7 @@ describe("PostgreSQL Run Queue", () => {
 
   it("atomically binds strict Falcon and default execution policy to the exact leased Run", async () => {
     const strictPolicy = buildFalcon24RunExecutionPolicy({
-      campaign_id: "falcon24-root-v12-final",
+      campaign_id: "E1-C1",
       case_id: "falcon24-business-review-18m",
       run_variant: "COLD",
       repetition: 1,

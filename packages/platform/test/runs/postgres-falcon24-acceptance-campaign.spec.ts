@@ -55,7 +55,9 @@ function campaign(overrides: Record<string, unknown> = {}) {
     authority_baseline_id: id(20),
     authority_baseline_hash: hash("d"),
     authority_activation_attempt_id: id(21),
-    campaign_id: "falcon24-root-v13-final",
+    campaign_id: "E1-C1",
+    attempt_id: id(22),
+    winning_qualification_attempt_id: id(23),
     campaign_version: 13,
     source_fingerprint: hash("a"),
     frozen_contract_hash: hash("b"),
@@ -80,7 +82,7 @@ function run(overrides: Record<string, unknown> = {}) {
     tenant_id: ids.tenant,
     environment: "test",
     principal_id: ids.analyst,
-    campaign_id: "falcon24-root-v13-final",
+    campaign_id: "E1-C1",
     run_ordinal: 0,
     run_id: ids.run,
     case_id: "falcon24-q1",
@@ -227,7 +229,7 @@ async function reclamationReceipt() {
   };
   return buildFalcon24SandboxReclamationReceipt({
     schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0" as const,
-    campaign_id: "falcon24-root-v13-final",
+    campaign_id: "E1-C1",
     run_id: ids.run,
     runtime_attestation_hash: hash("e"),
     ...managementObservationMaterial,
@@ -238,7 +240,7 @@ async function reclamationReceipt() {
 async function traceGateReceipt() {
   return buildFalcon24ResolutionTraceGateReceipt({
     schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0" as const,
-    campaign_id: "falcon24-root-v13-final",
+    campaign_id: "E1-C1",
     run_id: ids.run,
     trace_hash: hash("d"),
     node_count: 10,
@@ -273,7 +275,7 @@ async function uiTraceGateReceipt() {
   if (!chartRef) throw new Error("chart fixture missing");
   return buildFalcon24ResolutionTraceUiGateReceipt({
     schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
-    campaign_id: "falcon24-root-v13-final",
+    campaign_id: "E1-C1",
     run_id: ids.run,
     workspace_id: ids.tenant,
     conversation_id: id(36),
@@ -299,8 +301,10 @@ async function uiTraceGateReceipt() {
 async function manifest() {
   return buildFalcon24AcceptanceRunManifest({
     schema_version: "falcon24-analysis-run-manifest@2.0.0",
-    campaign_id: "falcon24-root-v13-final",
-    campaign_version: 13,
+    campaign_id: "E1-C1",
+    attempt_id: id(22),
+    winning_qualification_attempt_id: id(23),
+    authority_baseline_hash: hash("d"),
     source_fingerprint: hash("a"),
     frozen_contract_hash: hash("b"),
     runtime_attestation_hash: hash("e"),
@@ -350,12 +354,10 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
       authorizer: auth.authorizer,
     });
 
-    await expect(
-      port.load(auth.capability, { campaign_id: "falcon24-root-v13-final" }),
-    ).resolves.toMatchObject({
+    await expect(port.load(auth.capability, { campaign_id: "E1-C1" })).resolves.toMatchObject({
       ok: true,
       value: {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         frozen_contract_hash: hash("b"),
       },
     });
@@ -365,7 +367,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     ).toEqual([
       expect.objectContaining({
         schema_version: "falcon24-acceptance-campaign-load@1.0.0",
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
       }),
     ]);
@@ -383,13 +385,13 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.loadRun(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
       }),
     ).resolves.toMatchObject({
       ok: true,
       value: {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         status: "CLAIMED",
       },
@@ -400,7 +402,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     ).toEqual([
       expect.objectContaining({
         schema_version: "falcon24-acceptance-campaign-run-load@1.0.0",
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
       }),
     ]);
@@ -410,7 +412,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     const auth = authority();
     const scripted = scriptedPool((text) =>
       text.includes("load_falcon24_pending_failed_run")
-        ? { campaign_id: "falcon24-root-v13-final", run_id: ids.run }
+        ? { campaign_id: "E1-C1", run_id: ids.run }
         : undefined,
     );
     const port = createPostgresFalcon24AcceptanceCampaignAuthority({
@@ -420,7 +422,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(port.loadPendingFailedRun(auth.capability)).resolves.toEqual({
       ok: true,
-      value: { campaign_id: "falcon24-root-v13-final", run_id: ids.run },
+      value: { campaign_id: "E1-C1", run_id: ids.run },
     });
     expect(
       scripted.calls.filter(({ text }) => text.includes("load_falcon24_pending_failed_run")),
@@ -469,7 +471,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
       policy_id: "falcon24-strict-zero-retry@1.0.0",
       manifest: expect.objectContaining({
         schema_version: "falcon24-analysis-run-manifest@2.0.0",
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         runs: expect.arrayContaining([expect.objectContaining({ case_id: expect.any(String) })]),
       }),
       command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
@@ -492,7 +494,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.claim(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_ordinal: 0,
         run_id: ids.run,
         case_id: "falcon24-q1",
@@ -529,7 +531,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.hold(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         failure_layer: "PUBLISHER",
         failure_code: "FALCON24_PUBLISHER_FAILED",
@@ -547,7 +549,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
         ? {
             schema_version: "falcon24-submit-outcome-resolution@1.0.0",
             disposition: "HELD",
-            campaign_id: "falcon24-root-v13-final",
+            campaign_id: "E1-C1",
             run_id: ids.run,
             failure_code: "FALCON24_CLAIM_ORPHANED",
           }
@@ -560,7 +562,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.resolveSubmitOutcome(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         observed_failure_code: "FALCON24_CLAIM_ORPHANED",
       }),
@@ -570,7 +572,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
         ?.values?.[0],
     ).toMatchObject({
       schema_version: "falcon24-submit-outcome-resolution@1.0.0",
-      campaign_id: "falcon24-root-v13-final",
+      campaign_id: "E1-C1",
       run_id: ids.run,
       observed_failure_code: "FALCON24_CLAIM_ORPHANED",
       command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
@@ -584,7 +586,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
         ? {
             schema_version: "falcon24-submit-outcome-resolution@1.0.0",
             disposition: "ACCEPTED",
-            campaign_id: "falcon24-root-v13-final",
+            campaign_id: "E1-C1",
             run_id: ids.run,
             claim_fence_hash: hash("f"),
             claim_fence_consumed_at: now,
@@ -598,7 +600,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.resolveSubmitOutcome(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         observed_failure_code: "PERSISTENCE_TRANSACTION_FAILED",
       }),
@@ -612,7 +614,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
         ? {
             schema_version: "falcon24-submit-outcome-resolution@1.0.0",
             disposition: "HELD",
-            campaign_id: "falcon24-root-v13-final",
+            campaign_id: "E1-C1",
             run_id: ids.run,
             failure_code: "FALCON24_SUBMIT_AUTHORITY_CORRUPT",
           }
@@ -625,7 +627,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.resolveSubmitOutcome(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         observed_failure_code: "PERSISTENCE_TRANSACTION_FAILED",
       }),
@@ -654,7 +656,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.stage(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         result_document: resultDocument,
       }),
@@ -697,7 +699,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.recordSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         reclamation_claim_token: reclamationClaimToken,
         receipt,
@@ -708,7 +710,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
     await expect(
       port.loadSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
       }),
     ).resolves.toEqual({ ok: true, value: receipt });
@@ -792,7 +794,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.recordSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         reclamation_claim_token: reclamationClaimToken,
         receipt,
@@ -826,7 +828,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.stageTrace(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         receipt,
       }),
@@ -839,7 +841,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
     await expect(
       port.loadTraceGate(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
       }),
     ).resolves.toEqual({ ok: true, value: receipt });
@@ -869,7 +871,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.stageUiTrace(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         receipt,
       }),
@@ -882,7 +884,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     });
     await expect(
       port.loadUiTraceGate(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
       }),
     ).resolves.toEqual({ ok: true, value: receipt });
@@ -919,7 +921,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.claimSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         runtime_attestation_hash: hash("e"),
         reclamation_recovery_token: reclamationRecoveryToken,
@@ -931,7 +933,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     );
     expect(call?.values?.[0]).toMatchObject({
       schema_version: "falcon24-sandbox-reclamation-claim@1.0.0",
-      campaign_id: "falcon24-root-v13-final",
+      campaign_id: "E1-C1",
       run_id: ids.run,
       runtime_attestation_hash: hash("e"),
       reclamation_recovery_token: reclamationRecoveryToken,
@@ -973,7 +975,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.claimSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         runtime_attestation_hash: hash("e"),
         reclamation_recovery_token: reclamationRecoveryToken,
@@ -1014,7 +1016,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.claimSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         runtime_attestation_hash: hash("e"),
         reclamation_recovery_token: id(9),
@@ -1049,7 +1051,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.claimSandboxReclamation(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         runtime_attestation_hash: hash("e"),
         reclamation_recovery_token: id(6),
@@ -1078,7 +1080,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.complete(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         result_document: await falconResult(),
         sandbox_reclamation_hash: (await reclamationReceipt()).receipt_hash,
@@ -1169,7 +1171,7 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
 
     await expect(
       port.complete(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: ids.run,
         result_document: resultDocument,
         sandbox_reclamation_hash: reclamation.receipt_hash,
@@ -1182,38 +1184,41 @@ describe("PostgreSQL Falcon24 acceptance campaign authority", () => {
     expect(completeCalls).toBe(1);
   });
 
-  it("maps a stable HOLD database error without making it retryable", async () => {
-    const auth = authority();
-    const client: SqlClient = {
-      async query<Row extends object = Record<string, unknown>>(text: string) {
-        if (text.includes("backend_context_matches")) {
-          return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
-        }
-        if (text.includes("claim_falcon24_acceptance_run")) {
-          throw Object.assign(new Error("FALCON24_CAMPAIGN_HOLD"), { code: "55000" });
-        }
-        return { rows: [], rowCount: 0 } as unknown as SqlQueryResult<Row>;
-      },
-      release() {},
-    };
-    const port = createPostgresFalcon24AcceptanceCampaignAuthority({
-      pool: { connect: async () => client },
-      authorizer: auth.authorizer,
-    });
+  it.each(["FALCON24_CAMPAIGN_HOLD", "FALCON24_E1_GATE_ATTEMPT_MISMATCH"])(
+    "maps the stable database error %s without making it retryable",
+    async (marker) => {
+      const auth = authority();
+      const client: SqlClient = {
+        async query<Row extends object = Record<string, unknown>>(text: string) {
+          if (text.includes("backend_context_matches")) {
+            return { rows: [{ allowed: true }], rowCount: 1 } as unknown as SqlQueryResult<Row>;
+          }
+          if (text.includes("claim_falcon24_acceptance_run")) {
+            throw Object.assign(new Error(marker), { code: "55000" });
+          }
+          return { rows: [], rowCount: 0 } as unknown as SqlQueryResult<Row>;
+        },
+        release() {},
+      };
+      const port = createPostgresFalcon24AcceptanceCampaignAuthority({
+        pool: { connect: async () => client },
+        authorizer: auth.authorizer,
+      });
 
-    await expect(
-      port.claim(auth.capability, {
-        campaign_id: "falcon24-root-v13-final",
-        run_ordinal: 0,
-        run_id: ids.run,
-        case_id: "falcon24-q1",
-        run_variant: "COLD",
-        repetition: 1,
-        claim_fence_token: id(6),
-      }),
-    ).resolves.toMatchObject({
-      ok: false,
-      error: { code: "FALCON24_CAMPAIGN_HOLD", retryable: false },
-    });
-  });
+      await expect(
+        port.claim(auth.capability, {
+          campaign_id: "E1-C1",
+          run_ordinal: 0,
+          run_id: ids.run,
+          case_id: "falcon24-q1",
+          run_variant: "COLD",
+          repetition: 1,
+          claim_fence_token: id(6),
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        error: { code: marker, retryable: false },
+      });
+    },
+  );
 });

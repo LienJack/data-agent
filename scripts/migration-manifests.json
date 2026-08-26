@@ -2438,6 +2438,26 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10779",
+      "migration_name": "20260725010779_app_data_agent_falcon24_e1_gate_attempt_authority.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10779",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-attempt-authority.sql.inc",
+        "20-exact-id-runtime.sql.inc",
+        "30-qualification-begin.sql.inc",
+        "40-campaign-begin.sql.inc",
+        "50-attempt-fences.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__FALCON24_E1_GATE_ATTEMPT_MIGRATION_CHECKSUM__",
+      "checksum_header": "falcon24_e1_gate_attempt_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

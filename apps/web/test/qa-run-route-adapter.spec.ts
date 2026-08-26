@@ -103,4 +103,37 @@ describe("Q&A Run route adapter", () => {
       expect.objectContaining({ code: "RUN_INPUT_INVALID" }),
     );
   });
+
+  it("把 exact E1 gate attempt fence 传给 use-case", async () => {
+    const execute = vi.fn<QuestionRunRouteDependencies["execute"]>();
+    execute.mockResolvedValue({ kind: "CREATED", projection });
+    const route = createQuestionRunRoute({
+      authorize: vi.fn<QuestionRunRouteDependencies["authorize"]>().mockResolvedValue({
+        ok: true,
+        value: { capability, session },
+      }),
+      execute,
+      projectError: vi.fn<QuestionRunRouteDependencies["projectError"]>(),
+    });
+    const acceptanceFence = {
+      authority_kind: "QUALIFICATION" as const,
+      qualification_id: "E1-Q1" as const,
+      attempt_id: "10000000-0000-4000-8000-000000000061",
+      run_id: "10000000-0000-4000-8000-000000000062",
+      claim_fence_token: "10000000-0000-4000-8000-000000000063",
+    };
+    const response = await route(
+      request({
+        schema_version: "qa-run-start@1.0.0",
+        question: "统计订单数",
+        idempotency_key: "route-adapter-e1",
+        acceptance_fence: acceptanceFence,
+      }),
+      { params: Promise.resolve({ conversationId, workspaceId }) },
+    );
+    expect(response.status).toBe(201);
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ acceptance_fence: acceptanceFence }),
+    );
+  });
 });

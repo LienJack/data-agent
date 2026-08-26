@@ -12,10 +12,7 @@ import {
   timestampSchema,
   versionIdentifierSchema,
 } from "../common/index.js";
-import {
-  falcon24AcceptanceCampaignIdSchema,
-  falcon24AnalysisCaseIdSchema,
-} from "../evals/index.js";
+import { falcon24AnalysisCaseIdSchema, falcon24GateIdSchema } from "../evals/index.js";
 
 export const runtimeIdentifierSchema = z
   .string()
@@ -812,7 +809,7 @@ export const runExecutionPolicySchema = z
   .strictObject({
     schema_version: z.literal("run-execution-policy@1.0.0"),
     acceptance_authority_kind: z.enum(["CAMPAIGN", "QUALIFICATION"]).nullable(),
-    campaign_id: falcon24AcceptanceCampaignIdSchema.nullable(),
+    campaign_id: falcon24GateIdSchema.nullable(),
     case_id: falcon24AnalysisCaseIdSchema.nullable(),
     run_variant: z.enum(["COLD", "WARM"]).nullable(),
     repetition: z.number().int().min(1).max(3).nullable(),

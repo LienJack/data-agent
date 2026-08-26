@@ -761,7 +761,7 @@ describe("PostgreSQL effective config resolver", () => {
               value: {
                 acceptance: questionAcceptanceValue(resolution, effectiveConfig),
                 submit_fence: {
-                  campaign_id: "falcon24-root-v14-final",
+                  campaign_id: "E1-C1",
                   run_id: ids.run,
                   claim_fence_hash: claimFenceHash,
                   claim_fence_consumed_at: "2026-08-26T04:00:00.000Z",
@@ -783,7 +783,8 @@ describe("PostgreSQL effective config resolver", () => {
       command,
       acceptance_fence: {
         authority_kind: "FINAL_CAMPAIGN",
-        campaign_id: "falcon24-root-v14-final",
+        campaign_id: "E1-C1",
+        attempt_id: ids.attempt,
         run_id: ids.run,
         claim_fence_token: ids.attempt,
       },
@@ -798,7 +799,7 @@ describe("PostgreSQL effective config resolver", () => {
     expect(commitIndex).toBeGreaterThan(acceptanceIndex);
     expect(scripted.calls[acceptanceIndex]?.values[2]).toMatchObject({
       schema_version: "falcon24-question-run-acceptance@1.0.0",
-      campaign_id: "falcon24-root-v14-final",
+      campaign_id: "E1-C1",
       run_id: ids.run,
       claim_fence_token: ids.attempt,
       command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),
@@ -809,6 +810,8 @@ describe("PostgreSQL effective config resolver", () => {
     "FALCON24_QUESTION_ACCEPTANCE_INVALID",
     "FALCON24_SUBMIT_RUN_PREEXISTS",
     "FALCON24_QUESTION_ACCEPTANCE_NOT_READY",
+    "FALCON24_E1_GATE_ATTEMPT_FENCE_INVALID",
+    "FALCON24_E1_GATE_ATTEMPT_MISMATCH",
   ])("preserves the fenced acceptance database rejection %s", async (marker) => {
     const authority = access();
     const request = await questionRequest();
@@ -827,7 +830,8 @@ describe("PostgreSQL effective config resolver", () => {
       command,
       acceptance_fence: {
         authority_kind: "FINAL_CAMPAIGN",
-        campaign_id: "falcon24-root-v14-final",
+        campaign_id: "E1-C1",
+        attempt_id: ids.attempt,
         run_id: ids.run,
         claim_fence_token: ids.attempt,
       },
@@ -869,7 +873,7 @@ describe("PostgreSQL effective config resolver", () => {
               value: {
                 acceptance: questionAcceptanceValue(resolution, effectiveConfig),
                 submit_fence: {
-                  qualification_id: "falcon24-root-qualification-v1-final",
+                  qualification_id: "E1-Q1",
                   run_id: ids.run,
                   claim_fence_hash: claimFenceHash,
                   claim_fence_consumed_at: "2026-08-26T04:00:00.000Z",
@@ -891,7 +895,8 @@ describe("PostgreSQL effective config resolver", () => {
       command,
       acceptance_fence: {
         authority_kind: "QUALIFICATION",
-        qualification_id: "falcon24-root-qualification-v1-final",
+        qualification_id: "E1-Q1",
+        attempt_id: ids.attempt,
         run_id: ids.run,
         claim_fence_token: ids.attempt,
       },
@@ -903,7 +908,7 @@ describe("PostgreSQL effective config resolver", () => {
     );
     expect(call?.values[2]).toMatchObject({
       schema_version: "falcon24-qualification-question-run-acceptance@1.0.0",
-      qualification_id: "falcon24-root-qualification-v1-final",
+      qualification_id: "E1-Q1",
       run_id: ids.run,
       claim_fence_token: ids.attempt,
       command_hash: expect.stringMatching(/^sha256:[0-9a-f]{64}$/),

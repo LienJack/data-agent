@@ -2,6 +2,7 @@ import { z } from "zod";
 import { contentHashSchema, immutableIdSchema, sha256ContentHash } from "../common/index.js";
 import {
   FALCON24_ACCEPTANCE_FAILURE_LAYER_ORDER,
+  FALCON24_E1_QUALIFICATION_ID,
   falcon24AcceptanceFailureLayerSchema,
 } from "./falcon24-acceptance-campaign.js";
 import { falcon24AnalysisCaseIdSchema } from "./falcon24-agent-analysis.js";
@@ -22,11 +23,7 @@ export const FALCON24_QUALIFICATION_EXPECTED_PATH = FALCON24_ACCEPTANCE_FAILURE_
 
 export const falcon24QualificationStageSchema = z.enum(FALCON24_QUALIFICATION_STAGE_ORDER);
 
-export const falcon24QualificationIdSchema = z
-  .string()
-  .min(8)
-  .max(80)
-  .regex(/^falcon24-[a-z0-9._-]*qualification[a-z0-9._-]*v[1-9][0-9]*[a-z0-9._-]*$/u);
+export const falcon24QualificationIdSchema = z.literal(FALCON24_E1_QUALIFICATION_ID);
 
 const falcon24QualificationExpectedPathSchema = z
   .array(falcon24AcceptanceFailureLayerSchema)
@@ -81,7 +78,8 @@ const falcon24QualificationManifestMaterialSchema = z
   .strictObject({
     schema_version: z.literal(FALCON24_QUALIFICATION_MANIFEST_VERSION),
     qualification_id: falcon24QualificationIdSchema,
-    qualification_version: z.number().int().positive().max(1_000_000),
+    attempt_id: immutableIdSchema,
+    authority_baseline_hash: contentHashSchema,
     source_commit: z.string().regex(/^[0-9a-f]{40}$/u),
     source_fingerprint: contentHashSchema,
     frozen_contract_hash: contentHashSchema,
@@ -100,20 +98,6 @@ const falcon24QualificationManifestMaterialSchema = z
     slots: z.array(falcon24QualificationSlotSchema).length(16),
   })
   .superRefine((manifest, context) => {
-    const versionLabels = [
-      ...manifest.qualification_id.matchAll(/(?:^|[._-])v([1-9][0-9]*)(?=[._-]|$)/gu),
-    ];
-    if (
-      versionLabels.length !== 1 ||
-      Number.parseInt(versionLabels[0]?.[1] ?? "0", 10) !== manifest.qualification_version
-    ) {
-      context.addIssue({
-        code: "custom",
-        message: "Falcon24 qualification_id 必须含唯一且与 qualification_version 相同的 vN 标签。",
-        path: ["qualification_id"],
-      });
-    }
-
     const slotIds = manifest.slots.map(({ slot_id: slotId }) => slotId);
     const runIds = manifest.slots.map(({ run_id: runId }) => runId);
     if (new Set(slotIds).size !== manifest.slots.length) {

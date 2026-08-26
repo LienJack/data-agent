@@ -51,8 +51,10 @@ describe("Falcon24 acceptance campaign contracts", () => {
     );
     const manifest = await buildFalcon24AcceptanceRunManifest({
       schema_version: "falcon24-analysis-run-manifest@2.0.0",
-      campaign_id: "falcon24-root-v13-final",
-      campaign_version: 13,
+      campaign_id: "E1-C1",
+      attempt_id: id(2),
+      winning_qualification_attempt_id: id(3),
+      authority_baseline_hash: hash("0"),
       source_fingerprint: hash("a"),
       frozen_contract_hash: hash("b"),
       runtime_attestation_hash: hash("d"),
@@ -60,8 +62,8 @@ describe("Falcon24 acceptance campaign contracts", () => {
     });
     await expect(verifyFalcon24AcceptanceRunManifest(manifest)).resolves.toEqual(manifest);
     await expect(
-      verifyFalcon24AcceptanceRunManifest({ ...manifest, campaign_version: 14 }),
-    ).rejects.toThrow("campaign_id");
+      verifyFalcon24AcceptanceRunManifest({ ...manifest, attempt_id: id(4) }),
+    ).rejects.toThrow("FALCON24_ANALYSIS_RUN_MANIFEST_HASH_INVALID");
     await expect(
       verifyFalcon24AcceptanceRunManifest({ ...manifest, source_fingerprint: hash("c") }),
     ).rejects.toThrow("FALCON24_ANALYSIS_RUN_MANIFEST_HASH_INVALID");
@@ -86,7 +88,7 @@ describe("Falcon24 acceptance campaign contracts", () => {
     };
     const receipt = await buildFalcon24SandboxReclamationReceipt({
       schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0",
-      campaign_id: "falcon24-root-v13-final",
+      campaign_id: "E1-C1",
       run_id: id(1),
       runtime_attestation_hash: hash("c"),
       ...managementObservation,
@@ -107,7 +109,7 @@ describe("Falcon24 acceptance campaign contracts", () => {
   it("hashes the exact successful Resolution Trace gate closure", async () => {
     const receipt = await buildFalcon24ResolutionTraceGateReceipt({
       schema_version: "falcon24-resolution-trace-gate-receipt@2.0.0",
-      campaign_id: "falcon24-root-v13-final",
+      campaign_id: "E1-C1",
       run_id: id(1),
       trace_hash: hash("a"),
       node_count: 10,
@@ -146,7 +148,7 @@ describe("Falcon24 acceptance campaign contracts", () => {
     if (!chartRef) throw new Error("chart fixture missing");
     const receipt = await buildFalcon24ResolutionTraceUiGateReceipt({
       schema_version: "falcon24-resolution-trace-ui-gate-receipt@1.0.0",
-      campaign_id: "falcon24-root-v13-final",
+      campaign_id: "E1-C1",
       run_id: id(1),
       workspace_id: id(91),
       conversation_id: id(92),

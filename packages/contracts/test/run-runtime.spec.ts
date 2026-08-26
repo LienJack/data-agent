@@ -232,7 +232,7 @@ describe("持久 Run Runtime Contract", () => {
     expect(runWorkLeaseSchema.safeParse(withoutExecutionPolicy).success).toBe(false);
 
     const strictPolicy = buildFalcon24RunExecutionPolicy({
-      campaign_id: "falcon24-root-v12-final",
+      campaign_id: "E1-C1",
       case_id: "falcon24-business-review-18m",
       run_variant: "COLD",
       repetition: 1,
@@ -249,7 +249,7 @@ describe("持久 Run Runtime Contract", () => {
     expect(
       buildFalcon24RunExecutionPolicy({
         acceptance_authority_kind: "QUALIFICATION",
-        campaign_id: "falcon24-root-qualification-v1-final",
+        campaign_id: "E1-Q1",
         case_id: "falcon24-business-review-18m",
         run_variant: "WARM",
         repetition: 1,

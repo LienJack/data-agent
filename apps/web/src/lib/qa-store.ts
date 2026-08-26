@@ -39,6 +39,63 @@ import type {
 } from "./qa-types";
 import type { RunConnectionState, RunProjection } from "./run-projection";
 
+const FALCON24_GATE_CLAIM_KEY = "falcon24-e1-browser-submit-claim";
+const FALCON24_GATE_CONSUMED_KEY = "falcon24-e1-browser-submit-consumed";
+
+function readFalcon24GateClaim(question: string, conversationId: string) {
+  const raw = window.sessionStorage.getItem(FALCON24_GATE_CLAIM_KEY);
+  if (!raw) return undefined;
+  window.sessionStorage.removeItem(FALCON24_GATE_CLAIM_KEY);
+  const candidate = JSON.parse(raw) as {
+    schema_version?: unknown;
+    question?: unknown;
+    conversation_id?: unknown;
+    idempotency_key?: unknown;
+    acceptance_fence?: {
+      authority_kind?: unknown;
+      qualification_id?: unknown;
+      campaign_id?: unknown;
+      attempt_id?: unknown;
+      run_id?: unknown;
+      claim_fence_token?: unknown;
+    };
+  };
+  const fence = candidate.acceptance_fence;
+  const exactAuthority =
+    (fence?.authority_kind === "QUALIFICATION" && fence.qualification_id === "E1-Q1") ||
+    (fence?.authority_kind === "FINAL_CAMPAIGN" && fence.campaign_id === "E1-C1");
+  if (
+    candidate.schema_version !== "falcon24-e1-browser-submit-claim@1.0.0" ||
+    candidate.question !== question ||
+    candidate.conversation_id !== conversationId ||
+    typeof candidate.idempotency_key !== "string" ||
+    !exactAuthority ||
+    typeof fence?.attempt_id !== "string" ||
+    typeof fence.run_id !== "string" ||
+    typeof fence.claim_fence_token !== "string"
+  ) {
+    throw new Error("FALCON24_BROWSER_GATE_CLAIM_INVALID");
+  }
+  return candidate as {
+    idempotency_key: string;
+    acceptance_fence:
+      | {
+          authority_kind: "QUALIFICATION";
+          qualification_id: "E1-Q1";
+          attempt_id: string;
+          run_id: string;
+          claim_fence_token: string;
+        }
+      | {
+          authority_kind: "FINAL_CAMPAIGN";
+          campaign_id: "E1-C1";
+          attempt_id: string;
+          run_id: string;
+          claim_fence_token: string;
+        };
+  };
+}
+
 /**
  * Q&A 状态管理。
  *
@@ -944,7 +1001,22 @@ export const useQAStore = create<QAStore>((set, get) => ({
       if (!activeConversation.modelProfileId) throw new Error("发送消息前请先选择模型");
 
       // 服务端在一个事务中从 Conversation 冻结资源、写入用户消息并创建 Run。
-      const run = await createQaRun(content, conversationId, workspaceId, files);
+      const gateClaim = readFalcon24GateClaim(content, conversationId);
+      const run = await createQaRun(content, conversationId, workspaceId, files, gateClaim);
+      if (gateClaim && run.runId !== gateClaim.acceptance_fence.run_id) {
+        throw new Error("FALCON24_BROWSER_GATE_RUN_ID_MISMATCH");
+      }
+      if (gateClaim) {
+        window.sessionStorage.setItem(
+          FALCON24_GATE_CONSUMED_KEY,
+          JSON.stringify({
+            schema_version: "falcon24-e1-browser-submit-consumed@1.0.0",
+            run_id: run.runId,
+            attempt_id: gateClaim.acceptance_fence.attempt_id,
+            conversation_id: conversationId,
+          }),
+        );
+      }
       runAccepted = true;
 
       const agentMessageId = `local-agent-${Date.now()}`;

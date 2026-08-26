@@ -54,13 +54,15 @@ export interface StartQuestionRunInput {
   readonly acceptance_fence?:
     | {
         readonly authority_kind: "FINAL_CAMPAIGN";
-        readonly campaign_id: string;
+        readonly campaign_id: "E1-C1";
+        readonly attempt_id: string;
         readonly run_id: string;
         readonly claim_fence_token: string;
       }
     | {
         readonly authority_kind: "QUALIFICATION";
-        readonly qualification_id: string;
+        readonly qualification_id: "E1-Q1";
+        readonly attempt_id: string;
         readonly run_id: string;
         readonly claim_fence_token: string;
       };

@@ -42,7 +42,7 @@ describe("Falcon24 sandbox reclamation", () => {
       reclaimFalcon24RunSandboxes({
         runtime: () => ({ cleanupRun }),
         claim,
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: runId,
         runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
       }),
@@ -50,7 +50,7 @@ describe("Falcon24 sandbox reclamation", () => {
       disposition: "CLAIMED",
       receipt: {
         schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0",
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: runId,
         runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
         ...observation,
@@ -90,7 +90,7 @@ describe("Falcon24 sandbox reclamation", () => {
       reclaimFalcon24RunSandboxes({
         runtime: () => ({ cleanupRun }),
         claim,
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: runId,
         runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
       }),
@@ -109,7 +109,7 @@ describe("Falcon24 sandbox reclamation", () => {
       reclaimFalcon24RunSandboxes({
         runtime: () => ({ cleanupRun }),
         claim,
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: runId,
         runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
       }),
@@ -122,7 +122,7 @@ describe("Falcon24 sandbox reclamation", () => {
     const observation = await managementObservation();
     const receipt = await buildFalcon24SandboxReclamationReceipt({
       schema_version: "falcon24-sandbox-reclamation-receipt@2.0.0",
-      campaign_id: "falcon24-root-v13-final",
+      campaign_id: "E1-C1",
       run_id: runId,
       runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
       ...observation,
@@ -135,7 +135,7 @@ describe("Falcon24 sandbox reclamation", () => {
       reclaimFalcon24RunSandboxes({
         runtime,
         claim,
-        campaign_id: "falcon24-root-v13-final",
+        campaign_id: "E1-C1",
         run_id: runId,
         runtime_attestation_hash: `sha256:${"a".repeat(64)}`,
       }),

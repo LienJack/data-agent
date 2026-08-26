@@ -1891,6 +1891,12 @@ for assertion_file in $(find "$script_dir" -type f -name '*-assertions.sql' | so
       # semantic M0 runner and are verified there.
       continue
       ;;
+    54-falcon24-acceptance-campaign-assertions.sql|55-falcon24-qualification-assertions.sql)
+      # The E1 reset deliberately makes the former versioned campaign and
+      # qualification identities unrepresentable. Assertion 59 exercises the
+      # replacement exact E1-Q1/E1-C1 authority and immutable-attempt contract.
+      continue
+      ;;
   esac
   apply_sql "$assertion_file"
   case "$assertion_file" in

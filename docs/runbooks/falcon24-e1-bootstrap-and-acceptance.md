@@ -100,22 +100,45 @@ Operator 与 Sandbox attestation。
 export DATA_AGENT_FALCON24_ACCEPTANCE_EXECUTION_POLICY=falcon24-strict-zero-retry@1.0.0
 
 pnpm --filter @data-agent/web falcon24:qualification:control manifest \
-  --qualification-id=E1-Q1 --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+  --qualification-id=E1-Q1 --attempt-id=<qualification-attempt-uuid> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 pnpm --filter @data-agent/web falcon24:qualification:control submit \
-  --qualification-id=E1-Q1 --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+  --qualification-id=E1-Q1 --attempt-id=<qualification-attempt-uuid> --ordinal=<0..15> \
+  --browser-session=<isolated-session> --web-base-url=<https-url> --browser-width=<390-or-1440> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+pnpm --filter @data-agent/web falcon24:qualification:control trace \
+  --qualification-id=E1-Q1 --attempt-id=<qualification-attempt-uuid> --ordinal=<0..15> \
+  --browser-session=<isolated-session> --web-base-url=<https-url> --browser-width=<390-or-1440> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 pnpm --filter @data-agent/web falcon24:qualification:control finalize \
-  --qualification-id=E1-Q1 --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+  --qualification-id=E1-Q1 --attempt-id=<qualification-attempt-uuid> --ordinal=<0..15> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 ```
 
 只有同一 immutable qualification attempt 达到 16/16，才创建 `E1-C1`：
 
 ```sh
 pnpm --filter @data-agent/web falcon24:analysis:control manifest \
-  --campaign-id=E1-C1 --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+  --campaign-id=E1-C1 --attempt-id=<campaign-attempt-uuid> \
+  --qualification-attempt-id=<winning-qualification-attempt-uuid> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 pnpm --filter @data-agent/web falcon24:analysis:control submit \
-  --campaign-id=E1-C1 --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+  --campaign-id=E1-C1 --attempt-id=<campaign-attempt-uuid> \
+  --qualification-attempt-id=<winning-qualification-attempt-uuid> --ordinal=<0..29> \
+  --case-id=<canonical-case-id> --variant=<COLD-or-WARM> --repetition=<1..3> \
+  --browser-session=<isolated-session> --web-base-url=<https-url> --browser-width=<390-or-1440> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+pnpm --filter @data-agent/web falcon24:analysis:control trace \
+  --campaign-id=E1-C1 --attempt-id=<campaign-attempt-uuid> \
+  --qualification-attempt-id=<winning-qualification-attempt-uuid> --ordinal=<0..29> \
+  --case-id=<canonical-case-id> --variant=<COLD-or-WARM> --repetition=<1..3> \
+  --browser-session=<isolated-session> --web-base-url=<https-url> --browser-width=<390-or-1440> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 pnpm --filter @data-agent/web falcon24:analysis:control finalize \
-  --campaign-id=E1-C1 --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
+  --campaign-id=E1-C1 --attempt-id=<campaign-attempt-uuid> \
+  --qualification-attempt-id=<winning-qualification-attempt-uuid> --ordinal=<0..29> \
+  --case-id=<canonical-case-id> --variant=<COLD-or-WARM> --repetition=<1..3> \
+  --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 ```
 
 Runner 必须严格串行。每个成功 slot 都要保存同源 `qa_e2e_receipt` 与 `trace_ui_receipt`，绑定 exact Conversation、Run、baseline、
@@ -132,8 +155,12 @@ attempt identity 从该阶段第一个 slot 全量重跑；禁止跨 attempt 拼
 
 ```sh
 pnpm --filter @data-agent/web falcon24:qualification:control status --qualification-id=E1-Q1 \
+  --attempt-id=<qualification-attempt-uuid> --ordinal=<0..15> \
   --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 pnpm --filter @data-agent/web falcon24:analysis:control status --campaign-id=E1-C1 \
+  --attempt-id=<campaign-attempt-uuid> \
+  --qualification-attempt-id=<winning-qualification-attempt-uuid> --ordinal=<0..29> \
+  --case-id=<canonical-case-id> --variant=<COLD-or-WARM> --repetition=<1..3> \
   --workspace-id=<workspace> --principal-id=<principal> --deployment-id=<deployment>
 ```
 
