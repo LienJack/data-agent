@@ -14,6 +14,44 @@ function addMonths(start: string, count: number): string[] {
 }
 
 describe("fixed statistical operator server transforms", () => {
+  it("derives generic single-series trend inputs from shape instead of a Falcon case", () => {
+    const rows = [
+      { month: "2024-03-01", order_revenue: 130 },
+      { month: "2024-01-01", order_revenue: 100 },
+      { month: "2024-02-01", order_revenue: 110 },
+    ];
+    expect(
+      recomputeStatisticalOperatorServerTransform({
+        transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.singleSeriesTheilSen,
+        governed_rows: rows,
+      }),
+    ).toEqual([{ label: "order_revenue", x: [0, 1, 2], y: [100, 110, 130] }]);
+    expect(
+      recomputeStatisticalOperatorServerTransform({
+        transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.singleSeriesMannKendall,
+        governed_rows: rows,
+      }),
+    ).toEqual([
+      {
+        label: "order_revenue",
+        order: ["2024-01-01", "2024-02-01", "2024-03-01"],
+        value: [100, 110, 130],
+      },
+    ]);
+  });
+
+  it("rejects an ambiguous generic trend shape", () => {
+    expect(() =>
+      recomputeStatisticalOperatorServerTransform({
+        transform_id: STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.singleSeriesTheilSen,
+        governed_rows: [
+          { month: "2024-01-01", revenue: 100, orders: 10 },
+          { month: "2024-02-01", revenue: 110, orders: 11 },
+        ],
+      }),
+    ).toThrowError("ANALYSIS_OPERATOR_ARGUMENT_LINEAGE_TRANSFORM_SOURCE_INVALID");
+  });
+
   it("derives the exact worst-month Shapley comparison from unique orders", () => {
     const months = addMonths("2023-05", 18);
     const rows = months.flatMap((month, index) => {

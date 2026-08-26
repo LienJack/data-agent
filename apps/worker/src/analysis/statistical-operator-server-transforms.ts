@@ -1,6 +1,8 @@
 type JsonObject = Readonly<Record<string, unknown>>;
 
 export const STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS = Object.freeze({
+  singleSeriesTheilSen: "analysis.single-series.theil-sen.v1",
+  singleSeriesMannKendall: "analysis.single-series.mann-kendall.v1",
   q1ProductShapleyComparison: "falcon24.q1.product_shapley_comparison.v1",
   q2DeliveryScenarioOrders: "falcon24.q2.delivery_scenario_orders.v1",
   q2DeliveryModelOrders: "falcon24.q2.delivery_model_orders.v1",
@@ -56,6 +58,63 @@ function repeatedExact<T>(values: readonly T[]): T {
 
 function assertSame(left: unknown, right: unknown): void {
   if (!Object.is(left, right)) invalidSource();
+}
+
+function singleSeries(
+  rows: readonly JsonObject[],
+  mode: "THEIL_SEN" | "MANN_KENDALL",
+): readonly JsonObject[] {
+  const first = rows[0];
+  if (!first || rows.length < (mode === "THEIL_SEN" ? 2 : 3)) invalidSource();
+  const fields = Object.keys(first);
+  if (
+    fields.length === 0 ||
+    rows.some(
+      (row) =>
+        Object.keys(row).length !== fields.length ||
+        fields.some((field) => !Object.hasOwn(row, field)),
+    )
+  ) {
+    invalidSource();
+  }
+  const numericFields = fields.filter((field) =>
+    rows.every((row) => typeof row[field] === "number" && Number.isFinite(row[field])),
+  );
+  const dateFields = fields.filter(
+    (field) =>
+      !numericFields.includes(field) &&
+      (() => {
+        try {
+          return rows.every((row) => dateKey(row[field]).length === 10);
+        } catch {
+          return false;
+        }
+      })(),
+  );
+  if (numericFields.length !== 1 || dateFields.length !== 1) invalidSource();
+  const numericField = numericFields[0] ?? invalidSource();
+  const dateField = dateFields[0] ?? invalidSource();
+  const ordered = rows
+    .map((row) => ({
+      order: dateKey(row[dateField]),
+      value: requiredFinite(row, numericField),
+    }))
+    .sort((left, right) => left.order.localeCompare(right.order));
+  if (new Set(ordered.map(({ order }) => order)).size !== ordered.length) invalidSource();
+  const label = numericField;
+  return Object.freeze([
+    mode === "THEIL_SEN"
+      ? Object.freeze({
+          label,
+          x: Object.freeze(ordered.map((_, index) => index)),
+          y: Object.freeze(ordered.map(({ value }) => value)),
+        })
+      : Object.freeze({
+          label,
+          order: Object.freeze(ordered.map(({ order }) => order)),
+          value: Object.freeze(ordered.map(({ value }) => value)),
+        }),
+  ]);
 }
 
 function q1ProductShapleyComparison(rows: readonly JsonObject[]): readonly JsonObject[] {
@@ -301,6 +360,10 @@ export function recomputeStatisticalOperatorServerTransform(input: {
   readonly governed_rows: readonly JsonObject[];
 }): readonly JsonObject[] {
   switch (input.transform_id as StatisticalOperatorServerTransformId) {
+    case STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.singleSeriesTheilSen:
+      return singleSeries(input.governed_rows, "THEIL_SEN");
+    case STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.singleSeriesMannKendall:
+      return singleSeries(input.governed_rows, "MANN_KENDALL");
     case STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q1ProductShapleyComparison:
       return q1ProductShapleyComparison(input.governed_rows);
     case STATISTICAL_OPERATOR_SERVER_TRANSFORM_IDS.q2DeliveryScenarioOrders:
@@ -324,6 +387,7 @@ export function recomputeStatisticalOperatorServerTransform(input: {
 
 export const statisticalOperatorServerTransformInternals = Object.freeze({
   dateKey,
+  singleSeries,
   q1ProductShapleyComparison,
   deliveryOrders,
   inventorySeries,
