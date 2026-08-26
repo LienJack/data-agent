@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import {
   admitRootAgentDelegations,
   buildBuiltinTeamMaterialization,
@@ -258,27 +258,32 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
   });
 
   it("keeps Direct QA and Falcon case-bound runtimes outside the production import boundary", async () => {
-    const [workerEntry, provider, rootHarness, teamRuntime, teamTools] = await Promise.all([
-      readFile(new URL("../../src/run-worker-cli.ts", import.meta.url), "utf8"),
-      readFile(
-        new URL("../../src/providers/direct-run-bound-provider-dispatcher.ts", import.meta.url),
-        "utf8",
-      ),
-      readFile(
-        new URL(
-          "../../../../packages/agent-runtime/src/teams/root-agent-harness.ts",
-          import.meta.url,
+    const [workerEntry, provider, rootHarness, teamRuntime, teamTools, rootPackage, workerPackage] =
+      await Promise.all([
+        readFile(new URL("../../src/run-worker-cli.ts", import.meta.url), "utf8"),
+        readFile(
+          new URL("../../src/providers/direct-run-bound-provider-dispatcher.ts", import.meta.url),
+          "utf8",
         ),
-        "utf8",
-      ),
-      readFile(new URL("../../src/teams/production-team-runtime.ts", import.meta.url), "utf8"),
-      readFile(new URL("../../src/teams/production-team-tools.ts", import.meta.url), "utf8"),
-    ]);
+        readFile(
+          new URL(
+            "../../../../packages/agent-runtime/src/teams/root-agent-harness.ts",
+            import.meta.url,
+          ),
+          "utf8",
+        ),
+        readFile(new URL("../../src/teams/production-team-runtime.ts", import.meta.url), "utf8"),
+        readFile(new URL("../../src/teams/production-team-tools.ts", import.meta.url), "utf8"),
+        readFile(new URL("../../../../package.json", import.meta.url), "utf8"),
+        readFile(new URL("../../package.json", import.meta.url), "utf8"),
+      ]);
     const productionSources = [workerEntry, provider, rootHarness, teamRuntime, teamTools].join(
       "\n",
     );
 
     expect(provider).toContain("createRootModelProviderPort(providerInput)");
+    expect(workerEntry).toContain("createProductionGovernedAnalysisRuntime");
+    expect(workerEntry).toContain("governed_analysis: governedAnalysisRuntime");
     expect(workerEntry).not.toContain("falcon24-analysis-runtime");
     expect(workerEntry).not.toContain("falcon24-analysis-case-resolver");
     expect(productionSources).not.toMatch(
@@ -286,5 +291,27 @@ describe("Falcon24 E1 Root V3 routing boundary", () => {
     );
     expect(productionSources).not.toMatch(/query_kind|FALCON24_ANALYSIS_QUERY_SPECS/u);
     expect(productionSources).not.toMatch(/resolveFalcon24AnalysisCase/u);
+    expect(rootPackage).not.toContain("falcon24:analysis:gate");
+    expect(workerPackage).not.toContain("falcon24:analysis:gate");
+
+    const retiredFiles = [
+      "../../src/evals/falcon24-analysis-runtime.ts",
+      "../../src/evals/falcon24-analysis-case-resolver.ts",
+      "../../src/evals/falcon24-analysis-queries.ts",
+      "../../src/evals/falcon24-analysis-program.ts",
+      "../../src/evals/falcon24-analysis-data-oracle.ts",
+      "../../src/evals/falcon24-arrow-backed-analysis-oracle.ts",
+      "../../src/evals/falcon24-governed-agent-analysis.ts",
+      "../../src/evals/falcon24-governed-query-port.ts",
+      "../../src/evals/falcon24-analysis-acceptance-recorder.ts",
+      "../../src/evals/falcon24-analysis-gate-cli.ts",
+    ];
+    await Promise.all(
+      retiredFiles.map(async (path) => {
+        await expect(access(new URL(path, import.meta.url))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+      }),
+    );
   });
 });

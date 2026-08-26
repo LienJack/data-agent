@@ -850,7 +850,6 @@ async function main(): Promise<void> {
       idempotency_key: identities.idempotencyKey,
       principal_id: scope.principalId,
       question: testCase.question,
-      rollout_bootstrap_mode: environment.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
       scope: capability.scope,
       workspace_id: scope.workspaceId,
       expected_subagent_profile_refs: preflight.builtinAuthority.snapshot.profile_refs,

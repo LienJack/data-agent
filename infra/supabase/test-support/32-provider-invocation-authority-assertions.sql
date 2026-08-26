@@ -14,7 +14,6 @@ declare
   load_definition text;
   profile_list_definition text;
   lease_definition text;
-  lease_core_definition text;
   task_commit_definition text;
   stale_recovery_definition text;
   next_stale_recovery_definition text;
@@ -94,11 +93,6 @@ begin
   join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
   where namespace.nspname = 'app_data_agent'
     and procedure.proname = 'assert_provider_active_worker_lease';
-  select pg_catalog.pg_get_functiondef(procedure.oid) into strict lease_core_definition
-  from pg_catalog.pg_proc procedure
-  join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
-  where namespace.nspname = 'app_data_agent'
-    and procedure.proname = 'assert_provider_active_worker_lease_pre_u20';
   select pg_catalog.pg_get_functiondef(procedure.oid) into strict task_commit_definition
   from pg_catalog.pg_proc procedure
   join pg_catalog.pg_namespace namespace on namespace.oid = procedure.pronamespace
@@ -204,9 +198,11 @@ begin
     or profile_list_definition not like
       '%app_data_agent.u2_canonical_sha256(artifact.document_json #- ''{receipt_ref,content_hash}'')%'
     or lease_definition not like '%START_DATA_AGENT_TEAM%'
-    or lease_definition not like '%assert_provider_active_worker_lease_pre_u20%'
-    or lease_core_definition not like '%attempt.lease_expires_at > pg_catalog.clock_timestamp()%'
-    or lease_core_definition not like '%message.lease_expires_at > pg_catalog.clock_timestamp()%'
+    or lease_definition not like '%attempt.lease_expires_at>pg_catalog.clock_timestamp()%'
+    or lease_definition not like '%message.lease_expires_at>pg_catalog.clock_timestamp()%'
+    or lease_definition like '%assert_provider_active_worker_lease_pre_u20%'
+    or pg_catalog.to_regprocedure(
+      'app_data_agent.assert_provider_active_worker_lease_pre_u20(jsonb)') is not null
     or task_commit_definition not like '%ProviderTaskArtifact%'
     or task_commit_definition not like '%event.event_type = ''run.accepted''%'
     or task_commit_definition not like '%message.message_id = event.event_id%'
@@ -635,13 +631,13 @@ insert into app_data_agent.run_attempts (
   '00000000-0000-4000-8000-000000005405',
   '00000000-0000-4000-8000-000000005404',
   '00000000-0000-4000-8000-000000005406',1,'u3-worker',1,7,'ACTIVE',
-  pg_catalog.clock_timestamp() + interval '10 minutes',pg_catalog.clock_timestamp()
+  pg_catalog.statement_timestamp() + interval '10 minutes',pg_catalog.statement_timestamp()
 );
 update app_data_agent.outbox set
   status = 'LEASED',attempt_count = 1,lease_owner = 'u3-worker',lease_token = 1,
-  lease_expires_at = pg_catalog.clock_timestamp() + interval '10 minutes',
+  lease_expires_at = pg_catalog.statement_timestamp() + interval '10 minutes',
   active_attempt_id = '00000000-0000-4000-8000-000000005406',run_fence = 7,
-  last_heartbeat_at = pg_catalog.clock_timestamp()
+  last_heartbeat_at = pg_catalog.statement_timestamp()
 where outbox_id = '00000000-0000-4000-8000-000000005405';
 insert into app_data_agent.run_events (
   app_id,tenant_id,environment,event_id,run_id,sequence,event_type,payload_json,
@@ -900,12 +896,20 @@ begin
     'content_hash',response_content_hash);
   insert into app_data_agent.artifacts (
     app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
-    content_hash,document_json,worker_fence,is_active
+    content_hash,document_json,worker_fence,is_active,
+    authority_epoch,authority_baseline_id,authority_baseline_hash,
+    authority_activation_attempt_id
   ) values (
     '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005401',
     'local','00000000-0000-4000-8000-000000005460',
     '00000000-0000-4000-8000-000000005474','ProviderResponseArtifact',1,
-    response_content_hash,response_document,target_attempt.worker_fence,true);
+    response_content_hash,response_document,target_attempt.worker_fence,true,'E1',
+    (select baseline_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select baseline_hash from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select activation_attempt_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'));
   response_reference := pg_catalog.jsonb_build_object(
     'artifact_id','00000000-0000-4000-8000-000000005474',
     'artifact_type','ProviderResponseArtifact',
@@ -1120,6 +1124,14 @@ declare
     "attempt_no":1,"delivery_attempt_no":1,"lease_duration_ms":600000,
     "worker_id":"u3-worker","lease_token":1,"worker_fence":7,
     "expires_at":"2099-01-01T00:00:00.000Z",
+    "execution_policy":{
+      "schema_version":"run-execution-policy@1.0.0",
+      "campaign_id":null,"case_id":null,"run_variant":null,"repetition":null,
+      "policy_id":"default-run-retry@1.0.0","mode":"DEFAULT",
+      "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":2,
+      "max_text2sql_candidate_attempts":2,"analysis_repair_budget_per_category":1,
+      "max_file_transfer_attempts":5,"allow_stage_recovery":true,"hold_on_failure":false
+    },
     "payload":{"kind":"START_L2_RESEARCH","effective_config_ref":{"config_id":"00000000-0000-4000-8000-000000005409","config_revision":1,"config_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
   }'::jsonb;
   resolved jsonb;
@@ -1471,6 +1483,14 @@ declare
     "attempt_no":1,"delivery_attempt_no":1,"lease_duration_ms":600000,
     "worker_id":"u3-worker","lease_token":1,"worker_fence":7,
     "expires_at":"2099-01-01T00:00:00.000Z",
+    "execution_policy":{
+      "schema_version":"run-execution-policy@1.0.0",
+      "campaign_id":null,"case_id":null,"run_variant":null,"repetition":null,
+      "policy_id":"default-run-retry@1.0.0","mode":"DEFAULT",
+      "max_run_attempts":5,"max_provider_attempts_per_call":2,"max_root_turns":2,
+      "max_text2sql_candidate_attempts":2,"analysis_repair_budget_per_category":1,
+      "max_file_transfer_attempts":5,"allow_stage_recovery":true,"hold_on_failure":false
+    },
     "payload":{"kind":"START_L2_RESEARCH","effective_config_ref":{"config_id":"00000000-0000-4000-8000-000000005409","config_revision":1,"config_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
   }'::jsonb;
   command jsonb;
@@ -1764,12 +1784,12 @@ reset role;
 alter table app_data_agent.run_attempts disable trigger all;
 alter table app_data_agent.outbox disable trigger all;
 update app_data_agent.run_attempts
-set status = 'ACTIVE',lease_expires_at = pg_catalog.clock_timestamp() + interval '10 minutes',
-  last_heartbeat_at = pg_catalog.clock_timestamp()
+set status = 'ACTIVE',lease_expires_at = pg_catalog.statement_timestamp() + interval '10 minutes',
+  last_heartbeat_at = pg_catalog.statement_timestamp()
 where attempt_id = '00000000-0000-4000-8000-000000005406';
 update app_data_agent.outbox
-set status = 'LEASED',lease_expires_at = pg_catalog.clock_timestamp() + interval '10 minutes',
-  last_heartbeat_at = pg_catalog.clock_timestamp(),lease_owner = 'u3-worker',lease_token = 1,
+set status = 'LEASED',lease_expires_at = pg_catalog.statement_timestamp() + interval '10 minutes',
+  last_heartbeat_at = pg_catalog.statement_timestamp(),lease_owner = 'u3-worker',lease_token = 1,
   active_attempt_id = '00000000-0000-4000-8000-000000005406',run_fence = 7
 where outbox_id = '00000000-0000-4000-8000-000000005405';
 alter table app_data_agent.run_attempts enable trigger all;
@@ -1852,11 +1872,19 @@ begin
     certification_document,'{receipt_ref,content_hash}',pg_catalog.to_jsonb(certification_hash));
   insert into app_data_agent.artifacts (
     app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
-    content_hash,document_json,worker_fence,is_active
+    content_hash,document_json,worker_fence,is_active,
+    authority_epoch,authority_baseline_id,authority_baseline_hash,
+    authority_activation_attempt_id
   ) values (
     '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005401',
     'local','00000000-0000-4000-8000-000000005403',certification_id,
-    'ModelCertificationReceipt',1,certification_hash,certification_document,7,true);
+    'ModelCertificationReceipt',1,certification_hash,certification_document,7,true,'E1',
+    (select baseline_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select baseline_hash from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select activation_attempt_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'));
 
   connection_document := pg_catalog.jsonb_build_object(
     'kind','MANAGED_CONNECTION',
@@ -1916,11 +1944,19 @@ begin
     certification_document,'{receipt_ref,content_hash}',pg_catalog.to_jsonb(certification_hash));
   insert into app_data_agent.artifacts (
     app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
-    content_hash,document_json,worker_fence,is_active
+    content_hash,document_json,worker_fence,is_active,
+    authority_epoch,authority_baseline_id,authority_baseline_hash,
+    authority_activation_attempt_id
   ) values (
     '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005401',
     'local','00000000-0000-4000-8000-000000005403',managed_certification_id,
-    'ModelCertificationReceipt',1,certification_hash,certification_document,7,true);
+    'ModelCertificationReceipt',1,certification_hash,certification_document,7,true,'E1',
+    (select baseline_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select baseline_hash from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select activation_attempt_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'));
 end
 $non_alo_profile_fixture$;
 alter table app_data_agent.artifacts enable trigger all;
@@ -1954,6 +1990,7 @@ alter table app_data_agent.effective_run_config_receipts disable trigger all;
 alter table app_data_agent.effective_run_config_resource_bindings disable trigger all;
 alter table app_data_agent.effective_config_context_receipts disable trigger all;
 alter table app_data_agent.artifacts disable trigger all;
+alter table app_data_agent.commands disable trigger all;
 -- The legacy generic Artifact check treats every technical `*_token_*` key as a
 -- credential. U3 projection authorization has its own strict no-raw validator;
 -- drop this unrelated legacy CHECK only inside the rollback-only fixture.
@@ -1984,7 +2021,9 @@ begin
     datasource_id,datasource_revision_hash,schema_datasource_id,datasource_fingerprint,
     semantic_domain,semantic_release_id,semantic_release_generation,
     semantic_release_digest,schema_snapshot_hash,context_policy_hash,egress_policy_hash,
-    execution_safety_policy_hash,provider_audience,classification,effective_config_json
+    execution_safety_policy_hash,provider_audience,classification,effective_config_json,
+    authority_epoch,authority_baseline_id,authority_baseline_hash,
+    authority_activation_attempt_id
   ) values (
     '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005401',
     'local','00000000-0000-4000-8000-000000005409',1,config_hash,
@@ -2005,7 +2044,23 @@ begin
     'sha256:a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6a6',
     'sha256:a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7',
     'sha256:a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8a8',
-    'PRIVATE','INTERNAL',config_document);
+    'PRIVATE','INTERNAL',config_document,'E1',
+    (select baseline_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select baseline_hash from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select activation_attempt_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'));
+  update app_data_agent.commands
+  set payload_json=pg_catalog.jsonb_set(
+        payload_json,'{effective_config_ref,config_hash}',pg_catalog.to_jsonb(config_hash)),
+      payload_hash=platform.canonical_sha256(pg_catalog.jsonb_set(
+        payload_json,'{effective_config_ref,config_hash}',pg_catalog.to_jsonb(config_hash)))
+  where command_id='00000000-0000-4000-8000-000000005404';
+  update app_data_agent.idempotency_records
+  set payload_hash=(select command.payload_hash from app_data_agent.commands command
+    where command.command_id='00000000-0000-4000-8000-000000005404')
+  where command_id='00000000-0000-4000-8000-000000005404';
   insert into app_data_agent.effective_run_config_resource_bindings (
     app_id,tenant_id,environment,config_id,config_revision,binding_ordinal,
     resource_kind,resource_id,requested_mode,requested_revision,effective_revision,
@@ -2033,12 +2088,20 @@ begin
   task_hash := app_data_agent.u2_canonical_sha256(task_document);
   insert into app_data_agent.artifacts (
     app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
-    content_hash,document_json,worker_fence,is_active
+    content_hash,document_json,worker_fence,is_active,
+    authority_epoch,authority_baseline_id,authority_baseline_hash,
+    authority_activation_attempt_id
   ) values (
     '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005401',
     'local','00000000-0000-4000-8000-000000005403',
     '00000000-0000-4000-8000-0000000054a5','ProviderTaskArtifact',1,
-    task_hash,task_document,7,true);
+    task_hash,task_document,7,true,'E1',
+    (select baseline_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select baseline_hash from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select activation_attempt_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'));
   task_reference := pg_catalog.jsonb_build_object(
     'artifact_id','00000000-0000-4000-8000-0000000054a5',
     'artifact_type','ProviderTaskArtifact','app_id','00000000-0000-4000-8000-00000000da01',
@@ -2071,18 +2134,27 @@ begin
     'receipt_hash',projection_hash);
   insert into app_data_agent.artifacts (
     app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,
-    content_hash,document_json,worker_fence,is_active
+    content_hash,document_json,worker_fence,is_active,
+    authority_epoch,authority_baseline_id,authority_baseline_hash,
+    authority_activation_attempt_id
   ) values (
     '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005401',
     'local','00000000-0000-4000-8000-000000005403',
     '00000000-0000-4000-8000-0000000054a6','AgentDataProjectionReceipt',1,
-    projection_hash,projection_document,7,true);
+    projection_hash,projection_document,7,true,'E1',
+    (select baseline_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select baseline_hash from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'),
+    (select activation_attempt_id from app_data_agent.falcon24_current_authority_epoch
+      where tenant_id='00000000-0000-4000-8000-000000005401' and environment='local'));
 end
 $non_alo_begin_fixture$;
 alter table app_data_agent.effective_run_config_receipts enable trigger all;
 alter table app_data_agent.effective_run_config_resource_bindings enable trigger all;
 alter table app_data_agent.effective_config_context_receipts enable trigger all;
 alter table app_data_agent.artifacts enable trigger all;
+alter table app_data_agent.commands enable trigger all;
 do $non_alo_begin_rejected$
 declare
   lease jsonb;
@@ -2129,6 +2201,13 @@ begin
     'attempt_no',1,'delivery_attempt_no',1,'lease_duration_ms',600000,
     'worker_id','u3-worker','lease_token',1,'worker_fence',7,
     'expires_at',app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp() + interval '5 minutes'),
+    'execution_policy',pg_catalog.jsonb_build_object(
+      'schema_version','run-execution-policy@1.0.0',
+      'campaign_id',null,'case_id',null,'run_variant',null,'repetition',null,
+      'policy_id','default-run-retry@1.0.0','mode','DEFAULT',
+      'max_run_attempts',5,'max_provider_attempts_per_call',2,'max_root_turns',2,
+      'max_text2sql_candidate_attempts',2,'analysis_repair_budget_per_category',1,
+      'max_file_transfer_attempts',5,'allow_stage_recovery',true,'hold_on_failure',false),
     'payload',pg_catalog.jsonb_build_object(
       'kind','START_L2_RESEARCH','effective_config_ref',pg_catalog.jsonb_build_object(
         'config_id','00000000-0000-4000-8000-000000005409','config_revision',1,

@@ -42,8 +42,6 @@ const mocks = vi.hoisted(() => ({
   getFile: vi.fn(),
   runProjection: vi.fn(),
   listProfiles: vi.fn(),
-  resolveRollout: vi.fn(),
-  commitDeferred: vi.fn(),
   freezeCatalog: vi.fn(),
 }));
 
@@ -59,10 +57,6 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
-  getAgentDispatchAuthority: () => ({
-    resolveRolloutPolicy: mocks.resolveRollout,
-    commitDeferred: mocks.commitDeferred,
-  }),
   getAgentProfileRegistry: () => ({
     listDiscoverable: mocks.listProfiles,
   }),
@@ -220,14 +214,6 @@ beforeEach(async () => {
       { revision: { profile_id: "semantic-management-agent" } },
     ],
   });
-  mocks.resolveRollout.mockResolvedValue({
-    ok: true,
-    value: {
-      mode: "ENFORCED",
-      version: 1,
-      policy_version: "adaptive-routing@1.0.0+rollout.1",
-    },
-  });
   mocks.freezeCatalog.mockResolvedValue({
     schema_version: "subagent-capability-catalog-snapshot@1.0.0",
     run_id: ids.run,
@@ -331,15 +317,7 @@ describe("workspace Effective Config routes", () => {
     );
   });
 
-  it("freezes the Root Harness catalog even when the legacy baseline is root-only", async () => {
-    mocks.resolveRollout.mockResolvedValue({
-      ok: true,
-      value: {
-        mode: "ROOT_ONLY_DEFER_DATA",
-        version: 7,
-        policy_version: "adaptive-routing@1.0.0+rollout.1",
-      },
-    });
+  it("freezes the only E1 Root Harness catalog policy on replay", async () => {
     const makeRequest = () =>
       new NextRequest(`http://localhost/api/workspaces/${ids.workspace}/runs`, {
         method: "POST",
@@ -361,7 +339,7 @@ describe("workspace Effective Config routes", () => {
     expect(replay.status).toBe(201);
     expect(mocks.freezeCatalog).toHaveBeenCalledWith(
       expect.objectContaining({
-        policy_version: "adaptive-routing@1.0.0+rollout.1",
+        policy_version: "falcon24-e1-root-v3@1.0.0",
       }),
     );
     expect(mocks.resolveAndAccept).toHaveBeenCalledTimes(2);

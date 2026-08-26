@@ -264,7 +264,9 @@ begin
     or shared.migration_count<>(select pg_catalog.count(*) from platform.migration_ledger)
   then raise exception 'U51 shared authority changed during cleanup'; end if;
   if pg_catalog.to_regprocedure(
-      'app_data_agent.commit_agent_dispatch_deferred(text,text,jsonb)') is null
+      'app_data_agent.commit_e1_analysis_publication(jsonb)') is null
+    or pg_catalog.to_regprocedure(
+      'app_data_agent.commit_agent_dispatch_deferred(text,text,jsonb)') is not null
     or pg_catalog.to_regclass('app_data_agent.runs') is null
     or pg_catalog.to_regclass('app_data_agent.artifacts') is null
   then raise exception 'U51 preserved runtime authority is missing'; end if;

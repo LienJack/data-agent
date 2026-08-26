@@ -1,6 +1,7 @@
 # Resolution Trace 与 SQL History
 
-> U9 的 Run 公开轨迹、SQL 证据索引、workspace read API 与前端消费合同。
+> E1 当前合同（2026-08-27）：U9 提供 Run 公开轨迹、SQL 证据索引、workspace read API 与前端消费合同；U6
+> 进一步要求从问答答案入口打开 exact Run 轨迹，并将节点详情、工件引用、390/1440 viewport 与同一 Web build 写入 E1 UI receipt。
 
 ## 1. Scope / Trigger
 

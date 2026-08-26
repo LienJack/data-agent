@@ -1,5 +1,10 @@
 # 恢复 Root Agent 自主 Subagent 路由
 
+> E1 当前路径（2026-08-27）：本文的需求边界已由
+> `docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md` 接管。当前唯一生产问答入口是
+> `effective-config-team-lease@3.0.0` / `ROOT_HARNESS@1`；本文出现的 Direct QA、adaptive dispatch、v12–v15
+> 均只用于解释历史故障，不是可调用的当前路径或 E1 验收证据。
+
 ## Goal
 
 恢复 `QUESTION_RUN` 的 Root Agent 自主编排能力：Root Agent 基于当前 Run 冻结的 Agent Card 语义，自主决定直接回答或调用一个/多个 Subagent；涉及工作区数据库事实的问题必须由 Text2SQL Subagent 生成并执行受治理查询，再基于已提交证据回答，不能由 Direct QA 模型以“没有数据权限/未提供数据”为由结束。

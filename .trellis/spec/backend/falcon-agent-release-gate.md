@@ -1,5 +1,9 @@
 # Falcon Agent Release Gate
 
+> E1 接管（2026-08-27）：本规范后文的经典 Falcon threshold/batch 规则保留为历史 evaluator 规范，不是当前
+> Falcon24 E1 激活条件。当前 E1 只接受 `E1-Q1` 的 G1–G4 16/16，随后接受 `E1-C1` 的 G5 30/30；每个 slot 必须从真实
+> Q&A 提交进入 exact Run 轨迹并持久化同源 QA/Trace UI receipts。v12–v15 不能重跑、续接或计入 E1。
+
 ## Authority Boundary
 
 `FalconTeamRunner` 是 Falcon Agent 计分的唯一执行组合层。Web/CLI 只能创建或读取 batch；不能以

@@ -2419,6 +2419,25 @@
       "postcondition": {
         "checksum_occurrences": 2
       }
+    },
+    {
+      "id": "10778",
+      "migration_name": "20260725010778_app_data_agent_e1_legacy_runtime_retirement.sql",
+      "source_directory": "infra/supabase/apps/data-agent/migration-sources/10778",
+      "segments": [
+        "00-preamble.sql.inc",
+        "10-retirement-preflight.sql.inc",
+        "20-e1-command-boundary.sql.inc",
+        "25-session-recovery-semantic-helper.sql.inc",
+        "30-retire-adaptive-dispatch.sql.inc",
+        "90-postconditions.sql.inc",
+        "99-ledger.sql.inc"
+      ],
+      "placeholder": "__E1_LEGACY_RUNTIME_RETIREMENT_MIGRATION_CHECKSUM__",
+      "checksum_header": "e1_legacy_runtime_retirement_migration_checksum",
+      "postcondition": {
+        "checksum_occurrences": 2
+      }
     }
   ],
   "exceptions": [

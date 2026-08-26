@@ -80,20 +80,37 @@ insert into app_data_agent.qa_messages(
 values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11',
   'test','00000000-0000-4000-8000-000000003006','00000000-0000-4000-8000-000000003009',
   '00000000-0000-4000-8000-000000003002','user','U25 synthetic audit message','text','{}'::jsonb);
-insert into app_data_agent.runs(app_id,tenant_id,environment,run_id,principal_id,status,active_fence,question)
-values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11','test',
+insert into app_data_agent.runs(
+  app_id,tenant_id,environment,run_id,principal_id,status,active_fence,question,
+  authority_epoch,authority_baseline_id,authority_baseline_hash,
+  authority_activation_attempt_id)
+select '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11','test',
   '00000000-0000-4000-8000-000000003010','00000000-0000-4000-8000-000000003002','RUNNING',1,
-  'U25 synthetic run');
+  'U25 synthetic run',authority.authority_epoch,authority.baseline_id,
+  authority.baseline_hash,authority.activation_attempt_id
+from app_data_agent.falcon24_current_authority_epoch authority
+where authority.app_id='00000000-0000-4000-8000-00000000da01'
+  and authority.tenant_id='00000000-0000-4000-8000-00000000aa11'
+  and authority.environment='test';
 insert into app_data_agent.workspace_run_bindings(
   app_id,tenant_id,environment,run_id,datasource_id,conversation_id,principal_id)
 values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11','test',
   '00000000-0000-4000-8000-000000003010','00000000-0000-4000-8000-000000003005',
   '00000000-0000-4000-8000-000000003006','00000000-0000-4000-8000-000000003002');
 insert into app_data_agent.artifacts(
-  app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,content_hash,document_json,worker_fence)
-values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11','test',
+  app_id,tenant_id,environment,run_id,artifact_id,artifact_type,revision,content_hash,document_json,
+  worker_fence,authority_epoch,authority_baseline_id,authority_baseline_hash,
+  authority_activation_attempt_id)
+select '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11','test',
   '00000000-0000-4000-8000-000000003010','00000000-0000-4000-8000-000000003012','SqlArtifact',1,
-  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{"sql":"select 1"}',1);
+  'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa','{"sql":"select 1"}',1,
+  authority.authority_epoch,authority.authority_baseline_id,authority.authority_baseline_hash,
+  authority.authority_activation_attempt_id
+from app_data_agent.runs authority
+where authority.app_id='00000000-0000-4000-8000-00000000da01'
+  and authority.tenant_id='00000000-0000-4000-8000-00000000aa11'
+  and authority.environment='test'
+  and authority.run_id='00000000-0000-4000-8000-000000003010';
 do $event$
 declare scope jsonb:='{"app_id":"00000000-0000-4000-8000-00000000da01","tenant_id":"00000000-0000-4000-8000-00000000aa11","environment":"test"}'::jsonb;
   payload jsonb:='{"profile_id":"report-writing-agent","task_id":"00000000-0000-4000-8000-000000003013","status":"RUNNING","phase":"draft.report","title":"Report","summary":"drafting","duration_ms":null,"error_code":null}'::jsonb;

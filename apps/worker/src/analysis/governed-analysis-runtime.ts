@@ -48,8 +48,12 @@ type GovernedAnalysisCommand = Parameters<GovernedAgentAnalysisPort["analyze"]>[
 
 export interface GovernedAnalysisMethodRegistryPort {
   resolve(input: {
+    readonly lease: GovernedAnalysisCommand["lease"];
+    readonly task_id: string;
     readonly question: string;
     readonly context: AnalysisContext;
+    readonly query_evidence_ref: ArtifactReference & { readonly artifact_type: "QueryEvidence" };
+    readonly query_evidence_document: ProductTeamArtifactDocument;
     readonly query_evidence_binding: QueryEvidenceSemanticBinding;
   }): Promise<readonly AnalysisMethodRegistryEntry[]>;
 }
@@ -330,8 +334,12 @@ export function createGovernedAnalysisRuntime(input: {
         });
         stage = "METHOD_REGISTRY";
         const methods = await input.method_registry.resolve({
+          lease: command.lease,
+          task_id: command.task_id,
           question: command.question,
           context,
+          query_evidence_ref: command.accepted_query_evidence_ref,
+          query_evidence_document: evidence.document,
           query_evidence_binding: evidence.binding,
         });
         if (

@@ -1,6 +1,6 @@
 # OpenSandbox 状态化 Python 与治理结果回路
 
-> 状态：`IMPLEMENTING / HOLD`。OpenSandbox 是唯一 Python 执行层；发布前必须完成 Governed Result Bridge、PostgreSQL Context Journal、durable stage、带 fence 的原子权威提交与零残留证明。
+> 状态（2026-08-27，E1）：`IMPLEMENTED / ACCEPTANCE HOLD`。OpenSandbox 是唯一 Python 执行层；production Worker 已组合通用 governed-analysis runtime、PostgreSQL Context Journal、durable stage、带 fence 的原子权威提交与敏感输入 authority。Falcon case-bound runtime 已删除。G1–G5 的真实运行、独立 Oracle 和零残留证明仍属于 U7，不得从单元测试推导 GO。
 
 ## Scenario: 状态化 Python 编排治理算子并原子发布结果
 

@@ -61,7 +61,6 @@
     "falcon:submission": "tsx scripts/falcon.ts submission",
     "falcon:agent-gate": "pnpm --filter @data-agent/worker falcon:team",
     "falcon:agent-final": "pnpm --filter @data-agent/worker falcon:final",
-    "falcon24:analysis:gate": "pnpm --filter @data-agent/worker falcon24:analysis:gate",
     "deepseek:analysis:strict-probe": "pnpm --filter @data-agent/worker deepseek:analysis:strict-probe",
     "falcon24:analysis:control": "pnpm --filter @data-agent/web falcon24:analysis:control",
     "dev:admin-sync": "tsx apps/web/src/cli/local-superadmin-sync.ts",

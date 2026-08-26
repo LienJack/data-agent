@@ -1,7 +1,7 @@
 "use client";
 
 import type { PublicRunEvent } from "@data-agent/contracts";
-import { Cpu, WarningOctagon } from "@phosphor-icons/react";
+import { Cpu } from "@phosphor-icons/react";
 import { assembleConversationActivity, isRunTerminal } from "@/lib/qa-event-assembler";
 import type { Message } from "@/lib/qa-types";
 import { formatDateTime } from "@/lib/utils";
@@ -29,7 +29,6 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
   const streaming = Boolean(
     message.runId && activity.length > 0 && !isRunTerminal(events, message.runId),
   );
-  const isDeferred = Boolean(message.deferredAdmission);
 
   return (
     <div
@@ -40,11 +39,9 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
         className={`${isUser ? "max-w-[84%] rounded-[var(--radius-item)] px-4 py-3" : "w-full"} ${
           isUser
             ? "bg-[#27304a] text-white shadow-[0_14px_28px_-22px_rgb(21_29_53_/_0.8)]"
-            : isDeferred
-              ? "border-l-2 border-amber-500 bg-amber-50/70 px-4 py-3 text-amber-950"
-              : message.type === "error"
-                ? "border-l-2 border-[var(--color-error)] bg-red-50 px-4 py-3 text-red-800"
-                : "text-[var(--color-text-primary)]"
+            : message.type === "error"
+              ? "border-l-2 border-[var(--color-error)] bg-red-50 px-4 py-3 text-red-800"
+              : "text-[var(--color-text-primary)]"
         }`}
       >
         {!isUser && (
@@ -60,10 +57,7 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
             </div>
           </div>
         )}
-        {message.deferredAdmission ? (
-          <DeferredAdmissionContent receipt={message.deferredAdmission} />
-        ) : null}
-        {!message.deferredAdmission && activity.length > 0 && message.runId && (
+        {activity.length > 0 && message.runId && (
           <ConversationActivityStream
             blocks={activity}
             events={events}
@@ -72,15 +66,15 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
           />
         )}
         {/* Legacy messages without answer events retain their persisted body. */}
-        {!message.deferredAdmission && !hasAnswerEvents && message.type === "report" ? (
+        {!hasAnswerEvents && message.type === "report" ? (
           <ReportContent message={message} />
-        ) : !message.deferredAdmission && !hasAnswerEvents && message.type === "hypothesis" ? (
+        ) : !hasAnswerEvents && message.type === "hypothesis" ? (
           <HypothesisContent message={message} />
-        ) : !message.deferredAdmission && !hasAnswerEvents && isUser ? (
+        ) : !hasAnswerEvents && isUser ? (
           <div className="whitespace-pre-wrap text-sm">
             {message.content || (message.runId ? "正在生成回答…" : "")}
           </div>
-        ) : !message.deferredAdmission && !hasAnswerEvents ? (
+        ) : !hasAnswerEvents ? (
           <article className="agent-answer" aria-label="Data Agent 回答">
             <SafeAssistantMarkdown
               content={message.content || (message.runId ? "正在生成回答…" : "")}
@@ -100,32 +94,6 @@ export function ChatMessage({ message, events = [] }: ChatMessageProps) {
         </div>
       </div>
     </div>
-  );
-}
-
-function DeferredAdmissionContent({
-  receipt,
-}: {
-  receipt: NonNullable<Message["deferredAdmission"]>;
-}) {
-  return (
-    <section aria-label="请求已阻断" aria-live="polite" className="text-sm">
-      <div className="mb-2 flex items-center gap-2 font-semibold">
-        <WarningOctagon aria-hidden="true" size={17} />
-        <span>BLOCKED · 请求未进入运行</span>
-      </div>
-      <p className="leading-6">当前策略或能力目录无法安全执行此请求，未创建 Run 或子任务。</p>
-      <dl className="mt-3 grid gap-1.5 text-[11px]">
-        <div className="flex flex-wrap gap-2">
-          <dt className="text-amber-800">公开错误码</dt>
-          <dd className="font-mono font-semibold">{receipt.reason_code}</dd>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <dt className="text-amber-800">所需能力</dt>
-          <dd className="font-mono">{receipt.required_capabilities.join(" · ")}</dd>
-        </div>
-      </dl>
-    </section>
   );
 }
 

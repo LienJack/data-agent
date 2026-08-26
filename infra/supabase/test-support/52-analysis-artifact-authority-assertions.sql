@@ -24,7 +24,8 @@ begin
     'app_data_agent.commit_current_analysis_artifact(jsonb)'::pg_catalog.regprocedure
   ) into commit_definition;
   if pg_catalog.strpos(commit_definition, 'when ''DataProfile'' then ''EVIDENCE''') = 0
-    or pg_catalog.strpos(commit_definition, 'when ''AnalysisPlan'' then ''PLANNING''') = 0
+    or pg_catalog.strpos(commit_definition, 'when ''AnalysisProgram'' then ''PLANNING''') = 0
+    or pg_catalog.strpos(commit_definition, 'AnalysisPlan') > 0
     or pg_catalog.strpos(
       commit_definition,
       'when ''DerivedAnalysisEvidence'' then ''EVIDENCE'''

@@ -70,6 +70,7 @@ import {
   createFileScanPort,
   createFileSystemStorageClient,
   createPostgresWorkspaceFiles,
+  createSensitiveExecutionArtifactAuthority,
   createWorkspaceContentNamespace,
 } from "@data-agent/platform/storage";
 import {
@@ -79,6 +80,7 @@ import {
 import { createSemanticContextService } from "@data-agent/semantic/runtime-context";
 import pg from "pg";
 import { z } from "zod";
+import { createProductionGovernedAnalysisRuntime } from "./analysis/production-governed-analysis-runtime.js";
 import { classifyFalcon24RunFailureCode } from "./evals/falcon24-acceptance-execution-policy.js";
 import { createArtifactExportJobHandler } from "./jobs/artifact-export-job-handler.js";
 import { runConversationRetentionCycle } from "./jobs/conversation-retention-cycle.js";
@@ -188,6 +190,12 @@ export async function runAnalysisStageCleanupCycle(
     idempotency_key: `analysis-stage-cleanup:${cleanupId}`,
     requested_limit: input.requested_limit ?? 100,
   });
+}
+
+export function analysisSensitiveCiphertextStorageKey(contentHash: string): string {
+  const match = /^sha256:([a-f0-9]{64})$/u.exec(contentHash);
+  if (!match?.[1]) throw new TypeError("ANALYSIS_SENSITIVE_CIPHERTEXT_HASH_INVALID");
+  return `analysis-sensitive-ciphertext/${match[1]}`;
 }
 
 export function projectWorkerHealthResponse(
@@ -402,6 +410,15 @@ export async function runWorkerProcess(
       pool: sqlPool,
       authorizer: capabilityAuthority.authorizer,
     });
+    const sensitiveAnalysisArtifacts = createSensitiveExecutionArtifactAuthority({
+      pool: sqlPool,
+      authorizer: capabilityAuthority.authorizer,
+      blobs: {
+        putIfAbsent: (contentHash, bytes) =>
+          fileStorage.put(analysisSensitiveCiphertextStorageKey(contentHash), bytes),
+        get: (contentHash) => fileStorage.get(analysisSensitiveCiphertextStorageKey(contentHash)),
+      },
+    });
     const analysisStageCleanupCapability = config.research_authority_capability_ids
       ? {
           app_capability: appCapability,
@@ -540,6 +557,15 @@ export async function runWorkerProcess(
             authorizer: capabilityAuthority.authorizer,
           }),
         );
+        const governedAnalysisRuntime = createProductionGovernedAnalysisRuntime({
+          research_authority: researchAuthority,
+          research_capabilities: researchCapabilities,
+          sensitive_artifacts: sensitiveAnalysisArtifacts,
+          public_artifacts: teamArtifacts,
+          public_artifact_capability: capability,
+          semantic_release: semanticRelease,
+          environment,
+        });
         const teamArtifactAuthority = {
           verifyCommitted: (reference: Parameters<typeof teamArtifacts.verifyCommitted>[1]) =>
             teamArtifacts.verifyCommitted(capability, reference),
@@ -557,6 +583,7 @@ export async function runWorkerProcess(
                 artifacts: teamArtifacts,
                 text2sql: text2sqlRuntime,
                 semantic_release: semanticRelease,
+                governed_analysis: governedAnalysisRuntime,
               },
               input,
             ),

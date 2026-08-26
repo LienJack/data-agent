@@ -1,5 +1,9 @@
 # 技术设计：Root Agent 自主路由与 Governed Text2SQL
 
+> E1 当前路径（2026-08-27）：本设计的有效实现由
+> `docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md` 的 U1–U9 管理。旧 Direct QA、adaptive
+> dispatch、固定 `query_kind`、模板 SQL 与 Falcon case-bound runtime 已退出生产代码面；下文“当前断点”保留为历史诊断。
+
 ## 1. 设计结论
 
 恢复现有 Root Harness V3 作为唯一生产编排入口，并扩展当前轻量 Provider dispatcher，使它同时支持 Root、Text2SQL 和 Report 三种受服务器约束的 turn。Root 使用冻结 Agent Card 进行语义选择；Host 仅做确定性 admission 和执行。

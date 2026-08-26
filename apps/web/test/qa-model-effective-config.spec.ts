@@ -24,8 +24,6 @@ const mocks = vi.hoisted(() => ({
   resolveAndAccept: vi.fn(),
   getEffectiveConfig: vi.fn(),
   getRun: vi.fn(),
-  resolveRollout: vi.fn(),
-  commitDeferred: vi.fn(),
   freezeCatalog: vi.fn(),
   listProfiles: vi.fn(),
 }));
@@ -42,10 +40,6 @@ vi.mock("@/lib/workspace-request", () => ({
 }));
 
 vi.mock("@/lib/workspace-identity", () => ({
-  getAgentDispatchAuthority: () => ({
-    resolveRolloutPolicy: mocks.resolveRollout,
-    commitDeferred: mocks.commitDeferred,
-  }),
   getAgentProfileRegistry: () => ({
     listDiscoverable: mocks.listProfiles,
   }),
@@ -133,14 +127,6 @@ beforeEach(() => {
     },
   });
   mocks.getRun.mockResolvedValue({ ok: true, value: { run_id: ids.run } });
-  mocks.resolveRollout.mockResolvedValue({
-    ok: true,
-    value: {
-      mode: "ENFORCED",
-      version: 1,
-      policy_version: "adaptive-routing@1.0.0+rollout.1",
-    },
-  });
   mocks.freezeCatalog.mockResolvedValue({
     schema_version: "subagent-capability-catalog-snapshot@1.0.0",
     run_id: ids.run,
@@ -244,7 +230,6 @@ describe("startQuestionRun use-case", () => {
     idempotency_key: "use-case-direct",
     principal_id: ids.principal,
     question: "统计订单数",
-    rollout_bootstrap_mode: undefined,
     scope: {
       app_id: "81000000-0000-4000-8000-000000000010",
       environment: "test",

@@ -4,9 +4,9 @@ import { buildRunConfigRequestCandidate } from "@data-agent/contracts/runs";
 import type { WorkspaceFileReference } from "@data-agent/contracts/workspaces";
 import { createPostgresRepository } from "@data-agent/platform/persistence";
 import { freezeSubagentCapabilityCatalog } from "@data-agent/platform/runs";
+import { E1_ROOT_CATALOG_POLICY_VERSION } from "@/lib/e1-root-authority";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
-  getAgentDispatchAuthority,
   getAgentProfileRegistry,
   getEffectiveConfigResolver,
   getProviderInvocationStore,
@@ -24,7 +24,6 @@ type ResolveConversationRunSelections = ReturnType<
   typeof getProviderInvocationStore
 >["resolveConversationRunSelections"];
 type ListDiscoverableProfiles = ReturnType<typeof getAgentProfileRegistry>["listDiscoverable"];
-type ResolveRolloutPolicy = ReturnType<typeof getAgentDispatchAuthority>["resolveRolloutPolicy"];
 type ResolveAndAccept = ReturnType<typeof getEffectiveConfigResolver>["resolveAndAccept"];
 type GetEffectiveConfig = ReturnType<typeof getEffectiveConfigResolver>["getEffectiveConfig"];
 type GetPersistedRun = ReturnType<typeof createPostgresRepository>["getRun"];
@@ -40,7 +39,6 @@ export interface StartQuestionRunDependencies {
   readonly projectRun: typeof workspaceRunProjection;
   readonly resolveAndAccept: ResolveAndAccept;
   readonly resolveConversationRunSelections: ResolveConversationRunSelections;
-  readonly resolveRolloutPolicy: ResolveRolloutPolicy;
 }
 
 export interface StartQuestionRunInput {
@@ -50,7 +48,6 @@ export interface StartQuestionRunInput {
   readonly idempotency_key: string;
   readonly principal_id: string;
   readonly question: string;
-  readonly rollout_bootstrap_mode: string | undefined;
   readonly scope: AppScope;
   readonly workspace_id: string;
   readonly expected_subagent_profile_refs?: readonly AgentProductProfileReferenceV2[];
@@ -89,7 +86,6 @@ function productionDependencies(): StartQuestionRunDependencies {
     resolveAndAccept: (...args) => resolver.resolveAndAccept(...args),
     resolveConversationRunSelections: (...args) =>
       getProviderInvocationStore().resolveConversationRunSelections(...args),
-    resolveRolloutPolicy: (...args) => getAgentDispatchAuthority().resolveRolloutPolicy(...args),
   };
 }
 
@@ -210,17 +206,12 @@ export function createStartQuestionRunUseCase(
       principal_id: input.principal_id,
       idempotency_key: input.idempotency_key,
     });
-    const rollout = await dependencies.resolveRolloutPolicy(
-      input.capability,
-      input.rollout_bootstrap_mode,
-    );
-    if (!rollout.ok) return { error: rollout.error, kind: "ERROR" } as const;
     const catalogSnapshot = await dependencies.freezeSubagentCatalog({
       run_id: identities.run_id,
       scope: input.scope,
       principal_id: input.principal_id,
       enabled_profiles: profiles.value,
-      policy_version: rollout.value.policy_version,
+      policy_version: E1_ROOT_CATALOG_POLICY_VERSION,
     });
     const configRequest = await buildRunConfigRequestCandidate({
       schema_version: "run-config-request@1.0.0",

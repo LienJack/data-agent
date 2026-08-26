@@ -288,11 +288,19 @@ insert into app_data_agent.research_authority_capabilities(
   app_id,tenant_id,environment,capability_id,assignment_key,principal_id,deployment_id,
   membership_version,app_epoch,membership_role,authority_kind,artifact_authority_domain,
   authority_epoch,state,expires_at)
-values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11',
+select '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11',
   'test','00000000-0000-4000-8000-00000000c976',pg_temp.e1_hash('4'),
   '00000000-0000-4000-8000-000000001001','00000000-0000-4000-8000-00000000de01',
-  1,1,'OWNER','RESEARCH_ARTIFACT_AUTHORITY','EVIDENCE',1,'ACTIVE',
-  pg_catalog.clock_timestamp()+interval '10 minutes');
+  membership.membership_version,lifecycle.authority_epoch,
+  pg_catalog.upper(membership.membership_role),'RESEARCH_ARTIFACT_AUTHORITY','EVIDENCE',1,'ACTIVE',
+  pg_catalog.clock_timestamp()+interval '10 minutes'
+from app_data_agent.memberships membership
+join platform.app_environment_lifecycle lifecycle
+  on lifecycle.app_id=membership.app_id and lifecycle.environment=membership.environment
+where membership.app_id='00000000-0000-4000-8000-00000000da01'
+  and membership.tenant_id='00000000-0000-4000-8000-00000000aa11'
+  and membership.environment='test'
+  and membership.principal_id='00000000-0000-4000-8000-000000001001';
 insert into app_data_agent.research_authority_capability_heads(
   app_id,tenant_id,environment,assignment_key,principal_id,authority_kind,
   artifact_authority_domain,current_capability_id,current_authority_epoch)

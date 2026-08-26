@@ -61,7 +61,6 @@ export function createQuestionRunRoute(
       idempotency_key: input.data.idempotency_key,
       principal_id: authorized.value.capability.principal,
       question: input.data.question,
-      rollout_bootstrap_mode: process.env.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
       scope: authorized.value.capability.scope,
       workspace_id: workspaceId,
     });

@@ -47,18 +47,18 @@
 
 ## U6 - E1 Trace and UI Gate
 
-- [ ] 实现 E1-only trace/detail/preview（10777），拒绝旧 Epoch/fallback。
-- [ ] 修复 Conversation/Run 切换 stale async state。
-- [ ] 实现从真实问答到 exact trace 的 QA/Trace UI receipts。
-- [ ] 运行 Web unit/typecheck/build 与 1440px/390px browser tests。
-- [ ] 创建 U6 scoped commit。
+- [x] 实现 E1-only trace/detail/preview（10777），拒绝旧 Epoch/fallback。
+- [x] 修复 Conversation/Run 切换 stale async state。
+- [x] 实现从真实问答到 exact trace 的 QA/Trace UI receipts。
+- [x] 运行 Web unit/typecheck/build 与 1440px/390px browser tests。
+- [x] 创建 U6 scoped commit。
 
 ## U8 - Legacy Retirement
 
-- [ ] 用 production import graph/public export/database inventory 确认删除范围。
-- [ ] 退役旧 runtime、RPC、parser 和无消费者空表（10778）。
-- [ ] 更新旧 task 历史说明、Trellis specs 与 E1 runbook。
-- [ ] 运行全包/architecture/migration/fresh smoke 并创建 U8 scoped commit。
+- [x] 用 production import graph/public export/database inventory 确认删除范围。
+- [x] 退役旧 runtime、RPC、parser 和无消费者空表（10778）。
+- [x] 更新旧 task 历史说明、Trellis specs 与 E1 runbook。
+- [x] 运行全包/architecture/migration/fresh smoke 并创建 U8 scoped commit。
 
 ## U7-A - Qualification and Campaign implementation
 

@@ -10,7 +10,6 @@ import {
   adaptPgPool,
   type BoundaryResult,
   createFileSystemStorageClient,
-  createPostgresAgentDispatchAuthority,
   createPostgresAgentProfileRegistry,
   createPostgresAgentTeamTraceProjector,
   createPostgresEffectiveConfigResolver,
@@ -66,7 +65,6 @@ interface WorkspaceIdentityRuntimeState {
   semanticContextService?: ReturnType<typeof createSemanticContextService>;
   workspaceContent?: ReturnType<typeof createWorkspaceContentNamespace>;
   agentProfileRegistry?: ReturnType<typeof createPostgresAgentProfileRegistry>;
-  agentDispatchAuthority?: ReturnType<typeof createPostgresAgentDispatchAuthority>;
   agentTeamTraceProjector?: ReturnType<typeof createPostgresAgentTeamTraceProjector>;
 }
 
@@ -166,15 +164,6 @@ export function getAgentProfileRegistry() {
     authorizer: getWorkspaceAuthority().authorizer,
   });
   return runtime.agentProfileRegistry;
-}
-
-export function getAgentDispatchAuthority() {
-  const runtime = state();
-  runtime.agentDispatchAuthority ??= createPostgresAgentDispatchAuthority({
-    pool: getWorkspaceSqlPool(),
-    authorizer: getWorkspaceAuthority().authorizer,
-  });
-  return runtime.agentDispatchAuthority;
 }
 
 export function getAgentTeamTraceProjector() {

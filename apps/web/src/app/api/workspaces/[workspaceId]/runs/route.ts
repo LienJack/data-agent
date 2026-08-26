@@ -4,9 +4,9 @@ import { createPostgresRepository } from "@data-agent/platform/persistence";
 import { freezeSubagentCapabilityCatalog } from "@data-agent/platform/runs";
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { E1_ROOT_CATALOG_POLICY_VERSION } from "@/lib/e1-root-authority";
 import { deriveRunCommandIdentities } from "@/lib/run-command-identity";
 import {
-  getAgentDispatchAuthority,
   getAgentProfileRegistry,
   getEffectiveConfigResolver,
   getWorkspaceAuthority,
@@ -89,17 +89,12 @@ export async function POST(
     idempotency_key: input.data.idempotencyKey,
   });
   const runId = identities.run_id;
-  const rollout = await getAgentDispatchAuthority().resolveRolloutPolicy(
-    authorized.value.capability,
-    process.env.DATA_AGENT_DISPATCH_BOOTSTRAP_MODE,
-  );
-  if (!rollout.ok) return workspaceErrorResponse(rollout.error);
   const catalogSnapshot = await freezeSubagentCapabilityCatalog({
     run_id: runId,
     scope: authorized.value.capability.scope,
     principal_id: authorized.value.capability.principal,
     enabled_profiles: profiles.value,
-    policy_version: rollout.value.policy_version,
+    policy_version: E1_ROOT_CATALOG_POLICY_VERSION,
   });
   const configRequest = await buildRunConfigRequestCandidate({
     schema_version: "run-config-request@1.0.0",

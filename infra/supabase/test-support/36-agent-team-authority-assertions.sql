@@ -15,7 +15,7 @@ begin
       and ledger.migration_version='20260725010658_app_data_agent_agent_team_authority'
   ) then raise exception 'AGENT_TEAM_LEDGER_ASSERTION_FAILED'; end if;
 
-  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>7
+  if (select pg_catalog.count(*) from app_data_agent.agent_profile_revisions)<>8
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='data-agent-orchestrator' and profile_revision=1
@@ -25,6 +25,11 @@ begin
       select 1 from app_data_agent.agent_profile_revisions
       where profile_id='data-agent-orchestrator' and profile_revision=2
         and profile_hash='sha256:bfe92aae492252be7667e3fe8631bf6cd4107db49a2f19edd29295dacd49d65d'
+    )
+    or not exists (
+      select 1 from app_data_agent.agent_profile_revisions
+      where profile_id='governed-analysis-agent' and profile_revision=1
+        and profile_hash='sha256:265abb762fd9466d5ce8bee79bb43b823ff18621b1b728a645b84bb4356be7f6'
     )
     or not exists (
       select 1 from app_data_agent.agent_profile_revisions
@@ -224,14 +229,14 @@ insert into app_data_agent.run_attempts(
   '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-000000005801',
   'local','00000000-0000-4000-8000-000000005803','00000000-0000-4000-8000-000000005805',
   '00000000-0000-4000-8000-000000005804','00000000-0000-4000-8000-000000005806',
-  1,'u19-worker',1,7,'ACTIVE',pg_catalog.clock_timestamp()+interval '10 minutes',
-  pg_catalog.clock_timestamp()
+  1,'u19-worker',1,7,'ACTIVE',pg_catalog.statement_timestamp()+interval '10 minutes',
+  pg_catalog.statement_timestamp()
 );
 update app_data_agent.outbox set
   status='LEASED',attempt_count=1,lease_owner='u19-worker',lease_token=1,
-  lease_expires_at=pg_catalog.clock_timestamp()+interval '10 minutes',
+  lease_expires_at=pg_catalog.statement_timestamp()+interval '10 minutes',
   active_attempt_id='00000000-0000-4000-8000-000000005806',run_fence=7,
-  last_heartbeat_at=pg_catalog.clock_timestamp()
+  last_heartbeat_at=pg_catalog.statement_timestamp()
 where outbox_id='00000000-0000-4000-8000-000000005805';
 insert into app_data_agent.run_events(
   app_id,tenant_id,environment,event_id,run_id,sequence,event_type,payload_json,
@@ -290,9 +295,16 @@ begin
     'run_id','00000000-0000-4000-8000-000000005803',
     'command_id','00000000-0000-4000-8000-000000005804','command_kind','START_L2_RESEARCH',
     'attempt_id','00000000-0000-4000-8000-000000005806','attempt_no',1,
-    'delivery_attempt_no',1,'lease_duration_ms',60000,'worker_id','u19-worker',
+    'delivery_attempt_no',1,'lease_duration_ms',600000,'worker_id','u19-worker',
     'lease_token',1,'worker_fence',7,'expires_at',
     app_data_agent.runtime_iso_timestamp(pg_catalog.clock_timestamp()+interval '10 minutes'),
+    'execution_policy',pg_catalog.jsonb_build_object(
+      'schema_version','run-execution-policy@1.0.0',
+      'campaign_id',null,'case_id',null,'run_variant',null,'repetition',null,
+      'policy_id','default-run-retry@1.0.0','mode','DEFAULT',
+      'max_run_attempts',5,'max_provider_attempts_per_call',2,'max_root_turns',2,
+      'max_text2sql_candidate_attempts',2,'analysis_repair_budget_per_category',1,
+      'max_file_transfer_attempts',5,'allow_stage_recovery',true,'hold_on_failure',false),
     'payload',pg_catalog.jsonb_build_object(
       'kind','START_L2_RESEARCH','effective_config_ref',pg_catalog.jsonb_build_object(
         'config_id','00000000-0000-4000-8000-000000005809','config_revision',1,

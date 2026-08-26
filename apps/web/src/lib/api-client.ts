@@ -12,14 +12,12 @@ import {
   type ResolutionTrace,
   type ResolutionTraceDetail,
   type SqlHistoryResult,
-  verifyAgentDispatchAdmissionResult,
   verifyAgentProductProfileRevision,
   verifyAgentTeamPublicTrace,
   verifyResolutionTrace,
   verifyResolutionTraceDetail,
   verifySqlHistoryResult,
 } from "@data-agent/contracts";
-import type { DeferredRunAdmission } from "./qa-types";
 import type { RunProjection } from "./run-projection";
 import { workspaceIdFromPathname } from "./workspace-routes";
 
@@ -54,14 +52,6 @@ function resolutionTraceDecodeError(error: unknown, fallbackCode: string): ApiRe
     typeof error === "object" && error !== null && "message" in error ? String(error.message) : "";
   const code = observed.startsWith("RESOLUTION_TRACE_") ? observed : fallbackCode;
   return new ApiRequestError(200, code, false, `权威轨迹响应未通过契约校验 (${code})`);
-}
-
-export class DeferredRunAdmissionError extends Error {
-  override readonly name = "DeferredRunAdmissionError";
-
-  constructor(readonly receipt: DeferredRunAdmission) {
-    super(`请求已阻断 (${receipt.reason_code})`);
-  }
 }
 
 // ─── Workspace Context ─────────────────────────────────────────────────────
@@ -101,10 +91,7 @@ async function request<T>(path: string, init: RequestInit = {}, workspaceId?: st
     headers: { ...authHeaders(workspaceId), ...init.headers },
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as {
-      error?: unknown;
-      dispatch?: unknown;
-    } | null;
+    const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
     const parsed = contractErrorSchema.safeParse(body?.error);
     if (parsed.success) {
       throw new ApiRequestError(
@@ -113,14 +100,6 @@ async function request<T>(path: string, init: RequestInit = {}, workspaceId?: st
         parsed.data.retryable,
         `${parsed.data.message} (${parsed.data.code})`,
       );
-    }
-    if (body?.dispatch !== undefined) {
-      try {
-        const admission = await verifyAgentDispatchAdmissionResult(body.dispatch);
-        if (admission.kind === "DEFERRED") throw new DeferredRunAdmissionError(admission);
-      } catch (error) {
-        if (error instanceof DeferredRunAdmissionError) throw error;
-      }
     }
     throw new ApiRequestError(response.status, null, null, `API 请求失败 (${response.status})`);
   }

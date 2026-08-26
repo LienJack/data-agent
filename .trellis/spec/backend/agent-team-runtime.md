@@ -1,6 +1,6 @@
 # Agent Team Product Runtime
 
-> 当前约定（2026-08-25）：Q&A 只接受 `effective-config-team-lease@3.0.0` / `ROOT_HARNESS@1`。Root Agent 是唯一自然语言意图路由器；旧 Direct-QA、正则 Router、固定 `query_kind` 与 legacy lease 执行入口均已删除或拒绝，不存在兼容旁路。
+> 当前约定（2026-08-27，E1）：Q&A 只生产 `effective-config-team-lease@3.0.0` / `ROOT_HARNESS@1`。Root Agent 是唯一自然语言意图路由器；旧 Direct-QA、adaptive-dispatch RPC/reader、正则 Router、固定 `query_kind` 与 legacy lease 执行入口均已删除或拒绝，不存在兼容旁路。合同层可保留 legacy lease parser 以给出稳定拒绝，但不得据此执行。
 
 ## 1. Scope / Trigger
 

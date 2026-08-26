@@ -84,10 +84,17 @@ values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000a
   'Other private folder',0);
 
 insert into app_data_agent.runs(
-  app_id,tenant_id,environment,run_id,principal_id,status,question)
-values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11',
+  app_id,tenant_id,environment,run_id,principal_id,status,question,
+  authority_epoch,authority_baseline_id,authority_baseline_hash,
+  authority_activation_attempt_id)
+select '00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11',
   'test','00000000-0000-4000-8000-000000002909','00000000-0000-4000-8000-000000001001',
-  'RUNNING','U24 active run guard');
+  'RUNNING','U24 active run guard',authority.authority_epoch,authority.baseline_id,
+  authority.baseline_hash,authority.activation_attempt_id
+from app_data_agent.falcon24_current_authority_epoch authority
+where authority.app_id='00000000-0000-4000-8000-00000000da01'
+  and authority.tenant_id='00000000-0000-4000-8000-00000000aa11'
+  and authority.environment='test';
 insert into app_data_agent.workspace_run_bindings(
   app_id,tenant_id,environment,run_id,datasource_id,conversation_id,principal_id)
 values('00000000-0000-4000-8000-00000000da01','00000000-0000-4000-8000-00000000aa11',

@@ -51,7 +51,6 @@ describe("platform package public surface", () => {
       "createNeo4jRelationshipGraphAdapterFromEnvironment",
       "createOpenAiCompatibleEmbeddingProviderFactory",
       "createPhysicalSchemaSnapshot",
-      "createPostgresAgentDispatchAuthority",
       "createPostgresAgentProfileRegistry",
       "createPostgresAgentTeamTraceProjector",
       "createPostgresArtifactWorkspaceStore",

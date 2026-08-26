@@ -624,6 +624,8 @@ describe("U2 effective run config contracts", () => {
       { event: { event_id: ids.receipt } },
       { event_hash: H2 },
       { effective_config_ref: { config_id: ids.config, config_revision: 1, config_hash: H3 } },
+      { dispatch_admission: { kind: "EXECUTE" } },
+      { shadow_dispatch_plan: null },
     ]) {
       expect(
         effectiveConfigRunCommandEnvelopeSchema.safeParse({ ...command, ...injected }).success,

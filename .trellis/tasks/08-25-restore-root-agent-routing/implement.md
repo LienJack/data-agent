@@ -1,6 +1,24 @@
 # 实施记录：恢复 Root Agent 自主 Subagent 路由
 
-> 当前状态：v14 已在第 0 个 slot 的首次提交失败后硬停止并由 PostgreSQL Authority 冻结为 HOLD；后续 29 个 Run 未启动。submit outcome 原子判定与 fail-closed HOLD 已由 commit `866e8115` 关闭。真实轨迹 UI 的 Detail v3、backend/UI 双 receipt 与回收前数据库门禁已实现并通过定向测试，仍须在 G1 真实浏览器运行中取证。随后必须闭合 G1–G4 资格门禁，才允许创建 v15。唯一生产路径是 V3 Root Harness；无兼容层。
+> E1 当前状态（2026-08-27）：本文件已由
+> `docs/plans/2026-08-26-001-refactor-falcon24-e1-authority-reset-plan.md` 取代。U1–U6、U8、U9 已进入当前分支实现与验证，
+> U7-A/U7-B 尚未完成，因此还没有 winning `E1-Q1` 16/16、`E1-C1` 30/30 或生产 GO。v12、v13、v14 和曾规划的
+> v15 全部是历史 attempt；不得重跑、拼接或当作 E1 证据。唯一生产路径是 V3 Root Harness；无兼容层。
+
+## E1 U-ID 实施清单
+
+- [x] U1 retained asset manifest 与固定输入。
+- [x] U2 fresh authority/bootstrap 边界。
+- [x] U3 semantic/model/profile staging 与恢复门。
+- [x] U4 Root/Text2SQL/analysis/publisher 生产组合。
+- [x] U5 E1 authority activation 合同。
+- [x] U6 exact trace、artifact binding 与真实 UI gate 合同。
+- [x] U8 legacy runtime/RPC/parser 退役与 fresh-only 10778 migration。
+- [x] U9 production import/inventory boundaries。
+- [ ] U7-A 冻结最终实现 commit/Web build，并闭合 E1-Q1 qualification/campaign gate。
+- [ ] U7-B 在 disposable fresh environment 完成激活、G1–G4 16/16 与 G5 30/30。
+
+以下 v12–v14、Phase 0–7 与旧 v15 描述仅保留历史可审计性，不表示当前可运行状态。
 
 ## v12 硬停止与分层定位
 

@@ -1,6 +1,5 @@
 import { z } from "zod";
 import {
-  agentDispatchAdmissionResultSchema,
   agentDispatchExecutionBindingSchema,
   agentDispatchPlanSchema,
 } from "../agents/dispatch.js";
@@ -66,29 +65,9 @@ export const effectiveConfigRunCommandEnvelopeSchema = z
     audit_id: canonicalImmutableIdSchema,
     idempotency_key: workspaceIdempotencyKeySchema,
     question: z.string().trim().min(1).max(4_000),
-    dispatch_admission: agentDispatchAdmissionResultSchema
-      .refine((admission) => admission.kind === "EXECUTE", {
-        message: "只有 EXECUTE admission 可以创建 Run。",
-      })
-      .optional(),
-    shadow_dispatch_plan: agentDispatchPlanSchema.nullable().optional(),
     subagent_catalog_snapshot: subagentCapabilityCatalogSnapshotSchema.optional(),
   })
   .superRefine((command, ctx) => {
-    if (command.dispatch_admission && command.subagent_catalog_snapshot) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Run command cannot combine legacy dispatch with a Root Harness catalog.",
-        path: ["subagent_catalog_snapshot"],
-      });
-    }
-    if (command.shadow_dispatch_plan !== undefined && !command.dispatch_admission) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Shadow dispatch requires a legacy dispatch admission.",
-        path: ["shadow_dispatch_plan"],
-      });
-    }
     if (
       command.subagent_catalog_snapshot &&
       command.subagent_catalog_snapshot.run_id !== command.run_id

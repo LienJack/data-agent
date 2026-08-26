@@ -15,7 +15,6 @@ export {
   type PostgresEffectiveConfigResolverOptions,
 } from "./effective-config-resolver.js";
 export { freezeSubagentCapabilityCatalog } from "./frozen-subagent-capability-catalog.js";
-export * from "./postgres-agent-dispatch-authority.js";
 export * from "./postgres-authority-epoch.js";
 export * from "./postgres-falcon24-acceptance-campaign.js";
 export * from "./postgres-falcon24-qualification.js";
