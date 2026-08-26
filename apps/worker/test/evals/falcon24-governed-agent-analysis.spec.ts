@@ -212,6 +212,7 @@ describe("Falcon24 governed Agent analysis bridge", () => {
             },
           },
         ],
+        explanations: [],
         sandbox_receipts: [
           {
             runtime_profile: "ML_DIAGNOSTIC",

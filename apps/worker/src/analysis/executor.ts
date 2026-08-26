@@ -302,6 +302,10 @@ export interface AnalysisExecutionResult {
     readonly node_id: string;
     readonly output: AnalysisBoundOutput;
   }[];
+  readonly explanations: readonly {
+    readonly node_id: string;
+    readonly explanation: z.infer<typeof analysisAgentFinalResponseSchema>;
+  }[];
 }
 
 class BudgetLedger {
@@ -522,6 +526,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
       const oracleReceipts: unknown[] = [];
       const validatedOutputs = new Map<string, readonly AnalysisBoundOutput[]>();
+      const explanations = new Map<string, z.infer<typeof analysisAgentFinalResponseSchema>>();
 
       const executeNode = async (node: AnalysisProgramNode) => {
         if (input.signal?.aborted) return failedNode(node, "SANDBOX_EXECUTION_FAILED");
@@ -906,6 +911,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
           ...execution.tool_loop.provider_invocation_refs,
           explanationProviderInvocationRef,
         );
+        explanations.set(node.node_id, explanation);
         if (expectation.oracle_receipt !== undefined)
           oracleReceipts.push(expectation.oracle_receipt);
         validatedOutputs.set(
@@ -1011,6 +1017,12 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
               output,
             })),
           ),
+        ),
+        explanations: Object.freeze(
+          analysisProgram.nodes.flatMap((node) => {
+            const explanation = explanations.get(node.node_id);
+            return explanation ? [{ node_id: node.node_id, explanation }] : [];
+          }),
         ),
       });
     },
