@@ -84,6 +84,7 @@ describe("Falcon24 E1 browser gate", () => {
   it("accepts the complete runtime identity while comparing only the governed web fields", async () => {
     const buildId = `sha256:${"a".repeat(64)}`;
     const generationId = `sha256:${"b".repeat(64)}`;
+    let composerReady = false;
     execFileAsyncMock.mockImplementation(async (_file: string, args: readonly string[]) => ({
       stdout: JSON.stringify({
         success: true,
@@ -94,6 +95,7 @@ describe("Falcon24 E1 browser gate", () => {
                 ready: true,
                 question_input_visible: true,
                 submit_visible: true,
+                composer_ready: composerReady,
                 expected_run_absent: true,
                 error_banners: [],
                 web_build: { build_id: buildId, generation_id: generationId },
@@ -115,6 +117,19 @@ describe("Falcon24 E1 browser gate", () => {
       git_dirty: false,
     };
 
+    await expect(
+      preflightFalcon24BrowserSubmission({
+        session: "falcon24-e1-q1-regression",
+        web_base_url: "https://data-agent.example",
+        workspace_id: workspaceId,
+        conversation_id: conversationId,
+        expected_run_id: runId,
+        expected_web_build: runtimeIdentity,
+        viewport: { width: 1440, height: 900 },
+      }),
+    ).rejects.toThrow();
+
+    composerReady = true;
     await expect(
       preflightFalcon24BrowserSubmission({
         session: "falcon24-e1-q1-regression",

@@ -50,6 +50,9 @@ export function ChatInput() {
   const resourcesComplete = activeConversation
     ? Boolean(activeConversation.modelProfileId && activeConversation.dataSourceId)
     : hasCatalogDefaults;
+  const composerReady = Boolean(
+    activeConversation && catalogState === "ready" && resourcesComplete && !switching,
+  );
   const unavailableReason =
     catalogState === "loading" || catalogState === "idle"
       ? "正在加载模型和数据源"
@@ -167,6 +170,7 @@ export function ChatInput() {
                 <button
                   type="button"
                   data-testid="qa-submit-question"
+                  data-composer-ready={composerReady ? "true" : "false"}
                   onClick={() => void handleSend()}
                   disabled={sendDisabled}
                   aria-label="发送消息"

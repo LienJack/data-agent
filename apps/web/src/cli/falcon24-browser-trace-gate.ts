@@ -73,6 +73,7 @@ const browserPreflightObservationSchema = z.strictObject({
   ready: z.literal(true),
   question_input_visible: z.literal(true),
   submit_visible: z.literal(true),
+  composer_ready: z.literal(true),
   expected_run_absent: z.literal(true),
   error_banners: z.array(z.string().max(2_000)).max(32),
   web_build: webBuildSchema,
@@ -213,11 +214,14 @@ export async function preflightFalcon24BrowserSubmission(input: {
   await agentBrowser(session, ["console", "--clear"]);
   await agentBrowser(session, ["open", startUrl.toString()]);
   await agentBrowser(session, ["wait", '[data-testid="qa-question-input"]']);
-  await agentBrowser(session, ["wait", '[data-testid="qa-submit-question"]']);
+  await agentBrowser(session, [
+    "wait",
+    '[data-testid="qa-submit-question"][data-composer-ready="true"]',
+  ]);
   const expectedRunSelector = `[data-testid="qa-result-trace-entry"][data-run-id="${selectorValue(expectedRunId)}"]`;
   const observation = await browserEval(
     session,
-    `(async () => { const visible=(element)=>Boolean(element && element.getBoundingClientRect().width>0 && element.getBoundingClientRect().height>0); const response=await fetch('/api/ready?workspace_id=${encodeURIComponent(input.workspace_id)}',{cache:'no-store'}); const build=await response.json(); return {location:window.location.href,ready:response.ok&&build.ready===true,question_input_visible:visible(document.querySelector('[data-testid="qa-question-input"]')),submit_visible:visible(document.querySelector('[data-testid="qa-submit-question"]')),expected_run_absent:!document.querySelector(${JSON.stringify(expectedRunSelector)}),error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
+    `(async () => { const visible=(element)=>Boolean(element && element.getBoundingClientRect().width>0 && element.getBoundingClientRect().height>0); const response=await fetch('/api/ready?workspace_id=${encodeURIComponent(input.workspace_id)}',{cache:'no-store'}); const build=await response.json(); const submit=document.querySelector('[data-testid="qa-submit-question"]'); return {location:window.location.href,ready:response.ok&&build.ready===true,question_input_visible:visible(document.querySelector('[data-testid="qa-question-input"]')),submit_visible:visible(submit),composer_ready:submit?.getAttribute('data-composer-ready')==='true',expected_run_absent:!document.querySelector(${JSON.stringify(expectedRunSelector)}),error_banners:[...document.querySelectorAll('[role="alert"]')].map((element)=>element.textContent?.trim()||''),web_build:{build_id:build.build_id,generation_id:build.generation_id}}; })()`,
     browserPreflightObservationSchema,
   );
   if (
