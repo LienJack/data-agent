@@ -198,7 +198,7 @@ describe("Falcon24 governed Agent analysis bridge", () => {
             chart_dataset_hash: await computeFalcon24AnalysisChartDatasetHash(businessOutput()),
           },
         ],
-        validated_outputs: [
+        published_outputs: [
           {
             node_id: testCase.case_id,
             output: {

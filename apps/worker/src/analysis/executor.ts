@@ -298,7 +298,7 @@ export interface AnalysisExecutionResult {
   readonly sandbox_receipt_refs: readonly ArtifactReference[];
   readonly provider_invocation_refs: readonly ProviderInvocationResourceRef[];
   readonly oracle_receipts: readonly unknown[];
-  readonly validated_outputs: readonly {
+  readonly published_outputs: readonly {
     readonly node_id: string;
     readonly output: AnalysisBoundOutput;
   }[];
@@ -525,7 +525,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
       const sandboxReceiptRefs: ArtifactReference[] = [];
       const providerInvocationRefs: ProviderInvocationResourceRef[] = [];
       const oracleReceipts: unknown[] = [];
-      const validatedOutputs = new Map<string, readonly AnalysisBoundOutput[]>();
+      const publishedOutputs = new Map<string, readonly AnalysisBoundOutput[]>();
       const explanations = new Map<string, z.infer<typeof analysisAgentFinalResponseSchema>>();
 
       const executeNode = async (node: AnalysisProgramNode) => {
@@ -914,10 +914,7 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         explanations.set(node.node_id, explanation);
         if (expectation.oracle_receipt !== undefined)
           oracleReceipts.push(expectation.oracle_receipt);
-        validatedOutputs.set(
-          node.node_id,
-          boundOutputs.filter(({ artifact_kind: artifactKind }) => artifactKind === "RESULT"),
-        );
+        publishedOutputs.set(node.node_id, boundOutputs);
         expectations.set(node.node_id, expectation);
         return {
           node_id: node.node_id,
@@ -1010,9 +1007,9 @@ export function createAnalysisProgramExecutor(dependencies: AnalysisExecutorDepe
         sandbox_receipt_refs: Object.freeze(sandboxReceiptRefs),
         provider_invocation_refs: Object.freeze(providerInvocationRefs),
         oracle_receipts: Object.freeze(oracleReceipts),
-        validated_outputs: Object.freeze(
+        published_outputs: Object.freeze(
           analysisProgram.nodes.flatMap((node) =>
-            (validatedOutputs.get(node.node_id) ?? []).map((output) => ({
+            (publishedOutputs.get(node.node_id) ?? []).map((output) => ({
               node_id: node.node_id,
               output,
             })),

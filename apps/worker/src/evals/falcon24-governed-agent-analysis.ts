@@ -350,10 +350,13 @@ function decodeValidatedOutput(
   result: AnalysisExecutionResult,
   testCase: Falcon24AgentAnalysisCase,
 ) {
-  if (result.completion.terminal !== "READY" || result.validated_outputs.length !== 1) {
+  const resultOutputs = result.published_outputs.filter(
+    ({ output }) => output.artifact_kind === "RESULT",
+  );
+  if (result.completion.terminal !== "READY" || resultOutputs.length !== 1) {
     throw new TypeError("FALCON24_ANALYSIS_VALIDATED_OUTPUT_REQUIRED");
   }
-  const accepted = result.validated_outputs[0];
+  const accepted = resultOutputs[0];
   if (
     !accepted ||
     accepted.node_id !== testCase.case_id ||
